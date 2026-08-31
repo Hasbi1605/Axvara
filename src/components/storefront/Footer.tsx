@@ -96,6 +96,7 @@ export function Footer() {
 
         <div className="mt-8 flex flex-col sm:flex-row gap-3 sm:items-center justify-between border-t border-white/10 pt-6">
           <p className="text-xs text-white/40">© 2026 AXVARA. Semua hak dilindungi.</p>
+          {/* keep minimal — no Brotherstore06 per user request */}
           <div className="flex items-center gap-4 text-xs">
             <Link href="/#katalog" className="text-white/50 hover:text-white transition">Katalog</Link>
             <Link href="/admin" className="text-white/25 hover:text-white/60 transition">Admin</Link>

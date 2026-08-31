@@ -8,7 +8,7 @@ import { Spotlight } from "@/components/ui/Spotlight";
 export const metadata: Metadata = {
   title: "AXVARA — Satu tempat untuk semua tools premium",
   description: "Berbagai tools AI dan aplikasi premium dengan harga jauh lebih hemat dari official. Bergaransi.",
-  icons: { icon: "/brand/whatsapp.svg" },
+  icons: { icon: "/brand/axvara-mark.svg" },
   openGraph: {
     title: "AXVARA — Satu tempat untuk semua tools premium",
     description: "Berbagai tools AI dan aplikasi premium dengan harga jauh lebih hemat dari official. Bergaransi.",

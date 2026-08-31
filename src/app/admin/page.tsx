@@ -1,134 +1,221 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { formatRupiah } from "@/lib/utils";
 
-type Order = {
-  code: string;
-  name: string;
-  wa: string;
-  method: string;
-  items: { name: string; price: number; qty: number }[];
-  subtotal: number;
-  status: string;
-  fileName?: string;
-  createdAt: string;
-};
+type Prod = { id:string; slug:string; name:string; description:string; price:number; comparePrice?:number; categorySlug:string; image:string; images:string[]; badge?:string; soldCount:number; stock:number; isActive:boolean; sortOrder?:number };
+type Cat = { id:number; slug:string; name:string };
+type Order = { code:string; name:string; wa:string; method:string; items:{ name:string;price:number;qty:number }[]; subtotal:number; status:string; fileName?:string; createdAt:string };
 
 export default function AdminPage() {
-  const [authed, setAuthed] = useState(false);
-  const [email, setEmail] = useState("");
-  const [pass, setPass] = useState("");
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [authed,setAuthed]=useState(false);
+  const [email,setEmail]=useState(""); const [pass,setPass]=useState("");
+  const [tab,setTab]=useState<"orders"|"products">("products");
+  const [orders,setOrders]=useState<Order[]>([]);
+  const [prods,setProds]=useState<Prod[]>([]);
+  const [cats,setCats]=useState<Cat[]>([]);
+  const [q,setQ]=useState("");
+  const [editing,setEditing]=useState<Prod|null>(null);
+  const [showNew,setShowNew]=useState(false);
+  const [uploading,setUploading]=useState(false);
+  const [form,setForm]=useState<Partial<Prod> & { comparePrice?:number; categorySlug?:string }>({});
+  const [formImages,setFormImages]=useState<string[]>([]);
 
-  useEffect(() => {
-    if (localStorage.getItem("axvara-admin") === "1") setAuthed(true);
-    setOrders(JSON.parse(localStorage.getItem("axvara-orders") || "[]"));
-  }, []);
+  const load = useCallback(async()=>{
+    const [pr,cr]=await Promise.all([fetch("/api/products").then(r=>r.json()), fetch("/api/categories").then(r=>r.json()).catch(()=>({categories:[]}))]);
+    setProds(pr.products ?? []); setCats(cr.categories ?? [{id:1,slug:"ai-gateway",name:"AI Gateway"},{id:2,slug:"akun-premium",name:"Akun Premium"},{id:3,slug:"tools-pro",name:"Tools Pro"},{id:4,slug:"bundle-hemat",name:"Bundle Hemat"}]);
+    setOrders(JSON.parse(localStorage.getItem("axvara-orders")||"[]"));
+  },[]);
 
-  const login = () => {
-    if (email === "admin@axvara.id" && pass === "axvara123") {
-      localStorage.setItem("axvara-admin", "1");
-      setAuthed(true);
-    } else alert("Email atau password salah — coba admin@axvara.id / axvara123");
+  useEffect(()=>{ if(localStorage.getItem("axvara-admin")==="1") setAuthed(true); load(); },[load]);
+
+  const login=()=>{ if(email==="admin@axvara.id" && pass==="axvara123"){ localStorage.setItem("axvara-admin","1"); setAuthed(true);} else alert("Email/pass salah — admin@axvara.id / axvara123"); };
+  const setStatus=(code:string,status:string)=>{ const all:Order[]=JSON.parse(localStorage.getItem("axvara-orders")||"[]"); const next=all.map(o=>o.code===code?{...o,status}:o); localStorage.setItem("axvara-orders",JSON.stringify(next)); setOrders(next); };
+
+  const openEdit=(p:Prod)=>{ setEditing(p); setForm({...p, categorySlug:p.categorySlug}); setFormImages(p.images?.length? p.images : p.image? [p.image] : []); };
+  const openNew=()=>{ setShowNew(true); setEditing(null); setForm({ name:"", slug:"", description:"", price:50000, categorySlug:"akun-premium", stock:10, soldCount:0, isActive:true }); setFormImages([]); };
+  const closeModal=()=>{ setEditing(null); setShowNew(false); setForm({}); setFormImages([]); };
+
+  const handleUpload=async(e:React.ChangeEvent<HTMLInputElement>)=>{
+    const files=e.target.files; if(!files?.length) return;
+    if(formImages.length + files.length > 8) return alert("Maks 8 foto per produk");
+    setUploading(true);
+    const fd=new FormData(); Array.from(files).forEach(f=>fd.append("files",f));
+    try{ const r=await fetch("/api/upload",{method:"POST",body:fd}); const j=await r.json(); if(!r.ok) throw new Error(j.error); setFormImages(prev=>[...prev, ...j.urls].slice(0,8)); } catch(err:unknown){ alert(err instanceof Error?err.message:String(err)); } finally{ setUploading(false); e.target.value=""; }
   };
 
-  const setStatus = (code: string, status: string) => {
-    const all: Order[] = JSON.parse(localStorage.getItem("axvara-orders") || "[]");
-    const next = all.map((o) => (o.code === code ? { ...o, status } : o));
-    localStorage.setItem("axvara-orders", JSON.stringify(next));
-    setOrders(next);
+  const save=async()=>{
+    if(!form.name || !form.slug || !form.price) return alert("Nama, slug, harga wajib");
+    const payload={ ...form, price:Number(form.price), comparePrice: form.comparePrice? Number(form.comparePrice): null, stock: form.stock!=null? Number(form.stock): -1, soldCount: form.soldCount? Number(form.soldCount):0, sortOrder:0, images: formImages, imageUrl: formImages[0] ?? form.image ?? null, isActive: form.isActive!==false };
+    const url = editing? `/api/products/${editing.id}` : "/api/products";
+    const method = editing? "PUT":"POST";
+    const r=await fetch(url,{method, headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload)});
+    const j=await r.json(); if(!r.ok) return alert(j.error||"Gagal simpan");
+    await load(); closeModal();
   };
+  const del=async(id:string)=>{ if(!confirm("Hapus produk ini?")) return; await fetch(`/api/products/${id}`,{method:"DELETE"}); await load(); };
 
-  if (!authed) {
-    return (
-      <div className="mx-auto max-w-[420px] px-4 py-16">
-        <div className="ax-glass rounded-[24px] p-6">
-          <h1 className="font-display font-bold text-white text-xl">Admin AXVARA</h1>
-          <p className="text-xs text-white/50 mt-1">Login untuk kelola produk & pesanan</p>
-          <div className="mt-5 space-y-3">
-            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" className="w-full h-11 px-4 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30" />
-            <input value={pass} onChange={(e) => setPass(e.target.value)} type="password" placeholder="Password" className="w-full h-11 px-4 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30" />
-            <button onClick={login} className="w-full h-11 rounded-xl bg-[#00E5FF] text-[#080C1E] font-bold">Masuk</button>
-            <p className="text-[11px] text-white/30 text-center">Demo: admin@axvara.id / axvara123</p>
-          </div>
+  if(!authed) return (
+    <div className="mx-auto max-w-[420px] px-4 py-16">
+      <div className="ax-glass rounded-[24px] p-6">
+        <Link href="/" className="flex items-center gap-2 text-white/70 text-sm"><span className="w-6 h-5 text-white flex items-center justify-center"><svg viewBox="0 0 120 110" className="w-full h-full" fill="none" stroke="currentColor" strokeWidth="4.2" strokeLinecap="round" strokeLinejoin="round"><path d="M60 4 L6.5 104 L113.5 104 Z"/><path d="M60 4 L60 49.5"/><path d="M60 49.5 L35.8 78.5 L84.2 78.5 Z"/><path d="M35.8 78.5 L84.2 78.5"/><path d="M35.8 78.5 L6.5 104"/><path d="M84.2 78.5 L113.5 104"/></svg></span> AXVARA Admin</Link>
+        <h1 className="font-display font-bold text-white text-xl mt-3">Masuk Dashboard</h1>
+        <p className="text-xs text-white/50 mt-1">Kelola produk, stok, diskon & pesanan</p>
+        <div className="mt-5 space-y-3">
+          <input value={email} onChange={e=>setEmail(e.target.value)} placeholder="Email" className="w-full h-11 px-4 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30" />
+          <input value={pass} onChange={e=>setPass(e.target.value)} type="password" placeholder="Password" className="w-full h-11 px-4 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30" />
+          <button onClick={login} className="w-full h-11 rounded-xl bg-[#00E5FF] text-[#080C1E] font-bold hover:bg-[#00D0E8] transition">Masuk</button>
+          <p className="text-[11px] text-white/30 text-center">Demo: admin@axvara.id / axvara123</p>
         </div>
       </div>
-    );
-  }
+    </div>
+  );
 
-  const pending = orders.filter((o) => o.status === "pending").length;
-  const lunas = orders.filter((o) => o.status === "lunas").length;
-  const omzet = orders.filter((o) => o.status === "lunas").reduce((a, b) => a + b.subtotal, 0);
+  const pending=orders.filter(o=>o.status==="pending").length; const lunas=orders.filter(o=>o.status==="lunas").length; const omzet=orders.filter(o=>o.status==="lunas").reduce((a,b)=>a+b.subtotal,0);
+  const filtered= prods.filter(p=> !q || `${p.name} ${p.slug} ${p.badge??""}`.toLowerCase().includes(q.toLowerCase()));
 
   return (
-    <div className="mx-auto max-w-[1100px] px-4 sm:px-6 lg:px-8 py-6">
-      <div className="flex items-center justify-between">
-        <h1 className="font-display font-bold text-xl text-white">Dashboard Admin</h1>
-        <button onClick={() => { localStorage.removeItem("axvara-admin"); location.reload(); }} className="text-xs text-white/50 hover:text-white">Keluar</button>
-      </div>
-
-      <div className="mt-6 grid grid-cols-3 gap-4">
-        <div className="ax-glass rounded-2xl p-4">
-          <p className="text-xs text-white/50">Pending</p>
-          <p className="text-2xl font-display font-bold text-[#FFB800]">{pending}</p>
+    <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 py-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <h1 className="font-display font-bold text-xl text-white">AXVARA CMS</h1>
+          <span className="text-xs px-2 py-1 rounded-full bg-white/10 text-white/60 border border-white/10 hidden sm:inline">D1 + R2</span>
         </div>
-        <div className="ax-glass rounded-2xl p-4">
-          <p className="text-xs text-white/50">Lunas</p>
-          <p className="text-2xl font-display font-bold text-[#22C55E]">{lunas}</p>
-        </div>
-        <div className="ax-glass rounded-2xl p-4">
-          <p className="text-xs text-white/50">Omzet</p>
-          <p className="text-lg font-display font-bold text-white">{formatRupiah(omzet)}</p>
+        <div className="flex items-center gap-2">
+          <button onClick={()=>setTab("products")} className={`h-9 px-4 rounded-full text-xs font-bold border ${tab==="products"?"bg-white text-[#080C1E] border-white":"ax-glass text-white/70 border-white/10 hover:text-white"}`}>Produk ({prods.length})</button>
+          <button onClick={()=>setTab("orders")} className={`h-9 px-4 rounded-full text-xs font-bold border ${tab==="orders"?"bg-white text-[#080C1E] border-white":"ax-glass text-white/70 border-white/10 hover:text-white"}`}>Pesanan {pending?`• ${pending} pending`:""}</button>
+          <button onClick={()=>{localStorage.removeItem("axvara-admin"); location.reload();}} className="text-xs text-white/40 hover:text-white ml-2">Keluar</button>
         </div>
       </div>
 
-      <div className="mt-6 ax-glass rounded-[24px] overflow-hidden">
-        <div className="p-4 border-b border-white/10 flex items-center justify-between">
-          <h2 className="font-semibold text-white text-sm">Pesanan Masuk</h2>
-          <span className="text-xs text-white/40">{orders.length} total</span>
-        </div>
-        {orders.length === 0 ? (
-          <p className="p-8 text-center text-sm text-white/40">Belum ada pesanan — coba checkout sebagai pembeli dulu.</p>
-        ) : (
-          <div className="divide-y divide-white/5">
-            {orders.slice().reverse().map((o) => (
-              <div key={o.code} className="p-4 flex flex-col sm:flex-row sm:items-center gap-3">
-                <div className="flex-1 min-w-0">
-                  <p className="font-mono text-xs font-bold text-[#00E5FF]">{o.code}</p>
-                  <p className="text-sm text-white">{o.name} • {o.wa}</p>
-                  <p className="text-xs text-white/50">{o.items.map((i) => `${i.name} ×${i.qty}`).join(", ")} • {o.method.toUpperCase()} • {formatRupiah(o.subtotal)}</p>
-                  {o.fileName && <p className="text-xs text-white/30">Bukti: {o.fileName}</p>}
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${o.status === "pending" ? "bg-[#FFB800]/15 text-[#FFB800] border border-[#FFB800]/20" : o.status === "lunas" ? "bg-[#22C55E]/15 text-[#22C55E] border border-[#22C55E]/20" : "bg-white/10 text-white/50"}`}>{o.status}</span>
-                  {o.status === "pending" && (
-                    <>
-                      <button onClick={() => setStatus(o.code, "lunas")} className="h-8 px-3 rounded-full bg-[#22C55E] text-white text-xs font-bold">Konfirmasi Lunas</button>
-                      <button onClick={() => setStatus(o.code, "dibatalkan")} className="h-8 px-3 rounded-full ax-glass text-xs">Batalkan</button>
-                      <a href={`https://wa.me/${o.wa.replace(/^0/, "62")}?text=Halo%20${encodeURIComponent(o.name)}%2C%20pesanan%20${o.code}%20kamu%20sudah%20kami%20terima.`} target="_blank" className="h-8 px-3 rounded-full bg-[#25D366] text-white text-xs font-bold flex items-center">WA</a>
-                    </>
-                  )}
-                </div>
+      <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="ax-glass rounded-2xl p-4"><p className="text-[11px] tracking-wide text-white/50 uppercase">Total Produk</p><p className="text-2xl font-display font-bold text-white">{prods.length}</p><p className="text-[11px] text-white/40">{prods.filter(p=>p.isActive).length} aktif</p></div>
+        <div className="ax-glass rounded-2xl p-4"><p className="text-[11px] tracking-wide text-white/50 uppercase">Pending</p><p className="text-2xl font-display font-bold text-[#FFB800]">{pending}</p></div>
+        <div className="ax-glass rounded-2xl p-4"><p className="text-[11px] tracking-wide text-white/50 uppercase">Lunas</p><p className="text-2xl font-display font-bold text-[#22C55E]">{lunas}</p></div>
+        <div className="ax-glass rounded-2xl p-4"><p className="text-[11px] tracking-wide text-white/50 uppercase">Omzet</p><p className="text-lg font-display font-bold text-white">{formatRupiah(omzet)}</p></div>
+      </div>
+
+      {tab==="products" && (
+        <div className="mt-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2 flex-1 max-w-[420px]">
+              <div className="relative flex-1">
+                <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Cari produk, slug, badge..." className="w-full h-10 pl-10 pr-4 rounded-full bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#00E5FF]/40" />
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/40">⌕</span>
               </div>
-            ))}
+            </div>
+            <button onClick={openNew} className="h-10 px-5 rounded-full bg-[#00E5FF] text-[#080C1E] text-sm font-bold hover:bg-[#00D0E8] transition">+ Produk Baru</button>
           </div>
-        )}
-      </div>
 
-      <div className="mt-6 ax-glass rounded-2xl p-4">
-        <h3 className="text-sm font-semibold text-white">Konfigurasi Pembayaran</h3>
-        <p className="text-xs text-white/40 mt-1">Edit di <code>src/lib/products.ts</code> atau nanti via D1 payment_methods (admin settings).</p>
-        <ul className="text-xs text-white/60 mt-2 space-y-1 list-disc list-inside">
-          <li>E-Wallet: 082135277434 (DANA/Gopay/Shopeepay)</li>
-          <li>SeaBank: 901812349386</li>
-          <li>QRIS: public/qris/axvara-qris.png — NMID ID1022191087959</li>
-        </ul>
-      </div>
+          <div className="mt-4 ax-glass rounded-[20px] overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="text-[11px] tracking-[0.08em] text-white/40 uppercase border-b border-white/10">
+                  <tr><th className="text-left font-semibold px-4 py-3">Produk</th><th className="text-left font-semibold px-3 py-3">Kategori</th><th className="text-right font-semibold px-3 py-3">Harga</th><th className="text-center font-semibold px-3 py-3">Stok</th><th className="text-center font-semibold px-3 py-3">Terjual</th><th className="text-center font-semibold px-3 py-3">Aktif</th><th className="text-right font-semibold px-4 py-3">Aksi</th></tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {filtered.map(p=>(
+                    <tr key={p.id} className="hover:bg-white/[0.03] transition">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3 min-w-[220px]">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={p.image || "/brand/axvara-ribbon-mark.png"} alt="" className="w-12 h-12 rounded-xl object-cover bg-white/5 shrink-0" />
+                          <div className="min-w-0">
+                            <p className="font-semibold text-white leading-tight line-clamp-1">{p.name}</p>
+                            <p className="text-xs text-white/40 line-clamp-1">/{p.slug} {p.badge? `• ${p.badge}`:""}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 text-xs text-white/60">{p.categorySlug}</td>
+                      <td className="px-3 py-3 text-right"><span className="font-semibold text-white">{formatRupiah(p.price)}</span>{p.comparePrice? <span className="block text-[11px] text-white/30 line-through">{formatRupiah(p.comparePrice)}</span>:null}</td>
+                      <td className="px-3 py-3 text-center"><span className={`inline-flex min-w-[40px] justify-center px-2 py-1 rounded-full text-xs font-bold ${p.stock<=5 && p.stock!==-1 ? "bg-[#FFB800]/15 text-[#FFB800]":"bg-white/10 text-white/70"}`}>{p.stock===-1?"∞":p.stock}</span></td>
+                      <td className="px-3 py-3 text-center text-xs text-white/60">{p.soldCount}</td>
+                      <td className="px-3 py-3 text-center"><span className={`inline-flex w-8 h-5 rounded-full p-0.5 transition ${p.isActive?"bg-[#22C55E]":"bg-white/15"}`}><span className={`w-4 h-4 rounded-full bg-white shadow transition ${p.isActive?"translate-x-3":"translate-x-0"}`} /></span></td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button onClick={()=>openEdit(p)} className="h-8 px-3 rounded-full bg-white text-[#080C1E] text-xs font-bold hover:bg-white/90">Edit</button>
+                          <button onClick={()=>del(p.id)} className="h-8 w-8 rounded-full ax-glass text-white/60 hover:text-white hover:bg-white/10 flex items-center justify-center">🗑</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {filtered.length===0 && <p className="p-8 text-center text-sm text-white/40">Tidak ada produk — coba ubah kata kunci.</p>}
+            </div>
+          </div>
+        </div>
+      )}
 
-      <p className="mt-4 text-center">
-        <Link href="/" className="text-sm text-white/40 hover:text-white">← Kembali ke toko</Link>
-      </p>
+      {tab==="orders" && (
+        <div className="mt-6 ax-glass rounded-[24px] overflow-hidden">
+          <div className="p-4 border-b border-white/10 flex items-center justify-between"><h2 className="font-semibold text-white text-sm">Pesanan Masuk</h2><span className="text-xs text-white/40">{orders.length} total</span></div>
+          {orders.length===0? <p className="p-8 text-center text-sm text-white/40">Belum ada pesanan — coba checkout sebagai pembeli dulu.</p> : (
+            <div className="divide-y divide-white/5">{orders.slice().reverse().map(o=>(
+              <div key={o.code} className="p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+                <div className="flex-1 min-w-0"><p className="font-mono text-xs font-bold text-[#00E5FF]">{o.code}</p><p className="text-sm text-white">{o.name} • {o.wa}</p><p className="text-xs text-white/50">{o.items.map(i=>`${i.name} ×${i.qty}`).join(", ")} • {o.method.toUpperCase()} • {formatRupiah(o.subtotal)}</p>{o.fileName && <p className="text-xs text-white/30">Bukti: {o.fileName}</p>}</div>
+                <div className="flex items-center gap-2"><span className={`text-xs font-bold px-2.5 py-1 rounded-full ${o.status==="pending"?"bg-[#FFB800]/15 text-[#FFB800] border border-[#FFB800]/20":o.status==="lunas"?"bg-[#22C55E]/15 text-[#22C55E] border border-[#22C55E]/20":"bg-white/10 text-white/50"}`}>{o.status}</span>{o.status==="pending" && <><button onClick={()=>setStatus(o.code,"lunas")} className="h-8 px-3 rounded-full bg-[#22C55E] text-white text-xs font-bold">Konfirmasi Lunas</button><button onClick={()=>setStatus(o.code,"dibatalkan")} className="h-8 px-3 rounded-full ax-glass text-xs">Batalkan</button><a href={`https://wa.me/${o.wa.replace(/^0/,"62")}?text=Halo%20${encodeURIComponent(o.name)}%2C%20pesanan%20${o.code}%20kamu%20sudah%20kami%20terima.`} target="_blank" className="h-8 px-3 rounded-full bg-[#25D366] text-white text-xs font-bold flex items-center">WA</a></>}</div>
+              </div>
+            ))}</div>
+          )}
+        </div>
+      )}
+
+      {(editing || showNew) && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-6 sm:pt-10 overflow-y-auto bg-black/60 backdrop-blur-sm" onClick={closeModal}>
+          <div className="w-full max-w-[720px] ax-glass-strong rounded-[24px] border border-white/10 p-5 sm:p-6 max-h-[92vh] overflow-y-auto" onClick={e=>e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-display font-bold text-white text-lg">{editing? "Edit Produk":"Produk Baru"}</h3>
+              <button onClick={closeModal} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white/70 hover:bg-white/15">✕</button>
+            </div>
+
+            <div className="mt-5 grid sm:grid-cols-2 gap-4">
+              <label className="space-y-1.5"><span className="text-xs font-semibold text-white/60">Nama *</span><input value={form.name??""} onChange={e=>setForm({...form,name:e.target.value, slug: !editing? e.target.value.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""): form.slug})} placeholder="ChatGPT Plus 1 Bulan" className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30" /></label>
+              <label className="space-y-1.5"><span className="text-xs font-semibold text-white/60">Slug *</span><input value={form.slug??""} onChange={e=>setForm({...form,slug:e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g,"-")})} placeholder="chatgpt-plus-1-bulan" className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 font-mono" /></label>
+              <label className="sm:col-span-2 space-y-1.5"><span className="text-xs font-semibold text-white/60">Deskripsi</span><textarea value={form.description??""} onChange={e=>setForm({...form,description:e.target.value})} rows={2} placeholder="Akses GPT-4o penuh..." className="w-full px-3 py-2.5 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 resize-none" /></label>
+              <label className="space-y-1.5"><span className="text-xs font-semibold text-white/60">Harga *</span><input type="number" value={form.price??""} onChange={e=>setForm({...form,price:Number(e.target.value)})} placeholder="89000" className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white" /></label>
+              <label className="space-y-1.5"><span className="text-xs font-semibold text-white/60">Harga Coret (diskon)</span><input type="number" value={form.comparePrice??""} onChange={e=>setForm({...form,comparePrice:e.target.value?Number(e.target.value):undefined})} placeholder="300000" className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white" /></label>
+              <label className="space-y-1.5"><span className="text-xs font-semibold text-white/60">Kategori</span><select value={form.categorySlug??"akun-premium"} onChange={e=>setForm({...form,categorySlug:e.target.value})} className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white">
+                <option value="ai-gateway" className="bg-[#0F1430]">AI Gateway</option><option value="akun-premium" className="bg-[#0F1430]">Akun Premium</option><option value="tools-pro" className="bg-[#0F1430]">Tools Pro</option><option value="bundle-hemat" className="bg-[#0F1430]">Bundle Hemat</option>
+              </select></label>
+              <label className="space-y-1.5"><span className="text-xs font-semibold text-white/60">Badge</span><input value={form.badge??""} onChange={e=>setForm({...form,badge:e.target.value})} placeholder="Terlaris / Baru / Hemat 92%" className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30" /></label>
+              <label className="space-y-1.5"><span className="text-xs font-semibold text-white/60">Stok (-1 = ∞)</span><input type="number" value={form.stock??-1} onChange={e=>setForm({...form,stock:Number(e.target.value)})} className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white" /></label>
+              <label className="space-y-1.5"><span className="text-xs font-semibold text-white/60">Terjual</span><input type="number" value={form.soldCount??0} onChange={e=>setForm({...form,soldCount:Number(e.target.value)})} className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white" /></label>
+              <label className="flex items-center gap-2 pt-6"><input type="checkbox" checked={form.isActive!==false} onChange={e=>setForm({...form,isActive:e.target.checked})} className="w-4 h-4 rounded accent-[#00E5FF]" /> <span className="text-sm text-white/80">Aktif tampil di toko</span></label>
+            </div>
+
+            <div className="mt-5">
+              <p className="text-xs font-semibold text-white/60 mb-2">Foto Produk — maks 8 (PNG/JPG → WebP otomatis)</p>
+              <div className="grid grid-cols-4 gap-2">
+                {formImages.map((url,i)=>(
+                  <div key={url} className="relative group aspect-square rounded-xl overflow-hidden bg-white/5 border border-white/10">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={url} alt="" className="w-full h-full object-cover" />
+                    {i===0 && <span className="absolute top-1 left-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[#00E5FF] text-[#080C1E]">Utama</span>}
+                    <button onClick={()=>setFormImages(prev=>prev.filter((_,idx)=>idx!==i))} className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition">✕</button>
+                    {i>0 && <button onClick={()=>setFormImages(prev=>{ const a=[...prev]; const t=a[i]; a[i]=a[0]; a[0]=t; return a; })} className="absolute bottom-1 left-1 right-1 text-[10px] font-bold bg-white/90 text-[#080C1E] rounded-full py-1 opacity-0 group-hover:opacity-100 transition">Jadikan utama</button>}
+                  </div>
+                ))}
+                {formImages.length<8 && (
+                  <label className={`aspect-square rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-1 cursor-pointer transition ${uploading?"opacity-50 pointer-events-none":"border-white/15 hover:border-[#00E5FF]/40 hover:bg-white/5"}`}>
+                    <span className="text-xl text-white/40">+</span><span className="text-[11px] text-white/50">{uploading?"Upload...":"Tambah"}</span>
+                    <input type="file" accept="image/png,image/jpeg,image/webp" multiple className="hidden" onChange={handleUpload} disabled={uploading} />
+                  </label>
+                )}
+              </div>
+              <p className="text-[11px] text-white/30 mt-2">Foto di-resize max 1200px & konversi WebP q72 — ringan & tajam. Foto pertama = cover card.</p>
+            </div>
+
+            <div className="mt-6 flex gap-3 justify-end">
+              <button onClick={closeModal} className="h-11 px-5 rounded-full ax-glass text-sm font-semibold text-white/80 hover:text-white">Batal</button>
+              <button onClick={save} className="h-11 px-6 rounded-full bg-[#00E5FF] text-[#080C1E] text-sm font-bold hover:bg-[#00D0E8] transition">Simpan Produk</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <p className="mt-6 text-center"><Link href="/" className="text-sm text-white/40 hover:text-white">← Kembali ke toko</Link></p>
+      <p className="mt-2 text-center text-[11px] text-white/25">Data produk di D1 (file data/axvara.db dev) — siap migrasi ke Cloudflare D1 saat wrangler login.</p>
     </div>
   );
 }

@@ -2,13 +2,11 @@ name = "axvara"
 compatibility_date = "2026-08-31"
 pages_build_output_dir = ".next"
 
-# D1 — buat dulu: npx wrangler d1 create axvara-db
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "axvara-db"
-# database_id = "isi-setelah-create"
+[[d1_databases]]
+binding = "DB"
+database_name = "axvara-db"
+database_id = "c21453bf-68ab-4efd-8b0d-22fb360c4f33"
 
-# R2 — buat dulu: npx wrangler r2 bucket create axvara-assets
-# [[r2_buckets]]
-# binding = "ASSETS"
-# bucket_name = "axvara-assets"
+[[r2_buckets]]
+binding = "ASSETS"
+bucket_name = "axvara-assets"
