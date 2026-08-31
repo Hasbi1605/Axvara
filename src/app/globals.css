@@ -1,0 +1,110 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ===== AXVARA — Apple SF Pro + iOS 26 Liquid Glass ===== */
+:root {
+  --ax-bg: #070a1e;
+  --ax-bg-2: #0f1430;
+  --ax-cyan: #00e5ff;
+  --ax-cyan-soft: rgba(0, 229, 255, 0.15);
+  --ax-gold: #ffb800;
+  --ax-text: #f1f5ff;
+  --ax-text-muted: rgba(241, 245, 255, 0.62);
+  --ax-border: rgba(255, 255, 255, 0.12);
+  --ax-border-strong: rgba(255, 255, 255, 0.16);
+  --ease-apple: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+* { border-color: var(--ax-border); }
+
+html { scroll-behavior: smooth; }
+
+/* Apple system font — SF Pro Display/Text */
+body {
+  color: var(--ax-text);
+  background: var(--ax-bg);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "ss01" 1, "ss02" 1;
+}
+
+.font-display {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  letter-spacing: -0.03em;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--ax-bg); }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.14); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0,229,255,0.35); }
+
+/* ===== Liquid Glass — iOS 26 ===== */
+.ax-glass {
+  background: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.05));
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid rgba(255,255,255,0.14);
+  box-shadow:
+    0 8px 32px rgba(0,0,0,0.38),
+    inset 0 1px 0 rgba(255,255,255,0.14),
+    inset 0 -1px 0 rgba(255,255,255,0.04);
+}
+.ax-glass-strong {
+  background: rgba(16, 20, 48, 0.45);
+  backdrop-filter: blur(36px) saturate(200%);
+  -webkit-backdrop-filter: blur(36px) saturate(200%);
+  border: 1px solid rgba(255,255,255,0.13);
+  box-shadow:
+    0 12px 40px rgba(0,0,0,0.45),
+    inset 0 1px 0 rgba(255,255,255,0.12);
+}
+.ax-glass-subtle {
+  background: rgba(255,255,255,0.06);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid rgba(255,255,255,0.10);
+}
+.ax-glass-hover:hover {
+  background: linear-gradient(180deg, rgba(255,255,255,0.13), rgba(255,255,255,0.07));
+  border-color: rgba(255,255,255,0.18);
+}
+.ax-glass-cyan:hover {
+  border-color: rgba(0,229,255,0.28);
+  box-shadow:
+    0 14px 40px rgba(0,0,0,0.45),
+    0 0 28px rgba(0,229,255,0.10),
+    inset 0 1px 0 rgba(255,255,255,0.14);
+}
+
+/* Liquid highlight on cards */
+.ax-liquid::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255,255,255,0.08), transparent 45%);
+  pointer-events: none;
+}
+
+/* Focus */
+*:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(0,229,255,0.35); }
+
+/* Micro interactions — iOS spring */
+@keyframes cartShake { 0%{transform:translateX(0) rotate(0)} 15%{transform:translateX(-4px) rotate(-6deg)} 30%{transform:translateX(4px) rotate(6deg)} 45%{transform:translateX(-3px) rotate(-4deg)} 60%{transform:translateX(2px) rotate(3deg)} 75%{transform:translateX(-1px) rotate(-1deg)} 100%{transform:translateX(0) rotate(0)} }
+@keyframes cartPop { 0%{transform:scale(0.85)} 45%{transform:scale(1.18)} 100%{transform:scale(1)} }
+@keyframes fadeInUp { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
+@keyframes shimmer { 0%{transform:translateX(-100%)} 100%{transform:translateX(100%)} }
+@keyframes floatY { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }
+
+/* Utilities */
+.text-gradient-cyan {
+  background: linear-gradient(100deg, #f1f5ff 18%, #00e5ff 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.glow-cyan { box-shadow: 0 0 32px rgba(0,229,255,0.22); }

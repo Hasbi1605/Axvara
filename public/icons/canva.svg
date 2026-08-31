@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 250 250" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2;">
+  <defs>
+    <radialGradient id="c1" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(32.202179,-37.591636,37.591636,32.202179,12.3621,56.7242)"><stop offset="0" stop-color="#6420FF"/><stop offset="1" stop-color="#6420FF" stop-opacity="0"/></radialGradient>
+    <radialGradient id="c2" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(32.252536,45.557791,-45.557791,32.252536,16.9432,7.27579)"><stop offset="0" stop-color="#00C4CC"/><stop offset="1" stop-color="#00C4CC" stop-opacity="0"/></radialGradient>
+    <radialGradient id="c3" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(34.458976,-34.694817,15.956619,15.848152,12.3621,56.7242)"><stop offset="0" stop-color="#6420FF"/><stop offset="1" stop-color="#6420FF" stop-opacity="0"/></radialGradient>
+    <radialGradient id="c4" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(20.07576,46.214755,-77.420026,33.631377,26.1726,8.62316)"><stop offset="0" stop-color="#00C4CC"/><stop offset="1" stop-color="#00C4CC" stop-opacity="0"/></radialGradient>
+  </defs>
+  <g transform="matrix(3.90625,0,0,3.90625,0,0)">
+    <path d="M32,64C49.673,64 64,49.673 64,32C64,14.327 49.673,0 32,0C14.327,0 0,14.327 0,32C0,49.673 14.327,64 32,64Z" fill="#7D2AE8"/>
+    <path d="M32,64C49.673,64 64,49.673 64,32C64,14.327 49.673,0 32,0C14.327,0 0,14.327 0,32C0,49.673 14.327,64 32,64Z" fill="url(#c1)"/>
+    <path d="M32,64C49.673,64 64,49.673 64,32C64,14.327 49.673,0 32,0C14.327,0 0,14.327 0,32C0,49.673 14.327,64 32,64Z" fill="url(#c2)"/>
+    <path d="M32,64C49.673,64 64,49.673 64,32C64,14.327 49.673,0 32,0C14.327,0 0,14.327 0,32C0,49.673 14.327,64 32,64Z" fill="url(#c3)"/>
+    <path d="M32,64C49.673,64 64,49.673 64,32C64,14.327 49.673,0 32,0C14.327,0 0,14.327 0,32C0,49.673 14.327,64 32,64Z" fill="url(#c4)"/>
+    <path d="M45.815,38.564C45.551,38.564 45.319,38.787 45.077,39.275C42.346,44.812 37.629,48.731 32.17,48.731C25.858,48.731 21.95,43.033 21.95,35.162C21.95,21.829 29.378,14.12 35.904,14.12C38.953,14.12 40.815,16.036 40.815,19.085C40.815,22.704 38.759,24.62 38.759,25.896C38.759,26.469 39.115,26.816 39.822,26.816C42.661,26.816 45.993,23.554 45.993,18.945C45.993,14.476 42.104,11.191 35.579,11.191C24.795,11.191 15.211,21.189 15.211,35.022C15.211,45.729 21.326,52.805 30.76,52.805C40.773,52.805 46.563,42.842 46.563,39.609C46.563,38.892 46.197,38.564 45.815,38.564Z" fill="white"/>
+  </g>
+</svg>

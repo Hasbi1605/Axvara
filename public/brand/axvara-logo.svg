@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 120" fill="none">
+  <!-- AXVARA Lockup — Prism mark + wordmark, copy exact from reference -->
+  <g stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" fill="none" shape-rendering="geometricPrecision">
+    <!-- Mark centered at ~52,60 with size ~96 -->
+    <g transform="translate(8,10) scale(0.82)">
+      <path d="M60 4 L6.5 104 L113.5 104 Z"/>
+      <path d="M60 4 L60 49.5"/>
+      <path d="M60 49.5 L35.8 78.5 L84.2 78.5 Z"/>
+      <path d="M35.8 78.5 L84.2 78.5"/>
+      <path d="M35.8 78.5 L6.5 104"/>
+      <path d="M84.2 78.5 L113.5 104"/>
+    </g>
+  </g>
+  <!-- Wordmark AXVARA — thin geometric sans, same weight as reference -->
+  <g fill="currentColor" font-family="-apple-system, SF Pro Display, Inter, Helvetica, Arial, sans-serif" font-weight="300" font-size="78" letter-spacing="14" text-rendering="geometricPrecision">
+    <text x="122" y="82">AXVARA</text>
+  </g>
+</svg>
