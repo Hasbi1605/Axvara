@@ -8,5 +8,5 @@ database_name = "axvara-db"
 database_id = "c21453bf-68ab-4efd-8b0d-22fb360c4f33"
 
 [[r2_buckets]]
-binding = "ASSETS"
+binding = "R2_ASSETS"
 bucket_name = "axvara-assets"

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { queryAll, queryFirst, execRun } from "@/lib/db-edge";
 
+export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-  const db = getDb();
   const { searchParams } = new URL(req.url);
   const q = searchParams.get("q")?.toLowerCase().trim() ?? "";
   const cat = searchParams.get("cat") ?? "";
@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   if (cat && cat !== "semua") { sql += ` AND c.slug=?`; params.push(cat); }
   if (q) { sql += ` AND (lower(p.name) LIKE ? OR lower(p.description) LIKE ? OR lower(p.slug) LIKE ? OR lower(COALESCE(p.badge,'')) LIKE ?)`; const like=`%${q}%`; params.push(like,like,like,like); }
   sql += ` ORDER BY p.sort_order ASC, p.id ASC`;
-  const rows = db.prepare(sql).all(...params) as Record<string, unknown>[];
+  const rows = await queryAll(sql, ...params);
   const data = rows.map((r: Record<string, unknown>) => {
     const images: string[] = r.images ? JSON.parse(String(r.images)) : [];
     const primary = (r.image_url as string) ?? images[0] ?? "";
@@ -42,16 +42,15 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const db = getDb();
   const body = await req.json();
   const { name, slug, description, price, comparePrice, categorySlug, imageUrl, images, badge, soldCount, stock, isActive, sortOrder } = body;
   if (!name || !slug || !price) return NextResponse.json({ error: "name, slug, price required" }, { status: 400 });
-  const catRow = db.prepare("SELECT id FROM categories WHERE slug=?").get(categorySlug ?? "tools-pro") as { id: number } | undefined;
+  const catRow = await queryFirst("SELECT id FROM categories WHERE slug=?", categorySlug ?? "tools-pro") as { id: number } | undefined;
   const category_id = catRow?.id ?? 3;
   const imgArr = Array.isArray(images) ? images.slice(0,8) : [];
   const primary = imageUrl ?? imgArr[0] ?? null;
   try {
-    const res = db.prepare(`INSERT INTO products (category_id,name,slug,description,price,compare_price,image_url,images,badge,sold_count,stock,is_active,sort_order) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(category_id, name, slug, description ?? "", Number(price), comparePrice ? Number(comparePrice) : null, primary, JSON.stringify(imgArr), badge ?? null, soldCount ? Number(soldCount) : 0, stock != null ? Number(stock) : -1, isActive === false ? 0 : 1, sortOrder ? Number(sortOrder) : 0);
+    const res = await execRun(`INSERT INTO products (category_id,name,slug,description,price,compare_price,image_url,images,badge,sold_count,stock,is_active,sort_order) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, category_id, name, slug, description ?? "", Number(price), comparePrice ? Number(comparePrice) : null, primary, JSON.stringify(imgArr), badge ?? null, soldCount ? Number(soldCount) : 0, stock != null ? Number(stock) : -1, isActive === false ? 0 : 1, sortOrder ? Number(sortOrder) : 0);
     return NextResponse.json({ id: res.lastInsertRowid });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);

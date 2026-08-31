@@ -18,8 +18,6 @@ type IosIconName =
   | "star"
   | "packaging";
 
-const SIZE_MAP: Record<number, number> = { 14: 32, 16: 32, 18: 48, 20: 48, 22: 48, 24: 64, 28: 64, 32: 64 };
-
 function pickSize(px: number) {
   if (px <= 16) return 32;
   if (px <= 22) return 48;

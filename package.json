@@ -21,6 +21,8 @@
     "zustand": "^4.5.5"
   },
   "devDependencies": {
+    "@cloudflare/next-on-pages": "1.12",
+    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^20.14.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.0",

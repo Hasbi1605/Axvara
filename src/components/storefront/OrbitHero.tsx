@@ -62,8 +62,7 @@ const logoUrlColored = (slug: string) => {
   return `https://api.iconify.design/${icon}.svg?color=%23${hex}`;
 };
 
-// Whether planet needs dark bg (for black logos like CapCut ribbon)
-const NEEDS_LIGHT_BG: Record<string, boolean> = { capcut: false, canva: false };
+// kept for future planet bg decisions
 
 export function OrbitHero() {
   const [dragAngle, setDragAngle] = useState(0);

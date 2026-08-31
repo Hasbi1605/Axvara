@@ -13,6 +13,7 @@ export default function AdminPage() {
   const [tab,setTab]=useState<"orders"|"products">("products");
   const [orders,setOrders]=useState<Order[]>([]);
   const [prods,setProds]=useState<Prod[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [cats,setCats]=useState<Cat[]>([]);
   const [q,setQ]=useState("");
   const [editing,setEditing]=useState<Prod|null>(null);

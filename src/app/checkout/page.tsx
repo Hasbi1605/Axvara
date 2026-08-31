@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCart } from "@/stores/cart";
 import { formatRupiah, generateOrderCode } from "@/lib/utils";
@@ -17,7 +17,7 @@ const BANKS: { key: BankKey; label: string; no: string; holder: string; note: st
   { key: "bni", label: "BNI", no: "— segara hadir", holder: "—", note: "Placeholder", guide: ["Buka BNI Mobile", "Transfer → Antar Rekening", "Masukkan nomor tujuan (segera diumumkan)", "Konfirmasi & simpan bukti"] },
 ];
 
-export default function CheckoutPage() {
+function CheckoutInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const cartItems = useCart((s) => s.items);
@@ -273,5 +273,13 @@ export default function CheckoutPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function CheckoutPage() {
+  return (
+    <React.Suspense fallback={<div className="mx-auto max-w-[640px] px-4 py-16 text-center text-white/60">Memuat checkout…</div>}>
+      <CheckoutInner />
+    </React.Suspense>
   );
 }

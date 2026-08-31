@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { queryAll } from "@/lib/db-edge";
+export const runtime = "edge";
 export const dynamic = "force-dynamic";
 export async function GET() {
-  const db = getDb();
-  const rows = db.prepare("SELECT * FROM categories ORDER BY sort_order").all() as unknown[];
+  const rows = await queryAll("SELECT * FROM categories ORDER BY sort_order");
   return NextResponse.json({ categories: rows });
 }
