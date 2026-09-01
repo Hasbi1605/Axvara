@@ -52,3 +52,6 @@ data/*.db-*
 public/uploads/*
 cache/**
 .playwright-mcp/
+.cf-credentials
+.cf-credentials
+.cf-credentials*

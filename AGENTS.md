@@ -59,12 +59,19 @@ Setiap kali ubah kode/docs di `axvara/`, **WAJIB catat di `axvara/CHANGELOG.md`*
    - Ubah `next.config.mjs`, `tailwind.config.ts`, `tsconfig`, atau routing besar
    - Verifikasi akhir sebelum merge
 
+## Kredensial Cloudflare (WAJIB)
+- File sumber tunggal: `axvara/.cf-credentials` — berisi `CLOUDFLARE_API_KEY` / `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_EMAIL` (account `Sailinnadia1@gmail.com`).
+- **File ini di-ignore git** (`.gitignore: .cf-credentials*`) — JANGAN pernah commit/push, jangan echo isinya di log/chat.
+- Agent/deploy WAJIB ambil dari situ: `set -a; source .cf-credentials; set +a` atau `export $(cat .cf-credentials | grep -v '^#' | xargs)` sebelum `wrangler pages deploy` / `wrangler d1` / `wrangler r2`.
+- Jangan hardcode key di kode/docs/AGENTS.md — rujuk file ini saja.
+
 ## Sebelum menyelesaikan percakapan (checklist)
 Agent **wajib** pastikan sebelum jawab "selesai":
 - [ ] `CHANGELOG.md` sudah di-update (entri paling atas)
 - [ ] Halaman jalan: `GET / 200` dan CSS `200` dari `http://127.0.0.1:3000` (atau `http://localhost:3000`)
 - [ ] Tidak ada error `Compiled` di `/tmp/axvara-dev.log`
 - [ ] Jika ubah struktur/flow, `docs/ARCHITECTURE.md`/`README.md` ikut di-update
+- [ ] Kredensial CF tidak ter-commit (cek `git check-ignore -v .cf-credentials`)
 - [ ] Jangan pernah ubah `/Users/macbookair/AGENTS.md` global
 
 ## Done when
