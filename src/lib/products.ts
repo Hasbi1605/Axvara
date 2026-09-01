@@ -17,6 +17,8 @@ export type Product = {
   images?: string[];
   soldCount?: number;
   stock?: number;
+  isActive?: boolean;
+  sortOrder?: number;
   badge?: string;
   popular?: boolean;
 };

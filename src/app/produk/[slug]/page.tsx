@@ -2,8 +2,9 @@
 "use client";
 export const runtime = "edge";
 import { useParams, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { products } from "@/lib/products";
+import { products, type Product } from "@/lib/products";
 import { formatRupiah } from "@/lib/utils";
 import { useCart } from "@/stores/cart";
 import { ProductCard } from "@/components/storefront/ProductCard";
@@ -13,7 +14,14 @@ export default function ProductDetailPage() {
   const { slug } = useParams<{ slug: string }>();
   const router = useRouter();
   const add = useCart((s) => s.add);
-  const product = products.find((p) => p.slug === slug);
+  const [catalogProducts, setCatalogProducts] = useState<Product[]>(products);
+  useEffect(() => {
+    fetch("/api/products?active=1")
+      .then((r) => r.ok ? r.json() : Promise.reject())
+      .then((data) => { if (Array.isArray(data.products)) setCatalogProducts(data.products); })
+      .catch(() => {});
+  }, []);
+  const product = catalogProducts.find((p) => p.slug === slug) ?? products.find((p) => p.slug === slug);
 
   if (!product) {
     return (
@@ -26,8 +34,8 @@ export default function ProductDetailPage() {
 
   const discount = product.comparePrice ? Math.round((1 - product.price / product.comparePrice) * 100) : 0;
   const related = (() => {
-    const sameCat = products.filter((p) => p.categorySlug === product.categorySlug && p.id !== product.id);
-    const others = products.filter((p) => p.categorySlug !== product.categorySlug && p.id !== product.id);
+    const sameCat = catalogProducts.filter((p) => p.categorySlug === product.categorySlug && p.id !== product.id);
+    const others = catalogProducts.filter((p) => p.categorySlug !== product.categorySlug && p.id !== product.id);
     return [...sameCat, ...others].slice(0, 8);
   })();
 

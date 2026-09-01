@@ -1,11 +1,11 @@
 "use client";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { OrbitHero } from "@/components/storefront/OrbitHero";
 import { ScrollRope } from "@/components/storefront/ScrollRope";
 import { CategoryPills } from "@/components/storefront/CategoryPills";
 import { ProductCard } from "@/components/storefront/ProductCard";
 import { CommunityBar } from "@/components/storefront/CommunityBar";
-import { products } from "@/lib/products";
+import { products, type Product } from "@/lib/products";
 import { useSearch } from "@/stores/search";
 // TRY: iOS chevron — rollback: cp /tmp/page.lucide.bak src/app/page.tsx
 
@@ -15,16 +15,24 @@ export default function HomePage() {
   const [activeCat, setActiveCat] = useState("semua");
   const [page, setPage] = useState(1);
   const q = useSearch((s) => s.q);
+  const [catalogProducts, setCatalogProducts] = useState<Product[]>(products);
+
+  useEffect(() => {
+    fetch("/api/products?active=1")
+      .then((r) => r.ok ? r.json() : Promise.reject())
+      .then((data) => { if (Array.isArray(data.products)) setCatalogProducts(data.products); })
+      .catch(() => { /* static seed fallback stays available */ });
+  }, []);
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return products.filter((p) => {
+    return catalogProducts.filter((p) => {
       const catOk = activeCat === "semua" || p.categorySlug === activeCat;
       if (!needle) return catOk;
       const hay = `${p.name} ${p.description} ${p.categorySlug} ${p.badge ?? ""}`.toLowerCase();
       return catOk && hay.includes(needle);
     });
-  }, [activeCat, q]);
+  }, [activeCat, q, catalogProducts]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const safePage = Math.min(page, totalPages);
