@@ -10,9 +10,9 @@ function secretKey() {
 }
 
 export function getAdminCredentials() {
-  // SHA-256 hex dari "axvara123" — ganti via env di production
+  // SHA-256 hex dari "#Kecitran123" — ganti via env di production: ADMIN_PASSWORD_SHA256
   // Hash ini Edge-safe (Web Crypto Subtle), tanpa bcryptjs (edge tidak support setImmediate)
-  const fallbackHash = "55d21d420a2aa6d8fba7e1880689630696b56caa9a92f441c2516471df10be34"; // sha256("axvara123")
+  const fallbackHash = "3e3812f3daeb315a0ac17a094bffce7d67ff7c391f5e852cc9373d33ac38adbc"; // sha256("#Kecitran123")
   const sha = process.env.ADMIN_PASSWORD_SHA256 || process.env.ADMIN_PASSWORD_HASH_SHA256 || fallbackHash;
   // Backward compat: jika ADMIN_PASSWORD_HASH masih bcrypt, tetap terima tapi akan fallback ke compare plain via timingSafe di dev (tidak disarankan)
   const legacyBcrypt = process.env.ADMIN_PASSWORD_HASH;
