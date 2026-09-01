@@ -7,7 +7,8 @@ type D1 = {
 };
 function getD1(): D1 {
   const g = globalThis as unknown as Record<string, unknown>;
-  const d1 = g.DB as D1 | undefined;
+  // @cloudflare/next-on-pages exposes bindings on process.env.
+  const d1 = (g.DB as D1 | undefined) ?? ((process.env as unknown as Record<string, unknown>).DB as D1 | undefined);
   if (!d1) throw new Error("D1 binding DB not found — check wrangler.toml d1_databases");
   return d1;
 }
