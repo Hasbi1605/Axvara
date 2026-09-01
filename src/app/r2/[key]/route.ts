@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-export const runtime = "edge";
 export const dynamic = "force-dynamic";
 export async function GET(_: NextRequest, { params }: { params: Promise<{ key: string }> }) {
   const { key } = await params;
