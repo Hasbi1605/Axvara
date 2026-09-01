@@ -22,8 +22,21 @@ export default function OrderSuccessPage() {
   const [order, setOrder] = useState<Order | null>(null);
 
   useEffect(() => {
-    const all: Order[] = JSON.parse(localStorage.getItem("axvara-orders") || "[]");
-    setOrder(all.find((o) => o.code === code) || null);
+    // Try local first (fast), then server (authoritative)
+    try {
+      const all: Order[] = JSON.parse(localStorage.getItem("axvara-orders") || "[]");
+      const found = all.find((o) => o.code === code);
+      if (found) { setOrder(found); return; }
+    } catch {}
+    if (!code || typeof code !== "string") return;
+    fetch(`/api/orders?code=${encodeURIComponent(String(code))}`)
+      .then(async (r) => {
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+        const o = j.order;
+        setOrder({ code: o.code, name: o.customer_name, wa: o.customer_wa, method: o.payment_method, items: o.items, subtotal: o.subtotal, status: o.status });
+      })
+      .catch(() => {});
   }, [code]);
 
   if (!order) {

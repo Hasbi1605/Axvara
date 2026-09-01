@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getAdminCredentials, verifyPassword, createAdminToken, cookieForToken } from "@/lib/auth";
+import { getAdminCredentials, verifyPassword, createAdminToken, cookieForToken, isSecureForRequest } from "@/lib/auth";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -54,7 +54,12 @@ export async function POST(req: NextRequest) {
   }
 
   const { email, password } = parsed.data;
-  const cred = getAdminCredentials();
+  let cred: ReturnType<typeof getAdminCredentials>;
+  try {
+    cred = getAdminCredentials();
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Konfigurasi auth belum siap" }, { status: 500 });
+  }
 
   if (email.toLowerCase() !== cred.email.toLowerCase()) {
     // constant-time-ish delay
@@ -67,8 +72,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Email atau password salah." }, { status: 401 });
   }
 
-  const token = await createAdminToken(cred.email);
-  const isHttps = new URL(req.url).protocol === "https:";
+  let token: string;
+  try {
+    token = await createAdminToken(cred.email);
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Gagal buat sesi" }, { status: 500 });
+  }
+  const isHttps = isSecureForRequest(req);
   const res = NextResponse.json({ ok: true });
   res.headers.set("Set-Cookie", cookieForToken(token, isHttps));
   return res;

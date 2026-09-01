@@ -105,7 +105,22 @@ export async function queryAll(sql: string, ...params: unknown[]): Promise<Recor
     rows.sort((a, b) => (a.sort_order as number) - (b.sort_order as number));
     return rows;
   }
+  if (lower.includes("from orders")) {
+    let rows = [...getOrderMem()];
+    if (lower.includes("status=?") && params.length) {
+      rows = rows.filter((r) => String(r.status) === String(params[0]));
+    }
+    rows.sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")));
+    return rows;
+  }
   return [];
+}
+
+function getOrderMem(): Row[] {
+  const g = globalThis as unknown as { __AXVARA_ORDERS?: Row[] };
+  if (g.__AXVARA_ORDERS) return g.__AXVARA_ORDERS;
+  g.__AXVARA_ORDERS = [];
+  return g.__AXVARA_ORDERS;
 }
 
 export async function queryFirst(sql: string, ...params: unknown[]): Promise<Row | undefined> {
@@ -124,6 +139,14 @@ export async function queryFirst(sql: string, ...params: unknown[]): Promise<Row
     const row = getSharedMem().find((r) => String(r.id) === id);
     if (row && lower.includes("select id from")) return { id: row.id };
     return row;
+  }
+  if (lower.includes("from orders") && lower.includes("code=?")) {
+    const code = String(params[0]);
+    return getOrderMem().find((r) => String(r.code) === code);
+  }
+  if (lower.includes("from orders") && lower.includes("id=?")) {
+    const id = String(params[0]);
+    return getOrderMem().find((r) => String(r.id) === id);
   }
   return undefined;
 }
@@ -159,6 +182,24 @@ export async function execRun(sql: string, ...params: unknown[]): Promise<{ last
     const idx = mem.findIndex((r) => String(r.id) === delId);
     if (idx >= 0) { mem.splice(idx, 1); return { changes: 1 }; }
     return { changes: 0 };
+  }
+  if (lower.startsWith("insert into orders")) {
+    const mem = getOrderMem();
+    const newId = mem.length + 1;
+    const [code, customer_name, customer_wa, customer_email, items, subtotal, payment_method, payment_account, proof_url, status] = params as unknown[];
+    // UNIQUE code check
+    if (mem.some((r) => String(r.code) === String(code))) throw new Error("UNIQUE constraint failed: orders.code");
+    mem.push({ id: newId, code, customer_name, customer_wa, customer_email, items, subtotal, payment_method, payment_account, proof_url, status: status ?? "pending", created_at: new Date().toISOString(), updated_at: new Date().toISOString() } as unknown as Row);
+    return { lastInsertRowid: newId, changes: 1 };
+  }
+  if (lower.startsWith("update orders set")) {
+    const code = String(params[params.length - 1]);
+    const row = getOrderMem().find((r) => String(r.code) === code);
+    if (!row) return { changes: 0 };
+    if (lower.includes("status=?")) row.status = String(params[0]);
+    if (lower.includes("admin_note=?")) (row as Record<string, unknown>).admin_note = String(params[1] ?? params[0]);
+    (row as Record<string, unknown>).updated_at = new Date().toISOString();
+    return { changes: 1 };
   }
   return { changes: 0 };
 }

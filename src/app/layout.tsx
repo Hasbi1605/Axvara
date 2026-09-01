@@ -6,6 +6,7 @@ import { CartDrawer } from "@/components/storefront/CartDrawer";
 import { Spotlight } from "@/components/ui/Spotlight";
 import { ToastProvider } from "@/components/ui/Toast";
 import { RouteLoading } from "@/components/ui/RouteLoading";
+import { PopupBanner } from "@/components/storefront/PopupBanner";
 import { Suspense } from "react";
 
 export const metadata: Metadata = {
@@ -29,6 +30,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Suspense fallback={null}>
             <RouteLoading />
           </Suspense>
+          <PopupBanner />
           <main className="flex-1 min-h-[50vh]">{children}</main>
           <Footer />
         </ToastProvider>

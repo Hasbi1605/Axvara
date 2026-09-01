@@ -38,9 +38,11 @@ export default function HomePage() {
     });
   }, [activeCat, q, catalogProducts]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
-  const safePage = Math.min(page, totalPages);
-  const paged = filtered.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE);
+  // B02: pagination reset on filter, hide when empty
+  useEffect(() => { setPage(1); }, [q, activeCat]);
+  const totalPages = filtered.length ? Math.ceil(filtered.length / PER_PAGE) : 0;
+  const safePage = totalPages ? Math.min(page, totalPages) : 1;
+  const paged = filtered.length ? filtered.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE) : [];
 
   const goPage = (n: number) => {
     setPage(n);
@@ -98,7 +100,7 @@ export default function HomePage() {
       <section id="katalog" className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 pt-2 pb-10">
         <div className="flex items-center justify-between gap-4">
           <h2 className="font-display font-bold text-[20px] sm:text-[24px] text-white tracking-[-0.02em]">Katalog Premium</h2>
-          <span className="text-xs text-white/40">{filtered.length} produk • Hal {safePage}/{totalPages}</span>
+          <span className="text-xs text-white/40">{filtered.length} produk{totalPages ? ` • Hal ${safePage}/${totalPages}` : ""}</span>
         </div>
         <div className="mt-4">
           <CategoryPills active={activeCat} onChange={(c) => { setActiveCat(c); setPage(1); }} />

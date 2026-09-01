@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { queryAll, queryFirst, execRun } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
+import { rateLimit, rateLimitKey } from "@/lib/rateLimit";
 
 export const runtime = "edge";
 
@@ -12,10 +13,13 @@ export async function GET(req: NextRequest) {
   const q = searchParams.get("q")?.toLowerCase().trim() ?? "";
   const cat = searchParams.get("cat") ?? "";
   const active = searchParams.get("active");
+  const isAdminRequest = !!(await import("@/lib/auth").then((m) => m.requireAdmin(req).catch(() => null)));
 
   let sql = `SELECT p.*, c.slug as cat_slug FROM products p LEFT JOIN categories c ON c.id=p.category_id WHERE 1=1`;
   const params: unknown[] = [];
-  if (active === "1") { sql += ` AND p.is_active=1`; }
+  // F08: public always is_active=1, admin can see all
+  if (!isAdminRequest || active === "1") sql += ` AND p.is_active=1`;
+  else if (active === "0") sql += ` AND p.is_active=0`;
   if (cat && cat !== "semua") { sql += ` AND c.slug=?`; params.push(cat); }
   if (q) { sql += ` AND (lower(p.name) LIKE ? OR lower(p.description) LIKE ? OR lower(p.slug) LIKE ? OR lower(COALESCE(p.badge,'')) LIKE ?)`; const like=`%${q}%`; params.push(like,like,like,like); }
   sql += ` ORDER BY p.sort_order ASC, p.id ASC`;
@@ -61,6 +65,7 @@ const productSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  if (!rateLimit(rateLimitKey(req, "products:write"), 20)) return NextResponse.json({ error: "Terlalu banyak permintaan, coba lagi 1 menit." }, { status: 429, headers: { "Retry-After": "60" } });
   const admin = await requireAdmin(req);
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -75,9 +80,16 @@ export async function POST(req: NextRequest) {
   const catRow = await queryFirst("SELECT id FROM categories WHERE slug=?", categorySlug ?? "tools-pro") as { id: number } | undefined;
   const category_id = catRow?.id ?? 3;
   const imgArr = Array.isArray(images) ? images.slice(0,8) : [];
-  const urlOk = (u: string) => /^(\/r2\/|https?:\/\/)/.test(u);
-  if (imgArr.some(u => !urlOk(u))) return NextResponse.json({ error: "URL gambar tidak valid" }, { status: 400 });
-  if (imageUrl && !urlOk(imageUrl)) return NextResponse.json({ error: "URL gambar utama tidak valid" }, { status: 400 });
+  // F10: strict allowlist — only /r2/* or known CDNs
+  const urlOk = (u: string) => {
+    if (u.startsWith("/r2/")) return true;
+    try {
+      const url = new URL(u);
+      return ["images.unsplash.com", "picsum.photos", "cdn.axvara.id"].includes(url.hostname) && url.protocol === "https:";
+    } catch { return false; }
+  };
+  if (imgArr.some(u => !urlOk(u))) return NextResponse.json({ error: "URL gambar tidak diizinkan — hanya /r2/* atau CDN resmi" }, { status: 400 });
+  if (imageUrl && !urlOk(imageUrl)) return NextResponse.json({ error: "URL gambar utama tidak diizinkan" }, { status: 400 });
   const primary = imageUrl ?? imgArr[0] ?? null;
   try {
     const res = await execRun(`INSERT INTO products (category_id,name,slug,description,price,compare_price,image_url,images,badge,sold_count,stock,is_active,sort_order) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, category_id, name, slug, description ?? "", Number(price), comparePrice ? Number(comparePrice) : null, primary, JSON.stringify(imgArr), badge ?? null, soldCount ? Number(soldCount) : 0, stock != null ? Number(stock) : -1, isActive === false ? 0 : 1, sortOrder ? Number(sortOrder) : 0);

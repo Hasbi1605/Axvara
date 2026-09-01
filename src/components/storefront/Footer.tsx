@@ -6,12 +6,12 @@ export function Footer() {
   const pathname = usePathname();
   if (pathname?.startsWith("/admin")) return null;
   return (
-    <footer className="relative overflow-hidden border-t border-white/10 mt-12">
-      <div className="pointer-events-none absolute -top-28 left-1/2 -translate-x-1/2 w-[860px] h-[260px] rounded-full opacity-[0.07] blur-[40px]" style={{ background: "radial-gradient(ellipse at center, #00E5FF, transparent 70%)" }} />
-      <div className="pointer-events-none absolute -bottom-24 right-[8%] w-[420px] h-[220px] rounded-full opacity-[0.05] blur-[36px]" style={{ background: "radial-gradient(ellipse at center, #FFB800, transparent 70%)" }} />
+    <footer className="relative overflow-hidden border-t border-white/10 mt-16">
+      <div className="pointer-events-none absolute -top-28 left-1/2 -translate-x-1/2 w-[860px] h-[260px] rounded-full opacity-[0.06] blur-[40px]" style={{ background: "radial-gradient(ellipse at center, #00E5FF, transparent 70%)" }} />
 
-      <div className="relative mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 py-10 sm:py-12">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1.25fr_0.9fr_0.9fr_1fr] gap-8 lg:gap-10">
+      <div className="relative mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 py-12 sm:py-14">
+        <div className="grid grid-cols-1 lg:grid-cols-[1.35fr_0.8fr_0.8fr_1.05fr] gap-10 lg:gap-12">
+          {/* Brand — premium editorial, not AI slop */}
           <div>
             <div className="flex items-center gap-2.5">
               <span className="w-[22px] h-[19px] text-white/90 flex items-center justify-center">
@@ -26,54 +26,44 @@ export function Footer() {
               </span>
               <p className="font-display font-[300] tracking-[0.20em] text-white">AXVARA</p>
             </div>
-            <p className="mt-3 text-sm leading-6 text-white/60 max-w-[32ch]">Gerbang Semua Tools Premium — AI Gateway, Akun Premium, Tools Pro, dan Bundle Hemat. Aktivasi cepat, bergaransi, support WA ramah.</p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <span className="inline-flex items-center gap-1.5 ax-glass rounded-full px-2.5 py-1 text-[11px] font-medium text-white/70">
-                <img src="/icons/ios11/shield-32.png" alt="" width={12} height={12} className="w-3 h-3 object-contain brightness-0 invert opacity-60" draggable={false} /> Bergaransi
+            <p className="mt-3 text-[13px] leading-[1.65] text-white/55 max-w-[34ch]">
+              Kurasi tool premium yang kamu pakai tiap hari. Satu gerbang, harga jujur — tanpa ribet.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-1.5">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] border border-white/10 px-2.5 py-1 text-[11px] text-white/60">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Bergaransi
               </span>
-              <span className="inline-flex items-center gap-1.5 ax-glass rounded-full px-2.5 py-1 text-[11px] font-medium text-white/70">
-                <img src="/icons/ios11/lightning-bolt-32.png" alt="" width={12} height={12} className="w-3 h-3 object-contain brightness-0 invert opacity-60" draggable={false} /> 5–15 Menit
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] border border-white/10 px-2.5 py-1 text-[11px] text-white/60">
+                Aktivasi 5–15 menit
               </span>
-              <span className="inline-flex items-center gap-1.5 ax-glass rounded-full px-2.5 py-1 text-[11px] font-medium text-white/70">
-                <img src="/icons/ios11/star-32.png" alt="" width={12} height={12} className="w-3 h-3 object-contain brightness-0 invert opacity-60" draggable={false} /> Support WA
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] border border-white/10 px-2.5 py-1 text-[11px] text-white/60">
+                Support WA
               </span>
-            </div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <a href="#" onClick={(e) => { e.preventDefault(); alert("Link Grup WhatsApp AXVARA menyusul — hubungi Admin via WA untuk info terbaru."); }} className="inline-flex items-center gap-1.5 rounded-full bg-[#25D366] text-white text-[11px] font-bold pl-1 pr-3 py-1 hover:bg-[#1ebd5a] transition">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/brand/whatsapp.svg" alt="" width={20} height={20} className="w-5 h-5 rounded-full object-contain bg-white shrink-0" draggable={false} /> Grup WhatsApp
-              </a>
-              <a href="#" onClick={(e) => { e.preventDefault(); alert("Link Bot Telegram AXVARA menyusul — hubungi Admin via WA untuk info terbaru."); }} className="inline-flex items-center gap-1.5 rounded-full bg-[#2AABEE] text-white text-[11px] font-bold pl-1 pr-3 py-1 hover:bg-[#229ED9] transition">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/brand/telegram.svg" alt="" width={20} height={20} className="w-5 h-5 rounded-full object-cover shrink-0" draggable={false} /> Bot Telegram
-              </a>
             </div>
           </div>
 
           <div>
-            <p className="text-xs font-semibold tracking-[0.14em] text-white/45 uppercase">Katalog</p>
-            <ul className="mt-3 space-y-2 text-sm">
-              <li><Link href="/#katalog" className="text-white/65 hover:text-white transition">Semua Produk</Link></li>
-              <li><Link href="/#katalog" className="inline-flex items-center gap-1.5 text-white/65 hover:text-white transition"><img src="/icons/ios11/lightning-bolt-32.png" alt="" width={12} height={12} className="w-3 h-3 object-contain brightness-0 invert opacity-50" draggable={false} /> AI Gateway</Link></li>
-              <li><Link href="/#katalog" className="inline-flex items-center gap-1.5 text-white/65 hover:text-white transition"><img src="/icons/ios11/crown-32.png" alt="" width={12} height={12} className="w-3 h-3 object-contain brightness-0 invert opacity-50" draggable={false} /> Akun Premium</Link></li>
-              <li><Link href="/#katalog" className="inline-flex items-center gap-1.5 text-white/65 hover:text-white transition"><img src="/icons/ios11/shield-32.png" alt="" width={12} height={12} className="w-3 h-3 object-contain brightness-0 invert opacity-50" draggable={false} /> Tools Pro</Link></li>
-              <li><Link href="/#katalog" className="inline-flex items-center gap-1.5 text-white/65 hover:text-white transition"><img src="/icons/ios11/packaging-32.png" alt="" width={12} height={12} className="w-3 h-3 object-contain brightness-0 invert opacity-50" draggable={false} /> Bundle Hemat</Link></li>
+            <p className="text-[11px] font-semibold tracking-[0.14em] text-white/40 uppercase">Jelajah</p>
+            <ul className="mt-3.5 space-y-2.5 text-[13px]">
+              <li><Link href="/#katalog" className="text-white/60 hover:text-white transition">Semua produk</Link></li>
+              <li><Link href="/artikel" className="text-white/60 hover:text-white transition">Artikel & bansos</Link></li>
+              <li><Link href="/#katalog" className="text-white/60 hover:text-white transition">AI Gateway</Link></li>
+              <li><Link href="/#katalog" className="text-white/60 hover:text-white transition">Bundle hemat</Link></li>
             </ul>
           </div>
 
           <div>
-            <p className="text-xs font-semibold tracking-[0.14em] text-white/45 uppercase">Bantuan</p>
-            <ul className="mt-3 space-y-2 text-sm">
-              <li><Link href="/#katalog" className="text-white/65 hover:text-white transition">Cara Order</Link></li>
-              <li><Link href="/#katalog" className="text-white/65 hover:text-white transition">Garansi & Replace</Link></li>
-              <li><Link href="/#katalog" className="text-white/65 hover:text-white transition">Jam Layanan 09.00–23.00 WIB</Link></li>
-              <li><a href="https://wa.me/6282135277434?text=Halo%20AXVARA" target="_blank" className="inline-flex items-center gap-1.5 text-[#00E5FF] hover:text-white transition"><img src="/icons/ios11/chat-32.png" alt="" width={12} height={12} className="w-3 h-3 object-contain brightness-0 invert opacity-70" draggable={false} /> Chat WA Admin</a></li>
+            <p className="text-[11px] font-semibold tracking-[0.14em] text-white/40 uppercase">Bantuan</p>
+            <ul className="mt-3.5 space-y-2.5 text-[13px]">
+              <li><Link href="/#katalog" className="text-white/60 hover:text-white transition">Cara order</Link></li>
+              <li><Link href="/#katalog" className="text-white/60 hover:text-white transition">Garansi & replace</Link></li>
+              <li><a href="https://wa.me/6282135277434?text=Halo%20AXVARA" target="_blank" className="text-[#00E5FF]/90 hover:text-white transition">Chat WA — 09.00–23.00 WIB</a></li>
             </ul>
           </div>
 
-          <div className="ax-glass rounded-[20px] p-4 sm:p-5">
-            <p className="text-xs font-semibold tracking-[0.12em] text-white/70 uppercase">Dapat Info Promo</p>
-            <p className="mt-1 text-xs leading-5 text-white/50">Drop WA atau email — kami kirim info bundle & restock. No spam.</p>
+          <div className="rounded-[20px] bg-white/[0.04] border border-white/10 p-4 sm:p-5">
+            <p className="text-[11px] font-semibold tracking-[0.14em] text-white/45 uppercase">Tetap update</p>
+            <p className="mt-2 text-[13px] leading-5 text-white/55">Info bundle & restock, langsung ke WA kamu.</p>
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -85,24 +75,22 @@ export function Footer() {
                 window.open(`https://wa.me/6282135277434?text=${msg}`, "_blank");
                 if (input) input.value = "";
               }}
-              className="mt-3 flex gap-2"
+              className="mt-4 flex gap-2"
             >
-              <input name="contact" placeholder="WA / email kamu" className="flex-1 h-9 px-3 rounded-full bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#00E5FF]/40" />
-              <button type="submit" className="h-9 px-4 rounded-full bg-white text-[#080C1E] text-xs font-bold hover:bg-white/90 transition shrink-0">Kirim</button>
+              <input name="contact" placeholder="Nomor WA" className="flex-1 h-9 px-3.5 rounded-full bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#00E5FF]/40" />
+              <button type="submit" className="h-9 px-5 rounded-full bg-white text-[#080C1E] text-sm font-bold hover:bg-white/90 transition shrink-0">Langganan</button>
             </form>
-            <p className="mt-3 text-[11px] leading-4 text-white/30">Dengan kirim kamu setuju dihubungi via WA untuk info produk AXVARA.</p>
-            <div className="mt-3 flex items-center gap-2 text-[11px] text-white/40">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#00E5FF] shadow-[0_0_8px_rgba(0,229,255,0.8)] animate-pulse" /> Online — balas cepat di WA
+            <div className="mt-3 flex items-center gap-2 text-[11px] text-white/35">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#00E5FF] shadow-[0_0_8px_rgba(0,229,255,0.8)] animate-pulse" /> Balas cepat di WA
             </div>
           </div>
         </div>
 
-        <div className="mt-8 flex flex-col sm:flex-row gap-3 sm:items-center justify-between border-t border-white/10 pt-6">
-          <p className="text-xs text-white/40">© 2026 AXVARA. Semua hak dilindungi.</p>
-          {/* keep minimal — no Brotherstore06 per user request */}
+        <div className="mt-10 flex flex-col sm:flex-row gap-3 sm:items-center justify-between border-t border-white/10 pt-6">
+          <p className="text-xs text-white/35">© 2026 AXVARA</p>
           <div className="flex items-center gap-4 text-xs">
-            <Link href="/#katalog" className="text-white/50 hover:text-white transition">Katalog</Link>
-            <Link href="/admin" className="text-white/25 hover:text-white/60 transition">Admin</Link>
+            <Link href="/#katalog" className="text-white/40 hover:text-white transition">Katalog</Link>
+            <Link href="/artikel" className="text-white/40 hover:text-white transition">Artikel</Link>
           </div>
         </div>
       </div>

@@ -93,3 +93,31 @@ INSERT OR IGNORE INTO payment_methods (id, label, account_number, account_name, 
   ('qris','QRIS','', 'Brotherstore06', 1),
   ('ewallet','DANA / Gopay / Shopeepay','082135277434','Brotherstore06',2),
   ('seabank','SeaBank','901812349386','Brotherstore06',3);
+
+-- Artikel & Banner CMS
+CREATE TABLE IF NOT EXISTS articles (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  slug TEXT UNIQUE NOT NULL,
+  title TEXT NOT NULL,
+  excerpt TEXT,
+  cover_url TEXT,
+  content TEXT NOT NULL,
+  is_published INTEGER DEFAULT 0,
+  published_at TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS banners (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  body TEXT,
+  image_url TEXT,
+  cta_label TEXT,
+  cta_href TEXT,
+  is_active INTEGER DEFAULT 0,
+  delay_ms INTEGER DEFAULT 1500,
+  max_show_per_session INTEGER DEFAULT 1,
+  sort_order INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);

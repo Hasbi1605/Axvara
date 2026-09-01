@@ -3,7 +3,7 @@ import Link from "next/link";
 import { X } from "lucide-react";
 import { useCart } from "@/stores/cart";
 import { useSearch } from "@/stores/search";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { IosIcon } from "@/components/ui/IosIcon";
 
@@ -15,7 +15,16 @@ export function Navbar() {
   const q = useSearch((s) => s.q);
   const setQ = useSearch((s) => s.setQ);
   const [mobileSearch, setMobileSearch] = useState(false);
-  const shake = false;
+  const [shake, setShake] = useState(false);
+  const prevCount = useRef(count);
+  useEffect(() => {
+    if (count > prevCount.current) {
+      setShake(true);
+      const t = setTimeout(() => setShake(false), 600);
+      return () => clearTimeout(t);
+    }
+    prevCount.current = count;
+  }, [count]);
 
   const onSearch = (v: string) => {
     setQ(v);
@@ -64,7 +73,8 @@ export function Navbar() {
             {mobileSearch ? <X className="w-4 h-4" /> : <IosIcon name="search" size={16} tint="white" />}
           </button>
           <nav className="hidden sm:flex items-center gap-1 text-sm text-white/70">
-            <Link href="#katalog" className="px-3 py-2 rounded-full hover:text-white hover:bg-white/10 transition">Katalog</Link>
+            <Link href="/#katalog" className="px-3 py-2 rounded-full hover:text-white hover:bg-white/10 transition">Katalog</Link>
+            <Link href="/artikel" className="px-3 py-2 rounded-full hover:text-white hover:bg-white/10 transition">Artikel</Link>
           </nav>
           <button
             onClick={() => setDrawer(true)}

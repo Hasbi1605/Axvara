@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { queryFirst, execRun } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
+import { rateLimit, rateLimitKey } from "@/lib/rateLimit";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -32,6 +33,7 @@ const updateSchema = z.object({
 }).strict();
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  if (!rateLimit(rateLimitKey(req, "products:write"), 20)) return NextResponse.json({ error: "Terlalu banyak permintaan, coba lagi 1 menit." }, { status: 429, headers: { "Retry-After": "60" } });
   const admin = await requireAdmin(req);
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
@@ -45,9 +47,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (data.price != null && data.comparePrice != null && data.comparePrice <= data.price) {
     return NextResponse.json({ error: "Harga coret harus lebih besar dari harga jual" }, { status: 400 });
   }
-  const urlOk = (u: string) => /^(\/r2\/|https?:\/\/)/.test(u);
-  if (data.images && data.images.some(u => !urlOk(u))) return NextResponse.json({ error: "URL gambar tidak valid" }, { status: 400 });
-  if (data.imageUrl && !urlOk(data.imageUrl)) return NextResponse.json({ error: "URL gambar utama tidak valid" }, { status: 400 });
+  const urlOk = (u: string) => {
+    if (u.startsWith("/r2/")) return true;
+    try { const url = new URL(u); return ["images.unsplash.com","picsum.photos","cdn.axvara.id"].includes(url.hostname) && url.protocol==="https:"; } catch { return false; }
+  };
+  if (data.images && data.images.some(u => !urlOk(u))) return NextResponse.json({ error: "URL gambar tidak diizinkan" }, { status: 400 });
+  if (data.imageUrl && !urlOk(data.imageUrl)) return NextResponse.json({ error: "URL gambar utama tidak diizinkan" }, { status: 400 });
   const fields: string[] = [];
   const vals: unknown[] = [];
   const map: Record<string,string> = { name:"name", slug:"slug", description:"description", price:"price", comparePrice:"compare_price", imageUrl:"image_url", badge:"badge", soldCount:"sold_count", stock:"stock", isActive:"is_active", sortOrder:"sort_order" };
@@ -80,6 +85,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  if (!rateLimit(rateLimitKey(req, "products:write"), 20)) return NextResponse.json({ error: "Terlalu banyak permintaan, coba lagi 1 menit." }, { status: 429, headers: { "Retry-After": "60" } });
   const admin = await requireAdmin(req);
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params;

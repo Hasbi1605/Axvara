@@ -9,9 +9,6 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "bcryptjs": "^3.0.3",
-    "better-sqlite3": "^13.0.3",
-    "cloudflare": "^7.1.0",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.2",
     "jose": "^6.2.10",
@@ -19,7 +16,6 @@
     "next": "^15.5.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "sharp": "^0.35.4",
     "tailwind-merge": "^2.5.4",
     "zod": "^4.5.4",
     "zustand": "^4.5.5"

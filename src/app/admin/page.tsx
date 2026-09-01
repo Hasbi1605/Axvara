@@ -13,6 +13,36 @@ type Order = { code:string; name:string; wa:string; method:string; items:{ name:
 
 const PER_PAGE_ADMIN = 8;
 
+function ArticlesAdminInner() {
+  const [list, setList] = useState<Record<string,unknown>[]>([]);
+  const [aLoading, setALoading] = useState(true);
+  useEffect(()=>{ fetch("/api/articles?all=1").then(r=> r.json().then(j=> setList(j.articles ?? [])).catch(()=>{})).catch(()=>{}).finally(()=> setALoading(false)); },[]);
+  if(aLoading) return <p className="text-sm text-white/40 mt-4">Memuat…</p>;
+  if(!list.length) return <p className="text-sm text-white/40 mt-4">Belum ada artikel — buat yang pertama di atas.</p>;
+  return <div className="mt-4 divide-y divide-white/10 border border-white/10 rounded-2xl overflow-hidden">{list.map((a)=> (<div key={String(a.id)} className="p-3 flex items-center gap-3"><div className="flex-1 min-w-0"><p className="text-sm font-medium text-white line-clamp-1">{String(a.title)}</p><p className="text-xs text-white/40">/{String(a.slug)} {a.is_published? "· Published":"· Draft"}</p></div><span className={`text-[11px] px-2 py-1 rounded-full ${a.is_published? "bg-emerald-500/15 text-emerald-300":"bg-white/10 text-white/40"}`}>{a.is_published? "Live":"Draft"}</span></div>))}</div>;
+}
+function BannersAdminInner() {
+  const [blist, setBlist] = useState<Record<string,unknown>[]>([]);
+  useEffect(()=>{ fetch("/api/banners").then(r=> r.json().then(j=> setBlist(j.banners ?? [])).catch(()=>{})).catch(()=>{}); },[]);
+  if(!blist.length) return <p className="text-sm text-white/40 mt-4">Belum ada banner.</p>;
+  return <div className="mt-4 space-y-2">{blist.map((b)=> (<div key={String(b.id)} className="p-3 ax-glass rounded-2xl flex items-center gap-3"><div className="flex-1"><p className="text-sm font-medium text-white">{String(b.title)}</p><p className="text-xs text-white/40 line-clamp-1">{String(b.body ?? "")}</p></div><span className={`text-[11px] px-2 py-1 rounded-full ${b.is_active? "bg-emerald-500/15 text-emerald-300":"bg-white/10 text-white/40"}`}>{b.is_active? "Aktif":"Off"}</span></div>))}</div>;
+}
+function ArticleModalInner({ data, onClose, onSaved }: { data: Record<string,unknown>; onClose: ()=>void; onSaved: ()=>void }) {
+  const [form, setForm] = useState(data);
+  const [sv, setSv] = useState(false);
+  const [er, setEr] = useState<string|null>(null);
+  const save = async()=>{ setSv(true); setEr(null); try{ const r=await fetch("/api/articles",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ ...form, is_published: !!form.is_published })}); const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.error||`HTTP ${r.status}`); onSaved(); }catch(e){ setEr(e instanceof Error? e.message: String(e)); } finally{ setSv(false); } };
+  return <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-10 overflow-y-auto bg-black/60 backdrop-blur-sm" onClick={onClose}><div className="w-full max-w-[640px] ax-glass-strong rounded-[24px] p-5 sm:p-6 max-h-[92vh] overflow-y-auto" onClick={e=>e.stopPropagation()}><h3 className="font-bold text-white">Artikel Baru</h3>{er && <p className="mt-3 text-sm text-red-300 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">{er}</p>}<div className="mt-4 grid gap-3"><input value={String(form.slug??"")} onChange={e=> setForm({...form, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g,"-")})} placeholder="slug: tips-ai-gratis" className="h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white" /><input value={String(form.title??"")} onChange={e=> setForm({...form, title: e.target.value})} placeholder="Judul" className="h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white" /><input value={String(form.excerpt??"")} onChange={e=> setForm({...form, excerpt: e.target.value})} placeholder="Excerpt 1 kalimat" className="h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white" /><input value={String(form.cover_url??"")} onChange={e=> setForm({...form, cover_url: e.target.value})} placeholder="Cover /r2/... atau https://..." className="h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white" /><textarea value={String(form.content??"")} onChange={e=> setForm({...form, content: e.target.value})} rows={8} placeholder="Konten markdown minimal 50 karakter — gunakan ## Heading dan - list" className="w-full px-3 py-2.5 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white" /><label className="flex items-center gap-2 text-sm text-white/70"><input type="checkbox" checked={!!form.is_published} onChange={e=> setForm({...form, is_published: e.target.checked})} /> Publish langsung</label></div><div className="mt-4 flex justify-end gap-2"><button onClick={onClose} className="h-10 px-4 rounded-full ax-glass text-sm">Batal</button><button onClick={save} disabled={sv} className="h-10 px-5 rounded-full bg-[#00E5FF] text-[#070a1e] text-sm font-bold disabled:opacity-50">{sv? "Menyimpan…":"Simpan"}</button></div></div></div>;
+}
+function BannerModalInner({ data, onClose, onSaved }: { data: Record<string,unknown>; onClose: ()=>void; onSaved: ()=>void }) {
+  const [form, setForm] = useState(data);
+  const [sv, setSv] = useState(false);
+  const [er, setEr] = useState<string|null>(null);
+  const save = async()=>{ setSv(true); setEr(null); try{ const r=await fetch("/api/banners",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ ...form, is_active: !!form.is_active })}); const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.error||`HTTP ${r.status}`); onSaved(); }catch(e){ setEr(e instanceof Error? e.message: String(e)); } finally{ setSv(false); } };
+  return <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-10 overflow-y-auto bg-black/60 backdrop-blur-sm" onClick={onClose}><div className="w-full max-w-[520px] ax-glass-strong rounded-[24px] p-5 sm:p-6" onClick={e=>e.stopPropagation()}><h3 className="font-bold text-white">Banner Baru</h3>{er && <p className="mt-3 text-sm text-red-300 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">{er}</p>}<div className="mt-4 grid gap-3"><input value={String(form.title??"")} onChange={e=> setForm({...form, title: e.target.value})} placeholder="Judul banner" className="h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white" /><input value={String(form.body??"")} onChange={e=> setForm({...form, body: e.target.value})} placeholder="Body 1 kalimat" className="h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white" /><input value={String(form.image_url??"")} onChange={e=> setForm({...form, image_url: e.target.value})} placeholder="Image /r2/... atau https://..." className="h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white" /><div className="grid grid-cols-2 gap-3"><input value={String(form.cta_label??"")} onChange={e=> setForm({...form, cta_label: e.target.value})} placeholder="CTA label" className="h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white" /><input value={String(form.cta_href??"")} onChange={e=> setForm({...form, cta_href: e.target.value})} placeholder="CTA href /promo" className="h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white" /></div><label className="flex items-center gap-2 text-sm text-white/70"><input type="checkbox" checked={!!form.is_active} onChange={e=> setForm({...form, is_active: e.target.checked})} /> Aktif</label></div><div className="mt-4 flex justify-end gap-2"><button onClick={onClose} className="h-10 px-4 rounded-full ax-glass text-sm">Batal</button><button onClick={save} disabled={sv} className="h-10 px-5 rounded-full bg-[#00E5FF] text-[#070a1e] text-sm font-bold disabled:opacity-50">{sv? "Menyimpan…":"Simpan"}</button></div></div></div>;
+}
+
+
 export default function AdminPage() {
   const toast = useToast();
   const [checkingAuth, setCheckingAuth] = useState(true);
@@ -23,7 +53,7 @@ export default function AdminPage() {
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
 
-  const [tab, setTab] = useState<"orders"|"products">("products");
+  const [tab, setTab] = useState<"products"|"orders"|"articles"|"banners">("products");
   const [orders, setOrders] = useState<Order[]>([]);
   const [prods, setProds] = useState<Prod[]>([]);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -45,18 +75,41 @@ export default function AdminPage() {
   const [deleting, setDeleting] = useState(false);
 
   const [toggling, setToggling] = useState<string | null>(null);
+  const [articleModal, setArticleModal] = useState<Record<string,unknown> | null>(null);
+  const [bannerModal, setBannerModal] = useState<Record<string,unknown> | null>(null);
 
   const load = useCallback(async()=>{
     setLoadingList(true);
     setListError(null);
     try {
-      const [pr, cr] = await Promise.all([
+      const [pr, cr, or] = await Promise.all([
         fetch("/api/products").then(async r=>{ const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.error || `Produk ${r.status}`); return j; }),
-        fetch("/api/categories").then(r=>r.json()).catch(()=>({categories:[]}))
+        fetch("/api/categories").then(r=>r.json()).catch(()=>({categories:[]})),
+        fetch("/api/admin/orders").then(async r=> {
+          if (r.status === 401) return { orders: JSON.parse(localStorage.getItem("axvara-orders")||"[]").map((o: Order) => ({ code: o.code, customer_name: o.name, customer_wa: o.wa, customer_email: "", items: o.items, subtotal: o.subtotal, payment_method: o.method, status: o.status, created_at: o.createdAt })) };
+          const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.error || `Pesanan ${r.status}`); return j;
+        }).catch(()=> ({ orders: [] }))
       ]);
       setProds(pr.products ?? []);
       setCats(cr.categories ?? [{id:1,slug:"ai-gateway",name:"AI Gateway"},{id:2,slug:"akun-premium",name:"Akun Premium"},{id:3,slug:"tools-pro",name:"Tools Pro"},{id:4,slug:"bundle-hemat",name:"Bundle Hemat"}]);
-      setOrders(JSON.parse(localStorage.getItem("axvara-orders")||"[]"));
+      // Normalize admin orders to local Order shape
+      const serverOrders: Order[] = (or.orders ?? []).map((o: Record<string, unknown>) => ({
+        code: String(o.code),
+        name: String(o.customer_name ?? o.name ?? ""),
+        wa: String(o.customer_wa ?? o.wa ?? ""),
+        method: String(o.payment_method ?? o.method ?? ""),
+        items: (o.items as Order["items"]) ?? [],
+        subtotal: Number(o.subtotal ?? 0),
+        status: String(o.status ?? "pending"),
+        fileName: (o.proof_url as string) ?? undefined,
+        createdAt: String(o.created_at ?? o.createdAt ?? ""),
+      }));
+      if (serverOrders.length > 0) setOrders(serverOrders);
+      else {
+        // fallback to local if server empty (dev without D1 persist)
+        const local: Order[] = JSON.parse(localStorage.getItem("axvara-orders")||"[]");
+        setOrders(local);
+      }
     } catch (e) {
       setListError(e instanceof Error ? e.message : "Gagal memuat data");
     } finally {
@@ -105,15 +158,32 @@ export default function AdminPage() {
     setAuthEmail("");
   };
 
-  const setStatus=(code:string,status:string)=>{
+  const setStatus=async(code:string,status:string)=>{
+    // Try server first
     try {
-      const all:Order[]=JSON.parse(localStorage.getItem("axvara-orders")||"[]");
-      const next=all.map(o=>o.code===code?{...o,status}:o);
-      localStorage.setItem("axvara-orders",JSON.stringify(next));
-      setOrders(next);
+      const r = await fetch(`/api/admin/orders/${encodeURIComponent(code)}`, {
+        method: "PATCH",
+        headers: { "Content-Type":"application/json" },
+        body: JSON.stringify({ status }),
+      });
+      const j = await r.json().catch(()=> ({}));
+      if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+      await load();
       toast.success(status === "lunas" ? "Pesanan dikonfirmasi lunas." : "Pesanan dibatalkan.");
+      return;
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal update status");
+      // Fallback to localStorage for dev/offline
+      try {
+        const all:Order[]=JSON.parse(localStorage.getItem("axvara-orders")||"[]");
+        const existed = all.some(o=> o.code===code);
+        if (!existed) { toast.error(e instanceof Error ? e.message : "Gagal update status"); return; }
+        const next=all.map(o=>o.code===code?{...o,status}:o);
+        localStorage.setItem("axvara-orders",JSON.stringify(next));
+        setOrders(next);
+        toast.success(status === "lunas" ? "Pesanan dikonfirmasi (lokal)." : "Pesanan dibatalkan (lokal).");
+      } catch (er) {
+        toast.error(er instanceof Error ? er.message : "Gagal update status");
+      }
     }
   };
 
@@ -249,7 +319,9 @@ export default function AdminPage() {
     <div className="min-h-screen">
       <AdminNavbar tab={tab} onTab={setTab} total={prods.length} pending={pending} />
       <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 py-6">
-      {authEmail && <p className="text-[11px] text-white/35">Masuk sebagai <span className="text-white/60">{authEmail}</span> • sesi 8 jam • <button onClick={logout} className="underline hover:text-white">keluar</button></p>}
+      <div className="mt-4 flex items-center gap-2 text-[11px] text-white/35">
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Masuk sebagai <span className="text-white/60">{authEmail || "admin"}</span> <span className="opacity-40">·</span> Sesi 8 jam
+      </div>
 
       <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="ax-glass rounded-2xl p-4"><p className="text-[11px] tracking-wide text-white/50 uppercase">Total Produk</p><p className="text-2xl font-display font-bold text-white">{prods.length}</p><p className="text-[11px] text-white/40">{prods.filter(p=>p.isActive).length} aktif</p></div>
@@ -354,6 +426,28 @@ export default function AdminPage() {
         </div>
       )}
 
+      {tab==="articles" && (
+        <div className="mt-6 ax-glass rounded-[24px] p-5">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="font-semibold text-white text-sm">Artikel</h2>
+            <button onClick={()=> setArticleModal({ slug:"", title:"", excerpt:"", cover_url:"", content:"", is_published:false })} className="h-9 px-4 rounded-full bg-[#00E5FF] text-[#070a1e] text-xs font-bold">+ Artikel</button>
+          </div>
+          <p className="text-xs text-white/40 mt-2">CMS minimal: slug unik, judul 6-140, excerpt 280, konten min 50 karakter. Publish untuk tampil di /artikel.</p>
+          <ArticlesAdminInner />
+        </div>
+      )}
+
+      {tab==="banners" && (
+        <div className="mt-6 ax-glass rounded-[24px] p-5">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="font-semibold text-white text-sm">Popup Banner</h2>
+            <button onClick={()=> setBannerModal({ title:"", body:"", image_url:"", cta_label:"", cta_href:"", is_active:false, delay_ms:1500 })} className="h-9 px-4 rounded-full bg-[#00E5FF] text-[#070a1e] text-xs font-bold">+ Banner</button>
+          </div>
+          <p className="text-xs text-white/40 mt-2">1 banner aktif teratas tampil di popup tengah 1.5s setelah load. Dismiss per session.</p>
+          <BannersAdminInner />
+        </div>
+      )}
+
       {(editing || showNew) && (
         <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-6 sm:pt-10 overflow-y-auto bg-black/60 backdrop-blur-sm" onClick={closeModal}>
           <div className="w-full max-w-[720px] ax-glass-strong rounded-[24px] border border-white/10 p-5 sm:p-6 max-h-[92vh] overflow-y-auto" onClick={e=>e.stopPropagation()}>
@@ -411,6 +505,13 @@ export default function AdminPage() {
         </div>
       )}
 
+      
+
+      {articleModal && <ArticleModalInner data={articleModal} onClose={()=> setArticleModal(null)} onSaved={()=> { setArticleModal(null); load(); toast.success("Artikel disimpan"); }} />}
+      {bannerModal && <BannerModalInner data={bannerModal} onClose={()=> setBannerModal(null)} onSaved={()=> { setBannerModal(null); load(); toast.success("Banner disimpan"); }} />}
+
+
+
       <ConfirmDialog
         open={!!deleteTarget}
         title="Hapus produk?"
@@ -423,7 +524,6 @@ export default function AdminPage() {
         onConfirm={confirmDelete}
       />
 
-      <p className="mt-8 text-center"><Link href="/" className="text-sm text-white/40 hover:text-white">← Kembali ke toko</Link></p>
       </div>
     </div>
   );

@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useCart } from "@/stores/cart";
-import { formatRupiah, generateOrderCode } from "@/lib/utils";
+import { formatRupiah } from "@/lib/utils";
 import { products } from "@/lib/products";
 
 
@@ -24,11 +24,27 @@ function CheckoutInner() {
   const cartItems = useCart((s) => s.items);
   const clear = useCart((s) => s.clear);
 
-  // Direct checkout from product card via ?buy=slug — isolate single product, not whole cart
+  // Direct checkout from product card via ?buy=slug — fetch authoritative from D1 (B01)
+  const [directProduct, setDirectProduct] = React.useState<(typeof products)[number] | null>(null);
+  const [directLoading, setDirectLoading] = React.useState(false);
   const buySlug = searchParams.get("buy");
-  const buyProduct = buySlug ? products.find((p) => p.slug === buySlug) : null;
-  const isDirect = !!buyProduct;
-  const items = isDirect ? [{ ...buyProduct!, qty: 1, id: buyProduct!.id, price: buyProduct!.price, image: buyProduct!.image, name: buyProduct!.name }] : cartItems;
+  React.useEffect(() => {
+    if (!buySlug) { setDirectProduct(null); return; }
+    const seed = products.find((p) => p.slug === buySlug) ?? null;
+    setDirectProduct(seed);
+    setDirectLoading(true);
+    fetch(`/api/products?q=${encodeURIComponent(buySlug)}`)
+      .then((r) => r.ok ? r.json() : Promise.reject())
+      .then((j) => {
+        const found = (j.products as typeof products)?.find((p) => p.slug === buySlug);
+        if (found) setDirectProduct(found);
+      })
+      .catch(() => {})
+      .finally(() => setDirectLoading(false));
+  }, [buySlug]);
+  const buyProduct = buySlug ? directProduct : null;
+  const isDirect = !!buyProduct && !!buySlug;
+  const items = isDirect && buyProduct ? [{ ...buyProduct, qty: 1, id: buyProduct.id, price: buyProduct.price, image: buyProduct.image, name: buyProduct.name }] : cartItems;
   const subtotal = items.reduce((a, b) => a + (b as { price: number; qty: number }).price * (b as { qty: number }).qty, 0);
 
   const [method, setMethod] = useState<Method | null>(null);
@@ -64,7 +80,7 @@ function CheckoutInner() {
     if (!name.trim()) fe.name = "Nama wajib diisi (min 3 karakter).";
     else if (name.trim().length < 3) fe.name = "Nama minimal 3 karakter.";
     if (!wa.trim()) fe.wa = "No WA wajib diisi.";
-    else if (!/^08\d{8,13}$/.test(wa.trim().replace(/\s|-/g,""))) fe.wa = "No WA harus format 08… (10–15 digit).";
+    else if (!/^(\+62|62|0)8\d{8,13}$/.test(wa.trim().replace(/\s|-/g,""))) fe.wa = "No WA harus format 08… atau +62… (10–15 digit).";
     if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) fe.email = "Format email tidak valid.";
     if (Object.keys(fe).length) { setFieldErrors(fe); setError("Periksa field yang ditandai."); return; }
     if (!method) {
@@ -75,30 +91,55 @@ function CheckoutInner() {
       setError("Pilih bank tujuan terlebih dahulu");
       return;
     }
-    if (!fileName) {
-      setError("Upload bukti transfer terlebih dahulu (JPG/PNG max 5MB).");
-      return;
-    }
     setLoading(true);
-    // MVP: simpan order ke localStorage (nanti ganti D1)
-    const code = generateOrderCode();
-    const payMethod = method === "bank" ? `bank:${bankKey}` : method!;
-    const order = {
-      code,
-      name,
-      wa,
-      email,
-      method: payMethod,
-      items,
-      subtotal,
-      fileName,
-      status: "pending",
-      createdAt: new Date().toISOString(),
-    };
-    const existing = JSON.parse(localStorage.getItem("axvara-orders") || "[]");
-    localStorage.setItem("axvara-orders", JSON.stringify([...existing, order]));
-    if (!isDirect) clear();
-    setTimeout(() => router.push(`/pesanan/${code}`), 400);
+    const payMethod = method === "bank" ? `bank:${bankKey}` as const : method!;
+    // Build server payload: product_id + qty, price dihitung server dari D1
+    const payloadItems = items.map((it) => {
+      // items may be from cart (id like "p1" or numeric string) — resolve to numeric id via lookup in products seed or assume id as db id
+      // For cart items, we store original product slug — better to map via slug to server id by fetching, but here we try to find db id via known list
+      // Fallback: try to find product by slug via products array then use index+1 as id (dev mapping)
+      const bySlug = products.find((p) => p.slug === (it as unknown as { slug?: string }).slug);
+      // If item has id like "p1", map to numeric
+      const rawId = String(it.id);
+      const m = rawId.match(/^p(\d+)$/);
+      const pid = m ? Number(m[1]) : Number(rawId);
+      if (!Number.isNaN(pid) && pid >= 1 && pid <= 1000) return { product_id: pid, qty: Number(it.qty) || 1 };
+      // slug fallback
+      if (bySlug) {
+        const idx = products.findIndex((p) => p.slug === bySlug.slug);
+        return { product_id: idx + 1, qty: Number(it.qty) || 1 };
+      }
+      return { product_id: Number(rawId) || 1, qty: Number(it.qty) || 1 };
+    });
+    try {
+      const r = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customer_name: name.trim(),
+          customer_wa: wa.trim(),
+          customer_email: email.trim() || undefined,
+          items: payloadItems,
+          payment_method: payMethod,
+          proof_url: null,
+        }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || `Gagal buat pesanan (${r.status})`);
+      const code = j.code as string;
+      // Also keep a local copy for UX fallback (pesanan page can fetch from server if local missing)
+      try {
+        const localOrder = { code, name, wa, email, method: payMethod, items, subtotal: j.subtotal ?? subtotal, fileName, status: "pending", createdAt: new Date().toISOString() };
+        const existing = JSON.parse(localStorage.getItem("axvara-orders") || "[]");
+        localStorage.setItem("axvara-orders", JSON.stringify([...existing, localOrder]));
+      } catch {}
+      if (!isDirect) clear();
+      router.push(`/pesanan/${code}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Gagal buat pesanan");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
