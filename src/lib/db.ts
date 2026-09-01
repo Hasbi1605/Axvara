@@ -1,5 +1,5 @@
-// Dual DB: dev = better-sqlite3 local, prod (edge/Workers) = Cloudflare D1 via env.DB
-// Edge-safe: do not import better-sqlite3 at top level.
+// Edge-safe DB — prod: D1 binding, dev: in-memory seed from products.ts
+// No fs / better-sqlite3 imports — fully edge-compatible for @cloudflare/next-on-pages.
 
 export type DbProduct = {
   id: number;
@@ -18,101 +18,147 @@ export type DbProduct = {
   sort_order: number | null;
 };
 
-function isEdge(): boolean {
-  // Pages Functions / Workers: no Node fs for DB file, use D1 binding
-  const env = (globalThis as unknown as Record<string, unknown>);
-  return !!env.DB;
-}
-
 type D1 = {
   prepare: (sql: string) => {
-    bind: (...p: unknown[]) => { all: () => Promise<{ results: unknown[]; success: boolean }>; first: () => Promise<unknown>; run: () => Promise<{ success: boolean; meta: { last_row_id: number; changes: number } }> };
-    all: (...p: unknown[]) => Promise<{ results: unknown[] }>;
-    first: (...p: unknown[]) => Promise<unknown>;
-    run: (...p: unknown[]) => Promise<{ success: boolean }>;
+    bind: (...p: unknown[]) => {
+      all: () => Promise<{ results: unknown[] }>;
+      first: () => Promise<unknown>;
+      run: () => Promise<{ meta: { last_row_id: number; changes: number } }>;
+    };
+    all: () => Promise<{ results: unknown[] }>;
   };
-  exec: (sql: string) => Promise<unknown>;
-  batch: (stmts: unknown[]) => Promise<unknown>;
 };
 
 function getD1(): D1 | null {
   const g = globalThis as unknown as Record<string, unknown>;
-  return (g.DB as D1 | undefined) ?? null;
+  const env = process.env as unknown as Record<string, unknown>;
+  return (g.DB as D1 | undefined) ?? (env.DB as D1 | undefined) ?? null;
 }
 
-// Local Node DB — only loaded outside edge (dev). Guarded so edge bundler tree-shakes it.
-let _local: unknown = null;
-async function getLocalDb(): Promise<unknown> {
-  if (_local) return _local;
-  if (isEdge()) throw new Error("getLocalDb called on edge");
-  const [{ default: Database }, fsMod, pathMod] = await Promise.all([
-    import("better-sqlite3") as unknown as Promise<{ default: new (p:string)=> unknown }>,
-    import("fs") as unknown as Promise<typeof import("fs")>,
-    import("path") as unknown as Promise<typeof import("path")>,
-  ]);
-  const { readFileSync, existsSync, mkdirSync } = fsMod;
-  const { join } = pathMod;
-  const DB_PATH = process.env.DATABASE_URL || join(process.cwd(), "data", "axvara.db");
-  const dir = join(DB_PATH, "..");
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  const isNew = !existsSync(DB_PATH);
-  const db = new (Database as unknown as new (path:string)=> { pragma:(s:string)=>void; exec:(s:string)=>void; prepare:(s:string)=>unknown }) (DB_PATH);
-  (db as { pragma: (s:string)=>void }).pragma("journal_mode = WAL");
-  if (isNew) {
-    const sql = readFileSync(join(process.cwd(), "drizzle", "schema.sql"), "utf-8");
-    (db as { exec: (s:string)=>void }).exec(sql);
-  } else {
-    try { (db as { exec:(s:string)=>void }).exec("ALTER TABLE products ADD COLUMN badge TEXT"); } catch {}
-    try { (db as { exec:(s:string)=>void }).exec("ALTER TABLE products ADD COLUMN sold_count INTEGER DEFAULT 0"); } catch {}
-    try { (db as { exec:(s:string)=>void }).exec("ALTER TABLE products ADD COLUMN images TEXT"); } catch {}
-    try { (db as { exec:(s:string)=>void }).exec("ALTER TABLE products ADD COLUMN is_active INTEGER DEFAULT 1"); } catch {}
-    try { (db as { exec:(s:string)=>void }).exec("INSERT OR IGNORE INTO categories (id,name,slug,icon,sort_order) VALUES (1,'AI Gateway','ai-gateway','⚡',1),(2,'Akun Premium','akun-premium','◆',2),(3,'Tools Pro','tools-pro','◈',3),(4,'Bundle Hemat','bundle-hemat','⬢',4)"); } catch {}
-  }
-  _local = db;
-  return db;
+// ---- In-memory fallback (dev without D1) ----
+import { products as seedProducts } from "@/lib/products";
+type Row = Record<string, unknown>;
+
+function getSharedMem(): Row[] {
+  const g = globalThis as unknown as { __AXVARA_MEM?: Row[] };
+  if (g.__AXVARA_MEM) return g.__AXVARA_MEM;
+  const catMap: Record<string, number> = {
+    "ai-gateway": 1, "akun-premium": 2, "tools-pro": 3, "bundle-hemat": 4,
+  };
+  const rows: Row[] = seedProducts.map((p, i) => ({
+    id: i + 1,
+    slug: p.slug,
+    name: p.name,
+    description: p.description,
+    price: p.price,
+    compare_price: (p.comparePrice ?? null) as unknown,
+    image_url: p.image,
+    images: JSON.stringify(p.images ?? [p.image]),
+    badge: p.badge ?? null,
+    sold_count: p.soldCount ?? 0,
+    stock: p.stock ?? -1,
+    is_active: p.isActive === false ? 0 : 1,
+    sort_order: p.sortOrder ?? i + 1,
+    category_id: catMap[p.categorySlug] ?? 3,
+    cat_slug: p.categorySlug,
+  }));
+  g.__AXVARA_MEM = rows;
+  return rows;
 }
+
+// ---- Public API ----
 
 export function getDbSync(): unknown {
-  if (isEdge()) return getD1()!;
-  // sync path only valid in dev after first async init; fallback to throw if not yet inited
-  if (_local) return _local;
-  throw new Error("DB not initialized — use async query helpers in API routes");
+  const d1 = getD1();
+  if (d1) return d1;
+  throw new Error("DB not initialized — use async query helpers");
 }
+export function isD1Mode(): boolean { return !!getD1(); }
 
-export function isD1Mode(): boolean { return isEdge(); }
-
-export async function queryAll(sql: string, ...params: unknown[]): Promise<Record<string,unknown>[]> {
-  if (isEdge()) {
-    const d1 = getD1()!;
-    if (params.length) {
-      const res = await d1.prepare(sql).bind(...params).all();
-      return (res.results as Record<string,unknown>[]) ?? [];
+export async function queryAll(sql: string, ...params: unknown[]): Promise<Record<string, unknown>[]> {
+  const d1 = getD1();
+  if (d1) {
+    if (params.length) return ((await d1.prepare(sql).bind(...params).all()).results as Row[]) ?? [];
+    return ((await d1.prepare(sql).all()).results as Row[]) ?? [];
+  }
+  // Dev fallback: in-memory
+  const lower = sql.toLowerCase();
+  if (lower.includes("from categories")) {
+    return [
+      { id: 1, slug: "ai-gateway", name: "AI Gateway" },
+      { id: 2, slug: "akun-premium", name: "Akun Premium" },
+      { id: 3, slug: "tools-pro", name: "Tools Pro" },
+      { id: 4, slug: "bundle-hemat", name: "Bundle Hemat" },
+    ];
+  }
+  if (lower.includes("from products")) {
+    let rows = [...getSharedMem()];
+    if (lower.includes("is_active=1")) rows = rows.filter((r) => (r.is_active as number) !== 0);
+    if (lower.includes("c.slug=?") && params.length) {
+      rows = rows.filter((r) => r.cat_slug === String(params[0]));
+      params = params.slice(1);
     }
-    const res = await (d1.prepare(sql).all as unknown as () => Promise<{results:unknown[]}> )();
-    return (res.results as Record<string,unknown>[]) ?? [];
+    if (lower.includes("like ?")) {
+      const q = String((params as string[])[0] ?? "").replace(/%/g, "").toLowerCase();
+      if (q) rows = rows.filter((r) => `${r.name} ${r.slug} ${r.badge ?? ""} ${r.description ?? ""}`.toLowerCase().includes(q));
+    }
+    rows.sort((a, b) => (a.sort_order as number) - (b.sort_order as number));
+    return rows;
   }
-  const db = await getLocalDb() as { prepare: (s:string)=>{ all:(...p:unknown[])=>Record<string,unknown>[] } };
-  return db.prepare(sql).all(...params) as Record<string,unknown>[];
+  return [];
 }
 
-export async function queryFirst(sql: string, ...params: unknown[]): Promise<Record<string,unknown> | undefined> {
-  if (isEdge()) {
-    const d1 = getD1()!;
-    const res = await d1.prepare(sql).bind(...params).first();
-    return (res as Record<string,unknown>) ?? undefined;
+export async function queryFirst(sql: string, ...params: unknown[]): Promise<Row | undefined> {
+  const d1 = getD1();
+  if (d1) return (await d1.prepare(sql).bind(...params).first()) as Row | undefined;
+  const lower = sql.toLowerCase();
+  if (lower.includes("from categories where slug=?")) {
+    const map: Record<string, Row> = {
+      "ai-gateway": { id: 1 }, "akun-premium": { id: 2 },
+      "tools-pro": { id: 3 }, "bundle-hemat": { id: 4 },
+    };
+    return map[String(params[0])];
   }
-  const db = await getLocalDb() as { prepare: (s:string)=>{ get:(...p:unknown[])=>Record<string,unknown>|undefined } };
-  return db.prepare(sql).get(...params) as Record<string,unknown>|undefined;
+  if (lower.includes("from products") && lower.includes("where") && lower.includes("id=?")) {
+    const id = String(params[0]);
+    const row = getSharedMem().find((r) => String(r.id) === id);
+    if (row && lower.includes("select id from")) return { id: row.id };
+    return row;
+  }
+  return undefined;
 }
 
 export async function execRun(sql: string, ...params: unknown[]): Promise<{ lastInsertRowid?: number; changes?: number }> {
-  if (isEdge()) {
-    const d1 = getD1()!;
-    const res = await d1.prepare(sql).bind(...params).run();
-    const r = res as unknown as { meta: { last_row_id: number; changes: number } };
-    return { lastInsertRowid: r.meta?.last_row_id, changes: r.meta?.changes };
+  const d1 = getD1();
+  if (d1) {
+    const r = await d1.prepare(sql).bind(...params).run();
+    return {
+      lastInsertRowid: (r as unknown as { meta: { last_row_id: number } }).meta?.last_row_id,
+      changes: (r as unknown as { meta: { changes: number } }).meta?.changes,
+    };
   }
-  const db = await getLocalDb() as { prepare: (s:string)=>{ run:(...p:unknown[])=>{ lastInsertRowid:number; changes:number } } };
-  const r = db.prepare(sql).run(...params);
-  return { lastInsertRowid: r.lastInsertRowid, changes: r.changes };
+  const lower = sql.toLowerCase();
+  if (lower.startsWith("update products set")) {
+    const id = String(params[params.length - 1]);
+    const row = getSharedMem().find((r) => String(r.id) === id);
+    if (!row) return { changes: 0 };
+    if (lower.includes("is_active=?")) row.is_active = Number(params[0]) ? 1 : 0;
+    return { changes: 1 };
+  }
+  if (lower.startsWith("insert into products")) {
+    const mem = getSharedMem();
+    const newId = mem.length + 1;
+    const [category_id, name, slug, description, price, compare_price, image_url, images, badge, sold_count, stock, is_active, sort_order] = params as unknown[];
+    const slugToCat: Record<number, string> = { 1: "ai-gateway", 2: "akun-premium", 3: "tools-pro", 4: "bundle-hemat" };
+    mem.push({ id: newId, category_id, name, slug, description, price, compare_price, image_url, images, badge, sold_count, stock, is_active, sort_order, cat_slug: slugToCat[category_id as number] ?? "tools-pro" });
+    return { lastInsertRowid: newId, changes: 1 };
+  }
+  if (lower.startsWith("delete from products")) {
+    const delId = String(params[0]);
+    const mem = getSharedMem();
+    const idx = mem.findIndex((r) => String(r.id) === delId);
+    if (idx >= 0) { mem.splice(idx, 1); return { changes: 1 }; }
+    return { changes: 0 };
+  }
+  return { changes: 0 };
 }
