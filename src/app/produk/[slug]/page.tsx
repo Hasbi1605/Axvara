@@ -2,7 +2,7 @@
 "use client";
 export const runtime = "edge";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { products, type Product } from "@/lib/products";
 import { formatRupiah } from "@/lib/utils";
@@ -23,6 +23,24 @@ export default function ProductDetailPage() {
   }, []);
   const product = catalogProducts.find((p) => p.slug === slug) ?? products.find((p) => p.slug === slug);
 
+  // Gallery: merge image + images, deduplicate — must be before early return (hooks rules)
+  const allImages = useMemo(() => {
+    if (!product) return [""];
+    const imgs: string[] = [];
+    if (product.image) imgs.push(product.image);
+    if (product.images) {
+      for (const img of product.images) {
+        if (img && !imgs.includes(img)) imgs.push(img);
+      }
+    }
+    return imgs.length ? imgs : [product.image || ""];
+  }, [product]);
+
+  const [activeImg, setActiveImg] = useState(0);
+
+  // Reset active image when product changes
+  useEffect(() => { setActiveImg(0); }, [product?.id]);
+
   if (!product) {
     return (
       <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 py-16 text-center">
@@ -33,6 +51,7 @@ export default function ProductDetailPage() {
   }
 
   const discount = product.comparePrice ? Math.round((1 - product.price / product.comparePrice) * 100) : 0;
+
   const related = (() => {
     const sameCat = catalogProducts.filter((p) => p.categorySlug === product.categorySlug && p.id !== product.id);
     const others = catalogProducts.filter((p) => p.categorySlug !== product.categorySlug && p.id !== product.id);
@@ -47,8 +66,37 @@ export default function ProductDetailPage() {
 
       <div className="mt-6 grid lg:grid-cols-2 gap-6 lg:gap-8">
         <div className="ax-glass rounded-[24px] p-2">
+          {/* Main image */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={product.image} alt={product.name} className="w-full aspect-[4/3] object-cover rounded-2xl" />
+          <img
+            src={allImages[activeImg] || product.image}
+            alt={product.name}
+            className="w-full aspect-[4/3] object-cover rounded-2xl"
+          />
+          {/* Thumbnail strip — only show if >1 image */}
+          {allImages.length > 1 && (
+            <div className="mt-2 flex gap-2 overflow-x-auto px-1 pb-1 scrollbar-none">
+              {allImages.map((img, i) => (
+                <button
+                  key={img}
+                  onClick={() => setActiveImg(i)}
+                  className={`shrink-0 w-[60px] h-[46px] rounded-lg overflow-hidden border-2 transition-all duration-200 ${
+                    i === activeImg
+                      ? "border-[#00E5FF] shadow-[0_0_10px_rgba(0,229,255,0.3)] scale-[1.02]"
+                      : "border-white/10 opacity-60 hover:opacity-90 hover:border-white/25"
+                  }`}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={img}
+                    alt={`${product.name} ${i + 1}`}
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                  />
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <div className="ax-glass rounded-[24px] p-6 sm:p-7">
           <p className="text-xs tracking-[0.08em] text-[#00E5FF]/80 font-semibold uppercase">{product.categorySlug.replace("-", " ")}</p>
