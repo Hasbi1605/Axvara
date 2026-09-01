@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { queryAll, queryFirst, execRun } from "@/lib/db-edge";
+import { queryAll, queryFirst, execRun } from "@/lib/db";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
 
 export const dynamic = "force-dynamic";
 

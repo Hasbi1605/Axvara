@@ -92,6 +92,12 @@ body {
   pointer-events: none;
 }
 
+/* Admin toggle — must override Tailwind bg utilities, placed after imports but Tailwind utilities layer wins; so use !important + higher specificity */
+.toggle-btn:hover { filter: brightness(1.18) !important; transform: scale(1.06) !important; }
+.toggle-btn:active { transform: scale(0.96) !important; }
+.toggle-btn[aria-pressed="false"]:hover { background: rgba(255,255,255,0.34) !important; border-color: rgba(255,255,255,0.45) !important; }
+.toggle-btn[aria-pressed="true"]:hover { filter: brightness(1.22) !important; box-shadow: 0 0 18px rgba(34,197,94,0.60) !important; }
+
 /* Focus */
 *:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(0,229,255,0.35); }
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { queryFirst, execRun } from "@/lib/db-edge";
+import { queryFirst, execRun } from "@/lib/db";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
