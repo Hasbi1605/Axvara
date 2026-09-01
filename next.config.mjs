@@ -7,6 +7,13 @@ const nextConfig = {
       { protocol: "https", hostname: "cdn.axvara.id" },
     ],
   },
+  webpack: (config, { dev }) => {
+    if (!dev) {
+      // Pages 25 MiB limit: disable webpack cache file system
+      config.cache = false;
+    }
+    return config;
+  },
 };
 
 export default nextConfig;

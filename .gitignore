@@ -50,3 +50,4 @@ data/*.wal
 data/*.shm
 data/*.db-*
 public/uploads/*
+cache/**
