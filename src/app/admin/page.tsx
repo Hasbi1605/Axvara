@@ -56,17 +56,29 @@ export default function AdminPage() {
   };
   const del=async(id:string)=>{ if(!confirm("Hapus produk ini?")) return; await fetch(`/api/products/${id}`,{method:"DELETE"}); await load(); };
 
+  const [toggling, setToggling] = useState<string | null>(null);
+
   const toggleActive = async (p: Prod) => {
+    if (toggling) return;
     const next = !p.isActive;
-    // optimistic
+    setToggling(p.id);
+    const snapshot = prods;
     setProds(prev => prev.map(x => x.id === p.id ? { ...x, isActive: next } : x));
     try {
-      const r = await fetch(`/api/products/${p.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ isActive: next }) });
-      if (!r.ok) throw new Error((await r.json()).error || "Gagal");
+      const r = await fetch(`/api/products/${p.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: next }),
+      });
+      const body = await r.json().catch(() => ({} as Record<string, unknown>));
+      if (!r.ok) throw new Error((body as { error?: string }).error || `HTTP ${r.status}`);
+      // sync from source of truth
+      await load();
     } catch (e) {
-      // revert
-      setProds(prev => prev.map(x => x.id === p.id ? { ...x, isActive: !next } : x));
+      setProds(snapshot);
       alert(e instanceof Error ? e.message : "Gagal update status aktif");
+    } finally {
+      setToggling(null);
     }
   };
 
@@ -145,7 +157,21 @@ export default function AdminPage() {
                       <td className="px-3 py-3 text-right"><span className="font-semibold text-white">{formatRupiah(p.price)}</span>{p.comparePrice? <span className="block text-[11px] text-white/30 line-through">{formatRupiah(p.comparePrice)}</span>:null}</td>
                       <td className="px-3 py-3 text-center"><span className={`inline-flex min-w-[40px] justify-center px-2 py-1 rounded-full text-xs font-bold ${p.stock<=5 && p.stock!==-1 ? "bg-[#FFB800]/15 text-[#FFB800]":"bg-white/10 text-white/70"}`}>{p.stock===-1?"∞":p.stock}</span></td>
                       <td className="px-3 py-3 text-center text-xs text-white/60">{p.soldCount}</td>
-                      <td className="px-3 py-3 text-center"><button type="button" role="switch" aria-checked={p.isActive} aria-label="Toggle aktif" onClick={()=>toggleActive(p)} className={`inline-flex w-10 h-6 rounded-full p-0.5 transition shrink-0 border border-white/10 focus:outline-none focus:ring-2 focus:ring-[#00E5FF]/40 cursor-pointer ${p.isActive?"bg-[#22C55E] justify-end":"bg-white/15 justify-start"}`}><span className={`w-5 h-5 rounded-full bg-white shadow transition ${p.isActive?"translate-x-0":"translate-x-0"}`} /></button></td>
+                      <td className="px-3 py-3 text-center">
+                        <label className="inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={p.isActive}
+                            disabled={toggling === p.id}
+                            onChange={() => toggleActive(p)}
+                            className="sr-only peer"
+                            aria-label={`Aktif ${p.name}`}
+                          />
+                          <span className={`relative inline-flex w-11 h-6 rounded-full transition shrink-0 border items-center peer-focus:ring-2 peer-focus:ring-[#00E5FF]/40 ${toggling === p.id ? "opacity-60 pointer-events-none" : ""} ${p.isActive ? "bg-[#22C55E] border-[#22C55E]/30" : "bg-white/15 border-white/15"}`}>
+                            <span className={`absolute w-5 h-5 rounded-full bg-white shadow transition-all duration-200 ${p.isActive ? "translate-x-5" : "translate-x-0.5"}`} />
+                          </span>
+                        </label>
+                      </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           <button onClick={()=>openEdit(p)} className="h-8 px-3 rounded-full bg-white text-[#080C1E] text-xs font-bold hover:bg-white/90">Edit</button>
