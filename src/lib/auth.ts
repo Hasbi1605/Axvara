@@ -68,11 +68,16 @@ export async function verifyPasswordWithSha(plain: string, expectedShaHex: strin
 }
 
 export async function createAdminToken(email: string) {
-  return await new jose.SignJWT({ email, role: "admin" })
+  const now = Math.floor(Date.now() / 1000);
+  return await new jose.SignJWT({ email, role: "admin", iat: now })
     .setProtectedHeader({ alg: "HS256" })
-    .setIssuedAt()
+    .setIssuedAt(now)
     .setExpirationTime("8h")
     .sign(secretKey());
+}
+
+export function getSessionDurations() {
+  return { absoluteMax: 8 * 60 * 60, idleMax: 2 * 60 * 60 }; // seconds
 }
 
 export async function verifyAdminToken(token: string) {
@@ -144,9 +149,26 @@ export function isSecureForRequest(req: Request): boolean {
 export function cookieForToken(token: string, isSecure: boolean) {
   const maxAge = 8 * 60 * 60;
   const secure = isSecure || !isDev();
-  // __Host- prefix requires Secure, Path=/, no Domain — enforced in prod
   const name = secure ? "__Host-axvara_admin_token" : "axvara_admin_token";
   const parts = [`${name}=${encodeURIComponent(token)}`, "Path=/", "HttpOnly", "SameSite=Strict", `Max-Age=${maxAge}`];
+  if (secure) parts.push("Secure");
+  return parts.join("; ");
+}
+
+export function cookieForIdle(token: string, isSecure: boolean) {
+  // Idle session marker — separate cookie to track last activity (2h)
+  const maxAge = 2 * 60 * 60;
+  const secure = isSecure || !isDev();
+  const name = secure ? "__Host-axvara_idle" : "axvara_idle";
+  const parts = [`${name}=${encodeURIComponent(token)}`, "Path=/", "HttpOnly", "SameSite=Strict", `Max-Age=${maxAge}`];
+  if (secure) parts.push("Secure");
+  return parts.join("; ");
+}
+
+export function expiredIdleCookie(isSecure: boolean) {
+  const secure = isSecure || !isDev();
+  const name = secure ? "__Host-axvara_idle" : "axvara_idle";
+  const parts = [`${name}=`, "Path=/", "HttpOnly", "SameSite=Strict", "Max-Age=0"];
   if (secure) parts.push("Secure");
   return parts.join("; ");
 }
@@ -157,4 +179,10 @@ export function expiredCookie(isSecure: boolean) {
   const parts = [`${name}=`, "Path=/", "HttpOnly", "SameSite=Strict", "Max-Age=0"];
   if (secure) parts.push("Secure");
   return parts.join("; ");
+}
+
+export function getIdleTokenFromCookieHeader(cookieHeader: string | null): string | null {
+  if (!cookieHeader) return null;
+  const m = cookieHeader.match(/(?:^|;\s*)(?:__Host-)?axvara_idle=([^;]+)/);
+  return m ? decodeURIComponent(m[1]) : null;
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getAdminCredentials, verifyPassword, createAdminToken, cookieForToken, isSecureForRequest } from "@/lib/auth";
+import { getAdminCredentials, verifyPassword, createAdminToken, cookieForToken, cookieForIdle, isSecureForRequest } from "@/lib/auth";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -80,6 +80,9 @@ export async function POST(req: NextRequest) {
   }
   const isHttps = isSecureForRequest(req);
   const res = NextResponse.json({ ok: true });
+  // Absolute 8h token + sliding 2h idle marker (refresh on activity via /api/auth/refresh)
+  const idleToken = `${Date.now()}.${Math.random().toString(36).slice(2, 8)}`;
   res.headers.set("Set-Cookie", cookieForToken(token, isHttps));
+  res.headers.append("Set-Cookie", cookieForIdle(idleToken, isHttps));
   return res;
 }

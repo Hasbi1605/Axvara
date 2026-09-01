@@ -123,12 +123,46 @@ export default function AdminPage() {
       const r = await fetch("/api/auth/me", { cache: "no-store" });
       const j = await r.json().catch(()=>({}));
       if (r.ok && j.authed) { setAuthed(true); setAuthEmail(j.email || ""); }
-      else { setAuthed(false); }
+      else {
+        setAuthed(false);
+        if (j.reason === "idle_timeout") toast.error("Sesi habis karena 2 jam tidak aktif. Silakan login ulang.");
+        else if (r.status === 401) { /* absolute 8h or not authed — stay on login */ }
+      }
     } catch { setAuthed(false); }
     finally { setCheckingAuth(false); }
   },[]);
 
-  useEffect(()=>{ checkAuth(); load(); },[checkAuth, load]);
+  useEffect(()=>{ checkAuth(); },[checkAuth]);
+  useEffect(()=>{ if(authed) load(); },[authed, load]);
+
+  // Heartbeat: refresh idle window tiap 90 detik saat tab aktif (sliding 2h)
+  useEffect(()=>{
+    if(!authed) return;
+    const tick = async()=>{
+      if (document.visibilityState !== "visible") return;
+      try {
+        const r = await fetch("/api/auth/refresh", { method:"POST", cache:"no-store" });
+        if (r.status === 401) { setAuthed(false); toast.error("Sesi habis. Silakan login ulang."); }
+      } catch {}
+    };
+    const id = window.setInterval(tick, 90_000);
+    const onVis = ()=> { if(document.visibilityState==="visible") tick(); };
+    document.addEventListener("visibilitychange", onVis);
+    return ()=> { window.clearInterval(id); document.removeEventListener("visibilitychange", onVis); };
+  },[authed]);
+
+  // Juga cek saat window focus (user kembali setelah lama)
+  useEffect(()=>{
+    if(!authed) return;
+    const onFocus = async()=>{
+      try {
+        const r = await fetch("/api/auth/me", { cache:"no-store" });
+        if (r.status === 401) { setAuthed(false); }
+      } catch {}
+    };
+    window.addEventListener("focus", onFocus);
+    return ()=> window.removeEventListener("focus", onFocus);
+  },[authed]);
 
   const login = async()=>{
     setLoginError(null);
