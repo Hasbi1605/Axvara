@@ -56,11 +56,13 @@ const BRAND_HEX: Record<string, string> = {
 };
 const logoUrlColored = (slug: string) => {
   if (LOCAL_LOGO[slug]) return LOCAL_LOGO[slug];
+  // Prefer local public/icons/{slug}.svg if exists, else Iconify (needs CSP allow)
   const hex = BRAND_HEX[slug] || "1A1A1E";
   const remap: Record<string, string> = { openai: "simple-icons:openai", adobe: "simple-icons:adobe" };
   const icon = remap[slug] || `simple-icons:${slug}`;
   return `https://api.iconify.design/${icon}.svg?color=%23${hex}`;
 };
+const logoFallback = (label: string) => `https://via.placeholder.com/40/0a0e26/FFFFFF?text=${encodeURIComponent(label.slice(0,2))}`;
 
 // kept for future planet bg decisions
 
