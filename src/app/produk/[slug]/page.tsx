@@ -68,30 +68,55 @@ export default function ProductDetailPage() {
 
       <div className="mt-6 grid lg:grid-cols-2 gap-6 lg:gap-8">
         <div className="ax-glass rounded-[24px] p-2">
-          {/* Main image */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={allImages[activeImg] || product.image}
-            alt={product.name}
-            className="w-full aspect-[4/3] object-cover rounded-2xl"
-          />
-          {/* Thumbnail strip — only show if >1 image */}
+          {/* Main image with nav arrows */}
+          <div className="relative group">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={allImages[activeImg] || product.image}
+              alt={product.name}
+              className="w-full aspect-[4/3] object-cover rounded-2xl"
+            />
+            {/* Arrow prev/next — only when >1 image */}
+            {allImages.length > 1 && (
+              <>
+                <button
+                  onClick={() => setActiveImg((prev) => (prev - 1 + allImages.length) % allImages.length)}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-black/50 backdrop-blur-sm text-white flex items-center justify-center opacity-80 hover:opacity-100 hover:bg-black/70 transition active:scale-90"
+                  aria-label="Foto sebelumnya"
+                >
+                  <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+                </button>
+                <button
+                  onClick={() => setActiveImg((prev) => (prev + 1) % allImages.length)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-black/50 backdrop-blur-sm text-white flex items-center justify-center opacity-80 hover:opacity-100 hover:bg-black/70 transition active:scale-90"
+                  aria-label="Foto berikutnya"
+                >
+                  <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+                </button>
+                {/* Counter badge */}
+                <span className="absolute bottom-2 right-2 bg-black/60 backdrop-blur-sm text-white text-[11px] font-bold px-2.5 py-1 rounded-full">
+                  {activeImg + 1} / {allImages.length}
+                </span>
+              </>
+            )}
+          </div>
+          {/* Thumbnail strip — bigger, prominent */}
           {allImages.length > 1 && (
-            <div className="mt-2 flex gap-2 overflow-x-auto px-1 pb-1 scrollbar-none">
+            <div className="mt-3 flex gap-2 sm:gap-3 overflow-x-auto px-1 pb-2 scrollbar-none">
               {allImages.map((img, i) => (
                 <button
                   key={img}
                   onClick={() => setActiveImg(i)}
-                  className={`shrink-0 w-[60px] h-[46px] rounded-lg overflow-hidden border-2 transition-all duration-200 ${
+                  className={`shrink-0 w-[72px] h-[56px] sm:w-[90px] sm:h-[68px] rounded-xl overflow-hidden border-2 transition-all duration-200 ${
                     i === activeImg
-                      ? "border-[#00E5FF] shadow-[0_0_10px_rgba(0,229,255,0.3)] scale-[1.02]"
-                      : "border-white/10 opacity-60 hover:opacity-90 hover:border-white/25"
+                      ? "border-[#00E5FF] shadow-[0_0_12px_rgba(0,229,255,0.35)] ring-1 ring-[#00E5FF]/30"
+                      : "border-white/15 opacity-60 hover:opacity-100 hover:border-white/30"
                   }`}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={img}
-                    alt={`${product.name} ${i + 1}`}
+                    alt={`${product.name} foto ${i + 1}`}
                     className="w-full h-full object-cover"
                     loading="lazy"
                   />
