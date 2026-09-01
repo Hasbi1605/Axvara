@@ -1,14 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 110" fill="none" stroke="currentColor" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision">
-  <!-- AXVARA Prism — equilateral wireframe, precise copy of chosen reference -->
-  <!-- Outer triangle -->
-  <path d="M60 4 L6.5 104 L113.5 104 Z"/>
-  <!-- Vertical spine from apex to inner apex -->
-  <path d="M60 4 L60 49.5"/>
-  <!-- Inner triangle (A negative space) -->
-  <path d="M60 49.5 L35.8 78.5 L84.2 78.5 Z"/>
-  <!-- Inner base -->
-  <path d="M35.8 78.5 L84.2 78.5"/>
-  <!-- Bottom face diagonals -->
-  <path d="M35.8 78.5 L6.5 104"/>
-  <path d="M84.2 78.5 L113.5 104"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 110" width="120" height="110" fill="none" stroke="white" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision">
+  <rect width="120" height="110" rx="22" fill="#070A1E"/>
+  <path d="M60 10 L12 102 L108 102 Z"/>
+  <path d="M60 10 L60 54"/>
+  <path d="M60 54 L38 80 L82 80 Z"/>
+  <path d="M38 80 L82 80"/>
+  <path d="M38 80 L12 102"/>
+  <path d="M82 80 L108 102"/>
 </svg>

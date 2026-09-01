@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-
+export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
 type CloudflareEnv = { R2_ASSETS?: { put: (key:string, body:ArrayBuffer, opts?:Record<string,string>)=>Promise<unknown> }; ASSETS?: { put: (key:string, body:ArrayBuffer, opts?:Record<string,string>)=>Promise<unknown> } };
@@ -25,12 +25,12 @@ export async function POST(req: NextRequest) {
   for (const f of files) {
     if (!allowed.has(f.type) && !f.type.startsWith("image/")) return NextResponse.json({ error: `unsupported type ${f.type}` }, { status: 400 });
     if (f.size > 8 * 1024 * 1024) return NextResponse.json({ error: `${f.name} >8MB` }, { status: 400 });
-    const buf = Buffer.from(await f.arrayBuffer());
+    const buf = new Uint8Array(await f.arrayBuffer());
     const base = `${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
     const outName = `${base}.webp`;
     // Edge (Cloudflare) has no sharp — store original bytes as webp-compatible;
     // For dev, use separate /api/upload-dev (not edge) if resizing needed.
-    const webpBuf: Buffer = buf;
+    const webpBuf = buf;
 
     if (!bucket) {
       // In prod (edge) bucket must exist — fail fast instead of dev fs fallback

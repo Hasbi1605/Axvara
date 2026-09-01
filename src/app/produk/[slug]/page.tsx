@@ -1,5 +1,6 @@
 
 "use client";
+export const runtime = "edge";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { products } from "@/lib/products";
