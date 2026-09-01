@@ -1,6 +1,6 @@
 name = "axvara"
 compatibility_date = "2026-08-31"
-pages_build_output_dir = ".next"
+compatibility_flags = ["nodejs_compat"]
 
 [[d1_databases]]
 binding = "DB"

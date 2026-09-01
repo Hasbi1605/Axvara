@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-export const runtime = "edge";
+
 export const dynamic = "force-dynamic";
 
 type CloudflareEnv = { R2_ASSETS?: { put: (key:string, body:ArrayBuffer, opts?:Record<string,string>)=>Promise<unknown> }; ASSETS?: { put: (key:string, body:ArrayBuffer, opts?:Record<string,string>)=>Promise<unknown> } };

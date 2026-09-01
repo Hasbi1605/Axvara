@@ -1,6 +1,7 @@
 "use client";
 import React, { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { useCart } from "@/stores/cart";
 import { formatRupiah, generateOrderCode } from "@/lib/utils";
 import { products } from "@/lib/products";
@@ -44,7 +45,7 @@ function CheckoutInner() {
     return (
       <div className="mx-auto max-w-[640px] px-4 py-16 text-center">
         <p className="text-white/60">Keranjang kosong</p>
-        <a href="/#katalog" className="text-[#00E5FF] text-sm mt-3 inline-block">← Kembali belanja</a>
+        <Link href="/#katalog" className="text-[#00E5FF] text-sm mt-3 inline-block">← Kembali belanja</Link>
       </div>
     );
   }
