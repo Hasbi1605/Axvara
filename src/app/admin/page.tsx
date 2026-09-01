@@ -157,20 +157,19 @@ export default function AdminPage() {
                       <td className="px-3 py-3 text-right"><span className="font-semibold text-white">{formatRupiah(p.price)}</span>{p.comparePrice? <span className="block text-[11px] text-white/30 line-through">{formatRupiah(p.comparePrice)}</span>:null}</td>
                       <td className="px-3 py-3 text-center"><span className={`inline-flex min-w-[40px] justify-center px-2 py-1 rounded-full text-xs font-bold ${p.stock<=5 && p.stock!==-1 ? "bg-[#FFB800]/15 text-[#FFB800]":"bg-white/10 text-white/70"}`}>{p.stock===-1?"∞":p.stock}</span></td>
                       <td className="px-3 py-3 text-center text-xs text-white/60">{p.soldCount}</td>
-                      <td className="px-3 py-3 text-center">
-                        <label className="inline-flex items-center cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={p.isActive}
-                            disabled={toggling === p.id}
-                            onChange={() => toggleActive(p)}
-                            className="sr-only peer"
-                            aria-label={`Aktif ${p.name}`}
-                          />
-                          <span className={`relative inline-flex w-11 h-6 rounded-full transition shrink-0 border items-center peer-focus:ring-2 peer-focus:ring-[#00E5FF]/40 ${toggling === p.id ? "opacity-60 pointer-events-none" : ""} ${p.isActive ? "bg-[#22C55E] border-[#22C55E]/30" : "bg-white/15 border-white/15"}`}>
-                            <span className={`absolute w-5 h-5 rounded-full bg-white shadow transition-all duration-200 ${p.isActive ? "translate-x-5" : "translate-x-0.5"}`} />
-                          </span>
-                        </label>
+                      <td className="px-3 py-3 text-center" style={{ position:"relative", zIndex:1 }}>
+                        <button
+                          type="button"
+                          aria-pressed={p.isActive}
+                          aria-label={`Toggle aktif ${p.name}`}
+                          disabled={toggling === p.id}
+                          onClick={() => toggleActive(p)}
+                          title={p.isActive ? "Aktif — klik untuk nonaktifkan" : "Nonaktif — klik untuk aktifkan"}
+                          style={{ pointerEvents:"auto", position:"relative", zIndex:10 }}
+                          className={`relative inline-flex h-[24px] w-[44px] shrink-0 cursor-pointer items-center rounded-full border px-[2px] transition-all duration-200 hover:brightness-[1.15] hover:scale-[1.03] active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00E5FF]/50 disabled:opacity-50 disabled:cursor-wait ${p.isActive ? "bg-[#22C55E] border-[#16a34a] shadow-[0_0_14px_rgba(34,197,94,0.45)]" : "bg-white/20 border-white/25 hover:bg-white/30"}`}
+                        >
+                          <span className={`pointer-events-none inline-block h-[18px] w-[18px] rounded-full bg-white shadow-[0_1px_4px_rgba(0,0,0,0.35)] transition-transform duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] ${p.isActive ? "translate-x-[18px]" : "translate-x-0"}`} />
+                        </button>
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1.5">
