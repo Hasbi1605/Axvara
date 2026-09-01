@@ -3,17 +3,19 @@ import Link from "next/link";
 import { X } from "lucide-react";
 import { useCart } from "@/stores/cart";
 import { useSearch } from "@/stores/search";
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
+import { usePathname } from "next/navigation";
 import { IosIcon } from "@/components/ui/IosIcon";
 
 export function Navbar() {
+  const pathname = usePathname();
+  const isAdmin = pathname?.startsWith("/admin");
   const count = useCart((s) => s.items.reduce((a, b) => a + b.qty, 0));
   const setDrawer = useCart((s) => s.setDrawer);
   const q = useSearch((s) => s.q);
   const setQ = useSearch((s) => s.setQ);
   const [mobileSearch, setMobileSearch] = useState(false);
-  const [shake, setShake] = useState(false);
-  const prevCount = useRef(count);
+  const shake = false;
 
   const onSearch = (v: string) => {
     setQ(v);
@@ -22,14 +24,7 @@ export function Navbar() {
     }
   };
 
-  useEffect(() => {
-    if (count > prevCount.current) {
-      setShake(true);
-      const t = setTimeout(() => setShake(false), 600);
-      return () => clearTimeout(t);
-    }
-    prevCount.current = count;
-  }, [count]);
+  if (isAdmin) return null;
 
   return (
     <header className="sticky top-0 z-50 ax-glass-strong border-b border-white/10">

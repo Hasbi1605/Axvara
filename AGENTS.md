@@ -32,6 +32,7 @@ Setiap kali ubah kode/docs di `axvara/`, **WAJIB catat di `axvara/CHANGELOG.md`*
 
 ## Verifikasi WAJIB (dev-only, tanpa build tiap kali)
 **Jangan wajib `npm run build` setiap perubahan.** Cukup `npm run dev` — build hanya sebelum deploy/major change.
+**Wajib pakai Chrome DevTools MCP** untuk verifikasi visual/fungsional (bukan Playwright MCP). Aktifkan via skill `chrome-devtools`.
 
 1. Jalankan dev **dari folder yang benar** (wajib):
    ```bash

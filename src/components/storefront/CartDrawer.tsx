@@ -2,12 +2,16 @@
 import { useCart } from "@/stores/cart";
 import { formatRupiah } from "@/lib/utils";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 // TRY: iOS glyph — rollback: cp /tmp/CartDrawer.lucide.bak src/components/storefront/CartDrawer.tsx
 
 export function CartDrawer() {
+  const pathname = usePathname();
+  const isAdmin = pathname?.startsWith("/admin");
   const { items, drawerOpen, setDrawer, setQty, remove, subtotal } = useCart();
   const total = subtotal();
 
+  if (isAdmin) return null;
   if (!drawerOpen) return null;
 
   return (

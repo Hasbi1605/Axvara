@@ -17,10 +17,14 @@ export default function ProductDetailPage() {
   const [catalogProducts, setCatalogProducts] = useState<Product[]>(products);
   const [galleryImages, setGalleryImages] = useState<string[]>([]);
   const [activeImg, setActiveImg] = useState(0);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
 
   useEffect(() => {
+    setDetailLoading(true);
+    setDetailError(null);
     fetch("/api/products?active=1")
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then(async (r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then((data) => {
         if (Array.isArray(data.products)) {
           setCatalogProducts(data.products);
@@ -38,7 +42,8 @@ export default function ProductDetailPage() {
           }
         }
       })
-      .catch(() => {});
+      .catch((e) => setDetailError(e instanceof Error ? e.message : "Gagal memuat produk"))
+      .finally(()=> setDetailLoading(false));
   }, [slug]);
 
   // Also build gallery from seed data on first render
@@ -68,6 +73,38 @@ export default function ProductDetailPage() {
   const goNext = useCallback(() => {
     setActiveImg((prev) => (prev + 1) % galleryImages.length);
   }, [galleryImages.length]);
+
+  if (detailLoading) {
+    return (
+      <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 py-10">
+        <div className="h-6 w-24 rounded-full bg-white/10 animate-pulse" />
+        <div className="mt-6 grid lg:grid-cols-[1fr_38%] gap-6">
+          <div className="ax-glass rounded-[24px] p-3">
+            <div className="aspect-[4/3] rounded-2xl bg-white/10 animate-pulse" />
+            <div className="mt-3 flex gap-2"><div className="w-[90px] h-[68px] rounded-xl bg-white/10 animate-pulse" /><div className="w-[90px] h-[68px] rounded-xl bg-white/10 animate-pulse" /></div>
+          </div>
+          <div className="ax-glass rounded-[24px] p-8 space-y-4">
+            <div className="h-4 w-32 rounded-full bg-white/10 animate-pulse" />
+            <div className="h-7 w-[80%] rounded-xl bg-white/10 animate-pulse" />
+            <div className="h-4 w-full rounded-full bg-white/10 animate-pulse" />
+            <div className="h-12 rounded-xl bg-white/10 animate-pulse" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (detailError) {
+    return (
+      <div className="mx-auto max-w-[640px] px-4 py-16 text-center">
+        <p className="text-red-300 text-sm bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 inline-block">Gagal memuat: {detailError}</p>
+        <div className="mt-4 flex justify-center gap-3">
+          <button onClick={()=> location.reload()} className="h-9 px-4 rounded-full bg-white text-[#070a1e] text-sm font-bold">Muat ulang</button>
+          <Link href="/" className="h-9 px-4 rounded-full ax-glass text-sm inline-flex items-center">Kembali</Link>
+        </div>
+      </div>
+    );
+  }
 
   if (!product) {
     return (
@@ -111,7 +148,8 @@ export default function ProductDetailPage() {
         <img src="/icons/ios11/back-32.png" alt="" width={16} height={16} className="w-4 h-4 object-contain brightness-0 invert opacity-70" draggable={false} /> Kembali
       </button>
 
-      <div className="mt-6 grid lg:grid-cols-2 gap-6 lg:gap-8">
+      {/* Dynamic grid: card kiri greedy (1fr), card kanan responsive fit-content */}
+      <div className="mt-6 grid lg:grid-cols-[1fr_38%] xl:grid-cols-[1fr_minmax(360px,420px)] gap-6 lg:gap-8 items-start">
         {/* ===== IMAGE GALLERY ===== */}
         <div className="ax-glass rounded-[24px] p-2 sm:p-3">
           <div className="relative">
@@ -173,18 +211,29 @@ export default function ProductDetailPage() {
           )}
         </div>
 
-        {/* ===== PRODUCT INFO ===== */}
-        <div className="ax-glass rounded-[24px] p-6 sm:p-7">
-          <p className="text-xs tracking-[0.08em] text-[#00E5FF]/80 font-semibold uppercase">
+        {/* ===== PRODUCT INFO — sticky, self-sizing ===== */}
+        <div className="ax-glass rounded-[24px] p-6 sm:p-8 lg:sticky lg:top-24 flex flex-col">
+          {/* Badge produk (Terlaris / Baru / Bundle / dll) */}
+          {product.badge && (
+            <span className="self-start rounded-full bg-[#FFB800]/15 text-[#FFB800] text-[11px] font-bold px-3 py-1 tracking-wide uppercase border border-[#FFB800]/25">
+              {product.badge}
+            </span>
+          )}
+
+          <p className={`text-xs tracking-[0.08em] text-[#00E5FF]/80 font-semibold uppercase ${product.badge ? "mt-3" : ""}`}>
             {product.categorySlug.replace("-", " ")}
           </p>
-          <h1 className="mt-2 font-display font-bold text-[24px] sm:text-[28px] leading-tight text-white">
+          <h1 className="mt-2 font-display font-bold text-[22px] sm:text-[26px] leading-tight text-white">
             {product.name}
           </h1>
-          <p className="mt-2 text-sm text-white/55">{product.description}</p>
+          <p className="mt-2 text-sm text-white/55 leading-relaxed">{product.description}</p>
 
-          <div className="mt-5 flex items-baseline gap-3">
-            <span className="font-display font-bold text-[28px] text-white">
+          {/* Divider */}
+          <div className="mt-5 border-t border-white/8" />
+
+          {/* Price block */}
+          <div className="mt-5 flex items-baseline gap-3 flex-wrap">
+            <span className="font-display font-bold text-[26px] text-white">
               {formatRupiah(product.price)}
             </span>
             {product.comparePrice && (
@@ -199,7 +248,30 @@ export default function ProductDetailPage() {
             )}
           </div>
 
-          <div className="mt-4 flex flex-wrap gap-2 text-xs">
+          {/* Social proof: sold count + stock */}
+          {(product.soldCount || product.stock) && (
+            <div className="mt-3 flex items-center gap-3 text-xs text-white/50">
+              {product.soldCount != null && product.soldCount > 0 && (
+                <span className="inline-flex items-center gap-1">
+                  <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 text-[#FFB800]" fill="currentColor"><path d="M8 1.314C12.438-3.248 23.534 4.735 8 15-7.534 4.736 3.562-3.248 8 1.314z"/></svg>
+                  {product.soldCount.toLocaleString("id-ID")} terjual
+                </span>
+              )}
+              {product.soldCount && product.stock ? <span className="text-white/20">·</span> : null}
+              {product.stock != null && product.stock > 0 && (
+                <span className="inline-flex items-center gap-1">
+                  <span className={`w-1.5 h-1.5 rounded-full ${product.stock > 10 ? "bg-emerald-400" : "bg-[#FFB800]"}`} />
+                  Stok: {product.stock}
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Divider */}
+          <div className="mt-5 border-t border-white/8" />
+
+          {/* Trust badges */}
+          <div className="mt-5 flex flex-wrap gap-2 text-xs">
             <span className="inline-flex items-center gap-1.5 ax-glass rounded-full px-3 py-1.5 text-white/70">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/icons/ios11/shield-32.png" alt="" width={14} height={14} className="w-3.5 h-3.5 object-contain brightness-0 invert opacity-70" draggable={false} style={{ filter: "brightness(0) saturate(100%) invert(72%) sepia(68%) saturate(4000%) hue-rotate(145deg) brightness(1.05)" }} />
@@ -208,27 +280,45 @@ export default function ProductDetailPage() {
             <span className="inline-flex items-center gap-1.5 ax-glass rounded-full px-3 py-1.5 text-white/70">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/icons/ios11/lightning-bolt-32.png" alt="" width={14} height={14} className="w-3.5 h-3.5 object-contain brightness-0 invert opacity-70" draggable={false} style={{ filter: "brightness(0) saturate(100%) invert(72%) sepia(92%) saturate(1800%) hue-rotate(360deg) brightness(1.02)" }} />
-              Stok tersedia
+              Aktivasi instan
+            </span>
+            <span className="inline-flex items-center gap-1.5 ax-glass rounded-full px-3 py-1.5 text-white/70">
+              <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 text-[#00E5FF]/70" fill="none" stroke="currentColor" strokeWidth={1.5}><path d="M8 1v6l3.5 2M15 8A7 7 0 1 1 1 8a7 7 0 0 1 14 0z" strokeLinecap="round"/></svg>
+              Support 24 jam
             </span>
           </div>
 
-          <ul className="mt-6 space-y-2 text-sm text-white/60 list-disc list-inside">
-            <li>Aktivasi 5–15 menit setelah pembayaran dikonfirmasi</li>
-            <li>Support WA admin selama masa aktif</li>
-            <li>Garansi replace jika kendala dari sistem</li>
+          {/* Feature list */}
+          <ul className="mt-5 space-y-2.5 text-[13px] text-white/60">
+            <li className="flex items-start gap-2">
+              <svg viewBox="0 0 16 16" className="w-4 h-4 mt-0.5 shrink-0 text-emerald-400/80" fill="none" stroke="currentColor" strokeWidth={2}><path d="M3 8.5l3 3 7-7" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              Aktivasi 5–15 menit setelah pembayaran dikonfirmasi
+            </li>
+            <li className="flex items-start gap-2">
+              <svg viewBox="0 0 16 16" className="w-4 h-4 mt-0.5 shrink-0 text-emerald-400/80" fill="none" stroke="currentColor" strokeWidth={2}><path d="M3 8.5l3 3 7-7" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              Support WA admin selama masa aktif
+            </li>
+            <li className="flex items-start gap-2">
+              <svg viewBox="0 0 16 16" className="w-4 h-4 mt-0.5 shrink-0 text-emerald-400/80" fill="none" stroke="currentColor" strokeWidth={2}><path d="M3 8.5l3 3 7-7" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              Garansi replace jika kendala dari sistem
+            </li>
           </ul>
 
-          <div className="mt-7 flex flex-col sm:flex-row gap-3">
+          {/* Spacer — pushes buttons down when content is short */}
+          <div className="flex-1 min-h-[16px]" />
+
+          {/* CTA buttons */}
+          <div className="mt-6 flex flex-col gap-3">
             <button
               onClick={() => router.push(`/checkout?buy=${product.slug}`)}
-              className="flex-1 h-[52px] rounded-xl bg-[#00E5FF] text-[#080C1E] font-bold flex items-center justify-center gap-2 hover:bg-[#00D0E8] transition"
+              className="w-full h-[52px] rounded-xl bg-[#00E5FF] text-[#080C1E] font-bold flex items-center justify-center gap-2 hover:bg-[#00D0E8] transition active:scale-[0.98]"
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/icons/ios11/lightning-bolt-32.png" alt="" width={16} height={16} className="w-4 h-4 object-contain brightness-0" style={{ filter: "brightness(0)" }} draggable={false} /> Beli Langsung
             </button>
             <button
               onClick={() => add(product)}
-              className="flex-1 h-[52px] rounded-xl ax-glass font-semibold text-white flex items-center justify-center gap-2 hover:bg-white/10"
+              className="w-full h-[48px] rounded-xl ax-glass font-semibold text-white text-sm flex items-center justify-center gap-2 hover:bg-white/10 transition"
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/icons/ios11/shopping-bag-32.png" alt="" width={16} height={16} className="w-4 h-4 object-contain brightness-0 invert" draggable={false} /> Tambah ke Keranjang

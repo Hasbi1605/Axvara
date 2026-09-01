@@ -1,7 +1,10 @@
 "use client";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 export function Footer() {
+  const pathname = usePathname();
+  if (pathname?.startsWith("/admin")) return null;
   return (
     <footer className="relative overflow-hidden border-t border-white/10 mt-12">
       <div className="pointer-events-none absolute -top-28 left-1/2 -translate-x-1/2 w-[860px] h-[260px] rounded-full opacity-[0.07] blur-[40px]" style={{ background: "radial-gradient(ellipse at center, #00E5FF, transparent 70%)" }} />

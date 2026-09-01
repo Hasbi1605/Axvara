@@ -4,6 +4,9 @@ import { Navbar } from "@/components/storefront/Navbar";
 import { Footer } from "@/components/storefront/Footer";
 import { CartDrawer } from "@/components/storefront/CartDrawer";
 import { Spotlight } from "@/components/ui/Spotlight";
+import { ToastProvider } from "@/components/ui/Toast";
+import { RouteLoading } from "@/components/ui/RouteLoading";
+import { Suspense } from "react";
 
 export const metadata: Metadata = {
   title: "AXVARA — Satu tempat untuk semua tools premium",
@@ -19,11 +22,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="id">
       <body className="min-h-screen flex flex-col">
-        <Spotlight />
-        <Navbar />
-        <CartDrawer />
-        <main className="flex-1">{children}</main>
-        <Footer />
+        <ToastProvider>
+          <Spotlight />
+          <Navbar />
+          <CartDrawer />
+          <Suspense fallback={null}>
+            <RouteLoading />
+          </Suspense>
+          <main className="flex-1 min-h-[50vh]">{children}</main>
+          <Footer />
+        </ToastProvider>
       </body>
     </html>
   );

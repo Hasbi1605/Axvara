@@ -51,3 +51,4 @@ data/*.shm
 data/*.db-*
 public/uploads/*
 cache/**
+.playwright-mcp/

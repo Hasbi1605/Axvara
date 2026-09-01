@@ -16,12 +16,16 @@ export default function HomePage() {
   const [page, setPage] = useState(1);
   const q = useSearch((s) => s.q);
   const [catalogProducts, setCatalogProducts] = useState<Product[]>(products);
+  const [loadingCatalog, setLoadingCatalog] = useState(true);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
 
   useEffect(() => {
+    setLoadingCatalog(true);
     fetch("/api/products?active=1")
-      .then((r) => r.ok ? r.json() : Promise.reject())
-      .then((data) => { if (Array.isArray(data.products)) setCatalogProducts(data.products); })
-      .catch(() => { /* static seed fallback stays available */ });
+      .then(async (r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then((data) => { if (Array.isArray(data.products)) setCatalogProducts(data.products); setCatalogError(null); })
+      .catch((e) => setCatalogError(e instanceof Error ? e.message : "Gagal memuat katalog"))
+      .finally(() => setLoadingCatalog(false));
   }, []);
 
   const filtered = useMemo(() => {
@@ -99,11 +103,35 @@ export default function HomePage() {
         <div className="mt-4">
           <CategoryPills active={activeCat} onChange={(c) => { setActiveCat(c); setPage(1); }} />
         </div>
-        <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
-          {paged.map((p, i) => (
-            <ProductCard key={p.id} product={p} index={i} />
-          ))}
-        </div>
+        {catalogError && (
+          <div className="mt-4 rounded-2xl bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-200 flex items-center justify-between gap-3">
+            <span>Gagal memuat katalog: {catalogError}</span>
+            <button onClick={() => location.reload()} className="h-8 px-3 rounded-full bg-white text-[#070a1e] text-xs font-bold shrink-0">Muat ulang</button>
+          </div>
+        )}
+        {loadingCatalog ? (
+          <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="ax-glass rounded-[20px] p-3 animate-pulse">
+                <div className="aspect-[4/3] rounded-2xl bg-white/10" />
+                <div className="mt-3 h-4 rounded-full bg-white/10 w-[78%]" />
+                <div className="mt-2 h-3 rounded-full bg-white/10 w-[46%]" />
+                <div className="mt-3 h-8 rounded-full bg-white/5" />
+              </div>
+            ))}
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="mt-10 ax-glass rounded-[20px] p-10 text-center">
+            <p className="text-white font-medium">Tidak ada produk yang cocok</p>
+            <p className="text-sm text-white/50 mt-1">Coba ubah kata kunci atau kategori.</p>
+          </div>
+        ) : (
+          <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
+            {paged.map((p, i) => (
+              <ProductCard key={p.id} product={p} index={i} />
+            ))}
+          </div>
+        )}
 
         {/* Pagination */}
         {totalPages > 1 && (

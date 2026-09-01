@@ -40,6 +40,7 @@ function CheckoutInner() {
   const [copied, setCopied] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   if (items.length === 0) {
     return (
@@ -58,10 +59,14 @@ function CheckoutInner() {
 
   const submit = async () => {
     setError(null);
-    if (!name.trim() || !wa.trim()) {
-      setError("Nama dan No WA wajib diisi");
-      return;
-    }
+    setFieldErrors({});
+    const fe: Record<string,string> = {};
+    if (!name.trim()) fe.name = "Nama wajib diisi (min 3 karakter).";
+    else if (name.trim().length < 3) fe.name = "Nama minimal 3 karakter.";
+    if (!wa.trim()) fe.wa = "No WA wajib diisi.";
+    else if (!/^08\d{8,13}$/.test(wa.trim().replace(/\s|-/g,""))) fe.wa = "No WA harus format 08… (10–15 digit).";
+    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) fe.email = "Format email tidak valid.";
+    if (Object.keys(fe).length) { setFieldErrors(fe); setError("Periksa field yang ditandai."); return; }
     if (!method) {
       setError("Pilih metode pembayaran terlebih dahulu");
       return;
@@ -71,7 +76,7 @@ function CheckoutInner() {
       return;
     }
     if (!fileName) {
-      setError("Upload bukti transfer terlebih dahulu");
+      setError("Upload bukti transfer terlebih dahulu (JPG/PNG max 5MB).");
       return;
     }
     setLoading(true);
@@ -107,9 +112,18 @@ function CheckoutInner() {
           <div>
             <h2 className="text-sm font-semibold text-white">① Data Pembeli</h2>
             <div className="mt-3 grid gap-3">
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nama lengkap *" className="h-11 px-4 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#00E5FF]/40" />
-              <input value={wa} onChange={(e) => setWa(e.target.value)} placeholder="No WA aktif * (08...)" className="h-11 px-4 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#00E5FF]/40" />
-              <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email (opsional)" className="h-11 px-4 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#00E5FF]/40" />
+              <div>
+                <input value={name} onChange={(e) => { setName(e.target.value); setFieldErrors(f=> ({...f, name: ""})); }} placeholder="Nama lengkap *" aria-invalid={!!fieldErrors.name} className={`w-full h-11 px-4 rounded-xl bg-white/[0.06] border text-sm text-white placeholder:text-white/30 focus:outline-none ${fieldErrors.name ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`} />
+                {fieldErrors.name && <p className="mt-1.5 text-xs text-red-300">{fieldErrors.name}</p>}
+              </div>
+              <div>
+                <input value={wa} onChange={(e) => { setWa(e.target.value); setFieldErrors(f=> ({...f, wa: ""})); }} placeholder="No WA aktif * (08...)" aria-invalid={!!fieldErrors.wa} className={`w-full h-11 px-4 rounded-xl bg-white/[0.06] border text-sm text-white placeholder:text-white/30 focus:outline-none ${fieldErrors.wa ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`} />
+                {fieldErrors.wa && <p className="mt-1.5 text-xs text-red-300">{fieldErrors.wa}</p>}
+              </div>
+              <div>
+                <input value={email} onChange={(e) => { setEmail(e.target.value); setFieldErrors(f=> ({...f, email: ""})); }} placeholder="Email (opsional)" aria-invalid={!!fieldErrors.email} className={`w-full h-11 px-4 rounded-xl bg-white/[0.06] border text-sm text-white placeholder:text-white/30 focus:outline-none ${fieldErrors.email ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`} />
+                {fieldErrors.email && <p className="mt-1.5 text-xs text-red-300">{fieldErrors.email}</p>}
+              </div>
             </div>
           </div>
 
@@ -245,8 +259,9 @@ function CheckoutInner() {
 
           {error && <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2">{error}</p>}
 
-          <button onClick={submit} disabled={loading} className="w-full h-[52px] rounded-xl bg-[#00E5FF] text-[#080C1E] font-bold hover:bg-[#00D0E8] disabled:opacity-50 transition">
-            {loading ? "Memproses..." : `Bayar ${formatRupiah(subtotal)} — Buat Pesanan`}
+          <button onClick={submit} disabled={loading} className="w-full h-[52px] rounded-xl bg-[#00E5FF] text-[#080C1E] font-bold hover:bg-[#00D0E8] disabled:opacity-60 transition inline-flex items-center justify-center gap-2">
+            {loading && <span className="w-5 h-5 rounded-full border-2 border-[#080C1E]/20 border-t-[#080C1E] animate-spin" />}
+            {loading ? "Memproses…" : `Bayar ${formatRupiah(subtotal)} — Buat Pesanan`}
           </button>
         </div>
 

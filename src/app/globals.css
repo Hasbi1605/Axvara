@@ -98,6 +98,11 @@ body {
 .toggle-btn[aria-pressed="false"]:hover { background: rgba(255,255,255,0.34) !important; border-color: rgba(255,255,255,0.45) !important; }
 .toggle-btn[aria-pressed="true"]:hover { filter: brightness(1.22) !important; box-shadow: 0 0 18px rgba(34,197,94,0.60) !important; }
 
+/* Skeleton shimmer */
+@keyframes axShimmer { 0%{transform:translateX(-100%)} 100%{transform:translateX(100%)} }
+.ax-skeleton { position:relative; overflow:hidden; background: rgba(255,255,255,0.06); }
+.ax-skeleton::after { content:""; position:absolute; inset:0; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent); transform: translateX(-100%); animation: axShimmer 1.6s infinite; }
+
 /* Focus */
 *:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(0,229,255,0.35); }
 
