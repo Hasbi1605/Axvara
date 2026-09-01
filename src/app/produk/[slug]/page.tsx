@@ -24,17 +24,19 @@ export default function ProductDetailPage() {
   const product = catalogProducts.find((p) => p.slug === slug) ?? products.find((p) => p.slug === slug);
 
   // Gallery: merge image + images, deduplicate — must be before early return (hooks rules)
+  // Use product?.images?.length as extra dep to re-compute when API data arrives
   const allImages = useMemo(() => {
     if (!product) return [""];
     const imgs: string[] = [];
     if (product.image) imgs.push(product.image);
-    if (product.images) {
+    if (product.images && Array.isArray(product.images)) {
       for (const img of product.images) {
         if (img && !imgs.includes(img)) imgs.push(img);
       }
     }
     return imgs.length ? imgs : [product.image || ""];
-  }, [product]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product?.slug, product?.image, product?.images?.length]);
 
   const [activeImg, setActiveImg] = useState(0);
 
