@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
   const d = parsed.data;
   if (d.image_url && !/^(\/r2\/|https:\/\/)/.test(d.image_url)) return NextResponse.json({ error: "Image URL tidak valid" }, { status: 400 });
-  if (d.cta_href && !/^(\/|https:\/\/)/.test(d.cta_href)) return NextResponse.json({ error: "CTA href tidak valid" }, { status: 400 });
+  if (d.cta_href && !/^(\/[^/]|https:\/\/)/.test(d.cta_href)) return NextResponse.json({ error: "CTA href harus /... atau https:// (// tidak diizinkan)" }, { status: 400 });
   const now = new Date().toISOString();
   const res = await execRun("INSERT INTO banners (title,body,image_url,cta_label,cta_href,is_active,delay_ms,max_show_per_session,sort_order,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)", d.title, d.body ?? null, d.image_url ?? null, d.cta_label ?? null, d.cta_href ?? null, d.is_active ? 1 : 0, d.delay_ms ?? 1500, d.max_show_per_session ?? 1, d.sort_order ?? 0, now, now);
   return NextResponse.json({ id: res.lastInsertRowid }, { status: 201 });

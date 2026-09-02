@@ -55,7 +55,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   try { await execRun(`UPDATE articles SET ${fields.join(",")} WHERE id=?`, ...vals); } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg.includes("UNIQUE")) return NextResponse.json({ error: "slug sudah dipakai" }, { status: 409 });
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error("500 src/app/api/articles/[id]/route.ts :", msg);
+    return NextResponse.json({ error: "Terjadi kesalahan pada server. Coba lagi." }, { status: 500 });
   }
   return NextResponse.json({ ok: true });
 }

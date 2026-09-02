@@ -30,6 +30,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!existing) return NextResponse.json({ error: "not found" }, { status: 404 });
   const data = parsed.data as Record<string, unknown>;
   if (data.image_url && typeof data.image_url === "string" && !/^(\/r2\/|https:\/\/)/.test(data.image_url)) return NextResponse.json({ error: "Image URL tidak valid" }, { status: 400 });
+  if (data.cta_href && typeof data.cta_href === "string" && !/^(\/[^/]|https:\/\/)/.test(data.cta_href)) return NextResponse.json({ error: "CTA href harus /... atau https://" }, { status: 400 });
   const fields: string[] = [];
   const vals: unknown[] = [];
   const map: Record<string, string> = { title: "title", body: "body", image_url: "image_url", cta_label: "cta_label", cta_href: "cta_href", delay_ms: "delay_ms", max_show_per_session: "max_show_per_session", sort_order: "sort_order" };

@@ -22,12 +22,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ code
   if (!code || !/^AXV-\d{8}-[A-Z0-9]{4,8}$/.test(code)) return NextResponse.json({ error: "Kode tidak valid" }, { status: 400 });
   const row = (await queryFirst("SELECT * FROM orders WHERE code=?", code)) as Record<string, unknown> | undefined;
   if (!row) return NextResponse.json({ error: "Pesanan tidak ditemukan" }, { status: 404 });
+  const waFull = String(row.customer_wa ?? "");
+  const waMasked = waFull.length >= 7 ? waFull.slice(0, 5) + "****" + waFull.slice(-4) : waFull ? waFull.slice(0, 3) + "****" : "";
+  const emailFull = String(row.customer_email ?? "");
+  const emailMasked = emailFull.includes("@") ? emailFull.replace(/(^.).+(@.*)/, (_, a, b) => `${a}***${b}`) : emailFull ? "***" : null;
   return NextResponse.json({
     order: {
       code: row.code,
       customer_name: row.customer_name,
-      customer_wa: row.customer_wa,
-      customer_email: row.customer_email,
+      customer_wa: waMasked,
+      customer_email: emailMasked,
       items: JSON.parse(String(row.items || "[]")),
       subtotal: row.subtotal,
       payment_method: row.payment_method,

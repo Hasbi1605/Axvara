@@ -35,8 +35,10 @@ export function getAdminCredentials() {
   const email = requireEnv("ADMIN_EMAIL");
   const sha = process.env.ADMIN_PASSWORD_SHA256 || process.env.ADMIN_PASSWORD_HASH_SHA256;
   if (sha && sha.trim()) {
-    if (!/^[a-f0-9]{64}$/i.test(sha.trim())) throw new Error("ADMIN_PASSWORD_SHA256 must be 64 hex chars (sha256)");
-    return { email, sha256: sha.trim().toLowerCase() };
+    const t = sha.trim();
+    // Allow legacy 64 hex sha256 OR new pbkdf2$iter$salt$hex
+    if (/^[a-f0-9]{64}$/i.test(t) || t.startsWith("pbkdf2$")) return { email, sha256: t };
+    throw new Error("ADMIN_PASSWORD_SHA256 must be 64 hex sha256 or pbkdf2$iter$salt$hex");
   }
   if (isDev()) return { email, sha256: DEV_FALLBACK_SHA256 };
   throw new Error("Missing required env: ADMIN_PASSWORD_SHA256");
@@ -49,6 +51,15 @@ async function sha256Hex(s: string): Promise<string> {
     .join("");
 }
 
+async function pbkdf2Hex(password: string, salt: string, iter: number): Promise<string> {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt: enc.encode(salt), iterations: iter, hash: "SHA-256" }, key, 256);
+  return Array.from(new Uint8Array(bits))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 function timingSafeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let r = 0;
@@ -56,15 +67,50 @@ function timingSafeEqual(a: string, b: string): boolean {
   return r === 0;
 }
 
+function parseStoredHash(stored: string): { kind: "pbkdf2"; iter: number; salt: string; hash: string } | { kind: "sha256"; hash: string } {
+  // New format: pbkdf2$100000$salt$hex  — recommended
+  if (stored.startsWith("pbkdf2$")) {
+    const parts = stored.split("$");
+    if (parts.length === 4) {
+      const iter = parseInt(parts[1], 10);
+      if (iter >= 10000 && parts[2] && /^[a-f0-9]{64}$/i.test(parts[3])) return { kind: "pbkdf2", iter, salt: parts[2], hash: parts[3].toLowerCase() };
+    }
+  }
+  // Legacy: raw 64 hex sha256 (1-round, fast — keep for compat but encourage migration)
+  if (/^[a-f0-9]{64}$/i.test(stored)) return { kind: "sha256", hash: stored.toLowerCase() };
+  throw new Error("Stored hash format invalid");
+}
+
 export async function verifyPassword(plain: string, _hashUnused: string) {
-  const { sha256 } = getAdminCredentials();
+  const { sha256: stored } = getAdminCredentials();
+  const parsed = parseStoredHash(stored);
+  if (parsed.kind === "pbkdf2") {
+    const hex = await pbkdf2Hex(plain, parsed.salt, parsed.iter);
+    return timingSafeEqual(hex, parsed.hash);
+  }
   const hex = await sha256Hex(plain);
-  return timingSafeEqual(hex, sha256.toLowerCase());
+  return timingSafeEqual(hex, parsed.hash);
 }
 
 export async function verifyPasswordWithSha(plain: string, expectedShaHex: string) {
-  const hex = await sha256Hex(plain);
-  return timingSafeEqual(hex, expectedShaHex.toLowerCase());
+  // Backward compat helper — detect pbkdf2 format
+  try {
+    const parsed = parseStoredHash(expectedShaHex);
+    if (parsed.kind === "pbkdf2") {
+      const hex = await pbkdf2Hex(plain, parsed.salt, parsed.iter);
+      return timingSafeEqual(hex, parsed.hash);
+    }
+    const hex = await sha256Hex(plain);
+    return timingSafeEqual(hex, parsed.hash);
+  } catch {
+    const hex = await sha256Hex(plain);
+    return timingSafeEqual(hex, expectedShaHex.toLowerCase());
+  }
+}
+
+export async function hashPasswordPbkdf2(password: string, salt: string, iter = 100000): Promise<string> {
+  const hex = await pbkdf2Hex(password, salt, iter);
+  return `pbkdf2$${iter}$${salt}$${hex}`;
 }
 
 export async function createAdminToken(email: string) {

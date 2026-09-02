@@ -93,6 +93,17 @@ export async function POST(req: NextRequest) {
   };
   const payment_account = accountMap[pm] ?? pm;
 
+  // Atomic stock decrement: only if enough stock (or unlimited -1)
+  for (const [pid, qty] of agg.entries()) {
+    const r = await execRun("UPDATE products SET stock = stock - ? WHERE id=? AND (stock=-1 OR stock >= ?)", qty, pid, qty);
+    if (r.changes === 0) {
+      // Re-check if product is unlimited or truly out of stock (race)
+      const chk = (await queryFirst("SELECT stock, name FROM products WHERE id=?", pid)) as Record<string, unknown> | undefined;
+      const st = chk?.stock as number;
+      if (st !== -1) return NextResponse.json({ error: `${chk?.name ?? `Produk #${pid}`} stok tidak cukup (race, coba lagi)` }, { status: 409 });
+    }
+  }
+
   try {
     await execRun(
       `INSERT INTO orders (code,customer_name,customer_wa,customer_email,items,subtotal,payment_method,payment_account,proof_url,status) VALUES (?,?,?,?,?,?,?,?,?,?)`,
@@ -108,9 +119,14 @@ export async function POST(req: NextRequest) {
       "pending"
     );
   } catch (e: unknown) {
+    // Rollback stock on failure (best-effort)
+    for (const [pid, qty] of agg.entries()) {
+      await execRun("UPDATE products SET stock = stock + ? WHERE id=? AND stock != -1", qty, pid).catch(() => {});
+    }
     const msg = e instanceof Error ? e.message : String(e);
     if (msg.includes("UNIQUE")) return NextResponse.json({ error: "Kode pesanan bentrok, coba lagi." }, { status: 409 });
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error("POST /api/orders insert failed:", msg);
+    return NextResponse.json({ error: "Terjadi kesalahan pada server. Coba lagi." }, { status: 500 });
   }
 
   return NextResponse.json({ code, subtotal, status: "pending" }, { status: 201 });
@@ -125,12 +141,18 @@ export async function GET(req: NextRequest) {
     if (!/^AXV-\d{8}-[A-Z0-9]{4,8}$/.test(code)) return NextResponse.json({ error: "Kode tidak valid" }, { status: 400 });
     const row = (await queryFirst("SELECT * FROM orders WHERE code=?", code)) as Record<string, unknown> | undefined;
     if (!row) return NextResponse.json({ error: "Pesanan tidak ditemukan" }, { status: 404 });
+    // PII minimal on public endpoint: mask WA + email
+    const waFull = String(row.customer_wa ?? "");
+    const waMasked = waFull.length >= 7 ? waFull.slice(0, 5) + "****" + waFull.slice(-4) : waFull ? waFull.slice(0, 3) + "****" : "";
+    const emailFull = String(row.customer_email ?? "");
+    const emailMasked = emailFull.includes("@") ? emailFull.replace(/(^.).+(@.*)/, (_, a, b) => `${a}***${b}`) : emailFull ? "***" : null;
     return NextResponse.json({
       order: {
         code: row.code,
         customer_name: row.customer_name,
-        customer_wa: row.customer_wa,
-        customer_email: row.customer_email,
+        customer_wa: waMasked,
+        customer_wa_full: undefined,
+        customer_email: emailMasked,
         items: JSON.parse(String(row.items || "[]")),
         subtotal: row.subtotal,
         payment_method: row.payment_method,

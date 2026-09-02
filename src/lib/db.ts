@@ -169,10 +169,35 @@ export async function execRun(sql: string, ...params: unknown[]): Promise<{ last
   }
   const lower = sql.toLowerCase();
   if (lower.startsWith("update products set")) {
+    // Handle stock decrement/increment which has different param layouts
+    if (lower.includes("stock = stock - ?")) {
+      // UPDATE products SET stock = stock - ? WHERE id=? AND (stock=-1 OR stock >= ?)
+      // params: [qty, id, qty]
+      const dec = Number(params[0]);
+      const id = String(params[1]);
+      const row = getSharedMem().find((r) => String(r.id) === id);
+      if (!row) return { changes: 0 };
+      const stock = row.stock as number;
+      if (stock !== -1 && stock < dec) return { changes: 0 };
+      if (stock !== -1) row.stock = stock - dec;
+      return { changes: 1 };
+    }
+    if (lower.includes("stock = stock + ?")) {
+      // UPDATE products SET stock = stock + ? WHERE id=? AND stock != -1
+      // params: [qty, id]
+      const inc = Number(params[0]);
+      const id = String(params[1]);
+      const row = getSharedMem().find((r) => String(r.id) === id);
+      if (!row) return { changes: 0 };
+      if ((row.stock as number) !== -1) row.stock = (row.stock as number) + inc;
+      return { changes: 1 };
+    }
     const id = String(params[params.length - 1]);
     const row = getSharedMem().find((r) => String(r.id) === id);
     if (!row) return { changes: 0 };
+    if (lower.includes("stock=?")) row.stock = Number(params[0]);
     if (lower.includes("is_active=?")) row.is_active = Number(params[0]) ? 1 : 0;
+    // generic fallback
     return { changes: 1 };
   }
   if (lower.startsWith("insert into products")) {
