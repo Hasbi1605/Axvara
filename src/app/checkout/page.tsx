@@ -53,6 +53,9 @@ function CheckoutInner() {
   const [wa, setWa] = useState("");
   const [email, setEmail] = useState("");
   const [fileName, setFileName] = useState<string | null>(null);
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [proofUrl, setProofUrl] = useState<string | null>(null);
+  const [proofUploading, setProofUploading] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -91,6 +94,14 @@ function CheckoutInner() {
       setError("Pilih bank tujuan terlebih dahulu");
       return;
     }
+    if (!proofUrl) {
+      setError("Upload bukti transfer terlebih dahulu (JPG/PNG/WebP max 5MB, wajib).");
+      return;
+    }
+    if (proofUploading) {
+      setError("Tunggu upload bukti selesai.");
+      return;
+    }
     setLoading(true);
     const payMethod = method === "bank" ? `bank:${bankKey}` as const : method!;
     // Build server payload: product_id + qty, price dihitung server dari D1
@@ -121,7 +132,7 @@ function CheckoutInner() {
           customer_email: email.trim() || undefined,
           items: payloadItems,
           payment_method: payMethod,
-          proof_url: null,
+          proof_url: proofUrl,
         }),
       });
       const j = await r.json().catch(() => ({}));
@@ -276,26 +287,37 @@ function CheckoutInner() {
 
           <div>
             <h2 className="text-sm font-semibold text-white">③ Upload Bukti Transfer *</h2>
-            <label className="mt-3 flex flex-col items-center justify-center gap-2 ax-glass rounded-2xl border-dashed p-6 cursor-pointer hover:bg-white/10 transition text-center">
+            <label className={`mt-3 flex flex-col items-center justify-center gap-2 ax-glass rounded-2xl border-dashed p-6 cursor-pointer transition text-center ${proofUploading ? "opacity-60 pointer-events-none" : "hover:bg-white/10"}`}>
               <img src="/icons/ios11/upload-32.png" alt="" width={24} height={24} className="w-6 h-6 object-contain brightness-0 invert opacity-60" draggable={false} />
-              <span className="text-sm text-white/70">{fileName ? fileName : "Klik untuk upload bukti (JPG/PNG, max 5MB)"}</span>
+              <span className="text-sm text-white/70">{proofUploading ? "Mengupload..." : fileName ? fileName : "Klik untuk upload bukti (JPG/PNG/WebP, max 5MB)"}</span>
+              {proofUrl && <span className="text-[11px] text-emerald-300">✓ Terupload</span>}
               <input
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
                 className="hidden"
-                onChange={(e) => {
+                onChange={async (e) => {
                   const f = e.target.files?.[0];
                   if (!f) return;
-                  if (f.size > 5 * 1024 * 1024) {
-                    setError("File max 5MB");
-                    return;
-                  }
+                  if (f.size > 5 * 1024 * 1024) { setError("File max 5MB"); return; }
+                  if (!["image/jpeg","image/jpg","image/png","image/webp"].includes(f.type)) { setError("Hanya JPG/PNG/WebP"); return; }
                   setFileName(f.name);
+                  setProofFile(f);
                   setError(null);
+                  setProofUploading(true);
+                  try {
+                    const fd = new FormData();
+                    fd.append("file", f);
+                    const r = await fetch("/api/proof/upload", { method: "POST", body: fd });
+                    const j = await r.json().catch(()=> ({}));
+                    if (!r.ok) throw new Error(j.error || `Upload gagal (${r.status})`);
+                    setProofUrl(j.url);
+                  } catch (err) { setError(err instanceof Error ? err.message : "Upload gagal"); setProofFile(null); }
+                  finally { setProofUploading(false); }
+                  e.target.value = "";
                 }}
               />
             </label>
-            <p className="text-[11px] text-white/30 mt-2">Pastikan bukti jelas: nominal, tanggal, dan tujuan transfer terlihat.</p>
+            <p className="text-[11px] text-white/30 mt-2">Pastikan bukti jelas: nominal, tanggal, dan tujuan transfer terlihat. Upload dulu sebelum buat pesanan.</p>
           </div>
 
           {error && <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2">{error}</p>}

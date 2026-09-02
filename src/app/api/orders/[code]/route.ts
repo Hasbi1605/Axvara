@@ -4,9 +4,22 @@ import { queryFirst } from "@/lib/db";
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
-export async function GET(_: NextRequest, { params }: { params: Promise<{ code: string }> }) {
+const hits = new Map<string, { c: number; t: number }>();
+function rateLimit(ip: string, max = 20) {
+  const now = Date.now();
+  const e = hits.get(ip);
+  if (!e || now - e.t > 60_000) { hits.set(ip, { c: 1, t: now }); return true; }
+  e.c++;
+  return e.c <= max;
+}
+function clientIp(req: NextRequest) {
+  return req.headers.get("cf-connecting-ip") || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "0.0.0.0";
+}
+
+export async function GET(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
+  if (!rateLimit(clientIp(req), 20)) return NextResponse.json({ error: "Terlalu sering, coba lagi 1 menit." }, { status: 429, headers: { "Retry-After": "60" } });
   const { code } = await params;
-  if (!code || !/^AXV-\d{8}-[A-Z0-9]{4}$/.test(code)) return NextResponse.json({ error: "Kode tidak valid" }, { status: 400 });
+  if (!code || !/^AXV-\d{8}-[A-Z0-9]{4,8}$/.test(code)) return NextResponse.json({ error: "Kode tidak valid" }, { status: 400 });
   const row = (await queryFirst("SELECT * FROM orders WHERE code=?", code)) as Record<string, unknown> | undefined;
   if (!row) return NextResponse.json({ error: "Pesanan tidak ditemukan" }, { status: 404 });
   return NextResponse.json({

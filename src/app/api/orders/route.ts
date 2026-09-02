@@ -38,17 +38,15 @@ function clientIp(req: NextRequest) {
 function generateCode(): string {
   const d = new Date();
   const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
-  // crypto random for edge
-  const bytes = new Uint8Array(3);
+  // 6 byte = 48-bit entropy, 8 hex chars — jauh lebih kuat dari 3 byte/4 char
+  const bytes = new Uint8Array(6);
   crypto.getRandomValues(bytes);
   const rand = Array.from(bytes)
-    .map((b) => b.toString(36).padStart(2, "0"))
+    .map((b) => b.toString(16).padStart(2, "0"))
     .join("")
-    .slice(0, 4)
+    .slice(0, 8)
     .toUpperCase();
-  // Fallback if short
-  const r = rand.length >= 4 ? rand : Math.random().toString(36).slice(2, 6).toUpperCase();
-  return `AXV-${ymd}-${r}`;
+  return `AXV-${ymd}-${rand}`;
 }
 
 export async function POST(req: NextRequest) {
@@ -71,19 +69,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "URL bukti tidak valid" }, { status: 400 });
   }
 
+  // Agregasi qty per product_id sebelum cek stok (bypass duplicate)
+  const agg = new Map<number, number>();
+  for (const it of items) agg.set(it.product_id, (agg.get(it.product_id) ?? 0) + it.qty);
+
   // Server-authoritative pricing: fetch each product from DB
   let subtotal = 0;
   const snapshot: { product_id: number; name: string; price: number; qty: number }[] = [];
-  for (const it of items) {
-    const row = (await queryFirst("SELECT p.*, c.slug as cat_slug FROM products p LEFT JOIN categories c ON c.id=p.category_id WHERE p.id=?", it.product_id)) as Record<string, unknown> | undefined;
-    if (!row) return NextResponse.json({ error: `Produk #${it.product_id} tidak ditemukan` }, { status: 404 });
+  for (const [pid, totalQty] of agg.entries()) {
+    const row = (await queryFirst("SELECT p.*, c.slug as cat_slug FROM products p LEFT JOIN categories c ON c.id=p.category_id WHERE p.id=?", pid)) as Record<string, unknown> | undefined;
+    if (!row) return NextResponse.json({ error: `Produk #${pid} tidak ditemukan` }, { status: 404 });
     if ((row.is_active as number) === 0) return NextResponse.json({ error: `${row.name} sedang nonaktif` }, { status: 400 });
     const stock = row.stock as number;
     if (stock !== -1 && stock !== null && stock <= 0) return NextResponse.json({ error: `${row.name} stok habis` }, { status: 400 });
-    if (stock !== -1 && stock !== null && it.qty > stock) return NextResponse.json({ error: `${row.name} stok tersisa ${stock}` }, { status: 400 });
+    if (stock !== -1 && stock !== null && totalQty > stock) return NextResponse.json({ error: `${row.name} stok tersisa ${stock} (diminta ${totalQty})` }, { status: 400 });
     const price = Number(row.price);
-    subtotal += price * it.qty;
-    snapshot.push({ product_id: Number(row.id), name: String(row.name), price, qty: it.qty });
+    subtotal += price * totalQty;
+    snapshot.push({ product_id: Number(row.id), name: String(row.name), price, qty: totalQty });
   }
 
   // Normalize WA to 62
@@ -128,9 +130,12 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
+  const ip = clientIp(req);
+  if (!rateLimit(ip, 20)) return NextResponse.json({ error: "Terlalu sering, coba lagi 1 menit." }, { status: 429, headers: { "Retry-After": "60" } });
   const { searchParams } = new URL(req.url);
   const code = searchParams.get("code")?.trim();
   if (code) {
+    if (!/^AXV-\d{8}-[A-Z0-9]{4,8}$/.test(code)) return NextResponse.json({ error: "Kode tidak valid" }, { status: 400 });
     const row = (await queryFirst("SELECT * FROM orders WHERE code=?", code)) as Record<string, unknown> | undefined;
     if (!row) return NextResponse.json({ error: "Pesanan tidak ditemukan" }, { status: 404 });
     return NextResponse.json({

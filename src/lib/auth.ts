@@ -6,7 +6,7 @@ function isDev(): boolean {
 
 // DEV fallback — only used when NODE_ENV !== production
 const DEV_FALLBACK_SECRET = "axvara-dev-secret-change-in-production-32chars!";
-const DEV_FALLBACK_SHA256 = "3e3812f3daeb315a0ac17a094bffce7d67ff7c391f5e852cc9373d33ac38adbc"; // sha256("#Kecitran123") — DEV ONLY
+const DEV_FALLBACK_SHA256 = "4dd15911ef55de049db9770568de456a4a97e3607c98ea74fe344888eae0ed95"; // sha256("axvara-dev-only-please-change") — DEV ONLY, bukan prod
 
 function requireEnv(name: string): string {
   const v = process.env[name];
@@ -115,6 +115,9 @@ export async function requireAdmin(req: Request) {
     return null;
   }
   if (!payload) return null;
+  // Idle enforcement: 2h tanpa aktivitas wajib login ulang (F-High)
+  const idle = getIdleTokenFromCookieHeader(req.headers.get("cookie"));
+  if (!idle) return null;
   let email = "";
   try {
     email = getAdminCredentials().email;

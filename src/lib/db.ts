@@ -113,6 +113,13 @@ export async function queryAll(sql: string, ...params: unknown[]): Promise<Recor
     rows.sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")));
     return rows;
   }
+  if (lower.includes("from articles")) {
+    // In dev fallback, return empty (no seed). Prod uses D1.
+    return [];
+  }
+  if (lower.includes("from banners")) {
+    return [];
+  }
   return [];
 }
 
