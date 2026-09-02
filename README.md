@@ -129,7 +129,8 @@ Letakkan file QRIS **hi-res asli** dari Brotherstore06 sebagai `public/qris/axva
 ## 🔐 Admin Demo
 
 - URL: `/admin`
-- Email: `admin@axvara.id` / Password: `axvara123` (MVP localStorage, nanti ganti ke D1 + bcrypt + cookie)
+- Credentials: set via Cloudflare Pages environment variables (`ADMIN_EMAIL`, `ADMIN_PASSWORD_SHA256` dalam format PBKDF2)
+- Dev mode: email `admin@axvara.id` / password `axvara-dev-only`
 
 ---
 

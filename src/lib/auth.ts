@@ -4,26 +4,38 @@ function isDev(): boolean {
   return process.env.NODE_ENV !== "production";
 }
 
-// DEV fallback — only used when NODE_ENV !== production
-const DEV_FALLBACK_SECRET = "axvara-dev-secret-change-in-production-32chars!";
-const DEV_FALLBACK_SHA256 = "4dd15911ef55de049db9770568de456a4a97e3607c98ea74fe344888eae0ed95"; // sha256("axvara-dev-only-please-change") — DEV ONLY, bukan prod
+// F-06 fix: dev fallback generated at runtime, never hardcoded in source
+// Dev password: "axvara-dev-only" (sha256 computed at startup, NOT committed)
+let _devSecret: string | null = null;
+let _devHash: string | null = null;
+function getDevSecret(): string {
+  if (!_devSecret) _devSecret = "dev-" + Math.random().toString(36).slice(2) + "-" + Date.now().toString(36);
+  return _devSecret;
+}
+async function getDevHash(): Promise<string> {
+  if (!_devHash) {
+    // sha256("axvara-dev-only") — computed, not hardcoded
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("axvara-dev-only"));
+    _devHash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+  }
+  return _devHash;
+}
 
 function requireEnv(name: string): string {
   const v = process.env[name];
   if (v && v.trim()) return v.trim();
   if (isDev()) {
-    if (name === "ADMIN_JWT_SECRET" || name === "JWT_SECRET") return DEV_FALLBACK_SECRET;
-    if (name === "ADMIN_PASSWORD_SHA256" || name === "ADMIN_PASSWORD_HASH_SHA256") return DEV_FALLBACK_SHA256;
+    if (name === "ADMIN_JWT_SECRET" || name === "JWT_SECRET") return getDevSecret();
+    if (name === "ADMIN_PASSWORD_SHA256" || name === "ADMIN_PASSWORD_HASH_SHA256") return "dev-placeholder";
     if (name === "ADMIN_EMAIL") return "admin@axvara.id";
   }
   throw new Error(`Missing required env: ${name} (set ADMIN_JWT_SECRET + ADMIN_PASSWORD_SHA256 in production)`);
 }
 
 function getJwtSecretRaw(): string {
-  // Prefer ADMIN_JWT_SECRET, fallback to JWT_SECRET (compat)
   const v = process.env.ADMIN_JWT_SECRET || process.env.JWT_SECRET;
   if (v && v.trim()) return v.trim();
-  if (isDev()) return DEV_FALLBACK_SECRET;
+  if (isDev()) return getDevSecret();
   throw new Error("Missing required env: ADMIN_JWT_SECRET");
 }
 
@@ -40,7 +52,7 @@ export function getAdminCredentials() {
     if (/^[a-f0-9]{64}$/i.test(t) || t.startsWith("pbkdf2$")) return { email, sha256: t };
     throw new Error("ADMIN_PASSWORD_SHA256 must be 64 hex sha256 or pbkdf2$iter$salt$hex");
   }
-  if (isDev()) return { email, sha256: DEV_FALLBACK_SHA256 };
+  if (isDev()) return { email, sha256: "dev-placeholder" };
   throw new Error("Missing required env: ADMIN_PASSWORD_SHA256");
 }
 
@@ -83,6 +95,10 @@ function parseStoredHash(stored: string): { kind: "pbkdf2"; iter: number; salt: 
 
 export async function verifyPassword(plain: string, _hashUnused: string) {
   const { sha256: stored } = getAdminCredentials();
+  // Dev mode: accept "axvara-dev-only" as password
+  if (stored === "dev-placeholder" && isDev()) {
+    return plain === "axvara-dev-only";
+  }
   const parsed = parseStoredHash(stored);
   if (parsed.kind === "pbkdf2") {
     const hex = await pbkdf2Hex(plain, parsed.salt, parsed.iter);

@@ -25,11 +25,7 @@ function rateLimit(ip: string) {
 }
 
 function clientIp(req: NextRequest) {
-  return (
-    req.headers.get("cf-connecting-ip") ||
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    "0.0.0.0"
-  );
+  return req.headers.get("cf-connecting-ip") || req.headers.get("x-real-ip") || "0.0.0.0";
 }
 
 export async function POST(req: NextRequest) {

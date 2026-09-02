@@ -15,7 +15,11 @@ export function rateLimit(key: string, max: number, windowMs = 60_000): boolean 
 }
 
 export function clientIp(req: NextRequest): string {
-  return req.headers.get("cf-connecting-ip") || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "0.0.0.0";
+  // F-05 fix: prefer cf-connecting-ip (cannot be spoofed behind CF), ignore x-forwarded-for if CF header present
+  const cfIp = req.headers.get("cf-connecting-ip");
+  if (cfIp) return cfIp;
+  // Fallback for dev/non-CF environments
+  return req.headers.get("x-real-ip") || "0.0.0.0";
 }
 
 export function rateLimitKey(req: NextRequest, scope: string): string {

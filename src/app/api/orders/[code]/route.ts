@@ -13,13 +13,13 @@ function rateLimit(ip: string, max = 20) {
   return e.c <= max;
 }
 function clientIp(req: NextRequest) {
-  return req.headers.get("cf-connecting-ip") || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "0.0.0.0";
+  return req.headers.get("cf-connecting-ip") || req.headers.get("x-real-ip") || "0.0.0.0";
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   if (!rateLimit(clientIp(req), 20)) return NextResponse.json({ error: "Terlalu sering, coba lagi 1 menit." }, { status: 429, headers: { "Retry-After": "60" } });
   const { code } = await params;
-  if (!code || !/^AXV-\d{8}-[A-Z0-9]{4,8}$/.test(code)) return NextResponse.json({ error: "Kode tidak valid" }, { status: 400 });
+  if (!code || !/^AXV-\d{8}-[A-Z0-9]{8}$/.test(code)) return NextResponse.json({ error: "Kode tidak valid" }, { status: 400 });
   const row = (await queryFirst("SELECT * FROM orders WHERE code=?", code)) as Record<string, unknown> | undefined;
   if (!row) return NextResponse.json({ error: "Pesanan tidak ditemukan" }, { status: 404 });
   const waFull = String(row.customer_wa ?? "");

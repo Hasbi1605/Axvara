@@ -30,6 +30,6 @@ export function isValidOrderCode(code: string): boolean {
   return /^AXV-\d{8}-[A-Z0-9]{8}$/.test(code);
 }
 
-// Dev hash must NOT equal prod hash — regression guard for exposed dev password finding
-export const DEV_FALLBACK_SHA256 = "4dd15911ef55de049db9770568de456a4a97e3607c98ea74fe344888eae0ed95";
-export const PROD_SHA256_HINT = "3e3812f3daeb315a0ac17a094bffce7d67ff7c391f5e852cc9373d33ac38adbc"; // should NOT appear in .env.example
+// F-01 fix: removed all hardcoded password hashes from source code
+// Dev password: "axvara-dev-only" (handled in auth.ts verifyPassword)
+// Prod password: set via ADMIN_PASSWORD_SHA256 in CF Pages Variables (PBKDF2 format)

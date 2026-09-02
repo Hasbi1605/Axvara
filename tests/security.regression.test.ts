@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import fs from "fs";
 import path from "path";
-import { generateOrderCode, checkMagicBytes, isAllowedImageType, aggregateQty, isValidOrderCode, DEV_FALLBACK_SHA256, PROD_SHA256_HINT } from "@/lib/security";
+import { generateOrderCode, checkMagicBytes, isAllowedImageType, aggregateQty, isValidOrderCode } from "@/lib/security";
 import { rateLimit } from "@/lib/rateLimit";
 
 // Helper to mock NextRequest minimal for rateLimit
@@ -58,25 +58,35 @@ describe("F-High: Idle timeout — requireAdmin harus cek idle cookie", () => {
   });
 });
 
-describe("F-High: Exposed dev password — .env.example sanitized + fallback != prod", () => {
-  it(".env.example tidak mengandung hash prod #Kecitran123", () => {
+describe("F-High: No hardcoded password hashes in source (F-01 fix)", () => {
+  it(".env.example tidak mengandung password atau hash prod", () => {
     const envExample = fs.readFileSync(path.join(process.cwd(), ".env.example"), "utf-8");
-    expect(envExample).not.toContain(PROD_SHA256_HINT);
     expect(envExample).not.toContain("#Kecitran123");
+    expect(envExample).not.toContain("axvara123");
+    expect(envExample).not.toContain("3e3812f3");
     expect(envExample).toContain("__ISI_DI_CLOUDFLARE_PAGES_VARIABLES__");
   });
 
-  it("DEV_FALLBACK_SHA256 di security.ts dan auth.ts bukan hash prod", async () => {
-    const authSrc = fs.readFileSync(path.join(process.cwd(), "src/lib/auth.ts"), "utf-8");
-    expect(authSrc).toContain(DEV_FALLBACK_SHA256);
-    expect(DEV_FALLBACK_SHA256).not.toBe(PROD_SHA256_HINT);
-    // auth.ts harus contain dev-only comment
-    expect(authSrc).toMatch(/DEV ONLY|dev-only/i);
+  it("security.ts tidak mengandung hardcoded hash apapun", () => {
+    const src = fs.readFileSync(path.join(process.cwd(), "src/lib/security.ts"), "utf-8");
+    expect(src).not.toContain("4dd15911");
+    expect(src).not.toContain("3e3812f3");
+    expect(src).not.toMatch(/DEV_FALLBACK_SHA256/);
+    expect(src).not.toMatch(/PROD_SHA256_HINT/);
   });
 
-  it("auth.ts fallback hanya dipakai di isDev() (fail-closed di prod)", () => {
+  it("auth.ts tidak mengandung hardcoded secret/hash", () => {
     const src = fs.readFileSync(path.join(process.cwd(), "src/lib/auth.ts"), "utf-8");
-    // requireEnv harus throw di prod jika env kosong
+    expect(src).not.toContain("axvara-dev-secret-change-in-production");
+    expect(src).not.toContain("4dd15911");
+    expect(src).not.toContain("3e3812f3");
+    // Dev password handled via runtime check, not hardcoded hash
+    expect(src).toContain("axvara-dev-only");
+    expect(src).toContain("isDev()");
+  });
+
+  it("auth.ts fail-closed di prod (throw jika env kosong)", () => {
+    const src = fs.readFileSync(path.join(process.cwd(), "src/lib/auth.ts"), "utf-8");
     expect(src).toContain("Missing required env:");
     expect(src).toContain("ADMIN_PASSWORD_SHA256");
     expect(src).toContain("ADMIN_JWT_SECRET");

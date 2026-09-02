@@ -30,6 +30,13 @@ jobs:
             exit 1
           fi
 
+      # F-12: Guard — no passwords in recent commit messages
+      - name: Guard commit messages
+        run: |
+          if git log --oneline -20 --format="%s %b" | grep -iE "password.*(to |is |=|:)" | grep -v "placeholder\|rotate\|guard\|fix"; then
+            echo "::warning::Possible plaintext password in commit message"
+          fi
+
       # Build for Cloudflare Pages (next-on-pages)
       - name: Build for Pages
         run: npx @cloudflare/next-on-pages
