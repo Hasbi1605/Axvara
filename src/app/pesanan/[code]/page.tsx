@@ -22,12 +22,13 @@ export default function OrderSuccessPage() {
   const [order, setOrder] = useState<Order | null>(null);
 
   useEffect(() => {
-    // Try local first (fast), then server (authoritative)
+    // Show local data instantly for fast render
     try {
       const all: Order[] = JSON.parse(localStorage.getItem("axvara-orders") || "[]");
       const found = all.find((o) => o.code === code);
-      if (found) { setOrder(found); return; }
+      if (found) setOrder(found);
     } catch {}
+    // ALWAYS fetch server for authoritative status (BUG-02 fix)
     if (!code || typeof code !== "string") return;
     fetch(`/api/orders?code=${encodeURIComponent(String(code))}`)
       .then(async (r) => {

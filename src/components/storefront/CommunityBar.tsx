@@ -1,12 +1,12 @@
 "use client";
 
 export function CommunityBar() {
-  // Placeholder — ganti href saat link asli jadi
-  const waHref = "#";
+  // WA Group → fallback ke WA admin sampai grup jadi. Telegram: segera hadir badge.
+  const waHref = "https://wa.me/6282135277434?text=Halo%20AXVARA%2C%20saya%20mau%20join%20grup%20promo";
   const tgHref = "#";
-  const comingSoon = (e: React.MouseEvent) => {
+  const tgComingSoon = (e: React.MouseEvent) => {
     e.preventDefault();
-    alert("Link menyusul — Grup WhatsApp & Bot Telegram AXVARA segera hadir. Hubungi Admin via WA untuk info terbaru.");
+    alert("Bot Telegram AXVARA segera hadir. Hubungi Admin via WA untuk info terbaru.");
   };
   return (
     <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 -mt-1 mb-2">
@@ -14,7 +14,7 @@ export function CommunityBar() {
         {/* WA Group */}
         <a
           href={waHref}
-          onClick={comingSoon}
+          target="_blank"
           className="group flex-1 flex items-center gap-2.5 sm:gap-3 px-3 sm:px-4 py-3 rounded-2xl ax-glass border border-white/10 hover:border-[#25D366]/30 hover:bg-white/[0.06] transition text-left"
         >
           <span className="w-9 h-9 rounded-full overflow-hidden shrink-0 shadow-[0_4px_14px_rgba(37,211,102,0.35)] bg-white flex items-center justify-center p-0.5">
@@ -31,7 +31,7 @@ export function CommunityBar() {
         {/* Telegram Bot */}
         <a
           href={tgHref}
-          onClick={comingSoon}
+          onClick={tgComingSoon}
           className="group flex-1 flex items-center gap-3 px-3 sm:px-4 py-3 rounded-2xl ax-glass border border-white/10 hover:border-[#26A5E4]/30 hover:bg-white/[0.06] transition text-left"
         >
           <span className="w-9 h-9 rounded-full overflow-hidden shrink-0 shadow-[0_4px_14px_rgba(38,165,228,0.35)] bg-[#2AABEE] flex items-center justify-center">

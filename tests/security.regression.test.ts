@@ -144,8 +144,188 @@ describe("F-Medium: Payment proof — upload strict", () => {
 });
 
 describe("Regression: checkout proof_url tidak null", () => {
-  it("POST /api/orders schema harus punya proof_url string optional (tidak selalu null)", () => {
+  it("POST /api/orders schema proof_url wajib (bukan optional/nullable) — BUG-04", () => {
     const src = fs.readFileSync(path.join(process.cwd(), "src/app/api/orders/route.ts"), "utf-8");
     expect(src).toContain("proof_url");
+    // BUG-04: proof_url harus required (min 1), bukan optional/nullable
+    expect(src).toMatch(/proof_url:\s*z\.string\(\)\.trim\(\)\.min\(1/);
+    expect(src).not.toMatch(/proof_url:.*\.optional\(\)/);
+    expect(src).not.toMatch(/proof_url:.*\.nullable\(\)/);
+  });
+});
+
+// ===================================================================
+// Deep Bug Audit — Regression tests untuk 16 bug fixes (2026-09-02)
+// ===================================================================
+
+describe("BUG-01: Stock restore saat admin batalkan pesanan", () => {
+  it("admin orders PATCH route mengandung stock restore logic", () => {
+    const src = fs.readFileSync(path.join(process.cwd(), "src/app/api/admin/orders/[code]/route.ts"), "utf-8");
+    // Harus SELECT items (untuk parsing qty)
+    expect(src).toMatch(/SELECT.*items.*FROM orders/i);
+    // Harus restore stock: UPDATE products SET stock = stock + ?
+    expect(src).toContain("stock = stock + ?");
+    // Hanya restore saat cancel dari pending
+    expect(src).toContain('"dibatalkan"');
+    expect(src).toContain('"pending"');
+  });
+});
+
+describe("BUG-02: Pesanan page selalu fetch server (bukan early return localStorage)", () => {
+  it("pesanan page tidak early-return setelah localStorage find", () => {
+    const src = fs.readFileSync(path.join(process.cwd(), "src/app/pesanan/[code]/page.tsx"), "utf-8");
+    // TIDAK boleh ada pattern: if (found) { setOrder(found); return; }
+    expect(src).not.toMatch(/if\s*\(found\)\s*\{\s*setOrder\(found\);\s*return;?\s*\}/);
+    // HARUS ada fetch ke /api/orders setelah localStorage
+    expect(src).toContain("/api/orders?code=");
+  });
+});
+
+describe("BUG-03: Admin modal input lisensi/key saat konfirmasi lunas", () => {
+  it("admin page memiliki state confirmOrder dan adminNote", () => {
+    const src = fs.readFileSync(path.join(process.cwd(), "src/app/admin/page.tsx"), "utf-8");
+    expect(src).toContain("confirmOrder");
+    expect(src).toContain("adminNote");
+    expect(src).toContain("setConfirmOrder");
+  });
+
+  it("admin page mengirim admin_note ke PATCH endpoint", () => {
+    const src = fs.readFileSync(path.join(process.cwd(), "src/app/admin/page.tsx"), "utf-8");
+    expect(src).toContain("admin_note");
+    // setStatus harus terima parameter note
+    expect(src).toMatch(/setStatus.*code.*status.*note/);
+  });
+
+  it("admin page punya textarea untuk lisensi/key input", () => {
+    const src = fs.readFileSync(path.join(process.cwd(), "src/app/admin/page.tsx"), "utf-8");
+    expect(src).toMatch(/placeholder.*[Ll]isensi/);
+  });
+});
+
+describe("BUG-05: Tidak ada duplicate generateOrderCode lemah di utils.ts", () => {
+  it("utils.ts re-export dari security.ts, bukan implementasi sendiri", () => {
+    const src = fs.readFileSync(path.join(process.cwd(), "src/lib/utils.ts"), "utf-8");
+    // Harus re-export
+    expect(src).toMatch(/export\s*\{.*generateOrderCode.*\}\s*from\s*["']@\/lib\/security["']/);
+    // TIDAK boleh ada Math.random (implementasi lemah lama)
+    expect(src).not.toContain("Math.random");
+  });
+
+  it("security.ts generateOrderCode pakai crypto.getRandomValues", () => {
+    const src = fs.readFileSync(path.join(process.cwd(), "src/lib/security.ts"), "utf-8");
+    expect(src).toContain("crypto.getRandomValues");
+  });
+});
+
+describe("BUG-06: Checkout block bank placeholder belum aktif", () => {
+  it("checkout page menolak bank selain seabank", () => {
+    const src = fs.readFileSync(path.join(process.cwd(), "src/app/checkout/page.tsx"), "utf-8");
+    // Harus ada guard: bankKey !== "seabank"
+    expect(src).toContain('bankKey !== "seabank"');
+    expect(src).toMatch(/belum tersedia/i);
+  });
+});
+
+describe("BUG-07: Login rate limit 5/menit (bukan 12)", () => {
+  it("login route rate limit max 5", () => {
+    const src = fs.readFileSync(path.join(process.cwd(), "src/app/api/auth/login/route.ts"), "utf-8");
+    // Harus > 5, BUKAN > 12
+    expect(src).toContain("e.c > 5");
+    expect(src).not.toContain("e.c > 12");
+  });
+});
+
+describe("BUG-09: Zod enum payment_method tanpa duplikat", () => {
+  it("orders route enum tidak punya value duplikat", () => {
+    const src = fs.readFileSync(path.join(process.cwd(), "src/app/api/orders/route.ts"), "utf-8");
+    // Extract enum array dari source
+    const enumMatch = src.match(/payment_method:\s*z\.enum\(\[([^\]]+)\]\)/);
+    expect(enumMatch).toBeTruthy();
+    if (enumMatch) {
+      const values = enumMatch[1].match(/"[^"]+"/g) ?? [];
+      const unique = new Set(values);
+      expect(unique.size).toBe(values.length);
+    }
+  });
+});
+
+describe("BUG-10: Sitemap domain configurable (bukan hardcoded pages.dev)", () => {
+  it("sitemap.ts menggunakan SITE_URL env atau axvara.id", () => {
+    const src = fs.readFileSync(path.join(process.cwd(), "src/app/sitemap.ts"), "utf-8");
+    expect(src).toContain("process.env.SITE_URL");
+    expect(src).toContain("axvara.id");
+    // TIDAK boleh hardcode pages.dev
+    expect(src).not.toContain("axvara.pages.dev");
+  });
+});
+
+describe("BUG-11: Product detail sold/stock conditional null-safe", () => {
+  it("produk page menggunakan null-safe check untuk soldCount dan stock", () => {
+    const src = fs.readFileSync(path.join(process.cwd(), "src/app/produk/[slug]/page.tsx"), "utf-8");
+    // Harus pakai explicit null check, bukan truthiness
+    expect(src).toMatch(/product\.soldCount\s*!=\s*null\s*&&\s*product\.soldCount\s*>\s*0/);
+    // TIDAK boleh pakai pattern lama: (product.soldCount || product.stock)
+    expect(src).not.toMatch(/\(product\.soldCount\s*\|\|\s*product\.stock\)/);
+  });
+});
+
+describe("BUG-12: CommunityBar WA link live (bukan dead href=#)", () => {
+  it("CommunityBar WA link mengarah ke wa.me, bukan href=#", () => {
+    const src = fs.readFileSync(path.join(process.cwd(), "src/components/storefront/CommunityBar.tsx"), "utf-8");
+    expect(src).toContain("wa.me");
+    // WA link TIDAK boleh pakai onClick={comingSoon}
+    expect(src).not.toMatch(/href=\{waHref\}[^>]*onClick=\{comingSoon\}/);
+  });
+});
+
+describe("BUG-13: Proof upload extension sesuai tipe (bukan selalu .webp)", () => {
+  it("proof upload route menentukan extension dari content type", () => {
+    const src = fs.readFileSync(path.join(process.cwd(), "src/app/api/proof/upload/route.ts"), "utf-8");
+    // Harus ada logic: const ext = type === "image/png" ? "png" : ...
+    expect(src).toMatch(/const ext\s*=/);
+    expect(src).toContain('"image/png"');
+    // Extension values harus ada: "png", "jpg", "webp"
+    expect(src).toMatch(/\?\s*"png"/);
+    expect(src).toMatch(/\?\s*"webp"/);
+    expect(src).toMatch(/:\s*"jpg"/);
+    // Key harus pakai ${ext}, BUKAN hardcoded .webp
+    expect(src).toMatch(/`bukti\/.*\$\{ext\}`/);
+  });
+});
+
+describe("BUG-14: Login response mengembalikan email", () => {
+  it("login route response mengandung email field", () => {
+    const src = fs.readFileSync(path.join(process.cwd(), "src/app/api/auth/login/route.ts"), "utf-8");
+    // Harus ada: { ok: true, email: ... }
+    expect(src).toMatch(/NextResponse\.json\(\{\s*ok:\s*true,\s*email:/);
+  });
+});
+
+describe("BUG-15: Client pages HARUS export runtime edge (required by CF Pages)", () => {
+  it("produk/[slug]/page.tsx export runtime edge (CF Pages requirement)", () => {
+    const src = fs.readFileSync(path.join(process.cwd(), "src/app/produk/[slug]/page.tsx"), "utf-8");
+    expect(src).toContain('"use client"');
+    expect(src).toMatch(/export\s+const\s+runtime\s*=\s*["']edge["']/);
+  });
+
+  it("pesanan/[code]/page.tsx export runtime edge (CF Pages requirement)", () => {
+    const src = fs.readFileSync(path.join(process.cwd(), "src/app/pesanan/[code]/page.tsx"), "utf-8");
+    expect(src).toContain('"use client"');
+    expect(src).toMatch(/export\s+const\s+runtime\s*=\s*["']edge["']/);
+  });
+});
+
+describe("BUG-16: CartDrawer animasi slideInRight (bukan fadeInUp)", () => {
+  it("CartDrawer menggunakan slideInRight animation", () => {
+    const src = fs.readFileSync(path.join(process.cwd(), "src/components/storefront/CartDrawer.tsx"), "utf-8");
+    expect(src).toContain("slideInRight");
+    expect(src).not.toContain("fadeInUp");
+  });
+
+  it("tailwind config mendefinisikan keyframe slideInRight", () => {
+    const src = fs.readFileSync(path.join(process.cwd(), "tailwind.config.ts"), "utf-8");
+    expect(src).toContain("slideInRight");
+    expect(src).toContain('translateX(100%)');
+    expect(src).toContain('translateX(0)');
   });
 });

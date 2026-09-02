@@ -17,7 +17,7 @@ export function CartDrawer() {
   return (
     <div className="fixed inset-0 z-[60] flex justify-end">
       <div className="absolute inset-0 bg-[#080C1E]/60 backdrop-blur-sm" onClick={() => setDrawer(false)} />
-      <div className="relative w-full max-w-[420px] h-full ax-glass-strong flex flex-col rounded-l-[24px] sm:rounded-l-[28px] overflow-hidden animate-[fadeInUp_0.32s_var(--ease-apple)]">
+      <div className="relative w-full max-w-[420px] h-full ax-glass-strong flex flex-col rounded-l-[24px] sm:rounded-l-[28px] overflow-hidden animate-[slideInRight_0.42s_var(--ease-apple)]">
         <div className="h-[64px] flex items-center justify-between px-5 border-b border-white/10 shrink-0">
           <h2 className="font-display font-bold text-white">Keranjang ({items.length})</h2>
           <button onClick={() => setDrawer(false)} className="w-8 h-8 rounded-full ax-glass flex items-center justify-center text-white/70 hover:text-white" aria-label="Tutup">

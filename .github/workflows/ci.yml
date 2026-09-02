@@ -1,4 +1,4 @@
-name: CI
+name: CI + Deploy
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  test-and-build:
+  test-build-deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,9 +23,21 @@ jobs:
       - run: npm run build
 
       # Guard — no credentials in repo
-      - name: Guard — no credentials in repo
+      - name: Guard credentials
         run: |
           if git ls-files | grep -q "^\.cf-credentials"; then
             echo "::error::.cf-credentials is tracked! Remove it from git."
             exit 1
           fi
+
+      # Build for Cloudflare Pages (next-on-pages)
+      - name: Build for Pages
+        run: npx @cloudflare/next-on-pages
+
+      # Deploy to Cloudflare Pages (only on push to main, not PRs)
+      - name: Deploy to Cloudflare Pages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: npx wrangler pages deploy .vercel/output/static --project-name=axvara
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

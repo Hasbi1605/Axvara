@@ -14,9 +14,5 @@ export function formatRupiah(n: number): string {
   }).format(n);
 }
 
-export function generateOrderCode(): string {
-  const d = new Date();
-  const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
-  const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
-  return `AXV-${ymd}-${rand}`;
-}
+// BUG-05 fix: re-export dari security.ts (crypto-safe, 8 hex) — jangan duplikasi weak version
+export { generateOrderCode } from "@/lib/security";

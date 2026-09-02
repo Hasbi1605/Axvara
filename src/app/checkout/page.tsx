@@ -94,6 +94,11 @@ function CheckoutInner() {
       setError("Pilih bank tujuan terlebih dahulu");
       return;
     }
+    // BUG-06 fix: block checkout for placeholder banks (not yet live)
+    if (method === "bank" && bankKey && bankKey !== "seabank") {
+      setError(`${BANKS.find(b => b.key === bankKey)?.label ?? "Bank"} belum tersedia. Gunakan SeaBank, E-Wallet, atau QRIS.`);
+      return;
+    }
     if (!proofUrl) {
       setError("Upload bukti transfer terlebih dahulu (JPG/PNG/WebP max 5MB, wajib).");
       return;

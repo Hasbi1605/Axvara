@@ -24,7 +24,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   }
   const parsed = patchSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
-  const row = (await queryFirst("SELECT code, status FROM orders WHERE code=?", code)) as Record<string, unknown> | undefined;
+  const row = (await queryFirst("SELECT code, status, items FROM orders WHERE code=?", code)) as Record<string, unknown> | undefined;
   if (!row) return NextResponse.json({ error: "Pesanan tidak ditemukan" }, { status: 404 });
 
   // Simple state machine: pending -> lunas/dibatalkan/kadaluarsa, lunas/dibatalkan final
@@ -35,5 +35,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   }
 
   await execRun("UPDATE orders SET status=?, admin_note=?, updated_at=datetime('now') WHERE code=?", nxt, parsed.data.admin_note ?? null, code);
+
+  // BUG-01 fix: restore stock when order is cancelled (only from pending)
+  if (nxt === "dibatalkan" && cur === "pending") {
+    try {
+      const items: { product_id: number; qty: number }[] = JSON.parse(String(row.items || "[]"));
+      for (const it of items) {
+        if (it.product_id && it.qty > 0) {
+          await execRun(
+            "UPDATE products SET stock = stock + ? WHERE id=? AND stock != -1",
+            it.qty, it.product_id
+          );
+        }
+      }
+    } catch { /* best-effort stock restore — log in prod */ }
+  }
+
   return NextResponse.json({ ok: true, code, status: nxt });
 }

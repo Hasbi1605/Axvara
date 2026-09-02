@@ -249,7 +249,7 @@ export default function ProductDetailPage() {
           </div>
 
           {/* Social proof: sold count + stock */}
-          {(product.soldCount || product.stock) && (
+          {((product.soldCount != null && product.soldCount > 0) || (product.stock != null && product.stock > 0)) && (
             <div className="mt-3 flex items-center gap-3 text-xs text-white/50">
               {product.soldCount != null && product.soldCount > 0 && (
                 <span className="inline-flex items-center gap-1">

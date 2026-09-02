@@ -77,6 +77,10 @@ export default function AdminPage() {
   const [toggling, setToggling] = useState<string | null>(null);
   const [articleModal, setArticleModal] = useState<Record<string,unknown> | null>(null);
   const [bannerModal, setBannerModal] = useState<Record<string,unknown> | null>(null);
+  // BUG-03 fix: modal konfirmasi lunas dengan input lisensi/key
+  const [confirmOrder, setConfirmOrder] = useState<Order | null>(null);
+  const [adminNote, setAdminNote] = useState("");
+  const [confirming, setConfirming] = useState(false);
 
   const load = useCallback(async()=>{
     setLoadingList(true);
@@ -192,13 +196,13 @@ export default function AdminPage() {
     setAuthEmail("");
   };
 
-  const setStatus=async(code:string,status:string)=>{
+  const setStatus=async(code:string,status:string,note?:string)=>{
     // Try server first
     try {
       const r = await fetch(`/api/admin/orders/${encodeURIComponent(code)}`, {
         method: "PATCH",
         headers: { "Content-Type":"application/json" },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status, admin_note: note || undefined }),
       });
       const j = await r.json().catch(()=> ({}));
       if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
@@ -453,7 +457,7 @@ export default function AdminPage() {
             <div className="divide-y divide-white/5">{orders.slice().reverse().map(o=>(
               <div key={o.code} className="p-4 flex flex-col sm:flex-row sm:items-center gap-3">
                 <div className="flex-1 min-w-0"><p className="font-mono text-xs font-bold text-[#00E5FF]">{o.code}</p><p className="text-sm text-white">{o.name} • {o.wa}</p><p className="text-xs text-white/50">{o.items.map(i=>`${i.name} ×${i.qty}`).join(", ")} • {o.method.toUpperCase()} • {formatRupiah(o.subtotal)}</p>{o.fileName && <p className="text-xs text-white/30">Bukti: {o.fileName}</p>}</div>
-                <div className="flex items-center gap-2 flex-wrap"><span className={`text-xs font-bold px-2.5 py-1 rounded-full ${o.status==="pending"?"bg-[#FFB800]/15 text-[#FFB800] border border-[#FFB800]/20":o.status==="lunas"?"bg-[#22C55E]/15 text-[#22C55E] border border-[#22C55E]/20":"bg-white/10 text-white/50"}`}>{o.status}</span>{o.status==="pending" && <><button onClick={()=>setStatus(o.code,"lunas")} className="h-8 px-3 rounded-full bg-[#22C55E] text-white text-xs font-bold">Konfirmasi Lunas</button><button onClick={()=>setStatus(o.code,"dibatalkan")} className="h-8 px-3 rounded-full ax-glass text-xs">Batalkan</button><a href={`https://wa.me/${o.wa.replace(/^0/,"62")}?text=Halo%20${encodeURIComponent(o.name)}%2C%20pesanan%20${o.code}%20kamu%20sudah%20kami%20terima.`} target="_blank" className="h-8 px-3 rounded-full bg-[#25D366] text-white text-xs font-bold flex items-center">WA</a></>}</div>
+                <div className="flex items-center gap-2 flex-wrap"><span className={`text-xs font-bold px-2.5 py-1 rounded-full ${o.status==="pending"?"bg-[#FFB800]/15 text-[#FFB800] border border-[#FFB800]/20":o.status==="lunas"?"bg-[#22C55E]/15 text-[#22C55E] border border-[#22C55E]/20":"bg-white/10 text-white/50"}`}>{o.status}</span>{o.status==="pending" && <><button onClick={()=>{ setConfirmOrder(o); setAdminNote(""); }} className="h-8 px-3 rounded-full bg-[#22C55E] text-white text-xs font-bold">Konfirmasi Lunas</button><button onClick={()=>setStatus(o.code,"dibatalkan")} className="h-8 px-3 rounded-full ax-glass text-xs">Batalkan</button><a href={`https://wa.me/${o.wa.replace(/^0/,"62")}?text=Halo%20${encodeURIComponent(o.name)}%2C%20pesanan%20${o.code}%20kamu%20sudah%20kami%20terima.`} target="_blank" className="h-8 px-3 rounded-full bg-[#25D366] text-white text-xs font-bold flex items-center">WA</a></>}</div>
               </div>
             ))}</div>
           )}
@@ -544,7 +548,43 @@ export default function AdminPage() {
       {articleModal && <ArticleModalInner data={articleModal} onClose={()=> setArticleModal(null)} onSaved={()=> { setArticleModal(null); load(); toast.success("Artikel disimpan"); }} />}
       {bannerModal && <BannerModalInner data={bannerModal} onClose={()=> setBannerModal(null)} onSaved={()=> { setBannerModal(null); load(); toast.success("Banner disimpan"); }} />}
 
-
+      {/* BUG-03 fix: Modal konfirmasi lunas + input lisensi/key */}
+      {confirmOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={()=> !confirming && setConfirmOrder(null)}>
+          <div className="w-full max-w-[480px] ax-glass-strong rounded-[24px] p-5 sm:p-6" onClick={e=>e.stopPropagation()}>
+            <h3 className="font-display font-bold text-white text-lg">Konfirmasi Lunas</h3>
+            <p className="mt-2 text-sm text-white/60">Pesanan <span className="font-mono text-[#00E5FF] font-bold">{confirmOrder.code}</span> — {confirmOrder.name}</p>
+            <p className="text-xs text-white/40 mt-1">{confirmOrder.items.map(i=>`${i.name} ×${i.qty}`).join(", ")} • {formatRupiah(confirmOrder.subtotal)}</p>
+            <div className="mt-4">
+              <label className="text-xs font-semibold text-white/60">Lisensi / Key / Catatan untuk pembeli</label>
+              <textarea
+                value={adminNote}
+                onChange={e => setAdminNote(e.target.value)}
+                rows={3}
+                placeholder="Masukkan lisensi, key, atau link akses yang akan dikirim ke pembeli via WA..."
+                className="mt-1.5 w-full px-3 py-2.5 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#00E5FF]/40 resize-none"
+              />
+              <p className="text-[11px] text-white/30 mt-1">Opsional — akan tersimpan di admin_note pesanan.</p>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button onClick={()=> setConfirmOrder(null)} disabled={confirming} className="h-10 px-4 rounded-full ax-glass text-sm text-white/80 disabled:opacity-50">Batal</button>
+              <button
+                onClick={async ()=> {
+                  setConfirming(true);
+                  await setStatus(confirmOrder.code, "lunas", adminNote.trim() || undefined);
+                  setConfirming(false);
+                  setConfirmOrder(null);
+                  setAdminNote("");
+                }}
+                disabled={confirming}
+                className="h-10 px-5 rounded-full bg-[#22C55E] text-white text-sm font-bold hover:bg-[#16a34a] transition disabled:opacity-60 inline-flex items-center gap-2"
+              >
+                {confirming && <Spinner size={14} className="border-white/30 border-t-white" />} {confirming ? "Memproses…" : "Konfirmasi Lunas"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <ConfirmDialog
         open={!!deleteTarget}

@@ -5,10 +5,12 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:pages": "npx @cloudflare/next-on-pages",
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "deploy": "npm run build:pages && npx wrangler pages deploy .vercel/output/static --project-name=axvara --commit-dirty=true"
   },
   "dependencies": {
     "clsx": "^2.1.1",

@@ -15,8 +15,8 @@ const schema = z.object({
     .refine((s) => /^(\+62|62|0)8\d{8,13}$/.test(s), "No WA harus 08... atau +62... (10-15 digit)"),
   customer_email: z.string().trim().email().max(120).optional().or(z.literal("")),
   items: z.array(z.object({ product_id: z.coerce.number().int().min(1), qty: z.coerce.number().int().min(1).max(20) })).min(1).max(20),
-  payment_method: z.enum(["qris", "ewallet", "bank:seabank", "bank:bca", "bank:mandiri", "bank:bri", "bank:bni", "qris", "ewallet"]),
-  proof_url: z.string().trim().max(600).optional().nullable(),
+  payment_method: z.enum(["qris", "ewallet", "bank:seabank", "bank:bca", "bank:mandiri", "bank:bri", "bank:bni"]),
+  proof_url: z.string().trim().min(1, "Bukti transfer wajib diupload").max(600),
 });
 
 // Simple in-memory rate limit per IP (edge isolate-safe best-effort) — with KV/WAF in prod

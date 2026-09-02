@@ -53,11 +53,12 @@ export async function POST(req: NextRequest) {
   if (!bucket) {
     // In dev without R2, return a fake path that still passes validation (so checkout flow can be tested without R2 binding)
     // In prod, this will be 500 until R2 bound — which is correct
-    const fake = `bukti/${randHex(16)}.webp`;
+    const fake = `bukti/${randHex(16)}.jpg`;
     return NextResponse.json({ url: `/r2/${fake}`, note: "dev-no-r2" });
   }
 
-  const key = `bukti/${randHex(16)}.webp`;
+  const ext = type === "image/png" ? "png" : type === "image/webp" ? "webp" : "jpg";
+  const key = `bukti/${randHex(16)}.${ext}`;
   const ct = type === "image/png" ? "image/png" : type === "image/webp" ? "image/webp" : "image/jpeg";
   await bucket.put(key, buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer, { httpMetadata: { contentType: ct } } as unknown as Record<string, unknown>);
   return NextResponse.json({ url: `/r2/${key}` });

@@ -3,7 +3,7 @@ import type { MetadataRoute } from "next";
 import { products } from "@/lib/products";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const base = "https://axvara.pages.dev";
+  const base = process.env.SITE_URL || "https://axvara.id";
   const now = new Date();
   // Fetch articles if available (best-effort)
   let articles: { slug: string; updated_at?: string }[] = [];

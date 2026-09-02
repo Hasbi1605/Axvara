@@ -20,7 +20,7 @@ function rateLimit(ip: string) {
     return true;
   }
   e.c++;
-  if (e.c > 12) return false;
+  if (e.c > 5) return false;
   return true;
 }
 
@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Gagal buat sesi" }, { status: 500 });
   }
   const isHttps = isSecureForRequest(req);
-  const res = NextResponse.json({ ok: true });
+  const res = NextResponse.json({ ok: true, email: cred.email });
   // Absolute 8h token + sliding 2h idle marker (refresh on activity via /api/auth/refresh)
   const idleToken = `${Date.now()}.${Math.random().toString(36).slice(2, 8)}`;
   res.headers.set("Set-Cookie", cookieForToken(token, isHttps));
