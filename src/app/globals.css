@@ -45,10 +45,12 @@ body {
 ::-webkit-scrollbar-thumb:hover { background: rgba(0,229,255,0.35); }
 
 /* ===== Liquid Glass — iOS 26 ===== */
+
+/* ax-glass: FULL blur — use ONLY on navbar, drawer, modal, overlay */
 .ax-glass {
   background: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.05));
-  backdrop-filter: blur(28px) saturate(180%);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(170%);
+  -webkit-backdrop-filter: blur(20px) saturate(170%);
   border: 1px solid rgba(255,255,255,0.14);
   box-shadow:
     0 8px 32px rgba(0,0,0,0.38),
@@ -57,17 +59,28 @@ body {
 }
 .ax-glass-strong {
   background: rgba(16, 20, 48, 0.45);
-  backdrop-filter: blur(36px) saturate(200%);
-  -webkit-backdrop-filter: blur(36px) saturate(200%);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
   border: 1px solid rgba(255,255,255,0.13);
   box-shadow:
     0 12px 40px rgba(0,0,0,0.45),
     inset 0 1px 0 rgba(255,255,255,0.12);
 }
+
+/* ax-glass-card: Lightweight glass for cards, buttons, skeletons.
+   NO backdrop-filter — translucent gradient + border + shadow only.
+   Looks glassy without the GPU cost of blur compositing. */
+.ax-glass-card {
+  background: linear-gradient(180deg, rgba(255,255,255,0.09), rgba(255,255,255,0.04));
+  border: 1px solid rgba(255,255,255,0.12);
+  box-shadow:
+    0 6px 24px rgba(0,0,0,0.32),
+    inset 0 1px 0 rgba(255,255,255,0.12),
+    inset 0 -1px 0 rgba(255,255,255,0.03);
+}
+
 .ax-glass-subtle {
   background: rgba(255,255,255,0.06);
-  backdrop-filter: blur(20px) saturate(160%);
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
   border: 1px solid rgba(255,255,255,0.10);
 }
 .ax-glass-hover:hover {
@@ -92,7 +105,7 @@ body {
   pointer-events: none;
 }
 
-/* Admin toggle — must override Tailwind bg utilities, placed after imports but Tailwind utilities layer wins; so use !important + higher specificity */
+/* Admin toggle — must override Tailwind bg utilities */
 .toggle-btn:hover { filter: brightness(1.18) !important; transform: scale(1.06) !important; }
 .toggle-btn:active { transform: scale(0.96) !important; }
 .toggle-btn[aria-pressed="false"]:hover { background: rgba(255,255,255,0.34) !important; border-color: rgba(255,255,255,0.45) !important; }

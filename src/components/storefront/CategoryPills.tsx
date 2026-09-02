@@ -22,7 +22,7 @@ export function CategoryPills({
               "shrink-0 h-9 px-4 rounded-full text-sm font-medium border transition flex items-center gap-1.5",
               isActive
                 ? "bg-white text-[#080C1E] border-white shadow"
-                : "ax-glass text-white/70 hover:text-white hover:bg-white/10 border-white/10"
+                : "ax-glass-card text-white/70 hover:text-white hover:bg-white/10 border-white/10"
             )}
           >
             <IosIcon name={categoryIcon(c.slug)} size={14} className={isActive ? "opacity-100" : "opacity-70"} tint={isActive ? "black" : "white"} alt="" />

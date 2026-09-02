@@ -1,17 +1,18 @@
-# HTML pages — no cache so new deploys are picked up immediately
+# HTML pages — short cache with revalidation so new deploys are picked up
 /
-  Cache-Control: no-cache, no-store, must-revalidate
+  Cache-Control: no-cache, must-revalidate
 /admin
   Cache-Control: no-cache, no-store, must-revalidate
 /produk/*
-  Cache-Control: no-cache, no-store, must-revalidate
+  Cache-Control: no-cache, must-revalidate
 /checkout
-  Cache-Control: no-cache, no-store, must-revalidate
+  Cache-Control: no-cache, must-revalidate
 
 # Static assets with hashed filenames — immutable
 /_next/static/*
   Cache-Control: public, max-age=31536000, immutable
 
-# API routes — no cache
+# Safe fallback. Dynamic Edge handlers set their own Cache-Control headers;
+# public caching must not be applied here because /api/products also serves admin.
 /api/*
   Cache-Control: no-store

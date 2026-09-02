@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — AXVARA
 
-**Stack:** Next.js 14 (App Router) + Cloudflare Pages + D1 + R2  
+**Stack:** Next.js 15 (App Router) + Cloudflare Pages + D1 + R2
 **Tanggal:** 31 Agustus 2026  
 **Status:** MVP Spec — Pre-Build  
 
@@ -51,18 +51,18 @@
 
 | Layer | Teknologi | Alasan |
 |-------|-----------|--------|
-| Framework | Next.js 14 App Router | SSG/ISR untuk katalog super cepat, API routes untuk checkout |
+| Framework | Next.js 15 App Router | Edge routes untuk katalog dan checkout di Cloudflare Pages |
 | Bahasa | TypeScript | Type-safe, DX |
 | Styling | Tailwind CSS + CSS Modules | Utility + glassmorphism custom |
-| Animasi | Framer Motion (atau CSS + IntersectionObserver) | Spring Apple-style |
-| State | Zustand (keranjang) + React Query (fetch) | Ringan, tanpa Redux |
+| Animasi | CSS + imperative `requestAnimationFrame` + IntersectionObserver | Motion Apple-style tanpa render React per frame; pause saat offscreen |
+| State | Zustand (keranjang/pencarian) + Fetch API | Ringan, tanpa Redux |
 | Database | Cloudflare D1 (SQLite) | Gratis 5GB, 5M reads/hari, serverless |
 | Storage | Cloudflare R2 | Gratis 10GB, S3-compatible, untuk foto & bukti |
 | Auth Admin | NextAuth / iron-session + bcrypt | Simple, tanpa provider |
 | Deploy | Cloudflare Pages (via Git) | Auto deploy, preview URL |
 | Domain | Cloudflare Registrar | Murah, auto SSL, integrasi Pages |
-| Ikon | Lucide React | Outline tipis Apple-like |
-| Font | Space Grotesk + Inter (self-host) | Premium, variable |
+| Ikon | Aset SVG/PNG lokal + Lucide React | Menghindari request ikon pihak ketiga saat runtime |
+| Font | Apple SF Pro system stack | Konsisten dengan desain storefront |
 | Validasi | Zod | Schema checkout & produk |
 | Notifikasi WA | Fonnte API (P1) | Kirim WA otomatis saat lunas |
 
@@ -116,8 +116,17 @@ axvara/
 ├── stores/
 │   └── cart.ts                  # Zustand cart store (localStorage)
 ├── drizzle/                     # atau raw SQL — schema D1
-└── wrangler.toml                # Cloudflare bindings
+└── wrangler.json                # Cloudflare bindings + Pages output
 ```
+
+### 3.1 Runtime performa storefront
+
+- `OrbitHero` hanya satu instance untuk desktop/mobile, memutakhirkan DOM lewat refs, memakai 30 fps untuk auto-rotate dan refresh-rate penuh saat drag/inertia, menghormati reduced motion, serta menghentikan rAF ketika hero offscreen/tab tersembunyi.
+- `ScrollRope` dan `Spotlight` event-driven; tidak mempertahankan loop idle. ScrollRope tidak memasang listener pada viewport mobile.
+- Kartu berulang memakai `ax-glass-card` tanpa `backdrop-filter`; blur penuh dipertahankan untuk navbar, drawer, modal, dan overlay.
+- Homepage merender katalog seed terlebih dahulu lalu melakukan refresh D1 melalui `requestIdleCallback` dengan abort cleanup.
+- Cache publik ditetapkan langsung oleh Edge handler: produk aktif 30 detik, kategori/banner aktif 60 detik. Respons admin atau varian produk non-eksplisit tetap `private, no-store`.
+- Middleware hanya menambahkan `unsafe-eval` pada CSP saat `NODE_ENV=development`, karena React Refresh membutuhkannya. Header production tetap ketat.
 
 ---
 
@@ -274,21 +283,14 @@ R2 bucket: axvara-assets
 
 ## 8. Deploy ke Cloudflare Pages
 
-### Wrangler Config (`wrangler.toml`)
+### Wrangler Config (`wrangler.json`)
 
-```toml
-name = "axvara"
-compatibility_date = "2026-08-31"
-pages_build_output_dir = ".vercel/output/static" # atau .next via @cloudflare/next-on-pages
-
-[[d1_databases]]
-binding = "DB"
-database_name = "axvara-db"
-database_id = "<from wrangler d1 create>"
-
-[[r2_buckets]]
-binding = "ASSETS"
-bucket_name = "axvara-assets"
+```json
+{
+  "name": "axvara",
+  "compatibility_date": "2026-08-31",
+  "pages_build_output_dir": ".vercel/output/static"
+}
 ```
 
 ### Langkah Deploy
@@ -296,7 +298,7 @@ bucket_name = "axvara-assets"
 1. `npx wrangler d1 create axvara-db`
 2. `npx wrangler d1 execute axvara-db --file=./drizzle/schema.sql`
 3. `npx wrangler r2 bucket create axvara-assets`
-4. Push ke GitHub → Cloudflare Pages auto-build (atau `npx wrangler pages deploy`)
+4. Push ke GitHub untuk CI/CD atau jalankan `npm run deploy` setelah memuat `.cf-credentials`
 5. Custom domain: Pages → Custom domains → add `axvara.id` (auto SSL)
 6. Env vars: `ADMIN_EMAIL`, `ADMIN_PASSWORD_HASH`, `FONNTE_TOKEN` (P1) di Pages Settings → Variables
 
@@ -338,4 +340,3 @@ bucket_name = "axvara-assets"
 | **Total infra** | | **Rp 0/bulan** |
 
 Jika melebihi free tier (misal 100k order/bulan): D1 $5/bulan, R2 $0.015/GB — masih sangat murah.
-

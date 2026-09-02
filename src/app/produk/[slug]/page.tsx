@@ -79,11 +79,11 @@ export default function ProductDetailPage() {
       <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 py-10">
         <div className="h-6 w-24 rounded-full bg-white/10 animate-pulse" />
         <div className="mt-6 grid lg:grid-cols-[1fr_38%] gap-6">
-          <div className="ax-glass rounded-[24px] p-3">
+          <div className="ax-glass-card rounded-[24px] p-3">
             <div className="aspect-[4/3] rounded-2xl bg-white/10 animate-pulse" />
             <div className="mt-3 flex gap-2"><div className="w-[90px] h-[68px] rounded-xl bg-white/10 animate-pulse" /><div className="w-[90px] h-[68px] rounded-xl bg-white/10 animate-pulse" /></div>
           </div>
-          <div className="ax-glass rounded-[24px] p-8 space-y-4">
+          <div className="ax-glass-card rounded-[24px] p-8 space-y-4">
             <div className="h-4 w-32 rounded-full bg-white/10 animate-pulse" />
             <div className="h-7 w-[80%] rounded-xl bg-white/10 animate-pulse" />
             <div className="h-4 w-full rounded-full bg-white/10 animate-pulse" />
@@ -100,7 +100,7 @@ export default function ProductDetailPage() {
         <p className="text-red-300 text-sm bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 inline-block">Gagal memuat: {detailError}</p>
         <div className="mt-4 flex justify-center gap-3">
           <button onClick={()=> location.reload()} className="h-9 px-4 rounded-full bg-white text-[#070a1e] text-sm font-bold">Muat ulang</button>
-          <Link href="/" className="h-9 px-4 rounded-full ax-glass text-sm inline-flex items-center">Kembali</Link>
+          <Link href="/" className="h-9 px-4 rounded-full ax-glass-card text-sm inline-flex items-center">Kembali</Link>
         </div>
       </div>
     );
@@ -151,7 +151,7 @@ export default function ProductDetailPage() {
       {/* Dynamic grid: card kiri greedy (1fr), card kanan responsive fit-content */}
       <div className="mt-6 grid lg:grid-cols-[1fr_38%] xl:grid-cols-[1fr_minmax(360px,420px)] gap-6 lg:gap-8 items-start">
         {/* ===== IMAGE GALLERY ===== */}
-        <div className="ax-glass rounded-[24px] p-2 sm:p-3">
+        <div className="ax-glass-card rounded-[24px] p-2 sm:p-3">
           <div className="relative">
             {/* Main image */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -212,7 +212,7 @@ export default function ProductDetailPage() {
         </div>
 
         {/* ===== PRODUCT INFO — sticky, self-sizing ===== */}
-        <div className="ax-glass rounded-[24px] p-6 sm:p-8 lg:sticky lg:top-24 flex flex-col">
+        <div className="ax-glass-card rounded-[24px] p-6 sm:p-8 lg:sticky lg:top-24 flex flex-col">
           {/* Badge produk (Terlaris / Baru / Bundle / dll) */}
           {product.badge && (
             <span className="self-start rounded-full bg-[#FFB800]/15 text-[#FFB800] text-[11px] font-bold px-3 py-1 tracking-wide uppercase border border-[#FFB800]/25">
@@ -272,17 +272,17 @@ export default function ProductDetailPage() {
 
           {/* Trust badges */}
           <div className="mt-5 flex flex-wrap gap-2 text-xs">
-            <span className="inline-flex items-center gap-1.5 ax-glass rounded-full px-3 py-1.5 text-white/70">
+            <span className="inline-flex items-center gap-1.5 ax-glass-card rounded-full px-3 py-1.5 text-white/70">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/icons/ios11/shield-32.png" alt="" width={14} height={14} className="w-3.5 h-3.5 object-contain brightness-0 invert opacity-70" draggable={false} style={{ filter: "brightness(0) saturate(100%) invert(72%) sepia(68%) saturate(4000%) hue-rotate(145deg) brightness(1.05)" }} />
               Garansi full
             </span>
-            <span className="inline-flex items-center gap-1.5 ax-glass rounded-full px-3 py-1.5 text-white/70">
+            <span className="inline-flex items-center gap-1.5 ax-glass-card rounded-full px-3 py-1.5 text-white/70">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/icons/ios11/lightning-bolt-32.png" alt="" width={14} height={14} className="w-3.5 h-3.5 object-contain brightness-0 invert opacity-70" draggable={false} style={{ filter: "brightness(0) saturate(100%) invert(72%) sepia(92%) saturate(1800%) hue-rotate(360deg) brightness(1.02)" }} />
               Aktivasi instan
             </span>
-            <span className="inline-flex items-center gap-1.5 ax-glass rounded-full px-3 py-1.5 text-white/70">
+            <span className="inline-flex items-center gap-1.5 ax-glass-card rounded-full px-3 py-1.5 text-white/70">
               <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 text-[#00E5FF]/70" fill="none" stroke="currentColor" strokeWidth={1.5}><path d="M8 1v6l3.5 2M15 8A7 7 0 1 1 1 8a7 7 0 0 1 14 0z" strokeLinecap="round"/></svg>
               Support 24 jam
             </span>
@@ -318,7 +318,7 @@ export default function ProductDetailPage() {
             </button>
             <button
               onClick={() => add(product)}
-              className="w-full h-[48px] rounded-xl ax-glass font-semibold text-white text-sm flex items-center justify-center gap-2 hover:bg-white/10 transition"
+              className="w-full h-[48px] rounded-xl ax-glass-card font-semibold text-white text-sm flex items-center justify-center gap-2 hover:bg-white/10 transition"
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/icons/ios11/shopping-bag-32.png" alt="" width={16} height={16} className="w-4 h-4 object-contain brightness-0 invert" draggable={false} /> Tambah ke Keranjang

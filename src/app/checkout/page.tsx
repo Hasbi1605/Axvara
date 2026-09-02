@@ -165,7 +165,7 @@ function CheckoutInner() {
 
       <div className="mt-6 grid lg:grid-cols-[1fr_380px] gap-6">
         {/* Form */}
-        <div className="ax-glass rounded-[24px] p-5 sm:p-6 space-y-6">
+        <div className="ax-glass-card rounded-[24px] p-5 sm:p-6 space-y-6">
           <div>
             <h2 className="text-sm font-semibold text-white">① Data Pembeli</h2>
             <div className="mt-3 grid gap-3">
@@ -187,7 +187,7 @@ function CheckoutInner() {
           <div>
             <h2 className="text-sm font-semibold text-white">② Metode Pembayaran</h2>
             <div className="mt-3 grid gap-3">
-              <button onClick={() => setMethod("qris")} className={`text-left rounded-2xl border p-4 flex items-center justify-between transition ${method === "qris" ? "bg-[#00E5FF]/10 border-[#00E5FF]/40" : "ax-glass border-white/10 hover:bg-white/10"}`}>
+              <button onClick={() => setMethod("qris")} className={`text-left rounded-2xl border p-4 flex items-center justify-between transition ${method === "qris" ? "bg-[#00E5FF]/10 border-[#00E5FF]/40" : "ax-glass-card border-white/10 hover:bg-white/10"}`}>
                 <div className="flex items-center gap-3">
                   <img src="/icons/ios11/qr-code-32.png" alt="" width={20} height={20} className="w-5 h-5 object-contain" style={{ filter: "brightness(0) saturate(100%) invert(72%) sepia(68%) saturate(4000%) hue-rotate(145deg) brightness(1.05)" }} draggable={false} />
                   <div>
@@ -198,7 +198,7 @@ function CheckoutInner() {
                 <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${method === "qris" ? "border-[#00E5FF] bg-[#00E5FF]" : "border-white/20"}`}>{method === "qris" && <span className="w-2 h-2 rounded-full bg-[#080C1E]" />}</span>
               </button>
 
-              <button onClick={() => setMethod("ewallet")} className={`text-left rounded-2xl border p-4 flex items-center justify-between transition ${method === "ewallet" ? "bg-[#00E5FF]/10 border-[#00E5FF]/40" : "ax-glass border-white/10 hover:bg-white/10"}`}>
+              <button onClick={() => setMethod("ewallet")} className={`text-left rounded-2xl border p-4 flex items-center justify-between transition ${method === "ewallet" ? "bg-[#00E5FF]/10 border-[#00E5FF]/40" : "ax-glass-card border-white/10 hover:bg-white/10"}`}>
                 <div className="flex items-center gap-3">
                   <img src="/icons/ios11/wallet-32.png" alt="" width={20} height={20} className="w-5 h-5 object-contain brightness-0 invert opacity-80" draggable={false} />
                   <div>
@@ -209,7 +209,7 @@ function CheckoutInner() {
                 <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${method === "ewallet" ? "border-[#00E5FF] bg-[#00E5FF]" : "border-white/20"}`}>{method === "ewallet" && <span className="w-2 h-2 rounded-full bg-[#080C1E]" />}</span>
               </button>
 
-              <button onClick={() => setMethod("bank")} className={`text-left rounded-2xl border p-4 flex items-center justify-between transition ${method === "bank" ? "bg-[#00E5FF]/10 border-[#00E5FF]/40" : "ax-glass border-white/10 hover:bg-white/10"}`}>
+              <button onClick={() => setMethod("bank")} className={`text-left rounded-2xl border p-4 flex items-center justify-between transition ${method === "bank" ? "bg-[#00E5FF]/10 border-[#00E5FF]/40" : "ax-glass-card border-white/10 hover:bg-white/10"}`}>
                 <div className="flex items-center gap-3">
                   <img src="/icons/ios11/bank-32.png" alt="" width={20} height={20} className="w-5 h-5 object-contain brightness-0 invert opacity-80" draggable={false} />
                   <div>
@@ -223,7 +223,7 @@ function CheckoutInner() {
 
             {/* Detail metode — hanya muncul setelah pilih, default null */}
             {method && (
-              <div className="mt-4 ax-glass rounded-2xl p-4 animate-in fade-in">
+              <div className="mt-4 ax-glass-card rounded-2xl p-4 animate-in fade-in">
                 {method === "qris" && (
                   <div className="text-center">
                     <p className="text-xs text-white/50">Scan QRIS Brotherstore06 — NMID ID1022191087959 • A01</p>
@@ -292,7 +292,7 @@ function CheckoutInner() {
 
           <div>
             <h2 className="text-sm font-semibold text-white">③ Upload Bukti Transfer *</h2>
-            <label className={`mt-3 flex flex-col items-center justify-center gap-2 ax-glass rounded-2xl border-dashed p-6 cursor-pointer transition text-center ${proofUploading ? "opacity-60 pointer-events-none" : "hover:bg-white/10"}`}>
+            <label className={`mt-3 flex flex-col items-center justify-center gap-2 ax-glass-card rounded-2xl border-dashed p-6 cursor-pointer transition text-center ${proofUploading ? "opacity-60 pointer-events-none" : "hover:bg-white/10"}`}>
               <img src="/icons/ios11/upload-32.png" alt="" width={24} height={24} className="w-6 h-6 object-contain brightness-0 invert opacity-60" draggable={false} />
               <span className="text-sm text-white/70">{proofUploading ? "Mengupload..." : fileName ? fileName : "Klik untuk upload bukti (JPG/PNG/WebP, max 5MB)"}</span>
               {proofUrl && <span className="text-[11px] text-emerald-300">✓ Terupload</span>}
@@ -334,7 +334,7 @@ function CheckoutInner() {
         </div>
 
         {/* Ringkasan */}
-        <div className="ax-glass rounded-[24px] p-5 h-fit sticky top-[72px]">
+        <div className="ax-glass-card rounded-[24px] p-5 h-fit sticky top-[72px]">
           <h3 className="font-semibold text-white text-sm">Ringkasan Pesanan</h3>
           <div className="mt-4 space-y-3">
             {items.map((it) => (

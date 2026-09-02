@@ -4,7 +4,7 @@
 
 AXVARA adalah toko digital untuk **AI Gateway, Akun Premium, Tools Pro, Bundle Hemat** — flow terinspirasi marketku.id tapi desain 10x lebih premium, checkout super simpel **Transfer / QRIS Statis** (tanpa payment gateway), hosting **gratis selamanya** di Cloudflare Pages.
 
-**Live dev:** `http://localhost:3000` — build ✅ (Next 14.2.33)
+**Live dev:** `http://localhost:3000` — Next 15.5.2
 
 ---
 
@@ -35,10 +35,10 @@ axvara/
 │   │   ├── pesanan/[code]/ # Sukses — AXV-XXXX + WA admin
 │   │   ├── admin/          # Login + Dashboard pesanan
 │   │   └── globals.css     # Tokens Liquid Glass iOS 26
-│   ├── components/storefront/  # Navbar (Prism), Hero, OrbitHero, ProductCard, CartDrawer, Footer, ScrollRope
+│   ├── components/storefront/  # Navbar, OrbitHero, ProductCard, CartDrawer, PopupBanner, Footer, ScrollRope
 │   ├── lib/products.ts     # 24 produk seed + kategori + paymentMethods
 │   └── stores/cart.ts      # Zustand cart (persist axvara-cart)
-├── wrangler.toml           # Cloudflare Pages + D1 + R2 bindings
+├── wrangler.json           # Cloudflare Pages + D1 + R2 bindings/output
 └── .env.example
 ```
 
@@ -49,8 +49,16 @@ axvara/
 - **Logo:** Prism wireframe (`public/brand/axvara-mark.svg`) — segitiga sama sisi + spine + inner A negative space, stroke 3.6, Swiss geometric — di Navbar `36×32px` + wordmark `font-[300] tracking-[0.22em]`
 - **Palet:** Midnight `#070a1e/#080C1E` + Cyan `#00E5FF` + Gold `#FFB800`
 - **Font:** Apple SF Pro (`-apple-system, SF Pro Display/Text`) — bukan Space Grotesk
-- **Efek:** `ax-glass` blur 28px saturate 180% `linear-gradient rgba(255,255,255,0.10→0.05)`, `ax-glass-strong` blur 36px `rgba(16,20,48,0.45)`
-- **Motion:** Apple spring `cubic-bezier(0.32,0.72,0,1)` — hover lift + glow cyan, drawer slide 420ms, cartShake/cartPop
+- **Efek:** `ax-glass` blur 20px untuk navbar/modal, `ax-glass-strong` blur 24px, dan `ax-glass-card` tanpa backdrop blur untuk kartu berulang agar GPU lebih ringan.
+- **Motion:** Apple spring `cubic-bezier(0.32,0.72,0,1)`; orbit tanpa render React per frame memakai 30 fps saat auto-rotate dan refresh-rate penuh saat interaksi, lalu berhenti saat keluar viewport. Spotlight/ScrollRope berjalan hanya saat ada interaksi.
+
+### Catatan performa storefront
+
+- Homepage menampilkan seed katalog segera, lalu menyegarkan data D1 saat browser idle.
+- Logo orbit disajikan sebagai SVG lokal; tidak ada request runtime ke Iconify.
+- Gambar kartu Unsplash memakai WebP `srcset` responsif.
+- Endpoint publik eksplisit (`products?active=1`, `categories`, `banners?active=1`) mengirim cache CDN singkat; varian produk admin/private selalu `no-store`.
+- CSP development mengizinkan `unsafe-eval` hanya untuk React Refresh/webpack lokal. CSP production tetap tidak mengizinkannya.
 
 ---
 
@@ -101,22 +109,22 @@ Hanya `npm run build` sebelum deploy/major config (`next.config.mjs`, `tailwind.
 ## ☁️ Deploy ke Cloudflare Pages (Gratis)
 
 ```bash
-# 1. Build
-npm run build
+# 1. Muat kredensial lokal yang di-ignore Git
+set -a; source .cf-credentials; set +a
 
 # 2. Buat D1 + R2 (sekali)
 npx wrangler d1 create axvara-db        # copy database_id ke wrangler.toml
 npx wrangler d1 execute axvara-db --file=./drizzle/schema.sql
 npx wrangler r2 bucket create axvara-assets
 
-# 3. Deploy (atau connect GitHub di dashboard Pages)
-npx wrangler pages deploy .next --project-name=axvara
+# 3. Build adapter Pages + deploy output yang benar
+npm run deploy
 # atau via Git: push ke GitHub → Pages auto-build
 
 # 4. Custom domain di Pages dashboard → axvara.id (auto SSL)
 ```
 
-Buka wrangler.toml dan uncomment `[[d1_databases]]` & `[[r2_buckets]]` setelah create.
+Buka `wrangler.json` dan isi binding D1/R2 setelah resource dibuat.
 
 ---
 

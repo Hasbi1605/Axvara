@@ -79,8 +79,8 @@ export default async function ArtikelDetail({ params }: { params: Promise<{ slug
       <div className="mt-6">{renderContent(article.content)}</div>
 
       <div className="mt-10 flex flex-wrap gap-2">
-        <a href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(`https://axvara.pages.dev/artikel/${article.slug}`)}`} target="_blank" className="h-9 px-4 rounded-full ax-glass text-sm text-white/70 hover:text-white">Share Facebook</a>
-        <a href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(article.title)}&url=${encodeURIComponent(`https://axvara.pages.dev/artikel/${article.slug}`)}`} target="_blank" className="h-9 px-4 rounded-full ax-glass text-sm text-white/70 hover:text-white">Share X</a>
+        <a href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(`https://axvara.pages.dev/artikel/${article.slug}`)}`} target="_blank" className="h-9 px-4 rounded-full ax-glass-card text-sm text-white/70 hover:text-white">Share Facebook</a>
+        <a href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(article.title)}&url=${encodeURIComponent(`https://axvara.pages.dev/artikel/${article.slug}`)}`} target="_blank" className="h-9 px-4 rounded-full ax-glass-card text-sm text-white/70 hover:text-white">Share X</a>
         <a href={`https://wa.me/?text=${encodeURIComponent(article.title + " https://axvara.pages.dev/artikel/" + article.slug)}`} target="_blank" className="h-9 px-4 rounded-full bg-[#25D366] text-white text-sm font-bold">Share WA</a>
       </div>
 

@@ -19,17 +19,45 @@ export function PopupBanner() {
   useEffect(() => {
     const dismissed = sessionStorage.getItem("axvara-banner-dismissed");
     if (dismissed) return;
-    fetch("/api/banners?active=1")
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((j) => {
-        const b = (j.banners as Banner[])?.[0];
-        if (!b) return;
-        setBanner(b);
-        const delay = Math.min(10000, Math.max(0, b.delay_ms ?? 1500));
-        const t = setTimeout(() => setOpen(true), delay);
-        return () => clearTimeout(t);
-      })
-      .catch(() => {});
+    const controller = new AbortController();
+    let disposed = false;
+    let openTimer: ReturnType<typeof setTimeout> | null = null;
+    let idleId: number | null = null;
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+
+    // Defer banner fetch to avoid blocking initial page load
+    const doFetch = () => {
+      fetch("/api/banners?active=1", { signal: controller.signal })
+        .then((r) => (r.ok ? r.json() : Promise.reject()))
+        .then((j) => {
+          if (disposed) return;
+          const b = (j.banners as Banner[])?.[0];
+          if (!b) return;
+          setBanner(b);
+          const delay = Math.min(10000, Math.max(0, b.delay_ms ?? 1500));
+          openTimer = setTimeout(() => {
+            if (!disposed) setOpen(true);
+          }, delay);
+        })
+        .catch(() => {});
+    };
+
+    // Use requestIdleCallback to fetch banner only when browser is idle
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      idleId = (window as unknown as { requestIdleCallback: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback(doFetch, { timeout: 3000 });
+    } else {
+      fallbackTimer = setTimeout(doFetch, 2000);
+    }
+
+    return () => {
+      disposed = true;
+      controller.abort();
+      if (idleId !== null && "cancelIdleCallback" in window) {
+        (window as unknown as { cancelIdleCallback: (id: number) => void }).cancelIdleCallback(idleId);
+      }
+      if (fallbackTimer !== null) clearTimeout(fallbackTimer);
+      if (openTimer !== null) clearTimeout(openTimer);
+    };
   }, []);
 
   if (!banner || !open) return null;

@@ -7,7 +7,6 @@ import { ProductCard } from "@/components/storefront/ProductCard";
 import { CommunityBar } from "@/components/storefront/CommunityBar";
 import { products, type Product } from "@/lib/products";
 import { useSearch } from "@/stores/search";
-// TRY: iOS chevron — rollback: cp /tmp/page.lucide.bak src/app/page.tsx
 
 const PER_PAGE = 8;
 
@@ -15,17 +14,39 @@ export default function HomePage() {
   const [activeCat, setActiveCat] = useState("semua");
   const [page, setPage] = useState(1);
   const q = useSearch((s) => s.q);
+  // Show seed products immediately — no skeleton, no blocking
   const [catalogProducts, setCatalogProducts] = useState<Product[]>(products);
-  const [loadingCatalog, setLoadingCatalog] = useState(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);
 
+  // Background refresh from D1 — doesn't block render
   useEffect(() => {
-    setLoadingCatalog(true);
-    fetch("/api/products?active=1")
-      .then(async (r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      .then((data) => { if (Array.isArray(data.products)) setCatalogProducts(data.products); setCatalogError(null); })
-      .catch((e) => setCatalogError(e instanceof Error ? e.message : "Gagal memuat katalog"))
-      .finally(() => setLoadingCatalog(false));
+    const controller = new AbortController();
+    let idleId: number | null = null;
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const doFetch = () => {
+      fetch("/api/products?active=1", { signal: controller.signal })
+        .then(async (r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+        .then((data) => { if (Array.isArray(data.products) && data.products.length > 0) setCatalogProducts(data.products); setCatalogError(null); })
+        .catch((e) => {
+          if (e instanceof DOMException && e.name === "AbortError") return;
+          setCatalogError(e instanceof Error ? e.message : "Gagal memuat katalog");
+        });
+    };
+
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      idleId = (window as unknown as { requestIdleCallback: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback(doFetch, { timeout: 1500 });
+    } else {
+      fallbackTimer = setTimeout(doFetch, 100);
+    }
+
+    return () => {
+      controller.abort();
+      if (idleId !== null && "cancelIdleCallback" in window) {
+        (window as unknown as { cancelIdleCallback: (id: number) => void }).cancelIdleCallback(idleId);
+      }
+      if (fallbackTimer !== null) clearTimeout(fallbackTimer);
+    };
   }, []);
 
   const filtered = useMemo(() => {
@@ -38,7 +59,7 @@ export default function HomePage() {
     });
   }, [activeCat, q, catalogProducts]);
 
-  // B02: pagination reset on filter, hide when empty
+  // B02: pagination reset on filter
   useEffect(() => { setPage(1); }, [q, activeCat]);
   const totalPages = filtered.length ? Math.ceil(filtered.length / PER_PAGE) : 0;
   const safePage = totalPages ? Math.min(page, totalPages) : 1;
@@ -52,15 +73,16 @@ export default function HomePage() {
   return (
     <>
       <ScrollRope />
-      {/* Hero with orbit on right */}
+      {/* Hero with orbit — single instance, CSS responsive layout */}
       <section className="relative overflow-hidden">
         <div className="pointer-events-none absolute inset-0">
           <div className="absolute -top-32 left-1/2 -translate-x-1/2 w-[900px] h-[520px] rounded-full opacity-60 blur-[80px]" style={{ background: "radial-gradient(ellipse at center, rgba(0,229,255,0.18), transparent 70%)" }} />
           <div className="absolute top-24 right-[10%] w-[420px] h-[420px] rounded-full opacity-30 blur-[60px]" style={{ background: "radial-gradient(ellipse at center, rgba(255,184,0,0.15), transparent 70%)" }} />
         </div>
         <div className="relative mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 pt-10 sm:pt-14 pb-4">
-          <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 items-center">
-            <div className="flex-1 max-w-3xl w-full">
+          {/* Grid layout — single OrbitHero, responsive via CSS */}
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-6 lg:gap-8 items-center">
+            <div className="max-w-3xl w-full">
               <h1 className="font-display font-[700] tracking-[-0.045em] leading-[0.88] text-[42px] sm:text-[56px] lg:text-[62px] text-white">
                 Satu tempat untuk
                 <br />
@@ -83,20 +105,17 @@ export default function HomePage() {
                 <span className="inline-flex items-center gap-1"><img src="/icons/ios11/star-32.png" alt="" width={11} height={11} className="w-[11px] h-[11px] object-contain brightness-0 invert opacity-50" draggable={false} /> 4.9/5</span>
               </div>
             </div>
-            <div className="hidden lg:flex shrink-0">
+            {/* Single orbit — shown at center on mobile, right on desktop */}
+            <div className="flex justify-center lg:justify-end shrink-0 mt-6 lg:mt-0">
               <OrbitHero />
             </div>
-          </div>
-          {/* orbit on mobile below text */}
-          <div className="flex lg:hidden justify-center mt-6">
-            <OrbitHero />
           </div>
         </div>
       </section>
 
       <CommunityBar />
 
-      {/* Katalog with pagination */}
+      {/* Katalog with pagination — shows seed data instantly, no skeleton */}
       <section id="katalog" className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 pt-2 pb-10">
         <div className="flex items-center justify-between gap-4">
           <h2 className="font-display font-bold text-[20px] sm:text-[24px] text-white tracking-[-0.02em]">Katalog Premium</h2>
@@ -111,19 +130,8 @@ export default function HomePage() {
             <button onClick={() => location.reload()} className="h-8 px-3 rounded-full bg-white text-[#070a1e] text-xs font-bold shrink-0">Muat ulang</button>
           </div>
         )}
-        {loadingCatalog ? (
-          <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="ax-glass rounded-[20px] p-3 animate-pulse">
-                <div className="aspect-[4/3] rounded-2xl bg-white/10" />
-                <div className="mt-3 h-4 rounded-full bg-white/10 w-[78%]" />
-                <div className="mt-2 h-3 rounded-full bg-white/10 w-[46%]" />
-                <div className="mt-3 h-8 rounded-full bg-white/5" />
-              </div>
-            ))}
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="mt-10 ax-glass rounded-[20px] p-10 text-center">
+        {filtered.length === 0 ? (
+          <div className="mt-10 ax-glass-card rounded-[20px] p-10 text-center">
             <p className="text-white font-medium">Tidak ada produk yang cocok</p>
             <p className="text-sm text-white/50 mt-1">Coba ubah kata kunci atau kategori.</p>
           </div>
@@ -141,7 +149,7 @@ export default function HomePage() {
             <button
               onClick={() => safePage > 1 && goPage(safePage - 1)}
               disabled={safePage === 1}
-              className="w-9 h-9 rounded-full ax-glass flex items-center justify-center text-white/70 disabled:opacity-30 disabled:pointer-events-none hover:bg-white/10 transition active:scale-95"
+              className="w-9 h-9 rounded-full ax-glass-card flex items-center justify-center text-white/70 disabled:opacity-30 disabled:pointer-events-none hover:bg-white/10 transition active:scale-95"
               aria-label="Prev"
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -151,7 +159,7 @@ export default function HomePage() {
               <button
                 key={n}
                 onClick={() => goPage(n)}
-                className={`min-w-9 h-9 px-3 rounded-full text-sm font-semibold transition active:scale-95 ${n === safePage ? "bg-white text-[#080C1E] shadow" : "ax-glass text-white/70 hover:text-white hover:bg-white/10"}`}
+                className={`min-w-9 h-9 px-3 rounded-full text-sm font-semibold transition active:scale-95 ${n === safePage ? "bg-white text-[#080C1E] shadow" : "ax-glass-card text-white/70 hover:text-white hover:bg-white/10"}`}
               >
                 {n}
               </button>
@@ -159,7 +167,7 @@ export default function HomePage() {
             <button
               onClick={() => safePage < totalPages && goPage(safePage + 1)}
               disabled={safePage === totalPages}
-              className="w-9 h-9 rounded-full ax-glass flex items-center justify-center text-white/70 disabled:opacity-30 disabled:pointer-events-none hover:bg-white/10 transition active:scale-95"
+              className="w-9 h-9 rounded-full ax-glass-card flex items-center justify-center text-white/70 disabled:opacity-30 disabled:pointer-events-none hover:bg-white/10 transition active:scale-95"
               aria-label="Next"
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}

@@ -2,16 +2,16 @@
 import { useEffect, useRef } from "react";
 
 /**
- * Spotlight — soft light that follows cursor, Apple-style.
- * - Big radial gradients, very low opacity, blur, lerped with rAF so it glides
- * - Only on pointer: fine (desktop), auto-disabled on touch / reduced-motion
+ * Spotlight v2 — Event-driven, zero idle CPU.
+ *
+ * - Position updates ONLY when pointer actually moves.
+ * - No continuous requestAnimationFrame loop.
+ * - Single RAF per pointermove event for compositor-friendly timing.
+ * - Only on pointer: fine (desktop), auto-disabled on touch / reduced-motion.
  */
 export function Spotlight() {
   const ref = useRef<HTMLDivElement>(null);
-  const target = useRef({ x: -9999, y: -9999 });
-  const cur = useRef({ x: -9999, y: -9999 });
-  const raf = useRef<number | null>(null);
-  const visible = useRef(false);
+  const pendingRaf = useRef<number | null>(null);
 
   useEffect(() => {
     const isFine = window.matchMedia("(pointer: fine)").matches;
@@ -22,35 +22,30 @@ export function Spotlight() {
     if (!el) return;
 
     const onMove = (e: PointerEvent) => {
-      target.current.x = e.clientX;
-      target.current.y = e.clientY;
-      if (!visible.current) {
-        cur.current.x = e.clientX;
-        cur.current.y = e.clientY;
-        visible.current = true;
-        el.style.opacity = "1";
-      }
-    };
-    const onLeave = () => {
-      visible.current = false;
-      el.style.opacity = "0";
+      // Cancel any pending frame to coalesce rapid pointermove events
+      if (pendingRaf.current) cancelAnimationFrame(pendingRaf.current);
+
+      pendingRaf.current = requestAnimationFrame(() => {
+        el.style.transform = `translate3d(${e.clientX}px, ${e.clientY}px, 0) translate(-50%, -50%)`;
+        if (el.style.opacity !== "1") el.style.opacity = "1";
+        pendingRaf.current = null;
+      });
     };
 
-    const tick = () => {
-      // no delay — snap straight to cursor
-      cur.current.x = target.current.x;
-      cur.current.y = target.current.y;
-      el.style.transform = `translate3d(${cur.current.x}px, ${cur.current.y}px, 0) translate(-50%, -50%)`;
-      raf.current = requestAnimationFrame(tick);
+    const onLeave = () => {
+      if (pendingRaf.current) {
+        cancelAnimationFrame(pendingRaf.current);
+        pendingRaf.current = null;
+      }
+      el.style.opacity = "0";
     };
-    raf.current = requestAnimationFrame(tick);
 
     window.addEventListener("pointermove", onMove, { passive: true });
     window.addEventListener("pointerleave", onLeave);
     document.addEventListener("mouseleave", onLeave);
 
     return () => {
-      if (raf.current) cancelAnimationFrame(raf.current);
+      if (pendingRaf.current) cancelAnimationFrame(pendingRaf.current);
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerleave", onLeave);
       document.removeEventListener("mouseleave", onLeave);
@@ -70,7 +65,7 @@ export function Spotlight() {
         transform: "translate3d(-9999px, -9999px, 0) translate(-50%, -50%)",
       }}
     >
-      {/* Layer 1 — darker, smaller white aura */}
+      {/* Layer 1 — white aura */}
       <div
         className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
         style={{
@@ -80,7 +75,7 @@ export function Spotlight() {
           filter: "blur(12px)",
         }}
       />
-      {/* Layer 2 — darker cyan whisper */}
+      {/* Layer 2 — cyan whisper */}
       <div
         className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
         style={{
@@ -90,7 +85,7 @@ export function Spotlight() {
           filter: "blur(10px)",
         }}
       />
-      {/* Layer 3 — small dim core */}
+      {/* Layer 3 — core */}
       <div
         className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
         style={{

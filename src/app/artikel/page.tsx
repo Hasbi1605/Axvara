@@ -28,7 +28,7 @@ export default async function ArtikelListPage() {
       </div>
 
       {articles.length === 0 ? (
-        <div className="mt-10 ax-glass rounded-[24px] p-8 sm:p-10 text-center">
+        <div className="mt-10 ax-glass-card rounded-[24px] p-8 sm:p-10 text-center">
           <p className="text-white font-medium">Belum ada artikel</p>
           <p className="text-sm text-white/50 mt-1">Artikel pertama segera terbit — follow WA kami biar tidak ketinggalan.</p>
           <a href="https://wa.me/6282135277434?text=Halo%20AXVARA" target="_blank" className="mt-4 inline-flex h-10 px-5 rounded-full bg-[#00E5FF] text-[#070a1e] text-sm font-bold">Chat WA</a>
@@ -36,7 +36,7 @@ export default async function ArtikelListPage() {
       ) : (
         <div className="mt-8 grid sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
           {articles.map((a) => (
-            <Link key={a.id} href={`/artikel/${a.slug}`} className="group ax-glass rounded-[20px] overflow-hidden hover:border-white/15 transition">
+            <Link key={a.id} href={`/artikel/${a.slug}`} className="group ax-glass-card rounded-[20px] overflow-hidden hover:border-white/15 transition">
               <div className="aspect-[16/10] bg-white/5 overflow-hidden">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 {a.cover_url ? <img src={a.cover_url} alt={a.title} className="w-full h-full object-cover group-hover:scale-[1.02] transition duration-500" /> : <div className="w-full h-full bg-gradient-to-br from-white/10 to-white/[0.04]" />}

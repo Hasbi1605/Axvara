@@ -51,7 +51,7 @@ export default function OrderSuccessPage() {
 
   return (
     <div className="mx-auto max-w-[640px] px-4 sm:px-6 py-10">
-      <div className="ax-glass rounded-[28px] p-6 sm:p-8 text-center">
+      <div className="ax-glass-card rounded-[28px] p-6 sm:p-8 text-center">
         <div className="mx-auto w-16 h-16 rounded-full bg-[#00E5FF]/15 flex items-center justify-center">
           <img src="/icons/ios11/checked-96.png" alt="" width={32} height={32} className="w-8 h-8 object-contain" style={{ filter: "brightness(0) saturate(100%) invert(72%) sepia(68%) saturate(4000%) hue-rotate(145deg) brightness(1.05)" }} draggable={false} />
         </div>
@@ -64,7 +64,7 @@ export default function OrderSuccessPage() {
           Terima kasih, <span className="text-white font-medium">{order.name}</span>! Admin akan verifikasi bukti kamu dalam <span className="text-white">5–15 menit</span> dan kirim akses via WA ke <span className="text-white">{order.wa}</span>.
         </p>
 
-        <div className="mt-6 ax-glass rounded-2xl p-4 text-left">
+        <div className="mt-6 ax-glass-card rounded-2xl p-4 text-left">
           <p className="text-xs font-semibold text-white/50 uppercase tracking-[0.08em]">Ringkasan</p>
           <div className="mt-3 space-y-2">
             {order.items.map((it, i) => (
@@ -81,7 +81,7 @@ export default function OrderSuccessPage() {
         </div>
 
         <div className="mt-6 flex flex-col sm:flex-row gap-3">
-          <Link href="/" className="flex-1 h-11 rounded-xl ax-glass font-semibold text-white flex items-center justify-center hover:bg-white/10">
+          <Link href="/" className="flex-1 h-11 rounded-xl ax-glass-card font-semibold text-white flex items-center justify-center hover:bg-white/10">
             Lanjut Belanja
           </Link>
           <a

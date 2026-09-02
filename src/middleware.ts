@@ -3,13 +3,15 @@ import { NextResponse, type NextRequest } from "next/server";
 export function middleware(req: NextRequest) {
   const res = NextResponse.next();
 
-  // F-03 fix: CSP tightened — removed 'unsafe-eval', kept 'unsafe-inline' (required by Next.js/Tailwind)
+  // Production stays strict. Next.js dev needs eval for webpack/React Refresh;
+  // without this exception the client never hydrates on localhost.
+  const devScriptEval = process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : "";
   // F-04 fix: CSRF Origin validation for mutating requests
   // F-11 fix: removed blob: from admin img-src
   const isAdmin = req.nextUrl.pathname.startsWith("/admin") || req.nextUrl.pathname.startsWith("/api/admin");
   const csp = isAdmin
-    ? "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' https://images.unsplash.com data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
-    : "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' https://images.unsplash.com https://picsum.photos https://cdn.axvara.id https://api.iconify.design data: blob:; font-src 'self' data:; connect-src 'self' https://api.iconify.design; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+    ? `default-src 'self'; script-src 'self' 'unsafe-inline'${devScriptEval}; style-src 'self' 'unsafe-inline'; img-src 'self' https://images.unsplash.com data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`
+    : `default-src 'self'; script-src 'self' 'unsafe-inline'${devScriptEval}; style-src 'self' 'unsafe-inline'; img-src 'self' https://images.unsplash.com https://picsum.photos https://cdn.axvara.id data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`;
 
   res.headers.set("Content-Security-Policy", csp);
   res.headers.set("X-Frame-Options", "DENY");

@@ -13,7 +13,12 @@ export async function GET(req: NextRequest) {
   const q = searchParams.get("q")?.toLowerCase().trim() ?? "";
   const cat = searchParams.get("cat") ?? "";
   const active = searchParams.get("active");
-  const isAdminRequest = !!(await import("@/lib/auth").then((m) => m.requireAdmin(req).catch(() => null)));
+  // The explicit active=1 path is public and always returns the same safe
+  // subset, so it can skip auth work and be cached independently.
+  const isPublicCatalog = active === "1";
+  const isAdminRequest = isPublicCatalog
+    ? false
+    : !!(await import("@/lib/auth").then((m) => m.requireAdmin(req).catch(() => null)));
 
   let sql = `SELECT p.*, c.slug as cat_slug FROM products p LEFT JOIN categories c ON c.id=p.category_id WHERE 1=1`;
   const params: unknown[] = [];
@@ -45,7 +50,16 @@ export async function GET(req: NextRequest) {
       sortOrder: r.sort_order,
     };
   });
-  return NextResponse.json({ products: data });
+  return NextResponse.json(
+    { products: data },
+    {
+      headers: {
+        "Cache-Control": isPublicCatalog
+          ? "public, max-age=30, s-maxage=30, stale-while-revalidate=60"
+          : "private, no-store, max-age=0",
+      },
+    }
+  );
 }
 
 const productSchema = z.object({

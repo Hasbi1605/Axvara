@@ -19,7 +19,16 @@ export async function GET(req: NextRequest) {
   if (active === "1") sql += " AND is_active=1";
   sql += " ORDER BY sort_order ASC, id DESC";
   const rows = await queryAll(sql, ...params);
-  return NextResponse.json({ banners: rows });
+  return NextResponse.json(
+    { banners: rows },
+    {
+      headers: {
+        "Cache-Control": active === "1"
+          ? "public, max-age=60, s-maxage=60, stale-while-revalidate=120"
+          : "private, no-store, max-age=0",
+      },
+    }
+  );
 }
 
 const schema = z.object({

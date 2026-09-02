@@ -5,5 +5,8 @@ export const runtime = "edge";
 export const dynamic = "force-dynamic";
 export async function GET() {
   const rows = await queryAll("SELECT * FROM categories ORDER BY sort_order");
-  return NextResponse.json({ categories: rows });
+  return NextResponse.json(
+    { categories: rows },
+    { headers: { "Cache-Control": "public, max-age=60, s-maxage=60, stale-while-revalidate=120" } }
+  );
 }

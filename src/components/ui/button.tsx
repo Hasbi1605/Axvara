@@ -22,7 +22,7 @@ export function Button({
         variant === "primary" &&
           "bg-[#00E5FF] text-[#080C1E] hover:bg-[#00D0E8] shadow-[0_0_24px_rgba(0,229,255,0.35)] hover:shadow-[0_0_32px_rgba(0,229,255,0.45)]",
         variant === "glass" &&
-          "ax-glass text-white hover:bg-white/10 border-white/15",
+          "ax-glass-card text-white hover:bg-white/10 border-white/15",
         variant === "ghost" &&
           "text-white/70 hover:text-white hover:bg-white/10",
         className
