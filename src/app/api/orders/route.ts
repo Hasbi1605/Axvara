@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { queryAll, queryFirst, execRun } from "@/lib/db";
+import { generateOrderCode as generateCode, aggregateQty } from "@/lib/security";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -35,19 +36,7 @@ function clientIp(req: NextRequest) {
   return req.headers.get("cf-connecting-ip") || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "0.0.0.0";
 }
 
-function generateCode(): string {
-  const d = new Date();
-  const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
-  // 6 byte = 48-bit entropy, 8 hex chars — jauh lebih kuat dari 3 byte/4 char
-  const bytes = new Uint8Array(6);
-  crypto.getRandomValues(bytes);
-  const rand = Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("")
-    .slice(0, 8)
-    .toUpperCase();
-  return `AXV-${ymd}-${rand}`;
-}
+
 
 export async function POST(req: NextRequest) {
   const ip = clientIp(req);
@@ -69,9 +58,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "URL bukti tidak valid" }, { status: 400 });
   }
 
-  // Agregasi qty per product_id sebelum cek stok (bypass duplicate)
-  const agg = new Map<number, number>();
-  for (const it of items) agg.set(it.product_id, (agg.get(it.product_id) ?? 0) + it.qty);
+  const agg = aggregateQty(items as { product_id: number; qty: number }[]);
 
   // Server-authoritative pricing: fetch each product from DB
   let subtotal = 0;
