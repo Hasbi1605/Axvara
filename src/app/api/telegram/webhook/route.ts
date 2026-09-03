@@ -555,11 +555,12 @@ async function handleConfirmPurchase(
     // Create fulfillment job
     await createFulfillmentJob(orderCode, inventoryId, fulfillmentMode);
 
-    // Send QRIS to user
-    if (invoiceResult.qrisUrl) {
+    // Send QRIS to user — prefer qris_url (HTTPS), fallback to qris_image (data URI base64)
+    const photoSource = invoiceResult.qrisUrl ?? invoiceResult.qrisImage;
+    if (photoSource) {
       await sendPhoto({
         chat_id: chatId,
-        photo: invoiceResult.qrisUrl,
+        photo: photoSource,
         caption: invoiceMessage({
           orderCode,
           productName: String(product.name),
