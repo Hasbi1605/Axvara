@@ -18,15 +18,16 @@ export type DbProduct = {
   sort_order: number | null;
 };
 
+type D1Result = { results?: unknown[]; meta: { last_row_id?: number; changes?: number } };
+type D1Statement = {
+  bind: (...p: unknown[]) => D1Statement;
+  all: () => Promise<{ results: unknown[] }>;
+  first: () => Promise<unknown>;
+  run: () => Promise<D1Result>;
+};
 type D1 = {
-  prepare: (sql: string) => {
-    bind: (...p: unknown[]) => {
-      all: () => Promise<{ results: unknown[] }>;
-      first: () => Promise<unknown>;
-      run: () => Promise<{ meta: { last_row_id: number; changes: number } }>;
-    };
-    all: () => Promise<{ results: unknown[] }>;
-  };
+  prepare: (sql: string) => D1Statement;
+  batch: (statements: D1Statement[]) => Promise<D1Result[]>;
 };
 
 function getD1(): D1 | null {
@@ -37,10 +38,11 @@ function getD1(): D1 | null {
 
 // ---- In-memory fallback (dev without D1) ----
 import { products as seedProducts } from "@/lib/products";
+import { articleSeedRows } from "@/lib/article-seeds";
 type Row = Record<string, unknown>;
 
 function getSharedMem(): Row[] {
-  const g = globalThis as unknown as { __AXVARA_MEM?: Row[] };
+  const g = process as unknown as { __AXVARA_MEM?: Row[] };
   if (g.__AXVARA_MEM) return g.__AXVARA_MEM;
   const catMap: Record<string, number> = {
     "ai-gateway": 1, "akun-premium": 2, "tools-pro": 3, "bundle-hemat": 4,
@@ -84,12 +86,10 @@ export async function queryAll(sql: string, ...params: unknown[]): Promise<Recor
   // Dev fallback: in-memory
   const lower = sql.toLowerCase();
   if (lower.includes("from categories")) {
-    return [
-      { id: 1, slug: "ai-gateway", name: "AI Gateway" },
-      { id: 2, slug: "akun-premium", name: "Akun Premium" },
-      { id: 3, slug: "tools-pro", name: "Tools Pro" },
-      { id: 4, slug: "bundle-hemat", name: "Bundle Hemat" },
-    ];
+    const rows = [...getCategoryMem()].map((category) => lower.includes("product_count")
+      ? { ...category, product_count: getSharedMem().filter((product) => Number(product.category_id) === Number(category.id)).length }
+      : category);
+    return rows.sort((a,b)=>Number(a.sort_order??0)-Number(b.sort_order??0));
   }
   if (lower.includes("from products")) {
     let rows = [...getSharedMem()];
@@ -114,20 +114,70 @@ export async function queryAll(sql: string, ...params: unknown[]): Promise<Recor
     return rows;
   }
   if (lower.includes("from articles")) {
-    // In dev fallback, return empty (no seed). Prod uses D1.
-    return [];
+    return [...getArticleMem()].sort((a, b) => String(b.updated_at ?? "").localeCompare(String(a.updated_at ?? "")));
   }
   if (lower.includes("from banners")) {
-    return [];
+    let rows = [...getBannerMem()];
+    if (lower.includes("is_active=1")) rows = rows.filter((row) => Number(row.is_active) === 1);
+    return rows.sort((a,b)=>Number(a.sort_order??0)-Number(b.sort_order??0));
   }
+  if (lower.includes("from payment_methods")) {
+    let rows = [...getPaymentMethodMem()];
+    if (lower.includes("is_active=1")) rows = rows.filter((row) => Number(row.is_active) === 1);
+    return rows.sort((a,b)=>Number(a.sort_order??0)-Number(b.sort_order??0));
+  }
+  if (lower.includes("from newsletter_subscribers")) {
+    return [...getSubscriberMem()].sort((a,b)=>String(b.created_at??"").localeCompare(String(a.created_at??"")));
+  }
+  if (lower.includes("from agent_tokens")) return [...getTokenMem()].sort((a,b)=>String(b.created_at??"").localeCompare(String(a.created_at??"")));
+  if (lower.includes("from article_audit_log")) return [...getAuditMem()].sort((a,b)=>String(b.created_at??"").localeCompare(String(a.created_at??""))).slice(0,100);
   return [];
 }
 
 function getOrderMem(): Row[] {
-  const g = globalThis as unknown as { __AXVARA_ORDERS?: Row[] };
+  const g = process as unknown as { __AXVARA_ORDERS?: Row[] };
   if (g.__AXVARA_ORDERS) return g.__AXVARA_ORDERS;
   g.__AXVARA_ORDERS = [];
   return g.__AXVARA_ORDERS;
+}
+function getArticleMem(): Row[] {
+  const g = process as unknown as { __AXVARA_ARTICLES?: Row[] };
+  if (!g.__AXVARA_ARTICLES) g.__AXVARA_ARTICLES = articleSeedRows.map((row) => ({ ...row }));
+  return g.__AXVARA_ARTICLES;
+}
+function getBannerMem(): Row[] {
+  const g = process as unknown as { __AXVARA_BANNERS?: Row[] };
+  if (!g.__AXVARA_BANNERS) g.__AXVARA_BANNERS = [];
+  return g.__AXVARA_BANNERS;
+}
+function getPaymentMethodMem(): Row[] {
+  const g = process as unknown as { __AXVARA_PAYMENT_METHODS?: Row[] };
+  if (!g.__AXVARA_PAYMENT_METHODS) g.__AXVARA_PAYMENT_METHODS = [
+    { id: "qris", label: "QRIS", account_number: "", account_name: "Brotherstore06", qris_url: "/qris/axvara-qris.jpg", is_active: 1, sort_order: 1 },
+    { id: "ewallet", label: "DANA / Gopay / Shopeepay", account_number: "082135277434", account_name: "Brotherstore06", qris_url: null, is_active: 1, sort_order: 2 },
+    { id: "seabank", label: "SeaBank", account_number: "901812349386", account_name: "Brotherstore06", qris_url: null, is_active: 1, sort_order: 3 },
+  ];
+  return g.__AXVARA_PAYMENT_METHODS;
+}
+function getAuditMem(): Row[] {
+  const g = process as unknown as { __AXVARA_ARTICLE_AUDIT?: Row[] };
+  if (!g.__AXVARA_ARTICLE_AUDIT) g.__AXVARA_ARTICLE_AUDIT = [];
+  return g.__AXVARA_ARTICLE_AUDIT;
+}
+function getCategoryMem(): Row[] {
+  const g = process as unknown as { __AXVARA_CATEGORIES?: Row[] };
+  if (!g.__AXVARA_CATEGORIES) g.__AXVARA_CATEGORIES = [{id:1,name:"AI Gateway",slug:"ai-gateway",icon:"lightning-bolt",sort_order:1},{id:2,name:"Akun Premium",slug:"akun-premium",icon:"crown",sort_order:2},{id:3,name:"Tools Pro",slug:"tools-pro",icon:"shield",sort_order:3},{id:4,name:"Bundle Kucing",slug:"bundle-hemat",icon:"packaging",sort_order:4}];
+  return g.__AXVARA_CATEGORIES;
+}
+function getTokenMem(): Row[] {
+  const g = process as unknown as { __AXVARA_AGENT_TOKENS?: Row[] };
+  if (!g.__AXVARA_AGENT_TOKENS) g.__AXVARA_AGENT_TOKENS = [];
+  return g.__AXVARA_AGENT_TOKENS;
+}
+function getSubscriberMem(): Row[] {
+  const g = process as unknown as { __AXVARA_NEWSLETTER_SUBSCRIBERS?: Row[] };
+  if (!g.__AXVARA_NEWSLETTER_SUBSCRIBERS) g.__AXVARA_NEWSLETTER_SUBSCRIBERS = [];
+  return g.__AXVARA_NEWSLETTER_SUBSCRIBERS;
 }
 
 export async function queryFirst(sql: string, ...params: unknown[]): Promise<Row | undefined> {
@@ -135,11 +185,16 @@ export async function queryFirst(sql: string, ...params: unknown[]): Promise<Row
   if (d1) return (await d1.prepare(sql).bind(...params).first()) as Row | undefined;
   const lower = sql.toLowerCase();
   if (lower.includes("from categories where slug=?")) {
-    const map: Record<string, Row> = {
-      "ai-gateway": { id: 1 }, "akun-premium": { id: 2 },
-      "tools-pro": { id: 3 }, "bundle-hemat": { id: 4 },
-    };
-    return map[String(params[0])];
+    return getCategoryMem().find((r) => String(r.slug) === String(params[0]));
+  }
+  if (lower.includes("from categories") && lower.includes("where id=?")) {
+    return getCategoryMem().find((r) => String(r.id) === String(params[0]));
+  }
+  if (lower.includes("from products") && lower.includes("category_id=?")) {
+    return getSharedMem().find((r) => String(r.category_id) === String(params[0]));
+  }
+  if (lower.includes("from products") && lower.includes("slug=?")) {
+    return getSharedMem().find((r) => String(r.slug) === String(params[0]));
   }
   if (lower.includes("from products") && lower.includes("where") && lower.includes("id=?")) {
     const id = String(params[0]);
@@ -151,10 +206,26 @@ export async function queryFirst(sql: string, ...params: unknown[]): Promise<Row
     const code = String(params[0]);
     return getOrderMem().find((r) => String(r.code) === code);
   }
+  if (lower.includes("from orders") && lower.includes("quote_id=?")) {
+    return getOrderMem().find((r) => String(r.quote_id) === String(params[0]));
+  }
   if (lower.includes("from orders") && lower.includes("id=?")) {
     const id = String(params[0]);
     return getOrderMem().find((r) => String(r.id) === id);
   }
+  if (lower.includes("from payment_methods") && lower.includes("id=?")) {
+    return getPaymentMethodMem().find((r) => String(r.id) === String(params[0]));
+  }
+  if (lower.includes("from articles")) {
+    const value = String(params[0]);
+    if (lower.includes("idempotency_key")) return getArticleMem().find((r) => String(r.idempotency_key) === value);
+    return getArticleMem().find((r) => String(r.id) === value || String(r.slug) === value);
+  }
+  if (lower.includes("from banners") && lower.includes("id=?")) {
+    return getBannerMem().find((r) => String(r.id) === String(params[0]));
+  }
+  if (lower.includes("from agent_tokens")) return getTokenMem().find((r) => String(r.token_hash) === String(params[0]) && r.is_active === 1);
+  if (lower.includes("from newsletter_subscribers") && lower.includes("email=?")) return getSubscriberMem().find((r) => String(r.email) === String(params[0]));
   return undefined;
 }
 
@@ -195,17 +266,25 @@ export async function execRun(sql: string, ...params: unknown[]): Promise<{ last
     const id = String(params[params.length - 1]);
     const row = getSharedMem().find((r) => String(r.id) === id);
     if (!row) return { changes: 0 };
-    if (lower.includes("stock=?")) row.stock = Number(params[0]);
-    if (lower.includes("is_active=?")) row.is_active = Number(params[0]) ? 1 : 0;
-    // generic fallback
+    const fields = sql.match(/set\s+(.+)\s+where/i)?.[1].split(",") ?? [];
+    let valueIndex = 0;
+    for (const field of fields) {
+      if (!field.includes("?")) continue;
+      const column = field.trim().split("=")[0].trim();
+      row[column] = params[valueIndex++];
+    }
+    if (row.category_id !== undefined) {
+      row.cat_slug = getCategoryMem().find((category) => Number(category.id) === Number(row.category_id))?.slug ?? "tools-pro";
+    }
+    row.updated_at = new Date().toISOString();
     return { changes: 1 };
   }
   if (lower.startsWith("insert into products")) {
     const mem = getSharedMem();
     const newId = mem.length + 1;
     const [category_id, name, slug, description, price, compare_price, image_url, images, badge, sold_count, stock, is_active, sort_order] = params as unknown[];
-    const slugToCat: Record<number, string> = { 1: "ai-gateway", 2: "akun-premium", 3: "tools-pro", 4: "bundle-hemat" };
-    mem.push({ id: newId, category_id, name, slug, description, price, compare_price, image_url, images, badge, sold_count, stock, is_active, sort_order, cat_slug: slugToCat[category_id as number] ?? "tools-pro" });
+    const categorySlug = getCategoryMem().find((category) => Number(category.id) === Number(category_id))?.slug ?? "tools-pro";
+    mem.push({ id: newId, category_id, name, slug, description, price, compare_price, image_url, images, badge, sold_count, stock, is_active, sort_order, cat_slug: categorySlug });
     return { lastInsertRowid: newId, changes: 1 };
   }
   if (lower.startsWith("delete from products")) {
@@ -233,5 +312,227 @@ export async function execRun(sql: string, ...params: unknown[]): Promise<{ last
     (row as Record<string, unknown>).updated_at = new Date().toISOString();
     return { changes: 1 };
   }
+  if (lower.startsWith("insert into articles")) {
+    const mem = getArticleMem(); const id = Math.max(0,...mem.map((row)=>Number(row.id)||0)) + 1;
+    const columns = (sql.match(/insert into articles\s*\(([^)]+)\)/i)?.[1] ?? "").split(",").map((v) => v.trim());
+    const row: Row = { id, is_published: 0, status: "draft", created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+    columns.forEach((column, index) => { row[column] = params[index]; });
+    if (mem.some((item) => item.slug === row.slug || (row.idempotency_key && item.idempotency_key === row.idempotency_key))) throw new Error("UNIQUE constraint failed");
+    mem.push(row); return { lastInsertRowid: id, changes: 1 };
+  }
+  if (lower.startsWith("update articles set")) {
+    const row = getArticleMem().find((item) => String(item.id) === String(params[params.length - 1]));
+    if (!row) return { changes: 0 };
+    const fields = sql.match(/set\s+(.+)\s+where/i)?.[1].split(",") ?? []; let index = 0;
+    fields.forEach((field) => { if (field.includes("?")) row[field.trim().split("=")[0].trim()] = params[index++]; });
+    row.updated_at = new Date().toISOString(); return { changes: 1 };
+  }
+  if (lower.startsWith("delete from articles")) { const mem=getArticleMem(), i=mem.findIndex((r)=>String(r.id)===String(params[0])); if(i>=0){mem.splice(i,1);return {changes:1};} return {changes:0}; }
+  if (lower.startsWith("insert into banners")) {
+    const mem=getBannerMem(),id=Math.max(0,...mem.map((row)=>Number(row.id)||0))+1;
+    const columns=(sql.match(/banners\s*\(([^)]+)\)/i)?.[1]??"").split(",").map((column)=>column.trim());
+    const row:Row={id};columns.forEach((column,index)=>{row[column]=params[index]});mem.push(row);return{lastInsertRowid:id,changes:1};
+  }
+  if (lower.startsWith("update banners set")) {
+    const row=getBannerMem().find((item)=>String(item.id)===String(params[params.length-1]));if(!row)return{changes:0};
+    const fields=sql.match(/set\s+(.+)\s+where/i)?.[1].split(",")??[];let index=0;
+    fields.forEach((field)=>{if(field.includes("?"))row[field.trim().split("=")[0].trim()]=params[index++]});row.updated_at=new Date().toISOString();return{changes:1};
+  }
+  if (lower.startsWith("delete from banners")) {const mem=getBannerMem(),index=mem.findIndex((row)=>String(row.id)===String(params[0]));if(index>=0){mem.splice(index,1);return{changes:1}}return{changes:0};}
+  if (lower.startsWith("insert into categories")) { const mem=getCategoryMem(),id=Math.max(0,...mem.map((row)=>Number(row.id)||0))+1;if(mem.some((row)=>row.slug===params[1]))throw new Error("UNIQUE constraint failed: categories.slug");mem.push({id,name:params[0],slug:params[1],icon:params[2],sort_order:params[3]}); return {lastInsertRowid:id,changes:1}; }
+  if (lower.startsWith("update categories set")) {const row=getCategoryMem().find((item)=>String(item.id)===String(params[params.length-1]));if(!row)return{changes:0};const fields=sql.match(/set\s+(.+)\s+where/i)?.[1].split(",")??[];let index=0;for(const field of fields){if(!field.includes("?"))continue;const column=field.trim().split("=")[0].trim(),value=params[index++];if(column==="slug"&&getCategoryMem().some((item)=>item!==row&&item.slug===value))throw new Error("UNIQUE constraint failed: categories.slug");row[column]=value}getSharedMem().filter((product)=>Number(product.category_id)===Number(row.id)).forEach((product)=>{product.cat_slug=row.slug});return {changes:1};}
+  if (lower.startsWith("delete from categories")) { const mem=getCategoryMem(),i=mem.findIndex(r=>String(r.id)===String(params[0]));if(i>=0){mem.splice(i,1);return {changes:1};}return{changes:0}; }
+  if (lower.startsWith("update payment_methods set")) {
+    const row = getPaymentMethodMem().find((item) => String(item.id) === String(params[params.length - 1]));
+    if (!row) return { changes: 0 };
+    const fields = sql.match(/set\s+(.+)\s+where/i)?.[1].split(",") ?? [];
+    let index = 0;
+    for (const field of fields) {
+      if (!field.includes("?")) continue;
+      row[field.trim().split("=")[0].trim()] = params[index++];
+    }
+    return { changes: 1 };
+  }
+  if (lower.startsWith("insert into payment_methods")) {
+    const mem = getPaymentMethodMem();
+    const columns = (sql.match(/payment_methods\s*\(([^)]+)\)/i)?.[1] ?? "").split(",").map((column) => column.trim());
+    const row: Row = {};
+    columns.forEach((column, index) => { row[column] = params[index]; });
+    if (mem.some((method) => String(method.id) === String(row.id))) throw new Error("UNIQUE constraint failed: payment_methods.id");
+    mem.push(row);
+    return { changes: 1 };
+  }
+  if (lower.startsWith("insert into agent_tokens")) { const mem=getTokenMem(), id=mem.length+1, cols=(sql.match(/agent_tokens\s*\(([^)]+)\)/i)?.[1]??"").split(",").map(v=>v.trim()), row:Row={id,is_active:1,created_at:new Date().toISOString()}; cols.forEach((c,i)=>row[c]=params[i]); mem.push(row); return {lastInsertRowid:id,changes:1}; }
+  if (lower.startsWith("insert into newsletter_subscribers")) {const mem=getSubscriberMem(),id=Math.max(0,...mem.map((row)=>Number(row.id)||0))+1,columns=(sql.match(/newsletter_subscribers\s*\(([^)]+)\)/i)?.[1]??"").split(",").map((column)=>column.trim()),row:Row={id,status:"active",created_at:new Date().toISOString(),updated_at:new Date().toISOString()};columns.forEach((column,index)=>{row[column]=params[index]});if(mem.some((item)=>item.email===row.email))throw new Error("UNIQUE constraint failed: newsletter_subscribers.email");mem.push(row);return{lastInsertRowid:id,changes:1};}
+  if (lower.startsWith("update agent_tokens set")) { const row=getTokenMem().find((r)=>String(r.id)===String(params[params.length-1])); if(!row)return {changes:0}; if(lower.includes("is_active=?"))row.is_active=params[0]; if(lower.includes("last_used_at=?"))row.last_used_at=params[0]; return {changes:1}; }
+  if (lower.startsWith("insert into article_audit_log")) {const mem=getAuditMem(),id=Math.max(0,...mem.map((row)=>Number(row.id)||0))+1,columns=(sql.match(/article_audit_log\s*\(([^)]+)\)/i)?.[1]??"").split(",").map((column)=>column.trim()),row:Row={id};columns.forEach((column,index)=>{row[column]=params[index]});mem.push(row);return {lastInsertRowid:id,changes:1};}
   return { changes: 0 };
+}
+
+export class StockReservationError extends Error {
+  constructor() {
+    super("Stok atau status produk berubah. Muat ulang checkout.");
+    this.name = "StockReservationError";
+  }
+}
+
+export class OrderTransitionError extends Error {
+  constructor() {
+    super("Status pesanan sudah berubah. Muat ulang daftar pesanan.");
+    this.name = "OrderTransitionError";
+  }
+}
+
+type AtomicOrderInput = {
+  code: string;
+  quoteId: string;
+  customerName: string;
+  customerWa: string;
+  customerEmail: string | null;
+  items: { product_id: number; name: string; price: number; qty: number }[];
+  subtotal: number;
+  paymentMethod: string;
+  paymentAccount: string;
+  proofUrl: string;
+};
+
+export async function createOrderWithStock(input: AtomicOrderInput): Promise<void> {
+  const d1 = getD1();
+  if (d1) {
+    const guardIds = input.items.map((item) => `${input.quoteId}:stock:${item.product_id}`);
+    const statements: D1Statement[] = [];
+    input.items.forEach((item, index) => {
+      statements.push(
+        d1.prepare(
+          "INSERT INTO operation_guards (operation_id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM products WHERE id=? AND is_active=1 AND (stock=-1 OR stock>=?)) THEN 1 ELSE 0 END",
+        ).bind(guardIds[index], item.product_id, item.qty),
+      );
+    });
+    input.items.forEach((item) => {
+      statements.push(
+        d1.prepare(
+          "UPDATE products SET stock=CASE WHEN stock=-1 THEN -1 ELSE stock-? END WHERE id=?",
+        ).bind(item.qty, item.product_id),
+      );
+    });
+    statements.push(
+      d1.prepare(
+        "INSERT INTO orders (code,customer_name,customer_wa,customer_email,items,subtotal,payment_method,payment_account,proof_url,status,quote_id,expires_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,datetime('now','+24 hours'))",
+      ).bind(
+        input.code,
+        input.customerName,
+        input.customerWa,
+        input.customerEmail,
+        JSON.stringify(input.items),
+        input.subtotal,
+        input.paymentMethod,
+        input.paymentAccount,
+        input.proofUrl,
+        "pending",
+        input.quoteId,
+      ),
+    );
+    guardIds.forEach((guardId) => {
+      statements.push(d1.prepare("DELETE FROM operation_guards WHERE operation_id=?").bind(guardId));
+    });
+
+    try {
+      await d1.batch(statements);
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (/operation_guards|CHECK constraint/i.test(message)) throw new StockReservationError();
+      throw error;
+    }
+  }
+
+  const products = getSharedMem();
+  for (const item of input.items) {
+    const product = products.find((row) => Number(row.id) === item.product_id);
+    const stock = Number(product?.stock ?? -1);
+    if (!product || Number(product.is_active) === 0 || (stock !== -1 && stock < item.qty)) {
+      throw new StockReservationError();
+    }
+  }
+  const orders = getOrderMem();
+  if (orders.some((order) => order.quote_id === input.quoteId || order.code === input.code)) {
+    throw new Error("UNIQUE constraint failed: orders.quote_id");
+  }
+  for (const item of input.items) {
+    const product = products.find((row) => Number(row.id) === item.product_id)!;
+    if (Number(product.stock) !== -1) product.stock = Number(product.stock) - item.qty;
+  }
+  orders.push({
+    id: Math.max(0, ...orders.map((order) => Number(order.id) || 0)) + 1,
+    code: input.code,
+    customer_name: input.customerName,
+    customer_wa: input.customerWa,
+    customer_email: input.customerEmail,
+    items: JSON.stringify(input.items),
+    subtotal: input.subtotal,
+    payment_method: input.paymentMethod,
+    payment_account: input.paymentAccount,
+    proof_url: input.proofUrl,
+    status: "pending",
+    quote_id: input.quoteId,
+    expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  });
+}
+
+export async function transitionPendingOrder(
+  code: string,
+  status: "lunas" | "dibatalkan" | "kadaluarsa",
+  adminNote: string | null,
+  rawItems: { product_id: number; qty: number }[],
+): Promise<void> {
+  const quantities = new Map<number, number>();
+  rawItems.forEach((item) => quantities.set(item.product_id, (quantities.get(item.product_id) ?? 0) + item.qty));
+  const d1 = getD1();
+  if (d1) {
+    if (status === "dibatalkan" || status === "kadaluarsa") {
+      const guardId = `${code}:transition:${status}`;
+      const statements: D1Statement[] = [
+        d1.prepare(
+          "INSERT INTO operation_guards (operation_id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM orders WHERE code=? AND status='pending') THEN 1 ELSE 0 END",
+        ).bind(guardId, code),
+      ];
+      quantities.forEach((qty, productId) => {
+        statements.push(
+          d1.prepare("UPDATE products SET stock=stock+? WHERE id=? AND stock!=-1").bind(qty, productId),
+        );
+      });
+      statements.push(
+        d1.prepare("UPDATE orders SET status=?,admin_note=?,updated_at=datetime('now') WHERE code=? AND status='pending'")
+          .bind(status, adminNote, code),
+        d1.prepare("DELETE FROM operation_guards WHERE operation_id=?").bind(guardId),
+      );
+      try {
+        await d1.batch(statements);
+        return;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (/operation_guards|CHECK constraint/i.test(message)) throw new OrderTransitionError();
+        throw error;
+      }
+    }
+    const result = await d1.prepare(
+      "UPDATE orders SET status=?,admin_note=?,updated_at=datetime('now') WHERE code=? AND status='pending'",
+    ).bind(status, adminNote, code).run();
+    if (!result.meta?.changes) throw new OrderTransitionError();
+    return;
+  }
+
+  const order = getOrderMem().find((row) => String(row.code) === code);
+  if (!order || order.status !== "pending") throw new OrderTransitionError();
+  if (status === "dibatalkan" || status === "kadaluarsa") {
+    quantities.forEach((qty, productId) => {
+      const product = getSharedMem().find((row) => Number(row.id) === productId);
+      if (product && Number(product.stock) !== -1) product.stock = Number(product.stock) + qty;
+    });
+  }
+  order.status = status;
+  order.admin_note = adminNote;
+  order.updated_at = new Date().toISOString();
 }

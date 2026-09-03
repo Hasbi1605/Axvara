@@ -13,13 +13,13 @@ describe("Performance regression guards", () => {
     expect(devResponse.headers.get("content-security-policy")).toContain("'unsafe-eval'");
 
     vi.stubEnv("NODE_ENV", "production");
-    const prodResponse = middleware(new NextRequest("https://axvara.id/"));
+    const prodResponse = middleware(new NextRequest("https://axvara.pages.dev/"));
     expect(prodResponse.headers.get("content-security-policy")).not.toContain("'unsafe-eval'");
   });
 
   it("tidak lagi mengizinkan koneksi runtime ke Iconify", () => {
     vi.stubEnv("NODE_ENV", "production");
-    const response = middleware(new NextRequest("https://axvara.id/"));
+    const response = middleware(new NextRequest("https://axvara.pages.dev/"));
     expect(response.headers.get("content-security-policy")).not.toContain("api.iconify.design");
   });
 });

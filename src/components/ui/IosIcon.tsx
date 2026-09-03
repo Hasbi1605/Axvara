@@ -6,7 +6,7 @@
  * Files: /public/icons/ios11/{name}-{size}.png  (32/48/64/96). Black glyph on transparent, tinted via CSS.
  * MCP: icons8 -> search_icons platform="ios11" + get_icon_png_url id=... + img.icons8.com/?id=...&format=png
  */
-type IosIconName =
+export type IosIconName =
   | "search"
   | "shopping-bag"
   | "lightning-bolt"
@@ -16,7 +16,50 @@ type IosIconName =
   | "discount"
   | "crown"
   | "star"
-  | "packaging";
+  | "packaging"
+  // — admin panel (iOS 11 Glyph) —
+  | "dashboard"
+  | "box"
+  | "purchase-order"
+  | "category"
+  | "news"
+  | "image"
+  | "full-image"
+  | "picture"
+  | "bot"
+  | "chatbot"
+  | "menu"
+  | "external-link"
+  | "exit"
+  | "logout-rounded"
+  | "edit"
+  | "create-new"
+  | "trash"
+  | "delete"
+  | "close"
+  | "plus"
+  | "minus"
+  | "chevron-left"
+  | "chevron-right"
+  | "chevron"
+  | "arrow-right"
+  | "left-arrow"
+  | "right-arrow"
+  | "back"
+  | "arrow"
+  | "bag"
+  | "bank"
+  | "clock"
+  | "copy"
+  | "credit-card"
+  | "home"
+  | "upload"
+  | "link"
+  | "settings"
+  | "chat"
+  | "checked"
+  | "checked-v2"
+  | "overview-pages-1";
 
 function pickSize(px: number) {
   if (px <= 16) return 32;
@@ -71,18 +114,26 @@ export function IosIcon({
   );
 }
 
-// Convenience: icon for categories (maps slug -> ios glyph)
-export function categoryIcon(slug: string): IosIconName {
-  switch (slug) {
-    case "ai-gateway":
-      return "lightning-bolt";
-    case "akun-premium":
-      return "crown";
-    case "tools-pro":
-      return "shield";
-    case "bundle-hemat":
-      return "packaging";
-    default:
-      return "star";
-  }
+// Single source ikon ada di @/lib/category-icons (edge-safe, dipakai API + UI).
+// Re-export di bawah agar import lama tetap jalan.
+export {
+  CATEGORY_ICON_OPTIONS,
+  LEGACY_CATEGORY_ICON_MAP,
+  isCategoryIconName,
+  resolveCategoryIconName,
+} from "@/lib/category-icons";
+import { resolveCategoryIconName } from "@/lib/category-icons";
+
+// Kompatibilitas: kode lama memanggil categoryIcon(slug) / resolveCategoryIcon(stored, slug).
+// Ikon prioritas dari kolom DB; slug hanya fallback data lama sehingga
+// rename kategori tidak ikut mengganti ikon.
+export function categoryIcon(slug: string, storedIcon?: string | null): IosIconName {
+  return resolveCategoryIconName(storedIcon ?? null, slug);
+}
+
+export function resolveCategoryIcon(
+  storedIcon?: string | null,
+  slug?: string | null,
+): IosIconName {
+  return resolveCategoryIconName(storedIcon ?? null, slug ?? null);
 }

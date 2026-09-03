@@ -1,22 +1,18 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useCart } from "@/stores/cart";
 import { formatRupiah } from "@/lib/utils";
-import { products } from "@/lib/products";
+import type { Product } from "@/lib/products";
 
 
 type Method = "qris" | "ewallet" | "bank";
-type BankKey = "seabank" | "bca" | "mandiri" | "bri" | "bni";
 
-const BANKS: { key: BankKey; label: string; no: string; holder: string; note: string; guide: string[] }[] = [
-  { key: "seabank", label: "SeaBank", no: "901812349386", holder: "Brotherstore06", note: "Transfer BI-FAST / RTOL", guide: ["Buka aplikasi SeaBank / m-banking kamu", "Pilih Transfer → Antar Bank → SeaBank 801", "Masukkan 901812349386 a.n. Brotherstore06", "Transfer tepat Rp subtotal, simpan bukti"] },
-  { key: "bca", label: "BCA", no: "— segara hadir", holder: "—", note: "Placeholder — akan diisi", guide: ["Buka BCA mobile / KlikBCA", "Transfer → BCA Virtual Account / Antar Rekening", "Masukkan nomor tujuan (segera diumumkan)", "Ikuti instruksi sampai selesai"] },
-  { key: "mandiri", label: "Mandiri", no: "— segara hadir", holder: "—", note: "Placeholder", guide: ["Buka Livin' Mandiri", "Transfer → Rekening Mandiri / Antar Bank", "Masukkan nomor tujuan (segera diumumkan)", "Konfirmasi & simpan bukti"] },
-  { key: "bri", label: "BRI", no: "— segara hadir", holder: "—", note: "Placeholder", guide: ["Buka BRImo", "Transfer → BRI / Antar Bank", "Masukkan nomor tujuan (segera diumumkan)", "Konfirmasi & simpan bukti"] },
-  { key: "bni", label: "BNI", no: "— segara hadir", holder: "—", note: "Placeholder", guide: ["Buka BNI Mobile", "Transfer → Antar Rekening", "Masukkan nomor tujuan (segera diumumkan)", "Konfirmasi & simpan bukti"] },
-];
+type QuotedItem = { product_id: number; name: string; price: number; qty: number; stock: number; image: string };
+type QuotePaymentMethod = { id: string; label: string; account_number: string; account_name: string; qris_url: string | null };
+type QuoteIssue = { product_id: number; type: string; message: string };
+type PriceChange = { product_id: number; name: string; previous_price: number; current_price: number; message: string };
 
 function CheckoutInner() {
   const router = useRouter();
@@ -25,41 +21,158 @@ function CheckoutInner() {
   const clear = useCart((s) => s.clear);
 
   // Direct checkout from product card via ?buy=slug — fetch authoritative from D1 (B01)
-  const [directProduct, setDirectProduct] = React.useState<(typeof products)[number] | null>(null);
+  const [directProduct, setDirectProduct] = React.useState<Product | null>(null);
   const [directLoading, setDirectLoading] = React.useState(false);
+  const [directError, setDirectError] = React.useState<string | null>(null);
   const buySlug = searchParams.get("buy");
   React.useEffect(() => {
-    if (!buySlug) { setDirectProduct(null); return; }
-    const seed = products.find((p) => p.slug === buySlug) ?? null;
-    setDirectProduct(seed);
+    if (!buySlug) { setDirectProduct(null); setDirectError(null); return; }
+    setDirectProduct(null);
+    setDirectError(null);
     setDirectLoading(true);
-    fetch(`/api/products?q=${encodeURIComponent(buySlug)}`)
+    fetch(`/api/products?active=1&q=${encodeURIComponent(buySlug)}`)
       .then((r) => r.ok ? r.json() : Promise.reject())
       .then((j) => {
-        const found = (j.products as typeof products)?.find((p) => p.slug === buySlug);
-        if (found) setDirectProduct(found);
+        const found = (j.products as Product[] | undefined)?.find((p) => p.slug === buySlug);
+        if (!found) throw new Error("Produk tidak ditemukan atau sedang nonaktif.");
+        setDirectProduct(found);
       })
-      .catch(() => {})
+      .catch((error) => setDirectError(error instanceof Error ? error.message : "Gagal memuat produk."))
       .finally(() => setDirectLoading(false));
   }, [buySlug]);
   const buyProduct = buySlug ? directProduct : null;
-  const isDirect = !!buyProduct && !!buySlug;
-  const items = isDirect && buyProduct ? [{ ...buyProduct, qty: 1, id: buyProduct.id, price: buyProduct.price, image: buyProduct.image, name: buyProduct.name }] : cartItems;
+  const isDirect = Boolean(buySlug);
+  const items = useMemo(
+    () => isDirect
+      ? (buyProduct ? [{ ...buyProduct, qty: 1, id: buyProduct.id, price: buyProduct.price, image: buyProduct.image, name: buyProduct.name }] : [])
+      : cartItems,
+    [isDirect, buyProduct, cartItems],
+  );
   const subtotal = items.reduce((a, b) => a + (b as { price: number; qty: number }).price * (b as { qty: number }).qty, 0);
 
   const [method, setMethod] = useState<Method | null>(null);
-  const [bankKey, setBankKey] = useState<BankKey | null>(null);
+  const [bankKey, setBankKey] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [wa, setWa] = useState("");
   const [email, setEmail] = useState("");
   const [fileName, setFileName] = useState<string | null>(null);
-  const [proofFile, setProofFile] = useState<File | null>(null);
   const [proofUrl, setProofUrl] = useState<string | null>(null);
   const [proofUploading, setProofUploading] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  // --- Fix 1: Authoritative checkout quote ---
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [quotedItems, setQuotedItems] = useState<QuotedItem[]>([]);
+  const [quotedSubtotal, setQuotedSubtotal] = useState(0);
+  const [quotedPaymentMethods, setQuotedPaymentMethods] = useState<QuotePaymentMethod[]>([]);
+  const [quoteIssues, setQuoteIssues] = useState<QuoteIssue[]>([]);
+  const [priceChanges, setPriceChanges] = useState<PriceChange[]>([]);
+  const [showIssueDialog, setShowIssueDialog] = useState(false);
+  const [quoteToken, setQuoteToken] = useState<string | null>(null);
+  const [quoteExpiresAt, setQuoteExpiresAt] = useState<string | null>(null);
+  const [quoteAccepted, setQuoteAccepted] = useState(false);
+  const quoteRequestId = React.useRef(0);
+
+  const fetchQuote = useCallback(async (quoteItems: { slug: string; qty: number; expected_price: number }[]) => {
+    if (quoteItems.length === 0) return;
+    const requestId = ++quoteRequestId.current;
+    setQuoteLoading(true);
+    setQuoteError(null);
+    setQuoteIssues([]);
+    setPriceChanges([]);
+    setShowIssueDialog(false);
+    setQuoteToken(null);
+    setQuoteExpiresAt(null);
+    setQuoteAccepted(false);
+    setProofUrl(null);
+    setFileName(null);
+    try {
+      const r = await fetch("/api/checkout/quote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: quoteItems }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (requestId !== quoteRequestId.current) return;
+      if (r.status === 409 && j.ok === false && Array.isArray(j.issues)) {
+        setQuoteIssues(j.issues as QuoteIssue[]);
+        setShowIssueDialog(true);
+        setQuotedItems([]);
+        setQuotedSubtotal(0);
+        setQuotedPaymentMethods([]);
+        return;
+      }
+      if (!r.ok) throw new Error(j.error || `Quote gagal (${r.status})`);
+      const changes = Array.isArray(j.changes) ? j.changes as PriceChange[] : [];
+      setQuotedItems(j.items ?? []);
+      setQuotedSubtotal(j.subtotal ?? 0);
+      setQuotedPaymentMethods(j.paymentMethods ?? []);
+      setQuoteToken(j.quoteToken ?? null);
+      setQuoteExpiresAt(j.quoteExpiresAt ?? null);
+      setPriceChanges(changes);
+      if (changes.length > 0) {
+        setShowIssueDialog(true);
+      } else {
+        setQuoteAccepted(true);
+      }
+    } catch (err) {
+      if (requestId !== quoteRequestId.current) return;
+      setQuoteError(err instanceof Error ? err.message : "Gagal memuat harga");
+    } finally {
+      if (requestId === quoteRequestId.current) setQuoteLoading(false);
+    }
+  }, []);
+
+  const quoteRequestItems = useMemo(
+    () => items.map((item) => ({
+      slug: item.slug,
+      qty: Number(item.qty) || 1,
+      expected_price: Number(item.price),
+    })),
+    [items],
+  );
+  const quoteKey = JSON.stringify(quoteRequestItems);
+
+  // Fetch quote whenever product identity, quantity, or snapshot price changes.
+  useEffect(() => {
+    if (items.length === 0 || directLoading) {
+      quoteRequestId.current += 1;
+      setQuoteLoading(false);
+      setQuoteToken(null);
+      setQuotedItems([]);
+      setQuotedPaymentMethods([]);
+      return;
+    }
+    void fetchQuote(quoteRequestItems);
+  // quoteKey intentionally represents the complete item contract.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quoteKey, directLoading, fetchQuote]);
+
+  // Derived: payment method groups from quote
+  // IDs from DB: "qris", "ewallet", "seabank", "bca", etc. — bank = anything not qris/ewallet
+  const pmQris = quotedPaymentMethods.find((pm) => pm.id === "qris");
+  const pmEwallet = quotedPaymentMethods.find((pm) => pm.id === "ewallet");
+  const pmBanks = quotedPaymentMethods.filter((pm) => pm.id !== "qris" && pm.id !== "ewallet");
+
+  // Display items: prefer quoted (authoritative), fallback to cart snapshot
+  const displayItems = quotedItems.length > 0 ? quotedItems.map((qi) => ({ id: qi.product_id, name: qi.name, price: qi.price, qty: qi.qty, image: qi.image })) : items;
+  const displaySubtotal = quotedItems.length > 0 ? quotedSubtotal : subtotal;
+
+  if (buySlug && !directError && (directLoading || !directProduct)) {
+    return <div className="mx-auto max-w-[640px] px-4 py-16 text-center text-white/60">Memuat produk…</div>;
+  }
+  if (buySlug && directError) {
+    return (
+      <div className="mx-auto max-w-[640px] px-4 py-16 text-center">
+        <p className="text-red-300">{directError}</p>
+        <Link href="/#katalog" className="mt-3 inline-block text-sm text-[#00E5FF]">Kembali ke katalog</Link>
+      </div>
+    );
+  }
 
   if (items.length === 0) {
     return (
@@ -94,9 +207,17 @@ function CheckoutInner() {
       setError("Pilih bank tujuan terlebih dahulu");
       return;
     }
-    // BUG-06 fix: block checkout for placeholder banks (not yet live)
-    if (method === "bank" && bankKey && bankKey !== "seabank") {
-      setError(`${BANKS.find(b => b.key === bankKey)?.label ?? "Bank"} belum tersedia. Gunakan SeaBank, E-Wallet, atau QRIS.`);
+    const selectedPaymentId = method === "bank" ? bankKey : method;
+    if (!selectedPaymentId || !quotedPaymentMethods.some((payment) => payment.id === selectedPaymentId)) {
+      setError("Metode pembayaran berubah atau sudah tidak aktif. Muat ulang checkout.");
+      return;
+    }
+    if (quoteLoading) {
+      setError("Tunggu harga selesai dimuat.");
+      return;
+    }
+    if (quoteError || !quoteToken || !quoteAccepted || quoteIssues.length > 0 || quotedItems.length === 0) {
+      setError("Harga atau stok belum tervalidasi. Muat ulang checkout dan konfirmasi perubahan.");
       return;
     }
     if (!proofUrl) {
@@ -109,24 +230,7 @@ function CheckoutInner() {
     }
     setLoading(true);
     const payMethod = method === "bank" ? `bank:${bankKey}` as const : method!;
-    // Build server payload: product_id + qty, price dihitung server dari D1
-    const payloadItems = items.map((it) => {
-      // items may be from cart (id like "p1" or numeric string) — resolve to numeric id via lookup in products seed or assume id as db id
-      // For cart items, we store original product slug — better to map via slug to server id by fetching, but here we try to find db id via known list
-      // Fallback: try to find product by slug via products array then use index+1 as id (dev mapping)
-      const bySlug = products.find((p) => p.slug === (it as unknown as { slug?: string }).slug);
-      // If item has id like "p1", map to numeric
-      const rawId = String(it.id);
-      const m = rawId.match(/^p(\d+)$/);
-      const pid = m ? Number(m[1]) : Number(rawId);
-      if (!Number.isNaN(pid) && pid >= 1 && pid <= 1000) return { product_id: pid, qty: Number(it.qty) || 1 };
-      // slug fallback
-      if (bySlug) {
-        const idx = products.findIndex((p) => p.slug === bySlug.slug);
-        return { product_id: idx + 1, qty: Number(it.qty) || 1 };
-      }
-      return { product_id: Number(rawId) || 1, qty: Number(it.qty) || 1 };
-    });
+    const payloadItems = quotedItems.map((item) => ({ product_id: item.product_id, qty: item.qty }));
     try {
       const r = await fetch("/api/orders", {
         method: "POST",
@@ -138,6 +242,7 @@ function CheckoutInner() {
           items: payloadItems,
           payment_method: payMethod,
           proof_url: proofUrl,
+          quote_token: quoteToken,
         }),
       });
       const j = await r.json().catch(() => ({}));
@@ -145,7 +250,7 @@ function CheckoutInner() {
       const code = j.code as string;
       // Also keep a local copy for UX fallback (pesanan page can fetch from server if local missing)
       try {
-        const localOrder = { code, name, wa, email, method: payMethod, items, subtotal: j.subtotal ?? subtotal, fileName, status: "pending", createdAt: new Date().toISOString() };
+        const localOrder = { code, name, wa, email, method: payMethod, items: displayItems, subtotal: j.subtotal ?? displaySubtotal, fileName, status: "pending", createdAt: new Date().toISOString() };
         const existing = JSON.parse(localStorage.getItem("axvara-orders") || "[]");
         localStorage.setItem("axvara-orders", JSON.stringify([...existing, localOrder]));
       } catch {}
@@ -170,15 +275,18 @@ function CheckoutInner() {
             <h2 className="text-sm font-semibold text-white">① Data Pembeli</h2>
             <div className="mt-3 grid gap-3">
               <div>
-                <input value={name} onChange={(e) => { setName(e.target.value); setFieldErrors(f=> ({...f, name: ""})); }} placeholder="Nama lengkap *" aria-invalid={!!fieldErrors.name} className={`w-full h-11 px-4 rounded-xl bg-white/[0.06] border text-sm text-white placeholder:text-white/30 focus:outline-none ${fieldErrors.name ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`} />
+                <label htmlFor="checkout-name" className="block text-xs font-medium text-white/60 mb-1">Nama lengkap *</label>
+                <input id="checkout-name" value={name} onChange={(e) => { setName(e.target.value); setFieldErrors(f=> ({...f, name: ""})); }} placeholder="Nama lengkap" aria-invalid={!!fieldErrors.name} className={`w-full h-11 px-4 rounded-xl bg-white/[0.06] border text-sm text-white placeholder:text-white/30 focus:outline-none ${fieldErrors.name ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`} />
                 {fieldErrors.name && <p className="mt-1.5 text-xs text-red-300">{fieldErrors.name}</p>}
               </div>
               <div>
-                <input value={wa} onChange={(e) => { setWa(e.target.value); setFieldErrors(f=> ({...f, wa: ""})); }} placeholder="No WA aktif * (08...)" aria-invalid={!!fieldErrors.wa} className={`w-full h-11 px-4 rounded-xl bg-white/[0.06] border text-sm text-white placeholder:text-white/30 focus:outline-none ${fieldErrors.wa ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`} />
+                <label htmlFor="checkout-wa" className="block text-xs font-medium text-white/60 mb-1">No WA aktif *</label>
+                <input id="checkout-wa" value={wa} onChange={(e) => { setWa(e.target.value); setFieldErrors(f=> ({...f, wa: ""})); }} placeholder="08..." aria-invalid={!!fieldErrors.wa} className={`w-full h-11 px-4 rounded-xl bg-white/[0.06] border text-sm text-white placeholder:text-white/30 focus:outline-none ${fieldErrors.wa ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`} />
                 {fieldErrors.wa && <p className="mt-1.5 text-xs text-red-300">{fieldErrors.wa}</p>}
               </div>
               <div>
-                <input value={email} onChange={(e) => { setEmail(e.target.value); setFieldErrors(f=> ({...f, email: ""})); }} placeholder="Email (opsional)" aria-invalid={!!fieldErrors.email} className={`w-full h-11 px-4 rounded-xl bg-white/[0.06] border text-sm text-white placeholder:text-white/30 focus:outline-none ${fieldErrors.email ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`} />
+                <label htmlFor="checkout-email" className="block text-xs font-medium text-white/60 mb-1">Email (opsional)</label>
+                <input id="checkout-email" value={email} onChange={(e) => { setEmail(e.target.value); setFieldErrors(f=> ({...f, email: ""})); }} placeholder="email@contoh.com" aria-invalid={!!fieldErrors.email} className={`w-full h-11 px-4 rounded-xl bg-white/[0.06] border text-sm text-white placeholder:text-white/30 focus:outline-none ${fieldErrors.email ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`} />
                 {fieldErrors.email && <p className="mt-1.5 text-xs text-red-300">{fieldErrors.email}</p>}
               </div>
             </div>
@@ -186,8 +294,21 @@ function CheckoutInner() {
 
           <div>
             <h2 className="text-sm font-semibold text-white">② Metode Pembayaran</h2>
+            {quoteLoading ? (
+              <div className="mt-3 flex items-center gap-2 text-sm text-white/50">
+                <span className="w-4 h-4 rounded-full border-2 border-white/20 border-t-[#00E5FF] animate-spin" />
+                Memuat harga & metode pembayaran…
+              </div>
+            ) : quoteError ? (
+              <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-2">
+                <p className="text-sm text-red-300">{quoteError}</p>
+                <button type="button" onClick={() => void fetchQuote(quoteRequestItems)} className="shrink-0 text-xs font-semibold text-[#00E5FF]">Coba lagi</button>
+              </div>
+            ) : (
+              <>
             <div className="mt-3 grid gap-3">
-              <button onClick={() => setMethod("qris")} className={`text-left rounded-2xl border p-4 flex items-center justify-between transition ${method === "qris" ? "bg-[#00E5FF]/10 border-[#00E5FF]/40" : "ax-glass-card border-white/10 hover:bg-white/10"}`}>
+              {pmQris && (
+              <button type="button" aria-pressed={method === "qris"} onClick={() => setMethod("qris")} className={`text-left rounded-2xl border p-4 flex items-center justify-between transition ${method === "qris" ? "bg-[#00E5FF]/10 border-[#00E5FF]/40" : "ax-glass-card border-white/10 hover:bg-white/10"}`}>
                 <div className="flex items-center gap-3">
                   <img src="/icons/ios11/qr-code-32.png" alt="" width={20} height={20} className="w-5 h-5 object-contain" style={{ filter: "brightness(0) saturate(100%) invert(72%) sepia(68%) saturate(4000%) hue-rotate(145deg) brightness(1.05)" }} draggable={false} />
                   <div>
@@ -197,53 +318,58 @@ function CheckoutInner() {
                 </div>
                 <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${method === "qris" ? "border-[#00E5FF] bg-[#00E5FF]" : "border-white/20"}`}>{method === "qris" && <span className="w-2 h-2 rounded-full bg-[#080C1E]" />}</span>
               </button>
+              )}
 
-              <button onClick={() => setMethod("ewallet")} className={`text-left rounded-2xl border p-4 flex items-center justify-between transition ${method === "ewallet" ? "bg-[#00E5FF]/10 border-[#00E5FF]/40" : "ax-glass-card border-white/10 hover:bg-white/10"}`}>
+              {pmEwallet && (
+              <button type="button" aria-pressed={method === "ewallet"} onClick={() => setMethod("ewallet")} className={`text-left rounded-2xl border p-4 flex items-center justify-between transition ${method === "ewallet" ? "bg-[#00E5FF]/10 border-[#00E5FF]/40" : "ax-glass-card border-white/10 hover:bg-white/10"}`}>
                 <div className="flex items-center gap-3">
                   <img src="/icons/ios11/wallet-32.png" alt="" width={20} height={20} className="w-5 h-5 object-contain brightness-0 invert opacity-80" draggable={false} />
                   <div>
                     <p className="text-sm font-semibold text-white">E-WALLET</p>
-                    <p className="text-xs text-white/45 mt-0.5">DANA / Gopay / Shopeepay / OVO</p>
+                    <p className="text-xs text-white/45 mt-0.5">{pmEwallet.label}</p>
                   </div>
                 </div>
                 <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${method === "ewallet" ? "border-[#00E5FF] bg-[#00E5FF]" : "border-white/20"}`}>{method === "ewallet" && <span className="w-2 h-2 rounded-full bg-[#080C1E]" />}</span>
               </button>
+              )}
 
-              <button onClick={() => setMethod("bank")} className={`text-left rounded-2xl border p-4 flex items-center justify-between transition ${method === "bank" ? "bg-[#00E5FF]/10 border-[#00E5FF]/40" : "ax-glass-card border-white/10 hover:bg-white/10"}`}>
+              {pmBanks.length > 0 && (
+              <button type="button" aria-pressed={method === "bank"} onClick={() => setMethod("bank")} className={`text-left rounded-2xl border p-4 flex items-center justify-between transition ${method === "bank" ? "bg-[#00E5FF]/10 border-[#00E5FF]/40" : "ax-glass-card border-white/10 hover:bg-white/10"}`}>
                 <div className="flex items-center gap-3">
                   <img src="/icons/ios11/bank-32.png" alt="" width={20} height={20} className="w-5 h-5 object-contain brightness-0 invert opacity-80" draggable={false} />
                   <div>
                     <p className="text-sm font-semibold text-white">TRANSFER BANK</p>
-                    <p className="text-xs text-white/45 mt-0.5">SeaBank & bank lainnya</p>
+                    <p className="text-xs text-white/45 mt-0.5">{pmBanks.map((b) => b.label).join(", ")}</p>
                   </div>
                 </div>
                 <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${method === "bank" ? "border-[#00E5FF] bg-[#00E5FF]" : "border-white/20"}`}>{method === "bank" && <span className="w-2 h-2 rounded-full bg-[#080C1E]" />}</span>
               </button>
+              )}
             </div>
 
             {/* Detail metode — hanya muncul setelah pilih, default null */}
             {method && (
               <div className="mt-4 ax-glass-card rounded-2xl p-4 animate-in fade-in">
-                {method === "qris" && (
+                {method === "qris" && pmQris && (
                   <div className="text-center">
-                    <p className="text-xs text-white/50">Scan QRIS Brotherstore06 — NMID ID1022191087959 • A01</p>
+                    <p className="text-xs text-white/50">Scan QRIS {pmQris.account_name}</p>
                     <div className="mt-3 mx-auto w-full max-w-[300px] bg-white rounded-2xl p-2 overflow-hidden">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src="/qris/axvara-qris.jpg" alt="QRIS Brotherstore06 NMID ID1022191087959 A01" className="w-full h-auto rounded-xl" />
+                      <img src={pmQris.qris_url!} alt={`QRIS ${pmQris.account_name}`} className="w-full h-auto rounded-xl" />
                     </div>
-                    <a href="/qris/axvara-qris.jpg" download="AXVARA-QRIS-Brotherstore06.jpg" className="mt-2 inline-flex text-xs text-[#00E5FF] hover:underline">Download QRIS</a>
+                    <a href={pmQris.qris_url!} download={`AXVARA-QRIS-${pmQris.account_name}.jpg`} className="mt-2 inline-flex text-xs text-[#00E5FF] hover:underline">Download QRIS</a>
                     <p className="text-[11px] text-white/30 mt-1">Buka DANA/Gopay/Shopeepay → Scan → Bayar → Screenshot bukti</p>
                   </div>
                 )}
-                {method === "ewallet" && (
+                {method === "ewallet" && pmEwallet && (
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="text-xs text-white/50">Transfer ke E-Wallet</p>
-                      <p className="font-mono font-bold text-white flex items-center gap-2">082135277434 <img src="/icons/ios11/wallet-32.png" alt="" width={14} height={14} className="w-3.5 h-3.5 object-contain brightness-0 invert opacity-60" draggable={false} /></p>
-                      <p className="text-xs text-white/40">a.n. Brotherstore06 — DANA/Gopay/Shopeepay/OVO</p>
+                      <p className="font-mono font-bold text-white flex items-center gap-2">{pmEwallet.account_number} <img src="/icons/ios11/wallet-32.png" alt="" width={14} height={14} className="w-3.5 h-3.5 object-contain brightness-0 invert opacity-60" draggable={false} /></p>
+                      <p className="text-xs text-white/40">a.n. {pmEwallet.account_name}</p>
                       <p className="text-[11px] text-white/30 mt-1">Transfer tepat Rp subtotal & screenshot bukti.</p>
                     </div>
-                    <button onClick={() => copy("082135277434", "ewallet")} className="h-9 px-4 rounded-full bg-white text-[#080C1E] text-sm font-semibold flex items-center gap-1.5 shrink-0">
+                    <button onClick={() => copy(pmEwallet.account_number, "ewallet")} className="h-9 px-4 rounded-full bg-white text-[#080C1E] text-sm font-semibold flex items-center gap-1.5 shrink-0">
                       <img src={copied === "ewallet" ? "/icons/ios11/checked-32.png" : "/icons/ios11/copy-32.png"} alt="" width={16} height={16} className="w-4 h-4 object-contain" draggable={false} /> {copied === "ewallet" ? "Disalin" : "Salin"}
                     </button>
                   </div>
@@ -251,42 +377,41 @@ function CheckoutInner() {
                 {method === "bank" && (
                   <div className="space-y-2">
                     <p className="text-xs text-white/40 mb-1">Pilih bank tujuan:</p>
-                    {BANKS.map((b) => {
-                      const active = bankKey === b.key;
-                      const isLive = b.key === "seabank";
+                    {pmBanks.map((b) => {
+                      const bKey = b.id.replace("bank:", "");
+                      const active = bankKey === bKey;
                       return (
-                        <div key={b.key} className={`rounded-xl border overflow-hidden transition ${active ? "border-[#00E5FF]/40 bg-white/[0.06]" : "border-white/10 bg-white/[0.03]"}`}>
-                          <button onClick={() => setBankKey(b.key)} className="w-full flex items-center justify-between p-3 text-left">
+                        <div key={b.id} className={`rounded-xl border overflow-hidden transition ${active ? "border-[#00E5FF]/40 bg-white/[0.06]" : "border-white/10 bg-white/[0.03]"}`}>
+                          <button onClick={() => setBankKey(bKey)} className="w-full flex items-center justify-between p-3 text-left">
                             <span className="flex items-center gap-2.5">
                               <img src="/icons/ios11/bank-32.png" alt="" width={16} height={16} className="w-4 h-4 object-contain brightness-0 invert opacity-60" draggable={false} />
                               <span>
-                                <span className="text-sm font-semibold text-white flex items-center gap-2">{b.label} {!isLive && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/10 text-white/50 border border-white/10">Segera</span>}</span>
-                                <span className="text-xs font-mono text-white/60">{b.no}</span>
+                                <span className="text-sm font-semibold text-white">{b.label}</span>
+                                <span className="text-xs font-mono text-white/60 ml-2">{b.account_number}</span>
                               </span>
                             </span>
                             <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${active ? "border-[#00E5FF] bg-[#00E5FF]" : "border-white/20"}`}>{active && <span className="w-2 h-2 rounded-full bg-[#080C1E]" />}</span>
                           </button>
                           {active && (
                             <div className="px-3 pb-3 pt-1 border-t border-white/10">
-                              <p className="text-xs text-white/50">a.n. {b.holder} • {b.note}</p>
-                              <ol className="mt-2 space-y-1 text-xs text-white/60 list-decimal list-inside">
-                                {b.guide.map((g, i) => (<li key={i}>{g}</li>))}
-                              </ol>
-                              {isLive && (
-                                <button onClick={() => copy(b.no, b.key)} className="mt-2 h-8 px-3 rounded-full bg-white text-[#080C1E] text-xs font-semibold inline-flex items-center gap-1.5">
-                                  <img src={copied === b.key ? "/icons/ios11/checked-32.png" : "/icons/ios11/copy-32.png"} alt="" width={14} height={14} className="w-3.5 h-3.5 object-contain" draggable={false} /> {copied === b.key ? "Disalin" : "Salin No Rek"}
-                                </button>
-                              )}
+                              <p className="text-xs text-white/50">a.n. {b.account_name}</p>
+                              <button onClick={() => copy(b.account_number, b.id)} className="mt-2 h-8 px-3 rounded-full bg-white text-[#080C1E] text-xs font-semibold inline-flex items-center gap-1.5">
+                                <img src={copied === b.id ? "/icons/ios11/checked-32.png" : "/icons/ios11/copy-32.png"} alt="" width={14} height={14} className="w-3.5 h-3.5 object-contain" draggable={false} /> {copied === b.id ? "Disalin" : "Salin No Rek"}
+                              </button>
                             </div>
                           )}
                         </div>
                       );
                     })}
                     {!bankKey && <p className="text-[11px] text-white/30 text-center">Pilih salah satu bank di atas.</p>}
-                    {bankKey && <p className="text-[11px] text-white/30">Bank lain placeholder — hubungi admin WA jika butuh metode lain.</p>}
                   </div>
                 )}
               </div>
+            )}
+              </>
+            )}
+            {quoteToken && quoteExpiresAt && (
+              <p className="mt-3 text-[11px] text-emerald-300/70">Harga dan rekening dikunci selama 60 menit untuk pesanan ini.</p>
             )}
           </div>
 
@@ -303,11 +428,12 @@ function CheckoutInner() {
                 onChange={async (e) => {
                   const f = e.target.files?.[0];
                   if (!f) return;
-                  if (f.size > 5 * 1024 * 1024) { setError("File max 5MB"); return; }
-                  if (!["image/jpeg","image/jpg","image/png","image/webp"].includes(f.type)) { setError("Hanya JPG/PNG/WebP"); return; }
-                  setFileName(f.name);
-                  setProofFile(f);
+                  setProofUrl(null);
+                  setFileName(null);
                   setError(null);
+                  if (f.size > 5 * 1024 * 1024) { setError("File max 5MB"); e.target.value = ""; return; }
+                  if (!["image/jpeg","image/jpg","image/png","image/webp"].includes(f.type)) { setError("Hanya JPG/PNG/WebP"); e.target.value = ""; return; }
+                  setFileName(f.name);
                   setProofUploading(true);
                   try {
                     const fd = new FormData();
@@ -316,7 +442,7 @@ function CheckoutInner() {
                     const j = await r.json().catch(()=> ({}));
                     if (!r.ok) throw new Error(j.error || `Upload gagal (${r.status})`);
                     setProofUrl(j.url);
-                  } catch (err) { setError(err instanceof Error ? err.message : "Upload gagal"); setProofFile(null); }
+                  } catch (err) { setError(err instanceof Error ? err.message : "Upload gagal"); setFileName(null); setProofUrl(null); }
                   finally { setProofUploading(false); }
                   e.target.value = "";
                 }}
@@ -327,17 +453,24 @@ function CheckoutInner() {
 
           {error && <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2">{error}</p>}
 
-          <button onClick={submit} disabled={loading} className="w-full h-[52px] rounded-xl bg-[#00E5FF] text-[#080C1E] font-bold hover:bg-[#00D0E8] disabled:opacity-60 transition inline-flex items-center justify-center gap-2">
+          <button onClick={submit} disabled={loading || proofUploading || !proofUrl || quoteLoading || !method || !quoteToken || !quoteAccepted || quoteIssues.length > 0} className="w-full h-[52px] rounded-xl bg-[#00E5FF] text-[#080C1E] font-bold hover:bg-[#00D0E8] disabled:opacity-60 transition inline-flex items-center justify-center gap-2">
             {loading && <span className="w-5 h-5 rounded-full border-2 border-[#080C1E]/20 border-t-[#080C1E] animate-spin" />}
-            {loading ? "Memproses…" : `Bayar ${formatRupiah(subtotal)} — Buat Pesanan`}
+            {loading ? "Memproses…" : `Bayar ${formatRupiah(displaySubtotal)} — Buat Pesanan`}
           </button>
         </div>
 
         {/* Ringkasan */}
         <div className="ax-glass-card rounded-[24px] p-5 h-fit sticky top-[72px]">
           <h3 className="font-semibold text-white text-sm">Ringkasan Pesanan</h3>
+          {quoteLoading ? (
+            <div className="mt-4 flex items-center gap-2 text-sm text-white/50">
+              <span className="w-4 h-4 rounded-full border-2 border-white/20 border-t-[#00E5FF] animate-spin" />
+              Memuat…
+            </div>
+          ) : (
+          <>
           <div className="mt-4 space-y-3">
-            {items.map((it) => (
+            {displayItems.map((it) => (
               <div key={it.id} className="flex gap-3">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={it.image} alt={it.name} className="w-14 h-14 rounded-xl object-cover" />
@@ -351,11 +484,39 @@ function CheckoutInner() {
           </div>
           <div className="mt-4 pt-4 border-t border-white/10 flex justify-between">
             <span className="text-sm text-white/60">Total</span>
-            <span className="font-display font-bold text-white text-lg">{formatRupiah(subtotal)}</span>
+            <span className="font-display font-bold text-white text-lg">{formatRupiah(displaySubtotal)}</span>
           </div>
+          </>
+          )}
           <p className="text-xs text-white/30 mt-3 text-center">Dengan membuat pesanan kamu setuju admin memverifikasi bukti secara manual.</p>
         </div>
       </div>
+
+      {/* Price-change / stock issue dialog */}
+      {showIssueDialog && (quoteIssues.length > 0 || priceChanges.length > 0) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4" role="dialog" aria-modal="true" aria-labelledby="quote-change-title">
+          <div className="ax-glass-card rounded-2xl p-6 max-w-md w-full space-y-4">
+            <h3 id="quote-change-title" className="text-white font-semibold text-base">Perubahan Harga / Stok</h3>
+            <p className="text-sm text-white/60">Beberapa item berubah sejak kamu menambahkannya:</p>
+            <ul className="space-y-2">
+              {quoteIssues.map((issue, i) => (
+                <li key={i} className="text-sm text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2">{issue.message}</li>
+              ))}
+              {priceChanges.map((change) => (
+                <li key={change.product_id} className="text-sm text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2">
+                  {change.name}: {formatRupiah(change.previous_price)} → {formatRupiah(change.current_price)}
+                </li>
+              ))}
+            </ul>
+            <div className="flex gap-3">
+              {quoteIssues.length === 0 && priceChanges.length > 0 && (
+                <button onClick={() => { setShowIssueDialog(false); setQuoteAccepted(true); }} className="flex-1 h-10 rounded-xl bg-[#00E5FF] text-[#080C1E] font-semibold text-sm">Setujui harga baru</button>
+              )}
+              <button onClick={() => { setShowIssueDialog(false); router.push("/#katalog"); }} className="flex-1 h-10 rounded-xl border border-white/20 text-white/70 text-sm">Kembali belanja</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

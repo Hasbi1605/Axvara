@@ -5,8 +5,9 @@ import { ScrollRope } from "@/components/storefront/ScrollRope";
 import { CategoryPills } from "@/components/storefront/CategoryPills";
 import { ProductCard } from "@/components/storefront/ProductCard";
 import { CommunityBar } from "@/components/storefront/CommunityBar";
-import { products, type Product } from "@/lib/products";
+import type { Product } from "@/lib/products";
 import { useSearch } from "@/stores/search";
+import { adminWaLink } from "@/lib/site";
 
 const PER_PAGE = 8;
 
@@ -14,39 +15,27 @@ export default function HomePage() {
   const [activeCat, setActiveCat] = useState("semua");
   const [page, setPage] = useState(1);
   const q = useSearch((s) => s.q);
-  // Show seed products immediately — no skeleton, no blocking
-  const [catalogProducts, setCatalogProducts] = useState<Product[]>(products);
+  const [catalogProducts, setCatalogProducts] = useState<Product[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);
 
-  // Background refresh from D1 — doesn't block render
+  useEffect(() => {
+    const requestedCategory = new URLSearchParams(window.location.search).get("category");
+    if (requestedCategory) setActiveCat(requestedCategory);
+  }, []);
+
+  // D1 is authoritative. Static seeds must never resurrect inactive/deleted products.
   useEffect(() => {
     const controller = new AbortController();
-    let idleId: number | null = null;
-    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const doFetch = () => {
-      fetch("/api/products?active=1", { signal: controller.signal })
+    fetch("/api/products?active=1", { signal: controller.signal })
         .then(async (r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-        .then((data) => { if (Array.isArray(data.products) && data.products.length > 0) setCatalogProducts(data.products); setCatalogError(null); })
+        .then((data) => { if (Array.isArray(data.products)) setCatalogProducts(data.products); setCatalogError(null); })
         .catch((e) => {
           if (e instanceof DOMException && e.name === "AbortError") return;
           setCatalogError(e instanceof Error ? e.message : "Gagal memuat katalog");
-        });
-    };
-
-    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
-      idleId = (window as unknown as { requestIdleCallback: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback(doFetch, { timeout: 1500 });
-    } else {
-      fallbackTimer = setTimeout(doFetch, 100);
-    }
-
-    return () => {
-      controller.abort();
-      if (idleId !== null && "cancelIdleCallback" in window) {
-        (window as unknown as { cancelIdleCallback: (id: number) => void }).cancelIdleCallback(idleId);
-      }
-      if (fallbackTimer !== null) clearTimeout(fallbackTimer);
-    };
+        })
+        .finally(() => setCatalogLoading(false));
+    return () => controller.abort();
   }, []);
 
   const filtered = useMemo(() => {
@@ -93,7 +82,7 @@ export default function HomePage() {
               </p>
               <div className="mt-6 flex flex-wrap gap-3">
                 <a href="#katalog" className="h-11 px-6 rounded-full bg-white text-[#080C1E] font-semibold text-sm inline-flex items-center justify-center hover:bg-white/90 transition active:scale-[0.98]">Lihat Katalog</a>
-                <a href="https://wa.me/6282135277434?text=Halo%20AXVARA" target="_blank" className="h-11 px-6 rounded-full border border-white/14 bg-white/[0.06] text-white font-medium text-sm inline-flex items-center justify-center gap-1.5 hover:bg-white/10 transition active:scale-[0.98]">
+                <a href={adminWaLink()} target="_blank" rel="noreferrer" className="h-11 px-6 rounded-full border border-white/14 bg-white/[0.06] text-white font-medium text-sm inline-flex items-center justify-center gap-1.5 hover:bg-white/10 transition active:scale-[0.98]">
                   <img src="/icons/ios11/chat-32.png" alt="" width={14} height={14} className="w-3.5 h-3.5 object-contain brightness-0 invert opacity-70" draggable={false} /> Hubungi Admin
                 </a>
               </div>
@@ -115,7 +104,7 @@ export default function HomePage() {
 
       <CommunityBar />
 
-      {/* Katalog with pagination — shows seed data instantly, no skeleton */}
+      {/* Katalog with pagination — authoritative D1 data */}
       <section id="katalog" className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 pt-2 pb-10">
         <div className="flex items-center justify-between gap-4">
           <h2 className="font-display font-bold text-[20px] sm:text-[24px] text-white tracking-[-0.02em]">Katalog Premium</h2>
@@ -130,7 +119,13 @@ export default function HomePage() {
             <button onClick={() => location.reload()} className="h-8 px-3 rounded-full bg-white text-[#070a1e] text-xs font-bold shrink-0">Muat ulang</button>
           </div>
         )}
-        {filtered.length === 0 ? (
+        {catalogLoading ? (
+          <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5" aria-label="Memuat katalog">
+            {Array.from({ length: 8 }, (_, index) => (
+              <div key={index} className="aspect-[3/4] rounded-[16px] sm:rounded-[22px] bg-white/[0.05] animate-pulse" />
+            ))}
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="mt-10 ax-glass-card rounded-[20px] p-10 text-center">
             <p className="text-white font-medium">Tidak ada produk yang cocok</p>
             <p className="text-sm text-white/50 mt-1">Coba ubah kata kunci atau kategori.</p>

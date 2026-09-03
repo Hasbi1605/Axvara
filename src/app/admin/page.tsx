@@ -2,46 +2,26 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { formatRupiah } from "@/lib/utils";
-import { AdminNavbar } from "@/components/storefront/AdminNavbar";
+import { AdminShell, type AdminSection } from "@/components/admin/AdminShell";
+import { AgentIntegration } from "@/components/admin/AgentIntegration";
 import { Spinner } from "@/components/ui/Loading";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { ArticlesManager } from "@/components/admin/ArticlesManager";
+import { toWebp16x9 } from "@/components/admin/ImageDropzone";
+import { CategoryManager } from "@/components/admin/CategoryManager";
+import { BannerManager } from "@/components/admin/BannerManager";
+import { ProofThumbnail } from "@/components/admin/ProofThumbnail";
+import { PaymentMethodsManager } from "@/components/admin/PaymentMethodsManager";
+import { IosIcon } from "@/components/ui/IosIcon";
+import { NewsletterSubscribers } from "@/components/admin/NewsletterSubscribers";
 
 type Prod = { id:string; slug:string; name:string; description:string; price:number; comparePrice?:number; categorySlug:string; image:string; images:string[]; badge?:string; soldCount:number; stock:number; isActive:boolean; sortOrder?:number };
 type Cat = { id:number; slug:string; name:string };
 type Order = { code:string; name:string; wa:string; method:string; items:{ name:string;price:number;qty:number }[]; subtotal:number; status:string; fileName?:string; createdAt:string };
 
 const PER_PAGE_ADMIN = 8;
-
-function ArticlesAdminInner() {
-  const [list, setList] = useState<Record<string,unknown>[]>([]);
-  const [aLoading, setALoading] = useState(true);
-  useEffect(()=>{ fetch("/api/articles?all=1").then(r=> r.json().then(j=> setList(j.articles ?? [])).catch(()=>{})).catch(()=>{}).finally(()=> setALoading(false)); },[]);
-  if(aLoading) return <p className="text-sm text-white/40 mt-4">Memuat…</p>;
-  if(!list.length) return <p className="text-sm text-white/40 mt-4">Belum ada artikel — buat yang pertama di atas.</p>;
-  return <div className="mt-4 divide-y divide-white/10 border border-white/10 rounded-2xl overflow-hidden">{list.map((a)=> (<div key={String(a.id)} className="p-3 flex items-center gap-3"><div className="flex-1 min-w-0"><p className="text-sm font-medium text-white line-clamp-1">{String(a.title)}</p><p className="text-xs text-white/40">/{String(a.slug)} {a.is_published? "· Published":"· Draft"}</p></div><span className={`text-[11px] px-2 py-1 rounded-full ${a.is_published? "bg-emerald-500/15 text-emerald-300":"bg-white/10 text-white/40"}`}>{a.is_published? "Live":"Draft"}</span></div>))}</div>;
-}
-function BannersAdminInner() {
-  const [blist, setBlist] = useState<Record<string,unknown>[]>([]);
-  useEffect(()=>{ fetch("/api/banners").then(r=> r.json().then(j=> setBlist(j.banners ?? [])).catch(()=>{})).catch(()=>{}); },[]);
-  if(!blist.length) return <p className="text-sm text-white/40 mt-4">Belum ada banner.</p>;
-  return <div className="mt-4 space-y-2">{blist.map((b)=> (<div key={String(b.id)} className="p-3 ax-glass rounded-2xl flex items-center gap-3"><div className="flex-1"><p className="text-sm font-medium text-white">{String(b.title)}</p><p className="text-xs text-white/40 line-clamp-1">{String(b.body ?? "")}</p></div><span className={`text-[11px] px-2 py-1 rounded-full ${b.is_active? "bg-emerald-500/15 text-emerald-300":"bg-white/10 text-white/40"}`}>{b.is_active? "Aktif":"Off"}</span></div>))}</div>;
-}
-function ArticleModalInner({ data, onClose, onSaved }: { data: Record<string,unknown>; onClose: ()=>void; onSaved: ()=>void }) {
-  const [form, setForm] = useState(data);
-  const [sv, setSv] = useState(false);
-  const [er, setEr] = useState<string|null>(null);
-  const save = async()=>{ setSv(true); setEr(null); try{ const r=await fetch("/api/articles",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ ...form, is_published: !!form.is_published })}); const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.error||`HTTP ${r.status}`); onSaved(); }catch(e){ setEr(e instanceof Error? e.message: String(e)); } finally{ setSv(false); } };
-  return <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-10 overflow-y-auto bg-black/60 backdrop-blur-sm" onClick={onClose}><div className="w-full max-w-[640px] ax-glass-strong rounded-[24px] p-5 sm:p-6 max-h-[92vh] overflow-y-auto" onClick={e=>e.stopPropagation()}><h3 className="font-bold text-white">Artikel Baru</h3>{er && <p className="mt-3 text-sm text-red-300 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">{er}</p>}<div className="mt-4 grid gap-3"><input value={String(form.slug??"")} onChange={e=> setForm({...form, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g,"-")})} placeholder="slug: tips-ai-gratis" className="h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white" /><input value={String(form.title??"")} onChange={e=> setForm({...form, title: e.target.value})} placeholder="Judul" className="h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white" /><input value={String(form.excerpt??"")} onChange={e=> setForm({...form, excerpt: e.target.value})} placeholder="Excerpt 1 kalimat" className="h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white" /><input value={String(form.cover_url??"")} onChange={e=> setForm({...form, cover_url: e.target.value})} placeholder="Cover /r2/... atau https://..." className="h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white" /><textarea value={String(form.content??"")} onChange={e=> setForm({...form, content: e.target.value})} rows={8} placeholder="Konten markdown minimal 50 karakter — gunakan ## Heading dan - list" className="w-full px-3 py-2.5 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white" /><label className="flex items-center gap-2 text-sm text-white/70"><input type="checkbox" checked={!!form.is_published} onChange={e=> setForm({...form, is_published: e.target.checked})} /> Publish langsung</label></div><div className="mt-4 flex justify-end gap-2"><button onClick={onClose} className="h-10 px-4 rounded-full ax-glass text-sm">Batal</button><button onClick={save} disabled={sv} className="h-10 px-5 rounded-full bg-[#00E5FF] text-[#070a1e] text-sm font-bold disabled:opacity-50">{sv? "Menyimpan…":"Simpan"}</button></div></div></div>;
-}
-function BannerModalInner({ data, onClose, onSaved }: { data: Record<string,unknown>; onClose: ()=>void; onSaved: ()=>void }) {
-  const [form, setForm] = useState(data);
-  const [sv, setSv] = useState(false);
-  const [er, setEr] = useState<string|null>(null);
-  const save = async()=>{ setSv(true); setEr(null); try{ const r=await fetch("/api/banners",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ ...form, is_active: !!form.is_active })}); const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.error||`HTTP ${r.status}`); onSaved(); }catch(e){ setEr(e instanceof Error? e.message: String(e)); } finally{ setSv(false); } };
-  return <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-10 overflow-y-auto bg-black/60 backdrop-blur-sm" onClick={onClose}><div className="w-full max-w-[520px] ax-glass-strong rounded-[24px] p-5 sm:p-6" onClick={e=>e.stopPropagation()}><h3 className="font-bold text-white">Banner Baru</h3>{er && <p className="mt-3 text-sm text-red-300 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">{er}</p>}<div className="mt-4 grid gap-3"><input value={String(form.title??"")} onChange={e=> setForm({...form, title: e.target.value})} placeholder="Judul banner" className="h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white" /><input value={String(form.body??"")} onChange={e=> setForm({...form, body: e.target.value})} placeholder="Body 1 kalimat" className="h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white" /><input value={String(form.image_url??"")} onChange={e=> setForm({...form, image_url: e.target.value})} placeholder="Image /r2/... atau https://..." className="h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white" /><div className="grid grid-cols-2 gap-3"><input value={String(form.cta_label??"")} onChange={e=> setForm({...form, cta_label: e.target.value})} placeholder="CTA label" className="h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white" /><input value={String(form.cta_href??"")} onChange={e=> setForm({...form, cta_href: e.target.value})} placeholder="CTA href /promo" className="h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white" /></div><label className="flex items-center gap-2 text-sm text-white/70"><input type="checkbox" checked={!!form.is_active} onChange={e=> setForm({...form, is_active: e.target.checked})} /> Aktif</label></div><div className="mt-4 flex justify-end gap-2"><button onClick={onClose} className="h-10 px-4 rounded-full ax-glass text-sm">Batal</button><button onClick={save} disabled={sv} className="h-10 px-5 rounded-full bg-[#00E5FF] text-[#070a1e] text-sm font-bold disabled:opacity-50">{sv? "Menyimpan…":"Simpan"}</button></div></div></div>;
-}
-
+const ADMIN_SECTIONS: AdminSection[] = ["summary","products","orders","categories","payments","articles","banners","subscribers","agent"];
 
 export default function AdminPage() {
   const toast = useToast();
@@ -53,10 +33,9 @@ export default function AdminPage() {
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
 
-  const [tab, setTab] = useState<"products"|"orders"|"articles"|"banners">("products");
+  const [tab, setTab] = useState<AdminSection>("summary");
   const [orders, setOrders] = useState<Order[]>([]);
   const [prods, setProds] = useState<Prod[]>([]);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [cats, setCats] = useState<Cat[]>([]);
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
@@ -75,12 +54,20 @@ export default function AdminPage() {
   const [deleting, setDeleting] = useState(false);
 
   const [toggling, setToggling] = useState<string | null>(null);
-  const [articleModal, setArticleModal] = useState<Record<string,unknown> | null>(null);
-  const [bannerModal, setBannerModal] = useState<Record<string,unknown> | null>(null);
   // BUG-03 fix: modal konfirmasi lunas dengan input lisensi/key
   const [confirmOrder, setConfirmOrder] = useState<Order | null>(null);
   const [adminNote, setAdminNote] = useState("");
   const [confirming, setConfirming] = useState(false);
+
+  useEffect(()=>{
+    const syncSection=()=>{
+      const section=new URLSearchParams(window.location.search).get("section") as AdminSection|null;
+      if(section&&ADMIN_SECTIONS.includes(section))setTab(section);
+    };
+    syncSection();
+    window.addEventListener("popstate",syncSection);
+    return()=>window.removeEventListener("popstate",syncSection);
+  },[]);
 
   const load = useCallback(async()=>{
     setLoadingList(true);
@@ -88,14 +75,14 @@ export default function AdminPage() {
     try {
       const [pr, cr, or] = await Promise.all([
         fetch("/api/products").then(async r=>{ const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.error || `Produk ${r.status}`); return j; }),
-        fetch("/api/categories").then(r=>r.json()).catch(()=>({categories:[]})),
+        fetch("/api/categories?all=1", { cache: "no-store" }).then(async r=>{ const j=await r.json().catch(()=>({})); if(r.status===401){setAuthed(false);throw new Error("Sesi admin berakhir. Silakan login ulang.");} if(!r.ok)throw new Error(j.error||`Kategori ${r.status}`);return j; }),
         fetch("/api/admin/orders").then(async r=> {
-          if (r.status === 401) return { orders: JSON.parse(localStorage.getItem("axvara-orders")||"[]").map((o: Order) => ({ code: o.code, customer_name: o.name, customer_wa: o.wa, customer_email: "", items: o.items, subtotal: o.subtotal, payment_method: o.method, status: o.status, created_at: o.createdAt })) };
+          if (r.status === 401) { setAuthed(false); throw new Error("Sesi admin berakhir. Silakan login ulang."); }
           const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.error || `Pesanan ${r.status}`); return j;
-        }).catch(()=> ({ orders: [] }))
+        })
       ]);
       setProds(pr.products ?? []);
-      setCats(cr.categories ?? [{id:1,slug:"ai-gateway",name:"AI Gateway"},{id:2,slug:"akun-premium",name:"Akun Premium"},{id:3,slug:"tools-pro",name:"Tools Pro"},{id:4,slug:"bundle-hemat",name:"Bundle Hemat"}]);
+      setCats(cr.categories ?? []);
       // Normalize admin orders to local Order shape
       const serverOrders: Order[] = (or.orders ?? []).map((o: Record<string, unknown>) => ({
         code: String(o.code),
@@ -108,12 +95,7 @@ export default function AdminPage() {
         fileName: (o.proof_url as string) ?? undefined,
         createdAt: String(o.created_at ?? o.createdAt ?? ""),
       }));
-      if (serverOrders.length > 0) setOrders(serverOrders);
-      else {
-        // fallback to local if server empty (dev without D1 persist)
-        const local: Order[] = JSON.parse(localStorage.getItem("axvara-orders")||"[]");
-        setOrders(local);
-      }
+      setOrders(serverOrders);
     } catch (e) {
       setListError(e instanceof Error ? e.message : "Gagal memuat data");
     } finally {
@@ -134,7 +116,7 @@ export default function AdminPage() {
       }
     } catch { setAuthed(false); }
     finally { setCheckingAuth(false); }
-  },[]);
+  },[toast]);
 
   useEffect(()=>{ checkAuth(); },[checkAuth]);
   useEffect(()=>{ if(authed) load(); },[authed, load]);
@@ -153,7 +135,7 @@ export default function AdminPage() {
     const onVis = ()=> { if(document.visibilityState==="visible") tick(); };
     document.addEventListener("visibilitychange", onVis);
     return ()=> { window.clearInterval(id); document.removeEventListener("visibilitychange", onVis); };
-  },[authed]);
+  },[authed,toast]);
 
   // Juga cek saat window focus (user kembali setelah lama)
   useEffect(()=>{
@@ -190,12 +172,6 @@ export default function AdminPage() {
     } finally { setLoginLoading(false); }
   };
 
-  const logout = async()=>{
-    try { await fetch("/api/auth/logout", { method:"POST" }); } catch {}
-    setAuthed(false);
-    setAuthEmail("");
-  };
-
   const setStatus=async(code:string,status:string,note?:string)=>{
     // Try server first
     try {
@@ -210,18 +186,7 @@ export default function AdminPage() {
       toast.success(status === "lunas" ? "Pesanan dikonfirmasi lunas." : "Pesanan dibatalkan.");
       return;
     } catch (e) {
-      // Fallback to localStorage for dev/offline
-      try {
-        const all:Order[]=JSON.parse(localStorage.getItem("axvara-orders")||"[]");
-        const existed = all.some(o=> o.code===code);
-        if (!existed) { toast.error(e instanceof Error ? e.message : "Gagal update status"); return; }
-        const next=all.map(o=>o.code===code?{...o,status}:o);
-        localStorage.setItem("axvara-orders",JSON.stringify(next));
-        setOrders(next);
-        toast.success(status === "lunas" ? "Pesanan dikonfirmasi (lokal)." : "Pesanan dibatalkan (lokal).");
-      } catch (er) {
-        toast.error(er instanceof Error ? er.message : "Gagal update status");
-      }
+      toast.error(e instanceof Error ? e.message : "Gagal update status");
     }
   };
 
@@ -232,10 +197,10 @@ export default function AdminPage() {
   const handleUpload=async(e:React.ChangeEvent<HTMLInputElement>)=>{
     const files=e.target.files; if(!files?.length) return;
     if(formImages.length + files.length > 8) { toast.error("Maks 8 foto per produk."); e.target.value=""; return; }
-    const tooBig = Array.from(files).find(f=> f.size > 8*1024*1024);
-    if (tooBig) { toast.error(`${tooBig.name} melebihi 8MB.`); e.target.value=""; return; }
+    const tooBig = Array.from(files).find(f=> f.size > 5*1024*1024);
+    if (tooBig) { toast.error(`${tooBig.name} melebihi 5MB.`); e.target.value=""; return; }
     setUploading(true);
-    const fd=new FormData(); Array.from(files).forEach(f=>fd.append("files",f));
+    const fd=new FormData(); (await Promise.all(Array.from(files).map(toWebp16x9))).forEach(f=>fd.append("files",f)); fd.append("area","products");
     try{
       const r=await fetch("/api/upload",{method:"POST",body:fd});
       const j=await r.json().catch(()=>({}));
@@ -320,6 +285,9 @@ export default function AdminPage() {
   };
 
   const pending=orders.filter(o=>o.status==="pending").length; const lunas=orders.filter(o=>o.status==="lunas").length; const omzet=orders.filter(o=>o.status==="lunas").reduce((a,b)=>a+b.subtotal,0);
+  const activeProducts=prods.filter(p=>p.isActive).length;
+  const lowStock=prods.filter(p=>p.stock>=0&&p.stock<=5).length;
+  const soldProducts=prods.reduce((total,product)=>total+product.soldCount,0);
   const filtered = useMemo(()=> prods.filter(p=> !q || `${p.name} ${p.slug} ${p.badge??""}`.toLowerCase().includes(q.toLowerCase())), [prods, q]);
   const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE_ADMIN));
   const safePage = Math.min(page, totalPages);
@@ -341,7 +309,7 @@ export default function AdminPage() {
         <h1 className="font-display font-bold text-white text-xl mt-3">Masuk Panel Admin</h1>
         <p className="text-xs text-white/50 mt-1">Otentikasi diperlukan untuk mengelola katalog & pesanan.</p>
         <div className="mt-5 space-y-3">
-          <label className="block space-y-1.5"><span className="text-xs font-semibold text-white/60">Email</span><input value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=> e.key==="Enter" && login()} placeholder="admin@axvara.id" autoComplete="username" className="w-full h-11 px-4 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#00E5FF]/40" /></label>
+          <label className="block space-y-1.5"><span className="text-xs font-semibold text-white/60">Email</span><input value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=> e.key==="Enter" && login()} placeholder="admin@axvara.tech" autoComplete="username" className="w-full h-11 px-4 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#00E5FF]/40" /></label>
           <label className="block space-y-1.5"><span className="text-xs font-semibold text-white/60">Password</span><input value={pass} onChange={e=>setPass(e.target.value)} onKeyDown={e=> e.key==="Enter" && login()} type="password" placeholder="••••••••" autoComplete="current-password" className="w-full h-11 px-4 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#00E5FF]/40" /></label>
           {loginError && <p className="rounded-xl bg-red-500/10 border border-red-500/20 px-3 py-2 text-sm text-red-300">{loginError}</p>}
           <button onClick={login} disabled={loginLoading} className="w-full h-11 rounded-xl bg-[#00E5FF] text-[#080C1E] font-bold hover:bg-[#00D0E8] transition disabled:opacity-60 inline-flex items-center justify-center gap-2">
@@ -354,32 +322,42 @@ export default function AdminPage() {
   );
 
   return (
-    <div className="min-h-screen">
-      <AdminNavbar tab={tab} onTab={setTab} total={prods.length} pending={pending} />
-      <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 py-6">
+    <AdminShell section={tab} onSection={(section)=>{setTab(section);window.history.replaceState(null,"",`/admin?section=${section}`)}}>
       <div className="mt-4 flex items-center gap-2 text-[11px] text-white/35">
         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Masuk sebagai <span className="text-white/60">{authEmail || "admin"}</span> <span className="opacity-40">·</span> Sesi 8 jam
       </div>
 
-      <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="ax-glass rounded-2xl p-4"><p className="text-[11px] tracking-wide text-white/50 uppercase">Total Produk</p><p className="text-2xl font-display font-bold text-white">{prods.length}</p><p className="text-[11px] text-white/40">{prods.filter(p=>p.isActive).length} aktif</p></div>
-        <div className="ax-glass rounded-2xl p-4"><p className="text-[11px] tracking-wide text-white/50 uppercase">Pending</p><p className="text-2xl font-display font-bold text-[#FFB800]">{pending}</p></div>
-        <div className="ax-glass rounded-2xl p-4"><p className="text-[11px] tracking-wide text-white/50 uppercase">Lunas</p><p className="text-2xl font-display font-bold text-[#22C55E]">{lunas}</p></div>
-        <div className="ax-glass rounded-2xl p-4"><p className="text-[11px] tracking-wide text-white/50 uppercase">Omzet</p><p className="text-lg font-display font-bold text-white">{formatRupiah(omzet)}</p></div>
-      </div>
+      {["summary","orders","products"].includes(tab) && <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3 mb-2">
+        {tab==="products" ? <>
+          <div className="ax-glass rounded-2xl p-4"><p className="text-[11px] tracking-wide text-white/50 uppercase">Total produk</p><p className="text-2xl font-display font-bold text-white">{prods.length}</p></div>
+          <div className="ax-glass rounded-2xl p-4"><p className="text-[11px] tracking-wide text-white/50 uppercase">Produk aktif</p><p className="text-2xl font-display font-bold text-[#22C55E]">{activeProducts}</p></div>
+          <div className="ax-glass rounded-2xl p-4"><p className="text-[11px] tracking-wide text-white/50 uppercase">Stok menipis</p><p className="text-2xl font-display font-bold text-[#FFB800]">{lowStock}</p></div>
+          <div className="ax-glass rounded-2xl p-4"><p className="text-[11px] tracking-wide text-white/50 uppercase">Unit terjual</p><p className="text-2xl font-display font-bold text-white">{soldProducts}</p></div>
+        </> : <>
+          <div className="ax-glass rounded-2xl p-4"><p className="text-[11px] tracking-wide text-white/50 uppercase">Total pesanan</p><p className="text-2xl font-display font-bold text-white">{orders.length}</p></div>
+          <div className="ax-glass rounded-2xl p-4"><p className="text-[11px] tracking-wide text-white/50 uppercase">Pending</p><p className="text-2xl font-display font-bold text-[#FFB800]">{pending}</p></div>
+          <div className="ax-glass rounded-2xl p-4"><p className="text-[11px] tracking-wide text-white/50 uppercase">Lunas</p><p className="text-2xl font-display font-bold text-[#22C55E]">{lunas}</p></div>
+          <div className="ax-glass rounded-2xl p-4"><p className="text-[11px] tracking-wide text-white/50 uppercase">Omzet</p><p className="text-lg font-display font-bold text-white">{formatRupiah(omzet)}</p></div>
+        </>}
+      </div>}
 
       {listError && <div className="mt-4 rounded-2xl bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-200 flex items-center justify-between gap-3"><span>{listError}</span><button onClick={load} className="h-8 px-3 rounded-full bg-white text-[#070a1e] text-xs font-bold shrink-0">Coba lagi</button></div>}
 
+      {tab==="summary" && <div className="mt-6 ax-glass rounded-[20px] overflow-hidden"><div className="flex items-center gap-2.5 p-4 sm:p-5 border-b border-white/10"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/5 border border-white/5"><IosIcon name="dashboard" size={16} tint="white" /></span><h2 className="text-white font-semibold text-sm">Ringkasan toko</h2></div><p className="p-4 sm:p-5 text-sm text-white/50">Gunakan sidebar untuk mengelola produk, pesanan, CMS, dan integrasi agent.</p></div>}
+      {tab==="categories" && <CategoryManager />}
+      {tab==="payments" && <PaymentMethodsManager />}
+      {tab==="agent" && <AgentIntegration />}
+
       {tab==="products" && (
-        <div className="mt-6">
+        <div className="mt-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2 flex-1 max-w-[420px]">
               <div className="relative flex-1">
                 <input value={q} onChange={e=>{ setQ(e.target.value); setPage(1); }} placeholder="Cari produk, slug, badge..." className="w-full h-10 pl-10 pr-4 rounded-full bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#00E5FF]/40" />
-                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/40">⌕</span>
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 opacity-70"><IosIcon name="search" size={16} tint="white" /></span>
               </div>
             </div>
-            <button onClick={openNew} className="h-10 px-5 rounded-full bg-[#00E5FF] text-[#080C1E] text-sm font-bold hover:bg-[#00D0E8] transition">+ Produk Baru</button>
+            <button onClick={openNew} className="inline-flex h-10 items-center gap-1.5 px-5 rounded-full bg-[#00E5FF] text-[#080C1E] text-sm font-bold hover:bg-[#00D0E8] transition"><IosIcon name="plus" size={14} tint="black" /> Produk Baru</button>
           </div>
 
           <div className="mt-4 ax-glass rounded-[20px] overflow-hidden">
@@ -423,10 +401,8 @@ export default function AdminPage() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1.5">
-                          <button onClick={()=>openEdit(p)} className="h-8 px-3 rounded-full bg-white text-[#080C1E] text-xs font-bold hover:bg-white/90">Edit</button>
-                          <button onClick={()=>setDeleteTarget(p)} className="h-8 w-8 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600 shadow-[0_2px_10px_rgba(239,68,68,0.35)] transition" aria-label={`Hapus ${p.name}`} title="Hapus produk">
-                            <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
-                          </button>
+                          <button onClick={()=>openEdit(p)} className="inline-flex h-8 items-center gap-1 px-3 rounded-full bg-white text-[#080C1E] text-xs font-bold hover:bg-white/90"><IosIcon name="edit" size={12} tint="black" /> Edit</button>
+                          <button onClick={()=>setDeleteTarget(p)} className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600 shadow-[0_2px_10px_rgba(239,68,68,0.35)] transition" aria-label={`Hapus ${p.name}`} title="Hapus produk"><IosIcon name="trash" size={16} tint="white" /></button>
                         </div>
                       </td>
                     </tr>
@@ -440,9 +416,9 @@ export default function AdminPage() {
               <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-white/10">
                 <p className="text-xs text-white/40">Hal {safePage} dari {totalPages} • {filtered.length} produk</p>
                 <div className="flex items-center gap-1.5">
-                  <button disabled={safePage<=1} onClick={()=>setPage(p=>Math.max(1,p-1))} className="h-8 px-3 rounded-full ax-glass text-xs font-semibold text-white/70 disabled:opacity-40 disabled:pointer-events-none">‹ Sebelumnya</button>
+                  <button disabled={safePage<=1} onClick={()=>setPage(p=>Math.max(1,p-1))} className="inline-flex h-8 items-center gap-1 px-3 rounded-full ax-glass text-xs font-semibold text-white/70 disabled:opacity-40 disabled:pointer-events-none"><IosIcon name="chevron-left" size={12} tint="white" /> Sebelumnya</button>
                   <span className="text-xs text-white/40 px-1">{safePage} / {totalPages}</span>
-                  <button disabled={safePage>=totalPages} onClick={()=>setPage(p=>Math.min(totalPages,p+1))} className="h-8 px-3 rounded-full ax-glass text-xs font-semibold text-white/70 disabled:opacity-40 disabled:pointer-events-none">Berikutnya ›</button>
+                  <button disabled={safePage>=totalPages} onClick={()=>setPage(p=>Math.min(totalPages,p+1))} className="inline-flex h-8 items-center gap-1 px-3 rounded-full ax-glass text-xs font-semibold text-white/70 disabled:opacity-40 disabled:pointer-events-none">Berikutnya <IosIcon name="chevron-right" size={12} tint="white" /></button>
                 </div>
               </div>
             )}
@@ -451,47 +427,46 @@ export default function AdminPage() {
       )}
 
       {tab==="orders" && (
-        <div className="mt-6 ax-glass rounded-[24px] overflow-hidden">
-          <div className="p-4 border-b border-white/10 flex items-center justify-between"><h2 className="font-semibold text-white text-sm">Pesanan Masuk</h2><span className="text-xs text-white/40">{orders.length} total</span></div>
+        <div className="mt-5 ax-glass rounded-[20px] overflow-hidden">
+          <div className="p-4 sm:p-5 border-b border-white/10 flex items-center gap-2.5">
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/5 border border-white/5">
+              <IosIcon name="purchase-order" size={16} tint="white" />
+            </span>
+            <h2 className="font-semibold text-white text-sm">Pesanan Masuk</h2>
+            <span className="ml-auto text-xs text-white/40">{orders.length} total</span>
+          </div>
           {orders.length===0? <p className="p-8 text-center text-sm text-white/40">Belum ada pesanan — coba checkout sebagai pembeli dulu.</p> : (
-            <div className="divide-y divide-white/5">{orders.slice().reverse().map(o=>(
-              <div key={o.code} className="p-4 flex flex-col sm:flex-row sm:items-center gap-3">
-                <div className="flex-1 min-w-0"><p className="font-mono text-xs font-bold text-[#00E5FF]">{o.code}</p><p className="text-sm text-white">{o.name} • {o.wa}</p><p className="text-xs text-white/50">{o.items.map(i=>`${i.name} ×${i.qty}`).join(", ")} • {o.method.toUpperCase()} • {formatRupiah(o.subtotal)}</p>{o.fileName && <p className="text-xs text-white/30">Bukti: {o.fileName}</p>}</div>
-                <div className="flex items-center gap-2 flex-wrap"><span className={`text-xs font-bold px-2.5 py-1 rounded-full ${o.status==="pending"?"bg-[#FFB800]/15 text-[#FFB800] border border-[#FFB800]/20":o.status==="lunas"?"bg-[#22C55E]/15 text-[#22C55E] border border-[#22C55E]/20":"bg-white/10 text-white/50"}`}>{o.status}</span>{o.status==="pending" && <><button onClick={()=>{ setConfirmOrder(o); setAdminNote(""); }} className="h-8 px-3 rounded-full bg-[#22C55E] text-white text-xs font-bold">Konfirmasi Lunas</button><button onClick={()=>setStatus(o.code,"dibatalkan")} className="h-8 px-3 rounded-full ax-glass text-xs">Batalkan</button><a href={`https://wa.me/${o.wa.replace(/^0/,"62")}?text=Halo%20${encodeURIComponent(o.name)}%2C%20pesanan%20${o.code}%20kamu%20sudah%20kami%20terima.`} target="_blank" className="h-8 px-3 rounded-full bg-[#25D366] text-white text-xs font-bold flex items-center">WA</a></>}</div>
+            <div className="divide-y divide-white/5">{orders.slice().map(o=>(
+              <div key={o.code} className="flex flex-col gap-4 px-4 py-4 transition hover:bg-white/[0.03] sm:flex-row sm:items-center sm:px-5">
+                <div className="grid min-w-0 flex-1 grid-cols-[136px_minmax(0,1fr)] items-start gap-3.5">
+                  <ProofThumbnail proof={o.fileName}/>
+                  <div className="min-w-0 pt-0.5">
+                    <p className="truncate font-mono text-xs font-bold text-[#00E5FF]">{o.code}</p>
+                    <p className="mt-0.5 truncate text-sm font-semibold text-white">{o.name}</p>
+                    <p className="truncate text-xs text-white/45">{o.wa}</p>
+                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-white/50">{o.items.map(i=>`${i.name} ×${i.qty}`).join(", ")} · {o.method.toUpperCase()} · {formatRupiah(o.subtotal)}</p>
+                    <span className={`mt-1.5 inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold capitalize ${o.status==="pending"?"border-[#FFB800]/20 bg-[#FFB800]/15 text-[#FFB800]":o.status==="lunas"?"border-[#22C55E]/20 bg-[#22C55E]/15 text-[#22C55E]":"border-white/10 bg-white/10 text-white/50"}`}>{o.status}</span>
+                  </div>
+                </div>
+                <div className="flex w-full shrink-0 flex-wrap items-center gap-2 sm:w-auto sm:justify-end">{o.status==="pending" && <><button onClick={()=>{ setConfirmOrder(o); setAdminNote(""); }} className="inline-flex h-9 items-center gap-1.5 rounded-full bg-[#22C55E] px-3.5 text-xs font-bold text-white transition hover:bg-[#16a34a]"><IosIcon name="checked" size={14} tint="white" /> Konfirmasi Lunas</button><button onClick={()=>setStatus(o.code,"dibatalkan")} className="inline-flex h-9 items-center gap-1 rounded-full border border-white/10 bg-white/10 px-3.5 text-xs font-semibold text-white/70 hover:bg-white/15 hover:text-white"><IosIcon name="close" size={12} tint="white" /> Batalkan</button><a href={`https://wa.me/${o.wa.replace(/^0/,"62")}?text=Halo%20${encodeURIComponent(o.name)}%2C%20pesanan%20${o.code}%20kamu%20sudah%20kami%20terima.`} target="_blank" className="inline-flex h-9 items-center gap-1.5 rounded-full bg-[#25D366] px-3.5 text-xs font-bold text-white transition hover:bg-[#1ebd5a]"><IosIcon name="chat" size={14} tint="white" /> WA</a></>}</div>
               </div>
             ))}</div>
           )}
         </div>
       )}
 
-      {tab==="articles" && (
-        <div className="mt-6 ax-glass rounded-[24px] p-5">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="font-semibold text-white text-sm">Artikel</h2>
-            <button onClick={()=> setArticleModal({ slug:"", title:"", excerpt:"", cover_url:"", content:"", is_published:false })} className="h-9 px-4 rounded-full bg-[#00E5FF] text-[#070a1e] text-xs font-bold">+ Artikel</button>
-          </div>
-          <p className="text-xs text-white/40 mt-2">CMS minimal: slug unik, judul 6-140, excerpt 280, konten min 50 karakter. Publish untuk tampil di /artikel.</p>
-          <ArticlesAdminInner />
-        </div>
-      )}
+      {tab==="articles" && <ArticlesManager />}
 
-      {tab==="banners" && (
-        <div className="mt-6 ax-glass rounded-[24px] p-5">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="font-semibold text-white text-sm">Popup Banner</h2>
-            <button onClick={()=> setBannerModal({ title:"", body:"", image_url:"", cta_label:"", cta_href:"", is_active:false, delay_ms:1500 })} className="h-9 px-4 rounded-full bg-[#00E5FF] text-[#070a1e] text-xs font-bold">+ Banner</button>
-          </div>
-          <p className="text-xs text-white/40 mt-2">1 banner aktif teratas tampil di popup tengah 1.5s setelah load. Dismiss per session.</p>
-          <BannersAdminInner />
-        </div>
-      )}
+      {tab==="banners" && <BannerManager />}
+
+      {tab==="subscribers" && <NewsletterSubscribers />}
 
       {(editing || showNew) && (
         <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-6 sm:pt-10 overflow-y-auto bg-black/60 backdrop-blur-sm" onClick={closeModal}>
           <div className="w-full max-w-[720px] ax-glass-strong rounded-[24px] border border-white/10 p-5 sm:p-6 max-h-[92vh] overflow-y-auto" onClick={e=>e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <h3 className="font-display font-bold text-white text-lg">{editing? "Edit Produk":"Produk Baru"}</h3>
-              <button onClick={closeModal} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white/70 hover:bg-white/15">✕</button>
+              <button onClick={closeModal} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white/70 hover:bg-white/15"><IosIcon name="close" size={14} tint="white" /></button>
             </div>
 
             {formError && <p className="mt-4 rounded-xl bg-red-500/10 border border-red-500/20 px-3 py-2 text-sm text-red-200">{formError}</p>}
@@ -502,8 +477,8 @@ export default function AdminPage() {
               <label className="sm:col-span-2 space-y-1.5"><span className="text-xs font-semibold text-white/60">Deskripsi</span><textarea value={form.description??""} onChange={e=>setForm({...form,description:e.target.value})} rows={2} placeholder="Akses GPT-4o penuh..." className="w-full px-3 py-2.5 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 resize-none focus:outline-none focus:border-[#00E5FF]/30" /></label>
               <label className="space-y-1.5"><span className="text-xs font-semibold text-white/60">Harga *</span><input type="number" min={0} value={form.price??""} onChange={e=>setForm({...form,price:Number(e.target.value)})} placeholder="89000" className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white focus:outline-none focus:border-[#00E5FF]/30" /></label>
               <label className="space-y-1.5"><span className="text-xs font-semibold text-white/60">Harga Coret (opsional)</span><input type="number" min={0} value={form.comparePrice??""} onChange={e=>setForm({...form,comparePrice:e.target.value?Number(e.target.value):undefined})} placeholder="300000" className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white focus:outline-none focus:border-[#00E5FF]/30" /></label>
-              <label className="space-y-1.5"><span className="text-xs font-semibold text-white/60">Kategori</span><select value={form.categorySlug??"akun-premium"} onChange={e=>setForm({...form,categorySlug:e.target.value})} className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white focus:outline-none focus:border-[#00E5FF]/30">
-                <option value="ai-gateway" className="bg-[#0F1430]">AI Gateway</option><option value="akun-premium" className="bg-[#0F1430]">Akun Premium</option><option value="tools-pro" className="bg-[#0F1430]">Tools Pro</option><option value="bundle-hemat" className="bg-[#0F1430]">Bundle Hemat</option>
+              <label className="space-y-1.5"><span className="text-xs font-semibold text-white/60">Kategori</span><select value={form.categorySlug??cats[0]?.slug??""} onChange={e=>setForm({...form,categorySlug:e.target.value})} className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white focus:outline-none focus:border-[#00E5FF]/30">
+                {cats.map((category) => <option key={category.id} value={category.slug} className="bg-[#0F1430]">{category.name}</option>)}
               </select></label>
               <label className="space-y-1.5"><span className="text-xs font-semibold text-white/60">Badge</span><input value={form.badge??""} onChange={e=>setForm({...form,badge:e.target.value})} placeholder="Terlaris / Baru / Hemat 92%" className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#00E5FF]/30" /></label>
               <label className="space-y-1.5"><span className="text-xs font-semibold text-white/60">Stok (-1 = ∞)</span><input type="number" value={form.stock??-1} onChange={e=>setForm({...form,stock:Number(e.target.value)})} className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white focus:outline-none focus:border-[#00E5FF]/30" /></label>
@@ -519,18 +494,18 @@ export default function AdminPage() {
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={url} alt="" className="w-full h-full object-cover" />
                     {i===0 && <span className="absolute top-1 left-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[#00E5FF] text-[#080C1E]">Utama</span>}
-                    <button onClick={()=>setFormImages(prev=>prev.filter((_,idx)=>idx!==i))} className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition">✕</button>
+                    <button onClick={()=>setFormImages(prev=>prev.filter((_,idx)=>idx!==i))} className="absolute top-1 right-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition group-hover:opacity-100"><IosIcon name="close" size={10} tint="white" /></button>
                     {i>0 && <button onClick={()=>setFormImages(prev=>{ const a=[...prev]; const t=a[i]; a[i]=a[0]; a[0]=t; return a; })} className="absolute bottom-1 left-1 right-1 text-[10px] font-bold bg-white/90 text-[#080C1E] rounded-full py-1 opacity-0 group-hover:opacity-100 transition">Jadikan utama</button>}
                   </div>
                 ))}
                 {formImages.length<8 && (
                   <label className={`aspect-square rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-1 cursor-pointer transition ${uploading?"opacity-50 pointer-events-none":"border-white/15 hover:border-[#00E5FF]/40 hover:bg-white/5"}`}>
-                    <span className="text-xl text-white/40">+</span><span className="text-[11px] text-white/50">{uploading?"Upload...":"Tambah"}</span>
+                    <IosIcon name="plus" size={18} tint="white" className="opacity-40" /><span className="text-[11px] text-white/50">{uploading?"Upload...":"Tambah"}</span>
                     <input type="file" accept="image/png,image/jpeg,image/webp" multiple className="hidden" onChange={handleUpload} disabled={uploading} />
                   </label>
                 )}
               </div>
-              <p className="text-[11px] text-white/30 mt-2">Foto di-resize max 1200px & konversi WebP q72 — ringan & tajam. Foto pertama = cover card.</p>
+              <p className="text-[11px] text-white/30 mt-2">Foto disesuaikan ke WebP 1600×900 — ringan dan konsisten. Foto pertama = cover card.</p>
             </div>
 
             <div className="mt-6 flex gap-3 justify-end">
@@ -544,9 +519,6 @@ export default function AdminPage() {
       )}
 
       
-
-      {articleModal && <ArticleModalInner data={articleModal} onClose={()=> setArticleModal(null)} onSaved={()=> { setArticleModal(null); load(); toast.success("Artikel disimpan"); }} />}
-      {bannerModal && <BannerModalInner data={bannerModal} onClose={()=> setBannerModal(null)} onSaved={()=> { setBannerModal(null); load(); toast.success("Banner disimpan"); }} />}
 
       {/* BUG-03 fix: Modal konfirmasi lunas + input lisensi/key */}
       {confirmOrder && (
@@ -598,7 +570,6 @@ export default function AdminPage() {
         onConfirm={confirmDelete}
       />
 
-      </div>
-    </div>
+    </AdminShell>
   );
 }

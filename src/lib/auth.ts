@@ -1,24 +1,33 @@
 import * as jose from "jose";
 
+export type CheckoutQuoteItem = {
+  product_id: number;
+  name: string;
+  price: number;
+  qty: number;
+};
+
+export type CheckoutQuotePaymentMethod = {
+  id: string;
+  account_number: string;
+};
+
+export type CheckoutQuotePayload = {
+  quote_id: string;
+  items: CheckoutQuoteItem[];
+  subtotal: number;
+  payment_methods: CheckoutQuotePaymentMethod[];
+};
+
 function isDev(): boolean {
   return process.env.NODE_ENV !== "production";
 }
 
-// F-06 fix: dev fallback generated at runtime, never hardcoded in source
-// Dev password: "axvara-dev-only" (sha256 computed at startup, NOT committed)
+// Development JWT fallback is generated at runtime and never committed.
 let _devSecret: string | null = null;
-let _devHash: string | null = null;
 function getDevSecret(): string {
   if (!_devSecret) _devSecret = "dev-" + Math.random().toString(36).slice(2) + "-" + Date.now().toString(36);
   return _devSecret;
-}
-async function getDevHash(): Promise<string> {
-  if (!_devHash) {
-    // sha256("axvara-dev-only") — computed, not hardcoded
-    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("axvara-dev-only"));
-    _devHash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
-  }
-  return _devHash;
 }
 
 function requireEnv(name: string): string {
@@ -27,7 +36,7 @@ function requireEnv(name: string): string {
   if (isDev()) {
     if (name === "ADMIN_JWT_SECRET" || name === "JWT_SECRET") return getDevSecret();
     if (name === "ADMIN_PASSWORD_SHA256" || name === "ADMIN_PASSWORD_HASH_SHA256") return "dev-placeholder";
-    if (name === "ADMIN_EMAIL") return "admin@axvara.id";
+    if (name === "ADMIN_EMAIL") return "admin@axvara.tech";
   }
   throw new Error(`Missing required env: ${name} (set ADMIN_JWT_SECRET + ADMIN_PASSWORD_SHA256 in production)`);
 }
@@ -93,8 +102,7 @@ function parseStoredHash(stored: string): { kind: "pbkdf2"; iter: number; salt: 
   throw new Error("Stored hash format invalid");
 }
 
-export async function verifyPassword(plain: string, _hashUnused: string) {
-  const { sha256: stored } = getAdminCredentials();
+export async function verifyPassword(plain: string, stored: string) {
   // Dev mode: accept "axvara-dev-only" as password
   if (stored === "dev-placeholder" && isDev()) {
     return plain === "axvara-dev-only";
@@ -136,6 +144,66 @@ export async function createAdminToken(email: string) {
     .setIssuedAt(now)
     .setExpirationTime("8h")
     .sign(secretKey());
+}
+
+export async function createCheckoutQuoteToken(input: Omit<CheckoutQuotePayload, "quote_id">) {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  const quoteId = Array.from(bytes).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  const now = Math.floor(Date.now() / 1000);
+  const expiresAt = now + 60 * 60;
+  const token = await new jose.SignJWT({
+    purpose: "checkout_quote",
+    items: input.items,
+    subtotal: input.subtotal,
+    payment_methods: input.payment_methods,
+  })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt(now)
+    .setExpirationTime(expiresAt)
+    .setJti(quoteId)
+    .sign(secretKey());
+  return { token, quoteId, expiresAt };
+}
+
+export async function verifyCheckoutQuoteToken(token: string): Promise<CheckoutQuotePayload | null> {
+  try {
+    // Tolak representasi base64url non-kanonis. Tanpa cek ini, perubahan karakter
+    // terakhir tertentu dapat mendekode ke byte tanda tangan yang sama.
+    const segments = token.split(".");
+    if (segments.length !== 3 || segments.some((segment) => jose.base64url.encode(jose.base64url.decode(segment)) !== segment)) return null;
+    const { payload } = await jose.jwtVerify(token, secretKey());
+    if (payload.purpose !== "checkout_quote" || !payload.jti || !Array.isArray(payload.items) || !Array.isArray(payload.payment_methods)) return null;
+
+    const items = payload.items.filter((item): item is CheckoutQuoteItem => {
+      if (!item || typeof item !== "object") return false;
+      const value = item as Record<string, unknown>;
+      return Number.isInteger(value.product_id)
+        && Number(value.product_id) > 0
+        && typeof value.name === "string"
+        && Number.isInteger(value.price)
+        && Number(value.price) >= 0
+        && Number.isInteger(value.qty)
+        && Number(value.qty) >= 1
+        && Number(value.qty) <= 20;
+    });
+    const paymentMethods = payload.payment_methods.filter((method): method is CheckoutQuotePaymentMethod => {
+      if (!method || typeof method !== "object") return false;
+      const value = method as Record<string, unknown>;
+      return typeof value.id === "string" && typeof value.account_number === "string";
+    });
+    const subtotal = Number(payload.subtotal);
+    if (items.length !== payload.items.length || paymentMethods.length !== payload.payment_methods.length || !Number.isInteger(subtotal) || subtotal < 0) return null;
+
+    return {
+      quote_id: payload.jti,
+      items,
+      subtotal,
+      payment_methods: paymentMethods,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function getSessionDurations() {

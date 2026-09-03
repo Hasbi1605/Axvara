@@ -90,6 +90,7 @@ export function OrbitHero() {
   const angleRef = useRef(0);
   const velRef = useRef(0);
   const isDraggingRef = useRef(false);
+  const canDragRef = useRef(false);
   const startXRef = useRef(0);
   const startAngleRef = useRef(0);
   const rafRef = useRef<number | null>(null);
@@ -176,6 +177,10 @@ export function OrbitHero() {
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
+
+    // Touch screens must keep native vertical scrolling. Direct orbit control is
+    // reserved for precise mouse/trackpad pointers.
+    canDragRef.current = window.matchMedia("(pointer: fine)").matches;
 
     // Respect prefers-reduced-motion
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -268,6 +273,7 @@ export function OrbitHero() {
 
   // Pointer handlers — imperative, no setState
   const onPointerDown = useCallback((e: React.PointerEvent) => {
+    if (!canDragRef.current) return;
     isDraggingRef.current = true;
     startXRef.current = e.clientX;
     startAngleRef.current = angleRef.current;
@@ -276,7 +282,7 @@ export function OrbitHero() {
   }, []);
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
-    if (!isDraggingRef.current) return;
+    if (!canDragRef.current || !isDraggingRef.current) return;
     const dx = e.clientX - startXRef.current;
     angleRef.current = startAngleRef.current + dx * 0.6;
     velRef.current = dx * 0.08;
@@ -287,7 +293,8 @@ export function OrbitHero() {
   }, []);
 
   const onWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
+    if (!canDragRef.current) return;
+    // Keep the page scroll native while adding only a subtle orbit impulse.
     velRef.current += e.deltaY * 0.12;
   }, []);
 
@@ -299,8 +306,10 @@ export function OrbitHero() {
       onPointerUp={onPointerUp}
       onPointerLeave={onPointerUp}
       onWheel={onWheel}
-      className="relative w-[360px] h-[360px] sm:w-[440px] sm:h-[440px] shrink-0 scale-[0.88] sm:scale-100 select-none touch-none cursor-grab active:cursor-grabbing"
-      style={{ touchAction: "none" }}
+      className="relative w-[360px] h-[360px] sm:w-[440px] sm:h-[440px] shrink-0 scale-[0.88] sm:scale-100 select-none md:cursor-grab md:active:cursor-grabbing"
+      style={{ touchAction: "pan-y" }}
+      role="img"
+      aria-label="Orbit aplikasi premium AXVARA"
     >
       {/* 3D perspective container */}
       <div className="absolute inset-0 flex items-center justify-center" style={{ perspective: "900px", perspectiveOrigin: "50% 45%" }}>

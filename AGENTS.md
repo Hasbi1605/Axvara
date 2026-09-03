@@ -21,6 +21,13 @@ Jika perubahan mengubah struktur folder, route `src/app/*`, komponen `src/compon
 - Jangan refactor besar tanpa diminta.
 - Jika ragu, tulis asumsi eksplisit di `CHANGELOG.md` atau komentar PR.
 
+## CI/CD dan push GitHub (WAJIB)
+- Jalur deploy normal hanya melalui `.github/workflows/ci.yml`: push ke `main` menjalankan test, type-check, build Pages, migrasi D1 yang belum diterapkan, deploy Pages, lalu deploy MCP Worker.
+- Setelah implementasi, verifikasi dev, dan changelog selesai, commit lalu `git push origin main`.
+- Begitu `git push` berhasil diterima GitHub, **berhenti**. Jangan memantau/polling GitHub Actions atau Cloudflare dan jangan menunggu hasil deployment.
+- Jangan menjalankan `npm run deploy`, `npm run deploy:mcp`, atau deploy Wrangler manual setelah push. Deploy manual hanya untuk recovery jika diminta eksplisit oleh user.
+- Cloudflare Git integration dinonaktifkan untuk deployment otomatis; GitHub Actions adalah satu-satunya CI/CD agar satu push tidak memicu deploy ganda.
+
 ## Aturan Changelog (WAJIB — khusus axvara)
 Setiap kali ubah kode/docs di `axvara/`, **WAJIB catat di `axvara/CHANGELOG.md`** (bukan di AGENTS.md global):
 
@@ -62,7 +69,7 @@ Setiap kali ubah kode/docs di `axvara/`, **WAJIB catat di `axvara/CHANGELOG.md`*
 ## Kredensial Cloudflare (WAJIB)
 - File sumber tunggal: `axvara/.cf-credentials` — berisi `CLOUDFLARE_API_KEY` / `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_EMAIL` (account `Sailinnadia1@gmail.com`).
 - **File ini di-ignore git** (`.gitignore: .cf-credentials*`) — JANGAN pernah commit/push, jangan echo isinya di log/chat.
-- Agent/deploy WAJIB ambil dari situ: `set -a; source .cf-credentials; set +a` atau `export $(cat .cf-credentials | grep -v '^#' | xargs)` sebelum `wrangler pages deploy` / `wrangler d1` / `wrangler r2`.
+- Deploy CI/CD memakai GitHub Actions Secrets `CLOUDFLARE_API_KEY`, `CLOUDFLARE_EMAIL`, dan `CLOUDFLARE_ACCOUNT_ID`. Operasi Cloudflare manual/recovery WAJIB mengambil kredensial dari `.cf-credentials` dengan `set -a; source .cf-credentials; set +a`.
 - Jangan hardcode key di kode/docs/AGENTS.md — rujuk file ini saja.
 
 ## Sebelum menyelesaikan percakapan (checklist)
@@ -79,4 +86,5 @@ Agent **wajib** pastikan sebelum jawab "selesai":
 - Perubahan diimplementasi
 - `CHANGELOG.md` terisi
 - Verifikasi dev (GET / 200 + CSS 200) jelas
+- Untuk tugas perubahan kode: commit dan `git push origin main` berhasil; setelah itu berhenti tanpa memantau CI/CD
 - Risiko/tindak lanjut diringkas

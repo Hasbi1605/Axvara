@@ -10,14 +10,22 @@
     "lint": "next lint",
     "test": "vitest run",
     "test:watch": "vitest",
+    "deploy:mcp": "env -u CLOUDFLARE_API_TOKEN npx wrangler deploy --config mcp-worker/wrangler.toml",
     "deploy": "npm run build:pages && npx wrangler pages deploy .vercel/output/static --project-name=axvara --commit-dirty=true"
   },
   "dependencies": {
+    "@tiptap/extension-image": "^3.31.0",
+    "@tiptap/extension-link": "^3.31.0",
+    "@tiptap/markdown": "^3.31.0",
+    "@tiptap/pm": "^3.31.0",
+    "@tiptap/react": "^3.31.0",
+    "@tiptap/starter-kit": "^3.31.0",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.2",
     "jose": "^6.2.10",
     "lucide-react": "^0.460.0",
-    "next": "^15.5.2",
+    "marked": "^17.0.6",
+    "next": "15.5.24",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tailwind-merge": "^2.5.4",
@@ -32,10 +40,15 @@
     "@types/react-dom": "^18.3.0",
     "autoprefixer": "^10.5.4",
     "eslint": "^8.57.1",
-    "eslint-config-next": "^15.5.2",
+    "eslint-config-next": "15.5.24",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.15",
     "typescript": "^5.6.3",
     "vitest": "^4.1.11"
+  },
+  "overrides": {
+    "next": {
+      "sharp": "0.35.3"
+    }
   }
 }

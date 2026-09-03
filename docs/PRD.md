@@ -13,7 +13,7 @@
 ## 1. Overview
 
 ### 1.1 Ringkasan Produk
-AXVARA adalah website toko digital premium untuk menjual **Aplikasi Premium, AI Gateway, Akun AI Premium (ChatGPT Plus, Claude Pro, Midjourney, dll), Tools Premium, dan Bundle Hemat**. 
+AXVARA adalah website toko digital premium untuk menjual **Aplikasi Premium, AI Gateway, Akun AI Premium (ChatGPT Plus, Claude Pro, Midjourney, dll), Tools Premium, dan Bundle Kucing**.
 
 Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout → konfirmasi manual), tapi dengan **level desain 10x lebih premium** setara Apple Store — glassmorphism, animasi halus, dan checkout super simpel.
 
@@ -45,6 +45,7 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 - **Pesanan Pending:** Pesanan menunggu verifikasi admin
 - **Glassmorphism:** Efek kaca blur transparan ala Apple/macOS
 - **Vault:** Metafora brand Axvara — gerbang akses ke semua tools premium
+- **Kontak Admin:** WhatsApp dukungan `089519388264`; berbeda dari nomor e-wallet tujuan pembayaran `082135277434`
 
 ---
 
@@ -55,7 +56,7 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 | ID | Requirement | Prioritas |
 |----|-------------|-----------|
 | FR-S1 | Pengunjung bisa melihat homepage hero premium + search + kategori + produk unggulan tanpa login | P0 MVP |
-| FR-S2 | Katalog produk dengan grid Apple-style, filter kategori (AI Gateway, Akun Premium, Tools Pro, Bundle Hemat), search, dan sorting | P0 MVP |
+| FR-S2 | Katalog produk dengan grid Apple-style, filter kategori (AI Gateway, Akun Premium, Tools Pro, Bundle Kucing), search, dan sorting | P0 MVP |
 | FR-S3 | Halaman detail produk: galeri gambar, harga (diskon/coret), stok, deskripsi, benefit, tombol Tambah ke Keranjang & Beli Langsung | P0 MVP |
 | FR-S4 | Keranjang slide-drawer dari kanan (tanpa pindah halaman), ubah qty, hapus item, lihat subtotal | P0 MVP |
 | FR-S5 | Checkout 1 halaman: data pembeli (nama, WA, email opsional) → pilih metode pembayaran (Transfer E-Wallet / SeaBank / QRIS) → ringkasan order | P0 MVP |
@@ -75,13 +76,14 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 | FR-A1 | Admin login terpisah di `/admin` (email + password, rate-limited) |
 | FR-A2 | Dashboard admin: total pesanan, pending, lunas, omzet hari/bulan, produk terlaris |
 | FR-A3 | CRUD Produk: tambah/edit/hapus, upload foto (ke R2), set harga, diskon, kategori, stok, deskripsi, status aktif/nonaktif |
-| FR-A4 | Kategori management: AI Gateway, Akun Premium, Tools Pro, Bundle Hemat (bisa tambah) |
+| FR-A4 | Kategori management: AI Gateway, Akun Premium, Tools Pro, Bundle Kucing (bisa tambah) |
 | FR-A5 | Manajemen Pesanan: list semua pesanan (filter Pending/Lunas/Dibatalkan), detail pesanan + foto bukti transfer, tombol Konfirmasi Lunas / Batalkan |
 | FR-A6 | Saat konfirmasi: admin bisa input catatan/lisensi/key yang akan dikirim ke pembeli |
 | FR-A7 | Upload & ganti gambar QRIS statis (1 file, tampil di checkout) |
 | FR-A8 | Kelola metode pembayaran: edit nomor e-wallet, SeaBank, dan bank lain menyusul (tanpa deploy ulang) |
 | FR-A9 | Laporan sederhana: export CSV pesanan, filter tanggal |
 | FR-A10 | Pengaturan toko: nama, logo, WA admin, footer |
+| FR-A11 | Daftar email dari form footer tersimpan dan hanya dapat dilihat admin |
 
 ### 2.3 Functional — Sistem
 
@@ -114,7 +116,7 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 ### 3.1 Flow Pembeli — Happy Path (Tanpa Login)
 
 ```
-1. Buka axvara.id → Hero "Gerbang Semua Tools Premium" + Search
+1. Buka axvara.tech → Hero "Gerbang Semua Tools Premium" + Search
 2. Scroll katalog / klik kategori AI Gateway
 3. Klik produk "ChatGPT Plus 1 Bulan" → halaman detail
 4. Klik "Tambah ke Keranjang" → drawer muncul dari kanan, item + subtotal
@@ -141,7 +143,7 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 ### 3.3 Flow Admin
 
 ```
-1. Buka axvara.id/admin → login
+1. Buka axvara.tech/admin → login
 2. Dashboard: lihat 3 pesanan Pending baru
 3. Klik pesanan AXV-20260831-0012 → lihat detail: produk, pembeli, total, bukti foto (dari R2)
 4. Buka aplikasi DANA/SeaBank, cek mutasi Rp 89.000 masuk
@@ -156,7 +158,7 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 Pending (baru, tunggu verifikasi) 
   → Lunas (admin konfirmasi, bukti valid)
   → Dibatalkan (admin batalkan / bukti tidak valid)
-  → Kadaluarsa (auto 24 jam jika tidak ada bukti & tidak dikonfirmasi) — P1
+  → Kadaluarsa (otomatis 24 jam jika belum dikonfirmasi; stok dikembalikan)
 ```
 
 ---
@@ -167,7 +169,7 @@ Kategori:
 - **AI Gateway** — akses gateway GPT-4o, Claude, Gemini hemat token
 - **Akun Premium** — ChatGPT Plus, Claude Pro, Midjourney, Perplexity Pro, CapCut Pro
 - **Tools Pro** — Canva Pro, Adobe CC, Notion Plus, Grammarly
-- **Bundle Hemat** — paket 3-in-1 AI, paket creator
+- **Bundle Kucing** — paket 3-in-1 AI, paket creator
 
 MVP seed: 8–12 produk dummy dengan foto placeholder premium + harga realistis (Rp 25.000 – Rp 350.000)
 
@@ -185,6 +187,8 @@ MVP seed: 8–12 produk dummy dengan foto placeholder premium + harga realistis 
 - Tidak ada auto-verifikasi mutasi di MVP (manual cek)
 - Upload bukti wajib (kecuali admin set optional di P1)
 - Satu pesanan bisa pakai 1 metode saja
+- Harga, stok, dan rekening dikunci dalam quote server bertanda tangan selama 60 menit; retry quote yang sama tidak membuat order ganda
+- Stok direservasi ketika order Pending dibuat dan dikembalikan jika Dibatalkan/Kadaluarsa
 - Gambar QRIS tampil full-res, bisa di-zoom & download
 - Instruksi pembayaran tampil jelas di checkout: "Buka DANA/Gopay/Shopeepay/Banking → Scan QRIS / Transfer ke nomor di atas → screenshot bukti → upload di sini"
 
@@ -199,7 +203,7 @@ MVP seed: 8–12 produk dummy dengan foto placeholder premium + harga realistis 
 ### MVP (P0) — 1 Minggu
 - Homepage Apple Store premium, katalog, detail produk, keranjang drawer, checkout, upload bukti, halaman sukses
 - Admin login, dashboard, CRUD produk/kategori, kelola pesanan Pending/Lunas, upload QRIS
-- Deploy ke Cloudflare Pages, domain axvara.id, SSL auto
+- Deploy ke Cloudflare Pages dengan domain publik tunggal axvara.tech (`axvara.pages.dev` redirect permanen ke domain utama)
 
 ### P1 — Minggu 2
 - Cek status pesanan via kode, notifikasi WA otomatis (Fonnte), OTP login pembeli, export CSV
@@ -261,4 +265,3 @@ MVP seed: 8–12 produk dummy dengan foto placeholder premium + harga realistis 
 - Inspirasi desain: Apple Store (apple.com/store), Linear.app, Vercel.com
 - Hosting: Cloudflare Pages + D1 + R2 — gratis selamanya, unlimited bandwidth
 - Kontak pembayaran: E-Wallet 082135277434, SeaBank 901812349386, QRIS Brotherstore06
-

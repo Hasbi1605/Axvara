@@ -1,8 +1,7 @@
 "use client";
 
 export function CommunityBar() {
-  // WA Group → fallback ke WA admin sampai grup jadi. Telegram: segera hadir badge.
-  const waHref = "https://wa.me/6282135277434?text=Halo%20AXVARA%2C%20saya%20mau%20join%20grup%20promo";
+  const waHref = "https://chat.whatsapp.com/D0GGXwVjJkL3qjxvacDRAP?s=cl&p=a&mlu=4&ilr=4";
   const tgHref = "#";
   const tgComingSoon = (e: React.MouseEvent) => {
     e.preventDefault();

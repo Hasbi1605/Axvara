@@ -4,7 +4,7 @@ export const runtime = "edge";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { products, type Product } from "@/lib/products";
+import type { Product } from "@/lib/products";
 import { formatRupiah } from "@/lib/utils";
 import { useCart } from "@/stores/cart";
 import { ProductCard } from "@/components/storefront/ProductCard";
@@ -14,15 +14,18 @@ export default function ProductDetailPage() {
   const router = useRouter();
   const add = useCart((s) => s.add);
 
-  const [catalogProducts, setCatalogProducts] = useState<Product[]>(products);
+  const [catalogProducts, setCatalogProducts] = useState<Product[]>([]);
   const [galleryImages, setGalleryImages] = useState<string[]>([]);
   const [activeImg, setActiveImg] = useState(0);
-  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(true);
   const [detailError, setDetailError] = useState<string | null>(null);
 
   useEffect(() => {
     setDetailLoading(true);
     setDetailError(null);
+    setCatalogProducts([]);
+    setGalleryImages([]);
+    setActiveImg(0);
     fetch("/api/products?active=1")
       .then(async (r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then((data) => {
@@ -46,25 +49,7 @@ export default function ProductDetailPage() {
       .finally(()=> setDetailLoading(false));
   }, [slug]);
 
-  // Also build gallery from seed data on first render
-  useEffect(() => {
-    const found = products.find((p) => p.slug === slug);
-    if (found) {
-      const imgs: string[] = [];
-      if (found.image) imgs.push(found.image);
-      if (Array.isArray(found.images)) {
-        for (const img of found.images) {
-          if (img && !imgs.includes(img)) imgs.push(img);
-        }
-      }
-      if (imgs.length > 0 && galleryImages.length === 0) setGalleryImages(imgs);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug]);
-
-  const product =
-    catalogProducts.find((p) => p.slug === slug) ??
-    products.find((p) => p.slug === slug);
+  const product = catalogProducts.find((p) => p.slug === slug);
 
   const goPrev = useCallback(() => {
     setActiveImg((prev) => (prev - 1 + galleryImages.length) % galleryImages.length);
@@ -120,6 +105,7 @@ export default function ProductDetailPage() {
   const discount = product.comparePrice
     ? Math.round((1 - product.price / product.comparePrice) * 100)
     : 0;
+  const outOfStock = product.stock !== undefined && product.stock !== null && product.stock !== -1 && product.stock <= 0;
 
   const related = (() => {
     const sameCat = catalogProducts.filter(
@@ -308,22 +294,30 @@ export default function ProductDetailPage() {
           <div className="flex-1 min-h-[16px]" />
 
           {/* CTA buttons */}
-          <div className="mt-6 flex flex-col gap-3">
-            <button
-              onClick={() => router.push(`/checkout?buy=${product.slug}`)}
-              className="w-full h-[52px] rounded-xl bg-[#00E5FF] text-[#080C1E] font-bold flex items-center justify-center gap-2 hover:bg-[#00D0E8] transition active:scale-[0.98]"
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/icons/ios11/lightning-bolt-32.png" alt="" width={16} height={16} className="w-4 h-4 object-contain brightness-0" style={{ filter: "brightness(0)" }} draggable={false} /> Beli Langsung
-            </button>
-            <button
-              onClick={() => add(product)}
-              className="w-full h-[48px] rounded-xl ax-glass-card font-semibold text-white text-sm flex items-center justify-center gap-2 hover:bg-white/10 transition"
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/icons/ios11/shopping-bag-32.png" alt="" width={16} height={16} className="w-4 h-4 object-contain brightness-0 invert" draggable={false} /> Tambah ke Keranjang
-            </button>
-          </div>
+          {outOfStock ? (
+            <div className="mt-6">
+              <span className="w-full h-[52px] rounded-xl bg-white/[0.06] border border-white/10 text-white/40 font-bold flex items-center justify-center gap-2">
+                Stok Habis
+              </span>
+            </div>
+          ) : (
+            <div className="mt-6 flex flex-col gap-3">
+              <button
+                onClick={() => router.push(`/checkout?buy=${product.slug}`)}
+                className="w-full h-[52px] rounded-xl bg-[#00E5FF] text-[#080C1E] font-bold flex items-center justify-center gap-2 hover:bg-[#00D0E8] transition active:scale-[0.98]"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/icons/ios11/lightning-bolt-32.png" alt="" width={16} height={16} className="w-4 h-4 object-contain brightness-0" style={{ filter: "brightness(0)" }} draggable={false} /> Beli Langsung
+              </button>
+              <button
+                onClick={() => add(product)}
+                className="w-full h-[48px] rounded-xl ax-glass-card font-semibold text-white text-sm flex items-center justify-center gap-2 hover:bg-white/10 transition"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/icons/ios11/shopping-bag-32.png" alt="" width={16} height={16} className="w-4 h-4 object-contain brightness-0 invert" draggable={false} /> Tambah ke Keranjang
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

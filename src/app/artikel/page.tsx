@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { queryAll } from "@/lib/db";
+import { normalizeArticle } from "@/lib/articles";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -6,14 +8,23 @@ export const dynamic = "force-dynamic";
 type Article = { id: number; slug: string; title: string; excerpt: string | null; cover_url: string | null; published_at: string | null };
 
 async function getArticles(): Promise<Article[]> {
+  // Query D1 langsung — jangan fetch HTTP /api/* dari Server Component.
+  // fetch relatif ("/api/articles") gagal di Edge next-on-pages saat
+  // NEXT_PUBLIC_BASE_URL kosong → catch → [] → "Belum ada artikel",
+  // sedangkan /artikel/[slug] lolos karena query DB langsung.
   try {
-    const base = process.env.NEXT_PUBLIC_BASE_URL || "";
-    const url = base ? `${base}/api/articles?published=1` : "/api/articles?published=1";
-    // In edge, relative fetch works via internal; fallback to empty if fails
-    const r = await fetch(url, { cache: "no-store" }).catch(() => null);
-    if (!r || !r.ok) return [];
-    const j = await r.json().catch(() => ({}));
-    return (j.articles as Article[]) ?? [];
+    const rows = await queryAll("SELECT * FROM articles ORDER BY updated_at DESC, id DESC");
+    return rows
+      .map(normalizeArticle)
+      .filter((a) => a.status === "published")
+      .map((a) => ({
+        id: Number(a.id),
+        slug: String(a.slug),
+        title: String(a.title),
+        excerpt: (a.excerpt as string | null) ?? null,
+        cover_url: (a.cover_url as string | null) ?? null,
+        published_at: (a.published_at as string | null) ?? null,
+      }));
   } catch { return []; }
 }
 
@@ -23,15 +34,14 @@ export default async function ArtikelListPage() {
     <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
       <div className="max-w-[720px]">
         <p className="text-[11px] tracking-[0.14em] text-[#00E5FF]/70 font-semibold uppercase">Artikel</p>
-        <h1 className="mt-2 font-display font-bold text-[28px] sm:text-[36px] leading-none tracking-[-0.02em] text-white">Bansos AI gratis & tips hemat</h1>
-        <p className="mt-3 text-sm leading-6 text-white/55 max-w-[52ch]">Kurasi share gratis, promo bundling, dan panduan pakai tool premium tanpa boros. Update tiap minggu.</p>
+        <h1 className="mt-2 font-display font-bold text-[28px] sm:text-[36px] leading-none tracking-[-0.02em] text-white">Seputar AI dan teknologi</h1>
+        <p className="mt-3 text-sm leading-6 text-white/55 max-w-[52ch]">Berita, panduan, dan insight praktis seputar produk digital serta perkembangan teknologi.</p>
       </div>
 
       {articles.length === 0 ? (
         <div className="mt-10 ax-glass-card rounded-[24px] p-8 sm:p-10 text-center">
           <p className="text-white font-medium">Belum ada artikel</p>
-          <p className="text-sm text-white/50 mt-1">Artikel pertama segera terbit — follow WA kami biar tidak ketinggalan.</p>
-          <a href="https://wa.me/6282135277434?text=Halo%20AXVARA" target="_blank" className="mt-4 inline-flex h-10 px-5 rounded-full bg-[#00E5FF] text-[#070a1e] text-sm font-bold">Chat WA</a>
+          <p className="text-sm text-white/50 mt-1">Artikel pertama segera terbit. Daftarkan email di footer agar tidak ketinggalan.</p>
         </div>
       ) : (
         <div className="mt-8 grid sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">

@@ -42,6 +42,8 @@ export async function POST(req: NextRequest) {
   // Cloudflare WAF rate limit should be added in dashboard for prod
 
   const form = await req.formData();
+  const area = String(form.get("area") ?? "products");
+  if (!new Set(["products", "articles/covers", "articles/content", "banners", "qris"]).has(area)) return NextResponse.json({ error: "Area media tidak valid" }, { status: 400 });
   const files = form.getAll("files").filter((v): v is File => v instanceof File);
   if (!files.length) return NextResponse.json({ error: "Pilih minimal 1 file gambar" }, { status: 400 });
   if (files.length > 8) return NextResponse.json({ error: "Maks 8 file per upload" }, { status: 400 });
@@ -60,6 +62,7 @@ export async function POST(req: NextRequest) {
   for (const f of files) {
     const type = (f.type || "").toLowerCase();
     if (!isAllowedImageType(type)) return NextResponse.json({ error: `Tipe tidak diizinkan: ${type || "unknown"} — hanya JPG/PNG/WebP` }, { status: 400 });
+    if (type !== "image/webp") return NextResponse.json({ error: "Uploader admin harus mengirim byte WebP hasil konversi browser" }, { status: 400 });
     if (f.size > MAX_BYTES) return NextResponse.json({ error: `${f.name} melebihi 5MB` }, { status: 400 });
     // Extra guard: reject svg disguised as image/*
     if (type.includes("svg") || f.name.toLowerCase().endsWith(".svg")) return NextResponse.json({ error: "SVG tidak diizinkan" }, { status: 400 });
@@ -67,11 +70,9 @@ export async function POST(req: NextRequest) {
     if (!checkMagicBytes(buf, type)) return NextResponse.json({ error: `${f.name}: isi file tidak sesuai tipe ${type}` }, { status: 400 });
 
     // Use crypto random key (not Date.now) — F04
-    const outName = `${cryptoRandomHex(16)}.webp`;
-    // Edge has no sharp — store verified bytes; set correct content type per verified magic
-    const contentType = type === "image/png" ? "image/png" : type === "image/webp" ? "image/webp" : "image/jpeg";
-    await bucket.put(outName, buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer, { httpMetadata: { contentType } } as unknown as Record<string, string>);
-    urls.push(`/r2/${outName}`);
+    const key = `${area}/${cryptoRandomHex(16)}.webp`;
+    await bucket.put(key, buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer, { httpMetadata: { contentType: "image/webp" } } as unknown as Record<string, string>);
+    urls.push(`/r2/${key}`);
   }
   return NextResponse.json({ urls });
 }

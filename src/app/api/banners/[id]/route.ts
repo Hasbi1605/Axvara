@@ -29,7 +29,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const existing = (await queryFirst("SELECT id FROM banners WHERE id=?", id)) as Record<string, unknown> | undefined;
   if (!existing) return NextResponse.json({ error: "not found" }, { status: 404 });
   const data = parsed.data as Record<string, unknown>;
-  if (data.image_url && typeof data.image_url === "string" && !/^(\/r2\/|https:\/\/)/.test(data.image_url)) return NextResponse.json({ error: "Image URL tidak valid" }, { status: 400 });
+  if (data.image_url && typeof data.image_url === "string" && !data.image_url.startsWith("/r2/banners/")) return NextResponse.json({ error: "Gambar harus berasal dari uploader banner AXVARA" }, { status: 400 });
   if (data.cta_href && typeof data.cta_href === "string" && !/^(\/[^/]|https:\/\/)/.test(data.cta_href)) return NextResponse.json({ error: "CTA href harus /... atau https://" }, { status: 400 });
   const fields: string[] = [];
   const vals: unknown[] = [];

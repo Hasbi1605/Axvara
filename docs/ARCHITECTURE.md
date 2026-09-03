@@ -1,8 +1,8 @@
 # ARCHITECTURE.md — AXVARA
 
 **Stack:** Next.js 15 (App Router) + Cloudflare Pages + D1 + R2
-**Tanggal:** 31 Agustus 2026  
-**Status:** MVP Spec — Pre-Build  
+**Tanggal:** 3 September 2026
+**Status:** Implemented — Pages + D1 + R2 + Remote MCP + custom domain dan DNSSEC aktif
 
 ---
 
@@ -11,7 +11,7 @@
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                  Cloudflare Edge (CDN)                  │
-│         axvara.id  →  Pages  →  300+ PoP Indonesia      │
+│ axvara.tech → Cloudflare DNS/SSL → Pages → Edge CDN    │
 └──────────────────────┬──────────────────────────────────┘
                        │
 ┌──────────────────────▼──────────────────────────────────┐
@@ -28,6 +28,10 @@
 │ • products   │       │ • produk/*   │
 │ • categories │       │ • bukti/*    │
 │ • orders     │       │ • qris/*     │
+│ • articles   │       │ • articles/* │
+│ • banners    │       │ • banners/*  │
+│ • subscribers│       │              │
+│ • agent auth │       │              │
 │ • users/admin│       │              │
 └──────────────┘       └──────────────┘
        │
@@ -58,9 +62,9 @@
 | State | Zustand (keranjang/pencarian) + Fetch API | Ringan, tanpa Redux |
 | Database | Cloudflare D1 (SQLite) | Gratis 5GB, 5M reads/hari, serverless |
 | Storage | Cloudflare R2 | Gratis 10GB, S3-compatible, untuk foto & bukti |
-| Auth Admin | NextAuth / iron-session + bcrypt | Simple, tanpa provider |
+| Auth Admin | JWT httpOnly + PBKDF2/SHA-256 Edge-safe | Simple, tanpa provider |
 | Deploy | Cloudflare Pages (via Git) | Auto deploy, preview URL |
-| Domain | Cloudflare Registrar | Murah, auto SSL, integrasi Pages |
+| Domain | .TECH Domains registrar + Cloudflare DNS | Nameserver Cloudflare, auto SSL, integrasi Pages |
 | Ikon | Aset SVG/PNG lokal + Lucide React | Menghindari request ikon pihak ketiga saat runtime |
 | Font | Apple SF Pro system stack | Konsisten dengan desain storefront |
 | Validasi | Zod | Schema checkout & produk |
@@ -82,33 +86,36 @@ axvara/
 │   │   └── axvara-qris.png      # QRIS Brotherstore06 hi-res
 │   └── logo/
 │       └── axvara-wordmark.svg
-├── app/                         # Next.js App Router
-│   ├── (storefront)/
-│   │   ├── page.tsx             # Homepage
-│   │   ├── katalog/
-│   │   ├── produk/[slug]/
-│   │   ├── checkout/
-│   │   └── pesanan/[code]/
+├── src/app/                     # Next.js App Router
+│   ├── page.tsx                 # Homepage
+│   ├── artikel/[slug]/          # Artikel publik Markdown/legacy JSON
+│   ├── cara-order/               # Panduan order
+│   ├── garansi-replace/          # Ketentuan garansi dan replace
+│   ├── produk/[slug]/
+│   ├── checkout/
+│   ├── pesanan/[code]/
 │   ├── admin/
-│   │   ├── page.tsx             # Dashboard
-│   │   ├── login/
-│   │   ├── products/
-│   │   ├── orders/
-│   │   └── settings/
+│   │   └── page.tsx             # Sidebar + seluruh modul admin
 │   ├── api/
 │   │   ├── products/
 │   │   ├── categories/
 │   │   ├── orders/              # POST create, GET list, PATCH confirm
-│   │   ├── upload/              # POST to R2
-│   │   ├── payment-methods/     # GET config nomor & QRIS
+│   │   ├── checkout/quote/       # Quote harga/stok/payment bertanda tangan
+│   │   ├── payment-methods/      # GET publik + PUT admin
+│   │   ├── subscribers/          # POST publik + GET admin
+│   │   ├── articles/            # CRUD editorial admin/public
+│   │   ├── banners/             # CRUD popup banner
+│   │   ├── upload/              # Media admin ke R2
+│   │   ├── agent/               # Content API scoped Bearer token
+│   │   ├── cron/                # Publish artikel + expire order terjadwal
 │   │   └── auth/
 │   ├── layout.tsx
 │   └── globals.css
-├── components/
+├── src/components/
 │   ├── ui/                      # Button, Input, Badge, Modal, Drawer, Toast
 │   ├── storefront/              # Navbar, Hero, ProductCard, CartDrawer, CheckoutForm, QrisDisplay
 │   └── admin/                   # Sidebar, StatsCard, OrderTable, ProductForm
-├── lib/
+├── src/lib/
 │   ├── db.ts                    # D1 client (Cloudflare D1 binding)
 │   ├── r2.ts                    # R2 client (S3 API)
 │   ├── config.ts                # payment methods, site config
@@ -121,10 +128,10 @@ axvara/
 
 ### 3.1 Runtime performa storefront
 
-- `OrbitHero` hanya satu instance untuk desktop/mobile, memutakhirkan DOM lewat refs, memakai 30 fps untuk auto-rotate dan refresh-rate penuh saat drag/inertia, menghormati reduced motion, serta menghentikan rAF ketika hero offscreen/tab tersembunyi.
+- `OrbitHero` hanya satu instance untuk desktop/mobile, memutakhirkan DOM lewat refs, memakai 30 fps untuk auto-rotate dan refresh-rate penuh saat drag/inertia, menghormati reduced motion, serta menghentikan rAF ketika hero offscreen/tab tersembunyi. Drag hanya aktif untuk `(pointer: fine)`; layar sentuh memakai `touch-action: pan-y` dan tidak menangkap swipe vertikal.
 - `ScrollRope` dan `Spotlight` event-driven; tidak mempertahankan loop idle. ScrollRope tidak memasang listener pada viewport mobile.
 - Kartu berulang memakai `ax-glass-card` tanpa `backdrop-filter`; blur penuh dipertahankan untuk navbar, drawer, modal, dan overlay.
-- Homepage merender katalog seed terlebih dahulu lalu melakukan refresh D1 melalui `requestIdleCallback` dengan abort cleanup.
+- Homepage/detail merender skeleton sampai respons D1 tersedia. Seed produk hanya menjadi database in-memory saat development dan tidak pernah dipakai sebagai fallback UI produksi.
 - Cache publik ditetapkan langsung oleh Edge handler: produk aktif 30 detik, kategori/banner aktif 60 detik. Respons admin atau varian produk non-eksplisit tetap `private, no-store`.
 - Middleware hanya menambahkan `unsafe-eval` pada CSP saat `NODE_ENV=development`, karena React Refresh membutuhkannya. Header production tetap ketat.
 
@@ -142,6 +149,9 @@ CREATE TABLE categories (
   sort_order INTEGER DEFAULT 0,
   created_at TEXT DEFAULT (datetime('now'))
 );
+
+-- Slug adalah identitas stabil. Edit label tidak mengubah slug; ikon dipilih
+-- eksplisit dari katalog aset lokal dan tidak diturunkan dari nama/slug.
 
 -- Produk
 CREATE TABLE products (
@@ -175,8 +185,19 @@ CREATE TABLE orders (
   proof_url TEXT,                  -- R2 URL bukti transfer
   status TEXT DEFAULT 'pending',   -- pending | lunas | dibatalkan | kadaluarsa
   admin_note TEXT,                 -- lisensi/key yang dikirim
+  quote_id TEXT,                   -- jti quote signed; unique untuk idempotensi
+  expires_at TEXT,                 -- pending berakhir 24 jam setelah dibuat
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE UNIQUE INDEX orders_quote_id_unique
+  ON orders(quote_id) WHERE quote_id IS NOT NULL;
+
+-- Guard CHECK membuat batch D1 gagal/rollback jika precondition stok/status gagal.
+CREATE TABLE operation_guards (
+  operation_id TEXT PRIMARY KEY,
+  valid INTEGER NOT NULL CHECK (valid = 1)
 );
 
 -- Admin
@@ -199,6 +220,15 @@ CREATE TABLE payment_methods (
   sort_order INTEGER DEFAULT 0
 );
 
+CREATE TABLE newsletter_subscribers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  email TEXT UNIQUE NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  source TEXT NOT NULL DEFAULT 'footer',
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
 -- Seed payment_methods:
 -- ewallet | DANA / Gopay / Shopeepay | 082135277434 | Brotherstore06
 -- seabank | SeaBank                  | 901812349386 | Brotherstore06
@@ -214,17 +244,26 @@ CREATE TABLE payment_methods (
 | GET | /api/products | List produk (filter category, search, active) | - |
 | GET | /api/products/:slug | Detail produk | - |
 | GET | /api/categories | List kategori | - |
-| GET | /api/payment-methods | List metode aktif (untuk checkout) | - |
-| POST | /api/orders | Buat pesanan (body: customer, items, payment_method, proof file) | - |
+| POST/PUT/DELETE | /api/categories[?id=] | Kelola kategori | admin |
+| POST | /api/subscribers | Simpan email unik dari form footer | - |
+| GET | /api/subscribers | List pelanggan email | admin |
+| GET/POST/PUT/DELETE | /api/articles[?id=] | Publikasi dan CRUD editorial | public/admin |
+| GET/POST/PUT/DELETE | /api/banners[?id=] | Popup banner | public/admin |
+| POST | /api/checkout/quote | Validasi produk/stok/harga, metode aktif, dan terbitkan signed quote 60 menit | - |
+| GET/POST/PUT | /api/payment-methods[?id=] | Baca metode aktif / tambah bank / kelola rekening dan QRIS | public/admin |
+| POST | /api/orders | Verifikasi signed quote, buat pesanan idempotent, reservasi stok atomik | - |
 | GET | /api/orders/:code | Cek status pesanan via code | - |
-| POST | /api/upload/proof | Upload bukti ke R2, return URL | - |
+| POST | /api/proof/upload | Upload bukti ke R2, return URL privat | same-origin |
+| GET | /api/admin/bukti/:key | Preview/download bukti | admin |
+| POST | /api/upload | Upload WebP produk/artikel/banner ke R2 | admin |
+| * | /api/agent/* | Context, artikel, media, dan audit | agent scope |
+| POST | /api/cron/publish-scheduled | Publish artikel dan kedaluwarsakan order jatuh tempo | cron secret |
 | POST | /api/auth/login | Admin login, set cookie | - |
 | GET | /api/admin/orders | List pesanan (filter status) | admin |
 | PATCH | /api/admin/orders/:id | Update status (lunas/batal) + admin_note | admin |
 | POST | /api/admin/products | Create produk + upload image ke R2 | admin |
 | PUT | /api/admin/products/:id | Update produk | admin |
 | DELETE | /api/admin/products/:id | Soft delete | admin |
-| POST | /api/admin/payment-methods | Update nomor/QRIS | admin |
 
 **Validasi POST /api/orders:**
 ```ts
@@ -235,29 +274,37 @@ CREATE TABLE payment_methods (
   items: { product_id: number, qty: number }[] (min 1),
   payment_method: "ewallet" | "seabank" | "qris" | string,
   proof_url: string (R2 URL, valid image) // wajib MVP
+  quote_token: string // signed HS256, snapshot item/subtotal/payment account
 }
 ```
+
+**Kontrak UI media/admin:**
+
+- Produk dan cover artikel dinormalisasi browser ke WebP 1600×900; banner mempertahankan rasio asli dengan sisi terpanjang maksimal 1920 px.
+- Popup banner menghitung lebar dari dimensi natural gambar, membatasi ukuran ke viewport, dan memakai `object-contain` agar materi portrait/persegi/landscape tidak terpotong.
+- `PopupBanner` hanya fetch/render pada pathname homepage (`/`), sehingga promosi tidak menghalangi checkout, status pesanan, detail produk, atau workflow admin.
+- Bukti pembayaran tetap privat melalui `/api/admin/bukti/:key`; UI membedakan belum diunggah, URL tidak valid, file R2 hilang, dan preview tersedia.
+- Kategori D1 menjadi sumber tunggal kapsul katalog dan menu Jelajah footer. Nama, ikon, serta `sort_order` dapat diedit; slug tetap stabil ketika nama berubah, dan penghapusan ditolak selama kategori masih dipakai produk.
+- Email form footer dinormalisasi lowercase, dideduplikasi oleh unique index, dibatasi per IP, dan hanya dapat dibaca melalui panel/API admin terautentikasi.
 
 ---
 
 ## 6. Flow Teknis Checkout
 
 ```
-[Client] Keranjang (Zustand + localStorage)
-   ↓ klik Checkout
-[Client] CheckoutForm → POST /api/upload/proof (bukti → R2, dapat URL)
-   ↓
-[Client] POST /api/orders { customer, items, payment_method, proof_url }
-   ↓
-[Server] Validasi Zod → hitung subtotal dari DB (jangan percaya client) → generate code AXV-... → INSERT D1
-   ↓
-[Server] Response 201 { code, status: "pending" }
-   ↓
+[Client] Keranjang (Zustand + localStorage) / Beli Langsung (produk D1 aktif)
+   ↓ POST /api/checkout/quote { slug/id, qty, expected_price }
+[Server] Validasi produk aktif, stok, harga, dan payment_methods D1
+   ↓ response quote HS256 60 menit + snapshot authoritative
+[Client] Konfirmasi perubahan harga → pilih rekening snapshot → upload bukti privat ke R2
+   ↓ POST /api/orders { customer, item IDs/qty, payment_method, proof_url, quote_token }
+[Server] Verifikasi signature+expiry+isi item → D1 batch guard+decrement+INSERT order
+   ↓ response 201, atau order yang sama jika quote dikirim ulang
 [Client] Redirect → /pesanan/AXV-20260831-0012 (halaman sukses)
-   ↓ (P1) webhook → Fonnte → WA ke admin + pembeli
+   ↓ cron: pending >24 jam → status kadaluarsa + restore stok dalam satu batch
 ```
 
-**Anti-tamper:** Harga selalu diambil dari DB, bukan dari body request. Qty di-clamp max.
+**Anti-tamper:** Harga, rekening, subtotal, dan item order terikat ke quote server; body client tidak dapat mengganti snapshot. Quote id unik membuat retry idempotent. Reservasi/restore stok memakai batch D1 dengan guard CHECK agar kegagalan rollback seluruh operasi; stok `-1` tetap unlimited.
 
 ---
 
@@ -271,6 +318,10 @@ R2 bucket: axvara-assets
 ├── bukti/
 │   ├── AXV-20260831-0012-x7k9p2.webp
 │   └── ...
+├── articles/
+│   ├── covers/*.webp
+│   └── content/*.webp
+├── banners/*.webp
 └── qris/
     └── axvara-qris.png   (master, hi-res)
 ```
@@ -293,14 +344,16 @@ R2 bucket: axvara-assets
 }
 ```
 
-### Langkah Deploy
+### Jalur CI/CD
 
 1. `npx wrangler d1 create axvara-db`
-2. `npx wrangler d1 execute axvara-db --file=./drizzle/schema.sql`
+2. Database baru: `npx wrangler d1 execute axvara-db --file=./drizzle/schema.sql --remote`; database lama jalankan migrasi `0002`, `0003_checkout_integrity.sql`, lalu `0004_categories_newsletter.sql`
 3. `npx wrangler r2 bucket create axvara-assets`
-4. Push ke GitHub untuk CI/CD atau jalankan `npm run deploy` setelah memuat `.cf-credentials`
-5. Custom domain: Pages → Custom domains → add `axvara.id` (auto SSL)
-6. Env vars: `ADMIN_EMAIL`, `ADMIN_PASSWORD_HASH`, `FONNTE_TOKEN` (P1) di Pages Settings → Variables
+4. Push ke `main`; `.github/workflows/ci.yml` menjalankan test → type-check → build Pages → `wrangler d1 migrations apply` → deploy Pages → deploy MCP Worker
+5. GitHub Actions menggunakan Secrets `CLOUDFLARE_API_KEY`, `CLOUDFLARE_EMAIL`, dan `CLOUDFLARE_ACCOUNT_ID`; Git integration bawaan Pages tidak menjalankan deployment agar CI/CD tidak ganda
+6. Setelah push berhasil, agent berhenti tanpa polling workflow. `npm run deploy`/`deploy:mcp` hanya jalur recovery manual atas instruksi eksplisit
+7. Custom domain `axvara.tech` dan `www.axvara.tech` aktif melalui CNAME proxied; `www` memiliki redirect 308 ke apex. DNSSEC Cloudflare aktif dan memerlukan publikasi DS di registrar
+8. Secrets Pages: `ADMIN_EMAIL`, `ADMIN_PASSWORD_SHA256`, `ADMIN_JWT_SECRET`, `CRON_SECRET`; `FONNTE_TOKEN` tetap P1
 
 ### Build Adapter
 
@@ -312,7 +365,7 @@ R2 bucket: axvara-assets
 
 ## 9. Keamanan MVP
 
-- Admin auth: httpOnly cookie + iron-session, bcrypt, rate limit 5/min
+- Admin auth: JWT httpOnly, password digest Edge-safe, rate limit 5/min
 - Upload: cek magic bytes (bukan cuma ext), max 5MB, sanitize filename
 - D1: prepared statement, no string concat
 - Checkout rate limit: 10/menit/IP via Cloudflare WAF / KV
@@ -336,7 +389,30 @@ R2 bucket: axvara-assets
 | Pages | 500 builds/bulan, unlimited bandwidth | Rp 0 |
 | D1 | 5GB storage, 5M reads/hari | Rp 0 (ratusan produk + ribuan order aman) |
 | R2 | 10GB, 10M reads/bulan | Rp 0 |
-| Domain axvara.id | ~Rp 230rb/tahun | Rp 230rb/tahun |
+| Domain utama axvara.tech | Dibeli terpisah; DNS/SSL Cloudflare gratis | Biaya registrar tahunan |
+| Hostname Pages bawaan axvara.pages.dev | Gratis; redirect ke axvara.tech | Rp 0 |
 | **Total infra** | | **Rp 0/bulan** |
 
 Jika melebihi free tier (misal 100k order/bulan): D1 $5/bulan, R2 $0.015/GB — masih sangat murah.
+
+---
+
+## 12. Editorial CMS dan Remote MCP
+
+Artikel memakai `status` sebagai sumber kebenaran (`draft`, `review`, `scheduled`, `published`, `rejected`); `is_published` dipertahankan selama migrasi kompatibilitas. Slug dan excerpt dibuat server-side dari judul/konten dan tidak menjadi field editorial. Editor visual Tiptap menyimpan Markdown sebagai format kanonis; renderer token-based tidak mengeksekusi raw HTML dan tetap membaca JSON Tiptap lama. Konten agent hanya boleh membuat atau memperbarui Draft, wajib menyertakan sumber, idempotency key, dan audit trail.
+
+Migrasi database lama: jalankan sekali dan berurutan `drizzle/migrations/0002_editorial_agent.sql`, `0003_checkout_integrity.sql`, lalu `0004_categories_newsletter.sql`. Database baru memakai `drizzle/schema.sql`.
+
+Agent Content API berada di `/api/agent/*` dan memvalidasi Bearer token yang di-hash dalam `agent_tokens`; ia adalah satu-satunya jalur bagi agent ke D1/R2. Scope tersedia: `context:read`, `articles:read`, `articles:write`, `articles:submit`, `articles:schedule`, `articles:publish`, `media:write`, `audit:read`. `/api/agent/media` menerima file WebP multipart dari agent yang dapat membaca filesystem lokal, sedangkan `/api/agent/media/import` mengambil WebP dari URL HTTPS publik untuk agent berbasis remote URL.
+
+Route Edge `/mcp` adalah endpoint Streamable HTTP JSON-RPC utama dan ikut deployment Pages, sehingga tidak membutuhkan service tambahan. URL publik tunggalnya `https://axvara.tech/mcp`; hostname `axvara.pages.dev` diarahkan permanen ke domain utama dan tidak menjadi endpoint client. Ia meneruskan tool ke Content API internal dan tidak memberi agent akses D1/R2 langsung.
+
+`mcp-worker/` adalah gateway cron aktif di `https://axvara-mcp.sailinnadia1.workers.dev/mcp` dan memakai `https://axvara.tech` sebagai origin Content API. `upload_article_image` tetap menerima base64 WebP untuk payload kecil. Jalur utama yang tahan terhadap batas JSON client adalah `import_article_image_from_url`; server membatasi sumber ke HTTPS publik tanpa kredensial/custom port/IP literal, memvalidasi ulang maksimal tiga redirect, membatasi respons 5 MB saat streaming, dan memeriksa WebP melalui header serta magic bytes sebelum menyimpan ke R2. File lokal memakai multipart Content API karena remote MCP tidak dapat membaca path filesystem milik agent. Konversi PNG/JPG dilakukan oleh agent sebelum upload agar runtime tetap ringan. Deploy dari root:
+
+```bash
+npm run deploy:mcp
+```
+
+Konfigurasi client menggunakan header `Authorization: Bearer ${AXVARA_AGENT_TOKEN}`. Raw token hanya dikembalikan sekali ketika admin membuatnya.
+
+Trigger `*/5 * * * *` pada MCP Worker memanggil `/api/cron/publish-scheduled`. Set nilai acak yang sama sebagai secret Pages `CRON_SECRET` dan Worker `AXVARA_CRON_SECRET`; jangan simpan nilainya di Git.

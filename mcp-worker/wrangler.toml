@@ -1,0 +1,15 @@
+name = "axvara-mcp"
+main = "src/index.ts"
+compatibility_date = "2026-09-02"
+workers_dev = true
+
+# Ganti ke custom domain axvara.tech hanya setelah domain utama dipasang:
+# [[routes]]
+# pattern = "mcp.axvara.tech"
+# custom_domain = true
+
+[triggers]
+crons = ["*/5 * * * *"]
+
+[vars]
+AXVARA_API_ORIGIN = "https://axvara.tech"

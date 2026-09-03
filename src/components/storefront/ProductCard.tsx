@@ -136,20 +136,33 @@ export function ProductCard({ product, index = 0, compact = false }: { product: 
           </div>
         </div>
       </Link>
-      <div className="px-2 sm:px-3 pb-2.5 sm:pb-3 pt-1 grid grid-cols-2 gap-1.5 sm:gap-2">
-        <button
-          onClick={handleAdd}
-          className="h-8 sm:h-9 rounded-[10px] sm:rounded-xl bg-white/[0.08] border border-white/10 text-[11px] sm:text-[13px] font-semibold text-white flex items-center justify-center gap-1 sm:gap-1.5 hover:bg-white/12 transition leading-none"
-        >
-          <IosIcon name="shopping-bag" size={12} tint="white" /> <span className="hidden sm:inline">Keranjang</span><span className="sm:hidden">Keranjang</span>
-        </button>
-        <button
-          onClick={handleCheckout}
-          className="h-8 sm:h-9 rounded-[10px] sm:rounded-xl bg-[#00E5FF] text-[#080C1E] text-[11px] sm:text-[13px] font-bold flex items-center justify-center gap-1 sm:gap-1.5 hover:bg-[#00D0E8] shadow-[0_4px_16px_rgba(0,229,255,0.28)] transition leading-none"
-        >
-          <IosIcon name="lightning-bolt" size={12} tint="black" /> Checkout
-        </button>
-      </div>
+      {(() => {
+        const outOfStock = product.stock !== undefined && product.stock !== null && product.stock !== -1 && product.stock <= 0;
+        return (
+          <div className="px-2 sm:px-3 pb-2.5 sm:pb-3 pt-1 grid grid-cols-2 gap-1.5 sm:gap-2">
+            {outOfStock ? (
+              <span className="col-span-2 h-8 sm:h-9 rounded-[10px] sm:rounded-xl bg-white/[0.06] border border-white/10 text-[11px] sm:text-[13px] font-semibold text-white/40 flex items-center justify-center">
+                Stok Habis
+              </span>
+            ) : (
+              <>
+                <button
+                  onClick={handleAdd}
+                  className="h-8 sm:h-9 rounded-[10px] sm:rounded-xl bg-white/[0.08] border border-white/10 text-[11px] sm:text-[13px] font-semibold text-white flex items-center justify-center gap-1 sm:gap-1.5 hover:bg-white/12 transition leading-none"
+                >
+                  <IosIcon name="shopping-bag" size={12} tint="white" /> <span className="hidden sm:inline">Keranjang</span><span className="sm:hidden">Keranjang</span>
+                </button>
+                <button
+                  onClick={handleCheckout}
+                  className="h-8 sm:h-9 rounded-[10px] sm:rounded-xl bg-[#00E5FF] text-[#080C1E] text-[11px] sm:text-[13px] font-bold flex items-center justify-center gap-1 sm:gap-1.5 hover:bg-[#00D0E8] shadow-[0_4px_16px_rgba(0,229,255,0.28)] transition leading-none"
+                >
+                  <IosIcon name="lightning-bolt" size={12} tint="black" /> Checkout
+                </button>
+              </>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }

@@ -55,3 +55,7 @@ cache/**
 .cf-credentials
 .cf-credentials
 .cf-credentials*
+.opencode/
+/axvara-homepage-optimized.png
+/whatsapp-logo-512.png
+/whatsapp-logo.svg

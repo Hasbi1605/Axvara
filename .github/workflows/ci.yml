@@ -1,4 +1,4 @@
-name: CI + Deploy
+name: AXVARA CI/CD
 
 on:
   push:
@@ -6,45 +6,74 @@ on:
   pull_request:
     branches: [main]
 
-jobs:
-  test-build-deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+permissions:
+  contents: read
 
-      - uses: actions/setup-node@v4
+concurrency:
+  group: axvara-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
 
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
-      - run: npm test
-      - run: npm run build
-
-      # Guard — no credentials in repo
       - name: Guard credentials
+        shell: bash
         run: |
-          if git ls-files | grep -q "^\.cf-credentials"; then
-            echo "::error::.cf-credentials is tracked! Remove it from git."
+          if git ls-files | grep -Eq '(^|/)(\.cf-credentials|\.env\.local)$'; then
+            echo "::error::Local credentials are tracked by Git."
             exit 1
           fi
 
-      # F-12: Guard — no passwords in recent commit messages
       - name: Guard commit messages
+        shell: bash
         run: |
-          if git log --oneline -20 --format="%s %b" | grep -iE "password.*(to |is |=|:)" | grep -v "placeholder\|rotate\|guard\|fix"; then
-            echo "::warning::Possible plaintext password in commit message"
+          if git log -20 --format='%s %b' | grep -iE 'password.*(to |is |=|:)' | grep -qvE 'placeholder|rotate|guard|fix'; then
+            echo "::warning::Possible plaintext password in a recent commit message."
           fi
 
-      # Build for Cloudflare Pages (next-on-pages)
-      - name: Build for Pages
-        run: npx @cloudflare/next-on-pages
+      - name: Test
+        run: npm test -- --run
 
-      # Deploy to Cloudflare Pages (only on push to main, not PRs)
-      - name: Deploy to Cloudflare Pages
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Build Cloudflare Pages artifact
+        run: npm run build:pages
+
+      - name: Apply pending D1 migrations
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: npx wrangler pages deploy .vercel/output/static --project-name=axvara
+        run: npx --yes wrangler@4.128.0 d1 migrations apply axvara-db --remote
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+          CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Deploy Cloudflare Pages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: npx --yes wrangler@4.128.0 pages deploy .vercel/output/static --project-name=axvara
+        env:
+          CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+          CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Deploy MCP Worker
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: npx --yes wrangler@4.128.0 deploy --config mcp-worker/wrangler.toml
+        env:
+          CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+          CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

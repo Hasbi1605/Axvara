@@ -92,14 +92,15 @@ export async function POST(req: NextRequest) {
   if (comparePrice && comparePrice <= price) return NextResponse.json({ error: "Harga coret harus lebih besar dari harga jual" }, { status: 400 });
 
   const catRow = await queryFirst("SELECT id FROM categories WHERE slug=?", categorySlug ?? "tools-pro") as { id: number } | undefined;
-  const category_id = catRow?.id ?? 3;
+  if (!catRow) return NextResponse.json({ error: "Kategori tidak dikenal. Buat atau pilih kategori yang tersedia." }, { status: 400 });
+  const category_id = catRow.id;
   const imgArr = Array.isArray(images) ? images.slice(0,8) : [];
   // F10: strict allowlist — only /r2/* or known CDNs
   const urlOk = (u: string) => {
     if (u.startsWith("/r2/")) return true;
     try {
       const url = new URL(u);
-      return ["images.unsplash.com", "picsum.photos", "cdn.axvara.id"].includes(url.hostname) && url.protocol === "https:";
+      return ["images.unsplash.com", "picsum.photos"].includes(url.hostname) && url.protocol === "https:";
     } catch { return false; }
   };
   if (imgArr.some(u => !urlOk(u))) return NextResponse.json({ error: "URL gambar tidak diizinkan — hanya /r2/* atau CDN resmi" }, { status: 400 });

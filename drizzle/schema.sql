@@ -38,8 +38,16 @@ CREATE TABLE IF NOT EXISTS orders (
   proof_url TEXT,
   status TEXT DEFAULT 'pending',
   admin_note TEXT,
+  quote_id TEXT,
+  expires_at TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS orders_quote_id_unique
+  ON orders(quote_id) WHERE quote_id IS NOT NULL;
+CREATE TABLE IF NOT EXISTS operation_guards (
+  operation_id TEXT PRIMARY KEY,
+  valid INTEGER NOT NULL CHECK (valid = 1)
 );
 CREATE TABLE IF NOT EXISTS admins (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -57,24 +65,32 @@ CREATE TABLE IF NOT EXISTS payment_methods (
   is_active INTEGER DEFAULT 1,
   sort_order INTEGER DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS newsletter_subscribers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  email TEXT UNIQUE NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  source TEXT NOT NULL DEFAULT 'footer',
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
 INSERT OR IGNORE INTO categories (id, name, slug, icon, sort_order) VALUES
-  (1,'AI Gateway','ai-gateway','⚡',1),
-  (2,'Akun Premium','akun-premium','◆',2),
-  (3,'Tools Pro','tools-pro','◈',3),
-  (4,'Bundle Hemat','bundle-hemat','⬢',4);
+  (1,'AI Gateway','ai-gateway','lightning-bolt',1),
+  (2,'Akun Premium','akun-premium','crown',2),
+  (3,'Tools Pro','tools-pro','shield',3),
+  (4,'Bundle Kucing','bundle-hemat','packaging',4);
 
 -- Seed 24 produk (idempotent)
 INSERT OR IGNORE INTO products (id, category_id, name, slug, description, price, compare_price, image_url, badge, sold_count, stock, sort_order) VALUES
   (1,2,'ChatGPT Plus 1 Bulan','chatgpt-plus-1-bulan','Akses GPT-4o penuh, private account, garansi full.',89000,300000,'https://images.unsplash.com/photo-1677442136019-21780ecad995?w=600&h=450&fit=crop','Terlaris',342,48,1),
   (2,2,'Claude Pro 1 Bulan','claude-pro-1-bulan','Anthropic Claude 3.5 Sonnet unlimited, untuk coding & writing.',95000,320000,'https://images.unsplash.com/photo-1620712943543-bcc4688e7485?w=600&h=450&fit=crop','Baru',128,22,2),
-  (3,1,'AI Gateway 1 Juta Token','ai-gateway-1jt-token','Gateway hemat GPT-4o, Claude, Gemini — 1 key untuk semua model.',75000,NULL,'https://images.unsplash.com/photo-1639322537224-f012857c7c2e?w=600&h=450&fit=crop',NULL,512,999,3),
+  (3,1,'AI Gateway 1 Juta Token','ai-gateway-1jt-token','Gateway hemat GPT-4o, Claude, Gemini — 1 key untuk semua model.',75000,NULL,'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=600&h=450&fit=crop',NULL,512,999,3),
   (4,2,'Midjourney Basic 1 Bulan','midjourney-1-bulan','Generate 200+ gambar AI, fast mode, private.',110000,180000,'https://images.unsplash.com/photo-1541701494587-cb58502866ab?w=600&h=450&fit=crop',NULL,87,15,4),
   (5,3,'Canva Pro 1 Tahun','canva-pro-1-tahun','Invite team, semua template & Brand Kit premium.',45000,600000,'https://images.unsplash.com/photo-1611224923853-80b023f02d71?w=600&h=450&fit=crop','Hemat 92%',412,60,5),
   (6,3,'CapCut Pro 1 Bulan','capcut-pro-1-bulan','No watermark, AI tools, cloud 100GB.',35000,120000,'https://images.unsplash.com/photo-1611224923853-80b023f02d71?w=600&h=450&fit=crop&crop=center',NULL,234,33,6),
   (7,2,'Perplexity Pro 1 Tahun','perplexity-pro-1-tahun','AI search pro, GPT-4o + Claude + Gemini.',125000,800000,'https://images.unsplash.com/photo-1485827404703-89b55fcc595e?w=600&h=450&fit=crop',NULL,76,18,7),
   (8,4,'Bundle Creator 3-in-1','bundle-creator-3in1','ChatGPT Plus + Canva Pro + CapCut Pro — hemat 60%.',135000,450000,'https://images.unsplash.com/photo-1553877522-43269d4ea984?w=600&h=450&fit=crop','Bundle',189,27,8),
-  (9,1,'AI Gateway 5 Juta Token','ai-gateway-5jt-token','Untuk developer & agency — 5jt token, key anti-limit.',299000,500000,'https://images.unsplash.com/photo-1639322537504-fcfecb546b11?w=600&h=450&fit=crop',NULL,64,40,9),
-  (10,3,'Adobe CC All Apps 1 Bulan','adobe-cc-1-bulan','Photoshop, Illustrator, Premiere — full.',150000,800000,'https://images.unsplash.com/photo-1626785774573-6dd65b279390?w=600&h=450&fit=crop',NULL,45,12,10),
+  (9,1,'AI Gateway 5 Juta Token','ai-gateway-5jt-token','Untuk developer & agency — 5jt token, key anti-limit.',299000,500000,'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=600&h=450&fit=crop',NULL,64,40,9),
+  (10,3,'Adobe CC All Apps 1 Bulan','adobe-cc-1-bulan','Photoshop, Illustrator, Premiere — full.',150000,800000,'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=600&h=450&fit=crop',NULL,45,12,10),
   (11,3,'Notion Plus 1 Tahun','notion-plus-1-tahun','AI blocks, unlimited upload, team 10 orang.',65000,400000,'https://images.unsplash.com/photo-1454165205744-3b78555e5572?w=600&h=450&fit=crop',NULL,92,25,11),
   (12,4,'Bundle AI Master','bundle-ai-master','GPT Plus + Claude Pro + Midjourney + Perplexity — ultimate.',299000,1200000,'https://images.unsplash.com/photo-1526379095098-d400fd0bf935?w=600&h=450&fit=crop','Ultimate',58,9,12),
   (13,2,'YouTube Premium 1 Bulan','youtube-premium-1-bulan','No ads, background play, YouTube Music included.',25000,70000,'https://images.unsplash.com/photo-1611162616475-46b635cb6868?w=600&h=450&fit=crop','Hemat',267,50,13),
@@ -89,10 +105,10 @@ INSERT OR IGNORE INTO products (id, category_id, name, slug, description, price,
   (22,4,'Bundle Streaming Hemat','bundle-streaming','YouTube Premium + Netflix + Spotify — nonton & denger puas.',65000,311000,'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=600&h=450&fit=crop',NULL,156,35,22),
   (23,2,'Cursor Pro 1 Bulan','cursor-pro-1-bulan','AI code editor — Tab, Chat, Composer premium.',85000,320000,'https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=600&h=450&fit=crop',NULL,67,19,23),
   (24,3,'Grammarly Premium 1 Tahun','grammarly-premium-1-tahun','AI writing, plagiarism check, tone rewrite.',95000,1440000,'https://images.unsplash.com/photo-1455390582262-044cdead277a?w=600&h=450&fit=crop',NULL,48,21,24);
-INSERT OR IGNORE INTO payment_methods (id, label, account_number, account_name, sort_order) VALUES
-  ('qris','QRIS','', 'Brotherstore06', 1),
-  ('ewallet','DANA / Gopay / Shopeepay','082135277434','Brotherstore06',2),
-  ('seabank','SeaBank','901812349386','Brotherstore06',3);
+INSERT OR IGNORE INTO payment_methods (id, label, account_number, account_name, qris_url, sort_order) VALUES
+  ('qris','QRIS','', 'Brotherstore06','/qris/axvara-qris.jpg',1),
+  ('ewallet','DANA / Gopay / Shopeepay','082135277434','Brotherstore06',NULL,2),
+  ('seabank','SeaBank','901812349386','Brotherstore06',NULL,3);
 
 -- Artikel & Banner CMS
 CREATE TABLE IF NOT EXISTS articles (
@@ -102,10 +118,43 @@ CREATE TABLE IF NOT EXISTS articles (
   excerpt TEXT,
   cover_url TEXT,
   content TEXT NOT NULL,
+  status TEXT DEFAULT 'draft',
+  author_type TEXT DEFAULT 'admin',
+  author_name TEXT,
+  source_urls TEXT,
+  idempotency_key TEXT,
+  scheduled_at TEXT,
+  reviewed_at TEXT,
+  reviewed_by TEXT,
   is_published INTEGER DEFAULT 0,
   published_at TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS articles_idempotency_key_unique
+  ON articles(idempotency_key) WHERE idempotency_key IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS agent_tokens (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  token_prefix TEXT NOT NULL,
+  token_hash TEXT UNIQUE NOT NULL,
+  scopes TEXT NOT NULL,
+  is_active INTEGER DEFAULT 1,
+  expires_at TEXT,
+  last_used_at TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  revoked_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS article_audit_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  article_id INTEGER REFERENCES articles(id),
+  actor_type TEXT NOT NULL,
+  actor_name TEXT,
+  action TEXT NOT NULL,
+  metadata TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS banners (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

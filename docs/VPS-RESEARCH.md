@@ -124,7 +124,7 @@ Alasan:
 2. Toko digital butuh **cepat & tidak sleep** — Pages CDN di Indonesia <50ms
 3. Upload bukti & foto produk butuh storage — R2 10GB gratis (cukup untuk 20.000+ foto bukti)
 4. Tanpa ngurus server — kamu fokus jualan, bukan jadi sysadmin
-5. Biaya Rp 0/bulan, hanya domain axvara.id
+5. Biaya Rp 0/bulan selama memakai axvara.pages.dev; custom domain axvara.tech dipasang nanti
 
 **Jika nanti AXVARA rame banget (>50k visitor/hari):** upgrade ke Cloudflare Pro $20/bulan atau pindah ke VPS berbayar (Contabo $5/bulan, Vultr $6/bulan) — tapi itu nanti, bukan sekarang.
 
@@ -140,4 +140,3 @@ Alasan:
 - Oracle Free Tier: https://www.oracle.com/cloud/free/
 - Vercel Pricing: https://vercel.com/pricing
 - Riset dilakukan 31 Agustus 2026 — harga dapat berubah, cek link resmi sebelum deploy
-

@@ -49,7 +49,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   }
   const urlOk = (u: string) => {
     if (u.startsWith("/r2/")) return true;
-    try { const url = new URL(u); return ["images.unsplash.com","picsum.photos","cdn.axvara.id"].includes(url.hostname) && url.protocol==="https:"; } catch { return false; }
+    try { const url = new URL(u); return ["images.unsplash.com","picsum.photos"].includes(url.hostname) && url.protocol==="https:"; } catch { return false; }
   };
   if (data.images && data.images.some(u => !urlOk(u))) return NextResponse.json({ error: "URL gambar tidak diizinkan" }, { status: 400 });
   if (data.imageUrl && !urlOk(data.imageUrl)) return NextResponse.json({ error: "URL gambar utama tidak diizinkan" }, { status: 400 });

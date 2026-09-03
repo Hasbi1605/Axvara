@@ -3,24 +3,69 @@ import { useCart } from "@/stores/cart";
 import { formatRupiah } from "@/lib/utils";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useRef } from "react";
 // TRY: iOS glyph — rollback: cp /tmp/CartDrawer.lucide.bak src/components/storefront/CartDrawer.tsx
 
 export function CartDrawer() {
   const pathname = usePathname();
   const isAdmin = pathname?.startsWith("/admin");
-  const { items, drawerOpen, setDrawer, setQty, remove, subtotal } = useCart();
+  const { items, drawerOpen, setDrawer, setQty, remove, subtotal, count } = useCart();
   const total = subtotal();
+  const totalQty = count();
+  const panelRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!drawerOpen || isAdmin) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const focusTimer = window.setTimeout(() => closeRef.current?.focus(), 0);
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setDrawer(false);
+        return;
+      }
+      if (event.key !== "Tab" || !panelRef.current) return;
+      const focusable = Array.from(panelRef.current.querySelectorAll<HTMLElement>(
+        'a[href],button:not([disabled]),input:not([disabled]),[tabindex]:not([tabindex="-1"])',
+      ));
+      if (focusable.length === 0) {
+        event.preventDefault();
+        panelRef.current.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousFocus?.focus();
+    };
+  }, [drawerOpen, isAdmin, setDrawer]);
 
   if (isAdmin) return null;
   if (!drawerOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex justify-end">
-      <div className="absolute inset-0 bg-[#080C1E]/60 backdrop-blur-sm" onClick={() => setDrawer(false)} />
-      <div className="relative w-full max-w-[420px] h-full ax-glass-strong flex flex-col rounded-l-[24px] sm:rounded-l-[28px] overflow-hidden animate-[slideInRight_0.42s_var(--ease-apple)]">
+    <div className="fixed inset-0 z-[60] flex justify-end" role="dialog" aria-modal="true" aria-label="Keranjang belanja">
+      <div aria-hidden="true" className="absolute inset-0 bg-[#080C1E]/60 backdrop-blur-sm" onClick={() => setDrawer(false)} />
+      <div ref={panelRef} tabIndex={-1} className="relative w-full max-w-[420px] h-full ax-glass-strong flex flex-col rounded-l-[24px] sm:rounded-l-[28px] overflow-hidden animate-[slideInRight_0.42s_var(--ease-apple)]">
         <div className="h-[64px] flex items-center justify-between px-5 border-b border-white/10 shrink-0">
-          <h2 className="font-display font-bold text-white">Keranjang ({items.length})</h2>
-          <button onClick={() => setDrawer(false)} className="w-8 h-8 rounded-full ax-glass flex items-center justify-center text-white/70 hover:text-white" aria-label="Tutup">
+          <h2 className="font-display font-bold text-white">Keranjang ({totalQty})</h2>
+          <button ref={closeRef} onClick={() => setDrawer(false)} className="w-8 h-8 rounded-full ax-glass flex items-center justify-center text-white/70 hover:text-white" aria-label="Tutup">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/icons/ios11/close-32.png" alt="" width={16} height={16} className="w-4 h-4 object-contain brightness-0 invert opacity-70" draggable={false} />
           </button>

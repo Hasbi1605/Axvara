@@ -2,74 +2,27 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { queryAll, queryFirst, execRun } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
+import { ARTICLE_STATUSES, articleInputSchema, excerptFromMarkdown, isSafeMarkdown, normalizeArticle, slugify } from "@/lib/articles";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
+async function uniqueSlug(title: string) { const base=slugify(title); let slug=base, n=2; while(await queryFirst("SELECT id FROM articles WHERE slug=?",slug)) slug=`${base}-${n++}`; return slug; }
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const q = searchParams.get("q")?.trim().toLowerCase() ?? "";
-  const publishedOnly = searchParams.get("published") === "1" || !searchParams.get("published");
-  // Public: only published; admin with token can see all via ?all=1
-  const wantAll = searchParams.get("all") === "1";
-  let isAdmin = false;
-  if (wantAll) {
-    const a = await requireAdmin(req).catch(() => null);
-    isAdmin = !!a;
-    if (!isAdmin) return NextResponse.json({ error: "Unauthorized untuk lihat draft" }, { status: 401 });
-  }
-  let sql = "SELECT * FROM articles WHERE 1=1";
-  const params: unknown[] = [];
-  if (!isAdmin || publishedOnly) sql += " AND is_published=1";
-  if (q) {
-    sql += " AND (lower(title) LIKE ? OR lower(excerpt) LIKE ? OR lower(slug) LIKE ?)";
-    const like = `%${q}%`;
-    params.push(like, like, like);
-  }
-  sql += " ORDER BY published_at DESC, updated_at DESC, id DESC";
-  const rows = await queryAll(sql, ...params);
-  const data = rows.map((r: Record<string, unknown>) => ({
-    id: r.id,
-    slug: r.slug,
-    title: r.title,
-    excerpt: r.excerpt,
-    cover_url: r.cover_url,
-    content: r.content,
-    is_published: r.is_published,
-    published_at: r.published_at,
-    created_at: r.created_at,
-    updated_at: r.updated_at,
-  }));
-  return NextResponse.json({ articles: data });
+  const url=new URL(req.url), all=url.searchParams.get("all")==="1", admin=all?await requireAdmin(req).catch(()=>null):null;
+  if(all&&!admin)return NextResponse.json({error:"Unauthorized untuk melihat draft"},{status:401}); const q=url.searchParams.get("q")?.trim().toLowerCase(), status=url.searchParams.get("status");
+  let articles=(await queryAll("SELECT * FROM articles ORDER BY updated_at DESC, id DESC")).map(normalizeArticle); if(!admin)articles=articles.filter(a=>a.status==="published"); if(status)articles=articles.filter(a=>a.status===status); if(q)articles=articles.filter(a=>`${a.title} ${a.slug} ${a.excerpt}`.toLowerCase().includes(q));
+  return NextResponse.json({articles},{headers:{"Cache-Control":admin?"private, no-store":"public, max-age=60, s-maxage=60"}});
 }
-
-const schema = z.object({
-  slug: z.string().trim().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).min(3).max(80),
-  title: z.string().trim().min(6).max(140),
-  excerpt: z.string().trim().max(280).optional().nullable(),
-  cover_url: z.string().trim().max(600).optional().nullable(),
-  content: z.string().trim().min(50).max(50000),
-  is_published: z.boolean().optional().default(false),
-});
-
 export async function POST(req: NextRequest) {
-  const admin = await requireAdmin(req);
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  let body: unknown;
-  try { body = await req.json(); } catch { return NextResponse.json({ error: "Body tidak valid" }, { status: 400 }); }
-  const parsed = schema.safeParse(body);
-  if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
-  const { slug, title, excerpt, cover_url, content, is_published } = parsed.data;
-  if (cover_url && !/^(\/r2\/|https:\/\/)/.test(cover_url)) return NextResponse.json({ error: "Cover URL tidak valid" }, { status: 400 });
-  const now = new Date().toISOString();
-  const published_at = is_published ? now : null;
-  try {
-    const res = await execRun("INSERT INTO articles (slug,title,excerpt,cover_url,content,is_published,published_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)", slug, title, excerpt ?? null, cover_url ?? null, content, is_published ? 1 : 0, published_at, now, now);
-    return NextResponse.json({ id: res.lastInsertRowid }, { status: 201 });
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    if (msg.includes("UNIQUE")) return NextResponse.json({ error: "slug sudah dipakai" }, { status: 409 });
-    console.error("500 src/app/api/articles/route.ts :", msg);
-    return NextResponse.json({ error: "Terjadi kesalahan pada server. Coba lagi." }, { status: 500 });
-  }
+  const admin=await requireAdmin(req);if(!admin)return NextResponse.json({error:"Unauthorized"},{status:401}); const parsed=articleInputSchema.safeParse(await req.json().catch(()=>null));if(!parsed.success)return NextResponse.json({error:parsed.error.issues[0]?.message??"Validasi gagal"},{status:400});const d=parsed.data;
+  if(!isSafeMarkdown(d.content))return NextResponse.json({error:"HTML/script dan URL tidak aman tidak diizinkan"},{status:400});
+  if(d.cover_url&&!d.cover_url.startsWith("/r2/articles/covers/"))return NextResponse.json({error:"Cover harus berasal dari uploader artikel AXVARA"},{status:400});
+  const status=d.status??"draft",now=new Date().toISOString();
+  if(status==="scheduled"&&(!d.scheduled_at||Date.parse(d.scheduled_at)<=Date.now()))return NextResponse.json({error:"Jadwal publish harus berupa waktu di masa depan"},{status:400});
+  const r=await execRun("INSERT INTO articles (slug,title,excerpt,cover_url,content,is_published,published_at,status,author_type,author_name,source_urls,scheduled_at,reviewed_at,reviewed_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",await uniqueSlug(d.title),d.title,excerptFromMarkdown(d.content),d.cover_url??null,d.content,status==="published"?1:0,status==="published"?now:null,status,"admin",admin.email,JSON.stringify(d.source_urls),status==="scheduled"?d.scheduled_at??null:null,status==="published"?now:null,status==="published"?admin.email:null,now,now);return NextResponse.json({id:r.lastInsertRowid,status},{status:201});
 }
+
+const adminPatchSchema=z.object({title:z.string().trim().min(6).max(140).optional(),content:z.string().trim().min(50).max(50_000).optional(),cover_url:z.string().trim().max(600).nullable().optional(),source_urls:z.array(z.string().url().max(600)).max(20).optional(),status:z.enum(ARTICLE_STATUSES).optional(),scheduled_at:z.string().datetime().nullable().optional()}).strict();
+export async function PUT(req:NextRequest){const admin=await requireAdmin(req);if(!admin)return NextResponse.json({error:"Unauthorized"},{status:401});const id=new URL(req.url).searchParams.get("id");if(!id)return NextResponse.json({error:"id diperlukan"},{status:400});const parsed=adminPatchSchema.safeParse(await req.json().catch(()=>null));if(!parsed.success)return NextResponse.json({error:parsed.error.issues[0]?.message??"Validasi gagal"},{status:400});const existing=await queryFirst("SELECT * FROM articles WHERE id=?",id);if(!existing)return NextResponse.json({error:"not found"},{status:404});const d=parsed.data;if(d.content&&!isSafeMarkdown(d.content))return NextResponse.json({error:"Markdown tidak aman"},{status:400});if(d.cover_url&&!d.cover_url.startsWith("/r2/articles/covers/"))return NextResponse.json({error:"Cover harus berasal dari uploader artikel AXVARA"},{status:400});const current=normalizeArticle(existing),status=d.status??current.status,scheduled=d.scheduled_at??(existing.scheduled_at?String(existing.scheduled_at):null);if(status==="scheduled"&&(!scheduled||Date.parse(scheduled)<=Date.now()))return NextResponse.json({error:"Jadwal publish harus di masa depan"},{status:400});const fields:string[]=[],values:unknown[]=[];const set=(column:string,value:unknown)=>{fields.push(`${column}=?`);values.push(value)};if(d.title!==undefined)set("title",d.title);if(d.cover_url!==undefined)set("cover_url",d.cover_url);if(d.content!==undefined){set("content",d.content);set("excerpt",excerptFromMarkdown(d.content))}if(d.source_urls!==undefined)set("source_urls",JSON.stringify(d.source_urls));if(d.status!==undefined){set("status",status);set("is_published",status==="published"?1:0);set("published_at",status==="published"?(existing.published_at??new Date().toISOString()):null);set("scheduled_at",status==="scheduled"?scheduled:null);if(status==="published"){set("reviewed_at",new Date().toISOString());set("reviewed_by",admin.email)}}if(!fields.length)return NextResponse.json({ok:true});fields.push("updated_at=datetime('now')");values.push(id);await execRun(`UPDATE articles SET ${fields.join(",")} WHERE id=?`,...values);return NextResponse.json({ok:true});}
+export async function DELETE(req:NextRequest){if(!await requireAdmin(req))return NextResponse.json({error:"Unauthorized"},{status:401});const id=new URL(req.url).searchParams.get("id");if(!id)return NextResponse.json({error:"id diperlukan"},{status:400});const result=await execRun("DELETE FROM articles WHERE id=?",id);return result.changes?NextResponse.json({ok:true}):NextResponse.json({error:"not found"},{status:404});}

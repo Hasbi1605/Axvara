@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { queryAll, queryFirst, execRun } from "@/lib/db";
+import { createOrderWithStock, queryFirst, StockReservationError } from "@/lib/db";
 import { generateOrderCode as generateCode, aggregateQty } from "@/lib/security";
+import { verifyCheckoutQuoteToken } from "@/lib/auth";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -15,8 +16,9 @@ const schema = z.object({
     .refine((s) => /^(\+62|62|0)8\d{8,13}$/.test(s), "No WA harus 08... atau +62... (10-15 digit)"),
   customer_email: z.string().trim().email().max(120).optional().or(z.literal("")),
   items: z.array(z.object({ product_id: z.coerce.number().int().min(1), qty: z.coerce.number().int().min(1).max(20) })).min(1).max(20),
-  payment_method: z.enum(["qris", "ewallet", "bank:seabank", "bank:bca", "bank:mandiri", "bank:bri", "bank:bni"]),
+  payment_method: z.string().trim().regex(/^(qris|ewallet|bank:[a-z0-9][a-z0-9_-]{0,31})$/, "Metode pembayaran tidak valid"),
   proof_url: z.string().trim().min(1, "Bukti transfer wajib diupload").max(600),
+  quote_token: z.string().trim().min(20, "Quote checkout wajib disertakan").max(8000),
 });
 
 // Simple in-memory rate limit per IP (edge isolate-safe best-effort) — with KV/WAF in prod
@@ -51,28 +53,25 @@ export async function POST(req: NextRequest) {
   const parsed = schema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
 
-  const { customer_name, customer_wa, customer_email, items, payment_method, proof_url } = parsed.data;
+  const { customer_name, customer_wa, customer_email, items, payment_method, proof_url, quote_token } = parsed.data;
 
-  // Validate proof_url if provided — only /r2/ or https allowed
-  if (proof_url && !/^(\/r2\/|https:\/\/)/.test(proof_url)) {
+  // Proofs are private R2 objects. External URLs would bypass the protected
+  // admin viewer and could be used as a tracking pixel.
+  if (!proof_url.startsWith("/r2/bukti/") || proof_url.includes("..")) {
     return NextResponse.json({ error: "URL bukti tidak valid" }, { status: 400 });
   }
 
-  const agg = aggregateQty(items as { product_id: number; qty: number }[]);
+  const quote = await verifyCheckoutQuoteToken(quote_token);
+  if (!quote) {
+    return NextResponse.json({ error: "Quote checkout tidak valid atau sudah kedaluwarsa. Muat ulang checkout." }, { status: 409 });
+  }
 
-  // Server-authoritative pricing: fetch each product from DB
-  let subtotal = 0;
-  const snapshot: { product_id: number; name: string; price: number; qty: number }[] = [];
-  for (const [pid, totalQty] of agg.entries()) {
-    const row = (await queryFirst("SELECT p.*, c.slug as cat_slug FROM products p LEFT JOIN categories c ON c.id=p.category_id WHERE p.id=?", pid)) as Record<string, unknown> | undefined;
-    if (!row) return NextResponse.json({ error: `Produk #${pid} tidak ditemukan` }, { status: 404 });
-    if ((row.is_active as number) === 0) return NextResponse.json({ error: `${row.name} sedang nonaktif` }, { status: 400 });
-    const stock = row.stock as number;
-    if (stock !== -1 && stock !== null && stock <= 0) return NextResponse.json({ error: `${row.name} stok habis` }, { status: 400 });
-    if (stock !== -1 && stock !== null && totalQty > stock) return NextResponse.json({ error: `${row.name} stok tersisa ${stock} (diminta ${totalQty})` }, { status: 400 });
-    const price = Number(row.price);
-    subtotal += price * totalQty;
-    snapshot.push({ product_id: Number(row.id), name: String(row.name), price, qty: totalQty });
+  const requested = aggregateQty(items as { product_id: number; qty: number }[]);
+  const quoted = aggregateQty(quote.items);
+  const sameItems = requested.size === quoted.size
+    && [...requested.entries()].every(([productId, qty]) => quoted.get(productId) === qty);
+  if (!sameItems) {
+    return NextResponse.json({ error: "Isi keranjang berubah setelah harga dikunci. Muat ulang checkout." }, { status: 409 });
   }
 
   // Normalize WA to 62
@@ -82,54 +81,42 @@ export async function POST(req: NextRequest) {
 
   const code = generateCode();
   const pm = String(payment_method);
-  const accountMap: Record<string, string> = {
-    qris: "",
-    ewallet: "082135277434",
-    "bank:seabank": "901812349386",
-    "bank:bca": "",
-    "bank:mandiri": "",
-    "bank:bri": "",
-    "bank:bni": "",
-  };
-  const payment_account = accountMap[pm] ?? pm;
-
-  // Atomic stock decrement: only if enough stock (or unlimited -1)
-  for (const [pid, qty] of agg.entries()) {
-    const r = await execRun("UPDATE products SET stock = stock - ? WHERE id=? AND (stock=-1 OR stock >= ?)", qty, pid, qty);
-    if (r.changes === 0) {
-      // Re-check if product is unlimited or truly out of stock (race)
-      const chk = (await queryFirst("SELECT stock, name FROM products WHERE id=?", pid)) as Record<string, unknown> | undefined;
-      const st = chk?.stock as number;
-      if (st !== -1) return NextResponse.json({ error: `${chk?.name ?? `Produk #${pid}`} stok tidak cukup (race, coba lagi)` }, { status: 409 });
-    }
+  const paymentId = pm.startsWith("bank:") ? pm.slice(5) : pm;
+  const payment = quote.payment_methods.find((method) => method.id === paymentId);
+  if (!payment) {
+    return NextResponse.json({ error: "Metode pembayaran berubah atau sudah tidak aktif. Muat ulang checkout." }, { status: 409 });
   }
 
   try {
-    await execRun(
-      `INSERT INTO orders (code,customer_name,customer_wa,customer_email,items,subtotal,payment_method,payment_account,proof_url,status) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+    await createOrderWithStock({
       code,
-      customer_name,
-      wa,
-      customer_email || null,
-      JSON.stringify(snapshot),
-      subtotal,
-      pm,
-      payment_account,
-      proof_url ?? null,
-      "pending"
-    );
+      quoteId: quote.quote_id,
+      customerName: customer_name,
+      customerWa: wa,
+      customerEmail: customer_email || null,
+      items: quote.items,
+      subtotal: quote.subtotal,
+      paymentMethod: pm,
+      paymentAccount: payment.account_number,
+      proofUrl: proof_url,
+    });
   } catch (e: unknown) {
-    // Rollback stock on failure (best-effort)
-    for (const [pid, qty] of agg.entries()) {
-      await execRun("UPDATE products SET stock = stock + ? WHERE id=? AND stock != -1", qty, pid).catch(() => {});
+    if (e instanceof StockReservationError) {
+      return NextResponse.json({ error: e.message }, { status: 409 });
     }
     const msg = e instanceof Error ? e.message : String(e);
-    if (msg.includes("UNIQUE")) return NextResponse.json({ error: "Kode pesanan bentrok, coba lagi." }, { status: 409 });
+    if (msg.includes("UNIQUE")) {
+      const existing = await queryFirst("SELECT code,subtotal,status FROM orders WHERE quote_id=?", quote.quote_id);
+      if (existing) {
+        return NextResponse.json({ code: existing.code, subtotal: existing.subtotal, status: existing.status, reused: true }, { status: 200 });
+      }
+      return NextResponse.json({ error: "Kode pesanan bentrok, coba lagi." }, { status: 409 });
+    }
     console.error("POST /api/orders insert failed:", msg);
     return NextResponse.json({ error: "Terjadi kesalahan pada server. Coba lagi." }, { status: 500 });
   }
 
-  return NextResponse.json({ code, subtotal, status: "pending" }, { status: 201 });
+  return NextResponse.json({ code, subtotal: quote.subtotal, status: "pending" }, { status: 201 });
 }
 
 export async function GET(req: NextRequest) {
@@ -157,7 +144,6 @@ export async function GET(req: NextRequest) {
         subtotal: row.subtotal,
         payment_method: row.payment_method,
         payment_account: row.payment_account,
-        proof_url: row.proof_url,
         status: row.status,
         created_at: row.created_at,
       },

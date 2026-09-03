@@ -169,15 +169,16 @@ describe("Regression: checkout proof_url tidak null", () => {
 // ===================================================================
 
 describe("BUG-01: Stock restore saat admin batalkan pesanan", () => {
-  it("admin orders PATCH route mengandung stock restore logic", () => {
+  it("admin orders PATCH mendelegasikan restore ke transaksi atomik", () => {
     const src = fs.readFileSync(path.join(process.cwd(), "src/app/api/admin/orders/[code]/route.ts"), "utf-8");
-    // Harus SELECT items (untuk parsing qty)
     expect(src).toMatch(/SELECT.*items.*FROM orders/i);
-    // Harus restore stock: UPDATE products SET stock = stock + ?
-    expect(src).toContain("stock = stock + ?");
-    // Hanya restore saat cancel dari pending
     expect(src).toContain('"dibatalkan"');
     expect(src).toContain('"pending"');
+    expect(src).toContain("transitionPendingOrder");
+    const db = fs.readFileSync(path.join(process.cwd(), "src/lib/db.ts"), "utf-8");
+    expect(db).toContain("d1.batch(statements)");
+    expect(db).toMatch(/stock=stock\+\?/);
+    expect(db).toContain("operation_guards");
   });
 });
 
@@ -228,11 +229,13 @@ describe("BUG-05: Tidak ada duplicate generateOrderCode lemah di utils.ts", () =
 });
 
 describe("BUG-06: Checkout block bank placeholder belum aktif", () => {
-  it("checkout page menolak bank selain seabank", () => {
-    const src = fs.readFileSync(path.join(process.cwd(), "src/app/checkout/page.tsx"), "utf-8");
-    // Harus ada guard: bankKey !== "seabank"
-    expect(src).toContain('bankKey !== "seabank"');
-    expect(src).toMatch(/belum tersedia/i);
+  it("checkout hanya menerima bank aktif dari quote server", () => {
+    const checkout = fs.readFileSync(path.join(process.cwd(), "src/app/checkout/page.tsx"), "utf-8");
+    const orders = fs.readFileSync(path.join(process.cwd(), "src/app/api/orders/route.ts"), "utf-8");
+    expect(checkout).toContain("quotedPaymentMethods.some");
+    expect(checkout).toContain("quote_token");
+    expect(orders).toContain("quote.payment_methods.find");
+    expect(orders).not.toContain("accountMap");
   });
 });
 
@@ -246,26 +249,18 @@ describe("BUG-07: Login rate limit 5/menit (bukan 12)", () => {
 });
 
 describe("BUG-09: Zod enum payment_method tanpa duplikat", () => {
-  it("orders route enum tidak punya value duplikat", () => {
+  it("orders route memvalidasi pola metode dinamis tanpa enum placeholder", () => {
     const src = fs.readFileSync(path.join(process.cwd(), "src/app/api/orders/route.ts"), "utf-8");
-    // Extract enum array dari source
-    const enumMatch = src.match(/payment_method:\s*z\.enum\(\[([^\]]+)\]\)/);
-    expect(enumMatch).toBeTruthy();
-    if (enumMatch) {
-      const values = enumMatch[1].match(/"[^"]+"/g) ?? [];
-      const unique = new Set(values);
-      expect(unique.size).toBe(values.length);
-    }
+    expect(src).toMatch(/payment_method:\s*z\.string\(\).*\.regex/);
+    expect(src).toContain("bank:[a-z0-9]");
+    expect(src).not.toContain("bank:bca");
   });
 });
 
-describe("BUG-10: Sitemap domain configurable (bukan hardcoded pages.dev)", () => {
-  it("sitemap.ts menggunakan SITE_URL env atau axvara.id", () => {
+describe("BUG-10: Sitemap domain configurable dengan fallback custom domain", () => {
+  it("sitemap.ts menggunakan SITE_URL env atau domain AXVARA aktif", () => {
     const src = fs.readFileSync(path.join(process.cwd(), "src/app/sitemap.ts"), "utf-8");
-    expect(src).toContain("process.env.SITE_URL");
-    expect(src).toContain("axvara.id");
-    // TIDAK boleh hardcode pages.dev
-    expect(src).not.toContain("axvara.pages.dev");
+    expect(src).toContain('process.env.SITE_URL || "https://axvara.tech"');
   });
 });
 
@@ -280,9 +275,9 @@ describe("BUG-11: Product detail sold/stock conditional null-safe", () => {
 });
 
 describe("BUG-12: CommunityBar WA link live (bukan dead href=#)", () => {
-  it("CommunityBar WA link mengarah ke wa.me, bukan href=#", () => {
+  it("CommunityBar WA group link mengarah ke community, bukan href=#", () => {
     const src = fs.readFileSync(path.join(process.cwd(), "src/components/storefront/CommunityBar.tsx"), "utf-8");
-    expect(src).toContain("wa.me");
+    expect(src).toContain("chat.whatsapp.com/D0GGXwVjJkL3qjxvacDRAP");
     // WA link TIDAK boleh pakai onClick={comingSoon}
     expect(src).not.toMatch(/href=\{waHref\}[^>]*onClick=\{comingSoon\}/);
   });

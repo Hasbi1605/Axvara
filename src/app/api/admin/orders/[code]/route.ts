@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { queryFirst, execRun } from "@/lib/db";
+import { OrderTransitionError, queryFirst, transitionPendingOrder } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
 
 export const runtime = "edge";
@@ -33,22 +33,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   if (cur !== "pending" && nxt !== cur) {
     return NextResponse.json({ error: `Status sudah ${cur}, tidak bisa diubah ke ${nxt}` }, { status: 400 });
   }
+  if (nxt === cur || nxt === "pending") {
+    return NextResponse.json({ ok: true, code, status: cur, unchanged: true });
+  }
 
-  await execRun("UPDATE orders SET status=?, admin_note=?, updated_at=datetime('now') WHERE code=?", nxt, parsed.data.admin_note ?? null, code);
-
-  // BUG-01 fix: restore stock when order is cancelled (only from pending)
-  if (nxt === "dibatalkan" && cur === "pending") {
-    try {
-      const items: { product_id: number; qty: number }[] = JSON.parse(String(row.items || "[]"));
-      for (const it of items) {
-        if (it.product_id && it.qty > 0) {
-          await execRun(
-            "UPDATE products SET stock = stock + ? WHERE id=? AND stock != -1",
-            it.qty, it.product_id
-          );
-        }
-      }
-    } catch { /* best-effort stock restore — log in prod */ }
+  let items: { product_id: number; qty: number }[];
+  try {
+    items = JSON.parse(String(row.items || "[]"));
+  } catch {
+    return NextResponse.json({ error: "Snapshot item pesanan rusak; status tidak diubah." }, { status: 500 });
+  }
+  try {
+    await transitionPendingOrder(code, nxt, parsed.data.admin_note ?? null, items);
+  } catch (error) {
+    if (error instanceof OrderTransitionError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
+    console.error("PATCH /api/admin/orders transition failed:", error);
+    return NextResponse.json({ error: "Status pesanan gagal diperbarui." }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true, code, status: nxt });

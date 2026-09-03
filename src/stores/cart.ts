@@ -27,8 +27,10 @@ export const useCart = create<CartStore>()(
         set((s) => {
           if (product.isActive === false) return s;
           const maxFor = (p: Product) => (p.stock === -1 || p.stock == null ? 20 : Math.min(20, p.stock));
-          const clampQty = (n: number, max: number) => Math.max(1, Math.min(max, Math.floor(n)));
           const max = maxFor(product);
+          // Don't add if stock is 0
+          if (max <= 0) return s;
+          const clampQty = (n: number, max: number) => Math.max(1, Math.min(max, Math.floor(n)));
           const existing = s.items.find((i) => i.id === product.id);
           if (existing) {
             const nextQty = clampQty(existing.qty + qty, max);
@@ -42,6 +44,7 @@ export const useCart = create<CartStore>()(
           if (qty <= 0) return { items: s.items.filter((i) => i.id !== id) };
           const it = s.items.find((i) => i.id === id);
           const max = it ? (it.stock === -1 || it.stock == null ? 20 : Math.min(20, it.stock)) : 20;
+          if (max <= 0) return { items: s.items.filter((i) => i.id !== id) };
           const clamped = Math.max(1, Math.min(max, Math.floor(qty)));
           return { items: s.items.map((i) => (i.id === id ? { ...i, qty: clamped } : i)) };
         }),

@@ -36,7 +36,6 @@ export async function POST(req: NextRequest) {
   if (!rateLimit(ip(req), 5)) return NextResponse.json({ error: "Terlalu sering, coba lagi 1 menit." }, { status: 429, headers: { "Retry-After": "60" } });
   // F-07 fix: lightweight anti-abuse — require same-origin (CSRF middleware handles cross-origin, this blocks raw curl without referrer)
   const origin = req.headers.get("origin");
-  const host = req.headers.get("host");
   if (!origin && !req.headers.get("referer")) {
     return NextResponse.json({ error: "Upload hanya dari halaman checkout" }, { status: 403 });
   }

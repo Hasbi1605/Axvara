@@ -10,6 +10,7 @@ import { PopupBanner } from "@/components/storefront/PopupBanner";
 import { Suspense } from "react";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://axvara.tech"),
   title: "AXVARA — Satu tempat untuk semua tools premium",
   description: "Berbagai tools AI dan aplikasi premium dengan harga jauh lebih hemat dari official. Bergaransi.",
   icons: { icon: "/favicon.svg" },
