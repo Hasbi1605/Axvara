@@ -416,3 +416,53 @@ npm run deploy:mcp
 Konfigurasi client menggunakan header `Authorization: Bearer ${AXVARA_AGENT_TOKEN}`. Raw token hanya dikembalikan sekali ketika admin membuatnya.
 
 Trigger `*/5 * * * *` pada MCP Worker memanggil `/api/cron/publish-scheduled`. Set nilai acak yang sama sebagai secret Pages `CRON_SECRET` dan Worker `AXVARA_CRON_SECRET`; jangan simpan nilainya di Git.
+
+## 13. Bot Telegram + KlikQRIS Payment + Fulfillment
+
+Implementasi native TypeScript di codebase AXVARA. Repo `mocasus/telegram-auto-order-bot` hanya referensi UX; tidak ada dependency, subtree, atau source copy.
+
+### Arsitektur
+
+- **Bot:** Webhook di `POST /api/telegram/webhook`, bukan long polling. Wrapper `fetch` kecil atas Telegram Bot API tanpa framework.
+- **Payment:** KlikQRIS adapter terisolasi di `src/lib/payments/klikqris.ts`. Dua mode: `sandbox` dan `mypg` (MY PG). Callback di `POST /api/payments/klikqris/callback` dengan validasi signature + amount + server-side status confirmation.
+- **Fulfillment:** AES-256-GCM via WebCrypto, fingerprint SHA-256 untuk deduplikasi. Tiga mode: `manual`, `shared`, `unique`. Outbox pattern dengan `fulfillment_jobs` tabel.
+- **Rekonsiliasi:** `POST /api/cron/operations` menangani stale initializing, expired invoices, missed callback recovery, due jobs, dan stale locks. Dipanggil cron MCP Worker tiap 5 menit.
+
+### Tabel Baru (migrasi 0005)
+
+| Tabel | Tujuan |
+|---|---|
+| `telegram_users` | Profil user Telegram minimal |
+| `telegram_updates` | Idempotency + lease untuk webhook |
+| `payment_transactions` | Ledger KlikQRIS (status, signature, QRIS URL, expiry) |
+| `fulfillment_inventory` | Vault secret terenkripsi per produk |
+| `fulfillment_jobs` | Outbox delivery dengan retry |
+
+Kolom baru di `products`: `fulfillment_mode`, `shared_secret_ciphertext`, `shared_secret_iv`, `telegram_enabled`.
+Kolom baru di `orders`: `sales_channel`, `telegram_chat_id`, `telegram_user_id`, `payment_status`, `fulfillment_status`.
+
+### Route Baru
+
+| Method | Path | Auth | Tujuan |
+|---|---|---|---|
+| POST | `/api/telegram/webhook` | Telegram secret header | Webhook bot |
+| POST | `/api/payments/klikqris/callback` | — | Callback pembayaran |
+| POST | `/api/cron/operations` | CRON_SECRET | Rekonsiliasi |
+| GET/POST | `/api/admin/telegram/setup` | admin | Setup webhook |
+| GET | `/api/admin/bot/health` | admin | Health check tanpa secret |
+| GET/POST/DELETE | `/api/admin/fulfillment` | admin | Inventory management |
+
+### Environment Baru
+
+Semua nilai nyata di Cloudflare Pages Secrets:
+
+```
+TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET, TELEGRAM_ADMIN_CHAT_ID
+KLIKQRIS_MODE, KLIKQRIS_API_KEY, KLIKQRIS_MERCHANT_ID
+FULFILLMENT_ENCRYPTION_KEY
+TELEGRAM_BOT_ENABLED, KLIKQRIS_PAYMENTS_ENABLED, AUTO_FULFILLMENT_ENABLED
+```
+
+### Feature Flags
+
+Rollout bertahap: `TELEGRAM_BOT_ENABLED=false`, `KLIKQRIS_PAYMENTS_ENABLED=false`, `AUTO_FULFILLMENT_ENABLED=false`. Semua default off.

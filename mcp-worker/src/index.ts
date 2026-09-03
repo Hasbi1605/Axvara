@@ -315,9 +315,14 @@ export default {
   },
   async scheduled(_controller: WorkerScheduledController, env: Env, context: WorkerExecutionContext) {
     if (!env.AXVARA_CRON_SECRET) return;
+    const headers = { authorization: `Bearer ${env.AXVARA_CRON_SECRET}` };
+    // Publish scheduled articles + expire stale orders
     context.waitUntil(fetch(`${env.AXVARA_API_ORIGIN}/api/cron/publish-scheduled`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${env.AXVARA_CRON_SECRET}` },
+      method: "POST", headers,
+    }));
+    // Reconcile payments, fulfill deliveries, release stale locks
+    context.waitUntil(fetch(`${env.AXVARA_API_ORIGIN}/api/cron/operations`, {
+      method: "POST", headers,
     }));
   },
 };

@@ -15,13 +15,14 @@ import { ProofThumbnail } from "@/components/admin/ProofThumbnail";
 import { PaymentMethodsManager } from "@/components/admin/PaymentMethodsManager";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { NewsletterSubscribers } from "@/components/admin/NewsletterSubscribers";
+import BotAutomationManager from "@/components/admin/BotAutomationManager";
 
 type Prod = { id:string; slug:string; name:string; description:string; price:number; comparePrice?:number; categorySlug:string; image:string; images:string[]; badge?:string; soldCount:number; stock:number; isActive:boolean; sortOrder?:number };
 type Cat = { id:number; slug:string; name:string };
 type Order = { code:string; name:string; wa:string; method:string; items:{ name:string;price:number;qty:number }[]; subtotal:number; status:string; fileName?:string; createdAt:string };
 
 const PER_PAGE_ADMIN = 8;
-const ADMIN_SECTIONS: AdminSection[] = ["summary","products","orders","categories","payments","articles","banners","subscribers","agent"];
+const ADMIN_SECTIONS: AdminSection[] = ["summary","products","orders","categories","payments","articles","banners","subscribers","bot","agent"];
 
 export default function AdminPage() {
   const toast = useToast();
@@ -347,6 +348,7 @@ export default function AdminPage() {
       {tab==="categories" && <CategoryManager />}
       {tab==="payments" && <PaymentMethodsManager />}
       {tab==="agent" && <AgentIntegration />}
+      {tab==="bot" && <BotAutomationManager products={prods.map(p=>({id:Number(p.id),name:p.name,fulfillment_mode:(p as unknown as Record<string,unknown>).fulfillment_mode as string,telegram_enabled:(p as unknown as Record<string,unknown>).telegram_enabled as number}))} />}
 
       {tab==="products" && (
         <div className="mt-5">

@@ -111,11 +111,12 @@ Nomor dukungan admin adalah `089519388264` dan dipusatkan di `src/lib/site.ts`; 
 Detail: `docs/VPS-RESEARCH.md` & `docs/ARCHITECTURE.md`
 
 Rencana implementasi bot Telegram auto-order dan integrasi KlikQRIS tersedia di
-`docs/TELEGRAM-BOT-KLIKQRIS-PLAN.md`. Dokumen tersebut adalah planning/handoff;
-bot dan payment gateway belum diaktifkan oleh penambahan dokumen ini. Implementasi
-direncanakan native di AXVARA; repo `mocasus/telegram-auto-order-bot` hanya menjadi
-referensi UX, bukan source/fork, karena runtime Python polling + SQLite/VPS tidak
-cocok dengan Pages webhook + D1.
+`docs/TELEGRAM-BOT-KLIKQRIS-PLAN.md`. **Implementasi MVP sudah tersedia di codebase**
+(migrasi `0005_telegram_klikqris.sql`, library `src/lib/{telegram,payments,fulfillment}/`,
+route API, dan admin UI "Bot & Otomasi"). Semua feature flag default off:
+`TELEGRAM_BOT_ENABLED=false`, `KLIKQRIS_PAYMENTS_ENABLED=false`, `AUTO_FULFILLMENT_ENABLED=false`.
+Aktivasi memerlukan owner gates (token/key/credential) yang dijelaskan di planning doc.
+Repo `mocasus/telegram-auto-order-bot` hanya referensi UX, bukan source/fork.
 
 ---
 
