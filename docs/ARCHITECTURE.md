@@ -469,7 +469,7 @@ TELEGRAM_BOT_ENABLED, KLIKQRIS_PAYMENTS_ENABLED, AUTO_FULFILLMENT_ENABLED
 Rollout bertahap: `TELEGRAM_BOT_ENABLED=false`, `KLIKQRIS_PAYMENTS_ENABLED=false`, `AUTO_FULFILLMENT_ENABLED=false`. Semua default off.
 
 ### Proteksi Garansi BOT
-- `/start` menampilkan disclaimer third-party + tombol `📜 Garansi & Ketentuan` dan `🛍️ Lanjut Belanja`.
+- `/start` tampil bersih (welcome simpel) + tombol `📜 Garansi & Ketentuan` dan `🛍️ Lanjut Belanja`.
 - Command `/garansi` (terdaftar di menu) mengirim ketentuan third-party + 6 syarat klaim (ganti/perbaikan, bukan refund; garansi ikut deskripsi produk).
 - Konfirmasi beli memakai tombol `✅ Saya Paham, Lanjut Bayar` + tombol `📜 Syarat Garansi`; invoice/pre-bayar menegaskan lanjut bayar = setuju ketentuan.
 - Detail produk menunjuk garansi ikut deskripsi + `/garansi`; pesan delivery/manual mengingatkan simpan invoice untuk klaim.

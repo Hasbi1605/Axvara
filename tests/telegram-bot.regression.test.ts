@@ -201,11 +201,11 @@ describe("Telegram messages premium UX", () => {
 });
 
 describe("Telegram warranty anti-refund copy", () => {
-  it("welcome discloses third-party + points to /garansi", () => {
+  it("welcome stays clean, warranty lives behind button + /garansi", () => {
     const msg = welcomeMessage("nad");
-    expect(msg).toContain("Third-party");
-    expect(msg).toContain("/garansi");
-    expect(msg).toContain("SETUJU");
+    expect(msg).toContain("AXVARA");
+    expect(msg).not.toContain("Third-party");
+    expect(msg).not.toContain("/garansi");
   });
 
   it("confirm buy requires understanding before paying", () => {

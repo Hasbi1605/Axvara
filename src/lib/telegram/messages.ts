@@ -37,11 +37,7 @@ export function welcomeMessage(firstName: string): string {
     "",
     "🛍 Tools AI &amp; aplikasi premium",
     "💰 Harga jauh lebih hemat dari official",
-    "🛡 Garansi 1×24 jam–30 hari (ikut deskripsi tiap produk)",
-    "",
-    "⚠️ <b>Third-party independen, bukan official store.</b>",
-    "Lanjut beli = kamu PAHAM &amp; SETUJU ketentuan.",
-    "Ketik /garansi untuk syarat klaim.",
+    "✅ Bergaransi &amp; support admin",
     "",
     "Pilih menu di bawah 👇",
   ].join("\n");

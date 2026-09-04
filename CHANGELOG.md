@@ -4,6 +4,10 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-04 — Bersihkan /start BOT ke welcome simpel (opsi 1): disclaimer third-party dihapus dari teks, tombol Garansi & Ketentuan tetap ada + proteksi /garansi/pre-bayar tidak berubah — `src/lib/telegram/messages.ts, tests/telegram-bot.regression.test.ts, docs/ARCHITECTURE.md` — (verifikasi: vitest telegram 25/25 pass, tsc clean, dev GET / 200 + CSS 200)
+
+- 2026-09-04 — Rewrite docs/SEO-GEO-PLAN.md: deep audit SEO (score 28/100) & GEO (12/100), 6-phase improvement plan dengan riset 2026, diagnosis CSR blocking, metadata gaps, schema gaps, performance issues, AI crawler rules, content strategy — `docs/SEO-GEO-PLAN.md` — (verifikasi: file-only, no code change)
+
 - 2026-09-04 — Pasang proteksi garansi third-party di BOT Telegram: /start disclaimer + tombol Garansi & Ketentuan, command /garansi (ketentuan + 6 syarat klaim ganti-bukan-refund), konfirmasi pre-bayar "Saya Paham, Lanjut Bayar", detail produk pointer garansi ikut deskripsi, follow-up pasca-kirim simpan invoice — `src/lib/telegram/{messages,keyboards,api}.ts, src/app/api/telegram/webhook/route.ts, tests/telegram-bot.regression.test.ts` — (verifikasi: vitest 127/127 pass, tsc clean, dev GET / 200 + CSS 200)
 
 - 2026-09-04 — Perketat garansi third-party anti-refund: halaman /garansi-replace jadi acuan ketentuan (bukan official, garansi 1x24 jam–30 hari ikut deskripsi produk, klaim = ganti bukan refund), checkbox persetujuan wajib blokir submit checkout, disclaimer + link garansi di detail produk/footer/sukses pesanan — `src/app/{garansi-replace,checkout,produk/[slug],pesanan/[code],page}.tsx, src/components/storefront/Footer.tsx, docs/ARCHITECTURE.md, README.md` — (verifikasi: dev GET / 200 + CSS 200 + /garansi-replace 200 + checkout?buy 200, copy third-party/DYOR tampil)
