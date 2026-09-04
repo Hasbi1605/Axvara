@@ -1,1291 +1,962 @@
-# Rencana Eksekusi — Bot Grup WhatsApp AXVARA
+# Rencana Eksekusi — Varian Produk Terpusat dan Bot Grup WhatsApp AXVARA
 
-**Status:** Handoff ready — planning only, belum diimplementasikan
+**Status:** handoff ready, planning only
+
 **Tanggal:** 4 September 2026
-**Target:** Nomor WhatsApp AXVARA yang sudah ada, grup WhatsApp yang sudah ada, backend Cloudflare AXVARA yang sama
-**Gateway MVP:** Fonnte device gateway
-**Payment:** Reuse integrasi KlikQRIS yang sudah aktif dan terbukti bekerja pada bot Telegram
+
+**Prioritas:** fondasi varian di CMS/D1 lebih dahulu, lalu web, Telegram, dan WhatsApp
+
+**Target WhatsApp:** nomor serta grup yang sudah ada
+
+**Gateway kandidat MVP:** Fonnte
+
+**Payment:** gunakan kembali integrasi KlikQRIS AXVARA yang sudah bekerja di Telegram
 
 ---
 
-## 1. Outcome yang Ditargetkan
+## 1. Ringkasan keputusan
 
-Bot WhatsApp AXVARA harus dapat:
+Permintaan ini bukan sekadar menambah command WhatsApp. AXVARA perlu mengubah model
+katalog dari satu baris produk = satu barang jual menjadi:
 
-1. Berada pada grup WhatsApp AXVARA yang sudah ada melalui nomor WhatsApp yang sekarang.
-2. Membalas keyword eksplisit di grup seperti `list`, `produk`, `harga`, `cara order`, `garansi`, dan `admin`.
-3. Menampilkan **produk langsung tanpa menu kategori**.
-4. Membaca produk aktif langsung dari tabel `products` D1 yang sama dengan website.
-5. Otomatis mengikuti perubahan produk web tanpa sinkronisasi manual:
-   - produk baru aktif langsung muncul;
-   - perubahan nama/harga/stok langsung terbaca;
-   - produk nonaktif langsung hilang;
-   - perubahan `sort_order` langsung mengubah urutan list WhatsApp.
-6. Memindahkan proses order, QRIS, status pembayaran, dan delivery ke chat pribadi agar data pembeli tidak bocor di grup.
-7. Membuat QRIS dinamis melalui adapter KlikQRIS AXVARA yang sudah dipakai bot Telegram.
-8. Memproses callback pembayaran secara idempotent, memperbarui order, dan menjalankan fulfillment sesuai mode produk.
-9. Menggunakan Pages, D1, R2, dan cron Worker AXVARA yang sudah ada. Tidak membuat aplikasi/database/VPS kedua.
-10. Dapat dimatikan sebagian atau seluruhnya melalui feature flag tanpa mengganggu website dan Telegram.
+- **produk induk**, misalnya Gemini, Grok, ChatGPT, Canva;
+- **varian yang dapat dibeli**, misalnya Invite 12 Bulan Full Garansi,
+  Head 3 Bulan Garansi 1 Bulan, atau Individual 1 Bulan tanpa garansi;
+- satu sumber data di D1 yang dikelola lewat CMS web;
+- website, Telegram, dan WhatsApp hanya menjadi penyaji serta saluran transaksi dari
+  data yang sama.
 
-### Definisi selesai untuk MVP
+Alur WhatsApp MVP dikunci sesederhana berikut:
 
-MVP dianggap selesai ketika alur berikut berhasil pada satu grup allowlist:
+    User: list
+    Bot:  daftar nama produk aktif saja
 
-```text
-Anggota grup: list
-→ bot mengirim daftar produk aktif D1 terbaru
-→ anggota: order 12
-→ bot memberi link chat pribadi dengan prefilled "beli 12"
-→ anggota membuka private chat dan mengonfirmasi pembelian
-→ AXVARA membuat order + invoice KlikQRIS tepat satu kali
-→ bot mengirim QRIS hanya di private chat
-→ pembayaran terkonfirmasi
-→ order menjadi lunas
-→ fulfillment otomatis atau antrean admin berjalan sesuai mode produk
-```
+    User: Gemini
+    Bot:  detail singkat Gemini + daftar varian bernomor
+
+    User: 2
+    Bot:  ringkasan varian terpilih + tautan lanjut secara privat
+
+WhatsApp tidak memakai kategori. Perubahan produk atau varian di CMS harus tampil pada
+website, Telegram, dan WhatsApp tanpa menyalin data atau deploy kode.
 
 ---
 
-## 2. Fakta Baseline Codebase
+## 2. Analisis contoh screenshot
 
-Agent eksekutor harus mempertahankan baseline berikut:
+### 2.1 Pola yang diambil
 
-- Website memakai `products` D1 sebagai sumber katalog utama.
-- Bot Telegram sudah memiliki webhook, katalog, invoice KlikQRIS, callback payment, inventory, fulfillment outbox, cron rekonsiliasi, dan admin health.
-- KlikQRIS sudah terhubung dan berfungsi pada bot Telegram. **Tidak ada onboarding KlikQRIS baru dan tidak ada credential payment baru untuk WhatsApp.**
-- `payment_transactions` sudah channel-agnostic dan harus tetap menjadi ledger pembayaran tunggal.
-- `fulfillment_inventory` sudah menyimpan secret terenkripsi untuk produk `unique`.
-- `fulfillment_jobs` masih berorientasi Telegram pada bagian delivery dan perlu dibuat channel-aware.
-- `orders.sales_channel` saat ini memiliki `CHECK` yang hanya menerima `web` dan `telegram`.
-- Seluruh feature flag Telegram/KlikQRIS/fulfillment yang sudah ada harus tetap kompatibel.
+Dari screenshot, perilaku yang cocok untuk AXVARA adalah:
 
-Referensi kode sebelum mulai:
+1. Keyword **list** menampilkan nama keluarga produk, bukan semua SKU.
+2. User mengetik nama produk, misalnya **Grok** atau **Gemini**.
+3. Bot menjawab dengan varian bernomor.
+4. Tiap varian mempunyai kombinasi:
+   - nama plan atau tipe akun;
+   - durasi;
+   - jenis atau masa garansi;
+   - harga;
+   - status tersedia.
+5. User dapat membalas nomor varian dari respons terakhir.
 
-- `src/app/api/telegram/webhook/route.ts`
-- `src/lib/telegram/*`
-- `src/lib/payments/klikqris.ts`
-- `src/app/api/payments/klikqris/callback/route.ts`
-- `src/lib/fulfillment/{deliver,inventory,crypto}.ts`
-- `src/app/api/cron/operations/route.ts`
-- `drizzle/migrations/0005_telegram_klikqris.sql`
-- `tests/{telegram-bot,klikqris,fulfillment}.regression.test.ts`
+### 2.2 Bagian yang disesuaikan untuk AXVARA
 
-### Baseline yang tidak boleh rusak
+Yang tidak boleh disalin mentah dari screenshot:
 
-- `/start`, `/katalog`, `/garansi`, beli, status, callback, dan fulfillment Telegram tetap bekerja.
-- Website checkout manual tetap bekerja.
-- Schema/order lama tetap terbaca.
-- Inventory tidak boleh terjual dua kali.
-- Secret fulfillment tidak pernah masuk log atau respons admin health.
-- QRIS WhatsApp dan Telegram memakai merchant, adapter, serta ledger yang sama.
+- Daftar tidak boleh di-hardcode di script bot.
+- Harga, stok, durasi, dan garansi tidak boleh menjadi teks bebas terpisah per channel.
+- Bot tidak perlu selalu menyuruh user menanyakan stok jika CMS sudah menyimpan stok.
+- QRIS, status pembayaran, bukti bayar, serta kredensial produk tidak dikirim di grup.
+- Angka seperti **2** tidak boleh berlaku global untuk seluruh grup; pemetaan harus
+  terikat pada anggota dan percakapan yang memintanya.
+
+Grup digunakan untuk menemukan produk. Transaksi dan delivery berpindah ke chat pribadi
+agar data pembeli tidak terlihat oleh semua anggota.
 
 ---
 
-## 3. Keputusan Arsitektur yang Dikunci
+## 3. Temuan baseline AXVARA saat ini
 
-### 3.1 Fonnte untuk grup yang sudah ada
+Audit codebase menunjukkan varian belum ada sebagai entitas:
 
-MVP memakai Fonnte sebagai device gateway karena kebutuhan utama adalah membalas di grup WhatsApp biasa yang sudah ada menggunakan nomor yang sudah menjadi anggota grup.
+- drizzle/schema.sql menyimpan price, compare_price, stock, dan is_active langsung pada
+  tabel products.
+- src/lib/products.ts mempunyai satu harga dan stok per Product; beberapa durasi masih
+  menjadi bagian dari nama produk seed.
+- src/app/admin/page.tsx mengedit satu harga dan satu stok per produk.
+- src/app/produk/[slug]/page.tsx belum memiliki pemilih varian.
+- src/stores/cart.ts mengidentifikasi item hanya dengan product.id.
+- checkout quote menerima product_id lalu memvalidasi harga/stok produk.
+- bot Telegram langsung bergerak dari produk ke konfirmasi/order.
+- fulfillment_mode dan shared secret saat ini berada pada level produk.
 
-Fonnte mendokumentasikan:
+Konsekuensinya, WhatsApp tidak boleh dibangun lebih dahulu di atas model lama. Jika itu
+dilakukan, daftar varian akan kembali menjadi data khusus bot dan web tidak menjadi
+pusat katalog.
 
-- device disambungkan melalui QR/linked-device;
-- webhook pesan masuk membawa `sender`, `member`, `message`, `timestamp`, dan `inboxid`;
-- target kirim dapat berupa nomor pribadi atau ID grup `...@g.us`;
-- autoread dapat diaktifkan khusus personal, group, atau keduanya;
-- daftar grup dapat diambil setelah nomor tersambung.
+### Baseline yang harus tetap hidup
 
-Referensi:
-
-- https://docs.fonnte.com/device/
-- https://docs.fonnte.com/webhook-reply-message-with-nodejs/
-- https://docs.fonnte.com/api-send-message/
-- https://docs.fonnte.com/api-update-whatsapp-group-list/
-
-Fonnte adalah dependency eksternal, tetapi bukan backend kedua milik AXVARA. Seluruh logic bisnis tetap di Cloudflare.
-
-### 3.2 Meta Cloud API bukan jalur grup lama untuk MVP
-
-Meta Cloud API tetap menjadi opsi jangka panjang untuk percakapan bisnis resmi 1:1. Jangan mengganti scope implementasi ini ke Meta Cloud API tanpa keputusan owner, karena group business API tidak sama dengan menjadikan nomor API sebagai bot pada grup WhatsApp biasa yang sudah ada.
-
-Referensi resmi:
-
-- https://www.postman.com/meta/whatsapp-business-platform/documentation/wlk6lh4/whatsapp-cloud-api
-- https://faq.whatsapp.com/1168258858576291
-
-### 3.3 Satu commerce core, tiga channel
-
-Arsitektur target:
-
-```text
-                         ┌────────────────────┐
-Web checkout ───────────▶│                    │
-Telegram webhook ───────▶│ AXVARA Commerce    │──▶ D1 products/orders/payment
-Fonnte WA webhook ──────▶│ Core               │──▶ R2 media/QR fallback
-                         │                    │──▶ KlikQRIS
-                         └─────────┬──────────┘
-                                   │
-                                   ▼
-                         Fulfillment outbox
-                                   │
-                   ┌───────────────┴──────────────┐
-                   ▼                              ▼
-             Telegram adapter               WhatsApp adapter
-```
-
-Business logic tidak boleh digandakan penuh ke route WhatsApp. Ekstraksi harus terarah: katalog, create invoice/order, ownership status, dan delivery dispatch menjadi service bersama; format pesan tetap per-channel.
-
-### 3.4 Grup untuk discovery, private chat untuk transaksi
-
-Di grup hanya boleh ada informasi publik:
-
-- daftar produk;
-- harga/stok publik;
-- cara order;
-- garansi;
-- kontak admin;
-- link menuju private chat.
-
-Di grup dilarang mengirim:
-
-- QRIS invoice;
-- nomor order beserta detail pembeli;
-- status pembayaran personal;
-- bukti transfer;
-- akun, password, key, atau license;
-- pesan error internal/provider.
-
-### 3.5 Produk tanpa kategori
-
-WhatsApp tidak mempunyai menu kategori. Keyword `list` dan `produk` langsung menampilkan semua produk aktif dengan pagination.
-
-Kategori D1 tetap dipertahankan untuk website dan Telegram, tetapi tidak dipakai dalam navigasi WhatsApp.
-
-### 3.6 Plain-text command, bukan button legacy
-
-Gunakan command teks agar stabil pada grup dan private chat:
-
-```text
-list
-list 2
-detail 12
-harga capcut
-order 12
-beli 12
-status AXV-...
-garansi
-admin
-batal
-```
-
-Jangan bergantung pada button Fonnte karena dokumentasinya menandai fitur button sebagai deprecated.
-
-### 3.7 Satu produk per invoice pada MVP
-
-MVP membatasi satu produk, quantity satu, per invoice WhatsApp. Cart multi-item ditunda. Ini selaras dengan flow bot Telegram saat ini dan memperkecil race stok serta kompleksitas percakapan.
+- Checkout web lama tetap dapat dipakai selama masa migrasi.
+- Command dan pembelian Telegram yang sudah ada tidak boleh putus.
+- KlikQRIS, payment_transactions, callback, cron rekonsiliasi, dan idempotensi provider
+  tetap digunakan.
+- Fulfillment secret tidak pernah masuk log atau respons publik.
+- Order historis tetap dapat dibaca setelah produk/varian diubah.
 
 ---
 
-## 4. Scope dan Non-Goal
+## 4. Arsitektur target
 
-### Masuk MVP
+### 4.1 Source of truth
 
-- Satu nomor WhatsApp existing sebagai device.
-- Satu atau beberapa ID grup melalui allowlist, dengan satu grup sebagai canary awal.
-- Keyword deterministic grup dan personal.
-- Daftar produk langsung, tanpa kategori.
-- Pagination daftar produk.
-- Detail dan pencarian harga dari D1.
-- Link deep-link grup ke private chat.
-- Order private chat dengan konfirmasi garansi.
-- QRIS dinamis KlikQRIS.
-- Callback, expiry, cancel, stock restore, dan fulfillment.
-- Status order dengan verifikasi ownership.
-- Admin health WhatsApp dan error ringkas.
-- Feature flag dan audit minimum.
-- Fallback ke website/admin jika gateway atau payment tidak tersedia.
+**D1 adalah source of truth. CMS web adalah antarmuka pengelola source of truth.**
 
-### Ditunda
+    Admin CMS
+       |
+       v
+    products + product_variants + inventory (D1)
+       |                 |                  |
+       v                 v                  v
+    Website           Telegram          WhatsApp
+       \                 |                 /
+        \________________|________________/
+                         |
+                  Commerce services
+                         |
+            order + KlikQRIS + fulfillment
 
-- AI/LLM untuk menjawab pesan bebas.
-- Natural-language recommendation.
-- Cart multi-item.
-- Kupon, affiliate, dan loyalty.
-- WhatsApp Flows atau katalog Commerce Manager Meta.
-- Multi-device rotation.
-- Broadcast marketing.
-- Membaca histori grup lama.
-- Moderasi grup, hapus pesan, kick/ban anggota.
-- Migrasi ke Meta Cloud API.
+Tidak ada tabel katalog WhatsApp, file JSON Telegram, spreadsheet sinkronisasi, atau
+cache permanen per channel.
 
-### Dilarang pada MVP
+### 4.2 Batas tanggung jawab
 
-- Menjawab setiap pesan grup.
-- Mengirim QRIS atau fulfillment di grup.
-- Menyimpan seluruh isi percakapan.
-- Menjalankan Baileys/whatsapp-web.js sendiri di Cloudflare.
-- Menaruh token Fonnte, group ID sensitif, atau secret payment di Git.
-- Menyalin credential KlikQRIS ke secret baru khusus WhatsApp.
-- Mengubah adapter KlikQRIS yang sudah bekerja tanpa regression test.
+- **products** menyimpan identitas dan konten keluarga produk.
+- **product_variants** menyimpan sesuatu yang benar-benar dibeli.
+- **CMS** membuat, mengubah, mengurutkan, dan menonaktifkan keduanya.
+- **catalog service** menghasilkan data kanal dari query yang sama.
+- **commerce service** memvalidasi varian, harga, stok, order, dan pembayaran.
+- **channel adapter** hanya menangani format pesan, callback, dan pengiriman.
+
+### 4.3 Satu arsitektur Cloudflare
+
+Tetap gunakan stack AXVARA:
+
+- Next.js Pages untuk website, admin, serta endpoint;
+- D1 untuk katalog, sesi bot, order, pembayaran, dan job;
+- R2 bila media QR perlu fallback;
+- Worker/cron yang sudah ada untuk rekonsiliasi serta fulfillment;
+- KlikQRIS yang sudah terhubung;
+- Fonnte hanya sebagai jembatan nomor/grup WhatsApp existing.
+
+Fonnte bukan database atau commerce backend kedua.
 
 ---
 
-## 5. UX dan Command Contract
+## 5. Model data produk dan varian
 
-### 5.1 Normalisasi input
+### 5.1 products menjadi produk induk
 
-Sebelum routing:
+Kolom yang tetap berada pada produk:
 
-1. Trim whitespace.
-2. Ubah ke lowercase hanya untuk pencocokan command.
-3. Collapse whitespace berulang.
-4. Jangan mengubah isi order code atau nama produk yang dipakai untuk query.
-5. Abaikan attachment tanpa caption pada MVP.
-6. Abaikan pesan yang berasal dari device/bot sendiri untuk mencegah reply loop.
+- id;
+- category_id;
+- name dan slug;
+- aliases, berupa JSON array istilah pencarian;
+- description dan long_description;
+- image;
+- badge;
+- sold_count;
+- is_active;
+- sort_order;
+- created_at dan updated_at.
 
-### 5.2 Trigger di grup
+Contoh:
 
-Bot hanya merespons jika pesan memenuhi salah satu:
+    Product
+    name: Gemini
+    aliases: ["gemini ai", "google gemini"]
 
-- exact command: `list`, `produk`, `cara order`, `garansi`, `admin`;
-- structured command: `list <halaman>`, `harga <query>`, `detail <id>`, `order <id>`, `status <code>`;
-- optional prefix yang disepakati: `.list`, `/list`, `#list`.
+Harga jual, stok jual, garansi, durasi, dan fulfillment tidak lagi menjadi sumber
+utama di products.
 
-Jangan merespons kata yang kebetulan mengandung keyword, misalnya “playlist” tidak memicu `list`.
+### 5.2 product_variants sebagai SKU yang dijual
 
-### 5.3 Output `list`
+Tambahkan tabel product_variants dengan rancangan minimum:
 
-Query:
+    CREATE TABLE product_variants (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_id INTEGER NOT NULL REFERENCES products(id),
+      sku TEXT NOT NULL UNIQUE,
+      label TEXT NOT NULL,
 
-```sql
-SELECT id, name, price, compare_price, stock, sort_order
-FROM products
-WHERE is_active = 1
-ORDER BY sort_order ASC, id ASC
-LIMIT ? OFFSET ?;
-```
+      duration_value INTEGER,
+      duration_unit TEXT,
+      duration_label TEXT,
 
-Format maksimal 8–10 produk per halaman:
+      warranty_type TEXT NOT NULL DEFAULT 'none',
+      warranty_value INTEGER,
+      warranty_unit TEXT,
+      warranty_label TEXT,
 
-```text
-*LIST PRODUK AXVARA — 1/3*
+      price INTEGER NOT NULL,
+      compare_price INTEGER,
+      stock INTEGER NOT NULL DEFAULT -1,
 
-#12 ChatGPT Plus 1 Bulan
-Rp89.000 • Tersedia
+      fulfillment_mode TEXT NOT NULL DEFAULT 'manual',
+      shared_secret_ciphertext TEXT,
+      shared_secret_iv TEXT,
 
-#18 CapCut Pro
-Rp35.000 • Tersedia
+      is_active INTEGER NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
 
-Ketik:
-detail 12 — lihat detail
-order 12 — lanjut beli via chat pribadi
-list 2 — halaman berikutnya
+Constraint yang wajib diwujudkan melalui SQL dan validasi aplikasi:
 
-axvara.tech
-```
+- duration_unit hanya day, month, year, lifetime, atau custom;
+- warranty_type hanya none, limited, full, atau custom;
+- warranty_unit hanya day, month, year, lifetime, atau null;
+- duration_value dan warranty_value tidak negatif;
+- price tidak negatif;
+- compare_price null atau lebih besar dari price;
+- SKU unik dan stabil;
+- active product harus mempunyai minimal satu active variant;
+- kombinasi label/durasi/garansi yang sama dalam satu produk ditolak;
+- stock -1 berarti tidak dibatasi, 0 berarti habis.
 
-Aturan:
+duration_label dan warranty_label dipakai untuk kasus khusus, tetapi nilai terstruktur
+tetap diisi bila memungkinkan. Tampilan tidak boleh bergantung pada emoji atau parsing
+nama varian.
 
-- Produk `stock=0` tidak perlu disembunyikan; tampilkan `Habis` agar pengguna memahami status terbaru.
-- Produk `is_active=0` selalu disembunyikan.
-- `stock=-1` ditampilkan sebagai `Tersedia`.
-- Jangan menampilkan kategori.
-- Harga selalu diformat dari integer Rupiah server-side.
-- Tidak ada list hardcoded di `messages.ts`.
+### 5.3 Contoh representasi
 
-### 5.4 Output `harga <query>`
+    product: Gemini
 
-- Cari case-insensitive pada nama dan deskripsi.
-- Maksimal lima hasil.
-- Jika satu hasil, tampilkan ringkasan dan command `order <id>`.
-- Jika lebih dari satu, tampilkan ID stabil masing-masing.
-- Jika kosong, arahkan ke `list` atau website.
+    variant 1
+      sku: GEM-INV-12M-FULL
+      label: Invite
+      duration: 12 month
+      warranty: full
+      price: 18000
 
-### 5.5 `detail <id>`
+    variant 2
+      sku: GEM-HEAD-3M-W1M
+      label: Head
+      duration: 3 month
+      warranty: limited 1 month
+      price: 25000
 
-Tampilkan:
+### 5.4 Inventory dan fulfillment berada di level varian
+
+Durasi atau tipe akun yang berbeda dapat memakai stok/credential yang berbeda. Karena
+itu:
+
+- fulfillment_inventory mendapat variant_id;
+- reservasi serta konsumsi inventory memakai variant_id;
+- fulfillment_mode dipindahkan ke varian;
+- shared secret untuk mode shared disimpan terenkripsi per varian;
+- fulfillment_jobs menyimpan variant_id dan channel tujuan;
+- delivery adapter memilih Telegram atau WhatsApp dari order.sales_channel.
+
+Order tidak boleh mengurangi stock produk induk.
+
+### 5.5 Snapshot order
+
+Order item harus menyimpan snapshot berikut, bukan hanya foreign key:
+
+- product_id dan product_name;
+- variant_id dan variant_sku;
+- variant_label;
+- duration label/value/unit;
+- warranty label/type/value/unit;
+- unit_price dan quantity.
+
+Dengan snapshot, riwayat pembelian tidak berubah saat admin mengganti nama, harga, atau
+garansi varian di masa depan.
+
+---
+
+## 6. Migrasi data lama tanpa kehilangan layanan
+
+Gunakan migrasi bertahap dan kompatibel:
+
+1. Buat product_variants serta indeksnya.
+2. Buat tepat satu **default variant** untuk setiap produk lama menggunakan:
+   - harga, compare price, dan stok lama;
+   - fulfillment_mode lama;
+   - shared secret lama;
+   - urutan aktif produk.
+3. Hubungkan inventory lama ke default variant hasil backfill.
+4. Tambahkan nullable variant_id pada order item/job lebih dahulu.
+5. Ubah read path agar memprioritaskan varian tetapi masih mampu membaca order lama.
+6. Setelah admin meninjau data, kelompokkan produk-produk yang sebetulnya satu keluarga.
+7. Setelah seluruh channel stabil, jadikan kolom harga/stok/fulfillment products sebagai
+   deprecated dan akhirnya hapus melalui migrasi terpisah.
+
+### Larangan migrasi otomatis berisiko
+
+- Jangan menggabungkan produk hanya karena namanya mirip.
+- Jangan menganggap teks “1 Bulan” selalu durasi layanan.
+- Regex boleh memberi saran pada halaman review, tetapi admin harus mengonfirmasi.
+- Jangan hard-delete produk/varian yang sudah direferensikan order.
+
+Selama masa kompatibilitas, summary produk dapat menghitung:
+
+- min_price = harga terendah active variant;
+- max_price = harga tertinggi active variant;
+- variant_count = jumlah active variant;
+- total_stock = agregat hanya bila semua varian finite; jika ada -1 tampilkan tersedia.
+
+---
+
+## 7. CMS web sebagai pusat pengelolaan
+
+### 7.1 Form produk
+
+Bagian **Informasi Produk** berisi:
 
 - nama;
-- harga saat ini;
-- harga coret jika valid;
-- status stok;
-- deskripsi ringkas yang sudah di-escape;
-- jenis fulfillment dalam bahasa pengguna, tanpa mengungkap detail internal;
-- garansi mengikuti deskripsi produk dan link `/garansi-replace`;
-- perintah `order <id>`.
-
-### 5.6 `order <id>` dari grup
-
-Route grup **tidak membuat order**. Bot membalas link:
-
-```text
-https://wa.me/<WHATSAPP_PUBLIC_NUMBER>?text=beli%20<PRODUCT_ID>
-```
-
-Copy harus menjelaskan bahwa pembayaran dan delivery dilakukan di chat pribadi.
-
-### 5.7 `beli <id>` di private chat
-
-1. Query produk aktif terbaru dari D1.
-2. Validasi stok dan inventory `unique`.
-3. Tampilkan snapshot nama/harga terbaru.
-4. Minta konfirmasi: balas `ya` atau `batal`.
-5. Simpan pending action dengan TTL 15 menit.
-6. `ya` melakukan query ulang dan membandingkan harga/status dengan snapshot.
-7. Jika harga berubah, kirim harga baru dan minta konfirmasi ulang.
-8. Jika produk nonaktif/habis, batalkan state tanpa membuat order.
-
-### 5.8 Invoice private
-
-Pesan QRIS harus berisi:
-
-- kode order;
-- nama produk;
-- nominal persis yang harus dibayar;
-- waktu kedaluwarsa;
-- QR image;
-- command `status <code>` dan `batal`;
-- pengingat garansi.
-
-Jangan mengirim credential produk sebelum status provider `paid` terverifikasi.
-
-### 5.9 Status order
-
-- Di grup: jangan tampilkan status; arahkan ke private chat.
-- Di private: cocokkan identifier pengirim dengan owner order.
-- Order milik identifier lain diperlakukan `tidak ditemukan` agar tidak membocorkan keberadaan kode.
-- Status yang didukung: menunggu pembayaran, lunas, kedaluwarsa, gagal, dibatalkan, menunggu admin, terkirim.
-
----
-
-## 6. Sumber Kebenaran Produk dan Sinkronisasi Otomatis
-
-### Prinsip utama
-
-**Tidak ada proses sync produk.** WhatsApp membaca tabel `products` D1 yang sama dengan web. Karena sumbernya sama, perubahan web/admin otomatis menjadi perubahan WhatsApp.
-
-### Aturan implementasi
-
-- Jangan membuat tabel katalog WhatsApp.
-- Jangan membuat JSON snapshot produk permanen.
-- Jangan menambah `whatsapp_enabled` pada MVP; `products.is_active` adalah flag tunggal agar web dan WhatsApp tidak divergen.
-- Jangan memakai seed/fallback produk di production.
-- `list`, `harga`, `detail`, dan `beli` selalu query D1.
-- Untuk MVP, tidak perlu cache application/global.
-- Jika cache ditambahkan kemudian, TTL maksimal 15 detik dan mutation admin harus menginvalidasi cache.
-- Saat konfirmasi pembelian, harga, status aktif, stok, fulfillment mode, dan inventory harus diambil ulang.
-- Order menyimpan item snapshot agar riwayat tidak berubah ketika produk diedit setelah transaksi.
-
-### Dampak perubahan admin
-
-| Perubahan admin/web | Hasil di WhatsApp |
-|---|---|
-| Tambah produk aktif | Muncul pada pemanggilan `list` berikutnya |
-| Edit nama | Nama baru tampil pada query berikutnya |
-| Edit harga | Harga baru tampil dan divalidasi ulang saat `ya` |
-| Ubah `sort_order` | Urutan list berubah |
-| Stok menjadi 0 | Tampil `Habis`, tidak dapat dibeli |
-| Nonaktifkan produk | Hilang dari list/detail dan pembelian ditolak |
-| Edit kategori | Tidak memengaruhi UX WhatsApp |
-| Edit gambar | Detail/order dapat memakai gambar terbaru jika fitur media detail diaktifkan |
-
----
-
-## 7. Struktur Data dan Migrasi
-
-Gunakan migrasi berikutnya, misalnya `drizzle/migrations/0007_whatsapp_bot.sql`. Nomor final harus dicek lagi saat eksekusi agar tidak bentrok dengan migrasi baru.
-
-### 7.1 `whatsapp_updates`
-
-Untuk idempotensi webhook dan retry Fonnte:
-
-```sql
-CREATE TABLE whatsapp_updates (
-  event_key TEXT PRIMARY KEY,
-  inbox_id TEXT,
-  device_id TEXT NOT NULL,
-  conversation_id TEXT NOT NULL,
-  sender_id TEXT,
-  status TEXT NOT NULL CHECK (status IN ('processing','done','failed','ignored')),
-  attempt_count INTEGER NOT NULL DEFAULT 1,
-  lease_until TEXT,
-  payload_hash TEXT,
-  last_error TEXT,
-  created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now'))
-);
-```
-
-`event_key`:
-
-1. Gunakan `inboxid` jika tersedia dan stabil.
-2. Jika tidak tersedia, hash SHA-256 atas field kanonis: device + sender/group + member + timestamp + normalized message.
-3. Jangan menyimpan raw payload penuh.
-
-### 7.2 `whatsapp_sessions`
-
-State private chat dengan TTL:
-
-```sql
-CREATE TABLE whatsapp_sessions (
-  user_id TEXT PRIMARY KEY,
-  display_name TEXT,
-  conversation_id TEXT NOT NULL,
-  pending_action TEXT,
-  pending_product_id INTEGER REFERENCES products(id),
-  quoted_price INTEGER,
-  state_expires_at TEXT,
-  last_group_id TEXT,
-  is_blocked INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now'))
-);
-```
-
-`user_id` harus menerima nomor maupun identifier `@lid`; jangan berasumsi seluruh member grup selalu berupa nomor telepon.
-
-### 7.3 Perubahan `orders`
-
-Target akhir:
-
-- `sales_channel` menerima `whatsapp`.
-- tambah `whatsapp_user_id TEXT`.
-- tambah `whatsapp_conversation_id TEXT` jika diperlukan untuk reply target.
-
-Constraint existing hanya menerima `web|telegram`, sehingga migrasi tidak cukup dengan `ALTER COLUMN`. Agent harus:
-
-1. membuat shadow table dengan seluruh kolom/constraint terbaru;
-2. copy data existing tanpa transformasi lossy;
-3. swap table secara aman;
-4. membuat ulang index;
-5. memastikan FK `payment_transactions`, `fulfillment_jobs`, dan inventory tetap valid;
-6. menjalankan `PRAGMA foreign_key_check` pada local/preview D1;
-7. membuktikan seluruh order lama tetap bisa dibaca sebelum production.
-
-Jangan menyimpan order WhatsApp dengan `sales_channel='web'` atau `'telegram'` sebagai workaround.
-
-### 7.4 Perubahan `fulfillment_jobs`
-
-Tambahkan field generik secara backward-compatible:
-
-```sql
-delivery_channel TEXT CHECK (delivery_channel IN ('telegram','whatsapp')),
-recipient_id TEXT,
-provider_message_id TEXT
-```
-
-Backfill job Telegram existing:
-
-```text
-delivery_channel = telegram
-recipient_id = orders.telegram_chat_id
-provider_message_id = telegram_message_id
-```
-
-`telegram_message_id` jangan langsung dihapus pada migrasi pertama. Deprecate setelah code dan data terverifikasi.
-
-### 7.5 Optional audit table
-
-Jika admin memerlukan observability lebih baik, gunakan metadata minimum:
-
-```sql
-CREATE TABLE bot_events (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  channel TEXT NOT NULL,
-  event_type TEXT NOT NULL,
-  conversation_hash TEXT,
-  order_code TEXT,
-  outcome TEXT NOT NULL,
-  error_code TEXT,
-  created_at TEXT DEFAULT (datetime('now'))
-);
-```
-
-Jangan menyimpan isi chat, QR, atau secret fulfillment di tabel audit.
-
----
-
-## 8. Kontrak Environment dan Secret
-
-Tambahkan ke `.env.example` hanya placeholder:
-
-```text
-# WhatsApp via Fonnte
-FONNTE_TOKEN=__SET_IN_CLOUDFLARE__
-FONNTE_WEBHOOK_SECRET=__SET_IN_CLOUDFLARE__
-WHATSAPP_DEVICE_ID=__SET_IN_CLOUDFLARE__
-WHATSAPP_PUBLIC_NUMBER=__SET_IN_CLOUDFLARE__
-WHATSAPP_ALLOWED_GROUP_IDS=__SET_IN_CLOUDFLARE__
-WHATSAPP_BOT_ENABLED=false
-WHATSAPP_GROUP_REPLY_ENABLED=false
-WHATSAPP_ORDER_ENABLED=false
-WHATSAPP_AUTO_FULFILLMENT_ENABLED=false
-```
-
-Reuse tanpa duplikasi:
-
-```text
-KLIKQRIS_MODE
-KLIKQRIS_API_KEY
-KLIKQRIS_MERCHANT_ID
-KLIKQRIS_PAYMENTS_ENABLED
-FULFILLMENT_ENCRYPTION_KEY
-AUTO_FULFILLMENT_ENABLED
-```
-
-Aturan:
-
-- Nilai nyata hanya di Cloudflare Pages Secrets/Variables.
-- Token tidak boleh ada di query outbound GET; gunakan POST + `Authorization` header.
-- `WHATSAPP_ALLOWED_GROUP_IDS` diparse sebagai daftar exact, bukan substring.
-- Feature flag WhatsApp default `false` pada deploy pertama.
-- Jangan membaca atau mencetak nilai secret dalam test/log/chat.
-
----
-
-## 9. Struktur File Target
-
-```text
-src/lib/commerce/
-├── bot-catalog.ts            # query list/search/detail langsung dari D1
-├── bot-order.ts              # create/reuse pending invoice secara idempotent
-├── bot-order-status.ts       # ownership + status mapping
-└── delivery-dispatch.ts      # pilih Telegram atau WhatsApp adapter
-
-src/lib/whatsapp/
-├── api.ts                    # wrapper Fonnte send text/media + timeout
-├── types.ts                  # schema webhook dan response
-├── commands.ts               # parser exact command
-├── messages.ts               # copy WhatsApp, escape/length guard
-└── identity.ts               # sender/group/member/@lid normalization
-
-src/app/api/whatsapp/
-├── webhook/route.ts          # inbound message webhook
-└── device-status/route.ts    # connect/disconnect webhook
-
-src/app/api/admin/whatsapp/
-├── health/route.ts           # health aman, tanpa secret
-└── test/route.ts             # test message admin-only ke allowlist
-
-drizzle/migrations/
-└── 0007_whatsapp_bot.sql
-
-tests/
-├── whatsapp-bot.regression.test.ts
-├── bot-commerce.regression.test.ts
-└── multi-channel-fulfillment.regression.test.ts
-```
-
-### Batas ekstraksi
-
-Jangan memindahkan semua isi route Telegram dalam satu refactor besar. Urutan aman:
-
-1. Tambah characterization test behavior Telegram.
-2. Ekstrak fungsi katalog murni/DB terlebih dahulu.
-3. Ekstrak create invoice/order dengan input channel-neutral.
-4. Buat Telegram memanggil service baru tanpa mengubah copy/keyboard.
-5. Pastikan test Telegram tetap hijau.
-6. Baru tambahkan WhatsApp adapter.
-
----
-
-## 10. Kontrak Service Bersama
-
-### 10.1 Katalog
-
-```ts
-type ProductListInput = {
-  page: number;
-  perPage: number;
-};
-
-type ProductListResult = {
-  products: Array<{
-    id: number;
-    name: string;
-    price: number;
-    comparePrice: number | null;
-    stock: number;
-  }>;
-  page: number;
-  totalPages: number;
-  total: number;
-};
-```
-
-Service tidak mengetahui format HTML Telegram atau teks WhatsApp.
-
-### 10.2 Create order/invoice
-
-```ts
-type BotOrderChannel = "telegram" | "whatsapp";
-
-type CreateBotInvoiceInput = {
-  channel: BotOrderChannel;
-  productId: number;
-  channelUserId: string;
-  conversationId: string;
-  customerName: string;
-  customerWa: string;
-  expectedPrice: number;
-  idempotencyKey: string;
-};
-
-type BotInvoiceResult = {
-  orderCode: string;
-  productName: string;
-  requestedAmount: number;
-  payableAmount: number;
-  qrisUrl: string | null;
-  qrisImage: string | null;
-  directUrl: string | null;
-  expiresAt: string;
-  reused: boolean;
-};
-```
-
-Aturan service:
-
-- query ulang produk authoritative;
-- tolak price drift dengan error typed;
-- tolak produk nonaktif/habis;
-- cek inventory unique;
-- satu pending invoice per user + produk;
-- reserve inventory dan stok tepat satu kali;
-- panggil adapter KlikQRIS existing;
-- insert `orders` dan `payment_transactions` konsisten;
-- buat fulfillment job tepat satu kali;
-- rollback/compensate stok dan inventory jika invoice/order gagal;
-- tidak mengirim pesan; delivery dilakukan adapter channel setelah commit.
-
-### 10.3 Delivery dispatch
-
-```ts
-type DeliveryTarget = {
-  channel: "telegram" | "whatsapp";
-  recipientId: string;
-};
-
-interface DeliveryAdapter {
-  sendText(target: DeliveryTarget, text: string): Promise<{ messageId?: string }>;
-  sendImage(
-    target: DeliveryTarget,
-    image: string,
-    caption: string,
-  ): Promise<{ messageId?: string }>;
-}
-```
-
-Plaintext secret hanya boleh berada dalam memory selama pemanggilan adapter dan tidak boleh masuk error/log.
-
----
-
-## 11. Webhook Fonnte
-
-### 11.1 Endpoint
-
-```text
-POST https://axvara.tech/api/whatsapp/webhook?key=<unguessable-secret>
-```
-
-Jika Fonnte mendukung custom header/signature pada saat implementasi, pakai header. Jika tidak, secret URL tetap diperlukan karena contoh webhook publik Fonnte tidak menunjukkan signed payload.
-
-### 11.2 Validasi berurutan
-
-1. Hanya `POST`.
-2. Content type dan ukuran body maksimal, misalnya 64 KB.
-3. Constant-time compare webhook secret.
-4. Parse JSON dengan Zod `.passthrough()` agar forward-compatible.
-5. Cocokkan `device` exact dengan `WHATSAPP_DEVICE_ID`.
-6. Normalisasi `sender`, `member`, group ID, dan private recipient.
-7. Tolak timestamp terlalu lama jika field tersedia.
-8. Tolak message dari device sendiri.
-9. Claim `event_key` pada `whatsapp_updates`.
-10. Tentukan group/private.
-11. Jika group, cek exact allowlist.
-12. Cek rate limit/cooldown.
-13. Route command.
-14. Mark `done`, `ignored`, atau `failed`.
-
-### 11.3 Retry dan idempotensi
-
-Fonnte mendokumentasikan retry webhook sampai 15 kali dengan jeda sekitar satu menit jika endpoint tidak mengembalikan HTTP 200:
-
-https://docs.fonnte.com/update-12-januari-2026/
-
-Konsekuensi:
-
-- duplicate webhook adalah kondisi normal;
-- reply FAQ tidak boleh terkirim berulang;
-- create order/invoice harus memakai idempotency key;
-- callback/payment tetap memakai constraint unik yang sudah ada;
-- event `done` atau `ignored` selalu mengembalikan 200;
-- error validation permanen mengembalikan 200 agar tidak retry terus;
-- error transient boleh tercatat `failed`, tetapi jangan membuat invoice kedua.
-
-### 11.4 Timeout outbound
-
-- Fonnte API call maksimum 8–10 detik dengan `AbortController`.
-- Jika send gagal, jangan mengulang create order.
-- Retry hanya terhadap outbox/send operation.
-- Simpan error code ringkas, bukan full response yang mungkin mengandung data.
-
----
-
-## 12. Flow Teknis Detail
-
-### 12.1 `list` dari grup/private
-
-1. Webhook tervalidasi dan event diklaim.
-2. Router mengenali exact command.
-3. Query D1 aktif tanpa kategori.
-4. Format satu halaman.
-5. Kirim ke conversation asal.
-6. Mark event selesai.
-
-Tidak ada sync job, cron katalog, atau salinan data.
-
-### 12.2 `order <id>` dari grup
-
-1. Query produk untuk memastikan masih aktif.
-2. Jika tidak valid, balas produk tidak tersedia.
-3. Bentuk deep-link private dengan ID produk.
-4. Kirim hanya link dan instruksi.
-5. Jangan membuat row order/session pembayaran.
-
-### 12.3 `beli <id>` private
-
-1. Pastikan conversation bukan grup.
-2. Query produk aktif, stock, fulfillment mode, dan inventory.
-3. Cek order pending existing milik user untuk produk yang sama.
-4. Jika ada, kirim ulang informasi invoice/status, bukan invoice baru.
-5. Jika tidak, simpan state `confirm_purchase` selama 15 menit.
-6. Kirim ringkasan harga + ketentuan.
-7. Tunggu `ya` atau `batal`.
-
-### 12.4 Konfirmasi `ya`
-
-1. Ambil session yang belum expired.
-2. Query ulang produk.
-3. Jika harga berubah, update `quoted_price` dan minta `ya` lagi.
-4. Bentuk idempotency key dari event/session/user/product.
-5. Jalankan `createBotInvoice` bersama.
-6. Normalisasi QR provider menjadi URL HTTPS yang bisa di-fetch Fonnte.
-7. Kirim QR ke private recipient.
-8. Clear session setelah invoice tersimpan/kirim tercatat.
-
-### 12.5 QR image fallback
-
-Urutan sumber gambar:
-
-1. `invoiceResult.qrisUrl` HTTPS dari KlikQRIS.
-2. Jika hanya data URI/base64, decode dengan batas ukuran dan magic-byte PNG/JPEG.
-3. Simpan sementara di R2 `qris/invoices/<random>.png`.
-4. Sajikan melalui URL random/expiring yang dapat diambil server Fonnte.
-5. Jangan gunakan nama file berbasis nomor WA.
-6. Hapus/expire aset setelah transaksi selesai atau retention singkat.
-
-### 12.6 Callback paid
-
-1. Parse callback via adapter KlikQRIS existing.
-2. Cocokkan transaksi provider/order/merchant/signature/amount.
-3. Re-check status ke KlikQRIS.
-4. Jika re-check gagal karena network/provider, **jangan menerima paid secara fail-open**; simpan untuk rekonsiliasi cron.
-5. Atomic compare-and-set `pending → paid`.
-6. Update order `lunas` tepat satu kali.
-7. Dispatch notifikasi ke channel asal.
-8. Jalankan fulfillment jika feature flag channel dan global aktif.
-
-Catatan wajib: route saat ini memiliki fallback yang menerima callback ketika server-side status check gagal. Agent harus mengubahnya menjadi fail-closed sebelum mengaktifkan auto-fulfillment WhatsApp, sambil menambah regression test agar Telegram tetap bekerja.
-
-### 12.7 Fulfillment
-
-`manual`:
-
-- buyer menerima pembayaran berhasil + estimasi penanganan admin;
-- admin mendapat notifikasi dengan link chat buyer;
-- job menjadi `manual_required`;
-- tidak ada secret otomatis.
-
-`shared`:
-
-- decrypt shared secret di memory;
-- kirim ke private recipient sesuai `delivery_channel`;
-- mark delivered setelah provider send berhasil;
-- retry 1/5/15/60 menit menggunakan outbox existing.
-
-`unique`:
-
-- gunakan inventory yang sudah reserved untuk order;
-- decrypt dan kirim ke private recipient;
-- mark inventory/job/order delivered dalam urutan yang idempotent;
-- jangan reserve item kedua saat retry.
-
-### 12.8 Expiry/cancel
-
-- Invoice expired mengembalikan stok/inventory tepat satu kali.
-- Buyer hanya dapat cancel order pending miliknya.
-- Paid tidak dapat dibatalkan lewat chat.
-- Pesan expiry/cancel dikirim melalui channel order.
-- Cron operations harus memilih adapter berdasarkan channel.
-
----
-
-## 13. Rate Limit, Anti-Spam, dan Privacy
-
-### Grup
-
-- Allowlist exact group ID.
-- Maksimal lima command/user/menit.
-- Cooldown `list` global per grup 20–30 detik.
-- Maksimal satu respons per inbound event.
-- Unknown message diabaikan tanpa help otomatis.
-- Help hanya dikirim ketika command `help`/`bantuan` diminta.
-- Jika pesan bot sendiri masuk kembali, abaikan.
-
-### Private
-
-- Maksimal 10 command/user/menit.
-- Maksimal satu pending order aktif per user+produk.
-- Maksimal tiga create-invoice attempt/15 menit per user.
-- Session state expired otomatis.
-- Order status wajib ownership check.
-
-### Data minimum
-
-Simpan hanya:
-
-- identifier user/conversation;
-- display name opsional;
-- pending action dan expiry;
-- message/event key;
-- order/payment/fulfillment metadata yang sudah diperlukan bisnis.
-
-Jangan simpan seluruh chat grup/private. Jangan log nomor penuh; mask atau hash untuk observability.
-
----
-
-## 14. Admin UX dan Observability
-
-Perluas menu **Bot & Otomasi**, bukan membuat dashboard baru.
-
-### Health card WhatsApp
-
-Tampilkan tanpa secret:
-
-- configured: ya/tidak;
-- feature flag bot/group/order/fulfillment;
-- status device terakhir: connected/disconnected/unknown;
-- timestamp webhook terakhir;
-- ID grup allowlist dalam bentuk masked/label;
-- jumlah event 24 jam: done/ignored/failed;
-- order WhatsApp menurut payment status;
-- fulfillment job WhatsApp menurut status;
-- error code terakhir yang disanitasi;
-- quota/provider status jika endpoint Fonnte mengizinkan dan aman.
-
-### Aksi admin
-
-- kirim pesan test ke grup allowlist;
-- kirim pesan test ke nomor admin yang telah dikonfigurasi;
-- tidak boleh menerima target bebas dari request tanpa allowlist;
-- tombol refresh health;
-- jangan menyediakan UI untuk menampilkan/copy token.
-
-### Logging
-
-Gunakan event terstruktur:
-
-```text
-channel=whatsapp
-event=command_received|reply_sent|invoice_created|delivery_failed
-command=list|detail|order|status
-conversation_hash=...
-order_code=...
-outcome=ok|ignored|failed
-error_code=...
-```
-
-Tidak boleh mencatat raw token, full payload, QR base64, nomor penuh, atau credential produk.
-
----
-
-## 15. Test Plan
-
-### 15.1 Characterization sebelum refactor
-
-- Telegram list/detail/beli menghasilkan behavior lama.
-- Satu pending order Telegram tidak digandakan.
-- KlikQRIS request shape, mode, auth header, parsing, dan amount tetap sama.
-- Callback duplicate tetap idempotent.
-- Shared/unique/manual fulfillment Telegram tetap sama.
-
-### 15.2 Unit test WhatsApp
-
-- Parser exact `list`; `playlist` tidak match.
-- Prefix optional dinormalisasi.
-- Pagination clamp dan output length.
-- Escape nama/deskripsi produk.
-- Group/private identity normalization.
-- `@lid` tidak diperlakukan sebagai nomor telepon.
-- Deep-link private di-encode benar.
-- Allowed group exact match.
-- Self-message diabaikan.
-- Session expiry dan cancel.
-- Price drift meminta konfirmasi ulang.
-- Status ownership tidak membocorkan order lain.
-
-### 15.3 Product single-source test
-
-Test wajib membuktikan:
-
-1. Insert produk aktif ke D1 fixture → `list` langsung memuat produk.
-2. Edit harga → `harga` dan `detail` memakai harga baru.
-3. Ubah `sort_order` → list berubah urutan.
-4. Set stock 0 → pembelian ditolak.
-5. Set `is_active=0` → hilang dari list dan detail tidak tersedia.
-6. Edit kategori saja → produk tetap tampil karena list WhatsApp tidak memakai kategori.
-7. Tidak ada tabel/fixture katalog WhatsApp yang perlu di-update.
-
-### 15.4 Webhook/idempotency test
-
-- Secret salah ditolak.
-- Device ID salah diabaikan/ditolak.
-- Grup bukan allowlist diabaikan.
-- Payload terlalu besar ditolak.
-- Duplicate event hanya menghasilkan satu reply.
-- Retry setelah send failure tidak membuat order kedua.
-- Payload tanpa inboxid memakai event hash stabil.
-- Unknown command mengembalikan 200 tanpa reply.
-
-### 15.5 Payment test
-
-- WhatsApp dan Telegram memakai adapter KlikQRIS yang sama.
-- Duplicate `ya` hanya menghasilkan satu order dan transaksi.
-- Pending order existing direuse.
-- Merchant mismatch ditolak.
-- Amount mismatch ditolak.
-- Signature mismatch ditolak.
-- Status re-check network failure tetap pending, tidak menjadi paid.
-- Callback paid duplicate tidak menduplikasi fulfillment.
-- Expiry mengembalikan stock/inventory sekali.
-
-### 15.6 Fulfillment test
-
-- Delivery Telegram tetap memakai adapter Telegram.
-- Delivery WhatsApp hanya ke private recipient.
-- Job WhatsApp tidak pernah menargetkan group ID.
-- Retry tidak mendekripsi/mengirim inventory lain.
-- Secret plaintext tidak ada di log/error.
-- Manual fulfillment hanya memberitahu admin.
-- Provider send sukses menyimpan `provider_message_id`.
-
-### 15.7 Integration/dev test
-
-Jalankan:
-
-```bash
-npm test
-npx tsc --noEmit
-```
-
-Lalu dev dari folder project sesuai `AGENTS.md`, verifikasi:
-
-- `GET /` 200;
-- CSS 200;
-- `/admin?section=bot` 200;
-- endpoint webhook menolak secret salah;
-- endpoint admin WhatsApp menolak request tanpa admin session;
-- tidak ada compile error pada `/tmp/axvara-dev.log`;
-- visual admin health diverifikasi dengan Chrome DevTools MCP.
-
-### 15.8 Canary real-device
-
-Gunakan satu grup allowlist dan satu nomor buyer uji:
-
-1. `list` menampilkan produk live.
-2. Edit harga produk dari admin.
-3. `list` ulang menampilkan harga baru tanpa deploy/sync.
-4. `order <id>` di grup hanya memberi private link.
-5. `beli <id>` di private meminta konfirmasi.
-6. `ya` mengirim QRIS.
-7. Bayar invoice nominal kecil yang disetujui owner.
-8. Callback menandai lunas sekali.
-9. Buyer menerima hasil sesuai fulfillment.
-10. Admin health dan notifikasi benar.
-
----
-
-## 16. Acceptance Criteria
-
-### Katalog
-
-- [ ] `list` menampilkan produk langsung tanpa kategori.
-- [ ] Data berasal dari D1 `products`, bukan hardcode/cache permanen.
-- [ ] Produk baru/edit/nonaktif berubah pada pemanggilan berikutnya.
-- [ ] Urutan mengikuti `sort_order`, lalu `id`.
-- [ ] Pagination bekerja dan pesan tidak terlalu panjang.
-
-### Grup
-
-- [ ] Hanya grup allowlist yang mendapat respons.
-- [ ] Pesan biasa dan substring tidak memicu bot.
-- [ ] Ada cooldown anti-spam.
-- [ ] `order` tidak menciptakan transaksi di grup.
-- [ ] QR, status personal, dan fulfillment tidak pernah dikirim ke grup.
-
-### Private order
-
-- [ ] Produk/harga/stok divalidasi ulang saat konfirmasi.
-- [ ] Price drift meminta persetujuan ulang.
-- [ ] Satu produk/qty satu/invoice.
-- [ ] Duplicate webhook/command tidak membuat order kedua.
-- [ ] QRIS KlikQRIS existing terkirim sebagai image/URL yang valid.
-- [ ] Ownership status order diverifikasi.
-
-### Payment dan fulfillment
-
-- [ ] Callback fail-closed ketika status provider tidak dapat dikonfirmasi.
-- [ ] Amount, merchant, signature, dan state transition tervalidasi.
-- [ ] Paid/expired diproses tepat satu kali.
-- [ ] Stock dan inventory konsisten.
-- [ ] Shared/unique dikirim private; manual masuk admin.
-- [ ] Telegram regression test tetap hijau.
-
-### Operasional
-
-- [ ] Device disconnect terdeteksi dan terlihat di admin/notifikasi.
-- [ ] Feature flags dapat menghentikan group/order/fulfillment secara terpisah.
-- [ ] Website dan Telegram tetap aktif saat WhatsApp dimatikan.
-- [ ] Tidak ada secret/data sensitif di Git atau log.
-
----
-
-## 17. Urutan Implementasi untuk Agent Eksekutor
-
-### Fase 0 — Baseline dan safety
-
-1. Baca `AGENTS.md`, PRD, DESIGN, ARCHITECTURE, README, CHANGELOG, dan dokumen ini.
-2. Cek working tree; jangan sentuh perubahan user yang tidak terkait.
-3. Jalankan full tests dan type-check sebagai baseline.
-4. Catat behavior Telegram/KlikQRIS yang sudah berjalan.
-5. Pastikan `.cf-credentials` tetap ignored tanpa membaca nilainya ke log.
-
-**Exit:** baseline hijau atau failure existing terdokumentasi sebelum edit.
-
-### Fase 1 — Characterization + commerce extraction
-
-1. Tambah test Telegram/KlikQRIS/fulfillment sebelum refactor.
-2. Buat `bot-catalog` dengan query D1 live.
-3. Ekstrak service create bot invoice/order dari route Telegram.
-4. Buat Telegram memakai service bersama.
-5. Jangan ubah copy dan keyboard Telegram.
-
-**Exit:** semua test lama dan baru Telegram hijau; payment request tidak berubah.
-
-### Fase 2 — Migrasi multi-channel
-
-1. Tambah tabel update/session WhatsApp.
-2. Perluas order channel secara benar.
-3. Tambah field generic fulfillment dan backfill Telegram.
-4. Uji migration fresh database dan upgrade database existing.
-5. Jalankan foreign key/integrity checks.
-
-**Exit:** order existing dapat dibaca; Telegram fulfillment tetap jalan.
-
-### Fase 3 — Fonnte adapter dan webhook read-only
-
-1. Implement client Fonnte dengan timeout dan sanitized error.
-2. Implement webhook validation/idempotency.
-3. Implement identity + allowlist + rate limit.
-4. Implement `list`, `harga`, `detail`, `garansi`, `cara order`, `admin`.
-5. Tidak ada order/QRIS pada fase ini.
-
-**Exit:** FAQ bekerja pada fixture dan test group/private.
-
-### Fase 4 — Private order handoff
-
-1. Implement `order <id>` group → deep-link private.
-2. Implement `beli`, `ya`, `batal` dan session TTL.
-3. Implement ownership status.
-4. Pastikan product live/price drift behavior.
-
-**Exit:** order belum memanggil KlikQRIS jika flag order off; flow aman diuji.
-
-### Fase 5 — KlikQRIS reuse
-
-1. Hubungkan `ya` ke shared create-invoice service.
-2. Gunakan environment KlikQRIS existing.
-3. Implement QR URL/base64 fallback ke R2.
-4. Perketat callback menjadi fail-closed.
-5. Extend expiry/cancel notification multi-channel.
-
-**Exit:** duplicate command menghasilkan satu invoice; test callback hijau.
-
-### Fase 6 — Multi-channel fulfillment
-
-1. Implement delivery adapter WhatsApp.
-2. Dispatch job berdasarkan `delivery_channel`.
-3. Backward compatibility Telegram.
-4. Cegah target grup untuk secret delivery.
-5. Test retry dan failure.
-
-**Exit:** shared/unique/manual benar pada Telegram dan WhatsApp.
-
-### Fase 7 — Admin health
-
-1. Extend Bot & Otomasi.
-2. Tambah device status webhook.
-3. Tambah stats/audit aman.
-4. Tambah test-send dengan allowlist.
-
-**Exit:** admin dapat melihat health tanpa melihat secret.
-
-### Fase 8 — Docs, verification, commit, push
-
-1. Update `docs/ARCHITECTURE.md`, `README.md`, schema docs, `.env.example`.
-2. Update `CHANGELOG.md` paling atas.
-3. Jalankan test/type-check/build karena perubahan route/schema/payment bersifat major.
-4. Jalankan dev verification + Chrome DevTools MCP.
-5. Commit scoped.
-6. Push `main` sesuai aturan project.
-7. Berhenti setelah push; jangan polling GitHub Actions/Cloudflare.
-
----
-
-## 18. Rollout Production
-
-### Tahap A — Deploy gelap
-
-Deploy seluruh kode dengan semua flag WhatsApp `false`. Set secret via Cloudflare, bukan repository.
-
-### Tahap B — Sambungkan device
-
-1. Buat device Fonnte untuk nomor existing.
-2. Scan QR linked-device.
-3. Aktifkan autoread group/personal sesuai konfigurasi.
-4. Set webhook production.
-5. Fetch daftar grup **sekali** dan ambil ID grup AXVARA.
-6. Simpan exact group ID ke secret/variable allowlist.
-
-Jangan memanggil fetch-group berulang; dokumentasi Fonnte memperingatkan penggunaan berlebihan dapat meningkatkan risiko pembatasan/ban.
-
-### Tahap C — FAQ canary
-
-- `WHATSAPP_BOT_ENABLED=true`
-- `WHATSAPP_GROUP_REPLY_ENABLED=true`
-- order/fulfillment tetap `false`
-- hanya satu grup allowlist
-- observasi keyword, reply loop, quota, dan disconnect 24 jam
-
-### Tahap D — Private order internal
-
-- aktifkan `WHATSAPP_ORDER_ENABLED=true` hanya setelah test internal;
-- gunakan satu produk dengan nominal kecil yang disetujui owner;
-- validasi invoice/callback/status tanpa auto-fulfillment terlebih dahulu.
-
-### Tahap E — Fulfillment canary
-
-- aktifkan untuk produk test `shared` atau `unique`;
-- pastikan secret hanya sampai private chat;
-- setelah sukses end-to-end dan retry test, buka seluruh produk.
-
-### Tahap F — Perluasan grup
-
-Tambah group ID baru satu per satu ke allowlist. Tidak ada wildcard.
-
----
-
-## 19. Rollback
-
-Urutan rollback tanpa deploy:
-
-1. `WHATSAPP_GROUP_REPLY_ENABLED=false` — hentikan reply grup.
-2. `WHATSAPP_ORDER_ENABLED=false` — pertahankan FAQ, hentikan invoice baru.
-3. `WHATSAPP_AUTO_FULFILLMENT_ENABLED=false` — payment tetap tercatat, delivery manual.
-4. `WHATSAPP_BOT_ENABLED=false` — hentikan seluruh processing WhatsApp.
-5. Lepas webhook/autoread atau disconnect linked device jika terjadi loop/abuse.
-
-Data order/payment yang sudah dibuat tidak dihapus ketika rollback. Website dan Telegram tetap memakai core yang sama.
-
-Jika KlikQRIS terganggu:
-
-- jangan membuat invoice baru;
-- transaksi pending direkonsiliasi cron;
-- buyer diarahkan ke checkout website/manual;
-- jangan menganggap callback paid sah ketika status provider tidak dapat diperiksa.
-
----
-
-## 20. Risiko dan Mitigasi
-
-| Risiko | Dampak | Mitigasi |
+- slug;
+- alias pencarian;
+- kategori;
+- deskripsi;
+- gambar;
+- badge;
+- status aktif;
+- urutan.
+
+Bagian **Varian** berupa repeater/table:
+
+| Field | Contoh | Catatan |
 |---|---|---|
-| Device-linked gateway disconnect | Bot berhenti menerima/mengirim | device-status webhook, health card, alert admin, fallback website |
-| Nomor dibatasi WhatsApp | Operasional terganggu | exact keyword, cooldown, no broadcast, fetch group sekali, canary |
-| Reply loop | Spam grup/quota habis | ignore self/device message, event idempotency, max one reply/event |
-| Webhook retry | Duplicate reply/order | `whatsapp_updates`, idempotency key, unique payment/order |
-| Produk web dan WA berbeda | Harga/order salah | D1 single source, no WA catalog table, re-query saat konfirmasi |
-| Harga berubah saat flow | Buyer membayar harga lama | store quoted price, compare current, reconfirm |
-| QR base64 tidak bisa diambil Fonnte | QR gagal terkirim | validate + temporary R2 HTTPS URL |
-| Callback palsu/ragu | Fulfillment tanpa pembayaran | merchant/signature/amount + provider status fail-closed |
-| Secret terkirim ke grup | Kebocoran akun | channel-aware delivery, recipient guard, negative test |
-| Refactor merusak Telegram | Channel aktif downtime | characterization tests, incremental extraction, unchanged message layer |
-| `@lid` mengganti nomor member | DM/routing gagal | generic string identity, private handoff via wa.me, no phone assumption |
-| Migrasi `orders` merusak FK | Data order tidak valid | shadow-table migration test, backup, foreign_key_check, staged deploy |
+| SKU | GEM-INV-12M-FULL | unik dan stabil |
+| Tipe/plan | Invite | label yang dibaca user |
+| Durasi | 12 Bulan | nilai + unit |
+| Garansi | Full Garansi | tipe dan masa bila terbatas |
+| Harga | Rp18.000 | harga server-authoritative |
+| Harga coret | Rp25.000 | opsional |
+| Stok | -1 | -1 unlimited, 0 habis |
+| Fulfillment | unique/shared/manual | per varian |
+| Aktif | ya | mengatur semua channel |
+| Urutan | 10 | urutan web dan bot |
+
+Admin harus dapat:
+
+- menambah;
+- menduplikasi;
+- mengurutkan;
+- mengubah;
+- menonaktifkan;
+- melihat status stok/inventory;
+- menyimpan secret secara write-only.
+
+Varian yang pernah dipakai order tidak dihapus fisik; tombol “hapus” mengarsipkan atau
+menonaktifkannya.
+
+### 7.2 Validasi save
+
+Save ditolak bila:
+
+- produk aktif tidak memiliki active variant;
+- SKU duplikat;
+- harga/compare price tidak valid;
+- durasi atau garansi tidak konsisten;
+- fulfillment unique tidak mempunyai konfigurasi inventory yang sah;
+- fulfillment shared tidak mempunyai secret aktif;
+- dua varian aktif mempunyai identitas tampilan yang sama.
+
+### 7.3 Publish semantics
+
+Untuk MVP, save yang valid langsung menjadi data live. Jika draft/publish dibutuhkan
+nanti, tambahkan status eksplisit; jangan membuat cache Telegram/WhatsApp sendiri.
+
+Perubahan aktif harus terbaca channel pada request berikutnya. Cache publik website
+boleh maksimal singkat dan harus bisa di-invalidate/revalidate setelah save.
 
 ---
 
-## 21. Owner Gates — Jangan Diasumsikan Agent
+## 8. Kontrak katalog bersama
 
-Sebelum aktivasi production, owner harus menyediakan/mengonfirmasi:
+Buat service query bersama, misalnya src/lib/catalog, agar web dan kedua bot tidak
+menulis SQL/filter masing-masing.
 
-1. Nomor existing yang akan ditautkan adalah nomor AXVARA yang benar dan memiliki akses linked devices.
-2. Owner menerima tradeoff gateway device-linked untuk kebutuhan grup lama.
-3. Akun/paket Fonnte mendukung webhook dan media yang diperlukan.
-4. Device token Fonnte disimpan sebagai Cloudflare secret.
-5. ID grup AXVARA hasil fetch satu kali.
-6. Nomor publik untuk deep-link `wa.me`.
-7. Satu produk dan nominal untuk canary order nyata.
-8. Apakah fulfillment WhatsApp langsung diaktifkan setelah payment canary atau menunggu observasi tambahan.
+### 8.1 Product list
 
-KlikQRIS tidak memerlukan onboarding ulang. Agent hanya perlu memverifikasi keberadaan konfigurasi existing secara boolean/health check tanpa menampilkan nilainya.
+Hanya mengembalikan produk bila:
+
+- products.is_active = 1;
+- mempunyai minimal satu product_variants.is_active = 1;
+- diurutkan product.sort_order lalu name.
+
+Respons summary minimum:
+
+    id, slug, name, aliases, image
+    minPrice, maxPrice, variantCount, availability
+
+### 8.2 Product detail
+
+Mengembalikan produk dan active variants:
+
+    product metadata
+    variants ordered by sort_order, price, id
+
+Varian nonaktif tetap dapat dibaca admin dan order historis, tetapi tidak tampil pada
+katalog publik.
+
+### 8.3 Pencarian nama untuk bot
+
+Normalisasi input:
+
+- lowercase;
+- trim;
+- satukan whitespace;
+- hilangkan tanda baca yang tidak bermakna.
+
+Urutan matching:
+
+1. exact normalized product name;
+2. exact slug;
+3. exact alias;
+4. prefix/fuzzy match terbatas.
+
+Jika fuzzy menghasilkan lebih dari satu kandidat, bot menampilkan kandidat nama dan
+meminta user mengetik salah satunya. Jangan memilih diam-diam.
 
 ---
 
-## 22. Definition of Done untuk Handoff Implementasi
+## 9. Perubahan website
 
-Agent eksekutor harus mengembalikan bukti:
+### 9.1 Product card
 
-- daftar file yang berubah;
-- migrasi fresh dan upgrade sama-sama lulus;
-- full test, type-check, build Pages;
-- regression Telegram lulus;
-- bukti `list` berubah setelah edit produk tanpa sync/deploy tambahan;
-- bukti bot mengabaikan grup non-allowlist;
-- bukti group order hanya mengarah ke private;
-- bukti invoice KlikQRIS dibuat satu kali pada duplicate webhook;
-- bukti callback invalid tidak mengubah paid;
-- bukti callback valid mengubah paid satu kali;
-- bukti fulfillment WhatsApp hanya ke private recipient;
-- screenshot admin health melalui Chrome DevTools MCP;
-- GET `/` 200 dan CSS 200;
-- `.cf-credentials` tetap ignored;
-- changelog, README, dan architecture sinkron;
-- commit dan push `main` berhasil;
-- tidak melakukan polling CI/CD setelah push.
+- Satu card per produk induk.
+- Harga tampil **Mulai RpX** jika lebih dari satu harga.
+- Bila semua varian satu harga, tampilkan harga biasa.
+- Status tersedia dihitung dari active variants.
+
+### 9.2 Product detail
+
+Tambahkan pemilih varian berbentuk card/radio yang memperlihatkan:
+
+- tipe/plan;
+- durasi;
+- garansi;
+- harga dan harga coret;
+- status stok.
+
+Memilih varian harus memperbarui harga, stok, garansi, dan CTA. Jika hanya satu active
+variant, varian boleh terpilih otomatis. Jika lebih dari satu, CTA dinonaktifkan sampai
+user memilih.
+
+### 9.3 Cart dan checkout
+
+- Identitas cart menjadi product_id + variant_id.
+- Dua varian produk yang sama menjadi dua baris terpisah.
+- Cart menampilkan label, durasi, dan garansi.
+- Checkout quote wajib menerima variant_id.
+- Server mengambil ulang product + active variant dari D1.
+- Harga client tidak pernah dipercaya.
+- product_id/variant_id mismatch, stok habis, atau inactive variant ditolak.
+- Order membuat snapshot varian.
+
+URL buy-now boleh membawa variant ID, tetapi server tetap memvalidasi ulang.
 
 ---
 
-## 23. Ringkasan Keputusan Final
+## 10. Perubahan bot Telegram
 
-- **Gateway:** Fonnte untuk nomor dan grup existing.
-- **Backend:** Cloudflare AXVARA existing.
-- **Katalog:** langsung `products` D1, tanpa sync dan tanpa tabel WhatsApp.
-- **Navigasi:** produk langsung, tanpa kategori.
-- **Grup:** discovery/FAQ saja.
-- **Transaksi:** private chat saja.
-- **QRIS:** reuse KlikQRIS Telegram yang sudah berjalan.
-- **Fulfillment:** outbox existing dibuat multi-channel.
-- **Keamanan:** allowlist, exact command, idempotency, fail-closed payment.
-- **Rollout:** FAQ → private invoice → payment canary → fulfillment.
+Alur yang sekarang produk → konfirmasi berubah menjadi:
+
+    kategori/list
+      → pilih produk induk
+      → pilih varian
+      → konfirmasi
+      → create order
+      → invoice KlikQRIS
+
+Keputusan implementasi:
+
+- Category navigation Telegram boleh dipertahankan.
+- Tombol varian membawa stable variant_id, bukan harga atau nomor urut.
+- Callback data harus ditandatangani atau divalidasi terhadap session/order.
+- Konfirmasi menampilkan plan, durasi, garansi, dan harga.
+- KlikQRIS menerima total dari varian yang sudah divalidasi server.
+- Fulfillment mengambil inventory/secret varian.
+
+KlikQRIS tidak dibuat ulang. Gunakan adapter, tabel payment_transactions, callback, dan
+cron yang sudah terbukti bekerja; hanya sumber item/amount yang berubah dari produk ke
+varian.
+
+---
+
+## 11. Alur WhatsApp MVP
+
+### 11.1 Command list
+
+Input diterima case-insensitive:
+
+    list
+
+Respons hanya nama produk aktif, tanpa kategori, harga, atau seluruh varian:
+
+    *PRODUK AXVARA*
+
+    1. Canva
+    2. ChatGPT
+    3. Gemini
+    4. Grok
+    5. YouTube Premium
+
+    Ketik nama produk untuk melihat pilihan.
+
+Jika produk terlalu banyak, gunakan pagination:
+
+    list
+    list 2
+
+Jangan mengirim puluhan pesan terpisah. Batasi panjang sesuai limit gateway.
+
+### 11.2 User mengetik nama produk
+
+Input:
+
+    Gemini
+
+Respons:
+
+    *GEMINI*
+    Akses Gemini AI Pro dengan pilihan plan berikut.
+
+    1. Invite
+       Durasi: 12 Bulan
+       Garansi: Full Garansi
+       Harga: Rp18.000
+
+    2. Head
+       Durasi: 3 Bulan
+       Garansi: 1 Bulan
+       Harga: Rp25.000
+
+    Balas pesan ini dengan angka 1-2 untuk memilih.
+
+Hanya active variants yang tampil. Varian habis boleh disembunyikan atau diberi label
+HABIS; keputusan MVP yang disarankan adalah tetap tampil dengan label HABIS agar user
+mengetahui opsi tersedia, tetapi nomor habis tidak dapat dipilih.
+
+### 11.3 User memilih angka
+
+Saat user membalas **2**, bot:
+
+1. menemukan session milik anggota tersebut;
+2. memetakan angka 2 ke stable variant_id dari respons terakhir;
+3. mengambil ulang varian dari D1;
+4. memvalidasi active, stok, harga, dan product relation;
+5. menjawab ringkasan;
+6. memberi tautan lanjut ke chat pribadi.
+
+Respons grup:
+
+    Pilihanmu:
+    Gemini — Head
+    3 Bulan · Garansi 1 Bulan
+    Rp25.000
+
+    Lanjutkan order secara privat:
+    <tautan WhatsApp dengan token pemilihan singkat>
+
+QRIS tidak dikirim di grup.
+
+### 11.4 Private order
+
+Tautan membawa opaque one-time selection token, bukan harga atau secret. Saat dibuka:
+
+1. token diverifikasi dan ditukar dengan variant_id;
+2. user mengonfirmasi quantity;
+3. server memvalidasi ulang varian;
+4. order WhatsApp dibuat idempotent;
+5. invoice KlikQRIS dibuat;
+6. QR/payment link dikirim privat;
+7. callback mengubah payment/order;
+8. fulfillment dikirim privat atau masuk antrean manual.
+
+Jika auto-order belum siap saat WhatsApp discovery dirilis, private response cukup
+memberi ringkasan dan kontak admin. Alur list dan varian tidak boleh bergantung pada
+fitur payment.
+
+### 11.5 Error response
+
+- Nama tidak ditemukan: “Produk tidak ditemukan. Ketik list untuk melihat produk.”
+- Nama ambigu: tampilkan maksimal lima kandidat.
+- Session angka kedaluwarsa: minta user mengetik nama produk lagi.
+- Varian baru saja nonaktif/habis: beri tahu dan tampilkan ulang varian terbaru.
+- Gateway/payment gagal: satu pesan ramah, simpan detail teknis di log teredaksi.
+
+---
+
+## 12. Session, concurrency, dan idempotensi WhatsApp
+
+### 12.1 Scope session
+
+Key session wajib:
+
+    provider + conversation_id + member_id
+
+Jangan hanya group_id, karena beberapa anggota dapat meminta produk berbeda pada waktu
+bersamaan.
+
+Data minimum:
+
+- selected_product_id;
+- numbered_variant_map sebagai JSON nomor → variant_id;
+- source_message_id bila gateway menyediakannya;
+- catalog_version atau generated_at;
+- expires_at, disarankan 10–15 menit.
+
+Saat angka dipilih, map menentukan ID tetapi data harga/stok tetap di-query ulang.
+
+### 12.2 Webhook inbox
+
+Simpan event masuk dengan unique provider + external_message_id:
+
+- event duplikat tidak memicu respons/order kedua;
+- verifikasi secret/signature gateway sebelum parse;
+- simpan payload minimal dan teredaksi;
+- ACK cepat;
+- proses berat melalui queue/outbox bila tersedia.
+
+### 12.3 Outbox kirim
+
+Pesan keluar memiliki idempotency key:
+
+    channel + destination + event_id + response_type
+
+Retry memakai backoff, batas percobaan, serta dead-letter state. Jangan mengulang
+pembuatan KlikQRIS hanya karena pengiriman pesan gagal.
+
+---
+
+## 13. API dan perubahan schema lintas fitur
+
+### 13.1 Endpoint katalog
+
+Pertahankan route yang ada bila memungkinkan, tetapi kontraknya menjadi:
+
+- GET /api/products?active=1 → product summaries;
+- GET /api/products/[slug] → product + variants;
+- create/update product → base product;
+- endpoint admin variants → CRUD/activate/reorder;
+- save multi-row menggunakan D1 batch/transaction yang tersedia.
+
+Respons publik tidak boleh mengandung ciphertext, inventory secret, margin internal,
+atau metadata provider.
+
+### 13.2 Checkout/order
+
+Ubah kontrak item menjadi:
+
+    product_id
+    variant_id
+    quantity
+
+Server mengisi seluruh snapshot dan harga.
+
+### 13.3 Multi-channel
+
+Migrasikan orders.sales_channel agar menerima:
+
+- web;
+- telegram;
+- whatsapp.
+
+Tambahkan destination metadata yang cukup untuk delivery tanpa memasukkan data sensitif
+ke log. fulfillment_jobs dan notification outbox harus channel-aware.
+
+### 13.4 Schema WhatsApp minimum
+
+Tambahkan tabel/kolom:
+
+- whatsapp_inbox_events untuk dedupe webhook;
+- whatsapp_sessions untuk konteks per anggota grup;
+- whatsapp_selection_tokens untuk handoff privat satu kali;
+- message_outbox generik atau whatsapp_outbox untuk retry pengiriman;
+- channel/destination pada fulfillment job.
+
+Simpan group ID dan nomor allowlist sebagai secret/env/config terkontrol, bukan
+hardcode.
+
+---
+
+## 14. Security dan privasi
+
+- Proses hanya group ID allowlist.
+- Abaikan pesan yang dikirim nomor bot sendiri.
+- Batasi command per member dan per group.
+- Verifikasi signature/token webhook dengan timing-safe comparison.
+- Jangan menerima harga, total, product label, atau garansi dari client sebagai fakta.
+- Selection token acak, sekali pakai, TTL pendek, dan disimpan hash bila memungkinkan.
+- Secret fulfillment tetap dienkripsi.
+- QR, order detail, status bayar, dan kredensial hanya dikirim privat.
+- Log tidak boleh memuat token gateway, KlikQRIS credential, QR payload mentah,
+  password, atau shared secret.
+- Pisahkan feature flag WhatsApp discovery, private order, payment, dan fulfillment.
+
+Catatan operasional: gateway linked-device untuk nomor WhatsApp existing mempunyai
+risiko session/logout dan kebijakan platform. Health check serta prosedur reconnect
+harus tersedia, dan owner menerima risiko gateway sebelum go-live.
+
+---
+
+## 15. Urutan implementasi wajib
+
+### Fase 0 — Baseline dan characterization
+
+- Petakan seluruh pembacaan products.price, stock, fulfillment, dan telegram_enabled.
+- Tambah test karakterisasi web checkout, Telegram, KlikQRIS, dan fulfillment.
+- Catat sampel data produk existing yang perlu dikelompokkan manual.
+- Kunci terminology durasi dan garansi bersama owner.
+
+**Gate:** test baseline hijau dan daftar migrasi produk disetujui.
+
+### Fase 1 — Schema varian dan kompatibilitas
+
+- Tambah product_variants.
+- Backfill satu default variant per produk.
+- Tambah variant_id nullable pada order/inventory/job.
+- Buat catalog query/service bersama.
+- Pertahankan fallback legacy sementara.
+
+**Gate:** jumlah produk tetap sama; semua produk aktif punya active variant; order lama
+tetap terbaca.
+
+### Fase 2 — CMS varian
+
+- Pisahkan form product base dan variant editor.
+- Implementasi validation, ordering, deactivate, serta fulfillment per variant.
+- Buat halaman review hasil backfill.
+- Admin menyusun keluarga produk serta varian sebenarnya.
+
+**Gate:** admin dapat mengubah satu varian dan query publik langsung memantulkan hasil.
+
+### Fase 3 — Website
+
+- Product card berbasis min price.
+- Variant selector di detail.
+- Cart key product + variant.
+- Quote/order server-authoritative berbasis variant_id.
+- Snapshot order dan pengurangan stok varian.
+
+**Gate:** dua varian produk yang sama dapat masuk cart dan checkout secara benar.
+
+### Fase 4 — Telegram
+
+- Tambah langkah pilih varian.
+- Callback memakai stable variant_id.
+- Amount KlikQRIS dan fulfillment memakai varian.
+- Jalankan regression test Telegram/KlikQRIS.
+
+**Gate:** transaksi Telegram end-to-end berhasil untuk manual, shared, dan unique.
+
+### Fase 5 — WhatsApp discovery
+
+- Hubungkan nomor existing ke gateway.
+- Temukan serta allowlist group existing.
+- Implement webhook dedupe dan outbox.
+- Implement list, pagination, name matching, detail varian, dan session angka.
+- Rilis read-only tanpa payment lebih dahulu.
+
+**Gate:** update CMS tampil di WhatsApp tanpa deploy/sinkronisasi dan tidak ada balasan
+di luar allowlist.
+
+### Fase 6 — WhatsApp private order
+
+- Implement selection token dan deep-link.
+- Create order sales_channel=whatsapp.
+- Gunakan KlikQRIS existing.
+- Tambah WhatsApp delivery adapter.
+- Aktifkan fulfillment bertahap.
+
+**Gate:** satu input hanya membuat satu order/invoice/delivery dan seluruh data sensitif
+tetap privat.
+
+### Fase 7 — Cleanup
+
+- Hapus fallback pembacaan harga/stok produk setelah observasi stabil.
+- Deprecate kolom legacy melalui migrasi terpisah.
+- Hapus flag channel lama yang membuat katalog berbeda, atau ubah menjadi availability
+  terpusat bila benar-benar dibutuhkan.
+
+---
+
+## 16. Strategi feature flag dan rollout
+
+Flag minimum:
+
+- PRODUCT_VARIANTS_READ;
+- PRODUCT_VARIANTS_WRITE;
+- TELEGRAM_VARIANT_FLOW;
+- WHATSAPP_ENABLED;
+- WHATSAPP_GROUP_DISCOVERY;
+- WHATSAPP_PRIVATE_ORDER;
+- WHATSAPP_KLIKQRIS;
+- WHATSAPP_FULFILLMENT.
+
+Urutan aktivasi:
+
+1. migrate/backfill dalam kondisi flag off;
+2. CMS untuk admin internal;
+3. website pada sebagian traffic atau setelah review;
+4. Telegram;
+5. WhatsApp discovery pada satu grup allowlist;
+6. private order;
+7. payment;
+8. fulfillment.
+
+Rollback cukup mematikan flag fase terakhir tanpa menjatuhkan website, Telegram, atau
+ledger pembayaran.
+
+---
+
+## 17. Test plan
+
+### 17.1 Schema dan migration
+
+- setiap produk lama memperoleh tepat satu default variant;
+- rerun migration aman;
+- inventory/secret lama menunjuk varian yang benar;
+- order lama tetap dapat dirender;
+- constraint SKU, duration, warranty, dan price bekerja.
+
+### 17.2 CMS
+
+- create/edit/duplicate/reorder/deactivate variant;
+- secret tidak pernah dibaca kembali sebagai plaintext;
+- active product tanpa active variant ditolak;
+- variant yang pernah dibeli tidak terhapus fisik;
+- perubahan tercermin pada query katalog berikutnya.
+
+### 17.3 Web
+
+- zero, one, dan many active variants;
+- switch varian memperbarui harga/stok/garansi;
+- cart memisahkan varian;
+- quote menolak price tampering;
+- quote menolak product/variant mismatch dan inactive/out-of-stock;
+- order snapshot tidak berubah setelah edit CMS.
+
+### 17.4 Telegram
+
+- product → variant → confirm;
+- callback variant palsu/kedaluwarsa ditolak;
+- KlikQRIS amount sama dengan harga variant server;
+- inventory variant yang benar dikonsumsi;
+- existing command dan payment callback tetap lulus.
+
+### 17.5 WhatsApp
+
+- list hanya menampilkan nama produk aktif;
+- kategori tidak tampil;
+- exact name, slug, alias, ambiguous, unknown;
+- product response hanya menampilkan active variants;
+- dua anggota satu grup mempunyai session terpisah;
+- angka dari session lama ditolak;
+- varian berubah setelah list divalidasi ulang;
+- webhook duplikat hanya menghasilkan satu respons;
+- bot tidak loop pada pesannya sendiri;
+- unauthorized group diabaikan;
+- QR/order/credential tidak pernah muncul di grup.
+
+### 17.6 End-to-end
+
+Skenario wajib:
+
+1. Admin menambah varian Gemini 6 Bulan Full Garansi.
+2. Varian tampil pada website tanpa deploy.
+3. Telegram menampilkan varian yang sama.
+4. WhatsApp list tetap hanya menampilkan Gemini satu kali.
+5. User mengetik Gemini dan varian baru tampil.
+6. User memilih varian.
+7. Order privat menghasilkan KlikQRIS dengan nominal tepat.
+8. Callback lunas hanya memicu satu fulfillment.
+
+---
+
+## 18. Acceptance criteria
+
+Implementasi dianggap selesai bila:
+
+- CMS/D1 adalah satu-satunya sumber produk dan varian;
+- produk aktif wajib mempunyai minimal satu varian aktif;
+- durasi, garansi, harga, stok, dan fulfillment tersimpan per varian;
+- perubahan CMS muncul di web, Telegram, dan WhatsApp tanpa salin data;
+- website mempunyai variant picker dan checkout berbasis variant_id;
+- Telegram meminta pemilihan varian sebelum order;
+- WhatsApp list hanya mengirim nama produk;
+- mengetik nama produk mengirim detail dan varian bernomor;
+- pilihan angka aman per group member/session;
+- order menyimpan snapshot varian;
+- KlikQRIS memakai harga varian hasil validasi server;
+- inventory dan delivery tepat per varian/channel;
+- tidak ada QR atau secret di grup;
+- webhook/order/payment/fulfillment idempotent;
+- rollback dapat dilakukan lewat feature flag.
+
+---
+
+## 19. Keputusan owner yang diperlukan sebelum coding
+
+Agent eksekutor tidak boleh menebak data dagang berikut:
+
+1. Daftar produk induk final dan produk lama mana yang harus digabung.
+2. Daftar plan/tier yang sah, misalnya Invite, Head, Family, Individual.
+3. Aturan garansi:
+   - apa arti Full Garansi;
+   - apakah masa garansi boleh berbeda dari durasi;
+   - teks klaim dan pengecualian.
+4. Apakah varian habis ditampilkan sebagai HABIS atau disembunyikan.
+5. Apakah satu produk boleh mempunyai dua varian dengan label sama tetapi fulfillment
+   berbeda.
+6. Nomor WhatsApp dan ID grup allowlist untuk staging/production.
+7. Persetujuan penggunaan gateway linked-device.
+
+Keputusan tersebut sebaiknya dimasukkan lewat CMS/data migration, bukan hardcode.
+
+---
+
+## 20. Estimasi dan pembagian kerja
+
+Ini perubahan lintas katalog, commerce, dan tiga channel. Estimasi realistis:
+
+| Area | Estimasi |
+|---|---:|
+| Schema, backfill, catalog service | 1–2 hari |
+| CMS variant editor | 1–2 hari |
+| Web picker, cart, checkout, order snapshot | 1–2 hari |
+| Telegram variant flow + regresi | 1 hari |
+| WhatsApp discovery/session | 1–2 hari |
+| Private KlikQRIS + fulfillment + hardening | 1–2 hari |
+
+Total sekitar **6–10 hari kerja**, bergantung pada kualitas data produk lama dan
+keputusan bisnis garansi. WhatsApp discovery tanpa auto-order dapat dirilis setelah
+Fase 5; auto-order ditambahkan setelah jalur varian web dan Telegram stabil.
+
+---
+
+## 21. Checklist handoff agent eksekutor
+
+- [ ] Baca PRD, DESIGN, ARCHITECTURE, README, CHANGELOG, dan dokumen ini.
+- [ ] Jangan mengimplementasikan WhatsApp di atas products.price lama.
+- [ ] Tambah migration additive serta backfill default variant.
+- [ ] Update schema, API contract, CMS, web, cart, checkout, dan order snapshot.
+- [ ] Update Telegram ke product → variant → confirm.
+- [ ] Reuse KlikQRIS; jangan membuat adapter pembayaran baru.
+- [ ] Implement WhatsApp list → nama produk → numbered variants.
+- [ ] Scope session per conversation + member.
+- [ ] Jaga transaksi dan credential tetap privat.
+- [ ] Tambah test unit, regression, integration, dan E2E per fase.
+- [ ] Update docs/ARCHITECTURE.md, README.md, dan CHANGELOG.md bersama perubahan.
+- [ ] Verifikasi dev sesuai AGENTS.md.
+- [ ] Commit dan push main hanya setelah seluruh gate fase yang dikerjakan lulus.
+
+Dokumen ini mengunci model dan urutan kerja. Detail kosmetik pesan boleh berubah, tetapi
+single source of truth, variant_id server-authoritative, snapshot order, session
+per-member, serta pemisahan grup/private tidak boleh dilemahkan.

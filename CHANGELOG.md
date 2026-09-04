@@ -4,6 +4,8 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-04 — Revisi handoff menjadi arsitektur varian terpusat: produk induk + SKU berisi plan/durasi/garansi/harga/stok/fulfillment dikelola CMS untuk web, Telegram, dan alur WhatsApp sederhana `list → nama produk → varian bernomor` — `docs/WHATSAPP-GROUP-BOT-PLAN.md`, README, docs/ARCHITECTURE.md — (verifikasi: review screenshot/codebase + `git diff --check` pass; dev GET `/` 200 + CSS 200 + `/admin?section=bot` 200, log tanpa compile error)
+
 - 2026-09-04 — Matangkan handoff bot grup WhatsApp existing: produk langsung dari D1 tanpa kategori/sinkronisasi, group-to-private order, reuse KlikQRIS Telegram, migrasi multi-channel, security/idempotency, test, rollout, dan rollback — `docs/WHATSAPP-GROUP-BOT-PLAN.md`, README, docs/ARCHITECTURE.md — (verifikasi: review planning + `git diff --check` pass; dev GET `/` 200 + CSS 200 + `/admin?section=bot` 200, log tanpa compile error)
 
 - 2026-09-04 — Arahkan buyer pasca-pembayaran ke Telegram support `@axvara_support`, tambah `/chatid`, tetapkan grup privat `Axvara_Notif` sebagai satu tujuan notifikasi order web/bot, tunggu percobaan notif web sebelum respons selesai, dan aktifkan bot produksi — `src/lib/telegram/*`, `src/lib/fulfillment/deliver.ts`, `src/app/api/{orders,telegram/webhook}`, Cloudflare Pages, README/docs — (verifikasi: vitest 131/131, tsc clean, build Pages pass; dev GET / 200 + CSS 200 + /admin 200, webhook route compile)

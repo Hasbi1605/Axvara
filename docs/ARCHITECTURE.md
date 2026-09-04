@@ -484,18 +484,20 @@ Rollout bertahap: `TELEGRAM_BOT_ENABLED=false`, `KLIKQRIS_PAYMENTS_ENABLED=false
 ## 14. Rencana Bot Grup WhatsApp
 
 Rencana handoff lengkap berada di `docs/WHATSAPP-GROUP-BOT-PLAN.md` dan belum menjadi
-runtime aktif. Arsitektur yang dikunci menggunakan Fonnte sebagai device gateway untuk
-nomor serta grup WhatsApp existing, sementara Pages, D1, R2, KlikQRIS, cron, dan
-fulfillment AXVARA tetap menjadi satu backend bersama web dan Telegram.
+runtime aktif. Prasyaratnya adalah mengubah katalog menjadi `products` sebagai keluarga
+produk dan `product_variants` sebagai SKU jual. Varian menyimpan plan, durasi, garansi,
+harga, stok, status, serta fulfillment. D1 menjadi source of truth dan CMS web menjadi
+antarmuka pengelolanya; web, Telegram, dan WhatsApp memakai catalog/commerce service yang
+sama tanpa sinkronisasi katalog per channel.
 
-WhatsApp tidak memakai navigasi kategori. Command `list` membaca produk aktif langsung
-dari tabel `products` D1 dengan urutan `sort_order, id`, sehingga tambah/edit/nonaktifkan
-produk pada admin web otomatis tercermin pada pemanggilan berikutnya tanpa tabel katalog
-WhatsApp atau proses sinkronisasi. Grup hanya dipakai untuk katalog/FAQ dan deep-link ke
-private chat; QRIS, status personal, dan fulfillment hanya boleh dikirim secara private.
+UX WhatsApp dikunci menjadi dua langkah discovery: command `list` hanya menampilkan nama
+produk aktif tanpa kategori, lalu input nama/alias produk menampilkan detail dan active
+variants bernomor. Pemetaan angka disimpan per `conversation_id + member_id` dan selalu
+divalidasi ulang terhadap stable `variant_id`. Grup hanya untuk discovery; pilihan akhir,
+order, QRIS, status pembayaran, serta fulfillment diteruskan ke private chat.
 
-Implementasi wajib mengekstrak commerce service secara bertahap agar adapter KlikQRIS
-yang sudah bekerja pada Telegram direuse tanpa perubahan kontrak. Delivery outbox dibuat
-channel-aware, webhook Fonnte memakai allowlist/idempotensi, callback payment menjadi
-fail-closed saat status provider tidak dapat dikonfirmasi, dan seluruh feature flag
-WhatsApp default nonaktif saat deploy pertama.
+Fonnte direncanakan sebagai device gateway nomor/grup existing, sementara Pages, D1, R2,
+KlikQRIS, cron, dan fulfillment AXVARA tetap satu arsitektur. Implementasi harus berurutan:
+schema/backfill varian → CMS → web/cart/checkout → Telegram → WhatsApp discovery →
+private auto-order. Adapter KlikQRIS yang sudah bekerja direuse; webhook/outbox harus
+idempotent, delivery channel-aware, dan seluruh flag baru default nonaktif.

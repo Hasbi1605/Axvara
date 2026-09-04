@@ -21,7 +21,7 @@ axvara/
 │   ├── DESIGN.md           # Apple Store + glassmorphism + motion
 │   ├── ARCHITECTURE.md     # Stack D1+R2, schema, API contract
 │   ├── TELEGRAM-BOT-KLIKQRIS-PLAN.md # Handoff rencana bot auto-order + PG
-│   ├── WHATSAPP-GROUP-BOT-PLAN.md # Handoff bot grup existing + katalog D1 + KlikQRIS
+│   ├── WHATSAPP-GROUP-BOT-PLAN.md # Handoff varian terpusat + bot grup existing
 │   └── VPS-RESEARCH.md     # Riset VPS gratis — kenapa Pages juara
 ├── public/
 │   ├── brand/
@@ -122,12 +122,13 @@ Aktivasi memerlukan owner gates (token/key/credential) yang dijelaskan di planni
 Repo `mocasus/telegram-auto-order-bot` hanya referensi UX, bukan source/fork.
 
 Rencana implementasi bot pada grup WhatsApp existing tersedia di
-`docs/WHATSAPP-GROUP-BOT-PLAN.md`. Keputusan rencananya adalah memakai Fonnte sebagai
-device gateway untuk nomor/grup yang sudah ada, tetap menjalankan seluruh business logic
-di Cloudflare AXVARA, membaca produk aktif langsung dari D1 tanpa menu kategori atau
-proses sinkronisasi, memindahkan transaksi ke private chat, dan memakai ulang integrasi
-KlikQRIS Telegram yang sudah aktif. Dokumen tersebut masih planning-only; runtime
-WhatsApp belum diimplementasikan.
+`docs/WHATSAPP-GROUP-BOT-PLAN.md`. Rencana tersebut terlebih dahulu memodelkan produk
+induk dan varian (plan, durasi, garansi, harga, stok, serta fulfillment) di D1/CMS agar
+website, Telegram, dan WhatsApp membaca katalog yang sama. UX WhatsApp dibuat ringkas:
+`list` hanya menampilkan nama produk, lalu input nama produk menampilkan detail beserta
+varian bernomor. Fonnte direncanakan sebagai device gateway nomor/grup existing; transaksi
+dan QRIS dipindahkan ke private chat serta memakai ulang KlikQRIS Telegram. Seluruhnya
+masih planning-only dan runtime varian/WhatsApp belum diimplementasikan.
 
 Setelah pembayaran diterima, tombol support bot membuka akun manusia `@axvara_support`;
 username bot tetap `@Axvara_bot`. Seluruh notifikasi admin dari order web maupun Telegram
