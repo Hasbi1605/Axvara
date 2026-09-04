@@ -9,6 +9,30 @@ import { formatRupiah } from "@/lib/utils";
 import { useCart } from "@/stores/cart";
 import { ProductCard } from "@/components/storefront/ProductCard";
 
+type VariantItem = {
+  id: number;
+  sku: string;
+  label: string;
+  duration_value: number | null;
+  duration_unit: string | null;
+  duration_label: string | null;
+  warranty_type: string;
+  warranty_value: number | null;
+  warranty_unit: string | null;
+  warranty_label: string | null;
+  price: number;
+  compare_price: number | null;
+  stock: number;
+  is_active: number;
+};
+
+type CatalogDetail = {
+  id: number;
+  name: string;
+  slug: string;
+  variants: VariantItem[];
+};
+
 export default function ProductDetailPage() {
   const { slug } = useParams<{ slug: string }>();
   const router = useRouter();
@@ -19,7 +43,7 @@ export default function ProductDetailPage() {
   const [activeImg, setActiveImg] = useState(0);
   const [detailLoading, setDetailLoading] = useState(true);
   const [detailError, setDetailError] = useState<string | null>(null);
-  const [catalogDetail, setCatalogDetail] = useState<any>(null);
+  const [catalogDetail, setCatalogDetail] = useState<CatalogDetail | null>(null);
   const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -61,7 +85,7 @@ export default function ProductDetailPage() {
         if (data?.product) {
           setCatalogDetail(data.product);
           // Auto-select if only one active variant
-          const activeVars = (data.product.variants || []).filter((v: any) => v.is_active && v.stock !== 0);
+          const activeVars = (data.product.variants || []).filter((v: VariantItem) => v.is_active && v.stock !== 0);
           if (activeVars.length === 1) {
             setSelectedVariantId(activeVars[0].id);
           }
@@ -123,16 +147,13 @@ export default function ProductDetailPage() {
     );
   }
 
-  const discount = product.comparePrice
-    ? Math.round((1 - product.price / product.comparePrice) * 100)
-    : 0;
   const outOfStock = product.stock !== undefined && product.stock !== null && product.stock !== -1 && product.stock <= 0;
 
   // Variant-aware derived values
   const variants = catalogDetail?.variants || [];
-  const activeVariants = variants.filter((v: any) => v.is_active);
+  const activeVariants = variants.filter((v: VariantItem) => v.is_active);
   const hasMultipleVariants = activeVariants.length > 1;
-  const selectedVariant = selectedVariantId ? activeVariants.find((v: any) => v.id === selectedVariantId) : null;
+  const selectedVariant = selectedVariantId ? activeVariants.find((v: VariantItem) => v.id === selectedVariantId) : null;
   const displayPrice = selectedVariant ? selectedVariant.price : product.price;
   const displayComparePrice = selectedVariant ? selectedVariant.compare_price : product.comparePrice;
   const variantOutOfStock = selectedVariant ? selectedVariant.stock === 0 : false;
@@ -289,7 +310,7 @@ export default function ProductDetailPage() {
             <div className="mt-4 space-y-2">
               <h3 className="text-sm font-medium text-white/60">Pilih Varian</h3>
               <div className="grid gap-2">
-                {activeVariants.map((v: any) => (
+                {activeVariants.map((v: VariantItem) => (
                   <button
                     key={v.id}
                     onClick={() => setSelectedVariantId(v.id)}

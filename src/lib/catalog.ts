@@ -8,6 +8,7 @@ import { queryAll, queryFirst, isD1Mode } from "@/lib/db";
 
 export type VariantSummary = {
   id: number;
+  product_id: number;
   sku: string;
   label: string;
   duration_value: number | null;
@@ -140,7 +141,7 @@ export async function getProductDetail(slugOrId: string | number): Promise<Produ
   if (!product) return null;
 
   const variants = await queryAll(
-    `SELECT id, sku, label, duration_value, duration_unit, duration_label,
+    `SELECT id, product_id, sku, label, duration_value, duration_unit, duration_label,
             warranty_type, warranty_value, warranty_unit, warranty_label,
             price, compare_price, stock, fulfillment_mode, is_active, sort_order
      FROM product_variants
@@ -176,6 +177,7 @@ async function getProductDetailLegacy(slugOrId: string | number): Promise<Produc
   // Build a synthetic "default" variant from product-level fields
   const defaultVariant: VariantSummary = {
     id: 0,
+    product_id: Number(product.id),
     sku: `DEFAULT-${product.id}`,
     label: "Default",
     duration_value: null,
@@ -299,6 +301,7 @@ function parseAliases(raw: unknown): string[] {
 function mapVariant(row: Record<string, unknown>): VariantSummary {
   return {
     id: Number(row.id),
+    product_id: Number(row.product_id || 0),
     sku: String(row.sku),
     label: String(row.label),
     duration_value: row.duration_value != null ? Number(row.duration_value) : null,

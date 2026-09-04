@@ -20,9 +20,17 @@ export function isAllowedImageType(type: string): boolean {
   return new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]).has(type.toLowerCase());
 }
 
-export function aggregateQty(items: { product_id: number; qty: number }[]): Map<number, number> {
-  const m = new Map<number, number>();
-  for (const it of items) m.set(it.product_id, (m.get(it.product_id) ?? 0) + it.qty);
+export function aggregateQty(items: { product_id: number; variant_id?: number; qty: number }[]): Map<string | number, number> {
+  const m = new Map<string | number, number>();
+  for (const it of items) {
+    if (it.variant_id) {
+      const key = `${it.product_id}:${it.variant_id}`;
+      m.set(key, (m.get(key) ?? 0) + it.qty);
+    } else {
+      m.set(it.product_id, (m.get(it.product_id) ?? 0) + it.qty);
+      m.set(String(it.product_id), (m.get(String(it.product_id)) ?? 0) + it.qty);
+    }
+  }
   return m;
 }
 

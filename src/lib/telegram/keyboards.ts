@@ -18,7 +18,7 @@ export const cb = {
   variants: (productId: number) => `vars:${productId}`,
   variant: (variantId: number) => `var:${variantId}`,
   confirm: (productId: number) => `confirm:${productId}`,
-  confirmVariant: (variantId: number) => `cfv:${variantId}`,
+  confirmVariant: (productId: number, variantId: number) => `cfv:${productId}:${variantId}`,
   order: (orderCode: string) => `order:${orderCode}`,
   cancel: (orderCode: string) => `cancel:${orderCode}`,
   refresh: (orderCode: string) => `refresh:${orderCode}`,
@@ -166,7 +166,7 @@ export function confirmVariantPurchaseKeyboard(productId: number, variantId: num
   return {
     inline_keyboard: [
       [
-        { text: "✅ Saya Paham, Lanjut Bayar", callback_data: cb.confirmVariant(variantId) },
+        { text: "✅ Saya Paham, Lanjut Bayar", callback_data: cb.confirmVariant(productId, variantId) },
       ],
       [
         { text: "📜 Syarat Garansi", callback_data: "warranty" },

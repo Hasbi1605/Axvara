@@ -1,121 +1,394 @@
-// src/lib/whatsapp/gateway.ts — Fonnte WhatsApp gateway adapter
-// Handles outbound messaging and media via Fonnte API.
-// This is the only file that talks to the Fonnte API.
+// src/lib/whatsapp/gateway.ts — Official Fonnte WhatsApp gateway adapter
+// Handles parsing of incoming Fonnte webhook payloads, timing-safe auth,
+// SSRF-safe streaming media download, and outbound messaging via Fonnte API.
+
+import { NextRequest } from "next/server";
 
 const FONNTE_API_BASE = "https://api.fonnte.com";
+export const MAX_BODY_SIZE = 64_000; // 64 KB
+export const MAX_MEDIA_SIZE = 5 * 1024 * 1024; // 5 MB
 
-function getFonnteToken(): string {
-  return process.env.FONNTE_TOKEN || "";
-}
+export type FonnteIncomingMessage = {
+  rawSender: string;
+  conversationId: string; // group ID (e.g. 120363024823948293@g.us) or direct sender
+  memberId: string; // phone number of individual (e.g. 628123456789)
+  message: string;
+  name: string;
+  inboxId: string;
+  replyToInboxId?: string;
+  isGroup: boolean;
+  attachment?: {
+    url: string;
+    filename?: string;
+    extension?: string;
+  };
+};
 
-function getAllowedGroups(): string[] {
-  const raw = process.env.WHATSAPP_GROUP_ALLOWLIST || "";
-  return raw.split(",").map(s => s.trim()).filter(Boolean);
-}
-
-export function isGroupAllowed(groupId: string): boolean {
-  return getAllowedGroups().includes(groupId);
-}
-
-export function isSelfMessage(senderId: string): boolean {
-  const botNumber = process.env.WHATSAPP_BOT_NUMBER || "";
-  return botNumber !== "" && senderId === botNumber;
-}
+export type FonnteSendResult = {
+  ok: boolean;
+  messageId?: string;
+  error?: string;
+};
 
 export type SendMessageParams = {
-  target: string; // group ID or phone number
+  target: string; // group JID or phone number
   message: string;
-  replyMessageId?: string;
+  inboxId?: string; // reply to incoming inboxid
 };
 
 export type SendImageParams = {
   target: string;
   imageUrl: string;
   caption?: string;
-  replyMessageId?: string;
+  inboxId?: string; // reply to incoming inboxid
+  filename?: string;
 };
 
-export async function sendTextMessage(params: SendMessageParams): Promise<{ ok: boolean; messageId?: string }> {
+// ---- Timing-Safe Comparison ----
+
+export function timingSafeEqual(a: string, b: string): boolean {
+  if (typeof a !== "string" || typeof b !== "string") return false;
+  const enc = new TextEncoder();
+  const aBuf = enc.encode(a);
+  const bBuf = enc.encode(b);
+  if (aBuf.byteLength !== bBuf.byteLength) return false;
+  let c = 0;
+  for (let i = 0; i < aBuf.byteLength; i++) {
+    c |= aBuf[i] ^ bBuf[i];
+  }
+  return c === 0;
+}
+
+// ---- Webhook Authentication ----
+
+export function authenticateWebhook(request: NextRequest): { ok: boolean; reason?: string } {
+  const expectedSecret = process.env.WHATSAPP_WEBHOOK_TOKEN;
+  if (!expectedSecret || expectedSecret.trim() === "") {
+    return { ok: false, reason: "webhook_not_configured" };
+  }
+
+  // Check header tokens first
+  const headerToken =
+    request.headers.get("x-webhook-token") ||
+    request.headers.get("x-fonnte-token") ||
+    request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
+    "";
+
+  // Check query param fallback
+  const queryToken =
+    request.nextUrl.searchParams.get("token") ||
+    request.nextUrl.searchParams.get("secret") ||
+    "";
+
+  const tokenToTest = headerToken.trim() || queryToken.trim();
+  if (!tokenToTest) {
+    return { ok: false, reason: "missing_token" };
+  }
+
+  if (!timingSafeEqual(tokenToTest, expectedSecret)) {
+    return { ok: false, reason: "invalid_token" };
+  }
+
+  return { ok: true };
+}
+
+// ---- Fonnte Payload Parser ----
+
+export function parseFonntePayload(body: unknown): FonnteIncomingMessage | null {
+  if (!body || typeof body !== "object") return null;
+  const b = body as Record<string, unknown>;
+
+  const sender = String(b.sender || "").trim();
+  if (!sender) return null;
+
+  const memberRaw = String(b.member || "").trim();
+  const inboxId = String(b.inboxid || b.id || "").trim();
+  const message = String(b.message || "").trim();
+  const name = String(b.name || "").trim();
+  const url = String(b.url || b.media || "").trim();
+  const filename = b.filename ? String(b.filename).trim() : undefined;
+  const extension = b.extension ? String(b.extension).trim().toLowerCase() : undefined;
+
+  // Group detection:
+  // In Fonnte group messages, `sender` is the group JID (ends with @g.us or contains @g.us)
+  // and `member` is the sender's phone number.
+  const isGroup = Boolean(
+    sender.includes("@g.us") ||
+    b.group ||
+    b.isGroup ||
+    (memberRaw && memberRaw !== sender)
+  );
+
+  const conversationId = sender;
+  // For group messages, member is memberRaw. For direct messages, member is sender.
+  const memberId = isGroup && memberRaw ? memberRaw : sender;
+
+  const msg: FonnteIncomingMessage = {
+    rawSender: sender,
+    conversationId,
+    memberId,
+    message,
+    name,
+    inboxId,
+    replyToInboxId: b.reply ? String(b.reply).trim() : undefined,
+    isGroup,
+  };
+
+  if (url) {
+    msg.attachment = {
+      url,
+      filename,
+      extension,
+    };
+  }
+
+  return msg;
+}
+
+// ---- Group Allowlist & Self Check ----
+
+export function isGroupAllowed(groupId: string): boolean {
+  const raw = process.env.WHATSAPP_GROUP_ALLOWLIST || "";
+  const allowed = raw.split(",").map((s) => s.trim()).filter(Boolean);
+  if (allowed.length === 0) return false; // Fail closed if allowlist not set
+  return allowed.includes(groupId);
+}
+
+export function isSelfMessage(memberId: string): boolean {
+  const botNumber = (process.env.WHATSAPP_BOT_NUMBER || "").trim().replace(/\D/g, "");
+  if (!botNumber) return false;
+  const cleanMember = memberId.replace(/\D/g, "");
+  const normBot = botNumber.startsWith("62") ? botNumber.slice(2) : botNumber.replace(/^0/, "");
+  const normMember = cleanMember.startsWith("62") ? cleanMember.slice(2) : cleanMember.replace(/^0/, "");
+  return normBot === normMember || cleanMember === botNumber || cleanMember.endsWith(botNumber);
+}
+
+// ---- Outbound Messaging ----
+
+function getFonnteToken(): string {
+  return process.env.FONNTE_TOKEN || "";
+}
+
+export async function sendTextMessage(params: SendMessageParams): Promise<FonnteSendResult> {
   const token = getFonnteToken();
-  if (!token) return { ok: false };
+  if (!token) return { ok: false, error: "no_fonnte_token" };
 
   try {
-    const body: Record<string, string> = {
+    const payload: Record<string, string> = {
       target: params.target,
       message: params.message,
     };
-    if (params.replyMessageId) {
-      body.reply = params.replyMessageId;
+    // Use inboxid for replying as per official Fonnte spec
+    if (params.inboxId) {
+      payload.inboxid = params.inboxId;
     }
 
     const res = await fetch(`${FONNTE_API_BASE}/send`, {
       method: "POST",
       headers: {
-        "Authorization": token,
+        Authorization: token,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify(payload),
       signal: AbortSignal.timeout(15_000),
     });
 
-    const data = await res.json().catch(() => ({}));
+    const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    const ok = res.ok && (data.status === true || data.status === "true");
     return {
-      ok: res.ok && data.status === true,
+      ok,
       messageId: data.id ? String(data.id) : undefined,
+      error: ok ? undefined : String(data.reason || data.message || "send_failed"),
     };
-  } catch {
-    return { ok: false };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "network_error" };
   }
 }
 
-export async function sendImageMessage(params: SendImageParams): Promise<{ ok: boolean; messageId?: string }> {
+export async function sendImageMessage(params: SendImageParams): Promise<FonnteSendResult> {
   const token = getFonnteToken();
-  if (!token) return { ok: false };
+  if (!token) return { ok: false, error: "no_fonnte_token" };
 
   try {
-    const body: Record<string, string> = {
+    const payload: Record<string, string> = {
       target: params.target,
       url: params.imageUrl,
       type: "image",
     };
-    if (params.caption) body.message = params.caption;
-    if (params.replyMessageId) body.reply = params.replyMessageId;
+    if (params.caption) payload.message = params.caption;
+    if (params.inboxId) payload.inboxid = params.inboxId;
+    if (params.filename) payload.filename = params.filename;
 
     const res = await fetch(`${FONNTE_API_BASE}/send`, {
       method: "POST",
       headers: {
-        "Authorization": token,
+        Authorization: token,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify(payload),
       signal: AbortSignal.timeout(15_000),
     });
 
-    const data = await res.json().catch(() => ({}));
+    const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    const ok = res.ok && (data.status === true || data.status === "true");
     return {
-      ok: res.ok && data.status === true,
+      ok,
       messageId: data.id ? String(data.id) : undefined,
+      error: ok ? undefined : String(data.reason || data.message || "send_failed"),
     };
-  } catch {
-    return { ok: false };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "network_error" };
   }
 }
 
-// Download media from Fonnte (for proof images)
-export async function downloadMedia(mediaUrl: string): Promise<{ buffer: ArrayBuffer; contentType: string } | null> {
-  const token = getFonnteToken();
-  if (!token || !mediaUrl) return null;
+// ---- SSRF-Safe Media Download ----
 
+export function isPrivateIp(hostname: string): boolean {
+  const clean = hostname.trim().toLowerCase();
+  if (clean === "localhost" || clean.endsWith(".localhost") || clean.endsWith(".local") || clean === "::1") {
+    return true;
+  }
+  // Check IPv4 octets
+  const ipv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(clean);
+  if (ipv4) {
+    const [, a, b] = ipv4.map(Number);
+    if (a === 127) return true; // 127.0.0.0/8
+    if (a === 10) return true; // 10.0.0.0/8
+    if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12
+    if (a === 192 && b === 168) return true; // 192.168.0.0/16
+    if (a === 169 && b === 254) return true; // 169.254.0.0/16 link-local
+    if (a === 0) return true; // 0.0.0.0/8
+  }
+  return false;
+}
+
+export function checkImageMagicBytes(buf: Uint8Array, mimeType: string): boolean {
+  const t = mimeType.toLowerCase();
+  if (t === "image/jpeg" || t === "image/jpg") {
+    return buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+  }
+  if (t === "image/png") {
+    return (
+      buf.length >= 8 &&
+      buf[0] === 0x89 &&
+      buf[1] === 0x50 &&
+      buf[2] === 0x4e &&
+      buf[3] === 0x47
+    );
+  }
+  if (t === "image/webp") {
+    return (
+      buf.length >= 12 &&
+      buf[0] === 0x52 &&
+      buf[1] === 0x49 &&
+      buf[2] === 0x46 &&
+      buf[3] === 0x46 &&
+      buf[8] === 0x57 &&
+      buf[9] === 0x45 &&
+      buf[10] === 0x42 &&
+      buf[11] === 0x50
+    );
+  }
+  return false;
+}
+
+export async function downloadMediaSafely(
+  mediaUrl: string,
+  maxBytes: number = MAX_MEDIA_SIZE,
+): Promise<{ buffer: Uint8Array; contentType: string; sha256: string } | null> {
   try {
-    const res = await fetch(mediaUrl, {
-      headers: { "Authorization": token },
-      signal: AbortSignal.timeout(30_000),
-    });
-    if (!res.ok) return null;
+    const parsed = new URL(mediaUrl);
+    // Protocol must be strictly HTTPS
+    if (parsed.protocol !== "https:") return null;
 
-    const buffer = await res.arrayBuffer();
-    const contentType = res.headers.get("content-type") || "application/octet-stream";
-    return { buffer, contentType };
+    // Check SSRF
+    if (isPrivateIp(parsed.hostname)) return null;
+
+    const token = getFonnteToken();
+    const headers: Record<string, string> = {};
+    if (token) headers.Authorization = token;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30_000);
+
+    const res = await fetch(mediaUrl, {
+      headers,
+      signal: controller.signal,
+      redirect: "manual", // Do not blindly follow redirects to avoid SSRF redirect hops
+    });
+    clearTimeout(timeout);
+
+    // If redirected, check new destination
+    let response = res;
+    if (res.status === 301 || res.status === 302 || res.status === 307 || res.status === 308) {
+      const location = res.headers.get("location");
+      if (!location) return null;
+      const redirectUrl = new URL(location, parsed);
+      if (redirectUrl.protocol !== "https:" || isPrivateIp(redirectUrl.hostname)) return null;
+
+      const redirController = new AbortController();
+      const redirTimeout = setTimeout(() => redirController.abort(), 20_000);
+      response = await fetch(redirectUrl.toString(), {
+        headers,
+        signal: redirController.signal,
+        redirect: "error", // At most 1 safe redirect
+      });
+      clearTimeout(redirTimeout);
+    }
+
+    if (!response.ok || !response.body) return null;
+
+    // Streaming body with size limit
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let receivedBytes = 0;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        receivedBytes += value.byteLength;
+        if (receivedBytes > maxBytes) {
+          await reader.cancel("Size limit exceeded");
+          return null;
+        }
+        chunks.push(value);
+      }
+    }
+
+    // Combine chunks
+    const fullBuffer = new Uint8Array(receivedBytes);
+    let offset = 0;
+    for (const chunk of chunks) {
+      fullBuffer.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+
+    // Determine and validate Content-Type
+    const rawType = (response.headers.get("content-type") || "").toLowerCase().split(";")[0].trim();
+    let detectedType = rawType;
+    if (!detectedType || detectedType === "application/octet-stream") {
+      // Guess by magic bytes
+      if (checkImageMagicBytes(fullBuffer, "image/jpeg")) detectedType = "image/jpeg";
+      else if (checkImageMagicBytes(fullBuffer, "image/png")) detectedType = "image/png";
+      else if (checkImageMagicBytes(fullBuffer, "image/webp")) detectedType = "image/webp";
+      else return null;
+    }
+
+    if (!checkImageMagicBytes(fullBuffer, detectedType)) {
+      return null;
+    }
+
+    // Compute SHA-256
+    const hashBuffer = await crypto.subtle.digest("SHA-256", fullBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const sha256 = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+
+    return {
+      buffer: fullBuffer,
+      contentType: detectedType,
+      sha256,
+    };
   } catch {
     return null;
   }

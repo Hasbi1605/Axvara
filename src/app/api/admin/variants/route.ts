@@ -1,18 +1,16 @@
-// POST /api/admin/variants — Create variant
+// POST /api/admin/variants — Create variant or batch save
 // PUT /api/admin/variants?id= — Update variant
-// DELETE /api/admin/variants?id= — Deactivate variant
+// DELETE /api/admin/variants?id= — Deactivate/delete variant
 // GET /api/admin/variants?product_id= — List variants for a product
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { queryAll, queryFirst, execRun, isD1Mode } from "@/lib/db";
+import { queryAll, queryFirst, execRun, getD1, D1Statement } from "@/lib/db";
 import { isEnabled } from "@/lib/feature-flags";
 
 export const runtime = "edge";
 
-// Auth check helper (reuse existing pattern)
 async function requireAdmin(request: NextRequest): Promise<boolean> {
-  // Import auth module dynamically to match project patterns
   try {
     const { requireAdmin: checkAuth } = await import("@/lib/auth");
     const result = await checkAuth(request);
@@ -22,7 +20,8 @@ async function requireAdmin(request: NextRequest): Promise<boolean> {
   }
 }
 
-const VariantSchema = z.object({
+const SingleVariantSchema = z.object({
+  id: z.number().int().positive().optional(),
   product_id: z.number().int().positive(),
   sku: z.string().min(1).max(50).regex(/^[A-Z0-9-]+$/i, "SKU: hanya huruf, angka, dan dash"),
   label: z.string().min(1).max(100),
@@ -41,6 +40,31 @@ const VariantSchema = z.object({
   sort_order: z.number().int().nonnegative().default(0),
 });
 
+const BatchVariantSchema = z.object({
+  product_id: z.number().int().positive(),
+  aliases: z.array(z.string().trim().min(1).max(50)).optional(),
+  variants: z.array(SingleVariantSchema).min(1, "Minimal 1 varian"),
+});
+
+function validateCrossFields(v: z.infer<typeof SingleVariantSchema>): string | null {
+  if (v.compare_price != null && v.compare_price <= v.price) {
+    return `Varian "${v.label}": harga coret harus lebih besar dari harga jual.`;
+  }
+  if (v.duration_unit && v.duration_unit !== "lifetime" && v.duration_unit !== "custom" && v.duration_value == null) {
+    return `Varian "${v.label}": nilai durasi wajib diisi jika unit durasi dipilih.`;
+  }
+  if (v.duration_value != null && !v.duration_unit) {
+    return `Varian "${v.label}": unit durasi wajib dipilih jika nilai durasi diisi.`;
+  }
+  if (v.warranty_type === "limited" && (v.warranty_value == null || !v.warranty_unit)) {
+    return `Varian "${v.label}": nilai dan unit garansi wajib diisi untuk garansi terbatas.`;
+  }
+  if (v.warranty_type === "custom" && !v.warranty_label) {
+    return `Varian "${v.label}": label garansi wajib diisi jika tipe garansi custom.`;
+  }
+  return null;
+}
+
 export async function GET(request: NextRequest) {
   const authed = await requireAdmin(request);
   if (!authed) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -52,12 +76,20 @@ export async function GET(request: NextRequest) {
   const productId = request.nextUrl.searchParams.get("product_id");
   if (!productId) return NextResponse.json({ error: "product_id_required" }, { status: 400 });
 
+  const product = await queryFirst(`SELECT id, name, aliases FROM products WHERE id=?`, Number(productId));
+  if (!product) return NextResponse.json({ error: "product_not_found" }, { status: 404 });
+
   const variants = await queryAll(
     `SELECT * FROM product_variants WHERE product_id=? ORDER BY sort_order ASC, price ASC, id ASC`,
-    Number(productId)
+    Number(productId),
   );
 
-  return NextResponse.json({ variants });
+  let aliases: string[] = [];
+  try {
+    aliases = typeof product.aliases === "string" ? JSON.parse(product.aliases) : (product.aliases as string[] || []);
+  } catch { aliases = []; }
+
+  return NextResponse.json({ variants, aliases });
 }
 
 export async function POST(request: NextRequest) {
@@ -68,24 +100,138 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "variants_not_enabled" }, { status: 503 });
   }
 
-  const body = await request.json();
-  const parsed = VariantSchema.safeParse(body);
+  const raw = await request.json().catch(() => null);
+  if (!raw) return NextResponse.json({ error: "invalid_json" }, { status: 400 });
+
+  // Handle batch save
+  if (Array.isArray(raw.variants)) {
+    const parsed = BatchVariantSchema.safeParse(raw);
+    if (!parsed.success) {
+      return NextResponse.json({ error: "validation_failed", details: parsed.error.flatten() }, { status: 400 });
+    }
+    const { product_id, variants, aliases } = parsed.data;
+
+    // Check product exists
+    const product = await queryFirst(`SELECT id, is_active FROM products WHERE id=?`, product_id);
+    if (!product) return NextResponse.json({ error: "product_not_found" }, { status: 404 });
+
+    // Active product must have at least 1 active variant
+    if (Number(product.is_active) === 1) {
+      const activeCount = variants.filter((v) => v.is_active === 1).length;
+      if (activeCount === 0) {
+        return NextResponse.json({ error: "Produk aktif wajib memiliki minimal satu varian aktif." }, { status: 400 });
+      }
+    }
+
+    // Cross-validate each variant & check SKU duplicates inside batch
+    const seenSkus = new Set<string>();
+    for (const v of variants) {
+      const crossErr = validateCrossFields(v);
+      if (crossErr) return NextResponse.json({ error: crossErr }, { status: 400 });
+      const upperSku = v.sku.toUpperCase();
+      if (seenSkus.has(upperSku)) {
+        return NextResponse.json({ error: `SKU duplikat dalam daftar: ${upperSku}` }, { status: 400 });
+      }
+      seenSkus.add(upperSku);
+    }
+
+    // Check SKU collisions in DB with other products
+    for (const v of variants) {
+      const conflict = v.id
+        ? await queryFirst(`SELECT id FROM product_variants WHERE sku=? AND id!=?`, v.sku, v.id)
+        : await queryFirst(`SELECT id FROM product_variants WHERE sku=?`, v.sku);
+      if (conflict) {
+        return NextResponse.json({ error: `SKU ${v.sku} sudah digunakan oleh varian lain.` }, { status: 409 });
+      }
+    }
+
+    // Execute atomic batch save
+    const d1 = getD1();
+    const now = new Date().toISOString();
+
+    if (d1) {
+      const statements: D1Statement[] = [];
+
+      // Update aliases on product if provided
+      if (aliases) {
+        statements.push(
+          d1.prepare(`UPDATE products SET aliases=?, updated_at=datetime('now') WHERE id=?`).bind(
+            JSON.stringify(aliases),
+            product_id,
+          ),
+        );
+      }
+
+      for (const v of variants) {
+        if (v.id) {
+          statements.push(
+            d1.prepare(
+              `UPDATE product_variants SET
+                 sku=?, label=?, duration_value=?, duration_unit=?, duration_label=?,
+                 warranty_type=?, warranty_value=?, warranty_unit=?, warranty_label=?,
+                 price=?, compare_price=?, stock=?, fulfillment_mode=?, is_active=?,
+                 sort_order=?, updated_at=datetime('now')
+               WHERE id=? AND product_id=?`,
+            ).bind(
+              v.sku, v.label,
+              v.duration_value ?? null, v.duration_unit ?? null, v.duration_label ?? null,
+              v.warranty_type, v.warranty_value ?? null, v.warranty_unit ?? null, v.warranty_label ?? null,
+              v.price, v.compare_price ?? null, v.stock, v.fulfillment_mode, v.is_active,
+              v.sort_order, v.id, product_id,
+            ),
+          );
+        } else {
+          statements.push(
+            d1.prepare(
+              `INSERT INTO product_variants (
+                 product_id, sku, label, duration_value, duration_unit, duration_label,
+                 warranty_type, warranty_value, warranty_unit, warranty_label,
+                 price, compare_price, stock, fulfillment_mode, is_active, sort_order,
+                 created_at, updated_at
+               ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            ).bind(
+              product_id, v.sku, v.label,
+              v.duration_value ?? null, v.duration_unit ?? null, v.duration_label ?? null,
+              v.warranty_type, v.warranty_value ?? null, v.warranty_unit ?? null, v.warranty_label ?? null,
+              v.price, v.compare_price ?? null, v.stock, v.fulfillment_mode, v.is_active,
+              v.sort_order, now, now,
+            ),
+          );
+        }
+      }
+
+      await d1.batch(statements);
+      return NextResponse.json({ ok: true, saved: variants.length });
+    }
+
+    // Dev fallback
+    if (aliases) {
+      await execRun(`UPDATE products SET aliases=? WHERE id=?`, JSON.stringify(aliases), product_id);
+    }
+    for (const v of variants) {
+      if (v.id) {
+        await execRun(
+          `UPDATE product_variants SET sku=?, label=?, price=?, stock=?, is_active=?, sort_order=? WHERE id=?`,
+          v.sku, v.label, v.price, v.stock, v.is_active, v.sort_order, v.id,
+        );
+      }
+    }
+    return NextResponse.json({ ok: true, saved: variants.length });
+  }
+
+  // Handle single variant create
+  const parsed = SingleVariantSchema.safeParse(raw);
   if (!parsed.success) {
     return NextResponse.json({ error: "validation_failed", details: parsed.error.flatten() }, { status: 400 });
   }
 
   const v = parsed.data;
+  const crossErr = validateCrossFields(v);
+  if (crossErr) return NextResponse.json({ error: crossErr }, { status: 400 });
 
-  // Validate compare_price > price
-  if (v.compare_price != null && v.compare_price <= v.price) {
-    return NextResponse.json({ error: "compare_price harus lebih besar dari price" }, { status: 400 });
-  }
-
-  // Validate product exists
   const product = await queryFirst(`SELECT id FROM products WHERE id=?`, v.product_id);
   if (!product) return NextResponse.json({ error: "product_not_found" }, { status: 404 });
 
-  // Check SKU uniqueness
   const existingSku = await queryFirst(`SELECT id FROM product_variants WHERE sku=?`, v.sku);
   if (existingSku) return NextResponse.json({ error: "sku_already_exists" }, { status: 409 });
 
@@ -99,7 +245,7 @@ export async function POST(request: NextRequest) {
     v.duration_value ?? null, v.duration_unit ?? null, v.duration_label ?? null,
     v.warranty_type, v.warranty_value ?? null, v.warranty_unit ?? null, v.warranty_label ?? null,
     v.price, v.compare_price ?? null, v.stock, v.fulfillment_mode,
-    v.is_active, v.sort_order, now, now
+    v.is_active, v.sort_order, now, now,
   );
 
   return NextResponse.json({ ok: true, id: result.lastInsertRowid }, { status: 201 });
@@ -117,21 +263,36 @@ export async function PUT(request: NextRequest) {
   if (!id) return NextResponse.json({ error: "id_required" }, { status: 400 });
 
   const body = await request.json();
-  const parsed = VariantSchema.partial().safeParse(body);
+  const parsed = SingleVariantSchema.partial().safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: "validation_failed", details: parsed.error.flatten() }, { status: 400 });
   }
 
   const v = parsed.data;
 
-  // Validate compare_price > price if both present
-  if (v.compare_price != null && v.price != null && v.compare_price <= v.price) {
-    return NextResponse.json({ error: "compare_price harus lebih besar dari price" }, { status: 400 });
-  }
-
   // Check existing variant
-  const existing = await queryFirst(`SELECT id, product_id FROM product_variants WHERE id=?`, Number(id));
+  const existing = await queryFirst(`SELECT * FROM product_variants WHERE id=?`, Number(id));
   if (!existing) return NextResponse.json({ error: "variant_not_found" }, { status: 404 });
+
+  // Merge with existing for cross field validation
+  const merged = { ...existing, ...v } as z.infer<typeof SingleVariantSchema>;
+  const crossErr = validateCrossFields(merged);
+  if (crossErr) return NextResponse.json({ error: crossErr }, { status: 400 });
+
+  // Active product check if deactivating
+  if (v.is_active === 0 && Number(existing.is_active) === 1) {
+    const product = await queryFirst(`SELECT id, is_active FROM products WHERE id=?`, Number(existing.product_id));
+    if (product && Number(product.is_active) === 1) {
+      const otherActive = await queryFirst(
+        `SELECT COUNT(*) as count FROM product_variants WHERE product_id=? AND is_active=1 AND id!=?`,
+        Number(existing.product_id),
+        Number(id),
+      );
+      if (!otherActive || Number(otherActive.count) === 0) {
+        return NextResponse.json({ error: "Produk aktif wajib memiliki minimal satu varian aktif." }, { status: 400 });
+      }
+    }
+  }
 
   // Check SKU uniqueness if changed
   if (v.sku) {
@@ -139,7 +300,6 @@ export async function PUT(request: NextRequest) {
     if (skuConflict) return NextResponse.json({ error: "sku_already_exists" }, { status: 409 });
   }
 
-  // Build dynamic UPDATE
   const updates: string[] = [];
   const params: unknown[] = [];
   const fields: [string, unknown][] = [
@@ -177,13 +337,28 @@ export async function DELETE(request: NextRequest) {
   const id = request.nextUrl.searchParams.get("id");
   if (!id) return NextResponse.json({ error: "id_required" }, { status: 400 });
 
-  // Check if variant has orders — if so, deactivate instead of delete
+  const existing = await queryFirst(`SELECT id, product_id, is_active FROM product_variants WHERE id=?`, Number(id));
+  if (!existing) return NextResponse.json({ error: "variant_not_found" }, { status: 404 });
+
+  // Ensure active product retains at least 1 variant
+  const product = await queryFirst(`SELECT id, is_active FROM products WHERE id=?`, Number(existing.product_id));
+  if (product && Number(product.is_active) === 1 && Number(existing.is_active) === 1) {
+    const otherActive = await queryFirst(
+      `SELECT COUNT(*) as count FROM product_variants WHERE product_id=? AND is_active=1 AND id!=?`,
+      Number(existing.product_id),
+      Number(id),
+    );
+    if (!otherActive || Number(otherActive.count) === 0) {
+      return NextResponse.json({ error: "Produk aktif wajib memiliki minimal satu varian aktif." }, { status: 400 });
+    }
+  }
+
+  // Check if variant has orders — if so, soft-deactivate instead of hard delete
   const hasOrders = await queryFirst(
-    `SELECT 1 FROM orders WHERE variant_id=? LIMIT 1`, Number(id)
+    `SELECT 1 FROM orders WHERE variant_id=? LIMIT 1`, Number(id),
   );
 
   if (hasOrders) {
-    // Soft-deactivate only
     await execRun(`UPDATE product_variants SET is_active=0, updated_at=datetime('now') WHERE id=?`, Number(id));
     return NextResponse.json({ ok: true, action: "deactivated" });
   }

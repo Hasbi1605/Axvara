@@ -9,10 +9,22 @@ import type { Product } from "@/lib/products";
 
 type Method = "qris" | "ewallet" | "bank";
 
-type QuotedItem = { product_id: number; name: string; price: number; qty: number; stock: number; image: string };
+type QuotedItem = { product_id: number; variant_id?: number; name: string; price: number; qty: number; stock: number; image: string };
 type QuotePaymentMethod = { id: string; label: string; account_number: string; account_name: string; qris_url: string | null };
 type QuoteIssue = { product_id: number; type: string; message: string };
 type PriceChange = { product_id: number; name: string; previous_price: number; current_price: number; message: string };
+
+type DirectProduct = Product & {
+  variantId?: number;
+  variantLabel?: string;
+};
+
+type CatalogVariant = {
+  id: number;
+  label: string;
+  price: number;
+  stock: number;
+};
 
 function CheckoutInner() {
   const router = useRouter();
@@ -21,7 +33,7 @@ function CheckoutInner() {
   const clear = useCart((s) => s.clear);
 
   // Direct checkout from product card via ?buy=slug — fetch authoritative from D1 (B01)
-  const [directProduct, setDirectProduct] = React.useState<Product | null>(null);
+  const [directProduct, setDirectProduct] = React.useState<DirectProduct | null>(null);
   const [directLoading, setDirectLoading] = React.useState(false);
   const [directError, setDirectError] = React.useState<string | null>(null);
   const buySlug = searchParams.get("buy");
@@ -41,8 +53,8 @@ function CheckoutInner() {
           try {
             const catRes = await fetch(`/api/catalog?slug=${encodeURIComponent(buySlug)}`);
             if (catRes.ok) {
-              const catData = await catRes.json();
-              const variant = (catData.product?.variants || []).find((v: any) => String(v.id) === buyVariantId);
+              const catData = await catRes.json() as { product?: { variants?: CatalogVariant[] } };
+              const variant = (catData.product?.variants || []).find((v) => String(v.id) === buyVariantId);
               if (variant) {
                 setDirectProduct({
                   ...found,
@@ -50,7 +62,7 @@ function CheckoutInner() {
                   stock: variant.stock === -1 ? undefined : variant.stock,
                   variantId: variant.id,
                   variantLabel: variant.label,
-                } as any);
+                });
                 return;
               }
             }
@@ -65,11 +77,11 @@ function CheckoutInner() {
   const isDirect = Boolean(buySlug);
   const items = useMemo(
     () => isDirect
-      ? (buyProduct ? [{ ...buyProduct, qty: 1, id: buyProduct.id, price: buyProduct.price, image: buyProduct.image, name: buyProduct.name }] : [])
+      ? (buyProduct ? [{ ...buyProduct, qty: 1, id: buyProduct.id, price: buyProduct.price, image: buyProduct.image, name: buyProduct.name, variantId: buyProduct.variantId, variantLabel: buyProduct.variantLabel }] : [])
       : cartItems,
     [isDirect, buyProduct, cartItems],
   );
-  const subtotal = items.reduce((a, b) => a + (b as { price: number; qty: number }).price * (b as { qty: number }).qty, 0);
+  const subtotal = items.reduce((a, b) => a + b.price * b.qty, 0);
 
   const [method, setMethod] = useState<Method | null>(null);
   const [bankKey, setBankKey] = useState<string | null>(null);
@@ -99,7 +111,7 @@ function CheckoutInner() {
   const [quoteAccepted, setQuoteAccepted] = useState(false);
   const quoteRequestId = React.useRef(0);
 
-  const fetchQuote = useCallback(async (quoteItems: { slug: string; qty: number; expected_price: number }[]) => {
+  const fetchQuote = useCallback(async (quoteItems: { slug: string; variant_id?: number; qty: number; expected_price: number }[]) => {
     if (quoteItems.length === 0) return;
     const requestId = ++quoteRequestId.current;
     setQuoteLoading(true);
@@ -152,6 +164,7 @@ function CheckoutInner() {
   const quoteRequestItems = useMemo(
     () => items.map((item) => ({
       slug: item.slug,
+      variant_id: item.variantId,
       qty: Number(item.qty) || 1,
       expected_price: Number(item.price),
     })),
@@ -256,7 +269,11 @@ function CheckoutInner() {
     }
     setLoading(true);
     const payMethod = method === "bank" ? `bank:${bankKey}` as const : method!;
-    const payloadItems = quotedItems.map((item) => ({ product_id: item.product_id, qty: item.qty }));
+    const payloadItems = quotedItems.map((item) => ({
+      product_id: item.product_id,
+      variant_id: item.variant_id,
+      qty: item.qty,
+    }));
     try {
       const r = await fetch("/api/orders", {
         method: "POST",

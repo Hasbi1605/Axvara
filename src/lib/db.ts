@@ -18,19 +18,19 @@ export type DbProduct = {
   sort_order: number | null;
 };
 
-type D1Result = { results?: unknown[]; meta: { last_row_id?: number; changes?: number } };
-type D1Statement = {
+export type D1Result = { results?: unknown[]; meta: { last_row_id?: number; changes?: number } };
+export type D1Statement = {
   bind: (...p: unknown[]) => D1Statement;
   all: () => Promise<{ results: unknown[] }>;
   first: () => Promise<unknown>;
   run: () => Promise<D1Result>;
 };
-type D1 = {
+export type D1 = {
   prepare: (sql: string) => D1Statement;
   batch: (statements: D1Statement[]) => Promise<D1Result[]>;
 };
 
-function getD1(): D1 | null {
+export function getD1(): D1 | null {
   const g = globalThis as unknown as Record<string, unknown>;
   const env = process.env as unknown as Record<string, unknown>;
   return (g.DB as D1 | undefined) ?? (env.DB as D1 | undefined) ?? null;
@@ -383,13 +383,21 @@ export class OrderTransitionError extends Error {
   }
 }
 
+export type AtomicOrderItem = {
+  product_id: number;
+  variant_id?: number;
+  name: string;
+  price: number;
+  qty: number;
+};
+
 type AtomicOrderInput = {
   code: string;
   quoteId: string;
   customerName: string;
   customerWa: string;
   customerEmail: string | null;
-  items: { product_id: number; name: string; price: number; qty: number }[];
+  items: AtomicOrderItem[];
   subtotal: number;
   paymentMethod: string;
   paymentAccount: string;
@@ -399,25 +407,42 @@ type AtomicOrderInput = {
 export async function createOrderWithStock(input: AtomicOrderInput): Promise<void> {
   const d1 = getD1();
   if (d1) {
-    const guardIds = input.items.map((item) => `${input.quoteId}:stock:${item.product_id}`);
+    const guardIds = input.items.map((item) => `${input.quoteId}:stock:${item.variant_id ?? item.product_id}`);
     const statements: D1Statement[] = [];
     input.items.forEach((item, index) => {
-      statements.push(
-        d1.prepare(
-          "INSERT INTO operation_guards (operation_id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM products WHERE id=? AND is_active=1 AND (stock=-1 OR stock>=?)) THEN 1 ELSE 0 END",
-        ).bind(guardIds[index], item.product_id, item.qty),
-      );
+      if (item.variant_id) {
+        statements.push(
+          d1.prepare(
+            "INSERT INTO operation_guards (operation_id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM product_variants WHERE id=? AND is_active=1 AND (stock=-1 OR stock>=?)) THEN 1 ELSE 0 END",
+          ).bind(guardIds[index], item.variant_id, item.qty),
+        );
+      } else {
+        statements.push(
+          d1.prepare(
+            "INSERT INTO operation_guards (operation_id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM products WHERE id=? AND is_active=1 AND (stock=-1 OR stock>=?)) THEN 1 ELSE 0 END",
+          ).bind(guardIds[index], item.product_id, item.qty),
+        );
+      }
     });
     input.items.forEach((item) => {
-      statements.push(
-        d1.prepare(
-          "UPDATE products SET stock=CASE WHEN stock=-1 THEN -1 ELSE stock-? END WHERE id=?",
-        ).bind(item.qty, item.product_id),
-      );
+      if (item.variant_id) {
+        statements.push(
+          d1.prepare(
+            "UPDATE product_variants SET stock=CASE WHEN stock=-1 THEN -1 ELSE stock-? END, updated_at=datetime('now') WHERE id=?",
+          ).bind(item.qty, item.variant_id),
+        );
+      } else {
+        statements.push(
+          d1.prepare(
+            "UPDATE products SET stock=CASE WHEN stock=-1 THEN -1 ELSE stock-? END WHERE id=?",
+          ).bind(item.qty, item.product_id),
+        );
+      }
     });
+    const primaryVariantId = input.items.find((it) => it.variant_id)?.variant_id ?? null;
     statements.push(
       d1.prepare(
-        "INSERT INTO orders (code,customer_name,customer_wa,customer_email,items,subtotal,payment_method,payment_account,proof_url,status,quote_id,expires_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,datetime('now','+24 hours'))",
+        "INSERT INTO orders (code,customer_name,customer_wa,customer_email,items,subtotal,payment_method,payment_account,proof_url,status,sales_channel,variant_id,quote_id,expires_at) VALUES (?,?,?,?,?,?,?,?,?,?,'web',?,?,datetime('now','+24 hours'))",
       ).bind(
         input.code,
         input.customerName,
@@ -429,6 +454,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
         input.paymentAccount,
         input.proofUrl,
         "pending",
+        primaryVariantId,
         input.quoteId,
       ),
     );
@@ -474,6 +500,8 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
     payment_account: input.paymentAccount,
     proof_url: input.proofUrl,
     status: "pending",
+    sales_channel: "web",
+    variant_id: input.items.find((it) => it.variant_id)?.variant_id ?? null,
     quote_id: input.quoteId,
     expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     created_at: new Date().toISOString(),
@@ -485,10 +513,18 @@ export async function transitionPendingOrder(
   code: string,
   status: "lunas" | "dibatalkan" | "kadaluarsa",
   adminNote: string | null,
-  rawItems: { product_id: number; qty: number }[],
+  rawItems: { product_id: number; variant_id?: number; qty: number }[],
 ): Promise<void> {
-  const quantities = new Map<number, number>();
-  rawItems.forEach((item) => quantities.set(item.product_id, (quantities.get(item.product_id) ?? 0) + item.qty));
+  const productQuantities = new Map<number, number>();
+  const variantQuantities = new Map<number, number>();
+  rawItems.forEach((item) => {
+    if (item.variant_id) {
+      variantQuantities.set(item.variant_id, (variantQuantities.get(item.variant_id) ?? 0) + item.qty);
+    } else {
+      productQuantities.set(item.product_id, (productQuantities.get(item.product_id) ?? 0) + item.qty);
+    }
+  });
+
   const d1 = getD1();
   if (d1) {
     if (status === "dibatalkan" || status === "kadaluarsa") {
@@ -498,9 +534,14 @@ export async function transitionPendingOrder(
           "INSERT INTO operation_guards (operation_id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM orders WHERE code=? AND status='pending') THEN 1 ELSE 0 END",
         ).bind(guardId, code),
       ];
-      quantities.forEach((qty, productId) => {
+      productQuantities.forEach((qty, productId) => {
         statements.push(
           d1.prepare("UPDATE products SET stock=stock+? WHERE id=? AND stock!=-1").bind(qty, productId),
+        );
+      });
+      variantQuantities.forEach((qty, variantId) => {
+        statements.push(
+          d1.prepare("UPDATE product_variants SET stock=stock+?, updated_at=datetime('now') WHERE id=? AND stock!=-1").bind(qty, variantId),
         );
       });
       statements.push(
@@ -527,7 +568,7 @@ export async function transitionPendingOrder(
   const order = getOrderMem().find((row) => String(row.code) === code);
   if (!order || order.status !== "pending") throw new OrderTransitionError();
   if (status === "dibatalkan" || status === "kadaluarsa") {
-    quantities.forEach((qty, productId) => {
+    productQuantities.forEach((qty, productId) => {
       const product = getSharedMem().find((row) => Number(row.id) === productId);
       if (product && Number(product.stock) !== -1) product.stock = Number(product.stock) + qty;
     });

@@ -35,7 +35,12 @@ function responsiveImg(url: string) {
 export function ProductCard({ product, index = 0, compact = false }: { product: Product; index?: number; compact?: boolean }) {
   const add = useCart((s) => s.add);
   const router = useRouter();
-  const discount = product.comparePrice ? Math.round((1 - product.price / product.comparePrice) * 100) : 0;
+  const hasMultipleVariants = Boolean(
+    (product.variantCount && product.variantCount > 1) ||
+    (product.minPrice != null && product.maxPrice != null && product.minPrice !== product.maxPrice)
+  );
+  const displayPrice = hasMultipleVariants && product.minPrice != null ? product.minPrice : product.price;
+  const discount = product.comparePrice ? Math.round((1 - displayPrice / product.comparePrice) * 100) : 0;
 
   const handleAdd = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -77,7 +82,9 @@ export function ProductCard({ product, index = 0, compact = false }: { product: 
           <p className="text-[9px] tracking-[0.07em] text-[#00E5FF]/70 font-semibold uppercase truncate">{product.categorySlug.replace("-", " ")}</p>
           <h3 className="mt-1 font-semibold text-[11.5px] leading-[1.3] text-white line-clamp-2 min-h-[30px] tracking-[-0.01em]">{product.name}</h3>
           <div className="mt-1.5 flex items-baseline gap-1 flex-wrap">
-            <span className="font-bold text-[13px] text-white tracking-[-0.02em] leading-none">{formatRupiah(product.price)}</span>
+            <span className="font-bold text-[13px] text-white tracking-[-0.02em] leading-none">
+              {hasMultipleVariants ? `Mulai ${formatRupiah(displayPrice)}` : formatRupiah(displayPrice)}
+            </span>
             {product.comparePrice && <span className="text-[10px] text-white/30 line-through leading-none">{formatRupiah(product.comparePrice)}</span>}
           </div>
           <div className="mt-1.5 flex items-center justify-between gap-1">
@@ -127,7 +134,9 @@ export function ProductCard({ product, index = 0, compact = false }: { product: 
           <h3 className="mt-1 font-semibold text-[12.5px] sm:text-[14.5px] leading-[1.25] sm:leading-5 text-white line-clamp-2 min-h-[32px] sm:min-h-[40px] tracking-[-0.01em]">{product.name}</h3>
           <p className="mt-1 text-[11px] sm:text-[12.5px] leading-[1.35] sm:leading-4 text-white/50 line-clamp-2 min-h-[30px] sm:min-h-[32px]">{product.description}</p>
           <div className="mt-2 sm:mt-3 flex items-baseline gap-1.5 sm:gap-2 flex-wrap">
-            <span className="font-bold text-[14px] sm:text-[17px] text-white tracking-[-0.02em] leading-none">{formatRupiah(product.price)}</span>
+            <span className="font-bold text-[14px] sm:text-[17px] text-white tracking-[-0.02em] leading-none">
+              {hasMultipleVariants ? `Mulai ${formatRupiah(displayPrice)}` : formatRupiah(displayPrice)}
+            </span>
             {product.comparePrice && <span className="text-[10px] sm:text-xs text-white/35 line-through leading-none">{formatRupiah(product.comparePrice)}</span>}
           </div>
           <div className="mt-1.5 flex items-center justify-between gap-2">
@@ -144,6 +153,13 @@ export function ProductCard({ product, index = 0, compact = false }: { product: 
               <span className="col-span-2 h-8 sm:h-9 rounded-[10px] sm:rounded-xl bg-white/[0.06] border border-white/10 text-[11px] sm:text-[13px] font-semibold text-white/40 flex items-center justify-center">
                 Stok Habis
               </span>
+            ) : hasMultipleVariants ? (
+              <Link
+                href={`/produk/${product.slug}`}
+                className="col-span-2 h-8 sm:h-9 rounded-[10px] sm:rounded-xl bg-[#00E5FF]/15 border border-[#00E5FF]/30 text-[11px] sm:text-[13px] font-bold text-[#00E5FF] flex items-center justify-center gap-1.5 hover:bg-[#00E5FF]/25 transition leading-none"
+              >
+                Pilih Varian →
+              </Link>
             ) : (
               <>
                 <button

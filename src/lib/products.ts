@@ -11,6 +11,9 @@ export type Product = {
   name: string;
   description: string;
   price: number;
+  minPrice?: number;
+  maxPrice?: number;
+  variantCount?: number;
   comparePrice?: number;
   categorySlug: string;
   image: string;

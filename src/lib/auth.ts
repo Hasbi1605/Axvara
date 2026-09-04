@@ -2,6 +2,7 @@ import * as jose from "jose";
 
 export type CheckoutQuoteItem = {
   product_id: number;
+  variant_id?: number;
   name: string;
   price: number;
   qty: number;
@@ -240,6 +241,7 @@ export async function verifyCheckoutQuoteToken(token: string): Promise<CheckoutQ
       const value = item as Record<string, unknown>;
       return Number.isInteger(value.product_id)
         && Number(value.product_id) > 0
+        && (value.variant_id === undefined || (Number.isInteger(value.variant_id) && Number(value.variant_id) > 0))
         && typeof value.name === "string"
         && Number.isInteger(value.price)
         && Number(value.price) >= 0

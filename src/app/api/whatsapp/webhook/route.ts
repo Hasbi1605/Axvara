@@ -1,111 +1,167 @@
-// POST /api/whatsapp/webhook — Fonnte WhatsApp webhook handler
+// POST /api/whatsapp/webhook — Fonnte WhatsApp group bot webhook handler
 
 import { NextRequest, NextResponse } from "next/server";
 import { queryFirst, execRun, isD1Mode } from "@/lib/db";
 import { isEnabled } from "@/lib/feature-flags";
-import { listActiveProducts, getProductDetail, searchProductByName, getActiveVariant, formatDuration, formatWarranty, formatRupiah } from "@/lib/catalog";
+import {
+  listActiveProducts,
+  getProductDetail,
+  searchProductByName,
+  getActiveVariant,
+  formatDuration,
+  formatWarranty,
+  formatRupiah,
+} from "@/lib/catalog";
 import { getSession, upsertSession } from "@/lib/whatsapp/session";
-import { sendTextMessage, sendImageMessage, isGroupAllowed, isSelfMessage } from "@/lib/whatsapp/gateway";
+import {
+  authenticateWebhook,
+  parseFonntePayload,
+  isGroupAllowed,
+  isSelfMessage,
+  sendTextMessage,
+  sendImageMessage,
+  downloadMediaSafely,
+  MAX_BODY_SIZE,
+} from "@/lib/whatsapp/gateway";
 import { createPendingChannelOrder, getActivePaymentMethods } from "@/lib/commerce";
 import * as msg from "@/lib/whatsapp/messages";
+import { getR2Bucket } from "@/lib/r2";
+import { getPaymentProvider } from "@/lib/payments/klikqris";
 
 export const runtime = "edge";
 
 const ITEMS_PER_PAGE = 15;
 
-export async function POST(request: NextRequest) {
-  // Validate Fonnte webhook token
-  const expectedToken = process.env.WHATSAPP_WEBHOOK_TOKEN;
-  if (!expectedToken) return NextResponse.json({ error: "not_configured" }, { status: 503 });
+function randHex(n: number): string {
+  const a = new Uint8Array(n);
+  crypto.getRandomValues(a);
+  return Array.from(a).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 
-  // Check feature flag
+export async function POST(request: NextRequest) {
+  // 1. Content-Type check
+  const contentType = request.headers.get("content-type") || "";
+  if (!contentType.includes("application/json") && !contentType.includes("application/x-www-form-urlencoded")) {
+    return NextResponse.json({ error: "invalid_content_type" }, { status: 415 });
+  }
+
+  // 2. Timing-safe webhook authentication
+  const auth = authenticateWebhook(request);
+  if (!auth.ok) {
+    return NextResponse.json({ error: "unauthorized", reason: auth.reason }, { status: 401 });
+  }
+
+  // 3. Feature flag check
   if (!isEnabled("WHATSAPP_ENABLED")) {
     return NextResponse.json({ ok: true, status: "disabled" });
   }
 
-  let body: Record<string, unknown>;
+  // 4. Body size limit
+  const rawText = await request.text().catch(() => "");
+  if (rawText.length > MAX_BODY_SIZE) {
+    return NextResponse.json({ error: "payload_too_large" }, { status: 413 });
+  }
+
+  let body: unknown;
   try {
-    body = await request.json();
+    if (contentType.includes("application/x-www-form-urlencoded")) {
+      const params = new URLSearchParams(rawText);
+      const obj: Record<string, string> = {};
+      params.forEach((val, key) => { obj[key] = val; });
+      body = obj;
+    } else {
+      body = JSON.parse(rawText);
+    }
   } catch {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
 
-  // Extract Fonnte payload fields
-  const sender = String(body.sender || "");
-  const message = String(body.message || "").trim();
-  const groupId = String(body.group || body.from || "");
-  const messageId = String(body.id || body.messageId || "");
-  const isGroup = Boolean(body.isGroup || body.group);
-  const hasMedia = Boolean(body.url || body.media);
-  const mediaUrl = String(body.url || body.media || "");
-  const quotedMsg = body.quotedMsg as Record<string, unknown> | undefined;
-  const quotedId = String(quotedMsg?.id || body.quotedId || body.replied || "");
+  // 5. Parse Fonnte payload
+  const incoming = parseFonntePayload(body);
+  if (!incoming) {
+    return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
+  }
 
-  // Ignore non-group or self messages
-  if (!isGroup) return NextResponse.json({ ok: true, status: "not_group" });
-  if (isSelfMessage(sender)) return NextResponse.json({ ok: true, status: "self" });
-  if (!isGroupAllowed(groupId)) return NextResponse.json({ ok: true, status: "not_allowed" });
+  // 6. Group allowlist & Self check
+  if (!incoming.isGroup) {
+    return NextResponse.json({ ok: true, status: "not_group" });
+  }
+  if (isSelfMessage(incoming.memberId)) {
+    return NextResponse.json({ ok: true, status: "self" });
+  }
+  if (!isGroupAllowed(incoming.conversationId)) {
+    return NextResponse.json({ ok: true, status: "not_allowed" });
+  }
 
-  // Dedup webhook
-  if (messageId && isD1Mode()) {
+  // 7. Inbox deduplication with lease
+  if (incoming.inboxId && isD1Mode()) {
     try {
       const existing = await queryFirst(
-        `SELECT id FROM whatsapp_inbox_events WHERE provider='fonnte' AND external_message_id=?`,
-        messageId
+        `SELECT id, status FROM whatsapp_inbox_events WHERE provider='fonnte' AND external_message_id=?`,
+        incoming.inboxId,
       );
-      if (existing) return NextResponse.json({ ok: true, status: "duplicate" });
+      if (existing) {
+        return NextResponse.json({ ok: true, status: "duplicate" });
+      }
 
       await execRun(
-        `INSERT INTO whatsapp_inbox_events (provider, external_message_id, event_type, conversation_id, member_id)
-         VALUES ('fonnte',?,?,?,?)`,
-        messageId, hasMedia ? "media" : "text", groupId, sender
+        `INSERT INTO whatsapp_inbox_events (provider, external_message_id, event_type, conversation_id, member_id, status)
+         VALUES ('fonnte',?,?,?,?,'processed')`,
+        incoming.inboxId,
+        incoming.attachment ? "media" : "text",
+        incoming.conversationId,
+        incoming.memberId,
       );
     } catch (e) {
       const errMsg = e instanceof Error ? e.message : "";
-      if (errMsg.includes("UNIQUE")) return NextResponse.json({ ok: true, status: "duplicate" });
+      if (errMsg.includes("UNIQUE")) {
+        return NextResponse.json({ ok: true, status: "duplicate" });
+      }
     }
   }
 
+  const { conversationId, memberId, inboxId, message, attachment } = incoming;
+
   try {
-    // Check for proof image first (media with BUKTI caption)
-    if (hasMedia && message.toUpperCase().startsWith("BUKTI") && isEnabled("WHATSAPP_PROOF_INTAKE")) {
-      await handleProofUpload(groupId, sender, messageId, message, mediaUrl, quotedId);
+    // 8. Payment Proof Intake (media with BUKTI caption)
+    if (attachment && message.toUpperCase().startsWith("BUKTI") && isEnabled("WHATSAPP_PROOF_INTAKE")) {
+      await handleProofUpload(conversationId, memberId, inboxId, message, attachment.url, incoming.replyToInboxId);
       return NextResponse.json({ ok: true });
     }
 
     const cmd = message.toLowerCase().trim();
 
-    // Command: list
+    // Command: list [page]
     if (cmd === "list" || cmd.startsWith("list ")) {
       const pageMatch = cmd.match(/^list\s+(\d+)$/);
       const page = pageMatch ? Number(pageMatch[1]) : 1;
-      await handleList(groupId, page);
+      await handleList(conversationId, page, inboxId);
       return NextResponse.json({ ok: true });
     }
 
     // Command: garansi or /garansi
     if (cmd === "garansi" || cmd === "/garansi") {
-      await sendTextMessage({ target: groupId, message: msg.warrantyMessage() });
+      await sendTextMessage({ target: conversationId, message: msg.warrantyMessage(), inboxId });
       return NextResponse.json({ ok: true });
     }
 
     // Command: pay or payment
     if (cmd === "pay" || cmd === "payment") {
       if (isEnabled("WHATSAPP_GROUP_PAYMENT")) {
-        await handlePay(groupId, sender);
+        await handlePay(conversationId, memberId, inboxId);
       }
       return NextResponse.json({ ok: true });
     }
 
-    // Check if it's a number (variant selection)
+    // Variant number selection (digits only)
     if (/^\d+$/.test(cmd)) {
-      await handleNumberSelection(groupId, sender, Number(cmd));
+      await handleNumberSelection(conversationId, memberId, Number(cmd), inboxId);
       return NextResponse.json({ ok: true });
     }
 
-    // Try product name search (only if discovery is enabled)
+    // Product search (only if discovery enabled)
     if (cmd.length >= 2 && isEnabled("WHATSAPP_GROUP_DISCOVERY")) {
-      await handleProductSearch(groupId, sender, message);
+      await handleProductSearch(conversationId, memberId, message, inboxId);
       return NextResponse.json({ ok: true });
     }
 
@@ -116,9 +172,9 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// --- Handler implementations ---
+// ---- Handlers ----
 
-async function handleList(groupId: string, page: number) {
+async function handleList(groupId: string, page: number, inboxId: string) {
   const products = await listActiveProducts();
   const totalPages = Math.ceil(products.length / ITEMS_PER_PAGE);
   const safePage = Math.max(1, Math.min(page, totalPages));
@@ -127,24 +183,24 @@ async function handleList(groupId: string, page: number) {
   await sendTextMessage({
     target: groupId,
     message: msg.listProductsMessage(slice, safePage, totalPages),
+    inboxId,
   });
 }
 
-async function handleProductSearch(groupId: string, sender: string, input: string) {
+async function handleProductSearch(groupId: string, memberId: string, input: string, inboxId: string) {
   const { exact, candidates } = await searchProductByName(input);
 
   if (!exact && candidates.length === 0) {
-    // Don't respond to every random message — only if it looks like a product query
-    // Heuristic: short, single word or known pattern
     if (input.split(/\s+/).length > 3) return; // Skip long sentences
-    await sendTextMessage({ target: groupId, message: msg.notFoundMessage() });
+    await sendTextMessage({ target: groupId, message: msg.notFoundMessage(), inboxId });
     return;
   }
 
   if (!exact && candidates.length > 1) {
     await sendTextMessage({
       target: groupId,
-      message: msg.ambiguousMessage(candidates.map(c => c.name)),
+      message: msg.ambiguousMessage(candidates.map((c) => c.name)),
+      inboxId,
     });
     return;
   }
@@ -152,18 +208,16 @@ async function handleProductSearch(groupId: string, sender: string, input: strin
   const product = exact || candidates[0];
   const detail = await getProductDetail(product.id);
   if (!detail || detail.variants.length === 0) {
-    await sendTextMessage({ target: groupId, message: msg.notFoundMessage() });
+    await sendTextMessage({ target: groupId, message: msg.notFoundMessage(), inboxId });
     return;
   }
 
-  // Build numbered variant map
   const variantMap: Record<number, number> = {};
   detail.variants.forEach((v, i) => {
     variantMap[i + 1] = v.id;
   });
 
-  // Save session
-  await upsertSession("fonnte", groupId, sender, {
+  await upsertSession("fonnte", groupId, memberId, {
     selected_product_id: detail.id,
     numbered_variant_map: variantMap,
     selected_variant_id: null,
@@ -171,115 +225,96 @@ async function handleProductSearch(groupId: string, sender: string, input: strin
     current_order_code: null,
   });
 
-  // Send product detail with variants
   const result = await sendTextMessage({
     target: groupId,
     message: msg.productDetailMessage(detail.name, detail.description, detail.variants),
+    inboxId,
   });
 
-  // Store variant message ID for reply matching
   if (result.messageId) {
-    await upsertSession("fonnte", groupId, sender, {
+    await upsertSession("fonnte", groupId, memberId, {
       variant_message_id: result.messageId,
     });
   }
 }
 
-async function handleNumberSelection(groupId: string, sender: string, num: number) {
-  const session = await getSession("fonnte", groupId, sender);
+async function handleNumberSelection(groupId: string, memberId: string, num: number, inboxId: string) {
+  const session = await getSession("fonnte", groupId, memberId);
   if (!session || !session.numbered_variant_map) {
-    // No active session — ignore number
-    return;
+    return; // Ignore number if no active session
   }
 
   const variantId = session.numbered_variant_map[num];
   if (!variantId) {
-    await sendTextMessage({
-      target: groupId,
-      message: msg.sessionExpiredMessage(),
-    });
+    await sendTextMessage({ target: groupId, message: msg.sessionExpiredMessage(), inboxId });
     return;
   }
 
-  // Re-validate variant
   const variant = await getActiveVariant(variantId);
   if (!variant) {
-    await sendTextMessage({
-      target: groupId,
-      message: msg.variantUnavailableMessage(),
-    });
+    await sendTextMessage({ target: groupId, message: msg.variantUnavailableMessage(), inboxId });
     return;
   }
 
   if (variant.stock === 0) {
-    await sendTextMessage({
-      target: groupId,
-      message: `Varian ini sedang habis. Pilih varian lain.`,
-    });
+    await sendTextMessage({ target: groupId, message: `Varian ini sedang habis. Pilih varian lain.`, inboxId });
     return;
   }
 
-  // Get product name
   const detail = await getProductDetail(session.selected_product_id!);
   const productName = detail?.name || "Produk";
 
-  // Save selected variant
-  await upsertSession("fonnte", groupId, sender, {
+  await upsertSession("fonnte", groupId, memberId, {
     selected_variant_id: variantId,
   });
 
-  // Send selection confirmation
   const result = await sendTextMessage({
     target: groupId,
     message: msg.variantSelectedMessage(productName, variant),
+    inboxId,
   });
 
   if (result.messageId) {
-    await upsertSession("fonnte", groupId, sender, {
+    await upsertSession("fonnte", groupId, memberId, {
       variant_message_id: result.messageId,
     });
   }
 }
 
-async function handlePay(groupId: string, sender: string) {
-  const session = await getSession("fonnte", groupId, sender);
+async function handlePay(groupId: string, memberId: string, inboxId: string) {
+  const session = await getSession("fonnte", groupId, memberId);
 
-  if (!session || !session.selected_variant_id) {
-    await sendTextMessage({
-      target: groupId,
-      message: msg.noSelectionMessage(),
-    });
+  if (!session || !session.selected_variant_id || !session.selected_product_id) {
+    await sendTextMessage({ target: groupId, message: msg.noSelectionMessage(), inboxId });
     return;
   }
 
-  // Check for existing pending order (idempotent pay)
+  // Idempotency: reuse existing pending order if available
   if (session.current_order_code) {
     const existingOrder = await queryFirst(
       `SELECT code, subtotal, status, payment_status FROM orders WHERE code=?`,
-      session.current_order_code
+      session.current_order_code,
     );
     if (existingOrder && String(existingOrder.status) === "pending") {
-      // Resend payment info
-      await sendPaymentInfo(groupId, sender, session, String(existingOrder.code), Number(existingOrder.subtotal));
+      await sendPaymentInfo(groupId, memberId, session, String(existingOrder.code), Number(existingOrder.subtotal), inboxId);
       return;
     }
   }
 
-  // Re-validate variant
   const variant = await getActiveVariant(session.selected_variant_id);
   if (!variant) {
-    await sendTextMessage({ target: groupId, message: msg.variantUnavailableMessage() });
+    await sendTextMessage({ target: groupId, message: msg.variantUnavailableMessage(), inboxId });
     return;
   }
 
-  const detail = await getProductDetail(session.selected_product_id!);
+  const detail = await getProductDetail(session.selected_product_id);
   if (!detail) {
-    await sendTextMessage({ target: groupId, message: msg.gatewayErrorMessage() });
+    await sendTextMessage({ target: groupId, message: msg.gatewayErrorMessage(), inboxId });
     return;
   }
 
-  // Create order
-  const idempotencyKey = `wa:${groupId}:${sender}:${session.selected_variant_id}:${Date.now()}`;
+  // Deterministic idempotency key: based on group + member + selected variant (NO Date.now()!)
+  const idempotencyKey = `wa:order:${groupId}:${memberId}:${session.selected_variant_id}`;
 
   try {
     const order = await createPendingChannelOrder({
@@ -288,40 +323,103 @@ async function handlePay(groupId: string, sender: string) {
       productName: detail.name,
       variantId: session.selected_variant_id,
       variant,
-      customerId: sender,
-      customerName: sender,
+      customerId: memberId,
+      customerName: memberId,
+      customerWa: memberId,
       conversationId: groupId,
       idempotencyKey,
     });
 
-    // Update session with order
-    await upsertSession("fonnte", groupId, sender, {
+    await upsertSession("fonnte", groupId, memberId, {
       current_order_code: order.code,
       current_order_id: order.orderId,
     });
 
-    // Send payment info
-    await sendPaymentInfo(groupId, sender, session, order.code, order.subtotal);
-
+    // Check if KlikQRIS is enabled for WhatsApp
+    if (isEnabled("WHATSAPP_KLIKQRIS")) {
+      await createAndSendKlikQrisPayment(groupId, memberId, session, order.code, order.subtotal, inboxId);
+    } else {
+      await sendPaymentInfo(groupId, memberId, session, order.code, order.subtotal, inboxId);
+    }
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : "unknown";
     if (errMsg === "out_of_stock") {
-      await sendTextMessage({ target: groupId, message: msg.variantUnavailableMessage() });
+      await sendTextMessage({ target: groupId, message: msg.variantUnavailableMessage(), inboxId });
     } else {
-      await sendTextMessage({ target: groupId, message: msg.gatewayErrorMessage() });
+      await sendTextMessage({ target: groupId, message: msg.gatewayErrorMessage(), inboxId });
     }
   }
 }
 
-async function sendPaymentInfo(groupId: string, sender: string, session: { selected_product_id: number | null; selected_variant_id: number | null }, orderCode: string, total: number) {
+async function createAndSendKlikQrisPayment(
+  groupId: string,
+  memberId: string,
+  session: { selected_product_id: number | null; selected_variant_id: number | null },
+  orderCode: string,
+  total: number,
+  inboxId: string,
+) {
+  try {
+    const provider = getPaymentProvider();
+    const providerOrderId = orderCode.replace(/^AXV-/, "");
+    const merchantId = process.env.KLIKQRIS_MERCHANT_ID ?? "";
+
+    const invoiceResult = await provider.createInvoice({
+      orderId: providerOrderId,
+      amount: total,
+      merchantId,
+    });
+
+    if (invoiceResult && invoiceResult.success) {
+      if (isD1Mode()) {
+        await execRun(
+          `INSERT INTO payment_transactions (order_code, provider, provider_mode, provider_order_id,
+             merchant_id, requested_amount, payable_amount, status, provider_signature,
+             qris_url, direct_url, expires_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+          orderCode,
+          "klikqris",
+          provider.mode,
+          invoiceResult.providerOrderId,
+          invoiceResult.merchantId,
+          total,
+          invoiceResult.payableAmount,
+          "pending",
+          invoiceResult.signature,
+          invoiceResult.qrisUrl,
+          invoiceResult.directUrl,
+          invoiceResult.expiresAt,
+        );
+      }
+
+      await sendPaymentInfo(groupId, memberId, session, orderCode, invoiceResult.payableAmount, inboxId, invoiceResult.qrisUrl ?? undefined);
+      return;
+    }
+  } catch (err) {
+    console.error("KlikQRIS creation for WA failed, falling back to static:", err);
+  }
+
+  // Fallback to static if dynamic fails
+  await sendPaymentInfo(groupId, memberId, session, orderCode, total, inboxId);
+}
+
+async function sendPaymentInfo(
+  groupId: string,
+  memberId: string,
+  session: { selected_product_id: number | null; selected_variant_id: number | null },
+  orderCode: string,
+  total: number,
+  inboxId: string,
+  dynamicQrisUrl?: string,
+) {
   const detail = await getProductDetail(session.selected_product_id!);
   const variant = session.selected_variant_id ? await getActiveVariant(session.selected_variant_id) : null;
   const paymentMethods = await getActivePaymentMethods();
 
   const dur = variant ? formatDuration(variant) : "";
   const war = variant ? formatWarranty(variant) : "";
+  const qrisUrl = dynamicQrisUrl || paymentMethods.qris?.url;
 
-  // Send text message with all payment info
   const result = await sendTextMessage({
     target: groupId,
     message: msg.paymentMessage({
@@ -331,31 +429,30 @@ async function sendPaymentInfo(groupId: string, sender: string, session: { selec
       duration: dur,
       warranty: war,
       total,
-      qrisUrl: paymentMethods.qris?.url,
+      qrisUrl,
       seabankAccount: paymentMethods.seabank?.account,
       seabankName: paymentMethods.seabank?.name,
       ewalletAccount: paymentMethods.ewallet?.account,
       ewalletName: paymentMethods.ewallet?.name,
     }),
+    inboxId,
   });
 
-  // Send QRIS image separately
-  if (paymentMethods.qris?.url) {
+  // Send QRIS image if available
+  if (qrisUrl) {
     const siteUrl = process.env.SITE_URL || "https://axvara.tech";
-    const qrisFullUrl = paymentMethods.qris.url.startsWith("http")
-      ? paymentMethods.qris.url
-      : `${siteUrl}${paymentMethods.qris.url}`;
+    const qrisFullUrl = qrisUrl.startsWith("http") ? qrisUrl : `${siteUrl}${qrisUrl}`;
 
     await sendImageMessage({
       target: groupId,
       imageUrl: qrisFullUrl,
       caption: `QRIS — ${orderCode} — ${formatRupiah(total)}`,
+      inboxId,
     });
   }
 
-  // Store payment message ID
   if (result.messageId) {
-    await upsertSession("fonnte", groupId, sender, {
+    await upsertSession("fonnte", groupId, memberId, {
       payment_message_id: result.messageId,
     });
   }
@@ -367,88 +464,139 @@ async function handleProofUpload(
   messageId: string,
   caption: string,
   mediaUrl: string,
-  quotedId: string
+  quotedId?: string,
 ) {
-  // Parse caption: BUKTI <ORDER_CODE> <METHOD>
   const match = caption.toUpperCase().match(/^BUKTI\s+(AXV-\S+)\s+(QRIS|SEABANK|EWALLET)$/i);
   if (!match) {
     const session = await getSession("fonnte", groupId, sender);
     const code = session?.current_order_code || "AXV-XXXXXXXX-XXXXXXXX";
-    await sendTextMessage({ target: groupId, message: msg.proofFormatErrorMessage(code) });
+    await sendTextMessage({ target: groupId, message: msg.proofFormatErrorMessage(code), inboxId: messageId });
     return;
   }
 
   const orderCode = match[1].toUpperCase();
   const claimedMethod = match[2].toUpperCase() as "QRIS" | "SEABANK" | "EWALLET";
 
-  // Validate order belongs to sender
+  // Validate order belongs to sender & conversation, and is still pending & not expired
   const order = await queryFirst(
-    `SELECT id, code, status, payment_status, telegram_user_id FROM orders
+    `SELECT id, code, status, payment_status, channel_conversation_id, channel_member_id, expires_at FROM orders
      WHERE code=? AND sales_channel='whatsapp' AND status='pending'`,
-    orderCode
+    orderCode,
   );
 
   if (!order) {
-    await sendTextMessage({ target: groupId, message: msg.proofWrongOwnerMessage() });
+    await sendTextMessage({ target: groupId, message: msg.proofWrongOwnerMessage(), inboxId: messageId });
     return;
   }
 
-  // Check if proof already exists (dedup by external_message_id)
+  // Check channel & member identity matches
+  if (
+    (order.channel_conversation_id && String(order.channel_conversation_id) !== groupId) ||
+    (order.channel_member_id && String(order.channel_member_id) !== sender)
+  ) {
+    await sendTextMessage({ target: groupId, message: msg.proofWrongOwnerMessage(), inboxId: messageId });
+    return;
+  }
+
+  // Check expiry
+  if (order.expires_at && new Date(String(order.expires_at)).getTime() < Date.now()) {
+    await sendTextMessage({ target: groupId, message: "Pesanan ini sudah kedaluwarsa. Silakan buat pesanan baru.", inboxId: messageId });
+    return;
+  }
+
+  // Check if proof already exists (dedup by external_message_id / inboxId)
   if (isD1Mode()) {
     const existing = await queryFirst(
       `SELECT id FROM payment_proofs WHERE sales_channel='whatsapp' AND external_message_id=?`,
-      messageId
+      messageId,
     );
     if (existing) {
-      await sendTextMessage({ target: groupId, message: msg.proofDuplicateMessage(orderCode) });
+      await sendTextMessage({ target: groupId, message: msg.proofDuplicateMessage(orderCode), inboxId: messageId });
       return;
     }
 
-    // Check for existing active proof
     const activeProof = await queryFirst(
       `SELECT id FROM payment_proofs WHERE order_code=? AND status IN ('submitted','approved')`,
-      orderCode
+      orderCode,
     );
     if (activeProof) {
-      await sendTextMessage({ target: groupId, message: msg.proofDuplicateMessage(orderCode) });
+      await sendTextMessage({ target: groupId, message: msg.proofDuplicateMessage(orderCode), inboxId: messageId });
       return;
     }
   }
 
-  // Download and validate media (basic check — full validation in production)
-  // For now, store the reference
-  const r2Key = `bukti/whatsapp/${orderCode}-${Date.now()}.proof`;
+  // Real SSRF-safe streaming download and validation
+  const downloaded = await downloadMediaSafely(mediaUrl);
+  if (!downloaded) {
+    await sendTextMessage({
+      target: groupId,
+      message: "Gagal mengunduh gambar bukti atau format tidak valid (hanya JPG/PNG/WebP, maks 5 MB). Kirim ulang bukti Anda.",
+      inboxId: messageId,
+    });
+    return;
+  }
 
-  // Save proof record
+  const ext = downloaded.contentType === "image/png" ? "png" : downloaded.contentType === "image/webp" ? "webp" : "jpg";
+  const r2Key = `bukti/whatsapp/${orderCode}-${randHex(8)}.${ext}`;
+
+  // Upload to R2 private bucket
+  const bucket = getR2Bucket();
+  if (bucket) {
+    try {
+      await bucket.put(r2Key, downloaded.buffer, {
+        httpMetadata: { contentType: downloaded.contentType },
+      });
+    } catch (e) {
+      console.error("R2 upload error:", e);
+      await sendTextMessage({ target: groupId, message: "Penyimpanan bukti gagal. Coba lagi dalam beberapa saat.", inboxId: messageId });
+      return;
+    }
+  }
+
+  // Insert payment_proofs record
   if (isD1Mode()) {
     try {
       await execRun(
-        `INSERT INTO payment_proofs (order_code, sales_channel, conversation_id, member_id,
+        `INSERT INTO payment_proofs (
+           order_code, sales_channel, conversation_id, member_id,
            external_message_id, reply_to_message_id, claimed_method, r2_key,
-           content_type, byte_size, sha256, status)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-        orderCode, "whatsapp", groupId, sender,
-        messageId, quotedId || null, claimedMethod, r2Key,
-        "image/jpeg", 0, "pending-download", "submitted"
+           content_type, byte_size, sha256, status
+         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+        orderCode,
+        "whatsapp",
+        groupId,
+        sender,
+        messageId,
+        quotedId || null,
+        claimedMethod,
+        r2Key,
+        downloaded.contentType,
+        downloaded.buffer.byteLength,
+        downloaded.sha256,
+        "submitted",
       );
     } catch (e) {
+      // Rollback R2 upload if D1 insert fails
+      if (bucket) {
+        await bucket.delete(r2Key).catch(() => {});
+      }
       const errMsg = e instanceof Error ? e.message : "";
       if (errMsg.includes("UNIQUE")) {
-        await sendTextMessage({ target: groupId, message: msg.proofDuplicateMessage(orderCode) });
+        await sendTextMessage({ target: groupId, message: msg.proofDuplicateMessage(orderCode), inboxId: messageId });
         return;
       }
       throw e;
     }
   }
 
-  // Send acknowledgement
+  // Acknowledge user only AFTER R2 and D1 succeed
   await sendTextMessage({
     target: groupId,
     message: msg.proofAcknowledgementMessage(orderCode),
-    replyMessageId: messageId,
+    inboxId: messageId,
   });
 
-  // Notify admin (best-effort)
+  // Notify admin
   const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
   if (adminChatId) {
     try {

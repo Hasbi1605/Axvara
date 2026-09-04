@@ -4,7 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { queryFirst, queryAll, execRun, isD1Mode } from "@/lib/db";
-import { sendMessage, sendPhoto, editMessageText, safeEditOrSend, answerCallbackQuery, sendChatAction, showLoadingBar } from "@/lib/telegram/api";
+import { sendMessage, sendPhoto, safeEditOrSend, answerCallbackQuery, sendChatAction, showLoadingBar } from "@/lib/telegram/api";
 import {
   homeKeyboard, categoriesKeyboard, productsKeyboard,
   productDetailKeyboard, confirmPurchaseKeyboard, warrantyKeyboard,
@@ -18,12 +18,12 @@ import {
   orderCancelledMessage, askWhatsAppMessage, invalidWhatsAppMessage,
   chooseVariantMessage, confirmVariantBuyMessage,
 } from "@/lib/telegram/messages";
-import { getProductDetail, getActiveVariant, formatDuration, formatWarranty } from "@/lib/catalog";
+import { getProductDetail, getActiveVariant, formatDuration, formatWarranty, type VariantSummary } from "@/lib/catalog";
 import { isEnabled } from "@/lib/feature-flags";
 import { generateOrderCode } from "@/lib/security";
 import { getPaymentProvider, isPaymentEnabled } from "@/lib/payments/klikqris";
 import { reserveInventory, releaseInventoryForOrder, countInventory } from "@/lib/fulfillment/inventory";
-import { createFulfillmentJob, processJob } from "@/lib/fulfillment/deliver";
+import { createFulfillmentJob } from "@/lib/fulfillment/deliver";
 
 export const runtime = "edge";
 
@@ -315,7 +315,7 @@ async function handleCallback(data: string, chatId: number, messageId: number, f
       break;
 
     case "cfv":
-      await handleConfirmVariantPurchase(chatId, messageId, Number(params[0]), from);
+      await handleConfirmVariantPurchase(chatId, messageId, Number(params[0]), Number(params[1]), from);
       break;
 
     case "confirm":
@@ -491,7 +491,7 @@ async function handleVariantConfirm(chatId: number, messageId: number, variantId
   }
 
   // Get product for name
-  const product = await queryFirst(`SELECT id, name FROM products WHERE id=?`, (variant as any).product_id || 0);
+  const product = await queryFirst(`SELECT id, name FROM products WHERE id=?`, variant.product_id);
   const productName = product ? String(product.name) : "Produk";
   const productId = product ? Number(product.id) : 0;
 
@@ -529,6 +529,7 @@ async function handleVariantConfirm(chatId: number, messageId: number, variantId
 async function handleConfirmVariantPurchase(
   chatId: number,
   messageId: number,
+  productId: number,
   variantId: number,
   from: { id: number; first_name: string; username?: string },
 ) {
@@ -540,18 +541,17 @@ async function handleConfirmVariantPurchase(
   await sendChatAction(chatId, "typing");
 
   const variant = await getActiveVariant(variantId);
-  if (!variant) {
+  if (!variant || variant.product_id !== productId) {
     await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
     return;
   }
 
-  const product = await queryFirst(`SELECT id, name FROM products WHERE id=?`, (variant as any).product_id || 0);
+  const product = await queryFirst(`SELECT id, name FROM products WHERE id=?`, productId);
   if (!product) {
     await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
     return;
   }
 
-  const productId = Number(product.id);
   const fulfillmentMode = variant.fulfillment_mode || "manual";
 
   if (fulfillmentMode === "manual") {
@@ -577,7 +577,7 @@ async function createAndSendVariantInvoice(
   _messageId: number,
   productId: number,
   productName: string,
-  variant: any,
+  variant: VariantSummary,
   from: { id: number; first_name: string; username?: string },
   customerWa: string,
 ) {
@@ -812,10 +812,11 @@ async function handlePendingWaInput(
   if (!user?.pending_action) return false;
 
   const action = String(user.pending_action);
-  if (!action.startsWith("wa_for:")) return false;
+  const isVar = action.startsWith("wa_for_var:");
+  if (!action.startsWith("wa_for:") && !isVar) return false;
 
-  const productId = Number(action.split(":")[1]);
-  if (!productId) return false;
+  const targetId = Number(action.split(":")[1]);
+  if (!targetId) return false;
 
   // Validate WA number
   const wa = text.trim().replace(/\s|-/g, "");
@@ -834,6 +835,24 @@ async function handlePendingWaInput(
     `UPDATE telegram_users SET pending_action=NULL, updated_at=datetime('now') WHERE user_id=?`,
     String(from.id),
   );
+
+  if (isVar) {
+    const variant = await getActiveVariant(targetId);
+    if (!variant) {
+      await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+      return true;
+    }
+    const product = await queryFirst(`SELECT id, name FROM products WHERE id=?`, variant.product_id);
+    if (!product) {
+      await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+      return true;
+    }
+    await sendMessage({ chat_id: chatId, text: `✅ WA <code>${normalizedWa}</code> tersimpan. Membuat invoice...`, parse_mode: "HTML" });
+    await createAndSendVariantInvoice(chatId, 0, Number(product.id), String(product.name), variant, from, normalizedWa);
+    return true;
+  }
+
+  const productId = targetId;
 
   // Fetch product and proceed with order
   const product = await queryFirst(

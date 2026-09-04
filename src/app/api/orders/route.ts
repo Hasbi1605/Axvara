@@ -15,7 +15,11 @@ const schema = z.object({
     .transform((s) => s.replace(/\s|-/g, ""))
     .refine((s) => /^(\+62|62|0)8\d{8,13}$/.test(s), "No WA harus 08... atau +62... (10-15 digit)"),
   customer_email: z.string().trim().email().max(120).optional().or(z.literal("")),
-  items: z.array(z.object({ product_id: z.coerce.number().int().min(1), qty: z.coerce.number().int().min(1).max(20) })).min(1).max(20),
+  items: z.array(z.object({
+    product_id: z.coerce.number().int().min(1),
+    variant_id: z.coerce.number().int().min(1).optional(),
+    qty: z.coerce.number().int().min(1).max(20),
+  })).min(1).max(20),
   payment_method: z.string().trim().regex(/^(qris|ewallet|bank:[a-z0-9][a-z0-9_-]{0,31})$/, "Metode pembayaran tidak valid"),
   proof_url: z.string().trim().min(1, "Bukti transfer wajib diupload").max(600),
   quote_token: z.string().trim().min(20, "Quote checkout wajib disertakan").max(8000),
@@ -66,10 +70,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Quote checkout tidak valid atau sudah kedaluwarsa. Muat ulang checkout." }, { status: 409 });
   }
 
-  const requested = aggregateQty(items as { product_id: number; qty: number }[]);
+  const requested = aggregateQty(items);
   const quoted = aggregateQty(quote.items);
   const sameItems = requested.size === quoted.size
-    && [...requested.entries()].every(([productId, qty]) => quoted.get(productId) === qty);
+    && [...requested.entries()].every(([key, qty]) => quoted.get(key) === qty);
   if (!sameItems) {
     return NextResponse.json({ error: "Isi keranjang berubah setelah harga dikunci. Muat ulang checkout." }, { status: 409 });
   }

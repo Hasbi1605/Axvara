@@ -41,6 +41,19 @@ CREATE TABLE IF NOT EXISTS orders (
   admin_note TEXT,
   quote_id TEXT,
   expires_at TEXT,
+  sales_channel TEXT NOT NULL DEFAULT 'web'
+    CHECK (sales_channel IN ('web','telegram','whatsapp')),
+  telegram_chat_id TEXT,
+  telegram_user_id TEXT,
+  channel_conversation_id TEXT,
+  channel_member_id TEXT,
+  payment_status TEXT NOT NULL DEFAULT 'unpaid'
+    CHECK (payment_status IN ('unpaid','pending','paid','expired','failed','refunded')),
+  fulfillment_status TEXT NOT NULL DEFAULT 'not_required'
+    CHECK (fulfillment_status IN (
+      'not_required','reserved','queued','sending','delivered',
+      'manual_required','retry','failed'
+    )),
   variant_id INTEGER REFERENCES product_variants(id),
   variant_snapshot TEXT,
   created_at TEXT DEFAULT (datetime('now')),
@@ -48,6 +61,10 @@ CREATE TABLE IF NOT EXISTS orders (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS orders_quote_id_unique
   ON orders(quote_id) WHERE quote_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_orders_channel
+  ON orders(sales_channel, channel_conversation_id);
+CREATE INDEX IF NOT EXISTS idx_orders_status
+  ON orders(status, payment_status);
 CREATE TABLE IF NOT EXISTS operation_guards (
   operation_id TEXT PRIMARY KEY,
   valid INTEGER NOT NULL CHECK (valid = 1)

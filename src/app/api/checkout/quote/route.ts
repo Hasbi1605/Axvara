@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 
 const itemSchema = z.object({
   product_id: z.coerce.number().int().min(1).optional(),
+  variant_id: z.coerce.number().int().min(1).optional(),
   slug: z.string().trim().min(1).max(100).optional(),
   qty: z.coerce.number().int().min(1).max(20),
   expected_price: z.coerce.number().int().min(0).optional(),
@@ -37,13 +38,15 @@ export async function POST(req: NextRequest) {
 
   const aggregate = new Map<string, z.infer<typeof itemSchema>>();
   for (const item of parsed.data.items) {
-    const key = item.slug ? `slug:${item.slug}` : `id:${item.product_id}`;
+    const key = item.variant_id
+      ? `${item.slug ? `slug:${item.slug}` : `id:${item.product_id}`}:var:${item.variant_id}`
+      : item.slug ? `slug:${item.slug}` : `id:${item.product_id}`;
     const current = aggregate.get(key);
     aggregate.set(key, current ? { ...current, qty: current.qty + item.qty } : item);
   }
 
   let subtotal = 0;
-  const quotedItems: { product_id: number; name: string; price: number; qty: number; stock: number; image: string }[] = [];
+  const quotedItems: { product_id: number; variant_id?: number; name: string; price: number; qty: number; stock: number; image: string }[] = [];
   const issues: QuoteIssue[] = [];
   const changes: PriceChange[] = [];
 
@@ -65,33 +68,57 @@ export async function POST(req: NextRequest) {
       issues.push({ product_id: productId, type: "inactive", message: `${row.name} sedang nonaktif.` });
       continue;
     }
-    const stock = row.stock == null ? -1 : Number(row.stock);
-    if (stock !== -1 && stock <= 0) {
-      issues.push({ product_id: productId, type: "out_of_stock", message: `${row.name} stok habis.` });
+
+    let effectivePrice = Number(row.price);
+    let effectiveStock = row.stock == null ? -1 : Number(row.stock);
+    let displayName = String(row.name);
+
+    // If variant_id is provided, validate variant against product
+    if (item.variant_id) {
+      const variantRow = await queryFirst(
+        "SELECT * FROM product_variants WHERE id=? AND product_id=?",
+        item.variant_id,
+        productId,
+      );
+      if (!variantRow) {
+        issues.push({ product_id: productId, type: "missing", message: `Varian tidak ditemukan untuk ${row.name}.` });
+        continue;
+      }
+      if (Number(variantRow.is_active) === 0) {
+        issues.push({ product_id: productId, type: "inactive", message: `${row.name} — ${variantRow.label} sedang nonaktif.` });
+        continue;
+      }
+      effectivePrice = Number(variantRow.price);
+      effectiveStock = variantRow.stock == null ? -1 : Number(variantRow.stock);
+      displayName = `${row.name} — ${variantRow.label}`;
+    }
+
+    if (effectiveStock !== -1 && effectiveStock <= 0) {
+      issues.push({ product_id: productId, type: "out_of_stock", message: `${displayName} stok habis.` });
       continue;
     }
-    if (stock !== -1 && item.qty > stock) {
-      issues.push({ product_id: productId, type: "insufficient_stock", message: `${row.name} stok tersisa ${stock} (diminta ${item.qty}).` });
+    if (effectiveStock !== -1 && item.qty > effectiveStock) {
+      issues.push({ product_id: productId, type: "insufficient_stock", message: `${displayName} stok tersisa ${effectiveStock} (diminta ${item.qty}).` });
       continue;
     }
 
-    const price = Number(row.price);
-    if (item.expected_price != null && item.expected_price !== price) {
+    if (item.expected_price != null && item.expected_price !== effectivePrice) {
       changes.push({
         product_id: productId,
-        name: String(row.name),
+        name: displayName,
         previous_price: item.expected_price,
-        current_price: price,
-        message: `Harga ${row.name} berubah.`,
+        current_price: effectivePrice,
+        message: `Harga ${displayName} berubah.`,
       });
     }
-    subtotal += price * item.qty;
+    subtotal += effectivePrice * item.qty;
     quotedItems.push({
       product_id: productId,
-      name: String(row.name),
-      price,
+      variant_id: item.variant_id,
+      name: displayName,
+      price: effectivePrice,
       qty: item.qty,
-      stock,
+      stock: effectiveStock,
       image: String(row.image_url ?? ""),
     });
   }
@@ -114,7 +141,7 @@ export async function POST(req: NextRequest) {
   }
 
   const signed = await createCheckoutQuoteToken({
-    items: quotedItems.map(({ product_id, name, price, qty }) => ({ product_id, name, price, qty })),
+    items: quotedItems.map(({ product_id, variant_id, name, price, qty }) => ({ product_id, variant_id, name, price, qty })),
     subtotal,
     payment_methods: paymentMethods.map(({ id, account_number }) => ({ id, account_number })),
   });

@@ -5,6 +5,8 @@ import { queryFirst, queryAll, execRun, isD1Mode } from "@/lib/db";
 import { decryptSecret } from "./crypto";
 import { findReservedForOrder, markDelivered } from "./inventory";
 import { sendMessage } from "@/lib/telegram/api";
+import { sendTextMessage } from "@/lib/whatsapp/gateway";
+import { isEnabled } from "@/lib/feature-flags";
 import {
   deliveryMessage,
   manualFulfillmentBuyerMessage,
@@ -172,19 +174,53 @@ export async function processJob(
   const claimed = await claimJob(jobId);
   if (!claimed) return false;
 
+  const salesChannel = String(order.sales_channel || "telegram");
   const chatId = String(order.telegram_chat_id || "");
+  const waRecipient = String(order.channel_member_id || order.customer_wa || "");
   const orderCode = String(order.code);
   const fulfillmentMode = String(product.fulfillment_mode || "manual");
   const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
 
+  // Gate 1: WhatsApp proof requirement before fulfillment
+  if (salesChannel === "whatsapp" && isEnabled("WHATSAPP_REQUIRE_PROOF_BEFORE_FULFILLMENT")) {
+    const proof = isD1Mode()
+      ? await queryFirst(
+          `SELECT id, status FROM payment_proofs WHERE order_code=? AND status IN ('submitted','approved')`,
+          orderCode,
+        )
+      : true;
+    if (!proof) {
+      await execRun(
+        `UPDATE fulfillment_jobs SET status='queued', locked_until=NULL, updated_at=datetime('now') WHERE id=?`,
+        jobId,
+      );
+      return false; // Hold until proof is submitted/approved
+    }
+  }
+
+  // Gate 2: WhatsApp fulfillment feature flag (if disabled, route to manual)
+  if (salesChannel === "whatsapp" && !isEnabled("WHATSAPP_FULFILLMENT")) {
+    await execRun(
+      `UPDATE fulfillment_jobs SET status='manual_required', locked_until=NULL, updated_at=datetime('now') WHERE id=?`,
+      jobId,
+    );
+    await execRun(
+      `UPDATE orders SET fulfillment_status='manual_required', updated_at=datetime('now') WHERE code=?`,
+      orderCode,
+    );
+    return true;
+  }
+
   try {
     // Notify buyer: payment received
-    await sendMessage({
-      chat_id: chatId,
-      text: orderPaidMessage(orderCode, String(product.name)),
-      parse_mode: "HTML",
-      reply_markup: orderPaidKeyboard(orderCode),
-    });
+    if (salesChannel === "telegram" && chatId) {
+      await sendMessage({
+        chat_id: chatId,
+        text: orderPaidMessage(orderCode, String(product.name)),
+        parse_mode: "HTML",
+        reply_markup: orderPaidKeyboard(orderCode),
+      });
+    }
 
     // Manual: stop here, notify admin
     if (fulfillmentMode === "manual") {
@@ -192,12 +228,14 @@ export async function processJob(
         `UPDATE fulfillment_jobs SET status='manual_required', locked_until=NULL, updated_at=datetime('now') WHERE id=?`,
         jobId,
       );
-      await sendMessage({
-        chat_id: chatId,
-        text: manualFulfillmentBuyerMessage(orderCode),
-        parse_mode: "HTML",
-        reply_markup: orderPaidKeyboard(orderCode),
-      });
+      if (salesChannel === "telegram" && chatId) {
+        await sendMessage({
+          chat_id: chatId,
+          text: manualFulfillmentBuyerMessage(orderCode),
+          parse_mode: "HTML",
+          reply_markup: orderPaidKeyboard(orderCode),
+        });
+      }
       if (adminChatId) {
         await sendMessage({
           chat_id: adminChatId,
@@ -205,13 +243,12 @@ export async function processJob(
             orderCode,
             productName: String(product.name),
             amount: Number(order.subtotal),
-            telegramUser: String(order.telegram_user_id || ""),
+            telegramUser: String(order.telegram_user_id || order.customer_wa || ""),
             fulfillmentMode,
           }),
           parse_mode: "HTML",
         });
       }
-      // Update order fulfillment status
       await execRun(
         `UPDATE orders SET fulfillment_status='manual_required', updated_at=datetime('now') WHERE code=?`,
         orderCode,
@@ -225,13 +262,25 @@ export async function processJob(
       const iv = String(product.shared_secret_iv || "");
       if (!ct || !iv) throw new Error("Shared secret not configured for product");
       const plaintext = await decryptSecret(ct, iv);
-      const sendResult = await sendMessage({
-        chat_id: chatId,
-        text: deliveryMessage(plaintext),
-        parse_mode: "HTML",
-      });
-      if (!sendResult.ok) throw new Error(sendResult.description || "Telegram send failed");
-      await markJobDelivered(jobId, String((sendResult.result as Record<string, unknown>)?.message_id ?? ""));
+
+      if (salesChannel === "whatsapp") {
+        if (!waRecipient) throw new Error("No WhatsApp recipient phone number");
+        const sendResult = await sendTextMessage({
+          target: waRecipient,
+          message: `*PRODUK AXVARA SIAP!*\nOrder: ${orderCode}\n\nDetail akses/lisensi Anda:\n${plaintext}\n\nSimpan baik-baik. Ketik *garansi* untuk ketentuan.`,
+        });
+        if (!sendResult.ok) throw new Error(sendResult.error || "WhatsApp direct delivery failed");
+        await markJobDelivered(jobId, sendResult.messageId || "");
+      } else {
+        const sendResult = await sendMessage({
+          chat_id: chatId,
+          text: deliveryMessage(plaintext),
+          parse_mode: "HTML",
+        });
+        if (!sendResult.ok) throw new Error(sendResult.description || "Telegram send failed");
+        await markJobDelivered(jobId, String((sendResult.result as Record<string, unknown>)?.message_id ?? ""));
+      }
+
       await execRun(
         `UPDATE orders SET fulfillment_status='delivered', updated_at=datetime('now') WHERE code=?`,
         orderCode,
@@ -247,16 +296,27 @@ export async function processJob(
         String(inventoryItem.secret_ciphertext),
         String(inventoryItem.secret_iv),
       );
-      const sendResult = await sendMessage({
-        chat_id: chatId,
-        text: deliveryMessage(plaintext),
-        parse_mode: "HTML",
-      });
-      if (!sendResult.ok) throw new Error(sendResult.description || "Telegram send failed");
 
-      // Mark inventory and job as delivered
-      await markDelivered(Number(inventoryItem.id));
-      await markJobDelivered(jobId, String((sendResult.result as Record<string, unknown>)?.message_id ?? ""));
+      if (salesChannel === "whatsapp") {
+        if (!waRecipient) throw new Error("No WhatsApp recipient phone number");
+        const sendResult = await sendTextMessage({
+          target: waRecipient,
+          message: `*PRODUK AXVARA SIAP!*\nOrder: ${orderCode}\n\nDetail akses/lisensi Anda:\n${plaintext}\n\nSimpan baik-baik. Ketik *garansi* untuk ketentuan.`,
+        });
+        if (!sendResult.ok) throw new Error(sendResult.error || "WhatsApp direct delivery failed");
+        await markDelivered(Number(inventoryItem.id));
+        await markJobDelivered(jobId, sendResult.messageId || "");
+      } else {
+        const sendResult = await sendMessage({
+          chat_id: chatId,
+          text: deliveryMessage(plaintext),
+          parse_mode: "HTML",
+        });
+        if (!sendResult.ok) throw new Error(sendResult.description || "Telegram send failed");
+        await markDelivered(Number(inventoryItem.id));
+        await markJobDelivered(jobId, String((sendResult.result as Record<string, unknown>)?.message_id ?? ""));
+      }
+
       await execRun(
         `UPDATE orders SET fulfillment_status='delivered', updated_at=datetime('now') WHERE code=?`,
         orderCode,

@@ -1,5 +1,6 @@
-// tests/whatsapp-variants.regression.test.ts — Tests for variants, catalog, warranty, and WhatsApp group bot
+// tests/whatsapp-variants.regression.test.ts — Comprehensive regression tests for variants, catalog, warranty, and WhatsApp group bot
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { NextRequest } from "next/server";
 import {
   formatWarrantyTelegram,
   formatWarrantyWhatsApp,
@@ -13,13 +14,20 @@ import {
   formatDuration,
   formatWarranty,
   formatRupiah,
-  searchProductByName,
-  listActiveProducts,
   type VariantSummary,
 } from "@/lib/catalog";
 import * as waMsg from "@/lib/whatsapp/messages";
 import { isEnabled, preflightWhatsAppPayment } from "@/lib/feature-flags";
-import { useCart } from "@/stores/cart";
+import {
+  parseFonntePayload,
+  timingSafeEqual,
+  authenticateWebhook,
+  isGroupAllowed,
+  isSelfMessage,
+  isPrivateIp,
+  checkImageMagicBytes,
+  sendTextMessage,
+} from "@/lib/whatsapp/gateway";
 
 describe("Canonical Warranty Policy", () => {
   it("has exactly 6 claim rules", () => {
@@ -40,7 +48,6 @@ describe("Canonical Warranty Policy", () => {
     expect(text).toContain("*KETENTUAN AXVARA");
     expect(text).toContain("*SYARAT KLAIM GARANSI*");
     expect(text).toContain("*Garansi berupa penggantian / perbaikan, BUKAN refund dana.*");
-    // Should NOT contain HTML tags
     expect(text).not.toContain("<b>");
     expect(text).not.toContain("</b>");
     expect(text).not.toContain("&amp;");
@@ -50,7 +57,6 @@ describe("Canonical Warranty Policy", () => {
     const tg = formatWarrantyTelegram();
     const wa = formatWarrantyWhatsApp();
 
-    // Check key terms present in both
     expect(tg).toContain("third-party store");
     expect(wa).toContain("third-party store");
     expect(tg).toContain("DYOR, DWYOR");
@@ -72,6 +78,7 @@ describe("Canonical Warranty Policy", () => {
 describe("Catalog Formatting Helpers", () => {
   const baseVariant: VariantSummary = {
     id: 1,
+    product_id: 1,
     sku: "TEST-SKU",
     label: "Invite",
     duration_value: 12,
@@ -134,7 +141,6 @@ describe("WhatsApp Message Formatting", () => {
     expect(msg).toContain("3. Gemini");
     expect(msg).toContain("Ketik nama produk untuk melihat pilihan.");
     expect(msg).toContain("Ketik *garansi*");
-    // Should NOT contain prices or categories
     expect(msg).not.toContain("Rp");
     expect(msg).not.toContain("AI Gateway");
   });
@@ -142,13 +148,13 @@ describe("WhatsApp Message Formatting", () => {
   it("formats product detail with numbered active variants", () => {
     const variants: VariantSummary[] = [
       {
-        id: 1, sku: "GEM-INV", label: "Invite",
+        id: 1, product_id: 1, sku: "GEM-INV", label: "Invite",
         duration_value: 12, duration_unit: "month", duration_label: null,
         warranty_type: "full", warranty_value: null, warranty_unit: null, warranty_label: null,
         price: 18000, compare_price: null, stock: -1, fulfillment_mode: "manual", is_active: 1, sort_order: 0,
       },
       {
-        id: 2, sku: "GEM-HEAD", label: "Head",
+        id: 2, product_id: 1, sku: "GEM-HEAD", label: "Head",
         duration_value: 3, duration_unit: "month", duration_label: null,
         warranty_type: "limited", warranty_value: 1, warranty_unit: "month", warranty_label: null,
         price: 25000, compare_price: null, stock: 5, fulfillment_mode: "manual", is_active: 1, sort_order: 10,
@@ -170,7 +176,7 @@ describe("WhatsApp Message Formatting", () => {
   it("shows HABIS label for out-of-stock variants", () => {
     const variants: VariantSummary[] = [
       {
-        id: 1, sku: "TEST-OUT", label: "Solo",
+        id: 1, product_id: 1, sku: "TEST-OUT", label: "Solo",
         duration_value: 1, duration_unit: "month", duration_label: null,
         warranty_type: "none", warranty_value: null, warranty_unit: null, warranty_label: null,
         price: 10000, compare_price: null, stock: 0, fulfillment_mode: "manual", is_active: 1, sort_order: 0,
@@ -182,7 +188,7 @@ describe("WhatsApp Message Formatting", () => {
 
   it("formats variant selected message with call-to-action", () => {
     const variant: VariantSummary = {
-      id: 2, sku: "GEM-HEAD", label: "Head",
+      id: 2, product_id: 1, sku: "GEM-HEAD", label: "Head",
       duration_value: 3, duration_unit: "month", duration_label: null,
       warranty_type: "limited", warranty_value: 1, warranty_unit: "month", warranty_label: null,
       price: 25000, compare_price: null, stock: 5, fulfillment_mode: "manual", is_active: 1, sort_order: 10,
@@ -258,13 +264,11 @@ describe("Feature Flags", () => {
   });
 
   it("preflight payment detects missing payment methods", async () => {
-    // Mock queryAll with missing methods
     const mockEmpty = async () => [];
     const emptyResult = await preflightWhatsAppPayment(mockEmpty);
     expect(emptyResult.ok).toBe(false);
     expect(emptyResult.missing).toHaveLength(3);
 
-    // Mock queryAll with complete methods
     const mockComplete = async () => [
       { id: "qris", qris_url: "/qris/test.jpg", is_active: 1 },
       { id: "seabank", account_number: "123", account_name: "Test", is_active: 1 },
@@ -276,13 +280,233 @@ describe("Feature Flags", () => {
   });
 });
 
-// Cart store logic unit test without zustand persist middleware issues in Node
-describe("Cart Matching Logic with Variants", () => {
+describe("Fonnte Official Payload Parser (P0.1)", () => {
+  it("parses real Fonnte group payload fixture correctly", () => {
+    const fonnteGroupFixture = {
+      sender: "120363024823948293@g.us",
+      message: "list",
+      member: "628123456789",
+      name: "Budi Santoso",
+      location: "",
+      inboxid: "98234123",
+    };
+
+    const parsed = parseFonntePayload(fonnteGroupFixture);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.isGroup).toBe(true);
+    expect(parsed?.conversationId).toBe("120363024823948293@g.us");
+    expect(parsed?.memberId).toBe("628123456789");
+    expect(parsed?.inboxId).toBe("98234123");
+    expect(parsed?.message).toBe("list");
+    expect(parsed?.name).toBe("Budi Santoso");
+  });
+
+  it("parses Fonnte group media attachment payload", () => {
+    const fonnteMediaFixture = {
+      sender: "120363024823948293@g.us",
+      message: "BUKTI AXV-20260904-TEST1234 SEABANK",
+      member: "628987654321",
+      name: "Siti",
+      inboxid: "98234125",
+      url: "https://media.fonnte.com/files/proof_123.jpg",
+      filename: "proof_123.jpg",
+      extension: "jpg",
+    };
+
+    const parsed = parseFonntePayload(fonnteMediaFixture);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.isGroup).toBe(true);
+    expect(parsed?.attachment?.url).toBe("https://media.fonnte.com/files/proof_123.jpg");
+    expect(parsed?.attachment?.filename).toBe("proof_123.jpg");
+    expect(parsed?.attachment?.extension).toBe("jpg");
+  });
+
+  it("parses direct message payload and distinguishes from group", () => {
+    const directFixture = {
+      sender: "628123456789",
+      message: "halo",
+      member: "",
+      name: "Budi",
+      inboxid: "98234126",
+    };
+
+    const parsed = parseFonntePayload(directFixture);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.isGroup).toBe(false);
+    expect(parsed?.conversationId).toBe("628123456789");
+    expect(parsed?.memberId).toBe("628123456789");
+  });
+});
+
+describe("Webhook Authentication & Timing-Safe Check (P0.2)", () => {
+  beforeEach(() => {
+    process.env.WHATSAPP_WEBHOOK_TOKEN = "super_secret_webhook_token_123";
+  });
+
+  afterEach(() => {
+    delete process.env.WHATSAPP_WEBHOOK_TOKEN;
+  });
+
+  it("timingSafeEqual correctly matches identical strings", () => {
+    expect(timingSafeEqual("abc123xyz", "abc123xyz")).toBe(true);
+    expect(timingSafeEqual("abc123xyz", "abc123xyw")).toBe(false);
+    expect(timingSafeEqual("short", "much_longer_string")).toBe(false);
+  });
+
+  it("authenticates valid token from x-webhook-token header", () => {
+    const req = new NextRequest("http://127.0.0.1:3000/api/whatsapp/webhook", {
+      method: "POST",
+      headers: {
+        "x-webhook-token": "super_secret_webhook_token_123",
+      },
+    });
+    const auth = authenticateWebhook(req);
+    expect(auth.ok).toBe(true);
+  });
+
+  it("authenticates valid token from Authorization Bearer header", () => {
+    const req = new NextRequest("http://127.0.0.1:3000/api/whatsapp/webhook", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer super_secret_webhook_token_123",
+      },
+    });
+    const auth = authenticateWebhook(req);
+    expect(auth.ok).toBe(true);
+  });
+
+  it("authenticates valid token from query parameter", () => {
+    const req = new NextRequest("http://127.0.0.1:3000/api/whatsapp/webhook?token=super_secret_webhook_token_123", {
+      method: "POST",
+    });
+    const auth = authenticateWebhook(req);
+    expect(auth.ok).toBe(true);
+  });
+
+  it("rejects missing token with 401 reason", () => {
+    const req = new NextRequest("http://127.0.0.1:3000/api/whatsapp/webhook", {
+      method: "POST",
+    });
+    const auth = authenticateWebhook(req);
+    expect(auth.ok).toBe(false);
+    expect(auth.reason).toBe("missing_token");
+  });
+
+  it("rejects invalid token with 401 reason", () => {
+    const req = new NextRequest("http://127.0.0.1:3000/api/whatsapp/webhook", {
+      method: "POST",
+      headers: {
+        "x-webhook-token": "wrong_token_guess",
+      },
+    });
+    const auth = authenticateWebhook(req);
+    expect(auth.ok).toBe(false);
+    expect(auth.reason).toBe("invalid_token");
+  });
+});
+
+describe("Group Allowlist & Self Check (P0.1)", () => {
+  beforeEach(() => {
+    process.env.WHATSAPP_GROUP_ALLOWLIST = "120363024823948293@g.us,120363099999999999@g.us";
+    process.env.WHATSAPP_BOT_NUMBER = "6289519388264";
+  });
+
+  afterEach(() => {
+    delete process.env.WHATSAPP_GROUP_ALLOWLIST;
+    delete process.env.WHATSAPP_BOT_NUMBER;
+  });
+
+  it("allows configured groups and rejects unauthorized groups", () => {
+    expect(isGroupAllowed("120363024823948293@g.us")).toBe(true);
+    expect(isGroupAllowed("120363099999999999@g.us")).toBe(true);
+    expect(isGroupAllowed("120363000000000000@g.us")).toBe(false);
+  });
+
+  it("identifies self messages from bot number to prevent loops", () => {
+    expect(isSelfMessage("6289519388264")).toBe(true);
+    expect(isSelfMessage("089519388264")).toBe(true);
+    expect(isSelfMessage("628123456789")).toBe(false);
+  });
+});
+
+describe("SSRF Prevention and Media Magic Bytes (P0.5)", () => {
+  it("detects private IP addresses and loopbacks", () => {
+    expect(isPrivateIp("localhost")).toBe(true);
+    expect(isPrivateIp("127.0.0.1")).toBe(true);
+    expect(isPrivateIp("10.0.0.5")).toBe(true);
+    expect(isPrivateIp("172.16.0.1")).toBe(true);
+    expect(isPrivateIp("192.168.1.100")).toBe(true);
+    expect(isPrivateIp("169.254.169.254")).toBe(true);
+    expect(isPrivateIp("::1")).toBe(true);
+
+    // Public hostnames are not private
+    expect(isPrivateIp("media.fonnte.com")).toBe(false);
+    expect(isPrivateIp("axvara.tech")).toBe(false);
+    expect(isPrivateIp("8.8.8.8")).toBe(false);
+  });
+
+  it("validates magic bytes for JPG, PNG, WebP", () => {
+    const jpgBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+    expect(checkImageMagicBytes(jpgBytes, "image/jpeg")).toBe(true);
+    expect(checkImageMagicBytes(jpgBytes, "image/jpg")).toBe(true);
+
+    const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    expect(checkImageMagicBytes(pngBytes, "image/png")).toBe(true);
+
+    const webpBytes = new Uint8Array([
+      0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50,
+    ]);
+    expect(checkImageMagicBytes(webpBytes, "image/webp")).toBe(true);
+
+    // Invalid / fake bytes
+    const fakeBytes = new Uint8Array([0x00, 0x00, 0x00, 0x00]);
+    expect(checkImageMagicBytes(fakeBytes, "image/jpeg")).toBe(false);
+    expect(checkImageMagicBytes(fakeBytes, "image/png")).toBe(false);
+    expect(checkImageMagicBytes(fakeBytes, "image/webp")).toBe(false);
+  });
+});
+
+describe("Outbound Fonnte Reply with inboxid (P0.1)", () => {
+  it("sends inboxid in request body when replying", async () => {
+    process.env.FONNTE_TOKEN = "dummy_token";
+
+    let interceptedBody: string = "";
+    vi.stubGlobal("fetch", vi.fn(async (_url, options) => {
+      interceptedBody = String(options.body);
+      return {
+        ok: true,
+        json: async () => ({ status: true, id: "msg_out_123" }),
+      };
+    }));
+
+    const res = await sendTextMessage({
+      target: "120363024823948293@g.us",
+      message: "Test reply",
+      inboxId: "inbox_999",
+    });
+
+    expect(res.ok).toBe(true);
+    expect(res.messageId).toBe("msg_out_123");
+    const parsed = JSON.parse(interceptedBody);
+    expect(parsed.target).toBe("120363024823948293@g.us");
+    expect(parsed.message).toBe("Test reply");
+    expect(parsed.inboxid).toBe("inbox_999"); // MUST be inboxid, NOT reply!
+
+    vi.unstubAllGlobals();
+    delete process.env.FONNTE_TOKEN;
+  });
+});
+
+describe("Cart Matching Logic with Variants (P1.6)", () => {
   type TestItem = { id: string; price: number; qty: number; variantId?: number; variantLabel?: string };
 
-  function addToCart(items: TestItem[], product: { id: string; price: number; stock?: number; variantId?: number; variantLabel?: string }, qty = 1): TestItem[] {
+  function addToCart(
+    items: TestItem[],
+    product: { id: string; price: number; stock?: number; variantId?: number; variantLabel?: string },
+    qty = 1,
+  ): TestItem[] {
     const matchKey = product.variantId ? `${product.id}:${product.variantId}` : product.id;
-    const itemKey = (i: TestItem) => i.variantId ? `${i.id}:${i.variantId}` : i.id;
+    const itemKey = (i: TestItem) => (i.variantId ? `${i.id}:${i.variantId}` : i.id);
     const existing = items.find((i) => itemKey(i) === matchKey);
     if (existing) {
       return items.map((i) => (itemKey(i) === matchKey ? { ...i, qty: i.qty + qty } : i));
@@ -292,7 +516,7 @@ describe("Cart Matching Logic with Variants", () => {
 
   function removeFromCart(items: TestItem[], id: string, variantId?: number): TestItem[] {
     const matchKey = variantId ? `${id}:${variantId}` : id;
-    const itemKey = (i: TestItem) => i.variantId ? `${i.id}:${i.variantId}` : i.id;
+    const itemKey = (i: TestItem) => (i.variantId ? `${i.id}:${i.variantId}` : i.id);
     return items.filter((i) => itemKey(i) !== matchKey);
   }
 

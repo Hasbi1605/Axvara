@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { getWebhookInfo } from "@/lib/telegram/api";
-import { queryFirst, queryAll } from "@/lib/db";
+import { queryAll } from "@/lib/db";
 
 export const runtime = "edge";
 
@@ -18,6 +18,11 @@ export async function GET(request: NextRequest) {
     payment_enabled: process.env.KLIKQRIS_PAYMENTS_ENABLED === "true",
     fulfillment_enabled: process.env.AUTO_FULFILLMENT_ENABLED === "true",
     encryption_key_set: !!process.env.FULFILLMENT_ENCRYPTION_KEY,
+    whatsapp_configured: !!process.env.FONNTE_TOKEN,
+    whatsapp_enabled: process.env.WHATSAPP_ENABLED === "true",
+    whatsapp_discovery: process.env.WHATSAPP_GROUP_DISCOVERY === "true",
+    whatsapp_payment: process.env.WHATSAPP_GROUP_PAYMENT === "true",
+    whatsapp_proof_intake: process.env.WHATSAPP_PROOF_INTAKE === "true",
   };
 
   // Webhook info (if configured)
@@ -41,10 +46,20 @@ export async function GET(request: NextRequest) {
     );
     health.telegram_orders = telegramOrders;
 
+    const whatsappOrders = await queryAll(
+      `SELECT payment_status, COUNT(*) as count FROM orders WHERE sales_channel='whatsapp' GROUP BY payment_status`,
+    );
+    health.whatsapp_orders = whatsappOrders;
+
     const pendingJobs = await queryAll(
       `SELECT status, COUNT(*) as count FROM fulfillment_jobs GROUP BY status`,
     );
     health.fulfillment_jobs = pendingJobs;
+
+    const waOutbox = await queryAll(
+      `SELECT status, COUNT(*) as count FROM whatsapp_outbox GROUP BY status`,
+    );
+    health.whatsapp_outbox = waOutbox;
   } catch { /* ok if tables don't exist yet */ }
 
   return NextResponse.json(health);

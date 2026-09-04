@@ -508,3 +508,13 @@ Sistem varian produk terpusat dan bot WhatsApp telah diimplementasikan sesuai `d
 | `whatsapp_inbox_events` | Idempotency / dedup webhook WhatsApp |
 | `whatsapp_outbox` | Antrean pengiriman pesan WhatsApp dengan retry |
 | `payment_proofs` | Metadata bukti pembayaran grup WhatsApp (R2 private, review queue) |
+
+### Migrasi 0008 — Multi-channel Orders Rebuild
+Migrasi `0008_orders_multichannel.sql` melakukan SQLite table rebuild pada tabel `orders` agar constraint `sales_channel` menerima `'web'`, `'telegram'`, dan `'whatsapp'`. Menambahkan kolom identitas channel kanonis `channel_conversation_id` dan `channel_member_id`, memigrasikan data lama tanpa memutus foreign key yang mengacu ke `orders(code)`, serta memperbarui indeks `idx_orders_channel` dan `idx_orders_status`.
+
+### Keamanan Webhook & Gateway WhatsApp
+- **Autentikasi Webhook:** Membandingkan `WHATSAPP_WEBHOOK_TOKEN` via `timingSafeEqual` (constant-time comparison). Permintaan tanpa token atau dengan token salah ditolak langsung dengan HTTP 401 sebelum parsing body dan sebelum menyentuh D1.
+- **Parser Fonnte:** `sender` dipetakan sebagai ID grup (`conversationId`), `member` sebagai nomor pengirim (`memberId`), `inboxid` sebagai ID pesan dan referensi balasan (`inboxId`).
+- **Media Bukti & Anti-SSRF:** Pengunduhan lampiran dibatasi ke protokol HTTPS, divalidasi anti-SSRF terhadap private IP/loopback, distream dengan batas maksimal 5 MB, diverifikasi magic bytes (JPG/PNG/WebP), dihitung SHA-256, dan disimpan secara privat di Cloudflare R2 prefix `bukti/whatsapp/`.
+- **Review Bukti Admin:** Endpoint `GET /api/admin/proofs` dan `POST /api/admin/proofs/[id]` (CAS approve/reject dengan audit `reviewed_by` dan `reviewed_at`).
+- **Proteksi Kredensial Fulfillment:** Pengiriman akun/lisensi otomatis untuk WhatsApp hanya dikirim via pesan langsung (DM) ke nomor pribadi pembeli (`channel_member_id` / `customer_wa`), tidak pernah dikirim ke grup publik. Gate bukti `WHATSAPP_REQUIRE_PROOF_BEFORE_FULFILLMENT` memastikan bukti telah diserahkan sebelum pekerjaan fulfillment dieksekusi.
