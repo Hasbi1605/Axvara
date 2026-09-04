@@ -493,11 +493,20 @@ sama tanpa sinkronisasi katalog per channel.
 UX WhatsApp dikunci menjadi dua langkah discovery: command `list` hanya menampilkan nama
 produk aktif tanpa kategori, lalu input nama/alias produk menampilkan detail dan active
 variants bernomor. Pemetaan angka disimpan per `conversation_id + member_id` dan selalu
-divalidasi ulang terhadap stable `variant_id`. Grup hanya untuk discovery; pilihan akhir,
-order, QRIS, status pembayaran, serta fulfillment diteruskan ke private chat.
+divalidasi ulang terhadap stable `variant_id`. Setelah angka dipilih, bot meminta
+`pay`/`payment`, membuat atau memakai ulang satu pending order, lalu mengirim QRIS,
+SeaBank, e-wallet, dan format bukti wajib pada grup allowlist.
+
+Bukti harus berupa reply image dengan caption `BUKTI <KODE> <METODE>`, divalidasi
+member/order/MIME/magic bytes, dideduplikasi, dan disimpan private di R2 untuk review
+admin. Bukti gambar tidak pernah menjadi sumber status paid: KlikQRIS dikonfirmasi oleh
+callback/status provider, sedangkan SeaBank/e-wallet dikonfirmasi admin setelah cek
+mutasi. Credential fulfillment tetap dilarang tampil di grup. Command `garansi` dan
+`/garansi` memakai policy content yang sama dengan Telegram melalui formatter channel.
 
 Fonnte direncanakan sebagai device gateway nomor/grup existing, sementara Pages, D1, R2,
 KlikQRIS, cron, dan fulfillment AXVARA tetap satu arsitektur. Implementasi harus berurutan:
 schema/backfill varian → CMS → web/cart/checkout → Telegram → WhatsApp discovery →
-private auto-order. Adapter KlikQRIS yang sudah bekerja direuse; webhook/outbox harus
-idempotent, delivery channel-aware, dan seluruh flag baru default nonaktif.
+group payment/proof intake. Adapter KlikQRIS yang sudah bekerja direuse; webhook/outbox,
+pay, invoice, dan bukti harus idempotent, delivery channel-aware, dan seluruh flag baru
+default nonaktif.

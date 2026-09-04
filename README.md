@@ -126,9 +126,11 @@ Rencana implementasi bot pada grup WhatsApp existing tersedia di
 induk dan varian (plan, durasi, garansi, harga, stok, serta fulfillment) di D1/CMS agar
 website, Telegram, dan WhatsApp membaca katalog yang sama. UX WhatsApp dibuat ringkas:
 `list` hanya menampilkan nama produk, lalu input nama produk menampilkan detail beserta
-varian bernomor. Fonnte direncanakan sebagai device gateway nomor/grup existing; transaksi
-dan QRIS dipindahkan ke private chat serta memakai ulang KlikQRIS Telegram. Seluruhnya
-masih planning-only dan runtime varian/WhatsApp belum diimplementasikan.
+varian bernomor. Setelah memilih angka, user membalas `pay`/`payment`; bot mengirim
+QRIS, SeaBank, e-wallet, serta format bukti wajib di grup. Command `garansi` memakai
+kebijakan canonical yang sama dengan Telegram. Fonnte direncanakan sebagai device gateway
+nomor/grup existing dan KlikQRIS Telegram dipakai ulang. Seluruhnya masih planning-only;
+runtime varian/WhatsApp belum diimplementasikan.
 
 Setelah pembayaran diterima, tombol support bot membuka akun manusia `@axvara_support`;
 username bot tetap `@Axvara_bot`. Seluruh notifikasi admin dari order web maupun Telegram

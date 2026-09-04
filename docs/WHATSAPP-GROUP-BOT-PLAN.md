@@ -35,10 +35,19 @@ Alur WhatsApp MVP dikunci sesederhana berikut:
     Bot:  detail singkat Gemini + daftar varian bernomor
 
     User: 2
-    Bot:  ringkasan varian terpilih + tautan lanjut secara privat
+    Bot:  ringkasan varian terpilih + instruksi balas pay/payment
+
+    User: pay
+    Bot:  membuat order lalu mengirim QRIS, SeaBank, dan e-wallet di grup
+
+    User: foto bukti + caption BUKTI <kode-order> <metode>
+    Bot:  mengonfirmasi bukti diterima dan meneruskan ke verifikasi
 
 WhatsApp tidak memakai kategori. Perubahan produk atau varian di CMS harus tampil pada
 website, Telegram, dan WhatsApp tanpa menyalin data atau deploy kode.
+
+Command **garansi** juga tersedia di grup dan menampilkan ketentuan serta syarat klaim
+yang sama secara substantif dengan command /garansi di Telegram.
 
 ---
 
@@ -58,6 +67,10 @@ Dari screenshot, perilaku yang cocok untuk AXVARA adalah:
    - harga;
    - status tersedia.
 5. User dapat membalas nomor varian dari respons terakhir.
+6. Setelah varian dipilih, keyword **pay** atau **payment** menampilkan seluruh metode
+   pembayaran AXVARA.
+7. User wajib mengirim foto/screenshot bukti pembayaran ke grup sebagai reply pada
+   pesan pembayaran dengan kode order dan metode pada caption.
 
 ### 2.2 Bagian yang disesuaikan untuk AXVARA
 
@@ -66,12 +79,14 @@ Yang tidak boleh disalin mentah dari screenshot:
 - Daftar tidak boleh di-hardcode di script bot.
 - Harga, stok, durasi, dan garansi tidak boleh menjadi teks bebas terpisah per channel.
 - Bot tidak perlu selalu menyuruh user menanyakan stok jika CMS sudah menyimpan stok.
-- QRIS, status pembayaran, bukti bayar, serta kredensial produk tidak dikirim di grup.
 - Angka seperti **2** tidak boleh berlaku global untuk seluruh grup; pemetaan harus
   terikat pada anggota dan percakapan yang memintanya.
+- Bukti pembayaran tidak boleh langsung dianggap valid hanya karena berupa gambar.
 
-Grup digunakan untuk menemukan produk. Transaksi dan delivery berpindah ke chat pribadi
-agar data pembeli tidak terlihat oleh semua anggota.
+Atas arahan owner, discovery, instruksi pembayaran, QRIS, rekening, dan pengiriman bukti
+berlangsung di grup. Kredensial produk/fulfillment tetap tidak boleh dikirim ke grup.
+Bot wajib memperingatkan bahwa bukti dapat dilihat anggota lain dan meminta user
+memotong/menyensor saldo, transaksi lain, alamat, atau data sensitif yang tidak diperlukan.
 
 ---
 
@@ -89,6 +104,11 @@ Audit codebase menunjukkan varian belum ada sebagai entitas:
 - checkout quote menerima product_id lalu memvalidasi harga/stok produk.
 - bot Telegram langsung bergerak dari produk ke konfirmasi/order.
 - fulfillment_mode dan shared secret saat ini berada pada level produk.
+- payment_methods D1 sudah menyimpan metode aktif, rekening, nama pemilik, dan URL QRIS.
+- /api/proof/upload sudah memvalidasi image maksimal 5 MB dan menyimpan bukti private di
+  R2, tetapi autentikasinya khusus same-origin checkout web.
+- kebijakan Telegram saat ini berasal dari warrantyFullMessage yang menggabungkan
+  warrantyTermsMessage dan warrantyClaimMessage.
 
 Konsekuensinya, WhatsApp tidak boleh dibangun lebih dahulu di atas model lama. Jika itu
 dilakukan, daftar varian akan kembali menjadi data khusus bot dan web tidak menjadi
@@ -374,6 +394,27 @@ nanti, tambahkan status eksplisit; jangan membuat cache Telegram/WhatsApp sendir
 Perubahan aktif harus terbaca channel pada request berikutnya. Cache publik website
 boleh maksimal singkat dan harus bisa di-invalidate/revalidate setelah save.
 
+### 7.4 Pembayaran dan antrean bukti WhatsApp
+
+Panel **Pembayaran** yang sudah ada tetap menjadi pusat QRIS fallback, SeaBank, dan
+e-wallet. Sebelum WHATSAPP_GROUP_PAYMENT aktif, preflight wajib memastikan ketiga metode
+aktif dan field account/name/image valid. Jika konfigurasi tidak lengkap, fitur pay
+fail-closed dan memberi pesan hubungi admin; bot tidak boleh memakai nomor hardcode.
+
+Tambahkan queue **Bukti WhatsApp** pada CMS dengan:
+
+- preview image melalui route admin-protected;
+- kode order, member, produk/varian, total, claimed method, dan waktu;
+- status provider KlikQRIS bila ada;
+- tombol approve/reject beserta alasan;
+- audit actor/time;
+- indikator order paid tetapi proof belum masuk;
+- aksi kirim ulang pengingat bukti.
+
+Approve SeaBank/e-wallet wajib didahului konfirmasi admin bahwa mutasi sudah ditemukan.
+Action memakai compare-and-set agar double click/retry tidak menghasilkan fulfillment
+ganda.
+
 ---
 
 ## 8. Kontrak katalog bersama
@@ -508,6 +549,7 @@ Respons hanya nama produk aktif, tanpa kategori, harga, atau seluruh varian:
     5. YouTube Premium
 
     Ketik nama produk untuk melihat pilihan.
+    Ketik *garansi* untuk membaca ketentuan.
 
 Jika produk terlalu banyak, gunakan pagination:
 
@@ -551,44 +593,164 @@ Saat user membalas **2**, bot:
 2. memetakan angka 2 ke stable variant_id dari respons terakhir;
 3. mengambil ulang varian dari D1;
 4. memvalidasi active, stok, harga, dan product relation;
-5. menjawab ringkasan;
-6. memberi tautan lanjut ke chat pribadi.
+5. menyimpan selected_variant_id pada session anggota;
+6. menjawab ringkasan dan meminta command pembayaran.
 
 Respons grup:
 
-    Pilihanmu:
+    *VARIAN DIPILIH*
     Gemini — Head
     3 Bulan · Garansi 1 Bulan
     Rp25.000
 
-    Lanjutkan order secara privat:
-    <tautan WhatsApp dengan token pemilihan singkat>
+    Balas pesan ini dengan *pay* atau *payment*
+    untuk membuat order dan melihat metode pembayaran.
 
-QRIS tidak dikirim di grup.
+Command pay/payment hanya berlaku untuk anggota yang memilih varian tersebut. Jika
+gateway menyediakan quoted/reply message ID, pay/payment wajib berupa reply pada pesan
+ringkasan varian; fallback hanya boleh memakai session anggota yang belum kedaluwarsa.
+Angka atau command milik anggota lain tidak boleh mengambil alih session.
 
-### 11.4 Private order
+### 11.4 Command pay/payment
 
-Tautan membawa opaque one-time selection token, bukan harga atau secret. Saat dibuka:
+Saat anggota yang sama membalas **pay** atau **payment**, bot:
 
-1. token diverifikasi dan ditukar dengan variant_id;
-2. user mengonfirmasi quantity;
-3. server memvalidasi ulang varian;
-4. order WhatsApp dibuat idempotent;
-5. invoice KlikQRIS dibuat;
-6. QR/payment link dikirim privat;
-7. callback mengubah payment/order;
-8. fulfillment dikirim privat atau masuk antrean manual.
+1. membaca selected_variant_id dari session;
+2. mengambil ulang product/variant, harga, stok, serta garansinya;
+3. membuat satu pending order dan mereservasi stok dengan TTL;
+4. membuat atau memakai ulang invoice KlikQRIS untuk order tersebut;
+5. membaca SeaBank dan e-wallet aktif dari payment_methods D1;
+6. mengirim kode order, nominal persis, QRIS, rekening SeaBank, e-wallet, dan aturan
+   bukti pembayaran di grup;
+7. menyimpan payment_message_id agar bukti dapat dikaitkan lewat reply.
 
-Jika auto-order belum siap saat WhatsApp discovery dirilis, private response cukup
-memberi ringkasan dan kontak admin. Alur list dan varian tidak boleh bergantung pada
-fitur payment.
+Contoh pesan teks:
 
-### 11.5 Error response
+    *PEMBAYARAN AXVARA*
+    Order: AXV-20260904-XXXXXXXX
+    Produk: Gemini — Head
+    Durasi: 3 Bulan
+    Garansi: 1 Bulan
+    Total: Rp25.000
+
+    *QRIS*
+    Scan gambar QRIS yang dikirim bot.
+
+    *SEABANK*
+    No. rekening: <dari CMS payment_methods>
+    Atas nama: <dari CMS payment_methods>
+
+    *E-WALLET*
+    Nomor: <dari CMS payment_methods>
+    Atas nama: <dari CMS payment_methods>
+
+    Transfer tepat sesuai total.
+
+    *BUKTI PEMBAYARAN WAJIB*
+    Balas/reply pesan ini dengan foto atau screenshot bukti.
+    Caption: BUKTI AXV-20260904-XXXXXXXX SEABANK
+    Ganti metode menjadi QRIS, SEABANK, atau EWALLET.
+
+    Bukti terlihat oleh anggota grup. Potong/sensor saldo,
+    transaksi lain, alamat, dan data pribadi yang tidak diperlukan.
+
+Gambar QRIS dikirim sebagai media setelah/bersama caption pembayaran. Nomor rekening,
+nama pemilik, serta QR static fallback tidak boleh di-hardcode; semuanya berasal dari
+payment_methods CMS. QR dinamis tetap dibuat oleh adapter KlikQRIS. Static QR hanya boleh
+dipakai bila dikonfigurasi aktif sebagai fallback dan kegagalannya ditampilkan jelas.
+
+Pemanggilan pay/payment berulang untuk session/order yang sama harus mengembalikan order
+serta invoice pending yang sama, bukan membuat order atau tagihan baru.
+
+### 11.5 Aturan bukti pembayaran di grup
+
+User diwajibkan:
+
+1. melakukan pembayaran sesuai nominal order;
+2. reply pada pesan pembayaran bot;
+3. mengirim satu file JPG, PNG, atau WebP maksimal 5 MB;
+4. memakai caption:
+
+       BUKTI <KODE-ORDER> <QRIS|SEABANK|EWALLET>
+
+5. menyensor data yang tidak relevan;
+6. tidak menghapus caption atau mengganti kode order.
+
+Saat webhook menerima media bukti, server wajib:
+
+1. memverifikasi group allowlist dan member pengirim;
+2. mencocokkan reply message ID, kode order, member ID, dan conversation ID;
+3. memastikan order masih milik member tersebut dan belum kedaluwarsa;
+4. memvalidasi MIME, magic bytes, ukuran, dan hanya menerima image;
+5. mengunduh media dari gateway menggunakan credential server-side;
+6. menghitung hash untuk dedupe;
+7. menyimpan file secara privat di R2 prefix bukti/whatsapp;
+8. membuat record payment_proofs dengan status submitted;
+9. menyimpan metode yang ditulis user sebagai claimed_method;
+10. mengirim acknowledgement dan notifikasi admin.
+
+Reply message ID adalah jalur utama. Jika payload gateway tidak menyediakan quoted
+message ID yang dapat dipercaya, fallback hanya boleh memakai kombinasi kode order pada
+caption + conversation ID + member ID. User tetap diarahkan melakukan reply agar alurnya
+jelas secara visual.
+
+Respons acknowledgement:
+
+    Bukti pembayaran untuk AXV-20260904-XXXXXXXX sudah diterima.
+    Status: menunggu verifikasi.
+    Bukti tidak otomatis berarti pembayaran sudah sah.
+
+Gambar bukti tidak boleh membuat order berstatus paid secara otomatis. Untuk QRIS,
+callback/status provider tetap authoritative. Untuk SeaBank/e-wallet, admin memeriksa
+mutasi dan bukti lalu mengonfirmasi dari CMS.
+
+Karena bukti diwajibkan pada alur WhatsApp, fulfillment memakai dua gate:
+
+- QRIS: payment_status=paid dari provider **dan** proof_status=submitted/approved;
+- SeaBank/e-wallet: proof_status=approved sekaligus payment_status=paid dari admin.
+
+Jika callback QRIS datang sebelum bukti, bot mengirim status “pembayaran terdeteksi”
+disertai pengingat mengunggah bukti; fulfillment masih menunggu bukti. Bukti tetap bukan
+sumber validasi pembayaran.
+
+### 11.6 Command garansi
+
+Command berikut diterima case-insensitive di grup:
+
+    garansi
+    /garansi
+
+Bot mengirim ketentuan dan enam syarat klaim yang sama dengan Telegram. Isi dan
+urutannya harus identik; hanya markup HTML Telegram yang diubah menjadi
+format teks WhatsApp. Kebijakan mencakup status third-party, tidak ada jaminan permanen,
+masa garansi mengikuti varian,
+klaim berupa penggantian/perbaikan bukan refund otomatis, bukti error + invoice wajib,
+kondisi garansi hangus, SLA, dan batas klaim.
+
+Jangan menyalin teks Telegram menjadi string kedua. Ekstrak isi canonical dari
+warrantyTermsMessage/warrantyClaimMessage ke modul bersama, misalnya
+src/lib/warranty-policy.ts:
+
+- Telegram formatter menghasilkan HTML;
+- WhatsApp formatter menghasilkan plain text/WhatsApp emphasis;
+- keduanya memakai urutan dan isi kebijakan yang sama;
+- detail varian tetap mengambil warranty fields dari product_variants.
+
+Copy Telegram saat ini menyebut rentang 1×24 jam–30 hari. Sebelum varian dengan
+Full Garansi/custom dipublikasikan, owner harus memperbarui canonical copy agar tidak
+bertentangan dengan data CMS. Perubahan dilakukan sekali dan otomatis berlaku pada
+Telegram serta WhatsApp.
+
+### 11.7 Error response
 
 - Nama tidak ditemukan: “Produk tidak ditemukan. Ketik list untuk melihat produk.”
 - Nama ambigu: tampilkan maksimal lima kandidat.
 - Session angka kedaluwarsa: minta user mengetik nama produk lagi.
+- Pay tanpa selected variant: minta user mengetik nama produk dan memilih angka dahulu.
 - Varian baru saja nonaktif/habis: beri tahu dan tampilkan ulang varian terbaru.
+- Bukti tanpa reply/kode/metode: kirim format caption yang benar tanpa menyimpan file.
+- Bukti milik order anggota lain: tolak tanpa membocorkan detail order.
+- Bukti duplikat: kembalikan acknowledgement lama, jangan upload/notifikasi ulang.
 - Gateway/payment gagal: satu pesan ramah, simpan detail teknis di log teredaksi.
 
 ---
@@ -608,17 +770,24 @@ Data minimum:
 
 - selected_product_id;
 - numbered_variant_map sebagai JSON nomor → variant_id;
-- source_message_id bila gateway menyediakannya;
+- selected_variant_id;
+- variant_message_id dan payment_message_id bila gateway menyediakannya;
+- current_order_id/current_order_code;
+- current_payment_transaction_id;
 - catalog_version atau generated_at;
 - expires_at, disarankan 10–15 menit.
 
 Saat angka dipilih, map menentukan ID tetapi data harga/stok tetap di-query ulang.
+Setelah pay/payment, session menunjuk order pending yang sama sampai lunas, batal, atau
+kedaluwarsa. Session baru tidak boleh membuat order kedua selama order pertama masih
+aktif untuk selection yang sama.
 
 ### 12.2 Webhook inbox
 
 Simpan event masuk dengan unique provider + external_message_id:
 
 - event duplikat tidak memicu respons/order kedua;
+- event media duplikat tidak mengunggah bukti atau memberi notifikasi admin dua kali;
 - verifikasi secret/signature gateway sebelum parse;
 - simpan payload minimal dan teredaksi;
 - ACK cepat;
@@ -660,6 +829,24 @@ Ubah kontrak item menjadi:
 
 Server mengisi seluruh snapshot dan harga.
 
+Route web POST /api/orders saat ini mensyaratkan proof_url sebelum membuat order.
+WhatsApp pay/payment memerlukan order code lebih dahulu agar instruksi dan bukti dapat
+dikaitkan. Jangan mengirim proof_url palsu dan jangan melemahkan validasi route web.
+
+Ekstrak internal commerce service baru untuk:
+
+- createPendingChannelOrder dari selected variant;
+- reservasi stok atomik;
+- idempotency key provider + conversation + member + selection/session;
+- payment_method awal pending dan payment_account null;
+- attach payment proof setelah order ada;
+- confirmPayment dengan compare-and-set agar hanya satu rail pembayaran yang menang.
+
+Saat callback KlikQRIS terkonfirmasi, authoritative method menjadi klikqris. Saat admin
+menyetujui bukti SeaBank/e-wallet setelah cek mutasi, authoritative method menjadi
+bank:seabank atau ewallet. Jika rail lain masuk setelah order sudah paid, tandai sebagai
+payment conflict untuk pemeriksaan/refund manual; jangan kirim fulfillment kedua.
+
 ### 13.3 Multi-channel
 
 Migrasikan orders.sales_channel agar menerima:
@@ -677,12 +864,52 @@ Tambahkan tabel/kolom:
 
 - whatsapp_inbox_events untuk dedupe webhook;
 - whatsapp_sessions untuk konteks per anggota grup;
-- whatsapp_selection_tokens untuk handoff privat satu kali;
 - message_outbox generik atau whatsapp_outbox untuk retry pengiriman;
+- payment_proofs untuk metadata bukti, order/member/message ID, claimed_method, hash,
+  private R2 key, status, dan waktu review;
+- whatsapp_message_links bila reply/context provider tidak cukup disimpan pada session;
+- whatsapp conversation/member/payment message ID pada order atau metadata order;
 - channel/destination pada fulfillment job.
 
 Simpan group ID dan nomor allowlist sebagai secret/env/config terkontrol, bukan
 hardcode.
+
+### 13.5 Kontrak payment_proofs
+
+Rancangan minimum:
+
+    CREATE TABLE payment_proofs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_code TEXT NOT NULL REFERENCES orders(code),
+      sales_channel TEXT NOT NULL DEFAULT 'whatsapp',
+      conversation_id TEXT NOT NULL,
+      member_id TEXT NOT NULL,
+      external_message_id TEXT NOT NULL,
+      reply_to_message_id TEXT,
+      claimed_method TEXT NOT NULL,
+      r2_key TEXT NOT NULL,
+      content_type TEXT NOT NULL,
+      byte_size INTEGER NOT NULL,
+      sha256 TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'submitted',
+      reviewed_by TEXT,
+      reviewed_at TEXT,
+      rejection_reason TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(sales_channel, external_message_id)
+    );
+
+Status minimum: submitted, approved, rejected. claimed_method hanya QRIS, SEABANK, atau
+EWALLET dan belum menjadi metode authoritative sebelum provider/admin mengonfirmasi.
+
+Satu order boleh mempunyai bukti pengganti setelah bukti sebelumnya rejected, tetapi
+hanya satu bukti submitted/approved yang aktif. Admin action harus diaudit dan bersifat
+idempotent.
+
+Webhook WhatsApp tidak boleh memanggil atau melemahkan proteksi same-origin pada
+/api/proof/upload. Ekstrak validator magic bytes/size dan R2 writer menjadi helper
+internal bersama; route web tetap memakai proteksi browser, sedangkan webhook hanya
+memanggil helper setelah signature, group, member, dan order lolos validasi.
 
 ---
 
@@ -693,12 +920,19 @@ hardcode.
 - Batasi command per member dan per group.
 - Verifikasi signature/token webhook dengan timing-safe comparison.
 - Jangan menerima harga, total, product label, atau garansi dari client sebagai fakta.
-- Selection token acak, sekali pakai, TTL pendek, dan disimpan hash bila memungkinkan.
 - Secret fulfillment tetap dienkripsi.
-- QR, order detail, status bayar, dan kredensial hanya dikirim privat.
+- QR, rekening pembayaran, kode order, dan acknowledgement bukti boleh dikirim hanya
+  pada grup allowlist sesuai keputusan owner.
+- Kredensial produk, password, license, hasil fulfillment, detail provider, dan secret
+  tetap dilarang dikirim ke grup.
+- Bot wajib memperingatkan bahwa bukti di grup terlihat anggota lain dan meminta user
+  menyensor data yang tidak relevan.
+- Bukti yang diunduh disimpan private di R2 dan hanya admin yang dapat membukanya dari
+  CMS; URL media gateway tidak dijadikan URL permanen.
+- File bukti tidak boleh dieksekusi, dipublikasikan, atau dipercaya berdasarkan ekstensi.
 - Log tidak boleh memuat token gateway, KlikQRIS credential, QR payload mentah,
-  password, atau shared secret.
-- Pisahkan feature flag WhatsApp discovery, private order, payment, dan fulfillment.
+  file bukti, nomor rekening lengkap, password, atau shared secret.
+- Pisahkan feature flag WhatsApp discovery, group payment, proof intake, dan fulfillment.
 
 Catatan operasional: gateway linked-device untuk nomor WhatsApp existing mempunyai
 risiko session/logout dan kebijakan platform. Health check serta prosedur reconnect
@@ -712,6 +946,11 @@ harus tersedia, dan owner menerima risiko gateway sebelum go-live.
 
 - Petakan seluruh pembacaan products.price, stock, fulfillment, dan telegram_enabled.
 - Tambah test karakterisasi web checkout, Telegram, KlikQRIS, dan fulfillment.
+- Petakan payment_methods, upload bukti R2, dan alur review admin yang sudah ada.
+- Ekstrak kebijakan garansi canonical agar Telegram/WhatsApp tidak mempunyai copy berbeda.
+- Lakukan gateway spike untuk outbound QR image dan inbound group media: bentuk media
+  URL, auth download, expiry, MIME, external message ID, member ID, serta quoted message
+  ID. Dokumentasikan fallback caption bila reply metadata tidak tersedia.
 - Catat sampel data produk existing yang perlu dikelompokkan manual.
 - Kunci terminology durasi dan garansi bersama owner.
 
@@ -762,21 +1001,27 @@ tetap terbaca.
 - Temukan serta allowlist group existing.
 - Implement webhook dedupe dan outbox.
 - Implement list, pagination, name matching, detail varian, dan session angka.
+- Implement command garansi dari canonical warranty policy yang sama dengan Telegram.
 - Rilis read-only tanpa payment lebih dahulu.
 
 **Gate:** update CMS tampil di WhatsApp tanpa deploy/sinkronisasi dan tidak ada balasan
 di luar allowlist.
 
-### Fase 6 — WhatsApp private order
+### Fase 6 — WhatsApp group payment dan bukti
 
-- Implement selection token dan deep-link.
+- Implement pay/payment hanya setelah selected variant.
 - Create order sales_channel=whatsapp.
-- Gunakan KlikQRIS existing.
+- Tampilkan QRIS KlikQRIS, SeaBank, dan e-wallet dari konfigurasi pusat di grup.
+- Implement instruksi/reply caption bukti wajib.
+- Download, validasi, dedupe, dan simpan bukti ke private R2.
+- Tambah CMS queue untuk review bukti SeaBank/e-wallet.
+- Gunakan callback/status KlikQRIS sebagai sumber konfirmasi QRIS.
 - Tambah WhatsApp delivery adapter.
 - Aktifkan fulfillment bertahap.
 
-**Gate:** satu input hanya membuat satu order/invoice/delivery dan seluruh data sensitif
-tetap privat.
+**Gate:** satu pay hanya membuat satu order/invoice; satu media hanya menjadi satu bukti;
+proof tidak dapat memalsukan status paid; kredensial fulfillment tidak pernah muncul di
+grup.
 
 ### Fase 7 — Cleanup
 
@@ -796,7 +1041,9 @@ Flag minimum:
 - TELEGRAM_VARIANT_FLOW;
 - WHATSAPP_ENABLED;
 - WHATSAPP_GROUP_DISCOVERY;
-- WHATSAPP_PRIVATE_ORDER;
+- WHATSAPP_GROUP_PAYMENT;
+- WHATSAPP_PROOF_INTAKE;
+- WHATSAPP_REQUIRE_PROOF_BEFORE_FULFILLMENT;
 - WHATSAPP_KLIKQRIS;
 - WHATSAPP_FULFILLMENT.
 
@@ -807,9 +1054,10 @@ Urutan aktivasi:
 3. website pada sebagian traffic atau setelah review;
 4. Telegram;
 5. WhatsApp discovery pada satu grup allowlist;
-6. private order;
-7. payment;
-8. fulfillment.
+6. command garansi;
+7. group payment;
+8. proof intake dan review admin;
+9. fulfillment.
 
 Rollback cukup mematikan flag fase terakhir tanpa menjatuhkan website, Telegram, atau
 ledger pembayaran.
@@ -833,6 +1081,9 @@ ledger pembayaran.
 - active product tanpa active variant ditolak;
 - variant yang pernah dibeli tidak terhapus fisik;
 - perubahan tercermin pada query katalog berikutnya.
+- payment preflight menolak aktivasi WA bila QRIS/SeaBank/e-wallet tidak lengkap;
+- queue bukti hanya dapat dibaca admin;
+- approve/reject tercatat audit dan retry tidak memicu fulfillment ganda.
 
 ### 17.3 Web
 
@@ -860,10 +1111,26 @@ ledger pembayaran.
 - dua anggota satu grup mempunyai session terpisah;
 - angka dari session lama ditolak;
 - varian berubah setelah list divalidasi ulang;
+- selected variant meminta balasan pay/payment;
+- pay tanpa selection ditolak;
+- pay dan payment bersifat case-insensitive;
+- retry pay memakai ulang order/invoice pending yang sama;
+- pesan pembayaran memuat order, nominal, QRIS, SeaBank, e-wallet, serta instruksi bukti;
+- nomor/rekening selalu berasal dari payment_methods aktif;
+- garansi dan /garansi menghasilkan kebijakan yang sama dengan Telegram;
+- bukti tanpa image, reply, kode order, atau metode ditolak;
+- bukti order anggota lain ditolak tanpa membocorkan detail;
+- image >5 MB, MIME palsu, dan magic bytes salah ditolak;
+- bukti valid disimpan private di R2 dan tampil pada queue admin;
+- upload/event bukti duplikat hanya diproses sekali;
+- bukti tidak pernah langsung mengubah payment menjadi paid;
+- callback KlikQRIS dan konfirmasi admin manual tetap authoritative;
+- QRIS paid tanpa proof belum menjalankan fulfillment dan memicu pengingat bukti;
+- QRIS paid + proof submitted hanya menjalankan satu fulfillment;
 - webhook duplikat hanya menghasilkan satu respons;
 - bot tidak loop pada pesannya sendiri;
 - unauthorized group diabaikan;
-- QR/order/credential tidak pernah muncul di grup.
+- credential produk/fulfillment tidak pernah muncul di grup.
 
 ### 17.6 End-to-end
 
@@ -875,8 +1142,12 @@ Skenario wajib:
 4. WhatsApp list tetap hanya menampilkan Gemini satu kali.
 5. User mengetik Gemini dan varian baru tampil.
 6. User memilih varian.
-7. Order privat menghasilkan KlikQRIS dengan nominal tepat.
-8. Callback lunas hanya memicu satu fulfillment.
+7. Bot meminta balasan pay/payment.
+8. User membalas pay dan bot membuat satu order dengan nominal tepat.
+9. Bot mengirim QRIS, SeaBank, e-wallet, dan format bukti wajib di grup.
+10. User reply foto bukti dengan kode order/metode.
+11. Bukti masuk private R2 dan queue admin, tetapi belum menandai paid.
+12. Callback KlikQRIS atau verifikasi admin hanya memicu satu fulfillment.
 
 ---
 
@@ -893,10 +1164,18 @@ Implementasi dianggap selesai bila:
 - WhatsApp list hanya mengirim nama produk;
 - mengetik nama produk mengirim detail dan varian bernomor;
 - pilihan angka aman per group member/session;
+- setelah memilih varian bot meminta pay/payment;
+- pay/payment mengirim QRIS, SeaBank, e-wallet, dan instruksi bukti di grup allowlist;
+- retry pay tidak membuat order/invoice ganda;
+- user diwajibkan reply foto bukti dengan kode order dan metode;
+- bukti tervalidasi tersimpan private dan masuk queue admin;
+- bukti gambar tidak dapat menandai order paid sendiri;
+- fulfillment WhatsApp membutuhkan payment confirmed dan bukti sudah diterima;
+- garansi dan /garansi memakai kebijakan canonical yang sama dengan Telegram;
 - order menyimpan snapshot varian;
 - KlikQRIS memakai harga varian hasil validasi server;
 - inventory dan delivery tepat per varian/channel;
-- tidak ada QR atau secret di grup;
+- tidak ada credential produk/fulfillment atau secret di grup;
 - webhook/order/payment/fulfillment idempotent;
 - rollback dapat dilakukan lewat feature flag.
 
@@ -917,6 +1196,9 @@ Agent eksekutor tidak boleh menebak data dagang berikut:
    berbeda.
 6. Nomor WhatsApp dan ID grup allowlist untuk staging/production.
 7. Persetujuan penggunaan gateway linked-device.
+8. Konfirmasi bahwa QRIS/rekening dan bukti memang boleh terlihat seluruh anggota grup.
+9. SLA serta jumlah pengingat untuk order QRIS yang sudah paid tetapi belum mengirim
+   bukti; fulfillment default tetap menunggu bukti.
 
 Keputusan tersebut sebaiknya dimasukkan lewat CMS/data migration, bukan hardcode.
 
@@ -933,9 +1215,9 @@ Ini perubahan lintas katalog, commerce, dan tiga channel. Estimasi realistis:
 | Web picker, cart, checkout, order snapshot | 1–2 hari |
 | Telegram variant flow + regresi | 1 hari |
 | WhatsApp discovery/session | 1–2 hari |
-| Private KlikQRIS + fulfillment + hardening | 1–2 hari |
+| Group payment, proof intake/review + hardening | 2–3 hari |
 
-Total sekitar **6–10 hari kerja**, bergantung pada kualitas data produk lama dan
+Total sekitar **7–11 hari kerja**, bergantung pada kualitas data produk lama dan
 keputusan bisnis garansi. WhatsApp discovery tanpa auto-order dapat dirilis setelah
 Fase 5; auto-order ditambahkan setelah jalur varian web dan Telegram stabil.
 
@@ -950,8 +1232,12 @@ Fase 5; auto-order ditambahkan setelah jalur varian web dan Telegram stabil.
 - [ ] Update Telegram ke product → variant → confirm.
 - [ ] Reuse KlikQRIS; jangan membuat adapter pembayaran baru.
 - [ ] Implement WhatsApp list → nama produk → numbered variants.
+- [ ] Setelah selection, implement pay/payment → order → QRIS/SeaBank/e-wallet di grup.
+- [ ] Wajibkan bukti sebagai image reply dengan kode order + metode.
+- [ ] Simpan bukti private, review manual, dan jangan percaya image sebagai status paid.
+- [ ] Implement garansi dari canonical policy yang sama dengan Telegram.
 - [ ] Scope session per conversation + member.
-- [ ] Jaga transaksi dan credential tetap privat.
+- [ ] Jaga credential produk/fulfillment tetap privat.
 - [ ] Tambah test unit, regression, integration, dan E2E per fase.
 - [ ] Update docs/ARCHITECTURE.md, README.md, dan CHANGELOG.md bersama perubahan.
 - [ ] Verifikasi dev sesuai AGENTS.md.
@@ -959,4 +1245,4 @@ Fase 5; auto-order ditambahkan setelah jalur varian web dan Telegram stabil.
 
 Dokumen ini mengunci model dan urutan kerja. Detail kosmetik pesan boleh berubah, tetapi
 single source of truth, variant_id server-authoritative, snapshot order, session
-per-member, serta pemisahan grup/private tidak boleh dilemahkan.
+per-member, idempotensi pay/bukti, dan otoritas callback/admin tidak boleh dilemahkan.
