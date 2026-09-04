@@ -58,6 +58,15 @@ describe("F-High: Idle timeout — requireAdmin harus cek idle cookie", () => {
   });
 });
 
+describe("Admin password secret normalization", () => {
+  it("menerima hash PBKDF2 yang terbungkus quote dari Pages secret", async () => {
+    const { hashPasswordPbkdf2, verifyPassword } = await import("@/lib/auth");
+    const stored = await hashPasswordPbkdf2("password-regression", "cf-pages-secret-salt", 10_000);
+    expect(await verifyPassword("password-regression", `\"${stored}\"`)).toBe(true);
+    expect(await verifyPassword("password-salah", `'${stored}'`)).toBe(false);
+  });
+});
+
 describe("F-High: No hardcoded password hashes in source (F-01 fix)", () => {
   it(".env.example tidak mengandung password atau hash prod", () => {
     const envExample = fs.readFileSync(path.join(process.cwd(), ".env.example"), "utf-8");

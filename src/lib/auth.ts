@@ -56,7 +56,7 @@ export function getAdminCredentials() {
   const email = requireEnv("ADMIN_EMAIL");
   const sha = process.env.ADMIN_PASSWORD_SHA256 || process.env.ADMIN_PASSWORD_HASH_SHA256;
   if (sha && sha.trim()) {
-    const t = sha.trim();
+    const t = normalizeStoredHash(sha);
     // Allow legacy 64 hex sha256 OR new pbkdf2$iter$salt$hex
     if (/^[a-f0-9]{64}$/i.test(t) || t.startsWith("pbkdf2$")) return { email, sha256: t };
     throw new Error("ADMIN_PASSWORD_SHA256 must be 64 hex sha256 or pbkdf2$iter$salt$hex");
@@ -88,7 +88,18 @@ function timingSafeEqual(a: string, b: string): boolean {
   return r === 0;
 }
 
+function normalizeStoredHash(stored: string): string {
+  const value = stored.trim();
+  // Pages secrets are sometimes pasted with shell/JSON quotes. Accept one
+  // matching wrapper so a valid PBKDF2 digest is not treated as a runtime error.
+  if (value.length >= 2 && ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'")))) {
+    return value.slice(1, -1).trim();
+  }
+  return value;
+}
+
 function parseStoredHash(stored: string): { kind: "pbkdf2"; iter: number; salt: string; hash: string } | { kind: "sha256"; hash: string } {
+  stored = normalizeStoredHash(stored);
   // New format: pbkdf2$100000$salt$hex  — recommended
   if (stored.startsWith("pbkdf2$")) {
     const parts = stored.split("$");

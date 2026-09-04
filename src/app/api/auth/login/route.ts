@@ -63,7 +63,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Email atau password salah." }, { status: 401 });
   }
 
-  const ok = await verifyPassword(password, cred.sha256);
+  let ok = false;
+  try {
+    ok = await verifyPassword(password, cred.sha256);
+  } catch {
+    // A malformed secret must not turn the login endpoint into an opaque
+    // platform-level 500 response. Keep the configuration detail private.
+    return NextResponse.json({ error: "Layanan login sedang tidak siap. Coba lagi sebentar." }, { status: 503 });
+  }
   if (!ok) {
     return NextResponse.json({ error: "Email atau password salah." }, { status: 401 });
   }
