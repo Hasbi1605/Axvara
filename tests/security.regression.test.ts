@@ -65,6 +65,21 @@ describe("Admin password secret normalization", () => {
     expect(await verifyPassword("password-regression", `\"${stored}\"`)).toBe(true);
     expect(await verifyPassword("password-salah", `'${stored}'`)).toBe(false);
   });
+
+  it("menerima proof PBKDF2 dari browser tanpa deriveBits di server", async () => {
+    const { createAdminPasswordProofChallenge, getAdminPasswordProofConfig, hashPasswordPbkdf2, verifyAdminPasswordProof } = await import("@/lib/auth");
+    const email = "admin@axvara.tech";
+    const password = "password-regression";
+    const stored = await hashPasswordPbkdf2(password, "cf-pages-secret-salt", 10_000);
+    const config = getAdminPasswordProofConfig(stored)!;
+    const challenge = await createAdminPasswordProofChallenge(email);
+    const encoder = new TextEncoder();
+    const passwordKey = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
+    const derived = new Uint8Array(await crypto.subtle.deriveBits({ name: "PBKDF2", salt: encoder.encode(config.salt), iterations: config.iterations, hash: "SHA-256" }, passwordKey, 256));
+    const hmacKey = await crypto.subtle.importKey("raw", derived, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+    const proof = Array.from(new Uint8Array(await crypto.subtle.sign("HMAC", hmacKey, encoder.encode(challenge)))).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    await expect(verifyAdminPasswordProof(email, stored, challenge, proof)).resolves.toBe(true);
+  });
 });
 
 describe("F-High: No hardcoded password hashes in source (F-01 fix)", () => {

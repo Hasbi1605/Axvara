@@ -4,7 +4,7 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
-- 2026-09-04 — Perbaiki login admin produksi: normalisasi quote pembungkus pada secret hash PBKDF2 dan tangani kegagalan verifikasi sebagai respons 503 terkontrol — `src/lib/auth.ts`, `src/app/api/auth/login/route.ts`, `tests/security.regression.test.ts`, docs — (verifikasi: vitest security 38/38 pass; dev GET / 200, CSS 200, admin login dev 200 + 2 HttpOnly cookies)
+- 2026-09-04 — Perbaiki login admin produksi: normalisasi quote secret dan pindahkan derivasi PBKDF2 ke proof browser→challenge JWT 5 menit agar Pages hanya memverifikasi HMAC ringan — `src/lib/auth.ts`, `src/app/api/auth/login/route.ts`, `src/app/admin/page.tsx`, `tests/security.regression.test.ts`, docs — (verifikasi: vitest security 39/39, tsc clean, dev GET / 200 + CSS 200 + challenge 200 + login 200/2 HttpOnly cookies)
 
 - 2026-09-04 — Tambah kontak admin & notifikasi order: (1) halaman sukses /pesanan/[code] perjelas pesan "admin akan menghubungi via WA" + tambah tombol Telegram @axvara_support, (2) notif Telegram otomatis ke admin saat order web masuk (best-effort, fire-and-forget) dengan tombol WA Buyer + Panel Admin, (3) Telegram bot minta no WA buyer HANYA untuk produk fulfillment manual (shared/unique skip karena bot otomatis kirim), migrasi 0006 tambah kolom pending_action di telegram_users — `src/lib/{site,telegram/{messages,keyboards,api}}.ts, src/app/{pesanan/[code],api/{orders,telegram/webhook}}/route.ts, drizzle/{schema.sql,migrations/0006}` — (verifikasi: vitest 127/127 pass, tsc clean, dev GET / 200 + CSS 200 + /pesanan 200)
 

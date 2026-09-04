@@ -148,6 +148,55 @@ export async function hashPasswordPbkdf2(password: string, salt: string, iter = 
   return `pbkdf2$${iter}$${salt}$${hex}`;
 }
 
+export type AdminPasswordProofConfig = {
+  algorithm: "PBKDF2-SHA-256";
+  iterations: number;
+  salt: string;
+};
+
+function bytesFromHex(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  return bytes;
+}
+
+async function hmacHex(keyBytes: Uint8Array, message: string): Promise<string> {
+  const keyMaterial = new Uint8Array(keyBytes).buffer as ArrayBuffer;
+  const key = await crypto.subtle.importKey("raw", keyMaterial, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message));
+  return Array.from(new Uint8Array(signature)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+export function getAdminPasswordProofConfig(stored: string): AdminPasswordProofConfig | null {
+  if (stored === "dev-placeholder" && isDev()) return null;
+  const parsed = parseStoredHash(stored);
+  if (parsed.kind !== "pbkdf2") return null;
+  return { algorithm: "PBKDF2-SHA-256", iterations: parsed.iter, salt: parsed.salt };
+}
+
+export async function createAdminPasswordProofChallenge(email: string): Promise<string> {
+  const nonce = new Uint8Array(16);
+  crypto.getRandomValues(nonce);
+  return new jose.SignJWT({ purpose: "admin_password_proof", email })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("5m")
+    .setJti(Array.from(nonce).map((byte) => byte.toString(16).padStart(2, "0")).join(""))
+    .sign(secretKey());
+}
+
+export async function verifyAdminPasswordProof(email: string, stored: string, challenge: string, proof: string): Promise<boolean> {
+  try {
+    const parsed = parseStoredHash(stored);
+    if (parsed.kind !== "pbkdf2" || !/^[a-f0-9]{64}$/i.test(proof)) return false;
+    const { payload } = await jose.jwtVerify(challenge, secretKey());
+    if (payload.purpose !== "admin_password_proof" || String(payload.email).toLowerCase() !== email.toLowerCase()) return false;
+    return timingSafeEqual(await hmacHex(bytesFromHex(parsed.hash), challenge), proof.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
 export async function createAdminToken(email: string) {
   const now = Math.floor(Date.now() / 1000);
   return await new jose.SignJWT({ email, role: "admin", iat: now })

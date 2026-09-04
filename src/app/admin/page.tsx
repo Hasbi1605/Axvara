@@ -24,6 +24,27 @@ type Order = { code:string; name:string; wa:string; method:string; items:{ name:
 const PER_PAGE_ADMIN = 8;
 const ADMIN_SECTIONS: AdminSection[] = ["summary","products","orders","categories","payments","articles","banners","subscribers","bot","agent"];
 
+type LoginChallenge = {
+  mode: "password" | "pbkdf2-proof";
+  algorithm?: "PBKDF2-SHA-256";
+  iterations?: number;
+  salt?: string;
+  challenge?: string;
+};
+
+function hexFromBytes(bytes: Uint8Array): string {
+  return Array.from(bytes).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function makePasswordProof(password: string, config: LoginChallenge): Promise<string> {
+  if (config.mode !== "pbkdf2-proof" || !config.salt || !config.iterations || !config.challenge) throw new Error("Konfigurasi login tidak lengkap.");
+  const encoder = new TextEncoder();
+  const passwordKey = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
+  const derived = new Uint8Array(await crypto.subtle.deriveBits({ name: "PBKDF2", salt: encoder.encode(config.salt), iterations: config.iterations, hash: "SHA-256" }, passwordKey, 256));
+  const hmacKey = await crypto.subtle.importKey("raw", derived, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return hexFromBytes(new Uint8Array(await crypto.subtle.sign("HMAC", hmacKey, encoder.encode(config.challenge))));
+}
+
 export default function AdminPage() {
   const toast = useToast();
   const [checkingAuth, setCheckingAuth] = useState(true);
@@ -156,10 +177,16 @@ export default function AdminPage() {
     if (!email.trim() || !pass) { setLoginError("Email dan password wajib diisi."); return; }
     setLoginLoading(true);
     try {
+      const challengeResponse = await fetch("/api/auth/login", { cache: "no-store" });
+      const challenge = await challengeResponse.json().catch(()=>({})) as LoginChallenge & { error?: string };
+      if (!challengeResponse.ok) throw new Error(challenge.error || "Layanan login sedang tidak siap.");
+      const body = challenge.mode === "pbkdf2-proof"
+        ? { email: email.trim(), password_proof: await makePasswordProof(pass, challenge), challenge: challenge.challenge }
+        : { email: email.trim(), password: pass };
       const r = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type":"application/json" },
-        body: JSON.stringify({ email: email.trim(), password: pass })
+        body: JSON.stringify(body)
       });
       const j = await r.json().catch(()=>({}));
       if (!r.ok) throw new Error(j.error || "Gagal masuk");

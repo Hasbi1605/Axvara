@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getAdminCredentials, verifyPassword, createAdminToken, cookieForToken, cookieForIdle, isSecureForRequest } from "@/lib/auth";
+import { createAdminPasswordProofChallenge, createAdminToken, cookieForIdle, cookieForToken, getAdminCredentials, getAdminPasswordProofConfig, isSecureForRequest, verifyAdminPasswordProof, verifyPassword } from "@/lib/auth";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
 const schema = z.object({
   email: z.string().email().max(120),
-  password: z.string().min(6).max(72),
+  password: z.string().min(6).max(72).optional(),
+  password_proof: z.string().regex(/^[a-f0-9]{64}$/i).optional(),
+  challenge: z.string().min(20).max(2000).optional(),
+}).refine((value) => Boolean(value.password) || Boolean(value.password_proof && value.challenge), {
+  message: "Email atau password tidak valid.",
 });
 
 // Simple in-memory rate limit per IP (edge isolate-safe best-effort)
@@ -26,6 +30,18 @@ function rateLimit(ip: string) {
 
 function clientIp(req: NextRequest) {
   return req.headers.get("cf-connecting-ip") || req.headers.get("x-real-ip") || "0.0.0.0";
+}
+
+export async function GET() {
+  try {
+    const cred = getAdminCredentials();
+    const config = getAdminPasswordProofConfig(cred.sha256);
+    if (!config) return NextResponse.json({ mode: "password" }, { headers: { "Cache-Control": "no-store" } });
+    const challenge = await createAdminPasswordProofChallenge(cred.email);
+    return NextResponse.json({ mode: "pbkdf2-proof", ...config, challenge }, { headers: { "Cache-Control": "no-store" } });
+  } catch {
+    return NextResponse.json({ error: "Layanan login sedang tidak siap. Coba lagi sebentar." }, { status: 503 });
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -49,7 +65,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Email atau password tidak valid." }, { status: 400 });
   }
 
-  const { email, password } = parsed.data;
+  const { email, password, password_proof, challenge } = parsed.data;
   let cred: ReturnType<typeof getAdminCredentials>;
   try {
     cred = getAdminCredentials();
@@ -65,7 +81,9 @@ export async function POST(req: NextRequest) {
 
   let ok = false;
   try {
-    ok = await verifyPassword(password, cred.sha256);
+    ok = password_proof && challenge
+      ? await verifyAdminPasswordProof(cred.email, cred.sha256, challenge, password_proof)
+      : await verifyPassword(password!, cred.sha256);
   } catch {
     // A malformed secret must not turn the login endpoint into an opaque
     // platform-level 500 response. Keep the configuration detail private.
