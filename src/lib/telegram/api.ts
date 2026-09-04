@@ -120,3 +120,30 @@ export async function sendChatAction(
 ): Promise<TelegramApiResponse> {
   return callApi("sendChatAction", { chat_id: chatId, action });
 }
+
+/**
+ * Animated progress bar: sends a message, edits it with smooth ▓░ progress, then deletes.
+ * Steps: ░░░░░░░░░░ 0% → ▓▓▓▓░░░░░░ 40% → ▓▓▓▓▓▓▓░░░ 70% → ▓▓▓▓▓▓▓▓▓▓ 100%
+ * Total duration: ~1s. Deleted after complete — real content follows immediately.
+ */
+export async function showLoadingBar(
+  chatId: number | string,
+  label = "Memuat",
+): Promise<void> {
+  const bar = (filled: number, total = 10) => {
+    const f = "▓".repeat(filled);
+    const e = "░".repeat(total - filled);
+    const pct = Math.round((filled / total) * 100);
+    return `${f}${e} ${pct}%`;
+  };
+
+  const msg = await sendMessage({ chat_id: chatId, text: `${label}\n${bar(0)}` });
+  if (!msg.ok || !msg.result) return;
+  const msgId = (msg.result as Record<string, unknown>).message_id as number;
+
+  await editMessageText({ chat_id: chatId, message_id: msgId, text: `${label}\n${bar(4)}` });
+  await editMessageText({ chat_id: chatId, message_id: msgId, text: `${label}\n${bar(7)}` });
+  await editMessageText({ chat_id: chatId, message_id: msgId, text: `${label}\n${bar(10)}` });
+
+  await callApi("deleteMessage", { chat_id: chatId, message_id: msgId });
+}

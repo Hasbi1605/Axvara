@@ -4,7 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { queryFirst, queryAll, execRun, isD1Mode } from "@/lib/db";
-import { sendMessage, sendPhoto, editMessageText, safeEditOrSend, answerCallbackQuery, sendChatAction } from "@/lib/telegram/api";
+import { sendMessage, sendPhoto, editMessageText, safeEditOrSend, answerCallbackQuery, sendChatAction, showLoadingBar } from "@/lib/telegram/api";
 import {
   homeKeyboard, categoriesKeyboard, productsKeyboard,
   productDetailKeyboard, confirmPurchaseKeyboard,
@@ -183,7 +183,7 @@ async function handleCommand(text: string, chatId: number, from?: { id: number; 
   const cmd = text.toLowerCase().split(/\s+/)[0];
 
   if (cmd === "/start") {
-    await sendChatAction(chatId, "upload_photo");
+    await showLoadingBar(chatId, "🚀 Menyiapkan AXVARA");
     const siteUrl = process.env.SITE_URL ?? "https://axvara.tech";
     await sendPhoto({
       chat_id: chatId,
@@ -329,7 +329,7 @@ async function handleShowProducts(chatId: number, messageId: number, categoryId:
 }
 
 async function handleShowProduct(chatId: number, messageId: number, productId: number) {
-  await sendChatAction(chatId, "upload_photo");
+  await showLoadingBar(chatId, "📦 Memuat produk");
   const product = await queryFirst(
     `SELECT id, name, description, price, compare_price, stock, badge, image_url FROM products WHERE id=? AND is_active=1 AND telegram_enabled=1`,
     productId,
