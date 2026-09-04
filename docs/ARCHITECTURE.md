@@ -505,6 +505,10 @@ Sistem varian produk terpusat dan bot WhatsApp telah diimplementasikan sesuai `d
   - Intake bukti pembayaran dengan caption `BUKTI <KODE> <METODE>`, dedup, R2 private, notifikasi admin
 - **Feature Flags:** 10 feature flags independen di `src/lib/feature-flags.ts` untuk rollout aman bertahap (semua default `false`).
 
+### Status Rollout Produksi WhatsApp
+
+Mulai 5 September 2026, Fonnte Device produksi telah terhubung dan discovery read-only diaktifkan untuk tepat satu GID pada `WHATSAPP_GROUP_ALLOWLIST`. Pages Secrets menyimpan `FONNTE_TOKEN`, `WHATSAPP_WEBHOOK_TOKEN`, `WHATSAPP_BOT_NUMBER`, serta GID tanpa hardcode. Flag aktif hanya `PRODUCT_VARIANTS_READ`, `WHATSAPP_ENABLED`, dan `WHATSAPP_GROUP_DISCOVERY`; group payment, proof intake, KlikQRIS, dan fulfillment tetap off sampai smoke test grup berhasil.
+
 ### Tabel Baru (migrasi 0007)
 | Tabel | Tujuan |
 |---|---|
