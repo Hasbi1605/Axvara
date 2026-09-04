@@ -60,6 +60,23 @@ export async function editMessageText(params: EditMessageTextParams): Promise<Te
   return callApi("editMessageText", params as unknown as Record<string, unknown>);
 }
 
+/**
+ * Try editMessageText first; if it fails (e.g. target is a photo message),
+ * fall back to sendMessage. This prevents "stuck" callbacks after sendPhoto.
+ */
+export async function safeEditOrSend(params: EditMessageTextParams): Promise<TelegramApiResponse> {
+  const editResult = await editMessageText(params);
+  if (editResult.ok) return editResult;
+  // Edit failed — send as new message instead
+  return sendMessage({
+    chat_id: params.chat_id,
+    text: params.text,
+    parse_mode: params.parse_mode,
+    reply_markup: params.reply_markup,
+    disable_web_page_preview: params.disable_web_page_preview,
+  });
+}
+
 export async function answerCallbackQuery(
   callbackQueryId: string,
   text?: string,

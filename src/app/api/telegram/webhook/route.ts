@@ -4,7 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { queryFirst, queryAll, execRun, isD1Mode } from "@/lib/db";
-import { sendMessage, sendPhoto, editMessageText, answerCallbackQuery } from "@/lib/telegram/api";
+import { sendMessage, sendPhoto, editMessageText, safeEditOrSend, answerCallbackQuery } from "@/lib/telegram/api";
 import {
   homeKeyboard, categoriesKeyboard, productsKeyboard,
   productDetailKeyboard, confirmPurchaseKeyboard,
@@ -226,7 +226,7 @@ async function handleCallback(data: string, chatId: number, messageId: number, f
 
   switch (action) {
     case "home":
-      await editMessageText({
+      await safeEditOrSend({
         chat_id: chatId, message_id: messageId,
         text: welcomeMessage(from.first_name),
         parse_mode: "HTML",
@@ -297,7 +297,7 @@ async function handleShowCategoriesEdit(chatId: number, messageId: number, page:
   const categories = await queryAll(
     `SELECT id, name FROM categories ORDER BY sort_order ASC`,
   );
-  await editMessageText({
+  await safeEditOrSend({
     chat_id: chatId, message_id: messageId,
     text: categoriesMessage(),
     parse_mode: "HTML",
@@ -314,7 +314,7 @@ async function handleShowProducts(chatId: number, messageId: number, categoryId:
     categoryId,
   );
 
-  await editMessageText({
+  await safeEditOrSend({
     chat_id: chatId, message_id: messageId,
     text: categoryProductsMessage(String(category.name), products.length),
     parse_mode: "HTML",
@@ -348,7 +348,7 @@ async function handleShowProduct(chatId: number, messageId: number, productId: n
       reply_markup: productDetailKeyboard(productId),
     });
   } else {
-    await editMessageText({
+    await safeEditOrSend({
       chat_id: chatId, message_id: messageId,
       text,
       parse_mode: "HTML",
@@ -404,7 +404,7 @@ async function handleBuyConfirm(chatId: number, messageId: number, productId: nu
     return;
   }
 
-  await editMessageText({
+  await safeEditOrSend({
     chat_id: chatId, message_id: messageId,
     text: confirmBuyMessage(String(product.name), Number(product.price)),
     parse_mode: "HTML",
@@ -659,7 +659,7 @@ async function handleOrderRefresh(chatId: number, messageId: number, orderCode: 
     productName = items[0]?.name ?? "Produk";
   } catch { /* ok */ }
 
-  await editMessageText({
+  await safeEditOrSend({
     chat_id: chatId, message_id: messageId,
     text: orderStatusMessage({
       orderCode: String(order.code),
@@ -718,7 +718,7 @@ async function handleOrderCancel(chatId: number, messageId: number, orderCode: s
     orderCode,
   );
 
-  await editMessageText({
+  await safeEditOrSend({
     chat_id: chatId, message_id: messageId,
     text: orderCancelledMessage(orderCode),
     parse_mode: "HTML",
