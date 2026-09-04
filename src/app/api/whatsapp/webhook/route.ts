@@ -1,8 +1,8 @@
 // POST /api/whatsapp/webhook — Fonnte WhatsApp group bot webhook handler
 
 import { NextRequest, NextResponse } from "next/server";
-import { queryFirst, execRun, isD1Mode } from "@/lib/db";
-import { isEnabled } from "@/lib/feature-flags";
+import { queryAll, queryFirst, execRun, isD1Mode } from "@/lib/db";
+import { isEnabled, preflightWhatsAppPayment } from "@/lib/feature-flags";
 import {
   listActiveProducts,
   getProductDetail,
@@ -18,19 +18,39 @@ import {
   parseFonntePayload,
   isGroupAllowed,
   isSelfMessage,
-  sendTextMessage,
-  sendImageMessage,
+  sendTextMessage as sendTextViaGateway,
+  sendImageMessage as sendImageViaGateway,
   downloadMediaSafely,
   MAX_BODY_SIZE,
 } from "@/lib/whatsapp/gateway";
-import { createPendingChannelOrder, getActivePaymentMethods } from "@/lib/commerce";
+import {
+  buildWhatsAppOrderIdempotencyKey,
+  createPendingChannelOrder,
+  getActivePaymentMethods,
+  isReusablePendingOrder,
+  parsePaymentDisplaySnapshot,
+} from "@/lib/commerce";
 import * as msg from "@/lib/whatsapp/messages";
 import { getR2Bucket } from "@/lib/r2";
 import { getPaymentProvider } from "@/lib/payments/klikqris";
+import { canAcceptWhatsAppPaymentProof } from "@/lib/payment-proofs";
 
 export const runtime = "edge";
 
 const ITEMS_PER_PAGE = 15;
+const WHATSAPP_MEMBER_EVENTS_PER_MINUTE = 12;
+
+async function sendTextMessage(params: Parameters<typeof sendTextViaGateway>[0]) {
+  const result = await sendTextViaGateway(params);
+  if (!result.ok) throw new Error(`fonnte_send_failed:${result.error || "unknown"}`);
+  return result;
+}
+
+async function sendImageMessage(params: Parameters<typeof sendImageViaGateway>[0]) {
+  const result = await sendImageViaGateway(params);
+  if (!result.ok) throw new Error(`fonnte_image_send_failed:${result.error || "unknown"}`);
+  return result;
+}
 
 function randHex(n: number): string {
   const a = new Uint8Array(n);
@@ -45,20 +65,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "invalid_content_type" }, { status: 415 });
   }
 
-  // 2. Timing-safe webhook authentication
-  const auth = authenticateWebhook(request);
-  if (!auth.ok) {
-    return NextResponse.json({ error: "unauthorized", reason: auth.reason }, { status: 401 });
+  // 2. Body size limit. Fonnte sends its configured webhook secret as an
+  // additional payload field, so the bounded body must be parsed before auth.
+  const declaredLength = Number(request.headers.get("content-length") || 0);
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_BODY_SIZE) {
+    return NextResponse.json({ error: "payload_too_large" }, { status: 413 });
   }
-
-  // 3. Feature flag check
-  if (!isEnabled("WHATSAPP_ENABLED")) {
-    return NextResponse.json({ ok: true, status: "disabled" });
-  }
-
-  // 4. Body size limit
   const rawText = await request.text().catch(() => "");
-  if (rawText.length > MAX_BODY_SIZE) {
+  if (new TextEncoder().encode(rawText).byteLength > MAX_BODY_SIZE) {
     return NextResponse.json({ error: "payload_too_large" }, { status: 413 });
   }
 
@@ -74,6 +88,17 @@ export async function POST(request: NextRequest) {
     }
   } catch {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
+  }
+
+  // 3. Timing-safe webhook authentication (header/query/payload secret)
+  const auth = authenticateWebhook(request, body);
+  if (!auth.ok) {
+    return NextResponse.json({ error: "unauthorized", reason: auth.reason }, { status: 401 });
+  }
+
+  // 4. Feature flag check
+  if (!isEnabled("WHATSAPP_ENABLED")) {
+    return NextResponse.json({ ok: true, status: "disabled" });
   }
 
   // 5. Parse Fonnte payload
@@ -92,8 +117,13 @@ export async function POST(request: NextRequest) {
   if (!isGroupAllowed(incoming.conversationId)) {
     return NextResponse.json({ ok: true, status: "not_allowed" });
   }
+  if (!incoming.inboxId) {
+    return NextResponse.json({ error: "missing_inbox_id" }, { status: 400 });
+  }
 
-  // 7. Inbox deduplication with lease
+  // 7. Inbox deduplication. `processed` doubles as the active claim; a caught
+  // failure is changed to `failed`, which lets exactly one Fonnte retry reclaim it.
+  let inboxClaimed = false;
   if (incoming.inboxId && isD1Mode()) {
     try {
       const existing = await queryFirst(
@@ -101,22 +131,54 @@ export async function POST(request: NextRequest) {
         incoming.inboxId,
       );
       if (existing) {
-        return NextResponse.json({ ok: true, status: "duplicate" });
+        if (String(existing.status) !== "failed") {
+          return NextResponse.json({ ok: true, status: "duplicate" });
+        }
+        const reclaimed = await execRun(
+          `UPDATE whatsapp_inbox_events SET status='processed'
+           WHERE id=? AND status='failed'`,
+          Number(existing.id),
+        );
+        if (!reclaimed.changes) {
+          return NextResponse.json({ ok: true, status: "duplicate" });
+        }
+        inboxClaimed = true;
+      } else {
+        await execRun(
+          `INSERT INTO whatsapp_inbox_events (provider, external_message_id, event_type, conversation_id, member_id, status)
+           VALUES ('fonnte',?,?,?,?,'processed')`,
+          incoming.inboxId,
+          incoming.attachment ? "media" : "text",
+          incoming.conversationId,
+          incoming.memberId,
+        );
+        inboxClaimed = true;
       }
-
-      await execRun(
-        `INSERT INTO whatsapp_inbox_events (provider, external_message_id, event_type, conversation_id, member_id, status)
-         VALUES ('fonnte',?,?,?,?,'processed')`,
-        incoming.inboxId,
-        incoming.attachment ? "media" : "text",
-        incoming.conversationId,
-        incoming.memberId,
-      );
     } catch (e) {
       const errMsg = e instanceof Error ? e.message : "";
       if (errMsg.includes("UNIQUE")) {
         return NextResponse.json({ ok: true, status: "duplicate" });
       }
+      console.error("WA inbox claim failed");
+      return NextResponse.json({ error: "inbox_unavailable" }, { status: 503 });
+    }
+  }
+
+  if (inboxClaimed && isD1Mode()) {
+    const recent = await queryFirst(
+      `SELECT COUNT(*) as count FROM whatsapp_inbox_events
+       WHERE provider='fonnte' AND conversation_id=? AND member_id=?
+         AND created_at>=datetime('now','-1 minute')`,
+      incoming.conversationId,
+      incoming.memberId,
+    ).catch(() => null);
+    if (Number(recent?.count || 0) > WHATSAPP_MEMBER_EVENTS_PER_MINUTE) {
+      await execRun(
+        `UPDATE whatsapp_inbox_events SET status='ignored'
+         WHERE provider='fonnte' AND external_message_id=? AND status='processed'`,
+        incoming.inboxId,
+      ).catch(() => {});
+      return NextResponse.json({ ok: true, status: "rate_limited" });
     }
   }
 
@@ -133,6 +195,9 @@ export async function POST(request: NextRequest) {
 
     // Command: list [page]
     if (cmd === "list" || cmd.startsWith("list ")) {
+      if (!isEnabled("WHATSAPP_GROUP_DISCOVERY")) {
+        return NextResponse.json({ ok: true, status: "discovery_disabled" });
+      }
       const pageMatch = cmd.match(/^list\s+(\d+)$/);
       const page = pageMatch ? Number(pageMatch[1]) : 1;
       await handleList(conversationId, page, inboxId);
@@ -155,6 +220,9 @@ export async function POST(request: NextRequest) {
 
     // Variant number selection (digits only)
     if (/^\d+$/.test(cmd)) {
+      if (!isEnabled("WHATSAPP_GROUP_DISCOVERY")) {
+        return NextResponse.json({ ok: true, status: "discovery_disabled" });
+      }
       await handleNumberSelection(conversationId, memberId, Number(cmd), inboxId);
       return NextResponse.json({ ok: true });
     }
@@ -168,7 +236,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error("WA webhook error:", error instanceof Error ? error.message : "unknown");
-    return NextResponse.json({ ok: true, status: "error_handled" });
+    if (inboxClaimed && incoming.inboxId && isD1Mode()) {
+      await execRun(
+        `UPDATE whatsapp_inbox_events SET status='failed'
+         WHERE provider='fonnte' AND external_message_id=? AND status='processed'`,
+        incoming.inboxId,
+      ).catch(() => {});
+    }
+    return NextResponse.json({ error: "processing_failed" }, { status: 500 });
   }
 }
 
@@ -176,7 +251,7 @@ export async function POST(request: NextRequest) {
 
 async function handleList(groupId: string, page: number, inboxId: string) {
   const products = await listActiveProducts();
-  const totalPages = Math.ceil(products.length / ITEMS_PER_PAGE);
+  const totalPages = Math.max(1, Math.ceil(products.length / ITEMS_PER_PAGE));
   const safePage = Math.max(1, Math.min(page, totalPages));
   const slice = products.slice((safePage - 1) * ITEMS_PER_PAGE, safePage * ITEMS_PER_PAGE);
 
@@ -266,6 +341,14 @@ async function handleNumberSelection(groupId: string, memberId: string, num: num
 
   await upsertSession("fonnte", groupId, memberId, {
     selected_variant_id: variantId,
+    ...(session.selected_variant_id !== variantId
+      ? {
+          current_order_id: null,
+          current_order_code: null,
+          current_payment_transaction_id: null,
+          payment_message_id: null,
+        }
+      : {}),
   });
 
   const result = await sendTextMessage({
@@ -289,14 +372,40 @@ async function handlePay(groupId: string, memberId: string, inboxId: string) {
     return;
   }
 
+  const paymentPreflight = await preflightWhatsAppPayment(queryAll);
+  if (!paymentPreflight.ok) {
+    await sendTextMessage({
+      target: groupId,
+      message: "Metode pembayaran sedang belum lengkap. Hubungi admin dan jangan transfer terlebih dahulu.",
+      inboxId,
+    });
+    return;
+  }
+
   // Idempotency: reuse existing pending order if available
   if (session.current_order_code) {
     const existingOrder = await queryFirst(
-      `SELECT code, subtotal, status, payment_status FROM orders WHERE code=?`,
+      `SELECT o.code, o.subtotal, o.status, o.payment_status, o.expires_at,
+              pt.payable_amount, pt.qris_url
+       FROM orders o
+       LEFT JOIN payment_transactions pt ON pt.order_code=o.code
+       WHERE o.code=? AND o.variant_id=?`,
       session.current_order_code,
+      session.selected_variant_id,
     );
-    if (existingOrder && String(existingOrder.status) === "pending") {
-      await sendPaymentInfo(groupId, memberId, session, String(existingOrder.code), Number(existingOrder.subtotal), inboxId);
+    if (existingOrder && isReusablePendingOrder(existingOrder)) {
+      const payableAmount = existingOrder.payable_amount == null
+        ? Number(existingOrder.subtotal)
+        : Number(existingOrder.payable_amount);
+      await sendPaymentInfo(
+        groupId,
+        memberId,
+        session,
+        String(existingOrder.code),
+        payableAmount,
+        inboxId,
+        existingOrder.qris_url ? String(existingOrder.qris_url) : undefined,
+      );
       return;
     }
   }
@@ -313,8 +422,20 @@ async function handlePay(groupId: string, memberId: string, inboxId: string) {
     return;
   }
 
-  // Deterministic idempotency key: based on group + member + selected variant (NO Date.now()!)
-  const idempotencyKey = `wa:order:${groupId}:${memberId}:${session.selected_variant_id}`;
+  if (!inboxId) {
+    await sendTextMessage({
+      target: groupId,
+      message: "Pembayaran belum dapat dibuat karena inbox Fonnte belum aktif. Hubungi admin.",
+    });
+    return;
+  }
+
+  const idempotencyKey = buildWhatsAppOrderIdempotencyKey(
+    groupId,
+    memberId,
+    inboxId,
+    session.selected_variant_id,
+  );
 
   try {
     const order = await createPendingChannelOrder({
@@ -359,12 +480,30 @@ async function createAndSendKlikQrisPayment(
   total: number,
   inboxId: string,
 ) {
+  const existingTransaction = await queryFirst(
+    `SELECT payable_amount, qris_url FROM payment_transactions WHERE order_code=?`,
+    orderCode,
+  );
+  if (existingTransaction) {
+    await sendPaymentInfo(
+      groupId,
+      memberId,
+      session,
+      orderCode,
+      Number(existingTransaction.payable_amount || total),
+      inboxId,
+      existingTransaction.qris_url ? String(existingTransaction.qris_url) : undefined,
+    );
+    return;
+  }
+
+  let invoiceResult: Awaited<ReturnType<ReturnType<typeof getPaymentProvider>["createInvoice"]>> | null = null;
   try {
     const provider = getPaymentProvider();
     const providerOrderId = orderCode.replace(/^AXV-/, "");
     const merchantId = process.env.KLIKQRIS_MERCHANT_ID ?? "";
 
-    const invoiceResult = await provider.createInvoice({
+    invoiceResult = await provider.createInvoice({
       orderId: providerOrderId,
       amount: total,
       merchantId,
@@ -372,31 +511,53 @@ async function createAndSendKlikQrisPayment(
 
     if (invoiceResult && invoiceResult.success) {
       if (isD1Mode()) {
-        await execRun(
-          `INSERT INTO payment_transactions (order_code, provider, provider_mode, provider_order_id,
-             merchant_id, requested_amount, payable_amount, status, provider_signature,
-             qris_url, direct_url, expires_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-          orderCode,
-          "klikqris",
-          provider.mode,
-          invoiceResult.providerOrderId,
-          invoiceResult.merchantId,
-          total,
-          invoiceResult.payableAmount,
-          "pending",
-          invoiceResult.signature,
-          invoiceResult.qrisUrl,
-          invoiceResult.directUrl,
-          invoiceResult.expiresAt,
-        );
+        try {
+          await execRun(
+            `INSERT INTO payment_transactions (order_code, provider, provider_mode, provider_order_id,
+               merchant_id, requested_amount, payable_amount, status, provider_signature,
+               qris_url, direct_url, expires_at)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+            orderCode,
+            "klikqris",
+            provider.mode,
+            invoiceResult.providerOrderId,
+            invoiceResult.merchantId,
+            total,
+            invoiceResult.payableAmount,
+            "pending",
+            invoiceResult.signature,
+            invoiceResult.qrisUrl,
+            invoiceResult.directUrl,
+            invoiceResult.expiresAt,
+          );
+        } catch (error) {
+          const existing = await queryFirst(
+            `SELECT payable_amount, qris_url FROM payment_transactions WHERE order_code=?`,
+            orderCode,
+          );
+          if (!existing) throw error;
+          await sendPaymentInfo(
+            groupId,
+            memberId,
+            session,
+            orderCode,
+            Number(existing.payable_amount || total),
+            inboxId,
+            existing.qris_url ? String(existing.qris_url) : undefined,
+          );
+          return;
+        }
       }
 
       await sendPaymentInfo(groupId, memberId, session, orderCode, invoiceResult.payableAmount, inboxId, invoiceResult.qrisUrl ?? undefined);
       return;
     }
   } catch (err) {
-    console.error("KlikQRIS creation for WA failed, falling back to static:", err);
+    // Falling back is safe only when no provider invoice was successfully
+    // created. Once one exists, sending a static QR with another amount would
+    // make reconciliation ambiguous.
+    if (invoiceResult?.success) throw err;
+    console.error("KlikQRIS creation for WA failed, falling back to static");
   }
 
   // Fallback to static if dynamic fails
@@ -412,20 +573,31 @@ async function sendPaymentInfo(
   inboxId: string,
   dynamicQrisUrl?: string,
 ) {
-  const detail = await getProductDetail(session.selected_product_id!);
-  const variant = session.selected_variant_id ? await getActiveVariant(session.selected_variant_id) : null;
+  const order = await queryFirst(
+    `SELECT items, variant_snapshot FROM orders WHERE code=?`,
+    orderCode,
+  );
+  const snapshot = parsePaymentDisplaySnapshot(order?.variant_snapshot);
+  const detail = snapshot?.productName
+    ? null
+    : await getProductDetail(session.selected_product_id!);
+  const variant = snapshot
+    ? null
+    : session.selected_variant_id
+      ? await getActiveVariant(session.selected_variant_id)
+      : null;
   const paymentMethods = await getActivePaymentMethods();
 
-  const dur = variant ? formatDuration(variant) : "";
-  const war = variant ? formatWarranty(variant) : "";
+  const dur = snapshot?.duration || (variant ? formatDuration(variant) : "");
+  const war = snapshot?.warranty || (variant ? formatWarranty(variant) : "");
   const qrisUrl = dynamicQrisUrl || paymentMethods.qris?.url;
 
   const result = await sendTextMessage({
     target: groupId,
     message: msg.paymentMessage({
       orderCode,
-      productName: detail?.name || "Produk",
-      variantLabel: variant?.label || "",
+      productName: snapshot?.productName || detail?.name || "Produk",
+      variantLabel: snapshot?.variantLabel || variant?.label || "",
       duration: dur,
       warranty: war,
       total,
@@ -480,7 +652,7 @@ async function handleProofUpload(
   // Validate order belongs to sender & conversation, and is still pending & not expired
   const order = await queryFirst(
     `SELECT id, code, status, payment_status, channel_conversation_id, channel_member_id, expires_at FROM orders
-     WHERE code=? AND sales_channel='whatsapp' AND status='pending'`,
+     WHERE code=? AND sales_channel='whatsapp'`,
     orderCode,
   );
 
@@ -498,9 +670,12 @@ async function handleProofUpload(
     return;
   }
 
-  // Check expiry
-  if (order.expires_at && new Date(String(order.expires_at)).getTime() < Date.now()) {
-    await sendTextMessage({ target: groupId, message: "Pesanan ini sudah kedaluwarsa. Silakan buat pesanan baru.", inboxId: messageId });
+  if (!canAcceptWhatsAppPaymentProof(order)) {
+    await sendTextMessage({
+      target: groupId,
+      message: "Pesanan ini sudah kedaluwarsa atau tidak dapat menerima bukti. Silakan buat pesanan baru.",
+      inboxId: messageId,
+    });
     return;
   }
 
@@ -526,6 +701,16 @@ async function handleProofUpload(
   }
 
   // Real SSRF-safe streaming download and validation
+  const bucket = getR2Bucket();
+  if (!bucket) {
+    await sendTextMessage({
+      target: groupId,
+      message: "Penyimpanan bukti sedang tidak tersedia. Coba lagi dalam beberapa saat.",
+      inboxId: messageId,
+    });
+    return;
+  }
+
   const downloaded = await downloadMediaSafely(mediaUrl);
   if (!downloaded) {
     await sendTextMessage({
@@ -540,17 +725,14 @@ async function handleProofUpload(
   const r2Key = `bukti/whatsapp/${orderCode}-${randHex(8)}.${ext}`;
 
   // Upload to R2 private bucket
-  const bucket = getR2Bucket();
-  if (bucket) {
-    try {
-      await bucket.put(r2Key, downloaded.buffer, {
-        httpMetadata: { contentType: downloaded.contentType },
-      });
-    } catch (e) {
-      console.error("R2 upload error:", e);
-      await sendTextMessage({ target: groupId, message: "Penyimpanan bukti gagal. Coba lagi dalam beberapa saat.", inboxId: messageId });
-      return;
-    }
+  try {
+    await bucket.put(r2Key, downloaded.buffer, {
+      httpMetadata: { contentType: downloaded.contentType },
+    });
+  } catch (e) {
+    console.error("R2 upload error:", e);
+    await sendTextMessage({ target: groupId, message: "Penyimpanan bukti gagal. Coba lagi dalam beberapa saat.", inboxId: messageId });
+    return;
   }
 
   // Insert payment_proofs record
@@ -577,9 +759,7 @@ async function handleProofUpload(
       );
     } catch (e) {
       // Rollback R2 upload if D1 insert fails
-      if (bucket) {
-        await bucket.delete(r2Key).catch(() => {});
-      }
+      await bucket.delete(r2Key).catch(() => {});
       const errMsg = e instanceof Error ? e.message : "";
       if (errMsg.includes("UNIQUE")) {
         await sendTextMessage({ target: groupId, message: msg.proofDuplicateMessage(orderCode), inboxId: messageId });

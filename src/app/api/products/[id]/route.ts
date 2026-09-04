@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { queryFirst, execRun } from "@/lib/db";
+import { queryFirst, execRun, getD1, isD1Mode } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
 import { rateLimit, rateLimitKey } from "@/lib/rateLimit";
 
@@ -42,10 +42,51 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const parsed = updateSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
   const data = parsed.data;
-  const existing = await queryFirst("SELECT id FROM products WHERE id=?", id) as { id: number } | undefined;
+  const existing = await queryFirst(
+    "SELECT id, price, compare_price, stock FROM products WHERE id=?",
+    id,
+  ) as { id: number; price: number; compare_price: number | null; stock: number } | undefined;
   if (!existing) return NextResponse.json({ error: "not found" }, { status: 404 });
-  if (data.price != null && data.comparePrice != null && data.comparePrice <= data.price) {
+  if (data.isActive === true && isD1Mode()) {
+    const activeVariant = await queryFirst(
+      "SELECT id FROM product_variants WHERE product_id=? AND is_active=1 LIMIT 1",
+      id,
+    );
+    if (!activeVariant) {
+      return NextResponse.json(
+        { error: "Aktifkan minimal satu varian sebelum mengaktifkan produk." },
+        { status: 409 },
+      );
+    }
+  }
+  const nextPrice = data.price ?? Number(existing.price);
+  const nextComparePrice = data.comparePrice !== undefined
+    ? data.comparePrice
+    : existing.compare_price;
+  if (nextComparePrice != null && nextComparePrice <= nextPrice) {
     return NextResponse.json({ error: "Harga coret harus lebih besar dari harga jual" }, { status: 400 });
+  }
+  const variantSummary = isD1Mode()
+    ? await queryFirst(
+        `SELECT COUNT(*) as variant_count,
+                MAX(CASE WHEN sku LIKE 'DEFAULT-%' THEN id END) as default_variant_id
+         FROM product_variants WHERE product_id=?`,
+        id,
+      )
+    : null;
+  const defaultVariant = Number(variantSummary?.variant_count || 0) === 1
+    && variantSummary?.default_variant_id
+    ? Number(variantSummary.default_variant_id)
+    : null;
+  const changesLegacyCommerceFields =
+    (data.price !== undefined && Number(data.price) !== Number(existing.price))
+    || (data.comparePrice !== undefined && (data.comparePrice ?? null) !== (existing.compare_price ?? null))
+    || (data.stock !== undefined && Number(data.stock) !== Number(existing.stock));
+  if (isD1Mode() && changesLegacyCommerceFields && !defaultVariant) {
+    return NextResponse.json(
+      { error: "Harga dan stok dikelola per varian. Gunakan tombol Varian pada produk ini." },
+      { status: 409 },
+    );
   }
   const urlOk = (u: string) => {
     if (u.startsWith("/r2/")) return true;
@@ -73,8 +114,31 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (data.images !== undefined) { fields.push("images=?"); vals.push(JSON.stringify(Array.isArray(data.images) ? data.images.slice(0,8) : [])); }
   if (fields.length) {
     fields.push("updated_at=datetime('now')");
-    vals.push(id);
-    try { await execRun(`UPDATE products SET ${fields.join(",")} WHERE id=?`, ...vals); }
+    try {
+      const d1 = getD1();
+      if (d1) {
+        const statements = [
+          d1.prepare(`UPDATE products SET ${fields.join(",")} WHERE id=?`).bind(...vals, id),
+        ];
+        if (defaultVariant && changesLegacyCommerceFields) {
+          const variantFields: string[] = [];
+          const variantValues: unknown[] = [];
+          if (data.price !== undefined) { variantFields.push("price=?"); variantValues.push(data.price); }
+          if (data.comparePrice !== undefined) { variantFields.push("compare_price=?"); variantValues.push(data.comparePrice ?? null); }
+          if (data.stock !== undefined) { variantFields.push("stock=?"); variantValues.push(data.stock); }
+          variantFields.push("updated_at=datetime('now')");
+          statements.push(
+            d1.prepare(`UPDATE product_variants SET ${variantFields.join(",")} WHERE id=?`).bind(
+              ...variantValues,
+              defaultVariant,
+            ),
+          );
+        }
+        await d1.batch(statements);
+      } else {
+        await execRun(`UPDATE products SET ${fields.join(",")} WHERE id=?`, ...vals, id);
+      }
+    }
     catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       if (msg.includes("UNIQUE")) return NextResponse.json({ error: "slug sudah dipakai" }, { status: 409 });
@@ -90,6 +154,18 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const admin = await requireAdmin(req);
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
+  const product = await queryFirst("SELECT id FROM products WHERE id=?", id);
+  if (!product) return NextResponse.json({ error: "not found" }, { status: 404 });
+  const d1 = getD1();
+  if (d1) {
+    // Variants and historical orders reference the product graph. Archive it
+    // instead of issuing a FK-breaking hard delete.
+    await d1.batch([
+      d1.prepare("UPDATE products SET is_active=0, updated_at=datetime('now') WHERE id=?").bind(id),
+      d1.prepare("UPDATE product_variants SET is_active=0, updated_at=datetime('now') WHERE product_id=?").bind(id),
+    ]);
+    return NextResponse.json({ ok: true, action: "archived" });
+  }
   await execRun("DELETE FROM products WHERE id=?", id);
   return NextResponse.json({ ok: true });
 }

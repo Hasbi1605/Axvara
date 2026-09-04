@@ -31,11 +31,15 @@ export async function GET(request: NextRequest) {
         o.customer_name,
         o.customer_wa,
         o.subtotal,
+        COALESCE(pt.payable_amount, o.subtotal) as payable_amount,
         o.status as order_status,
         o.payment_status,
-        o.items
+        o.items,
+        pt.status as provider_status,
+        pt.provider_order_id
       FROM payment_proofs p
       LEFT JOIN orders o ON o.code = p.order_code
+      LEFT JOIN payment_transactions pt ON pt.order_code = p.order_code
       ORDER BY p.id DESC
       LIMIT 100
     `);

@@ -24,7 +24,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   }
   const parsed = patchSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
-  const row = (await queryFirst("SELECT code, status, items FROM orders WHERE code=?", code)) as Record<string, unknown> | undefined;
+  const row = (await queryFirst("SELECT code, status, sales_channel, items FROM orders WHERE code=?", code)) as Record<string, unknown> | undefined;
   if (!row) return NextResponse.json({ error: "Pesanan tidak ditemukan" }, { status: 404 });
 
   // Simple state machine: pending -> lunas/dibatalkan/kadaluarsa, lunas/dibatalkan final
@@ -36,8 +36,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   if (nxt === cur || nxt === "pending") {
     return NextResponse.json({ ok: true, code, status: cur, unchanged: true });
   }
+  if (nxt === "lunas" && String(row.sales_channel) === "whatsapp") {
+    return NextResponse.json(
+      { error: "review_bukti_whatsapp_required", message: "Setujui bukti WhatsApp dari menu Bukti Bayar." },
+      { status: 409 },
+    );
+  }
 
-  let items: { product_id: number; qty: number }[];
+  let items: { product_id: number; variant_id?: number; qty: number }[];
   try {
     items = JSON.parse(String(row.items || "[]"));
   } catch {

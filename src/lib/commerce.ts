@@ -34,6 +34,62 @@ export type PendingOrder = {
   isExisting?: boolean;
 };
 
+type PendingOrderState = {
+  status?: unknown;
+  payment_status?: unknown;
+  expires_at?: unknown;
+};
+
+export type PaymentDisplaySnapshot = {
+  productName: string;
+  variantLabel: string;
+  duration: string;
+  warranty: string;
+};
+
+/** Read immutable buyer-facing labels captured when the order was created. */
+export function parsePaymentDisplaySnapshot(raw: unknown): PaymentDisplaySnapshot | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(String(raw)) as Record<string, unknown>;
+    const variantLabel = String(parsed.label || "").trim();
+    if (!variantLabel) return null;
+    return {
+      productName: String(parsed.product_name || "").trim(),
+      variantLabel,
+      duration: String(parsed.duration_label || "").trim(),
+      warranty: String(parsed.warranty_label || "").trim(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * One Fonnte inbox event maps to one order attempt. A later `pay` message gets
+ * a different inbox id, so the same member can buy the same variant again.
+ */
+export function buildWhatsAppOrderIdempotencyKey(
+  conversationId: string,
+  memberId: string,
+  inboxId: string,
+  variantId: number,
+): string {
+  const eventId = inboxId.trim();
+  if (!eventId) throw new Error("missing_fonnte_inbox_id");
+  return ["wa", "order", conversationId, memberId, eventId, String(variantId)]
+    .map((part) => encodeURIComponent(part))
+    .join(":");
+}
+
+export function isReusablePendingOrder(order: PendingOrderState, now = Date.now()): boolean {
+  if (String(order.status || "") !== "pending") return false;
+  if (!["unpaid", "pending"].includes(String(order.payment_status || ""))) return false;
+  if (!order.expires_at) return true;
+  const expiresAt = Date.parse(String(order.expires_at));
+  return Number.isFinite(expiresAt) && expiresAt > now;
+}
+
 /**
  * Creates a pending channel order with atomic stock reservation.
  * If an order already exists with the same idempotency key (stored in quote_id),
@@ -76,6 +132,7 @@ export async function createPendingChannelOrder(input: ChannelOrderInput): Promi
   ];
 
   const variantSnapshot = JSON.stringify({
+    product_name: input.productName,
     variant_id: input.variantId,
     sku: variant.sku,
     label: variant.label,
@@ -93,14 +150,26 @@ export async function createPendingChannelOrder(input: ChannelOrderInput): Promi
   const d1 = getD1();
   if (d1) {
     const guardId = `${input.idempotencyKey}:stock:${input.variantId}`;
+    const needsUniqueInventory = variant.fulfillment_mode === "unique";
     const statements: D1Statement[] = [
-      // 1. Guard check: ensures variant is active and has stock
+      // 1. Guard check: variant stock and, for unique delivery, one matching
+      // encrypted inventory item must both be available.
       d1.prepare(
         `INSERT INTO operation_guards (operation_id, valid)
          SELECT ?, CASE WHEN EXISTS(
-           SELECT 1 FROM product_variants WHERE id=? AND is_active=1 AND (stock=-1 OR stock>=1)
+           SELECT 1 FROM product_variants
+           WHERE id=? AND is_active=1 AND (stock=-1 OR stock>=1)
+             AND (
+               fulfillment_mode!='shared'
+               OR (shared_secret_ciphertext IS NOT NULL AND shared_secret_iv IS NOT NULL)
+             )
+         ) AND (
+           ? != 'unique' OR EXISTS(
+             SELECT 1 FROM fulfillment_inventory
+             WHERE product_id=? AND status='available' AND (variant_id=? OR variant_id IS NULL)
+           )
          ) THEN 1 ELSE 0 END`,
-      ).bind(guardId, input.variantId),
+      ).bind(guardId, input.variantId, variant.fulfillment_mode, input.productId, input.variantId),
 
       // 2. Decrement variant stock
       d1.prepare(
@@ -110,6 +179,25 @@ export async function createPendingChannelOrder(input: ChannelOrderInput): Promi
          WHERE id=?`,
       ).bind(input.variantId),
 
+    ];
+
+    if (needsUniqueInventory) {
+      statements.push(
+        d1.prepare(
+          `UPDATE fulfillment_inventory
+           SET status='reserved', order_code=?, reserved_at=datetime('now')
+           WHERE id=(
+             SELECT id FROM fulfillment_inventory
+             WHERE product_id=? AND status='available' AND (variant_id=? OR variant_id IS NULL)
+             ORDER BY CASE WHEN variant_id=? THEN 0 ELSE 1 END, id ASC
+             LIMIT 1
+           ) AND status='available'`,
+        ).bind(orderCode, input.productId, input.variantId, input.variantId),
+      );
+    }
+
+    const orderInsertIndex = statements.length;
+    statements.push(
       // 3. Insert order
       d1.prepare(
         `INSERT INTO orders (
@@ -136,20 +224,18 @@ export async function createPendingChannelOrder(input: ChannelOrderInput): Promi
         input.salesChannel === "telegram" ? input.conversationId || null : null,
         input.salesChannel === "telegram" ? input.customerId : null,
         "pending",
-        "not_required",
+        needsUniqueInventory ? "reserved" : "not_required",
         input.variantId,
         variantSnapshot,
         input.idempotencyKey,
       ),
-
       // 4. Cleanup guard
       d1.prepare(`DELETE FROM operation_guards WHERE operation_id=?`).bind(guardId),
-    ];
+    );
 
     try {
       const results = await d1.batch(statements);
-      // Find the lastInsertRowid from insert statement (index 2)
-      const orderInsertResult = results[2];
+      const orderInsertResult = results[orderInsertIndex];
       const orderId = orderInsertResult?.meta?.last_row_id ?? 0;
 
       return {
@@ -160,11 +246,9 @@ export async function createPendingChannelOrder(input: ChannelOrderInput): Promi
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (/operation_guards|CHECK constraint/i.test(message)) {
-        throw new StockReservationError();
-      }
-      // If quote_id UNIQUE constraint conflict occurred due to concurrent call:
-      if (/UNIQUE constraint failed: orders\.quote_id/i.test(message)) {
+      // A concurrent retry can collide on either the order quote or the stock
+      // guard. Check for its committed winner before classifying the error.
+      if (/UNIQUE|operation_guards|CHECK constraint/i.test(message)) {
         const raceWinner = await queryFirst(
           `SELECT id, code, subtotal FROM orders WHERE quote_id=?`,
           input.idempotencyKey,
@@ -177,6 +261,9 @@ export async function createPendingChannelOrder(input: ChannelOrderInput): Promi
             isExisting: true,
           };
         }
+      }
+      if (/operation_guards|CHECK constraint/i.test(message)) {
+        throw new StockReservationError();
       }
       throw error;
     }

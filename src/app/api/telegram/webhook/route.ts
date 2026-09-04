@@ -3,7 +3,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { queryFirst, queryAll, execRun, isD1Mode } from "@/lib/db";
+import { queryFirst, queryAll, execRun, isD1Mode, transitionPendingOrder } from "@/lib/db";
 import { sendMessage, sendPhoto, safeEditOrSend, answerCallbackQuery, sendChatAction, showLoadingBar } from "@/lib/telegram/api";
 import {
   homeKeyboard, categoriesKeyboard, productsKeyboard,
@@ -584,11 +584,49 @@ async function createAndSendVariantInvoice(
   const price = Number(variant.price);
   const fulfillmentMode = String(variant.fulfillment_mode || "manual");
   const orderCode = generateOrderCode();
+  const items = [{
+    product_id: productId,
+    variant_id: variant.id,
+    name: `${productName} — ${variant.label}`,
+    price,
+    qty: 1,
+  }];
+  const variantSnapshot = JSON.stringify({
+    product_name: productName,
+    variant_id: variant.id,
+    sku: variant.sku,
+    label: variant.label,
+    duration_value: variant.duration_value,
+    duration_unit: variant.duration_unit,
+    duration_label: formatDuration(variant),
+    warranty_type: variant.warranty_type,
+    warranty_value: variant.warranty_value,
+    warranty_unit: variant.warranty_unit,
+    warranty_label: formatWarranty(variant),
+    price,
+    fulfillment_mode: fulfillmentMode,
+  });
+  let inventoryId: number | null = null;
+  let finiteStockReserved = false;
+  let orderInserted = false;
 
   try {
-    let inventoryId: number | null = null;
+    if (fulfillmentMode === "shared" && isD1Mode()) {
+      const configured = await queryFirst(
+        `SELECT id FROM product_variants
+         WHERE id=? AND product_id=?
+           AND shared_secret_ciphertext IS NOT NULL AND shared_secret_iv IS NOT NULL`,
+        variant.id,
+        productId,
+      );
+      if (!configured) {
+        await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+        return;
+      }
+    }
+
     if (fulfillmentMode === "unique") {
-      inventoryId = await reserveInventory(productId, orderCode);
+      inventoryId = await reserveInventory(productId, orderCode, variant.id);
       if (inventoryId === null) {
         await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
         return;
@@ -604,9 +642,11 @@ async function createAndSendVariantInvoice(
       );
       if (!stockResult.changes) {
         if (inventoryId) await releaseInventoryForOrder(orderCode);
+        inventoryId = null;
         await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
         return;
       }
+      finiteStockReserved = true;
     }
 
     const provider = getPaymentProvider();
@@ -623,8 +663,12 @@ async function createAndSendVariantInvoice(
     } catch {
       if (variant.stock !== -1 && isD1Mode()) {
         await execRun(`UPDATE product_variants SET stock = stock + 1 WHERE id=? AND stock != -1`, variant.id);
+        finiteStockReserved = false;
       }
-      if (inventoryId) await releaseInventoryForOrder(orderCode);
+      if (inventoryId) {
+        await releaseInventoryForOrder(orderCode);
+        inventoryId = null;
+      }
       await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
       return;
     }
@@ -632,25 +676,29 @@ async function createAndSendVariantInvoice(
     if (!invoiceResult || !invoiceResult.success) {
       if (variant.stock !== -1 && isD1Mode()) {
         await execRun(`UPDATE product_variants SET stock = stock + 1 WHERE id=? AND stock != -1`, variant.id);
+        finiteStockReserved = false;
       }
-      if (inventoryId) await releaseInventoryForOrder(orderCode);
+      if (inventoryId) {
+        await releaseInventoryForOrder(orderCode);
+        inventoryId = null;
+      }
       await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
       return;
     }
 
-    const items = [{ product_id: productId, variant_id: variant.id, name: `${productName} — ${variant.label}`, price, qty: 1 }];
     await execRun(
       `INSERT INTO orders (code, customer_name, customer_wa, customer_email, items, subtotal,
          payment_method, payment_account, proof_url, status, sales_channel,
          telegram_chat_id, telegram_user_id, payment_status, fulfillment_status,
-         variant_id, expires_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         variant_id, variant_snapshot, expires_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       orderCode, from.first_name, customerWa, null, JSON.stringify(items),
       invoiceResult.payableAmount, "klikqris", "", null, "pending", "telegram",
       String(chatId), String(from.id), "pending",
       fulfillmentMode === "unique" ? "reserved" : "not_required",
-      variant.id, invoiceResult.expiresAt,
+      variant.id, variantSnapshot, invoiceResult.expiresAt,
     );
+    orderInserted = true;
 
     await execRun(
       `INSERT INTO payment_transactions (order_code, provider, provider_mode, provider_order_id,
@@ -662,7 +710,7 @@ async function createAndSendVariantInvoice(
       invoiceResult.signature, invoiceResult.qrisUrl, invoiceResult.directUrl, invoiceResult.expiresAt,
     );
 
-    await createFulfillmentJob(orderCode, inventoryId, fulfillmentMode);
+    await createFulfillmentJob(orderCode, inventoryId, fulfillmentMode, variant.id, "telegram");
 
     const displayName = `${productName} — ${variant.label}`;
     const photoSource = invoiceResult.qrisUrl ?? invoiceResult.qrisImage;
@@ -694,6 +742,26 @@ async function createAndSendVariantInvoice(
     }
   } catch (error) {
     console.error("Variant order creation failed:", error instanceof Error ? error.message : "unknown");
+    try {
+      if (orderInserted) {
+        const transaction = await queryFirst(
+          `SELECT id FROM payment_transactions WHERE order_code=?`,
+          orderCode,
+        );
+        if (!transaction) {
+          await transitionPendingOrder(orderCode, "dibatalkan", "invoice_setup_failed", items);
+        }
+      } else {
+        if (finiteStockReserved) {
+          await execRun(
+            `UPDATE product_variants SET stock=stock+1, updated_at=datetime('now')
+             WHERE id=? AND stock!=-1`,
+            variant.id,
+          );
+        }
+        if (inventoryId) await releaseInventoryForOrder(orderCode);
+      }
+    } catch { /* Cron/admin reconciliation can handle any remaining reservation. */ }
     await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
   }
 }

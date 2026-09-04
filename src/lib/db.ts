@@ -545,8 +545,18 @@ export async function transitionPendingOrder(
         );
       });
       statements.push(
-        d1.prepare("UPDATE orders SET status=?,admin_note=?,updated_at=datetime('now') WHERE code=? AND status='pending'")
-          .bind(status, adminNote, code),
+        d1.prepare(
+          `UPDATE fulfillment_inventory
+           SET status='available', order_code=NULL, reserved_at=NULL
+           WHERE order_code=? AND status='reserved'`,
+        ).bind(code),
+        d1.prepare(
+          `UPDATE orders
+           SET status=?, admin_note=?,
+               payment_status=CASE WHEN ?='kadaluarsa' THEN 'expired' ELSE 'failed' END,
+               fulfillment_status='not_required', updated_at=datetime('now')
+           WHERE code=? AND status='pending'`,
+        ).bind(status, adminNote, status, code),
         d1.prepare("DELETE FROM operation_guards WHERE operation_id=?").bind(guardId),
       );
       try {
@@ -559,7 +569,9 @@ export async function transitionPendingOrder(
       }
     }
     const result = await d1.prepare(
-      "UPDATE orders SET status=?,admin_note=?,updated_at=datetime('now') WHERE code=? AND status='pending'",
+      `UPDATE orders
+       SET status=?, admin_note=?, payment_status='paid', updated_at=datetime('now')
+       WHERE code=? AND status='pending'`,
     ).bind(status, adminNote, code).run();
     if (!result.meta?.changes) throw new OrderTransitionError();
     return;
@@ -574,6 +586,149 @@ export async function transitionPendingOrder(
     });
   }
   order.status = status;
+  order.payment_status = status === "lunas" ? "paid" : status === "kadaluarsa" ? "expired" : "failed";
+  if (status !== "lunas") order.fulfillment_status = "not_required";
   order.admin_note = adminNote;
   order.updated_at = new Date().toISOString();
+}
+
+export async function transitionPendingPaymentOrder(input: {
+  orderCode: string;
+  expectedTransactionStatus: "initializing" | "pending";
+  transactionStatus: "failed" | "expired";
+  orderStatus: "dibatalkan" | "kadaluarsa";
+  paymentStatus: "failed" | "expired";
+  items: { product_id: number; variant_id?: number; qty: number }[];
+  lastError?: string | null;
+}): Promise<boolean> {
+  const productQuantities = new Map<number, number>();
+  const variantQuantities = new Map<number, number>();
+  input.items.forEach((item) => {
+    if (item.variant_id) {
+      variantQuantities.set(item.variant_id, (variantQuantities.get(item.variant_id) ?? 0) + item.qty);
+    } else {
+      productQuantities.set(item.product_id, (productQuantities.get(item.product_id) ?? 0) + item.qty);
+    }
+  });
+
+  const d1 = getD1();
+  if (d1) {
+    const guardId = `${input.orderCode}:payment:${input.transactionStatus}`;
+    const statements: D1Statement[] = [
+      d1.prepare(
+        `INSERT INTO operation_guards (operation_id,valid)
+         SELECT ?, CASE WHEN
+           EXISTS(SELECT 1 FROM orders WHERE code=? AND status='pending')
+           AND EXISTS(SELECT 1 FROM payment_transactions WHERE order_code=? AND status=?)
+         THEN 1 ELSE 0 END`,
+      ).bind(guardId, input.orderCode, input.orderCode, input.expectedTransactionStatus),
+    ];
+
+    productQuantities.forEach((qty, productId) => {
+      statements.push(
+        d1.prepare("UPDATE products SET stock=stock+? WHERE id=? AND stock!=-1").bind(qty, productId),
+      );
+    });
+    variantQuantities.forEach((qty, variantId) => {
+      statements.push(
+        d1.prepare("UPDATE product_variants SET stock=stock+?, updated_at=datetime('now') WHERE id=? AND stock!=-1")
+          .bind(qty, variantId),
+      );
+    });
+    statements.push(
+      d1.prepare(
+        `UPDATE fulfillment_inventory
+         SET status='available', order_code=NULL, reserved_at=NULL
+         WHERE order_code=? AND status='reserved'`,
+      ).bind(input.orderCode),
+      d1.prepare(
+        `UPDATE payment_transactions
+         SET status=?, last_error=?, updated_at=datetime('now')
+         WHERE order_code=? AND status=?`,
+      ).bind(
+        input.transactionStatus,
+        input.lastError ?? null,
+        input.orderCode,
+        input.expectedTransactionStatus,
+      ),
+      d1.prepare(
+        `UPDATE orders
+         SET status=?, payment_status=?, fulfillment_status='not_required', updated_at=datetime('now')
+         WHERE code=? AND status='pending'`,
+      ).bind(input.orderStatus, input.paymentStatus, input.orderCode),
+      d1.prepare("DELETE FROM operation_guards WHERE operation_id=?").bind(guardId),
+    );
+
+    try {
+      await d1.batch(statements);
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (/operation_guards|CHECK constraint/i.test(message)) return false;
+      throw error;
+    }
+  }
+
+  const order = getOrderMem().find((row) => String(row.code) === input.orderCode);
+  if (!order || String(order.status) !== "pending") return false;
+  await transitionPendingOrder(input.orderCode, input.orderStatus, null, input.items);
+  order.payment_status = input.paymentStatus;
+  order.fulfillment_status = "not_required";
+  return true;
+}
+
+/** Atomically make KlikQRIS authoritative for both ledger and order. */
+export async function transitionPendingPaymentToPaid(
+  orderCode: string,
+  providerPaidAt?: string | null,
+): Promise<boolean> {
+  const d1 = getD1();
+  if (d1) {
+    const guardId = `${orderCode}:payment:paid`;
+    const statements: D1Statement[] = [
+      d1.prepare(
+        `INSERT INTO operation_guards (operation_id,valid)
+         SELECT ?, CASE WHEN
+           EXISTS(SELECT 1 FROM orders WHERE code=? AND status='pending' AND payment_status IN ('unpaid','pending'))
+           AND EXISTS(SELECT 1 FROM payment_transactions WHERE order_code=? AND status IN ('pending','paid'))
+         THEN 1 ELSE 0 END`,
+      ).bind(guardId, orderCode, orderCode),
+      d1.prepare(
+        `UPDATE payment_transactions
+         SET status='paid', paid_at=COALESCE(paid_at,?,datetime('now')),
+             last_checked_at=datetime('now'), last_error=NULL, updated_at=datetime('now')
+         WHERE order_code=? AND status IN ('pending','paid')`,
+      ).bind(providerPaidAt ?? null, orderCode),
+      d1.prepare(
+        `UPDATE orders
+         SET payment_status='paid', payment_method='klikqris', status='lunas', updated_at=datetime('now')
+         WHERE code=? AND status='pending' AND payment_status IN ('unpaid','pending')`,
+      ).bind(orderCode),
+      d1.prepare("DELETE FROM operation_guards WHERE operation_id=?").bind(guardId),
+    ];
+
+    try {
+      await d1.batch(statements);
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (/operation_guards|CHECK constraint|UNIQUE/i.test(message)) return false;
+      throw error;
+    }
+  }
+
+  const order = getOrderMem().find((row) => String(row.code) === orderCode);
+  if (!order || String(order.status) !== "pending") return false;
+  const txResult = await execRun(
+    `UPDATE payment_transactions SET status='paid', paid_at=?, updated_at=datetime('now')
+     WHERE order_code=? AND status='pending'`,
+    providerPaidAt ?? new Date().toISOString(),
+    orderCode,
+  );
+  if (!txResult.changes) return false;
+  order.status = "lunas";
+  order.payment_status = "paid";
+  order.payment_method = "klikqris";
+  order.updated_at = new Date().toISOString();
+  return true;
 }

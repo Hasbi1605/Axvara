@@ -30,11 +30,21 @@ interface InventoryCounts {
   revoked: number;
 }
 
+interface ProductVariant {
+  id: number;
+  label: string;
+  sku: string;
+  fulfillment_mode: string;
+  is_active: number;
+}
+
 export default function BotAutomationManager({ products }: { products: Product[] }) {
   const [health, setHealth] = useState<HealthData | null>(null);
   const [loading, setLoading] = useState(true);
   const [webhookLoading, setWebhookLoading] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<number | null>(null);
+  const [variants, setVariants] = useState<ProductVariant[]>([]);
+  const [selectedVariant, setSelectedVariant] = useState<number | null>(null);
   const [inventoryCounts, setInventoryCounts] = useState<InventoryCounts | null>(null);
   const [importText, setImportText] = useState("");
   const [importResult, setImportResult] = useState<string | null>(null);
@@ -67,16 +77,40 @@ export default function BotAutomationManager({ products }: { products: Product[]
     setWebhookLoading(false);
   };
 
-  const loadInventory = async (productId: number) => {
+  const loadInventory = async (productId: number, variantId: number | null = null) => {
     setSelectedProduct(productId);
+    setSelectedVariant(variantId);
     setImportResult(null);
     try {
-      const res = await fetch(`/api/admin/fulfillment?product_id=${productId}`);
-      if (res.ok) setInventoryCounts(await res.json());
-    } catch { /* ok */ }
+      const suffix = variantId ? `&variant_id=${variantId}` : "";
+      const res = await fetch(`/api/admin/fulfillment?product_id=${productId}${suffix}`);
+      if (!res.ok) throw new Error("Gagal memuat konfigurasi fulfillment");
+      const data = await res.json();
+      setInventoryCounts(data);
+      setFulfillmentMode(String(data.fulfillment_mode || "manual"));
+    } catch {
+      setInventoryCounts(null);
+      setImportResult("Gagal memuat konfigurasi fulfillment");
+    }
+  };
 
-    const product = products.find((p) => p.id === productId);
-    if (product) setFulfillmentMode(product.fulfillment_mode || "manual");
+  const handleProductSelect = async (productId: number) => {
+    setSelectedProduct(productId);
+    setSelectedVariant(null);
+    setVariants([]);
+    try {
+      const res = await fetch(`/api/admin/variants?product_id=${productId}`);
+      if (res.ok) {
+        const data = await res.json() as { variants?: ProductVariant[] };
+        const activeVariants = (data.variants || []).filter((variant) => variant.is_active === 1);
+        setVariants(activeVariants);
+        if (activeVariants.length > 0) {
+          await loadInventory(productId, activeVariants[0].id);
+          return;
+        }
+      }
+    } catch { /* Legacy product-level fallback below. */ }
+    await loadInventory(productId, null);
   };
 
   const handleSetMode = async (mode: string) => {
@@ -86,7 +120,12 @@ export default function BotAutomationManager({ products }: { products: Product[]
       const res = await fetch("/api/admin/fulfillment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "set_mode", product_id: selectedProduct, fulfillment_mode: mode }),
+        body: JSON.stringify({
+          action: "set_mode",
+          product_id: selectedProduct,
+          variant_id: selectedVariant || undefined,
+          fulfillment_mode: mode,
+        }),
       });
       if (res.ok) {
         setFulfillmentMode(mode);
@@ -103,7 +142,12 @@ export default function BotAutomationManager({ products }: { products: Product[]
       const res = await fetch("/api/admin/fulfillment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "set_shared_secret", product_id: selectedProduct, shared_secret: sharedSecretText }),
+        body: JSON.stringify({
+          action: "set_shared_secret",
+          product_id: selectedProduct,
+          variant_id: selectedVariant || undefined,
+          shared_secret: sharedSecretText,
+        }),
       });
       if (res.ok) {
         setImportResult("Shared secret tersimpan (terenkripsi)");
@@ -122,12 +166,17 @@ export default function BotAutomationManager({ products }: { products: Product[]
       const res = await fetch("/api/admin/fulfillment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "import", product_id: selectedProduct, secrets }),
+        body: JSON.stringify({
+          action: "import",
+          product_id: selectedProduct,
+          variant_id: selectedVariant || undefined,
+          secrets,
+        }),
       });
       const data = await res.json();
       setImportResult(`Inserted: ${data.inserted}, Duplicate: ${data.duplicate}, Invalid: ${data.invalid}`);
       setImportText("");
-      loadInventory(selectedProduct);
+      loadInventory(selectedProduct, selectedVariant);
     } catch { setImportResult("Gagal import"); }
     setActionLoading(false);
   };
@@ -186,21 +235,40 @@ export default function BotAutomationManager({ products }: { products: Product[]
         <div className="mb-4">
           <select
             value={selectedProduct ?? ""}
-            onChange={(e) => e.target.value && loadInventory(Number(e.target.value))}
+            onChange={(e) => e.target.value && handleProductSelect(Number(e.target.value))}
             className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-white text-sm"
           >
             <option value="">Pilih produk...</option>
             {products.map((p) => (
-              <option key={p.id} value={p.id}>{p.name} ({p.fulfillment_mode || "manual"})</option>
+              <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
         </div>
+
+        {selectedProduct && variants.length > 0 && (
+          <div className="mb-4">
+            <label className="text-sm text-white/60 block mb-2">Varian yang dikirim:</label>
+            <select
+              value={selectedVariant ?? ""}
+              onChange={(e) => loadInventory(selectedProduct, Number(e.target.value))}
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-white text-sm"
+            >
+              {variants.map((variant) => (
+                <option key={variant.id} value={variant.id}>
+                  {variant.label} — {variant.sku} ({variant.fulfillment_mode})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {selectedProduct && (
           <div className="space-y-4">
             {/* Mode selector */}
             <div>
-              <label className="text-sm text-white/60 block mb-2">Mode Fulfillment:</label>
+              <label className="text-sm text-white/60 block mb-2">
+                Mode Fulfillment {selectedVariant ? "Varian" : "Produk Legacy"}:
+              </label>
               <div className="flex gap-2 flex-wrap">
                 {["manual", "shared", "unique"].map((mode) => (
                   <button

@@ -26,6 +26,7 @@ export interface ImportResult {
 export async function importInventory(
   productId: number,
   secrets: string[],
+  variantId: number | null = null,
 ): Promise<ImportResult> {
   const result: ImportResult = { inserted: 0, duplicate: 0, invalid: 0 };
   const batch = secrets.slice(0, 100); // hard cap
@@ -43,9 +44,10 @@ export async function importInventory(
     try {
       if (isD1Mode()) {
         await execRun(
-          `INSERT INTO fulfillment_inventory (product_id, secret_ciphertext, secret_iv, secret_fingerprint, status)
-           VALUES (?, ?, ?, ?, 'available')`,
-          productId, ciphertext, iv, fingerprint,
+          `INSERT INTO fulfillment_inventory (
+             product_id, variant_id, secret_ciphertext, secret_iv, secret_fingerprint, status
+           ) VALUES (?, ?, ?, ?, ?, 'available')`,
+          productId, variantId, ciphertext, iv, fingerprint,
         );
       } else {
         const mem = getInventoryMem();
@@ -55,7 +57,8 @@ export async function importInventory(
         }
         const id = Math.max(0, ...mem.map((r) => Number(r.id) || 0)) + 1;
         mem.push({
-          id, product_id: productId, secret_ciphertext: ciphertext, secret_iv: iv,
+          id, product_id: productId, variant_id: variantId,
+          secret_ciphertext: ciphertext, secret_iv: iv,
           secret_fingerprint: fingerprint, status: "available", order_code: null,
           reserved_at: null, delivered_at: null, created_at: new Date().toISOString(),
         });
@@ -77,18 +80,30 @@ export async function importInventory(
 /**
  * Count inventory by status for a product.
  */
-export async function countInventory(productId: number): Promise<Record<string, number>> {
+export async function countInventory(
+  productId: number,
+  variantId: number | null = null,
+): Promise<Record<string, number>> {
   if (isD1Mode()) {
-    const rows = await queryAll(
-      `SELECT status, COUNT(*) as count FROM fulfillment_inventory WHERE product_id=? GROUP BY status`,
-      productId,
-    );
+    const rows = variantId === null
+      ? await queryAll(
+          `SELECT status, COUNT(*) as count FROM fulfillment_inventory WHERE product_id=? GROUP BY status`,
+          productId,
+        )
+      : await queryAll(
+          `SELECT status, COUNT(*) as count FROM fulfillment_inventory
+           WHERE product_id=? AND (variant_id=? OR variant_id IS NULL) GROUP BY status`,
+          productId, variantId,
+        );
     const counts: Record<string, number> = { available: 0, reserved: 0, delivered: 0, revoked: 0 };
     for (const row of rows) counts[String(row.status)] = Number(row.count);
     return counts;
   }
 
-  const mem = getInventoryMem().filter((r) => Number(r.product_id) === productId);
+  const mem = getInventoryMem().filter((r) =>
+    Number(r.product_id) === productId
+    && (variantId === null || Number(r.variant_id || 0) === variantId || !r.variant_id)
+  );
   const counts: Record<string, number> = { available: 0, reserved: 0, delivered: 0, revoked: 0 };
   for (const row of mem) counts[String(row.status)] = (counts[String(row.status)] || 0) + 1;
   return counts;
@@ -98,13 +113,27 @@ export async function countInventory(productId: number): Promise<Record<string, 
  * Reserve one available inventory item for an order. Returns inventory ID or null.
  * Atomic in D1 via conditional UPDATE.
  */
-export async function reserveInventory(productId: number, orderCode: string): Promise<number | null> {
+export async function reserveInventory(
+  productId: number,
+  orderCode: string,
+  variantId: number | null = null,
+): Promise<number | null> {
   if (isD1Mode()) {
-    // Find first available, then atomically reserve it
-    const item = await queryFirst(
-      `SELECT id FROM fulfillment_inventory WHERE product_id=? AND status='available' ORDER BY id ASC LIMIT 1`,
-      productId,
-    );
+    // Prefer inventory dedicated to the selected variant, while retaining
+    // product-level rows as a compatibility fallback. A null variant denotes
+    // the legacy Telegram flow and must see inventory backfilled to DEFAULT-*.
+    const item = variantId === null
+      ? await queryFirst(
+          `SELECT id FROM fulfillment_inventory
+           WHERE product_id=? AND status='available' ORDER BY id ASC LIMIT 1`,
+          productId,
+        )
+      : await queryFirst(
+          `SELECT id FROM fulfillment_inventory
+           WHERE product_id=? AND status='available' AND (variant_id=? OR variant_id IS NULL)
+           ORDER BY CASE WHEN variant_id=? THEN 0 ELSE 1 END, id ASC LIMIT 1`,
+          productId, variantId, variantId,
+        );
     if (!item) return null;
     const id = Number(item.id);
     const result = await execRun(
@@ -117,7 +146,9 @@ export async function reserveInventory(productId: number, orderCode: string): Pr
 
   const mem = getInventoryMem();
   const item = mem.find(
-    (r) => Number(r.product_id) === productId && r.status === "available",
+    (r) => Number(r.product_id) === productId
+      && r.status === "available"
+      && (variantId === null || Number(r.variant_id || 0) === variantId || !r.variant_id),
   );
   if (!item) return null;
   item.status = "reserved";

@@ -453,6 +453,11 @@ Kolom baru di `orders`: `sales_channel`, `telegram_chat_id`, `telegram_user_id`,
 | GET/POST | `/api/admin/telegram/setup` | admin | Setup webhook |
 | GET | `/api/admin/bot/health` | admin | Health check tanpa secret |
 | GET/POST/DELETE | `/api/admin/fulfillment` | admin | Inventory management |
+| GET | `/api/catalog[?slug=]` | public | Katalog produk/varian aktif terpusat |
+| GET/POST/PUT/DELETE | `/api/admin/variants` | admin | Kelola SKU, durasi, garansi, harga, stok, dan mode fulfillment varian |
+| POST | `/api/whatsapp/webhook` | Fonnte webhook token | Command grup, order, pembayaran, dan intake bukti |
+| GET | `/api/admin/proofs` | admin | Antrean review bukti pembayaran WhatsApp |
+| POST | `/api/admin/proofs/:id` | admin | CAS approve/reject bukti dan otorisasi pembayaran manual |
 
 ### Environment Baru
 
@@ -487,7 +492,7 @@ Sistem varian produk terpusat dan bot WhatsApp telah diimplementasikan sesuai `d
 
 ### Arsitektur
 - **D1 sebagai Source of Truth:** `products` menyimpan produk induk (name, slug, aliases, description, image, badge), sedangkan `product_variants` menyimpan SKU yang dapat dibeli (label, duration, warranty, price, stock, fulfillment_mode, sort_order).
-- **CMS Web:** Modal `VariantEditor` di `/admin` memungkinkan admin mengelola varian secara penuh (tambah, edit inline, duplikasi, nonaktifkan, hapus aman).
+- **CMS Web:** Modal `VariantEditor` di `/admin` mengelola SKU/durasi/garansi/harga/stok; menu **Bot & Otomasi** memilih target varian untuk mode `manual/shared/unique`, shared secret terenkripsi, dan inventory unik; menu **Bukti Bayar** menjadi antrean review bukti WhatsApp. Pembuatan produk juga membuat varian default secara atomik. Produk/varian yang dihapus diarsipkan (`is_active=0`) agar relasi historis tetap utuh; edit harga/stok melalui form produk hanya disinkronkan bila produk masih mempunyai satu varian default.
 - **Service Bersama:** `src/lib/catalog.ts` menyediakan query terpusat untuk web, Telegram, dan WhatsApp. `src/lib/warranty-policy.ts` mengekstrak kebijakan garansi kanonis dengan formatter Telegram (HTML) dan WhatsApp (bold `*`).
 - **Website:** Halaman detail `/produk/[slug]` mendukung variant selector interaktif; cart Zustand membedakan item berdasarkan kombinasi `product_id + variant_id`; checkout quote mendukung variant_id.
 - **Telegram Bot:** Menambahkan langkah pemilihan varian sebelum konfirmasi beli (`TELEGRAM_VARIANT_FLOW`). Menggunakan harga dan konfigurasi varian.
@@ -510,11 +515,13 @@ Sistem varian produk terpusat dan bot WhatsApp telah diimplementasikan sesuai `d
 | `payment_proofs` | Metadata bukti pembayaran grup WhatsApp (R2 private, review queue) |
 
 ### Migrasi 0008 — Multi-channel Orders Rebuild
-Migrasi `0008_orders_multichannel.sql` melakukan SQLite table rebuild pada tabel `orders` agar constraint `sales_channel` menerima `'web'`, `'telegram'`, dan `'whatsapp'`. Menambahkan kolom identitas channel kanonis `channel_conversation_id` dan `channel_member_id`, memigrasikan data lama tanpa memutus foreign key yang mengacu ke `orders(code)`, serta memperbarui indeks `idx_orders_channel` dan `idx_orders_status`.
+Migrasi `0008_orders_multichannel.sql` melakukan SQLite table rebuild pada tabel `orders` agar constraint `sales_channel` menerima `'web'`, `'telegram'`, dan `'whatsapp'`. Menambahkan kolom identitas channel kanonis `channel_conversation_id` dan `channel_member_id`, memigrasikan data lama dengan `PRAGMA defer_foreign_keys=ON` agar referensi `orders(code)` tetap valid, memperbarui indeks order, serta menambahkan unique partial index agar hanya satu bukti `submitted/approved` aktif per order.
 
 ### Keamanan Webhook & Gateway WhatsApp
-- **Autentikasi Webhook:** Membandingkan `WHATSAPP_WEBHOOK_TOKEN` via `timingSafeEqual` (constant-time comparison). Permintaan tanpa token atau dengan token salah ditolak langsung dengan HTTP 401 sebelum parsing body dan sebelum menyentuh D1.
+- **Autentikasi Webhook:** Membandingkan `WHATSAPP_WEBHOOK_TOKEN` via `timingSafeEqual` (constant-time comparison). Adapter menerima field payload `secret` bawaan Fonnte, serta header/query token untuk proxy dan diagnosis. Body dibatasi 64 KB dan diparse tanpa side effect sebelum autentikasi; permintaan tanpa token atau dengan token salah ditolak HTTP 401 sebelum menyentuh D1.
 - **Parser Fonnte:** `sender` dipetakan sebagai ID grup (`conversationId`), `member` sebagai nomor pengirim (`memberId`), `inboxid` sebagai ID pesan dan referensi balasan (`inboxId`).
-- **Media Bukti & Anti-SSRF:** Pengunduhan lampiran dibatasi ke protokol HTTPS, divalidasi anti-SSRF terhadap private IP/loopback, distream dengan batas maksimal 5 MB, diverifikasi magic bytes (JPG/PNG/WebP), dihitung SHA-256, dan disimpan secara privat di Cloudflare R2 prefix `bukti/whatsapp/`.
-- **Review Bukti Admin:** Endpoint `GET /api/admin/proofs` dan `POST /api/admin/proofs/[id]` (CAS approve/reject dengan audit `reviewed_by` dan `reviewed_at`).
-- **Proteksi Kredensial Fulfillment:** Pengiriman akun/lisensi otomatis untuk WhatsApp hanya dikirim via pesan langsung (DM) ke nomor pribadi pembeli (`channel_member_id` / `customer_wa`), tidak pernah dikirim ke grup publik. Gate bukti `WHATSAPP_REQUIRE_PROOF_BEFORE_FULFILLMENT` memastikan bukti telah diserahkan sebelum pekerjaan fulfillment dieksekusi.
+- **Inbox & Order Idempotency:** Event tanpa `inboxid` ditolak. Event yang sama dideduplikasi; event gagal dapat direclaim oleh satu retry. Satu pesan `pay` memakai `conversation + member + inboxid + variant` sebagai idempotency key, sementara pesan `pay` baru tetap dapat membuat pembelian ulang varian yang sama. Pending order lama hanya dipakai ulang jika masih unpaid dan belum kedaluwarsa. Webhook membatasi 12 event per anggota/grup per menit; cron menghapus session yang lewat masa simpan dan inbox dedupe lebih dari tujuh hari.
+- **Media Bukti & Anti-SSRF:** Pengunduhan lampiran dibatasi ke protokol HTTPS, divalidasi anti-SSRF terhadap private IP/loopback, distream dengan batas maksimal 5 MB, diverifikasi magic bytes (JPG/PNG/WebP), dihitung SHA-256, dan disimpan secara privat di Cloudflare R2 prefix `bukti/whatsapp/`. Token API Fonnte tidak pernah diteruskan pada request unduh media.
+- **Review & Otoritas Pembayaran:** Endpoint `GET /api/admin/proofs` dan `POST /api/admin/proofs/[id]` memakai CAS dan audit reviewer serta menampilkan nominal provider. Bukti QRIS dinamis tidak menandai order lunas; callback/status server-to-server KlikQRIS tetap authoritative. Intake tetap menerima bukti bila QRIS dinamis sudah lebih dahulu berstatus `lunas/paid`; TTL hanya menutup order yang belum dibayar. QRIS statis tidak mempunyai callback, sehingga persetujuan admin setelah pencocokan mutasi menjadi authoritative (`qris:manual`), sama seperti SeaBank/e-wallet. Jalur manual menutup invoice QRIS pending sebagai superseded agar rail pembayaran tidak bertabrakan.
+- **Lifecycle Stok & Pembayaran:** Paid callback/reconciliation memperbarui ledger+order dalam satu batch guard. Failed/expired mengembalikan stok varian dan inventory unik dalam batch yang sama; order WhatsApp QRIS statis juga diekspirasi dari TTL. Halaman web/quote tidak dapat fallback ke harga atau stok produk induk ketika mode varian aktif.
+- **Proteksi Kredensial Fulfillment:** Job hanya dapat di-claim setelah order `lunas/paid`; mode dipatok oleh `variant_snapshot` order dan shared secret diambil dari varian terpilih. Varian shared tanpa secret terenkripsi dan varian unique tanpa inventory gagal tertutup sebelum order bot dibuat. Pengiriman WhatsApp selalu via pesan langsung (DM) ke `channel_member_id`/`customer_wa`, tidak pernah ke grup. Gate `WHATSAPP_REQUIRE_PROOF_BEFORE_FULFILLMENT` menahan job sampai bukti diserahkan, dan `WHATSAPP_FULFILLMENT` dapat memaksa jalur manual selama rollout.

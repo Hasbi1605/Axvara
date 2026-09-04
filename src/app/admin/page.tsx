@@ -17,13 +17,14 @@ import { IosIcon } from "@/components/ui/IosIcon";
 import { NewsletterSubscribers } from "@/components/admin/NewsletterSubscribers";
 import BotAutomationManager from "@/components/admin/BotAutomationManager";
 import VariantEditor from "@/components/admin/VariantEditor";
+import PaymentProofsManager from "@/components/admin/PaymentProofsManager";
 
 type Prod = { id:string; slug:string; name:string; description:string; price:number; comparePrice?:number; categorySlug:string; image:string; images:string[]; badge?:string; soldCount:number; stock:number; isActive:boolean; sortOrder?:number };
 type Cat = { id:number; slug:string; name:string };
 type Order = { code:string; name:string; wa:string; method:string; items:{ name:string;price:number;qty:number }[]; subtotal:number; status:string; fileName?:string; createdAt:string };
 
 const PER_PAGE_ADMIN = 8;
-const ADMIN_SECTIONS: AdminSection[] = ["summary","products","orders","categories","payments","articles","banners","subscribers","bot","agent"];
+const ADMIN_SECTIONS: AdminSection[] = ["summary","products","orders","proofs","categories","payments","articles","banners","subscribers","bot","agent"];
 
 type LoginChallenge = {
   mode: "password" | "pbkdf2-proof";
@@ -282,7 +283,7 @@ export default function AdminPage() {
       const r = await fetch(`/api/products/${deleteTarget.id}`,{method:"DELETE"});
       const j = await r.json().catch(()=>({}));
       if (!r.ok) throw new Error(j.error || `Gagal hapus (${r.status})`);
-      toast.success(`“${deleteTarget.name}” dihapus.`);
+      toast.success(`“${deleteTarget.name}” dinonaktifkan dan diarsipkan.`);
       setDeleteTarget(null);
       await load();
     } catch(e){
@@ -376,6 +377,7 @@ export default function AdminPage() {
       {tab==="summary" && <div className="mt-6 ax-glass rounded-[20px] overflow-hidden"><div className="flex items-center gap-2.5 p-4 sm:p-5 border-b border-white/10"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/5 border border-white/5"><IosIcon name="dashboard" size={16} tint="white" /></span><h2 className="text-white font-semibold text-sm">Ringkasan toko</h2></div><p className="p-4 sm:p-5 text-sm text-white/50">Gunakan sidebar untuk mengelola produk, pesanan, CMS, dan integrasi agent.</p></div>}
       {tab==="categories" && <CategoryManager />}
       {tab==="payments" && <PaymentMethodsManager />}
+      {tab==="proofs" && <PaymentProofsManager />}
       {tab==="agent" && <AgentIntegration />}
       {tab==="bot" && <BotAutomationManager products={prods.map(p=>({id:Number(p.id),name:p.name,fulfillment_mode:(p as unknown as Record<string,unknown>).fulfillment_mode as string,telegram_enabled:(p as unknown as Record<string,unknown>).telegram_enabled as number}))} />}
 

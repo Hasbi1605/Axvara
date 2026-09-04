@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { queryAll, queryFirst, execRun } from "@/lib/db";
+import { queryAll, queryFirst, execRun, getD1, isD1Mode } from "@/lib/db";
+import { isVariantsReadEnabled } from "@/lib/catalog";
 import { requireAdmin } from "@/lib/auth";
 import { rateLimit, rateLimitKey } from "@/lib/rateLimit";
 
@@ -16,36 +17,60 @@ export async function GET(req: NextRequest) {
   // The explicit active=1 path is public and always returns the same safe
   // subset, so it can skip auth work and be cached independently.
   const isPublicCatalog = active === "1";
+  const variantCatalog = isPublicCatalog && isD1Mode() && isVariantsReadEnabled();
   const isAdminRequest = isPublicCatalog
     ? false
     : !!(await import("@/lib/auth").then((m) => m.requireAdmin(req).catch(() => null)));
 
-  let sql = `SELECT p.*, c.slug as cat_slug FROM products p LEFT JOIN categories c ON c.id=p.category_id WHERE 1=1`;
+  let sql = variantCatalog
+    ? `SELECT p.*, c.slug as cat_slug,
+              MIN(pv.price) as min_price,
+              MAX(pv.price) as max_price,
+              COUNT(pv.id) as variant_count,
+              CASE
+                WHEN MAX(CASE WHEN pv.stock=-1 THEN 1 ELSE 0 END)=1 THEN -1
+                ELSE SUM(CASE WHEN pv.stock>0 THEN pv.stock ELSE 0 END)
+              END as variant_stock,
+              MIN(pv.compare_price) as variant_compare_price
+       FROM products p
+       LEFT JOIN categories c ON c.id=p.category_id
+       INNER JOIN product_variants pv ON pv.product_id=p.id AND pv.is_active=1
+       WHERE 1=1`
+    : `SELECT p.*, c.slug as cat_slug FROM products p LEFT JOIN categories c ON c.id=p.category_id WHERE 1=1`;
   const params: unknown[] = [];
   // F08: public always is_active=1, admin can see all
   if (!isAdminRequest || active === "1") sql += ` AND p.is_active=1`;
   else if (active === "0") sql += ` AND p.is_active=0`;
   if (cat && cat !== "semua") { sql += ` AND c.slug=?`; params.push(cat); }
   if (q) { sql += ` AND (lower(p.name) LIKE ? OR lower(p.description) LIKE ? OR lower(p.slug) LIKE ? OR lower(COALESCE(p.badge,'')) LIKE ?)`; const like=`%${q}%`; params.push(like,like,like,like); }
+  if (variantCatalog) sql += ` GROUP BY p.id`;
   sql += ` ORDER BY p.sort_order ASC, p.id ASC`;
   const rows = await queryAll(sql, ...params);
   const data = rows.map((r: Record<string, unknown>) => {
-    const images: string[] = r.images ? JSON.parse(String(r.images)) : [];
+    let images: string[] = [];
+    try { images = r.images ? JSON.parse(String(r.images)) : []; } catch { images = []; }
     const primary = (r.image_url as string) ?? images[0] ?? "";
     if (primary && !images.includes(primary)) images.unshift(primary);
+    const variantCount = variantCatalog ? Number(r.variant_count || 0) : undefined;
+    const price = variantCatalog ? Number(r.min_price) : Number(r.price);
     return {
       id: String(r.id),
       slug: r.slug,
       name: r.name,
       description: r.description ?? "",
-      price: r.price,
-      comparePrice: r.compare_price ?? undefined,
+      price,
+      minPrice: variantCatalog ? Number(r.min_price) : undefined,
+      maxPrice: variantCatalog ? Number(r.max_price) : undefined,
+      variantCount,
+      comparePrice: variantCatalog && variantCount === 1
+        ? (r.variant_compare_price == null ? undefined : Number(r.variant_compare_price))
+        : r.compare_price ?? undefined,
       categorySlug: (r.cat_slug as string) ?? "tools-pro",
       image: primary,
       images: images.slice(0,8),
       badge: (r.badge as string) ?? undefined,
       soldCount: (r.sold_count as number) ?? 0,
-      stock: (r.stock as number) ?? -1,
+      stock: variantCatalog ? Number(r.variant_stock ?? 0) : (r.stock as number) ?? -1,
       isActive: (r.is_active as number) !== 0,
       sortOrder: r.sort_order,
     };
@@ -107,7 +132,35 @@ export async function POST(req: NextRequest) {
   if (imageUrl && !urlOk(imageUrl)) return NextResponse.json({ error: "URL gambar utama tidak diizinkan" }, { status: 400 });
   const primary = imageUrl ?? imgArr[0] ?? null;
   try {
-    const res = await execRun(`INSERT INTO products (category_id,name,slug,description,price,compare_price,image_url,images,badge,sold_count,stock,is_active,sort_order) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, category_id, name, slug, description ?? "", Number(price), comparePrice ? Number(comparePrice) : null, primary, JSON.stringify(imgArr), badge ?? null, soldCount ? Number(soldCount) : 0, stock != null ? Number(stock) : -1, isActive === false ? 0 : 1, sortOrder ? Number(sortOrder) : 0);
+    const values = [
+      category_id, name, slug, description ?? "", Number(price),
+      comparePrice ? Number(comparePrice) : null, primary, JSON.stringify(imgArr),
+      badge ?? null, soldCount ? Number(soldCount) : 0,
+      stock != null ? Number(stock) : -1, isActive === false ? 0 : 1,
+      sortOrder ? Number(sortOrder) : 0,
+    ];
+    const insertSql = `INSERT INTO products (
+      category_id,name,slug,description,price,compare_price,image_url,images,
+      badge,sold_count,stock,is_active,sort_order
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`;
+    const d1 = getD1();
+    if (d1) {
+      const results = await d1.batch([
+        d1.prepare(insertSql).bind(...values),
+        d1.prepare(
+          `INSERT INTO product_variants (
+             product_id, sku, label, price, compare_price, stock,
+             fulfillment_mode, is_active, sort_order
+           )
+           SELECT p.id, 'DEFAULT-' || p.id, 'Default', p.price, p.compare_price,
+                  p.stock, 'manual', p.is_active, 0
+           FROM products p WHERE p.slug=?`,
+        ).bind(slug),
+      ]);
+      return NextResponse.json({ id: results[0]?.meta?.last_row_id });
+    }
+
+    const res = await execRun(insertSql, ...values);
     return NextResponse.json({ id: res.lastInsertRowid });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);

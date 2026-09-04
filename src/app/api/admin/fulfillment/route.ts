@@ -15,9 +15,23 @@ export async function GET(request: NextRequest) {
 
   const productId = Number(request.nextUrl.searchParams.get("product_id") ?? 0);
   if (!productId) return NextResponse.json({ error: "product_id required" }, { status: 400 });
+  const variantId = Number(request.nextUrl.searchParams.get("variant_id") ?? 0) || null;
 
-  const counts = await countInventory(productId);
-  return NextResponse.json({ product_id: productId, ...counts });
+  const target = variantId
+    ? await queryFirst(
+        `SELECT id, fulfillment_mode FROM product_variants WHERE id=? AND product_id=?`,
+        variantId, productId,
+      )
+    : await queryFirst(`SELECT id, fulfillment_mode FROM products WHERE id=?`, productId);
+  if (!target) return NextResponse.json({ error: variantId ? "variant_not_found" : "product_not_found" }, { status: 404 });
+
+  const counts = await countInventory(productId, variantId);
+  return NextResponse.json({
+    product_id: productId,
+    variant_id: variantId,
+    fulfillment_mode: String(target.fulfillment_mode || "manual"),
+    ...counts,
+  });
 }
 
 // POST — import inventory or set shared secret
@@ -25,20 +39,33 @@ export async function POST(request: NextRequest) {
   const admin = await requireAdmin(request);
   if (!admin) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const body = await request.json() as {
+  const raw = await request.json().catch(() => null);
+  if (!raw || typeof raw !== "object") {
+    return NextResponse.json({ error: "invalid_json" }, { status: 400 });
+  }
+  const body = raw as {
     action: string;
     product_id: number;
     secrets?: string[];
     shared_secret?: string;
     fulfillment_mode?: string;
+    variant_id?: number;
   };
 
-  const productId = body.product_id;
+  const productId = Number(body.product_id);
+  const variantId = Number(body.variant_id ?? 0) || null;
   if (!productId) return NextResponse.json({ error: "product_id required" }, { status: 400 });
 
   // Verify product exists
   const product = await queryFirst(`SELECT id, fulfillment_mode FROM products WHERE id=?`, productId);
   if (!product) return NextResponse.json({ error: "product_not_found" }, { status: 404 });
+  if (variantId) {
+    const variant = await queryFirst(
+      `SELECT id FROM product_variants WHERE id=? AND product_id=?`,
+      variantId, productId,
+    );
+    if (!variant) return NextResponse.json({ error: "variant_not_found" }, { status: 404 });
+  }
 
   // Set fulfillment mode
   if (body.action === "set_mode" && body.fulfillment_mode) {
@@ -46,10 +73,17 @@ export async function POST(request: NextRequest) {
     if (!validModes.includes(body.fulfillment_mode)) {
       return NextResponse.json({ error: "invalid_mode" }, { status: 400 });
     }
-    await execRun(
-      `UPDATE products SET fulfillment_mode=?, updated_at=datetime('now') WHERE id=?`,
-      body.fulfillment_mode, productId,
-    );
+    if (variantId) {
+      await execRun(
+        `UPDATE product_variants SET fulfillment_mode=?, updated_at=datetime('now') WHERE id=? AND product_id=?`,
+        body.fulfillment_mode, variantId, productId,
+      );
+    } else {
+      await execRun(
+        `UPDATE products SET fulfillment_mode=?, updated_at=datetime('now') WHERE id=?`,
+        body.fulfillment_mode, productId,
+      );
+    }
     return NextResponse.json({ ok: true, mode: body.fulfillment_mode });
   }
 
@@ -60,11 +94,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "secret_length_invalid" }, { status: 400 });
     }
     const { ciphertext, iv } = await encryptSecret(trimmed);
-    await execRun(
-      `UPDATE products SET shared_secret_ciphertext=?, shared_secret_iv=?, fulfillment_mode='shared',
-       updated_at=datetime('now') WHERE id=?`,
-      ciphertext, iv, productId,
-    );
+    if (variantId) {
+      await execRun(
+        `UPDATE product_variants
+         SET shared_secret_ciphertext=?, shared_secret_iv=?, fulfillment_mode='shared', updated_at=datetime('now')
+         WHERE id=? AND product_id=?`,
+        ciphertext, iv, variantId, productId,
+      );
+    } else {
+      await execRun(
+        `UPDATE products SET shared_secret_ciphertext=?, shared_secret_iv=?, fulfillment_mode='shared',
+         updated_at=datetime('now') WHERE id=?`,
+        ciphertext, iv, productId,
+      );
+    }
     return NextResponse.json({ ok: true, mode: "shared" });
   }
 
@@ -80,7 +123,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "max_100_per_request" }, { status: 400 });
     }
 
-    const result = await importInventory(productId, body.secrets);
+    const result = await importInventory(productId, body.secrets, variantId);
     return NextResponse.json({ ok: true, ...result });
   }
 

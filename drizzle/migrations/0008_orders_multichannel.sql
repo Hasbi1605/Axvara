@@ -1,7 +1,12 @@
 -- 0008_orders_multichannel.sql — Rebuild orders table to support multi-channel (web, telegram, whatsapp)
 -- and add explicit channel identity columns without breaking FKs or existing data.
 
-PRAGMA foreign_keys=OFF;
+-- D1 keeps foreign-key enforcement enabled inside migrations. Deferring the
+-- checks is the supported way to rebuild a referenced parent table.
+PRAGMA defer_foreign_keys=ON;
+
+-- A previously interrupted local attempt must not leave a stale copy target.
+DROP TABLE IF EXISTS orders_new;
 
 -- 1. Create temporary new table with expanded CHECK constraints and explicit channel columns
 CREATE TABLE IF NOT EXISTS orders_new (
@@ -69,4 +74,26 @@ CREATE INDEX IF NOT EXISTS idx_orders_channel
 CREATE INDEX IF NOT EXISTS idx_orders_status
   ON orders(status, payment_status);
 
-PRAGMA foreign_keys=ON;
+-- Enforce the proof-review invariant under concurrent webhook deliveries.
+-- If an older deployment already admitted duplicates, keep one authoritative
+-- candidate (approved first, otherwise oldest submitted) and reject the rest.
+WITH ranked_active_proofs AS (
+  SELECT id,
+         ROW_NUMBER() OVER (
+           PARTITION BY order_code
+           ORDER BY CASE WHEN status='approved' THEN 0 ELSE 1 END, id ASC
+         ) AS proof_rank
+  FROM payment_proofs
+  WHERE status IN ('submitted','approved')
+)
+UPDATE payment_proofs
+SET status='rejected',
+    rejection_reason=COALESCE(rejection_reason,'Duplikat aktif dinormalisasi saat migrasi'),
+    reviewed_at=COALESCE(reviewed_at,datetime('now'))
+WHERE id IN (SELECT id FROM ranked_active_proofs WHERE proof_rank > 1);
+
+CREATE UNIQUE INDEX IF NOT EXISTS payment_proofs_one_active_per_order
+  ON payment_proofs(order_code) WHERE status IN ('submitted','approved');
+
+CREATE INDEX IF NOT EXISTS idx_wa_inbox_member_time
+  ON whatsapp_inbox_events(conversation_id,member_id,created_at);

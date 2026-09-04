@@ -48,25 +48,25 @@ function CheckoutInner() {
       .then(async (j) => {
         const found = (j.products as Product[] | undefined)?.find((p) => p.slug === buySlug);
         if (!found) throw new Error("Produk tidak ditemukan atau sedang nonaktif.");
-        // If variant ID is provided, try to fetch variant details to get correct price
-        if (buyVariantId) {
-          try {
-            const catRes = await fetch(`/api/catalog?slug=${encodeURIComponent(buySlug)}`);
-            if (catRes.ok) {
-              const catData = await catRes.json() as { product?: { variants?: CatalogVariant[] } };
-              const variant = (catData.product?.variants || []).find((v) => String(v.id) === buyVariantId);
-              if (variant) {
-                setDirectProduct({
-                  ...found,
-                  price: variant.price,
-                  stock: variant.stock === -1 ? undefined : variant.stock,
-                  variantId: variant.id,
-                  variantLabel: variant.label,
-                });
-                return;
-              }
-            }
-          } catch { /* fallback to base product */ }
+        if (found.variantCount && found.variantCount > 0) {
+          if (!buyVariantId) {
+            throw new Error("Pilih varian dari halaman detail produk terlebih dahulu.");
+          }
+          const catRes = await fetch(`/api/catalog?slug=${encodeURIComponent(buySlug)}`);
+          if (!catRes.ok) throw new Error("Pilihan varian gagal dimuat.");
+          const catData = await catRes.json() as { product?: { variants?: CatalogVariant[] } };
+          const variant = (catData.product?.variants || []).find((v) => String(v.id) === buyVariantId);
+          if (!variant || variant.stock === 0) {
+            throw new Error("Varian tidak tersedia. Pilih ulang dari halaman produk.");
+          }
+          setDirectProduct({
+            ...found,
+            price: variant.price,
+            stock: variant.stock === -1 ? undefined : variant.stock,
+            variantId: variant.id,
+            variantLabel: variant.label,
+          });
+          return;
         }
         setDirectProduct(found);
       })

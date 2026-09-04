@@ -29,6 +29,17 @@ function getJobsMem(): Row[] {
 const RETRY_DELAYS = [1, 5, 15, 60];
 const MAX_ATTEMPTS = RETRY_DELAYS.length + 1;
 
+function fulfillmentModeFromOrderSnapshot(order: Row): string | null {
+  if (!order.variant_snapshot) return null;
+  try {
+    const snapshot = JSON.parse(String(order.variant_snapshot)) as { fulfillment_mode?: unknown };
+    const mode = String(snapshot.fulfillment_mode || "");
+    return ["manual", "shared", "unique"].includes(mode) ? mode : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Create a fulfillment job for an order. Idempotent (UNIQUE on order_code).
  */
@@ -36,15 +47,21 @@ export async function createFulfillmentJob(
   orderCode: string,
   inventoryId: number | null,
   fulfillmentMode: string,
+  variantId: number | null = null,
+  salesChannel = "telegram",
 ): Promise<number | null> {
-  const status = fulfillmentMode === "manual" ? "manual_required" : "queued";
+  // Jobs may be created before payment. They remain queued and are claimed
+  // only after the linked order is authoritatively paid.
+  const status = "queued";
 
   try {
     if (isD1Mode()) {
       const result = await execRun(
-        `INSERT INTO fulfillment_jobs (order_code, inventory_id, status, attempt_count, next_attempt_at)
-         VALUES (?, ?, ?, 0, datetime('now'))`,
-        orderCode, inventoryId, status,
+        `INSERT INTO fulfillment_jobs (
+           order_code, variant_id, inventory_id, sales_channel,
+           status, attempt_count, next_attempt_at
+         ) VALUES (?, ?, ?, ?, ?, 0, datetime('now'))`,
+        orderCode, variantId, inventoryId, salesChannel, status,
       );
       return result.lastInsertRowid ?? null;
     }
@@ -53,7 +70,8 @@ export async function createFulfillmentJob(
     if (mem.some((r) => r.order_code === orderCode)) return null; // already exists
     const id = Math.max(0, ...mem.map((r) => Number(r.id) || 0)) + 1;
     mem.push({
-      id, order_code: orderCode, inventory_id: inventoryId, status,
+      id, order_code: orderCode, variant_id: variantId, inventory_id: inventoryId,
+      sales_channel: salesChannel, fulfillment_mode: fulfillmentMode, status,
       attempt_count: 0, next_attempt_at: new Date().toISOString(),
       locked_until: null, telegram_message_id: null, last_error: null,
       created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
@@ -171,34 +189,35 @@ export async function processJob(
   order: Row,
   product: Row,
 ): Promise<boolean> {
-  const claimed = await claimJob(jobId);
-  if (!claimed) return false;
+  // Never deliver credentials for an unpaid order, even if a job was queued
+  // at invoice creation time.
+  if (String(order.status) !== "lunas" || String(order.payment_status) !== "paid") {
+    return false;
+  }
 
   const salesChannel = String(order.sales_channel || "telegram");
-  const chatId = String(order.telegram_chat_id || "");
-  const waRecipient = String(order.channel_member_id || order.customer_wa || "");
   const orderCode = String(order.code);
-  const fulfillmentMode = String(product.fulfillment_mode || "manual");
-  const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
 
-  // Gate 1: WhatsApp proof requirement before fulfillment
+  // A proof hold is not a delivery attempt. Check it before claiming so a
+  // buyer waiting for review cannot exhaust the retry budget.
   if (salesChannel === "whatsapp" && isEnabled("WHATSAPP_REQUIRE_PROOF_BEFORE_FULFILLMENT")) {
     const proof = isD1Mode()
       ? await queryFirst(
-          `SELECT id, status FROM payment_proofs WHERE order_code=? AND status IN ('submitted','approved')`,
+          `SELECT id FROM payment_proofs WHERE order_code=? AND status IN ('submitted','approved')`,
           orderCode,
         )
       : true;
-    if (!proof) {
-      await execRun(
-        `UPDATE fulfillment_jobs SET status='queued', locked_until=NULL, updated_at=datetime('now') WHERE id=?`,
-        jobId,
-      );
-      return false; // Hold until proof is submitted/approved
-    }
+    if (!proof) return false;
   }
 
-  // Gate 2: WhatsApp fulfillment feature flag (if disabled, route to manual)
+  const claimed = await claimJob(jobId);
+  if (!claimed) return false;
+
+  const chatId = String(order.telegram_chat_id || "");
+  const waRecipient = String(order.channel_member_id || order.customer_wa || "");
+  const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
+
+  // WhatsApp fulfillment feature flag (if disabled, route to manual)
   if (salesChannel === "whatsapp" && !isEnabled("WHATSAPP_FULFILLMENT")) {
     await execRun(
       `UPDATE fulfillment_jobs SET status='manual_required', locked_until=NULL, updated_at=datetime('now') WHERE id=?`,
@@ -212,6 +231,27 @@ export async function processJob(
   }
 
   try {
+    // A selected variant owns its fulfillment mode and shared secret. Product
+    // fields are only the legacy fallback while variant rollout is disabled.
+    const variantId = Number(order.variant_id || claimed.variant_id || 0);
+    const variant = variantId && isD1Mode()
+      ? await queryFirst(
+          `SELECT fulfillment_mode, shared_secret_ciphertext, shared_secret_iv
+           FROM product_variants WHERE id=? AND product_id=?`,
+          variantId,
+          Number(product.id),
+        )
+      : null;
+    if (variantId && isD1Mode() && !variant) throw new Error("Selected fulfillment variant not found");
+
+    const fulfillmentSource = variant ? { ...product, ...variant } : product;
+    const snapshotMode = fulfillmentModeFromOrderSnapshot(order);
+    const fulfillmentMode = String(
+      (claimed.inventory_id || String(order.fulfillment_status) === "reserved")
+        ? "unique"
+        : snapshotMode || fulfillmentSource.fulfillment_mode || "manual",
+    );
+
     // Notify buyer: payment received
     if (salesChannel === "telegram" && chatId) {
       await sendMessage({
@@ -258,8 +298,8 @@ export async function processJob(
 
     // Shared: decrypt product shared secret
     if (fulfillmentMode === "shared") {
-      const ct = String(product.shared_secret_ciphertext || "");
-      const iv = String(product.shared_secret_iv || "");
+      const ct = String(fulfillmentSource.shared_secret_ciphertext || "");
+      const iv = String(fulfillmentSource.shared_secret_iv || "");
       if (!ct || !iv) throw new Error("Shared secret not configured for product");
       const plaintext = await decryptSecret(ct, iv);
 
@@ -355,6 +395,73 @@ export async function processJob(
 }
 
 /**
+ * Idempotently create and immediately attempt fulfillment for a paid order.
+ * Used by callbacks, reconciliation, and manual proof approval so every
+ * authoritative payment path reaches the same channel/variant-aware outbox.
+ */
+export async function ensureFulfillmentForPaidOrder(orderCode: string): Promise<boolean> {
+  const autoFulfillmentEnabled = process.env.AUTO_FULFILLMENT_ENABLED === "true";
+
+  const order = await queryFirst(
+    `SELECT * FROM orders WHERE code=? AND status='lunas' AND payment_status='paid'`,
+    orderCode,
+  );
+  if (!order) return false;
+
+  let items: { product_id: number; variant_id?: number }[];
+  try {
+    items = JSON.parse(String(order.items ?? "[]"));
+  } catch {
+    return false;
+  }
+  if (!items.length) return false;
+
+  const product = await queryFirst(`SELECT * FROM products WHERE id=?`, items[0].product_id);
+  if (!product) return false;
+
+  const variantId = Number(order.variant_id || items[0].variant_id || 0) || null;
+  const variant = variantId && isD1Mode()
+    ? await queryFirst(`SELECT fulfillment_mode FROM product_variants WHERE id=? AND product_id=?`, variantId, items[0].product_id)
+    : null;
+  const inventory = await queryFirst(
+    `SELECT id FROM fulfillment_inventory WHERE order_code=? AND status='reserved'`,
+    orderCode,
+  );
+  const fulfillmentMode = String(
+    inventory
+      ? "unique"
+      : fulfillmentModeFromOrderSnapshot(order)
+        || variant?.fulfillment_mode
+        || product.fulfillment_mode
+        || "manual",
+  );
+
+  await createFulfillmentJob(
+    orderCode,
+    inventory ? Number(inventory.id) : null,
+    fulfillmentMode,
+    variantId,
+    String(order.sales_channel || "telegram"),
+  );
+
+  // Older manual jobs were inserted as manual_required before payment. Requeue
+  // only when the order itself has not yet entered manual fulfillment.
+  if (String(order.fulfillment_status || "") !== "manual_required") {
+    await execRun(
+      `UPDATE fulfillment_jobs
+       SET status='queued', next_attempt_at=datetime('now'), locked_until=NULL, updated_at=datetime('now')
+       WHERE order_code=? AND status='manual_required'`,
+      orderCode,
+    );
+  }
+
+  const job = await queryFirst(`SELECT id FROM fulfillment_jobs WHERE order_code=?`, orderCode);
+  if (!job) return false;
+  if (!autoFulfillmentEnabled) return false;
+  return processJob(Number(job.id), order, product);
+}
+
+/**
  * Get due jobs for cron processing.
  */
 export async function getDueJobs(limit = 25): Promise<Row[]> {
@@ -364,6 +471,7 @@ export async function getDueJobs(limit = 25): Promise<Row[]> {
        FROM fulfillment_jobs fj
        JOIN orders o ON o.code = fj.order_code
        WHERE fj.status IN ('queued','retry')
+       AND o.status='lunas' AND o.payment_status='paid'
        AND (fj.locked_until IS NULL OR fj.locked_until < datetime('now'))
        AND fj.next_attempt_at <= datetime('now')
        ORDER BY fj.next_attempt_at ASC

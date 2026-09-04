@@ -121,16 +121,24 @@ route API, dan admin UI "Bot & Otomasi"). Semua feature flag default off:
 Aktivasi memerlukan owner gates (token/key/credential) yang dijelaskan di planning doc.
 Repo `mocasus/telegram-auto-order-bot` hanya referensi UX, bukan source/fork.
 
-Rencana implementasi bot pada grup WhatsApp existing tersedia di
-`docs/WHATSAPP-GROUP-BOT-PLAN.md`. Rencana tersebut terlebih dahulu memodelkan produk
-induk dan varian (plan, durasi, garansi, harga, stok, serta fulfillment) di D1/CMS agar
-website, Telegram, dan WhatsApp membaca katalog yang sama. UX WhatsApp dibuat ringkas:
-`list` hanya menampilkan nama produk, lalu input nama produk menampilkan detail beserta
-varian bernomor. Setelah memilih angka, user membalas `pay`/`payment`; bot mengirim
-QRIS, SeaBank, e-wallet, serta format bukti wajib di grup. Command `garansi` memakai
-kebijakan canonical yang sama dengan Telegram. Fonnte direncanakan sebagai device gateway
-nomor/grup existing dan KlikQRIS Telegram dipakai ulang. Seluruhnya masih planning-only;
-runtime varian/WhatsApp belum diimplementasikan.
+Bot grup WhatsApp existing dan katalog varian terpusat sudah tersedia; desain dan rollout
+lengkapnya ada di `docs/WHATSAPP-GROUP-BOT-PLAN.md`. D1/CMS menjadi sumber produk,
+durasi, garansi, harga, stok, dan konfigurasi fulfillment per varian untuk website,
+Telegram, serta WhatsApp. Flow grupnya ringkas: `list` → ketik nama produk → pilih angka
+varian → `pay`/`payment` → QRIS/SeaBank/e-wallet → kirim bukti wajib dengan caption
+`BUKTI <KODE> <QRIS|SEABANK|EWALLET>`. Admin meninjau bukti melalui menu **Bukti Bayar**;
+QRIS dinamis disahkan callback/status KlikQRIS, sedangkan QRIS statis, SeaBank, dan
+e-wallet baru mengubah order menjadi lunas setelah admin mencocokkan mutasi. Command
+`garansi` memakai kebijakan kanonis yang sama dengan Telegram. Runtime memakai Fonnte pada nomor/grup existing dan
+semua flag WhatsApp/varian di `.env.example` tetap default `false` untuk rollout bertahap.
+Nilai `WHATSAPP_WEBHOOK_TOKEN` harus sama dengan **Secret key** pada flow webhook Fonnte;
+adapter menerima field `secret` bawaan Fonnte tanpa memerlukan custom header.
+Unduhan lampiran webhook tidak membawa token API Fonnte ke URL media, dibatasi 5 MB,
+dan diverifikasi sebagai gambar sebelum disimpan privat. Copy pembayaran memakai snapshot
+order agar perubahan nama/durasi/garansi di CMS tidak mengubah transaksi yang sudah dibuat.
+Produk baru otomatis mendapat varian default. Harga/stok pada form produk lama hanya
+disinkronkan untuk varian default tunggal; produk multi-varian dikelola lewat tombol
+**Varian**. Penghapusan produk/varian mengarsipkannya agar order historis tetap utuh.
 
 Setelah pembayaran diterima, tombol support bot membuka akun manusia `@axvara_support`;
 username bot tetap `@Axvara_bot`. Seluruh notifikasi admin dari order web maupun Telegram

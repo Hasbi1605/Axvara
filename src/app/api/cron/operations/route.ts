@@ -7,10 +7,21 @@
 // 5. Stale job locks
 
 import { NextRequest, NextResponse } from "next/server";
-import { queryAll, queryFirst, execRun } from "@/lib/db";
+import {
+  queryAll,
+  queryFirst,
+  execRun,
+  transitionPendingOrder,
+  transitionPendingPaymentOrder,
+  transitionPendingPaymentToPaid,
+} from "@/lib/db";
 import { getPaymentProvider, isPaymentEnabled } from "@/lib/payments/klikqris";
-import { releaseInventoryForOrder } from "@/lib/fulfillment/inventory";
-import { getDueJobs, processJob, releaseStaleJobs } from "@/lib/fulfillment/deliver";
+import {
+  ensureFulfillmentForPaidOrder,
+  getDueJobs,
+  processJob,
+  releaseStaleJobs,
+} from "@/lib/fulfillment/deliver";
 import { sendMessage } from "@/lib/telegram/api";
 import { orderExpiredMessage } from "@/lib/telegram/messages";
 
@@ -32,6 +43,8 @@ export async function POST(request: NextRequest) {
     recovered_payments: 0,
     due_jobs_processed: 0,
     stale_locks_released: 0,
+    expired_static_whatsapp_orders: 0,
+    whatsapp_rows_cleaned: 0,
   };
 
   try {
@@ -42,33 +55,26 @@ export async function POST(request: NextRequest) {
        LIMIT ?`,
       BATCH_LIMIT,
     );
+    let staleTransitions = 0;
     for (const tx of staleInit) {
-      await execRun(
-        `UPDATE payment_transactions SET status='failed', last_error='stale_initializing', updated_at=datetime('now')
-         WHERE order_code=? AND status='initializing'`,
-        String(tx.order_code),
-      );
-      // Restore stock
       const order = await queryFirst(`SELECT items FROM orders WHERE code=?`, String(tx.order_code));
       if (order) {
         try {
-          const items = JSON.parse(String(order.items ?? "[]")) as { product_id: number; qty: number }[];
-          for (const item of items) {
-            await execRun(
-              `UPDATE products SET stock = CASE WHEN stock=-1 THEN -1 ELSE stock+? END WHERE id=? AND stock!=-1`,
-              item.qty, item.product_id,
-            );
-          }
+          const items = JSON.parse(String(order.items ?? "[]")) as { product_id: number; variant_id?: number; qty: number }[];
+          const changed = await transitionPendingPaymentOrder({
+            orderCode: String(tx.order_code),
+            expectedTransactionStatus: "initializing",
+            transactionStatus: "failed",
+            orderStatus: "dibatalkan",
+            paymentStatus: "failed",
+            items,
+            lastError: "stale_initializing",
+          });
+          if (changed) staleTransitions++;
         } catch { /* ok */ }
       }
-      await releaseInventoryForOrder(String(tx.order_code));
-      await execRun(
-        `UPDATE orders SET status='dibatalkan', payment_status='failed', updated_at=datetime('now')
-         WHERE code=? AND status='pending'`,
-        String(tx.order_code),
-      );
     }
-    results.stale_initializing = staleInit.length;
+    results.stale_initializing = staleTransitions;
 
     // 2. Expired payments
     const expiredPayments = await queryAll(
@@ -77,30 +83,24 @@ export async function POST(request: NextRequest) {
        LIMIT ?`,
       BATCH_LIMIT,
     );
+    let expiredTransitions = 0;
     for (const tx of expiredPayments) {
-      await execRun(
-        `UPDATE payment_transactions SET status='expired', updated_at=datetime('now')
-         WHERE order_code=? AND status='pending'`,
-        String(tx.order_code),
-      );
       const order = await queryFirst(`SELECT items, telegram_chat_id FROM orders WHERE code=?`, String(tx.order_code));
       if (order) {
         try {
-          const items = JSON.parse(String(order.items ?? "[]")) as { product_id: number; qty: number }[];
-          for (const item of items) {
-            await execRun(
-              `UPDATE products SET stock = CASE WHEN stock=-1 THEN -1 ELSE stock+? END WHERE id=? AND stock!=-1`,
-              item.qty, item.product_id,
-            );
-          }
+          const items = JSON.parse(String(order.items ?? "[]")) as { product_id: number; variant_id?: number; qty: number }[];
+          const changed = await transitionPendingPaymentOrder({
+            orderCode: String(tx.order_code),
+            expectedTransactionStatus: "pending",
+            transactionStatus: "expired",
+            orderStatus: "kadaluarsa",
+            paymentStatus: "expired",
+            items,
+          });
+          if (!changed) continue;
+          expiredTransitions++;
         } catch { /* ok */ }
       }
-      await releaseInventoryForOrder(String(tx.order_code));
-      await execRun(
-        `UPDATE orders SET status='kadaluarsa', payment_status='expired', fulfillment_status='not_required',
-         updated_at=datetime('now') WHERE code=? AND status='pending'`,
-        String(tx.order_code),
-      );
       // Notify buyer
       if (order?.telegram_chat_id) {
         try {
@@ -112,14 +112,44 @@ export async function POST(request: NextRequest) {
         } catch { /* best-effort */ }
       }
     }
-    results.expired_payments = expiredPayments.length;
+    results.expired_payments = expiredTransitions;
+
+    // 2b. Static WhatsApp payments have no provider transaction but still
+    // reserve variant stock. Expire them from the order TTL as well.
+    const expiredStaticWhatsApp = await queryAll(
+      `SELECT o.code, o.items
+       FROM orders o
+       WHERE o.sales_channel='whatsapp' AND o.status='pending'
+         AND o.expires_at < datetime('now')
+         AND NOT EXISTS(SELECT 1 FROM payment_transactions pt WHERE pt.order_code=o.code)
+       LIMIT ?`,
+      BATCH_LIMIT,
+    );
+    let expiredStaticCount = 0;
+    for (const order of expiredStaticWhatsApp) {
+      try {
+        const items = JSON.parse(String(order.items ?? "[]")) as { product_id: number; variant_id?: number; qty: number }[];
+        await transitionPendingOrder(String(order.code), "kadaluarsa", null, items);
+        expiredStaticCount++;
+      } catch { /* another worker may have transitioned it */ }
+    }
+    results.expired_static_whatsapp_orders = expiredStaticCount;
 
     // 3. Missed callback recovery — check pending payments near expiry
     if (isPaymentEnabled()) {
       const pendingNearExpiry = await queryAll(
-        `SELECT order_code, provider_order_id, merchant_id FROM payment_transactions
-         WHERE status='pending' AND last_checked_at < datetime('now', '-3 minutes')
-         ORDER BY expires_at ASC
+        `SELECT pt.order_code, pt.provider_order_id, pt.merchant_id,
+                pt.payable_amount, pt.status
+         FROM payment_transactions pt
+         JOIN orders o ON o.code=pt.order_code
+         WHERE (
+           pt.status='pending'
+           AND COALESCE(pt.last_checked_at,pt.created_at) < datetime('now','-3 minutes')
+         ) OR (
+           pt.status='paid' AND o.status='pending'
+           AND o.payment_status IN ('unpaid','pending')
+         )
+         ORDER BY pt.expires_at ASC
          LIMIT ?`,
         Math.min(10, BATCH_LIMIT),
       );
@@ -136,19 +166,21 @@ export async function POST(request: NextRequest) {
             String(tx.order_code),
           );
           if (statusCheck.status === "paid") {
-            // Transition to paid (same logic as callback)
-            const result = await execRun(
-              `UPDATE payment_transactions SET status='paid', paid_at=datetime('now'), updated_at=datetime('now')
-               WHERE order_code=? AND status='pending'`,
+            if (
+              statusCheck.amountPaid !== undefined
+              && Number(tx.payable_amount) !== statusCheck.amountPaid
+            ) {
+              continue;
+            }
+            const transitioned = await transitionPendingPaymentToPaid(
               String(tx.order_code),
+              statusCheck.paidAt ?? null,
             );
-            if (result.changes) {
-              await execRun(
-                `UPDATE orders SET payment_status='paid', status='lunas', updated_at=datetime('now')
-                 WHERE code=? AND status='pending'`,
-                String(tx.order_code),
-              );
+            if (transitioned) {
               (results.recovered_payments as number)++;
+              try {
+                await ensureFulfillmentForPaidOrder(String(tx.order_code));
+              } catch { /* due-job reconciliation will retry */ }
             }
           }
         } catch { /* status check failures are non-fatal */ }
@@ -174,6 +206,17 @@ export async function POST(request: NextRequest) {
 
     // 5. Release stale job locks
     results.stale_locks_released = await releaseStaleJobs();
+
+    // 6. Keep transient WhatsApp state bounded. Proof metadata and orders are
+    // retained; only expired sessions and old dedup events are removed.
+    const expiredSessions = await execRun(
+      `DELETE FROM whatsapp_sessions WHERE expires_at<datetime('now','-1 day')`,
+    );
+    const oldInboxEvents = await execRun(
+      `DELETE FROM whatsapp_inbox_events WHERE created_at<datetime('now','-7 days')`,
+    );
+    results.whatsapp_rows_cleaned = Number(expiredSessions.changes || 0)
+      + Number(oldInboxEvents.changes || 0);
 
   } catch (error) {
     console.error("Cron operations error:", error instanceof Error ? error.message : "unknown");

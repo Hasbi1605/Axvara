@@ -4,12 +4,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { queryFirst, execRun, getD1, D1Statement } from "@/lib/db";
 import { z } from "zod";
+import { authoritativePaymentMethodForProof } from "@/lib/payment-proofs";
+import { ensureFulfillmentForPaidOrder } from "@/lib/fulfillment/deliver";
 
 export const runtime = "edge";
 
 const ReviewSchema = z.object({
   action: z.enum(["approve", "reject"]),
   reason: z.string().trim().max(300).optional(),
+}).superRefine((value, ctx) => {
+  if (value.action === "reject" && !value.reason) {
+    ctx.addIssue({ code: "custom", path: ["reason"], message: "Alasan penolakan wajib diisi" });
+  }
 });
 
 export async function POST(
@@ -21,7 +27,7 @@ export async function POST(
 
   const { id } = await params;
   const proofId = Number(id);
-  if (!proofId) return NextResponse.json({ error: "invalid_id" }, { status: 400 });
+  if (!Number.isInteger(proofId) || proofId <= 0) return NextResponse.json({ error: "invalid_id" }, { status: 400 });
 
   const body = await request.json().catch(() => null);
   const parsed = ReviewSchema.safeParse(body);
@@ -48,32 +54,93 @@ export async function POST(
   const d1 = getD1();
 
   if (action === "approve") {
+    const dynamicQrisTransaction = String(proof.claimed_method) === "QRIS"
+      ? await queryFirst(
+          `SELECT id, status FROM payment_transactions WHERE order_code=? AND provider='klikqris'`,
+          orderCode,
+        )
+      : null;
+    const authoritativeMethod = authoritativePaymentMethodForProof(
+      String(proof.claimed_method),
+      Boolean(dynamicQrisTransaction),
+    );
+
+    // A dynamic QRIS proof is supporting evidence only. KlikQRIS callback/status
+    // remains authoritative. Static QRIS has no provider callback and therefore
+    // follows the same admin-confirmed mutation path as bank/e-wallet.
+    if (!authoritativeMethod) {
+      const result = await execRun(
+        `UPDATE payment_proofs
+         SET status='approved', reviewed_by=?, reviewed_at=datetime('now'), rejection_reason=NULL
+         WHERE id=? AND status='submitted'`,
+        reviewer,
+        proofId,
+      );
+      if (!result.changes) {
+        return NextResponse.json({ error: "concurrent_modification" }, { status: 409 });
+      }
+      try {
+        await ensureFulfillmentForPaidOrder(orderCode);
+      } catch { /* Paid-state reconciliation will retry if applicable. */ }
+      return NextResponse.json({ ok: true, action: "approved", order_code: orderCode, payment_updated: false });
+    }
+
     if (d1) {
+      const guardId = `proof-review:${proofId}:manual-payment`;
       const statements: D1Statement[] = [
-        // 1. CAS on proof
+        d1.prepare(
+          `INSERT INTO operation_guards (operation_id, valid)
+           SELECT ?, CASE WHEN
+             EXISTS(SELECT 1 FROM payment_proofs WHERE id=? AND status='submitted')
+             AND EXISTS(
+               SELECT 1 FROM orders
+               WHERE code=? AND status='pending' AND payment_status IN ('unpaid','pending')
+             )
+             AND NOT EXISTS(
+               SELECT 1 FROM payment_transactions WHERE order_code=? AND status='paid'
+             )
+           THEN 1 ELSE 0 END`,
+        ).bind(guardId, proofId, orderCode, orderCode),
         d1.prepare(
           `UPDATE payment_proofs
            SET status='approved', reviewed_by=?, reviewed_at=datetime('now'), rejection_reason=NULL
            WHERE id=? AND status='submitted'`,
         ).bind(reviewer, proofId),
-
-        // 2. Update order to lunas & paid
+        d1.prepare(
+          `UPDATE payment_transactions
+           SET status='failed', last_error='superseded_by_manual_payment', updated_at=datetime('now')
+           WHERE order_code=? AND status IN ('initializing','pending')`,
+        ).bind(orderCode),
         d1.prepare(
           `UPDATE orders
-           SET status='lunas', payment_status='paid',
-               payment_method=CASE WHEN payment_method='pending' THEN ? ELSE payment_method END,
+           SET status='lunas', payment_status='paid', payment_method=?,
                updated_at=datetime('now')
-           WHERE code=? AND status='pending'`,
-        ).bind(String(proof.claimed_method || "manual").toLowerCase(), orderCode),
+           WHERE code=? AND status='pending' AND payment_status IN ('unpaid','pending')`,
+        ).bind(authoritativeMethod, orderCode),
+        d1.prepare(`DELETE FROM operation_guards WHERE operation_id=?`).bind(guardId),
       ];
 
-      const results = await d1.batch(statements);
-      const proofChanges = results[0]?.meta?.changes ?? 0;
-      if (proofChanges === 0) {
-        return NextResponse.json({ error: "concurrent_modification" }, { status: 409 });
+      try {
+        await d1.batch(statements);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (/operation_guards|CHECK constraint|UNIQUE/i.test(message)) {
+          return NextResponse.json({ error: "payment_conflict_or_already_reviewed" }, { status: 409 });
+        }
+        throw error;
       }
 
-      return NextResponse.json({ ok: true, action: "approved", order_code: orderCode });
+      let fulfillmentStarted = false;
+      try {
+        fulfillmentStarted = await ensureFulfillmentForPaidOrder(orderCode);
+      } catch { /* Payment is durable; fulfillment remains retryable. */ }
+      return NextResponse.json({
+        ok: true,
+        action: "approved",
+        order_code: orderCode,
+        payment_updated: true,
+        fulfillment_started: fulfillmentStarted,
+      });
     }
 
     // Dev fallback
@@ -85,9 +152,19 @@ export async function POST(
     if (!res.changes) return NextResponse.json({ error: "concurrent_modification" }, { status: 409 });
 
     await execRun(
-      `UPDATE orders SET status='lunas', payment_status='paid', updated_at=datetime('now') WHERE code=?`,
+      `UPDATE orders SET status='lunas', payment_status='paid', payment_method=?, updated_at=datetime('now') WHERE code=? AND status='pending'`,
+      authoritativeMethod,
       orderCode,
     );
+    await execRun(
+      `UPDATE payment_transactions
+       SET status='failed', last_error='superseded_by_manual_payment', updated_at=datetime('now')
+       WHERE order_code=? AND status IN ('initializing','pending')`,
+      orderCode,
+    );
+    try {
+      await ensureFulfillmentForPaidOrder(orderCode);
+    } catch { /* best effort in dev */ }
     return NextResponse.json({ ok: true, action: "approved", order_code: orderCode });
   }
 

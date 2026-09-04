@@ -61,7 +61,10 @@ export function timingSafeEqual(a: string, b: string): boolean {
 
 // ---- Webhook Authentication ----
 
-export function authenticateWebhook(request: NextRequest): { ok: boolean; reason?: string } {
+export function authenticateWebhook(
+  request: NextRequest,
+  payload?: unknown,
+): { ok: boolean; reason?: string } {
   const expectedSecret = process.env.WHATSAPP_WEBHOOK_TOKEN;
   if (!expectedSecret || expectedSecret.trim() === "") {
     return { ok: false, reason: "webhook_not_configured" };
@@ -80,7 +83,19 @@ export function authenticateWebhook(request: NextRequest): { ok: boolean; reason
     request.nextUrl.searchParams.get("secret") ||
     "";
 
-  const tokenToTest = headerToken.trim() || queryToken.trim();
+  // Fonnte's dashboard "Secret key" is delivered as additional webhook data.
+  // Keep header/query support for proxies and local diagnostics, but accept the
+  // provider-native payload field as the primary production-compatible path.
+  const body = payload && typeof payload === "object"
+    ? payload as Record<string, unknown>
+    : undefined;
+  const payloadToken = typeof body?.secret === "string"
+    ? body.secret
+    : typeof body?.webhook_secret === "string"
+      ? body.webhook_secret
+      : "";
+
+  const tokenToTest = headerToken.trim() || queryToken.trim() || payloadToken.trim();
   if (!tokenToTest) {
     return { ok: false, reason: "missing_token" };
   }
@@ -245,11 +260,21 @@ export async function sendImageMessage(params: SendImageParams): Promise<FonnteS
 
 export function isPrivateIp(hostname: string): boolean {
   const clean = hostname.trim().toLowerCase();
-  if (clean === "localhost" || clean.endsWith(".localhost") || clean.endsWith(".local") || clean === "::1") {
+  const address = clean.startsWith("[") && clean.endsWith("]") ? clean.slice(1, -1) : clean;
+  if (address === "localhost" || address.endsWith(".localhost") || address.endsWith(".local") || address === "::" || address === "::1") {
     return true;
   }
+  if (address.includes(":") && (
+    address.startsWith("fc")
+    || address.startsWith("fd")
+    || /^fe[89ab]/.test(address)
+    || address.startsWith("::ffff:127.")
+    || address.startsWith("::ffff:10.")
+    || address.startsWith("::ffff:192.168.")
+    || /^::ffff:172\.(1[6-9]|2\d|3[01])\./.test(address)
+  )) return true;
   // Check IPv4 octets
-  const ipv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(clean);
+  const ipv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(address);
   if (ipv4) {
     const [, a, b] = ipv4.map(Number);
     if (a === 127) return true; // 127.0.0.0/8
@@ -273,7 +298,11 @@ export function checkImageMagicBytes(buf: Uint8Array, mimeType: string): boolean
       buf[0] === 0x89 &&
       buf[1] === 0x50 &&
       buf[2] === 0x4e &&
-      buf[3] === 0x47
+      buf[3] === 0x47 &&
+      buf[4] === 0x0d &&
+      buf[5] === 0x0a &&
+      buf[6] === 0x1a &&
+      buf[7] === 0x0a
     );
   }
   if (t === "image/webp") {
@@ -304,15 +333,10 @@ export async function downloadMediaSafely(
     // Check SSRF
     if (isPrivateIp(parsed.hostname)) return null;
 
-    const token = getFonnteToken();
-    const headers: Record<string, string> = {};
-    if (token) headers.Authorization = token;
-
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30_000);
 
     const res = await fetch(mediaUrl, {
-      headers,
       signal: controller.signal,
       redirect: "manual", // Do not blindly follow redirects to avoid SSRF redirect hops
     });
@@ -329,7 +353,6 @@ export async function downloadMediaSafely(
       const redirController = new AbortController();
       const redirTimeout = setTimeout(() => redirController.abort(), 20_000);
       response = await fetch(redirectUrl.toString(), {
-        headers,
         signal: redirController.signal,
         redirect: "error", // At most 1 safe redirect
       });

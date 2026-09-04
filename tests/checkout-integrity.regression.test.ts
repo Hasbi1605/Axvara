@@ -42,6 +42,17 @@ describe("Checkout quote integrity", () => {
     expect(checkout).toContain("issue.message");
   });
 
+  it("variant mode tidak dapat dibypass dengan checkout tanpa variant_id", () => {
+    const quote = read("src/app/api/checkout/quote/route.ts");
+    const products = read("src/app/api/products/route.ts");
+    const card = read("src/components/storefront/ProductCard.tsx");
+    const detail = read("src/app/produk/[slug]/page.tsx");
+    expect(quote).toContain('type: "variant_required"');
+    expect(products).toContain("variant_count");
+    expect(card).toContain("hasVariants");
+    expect(detail).toContain("variant_catalog_unavailable");
+  });
+
   it("pemilihan file baru menghapus bukti lama sebelum validasi", () => {
     const checkout = read("src/app/checkout/page.tsx");
     const clearIndex = checkout.indexOf("setProofUrl(null);", checkout.indexOf("const f = e.target.files"));

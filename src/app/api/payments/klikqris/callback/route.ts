@@ -2,10 +2,13 @@
 // Validates callback, confirms via server-side status check, transitions order atomically.
 
 import { NextRequest, NextResponse } from "next/server";
-import { queryFirst, execRun, isD1Mode } from "@/lib/db";
+import {
+  queryFirst,
+  transitionPendingPaymentOrder,
+  transitionPendingPaymentToPaid,
+} from "@/lib/db";
 import { getPaymentProvider, isPaymentEnabled } from "@/lib/payments/klikqris";
-import { createFulfillmentJob, processJob } from "@/lib/fulfillment/deliver";
-import { releaseInventoryForOrder } from "@/lib/fulfillment/inventory";
+import { ensureFulfillmentForPaidOrder } from "@/lib/fulfillment/deliver";
 import { sendMessage } from "@/lib/telegram/api";
 import { orderExpiredMessage } from "@/lib/telegram/messages";
 
@@ -63,7 +66,38 @@ export async function POST(request: NextRequest) {
   // === PAID ===
   if (callback.status === "paid") {
     if (currentStatus === "paid") {
-      return NextResponse.json({ ok: true, status: "already_processed" });
+      // Older deployments updated the transaction and order separately. Repair
+      // that split-brain state only after re-confirming it with the provider.
+      const orderState = await queryFirst(
+        `SELECT status, payment_status FROM orders WHERE code=?`,
+        orderCode,
+      );
+      const legacyOrderStillPending = String(orderState?.status) === "pending"
+        && ["unpaid", "pending"].includes(String(orderState?.payment_status));
+      let repaired = false;
+      if (legacyOrderStillPending) {
+        let confirmedPaidAt = callback.paidAt ?? null;
+        try {
+          const statusCheck = await provider.checkStatus(
+            callback.providerOrderId,
+            String(tx.merchant_id),
+          );
+          if (!statusCheck.success || statusCheck.status !== "paid") {
+            return NextResponse.json({ error: "status_not_confirmed" }, { status: 422 });
+          }
+          if (statusCheck.amountPaid !== undefined && Number(tx.payable_amount) !== statusCheck.amountPaid) {
+            return NextResponse.json({ error: "amount_mismatch" }, { status: 422 });
+          }
+          confirmedPaidAt = statusCheck.paidAt ?? confirmedPaidAt;
+        } catch {
+          return NextResponse.json({ error: "status_confirmation_unavailable" }, { status: 503 });
+        }
+        repaired = await transitionPendingPaymentToPaid(orderCode, confirmedPaidAt);
+      }
+      try {
+        await ensureFulfillmentForPaidOrder(orderCode);
+      } catch { /* Retry remains safe and idempotent. */ }
+      return NextResponse.json({ ok: true, status: repaired ? "paid_order_repaired" : "already_processed" });
     }
     if (currentStatus !== "pending") {
       return NextResponse.json({ error: "invalid_transition" }, { status: 409 });
@@ -75,6 +109,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Server-side status confirmation
+    let confirmedPaidAt: string | null = callback.paidAt ?? null;
     try {
       const statusCheck = await provider.checkStatus(
         callback.providerOrderId,
@@ -83,61 +118,24 @@ export async function POST(request: NextRequest) {
       if (!statusCheck.success || statusCheck.status !== "paid") {
         return NextResponse.json({ error: "status_not_confirmed" }, { status: 422 });
       }
+      if (statusCheck.amountPaid !== undefined && Number(tx.payable_amount) !== statusCheck.amountPaid) {
+        return NextResponse.json({ error: "amount_mismatch" }, { status: 422 });
+      }
+      confirmedPaidAt = statusCheck.paidAt ?? confirmedPaidAt;
     } catch {
-      // If status check fails, accept callback cautiously but log
-      console.error("Status check failed for", orderCode, "- accepting callback");
+      // A callback alone is not sufficient payment authority. Returning 503
+      // lets the provider retry while reconciliation independently rechecks it.
+      return NextResponse.json({ error: "status_confirmation_unavailable" }, { status: 503 });
     }
 
-    // Atomic transition: pending → paid
-    if (isD1Mode()) {
-      const result = await execRun(
-        `UPDATE payment_transactions SET status='paid', paid_at=datetime('now'), last_checked_at=datetime('now'),
-         updated_at=datetime('now') WHERE order_code=? AND status='pending'`,
-        orderCode,
-      );
-      if (!result.changes) {
-        return NextResponse.json({ ok: true, status: "already_processed" });
-      }
-    } else {
-      // In-memory fallback would go here
+    const transitioned = await transitionPendingPaymentToPaid(orderCode, confirmedPaidAt);
+    if (!transitioned) {
+      return NextResponse.json({ ok: true, status: "already_processed" });
     }
 
-    // Update order
-    await execRun(
-      `UPDATE orders SET payment_status='paid', status='lunas', updated_at=datetime('now')
-       WHERE code=? AND status='pending'`,
-      orderCode,
-    );
-
-    // Trigger fulfillment
-    const order = await queryFirst(`SELECT * FROM orders WHERE code=?`, orderCode);
-    if (order) {
-      const items = JSON.parse(String(order.items ?? "[]")) as { product_id: number }[];
-      if (items.length > 0) {
-        const product = await queryFirst(`SELECT * FROM products WHERE id=?`, items[0].product_id);
-        if (product && process.env.AUTO_FULFILLMENT_ENABLED === "true") {
-          const fulfillmentMode = String(product.fulfillment_mode || "manual");
-          const inventoryId = fulfillmentMode === "unique"
-            ? Number((await queryFirst(
-                `SELECT id FROM fulfillment_inventory WHERE order_code=? AND status='reserved'`,
-                orderCode,
-              ))?.id ?? 0)
-            : null;
-
-          // Create job if not exists, then try processing
-          await createFulfillmentJob(orderCode, inventoryId, fulfillmentMode);
-
-          const job = await queryFirst(
-            `SELECT id FROM fulfillment_jobs WHERE order_code=?`, orderCode,
-          );
-          if (job) {
-            try {
-              await processJob(Number(job.id), order, product);
-            } catch { /* Job will be picked up by cron */ }
-          }
-        }
-      }
-    }
+    try {
+      await ensureFulfillmentForPaidOrder(orderCode);
+    } catch { /* Durable job/reconciliation will retry fulfillment. */ }
 
     return NextResponse.json({ ok: true, status: "paid" });
   }
@@ -151,36 +149,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true, status: "already_expired" });
     }
 
-    // Transition to expired
-    await execRun(
-      `UPDATE payment_transactions SET status='expired', updated_at=datetime('now')
-       WHERE order_code=? AND status='pending'`,
-      orderCode,
-    );
-
-    // Restore stock
     const order = await queryFirst(`SELECT items, telegram_chat_id FROM orders WHERE code=?`, orderCode);
-    if (order) {
-      try {
-        const items = JSON.parse(String(order.items ?? "[]")) as { product_id: number; qty: number }[];
-        for (const item of items) {
-          await execRun(
-            `UPDATE products SET stock = CASE WHEN stock=-1 THEN -1 ELSE stock+? END WHERE id=? AND stock!=-1`,
-            item.qty, item.product_id,
-          );
-        }
-      } catch { /* ok */ }
+    if (!order) return NextResponse.json({ error: "order_not_found" }, { status: 404 });
+    let items: { product_id: number; variant_id?: number; qty: number }[];
+    try {
+      items = JSON.parse(String(order.items ?? "[]"));
+    } catch {
+      return NextResponse.json({ error: "invalid_order_snapshot" }, { status: 500 });
     }
-
-    // Release inventory
-    await releaseInventoryForOrder(orderCode);
-
-    // Update order
-    await execRun(
-      `UPDATE orders SET status='kadaluarsa', payment_status='expired', fulfillment_status='not_required',
-       updated_at=datetime('now') WHERE code=? AND status='pending'`,
+    const transitioned = await transitionPendingPaymentOrder({
       orderCode,
-    );
+      expectedTransactionStatus: "pending",
+      transactionStatus: "expired",
+      orderStatus: "kadaluarsa",
+      paymentStatus: "expired",
+      items,
+    });
+    if (!transitioned) {
+      return NextResponse.json({ ok: true, status: "already_expired" });
+    }
 
     // Notify buyer
     if (order?.telegram_chat_id) {
@@ -198,11 +185,23 @@ export async function POST(request: NextRequest) {
 
   // === FAILED ===
   if (callback.status === "failed") {
-    await execRun(
-      `UPDATE payment_transactions SET status='failed', updated_at=datetime('now')
-       WHERE order_code=? AND status='pending'`,
+    const order = await queryFirst(`SELECT items FROM orders WHERE code=?`, orderCode);
+    if (!order) return NextResponse.json({ error: "order_not_found" }, { status: 404 });
+    let items: { product_id: number; variant_id?: number; qty: number }[];
+    try {
+      items = JSON.parse(String(order.items ?? "[]"));
+    } catch {
+      return NextResponse.json({ error: "invalid_order_snapshot" }, { status: 500 });
+    }
+    await transitionPendingPaymentOrder({
       orderCode,
-    );
+      expectedTransactionStatus: "pending",
+      transactionStatus: "failed",
+      orderStatus: "dibatalkan",
+      paymentStatus: "failed",
+      items,
+      lastError: "provider_failed",
+    });
     return NextResponse.json({ ok: true, status: "failed" });
   }
 

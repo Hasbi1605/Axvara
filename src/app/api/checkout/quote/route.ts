@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { queryAll, queryFirst } from "@/lib/db";
+import { queryAll, queryFirst, isD1Mode } from "@/lib/db";
+import { isVariantsReadEnabled } from "@/lib/catalog";
 import { createCheckoutQuoteToken } from "@/lib/auth";
 
 export const runtime = "edge";
@@ -18,7 +19,7 @@ const schema = z.object({ items: z.array(itemSchema).min(1).max(20) });
 
 type QuoteIssue = {
   product_id?: number;
-  type: "missing" | "inactive" | "out_of_stock" | "insufficient_stock" | "invalid_quantity";
+  type: "missing" | "inactive" | "out_of_stock" | "insufficient_stock" | "invalid_quantity" | "variant_required";
   message: string;
 };
 
@@ -49,6 +50,7 @@ export async function POST(req: NextRequest) {
   const quotedItems: { product_id: number; variant_id?: number; name: string; price: number; qty: number; stock: number; image: string }[] = [];
   const issues: QuoteIssue[] = [];
   const changes: PriceChange[] = [];
+  const variantsRequired = isD1Mode() && isVariantsReadEnabled();
 
   for (const item of aggregate.values()) {
     if (item.qty > 20) {
@@ -66,6 +68,15 @@ export async function POST(req: NextRequest) {
     const productId = Number(row.id);
     if (Number(row.is_active) === 0) {
       issues.push({ product_id: productId, type: "inactive", message: `${row.name} sedang nonaktif.` });
+      continue;
+    }
+
+    if (variantsRequired && !item.variant_id) {
+      issues.push({
+        product_id: productId,
+        type: "variant_required",
+        message: `Pilih varian ${row.name} dari halaman detail produk.`,
+      });
       continue;
     }
 

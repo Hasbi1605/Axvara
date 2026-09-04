@@ -35,6 +35,7 @@ function responsiveImg(url: string) {
 export function ProductCard({ product, index = 0, compact = false }: { product: Product; index?: number; compact?: boolean }) {
   const add = useCart((s) => s.add);
   const router = useRouter();
+  const hasVariants = Boolean(product.variantCount && product.variantCount > 0);
   const hasMultipleVariants = Boolean(
     (product.variantCount && product.variantCount > 1) ||
     (product.minPrice != null && product.maxPrice != null && product.minPrice !== product.maxPrice)
@@ -153,12 +154,12 @@ export function ProductCard({ product, index = 0, compact = false }: { product: 
               <span className="col-span-2 h-8 sm:h-9 rounded-[10px] sm:rounded-xl bg-white/[0.06] border border-white/10 text-[11px] sm:text-[13px] font-semibold text-white/40 flex items-center justify-center">
                 Stok Habis
               </span>
-            ) : hasMultipleVariants ? (
+            ) : hasVariants ? (
               <Link
                 href={`/produk/${product.slug}`}
                 className="col-span-2 h-8 sm:h-9 rounded-[10px] sm:rounded-xl bg-[#00E5FF]/15 border border-[#00E5FF]/30 text-[11px] sm:text-[13px] font-bold text-[#00E5FF] flex items-center justify-center gap-1.5 hover:bg-[#00E5FF]/25 transition leading-none"
               >
-                Pilih Varian →
+                {hasMultipleVariants ? "Pilih Varian →" : "Lihat Opsi →"}
               </Link>
             ) : (
               <>

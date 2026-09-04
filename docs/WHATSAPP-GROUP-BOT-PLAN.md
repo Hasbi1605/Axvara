@@ -1,8 +1,8 @@
 # Rencana Eksekusi — Varian Produk Terpusat dan Bot Grup WhatsApp AXVARA
 
-**Status:** handoff ready, planning only
+**Status:** implemented, cross-checked, dan hardened
 
-**Tanggal:** 4 September 2026
+**Tanggal:** 4 September 2026 · audit terakhir 5 September 2026
 
 **Prioritas:** fondasi varian di CMS/D1 lebih dahulu, lalu web, Telegram, dan WhatsApp
 
@@ -11,6 +11,12 @@
 **Gateway kandidat MVP:** Fonnte
 
 **Payment:** gunakan kembali integrasi KlikQRIS AXVARA yang sudah bekerja di Telegram
+
+**Catatan audit implementasi:** flow utama, varian terpusat, antrean bukti, dan command
+garansi sudah terpasang. Audit lanjutan menutup race stock/order, split-state pembayaran,
+otoritas QRIS statis versus dinamis, fulfillment sebelum lunas, session lintas varian,
+idempotensi retry Fonnte, kebocoran token saat unduh media, serta ketergantungan copy
+pembayaran pada katalog live. Feature flag tetap menjadi gate rollout produksi.
 
 ---
 
@@ -90,9 +96,9 @@ memotong/menyensor saldo, transaksi lain, alamat, atau data sensitif yang tidak 
 
 ---
 
-## 3. Temuan baseline AXVARA saat ini
+## 3. Temuan baseline sebelum implementasi
 
-Audit codebase menunjukkan varian belum ada sebagai entitas:
+Audit awal codebase menunjukkan varian belum ada sebagai entitas:
 
 - drizzle/schema.sql menyimpan price, compare_price, stock, dan is_active langsung pada
   tabel products.
@@ -1246,3 +1252,21 @@ Fase 5; auto-order ditambahkan setelah jalur varian web dan Telegram stabil.
 Dokumen ini mengunci model dan urutan kerja. Detail kosmetik pesan boleh berubah, tetapi
 single source of truth, variant_id server-authoritative, snapshot order, session
 per-member, idempotensi pay/bukti, dan otoritas callback/admin tidak boleh dilemahkan.
+
+## 22. Hasil audit pasca-implementasi
+
+- webhook hanya menerima grup allowlist, memakai secret Fonnte, `inboxid`, dedupe retry,
+  rate limit per anggota, serta batas body;
+- URL lampiran diunduh tanpa meneruskan token API Fonnte ke host media;
+- label produk, varian, durasi, garansi, harga, dan mode fulfillment disimpan sebagai
+  snapshot order sehingga edit CMS tidak mengubah transaksi yang sudah dibuat;
+- varian `shared` tanpa secret dan varian `unique` tanpa inventory gagal tertutup sebelum
+  order pembayaran dibuat;
+- order/ledger KlikQRIS berpindah status secara atomik, termasuk recovery split-state dan
+  pengembalian stok saat gagal/kedaluwarsa;
+- bukti QRIS dinamis hanya menjadi evidence; callback/status KlikQRIS tetap authoritative.
+  QRIS statis, SeaBank, dan e-wallet menjadi lunas hanya setelah admin cocokkan mutasi;
+- job fulfillment tidak dapat diproses sebelum order `lunas/paid`, dan credential WhatsApp
+  hanya dikirim ke DM pembeli;
+- session kedaluwarsa serta inbox dedupe lama dibersihkan oleh cron tanpa menghapus order
+  atau metadata bukti pembayaran.

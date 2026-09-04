@@ -238,7 +238,10 @@ export async function searchProductByName(input: string): Promise<{ exact: Produ
   if (exactName) return { exact: exactName, candidates: [] };
 
   // 2. Exact slug match
-  const exactSlug = products.find(p => p.slug === normalized);
+  const exactSlug = products.find(p =>
+    p.slug.toLowerCase() === input.trim().toLowerCase()
+    || normalizeInput(p.slug) === normalized
+  );
   if (exactSlug) return { exact: exactSlug, candidates: [] };
 
   // 3. Exact alias match

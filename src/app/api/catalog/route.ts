@@ -3,6 +3,8 @@
 
 import { NextResponse } from "next/server";
 import { listActiveProducts, getProductDetail } from "@/lib/catalog";
+import { isVariantsReadEnabled } from "@/lib/catalog";
+import { isD1Mode } from "@/lib/db";
 
 export const runtime = "edge";
 
@@ -14,7 +16,10 @@ export async function GET(request: Request) {
     const detail = await getProductDetail(slug);
     if (!detail) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
-    return NextResponse.json({ product: detail }, {
+    return NextResponse.json({
+      product: detail,
+      variantsEnabled: isD1Mode() && isVariantsReadEnabled(),
+    }, {
       headers: {
         "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60",
       },
@@ -22,7 +27,10 @@ export async function GET(request: Request) {
   }
 
   const products = await listActiveProducts();
-  return NextResponse.json({ products }, {
+  return NextResponse.json({
+    products,
+    variantsEnabled: isD1Mode() && isVariantsReadEnabled(),
+  }, {
     headers: {
       "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60",
     },

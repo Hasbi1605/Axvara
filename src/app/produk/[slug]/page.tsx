@@ -45,6 +45,9 @@ export default function ProductDetailPage() {
   const [detailError, setDetailError] = useState<string | null>(null);
   const [catalogDetail, setCatalogDetail] = useState<CatalogDetail | null>(null);
   const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null);
+  const [variantsEnabled, setVariantsEnabled] = useState(false);
+  const [variantLoading, setVariantLoading] = useState(true);
+  const [variantError, setVariantError] = useState<string | null>(null);
 
   useEffect(() => {
     setDetailLoading(true);
@@ -79,19 +82,26 @@ export default function ProductDetailPage() {
   useEffect(() => {
     setCatalogDetail(null);
     setSelectedVariantId(null);
+    setVariantsEnabled(false);
+    setVariantError(null);
+    setVariantLoading(true);
     fetch(`/api/catalog?slug=${encodeURIComponent(slug)}`)
-      .then(async (r) => { if (!r.ok) return null; return r.json(); })
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`variant_catalog_unavailable:${r.status}`);
+        return r.json();
+      })
       .then((data) => {
-        if (data?.product) {
-          setCatalogDetail(data.product);
-          // Auto-select if only one active variant
-          const activeVars = (data.product.variants || []).filter((v: VariantItem) => v.is_active && v.stock !== 0);
-          if (activeVars.length === 1) {
-            setSelectedVariantId(activeVars[0].id);
-          }
+        if (!data?.product) throw new Error("variant_catalog_unavailable:not_found");
+        setCatalogDetail(data.product);
+        setVariantsEnabled(data.variantsEnabled === true);
+        // Auto-select if only one active, in-stock variant.
+        const activeVars = (data.product.variants || []).filter((v: VariantItem) => v.is_active && v.stock !== 0);
+        if (activeVars.length === 1) {
+          setSelectedVariantId(activeVars[0].id);
         }
       })
-      .catch(() => { /* catalog fetch is best-effort, page still works without it */ });
+      .catch(() => setVariantError("Pilihan varian gagal dimuat. Muat ulang halaman."))
+      .finally(() => setVariantLoading(false));
   }, [slug]);
 
   const product = catalogProducts.find((p) => p.slug === slug);
@@ -147,17 +157,25 @@ export default function ProductDetailPage() {
     );
   }
 
-  const outOfStock = product.stock !== undefined && product.stock !== null && product.stock !== -1 && product.stock <= 0;
+  // In variant mode, product.stock is legacy metadata; purchasability is
+  // determined exclusively from the selected/active variants below.
+  const outOfStock = !variantsEnabled
+    && product.stock !== undefined
+    && product.stock !== null
+    && product.stock !== -1
+    && product.stock <= 0;
 
   // Variant-aware derived values
   const variants = catalogDetail?.variants || [];
   const activeVariants = variants.filter((v: VariantItem) => v.is_active);
-  const hasMultipleVariants = activeVariants.length > 1;
   const selectedVariant = selectedVariantId ? activeVariants.find((v: VariantItem) => v.id === selectedVariantId) : null;
   const displayPrice = selectedVariant ? selectedVariant.price : product.price;
   const displayComparePrice = selectedVariant ? selectedVariant.compare_price : product.comparePrice;
-  const variantOutOfStock = selectedVariant ? selectedVariant.stock === 0 : false;
-  const needsVariantSelection = hasMultipleVariants && !selectedVariantId;
+  const variantOutOfStock = variantsEnabled && activeVariants.length > 0
+    ? activeVariants.every((variant) => variant.stock === 0)
+    : selectedVariant ? selectedVariant.stock === 0 : false;
+  const needsVariantSelection = variantsEnabled && !selectedVariant;
+  const variantCatalogUnavailable = variantLoading || Boolean(variantError) || (variantsEnabled && activeVariants.length === 0);
 
   const related = (() => {
     const sameCat = catalogProducts.filter(
@@ -305,8 +323,8 @@ export default function ProductDetailPage() {
             </div>
           )}
 
-          {/* Variant selector - only when multiple variants available */}
-          {hasMultipleVariants && (
+          {/* Variant selector is the authoritative purchase identity. */}
+          {variantsEnabled && activeVariants.length > 0 && (
             <div className="mt-4 space-y-2">
               <h3 className="text-sm font-medium text-white/60">Pilih Varian</h3>
               <div className="grid gap-2">
@@ -404,6 +422,9 @@ export default function ProductDetailPage() {
               {needsVariantSelection && (
                 <p className="text-xs text-[#FFB800]/80 text-center">Pilih varian terlebih dahulu</p>
               )}
+              {variantCatalogUnavailable && (
+                <p className="text-xs text-red-300/80 text-center">{variantError || "Pilihan varian sedang dimuat…"}</p>
+              )}
               <button
                 onClick={() => {
                   const buyUrl = selectedVariantId
@@ -411,9 +432,9 @@ export default function ProductDetailPage() {
                     : `/checkout?buy=${product.slug}`;
                   router.push(buyUrl);
                 }}
-                disabled={needsVariantSelection}
+                disabled={needsVariantSelection || variantCatalogUnavailable}
                 className={`w-full h-[52px] rounded-xl font-bold flex items-center justify-center gap-2 transition active:scale-[0.98] ${
-                  needsVariantSelection
+                  needsVariantSelection || variantCatalogUnavailable
                     ? "bg-[#00E5FF]/30 text-[#080C1E]/50 cursor-not-allowed"
                     : "bg-[#00E5FF] text-[#080C1E] hover:bg-[#00D0E8]"
                 }`}
@@ -428,9 +449,9 @@ export default function ProductDetailPage() {
                     : product;
                   add(cartProduct);
                 }}
-                disabled={needsVariantSelection}
+                disabled={needsVariantSelection || variantCatalogUnavailable}
                 className={`w-full h-[48px] rounded-xl ax-glass-card font-semibold text-sm flex items-center justify-center gap-2 transition ${
-                  needsVariantSelection
+                  needsVariantSelection || variantCatalogUnavailable
                     ? "text-white/30 cursor-not-allowed"
                     : "text-white hover:bg-white/10"
                 }`}

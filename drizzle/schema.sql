@@ -23,6 +23,11 @@ CREATE TABLE IF NOT EXISTS products (
   aliases TEXT DEFAULT '[]',
   is_active INTEGER DEFAULT 1,
   sort_order INTEGER DEFAULT 0,
+  fulfillment_mode TEXT NOT NULL DEFAULT 'manual'
+    CHECK (fulfillment_mode IN ('manual','shared','unique')),
+  shared_secret_ciphertext TEXT,
+  shared_secret_iv TEXT,
+  telegram_enabled INTEGER NOT NULL DEFAULT 1,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -306,6 +311,23 @@ CREATE TABLE IF NOT EXISTS product_variants (
 CREATE INDEX IF NOT EXISTS idx_product_variants_product ON product_variants(product_id, is_active, sort_order);
 CREATE INDEX IF NOT EXISTS idx_product_variants_sku ON product_variants(sku);
 
+-- Fresh provisioning must have the same default variants as migration 0007.
+-- This is idempotent and keeps variant-mode catalog reads populated.
+INSERT INTO product_variants (
+  product_id, sku, label, price, compare_price, stock, fulfillment_mode,
+  shared_secret_ciphertext, shared_secret_iv, is_active, sort_order,
+  created_at, updated_at
+)
+SELECT
+  p.id, 'DEFAULT-' || p.id, 'Default', p.price, p.compare_price, p.stock,
+  COALESCE(p.fulfillment_mode, 'manual'), p.shared_secret_ciphertext,
+  p.shared_secret_iv, p.is_active, 0,
+  COALESCE(p.created_at, datetime('now')), datetime('now')
+FROM products p
+WHERE NOT EXISTS (
+  SELECT 1 FROM product_variants pv WHERE pv.product_id=p.id
+);
+
 -- WhatsApp sessions (migration 0007)
 CREATE TABLE IF NOT EXISTS whatsapp_sessions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -342,6 +364,8 @@ CREATE TABLE IF NOT EXISTS whatsapp_inbox_events (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(provider, external_message_id)
 );
+CREATE INDEX IF NOT EXISTS idx_wa_inbox_member_time
+  ON whatsapp_inbox_events(conversation_id,member_id,created_at);
 
 -- WhatsApp outbox (migration 0007)
 CREATE TABLE IF NOT EXISTS whatsapp_outbox (
@@ -383,6 +407,8 @@ CREATE TABLE IF NOT EXISTS payment_proofs (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(sales_channel, external_message_id)
 );
+CREATE UNIQUE INDEX IF NOT EXISTS payment_proofs_one_active_per_order
+  ON payment_proofs(order_code) WHERE status IN ('submitted','approved');
 
 CREATE INDEX IF NOT EXISTS idx_payment_proofs_order ON payment_proofs(order_code);
 CREATE INDEX IF NOT EXISTS idx_payment_proofs_status ON payment_proofs(status);

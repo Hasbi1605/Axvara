@@ -80,7 +80,15 @@ export async function GET(request: NextRequest) {
   if (!product) return NextResponse.json({ error: "product_not_found" }, { status: 404 });
 
   const variants = await queryAll(
-    `SELECT * FROM product_variants WHERE product_id=? ORDER BY sort_order ASC, price ASC, id ASC`,
+    `SELECT id, product_id, sku, label,
+            duration_value, duration_unit, duration_label,
+            warranty_type, warranty_value, warranty_unit, warranty_label,
+            price, compare_price, stock, fulfillment_mode,
+            CASE WHEN shared_secret_ciphertext IS NOT NULL AND shared_secret_iv IS NOT NULL THEN 1 ELSE 0 END
+              AS shared_secret_configured,
+            is_active, sort_order, created_at, updated_at
+     FROM product_variants
+     WHERE product_id=? ORDER BY sort_order ASC, price ASC, id ASC`,
     Number(productId),
   );
 
@@ -109,7 +117,11 @@ export async function POST(request: NextRequest) {
     if (!parsed.success) {
       return NextResponse.json({ error: "validation_failed", details: parsed.error.flatten() }, { status: 400 });
     }
-    const { product_id, variants, aliases } = parsed.data;
+    const { product_id, aliases } = parsed.data;
+    const variants = parsed.data.variants.map((variant) => ({
+      ...variant,
+      sku: variant.sku.toUpperCase(),
+    }));
 
     // Check product exists
     const product = await queryFirst(`SELECT id, is_active FROM products WHERE id=?`, product_id);
@@ -200,6 +212,34 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // Keep legacy/admin summary columns aligned with the authoritative active
+      // variants. Public channel reads still query product_variants directly.
+      statements.push(
+        d1.prepare(
+          `UPDATE products
+           SET price=COALESCE((
+                 SELECT MIN(price) FROM product_variants
+                 WHERE product_id=? AND is_active=1
+               ),price),
+               compare_price=CASE WHEN (
+                 SELECT COUNT(*) FROM product_variants
+                 WHERE product_id=? AND is_active=1
+               )=1 THEN (
+                 SELECT compare_price FROM product_variants
+                 WHERE product_id=? AND is_active=1 LIMIT 1
+               ) ELSE NULL END,
+               stock=CASE WHEN EXISTS(
+                 SELECT 1 FROM product_variants
+                 WHERE product_id=? AND is_active=1 AND stock=-1
+               ) THEN -1 ELSE COALESCE((
+                 SELECT SUM(CASE WHEN stock>0 THEN stock ELSE 0 END)
+                 FROM product_variants WHERE product_id=? AND is_active=1
+               ),0) END,
+               updated_at=datetime('now')
+           WHERE id=?`,
+        ).bind(product_id, product_id, product_id, product_id, product_id, product_id),
+      );
+
       await d1.batch(statements);
       return NextResponse.json({ ok: true, saved: variants.length });
     }
@@ -225,7 +265,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "validation_failed", details: parsed.error.flatten() }, { status: 400 });
   }
 
-  const v = parsed.data;
+  const v = { ...parsed.data, sku: parsed.data.sku.toUpperCase() };
   const crossErr = validateCrossFields(v);
   if (crossErr) return NextResponse.json({ error: crossErr }, { status: 400 });
 
@@ -268,7 +308,10 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: "validation_failed", details: parsed.error.flatten() }, { status: 400 });
   }
 
-  const v = parsed.data;
+  const v = {
+    ...parsed.data,
+    ...(parsed.data.sku ? { sku: parsed.data.sku.toUpperCase() } : {}),
+  };
 
   // Check existing variant
   const existing = await queryFirst(`SELECT * FROM product_variants WHERE id=?`, Number(id));
@@ -353,16 +396,8 @@ export async function DELETE(request: NextRequest) {
     }
   }
 
-  // Check if variant has orders — if so, soft-deactivate instead of hard delete
-  const hasOrders = await queryFirst(
-    `SELECT 1 FROM orders WHERE variant_id=? LIMIT 1`, Number(id),
-  );
-
-  if (hasOrders) {
-    await execRun(`UPDATE product_variants SET is_active=0, updated_at=datetime('now') WHERE id=?`, Number(id));
-    return NextResponse.json({ ok: true, action: "deactivated" });
-  }
-
-  await execRun(`DELETE FROM product_variants WHERE id=?`, Number(id));
-  return NextResponse.json({ ok: true, action: "deleted" });
+  // Inventory, jobs, and historical orders can all reference a variant. Keep
+  // the stable SKU/ID for auditability and always archive instead of deleting.
+  await execRun(`UPDATE product_variants SET is_active=0, updated_at=datetime('now') WHERE id=?`, Number(id));
+  return NextResponse.json({ ok: true, action: "deactivated" });
 }

@@ -1,6 +1,8 @@
 // tests/whatsapp-variants.regression.test.ts — Comprehensive regression tests for variants, catalog, warranty, and WhatsApp group bot
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { NextRequest } from "next/server";
+import fs from "node:fs";
+import path from "node:path";
 import {
   formatWarrantyTelegram,
   formatWarrantyWhatsApp,
@@ -26,6 +28,7 @@ import {
   isSelfMessage,
   isPrivateIp,
   checkImageMagicBytes,
+  downloadMediaSafely,
   sendTextMessage,
 } from "@/lib/whatsapp/gateway";
 
@@ -278,6 +281,17 @@ describe("Feature Flags", () => {
     expect(completeResult.ok).toBe(true);
     expect(completeResult.missing).toHaveLength(0);
   });
+
+  it("runs payment-method preflight before a WhatsApp order is created", () => {
+    const route = fs.readFileSync(
+      path.join(process.cwd(), "src/app/api/whatsapp/webhook/route.ts"),
+      "utf8",
+    );
+    const preflightAt = route.indexOf("preflightWhatsAppPayment(queryAll)");
+    const createAt = route.indexOf("createPendingChannelOrder({");
+    expect(preflightAt).toBeGreaterThan(0);
+    expect(createAt).toBeGreaterThan(preflightAt);
+  });
 });
 
 describe("Fonnte Official Payload Parser (P0.1)", () => {
@@ -383,6 +397,16 @@ describe("Webhook Authentication & Timing-Safe Check (P0.2)", () => {
     expect(auth.ok).toBe(true);
   });
 
+  it("authenticates the provider-native secret field from Fonnte webhook data", () => {
+    const req = new NextRequest("http://127.0.0.1:3000/api/whatsapp/webhook", {
+      method: "POST",
+    });
+    const auth = authenticateWebhook(req, {
+      secret: "super_secret_webhook_token_123",
+    });
+    expect(auth.ok).toBe(true);
+  });
+
   it("rejects missing token with 401 reason", () => {
     const req = new NextRequest("http://127.0.0.1:3000/api/whatsapp/webhook", {
       method: "POST",
@@ -438,6 +462,11 @@ describe("SSRF Prevention and Media Magic Bytes (P0.5)", () => {
     expect(isPrivateIp("192.168.1.100")).toBe(true);
     expect(isPrivateIp("169.254.169.254")).toBe(true);
     expect(isPrivateIp("::1")).toBe(true);
+    expect(isPrivateIp("[::1]")).toBe(true);
+    expect(isPrivateIp("fc00::1")).toBe(true);
+    expect(isPrivateIp("fd12:3456::1")).toBe(true);
+    expect(isPrivateIp("fe80::1")).toBe(true);
+    expect(isPrivateIp("::ffff:127.0.0.1")).toBe(true);
 
     // Public hostnames are not private
     expect(isPrivateIp("media.fonnte.com")).toBe(false);
@@ -452,6 +481,7 @@ describe("SSRF Prevention and Media Magic Bytes (P0.5)", () => {
 
     const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
     expect(checkImageMagicBytes(pngBytes, "image/png")).toBe(true);
+    expect(checkImageMagicBytes(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0]), "image/png")).toBe(false);
 
     const webpBytes = new Uint8Array([
       0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50,
@@ -464,9 +494,47 @@ describe("SSRF Prevention and Media Magic Bytes (P0.5)", () => {
     expect(checkImageMagicBytes(fakeBytes, "image/png")).toBe(false);
     expect(checkImageMagicBytes(fakeBytes, "image/webp")).toBe(false);
   });
+
+  it("never forwards the Fonnte API token while downloading webhook media", async () => {
+    process.env.FONNTE_TOKEN = "must-not-leak";
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      expect(new Headers(init?.headers).has("Authorization")).toBe(false);
+      return new Response(png, {
+        status: 200,
+        headers: { "Content-Type": "image/png" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await downloadMediaSafely("https://media.example.test/proof.png");
+
+    expect(result?.contentType).toBe("image/png");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
+    delete process.env.FONNTE_TOKEN;
+  });
 });
 
 describe("Outbound Fonnte Reply with inboxid (P0.1)", () => {
+  it("rejects webhook events without a stable inbox id", () => {
+    const route = fs.readFileSync(
+      path.join(process.cwd(), "src/app/api/whatsapp/webhook/route.ts"),
+      "utf8",
+    );
+    expect(route).toContain("missing_inbox_id");
+  });
+
+  it("rate-limits authenticated group events and bounds payload bytes", () => {
+    const route = fs.readFileSync(
+      path.join(process.cwd(), "src/app/api/whatsapp/webhook/route.ts"),
+      "utf8",
+    );
+    expect(route).toContain("WHATSAPP_MEMBER_EVENTS_PER_MINUTE");
+    expect(route).toContain('status=\'ignored\'');
+    expect(route).toContain("TextEncoder");
+  });
+
   it("sends inboxid in request body when replying", async () => {
     process.env.FONNTE_TOKEN = "dummy_token";
 

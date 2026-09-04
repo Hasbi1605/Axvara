@@ -4,12 +4,13 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { IosIcon, type IosIconName } from "@/components/ui/IosIcon";
 
-export type AdminSection = "summary" | "products" | "orders" | "categories" | "payments" | "articles" | "banners" | "subscribers" | "bot" | "agent";
+export type AdminSection = "summary" | "products" | "orders" | "proofs" | "categories" | "payments" | "articles" | "banners" | "subscribers" | "bot" | "agent";
 
 const navigation: [AdminSection, string, IosIconName][] = [
   ["summary", "Ringkasan", "dashboard"],
   ["products", "Produk", "box"],
   ["orders", "Pesanan", "purchase-order"],
+  ["proofs", "Bukti Bayar", "image"],
   ["categories", "Kategori", "category"],
   ["payments", "Pembayaran", "credit-card"],
   ["articles", "Artikel", "news"],
