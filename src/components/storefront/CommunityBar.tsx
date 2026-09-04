@@ -2,11 +2,7 @@
 
 export function CommunityBar() {
   const waHref = "https://chat.whatsapp.com/D0GGXwVjJkL3qjxvacDRAP?s=cl&p=a&mlu=4&ilr=4";
-  const tgHref = "#";
-  const tgComingSoon = (e: React.MouseEvent) => {
-    e.preventDefault();
-    alert("Bot Telegram AXVARA segera hadir. Hubungi Admin via WA untuk info terbaru.");
-  };
+  const tgHref = "https://t.me/Axvara_bot";
   return (
     <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 -mt-1 mb-2">
       <div className="flex flex-row gap-2 sm:gap-3">
@@ -23,14 +19,14 @@ export function CommunityBar() {
           <span className="min-w-0 flex-1">
             <span className="font-semibold text-[12px] sm:text-[13.5px] text-white tracking-[-0.01em] leading-tight">Grup WhatsApp</span>
             <span className="block text-[11px] sm:text-xs text-white/50 leading-tight sm:hidden">Join komunitas</span>
-            <span className="hidden sm:block text-[11px] text-white/50 leading-tight">Info promo & restock</span>
+            <span className="hidden sm:block text-[11px] text-white/50 leading-tight">Info promo &amp; restock</span>
           </span>
         </a>
 
         {/* Telegram Bot */}
         <a
           href={tgHref}
-          onClick={tgComingSoon}
+          target="_blank"
           className="group flex-1 flex items-center gap-3 px-3 sm:px-4 py-3 rounded-2xl ax-glass-card border border-white/10 hover:border-[#26A5E4]/30 hover:bg-white/[0.06] transition text-left"
         >
           <span className="w-9 h-9 rounded-full overflow-hidden shrink-0 shadow-[0_4px_14px_rgba(38,165,228,0.35)] bg-[#2AABEE] flex items-center justify-center">
