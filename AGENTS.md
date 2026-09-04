@@ -39,7 +39,7 @@ Setiap kali ubah kode/docs di `axvara/`, **WAJIB catat di `axvara/CHANGELOG.md`*
 
 ## Verifikasi WAJIB (dev-only, tanpa build tiap kali)
 **Jangan wajib `npm run build` setiap perubahan.** Cukup `npm run dev` — build hanya sebelum deploy/major change.
-**Wajib pakai Chrome DevTools MCP** untuk verifikasi visual/fungsional (bukan Playwright MCP). Aktifkan via skill `chrome-devtools`.
+**Wajib selalu pakai Obscura** untuk verifikasi visual/fungsional. Baca dan ikuti skill `obscura`, lalu gunakan Obscura CLI atau CDP server milik Obscura; Chrome DevTools MCP dan Playwright MCP bukan jalur verifikasi AXVARA.
 
 1. Jalankan dev **dari folder yang benar** (wajib):
    ```bash
@@ -53,7 +53,7 @@ Setiap kali ubah kode/docs di `axvara/`, **WAJIB catat di `axvara/CHANGELOG.md`*
    lsof -ti:3000 | xargs kill -9 2>/dev/null; rm -rf .next; node ./node_modules/next/dist/bin/next dev --port 3000 --hostname 127.0.0.1 > /tmp/axvara-dev.log 2>&1 &
    ```
 
-3. Verifikasi ringan (wajib sebelum anggap selesai):
+3. Verifikasi ringan via HTTP (wajib sebelum anggap selesai):
    ```bash
    curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3000/  # harus 200
    curl -s http://127.0.0.1:3000/ | grep -o 'href="[^"]*\.css[^"]*"' | head -1
@@ -61,7 +61,16 @@ Setiap kali ubah kode/docs di `axvara/`, **WAJIB catat di `axvara/CHANGELOG.md`*
    tail -20 /tmp/axvara-dev.log  # Ready in ... / Compiled / GET / 200
    ```
 
-4. Hanya jalankan `npm run build` jika:
+4. Verifikasi visual/fungsional via Obscura (wajib sebelum anggap selesai):
+   ```bash
+   obscura --allow-private-network fetch http://127.0.0.1:3000/ \
+     --eval 'JSON.stringify({title:document.title,heading:document.querySelector("h1")?.textContent?.trim()})' \
+     --screenshot /tmp/axvara-obscura-home.png --timeout 20
+   file /tmp/axvara-obscura-home.png  # harus PNG nonblank
+   ```
+   Ganti URL dengan route yang diubah dan inspeksi hasil screenshot/evaluasi. Untuk interaksi kompleks, jalankan `obscura serve --allow-private-network --port 9222` lalu gunakan CDP Obscura; refresh snapshot setelah navigasi, klik, scroll, atau rerender.
+
+5. Hanya jalankan `npm run build` jika:
    - Mau deploy ke Pages
    - Ubah `next.config.mjs`, `tailwind.config.ts`, `tsconfig`, atau routing besar
    - Verifikasi akhir sebelum merge
@@ -76,6 +85,7 @@ Setiap kali ubah kode/docs di `axvara/`, **WAJIB catat di `axvara/CHANGELOG.md`*
 Agent **wajib** pastikan sebelum jawab "selesai":
 - [ ] `CHANGELOG.md` sudah di-update (entri paling atas)
 - [ ] Halaman jalan: `GET / 200` dan CSS `200` dari `http://127.0.0.1:3000` (atau `http://localhost:3000`)
+- [ ] Obscura berhasil memuat route yang diubah dan screenshot/evaluasi visual-fungsional sudah diperiksa
 - [ ] Tidak ada error `Compiled` di `/tmp/axvara-dev.log`
 - [ ] Jika ubah struktur/flow, `docs/ARCHITECTURE.md`/`README.md` ikut di-update
 - [ ] Kredensial CF tidak ter-commit (cek `git check-ignore -v .cf-credentials`)
