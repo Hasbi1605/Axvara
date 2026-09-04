@@ -36,7 +36,10 @@ export function homeKeyboard(): InlineKeyboardMarkup {
         { text: "📋 Pesanan", callback_data: "myorders" },
       ],
       [
+        { text: "📜 Garansi & Ketentuan", callback_data: "warranty" },
         { text: "❓ Bantuan", callback_data: "help" },
+      ],
+      [
         { text: "🌐 Web", url: "https://axvara.tech" },
       ],
     ],
@@ -134,8 +137,22 @@ export function confirmPurchaseKeyboard(productId: number): InlineKeyboardMarkup
   return {
     inline_keyboard: [
       [
-        { text: "✅ Ya, Beli", callback_data: cb.confirm(productId) },
+        { text: "✅ Saya Paham, Lanjut Bayar", callback_data: cb.confirm(productId) },
+      ],
+      [
+        { text: "📜 Syarat Garansi", callback_data: "warranty" },
         { text: "❌ Batal", callback_data: cb.product(productId) },
+      ],
+    ],
+  };
+}
+
+export function warrantyKeyboard(): InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [
+        { text: "🛍️ Lanjut Belanja", callback_data: cb.categories() },
+        { text: "🏠 Menu Utama", callback_data: cb.home() },
       ],
     ],
   };

@@ -7,12 +7,12 @@ import { queryFirst, queryAll, execRun, isD1Mode } from "@/lib/db";
 import { sendMessage, sendPhoto, editMessageText, safeEditOrSend, answerCallbackQuery, sendChatAction, showLoadingBar } from "@/lib/telegram/api";
 import {
   homeKeyboard, categoriesKeyboard, productsKeyboard,
-  productDetailKeyboard, confirmPurchaseKeyboard,
+  productDetailKeyboard, confirmPurchaseKeyboard, warrantyKeyboard,
   orderStatusKeyboard, parseCallback,
 } from "@/lib/telegram/keyboards";
 import {
   welcomeMessage, categoriesMessage, categoryProductsMessage,
-  productDetailMessage, confirmBuyMessage, helpMessage,
+  productDetailMessage, confirmBuyMessage, helpMessage, warrantyFullMessage,
   outOfStockMessage, alreadyPendingMessage, errorMessage,
   myOrdersPrompt, orderStatusMessage, invoiceMessage,
   orderCancelledMessage,
@@ -205,6 +205,16 @@ async function handleCommand(text: string, chatId: number, from?: { id: number; 
     return;
   }
 
+  if (cmd === "/garansi") {
+    await sendMessage({
+      chat_id: chatId,
+      text: warrantyFullMessage(),
+      parse_mode: "HTML",
+      reply_markup: warrantyKeyboard(),
+    });
+    return;
+  }
+
   if (cmd === "/pesanan") {
     const parts = text.split(/\s+/);
     if (parts.length >= 2) {
@@ -271,6 +281,15 @@ async function handleCallback(data: string, chatId: number, messageId: number, f
 
     case "myorders":
       await sendMessage({ chat_id: chatId, text: myOrdersPrompt(), parse_mode: "HTML" });
+      break;
+
+    case "warranty":
+      await sendMessage({
+        chat_id: chatId,
+        text: warrantyFullMessage(),
+        parse_mode: "HTML",
+        reply_markup: warrantyKeyboard(),
+      });
       break;
 
     case "help":

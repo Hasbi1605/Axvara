@@ -3,7 +3,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
-import { setWebhook, getWebhookInfo, deleteWebhook } from "@/lib/telegram/api";
+import { setWebhook, getWebhookInfo, deleteWebhook, setMyCommands } from "@/lib/telegram/api";
 
 export const runtime = "edge";
 
@@ -27,8 +27,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: result.ok, description: result.description });
   }
 
-  // Default: set webhook
+  // Default: set webhook + register commands
   const result = await setWebhook(webhookUrl, webhookSecret);
+  await setMyCommands(); // Register /start, /katalog, /pesanan, /bantuan in menu
   return NextResponse.json({
     ok: result.ok,
     description: result.description,

@@ -124,7 +124,7 @@ export async function sendChatAction(
 /**
  * Animated progress bar: sends a message, edits it with smooth ▓░ progress, then deletes.
  * Steps: ░░░░░░░░░░ 0% → ▓▓▓▓░░░░░░ 40% → ▓▓▓▓▓▓▓░░░ 70% → ▓▓▓▓▓▓▓▓▓▓ 100%
- * Total duration: ~1s. Deleted after complete — real content follows immediately.
+ * Total duration: ~1.8s with pauses between steps.
  */
 export async function showLoadingBar(
   chatId: number | string,
@@ -137,13 +137,34 @@ export async function showLoadingBar(
     return `${f}${e} ${pct}%`;
   };
 
+  const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
   const msg = await sendMessage({ chat_id: chatId, text: `${label}\n${bar(0)}` });
   if (!msg.ok || !msg.result) return;
   const msgId = (msg.result as Record<string, unknown>).message_id as number;
 
+  await wait(400);
   await editMessageText({ chat_id: chatId, message_id: msgId, text: `${label}\n${bar(4)}` });
+  await wait(500);
   await editMessageText({ chat_id: chatId, message_id: msgId, text: `${label}\n${bar(7)}` });
+  await wait(400);
   await editMessageText({ chat_id: chatId, message_id: msgId, text: `${label}\n${bar(10)}` });
+  await wait(300);
 
   await callApi("deleteMessage", { chat_id: chatId, message_id: msgId });
+}
+
+/**
+ * Register bot commands in Telegram menu (the "/" button).
+ */
+export async function setMyCommands(): Promise<TelegramApiResponse> {
+  return callApi("setMyCommands", {
+    commands: [
+      { command: "start", description: "🏠 Menu utama" },
+      { command: "katalog", description: "🛍 Lihat katalog produk" },
+      { command: "pesanan", description: "📋 Cek status pesanan" },
+      { command: "garansi", description: "📜 Ketentuan & klaim garansi" },
+      { command: "bantuan", description: "❓ Bantuan & cara beli" },
+    ],
+  });
 }

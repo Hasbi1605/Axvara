@@ -37,7 +37,11 @@ export function welcomeMessage(firstName: string): string {
     "",
     "🛍 Tools AI &amp; aplikasi premium",
     "💰 Harga jauh lebih hemat dari official",
-    "✅ Bergaransi &amp; support admin",
+    "🛡 Garansi 1×24 jam–30 hari (ikut deskripsi tiap produk)",
+    "",
+    "⚠️ <b>Third-party independen, bukan official store.</b>",
+    "Lanjut beli = kamu PAHAM &amp; SETUJU ketentuan.",
+    "Ketik /garansi untuk syarat klaim.",
     "",
     "Pilih menu di bawah 👇",
   ].join("\n");
@@ -120,6 +124,10 @@ export function productDetailMessage(product: {
     lines.push("📦 ❌ Stok habis");
   }
 
+  // Third-party warranty pointer — detail masa/syarat ikut deskripsi produk
+  lines.push("");
+  lines.push("🛡 Garansi ikut deskripsi produk. Ketik /garansi.");
+
   return lines.join("\n");
 }
 
@@ -138,6 +146,8 @@ export function confirmBuyMessage(productName: string, price: number): string {
     `📊 Qty: 1`,
     "",
     "⚠️ <i>Total final bisa sedikit berbeda karena kode unik pembayaran.</i>",
+    "",
+    "🛡 <b>Third-party, bukan official.</b> Garansi ikut deskripsi produk. Lanjut bayar = setuju ketentuan. /garansi untuk detail.",
     "",
     "Lanjutkan? 👇",
   ].join("\n");
@@ -208,6 +218,7 @@ export function deliveryMessage(secret: string): string {
     "",
     "━━━━━━━━━━━━━━━━━━━━━",
     "🔒 Simpan baik-baik, jangan dibagikan",
+    "🛡 Garansi aktif sesuai deskripsi produk. Simpan invoice untuk klaim. Refund tidak berlaku, hanya penggantian. /garansi",
     "❓ Ada kendala? Ketik /bantuan",
   ].join("\n");
 }
@@ -224,6 +235,8 @@ export function manualFulfillmentBuyerMessage(orderCode: string): string {
     "",
     "⏱ Estimasi: 1×24 jam",
     "<i>(biasanya jauh lebih cepat)</i>",
+    "",
+    "🛡 Simpan kode pesanan untuk klaim. Garansi ikut deskripsi produk, hanya penggantian. /garansi",
   ].join("\n");
 }
 
@@ -310,6 +323,7 @@ export function helpMessage(): string {
     "  /start — Menu utama",
     "  /katalog — Lihat produk",
     "  /pesanan &lt;kode&gt; — Cek status",
+    "  /garansi — Ketentuan &amp; klaim garansi",
     "  /bantuan — Halaman ini",
     "",
     "🛒 <b>Cara beli:</b>",
@@ -319,10 +333,56 @@ export function helpMessage(): string {
     "  4️⃣ Bayar QRIS sesuai total",
     "  5️⃣ Produk otomatis terkirim",
     "",
+    "🛡 <b>AXVARA third-party, bukan official.</b> Garansi 1×24 jam–30 hari ikut deskripsi tiap produk. Ketik /garansi.",
+    "",
     "━━━━━━━━━━━━━━━━━━━━━",
     "📞 <b>Admin:</b> wa.me/6289519388264",
     "🌐 <b>Web:</b> axvara.tech",
   ].join("\n");
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// WARRANTY & CLAIMS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+export function warrantyTermsMessage(): string {
+  return [
+    "📜 <b>KETENTUAN AXVARA — WAJIB BACA SEBELUM BELI</b>",
+    "━━━━━━━━━━━━━━━━━━━━━",
+    "",
+    "AXVARA adalah <b>third-party store, BUKAN official store</b> dan tidak terafiliasi dengan brand manapun.",
+    "",
+    "Harga di sini jauh lebih murah, tapi <b>tidak ada garansi 100% permanen.</b> Jika pihak official mengubah sistem/kebijakan, produk bisa terdampak kapan saja.",
+    "",
+    "Garansi AXVARA <b>tetap ada, tapi bervariasi: 1×24 Jam s/d 30 Hari</b> tergantung produk yang kamu pilih. Beda garansi = beda harga.",
+    "",
+    "Pilih produk sesuai kemampuan &amp; kebutuhan garansimu. <b>DYOR, DWYOR.</b>",
+    "",
+    "Lanjut membeli = kamu <b>PAHAM &amp; SETUJU</b> ketentuan ini. Terima kasih 🙏",
+  ].join("\n");
+}
+
+export function warrantyClaimMessage(): string {
+  return [
+    "🛡 <b>SYARAT KLAIM GARANSI</b>",
+    "━━━━━━━━━━━━━━━━━━━━━",
+    "",
+    "1️⃣ Garansi berupa <b>penggantian / perbaikan, BUKAN refund dana.</b> Refund hanya jika stok pengganti kosong dan disetujui admin.",
+    "",
+    "2️⃣ Wajib sertakan <b>video/screenshot error + kode pesanan/invoice.</b> Tanpa bukti = klaim ditolak.",
+    "",
+    "3️⃣ Klaim hanya selama <b>masa garansi aktif sesuai deskripsi produk</b>, terhitung sejak produk dikirim.",
+    "",
+    "4️⃣ Garansi <b>HANGUS</b> jika: password/email diganti tanpa izin, login banyak device/IP bersamaan, melanggar aturan pakai di deskripsi, akun suspend karena pelanggaran user, atau order sudah confirm selesai.",
+    "",
+    "5️⃣ Proses penggantian <b>1×24 jam kerja</b>, bukan instan. Harap antre.",
+    "",
+    "6️⃣ Satu order = satu kali klaim, kecuali produk 30 hari (maks 2–3× ganti, lihat deskripsi).",
+  ].join("\n");
+}
+
+export function warrantyFullMessage(): string {
+  return [warrantyTermsMessage(), "", warrantyClaimMessage()].join("\n");
 }
 
 export function myOrdersPrompt(): string {

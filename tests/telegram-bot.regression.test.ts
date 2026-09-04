@@ -1,7 +1,7 @@
 // tests/telegram-bot.regression.test.ts — Telegram bot contract tests
 import { describe, it, expect } from "vitest";
-import { escapeHtml, welcomeMessage, productDetailMessage, invoiceMessage, helpMessage, deliveryMessage } from "@/lib/telegram/messages";
-import { cb, parseCallback, homeKeyboard, categoriesKeyboard, productsKeyboard } from "@/lib/telegram/keyboards";
+import { escapeHtml, welcomeMessage, productDetailMessage, invoiceMessage, helpMessage, deliveryMessage, warrantyTermsMessage, warrantyClaimMessage, warrantyFullMessage, confirmBuyMessage } from "@/lib/telegram/messages";
+import { cb, parseCallback, homeKeyboard, warrantyKeyboard, categoriesKeyboard, productsKeyboard } from "@/lib/telegram/keyboards";
 
 describe("Telegram HTML escaping", () => {
   it("escapes all HTML special characters", () => {
@@ -58,14 +58,17 @@ describe("Telegram callback data", () => {
 });
 
 describe("Telegram keyboards", () => {
-  it("home keyboard has 2-column layout with verbs", () => {
+  it("home keyboard has garansi button", () => {
     const kb = homeKeyboard();
-    expect(kb.inline_keyboard.length).toBe(2); // 2 rows
-    expect(kb.inline_keyboard[0].length).toBe(2); // 2 buttons per row
     const allTexts = kb.inline_keyboard.flat().map(b => b.text);
-    expect(allTexts.some(t => t.includes("Katalog"))).toBe(true);
-    expect(allTexts.some(t => t.includes("Bantuan"))).toBe(true);
-    expect(allTexts.some(t => t.includes("Pesanan"))).toBe(true);
+    expect(allTexts.some(t => t.includes("Garansi"))).toBe(true);
+  });
+
+  it("warranty keyboard routes back to catalog and home", () => {
+    const kb = warrantyKeyboard();
+    const allData = kb.inline_keyboard.flat().map(b => b.callback_data ?? b.url ?? "");
+    expect(allData.some(d => d.startsWith("cats"))).toBe(true);
+    expect(allData.some(d => d === "home")).toBe(true);
   });
 
   it("categories keyboard uses 2-column grid", () => {
