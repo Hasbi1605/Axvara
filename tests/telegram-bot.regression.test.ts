@@ -1,6 +1,6 @@
 // tests/telegram-bot.regression.test.ts — Telegram bot contract tests
 import { describe, it, expect } from "vitest";
-import { escapeHtml, welcomeMessage, productDetailMessage, invoiceMessage, helpMessage } from "@/lib/telegram/messages";
+import { escapeHtml, welcomeMessage, productDetailMessage, invoiceMessage, helpMessage, deliveryMessage } from "@/lib/telegram/messages";
 import { cb, parseCallback, homeKeyboard, categoriesKeyboard, productsKeyboard } from "@/lib/telegram/keyboards";
 
 describe("Telegram HTML escaping", () => {
@@ -58,12 +58,29 @@ describe("Telegram callback data", () => {
 });
 
 describe("Telegram keyboards", () => {
-  it("home keyboard has expected buttons", () => {
+  it("home keyboard has 2-column layout with verbs", () => {
     const kb = homeKeyboard();
-    expect(kb.inline_keyboard.length).toBeGreaterThan(0);
+    expect(kb.inline_keyboard.length).toBe(2); // 2 rows
+    expect(kb.inline_keyboard[0].length).toBe(2); // 2 buttons per row
     const allTexts = kb.inline_keyboard.flat().map(b => b.text);
     expect(allTexts.some(t => t.includes("Katalog"))).toBe(true);
     expect(allTexts.some(t => t.includes("Bantuan"))).toBe(true);
+    expect(allTexts.some(t => t.includes("Pesanan"))).toBe(true);
+  });
+
+  it("categories keyboard uses 2-column grid", () => {
+    const cats = [
+      { id: 1, name: "AI Gateway" },
+      { id: 2, name: "Akun Premium" },
+      { id: 3, name: "Tools Pro" },
+      { id: 4, name: "Bundle Kucing" },
+    ];
+    const kb = categoriesKeyboard(cats, 0);
+    // Should be 2 per row (2 rows of categories + 1 row home)
+    expect(kb.inline_keyboard[0].length).toBe(2);
+    const allTexts = kb.inline_keyboard.flat().map(b => b.text);
+    expect(allTexts.some(t => t.includes("⚡"))).toBe(true); // AI Gateway icon
+    expect(allTexts.some(t => t.includes("👑"))).toBe(true); // Akun Premium icon
   });
 
   it("categories keyboard paginates", () => {
@@ -71,28 +88,41 @@ describe("Telegram keyboards", () => {
     const page0 = categoriesKeyboard(cats, 0);
     const page1 = categoriesKeyboard(cats, 1);
 
-    // Page 0 should have "Berikutnya" but not "Sebelumnya"
     const page0Texts = page0.inline_keyboard.flat().map(b => b.text);
-    expect(page0Texts.some(t => t.includes("Berikutnya"))).toBe(true);
+    expect(page0Texts.some(t => t.includes("▶️"))).toBe(true);
 
-    // Page 1 should have "Sebelumnya"
     const page1Texts = page1.inline_keyboard.flat().map(b => b.text);
-    expect(page1Texts.some(t => t.includes("Sebelumnya"))).toBe(true);
+    expect(page1Texts.some(t => t.includes("◀️"))).toBe(true);
   });
 
-  it("products keyboard shows prices", () => {
+  it("products keyboard shows compact price", () => {
     const products = [
-      { id: 1, name: "ChatGPT Plus", price: 89000 },
-      { id: 2, name: "Claude Pro", price: 95000 },
+      { id: 1, name: "ChatGPT Plus 1 Bulan", price: 89000 },
+      { id: 2, name: "Claude Pro 1 Bulan", price: 95000 },
     ];
     const kb = productsKeyboard(products, 1);
     const allTexts = kb.inline_keyboard.flat().map(b => b.text);
-    expect(allTexts.some(t => t.includes("ChatGPT Plus"))).toBe(true);
-    expect(allTexts.some(t => t.includes("89"))).toBe(true);
+    expect(allTexts.some(t => t.includes("ChatGPT") && t.includes("89rb"))).toBe(true);
+  });
+
+  it("products keyboard has page indicator", () => {
+    const products = Array.from({ length: 12 }, (_, i) => ({
+      id: i + 1, name: `Product ${i}`, price: 50000,
+    }));
+    const kb = productsKeyboard(products, 1, 0);
+    const allTexts = kb.inline_keyboard.flat().map(b => b.text);
+    expect(allTexts.some(t => t.includes("1/2"))).toBe(true); // page indicator
   });
 });
 
-describe("Telegram messages content", () => {
+describe("Telegram messages premium UX", () => {
+  it("welcome message has visual separator", () => {
+    const msg = welcomeMessage("nad");
+    expect(msg).toContain("━━━");
+    expect(msg).toContain("AXVARA");
+    expect(msg).toContain("nad");
+  });
+
   it("invoice message shows total, code, and expiry", () => {
     const msg = invoiceMessage({
       orderCode: "AXV-20260903-AB12CD34",
@@ -104,14 +134,27 @@ describe("Telegram messages content", () => {
     expect(msg).toContain("89.123");
     expect(msg).toContain("ChatGPT Plus");
     expect(msg).toContain("⏰");
+    expect(msg).toContain("━━━");
   });
 
-  it("help message lists all commands", () => {
+  it("help message lists all commands with structure", () => {
     const msg = helpMessage();
     expect(msg).toContain("/start");
     expect(msg).toContain("/katalog");
     expect(msg).toContain("/pesanan");
     expect(msg).toContain("/bantuan");
+    expect(msg).toContain("axvara.tech");
+    expect(msg).toContain("1️⃣");
+  });
+
+  it("product detail shows urgency for low stock", () => {
+    const msg = productDetailMessage({
+      name: "Test Product",
+      price: 50000,
+      stock: 3,
+    });
+    expect(msg).toContain("Sisa 3");
+    expect(msg).toContain("segera order");
   });
 
   it("product detail handles out-of-stock", () => {
@@ -129,6 +172,23 @@ describe("Telegram messages content", () => {
       price: 50000,
       stock: -1,
     });
-    expect(msg).toContain("Tersedia");
+    expect(msg).toContain("tersedia");
+  });
+
+  it("product detail shows discount percentage", () => {
+    const msg = productDetailMessage({
+      name: "Canva Pro",
+      price: 45000,
+      compare_price: 600000,
+      stock: 60,
+    });
+    expect(msg).toContain("Hemat 93%");
+    expect(msg).toContain("600.000");
+  });
+
+  it("delivery message has tap-to-copy hint", () => {
+    const msg = deliveryMessage("acc@email.com:pass123");
+    expect(msg).toContain("<code>");
+    expect(msg).toContain("Tap untuk copy");
   });
 });

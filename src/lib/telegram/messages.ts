@@ -1,5 +1,10 @@
-// src/lib/telegram/messages.ts — Bahasa Indonesia copy + HTML escaping
-// All user/product data MUST be escaped before embedding in parse_mode=HTML.
+// src/lib/telegram/messages.ts — Premium UX copy, Bahasa Indonesia + HTML escaping
+// Patterns adopted from top Telegram shop bots:
+// - Visual hierarchy with separators (━━━)
+// - Consistent emoji language (not spam)
+// - Monospace <code> for copyable data (order codes, secrets)
+// - Progress indicators for multi-step flows
+// - Short, scannable lines — mobile-first (95% users)
 
 export function escapeHtml(text: string): string {
   return text
@@ -18,27 +23,49 @@ function truncate(text: string, max: number): string {
   return text.slice(0, max - 3) + "...";
 }
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// WELCOME & NAVIGATION
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 export function welcomeMessage(firstName: string): string {
   const name = escapeHtml(truncate(firstName, 50));
   return [
-    `👋 <b>Halo, ${name}!</b>`,
+    `🎯 <b>Halo, ${name}!</b>`,
     "",
-    "Selamat datang di <b>AXVARA</b> — Gerbang Semua Tools Premium.",
+    "Selamat datang di <b>AXVARA</b>",
+    "━━━━━━━━━━━━━━━━━━━━━",
     "",
-    "Temukan berbagai tools AI dan aplikasi premium dengan harga jauh lebih hemat dari official. Bergaransi.",
+    "🛍 Tools AI &amp; aplikasi premium",
+    "💰 Harga jauh lebih hemat dari official",
+    "✅ Bergaransi &amp; support admin",
     "",
-    "Pilih menu di bawah untuk mulai:",
+    "Pilih menu di bawah 👇",
   ].join("\n");
 }
 
 export function categoriesMessage(): string {
-  return "📦 <b>Katalog AXVARA</b>\n\nPilih kategori produk:";
+  return [
+    "📦 <b>Katalog AXVARA</b>",
+    "━━━━━━━━━━━━━━━━━━━━━",
+    "",
+    "Pilih kategori untuk melihat produk:",
+  ].join("\n");
 }
 
 export function categoryProductsMessage(categoryName: string, total: number): string {
   const name = escapeHtml(truncate(categoryName, 50));
-  return `📂 <b>${name}</b>\n\n${total} produk tersedia. Pilih produk:`;
+  return [
+    `📂 <b>${name}</b>`,
+    "━━━━━━━━━━━━━━━━━━━━━",
+    "",
+    `${total} produk tersedia`,
+    "Tap produk untuk lihat detail 👇",
+  ].join("\n");
 }
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// PRODUCT DETAIL
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export function productDetailMessage(product: {
   name: string;
@@ -49,44 +76,70 @@ export function productDetailMessage(product: {
   badge?: string | null;
 }): string {
   const name = escapeHtml(truncate(product.name, 100));
-  const desc = product.description ? escapeHtml(truncate(product.description, 300)) : "—";
+  const desc = product.description ? escapeHtml(truncate(product.description, 300)) : "";
   const price = formatRupiah(product.price);
-  const lines = [`<b>${name}</b>`];
 
-  if (product.badge) lines.push(`🏷️ ${escapeHtml(product.badge)}`);
-  lines.push("");
-  lines.push(desc);
-  lines.push("");
-  lines.push(`💰 <b>${price}</b>`);
-  if (product.compare_price && product.compare_price > product.price) {
-    const discount = Math.round((1 - product.price / product.compare_price) * 100);
-    lines.push(`<s>${formatRupiah(product.compare_price)}</s> — hemat ${discount}%`);
+  const lines: string[] = [];
+
+  // Header
+  lines.push(`<b>${name}</b>`);
+  if (product.badge) {
+    const badgeEmoji: Record<string, string> = {
+      "Terlaris": "🔥", "Baru": "✨", "Hemat 92%": "💎",
+      "Bundle": "📦", "Ultimate": "👑", "Enterprise": "🏢",
+    };
+    lines.push(`${badgeEmoji[product.badge] ?? "🏷"} ${escapeHtml(product.badge)}`);
+  }
+  lines.push("━━━━━━━━━━━━━━━━━━━━━");
+
+  // Description
+  if (desc) {
+    lines.push("");
+    lines.push(desc);
   }
 
+  // Price block
+  lines.push("");
+  if (product.compare_price && product.compare_price > product.price) {
+    const discount = Math.round((1 - product.price / product.compare_price) * 100);
+    lines.push(`💰 <b>${price}</b>  <s>${formatRupiah(product.compare_price)}</s>`);
+    lines.push(`🎉 Hemat ${discount}%`);
+  } else {
+    lines.push(`💰 <b>${price}</b>`);
+  }
+
+  // Stock
   const stock = product.stock ?? -1;
   if (stock === -1) {
-    lines.push("📦 Stok: Tersedia");
-  } else if (stock > 0) {
+    lines.push("📦 Stok tersedia");
+  } else if (stock > 10) {
     lines.push(`📦 Stok: ${stock}`);
+  } else if (stock > 0) {
+    lines.push(`📦 ⚡ Sisa ${stock} — segera order!`);
   } else {
-    lines.push("📦 ⚠️ Stok habis");
+    lines.push("📦 ❌ Stok habis");
   }
 
   return lines.join("\n");
 }
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// PURCHASE FLOW
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 export function confirmBuyMessage(productName: string, price: number): string {
   const name = escapeHtml(truncate(productName, 100));
   return [
-    `🛒 <b>Konfirmasi Pembelian</b>`,
+    "🛒 <b>Konfirmasi Pembelian</b>",
+    "━━━━━━━━━━━━━━━━━━━━━",
     "",
-    `Produk: <b>${name}</b>`,
-    `Harga: <b>${formatRupiah(price)}</b>`,
-    `Qty: 1`,
+    `📦 ${name}`,
+    `💰 <b>${formatRupiah(price)}</b>`,
+    `📊 Qty: 1`,
     "",
-    "⚠️ Total final bisa memiliki kode unik yang berbeda sedikit dari harga produk.",
+    "⚠️ <i>Total final bisa sedikit berbeda karena kode unik pembayaran.</i>",
     "",
-    "Lanjutkan pembelian?",
+    "Lanjutkan? 👇",
   ].join("\n");
 }
 
@@ -107,80 +160,94 @@ export function invoiceMessage(params: {
   }
 
   return [
-    `✅ <b>Invoice Dibuat</b>`,
+    "✅ <b>Invoice Berhasil Dibuat</b>",
+    "━━━━━━━━━━━━━━━━━━━━━",
     "",
     `📦 ${name}`,
-    `🔢 Kode: <code>${escapeHtml(orderCode)}</code>`,
+    `🔢 <code>${escapeHtml(orderCode)}</code>`,
     "",
-    `💰 <b>Total Bayar: ${formatRupiah(payableAmount)}</b>`,
+    `💳 <b>Total Bayar: ${formatRupiah(payableAmount)}</b>`,
     "",
-    "Scan QRIS di atas untuk membayar.",
+    "👆 Scan QRIS di atas untuk membayar",
     "",
-    `⏰ Batas waktu: ${expiryText}`,
+    `⏰ Batas: ${expiryText}`,
     "",
-    "Setelah bayar, status akan otomatis terupdate.",
-    "Tekan tombol 🔄 Cek Status untuk refresh.",
+    "━━━━━━━━━━━━━━━━━━━━━",
+    "💡 Status otomatis update setelah bayar",
+    "Tekan 🔄 untuk refresh manual",
   ].join("\n");
 }
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ORDER STATUS & DELIVERY
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export function orderPaidMessage(orderCode: string, productName: string): string {
   const name = escapeHtml(truncate(productName, 100));
   return [
-    `🎉 <b>Pembayaran Diterima!</b>`,
+    "🎉 <b>Pembayaran Diterima!</b>",
+    "━━━━━━━━━━━━━━━━━━━━━",
     "",
-    `Kode: <code>${escapeHtml(orderCode)}</code>`,
-    `Produk: ${name}`,
+    `📦 ${name}`,
+    `🔢 <code>${escapeHtml(orderCode)}</code>`,
     "",
-    "Produk kamu sedang diproses...",
+    "⏳ Sedang diproses...",
   ].join("\n");
 }
 
 export function deliveryMessage(secret: string): string {
-  // Secret itself is NOT escaped — it's sent as preformatted code block
   return [
-    `🎁 <b>Produk Kamu Sudah Siap!</b>`,
+    "🎁 <b>Produk Siap!</b>",
+    "━━━━━━━━━━━━━━━━━━━━━",
     "",
-    "Berikut detail akses/lisensi kamu:",
+    "Detail akses/lisensi kamu:",
     "",
     `<code>${escapeHtml(secret)}</code>`,
     "",
-    "⚠️ Simpan baik-baik. Jangan bagikan ke orang lain.",
-    "Kalau ada kendala, ketik /bantuan.",
+    "👆 <i>Tap untuk copy</i>",
+    "",
+    "━━━━━━━━━━━━━━━━━━━━━",
+    "🔒 Simpan baik-baik, jangan dibagikan",
+    "❓ Ada kendala? Ketik /bantuan",
   ].join("\n");
 }
 
 export function manualFulfillmentBuyerMessage(orderCode: string): string {
   return [
-    `✅ <b>Pembayaran Diterima!</b>`,
+    "✅ <b>Pembayaran Diterima!</b>",
+    "━━━━━━━━━━━━━━━━━━━━━",
     "",
-    `Kode: <code>${escapeHtml(orderCode)}</code>`,
+    `🔢 <code>${escapeHtml(orderCode)}</code>`,
     "",
-    "Admin sedang menyiapkan akses produk kamu.",
-    "Kamu akan mendapat notifikasi saat produk siap.",
+    "👤 Admin sedang menyiapkan produk kamu",
+    "📬 Kamu akan dinotifikasi saat siap",
     "",
-    "Estimasi: 1×24 jam (biasanya lebih cepat).",
+    "⏱ Estimasi: 1×24 jam",
+    "<i>(biasanya jauh lebih cepat)</i>",
   ].join("\n");
 }
 
 export function orderExpiredMessage(orderCode: string): string {
   return [
-    `⏰ <b>Invoice Kedaluwarsa</b>`,
+    "⏰ <b>Invoice Kedaluwarsa</b>",
+    "━━━━━━━━━━━━━━━━━━━━━",
     "",
-    `Kode: <code>${escapeHtml(orderCode)}</code>`,
+    `🔢 <code>${escapeHtml(orderCode)}</code>`,
     "",
-    "Invoice ini sudah melewati batas waktu pembayaran.",
-    "Silakan buat pesanan baru dari /katalog.",
+    "Batas waktu pembayaran sudah habis.",
+    "Buat pesanan baru dari /katalog",
   ].join("\n");
 }
 
 export function orderCancelledMessage(orderCode: string): string {
   return [
-    `❌ <b>Pesanan Dibatalkan</b>`,
+    "❌ <b>Pesanan Dibatalkan</b>",
+    "━━━━━━━━━━━━━━━━━━━━━",
     "",
-    `Kode: <code>${escapeHtml(orderCode)}</code>`,
+    `🔢 <code>${escapeHtml(orderCode)}</code>`,
     "",
     "Pesanan berhasil dibatalkan.",
-    "Silakan buat pesanan baru dari /katalog.",
+    "Buat pesanan baru dari /katalog",
   ].join("\n");
 }
 
@@ -194,61 +261,115 @@ export function orderStatusMessage(params: {
   const { orderCode, productName, paymentStatus, fulfillmentStatus, payableAmount } = params;
   const name = escapeHtml(truncate(productName, 100));
 
-  const statusEmoji: Record<string, string> = {
-    unpaid: "⏳",
-    pending: "⏳",
-    paid: "✅",
-    expired: "⏰",
-    failed: "❌",
+  const paymentLabel: Record<string, string> = {
+    unpaid: "⏳ Menunggu bayar",
+    pending: "⏳ Menunggu bayar",
+    paid: "✅ Lunas",
+    expired: "⏰ Kedaluwarsa",
+    failed: "❌ Gagal",
   };
 
-  const fulfillEmoji: Record<string, string> = {
-    not_required: "—",
-    reserved: "🔒",
-    queued: "📤",
-    sending: "📤",
-    delivered: "✅",
-    manual_required: "👤",
-    retry: "🔄",
-    failed: "❌",
+  const fulfillLabel: Record<string, string> = {
+    not_required: "",
+    reserved: "🔒 Disiapkan",
+    queued: "📤 Dalam antrian",
+    sending: "📤 Mengirim...",
+    delivered: "✅ Terkirim",
+    manual_required: "👤 Proses admin",
+    retry: "🔄 Mengulangi",
+    failed: "❌ Gagal kirim",
   };
 
   const lines = [
-    `📋 <b>Status Pesanan</b>`,
+    "📋 <b>Status Pesanan</b>",
+    "━━━━━━━━━━━━━━━━━━━━━",
     "",
-    `Kode: <code>${escapeHtml(orderCode)}</code>`,
-    `Produk: ${name}`,
+    `📦 ${name}`,
+    `🔢 <code>${escapeHtml(orderCode)}</code>`,
   ];
 
-  if (payableAmount) lines.push(`Total: ${formatRupiah(payableAmount)}`);
-  lines.push(`Pembayaran: ${statusEmoji[paymentStatus] ?? "?"} ${paymentStatus}`);
-  if (fulfillmentStatus !== "not_required") {
-    lines.push(`Pengiriman: ${fulfillEmoji[fulfillmentStatus] ?? "?"} ${fulfillmentStatus}`);
-  }
+  if (payableAmount) lines.push(`💰 ${formatRupiah(payableAmount)}`);
+  lines.push("");
+  lines.push(paymentLabel[paymentStatus] ?? `❓ ${paymentStatus}`);
+  const fl = fulfillLabel[fulfillmentStatus];
+  if (fl) lines.push(fl);
 
   return lines.join("\n");
 }
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// HELP & INFO
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 export function helpMessage(): string {
   return [
-    "❓ <b>Bantuan AXVARA Bot</b>",
+    "❓ <b>Bantuan AXVARA</b>",
+    "━━━━━━━━━━━━━━━━━━━━━",
     "",
-    "/start — Menu utama",
-    "/katalog — Lihat katalog produk",
-    "/pesanan &lt;kode&gt; — Cek status pesanan",
-    "/bantuan — Tampilkan bantuan",
+    "📌 <b>Perintah:</b>",
+    "  /start — Menu utama",
+    "  /katalog — Lihat produk",
+    "  /pesanan &lt;kode&gt; — Cek status",
+    "  /bantuan — Halaman ini",
     "",
-    "🔹 Cara beli:",
-    "1. Pilih kategori dari /katalog",
-    "2. Pilih produk yang diinginkan",
-    "3. Konfirmasi pembelian",
-    "4. Bayar QRIS sesuai total yang ditampilkan",
-    "5. Produk otomatis terkirim setelah pembayaran dikonfirmasi",
+    "🛒 <b>Cara beli:</b>",
+    "  1️⃣ Pilih kategori",
+    "  2️⃣ Pilih produk",
+    "  3️⃣ Konfirmasi pembelian",
+    "  4️⃣ Bayar QRIS sesuai total",
+    "  5️⃣ Produk otomatis terkirim",
     "",
-    "📞 Butuh bantuan? Hubungi admin:",
-    "WhatsApp: 089519388264",
+    "━━━━━━━━━━━━━━━━━━━━━",
+    "📞 <b>Admin:</b> wa.me/6289519388264",
+    "🌐 <b>Web:</b> axvara.tech",
   ].join("\n");
 }
+
+export function myOrdersPrompt(): string {
+  return [
+    "📋 <b>Cek Pesanan</b>",
+    "━━━━━━━━━━━━━━━━━━━━━",
+    "",
+    "Ketik perintah berikut:",
+    "<code>/pesanan AXV-XXXXXXXX-XXXXXXXX</code>",
+    "",
+    "👆 <i>Ganti dengan kode pesanan kamu</i>",
+  ].join("\n");
+}
+
+export function outOfStockMessage(): string {
+  return [
+    "❌ <b>Stok Habis</b>",
+    "",
+    "Maaf, produk ini sedang tidak tersedia.",
+    "Cek produk lain di /katalog",
+  ].join("\n");
+}
+
+export function alreadyPendingMessage(orderCode: string): string {
+  return [
+    "⚠️ <b>Pesanan Aktif</b>",
+    "━━━━━━━━━━━━━━━━━━━━━",
+    "",
+    "Kamu masih punya pesanan untuk produk ini.",
+    `🔢 <code>${escapeHtml(orderCode)}</code>`,
+    "",
+    "Bayar atau batalkan dulu sebelum order baru.",
+  ].join("\n");
+}
+
+export function errorMessage(): string {
+  return [
+    "⚠️ <b>Terjadi Kesalahan</b>",
+    "",
+    "Silakan coba lagi.",
+    "Kalau terus gagal, hubungi /bantuan",
+  ].join("\n");
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ADMIN NOTIFICATIONS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export function adminOrderNotification(params: {
   orderCode: string;
@@ -258,55 +379,33 @@ export function adminOrderNotification(params: {
   fulfillmentMode: string;
 }): string {
   const { orderCode, productName, amount, telegramUser, fulfillmentMode } = params;
+  const modeLabel: Record<string, string> = {
+    manual: "👤 Manual", shared: "📝 Shared", unique: "🔑 Unique",
+  };
   return [
-    `🔔 <b>Order Baru dari Telegram</b>`,
+    "🔔 <b>Order Baru — Telegram</b>",
+    "━━━━━━━━━━━━━━━━━━━━━",
     "",
-    `Kode: <code>${escapeHtml(orderCode)}</code>`,
-    `Produk: ${escapeHtml(truncate(productName, 80))}`,
-    `Jumlah: ${formatRupiah(amount)}`,
-    `User: @${escapeHtml(telegramUser || "—")}`,
-    `Fulfillment: ${fulfillmentMode}`,
+    `📦 ${escapeHtml(truncate(productName, 80))}`,
+    `🔢 <code>${escapeHtml(orderCode)}</code>`,
+    `💰 ${formatRupiah(amount)}`,
+    `👤 @${escapeHtml(telegramUser || "—")}`,
+    `⚙️ ${modeLabel[fulfillmentMode] ?? fulfillmentMode}`,
     "",
     fulfillmentMode === "manual"
-      ? "⚠️ Perlu tindakan manual — buka panel admin."
-      : "✅ Auto-delivery aktif.",
+      ? "⚠️ <b>Perlu tindakan manual</b> — buka panel admin"
+      : "✅ Auto-delivery aktif",
   ].join("\n");
 }
 
 export function adminDeliveryFailedNotification(orderCode: string, error: string): string {
   return [
-    `⚠️ <b>Delivery Gagal</b>`,
+    "🚨 <b>Delivery Gagal</b>",
+    "━━━━━━━━━━━━━━━━━━━━━",
     "",
-    `Kode: <code>${escapeHtml(orderCode)}</code>`,
-    `Error: ${escapeHtml(truncate(error, 200))}`,
+    `🔢 <code>${escapeHtml(orderCode)}</code>`,
+    `❌ ${escapeHtml(truncate(error, 200))}`,
     "",
-    "Cek panel admin untuk retry atau manual delivery.",
+    "Buka panel admin untuk retry / manual",
   ].join("\n");
-}
-
-export function myOrdersPrompt(): string {
-  return [
-    "📋 <b>Cek Pesanan</b>",
-    "",
-    "Ketik /pesanan diikuti kode pesanan kamu.",
-    "Contoh: <code>/pesanan AXV-20260903-AB12CD34</code>",
-  ].join("\n");
-}
-
-export function outOfStockMessage(): string {
-  return "⚠️ Maaf, stok produk ini sedang habis. Silakan pilih produk lain.";
-}
-
-export function alreadyPendingMessage(orderCode: string): string {
-  return [
-    "⚠️ Kamu masih punya pesanan aktif untuk produk ini.",
-    "",
-    `Kode: <code>${escapeHtml(orderCode)}</code>`,
-    "",
-    "Bayar atau batalkan pesanan sebelum membuat yang baru.",
-  ].join("\n");
-}
-
-export function errorMessage(): string {
-  return "⚠️ Terjadi kesalahan. Silakan coba lagi atau hubungi admin.";
 }
