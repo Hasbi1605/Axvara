@@ -120,6 +120,12 @@ route API, dan admin UI "Bot & Otomasi"). Semua feature flag default off:
 Aktivasi memerlukan owner gates (token/key/credential) yang dijelaskan di planning doc.
 Repo `mocasus/telegram-auto-order-bot` hanya referensi UX, bukan source/fork.
 
+Setelah pembayaran diterima, tombol support bot membuka akun manusia `@axvara_support`;
+username bot tetap `@Axvara_bot`. Seluruh notifikasi admin dari order web maupun Telegram
+memakai satu tujuan `TELEGRAM_ADMIN_CHAT_ID`. Untuk grup privat, tambahkan bot ke grup,
+kirim `/chatid`, lalu simpan ID numerik negatif yang dibalas bot sebagai secret tersebut
+(link undangan `t.me/+...` tidak dapat dipakai sebagai Bot API `chat_id`).
+
 ---
 
 ## ▶️ Jalankan Local (dev-only, tanpa build tiap ubahan)

@@ -465,6 +465,13 @@ FULFILLMENT_ENCRYPTION_KEY
 TELEGRAM_BOT_ENABLED, KLIKQRIS_PAYMENTS_ENABLED, AUTO_FULFILLMENT_ENABLED
 ```
 
+`TELEGRAM_ADMIN_CHAT_ID` adalah satu tujuan untuk seluruh notifikasi admin yang berasal
+dari order web, order Telegram, fulfillment manual, dan kegagalan delivery. Grup privat
+wajib memakai ID numerik negatif (`-100...`), bukan link undangan. Tambahkan
+`@Axvara_bot` ke grup lalu jalankan `/chatid` untuk menampilkan ID tersebut. Username
+support manusia tetap `@axvara_support` dan ditampilkan sebagai tombol langsung pada
+pesan setelah pembayaran berhasil.
+
 ### Feature Flags
 Rollout bertahap: `TELEGRAM_BOT_ENABLED=false`, `KLIKQRIS_PAYMENTS_ENABLED=false`, `AUTO_FULFILLMENT_ENABLED=false`. Semua default off.
 

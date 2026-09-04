@@ -116,9 +116,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Terjadi kesalahan pada server. Coba lagi." }, { status: 500 });
   }
 
-  // Fire-and-forget: notify admin via Telegram
+  // Keep the request alive until Telegram accepts the notification attempt.
+  // Failure stays isolated inside notifyAdminTelegram and never rolls back the order.
   const itemsForNotif = quote.items as { name: string; price: number; qty: number }[];
-  notifyAdminTelegram({ code, customerName: customer_name, customerWa: wa, items: itemsForNotif, subtotal: quote.subtotal, paymentMethod: pm }).catch(() => {});
+  await notifyAdminTelegram({ code, customerName: customer_name, customerWa: wa, items: itemsForNotif, subtotal: quote.subtotal, paymentMethod: pm });
 
   return NextResponse.json({ code, subtotal: quote.subtotal, status: "pending" }, { status: 201 });
 }

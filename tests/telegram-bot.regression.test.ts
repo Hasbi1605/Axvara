@@ -1,7 +1,7 @@
 // tests/telegram-bot.regression.test.ts — Telegram bot contract tests
 import { describe, it, expect } from "vitest";
-import { escapeHtml, welcomeMessage, productDetailMessage, invoiceMessage, helpMessage, deliveryMessage, warrantyTermsMessage, warrantyClaimMessage, warrantyFullMessage, confirmBuyMessage } from "@/lib/telegram/messages";
-import { cb, parseCallback, homeKeyboard, warrantyKeyboard, categoriesKeyboard, productsKeyboard } from "@/lib/telegram/keyboards";
+import { escapeHtml, welcomeMessage, productDetailMessage, invoiceMessage, helpMessage, deliveryMessage, warrantyTermsMessage, warrantyClaimMessage, warrantyFullMessage, confirmBuyMessage, manualFulfillmentBuyerMessage, orderPaidMessage } from "@/lib/telegram/messages";
+import { cb, parseCallback, homeKeyboard, warrantyKeyboard, categoriesKeyboard, productsKeyboard, orderPaidKeyboard } from "@/lib/telegram/keyboards";
 
 describe("Telegram HTML escaping", () => {
   it("escapes all HTML special characters", () => {
@@ -119,6 +119,13 @@ describe("Telegram keyboards", () => {
     const allTexts = kb.inline_keyboard.flat().map(b => b.text);
     expect(allTexts.some(t => t.includes("1/2"))).toBe(true); // page indicator
   });
+
+  it("paid-order keyboard links directly to Telegram support", () => {
+    const kb = orderPaidKeyboard("AXV-20260904-AB12CD34");
+    const buttons = kb.inline_keyboard.flat();
+    expect(buttons.some((button) => button.text.includes("@axvara_support"))).toBe(true);
+    expect(buttons.some((button) => button.url === "https://t.me/axvara_support")).toBe(true);
+  });
 });
 
 describe("Telegram messages premium UX", () => {
@@ -197,6 +204,11 @@ describe("Telegram messages premium UX", () => {
     const msg = deliveryMessage("acc@email.com:pass123");
     expect(msg).toContain("<code>");
     expect(msg).toContain("Tap untuk copy");
+  });
+
+  it("paid and manual fulfillment messages point buyers to support", () => {
+    expect(orderPaidMessage("AXV-20260904-AB12CD34", "Produk")).toContain("@axvara_support");
+    expect(manualFulfillmentBuyerMessage("AXV-20260904-AB12CD34")).toContain("@axvara_support");
   });
 });
 

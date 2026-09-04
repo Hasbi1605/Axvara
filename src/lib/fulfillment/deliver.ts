@@ -196,6 +196,7 @@ export async function processJob(
         chat_id: chatId,
         text: manualFulfillmentBuyerMessage(orderCode),
         parse_mode: "HTML",
+        reply_markup: orderPaidKeyboard(orderCode),
       });
       if (adminChatId) {
         await sendMessage({

@@ -144,7 +144,7 @@ export async function POST(request: NextRequest) {
     // 8. Route: text command
     if (update.message?.text && chatId) {
       const text = update.message.text.trim();
-      await handleCommand(text, chatId, from);
+      await handleCommand(text, chatId, update.message.chat.type, from);
       await markDone(updateId);
       return NextResponse.json({ ok: true });
     }
@@ -179,8 +179,13 @@ async function markDone(updateId: string) {
   }
 }
 
-async function handleCommand(text: string, chatId: number, from?: { id: number; first_name: string; username?: string }) {
-  const cmd = text.toLowerCase().split(/\s+/)[0];
+async function handleCommand(
+  text: string,
+  chatId: number,
+  chatType: string,
+  from?: { id: number; first_name: string; username?: string },
+) {
+  const cmd = text.toLowerCase().split(/\s+/)[0].split("@")[0];
 
   // Check for pending WA input before processing commands
   if (from && !cmd.startsWith("/")) {
@@ -215,6 +220,24 @@ async function handleCommand(text: string, chatId: number, from?: { id: number; 
 
   if (cmd === "/bantuan" || cmd === "/help") {
     await sendMessage({ chat_id: chatId, text: helpMessage(), parse_mode: "HTML" });
+    return;
+  }
+
+  if (cmd === "/chatid") {
+    const isGroup = chatType === "group" || chatType === "supergroup";
+    await sendMessage({
+      chat_id: chatId,
+      text: isGroup
+        ? [
+            "🔔 <b>ID Grup Notifikasi</b>",
+            "",
+            `<code>${chatId}</code>`,
+            "",
+            "ID ini dipakai AXVARA untuk mengirim notifikasi order web dan Telegram ke grup ini.",
+          ].join("\n")
+        : "Tambahkan @Axvara_bot ke grup tujuan, lalu kirim <code>/chatid</code> di dalam grup tersebut.",
+      parse_mode: "HTML",
+    });
     return;
   }
 

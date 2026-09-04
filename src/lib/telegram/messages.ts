@@ -198,6 +198,7 @@ export function orderPaidMessage(orderCode: string, productName: string): string
     `🔢 <code>${escapeHtml(orderCode)}</code>`,
     "",
     "⏳ Sedang diproses...",
+    "💬 Perlu bantuan? Chat langsung @axvara_support lewat tombol di bawah.",
   ].join("\n");
 }
 
@@ -228,6 +229,7 @@ export function manualFulfillmentBuyerMessage(orderCode: string): string {
     "",
     "👤 Admin sedang menyiapkan produk kamu",
     "📱 Admin akan menghubungi kamu via WA",
+    "💬 Kamu juga bisa chat langsung @axvara_support",
     "📬 Kamu juga akan dinotifikasi di sini saat siap",
     "",
     "⏱ Estimasi: 1×24 jam",

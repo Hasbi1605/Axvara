@@ -4,6 +4,7 @@
 // All callback_data ≤ 64 bytes.
 
 import type { InlineKeyboardMarkup, InlineKeyboardButton } from "./types";
+import { adminTelegramLink, SITE } from "@/lib/site";
 
 const PER_PAGE = 6;
 
@@ -174,6 +175,7 @@ export function orderPaidKeyboard(orderCode: string): InlineKeyboardMarkup {
   return {
     inline_keyboard: [
       [{ text: "📋 Lihat Pesanan", callback_data: cb.order(orderCode) }],
+      [{ text: `💬 Chat @${SITE.adminTelegram}`, url: adminTelegramLink() }],
       [
         { text: "🛍 Katalog", callback_data: cb.categories() },
         { text: "🏠 Menu", callback_data: cb.home() },
