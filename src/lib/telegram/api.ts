@@ -109,3 +109,14 @@ export async function getWebhookInfo(): Promise<TelegramApiResponse<WebhookInfo>
 export async function deleteWebhook(): Promise<TelegramApiResponse> {
   return callApi("deleteWebhook", { drop_pending_updates: false });
 }
+
+/**
+ * Show typing/upload indicator to user.
+ * Actions: "typing", "upload_photo", "upload_document", etc.
+ */
+export async function sendChatAction(
+  chatId: number | string,
+  action: "typing" | "upload_photo" | "upload_document" | "upload_video" = "typing",
+): Promise<TelegramApiResponse> {
+  return callApi("sendChatAction", { chat_id: chatId, action });
+}

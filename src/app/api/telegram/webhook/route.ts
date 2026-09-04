@@ -4,7 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { queryFirst, queryAll, execRun, isD1Mode } from "@/lib/db";
-import { sendMessage, sendPhoto, editMessageText, safeEditOrSend, answerCallbackQuery } from "@/lib/telegram/api";
+import { sendMessage, sendPhoto, editMessageText, safeEditOrSend, answerCallbackQuery, sendChatAction } from "@/lib/telegram/api";
 import {
   homeKeyboard, categoriesKeyboard, productsKeyboard,
   productDetailKeyboard, confirmPurchaseKeyboard,
@@ -183,9 +183,12 @@ async function handleCommand(text: string, chatId: number, from?: { id: number; 
   const cmd = text.toLowerCase().split(/\s+/)[0];
 
   if (cmd === "/start") {
-    await sendMessage({
+    await sendChatAction(chatId, "upload_photo");
+    const siteUrl = process.env.SITE_URL ?? "https://axvara.tech";
+    await sendPhoto({
       chat_id: chatId,
-      text: welcomeMessage(from?.first_name ?? "Pengguna"),
+      photo: `${siteUrl}/r2/banners/tg-welcome.png`,
+      caption: welcomeMessage(from?.first_name ?? "Pengguna"),
       parse_mode: "HTML",
       reply_markup: homeKeyboard(),
     });
@@ -326,6 +329,7 @@ async function handleShowProducts(chatId: number, messageId: number, categoryId:
 }
 
 async function handleShowProduct(chatId: number, messageId: number, productId: number) {
+  await sendChatAction(chatId, "upload_photo");
   const product = await queryFirst(
     `SELECT id, name, description, price, compare_price, stock, badge, image_url FROM products WHERE id=? AND is_active=1 AND telegram_enabled=1`,
     productId,
@@ -422,6 +426,8 @@ async function handleConfirmPurchase(
     await sendMessage({ chat_id: chatId, text: "⚠️ Pembayaran otomatis belum aktif.", parse_mode: "HTML" });
     return;
   }
+
+  await sendChatAction(chatId, "typing");
 
   const product = await queryFirst(
     `SELECT id, name, price, stock, fulfillment_mode FROM products WHERE id=? AND is_active=1 AND telegram_enabled=1`,
