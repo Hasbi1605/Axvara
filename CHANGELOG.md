@@ -4,6 +4,8 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-04 — Matangkan handoff bot grup WhatsApp existing: produk langsung dari D1 tanpa kategori/sinkronisasi, group-to-private order, reuse KlikQRIS Telegram, migrasi multi-channel, security/idempotency, test, rollout, dan rollback — `docs/WHATSAPP-GROUP-BOT-PLAN.md`, README, docs/ARCHITECTURE.md — (verifikasi: review planning + `git diff --check` pass; dev GET `/` 200 + CSS 200 + `/admin?section=bot` 200, log tanpa compile error)
+
 - 2026-09-04 — Arahkan buyer pasca-pembayaran ke Telegram support `@axvara_support`, tambah `/chatid`, tetapkan grup privat `Axvara_Notif` sebagai satu tujuan notifikasi order web/bot, tunggu percobaan notif web sebelum respons selesai, dan aktifkan bot produksi — `src/lib/telegram/*`, `src/lib/fulfillment/deliver.ts`, `src/app/api/{orders,telegram/webhook}`, Cloudflare Pages, README/docs — (verifikasi: vitest 131/131, tsc clean, build Pages pass; dev GET / 200 + CSS 200 + /admin 200, webhook route compile)
 
 - 2026-09-04 — Pulihkan login admin produksi: normalisasi quote secret, proof PBKDF2 browser→challenge JWT 5 menit, rotasi hash admin di Cloudflare Pages, dan recovery deploy `98428ac7` — `src/lib/auth.ts`, `src/app/api/auth/login/route.ts`, `src/app/admin/page.tsx`, Cloudflare Pages auth config, tests/docs — (verifikasi: vitest security 39/39, tsc/build pass, dev GET / + CSS 200, prod challenge 200 + login 200 + `/api/auth/me` 200)

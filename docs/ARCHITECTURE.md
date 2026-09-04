@@ -480,3 +480,22 @@ Rollout bertahap: `TELEGRAM_BOT_ENABLED=false`, `KLIKQRIS_PAYMENTS_ENABLED=false
 - Command `/garansi` (terdaftar di menu) mengirim ketentuan third-party + 6 syarat klaim (ganti/perbaikan, bukan refund; garansi ikut deskripsi produk).
 - Konfirmasi beli memakai tombol `✅ Saya Paham, Lanjut Bayar` + tombol `📜 Syarat Garansi`; invoice/pre-bayar menegaskan lanjut bayar = setuju ketentuan.
 - Detail produk menunjuk garansi ikut deskripsi + `/garansi`; pesan delivery/manual mengingatkan simpan invoice untuk klaim.
+
+## 14. Rencana Bot Grup WhatsApp
+
+Rencana handoff lengkap berada di `docs/WHATSAPP-GROUP-BOT-PLAN.md` dan belum menjadi
+runtime aktif. Arsitektur yang dikunci menggunakan Fonnte sebagai device gateway untuk
+nomor serta grup WhatsApp existing, sementara Pages, D1, R2, KlikQRIS, cron, dan
+fulfillment AXVARA tetap menjadi satu backend bersama web dan Telegram.
+
+WhatsApp tidak memakai navigasi kategori. Command `list` membaca produk aktif langsung
+dari tabel `products` D1 dengan urutan `sort_order, id`, sehingga tambah/edit/nonaktifkan
+produk pada admin web otomatis tercermin pada pemanggilan berikutnya tanpa tabel katalog
+WhatsApp atau proses sinkronisasi. Grup hanya dipakai untuk katalog/FAQ dan deep-link ke
+private chat; QRIS, status personal, dan fulfillment hanya boleh dikirim secara private.
+
+Implementasi wajib mengekstrak commerce service secara bertahap agar adapter KlikQRIS
+yang sudah bekerja pada Telegram direuse tanpa perubahan kontrak. Delivery outbox dibuat
+channel-aware, webhook Fonnte memakai allowlist/idempotensi, callback payment menjadi
+fail-closed saat status provider tidak dapat dikonfirmasi, dan seluruh feature flag
+WhatsApp default nonaktif saat deploy pertama.

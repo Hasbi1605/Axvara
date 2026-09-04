@@ -21,6 +21,7 @@ axvara/
 │   ├── DESIGN.md           # Apple Store + glassmorphism + motion
 │   ├── ARCHITECTURE.md     # Stack D1+R2, schema, API contract
 │   ├── TELEGRAM-BOT-KLIKQRIS-PLAN.md # Handoff rencana bot auto-order + PG
+│   ├── WHATSAPP-GROUP-BOT-PLAN.md # Handoff bot grup existing + katalog D1 + KlikQRIS
 │   └── VPS-RESEARCH.md     # Riset VPS gratis — kenapa Pages juara
 ├── public/
 │   ├── brand/
@@ -119,6 +120,14 @@ route API, dan admin UI "Bot & Otomasi"). Semua feature flag default off:
 `TELEGRAM_BOT_ENABLED=false`, `KLIKQRIS_PAYMENTS_ENABLED=false`, `AUTO_FULFILLMENT_ENABLED=false`.
 Aktivasi memerlukan owner gates (token/key/credential) yang dijelaskan di planning doc.
 Repo `mocasus/telegram-auto-order-bot` hanya referensi UX, bukan source/fork.
+
+Rencana implementasi bot pada grup WhatsApp existing tersedia di
+`docs/WHATSAPP-GROUP-BOT-PLAN.md`. Keputusan rencananya adalah memakai Fonnte sebagai
+device gateway untuk nomor/grup yang sudah ada, tetap menjalankan seluruh business logic
+di Cloudflare AXVARA, membaca produk aktif langsung dari D1 tanpa menu kategori atau
+proses sinkronisasi, memindahkan transaksi ke private chat, dan memakai ulang integrasi
+KlikQRIS Telegram yang sudah aktif. Dokumen tersebut masih planning-only; runtime
+WhatsApp belum diimplementasikan.
 
 Setelah pembayaran diterima, tombol support bot membuka akun manusia `@axvara_support`;
 username bot tetap `@Axvara_bot`. Seluruh notifikasi admin dari order web maupun Telegram
