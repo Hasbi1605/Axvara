@@ -188,3 +188,23 @@ function truncateLabel(text: string, max: number): string {
   if (text.length <= max) return text;
   return text.slice(0, max - 1) + "…";
 }
+
+// ---- Web order admin notification keyboard ----
+
+export function webOrderAdminKeyboard(params: {
+  customerWa: string;
+  customerName: string;
+  orderCode: string;
+  siteUrl: string;
+}): InlineKeyboardMarkup {
+  const { customerWa, customerName, orderCode, siteUrl } = params;
+  const waMsg = encodeURIComponent(`Halo ${customerName}, pesanan ${orderCode} kamu sudah kami terima. Admin akan segera memproses.`);
+  return {
+    inline_keyboard: [
+      [
+        { text: "💬 WA Buyer", url: `https://wa.me/${customerWa}?text=${waMsg}` },
+        { text: "🔧 Panel Admin", url: `${siteUrl}/admin?section=orders` },
+      ],
+    ],
+  };
+}

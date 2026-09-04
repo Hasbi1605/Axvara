@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { formatRupiah } from "@/lib/utils";
-import { adminWaLink } from "@/lib/site";
+import { adminWaLink, adminTelegramLink } from "@/lib/site";
 
 
 type Order = {
@@ -133,12 +133,12 @@ export default function OrderSuccessPage() {
         )}
         <p className="mt-4 text-sm text-white/60 leading-6">
           {order.status === "lunas"
-            ? <>Pembayaran <span className="text-white font-medium">{order.name}</span> sudah dikonfirmasi. Detail akses akan dikirim melalui WA ke <span className="text-white">{order.wa}</span>.</>
+            ? <>Pembayaran <span className="text-white font-medium">{order.name}</span> sudah dikonfirmasi. Admin akan menghubungi kamu via WA ke <span className="text-white">{order.wa}</span> untuk pengiriman produk.</>
             : order.status === "dibatalkan"
               ? <>Pesanan ini dibatalkan. Hubungi admin jika kamu sudah melakukan transfer atau memerlukan bantuan.</>
               : order.status === "kadaluarsa"
                 ? <>Pesanan melewati batas pembayaran 24 jam dan stok telah dilepas kembali. Silakan buat pesanan baru.</>
-                : <>Terima kasih, <span className="text-white font-medium">{order.name}</span>! Admin akan memverifikasi bukti kamu dalam <span className="text-white">5–15 menit</span> dan mengirim akses ke WA <span className="text-white">{order.wa}</span>.</>}
+                : <>Terima kasih, <span className="text-white font-medium">{order.name}</span>! Admin akan memverifikasi bukti kamu dalam <span className="text-white">5–15 menit</span> dan <span className="text-white">menghubungi kamu via WA</span> ke <span className="text-white">{order.wa}</span> untuk pengiriman produk.</>}
         </p>
 
         {fetchError && (
@@ -174,7 +174,16 @@ export default function OrderSuccessPage() {
             rel="noreferrer"
             className="flex-1 h-11 rounded-xl bg-[#25D366] text-white font-semibold flex items-center justify-center gap-2 hover:bg-[#1DA851]"
           >
-            <img src="/icons/ios11/chat-32.png" alt="" width={16} height={16} className="w-4 h-4 object-contain brightness-0 invert" draggable={false} /> Hubungi Admin WA
+            <img src="/icons/ios11/chat-32.png" alt="" width={16} height={16} className="w-4 h-4 object-contain brightness-0 invert" draggable={false} /> WhatsApp Admin
+          </a>
+          <a
+            href={adminTelegramLink()}
+            target="_blank"
+            rel="noreferrer"
+            className="flex-1 h-11 rounded-xl bg-[#2AABEE] text-white font-semibold flex items-center justify-center gap-2 hover:bg-[#229ED9]"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0h-.056zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
+            Telegram Admin
           </a>
         </div>
 

@@ -227,7 +227,8 @@ export function manualFulfillmentBuyerMessage(orderCode: string): string {
     `🔢 <code>${escapeHtml(orderCode)}</code>`,
     "",
     "👤 Admin sedang menyiapkan produk kamu",
-    "📬 Kamu akan dinotifikasi saat siap",
+    "📱 Admin akan menghubungi kamu via WA",
+    "📬 Kamu juga akan dinotifikasi di sini saat siap",
     "",
     "⏱ Estimasi: 1×24 jam",
     "<i>(biasanya jauh lebih cepat)</i>",
@@ -333,6 +334,7 @@ export function helpMessage(): string {
     "",
     "━━━━━━━━━━━━━━━━━━━━━",
     "📞 <b>Admin:</b> wa.me/6289519388264",
+    "✈️ <b>Telegram:</b> @axvara_support",
     "🌐 <b>Web:</b> axvara.tech",
   ].join("\n");
 }
@@ -423,6 +425,34 @@ export function errorMessage(): string {
   ].join("\n");
 }
 
+export function askWhatsAppMessage(productName: string): string {
+  const name = escapeHtml(truncate(productName, 100));
+  return [
+    "📱 <b>Nomor WhatsApp</b>",
+    "━━━━━━━━━━━━━━━━━━━━━",
+    "",
+    `Produk: ${name}`,
+    "",
+    "Produk ini dikirim <b>manual oleh admin</b>.",
+    "Masukkan <b>nomor WA aktif</b> kamu agar admin bisa menghubungi untuk pengiriman:",
+    "",
+    "Contoh: <code>08123456789</code>",
+    "",
+    "💡 <i>Ketik nomor WA lalu kirim</i>",
+  ].join("\n");
+}
+
+export function invalidWhatsAppMessage(): string {
+  return [
+    "❌ <b>Nomor WA Tidak Valid</b>",
+    "",
+    "Format: 08xxx / +628xxx (10-15 digit)",
+    "Contoh: <code>08123456789</code>",
+    "",
+    "Coba lagi atau ketik /katalog untuk batal.",
+  ].join("\n");
+}
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ADMIN NOTIFICATIONS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -463,5 +493,29 @@ export function adminDeliveryFailedNotification(orderCode: string, error: string
     `❌ ${escapeHtml(truncate(error, 200))}`,
     "",
     "Buka panel admin untuk retry / manual",
+  ].join("\n");
+}
+
+export function adminWebOrderNotification(params: {
+  orderCode: string;
+  productNames: string;
+  amount: number;
+  customerName: string;
+  customerWa: string;
+  paymentMethod: string;
+}): string {
+  const { orderCode, productNames, amount, customerName, customerWa, paymentMethod } = params;
+  return [
+    "🔔 <b>Order Baru — Web</b>",
+    "━━━━━━━━━━━━━━━━━━━━━",
+    "",
+    `📦 ${escapeHtml(truncate(productNames, 120))}`,
+    `🔢 <code>${escapeHtml(orderCode)}</code>`,
+    `💰 ${formatRupiah(amount)}`,
+    `👤 ${escapeHtml(truncate(customerName, 50))}`,
+    `📱 ${escapeHtml(customerWa)}`,
+    `💳 ${escapeHtml(paymentMethod.toUpperCase())}`,
+    "",
+    "Cek bukti transfer di panel admin",
   ].join("\n");
 }

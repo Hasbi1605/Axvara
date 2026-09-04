@@ -15,7 +15,7 @@ import {
   productDetailMessage, confirmBuyMessage, helpMessage, warrantyFullMessage,
   outOfStockMessage, alreadyPendingMessage, errorMessage,
   myOrdersPrompt, orderStatusMessage, invoiceMessage,
-  orderCancelledMessage,
+  orderCancelledMessage, askWhatsAppMessage, invalidWhatsAppMessage,
 } from "@/lib/telegram/messages";
 import { generateOrderCode } from "@/lib/security";
 import { getPaymentProvider, isPaymentEnabled } from "@/lib/payments/klikqris";
@@ -182,7 +182,17 @@ async function markDone(updateId: string) {
 async function handleCommand(text: string, chatId: number, from?: { id: number; first_name: string; username?: string }) {
   const cmd = text.toLowerCase().split(/\s+/)[0];
 
+  // Check for pending WA input before processing commands
+  if (from && !cmd.startsWith("/")) {
+    const handled = await handlePendingWaInput(text, chatId, from);
+    if (handled) return;
+  }
+
   if (cmd === "/start") {
+    // Clear any pending conversational state
+    if (from && isD1Mode()) {
+      await execRun(`UPDATE telegram_users SET pending_action=NULL WHERE user_id=? AND pending_action IS NOT NULL`, String(from.id)).catch(() => {});
+    }
     await showLoadingBar(chatId, "🚀 Menyiapkan AXVARA");
     const siteUrl = process.env.SITE_URL ?? "https://axvara.tech";
     await sendPhoto({
@@ -196,6 +206,9 @@ async function handleCommand(text: string, chatId: number, from?: { id: number; 
   }
 
   if (cmd === "/katalog") {
+    if (from && isD1Mode()) {
+      await execRun(`UPDATE telegram_users SET pending_action=NULL WHERE user_id=? AND pending_action IS NOT NULL`, String(from.id)).catch(() => {});
+    }
     await handleShowCategories(chatId);
     return;
   }
@@ -457,6 +470,89 @@ async function handleConfirmPurchase(
     return;
   }
 
+  const fulfillmentMode = String(product.fulfillment_mode || "manual");
+
+  // For manual fulfillment, ask WA first before creating the order
+  if (fulfillmentMode === "manual") {
+    // Store pending action: wa_for:{productId}
+    if (isD1Mode()) {
+      await execRun(
+        `UPDATE telegram_users SET pending_action=?, updated_at=datetime('now') WHERE user_id=?`,
+        `wa_for:${productId}`, String(from.id),
+      );
+    }
+    await sendMessage({
+      chat_id: chatId,
+      text: askWhatsAppMessage(String(product.name)),
+      parse_mode: "HTML",
+    });
+    return;
+  }
+
+  // For shared/unique, proceed directly (no WA needed — bot delivers automatically)
+  await createAndSendInvoice(chatId, messageId, productId, product, from, "");
+}
+
+async function handlePendingWaInput(
+  text: string,
+  chatId: number,
+  from: { id: number; first_name: string; username?: string },
+): Promise<boolean> {
+  if (!isD1Mode()) return false;
+
+  const user = await queryFirst(
+    `SELECT pending_action FROM telegram_users WHERE user_id=?`,
+    String(from.id),
+  );
+  if (!user?.pending_action) return false;
+
+  const action = String(user.pending_action);
+  if (!action.startsWith("wa_for:")) return false;
+
+  const productId = Number(action.split(":")[1]);
+  if (!productId) return false;
+
+  // Validate WA number
+  const wa = text.trim().replace(/\s|-/g, "");
+  if (!/^(\+62|62|0)8\d{8,13}$/.test(wa)) {
+    await sendMessage({ chat_id: chatId, text: invalidWhatsAppMessage(), parse_mode: "HTML" });
+    return true; // handled, but invalid — keep pending_action
+  }
+
+  // Normalize WA to 62...
+  let normalizedWa = wa;
+  if (normalizedWa.startsWith("+62")) normalizedWa = normalizedWa.slice(1);
+  else if (normalizedWa.startsWith("0")) normalizedWa = "62" + normalizedWa.slice(1);
+
+  // Clear pending action
+  await execRun(
+    `UPDATE telegram_users SET pending_action=NULL, updated_at=datetime('now') WHERE user_id=?`,
+    String(from.id),
+  );
+
+  // Fetch product and proceed with order
+  const product = await queryFirst(
+    `SELECT id, name, price, stock, fulfillment_mode FROM products WHERE id=? AND is_active=1 AND telegram_enabled=1`,
+    productId,
+  );
+  if (!product) {
+    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+    return true;
+  }
+
+  await sendMessage({ chat_id: chatId, text: `✅ WA <code>${normalizedWa}</code> tersimpan. Membuat invoice...`, parse_mode: "HTML" });
+  await createAndSendInvoice(chatId, 0, productId, product, from, normalizedWa);
+  return true;
+}
+
+async function createAndSendInvoice(
+  chatId: number,
+  _messageId: number,
+  productId: number,
+  product: Record<string, unknown>,
+  from: { id: number; first_name: string; username?: string },
+  customerWa: string,
+) {
   const price = Number(product.price);
   const fulfillmentMode = String(product.fulfillment_mode || "manual");
   const orderCode = generateOrderCode();
@@ -480,7 +576,6 @@ async function handleConfirmPurchase(
         productId,
       );
       if (!stockResult.changes) {
-        // Compensate inventory reservation
         if (inventoryId) await releaseInventoryForOrder(orderCode);
         await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
         return;
@@ -500,16 +595,14 @@ async function handleConfirmPurchase(
         merchantId,
       });
     } catch (providerError) {
-      // Provider error: try status check before compensating
       try {
         const statusCheck = await provider.checkStatus(providerOrderId, merchantId);
         if (statusCheck.success && statusCheck.status === "pending") {
-          // Invoice exists on provider side, don't compensate
+          // Invoice exists on provider side
         } else {
           throw providerError;
         }
       } catch {
-        // Compensate: restore stock + release inventory
         await execRun(
           `UPDATE products SET stock = CASE WHEN stock=-1 THEN -1 ELSE stock+1 END WHERE id=? AND stock!=-1`,
           productId,
@@ -522,7 +615,6 @@ async function handleConfirmPurchase(
     }
 
     if (!invoiceResult || !invoiceResult.success) {
-      // Compensate
       await execRun(
         `UPDATE products SET stock = CASE WHEN stock=-1 THEN -1 ELSE stock+1 END WHERE id=? AND stock!=-1`,
         productId,
@@ -532,7 +624,7 @@ async function handleConfirmPurchase(
       return;
     }
 
-    // Insert order
+    // Insert order — include customer_wa if provided
     const items = [{ product_id: productId, name: String(product.name), price, qty: 1 }];
     await execRun(
       `INSERT INTO orders (code, customer_name, customer_wa, customer_email, items, subtotal,
@@ -541,19 +633,19 @@ async function handleConfirmPurchase(
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       orderCode,
       from.first_name,
-      "", // customer_wa empty for Telegram orders
+      customerWa, // WA number (filled for manual, empty for shared/unique)
       null,
       JSON.stringify(items),
       invoiceResult.payableAmount,
       "klikqris",
       "",
-      null, // no proof for QRIS dynamic
+      null,
       "pending",
       "telegram",
       String(chatId),
       String(from.id),
       "pending",
-      fulfillmentMode === "unique" ? "reserved" : fulfillmentMode === "manual" ? "not_required" : "not_required",
+      fulfillmentMode === "unique" ? "reserved" : "not_required",
       invoiceResult.expiresAt,
     );
 
@@ -580,7 +672,7 @@ async function handleConfirmPurchase(
     // Create fulfillment job
     await createFulfillmentJob(orderCode, inventoryId, fulfillmentMode);
 
-    // Send QRIS to user — prefer qris_url (HTTPS), fallback to qris_image (data URI base64)
+    // Send QRIS to user
     const photoSource = invoiceResult.qrisUrl ?? invoiceResult.qrisImage;
     if (photoSource) {
       await sendPhoto({
@@ -609,21 +701,28 @@ async function handleConfirmPurchase(
       });
     }
 
-    // Notify admin
+    // Notify admin — include WA if available
     const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
     if (adminChatId) {
       try {
         const { adminOrderNotification } = await import("@/lib/telegram/messages");
+        const telegramUser = from.username ?? String(from.id);
+        const waInfo = customerWa ? `\n📱 ${customerWa}` : "";
         await sendMessage({
           chat_id: adminChatId,
           text: adminOrderNotification({
             orderCode,
             productName: String(product.name),
             amount: invoiceResult.payableAmount,
-            telegramUser: from.username ?? String(from.id),
+            telegramUser,
             fulfillmentMode,
-          }),
+          }) + waInfo,
           parse_mode: "HTML",
+          reply_markup: customerWa ? {
+            inline_keyboard: [[
+              { text: "💬 WA Buyer", url: `https://wa.me/${customerWa}` },
+            ]],
+          } : undefined,
         });
       } catch { /* admin notification is best-effort */ }
     }

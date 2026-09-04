@@ -179,6 +179,7 @@ CREATE TABLE IF NOT EXISTS telegram_users (
   first_name TEXT,
   last_name TEXT,
   is_blocked INTEGER NOT NULL DEFAULT 0,
+  pending_action TEXT DEFAULT NULL,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );

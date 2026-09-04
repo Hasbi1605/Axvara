@@ -116,7 +116,55 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Terjadi kesalahan pada server. Coba lagi." }, { status: 500 });
   }
 
+  // Fire-and-forget: notify admin via Telegram
+  const itemsForNotif = quote.items as { name: string; price: number; qty: number }[];
+  notifyAdminTelegram({ code, customerName: customer_name, customerWa: wa, items: itemsForNotif, subtotal: quote.subtotal, paymentMethod: pm }).catch(() => {});
+
   return NextResponse.json({ code, subtotal: quote.subtotal, status: "pending" }, { status: 201 });
+}
+
+/** Best-effort Telegram notification to admin for web orders */
+async function notifyAdminTelegram(params: {
+  code: string;
+  customerName: string;
+  customerWa: string;
+  items: { name: string; price: number; qty: number }[];
+  subtotal: number;
+  paymentMethod: string;
+}) {
+  const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+  if (!adminChatId || !botToken || process.env.TELEGRAM_BOT_ENABLED !== "true") return;
+
+  try {
+    const { adminWebOrderNotification } = await import("@/lib/telegram/messages");
+    const { webOrderAdminKeyboard } = await import("@/lib/telegram/keyboards");
+    const { sendMessage } = await import("@/lib/telegram/api");
+
+    const productNames = params.items.map((i) => `${i.name} ×${i.qty}`).join(", ");
+    const siteUrl = process.env.SITE_URL ?? "https://axvara.tech";
+
+    await sendMessage({
+      chat_id: adminChatId,
+      text: adminWebOrderNotification({
+        orderCode: params.code,
+        productNames,
+        amount: params.subtotal,
+        customerName: params.customerName,
+        customerWa: params.customerWa,
+        paymentMethod: params.paymentMethod,
+      }),
+      parse_mode: "HTML",
+      reply_markup: webOrderAdminKeyboard({
+        customerWa: params.customerWa,
+        customerName: params.customerName,
+        orderCode: params.code,
+        siteUrl,
+      }),
+    });
+  } catch {
+    // Admin notification is best-effort — never block order response
+  }
 }
 
 export async function GET(req: NextRequest) {

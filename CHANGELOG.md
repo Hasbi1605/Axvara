@@ -4,6 +4,8 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-04 — Tambah kontak admin & notifikasi order: (1) halaman sukses /pesanan/[code] perjelas pesan "admin akan menghubungi via WA" + tambah tombol Telegram @axvara_support, (2) notif Telegram otomatis ke admin saat order web masuk (best-effort, fire-and-forget) dengan tombol WA Buyer + Panel Admin, (3) Telegram bot minta no WA buyer HANYA untuk produk fulfillment manual (shared/unique skip karena bot otomatis kirim), migrasi 0006 tambah kolom pending_action di telegram_users — `src/lib/{site,telegram/{messages,keyboards,api}}.ts, src/app/{pesanan/[code],api/{orders,telegram/webhook}}/route.ts, drizzle/{schema.sql,migrations/0006}` — (verifikasi: vitest 127/127 pass, tsc clean, dev GET / 200 + CSS 200 + /pesanan 200)
+
 - 2026-09-04 — Bersihkan /start BOT ke welcome simpel (opsi 1): disclaimer third-party dihapus dari teks, tombol Garansi & Ketentuan tetap ada + proteksi /garansi/pre-bayar tidak berubah — `src/lib/telegram/messages.ts, tests/telegram-bot.regression.test.ts, docs/ARCHITECTURE.md` — (verifikasi: vitest telegram 25/25 pass, tsc clean, dev GET / 200 + CSS 200)
 
 - 2026-09-04 — Rewrite docs/SEO-GEO-PLAN.md: deep audit SEO (score 28/100) & GEO (12/100), 6-phase improvement plan dengan riset 2026, diagnosis CSR blocking, metadata gaps, schema gaps, performance issues, AI crawler rules, content strategy — `docs/SEO-GEO-PLAN.md` — (verifikasi: file-only, no code change)
