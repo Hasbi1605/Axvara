@@ -60,13 +60,37 @@ SELECT
   created_at, updated_at
 FROM orders;
 
--- 3. Drop old table
+-- 3. Move child foreign keys to a temporary namespace before dropping the
+-- referenced parent. D1 runs migrations with foreign_keys=ON; deferring the
+-- checks alone is insufficient because DROP TABLE performs an implicit delete
+-- against the old parent. The values are restored after the replacement table
+-- has taken the canonical `orders` name.
+UPDATE payment_transactions
+SET order_code='__axvara_0008__:' || order_code;
+
+UPDATE fulfillment_jobs
+SET order_code='__axvara_0008__:' || order_code;
+
+UPDATE payment_proofs
+SET order_code='__axvara_0008__:' || order_code;
+
+-- 4. Drop old table
 DROP TABLE orders;
 
--- 4. Rename new table to original name
+-- 5. Rename new table to original name
 ALTER TABLE orders_new RENAME TO orders;
 
--- 5. Recreate indexes
+-- 6. Restore child foreign keys now that the canonical parent exists again.
+UPDATE payment_transactions
+SET order_code=substr(order_code, length('__axvara_0008__:') + 1);
+
+UPDATE fulfillment_jobs
+SET order_code=substr(order_code, length('__axvara_0008__:') + 1);
+
+UPDATE payment_proofs
+SET order_code=substr(order_code, length('__axvara_0008__:') + 1);
+
+-- 7. Recreate indexes
 CREATE UNIQUE INDEX IF NOT EXISTS orders_quote_id_unique
   ON orders(quote_id) WHERE quote_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_orders_channel
@@ -97,3 +121,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS payment_proofs_one_active_per_order
 
 CREATE INDEX IF NOT EXISTS idx_wa_inbox_member_time
   ON whatsapp_inbox_events(conversation_id,member_id,created_at);
+
+-- Fail the migration before commit if any child reference was not restored.
+PRAGMA defer_foreign_keys=OFF;

@@ -180,6 +180,8 @@ git push origin main
 
 `.github/workflows/ci.yml` adalah satu-satunya jalur deploy otomatis. Setiap push `main` menjalankan test, type-check, build adapter Pages, menerapkan migrasi D1 yang belum tercatat, deploy Pages, lalu deploy MCP Worker. Cloudflare Pages Git build dinonaktifkan agar tidak terjadi deploy ganda. Setelah push berhasil, agent berhenti dan tidak memantau workflow.
 
+Migrasi rebuild `0008_orders_multichannel.sql` aman untuk database produksi yang sudah memiliki transaksi dan fulfillment job: foreign key `order_code` pada seluruh tabel anak dipindahkan sementara, parent `orders` diganti, lalu key dipulihkan dan divalidasi sebelum commit. Tes regresi mengeksekusi skenario berisi child rows agar kegagalan constraint tidak baru ditemukan saat deploy.
+
 Repository Actions memakai Secrets `CLOUDFLARE_API_KEY`, `CLOUDFLARE_EMAIL`, dan `CLOUDFLARE_ACCOUNT_ID`. `.cf-credentials` hanya untuk provisioning/recovery lokal dan tidak pernah masuk Git. `npm run deploy` serta `npm run deploy:mcp` hanya dipakai untuk recovery manual yang diminta eksplisit.
 
 Buka `wrangler.json` dan isi binding D1/R2 setelah resource dibuat. Custom domain `axvara.tech` dan registrar tetap dikelola Cloudflare.

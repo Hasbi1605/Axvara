@@ -2,12 +2,28 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { createRequire } from "node:module";
 import {
   buildWhatsAppOrderIdempotencyKey,
   isReusablePendingOrder,
 } from "@/lib/commerce";
 
 const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), "utf8");
+
+type SqliteStatement = {
+  all: () => unknown[];
+  get: () => Record<string, unknown> | undefined;
+};
+
+type SqliteDatabase = {
+  exec: (sql: string) => void;
+  prepare: (sql: string) => SqliteStatement;
+};
+
+const nodeRequire = createRequire(import.meta.url);
+const { DatabaseSync } = nodeRequire("node:sqlite") as {
+  DatabaseSync: new (location: string) => SqliteDatabase;
+};
 
 describe("Migration 0008: Orders Table Multi-channel Rebuild & FK Integrity (P0.3)", () => {
   it("rebuilds orders table, preserving telegram data, adding channel identity, and accepting whatsapp", () => {
@@ -18,11 +34,115 @@ describe("Migration 0008: Orders Table Multi-channel Rebuild & FK Integrity (P0.
     expect(migrationSql).toContain("channel_conversation_id TEXT");
     expect(migrationSql).toContain("channel_member_id TEXT");
     expect(migrationSql).toMatch(/PRAGMA\s+defer_foreign_keys\s*=\s*ON/i);
+    expect(migrationSql).toMatch(/UPDATE\s+payment_transactions\s+SET\s+order_code='__axvara_0008__:'\s*\|\|\s*order_code/i);
+    expect(migrationSql).toMatch(/UPDATE\s+fulfillment_jobs\s+SET\s+order_code='__axvara_0008__:'\s*\|\|\s*order_code/i);
+    expect(migrationSql).toMatch(/UPDATE\s+payment_proofs\s+SET\s+order_code='__axvara_0008__:'\s*\|\|\s*order_code/i);
+    expect(migrationSql).toMatch(/PRAGMA\s+defer_foreign_keys\s*=\s*OFF/i);
     expect(migrationSql).not.toMatch(/PRAGMA\s+foreign_keys\s*=\s*OFF/i);
     expect(migrationSql).toContain("payment_proofs_one_active_per_order");
     expect(schemaSql).toContain("telegram_enabled INTEGER NOT NULL DEFAULT 1");
     expect(schemaSql).toContain("INSERT INTO product_variants");
     expect(schemaSql).toContain("'DEFAULT-' || p.id");
+  });
+
+  it("executes with populated D1-style child tables and preserves every foreign key", () => {
+    const db = new DatabaseSync(":memory:");
+    const migrationSql = read("drizzle/migrations/0008_orders_multichannel.sql");
+
+    db.exec(`
+      PRAGMA foreign_keys=ON;
+      CREATE TABLE product_variants (id INTEGER PRIMARY KEY);
+      INSERT INTO product_variants (id) VALUES (7);
+
+      CREATE TABLE orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        code TEXT UNIQUE NOT NULL,
+        customer_name TEXT NOT NULL,
+        customer_wa TEXT NOT NULL,
+        customer_email TEXT,
+        items TEXT NOT NULL,
+        subtotal INTEGER NOT NULL,
+        payment_method TEXT NOT NULL,
+        payment_account TEXT,
+        proof_url TEXT,
+        status TEXT DEFAULT 'pending',
+        admin_note TEXT,
+        quote_id TEXT,
+        expires_at TEXT,
+        sales_channel TEXT NOT NULL DEFAULT 'web'
+          CHECK (sales_channel IN ('web','telegram')),
+        telegram_chat_id TEXT,
+        telegram_user_id TEXT,
+        payment_status TEXT NOT NULL DEFAULT 'unpaid'
+          CHECK (payment_status IN ('unpaid','pending','paid','expired','failed','refunded')),
+        fulfillment_status TEXT NOT NULL DEFAULT 'not_required'
+          CHECK (fulfillment_status IN (
+            'not_required','reserved','queued','sending','delivered',
+            'manual_required','retry','failed'
+          )),
+        variant_id INTEGER REFERENCES product_variants(id),
+        variant_snapshot TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE payment_transactions (
+        id INTEGER PRIMARY KEY,
+        order_code TEXT NOT NULL UNIQUE REFERENCES orders(code)
+      );
+      CREATE TABLE fulfillment_jobs (
+        id INTEGER PRIMARY KEY,
+        order_code TEXT NOT NULL UNIQUE REFERENCES orders(code)
+      );
+      CREATE TABLE payment_proofs (
+        id INTEGER PRIMARY KEY,
+        order_code TEXT NOT NULL REFERENCES orders(code),
+        status TEXT NOT NULL,
+        rejection_reason TEXT,
+        reviewed_at TEXT
+      );
+      CREATE TABLE whatsapp_inbox_events (
+        id INTEGER PRIMARY KEY,
+        conversation_id TEXT,
+        member_id TEXT,
+        created_at TEXT
+      );
+
+      INSERT INTO orders (
+        id, code, customer_name, customer_wa, items, subtotal,
+        payment_method, sales_channel, telegram_chat_id, telegram_user_id,
+        payment_status, fulfillment_status, variant_id
+      ) VALUES
+        (1, 'AXV-WEB', 'Web Buyer', '0811111111', '[]', 10000,
+         'qris', 'web', NULL, NULL, 'unpaid', 'not_required', 7),
+        (2, 'AXV-TG', 'Telegram Buyer', '0822222222', '[]', 20000,
+         'qris', 'telegram', '-100123', '456', 'paid', 'delivered', 7);
+      INSERT INTO payment_transactions (id, order_code) VALUES (1, 'AXV-TG');
+      INSERT INTO fulfillment_jobs (id, order_code) VALUES (1, 'AXV-TG');
+      INSERT INTO payment_proofs (id, order_code, status) VALUES (1, 'AXV-WEB', 'submitted');
+    `);
+
+    db.exec(`BEGIN;\n${migrationSql}\nCOMMIT;`);
+
+    expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    expect(db.prepare("SELECT COUNT(*) AS count FROM orders").get()?.count).toBe(2);
+    expect(db.prepare("SELECT order_code FROM payment_transactions").get()?.order_code).toBe("AXV-TG");
+    expect(db.prepare("SELECT order_code FROM fulfillment_jobs").get()?.order_code).toBe("AXV-TG");
+    expect(db.prepare("SELECT order_code FROM payment_proofs").get()?.order_code).toBe("AXV-WEB");
+
+    const telegramOrder = db.prepare(
+      "SELECT channel_conversation_id, channel_member_id FROM orders WHERE code='AXV-TG'",
+    ).get();
+    expect(telegramOrder).toMatchObject({
+      channel_conversation_id: "-100123",
+      channel_member_id: "456",
+    });
+
+    expect(() => db.exec(`
+      INSERT INTO orders (
+        code, customer_name, customer_wa, items, subtotal, payment_method, sales_channel
+      ) VALUES ('AXV-WA', 'WA Buyer', '0833333333', '[]', 30000, 'qris', 'whatsapp');
+    `)).not.toThrow();
   });
 });
 
