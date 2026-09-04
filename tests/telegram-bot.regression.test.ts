@@ -58,9 +58,12 @@ describe("Telegram callback data", () => {
 });
 
 describe("Telegram keyboards", () => {
-  it("home keyboard has garansi button", () => {
+  it("home keyboard has katalog, pesanan, garansi, bantuan", () => {
     const kb = homeKeyboard();
     const allTexts = kb.inline_keyboard.flat().map(b => b.text);
+    expect(allTexts.some(t => t.includes("Katalog"))).toBe(true);
+    expect(allTexts.some(t => t.includes("Bantuan"))).toBe(true);
+    expect(allTexts.some(t => t.includes("Pesanan"))).toBe(true);
     expect(allTexts.some(t => t.includes("Garansi"))).toBe(true);
   });
 
@@ -145,6 +148,7 @@ describe("Telegram messages premium UX", () => {
     expect(msg).toContain("/start");
     expect(msg).toContain("/katalog");
     expect(msg).toContain("/pesanan");
+    expect(msg).toContain("/garansi");
     expect(msg).toContain("/bantuan");
     expect(msg).toContain("axvara.tech");
     expect(msg).toContain("1️⃣");
@@ -193,5 +197,50 @@ describe("Telegram messages premium UX", () => {
     const msg = deliveryMessage("acc@email.com:pass123");
     expect(msg).toContain("<code>");
     expect(msg).toContain("Tap untuk copy");
+  });
+});
+
+describe("Telegram warranty anti-refund copy", () => {
+  it("welcome discloses third-party + points to /garansi", () => {
+    const msg = welcomeMessage("nad");
+    expect(msg).toContain("Third-party");
+    expect(msg).toContain("/garansi");
+    expect(msg).toContain("SETUJU");
+  });
+
+  it("confirm buy requires understanding before paying", () => {
+    const msg = confirmBuyMessage("ChatGPT Plus 1 Bulan", 89000);
+    expect(msg).toContain("Third-party");
+    expect(msg).toContain("/garansi");
+    expect(msg).toContain("setuju");
+  });
+
+  it("product detail points warranty to description + /garansi", () => {
+    const msg = productDetailMessage({ name: "Test", price: 50000, stock: 5 });
+    expect(msg).toContain("Garansi ikut deskripsi produk");
+    expect(msg).toContain("/garansi");
+  });
+
+  it("warranty terms disclose third-party, no 100% guarantee, DYOR", () => {
+    const msg = warrantyTermsMessage();
+    expect(msg).toContain("third-party store");
+    expect(msg).toContain("tidak ada garansi 100% permanen");
+    expect(msg).toContain("1×24 Jam s/d 30 Hari");
+    expect(msg).toContain("DYOR");
+    expect(msg).toContain("SETUJU");
+  });
+
+  it("warranty claims are replacement not refund + per-product terms", () => {
+    const msg = warrantyClaimMessage();
+    expect(msg).toContain("BUKAN refund");
+    expect(msg).toContain("sesuai deskripsi produk");
+    expect(msg).toContain("HANGUS");
+    expect(msg).toContain("1×24 jam kerja");
+  });
+
+  it("full warranty combines terms + claims", () => {
+    const msg = warrantyFullMessage();
+    expect(msg).toContain("WAJIB BACA");
+    expect(msg).toContain("SYARAT KLAIM");
   });
 });
