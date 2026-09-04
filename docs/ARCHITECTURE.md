@@ -481,32 +481,30 @@ Rollout bertahap: `TELEGRAM_BOT_ENABLED=false`, `KLIKQRIS_PAYMENTS_ENABLED=false
 - Konfirmasi beli memakai tombol `✅ Saya Paham, Lanjut Bayar` + tombol `📜 Syarat Garansi`; invoice/pre-bayar menegaskan lanjut bayar = setuju ketentuan.
 - Detail produk menunjuk garansi ikut deskripsi + `/garansi`; pesan delivery/manual mengingatkan simpan invoice untuk klaim.
 
-## 14. Rencana Bot Grup WhatsApp
+## 14. Varian Produk Terpusat dan Bot Grup WhatsApp AXVARA (Terimplementasi)
 
-Rencana handoff lengkap berada di `docs/WHATSAPP-GROUP-BOT-PLAN.md` dan belum menjadi
-runtime aktif. Prasyaratnya adalah mengubah katalog menjadi `products` sebagai keluarga
-produk dan `product_variants` sebagai SKU jual. Varian menyimpan plan, durasi, garansi,
-harga, stok, status, serta fulfillment. D1 menjadi source of truth dan CMS web menjadi
-antarmuka pengelolanya; web, Telegram, dan WhatsApp memakai catalog/commerce service yang
-sama tanpa sinkronisasi katalog per channel.
+Sistem varian produk terpusat dan bot WhatsApp telah diimplementasikan sesuai `docs/WHATSAPP-GROUP-BOT-PLAN.md`:
 
-UX WhatsApp dikunci menjadi dua langkah discovery: command `list` hanya menampilkan nama
-produk aktif tanpa kategori, lalu input nama/alias produk menampilkan detail dan active
-variants bernomor. Pemetaan angka disimpan per `conversation_id + member_id` dan selalu
-divalidasi ulang terhadap stable `variant_id`. Setelah angka dipilih, bot meminta
-`pay`/`payment`, membuat atau memakai ulang satu pending order, lalu mengirim QRIS,
-SeaBank, e-wallet, dan format bukti wajib pada grup allowlist.
+### Arsitektur
+- **D1 sebagai Source of Truth:** `products` menyimpan produk induk (name, slug, aliases, description, image, badge), sedangkan `product_variants` menyimpan SKU yang dapat dibeli (label, duration, warranty, price, stock, fulfillment_mode, sort_order).
+- **CMS Web:** Modal `VariantEditor` di `/admin` memungkinkan admin mengelola varian secara penuh (tambah, edit inline, duplikasi, nonaktifkan, hapus aman).
+- **Service Bersama:** `src/lib/catalog.ts` menyediakan query terpusat untuk web, Telegram, dan WhatsApp. `src/lib/warranty-policy.ts` mengekstrak kebijakan garansi kanonis dengan formatter Telegram (HTML) dan WhatsApp (bold `*`).
+- **Website:** Halaman detail `/produk/[slug]` mendukung variant selector interaktif; cart Zustand membedakan item berdasarkan kombinasi `product_id + variant_id`; checkout quote mendukung variant_id.
+- **Telegram Bot:** Menambahkan langkah pemilihan varian sebelum konfirmasi beli (`TELEGRAM_VARIANT_FLOW`). Menggunakan harga dan konfigurasi varian.
+- **WhatsApp Bot:** Webhook di `POST /api/whatsapp/webhook` via Fonnte gateway. Mendukung:
+  - `list` (daftar nama produk aktif tanpa kategori/harga)
+  - Pencarian nama produk/alias → detail dengan varian bernomor
+  - Pemilihan angka terikat per `conversation_id + member_id`
+  - `pay` / `payment` → pending order idempotent + info QRIS/SeaBank/e-wallet di grup
+  - `garansi` / `/garansi` → kebijakan garansi kanonis
+  - Intake bukti pembayaran dengan caption `BUKTI <KODE> <METODE>`, dedup, R2 private, notifikasi admin
+- **Feature Flags:** 10 feature flags independen di `src/lib/feature-flags.ts` untuk rollout aman bertahap (semua default `false`).
 
-Bukti harus berupa reply image dengan caption `BUKTI <KODE> <METODE>`, divalidasi
-member/order/MIME/magic bytes, dideduplikasi, dan disimpan private di R2 untuk review
-admin. Bukti gambar tidak pernah menjadi sumber status paid: KlikQRIS dikonfirmasi oleh
-callback/status provider, sedangkan SeaBank/e-wallet dikonfirmasi admin setelah cek
-mutasi. Credential fulfillment tetap dilarang tampil di grup. Command `garansi` dan
-`/garansi` memakai policy content yang sama dengan Telegram melalui formatter channel.
-
-Fonnte direncanakan sebagai device gateway nomor/grup existing, sementara Pages, D1, R2,
-KlikQRIS, cron, dan fulfillment AXVARA tetap satu arsitektur. Implementasi harus berurutan:
-schema/backfill varian → CMS → web/cart/checkout → Telegram → WhatsApp discovery →
-group payment/proof intake. Adapter KlikQRIS yang sudah bekerja direuse; webhook/outbox,
-pay, invoice, dan bukti harus idempotent, delivery channel-aware, dan seluruh flag baru
-default nonaktif.
+### Tabel Baru (migrasi 0007)
+| Tabel | Tujuan |
+|---|---|
+| `product_variants` | SKU varian produk (harga, stok, durasi, garansi, fulfillment) |
+| `whatsapp_sessions` | Sesi percakapan per anggota grup WhatsApp (TTL 15 menit) |
+| `whatsapp_inbox_events` | Idempotency / dedup webhook WhatsApp |
+| `whatsapp_outbox` | Antrean pengiriman pesan WhatsApp dengan retry |
+| `payment_proofs` | Metadata bukti pembayaran grup WhatsApp (R2 private, review queue) |

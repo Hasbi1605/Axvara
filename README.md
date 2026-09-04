@@ -21,7 +21,7 @@ axvara/
 │   ├── DESIGN.md           # Apple Store + glassmorphism + motion
 │   ├── ARCHITECTURE.md     # Stack D1+R2, schema, API contract
 │   ├── TELEGRAM-BOT-KLIKQRIS-PLAN.md # Handoff rencana bot auto-order + PG
-│   ├── WHATSAPP-GROUP-BOT-PLAN.md # Handoff varian terpusat + bot grup existing
+│   ├── WHATSAPP-GROUP-BOT-PLAN.md # Rencana varian terpusat + bot grup WA (terimplementasi)
 │   └── VPS-RESEARCH.md     # Riset VPS gratis — kenapa Pages juara
 ├── public/
 │   ├── brand/

@@ -6,6 +6,8 @@
 // - Progress indicators for multi-step flows
 // - Short, scannable lines — mobile-first (95% users)
 
+import { formatWarrantyTermsTelegram, formatWarrantyClaimsTelegram } from "@/lib/warranty-policy";
+
 export function escapeHtml(text: string): string {
   return text
     .replace(/&/g, "&amp;")
@@ -130,6 +132,45 @@ export function productDetailMessage(product: {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // PURCHASE FLOW
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+export function confirmVariantBuyMessage(params: {
+  productName: string;
+  variantLabel: string;
+  duration?: string | null;
+  warranty?: string | null;
+  price: number;
+}): string {
+  const { productName, variantLabel, duration, warranty, price } = params;
+  const name = escapeHtml(truncate(productName, 100));
+  const lines = [
+    "🛒 <b>Konfirmasi Pembelian</b>",
+    "━━━━━━━━━━━━━━━━━━━━━",
+    "",
+    `📦 <b>${name}</b>`,
+    `🏷 Varian: ${escapeHtml(variantLabel)}`,
+  ];
+  if (duration) lines.push(`⏱ Durasi: ${escapeHtml(duration)}`);
+  if (warranty) lines.push(`🛡 Garansi: ${escapeHtml(warranty)}`);
+  lines.push(`💰 <b>${formatRupiah(price)}</b>`);
+  lines.push("📊 Qty: 1");
+  lines.push("");
+  lines.push("⚠️ <i>Total final bisa sedikit berbeda karena kode unik pembayaran.</i>");
+  lines.push("");
+  lines.push("🛡 <b>Third-party, bukan official.</b> Garansi ikut varian yang dipilih. Lanjut bayar = setuju ketentuan. /garansi untuk detail.");
+  lines.push("");
+  lines.push("Lanjutkan? 👇");
+  return lines.join("\n");
+}
+
+export function chooseVariantMessage(productName: string): string {
+  const name = escapeHtml(truncate(productName, 100));
+  return [
+    `📦 <b>Pilih Varian — ${name}</b>`,
+    "━━━━━━━━━━━━━━━━━━━━━",
+    "",
+    "Pilih varian yang sesuai kebutuhan kamu:",
+  ].join("\n");
+}
 
 export function confirmBuyMessage(productName: string, price: number): string {
   const name = escapeHtml(truncate(productName, 100));
@@ -346,39 +387,11 @@ export function helpMessage(): string {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export function warrantyTermsMessage(): string {
-  return [
-    "📜 <b>KETENTUAN AXVARA — WAJIB BACA SEBELUM BELI</b>",
-    "━━━━━━━━━━━━━━━━━━━━━",
-    "",
-    "AXVARA adalah <b>third-party store, BUKAN official store</b> dan tidak terafiliasi dengan brand manapun.",
-    "",
-    "Harga di sini jauh lebih murah, tapi <b>tidak ada garansi 100% permanen.</b> Jika pihak official mengubah sistem/kebijakan, produk bisa terdampak kapan saja.",
-    "",
-    "Garansi AXVARA <b>tetap ada, tapi bervariasi: 1×24 Jam s/d 30 Hari</b> tergantung produk yang kamu pilih. Beda garansi = beda harga.",
-    "",
-    "Pilih produk sesuai kemampuan &amp; kebutuhan garansimu. <b>DYOR, DWYOR.</b>",
-    "",
-    "Lanjut membeli = kamu <b>PAHAM &amp; SETUJU</b> ketentuan ini. Terima kasih 🙏",
-  ].join("\n");
+  return formatWarrantyTermsTelegram();
 }
 
 export function warrantyClaimMessage(): string {
-  return [
-    "🛡 <b>SYARAT KLAIM GARANSI</b>",
-    "━━━━━━━━━━━━━━━━━━━━━",
-    "",
-    "1️⃣ Garansi berupa <b>penggantian / perbaikan, BUKAN refund dana.</b> Refund hanya jika stok pengganti kosong dan disetujui admin.",
-    "",
-    "2️⃣ Wajib sertakan <b>video/screenshot error + kode pesanan/invoice.</b> Tanpa bukti = klaim ditolak.",
-    "",
-    "3️⃣ Klaim hanya selama <b>masa garansi aktif sesuai deskripsi produk</b>, terhitung sejak produk dikirim.",
-    "",
-    "4️⃣ Garansi <b>HANGUS</b> jika: password/email diganti tanpa izin, login banyak device/IP bersamaan, melanggar aturan pakai di deskripsi, akun suspend karena pelanggaran user, atau order sudah confirm selesai.",
-    "",
-    "5️⃣ Proses penggantian <b>1×24 jam kerja</b>, bukan instan. Harap antre.",
-    "",
-    "6️⃣ Satu order = satu kali klaim, kecuali produk 30 hari (maks 2–3× ganti, lihat deskripsi).",
-  ].join("\n");
+  return formatWarrantyClaimsTelegram();
 }
 
 export function warrantyFullMessage(): string {

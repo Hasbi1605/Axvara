@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS products (
   badge TEXT,
   sold_count INTEGER DEFAULT 0,
   stock INTEGER DEFAULT -1,
+  aliases TEXT DEFAULT '[]',
   is_active INTEGER DEFAULT 1,
   sort_order INTEGER DEFAULT 0,
   created_at TEXT DEFAULT (datetime('now')),
@@ -40,6 +41,8 @@ CREATE TABLE IF NOT EXISTS orders (
   admin_note TEXT,
   quote_id TEXT,
   expires_at TEXT,
+  variant_id INTEGER REFERENCES product_variants(id),
+  variant_snapshot TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -220,6 +223,7 @@ CREATE INDEX IF NOT EXISTS idx_payment_transactions_order ON payment_transaction
 CREATE TABLE IF NOT EXISTS fulfillment_inventory (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   product_id INTEGER NOT NULL REFERENCES products(id),
+  variant_id INTEGER REFERENCES product_variants(id),
   secret_ciphertext TEXT NOT NULL,
   secret_iv TEXT NOT NULL,
   secret_fingerprint TEXT NOT NULL,
@@ -236,7 +240,9 @@ CREATE INDEX IF NOT EXISTS idx_fulfillment_inventory_product_status
 CREATE TABLE IF NOT EXISTS fulfillment_jobs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   order_code TEXT NOT NULL UNIQUE REFERENCES orders(code),
+  variant_id INTEGER REFERENCES product_variants(id),
   inventory_id INTEGER REFERENCES fulfillment_inventory(id),
+  sales_channel TEXT DEFAULT 'telegram',
   status TEXT NOT NULL DEFAULT 'queued'
     CHECK (status IN ('queued','sending','delivered','manual_required','retry','failed')),
   attempt_count INTEGER NOT NULL DEFAULT 0,
@@ -249,3 +255,117 @@ CREATE TABLE IF NOT EXISTS fulfillment_jobs (
 );
 CREATE INDEX IF NOT EXISTS idx_fulfillment_jobs_status ON fulfillment_jobs(status);
 CREATE INDEX IF NOT EXISTS idx_fulfillment_jobs_next ON fulfillment_jobs(next_attempt_at);
+
+-- Product Variants (migration 0007)
+CREATE TABLE IF NOT EXISTS product_variants (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  product_id INTEGER NOT NULL REFERENCES products(id),
+  sku TEXT NOT NULL UNIQUE,
+  label TEXT NOT NULL,
+
+  duration_value INTEGER,
+  duration_unit TEXT CHECK (duration_unit IS NULL OR duration_unit IN ('day','month','year','lifetime','custom')),
+  duration_label TEXT,
+
+  warranty_type TEXT NOT NULL DEFAULT 'none' CHECK (warranty_type IN ('none','limited','full','custom')),
+  warranty_value INTEGER,
+  warranty_unit TEXT CHECK (warranty_unit IS NULL OR warranty_unit IN ('day','month','year','lifetime')),
+  warranty_label TEXT,
+
+  price INTEGER NOT NULL CHECK (price >= 0),
+  compare_price INTEGER CHECK (compare_price IS NULL OR compare_price > price),
+  stock INTEGER NOT NULL DEFAULT -1,
+
+  fulfillment_mode TEXT NOT NULL DEFAULT 'manual' CHECK (fulfillment_mode IN ('manual','shared','unique')),
+  shared_secret_ciphertext TEXT,
+  shared_secret_iv TEXT,
+
+  is_active INTEGER NOT NULL DEFAULT 1,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_product_variants_product ON product_variants(product_id, is_active, sort_order);
+CREATE INDEX IF NOT EXISTS idx_product_variants_sku ON product_variants(sku);
+
+-- WhatsApp sessions (migration 0007)
+CREATE TABLE IF NOT EXISTS whatsapp_sessions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  provider TEXT NOT NULL DEFAULT 'fonnte',
+  conversation_id TEXT NOT NULL,
+  member_id TEXT NOT NULL,
+  selected_product_id INTEGER,
+  numbered_variant_map TEXT,
+  selected_variant_id INTEGER,
+  variant_message_id TEXT,
+  payment_message_id TEXT,
+  current_order_id INTEGER,
+  current_order_code TEXT,
+  current_payment_transaction_id INTEGER,
+  catalog_version TEXT,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(provider, conversation_id, member_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_wa_sessions_expiry ON whatsapp_sessions(expires_at);
+
+-- WhatsApp inbox events (migration 0007)
+CREATE TABLE IF NOT EXISTS whatsapp_inbox_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  provider TEXT NOT NULL DEFAULT 'fonnte',
+  external_message_id TEXT NOT NULL,
+  event_type TEXT NOT NULL DEFAULT 'message',
+  conversation_id TEXT,
+  member_id TEXT,
+  payload_hash TEXT,
+  status TEXT NOT NULL DEFAULT 'processed' CHECK (status IN ('processed','failed','ignored')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(provider, external_message_id)
+);
+
+-- WhatsApp outbox (migration 0007)
+CREATE TABLE IF NOT EXISTS whatsapp_outbox (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  channel TEXT NOT NULL DEFAULT 'whatsapp',
+  destination TEXT NOT NULL,
+  message_type TEXT NOT NULL DEFAULT 'text',
+  payload TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','sent','failed','dead')),
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at TEXT,
+  last_error TEXT,
+  provider_message_id TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_wa_outbox_status ON whatsapp_outbox(status, next_attempt_at);
+
+-- Payment proofs (migration 0007)
+CREATE TABLE IF NOT EXISTS payment_proofs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_code TEXT NOT NULL REFERENCES orders(code),
+  sales_channel TEXT NOT NULL DEFAULT 'whatsapp',
+  conversation_id TEXT NOT NULL,
+  member_id TEXT NOT NULL,
+  external_message_id TEXT NOT NULL,
+  reply_to_message_id TEXT,
+  claimed_method TEXT NOT NULL CHECK (claimed_method IN ('QRIS','SEABANK','EWALLET')),
+  r2_key TEXT NOT NULL,
+  content_type TEXT NOT NULL,
+  byte_size INTEGER NOT NULL,
+  sha256 TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'submitted' CHECK (status IN ('submitted','approved','rejected')),
+  reviewed_by TEXT,
+  reviewed_at TEXT,
+  rejection_reason TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(sales_channel, external_message_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_payment_proofs_order ON payment_proofs(order_code);
+CREATE INDEX IF NOT EXISTS idx_payment_proofs_status ON payment_proofs(status);

@@ -25,6 +25,7 @@ function CheckoutInner() {
   const [directLoading, setDirectLoading] = React.useState(false);
   const [directError, setDirectError] = React.useState<string | null>(null);
   const buySlug = searchParams.get("buy");
+  const buyVariantId = searchParams.get("variant");
   React.useEffect(() => {
     if (!buySlug) { setDirectProduct(null); setDirectError(null); return; }
     setDirectProduct(null);
@@ -32,14 +33,34 @@ function CheckoutInner() {
     setDirectLoading(true);
     fetch(`/api/products?active=1&q=${encodeURIComponent(buySlug)}`)
       .then((r) => r.ok ? r.json() : Promise.reject())
-      .then((j) => {
+      .then(async (j) => {
         const found = (j.products as Product[] | undefined)?.find((p) => p.slug === buySlug);
         if (!found) throw new Error("Produk tidak ditemukan atau sedang nonaktif.");
+        // If variant ID is provided, try to fetch variant details to get correct price
+        if (buyVariantId) {
+          try {
+            const catRes = await fetch(`/api/catalog?slug=${encodeURIComponent(buySlug)}`);
+            if (catRes.ok) {
+              const catData = await catRes.json();
+              const variant = (catData.product?.variants || []).find((v: any) => String(v.id) === buyVariantId);
+              if (variant) {
+                setDirectProduct({
+                  ...found,
+                  price: variant.price,
+                  stock: variant.stock === -1 ? undefined : variant.stock,
+                  variantId: variant.id,
+                  variantLabel: variant.label,
+                } as any);
+                return;
+              }
+            }
+          } catch { /* fallback to base product */ }
+        }
         setDirectProduct(found);
       })
       .catch((error) => setDirectError(error instanceof Error ? error.message : "Gagal memuat produk."))
       .finally(() => setDirectLoading(false));
-  }, [buySlug]);
+  }, [buySlug, buyVariantId]);
   const buyProduct = buySlug ? directProduct : null;
   const isDirect = Boolean(buySlug);
   const items = useMemo(

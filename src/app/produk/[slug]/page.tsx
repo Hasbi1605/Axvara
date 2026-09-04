@@ -19,6 +19,8 @@ export default function ProductDetailPage() {
   const [activeImg, setActiveImg] = useState(0);
   const [detailLoading, setDetailLoading] = useState(true);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [catalogDetail, setCatalogDetail] = useState<any>(null);
+  const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null);
 
   useEffect(() => {
     setDetailLoading(true);
@@ -47,6 +49,25 @@ export default function ProductDetailPage() {
       })
       .catch((e) => setDetailError(e instanceof Error ? e.message : "Gagal memuat produk"))
       .finally(()=> setDetailLoading(false));
+  }, [slug]);
+
+  // Fetch variant-aware catalog detail
+  useEffect(() => {
+    setCatalogDetail(null);
+    setSelectedVariantId(null);
+    fetch(`/api/catalog?slug=${encodeURIComponent(slug)}`)
+      .then(async (r) => { if (!r.ok) return null; return r.json(); })
+      .then((data) => {
+        if (data?.product) {
+          setCatalogDetail(data.product);
+          // Auto-select if only one active variant
+          const activeVars = (data.product.variants || []).filter((v: any) => v.is_active && v.stock !== 0);
+          if (activeVars.length === 1) {
+            setSelectedVariantId(activeVars[0].id);
+          }
+        }
+      })
+      .catch(() => { /* catalog fetch is best-effort, page still works without it */ });
   }, [slug]);
 
   const product = catalogProducts.find((p) => p.slug === slug);
@@ -106,6 +127,16 @@ export default function ProductDetailPage() {
     ? Math.round((1 - product.price / product.comparePrice) * 100)
     : 0;
   const outOfStock = product.stock !== undefined && product.stock !== null && product.stock !== -1 && product.stock <= 0;
+
+  // Variant-aware derived values
+  const variants = catalogDetail?.variants || [];
+  const activeVariants = variants.filter((v: any) => v.is_active);
+  const hasMultipleVariants = activeVariants.length > 1;
+  const selectedVariant = selectedVariantId ? activeVariants.find((v: any) => v.id === selectedVariantId) : null;
+  const displayPrice = selectedVariant ? selectedVariant.price : product.price;
+  const displayComparePrice = selectedVariant ? selectedVariant.compare_price : product.comparePrice;
+  const variantOutOfStock = selectedVariant ? selectedVariant.stock === 0 : false;
+  const needsVariantSelection = hasMultipleVariants && !selectedVariantId;
 
   const related = (() => {
     const sameCat = catalogProducts.filter(
@@ -220,15 +251,15 @@ export default function ProductDetailPage() {
           {/* Price block */}
           <div className="mt-5 flex items-baseline gap-3 flex-wrap">
             <span className="font-display font-bold text-[26px] text-white">
-              {formatRupiah(product.price)}
+              {formatRupiah(displayPrice)}
             </span>
-            {product.comparePrice && (
+            {displayComparePrice && (
               <>
                 <span className="text-sm line-through text-white/30">
-                  {formatRupiah(product.comparePrice)}
+                  {formatRupiah(displayComparePrice)}
                 </span>
                 <span className="rounded-full bg-[#FFB800] text-[#080C1E] text-xs font-bold px-2 py-1">
-                  -{discount}%
+                  -{Math.round((1 - displayPrice / displayComparePrice) * 100)}%
                 </span>
               </>
             )}
@@ -253,10 +284,51 @@ export default function ProductDetailPage() {
             </div>
           )}
 
+          {/* Variant selector - only when multiple variants available */}
+          {hasMultipleVariants && (
+            <div className="mt-4 space-y-2">
+              <h3 className="text-sm font-medium text-white/60">Pilih Varian</h3>
+              <div className="grid gap-2">
+                {activeVariants.map((v: any) => (
+                  <button
+                    key={v.id}
+                    onClick={() => setSelectedVariantId(v.id)}
+                    className={`text-left p-3 rounded-xl border transition ${
+                      selectedVariantId === v.id
+                        ? "border-[#00E5FF]/50 bg-[#00E5FF]/10"
+                        : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"
+                    } ${v.stock === 0 ? "opacity-50 cursor-not-allowed" : ""}`}
+                    disabled={v.stock === 0}
+                  >
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <span className="text-sm font-medium text-white">{v.label}</span>
+                        {v.duration_label || (v.duration_value && v.duration_unit) ? (
+                          <span className="text-xs text-white/50 ml-2">
+                            {v.duration_label || `${v.duration_value} ${v.duration_unit === 'month' ? 'Bulan' : v.duration_unit === 'year' ? 'Tahun' : v.duration_unit}`}
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="text-right">
+                        <span className="text-sm font-bold text-[#00E5FF]">
+                          Rp{v.price.toLocaleString("id-ID")}
+                        </span>
+                        {v.stock === 0 && <span className="text-xs text-red-400 ml-2">HABIS</span>}
+                      </div>
+                    </div>
+                    {(v.warranty_type !== 'none') && (
+                      <div className="text-xs text-white/40 mt-1">
+                        Garansi: {v.warranty_type === 'full' ? 'Full Garansi' : v.warranty_label || `${v.warranty_value} ${v.warranty_unit === 'month' ? 'Bulan' : v.warranty_unit}`}
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Divider */}
           <div className="mt-5 border-t border-white/8" />
-
-          {/* Trust badges */}
           <div className="mt-5 flex flex-wrap gap-2 text-xs">
             <span className="inline-flex items-center gap-1.5 ax-glass-card rounded-full px-3 py-1.5 text-white/70">
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -300,7 +372,7 @@ export default function ProductDetailPage() {
           <div className="flex-1 min-h-[16px]" />
 
           {/* CTA buttons */}
-          {outOfStock ? (
+          {outOfStock || variantOutOfStock ? (
             <div className="mt-6">
               <span className="w-full h-[52px] rounded-xl bg-white/[0.06] border border-white/10 text-white/40 font-bold flex items-center justify-center gap-2">
                 Stok Habis
@@ -308,16 +380,39 @@ export default function ProductDetailPage() {
             </div>
           ) : (
             <div className="mt-6 flex flex-col gap-3">
+              {needsVariantSelection && (
+                <p className="text-xs text-[#FFB800]/80 text-center">Pilih varian terlebih dahulu</p>
+              )}
               <button
-                onClick={() => router.push(`/checkout?buy=${product.slug}`)}
-                className="w-full h-[52px] rounded-xl bg-[#00E5FF] text-[#080C1E] font-bold flex items-center justify-center gap-2 hover:bg-[#00D0E8] transition active:scale-[0.98]"
+                onClick={() => {
+                  const buyUrl = selectedVariantId
+                    ? `/checkout?buy=${product.slug}&variant=${selectedVariantId}`
+                    : `/checkout?buy=${product.slug}`;
+                  router.push(buyUrl);
+                }}
+                disabled={needsVariantSelection}
+                className={`w-full h-[52px] rounded-xl font-bold flex items-center justify-center gap-2 transition active:scale-[0.98] ${
+                  needsVariantSelection
+                    ? "bg-[#00E5FF]/30 text-[#080C1E]/50 cursor-not-allowed"
+                    : "bg-[#00E5FF] text-[#080C1E] hover:bg-[#00D0E8]"
+                }`}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/icons/ios11/lightning-bolt-32.png" alt="" width={16} height={16} className="w-4 h-4 object-contain brightness-0" style={{ filter: "brightness(0)" }} draggable={false} /> Beli Langsung
               </button>
               <button
-                onClick={() => add(product)}
-                className="w-full h-[48px] rounded-xl ax-glass-card font-semibold text-white text-sm flex items-center justify-center gap-2 hover:bg-white/10 transition"
+                onClick={() => {
+                  const cartProduct = selectedVariant
+                    ? { ...product, price: selectedVariant.price, stock: selectedVariant.stock === -1 ? undefined : selectedVariant.stock, variantId: selectedVariant.id, variantLabel: selectedVariant.label }
+                    : product;
+                  add(cartProduct);
+                }}
+                disabled={needsVariantSelection}
+                className={`w-full h-[48px] rounded-xl ax-glass-card font-semibold text-sm flex items-center justify-center gap-2 transition ${
+                  needsVariantSelection
+                    ? "text-white/30 cursor-not-allowed"
+                    : "text-white hover:bg-white/10"
+                }`}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/icons/ios11/shopping-bag-32.png" alt="" width={16} height={16} className="w-4 h-4 object-contain brightness-0 invert" draggable={false} /> Tambah ke Keranjang

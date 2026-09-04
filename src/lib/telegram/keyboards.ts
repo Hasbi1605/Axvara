@@ -15,7 +15,10 @@ export const cb = {
   category: (categoryId: number, page = 0) => `cat:${categoryId}:${page}`,
   product: (productId: number) => `prd:${productId}`,
   buy: (productId: number) => `buy:${productId}`,
+  variants: (productId: number) => `vars:${productId}`,
+  variant: (variantId: number) => `var:${variantId}`,
   confirm: (productId: number) => `confirm:${productId}`,
+  confirmVariant: (variantId: number) => `cfv:${variantId}`,
   order: (orderCode: string) => `order:${orderCode}`,
   cancel: (orderCode: string) => `cancel:${orderCode}`,
   refresh: (orderCode: string) => `refresh:${orderCode}`,
@@ -129,6 +132,45 @@ export function productDetailKeyboard(productId: number): InlineKeyboardMarkup {
       [
         { text: "◀️ Kembali", callback_data: cb.categories() },
         { text: "🏠 Menu", callback_data: cb.home() },
+      ],
+    ],
+  };
+}
+
+export function variantsKeyboard(
+  productId: number,
+  variants: { id: number; label: string; price: number; stock: number; duration_label?: string | null }[],
+): InlineKeyboardMarkup {
+  const rows: InlineKeyboardButton[][] = variants.map((v) => {
+    const priceStr = `Rp${(v.price / 1000).toFixed(0)}rb`;
+    const dur = v.duration_label ? ` • ${v.duration_label}` : "";
+    const isOutOfStock = v.stock === 0;
+    const text = isOutOfStock
+      ? `❌ ${v.label} (Habis)`
+      : `${v.label}${dur} • ${priceStr}`;
+    return [{
+      text,
+      callback_data: isOutOfStock ? "noop" : cb.variant(v.id),
+    }];
+  });
+
+  rows.push([
+    { text: "◀️ Kembali", callback_data: cb.product(productId) },
+    { text: "🏠 Menu", callback_data: cb.home() },
+  ]);
+
+  return { inline_keyboard: rows };
+}
+
+export function confirmVariantPurchaseKeyboard(productId: number, variantId: number): InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [
+        { text: "✅ Saya Paham, Lanjut Bayar", callback_data: cb.confirmVariant(variantId) },
+      ],
+      [
+        { text: "📜 Syarat Garansi", callback_data: "warranty" },
+        { text: "❌ Ganti Varian", callback_data: cb.variants(productId) },
       ],
     ],
   };

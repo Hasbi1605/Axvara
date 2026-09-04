@@ -8,7 +8,7 @@ import { sendMessage, sendPhoto, editMessageText, safeEditOrSend, answerCallback
 import {
   homeKeyboard, categoriesKeyboard, productsKeyboard,
   productDetailKeyboard, confirmPurchaseKeyboard, warrantyKeyboard,
-  orderStatusKeyboard, parseCallback,
+  orderStatusKeyboard, variantsKeyboard, confirmVariantPurchaseKeyboard, parseCallback,
 } from "@/lib/telegram/keyboards";
 import {
   welcomeMessage, categoriesMessage, categoryProductsMessage,
@@ -16,7 +16,10 @@ import {
   outOfStockMessage, alreadyPendingMessage, errorMessage,
   myOrdersPrompt, orderStatusMessage, invoiceMessage,
   orderCancelledMessage, askWhatsAppMessage, invalidWhatsAppMessage,
+  chooseVariantMessage, confirmVariantBuyMessage,
 } from "@/lib/telegram/messages";
+import { getProductDetail, getActiveVariant, formatDuration, formatWarranty } from "@/lib/catalog";
+import { isEnabled } from "@/lib/feature-flags";
 import { generateOrderCode } from "@/lib/security";
 import { getPaymentProvider, isPaymentEnabled } from "@/lib/payments/klikqris";
 import { reserveInventory, releaseInventoryForOrder, countInventory } from "@/lib/fulfillment/inventory";
@@ -296,7 +299,23 @@ async function handleCallback(data: string, chatId: number, messageId: number, f
       break;
 
     case "buy":
-      await handleBuyConfirm(chatId, messageId, Number(params[0]));
+      if (isEnabled("TELEGRAM_VARIANT_FLOW")) {
+        await handleShowVariants(chatId, messageId, Number(params[0]));
+      } else {
+        await handleBuyConfirm(chatId, messageId, Number(params[0]));
+      }
+      break;
+
+    case "vars":
+      await handleShowVariants(chatId, messageId, Number(params[0]));
+      break;
+
+    case "var":
+      await handleVariantConfirm(chatId, messageId, Number(params[0]));
+      break;
+
+    case "cfv":
+      await handleConfirmVariantPurchase(chatId, messageId, Number(params[0]), from);
       break;
 
     case "confirm":
@@ -413,6 +432,269 @@ async function handleShowProduct(chatId: number, messageId: number, productId: n
       parse_mode: "HTML",
       reply_markup: productDetailKeyboard(productId),
     });
+  }
+}
+
+// --- Variant flow handlers (TELEGRAM_VARIANT_FLOW) ---
+
+async function handleShowVariants(chatId: number, messageId: number, productId: number) {
+  const detail = await getProductDetail(productId);
+  if (!detail || detail.variants.length === 0) {
+    // Fallback to legacy flow if no variants
+    await handleBuyConfirm(chatId, messageId, productId);
+    return;
+  }
+
+  // If only 1 variant, skip to confirmation
+  const activeVariants = detail.variants.filter((v) => v.is_active);
+  if (activeVariants.length === 1) {
+    await handleVariantConfirm(chatId, messageId, activeVariants[0].id);
+    return;
+  }
+
+  const variantItems = activeVariants.map((v) => ({
+    id: v.id,
+    label: v.label,
+    price: v.price,
+    stock: v.stock,
+    duration_label: formatDuration(v) || null,
+  }));
+
+  await safeEditOrSend({
+    chat_id: chatId,
+    message_id: messageId,
+    text: chooseVariantMessage(detail.name),
+    parse_mode: "HTML",
+    reply_markup: variantsKeyboard(productId, variantItems),
+  });
+}
+
+async function handleVariantConfirm(chatId: number, messageId: number, variantId: number) {
+  if (!isPaymentEnabled()) {
+    await sendMessage({
+      chat_id: chatId,
+      text: "⚠️ Pembayaran otomatis belum aktif. Hubungi admin untuk order.",
+      parse_mode: "HTML",
+    });
+    return;
+  }
+
+  const variant = await getActiveVariant(variantId);
+  if (!variant) {
+    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+    return;
+  }
+
+  if (variant.stock === 0) {
+    await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
+    return;
+  }
+
+  // Get product for name
+  const product = await queryFirst(`SELECT id, name FROM products WHERE id=?`, (variant as any).product_id || 0);
+  const productName = product ? String(product.name) : "Produk";
+  const productId = product ? Number(product.id) : 0;
+
+  // Check for existing pending order for this variant
+  const existingOrder = await queryFirst(
+    `SELECT code FROM orders WHERE telegram_chat_id=? AND status='pending' AND payment_status IN ('unpaid','pending')
+     AND variant_id=?`,
+    String(chatId), variantId,
+  );
+  if (existingOrder) {
+    await sendMessage({
+      chat_id: chatId,
+      text: alreadyPendingMessage(String(existingOrder.code)),
+      parse_mode: "HTML",
+      reply_markup: orderStatusKeyboard(String(existingOrder.code)),
+    });
+    return;
+  }
+
+  await safeEditOrSend({
+    chat_id: chatId,
+    message_id: messageId,
+    text: confirmVariantBuyMessage({
+      productName,
+      variantLabel: variant.label,
+      duration: formatDuration(variant) || null,
+      warranty: formatWarranty(variant) || null,
+      price: variant.price,
+    }),
+    parse_mode: "HTML",
+    reply_markup: confirmVariantPurchaseKeyboard(productId, variantId),
+  });
+}
+
+async function handleConfirmVariantPurchase(
+  chatId: number,
+  messageId: number,
+  variantId: number,
+  from: { id: number; first_name: string; username?: string },
+) {
+  if (!isPaymentEnabled()) {
+    await sendMessage({ chat_id: chatId, text: "⚠️ Pembayaran otomatis belum aktif.", parse_mode: "HTML" });
+    return;
+  }
+
+  await sendChatAction(chatId, "typing");
+
+  const variant = await getActiveVariant(variantId);
+  if (!variant) {
+    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+    return;
+  }
+
+  const product = await queryFirst(`SELECT id, name FROM products WHERE id=?`, (variant as any).product_id || 0);
+  if (!product) {
+    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+    return;
+  }
+
+  const productId = Number(product.id);
+  const fulfillmentMode = variant.fulfillment_mode || "manual";
+
+  if (fulfillmentMode === "manual") {
+    if (isD1Mode()) {
+      await execRun(
+        `UPDATE telegram_users SET pending_action=?, updated_at=datetime('now') WHERE user_id=?`,
+        `wa_for_var:${variantId}`, String(from.id),
+      );
+    }
+    await sendMessage({
+      chat_id: chatId,
+      text: askWhatsAppMessage(`${product.name} — ${variant.label}`),
+      parse_mode: "HTML",
+    });
+    return;
+  }
+
+  await createAndSendVariantInvoice(chatId, messageId, productId, String(product.name), variant, from, "");
+}
+
+async function createAndSendVariantInvoice(
+  chatId: number,
+  _messageId: number,
+  productId: number,
+  productName: string,
+  variant: any,
+  from: { id: number; first_name: string; username?: string },
+  customerWa: string,
+) {
+  const price = Number(variant.price);
+  const fulfillmentMode = String(variant.fulfillment_mode || "manual");
+  const orderCode = generateOrderCode();
+
+  try {
+    let inventoryId: number | null = null;
+    if (fulfillmentMode === "unique") {
+      inventoryId = await reserveInventory(productId, orderCode);
+      if (inventoryId === null) {
+        await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
+        return;
+      }
+    }
+
+    // Decrement variant stock
+    if (isD1Mode() && variant.stock !== -1) {
+      const stockResult = await execRun(
+        `UPDATE product_variants SET stock = stock - 1, updated_at = datetime('now')
+         WHERE id=? AND is_active=1 AND stock >= 1`,
+        variant.id,
+      );
+      if (!stockResult.changes) {
+        if (inventoryId) await releaseInventoryForOrder(orderCode);
+        await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
+        return;
+      }
+    }
+
+    const provider = getPaymentProvider();
+    const providerOrderId = orderCode.replace(/^AXV-/, "");
+    const merchantId = process.env.KLIKQRIS_MERCHANT_ID ?? "";
+
+    let invoiceResult;
+    try {
+      invoiceResult = await provider.createInvoice({
+        orderId: providerOrderId,
+        amount: price,
+        merchantId,
+      });
+    } catch {
+      if (variant.stock !== -1 && isD1Mode()) {
+        await execRun(`UPDATE product_variants SET stock = stock + 1 WHERE id=? AND stock != -1`, variant.id);
+      }
+      if (inventoryId) await releaseInventoryForOrder(orderCode);
+      await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+      return;
+    }
+
+    if (!invoiceResult || !invoiceResult.success) {
+      if (variant.stock !== -1 && isD1Mode()) {
+        await execRun(`UPDATE product_variants SET stock = stock + 1 WHERE id=? AND stock != -1`, variant.id);
+      }
+      if (inventoryId) await releaseInventoryForOrder(orderCode);
+      await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+      return;
+    }
+
+    const items = [{ product_id: productId, variant_id: variant.id, name: `${productName} — ${variant.label}`, price, qty: 1 }];
+    await execRun(
+      `INSERT INTO orders (code, customer_name, customer_wa, customer_email, items, subtotal,
+         payment_method, payment_account, proof_url, status, sales_channel,
+         telegram_chat_id, telegram_user_id, payment_status, fulfillment_status,
+         variant_id, expires_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      orderCode, from.first_name, customerWa, null, JSON.stringify(items),
+      invoiceResult.payableAmount, "klikqris", "", null, "pending", "telegram",
+      String(chatId), String(from.id), "pending",
+      fulfillmentMode === "unique" ? "reserved" : "not_required",
+      variant.id, invoiceResult.expiresAt,
+    );
+
+    await execRun(
+      `INSERT INTO payment_transactions (order_code, provider, provider_mode, provider_order_id,
+         merchant_id, requested_amount, payable_amount, status, provider_signature,
+         qris_url, direct_url, expires_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+      orderCode, "klikqris", provider.mode, invoiceResult.providerOrderId,
+      invoiceResult.merchantId, price, invoiceResult.payableAmount, "pending",
+      invoiceResult.signature, invoiceResult.qrisUrl, invoiceResult.directUrl, invoiceResult.expiresAt,
+    );
+
+    await createFulfillmentJob(orderCode, inventoryId, fulfillmentMode);
+
+    const displayName = `${productName} — ${variant.label}`;
+    const photoSource = invoiceResult.qrisUrl ?? invoiceResult.qrisImage;
+    if (photoSource) {
+      await sendPhoto({
+        chat_id: chatId,
+        photo: photoSource,
+        caption: invoiceMessage({
+          orderCode,
+          productName: displayName,
+          payableAmount: invoiceResult.payableAmount,
+          expiresAt: invoiceResult.expiresAt,
+        }),
+        parse_mode: "HTML",
+        reply_markup: orderStatusKeyboard(orderCode),
+      });
+    } else {
+      await sendMessage({
+        chat_id: chatId,
+        text: invoiceMessage({
+          orderCode,
+          productName: displayName,
+          payableAmount: invoiceResult.payableAmount,
+          expiresAt: invoiceResult.expiresAt,
+        }),
+        parse_mode: "HTML",
+        reply_markup: orderStatusKeyboard(orderCode),
+      });
+    }
+  } catch (error) {
+    console.error("Variant order creation failed:", error instanceof Error ? error.message : "unknown");
+    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
   }
 }
 

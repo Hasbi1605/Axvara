@@ -16,6 +16,7 @@ import { PaymentMethodsManager } from "@/components/admin/PaymentMethodsManager"
 import { IosIcon } from "@/components/ui/IosIcon";
 import { NewsletterSubscribers } from "@/components/admin/NewsletterSubscribers";
 import BotAutomationManager from "@/components/admin/BotAutomationManager";
+import VariantEditor from "@/components/admin/VariantEditor";
 
 type Prod = { id:string; slug:string; name:string; description:string; price:number; comparePrice?:number; categorySlug:string; image:string; images:string[]; badge?:string; soldCount:number; stock:number; isActive:boolean; sortOrder?:number };
 type Cat = { id:number; slug:string; name:string };
@@ -80,6 +81,7 @@ export default function AdminPage() {
   const [confirmOrder, setConfirmOrder] = useState<Order | null>(null);
   const [adminNote, setAdminNote] = useState("");
   const [confirming, setConfirming] = useState(false);
+  const [variantEditorProduct, setVariantEditorProduct] = useState<{ id: number; name: string } | null>(null);
 
   useEffect(()=>{
     const syncSection=()=>{
@@ -430,6 +432,7 @@ export default function AdminPage() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1.5">
+                          <button onClick={()=>setVariantEditorProduct({ id: Number(p.id), name: p.name })} className="px-2 py-0.5 bg-cyan-500/10 text-cyan-400 rounded text-xs">Varian</button>
                           <button onClick={()=>openEdit(p)} className="inline-flex h-8 items-center gap-1 px-3 rounded-full bg-white text-[#080C1E] text-xs font-bold hover:bg-white/90"><IosIcon name="edit" size={12} tint="black" /> Edit</button>
                           <button onClick={()=>setDeleteTarget(p)} className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600 shadow-[0_2px_10px_rgba(239,68,68,0.35)] transition" aria-label={`Hapus ${p.name}`} title="Hapus produk"><IosIcon name="trash" size={16} tint="white" /></button>
                         </div>
@@ -590,7 +593,7 @@ export default function AdminPage() {
       <ConfirmDialog
         open={!!deleteTarget}
         title="Hapus produk?"
-        description={deleteTarget ? `“${deleteTarget.name}” akan dihapus permanen dari katalog. Tindakan ini tidak dapat dibatalkan.` : ""}
+        description={deleteTarget ? `"${deleteTarget.name}" akan dihapus permanen dari katalog. Tindakan ini tidak dapat dibatalkan.` : ""}
         confirmLabel="Hapus permanen"
         cancelLabel="Batal"
         variant="danger"
@@ -598,6 +601,14 @@ export default function AdminPage() {
         onClose={()=> !deleting && setDeleteTarget(null)}
         onConfirm={confirmDelete}
       />
+
+      {variantEditorProduct && (
+        <VariantEditor
+          productId={variantEditorProduct.id}
+          productName={variantEditorProduct.name}
+          onClose={() => setVariantEditorProduct(null)}
+        />
+      )}
 
     </AdminShell>
   );

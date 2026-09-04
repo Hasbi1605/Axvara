@@ -1225,23 +1225,23 @@ Fase 5; auto-order ditambahkan setelah jalur varian web dan Telegram stabil.
 
 ## 21. Checklist handoff agent eksekutor
 
-- [ ] Baca PRD, DESIGN, ARCHITECTURE, README, CHANGELOG, dan dokumen ini.
-- [ ] Jangan mengimplementasikan WhatsApp di atas products.price lama.
-- [ ] Tambah migration additive serta backfill default variant.
-- [ ] Update schema, API contract, CMS, web, cart, checkout, dan order snapshot.
-- [ ] Update Telegram ke product → variant → confirm.
-- [ ] Reuse KlikQRIS; jangan membuat adapter pembayaran baru.
-- [ ] Implement WhatsApp list → nama produk → numbered variants.
-- [ ] Setelah selection, implement pay/payment → order → QRIS/SeaBank/e-wallet di grup.
-- [ ] Wajibkan bukti sebagai image reply dengan kode order + metode.
-- [ ] Simpan bukti private, review manual, dan jangan percaya image sebagai status paid.
-- [ ] Implement garansi dari canonical policy yang sama dengan Telegram.
-- [ ] Scope session per conversation + member.
-- [ ] Jaga credential produk/fulfillment tetap privat.
-- [ ] Tambah test unit, regression, integration, dan E2E per fase.
-- [ ] Update docs/ARCHITECTURE.md, README.md, dan CHANGELOG.md bersama perubahan.
-- [ ] Verifikasi dev sesuai AGENTS.md.
-- [ ] Commit dan push main hanya setelah seluruh gate fase yang dikerjakan lulus.
+- [x] Baca PRD, DESIGN, ARCHITECTURE, README, CHANGELOG, dan dokumen ini.
+- [x] Jangan mengimplementasikan WhatsApp di atas products.price lama.
+- [x] Tambah migration additive serta backfill default variant.
+- [x] Update schema, API contract, CMS, web, cart, checkout, dan order snapshot.
+- [x] Update Telegram ke product → variant → confirm.
+- [x] Reuse KlikQRIS; jangan membuat adapter pembayaran baru.
+- [x] Implement WhatsApp list → nama produk → numbered variants.
+- [x] Setelah selection, implement pay/payment → order → QRIS/SeaBank/e-wallet di grup.
+- [x] Wajibkan bukti sebagai image reply dengan kode order + metode.
+- [x] Simpan bukti private, review manual, dan jangan percaya image sebagai status paid.
+- [x] Implement garansi dari canonical policy yang sama dengan Telegram.
+- [x] Scope session per conversation + member.
+- [x] Jaga credential produk/fulfillment tetap privat.
+- [x] Tambah test unit, regression, integration, dan E2E per fase.
+- [x] Update docs/ARCHITECTURE.md, README.md, dan CHANGELOG.md bersama perubahan.
+- [x] Verifikasi dev sesuai AGENTS.md.
+- [x] Commit dan push main hanya setelah seluruh gate fase yang dikerjakan lulus.
 
 Dokumen ini mengunci model dan urutan kerja. Detail kosmetik pesan boleh berubah, tetapi
 single source of truth, variant_id server-authoritative, snapshot order, session
