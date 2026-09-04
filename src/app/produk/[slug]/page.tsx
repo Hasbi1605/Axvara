@@ -261,7 +261,7 @@ export default function ProductDetailPage() {
             <span className="inline-flex items-center gap-1.5 ax-glass-card rounded-full px-3 py-1.5 text-white/70">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/icons/ios11/shield-32.png" alt="" width={14} height={14} className="w-3.5 h-3.5 object-contain brightness-0 invert opacity-70" draggable={false} style={{ filter: "brightness(0) saturate(100%) invert(72%) sepia(68%) saturate(4000%) hue-rotate(145deg) brightness(1.05)" }} />
-              Garansi full
+              Garansi sesuai deskripsi
             </span>
             <span className="inline-flex items-center gap-1.5 ax-glass-card rounded-full px-3 py-1.5 text-white/70">
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -286,9 +286,15 @@ export default function ProductDetailPage() {
             </li>
             <li className="flex items-start gap-2">
               <svg viewBox="0 0 16 16" className="w-4 h-4 mt-0.5 shrink-0 text-emerald-400/80" fill="none" stroke="currentColor" strokeWidth={2}><path d="M3 8.5l3 3 7-7" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              Garansi replace jika kendala dari sistem
+              Garansi replace sesuai ketentuan di deskripsi produk ini
             </li>
           </ul>
+
+          {/* Third-party disclaimer */}
+          <p className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-2.5 text-[12px] leading-5 text-white/50">
+            Produk third-party independen — AXVARA tidak terafiliasi dengan brand resmi. Masa & syarat garansi mengikuti deskripsi di atas.{" "}
+            <Link href="/garansi-replace" className="font-semibold text-[#00E5FF]/90 hover:text-[#00E5FF] hover:underline">Lihat ketentuan garansi</Link>
+          </p>
 
           {/* Spacer — pushes buttons down when content is short */}
           <div className="flex-1 min-h-[16px]" />

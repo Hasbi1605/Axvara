@@ -78,7 +78,7 @@ export default function HomePage() {
                 semua tools premium.
               </h1>
               <p className="mt-4 text-[15px] leading-6 text-white/60 max-w-[46ch]">
-                Berbagai tools AI dan aplikasi premium dengan harga jauh lebih hemat dari official. Bergaransi.
+                Berbagai tools AI dan aplikasi premium dengan harga jauh lebih hemat dari official. Garansi sesuai deskripsi tiap produk.
               </p>
               <div className="mt-6 flex flex-wrap gap-3">
                 <a href="#katalog" className="h-11 px-6 rounded-full bg-white text-[#080C1E] font-semibold text-sm inline-flex items-center justify-center hover:bg-white/90 transition active:scale-[0.98]">Lihat Katalog</a>

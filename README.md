@@ -43,7 +43,7 @@ axvara/
 │   │   ├── admin/          # Sidebar + produk/pesanan/kategori/artikel/banner/agent
 │   │   ├── artikel/        # Indeks dan detail artikel publik
 │   │   ├── cara-order/     # Panduan order dari footer
-│   │   ├── garansi-replace/ # Panduan klaim garansi dari footer
+│   │   ├── garansi-replace/ # Ketentuan layanan & garansi third-party dari footer (acuan klaim)
 │   │   ├── api/checkout/   # Quote harga/stok/rekening bertanda tangan
 │   │   ├── api/payment-methods/ # Konfigurasi pembayaran publik/admin
 │   │   ├── api/subscribers/# Form email footer + daftar terproteksi admin
@@ -86,6 +86,8 @@ axvara/
 | Bank lain | dinamis via admin | tambah/aktifkan tanpa deploy |
 
 Flow: server memvalidasi harga/stok dan menerbitkan quote bertanda tangan 60 menit → pilih metode dari D1 → transfer/scan → upload bukti (JPG/PNG/WebP max 5MB) → order dibuat idempotent dan stok direservasi atomik → pesanan `AXV-YYYYMMDD-XXXXXXXX` Pending → admin cek mutasi → Konfirmasi Lunas. Pending otomatis kedaluwarsa setelah 24 jam dan stok dikembalikan atomik.
+
+AXVARA adalah third-party independen (bukan official store). Garansi bervariasi 1x24 jam–30 hari mengikuti deskripsi tiap produk; klaim berupa penggantian/perbaikan, bukan refund otomatis. Checkout mewajibkan centang persetujuan ketentuan sebelum order dibuat; acuan lengkap di `/garansi-replace`.
 
 Nomor dukungan admin adalah `089519388264` dan dipusatkan di `src/lib/site.ts`; nomor ini terpisah dari nomor tujuan pembayaran e-wallet.
 

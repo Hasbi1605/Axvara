@@ -177,6 +177,12 @@ export default function OrderSuccessPage() {
             <img src="/icons/ios11/chat-32.png" alt="" width={16} height={16} className="w-4 h-4 object-contain brightness-0 invert" draggable={false} /> Hubungi Admin WA
           </a>
         </div>
+
+        <p className="mt-4 text-center text-[11px] leading-5 text-white/35">
+          Produk third-party AXVARA — simpan kode pesanan ini untuk klaim. Garansi berupa penggantian sesuai{" "}
+          <Link href="/garansi-replace" className="text-white/50 underline decoration-white/20 underline-offset-2 hover:text-white">ketentuan garansi</Link>{" "}
+          & deskripsi tiap produk, bukan refund otomatis.
+        </p>
       </div>
     </div>
   );

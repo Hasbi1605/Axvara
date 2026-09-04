@@ -90,7 +90,7 @@ axvara/
 │   ├── page.tsx                 # Homepage
 │   ├── artikel/[slug]/          # Artikel publik Markdown/legacy JSON
 │   ├── cara-order/               # Panduan order
-│   ├── garansi-replace/          # Ketentuan garansi dan replace
+│   ├── garansi-replace/          # Ketentuan layanan & garansi third-party (acuan klaim, garansi ikut deskripsi produk)
 │   ├── produk/[slug]/
 │   ├── checkout/
 │   ├── pesanan/[code]/
@@ -305,6 +305,8 @@ CREATE TABLE newsletter_subscribers (
 ```
 
 **Anti-tamper:** Harga, rekening, subtotal, dan item order terikat ke quote server; body client tidak dapat mengganti snapshot. Quote id unik membuat retry idempotent. Reservasi/restore stok memakai batch D1 dengan guard CHECK agar kegagalan rollback seluruh operasi; stok `-1` tetap unlimited.
+
+**Proteksi garansi third-party:** `/garansi-replace` adalah acuan tunggal ketentuan layanan & garansi (AXVARA third-party independen, garansi 1x24 jam–30 hari mengikuti deskripsi tiap produk, klaim = penggantian bukan refund otomatis). Checkout mewajibkan checkbox persetujuan sebelum order dibuat; detail produk, footer, dan halaman sukses pesanan menautkan kembali ke halaman tersebut.
 
 ---
 

@@ -62,6 +62,7 @@ function CheckoutInner() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [agreed, setAgreed] = useState(false);
 
   // --- Fix 1: Authoritative checkout quote ---
   const [quoteLoading, setQuoteLoading] = useState(false);
@@ -226,6 +227,10 @@ function CheckoutInner() {
     }
     if (proofUploading) {
       setError("Tunggu upload bukti selesai.");
+      return;
+    }
+    if (!agreed) {
+      setError("Centang persetujuan ketentuan third-party & garansi terlebih dahulu.");
       return;
     }
     setLoading(true);
@@ -453,7 +458,22 @@ function CheckoutInner() {
 
           {error && <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2">{error}</p>}
 
-          <button onClick={submit} disabled={loading || proofUploading || !proofUrl || quoteLoading || !method || !quoteToken || !quoteAccepted || quoteIssues.length > 0} className="w-full h-[52px] rounded-xl bg-[#00E5FF] text-[#080C1E] font-bold hover:bg-[#00D0E8] disabled:opacity-60 transition inline-flex items-center justify-center gap-2">
+          <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-left">
+            <input
+              id="checkout-agree"
+              type="checkbox"
+              checked={agreed}
+              onChange={(e) => setAgreed(e.target.checked)}
+              className="mt-1 h-4 w-4 shrink-0 accent-[#00E5FF]"
+            />
+            <span className="text-xs leading-5 text-white/60">
+              Saya paham AXVARA adalah <span className="font-semibold text-white">third-party independen, bukan official store</span>, dan saya setuju dengan{" "}
+              <Link href="/garansi-replace" target="_blank" rel="noreferrer" className="font-semibold text-[#00E5FF] hover:underline">ketentuan layanan & garansi</Link>{" "}
+              serta ketentuan di deskripsi tiap produk. <span className="font-semibold text-white">DYOR, DWYOR.</span>
+            </span>
+          </label>
+
+          <button onClick={submit} disabled={loading || proofUploading || !proofUrl || quoteLoading || !method || !quoteToken || !quoteAccepted || quoteIssues.length > 0 || !agreed} className="w-full h-[52px] rounded-xl bg-[#00E5FF] text-[#080C1E] font-bold hover:bg-[#00D0E8] disabled:opacity-60 transition inline-flex items-center justify-center gap-2">
             {loading && <span className="w-5 h-5 rounded-full border-2 border-[#080C1E]/20 border-t-[#080C1E] animate-spin" />}
             {loading ? "Memproses…" : `Bayar ${formatRupiah(displaySubtotal)} — Buat Pesanan`}
           </button>
