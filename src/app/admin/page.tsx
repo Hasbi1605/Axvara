@@ -19,11 +19,13 @@ import BotAutomationManager from "@/components/admin/BotAutomationManager";
 import VariantEditor from "@/components/admin/VariantEditor";
 import PaymentProofsManager from "@/components/admin/PaymentProofsManager";
 
-type Prod = { id:string; slug:string; name:string; description:string; price:number; comparePrice?:number; categorySlug:string; image:string; images:string[]; badge?:string; soldCount:number; stock:number; isActive:boolean; sortOrder?:number };
+type Prod = { id:string; slug:string; name:string; whatsappAlias?:string; description:string; price:number; comparePrice?:number; categorySlug:string; image:string; images:string[]; badge?:string; soldCount:number; stock:number; isActive:boolean; sortOrder?:number };
 type Cat = { id:number; slug:string; name:string };
-type Order = { code:string; name:string; wa:string; method:string; items:{ name:string;price:number;qty:number }[]; subtotal:number; status:string; fileName?:string; createdAt:string };
+type OrderChannel = "web" | "telegram" | "whatsapp";
+type Order = { code:string; name:string; wa:string; method:string; items:{ name:string;price:number;qty:number }[]; subtotal:number; paymentAmount:number; status:string; paymentStatus:string; salesChannel:OrderChannel; fileName?:string; createdAt:string };
 
 const PER_PAGE_ADMIN = 8;
+const ORDERS_PER_PAGE = 6;
 const ADMIN_SECTIONS: AdminSection[] = ["summary","products","orders","proofs","categories","payments","articles","banners","subscribers","bot","agent"];
 
 type LoginChallenge = {
@@ -63,6 +65,8 @@ export default function AdminPage() {
   const [cats, setCats] = useState<Cat[]>([]);
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
+  const [orderChannel, setOrderChannel] = useState<"all" | OrderChannel>("all");
+  const [orderPage, setOrderPage] = useState(1);
   const [loadingList, setLoadingList] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
 
@@ -116,7 +120,10 @@ export default function AdminPage() {
         method: String(o.payment_method ?? o.method ?? ""),
         items: (o.items as Order["items"]) ?? [],
         subtotal: Number(o.subtotal ?? 0),
+        paymentAmount: Number(o.payment_amount ?? o.subtotal ?? 0),
         status: String(o.status ?? "pending"),
+        paymentStatus: String(o.payment_status ?? "unpaid"),
+        salesChannel: (["web", "telegram", "whatsapp"].includes(String(o.sales_channel)) ? String(o.sales_channel) : "web") as OrderChannel,
         fileName: (o.proof_url as string) ?? undefined,
         createdAt: String(o.created_at ?? o.createdAt ?? ""),
       }));
@@ -222,7 +229,7 @@ export default function AdminPage() {
   };
 
   const openEdit=(p:Prod)=>{ setEditing(p); setForm({...p, categorySlug:p.categorySlug}); setFormImages(p.images?.length? p.images : p.image? [p.image] : []); setFormError(null); };
-  const openNew=()=>{ setShowNew(true); setEditing(null); setForm({ name:"", slug:"", description:"", price:50000, categorySlug:"akun-premium", stock:10, soldCount:0, isActive:true }); setFormImages([]); setFormError(null); };
+  const openNew=()=>{ setShowNew(true); setEditing(null); setForm({ name:"", slug:"", whatsappAlias:"", description:"", price:50000, categorySlug:"akun-premium", stock:10, soldCount:0, isActive:true }); setFormImages([]); setFormError(null); };
   const closeModal=()=>{ setEditing(null); setShowNew(false); setForm({}); setFormImages([]); setFormError(null); setSaving(false); };
 
   const handleUpload=async(e:React.ChangeEvent<HTMLInputElement>)=>{
@@ -315,7 +322,7 @@ export default function AdminPage() {
     }
   };
 
-  const pending=orders.filter(o=>o.status==="pending").length; const lunas=orders.filter(o=>o.status==="lunas").length; const omzet=orders.filter(o=>o.status==="lunas").reduce((a,b)=>a+b.subtotal,0);
+  const pending=orders.filter(o=>o.status==="pending").length; const lunas=orders.filter(o=>o.status==="lunas").length; const omzet=orders.filter(o=>o.status==="lunas").reduce((a,b)=>a+b.paymentAmount,0);
   const activeProducts=prods.filter(p=>p.isActive).length;
   const lowStock=prods.filter(p=>p.stock>=0&&p.stock<=5).length;
   const soldProducts=prods.reduce((total,product)=>total+product.soldCount,0);
@@ -323,6 +330,19 @@ export default function AdminPage() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE_ADMIN));
   const safePage = Math.min(page, totalPages);
   const paged = filtered.slice((safePage-1)*PER_PAGE_ADMIN, safePage*PER_PAGE_ADMIN);
+  const channelCounts = useMemo(() => ({
+    all: orders.length,
+    web: orders.filter((order) => order.salesChannel === "web").length,
+    telegram: orders.filter((order) => order.salesChannel === "telegram").length,
+    whatsapp: orders.filter((order) => order.salesChannel === "whatsapp").length,
+  }), [orders]);
+  const filteredOrders = useMemo(
+    () => orderChannel === "all" ? orders : orders.filter((order) => order.salesChannel === orderChannel),
+    [orderChannel, orders],
+  );
+  const orderTotalPages = Math.max(1, Math.ceil(filteredOrders.length / ORDERS_PER_PAGE));
+  const safeOrderPage = Math.min(orderPage, orderTotalPages);
+  const pagedOrders = filteredOrders.slice((safeOrderPage - 1) * ORDERS_PER_PAGE, safeOrderPage * ORDERS_PER_PAGE);
 
   if(checkingAuth) return (
     <div className="mx-auto max-w-[420px] px-4 py-16">
@@ -434,7 +454,7 @@ export default function AdminPage() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1.5">
-                          <button onClick={()=>setVariantEditorProduct({ id: Number(p.id), name: p.name })} className="px-2 py-0.5 bg-cyan-500/10 text-cyan-400 rounded text-xs">Varian</button>
+                          <button onClick={()=>setVariantEditorProduct({ id: Number(p.id), name: p.name })} className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[#00E5FF]/25 bg-[#00E5FF]/15 px-3 text-xs font-bold text-[#5cefff] transition hover:border-[#00E5FF]/45 hover:bg-[#00E5FF]/25" aria-label={`Kelola varian ${p.name}`}><IosIcon name="settings" size={12} tint="#00E5FF" /> Kelola Varian</button>
                           <button onClick={()=>openEdit(p)} className="inline-flex h-8 items-center gap-1 px-3 rounded-full bg-white text-[#080C1E] text-xs font-bold hover:bg-white/90"><IosIcon name="edit" size={12} tint="black" /> Edit</button>
                           <button onClick={()=>setDeleteTarget(p)} className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600 shadow-[0_2px_10px_rgba(239,68,68,0.35)] transition" aria-label={`Hapus ${p.name}`} title="Hapus produk"><IosIcon name="trash" size={16} tint="white" /></button>
                         </div>
@@ -462,15 +482,40 @@ export default function AdminPage() {
 
       {tab==="orders" && (
         <div className="mt-5 ax-glass rounded-[20px] overflow-hidden">
-          <div className="p-4 sm:p-5 border-b border-white/10 flex items-center gap-2.5">
-            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/5 border border-white/5">
-              <IosIcon name="purchase-order" size={16} tint="white" />
-            </span>
-            <h2 className="font-semibold text-white text-sm">Pesanan Masuk</h2>
-            <span className="ml-auto text-xs text-white/40">{orders.length} total</span>
+          <div className="border-b border-white/10 p-4 sm:p-5">
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/5 border border-white/5">
+                <IosIcon name="purchase-order" size={16} tint="white" />
+              </span>
+              <div>
+                <h2 className="font-semibold text-white text-sm">Pesanan Masuk</h2>
+                <p className="mt-0.5 text-[11px] text-white/40">Antrean dipisahkan berdasarkan asal transaksi.</p>
+              </div>
+              <span className="ml-auto text-xs text-white/40">{filteredOrders.length} pesanan</span>
+            </div>
+            <div className="mt-4 flex gap-2 overflow-x-auto pb-0.5" role="tablist" aria-label="Filter kanal pesanan">
+              {([
+                ["all", "Semua"],
+                ["web", "Web"],
+                ["telegram", "Telegram"],
+                ["whatsapp", "WhatsApp"],
+              ] as const).map(([channel, label]) => (
+                <button
+                  key={channel}
+                  type="button"
+                  role="tab"
+                  aria-selected={orderChannel === channel}
+                  onClick={() => { setOrderChannel(channel); setOrderPage(1); }}
+                  className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-full border px-3.5 text-xs font-semibold transition ${orderChannel === channel ? "border-[#00E5FF]/40 bg-[#00E5FF] text-[#07101f] shadow-[0_0_18px_rgba(0,229,255,0.16)]" : "border-white/10 bg-white/[0.05] text-white/60 hover:bg-white/10 hover:text-white"}`}
+                >
+                  {label}
+                  <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${orderChannel === channel ? "bg-[#07101f]/10 text-[#07101f]/75" : "bg-white/10 text-white/45"}`}>{channelCounts[channel]}</span>
+                </button>
+              ))}
+            </div>
           </div>
-          {orders.length===0? <p className="p-8 text-center text-sm text-white/40">Belum ada pesanan — coba checkout sebagai pembeli dulu.</p> : (
-            <div className="divide-y divide-white/5">{orders.slice().map(o=>(
+          {filteredOrders.length===0? <p className="p-8 text-center text-sm text-white/40">Belum ada pesanan dari kanal ini.</p> : (
+            <div className="divide-y divide-white/5">{pagedOrders.map(o=>(
               <div key={o.code} className="flex flex-col gap-4 px-4 py-4 transition hover:bg-white/[0.03] sm:flex-row sm:items-center sm:px-5">
                 <div className="grid min-w-0 flex-1 grid-cols-[136px_minmax(0,1fr)] items-start gap-3.5">
                   <ProofThumbnail proof={o.fileName}/>
@@ -478,13 +523,25 @@ export default function AdminPage() {
                     <p className="truncate font-mono text-xs font-bold text-[#00E5FF]">{o.code}</p>
                     <p className="mt-0.5 truncate text-sm font-semibold text-white">{o.name}</p>
                     <p className="truncate text-xs text-white/45">{o.wa}</p>
-                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-white/50">{o.items.map(i=>`${i.name} ×${i.qty}`).join(", ")} · {o.method.toUpperCase()} · {formatRupiah(o.subtotal)}</p>
-                    <span className={`mt-1.5 inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold capitalize ${o.status==="pending"?"border-[#FFB800]/20 bg-[#FFB800]/15 text-[#FFB800]":o.status==="lunas"?"border-[#22C55E]/20 bg-[#22C55E]/15 text-[#22C55E]":"border-white/10 bg-white/10 text-white/50"}`}>{o.status}</span>
+                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-white/50">{o.items.map(i=>`${i.name} ×${i.qty}`).join(", ")} · {o.method.toUpperCase()} · {formatRupiah(o.paymentAmount)}</p>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold capitalize ${o.status==="pending"?"border-[#FFB800]/20 bg-[#FFB800]/15 text-[#FFB800]":o.status==="lunas"?"border-[#22C55E]/20 bg-[#22C55E]/15 text-[#22C55E]":"border-white/10 bg-white/10 text-white/50"}`}>{o.status}</span>
+                      <span className="inline-flex rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-white/50">{o.salesChannel === "whatsapp" ? "WhatsApp" : o.salesChannel}</span>
+                    </div>
                   </div>
                 </div>
-                <div className="flex w-full shrink-0 flex-wrap items-center gap-2 sm:w-auto sm:justify-end">{o.status==="pending" && <><button onClick={()=>{ setConfirmOrder(o); setAdminNote(""); }} className="inline-flex h-9 items-center gap-1.5 rounded-full bg-[#22C55E] px-3.5 text-xs font-bold text-white transition hover:bg-[#16a34a]"><IosIcon name="checked" size={14} tint="white" /> Konfirmasi Lunas</button><button onClick={()=>setStatus(o.code,"dibatalkan")} className="inline-flex h-9 items-center gap-1 rounded-full border border-white/10 bg-white/10 px-3.5 text-xs font-semibold text-white/70 hover:bg-white/15 hover:text-white"><IosIcon name="close" size={12} tint="white" /> Batalkan</button><a href={`https://wa.me/${o.wa.replace(/^0/,"62")}?text=Halo%20${encodeURIComponent(o.name)}%2C%20pesanan%20${o.code}%20kamu%20sudah%20kami%20terima.`} target="_blank" className="inline-flex h-9 items-center gap-1.5 rounded-full bg-[#25D366] px-3.5 text-xs font-bold text-white transition hover:bg-[#1ebd5a]"><IosIcon name="chat" size={14} tint="white" /> WA</a></>}</div>
+                <div className="flex w-full shrink-0 flex-wrap items-center gap-2 sm:w-auto sm:justify-end">{o.status==="pending" && <><button onClick={()=>{ setConfirmOrder(o); setAdminNote(""); }} className="inline-flex h-9 items-center gap-1.5 rounded-full bg-[#22C55E] px-3.5 text-xs font-bold text-white transition hover:bg-[#16a34a]"><IosIcon name="checked" size={14} tint="white" /> Konfirmasi Lunas</button><button onClick={()=>setStatus(o.code,"dibatalkan")} className="inline-flex h-9 items-center gap-1 rounded-full border border-white/10 bg-white/10 px-3.5 text-xs font-semibold text-white/70 hover:bg-white/15 hover:text-white"><IosIcon name="close" size={12} tint="white" /> Batalkan</button>{o.wa && <a href={`https://wa.me/${o.wa.replace(/^0/,"62")}?text=Halo%20${encodeURIComponent(o.name)}%2C%20pesanan%20${o.code}%20kamu%20sudah%20kami%20terima.`} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center gap-1.5 rounded-full bg-[#25D366] px-3.5 text-xs font-bold text-white transition hover:bg-[#1ebd5a]"><IosIcon name="chat" size={14} tint="white" /> WA</a>}</>}</div>
               </div>
             ))}</div>
+          )}
+          {filteredOrders.length > ORDERS_PER_PAGE && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 px-4 py-3 sm:px-5">
+              <p className="text-xs text-white/40">Hal {safeOrderPage} dari {orderTotalPages} · {filteredOrders.length} pesanan</p>
+              <div className="flex items-center gap-1.5">
+                <button disabled={safeOrderPage<=1} onClick={()=>setOrderPage(current=>Math.max(1,current-1))} className="inline-flex h-8 items-center gap-1 rounded-full border border-white/10 bg-white/[0.05] px-3 text-xs font-semibold text-white/70 disabled:pointer-events-none disabled:opacity-35"><IosIcon name="chevron-left" size={12} tint="white" /> Sebelumnya</button>
+                <button disabled={safeOrderPage>=orderTotalPages} onClick={()=>setOrderPage(current=>Math.min(orderTotalPages,current+1))} className="inline-flex h-8 items-center gap-1 rounded-full border border-white/10 bg-white/[0.05] px-3 text-xs font-semibold text-white/70 disabled:pointer-events-none disabled:opacity-35">Berikutnya <IosIcon name="chevron-right" size={12} tint="white" /></button>
+              </div>
+            </div>
           )}
         </div>
       )}
@@ -497,7 +554,7 @@ export default function AdminPage() {
 
       {(editing || showNew) && (
         <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-6 sm:pt-10 overflow-y-auto bg-black/60 backdrop-blur-sm" onClick={closeModal}>
-          <div className="w-full max-w-[720px] ax-glass-strong rounded-[24px] border border-white/10 p-5 sm:p-6 max-h-[92vh] overflow-y-auto" onClick={e=>e.stopPropagation()}>
+          <div className="w-full max-w-[720px] rounded-[24px] border border-white/10 p-5 sm:p-6 max-h-[92vh] overflow-y-auto shadow-[0_28px_90px_rgba(0,0,0,0.7)]" style={{ background: "#0B1025" }} onClick={e=>e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <h3 className="font-display font-bold text-white text-lg">{editing? "Edit Produk":"Produk Baru"}</h3>
               <button onClick={closeModal} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white/70 hover:bg-white/15"><IosIcon name="close" size={14} tint="white" /></button>
@@ -508,6 +565,7 @@ export default function AdminPage() {
             <div className="mt-5 grid sm:grid-cols-2 gap-4">
               <label className="space-y-1.5"><span className="text-xs font-semibold text-white/60">Nama *</span><input value={form.name??""} onChange={e=>setForm({...form,name:e.target.value, slug: !editing? e.target.value.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""): form.slug})} placeholder="ChatGPT Plus 1 Bulan" className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#00E5FF]/30" /></label>
               <label className="space-y-1.5"><span className="text-xs font-semibold text-white/60">Slug *</span><input value={form.slug??""} onChange={e=>setForm({...form,slug:e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g,"-")})} placeholder="chatgpt-plus-1-bulan" className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 font-mono focus:outline-none focus:border-[#00E5FF]/30" /></label>
+              <label className="sm:col-span-2 space-y-1.5"><span className="text-xs font-semibold text-white/60">Nama di WhatsApp (Alias)</span><input value={form.whatsappAlias??""} onChange={e=>setForm({...form,whatsappAlias:e.target.value})} maxLength={50} placeholder="CHATGPT" className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#00E5FF]/30" /><span className="block text-[11px] leading-4 text-white/35">Dipakai pada daftar dan header detail produk WhatsApp. Jika kosong, bot memakai nama produk web.</span></label>
               <label className="sm:col-span-2 space-y-1.5"><span className="text-xs font-semibold text-white/60">Deskripsi</span><textarea value={form.description??""} onChange={e=>setForm({...form,description:e.target.value})} rows={2} placeholder="Akses GPT-4o penuh..." className="w-full px-3 py-2.5 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 resize-none focus:outline-none focus:border-[#00E5FF]/30" /></label>
               <label className="space-y-1.5"><span className="text-xs font-semibold text-white/60">Harga *</span><input type="number" min={0} value={form.price??""} onChange={e=>setForm({...form,price:Number(e.target.value)})} placeholder="89000" className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white focus:outline-none focus:border-[#00E5FF]/30" /></label>
               <label className="space-y-1.5"><span className="text-xs font-semibold text-white/60">Harga Coret (opsional)</span><input type="number" min={0} value={form.comparePrice??""} onChange={e=>setForm({...form,comparePrice:e.target.value?Number(e.target.value):undefined})} placeholder="300000" className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white focus:outline-none focus:border-[#00E5FF]/30" /></label>
@@ -560,7 +618,7 @@ export default function AdminPage() {
           <div className="w-full max-w-[480px] ax-glass-strong rounded-[24px] p-5 sm:p-6" onClick={e=>e.stopPropagation()}>
             <h3 className="font-display font-bold text-white text-lg">Konfirmasi Lunas</h3>
             <p className="mt-2 text-sm text-white/60">Pesanan <span className="font-mono text-[#00E5FF] font-bold">{confirmOrder.code}</span> — {confirmOrder.name}</p>
-            <p className="text-xs text-white/40 mt-1">{confirmOrder.items.map(i=>`${i.name} ×${i.qty}`).join(", ")} • {formatRupiah(confirmOrder.subtotal)}</p>
+            <p className="text-xs text-white/40 mt-1">{confirmOrder.items.map(i=>`${i.name} ×${i.qty}`).join(", ")} • {formatRupiah(confirmOrder.paymentAmount)}</p>
             <div className="mt-4">
               <label className="text-xs font-semibold text-white/60">Lisensi / Key / Catatan untuk pembeli</label>
               <textarea

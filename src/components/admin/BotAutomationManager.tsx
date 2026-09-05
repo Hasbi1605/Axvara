@@ -6,13 +6,13 @@ import React, { useState, useEffect, useCallback } from "react";
 interface HealthData {
   bot_configured: boolean;
   bot_enabled: boolean;
-  klikqris_mode: string;
-  klikqris_configured: boolean;
+  dana_qris_mode: string;
+  dana_qris_configured: boolean;
   payment_enabled: boolean;
   fulfillment_enabled: boolean;
   encryption_key_set: boolean;
   webhook?: { url: string; pending_updates: number; last_error: string | null };
-  telegram_orders?: { payment_status: string; count: number }[];
+  telegram_orders?: { status: string; count: number }[];
   fulfillment_jobs?: { status: string; count: number }[];
 }
 
@@ -191,7 +191,7 @@ export default function BotAutomationManager({ products }: { products: Product[]
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
           <StatusPill label="Bot Token" ok={health?.bot_configured} />
           <StatusPill label="Bot Enabled" ok={health?.bot_enabled} />
-          <StatusPill label="KlikQRIS" ok={health?.klikqris_configured} extra={health?.klikqris_mode} />
+          <StatusPill label="DANA QRIS" ok={health?.dana_qris_configured} extra={health?.dana_qris_mode} />
           <StatusPill label="Payment" ok={health?.payment_enabled} />
           <StatusPill label="Fulfillment" ok={health?.fulfillment_enabled} />
           <StatusPill label="Encryption Key" ok={health?.encryption_key_set} />
@@ -220,8 +220,8 @@ export default function BotAutomationManager({ products }: { products: Product[]
           <h3 className="text-white font-semibold mb-3">📊 Pesanan Telegram</h3>
           <div className="flex gap-3 flex-wrap text-sm">
             {health.telegram_orders.map((o) => (
-              <span key={o.payment_status} className="px-3 py-1 rounded-full bg-white/5 text-white/70">
-                {o.payment_status}: {o.count}
+              <span key={o.status} className="px-3 py-1 rounded-full bg-white/5 text-white/70">
+                {o.status}: {o.count}
               </span>
             ))}
           </div>

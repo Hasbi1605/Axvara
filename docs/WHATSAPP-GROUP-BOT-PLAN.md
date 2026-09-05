@@ -2,15 +2,26 @@
 
 **Status:** implemented, cross-checked, dan hardened
 
+> Pembaruan transport 5 September 2026: runtime produksi telah beralih penuh
+> ke Baileys pada gateway Heroku. Referensi Fonnte di dokumen rencana ini
+> dipertahankan sebagai riwayat keputusan awal; kontrak runtime terbaru ada di
+> `docs/ARCHITECTURE.md` bagian 14.
+
+> Pembaruan pembayaran 5 September 2026: semua referensi KlikQRIS dan QRIS
+> statis di dokumen rencana panjang ini adalah riwayat desain yang sudah
+> superseded. Runtime web, Telegram, dan WhatsApp sekarang hanya memakai QRIS
+> dinamis DANA Business + Android QRIS Hook sebagaimana didokumentasikan di
+> `docs/ARCHITECTURE.md` bagian 13–14.
+
 **Tanggal:** 4 September 2026 · audit terakhir 5 September 2026
 
 **Prioritas:** fondasi varian di CMS/D1 lebih dahulu, lalu web, Telegram, dan WhatsApp
 
 **Target WhatsApp:** nomor serta grup yang sudah ada
 
-**Gateway kandidat MVP:** Fonnte
+**Gateway produksi:** Baileys di Heroku
 
-**Payment:** gunakan kembali integrasi KlikQRIS AXVARA yang sudah bekerja di Telegram
+**Payment:** QRIS dinamis DANA Business; QRIS Hook menjadi authority pembayaran
 
 **Catatan audit implementasi:** flow utama, varian terpusat, antrean bukti, dan command
 garansi sudah terpasang. Audit lanjutan menutup race stock/order, split-state pembayaran,

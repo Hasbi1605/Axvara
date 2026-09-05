@@ -21,12 +21,7 @@ function validateMethod(id: string, data: z.infer<typeof updateSchema>): string 
   if (id !== "qris" && data.is_active && !/^\d{6,40}$/.test(data.account_number)) {
     return "Nomor rekening aktif harus 6–40 digit";
   }
-  if (id === "qris" && data.is_active && !data.qris_url) {
-    return "Gambar QRIS wajib tersedia sebelum metode diaktifkan";
-  }
-  if (id === "qris" && data.qris_url && !data.qris_url.startsWith("/r2/qris/") && !data.qris_url.startsWith("/qris/")) {
-    return "QRIS harus berasal dari uploader AXVARA";
-  }
+  if (id === "qris" && data.qris_url) return "QRIS statis tidak lagi digunakan";
   return null;
 }
 
@@ -67,7 +62,7 @@ export async function PUT(req: NextRequest) {
     data.label,
     data.account_number,
     data.account_name,
-    data.qris_url ?? null,
+    id === "qris" ? null : data.qris_url ?? null,
     data.is_active ? 1 : 0,
     data.sort_order,
     id,

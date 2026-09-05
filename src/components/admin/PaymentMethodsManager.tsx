@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ImageDropzone } from "@/components/admin/ImageDropzone";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { useToast } from "@/components/ui/Toast";
 
@@ -179,12 +178,10 @@ export function PaymentMethodsManager() {
                   <input value={method.account_name} onChange={(event) => update(method.id, { account_name: event.target.value })} className="h-10 rounded-xl border border-white/10 bg-white/[0.06] px-3 text-sm text-white focus:border-[#00E5FF]/40 focus:outline-none" />
                 </label>
                 {method.id === "qris" ? (
-                  <ImageDropzone
-                    area="qris"
-                    value={method.qris_url ?? undefined}
-                    onUploaded={(qris_url) => update(method.id, { qris_url })}
-                    onRemove={() => update(method.id, { qris_url: null })}
-                  />
+                  <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/[0.08] px-3 py-3">
+                    <p className="text-xs font-semibold text-emerald-300">QRIS dinamis otomatis</p>
+                    <p className="mt-1 text-[11px] leading-5 text-white/45">Nominal unik dan gambar QR dibuat per pesanan dari DANA Business. Tidak ada gambar QRIS statis yang perlu diunggah.</p>
+                  </div>
                 ) : (
                   <label className="grid gap-1">
                     <span className="text-[11px] font-medium text-white/50">Nomor tujuan</span>
@@ -203,7 +200,7 @@ export function PaymentMethodsManager() {
           ))}
         </div>
       </div>
-      <p className="mt-3 text-xs text-white/35">Checkout yang sudah dibuka mempertahankan harga dan rekening selama 60 menit; perubahan berlaku untuk quote baru.</p>
+      <p className="mt-3 text-xs text-white/35">Checkout mempertahankan harga/rekening selama 60 menit. Invoice QRIS dinamis berlaku 15 menit dan lunas otomatis melalui QRIS Hook.</p>
     </section>
   );
 }

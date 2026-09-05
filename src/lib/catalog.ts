@@ -30,6 +30,7 @@ export type ProductSummary = {
   id: number;
   slug: string;
   name: string;
+  whatsappAlias: string | null;
   aliases: string[];
   image: string | null;
   badge: string | null;
@@ -45,6 +46,7 @@ export type ProductDetail = {
   id: number;
   slug: string;
   name: string;
+  whatsappAlias: string | null;
   aliases: string[];
   description: string | null;
   long_description?: string | null;
@@ -76,7 +78,7 @@ export async function listActiveProducts(): Promise<ProductSummary[]> {
 
   const rows = await queryAll(`
     SELECT
-      p.id, p.slug, p.name, p.aliases, p.image_url, p.badge, p.description, p.category_id,
+      p.id, p.slug, p.name, p.whatsapp_alias, p.aliases, p.image_url, p.badge, p.description, p.category_id,
       MIN(pv.price) as min_price,
       MAX(pv.price) as max_price,
       COUNT(pv.id) as variant_count,
@@ -93,6 +95,7 @@ export async function listActiveProducts(): Promise<ProductSummary[]> {
     id: Number(r.id),
     slug: String(r.slug),
     name: String(r.name),
+    whatsappAlias: nullableText(r.whatsapp_alias),
     aliases: parseAliases(r.aliases),
     image: r.image_url ? String(r.image_url) : null,
     badge: r.badge ? String(r.badge) : null,
@@ -107,13 +110,14 @@ export async function listActiveProducts(): Promise<ProductSummary[]> {
 
 async function listActiveProductsLegacy(): Promise<ProductSummary[]> {
   const rows = await queryAll(
-    `SELECT id, slug, name, image_url, badge, description, price, compare_price, stock, category_id
+    `SELECT id, slug, name, whatsapp_alias, image_url, badge, description, price, compare_price, stock, category_id
      FROM products WHERE is_active=1 ORDER BY sort_order ASC, name ASC`
   );
   return rows.map(r => ({
     id: Number(r.id),
     slug: String(r.slug),
     name: String(r.name),
+    whatsappAlias: nullableText(r.whatsapp_alias),
     aliases: [],
     image: r.image_url ? String(r.image_url) : null,
     badge: r.badge ? String(r.badge) : null,
@@ -154,6 +158,7 @@ export async function getProductDetail(slugOrId: string | number): Promise<Produ
     id: Number(product.id),
     slug: String(product.slug),
     name: String(product.name),
+    whatsappAlias: nullableText(product.whatsapp_alias),
     aliases: parseAliases(product.aliases),
     description: product.description ? String(product.description) : null,
     image: product.image_url ? String(product.image_url) : null,
@@ -199,6 +204,7 @@ async function getProductDetailLegacy(slugOrId: string | number): Promise<Produc
     id: Number(product.id),
     slug: String(product.slug),
     name: String(product.name),
+    whatsappAlias: nullableText(product.whatsapp_alias),
     aliases: [],
     description: product.description ? String(product.description) : null,
     image: product.image_url ? String(product.image_url) : null,
@@ -244,14 +250,28 @@ export async function searchProductByName(input: string): Promise<{ exact: Produ
   );
   if (exactSlug) return { exact: exactSlug, candidates: [] };
 
-  // 3. Exact alias match
+  // 3. Exact search-keyword alias match
   const exactAlias = products.find(p => p.aliases.some(a => normalizeInput(a) === normalized));
   if (exactAlias) return { exact: exactAlias, candidates: [] };
 
-  // 4. Prefix/contains match (max 5 candidates)
+  // 4. WhatsApp display aliases may intentionally be shared by related
+  // products. A unique exact match can open directly; duplicates remain a
+  // candidate list instead of silently selecting the first product.
+  const displayAliasMatches = products.filter(
+    p => p.whatsappAlias && normalizeInput(p.whatsappAlias) === normalized,
+  );
+  if (displayAliasMatches.length === 1) {
+    return { exact: displayAliasMatches[0], candidates: [] };
+  }
+  if (displayAliasMatches.length > 1) {
+    return { exact: null, candidates: displayAliasMatches.slice(0, 5) };
+  }
+
+  // 5. Prefix/contains match (max 5 candidates)
   const candidates = products.filter(p => {
     const n = normalizeInput(p.name);
     return n.includes(normalized) || normalized.includes(n) ||
+      (p.whatsappAlias ? normalizeInput(p.whatsappAlias).includes(normalized) || normalized.includes(normalizeInput(p.whatsappAlias)) : false) ||
       p.aliases.some(a => {
         const na = normalizeInput(a);
         return na.includes(normalized) || normalized.includes(na);
@@ -299,6 +319,11 @@ function parseAliases(raw: unknown): string[] {
     const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
     return Array.isArray(parsed) ? parsed.map(String) : [];
   } catch { return []; }
+}
+
+function nullableText(raw: unknown): string | null {
+  const value = raw == null ? "" : String(raw).trim();
+  return value || null;
 }
 
 function mapVariant(row: Record<string, unknown>): VariantSummary {

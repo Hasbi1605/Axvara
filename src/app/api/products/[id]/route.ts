@@ -13,13 +13,16 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
   if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
   const images: string[] = row.images ? JSON.parse(String(row.images)) : [];
   const primary = (row.image_url as string) ?? images[0] ?? "";
-  return NextResponse.json({ product: { id: String(row.id), slug: row.slug, name: row.name, description: row.description ?? "", price: row.price, comparePrice: row.compare_price ?? undefined, categorySlug: row.cat_slug as string, image: primary, images: images.slice(0,8), badge: row.badge as string ?? undefined, soldCount: row.sold_count as number ?? 0, stock: row.stock as number ?? -1, isActive: (row.is_active as number) !== 0, sortOrder: row.sort_order } });
+  let aliases: string[] = [];
+  try { aliases = row.aliases ? JSON.parse(String(row.aliases)) : []; } catch { aliases = []; }
+  return NextResponse.json({ product: { id: String(row.id), slug: row.slug, name: row.name, whatsappAlias: String(row.whatsapp_alias || "").trim() || undefined, aliases, description: row.description ?? "", price: row.price, comparePrice: row.compare_price ?? undefined, categorySlug: row.cat_slug as string, image: primary, images: images.slice(0,8), badge: row.badge as string ?? undefined, soldCount: row.sold_count as number ?? 0, stock: row.stock as number ?? -1, isActive: (row.is_active as number) !== 0, sortOrder: row.sort_order } });
 }
 
 const updateSchema = z.object({
   name: z.string().trim().min(3).max(120).optional(),
   slug: z.string().trim().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).min(3).max(80).optional(),
   description: z.string().trim().max(2000).optional(),
+  whatsappAlias: z.string().trim().max(50).nullable().optional(),
   price: z.coerce.number().int().min(1000).max(999_999_999).optional(),
   comparePrice: z.coerce.number().int().min(1000).max(999_999_999).nullable().optional(),
   categorySlug: z.string().trim().max(40).optional(),
@@ -96,7 +99,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (data.imageUrl && !urlOk(data.imageUrl)) return NextResponse.json({ error: "URL gambar utama tidak diizinkan" }, { status: 400 });
   const fields: string[] = [];
   const vals: unknown[] = [];
-  const map: Record<string,string> = { name:"name", slug:"slug", description:"description", price:"price", comparePrice:"compare_price", imageUrl:"image_url", badge:"badge", soldCount:"sold_count", stock:"stock", isActive:"is_active", sortOrder:"sort_order" };
+  const map: Record<string,string> = { name:"name", slug:"slug", description:"description", whatsappAlias:"whatsapp_alias", price:"price", comparePrice:"compare_price", imageUrl:"image_url", badge:"badge", soldCount:"sold_count", stock:"stock", isActive:"is_active", sortOrder:"sort_order" };
   if (data.categorySlug) {
     const cat = await queryFirst("SELECT id FROM categories WHERE slug=?", data.categorySlug) as { id:number }|undefined;
     if (cat) { fields.push("category_id=?"); vals.push(cat.id); }
@@ -107,6 +110,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (v !== undefined) {
       if (k==="isActive") { fields.push(`${col}=?`); vals.push(v ? 1:0); }
       else if (k==="imageUrl") { fields.push(`${col}=?`); vals.push((v as string | null) ?? null); }
+      else if (k==="whatsappAlias") { fields.push(`${col}=?`); vals.push(String(v || "").trim() || null); }
       else if (k==="comparePrice") { fields.push(`${col}=?`); vals.push(v ? Number(v) : null); }
       else { fields.push(`${col}=?`); vals.push(v); }
     }

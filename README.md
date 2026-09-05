@@ -2,7 +2,7 @@
 
 > **Satu Gerbang, Semua Tools Premium** — Toko digital premium Apple Store + Glassmorphism
 
-AXVARA adalah toko digital untuk akun, aplikasi, dan tools premium dengan kategori yang dikelola dari panel admin — flow terinspirasi marketku.id, checkout simpel **Transfer / QRIS Statis** (tanpa payment gateway), dan hosting Cloudflare Pages.
+AXVARA adalah toko digital untuk akun, aplikasi, dan tools premium dengan kategori yang dikelola dari panel admin — checkout memakai **transfer manual atau QRIS dinamis DANA Business** tanpa payment gateway pihak ketiga, dan hosting Cloudflare Pages.
 
 **Live dev:** `http://localhost:3000` — Next 15.5.24
 
@@ -20,16 +20,14 @@ axvara/
 │   ├── PRD.md              # Requirements, flow, payment spec, AC
 │   ├── DESIGN.md           # Apple Store + glassmorphism + motion
 │   ├── ARCHITECTURE.md     # Stack D1+R2, schema, API contract
-│   ├── TELEGRAM-BOT-KLIKQRIS-PLAN.md # Handoff rencana bot auto-order + PG
+│   ├── TELEGRAM-BOT-KLIKQRIS-PLAN.md # Arsip rencana provider lama (superseded)
 │   ├── WHATSAPP-GROUP-BOT-PLAN.md # Rencana varian terpusat + bot grup WA (terimplementasi)
 │   └── VPS-RESEARCH.md     # Riset VPS gratis — kenapa Pages juara
 ├── public/
 │   ├── brand/
 │   │   ├── axvara-mark.svg # Mark Prism wireframe (icon/app)
 │   │   └── axvara-logo.svg # Lockup horizontal
-│   └── qris/
-│       ├── axvara-qris.jpg # QRIS Brotherstore06 hi-res (104KB)
-│       └── axvara-qris.png
+│   └── qris/README.md      # Tidak ada gambar QRIS statis publik
 ├── drizzle/
 │   ├── schema.sql          # Bootstrap schema D1 lengkap dan idempotent
 │   ├── migrations/         # Migrasi satu kali untuk database lama
@@ -39,8 +37,8 @@ axvara/
 │   ├── app/
 │   │   ├── page.tsx        # Homepage — Hero + Orbit + Katalog pagination 8/page
 │   │   ├── produk/[slug]/  # Detail produk
-│   │   ├── checkout/       # Checkout 1 halaman — quote D1, pembayaran, upload bukti
-│   │   ├── pesanan/[code]/ # Sukses — AXV-XXXX + WA admin
+│   │   ├── checkout/       # Checkout — QRIS otomatis / bukti untuk transfer manual
+│   │   ├── pesanan/[code]/ # Status + QRIS dinamis + polling lunas
 │   │   ├── admin/          # Sidebar + produk/pesanan/kategori/artikel/banner/agent
 │   │   ├── artikel/        # Indeks dan detail artikel publik
 │   │   ├── cara-order/     # Panduan order dari footer
@@ -79,14 +77,14 @@ axvara/
 
 ## 💳 Pembayaran
 
-| Metode | Nomor/File | Ket |
+| Metode | Tujuan | Ket |
 |--------|------------|-----|
 | E-Wallet | `082135277434` | DANA/Gopay/Shopeepay |
 | SeaBank | `901812349386` | Brotherstore06 |
-| QRIS | `public/qris/axvara-qris.png` | Brotherstore06 A01 |
+| QRIS | DANA Business | Dinamis per order, nominal unik, 15 menit |
 | Bank lain | dinamis via admin | tambah/aktifkan tanpa deploy |
 
-Flow: server memvalidasi harga/stok dan menerbitkan quote bertanda tangan 60 menit → pilih metode dari D1 → transfer/scan → upload bukti (JPG/PNG/WebP max 5MB) → order dibuat idempotent dan stok direservasi atomik → pesanan `AXV-YYYYMMDD-XXXXXXXX` Pending → admin cek mutasi → Konfirmasi Lunas. Pending otomatis kedaluwarsa setelah 24 jam dan stok dikembalikan atomik.
+Flow: server memvalidasi harga/stok dan menerbitkan quote bertanda tangan 60 menit → order dibuat idempotent dan stok direservasi atomik. Untuk QRIS, server membuat payload EMVCo dan nominal unik per order, menampilkan QR selama 15 menit, lalu QRIS Hook Android mengirim pembayaran ke `/api/webhook/dana`; nominal yang cocok tepat mengubah ledger+order menjadi lunas secara atomik. Transfer SeaBank/e-wallet tetap memakai bukti JPG/PNG/WebP dan review admin. Order yang kedaluwarsa mengembalikan stok atomik.
 
 AXVARA adalah third-party independen (bukan official store). Garansi bervariasi 1x24 jam–30 hari mengikuti deskripsi tiap produk; klaim berupa penggantian/perbaikan, bukan refund otomatis. Checkout mewajibkan centang persetujuan ketentuan sebelum order dibuat; acuan lengkap di `/garansi-replace`.
 
@@ -113,37 +111,39 @@ Nomor dukungan admin adalah `089519388264` dan dipusatkan di `src/lib/site.ts`; 
 
 Detail: `docs/VPS-RESEARCH.md` & `docs/ARCHITECTURE.md`
 
-Rencana implementasi bot Telegram auto-order dan integrasi KlikQRIS tersedia di
-`docs/TELEGRAM-BOT-KLIKQRIS-PLAN.md`. **Implementasi MVP sudah tersedia di codebase**
-(migrasi `0005_telegram_klikqris.sql`, library `src/lib/{telegram,payments,fulfillment}/`,
-route API, dan admin UI "Bot & Otomasi"). Semua feature flag default off:
-`TELEGRAM_BOT_ENABLED=false`, `KLIKQRIS_PAYMENTS_ENABLED=false`, `AUTO_FULFILLMENT_ENABLED=false`.
-Aktivasi memerlukan owner gates (token/key/credential) yang dijelaskan di planning doc.
+Bot Telegram auto-order, pembayaran QRIS dinamis, dan fulfillment tersedia di codebase.
+Dokumen `docs/TELEGRAM-BOT-KLIKQRIS-PLAN.md` hanya arsip provider lama dan telah digantikan
+oleh mesin `src/lib/payments/dana-qris.ts`, ledger D1, route QR image, dan QRIS Hook DANA.
+Feature flag terkait adalah `TELEGRAM_BOT_ENABLED`, `DANA_QRIS_ENABLED`, dan
+`AUTO_FULFILLMENT_ENABLED`; nilai rahasia disimpan di Cloudflare Pages Secrets.
 Repo `mocasus/telegram-auto-order-bot` hanya referensi UX, bukan source/fork.
 
 Bot grup WhatsApp existing dan katalog varian terpusat sudah tersedia; desain dan rollout
 lengkapnya ada di `docs/WHATSAPP-GROUP-BOT-PLAN.md`. D1/CMS menjadi sumber produk,
 durasi, garansi, harga, stok, dan konfigurasi fulfillment per varian untuk website,
-Telegram, serta WhatsApp. Flow grupnya ringkas: `list` → ketik nama produk → pilih angka
-varian → `pay`/`payment` → QRIS/SeaBank/e-wallet → kirim bukti wajib dengan caption
-`BUKTI <KODE> <QRIS|SEABANK|EWALLET>`. Admin meninjau bukti melalui menu **Bukti Bayar**;
-QRIS dinamis disahkan callback/status KlikQRIS, sedangkan QRIS statis, SeaBank, dan
-e-wallet baru mengubah order menjadi lunas setelah admin mencocokkan mutasi. Command
-`garansi` memakai kebijakan kanonis yang sama dengan Telegram. Runtime memakai Fonnte pada nomor/grup existing dan
-semua flag WhatsApp/varian di `.env.example` tetap default `false` untuk rollout bertahap.
-Nilai `WHATSAPP_WEBHOOK_TOKEN` harus sama dengan **Secret key** pada flow webhook Fonnte;
-adapter menerima field `secret` bawaan Fonnte tanpa memerlukan custom header.
+Telegram, serta WhatsApp. Field **Nama di WhatsApp (Alias)** mengatur nama ringkas pada
+daftar/header detail dan otomatis fallback ke nama produk web bila kosong. Flow grupnya
+ringkas: `list` → ketik nama produk → pilih angka varian → pilih `QRIS`, `SEABANK`, atau
+`EWALLET`. QRIS dinamis lunas otomatis melalui QRIS Hook DANA; screenshot QRIS bersifat
+opsional dan cukup memakai caption `QRIS`. Bukti SeaBank/e-wallet tetap ditinjau melalui
+menu **Bukti Bayar** dan baru mengubah order setelah admin mencocokkan mutasi. Command
+`garansi` memakai kebijakan kanonis yang sama dengan Telegram. Runtime memakai Baileys
+pada service Heroku `axvara-wa-gateway`; bot mengutip pesan pembeli saat membalas dan
+gateway meneruskan gambar masuk lewat URL sekali pakai. Semua flag WhatsApp/varian di
+`.env.example` tetap default `false` untuk rollout bertahap. Nilai `WHATSAPP_WEBHOOK_TOKEN`
+harus sama dengan `AXVARA_WEBHOOK_TOKEN` di Heroku dan dipakai pada kedua arah komunikasi.
 Discovery dan transaksi produksi diaktifkan penuh pada 5 September 2026 untuk grup allowlist:
 `WHATSAPP_ENABLED`, `WHATSAPP_GROUP_DISCOVERY`, `WHATSAPP_GROUP_PAYMENT`, `WHATSAPP_PROOF_INTAKE`,
 `WHATSAPP_REQUIRE_PROOF_BEFORE_FULFILLMENT`, `WHATSAPP_FULFILLMENT`, dan `PRODUCT_VARIANTS_READ` aktif.
-Pembayaran menerima QRIS statis + SeaBank + e-wallet dengan intake bukti bayar ke R2 privat.
+Pembayaran menerima QRIS dinamis DANA + SeaBank + e-wallet dengan intake bukti manual ke R2 privat.
 Token, nomor Device, webhook secret, dan GID disimpan sebagai Pages Secrets, tidak di repository.
-Unduhan lampiran webhook tidak membawa token API Fonnte ke URL media, dibatasi 5 MB,
+Unduhan lampiran webhook tidak membawa token gateway ke URL media, dibatasi 5 MB,
 dan diverifikasi sebagai gambar sebelum disimpan privat. Copy pembayaran memakai snapshot
 order agar perubahan nama/durasi/garansi di CMS tidak mengubah transaksi yang sudah dibuat.
 Produk baru otomatis mendapat varian default. Harga/stok pada form produk lama hanya
 disinkronkan untuk varian default tunggal; produk multi-varian dikelola lewat tombol
-**Varian**. Penghapusan produk/varian mengarsipkannya agar order historis tetap utuh.
+**Kelola Varian**. Panel **Pesanan** menyediakan tab Web/Telegram/WhatsApp dan pagination;
+penghapusan produk/varian mengarsipkannya agar order historis tetap utuh.
 
 Setelah pembayaran diterima, tombol support bot membuka akun manusia `@axvara_support`;
 username bot tetap `@Axvara_bot`. Seluruh notifikasi admin dari order web maupun Telegram
@@ -207,9 +207,13 @@ Delegasi nameserver, HTTPS, dan DNSSEC sudah aktif. DS yang terpublikasi di regi
 
 ---
 
-## 📸 QRIS
+## 📸 QRIS Dinamis DANA
 
-File awal QRIS **hi-res asli** Brotherstore06 berada di `public/qris/axvara-qris.jpg`. URL aktif disimpan di tabel `payment_methods`; admin dapat menggantinya melalui bagian **Pembayaran** dan upload R2 tanpa perubahan frontend.
+Tidak ada file QRIS statis publik. Payload merchant DANA disimpan hanya sebagai secret
+`DANA_STATIC_QRIS`; server menyuntikkan total bayar, menghitung ulang CRC16, dan merender
+PNG per kode order melalui `/api/payments/qris/[code]/image`. Aplikasi QRIS Hook di Android
+mengirim `X-Webhook-Secret` ke `https://axvara.tech/api/webhook/dana`. Setiap event disimpan
+idempotent dan hanya nominal persis dari invoice aktif yang dapat melunasi order.
 
 ---
 

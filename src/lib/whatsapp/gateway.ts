@@ -1,14 +1,13 @@
-// src/lib/whatsapp/gateway.ts — Official Fonnte WhatsApp gateway adapter
-// Handles parsing of incoming Fonnte webhook payloads, timing-safe auth,
-// SSRF-safe streaming media download, and outbound messaging via Fonnte API.
+// src/lib/whatsapp/gateway.ts — AXVARA Baileys gateway adapter
+// Handles the small webhook contract exposed by the Heroku gateway, secure
+// outbound calls, and SSRF-safe streaming media download.
 
 import { NextRequest } from "next/server";
 
-const FONNTE_API_BASE = "https://api.fonnte.com";
 export const MAX_BODY_SIZE = 64_000; // 64 KB
 export const MAX_MEDIA_SIZE = 5 * 1024 * 1024; // 5 MB
 
-export type FonnteIncomingMessage = {
+export type WhatsAppIncomingMessage = {
   rawSender: string;
   conversationId: string; // group ID (e.g. 120363024823948293@g.us) or direct sender
   memberId: string; // phone number of individual (e.g. 628123456789)
@@ -24,7 +23,7 @@ export type FonnteIncomingMessage = {
   };
 };
 
-export type FonnteSendResult = {
+export type WhatsAppSendResult = {
   ok: boolean;
   messageId?: string;
   error?: string;
@@ -73,7 +72,6 @@ export function authenticateWebhook(
   // Check header tokens first
   const headerToken =
     request.headers.get("x-webhook-token") ||
-    request.headers.get("x-fonnte-token") ||
     request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
     "";
 
@@ -83,9 +81,8 @@ export function authenticateWebhook(
     request.nextUrl.searchParams.get("secret") ||
     "";
 
-  // Fonnte's dashboard "Secret key" is delivered as additional webhook data.
-  // Keep header/query support for proxies and local diagnostics, but accept the
-  // provider-native payload field as the primary production-compatible path.
+  // Payload secret remains supported for local fixtures; the production
+  // Baileys gateway uses x-webhook-token.
   const body = payload && typeof payload === "object"
     ? payload as Record<string, unknown>
     : undefined;
@@ -107,9 +104,9 @@ export function authenticateWebhook(
   return { ok: true };
 }
 
-// ---- Fonnte Payload Parser ----
+// ---- Baileys Gateway Payload Parser ----
 
-export function parseFonntePayload(body: unknown): FonnteIncomingMessage | null {
+export function parseWhatsAppPayload(body: unknown): WhatsAppIncomingMessage | null {
   if (!body || typeof body !== "object") return null;
   const b = body as Record<string, unknown>;
 
@@ -124,9 +121,7 @@ export function parseFonntePayload(body: unknown): FonnteIncomingMessage | null 
   const filename = b.filename ? String(b.filename).trim() : undefined;
   const extension = b.extension ? String(b.extension).trim().toLowerCase() : undefined;
 
-  // Group detection:
-  // In Fonnte group messages, `sender` is the group JID (ends with @g.us or contains @g.us)
-  // and `member` is the sender's phone number.
+  // The gateway sends the group JID as sender and the participant JID as member.
   const isGroup = Boolean(
     sender.includes("@g.us") ||
     b.group ||
@@ -138,7 +133,7 @@ export function parseFonntePayload(body: unknown): FonnteIncomingMessage | null 
   // For group messages, member is memberRaw. For direct messages, member is sender.
   const memberId = isGroup && memberRaw ? memberRaw : sender;
 
-  const msg: FonnteIncomingMessage = {
+  const msg: WhatsAppIncomingMessage = {
     rawSender: sender,
     conversationId,
     memberId,
@@ -180,167 +175,46 @@ export function isSelfMessage(memberId: string): boolean {
 
 // ---- Outbound Messaging ----
 
-const WHATSAPP_GATEWAY_URL = process.env.WHATSAPP_GATEWAY_URL || "";
-
-function getFonnteToken(): string {
-  return process.env.FONNTE_TOKEN || "";
+function gatewayConfig(): { url: string; token: string } | null {
+  const url = (process.env.WHATSAPP_GATEWAY_URL || "").trim().replace(/\/+$/, "");
+  const token = (process.env.WHATSAPP_WEBHOOK_TOKEN || "").trim();
+  return url && token ? { url, token } : null;
 }
 
-export async function sendTextMessage(params: SendMessageParams): Promise<FonnteSendResult> {
-  // If WHATSAPP_GATEWAY_URL (Heroku Baileys gateway) is configured, use it for zero-watermark & instant response!
-  if (WHATSAPP_GATEWAY_URL) {
-    try {
-      const res = await fetch(`${WHATSAPP_GATEWAY_URL.replace(/\/+$/, "")}/send`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          target: params.target,
-          message: params.message,
-          inboxId: params.inboxId,
-        }),
-        signal: AbortSignal.timeout(15_000),
-      });
-      const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-      const ok = res.ok && data.status === true;
-      return {
-        ok,
-        messageId: data.id ? String(data.id) : undefined,
-        error: ok ? undefined : String(data.reason || "gateway_send_failed"),
-      };
-    } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : "gateway_network_error" };
-    }
-  }
-
-  const token = getFonnteToken();
-  if (!token) return { ok: false, error: "no_fonnte_token" };
-
+async function callGateway(path: string, payload: Record<string, unknown>, timeoutMs: number): Promise<WhatsAppSendResult> {
+  const config = gatewayConfig();
+  if (!config) return { ok: false, error: "baileys_gateway_not_configured" };
   try {
-    const payload: Record<string, unknown> = {
-      target: params.target,
-      message: params.message,
-    };
-    // Use inboxid for replying as per official Fonnte spec
-    if (params.inboxId) {
-      payload.inboxid = params.inboxId;
-    }
-
-    let res = await fetch(`${FONNTE_API_BASE}/send`, {
+    const response = await fetch(`${config.url}${path}`, {
       method: "POST",
-      headers: {
-        Authorization: token,
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json", "x-gateway-token": config.token },
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
-
-    let data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-    let ok = res.ok && (data.status === true || data.status === "true");
-
-    // If Fonnte failed due to unknown/invalid inboxid, fallback immediately to direct send without inboxid
-    if (!ok && payload.inboxid) {
-      delete payload.inboxid;
-      res = await fetch(`${FONNTE_API_BASE}/send`, {
-        method: "POST",
-        headers: {
-          Authorization: token,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(15_000),
-      });
-      data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-      ok = res.ok && (data.status === true || data.status === "true");
-    }
-
+    const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+    const ok = response.ok && data.status === true;
     return {
       ok,
-      messageId: Array.isArray(data.id) ? String(data.id[0]) : data.id ? String(data.id) : undefined,
-      error: ok ? undefined : String(data.reason || data.message || "send_failed"),
+      messageId: data.id ? String(data.id) : undefined,
+      error: ok ? undefined : String(data.reason || "baileys_gateway_send_failed"),
     };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "network_error" };
+    return { ok: false, error: error instanceof Error ? error.message : "baileys_gateway_network_error" };
   }
 }
 
-export async function sendImageMessage(params: SendImageParams): Promise<FonnteSendResult> {
-  // If WHATSAPP_GATEWAY_URL (Heroku Baileys gateway) is configured, use it for zero-watermark & instant response!
-  if (WHATSAPP_GATEWAY_URL) {
-    try {
-      const res = await fetch(`${WHATSAPP_GATEWAY_URL.replace(/\/+$/, "")}/send-image`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          target: params.target,
-          imageUrl: params.imageUrl,
-          caption: params.caption,
-          inboxId: params.inboxId,
-        }),
-        signal: AbortSignal.timeout(20_000),
-      });
-      const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-      const ok = res.ok && data.status === true;
-      return {
-        ok,
-        messageId: data.id ? String(data.id) : undefined,
-        error: ok ? undefined : String(data.reason || "gateway_send_image_failed"),
-      };
-    } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : "gateway_image_network_error" };
-    }
-  }
+export function sendTextMessage(params: SendMessageParams): Promise<WhatsAppSendResult> {
+  return callGateway("/send", { target: params.target, message: params.message, inboxId: params.inboxId }, 15_000);
+}
 
-  const token = getFonnteToken();
-  if (!token) return { ok: false, error: "no_fonnte_token" };
-
-  try {
-    const payload: Record<string, unknown> = {
-      target: params.target,
-      url: params.imageUrl,
-      type: "image",
-    };
-    if (params.caption) payload.message = params.caption;
-    if (params.inboxId) payload.inboxid = params.inboxId;
-    if (params.filename) payload.filename = params.filename;
-
-    let res = await fetch(`${FONNTE_API_BASE}/send`, {
-      method: "POST",
-      headers: {
-        Authorization: token,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(15_000),
-    });
-
-    let data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-    let ok = res.ok && (data.status === true || data.status === "true");
-
-    // Fallback if inboxid failed
-    if (!ok && payload.inboxid) {
-      delete payload.inboxid;
-      res = await fetch(`${FONNTE_API_BASE}/send`, {
-        method: "POST",
-        headers: {
-          Authorization: token,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(15_000),
-      });
-      data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-      ok = res.ok && (data.status === true || data.status === "true");
-    }
-
-    return {
-      ok,
-      messageId: Array.isArray(data.id) ? String(data.id[0]) : data.id ? String(data.id) : undefined,
-      error: ok ? undefined : String(data.reason || data.message || "send_failed"),
-    };
-  } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "network_error" };
-  }
+export function sendImageMessage(params: SendImageParams): Promise<WhatsAppSendResult> {
+  return callGateway("/send-image", {
+    target: params.target,
+    imageUrl: params.imageUrl,
+    caption: params.caption,
+    inboxId: params.inboxId,
+    filename: params.filename,
+  }, 20_000);
 }
 
 // ---- SSRF-Safe Media Download ----

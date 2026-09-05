@@ -19,14 +19,14 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 
 **Bedanya dengan Marketku.id:**
 - Desain: Apple Store minimalis + glassmorphism, bukan template marketplace kaku
-- Pembayaran: Tanpa payment gateway mahal. **Transfer manual & QRIS statis** langsung ke rekening pemilik (tanpa potongan 1-2%)
+- Pembayaran: Tanpa payment gateway pihak ketiga. **Transfer manual & QRIS dinamis DANA Business** dengan verifikasi QRIS Hook
 - Hosting: **Gratis selamanya** di Cloudflare Pages — unlimited bandwidth, CDN Indonesia super cepat, tanpa ngurus VPS
 - Fokus niche: Digital goods (lisensi/key/akun), bukan fisik
 
 ### 1.2 Tujuan Produk
 - Menjadi toko digital premium yang terlihat **mahal & terpercaya** sehingga konversi lebih tinggi untuk produk digital 50rb–1jt
-- Checkout **paling simpel** untuk pembeli awam: pilih produk → pilih Transfer/QRIS → upload bukti → selesai (tanpa daftar ribet)
-- Admin bisa kelola pesanan **dari HP** — cukup cek mutasi DANA/Bank lalu klik konfirmasi, lisensi otomatis terkirim via WA
+- Checkout **paling simpel** untuk pembeli awam: pilih produk → pilih Transfer/QRIS → scan QR dinamis atau upload bukti transfer manual → selesai
+- Admin bisa kelola pesanan **dari HP**; pembayaran QRIS dilunasi otomatis oleh QRIS Hook, sedangkan transfer manual tetap ditinjau admin
 - Biaya operasional **Rp 0/bulan** (diluar domain ~Rp 230rb/tahun)
 
 ### 1.3 Target User
@@ -35,11 +35,12 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 |---------|-----------|-----------------|
 | **Pembeli Umum** | Mahasiswa, freelancer, creator, pekerja yang butuh tools AI murah | Cari produk cepat, lihat harga jelas, bayar via QRIS/DANA/Gopay/Shopeepay dalam 30 detik, dapat akun/lisensi via WA |
 | **Pembeli Langganan** | Pelanggan bulanan AI Gateway / akun premium | Re-order cepat, riwayat pesanan, perpanjangan 1 klik |
-| **Admin / Owner (Kamu)** | Pemilik Axvara | Tambah/edit produk, upload foto & QRIS, lihat pesanan pending/lunas, konfirmasi manual, kirim lisensi, lihat laporan omzet |
+| **Admin / Owner (Kamu)** | Pemilik Axvara | Tambah/edit produk, lihat pesanan per channel, konfirmasi transfer manual, pantau QRIS otomatis, kirim lisensi, lihat laporan omzet |
 
 ### 1.4 Glossary
 
-- **QRIS Statis:** QR Code Standar Nasional milik Brotherstore06 (NMID: ID1022191087959) — satu QR untuk semua e-wallet/bank
+- **QRIS Dinamis:** QRIS DANA Business yang dibuat per order dengan nominal unik dan masa berlaku 15 menit
+- **QRIS Hook:** Aplikasi Android yang meneruskan notifikasi pembayaran DANA ke webhook AXVARA dengan secret header
 - **Transfer Manual:** Pembeli transfer ke e-wallet 082135277434 (DANA/Gopay/Shopeepay) atau SeaBank 901812349386 a.n. pemilik
 - **Bukti Transfer:** Foto/screenshot yang di-upload pembeli setelah bayar
 - **Pesanan Pending:** Pesanan menunggu verifikasi admin
@@ -62,8 +63,8 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 | FR-S5 | Checkout 1 halaman: data pembeli (nama, WA, email opsional) → pilih metode pembayaran (Transfer E-Wallet / SeaBank / QRIS) → ringkasan order | P0 MVP |
 | FR-S6 | Jika pilih E-Wallet: tampilkan nomor 082135277434 + nama pemilik + tombol Copy + instruksi | P0 MVP |
 | FR-S7 | Jika pilih SeaBank: tampilkan 901812349386 + instruksi | P0 MVP |
-| FR-S8 | Jika pilih QRIS: tampilkan gambar QRIS Brotherstore06 full-size + tombol Download QR + instruksi scan | P0 MVP |
-| FR-S9 | Pembeli wajib upload bukti transfer (JPG/PNG, max 5MB) untuk membuat pesanan | P0 MVP |
+| FR-S8 | Jika pilih QRIS: setelah order tampilkan QRIS dinamis, nominal unik, countdown 15 menit, tombol Download, dan polling status | P0 MVP |
+| FR-S9 | Bukti transfer JPG/PNG/WebP max 5MB wajib untuk SeaBank/e-wallet; QRIS tidak memerlukan upload bukti | P0 MVP |
 | FR-S10 | Setelah order sukses: halaman Terima Kasih + nomor pesanan (AXV-XXXX) + WA admin + status Pending | P0 MVP |
 | FR-S11 | Pembeli bisa cek status pesanan via nomor WA / kode pesanan (tanpa login) | P1 |
 | FR-S12 | Notifikasi WA otomatis ke pembeli saat admin konfirmasi lunas (kirim lisensi) | P1 |
@@ -79,7 +80,7 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 | FR-A4 | Kategori management: AI Gateway, Akun Premium, Tools Pro, Bundle Kucing (bisa tambah) |
 | FR-A5 | Manajemen Pesanan: list semua pesanan (filter Pending/Lunas/Dibatalkan), detail pesanan + foto bukti transfer, tombol Konfirmasi Lunas / Batalkan |
 | FR-A6 | Saat konfirmasi: admin bisa input catatan/lisensi/key yang akan dikirim ke pembeli |
-| FR-A7 | Upload & ganti gambar QRIS statis (1 file, tampil di checkout) |
+| FR-A7 | Tampilkan status konfigurasi QRIS dinamis DANA; payload merchant dan webhook secret hanya dikelola sebagai secret server |
 | FR-A8 | Kelola metode pembayaran: edit nomor e-wallet, SeaBank, dan bank lain menyusul (tanpa deploy ulang) |
 | FR-A9 | Laporan sederhana: export CSV pesanan, filter tanggal |
 | FR-A10 | Pengaturan toko: nama, logo, WA admin, footer |
@@ -93,7 +94,7 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 | FR-SYS2 | Simpan data produk, pesanan, kategori di Cloudflare D1 (SQLite, 5GB gratis) |
 | FR-SYS3 | Generate kode pesanan unik format `AXV-YYYYMMDD-XXXX` |
 | FR-SYS4 | Validasi file bukti: hanya JPG/PNG/WebP, max 5MB |
-| FR-SYS5 | Kirim notifikasi WA via WA Gateway (Fonnte/Wablas) atau link WA manual jika gateway belum ada |
+| FR-SYS5 | Kirim dan balas notifikasi WA via gateway Baileys Heroku atau link WA manual jika gateway belum ada |
 | FR-SYS6 | SEO basic: meta title/description per produk, sitemap, OG image |
 
 ### 2.4 Non-Functional
@@ -125,18 +126,18 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 7. Pilih Metode Pembayaran:
    - [] DANA / Gopay / Shopeepay — 082135277434
    - [ ] SeaBank — 901812349386
-   - [x] QRIS — tampil gambar QRIS Brotherstore06 (downloadable)
-8. Total: Rp 89.000 → Klik "Buat Pesanan"
-9. Upload Bukti Transfer (wajib) → Klik "Konfirmasi Pembayaran"
-10. → Halaman Sukses: "Pesanan AXV-20260831-0012 Pending — Admin akan verifikasi 5-15 menit, cek WA kamu"
-11. (Background) Admin dapat notif WA + lihat di /admin/orders
-12. Admin cek mutasi DANA/Bank → klik "Konfirmasi Lunas" + input lisensi
-13. Pembeli dapat WA: "Pesanan kamu lunas! Ini akses ChatGPT Plus: ..."
+   - [x] QRIS — QR dinamis dibuat setelah order
+8. Total dasar Rp 89.000 → Klik "Buat Pesanan"
+9. → Halaman pesanan menampilkan QRIS + total unik (mis. Rp89.137) + countdown 15 menit
+10. Pembeli scan dan membayar tepat sesuai total
+11. QRIS Hook mengirim notifikasi DANA; AXVARA mencocokkan nominal aktif dan menandai order lunas atomik
+12. Halaman, Telegram, atau WhatsApp menerima status terbaru; fulfillment dijalankan idempotent
 ```
 
 ### 3.2 Flow Pembeli — Batal / Error
 
-- Jika upload bukti gagal (file >5MB / bukan gambar) → error inline, tetap di halaman checkout
+- Jika upload bukti transfer manual gagal (file >5MB / bukan gambar) → error inline, tetap di halaman checkout
+- Jika QRIS kedaluwarsa → invoice/order menjadi Kadaluarsa dan stok dikembalikan
 - Jika pembeli tutup tab sebelum upload → pesanan tetap tercipta status Pending tanpa bukti, admin bisa follow-up WA
 - Jika admin tolak (bukti palsu) → status Dibatalkan + WA "Bukti tidak valid, silakan hubungi admin"
 
@@ -158,7 +159,7 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 Pending (baru, tunggu verifikasi) 
   → Lunas (admin konfirmasi, bukti valid)
   → Dibatalkan (admin batalkan / bukti tidak valid)
-  → Kadaluarsa (otomatis 24 jam jika belum dikonfirmasi; stok dikembalikan)
+  → Kadaluarsa (QRIS 15 menit; transfer manual 24 jam; stok dikembalikan)
 ```
 
 ---
@@ -175,25 +176,27 @@ MVP seed: 8–12 produk dummy dengan foto placeholder premium + harga realistis 
 
 ---
 
-## 5. Payment Spec — Manual Transfer & QRIS Statis
+## 5. Payment Spec — Manual Transfer & QRIS Dinamis DANA
 
 ### 5.1 Metode Aktif (V1)
 - **E-Wallet:** DANA / Gopay / Shopeepay → **082135277434** (1 nomor untuk semua)
 - **Bank:** SeaBank → **901812349386**
 - **Bank lain menyusul:** field dinamis di admin, bisa tambah BCA/Mandiri/BRI tanpa deploy
-- **QRIS:** Gambar statis Brotherstore06 NMID ID1022191087959 A01 — file di `public/qris/axvara-qris.png` + uploadable dari admin (disimpan di R2)
+- **QRIS:** payload merchant DANA Business tersimpan sebagai Pages Secret dan diubah menjadi QRIS dinamis per order
 
 ### 5.2 Aturan
-- Tidak ada auto-verifikasi mutasi di MVP (manual cek)
-- Upload bukti wajib (kecuali admin set optional di P1)
+- QRIS otomatis diverifikasi dari QRIS Hook ber-secret; SeaBank/e-wallet tetap manual
+- Upload bukti hanya wajib untuk metode transfer manual
 - Satu pesanan bisa pakai 1 metode saja
 - Harga, stok, dan rekening dikunci dalam quote server bertanda tangan selama 60 menit; retry quote yang sama tidak membuat order ganda
 - Stok direservasi ketika order Pending dibuat dan dikembalikan jika Dibatalkan/Kadaluarsa
-- Gambar QRIS tampil full-res, bisa di-zoom & download
-- Instruksi pembayaran tampil jelas di checkout: "Buka DANA/Gopay/Shopeepay/Banking → Scan QRIS / Transfer ke nomor di atas → screenshot bukti → upload di sini"
+- QRIS dirender per order, bisa di-download, dan tidak tersedia setelah invoice kedaluwarsa
+- Kode unik 1–499 membuat nominal aktif tidak ambigu; unique partial index D1 mencegah dua invoice DANA aktif dengan total sama
+- Instruksi pembayaran memisahkan QRIS otomatis dari transfer manual agar bukti tidak diwajibkan pada QRIS
 
 ### 5.3 Keamanan Payment
-- Nomor rekening/QRIS tidak di-hardcode di frontend, diambil dari API `/api/payment-methods`
+- Nomor rekening diambil dari `/api/payment-methods`; payload merchant QRIS tidak pernah dikirim ke API umum atau source control
+- Webhook hanya menerima JSON berukuran terbatas dengan `X-Webhook-Secret`, dideduplikasi, dan mencocokkan nominal persis pada invoice aktif
 - File bukti disimpan di R2 dengan nama random (bukan original name), hanya admin yang bisa akses
 
 ---
@@ -202,11 +205,11 @@ MVP seed: 8–12 produk dummy dengan foto placeholder premium + harga realistis 
 
 ### MVP (P0) — 1 Minggu
 - Homepage Apple Store premium, katalog, detail produk, keranjang drawer, checkout, upload bukti, halaman sukses
-- Admin login, dashboard, CRUD produk/kategori, kelola pesanan Pending/Lunas, upload QRIS
+- Admin login, dashboard, CRUD produk/kategori, kelola pesanan Pending/Lunas, dan pantau konfigurasi QRIS dinamis
 - Deploy ke Cloudflare Pages dengan domain publik tunggal axvara.tech (`axvara.pages.dev` redirect permanen ke domain utama)
 
 ### P1 — Minggu 2
-- Cek status pesanan via kode, notifikasi WA otomatis (Fonnte), OTP login pembeli, export CSV
+- Cek status pesanan via kode, notifikasi WA otomatis (Baileys), OTP login pembeli, export CSV
 
 ### P2 — Next
 - Rating/testimoni, kupon diskon, stok lisensi auto-kirim, payment gateway opsional (Midtrans) untuk auto-confirm, affiliate
@@ -218,10 +221,10 @@ MVP seed: 8–12 produk dummy dengan foto placeholder premium + harga realistis 
 
 ## 7. Acceptance Criteria (Given/When/Then)
 
-**AC-1 — Checkout QRIS**
+**AC-1 — Checkout QRIS Dinamis**
 - Given pembeli di checkout dengan 1 produk di keranjang
-- When pilih QRIS dan klik Buat Pesanan lalu upload bukti PNG 2MB
-- Then pesanan tercipta Pending, foto bukti tersimpan di R2, admin melihat pesanan di /admin/orders
+- When pilih QRIS dan klik Buat Pesanan
+- Then pesanan Pending menampilkan QR dengan nominal unik 15 menit; webhook pembayaran yang cocok mengubahnya menjadi Lunas tanpa bukti manual
 
 **AC-2 — Checkout E-Wallet**
 - Given pembeli pilih DANA
@@ -264,4 +267,4 @@ MVP seed: 8–12 produk dummy dengan foto placeholder premium + harga realistis 
 - Inspirasi fungsional: https://marketku.id/
 - Inspirasi desain: Apple Store (apple.com/store), Linear.app, Vercel.com
 - Hosting: Cloudflare Pages + D1 + R2 — gratis selamanya, unlimited bandwidth
-- Kontak pembayaran: E-Wallet 082135277434, SeaBank 901812349386, QRIS Brotherstore06
+- Kontak pembayaran: E-Wallet 082135277434, SeaBank 901812349386, QRIS dinamis DANA Business

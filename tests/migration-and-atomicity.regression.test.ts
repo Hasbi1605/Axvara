@@ -146,6 +146,101 @@ describe("Migration 0008: Orders Table Multi-channel Rebuild & FK Integrity (P0.
   });
 });
 
+describe("Migration 0009: WhatsApp alias and historical state repair", () => {
+  it("adds display aliases, repairs expired payment state, and moves sessions to Baileys", () => {
+    const db = new DatabaseSync(":memory:");
+    db.exec(`
+      CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+      CREATE TABLE orders (
+        code TEXT PRIMARY KEY,
+        status TEXT NOT NULL,
+        payment_status TEXT NOT NULL,
+        updated_at TEXT
+      );
+      CREATE TABLE whatsapp_sessions (
+        id INTEGER PRIMARY KEY,
+        provider TEXT NOT NULL,
+        conversation_id TEXT NOT NULL,
+        member_id TEXT NOT NULL,
+        UNIQUE(provider, conversation_id, member_id)
+      );
+      INSERT INTO products VALUES (1, 'ChatGPT Plus 1 Bulan'), (2, 'Produk Khusus');
+      INSERT INTO orders VALUES ('AXV-OLD', 'kadaluarsa', 'pending', NULL);
+      INSERT INTO whatsapp_sessions VALUES (1, 'fonnte', 'group-a', 'member-a');
+    `);
+
+    db.exec(read("drizzle/migrations/0009_whatsapp_alias_order_state.sql"));
+
+    expect(db.prepare("SELECT whatsapp_alias FROM products WHERE id=1").get()?.whatsapp_alias).toBe("CHATGPT");
+    expect(db.prepare("SELECT whatsapp_alias FROM products WHERE id=2").get()?.whatsapp_alias).toBeNull();
+    expect(db.prepare("SELECT payment_status FROM orders WHERE code='AXV-OLD'").get()?.payment_status).toBe("expired");
+    expect(db.prepare("SELECT provider FROM whatsapp_sessions WHERE id=1").get()?.provider).toBe("baileys");
+  });
+});
+
+describe("Migration 0010: DANA dynamic QRIS ledger", () => {
+  it("adds dynamic payload fields, hook dedup, and unique active amounts", () => {
+    const db = new DatabaseSync(":memory:");
+    db.exec(`
+      PRAGMA foreign_keys=ON;
+      CREATE TABLE orders (code TEXT PRIMARY KEY);
+      CREATE TABLE payment_methods (
+        id TEXT PRIMARY KEY,
+        label TEXT NOT NULL,
+        account_number TEXT,
+        account_name TEXT,
+        qris_url TEXT
+      );
+      CREATE TABLE payment_transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_code TEXT NOT NULL UNIQUE REFERENCES orders(code),
+        provider TEXT NOT NULL,
+        provider_mode TEXT NOT NULL,
+        provider_order_id TEXT NOT NULL,
+        merchant_id TEXT NOT NULL,
+        requested_amount INTEGER NOT NULL,
+        payable_amount INTEGER,
+        status TEXT NOT NULL DEFAULT 'initializing',
+        qris_url TEXT,
+        direct_url TEXT,
+        expires_at TEXT
+      );
+      INSERT INTO payment_methods VALUES ('qris','QRIS','','Brotherstore06','/qris/legacy.png');
+      INSERT INTO orders VALUES ('AXV-A'), ('AXV-B');
+    `);
+
+    db.exec(read("drizzle/migrations/0010_dana_dynamic_qris.sql"));
+
+    const columns = db.prepare("PRAGMA table_info(payment_transactions)").all() as Record<string, unknown>[];
+    expect(columns.map((column) => column.name)).toEqual(expect.arrayContaining(["unique_code", "qris_payload"]));
+    expect(db.prepare("SELECT label,account_name,qris_url FROM payment_methods WHERE id='qris'").get()).toMatchObject({
+      label: "QRIS Dinamis",
+      account_name: "DANA Business",
+      qris_url: null,
+    });
+
+    db.exec(`
+      INSERT INTO payment_transactions (
+        order_code,provider,provider_mode,provider_order_id,merchant_id,
+        requested_amount,payable_amount,status
+      ) VALUES ('AXV-A','dana','dynamic-qris','AXV-A','dana-business',10000,10123,'pending');
+      INSERT INTO dana_webhook_events (event_key,payload_hash,amount,status)
+      VALUES ('evt-1','hash-1',10123,'received');
+    `);
+    expect(() => db.exec(`
+      INSERT INTO payment_transactions (
+        order_code,provider,provider_mode,provider_order_id,merchant_id,
+        requested_amount,payable_amount,status
+      ) VALUES ('AXV-B','dana','dynamic-qris','AXV-B','dana-business',10000,10123,'pending');
+    `)).toThrow(/UNIQUE/i);
+    expect(() => db.exec(`
+      INSERT INTO dana_webhook_events (event_key,payload_hash,amount,status)
+      VALUES ('evt-1','hash-2',10123,'received');
+    `)).toThrow(/UNIQUE/i);
+    expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+  });
+});
+
 describe("Deterministic Idempotency Key (P0.4)", () => {
   it("reuses one inbound pay event but allows a later purchase of the same variant", () => {
     const groupId = "120363024823948293@g.us";
@@ -161,7 +256,7 @@ describe("Deterministic Idempotency Key (P0.4)", () => {
     expect(key1).not.toContain(String(Date.now()));
   });
 
-  it("refuses to create an order idempotency key without Fonnte inboxid", () => {
+  it("refuses to create an order idempotency key without a Baileys inbox id", () => {
     expect(() => buildWhatsAppOrderIdempotencyKey("group", "member", "", 42)).toThrow(/inbox/i);
   });
 });
@@ -189,33 +284,33 @@ describe("Reusable WhatsApp pending order", () => {
 });
 
 describe("Variant stock expiry lifecycle", () => {
-  it("callback and reconciliation use atomic payment/order transition helpers", () => {
+  it("DANA webhook and expiry cron use atomic payment/order transition helpers", () => {
     const db = read("src/lib/db.ts");
-    const callback = read("src/app/api/payments/klikqris/callback/route.ts");
+    const callback = read("src/app/api/webhook/dana/route.ts");
     const cron = read("src/app/api/cron/operations/route.ts");
     expect(db).toContain("export async function transitionPendingPaymentOrder");
     expect(db).toContain("export async function transitionPendingPaymentToPaid");
     expect(db).toContain("UPDATE product_variants SET stock=stock+?");
-    expect(callback).toContain("transitionPendingPaymentOrder");
     expect(callback).toContain("transitionPendingPaymentToPaid");
     expect(cron).toContain("transitionPendingPaymentOrder");
-    expect(cron).toContain("transitionPendingPaymentToPaid");
+    expect(cron).not.toContain("checkStatus");
   });
 
-  it("does not trust a paid callback when provider confirmation is unavailable", () => {
-    const callback = read("src/app/api/payments/klikqris/callback/route.ts");
-    expect(callback).toContain("status_confirmation_unavailable");
-    expect(callback).not.toContain("accepting callback");
+  it("authenticates QRIS Hook and matches only an active exact amount", () => {
+    const callback = read("src/app/api/webhook/dana/route.ts");
+    expect(callback).toContain("x-webhook-secret");
+    expect(callback).toContain("constantTimeEqual");
+    expect(callback).toContain("pt.payable_amount=?");
+    expect(callback).toContain("datetime(pt.expires_at)>datetime('now')");
   });
 
-  it("repairs a legacy split-brain paid transaction whose order is still pending", () => {
+  it("deduplicates hook events and allows the atomic paid repair guard", () => {
     const db = read("src/lib/db.ts");
-    const callback = read("src/app/api/payments/klikqris/callback/route.ts");
-    const cron = read("src/app/api/cron/operations/route.ts");
+    const callback = read("src/app/api/webhook/dana/route.ts");
     expect(db).toMatch(/status IN \('pending','paid'\)/);
     expect(callback).toContain("transitionPendingPaymentToPaid(orderCode");
-    expect(callback).toContain("legacyOrderStillPending");
-    expect(cron).toContain("pt.status='paid' AND o.status='pending'");
+    expect(callback).toContain("INSERT OR IGNORE INTO dana_webhook_events");
+    expect(callback).toContain('status: "duplicate"');
   });
 
   it("does not reuse an order after the member changes selected variant", () => {
@@ -224,10 +319,10 @@ describe("Variant stock expiry lifecycle", () => {
     expect(webhook).toContain("AND o.variant_id=?");
   });
 
-  it("reuses an existing KlikQRIS ledger before requesting another provider invoice", () => {
-    const webhook = read("src/app/api/whatsapp/webhook/route.ts");
-    const lookup = webhook.indexOf("SELECT payable_amount, qris_url FROM payment_transactions WHERE order_code=?");
-    const create = webhook.indexOf("provider.createInvoice", lookup);
+  it("reuses an existing DANA ledger before allocating another unique amount", () => {
+    const qris = read("src/lib/payments/dana-qris.ts");
+    const lookup = qris.indexOf("FROM payment_transactions WHERE order_code=? AND provider='dana'");
+    const create = qris.indexOf("for (let attempt = 0; attempt < 40; attempt++)", lookup);
     expect(lookup).toBeGreaterThan(0);
     expect(create).toBeGreaterThan(lookup);
   });

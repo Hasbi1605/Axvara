@@ -56,7 +56,7 @@ export async function POST(
   if (action === "approve") {
     const dynamicQrisTransaction = String(proof.claimed_method) === "QRIS"
       ? await queryFirst(
-          `SELECT id, status FROM payment_transactions WHERE order_code=? AND provider='klikqris'`,
+          `SELECT id, status FROM payment_transactions WHERE order_code=? AND provider='dana'`,
           orderCode,
         )
       : null;
@@ -65,9 +65,8 @@ export async function POST(
       Boolean(dynamicQrisTransaction),
     );
 
-    // A dynamic QRIS proof is supporting evidence only. KlikQRIS callback/status
-    // remains authoritative. Static QRIS has no provider callback and therefore
-    // follows the same admin-confirmed mutation path as bank/e-wallet.
+    // A QRIS screenshot is supporting evidence only. The authenticated DANA
+    // QRIS Hook remains authoritative; bank/e-wallet proofs remain manual.
     if (!authoritativeMethod) {
       const result = await execRun(
         `UPDATE payment_proofs

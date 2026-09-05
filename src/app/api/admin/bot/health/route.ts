@@ -13,12 +13,14 @@ export async function GET(request: NextRequest) {
   const health: Record<string, unknown> = {
     bot_configured: !!process.env.TELEGRAM_BOT_TOKEN,
     bot_enabled: process.env.TELEGRAM_BOT_ENABLED === "true",
-    klikqris_mode: process.env.KLIKQRIS_MODE ?? "sandbox",
-    klikqris_configured: !!process.env.KLIKQRIS_API_KEY,
-    payment_enabled: process.env.KLIKQRIS_PAYMENTS_ENABLED === "true",
+    dana_qris_mode: "dynamic-qris",
+    dana_qris_configured: process.env.DANA_QRIS_ENABLED === "true"
+      && Boolean(process.env.DANA_STATIC_QRIS)
+      && Boolean(process.env.DANA_WEBHOOK_SECRET),
+    payment_enabled: process.env.DANA_QRIS_ENABLED === "true",
     fulfillment_enabled: process.env.AUTO_FULFILLMENT_ENABLED === "true",
     encryption_key_set: !!process.env.FULFILLMENT_ENCRYPTION_KEY,
-    whatsapp_configured: !!process.env.FONNTE_TOKEN,
+    whatsapp_configured: !!process.env.WHATSAPP_GATEWAY_URL,
     whatsapp_enabled: process.env.WHATSAPP_ENABLED === "true",
     whatsapp_discovery: process.env.WHATSAPP_GROUP_DISCOVERY === "true",
     whatsapp_payment: process.env.WHATSAPP_GROUP_PAYMENT === "true",
@@ -42,7 +44,7 @@ export async function GET(request: NextRequest) {
   // Stats
   try {
     const telegramOrders = await queryAll(
-      `SELECT payment_status, COUNT(*) as count FROM orders WHERE sales_channel='telegram' GROUP BY payment_status`,
+      `SELECT status, COUNT(*) as count FROM orders WHERE sales_channel='telegram' GROUP BY status`,
     );
     health.telegram_orders = telegramOrders;
 

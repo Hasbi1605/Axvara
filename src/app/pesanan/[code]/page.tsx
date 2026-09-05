@@ -1,12 +1,20 @@
-
 "use client";
+
 export const runtime = "edge";
+
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { formatRupiah } from "@/lib/utils";
 import { adminWaLink, adminTelegramLink } from "@/lib/site";
 
+type QrisInvoice = {
+  payable_amount: number;
+  unique_code: number;
+  image_url: string;
+  expires_at: string;
+  status: string;
+};
 
 type Order = {
   code: string;
@@ -16,182 +24,158 @@ type Order = {
   items: { name: string; price: number; qty: number }[];
   subtotal: number;
   status: string;
+  qris?: QrisInvoice | null;
 };
+
+function fromApi(value: Record<string, unknown>): Order {
+  return {
+    code: String(value.code),
+    name: String(value.customer_name),
+    wa: String(value.customer_wa),
+    method: String(value.payment_method),
+    items: (value.items || []) as Order["items"],
+    subtotal: Number(value.subtotal),
+    status: String(value.status),
+    qris: value.qris as QrisInvoice | null | undefined,
+  };
+}
+
+function countdown(expiresAt: string, now: number): string {
+  const seconds = Math.max(0, Math.floor((Date.parse(expiresAt) - now) / 1000));
+  const minutes = Math.floor(seconds / 60);
+  return `${String(minutes).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+}
 
 export default function OrderSuccessPage() {
   const { code } = useParams<{ code: string }>();
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [now, setNow] = useState(Date.now());
+
+  const fetchOrder = useCallback(async () => {
+    if (!code || typeof code !== "string") return;
+    const response = await fetch(`/api/orders?code=${encodeURIComponent(code)}`, { cache: "no-store" });
+    const body = await response.json().catch(() => ({}));
+    if (response.status === 404) {
+      setOrder(null);
+      setFetchError(null);
+      return;
+    }
+    if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
+    setOrder(fromApi(body.order));
+    setFetchError(null);
+  }, [code]);
 
   useEffect(() => {
     setLoading(true);
     setFetchError(null);
-    // Show local data instantly for fast render
     try {
       const all: Order[] = JSON.parse(localStorage.getItem("axvara-orders") || "[]");
-      const found = all.find((o) => o.code === code);
+      const found = all.find((item) => item.code === code);
       if (found) setOrder(found);
-    } catch {}
-    // ALWAYS fetch server for authoritative status
-    if (!code || typeof code !== "string") { setLoading(false); return; }
-    fetch(`/api/orders?code=${encodeURIComponent(String(code))}`)
-      .then(async (r) => {
-        const j = await r.json().catch(() => ({}));
-        if (r.status === 404) {
-          setOrder(null);
-          setFetchError(null);
-          return;
-        }
-        if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
-        const o = j.order;
-        setOrder({ code: o.code, name: o.customer_name, wa: o.customer_wa, method: o.payment_method, items: o.items, subtotal: o.subtotal, status: o.status });
-        setFetchError(null);
-      })
-      .catch((e) => setFetchError(e instanceof Error ? e.message : "Gagal memuat pesanan"))
+    } catch { /* Server state remains authoritative. */ }
+    void fetchOrder()
+      .catch((error) => setFetchError(error instanceof Error ? error.message : "Gagal memuat pesanan"))
       .finally(() => setLoading(false));
-  }, [code]);
+  }, [code, fetchOrder]);
 
-  // Auto-refresh for pending orders
   const orderStatus = order?.status;
+  const isDynamicQris = Boolean(order?.qris);
   useEffect(() => {
-    if (orderStatus !== "pending" || !code) return;
-    const id = setInterval(async () => {
-      try {
-        const r = await fetch(`/api/orders?code=${encodeURIComponent(String(code))}`);
-        const j = await r.json().catch(() => ({}));
-        if (r.ok && j.order) {
-          setOrder({ code: j.order.code, name: j.order.customer_name, wa: j.order.customer_wa, method: j.order.payment_method, items: j.order.items, subtotal: j.order.subtotal, status: j.order.status });
-          setFetchError(null);
-        } else {
-          setFetchError(j.error || `Status terbaru gagal dimuat (${r.status})`);
-        }
-      } catch (error) {
-        setFetchError(error instanceof Error ? error.message : "Status terbaru gagal dimuat");
-      }
-    }, 30000);
-    return () => clearInterval(id);
-  }, [orderStatus, code]);
+    if (orderStatus !== "pending") return;
+    const interval = setInterval(() => {
+      setNow(Date.now());
+      void fetchOrder().catch((error) => setFetchError(error instanceof Error ? error.message : "Status terbaru gagal dimuat"));
+    }, isDynamicQris ? 5_000 : 30_000);
+    return () => clearInterval(interval);
+  }, [orderStatus, isDynamicQris, fetchOrder]);
+
+  useEffect(() => {
+    if (!order?.qris || order.status !== "pending") return;
+    const timer = setInterval(() => setNow(Date.now()), 1_000);
+    return () => clearInterval(timer);
+  }, [order?.qris, order?.status]);
 
   if (loading && !order) {
-    return (
-      <div className="mx-auto max-w-[640px] px-4 py-16 text-center">
-        <div className="w-8 h-8 mx-auto rounded-full border-2 border-white/20 border-t-[#00E5FF] animate-spin" />
-        <p className="text-white/50 text-sm mt-4">Memuat pesanan…</p>
-      </div>
-    );
+    return <div className="mx-auto max-w-[640px] px-4 py-16 text-center"><div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-[#00E5FF]" /><p className="mt-4 text-sm text-white/50">Memuat pesanan…</p></div>;
   }
-
   if (fetchError && !order) {
-    return (
-      <div className="mx-auto max-w-[640px] px-4 py-16 text-center">
-        <p className="text-red-300 text-sm">{fetchError}</p>
-        <button onClick={() => location.reload()} className="mt-3 text-[#00E5FF] text-sm">Coba lagi</button>
-      </div>
-    );
+    return <div className="mx-auto max-w-[640px] px-4 py-16 text-center"><p className="text-sm text-red-300">{fetchError}</p><button onClick={() => location.reload()} className="mt-3 text-sm text-[#00E5FF]">Coba lagi</button></div>;
   }
-
   if (!order) {
-    return (
-      <div className="mx-auto max-w-[640px] px-4 py-16 text-center">
-        <p className="text-white/60">Pesanan tidak ditemukan</p>
-        <Link href="/" className="text-[#00E5FF] text-sm mt-3 inline-block">Kembali ke beranda</Link>
-      </div>
-    );
+    return <div className="mx-auto max-w-[640px] px-4 py-16 text-center"><p className="text-white/60">Pesanan tidak ditemukan</p><Link href="/" className="mt-3 inline-block text-sm text-[#00E5FF]">Kembali ke beranda</Link></div>;
   }
 
-  const statusVisual = order.status === "lunas"
+  const isExpired = order.status === "kadaluarsa";
+  const isPaid = order.status === "lunas";
+  const isCancelled = order.status === "dibatalkan";
+  const payableAmount = Number(order.qris?.payable_amount || order.subtotal);
+  const statusVisual = isPaid
     ? { icon: "/icons/ios11/checked-96.png", shell: "bg-emerald-500/15", filter: "brightness(0) saturate(100%) invert(65%) sepia(51%) saturate(717%) hue-rotate(90deg)" }
-    : order.status === "dibatalkan"
+    : isCancelled
       ? { icon: "/icons/ios11/close-96.png", shell: "bg-red-500/15", filter: "brightness(0) saturate(100%) invert(57%) sepia(55%) saturate(1800%) hue-rotate(322deg)" }
-      : { icon: "/icons/ios11/clock-96.png", shell: order.status === "kadaluarsa" ? "bg-white/10" : "bg-[#FFB800]/15", filter: order.status === "kadaluarsa" ? "brightness(0) invert(1) opacity(.55)" : "brightness(0) saturate(100%) invert(72%) sepia(92%) saturate(1800%) hue-rotate(360deg)" };
+      : { icon: "/icons/ios11/clock-96.png", shell: isExpired ? "bg-white/10" : "bg-[#FFB800]/15", filter: isExpired ? "brightness(0) invert(1) opacity(.55)" : "brightness(0) saturate(100%) invert(72%) sepia(92%) saturate(1800%) hue-rotate(360deg)" };
 
   return (
-    <div className="mx-auto max-w-[640px] px-4 sm:px-6 py-10">
-      <div className="ax-glass-card rounded-[28px] p-6 sm:p-8 text-center">
-        <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center ${statusVisual.shell}`}>
-          <img src={statusVisual.icon} alt="" width={32} height={32} className="w-8 h-8 object-contain" style={{ filter: statusVisual.filter }} draggable={false} />
+    <div className="mx-auto max-w-[640px] px-4 py-10 sm:px-6">
+      <div className="ax-glass-card rounded-[28px] p-6 text-center sm:p-8">
+        <div className={`mx-auto flex h-16 w-16 items-center justify-center rounded-full ${statusVisual.shell}`}>
+          <img src={statusVisual.icon} alt="" width={32} height={32} className="h-8 w-8 object-contain" style={{ filter: statusVisual.filter }} draggable={false} />
         </div>
-        <h1 className="mt-4 font-display font-bold text-2xl text-white">{order.status === "lunas" ? "Pembayaran Dikonfirmasi! 🎉" : order.status === "dibatalkan" ? "Pesanan Dibatalkan" : order.status === "kadaluarsa" ? "Pesanan Kedaluwarsa" : "Pesanan Diterima!"}</h1>
+        <h1 className="mt-4 font-display text-2xl font-bold text-white">{isPaid ? "Pembayaran Dikonfirmasi! 🎉" : isCancelled ? "Pesanan Dibatalkan" : isExpired ? "Pesanan Kedaluwarsa" : order.qris ? "Selesaikan Pembayaran QRIS" : "Pesanan Diterima!"}</h1>
         <p className="mt-2 font-mono text-sm font-bold tracking-[0.08em] text-[#00E5FF]">{order.code}</p>
-        {order.status === "lunas" ? (
-          <span className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[#22C55E]/15 text-[#22C55E] text-xs font-semibold px-3 py-1.5 border border-[#22C55E]/20">
-            <img src="/icons/ios11/checked-32.png" alt="" width={14} height={14} className="w-3.5 h-3.5 object-contain" style={{ filter: "brightness(0) saturate(100%) invert(60%) sepia(60%) saturate(500%) hue-rotate(100deg) brightness(1.1)" }} draggable={false} /> Lunas — Pembayaran Dikonfirmasi
-          </span>
-        ) : order.status === "dibatalkan" ? (
-          <span className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-red-500/15 text-red-300 text-xs font-semibold px-3 py-1.5 border border-red-500/20">
-            Dibatalkan
-          </span>
-        ) : order.status === "kadaluarsa" ? (
-          <span className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-white/10 text-white/50 text-xs font-semibold px-3 py-1.5 border border-white/10">
-            Kedaluwarsa
-          </span>
+        {isPaid ? (
+          <span className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-[#22C55E]/20 bg-[#22C55E]/15 px-3 py-1.5 text-xs font-semibold text-[#22C55E]">Lunas — Terdeteksi Otomatis</span>
+        ) : isCancelled ? (
+          <span className="mt-3 inline-flex rounded-full border border-red-500/20 bg-red-500/15 px-3 py-1.5 text-xs font-semibold text-red-300">Dibatalkan</span>
+        ) : isExpired ? (
+          <span className="mt-3 inline-flex rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/50">Kedaluwarsa</span>
         ) : (
-          <span className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[#FFB800]/15 text-[#FFB800] text-xs font-semibold px-3 py-1.5 border border-[#FFB800]/20">
-            <img src="/icons/ios11/clock-32.png" alt="" width={14} height={14} className="w-3.5 h-3.5 object-contain" style={{ filter: "brightness(0) saturate(100%) invert(72%) sepia(92%) saturate(1800%) hue-rotate(360deg) brightness(1.02)" }} draggable={false} /> Pending — Menunggu Verifikasi
-          </span>
-        )}
-        <p className="mt-4 text-sm text-white/60 leading-6">
-          {order.status === "lunas"
-            ? <>Pembayaran <span className="text-white font-medium">{order.name}</span> sudah dikonfirmasi. Admin akan menghubungi kamu via WA ke <span className="text-white">{order.wa}</span> untuk pengiriman produk.</>
-            : order.status === "dibatalkan"
-              ? <>Pesanan ini dibatalkan. Hubungi admin jika kamu sudah melakukan transfer atau memerlukan bantuan.</>
-              : order.status === "kadaluarsa"
-                ? <>Pesanan melewati batas pembayaran 24 jam dan stok telah dilepas kembali. Silakan buat pesanan baru.</>
-                : <>Terima kasih, <span className="text-white font-medium">{order.name}</span>! Admin akan memverifikasi bukti kamu dalam <span className="text-white">5–15 menit</span> dan <span className="text-white">menghubungi kamu via WA</span> ke <span className="text-white">{order.wa}</span> untuk pengiriman produk.</>}
-        </p>
-
-        {fetchError && (
-          <div className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-left text-xs text-amber-200">
-            Status terbaru belum dapat diperiksa: {fetchError}
-            <button onClick={() => location.reload()} className="ml-2 font-semibold text-[#00E5FF]">Coba lagi</button>
-          </div>
+          <span className="mt-3 inline-flex rounded-full border border-[#FFB800]/20 bg-[#FFB800]/15 px-3 py-1.5 text-xs font-semibold text-[#FFB800]">Pending — Menunggu Pembayaran</span>
         )}
 
-        <div className="mt-6 ax-glass-card rounded-2xl p-4 text-left">
-          <p className="text-xs font-semibold text-white/50 uppercase tracking-[0.08em]">Ringkasan</p>
-          <div className="mt-3 space-y-2">
-            {order.items.map((it, i) => (
-              <div key={i} className="flex justify-between text-sm">
-                <span className="text-white/70">{it.name} × {it.qty}</span>
-                <span className="text-white font-medium">{formatRupiah(it.price * it.qty)}</span>
-              </div>
-            ))}
-          </div>
-          <div className="mt-3 pt-3 border-t border-white/10 flex justify-between">
-            <span className="text-sm text-white/60">Total • {order.method.toUpperCase()}</span>
-            <span className="font-bold text-white">{formatRupiah(order.subtotal)}</span>
-          </div>
-        </div>
-
-        <div className="mt-6 flex flex-col sm:flex-row gap-3">
-          <Link href="/" className="flex-1 h-11 rounded-xl ax-glass-card font-semibold text-white flex items-center justify-center hover:bg-white/10">
-            Lanjut Belanja
-          </Link>
-          <a
-            href={adminWaLink(`Halo AXVARA, saya sudah transfer untuk pesanan ${order.code} sebesar ${formatRupiah(order.subtotal)}`)}
-            target="_blank"
-            rel="noreferrer"
-            className="flex-1 h-11 rounded-xl bg-[#25D366] text-white font-semibold flex items-center justify-center gap-2 hover:bg-[#1DA851]"
-          >
-            <img src="/icons/ios11/chat-32.png" alt="" width={16} height={16} className="w-4 h-4 object-contain brightness-0 invert" draggable={false} /> WhatsApp Admin
-          </a>
-          <a
-            href={adminTelegramLink()}
-            target="_blank"
-            rel="noreferrer"
-            className="flex-1 h-11 rounded-xl bg-[#2AABEE] text-white font-semibold flex items-center justify-center gap-2 hover:bg-[#229ED9]"
-          >
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0h-.056zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
-            Telegram Admin
-          </a>
-        </div>
-
-        <p className="mt-4 text-center text-[11px] leading-5 text-white/35">
-          Produk third-party AXVARA — simpan kode pesanan ini untuk klaim. Garansi berupa penggantian sesuai{" "}
-          <Link href="/garansi-replace" className="text-white/50 underline decoration-white/20 underline-offset-2 hover:text-white">ketentuan garansi</Link>{" "}
-          & deskripsi tiap produk, bukan refund otomatis.
+        <p className="mt-4 text-sm leading-6 text-white/60">
+          {isPaid
+            ? <>Pembayaran <span className="font-medium text-white">{order.name}</span> sudah diterima. Pesanan sekarang diproses.</>
+            : isCancelled
+              ? <>Pesanan ini dibatalkan. Hubungi admin jika kamu sudah melakukan transfer.</>
+              : isExpired
+                ? <>Batas pembayaran sudah habis dan stok telah dilepas. Silakan buat pesanan baru.</>
+                : order.qris
+                  ? <>Scan QRIS di bawah dan bayar <span className="font-semibold text-white">tepat sesuai total</span>. Status akan diperbarui otomatis.</>
+                  : <>Terima kasih, <span className="font-medium text-white">{order.name}</span>! Admin akan memverifikasi bukti pembayaran dan menghubungi kamu.</>}
         </p>
+
+        {order.qris && order.status === "pending" && (
+          <section className="mt-6 rounded-2xl border border-[#00E5FF]/20 bg-[#00E5FF]/[0.05] p-4" aria-label="QRIS dinamis">
+            <div className="mx-auto max-w-[330px] rounded-2xl bg-white p-3">
+              <img src={order.qris.image_url} alt={`QRIS dinamis pesanan ${order.code}`} className="h-auto w-full rounded-xl" />
+            </div>
+            <p className="mt-4 text-xs uppercase tracking-[0.12em] text-white/45">Total bayar</p>
+            <p className="mt-1 font-display text-3xl font-bold text-white">{formatRupiah(payableAmount)}</p>
+            <p className="mt-1 text-xs text-white/45">Termasuk kode unik <span className="font-mono text-[#00E5FF]">+{order.qris.unique_code}</span></p>
+            <div className="mt-3 flex items-center justify-center gap-2 text-xs text-[#FFB800]"><span className="h-2 w-2 animate-pulse rounded-full bg-[#FFB800]" />Berlaku {countdown(order.qris.expires_at, now)}</div>
+            <a href={order.qris.image_url} download={`AXVARA-${order.code}-QRIS.png`} className="mt-4 inline-flex h-9 items-center rounded-xl border border-white/15 px-4 text-xs font-semibold text-white/70 hover:bg-white/10">Download QRIS</a>
+            <p className="mt-3 text-[11px] leading-5 text-white/35">Jangan mengubah nominal. QRIS Hook DANA akan mencocokkan total secara otomatis.</p>
+          </section>
+        )}
+
+        {fetchError && <div className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-left text-xs text-amber-200">Status terbaru belum dapat diperiksa: {fetchError}</div>}
+
+        <div className="ax-glass-card mt-6 rounded-2xl p-4 text-left">
+          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">Ringkasan</p>
+          <div className="mt-3 space-y-2">{order.items.map((item, index) => <div key={index} className="flex justify-between gap-4 text-sm"><span className="text-white/70">{item.name} × {item.qty}</span><span className="font-medium text-white">{formatRupiah(item.price * item.qty)}</span></div>)}</div>
+          <div className="mt-3 flex justify-between border-t border-white/10 pt-3"><span className="text-sm text-white/60">Total • {order.method.toUpperCase()}</span><span className="font-bold text-white">{formatRupiah(payableAmount)}</span></div>
+        </div>
+
+        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+          <Link href="/" className="ax-glass-card flex h-11 flex-1 items-center justify-center rounded-xl font-semibold text-white hover:bg-white/10">Lanjut Belanja</Link>
+          <a href={adminWaLink(`Halo AXVARA, saya ingin menanyakan pesanan ${order.code} sebesar ${formatRupiah(payableAmount)}`)} target="_blank" rel="noreferrer" className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-[#25D366] font-semibold text-white hover:bg-[#1DA851]">WhatsApp Admin</a>
+          <a href={adminTelegramLink()} target="_blank" rel="noreferrer" className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-[#2AABEE] font-semibold text-white hover:bg-[#229ED9]">Telegram Admin</a>
+        </div>
+
+        <p className="mt-4 text-center text-[11px] leading-5 text-white/35">Produk third-party AXVARA — simpan kode pesanan untuk klaim. Garansi berupa penggantian sesuai <Link href="/garansi-replace" className="text-white/50 underline decoration-white/20 underline-offset-2 hover:text-white">ketentuan garansi</Link>.</p>
       </div>
     </div>
   );

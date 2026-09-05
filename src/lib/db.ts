@@ -14,6 +14,8 @@ export type DbProduct = {
   badge: string | null;
   sold_count: number | null;
   stock: number | null;
+  aliases?: string | null;
+  whatsapp_alias?: string | null;
   is_active: number | null;
   sort_order: number | null;
 };
@@ -153,7 +155,7 @@ function getBannerMem(): Row[] {
 function getPaymentMethodMem(): Row[] {
   const g = process as unknown as { __AXVARA_PAYMENT_METHODS?: Row[] };
   if (!g.__AXVARA_PAYMENT_METHODS) g.__AXVARA_PAYMENT_METHODS = [
-    { id: "qris", label: "QRIS", account_number: "", account_name: "Brotherstore06", qris_url: "/qris/axvara-qris.jpg", is_active: 1, sort_order: 1 },
+    { id: "qris", label: "QRIS Dinamis", account_number: "", account_name: "DANA Business", qris_url: null, is_active: 1, sort_order: 1 },
     { id: "ewallet", label: "DANA / Gopay / Shopeepay", account_number: "082135277434", account_name: "Brotherstore06", qris_url: null, is_active: 1, sort_order: 2 },
     { id: "seabank", label: "SeaBank", account_number: "901812349386", account_name: "Brotherstore06", qris_url: null, is_active: 1, sort_order: 3 },
   ];
@@ -401,7 +403,7 @@ type AtomicOrderInput = {
   subtotal: number;
   paymentMethod: string;
   paymentAccount: string;
-  proofUrl: string;
+  proofUrl: string | null;
 };
 
 export async function createOrderWithStock(input: AtomicOrderInput): Promise<void> {
@@ -677,7 +679,7 @@ export async function transitionPendingPaymentOrder(input: {
   return true;
 }
 
-/** Atomically make KlikQRIS authoritative for both ledger and order. */
+/** Atomically make the dynamic QRIS ledger authoritative for its order. */
 export async function transitionPendingPaymentToPaid(
   orderCode: string,
   providerPaidAt?: string | null,
@@ -701,7 +703,7 @@ export async function transitionPendingPaymentToPaid(
       ).bind(providerPaidAt ?? null, orderCode),
       d1.prepare(
         `UPDATE orders
-         SET payment_status='paid', payment_method='klikqris', status='lunas', updated_at=datetime('now')
+         SET payment_status='paid', payment_method='qris', status='lunas', updated_at=datetime('now')
          WHERE code=? AND status='pending' AND payment_status IN ('unpaid','pending')`,
       ).bind(orderCode),
       d1.prepare("DELETE FROM operation_guards WHERE operation_id=?").bind(guardId),
@@ -728,7 +730,7 @@ export async function transitionPendingPaymentToPaid(
   if (!txResult.changes) return false;
   order.status = "lunas";
   order.payment_status = "paid";
-  order.payment_method = "klikqris";
+  order.payment_method = "qris";
   order.updated_at = new Date().toISOString();
   return true;
 }

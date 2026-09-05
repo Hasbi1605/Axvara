@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS products (
   sold_count INTEGER DEFAULT 0,
   stock INTEGER DEFAULT -1,
   aliases TEXT DEFAULT '[]',
+  whatsapp_alias TEXT,
   is_active INTEGER DEFAULT 1,
   sort_order INTEGER DEFAULT 0,
   fulfillment_mode TEXT NOT NULL DEFAULT 'manual'
@@ -131,7 +132,7 @@ INSERT OR IGNORE INTO products (id, category_id, name, slug, description, price,
   (23,2,'Cursor Pro 1 Bulan','cursor-pro-1-bulan','AI code editor — Tab, Chat, Composer premium.',85000,320000,'https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=600&h=450&fit=crop',NULL,67,19,23),
   (24,3,'Grammarly Premium 1 Tahun','grammarly-premium-1-tahun','AI writing, plagiarism check, tone rewrite.',95000,1440000,'https://images.unsplash.com/photo-1455390582262-044cdead277a?w=600&h=450&fit=crop',NULL,48,21,24);
 INSERT OR IGNORE INTO payment_methods (id, label, account_number, account_name, qris_url, sort_order) VALUES
-  ('qris','QRIS','', 'Brotherstore06','/qris/axvara-qris.jpg',1),
+  ('qris','QRIS Dinamis','', 'DANA Business',NULL,1),
   ('ewallet','DANA / Gopay / Shopeepay','082135277434','Brotherstore06',NULL,2),
   ('seabank','SeaBank','901812349386','Brotherstore06',NULL,3);
 
@@ -196,7 +197,7 @@ CREATE TABLE IF NOT EXISTS banners (
   updated_at TEXT DEFAULT (datetime('now'))
 );
 
--- Telegram & KlikQRIS tables (migration 0005)
+-- Telegram, payment, and fulfillment tables
 CREATE TABLE IF NOT EXISTS telegram_users (
   user_id TEXT PRIMARY KEY,
   chat_id TEXT NOT NULL,
@@ -226,9 +227,11 @@ CREATE TABLE IF NOT EXISTS payment_transactions (
   merchant_id TEXT NOT NULL,
   requested_amount INTEGER NOT NULL,
   payable_amount INTEGER,
+  unique_code INTEGER,
   status TEXT NOT NULL DEFAULT 'initializing',
   provider_signature TEXT,
   qris_url TEXT,
+  qris_payload TEXT,
   direct_url TEXT,
   expires_at TEXT,
   paid_at TEXT,
@@ -242,6 +245,24 @@ CREATE TABLE IF NOT EXISTS payment_transactions (
 CREATE INDEX IF NOT EXISTS idx_payment_transactions_status ON payment_transactions(status);
 CREATE INDEX IF NOT EXISTS idx_payment_transactions_expires ON payment_transactions(expires_at);
 CREATE INDEX IF NOT EXISTS idx_payment_transactions_order ON payment_transactions(order_code);
+CREATE UNIQUE INDEX IF NOT EXISTS payment_transactions_active_dana_amount
+  ON payment_transactions(payable_amount)
+  WHERE provider='dana' AND status IN ('initializing','pending');
+CREATE TABLE IF NOT EXISTS dana_webhook_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_key TEXT NOT NULL UNIQUE,
+  payload_hash TEXT NOT NULL,
+  amount INTEGER NOT NULL,
+  sender_name TEXT,
+  raw_text TEXT,
+  status TEXT NOT NULL DEFAULT 'received'
+    CHECK (status IN ('received','matched','ignored','failed')),
+  order_code TEXT REFERENCES orders(code),
+  last_error TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  processed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_dana_webhook_events_status ON dana_webhook_events(status, created_at);
 CREATE TABLE IF NOT EXISTS fulfillment_inventory (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   product_id INTEGER NOT NULL REFERENCES products(id),
@@ -331,7 +352,7 @@ WHERE NOT EXISTS (
 -- WhatsApp sessions (migration 0007)
 CREATE TABLE IF NOT EXISTS whatsapp_sessions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  provider TEXT NOT NULL DEFAULT 'fonnte',
+  provider TEXT NOT NULL DEFAULT 'baileys',
   conversation_id TEXT NOT NULL,
   member_id TEXT NOT NULL,
   selected_product_id INTEGER,
@@ -354,7 +375,7 @@ CREATE INDEX IF NOT EXISTS idx_wa_sessions_expiry ON whatsapp_sessions(expires_a
 -- WhatsApp inbox events (migration 0007)
 CREATE TABLE IF NOT EXISTS whatsapp_inbox_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  provider TEXT NOT NULL DEFAULT 'fonnte',
+  provider TEXT NOT NULL DEFAULT 'baileys',
   external_message_id TEXT NOT NULL,
   event_type TEXT NOT NULL DEFAULT 'message',
   conversation_id TEXT,

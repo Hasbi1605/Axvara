@@ -9,10 +9,10 @@ import {
 const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), "utf8");
 
 describe("WhatsApp payment proof review", () => {
-  it("allows manual rails and static QRIS, but keeps dynamic QRIS provider-authoritative", () => {
+  it("allows manual rails but keeps every QRIS payment hook-authoritative", () => {
     expect(authoritativePaymentMethodForProof("SEABANK", false)).toBe("bank:seabank");
     expect(authoritativePaymentMethodForProof("EWALLET", false)).toBe("ewallet");
-    expect(authoritativePaymentMethodForProof("QRIS", false)).toBe("qris:manual");
+    expect(authoritativePaymentMethodForProof("QRIS", false)).toBeNull();
     expect(authoritativePaymentMethodForProof("QRIS", true)).toBeNull();
   });
 

@@ -60,10 +60,12 @@ export async function GET(request: NextRequest) {
         ? new Date(info.result.last_error_date * 1000).toISOString()
         : null,
     } : null,
-    klikqris_mode: process.env.KLIKQRIS_MODE ?? "sandbox",
-    klikqris_configured: !!process.env.KLIKQRIS_API_KEY,
+    dana_qris_mode: "dynamic-qris",
+    dana_qris_configured: process.env.DANA_QRIS_ENABLED === "true"
+      && Boolean(process.env.DANA_STATIC_QRIS)
+      && Boolean(process.env.DANA_WEBHOOK_SECRET),
     bot_enabled: process.env.TELEGRAM_BOT_ENABLED === "true",
-    payment_enabled: process.env.KLIKQRIS_PAYMENTS_ENABLED === "true",
+    payment_enabled: process.env.DANA_QRIS_ENABLED === "true",
     fulfillment_enabled: process.env.AUTO_FULFILLMENT_ENABLED === "true",
   });
 }

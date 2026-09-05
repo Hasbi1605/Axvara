@@ -48,7 +48,9 @@ export async function GET(req: NextRequest) {
   const rows = await queryAll(sql, ...params);
   const data = rows.map((r: Record<string, unknown>) => {
     let images: string[] = [];
+    let aliases: string[] = [];
     try { images = r.images ? JSON.parse(String(r.images)) : []; } catch { images = []; }
+    try { aliases = r.aliases ? JSON.parse(String(r.aliases)) : []; } catch { aliases = []; }
     const primary = (r.image_url as string) ?? images[0] ?? "";
     if (primary && !images.includes(primary)) images.unshift(primary);
     const variantCount = variantCatalog ? Number(r.variant_count || 0) : undefined;
@@ -57,6 +59,8 @@ export async function GET(req: NextRequest) {
       id: String(r.id),
       slug: r.slug,
       name: r.name,
+      whatsappAlias: String(r.whatsapp_alias || "").trim() || undefined,
+      aliases: Array.isArray(aliases) ? aliases.map(String) : [],
       description: r.description ?? "",
       price,
       minPrice: variantCatalog ? Number(r.min_price) : undefined,
@@ -91,6 +95,7 @@ const productSchema = z.object({
   name: z.string().trim().min(3).max(120),
   slug: z.string().trim().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "slug format invalid").min(3).max(80),
   description: z.string().trim().max(2000).optional().default(""),
+  whatsappAlias: z.string().trim().max(50).nullable().optional(),
   price: z.coerce.number().int().min(1000).max(999_999_999),
   comparePrice: z.coerce.number().int().min(1000).max(999_999_999).nullable().optional(),
   categorySlug: z.string().trim().max(40).optional().default("tools-pro"),
@@ -112,7 +117,7 @@ export async function POST(req: NextRequest) {
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Body tidak valid" }, { status: 400 }); }
   const parsed = productSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
-  const { name, slug, description, price, comparePrice, categorySlug, imageUrl, images, badge, soldCount, stock, isActive, sortOrder } = parsed.data as z.infer<typeof productSchema> & { comparePrice?: number | null };
+  const { name, slug, description, whatsappAlias, price, comparePrice, categorySlug, imageUrl, images, badge, soldCount, stock, isActive, sortOrder } = parsed.data as z.infer<typeof productSchema> & { comparePrice?: number | null };
 
   if (comparePrice && comparePrice <= price) return NextResponse.json({ error: "Harga coret harus lebih besar dari harga jual" }, { status: 400 });
 
@@ -133,16 +138,16 @@ export async function POST(req: NextRequest) {
   const primary = imageUrl ?? imgArr[0] ?? null;
   try {
     const values = [
-      category_id, name, slug, description ?? "", Number(price),
+      category_id, name, slug, description ?? "", whatsappAlias || null, Number(price),
       comparePrice ? Number(comparePrice) : null, primary, JSON.stringify(imgArr),
       badge ?? null, soldCount ? Number(soldCount) : 0,
       stock != null ? Number(stock) : -1, isActive === false ? 0 : 1,
       sortOrder ? Number(sortOrder) : 0,
     ];
     const insertSql = `INSERT INTO products (
-      category_id,name,slug,description,price,compare_price,image_url,images,
+      category_id,name,slug,description,whatsapp_alias,price,compare_price,image_url,images,
       badge,sold_count,stock,is_active,sort_order
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`;
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
     const d1 = getD1();
     if (d1) {
       const results = await d1.batch([

@@ -2,9 +2,8 @@
 // Called by MCP Worker cron every 5 minutes. Handles:
 // 1. Stale initializing payments
 // 2. Expired payments/orders
-// 3. Missed callback recovery via status check
-// 4. Due fulfillment jobs
-// 5. Stale job locks
+// 3. Due fulfillment jobs
+// 4. Stale job locks
 
 import { NextRequest, NextResponse } from "next/server";
 import {
@@ -13,11 +12,8 @@ import {
   execRun,
   transitionPendingOrder,
   transitionPendingPaymentOrder,
-  transitionPendingPaymentToPaid,
 } from "@/lib/db";
-import { getPaymentProvider, isPaymentEnabled } from "@/lib/payments/klikqris";
 import {
-  ensureFulfillmentForPaidOrder,
   getDueJobs,
   processJob,
   releaseStaleJobs,
@@ -40,10 +36,9 @@ export async function POST(request: NextRequest) {
   const results: Record<string, unknown> = {
     stale_initializing: 0,
     expired_payments: 0,
-    recovered_payments: 0,
     due_jobs_processed: 0,
     stale_locks_released: 0,
-    expired_static_whatsapp_orders: 0,
+    expired_manual_whatsapp_orders: 0,
     whatsapp_rows_cleaned: 0,
   };
 
@@ -114,9 +109,9 @@ export async function POST(request: NextRequest) {
     }
     results.expired_payments = expiredTransitions;
 
-    // 2b. Static WhatsApp payments have no provider transaction but still
-    // reserve variant stock. Expire them from the order TTL as well.
-    const expiredStaticWhatsApp = await queryAll(
+    // 2b. Manual WhatsApp rails have no transaction ledger but still reserve
+    // variant stock. Expire them from the order TTL as well.
+    const expiredManualWhatsApp = await queryAll(
       `SELECT o.code, o.items
        FROM orders o
        WHERE o.sales_channel='whatsapp' AND o.status='pending'
@@ -126,68 +121,16 @@ export async function POST(request: NextRequest) {
       BATCH_LIMIT,
     );
     let expiredStaticCount = 0;
-    for (const order of expiredStaticWhatsApp) {
+    for (const order of expiredManualWhatsApp) {
       try {
         const items = JSON.parse(String(order.items ?? "[]")) as { product_id: number; variant_id?: number; qty: number }[];
         await transitionPendingOrder(String(order.code), "kadaluarsa", null, items);
         expiredStaticCount++;
       } catch { /* another worker may have transitioned it */ }
     }
-    results.expired_static_whatsapp_orders = expiredStaticCount;
+    results.expired_manual_whatsapp_orders = expiredStaticCount;
 
-    // 3. Missed callback recovery — check pending payments near expiry
-    if (isPaymentEnabled()) {
-      const pendingNearExpiry = await queryAll(
-        `SELECT pt.order_code, pt.provider_order_id, pt.merchant_id,
-                pt.payable_amount, pt.status
-         FROM payment_transactions pt
-         JOIN orders o ON o.code=pt.order_code
-         WHERE (
-           pt.status='pending'
-           AND COALESCE(pt.last_checked_at,pt.created_at) < datetime('now','-3 minutes')
-         ) OR (
-           pt.status='paid' AND o.status='pending'
-           AND o.payment_status IN ('unpaid','pending')
-         )
-         ORDER BY pt.expires_at ASC
-         LIMIT ?`,
-        Math.min(10, BATCH_LIMIT),
-      );
-      const provider = getPaymentProvider();
-      for (const tx of pendingNearExpiry) {
-        try {
-          const statusCheck = await provider.checkStatus(
-            String(tx.provider_order_id),
-            String(tx.merchant_id),
-          );
-          await execRun(
-            `UPDATE payment_transactions SET last_checked_at=datetime('now'), updated_at=datetime('now')
-             WHERE order_code=?`,
-            String(tx.order_code),
-          );
-          if (statusCheck.status === "paid") {
-            if (
-              statusCheck.amountPaid !== undefined
-              && Number(tx.payable_amount) !== statusCheck.amountPaid
-            ) {
-              continue;
-            }
-            const transitioned = await transitionPendingPaymentToPaid(
-              String(tx.order_code),
-              statusCheck.paidAt ?? null,
-            );
-            if (transitioned) {
-              (results.recovered_payments as number)++;
-              try {
-                await ensureFulfillmentForPaidOrder(String(tx.order_code));
-              } catch { /* due-job reconciliation will retry */ }
-            }
-          }
-        } catch { /* status check failures are non-fatal */ }
-      }
-    }
-
-    // 4. Process due fulfillment jobs
+    // 3. Process due fulfillment jobs
     if (process.env.AUTO_FULFILLMENT_ENABLED === "true") {
       const dueJobs = await getDueJobs(BATCH_LIMIT);
       for (const job of dueJobs) {
@@ -204,7 +147,7 @@ export async function POST(request: NextRequest) {
       results.due_jobs_processed = dueJobs.length;
     }
 
-    // 5. Release stale job locks
+    // 4. Release stale job locks
     results.stale_locks_released = await releaseStaleJobs();
 
     // 6. Keep transient WhatsApp state bounded. Proof metadata and orders are
@@ -215,6 +158,7 @@ export async function POST(request: NextRequest) {
     const oldInboxEvents = await execRun(
       `DELETE FROM whatsapp_inbox_events WHERE created_at<datetime('now','-7 days')`,
     );
+    await execRun(`DELETE FROM dana_webhook_events WHERE created_at<datetime('now','-30 days')`);
     results.whatsapp_rows_cleaned = Number(expiredSessions.changes || 0)
       + Number(oldInboxEvents.changes || 0);
 

@@ -37,9 +37,10 @@
        │
        ▼
 ┌──────────────────┐
-│ WA Gateway (P1)  │
-│ Fonnte / Wablas  │
-│ atau wa.me link  │
+│ Baileys Gateway  │
+│ Heroku           │
+│ quoted reply +   │
+│ media sementara  │
 └──────────────────┘
 ```
 
@@ -68,7 +69,7 @@
 | Ikon | Aset SVG/PNG lokal + Lucide React | Menghindari request ikon pihak ketiga saat runtime |
 | Font | Apple SF Pro system stack | Konsisten dengan desain storefront |
 | Validasi | Zod | Schema checkout & produk |
-| Notifikasi WA | Fonnte API (P1) | Kirim WA otomatis saat lunas |
+| Gateway WhatsApp | Baileys di Heroku | Webhook grup, quoted reply, media bukti sementara, dan pesan fulfillment |
 
 ---
 
@@ -82,8 +83,7 @@ axvara/
 │   ├── ARCHITECTURE.md
 │   └── VPS-RESEARCH.md
 ├── public/
-│   ├── qris/
-│   │   └── axvara-qris.png      # QRIS Brotherstore06 hi-res
+│   ├── qris/README.md           # tidak ada QRIS statis publik
 │   └── logo/
 │       └── axvara-wordmark.svg
 ├── src/app/                     # Next.js App Router
@@ -182,11 +182,11 @@ CREATE TABLE orders (
   subtotal INTEGER NOT NULL,
   payment_method TEXT NOT NULL,    -- ewallet | seabank | qris | bank_other
   payment_account TEXT,            -- nomor tujuan (082135277434 / 901812349386)
-  proof_url TEXT,                  -- R2 URL bukti transfer
+  proof_url TEXT,                  -- R2 URL bukti transfer manual; null untuk QRIS
   status TEXT DEFAULT 'pending',   -- pending | lunas | dibatalkan | kadaluarsa
   admin_note TEXT,                 -- lisensi/key yang dikirim
   quote_id TEXT,                   -- jti quote signed; unique untuk idempotensi
-  expires_at TEXT,                 -- pending berakhir 24 jam setelah dibuat
+  expires_at TEXT,                 -- QRIS 15 menit; transfer manual 24 jam
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -215,7 +215,7 @@ CREATE TABLE payment_methods (
   label TEXT NOT NULL,             -- "DANA / Gopay / Shopeepay"
   account_number TEXT,             -- "082135277434"
   account_name TEXT,               -- "Brotherstore06"
-  qris_url TEXT,                   -- R2 URL untuk QRIS
+  qris_url TEXT,                   -- legacy; QRIS dinamis tidak menyimpan aset di sini
   is_active INTEGER DEFAULT 1,
   sort_order INTEGER DEFAULT 0
 );
@@ -232,7 +232,7 @@ CREATE TABLE newsletter_subscribers (
 -- Seed payment_methods:
 -- ewallet | DANA / Gopay / Shopeepay | 082135277434 | Brotherstore06
 -- seabank | SeaBank                  | 901812349386 | Brotherstore06
--- qris    | QRIS                     | -            | Brotherstore06 | qris_url → R2/public/qris/...
+-- qris    | QRIS Dinamis             | -            | DANA Business | qris_url NULL
 ```
 
 ---
@@ -253,6 +253,8 @@ CREATE TABLE newsletter_subscribers (
 | GET/POST/PUT | /api/payment-methods[?id=] | Baca metode aktif / tambah bank / kelola rekening dan QRIS | public/admin |
 | POST | /api/orders | Verifikasi signed quote, buat pesanan idempotent, reservasi stok atomik | - |
 | GET | /api/orders/:code | Cek status pesanan via code | - |
+| GET | /api/payments/qris/:code/image | Render PNG QRIS dinamis untuk invoice aktif | code order |
+| POST | /api/webhook/dana | Terima notifikasi QRIS Hook, dedup, cocokkan nominal, lunasi order | X-Webhook-Secret |
 | POST | /api/proof/upload | Upload bukti ke R2, return URL privat | same-origin |
 | GET | /api/admin/bukti/:key | Preview/download bukti | admin |
 | POST | /api/upload | Upload WebP produk/artikel/banner ke R2 | admin |
@@ -273,7 +275,7 @@ CREATE TABLE newsletter_subscribers (
   customer_email?: string (email),
   items: { product_id: number, qty: number }[] (min 1),
   payment_method: "ewallet" | "seabank" | "qris" | string,
-  proof_url: string (R2 URL, valid image) // wajib MVP
+  proof_url?: string | null // null hanya untuk QRIS; wajib dan private-R2 untuk rail manual
   quote_token: string // signed HS256, snapshot item/subtotal/payment account
 }
 ```
@@ -296,12 +298,14 @@ CREATE TABLE newsletter_subscribers (
    ↓ POST /api/checkout/quote { slug/id, qty, expected_price }
 [Server] Validasi produk aktif, stok, harga, dan payment_methods D1
    ↓ response quote HS256 60 menit + snapshot authoritative
-[Client] Konfirmasi perubahan harga → pilih rekening snapshot → upload bukti privat ke R2
+[Client] Konfirmasi perubahan harga → pilih QRIS atau rekening manual
    ↓ POST /api/orders { customer, item IDs/qty, payment_method, proof_url, quote_token }
 [Server] Verifikasi signature+expiry+isi item → D1 batch guard+decrement+INSERT order
-   ↓ response 201, atau order yang sama jika quote dikirim ulang
-[Client] Redirect → /pesanan/AXV-20260831-0012 (halaman sukses)
-   ↓ cron: pending >24 jam → status kadaluarsa + restore stok dalam satu batch
+   ├─ QRIS: alokasikan kode unik 1–499 → EMVCo dynamic payload + ledger 15 menit
+   │    ↓ /pesanan/[code] menampilkan PNG dan polling 5 detik
+   │    ↓ QRIS Hook → POST /api/webhook/dana → exact amount + event dedup → lunas atomik
+   └─ Manual: bukti R2 → review admin
+        ↓ cron: jatuh tempo → status kadaluarsa + restore stok dalam satu batch
 ```
 
 **Anti-tamper:** Harga, rekening, subtotal, dan item order terikat ke quote server; body client tidak dapat mengganti snapshot. Quote id unik membuat retry idempotent. Reservasi/restore stok memakai batch D1 dengan guard CHECK agar kegagalan rollback seluruh operasi; stok `-1` tetap unlimited.
@@ -323,14 +327,12 @@ R2 bucket: axvara-assets
 ├── articles/
 │   ├── covers/*.webp
 │   └── content/*.webp
-├── banners/*.webp
-└── qris/
-    └── axvara-qris.png   (master, hi-res)
+└── banners/*.webp
 ```
 
 - Upload via Pages Function dengan `AWS SDK S3` ke R2 binding
 - Nama file: `{order_code}-{random6}.{ext}` untuk bukti
-- Content-Type di-set, public read untuk produk/qris, private untuk bukti (akses via signed URL atau admin-only route)
+- Content-Type di-set; produk/banner publik dan bukti pembayaran private melalui route admin
 
 ---
 
@@ -355,7 +357,7 @@ R2 bucket: axvara-assets
 5. GitHub Actions menggunakan Secrets `CLOUDFLARE_API_KEY`, `CLOUDFLARE_EMAIL`, dan `CLOUDFLARE_ACCOUNT_ID`; Git integration bawaan Pages tidak menjalankan deployment agar CI/CD tidak ganda
 6. Setelah push berhasil, agent berhenti tanpa polling workflow. `npm run deploy`/`deploy:mcp` hanya jalur recovery manual atas instruksi eksplisit
 7. Custom domain `axvara.tech` dan `www.axvara.tech` aktif melalui CNAME proxied; `www` memiliki redirect 308 ke apex. DNSSEC Cloudflare aktif dan memerlukan publikasi DS di registrar
-8. Secrets Pages: `ADMIN_EMAIL`, `ADMIN_PASSWORD_SHA256`, `ADMIN_JWT_SECRET`, `CRON_SECRET`; `FONNTE_TOKEN` tetap P1. Nilai `ADMIN_PASSWORD_SHA256` memakai format PBKDF2/SHA-256; satu pasang quote pembungkus dari paste shell/JSON dinormalisasi sebelum verifikasi. Pada hash PBKDF2, browser membentuk proof HMAC atas challenge JWT berlaku 5 menit; Pages memverifikasi proof secara ringan tanpa menjalankan derivasi PBKDF2 berat.
+8. Secrets Pages: `ADMIN_EMAIL`, `ADMIN_PASSWORD_SHA256`, `ADMIN_JWT_SECRET`, `CRON_SECRET`, dan `WHATSAPP_WEBHOOK_TOKEN`; URL service Baileys disimpan sebagai `WHATSAPP_GATEWAY_URL`. Nilai `ADMIN_PASSWORD_SHA256` memakai format PBKDF2/SHA-256; satu pasang quote pembungkus dari paste shell/JSON dinormalisasi sebelum verifikasi. Pada hash PBKDF2, browser membentuk proof HMAC atas challenge JWT berlaku 5 menit; Pages memverifikasi proof secara ringan tanpa menjalankan derivasi PBKDF2 berat.
 
 ### Build Adapter
 
@@ -419,16 +421,17 @@ Konfigurasi client menggunakan header `Authorization: Bearer ${AXVARA_AGENT_TOKE
 
 Trigger `*/5 * * * *` pada MCP Worker memanggil `/api/cron/publish-scheduled`. Set nilai acak yang sama sebagai secret Pages `CRON_SECRET` dan Worker `AXVARA_CRON_SECRET`; jangan simpan nilainya di Git.
 
-## 13. Bot Telegram + KlikQRIS Payment + Fulfillment
+## 13. Bot Telegram + DANA Dynamic QRIS + Fulfillment
 
 Implementasi native TypeScript di codebase AXVARA. Repo `mocasus/telegram-auto-order-bot` hanya referensi UX; tidak ada dependency, subtree, atau source copy.
 
 ### Arsitektur
 
 - **Bot:** Webhook di `POST /api/telegram/webhook`, bukan long polling. Wrapper `fetch` kecil atas Telegram Bot API tanpa framework.
-- **Payment:** KlikQRIS adapter terisolasi di `src/lib/payments/klikqris.ts`. Dua mode: `sandbox` dan `mypg` (MY PG). Callback di `POST /api/payments/klikqris/callback` dengan validasi signature + amount + server-side status confirmation.
+- **Payment:** `src/lib/payments/dana-qris.ts` mengubah payload merchant DANA Business menjadi EMVCo dynamic QRIS, menyuntikkan nominal unik, dan menghitung ulang CRC16. Tidak ada API/payment gateway pihak ketiga.
+- **Authority:** QRIS Hook Android mengirim JSON ke `POST /api/webhook/dana` dengan `X-Webhook-Secret`. Event dideduplikasi dan hanya nominal persis dari satu invoice DANA aktif yang dapat melunasi order.
 - **Fulfillment:** AES-256-GCM via WebCrypto, fingerprint SHA-256 untuk deduplikasi. Tiga mode: `manual`, `shared`, `unique`. Outbox pattern dengan `fulfillment_jobs` tabel.
-- **Rekonsiliasi:** `POST /api/cron/operations` menangani stale initializing, expired invoices, missed callback recovery, due jobs, dan stale locks. Dipanggil cron MCP Worker tiap 5 menit.
+- **Rekonsiliasi:** `POST /api/cron/operations` menangani stale initializing, invoice kedaluwarsa, due jobs, dan stale locks. DANA tidak menyediakan status polling; webhook adalah authority pembayaran.
 
 ### Tabel Baru (migrasi 0005)
 
@@ -436,7 +439,8 @@ Implementasi native TypeScript di codebase AXVARA. Repo `mocasus/telegram-auto-o
 |---|---|
 | `telegram_users` | Profil user Telegram minimal |
 | `telegram_updates` | Idempotency + lease untuk webhook |
-| `payment_transactions` | Ledger KlikQRIS (status, signature, QRIS URL, expiry) |
+| `payment_transactions` | Ledger lintas-channel (base amount, payable amount unik, payload/URL QRIS, expiry) |
+| `dana_webhook_events` | Dedup/audit minimal event QRIS Hook dan order hasil pencocokan |
 | `fulfillment_inventory` | Vault secret terenkripsi per produk |
 | `fulfillment_jobs` | Outbox delivery dengan retry |
 
@@ -448,14 +452,15 @@ Kolom baru di `orders`: `sales_channel`, `telegram_chat_id`, `telegram_user_id`,
 | Method | Path | Auth | Tujuan |
 |---|---|---|---|
 | POST | `/api/telegram/webhook` | Telegram secret header | Webhook bot |
-| POST | `/api/payments/klikqris/callback` | — | Callback pembayaran |
+| POST | `/api/webhook/dana` | X-Webhook-Secret | Notifikasi pembayaran dari QRIS Hook |
+| GET | `/api/payments/qris/:code/image` | kode order | PNG QRIS dinamis selama invoice aktif |
 | POST | `/api/cron/operations` | CRON_SECRET | Rekonsiliasi |
 | GET/POST | `/api/admin/telegram/setup` | admin | Setup webhook |
 | GET | `/api/admin/bot/health` | admin | Health check tanpa secret |
 | GET/POST/DELETE | `/api/admin/fulfillment` | admin | Inventory management |
 | GET | `/api/catalog[?slug=]` | public | Katalog produk/varian aktif terpusat |
 | GET/POST/PUT/DELETE | `/api/admin/variants` | admin | Kelola SKU, durasi, garansi, harga, stok, dan mode fulfillment varian |
-| POST | `/api/whatsapp/webhook` | Fonnte webhook token | Command grup, order, pembayaran, dan intake bukti |
+| POST | `/api/whatsapp/webhook` | Shared Baileys webhook token | Command grup, order, pembayaran, dan intake bukti |
 | GET | `/api/admin/proofs` | admin | Antrean review bukti pembayaran WhatsApp |
 | POST | `/api/admin/proofs/:id` | admin | CAS approve/reject bukti dan otorisasi pembayaran manual |
 
@@ -465,9 +470,9 @@ Semua nilai nyata di Cloudflare Pages Secrets:
 
 ```
 TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET, TELEGRAM_ADMIN_CHAT_ID
-KLIKQRIS_MODE, KLIKQRIS_API_KEY, KLIKQRIS_MERCHANT_ID
+DANA_STATIC_QRIS, DANA_WEBHOOK_SECRET
 FULFILLMENT_ENCRYPTION_KEY
-TELEGRAM_BOT_ENABLED, KLIKQRIS_PAYMENTS_ENABLED, AUTO_FULFILLMENT_ENABLED
+TELEGRAM_BOT_ENABLED, DANA_QRIS_ENABLED, AUTO_FULFILLMENT_ENABLED
 ```
 
 `TELEGRAM_ADMIN_CHAT_ID` adalah satu tujuan untuk seluruh notifikasi admin yang berasal
@@ -478,7 +483,7 @@ support manusia tetap `@axvara_support` dan ditampilkan sebagai tombol langsung 
 pesan setelah pembayaran berhasil.
 
 ### Feature Flags
-Rollout bertahap: `TELEGRAM_BOT_ENABLED=false`, `KLIKQRIS_PAYMENTS_ENABLED=false`, `AUTO_FULFILLMENT_ENABLED=false`. Semua default off.
+Rollout bertahap: `TELEGRAM_BOT_ENABLED=false`, `DANA_QRIS_ENABLED=false`, `AUTO_FULFILLMENT_ENABLED=false`. Semua default off di contoh environment; secret produksi dikelola di Pages.
 
 ### Proteksi Garansi BOT
 - `/start` tampil bersih (welcome simpel) + tombol `📜 Garansi & Ketentuan` dan `🛍️ Lanjut Belanja`.
@@ -491,23 +496,23 @@ Rollout bertahap: `TELEGRAM_BOT_ENABLED=false`, `KLIKQRIS_PAYMENTS_ENABLED=false
 Sistem varian produk terpusat dan bot WhatsApp telah diimplementasikan sesuai `docs/WHATSAPP-GROUP-BOT-PLAN.md`:
 
 ### Arsitektur
-- **D1 sebagai Source of Truth:** `products` menyimpan produk induk (name, slug, aliases, description, image, badge), sedangkan `product_variants` menyimpan SKU yang dapat dibeli (label, duration, warranty, price, stock, fulfillment_mode, sort_order).
-- **CMS Web:** Modal `VariantEditor` di `/admin` mengelola SKU/durasi/garansi/harga/stok; menu **Bot & Otomasi** memilih target varian untuk mode `manual/shared/unique`, shared secret terenkripsi, dan inventory unik; menu **Bukti Bayar** menjadi antrean review bukti WhatsApp. Pembuatan produk juga membuat varian default secara atomik. Produk/varian yang dihapus diarsipkan (`is_active=0`) agar relasi historis tetap utuh; edit harga/stok melalui form produk hanya disinkronkan bila produk masih mempunyai satu varian default.
+- **D1 sebagai Source of Truth:** `products` menyimpan produk induk (`name`, `whatsapp_alias`, search `aliases`, description, image, badge), sedangkan `product_variants` menyimpan SKU yang dapat dibeli (label, duration, warranty, price, stock, fulfillment_mode, sort_order). `whatsapp_alias` hanya mengatur nama presentasi di daftar/header WhatsApp dan fallback ke `name` bila kosong; `aliases` tetap khusus kata kunci pencarian bot.
+- **CMS Web:** Modal card-based `VariantEditor` di `/admin` mengelola SKU/durasi/garansi/harga/stok dengan tombol aksi konsisten; form produk memiliki field Alias WhatsApp. Menu **Pesanan** memakai tab Web/Telegram/WhatsApp dan pagination. Menu **Bot & Otomasi** memilih target varian untuk mode `manual/shared/unique`, shared secret terenkripsi, dan inventory unik; menu **Bukti Bayar** menjadi antrean review bukti WhatsApp. Pembuatan produk juga membuat varian default secara atomik. Produk/varian yang dihapus diarsipkan (`is_active=0`) agar relasi historis tetap utuh; edit harga/stok melalui form produk hanya disinkronkan bila produk masih mempunyai satu varian default.
 - **Service Bersama:** `src/lib/catalog.ts` menyediakan query terpusat untuk web, Telegram, dan WhatsApp. `src/lib/warranty-policy.ts` mengekstrak kebijakan garansi kanonis dengan formatter Telegram (HTML) dan WhatsApp (bold `*`).
 - **Website:** Halaman detail `/produk/[slug]` mendukung variant selector interaktif; cart Zustand membedakan item berdasarkan kombinasi `product_id + variant_id`; checkout quote mendukung variant_id.
 - **Telegram Bot:** Menambahkan langkah pemilihan varian sebelum konfirmasi beli (`TELEGRAM_VARIANT_FLOW`). Menggunakan harga dan konfigurasi varian.
-- **WhatsApp Bot:** Webhook di `POST /api/whatsapp/webhook` via Fonnte gateway. Mendukung:
-  - `list` (daftar nama produk aktif tanpa kategori/harga)
-  - Pencarian nama produk/alias → detail dengan varian bernomor
+- **WhatsApp Bot:** Webhook di `POST /api/whatsapp/webhook` via Baileys gateway Heroku. Mendukung:
+  - `list` (header `LIST MENU AXVARA`, nama alias/fallback produk aktif tanpa kategori/harga)
+  - Pencarian nama produk/alias → detail bergaya garis dengan header alias dan varian bernomor
   - Pemilihan angka terikat per `conversation_id + member_id`
-  - `pay` / `payment` → pending order idempotent + info QRIS/SeaBank/e-wallet di grup
+  - Pilihan `QRIS` / `SEABANK` / `EWALLET` → pending order idempotent + satu instruksi pembayaran terpilih di grup
   - `garansi` / `/garansi` → kebijakan garansi kanonis
-  - Intake bukti pembayaran dengan caption `BUKTI <KODE> <METODE>`, dedup, R2 private, notifikasi admin
+  - Reply otomatis mengutip pesan pembeli; intake screenshot cukup memakai caption nama metode (kode order ditentukan dari sesi/order aktif), dedup, R2 private, notifikasi admin
 - **Feature Flags:** 10 feature flags independen di `src/lib/feature-flags.ts` untuk rollout aman bertahap (semua default `false`).
 
 ### Status Rollout Produksi WhatsApp
 
-Mulai 5 September 2026, Fonnte Device produksi terhubung dan seluruh fitur transaksi WhatsApp aktif untuk GID pada `WHATSAPP_GROUP_ALLOWLIST`. Flag aktif meliputi `PRODUCT_VARIANTS_READ`, `WHATSAPP_ENABLED`, `WHATSAPP_GROUP_DISCOVERY`, `WHATSAPP_GROUP_PAYMENT`, `WHATSAPP_PROOF_INTAKE`, `WHATSAPP_REQUIRE_PROOF_BEFORE_FULFILLMENT`, dan `WHATSAPP_FULFILLMENT`. Mode fulfillment varian unique tanpa stok dialihkan aman ke manual agar tidak terjadi silent drop. Gateway memiliki fallback otomatis direct send jika Fonnte menolak inboxid.
+Mulai 5 September 2026, Baileys gateway produksi berjalan di Heroku dan seluruh fitur transaksi WhatsApp aktif untuk GID pada `WHATSAPP_GROUP_ALLOWLIST`. Flag aktif meliputi `PRODUCT_VARIANTS_READ`, `WHATSAPP_ENABLED`, `WHATSAPP_GROUP_DISCOVERY`, `WHATSAPP_GROUP_PAYMENT`, `WHATSAPP_PROOF_INTAKE`, `WHATSAPP_REQUIRE_PROOF_BEFORE_FULFILLMENT`, dan `WHATSAPP_FULFILLMENT`. Mode fulfillment varian unique tanpa stok dialihkan aman ke manual agar tidak terjadi silent drop. Outbound `/send` dan `/send-image` wajib memakai shared gateway token; pesan inbound di-cache terbatas selama 20 menit agar balasan dapat memakai quoted message Baileys.
 
 ### Tabel Baru (migrasi 0007)
 | Tabel | Tujuan |
@@ -523,11 +528,18 @@ Migrasi `0008_orders_multichannel.sql` melakukan SQLite table rebuild pada tabel
 
 Karena D1 tetap menjalankan `DROP TABLE` sebagai implicit delete walaupun pemeriksaan FK ditunda, migrasi memindahkan sementara `order_code` pada `payment_transactions`, `fulfillment_jobs`, dan `payment_proofs` ke namespace khusus sebelum parent lama dihapus. Setelah `orders_new` menjadi `orders`, seluruh key anak dikembalikan dan `PRAGMA defer_foreign_keys=OFF` memaksa validasi sebelum commit. Regression test menjalankan migrasi terhadap fixture dengan ketiga tabel anak berisi data, memeriksa `foreign_key_check`, preservasi row, pemetaan Telegram, dan insert channel WhatsApp.
 
+### Migrasi 0009 — Alias WhatsApp dan Repair Status
+Migrasi `0009_whatsapp_alias_order_state.sql` menambah `products.whatsapp_alias`, mengisi alias ringkas untuk katalog yang sudah ada, mengubah sesi aktif lama ke provider `baileys`, serta menyelaraskan `orders.payment_status` historis dengan status `kadaluarsa`, `dibatalkan`, dan `lunas`. Counter Telegram pada Bot & Otomasi membaca `orders.status`, sehingga pesanan kedaluwarsa tidak lagi muncul sebagai pending.
+
+### Migrasi 0010 — DANA Dynamic QRIS
+
+Migrasi `0010_dana_dynamic_qris.sql` menambah `unique_code` dan `qris_payload` pada ledger, unique partial index untuk nominal invoice DANA aktif, dan `dana_webhook_events` untuk dedup/audit hook. Konfigurasi `payment_methods.qris` dipindahkan ke `QRIS Dinamis` dengan `qris_url=NULL`; seluruh aset QRIS statis publik dihapus.
+
 ### Keamanan Webhook & Gateway WhatsApp
-- **Autentikasi Webhook:** Membandingkan `WHATSAPP_WEBHOOK_TOKEN` via `timingSafeEqual` (constant-time comparison). Adapter menerima field payload `secret` bawaan Fonnte, serta header/query token untuk proxy dan diagnosis. Body dibatasi 64 KB dan diparse tanpa side effect sebelum autentikasi; permintaan tanpa token atau dengan token salah ditolak HTTP 401 sebelum menyentuh D1.
-- **Parser Fonnte:** `sender` dipetakan sebagai ID grup (`conversationId`), `member` sebagai nomor pengirim (`memberId`), `inboxid` sebagai ID pesan dan referensi balasan (`inboxId`).
+- **Autentikasi Webhook:** Membandingkan `WHATSAPP_WEBHOOK_TOKEN` via `timingSafeEqual` (constant-time comparison). Gateway Baileys mengirim header `x-webhook-token`; header/query/payload fallback tetap tersedia untuk diagnosis. Body dibatasi 64 KB dan diparse tanpa side effect sebelum autentikasi; permintaan tanpa token atau dengan token salah ditolak HTTP 401 sebelum menyentuh D1. Arah Pages→Heroku memakai nilai yang sama pada `x-gateway-token` dan endpoint kirim menolak request tanpa token.
+- **Kontrak Baileys:** `sender` dipetakan sebagai ID grup (`conversationId`), `member` sebagai nomor pengirim (`memberId`), `inboxid` sebagai ID pesan/referensi quoted reply (`inboxId`), dan `reply` sebagai stanza yang dikutip pembeli.
 - **Inbox & Order Idempotency:** Event tanpa `inboxid` ditolak. Event yang sama dideduplikasi; event gagal dapat direclaim oleh satu retry. Satu pesan `pay` memakai `conversation + member + inboxid + variant` sebagai idempotency key, sementara pesan `pay` baru tetap dapat membuat pembelian ulang varian yang sama. Pending order lama hanya dipakai ulang jika masih unpaid dan belum kedaluwarsa. Webhook membatasi 12 event per anggota/grup per menit; cron menghapus session yang lewat masa simpan dan inbox dedupe lebih dari tujuh hari.
-- **Media Bukti & Anti-SSRF:** Pengunduhan lampiran dibatasi ke protokol HTTPS, divalidasi anti-SSRF terhadap private IP/loopback, distream dengan batas maksimal 5 MB, diverifikasi magic bytes (JPG/PNG/WebP), dihitung SHA-256, dan disimpan secara privat di Cloudflare R2 prefix `bukti/whatsapp/`. Token API Fonnte tidak pernah diteruskan pada request unduh media.
-- **Review & Otoritas Pembayaran:** Endpoint `GET /api/admin/proofs` dan `POST /api/admin/proofs/[id]` memakai CAS dan audit reviewer serta menampilkan nominal provider. Bukti QRIS dinamis tidak menandai order lunas; callback/status server-to-server KlikQRIS tetap authoritative. Intake tetap menerima bukti bila QRIS dinamis sudah lebih dahulu berstatus `lunas/paid`; TTL hanya menutup order yang belum dibayar. QRIS statis tidak mempunyai callback, sehingga persetujuan admin setelah pencocokan mutasi menjadi authoritative (`qris:manual`), sama seperti SeaBank/e-wallet. Jalur manual menutup invoice QRIS pending sebagai superseded agar rail pembayaran tidak bertabrakan.
-- **Lifecycle Stok & Pembayaran:** Paid callback/reconciliation memperbarui ledger+order dalam satu batch guard. Failed/expired mengembalikan stok varian dan inventory unik dalam batch yang sama; order WhatsApp QRIS statis juga diekspirasi dari TTL. Halaman web/quote tidak dapat fallback ke harga atau stok produk induk ketika mode varian aktif.
+- **Media Bukti & Anti-SSRF:** Gateway Baileys mengunduh image message dan menyediakan token URL acak sekali pakai selama 10 menit. Pages hanya menerima HTTPS, memvalidasi anti-SSRF terhadap private IP/loopback, men-stream maksimal 5 MB, memverifikasi magic bytes (JPG/PNG/WebP), menghitung SHA-256, lalu menyimpan privat di Cloudflare R2 prefix `bukti/whatsapp/`. Shared gateway token tidak pernah diteruskan ke URL media.
+- **Review & Otoritas Pembayaran:** Bukti QRIS hanya evidence opsional dan tidak dapat melunasi order. `POST /api/webhook/dana` adalah satu-satunya authority QRIS; SeaBank/e-wallet tetap memakai review admin CAS. Pembayaran QRIS yang sudah terdeteksi tidak ditahan oleh kewajiban screenshot WhatsApp.
+- **Lifecycle Stok & Pembayaran:** QRIS Hook memperbarui ledger+order dalam satu batch guard. Invoice kedaluwarsa mengembalikan stok varian/inventory dalam batch yang sama; rail manual WhatsApp tanpa ledger juga diekspirasi dari TTL. Halaman web/quote tidak dapat fallback ke harga atau stok produk induk ketika mode varian aktif.
 - **Proteksi Kredensial Fulfillment:** Job hanya dapat di-claim setelah order `lunas/paid`; mode dipatok oleh `variant_snapshot` order dan shared secret diambil dari varian terpilih. Varian shared tanpa secret terenkripsi dan varian unique tanpa inventory gagal tertutup sebelum order bot dibuat. Pengiriman WhatsApp selalu via pesan langsung (DM) ke `channel_member_id`/`customer_wa`, tidak pernah ke grup. Gate `WHATSAPP_REQUIRE_PROOF_BEFORE_FULFILLMENT` menahan job sampai bukti diserahkan, dan `WHATSAPP_FULFILLMENT` dapat memaksa jalur manual selama rollout.

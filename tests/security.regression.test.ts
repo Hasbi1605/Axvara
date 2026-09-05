@@ -168,23 +168,20 @@ describe("F-Medium: Payment proof — upload strict", () => {
     expect(src).toContain("5 * 1024 * 1024");
   });
 
-  it("checkout page mewajibkan proofUrl", () => {
+  it("checkout page mewajibkan proofUrl hanya untuk transfer manual", () => {
     const src = fs.readFileSync(path.join(process.cwd(), "src/app/checkout/page.tsx"), "utf-8");
     expect(src).toContain("proofUrl");
     expect(src).toContain("Upload bukti");
-    // harus ada guard `if (!proofUrl)`
-    expect(src).toMatch(/if\s*\(\s*!proofUrl\s*\)/);
+    expect(src).toContain('method !== "qris" && !proofUrl');
   });
 });
 
-describe("Regression: checkout proof_url tidak null", () => {
-  it("POST /api/orders schema proof_url wajib (bukan optional/nullable) — BUG-04", () => {
+describe("Regression: checkout proof_url conditional", () => {
+  it("POST /api/orders hanya mengizinkan proof kosong untuk QRIS dinamis", () => {
     const src = fs.readFileSync(path.join(process.cwd(), "src/app/api/orders/route.ts"), "utf-8");
     expect(src).toContain("proof_url");
-    // BUG-04: proof_url harus required (min 1), bukan optional/nullable
-    expect(src).toMatch(/proof_url:\s*z\.string\(\)\.trim\(\)\.min\(1/);
-    expect(src).not.toMatch(/proof_url:.*\.optional\(\)/);
-    expect(src).not.toMatch(/proof_url:.*\.nullable\(\)/);
+    expect(src).toContain('payment_method !== "qris" && !proof_url');
+    expect(src).toContain('proof_url: z.string().trim().max(600).nullable().optional()');
   });
 });
 

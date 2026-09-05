@@ -7,7 +7,7 @@ type ProofOrderState = {
 };
 
 /**
- * A KlikQRIS callback can arrive before the mandatory WhatsApp proof. Keep
+ * A DANA QRIS Hook event can arrive before an optional WhatsApp proof. Keep
  * accepting proof for that paid order; only an unpaid pending order is bound
  * by the invoice TTL.
  */
@@ -25,18 +25,16 @@ export function canAcceptWhatsAppPaymentProof(
 }
 
 /**
- * A dynamic QRIS screenshot is supporting evidence only; KlikQRIS
- * callback/status remains authoritative. Static QRIS and manual rails become
- * paid only after an admin confirms the corresponding mutation in the CMS.
+ * A dynamic QRIS screenshot is supporting evidence only; QRIS Hook remains
+ * authoritative. Manual rails become paid after admin confirms the mutation.
  */
 export function authoritativePaymentMethodForProof(
   claimedMethod: string,
   hasDynamicQrisTransaction = false,
-): "bank:seabank" | "ewallet" | "qris:manual" | null {
+): "bank:seabank" | "ewallet" | null {
   if (claimedMethod === "SEABANK") return "bank:seabank";
   if (claimedMethod === "EWALLET") return "ewallet";
-  // A static QR has no provider callback, so an admin-confirmed merchant
-  // mutation is its authority. Dynamic QR remains KlikQRIS-authoritative.
-  if (claimedMethod === "QRIS" && !hasDynamicQrisTransaction) return "qris:manual";
+  // Every QRIS order is dynamic; screenshots never replace QRIS Hook authority.
+  void hasDynamicQrisTransaction;
   return null;
 }

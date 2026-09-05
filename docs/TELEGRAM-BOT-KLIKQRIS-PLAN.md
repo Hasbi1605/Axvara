@@ -1,5 +1,9 @@
 # Rencana Eksekusi — Bot Telegram Auto Order + KlikQRIS
 
+> **ARSIP / SUPERSEDED 5 September 2026.** KlikQRIS tidak lagi digunakan.
+> Implementasi aktif memakai QRIS dinamis DANA Business dan Android QRIS Hook
+> untuk web, Telegram, dan WhatsApp. Lihat `docs/ARCHITECTURE.md` bagian 13.
+
 **Project:** AXVARA
 **Status:** Ready for execution — native AXVARA, repo eksternal hanya referensi
 **Tanggal:** 3 September 2026

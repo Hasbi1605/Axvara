@@ -1,7 +1,7 @@
-// POST /api/whatsapp/webhook — Fonnte WhatsApp group bot webhook handler
+// POST /api/whatsapp/webhook — Baileys WhatsApp group bot webhook handler
 
 import { NextRequest, NextResponse } from "next/server";
-import { queryAll, queryFirst, execRun, isD1Mode } from "@/lib/db";
+import { queryAll, queryFirst, execRun, isD1Mode, transitionPendingOrder } from "@/lib/db";
 import { isEnabled, preflightWhatsAppPayment } from "@/lib/feature-flags";
 import {
   listActiveProducts,
@@ -15,7 +15,7 @@ import {
 import { getSession, upsertSession } from "@/lib/whatsapp/session";
 import {
   authenticateWebhook,
-  parseFonntePayload,
+  parseWhatsAppPayload,
   isGroupAllowed,
   isSelfMessage,
   sendTextMessage as sendTextViaGateway,
@@ -32,22 +32,23 @@ import {
 } from "@/lib/commerce";
 import * as msg from "@/lib/whatsapp/messages";
 import { getR2Bucket } from "@/lib/r2";
-import { getPaymentProvider } from "@/lib/payments/klikqris";
+import { createDanaQrisInvoice } from "@/lib/payments/dana-qris";
 import { canAcceptWhatsAppPaymentProof } from "@/lib/payment-proofs";
 
 export const runtime = "edge";
 
 const WHATSAPP_MEMBER_EVENTS_PER_MINUTE = 12;
+type PaymentMethodChoice = msg.WhatsAppPaymentMethod;
 
 async function sendTextMessage(params: Parameters<typeof sendTextViaGateway>[0]) {
   const result = await sendTextViaGateway(params);
-  if (!result.ok) throw new Error(`fonnte_send_failed:${result.error || "unknown"}`);
+  if (!result.ok) throw new Error(`whatsapp_send_failed:${result.error || "unknown"}`);
   return result;
 }
 
 async function sendImageMessage(params: Parameters<typeof sendImageViaGateway>[0]) {
   const result = await sendImageViaGateway(params);
-  if (!result.ok) throw new Error(`fonnte_image_send_failed:${result.error || "unknown"}`);
+  if (!result.ok) throw new Error(`whatsapp_image_send_failed:${result.error || "unknown"}`);
   return result;
 }
 
@@ -57,6 +58,18 @@ function randHex(n: number): string {
   return Array.from(a).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+function parsePaymentMethod(input: string): PaymentMethodChoice | null {
+  const normalized = input.trim().toUpperCase().replace(/[\s-]+/g, "");
+  if (normalized === "QRIS") return "QRIS";
+  if (normalized === "SEABANK") return "SEABANK";
+  if (normalized === "EWALLET") return "EWALLET";
+  return null;
+}
+
+function isPaymentProofCaption(input: string): boolean {
+  return Boolean(parsePaymentMethod(input)) || /^BUKTI\s+AXV-\S+\s+(QRIS|SEABANK|EWALLET)$/i.test(input.trim());
+}
+
 export async function POST(request: NextRequest) {
   // 1. Content-Type check
   const contentType = request.headers.get("content-type") || "";
@@ -64,8 +77,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "invalid_content_type" }, { status: 415 });
   }
 
-  // 2. Body size limit. Fonnte sends its configured webhook secret as an
-  // additional payload field, so the bounded body must be parsed before auth.
+  // 2. Body size limit. Parse the bounded payload before provider-compatible auth.
   const declaredLength = Number(request.headers.get("content-length") || 0);
   if (Number.isFinite(declaredLength) && declaredLength > MAX_BODY_SIZE) {
     return NextResponse.json({ error: "payload_too_large" }, { status: 413 });
@@ -100,8 +112,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, status: "disabled" });
   }
 
-  // 5. Parse Fonnte payload
-  const incoming = parseFonntePayload(body);
+  // 5. Parse the gateway's provider-compatible payload
+  const incoming = parseWhatsAppPayload(body);
   if (!incoming) {
     return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
   }
@@ -121,12 +133,12 @@ export async function POST(request: NextRequest) {
   }
 
   // 7. Inbox deduplication. `processed` doubles as the active claim; a caught
-  // failure is changed to `failed`, which lets exactly one Fonnte retry reclaim it.
+  // failure is changed to `failed`, which lets exactly one gateway retry reclaim it.
   let inboxClaimed = false;
   if (incoming.inboxId && isD1Mode()) {
     try {
       const existing = await queryFirst(
-        `SELECT id, status FROM whatsapp_inbox_events WHERE provider='fonnte' AND external_message_id=?`,
+        `SELECT id, status FROM whatsapp_inbox_events WHERE provider='baileys' AND external_message_id=?`,
         incoming.inboxId,
       );
       if (existing) {
@@ -145,7 +157,7 @@ export async function POST(request: NextRequest) {
       } else {
         await execRun(
           `INSERT INTO whatsapp_inbox_events (provider, external_message_id, event_type, conversation_id, member_id, status)
-           VALUES ('fonnte',?,?,?,?,'processed')`,
+           VALUES ('baileys',?,?,?,?,'processed')`,
           incoming.inboxId,
           incoming.attachment ? "media" : "text",
           incoming.conversationId,
@@ -166,7 +178,7 @@ export async function POST(request: NextRequest) {
   if (inboxClaimed && isD1Mode()) {
     const recent = await queryFirst(
       `SELECT COUNT(*) as count FROM whatsapp_inbox_events
-       WHERE provider='fonnte' AND conversation_id=? AND member_id=?
+       WHERE provider='baileys' AND conversation_id=? AND member_id=?
          AND created_at>=datetime('now','-1 minute')`,
       incoming.conversationId,
       incoming.memberId,
@@ -174,7 +186,7 @@ export async function POST(request: NextRequest) {
     if (Number(recent?.count || 0) > WHATSAPP_MEMBER_EVENTS_PER_MINUTE) {
       await execRun(
         `UPDATE whatsapp_inbox_events SET status='ignored'
-         WHERE provider='fonnte' AND external_message_id=? AND status='processed'`,
+         WHERE provider='baileys' AND external_message_id=? AND status='processed'`,
         incoming.inboxId,
       ).catch(() => {});
       return NextResponse.json({ ok: true, status: "rate_limited" });
@@ -184,8 +196,8 @@ export async function POST(request: NextRequest) {
   const { conversationId, memberId, inboxId, message, attachment } = incoming;
 
   try {
-    // 8. Payment Proof Intake (media with BUKTI caption)
-    if (attachment && message.toUpperCase().startsWith("BUKTI") && isEnabled("WHATSAPP_PROOF_INTAKE")) {
+    // 8. A screenshot only needs the selected payment method as caption.
+    if (attachment && (isPaymentProofCaption(message) || Boolean(incoming.replyToInboxId)) && isEnabled("WHATSAPP_PROOF_INTAKE")) {
       await handleProofUpload(conversationId, memberId, inboxId, message, attachment.url, incoming.replyToInboxId);
       return NextResponse.json({ ok: true });
     }
@@ -209,10 +221,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-    // Command: pay or payment
+    // `pay` remains a friendly shortcut that only shows the choices.
     if (cmd === "pay" || cmd === "payment") {
       if (isEnabled("WHATSAPP_GROUP_PAYMENT")) {
-        await handlePay(conversationId, memberId, inboxId);
+        await sendTextMessage({ target: conversationId, message: msg.paymentChoiceMessage(), inboxId });
+      }
+      return NextResponse.json({ ok: true });
+    }
+
+    const paymentMethod = parsePaymentMethod(cmd);
+    if (paymentMethod) {
+      if (isEnabled("WHATSAPP_GROUP_PAYMENT")) {
+        await handlePay(conversationId, memberId, inboxId, paymentMethod);
       }
       return NextResponse.json({ ok: true });
     }
@@ -238,7 +258,7 @@ export async function POST(request: NextRequest) {
     if (inboxClaimed && incoming.inboxId && isD1Mode()) {
       await execRun(
         `UPDATE whatsapp_inbox_events SET status='failed'
-         WHERE provider='fonnte' AND external_message_id=? AND status='processed'`,
+         WHERE provider='baileys' AND external_message_id=? AND status='processed'`,
         incoming.inboxId,
       ).catch(() => {});
     }
@@ -288,7 +308,7 @@ async function handleProductSearch(groupId: string, memberId: string, input: str
     variantMap[i + 1] = v.id;
   });
 
-  await upsertSession("fonnte", groupId, memberId, {
+  await upsertSession("baileys", groupId, memberId, {
     selected_product_id: detail.id,
     numbered_variant_map: variantMap,
     selected_variant_id: null,
@@ -298,19 +318,19 @@ async function handleProductSearch(groupId: string, memberId: string, input: str
 
   const result = await sendTextMessage({
     target: groupId,
-    message: msg.productDetailMessage(detail.name, detail.description, detail.variants),
+    message: msg.productDetailMessage(msg.getWhatsAppDisplayName(detail), detail.description, detail.variants),
     inboxId,
   });
 
   if (result.messageId) {
-    await upsertSession("fonnte", groupId, memberId, {
+    await upsertSession("baileys", groupId, memberId, {
       variant_message_id: result.messageId,
     });
   }
 }
 
 async function handleNumberSelection(groupId: string, memberId: string, num: number, inboxId: string) {
-  const session = await getSession("fonnte", groupId, memberId);
+  const session = await getSession("baileys", groupId, memberId);
   if (!session || !session.numbered_variant_map) {
     return; // Ignore number if no active session
   }
@@ -333,9 +353,9 @@ async function handleNumberSelection(groupId: string, memberId: string, num: num
   }
 
   const detail = await getProductDetail(session.selected_product_id!);
-  const productName = detail?.name || "Produk";
+  const productName = detail ? msg.getWhatsAppDisplayName(detail) : "PRODUK";
 
-  await upsertSession("fonnte", groupId, memberId, {
+  await upsertSession("baileys", groupId, memberId, {
     selected_variant_id: variantId,
     ...(session.selected_variant_id !== variantId
       ? {
@@ -354,21 +374,36 @@ async function handleNumberSelection(groupId: string, memberId: string, num: num
   });
 
   if (result.messageId) {
-    await upsertSession("fonnte", groupId, memberId, {
+    await upsertSession("baileys", groupId, memberId, {
       variant_message_id: result.messageId,
     });
   }
 }
 
-async function handlePay(groupId: string, memberId: string, inboxId: string) {
-  const session = await getSession("fonnte", groupId, memberId);
+function paymentMethodId(method: PaymentMethodChoice): string {
+  if (method === "SEABANK") return "seabank";
+  if (method === "EWALLET") return "ewallet";
+  return "qris";
+}
+
+function paymentAccountSnapshot(
+  method: PaymentMethodChoice,
+  methods: Awaited<ReturnType<typeof getActivePaymentMethods>>,
+): string {
+  if (method === "SEABANK") return methods.seabank?.account || "";
+  if (method === "EWALLET") return methods.ewallet?.account || "";
+  return methods.qris?.name || "QRIS AXVARA";
+}
+
+async function handlePay(groupId: string, memberId: string, inboxId: string, method: PaymentMethodChoice) {
+  const session = await getSession("baileys", groupId, memberId);
 
   if (!session || !session.selected_variant_id || !session.selected_product_id) {
     await sendTextMessage({ target: groupId, message: msg.noSelectionMessage(), inboxId });
     return;
   }
 
-  const paymentPreflight = await preflightWhatsAppPayment(queryAll);
+  const paymentPreflight = await preflightWhatsAppPayment(queryAll, method);
   if (!paymentPreflight.ok) {
     await sendTextMessage({
       target: groupId,
@@ -382,7 +417,8 @@ async function handlePay(groupId: string, memberId: string, inboxId: string) {
   if (session.current_order_code) {
     const existingOrder = await queryFirst(
       `SELECT o.code, o.subtotal, o.status, o.payment_status, o.expires_at,
-              pt.payable_amount, pt.qris_url
+              pt.payable_amount, pt.qris_url, pt.provider AS payment_provider,
+              pt.status AS payment_transaction_status
        FROM orders o
        LEFT JOIN payment_transactions pt ON pt.order_code=o.code
        WHERE o.code=? AND o.variant_id=?`,
@@ -390,18 +426,33 @@ async function handlePay(groupId: string, memberId: string, inboxId: string) {
       session.selected_variant_id,
     );
     if (existingOrder && isReusablePendingOrder(existingOrder)) {
+      if (
+        method !== "QRIS"
+        && String(existingOrder.payment_provider || "") === "dana"
+        && String(existingOrder.payment_transaction_status || "") === "pending"
+      ) {
+        await sendTextMessage({
+          target: groupId,
+          message: "Invoice QRIS untuk pesanan ini masih aktif. Selesaikan QRIS tersebut atau tunggu 15 menit sebelum memilih metode lain.",
+          inboxId,
+        });
+        return;
+      }
+      const paymentMethods = await getActivePaymentMethods();
+      await execRun(
+        `UPDATE orders SET payment_method=?, payment_account=?, updated_at=datetime('now') WHERE code=? AND status='pending'`,
+        paymentMethodId(method),
+        paymentAccountSnapshot(method, paymentMethods),
+        String(existingOrder.code),
+      );
       const payableAmount = existingOrder.payable_amount == null
         ? Number(existingOrder.subtotal)
         : Number(existingOrder.payable_amount);
-      await sendPaymentInfo(
-        groupId,
-        memberId,
-        session,
-        String(existingOrder.code),
-        payableAmount,
-        inboxId,
-        existingOrder.qris_url ? String(existingOrder.qris_url) : undefined,
-      );
+      if (method === "QRIS") {
+        await createAndSendDanaQrisPayment(groupId, memberId, session, String(existingOrder.code), Number(existingOrder.subtotal), inboxId);
+      } else {
+        await sendPaymentInfo(groupId, memberId, session, String(existingOrder.code), payableAmount, method, inboxId);
+      }
       return;
     }
   }
@@ -421,7 +472,7 @@ async function handlePay(groupId: string, memberId: string, inboxId: string) {
   if (!inboxId) {
     await sendTextMessage({
       target: groupId,
-      message: "Pembayaran belum dapat dibuat karena inbox Fonnte belum aktif. Hubungi admin.",
+      message: "Pembayaran belum dapat dibuat karena ID pesan WhatsApp tidak tersedia. Hubungi admin.",
     });
     return;
   }
@@ -434,6 +485,7 @@ async function handlePay(groupId: string, memberId: string, inboxId: string) {
   );
 
   try {
+    const paymentMethods = await getActivePaymentMethods();
     const order = await createPendingChannelOrder({
       salesChannel: "whatsapp",
       productId: detail.id,
@@ -445,18 +497,19 @@ async function handlePay(groupId: string, memberId: string, inboxId: string) {
       customerWa: memberId,
       conversationId: groupId,
       idempotencyKey,
+      paymentMethod: paymentMethodId(method),
+      paymentAccount: paymentAccountSnapshot(method, paymentMethods),
     });
 
-    await upsertSession("fonnte", groupId, memberId, {
+    await upsertSession("baileys", groupId, memberId, {
       current_order_code: order.code,
       current_order_id: order.orderId,
     });
 
-    // Check if KlikQRIS is enabled for WhatsApp
-    if (isEnabled("WHATSAPP_KLIKQRIS")) {
-      await createAndSendKlikQrisPayment(groupId, memberId, session, order.code, order.subtotal, inboxId);
+    if (method === "QRIS") {
+      await createAndSendDanaQrisPayment(groupId, memberId, session, order.code, order.subtotal, inboxId);
     } else {
-      await sendPaymentInfo(groupId, memberId, session, order.code, order.subtotal, inboxId);
+      await sendPaymentInfo(groupId, memberId, session, order.code, order.subtotal, method, inboxId);
     }
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : "unknown";
@@ -468,7 +521,7 @@ async function handlePay(groupId: string, memberId: string, inboxId: string) {
   }
 }
 
-async function createAndSendKlikQrisPayment(
+async function createAndSendDanaQrisPayment(
   groupId: string,
   memberId: string,
   session: { selected_product_id: number | null; selected_variant_id: number | null },
@@ -477,7 +530,7 @@ async function createAndSendKlikQrisPayment(
   inboxId: string,
 ) {
   const existingTransaction = await queryFirst(
-    `SELECT payable_amount, qris_url FROM payment_transactions WHERE order_code=?`,
+    `SELECT payable_amount, qris_url FROM payment_transactions WHERE order_code=? AND provider='dana'`,
     orderCode,
   );
   if (existingTransaction) {
@@ -487,77 +540,27 @@ async function createAndSendKlikQrisPayment(
       session,
       orderCode,
       Number(existingTransaction.payable_amount || total),
+      "QRIS",
       inboxId,
       existingTransaction.qris_url ? String(existingTransaction.qris_url) : undefined,
     );
     return;
   }
 
-  let invoiceResult: Awaited<ReturnType<ReturnType<typeof getPaymentProvider>["createInvoice"]>> | null = null;
   try {
-    const provider = getPaymentProvider();
-    const providerOrderId = orderCode.replace(/^AXV-/, "");
-    const merchantId = process.env.KLIKQRIS_MERCHANT_ID ?? "";
-
-    invoiceResult = await provider.createInvoice({
-      orderId: providerOrderId,
-      amount: total,
-      merchantId,
-    });
-
-    if (invoiceResult && invoiceResult.success) {
-      if (isD1Mode()) {
-        try {
-          await execRun(
-            `INSERT INTO payment_transactions (order_code, provider, provider_mode, provider_order_id,
-               merchant_id, requested_amount, payable_amount, status, provider_signature,
-               qris_url, direct_url, expires_at)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-            orderCode,
-            "klikqris",
-            provider.mode,
-            invoiceResult.providerOrderId,
-            invoiceResult.merchantId,
-            total,
-            invoiceResult.payableAmount,
-            "pending",
-            invoiceResult.signature,
-            invoiceResult.qrisUrl,
-            invoiceResult.directUrl,
-            invoiceResult.expiresAt,
-          );
-        } catch (error) {
-          const existing = await queryFirst(
-            `SELECT payable_amount, qris_url FROM payment_transactions WHERE order_code=?`,
-            orderCode,
-          );
-          if (!existing) throw error;
-          await sendPaymentInfo(
-            groupId,
-            memberId,
-            session,
-            orderCode,
-            Number(existing.payable_amount || total),
-            inboxId,
-            existing.qris_url ? String(existing.qris_url) : undefined,
-          );
-          return;
-        }
-      }
-
-      await sendPaymentInfo(groupId, memberId, session, orderCode, invoiceResult.payableAmount, inboxId, invoiceResult.qrisUrl ?? undefined);
-      return;
+    const invoice = await createDanaQrisInvoice(orderCode, total);
+    await sendPaymentInfo(groupId, memberId, session, orderCode, invoice.payableAmount, "QRIS", inboxId, invoice.qrisUrl);
+  } catch (error) {
+    const order = await queryFirst(`SELECT items FROM orders WHERE code=?`, orderCode);
+    const transaction = await queryFirst(`SELECT id FROM payment_transactions WHERE order_code=?`, orderCode);
+    if (order && !transaction) {
+      try {
+        const items = JSON.parse(String(order.items || "[]")) as { product_id: number; variant_id?: number; qty: number }[];
+        await transitionPendingOrder(orderCode, "dibatalkan", "dana_qris_setup_failed", items);
+      } catch { /* Another request may have completed the invoice. */ }
     }
-  } catch (err) {
-    // Falling back is safe only when no provider invoice was successfully
-    // created. Once one exists, sending a static QR with another amount would
-    // make reconciliation ambiguous.
-    if (invoiceResult?.success) throw err;
-    console.error("KlikQRIS creation for WA failed, falling back to static");
+    throw error;
   }
-
-  // Fallback to static if dynamic fails
-  await sendPaymentInfo(groupId, memberId, session, orderCode, total, inboxId);
 }
 
 async function sendPaymentInfo(
@@ -566,6 +569,7 @@ async function sendPaymentInfo(
   session: { selected_product_id: number | null; selected_variant_id: number | null },
   orderCode: string,
   total: number,
+  method: PaymentMethodChoice,
   inboxId: string,
   dynamicQrisUrl?: string,
 ) {
@@ -574,9 +578,9 @@ async function sendPaymentInfo(
     orderCode,
   );
   const snapshot = parsePaymentDisplaySnapshot(order?.variant_snapshot);
-  const detail = snapshot?.productName
-    ? null
-    : await getProductDetail(session.selected_product_id!);
+  const detail = session.selected_product_id
+    ? await getProductDetail(session.selected_product_id)
+    : null;
   const variant = snapshot
     ? null
     : session.selected_variant_id
@@ -586,17 +590,18 @@ async function sendPaymentInfo(
 
   const dur = snapshot?.duration || (variant ? formatDuration(variant) : "");
   const war = snapshot?.warranty || (variant ? formatWarranty(variant) : "");
-  const qrisUrl = dynamicQrisUrl || paymentMethods.qris?.url;
+  const qrisUrl = method === "QRIS" ? dynamicQrisUrl : undefined;
 
   const result = await sendTextMessage({
     target: groupId,
     message: msg.paymentMessage({
       orderCode,
-      productName: snapshot?.productName || detail?.name || "Produk",
+      productName: detail ? msg.getWhatsAppDisplayName(detail) : snapshot?.productName || "Produk",
       variantLabel: snapshot?.variantLabel || variant?.label || "",
       duration: dur,
       warranty: war,
       total,
+      method,
       qrisUrl,
       seabankAccount: paymentMethods.seabank?.account,
       seabankName: paymentMethods.seabank?.name,
@@ -607,7 +612,7 @@ async function sendPaymentInfo(
   });
 
   // Send QRIS image if available
-  if (qrisUrl) {
+  if (method === "QRIS" && qrisUrl) {
     const siteUrl = process.env.SITE_URL || "https://axvara.tech";
     const qrisFullUrl = qrisUrl.startsWith("http") ? qrisUrl : `${siteUrl}${qrisUrl}`;
 
@@ -620,7 +625,7 @@ async function sendPaymentInfo(
   }
 
   if (result.messageId) {
-    await upsertSession("fonnte", groupId, memberId, {
+    await upsertSession("baileys", groupId, memberId, {
       payment_message_id: result.messageId,
     });
   }
@@ -634,26 +639,57 @@ async function handleProofUpload(
   mediaUrl: string,
   quotedId?: string,
 ) {
-  const match = caption.toUpperCase().match(/^BUKTI\s+(AXV-\S+)\s+(QRIS|SEABANK|EWALLET)$/i);
-  if (!match) {
-    const session = await getSession("fonnte", groupId, sender);
-    const code = session?.current_order_code || "AXV-XXXXXXXX-XXXXXXXX";
-    await sendTextMessage({ target: groupId, message: msg.proofFormatErrorMessage(code), inboxId: messageId });
+  const legacyMatch = caption.trim().match(/^BUKTI\s+(AXV-\S+)\s+(QRIS|SEABANK|E[\s-]?WALLET)$/i);
+  let claimedMethod = parsePaymentMethod(legacyMatch?.[2] || caption);
+  const session = await getSession("baileys", groupId, sender);
+  let orderCode = legacyMatch?.[1]?.toUpperCase() || session?.current_order_code || null;
+
+  if (!orderCode) {
+    const expectedMethod = claimedMethod ? paymentMethodId(claimedMethod) : null;
+    const latest = await queryFirst(
+      `SELECT code FROM orders
+       WHERE sales_channel='whatsapp' AND channel_conversation_id=? AND channel_member_id=?
+         AND status='pending' AND payment_status IN ('unpaid','pending')
+         AND (expires_at IS NULL OR expires_at>datetime('now'))
+         AND (? IS NULL OR payment_method=?)
+       ORDER BY created_at DESC LIMIT 1`,
+      groupId,
+      sender,
+      expectedMethod,
+      expectedMethod,
+    );
+    orderCode = latest?.code ? String(latest.code) : null;
+  }
+
+  if (!orderCode) {
+    await sendTextMessage({ target: groupId, message: msg.proofFormatErrorMessage("pesanan terakhir Anda"), inboxId: messageId });
     return;
   }
 
-  const orderCode = match[1].toUpperCase();
-  const claimedMethod = match[2].toUpperCase() as "QRIS" | "SEABANK" | "EWALLET";
-
   // Validate order belongs to sender & conversation, and is still pending & not expired
   const order = await queryFirst(
-    `SELECT id, code, status, payment_status, channel_conversation_id, channel_member_id, expires_at FROM orders
+    `SELECT id, code, status, payment_status, payment_method, channel_conversation_id, channel_member_id, expires_at FROM orders
      WHERE code=? AND sales_channel='whatsapp'`,
     orderCode,
   );
 
   if (!order) {
     await sendTextMessage({ target: groupId, message: msg.proofWrongOwnerMessage(), inboxId: messageId });
+    return;
+  }
+
+  const storedMethod = parsePaymentMethod(String(order.payment_method || ""));
+  if (!claimedMethod) claimedMethod = storedMethod;
+  if (!claimedMethod) {
+    await sendTextMessage({ target: groupId, message: msg.proofFormatErrorMessage(orderCode), inboxId: messageId });
+    return;
+  }
+  if (storedMethod && storedMethod !== claimedMethod) {
+    await sendTextMessage({
+      target: groupId,
+      message: `Metode bukti tidak cocok. Pesanan aktif ini menggunakan *${storedMethod}*. Kirim ulang screenshot dengan caption *${storedMethod}*.`,
+      inboxId: messageId,
+    });
     return;
   }
 

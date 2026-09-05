@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { createOrderWithStock, queryFirst, StockReservationError } from "@/lib/db";
+import { createOrderWithStock, queryFirst, StockReservationError, transitionPendingOrder } from "@/lib/db";
 import { generateOrderCode as generateCode, aggregateQty } from "@/lib/security";
 import { verifyCheckoutQuoteToken } from "@/lib/auth";
+import { createDanaQrisInvoice } from "@/lib/payments/dana-qris";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -21,7 +22,7 @@ const schema = z.object({
     qty: z.coerce.number().int().min(1).max(20),
   })).min(1).max(20),
   payment_method: z.string().trim().regex(/^(qris|ewallet|bank:[a-z0-9][a-z0-9_-]{0,31})$/, "Metode pembayaran tidak valid"),
-  proof_url: z.string().trim().min(1, "Bukti transfer wajib diupload").max(600),
+  proof_url: z.string().trim().max(600).nullable().optional().default(null),
   quote_token: z.string().trim().min(20, "Quote checkout wajib disertakan").max(8000),
 });
 
@@ -61,7 +62,10 @@ export async function POST(req: NextRequest) {
 
   // Proofs are private R2 objects. External URLs would bypass the protected
   // admin viewer and could be used as a tracking pixel.
-  if (!proof_url.startsWith("/r2/bukti/") || proof_url.includes("..")) {
+  if (payment_method !== "qris" && !proof_url) {
+    return NextResponse.json({ error: "Bukti transfer wajib diupload" }, { status: 400 });
+  }
+  if (proof_url && (!proof_url.startsWith("/r2/bukti/") || proof_url.includes(".."))) {
     return NextResponse.json({ error: "URL bukti tidak valid" }, { status: 400 });
   }
 
@@ -120,12 +124,35 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Terjadi kesalahan pada server. Coba lagi." }, { status: 500 });
   }
 
+  let qrisInvoice: Awaited<ReturnType<typeof createDanaQrisInvoice>> | null = null;
+  if (pm === "qris") {
+    try {
+      qrisInvoice = await createDanaQrisInvoice(code, quote.subtotal);
+    } catch (error) {
+      console.error("DANA QRIS invoice setup failed:", error instanceof Error ? error.message : "unknown");
+      try {
+        await transitionPendingOrder(code, "dibatalkan", "dana_qris_setup_failed", quote.items);
+      } catch { /* A concurrent terminal transition is safe. */ }
+      return NextResponse.json({ error: "QRIS dinamis sedang tidak tersedia. Coba lagi sebentar." }, { status: 503 });
+    }
+  }
+
   // Keep the request alive until Telegram accepts the notification attempt.
   // Failure stays isolated inside notifyAdminTelegram and never rolls back the order.
   const itemsForNotif = quote.items as { name: string; price: number; qty: number }[];
-  await notifyAdminTelegram({ code, customerName: customer_name, customerWa: wa, items: itemsForNotif, subtotal: quote.subtotal, paymentMethod: pm });
+  await notifyAdminTelegram({ code, customerName: customer_name, customerWa: wa, items: itemsForNotif, subtotal: qrisInvoice?.payableAmount ?? quote.subtotal, paymentMethod: pm });
 
-  return NextResponse.json({ code, subtotal: quote.subtotal, status: "pending" }, { status: 201 });
+  return NextResponse.json({
+    code,
+    subtotal: quote.subtotal,
+    status: "pending",
+    qris: qrisInvoice ? {
+      payable_amount: qrisInvoice.payableAmount,
+      unique_code: qrisInvoice.uniqueCode,
+      image_url: qrisInvoice.qrisUrl,
+      expires_at: qrisInvoice.expiresAt,
+    } : null,
+  }, { status: 201 });
 }
 
 /** Best-effort Telegram notification to admin for web orders */
@@ -179,7 +206,13 @@ export async function GET(req: NextRequest) {
   const code = searchParams.get("code")?.trim();
   if (code) {
     if (!/^AXV-\d{8}-[A-Z0-9]{8}$/.test(code)) return NextResponse.json({ error: "Kode tidak valid" }, { status: 400 });
-    const row = (await queryFirst("SELECT * FROM orders WHERE code=?", code)) as Record<string, unknown> | undefined;
+    const row = (await queryFirst(
+      `SELECT o.*, pt.payable_amount, pt.unique_code, pt.qris_url AS dynamic_qris_url,
+              pt.expires_at AS payment_expires_at, pt.status AS transaction_status
+       FROM orders o LEFT JOIN payment_transactions pt ON pt.order_code=o.code
+       WHERE o.code=?`,
+      code,
+    )) as Record<string, unknown> | undefined;
     if (!row) return NextResponse.json({ error: "Pesanan tidak ditemukan" }, { status: 404 });
     // PII minimal on public endpoint: mask WA + email
     const waFull = String(row.customer_wa ?? "");
@@ -199,6 +232,13 @@ export async function GET(req: NextRequest) {
         payment_account: row.payment_account,
         status: row.status,
         created_at: row.created_at,
+        qris: row.dynamic_qris_url ? {
+          payable_amount: row.payable_amount,
+          unique_code: row.unique_code,
+          image_url: row.dynamic_qris_url,
+          expires_at: row.payment_expires_at,
+          status: row.transaction_status,
+        } : null,
       },
     });
   }

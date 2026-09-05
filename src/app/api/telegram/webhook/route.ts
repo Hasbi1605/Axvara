@@ -21,7 +21,7 @@ import {
 import { getProductDetail, getActiveVariant, formatDuration, formatWarranty, type VariantSummary } from "@/lib/catalog";
 import { isEnabled } from "@/lib/feature-flags";
 import { generateOrderCode } from "@/lib/security";
-import { getPaymentProvider, isPaymentEnabled } from "@/lib/payments/klikqris";
+import { createDanaQrisInvoice, isDanaQrisConfigured } from "@/lib/payments/dana-qris";
 import { reserveInventory, releaseInventoryForOrder, countInventory } from "@/lib/fulfillment/inventory";
 import { createFulfillmentJob } from "@/lib/fulfillment/deliver";
 
@@ -470,7 +470,7 @@ async function handleShowVariants(chatId: number, messageId: number, productId: 
 }
 
 async function handleVariantConfirm(chatId: number, messageId: number, variantId: number) {
-  if (!isPaymentEnabled()) {
+  if (!isDanaQrisConfigured()) {
     await sendMessage({
       chat_id: chatId,
       text: "⚠️ Pembayaran otomatis belum aktif. Hubungi admin untuk order.",
@@ -533,7 +533,7 @@ async function handleConfirmVariantPurchase(
   variantId: number,
   from: { id: number; first_name: string; username?: string },
 ) {
-  if (!isPaymentEnabled()) {
+  if (!isDanaQrisConfigured()) {
     await sendMessage({ chat_id: chatId, text: "⚠️ Pembayaran otomatis belum aktif.", parse_mode: "HTML" });
     return;
   }
@@ -649,43 +649,6 @@ async function createAndSendVariantInvoice(
       finiteStockReserved = true;
     }
 
-    const provider = getPaymentProvider();
-    const providerOrderId = orderCode.replace(/^AXV-/, "");
-    const merchantId = process.env.KLIKQRIS_MERCHANT_ID ?? "";
-
-    let invoiceResult;
-    try {
-      invoiceResult = await provider.createInvoice({
-        orderId: providerOrderId,
-        amount: price,
-        merchantId,
-      });
-    } catch {
-      if (variant.stock !== -1 && isD1Mode()) {
-        await execRun(`UPDATE product_variants SET stock = stock + 1 WHERE id=? AND stock != -1`, variant.id);
-        finiteStockReserved = false;
-      }
-      if (inventoryId) {
-        await releaseInventoryForOrder(orderCode);
-        inventoryId = null;
-      }
-      await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
-      return;
-    }
-
-    if (!invoiceResult || !invoiceResult.success) {
-      if (variant.stock !== -1 && isD1Mode()) {
-        await execRun(`UPDATE product_variants SET stock = stock + 1 WHERE id=? AND stock != -1`, variant.id);
-        finiteStockReserved = false;
-      }
-      if (inventoryId) {
-        await releaseInventoryForOrder(orderCode);
-        inventoryId = null;
-      }
-      await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
-      return;
-    }
-
     await execRun(
       `INSERT INTO orders (code, customer_name, customer_wa, customer_email, items, subtotal,
          payment_method, payment_account, proof_url, status, sales_channel,
@@ -693,53 +656,30 @@ async function createAndSendVariantInvoice(
          variant_id, variant_snapshot, expires_at)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       orderCode, from.first_name, customerWa, null, JSON.stringify(items),
-      invoiceResult.payableAmount, "klikqris", "", null, "pending", "telegram",
+      price, "qris", "DANA Business", null, "pending", "telegram",
       String(chatId), String(from.id), "pending",
       fulfillmentMode === "unique" ? "reserved" : "not_required",
-      variant.id, variantSnapshot, invoiceResult.expiresAt,
+      variant.id, variantSnapshot, new Date(Date.now() + 15 * 60_000).toISOString(),
     );
     orderInserted = true;
 
-    await execRun(
-      `INSERT INTO payment_transactions (order_code, provider, provider_mode, provider_order_id,
-         merchant_id, requested_amount, payable_amount, status, provider_signature,
-         qris_url, direct_url, expires_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-      orderCode, "klikqris", provider.mode, invoiceResult.providerOrderId,
-      invoiceResult.merchantId, price, invoiceResult.payableAmount, "pending",
-      invoiceResult.signature, invoiceResult.qrisUrl, invoiceResult.directUrl, invoiceResult.expiresAt,
-    );
+    const invoiceResult = await createDanaQrisInvoice(orderCode, price);
 
     await createFulfillmentJob(orderCode, inventoryId, fulfillmentMode, variant.id, "telegram");
 
     const displayName = `${productName} — ${variant.label}`;
-    const photoSource = invoiceResult.qrisUrl ?? invoiceResult.qrisImage;
-    if (photoSource) {
-      await sendPhoto({
-        chat_id: chatId,
-        photo: photoSource,
-        caption: invoiceMessage({
-          orderCode,
-          productName: displayName,
-          payableAmount: invoiceResult.payableAmount,
-          expiresAt: invoiceResult.expiresAt,
-        }),
-        parse_mode: "HTML",
-        reply_markup: orderStatusKeyboard(orderCode),
-      });
-    } else {
-      await sendMessage({
-        chat_id: chatId,
-        text: invoiceMessage({
-          orderCode,
-          productName: displayName,
-          payableAmount: invoiceResult.payableAmount,
-          expiresAt: invoiceResult.expiresAt,
-        }),
-        parse_mode: "HTML",
-        reply_markup: orderStatusKeyboard(orderCode),
-      });
-    }
+    await sendPhoto({
+      chat_id: chatId,
+      photo: invoiceResult.qrisUrl,
+      caption: invoiceMessage({
+        orderCode,
+        productName: displayName,
+        payableAmount: invoiceResult.payableAmount,
+        expiresAt: invoiceResult.expiresAt,
+      }),
+      parse_mode: "HTML",
+      reply_markup: orderStatusKeyboard(orderCode),
+    });
   } catch (error) {
     console.error("Variant order creation failed:", error instanceof Error ? error.message : "unknown");
     try {
@@ -767,7 +707,7 @@ async function createAndSendVariantInvoice(
 }
 
 async function handleBuyConfirm(chatId: number, messageId: number, productId: number) {
-  if (!isPaymentEnabled()) {
+  if (!isDanaQrisConfigured()) {
     await sendMessage({
       chat_id: chatId,
       text: "⚠️ Pembayaran otomatis belum aktif. Hubungi admin untuk order.",
@@ -827,7 +767,7 @@ async function handleConfirmPurchase(
   productId: number,
   from: { id: number; first_name: string; username?: string },
 ) {
-  if (!isPaymentEnabled()) {
+  if (!isDanaQrisConfigured()) {
     await sendMessage({ chat_id: chatId, text: "⚠️ Pembayaran otomatis belum aktif.", parse_mode: "HTML" });
     return;
   }
@@ -948,10 +888,13 @@ async function createAndSendInvoice(
   const price = Number(product.price);
   const fulfillmentMode = String(product.fulfillment_mode || "manual");
   const orderCode = generateOrderCode();
+  const items = [{ product_id: productId, name: String(product.name), price, qty: 1 }];
+  let inventoryId: number | null = null;
+  let stockReserved = false;
+  let orderInserted = false;
 
   try {
     // Reserve inventory for unique products
-    let inventoryId: number | null = null;
     if (fulfillmentMode === "unique") {
       inventoryId = await reserveInventory(productId, orderCode);
       if (inventoryId === null) {
@@ -972,52 +915,10 @@ async function createAndSendInvoice(
         await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
         return;
       }
-    }
-
-    // Create KlikQRIS invoice
-    const provider = getPaymentProvider();
-    const providerOrderId = orderCode.replace(/^AXV-/, "");
-    const merchantId = process.env.KLIKQRIS_MERCHANT_ID ?? "";
-
-    let invoiceResult;
-    try {
-      invoiceResult = await provider.createInvoice({
-        orderId: providerOrderId,
-        amount: price,
-        merchantId,
-      });
-    } catch (providerError) {
-      try {
-        const statusCheck = await provider.checkStatus(providerOrderId, merchantId);
-        if (statusCheck.success && statusCheck.status === "pending") {
-          // Invoice exists on provider side
-        } else {
-          throw providerError;
-        }
-      } catch {
-        await execRun(
-          `UPDATE products SET stock = CASE WHEN stock=-1 THEN -1 ELSE stock+1 END WHERE id=? AND stock!=-1`,
-          productId,
-        );
-        if (inventoryId) await releaseInventoryForOrder(orderCode);
-        await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
-        return;
-      }
-      invoiceResult = null;
-    }
-
-    if (!invoiceResult || !invoiceResult.success) {
-      await execRun(
-        `UPDATE products SET stock = CASE WHEN stock=-1 THEN -1 ELSE stock+1 END WHERE id=? AND stock!=-1`,
-        productId,
-      );
-      if (inventoryId) await releaseInventoryForOrder(orderCode);
-      await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
-      return;
+      stockReserved = true;
     }
 
     // Insert order — include customer_wa if provided
-    const items = [{ product_id: productId, name: String(product.name), price, qty: 1 }];
     await execRun(
       `INSERT INTO orders (code, customer_name, customer_wa, customer_email, items, subtotal,
          payment_method, payment_account, proof_url, status, sales_channel,
@@ -1028,9 +929,9 @@ async function createAndSendInvoice(
       customerWa, // WA number (filled for manual, empty for shared/unique)
       null,
       JSON.stringify(items),
-      invoiceResult.payableAmount,
-      "klikqris",
-      "",
+      price,
+      "qris",
+      "DANA Business",
       null,
       "pending",
       "telegram",
@@ -1038,60 +939,28 @@ async function createAndSendInvoice(
       String(from.id),
       "pending",
       fulfillmentMode === "unique" ? "reserved" : "not_required",
-      invoiceResult.expiresAt,
+      new Date(Date.now() + 15 * 60_000).toISOString(),
     );
+    orderInserted = true;
 
-    // Insert payment transaction
-    await execRun(
-      `INSERT INTO payment_transactions (order_code, provider, provider_mode, provider_order_id,
-         merchant_id, requested_amount, payable_amount, status, provider_signature,
-         qris_url, direct_url, expires_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-      orderCode,
-      "klikqris",
-      provider.mode,
-      invoiceResult.providerOrderId,
-      invoiceResult.merchantId,
-      price,
-      invoiceResult.payableAmount,
-      "pending",
-      invoiceResult.signature,
-      invoiceResult.qrisUrl,
-      invoiceResult.directUrl,
-      invoiceResult.expiresAt,
-    );
+    const invoiceResult = await createDanaQrisInvoice(orderCode, price);
 
     // Create fulfillment job
     await createFulfillmentJob(orderCode, inventoryId, fulfillmentMode);
 
     // Send QRIS to user
-    const photoSource = invoiceResult.qrisUrl ?? invoiceResult.qrisImage;
-    if (photoSource) {
-      await sendPhoto({
-        chat_id: chatId,
-        photo: photoSource,
-        caption: invoiceMessage({
-          orderCode,
-          productName: String(product.name),
-          payableAmount: invoiceResult.payableAmount,
-          expiresAt: invoiceResult.expiresAt,
-        }),
-        parse_mode: "HTML",
-        reply_markup: orderStatusKeyboard(orderCode),
-      });
-    } else {
-      await sendMessage({
-        chat_id: chatId,
-        text: invoiceMessage({
-          orderCode,
-          productName: String(product.name),
-          payableAmount: invoiceResult.payableAmount,
-          expiresAt: invoiceResult.expiresAt,
-        }),
-        parse_mode: "HTML",
-        reply_markup: orderStatusKeyboard(orderCode),
-      });
-    }
+    await sendPhoto({
+      chat_id: chatId,
+      photo: invoiceResult.qrisUrl,
+      caption: invoiceMessage({
+        orderCode,
+        productName: String(product.name),
+        payableAmount: invoiceResult.payableAmount,
+        expiresAt: invoiceResult.expiresAt,
+      }),
+      parse_mode: "HTML",
+      reply_markup: orderStatusKeyboard(orderCode),
+    });
 
     // Notify admin — include WA if available
     const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
@@ -1121,13 +990,29 @@ async function createAndSendInvoice(
 
   } catch (error) {
     console.error("Order creation failed:", error instanceof Error ? error.message : "unknown");
+    try {
+      const transaction = orderInserted
+        ? await queryFirst(`SELECT id FROM payment_transactions WHERE order_code=?`, orderCode)
+        : null;
+      if (orderInserted && !transaction) {
+        await transitionPendingOrder(orderCode, "dibatalkan", "dana_qris_setup_failed", items);
+      } else if (!orderInserted) {
+        if (stockReserved) {
+          await execRun(`UPDATE products SET stock=stock+1 WHERE id=? AND stock!=-1`, productId);
+        }
+        if (inventoryId) await releaseInventoryForOrder(orderCode);
+      }
+    } catch { /* Cron can reconcile any remaining reservation. */ }
     await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
   }
 }
 
 async function handleOrderStatus(chatId: number, orderCode: string) {
   const order = await queryFirst(
-    `SELECT code, items, subtotal, payment_status, fulfillment_status FROM orders WHERE code=?`,
+    `SELECT o.code, o.items, o.subtotal, o.payment_status, o.fulfillment_status,
+            pt.payable_amount
+     FROM orders o LEFT JOIN payment_transactions pt ON pt.order_code=o.code
+     WHERE o.code=?`,
     orderCode.toUpperCase(),
   );
   if (!order) {
@@ -1152,7 +1037,7 @@ async function handleOrderStatus(chatId: number, orderCode: string) {
       productName,
       paymentStatus: String(order.payment_status || "unpaid"),
       fulfillmentStatus: String(order.fulfillment_status || "not_required"),
-      payableAmount: Number(order.subtotal),
+      payableAmount: Number(order.payable_amount ?? order.subtotal),
     }),
     parse_mode: "HTML",
     reply_markup: String(order.payment_status) === "pending"
@@ -1164,7 +1049,10 @@ async function handleOrderStatus(chatId: number, orderCode: string) {
 async function handleOrderRefresh(chatId: number, messageId: number, orderCode: string) {
   // Same as status but edit existing message
   const order = await queryFirst(
-    `SELECT code, items, subtotal, payment_status, fulfillment_status FROM orders WHERE code=?`,
+    `SELECT o.code, o.items, o.subtotal, o.payment_status, o.fulfillment_status,
+            pt.payable_amount
+     FROM orders o LEFT JOIN payment_transactions pt ON pt.order_code=o.code
+     WHERE o.code=?`,
     orderCode,
   );
   if (!order) return;
@@ -1182,7 +1070,7 @@ async function handleOrderRefresh(chatId: number, messageId: number, orderCode: 
       productName,
       paymentStatus: String(order.payment_status || "unpaid"),
       fulfillmentStatus: String(order.fulfillment_status || "not_required"),
-      payableAmount: Number(order.subtotal),
+      payableAmount: Number(order.payable_amount ?? order.subtotal),
     }),
     parse_mode: "HTML",
     reply_markup: String(order.payment_status) === "pending"

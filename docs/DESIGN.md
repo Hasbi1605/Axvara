@@ -213,13 +213,13 @@
 - Alt text wajib untuk semua gambar produk & QRIS
 - Tombol min 44px tap target
 - Warna bukan satu-satunya penanda status (ikon + teks)
-- QRIS image punya label "QRIS Brotherstore06 — NMID ID1022191087959"
+- QRIS dinamis punya alt text berisi kode order tanpa mengekspos payload mentah sebagai teks
 
 ---
 
 ## 9. Asset
 
-- **QRIS:** `public/qris/axvara-qris.png` (source dari Brotherstore06, hi-res)
+- **QRIS:** dirender sebagai PNG per order dari payload DANA Business server-only; tidak ada aset QRIS statis publik
 - **Logo:** Wordmark "AXVARA" Space Grotesk Bold, X stylized sebagai vault gate (gap di tengah X dengan glow cyan). Versi light di dark bg. SVG.
 - **Ikon:** Lucide React (outline, 20px, stroke 1.75)
 - **Foto produk:** Placeholder premium via `picsum` / `unsplash` di MVP, nanti upload ke R2
@@ -232,4 +232,3 @@
 - Linear.app — glass + dark premium + motion
 - Vercel.com — grid + tipografi
 - Marketku.id — flow fungsional (bukan visual)
-

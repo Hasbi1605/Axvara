@@ -3,6 +3,7 @@ import { z } from "zod";
 import { queryAll, queryFirst, isD1Mode } from "@/lib/db";
 import { isVariantsReadEnabled } from "@/lib/catalog";
 import { createCheckoutQuoteToken } from "@/lib/auth";
+import { isDanaQrisConfigured } from "@/lib/payments/dana-qris";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -142,7 +143,7 @@ export async function POST(req: NextRequest) {
       account_name: String(row.account_name ?? ""),
       qris_url: row.qris_url ? String(row.qris_url) : null,
     }))
-    .filter((method) => method.id !== "qris" || Boolean(method.qris_url));
+    .filter((method) => method.id !== "qris" || isDanaQrisConfigured());
 
   if (issues.length > 0) {
     return NextResponse.json({ ok: false, issues, items: quotedItems, subtotal, paymentMethods }, { status: 409 });

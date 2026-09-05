@@ -35,54 +35,25 @@ export function formatWIBTime(): { greeting: string; tanggal: string; jam: strin
   };
 }
 
-export function simplifyBrandName(name: string): string {
-  const map: Record<string, string> = {
-    "ai gateway 1 juta token": "AI GATEWAY",
-    "ai gateway 5 juta token": "AI GATEWAY",
-    "ai gateway 10 juta token": "AI GATEWAY",
-    "adobe cc all apps 1 bulan": "ADOBE",
-    "bundle ai master": "BUNDLE AI MASTER",
-    "bundle creator 3-in-1": "BUNDLE CREATOR",
-    "bundle productivity": "BUNDLE PRODUCTIVITY",
-    "bundle streaming hemat": "BUNDLE STREAMING",
-    "canva pro 1 tahun": "CANVA",
-    "capcut pro 1 bulan": "CAPCUT",
-    "chatgpt plus 1 bulan": "CHATGPT",
-    "claude pro 1 bulan": "CLAUDE",
-    "cursor pro 1 bulan": "CURSOR",
-    "figma professional 1 bulan": "FIGMA",
-    "gemini advanced 1 bulan": "GEMINI",
-    "grammarly premium 1 tahun": "GRAMMARLY",
-    "microsoft 365 family 1 tahun": "MICROSOFT 365",
-    "midjourney basic 1 bulan": "MIDJOURNEY",
-    "netflix premium 1 bulan": "NETFLIX",
-    "notion plus 1 tahun": "NOTION",
-    "perplexity pro 1 tahun": "PERPLEXITY",
-    "spotify premium 1 bulan": "SPOTIFY",
-    "vpn premium 1 tahun": "VPN",
-    "youtube premium 1 bulan": "YOUTUBE",
-  };
+export type WhatsAppProductLabel = { name: string; whatsappAlias?: string | null };
 
-  const key = name.toLowerCase().trim();
-  if (map[key]) return map[key];
+export type WhatsAppPaymentMethod = "QRIS" | "SEABANK" | "EWALLET";
 
-  return name
-    .replace(/\s+\d+\s+(Bulan|Tahun|Hari|Juta Token|jt token).*$/i, "")
-    .replace(/\s+(Pro|Plus|Premium|Advanced|Professional|Basic|CC All Apps|Family)\s*$/i, "")
-    .trim()
-    .toUpperCase();
+/** A CMS alias is presentation-only; blank always falls back to the web name. */
+export function getWhatsAppDisplayName(product: WhatsAppProductLabel): string {
+  return (product.whatsappAlias?.trim() || product.name.trim()).toUpperCase();
 }
 
-export function listProductsMessage(products: { name: string }[]): string {
+export function listProductsMessage(products: WhatsAppProductLabel[]): string {
   const { greeting, tanggal, jam } = formatWIBTime();
 
-  // Extract unique clean brand names
+  // Related products may deliberately share one WhatsApp display alias.
   const uniqueBrands = Array.from(
-    new Set(products.map((p) => simplifyBrandName(p.name)))
+    new Set(products.map(getWhatsAppDisplayName))
   ).sort((a, b) => a.localeCompare(b));
 
   const lines = [
-    "「 *LIST MENU STORE* 」",
+    "「 *LIST MENU AXVARA* 」",
     "彡.〰️〰️〰️〰️〰️.彡",
     `⊱┊ ${greeting}`,
     `⊱┊ Tanggal : ${tanggal}`,
@@ -104,28 +75,31 @@ export function listProductsMessage(products: { name: string }[]): string {
 
 export function productDetailMessage(productName: string, description: string | null, variants: VariantSummary[]): string {
   const lines = [
+    "━━━━━━━━━━━━━━━━━━━━",
     `*${productName.toUpperCase()}*`,
+    "━━━━━━━━━━━━━━━━━━━━",
   ];
   if (description) {
+    lines.push("");
     lines.push(description.length > 200 ? description.slice(0, 197) + "..." : description);
   }
   lines.push("");
 
   variants.forEach((v, i) => {
     const num = i + 1;
-    lines.push(`${num}. ${v.label}`);
+    lines.push(`${num}. *${v.label}*`);
     const dur = formatDuration(v);
-    if (dur) lines.push(`   Durasi: ${dur}`);
     const war = formatWarranty(v);
-    if (war) lines.push(`   Garansi: ${war}`);
-    lines.push(`   Harga: ${formatRupiah(v.price)}`);
-    if (v.stock === 0) lines.push(`   ❌ HABIS`);
+    lines.push(`   ⏱ ${dur || "Sesuai deskripsi"}   🛡 ${war || "Tanpa Garansi"}`);
+    lines.push(`   「 *${formatRupiah(v.price)}* 」`);
+    if (v.stock === 0) lines.push("   ❌ *HABIS*");
     lines.push("");
   });
 
   const available = variants.filter(v => v.stock !== 0);
   if (available.length > 0) {
-    lines.push(`Balas pesan ini dengan angka 1-${variants.length} untuk memilih.`);
+    lines.push("┈┈┈┈┈┈┈┈┈┈");
+    lines.push(`Balas dengan angka *1-${variants.length}* untuk memilih.`);
   } else {
     lines.push("Semua varian sedang habis.");
   }
@@ -137,16 +111,30 @@ export function variantSelectedMessage(productName: string, variant: VariantSumm
   const dur = formatDuration(variant);
   const war = formatWarranty(variant);
   const lines = [
+    "━━━━━━━━━━━━━━━━━━━━",
     "*VARIAN DIPILIH*",
-    `${productName} — ${variant.label}`,
+    "━━━━━━━━━━━━━━━━━━━━",
+    `${productName.toUpperCase()} — *${variant.label}*`,
   ];
-  if (dur) lines.push(`${dur}${war ? ` · Garansi ${war}` : ""}`);
-  else if (war) lines.push(`Garansi ${war}`);
-  lines.push(formatRupiah(variant.price));
+  lines.push(`⏱ ${dur || "Sesuai deskripsi"}   🛡 ${war || "Tanpa Garansi"}`);
+  lines.push(`「 *${formatRupiah(variant.price)}* 」`);
   lines.push("");
-  lines.push("Balas pesan ini dengan *pay* atau *payment*");
-  lines.push("untuk membuat order dan melihat metode pembayaran.");
+  lines.push("Pilih pembayaran dengan mengetik:");
+  lines.push("*QRIS* · *SEABANK* · *EWALLET*");
   return lines.join("\n");
+}
+
+export function paymentChoiceMessage(): string {
+  return [
+    "━━━━━━━━━━━━━━━━━━━━",
+    "*PILIH PEMBAYARAN*",
+    "━━━━━━━━━━━━━━━━━━━━",
+    "Ketik salah satu metode berikut:",
+    "",
+    "• *QRIS* — scan kode QR",
+    "• *SEABANK* — transfer bank",
+    "• *EWALLET* — transfer dompet digital",
+  ].join("\n");
 }
 
 export function paymentMessage(params: {
@@ -156,6 +144,7 @@ export function paymentMessage(params: {
   duration: string;
   warranty: string;
   total: number;
+  method: WhatsAppPaymentMethod;
   qrisUrl?: string;
   seabankAccount?: string;
   seabankName?: string;
@@ -163,44 +152,40 @@ export function paymentMessage(params: {
   ewalletName?: string;
 }): string {
   const lines = [
+    "━━━━━━━━━━━━━━━━━━━━",
     "*PEMBAYARAN AXVARA*",
-    `Order: ${params.orderCode}`,
-    `Produk: ${params.productName} — ${params.variantLabel}`,
+    "━━━━━━━━━━━━━━━━━━━━",
+    `🛍 ${params.productName.toUpperCase()} — *${params.variantLabel}*`,
   ];
-  if (params.duration) lines.push(`Durasi: ${params.duration}`);
-  if (params.warranty) lines.push(`Garansi: ${params.warranty}`);
-  lines.push(`Total: ${formatRupiah(params.total)}`);
+  if (params.duration || params.warranty) {
+    lines.push(`⏱ ${params.duration || "Sesuai deskripsi"}   🛡 ${params.warranty || "Tanpa Garansi"}`);
+  }
+  lines.push(`💰 Total: *${formatRupiah(params.total)}*`);
+  lines.push(`💳 Metode: *${params.method}*`);
   lines.push("");
 
-  if (params.qrisUrl) {
-    lines.push("*QRIS*");
-    lines.push("Scan gambar QRIS yang dikirim bot.");
-    lines.push("");
+  if (params.method === "QRIS") {
+    lines.push("Scan gambar QRIS yang dikirim setelah pesan ini.");
+    lines.push("Bayar tepat sesuai total; status lunas terdeteksi otomatis.");
+    lines.push("Screenshot opsional. Jika dikirim, cukup beri caption *QRIS*.");
   }
 
-  if (params.seabankAccount && params.seabankName) {
-    lines.push("*SEABANK*");
+  if (params.method === "SEABANK" && params.seabankAccount && params.seabankName) {
     lines.push(`No. rekening: ${params.seabankAccount}`);
     lines.push(`Atas nama: ${params.seabankName}`);
-    lines.push("");
   }
 
-  if (params.ewalletAccount && params.ewalletName) {
-    lines.push("*E-WALLET*");
+  if (params.method === "EWALLET" && params.ewalletAccount && params.ewalletName) {
     lines.push(`Nomor: ${params.ewalletAccount}`);
     lines.push(`Atas nama: ${params.ewalletName}`);
-    lines.push("");
   }
 
-  lines.push("Transfer tepat sesuai total.");
   lines.push("");
-  lines.push("*BUKTI PEMBAYARAN WAJIB*");
-  lines.push("Balas/reply pesan ini dengan foto atau screenshot bukti.");
-  lines.push(`Caption: BUKTI ${params.orderCode} SEABANK`);
-  lines.push("Ganti metode menjadi QRIS, SEABANK, atau EWALLET.");
-  lines.push("");
-  lines.push("Bukti terlihat oleh anggota grup. Potong/sensor saldo,");
-  lines.push("transaksi lain, alamat, dan data pribadi yang tidak diperlukan.");
+  if (params.method !== "QRIS") {
+    lines.push("Transfer tepat sesuai total, lalu kirim screenshot bukti");
+    lines.push(`dengan caption *${params.method}*. Tidak perlu mengetik kode pesanan.`);
+  }
+  lines.push(`_Referensi otomatis: ${params.orderCode}_`);
 
   return lines.join("\n");
 }
@@ -244,12 +229,10 @@ export function variantUnavailableMessage(): string {
 
 export function proofFormatErrorMessage(orderCode: string): string {
   return [
-    "Format bukti tidak sesuai. Kirim ulang dengan benar:",
+    "Bukti belum dapat dikenali. Kirim ulang foto/screenshot dengan caption:",
     "",
-    "1. Reply pesan pembayaran bot",
-    "2. Kirim 1 foto/screenshot bukti",
-    `3. Caption: BUKTI ${orderCode} QRIS`,
-    "   (ganti QRIS menjadi SEABANK atau EWALLET)",
+    "*QRIS*, *SEABANK*, atau *EWALLET*.",
+    `Referensi aktif: ${orderCode}`,
   ].join("\n");
 }
 
@@ -267,7 +250,9 @@ export function gatewayErrorMessage(): string {
 
 export function paymentDetectedMessage(orderCode: string): string {
   return [
-    `Pembayaran QRIS untuk ${orderCode} terdeteksi.`,
-    "Kirim foto bukti pembayaran sebagai balasan pada pesan pembayaran untuk melengkapi proses.",
+    "*PEMBAYARAN DITERIMA*",
+    "━━━━━━━━━━━━━━━━━━━━",
+    `Order: ${orderCode}`,
+    "Pembayaran QRIS terdeteksi otomatis dan pesanan sedang diproses.",
   ].join("\n");
 }

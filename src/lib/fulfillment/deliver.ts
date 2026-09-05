@@ -200,7 +200,11 @@ export async function processJob(
 
   // A proof hold is not a delivery attempt. Check it before claiming so a
   // buyer waiting for review cannot exhaust the retry budget.
-  if (salesChannel === "whatsapp" && isEnabled("WHATSAPP_REQUIRE_PROOF_BEFORE_FULFILLMENT")) {
+  if (
+    salesChannel === "whatsapp"
+    && String(order.payment_method) !== "qris"
+    && isEnabled("WHATSAPP_REQUIRE_PROOF_BEFORE_FULFILLMENT")
+  ) {
     const proof = isD1Mode()
       ? await queryFirst(
           `SELECT id FROM payment_proofs WHERE order_code=? AND status IN ('submitted','approved')`,

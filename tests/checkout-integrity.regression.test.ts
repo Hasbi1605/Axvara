@@ -150,7 +150,7 @@ describe("Authoritative UI and admin state", () => {
     expect(paymentApi).toContain("UPDATE payment_methods");
     expect(paymentApi).toContain("INSERT INTO payment_methods");
     expect(paymentApi).toContain("export async function POST");
-    expect(paymentApi).toContain("Gambar QRIS wajib tersedia");
+    expect(paymentApi).toContain("QRIS statis tidak lagi digunakan");
     expect(read("src/app/checkout/page.tsx")).not.toContain('pmQris.qris_url || "/qris/axvara-qris.jpg"');
   });
 

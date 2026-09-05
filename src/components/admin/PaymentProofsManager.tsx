@@ -115,8 +115,8 @@ export default function PaymentProofsManager() {
                 {proof.claimed_method === "QRIS" && (
                   <p className="mt-1 text-[11px] text-white/40">
                     {proof.provider_status
-                      ? `QRIS dinamis · provider ${proof.provider_status}`
-                      : "QRIS statis · wajib cocokkan mutasi merchant"}
+                      ? `QRIS dinamis DANA · ${proof.provider_status}`
+                      : "QRIS dinamis · menunggu QRIS Hook"}
                   </p>
                 )}
                 <p className="mt-1 text-[11px] text-white/35">Dikirim {new Date(proof.created_at).toLocaleString("id-ID")}</p>

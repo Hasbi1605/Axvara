@@ -25,6 +25,8 @@ export type ChannelOrderInput = {
   customerEmail?: string;
   conversationId?: string; // group/chat ID
   idempotencyKey: string; // deterministic key, e.g. wa:pay:<conversationId>:<memberId>:<variantId>
+  paymentMethod?: string;
+  paymentAccount?: string;
 };
 
 export type PendingOrder = {
@@ -66,8 +68,8 @@ export function parsePaymentDisplaySnapshot(raw: unknown): PaymentDisplaySnapsho
 }
 
 /**
- * One Fonnte inbox event maps to one order attempt. A later `pay` message gets
- * a different inbox id, so the same member can buy the same variant again.
+ * One gateway inbox event maps to one order attempt. A later payment-method
+ * message gets a different inbox id, so the same member can buy it again.
  */
 export function buildWhatsAppOrderIdempotencyKey(
   conversationId: string,
@@ -76,7 +78,7 @@ export function buildWhatsAppOrderIdempotencyKey(
   variantId: number,
 ): string {
   const eventId = inboxId.trim();
-  if (!eventId) throw new Error("missing_fonnte_inbox_id");
+  if (!eventId) throw new Error("missing_whatsapp_inbox_id");
   return ["wa", "order", conversationId, memberId, eventId, String(variantId)]
     .map((part) => encodeURIComponent(part))
     .join(":");
@@ -214,8 +216,8 @@ export async function createPendingChannelOrder(input: ChannelOrderInput): Promi
         input.customerEmail || null,
         JSON.stringify(items),
         variant.price,
-        "pending",
-        "",
+        input.paymentMethod || "pending",
+        input.paymentAccount || "",
         null,
         "pending",
         input.salesChannel,
@@ -280,7 +282,7 @@ export async function createPendingChannelOrder(input: ChannelOrderInput): Promi
 
 // Fetch active payment methods for WhatsApp / Web display
 export async function getActivePaymentMethods(): Promise<{
-  qris: { url: string; name: string } | null;
+  qris: { name: string } | null;
   seabank: { account: string; name: string } | null;
   ewallet: { account: string; name: string } | null;
 }> {
@@ -291,7 +293,7 @@ export async function getActivePaymentMethods(): Promise<{
   const ewallet = methods.find((m) => String(m.id) === "ewallet");
 
   return {
-    qris: qris?.qris_url ? { url: String(qris.qris_url), name: String(qris.account_name || "AXVARA") } : null,
+    qris: qris ? { name: String(qris.account_name || "DANA Business") } : null,
     seabank: seabank?.account_number ? { account: String(seabank.account_number), name: String(seabank.account_name || "") } : null,
     ewallet: ewallet?.account_number ? { account: String(ewallet.account_number), name: String(ewallet.account_name || "") } : null,
   };

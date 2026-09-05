@@ -255,7 +255,7 @@ function CheckoutInner() {
       setError("Harga atau stok belum tervalidasi. Muat ulang checkout dan konfirmasi perubahan.");
       return;
     }
-    if (!proofUrl) {
+    if (method !== "qris" && !proofUrl) {
       setError("Upload bukti transfer terlebih dahulu (JPG/PNG/WebP max 5MB, wajib).");
       return;
     }
@@ -284,7 +284,7 @@ function CheckoutInner() {
           customer_email: email.trim() || undefined,
           items: payloadItems,
           payment_method: payMethod,
-          proof_url: proofUrl,
+          proof_url: method === "qris" ? null : proofUrl,
           quote_token: quoteToken,
         }),
       });
@@ -309,7 +309,7 @@ function CheckoutInner() {
   return (
     <div className="mx-auto max-w-[1100px] px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
       <h1 className="font-display font-bold text-2xl text-white tracking-[-0.02em]">Checkout</h1>
-      <p className="text-sm text-white/50">Isi data, pilih pembayaran, upload bukti — selesai.</p>
+      <p className="text-sm text-white/50">Isi data, pilih pembayaran, lalu selesaikan pesanan.</p>
 
       <div className="mt-6 grid lg:grid-cols-[1fr_380px] gap-6">
         {/* Form */}
@@ -394,14 +394,14 @@ function CheckoutInner() {
             {method && (
               <div className="mt-4 ax-glass-card rounded-2xl p-4 animate-in fade-in">
                 {method === "qris" && pmQris && (
-                  <div className="text-center">
-                    <p className="text-xs text-white/50">Scan QRIS {pmQris.account_name}</p>
-                    <div className="mt-3 mx-auto w-full max-w-[300px] bg-white rounded-2xl p-2 overflow-hidden">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={pmQris.qris_url!} alt={`QRIS ${pmQris.account_name}`} className="w-full h-auto rounded-xl" />
+                  <div className="flex items-start gap-3 text-left">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#00E5FF]/10">
+                      <img src="/icons/ios11/qr-code-32.png" alt="" width={20} height={20} className="h-5 w-5 object-contain" draggable={false} />
+                    </span>
+                    <div>
+                      <p className="text-sm font-semibold text-white">QRIS dinamis dibuat setelah pesanan</p>
+                      <p className="mt-1 text-xs leading-5 text-white/50">Nominal unik sudah tertanam di QR. Setelah dibayar, QRIS Hook DANA mengubah status menjadi lunas otomatis—tanpa upload bukti.</p>
                     </div>
-                    <a href={pmQris.qris_url!} download={`AXVARA-QRIS-${pmQris.account_name}.jpg`} className="mt-2 inline-flex text-xs text-[#00E5FF] hover:underline">Download QRIS</a>
-                    <p className="text-[11px] text-white/30 mt-1">Buka DANA/Gopay/Shopeepay → Scan → Bayar → Screenshot bukti</p>
                   </div>
                 )}
                 {method === "ewallet" && pmEwallet && (
@@ -458,6 +458,12 @@ function CheckoutInner() {
             )}
           </div>
 
+          {method === "qris" ? (
+            <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.06] p-4">
+              <h2 className="text-sm font-semibold text-emerald-300">③ Verifikasi Otomatis</h2>
+              <p className="mt-1 text-xs leading-5 text-white/50">QRIS dan total bayar akan muncul di halaman pesanan. Biarkan halaman terbuka; status diperbarui otomatis setelah notifikasi DANA diterima.</p>
+            </div>
+          ) : (
           <div>
             <h2 className="text-sm font-semibold text-white">③ Upload Bukti Transfer *</h2>
             <label className={`mt-3 flex flex-col items-center justify-center gap-2 ax-glass-card rounded-2xl border-dashed p-6 cursor-pointer transition text-center ${proofUploading ? "opacity-60 pointer-events-none" : "hover:bg-white/10"}`}>
@@ -493,6 +499,7 @@ function CheckoutInner() {
             </label>
             <p className="text-[11px] text-white/30 mt-2">Pastikan bukti jelas: nominal, tanggal, dan tujuan transfer terlihat. Upload dulu sebelum buat pesanan.</p>
           </div>
+          )}
 
           {error && <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2">{error}</p>}
 
@@ -511,7 +518,7 @@ function CheckoutInner() {
             </span>
           </label>
 
-          <button onClick={submit} disabled={loading || proofUploading || !proofUrl || quoteLoading || !method || !quoteToken || !quoteAccepted || quoteIssues.length > 0 || !agreed} className="w-full h-[52px] rounded-xl bg-[#00E5FF] text-[#080C1E] font-bold hover:bg-[#00D0E8] disabled:opacity-60 transition inline-flex items-center justify-center gap-2">
+          <button onClick={submit} disabled={loading || proofUploading || (method !== "qris" && !proofUrl) || quoteLoading || !method || !quoteToken || !quoteAccepted || quoteIssues.length > 0 || !agreed} className="w-full h-[52px] rounded-xl bg-[#00E5FF] text-[#080C1E] font-bold hover:bg-[#00D0E8] disabled:opacity-60 transition inline-flex items-center justify-center gap-2">
             {loading && <span className="w-5 h-5 rounded-full border-2 border-[#080C1E]/20 border-t-[#080C1E] animate-spin" />}
             {loading ? "Memproses…" : `Bayar ${formatRupiah(displaySubtotal)} — Buat Pesanan`}
           </button>
@@ -546,7 +553,7 @@ function CheckoutInner() {
           </div>
           </>
           )}
-          <p className="text-xs text-white/30 mt-3 text-center">Dengan membuat pesanan kamu setuju admin memverifikasi bukti secara manual.</p>
+          <p className="text-xs text-white/30 mt-3 text-center">QRIS diverifikasi otomatis; transfer manual tetap ditinjau admin.</p>
         </div>
       </div>
 
