@@ -69,6 +69,9 @@ const variantInputSchema = z.object({
 });
 
 const updateSchema = z.object({
+  id: z.unknown().optional(),
+  aliases: z.unknown().optional(),
+  image: z.unknown().optional(),
   name: z.string().trim().min(3).max(120).optional(),
   slug: z.string().trim().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).min(3).max(80).optional(),
   description: z.string().trim().max(2000).optional(),
@@ -84,7 +87,7 @@ const updateSchema = z.object({
   isActive: z.boolean().optional(),
   sortOrder: z.coerce.number().int().min(0).max(999999).optional(),
   variants: z.array(variantInputSchema).optional(),
-}).strict();
+}).passthrough();
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!rateLimit(rateLimitKey(req, "products:write"), 20)) return NextResponse.json({ error: "Terlalu banyak permintaan, coba lagi 1 menit." }, { status: 429, headers: { "Retry-After": "60" } });

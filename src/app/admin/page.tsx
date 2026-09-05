@@ -795,25 +795,55 @@ export default function AdminPage() {
 
                         {/* Pengaturan Garansi & Durasi Ringkas per Varian */}
                         <div className="mt-2.5 pt-2.5 border-t border-white/5 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="text-white/40 font-medium shrink-0">🛡 Garansi:</span>
                             <select
-                              value={v.warranty_type || "none"}
+                              value={v.warranty_type || "full"}
                               onChange={(e) => {
                                 const wType = e.target.value;
                                 setFormVariants((curr) => curr.map((item, i) => i === idx ? {
                                   ...item,
                                   warranty_type: wType,
-                                  warranty_label: wType === "full" ? "Full Garansi" : wType === "none" ? "Tanpa Garansi" : item.warranty_label,
+                                  warranty_value: wType === "limited" ? (item.warranty_value || 7) : (item.warranty_value || 1),
+                                  warranty_unit: item.warranty_unit || "month",
                                 } : item));
                               }}
                               className="h-7 rounded-md bg-white/[0.06] border border-white/10 px-2 text-white/80 text-[11px] focus:outline-none focus:border-[#00E5FF]/40"
                             >
-                              <option value="full" className="bg-[#0F1430]">Full Garansi (Sesuai Durasi)</option>
+                              <option value="full" className="bg-[#0F1430]">Full Garansi</option>
                               <option value="limited" className="bg-[#0F1430]">Garansi Terbatas</option>
                               <option value="none" className="bg-[#0F1430]">Tanpa Garansi</option>
-                              <option value="custom" className="bg-[#0F1430]">Kustom / Ikut Deskripsi</option>
+                              <option value="custom" className="bg-[#0F1430]">Teks Khusus</option>
                             </select>
+
+                            {(v.warranty_type === "full" || v.warranty_type === "limited") && (
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="number"
+                                  min={1}
+                                  value={v.warranty_value ?? 1}
+                                  onChange={(e) => {
+                                    const val = Math.max(1, Number(e.target.value));
+                                    setFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, warranty_value: val } : item));
+                                  }}
+                                  className="h-7 w-12 rounded-md bg-white/[0.06] border border-white/10 px-1.5 text-white text-[11px] text-center focus:outline-none focus:border-[#00E5FF]/40"
+                                />
+                                <select
+                                  value={v.warranty_unit || "month"}
+                                  onChange={(e) => {
+                                    const unit = e.target.value;
+                                    setFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, warranty_unit: unit } : item));
+                                  }}
+                                  className="h-7 rounded-md bg-white/[0.06] border border-white/10 px-1.5 text-white/80 text-[11px] focus:outline-none focus:border-[#00E5FF]/40"
+                                >
+                                  <option value="day" className="bg-[#0F1430]">Hari</option>
+                                  <option value="month" className="bg-[#0F1430]">Bulan</option>
+                                  <option value="year" className="bg-[#0F1430]">Tahun</option>
+                                  <option value="lifetime" className="bg-[#0F1430]">Selamanya</option>
+                                </select>
+                              </div>
+                            )}
+
                             {v.warranty_type === "custom" && (
                               <input
                                 value={v.warranty_label || ""}
@@ -827,8 +857,20 @@ export default function AdminPage() {
                             )}
                           </div>
 
-                          <div className="flex items-center gap-2 sm:justify-end">
+                          <div className="flex items-center gap-1.5 sm:justify-end flex-wrap">
                             <span className="text-white/40 font-medium shrink-0">⏱ Durasi:</span>
+                            {v.duration_unit !== "lifetime" && v.duration_unit !== "custom" && (
+                              <input
+                                type="number"
+                                min={1}
+                                value={v.duration_value ?? 1}
+                                onChange={(e) => {
+                                  const val = Math.max(1, Number(e.target.value));
+                                  setFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, duration_value: val } : item));
+                                }}
+                                className="h-7 w-12 rounded-md bg-white/[0.06] border border-white/10 px-1.5 text-white text-[11px] text-center focus:outline-none focus:border-[#00E5FF]/40"
+                              />
+                            )}
                             <select
                               value={v.duration_unit || "month"}
                               onChange={(e) => {

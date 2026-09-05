@@ -122,7 +122,13 @@ describe("Catalog Formatting Helpers", () => {
       warranty_type: "limited",
       warranty_value: 1,
       warranty_unit: "month",
-    })).toBe("1 Bulan");
+    })).toBe("Garansi Terbatas 1 Bulan");
+    expect(formatWarranty({
+      ...baseVariant,
+      warranty_type: "full",
+      warranty_value: 12,
+      warranty_unit: "month",
+    })).toBe("Full Garansi 12 Bulan");
     expect(formatWarranty({ ...baseVariant, warranty_type: "custom", warranty_label: "Garansi Akun 14 Hari" })).toBe("Garansi Akun 14 Hari");
   });
 
@@ -180,7 +186,7 @@ describe("WhatsApp Message Formatting", () => {
     expect(msg).toContain("🛡 Full Garansi");
     expect(msg).toContain("「 *Rp18.000* 」");
     expect(msg).toContain("2. *Head*");
-    expect(msg).toContain("🛡 1 Bulan");
+    expect(msg).toContain("🛡 Garansi Terbatas 1 Bulan");
     expect(msg).toContain("「 *Rp25.000* 」");
     expect(msg).toContain("Balas dengan angka *1-2* untuk memilih.");
   });
@@ -209,7 +215,7 @@ describe("WhatsApp Message Formatting", () => {
     expect(msg).toContain("*VARIAN DIPILIH*");
     expect(msg).toContain("GEMINI — *Head*");
     expect(msg).toContain("⏱ 3 Bulan");
-    expect(msg).toContain("🛡 1 Bulan");
+    expect(msg).toContain("🛡 Garansi Terbatas 1 Bulan");
     expect(msg).toContain("Rp25.000");
     expect(msg).toContain("*QRIS* · *SEABANK* · *EWALLET*");
   });

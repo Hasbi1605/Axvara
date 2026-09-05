@@ -294,10 +294,18 @@ export function formatDuration(v: VariantSummary): string {
 export function formatWarranty(v: VariantSummary): string {
   if (v.warranty_label) return v.warranty_label;
   if (v.warranty_type === "none") return "Tanpa Garansi";
-  if (v.warranty_type === "full") return "Full Garansi";
-  if (v.warranty_type === "limited" && v.warranty_value && v.warranty_unit) {
-    const unitMap: Record<string, string> = { day: "Hari", month: "Bulan", year: "Tahun", lifetime: "Selamanya" };
-    return `${v.warranty_value} ${unitMap[v.warranty_unit] || v.warranty_unit}`;
+  const unitMap: Record<string, string> = { day: "Hari", month: "Bulan", year: "Tahun", lifetime: "Selamanya" };
+  if (v.warranty_type === "full") {
+    if (v.warranty_value && v.warranty_unit) {
+      return `Full Garansi ${v.warranty_value} ${unitMap[v.warranty_unit] || v.warranty_unit}`;
+    }
+    return "Full Garansi";
+  }
+  if (v.warranty_type === "limited") {
+    if (v.warranty_value && v.warranty_unit) {
+      return `Garansi Terbatas ${v.warranty_value} ${unitMap[v.warranty_unit] || v.warranty_unit}`;
+    }
+    return "Garansi Terbatas";
   }
   if (v.warranty_type === "custom") return v.warranty_label || "Custom";
   return "";
