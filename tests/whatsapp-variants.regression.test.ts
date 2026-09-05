@@ -134,15 +134,17 @@ describe("Catalog Formatting Helpers", () => {
 });
 
 describe("WhatsApp Message Formatting", () => {
-  it("formats list products message without categories or prices", () => {
-    const products = [{ name: "Canva" }, { name: "ChatGPT" }, { name: "Gemini" }];
-    const msg = waMsg.listProductsMessage(products, 1, 1);
+  it("formats list products message without categories or prices in enhanced JemStore style", () => {
+    const products = [{ name: "Canva Pro 1 Tahun" }, { name: "ChatGPT Plus 1 Bulan" }, { name: "Gemini Advanced 1 Bulan" }];
+    const msg = waMsg.listProductsMessage(products);
 
-    expect(msg).toContain("*PRODUK AXVARA*");
-    expect(msg).toContain("1. Canva");
-    expect(msg).toContain("2. ChatGPT");
-    expect(msg).toContain("3. Gemini");
-    expect(msg).toContain("Ketik nama produk untuk melihat pilihan.");
+    expect(msg).toContain("「 *LIST MENU STORE* 」");
+    expect(msg).toContain("Tanggal :");
+    expect(msg).toContain("Jam :");
+    expect(msg).toContain("꧁ঔৣ★ CANVA");
+    expect(msg).toContain("꧁ঔৣ★ CHATGPT");
+    expect(msg).toContain("꧁ঔৣ★ GEMINI");
+    expect(msg).toContain("Ketik nama produk untuk melihat pilihan varian.");
     expect(msg).toContain("Ketik *garansi*");
     expect(msg).not.toContain("Rp");
     expect(msg).not.toContain("AI Gateway");

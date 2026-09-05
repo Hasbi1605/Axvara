@@ -4,18 +4,101 @@
 import { type VariantSummary, formatDuration, formatWarranty, formatRupiah } from "@/lib/catalog";
 import { formatWarrantyWhatsApp } from "@/lib/warranty-policy";
 
-export function listProductsMessage(products: { name: string }[], page: number, totalPages: number): string {
-  const lines = ["*PRODUK AXVARA*", ""];
-  products.forEach((p, i) => {
-    lines.push(`${i + 1}. ${p.name}`);
+export function formatWIBTime(): { greeting: string; tanggal: string; jam: string } {
+  const d = new Date();
+  const wibOffset = 7 * 60; // WIB is UTC+7
+  const utc = d.getTime() + d.getTimezoneOffset() * 60000;
+  const wibDate = new Date(utc + wibOffset * 60000);
+
+  const months = [
+    "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+    "Juli", "Agustus", "September", "Oktober", "November", "Desember",
+  ];
+  const day = wibDate.getDate();
+  const month = months[wibDate.getMonth()];
+  const year = wibDate.getFullYear();
+
+  const hours = String(wibDate.getHours()).padStart(2, "0");
+  const minutes = String(wibDate.getMinutes()).padStart(2, "0");
+  const seconds = String(wibDate.getSeconds()).padStart(2, "0");
+
+  const hourNum = wibDate.getHours();
+  let greeting = "Selamat Malam 🌙";
+  if (hourNum >= 4 && hourNum < 11) greeting = "Selamat Pagi ☀️";
+  else if (hourNum >= 11 && hourNum < 15) greeting = "Selamat Siang 🌤️";
+  else if (hourNum >= 15 && hourNum < 18) greeting = "Selamat Sore ⛅";
+
+  return {
+    greeting,
+    tanggal: `${day} ${month} ${year}`,
+    jam: `${hours}:${minutes}:${seconds} WIB`,
+  };
+}
+
+export function simplifyBrandName(name: string): string {
+  const map: Record<string, string> = {
+    "ai gateway 1 juta token": "AI GATEWAY",
+    "ai gateway 5 juta token": "AI GATEWAY",
+    "ai gateway 10 juta token": "AI GATEWAY",
+    "adobe cc all apps 1 bulan": "ADOBE",
+    "bundle ai master": "BUNDLE AI MASTER",
+    "bundle creator 3-in-1": "BUNDLE CREATOR",
+    "bundle productivity": "BUNDLE PRODUCTIVITY",
+    "bundle streaming hemat": "BUNDLE STREAMING",
+    "canva pro 1 tahun": "CANVA",
+    "capcut pro 1 bulan": "CAPCUT",
+    "chatgpt plus 1 bulan": "CHATGPT",
+    "claude pro 1 bulan": "CLAUDE",
+    "cursor pro 1 bulan": "CURSOR",
+    "figma professional 1 bulan": "FIGMA",
+    "gemini advanced 1 bulan": "GEMINI",
+    "grammarly premium 1 tahun": "GRAMMARLY",
+    "microsoft 365 family 1 tahun": "MICROSOFT 365",
+    "midjourney basic 1 bulan": "MIDJOURNEY",
+    "netflix premium 1 bulan": "NETFLIX",
+    "notion plus 1 tahun": "NOTION",
+    "perplexity pro 1 tahun": "PERPLEXITY",
+    "spotify premium 1 bulan": "SPOTIFY",
+    "vpn premium 1 tahun": "VPN",
+    "youtube premium 1 bulan": "YOUTUBE",
+  };
+
+  const key = name.toLowerCase().trim();
+  if (map[key]) return map[key];
+
+  return name
+    .replace(/\s+\d+\s+(Bulan|Tahun|Hari|Juta Token|jt token).*$/i, "")
+    .replace(/\s+(Pro|Plus|Premium|Advanced|Professional|Basic|CC All Apps|Family)\s*$/i, "")
+    .trim()
+    .toUpperCase();
+}
+
+export function listProductsMessage(products: { name: string }[]): string {
+  const { greeting, tanggal, jam } = formatWIBTime();
+
+  // Extract unique clean brand names
+  const uniqueBrands = Array.from(
+    new Set(products.map((p) => simplifyBrandName(p.name)))
+  ).sort((a, b) => a.localeCompare(b));
+
+  const lines = [
+    "「 *LIST MENU STORE* 」",
+    "彡.〰️〰️〰️〰️〰️.彡",
+    `⊱┊ ${greeting}`,
+    `⊱┊ Tanggal : ${tanggal}`,
+    `⊱┊ Jam : ${jam}`,
+    "┈┈┈┈┈┈┈┈┈┈",
+    "",
+  ];
+
+  uniqueBrands.forEach((brand) => {
+    lines.push(`꧁ঔৣ★ ${brand}`);
   });
+
   lines.push("");
-  lines.push("Ketik nama produk untuk melihat pilihan.");
+  lines.push("Ketik nama produk untuk melihat pilihan varian.");
   lines.push("Ketik *garansi* untuk membaca ketentuan.");
-  if (totalPages > 1) {
-    lines.push("");
-    lines.push(`Halaman ${page}/${totalPages}. Ketik *list ${page + 1}* untuk halaman berikutnya.`);
-  }
+
   return lines.join("\n");
 }
 

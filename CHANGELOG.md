@@ -4,6 +4,7 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-05 — Enhance tampilan list produk WhatsApp ala JemStore (waktu WIB, tanggal, greeting dinamis, separator ikon, clean brand names tanpa varian, list lengkap tanpa paginasi) tetap sinkron database D1 — src/lib/whatsapp/messages.ts, src/app/api/whatsapp/webhook/route.ts, tests — (verifikasi: vitest 199/199 pass, tsc clean, dev GET / 200 + CSS 200, Obscura pass)
 - 2026-09-05 — Hubungkan Cloudflare Pages ke Baileys gateway Heroku mandiri (zero-watermark, latency instan) via WHATSAPP_GATEWAY_URL fallback & sendTextMessage/sendImageMessage — src/lib/whatsapp/gateway.ts, axvara-wa-gateway, CHANGELOG.md — (verifikasi: vitest 199/199 pass, tsc clean, Heroku Baileys gateway /health 200, test send grup sukses id 3EB0DAF45022F9FF431DD3)
 
 - 2026-09-05 — Aktifkan fitur transaksi & pembayaran grup WhatsApp siap produksi (Payment, Proof Intake, Fulfillment) dan perbaiki resiliency reply Fonnte (fallback direct send jika inboxid ditolak Fonnte, parsing array id) — src/lib/whatsapp/gateway.ts, Cloudflare Pages Secrets, README/docs — (verifikasi: vitest 199/199 pass, tsc clean, lint pass, Pages secrets WHATSAPP_GROUP_PAYMENT/PROOF/FULFILLMENT aktif, Fonnte device connect & webhook token sinkron; dev GET / 200 + CSS 200, Obscura screenshot pass)

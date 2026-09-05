@@ -37,7 +37,6 @@ import { canAcceptWhatsAppPaymentProof } from "@/lib/payment-proofs";
 
 export const runtime = "edge";
 
-const ITEMS_PER_PAGE = 15;
 const WHATSAPP_MEMBER_EVENTS_PER_MINUTE = 12;
 
 async function sendTextMessage(params: Parameters<typeof sendTextViaGateway>[0]) {
@@ -249,15 +248,12 @@ export async function POST(request: NextRequest) {
 
 // ---- Handlers ----
 
-async function handleList(groupId: string, page: number, inboxId: string) {
+async function handleList(groupId: string, _page: number, inboxId: string) {
   const products = await listActiveProducts();
-  const totalPages = Math.max(1, Math.ceil(products.length / ITEMS_PER_PAGE));
-  const safePage = Math.max(1, Math.min(page, totalPages));
-  const slice = products.slice((safePage - 1) * ITEMS_PER_PAGE, safePage * ITEMS_PER_PAGE);
 
   await sendTextMessage({
     target: groupId,
-    message: msg.listProductsMessage(slice, safePage, totalPages),
+    message: msg.listProductsMessage(products),
     inboxId,
   });
 }
