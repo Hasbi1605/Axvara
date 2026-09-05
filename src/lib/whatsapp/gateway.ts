@@ -180,11 +180,38 @@ export function isSelfMessage(memberId: string): boolean {
 
 // ---- Outbound Messaging ----
 
+const WHATSAPP_GATEWAY_URL = process.env.WHATSAPP_GATEWAY_URL || "";
+
 function getFonnteToken(): string {
   return process.env.FONNTE_TOKEN || "";
 }
 
 export async function sendTextMessage(params: SendMessageParams): Promise<FonnteSendResult> {
+  // If WHATSAPP_GATEWAY_URL (Heroku Baileys gateway) is configured, use it for zero-watermark & instant response!
+  if (WHATSAPP_GATEWAY_URL) {
+    try {
+      const res = await fetch(`${WHATSAPP_GATEWAY_URL.replace(/\/+$/, "")}/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target: params.target,
+          message: params.message,
+          inboxId: params.inboxId,
+        }),
+        signal: AbortSignal.timeout(15_000),
+      });
+      const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      const ok = res.ok && data.status === true;
+      return {
+        ok,
+        messageId: data.id ? String(data.id) : undefined,
+        error: ok ? undefined : String(data.reason || "gateway_send_failed"),
+      };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : "gateway_network_error" };
+    }
+  }
+
   const token = getFonnteToken();
   if (!token) return { ok: false, error: "no_fonnte_token" };
 
@@ -238,6 +265,32 @@ export async function sendTextMessage(params: SendMessageParams): Promise<Fonnte
 }
 
 export async function sendImageMessage(params: SendImageParams): Promise<FonnteSendResult> {
+  // If WHATSAPP_GATEWAY_URL (Heroku Baileys gateway) is configured, use it for zero-watermark & instant response!
+  if (WHATSAPP_GATEWAY_URL) {
+    try {
+      const res = await fetch(`${WHATSAPP_GATEWAY_URL.replace(/\/+$/, "")}/send-image`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target: params.target,
+          imageUrl: params.imageUrl,
+          caption: params.caption,
+          inboxId: params.inboxId,
+        }),
+        signal: AbortSignal.timeout(20_000),
+      });
+      const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      const ok = res.ok && data.status === true;
+      return {
+        ok,
+        messageId: data.id ? String(data.id) : undefined,
+        error: ok ? undefined : String(data.reason || "gateway_send_image_failed"),
+      };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : "gateway_image_network_error" };
+    }
+  }
+
   const token = getFonnteToken();
   if (!token) return { ok: false, error: "no_fonnte_token" };
 
