@@ -2,6 +2,7 @@
 // Uses WhatsApp formatting: *bold*, _italic_, ~strikethrough~, ```monospace```
 
 import { type VariantSummary, formatDuration, formatWarranty, formatRupiah } from "@/lib/catalog";
+import { SITE, adminTelegramLink } from "@/lib/site";
 import { formatWarrantyWhatsApp } from "@/lib/warranty-policy";
 
 export function formatWIBTime(): { greeting: string; tanggal: string; jam: string } {
@@ -69,6 +70,11 @@ export function listProductsMessage(products: WhatsAppProductLabel[]): string {
   lines.push("");
   lines.push("Ketik nama produk untuk melihat pilihan varian.");
   lines.push("Ketik *garansi* untuk membaca ketentuan.");
+  lines.push("");
+  lines.push("━━━━━━━━━━━━━━━━━━━━");
+  lines.push("*Belanja & update produk AXVARA:*");
+  lines.push(`✈️ Telegram: ${adminTelegramLink()}`);
+  lines.push(`🌐 Website: ${SITE.webUrl}`);
 
   return lines.join("\n");
 }

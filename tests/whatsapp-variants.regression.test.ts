@@ -150,6 +150,9 @@ describe("WhatsApp Message Formatting", () => {
     expect(msg).toContain("꧁ঔৣ★ GEMINI");
     expect(msg).toContain("Ketik nama produk untuk melihat pilihan varian.");
     expect(msg).toContain("Ketik *garansi*");
+    expect(msg).toContain("*Belanja & update produk AXVARA:*");
+    expect(msg).toContain("✈️ Telegram: https://t.me/axvara_support");
+    expect(msg).toContain("🌐 Website: https://axvara.tech");
     expect(msg).not.toContain("Rp");
     expect(waMsg.getWhatsAppDisplayName({ name: "Netflix Premium 1 Bulan" })).toBe("NETFLIX PREMIUM 1 BULAN");
   });

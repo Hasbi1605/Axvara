@@ -502,7 +502,7 @@ Sistem varian produk terpusat dan bot WhatsApp telah diimplementasikan sesuai `d
 - **Website:** Halaman detail `/produk/[slug]` mendukung variant selector interaktif; cart Zustand membedakan item berdasarkan kombinasi `product_id + variant_id`; checkout quote mendukung variant_id.
 - **Telegram Bot:** Menambahkan langkah pemilihan varian sebelum konfirmasi beli (`TELEGRAM_VARIANT_FLOW`). Menggunakan harga dan konfigurasi varian.
 - **WhatsApp Bot:** Webhook di `POST /api/whatsapp/webhook` via Baileys gateway Heroku. Mendukung:
-  - `list` (header `LIST MENU AXVARA`, nama alias/fallback produk aktif tanpa kategori/harga)
+  - `list` (header `LIST MENU AXVARA`, nama alias/fallback produk aktif tanpa kategori/harga, lalu footer promosi Telegram dan website resmi)
   - Pencarian nama produk/alias → detail bergaya garis dengan header alias dan varian bernomor
   - Pemilihan angka terikat per `conversation_id + member_id`
   - Pilihan `QRIS` / `SEABANK` / `EWALLET` → pending order idempotent + satu instruksi pembayaran terpilih di grup

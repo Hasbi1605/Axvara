@@ -5,6 +5,7 @@ export const SITE = {
   adminWaLocal: "089519388264",
   adminWaIntl: "6289519388264",
   adminTelegram: "axvara_support",
+  webUrl: "https://axvara.tech",
   supportHours: "09.00–23.00 WIB",
 } as const;
 
