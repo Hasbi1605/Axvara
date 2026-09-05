@@ -6,6 +6,7 @@ import { useSearch } from "@/stores/search";
 import { useState, useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { IosIcon } from "@/components/ui/IosIcon";
+import { useStoreSettings } from "@/hooks/useStoreSettings";
 
 export function Navbar() {
   const pathname = usePathname();
@@ -16,6 +17,7 @@ export function Navbar() {
   const setQ = useSearch((s) => s.setQ);
   const [mobileSearch, setMobileSearch] = useState(false);
   const [shake, setShake] = useState(false);
+  const storeSettings = useStoreSettings();
   const prevCount = useRef(count);
   useEffect(() => {
     if (count > prevCount.current) {
@@ -38,9 +40,12 @@ export function Navbar() {
   return (
     <header className="sticky top-0 z-50 ax-glass-strong border-b border-white/10">
       <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 h-[64px] flex items-center gap-4">
-        <Link href="/" className="flex items-center gap-3 shrink-0 group" aria-label="AXVARA">
+        <Link href="/" className="flex items-center gap-3 shrink-0 group" aria-label={storeSettings.name}>
           {/* Prism mark — wireframe, precise from chosen reference */}
-          <span className="w-[36px] h-[32px] text-white flex items-center justify-center">
+          {storeSettings.logoUrl ? <span className="flex h-[32px] w-[36px] items-center justify-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={storeSettings.logoUrl} alt="" className="h-full w-full object-contain" />
+          </span> : <span className="w-[36px] h-[32px] text-white flex items-center justify-center">
             <svg viewBox="0 0 120 110" className="w-full h-full" fill="none" stroke="currentColor" strokeWidth="3.6" strokeLinecap="round" strokeLinejoin="round" shapeRendering="geometricPrecision" aria-hidden>
               <path d="M60 4 L6.5 104 L113.5 104 Z" />
               <path d="M60 4 L60 49.5" />
@@ -49,8 +54,8 @@ export function Navbar() {
               <path d="M35.8 78.5 L6.5 104" />
               <path d="M84.2 78.5 L113.5 104" />
             </svg>
-          </span>
-          <span className="font-display font-[300] text-[22px] tracking-[0.22em] text-white leading-none">AXVARA</span>
+          </span>}
+          <span className="max-w-[180px] truncate font-display font-[300] text-[22px] tracking-[0.16em] text-white leading-none">{storeSettings.name}</span>
           {/* VAULT badge removed */}
         </Link>
 

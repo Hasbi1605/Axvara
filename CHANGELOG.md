@@ -4,6 +4,9 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-05 — Tata ulang panel admin menjadi workspace operasional: navigasi berkelompok dan responsif, action center, pesanan server-side dengan filter/pagination/CSV/detail serta konfirmasi aman, rekonsiliasi QRIS Hook, status kanal yang jujur, fulfillment per varian, dan modal produk/varian yang konsisten — admin shell/overview/orders/payments/bot/products/variants, API admin, tests/docs — (verifikasi: vitest 193/193, tsc/lint pass, build Pages pass 56 edge routes, dev GET `/` 200 + CSS 200, Obscura desktop/mobile/modal diperiksa)
+- 2026-09-05 — Tambahkan Pengaturan Toko terpusat untuk nama, tagline, WhatsApp, jam layanan, footer, dan logo; terapkan nilai dinamis ke identitas serta seluruh tautan dukungan storefront dengan fallback aman — `drizzle/migrations/0011_store_settings.sql`, store settings API/admin UI/hook, storefront, tests/docs — (verifikasi: simpan/pulihkan settings via Obscura pass, API 200, storefront WhatsApp sinkron, vitest 193/193, tsc/lint/build Pages pass)
+
 - 2026-09-05 — Hapus menu Bukti Bayar yang duplikat dan satukan thumbnail serta aksi review bukti WhatsApp ke baris Pesanan tanpa mengubah otoritas QRIS Hook — admin orders/proofs UI+API, tests/docs — (verifikasi: vitest 190/190, tsc/lint pass, build Pages 53 route pass, dev GET `/` 200 + CSS 200, Obscura admin Pesanan pass)
 
 - 2026-09-05 — Tambahkan footer promosi Telegram `@axvara_support` dan website `axvara.tech` pada respons daftar produk WhatsApp — `src/lib/{site,whatsapp/messages}.ts`, tests/docs — (verifikasi: test WhatsApp pass, tsc pass, dev GET `/` 200 + CSS 200, Obscura pass)

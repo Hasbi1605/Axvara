@@ -43,11 +43,13 @@ describe("WhatsApp payment proof review", () => {
   it("merges WhatsApp proof review into Orders and removes the duplicate page", () => {
     const shell = read("src/components/admin/AdminShell.tsx");
     const page = read("src/app/admin/page.tsx");
+    const manager = read("src/components/admin/OrdersManager.tsx");
     const ordersApi = read("src/app/api/admin/orders/route.ts");
     expect(shell).not.toContain('"proofs"');
     expect(page).not.toContain("PaymentProofsManager");
-    expect(page).toContain("reviewProof");
-    expect(page).toContain("/api/admin/proofs/");
+    expect(page).toContain("OrdersManager");
+    expect(manager).toContain("/api/admin/proofs/");
+    expect(manager).toContain('kind: "paid" | "approve" | "reject" | "cancel"');
     expect(ordersApi).toContain("LEFT JOIN payment_proofs");
     expect(fs.existsSync(path.join(process.cwd(), "src/components/admin/PaymentProofsManager.tsx"))).toBe(false);
     expect(fs.existsSync(path.join(process.cwd(), "src/app/api/admin/proofs/route.ts"))).toBe(false);
@@ -65,21 +67,25 @@ describe("WhatsApp payment proof review", () => {
 
   it("shows the exact provider payable amount and whether QRIS is dynamic", () => {
     const api = read("src/app/api/admin/orders/route.ts");
-    const page = read("src/app/admin/page.tsx");
+    const manager = read("src/components/admin/OrdersManager.tsx");
     expect(api).toContain("payment_amount");
     expect(api).toContain("proof_claimed_method");
-    expect(page).toContain("o.paymentAmount");
-    expect(page).toContain('o.proofClaimedMethod==="QRIS"');
+    expect(manager).toContain("order.paymentAmount");
+    expect(manager).toContain('order.method.toLowerCase() === "qris"');
+    expect(manager).toContain("QRIS otomatis");
   });
 
   it("resolves fulfillment mode and shared secret from the selected variant", () => {
     const delivery = read("src/lib/fulfillment/deliver.ts");
     const fulfillmentApi = read("src/app/api/admin/fulfillment/route.ts");
-    const manager = read("src/components/admin/BotAutomationManager.tsx");
+    const editor = read("src/components/admin/VariantEditor.tsx");
+    const inventory = read("src/components/admin/FulfillmentInventoryPanel.tsx");
     expect(delivery).toContain("product_variants");
     expect(delivery).toContain("shared_secret_ciphertext");
     expect(delivery).toContain("ensureFulfillmentForPaidOrder");
     expect(fulfillmentApi).toContain("variant_id");
-    expect(manager).toContain("selectedVariant");
+    expect(editor).toContain("FulfillmentInventoryPanel");
+    expect(editor).toContain("variant.id");
+    expect(inventory).toContain("variant_id");
   });
 });

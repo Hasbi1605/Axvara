@@ -214,23 +214,24 @@ describe("BUG-02: Pesanan page selalu fetch server (bukan early return localStor
 });
 
 describe("BUG-03: Admin modal input lisensi/key saat konfirmasi lunas", () => {
-  it("admin page memiliki state confirmOrder dan adminNote", () => {
-    const src = fs.readFileSync(path.join(process.cwd(), "src/app/admin/page.tsx"), "utf-8");
-    expect(src).toContain("confirmOrder");
-    expect(src).toContain("adminNote");
-    expect(src).toContain("setConfirmOrder");
+  it("orders manager memiliki state tindakan dan catatan admin", () => {
+    const src = fs.readFileSync(path.join(process.cwd(), "src/components/admin/OrdersManager.tsx"), "utf-8");
+    expect(src).toContain("ActionState");
+    expect(src).toContain("actionNote");
+    expect(src).toContain("setAction");
   });
 
-  it("admin page mengirim admin_note ke PATCH endpoint", () => {
-    const src = fs.readFileSync(path.join(process.cwd(), "src/app/admin/page.tsx"), "utf-8");
+  it("orders manager mengirim admin_note ke PATCH endpoint", () => {
+    const src = fs.readFileSync(path.join(process.cwd(), "src/components/admin/OrdersManager.tsx"), "utf-8");
     expect(src).toContain("admin_note");
-    // setStatus harus terima parameter note
-    expect(src).toMatch(/setStatus.*code.*status.*note/);
+    expect(src).toContain("/api/admin/orders/");
+    expect(src).toContain("actionNote.trim()");
   });
 
-  it("admin page punya textarea untuk lisensi/key input", () => {
-    const src = fs.readFileSync(path.join(process.cwd(), "src/app/admin/page.tsx"), "utf-8");
-    expect(src).toMatch(/placeholder.*[Ll]isensi/);
+  it("orders manager punya textarea untuk lisensi/key input", () => {
+    const src = fs.readFileSync(path.join(process.cwd(), "src/components/admin/OrdersManager.tsx"), "utf-8");
+    expect(src).toMatch(/[Ll]isensi \/ key/);
+    expect(src).toContain("<textarea");
   });
 });
 

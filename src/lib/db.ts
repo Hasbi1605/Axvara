@@ -131,6 +131,7 @@ export async function queryAll(sql: string, ...params: unknown[]): Promise<Recor
   if (lower.includes("from newsletter_subscribers")) {
     return [...getSubscriberMem()].sort((a,b)=>String(b.created_at??"").localeCompare(String(a.created_at??"")));
   }
+  if (lower.includes("from store_settings")) return [...getStoreSettingsMem()];
   if (lower.includes("from agent_tokens")) return [...getTokenMem()].sort((a,b)=>String(b.created_at??"").localeCompare(String(a.created_at??"")));
   if (lower.includes("from article_audit_log")) return [...getAuditMem()].sort((a,b)=>String(b.created_at??"").localeCompare(String(a.created_at??""))).slice(0,100);
   return [];
@@ -180,6 +181,18 @@ function getSubscriberMem(): Row[] {
   const g = process as unknown as { __AXVARA_NEWSLETTER_SUBSCRIBERS?: Row[] };
   if (!g.__AXVARA_NEWSLETTER_SUBSCRIBERS) g.__AXVARA_NEWSLETTER_SUBSCRIBERS = [];
   return g.__AXVARA_NEWSLETTER_SUBSCRIBERS;
+}
+function getStoreSettingsMem(): Row[] {
+  const g = process as unknown as { __AXVARA_STORE_SETTINGS?: Row[] };
+  if (!g.__AXVARA_STORE_SETTINGS) g.__AXVARA_STORE_SETTINGS = [
+    { key: "store_name", value: "AXVARA" },
+    { key: "tagline", value: "Toko akun premium, AI gateway, dan tools pro." },
+    { key: "whatsapp_number", value: "089519388264" },
+    { key: "support_hours", value: "09.00–23.00 WIB" },
+    { key: "footer_text", value: "AXVARA adalah third-party independen, tidak terafiliasi dengan brand manapun." },
+    { key: "logo_url", value: "" },
+  ];
+  return g.__AXVARA_STORE_SETTINGS;
 }
 
 export async function queryFirst(sql: string, ...params: unknown[]): Promise<Row | undefined> {
@@ -366,6 +379,15 @@ export async function execRun(sql: string, ...params: unknown[]): Promise<{ last
   }
   if (lower.startsWith("insert into agent_tokens")) { const mem=getTokenMem(), id=mem.length+1, cols=(sql.match(/agent_tokens\s*\(([^)]+)\)/i)?.[1]??"").split(",").map(v=>v.trim()), row:Row={id,is_active:1,created_at:new Date().toISOString()}; cols.forEach((c,i)=>row[c]=params[i]); mem.push(row); return {lastInsertRowid:id,changes:1}; }
   if (lower.startsWith("insert into newsletter_subscribers")) {const mem=getSubscriberMem(),id=Math.max(0,...mem.map((row)=>Number(row.id)||0))+1,columns=(sql.match(/newsletter_subscribers\s*\(([^)]+)\)/i)?.[1]??"").split(",").map((column)=>column.trim()),row:Row={id,status:"active",created_at:new Date().toISOString(),updated_at:new Date().toISOString()};columns.forEach((column,index)=>{row[column]=params[index]});if(mem.some((item)=>item.email===row.email))throw new Error("UNIQUE constraint failed: newsletter_subscribers.email");mem.push(row);return{lastInsertRowid:id,changes:1};}
+  if (lower.startsWith("insert into store_settings")) {
+    const key = String(params[0]);
+    const value = String(params[1] ?? "");
+    const mem = getStoreSettingsMem();
+    const existing = mem.find((row) => row.key === key);
+    if (existing) existing.value = value;
+    else mem.push({ key, value });
+    return { changes: 1 };
+  }
   if (lower.startsWith("update agent_tokens set")) { const row=getTokenMem().find((r)=>String(r.id)===String(params[params.length-1])); if(!row)return {changes:0}; if(lower.includes("is_active=?"))row.is_active=params[0]; if(lower.includes("last_used_at=?"))row.last_used_at=params[0]; return {changes:1}; }
   if (lower.startsWith("insert into article_audit_log")) {const mem=getAuditMem(),id=Math.max(0,...mem.map((row)=>Number(row.id)||0))+1,columns=(sql.match(/article_audit_log\s*\(([^)]+)\)/i)?.[1]??"").split(",").map((column)=>column.trim()),row:Row={id};columns.forEach((column,index)=>{row[column]=params[index]});mem.push(row);return {lastInsertRowid:id,changes:1};}
   return { changes: 0 };

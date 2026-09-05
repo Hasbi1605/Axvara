@@ -42,11 +42,13 @@ export function ProofThumbnail({ proof }: { proof?: string | null }) {
 
   useEffect(() => {
     if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);
     };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    return () => { document.body.style.overflow = previousOverflow; window.removeEventListener("keydown", onKeyDown); };
   }, [open]);
 
   if (!proof) return <ProofState title="Belum ada bukti" detail="Tidak diunggah pembeli" />;
@@ -73,8 +75,8 @@ export function ProofThumbnail({ proof }: { proof?: string | null }) {
         </span>
       </button>
       {open && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-[#050713]/90 p-3 backdrop-blur-md sm:p-6" onClick={() => setOpen(false)} role="dialog" aria-modal="true" aria-label="Bukti pembayaran">
-          <div className="flex max-h-[92dvh] w-full max-w-5xl flex-col overflow-hidden rounded-[24px] border border-white/10 bg-[#0F1430] shadow-[0_28px_80px_rgba(0,0,0,0.55)]" onClick={(event) => event.stopPropagation()}>
+        <div className="fixed inset-0 z-[80] isolate flex items-center justify-center bg-[#050713]/95 p-3 sm:p-6" onClick={() => setOpen(false)} role="dialog" aria-modal="true" aria-label="Bukti pembayaran">
+          <div className="relative z-10 flex max-h-[92dvh] w-full max-w-5xl flex-col overflow-hidden rounded-[24px] border border-white/10 bg-[#0F1430] shadow-[0_28px_80px_rgba(0,0,0,0.55)]" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-white/10 px-4 py-3 sm:px-5">
               <div>
                 <p className="text-sm font-semibold text-white">Bukti pembayaran</p>

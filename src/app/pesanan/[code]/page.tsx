@@ -6,7 +6,8 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { formatRupiah } from "@/lib/utils";
-import { adminWaLink, adminTelegramLink } from "@/lib/site";
+import { adminTelegramLink } from "@/lib/site";
+import { StoreWhatsAppLink } from "@/components/storefront/StoreWhatsAppLink";
 
 type QrisInvoice = {
   payable_amount: number;
@@ -171,7 +172,7 @@ export default function OrderSuccessPage() {
 
         <div className="mt-6 flex flex-col gap-3 sm:flex-row">
           <Link href="/" className="ax-glass-card flex h-11 flex-1 items-center justify-center rounded-xl font-semibold text-white hover:bg-white/10">Lanjut Belanja</Link>
-          <a href={adminWaLink(`Halo AXVARA, saya ingin menanyakan pesanan ${order.code} sebesar ${formatRupiah(payableAmount)}`)} target="_blank" rel="noreferrer" className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-[#25D366] font-semibold text-white hover:bg-[#1DA851]">WhatsApp Admin</a>
+          <StoreWhatsAppLink message={`saya ingin menanyakan pesanan ${order.code} sebesar ${formatRupiah(payableAmount)}`} className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-[#25D366] font-semibold text-white hover:bg-[#1DA851]">WhatsApp Admin</StoreWhatsAppLink>
           <a href={adminTelegramLink()} target="_blank" rel="noreferrer" className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-[#2AABEE] font-semibold text-white hover:bg-[#229ED9]">Telegram Admin</a>
         </div>
 

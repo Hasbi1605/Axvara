@@ -7,7 +7,7 @@ import { ProductCard } from "@/components/storefront/ProductCard";
 import { CommunityBar } from "@/components/storefront/CommunityBar";
 import type { Product } from "@/lib/products";
 import { useSearch } from "@/stores/search";
-import { adminWaLink } from "@/lib/site";
+import { StoreWhatsAppLink } from "@/components/storefront/StoreWhatsAppLink";
 
 const PER_PAGE = 8;
 
@@ -82,9 +82,9 @@ export default function HomePage() {
               </p>
               <div className="mt-6 flex flex-wrap gap-3">
                 <a href="#katalog" className="h-11 px-6 rounded-full bg-white text-[#080C1E] font-semibold text-sm inline-flex items-center justify-center hover:bg-white/90 transition active:scale-[0.98]">Lihat Katalog</a>
-                <a href={adminWaLink()} target="_blank" rel="noreferrer" className="h-11 px-6 rounded-full border border-white/14 bg-white/[0.06] text-white font-medium text-sm inline-flex items-center justify-center gap-1.5 hover:bg-white/10 transition active:scale-[0.98]">
+                <StoreWhatsAppLink className="h-11 px-6 rounded-full border border-white/14 bg-white/[0.06] text-white font-medium text-sm inline-flex items-center justify-center gap-1.5 hover:bg-white/10 transition active:scale-[0.98]">
                   <img src="/icons/ios11/chat-32.png" alt="" width={14} height={14} className="w-3.5 h-3.5 object-contain brightness-0 invert opacity-70" draggable={false} /> Hubungi Admin
-                </a>
+                </StoreWhatsAppLink>
               </div>
               <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] tracking-wide text-white/40">
                 <span>1.200+ aktivasi</span>

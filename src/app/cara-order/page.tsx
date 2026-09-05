@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { adminWaLink } from "@/lib/site";
+import { StoreWhatsAppLink } from "@/components/storefront/StoreWhatsAppLink";
 
 export const metadata = { title: "Cara Order | AXVARA", description: "Panduan memesan produk digital di AXVARA." };
 
@@ -16,6 +16,6 @@ export default function CaraOrderPage() {
     <h1 className="mt-2 text-3xl font-bold tracking-[-0.03em] text-white sm:text-4xl">Cara order</h1>
     <p className="mt-3 max-w-[62ch] text-sm leading-6 text-white/55">Proses pemesanan dibuat singkat. Kamu tidak perlu membuat akun untuk melakukan checkout.</p>
     <div className="mt-8 grid gap-4 sm:grid-cols-2">{steps.map(([number, title, body]) => <section key={number} className="rounded-[22px] ax-glass-card p-5 sm:p-6"><span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#00E5FF]/[0.12] text-sm font-bold text-[#00E5FF]">{number}</span><h2 className="mt-4 text-base font-semibold text-white">{title}</h2><p className="mt-2 text-sm leading-6 text-white/55">{body}</p></section>)}</div>
-    <div className="mt-8 flex flex-wrap gap-3"><Link href="/#katalog" className="inline-flex h-11 items-center rounded-full bg-white px-6 text-sm font-bold text-[#080C1E]">Lihat katalog</Link><a href={adminWaLink("Halo AXVARA, saya perlu bantuan cara order.")} target="_blank" rel="noreferrer" className="inline-flex h-11 items-center rounded-full border border-white/10 bg-white/[0.06] px-6 text-sm font-semibold text-white">Tanya admin</a></div>
+    <div className="mt-8 flex flex-wrap gap-3"><Link href="/#katalog" className="inline-flex h-11 items-center rounded-full bg-white px-6 text-sm font-bold text-[#080C1E]">Lihat katalog</Link><StoreWhatsAppLink message="saya perlu bantuan cara order." className="inline-flex h-11 items-center rounded-full border border-white/10 bg-white/[0.06] px-6 text-sm font-semibold text-white">Tanya admin</StoreWhatsAppLink></div>
   </main>;
 }

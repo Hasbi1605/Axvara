@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { IosIcon } from "@/components/ui/IosIcon";
+import { FulfillmentInventoryPanel } from "@/components/admin/FulfillmentInventoryPanel";
 
 type Variant = {
   id?: number;
@@ -65,6 +66,7 @@ export default function VariantEditor({ productId, productName, onClose }: Props
   const [deleteIndex, setDeleteIndex] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [confirmClose, setConfirmClose] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -205,17 +207,26 @@ export default function VariantEditor({ productId, productName, onClose }: Props
   const activeVariants = variants.filter((variant) => variant.is_active);
   const minPrice = activeVariants.length ? Math.min(...activeVariants.map((variant) => Number(variant.price))) : null;
   const maxPrice = activeVariants.length ? Math.max(...activeVariants.map((variant) => Number(variant.price))) : null;
+  const requestClose = useCallback(() => { if (hasDirty) setConfirmClose(true); else onClose(); }, [hasDirty, onClose]);
+
+  useEffect(() => {
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape" && !saving) requestClose(); };
+    document.addEventListener("keydown", onKeyDown);
+    return () => { document.body.style.overflow = previous; document.removeEventListener("keydown", onKeyDown); };
+  }, [requestClose, saving]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#070a1e]/75 p-0 backdrop-blur-md sm:items-center sm:p-5">
-      <section role="dialog" aria-modal="true" aria-labelledby="variant-editor-title" className="flex max-h-[96vh] w-full max-w-5xl flex-col overflow-hidden rounded-t-[28px] border border-white/10 shadow-[0_28px_90px_rgba(0,0,0,0.7)] sm:max-h-[92vh] sm:rounded-[28px]" style={{ background: "#0B1025" }}>
+    <div className="fixed inset-0 z-[80] isolate flex items-end justify-center bg-[#040612]/95 p-0 sm:items-center sm:p-5">
+      <section role="dialog" aria-modal="true" aria-labelledby="variant-editor-title" className="relative z-10 flex max-h-[96vh] w-full max-w-5xl flex-col overflow-hidden rounded-t-[28px] border border-white/10 shadow-[0_28px_90px_rgba(0,0,0,0.7)] sm:max-h-[92vh] sm:rounded-[28px]" style={{ background: "#0B1025" }}>
         <header className="flex shrink-0 items-start justify-between border-b border-white/10 px-5 py-5 sm:px-7">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#00E5FF]">Katalog Produk</p>
             <h2 id="variant-editor-title" className="mt-1 text-xl font-semibold text-white">Kelola Varian</h2>
             <p className="mt-1 text-sm text-white/50">{productName} · {variants.length} varian terdaftar</p>
           </div>
-          <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 transition hover:bg-white/15" aria-label="Tutup editor varian"><IosIcon name="close" size={14} tint="white" /></button>
+          <button type="button" onClick={requestClose} className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 transition hover:bg-white/15" aria-label="Tutup editor varian"><IosIcon name="close" size={14} tint="white" /></button>
         </header>
 
         <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-7">
@@ -262,6 +273,7 @@ export default function VariantEditor({ productId, productName, onClose }: Props
                     <label className={labelClass}>Stok <span className="normal-case tracking-normal text-white/25">(-1 = ∞)</span><input type="number" min={-1} value={variant.stock} onChange={(event) => update(index, "stock", Number(event.target.value))} className={inputClass} /></label>
                     <label className={labelClass}>Fulfillment<select value={variant.fulfillment_mode} onChange={(event) => update(index, "fulfillment_mode", event.target.value)} className={inputClass}>{FULFILLMENT_MODES.map((item) => <option key={item.value} value={item.value} className="bg-[#10152d]">{item.label}</option>)}</select></label>
                   </div>
+                  {variant.id ? <FulfillmentInventoryPanel productId={productId} variantId={variant.id} mode={variant.fulfillment_mode} /> : <p className="mt-4 rounded-xl border border-white/10 bg-white/[0.025] px-3 py-3 text-xs text-white/40">Simpan varian baru terlebih dahulu sebelum mengisi konten fulfillment.</p>}
                 </article>
               ))}
             </div>
@@ -271,12 +283,13 @@ export default function VariantEditor({ productId, productName, onClose }: Props
         <footer className="shrink-0 border-t border-white/10 bg-[#080C1E]/80 px-4 py-4 backdrop-blur-xl sm:px-7">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div><p className="text-xs text-white/50">{activeVariants.length} aktif · {minPrice === null ? "Harga belum tersedia" : minPrice === maxPrice ? money(minPrice) : `${money(minPrice)} – ${money(maxPrice ?? minPrice)}`}</p><p className={`mt-1 text-[11px] ${hasDirty ? "text-[#FFB800]" : "text-emerald-300/70"}`}>{hasDirty ? "Perubahan belum disimpan" : "Semua perubahan tersimpan"}</p></div>
-            <div className="flex flex-wrap justify-end gap-2"><button type="button" onClick={onClose} className="h-11 rounded-full border border-white/10 bg-white/[0.06] px-5 text-sm font-semibold text-white/70 transition hover:bg-white/10 hover:text-white">Tutup</button><button type="button" onClick={addVariant} disabled={loading || saving} className="inline-flex h-11 items-center gap-2 rounded-full border border-[#00E5FF]/25 bg-[#00E5FF]/10 px-5 text-sm font-bold text-[#5cefff] transition hover:bg-[#00E5FF]/20 disabled:opacity-40"><IosIcon name="plus" size={14} tint="#00E5FF" /> Tambah Varian</button><button type="button" onClick={() => void saveAll()} disabled={loading || saving || variants.length === 0 || !hasDirty} className="inline-flex h-11 min-w-36 items-center justify-center gap-2 rounded-full bg-[#00E5FF] px-6 text-sm font-bold text-[#080C1E] transition hover:bg-[#00D0E8] disabled:cursor-not-allowed disabled:opacity-40">{saving ? <><span className="h-4 w-4 animate-spin rounded-full border-2 border-[#080C1E]/25 border-t-[#080C1E]" /> Menyimpan…</> : <><IosIcon name="checked" size={14} tint="black" /> Simpan Semua</>}</button></div>
+            <div className="flex flex-wrap justify-end gap-2"><button type="button" onClick={requestClose} className="h-11 whitespace-nowrap rounded-full border border-white/10 bg-white/[0.06] px-5 text-sm font-semibold text-white/70 transition hover:bg-white/10 hover:text-white">Tutup</button><button type="button" onClick={addVariant} disabled={loading || saving} className="inline-flex h-11 items-center gap-2 whitespace-nowrap rounded-full border border-[#00E5FF]/25 bg-[#00E5FF]/10 px-5 text-sm font-bold text-[#5cefff] transition hover:bg-[#00E5FF]/20 disabled:opacity-40"><IosIcon name="plus" size={14} tint="#00E5FF" /> Tambah Varian</button><button type="button" onClick={() => void saveAll()} disabled={loading || saving || variants.length === 0 || !hasDirty} className="inline-flex h-11 min-w-36 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-[#00E5FF] px-6 text-sm font-bold text-[#080C1E] transition hover:bg-[#00D0E8] disabled:cursor-not-allowed disabled:opacity-40">{saving ? <><span className="h-4 w-4 animate-spin rounded-full border-2 border-[#080C1E]/25 border-t-[#080C1E]" /> Menyimpan…</> : <><IosIcon name="checked" size={14} tint="black" /> Simpan Semua</>}</button></div>
           </div>
         </footer>
       </section>
 
       <ConfirmDialog open={deleteIndex !== null} title={variants[deleteIndex ?? -1]?._new ? "Hapus varian baru?" : "Nonaktifkan varian?"} description={variants[deleteIndex ?? -1]?._new ? "Varian yang belum disimpan akan dihapus dari formulir." : `Varian “${variants[deleteIndex ?? -1]?.label || "ini"}” tidak akan ditawarkan lagi, sementara riwayat pesanan tetap aman.`} confirmLabel={variants[deleteIndex ?? -1]?._new ? "Hapus" : "Nonaktifkan"} loading={deleting} onClose={() => !deleting && setDeleteIndex(null)} onConfirm={() => void removeVariant()} />
+      <ConfirmDialog open={confirmClose} title="Buang perubahan varian?" description="Perubahan yang belum disimpan akan hilang." confirmLabel="Buang perubahan" cancelLabel="Lanjut mengedit" variant="danger" onClose={() => setConfirmClose(false)} onConfirm={onClose} />
     </div>
   );
 }

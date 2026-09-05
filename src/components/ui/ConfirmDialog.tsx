@@ -26,23 +26,25 @@ export function ConfirmDialog({
 }: Props) {
   useEffect(() => {
     if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => { document.body.style.overflow = previousOverflow; window.removeEventListener("keydown", onKey); };
   }, [open, onClose]);
 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-[#070a1e]/65 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-[420px] ax-glass-strong rounded-[20px] p-5 sm:p-6 border border-white/10 shadow-[0_16px_48px_rgba(0,0,0,0.45)]">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-[#040612]/95" onClick={onClose} />
+      <div role="dialog" aria-modal="true" aria-label={title} className="relative z-10 w-full max-w-[420px] rounded-[20px] border border-white/10 bg-[#0B1025] p-5 shadow-[0_16px_48px_rgba(0,0,0,0.65)] sm:p-6">
         <h3 className="font-semibold text-white">{title}</h3>
         <p className="mt-2 text-sm leading-6 text-white/60">{description}</p>
         <div className="mt-5 flex justify-end gap-2">
-          <button onClick={onClose} disabled={!!loading} className="h-10 px-4 rounded-full ax-glass text-sm font-semibold text-white/80 hover:text-white disabled:opacity-50">
+          <button autoFocus onClick={onClose} disabled={!!loading} className="h-10 px-4 rounded-full border border-white/10 bg-white/[0.06] text-sm font-semibold text-white/80 hover:bg-white/10 disabled:opacity-50">
             {cancelLabel}
           </button>
           <button

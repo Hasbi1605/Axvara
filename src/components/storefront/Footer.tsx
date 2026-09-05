@@ -3,13 +3,15 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { SITE, adminWaLink } from "@/lib/site";
+import { whatsappLink } from "@/lib/site";
+import { useStoreSettings } from "@/hooks/useStoreSettings";
 
 type FooterCategory = { id: number; name: string; slug: string };
 
 export function Footer() {
   const pathname = usePathname();
   const [categories, setCategories] = useState<FooterCategory[]>([]);
+  const storeSettings = useStoreSettings();
   const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
@@ -19,7 +21,7 @@ export function Footer() {
     const controller = new AbortController();
     fetch("/api/categories", { signal: controller.signal })
       .then(async (response) => response.ok ? response.json() : Promise.reject(new Error("Kategori gagal dimuat")))
-      .then((body) => setCategories(Array.isArray(body.categories) ? body.categories : []))
+      .then((categoryBody) => setCategories(Array.isArray(categoryBody.categories) ? categoryBody.categories : []))
       .catch((error) => { if (!(error instanceof DOMException && error.name === "AbortError")) setCategories([]); });
     return () => controller.abort();
   }, [pathname]);
@@ -55,14 +57,17 @@ export function Footer() {
         <div className="grid grid-cols-1 gap-10 lg:grid-cols-[1.35fr_0.8fr_0.8fr_1.05fr] lg:gap-12">
           <div>
             <div className="flex items-center gap-2.5">
-              <span className="flex h-[19px] w-[22px] items-center justify-center text-white/90">
+              {storeSettings.logoUrl ? <span className="flex h-[22px] w-[24px] items-center justify-center">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={storeSettings.logoUrl} alt="" className="h-full w-full object-contain" />
+              </span> : <span className="flex h-[19px] w-[22px] items-center justify-center text-white/90">
                 <svg viewBox="0 0 120 110" className="h-full w-full" fill="none" stroke="currentColor" strokeWidth="4.2" strokeLinecap="round" strokeLinejoin="round" shapeRendering="geometricPrecision" aria-hidden>
                   <path d="M60 4 L6.5 104 L113.5 104 Z" /><path d="M60 4 L60 49.5" /><path d="M60 49.5 L35.8 78.5 L84.2 78.5 Z" /><path d="M35.8 78.5 L84.2 78.5" /><path d="M35.8 78.5 L6.5 104" /><path d="M84.2 78.5 L113.5 104" />
                 </svg>
-              </span>
-              <p className="font-display font-[300] tracking-[0.20em] text-white">AXVARA</p>
+              </span>}
+              <p className="font-display font-[300] tracking-[0.20em] text-white">{storeSettings.name}</p>
             </div>
-            <p className="mt-3 max-w-[34ch] text-[13px] leading-[1.65] text-white/55">Tempat membeli akun dan tools premium dengan proses yang jelas dan dukungan admin.</p>
+            <p className="mt-3 max-w-[34ch] text-[13px] leading-[1.65] text-white/55">{storeSettings.tagline}</p>
             <div className="mt-4 flex flex-wrap gap-1.5">
               <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[11px] text-white/60"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Bergaransi</span>
               <span className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[11px] text-white/60">Aktivasi 5–15 menit</span>
@@ -86,7 +91,7 @@ export function Footer() {
             <ul className="mt-3.5 space-y-2.5 text-[13px]">
               <li><Link href="/cara-order" className="text-white/60 transition hover:text-white">Cara order</Link></li>
               <li><Link href="/garansi-replace" className="text-white/60 transition hover:text-white">Garansi & replace</Link></li>
-              <li><a href={adminWaLink()} target="_blank" rel="noreferrer" className="text-[#00E5FF]/90 transition hover:text-white">Chat WA — {SITE.supportHours}</a></li>
+              <li><a href={whatsappLink(storeSettings.whatsappNumber, `Halo ${storeSettings.name}`)} target="_blank" rel="noreferrer" className="text-[#00E5FF]/90 transition hover:text-white">Chat WA — {storeSettings.supportHours}</a></li>
             </ul>
           </div>
 
@@ -103,8 +108,8 @@ export function Footer() {
 
         <div className="mt-10 flex flex-col justify-between gap-3 border-t border-white/10 pt-6 sm:flex-row sm:items-center">
           <div className="space-y-1">
-            <p className="text-xs text-white/35">© 2026 AXVARA</p>
-            <p className="max-w-[62ch] text-[11px] leading-5 text-white/30">AXVARA adalah third-party independen, tidak terafiliasi dengan brand manapun. Garansi bervariasi 1x24 jam–30 hari mengikuti deskripsi tiap produk. <Link href="/garansi-replace" className="text-white/45 underline decoration-white/20 underline-offset-2 hover:text-white">Ketentuan garansi</Link></p>
+            <p className="text-xs text-white/35">© 2026 {storeSettings.name}</p>
+            <p className="max-w-[62ch] text-[11px] leading-5 text-white/30">{storeSettings.footerText} Garansi bervariasi 1x24 jam–30 hari mengikuti deskripsi tiap produk. <Link href="/garansi-replace" className="text-white/45 underline decoration-white/20 underline-offset-2 hover:text-white">Ketentuan garansi</Link></p>
           </div>
           <div className="flex items-center gap-4 text-xs"><Link href="/#katalog" className="text-white/40 transition hover:text-white">Katalog</Link><Link href="/artikel" className="text-white/40 transition hover:text-white">Artikel</Link></div>
         </div>

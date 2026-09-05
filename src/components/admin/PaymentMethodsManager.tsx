@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { useToast } from "@/components/ui/Toast";
+import { PaymentReconciliation } from "@/components/admin/PaymentReconciliation";
 
 type PaymentMethod = {
   id: string;
@@ -26,6 +27,8 @@ const emptyBank = (): PaymentMethod => ({
 
 export function PaymentMethodsManager() {
   const toast = useToast();
+  const initialTab = typeof window === "undefined" ? "methods" : new URLSearchParams(window.location.search).get("payment_tab") === "qris" ? "qris" : "methods";
+  const [paymentTab, setPaymentTab] = useState<"methods" | "qris">(initialTab);
   const [methods, setMethods] = useState<PaymentMethod[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
@@ -110,7 +113,12 @@ export function PaymentMethodsManager() {
   }
 
   return (
-    <section className="mt-5">
+    <section className="mt-5 space-y-4">
+      <div className="inline-flex rounded-xl border border-white/10 bg-white/[0.04] p-1" role="tablist" aria-label="Bagian pembayaran">
+        <button role="tab" aria-selected={paymentTab === "methods"} onClick={() => setPaymentTab("methods")} className={`h-9 rounded-lg px-4 text-xs font-semibold ${paymentTab === "methods" ? "bg-[#00E5FF] text-[#07101f]" : "text-white/55"}`}>Metode Pembayaran</button>
+        <button role="tab" aria-selected={paymentTab === "qris"} onClick={() => setPaymentTab("qris")} className={`h-9 rounded-lg px-4 text-xs font-semibold ${paymentTab === "qris" ? "bg-[#00E5FF] text-[#07101f]" : "text-white/55"}`}>QRIS &amp; Rekonsiliasi</button>
+      </div>
+      {paymentTab === "methods" ? <>
       <div className="ax-glass rounded-[20px] overflow-hidden">
         <div className="flex items-center gap-2.5 border-b border-white/10 p-4 sm:p-5">
           <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/5 bg-white/5">
@@ -201,6 +209,7 @@ export function PaymentMethodsManager() {
         </div>
       </div>
       <p className="mt-3 text-xs text-white/35">Checkout mempertahankan harga/rekening selama 60 menit. Invoice QRIS dinamis berlaku 15 menit dan lunas otomatis melalui QRIS Hook.</p>
+      </> : <PaymentReconciliation />}
     </section>
   );
 }

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { adminWaLink } from "@/lib/site";
+import { StoreWhatsAppLink } from "@/components/storefront/StoreWhatsAppLink";
 
 export const metadata = { title: "Ketentuan Layanan & Garansi | AXVARA", description: "AXVARA adalah third-party independen. Pahami ketentuan garansi 1x24 jam–30 hari sebelum membeli." };
 
@@ -52,6 +52,6 @@ export default function GaransiReplacePage() {
     </section>
 
     <div className="mt-6 rounded-[20px] border border-[#FFB800]/20 bg-[#FFB800]/[0.06] p-4 text-sm leading-6 text-white/60">Jangan kirim password melalui form publik. Sampaikan data sensitif hanya melalui percakapan langsung dengan admin setelah kode pesanan diverifikasi.</div>
-    <div className="mt-8 flex flex-wrap gap-3"><a href={adminWaLink("Halo AXVARA, saya ingin mengajukan garansi/replace. Kode pesanan saya: ")} target="_blank" rel="noreferrer" className="inline-flex h-11 items-center rounded-full bg-white px-6 text-sm font-bold text-[#080C1E]">Ajukan klaim</a><Link href="/cara-order" className="inline-flex h-11 items-center rounded-full border border-white/10 bg-white/[0.06] px-6 text-sm font-semibold text-white">Lihat cara order</Link></div>
+    <div className="mt-8 flex flex-wrap gap-3"><StoreWhatsAppLink message="saya ingin mengajukan garansi/replace. Kode pesanan saya: " className="inline-flex h-11 items-center rounded-full bg-white px-6 text-sm font-bold text-[#080C1E]">Ajukan klaim</StoreWhatsAppLink><Link href="/cara-order" className="inline-flex h-11 items-center rounded-full border border-white/10 bg-white/[0.06] px-6 text-sm font-semibold text-white">Lihat cara order</Link></div>
   </main>;
 }

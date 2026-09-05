@@ -39,12 +39,13 @@ axvara/
 │   │   ├── produk/[slug]/  # Detail produk
 │   │   ├── checkout/       # Checkout — QRIS otomatis / bukti untuk transfer manual
 │   │   ├── pesanan/[code]/ # Status + QRIS dinamis + polling lunas
-│   │   ├── admin/          # Sidebar + produk/pesanan/kategori/artikel/banner/agent
+│   │   ├── admin/          # Workspace operasional, katalog, pembayaran, konten, otomasi, settings
 │   │   ├── artikel/        # Indeks dan detail artikel publik
 │   │   ├── cara-order/     # Panduan order dari footer
 │   │   ├── garansi-replace/ # Ketentuan layanan & garansi third-party dari footer (acuan klaim)
 │   │   ├── api/checkout/   # Quote harga/stok/rekening bertanda tangan
 │   │   ├── api/payment-methods/ # Konfigurasi pembayaran publik/admin
+│   │   ├── api/store-settings/ # Identitas/kontak toko publik + update admin
 │   │   ├── api/subscribers/# Form email footer + daftar terproteksi admin
 │   │   └── api/agent/      # Content API Bearer-token untuk MCP/agent
 │   │   └── globals.css     # Tokens Liquid Glass iOS 26
@@ -88,7 +89,7 @@ Flow: server memvalidasi harga/stok dan menerbitkan quote bertanda tangan 60 men
 
 AXVARA adalah third-party independen (bukan official store). Garansi bervariasi 1x24 jam–30 hari mengikuti deskripsi tiap produk; klaim berupa penggantian/perbaikan, bukan refund otomatis. Checkout mewajibkan centang persetujuan ketentuan sebelum order dibuat; acuan lengkap di `/garansi-replace`.
 
-Nomor dukungan admin adalah `089519388264` dan dipusatkan di `src/lib/site.ts`; nomor ini terpisah dari nomor tujuan pembayaran e-wallet.
+Nomor dukungan default adalah `089519388264`, terpisah dari nomor tujuan pembayaran e-wallet. `src/lib/site.ts` menyediakan fallback, sedangkan override operasional disimpan lewat menu **Pengaturan Toko**.
 
 ### Kategori dan footer
 
@@ -142,8 +143,12 @@ dan diverifikasi sebagai gambar sebelum disimpan privat. Copy pembayaran memakai
 order agar perubahan nama/durasi/garansi di CMS tidak mengubah transaksi yang sudah dibuat.
 Produk baru otomatis mendapat varian default. Harga/stok pada form produk lama hanya
 disinkronkan untuk varian default tunggal; produk multi-varian dikelola lewat tombol
-**Kelola Varian**. Panel **Pesanan** menyediakan tab Web/Telegram/WhatsApp dan pagination;
-penghapusan produk/varian mengarsipkannya agar order historis tetap utuh.
+**Kelola Varian**. Panel **Pesanan** menyediakan pencarian server-side, filter channel
+Web/Telegram/WhatsApp, status, pembayaran, rentang tanggal, pagination, detail order,
+konfirmasi aman, serta export CSV. QRIS tidak dapat dilunasi dari bukti gambar; QRIS Hook
+tetap menjadi authority dan event yang tidak cocok ditangani pada **Metode & Rekonsiliasi**.
+Penghapusan produk/varian mengarsipkannya agar order historis tetap utuh. Konfigurasi
+fulfillment shared/unique dipusatkan pada masing-masing varian, bukan digandakan di menu bot.
 
 Setelah pembayaran diterima, tombol support bot membuka akun manusia `@axvara_support`;
 username bot tetap `@Axvara_bot`. Seluruh notifikasi admin dari order web maupun Telegram
@@ -225,7 +230,8 @@ idempotent dan hanya nominal persis dari invoice aktif yang dapat melunasi order
 
 ## 🤖 Agent CMS dan Remote MCP
 
-- Admin memakai sidebar responsif pada `/admin?section=articles` dan `/admin?section=agent`; status sidebar tersimpan lokal.
+- Admin memakai sidebar responsif yang dikelompokkan sebagai Operasional, Katalog, Pembayaran, Konten, Otomasi, dan Sistem. Query `section` mendukung deep-link/back-forward, sedangkan ringkasan menjadi action center untuk antrean penting.
+- Menu **Pengaturan Toko** mengelola nama, tagline, nomor WhatsApp dukungan, jam layanan, teks legal footer, dan URL logo. Nilai disimpan di `store_settings` lalu dipakai oleh identitas dan tautan dukungan storefront dengan fallback aman dari `src/lib/site.ts`.
 - Editor visual Tiptap menyimpan **Markdown** sebagai format kanonis agar ringan dan interoperabel dengan agent; artikel JSON Tiptap lama tetap dapat dibaca dan akan dikonversi saat diedit. Slug/excerpt dibuat otomatis server-side.
 - Cover artikel/produk menerima drag-and-drop PNG/JPG/WebP, dikonversi browser menjadi WebP 1600×900. Banner dikonversi ke WebP dengan rasio asli dan sisi terpanjang maksimal 1920 px; popup mengikuti rasio portrait/persegi/landscape, memakai `object-contain`, dan hanya muncul di homepage agar tidak menghalangi checkout/admin/status pesanan.
 - Daftar pesanan menampilkan bukti sebagai preview card yang dapat dibuka penuh. Bukti kosong, URL tidak valid, dan file R2 yang hilang mempunyai status visual serta keterangan berbeda agar admin tidak salah mengira label tersebut sebagai tombol.

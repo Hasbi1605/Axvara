@@ -1,7 +1,7 @@
 # ARCHITECTURE.md — AXVARA
 
 **Stack:** Next.js 15 (App Router) + Cloudflare Pages + D1 + R2
-**Tanggal:** 3 September 2026
+**Tanggal:** 5 September 2026
 **Status:** Implemented — Pages + D1 + R2 + Remote MCP + custom domain dan DNSSEC aktif
 
 ---
@@ -95,13 +95,14 @@ axvara/
 │   ├── checkout/
 │   ├── pesanan/[code]/
 │   ├── admin/
-│   │   └── page.tsx             # Sidebar + seluruh modul admin
+│   │   └── page.tsx             # Shell + modul admin berbasis query section
 │   ├── api/
 │   │   ├── products/
 │   │   ├── categories/
 │   │   ├── orders/              # POST create, GET list, PATCH confirm
 │   │   ├── checkout/quote/       # Quote harga/stok/payment bertanda tangan
 │   │   ├── payment-methods/      # GET publik + PUT admin
+│   │   ├── store-settings/       # GET publik + PUT admin
 │   │   ├── subscribers/          # POST publik + GET admin
 │   │   ├── articles/            # CRUD editorial admin/public
 │   │   ├── banners/             # CRUD popup banner
@@ -114,7 +115,7 @@ axvara/
 ├── src/components/
 │   ├── ui/                      # Button, Input, Badge, Modal, Drawer, Toast
 │   ├── storefront/              # Navbar, Hero, ProductCard, CartDrawer, CheckoutForm, QrisDisplay
-│   └── admin/                   # Sidebar, StatsCard, OrderTable, ProductForm
+│   └── admin/                   # Shell, overview, orders, rekonsiliasi, katalog, otomasi, settings
 ├── src/lib/
 │   ├── db.ts                    # D1 client (Cloudflare D1 binding)
 │   ├── r2.ts                    # R2 client (S3 API)
@@ -229,6 +230,12 @@ CREATE TABLE newsletter_subscribers (
   updated_at TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE store_settings (
+  key TEXT PRIMARY KEY,            -- store_name | tagline | whatsapp_number | ...
+  value TEXT NOT NULL,
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
 -- Seed payment_methods:
 -- ewallet | DANA / Gopay / Shopeepay | 082135277434 | Brotherstore06
 -- seabank | SeaBank                  | 901812349386 | Brotherstore06
@@ -251,6 +258,7 @@ CREATE TABLE newsletter_subscribers (
 | GET/POST/PUT/DELETE | /api/banners[?id=] | Popup banner | public/admin |
 | POST | /api/checkout/quote | Validasi produk/stok/harga, metode aktif, dan terbitkan signed quote 60 menit | - |
 | GET/POST/PUT | /api/payment-methods[?id=] | Baca metode aktif / tambah bank / kelola rekening dan QRIS | public/admin |
+| GET/PUT | /api/store-settings | Baca identitas storefront / perbarui nama, kontak, footer, logo | public/admin |
 | POST | /api/orders | Verifikasi signed quote, buat pesanan idempotent, reservasi stok atomik | - |
 | GET | /api/orders/:code | Cek status pesanan via code | - |
 | GET | /api/payments/qris/:code/image | Render PNG QRIS dinamis untuk invoice aktif | code order |
@@ -261,8 +269,10 @@ CREATE TABLE newsletter_subscribers (
 | * | /api/agent/* | Context, artikel, media, dan audit | agent scope |
 | POST | /api/cron/publish-scheduled | Publish artikel dan kedaluwarsakan order jatuh tempo | cron secret |
 | POST | /api/auth/login | Admin login, set cookie | - |
-| GET | /api/admin/orders | List pesanan (filter status) | admin |
+| GET | /api/admin/overview | KPI, antrean tindakan, dan health flag tanpa secret | admin |
+| GET | /api/admin/orders | List pesanan dengan search/filter/channel/date, pagination, dan CSV | admin |
 | PATCH | /api/admin/orders/:id | Update status (lunas/batal) + admin_note | admin |
+| GET/POST | /api/admin/payments/events | Audit aman QRIS Hook + retry exact-match | admin |
 | POST | /api/admin/products | Create produk + upload image ke R2 | admin |
 | PUT | /api/admin/products/:id | Update produk | admin |
 | DELETE | /api/admin/products/:id | Soft delete | admin |
@@ -288,6 +298,10 @@ CREATE TABLE newsletter_subscribers (
 - Bukti pembayaran tetap privat melalui `/api/admin/bukti/:key`; UI membedakan belum diunggah, URL tidak valid, file R2 hilang, dan preview tersedia.
 - Kategori D1 menjadi sumber tunggal kapsul katalog dan menu Jelajah footer. Nama, ikon, serta `sort_order` dapat diedit; slug tetap stabil ketika nama berubah, dan penghapusan ditolak selama kategori masih dipakai produk.
 - Email form footer dinormalisasi lowercase, dideduplikasi oleh unique index, dibatasi per IP, dan hanya dapat dibaca melalui panel/API admin terautentikasi.
+- Sidebar admin dikelompokkan menurut pekerjaan. `AdminOverview` menjadi action center; `OrdersManager` memegang filter/pagination/detail; `PaymentReconciliation` hanya menampilkan metadata event aman, bukan payload mentah atau secret.
+- Bukti QRIS adalah referensi visual saja. Tombol approval manual tidak dirender untuk order QRIS; pencocokan ulang tetap menuntut satu invoice DANA aktif dengan nominal persis.
+- Editor varian memakai form-card responsif dengan CTA eksplisit dan menyimpan inventory fulfillment per SKU. Dialog mengunci body, mendukung Escape, dan meminta konfirmasi sebelum membuang perubahan.
+- `store_settings` adalah override D1 untuk identitas serta tautan dukungan storefront. API publik read-only memakai cache singkat dan PUT memerlukan sesi admin; fallback `SITE` menjaga storefront tetap tersedia jika tabel belum siap.
 
 ---
 
@@ -443,6 +457,7 @@ Implementasi native TypeScript di codebase AXVARA. Repo `mocasus/telegram-auto-o
 | `dana_webhook_events` | Dedup/audit minimal event QRIS Hook dan order hasil pencocokan |
 | `fulfillment_inventory` | Vault secret terenkripsi per produk |
 | `fulfillment_jobs` | Outbox delivery dengan retry |
+| `store_settings` | Override nama, tagline, WhatsApp, jam dukungan, footer, dan logo storefront |
 
 Kolom baru di `products`: `fulfillment_mode`, `shared_secret_ciphertext`, `shared_secret_iv`, `telegram_enabled`.
 Kolom baru di `orders`: `sales_channel`, `telegram_chat_id`, `telegram_user_id`, `payment_status`, `fulfillment_status`.
@@ -457,7 +472,10 @@ Kolom baru di `orders`: `sales_channel`, `telegram_chat_id`, `telegram_user_id`,
 | POST | `/api/cron/operations` | CRON_SECRET | Rekonsiliasi |
 | GET/POST | `/api/admin/telegram/setup` | admin | Setup webhook |
 | GET | `/api/admin/bot/health` | admin | Health check tanpa secret |
+| GET | `/api/admin/overview` | admin | KPI/action queue lintas channel |
+| GET/POST | `/api/admin/payments/events` | admin | Event QRIS Hook aman + retry exact-match |
 | GET/POST/DELETE | `/api/admin/fulfillment` | admin | Inventory management |
+| GET/PUT | `/api/store-settings` | public/admin | Identitas storefront / update terautentikasi |
 | GET | `/api/catalog[?slug=]` | public | Katalog produk/varian aktif terpusat |
 | GET/POST/PUT/DELETE | `/api/admin/variants` | admin | Kelola SKU, durasi, garansi, harga, stok, dan mode fulfillment varian |
 | POST | `/api/whatsapp/webhook` | Shared Baileys webhook token | Command grup, order, pembayaran, dan intake bukti |
