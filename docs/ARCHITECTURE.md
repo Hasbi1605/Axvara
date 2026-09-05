@@ -507,7 +507,7 @@ Sistem varian produk terpusat dan bot WhatsApp telah diimplementasikan sesuai `d
 
 ### Status Rollout Produksi WhatsApp
 
-Mulai 5 September 2026, Fonnte Device produksi telah terhubung dan discovery read-only diaktifkan untuk tepat satu GID pada `WHATSAPP_GROUP_ALLOWLIST`. Pages Secrets menyimpan `FONNTE_TOKEN`, `WHATSAPP_WEBHOOK_TOKEN`, `WHATSAPP_BOT_NUMBER`, serta GID tanpa hardcode. Flag aktif hanya `PRODUCT_VARIANTS_READ`, `WHATSAPP_ENABLED`, dan `WHATSAPP_GROUP_DISCOVERY`; group payment, proof intake, KlikQRIS, dan fulfillment tetap off sampai smoke test grup berhasil.
+Mulai 5 September 2026, Fonnte Device produksi terhubung dan seluruh fitur transaksi WhatsApp aktif untuk GID pada `WHATSAPP_GROUP_ALLOWLIST`. Flag aktif meliputi `PRODUCT_VARIANTS_READ`, `WHATSAPP_ENABLED`, `WHATSAPP_GROUP_DISCOVERY`, `WHATSAPP_GROUP_PAYMENT`, `WHATSAPP_PROOF_INTAKE`, `WHATSAPP_REQUIRE_PROOF_BEFORE_FULFILLMENT`, dan `WHATSAPP_FULFILLMENT`. Mode fulfillment varian unique tanpa stok dialihkan aman ke manual agar tidak terjadi silent drop. Gateway memiliki fallback otomatis direct send jika Fonnte menolak inboxid.
 
 ### Tabel Baru (migrasi 0007)
 | Tabel | Tujuan |

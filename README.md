@@ -133,11 +133,11 @@ e-wallet baru mengubah order menjadi lunas setelah admin mencocokkan mutasi. Com
 semua flag WhatsApp/varian di `.env.example` tetap default `false` untuk rollout bertahap.
 Nilai `WHATSAPP_WEBHOOK_TOKEN` harus sama dengan **Secret key** pada flow webhook Fonnte;
 adapter menerima field `secret` bawaan Fonnte tanpa memerlukan custom header.
-Discovery produksi diaktifkan bertahap pada 5 September 2026 untuk satu grup allowlist:
-`WHATSAPP_ENABLED`, `WHATSAPP_GROUP_DISCOVERY`, dan `PRODUCT_VARIANTS_READ` aktif;
-payment, proof intake, KlikQRIS, dan fulfillment WhatsApp tetap nonaktif sampai smoke test
-command `list` serta pemilihan varian di grup lolos. Token, nomor Device, webhook secret,
-dan GID hanya disimpan sebagai Pages Secrets, tidak di repository.
+Discovery dan transaksi produksi diaktifkan penuh pada 5 September 2026 untuk grup allowlist:
+`WHATSAPP_ENABLED`, `WHATSAPP_GROUP_DISCOVERY`, `WHATSAPP_GROUP_PAYMENT`, `WHATSAPP_PROOF_INTAKE`,
+`WHATSAPP_REQUIRE_PROOF_BEFORE_FULFILLMENT`, `WHATSAPP_FULFILLMENT`, dan `PRODUCT_VARIANTS_READ` aktif.
+Pembayaran menerima QRIS statis + SeaBank + e-wallet dengan intake bukti bayar ke R2 privat.
+Token, nomor Device, webhook secret, dan GID disimpan sebagai Pages Secrets, tidak di repository.
 Unduhan lampiran webhook tidak membawa token API Fonnte ke URL media, dibatasi 5 MB,
 dan diverifikasi sebagai gambar sebelum disimpan privat. Copy pembayaran memakai snapshot
 order agar perubahan nama/durasi/garansi di CMS tidak mengubah transaksi yang sudah dibuat.

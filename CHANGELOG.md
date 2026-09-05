@@ -4,6 +4,9 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-05 — Aktifkan fitur transaksi & pembayaran grup WhatsApp siap produksi (Payment, Proof Intake, Fulfillment) dan perbaiki resiliency reply Fonnte (fallback direct send jika inboxid ditolak Fonnte, parsing array id) — src/lib/whatsapp/gateway.ts, Cloudflare Pages Secrets, README/docs — (verifikasi: vitest 199/199 pass, tsc clean, lint pass, Pages secrets WHATSAPP_GROUP_PAYMENT/PROOF/FULFILLMENT aktif, Fonnte device connect & webhook token sinkron; dev GET / 200 + CSS 200, Obscura screenshot pass)
+
+
 - 2026-09-05 — Aktivasi bertahap bot grup WhatsApp: sinkronkan daftar grup Fonnte satu kali, temukan satu grup AXVARA, simpan token/webhook secret/nomor Device/GID sebagai Pages Secrets, pasang webhook + Auto Read grup, dan aktifkan discovery read-only sementara payment/proof/KlikQRIS/fulfillment tetap off — Cloudflare Pages config, Fonnte Device, README/docs — (verifikasi: Device Fonnte `connect`, fetch group sukses 9 grup/1 kandidat AXVARA, update Device sukses, 12 Pages Secrets terdaftar; dev GET `/` 200 + CSS 200 tanpa compile error, Obscura load/eval + screenshot 1280×720 diperiksa; deployment/smoke test grup menyusul via CI)
 
 - 2026-09-05 — Ganti browser verifier wajib proyek dari Chrome DevTools MCP menjadi skill/CLI/CDP Obscura, termasuk command localhost, screenshot/eval, dan checklist selesai — `AGENTS.md` — (verifikasi: `obscura --help` sesuai command; dev GET `/` 200 + CSS 200 tanpa compile error; Obscura load/eval + screenshot PNG 1280×720 diperiksa)

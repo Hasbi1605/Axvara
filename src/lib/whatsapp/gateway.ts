@@ -189,7 +189,7 @@ export async function sendTextMessage(params: SendMessageParams): Promise<Fonnte
   if (!token) return { ok: false, error: "no_fonnte_token" };
 
   try {
-    const payload: Record<string, string> = {
+    const payload: Record<string, unknown> = {
       target: params.target,
       message: params.message,
     };
@@ -198,7 +198,7 @@ export async function sendTextMessage(params: SendMessageParams): Promise<Fonnte
       payload.inboxid = params.inboxId;
     }
 
-    const res = await fetch(`${FONNTE_API_BASE}/send`, {
+    let res = await fetch(`${FONNTE_API_BASE}/send`, {
       method: "POST",
       headers: {
         Authorization: token,
@@ -208,11 +208,28 @@ export async function sendTextMessage(params: SendMessageParams): Promise<Fonnte
       signal: AbortSignal.timeout(15_000),
     });
 
-    const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-    const ok = res.ok && (data.status === true || data.status === "true");
+    let data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    let ok = res.ok && (data.status === true || data.status === "true");
+
+    // If Fonnte failed due to unknown/invalid inboxid, fallback immediately to direct send without inboxid
+    if (!ok && payload.inboxid) {
+      delete payload.inboxid;
+      res = await fetch(`${FONNTE_API_BASE}/send`, {
+        method: "POST",
+        headers: {
+          Authorization: token,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(15_000),
+      });
+      data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      ok = res.ok && (data.status === true || data.status === "true");
+    }
+
     return {
       ok,
-      messageId: data.id ? String(data.id) : undefined,
+      messageId: Array.isArray(data.id) ? String(data.id[0]) : data.id ? String(data.id) : undefined,
       error: ok ? undefined : String(data.reason || data.message || "send_failed"),
     };
   } catch (error) {
@@ -225,7 +242,7 @@ export async function sendImageMessage(params: SendImageParams): Promise<FonnteS
   if (!token) return { ok: false, error: "no_fonnte_token" };
 
   try {
-    const payload: Record<string, string> = {
+    const payload: Record<string, unknown> = {
       target: params.target,
       url: params.imageUrl,
       type: "image",
@@ -234,7 +251,7 @@ export async function sendImageMessage(params: SendImageParams): Promise<FonnteS
     if (params.inboxId) payload.inboxid = params.inboxId;
     if (params.filename) payload.filename = params.filename;
 
-    const res = await fetch(`${FONNTE_API_BASE}/send`, {
+    let res = await fetch(`${FONNTE_API_BASE}/send`, {
       method: "POST",
       headers: {
         Authorization: token,
@@ -244,11 +261,28 @@ export async function sendImageMessage(params: SendImageParams): Promise<FonnteS
       signal: AbortSignal.timeout(15_000),
     });
 
-    const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-    const ok = res.ok && (data.status === true || data.status === "true");
+    let data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    let ok = res.ok && (data.status === true || data.status === "true");
+
+    // Fallback if inboxid failed
+    if (!ok && payload.inboxid) {
+      delete payload.inboxid;
+      res = await fetch(`${FONNTE_API_BASE}/send`, {
+        method: "POST",
+        headers: {
+          Authorization: token,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(15_000),
+      });
+      data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      ok = res.ok && (data.status === true || data.status === "true");
+    }
+
     return {
       ok,
-      messageId: data.id ? String(data.id) : undefined,
+      messageId: Array.isArray(data.id) ? String(data.id[0]) : data.id ? String(data.id) : undefined,
       error: ok ? undefined : String(data.reason || data.message || "send_failed"),
     };
   } catch (error) {
