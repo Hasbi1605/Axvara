@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { queryFirst, execRun, getD1, isD1Mode } from "@/lib/db";
+import { queryFirst, queryAll, execRun, getD1, isD1Mode } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
 import { rateLimit, rateLimitKey } from "@/lib/rateLimit";
 
@@ -15,7 +15,38 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
   const primary = (row.image_url as string) ?? images[0] ?? "";
   let aliases: string[] = [];
   try { aliases = row.aliases ? JSON.parse(String(row.aliases)) : []; } catch { aliases = []; }
-  return NextResponse.json({ product: { id: String(row.id), slug: row.slug, name: row.name, whatsappAlias: String(row.whatsapp_alias || "").trim() || undefined, aliases, description: row.description ?? "", price: row.price, comparePrice: row.compare_price ?? undefined, categorySlug: row.cat_slug as string, image: primary, images: images.slice(0,8), badge: row.badge as string ?? undefined, soldCount: row.sold_count as number ?? 0, stock: row.stock as number ?? -1, isActive: (row.is_active as number) !== 0, sortOrder: row.sort_order } });
+
+  const variants = await queryAll(
+    `SELECT id, product_id, sku, label, duration_value, duration_unit, duration_label,
+            warranty_type, warranty_value, warranty_unit, warranty_label,
+            price, compare_price, stock, fulfillment_mode, is_active, sort_order
+     FROM product_variants
+     WHERE product_id=? AND is_active=1
+     ORDER BY sort_order ASC, price ASC, id ASC`,
+    Number(id)
+  );
+
+  return NextResponse.json({
+    product: {
+      id: String(row.id),
+      slug: row.slug,
+      name: row.name,
+      whatsappAlias: String(row.whatsapp_alias || "").trim() || undefined,
+      aliases,
+      description: row.description ?? "",
+      price: row.price,
+      comparePrice: row.compare_price ?? undefined,
+      categorySlug: row.cat_slug as string,
+      image: primary,
+      images: images.slice(0,8),
+      badge: row.badge as string ?? undefined,
+      soldCount: row.sold_count as number ?? 0,
+      stock: row.stock as number ?? -1,
+      isActive: (row.is_active as number) !== 0,
+      sortOrder: row.sort_order,
+      variants,
+    },
+  });
 }
 
 const variantInputSchema = z.object({

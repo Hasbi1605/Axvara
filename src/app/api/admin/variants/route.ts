@@ -69,10 +69,6 @@ export async function GET(request: NextRequest) {
   const authed = await requireAdmin(request);
   if (!authed) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  if (!isEnabled("PRODUCT_VARIANTS_WRITE")) {
-    return NextResponse.json({ error: "variants_not_enabled" }, { status: 503 });
-  }
-
   const productId = request.nextUrl.searchParams.get("product_id");
   if (!productId) return NextResponse.json({ error: "product_id_required" }, { status: 400 });
 
@@ -103,10 +99,6 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const authed = await requireAdmin(request);
   if (!authed) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-
-  if (!isEnabled("PRODUCT_VARIANTS_WRITE")) {
-    return NextResponse.json({ error: "variants_not_enabled" }, { status: 503 });
-  }
 
   const raw = await request.json().catch(() => null);
   if (!raw) return NextResponse.json({ error: "invalid_json" }, { status: 400 });

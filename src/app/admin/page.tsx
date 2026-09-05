@@ -17,6 +17,7 @@ import { NewsletterSubscribers } from "@/components/admin/NewsletterSubscribers"
 import BotAutomationManager from "@/components/admin/BotAutomationManager";
 import VariantEditor from "@/components/admin/VariantEditor";
 import { AdminOverview, EMPTY_ADMIN_OVERVIEW, type AdminOverviewData } from "@/components/admin/AdminOverview";
+import { MoneyInput } from "@/components/ui/MoneyInput";
 import { OrdersManager } from "@/components/admin/OrdersManager";
 import { StoreSettingsManager } from "@/components/admin/StoreSettingsManager";
 
@@ -239,9 +240,22 @@ export default function AdminPage() {
     setLoadingVariants(true);
 
     try {
-      const res = await fetch(`/api/admin/variants?product_id=${p.id}`);
-      const data = (await res.json().catch(() => ({}))) as { variants?: FormVariant[] };
-      const rawVars = data.variants || [];
+      // First check if GET /api/products/:id returned variants, otherwise fallback to /api/admin/variants
+      let rawVars: FormVariant[] = [];
+      const prodRes = await fetch(`/api/products/${p.id}`);
+      if (prodRes.ok) {
+        const prodData = (await prodRes.json().catch(() => ({}))) as { product?: { variants?: FormVariant[] } };
+        if (Array.isArray(prodData.product?.variants) && prodData.product.variants.length > 0) {
+          rawVars = prodData.product.variants;
+        }
+      }
+
+      if (rawVars.length === 0) {
+        const res = await fetch(`/api/admin/variants?product_id=${p.id}`);
+        const data = (await res.json().catch(() => ({}))) as { variants?: FormVariant[] };
+        rawVars = data.variants || [];
+      }
+
       const isMulti = rawVars.length > 1 || (rawVars.length === 1 && !rawVars[0].sku.startsWith("DEFAULT-"));
       setHasMultiVariants(isMulti);
       const mapped = rawVars.map((v) => ({
@@ -547,7 +561,7 @@ export default function AdminPage() {
                   <img src={p.image || "/brand/axvara-ribbon-mark.png"} alt="" className="h-14 w-14 shrink-0 rounded-xl bg-white/5 object-cover" />
                   <div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-semibold text-white">{p.name}</p><p className="mt-0.5 truncate text-[11px] text-white/35">{p.categorySlug} · {p.variantCount ? `${p.variantCount} varian` : "produk"}</p></div><button type="button" aria-pressed={p.isActive} aria-label={`Toggle aktif ${p.name}`} disabled={toggling === p.id} onClick={() => toggleActive(p)} className={`toggle-btn relative inline-flex h-6 w-[46px] shrink-0 items-center rounded-full border px-[2px] ${p.isActive ? "border-emerald-600 bg-emerald-500" : "border-white/20 bg-white/15"}`}><span className={`h-[18px] w-[18px] rounded-full bg-white transition-transform ${p.isActive ? "translate-x-[20px]" : "translate-x-0"}`} /></button></div><div className="mt-3 flex flex-wrap items-center gap-2 text-xs"><span className="font-semibold text-white">{p.minPrice != null && p.maxPrice != null && p.minPrice !== p.maxPrice ? `${formatRupiah(p.minPrice)}–${formatRupiah(p.maxPrice)}` : formatRupiah(p.price)}</span><span className="rounded-full bg-white/[0.07] px-2 py-1 text-white/50">Stok {p.stock === -1 ? "∞" : p.stock}</span><span className="text-white/35">{p.soldCount} terjual</span></div></div>
                 </div>
-                <div className="mt-4 grid grid-cols-[1fr_1fr_auto] gap-2"><button onClick={()=>setVariantEditorProduct({ id: Number(p.id), name: p.name })} className="h-9 rounded-xl border border-[#00E5FF]/25 bg-[#00E5FF]/10 text-xs font-bold text-[#5cefff]">Kelola Varian</button><button onClick={()=>openEdit(p)} className="h-9 rounded-xl bg-white text-xs font-bold text-[#080C1E]">Edit Produk</button><button onClick={()=>setDeleteTarget(p)} className="flex h-9 w-10 items-center justify-center rounded-xl bg-red-500/15" aria-label={`Arsipkan ${p.name}`}><IosIcon name="trash" size={14} tint="white" /></button></div>
+                <div className="mt-4 grid grid-cols-[1fr_auto] gap-2"><button onClick={()=>openEdit(p)} className="h-9 rounded-xl bg-white text-xs font-bold text-[#080C1E]">Edit Produk & Varian</button><button onClick={()=>setDeleteTarget(p)} className="flex h-9 w-10 items-center justify-center rounded-xl bg-red-500/15" aria-label={`Arsipkan ${p.name}`}><IosIcon name="trash" size={14} tint="white" /></button></div>
               </article>)}
             </div>
             <div className="hidden overflow-x-auto md:block">
@@ -587,8 +601,7 @@ export default function AdminPage() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1.5">
-                          <button onClick={()=>setVariantEditorProduct({ id: Number(p.id), name: p.name })} className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full border border-[#00E5FF]/25 bg-[#00E5FF]/15 px-3 text-xs font-bold text-[#5cefff] transition hover:border-[#00E5FF]/45 hover:bg-[#00E5FF]/25" aria-label={`Kelola varian ${p.name}`}><IosIcon name="settings" size={12} tint="#00E5FF" /> Kelola Varian</button>
-                          <button onClick={()=>openEdit(p)} className="inline-flex h-8 items-center gap-1 px-3 rounded-full bg-white text-[#080C1E] text-xs font-bold hover:bg-white/90"><IosIcon name="edit" size={12} tint="black" /> Edit</button>
+                          <button onClick={()=>openEdit(p)} className="inline-flex h-8 items-center gap-1.5 px-3.5 rounded-full bg-white text-[#080C1E] text-xs font-bold hover:bg-white/90 shadow-sm"><IosIcon name="edit" size={12} tint="black" /> Edit Produk & Varian</button>
                           <button onClick={()=>setDeleteTarget(p)} className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600 shadow-[0_2px_10px_rgba(239,68,68,0.35)] transition" aria-label={`Hapus ${p.name}`} title="Hapus produk"><IosIcon name="trash" size={16} tint="white" /></button>
                         </div>
                       </td>
@@ -705,8 +718,8 @@ export default function AdminPage() {
 
                   <div className="space-y-2.5">
                     {formVariants.map((v, idx) => (
-                      <div key={v.id || idx} className="rounded-xl border border-white/10 bg-white/[0.04] p-3 transition hover:border-white/20">
-                        <div className="grid sm:grid-cols-[1.5fr_1fr_1fr_0.8fr_auto] gap-2 items-center">
+                      <div key={v.id || idx} className="rounded-xl border border-white/10 bg-white/[0.04] p-3.5 transition hover:border-white/20">
+                        <div className="grid sm:grid-cols-[1.4fr_1fr_1fr_0.8fr_auto] gap-2.5 items-center">
                           <div>
                             <span className="block text-[10px] uppercase font-semibold text-white/40">Nama Varian *</span>
                             <input
@@ -721,25 +734,20 @@ export default function AdminPage() {
                           </div>
                           <div>
                             <span className="block text-[10px] uppercase font-semibold text-white/40">Harga Jual (Rp) *</span>
-                            <input
-                              type="number"
-                              min={0}
+                            <MoneyInput
                               value={v.price}
-                              onChange={(e) => {
-                                const val = Number(e.target.value);
-                                setFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, price: val } : item));
+                              onChange={(val) => {
+                                setFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, price: val ?? 0 } : item));
                               }}
                               className="mt-1 h-9 w-full rounded-lg bg-white/[0.06] border border-white/10 px-2.5 text-xs text-white focus:border-[#00E5FF]/40 focus:outline-none"
                             />
                           </div>
                           <div>
                             <span className="block text-[10px] uppercase font-semibold text-white/40">Harga Coret (Rp)</span>
-                            <input
-                              type="number"
-                              min={0}
-                              value={v.comparePrice ?? ""}
-                              onChange={(e) => {
-                                const val = e.target.value ? Number(e.target.value) : null;
+                            <MoneyInput
+                              value={v.comparePrice}
+                              allowEmpty
+                              onChange={(val) => {
                                 setFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, comparePrice: val } : item));
                               }}
                               placeholder="Opsional"
@@ -784,6 +792,59 @@ export default function AdminPage() {
                             )}
                           </div>
                         </div>
+
+                        {/* Pengaturan Garansi & Durasi Ringkas per Varian */}
+                        <div className="mt-2.5 pt-2.5 border-t border-white/5 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                          <div className="flex items-center gap-2">
+                            <span className="text-white/40 font-medium shrink-0">🛡 Garansi:</span>
+                            <select
+                              value={v.warranty_type || "none"}
+                              onChange={(e) => {
+                                const wType = e.target.value;
+                                setFormVariants((curr) => curr.map((item, i) => i === idx ? {
+                                  ...item,
+                                  warranty_type: wType,
+                                  warranty_label: wType === "full" ? "Full Garansi" : wType === "none" ? "Tanpa Garansi" : item.warranty_label,
+                                } : item));
+                              }}
+                              className="h-7 rounded-md bg-white/[0.06] border border-white/10 px-2 text-white/80 text-[11px] focus:outline-none focus:border-[#00E5FF]/40"
+                            >
+                              <option value="full" className="bg-[#0F1430]">Full Garansi (Sesuai Durasi)</option>
+                              <option value="limited" className="bg-[#0F1430]">Garansi Terbatas</option>
+                              <option value="none" className="bg-[#0F1430]">Tanpa Garansi</option>
+                              <option value="custom" className="bg-[#0F1430]">Kustom / Ikut Deskripsi</option>
+                            </select>
+                            {v.warranty_type === "custom" && (
+                              <input
+                                value={v.warranty_label || ""}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, warranty_label: val } : item));
+                                }}
+                                placeholder="mis: 7 Hari Ganti Baru"
+                                className="h-7 w-32 rounded-md bg-white/[0.06] border border-white/10 px-2 text-white text-[11px] placeholder:text-white/20 focus:outline-none"
+                              />
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2 sm:justify-end">
+                            <span className="text-white/40 font-medium shrink-0">⏱ Durasi:</span>
+                            <select
+                              value={v.duration_unit || "month"}
+                              onChange={(e) => {
+                                const dUnit = e.target.value;
+                                setFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, duration_unit: dUnit } : item));
+                              }}
+                              className="h-7 rounded-md bg-white/[0.06] border border-white/10 px-2 text-white/80 text-[11px] focus:outline-none focus:border-[#00E5FF]/40"
+                            >
+                              <option value="month" className="bg-[#0F1430]">Bulan</option>
+                              <option value="day" className="bg-[#0F1430]">Hari</option>
+                              <option value="year" className="bg-[#0F1430]">Tahun</option>
+                              <option value="lifetime" className="bg-[#0F1430]">Selamanya / Lifetime</option>
+                              <option value="custom" className="bg-[#0F1430]">Teks Khusus</option>
+                            </select>
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -801,22 +862,19 @@ export default function AdminPage() {
                 <div className="mt-4 grid sm:grid-cols-3 gap-3">
                   <div>
                     <span className="text-xs font-semibold text-white/60">Harga Jual *</span>
-                    <input
-                      type="number"
-                      min={0}
-                      value={form.price ?? ""}
-                      onChange={(e) => setForm({ ...form, price: Number(e.target.value) })}
+                    <MoneyInput
+                      value={form.price}
+                      onChange={(val) => setForm({ ...form, price: val ?? 0 })}
                       placeholder="89000"
                       className="mt-1 h-10 w-full px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white focus:outline-none focus:border-[#00E5FF]/30"
                     />
                   </div>
                   <div>
                     <span className="text-xs font-semibold text-white/60">Harga Coret</span>
-                    <input
-                      type="number"
-                      min={0}
-                      value={form.comparePrice ?? ""}
-                      onChange={(e) => setForm({ ...form, comparePrice: e.target.value ? Number(e.target.value) : undefined })}
+                    <MoneyInput
+                      value={form.comparePrice}
+                      allowEmpty
+                      onChange={(val) => setForm({ ...form, comparePrice: val ?? undefined })}
                       placeholder="300000"
                       className="mt-1 h-10 w-full px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white focus:outline-none focus:border-[#00E5FF]/30"
                     />
