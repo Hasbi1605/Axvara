@@ -22,6 +22,22 @@ import { StoreSettingsManager } from "@/components/admin/StoreSettingsManager";
 
 type Prod = { id:string; slug:string; name:string; whatsappAlias?:string; description:string; price:number; minPrice?:number; maxPrice?:number; variantCount?:number; comparePrice?:number; categorySlug:string; image:string; images:string[]; badge?:string; soldCount:number; stock:number; isActive:boolean; sortOrder?:number };
 type Cat = { id:number; slug:string; name:string };
+type FormVariant = {
+  id?: number;
+  sku: string;
+  label: string;
+  price: number;
+  comparePrice?: number | null;
+  stock: number;
+  duration_value?: number | null;
+  duration_unit?: string | null;
+  duration_label?: string | null;
+  warranty_type?: string;
+  warranty_value?: number | null;
+  warranty_unit?: string | null;
+  warranty_label?: string | null;
+  is_active: number;
+};
 
 const PER_PAGE_ADMIN = 8;
 const ADMIN_SECTIONS: AdminSection[] = ["summary","products","orders","categories","payments","articles","banners","subscribers","bot","agent","settings"];
@@ -38,8 +54,8 @@ function hexFromBytes(bytes: Uint8Array): string {
   return Array.from(bytes).map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function productFormSignature(form: Partial<Prod>, images: string[]) {
-  return JSON.stringify({ form, images });
+function productFormSignature(form: Partial<Prod>, images: string[], multi: boolean = false, vars: FormVariant[] = []) {
+  return JSON.stringify({ form, images, multi, vars });
 }
 
 async function makePasswordProof(password: string, config: LoginChallenge): Promise<string> {
@@ -76,6 +92,9 @@ export default function AdminPage() {
   const [uploading, setUploading] = useState(false);
   const [form, setForm] = useState<Partial<Prod> & { comparePrice?:number; categorySlug?:string }>({});
   const [formImages, setFormImages] = useState<string[]>([]);
+  const [hasMultiVariants, setHasMultiVariants] = useState(false);
+  const [formVariants, setFormVariants] = useState<FormVariant[]>([]);
+  const [loadingVariants, setLoadingVariants] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [productInitialSignature, setProductInitialSignature] = useState("");
@@ -209,9 +228,81 @@ export default function AdminPage() {
     } finally { setLoginLoading(false); }
   };
 
-  const openEdit=(p:Prod)=>{ const nextForm={...p, categorySlug:p.categorySlug}; const nextImages=p.images?.length? p.images : p.image? [p.image] : []; setEditing(p); setForm(nextForm); setFormImages(nextImages); setProductInitialSignature(productFormSignature(nextForm,nextImages)); setFormError(null); };
-  const openNew=()=>{ const nextForm={ name:"", slug:"", whatsappAlias:"", description:"", price:50000, categorySlug:"akun-premium", stock:10, soldCount:0, isActive:true }; setShowNew(true); setEditing(null); setForm(nextForm); setFormImages([]); setProductInitialSignature(productFormSignature(nextForm,[])); setFormError(null); };
-  const closeModal=()=>{ setEditing(null); setShowNew(false); setForm({}); setFormImages([]); setFormError(null); setSaving(false); };
+  const openEdit = async (p: Prod) => {
+    const nextForm = { ...p, categorySlug: p.categorySlug };
+    const nextImages = p.images?.length ? p.images : p.image ? [p.image] : [];
+    setEditing(p);
+    setShowNew(false);
+    setForm(nextForm);
+    setFormImages(nextImages);
+    setFormError(null);
+    setLoadingVariants(true);
+
+    try {
+      const res = await fetch(`/api/admin/variants?product_id=${p.id}`);
+      const data = (await res.json().catch(() => ({}))) as { variants?: FormVariant[] };
+      const rawVars = data.variants || [];
+      const isMulti = rawVars.length > 1 || (rawVars.length === 1 && !rawVars[0].sku.startsWith("DEFAULT-"));
+      setHasMultiVariants(isMulti);
+      const mapped = rawVars.map((v) => ({
+        id: v.id,
+        sku: v.sku,
+        label: v.label,
+        price: v.price,
+        comparePrice: v.comparePrice ?? null,
+        stock: v.stock ?? -1,
+        duration_value: v.duration_value,
+        duration_unit: v.duration_unit,
+        duration_label: v.duration_label,
+        warranty_type: v.warranty_type,
+        warranty_value: v.warranty_value,
+        warranty_unit: v.warranty_unit,
+        warranty_label: v.warranty_label,
+        is_active: v.is_active ?? 1,
+      }));
+      setFormVariants(mapped);
+      setProductInitialSignature(productFormSignature(nextForm, nextImages, isMulti, mapped));
+    } catch {
+      setHasMultiVariants(false);
+      setFormVariants([]);
+      setProductInitialSignature(productFormSignature(nextForm, nextImages, false, []));
+    } finally {
+      setLoadingVariants(false);
+    }
+  };
+
+  const openNew = () => {
+    const nextForm = {
+      name: "",
+      slug: "",
+      whatsappAlias: "",
+      description: "",
+      price: 50000,
+      categorySlug: "akun-premium",
+      stock: 10,
+      soldCount: 0,
+      isActive: true,
+    };
+    setShowNew(true);
+    setEditing(null);
+    setForm(nextForm);
+    setFormImages([]);
+    setHasMultiVariants(false);
+    setFormVariants([]);
+    setProductInitialSignature(productFormSignature(nextForm, [], false, []));
+    setFormError(null);
+  };
+
+  const closeModal = () => {
+    setEditing(null);
+    setShowNew(false);
+    setForm({});
+    setFormImages([]);
+    setHasMultiVariants(false);
+    setFormVariants([]);
+    setFormError(null);
+    setSaving(false);
+  };
 
   const handleUpload=async(e:React.ChangeEvent<HTMLInputElement>)=>{
     const files=e.target.files; if(!files?.length) return;
@@ -236,28 +327,83 @@ export default function AdminPage() {
     if (!form.name?.trim()) return "Nama produk wajib diisi.";
     if (!form.slug?.trim()) return "Slug wajib diisi.";
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(form.slug.trim())) return "Slug hanya huruf kecil, angka, dan strip. Contoh: chatgpt-plus-1-bulan";
-    if (form.price == null || Number.isNaN(Number(form.price))) return "Harga wajib diisi.";
-    if (Number(form.price) < 1000) return "Harga minimal Rp 1.000.";
-    if (form.comparePrice != null && Number(form.comparePrice) !== 0 && Number(form.comparePrice) <= Number(form.price)) return "Harga coret harus lebih besar dari harga jual.";
-    if (form.stock != null && Number(form.stock) < -1) return "Stok tidak valid.";
+
+    if (hasMultiVariants) {
+      if (formVariants.length === 0) return "Tambahkan minimal 1 varian atau matikan opsi varian.";
+      const activeVars = formVariants.filter((v) => (v.is_active ?? 1) !== 0);
+      if (form.isActive !== false && activeVars.length === 0) {
+        return "Minimal 1 varian harus aktif.";
+      }
+      for (let i = 0; i < formVariants.length; i++) {
+        const v = formVariants[i];
+        if (!v.label.trim()) return `Nama varian ke-${i + 1} wajib diisi.`;
+        if (v.price < 0 || Number.isNaN(Number(v.price))) return `Harga varian "${v.label}" tidak valid.`;
+        if (v.comparePrice != null && Number(v.comparePrice) > 0 && Number(v.comparePrice) <= Number(v.price)) {
+          return `Varian "${v.label}": harga coret harus lebih besar dari harga jual.`;
+        }
+      }
+    } else {
+      if (form.price == null || Number.isNaN(Number(form.price))) return "Harga wajib diisi.";
+      if (Number(form.price) < 1000) return "Harga minimal Rp 1.000.";
+      if (form.comparePrice != null && Number(form.comparePrice) !== 0 && Number(form.comparePrice) <= Number(form.price)) return "Harga coret harus lebih besar dari harga jual.";
+      if (form.stock != null && Number(form.stock) < -1) return "Stok tidak valid.";
+    }
     return null;
   };
 
-  const save=async()=>{
+  const save = async () => {
     const v = validateForm();
     if (v) { setFormError(v); toast.error(v); return; }
     setSaving(true);
     setFormError(null);
-    const payload={ ...form, name: form.name!.trim(), slug: form.slug!.trim().toLowerCase(), description: (form.description ?? "").trim(), price:Number(form.price), comparePrice: form.comparePrice? Number(form.comparePrice): null, stock: form.stock!=null? Number(form.stock): -1, soldCount: form.soldCount? Number(form.soldCount):0, sortOrder:0, images: formImages, imageUrl: formImages[0] ?? form.image ?? null, isActive: form.isActive!==false };
-    const url = editing? `/api/products/${editing.id}` : "/api/products";
-    const method = editing? "PUT":"POST";
-    try{
-      const r=await fetch(url,{method, headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload)});
-      const j=await r.json().catch(()=>({}));
-      if(!r.ok) throw new Error(j.error||`Gagal simpan (${r.status})`);
+
+    const minVarPrice = hasMultiVariants && formVariants.length > 0
+      ? Math.min(...formVariants.filter((vr) => (vr.is_active ?? 1) !== 0).map((vr) => vr.price))
+      : Number(form.price || 0);
+
+    const payload = {
+      ...form,
+      name: form.name!.trim(),
+      slug: form.slug!.trim().toLowerCase(),
+      description: (form.description ?? "").trim(),
+      price: minVarPrice,
+      comparePrice: hasMultiVariants ? null : (form.comparePrice ? Number(form.comparePrice) : null),
+      stock: hasMultiVariants ? -1 : (form.stock != null ? Number(form.stock) : -1),
+      soldCount: form.soldCount ? Number(form.soldCount) : 0,
+      sortOrder: 0,
+      images: formImages,
+      imageUrl: formImages[0] ?? form.image ?? null,
+      isActive: form.isActive !== false,
+      variants: hasMultiVariants
+        ? formVariants.map((vr, idx) => ({
+            id: vr.id,
+            sku: vr.sku || `${form.slug!.trim().toUpperCase()}-${idx + 1}`,
+            label: vr.label.trim(),
+            price: Number(vr.price),
+            comparePrice: vr.comparePrice ? Number(vr.comparePrice) : null,
+            stock: vr.stock != null ? Number(vr.stock) : -1,
+            duration_value: vr.duration_value,
+            duration_unit: vr.duration_unit,
+            duration_label: vr.duration_label,
+            warranty_type: vr.warranty_type || "none",
+            warranty_value: vr.warranty_value,
+            warranty_unit: vr.warranty_unit,
+            warranty_label: vr.warranty_label,
+            is_active: vr.is_active ?? 1,
+            sort_order: idx,
+          }))
+        : undefined,
+    };
+
+    const url = editing ? `/api/products/${editing.id}` : "/api/products";
+    const method = editing ? "PUT" : "POST";
+    try {
+      const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || `Gagal simpan (${r.status})`);
       toast.success(editing ? "Produk diperbarui." : "Produk dibuat.");
       await load(); closeModal();
-    } catch(e){
+    } catch (e) {
       const msg = e instanceof Error ? e.message : "Gagal simpan";
       setFormError(msg);
       toast.error(msg);
@@ -311,7 +457,7 @@ export default function AdminPage() {
   const safePage = Math.min(page, totalPages);
   const paged = filtered.slice((safePage-1)*PER_PAGE_ADMIN, safePage*PER_PAGE_ADMIN);
   const productModalOpen = Boolean(editing || showNew);
-  const productDirty = productModalOpen && productFormSignature(form, formImages) !== productInitialSignature;
+  const productDirty = productModalOpen && productFormSignature(form, formImages, hasMultiVariants, formVariants) !== productInitialSignature;
 
   useEffect(() => {
     if (!productModalOpen) return;
@@ -488,15 +634,214 @@ export default function AdminPage() {
               <label className="space-y-1.5"><span className="text-xs font-semibold text-white/60">Slug *</span><input value={form.slug??""} onChange={e=>setForm({...form,slug:e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g,"-")})} placeholder="chatgpt-plus-1-bulan" className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 font-mono focus:outline-none focus:border-[#00E5FF]/30" /></label>
               <label className="sm:col-span-2 space-y-1.5"><span className="text-xs font-semibold text-white/60">Nama di WhatsApp (Alias)</span><input value={form.whatsappAlias??""} onChange={e=>setForm({...form,whatsappAlias:e.target.value})} maxLength={50} placeholder="CHATGPT" className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#00E5FF]/30" /><span className="block text-[11px] leading-4 text-white/35">Dipakai pada daftar dan header detail produk WhatsApp. Jika kosong, bot memakai nama produk web.</span></label>
               <label className="sm:col-span-2 space-y-1.5"><span className="text-xs font-semibold text-white/60">Deskripsi</span><textarea value={form.description??""} onChange={e=>setForm({...form,description:e.target.value})} rows={2} placeholder="Akses GPT-4o penuh..." className="w-full px-3 py-2.5 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 resize-none focus:outline-none focus:border-[#00E5FF]/30" /></label>
-              <label className="space-y-1.5"><span className="text-xs font-semibold text-white/60">Harga default *</span><input type="number" min={0} value={form.price??""} onChange={e=>setForm({...form,price:Number(e.target.value)})} placeholder="89000" className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white focus:outline-none focus:border-[#00E5FF]/30" /><span className="block text-[10px] leading-4 text-white/30">Disinkronkan hanya jika produk masih memiliki satu varian default.</span></label>
-              <label className="space-y-1.5"><span className="text-xs font-semibold text-white/60">Harga coret default</span><input type="number" min={0} value={form.comparePrice??""} onChange={e=>setForm({...form,comparePrice:e.target.value?Number(e.target.value):undefined})} placeholder="300000" className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white focus:outline-none focus:border-[#00E5FF]/30" /></label>
               <label className="space-y-1.5"><span className="text-xs font-semibold text-white/60">Kategori</span><select value={form.categorySlug??cats[0]?.slug??""} onChange={e=>setForm({...form,categorySlug:e.target.value})} className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white focus:outline-none focus:border-[#00E5FF]/30">
                 {cats.map((category) => <option key={category.id} value={category.slug} className="bg-[#0F1430]">{category.name}</option>)}
               </select></label>
               <label className="space-y-1.5"><span className="text-xs font-semibold text-white/60">Badge</span><input value={form.badge??""} onChange={e=>setForm({...form,badge:e.target.value})} placeholder="Terlaris / Baru / Hemat 92%" className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#00E5FF]/30" /></label>
-              <label className="space-y-1.5"><span className="text-xs font-semibold text-white/60">Stok default (-1 = ∞)</span><input type="number" value={form.stock??-1} onChange={e=>setForm({...form,stock:Number(e.target.value)})} className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white focus:outline-none focus:border-[#00E5FF]/30" /></label>
-              <label className="space-y-1.5"><span className="text-xs font-semibold text-white/60">Terjual</span><input readOnly value={form.soldCount??0} className="w-full h-11 cursor-not-allowed px-3 rounded-xl bg-white/[0.035] border border-white/10 text-sm text-white/45" /><span className="block text-[10px] leading-4 text-white/30">Dihitung sistem dari riwayat penjualan.</span></label>
-              <label className="flex items-center gap-2 pt-6"><input type="checkbox" checked={form.isActive!==false} onChange={e=>setForm({...form,isActive:e.target.checked})} className="w-4 h-4 rounded accent-[#00E5FF]" /> <span className="text-sm text-white/80">Aktif tampil di toko</span></label>
+            </div>
+
+            {/* Toggle Multi-Varian ala Marketplace */}
+            <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-sm font-semibold text-white">Variasi Produk</h4>
+                  <p className="text-xs text-white/45">Aktifkan jika produk memiliki beberapa pilihan durasi, akun, atau paket harga.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !hasMultiVariants;
+                    setHasMultiVariants(next);
+                    if (next && formVariants.length === 0) {
+                      setFormVariants([
+                        {
+                          sku: `${(form.slug || "PROD").toUpperCase()}-1`,
+                          label: "1 Bulan",
+                          price: form.price ? Number(form.price) : 50000,
+                          comparePrice: form.comparePrice ? Number(form.comparePrice) : null,
+                          stock: form.stock != null ? Number(form.stock) : -1,
+                          duration_value: 1,
+                          duration_unit: "month",
+                          warranty_type: "full",
+                          is_active: 1,
+                        },
+                      ]);
+                    }
+                  }}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${hasMultiVariants ? "bg-[#00E5FF]" : "bg-white/20"}`}
+                >
+                  <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-[#080C1E] shadow ring-0 transition duration-200 ease-in-out ${hasMultiVariants ? "translate-x-5" : "translate-x-0 bg-white"}`} />
+                </button>
+              </div>
+
+              {loadingVariants ? (
+                <div className="py-6 text-center text-xs text-white/40">Memuat rincian varian...</div>
+              ) : hasMultiVariants ? (
+                <div className="mt-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-[#00E5FF]">Daftar Pilihan Paket / Varian</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const idx = formVariants.length + 1;
+                        setFormVariants((curr) => [
+                          ...curr,
+                          {
+                            sku: `${(form.slug || "PROD").toUpperCase()}-${idx}`,
+                            label: `Paket ${idx}`,
+                            price: 50000,
+                            comparePrice: null,
+                            stock: -1,
+                            warranty_type: "none",
+                            is_active: 1,
+                          },
+                        ]);
+                      }}
+                      className="inline-flex items-center gap-1 text-xs font-bold text-[#00E5FF] hover:underline"
+                    >
+                      <IosIcon name="plus" size={12} tint="#00E5FF" /> Tambah Varian
+                    </button>
+                  </div>
+
+                  <div className="space-y-2.5">
+                    {formVariants.map((v, idx) => (
+                      <div key={v.id || idx} className="rounded-xl border border-white/10 bg-white/[0.04] p-3 transition hover:border-white/20">
+                        <div className="grid sm:grid-cols-[1.5fr_1fr_1fr_0.8fr_auto] gap-2 items-center">
+                          <div>
+                            <span className="block text-[10px] uppercase font-semibold text-white/40">Nama Varian *</span>
+                            <input
+                              value={v.label}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, label: val } : item));
+                              }}
+                              placeholder="misal: 1 Bulan Private"
+                              className="mt-1 h-9 w-full rounded-lg bg-white/[0.06] border border-white/10 px-2.5 text-xs text-white placeholder:text-white/25 focus:border-[#00E5FF]/40 focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <span className="block text-[10px] uppercase font-semibold text-white/40">Harga Jual (Rp) *</span>
+                            <input
+                              type="number"
+                              min={0}
+                              value={v.price}
+                              onChange={(e) => {
+                                const val = Number(e.target.value);
+                                setFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, price: val } : item));
+                              }}
+                              className="mt-1 h-9 w-full rounded-lg bg-white/[0.06] border border-white/10 px-2.5 text-xs text-white focus:border-[#00E5FF]/40 focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <span className="block text-[10px] uppercase font-semibold text-white/40">Harga Coret (Rp)</span>
+                            <input
+                              type="number"
+                              min={0}
+                              value={v.comparePrice ?? ""}
+                              onChange={(e) => {
+                                const val = e.target.value ? Number(e.target.value) : null;
+                                setFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, comparePrice: val } : item));
+                              }}
+                              placeholder="Opsional"
+                              className="mt-1 h-9 w-full rounded-lg bg-white/[0.06] border border-white/10 px-2.5 text-xs text-white placeholder:text-white/25 focus:border-[#00E5FF]/40 focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <span className="block text-[10px] uppercase font-semibold text-white/40">Stok (-1 = ∞)</span>
+                            <input
+                              type="number"
+                              min={-1}
+                              value={v.stock}
+                              onChange={(e) => {
+                                const val = Number(e.target.value);
+                                setFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, stock: val } : item));
+                              }}
+                              className="mt-1 h-9 w-full rounded-lg bg-white/[0.06] border border-white/10 px-2.5 text-xs text-white focus:border-[#00E5FF]/40 focus:outline-none"
+                            />
+                          </div>
+                          <div className="flex items-center gap-1 pt-4 sm:pt-3">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, is_active: item.is_active ? 0 : 1 } : item));
+                              }}
+                              title={v.is_active ? "Aktif" : "Nonaktif"}
+                              className={`h-7 px-2 rounded-lg text-[10px] font-semibold transition ${v.is_active ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "bg-white/5 text-white/40 border border-white/10"}`}
+                            >
+                              {v.is_active ? "Aktif" : "Mati"}
+                            </button>
+                            {formVariants.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setFormVariants((curr) => curr.filter((_, i) => i !== idx));
+                                }}
+                                className="flex h-7 w-7 items-center justify-center rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20"
+                                title="Hapus varian"
+                              >
+                                <IosIcon name="trash" size={12} tint="#f87171" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {formVariants.length > 0 && (
+                    <div className="mt-3 rounded-xl bg-[#00E5FF]/5 border border-[#00E5FF]/20 px-3 py-2 flex items-center justify-between text-xs">
+                      <span className="text-white/60">Tampilan Harga di Katalog:</span>
+                      <span className="font-bold text-[#00E5FF]">
+                        Mulai {formatRupiah(Math.min(...formVariants.filter((vr) => (vr.is_active ?? 1) !== 0).map((vr) => vr.price) || [0]))}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="mt-4 grid sm:grid-cols-3 gap-3">
+                  <div>
+                    <span className="text-xs font-semibold text-white/60">Harga Jual *</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={form.price ?? ""}
+                      onChange={(e) => setForm({ ...form, price: Number(e.target.value) })}
+                      placeholder="89000"
+                      className="mt-1 h-10 w-full px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white focus:outline-none focus:border-[#00E5FF]/30"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-xs font-semibold text-white/60">Harga Coret</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={form.comparePrice ?? ""}
+                      onChange={(e) => setForm({ ...form, comparePrice: e.target.value ? Number(e.target.value) : undefined })}
+                      placeholder="300000"
+                      className="mt-1 h-10 w-full px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white focus:outline-none focus:border-[#00E5FF]/30"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-xs font-semibold text-white/60">Stok (-1 = ∞)</span>
+                    <input
+                      type="number"
+                      value={form.stock ?? -1}
+                      onChange={(e) => setForm({ ...form, stock: Number(e.target.value) })}
+                      className="mt-1 h-10 w-full px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white focus:outline-none focus:border-[#00E5FF]/30"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 flex items-center justify-between">
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={form.isActive !== false} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} className="w-4 h-4 rounded accent-[#00E5FF]" />
+                <span className="text-sm text-white/80">Aktif tampil di toko</span>
+              </label>
+              <div className="text-xs text-white/40">
+                Terjual: <span className="text-white/70 font-semibold">{form.soldCount ?? 0}</span>
+              </div>
             </div>
 
             <div className="mt-5">

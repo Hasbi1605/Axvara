@@ -18,13 +18,32 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
   return NextResponse.json({ product: { id: String(row.id), slug: row.slug, name: row.name, whatsappAlias: String(row.whatsapp_alias || "").trim() || undefined, aliases, description: row.description ?? "", price: row.price, comparePrice: row.compare_price ?? undefined, categorySlug: row.cat_slug as string, image: primary, images: images.slice(0,8), badge: row.badge as string ?? undefined, soldCount: row.sold_count as number ?? 0, stock: row.stock as number ?? -1, isActive: (row.is_active as number) !== 0, sortOrder: row.sort_order } });
 }
 
+const variantInputSchema = z.object({
+  id: z.coerce.number().int().positive().optional(),
+  sku: z.string().trim().min(1).max(50).optional(),
+  label: z.string().trim().min(1).max(100),
+  price: z.coerce.number().int().min(0).max(999_999_999),
+  comparePrice: z.coerce.number().int().min(0).max(999_999_999).nullable().optional(),
+  stock: z.coerce.number().int().min(-1).max(999999).default(-1),
+  duration_value: z.coerce.number().int().nonnegative().nullable().optional(),
+  duration_unit: z.enum(["day", "month", "year", "lifetime", "custom"]).nullable().optional(),
+  duration_label: z.string().trim().max(100).nullable().optional(),
+  warranty_type: z.enum(["none", "limited", "full", "custom"]).default("none"),
+  warranty_value: z.coerce.number().int().nonnegative().nullable().optional(),
+  warranty_unit: z.enum(["day", "month", "year", "lifetime"]).nullable().optional(),
+  warranty_label: z.string().trim().max(100).nullable().optional(),
+  fulfillment_mode: z.enum(["manual", "shared", "unique"]).default("manual"),
+  is_active: z.coerce.number().int().min(0).max(1).default(1),
+  sort_order: z.coerce.number().int().min(0).max(999999).default(0),
+});
+
 const updateSchema = z.object({
   name: z.string().trim().min(3).max(120).optional(),
   slug: z.string().trim().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).min(3).max(80).optional(),
   description: z.string().trim().max(2000).optional(),
   whatsappAlias: z.string().trim().max(50).nullable().optional(),
-  price: z.coerce.number().int().min(1000).max(999_999_999).optional(),
-  comparePrice: z.coerce.number().int().min(1000).max(999_999_999).nullable().optional(),
+  price: z.coerce.number().int().min(0).max(999_999_999).optional(),
+  comparePrice: z.coerce.number().int().min(0).max(999_999_999).nullable().optional(),
   categorySlug: z.string().trim().max(40).optional(),
   imageUrl: z.string().trim().max(600).nullable().optional(),
   images: z.array(z.string().trim().max(600)).max(8).optional(),
@@ -33,6 +52,7 @@ const updateSchema = z.object({
   stock: z.coerce.number().int().min(-1).max(999999).optional(),
   isActive: z.boolean().optional(),
   sortOrder: z.coerce.number().int().min(0).max(999999).optional(),
+  variants: z.array(variantInputSchema).optional(),
 }).strict();
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -62,7 +82,17 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       );
     }
   }
-  const nextPrice = data.price ?? Number(existing.price);
+  const hasExplicitVariants = Array.isArray(data.variants);
+  if (hasExplicitVariants && data.variants) {
+    const activeVars = data.variants.filter(v => (v.is_active ?? 1) !== 0);
+    if (data.isActive !== false && activeVars.length === 0) {
+      return NextResponse.json({ error: "Minimal satu varian harus aktif." }, { status: 400 });
+    }
+  }
+
+  const nextPrice = hasExplicitVariants && data.variants && data.variants.length > 0
+    ? Math.min(...data.variants.filter(v => (v.is_active ?? 1) !== 0).map(v => v.price))
+    : (data.price ?? Number(existing.price));
   const nextComparePrice = data.comparePrice !== undefined
     ? data.comparePrice
     : existing.compare_price;
@@ -124,7 +154,109 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         const statements = [
           d1.prepare(`UPDATE products SET ${fields.join(",")} WHERE id=?`).bind(...vals, id),
         ];
-        if (defaultVariant && changesLegacyCommerceFields) {
+
+        if (hasExplicitVariants && data.variants) {
+          // If variants are provided, update existing or insert new, and deactivate removed ones
+          const incomingIds = data.variants.map(v => v.id).filter((vId): vId is number => typeof vId === "number" && vId > 0);
+          if (incomingIds.length > 0) {
+            statements.push(
+              d1.prepare(`UPDATE product_variants SET is_active=0, updated_at=datetime('now') WHERE product_id=? AND id NOT IN (${incomingIds.map(() => "?").join(",")})`).bind(id, ...incomingIds)
+            );
+          } else {
+            statements.push(
+              d1.prepare(`UPDATE product_variants SET is_active=0, updated_at=datetime('now') WHERE product_id=?`).bind(id)
+            );
+          }
+
+          const existingSlug = (data.slug || (await queryFirst("SELECT slug FROM products WHERE id=?", id) as { slug: string })?.slug || "PROD").toUpperCase();
+          data.variants.forEach((v, idx) => {
+            const autoSku = (v.sku?.trim() || `${existingSlug}-${idx + 1}`).replace(/[^A-Z0-9-]/g, "");
+            if (v.id) {
+              statements.push(
+                d1.prepare(
+                  `UPDATE product_variants SET
+                     sku=?, label=?, duration_value=?, duration_unit=?, duration_label=?,
+                     warranty_type=?, warranty_value=?, warranty_unit=?, warranty_label=?,
+                     price=?, compare_price=?, stock=?, fulfillment_mode=?, is_active=?,
+                     sort_order=?, updated_at=datetime('now')
+                   WHERE id=? AND product_id=?`
+                ).bind(
+                  autoSku,
+                  v.label.trim(),
+                  v.duration_value ?? null,
+                  v.duration_unit || null,
+                  v.duration_label?.trim() || null,
+                  v.warranty_type || "none",
+                  v.warranty_value ?? null,
+                  v.warranty_unit || null,
+                  v.warranty_label?.trim() || null,
+                  Number(v.price),
+                  v.comparePrice ? Number(v.comparePrice) : null,
+                  v.stock != null ? Number(v.stock) : -1,
+                  v.fulfillment_mode || "manual",
+                  v.is_active ?? 1,
+                  v.sort_order ?? idx,
+                  v.id,
+                  id
+                )
+              );
+            } else {
+              statements.push(
+                d1.prepare(
+                  `INSERT INTO product_variants (
+                     product_id, sku, label, duration_value, duration_unit, duration_label,
+                     warranty_type, warranty_value, warranty_unit, warranty_label,
+                     price, compare_price, stock, fulfillment_mode, is_active, sort_order
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+                ).bind(
+                  id,
+                  autoSku,
+                  v.label.trim(),
+                  v.duration_value ?? null,
+                  v.duration_unit || null,
+                  v.duration_label?.trim() || null,
+                  v.warranty_type || "none",
+                  v.warranty_value ?? null,
+                  v.warranty_unit || null,
+                  v.warranty_label?.trim() || null,
+                  Number(v.price),
+                  v.comparePrice ? Number(v.comparePrice) : null,
+                  v.stock != null ? Number(v.stock) : -1,
+                  v.fulfillment_mode || "manual",
+                  v.is_active ?? 1,
+                  v.sort_order ?? idx
+                )
+              );
+            }
+          });
+
+          // Sync product master price & stock from active variants
+          statements.push(
+            d1.prepare(
+              `UPDATE products
+               SET price=COALESCE((
+                     SELECT MIN(price) FROM product_variants
+                     WHERE product_id=? AND is_active=1
+                   ), price),
+                   compare_price=CASE WHEN (
+                     SELECT COUNT(*) FROM product_variants
+                     WHERE product_id=? AND is_active=1
+                   )=1 THEN (
+                     SELECT compare_price FROM product_variants
+                     WHERE product_id=? AND is_active=1 LIMIT 1
+                   ) ELSE NULL END,
+                   stock=CASE WHEN EXISTS(
+                     SELECT 1 FROM product_variants
+                     WHERE product_id=? AND is_active=1 AND stock=-1
+                   ) THEN -1 ELSE COALESCE((
+                     SELECT SUM(CASE WHEN stock>0 THEN stock ELSE 0 END)
+                     FROM product_variants WHERE product_id=? AND is_active=1
+                   ), 0) END,
+                   updated_at=datetime('now')
+               WHERE id=?`
+            ).bind(id, id, id, id, id, id)
+          );
+        } else if (defaultVariant && changesLegacyCommerceFields) {
           const variantFields: string[] = [];
           const variantValues: unknown[] = [];
           if (data.price !== undefined) { variantFields.push("price=?"); variantValues.push(data.price); }

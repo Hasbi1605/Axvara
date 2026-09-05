@@ -1,10 +1,12 @@
 "use client";
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { formatRupiah } from "@/lib/utils";
 import type { Product } from "@/lib/products";
 import { useCart } from "@/stores/cart";
 import { IosIcon } from "@/components/ui/IosIcon";
+import { QuickVariantModal } from "@/components/storefront/QuickVariantModal";
 
 /**
  * Responsive image helper — for Unsplash URLs, generates srcset with
@@ -35,6 +37,8 @@ function responsiveImg(url: string) {
 export function ProductCard({ product, index = 0, compact = false }: { product: Product; index?: number; compact?: boolean }) {
   const add = useCart((s) => s.add);
   const router = useRouter();
+  const [modalMode, setModalMode] = useState<"cart" | "checkout" | null>(null);
+
   const hasVariants = Boolean(product.variantCount && product.variantCount > 0);
   const hasMultipleVariants = Boolean(
     (product.variantCount && product.variantCount > 1) ||
@@ -46,12 +50,20 @@ export function ProductCard({ product, index = 0, compact = false }: { product: 
   const handleAdd = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    add(product);
+    if (hasVariants) {
+      setModalMode("cart");
+    } else {
+      add(product);
+    }
   };
   const handleCheckout = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    router.push(`/checkout?buy=${product.slug}`);
+    if (hasVariants) {
+      setModalMode("checkout");
+    } else {
+      router.push(`/checkout?buy=${product.slug}`);
+    }
   };
 
   const img = responsiveImg(product.image);
@@ -154,24 +166,19 @@ export function ProductCard({ product, index = 0, compact = false }: { product: 
               <span className="col-span-2 h-8 sm:h-9 rounded-[10px] sm:rounded-xl bg-white/[0.06] border border-white/10 text-[11px] sm:text-[13px] font-semibold text-white/40 flex items-center justify-center">
                 Stok Habis
               </span>
-            ) : hasVariants ? (
-              <Link
-                href={`/produk/${product.slug}`}
-                className="col-span-2 h-8 sm:h-9 rounded-[10px] sm:rounded-xl bg-[#00E5FF]/15 border border-[#00E5FF]/30 text-[11px] sm:text-[13px] font-bold text-[#00E5FF] flex items-center justify-center gap-1.5 hover:bg-[#00E5FF]/25 transition leading-none"
-              >
-                {hasMultipleVariants ? "Pilih Varian →" : "Lihat Opsi →"}
-              </Link>
             ) : (
               <>
                 <button
+                  type="button"
                   onClick={handleAdd}
-                  className="h-8 sm:h-9 rounded-[10px] sm:rounded-xl bg-white/[0.08] border border-white/10 text-[11px] sm:text-[13px] font-semibold text-white flex items-center justify-center gap-1 sm:gap-1.5 hover:bg-white/12 transition leading-none"
+                  className="h-8 sm:h-9 rounded-[10px] sm:rounded-xl bg-white/[0.08] border border-white/10 text-[11px] sm:text-[13px] font-semibold text-white flex items-center justify-center gap-1 sm:gap-1.5 hover:bg-white/12 transition leading-none active:scale-95"
                 >
-                  <IosIcon name="shopping-bag" size={12} tint="white" /> <span className="hidden sm:inline">Keranjang</span><span className="sm:hidden">Keranjang</span>
+                  <IosIcon name="shopping-bag" size={12} tint="white" /> <span>Keranjang</span>
                 </button>
                 <button
+                  type="button"
                   onClick={handleCheckout}
-                  className="h-8 sm:h-9 rounded-[10px] sm:rounded-xl bg-[#00E5FF] text-[#080C1E] text-[11px] sm:text-[13px] font-bold flex items-center justify-center gap-1 sm:gap-1.5 hover:bg-[#00D0E8] shadow-[0_4px_16px_rgba(0,229,255,0.28)] transition leading-none"
+                  className="h-8 sm:h-9 rounded-[10px] sm:rounded-xl bg-[#00E5FF] text-[#080C1E] text-[11px] sm:text-[13px] font-bold flex items-center justify-center gap-1 sm:gap-1.5 hover:bg-[#00D0E8] shadow-[0_4px_16px_rgba(0,229,255,0.28)] transition leading-none active:scale-95"
                 >
                   <IosIcon name="lightning-bolt" size={12} tint="black" /> Checkout
                 </button>
@@ -180,6 +187,14 @@ export function ProductCard({ product, index = 0, compact = false }: { product: 
           </div>
         );
       })()}
+
+      {modalMode && (
+        <QuickVariantModal
+          product={product}
+          mode={modalMode}
+          onClose={() => setModalMode(null)}
+        />
+      )}
     </div>
   );
 }

@@ -91,13 +91,32 @@ export async function GET(req: NextRequest) {
   );
 }
 
+const variantInputSchema = z.object({
+  id: z.coerce.number().int().positive().optional(),
+  sku: z.string().trim().min(1).max(50).optional(),
+  label: z.string().trim().min(1).max(100),
+  price: z.coerce.number().int().min(0).max(999_999_999),
+  comparePrice: z.coerce.number().int().min(0).max(999_999_999).nullable().optional(),
+  stock: z.coerce.number().int().min(-1).max(999999).default(-1),
+  duration_value: z.coerce.number().int().nonnegative().nullable().optional(),
+  duration_unit: z.enum(["day", "month", "year", "lifetime", "custom"]).nullable().optional(),
+  duration_label: z.string().trim().max(100).nullable().optional(),
+  warranty_type: z.enum(["none", "limited", "full", "custom"]).default("none"),
+  warranty_value: z.coerce.number().int().nonnegative().nullable().optional(),
+  warranty_unit: z.enum(["day", "month", "year", "lifetime"]).nullable().optional(),
+  warranty_label: z.string().trim().max(100).nullable().optional(),
+  fulfillment_mode: z.enum(["manual", "shared", "unique"]).default("manual"),
+  is_active: z.coerce.number().int().min(0).max(1).default(1),
+  sort_order: z.coerce.number().int().min(0).max(999999).default(0),
+});
+
 const productSchema = z.object({
   name: z.string().trim().min(3).max(120),
   slug: z.string().trim().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "slug format invalid").min(3).max(80),
   description: z.string().trim().max(2000).optional().default(""),
   whatsappAlias: z.string().trim().max(50).nullable().optional(),
-  price: z.coerce.number().int().min(1000).max(999_999_999),
-  comparePrice: z.coerce.number().int().min(1000).max(999_999_999).nullable().optional(),
+  price: z.coerce.number().int().min(0).max(999_999_999).optional().default(0),
+  comparePrice: z.coerce.number().int().min(0).max(999_999_999).nullable().optional(),
   categorySlug: z.string().trim().max(40).optional().default("tools-pro"),
   imageUrl: z.string().trim().max(600).nullable().optional(),
   images: z.array(z.string().trim().max(600)).max(8).optional().default([]),
@@ -106,6 +125,7 @@ const productSchema = z.object({
   stock: z.coerce.number().int().min(-1).max(999999).optional().default(-1),
   isActive: z.boolean().optional().default(true),
   sortOrder: z.coerce.number().int().min(0).max(999999).optional().default(0),
+  variants: z.array(variantInputSchema).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -117,9 +137,21 @@ export async function POST(req: NextRequest) {
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Body tidak valid" }, { status: 400 }); }
   const parsed = productSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
-  const { name, slug, description, whatsappAlias, price, comparePrice, categorySlug, imageUrl, images, badge, soldCount, stock, isActive, sortOrder } = parsed.data as z.infer<typeof productSchema> & { comparePrice?: number | null };
+  const { name, slug, description, whatsappAlias, price, comparePrice, categorySlug, imageUrl, images, badge, soldCount, stock, isActive, sortOrder, variants } = parsed.data as z.infer<typeof productSchema> & { comparePrice?: number | null };
 
-  if (comparePrice && comparePrice <= price) return NextResponse.json({ error: "Harga coret harus lebih besar dari harga jual" }, { status: 400 });
+  const hasExplicitVariants = Array.isArray(variants) && variants.length > 0;
+  if (hasExplicitVariants) {
+    const activeVars = variants.filter(v => (v.is_active ?? 1) !== 0);
+    if (activeVars.length === 0) {
+      return NextResponse.json({ error: "Minimal satu varian harus aktif." }, { status: 400 });
+    }
+  }
+
+  const effectivePrice = hasExplicitVariants
+    ? Math.min(...variants.filter(v => (v.is_active ?? 1) !== 0).map(v => v.price))
+    : Number(price);
+
+  if (comparePrice && comparePrice <= effectivePrice) return NextResponse.json({ error: "Harga coret harus lebih besar dari harga jual" }, { status: 400 });
 
   const catRow = await queryFirst("SELECT id FROM categories WHERE slug=?", categorySlug ?? "tools-pro") as { id: number } | undefined;
   if (!catRow) return NextResponse.json({ error: "Kategori tidak dikenal. Buat atau pilih kategori yang tersedia." }, { status: 400 });
@@ -138,7 +170,7 @@ export async function POST(req: NextRequest) {
   const primary = imageUrl ?? imgArr[0] ?? null;
   try {
     const values = [
-      category_id, name, slug, description ?? "", whatsappAlias || null, Number(price),
+      category_id, name, slug, description ?? "", whatsappAlias || null, Number(effectivePrice),
       comparePrice ? Number(comparePrice) : null, primary, JSON.stringify(imgArr),
       badge ?? null, soldCount ? Number(soldCount) : 0,
       stock != null ? Number(stock) : -1, isActive === false ? 0 : 1,
@@ -150,23 +182,105 @@ export async function POST(req: NextRequest) {
     ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
     const d1 = getD1();
     if (d1) {
-      const results = await d1.batch([
+      const statements = [
         d1.prepare(insertSql).bind(...values),
-        d1.prepare(
-          `INSERT INTO product_variants (
-             product_id, sku, label, price, compare_price, stock,
-             fulfillment_mode, is_active, sort_order
-           )
-           SELECT p.id, 'DEFAULT-' || p.id, 'Default', p.price, p.compare_price,
-                  p.stock, 'manual', p.is_active, 0
-           FROM products p WHERE p.slug=?`,
-        ).bind(slug),
-      ]);
+      ];
+
+      if (hasExplicitVariants) {
+        variants.forEach((v, idx) => {
+          const autoSku = (v.sku?.trim() || `${slug.toUpperCase()}-${idx + 1}`).replace(/[^A-Z0-9-]/g, "");
+          statements.push(
+            d1.prepare(
+              `INSERT INTO product_variants (
+                 product_id, sku, label, duration_value, duration_unit, duration_label,
+                 warranty_type, warranty_value, warranty_unit, warranty_label,
+                 price, compare_price, stock, fulfillment_mode, is_active, sort_order
+               )
+               SELECT p.id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+               FROM products p WHERE p.slug=?`
+            ).bind(
+              autoSku,
+              v.label.trim(),
+              v.duration_value ?? null,
+              v.duration_unit || null,
+              v.duration_label?.trim() || null,
+              v.warranty_type || "none",
+              v.warranty_value ?? null,
+              v.warranty_unit || null,
+              v.warranty_label?.trim() || null,
+              Number(v.price),
+              v.comparePrice ? Number(v.comparePrice) : null,
+              v.stock != null ? Number(v.stock) : -1,
+              v.fulfillment_mode || "manual",
+              v.is_active ?? 1,
+              v.sort_order ?? idx,
+              slug
+            )
+          );
+        });
+      } else {
+        statements.push(
+          d1.prepare(
+            `INSERT INTO product_variants (
+               product_id, sku, label, price, compare_price, stock,
+               fulfillment_mode, is_active, sort_order
+             )
+             SELECT p.id, 'DEFAULT-' || p.id, 'Default', p.price, p.compare_price,
+                    p.stock, 'manual', p.is_active, 0
+             FROM products p WHERE p.slug=?`,
+          ).bind(slug),
+        );
+      }
+
+      const results = await d1.batch(statements);
       return NextResponse.json({ id: results[0]?.meta?.last_row_id });
     }
 
     const res = await execRun(insertSql, ...values);
-    return NextResponse.json({ id: res.lastInsertRowid });
+    const newId = res.lastInsertRowid;
+    if (hasExplicitVariants) {
+      for (let idx = 0; idx < variants.length; idx++) {
+        const v = variants[idx];
+        const autoSku = (v.sku?.trim() || `${slug.toUpperCase()}-${idx + 1}`).replace(/[^A-Z0-9-]/g, "");
+        await execRun(
+          `INSERT INTO product_variants (
+             product_id, sku, label, duration_value, duration_unit, duration_label,
+             warranty_type, warranty_value, warranty_unit, warranty_label,
+             price, compare_price, stock, fulfillment_mode, is_active, sort_order
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          newId,
+          autoSku,
+          v.label.trim(),
+          v.duration_value ?? null,
+          v.duration_unit || null,
+          v.duration_label?.trim() || null,
+          v.warranty_type || "none",
+          v.warranty_value ?? null,
+          v.warranty_unit || null,
+          v.warranty_label?.trim() || null,
+          Number(v.price),
+          v.comparePrice ? Number(v.comparePrice) : null,
+          v.stock != null ? Number(v.stock) : -1,
+          v.fulfillment_mode || "manual",
+          v.is_active ?? 1,
+          v.sort_order ?? idx
+        );
+      }
+    } else {
+      await execRun(
+        `INSERT INTO product_variants (
+           product_id, sku, label, price, compare_price, stock,
+           fulfillment_mode, is_active, sort_order
+         ) VALUES (?, ?, 'Default', ?, ?, ?, 'manual', ?, 0)`,
+        newId,
+        `DEFAULT-${newId}`,
+        price,
+        comparePrice ? Number(comparePrice) : null,
+        stock != null ? Number(stock) : -1,
+        isActive === false ? 0 : 1
+      );
+    }
+    return NextResponse.json({ id: newId });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg.includes("UNIQUE")) return NextResponse.json({ error: "slug sudah dipakai" }, { status: 409 });
