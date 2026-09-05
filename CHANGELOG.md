@@ -4,6 +4,8 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-05 — Hapus menu Bukti Bayar yang duplikat dan satukan thumbnail serta aksi review bukti WhatsApp ke baris Pesanan tanpa mengubah otoritas QRIS Hook — admin orders/proofs UI+API, tests/docs — (verifikasi: vitest 190/190, tsc/lint pass, build Pages 53 route pass, dev GET `/` 200 + CSS 200, Obscura admin Pesanan pass)
+
 - 2026-09-05 — Tambahkan footer promosi Telegram `@axvara_support` dan website `axvara.tech` pada respons daftar produk WhatsApp — `src/lib/{site,whatsapp/messages}.ts`, tests/docs — (verifikasi: test WhatsApp pass, tsc pass, dev GET `/` 200 + CSS 200, Obscura pass)
 
 - 2026-09-05 — Ganti seluruh pembayaran QRIS web, Telegram, dan WhatsApp menjadi QRIS dinamis DANA Business dengan nominal unik, webhook QRIS Hook idempoten, rekonsiliasi nominal otomatis, QR PNG internal, serta hapus integrasi aktif KlikQRIS dan QRIS statis — `drizzle/migrations/0010_dana_dynamic_qris.sql`, `src/lib/payments/dana-qris.ts`, API checkout/payment/webhook, Telegram/WhatsApp, Cloudflare Pages Secrets, tests/docs — (verifikasi: payload QRIS produksi + CRC dan PNG pass, vitest 190/190, tsc/lint pass, build Pages 54 route pass, dev GET `/` 200 + CSS 200, Obscura checkout/admin diperiksa)

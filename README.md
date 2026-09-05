@@ -125,8 +125,8 @@ Telegram, serta WhatsApp. Field **Nama di WhatsApp (Alias)** mengatur nama ringk
 daftar/header detail dan otomatis fallback ke nama produk web bila kosong. Flow grupnya
 ringkas: `list` → ketik nama produk → pilih angka varian → pilih `QRIS`, `SEABANK`, atau
 `EWALLET`. QRIS dinamis lunas otomatis melalui QRIS Hook DANA; screenshot QRIS bersifat
-opsional dan cukup memakai caption `QRIS`. Bukti SeaBank/e-wallet tetap ditinjau melalui
-menu **Bukti Bayar** dan baru mengubah order setelah admin mencocokkan mutasi. Command
+opsional dan cukup memakai caption `QRIS`. Bukti SeaBank/e-wallet ditinjau langsung pada
+baris order di menu **Pesanan** dan baru mengubah order setelah admin mencocokkan mutasi. Command
 `garansi` memakai kebijakan kanonis yang sama dengan Telegram. Runtime memakai Baileys
 pada service Heroku `axvara-wa-gateway`; bot mengutip pesan pembeli saat membalas dan
 gateway meneruskan gambar masuk lewat URL sekali pakai. Semua flag WhatsApp/varian di

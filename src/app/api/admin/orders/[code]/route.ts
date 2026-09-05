@@ -38,7 +38,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   }
   if (nxt === "lunas" && String(row.sales_channel) === "whatsapp") {
     return NextResponse.json(
-      { error: "review_bukti_whatsapp_required", message: "Setujui bukti WhatsApp dari menu Bukti Bayar." },
+      { error: "review_bukti_whatsapp_required", message: "Tinjau bukti WhatsApp langsung dari tab Pesanan." },
       { status: 409 },
     );
   }

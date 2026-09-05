@@ -17,16 +17,15 @@ import { IosIcon } from "@/components/ui/IosIcon";
 import { NewsletterSubscribers } from "@/components/admin/NewsletterSubscribers";
 import BotAutomationManager from "@/components/admin/BotAutomationManager";
 import VariantEditor from "@/components/admin/VariantEditor";
-import PaymentProofsManager from "@/components/admin/PaymentProofsManager";
 
 type Prod = { id:string; slug:string; name:string; whatsappAlias?:string; description:string; price:number; comparePrice?:number; categorySlug:string; image:string; images:string[]; badge?:string; soldCount:number; stock:number; isActive:boolean; sortOrder?:number };
 type Cat = { id:number; slug:string; name:string };
 type OrderChannel = "web" | "telegram" | "whatsapp";
-type Order = { code:string; name:string; wa:string; method:string; items:{ name:string;price:number;qty:number }[]; subtotal:number; paymentAmount:number; status:string; paymentStatus:string; salesChannel:OrderChannel; fileName?:string; createdAt:string };
+type Order = { code:string; name:string; wa:string; method:string; items:{ name:string;price:number;qty:number }[]; subtotal:number; paymentAmount:number; status:string; paymentStatus:string; salesChannel:OrderChannel; fileName?:string; proofId?:number; proofStatus?:"submitted"|"approved"|"rejected"; proofClaimedMethod?:"QRIS"|"SEABANK"|"EWALLET"; proofRejectionReason?:string; createdAt:string };
 
 const PER_PAGE_ADMIN = 8;
 const ORDERS_PER_PAGE = 6;
-const ADMIN_SECTIONS: AdminSection[] = ["summary","products","orders","proofs","categories","payments","articles","banners","subscribers","bot","agent"];
+const ADMIN_SECTIONS: AdminSection[] = ["summary","products","orders","categories","payments","articles","banners","subscribers","bot","agent"];
 
 type LoginChallenge = {
   mode: "password" | "pbkdf2-proof";
@@ -86,6 +85,7 @@ export default function AdminPage() {
   const [confirmOrder, setConfirmOrder] = useState<Order | null>(null);
   const [adminNote, setAdminNote] = useState("");
   const [confirming, setConfirming] = useState(false);
+  const [reviewingProof, setReviewingProof] = useState<number | null>(null);
   const [variantEditorProduct, setVariantEditorProduct] = useState<{ id: number; name: string } | null>(null);
 
   useEffect(()=>{
@@ -125,6 +125,10 @@ export default function AdminPage() {
         paymentStatus: String(o.payment_status ?? "unpaid"),
         salesChannel: (["web", "telegram", "whatsapp"].includes(String(o.sales_channel)) ? String(o.sales_channel) : "web") as OrderChannel,
         fileName: (o.proof_url as string) ?? undefined,
+        proofId: o.proof_id == null ? undefined : Number(o.proof_id),
+        proofStatus: (["submitted", "approved", "rejected"].includes(String(o.proof_status)) ? String(o.proof_status) : undefined) as Order["proofStatus"],
+        proofClaimedMethod: (["QRIS", "SEABANK", "EWALLET"].includes(String(o.proof_claimed_method)) ? String(o.proof_claimed_method) : undefined) as Order["proofClaimedMethod"],
+        proofRejectionReason: o.proof_rejection_reason ? String(o.proof_rejection_reason) : undefined,
         createdAt: String(o.created_at ?? o.createdAt ?? ""),
       }));
       setOrders(serverOrders);
@@ -225,6 +229,35 @@ export default function AdminPage() {
       return;
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal update status");
+    }
+  };
+
+  const reviewProof=async(order:Order,action:"approve"|"reject")=>{
+    if (!order.proofId) { toast.error("Bukti pembayaran belum tersedia."); return; }
+    let reason: string | undefined;
+    if (action === "reject") {
+      const entered = window.prompt("Alasan penolakan bukti:", "Nominal/rekening/tanggal belum dapat diverifikasi");
+      if (entered == null) return;
+      reason = entered.trim();
+      if (!reason) { toast.error("Alasan penolakan wajib diisi."); return; }
+    }
+    setReviewingProof(order.proofId);
+    try {
+      const response = await fetch(`/api/admin/proofs/${order.proofId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, reason }),
+      });
+      const data = await response.json().catch(()=>({})) as { error?:string; payment_updated?:boolean };
+      if (!response.ok) throw new Error(data.error || "Review bukti gagal");
+      await load();
+      toast.success(action === "approve"
+        ? data.payment_updated === false ? "Bukti dicatat; QRIS tetap menunggu QRIS Hook." : "Bukti disetujui dan pesanan dikonfirmasi lunas."
+        : "Bukti ditolak.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Review bukti gagal");
+    } finally {
+      setReviewingProof(null);
     }
   };
 
@@ -397,7 +430,6 @@ export default function AdminPage() {
       {tab==="summary" && <div className="mt-6 ax-glass rounded-[20px] overflow-hidden"><div className="flex items-center gap-2.5 p-4 sm:p-5 border-b border-white/10"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/5 border border-white/5"><IosIcon name="dashboard" size={16} tint="white" /></span><h2 className="text-white font-semibold text-sm">Ringkasan toko</h2></div><p className="p-4 sm:p-5 text-sm text-white/50">Gunakan sidebar untuk mengelola produk, pesanan, CMS, dan integrasi agent.</p></div>}
       {tab==="categories" && <CategoryManager />}
       {tab==="payments" && <PaymentMethodsManager />}
-      {tab==="proofs" && <PaymentProofsManager />}
       {tab==="agent" && <AgentIntegration />}
       {tab==="bot" && <BotAutomationManager products={prods.map(p=>({id:Number(p.id),name:p.name,fulfillment_mode:(p as unknown as Record<string,unknown>).fulfillment_mode as string,telegram_enabled:(p as unknown as Record<string,unknown>).telegram_enabled as number}))} />}
 
@@ -527,10 +559,24 @@ export default function AdminPage() {
                     <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                       <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold capitalize ${o.status==="pending"?"border-[#FFB800]/20 bg-[#FFB800]/15 text-[#FFB800]":o.status==="lunas"?"border-[#22C55E]/20 bg-[#22C55E]/15 text-[#22C55E]":"border-white/10 bg-white/10 text-white/50"}`}>{o.status}</span>
                       <span className="inline-flex rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-white/50">{o.salesChannel === "whatsapp" ? "WhatsApp" : o.salesChannel}</span>
+                      {o.proofStatus && <span title={o.proofRejectionReason} className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold ${o.proofStatus==="submitted"?"border-[#FFB800]/20 bg-[#FFB800]/10 text-[#FFCF55]":o.proofStatus==="approved"?"border-emerald-400/20 bg-emerald-500/10 text-emerald-300":"border-red-400/20 bg-red-500/10 text-red-300"}`}>{o.proofStatus==="submitted"?"Bukti menunggu review":o.proofStatus==="approved"?"Bukti disetujui":"Bukti ditolak"}</span>}
                     </div>
                   </div>
                 </div>
-                <div className="flex w-full shrink-0 flex-wrap items-center gap-2 sm:w-auto sm:justify-end">{o.status==="pending" && <><button onClick={()=>{ setConfirmOrder(o); setAdminNote(""); }} className="inline-flex h-9 items-center gap-1.5 rounded-full bg-[#22C55E] px-3.5 text-xs font-bold text-white transition hover:bg-[#16a34a]"><IosIcon name="checked" size={14} tint="white" /> Konfirmasi Lunas</button><button onClick={()=>setStatus(o.code,"dibatalkan")} className="inline-flex h-9 items-center gap-1 rounded-full border border-white/10 bg-white/10 px-3.5 text-xs font-semibold text-white/70 hover:bg-white/15 hover:text-white"><IosIcon name="close" size={12} tint="white" /> Batalkan</button>{o.wa && <a href={`https://wa.me/${o.wa.replace(/^0/,"62")}?text=Halo%20${encodeURIComponent(o.name)}%2C%20pesanan%20${o.code}%20kamu%20sudah%20kami%20terima.`} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center gap-1.5 rounded-full bg-[#25D366] px-3.5 text-xs font-bold text-white transition hover:bg-[#1ebd5a]"><IosIcon name="chat" size={14} tint="white" /> WA</a>}</>}</div>
+                <div className="flex w-full shrink-0 flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+                  {o.status==="pending" && <>
+                    {o.salesChannel!=="whatsapp" ? (
+                      <button onClick={()=>{ setConfirmOrder(o); setAdminNote(""); }} className="inline-flex h-9 items-center gap-1.5 rounded-full bg-[#22C55E] px-3.5 text-xs font-bold text-white transition hover:bg-[#16a34a]"><IosIcon name="checked" size={14} tint="white" /> Konfirmasi Lunas</button>
+                    ) : o.proofId && o.proofStatus==="submitted" ? <>
+                      <button disabled={reviewingProof===o.proofId} onClick={()=>void reviewProof(o,"approve")} className="inline-flex h-9 items-center gap-1.5 rounded-full bg-[#22C55E] px-3.5 text-xs font-bold text-white transition hover:bg-[#16a34a] disabled:opacity-50"><IosIcon name="checked" size={14} tint="white" /> {o.proofClaimedMethod==="QRIS"?"Setujui Bukti":"Mutasi Cocok & Lunas"}</button>
+                      <button disabled={reviewingProof===o.proofId} onClick={()=>void reviewProof(o,"reject")} className="inline-flex h-9 items-center gap-1 rounded-full border border-red-400/20 bg-red-500/10 px-3.5 text-xs font-semibold text-red-200 hover:bg-red-500/15 disabled:opacity-50"><IosIcon name="close" size={12} tint="white" /> Tolak Bukti</button>
+                    </> : (
+                      <span className="inline-flex h-9 items-center rounded-full border border-white/10 bg-white/[0.05] px-3 text-xs text-white/50">{o.method.toLowerCase()==="qris"?"Menunggu QRIS Hook":o.proofStatus==="rejected"?"Menunggu bukti baru":"Menunggu bukti"}</span>
+                    )}
+                    <button onClick={()=>setStatus(o.code,"dibatalkan")} className="inline-flex h-9 items-center gap-1 rounded-full border border-white/10 bg-white/10 px-3.5 text-xs font-semibold text-white/70 hover:bg-white/15 hover:text-white"><IosIcon name="close" size={12} tint="white" /> Batalkan</button>
+                    {o.wa && <a href={`https://wa.me/${o.wa.replace(/^0/,"62")}?text=Halo%20${encodeURIComponent(o.name)}%2C%20pesanan%20${o.code}%20kamu%20sudah%20kami%20terima.`} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center gap-1.5 rounded-full bg-[#25D366] px-3.5 text-xs font-bold text-white transition hover:bg-[#1ebd5a]"><IosIcon name="chat" size={14} tint="white" /> WA</a>}
+                  </>}
+                </div>
               </div>
             ))}</div>
           )}

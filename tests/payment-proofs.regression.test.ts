@@ -40,10 +40,17 @@ describe("WhatsApp payment proof review", () => {
     expect(route).toContain("superseded_by_manual_payment");
   });
 
-  it("exposes the proof queue in the authenticated CMS", () => {
-    expect(read("src/components/admin/AdminShell.tsx")).toContain('"proofs"');
-    expect(read("src/app/admin/page.tsx")).toContain("PaymentProofsManager");
-    expect(read("src/components/admin/PaymentProofsManager.tsx")).toContain("/api/admin/proofs");
+  it("merges WhatsApp proof review into Orders and removes the duplicate page", () => {
+    const shell = read("src/components/admin/AdminShell.tsx");
+    const page = read("src/app/admin/page.tsx");
+    const ordersApi = read("src/app/api/admin/orders/route.ts");
+    expect(shell).not.toContain('"proofs"');
+    expect(page).not.toContain("PaymentProofsManager");
+    expect(page).toContain("reviewProof");
+    expect(page).toContain("/api/admin/proofs/");
+    expect(ordersApi).toContain("LEFT JOIN payment_proofs");
+    expect(fs.existsSync(path.join(process.cwd(), "src/components/admin/PaymentProofsManager.tsx"))).toBe(false);
+    expect(fs.existsSync(path.join(process.cwd(), "src/app/api/admin/proofs/route.ts"))).toBe(false);
   });
 
   it("blocks generic paid confirmation for WhatsApp orders", () => {
@@ -57,12 +64,12 @@ describe("WhatsApp payment proof review", () => {
   });
 
   it("shows the exact provider payable amount and whether QRIS is dynamic", () => {
-    const api = read("src/app/api/admin/proofs/route.ts");
-    const manager = read("src/components/admin/PaymentProofsManager.tsx");
-    expect(api).toContain("payable_amount");
-    expect(api).toContain("provider_status");
-    expect(manager).toContain("proof.payable_amount");
-    expect(manager).toContain("proof.provider_status");
+    const api = read("src/app/api/admin/orders/route.ts");
+    const page = read("src/app/admin/page.tsx");
+    expect(api).toContain("payment_amount");
+    expect(api).toContain("proof_claimed_method");
+    expect(page).toContain("o.paymentAmount");
+    expect(page).toContain('o.proofClaimedMethod==="QRIS"');
   });
 
   it("resolves fulfillment mode and shared secret from the selected variant", () => {
