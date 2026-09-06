@@ -7,13 +7,13 @@ import { queryFirst, queryAll, execRun, isD1Mode, getD1, D1Statement, transition
 import { sendMessage, sendPhoto, safeEditOrSend, answerCallbackQuery, sendChatAction, showLoadingBar } from "@/lib/telegram/api";
 import {
   homeKeyboard, catalogFlatKeyboard, categoriesKeyboard, productsKeyboard,
-  productDetailKeyboard, confirmPurchaseKeyboard, warrantyKeyboard,
+  productDetailKeyboard, warrantyKeyboard,
   orderStatusKeyboard, variantsKeyboard, confirmVariantPurchaseKeyboard,
   qtyKeyboard, paymentMethodKeyboard, askWaAfterInvoiceKeyboard, parseCallback,
 } from "@/lib/telegram/keyboards";
 import {
   welcomeMessage, catalogFlatMessage, categoriesMessage, categoryProductsMessage,
-  productDetailMessage, confirmBuyMessage, helpMessage, warrantyFullMessage,
+  productDetailMessage, helpMessage, warrantyFullMessage,
   outOfStockMessage, alreadyPendingMessage, errorMessage,
   myOrdersPrompt, orderStatusMessage, invoiceMessage,
   orderCancelledMessage, askWhatsAppMessage, invalidWhatsAppMessage, waSavedAfterInvoiceMessage,
@@ -356,7 +356,7 @@ async function handleCallback(data: string, chatId: number, messageId: number, f
       break;
 
     case "confirm":
-      await handleConfirmPurchase(chatId, messageId, Number(params[0]), from);
+      await handleConfirmPurchase(chatId, messageId, Number(params[0]));
       break;
 
     case "order":
@@ -427,18 +427,6 @@ async function handleShowCatalogEdit(chatId: number, messageId: number, page: nu
     text: catalogFlatMessage(products.length),
     parse_mode: "HTML",
     reply_markup: catalogFlatKeyboard(products as { id: number; name: string; price: number }[], page),
-  });
-}
-
-async function handleShowCategories(chatId: number) {
-  const categories = await queryAll(
-    `SELECT id, name FROM categories ORDER BY sort_order ASC`,
-  );
-  await sendMessage({
-    chat_id: chatId,
-    text: categoriesMessage(),
-    parse_mode: "HTML",
-    reply_markup: categoriesKeyboard(categories as { id: number; name: string }[]),
   });
 }
 
@@ -813,52 +801,6 @@ async function handlePayWithMethod(
   }
 
   await createManualTransferOrder(chatId, productId, String(product.name), variant, from, qty, method, prefillWa);
-}
-
-async function handleConfirmVariantPurchase(
-  chatId: number,
-  messageId: number,
-  productId: number,
-  variantId: number,
-  from: { id: number; first_name: string; username?: string },
-) {
-  if (!isDanaQrisConfigured()) {
-    await sendMessage({ chat_id: chatId, text: "⚠️ Pembayaran otomatis belum aktif.", parse_mode: "HTML" });
-    return;
-  }
-
-  await sendChatAction(chatId, "typing");
-
-  const variant = await getActiveVariant(variantId);
-  if (!variant || variant.product_id !== productId) {
-    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
-    return;
-  }
-
-  const product = await queryFirst(`SELECT id, name FROM products WHERE id=?`, productId);
-  if (!product) {
-    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
-    return;
-  }
-
-  const fulfillmentMode = variant.fulfillment_mode || "manual";
-
-  if (fulfillmentMode === "manual") {
-    if (isD1Mode()) {
-      await execRun(
-        `UPDATE telegram_users SET pending_action=?, updated_at=datetime('now') WHERE user_id=?`,
-        `wa_for_var:${variantId}`, String(from.id),
-      );
-    }
-    await sendMessage({
-      chat_id: chatId,
-      text: askWhatsAppMessage(`${product.name} — ${variant.label}`),
-      parse_mode: "HTML",
-    });
-    return;
-  }
-
-  await createAndSendVariantInvoice(chatId, messageId, productId, String(product.name), variant, from, "");
 }
 
 async function createAndSendVariantInvoice(
@@ -1307,11 +1249,10 @@ async function handleConfirmPurchase(
   chatId: number,
   messageId: number,
   productId: number,
-  _from: { id: number; first_name: string; username?: string },
 ) {
+  // Legacy confirm buttons route into the qty flow (WA parity, bulk-aware).
   await sendChatAction(chatId, "typing");
 
-  // Legacy confirm buttons route into the qty flow (WA parity, bulk-aware).
   const detail = await getProductDetail(productId);
   if (!detail || detail.variants.length === 0) {
     await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
