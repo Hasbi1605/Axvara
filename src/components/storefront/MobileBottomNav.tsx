@@ -3,12 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { IosIcon } from "@/components/ui/IosIcon";
-import { useStoreSettings } from "@/hooks/useStoreSettings";
-import { whatsappLink } from "@/lib/site";
 
 export function MobileBottomNav() {
   const pathname = usePathname();
-  const storeSettings = useStoreSettings();
 
   // Jangan tampilkan di admin panel atau halaman checkout
   if (pathname?.startsWith("/admin") || pathname?.startsWith("/checkout")) {
@@ -40,10 +37,9 @@ export function MobileBottomNav() {
       active: pathname === "/cara-order",
     },
     {
-      label: "Chat WA",
-      href: whatsappLink(storeSettings.whatsappNumber, `Halo ${storeSettings.name}`),
-      icon: "whatsapp" as const,
-      isExternal: true,
+      label: "Katalog",
+      href: "/#katalog",
+      icon: "shopping-bag" as const,
       active: false,
     },
   ];
@@ -83,20 +79,6 @@ export function MobileBottomNav() {
               )}
             </div>
           );
-
-          if (item.isExternal) {
-            return (
-              <a
-                key={item.label}
-                href={item.href}
-                target="_blank"
-                rel="noreferrer"
-                className="flex-1 flex justify-center"
-              >
-                {content}
-              </a>
-            );
-          }
 
           return (
             <Link
