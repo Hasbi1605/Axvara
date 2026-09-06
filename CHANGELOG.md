@@ -4,6 +4,7 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-06 — Pasang Mobile Bottom Navigation Bar (Beranda, Artikel, Cara Order, Chat WA) bergaya Liquid Glass dengan ikon iOS 11 Icons8 resmi — src/components/storefront/MobileBottomNav.tsx, src/components/ui/IosIcon.tsx, src/app/layout.tsx, src/components/storefront/Footer.tsx — (verifikasi: vitest 193/193 pass, npm run lint pass, Obscura hasBottomNav=true)
 - 2026-09-06 — Pindahkan deskripsi produk ke bawah galeri foto di desktop (whitespace-pre-line) dan buat accordion deskripsi serta floating sticky action bar di mobile ala Shopee — src/app/produk/[slug]/page.tsx — (verifikasi: vitest 193/193 pass, npm run lint pass, build:pages pass 56 edge routes)
 - 2026-09-06 — Tampilkan indikator teks sisa stok ringkas ("Sisa X") di bawah harga pada pilihan varian detail produk dan quick modal — src/app/produk/[slug]/page.tsx, src/components/storefront/QuickVariantModal.tsx — (verifikasi: vitest 193/193 pass, npm run lint pass, dev GET / 200)
 - 2026-09-06 — Hapus teks durasi redundan di samping nama label varian produk agar tampilan kartu varian bersih — src/app/produk/[slug]/page.tsx — (verifikasi: vitest 193/193 pass, npm run lint pass, Obscura hasDurationNextToLabel=false)

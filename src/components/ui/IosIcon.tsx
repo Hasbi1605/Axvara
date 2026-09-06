@@ -59,7 +59,9 @@ export type IosIconName =
   | "chat"
   | "checked"
   | "checked-v2"
-  | "overview-pages-1";
+  | "overview-pages-1"
+  | "whatsapp"
+  | "user-manual";
 
 function pickSize(px: number) {
   if (px <= 16) return 32;

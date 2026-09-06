@@ -50,7 +50,7 @@ export function Footer() {
   };
 
   return (
-    <footer className="relative mt-16 overflow-hidden border-t border-white/10">
+    <footer className="relative mt-16 overflow-hidden border-t border-white/10 pb-16 md:pb-0">
       <div className="pointer-events-none absolute -top-28 left-1/2 h-[260px] w-[860px] -translate-x-1/2 rounded-full opacity-[0.06] blur-[40px]" style={{ background: "radial-gradient(ellipse at center, #00E5FF, transparent 70%)" }} />
 
       <div className="relative mx-auto max-w-[1280px] px-4 py-12 sm:px-6 sm:py-14 lg:px-8">

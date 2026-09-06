@@ -3,6 +3,7 @@ import "./globals.css";
 import { Navbar } from "@/components/storefront/Navbar";
 import { Footer } from "@/components/storefront/Footer";
 import { CartDrawer } from "@/components/storefront/CartDrawer";
+import { MobileBottomNav } from "@/components/storefront/MobileBottomNav";
 import { Spotlight } from "@/components/ui/Spotlight";
 import { ToastProvider } from "@/components/ui/Toast";
 import { RouteLoading } from "@/components/ui/RouteLoading";
@@ -34,6 +35,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <PopupBanner />
           <main className="flex-1 min-h-[50vh]">{children}</main>
           <Footer />
+          <MobileBottomNav />
         </ToastProvider>
       </body>
     </html>
