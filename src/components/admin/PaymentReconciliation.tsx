@@ -7,7 +7,7 @@ import { IosIcon } from "@/components/ui/IosIcon";
 import { useToast } from "@/components/ui/Toast";
 
 type EventRow = { id: number; amount: number; sender_name?: string; status: "received" | "matched" | "ignored" | "failed"; order_code?: string; last_error?: string; created_at: string; processed_at?: string };
-type EventsData = { events?: EventRow[]; counts?: Record<string, number>; pagination?: { page: number; pages: number; total: number }; last_event_at?: string | null; health?: { enabled: boolean; payload_configured: boolean; webhook_configured: boolean; mode: string }; error?: string };
+type EventsData = { events?: EventRow[]; counts?: Record<string, number>; pagination?: { page: number; pages: number; total: number }; last_event_at?: string | null; health?: { enabled: boolean; payload_configured: boolean; webhook_configured: boolean; webhook_url: string; secret_header: string; mode: string }; error?: string };
 
 export function PaymentReconciliation() {
   const toast = useToast();
@@ -42,9 +42,25 @@ export function PaymentReconciliation() {
   };
   const healthOk = Boolean(data.health?.enabled && data.health.payload_configured && data.health.webhook_configured);
   const attention = Number(data.counts?.received || 0) + Number(data.counts?.ignored || 0) + Number(data.counts?.failed || 0);
+  const copyWebhookUrl = async () => {
+    if (!data.health?.webhook_url) return;
+    await navigator.clipboard.writeText(data.health.webhook_url);
+    toast.success("URL webhook disalin.");
+  };
 
   return <div className="space-y-4">
     <div className="grid gap-3 sm:grid-cols-3"><HealthCard title="QRIS dinamis" value={healthOk ? "Siap" : "Belum lengkap"} ok={healthOk} /><HealthCard title="Event terakhir" value={data.last_event_at ? formatDate(data.last_event_at) : "Belum ada"} ok={Boolean(data.last_event_at)} /><HealthCard title="Perlu dicek" value={String(attention)} ok={attention === 0} /></div>
+    {data.health && <section className="rounded-[20px] border border-[#00E5FF]/20 bg-[#00E5FF]/[0.05] p-4 sm:p-5">
+      <div className="flex flex-wrap items-start gap-3">
+        <div className="min-w-0 flex-1"><h3 className="text-sm font-semibold text-white">Setup aplikasi QRIS Hook</h3><p className="mt-1 text-xs leading-5 text-white/50">Aktifkan Notification Access, pilih merchant DANA, matikan Debug Mode, lalu isi URL dan secret yang sama dengan Pages Secret <span className="font-mono text-white/70">DANA_WEBHOOK_SECRET</span>.</p></div>
+        <button type="button" onClick={() => void copyWebhookUrl()} className="h-9 rounded-xl bg-[#00E5FF] px-3 text-xs font-bold text-[#07101f]">Salin URL</button>
+      </div>
+      <dl className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+        <div className="min-w-0 rounded-xl border border-white/10 bg-black/15 p-3"><dt className="text-[10px] uppercase tracking-wide text-white/35">Webhook URL</dt><dd className="mt-1 break-all font-mono text-xs text-[#5cefff]">{data.health.webhook_url}</dd></div>
+        <div className="rounded-xl border border-white/10 bg-black/15 p-3"><dt className="text-[10px] uppercase tracking-wide text-white/35">Header secret</dt><dd className="mt-1 font-mono text-xs text-white/70">{data.health.secret_header}</dd></div>
+      </dl>
+      <p className="mt-3 text-[11px] leading-5 text-white/40">Setelah disimpan, tekan <strong className="text-white/60">Retry pending</strong> di aplikasi. Status berhasil harus <strong className="text-emerald-300/80">Sent / HTTP 2xx</strong>; transaksi muncul di tabel rekonsiliasi ini.</p>
+    </section>}
     <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.035]">
       <header className="flex flex-wrap items-center gap-3 border-b border-white/10 p-4"><div><h3 className="text-sm font-semibold text-white">Rekonsiliasi QRIS Hook</h3><p className="mt-0.5 text-[11px] text-white/40">Jejak aman tanpa payload mentah atau secret server.</p></div><button onClick={() => void load()} disabled={loading} className="ml-auto inline-flex h-9 items-center gap-2 whitespace-nowrap rounded-xl border border-white/10 px-3 text-xs font-semibold text-white/60"><IosIcon name="overview-pages-1" size={13} tint="white" /> Muat ulang</button><div className="flex w-full flex-wrap gap-2">{[["attention", "Perlu dicek"], ["all", "Semua"], ["matched", "Cocok"], ["failed", "Gagal"]].map(([value, label]) => <button key={value} onClick={() => { setStatus(value); setPage(1); }} className={`h-8 whitespace-nowrap rounded-lg px-3 text-xs font-semibold ${status === value ? "bg-[#00E5FF] text-[#07101f]" : "bg-white/[0.06] text-white/55"}`}>{label}</button>)}</div></header>
       {loading ? <div className="flex min-h-48 items-center justify-center gap-3 text-sm text-white/45"><Spinner size={20} /> Memuat event…</div> : !data.events?.length ? <p className="p-10 text-center text-sm text-white/40">Tidak ada event pada filter ini.</p> : <div className="divide-y divide-white/[0.06]">{data.events.map((event) => <article key={event.id} className="grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"><div><div className="flex flex-wrap items-center gap-2"><EventBadge status={event.status} /><span className="font-semibold text-white">{formatRupiah(event.amount)}</span><span className="text-xs text-white/40">{event.sender_name || "Pengirim tidak terbaca"}</span></div><p className="mt-2 text-xs text-white/45">{formatDate(event.created_at)}{event.order_code ? ` · ${event.order_code}` : ""}</p>{event.last_error && <p className="mt-1 font-mono text-[10px] text-red-300/70">{event.last_error}</p>}</div>{["received", "ignored", "failed"].includes(event.status) && <button onClick={() => void retry(event.id)} disabled={retrying === event.id} className="h-9 rounded-xl border border-[#00E5FF]/25 bg-[#00E5FF]/10 px-3 text-xs font-semibold text-[#5cefff] disabled:opacity-40">{retrying === event.id ? "Mencocokkan…" : "Coba cocokkan"}</button>}</article>)}</div>}

@@ -80,10 +80,13 @@ export async function POST(request: NextRequest) {
 }
 
 function paymentHealth() {
+  const siteUrl = (process.env.SITE_URL || "https://axvara.tech").replace(/\/$/, "");
   return {
     enabled: process.env.DANA_QRIS_ENABLED === "true",
     payload_configured: Boolean(process.env.DANA_STATIC_QRIS),
     webhook_configured: Boolean(process.env.DANA_WEBHOOK_SECRET),
+    webhook_url: `${siteUrl}/api/webhook/dana`,
+    secret_header: "X-Webhook-Secret",
     mode: "dynamic-qris",
   };
 }
