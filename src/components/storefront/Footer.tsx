@@ -69,7 +69,7 @@ export function Footer() {
             </div>
             <p className="mt-3 max-w-[34ch] text-[13px] leading-[1.65] text-white/55">{storeSettings.tagline}</p>
             <div className="mt-4 flex flex-wrap gap-1.5">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[11px] text-white/60"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Bergaransi</span>
+              <span className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[11px] text-white/60">Bergaransi</span>
               <span className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[11px] text-white/60">Aktivasi 5–15 menit</span>
               <span className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[11px] text-white/60">Support WA</span>
             </div>
