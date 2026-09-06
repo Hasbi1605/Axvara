@@ -42,6 +42,7 @@ export async function POST(request: NextRequest) {
     expired_manual_whatsapp_orders: 0,
     telegram_order_notifications_retried: 0,
     telegram_paid_notifications_retried: 0,
+    telegram_paid_admin_notifications_retried: 0,
     whatsapp_rows_cleaned: 0,
   };
 
@@ -138,6 +139,7 @@ export async function POST(request: NextRequest) {
     const telegramNotifications = await retryPendingTelegramNotifications(BATCH_LIMIT);
     results.telegram_order_notifications_retried = telegramNotifications.created;
     results.telegram_paid_notifications_retried = telegramNotifications.paid;
+    results.telegram_paid_admin_notifications_retried = telegramNotifications.paidAdmin;
 
     // 4. Process due fulfillment jobs
     if (process.env.AUTO_FULFILLMENT_ENABLED === "true") {

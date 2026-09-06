@@ -2,6 +2,7 @@ import { execRun, queryAll, queryFirst } from "@/lib/db";
 import { sendMessage } from "@/lib/telegram/api";
 import {
   adminTelegramOrderCreatedMessage,
+  adminTelegramOrderPaidMessage,
   orderPaidMessage,
 } from "@/lib/telegram/messages";
 import {
@@ -116,7 +117,7 @@ export async function notifyTelegramBuyerPaid(orderCode: string): Promise<boolea
     chat_id: chatId,
     text: orderPaidMessage(String(order.code), productNames(order.items), needsWhatsApp),
     parse_mode: "HTML",
-    reply_markup: orderPaidKeyboard(String(order.code), needsWhatsApp),
+    reply_markup: orderPaidKeyboard(String(order.code)),
   });
   if (!sent.ok) return false;
 
@@ -132,6 +133,60 @@ export async function notifyTelegramBuyerPaid(orderCode: string): Promise<boolea
      WHERE code=? AND telegram_paid_notified_at IS NULL`,
     orderCode,
   );
+
+  // The order-created message in Axvara_Notif keeps saying "Menunggu
+  // pembayaran otomatis" even after the DANA hook marks the order paid, so
+  // always follow up with a paid update to the admin group (best-effort here,
+  // retried by the operations cron via its own durable marker).
+  try {
+    await notifyTelegramPaidAdmin(orderCode);
+  } catch { /* Cron retries via telegram_paid_admin_notified_at. */ }
+  return true;
+}
+
+/** Announce a paid Telegram order to the admin group (separate from order-created). */
+export async function notifyTelegramPaidAdmin(orderCode: string): Promise<boolean> {
+  const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
+  if (!adminChatId || !telegramNotificationsConfigured()) return false;
+
+  const order = await queryFirst(
+    `SELECT o.code, o.items, o.customer_name, o.customer_wa, o.telegram_user_id,
+            o.telegram_paid_admin_notified_at, pt.payable_amount, o.subtotal, tu.username
+     FROM orders o
+     LEFT JOIN payment_transactions pt ON pt.order_code=o.code
+     LEFT JOIN telegram_users tu ON tu.user_id=o.telegram_user_id
+     WHERE o.code=? AND o.sales_channel='telegram' AND o.status='lunas'
+       AND o.payment_status='paid' AND o.telegram_paid_admin_notified_at IS NULL`,
+    orderCode,
+  );
+  if (!order) return true;
+
+  const username = String(order.username || "").replace(/^@/, "");
+  const siteUrl = (process.env.SITE_URL || "https://axvara.tech").replace(/\/$/, "");
+  const sent = await sendMessage({
+    chat_id: adminChatId,
+    text: adminTelegramOrderPaidMessage({
+      orderCode: String(order.code),
+      productNames: productNames(order.items),
+      amount: Number(order.payable_amount ?? order.subtotal ?? 0),
+      customerName: String(order.customer_name || "Pengguna Telegram"),
+      telegramUser: username || String(order.telegram_user_id || ""),
+      customerWa: String(order.customer_wa || ""),
+    }),
+    parse_mode: "HTML",
+    reply_markup: telegramOrderAdminKeyboard({
+      username: username || undefined,
+      orderCode: String(order.code),
+      siteUrl,
+    }),
+  });
+  if (!sent.ok) return false;
+
+  await execRun(
+    `UPDATE orders SET telegram_paid_admin_notified_at=datetime('now'), updated_at=datetime('now')
+     WHERE code=? AND telegram_paid_admin_notified_at IS NULL`,
+    orderCode,
+  );
   return true;
 }
 
@@ -139,6 +194,7 @@ export async function notifyTelegramBuyerPaid(orderCode: string): Promise<boolea
 export async function retryPendingTelegramNotifications(limit = 25): Promise<{
   created: number;
   paid: number;
+  paidAdmin: number;
 }> {
   const pendingCreated = await queryAll(
     `SELECT code FROM orders
@@ -166,5 +222,19 @@ export async function retryPendingTelegramNotifications(limit = 25): Promise<{
       if (await notifyTelegramBuyerPaid(String(order.code))) paid++;
     } catch { /* Retry the same durable marker on the next cron run. */ }
   }
-  return { created, paid };
+
+  const pendingPaidAdmin = await queryAll(
+    `SELECT code FROM orders
+     WHERE sales_channel='telegram' AND status='lunas' AND payment_status='paid'
+       AND telegram_paid_admin_notified_at IS NULL
+     ORDER BY updated_at ASC LIMIT ?`,
+    limit,
+  );
+  let paidAdmin = 0;
+  for (const order of pendingPaidAdmin) {
+    try {
+      if (await notifyTelegramPaidAdmin(String(order.code))) paidAdmin++;
+    } catch { /* Retry the same durable marker on the next cron run. */ }
+  }
+  return { created, paid, paidAdmin };
 }

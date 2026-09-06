@@ -8,6 +8,9 @@ import { adminWaLink, supportTelegramLink, SITE } from "@/lib/site";
 
 const PER_PAGE = 6;
 
+// Telegram bulk cap: 100/order for bulk purchase (web checkout keeps its own cap).
+export const TELEGRAM_MAX_QTY = 100;
+
 // ---- Callback data builders ----
 export const cb = {
   home: () => "home",
@@ -221,7 +224,8 @@ export function qtyKeyboard(params: {
   maxQty?: number;
 }): InlineKeyboardMarkup {
   const { productId, variantId, stock, price } = params;
-  const stockMax = stock === -1 ? 20 : Math.max(1, Math.min(stock, 20));
+  // Telegram bulk cap is 100/order (matches TELEGRAM_MAX_QTY in the webhook).
+  const stockMax = stock === -1 ? 100 : Math.max(1, Math.min(stock, 100));
   const max = Math.max(1, Math.min(params.maxQty ?? stockMax, stockMax));
   const qty = Math.max(1, Math.min(max, Math.floor(params.qty || 1)));
   const minusQty = Math.max(1, qty - 1);
@@ -292,11 +296,10 @@ export function orderStatusKeyboard(orderCode: string): InlineKeyboardMarkup {
   };
 }
 
-export function orderPaidKeyboard(orderCode: string, needsWhatsApp = false): InlineKeyboardMarkup {
+export function orderPaidKeyboard(orderCode: string): InlineKeyboardMarkup {
   const rows: InlineKeyboardButton[][] = [];
-  if (needsWhatsApp) {
-    rows.push([{ text: "📱 Masukkan Nomor WhatsApp", callback_data: cb.waInput(orderCode) }]);
-  }
+  // WA input is reply-only (typed number). No "Masukkan Nomor WhatsApp" button:
+  // the old wainput:* callback only re-sent the same prompt (loop/confusion).
   rows.push([
     { text: "💬 WhatsApp Admin", url: adminWaLink(`Halo AXVARA, saya ingin menanyakan pesanan ${orderCode}`) },
     { text: `✈️ @${SITE.supportTelegram}`, url: supportTelegramLink() },

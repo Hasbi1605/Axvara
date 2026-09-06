@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS orders (
   variant_snapshot TEXT,
   telegram_order_notified_at TEXT,
   telegram_paid_notified_at TEXT,
+  telegram_paid_admin_notified_at TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -75,6 +76,8 @@ CREATE INDEX IF NOT EXISTS idx_orders_status
   ON orders(status, payment_status);
 CREATE INDEX IF NOT EXISTS idx_orders_telegram_notifications
   ON orders(sales_channel, telegram_order_notified_at, telegram_paid_notified_at);
+CREATE INDEX IF NOT EXISTS idx_orders_telegram_paid_admin
+  ON orders(sales_channel, telegram_paid_admin_notified_at);
 CREATE TABLE IF NOT EXISTS operation_guards (
   operation_id TEXT PRIMARY KEY,
   valid INTEGER NOT NULL CHECK (valid = 1)

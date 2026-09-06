@@ -10,6 +10,7 @@ import {
   productDetailKeyboard, warrantyKeyboard,
   orderStatusKeyboard, variantsKeyboard, confirmVariantPurchaseKeyboard,
   qtyKeyboard, qrisInvoiceKeyboard, orderPaidKeyboard, parseCallback,
+  TELEGRAM_MAX_QTY,
 } from "@/lib/telegram/keyboards";
 import {
   welcomeMessage, catalogFlatMessage, categoriesMessage, categoryProductsMessage,
@@ -228,8 +229,8 @@ async function handleCommand(
     return;
   }
 
-  // Qty manual input: user typed a number while choosing qty
-  if (from && /^\d{1,2}$/.test(cmd)) {
+  // Qty manual input: user typed a number while choosing qty (up to 100 for bulk)
+  if (from && /^\d{1,3}$/.test(cmd)) {
     const handled = await handlePendingQtyInput(text, chatId, from);
     if (handled) return;
   }
@@ -617,10 +618,11 @@ async function handleVariantConfirm(chatId: number, messageId: number, variantId
 }
 
 // --- Clear qty stepper followed directly by dynamic QRIS ---
+// (Bulk cap lives in keyboards.ts as TELEGRAM_MAX_QTY.)
 
 function clampQty(raw: number): number {
   if (!Number.isFinite(raw)) return 1;
-  return Math.max(1, Math.min(20, Math.floor(raw)));
+  return Math.max(1, Math.min(TELEGRAM_MAX_QTY, Math.floor(raw)));
 }
 
 async function handleShowQty(
@@ -641,11 +643,11 @@ async function handleShowQty(
   }
   const product = await queryFirst(`SELECT id, name FROM products WHERE id=?`, productId);
   const productName = product ? String(product.name) : "Produk";
-  const stockMax = variant.stock === -1 ? 20 : Math.max(1, Math.min(variant.stock, 20));
+  const stockMax = variant.stock === -1 ? TELEGRAM_MAX_QTY : Math.max(1, Math.min(variant.stock, TELEGRAM_MAX_QTY));
   const maxQty = variant.fulfillment_mode === "unique" ? 1 : stockMax;
   const qty = Math.min(clampQty(requestedQty), maxQty);
 
-  // Remember qty context so a typed number (1-20) works without buttons.
+  // Remember qty context so a typed number (1-100) works without buttons.
   if (isD1Mode()) {
     await execRun(
       `UPDATE telegram_users SET pending_action=?, updated_at=datetime('now') WHERE user_id=(SELECT user_id FROM telegram_users WHERE chat_id=? LIMIT 1)`,
@@ -687,10 +689,10 @@ async function handlePendingQtyInput(
   const variantId = Number(variantIdRaw);
   if (!productId || !variantId) return false;
   const typedQty = Number(text.trim());
-  if (!Number.isInteger(typedQty) || typedQty < 1 || typedQty > 20) {
+  if (!Number.isInteger(typedQty) || typedQty < 1 || typedQty > TELEGRAM_MAX_QTY) {
     await sendMessage({
       chat_id: chatId,
-      text: "❌ Jumlah tidak valid. Ketik angka 1–20, misalnya <code>5</code>.",
+      text: `❌ Jumlah tidak valid. Ketik angka 1–${TELEGRAM_MAX_QTY}, misalnya <code>5</code>.`,
       parse_mode: "HTML",
     });
     return true;
@@ -1037,7 +1039,7 @@ async function handlePendingWaInput(
     chat_id: chatId,
     text: waSavedAfterPaymentMessage(orderCode),
     parse_mode: "HTML",
-    reply_markup: orderPaidKeyboard(orderCode, false),
+    reply_markup: orderPaidKeyboard(orderCode),
   });
   return true;
 }
@@ -1064,7 +1066,7 @@ async function handleWaInput(
       chat_id: chatId,
       text: waSavedAfterPaymentMessage(normalizedCode),
       parse_mode: "HTML",
-      reply_markup: orderPaidKeyboard(normalizedCode, false),
+      reply_markup: orderPaidKeyboard(normalizedCode),
     });
     return;
   }
@@ -1077,7 +1079,7 @@ async function handleWaInput(
     chat_id: chatId,
     text: whatsAppInputPromptMessage(normalizedCode),
     parse_mode: "HTML",
-    reply_markup: orderPaidKeyboard(normalizedCode, true),
+    reply_markup: orderPaidKeyboard(normalizedCode),
   });
 }
 

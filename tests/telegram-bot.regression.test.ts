@@ -78,8 +78,8 @@ describe("Telegram callback data", () => {
       cb.confirm(99999),
       cb.confirmVariant(99999, 88888),
       cb.qty(99999, 88888),
-      cb.setQty(99999, 88888, 20),
-      cb.pay(99999, 88888, 20),
+      cb.setQty(99999, 88888, 100),
+      cb.pay(99999, 88888, 100),
       cb.order("AXV-20260903-ABCD1234"),
       cb.cancel("AXV-20260903-ABCD1234"),
       cb.refresh("AXV-20260903-ABCD1234"),
@@ -213,13 +213,21 @@ describe("Telegram keyboards", () => {
     expect(datas.some(d => d.startsWith("cancel:"))).toBe(true);
   });
 
-  it("paid-order keyboard asks for WA and exposes both human support contacts", () => {
-    const kb = orderPaidKeyboard("AXV-20260904-AB12CD34", true);
+  it("paid-order keyboard has no looping WA button — reply-only, exposes both human support contacts", () => {
+    const kb = orderPaidKeyboard("AXV-20260904-AB12CD34");
     const buttons = kb.inline_keyboard.flat();
-    expect(buttons.some((button) => button.callback_data?.startsWith("wainput:"))).toBe(true);
+    const datas = buttons.map((button) => button.callback_data ?? "");
+    expect(datas.some((d) => d.startsWith("wainput:"))).toBe(false);
+    expect(buttons.some((button) => button.text.includes("Masukkan Nomor WhatsApp"))).toBe(false);
     expect(buttons.some((button) => button.url?.startsWith("https://wa.me/6289519388264"))).toBe(true);
     expect(buttons.some((button) => button.text.includes("@axvara_support"))).toBe(true);
     expect(buttons.some((button) => button.url === "https://t.me/axvara_support")).toBe(true);
+  });
+
+  it("wainput callback still resolves safely for legacy buttons in old chats", () => {
+    const route = read("src/app/api/telegram/webhook/route.ts");
+    expect(route).toContain('case "wainput"');
+    expect(route).toContain("whatsAppInputPromptMessage");
   });
 });
 
@@ -350,7 +358,29 @@ describe("Telegram messages premium UX", () => {
     });
     expect(msg).toContain("Jumlah dipilih: 3");
     expect(msg).toContain("Total: Rp15.000");
-    expect(msg).toContain("1–20");
+    expect(msg).toContain("1–100");
+  });
+
+  it("qty supports bulk up to 100 for unlimited and finite stock", () => {
+    const unlimited = qtyKeyboard({ productId: 1, variantId: 2, stock: -1, qty: 99, price: 5000 });
+    const unlimitedDatas = unlimited.inline_keyboard.flat().map((b) => b.callback_data ?? "");
+    expect(unlimitedDatas.some((d) => d === "pay:1:2:99")).toBe(true);
+    expect(unlimitedDatas.some((d) => d === "q:1:2:100")).toBe(true);
+
+    const finite = qtyKeyboard({ productId: 1, variantId: 2, stock: 150, qty: 100, price: 5000 });
+    const finiteDatas = finite.inline_keyboard.flat().map((b) => b.callback_data ?? "");
+    expect(finiteDatas.some((d) => d === "pay:1:2:100")).toBe(true);
+
+    const finiteMsg = chooseQtyMessage({
+      productName: "Canva Pro",
+      variantLabel: "Pro Head 1 Bulan",
+      price: 5000,
+      stock: 150,
+      qty: 100,
+      maxQty: 100,
+    });
+    expect(finiteMsg).toContain("maksimal 100 per order");
+    expect(finiteMsg).toContain("1–100");
   });
 
   it("WA saved message confirms post-payment capture", () => {
@@ -398,6 +428,14 @@ describe("Telegram order and payment flow wiring", () => {
     expect(route).not.toContain("paymentMethodKeyboard");
   });
 
+  it("clamps bulk qty to the Telegram 100/order cap", () => {
+    const route = read("src/app/api/telegram/webhook/route.ts");
+    const keyboards = read("src/lib/telegram/keyboards.ts");
+    expect(keyboards).toContain("TELEGRAM_MAX_QTY = 100");
+    expect(route).toContain("TELEGRAM_MAX_QTY");
+    expect(route).toContain("1–${TELEGRAM_MAX_QTY}");
+  });
+
   it("notifies the admin group when a Telegram order is created", () => {
     const route = read("src/app/api/telegram/webhook/route.ts");
     expect(route).toContain("notifyTelegramOrderCreated(orderCode)");
@@ -411,16 +449,34 @@ describe("Telegram order and payment flow wiring", () => {
     expect(autoFlagReturnIndex).toBeGreaterThan(notifyIndex);
   });
 
-  it("uses durable, retryable markers for created and paid Telegram notifications", () => {
+  it("announces paid Telegram orders to the admin group, not just order-created", () => {
+    const notifications = read("src/lib/telegram/order-notifications.ts");
+    expect(notifications).toContain("notifyTelegramPaidAdmin");
+    expect(notifications).toContain("telegram_paid_admin_notified_at IS NULL");
+  });
+
+  it("follows every buyer paid push with an admin-group paid update", () => {
+    const notifications = read("src/lib/telegram/order-notifications.ts");
+    const notifyEnd = notifications.indexOf("await notifyTelegramPaidAdmin(orderCode);");
+    const sendBuyer = notifications.indexOf("reply_markup: orderPaidKeyboard");
+    expect(sendBuyer).toBeGreaterThan(0);
+    expect(notifyEnd).toBeGreaterThan(sendBuyer);
+  });
+
+  it("uses durable, retryable markers for created, buyer-paid, and admin-paid Telegram notifications", () => {
     const schema = read("drizzle/schema.sql");
     const migration = read("drizzle/migrations/0012_telegram_order_notifications.sql");
+    const paidAdminMigration = read("drizzle/migrations/0013_telegram_paid_admin_notification.sql");
     const notifications = read("src/lib/telegram/order-notifications.ts");
     const cron = read("src/app/api/cron/operations/route.ts");
     expect(schema).toContain("telegram_order_notified_at TEXT");
     expect(schema).toContain("telegram_paid_notified_at TEXT");
+    expect(schema).toContain("telegram_paid_admin_notified_at TEXT");
     expect(migration).toContain("telegram_order_notified_at");
     expect(migration).toContain("telegram_paid_notified_at");
+    expect(paidAdminMigration).toContain("telegram_paid_admin_notified_at");
     expect(notifications).toContain("telegram_paid_notified_at IS NULL");
+    expect(notifications).toContain("telegram_paid_admin_notified_at IS NULL");
     expect(cron).toContain("retryPendingTelegramNotifications");
   });
 });

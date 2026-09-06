@@ -252,7 +252,7 @@ export function chooseVariantMessage(productName: string): string {
 
 export function confirmBuyMessage(productName: string, price: number, qty = 1): string {
   const name = escapeHtml(truncate(productName, 100));
-  const quantity = Math.max(1, Math.min(20, Math.floor(qty)));
+  const quantity = Math.max(1, Math.min(100, Math.floor(qty)));
   return [
     "🛒 <b>Konfirmasi Pembelian</b>",
     "━━━━━━━━━━━━━━━━━━━━━",
@@ -279,14 +279,15 @@ export function chooseQtyMessage(params: {
   maxQty?: number;
 }): string {
   const { productName, variantLabel, price, stock } = params;
-  const qty = Math.max(1, Math.min(20, Math.floor(params.qty || 1)));
-  const maxQty = params.maxQty ?? (stock === -1 ? 20 : Math.max(1, Math.min(stock, 20)));
+  // Telegram bulk cap is 100/order.
+  const qty = Math.max(1, Math.min(100, Math.floor(params.qty || 1)));
+  const maxQty = params.maxQty ?? (stock === -1 ? 100 : Math.max(1, Math.min(stock, 100)));
   const stockLine = maxQty === 1
     ? "📦 Produk unik — maksimal 1 per pesanan"
     : stock === -1
     ? "📦 Stok tersedia"
     : stock > 0
-      ? `📦 Stok: ${stock} — maksimal ${Math.min(stock, 20)} per order`
+      ? `📦 Stok: ${stock} — maksimal ${Math.min(stock, 100)} per order`
       : "📦 ❌ Stok habis";
   return [
     "📊 <b>Tentukan Jumlah Pesanan</b>",
@@ -626,6 +627,38 @@ export function adminTelegramOrderCreatedMessage(params: {
     `💳 ${escapeHtml(paymentMethod.toUpperCase())} dinamis`,
     "",
     "⏳ Menunggu pembayaran otomatis",
+  ].join("\n");
+}
+
+export function adminTelegramOrderPaidMessage(params: {
+  orderCode: string;
+  productNames: string;
+  amount: number;
+  customerName: string;
+  telegramUser: string;
+  customerWa: string;
+}): string {
+  const { orderCode, productNames, amount, customerName, telegramUser, customerWa } = params;
+  const normalizedUser = telegramUser.replace(/^@/, "");
+  const telegramLabel = !normalizedUser
+    ? "—"
+    : /^\d+$/.test(normalizedUser)
+      ? `ID ${normalizedUser}`
+      : `@${normalizedUser}`;
+  const wa = customerWa.trim() || "— belum diisi (buyer balas nomor di chat bot)";
+  return [
+    "✅ <b>Lunas — Telegram</b>",
+    "━━━━━━━━━━━━━━━━━━━━━",
+    "",
+    `📦 ${escapeHtml(truncate(productNames, 120))}`,
+    `🔢 <code>${escapeHtml(orderCode)}</code>`,
+    `💰 ${formatRupiah(amount)}`,
+    `👤 ${escapeHtml(truncate(customerName, 50))}`,
+    `✈️ ${escapeHtml(telegramLabel)}`,
+    `📱 ${escapeHtml(truncate(wa, 30))}`,
+    `💳 QRIS dinamis`,
+    "",
+    "✅ Pembayaran otomatis terverifikasi",
   ].join("\n");
 }
 

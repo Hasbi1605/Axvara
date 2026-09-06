@@ -280,6 +280,42 @@ describe("Migration 0012: durable Telegram notification markers", () => {
   });
 });
 
+describe("Migration 0013: Telegram paid-admin notification marker", () => {
+  it("adds the paid-admin marker and backfills paid Telegram orders without replaying them", () => {
+    const db = new DatabaseSync(":memory:");
+    db.exec(`
+      CREATE TABLE orders (
+        code TEXT PRIMARY KEY,
+        sales_channel TEXT NOT NULL,
+        status TEXT NOT NULL,
+        payment_status TEXT NOT NULL,
+        created_at TEXT,
+        updated_at TEXT
+      );
+      INSERT INTO orders VALUES
+        ('AXV-TG-PAID', 'telegram', 'lunas', 'paid', '2026-09-06 10:00:00', '2026-09-06 10:05:00'),
+        ('AXV-TG-PENDING', 'telegram', 'pending', 'pending', '2026-09-06 11:00:00', '2026-09-06 11:00:00'),
+        ('AXV-WEB', 'web', 'lunas', 'paid', '2026-09-06 12:00:00', '2026-09-06 12:00:00');
+    `);
+
+    db.exec(read("drizzle/migrations/0013_telegram_paid_admin_notification.sql"));
+
+    const paid = db.prepare(
+      "SELECT telegram_paid_admin_notified_at FROM orders WHERE code='AXV-TG-PAID'",
+    ).get();
+    const pending = db.prepare(
+      "SELECT telegram_paid_admin_notified_at FROM orders WHERE code='AXV-TG-PENDING'",
+    ).get();
+    const web = db.prepare(
+      "SELECT telegram_paid_admin_notified_at FROM orders WHERE code='AXV-WEB'",
+    ).get();
+
+    expect(paid?.telegram_paid_admin_notified_at).toBe("2026-09-06 10:05:00");
+    expect(pending?.telegram_paid_admin_notified_at).toBeNull();
+    expect(web?.telegram_paid_admin_notified_at).toBeNull();
+  });
+});
+
 describe("Deterministic Idempotency Key (P0.4)", () => {
   it("reuses one inbound pay event but allows a later purchase of the same variant", () => {
     const groupId = "120363024823948293@g.us";
