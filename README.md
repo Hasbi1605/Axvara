@@ -115,8 +115,11 @@ Detail: `docs/VPS-RESEARCH.md` & `docs/ARCHITECTURE.md`
 Bot Telegram auto-order, pembayaran QRIS dinamis, dan fulfillment tersedia di codebase.
 Flow Telegram setara WA grup: katalog datar nama produk (tanpa kategori wajib),
 detail tanpa deskripsi + garansi per varian sinkron web/WA, alur
-`Produk → Varian → Qty (1–20/bulk) → QRIS/SeaBank/E-Wallet`, QRIS langsung terbit,
-order manual atomik, dan No WA diminta setelah invoice khusus fulfillment manual.
+`Produk → Varian → Qty stepper (1–20/bulk) → QRIS dinamis`. Telegram hanya menawarkan
+QRIS otomatis—tidak menampilkan SeaBank/e-wallet. Setelah jumlah dikonfirmasi, satu pesan
+QRIS langsung terbit; QRIS Hook mengabari buyer otomatis saat dana terverifikasi. Nomor WA
+baru diminta setelah status `paid` dan hanya untuk fulfillment manual. Order baru langsung
+masuk grup `Axvara_Notif`; penanda D1 + cron mencegah duplikat sekaligus me-retry kegagalan kirim.
 Dokumen `docs/TELEGRAM-BOT-KLIKQRIS-PLAN.md` hanya arsip provider lama dan telah digantikan
 oleh mesin `src/lib/payments/dana-qris.ts`, ledger D1, route QR image, dan QRIS Hook DANA.
 Feature flag terkait adalah `TELEGRAM_BOT_ENABLED`, `DANA_QRIS_ENABLED`, dan
@@ -157,7 +160,7 @@ tetap menjadi authority dan event yang tidak cocok ditangani pada **Metode & Rek
 Penghapusan produk/varian mengarsipkannya agar order historis tetap utuh. Konfigurasi
 fulfillment shared/unique dipusatkan pada masing-masing varian, bukan digandakan di menu bot.
 
-Setelah pembayaran diterima, tombol support bot membuka akun manusia `@axvara_support`;
+Setelah pembayaran diterima, tombol support bot membuka akun manusia `@support_axvara`;
 username bot tetap `@Axvara_bot`. Seluruh notifikasi admin dari order web maupun Telegram
 memakai satu tujuan `TELEGRAM_ADMIN_CHAT_ID`. Untuk grup privat, tambahkan bot ke grup,
 kirim `/chatid`, lalu simpan ID numerik negatif yang dibalas bot sebagai secret tersebut

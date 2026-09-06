@@ -9,12 +9,9 @@ import { sendTextMessage } from "@/lib/whatsapp/gateway";
 import { isEnabled } from "@/lib/feature-flags";
 import {
   deliveryMessage,
-  manualFulfillmentBuyerMessage,
-  adminOrderNotification,
   adminDeliveryFailedNotification,
-  orderPaidMessage,
 } from "@/lib/telegram/messages";
-import { orderPaidKeyboard } from "@/lib/telegram/keyboards";
+import { notifyTelegramBuyerPaid } from "@/lib/telegram/order-notifications";
 
 type Row = Record<string, unknown>;
 
@@ -256,43 +253,13 @@ export async function processJob(
         : snapshotMode || fulfillmentSource.fulfillment_mode || "manual",
     );
 
-    // Notify buyer: payment received
-    if (salesChannel === "telegram" && chatId) {
-      await sendMessage({
-        chat_id: chatId,
-        text: orderPaidMessage(orderCode, String(product.name)),
-        parse_mode: "HTML",
-        reply_markup: orderPaidKeyboard(orderCode),
-      });
-    }
-
-    // Manual: stop here, notify admin
+    // Manual: payment acknowledgement is handled independently from
+    // auto-fulfillment, so stop here and leave the order for the admin.
     if (fulfillmentMode === "manual") {
       await execRun(
         `UPDATE fulfillment_jobs SET status='manual_required', locked_until=NULL, updated_at=datetime('now') WHERE id=?`,
         jobId,
       );
-      if (salesChannel === "telegram" && chatId) {
-        await sendMessage({
-          chat_id: chatId,
-          text: manualFulfillmentBuyerMessage(orderCode),
-          parse_mode: "HTML",
-          reply_markup: orderPaidKeyboard(orderCode),
-        });
-      }
-      if (adminChatId) {
-        await sendMessage({
-          chat_id: adminChatId,
-          text: adminOrderNotification({
-            orderCode,
-            productName: String(product.name),
-            amount: Number(order.subtotal),
-            telegramUser: String(order.telegram_user_id || order.customer_wa || ""),
-            fulfillmentMode,
-          }),
-          parse_mode: "HTML",
-        });
-      }
       await execRun(
         `UPDATE orders SET fulfillment_status='manual_required', updated_at=datetime('now') WHERE code=?`,
         orderCode,
@@ -411,6 +378,15 @@ export async function ensureFulfillmentForPaidOrder(orderCode: string): Promise<
     orderCode,
   );
   if (!order) return false;
+
+  // Buyer payment acknowledgement must not depend on AUTO_FULFILLMENT_ENABLED.
+  // It is durable/idempotent and retried by the operations cron when Telegram
+  // is temporarily unavailable.
+  if (String(order.sales_channel) === "telegram") {
+    try {
+      await notifyTelegramBuyerPaid(orderCode);
+    } catch { /* Payment remains durable; notification cron retries it. */ }
+  }
 
   let items: { product_id: number; variant_id?: number }[];
   try {

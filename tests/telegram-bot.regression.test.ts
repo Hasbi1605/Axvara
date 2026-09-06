@@ -5,15 +5,18 @@ import {
   productDetailMessage, invoiceMessage, helpMessage, deliveryMessage,
   warrantyTermsMessage, warrantyClaimMessage, warrantyFullMessage,
   confirmBuyMessage, confirmVariantBuyMessage, chooseQtyMessage,
-  paymentMethodMessage, manualTransferMessage,
-  manualFulfillmentBuyerMessage, orderPaidMessage,
-  askWhatsAppMessage, waSavedAfterInvoiceMessage,
+  orderPaidMessage, waSavedAfterPaymentMessage,
+  adminTelegramOrderCreatedMessage,
 } from "@/lib/telegram/messages";
 import {
   cb, parseCallback, homeKeyboard, warrantyKeyboard, categoriesKeyboard,
-  productsKeyboard, catalogFlatKeyboard, qtyKeyboard, paymentMethodKeyboard,
-  askWaAfterInvoiceKeyboard, orderPaidKeyboard,
+  productsKeyboard, catalogFlatKeyboard, qtyKeyboard, qrisInvoiceKeyboard,
+  orderPaidKeyboard,
 } from "@/lib/telegram/keyboards";
+import fs from "node:fs";
+import path from "node:path";
+
+const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), "utf8");
 
 describe("Telegram HTML escaping", () => {
   it("escapes all HTML special characters", () => {
@@ -77,11 +80,10 @@ describe("Telegram callback data", () => {
       cb.qty(99999, 88888),
       cb.setQty(99999, 88888, 20),
       cb.pay(99999, 88888, 20),
-      cb.payMethod(99999, 88888, 20, "seabank"),
       cb.order("AXV-20260903-ABCD1234"),
       cb.cancel("AXV-20260903-ABCD1234"),
       cb.refresh("AXV-20260903-ABCD1234"),
-      cb.waSkip("AXV-20260903-ABCD1234"),
+      cb.waInput("AXV-20260903-ABCD1234"),
     ];
     for (const d of datas) {
       const bytes = new TextEncoder().encode(d).length;
@@ -190,39 +192,34 @@ describe("Telegram keyboards", () => {
     expect(allTexts.some(t => t.includes("1/2"))).toBe(true); // page indicator
   });
 
-  it("qty keyboard offers quick picks capped by stock", () => {
-    const kb = qtyKeyboard({ productId: 1, variantId: 2, stock: 3 });
-    const buttons = kb.inline_keyboard.flat();
-    const datas = buttons.map(b => b.callback_data ?? "");
-    expect(datas.some(d => d === "q:1:2:1")).toBe(true);
-    expect(datas.some(d => d === "q:1:2:3")).toBe(true);
-    expect(datas.some(d => d === "q:1:2:5")).toBe(false);
-  });
-
-  it("payment keyboard offers QRIS + SeaBank + E-Wallet", () => {
-    const kb = paymentMethodKeyboard(1, 2, 3);
-    const buttons = kb.inline_keyboard.flat();
-    const datas = buttons.map(b => b.callback_data ?? "");
-    expect(datas).toContain("pm:1:2:3:qris");
-    expect(datas).toContain("pm:1:2:3:seabank");
-    expect(datas).toContain("pm:1:2:3:ewallet");
-  });
-
-  it("WA-after-invoice keyboard has status check + skip", () => {
-    const kb = askWaAfterInvoiceKeyboard("AXV-20260906-TEST1234");
+  it("qty keyboard uses one clear stepper and a direct QRIS CTA", () => {
+    const kb = qtyKeyboard({ productId: 1, variantId: 2, stock: 3, qty: 2, price: 5000 });
     const buttons = kb.inline_keyboard.flat();
     const texts = buttons.map(b => b.text);
     const datas = buttons.map(b => b.callback_data ?? "");
-    expect(texts.some(t => t.includes("Cek Status"))).toBe(true);
-    expect(texts.some(t => t.includes("Lewati"))).toBe(true);
-    expect(datas.some(d => d.startsWith("waskip:"))).toBe(true);
+    expect(datas.some(d => d === "q:1:2:1")).toBe(true);
+    expect(datas.some(d => d === "q:1:2:3")).toBe(true);
+    expect(datas.some(d => d === "pay:1:2:2")).toBe(true);
+    expect(texts).toContain("2 item");
+    expect(texts.some(t => t.includes("Bayar QRIS") && t.includes("10.000"))).toBe(true);
+    expect(texts.some(t => t.includes("1️⃣") || t.includes("2️⃣") || t.includes("3️⃣"))).toBe(false);
   });
 
-  it("paid-order keyboard links directly to Telegram support", () => {
-    const kb = orderPaidKeyboard("AXV-20260904-AB12CD34");
+  it("QRIS invoice keyboard has no manual status-check requirement", () => {
+    const kb = qrisInvoiceKeyboard("AXV-20260906-TEST1234");
     const buttons = kb.inline_keyboard.flat();
-    expect(buttons.some((button) => button.text.includes("@Axvara_bot"))).toBe(true);
-    expect(buttons.some((button) => button.url === "https://t.me/Axvara_bot")).toBe(true);
+    const datas = buttons.map(b => b.callback_data ?? "");
+    expect(datas.some(d => d.startsWith("refresh:"))).toBe(false);
+    expect(datas.some(d => d.startsWith("cancel:"))).toBe(true);
+  });
+
+  it("paid-order keyboard asks for WA and exposes both human support contacts", () => {
+    const kb = orderPaidKeyboard("AXV-20260904-AB12CD34", true);
+    const buttons = kb.inline_keyboard.flat();
+    expect(buttons.some((button) => button.callback_data?.startsWith("wainput:"))).toBe(true);
+    expect(buttons.some((button) => button.url?.startsWith("https://wa.me/6289519388264"))).toBe(true);
+    expect(buttons.some((button) => button.text.includes("@support_axvara"))).toBe(true);
+    expect(buttons.some((button) => button.url === "https://t.me/support_axvara")).toBe(true);
   });
 });
 
@@ -246,6 +243,8 @@ describe("Telegram messages premium UX", () => {
     expect(msg).toContain("ChatGPT Plus");
     expect(msg).toContain("⏰");
     expect(msg).toContain("━━━");
+    expect(msg).toContain("otomatis mengabari");
+    expect(msg).not.toContain("Tekan 🔄");
   });
 
   it("help message lists all commands with structure", () => {
@@ -257,7 +256,9 @@ describe("Telegram messages premium UX", () => {
     expect(msg).toContain("/bantuan");
     expect(msg).toContain("axvara.tech");
     expect(msg).toContain("1️⃣");
-    expect(msg).toContain("SeaBank");
+    expect(msg).toContain("QRIS dinamis");
+    expect(msg).not.toContain("SeaBank");
+    expect(msg).not.toContain("E-Wallet");
   });
 
   it("product detail never renders description (WA parity)", () => {
@@ -327,66 +328,36 @@ describe("Telegram messages premium UX", () => {
     expect(msg).toContain("600.000");
   });
 
-  it("confirm variant message multiplies price by qty", () => {
+  it("confirm variant message leaves quantity selection to the next clear step", () => {
     const msg = confirmVariantBuyMessage({
       productName: "Canva Pro",
       variantLabel: "Pro Head 1 Bulan",
       price: 5000,
-      qty: 3,
     });
-    expect(msg).toContain("Qty: 3");
-    expect(msg).toContain("Rp15.000");
+    expect(msg).toContain("Harga satuan: Rp5.000");
+    expect(msg).toContain("mengatur jumlah pesanan");
+    expect(msg).not.toContain("Qty:");
+    expect(msg).not.toContain("Total:");
   });
 
-  it("qty message supports bulk order copy", () => {
+  it("qty message keeps the chosen quantity and total visible", () => {
     const msg = chooseQtyMessage({
       productName: "Canva Pro",
       variantLabel: "Pro Head 1 Bulan",
       price: 5000,
       stock: -1,
+      qty: 3,
     });
-    expect(msg).toContain("bulk order");
+    expect(msg).toContain("Jumlah dipilih: 3");
+    expect(msg).toContain("Total: Rp15.000");
     expect(msg).toContain("1–20");
   });
 
-  it("payment method message lists QRIS + SeaBank + E-Wallet", () => {
-    const msg = paymentMethodMessage({
-      productName: "Canva Pro",
-      variantLabel: "Pro Head 1 Bulan",
-      qty: 2,
-      total: 10000,
-    });
-    expect(msg).toContain("QRIS");
-    expect(msg).toContain("SeaBank");
-    expect(msg).toContain("E-Wallet");
-    expect(msg).toContain("Rp10.000");
-  });
-
-  it("manual transfer message shows account + steps", () => {
-    const msg = manualTransferMessage({
-      orderCode: "AXV-20260906-TEST1234",
-      productName: "Canva Pro — Pro Head",
-      total: 5000,
-      method: "seabank",
-      account: "901812349386",
-      accountName: "Brotherstore06",
-    });
-    expect(msg).toContain("901812349386");
-    expect(msg).toContain("Brotherstore06");
-    expect(msg).toContain("AXV-20260906-TEST1234");
-    expect(msg).toContain("Rp5.000");
-  });
-
-  it("WA ask happens after invoice with skip option", () => {
-    const msg = askWhatsAppMessage("Canva Pro — Pro Head 1 Bulan");
-    expect(msg).toContain("sudah terbit");
-    expect(msg).toContain("Lewati");
-  });
-
-  it("WA saved message confirms post-invoice capture", () => {
-    const msg = waSavedAfterInvoiceMessage("AXV-20260906-TEST1234");
+  it("WA saved message confirms post-payment capture", () => {
+    const msg = waSavedAfterPaymentMessage("AXV-20260906-TEST1234");
     expect(msg).toContain("AXV-20260906-TEST1234");
     expect(msg).toContain("Tersimpan");
+    expect(msg).toContain("Pembayaran sudah lunas");
   });
 
   it("delivery message has tap-to-copy hint", () => {
@@ -395,9 +366,62 @@ describe("Telegram messages premium UX", () => {
     expect(msg).toContain("Tap untuk copy");
   });
 
-  it("paid and manual fulfillment messages point buyers to support", () => {
-    expect(orderPaidMessage("AXV-20260904-AB12CD34", "Produk")).toContain("@Axvara_bot");
-    expect(manualFulfillmentBuyerMessage("AXV-20260904-AB12CD34")).toContain("@Axvara_bot");
+  it("paid message confirms automatic detection, then asks WA only for manual delivery", () => {
+    const msg = orderPaidMessage("AXV-20260904-AB12CD34", "Produk", true);
+    expect(msg).toContain("Dana sudah diterima dan terverifikasi otomatis");
+    expect(msg).toContain("nomor WhatsApp aktif");
+    expect(msg).toContain("@support_axvara");
+    expect(msg).toContain("wa.me/6289519388264");
+  });
+
+  it("admin group notification identifies Telegram order creation", () => {
+    const msg = adminTelegramOrderCreatedMessage({
+      orderCode: "AXV-20260906-TEST1234",
+      productNames: "Canva Pro ×2",
+      amount: 10200,
+      customerName: "Nadia",
+      telegramUser: "nadia",
+      paymentMethod: "qris",
+    });
+    expect(msg).toContain("Order Baru — Telegram");
+    expect(msg).toContain("Canva Pro ×2");
+    expect(msg).toContain("QRIS");
+  });
+});
+
+describe("Telegram order and payment flow wiring", () => {
+  it("offers only dynamic QRIS and never creates Telegram bank/e-wallet orders", () => {
+    const route = read("src/app/api/telegram/webhook/route.ts");
+    expect(route).toContain("createDanaQrisInvoice");
+    expect(route).not.toContain("createManualTransferOrder");
+    expect(route).not.toContain("getActivePaymentMethods");
+    expect(route).not.toContain("paymentMethodKeyboard");
+  });
+
+  it("notifies the admin group when a Telegram order is created", () => {
+    const route = read("src/app/api/telegram/webhook/route.ts");
+    expect(route).toContain("notifyTelegramOrderCreated(orderCode)");
+  });
+
+  it("pushes paid notification before checking the auto-fulfillment flag", () => {
+    const delivery = read("src/lib/fulfillment/deliver.ts");
+    const notifyIndex = delivery.indexOf("await notifyTelegramBuyerPaid(orderCode)");
+    const autoFlagReturnIndex = delivery.indexOf("if (!autoFulfillmentEnabled) return false", notifyIndex);
+    expect(notifyIndex).toBeGreaterThan(0);
+    expect(autoFlagReturnIndex).toBeGreaterThan(notifyIndex);
+  });
+
+  it("uses durable, retryable markers for created and paid Telegram notifications", () => {
+    const schema = read("drizzle/schema.sql");
+    const migration = read("drizzle/migrations/0012_telegram_order_notifications.sql");
+    const notifications = read("src/lib/telegram/order-notifications.ts");
+    const cron = read("src/app/api/cron/operations/route.ts");
+    expect(schema).toContain("telegram_order_notified_at TEXT");
+    expect(schema).toContain("telegram_paid_notified_at TEXT");
+    expect(migration).toContain("telegram_order_notified_at");
+    expect(migration).toContain("telegram_paid_notified_at");
+    expect(notifications).toContain("telegram_paid_notified_at IS NULL");
+    expect(cron).toContain("retryPendingTelegramNotifications");
   });
 });
 

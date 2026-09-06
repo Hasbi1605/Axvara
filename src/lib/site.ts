@@ -5,6 +5,7 @@ export const SITE = {
   adminWaLocal: "089519388264",
   adminWaIntl: "6289519388264",
   adminTelegram: "Axvara_bot",
+  supportTelegram: "support_axvara",
   webUrl: "https://axvara.tech",
   supportHours: "09.00–23.00 WIB",
 } as const;
@@ -62,4 +63,8 @@ export function adminWaLink(text?: string): string {
 
 export function adminTelegramLink(): string {
   return `https://t.me/${SITE.adminTelegram}`;
+}
+
+export function supportTelegramLink(): string {
+  return `https://t.me/${SITE.supportTelegram}`;
 }

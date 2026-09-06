@@ -446,7 +446,8 @@ Implementasi native TypeScript di codebase AXVARA. Repo `mocasus/telegram-auto-o
 - **Authority:** QRIS Hook Android mengirim JSON ke `POST /api/webhook/dana` dengan `X-Webhook-Secret`. Event dideduplikasi dan hanya nominal persis dari satu invoice DANA aktif yang dapat melunasi order.
 - **Setup Android:** gunakan URL publik `https://axvara.tech/api/webhook/dana`, isi field secret aplikasi dengan nilai rahasia Pages Secret `DANA_WEBHOOK_SECRET` (bukan teks nama variabel tersebut), aktifkan Notification Access + merchant DANA + QRIS Hook Active, dan matikan Debug Mode agar delivery tidak dilewati. Admin menampilkan URL kanonis, nama header, health, dan event masuk tanpa mengekspos nilai secret.
 - **Fulfillment:** AES-256-GCM via WebCrypto, fingerprint SHA-256 untuk deduplikasi. Tiga mode: `manual`, `shared`, `unique`. Outbox pattern dengan `fulfillment_jobs` tabel.
-- **Rekonsiliasi:** `POST /api/cron/operations` menangani stale initializing, invoice kedaluwarsa, due jobs, dan stale locks. DANA tidak menyediakan status polling; webhook adalah authority pembayaran.
+- **Rekonsiliasi:** `POST /api/cron/operations` menangani stale initializing, invoice kedaluwarsa, due jobs, stale locks, serta retry notifikasi order/paid Telegram. DANA tidak menyediakan status polling; webhook adalah authority pembayaran.
+- **Notifikasi Telegram:** order Telegram mengirim notifikasi grup `TELEGRAM_ADMIN_CHAT_ID` segera setelah ledger QRIS terbentuk. Kolom marker idempoten pada `orders` mencegah duplikat. Setelah QRIS Hook mengubah order menjadi `paid`, buyer otomatis menerima pesan berhasil tanpa menekan cek status; untuk fulfillment manual pesan yang sama baru meminta nomor WA dan menampilkan kontak admin.
 
 ### Tabel Baru (migrasi 0005)
 
@@ -461,7 +462,7 @@ Implementasi native TypeScript di codebase AXVARA. Repo `mocasus/telegram-auto-o
 | `store_settings` | Override nama, tagline, WhatsApp, jam dukungan, footer, dan logo storefront |
 
 Kolom baru di `products`: `fulfillment_mode`, `shared_secret_ciphertext`, `shared_secret_iv`, `telegram_enabled`.
-Kolom baru di `orders`: `sales_channel`, `telegram_chat_id`, `telegram_user_id`, `payment_status`, `fulfillment_status`.
+Kolom baru di `orders`: `sales_channel`, `telegram_chat_id`, `telegram_user_id`, `payment_status`, `fulfillment_status`, `telegram_order_notified_at`, dan `telegram_paid_notified_at`.
 
 ### Route Baru
 
@@ -494,10 +495,10 @@ TELEGRAM_BOT_ENABLED, DANA_QRIS_ENABLED, AUTO_FULFILLMENT_ENABLED
 ```
 
 `TELEGRAM_ADMIN_CHAT_ID` adalah satu tujuan untuk seluruh notifikasi admin yang berasal
-dari order web, order Telegram, fulfillment manual, dan kegagalan delivery. Grup privat
+dari order web, order Telegram saat invoice dibuat, dan kegagalan delivery. Grup privat
 wajib memakai ID numerik negatif (`-100...`), bukan link undangan. Tambahkan
 `@Axvara_bot` ke grup lalu jalankan `/chatid` untuk menampilkan ID tersebut. Username
-support manusia tetap `@axvara_support` dan ditampilkan sebagai tombol langsung pada
+support manusia `@support_axvara` ditampilkan bersama tombol WhatsApp admin pada
 pesan setelah pembayaran berhasil.
 
 ### Feature Flags
@@ -519,7 +520,7 @@ Sistem varian produk terpusat dan bot WhatsApp telah diimplementasikan sesuai `d
 - **Service Bersama:** `src/lib/catalog.ts` menyediakan query terpusat untuk web, Telegram, dan WhatsApp. `src/lib/warranty-policy.ts` mengekstrak kebijakan garansi kanonis dengan formatter Telegram (HTML) dan WhatsApp (bold `*`).
 - **Website:** Halaman detail `/produk/[slug]` mendukung variant selector interaktif; cart Zustand membedakan item berdasarkan kombinasi `product_id + variant_id`; checkout quote mendukung variant_id.
 - **Telegram Bot:** Menambahkan langkah pemilihan varian sebelum konfirmasi beli (`TELEGRAM_VARIANT_FLOW`). Menggunakan harga dan konfigurasi varian.
-- **Flow order Telegram (WA parity):** `/katalog` menampilkan daftar datar nama produk + harga (tanpa kategori wajib; kategori hanya filter opsional). Detail produk tanpa deskripsi, menampilkan foto produk web + list garansi per varian dari `product_variants` yang sama dengan web/WA. Alur beli: `Produk → Varian → Qty (1–20, tombol cepat + ketik manual, bulk order) → Pilih QRIS / SeaBank / E-Wallet`. QRIS DANA dinamis langsung terbit untuk semua mode fulfillment; SeaBank/e-wallet membuat order manual atomik (guard stok + reservasi + rekening dari `payment_methods` D1) dengan expired 24 jam. Nomor WA hanya diminta SETELAH invoice khusus fulfillment manual (tombol Lewati tersedia), lalu di-patch ke order. Guard anti-double-tap memakai ulang order pending chat+varian yang sama. Sapaan WIB dinamis (Pagi/Siang/Sore/Malam + tanggal/jam) di welcome/katalog/bantuan.
+- **Flow order Telegram (WA parity, payment khusus QRIS):** `/katalog` menampilkan daftar datar nama produk + harga (tanpa kategori wajib; kategori hanya filter opsional). Detail produk tanpa deskripsi, menampilkan foto produk web + list garansi per varian dari `product_variants` yang sama dengan web/WA. Alur beli: `Produk → Varian → Qty stepper (➖ / jumlah / ➕, angka manual 1–20) → QRIS DANA dinamis`; tidak ada SeaBank/e-wallet di Telegram. CTA jumlah langsung menerbitkan satu pesan QRIS tanpa layar pemilihan metode dan tanpa kewajiban menekan cek status. QRIS Hook melunasi order atomik, menambah `sold_count`, lalu mengirim pesan sukses otomatis. Untuk fulfillment manual, pending input WA baru dipasang setelah `paid`; buyer juga mendapat tombol WhatsApp admin dan `@support_axvara`. Order-created ke grup admin dan paid ke buyer memakai marker D1 idempoten serta retry cron. Guard anti-double-tap memakai ulang order pending chat+varian yang sama; varian stok unik dibatasi qty 1. Sapaan WIB dinamis (Pagi/Siang/Sore/Malam + tanggal/jam) di welcome/katalog/bantuan.
 - **WhatsApp Bot:** Webhook di `POST /api/whatsapp/webhook` via Baileys gateway Heroku. Mendukung:
   - `list` (header `LIST MENU AXVARA`, nama alias/fallback produk aktif tanpa kategori/harga, lalu footer promosi Telegram dan website resmi)
   - Pencarian nama produk/alias → detail bergaya garis dengan header alias dan varian bernomor

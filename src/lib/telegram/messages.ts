@@ -7,6 +7,7 @@
 // - Short, scannable lines — mobile-first (95% users)
 
 import { formatWarrantyTermsTelegram, formatWarrantyClaimsTelegram } from "@/lib/warranty-policy";
+import { SITE } from "@/lib/site";
 
 export function escapeHtml(text: string): string {
   return text
@@ -219,12 +220,9 @@ export function confirmVariantBuyMessage(params: {
   duration?: string | null;
   warranty?: string | null;
   price: number;
-  qty?: number;
 }): string {
-  const { productName, variantLabel, duration, warranty, price, qty } = params;
+  const { productName, variantLabel, duration, warranty, price } = params;
   const name = escapeHtml(truncate(productName, 100));
-  const quantity = Math.max(1, Math.min(20, Math.floor(qty ?? 1)));
-  const total = price * quantity;
   const lines = [
     "🛒 <b>Konfirmasi Pembelian</b>",
     "━━━━━━━━━━━━━━━━━━━━━",
@@ -235,14 +233,10 @@ export function confirmVariantBuyMessage(params: {
   if (duration) lines.push(`⏱ Durasi: ${escapeHtml(duration)}`);
   if (warranty) lines.push(`🛡 Garansi: ${escapeHtml(warranty)}`);
   lines.push(`💰 Harga satuan: ${formatRupiah(price)}`);
-  lines.push(`📊 Qty: ${quantity}`);
-  lines.push(`🧾 <b>Total: ${formatRupiah(total)}</b>`);
   lines.push("");
-  lines.push("⚠️ <i>Total final bisa sedikit berbeda karena kode unik pembayaran.</i>");
+  lines.push("🛡 <b>Third-party, bukan official.</b> Garansi ikut varian yang dipilih. Melanjutkan = setuju ketentuan. /garansi untuk detail.");
   lines.push("");
-  lines.push("🛡 <b>Third-party, bukan official.</b> Garansi ikut varian yang dipilih. Lanjut bayar = setuju ketentuan. /garansi untuk detail.");
-  lines.push("");
-  lines.push("Lanjutkan? 👇");
+  lines.push("Setelah ini kamu dapat mengatur jumlah pesanan.");
   return lines.join("\n");
 }
 
@@ -281,75 +275,35 @@ export function chooseQtyMessage(params: {
   variantLabel: string;
   price: number;
   stock: number;
+  qty: number;
+  maxQty?: number;
 }): string {
   const { productName, variantLabel, price, stock } = params;
-  const stockLine = stock === -1
-    ? "📦 Stok tersedia — bisa bulk order"
+  const qty = Math.max(1, Math.min(20, Math.floor(params.qty || 1)));
+  const maxQty = params.maxQty ?? (stock === -1 ? 20 : Math.max(1, Math.min(stock, 20)));
+  const stockLine = maxQty === 1
+    ? "📦 Produk unik — maksimal 1 per pesanan"
+    : stock === -1
+    ? "📦 Stok tersedia"
     : stock > 0
       ? `📦 Stok: ${stock} — maksimal ${Math.min(stock, 20)} per order`
       : "📦 ❌ Stok habis";
   return [
-    "📊 <b>Pilih Jumlah (Qty)</b>",
+    "📊 <b>Tentukan Jumlah Pesanan</b>",
     "━━━━━━━━━━━━━━━━━━━━━",
     "",
     `📦 <b>${escapeHtml(truncate(productName, 80))}</b>`,
     `🏷 ${escapeHtml(truncate(variantLabel, 80))}`,
-    `💰 ${formatRupiah(price)} /pcs`,
+    `💰 Harga satuan: ${formatRupiah(price)}`,
     stockLine,
     "",
-    "Tap jumlah cepat di bawah, atau ketik angka 1–20 👇",
-  ].join("\n");
-}
-
-export function paymentMethodMessage(params: {
-  productName: string;
-  variantLabel: string;
-  qty: number;
-  total: number;
-}): string {
-  const { productName, variantLabel, qty, total } = params;
-  return [
-    "💳 <b>Pilih Pembayaran</b>",
-    "━━━━━━━━━━━━━━━━━━━━━",
+    `🔢 <b>Jumlah dipilih: ${qty}</b>`,
+    `🧾 <b>Total: ${formatRupiah(price * qty)}</b>`,
     "",
-    `📦 <b>${escapeHtml(truncate(productName, 80))}</b>`,
-    `🏷 ${escapeHtml(truncate(variantLabel, 80))} × ${qty}`,
-    `🧾 <b>Total: ${formatRupiah(total)}</b>`,
-    "",
-    "⚡ <b>QRIS</b> — scan sekali, lunas otomatis",
-    "🏦 <b>SeaBank</b> — transfer manual + review admin",
-    "👛 <b>E-Wallet</b> — DANA/Gopay/Shopeepay manual",
-    "",
-    "Pilih metode di bawah 👇",
-  ].join("\n");
-}
-
-export function manualTransferMessage(params: {
-  orderCode: string;
-  productName: string;
-  total: number;
-  method: "seabank" | "ewallet";
-  account: string;
-  accountName: string;
-}): string {
-  const { orderCode, productName, total, method, account, accountName } = params;
-  const label = method === "seabank" ? "SeaBank" : "E-Wallet (DANA/Gopay/Shopeepay)";
-  return [
-    `🏦 <b>Transfer ${label}</b>`,
-    "━━━━━━━━━━━━━━━━━━━━━",
-    "",
-    `📦 ${escapeHtml(truncate(productName, 100))}`,
-    `🔢 <code>${escapeHtml(orderCode)}</code>`,
-    `🧾 <b>Total transfer: ${formatRupiah(total)}</b>`,
-    "",
-    `No. tujuan: <code>${escapeHtml(account)}</code>`,
-    `A.n: ${escapeHtml(accountName)}`,
-    "",
-    "1️⃣ Transfer <b>tepat</b> sesuai total",
-    "2️⃣ Screenshot bukti transfer",
-    "3️⃣ Kirim foto + caption kode pesanan di sini",
-    "",
-    "⏱ Order manual expired 24 jam. Admin verifikasi 5–15 menit.",
+    "Gunakan tombol ➖ / ➕ di bawah.",
+    maxQty > 1
+      ? `Untuk bulk, kamu juga bisa ketik angka 1–${maxQty}.`
+      : "Varian ini tidak mendukung bulk order.",
   ].join("\n");
 }
 
@@ -385,8 +339,8 @@ export function invoiceMessage(params: {
     `⏰ Batas: ${expiryText}`,
     "",
     "━━━━━━━━━━━━━━━━━━━━━",
-    "💡 Status otomatis update setelah bayar",
-    "Tekan 🔄 untuk refresh manual",
+    "🤖 Tidak perlu cek status manual.",
+    "Bot otomatis mengabari setelah pembayaran terkonfirmasi.",
   ].join("\n");
 }
 
@@ -394,18 +348,32 @@ export function invoiceMessage(params: {
 // ORDER STATUS & DELIVERY
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-export function orderPaidMessage(orderCode: string, productName: string): string {
+export function orderPaidMessage(orderCode: string, productName: string, needsWhatsApp = false): string {
   const name = escapeHtml(truncate(productName, 100));
-  return [
-    "🎉 <b>Pembayaran Diterima!</b>",
+  const lines = [
+    "🎉 <b>Pembayaran Berhasil!</b>",
     "━━━━━━━━━━━━━━━━━━━━━",
     "",
     `📦 ${name}`,
     `🔢 <code>${escapeHtml(orderCode)}</code>`,
     "",
-    "⏳ Sedang diproses...",
-    "💬 Perlu bantuan? Chat langsung @Axvara_bot lewat tombol di bawah.",
-  ].join("\n");
+    "✅ Dana sudah diterima dan terverifikasi otomatis.",
+    "⏳ Pesanan akan segera diproses.",
+  ];
+  if (needsWhatsApp) {
+    lines.push(
+      "",
+      "📱 <b>Balas chat ini dengan nomor WhatsApp aktif</b> untuk pengiriman produk.",
+      "Contoh: <code>08123456789</code>",
+    );
+  }
+  lines.push(
+    "",
+    "Butuh bantuan?",
+    `📞 WhatsApp Admin: wa.me/${SITE.adminWaIntl}`,
+    `✈️ Telegram Support: @${SITE.supportTelegram}`,
+  );
+  return lines.join("\n");
 }
 
 export function deliveryMessage(secret: string): string {
@@ -426,22 +394,19 @@ export function deliveryMessage(secret: string): string {
   ].join("\n");
 }
 
-export function manualFulfillmentBuyerMessage(orderCode: string): string {
+export function whatsAppInputPromptMessage(orderCode: string): string {
   return [
-    "✅ <b>Pembayaran Diterima!</b>",
+    "📱 <b>Nomor WhatsApp Pengiriman</b>",
     "━━━━━━━━━━━━━━━━━━━━━",
     "",
     `🔢 <code>${escapeHtml(orderCode)}</code>`,
     "",
-    "👤 Admin sedang menyiapkan produk kamu",
-    "📱 Admin akan menghubungi kamu via WA",
-    "💬 Kamu juga bisa chat langsung @Axvara_bot",
-    "📬 Kamu juga akan dinotifikasi di sini saat siap",
+    "Pembayaran sudah lunas. Balas chat ini dengan nomor WhatsApp aktif agar admin dapat mengirim produk.",
     "",
-    "⏱ Estimasi: 1×24 jam",
-    "<i>(biasanya jauh lebih cepat)</i>",
+    "Contoh: <code>08123456789</code>",
     "",
-    "🛡 Simpan kode pesanan untuk klaim. Garansi ikut deskripsi produk, hanya penggantian. /garansi",
+    `📞 WhatsApp Admin: wa.me/${SITE.adminWaIntl}`,
+    `✈️ Telegram Support: @${SITE.supportTelegram}`,
   ].join("\n");
 }
 
@@ -537,15 +502,15 @@ export function helpMessage(): string {
     "🛒 <b>Cara beli (1 menit):</b>",
     "  1️⃣ Pilih produk langsung dari /katalog",
     "  2️⃣ Pilih varian + jumlah",
-    "  3️⃣ Pilih QRIS / SeaBank / E-Wallet",
-    "  4️⃣ Bayar sesuai total — QRIS lunas otomatis",
+    "  3️⃣ Konfirmasi jumlah — QRIS dinamis langsung terbit",
+    "  4️⃣ Bayar sesuai total — lunas otomatis",
     "  5️⃣ Produk terkirim + notif di sini",
     "",
     "🛡 <b>AXVARA third-party, bukan official.</b> Garansi 1×24 jam–30 hari ikut varian tiap produk. Ketik /garansi.",
     "",
     "━━━━━━━━━━━━━━━━━━━━━",
-    "📞 <b>Admin:</b> wa.me/6289519388264",
-    "✈️ <b>Telegram:</b> @Axvara_bot",
+    `📞 <b>Admin:</b> wa.me/${SITE.adminWaIntl}`,
+    `✈️ <b>Telegram Support:</b> @${SITE.supportTelegram}`,
     "🌐 <b>Web:</b> axvara.tech",
   ].join("\n");
 }
@@ -608,33 +573,14 @@ export function errorMessage(): string {
   ].join("\n");
 }
 
-export function askWhatsAppMessage(productName: string): string {
-  const name = escapeHtml(truncate(productName, 100));
-  return [
-    "📱 <b>Nomor WhatsApp Pengiriman</b>",
-    "━━━━━━━━━━━━━━━━━━━━━",
-    "",
-    `Produk: ${name}`,
-    "",
-    "✅ Invoice kamu <b>sudah terbit</b> — aman, tidak perlu bayar ulang.",
-    "Produk ini dikirim <b>manual oleh admin</b>.",
-    "Masukkan <b>nomor WA aktif</b> agar admin bisa menghubungi untuk pengiriman:",
-    "",
-    "Contoh: <code>08123456789</code>",
-    "",
-    "💡 <i>Ketik nomor WA lalu kirim — boleh juga tap Lewati</i>",
-  ].join("\n");
-}
-
-export function waSavedAfterInvoiceMessage(orderCode: string): string {
+export function waSavedAfterPaymentMessage(orderCode: string): string {
   return [
     "✅ <b>Nomor WA Tersimpan</b>",
     "━━━━━━━━━━━━━━━━━━━━━",
     "",
     `🔢 <code>${escapeHtml(orderCode)}</code>`,
     "",
-    "Admin akan menghubungimu setelah pembayaran lunas 🙏",
-    "Pantau status dengan tombol di bawah 👇",
+    "Pembayaran sudah lunas dan admin akan menghubungimu untuk pengiriman. 🙏",
   ].join("\n");
 }
 
@@ -653,30 +599,33 @@ export function invalidWhatsAppMessage(): string {
 // ADMIN NOTIFICATIONS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-export function adminOrderNotification(params: {
+export function adminTelegramOrderCreatedMessage(params: {
   orderCode: string;
-  productName: string;
+  productNames: string;
   amount: number;
+  customerName: string;
   telegramUser: string;
-  fulfillmentMode: string;
+  paymentMethod: string;
 }): string {
-  const { orderCode, productName, amount, telegramUser, fulfillmentMode } = params;
-  const modeLabel: Record<string, string> = {
-    manual: "👤 Manual", shared: "📝 Shared", unique: "🔑 Unique",
-  };
+  const { orderCode, productNames, amount, customerName, telegramUser, paymentMethod } = params;
+  const normalizedUser = telegramUser.replace(/^@/, "");
+  const telegramLabel = !normalizedUser
+    ? "—"
+    : /^\d+$/.test(normalizedUser)
+      ? `ID ${normalizedUser}`
+      : `@${normalizedUser}`;
   return [
     "🔔 <b>Order Baru — Telegram</b>",
     "━━━━━━━━━━━━━━━━━━━━━",
     "",
-    `📦 ${escapeHtml(truncate(productName, 80))}`,
+    `📦 ${escapeHtml(truncate(productNames, 120))}`,
     `🔢 <code>${escapeHtml(orderCode)}</code>`,
     `💰 ${formatRupiah(amount)}`,
-    `👤 @${escapeHtml(telegramUser || "—")}`,
-    `⚙️ ${modeLabel[fulfillmentMode] ?? fulfillmentMode}`,
+    `👤 ${escapeHtml(truncate(customerName, 50))}`,
+    `✈️ ${escapeHtml(telegramLabel)}`,
+    `💳 ${escapeHtml(paymentMethod.toUpperCase())} dinamis`,
     "",
-    fulfillmentMode === "manual"
-      ? "⚠️ <b>Perlu tindakan manual</b> — buka panel admin"
-      : "✅ Auto-delivery aktif",
+    "⏳ Menunggu pembayaran otomatis",
   ].join("\n");
 }
 

@@ -4,7 +4,7 @@
 // All callback_data ≤ 64 bytes.
 
 import type { InlineKeyboardMarkup, InlineKeyboardButton } from "./types";
-import { adminTelegramLink, SITE } from "@/lib/site";
+import { adminWaLink, supportTelegramLink, SITE } from "@/lib/site";
 
 const PER_PAGE = 6;
 
@@ -23,11 +23,10 @@ export const cb = {
   qty: (productId: number, variantId: number) => `qty:${productId}:${variantId}`,
   setQty: (productId: number, variantId: number, qty: number) => `q:${productId}:${variantId}:${qty}`,
   pay: (productId: number, variantId: number, qty: number) => `pay:${productId}:${variantId}:${qty}`,
-  payMethod: (productId: number, variantId: number, qty: number, method: string) => `pm:${productId}:${variantId}:${qty}:${method}`,
   order: (orderCode: string) => `order:${orderCode}`,
   cancel: (orderCode: string) => `cancel:${orderCode}`,
   refresh: (orderCode: string) => `refresh:${orderCode}`,
-  waSkip: (orderCode: string) => `waskip:${orderCode}`,
+  waInput: (orderCode: string) => `wainput:${orderCode}`,
 } as const;
 
 // ---- Callback data parser ----
@@ -203,8 +202,7 @@ export function confirmVariantPurchaseKeyboard(productId: number, variantId: num
   return {
     inline_keyboard: [
       [
-        // Lanjut = pilih qty (bulk order), bukan langsung bayar.
-        { text: "➡️ Lanjut Pilih Jumlah", callback_data: cb.qty(productId, variantId) },
+        { text: "✅ Saya Paham, Pilih Jumlah", callback_data: cb.qty(productId, variantId) },
       ],
       [
         { text: "📜 Syarat Garansi", callback_data: "warranty" },
@@ -218,50 +216,37 @@ export function qtyKeyboard(params: {
   productId: number;
   variantId: number;
   stock: number;
+  qty: number;
+  price: number;
+  maxQty?: number;
 }): InlineKeyboardMarkup {
-  const { productId, variantId, stock } = params;
-  const max = stock === -1 ? 20 : Math.max(1, Math.min(stock, 20));
-  const quick = [1, 2, 3, 5, 10].filter((q) => q <= max);
-
-  const rows: InlineKeyboardButton[][] = [];
-  // Quick-pick rows (max 3 per row)
-  for (let i = 0; i < quick.length; i += 3) {
-    rows.push(
-      quick.slice(i, i + 3).map((q) => ({
-        text: q === 1 ? "1️⃣ 1" : q === 2 ? "2️⃣ 2" : q === 3 ? "3️⃣ 3" : q === 5 ? "5️⃣ 5" : `📦 ${q}`,
-        callback_data: cb.setQty(productId, variantId, q),
-      })),
-    );
-  }
-  if (max >= 20 && !quick.includes(20)) {
-    rows.push([{ text: "🔟 20 (max)", callback_data: cb.setQty(productId, variantId, 20) }]);
-  }
-  rows.push([
-    { text: "◀️ Ganti Varian", callback_data: cb.variants(productId) },
-    { text: "🏠 Menu", callback_data: cb.home() },
-  ]);
-  return { inline_keyboard: rows };
-}
-
-export function paymentMethodKeyboard(productId: number, variantId: number, qty: number): InlineKeyboardMarkup {
+  const { productId, variantId, stock, price } = params;
+  const stockMax = stock === -1 ? 20 : Math.max(1, Math.min(stock, 20));
+  const max = Math.max(1, Math.min(params.maxQty ?? stockMax, stockMax));
+  const qty = Math.max(1, Math.min(max, Math.floor(params.qty || 1)));
+  const minusQty = Math.max(1, qty - 1);
+  const plusQty = Math.min(max, qty + 1);
+  const total = new Intl.NumberFormat("id-ID").format(price * qty);
   return {
     inline_keyboard: [
-      [{ text: "⚡ QRIS — otomatis", callback_data: cb.payMethod(productId, variantId, qty, "qris") }],
-      [{ text: "🏦 SeaBank — manual", callback_data: cb.payMethod(productId, variantId, qty, "seabank") }],
-      [{ text: "👛 E-Wallet — manual", callback_data: cb.payMethod(productId, variantId, qty, "ewallet") }],
       [
-        { text: "◀️ Ubah Qty", callback_data: cb.qty(productId, variantId) },
+        { text: qty > 1 ? "➖ Kurangi" : "➖", callback_data: qty > 1 ? cb.setQty(productId, variantId, minusQty) : "noop" },
+        { text: `${qty} item`, callback_data: "noop" },
+        { text: qty < max ? "Tambah ➕" : "➕", callback_data: qty < max ? cb.setQty(productId, variantId, plusQty) : "noop" },
+      ],
+      [{ text: `✅ Bayar QRIS • Rp${total}`, callback_data: cb.pay(productId, variantId, qty) }],
+      [
+        { text: "◀️ Ganti Varian", callback_data: cb.variants(productId) },
         { text: "🏠 Menu", callback_data: cb.home() },
       ],
     ],
   };
 }
 
-export function askWaAfterInvoiceKeyboard(orderCode: string): InlineKeyboardMarkup {
+export function qrisInvoiceKeyboard(orderCode: string): InlineKeyboardMarkup {
   return {
     inline_keyboard: [
-      [{ text: "🔄 Cek Status", callback_data: cb.refresh(orderCode) }],
-      [{ text: "⏭️ Lewati", callback_data: cb.waSkip(orderCode) }],
+      [{ text: "❌ Batalkan Pesanan", callback_data: cb.cancel(orderCode) }],
       [{ text: "🏠 Menu Utama", callback_data: cb.home() }],
     ],
   };
@@ -271,7 +256,7 @@ export function confirmPurchaseKeyboard(productId: number): InlineKeyboardMarkup
   return {
     inline_keyboard: [
       [
-        { text: "➡️ Lanjut Pilih Jumlah", callback_data: cb.qty(productId, 0) },
+        { text: "✅ Saya Paham, Pilih Jumlah", callback_data: cb.qty(productId, 0) },
       ],
       [
         { text: "📜 Syarat Garansi", callback_data: "warranty" },
@@ -307,17 +292,36 @@ export function orderStatusKeyboard(orderCode: string): InlineKeyboardMarkup {
   };
 }
 
-export function orderPaidKeyboard(orderCode: string): InlineKeyboardMarkup {
+export function orderPaidKeyboard(orderCode: string, needsWhatsApp = false): InlineKeyboardMarkup {
+  const rows: InlineKeyboardButton[][] = [];
+  if (needsWhatsApp) {
+    rows.push([{ text: "📱 Masukkan Nomor WhatsApp", callback_data: cb.waInput(orderCode) }]);
+  }
+  rows.push([
+    { text: "💬 WhatsApp Admin", url: adminWaLink(`Halo AXVARA, saya ingin menanyakan pesanan ${orderCode}`) },
+    { text: `✈️ @${SITE.supportTelegram}`, url: supportTelegramLink() },
+  ]);
+  rows.push([{ text: "📋 Lihat Pesanan", callback_data: cb.order(orderCode) }]);
+  rows.push([
+    { text: "🛍 Katalog", callback_data: cb.catalog() },
+    { text: "🏠 Menu", callback_data: cb.home() },
+  ]);
   return {
-    inline_keyboard: [
-      [{ text: "📋 Lihat Pesanan", callback_data: cb.order(orderCode) }],
-      [{ text: `💬 Chat @${SITE.adminTelegram}`, url: adminTelegramLink() }],
-      [
-        { text: "🛍 Katalog", callback_data: cb.catalog() },
-        { text: "🏠 Menu", callback_data: cb.home() },
-      ],
-    ],
+    inline_keyboard: rows,
   };
+}
+
+export function telegramOrderAdminKeyboard(params: {
+  username?: string;
+  orderCode: string;
+  siteUrl: string;
+}): InlineKeyboardMarkup {
+  const rows: InlineKeyboardButton[][] = [];
+  if (params.username) {
+    rows.push([{ text: `✈️ @${params.username}`, url: `https://t.me/${params.username}` }]);
+  }
+  rows.push([{ text: "🔧 Buka Pesanan", url: `${params.siteUrl}/admin?section=orders&q=${encodeURIComponent(params.orderCode)}` }]);
+  return { inline_keyboard: rows };
 }
 
 // ---- Helpers ----

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { OrderTransitionError, queryFirst, transitionPendingOrder } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
+import { ensureFulfillmentForPaidOrder } from "@/lib/fulfillment/deliver";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -57,6 +58,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     }
     console.error("PATCH /api/admin/orders transition failed:", error);
     return NextResponse.json({ error: "Status pesanan gagal diperbarui." }, { status: 500 });
+  }
+
+  if (nxt === "lunas") {
+    try {
+      await ensureFulfillmentForPaidOrder(code);
+    } catch { /* Paid state is durable; cron retries notification/fulfillment. */ }
   }
 
   return NextResponse.json({ ok: true, code, status: nxt });

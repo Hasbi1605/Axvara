@@ -3,29 +3,29 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { queryFirst, queryAll, execRun, isD1Mode, getD1, D1Statement, transitionPendingOrder } from "@/lib/db";
+import { queryFirst, queryAll, execRun, isD1Mode, transitionPendingOrder } from "@/lib/db";
 import { sendMessage, sendPhoto, safeEditOrSend, answerCallbackQuery, sendChatAction, showLoadingBar } from "@/lib/telegram/api";
 import {
   homeKeyboard, catalogFlatKeyboard, categoriesKeyboard, productsKeyboard,
   productDetailKeyboard, warrantyKeyboard,
   orderStatusKeyboard, variantsKeyboard, confirmVariantPurchaseKeyboard,
-  qtyKeyboard, paymentMethodKeyboard, askWaAfterInvoiceKeyboard, parseCallback,
+  qtyKeyboard, qrisInvoiceKeyboard, orderPaidKeyboard, parseCallback,
 } from "@/lib/telegram/keyboards";
 import {
   welcomeMessage, catalogFlatMessage, categoriesMessage, categoryProductsMessage,
   productDetailMessage, helpMessage, warrantyFullMessage,
   outOfStockMessage, alreadyPendingMessage, errorMessage,
   myOrdersPrompt, orderStatusMessage, invoiceMessage,
-  orderCancelledMessage, askWhatsAppMessage, invalidWhatsAppMessage, waSavedAfterInvoiceMessage,
-  chooseVariantMessage, chooseQtyMessage, paymentMethodMessage, manualTransferMessage,
+  orderCancelledMessage, invalidWhatsAppMessage, waSavedAfterPaymentMessage,
+  whatsAppInputPromptMessage, chooseVariantMessage, chooseQtyMessage,
   confirmVariantBuyMessage,
 } from "@/lib/telegram/messages";
 import { getProductDetail, getActiveVariant, formatDuration, formatWarranty, type VariantSummary } from "@/lib/catalog";
 import { generateOrderCode } from "@/lib/security";
 import { createDanaQrisInvoice, isDanaQrisConfigured } from "@/lib/payments/dana-qris";
-import { getActivePaymentMethods } from "@/lib/commerce";
 import { reserveInventory, releaseInventoryForOrder, countInventory } from "@/lib/fulfillment/inventory";
 import { createFulfillmentJob } from "@/lib/fulfillment/deliver";
+import { notifyTelegramOrderCreated } from "@/lib/telegram/order-notifications";
 
 export const runtime = "edge";
 
@@ -335,19 +335,20 @@ async function handleCallback(data: string, chatId: number, messageId: number, f
       break;
 
     case "q":
-      await handleShowPaymentMethods(chatId, messageId, Number(params[0]), Number(params[1]), Number(params[2]));
+      await handleShowQty(chatId, messageId, Number(params[0]), Number(params[1]), Number(params[2]));
       break;
 
     case "pay":
-      await handleShowPaymentMethods(chatId, messageId, Number(params[0]), Number(params[1]), Number(params[2]));
+      await handlePayWithQris(chatId, messageId, Number(params[0]), Number(params[1]), Number(params[2]), from);
       break;
 
     case "pm":
-      await handlePayWithMethod(chatId, messageId, Number(params[0]), Number(params[1]), Number(params[2]), String(params[3] || "qris"), from);
+      // Compatibility for buttons from older messages: Telegram now always uses QRIS.
+      await handlePayWithQris(chatId, messageId, Number(params[0]), Number(params[1]), Number(params[2]), from);
       break;
 
-    case "waskip":
-      await handleWaSkip(chatId, messageId, String(params[0] || ""), from);
+    case "wainput":
+      await handleWaInput(chatId, String(params[0] || ""), from);
       break;
 
     case "cfv":
@@ -609,42 +610,26 @@ async function handleVariantConfirm(chatId: number, messageId: number, variantId
       duration: formatDuration(variant) || null,
       warranty: formatWarranty(variant) || null,
       price: variant.price,
-      qty: 1,
     }),
     parse_mode: "HTML",
     reply_markup: confirmVariantPurchaseKeyboard(productId, variantId),
   });
 }
 
-// --- Qty + payment-method flow (bulk order support, WA parity) ---
+// --- Clear qty stepper followed directly by dynamic QRIS ---
 
 function clampQty(raw: number): number {
   if (!Number.isFinite(raw)) return 1;
   return Math.max(1, Math.min(20, Math.floor(raw)));
 }
 
-// One-shot read of a WA number left by a legacy pre-invoice step.
-async function consumeWaPrefill(userId: number): Promise<string> {
-  if (!isD1Mode()) return "";
-  try {
-    const user = await queryFirst(
-      `SELECT pending_action FROM telegram_users WHERE user_id=?`,
-      String(userId),
-    );
-    const action = user?.pending_action ? String(user.pending_action) : "";
-    if (!action.startsWith("wa_prefill:")) return "";
-    const wa = action.slice("wa_prefill:".length);
-    await execRun(
-      `UPDATE telegram_users SET pending_action=NULL, updated_at=datetime('now') WHERE user_id=?`,
-      String(userId),
-    ).catch(() => {});
-    return /^(\+62|62|0)8\d{8,13}$/.test(wa) || /^62\d{8,14}$/.test(wa) ? wa : "";
-  } catch {
-    return "";
-  }
-}
-
-async function handleShowQty(chatId: number, messageId: number, productId: number, variantId: number) {
+async function handleShowQty(
+  chatId: number,
+  messageId: number,
+  productId: number,
+  variantId: number,
+  requestedQty = 1,
+) {
   const variant = await getActiveVariant(variantId);
   if (!variant || variant.product_id !== productId) {
     await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
@@ -656,6 +641,9 @@ async function handleShowQty(chatId: number, messageId: number, productId: numbe
   }
   const product = await queryFirst(`SELECT id, name FROM products WHERE id=?`, productId);
   const productName = product ? String(product.name) : "Produk";
+  const stockMax = variant.stock === -1 ? 20 : Math.max(1, Math.min(variant.stock, 20));
+  const maxQty = variant.fulfillment_mode === "unique" ? 1 : stockMax;
+  const qty = Math.min(clampQty(requestedQty), maxQty);
 
   // Remember qty context so a typed number (1-20) works without buttons.
   if (isD1Mode()) {
@@ -674,43 +662,11 @@ async function handleShowQty(chatId: number, messageId: number, productId: numbe
       variantLabel: variant.label,
       price: variant.price,
       stock: variant.stock,
-    }),
-    parse_mode: "HTML",
-    reply_markup: qtyKeyboard({ productId, variantId, stock: variant.stock }),
-  });
-}
-
-async function handleShowPaymentMethods(
-  chatId: number,
-  messageId: number,
-  productId: number,
-  variantId: number,
-  rawQty: number,
-) {
-  const variant = await getActiveVariant(variantId);
-  if (!variant || variant.product_id !== productId) {
-    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
-    return;
-  }
-  const qty = clampQty(rawQty);
-  if (variant.stock !== -1 && variant.stock < qty) {
-    await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
-    return;
-  }
-  const product = await queryFirst(`SELECT id, name FROM products WHERE id=?`, productId);
-  const productName = product ? String(product.name) : "Produk";
-
-  await safeEditOrSend({
-    chat_id: chatId,
-    message_id: messageId,
-    text: paymentMethodMessage({
-      productName,
-      variantLabel: variant.label,
       qty,
-      total: variant.price * qty,
+      maxQty,
     }),
     parse_mode: "HTML",
-    reply_markup: paymentMethodKeyboard(productId, variantId, qty),
+    reply_markup: qtyKeyboard({ productId, variantId, stock: variant.stock, qty, price: variant.price, maxQty }),
   });
 }
 
@@ -730,30 +686,43 @@ async function handlePendingQtyInput(
   const productId = Number(productIdRaw);
   const variantId = Number(variantIdRaw);
   if (!productId || !variantId) return false;
-  const qty = clampQty(Number(text.trim()));
+  const typedQty = Number(text.trim());
+  if (!Number.isInteger(typedQty) || typedQty < 1 || typedQty > 20) {
+    await sendMessage({
+      chat_id: chatId,
+      text: "❌ Jumlah tidak valid. Ketik angka 1–20, misalnya <code>5</code>.",
+      parse_mode: "HTML",
+    });
+    return true;
+  }
+  const qty = clampQty(typedQty);
   await execRun(
     `UPDATE telegram_users SET pending_action=NULL, updated_at=datetime('now') WHERE user_id=?`,
     String(from.id),
   ).catch(() => {});
-  await handleShowPaymentMethods(chatId, 0, productId, variantId, qty);
+  await handleShowQty(chatId, 0, productId, variantId, qty);
   return true;
 }
 
-type TelegramPayMethod = "qris" | "seabank" | "ewallet";
-
-async function handlePayWithMethod(
+async function handlePayWithQris(
   chatId: number,
   messageId: number,
   productId: number,
   variantId: number,
   rawQty: number,
-  rawMethod: string,
   from: { id: number; first_name: string; username?: string },
 ) {
-  const method: TelegramPayMethod = rawMethod === "seabank" ? "seabank" : rawMethod === "ewallet" ? "ewallet" : "qris";
-
   await sendChatAction(chatId, "typing");
   await clearPendingAction(from);
+
+  if (!isDanaQrisConfigured()) {
+    await sendMessage({
+      chat_id: chatId,
+      text: "⚠️ QRIS dinamis sedang tidak tersedia. Coba lagi sebentar atau hubungi admin.",
+      parse_mode: "HTML",
+    });
+    return;
+  }
 
   const variant = await getActiveVariant(variantId);
   if (!variant || variant.product_id !== productId) {
@@ -761,6 +730,10 @@ async function handlePayWithMethod(
     return;
   }
   const qty = clampQty(rawQty);
+  if (variant.fulfillment_mode === "unique" && qty > 1) {
+    await handleShowQty(chatId, messageId, productId, variantId, 1);
+    return;
+  }
   if (variant.stock === 0 || (variant.stock !== -1 && variant.stock < qty)) {
     await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
     return;
@@ -788,19 +761,7 @@ async function handlePayWithMethod(
     return;
   }
 
-  // Best-effort: pick up a WA number the user gave in a legacy pre-invoice step.
-  const prefillWa = await consumeWaPrefill(from.id);
-
-  if (method === "qris") {
-    if (!isDanaQrisConfigured()) {
-      await sendMessage({ chat_id: chatId, text: "⚠️ Pembayaran QRIS belum aktif. Pilih SeaBank / E-Wallet atau hubungi admin.", parse_mode: "HTML" });
-      return;
-    }
-    await createAndSendVariantInvoice(chatId, messageId, productId, String(product.name), variant, from, prefillWa, qty, "qris");
-    return;
-  }
-
-  await createManualTransferOrder(chatId, productId, String(product.name), variant, from, qty, method, prefillWa);
+  await createAndSendVariantInvoice(chatId, messageId, productId, String(product.name), variant, from, qty);
 }
 
 async function createAndSendVariantInvoice(
@@ -810,9 +771,7 @@ async function createAndSendVariantInvoice(
   productName: string,
   variant: VariantSummary,
   from: { id: number; first_name: string; username?: string },
-  customerWa: string,
   rawQty = 1,
-  method: TelegramPayMethod = "qris",
 ) {
   const qty = clampQty(rawQty);
   const price = Number(variant.price);
@@ -894,8 +853,8 @@ async function createAndSendVariantInvoice(
          telegram_chat_id, telegram_user_id, payment_status, fulfillment_status,
          variant_id, variant_snapshot, expires_at)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      orderCode, from.first_name, customerWa, null, JSON.stringify(items),
-      subtotal, method === "qris" ? "qris" : method, method === "qris" ? "DANA Business" : "",
+      orderCode, from.first_name, "", null, JSON.stringify(items),
+      subtotal, "qris", "DANA Business",
       null, "pending", "telegram",
       String(chatId), String(from.id), "pending",
       uniqueFulfillment ? "reserved" : "not_required",
@@ -905,7 +864,10 @@ async function createAndSendVariantInvoice(
 
     const invoiceResult = await createDanaQrisInvoice(orderCode, subtotal);
 
-    await createFulfillmentJob(orderCode, inventoryId, fulfillmentMode, variant.id, "telegram");
+    // Payment remains usable if the fulfillment outbox insert is temporarily
+    // unavailable; ensureFulfillmentForPaidOrder recreates it after payment.
+    await createFulfillmentJob(orderCode, inventoryId, fulfillmentMode, variant.id, "telegram").catch(() => null);
+    await notifyTelegramOrderCreated(orderCode).catch(() => false);
 
     const displayName = qty > 1 ? `${productName} — ${variant.label} ×${qty}` : `${productName} — ${variant.label}`;
     await sendPhoto({
@@ -919,13 +881,8 @@ async function createAndSendVariantInvoice(
         paymentMethod: "qris",
       }),
       parse_mode: "HTML",
-      reply_markup: orderStatusKeyboard(orderCode),
+      reply_markup: qrisInvoiceKeyboard(orderCode),
     });
-
-    // WA number AFTER invoice/payment (manual fulfillment only) — never a gate.
-    if (fulfillmentMode === "manual") {
-      await askWaAfterInvoice(chatId, orderCode, displayName, from);
-    }
   } catch (error) {
     console.error("Variant order creation failed:", error instanceof Error ? error.message : "unknown");
     try {
@@ -950,249 +907,6 @@ async function createAndSendVariantInvoice(
     } catch { /* Cron/admin reconciliation can handle any remaining reservation. */ }
     await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
   }
-}
-
-// Manual rails (SeaBank / E-Wallet): create pending order with atomic stock
-// reservation, send transfer details immediately, ask WA after invoice.
-async function createManualTransferOrder(
-  chatId: number,
-  productId: number,
-  productName: string,
-  variant: VariantSummary,
-  from: { id: number; first_name: string; username?: string },
-  rawQty: number,
-  method: "seabank" | "ewallet",
-  prefillWa = "",
-) {
-  const qty = clampQty(rawQty);
-  const price = Number(variant.price);
-  const subtotal = price * qty;
-  const fulfillmentMode = String(variant.fulfillment_mode || "manual");
-
-  // Bulk qty on unique fulfillment is not deliverable — steer to manual/admin.
-  if (fulfillmentMode === "unique" && qty > 1) {
-    await sendMessage({
-      chat_id: chatId,
-      text: [
-        "⚠️ <b>Stok Unik Maksimal 1</b>",
-        "━━━━━━━━━━━━━━━━━━━━━",
-        "",
-        "Varian ini memakai stok unik (1 secret = 1 order).",
-        "Kurangi qty ke 1, atau chat admin untuk bulk order.",
-      ].join("\n"),
-      parse_mode: "HTML",
-    });
-    return;
-  }
-
-  const methods = await getActivePaymentMethods();
-  const rail = method === "seabank" ? methods.seabank : methods.ewallet;
-  if (!rail?.account) {
-    await sendMessage({
-      chat_id: chatId,
-      text: "⚠️ Metode pembayaran ini belum lengkap. Pilih metode lain atau hubungi admin.",
-      parse_mode: "HTML",
-    });
-    return;
-  }
-
-  const paymentMethod = method === "seabank" ? "bank:seabank" : "ewallet";
-  const orderCode = generateOrderCode();
-  const items = [{
-    product_id: productId,
-    variant_id: variant.id,
-    name: `${productName} — ${variant.label}`,
-    variant_label: variant.label,
-    price,
-    qty,
-  }];
-  const variantSnapshot = JSON.stringify({
-    product_name: productName,
-    variant_id: variant.id,
-    sku: variant.sku,
-    label: variant.label,
-    duration_value: variant.duration_value,
-    duration_unit: variant.duration_unit,
-    duration_label: formatDuration(variant),
-    warranty_type: variant.warranty_type,
-    warranty_value: variant.warranty_value,
-    warranty_unit: variant.warranty_unit,
-    warranty_label: formatWarranty(variant),
-    price,
-    qty,
-    fulfillment_mode: fulfillmentMode,
-  });
-
-  const d1 = getD1();
-  if (!d1) {
-    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
-    return;
-  }
-
-  const guardId = `tg:manual:${orderCode}:${variant.id}`;
-  const needsUniqueInventory = fulfillmentMode === "unique";
-  try {
-    const statements: D1Statement[] = [
-      d1.prepare(
-        `INSERT INTO operation_guards (operation_id, valid)
-         SELECT ?, CASE WHEN EXISTS(
-           SELECT 1 FROM product_variants
-           WHERE id=? AND is_active=1 AND (stock=-1 OR stock>=?)
-         ) AND (
-           ? != 'unique' OR EXISTS(
-             SELECT 1 FROM fulfillment_inventory
-             WHERE product_id=? AND status='available' AND (variant_id=? OR variant_id IS NULL)
-           )
-         ) THEN 1 ELSE 0 END`,
-      ).bind(guardId, variant.id, qty, fulfillmentMode, productId, variant.id),
-      d1.prepare(
-        `UPDATE product_variants
-         SET stock = CASE WHEN stock=-1 THEN -1 ELSE stock-? END,
-             updated_at = datetime('now')
-         WHERE id=?`,
-      ).bind(qty, variant.id),
-    ];
-    if (needsUniqueInventory) {
-      statements.push(
-        d1.prepare(
-          `UPDATE fulfillment_inventory
-           SET status='reserved', order_code=?, reserved_at=datetime('now')
-           WHERE id=(
-             SELECT id FROM fulfillment_inventory
-             WHERE product_id=? AND status='available' AND (variant_id=? OR variant_id IS NULL)
-             ORDER BY CASE WHEN variant_id=? THEN 0 ELSE 1 END, id ASC
-             LIMIT 1
-           ) AND status='available'`,
-        ).bind(orderCode, productId, variant.id, variant.id),
-      );
-    }
-    const orderInsertIndex = statements.length;
-    statements.push(
-      d1.prepare(
-        `INSERT INTO orders (
-           code, customer_name, customer_wa, customer_email, items, subtotal,
-           payment_method, payment_account, proof_url, status, sales_channel,
-           channel_conversation_id, channel_member_id, telegram_chat_id, telegram_user_id,
-           payment_status, fulfillment_status, variant_id, variant_snapshot,
-           quote_id, expires_at
-         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now','+24 hours'))`,
-      ).bind(
-        orderCode, from.first_name, "", null, JSON.stringify(items), subtotal,
-        paymentMethod, rail.account, null, "pending", "telegram",
-        String(chatId), String(from.id), String(chatId), String(from.id),
-        "pending", needsUniqueInventory ? "reserved" : "not_required",
-        variant.id, variantSnapshot, `tg:manual:${orderCode}`,
-      ),
-      d1.prepare(`DELETE FROM operation_guards WHERE operation_id=?`).bind(guardId),
-    );
-    const results = await d1.batch(statements);
-    const inserted = results[orderInsertIndex]?.meta?.last_row_id ?? 0;
-    if (!inserted) throw new Error("manual_order_insert_failed");
-
-    // Attach a prefilled WA number if the user gave one in a legacy step.
-    if (prefillWa) {
-      await execRun(
-        `UPDATE orders SET customer_wa=? WHERE code=?`,
-        prefillWa, orderCode,
-      ).catch(() => {});
-    }
-
-    const reserved = needsUniqueInventory
-      ? await queryFirst(`SELECT id FROM fulfillment_inventory WHERE order_code=? AND status='reserved'`, orderCode)
-      : null;
-    await createFulfillmentJob(
-      orderCode,
-      reserved ? Number(reserved.id) : null,
-      fulfillmentMode,
-      variant.id,
-      "telegram",
-    );
-
-    const displayName = qty > 1 ? `${productName} — ${variant.label} ×${qty}` : `${productName} — ${variant.label}`;
-    await sendMessage({
-      chat_id: chatId,
-      text: manualTransferMessage({
-        orderCode,
-        productName: displayName,
-        total: subtotal,
-        method,
-        account: rail.account,
-        accountName: rail.name,
-      }),
-      parse_mode: "HTML",
-      reply_markup: orderStatusKeyboard(orderCode),
-    });
-
-    // WA number after invoice — manual fulfillment ships via admin.
-    // Skip the ask when the number is already known (prefill).
-    if (fulfillmentMode === "manual" && !prefillWa) {
-      await askWaAfterInvoice(chatId, orderCode, displayName, from);
-    }
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    if (/operation_guards|CHECK constraint/i.test(msg)) {
-      await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
-      return;
-    }
-    if (/UNIQUE/i.test(msg)) {
-      const winner = await queryFirst(`SELECT code FROM orders WHERE quote_id=?`, `tg:manual:${orderCode}`);
-      if (winner) {
-        await handleOrderStatus(chatId, String(winner.code));
-        return;
-      }
-    }
-    console.error("Manual transfer order failed:", msg);
-    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
-  }
-}
-
-async function askWaAfterInvoice(
-  chatId: number,
-  orderCode: string,
-  displayName: string,
-  from: { id: number; first_name: string; username?: string },
-) {
-  // WA number AFTER invoice/payment (manual fulfillment only) — never a gate.
-  // Guard: don't re-ask if already requested for this order/user.
-  if (isD1Mode()) {
-    const existing = await queryFirst(
-      `SELECT pending_action FROM telegram_users WHERE user_id=?`,
-      String(from.id),
-    ).catch(() => null);
-    if (existing?.pending_action === `wa_after:${orderCode}`) return;
-    await execRun(
-      `UPDATE telegram_users SET pending_action=?, updated_at=datetime('now') WHERE user_id=?`,
-      `wa_after:${orderCode}`, String(from.id),
-    ).catch(() => {});
-  }
-  await sendMessage({
-    chat_id: chatId,
-    text: askWhatsAppMessage(displayName),
-    parse_mode: "HTML",
-    reply_markup: askWaAfterInvoiceKeyboard(orderCode),
-  });
-}
-
-async function handleWaSkip(chatId: number, messageId: number, orderCode: string, from: { id: number }) {
-  if (isD1Mode() && orderCode) {
-    await execRun(
-      `UPDATE telegram_users SET pending_action=NULL, updated_at=datetime('now')
-       WHERE user_id=? AND pending_action=?`,
-      String(from.id), `wa_after:${orderCode}`,
-    ).catch(() => {});
-  }
-  await safeEditOrSend({
-    chat_id: chatId, message_id: messageId,
-    text: [
-      "👍 <b>Siap!</b>",
-      "━━━━━━━━━━━━━━━━━━━━━",
-      "",
-      "Lanjut ke pembayaran dulu — nomor WA bisa dilengkapi nanti saat admin menghubungimu.",
-      "Pantau status pesananmu di bawah 👇",
-    ].join("\n"),
-    parse_mode: "HTML",
-    reply_markup: orderCode ? orderStatusKeyboard(orderCode) : undefined,
-  });
 }
 
 async function handleBuyConfirm(chatId: number, messageId: number, productId: number) {
@@ -1286,10 +1000,7 @@ async function handlePendingWaInput(
   if (!user?.pending_action) return false;
 
   const action = String(user.pending_action);
-  const isAfter = action.startsWith("wa_after:");
-  const isVar = action.startsWith("wa_for_var:");
-  const isLegacy = action.startsWith("wa_for:");
-  if (!isAfter && !isLegacy && !isVar) return false;
+  if (!action.startsWith("wa_after_paid:")) return false;
 
   // Validate WA number
   const wa = text.trim().replace(/\s|-/g, "");
@@ -1303,90 +1014,71 @@ async function handlePendingWaInput(
   if (normalizedWa.startsWith("+62")) normalizedWa = normalizedWa.slice(1);
   else if (normalizedWa.startsWith("0")) normalizedWa = "62" + normalizedWa.slice(1);
 
-  // WA-after-invoice: patch the order row, never create a new invoice.
-  if (isAfter) {
-    const orderCode = action.slice("wa_after:".length).toUpperCase();
-    await execRun(
-      `UPDATE telegram_users SET pending_action=NULL, updated_at=datetime('now') WHERE user_id=?`,
-      String(from.id),
-    ).catch(() => {});
-    if (orderCode) {
-      await execRun(
-        `UPDATE orders SET customer_wa=?, updated_at=datetime('now')
-         WHERE code=? AND telegram_user_id=? AND status='pending'`,
-        normalizedWa, orderCode, String(from.id),
-      ).catch(() => {});
-      await sendMessage({
-        chat_id: chatId,
-        text: waSavedAfterInvoiceMessage(orderCode),
-        parse_mode: "HTML",
-        reply_markup: orderStatusKeyboard(orderCode),
-      });
-    } else {
-      await sendMessage({
-        chat_id: chatId,
-        text: `✅ WA <code>${normalizedWa}</code> tersimpan.`,
-        parse_mode: "HTML",
-      });
-    }
-    return true;
-  }
-
-  // Legacy pre-invoice WA gates (kept for in-flight users): create invoice, then
-  // WA is already known so no post-invoice ask is needed.
-  const targetId = Number(action.split(":")[1]);
-  if (!targetId) return false;
-
-  // Clear pending action
-  await execRun(
-    `UPDATE telegram_users SET pending_action=NULL, updated_at=datetime('now') WHERE user_id=?`,
+  const orderCode = action.slice("wa_after_paid:".length).toUpperCase();
+  const saved = await execRun(
+    `UPDATE orders SET customer_wa=?, updated_at=datetime('now')
+     WHERE code=? AND telegram_user_id=? AND sales_channel='telegram'
+       AND status='lunas' AND payment_status='paid'`,
+    normalizedWa,
+    orderCode,
     String(from.id),
   );
-
-  if (isVar) {
-    const variant = await getActiveVariant(targetId);
-    if (!variant) {
-      await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
-      return true;
-    }
-    const product = await queryFirst(`SELECT id, name FROM products WHERE id=?`, variant.product_id);
-    if (!product) {
-      await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
-      return true;
-    }
-    await sendMessage({ chat_id: chatId, text: `✅ WA <code>${normalizedWa}</code> tersimpan. Membuat invoice...`, parse_mode: "HTML" });
-    await handleShowQty(chatId, 0, Number(product.id), variant.id);
-    // Stash the known WA so the next invoice creation picks it up via the
-    // wa_prefill marker (best-effort; order itself still created post-choice).
-    await execRun(
-      `UPDATE telegram_users SET pending_action=?, updated_at=datetime('now') WHERE user_id=?`,
-      `wa_prefill:${normalizedWa}`, String(from.id),
-    ).catch(() => {});
-    return true;
-  }
-
-  const productId = targetId;
-
-  // Use variant flow for stock sync — get product detail from catalog.ts
-  const detail = await getProductDetail(productId);
-  if (!detail || detail.variants.length === 0) {
+  if (!saved.changes) {
     await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
     return true;
   }
+  await execRun(
+    `UPDATE telegram_users SET pending_action=NULL, updated_at=datetime('now')
+     WHERE user_id=? AND pending_action=?`,
+    String(from.id),
+    action,
+  );
+  await sendMessage({
+    chat_id: chatId,
+    text: waSavedAfterPaymentMessage(orderCode),
+    parse_mode: "HTML",
+    reply_markup: orderPaidKeyboard(orderCode, false),
+  });
+  return true;
+}
 
-  // Pick first available variant
-  const availableVariant = detail.variants.find(v => v.is_active && v.stock !== 0);
-  if (!availableVariant) {
-    await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
-    return true;
+async function handleWaInput(
+  chatId: number,
+  orderCode: string,
+  from: { id: number },
+) {
+  const normalizedCode = orderCode.toUpperCase();
+  const order = await queryFirst(
+    `SELECT customer_wa FROM orders
+     WHERE code=? AND telegram_user_id=? AND sales_channel='telegram'
+       AND status='lunas' AND payment_status='paid'`,
+    normalizedCode,
+    String(from.id),
+  );
+  if (!order) {
+    await sendMessage({ chat_id: chatId, text: "❌ Pesanan lunas tidak ditemukan.", parse_mode: "HTML" });
+    return;
   }
-
-  await handleShowQty(chatId, 0, productId, availableVariant.id);
+  if (String(order.customer_wa || "").trim()) {
+    await sendMessage({
+      chat_id: chatId,
+      text: waSavedAfterPaymentMessage(normalizedCode),
+      parse_mode: "HTML",
+      reply_markup: orderPaidKeyboard(normalizedCode, false),
+    });
+    return;
+  }
   await execRun(
     `UPDATE telegram_users SET pending_action=?, updated_at=datetime('now') WHERE user_id=?`,
-    `wa_prefill:${normalizedWa}`, String(from.id),
-  ).catch(() => {});
-  return true;
+    `wa_after_paid:${normalizedCode}`,
+    String(from.id),
+  );
+  await sendMessage({
+    chat_id: chatId,
+    text: whatsAppInputPromptMessage(normalizedCode),
+    parse_mode: "HTML",
+    reply_markup: orderPaidKeyboard(normalizedCode, true),
+  });
 }
 
 // ponytail: legacy createAndSendInvoice removed — all orders now go through

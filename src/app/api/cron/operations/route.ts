@@ -20,6 +20,7 @@ import {
 } from "@/lib/fulfillment/deliver";
 import { sendMessage } from "@/lib/telegram/api";
 import { orderExpiredMessage } from "@/lib/telegram/messages";
+import { retryPendingTelegramNotifications } from "@/lib/telegram/order-notifications";
 
 export const runtime = "edge";
 
@@ -39,6 +40,8 @@ export async function POST(request: NextRequest) {
     due_jobs_processed: 0,
     stale_locks_released: 0,
     expired_manual_whatsapp_orders: 0,
+    telegram_order_notifications_retried: 0,
+    telegram_paid_notifications_retried: 0,
     whatsapp_rows_cleaned: 0,
   };
 
@@ -130,7 +133,13 @@ export async function POST(request: NextRequest) {
     }
     results.expired_manual_whatsapp_orders = expiredStaticCount;
 
-    // 3. Process due fulfillment jobs
+    // 3. Retry Telegram order-created and payment-success notifications even
+    // when automatic credential fulfillment is disabled.
+    const telegramNotifications = await retryPendingTelegramNotifications(BATCH_LIMIT);
+    results.telegram_order_notifications_retried = telegramNotifications.created;
+    results.telegram_paid_notifications_retried = telegramNotifications.paid;
+
+    // 4. Process due fulfillment jobs
     if (process.env.AUTO_FULFILLMENT_ENABLED === "true") {
       const dueJobs = await getDueJobs(BATCH_LIMIT);
       for (const job of dueJobs) {
@@ -147,7 +156,7 @@ export async function POST(request: NextRequest) {
       results.due_jobs_processed = dueJobs.length;
     }
 
-    // 4. Release stale job locks
+    // 5. Release stale job locks
     results.stale_locks_released = await releaseStaleJobs();
 
     // 6. Keep transient WhatsApp state bounded. Proof metadata and orders are
