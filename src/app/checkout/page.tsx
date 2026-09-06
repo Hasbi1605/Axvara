@@ -107,7 +107,6 @@ function CheckoutInner() {
   const [priceChanges, setPriceChanges] = useState<PriceChange[]>([]);
   const [showIssueDialog, setShowIssueDialog] = useState(false);
   const [quoteToken, setQuoteToken] = useState<string | null>(null);
-  const [quoteExpiresAt, setQuoteExpiresAt] = useState<string | null>(null);
   const [quoteAccepted, setQuoteAccepted] = useState(false);
   const quoteRequestId = React.useRef(0);
 
@@ -120,7 +119,6 @@ function CheckoutInner() {
     setPriceChanges([]);
     setShowIssueDialog(false);
     setQuoteToken(null);
-    setQuoteExpiresAt(null);
     setQuoteAccepted(false);
     setProofUrl(null);
     setFileName(null);
@@ -146,7 +144,6 @@ function CheckoutInner() {
       setQuotedSubtotal(j.subtotal ?? 0);
       setQuotedPaymentMethods(j.paymentMethods ?? []);
       setQuoteToken(j.quoteToken ?? null);
-      setQuoteExpiresAt(j.quoteExpiresAt ?? null);
       setPriceChanges(changes);
       if (changes.length > 0) {
         setShowIssueDialog(true);
@@ -400,7 +397,7 @@ function CheckoutInner() {
                     </span>
                     <div>
                       <p className="text-sm font-semibold text-white">QRIS dinamis dibuat setelah pesanan</p>
-                      <p className="mt-1 text-xs leading-5 text-white/50">Nominal unik sudah tertanam di QR. Setelah dibayar, QRIS Hook DANA mengubah status menjadi lunas otomatis—tanpa upload bukti.</p>
+                      <p className="mt-1 text-xs leading-5 text-white/50">QR sudah termasuk nominal pembayaran. Setelah dibayar, status otomatis menjadi lunas—tanpa upload bukti.</p>
                     </div>
                   </div>
                 )}
@@ -453,15 +450,12 @@ function CheckoutInner() {
             )}
               </>
             )}
-            {quoteToken && quoteExpiresAt && (
-              <p className="mt-3 text-[11px] text-emerald-300/70">Harga dan rekening dikunci selama 60 menit untuk pesanan ini.</p>
-            )}
           </div>
 
           {method === "qris" ? (
             <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.06] p-4">
               <h2 className="text-sm font-semibold text-emerald-300">③ Verifikasi Otomatis</h2>
-              <p className="mt-1 text-xs leading-5 text-white/50">QRIS dan total bayar akan muncul di halaman pesanan. Biarkan halaman terbuka; status diperbarui otomatis setelah notifikasi DANA diterima.</p>
+              <p className="mt-1 text-xs leading-5 text-white/50">QRIS dan total bayar akan muncul di halaman pesanan. Biarkan halaman terbuka; status diperbarui otomatis setelah pembayaran diterima.</p>
             </div>
           ) : (
           <div>
