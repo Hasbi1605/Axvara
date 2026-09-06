@@ -222,7 +222,8 @@ idempotent dan hanya nominal persis dari invoice aktif yang dapat melunasi order
 
 Setup aplikasi QRIS Hook: aktifkan Notification Access dan **QRIS Hook Active**, pilih merchant
 **DANA**, pastikan **Debug Mode mati**, isi Webhook URL `https://axvara.tech/api/webhook/dana`,
-lalu isi Secret dengan nilai yang sama persis seperti Pages Secret `DANA_WEBHOOK_SECRET`.
+lalu isi Secret dengan nilai rahasia yang tersimpan sebagai Pages Secret `DANA_WEBHOOK_SECRET`.
+Jangan masukkan teks `DANA_WEBHOOK_SECRET` karena itu nama variabel, bukan nilai secret.
 Event lama dapat dikirim ulang lewat **Retry pending**; respons HTTP 2xx akan berstatus **Sent**.
 URL dan status konfigurasi tanpa nilai secret juga tersedia di admin **Metode & Rekonsiliasi →
 QRIS & Rekonsiliasi**.

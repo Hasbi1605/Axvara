@@ -4,6 +4,7 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-06 — Perjelas setup QRIS Hook memakai nilai secret sebenarnya (bukan nama variabel), tampilkan URL/header di rekonsiliasi, dan rotasi webhook secret produksi setelah reproduksi HTTP 401 — QRIS Hook admin UI/API, README/docs, Cloudflare Pages Secret — (verifikasi: vitest 194/194, tsc/lint pass, build:pages 56 routes, Obscura setup/url/header/warning/copy=true, literal nama secret 401 dan nilai baru 200 unmatched)
 - 2026-09-06 — Perbaiki bug QuickVariantModal tumpang tindih di kartu katalog: render via React Portal ke document.body agar fixed positioning tidak terjebak parent transform/overflow — src/components/storefront/QuickVariantModal.tsx — (verifikasi: vitest 193/193 pass, npm run lint pass)
 - 2026-09-06 — Pasang Mobile Bottom Navigation Bar (Beranda, Artikel, Cara Order, Chat WA) bergaya Liquid Glass dengan ikon iOS 11 Icons8 resmi — src/components/storefront/MobileBottomNav.tsx, src/components/ui/IosIcon.tsx, src/app/layout.tsx, src/components/storefront/Footer.tsx — (verifikasi: vitest 193/193 pass, npm run lint pass, Obscura hasBottomNav=true)
 - 2026-09-06 — Pindahkan deskripsi produk ke bawah galeri foto di desktop (whitespace-pre-line) dan buat accordion deskripsi serta floating sticky action bar di mobile ala Shopee — src/app/produk/[slug]/page.tsx — (verifikasi: vitest 193/193 pass, npm run lint pass, build:pages pass 56 edge routes)

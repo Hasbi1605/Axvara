@@ -52,13 +52,14 @@ export function PaymentReconciliation() {
     <div className="grid gap-3 sm:grid-cols-3"><HealthCard title="QRIS dinamis" value={healthOk ? "Siap" : "Belum lengkap"} ok={healthOk} /><HealthCard title="Event terakhir" value={data.last_event_at ? formatDate(data.last_event_at) : "Belum ada"} ok={Boolean(data.last_event_at)} /><HealthCard title="Perlu dicek" value={String(attention)} ok={attention === 0} /></div>
     {data.health && <section className="rounded-[20px] border border-[#00E5FF]/20 bg-[#00E5FF]/[0.05] p-4 sm:p-5">
       <div className="flex flex-wrap items-start gap-3">
-        <div className="min-w-0 flex-1"><h3 className="text-sm font-semibold text-white">Setup aplikasi QRIS Hook</h3><p className="mt-1 text-xs leading-5 text-white/50">Aktifkan Notification Access, pilih merchant DANA, matikan Debug Mode, lalu isi URL dan secret yang sama dengan Pages Secret <span className="font-mono text-white/70">DANA_WEBHOOK_SECRET</span>.</p></div>
+        <div className="min-w-0 flex-1"><h3 className="text-sm font-semibold text-white">Setup aplikasi QRIS Hook</h3><p className="mt-1 text-xs leading-5 text-white/50">Aktifkan Notification Access, pilih merchant DANA, matikan Debug Mode, lalu isi URL dan <strong className="text-white/70">nilai rahasia sebenarnya</strong> yang tersimpan sebagai Pages Secret <span className="font-mono text-white/70">DANA_WEBHOOK_SECRET</span>.</p></div>
         <button type="button" onClick={() => void copyWebhookUrl()} className="h-9 rounded-xl bg-[#00E5FF] px-3 text-xs font-bold text-[#07101f]">Salin URL</button>
       </div>
       <dl className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
         <div className="min-w-0 rounded-xl border border-white/10 bg-black/15 p-3"><dt className="text-[10px] uppercase tracking-wide text-white/35">Webhook URL</dt><dd className="mt-1 break-all font-mono text-xs text-[#5cefff]">{data.health.webhook_url}</dd></div>
         <div className="rounded-xl border border-white/10 bg-black/15 p-3"><dt className="text-[10px] uppercase tracking-wide text-white/35">Header secret</dt><dd className="mt-1 font-mono text-xs text-white/70">{data.health.secret_header}</dd></div>
       </dl>
+      <p className="mt-3 rounded-xl border border-[#FFB800]/20 bg-[#FFB800]/[0.06] px-3 py-2 text-[11px] leading-5 text-[#FFD66B]">Jangan ketik teks <span className="font-mono">DANA_WEBHOOK_SECRET</span> pada kolom Optional secret; itu hanya nama variabel, bukan nilainya.</p>
       <p className="mt-3 text-[11px] leading-5 text-white/40">Setelah disimpan, tekan <strong className="text-white/60">Retry pending</strong> di aplikasi. Status berhasil harus <strong className="text-emerald-300/80">Sent / HTTP 2xx</strong>; transaksi muncul di tabel rekonsiliasi ini.</p>
     </section>}
     <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.035]">

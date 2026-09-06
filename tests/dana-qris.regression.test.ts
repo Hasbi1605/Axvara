@@ -99,6 +99,7 @@ describe("legacy QRIS rails removed", () => {
     const panel = fs.readFileSync("src/components/admin/PaymentReconciliation.tsx", "utf8");
     const health = fs.readFileSync("src/app/api/admin/payments/events/route.ts", "utf8");
     expect(panel).toContain("Setup aplikasi QRIS Hook");
+    expect(panel).toContain("itu hanya nama variabel, bukan nilainya");
     expect(health).toContain("/api/webhook/dana");
     expect(health).toContain("X-Webhook-Secret");
   });
