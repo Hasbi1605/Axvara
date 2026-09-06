@@ -4,6 +4,7 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-06 — Fix icon inactive bottom nav invisible di bg gelap: tint putih (brightness(0) invert(1)) + opacity 55% menggantikan icon hitam tanpa filter — src/components/storefront/MobileBottomNav.tsx — (verifikasi: dev GET / 200, CSS 200, Playwright mobile 390×844 navDisplay=block, inactive filter=brightness(0) invert(1) opacity=0.55, active filter=cyan)
 - 2026-09-06 — WA bot: hapus deskripsi produk dari pesan detail, hapus tanda waktu ⏱ (duration) di samping garansi 🛡 di semua pesan (detail/varian/payment), perbaiki link Telegram di footer list dari axvara_support → Axvara_bot — src/lib/whatsapp/messages.ts, src/lib/site.ts — (verifikasi: dev GET / 200, CSS 200)
 - 2026-09-06 — Bersihkan footer: hapus disclaimer third-party/garansi, link Ketentuan garansi, dan tombol Katalog/Artikel di bottom bar; sisakan hanya copyright — src/components/storefront/Footer.tsx — (verifikasi: dev GET / 200, CSS 200, Obscura footer text hanya © tanpa disclaimer/tombol)
 - 2026-09-06 — Perjelas setup QRIS Hook memakai nilai secret sebenarnya (bukan nama variabel), tampilkan URL/header di rekonsiliasi, dan rotasi webhook secret produksi setelah reproduksi HTTP 401 — QRIS Hook admin UI/API, README/docs, Cloudflare Pages Secret — (verifikasi: vitest 194/194, tsc/lint pass, build:pages 56 routes, Obscura setup/url/header/warning/copy=true, literal nama secret 401 dan nilai baru 200 unmatched)

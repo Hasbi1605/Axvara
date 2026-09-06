@@ -67,8 +67,8 @@ export function MobileBottomNav() {
                 <IosIcon
                   name={item.icon}
                   size={20}
-                  tint={item.active ? "#00E5FF" : undefined}
-                  className={item.active ? "" : "opacity-60"}
+                  tint={item.active ? "#00E5FF" : "white"}
+                  className={item.active ? "" : "opacity-55"}
                 />
               </div>
               <span
