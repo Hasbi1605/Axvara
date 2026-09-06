@@ -248,11 +248,107 @@ export function gatewayErrorMessage(): string {
   return "Terjadi kesalahan. Silakan coba lagi dalam beberapa saat.";
 }
 
-export function paymentDetectedMessage(orderCode: string): string {
-  return [
-    "*PEMBAYARAN DITERIMA*",
+export function paymentDetectedMessage(params: {
+  orderCode: string;
+  productName?: string;
+  variantLabel?: string;
+  total?: number;
+  method?: string;
+}): string {
+  const lines = [
+    "🎊🎉 *PEMBAYARAN BERHASIL!* 🎉🎊",
     "━━━━━━━━━━━━━━━━━━━━",
-    `Order: ${orderCode}`,
-    "Pembayaran QRIS terdeteksi otomatis dan pesanan sedang diproses.",
+    "",
+    `✅ Order: *${params.orderCode}*`,
+  ];
+  if (params.productName) {
+    lines.push(`🛍 ${params.productName}${params.variantLabel ? ` — *${params.variantLabel}*` : ""}`);
+  }
+  if (params.total) {
+    lines.push(`💰 Total: *${formatRupiah(params.total)}*`);
+  }
+  if (params.method) {
+    lines.push(`💳 Via: *${params.method}*`);
+  }
+  lines.push("");
+  lines.push("🚀 Pesanan kamu sedang diproses, ditunggu ya!");
+  lines.push("");
+  lines.push("━━━━━━━━━━━━━━━━━━━━");
+  lines.push("💎 Terima kasih sudah belanja di *AXVARA*!");
+  lines.push(`🌐 ${SITE.webUrl}`);
+  lines.push(`✈️ ${adminTelegramLink()}`);
+  return lines.join("\n");
+}
+
+// ---- Admin .d command: order completed ----
+
+export function orderCompletedMessage(params: {
+  orderCode: string;
+  productName?: string;
+  variantLabel?: string;
+  total?: number;
+}): string {
+  const lines = [
+    "✅🎉 *PESANAN SELESAI!* 🎉✅",
+    "━━━━━━━━━━━━━━━━━━━━",
+    "",
+    `📦 Order *${params.orderCode}* telah berhasil diproses admin!`,
+  ];
+  if (params.productName) {
+    lines.push(`🛍 ${params.productName}${params.variantLabel ? ` — *${params.variantLabel}*` : ""}`);
+  }
+  if (params.total) {
+    lines.push(`💰 ${formatRupiah(params.total)}`);
+  }
+  lines.push("");
+  lines.push("💎 Terima kasih sudah belanja di *AXVARA*!");
+  lines.push("Jangan lupa order lagi ya! 🔥🔥🔥");
+  lines.push("");
+  lines.push("━━━━━━━━━━━━━━━━━━━━");
+  lines.push("🛒 Ketik *list* untuk lihat produk terbaru");
+  lines.push(`🌐 ${SITE.webUrl}`);
+  lines.push(`✈️ ${adminTelegramLink()}`);
+  return lines.join("\n");
+}
+
+export function orderAlreadyProcessedMessage(orderCode: string): string {
+  return `Pesanan *${orderCode}* sudah diproses sebelumnya.`;
+}
+
+export function adminDoneNoOrderMessage(): string {
+  return [
+    "⚠️ Tidak dapat menemukan kode pesanan.",
+    "",
+    "Cara pakai: reply pesan pembayaran dengan *.d*",
+    "Atau ketik: *.d AXV-XXXXXXXX*",
   ].join("\n");
+}
+
+// ---- Welcome message for new group members ----
+
+export function welcomeNewMemberMessage(name?: string): string {
+  const { greeting } = formatWIBTime();
+  const displayName = name?.trim() || "Kak";
+  const lines = [
+    "━━━━━━━━━━━━━━━━━━━━",
+    "🎉 *SELAMAT DATANG DI AXVARA!* 🎉",
+    "━━━━━━━━━━━━━━━━━━━━",
+    "",
+    `${greeting}, *${displayName}*! 👋`,
+    "",
+    "Selamat bergabung di grup official *AXVARA* 💎",
+    "Gerbang semua tools premium favoritmu! 🚀",
+    "",
+    "🛒 *Cara Order:*",
+    "Ketik *list* untuk lihat semua produk.",
+    "",
+    "🛡 *Garansi:*",
+    "Ketik *garansi* untuk baca ketentuan.",
+    "",
+    "━━━━━━━━━━━━━━━━━━━━",
+    "*Belanja & update produk AXVARA:*",
+    `🌐 ${SITE.webUrl}`,
+    `✈️ ${adminTelegramLink()}`,
+  ];
+  return lines.join("\n");
 }

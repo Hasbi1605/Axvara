@@ -74,7 +74,20 @@ export async function POST(request: NextRequest) {
   await execRun("UPDATE dana_webhook_events SET status='matched',order_code=?,last_error=NULL,processed_at=datetime('now') WHERE id=?", orderCode, eventId);
   try { await ensureFulfillmentForPaidOrder(orderCode); } catch { /* Cron akan retry idempoten. */ }
   if (String(matches[0].sales_channel) === "whatsapp" && matches[0].channel_conversation_id) {
-    try { await sendTextMessage({ target: String(matches[0].channel_conversation_id), message: paymentDetectedMessage(orderCode) }); } catch { /* best effort */ }
+    try {
+      const orderDetail = await queryFirst(`SELECT subtotal, payment_method, variant_snapshot FROM orders WHERE code=?`, orderCode);
+      const snap = orderDetail?.variant_snapshot ? JSON.parse(String(orderDetail.variant_snapshot)) : {};
+      await sendTextMessage({
+        target: String(matches[0].channel_conversation_id),
+        message: paymentDetectedMessage({
+          orderCode,
+          productName: snap.product_name,
+          variantLabel: snap.label,
+          total: Number(orderDetail?.subtotal || 0),
+          method: String(orderDetail?.payment_method || "QRIS").toUpperCase(),
+        }),
+      });
+    } catch { /* best effort */ }
   }
   return NextResponse.json({ ok: true, status: "matched", order_code: orderCode });
 }

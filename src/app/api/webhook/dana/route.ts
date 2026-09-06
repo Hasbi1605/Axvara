@@ -111,9 +111,20 @@ export async function POST(request: NextRequest) {
 
   if (String(transaction.sales_channel) === "whatsapp" && transaction.channel_conversation_id) {
     try {
+      const orderDetail = await queryFirst(
+        `SELECT subtotal, payment_method, variant_snapshot FROM orders WHERE code=?`,
+        orderCode,
+      );
+      const snap = orderDetail?.variant_snapshot ? JSON.parse(String(orderDetail.variant_snapshot)) : {};
       await sendTextMessage({
         target: String(transaction.channel_conversation_id),
-        message: paymentDetectedMessage(orderCode),
+        message: paymentDetectedMessage({
+          orderCode,
+          productName: snap.product_name,
+          variantLabel: snap.label,
+          total: Number(orderDetail?.subtotal || 0),
+          method: String(orderDetail?.payment_method || "QRIS").toUpperCase(),
+        }),
       });
     } catch { /* Buyer notification is best-effort. */ }
   }

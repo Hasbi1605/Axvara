@@ -18,6 +18,7 @@ import {
   parseWhatsAppPayload,
   isGroupAllowed,
   isSelfMessage,
+  isAdminMember,
   sendTextMessage as sendTextViaGateway,
   sendImageMessage as sendImageViaGateway,
   downloadMediaSafely,
@@ -204,6 +205,26 @@ export async function POST(request: NextRequest) {
 
     const cmd = message.toLowerCase().trim();
 
+    // Admin command: .d [ORDER_CODE] — mark order as completed
+    if ((cmd === ".d" || cmd.startsWith(".d ")) && isAdminMember(memberId)) {
+      await handleAdminDone(conversationId, inboxId, message, incoming.quotedText, incoming.replyToInboxId);
+      return NextResponse.json({ ok: true });
+    }
+
+    // Welcome: detect first-time member (no existing session)
+    if (isEnabled("WHATSAPP_GROUP_DISCOVERY") && isD1Mode()) {
+      const existingSession = await queryFirst(
+        `SELECT id FROM whatsapp_sessions WHERE provider='baileys' AND conversation_id=? AND member_id=?`,
+        conversationId,
+        memberId,
+      ).catch(() => null);
+      if (!existingSession) {
+        await sendTextMessage({ target: conversationId, message: msg.welcomeNewMemberMessage(incoming.name), inboxId });
+        // Create a session so welcome is not sent again
+        await upsertSession("baileys", conversationId, memberId, {});
+      }
+    }
+
     // Command: list [page]
     if (cmd === "list" || cmd.startsWith("list ")) {
       if (!isEnabled("WHATSAPP_GROUP_DISCOVERY")) {
@@ -274,6 +295,63 @@ async function handleList(groupId: string, _page: number, inboxId: string) {
   await sendTextMessage({
     target: groupId,
     message: msg.listProductsMessage(products),
+    inboxId,
+  });
+}
+
+async function handleAdminDone(
+  groupId: string,
+  inboxId: string,
+  rawMessage: string,
+  quotedText?: string,
+  _replyToInboxId?: string,
+) {
+  // Extract order code: try explicit `.d AXV-xxx`, then quoted text regex
+  const explicitMatch = rawMessage.match(/\.d\s+(AXV-\S+)/i);
+  let orderCode = explicitMatch?.[1]?.toUpperCase() || null;
+
+  if (!orderCode && quotedText) {
+    const quotedMatch = quotedText.match(/AXV-[A-Z0-9-]+/i);
+    orderCode = quotedMatch?.[0]?.toUpperCase() || null;
+  }
+
+  if (!orderCode) {
+    await sendTextMessage({ target: groupId, message: msg.adminDoneNoOrderMessage(), inboxId });
+    return;
+  }
+
+  const order = await queryFirst(
+    `SELECT code, status, payment_status, subtotal, variant_snapshot FROM orders WHERE code=?`,
+    orderCode,
+  );
+
+  if (!order) {
+    await sendTextMessage({ target: groupId, message: msg.adminDoneNoOrderMessage(), inboxId });
+    return;
+  }
+
+  if (String(order.status) === "lunas" && String(order.payment_status) === "paid") {
+    await sendTextMessage({ target: groupId, message: msg.orderAlreadyProcessedMessage(orderCode), inboxId });
+    return;
+  }
+
+  // Transition order to completed
+  await execRun(
+    `UPDATE orders SET status='lunas', payment_status='paid', fulfillment_status='delivered',
+     admin_note=COALESCE(admin_note,'') || ' [WA .d]', updated_at=datetime('now')
+     WHERE code=? AND status IN ('pending','lunas')`,
+    orderCode,
+  );
+
+  const snap = order.variant_snapshot ? JSON.parse(String(order.variant_snapshot)) : {};
+  await sendTextMessage({
+    target: groupId,
+    message: msg.orderCompletedMessage({
+      orderCode,
+      productName: snap.product_name,
+      variantLabel: snap.label,
+      total: Number(order.subtotal || 0),
+    }),
     inboxId,
   });
 }

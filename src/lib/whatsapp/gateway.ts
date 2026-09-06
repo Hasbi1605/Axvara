@@ -15,6 +15,7 @@ export type WhatsAppIncomingMessage = {
   name: string;
   inboxId: string;
   replyToInboxId?: string;
+  quotedText?: string; // text body of the quoted message (if gateway forwards it)
   isGroup: boolean;
   attachment?: {
     url: string;
@@ -141,6 +142,7 @@ export function parseWhatsAppPayload(body: unknown): WhatsAppIncomingMessage | n
     name,
     inboxId,
     replyToInboxId: b.reply ? String(b.reply).trim() : undefined,
+    quotedText: typeof b.quotedText === "string" ? String(b.quotedText).trim() : undefined,
     isGroup,
   };
 
@@ -155,7 +157,7 @@ export function parseWhatsAppPayload(body: unknown): WhatsAppIncomingMessage | n
   return msg;
 }
 
-// ---- Group Allowlist & Self Check ----
+// ---- Group Allowlist, Self Check & Admin Check ----
 
 export function isGroupAllowed(groupId: string): boolean {
   const raw = process.env.WHATSAPP_GROUP_ALLOWLIST || "";
@@ -171,6 +173,19 @@ export function isSelfMessage(memberId: string): boolean {
   const normBot = botNumber.startsWith("62") ? botNumber.slice(2) : botNumber.replace(/^0/, "");
   const normMember = cleanMember.startsWith("62") ? cleanMember.slice(2) : cleanMember.replace(/^0/, "");
   return normBot === normMember || cleanMember === botNumber || cleanMember.endsWith(botNumber);
+}
+
+/** Check whether a group member is a WhatsApp admin (env: WHATSAPP_ADMIN_NUMBERS, comma-separated 628xxx). */
+export function isAdminMember(memberId: string): boolean {
+  const raw = process.env.WHATSAPP_ADMIN_NUMBERS || "";
+  const admins = raw.split(",").map((s) => s.trim().replace(/\D/g, "")).filter(Boolean);
+  if (admins.length === 0) return false;
+  const cleanMember = memberId.replace(/\D/g, "");
+  return admins.some((admin) => {
+    const normAdmin = admin.startsWith("62") ? admin.slice(2) : admin.replace(/^0/, "");
+    const normMem = cleanMember.startsWith("62") ? cleanMember.slice(2) : cleanMember.replace(/^0/, "");
+    return normAdmin === normMem || cleanMember === admin;
+  });
 }
 
 // ---- Outbound Messaging ----

@@ -26,6 +26,7 @@ import {
   authenticateWebhook,
   isGroupAllowed,
   isSelfMessage,
+  isAdminMember,
   isPrivateIp,
   checkImageMagicBytes,
   downloadMediaSafely,
@@ -250,6 +251,78 @@ describe("WhatsApp Message Formatting", () => {
     expect(msg).toContain("AXV-20260904-TEST1234");
     expect(msg).toContain("menunggu verifikasi");
     expect(msg).toContain("Bukti tidak otomatis berarti pembayaran sudah sah");
+  });
+
+  it("formats payment detected message with celebratory style and product details", () => {
+    const msg = waMsg.paymentDetectedMessage({
+      orderCode: "AXV-20260906-TEST5678",
+      productName: "CHATGPT PLUS",
+      variantLabel: "1 Bulan",
+      total: 89000,
+      method: "QRIS",
+    });
+    expect(msg).toContain("🎊🎉 *PEMBAYARAN BERHASIL!* 🎉🎊");
+    expect(msg).toContain("AXV-20260906-TEST5678");
+    expect(msg).toContain("CHATGPT PLUS");
+    expect(msg).toContain("1 Bulan");
+    expect(msg).toContain("Rp89.000");
+    expect(msg).toContain("QRIS");
+    expect(msg).toContain("Terima kasih");
+    expect(msg).toContain("axvara.tech");
+    expect(msg).toContain("t.me/Axvara_bot");
+  });
+
+  it("formats payment detected message with minimal params", () => {
+    const msg = waMsg.paymentDetectedMessage({ orderCode: "AXV-MINIMAL" });
+    expect(msg).toContain("AXV-MINIMAL");
+    expect(msg).toContain("PEMBAYARAN BERHASIL");
+    expect(msg).not.toContain("undefined");
+  });
+
+  it("formats order completed message for admin .d command", () => {
+    const msg = waMsg.orderCompletedMessage({
+      orderCode: "AXV-20260906-DONE1234",
+      productName: "GEMINI ADVANCED",
+      variantLabel: "Invite",
+      total: 18000,
+    });
+    expect(msg).toContain("✅🎉 *PESANAN SELESAI!* 🎉✅");
+    expect(msg).toContain("AXV-20260906-DONE1234");
+    expect(msg).toContain("GEMINI ADVANCED");
+    expect(msg).toContain("Invite");
+    expect(msg).toContain("Rp18.000");
+    expect(msg).toContain("Jangan lupa order lagi");
+    expect(msg).toContain("axvara.tech");
+    expect(msg).toContain("t.me/Axvara_bot");
+    expect(msg).toContain("Ketik *list*");
+  });
+
+  it("formats order already processed message", () => {
+    const msg = waMsg.orderAlreadyProcessedMessage("AXV-DONE");
+    expect(msg).toContain("AXV-DONE");
+    expect(msg).toContain("sudah diproses");
+  });
+
+  it("formats admin done no-order message with usage hint", () => {
+    const msg = waMsg.adminDoneNoOrderMessage();
+    expect(msg).toContain("Tidak dapat menemukan kode pesanan");
+    expect(msg).toContain(".d AXV-");
+  });
+
+  it("formats welcome message for new group members", () => {
+    const msg = waMsg.welcomeNewMemberMessage("Budi");
+    expect(msg).toContain("🎉 *SELAMAT DATANG DI AXVARA!* 🎉");
+    expect(msg).toContain("*Budi*");
+    expect(msg).toContain("Ketik *list*");
+    expect(msg).toContain("Ketik *garansi*");
+    expect(msg).toContain("axvara.tech");
+    expect(msg).toContain("t.me/Axvara_bot");
+  });
+
+  it("uses fallback name in welcome when no name provided", () => {
+    const msg = waMsg.welcomeNewMemberMessage();
+    expect(msg).toContain("*Kak*");
+    expect(msg).toContain("SELAMAT DATANG");
   });
 });
 
@@ -477,6 +550,56 @@ describe("Group Allowlist & Self Check (P0.1)", () => {
   });
 });
 
+describe("Admin Member Check", () => {
+  const originalEnv = { ...process.env };
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  it("recognizes configured admin phone numbers", () => {
+    process.env.WHATSAPP_ADMIN_NUMBERS = "6289519388264,628123000000";
+    expect(isAdminMember("6289519388264")).toBe(true);
+    expect(isAdminMember("089519388264")).toBe(true);
+    expect(isAdminMember("628123000000")).toBe(true);
+    expect(isAdminMember("628999999999")).toBe(false);
+  });
+
+  it("returns false when no admin numbers configured", () => {
+    delete process.env.WHATSAPP_ADMIN_NUMBERS;
+    expect(isAdminMember("6289519388264")).toBe(false);
+  });
+});
+
+describe("Payload Parser with quotedText", () => {
+  it("parses quotedText from gateway payload", () => {
+    const fixture = {
+      sender: "120363024823948293@g.us",
+      message: ".d",
+      member: "628123456789",
+      name: "Admin",
+      inboxid: "99999",
+      reply: "msg-id-original",
+      quotedText: "🎊🎉 PEMBAYARAN BERHASIL! Order: AXV-20260906-TEST1234",
+    };
+    const parsed = parseWhatsAppPayload(fixture);
+    expect(parsed?.quotedText).toBe("🎊🎉 PEMBAYARAN BERHASIL! Order: AXV-20260906-TEST1234");
+    expect(parsed?.replyToInboxId).toBe("msg-id-original");
+  });
+
+  it("handles missing quotedText gracefully", () => {
+    const fixture = {
+      sender: "120363024823948293@g.us",
+      message: ".d AXV-MANUAL",
+      member: "628123456789",
+      name: "Admin",
+      inboxid: "99998",
+    };
+    const parsed = parseWhatsAppPayload(fixture);
+    expect(parsed?.quotedText).toBeUndefined();
+  });
+});
+
 describe("SSRF Prevention and Media Magic Bytes (P0.5)", () => {
   it("detects private IP addresses and loopbacks", () => {
     expect(isPrivateIp("localhost")).toBe(true);
@@ -557,6 +680,16 @@ describe("Outbound Baileys Reply with inboxId (P0.1)", () => {
     expect(route).toContain("WHATSAPP_MEMBER_EVENTS_PER_MINUTE");
     expect(route).toContain('status=\'ignored\'');
     expect(route).toContain("TextEncoder");
+  });
+
+  it("has admin .d command handler and welcome detection in webhook route", () => {
+    const route = fs.readFileSync(
+      path.join(process.cwd(), "src/app/api/whatsapp/webhook/route.ts"),
+      "utf8",
+    );
+    expect(route).toContain("handleAdminDone");
+    expect(route).toContain("isAdminMember(memberId)");
+    expect(route).toContain("welcomeNewMemberMessage");
   });
 
   it("sends inboxId and gateway authentication when replying", async () => {
