@@ -682,14 +682,20 @@ describe("Outbound Baileys Reply with inboxId (P0.1)", () => {
     expect(route).toContain("TextEncoder");
   });
 
-  it("has admin .d command handler and welcome detection in webhook route", () => {
+  it("handles .d before product search and only completes paid orders", () => {
     const route = fs.readFileSync(
       path.join(process.cwd(), "src/app/api/whatsapp/webhook/route.ts"),
       "utf8",
     );
+    const adminCommandAt = route.indexOf('if (cmd === ".d" || cmd.startsWith(".d "))');
+    const productSearchAt = route.indexOf("// Product search");
+    expect(adminCommandAt).toBeGreaterThan(0);
+    expect(adminCommandAt).toBeLessThan(productSearchAt);
+    expect(route.slice(adminCommandAt, productSearchAt)).toContain("admin_command_ignored");
     expect(route).toContain("handleAdminDone");
     expect(route).toContain("isAdminMember(memberId)");
-    expect(route).toContain("welcomeNewMemberMessage");
+    expect(route).toContain("fulfillment_status!='delivered'");
+    expect(route).toContain("belum berstatus lunas");
   });
 
   it("sends inboxId and gateway authentication when replying", async () => {

@@ -129,8 +129,11 @@ ringkas: `list` → ketik nama produk → pilih angka varian → pilih `QRIS`, `
 opsional dan cukup memakai caption `QRIS`. Bukti SeaBank/e-wallet ditinjau langsung pada
 baris order di menu **Pesanan** dan baru mengubah order setelah admin mencocokkan mutasi. Command
 `garansi` memakai kebijakan kanonis yang sama dengan Telegram. Runtime memakai Baileys
-pada service Heroku `axvara-wa-gateway`; bot mengutip pesan pembeli saat membalas dan
-gateway meneruskan gambar masuk lewat URL sekali pakai. Semua flag WhatsApp/varian di
+pada service Heroku `axvara-wa-gateway`; bot mengutip pesan pembeli saat membalas,
+gateway meneruskan gambar masuk lewat URL sekali pakai, dan identitas LID pengirim grup
+dinormalisasi lewat `participantAlt` sebelum dicocokkan dengan `WHATSAPP_ADMIN_NUMBERS`.
+Admin menyelesaikan order yang sudah lunas dengan membalas pesan pembayaran memakai `.d`
+atau mengetik `.d AXV-...`; command non-admin diabaikan dan tidak masuk pencarian produk. Semua flag WhatsApp/varian di
 `.env.example` tetap default `false` untuk rollout bertahap. Nilai `WHATSAPP_WEBHOOK_TOKEN`
 harus sama dengan `AXVARA_WEBHOOK_TOKEN` di Heroku dan dipakai pada kedua arah komunikasi.
 Discovery dan transaksi produksi diaktifkan penuh pada 5 September 2026 untuk grup allowlist:

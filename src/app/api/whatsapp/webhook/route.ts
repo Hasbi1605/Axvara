@@ -205,9 +205,12 @@ export async function POST(request: NextRequest) {
 
     const cmd = message.toLowerCase().trim();
 
-    // Admin command: .d [ORDER_CODE] — mark order as completed
-    if ((cmd === ".d" || cmd.startsWith(".d ")) && isAdminMember(memberId)) {
-      await handleAdminDone(conversationId, inboxId, message, incoming.quotedText, incoming.replyToInboxId);
+    // Never let an admin command fall through to product search.
+    if (cmd === ".d" || cmd.startsWith(".d ")) {
+      if (!isAdminMember(memberId)) {
+        return NextResponse.json({ ok: true, status: "admin_command_ignored" });
+      }
+      await handleAdminDone(conversationId, inboxId, message, incoming.quotedText);
       return NextResponse.json({ ok: true });
     }
 
@@ -304,7 +307,6 @@ async function handleAdminDone(
   inboxId: string,
   rawMessage: string,
   quotedText?: string,
-  _replyToInboxId?: string,
 ) {
   // Extract order code: try explicit `.d AXV-xxx`, then quoted text regex
   const explicitMatch = rawMessage.match(/\.d\s+(AXV-\S+)/i);
@@ -321,7 +323,7 @@ async function handleAdminDone(
   }
 
   const order = await queryFirst(
-    `SELECT code, status, payment_status, subtotal, variant_snapshot FROM orders WHERE code=?`,
+    `SELECT code, status, payment_status, fulfillment_status, subtotal, variant_snapshot FROM orders WHERE code=?`,
     orderCode,
   );
 
@@ -330,26 +332,38 @@ async function handleAdminDone(
     return;
   }
 
-  if (String(order.status) === "lunas" && String(order.payment_status) === "paid") {
+  if (String(order.status) !== "lunas" || String(order.payment_status) !== "paid") {
+    await sendTextMessage({
+      target: groupId,
+      message: `Pembayaran pesanan *${orderCode}* belum berstatus lunas.`,
+      inboxId,
+    });
+    return;
+  }
+
+  if (String(order.fulfillment_status) === "delivered") {
     await sendTextMessage({ target: groupId, message: msg.orderAlreadyProcessedMessage(orderCode), inboxId });
     return;
   }
 
-  // Transition order to completed
-  await execRun(
-    `UPDATE orders SET status='lunas', payment_status='paid', fulfillment_status='delivered',
+  const completed = await execRun(
+    `UPDATE orders SET fulfillment_status='delivered',
      admin_note=COALESCE(admin_note,'') || ' [WA .d]', updated_at=datetime('now')
-     WHERE code=? AND status IN ('pending','lunas')`,
+     WHERE code=? AND status='lunas' AND payment_status='paid' AND fulfillment_status!='delivered'`,
     orderCode,
   );
+  if (!completed.changes) {
+    await sendTextMessage({ target: groupId, message: msg.orderAlreadyProcessedMessage(orderCode), inboxId });
+    return;
+  }
 
-  const snap = order.variant_snapshot ? JSON.parse(String(order.variant_snapshot)) : {};
+  const snap = parsePaymentDisplaySnapshot(order.variant_snapshot);
   await sendTextMessage({
     target: groupId,
     message: msg.orderCompletedMessage({
       orderCode,
-      productName: snap.product_name,
-      variantLabel: snap.label,
+      productName: snap?.productName,
+      variantLabel: snap?.variantLabel,
       total: Number(order.subtotal || 0),
     }),
     inboxId,
