@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
                 WHEN MAX(CASE WHEN pv.stock=-1 THEN 1 ELSE 0 END)=1 THEN -1
                 ELSE SUM(CASE WHEN pv.stock>0 THEN pv.stock ELSE 0 END)
               END as variant_stock,
-              MIN(pv.compare_price) as variant_compare_price
+              MAX(pv.compare_price) as variant_compare_price
        FROM products p
        LEFT JOIN categories c ON c.id=p.category_id
        INNER JOIN product_variants pv ON pv.product_id=p.id AND pv.is_active=1
@@ -66,7 +66,7 @@ export async function GET(req: NextRequest) {
       minPrice: variantCatalog ? Number(r.min_price) : undefined,
       maxPrice: variantCatalog ? Number(r.max_price) : undefined,
       variantCount,
-      comparePrice: variantCatalog && variantCount === 1
+      comparePrice: variantCatalog
         ? (r.variant_compare_price == null ? undefined : Number(r.variant_compare_price))
         : r.compare_price ?? undefined,
       categorySlug: (r.cat_slug as string) ?? "tools-pro",

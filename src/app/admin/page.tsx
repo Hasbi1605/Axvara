@@ -263,7 +263,7 @@ export default function AdminPage() {
         sku: v.sku,
         label: v.label,
         price: v.price,
-        comparePrice: v.comparePrice ?? null,
+        comparePrice: v.comparePrice ?? v.compare_price ?? null,
         stock: v.stock ?? -1,
         duration_value: v.duration_value,
         duration_unit: v.duration_unit,

@@ -358,6 +358,12 @@ export default function ProductDetailPage() {
                           <span className="text-sm font-bold text-[#00E5FF]">
                             Rp{v.price.toLocaleString("id-ID")}
                           </span>
+                          {v.compare_price && v.compare_price > v.price && (
+                            <div className="flex items-center gap-1.5 justify-end mt-0.5">
+                              <span className="text-[11px] text-white/30 line-through">Rp{v.compare_price.toLocaleString("id-ID")}</span>
+                              <span className="text-[10px] font-bold text-[#FFB800]">-{Math.round((1 - v.price / v.compare_price) * 100)}%</span>
+                            </div>
+                          )}
                           <div className="mt-0.5">
                             {v.stock === 0 ? (
                               <span className="text-[11px] font-semibold text-red-400">HABIS</span>

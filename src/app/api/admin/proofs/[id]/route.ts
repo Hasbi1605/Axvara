@@ -2,7 +2,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
-import { queryFirst, execRun, getD1, D1Statement } from "@/lib/db";
+import { queryFirst, execRun, getD1, D1Statement, incrementSoldCountForOrder } from "@/lib/db";
 import { z } from "zod";
 import { authoritativePaymentMethodForProof } from "@/lib/payment-proofs";
 import { ensureFulfillmentForPaidOrder } from "@/lib/fulfillment/deliver";
@@ -129,6 +129,8 @@ export async function POST(
         throw error;
       }
 
+      await incrementSoldCountForOrder(orderCode);
+
       let fulfillmentStarted = false;
       try {
         fulfillmentStarted = await ensureFulfillmentForPaidOrder(orderCode);
@@ -164,6 +166,7 @@ export async function POST(
     try {
       await ensureFulfillmentForPaidOrder(orderCode);
     } catch { /* best effort in dev */ }
+    await incrementSoldCountForOrder(orderCode);
     return NextResponse.json({ ok: true, action: "approved", order_code: orderCode });
   }
 

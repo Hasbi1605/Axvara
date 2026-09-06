@@ -108,9 +108,14 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
                   {formatRupiah(currentPrice)}
                 </span>
                 {currentCompare && currentCompare > currentPrice && (
-                  <span className="text-xs text-white/30 line-through">
-                    {formatRupiah(currentCompare)}
-                  </span>
+                  <>
+                    <span className="text-xs text-white/30 line-through">
+                      {formatRupiah(currentCompare)}
+                    </span>
+                    <span className="rounded-full bg-[#FFB800] text-[#080C1E] text-[10px] font-bold px-1.5 py-0.5 leading-none">
+                      -{Math.round((1 - currentPrice / currentCompare) * 100)}%
+                    </span>
+                  </>
                 )}
               </div>
             </div>
@@ -165,6 +170,14 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
                     </span>
                     <span className="mt-1 text-xs font-semibold text-[#00E5FF]">
                       {formatRupiah(v.price)}
+                      {v.compare_price && v.compare_price > v.price && (
+                        <>
+                          {" "}
+                          <span className="text-[10px] text-white/30 line-through font-normal">{formatRupiah(v.compare_price)}</span>
+                          {" "}
+                          <span className="text-[9px] font-bold text-[#FFB800]">-{Math.round((1 - v.price / v.compare_price) * 100)}%</span>
+                        </>
+                      )}
                     </span>
                     <div className="mt-0.5 flex items-center justify-between w-full text-[10.5px]">
                       {v.warranty_type && v.warranty_type !== "none" && formatWarranty(v) ? (

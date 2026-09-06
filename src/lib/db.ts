@@ -598,6 +598,7 @@ export async function transitionPendingOrder(
        WHERE code=? AND status='pending'`,
     ).bind(status, adminNote, code).run();
     if (!result.meta?.changes) throw new OrderTransitionError();
+    await incrementSoldCountForOrder(code);
     return;
   }
 
@@ -733,6 +734,7 @@ export async function transitionPendingPaymentToPaid(
 
     try {
       await d1.batch(statements);
+      await incrementSoldCountForOrder(orderCode);
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -755,4 +757,29 @@ export async function transitionPendingPaymentToPaid(
   order.payment_method = "qris";
   order.updated_at = new Date().toISOString();
   return true;
+}
+
+/**
+ * Increment sold_count on products for a paid order.
+ * Best-effort: failures are logged but don't block the payment flow.
+ */
+export async function incrementSoldCountForOrder(orderCode: string): Promise<void> {
+  const d1 = getD1();
+  if (d1) {
+    try {
+      const order = await d1.prepare("SELECT items FROM orders WHERE code=?").bind(orderCode).first() as { items: string } | null;
+      if (!order?.items) return;
+      const items = JSON.parse(order.items) as { product_id: number; qty: number }[];
+      if (!items.length) return;
+      const agg = new Map<number, number>();
+      items.forEach((i) => agg.set(i.product_id, (agg.get(i.product_id) ?? 0) + (i.qty || 1)));
+      const stmts: D1Statement[] = [];
+      agg.forEach((qty, pid) => {
+        stmts.push(d1.prepare("UPDATE products SET sold_count=COALESCE(sold_count,0)+? WHERE id=?").bind(qty, pid));
+      });
+      await d1.batch(stmts);
+    } catch { /* best-effort */ }
+    return;
+  }
+  // Dev in-memory fallback — order_items not tracked in mem; skip.
 }

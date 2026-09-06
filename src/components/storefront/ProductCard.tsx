@@ -115,10 +115,10 @@ export function ProductCard({ product, index = 0, compact = false }: { product: 
       style={{ animationDelay: `${index * 35}ms` }}
     >
       {product.badge && (
-        <span className="absolute top-1.5 left-1.5 sm:top-3 sm:left-3 z-10 rounded-full bg-[#FFB800] text-[#080C1E] text-[8px] sm:text-[11px] font-bold px-1.5 sm:px-2.5 py-[3px] sm:py-1 shadow leading-none">{product.badge}</span>
+        <span className="absolute top-2 left-2 sm:top-3 sm:left-3 z-10 rounded-full bg-[#FFB800] text-[#080C1E] text-[10px] sm:text-[11px] font-bold px-2 sm:px-2.5 py-0.5 sm:py-1 shadow leading-none">{product.badge}</span>
       )}
       {discount > 0 && (
-        <span className="absolute top-1.5 right-1.5 sm:top-3 sm:right-3 z-10 rounded-full bg-[#00E5FF] text-[#080C1E] text-[8px] sm:text-[11px] font-bold px-1.5 sm:px-2 py-[3px] sm:py-1 leading-none">-{discount}%</span>
+        <span className="absolute top-2 right-2 sm:top-3 sm:right-3 z-10 rounded-full bg-[#00E5FF] text-[#080C1E] text-[10px] sm:text-[11px] font-bold px-1.5 sm:px-2 py-0.5 sm:py-1 leading-none">-{discount}%</span>
       )}
       <Link href={`/produk/${product.slug}`} className="block flex-1">
         <div className="aspect-[4/3] overflow-hidden bg-white/[0.04] m-1 sm:m-1.5 rounded-[12px] sm:rounded-[16px]">
