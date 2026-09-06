@@ -6,12 +6,14 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import type { Product } from "@/lib/products";
 import { formatRupiah } from "@/lib/utils";
+import { formatDuration, formatWarranty } from "@/lib/catalog";
 import { useCart } from "@/stores/cart";
 import { ProductCard } from "@/components/storefront/ProductCard";
 
 type VariantItem = {
   id: number;
-  sku: string;
+  product_id?: number;
+  sku?: string;
   label: string;
   duration_value: number | null;
   duration_unit: string | null;
@@ -23,6 +25,8 @@ type VariantItem = {
   price: number;
   compare_price: number | null;
   stock: number;
+  fulfillment_mode?: string;
+  sort_order?: number;
   is_active: number;
 };
 
@@ -342,11 +346,11 @@ export default function ProductDetailPage() {
                     <div className="flex justify-between items-center">
                       <div>
                         <span className="text-sm font-medium text-white">{v.label}</span>
-                        {v.duration_label || (v.duration_value && v.duration_unit) ? (
+                        {formatDuration(v as any) && (
                           <span className="text-xs text-white/50 ml-2">
-                            {v.duration_label || `${v.duration_value} ${v.duration_unit === 'month' ? 'Bulan' : v.duration_unit === 'year' ? 'Tahun' : v.duration_unit}`}
+                            {formatDuration(v as any)}
                           </span>
-                        ) : null}
+                        )}
                       </div>
                       <div className="text-right">
                         <span className="text-sm font-bold text-[#00E5FF]">
@@ -355,9 +359,9 @@ export default function ProductDetailPage() {
                         {v.stock === 0 && <span className="text-xs text-red-400 ml-2">HABIS</span>}
                       </div>
                     </div>
-                    {(v.warranty_type !== 'none') && (
-                      <div className="text-xs text-white/40 mt-1">
-                        Garansi: {v.warranty_type === 'full' ? 'Full Garansi' : v.warranty_label || `${v.warranty_value} ${v.warranty_unit === 'month' ? 'Bulan' : v.warranty_unit}`}
+                    {v.warranty_type !== 'none' && formatWarranty(v as any) && (
+                      <div className="text-xs text-[#00E5FF]/80 font-medium mt-1">
+                        {formatWarranty(v as any)}
                       </div>
                     )}
                   </button>
