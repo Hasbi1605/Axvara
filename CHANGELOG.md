@@ -4,6 +4,7 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-06 — Pindahkan deskripsi produk ke bawah galeri foto di desktop (whitespace-pre-line) dan buat accordion deskripsi serta floating sticky action bar di mobile ala Shopee — src/app/produk/[slug]/page.tsx — (verifikasi: vitest 193/193 pass, npm run lint pass, build:pages pass 56 edge routes)
 - 2026-09-06 — Tampilkan indikator teks sisa stok ringkas ("Sisa X") di bawah harga pada pilihan varian detail produk dan quick modal — src/app/produk/[slug]/page.tsx, src/components/storefront/QuickVariantModal.tsx — (verifikasi: vitest 193/193 pass, npm run lint pass, dev GET / 200)
 - 2026-09-06 — Hapus teks durasi redundan di samping nama label varian produk agar tampilan kartu varian bersih — src/app/produk/[slug]/page.tsx — (verifikasi: vitest 193/193 pass, npm run lint pass, Obscura hasDurationNextToLabel=false)
 - 2026-09-06 — Perbaiki tipe VariantSummary kuat dan hilangkan `any` cast pada formatDuration/formatWarranty agar ESLint/build Pages lulus — src/app/produk/[slug]/page.tsx, src/components/storefront/QuickVariantModal.tsx — (verifikasi: npm run lint pass 0 error, build:pages pass, vitest 193/193 pass)

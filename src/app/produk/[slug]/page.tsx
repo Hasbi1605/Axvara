@@ -35,6 +35,7 @@ export default function ProductDetailPage() {
   const [variantsEnabled, setVariantsEnabled] = useState(false);
   const [variantLoading, setVariantLoading] = useState(true);
   const [variantError, setVariantError] = useState<string | null>(null);
+  const [descExpanded, setDescExpanded] = useState(false);
 
   useEffect(() => {
     setDetailLoading(true);
@@ -193,63 +194,78 @@ export default function ProductDetailPage() {
 
       {/* Dynamic grid: card kiri greedy (1fr), card kanan responsive fit-content */}
       <div className="mt-6 grid lg:grid-cols-[1fr_38%] xl:grid-cols-[1fr_minmax(360px,420px)] gap-6 lg:gap-8 items-start">
-        {/* ===== IMAGE GALLERY ===== */}
-        <div className="ax-glass-card rounded-[24px] p-2 sm:p-3">
-          <div className="relative">
-            {/* Main image */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={displayImage}
-              alt={product.name}
-              className="w-full aspect-[4/3] object-cover rounded-2xl"
-            />
+        {/* ===== LEFT COLUMN: IMAGE GALLERY + DESKTOP DESCRIPTION ===== */}
+        <div className="flex flex-col gap-6">
+          <div className="ax-glass-card rounded-[24px] p-2 sm:p-3">
+            <div className="relative">
+              {/* Main image */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={displayImage}
+                alt={product.name}
+                className="w-full aspect-[4/3] object-cover rounded-2xl"
+              />
 
-            {/* Arrows — always rendered when >1 image */}
+              {/* Arrows — always rendered when >1 image */}
+              {hasMultipleImages && (
+                <>
+                  <button
+                    onClick={goPrev}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/50 backdrop-blur-sm text-white flex items-center justify-center hover:bg-black/70 transition active:scale-90"
+                    aria-label="Foto sebelumnya"
+                  >
+                    <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+                  </button>
+                  <button
+                    onClick={goNext}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/50 backdrop-blur-sm text-white flex items-center justify-center hover:bg-black/70 transition active:scale-90"
+                    aria-label="Foto berikutnya"
+                  >
+                    <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+                  </button>
+                  <span className="absolute bottom-3 right-3 bg-black/60 backdrop-blur-sm text-white text-xs font-bold px-3 py-1 rounded-full">
+                    {activeImg + 1} / {galleryImages.length}
+                  </span>
+                </>
+              )}
+            </div>
+
+            {/* Thumbnails — always rendered when >1 image */}
             {hasMultipleImages && (
-              <>
-                <button
-                  onClick={goPrev}
-                  className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/50 backdrop-blur-sm text-white flex items-center justify-center hover:bg-black/70 transition active:scale-90"
-                  aria-label="Foto sebelumnya"
-                >
-                  <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
-                </button>
-                <button
-                  onClick={goNext}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/50 backdrop-blur-sm text-white flex items-center justify-center hover:bg-black/70 transition active:scale-90"
-                  aria-label="Foto berikutnya"
-                >
-                  <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
-                </button>
-                <span className="absolute bottom-3 right-3 bg-black/60 backdrop-blur-sm text-white text-xs font-bold px-3 py-1 rounded-full">
-                  {activeImg + 1} / {galleryImages.length}
-                </span>
-              </>
+              <div className="mt-3 flex gap-2 sm:gap-3 px-1 pb-1 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
+                {galleryImages.map((img, i) => (
+                  <button
+                    key={`thumb-${i}-${img.slice(-12)}`}
+                    onClick={() => setActiveImg(i)}
+                    className={`shrink-0 w-[72px] h-[56px] sm:w-[90px] sm:h-[68px] rounded-xl overflow-hidden border-2 transition-all duration-200 ${
+                      i === activeImg
+                        ? "border-[#00E5FF] shadow-[0_0_12px_rgba(0,229,255,0.35)]"
+                        : "border-white/15 opacity-50 hover:opacity-100 hover:border-white/30"
+                    }`}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={img}
+                      alt={`${product.name} foto ${i + 1}`}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                    />
+                  </button>
+                ))}
+              </div>
             )}
           </div>
 
-          {/* Thumbnails — always rendered when >1 image */}
-          {hasMultipleImages && (
-            <div className="mt-3 flex gap-2 sm:gap-3 px-1 pb-1 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
-              {galleryImages.map((img, i) => (
-                <button
-                  key={`thumb-${i}-${img.slice(-12)}`}
-                  onClick={() => setActiveImg(i)}
-                  className={`shrink-0 w-[72px] h-[56px] sm:w-[90px] sm:h-[68px] rounded-xl overflow-hidden border-2 transition-all duration-200 ${
-                    i === activeImg
-                      ? "border-[#00E5FF] shadow-[0_0_12px_rgba(0,229,255,0.35)]"
-                      : "border-white/15 opacity-50 hover:opacity-100 hover:border-white/30"
-                  }`}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={img}
-                    alt={`${product.name} foto ${i + 1}`}
-                    className="w-full h-full object-cover"
-                    loading="lazy"
-                  />
-                </button>
-              ))}
+          {/* Deskripsi Produk — Kolom Kiri di Desktop (Lega & Rapi) */}
+          {product.description && (
+            <div className="hidden lg:block ax-glass-card rounded-[24px] p-6 sm:p-8">
+              <h2 className="font-display font-bold text-[18px] text-white tracking-tight flex items-center gap-2.5">
+                <svg viewBox="0 0 24 24" className="w-5 h-5 text-[#00E5FF]" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                Deskripsi Produk
+              </h2>
+              <div className="mt-4 border-t border-white/8 pt-5 text-sm text-white/75 leading-relaxed whitespace-pre-line">
+                {product.description}
+              </div>
             </div>
           )}
         </div>
@@ -269,13 +285,12 @@ export default function ProductDetailPage() {
           <h1 className="mt-2 font-display font-bold text-[22px] sm:text-[26px] leading-tight text-white">
             {product.name}
           </h1>
-          <p className="mt-2 text-sm text-white/55 leading-relaxed">{product.description}</p>
 
           {/* Divider */}
-          <div className="mt-5 border-t border-white/8" />
+          <div className="mt-4 border-t border-white/8" />
 
           {/* Price block */}
-          <div className="mt-5 flex items-baseline gap-3 flex-wrap">
+          <div className="mt-4 flex items-baseline gap-3 flex-wrap">
             <span className="font-display font-bold text-[26px] text-white">
               {formatRupiah(displayPrice)}
             </span>
@@ -375,6 +390,29 @@ export default function ProductDetailPage() {
             </li>
           </ul>
 
+          {/* Deskripsi Produk — Khusus Mobile ala Shopee (Expandable Accordion) */}
+          {product.description && (
+            <div className="mt-6 lg:hidden rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+              <h3 className="text-sm font-bold text-white flex items-center justify-between">
+                <span>Deskripsi Produk</span>
+              </h3>
+              <div
+                className={`mt-2.5 text-xs text-white/70 leading-relaxed whitespace-pre-line ${
+                  descExpanded ? "" : "line-clamp-4"
+                }`}
+              >
+                {product.description}
+              </div>
+              <button
+                type="button"
+                onClick={() => setDescExpanded(!descExpanded)}
+                className="mt-2 text-xs font-semibold text-[#00E5FF] hover:underline flex items-center gap-1"
+              >
+                {descExpanded ? "Tutup Deskripsi ∧" : "Lihat Selengkapnya ∨"}
+              </button>
+            </div>
+          )}
+
           {/* Spacer — pushes buttons down when content is short */}
           <div className="flex-1 min-h-[16px]" />
 
@@ -432,8 +470,50 @@ export default function ProductDetailPage() {
         </div>
       </div>
 
+      {/* Floating Sticky Bottom Action Bar — Khusus Mobile ala Shopee */}
+      {!outOfStock && !variantOutOfStock && (
+        <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#080C1E]/90 backdrop-blur-xl border-t border-white/10 px-4 py-2.5 pb-[max(10px,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(0,0,0,0.5)] flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => {
+              const cartProduct = selectedVariant
+                ? { ...product, price: selectedVariant.price, stock: selectedVariant.stock === -1 ? undefined : selectedVariant.stock, variantId: selectedVariant.id, variantLabel: selectedVariant.label }
+                : product;
+              add(cartProduct);
+            }}
+            disabled={needsVariantSelection || variantCatalogUnavailable}
+            className={`flex-1 h-11 rounded-xl ax-glass-card font-semibold text-xs flex items-center justify-center gap-1.5 transition ${
+              needsVariantSelection || variantCatalogUnavailable
+                ? "text-white/30 cursor-not-allowed"
+                : "text-white hover:bg-white/10 active:scale-95"
+            }`}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/icons/ios11/shopping-bag-32.png" alt="" width={15} height={15} className="w-3.5 h-3.5 object-contain brightness-0 invert" draggable={false} /> Keranjang
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const buyUrl = selectedVariantId
+                ? `/checkout?buy=${product.slug}&variant=${selectedVariantId}`
+                : `/checkout?buy=${product.slug}`;
+              router.push(buyUrl);
+            }}
+            disabled={needsVariantSelection || variantCatalogUnavailable}
+            className={`flex-[1.5] h-11 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition active:scale-95 ${
+              needsVariantSelection || variantCatalogUnavailable
+                ? "bg-[#00E5FF]/30 text-[#080C1E]/50 cursor-not-allowed"
+                : "bg-[#00E5FF] text-[#080C1E] hover:bg-[#00D0E8] shadow-[0_2px_12px_rgba(0,229,255,0.25)]"
+            }`}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/icons/ios11/lightning-bolt-32.png" alt="" width={15} height={15} className="w-3.5 h-3.5 object-contain brightness-0" style={{ filter: "brightness(0)" }} draggable={false} /> Beli Sekarang · {formatRupiah(displayPrice)}
+          </button>
+        </div>
+      )}
+
       {/* Produk Serupa */}
-      <div className="mt-10 sm:mt-12">
+      <div className="mt-10 sm:mt-12 pb-16 lg:pb-0">
         <div className="flex items-center justify-between gap-4">
           <h2 className="font-display font-bold text-[18px] sm:text-[20px] text-white tracking-[-0.02em]">
             Produk Serupa
