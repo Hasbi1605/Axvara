@@ -2,31 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { formatRupiah } from "@/lib/utils";
+import type { VariantSummary } from "@/lib/catalog";
 import { formatWarranty } from "@/lib/catalog";
 import { IosIcon } from "@/components/ui/IosIcon";
 import type { Product } from "@/lib/products";
 import { useCart } from "@/stores/cart";
 import { useRouter } from "next/navigation";
 
-export type VariantOption = {
-  id: number;
-  product_id: number;
-  sku: string;
-  label: string;
-  price: number;
-  compare_price: number | null;
-  stock: number;
-  duration_value?: number | null;
-  duration_unit?: string | null;
-  duration_label?: string | null;
-  warranty_type?: string;
-  warranty_value?: number | null;
-  warranty_unit?: string | null;
-  warranty_label?: string | null;
-  fulfillment_mode?: string;
-  sort_order?: number;
-  is_active: number;
-};
+export type VariantOption = VariantSummary;
 
 type Props = {
   product: Product;
@@ -181,9 +164,9 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
                     <span className="mt-1 text-xs font-semibold text-[#00E5FF]">
                       {formatRupiah(v.price)}
                     </span>
-                    {v.warranty_type && v.warranty_type !== "none" && formatWarranty(v as any) && (
+                    {v.warranty_type && v.warranty_type !== "none" && formatWarranty(v) && (
                       <span className="mt-1 text-[10.5px] text-white/50 font-medium">
-                        {formatWarranty(v as any)}
+                        {formatWarranty(v)}
                       </span>
                     )}
                     {outStock && (

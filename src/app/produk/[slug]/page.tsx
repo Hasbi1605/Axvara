@@ -6,29 +6,12 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import type { Product } from "@/lib/products";
 import { formatRupiah } from "@/lib/utils";
+import type { VariantSummary } from "@/lib/catalog";
 import { formatDuration, formatWarranty } from "@/lib/catalog";
 import { useCart } from "@/stores/cart";
 import { ProductCard } from "@/components/storefront/ProductCard";
 
-type VariantItem = {
-  id: number;
-  product_id?: number;
-  sku?: string;
-  label: string;
-  duration_value: number | null;
-  duration_unit: string | null;
-  duration_label: string | null;
-  warranty_type: string;
-  warranty_value: number | null;
-  warranty_unit: string | null;
-  warranty_label: string | null;
-  price: number;
-  compare_price: number | null;
-  stock: number;
-  fulfillment_mode?: string;
-  sort_order?: number;
-  is_active: number;
-};
+type VariantItem = VariantSummary;
 
 type CatalogDetail = {
   id: number;
@@ -346,9 +329,9 @@ export default function ProductDetailPage() {
                     <div className="flex justify-between items-center">
                       <div>
                         <span className="text-sm font-medium text-white">{v.label}</span>
-                        {formatDuration(v as any) && (
+                        {formatDuration(v) && (
                           <span className="text-xs text-white/50 ml-2">
-                            {formatDuration(v as any)}
+                            {formatDuration(v)}
                           </span>
                         )}
                       </div>
@@ -359,9 +342,9 @@ export default function ProductDetailPage() {
                         {v.stock === 0 && <span className="text-xs text-red-400 ml-2">HABIS</span>}
                       </div>
                     </div>
-                    {v.warranty_type !== 'none' && formatWarranty(v as any) && (
+                    {v.warranty_type !== 'none' && formatWarranty(v) && (
                       <div className="text-xs text-[#00E5FF]/80 font-medium mt-1">
-                        {formatWarranty(v as any)}
+                        {formatWarranty(v)}
                       </div>
                     )}
                   </button>
