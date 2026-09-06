@@ -11,6 +11,7 @@ const PER_PAGE = 6;
 // ---- Callback data builders ----
 export const cb = {
   home: () => "home",
+  catalog: (page = 0) => `catalog:${page}`,
   categories: (page = 0) => `cats:${page}`,
   category: (categoryId: number, page = 0) => `cat:${categoryId}:${page}`,
   product: (productId: number) => `prd:${productId}`,
@@ -19,9 +20,14 @@ export const cb = {
   variant: (variantId: number) => `var:${variantId}`,
   confirm: (productId: number) => `confirm:${productId}`,
   confirmVariant: (productId: number, variantId: number) => `cfv:${productId}:${variantId}`,
+  qty: (productId: number, variantId: number) => `qty:${productId}:${variantId}`,
+  setQty: (productId: number, variantId: number, qty: number) => `q:${productId}:${variantId}:${qty}`,
+  pay: (productId: number, variantId: number, qty: number) => `pay:${productId}:${variantId}:${qty}`,
+  payMethod: (productId: number, variantId: number, qty: number, method: string) => `pm:${productId}:${variantId}:${qty}:${method}`,
   order: (orderCode: string) => `order:${orderCode}`,
   cancel: (orderCode: string) => `cancel:${orderCode}`,
   refresh: (orderCode: string) => `refresh:${orderCode}`,
+  waSkip: (orderCode: string) => `waskip:${orderCode}`,
 } as const;
 
 // ---- Callback data parser ----
@@ -36,7 +42,7 @@ export function homeKeyboard(): InlineKeyboardMarkup {
   return {
     inline_keyboard: [
       [
-        { text: "🛍 Katalog", callback_data: cb.categories() },
+        { text: "🛍 Katalog", callback_data: cb.catalog() },
         { text: "📋 Pesanan", callback_data: "myorders" },
       ],
       [
@@ -48,6 +54,37 @@ export function homeKeyboard(): InlineKeyboardMarkup {
       ],
     ],
   };
+}
+
+export function catalogFlatKeyboard(
+  products: { id: number; name: string; price: number }[],
+  page = 0,
+  perPage = 8,
+): InlineKeyboardMarkup {
+  // Flat product list (WA parity) — product names only, categories optional filter.
+  const start = page * perPage;
+  const pageItems = products.slice(start, start + perPage);
+
+  const rows: InlineKeyboardButton[][] = pageItems.map((p) => {
+    const priceStr = `Rp${(p.price / 1000).toFixed(0)}rb`;
+    const label = truncateLabel(p.name, 28);
+    return [{ text: `${label} • ${priceStr}`, callback_data: cb.product(p.id) }];
+  });
+
+  // Pagination (prev | 1/3 | next)
+  const totalPages = Math.max(1, Math.ceil(products.length / perPage));
+  const nav: InlineKeyboardButton[] = [];
+  if (page > 0) nav.push({ text: "◀️", callback_data: cb.catalog(page - 1) });
+  if (totalPages > 1) nav.push({ text: `${page + 1}/${totalPages}`, callback_data: "noop" });
+  if (start + perPage < products.length) nav.push({ text: "▶️", callback_data: cb.catalog(page + 1) });
+  if (nav.length) rows.push(nav);
+
+  // Optional category filter + home (categories no longer mandatory)
+  rows.push([
+    { text: "📂 Kategori", callback_data: cb.categories() },
+    { text: "🏠 Menu", callback_data: cb.home() },
+  ]);
+  return { inline_keyboard: rows };
 }
 
 export function categoriesKeyboard(
@@ -130,7 +167,7 @@ export function productDetailKeyboard(productId: number): InlineKeyboardMarkup {
     inline_keyboard: [
       [{ text: "🛒 Beli Sekarang", callback_data: cb.buy(productId) }],
       [
-        { text: "◀️ Kembali", callback_data: cb.categories() },
+        { text: "◀️ Katalog", callback_data: cb.catalog() },
         { text: "🏠 Menu", callback_data: cb.home() },
       ],
     ],
@@ -166,7 +203,8 @@ export function confirmVariantPurchaseKeyboard(productId: number, variantId: num
   return {
     inline_keyboard: [
       [
-        { text: "✅ Saya Paham, Lanjut Bayar", callback_data: cb.confirmVariant(productId, variantId) },
+        // Lanjut = pilih qty (bulk order), bukan langsung bayar.
+        { text: "➡️ Lanjut Pilih Jumlah", callback_data: cb.qty(productId, variantId) },
       ],
       [
         { text: "📜 Syarat Garansi", callback_data: "warranty" },
@@ -176,11 +214,64 @@ export function confirmVariantPurchaseKeyboard(productId: number, variantId: num
   };
 }
 
+export function qtyKeyboard(params: {
+  productId: number;
+  variantId: number;
+  stock: number;
+}): InlineKeyboardMarkup {
+  const { productId, variantId, stock } = params;
+  const max = stock === -1 ? 20 : Math.max(1, Math.min(stock, 20));
+  const quick = [1, 2, 3, 5, 10].filter((q) => q <= max);
+
+  const rows: InlineKeyboardButton[][] = [];
+  // Quick-pick rows (max 3 per row)
+  for (let i = 0; i < quick.length; i += 3) {
+    rows.push(
+      quick.slice(i, i + 3).map((q) => ({
+        text: q === 1 ? "1️⃣ 1" : q === 2 ? "2️⃣ 2" : q === 3 ? "3️⃣ 3" : q === 5 ? "5️⃣ 5" : `📦 ${q}`,
+        callback_data: cb.setQty(productId, variantId, q),
+      })),
+    );
+  }
+  if (max >= 20 && !quick.includes(20)) {
+    rows.push([{ text: "🔟 20 (max)", callback_data: cb.setQty(productId, variantId, 20) }]);
+  }
+  rows.push([
+    { text: "◀️ Ganti Varian", callback_data: cb.variants(productId) },
+    { text: "🏠 Menu", callback_data: cb.home() },
+  ]);
+  return { inline_keyboard: rows };
+}
+
+export function paymentMethodKeyboard(productId: number, variantId: number, qty: number): InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "⚡ QRIS — otomatis", callback_data: cb.payMethod(productId, variantId, qty, "qris") }],
+      [{ text: "🏦 SeaBank — manual", callback_data: cb.payMethod(productId, variantId, qty, "seabank") }],
+      [{ text: "👛 E-Wallet — manual", callback_data: cb.payMethod(productId, variantId, qty, "ewallet") }],
+      [
+        { text: "◀️ Ubah Qty", callback_data: cb.qty(productId, variantId) },
+        { text: "🏠 Menu", callback_data: cb.home() },
+      ],
+    ],
+  };
+}
+
+export function askWaAfterInvoiceKeyboard(orderCode: string): InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "🔄 Cek Status", callback_data: cb.refresh(orderCode) }],
+      [{ text: "⏭️ Lewati", callback_data: cb.waSkip(orderCode) }],
+      [{ text: "🏠 Menu Utama", callback_data: cb.home() }],
+    ],
+  };
+}
+
 export function confirmPurchaseKeyboard(productId: number): InlineKeyboardMarkup {
   return {
     inline_keyboard: [
       [
-        { text: "✅ Saya Paham, Lanjut Bayar", callback_data: cb.confirm(productId) },
+        { text: "➡️ Lanjut Pilih Jumlah", callback_data: cb.qty(productId, 0) },
       ],
       [
         { text: "📜 Syarat Garansi", callback_data: "warranty" },
@@ -194,7 +285,7 @@ export function warrantyKeyboard(): InlineKeyboardMarkup {
   return {
     inline_keyboard: [
       [
-        { text: "🛍️ Lanjut Belanja", callback_data: cb.categories() },
+        { text: "🛍️ Lanjut Belanja", callback_data: cb.catalog() },
         { text: "🏠 Menu Utama", callback_data: cb.home() },
       ],
     ],
@@ -208,7 +299,10 @@ export function orderStatusKeyboard(orderCode: string): InlineKeyboardMarkup {
         { text: "🔄 Cek Status", callback_data: cb.refresh(orderCode) },
         { text: "❌ Batalkan", callback_data: cb.cancel(orderCode) },
       ],
-      [{ text: "🏠 Menu Utama", callback_data: cb.home() }],
+      [
+        { text: "🛍 Katalog", callback_data: cb.catalog() },
+        { text: "🏠 Menu", callback_data: cb.home() },
+      ],
     ],
   };
 }
@@ -219,7 +313,7 @@ export function orderPaidKeyboard(orderCode: string): InlineKeyboardMarkup {
       [{ text: "📋 Lihat Pesanan", callback_data: cb.order(orderCode) }],
       [{ text: `💬 Chat @${SITE.adminTelegram}`, url: adminTelegramLink() }],
       [
-        { text: "🛍 Katalog", callback_data: cb.categories() },
+        { text: "🛍 Katalog", callback_data: cb.catalog() },
         { text: "🏠 Menu", callback_data: cb.home() },
       ],
     ],

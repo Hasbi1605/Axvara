@@ -113,6 +113,10 @@ Nomor dukungan default adalah `089519388264`, terpisah dari nomor tujuan pembaya
 Detail: `docs/VPS-RESEARCH.md` & `docs/ARCHITECTURE.md`
 
 Bot Telegram auto-order, pembayaran QRIS dinamis, dan fulfillment tersedia di codebase.
+Flow Telegram setara WA grup: katalog datar nama produk (tanpa kategori wajib),
+detail tanpa deskripsi + garansi per varian sinkron web/WA, alur
+`Produk → Varian → Qty (1–20/bulk) → QRIS/SeaBank/E-Wallet`, QRIS langsung terbit,
+order manual atomik, dan No WA diminta setelah invoice khusus fulfillment manual.
 Dokumen `docs/TELEGRAM-BOT-KLIKQRIS-PLAN.md` hanya arsip provider lama dan telah digantikan
 oleh mesin `src/lib/payments/dana-qris.ts`, ledger D1, route QR image, dan QRIS Hook DANA.
 Feature flag terkait adalah `TELEGRAM_BOT_ENABLED`, `DANA_QRIS_ENABLED`, dan
