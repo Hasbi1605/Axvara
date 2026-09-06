@@ -326,22 +326,30 @@ export default function ProductDetailPage() {
                     } ${v.stock === 0 ? "opacity-50 cursor-not-allowed" : ""}`}
                     disabled={v.stock === 0}
                   >
-                    <div className="flex justify-between items-center">
+                    <div className="flex justify-between items-start">
                       <div>
                         <span className="text-sm font-medium text-white">{v.label}</span>
+                        {v.warranty_type !== 'none' && formatWarranty(v) && (
+                          <div className="text-xs text-[#00E5FF]/80 font-medium mt-1">
+                            {formatWarranty(v)}
+                          </div>
+                        )}
                       </div>
-                      <div className="text-right">
+                      <div className="text-right shrink-0">
                         <span className="text-sm font-bold text-[#00E5FF]">
                           Rp{v.price.toLocaleString("id-ID")}
                         </span>
-                        {v.stock === 0 && <span className="text-xs text-red-400 ml-2">HABIS</span>}
+                        <div className="mt-0.5">
+                          {v.stock === 0 ? (
+                            <span className="text-[11px] font-semibold text-red-400">HABIS</span>
+                          ) : (
+                            <span className="text-[11px] text-white/45">
+                              Sisa {v.stock === -1 ? "∞" : v.stock}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
-                    {v.warranty_type !== 'none' && formatWarranty(v) && (
-                      <div className="text-xs text-[#00E5FF]/80 font-medium mt-1">
-                        {formatWarranty(v)}
-                      </div>
-                    )}
                   </button>
                 ))}
               </div>

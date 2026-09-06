@@ -164,16 +164,20 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
                     <span className="mt-1 text-xs font-semibold text-[#00E5FF]">
                       {formatRupiah(v.price)}
                     </span>
-                    {v.warranty_type && v.warranty_type !== "none" && formatWarranty(v) && (
-                      <span className="mt-1 text-[10.5px] text-white/50 font-medium">
-                        {formatWarranty(v)}
-                      </span>
-                    )}
-                    {outStock && (
-                      <span className="mt-1 text-[10px] text-red-400 font-semibold">
-                        Habis
-                      </span>
-                    )}
+                    <div className="mt-0.5 flex items-center justify-between w-full text-[10.5px]">
+                      {v.warranty_type && v.warranty_type !== "none" && formatWarranty(v) ? (
+                        <span className="text-white/50 font-medium truncate pr-1">
+                          {formatWarranty(v)}
+                        </span>
+                      ) : <span />}
+                      {outStock ? (
+                        <span className="text-red-400 font-semibold shrink-0">Habis</span>
+                      ) : (
+                        <span className="text-white/40 shrink-0">
+                          Sisa {v.stock === -1 ? "∞" : v.stock}
+                        </span>
+                      )}
+                    </div>
                     {active && (
                       <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-[#00E5FF] shadow-[0_0_6px_#00E5FF]" />
                     )}
