@@ -106,12 +106,8 @@ export function Footer() {
           </div>
         </div>
 
-        <div className="mt-10 flex flex-col justify-between gap-3 border-t border-white/10 pt-6 sm:flex-row sm:items-center">
-          <div className="space-y-1">
-            <p className="text-xs text-white/35">© 2026 {storeSettings.name}</p>
-            <p className="max-w-[62ch] text-[11px] leading-5 text-white/30">{storeSettings.footerText} Garansi bervariasi 1x24 jam–30 hari mengikuti deskripsi tiap produk. <Link href="/garansi-replace" className="text-white/45 underline decoration-white/20 underline-offset-2 hover:text-white">Ketentuan garansi</Link></p>
-          </div>
-          <div className="flex items-center gap-4 text-xs"><Link href="/#katalog" className="text-white/40 transition hover:text-white">Katalog</Link><Link href="/artikel" className="text-white/40 transition hover:text-white">Artikel</Link></div>
+        <div className="mt-10 border-t border-white/10 pt-6">
+          <p className="text-xs text-white/35">© 2026 {storeSettings.name}</p>
         </div>
       </div>
     </footer>
