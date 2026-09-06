@@ -372,22 +372,6 @@ export default function ProductDetailPage() {
 
           {/* Divider */}
           <div className="mt-5 border-t border-white/8" />
-          <div className="mt-5 flex flex-wrap gap-2 text-xs">
-            <span className="inline-flex items-center gap-1.5 ax-glass-card rounded-full px-3 py-1.5 text-white/70">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/icons/ios11/shield-32.png" alt="" width={14} height={14} className="w-3.5 h-3.5 object-contain brightness-0 invert opacity-70" draggable={false} style={{ filter: "brightness(0) saturate(100%) invert(72%) sepia(68%) saturate(4000%) hue-rotate(145deg) brightness(1.05)" }} />
-              Garansi sesuai deskripsi
-            </span>
-            <span className="inline-flex items-center gap-1.5 ax-glass-card rounded-full px-3 py-1.5 text-white/70">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/icons/ios11/lightning-bolt-32.png" alt="" width={14} height={14} className="w-3.5 h-3.5 object-contain brightness-0 invert opacity-70" draggable={false} style={{ filter: "brightness(0) saturate(100%) invert(72%) sepia(92%) saturate(1800%) hue-rotate(360deg) brightness(1.02)" }} />
-              Aktivasi instan
-            </span>
-            <span className="inline-flex items-center gap-1.5 ax-glass-card rounded-full px-3 py-1.5 text-white/70">
-              <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 text-[#00E5FF]/70" fill="none" stroke="currentColor" strokeWidth={1.5}><path d="M8 1v6l3.5 2M15 8A7 7 0 1 1 1 8a7 7 0 0 1 14 0z" strokeLinecap="round"/></svg>
-              Support 24 jam
-            </span>
-          </div>
 
           {/* Feature list */}
           <ul className="mt-5 space-y-2.5 text-[13px] text-white/60">
@@ -404,12 +388,6 @@ export default function ProductDetailPage() {
               Garansi replace sesuai ketentuan di deskripsi produk ini
             </li>
           </ul>
-
-          {/* Third-party disclaimer */}
-          <p className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-2.5 text-[12px] leading-5 text-white/50">
-            Produk third-party independen — AXVARA tidak terafiliasi dengan brand resmi. Masa & syarat garansi mengikuti deskripsi di atas.{" "}
-            <Link href="/garansi-replace" className="font-semibold text-[#00E5FF]/90 hover:text-[#00E5FF] hover:underline">Lihat ketentuan garansi</Link>
-          </p>
 
           {/* Spacer — pushes buttons down when content is short */}
           <div className="flex-1 min-h-[16px]" />
