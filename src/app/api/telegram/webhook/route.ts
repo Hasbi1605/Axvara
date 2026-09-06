@@ -19,7 +19,6 @@ import {
   chooseVariantMessage, confirmVariantBuyMessage,
 } from "@/lib/telegram/messages";
 import { getProductDetail, getActiveVariant, formatDuration, formatWarranty, type VariantSummary } from "@/lib/catalog";
-import { isEnabled } from "@/lib/feature-flags";
 import { generateOrderCode } from "@/lib/security";
 import { createDanaQrisInvoice, isDanaQrisConfigured } from "@/lib/payments/dana-qris";
 import { reserveInventory, releaseInventoryForOrder, countInventory } from "@/lib/fulfillment/inventory";
@@ -299,11 +298,8 @@ async function handleCallback(data: string, chatId: number, messageId: number, f
       break;
 
     case "buy":
-      if (isEnabled("TELEGRAM_VARIANT_FLOW")) {
-        await handleShowVariants(chatId, messageId, Number(params[0]));
-      } else {
-        await handleBuyConfirm(chatId, messageId, Number(params[0]));
-      }
+      // Always use variant flow — stock synced with web/WA via product_variants
+      await handleShowVariants(chatId, messageId, Number(params[0]));
       break;
 
     case "vars":
@@ -386,8 +382,14 @@ async function handleShowProducts(chatId: number, messageId: number, categoryId:
   const category = await queryFirst(`SELECT name FROM categories WHERE id=?`, categoryId);
   if (!category) return;
 
+  // Use variant-level min price for accurate display (synced with web/WA)
   const products = await queryAll(
-    `SELECT id, name, price FROM products WHERE category_id=? AND is_active=1 AND telegram_enabled=1 ORDER BY sort_order ASC`,
+    `SELECT p.id, p.name, COALESCE(MIN(pv.price), p.price) as price
+     FROM products p
+     LEFT JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1
+     WHERE p.category_id=? AND p.is_active=1 AND p.telegram_enabled=1
+     GROUP BY p.id
+     ORDER BY p.sort_order ASC`,
     categoryId,
   );
 
@@ -404,20 +406,41 @@ async function handleShowProducts(chatId: number, messageId: number, categoryId:
 
 async function handleShowProduct(chatId: number, messageId: number, productId: number) {
   await showLoadingBar(chatId, "📦 Memuat produk");
-  const product = await queryFirst(
-    `SELECT id, name, description, price, compare_price, stock, badge, image_url FROM products WHERE id=? AND is_active=1 AND telegram_enabled=1`,
+
+  // Use catalog.ts for variant-level stock (synced with web/WA)
+  const detail = await getProductDetail(productId);
+  if (!detail) return;
+
+  // Check telegram_enabled flag
+  const meta = await queryFirst(
+    `SELECT telegram_enabled FROM products WHERE id=? AND is_active=1`,
     productId,
   );
-  if (!product) return;
+  if (!meta || Number(meta.telegram_enabled) !== 1) return;
 
-  const text = productDetailMessage(product as {
-    name: string; description?: string | null; price: number;
-    compare_price?: number | null; stock?: number | null; badge?: string | null;
+  // Aggregate stock from variants for display
+  const activeVariants = detail.variants.filter(v => v.is_active);
+  const hasUnlimited = activeVariants.some(v => v.stock === -1);
+  const totalStock = hasUnlimited ? -1 : activeVariants.reduce((sum, v) => sum + v.stock, 0);
+  const minPrice = activeVariants.length > 0 ? Math.min(...activeVariants.map(v => v.price)) : 0;
+  const maxPrice = activeVariants.length > 0 ? Math.max(...activeVariants.map(v => v.price)) : 0;
+
+  // Find compare_price from DB for discount display
+  const priceRow = await queryFirst(`SELECT compare_price, badge FROM products WHERE id=?`, productId);
+  const comparePrice = priceRow?.compare_price ? Number(priceRow.compare_price) : null;
+  const badge = priceRow?.badge ? String(priceRow.badge) : null;
+
+  const text = productDetailMessage({
+    name: detail.name,
+    description: detail.description,
+    price: minPrice,
+    compare_price: comparePrice && comparePrice > maxPrice ? comparePrice : null,
+    stock: totalStock,
+    badge,
   });
 
-  const imageUrl = String(product.image_url ?? "");
+  const imageUrl = detail.image ?? "";
   if (imageUrl && imageUrl.startsWith("http")) {
-    // Send as new photo message (can't edit to add photo)
     await sendPhoto({
       chat_id: chatId,
       photo: imageUrl,
@@ -716,21 +739,23 @@ async function handleBuyConfirm(chatId: number, messageId: number, productId: nu
     return;
   }
 
-  const product = await queryFirst(
-    `SELECT id, name, price, stock, fulfillment_mode FROM products WHERE id=? AND is_active=1 AND telegram_enabled=1`,
-    productId,
-  );
-  if (!product) return;
+  // Use catalog.ts for variant-level stock (synced with web/WA)
+  const detail = await getProductDetail(productId);
+  if (!detail || detail.variants.length === 0) return;
 
-  const stock = Number(product.stock ?? -1);
-  if (stock === 0) {
+  // Aggregate stock from active variants
+  const activeVariants = detail.variants.filter(v => v.is_active);
+  const allOutOfStock = activeVariants.every(v => v.stock === 0);
+
+  if (allOutOfStock) {
     await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
     return;
   }
 
-  // Check for unique inventory availability
-  if (product.fulfillment_mode === "unique") {
-    const counts = await countInventory(productId);
+  // For unique fulfillment, check inventory on first active variant
+  const firstVariant = activeVariants.find(v => v.stock !== 0);
+  if (firstVariant && firstVariant.fulfillment_mode === "unique") {
+    const counts = await countInventory(productId, firstVariant.id);
     if (counts.available < 1) {
       await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
       return;
@@ -753,12 +778,14 @@ async function handleBuyConfirm(chatId: number, messageId: number, productId: nu
     return;
   }
 
-  await safeEditOrSend({
-    chat_id: chatId, message_id: messageId,
-    text: confirmBuyMessage(String(product.name), Number(product.price)),
-    parse_mode: "HTML",
-    reply_markup: confirmPurchaseKeyboard(productId),
-  });
+  // Single variant — redirect to variant confirm
+  if (activeVariants.length === 1 && firstVariant) {
+    await handleVariantConfirm(chatId, messageId, firstVariant.id);
+    return;
+  }
+
+  // Multiple variants — show variant selector
+  await handleShowVariants(chatId, messageId, productId);
 }
 
 async function handleConfirmPurchase(
@@ -774,36 +801,41 @@ async function handleConfirmPurchase(
 
   await sendChatAction(chatId, "typing");
 
-  const product = await queryFirst(
-    `SELECT id, name, price, stock, fulfillment_mode FROM products WHERE id=? AND is_active=1 AND telegram_enabled=1`,
-    productId,
-  );
-  if (!product) {
+  // Use catalog.ts — route through variant flow for stock sync
+  const detail = await getProductDetail(productId);
+  if (!detail || detail.variants.length === 0) {
     await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
     return;
   }
 
-  const fulfillmentMode = String(product.fulfillment_mode || "manual");
+  const activeVariants = detail.variants.filter(v => v.is_active && v.stock !== 0);
+  if (activeVariants.length === 0) {
+    await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
+    return;
+  }
+
+  // Pick first available variant for legacy confirm flow
+  const variant = activeVariants[0];
+  const fulfillmentMode = variant.fulfillment_mode || "manual";
 
   // For manual fulfillment, ask WA first before creating the order
   if (fulfillmentMode === "manual") {
-    // Store pending action: wa_for:{productId}
     if (isD1Mode()) {
       await execRun(
         `UPDATE telegram_users SET pending_action=?, updated_at=datetime('now') WHERE user_id=?`,
-        `wa_for:${productId}`, String(from.id),
+        `wa_for_var:${variant.id}`, String(from.id),
       );
     }
     await sendMessage({
       chat_id: chatId,
-      text: askWhatsAppMessage(String(product.name)),
+      text: askWhatsAppMessage(detail.name),
       parse_mode: "HTML",
     });
     return;
   }
 
-  // For shared/unique, proceed directly (no WA needed — bot delivers automatically)
-  await createAndSendInvoice(chatId, messageId, productId, product, from, "");
+  // For shared/unique, proceed directly via variant invoice
+  await createAndSendVariantInvoice(chatId, messageId, productId, detail.name, variant, from, "");
 }
 
 async function handlePendingWaInput(
@@ -821,7 +853,8 @@ async function handlePendingWaInput(
 
   const action = String(user.pending_action);
   const isVar = action.startsWith("wa_for_var:");
-  if (!action.startsWith("wa_for:") && !isVar) return false;
+  const isLegacy = action.startsWith("wa_for:");
+  if (!isLegacy && !isVar) return false;
 
   const targetId = Number(action.split(":")[1]);
   if (!targetId) return false;
@@ -862,150 +895,28 @@ async function handlePendingWaInput(
 
   const productId = targetId;
 
-  // Fetch product and proceed with order
-  const product = await queryFirst(
-    `SELECT id, name, price, stock, fulfillment_mode FROM products WHERE id=? AND is_active=1 AND telegram_enabled=1`,
-    productId,
-  );
-  if (!product) {
+  // Use variant flow for stock sync — get product detail from catalog.ts
+  const detail = await getProductDetail(productId);
+  if (!detail || detail.variants.length === 0) {
     await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
     return true;
   }
 
+  // Pick first available variant
+  const availableVariant = detail.variants.find(v => v.is_active && v.stock !== 0);
+  if (!availableVariant) {
+    await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
+    return true;
+  }
+
   await sendMessage({ chat_id: chatId, text: `✅ WA <code>${normalizedWa}</code> tersimpan. Membuat invoice...`, parse_mode: "HTML" });
-  await createAndSendInvoice(chatId, 0, productId, product, from, normalizedWa);
+  await createAndSendVariantInvoice(chatId, 0, productId, detail.name, availableVariant, from, normalizedWa);
   return true;
 }
 
-async function createAndSendInvoice(
-  chatId: number,
-  _messageId: number,
-  productId: number,
-  product: Record<string, unknown>,
-  from: { id: number; first_name: string; username?: string },
-  customerWa: string,
-) {
-  const price = Number(product.price);
-  const fulfillmentMode = String(product.fulfillment_mode || "manual");
-  const orderCode = generateOrderCode();
-  const items = [{ product_id: productId, name: String(product.name), price, qty: 1 }];
-  let inventoryId: number | null = null;
-  let stockReserved = false;
-  let orderInserted = false;
-
-  try {
-    // Reserve inventory for unique products
-    if (fulfillmentMode === "unique") {
-      inventoryId = await reserveInventory(productId, orderCode);
-      if (inventoryId === null) {
-        await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
-        return;
-      }
-    }
-
-    // Decrement general stock
-    if (isD1Mode()) {
-      const stockResult = await execRun(
-        `UPDATE products SET stock = CASE WHEN stock=-1 THEN -1 ELSE stock-1 END
-         WHERE id=? AND is_active=1 AND (stock=-1 OR stock>=1)`,
-        productId,
-      );
-      if (!stockResult.changes) {
-        if (inventoryId) await releaseInventoryForOrder(orderCode);
-        await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
-        return;
-      }
-      stockReserved = true;
-    }
-
-    // Insert order — include customer_wa if provided
-    await execRun(
-      `INSERT INTO orders (code, customer_name, customer_wa, customer_email, items, subtotal,
-         payment_method, payment_account, proof_url, status, sales_channel,
-         telegram_chat_id, telegram_user_id, payment_status, fulfillment_status, expires_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      orderCode,
-      from.first_name,
-      customerWa, // WA number (filled for manual, empty for shared/unique)
-      null,
-      JSON.stringify(items),
-      price,
-      "qris",
-      "DANA Business",
-      null,
-      "pending",
-      "telegram",
-      String(chatId),
-      String(from.id),
-      "pending",
-      fulfillmentMode === "unique" ? "reserved" : "not_required",
-      new Date(Date.now() + 15 * 60_000).toISOString(),
-    );
-    orderInserted = true;
-
-    const invoiceResult = await createDanaQrisInvoice(orderCode, price);
-
-    // Create fulfillment job
-    await createFulfillmentJob(orderCode, inventoryId, fulfillmentMode);
-
-    // Send QRIS to user
-    await sendPhoto({
-      chat_id: chatId,
-      photo: invoiceResult.qrisUrl,
-      caption: invoiceMessage({
-        orderCode,
-        productName: String(product.name),
-        payableAmount: invoiceResult.payableAmount,
-        expiresAt: invoiceResult.expiresAt,
-      }),
-      parse_mode: "HTML",
-      reply_markup: orderStatusKeyboard(orderCode),
-    });
-
-    // Notify admin — include WA if available
-    const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
-    if (adminChatId) {
-      try {
-        const { adminOrderNotification } = await import("@/lib/telegram/messages");
-        const telegramUser = from.username ?? String(from.id);
-        const waInfo = customerWa ? `\n📱 ${customerWa}` : "";
-        await sendMessage({
-          chat_id: adminChatId,
-          text: adminOrderNotification({
-            orderCode,
-            productName: String(product.name),
-            amount: invoiceResult.payableAmount,
-            telegramUser,
-            fulfillmentMode,
-          }) + waInfo,
-          parse_mode: "HTML",
-          reply_markup: customerWa ? {
-            inline_keyboard: [[
-              { text: "💬 WA Buyer", url: `https://wa.me/${customerWa}` },
-            ]],
-          } : undefined,
-        });
-      } catch { /* admin notification is best-effort */ }
-    }
-
-  } catch (error) {
-    console.error("Order creation failed:", error instanceof Error ? error.message : "unknown");
-    try {
-      const transaction = orderInserted
-        ? await queryFirst(`SELECT id FROM payment_transactions WHERE order_code=?`, orderCode)
-        : null;
-      if (orderInserted && !transaction) {
-        await transitionPendingOrder(orderCode, "dibatalkan", "dana_qris_setup_failed", items);
-      } else if (!orderInserted) {
-        if (stockReserved) {
-          await execRun(`UPDATE products SET stock=stock+1 WHERE id=? AND stock!=-1`, productId);
-        }
-        if (inventoryId) await releaseInventoryForOrder(orderCode);
-      }
-    } catch { /* Cron can reconcile any remaining reservation. */ }
-    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
-  }
-}
+// ponytail: legacy createAndSendInvoice removed — all orders now go through
+// createAndSendVariantInvoice which decrements product_variants.stock (synced with web/WA).
+// If products without variants appear, getProductDetail returns a synthetic default variant.
 
 async function handleOrderStatus(chatId: number, orderCode: string) {
   const order = await queryFirst(
@@ -1095,14 +1006,22 @@ async function handleOrderCancel(chatId: number, messageId: number, orderCode: s
     return;
   }
 
-  // Restore stock
+  // Restore stock — use product_variants (synced with web/WA)
   try {
-    const items = JSON.parse(String(order.items)) as { product_id: number; qty: number }[];
+    const items = JSON.parse(String(order.items)) as { product_id: number; variant_id?: number; qty: number }[];
     for (const item of items) {
-      await execRun(
-        `UPDATE products SET stock = CASE WHEN stock=-1 THEN -1 ELSE stock+? END WHERE id=? AND stock!=-1`,
-        item.qty, item.product_id,
-      );
+      if (item.variant_id) {
+        await execRun(
+          `UPDATE product_variants SET stock = CASE WHEN stock=-1 THEN -1 ELSE stock+? END, updated_at=datetime('now') WHERE id=? AND stock!=-1`,
+          item.qty, item.variant_id,
+        );
+      } else {
+        // Fallback for legacy orders without variant_id — restore to both tables
+        await execRun(
+          `UPDATE products SET stock = CASE WHEN stock=-1 THEN -1 ELSE stock+? END WHERE id=? AND stock!=-1`,
+          item.qty, item.product_id,
+        );
+      }
     }
   } catch { /* ok */ }
 
