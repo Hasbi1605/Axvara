@@ -191,7 +191,7 @@ MVP seed: 8–12 produk dummy dengan foto placeholder premium + harga realistis 
 - Harga, stok, dan rekening dikunci dalam quote server bertanda tangan selama 60 menit; retry quote yang sama tidak membuat order ganda
 - Stok direservasi ketika order Pending dibuat dan dikembalikan jika Dibatalkan/Kadaluarsa
 - QRIS dirender per order, bisa di-download, dan tidak tersedia setelah invoice kedaluwarsa
-- Kode unik 1–499 membuat nominal aktif tidak ambigu; unique partial index D1 mencegah dua invoice DANA aktif dengan total sama
+- Kode unik 1–299 membuat nominal aktif tidak ambigu; unique partial index D1 mencegah dua invoice DANA aktif dengan total sama
 - Instruksi pembayaran memisahkan QRIS otomatis dari transfer manual agar bukti tidak diwajibkan pada QRIS
 
 ### 5.3 Keamanan Payment

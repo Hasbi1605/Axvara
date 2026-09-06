@@ -3,6 +3,7 @@ import { getD1, queryFirst } from "@/lib/db";
 export const DANA_QRIS_PROVIDER = "dana";
 export const DANA_QRIS_MODE = "dynamic-qris";
 export const DANA_QRIS_EXPIRY_MINUTES = 15;
+export const DANA_QRIS_MAX_UNIQUE_CODE = 299;
 const MIN_AMOUNT = 1;
 const MAX_AMOUNT = 999_999_999;
 
@@ -89,7 +90,7 @@ export function makeDynamicQris(staticPayload: string, amount: number): string {
 function randomUniqueCode(): number {
   const bytes = new Uint16Array(1);
   crypto.getRandomValues(bytes);
-  return 1 + (bytes[0] % 499);
+  return 1 + (bytes[0] % DANA_QRIS_MAX_UNIQUE_CODE);
 }
 
 function publicQrisUrl(orderCode: string): string {
@@ -123,7 +124,7 @@ function invoiceFromRow(row: Record<string, unknown>, isExisting: boolean): Dana
 /** Allocate a collision-safe payable amount and persist it with the order. */
 export async function createDanaQrisInvoice(orderCode: string, requestedAmount: number): Promise<DanaQrisInvoice> {
   if (!isDanaQrisConfigured()) throw new Error("dana_qris_not_configured");
-  if (!Number.isSafeInteger(requestedAmount) || requestedAmount < MIN_AMOUNT || requestedAmount > MAX_AMOUNT - 499) {
+  if (!Number.isSafeInteger(requestedAmount) || requestedAmount < MIN_AMOUNT || requestedAmount > MAX_AMOUNT - DANA_QRIS_MAX_UNIQUE_CODE) {
     throw new Error("invalid_qris_amount");
   }
   const d1 = getD1();

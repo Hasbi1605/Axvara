@@ -3,6 +3,7 @@ import { inflateSync } from "node:zlib";
 import {
   calculateCrc16,
   constantTimeEqual,
+  DANA_QRIS_MAX_UNIQUE_CODE,
   makeDynamicQris,
   parseDanaWebhook,
 } from "@/lib/payments/dana-qris";
@@ -53,6 +54,16 @@ describe("DANA Business dynamic QRIS", () => {
     const idatLength = new DataView(png.buffer, png.byteOffset + 33, 4).getUint32(0);
     const inflated = inflateSync(png.slice(41, 41 + idatLength));
     expect(inflated.byteLength).toBe(width * (width + 1));
+  });
+  it("keeps the unique code within 1-299 so buyers never pay above +300", async () => {
+    expect(DANA_QRIS_MAX_UNIQUE_CODE).toBe(299);
+    const fs = await import("node:fs");
+    const qris = fs.readFileSync("src/lib/payments/dana-qris.ts", "utf8");
+    expect(qris).toContain("DANA_QRIS_MAX_UNIQUE_CODE");
+    expect(qris).toContain("bytes[0] % DANA_QRIS_MAX_UNIQUE_CODE");
+    expect(qris).toContain("MAX_AMOUNT - DANA_QRIS_MAX_UNIQUE_CODE");
+    expect(qris).not.toContain("% 499");
+    expect(qris).not.toContain("MAX_AMOUNT - 499");
   });
 });
 

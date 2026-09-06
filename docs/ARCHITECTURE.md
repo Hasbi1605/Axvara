@@ -315,7 +315,7 @@ CREATE TABLE store_settings (
 [Client] Konfirmasi perubahan harga → pilih QRIS atau rekening manual
    ↓ POST /api/orders { customer, item IDs/qty, payment_method, proof_url, quote_token }
 [Server] Verifikasi signature+expiry+isi item → D1 batch guard+decrement+INSERT order
-   ├─ QRIS: alokasikan kode unik 1–499 → EMVCo dynamic payload + ledger 15 menit
+   ├─ QRIS: alokasikan kode unik 1–299 → EMVCo dynamic payload + ledger 15 menit
    │    ↓ /pesanan/[code] menampilkan PNG dan polling 5 detik
    │    ↓ QRIS Hook → POST /api/webhook/dana → exact amount + event dedup → lunas atomik
    └─ Manual: bukti R2 → review admin

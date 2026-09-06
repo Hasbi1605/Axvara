@@ -4,6 +4,8 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-06 — Kecilkan kode unik QRIS dinamis dari 1–499 menjadi 1–299 (maks +Rp299) agar pembeli tidak merasa diberatkan; batas diekstrak ke konstanta DANA_QRIS_MAX_UNIQUE_CODE — src/lib/payments/dana-qris.ts, tests/dana-qris.regression.test.ts, docs/PRD.md, docs/ARCHITECTURE.md — (verifikasi: vitest 207/207 pass, dev GET / 200, CSS 200, Obscura home OK PNG 1280×720)
+
 - 2026-09-06 — Ganti tombol Chat WA di bottom sticky nav menjadi tombol Katalog (href /#katalog, ikon shopping-bag iOS11); hapus branch external link WA + import whatsappLink/useStoreSettings yang tak terpakai — src/components/storefront/MobileBottomNav.tsx — (verifikasi: vitest 206/206 pass, dev GET / 200, CSS 200, Obscura nav=BerandaArtikelCara OrderKatalog hasChatWA=false)
 
 - 2026-09-06 — Rapikan copy customer-facing: hapus teks kunci 60 menit di CO, sederhanakan info QRIS/verifikasi otomatis tanpa sebut QRIS Hook DANA, hapus himbauan teknis di halaman scan QRIS — src/app/checkout/page.tsx, src/app/pesanan/[code]/page.tsx — (verifikasi: vitest 206/206 pass, dev GET / 200, CSS 200, checkout 200, Obscura copy lama hilang)
