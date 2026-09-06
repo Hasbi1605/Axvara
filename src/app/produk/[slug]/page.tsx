@@ -7,7 +7,7 @@ import Link from "next/link";
 import type { Product } from "@/lib/products";
 import { formatRupiah } from "@/lib/utils";
 import type { VariantSummary } from "@/lib/catalog";
-import { formatDuration, formatWarranty } from "@/lib/catalog";
+import { formatWarranty } from "@/lib/catalog";
 import { useCart } from "@/stores/cart";
 import { ProductCard } from "@/components/storefront/ProductCard";
 
@@ -329,11 +329,6 @@ export default function ProductDetailPage() {
                     <div className="flex justify-between items-center">
                       <div>
                         <span className="text-sm font-medium text-white">{v.label}</span>
-                        {formatDuration(v) && (
-                          <span className="text-xs text-white/50 ml-2">
-                            {formatDuration(v)}
-                          </span>
-                        )}
                       </div>
                       <div className="text-right">
                         <span className="text-sm font-bold text-[#00E5FF]">
