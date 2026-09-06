@@ -239,7 +239,7 @@ export function orderPaidMessage(orderCode: string, productName: string): string
     `🔢 <code>${escapeHtml(orderCode)}</code>`,
     "",
     "⏳ Sedang diproses...",
-    "💬 Perlu bantuan? Chat langsung @axvara_support lewat tombol di bawah.",
+    "💬 Perlu bantuan? Chat langsung @Axvara_bot lewat tombol di bawah.",
   ].join("\n");
 }
 
@@ -270,7 +270,7 @@ export function manualFulfillmentBuyerMessage(orderCode: string): string {
     "",
     "👤 Admin sedang menyiapkan produk kamu",
     "📱 Admin akan menghubungi kamu via WA",
-    "💬 Kamu juga bisa chat langsung @axvara_support",
+    "💬 Kamu juga bisa chat langsung @Axvara_bot",
     "📬 Kamu juga akan dinotifikasi di sini saat siap",
     "",
     "⏱ Estimasi: 1×24 jam",
@@ -377,7 +377,7 @@ export function helpMessage(): string {
     "",
     "━━━━━━━━━━━━━━━━━━━━━",
     "📞 <b>Admin:</b> wa.me/6289519388264",
-    "✈️ <b>Telegram:</b> @axvara_support",
+    "✈️ <b>Telegram:</b> @Axvara_bot",
     "🌐 <b>Web:</b> axvara.tech",
   ].join("\n");
 }

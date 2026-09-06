@@ -96,7 +96,7 @@ export function ProductCard({ product, index = 0, compact = false }: { product: 
           <h3 className="mt-1 font-semibold text-[11.5px] leading-[1.3] text-white line-clamp-2 min-h-[30px] tracking-[-0.01em]">{product.name}</h3>
           <div className="mt-1.5 flex items-baseline gap-1 flex-wrap">
             <span className="font-bold text-[13px] text-white tracking-[-0.02em] leading-none">
-              {hasMultipleVariants ? `Mulai ${formatRupiah(displayPrice)}` : formatRupiah(displayPrice)}
+              {formatRupiah(displayPrice)}
             </span>
             {product.comparePrice && <span className="text-[10px] text-white/30 line-through leading-none">{formatRupiah(product.comparePrice)}</span>}
           </div>
@@ -115,10 +115,10 @@ export function ProductCard({ product, index = 0, compact = false }: { product: 
       style={{ animationDelay: `${index * 35}ms` }}
     >
       {product.badge && (
-        <span className="absolute top-2 left-2 sm:top-3 sm:left-3 z-10 rounded-full bg-[#FFB800] text-[#080C1E] text-[10px] sm:text-[11px] font-bold px-2 sm:px-2.5 py-0.5 sm:py-1 shadow leading-none">{product.badge}</span>
+        <span className="absolute top-1.5 left-1.5 sm:top-3 sm:left-3 z-10 rounded-full bg-[#FFB800] text-[#080C1E] text-[8px] sm:text-[11px] font-bold px-1.5 sm:px-2.5 py-[3px] sm:py-1 shadow leading-none">{product.badge}</span>
       )}
       {discount > 0 && (
-        <span className="absolute top-2 right-2 sm:top-3 sm:right-3 z-10 rounded-full bg-[#00E5FF] text-[#080C1E] text-[10px] sm:text-[11px] font-bold px-1.5 sm:px-2 py-0.5 sm:py-1 leading-none">-{discount}%</span>
+        <span className="absolute top-1.5 right-1.5 sm:top-3 sm:right-3 z-10 rounded-full bg-[#00E5FF] text-[#080C1E] text-[8px] sm:text-[11px] font-bold px-1.5 sm:px-2 py-[3px] sm:py-1 leading-none">-{discount}%</span>
       )}
       <Link href={`/produk/${product.slug}`} className="block flex-1">
         <div className="aspect-[4/3] overflow-hidden bg-white/[0.04] m-1 sm:m-1.5 rounded-[12px] sm:rounded-[16px]">
@@ -145,10 +145,9 @@ export function ProductCard({ product, index = 0, compact = false }: { product: 
         <div className="px-2.5 sm:px-4 pt-2.5 sm:pt-3 pb-1 sm:pb-2">
           <p className="text-[10px] sm:text-[11px] tracking-[0.08em] text-[#00E5FF]/80 font-semibold uppercase truncate">{product.categorySlug.replace("-", " ")}</p>
           <h3 className="mt-1 font-semibold text-[12.5px] sm:text-[14.5px] leading-[1.25] sm:leading-5 text-white line-clamp-2 min-h-[32px] sm:min-h-[40px] tracking-[-0.01em]">{product.name}</h3>
-          <p className="mt-1 text-[11px] sm:text-[12.5px] leading-[1.35] sm:leading-4 text-white/50 line-clamp-2 min-h-[30px] sm:min-h-[32px]">{product.description}</p>
           <div className="mt-2 sm:mt-3 flex items-baseline gap-1.5 sm:gap-2 flex-wrap">
             <span className="font-bold text-[14px] sm:text-[17px] text-white tracking-[-0.02em] leading-none">
-              {hasMultipleVariants ? `Mulai ${formatRupiah(displayPrice)}` : formatRupiah(displayPrice)}
+              {formatRupiah(displayPrice)}
             </span>
             {product.comparePrice && <span className="text-[10px] sm:text-xs text-white/35 line-through leading-none">{formatRupiah(product.comparePrice)}</span>}
           </div>

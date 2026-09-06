@@ -10,6 +10,7 @@ import type { VariantSummary } from "@/lib/catalog";
 import { formatWarranty } from "@/lib/catalog";
 import { useCart } from "@/stores/cart";
 import { ProductCard } from "@/components/storefront/ProductCard";
+import { QuickVariantModal } from "@/components/storefront/QuickVariantModal";
 
 type VariantItem = VariantSummary;
 
@@ -36,6 +37,7 @@ export default function ProductDetailPage() {
   const [variantLoading, setVariantLoading] = useState(true);
   const [variantError, setVariantError] = useState<string | null>(null);
   const [descExpanded, setDescExpanded] = useState(false);
+  const [variantModal, setVariantModal] = useState<"cart" | "checkout" | null>(null);
 
   useEffect(() => {
     setDetailLoading(true);
@@ -325,50 +327,67 @@ export default function ProductDetailPage() {
             </div>
           )}
 
-          {/* Variant selector is the authoritative purchase identity. */}
+          {/* Variant selector — Desktop: inline picker. Mobile: hint only (Shopee-style). */}
           {variantsEnabled && activeVariants.length > 0 && (
-            <div className="mt-4 space-y-2">
-              <h3 className="text-sm font-medium text-white/60">Pilih Varian</h3>
-              <div className="grid gap-2">
-                {activeVariants.map((v: VariantItem) => (
-                  <button
-                    key={v.id}
-                    onClick={() => setSelectedVariantId(v.id)}
-                    className={`text-left p-3 rounded-xl border transition ${
-                      selectedVariantId === v.id
-                        ? "border-[#00E5FF]/50 bg-[#00E5FF]/10"
-                        : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"
-                    } ${v.stock === 0 ? "opacity-50 cursor-not-allowed" : ""}`}
-                    disabled={v.stock === 0}
-                  >
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <span className="text-sm font-medium text-white">{v.label}</span>
-                        {v.warranty_type !== 'none' && formatWarranty(v) && (
-                          <div className="text-xs text-[#00E5FF]/80 font-medium mt-1">
-                            {formatWarranty(v)}
-                          </div>
-                        )}
-                      </div>
-                      <div className="text-right shrink-0">
-                        <span className="text-sm font-bold text-[#00E5FF]">
-                          Rp{v.price.toLocaleString("id-ID")}
-                        </span>
-                        <div className="mt-0.5">
-                          {v.stock === 0 ? (
-                            <span className="text-[11px] font-semibold text-red-400">HABIS</span>
-                          ) : (
-                            <span className="text-[11px] text-white/45">
-                              Sisa {v.stock === -1 ? "∞" : v.stock}
-                            </span>
+            <>
+              {/* Desktop inline variant picker */}
+              <div className="mt-4 space-y-2 hidden lg:block">
+                <h3 className="text-sm font-medium text-white/60">Pilih Varian</h3>
+                <div className="grid gap-2">
+                  {activeVariants.map((v: VariantItem) => (
+                    <button
+                      key={v.id}
+                      onClick={() => setSelectedVariantId(v.id)}
+                      className={`text-left p-3 rounded-xl border transition ${
+                        selectedVariantId === v.id
+                          ? "border-[#00E5FF]/50 bg-[#00E5FF]/10"
+                          : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"
+                      } ${v.stock === 0 ? "opacity-50 cursor-not-allowed" : ""}`}
+                      disabled={v.stock === 0}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <span className="text-sm font-medium text-white">{v.label}</span>
+                          {v.warranty_type !== 'none' && formatWarranty(v) && (
+                            <div className="text-xs text-[#00E5FF]/80 font-medium mt-1">
+                              {formatWarranty(v)}
+                            </div>
                           )}
                         </div>
+                        <div className="text-right shrink-0">
+                          <span className="text-sm font-bold text-[#00E5FF]">
+                            Rp{v.price.toLocaleString("id-ID")}
+                          </span>
+                          <div className="mt-0.5">
+                            {v.stock === 0 ? (
+                              <span className="text-[11px] font-semibold text-red-400">HABIS</span>
+                            ) : (
+                              <span className="text-[11px] text-white/45">
+                                Sisa {v.stock === -1 ? "∞" : v.stock}
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </button>
-                ))}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+              {/* Mobile: compact variant hint (Shopee-style) — tap to open bottom-sheet */}
+              <button
+                type="button"
+                onClick={() => setVariantModal("checkout")}
+                className="mt-4 lg:hidden w-full flex items-center justify-between p-3 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] transition text-left"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-white/70">Varian</span>
+                  <span className="text-xs font-semibold text-[#00E5FF]">
+                    Tersedia {activeVariants.length} varian
+                  </span>
+                </div>
+                <svg viewBox="0 0 24 24" className="w-4 h-4 text-white/40" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+              </button>
+            </>
           )}
 
           {/* Divider */}
@@ -416,7 +435,8 @@ export default function ProductDetailPage() {
           {/* Spacer — pushes buttons down when content is short */}
           <div className="flex-1 min-h-[16px]" />
 
-          {/* CTA buttons */}
+          {/* CTA buttons — Desktop only. Mobile uses sticky bottom bar. */}
+          <div className="hidden lg:block">
           {outOfStock || variantOutOfStock ? (
             <div className="mt-6">
               <span className="w-full h-[52px] rounded-xl bg-white/[0.06] border border-white/10 text-white/40 font-bold flex items-center justify-center gap-2">
@@ -467,26 +487,23 @@ export default function ProductDetailPage() {
               </button>
             </div>
           )}
+          </div>
         </div>
       </div>
 
-      {/* Floating Sticky Bottom Action Bar — Khusus Mobile ala Shopee */}
+      {/* Floating Sticky Bottom Action Bar — Mobile Shopee-style: always enabled */}
       {!outOfStock && !variantOutOfStock && (
         <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#080C1E]/90 backdrop-blur-xl border-t border-white/10 px-4 py-2.5 pb-[max(10px,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(0,0,0,0.5)] flex items-center gap-2.5">
           <button
             type="button"
             onClick={() => {
+              if (needsVariantSelection) { setVariantModal("cart"); return; }
               const cartProduct = selectedVariant
                 ? { ...product, price: selectedVariant.price, stock: selectedVariant.stock === -1 ? undefined : selectedVariant.stock, variantId: selectedVariant.id, variantLabel: selectedVariant.label }
                 : product;
               add(cartProduct);
             }}
-            disabled={needsVariantSelection || variantCatalogUnavailable}
-            className={`flex-1 h-11 rounded-xl ax-glass-card font-semibold text-xs flex items-center justify-center gap-1.5 transition ${
-              needsVariantSelection || variantCatalogUnavailable
-                ? "text-white/30 cursor-not-allowed"
-                : "text-white hover:bg-white/10 active:scale-95"
-            }`}
+            className="flex-1 h-11 rounded-xl ax-glass-card font-semibold text-xs flex items-center justify-center gap-1.5 transition text-white hover:bg-white/10 active:scale-95"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/icons/ios11/shopping-bag-32.png" alt="" width={15} height={15} className="w-3.5 h-3.5 object-contain brightness-0 invert" draggable={false} /> Keranjang
@@ -494,22 +511,27 @@ export default function ProductDetailPage() {
           <button
             type="button"
             onClick={() => {
+              if (needsVariantSelection) { setVariantModal("checkout"); return; }
               const buyUrl = selectedVariantId
                 ? `/checkout?buy=${product.slug}&variant=${selectedVariantId}`
                 : `/checkout?buy=${product.slug}`;
               router.push(buyUrl);
             }}
-            disabled={needsVariantSelection || variantCatalogUnavailable}
-            className={`flex-[1.5] h-11 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition active:scale-95 ${
-              needsVariantSelection || variantCatalogUnavailable
-                ? "bg-[#00E5FF]/30 text-[#080C1E]/50 cursor-not-allowed"
-                : "bg-[#00E5FF] text-[#080C1E] hover:bg-[#00D0E8] shadow-[0_2px_12px_rgba(0,229,255,0.25)]"
-            }`}
+            className="flex-[1.5] h-11 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition active:scale-95 bg-[#00E5FF] text-[#080C1E] hover:bg-[#00D0E8] shadow-[0_2px_12px_rgba(0,229,255,0.25)]"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/icons/ios11/lightning-bolt-32.png" alt="" width={15} height={15} className="w-3.5 h-3.5 object-contain brightness-0" style={{ filter: "brightness(0)" }} draggable={false} /> Beli Sekarang · {formatRupiah(displayPrice)}
           </button>
         </div>
+      )}
+
+      {/* QuickVariantModal — triggered from mobile sticky bar or variant hint */}
+      {variantModal && product && (
+        <QuickVariantModal
+          product={product}
+          mode={variantModal}
+          onClose={() => setVariantModal(null)}
+        />
       )}
 
       {/* Produk Serupa */}

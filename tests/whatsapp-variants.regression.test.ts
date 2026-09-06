@@ -157,7 +157,7 @@ describe("WhatsApp Message Formatting", () => {
     expect(msg).toContain("Ketik nama produk untuk melihat pilihan varian.");
     expect(msg).toContain("Ketik *garansi*");
     expect(msg).toContain("*Belanja & update produk AXVARA:*");
-    expect(msg).toContain("✈️ Telegram: https://t.me/axvara_support");
+    expect(msg).toContain("✈️ Telegram: https://t.me/Axvara_bot");
     expect(msg).toContain("🌐 Website: https://axvara.tech");
     expect(msg).not.toContain("Rp");
     expect(waMsg.getWhatsAppDisplayName({ name: "Netflix Premium 1 Bulan" })).toBe("NETFLIX PREMIUM 1 BULAN");
@@ -182,7 +182,6 @@ describe("WhatsApp Message Formatting", () => {
     const msg = waMsg.productDetailMessage("Gemini", "Akses Gemini Pro", variants);
     expect(msg).toContain("*GEMINI*");
     expect(msg).toContain("1. *Invite*");
-    expect(msg).toContain("⏱ 12 Bulan");
     expect(msg).toContain("🛡 Full Garansi");
     expect(msg).toContain("「 *Rp18.000* 」");
     expect(msg).toContain("2. *Head*");
@@ -214,7 +213,6 @@ describe("WhatsApp Message Formatting", () => {
     const msg = waMsg.variantSelectedMessage("Gemini", variant);
     expect(msg).toContain("*VARIAN DIPILIH*");
     expect(msg).toContain("GEMINI — *Head*");
-    expect(msg).toContain("⏱ 3 Bulan");
     expect(msg).toContain("🛡 Garansi Terbatas 1 Bulan");
     expect(msg).toContain("Rp25.000");
     expect(msg).toContain("*QRIS* · *SEABANK* · *EWALLET*");

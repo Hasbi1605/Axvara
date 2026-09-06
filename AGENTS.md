@@ -28,6 +28,16 @@ Jika perubahan mengubah struktur folder, route `src/app/*`, komponen `src/compon
 - Jangan menjalankan `npm run deploy`, `npm run deploy:mcp`, atau deploy Wrangler manual setelah push. Deploy manual hanya untuk recovery jika diminta eksplisit oleh user.
 - Cloudflare Git integration dinonaktifkan untuk deployment otomatis; GitHub Actions adalah satu-satunya CI/CD agar satu push tidak memicu deploy ganda.
 
+## Aturan Test (WAJIB)
+Setiap kali mengubah kode di `axvara/`, **WAJIB update test yang terpengaruh** sebelum commit/push:
+
+- Jalankan `npx vitest run --run` setelah setiap perubahan kode.
+- Jika ada test yang gagal akibat perubahan yang kamu buat, **perbaiki test tersebut di commit yang sama** — jangan push dengan test gagal.
+- Jika mengubah output/format fungsi (misal menghapus field, mengubah teks, rename identifier), cari semua test yang assert output lama: `grep -rn "string_lama" tests/`.
+- Jika mengubah nilai di `src/lib/site.ts` atau konstanta global lain, cari semua test yang hardcode nilai lama.
+- Jangan menghapus test tanpa alasan — update assertion agar sesuai perilaku baru.
+- Test harus **194/194 pass** (atau jumlah terbaru) sebelum push.
+
 ## Aturan Changelog (WAJIB — khusus axvara)
 Setiap kali ubah kode/docs di `axvara/`, **WAJIB catat di `axvara/CHANGELOG.md`** (bukan di AGENTS.md global):
 
@@ -83,6 +93,7 @@ Setiap kali ubah kode/docs di `axvara/`, **WAJIB catat di `axvara/CHANGELOG.md`*
 
 ## Sebelum menyelesaikan percakapan (checklist)
 Agent **wajib** pastikan sebelum jawab "selesai":
+- [ ] Test pass: `npx vitest run --run` — semua 194/194 (atau jumlah terbaru) pass, tidak ada test gagal
 - [ ] `CHANGELOG.md` sudah di-update (entri paling atas)
 - [ ] Halaman jalan: `GET / 200` dan CSS `200` dari `http://127.0.0.1:3000` (atau `http://localhost:3000`)
 - [ ] Obscura berhasil memuat route yang diubah dan screenshot/evaluasi visual-fungsional sudah diperiksa

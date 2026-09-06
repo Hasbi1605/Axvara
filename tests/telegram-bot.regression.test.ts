@@ -123,8 +123,8 @@ describe("Telegram keyboards", () => {
   it("paid-order keyboard links directly to Telegram support", () => {
     const kb = orderPaidKeyboard("AXV-20260904-AB12CD34");
     const buttons = kb.inline_keyboard.flat();
-    expect(buttons.some((button) => button.text.includes("@axvara_support"))).toBe(true);
-    expect(buttons.some((button) => button.url === "https://t.me/axvara_support")).toBe(true);
+    expect(buttons.some((button) => button.text.includes("@Axvara_bot"))).toBe(true);
+    expect(buttons.some((button) => button.url === "https://t.me/Axvara_bot")).toBe(true);
   });
 });
 
@@ -207,8 +207,8 @@ describe("Telegram messages premium UX", () => {
   });
 
   it("paid and manual fulfillment messages point buyers to support", () => {
-    expect(orderPaidMessage("AXV-20260904-AB12CD34", "Produk")).toContain("@axvara_support");
-    expect(manualFulfillmentBuyerMessage("AXV-20260904-AB12CD34")).toContain("@axvara_support");
+    expect(orderPaidMessage("AXV-20260904-AB12CD34", "Produk")).toContain("@Axvara_bot");
+    expect(manualFulfillmentBuyerMessage("AXV-20260904-AB12CD34")).toContain("@Axvara_bot");
   });
 });
 

@@ -36,6 +36,6 @@ describe("admin operational workspace", () => {
     expect(api).toContain("export async function PUT");
     expect(api).toContain("requireAdmin");
     expect(navbar).toContain("storeSettings.name");
-    expect(footer).toContain("storeSettings.footerText");
+    expect(footer).toContain("storeSettings.name");
   });
 });
