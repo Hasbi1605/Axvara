@@ -4,14 +4,16 @@ import {
   escapeHtml, welcomeMessage, formatWIBTime, catalogFlatMessage,
   productDetailMessage, invoiceMessage, helpMessage, deliveryMessage,
   warrantyTermsMessage, warrantyClaimMessage, warrantyFullMessage,
-  confirmBuyMessage, confirmVariantBuyMessage, chooseQtyMessage,
+  confirmBuyMessage, confirmVariantBuyMessage, chooseVariantMessage, chooseQtyMessage,
   orderPaidMessage, waSavedAfterPaymentMessage,
-  adminTelegramOrderCreatedMessage,
+  adminTelegramOrderCreatedMessage, myOrdersMessage, searchPromptMessage,
+  searchResultsMessage, breadcrumbLine, formatSoldCountLabel,
 } from "@/lib/telegram/messages";
 import {
   cb, parseCallback, homeKeyboard, warrantyKeyboard, categoriesKeyboard,
   productsKeyboard, catalogFlatKeyboard, qtyKeyboard, qrisInvoiceKeyboard,
-  orderPaidKeyboard,
+  orderPaidKeyboard, mainReplyMenu, myOrdersKeyboard, searchResultsKeyboard,
+  MENU_LABEL_CATALOG, MENU_LABEL_SEARCH, MENU_LABEL_ORDERS, MENU_LABEL_HELP,
 } from "@/lib/telegram/keyboards";
 import fs from "node:fs";
 import path from "node:path";
@@ -523,5 +525,109 @@ describe("Telegram warranty anti-refund copy", () => {
     const msg = warrantyFullMessage();
     expect(msg).toContain("WAJIB BACA");
     expect(msg).toContain("SYARAT KLAIM");
+  });
+});
+
+describe("Telegram Fase 1: navigasi & marketing", () => {
+  it("persistent reply menu exposes catalog, search, orders, help", () => {
+    const menu = mainReplyMenu();
+    const labels = menu.keyboard.flat().map((b) => b.text);
+    expect(labels).toContain(MENU_LABEL_CATALOG);
+    expect(labels).toContain(MENU_LABEL_SEARCH);
+    expect(labels).toContain(MENU_LABEL_ORDERS);
+    expect(labels).toContain(MENU_LABEL_HELP);
+    expect(menu.is_persistent).toBe(true);
+    expect(menu.resize_keyboard).toBe(true);
+  });
+
+  it("webhook routes reply-menu labels and new commands", () => {
+    const route = read("src/app/api/telegram/webhook/route.ts");
+    expect(route).toContain("MENU_LABEL_CATALOG");
+    expect(route).toContain("MENU_LABEL_SEARCH");
+    expect(route).toContain("MENU_LABEL_ORDERS");
+    expect(route).toContain("MENU_LABEL_HELP");
+    expect(route).toContain('cmd === "/cari"');
+    expect(route).toContain('cmd === "/orders"');
+    expect(route).toContain("handleSearchPrompt");
+    expect(route).toContain("handleMyOrders");
+    expect(route).toContain("handlePendingSearchInput");
+  });
+
+  it("registers new slash commands in BotFather menu", () => {
+    const api = read("src/lib/telegram/api.ts");
+    expect(api).toContain('command: "cari"');
+    expect(api).toContain('command: "orders"');
+  });
+
+  it("welcome landing shows bestsellers with sold counts", () => {
+    const msg = welcomeMessage("nad", [
+      { productId: 5, name: "Canva Pro 1 Tahun", price: 45000, soldCount: 412 },
+      { productId: 1, name: "ChatGPT Plus 1 Bulan", price: 89000, soldCount: 342 },
+    ]);
+    expect(msg).toContain("Paling Laris");
+    expect(msg).toContain("Canva Pro 1 Tahun");
+    expect(msg).toContain("Terjual 412+");
+    expect(msg).toContain("Terjual 342+");
+    // Backward compat: no bestsellers still renders a CTA
+    expect(welcomeMessage("nad")).toContain("Pilih menu di bawah");
+  });
+
+  it("formats sold counts compactly at 1000+", () => {
+    expect(formatSoldCountLabel(412)).toBe("Terjual 412+");
+    expect(formatSoldCountLabel(1500)).toBe("Terjual 1.5rb+");
+  });
+
+  it("product detail shows Terjual social proof when sold_count present", () => {
+    const msg = productDetailMessage({ name: "Canva Pro", price: 45000, stock: 60, sold_count: 412 });
+    expect(msg).toContain("Terjual 412+");
+    const clean = productDetailMessage({ name: "Canva Pro", price: 45000, stock: 60 });
+    expect(clean).not.toContain("Terjual");
+  });
+
+  it("purchase flow shows breadcrumb Langkah X/4", () => {
+    expect(breadcrumbLine(1)).toContain("Langkah 1/4");
+    expect(breadcrumbLine(4)).toContain("Langkah 4/4");
+    expect(chooseVariantMessage("Canva Pro")).toContain("Langkah 2/4");
+    expect(chooseQtyMessage({
+      productName: "Canva Pro", variantLabel: "Pro Head", price: 5000, stock: -1, qty: 1,
+    })).toContain("Langkah 3/4");
+    expect(invoiceMessage({
+      orderCode: "AXV-1", productName: "Canva Pro", payableAmount: 5000,
+      expiresAt: "2026-09-07T00:00:00Z",
+    })).toContain("Langkah 4/4");
+    expect(confirmVariantBuyMessage({
+      productName: "Canva Pro", variantLabel: "Pro Head", price: 5000,
+    })).toContain("Langkah 2/4");
+  });
+
+  it("my-orders message and keyboard support detail + reorder", () => {
+    const msg = myOrdersMessage([
+      { code: "AXV-1", productName: "Canva Pro", payableAmount: 5000, paymentStatus: "paid", fulfillmentStatus: "delivered" },
+    ]);
+    expect(msg).toContain("Pesanan Saya");
+    expect(msg).toContain("AXV-1");
+    const empty = myOrdersMessage([]);
+    expect(empty).toContain("Belum ada pesanan");
+    expect(empty).toContain("/katalog");
+    const kb = myOrdersKeyboard([{ code: "AXV-1", productId: 5 }]);
+    const datas = kb.inline_keyboard.flat().map((b) => b.callback_data ?? "");
+    expect(datas.some((d) => d === "order:AXV-1")).toBe(true);
+    expect(datas.some((d) => d === "reorder:5")).toBe(true);
+  });
+
+  it("search prompt, results, and keyboard guide discovery", () => {
+    expect(searchPromptMessage()).toContain("Ketik nama produk");
+    expect(searchResultsMessage("canva", 2)).toContain("2 produk cocok");
+    expect(searchResultsMessage("zzz", 0)).toContain("Tidak ada produk yang cocok");
+    const kb = searchResultsKeyboard([{ id: 5, name: "Canva Pro", price: 45000 }]);
+    const datas = kb.inline_keyboard.flat().map((b) => b.callback_data ?? "");
+    expect(datas.some((d) => d === "prd:5")).toBe(true);
+    expect(datas.some((d) => d === "search")).toBe(true);
+  });
+
+  it("callback data stays within 64 bytes including new actions", () => {
+    for (const d of [cb.reorder(99999), cb.search(), cb.myOrders()]) {
+      expect(new TextEncoder().encode(d).length).toBeLessThanOrEqual(64);
+    }
   });
 });

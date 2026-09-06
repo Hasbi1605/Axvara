@@ -64,10 +64,29 @@ export function formatWIBTime(): { greeting: string; tanggal: string; jam: strin
 // WELCOME & NAVIGATION
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-export function welcomeMessage(firstName: string): string {
+export type TelegramBestseller = {
+  name: string;
+  price: number;
+  soldCount: number;
+  productId: number;
+};
+
+function formatSoldCount(sold: number): string {
+  if (sold >= 1000) {
+    const k = sold / 1000;
+    return `Terjual ${Number(k.toFixed(1))}rb+`;
+  }
+  return `Terjual ${sold}+`;
+}
+
+export function formatSoldCountLabel(sold: number): string {
+  return formatSoldCount(Math.max(0, Math.floor(sold)));
+}
+
+export function welcomeMessage(firstName: string, bestsellers: TelegramBestseller[] = []): string {
   const name = escapeHtml(truncate(firstName, 50));
   const { greeting, tanggal, jam } = formatWIBTime();
-  return [
+  const lines = [
     `🎯 <b>Halo, ${name}!</b>`,
     `${greeting} 👋`,
     "",
@@ -82,8 +101,19 @@ export function welcomeMessage(firstName: string): string {
     "✅ Bergaransi &amp; support admin",
     "⚡ Order 1 menit, bayar QRIS otomatis",
     "",
-    "Pilih menu di bawah 👇",
-  ].join("\n");
+  ];
+  const top = bestsellers.filter((b) => b.productId > 0).slice(0, 3);
+  if (top.length > 0) {
+    lines.push("🔥 <b>Paling Laris:</b>");
+    top.forEach((item, i) => {
+      lines.push(`${i + 1}. <b>${escapeHtml(truncate(item.name, 50))}</b> — ${formatRupiah(item.price)} • ${formatSoldCountLabel(item.soldCount)}`);
+    });
+    lines.push("");
+    lines.push("Tap 🛍 Katalog atau 🔎 Cari untuk mulai 👇");
+  } else {
+    lines.push("Pilih menu di bawah 👇");
+  }
+  return lines.join("\n");
 }
 
 export function catalogFlatMessage(total: number): string {
@@ -141,6 +171,7 @@ export function productDetailMessage(product: {
   compare_price?: number | null;
   stock?: number | null;
   badge?: string | null;
+  sold_count?: number | null;
   variants?: TelegramVariantLine[] | null;
 }): string {
   const name = escapeHtml(truncate(product.name, 100));
@@ -172,6 +203,10 @@ export function productDetailMessage(product: {
   } else {
     lines.push(`💰 <b>${price}</b>`);
   }
+
+  // Social proof — sold_count is free marketing from data we already track.
+  const sold = Math.max(0, Math.floor(product.sold_count ?? 0));
+  if (sold > 0) lines.push(`🔥 ${formatSoldCountLabel(sold)}`);
 
   // Stock
   const stock = product.stock ?? -1;
@@ -220,11 +255,13 @@ export function confirmVariantBuyMessage(params: {
   duration?: string | null;
   warranty?: string | null;
   price: number;
+  step?: string | null;
 }): string {
   const { productName, variantLabel, duration, warranty, price } = params;
   const name = escapeHtml(truncate(productName, 100));
   const lines = [
     "🛒 <b>Konfirmasi Pembelian</b>",
+    params.step ?? breadcrumbLine(2),
     "━━━━━━━━━━━━━━━━━━━━━",
     "",
     `📦 <b>${name}</b>`,
@@ -244,6 +281,7 @@ export function chooseVariantMessage(productName: string): string {
   const name = escapeHtml(truncate(productName, 100));
   return [
     `📦 <b>Pilih Varian — ${name}</b>`,
+    breadcrumbLine(2),
     "━━━━━━━━━━━━━━━━━━━━━",
     "",
     "Pilih varian yang sesuai kebutuhan kamu:",
@@ -291,6 +329,7 @@ export function chooseQtyMessage(params: {
       : "📦 ❌ Stok habis";
   return [
     "📊 <b>Tentukan Jumlah Pesanan</b>",
+    breadcrumbLine(3),
     "━━━━━━━━━━━━━━━━━━━━━",
     "",
     `📦 <b>${escapeHtml(truncate(productName, 80))}</b>`,
@@ -328,6 +367,7 @@ export function invoiceMessage(params: {
 
   return [
     "✅ <b>Invoice Berhasil Dibuat</b>",
+    breadcrumbLine(4),
     "━━━━━━━━━━━━━━━━━━━━━",
     "",
     `📦 ${name}`,
@@ -542,6 +582,84 @@ export function myOrdersPrompt(): string {
     "",
     "👆 <i>Ganti dengan kode pesanan kamu</i>",
   ].join("\n");
+}
+
+export type TelegramOrderRow = {
+  code: string;
+  productName: string;
+  productId?: number | null;
+  payableAmount?: number | null;
+  paymentStatus: string;
+  fulfillmentStatus: string;
+  createdAt?: string | null;
+};
+
+export function myOrdersMessage(orders: TelegramOrderRow[]): string {
+  if (orders.length === 0) {
+    return [
+      "📦 <b>Pesanan Saya</b>",
+      "━━━━━━━━━━━━━━━━━━━━━",
+      "",
+      "Belum ada pesanan dari akun Telegram ini.",
+      "",
+      "Yuk mulai dari /katalog — order 1 menit, bayar QRIS otomatis. 🚀",
+    ].join("\n");
+  }
+  const paymentEmoji: Record<string, string> = {
+    paid: "✅",
+    pending: "⏳",
+    unpaid: "⏳",
+    expired: "⏰",
+    failed: "❌",
+  };
+  const lines = [
+    "📦 <b>Pesanan Saya</b>",
+    "━━━━━━━━━━━━━━━━━━━━━",
+    "",
+    `${orders.length} pesanan terakhir — tap tombol di bawah untuk detail / beli lagi 👇`,
+    "",
+  ];
+  orders.slice(0, 10).forEach((order, i) => {
+    const emoji = paymentEmoji[order.paymentStatus] ?? "❓";
+    const amount = order.payableAmount ? ` • ${formatRupiah(order.payableAmount)}` : "";
+    lines.push(`${i + 1}. ${emoji} <b>${escapeHtml(truncate(order.productName, 60))}</b>`);
+    lines.push(`   🔢 <code>${escapeHtml(order.code)}</code>${amount}`);
+  });
+  return lines.join("\n");
+}
+
+export function searchPromptMessage(): string {
+  return [
+    "🔎 <b>Cari Produk</b>",
+    "━━━━━━━━━━━━━━━━━━━━━",
+    "",
+    "Ketik nama produk yang kamu cari.",
+    "",
+    "Contoh: <code>canva</code>, <code>chatgpt</code>, <code>netflix</code>",
+    "",
+    "❌ Ketik /batal untuk kembali.",
+  ].join("\n");
+}
+
+export function searchResultsMessage(keyword: string, total: number): string {
+  const kw = escapeHtml(truncate(keyword, 60));
+  return [
+    `🔎 <b>Hasil: “${kw}”</b>`,
+    "━━━━━━━━━━━━━━━━━━━━━",
+    "",
+    total > 0
+      ? `${total} produk cocok — tap untuk lihat detail 👇`
+      : "Tidak ada produk yang cocok. Coba kata lain atau lihat /katalog 🙏",
+  ].join("\n");
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// BREADCRUMB (Langkah X/4 — Produk → Varian → Jumlah → Bayar)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+export function breadcrumbLine(step: 1 | 2 | 3 | 4): string {
+  const steps = ["Produk", "Varian", "Jumlah", "Bayar"];
+  return `🧭 ${steps.map((label, i) => (i + 1 === step ? `<b>[${label}]</b>` : label)).join(" → ")} (Langkah ${step}/4)`;
 }
 
 export function outOfStockMessage(): string {

@@ -4,6 +4,8 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-07 — Telegram Fase 1 navigasi & marketing: menu bawah permanen (Katalog/Cari/Pesanan/Bantuan) + routing teks, command `/cari` + `/orders`, welcome landing 3 bestseller by sold_count, `Terjual X` di kartu produk, riwayat `/orders` + tombol 🔁 Beli Lagi, breadcrumb `Langkah X/4`, pencarian nama/alias via pending `search:`; payment/fulfillment tidak berubah — Telegram webhook/keyboards/messages/types/api, tests — (verifikasi: vitest 241/241, tsc + ESLint + diff check bersih, build Pages pass, dev GET `/` 200 + CSS 200, Obscura home/eval + PNG 1280×720 diperiksa)
+
 - 2026-09-07 — Perbaiki 3 laporan Telegram: hapus tombol `Masukkan Nomor WhatsApp` yang hanya mengulang prompt (input WA tetap reply-only via pending `wa_after_paid`); kirim update `Lunas — Telegram` tersendiri ke grup Axvara_Notif dengan marker `telegram_paid_admin_notified_at` + retry cron agar status grup tidak tertinggal menunggu bayar; naikkan bulk Telegram 20 → 100/order (`TELEGRAM_MAX_QTY`, regex qty 3 digit, keyboard/messages/test diselaraskan) — Telegram webhook/keyboards/messages/order-notifications, cron, fulfillment, migrasi 0013, schema, docs/tests — (verifikasi: vitest 231/231, tsc + ESLint + diff check bersih, build Pages pass, dev GET `/` 200 + CSS 200, Obscura home/eval + PNG 1280×720 diperiksa)
 
 - 2026-09-06 — Koreksi username Telegram support pascapembayaran dari `@support_axvara` menjadi akun yang benar `@axvara_support`, termasuk tombol/link dan dokumentasi — `src/lib/site.ts`, Telegram tests, README, docs/ARCHITECTURE.md — (verifikasi: vitest, tsc, ESLint, dev HTTP/CSS, dan Obscura)

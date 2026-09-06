@@ -113,7 +113,10 @@ Nomor dukungan default adalah `089519388264`, terpisah dari nomor tujuan pembaya
 Detail: `docs/VPS-RESEARCH.md` & `docs/ARCHITECTURE.md`
 
 Bot Telegram auto-order, pembayaran QRIS dinamis, dan fulfillment tersedia di codebase.
-Flow Telegram setara WA grup: katalog datar nama produk (tanpa kategori wajib),
+Navigasi Fase 1: menu bawah permanen (🛍 Katalog · 🔎 Cari · 📦 Pesanan · ❓ Bantuan),
+welcome landing dengan 3 produk paling laris + `Terjual X` di kartu produk, riwayat
+`/orders` dengan tombol 🔁 Beli Lagi, breadcrumb `Langkah X/4` di alur beli, dan pencarian
+`/cari` via nama/alias. Flow Telegram setara WA grup: katalog datar nama produk (tanpa kategori wajib),
 detail tanpa deskripsi + garansi per varian sinkron web/WA, alur
 `Produk → Varian → Qty stepper (1–100/bulk) → QRIS dinamis`. Telegram hanya menawarkan
 QRIS otomatis—tidak menampilkan SeaBank/e-wallet. Setelah jumlah dikonfirmasi, satu pesan

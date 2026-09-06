@@ -56,11 +56,27 @@ export interface InlineKeyboardMarkup {
   inline_keyboard: InlineKeyboardButton[][];
 }
 
+// ---- Persistent reply keyboard (sticks under the input field) ----
+
+export interface ReplyKeyboardButton {
+  text: string;
+}
+
+export interface ReplyKeyboardMarkup {
+  keyboard: ReplyKeyboardButton[][];
+  resize_keyboard?: boolean;
+  is_persistent?: boolean;
+  one_time_keyboard?: boolean;
+  input_field_placeholder?: string;
+}
+
+export type AnyReplyMarkup = InlineKeyboardMarkup | ReplyKeyboardMarkup;
+
 export interface SendMessageParams {
   chat_id: number | string;
   text: string;
   parse_mode?: "HTML" | "Markdown" | "MarkdownV2";
-  reply_markup?: InlineKeyboardMarkup;
+  reply_markup?: AnyReplyMarkup;
   disable_web_page_preview?: boolean;
 }
 
@@ -69,7 +85,7 @@ export interface SendPhotoParams {
   photo: string; // URL
   caption?: string;
   parse_mode?: "HTML" | "Markdown" | "MarkdownV2";
-  reply_markup?: InlineKeyboardMarkup;
+  reply_markup?: AnyReplyMarkup;
 }
 
 export interface EditMessageTextParams {

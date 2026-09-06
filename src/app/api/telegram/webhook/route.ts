@@ -10,16 +10,18 @@ import {
   productDetailKeyboard, warrantyKeyboard,
   orderStatusKeyboard, variantsKeyboard, confirmVariantPurchaseKeyboard,
   qtyKeyboard, qrisInvoiceKeyboard, orderPaidKeyboard, parseCallback,
-  TELEGRAM_MAX_QTY,
+  TELEGRAM_MAX_QTY, mainReplyMenu, myOrdersKeyboard, searchResultsKeyboard,
+  MENU_LABEL_CATALOG, MENU_LABEL_SEARCH, MENU_LABEL_ORDERS, MENU_LABEL_HELP,
 } from "@/lib/telegram/keyboards";
 import {
   welcomeMessage, catalogFlatMessage, categoriesMessage, categoryProductsMessage,
   productDetailMessage, helpMessage, warrantyFullMessage,
   outOfStockMessage, alreadyPendingMessage, errorMessage,
-  myOrdersPrompt, orderStatusMessage, invoiceMessage,
+  myOrdersPrompt, myOrdersMessage, orderStatusMessage, invoiceMessage,
   orderCancelledMessage, invalidWhatsAppMessage, waSavedAfterPaymentMessage,
   whatsAppInputPromptMessage, chooseVariantMessage, chooseQtyMessage,
-  confirmVariantBuyMessage,
+  confirmVariantBuyMessage, searchPromptMessage, searchResultsMessage,
+  type TelegramBestseller, type TelegramOrderRow,
 } from "@/lib/telegram/messages";
 import { getProductDetail, getActiveVariant, formatDuration, formatWarranty, type VariantSummary } from "@/lib/catalog";
 import { generateOrderCode } from "@/lib/security";
@@ -213,19 +215,45 @@ async function handleCommand(
     await clearPendingAction(from);
     await showLoadingBar(chatId, "🚀 Menyiapkan AXVARA");
     const siteUrl = process.env.SITE_URL ?? "https://axvara.tech";
+    const bestsellers = await getBestsellers(3);
     await sendPhoto({
       chat_id: chatId,
       photo: `${siteUrl}/r2/banners/tg-welcome.png`,
-      caption: welcomeMessage(from?.first_name ?? "Pengguna"),
+      caption: welcomeMessage(from?.first_name ?? "Pengguna", bestsellers),
       parse_mode: "HTML",
       reply_markup: homeKeyboard(),
+    });
+    // Persistent bottom menu so new visitors always know what to tap next.
+    await sendMessage({
+      chat_id: chatId,
+      text: "👇 <b>Menu cepat</b> — selalu tersedia di bawah kolom chat.",
+      parse_mode: "HTML",
+      reply_markup: mainReplyMenu(),
     });
     return;
   }
 
-  if (cmd === "/katalog") {
+  // Persistent reply-menu taps arrive as plain text — route them like commands.
+  if (text === MENU_LABEL_CATALOG || cmd === "/katalog") {
     await clearPendingAction(from);
     await handleShowCatalog(chatId);
+    return;
+  }
+
+  if (text === MENU_LABEL_SEARCH || cmd === "/cari" || cmd === "/search") {
+    await clearPendingAction(from);
+    await handleSearchPrompt(chatId, from);
+    return;
+  }
+
+  if (text === MENU_LABEL_ORDERS || cmd === "/orders" || cmd === "/riwayat") {
+    await clearPendingAction(from);
+    await handleMyOrders(chatId, from);
+    return;
+  }
+
+  if (text === MENU_LABEL_HELP || cmd === "/bantuan" || cmd === "/help") {
+    await sendMessage({ chat_id: chatId, text: helpMessage(), parse_mode: "HTML" });
     return;
   }
 
@@ -235,9 +263,10 @@ async function handleCommand(
     if (handled) return;
   }
 
-  if (cmd === "/bantuan" || cmd === "/help") {
-    await sendMessage({ chat_id: chatId, text: helpMessage(), parse_mode: "HTML" });
-    return;
+  // Search text: user is answering the 🔎 Cari prompt (pending_action=search:).
+  if (from && !cmd.startsWith("/")) {
+    const handled = await handlePendingSearchInput(text, chatId, from);
+    if (handled) return;
   }
 
   if (cmd === "/chatid") {
@@ -273,7 +302,7 @@ async function handleCommand(
     if (parts.length >= 2) {
       await handleOrderStatus(chatId, parts[1]);
     } else {
-      await sendMessage({ chat_id: chatId, text: myOrdersPrompt(), parse_mode: "HTML" });
+      await handleMyOrders(chatId, from);
     }
     return;
   }
@@ -281,7 +310,7 @@ async function handleCommand(
   // Unknown command: show welcome
   await sendMessage({
     chat_id: chatId,
-    text: welcomeMessage(from?.first_name ?? "Pengguna"),
+    text: welcomeMessage(from?.first_name ?? "Pengguna", await getBestsellers(3)),
     parse_mode: "HTML",
     reply_markup: homeKeyboard(),
   });
@@ -295,7 +324,7 @@ async function handleCallback(data: string, chatId: number, messageId: number, f
       await clearPendingAction(from);
       await safeEditOrSend({
         chat_id: chatId, message_id: messageId,
-        text: welcomeMessage(from.first_name),
+        text: welcomeMessage(from.first_name, await getBestsellers(3)),
         parse_mode: "HTML",
         reply_markup: homeKeyboard(),
       });
@@ -374,8 +403,20 @@ async function handleCallback(data: string, chatId: number, messageId: number, f
       break;
 
     case "myorders":
-      await sendMessage({ chat_id: chatId, text: myOrdersPrompt(), parse_mode: "HTML" });
+      await handleMyOrders(chatId, from);
       break;
+
+    case "search":
+      await handleSearchPrompt(chatId, from);
+      break;
+
+    case "reorder": {
+      const productId = Number(params[0] || 0);
+      if (productId > 0) {
+        await handleBuyConfirm(chatId, messageId, productId);
+      }
+      break;
+    }
 
     case "warranty":
       await sendMessage({
@@ -396,6 +437,163 @@ async function handleCallback(data: string, chatId: number, messageId: number, f
 }
 
 // --- Handler implementations ---
+
+// Bestsellers for the welcome landing (free marketing from sold_count).
+async function getBestsellers(limit = 3): Promise<TelegramBestseller[]> {
+  try {
+    const rows = await queryAll(
+      `SELECT p.id, p.name, COALESCE(MIN(pv.price), p.price) as price, p.sold_count
+       FROM products p
+       LEFT JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1
+       WHERE p.is_active=1 AND p.telegram_enabled=1
+       GROUP BY p.id
+       ORDER BY p.sold_count DESC, p.sort_order ASC
+       LIMIT ?`,
+      limit,
+    );
+    return (rows as { id: number; name: string; price: number; sold_count: number }[])
+      .filter((row) => Number(row.sold_count) > 0)
+      .map((row) => ({
+        productId: Number(row.id),
+        name: String(row.name),
+        price: Number(row.price),
+        soldCount: Number(row.sold_count),
+      }));
+  } catch {
+    return [];
+  }
+}
+
+// --- /orders: real order history with reorder shortcuts ---
+
+async function handleMyOrders(
+  chatId: number,
+  from?: { id: number; first_name: string; username?: string },
+) {
+  if (!from || !isD1Mode()) {
+    await sendMessage({ chat_id: chatId, text: myOrdersPrompt(), parse_mode: "HTML" });
+    return;
+  }
+  const rows = await queryAll(
+    `SELECT o.code, o.items, pt.payable_amount, o.payment_status, o.fulfillment_status, o.created_at
+     FROM orders o
+     LEFT JOIN payment_transactions pt ON pt.order_code=o.code
+     WHERE o.sales_channel='telegram' AND o.telegram_user_id=?
+     ORDER BY o.created_at DESC
+     LIMIT 10`,
+    String(from.id),
+  );
+  const orders: TelegramOrderRow[] = (rows as {
+    code: string; items: string; payable_amount: number | null;
+    payment_status: string; fulfillment_status: string; created_at: string | null;
+  }[]).map((row) => {
+    let productName = "Produk";
+    let productId: number | null = null;
+    try {
+      const items = JSON.parse(String(row.items ?? "[]")) as { product_id?: number; name?: string }[];
+      productName = items[0]?.name ?? "Produk";
+      productId = Number(items[0]?.product_id) || null;
+    } catch { /* keep defaults */ }
+    return {
+      code: String(row.code),
+      productName,
+      productId,
+      payableAmount: row.payable_amount ?? null,
+      paymentStatus: String(row.payment_status || "unpaid"),
+      fulfillmentStatus: String(row.fulfillment_status || "not_required"),
+      createdAt: row.created_at,
+    };
+  });
+  await sendMessage({
+    chat_id: chatId,
+    text: myOrdersMessage(orders.map(({ code, productName, payableAmount, paymentStatus, fulfillmentStatus, createdAt }) => ({
+      code, productName, payableAmount, paymentStatus, fulfillmentStatus, createdAt,
+    }))),
+    parse_mode: "HTML",
+    reply_markup: orders.length > 0
+      ? myOrdersKeyboard(orders.map((order) => ({ code: order.code, productId: order.productId ?? null })))
+      : homeKeyboard(),
+  });
+}
+
+// --- /cari: product search by name/alias ---
+
+async function handleSearchPrompt(
+  chatId: number,
+  from?: { id: number },
+) {
+  if (from && isD1Mode()) {
+    await execRun(
+      `UPDATE telegram_users SET pending_action='search:', updated_at=datetime('now') WHERE user_id=?`,
+      String(from.id),
+    ).catch(() => {});
+  }
+  await sendMessage({ chat_id: chatId, text: searchPromptMessage(), parse_mode: "HTML" });
+}
+
+async function handlePendingSearchInput(
+  text: string,
+  chatId: number,
+  from: { id: number },
+): Promise<boolean> {
+  if (!isD1Mode()) return false;
+  const user = await queryFirst(
+    `SELECT pending_action FROM telegram_users WHERE user_id=?`,
+    String(from.id),
+  );
+  const action = user?.pending_action ? String(user.pending_action) : "";
+  if (action !== "search:") return false;
+
+  const keyword = text.trim().replace(/^\/batal$/i, "");
+  if (/^\/batal$/i.test(text.trim())) {
+    await execRun(
+      `UPDATE telegram_users SET pending_action=NULL, updated_at=datetime('now') WHERE user_id=?`,
+      String(from.id),
+    ).catch(() => {});
+    await handleShowCatalog(chatId);
+    return true;
+  }
+  if (keyword.length < 2) {
+    await sendMessage({
+      chat_id: chatId,
+      text: "❌ Minimal 2 huruf. Contoh: <code>canva</code>",
+      parse_mode: "HTML",
+    });
+    return true;
+  }
+  await execRun(
+    `UPDATE telegram_users SET pending_action=NULL, updated_at=datetime('now') WHERE user_id=?`,
+    String(from.id),
+  ).catch(() => {});
+  await handleSearchResults(chatId, keyword);
+  return true;
+}
+
+async function handleSearchResults(chatId: number, keyword: string) {
+  const like = `%${keyword.trim().toLowerCase()}%`;
+  const rows = await queryAll(
+    `SELECT p.id, p.name, COALESCE(MIN(pv.price), p.price) as price
+     FROM products p
+     LEFT JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1
+     WHERE p.is_active=1 AND p.telegram_enabled=1
+       AND (LOWER(p.name) LIKE ? OR LOWER(COALESCE(p.whatsapp_alias,'')) LIKE ? OR LOWER(COALESCE(p.aliases,'[]')) LIKE ?)
+     GROUP BY p.id
+     ORDER BY p.sold_count DESC, p.sort_order ASC
+     LIMIT 10`,
+    like, like, like,
+  );
+  const products = (rows as { id: number; name: string; price: number }[]).map((row) => ({
+    id: Number(row.id),
+    name: String(row.name),
+    price: Number(row.price),
+  }));
+  await sendMessage({
+    chat_id: chatId,
+    text: searchResultsMessage(keyword, products.length),
+    parse_mode: "HTML",
+    reply_markup: products.length > 0 ? searchResultsKeyboard(products) : homeKeyboard(),
+  });
+}
 
 // Flat catalog (WA parity): product names only, no mandatory categories.
 async function handleShowCatalog(chatId: number) {
@@ -492,9 +690,10 @@ async function handleShowProduct(chatId: number, messageId: number, productId: n
   const maxPrice = activeVariants.length > 0 ? Math.max(...activeVariants.map(v => v.price)) : 0;
 
   // Find compare_price from DB for discount display
-  const priceRow = await queryFirst(`SELECT compare_price, badge FROM products WHERE id=?`, productId);
+  const priceRow = await queryFirst(`SELECT compare_price, badge, sold_count FROM products WHERE id=?`, productId);
   const comparePrice = priceRow?.compare_price ? Number(priceRow.compare_price) : null;
   const badge = priceRow?.badge ? String(priceRow.badge) : null;
+  const soldCount = priceRow?.sold_count ? Number(priceRow.sold_count) : 0;
 
   const variantLines = activeVariants.map((v) => ({
     label: v.label,
@@ -512,6 +711,7 @@ async function handleShowProduct(chatId: number, messageId: number, productId: n
     compare_price: comparePrice && comparePrice > maxPrice ? comparePrice : null,
     stock: totalStock,
     badge,
+    sold_count: soldCount,
     variants: variantLines,
   });
 

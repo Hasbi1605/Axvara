@@ -3,10 +3,16 @@
 // 2-column grid for categories, single-column for products (longer labels).
 // All callback_data ≤ 64 bytes.
 
-import type { InlineKeyboardMarkup, InlineKeyboardButton } from "./types";
+import type { InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup } from "./types";
 import { adminWaLink, supportTelegramLink, SITE } from "@/lib/site";
 
 const PER_PAGE = 6;
+
+// Reply-menu labels — single source of truth shared by webhook routing + tests.
+export const MENU_LABEL_CATALOG = "🛍 Katalog";
+export const MENU_LABEL_SEARCH = "🔎 Cari";
+export const MENU_LABEL_ORDERS = "📦 Pesanan";
+export const MENU_LABEL_HELP = "❓ Bantuan";
 
 // Telegram bulk cap: 100/order for bulk purchase (web checkout keeps its own cap).
 export const TELEGRAM_MAX_QTY = 100;
@@ -29,6 +35,9 @@ export const cb = {
   order: (orderCode: string) => `order:${orderCode}`,
   cancel: (orderCode: string) => `cancel:${orderCode}`,
   refresh: (orderCode: string) => `refresh:${orderCode}`,
+  reorder: (productId: number) => `reorder:${productId}`,
+  search: () => "search",
+  myOrders: () => "myorders",
   waInput: (orderCode: string) => `wainput:${orderCode}`,
 } as const;
 
@@ -39,6 +48,23 @@ export function parseCallback(data: string): { action: string; params: string[] 
 }
 
 // ---- Keyboard builders ----
+
+/**
+ * Persistent bottom menu (ReplyKeyboardMarkup) — always visible under the
+ * input field so new visitors never wonder "what now?".
+ * Labels route back to the webhook as plain text (see MENU_LABEL_*).
+ */
+export function mainReplyMenu(): ReplyKeyboardMarkup {
+  return {
+    keyboard: [
+      [{ text: MENU_LABEL_CATALOG }, { text: MENU_LABEL_SEARCH }],
+      [{ text: MENU_LABEL_ORDERS }, { text: MENU_LABEL_HELP }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+    input_field_placeholder: "Pilih menu atau ketik /bantuan…",
+  };
+}
 
 export function homeKeyboard(): InlineKeyboardMarkup {
   return {
@@ -161,6 +187,41 @@ export function productsKeyboard(
     { text: "◀️ Kategori", callback_data: cb.categories() },
     { text: "🏠 Menu", callback_data: cb.home() },
   ]);
+  return { inline_keyboard: rows };
+}
+
+export function myOrdersKeyboard(
+  orders: { code: string; productId: number | null }[],
+): InlineKeyboardMarkup {
+  const rows: InlineKeyboardButton[][] = orders.slice(0, 10).map((order, i) => {
+    const row: InlineKeyboardButton[] = [
+      { text: `${i + 1}. 📋 ${truncateLabel(order.code, 22)}`, callback_data: cb.order(order.code) },
+    ];
+    if (order.productId) {
+      row.push({ text: "🔁 Beli Lagi", callback_data: cb.reorder(order.productId) });
+    }
+    return row;
+  });
+  rows.push([
+    { text: "🛍 Katalog", callback_data: cb.catalog() },
+    { text: "🏠 Menu", callback_data: cb.home() },
+  ]);
+  return { inline_keyboard: rows };
+}
+
+export function searchResultsKeyboard(
+  products: { id: number; name: string; price: number }[],
+): InlineKeyboardMarkup {
+  const rows: InlineKeyboardButton[][] = products.slice(0, 10).map((p) => {
+    const priceStr = `Rp${(p.price / 1000).toFixed(0)}rb`;
+    const label = truncateLabel(p.name, 28);
+    return [{ text: `${label} • ${priceStr}`, callback_data: cb.product(p.id) }];
+  });
+  rows.push([
+    { text: "🔎 Cari Lagi", callback_data: cb.search() },
+    { text: "🛍 Katalog", callback_data: cb.catalog() },
+  ]);
+  rows.push([{ text: "🏠 Menu", callback_data: cb.home() }]);
   return { inline_keyboard: rows };
 }
 
