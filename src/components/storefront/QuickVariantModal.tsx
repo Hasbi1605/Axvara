@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { formatRupiah } from "@/lib/utils";
 import type { VariantSummary } from "@/lib/catalog";
 import { formatWarranty } from "@/lib/catalog";
@@ -80,7 +81,8 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
     }
   };
 
-  return (
+  // Portal to body so `position:fixed` escapes any parent transform/overflow
+  return createPortal(
     <div
       className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-0 sm:p-4"
       onClick={onClose}
@@ -211,6 +213,7 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
