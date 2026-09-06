@@ -1,7 +1,7 @@
 // src/lib/whatsapp/messages.ts — WhatsApp message templates (plain text + *bold*)
 // Uses WhatsApp formatting: *bold*, _italic_, ~strikethrough~, ```monospace```
 
-import { type VariantSummary, formatDuration, formatWarranty, formatRupiah } from "@/lib/catalog";
+import { type VariantSummary, formatWarranty, formatRupiah } from "@/lib/catalog";
 import { SITE, adminTelegramLink } from "@/lib/site";
 import { formatWarrantyWhatsApp } from "@/lib/warranty-policy";
 
@@ -79,24 +79,19 @@ export function listProductsMessage(products: WhatsAppProductLabel[]): string {
   return lines.join("\n");
 }
 
-export function productDetailMessage(productName: string, description: string | null, variants: VariantSummary[]): string {
+export function productDetailMessage(productName: string, _description: string | null, variants: VariantSummary[]): string {
   const lines = [
     "━━━━━━━━━━━━━━━━━━━━",
     `*${productName.toUpperCase()}*`,
     "━━━━━━━━━━━━━━━━━━━━",
+    "",
   ];
-  if (description) {
-    lines.push("");
-    lines.push(description.length > 200 ? description.slice(0, 197) + "..." : description);
-  }
-  lines.push("");
 
   variants.forEach((v, i) => {
     const num = i + 1;
-    lines.push(`${num}. *${v.label}*`);
-    const dur = formatDuration(v);
     const war = formatWarranty(v);
-    lines.push(`   ⏱ ${dur || "Sesuai deskripsi"}   🛡 ${war || "Tanpa Garansi"}`);
+    lines.push(`${num}. *${v.label}*`);
+    lines.push(`   🛡 ${war || "Tanpa Garansi"}`);
     lines.push(`   「 *${formatRupiah(v.price)}* 」`);
     if (v.stock === 0) lines.push("   ❌ *HABIS*");
     lines.push("");
@@ -114,7 +109,6 @@ export function productDetailMessage(productName: string, description: string | 
 }
 
 export function variantSelectedMessage(productName: string, variant: VariantSummary): string {
-  const dur = formatDuration(variant);
   const war = formatWarranty(variant);
   const lines = [
     "━━━━━━━━━━━━━━━━━━━━",
@@ -122,7 +116,7 @@ export function variantSelectedMessage(productName: string, variant: VariantSumm
     "━━━━━━━━━━━━━━━━━━━━",
     `${productName.toUpperCase()} — *${variant.label}*`,
   ];
-  lines.push(`⏱ ${dur || "Sesuai deskripsi"}   🛡 ${war || "Tanpa Garansi"}`);
+  lines.push(`🛡 ${war || "Tanpa Garansi"}`);
   lines.push(`「 *${formatRupiah(variant.price)}* 」`);
   lines.push("");
   lines.push("Pilih pembayaran dengan mengetik:");
@@ -163,8 +157,8 @@ export function paymentMessage(params: {
     "━━━━━━━━━━━━━━━━━━━━",
     `🛍 ${params.productName.toUpperCase()} — *${params.variantLabel}*`,
   ];
-  if (params.duration || params.warranty) {
-    lines.push(`⏱ ${params.duration || "Sesuai deskripsi"}   🛡 ${params.warranty || "Tanpa Garansi"}`);
+  if (params.warranty) {
+    lines.push(`🛡 ${params.warranty}`);
   }
   lines.push(`💰 Total: *${formatRupiah(params.total)}*`);
   lines.push(`💳 Metode: *${params.method}*`);

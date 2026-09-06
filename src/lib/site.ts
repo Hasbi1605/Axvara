@@ -4,7 +4,7 @@ export const SITE = {
   tagline: "Toko akun premium, AI gateway, dan tools pro.",
   adminWaLocal: "089519388264",
   adminWaIntl: "6289519388264",
-  adminTelegram: "axvara_support",
+  adminTelegram: "Axvara_bot",
   webUrl: "https://axvara.tech",
   supportHours: "09.00–23.00 WIB",
 } as const;
