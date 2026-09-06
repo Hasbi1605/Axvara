@@ -218,8 +218,8 @@ describe("Telegram keyboards", () => {
     const buttons = kb.inline_keyboard.flat();
     expect(buttons.some((button) => button.callback_data?.startsWith("wainput:"))).toBe(true);
     expect(buttons.some((button) => button.url?.startsWith("https://wa.me/6289519388264"))).toBe(true);
-    expect(buttons.some((button) => button.text.includes("@support_axvara"))).toBe(true);
-    expect(buttons.some((button) => button.url === "https://t.me/support_axvara")).toBe(true);
+    expect(buttons.some((button) => button.text.includes("@axvara_support"))).toBe(true);
+    expect(buttons.some((button) => button.url === "https://t.me/axvara_support")).toBe(true);
   });
 });
 
@@ -370,7 +370,7 @@ describe("Telegram messages premium UX", () => {
     const msg = orderPaidMessage("AXV-20260904-AB12CD34", "Produk", true);
     expect(msg).toContain("Dana sudah diterima dan terverifikasi otomatis");
     expect(msg).toContain("nomor WhatsApp aktif");
-    expect(msg).toContain("@support_axvara");
+    expect(msg).toContain("@axvara_support");
     expect(msg).toContain("wa.me/6289519388264");
   });
 

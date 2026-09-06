@@ -160,7 +160,7 @@ tetap menjadi authority dan event yang tidak cocok ditangani pada **Metode & Rek
 Penghapusan produk/varian mengarsipkannya agar order historis tetap utuh. Konfigurasi
 fulfillment shared/unique dipusatkan pada masing-masing varian, bukan digandakan di menu bot.
 
-Setelah pembayaran diterima, tombol support bot membuka akun manusia `@support_axvara`;
+Setelah pembayaran diterima, tombol support bot membuka akun manusia `@axvara_support`;
 username bot tetap `@Axvara_bot`. Seluruh notifikasi admin dari order web maupun Telegram
 memakai satu tujuan `TELEGRAM_ADMIN_CHAT_ID`. Untuk grup privat, tambahkan bot ke grup,
 kirim `/chatid`, lalu simpan ID numerik negatif yang dibalas bot sebagai secret tersebut
