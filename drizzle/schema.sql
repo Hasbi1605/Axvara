@@ -65,6 +65,8 @@ CREATE TABLE IF NOT EXISTS orders (
   telegram_order_notified_at TEXT,
   telegram_paid_notified_at TEXT,
   telegram_paid_admin_notified_at TEXT,
+  telegram_reminder_count INTEGER NOT NULL DEFAULT 0,
+  telegram_reminder_sent_at TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -225,6 +227,18 @@ CREATE TABLE IF NOT EXISTS telegram_updates (
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS telegram_carts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL,
+  product_id INTEGER NOT NULL,
+  variant_id INTEGER NOT NULL,
+  qty INTEGER NOT NULL DEFAULT 1 CHECK (qty >= 1 AND qty <= 100),
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(user_id, variant_id)
+);
+CREATE INDEX IF NOT EXISTS idx_telegram_carts_user
+  ON telegram_carts(user_id, updated_at);
 CREATE TABLE IF NOT EXISTS payment_transactions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   order_code TEXT NOT NULL REFERENCES orders(code),

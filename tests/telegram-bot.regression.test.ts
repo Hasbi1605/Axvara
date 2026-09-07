@@ -8,12 +8,15 @@ import {
   orderPaidMessage, waSavedAfterPaymentMessage,
   adminTelegramOrderCreatedMessage, myOrdersMessage, searchPromptMessage,
   searchResultsMessage, breadcrumbLine, formatSoldCountLabel,
+  cartMessage, cartAddedMessage, cartCheckoutSummaryMessage, orderReminderMessage,
 } from "@/lib/telegram/messages";
 import {
   cb, parseCallback, homeKeyboard, warrantyKeyboard, categoriesKeyboard,
   productsKeyboard, catalogFlatKeyboard, qtyKeyboard, qrisInvoiceKeyboard,
   orderPaidKeyboard, mainReplyMenu, myOrdersKeyboard, searchResultsKeyboard,
+  cartKeyboard,
   MENU_LABEL_CATALOG, MENU_LABEL_SEARCH, MENU_LABEL_ORDERS, MENU_LABEL_HELP,
+  MENU_LABEL_CART,
 } from "@/lib/telegram/keyboards";
 import fs from "node:fs";
 import path from "node:path";
@@ -628,6 +631,121 @@ describe("Telegram Fase 1: navigasi & marketing", () => {
 
   it("callback data stays within 64 bytes including new actions", () => {
     for (const d of [cb.reorder(99999), cb.search(), cb.myOrders()]) {
+      expect(new TextEncoder().encode(d).length).toBeLessThanOrEqual(64);
+    }
+  });
+});
+
+describe("Telegram Fase 2: cart + reminder (tanpa review/promo)", () => {
+  it("persistent menu includes cart label routed by webhook", () => {
+    const menu = mainReplyMenu();
+    const labels = menu.keyboard.flat().map((b) => b.text);
+    expect(labels).toContain(MENU_LABEL_CART);
+    const route = read("src/app/api/telegram/webhook/route.ts");
+    expect(route).toContain("MENU_LABEL_CART");
+    expect(route).toContain('cmd === "/cart"');
+    expect(route).toContain("handleShowCart");
+    expect(route).toContain("handleCartCheckout");
+    expect(route).toContain("createAndSendCartInvoice");
+    expect(route).toContain('"cconfirm"');
+  });
+
+  it("qty step offers add-to-cart alongside direct QRIS checkout", () => {
+    const kb = qtyKeyboard({ productId: 1, variantId: 2, stock: -1, qty: 2, price: 5000 });
+    const datas = kb.inline_keyboard.flat().map((b) => b.callback_data ?? "");
+    expect(datas.some((d) => d === "pay:1:2:2")).toBe(true);
+    expect(datas.some((d) => d === "cadd:1:2:2")).toBe(true);
+  });
+
+  it("cart keyboard exposes adjust, remove, checkout, and clear", () => {
+    const kb = cartKeyboard({
+      lines: [
+        { variantId: 11, qty: 2, stock: -1, fulfillmentMode: "manual" },
+        { variantId: 22, qty: 1, stock: 5, fulfillmentMode: "shared" },
+      ],
+    });
+    const datas = kb.inline_keyboard.flat().map((b) => b.callback_data ?? "");
+    expect(datas).toContain("cdec:11");
+    expect(datas).toContain("cinc:11");
+    expect(datas).toContain("crm:22");
+    expect(datas).toContain("ccheckout");
+    expect(datas).toContain("cclear");
+    const empty = cartKeyboard({ lines: [] });
+    const emptyDatas = empty.inline_keyboard.flat().map((b) => b.callback_data ?? "");
+    expect(emptyDatas).not.toContain("ccheckout");
+  });
+
+  it("cart messages render lines, subtotal, and single-QRIS promise", () => {
+    const lines = [
+      { productName: "Canva Pro", variantLabel: "Pro Head 1 Bulan", price: 5000, qty: 2 },
+      { productName: "ChatGPT Plus", variantLabel: "1 Bulan", price: 89000, qty: 1 },
+    ];
+    const msg = cartMessage(lines);
+    expect(msg).toContain("Keranjang Kamu");
+    expect(msg).toContain("Canva Pro");
+    expect(msg).toContain("Total: Rp99.000");
+    expect(msg).toContain("SATU QRIS");
+    expect(cartMessage([])).toContain("Keranjang Kosong");
+    const added = cartAddedMessage("Canva Pro", "Pro Head 1 Bulan", 2, 3);
+    expect(added).toContain("Masuk Keranjang");
+    const summary = cartCheckoutSummaryMessage(lines, 99000);
+    expect(summary).toContain("Satu QRIS untuk semua item");
+    expect(summary).toContain("Langkah 4/4");
+  });
+
+  it("cart checkout keeps one order + one QRIS invoice + per-mode fulfillment job", () => {
+    const route = read("src/app/api/telegram/webhook/route.ts");
+    expect(route).toContain("INSERT INTO orders (code, customer_name");
+    expect(route).toContain("createDanaQrisInvoice(orderCode, subtotal)");
+    expect(route).toContain("clearCart(String(from.id))");
+    expect(route).toContain("variant_snapshot");
+    // Satu job per order (UNIQUE order_code): mode dominan, bukan per item.
+    expect(route).toContain("cartFulfillmentMode");
+    expect(route).not.toContain("for (const line of lines) {\n      const hasInventory");
+  });
+
+  it("cart lib guards unique-conflict, caps, and stale rows", () => {
+    const lib = read("src/lib/telegram/cart.ts");
+    const migration = read("drizzle/migrations/0014_telegram_cart_reminders.sql");
+    expect(lib).toContain("unique_conflict");
+    expect(migration).toContain("UNIQUE(user_id, variant_id)");
+    expect(lib).toContain("MAX_LINES = 20");
+    expect(lib).toContain("DELETE FROM telegram_carts WHERE user_id=? AND variant_id=?");
+  });
+
+  it("migration 0014 creates cart table + reminder markers", () => {
+    const migration = read("drizzle/migrations/0014_telegram_cart_reminders.sql");
+    const schema = read("drizzle/schema.sql");
+    expect(migration).toContain("CREATE TABLE IF NOT EXISTS telegram_carts");
+    expect(migration).toContain("telegram_reminder_count");
+    expect(schema).toContain("CREATE TABLE IF NOT EXISTS telegram_carts");
+    expect(schema).toContain("telegram_reminder_count INTEGER NOT NULL DEFAULT 0");
+  });
+
+  it("reminder is capped at 2x with 60-minute interval and active-invoice guard", () => {
+    const lib = read("src/lib/telegram/order-notifications.ts");
+    expect(lib).toContain("TELEGRAM_REMINDER_MAX = 2");
+    expect(lib).toContain("TELEGRAM_REMINDER_INTERVAL_MINUTES = 60");
+    expect(lib).toContain("telegram_reminder_count < ?");
+    expect(lib).toContain("datetime(pt.expires_at)>datetime('now')");
+    expect(lib).toContain("payment_status IN ('unpaid','pending')");
+    const cron = read("src/app/api/cron/operations/route.ts");
+    expect(cron).toContain("sendPendingOrderReminders");
+    expect(cron).toContain("telegram_pending_reminders_sent");
+  });
+
+  it("reminder copy escalates on second attempt and reassures paid buyers", () => {
+    const first = orderReminderMessage({ orderCode: "AXV-1", productName: "Canva", payableAmount: 5123, attempt: 1 });
+    expect(first).toContain("Menunggu Pembayaran");
+    expect(first).toContain("AXV-1");
+    expect(first).toContain("5.123");
+    const second = orderReminderMessage({ orderCode: "AXV-1", productName: "Canva", payableAmount: 5123, attempt: 2 });
+    expect(second).toContain("Pengingat Terakhir");
+    expect(second).toContain("Abaikan pesan ini jika sudah bayar");
+  });
+
+  it("cart callback data stays within 64 bytes", () => {
+    for (const d of [cb.cartAdd(99999, 88888, 100), cb.cartDec(88888), cb.cartInc(88888), cb.cartRemove(88888), cb.cartCheckout(), cb.cartClear(), cb.cart()]) {
       expect(new TextEncoder().encode(d).length).toBeLessThanOrEqual(64);
     }
   });

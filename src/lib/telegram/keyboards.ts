@@ -13,6 +13,7 @@ export const MENU_LABEL_CATALOG = "🛍 Katalog";
 export const MENU_LABEL_SEARCH = "🔎 Cari";
 export const MENU_LABEL_ORDERS = "📦 Pesanan";
 export const MENU_LABEL_HELP = "❓ Bantuan";
+export const MENU_LABEL_CART = "🛒 Keranjang";
 
 // Telegram bulk cap: 100/order for bulk purchase (web checkout keeps its own cap).
 export const TELEGRAM_MAX_QTY = 100;
@@ -38,6 +39,13 @@ export const cb = {
   reorder: (productId: number) => `reorder:${productId}`,
   search: () => "search",
   myOrders: () => "myorders",
+  cart: () => "cart",
+  cartAdd: (productId: number, variantId: number, qty: number) => `cadd:${productId}:${variantId}:${qty}`,
+  cartDec: (variantId: number) => `cdec:${variantId}`,
+  cartInc: (variantId: number) => `cinc:${variantId}`,
+  cartRemove: (variantId: number) => `crm:${variantId}`,
+  cartClear: () => "cclear",
+  cartCheckout: () => "ccheckout",
   waInput: (orderCode: string) => `wainput:${orderCode}`,
 } as const;
 
@@ -58,7 +66,8 @@ export function mainReplyMenu(): ReplyKeyboardMarkup {
   return {
     keyboard: [
       [{ text: MENU_LABEL_CATALOG }, { text: MENU_LABEL_SEARCH }],
-      [{ text: MENU_LABEL_ORDERS }, { text: MENU_LABEL_HELP }],
+      [{ text: MENU_LABEL_CART }, { text: MENU_LABEL_ORDERS }],
+      [{ text: MENU_LABEL_HELP }],
     ],
     resize_keyboard: true,
     is_persistent: true,
@@ -300,12 +309,39 @@ export function qtyKeyboard(params: {
         { text: qty < max ? "Tambah ➕" : "➕", callback_data: qty < max ? cb.setQty(productId, variantId, plusQty) : "noop" },
       ],
       [{ text: `✅ Bayar QRIS • Rp${total}`, callback_data: cb.pay(productId, variantId, qty) }],
+      [{ text: "🛒 + Keranjang", callback_data: cb.cartAdd(productId, variantId, qty) }],
       [
         { text: "◀️ Ganti Varian", callback_data: cb.variants(productId) },
         { text: "🏠 Menu", callback_data: cb.home() },
       ],
     ],
   };
+}
+
+export function cartKeyboard(params: {
+  lines: { variantId: number; qty: number; stock: number; fulfillmentMode: string }[];
+}): InlineKeyboardMarkup {
+  const rows: InlineKeyboardButton[][] = params.lines.slice(0, 20).map((line) => {
+    const canInc = line.fulfillmentMode !== "unique"
+      && (line.stock === -1 || line.qty < Math.min(line.stock, TELEGRAM_MAX_QTY));
+    const row: InlineKeyboardButton[] = [
+      { text: "➖", callback_data: line.qty > 1 ? cb.cartDec(line.variantId) : cb.cartRemove(line.variantId) },
+      { text: `❌`, callback_data: cb.cartRemove(line.variantId) },
+    ];
+    row.push(canInc
+      ? { text: "➕", callback_data: cb.cartInc(line.variantId) }
+      : { text: "➕", callback_data: "noop" });
+    return row;
+  });
+  if (params.lines.length > 0) {
+    rows.push([{ text: "✅ Checkout 1 QRIS", callback_data: cb.cartCheckout() }]);
+    rows.push([{ text: "🧹 Kosongkan", callback_data: cb.cartClear() }]);
+  }
+  rows.push([
+    { text: "🛍 Lanjut Belanja", callback_data: cb.catalog() },
+    { text: "🏠 Menu", callback_data: cb.home() },
+  ]);
+  return { inline_keyboard: rows };
 }
 
 export function qrisInvoiceKeyboard(orderCode: string): InlineKeyboardMarkup {

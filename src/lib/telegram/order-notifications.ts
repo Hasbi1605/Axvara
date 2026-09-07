@@ -4,6 +4,7 @@ import {
   adminTelegramOrderCreatedMessage,
   adminTelegramOrderPaidMessage,
   orderPaidMessage,
+  orderReminderMessage,
 } from "@/lib/telegram/messages";
 import {
   orderPaidKeyboard,
@@ -237,4 +238,58 @@ export async function retryPendingTelegramNotifications(limit = 25): Promise<{
     } catch { /* Retry the same durable marker on the next cron run. */ }
   }
   return { created, paid, paidAdmin };
+}
+
+// Reminder order pending Telegram: maksimal 2x per order (interval ≥60 mnt,
+// hanya saat invoice masih aktif). Marker telegram_reminder_count membuat
+// retry cron idempoten; order lunas/kadaluarsa otomatis tidak memenuhi
+// predicate sehingga tidak pernah diingatkan lagi.
+export const TELEGRAM_REMINDER_MAX = 2;
+export const TELEGRAM_REMINDER_INTERVAL_MINUTES = 60;
+
+export async function sendPendingOrderReminders(limit = 25): Promise<number> {
+  if (!telegramNotificationsConfigured()) return 0;
+  const pending = await queryAll(
+    `SELECT o.code, o.items, o.telegram_chat_id, o.telegram_reminder_count,
+            o.telegram_reminder_sent_at, pt.payable_amount, o.subtotal
+     FROM orders o
+     JOIN payment_transactions pt ON pt.order_code=o.code AND pt.status='pending'
+       AND datetime(pt.expires_at)>datetime('now')
+     WHERE o.sales_channel='telegram' AND o.status='pending'
+       AND o.payment_status IN ('unpaid','pending')
+       AND o.telegram_reminder_count < ?
+       AND (o.telegram_reminder_sent_at IS NULL
+         OR datetime(o.telegram_reminder_sent_at, '+' || ? || ' minutes') <= datetime('now'))
+     ORDER BY o.created_at ASC LIMIT ?`,
+    TELEGRAM_REMINDER_MAX, TELEGRAM_REMINDER_INTERVAL_MINUTES, limit,
+  );
+  let sent = 0;
+  for (const order of pending) {
+    const code = String(order.code);
+    const chatId = String(order.telegram_chat_id || "");
+    if (!chatId) continue;
+    const attempt = Number(order.telegram_reminder_count || 0) + 1;
+    const claimed = await execRun(
+      `UPDATE orders SET telegram_reminder_count=telegram_reminder_count+1,
+         telegram_reminder_sent_at=datetime('now'), updated_at=datetime('now')
+       WHERE code=? AND status='pending' AND payment_status IN ('unpaid','pending')
+         AND telegram_reminder_count=?`,
+      code, Number(order.telegram_reminder_count || 0),
+    );
+    if (!claimed.changes) continue; // dimenangkan worker lain / sudah berubah
+    try {
+      const result = await sendMessage({
+        chat_id: chatId,
+        text: orderReminderMessage({
+          orderCode: code,
+          productName: productNames(order.items),
+          payableAmount: Number(order.payable_amount ?? order.subtotal ?? 0),
+          attempt,
+        }),
+        parse_mode: "HTML",
+      });
+      if (result.ok) sent++;
+    } catch { /* marker sudah dicatat; interval mencegah spam */ }
+  }
+  return sent;
 }

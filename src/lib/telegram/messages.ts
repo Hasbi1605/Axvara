@@ -343,6 +343,93 @@ export function chooseQtyMessage(params: {
   ].join("\n");
 }
 
+export type TelegramCartLine = {
+  productName: string;
+  variantLabel: string;
+  price: number;
+  qty: number;
+};
+
+export function cartMessage(lines: TelegramCartLine[]): string {
+  if (lines.length === 0) {
+    return [
+      "🛒 <b>Keranjang Kosong</b>",
+      "━━━━━━━━━━━━━━━━━━━━━",
+      "",
+      "Belum ada item. Yuk pilih dari /katalog 👇",
+      "",
+      "Checkout gabungan = cukup bayar SEKALI untuk semua item. ⚡",
+    ].join("\n");
+  }
+  const subtotal = lines.reduce((sum, line) => sum + line.price * line.qty, 0);
+  const out = [
+    "🛒 <b>Keranjang Kamu</b>",
+    "━━━━━━━━━━━━━━━━━━━━━",
+    "",
+  ];
+  lines.slice(0, 20).forEach((line, i) => {
+    out.push(`${i + 1}. <b>${escapeHtml(truncate(line.productName, 50))}</b>`);
+    out.push(`   🏷 ${escapeHtml(truncate(line.variantLabel, 50))} ×${line.qty} — ${formatRupiah(line.price * line.qty)}`);
+  });
+  out.push("");
+  out.push(`🧾 <b>Total: ${formatRupiah(subtotal)}</b>`);
+  out.push("");
+  out.push("Checkout = SATU QRIS untuk semua item. ⚡");
+  return out.join("\n");
+}
+
+export function cartAddedMessage(productName: string, variantLabel: string, qty: number, cartCount: number): string {
+  return [
+    "✅ <b>Masuk Keranjang!</b>",
+    "━━━━━━━━━━━━━━━━━━━━━",
+    "",
+    `📦 <b>${escapeHtml(truncate(productName, 60))}</b>`,
+    `🏷 ${escapeHtml(truncate(variantLabel, 60))} ×${qty}`,
+    "",
+    `🛒 Keranjang: ${cartCount} item`,
+    "",
+    "Lanjut belanja atau checkout SEKALI bayar 👇",
+  ].join("\n");
+}
+
+export function cartCheckoutSummaryMessage(lines: TelegramCartLine[], subtotal: number): string {
+  const names = lines.slice(0, 5).map((line) =>
+    `• ${escapeHtml(truncate(line.productName, 40))} ×${line.qty}`).join("\n");
+  const more = lines.length > 5 ? `\n<i>+${lines.length - 5} item lain…</i>` : "";
+  return [
+    "🧾 <b>Checkout Keranjang</b>",
+    breadcrumbLine(4),
+    "━━━━━━━━━━━━━━━━━━━━━",
+    "",
+    names + more,
+    "",
+    `💳 <b>Total Bayar: ${formatRupiah(subtotal)}</b>`,
+    "",
+    "Satu QRIS untuk semua item di atas. Lanjut? 👇",
+  ].join("\n");
+}
+
+export function orderReminderMessage(params: {
+  orderCode: string;
+  productName: string;
+  payableAmount: number;
+  attempt: number;
+}): string {
+  const { orderCode, productName, payableAmount, attempt } = params;
+  return [
+    attempt > 1 ? "⏰ <b>Pengingat Terakhir!</b>" : "⏰ <b>Pesanan Menunggu Pembayaran</b>",
+    "━━━━━━━━━━━━━━━━━━━━━",
+    "",
+    `📦 ${escapeHtml(truncate(productName, 80))}`,
+    `🔢 <code>${escapeHtml(orderCode)}</code>`,
+    `💳 <b>${formatRupiah(payableAmount)}</b>`,
+    "",
+    "QRIS kamu masih aktif — scan & bayar sesuai nominal agar order tidak hangus.",
+    "",
+    "Abaikan pesan ini jika sudah bayar — bot otomatis mengabari saat lunas. 🙏",
+  ].join("\n");
+}
+
 export function invoiceMessage(params: {
   orderCode: string;
   productName: string;

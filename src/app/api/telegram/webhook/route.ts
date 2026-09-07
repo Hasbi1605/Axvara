@@ -11,7 +11,9 @@ import {
   orderStatusKeyboard, variantsKeyboard, confirmVariantPurchaseKeyboard,
   qtyKeyboard, qrisInvoiceKeyboard, orderPaidKeyboard, parseCallback,
   TELEGRAM_MAX_QTY, myOrdersKeyboard, searchResultsKeyboard,
+  cartKeyboard,
   MENU_LABEL_CATALOG, MENU_LABEL_SEARCH, MENU_LABEL_ORDERS, MENU_LABEL_HELP,
+  MENU_LABEL_CART,
 } from "@/lib/telegram/keyboards";
 import {
   welcomeMessage, catalogFlatMessage, categoriesMessage, categoryProductsMessage,
@@ -21,9 +23,11 @@ import {
   orderCancelledMessage, invalidWhatsAppMessage, waSavedAfterPaymentMessage,
   whatsAppInputPromptMessage, chooseVariantMessage, chooseQtyMessage,
   confirmVariantBuyMessage, searchPromptMessage, searchResultsMessage,
+  cartMessage, cartAddedMessage, cartCheckoutSummaryMessage,
   type TelegramBestseller, type TelegramOrderRow,
 } from "@/lib/telegram/messages";
 import { getProductDetail, getActiveVariant, formatDuration, formatWarranty, type VariantSummary } from "@/lib/catalog";
+import { addToCart, setCartLineQty, removeFromCart, clearCart, getCartSummary, type CartLine } from "@/lib/telegram/cart";
 import { generateOrderCode } from "@/lib/security";
 import { createDanaQrisInvoice, isDanaQrisConfigured } from "@/lib/payments/dana-qris";
 import { reserveInventory, releaseInventoryForOrder, countInventory } from "@/lib/fulfillment/inventory";
@@ -245,6 +249,12 @@ async function handleCommand(
     return;
   }
 
+  if (text === MENU_LABEL_CART || cmd === "/cart" || cmd === "/keranjang") {
+    await clearPendingAction(from);
+    await handleShowCart(chatId, 0, from);
+    return;
+  }
+
   if (text === MENU_LABEL_HELP || cmd === "/bantuan" || cmd === "/help") {
     await sendMessage({ chat_id: chatId, text: helpMessage(), parse_mode: "HTML" });
     return;
@@ -411,6 +421,58 @@ async function handleCallback(data: string, chatId: number, messageId: number, f
       break;
     }
 
+    case "cart":
+      await handleShowCart(chatId, messageId, from);
+      break;
+
+    case "cadd":
+      await handleCartAdd(chatId, messageId, Number(params[0] || 0), Number(params[1] || 0), Number(params[2] || 1), from);
+      break;
+
+    case "cinc":
+      await handleCartAdjust(chatId, messageId, from, Number(params[0] || 0), +1);
+      break;
+
+    case "cdec":
+      await handleCartAdjust(chatId, messageId, from, Number(params[0] || 0), -1);
+      break;
+
+    case "crm":
+      await handleCartAdjust(chatId, messageId, from, Number(params[0] || 0), 0);
+      break;
+
+    case "cclear":
+      await clearCart(String(from.id));
+      await handleShowCart(chatId, messageId, from);
+      break;
+
+    case "ccheckout":
+      await handleCartCheckout(chatId, messageId, from);
+      break;
+
+    case "cconfirm": {
+      const cartSummary = await getCartSummary(String(from.id));
+      if (cartSummary.lines.length === 0) {
+        await handleShowCart(chatId, messageId, from);
+        break;
+      }
+      const dupOrder = await queryFirst(
+        `SELECT code FROM orders WHERE telegram_chat_id=? AND status='pending' AND payment_status IN ('unpaid','pending')`,
+        String(chatId),
+      );
+      if (dupOrder) {
+        await sendMessage({
+          chat_id: chatId,
+          text: alreadyPendingMessage(String(dupOrder.code)),
+          parse_mode: "HTML",
+          reply_markup: orderStatusKeyboard(String(dupOrder.code)),
+        });
+        break;
+      }
+      await createAndSendCartInvoice(chatId, cartSummary.lines, from);
+      break;
+    }
+
     case "warranty":
       await sendMessage({
         chat_id: chatId,
@@ -430,6 +492,340 @@ async function handleCallback(data: string, chatId: number, messageId: number, f
 }
 
 // --- Handler implementations ---
+
+// --- /cart: keranjang multi-item → checkout SATU QRIS gabungan ---
+
+function cartLineLabel(line: CartLine): string {
+  return `${line.productName} — ${line.variantLabel} ×${line.qty}`;
+}
+
+async function handleShowCart(
+  chatId: number,
+  messageId: number,
+  from?: { id: number; first_name: string; username?: string },
+) {
+  if (!from) {
+    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+    return;
+  }
+  const summary = await getCartSummary(String(from.id));
+  const keyboard = cartKeyboard({
+    lines: summary.lines.map((line) => ({
+      variantId: line.variantId, qty: line.qty, stock: line.stock, fulfillmentMode: line.fulfillmentMode,
+    })),
+  });
+  const text = cartMessage(summary.lines.map((line) => ({
+    productName: line.productName, variantLabel: line.variantLabel, price: line.price, qty: line.qty,
+  })));
+  if (messageId > 0) {
+    await safeEditOrSend({ chat_id: chatId, message_id: messageId, text, parse_mode: "HTML", reply_markup: keyboard });
+  } else {
+    await sendMessage({ chat_id: chatId, text, parse_mode: "HTML", reply_markup: keyboard });
+  }
+}
+
+async function handleCartAdd(
+  chatId: number,
+  messageId: number,
+  productId: number,
+  variantId: number,
+  qty: number,
+  from: { id: number; first_name: string; username?: string },
+) {
+  await sendChatAction(chatId, "typing");
+  const result = await addToCart(String(from.id), productId, variantId, qty);
+  if (!result.ok) {
+    await sendMessage({
+      chat_id: chatId,
+      text: result.reason === "out_of_stock" ? outOfStockMessage()
+        : result.reason === "cart_full" ? "🛒 <b>Keranjang Penuh</b>\n\nMaksimal 20 varian. Checkout dulu sebelum tambah lagi 👇"
+        : result.reason === "unique_conflict" ? "⚠️ <b>Produk Unik Satu per Order</b>\n\nProduk stok unik (1 secret = 1 order) tidak bisa digabung dengan produk unik lain. Checkout dulu, baru order produk unik berikutnya 👇"
+        : errorMessage(),
+      parse_mode: "HTML",
+    });
+    return;
+  }
+  const summary = await getCartSummary(String(from.id));
+  const added = summary.lines.find((line) => line.variantId === variantId);
+  await safeEditOrSend({
+    chat_id: chatId, message_id: messageId,
+    text: cartAddedMessage(
+      added?.productName ?? "Produk", added?.variantLabel ?? "", added?.qty ?? qty, summary.totalQty,
+    ),
+    parse_mode: "HTML",
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "🛒 Lihat Keranjang & Checkout", callback_data: "cart" }],
+        [
+          { text: "🛍 Lanjut Belanja", callback_data: "catalog:0" },
+          { text: "🏠 Menu", callback_data: "home" },
+        ],
+      ],
+    },
+  });
+}
+
+async function handleCartAdjust(
+  chatId: number,
+  messageId: number,
+  from: { id: number; first_name: string; username?: string },
+  variantId: number,
+  delta: number,
+) {
+  const userId = String(from.id);
+  if (delta === 0) {
+    await removeFromCart(userId, variantId);
+  } else {
+    const summary = await getCartSummary(userId);
+    const line = summary.lines.find((l) => l.variantId === variantId);
+    if (!line) {
+      await handleShowCart(chatId, messageId, from);
+      return;
+    }
+    const ok = await setCartLineQty(userId, variantId, line.qty + delta);
+    if (!ok) {
+      await handleShowCart(chatId, messageId, from);
+      return;
+    }
+  }
+  await handleShowCart(chatId, messageId, from);
+}
+
+async function handleCartCheckout(
+  chatId: number,
+  messageId: number,
+  from: { id: number; first_name: string; username?: string },
+) {
+  await sendChatAction(chatId, "typing");
+  await clearPendingAction(from);
+
+  if (!isDanaQrisConfigured()) {
+    await sendMessage({
+      chat_id: chatId,
+      text: "⚠️ QRIS dinamis sedang tidak tersedia. Coba lagi sebentar atau hubungi admin.",
+      parse_mode: "HTML",
+    });
+    return;
+  }
+
+  const summary = await getCartSummary(String(from.id));
+  if (summary.lines.length === 0) {
+    await handleShowCart(chatId, messageId, from);
+    return;
+  }
+
+  // Guard double-tap: satu pending order Telegram per chat — checkout gabungan
+  // tidak boleh menumpuk invoice aktif yang belum dibayar/dibatalkan.
+  const existingOrder = await queryFirst(
+    `SELECT code FROM orders WHERE telegram_chat_id=? AND status='pending' AND payment_status IN ('unpaid','pending')`,
+    String(chatId),
+  );
+  if (existingOrder) {
+    await sendMessage({
+      chat_id: chatId,
+      text: alreadyPendingMessage(String(existingOrder.code)),
+      parse_mode: "HTML",
+      reply_markup: orderStatusKeyboard(String(existingOrder.code)),
+    });
+    return;
+  }
+
+  // Ringkasan konfirmasi dulu (Langkah 4/4) — invoice QRIS terbit setelah tap Lanjut.
+  await sendMessage({
+    chat_id: chatId,
+    text: cartCheckoutSummaryMessage(summary.lines.map((line) => ({
+      productName: line.productName, variantLabel: line.variantLabel, price: line.price, qty: line.qty,
+    })), summary.subtotal),
+    parse_mode: "HTML",
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: `✅ Lanjut — Bayar QRIS`, callback_data: "cconfirm" }],
+        [
+          { text: "🛒 Ubah Keranjang", callback_data: "cart" },
+          { text: "🏠 Menu", callback_data: "home" },
+        ],
+      ],
+    },
+  });
+}
+
+/**
+ * Checkout gabungan: SATU order + SATU invoice QRIS untuk N baris keranjang.
+ * Stok per varian direservasi atomik-per-baris (gagal satu baris = batal semua,
+ * stok yang sudah terpotong dikembalikan). Fulfillment dibuat per item setelah
+ * order terbit: satu job per varian via variant_id — pola sama seperti
+ * single-item (createAndSendVariantInvoice) agar deliver.ts tidak berubah.
+ */
+async function createAndSendCartInvoice(
+  chatId: number,
+  lines: CartLine[],
+  from: { id: number; first_name: string; username?: string },
+) {
+  const subtotal = lines.reduce((sum, line) => sum + line.price * line.qty, 0);
+  const orderCode = generateOrderCode();
+  const items = lines.map((line) => ({
+    product_id: line.productId,
+    variant_id: line.variantId,
+    name: `${line.productName} — ${line.variantLabel}`,
+    price: line.price,
+    qty: line.qty,
+  }));
+  // variant_snapshot order gabungan menyimpan ringkasan; mode fulfillment
+  // per item dipertahankan di snapshot lines agar admin/grup tetap informatif.
+  const variantSnapshot = JSON.stringify({
+    cart: true,
+    product_name: lines.length === 1 ? lines[0].productName : `${lines.length} item keranjang`,
+    label: lines.map((line) => `${line.variantLabel} ×${line.qty}`).join(", "),
+    price: subtotal,
+    qty: lines.reduce((sum, line) => sum + line.qty, 0),
+    fulfillment_mode: lines.every((line) => line.fulfillmentMode === "manual") ? "manual" : "mixed",
+    lines: lines.map((line) => ({
+      product_id: line.productId, variant_id: line.variantId,
+      label: line.variantLabel, price: line.price, qty: line.qty,
+      fulfillment_mode: line.fulfillmentMode,
+    })),
+  });
+  const decremented: { variantId: number; qty: number }[] = [];
+  const reservedInventory: string[] = [];
+  let orderInserted = false;
+
+  try {
+    // Validasi shared secret per baris (fail-closed seperti single-item).
+    if (isD1Mode()) {
+      for (const line of lines) {
+        if (line.fulfillmentMode !== "shared") continue;
+        const configured = await queryFirst(
+          `SELECT id FROM product_variants
+           WHERE id=? AND product_id=?
+             AND shared_secret_ciphertext IS NOT NULL AND shared_secret_iv IS NOT NULL`,
+          line.variantId, line.productId,
+        );
+        if (!configured) {
+          await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+          return;
+        }
+      }
+    }
+
+    // Reservasi inventory unik per baris (qty selalu 1 untuk unique).
+    // findReservedForOrder + createFulfillmentJob memakai SATU order_code, jadi
+    // cart campuran unique dibatasi 1 baris unique (dijaga saat addToCart).
+    for (const line of lines) {
+      if (line.fulfillmentMode !== "unique") continue;
+      const inventoryId = await reserveInventory(line.productId, orderCode, line.variantId);
+      if (inventoryId === null) {
+        for (const code of reservedInventory) await releaseInventoryForOrder(code);
+        await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
+        return;
+      }
+      reservedInventory.push(orderCode);
+    }
+
+    // Potong stok finite per baris; gagal satu = kembalikan semua.
+    if (isD1Mode()) {
+      for (const line of lines) {
+        if (line.stock === -1) continue;
+        const stockResult = await execRun(
+          `UPDATE product_variants SET stock = stock - ?, updated_at = datetime('now')
+           WHERE id=? AND is_active=1 AND stock >= ?`,
+          line.qty, line.variantId, line.qty,
+        );
+        if (!stockResult.changes) {
+          for (const done of decremented) {
+            await execRun(
+              `UPDATE product_variants SET stock=stock+?, updated_at=datetime('now')
+               WHERE id=? AND stock!=-1`,
+              done.qty, done.variantId,
+            );
+          }
+          for (const code of reservedInventory) await releaseInventoryForOrder(code);
+          await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
+          return;
+        }
+        decremented.push({ variantId: line.variantId, qty: line.qty });
+      }
+    }
+
+    await execRun(
+      `INSERT INTO orders (code, customer_name, customer_wa, customer_email, items, subtotal,
+         payment_method, payment_account, proof_url, status, sales_channel,
+         telegram_chat_id, telegram_user_id, payment_status, fulfillment_status,
+         variant_id, variant_snapshot, expires_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      orderCode, from.first_name, "", null, JSON.stringify(items),
+      subtotal, "qris", "DANA Business",
+      null, "pending", "telegram",
+      String(chatId), String(from.id), "pending",
+      lines.every((line) => line.fulfillmentMode === "unique") ? "reserved" : "not_required",
+      lines[0].variantId, variantSnapshot, new Date(Date.now() + 15 * 60_000).toISOString(),
+    );
+    orderInserted = true;
+
+    const invoiceResult = await createDanaQrisInvoice(orderCode, subtotal);
+
+    // Satu fulfillment job per order (UNIQUE order_code): mode = unique jika
+    // ada baris unique (cuma 1 baris, dijaga addToCart), shared jika semua
+    // shared, manual/mixed selebihnya. deliver.ts membaca snapshot + variant_id
+    // utama lalu memproses sesuai mode — tidak berubah.
+    const hasUnique = lines.some((line) => line.fulfillmentMode === "unique");
+    const cartFulfillmentMode = hasUnique
+      ? "unique"
+      : lines.every((line) => line.fulfillmentMode === "shared")
+        ? "shared"
+        : lines.every((line) => line.fulfillmentMode === "manual")
+          ? "manual"
+          : "mixed";
+    const primaryLine = lines.find((line) => line.fulfillmentMode === "unique") ?? lines[0];
+    await createFulfillmentJob(
+      orderCode,
+      hasUnique ? null : null,
+      cartFulfillmentMode === "mixed" ? "manual" : cartFulfillmentMode,
+      primaryLine.variantId,
+      "telegram",
+    ).catch(() => null);
+    await notifyTelegramOrderCreated(orderCode).catch(() => false);
+    await clearCart(String(from.id));
+
+    await sendPhoto({
+      chat_id: chatId,
+      photo: invoiceResult.qrisUrl,
+      caption: invoiceMessage({
+        orderCode,
+        productName: lines.length === 1
+          ? cartLineLabel(lines[0])
+          : `Keranjang (${lines.length} item): ${lines.map((line) => `${line.variantLabel} ×${line.qty}`).join(", ")}`,
+        payableAmount: invoiceResult.payableAmount,
+        expiresAt: invoiceResult.expiresAt,
+        paymentMethod: "qris",
+      }),
+      parse_mode: "HTML",
+      reply_markup: qrisInvoiceKeyboard(orderCode),
+    });
+  } catch (error) {
+    console.error("Cart order creation failed:", error instanceof Error ? error.message : "unknown");
+    try {
+      if (orderInserted) {
+        const transaction = await queryFirst(
+          `SELECT id FROM payment_transactions WHERE order_code=?`,
+          orderCode,
+        );
+        if (!transaction) {
+          await transitionPendingOrder(orderCode, "dibatalkan", "invoice_setup_failed", items);
+        }
+      } else {
+        for (const done of decremented) {
+          await execRun(
+            `UPDATE product_variants SET stock=stock+?, updated_at=datetime('now')
+             WHERE id=? AND stock!=-1`,
+            done.qty, done.variantId,
+          );
+        }
+        for (const code of reservedInventory) await releaseInventoryForOrder(code);
+      }
+    } catch { /* Cron/admin reconciliation can handle any remaining reservation. */ }
+    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+  }
+}
 
 // Bestsellers for the welcome landing (free marketing from sold_count).
 async function getBestsellers(limit = 3): Promise<TelegramBestseller[]> {

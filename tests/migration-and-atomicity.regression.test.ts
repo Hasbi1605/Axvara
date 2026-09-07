@@ -316,6 +316,52 @@ describe("Migration 0013: Telegram paid-admin notification marker", () => {
   });
 });
 
+describe("Migration 0014: Telegram cart + reminder markers", () => {
+  it("creates the cart table with per-variant uniqueness and reminder columns", () => {
+    const db = new DatabaseSync(":memory:");
+    db.exec(`
+      CREATE TABLE orders (
+        code TEXT PRIMARY KEY,
+        sales_channel TEXT NOT NULL,
+        status TEXT NOT NULL,
+        payment_status TEXT NOT NULL,
+        created_at TEXT,
+        updated_at TEXT
+      );
+      INSERT INTO orders VALUES
+        ('AXV-TG-1', 'telegram', 'pending', 'pending', '2026-09-07 10:00:00', '2026-09-07 10:00:00');
+    `);
+
+    db.exec(read("drizzle/migrations/0014_telegram_cart_reminders.sql"));
+
+    const columns = db.prepare("PRAGMA table_info(orders)").all() as Record<string, unknown>[];
+    expect(columns.map((c) => c.name)).toEqual(expect.arrayContaining([
+      "telegram_reminder_count", "telegram_reminder_sent_at",
+    ]));
+    const order = db.prepare(
+      "SELECT telegram_reminder_count, telegram_reminder_sent_at FROM orders WHERE code='AXV-TG-1'",
+    ).get();
+    expect(order?.telegram_reminder_count).toBe(0);
+    expect(order?.telegram_reminder_sent_at).toBeNull();
+
+    // Satu baris per (user, varian); qty dibatasi 1-100 oleh CHECK.
+    db.exec(`INSERT INTO telegram_carts (user_id, product_id, variant_id, qty) VALUES ('u1', 5, 11, 2)`);
+    expect(() => db.exec(
+      `INSERT INTO telegram_carts (user_id, product_id, variant_id, qty) VALUES ('u1', 5, 11, 3)`,
+    )).toThrow(/UNIQUE/i);
+    expect(() => db.exec(
+      `INSERT INTO telegram_carts (user_id, product_id, variant_id, qty) VALUES ('u1', 5, 12, 0)`,
+    )).toThrow(/CHECK/i);
+    expect(() => db.exec(
+      `INSERT INTO telegram_carts (user_id, product_id, variant_id, qty) VALUES ('u1', 5, 13, 101)`,
+    )).toThrow(/CHECK/i);
+    // User lain boleh memakai varian yang sama.
+    expect(() => db.exec(
+      `INSERT INTO telegram_carts (user_id, product_id, variant_id, qty) VALUES ('u2', 5, 11, 1)`,
+    )).not.toThrow();
+  });
+});
+
 describe("Deterministic Idempotency Key (P0.4)", () => {
   it("reuses one inbound pay event but allows a later purchase of the same variant", () => {
     const groupId = "120363024823948293@g.us";

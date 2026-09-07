@@ -113,11 +113,17 @@ Nomor dukungan default adalah `089519388264`, terpisah dari nomor tujuan pembaya
 Detail: `docs/VPS-RESEARCH.md` & `docs/ARCHITECTURE.md`
 
 Bot Telegram auto-order, pembayaran QRIS dinamis, dan fulfillment tersedia di codebase.
-Navigasi Fase 1: label menu bawah (🛍 Katalog · 🔎 Cari · 📦 Pesanan · ❓ Bantuan,
+Navigasi Fase 1: label menu bawah (🛍 Katalog · 🔎 Cari · 🛒 Keranjang · 📦 Pesanan · ❓ Bantuan,
 tetap di-route untuk keyboard lama) tanpa bubble "Menu cepat" setelah `/start`,
 welcome landing dengan 3 produk paling laris + `Terjual X` di kartu produk, riwayat
 `/orders` dengan tombol 🔁 Beli Lagi, breadcrumb `Langkah X/4` di alur beli, dan pencarian
-`/cari` via nama/alias. Flow Telegram setara WA grup: katalog datar nama produk (tanpa kategori wajib,
+`/cari` via nama/alias. Fase 2 (tanpa review/promo): keranjang multi-item Telegram
+(`telegram_carts`, maks 20 varian/user; 1 baris unik saja) dengan tambah/ubah/hapus via
+tombol ➖/➕/❌ lalu ringkasan konfirmasi `cconfirm` dan checkout gabungan SATU order +
+SATU invoice QRIS + satu fulfillment job mode dominan; stok finite dipotong per baris
+dengan kompensasi penuh bila satu baris gagal; reminder order pending via cron 5-menit
+(maks 2x, interval ≥60 mnt, hanya invoice aktif, marker `telegram_reminder_count`
+idempoten). Flow Telegram setara WA grup: katalog datar nama produk (tanpa kategori wajib,
 tanpa pengulangan sapaan/tanggal/jam dari welcome),
 detail tanpa deskripsi + garansi per varian sinkron web/WA, alur
 `Produk → Varian → Qty stepper (1–100/bulk) → QRIS dinamis`. Telegram hanya menawarkan

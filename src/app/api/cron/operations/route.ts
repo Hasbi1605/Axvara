@@ -20,7 +20,7 @@ import {
 } from "@/lib/fulfillment/deliver";
 import { sendMessage } from "@/lib/telegram/api";
 import { orderExpiredMessage } from "@/lib/telegram/messages";
-import { retryPendingTelegramNotifications } from "@/lib/telegram/order-notifications";
+import { retryPendingTelegramNotifications, sendPendingOrderReminders } from "@/lib/telegram/order-notifications";
 
 export const runtime = "edge";
 
@@ -43,6 +43,7 @@ export async function POST(request: NextRequest) {
     telegram_order_notifications_retried: 0,
     telegram_paid_notifications_retried: 0,
     telegram_paid_admin_notifications_retried: 0,
+    telegram_pending_reminders_sent: 0,
     whatsapp_rows_cleaned: 0,
   };
 
@@ -140,6 +141,9 @@ export async function POST(request: NextRequest) {
     results.telegram_order_notifications_retried = telegramNotifications.created;
     results.telegram_paid_notifications_retried = telegramNotifications.paid;
     results.telegram_paid_admin_notifications_retried = telegramNotifications.paidAdmin;
+
+    // 3b. Reminder order Telegram pending (maks 2x, interval ≥60 mnt, invoice aktif).
+    results.telegram_pending_reminders_sent = await sendPendingOrderReminders(BATCH_LIMIT);
 
     // 4. Process due fulfillment jobs
     if (process.env.AUTO_FULFILLMENT_ENABLED === "true") {
