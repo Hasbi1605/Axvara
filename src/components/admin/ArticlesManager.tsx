@@ -182,14 +182,14 @@ export function ArticlesManager() {
     <section className="mt-4">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-2">
         {[
-          ["Total artikel", counts.total, "text-white"],
-          ["Draft", counts.draft, "text-white/80"],
-          ["Review / jadwal", counts.review, "text-[#FFB800]"],
-          ["Published", counts.published, "text-[#22C55E]"],
-        ].map(([label, value, color]) => (
+          ["Total artikel", counts.total, "text-white", "news", "white"],
+          ["Draft", counts.draft, "text-white/80", "edit", "white"],
+          ["Review / jadwal", counts.review, "text-[#FFB800]", "clock", "#FFB800"],
+          ["Published", counts.published, "text-[#22C55E]", "checked", "#22C55E"],
+        ].map(([label, value, color, icon, iconTint]) => (
           <div key={String(label)} className="ax-glass rounded-2xl p-4">
-            <p className="text-[11px] uppercase tracking-wide text-white/50">{label}</p>
-            <p className={`text-2xl font-display font-bold ${color}`}>{value}</p>
+            <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-white/50"><IosIcon name={icon as "news" | "edit" | "clock" | "checked"} size={12} tint={String(iconTint)} /> {label}</p>
+            <p className={`mt-1.5 text-2xl font-display font-bold ${color}`}>{value}</p>
           </div>
         ))}
       </div>
@@ -267,11 +267,13 @@ export function ArticlesManager() {
                   )}
                   <div className="min-w-0">
                     <p className="line-clamp-1 text-sm font-semibold text-white leading-tight">{article.title}</p>
-                    <p className="mt-0.5 text-xs text-white/40 line-clamp-1">
+                    <p className="mt-0.5 flex items-center gap-1.5 text-xs text-white/40 line-clamp-1">
+                      <IosIcon name={article.author_type === "agent" ? "chatbot" : "user-manual"} size={11} tint="white" />
                       {article.author_type === "agent" ? `Agent: ${article.author_name ?? "unknown"} · ` : ""}
                       {article.updated_at ? new Date(article.updated_at).toLocaleDateString("id-ID") : "Belum disimpan"}
                     </p>
-                    <span className="mt-1 inline-flex rounded-full bg-white/10 px-2.5 py-0.5 text-[11px] font-semibold text-white/60">
+                    <span className={`mt-1.5 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${article.status === "published" ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-300" : article.status === "draft" ? "border-white/10 bg-white/[0.05] text-white/55" : article.status === "rejected" ? "border-red-400/25 bg-red-500/10 text-red-300" : "border-[#FFB800]/25 bg-[#FFB800]/10 text-[#FFCF55]"}`}>
+                      <IosIcon name={article.status === "published" ? "checked" : article.status === "draft" ? "edit" : article.status === "rejected" ? "close" : "clock"} size={10} tint={article.status === "published" ? "#22C55E" : article.status === "draft" ? "white" : article.status === "rejected" ? "#F87171" : "#FFB800"} />
                       {statusLabels[article.status] ?? article.status}
                     </span>
                   </div>
@@ -281,9 +283,9 @@ export function ArticlesManager() {
                     <Link
                       href={`/artikel/${article.slug}`}
                       target="_blank"
-                      className="inline-flex h-8 items-center gap-1 px-3 rounded-full ax-glass text-xs font-semibold text-white/70 hover:text-white"
+                      className="inline-flex h-8 items-center gap-1 px-3 rounded-full border border-white/10 bg-white/[0.05] text-xs font-semibold text-white/70 transition hover:bg-white/10 hover:text-white"
                     >
-                      <IosIcon name="external-link" size={12} tint="white" /> Lihat
+                      <IosIcon name="globe" size={12} tint="white" /> Lihat
                     </Link>
                   )}
                   <button
@@ -333,14 +335,15 @@ export function ArticlesManager() {
       </div>
 
       {form && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4 pt-6 backdrop-blur-sm">
-          <div className="w-full max-w-[820px] rounded-[24px] border border-white/10 bg-[#0d1126] p-5 shadow-2xl sm:p-6">
-            <div className="flex items-center justify-between gap-3">
-              <div>
+        <div className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto overflow-hidden bg-black/70 p-0 backdrop-blur-sm sm:items-start sm:p-4 sm:pt-6" onClick={() => !saving && setForm(null)}>
+          <div className="w-full max-w-[820px] rounded-t-[26px] border border-white/10 bg-[#0d1126] p-5 shadow-2xl sm:rounded-[26px] sm:p-6" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-[#00E5FF]/25 bg-[#00E5FF]/10"><IosIcon name="news" size={18} tint="#00E5FF" /></span>
+              <div className="min-w-0 flex-1">
                 <h3 className="font-display text-lg font-bold text-white">{editing ? "Edit Artikel" : "Artikel Baru"}</h3>
                 <p className="text-xs text-white/40">Editor visual menyimpan Markdown agar kompatibel dengan MCP/agent.</p>
               </div>
-              <button onClick={() => setForm(null)} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white/70"><IosIcon name="close" size={14} tint="white" /></button>
+              <button onClick={() => setForm(null)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-white/70 transition hover:bg-white/15" aria-label="Tutup form artikel"><IosIcon name="close" size={14} tint="white" /></button>
             </div>
             {error && <p className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-200">{error}</p>}
             <div className="mt-4 grid gap-4">
@@ -376,9 +379,9 @@ export function ArticlesManager() {
               </div>
             </div>
             <div className="mt-5 flex justify-end gap-2">
-              <button onClick={() => setForm(null)} disabled={saving} className="h-10 rounded-full bg-white/10 px-4 text-sm text-white/70">Batal</button>
-              <button onClick={() => void save()} disabled={saving} className="h-10 rounded-full bg-[#00E5FF] px-5 text-sm font-bold text-[#070a1e] disabled:opacity-50">
-                {saving ? "Menyimpan…" : "Simpan"}
+              <button onClick={() => setForm(null)} disabled={saving} className="h-10 rounded-full border border-white/10 bg-white/[0.06] px-4 text-sm text-white/70 transition hover:bg-white/10 disabled:opacity-50">Batal</button>
+              <button onClick={() => void save()} disabled={saving} className="inline-flex h-10 items-center gap-2 rounded-full bg-[#00E5FF] px-5 text-sm font-bold text-[#070a1e] transition hover:bg-[#00D0E8] disabled:opacity-50">
+                {saving ? "Menyimpan…" : <><IosIcon name="checked" size={14} tint="black" /> Simpan</>}
               </button>
             </div>
           </div>

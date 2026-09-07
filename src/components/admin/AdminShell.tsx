@@ -21,13 +21,13 @@ const navigationGroups: { label: string; items: [AdminSection, string, IosIconNa
   { label: "Konten", items: [
     ["articles", "Artikel", "news"],
     ["banners", "Banner", "image"],
-    ["subscribers", "Subscriber Email", "news"],
+    ["subscribers", "Subscriber Email", "email"],
   ] },
   { label: "Otomasi", items: [
     ["bot", "Kanal & Fulfillment", "bot"],
   ] },
   { label: "Sistem", items: [
-    ["agent", "Integrasi Agent", "bot"],
+    ["agent", "Integrasi Agent", "chatbot"],
     ["settings", "Pengaturan Toko", "settings"],
   ] },
 ];
@@ -127,12 +127,13 @@ export function AdminShell({
         </p>
         <button
           onClick={async () => { await fetch("/api/auth/logout", { method: "POST" }); location.assign("/"); }}
-          className="flex h-10 w-full items-center gap-3 rounded-xl px-3 text-sm text-red-300 hover:bg-red-500/10"
+          className="flex h-10 w-full items-center gap-3 rounded-xl px-3 text-sm font-semibold text-red-300 transition hover:bg-red-500/10"
           aria-label="Keluar dari admin"
         >
-          <IosIcon name="exit" size={16} tint="white" className="[&>img]:!invert-0 w-4 h-4 rounded-full bg-red-500/15 flex items-center justify-center p-0.5" />
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-red-500/15">
+            <IosIcon name="exit" size={15} tint="#F87171" />
+          </span>
           <span className={collapsed ? "lg:hidden" : ""}>Keluar</span>
-          {collapsed && <span className="hidden items-center justify-center lg:inline-flex"><IosIcon name="exit" size={14} tint="white" /></span>}
         </button>
       </div>
     </aside>

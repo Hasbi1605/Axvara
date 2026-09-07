@@ -135,23 +135,23 @@ export function ImageDropzone({ area, value, onUploaded, onRemove }: Props) {
                 : "aspect-video w-full rounded-lg object-cover"
             }
           />
-          <div className="mt-2 flex justify-center gap-3">
-            <button type="button" className="inline-flex items-center gap-1 text-xs text-[#00E5FF]" onClick={() => input.current?.click()}>
+          <div className="mt-2 flex justify-center gap-2">
+            <button type="button" className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[#00E5FF]/25 bg-[#00E5FF]/10 px-3 text-xs font-bold text-[#5cefff] transition hover:bg-[#00E5FF]/20" onClick={() => input.current?.click()}>
               <IosIcon name="edit" size={12} tint="#00E5FF" /> Ganti
             </button>
-            <button type="button" className="inline-flex items-center gap-1 text-xs text-red-300" onClick={onRemove}>
-              <IosIcon name="trash" size={12} tint="white" /> Hapus
+            <button type="button" className="inline-flex h-8 items-center gap-1.5 rounded-full border border-red-400/25 bg-red-500/10 px-3 text-xs font-bold text-red-200 transition hover:bg-red-500/20" onClick={onRemove}>
+              <IosIcon name="trash" size={12} tint="#F87171" /> Hapus
             </button>
           </div>
         </div>
       ) : (
-        <button type="button" disabled={busy} onClick={() => input.current?.click()} className="min-h-36 w-full text-sm text-white/55 disabled:opacity-50">
+        <button type="button" disabled={busy} onClick={() => input.current?.click()} className="min-h-36 w-full rounded-lg text-sm text-white/55 transition hover:bg-white/[0.02] disabled:opacity-50">
           {busy ? (
             "Mengonversi & upload…"
           ) : (
-            <span className="inline-flex flex-col items-center gap-1">
-              <IosIcon name="upload" size={22} tint="white" />
-              <span>Tarik gambar atau klik · PNG/JPG/WebP</span>
+            <span className="inline-flex flex-col items-center gap-1.5">
+              <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/5"><IosIcon name="upload" size={20} tint="white" /></span>
+              <span className="font-semibold">Tarik gambar atau klik · PNG/JPG/WebP</span>
               <span className="text-[11px] text-white/35">
                 {preserveRatio ? "Rasio asli dipertahankan · maks. 1920 px" : "Otomatis WebP 1600×900"}
               </span>

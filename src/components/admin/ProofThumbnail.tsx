@@ -75,14 +75,15 @@ export function ProofThumbnail({ proof }: { proof?: string | null }) {
         </span>
       </button>
       {open && (
-        <div className="fixed inset-0 z-[80] isolate flex items-center justify-center bg-[#050713]/95 p-3 sm:p-6" onClick={() => setOpen(false)} role="dialog" aria-modal="true" aria-label="Bukti pembayaran">
+        <div className="fixed inset-0 z-[80] isolate flex items-center justify-center overflow-hidden bg-[#050713]/95 p-3 backdrop-blur-sm sm:p-6" onClick={() => setOpen(false)} role="dialog" aria-modal="true" aria-label="Bukti pembayaran">
           <div className="relative z-10 flex max-h-[92dvh] w-full max-w-5xl flex-col overflow-hidden rounded-[24px] border border-white/10 bg-[#0F1430] shadow-[0_28px_80px_rgba(0,0,0,0.55)]" onClick={(event) => event.stopPropagation()}>
-            <div className="flex items-center justify-between border-b border-white/10 px-4 py-3 sm:px-5">
-              <div>
+            <div className="flex items-center gap-3 border-b border-white/10 px-4 py-3 sm:px-5">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#00E5FF]/25 bg-[#00E5FF]/10"><IosIcon name="image" size={16} tint="#00E5FF" /></span>
+              <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-white">Bukti pembayaran</p>
                 <p className="text-[11px] text-white/40">Periksa nominal, tanggal, dan rekening tujuan.</p>
               </div>
-              <button type="button" onClick={() => setOpen(false)} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 hover:bg-white/15" aria-label="Tutup">
+              <button type="button" onClick={() => setOpen(false)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 transition hover:bg-white/15" aria-label="Tutup">
                 <IosIcon name="close" size={13} tint="white" />
               </button>
             </div>
@@ -91,10 +92,10 @@ export function ProofThumbnail({ proof }: { proof?: string | null }) {
               <img src={source} alt="Bukti pembayaran ukuran penuh" className="max-h-[72dvh] max-w-full rounded-xl object-contain shadow-2xl" />
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2 border-t border-white/10 px-4 py-3 sm:px-5">
-              <a href={source} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.06] px-4 text-xs font-semibold text-white/75 hover:bg-white/10 hover:text-white">
-                <IosIcon name="external-link" size={12} tint="white" /> Buka asli
+              <a href={source} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.06] px-4 text-xs font-semibold text-white/75 transition hover:bg-white/10 hover:text-white">
+                <IosIcon name="globe" size={12} tint="white" /> Buka asli
               </a>
-              <a href={source} download className="inline-flex h-9 items-center rounded-full bg-[#00E5FF] px-4 text-xs font-bold text-[#070a1e] hover:bg-[#00D0E8]">Unduh bukti</a>
+              <a href={source} download className="inline-flex h-9 items-center gap-1.5 rounded-full bg-[#00E5FF] px-4 text-xs font-bold text-[#070a1e] transition hover:bg-[#00D0E8]"><IosIcon name="download" size={13} tint="black" /> Unduh bukti</a>
             </div>
           </div>
         </div>

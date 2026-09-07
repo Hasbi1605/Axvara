@@ -96,12 +96,12 @@ export function CategoryManager() {
     <section className="mt-5">
       <div className="ax-glass rounded-[20px] overflow-hidden">
         <div className="flex flex-wrap items-center gap-3 border-b border-white/10 p-4 sm:p-5">
-          <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/5 bg-white/5"><IosIcon name="category" size={16} tint="white" /></span>
-          <div><h2 className="text-sm font-semibold text-white">Kategori</h2><p className="text-xs text-white/40">Nama, ikon, dan urutan dipakai bersama oleh katalog dan footer.</p></div>
-          <button type="button" onClick={openNew} className="ml-auto inline-flex h-10 items-center gap-1.5 rounded-full bg-[#00E5FF] px-5 text-sm font-bold text-[#080C1E] hover:bg-[#00D0E8]"><IosIcon name="plus" size={14} tint="black" /> Kategori Baru</button>
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-white/5"><IosIcon name="category" size={16} tint="white" /></span>
+          <div className="min-w-0"><h2 className="text-sm font-semibold text-white">Kategori</h2><p className="text-xs text-white/40">Nama, ikon, dan urutan dipakai bersama oleh katalog dan footer.</p></div>
+          <button type="button" onClick={openNew} className="ml-auto inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-[#00E5FF] px-5 text-sm font-bold text-[#080C1E] transition hover:bg-[#00D0E8]"><IosIcon name="plus" size={14} tint="black" /> Kategori Baru</button>
         </div>
 
-        {error && !showForm && <p className="mx-4 mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-200 sm:mx-5">{error}</p>}
+        {error && !showForm && <p className="mx-4 mt-4 flex items-start gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-200 sm:mx-5"><IosIcon name="info" size={14} tint="#F87171" /><span>{error}</span></p>}
         {loading ? (
           <div className="flex items-center justify-center gap-2 p-10 text-sm text-white/50"><Spinner size={18} /> Memuat kategori…</div>
         ) : list.length === 0 ? (
@@ -114,8 +114,8 @@ export function CategoryManager() {
                 <div key={category.id} className="flex items-center gap-3 px-4 py-3 transition hover:bg-white/[0.03] sm:px-5">
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-white/5"><IosIcon name={categoryIcon(category.slug, category.icon)} size={18} tint="white" /></span>
                   <div className="min-w-0 flex-1"><p className="text-sm font-semibold text-white">{category.name}</p><p className="text-xs text-white/40">/{category.slug} · urutan {category.sort_order ?? 0} · {category.product_count ?? 0} produk</p></div>
-                  <button type="button" onClick={() => openEdit(category)} className="inline-flex h-8 items-center gap-1 rounded-full bg-white px-3 text-xs font-bold text-[#080C1E] hover:bg-white/90"><IosIcon name="edit" size={12} tint="black" /> Edit</button>
-                  <button type="button" onClick={() => void remove(category)} disabled={hasProducts || deleting === category.id} title={hasProducts ? "Pindahkan semua produk sebelum menghapus kategori" : "Hapus kategori"} className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-500 text-white shadow-[0_2px_10px_rgba(239,68,68,0.35)] hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-30" aria-label={`Hapus ${category.name}`}><IosIcon name="trash" size={16} tint="white" /></button>
+                  <button type="button" onClick={() => openEdit(category)} className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full bg-white px-3 text-xs font-bold text-[#080C1E] transition hover:bg-white/90"><IosIcon name="edit" size={12} tint="black" /> Edit</button>
+                  <button type="button" onClick={() => void remove(category)} disabled={hasProducts || deleting === category.id} title={hasProducts ? "Pindahkan semua produk sebelum menghapus kategori" : "Hapus kategori"} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-500 text-white shadow-[0_2px_10px_rgba(239,68,68,0.35)] transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-30" aria-label={`Hapus ${category.name}`}><IosIcon name="trash" size={16} tint="white" /></button>
                 </div>
               );
             })}
@@ -124,11 +124,12 @@ export function CategoryManager() {
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={() => !saving && setShowForm(false)}>
-          <div className="w-full max-w-[560px] rounded-[24px] border border-white/10 ax-glass-strong p-5 sm:p-6" onClick={(event) => event.stopPropagation()}>
-            <div className="flex items-start justify-between gap-4">
-              <div><h3 className="text-lg font-bold text-white">{editing ? "Edit Kategori" : "Kategori Baru"}</h3><p className="mt-1 text-xs text-white/45">Slug dibuat sekali dan tetap stabil ketika nama diganti.</p></div>
-              <button type="button" onClick={() => setShowForm(false)} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10"><IosIcon name="close" size={14} tint="white" /></button>
+        <div className="fixed inset-0 z-50 flex items-end justify-center overflow-hidden bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={() => !saving && setShowForm(false)}>
+          <div className="ax-glass-strong max-h-[94dvh] w-full max-w-[560px] overflow-y-auto rounded-t-[26px] border border-white/10 p-5 shadow-[0_28px_90px_rgba(0,0,0,0.7)] sm:rounded-[26px] sm:p-6" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-[#00E5FF]/25 bg-[#00E5FF]/10"><IosIcon name="category" size={18} tint="#00E5FF" /></span>
+              <div className="min-w-0 flex-1"><h3 className="text-lg font-bold text-white">{editing ? "Edit Kategori" : "Kategori Baru"}</h3><p className="mt-0.5 text-xs text-white/45">Slug dibuat sekali dan tetap stabil ketika nama diganti.</p></div>
+              <button type="button" onClick={() => setShowForm(false)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 transition hover:bg-white/15" aria-label="Tutup form kategori"><IosIcon name="close" size={14} tint="white" /></button>
             </div>
             {editing && <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2"><p className="text-[11px] text-white/40">Slug permanen</p><code className="text-sm text-white/70">/{editing.slug}</code></div>}
             {error && <p className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-200">{error}</p>}
@@ -143,7 +144,7 @@ export function CategoryManager() {
               </div>
             </div>
             <label className="mt-4 grid gap-1.5"><span className="text-xs font-semibold text-white/60">Urutan tampil</span><input type="number" min={0} max={999} value={form.sort_order} onChange={(event) => setForm((current) => ({ ...current, sort_order: Number(event.target.value) }))} className="h-11 rounded-xl border border-white/10 bg-white/[0.06] px-3 text-sm text-white focus:border-[#00E5FF]/40 focus:outline-none" /></label>
-            <div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setShowForm(false)} disabled={saving} className="h-10 rounded-full border border-white/10 bg-white/[0.06] px-4 text-sm text-white/70">Batal</button><button type="button" onClick={() => void save()} disabled={saving} className="inline-flex h-10 items-center gap-2 rounded-full bg-[#00E5FF] px-5 text-sm font-bold text-[#080C1E] disabled:opacity-50">{saving && <Spinner size={14} className="border-[#080C1E]/20 border-t-[#080C1E]" />}{saving ? "Menyimpan…" : "Simpan Kategori"}</button></div>
+            <div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setShowForm(false)} disabled={saving} className="h-10 rounded-full border border-white/10 bg-white/[0.06] px-4 text-sm text-white/70 transition hover:bg-white/10 disabled:opacity-50">Batal</button><button type="button" onClick={() => void save()} disabled={saving} className="inline-flex h-10 items-center gap-2 rounded-full bg-[#00E5FF] px-5 text-sm font-bold text-[#080C1E] transition hover:bg-[#00D0E8] disabled:opacity-50">{saving ? <Spinner size={14} className="border-[#080C1E]/20 border-t-[#080C1E]" /> : <IosIcon name="checked" size={14} tint="black" />}{saving ? "Menyimpan…" : "Simpan Kategori"}</button></div>
           </div>
         </div>
       )}

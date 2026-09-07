@@ -253,6 +253,7 @@ QRIS & Rekonsiliasi**.
 ## 🤖 Agent CMS dan Remote MCP
 
 - Admin memakai sidebar responsif yang dikelompokkan sebagai Operasional, Katalog, Pembayaran, Konten, Otomasi, dan Sistem. Query `section` mendukung deep-link/back-forward, sedangkan ringkasan menjadi action center untuk antrean penting.
+- Ikon admin memakai `IosIcon` (Icons8 iOS 11 Glyph PNG lokal, tint CSS) dengan badge bersama `ChannelBadge`/`StatusBadge`/`MethodBadge` dan dialog header-ikon tone agar tombol, badge, dan modal seragam iOS style tanpa mengubah flow.
 - Menu **Pengaturan Toko** mengelola nama, tagline, nomor WhatsApp dukungan, jam layanan, teks legal footer, dan URL logo. Nilai disimpan di `store_settings` lalu dipakai oleh identitas dan tautan dukungan storefront dengan fallback aman dari `src/lib/site.ts`.
 - Editor visual Tiptap menyimpan **Markdown** sebagai format kanonis agar ringan dan interoperabel dengan agent; artikel JSON Tiptap lama tetap dapat dibaca dan akan dikonversi saat diedit. Slug/excerpt dibuat otomatis server-side.
 - Cover artikel/produk menerima drag-and-drop PNG/JPG/WebP, dikonversi browser menjadi WebP 1600×900. Banner dikonversi ke WebP dengan rasio asli dan sisi terpanjang maksimal 1920 px; popup mengikuti rasio portrait/persegi/landscape, memakai `object-contain`, dan hanya muncul di homepage agar tidak menghalangi checkout/admin/status pesanan.

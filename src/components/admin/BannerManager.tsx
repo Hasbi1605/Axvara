@@ -98,14 +98,14 @@ export function BannerManager() {
     <section className="mt-4">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-2">
         {[
-          ["Total banner", counts.total, "text-white"],
-          ["Aktif", counts.active, "text-[#22C55E]"],
-          ["Nonaktif", counts.inactive, "text-white/70"],
-          ["Dengan CTA", counts.withCta, "text-[#00E5FF]"],
-        ].map(([label, value, color]) => (
+          ["Total banner", counts.total, "text-white", "image", "white"],
+          ["Aktif", counts.active, "text-[#22C55E]", "checked", "#22C55E"],
+          ["Nonaktif", counts.inactive, "text-white/70", "close", "white"],
+          ["Dengan CTA", counts.withCta, "text-[#00E5FF]", "link", "#00E5FF"],
+        ].map(([label, value, color, icon, iconTint]) => (
           <div key={String(label)} className="ax-glass rounded-2xl p-4">
-            <p className="text-[11px] uppercase tracking-wide text-white/50">{label}</p>
-            <p className={`text-2xl font-display font-bold ${color}`}>{value}</p>
+            <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-white/50"><IosIcon name={icon as "image" | "checked" | "close" | "link"} size={12} tint={String(iconTint)} /> {label}</p>
+            <p className={`mt-1.5 text-2xl font-display font-bold ${color}`}>{value}</p>
           </div>
         ))}
       </div>
@@ -218,7 +218,7 @@ export function BannerManager() {
               disabled={saving}
               className="mt-1 inline-flex h-10 w-fit items-center gap-2 rounded-full bg-[#00E5FF] px-5 text-sm font-bold text-[#070a1e] hover:bg-[#00D0E8] transition disabled:opacity-50"
             >
-              {saving ? "Menyimpan…" : editing ? "Simpan perubahan" : "Buat banner"}
+              {saving ? "Menyimpan…" : <><IosIcon name="checked" size={14} tint="black" /> {editing ? "Simpan perubahan" : "Buat banner"}</>}
             </button>
           </div>
         </div>
@@ -257,6 +257,10 @@ export function BannerManager() {
                       {banner.delay_ms} ms
                       {banner.cta_label ? ` · CTA: ${banner.cta_label}` : ""}
                     </p>
+                    <span className={`mt-1.5 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${banner.is_active ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-300" : "border-white/10 bg-white/[0.05] text-white/45"}`}>
+                      <IosIcon name={banner.is_active ? "checked" : "close"} size={10} tint={banner.is_active ? "#22C55E" : "white"} />
+                      {banner.is_active ? "Aktif" : "Nonaktif"}
+                    </span>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <button

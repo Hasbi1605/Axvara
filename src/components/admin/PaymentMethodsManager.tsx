@@ -115,21 +115,21 @@ export function PaymentMethodsManager() {
   return (
     <section className="mt-5 space-y-4">
       <div className="inline-flex rounded-xl border border-white/10 bg-white/[0.04] p-1" role="tablist" aria-label="Bagian pembayaran">
-        <button role="tab" aria-selected={paymentTab === "methods"} onClick={() => setPaymentTab("methods")} className={`h-9 rounded-lg px-4 text-xs font-semibold ${paymentTab === "methods" ? "bg-[#00E5FF] text-[#07101f]" : "text-white/55"}`}>Metode Pembayaran</button>
-        <button role="tab" aria-selected={paymentTab === "qris"} onClick={() => setPaymentTab("qris")} className={`h-9 rounded-lg px-4 text-xs font-semibold ${paymentTab === "qris" ? "bg-[#00E5FF] text-[#07101f]" : "text-white/55"}`}>QRIS &amp; Rekonsiliasi</button>
+        <button role="tab" aria-selected={paymentTab === "methods"} onClick={() => setPaymentTab("methods")} className={`inline-flex h-9 items-center gap-2 rounded-lg px-4 text-xs font-semibold transition ${paymentTab === "methods" ? "bg-[#00E5FF] text-[#07101f]" : "text-white/55 hover:text-white"}`}><IosIcon name="wallet" size={13} tint={paymentTab === "methods" ? "black" : "white"} /> Metode Pembayaran</button>
+        <button role="tab" aria-selected={paymentTab === "qris"} onClick={() => setPaymentTab("qris")} className={`inline-flex h-9 items-center gap-2 rounded-lg px-4 text-xs font-semibold transition ${paymentTab === "qris" ? "bg-[#00E5FF] text-[#07101f]" : "text-white/55 hover:text-white"}`}><IosIcon name="qr-code" size={13} tint={paymentTab === "qris" ? "black" : "white"} /> QRIS &amp; Rekonsiliasi</button>
       </div>
       {paymentTab === "methods" ? <>
       <div className="ax-glass rounded-[20px] overflow-hidden">
-        <div className="flex items-center gap-2.5 border-b border-white/10 p-4 sm:p-5">
-          <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/5 bg-white/5">
+        <div className="flex flex-wrap items-center gap-2.5 border-b border-white/10 p-4 sm:p-5">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-white/5">
             <IosIcon name="credit-card" size={16} tint="white" />
           </span>
-          <div>
+          <div className="min-w-0">
             <h2 className="text-sm font-semibold text-white">Metode Pembayaran</h2>
             <p className="text-xs text-white/40">Sumber tunggal rekening yang ditampilkan saat checkout.</p>
           </div>
-          <button type="button" onClick={() => setAdding((current) => !current)} className="ml-auto h-9 rounded-xl border border-[#00E5FF]/30 bg-[#00E5FF]/10 px-3 text-xs font-semibold text-[#00E5FF] hover:bg-[#00E5FF]/15">
-            {adding ? "Batal" : "+ Tambah bank"}
+          <button type="button" onClick={() => setAdding((current) => !current)} className="ml-auto inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl bg-[#00E5FF] px-3.5 text-xs font-bold text-[#080C1E] transition hover:bg-[#00D0E8]">
+            <IosIcon name={adding ? "close" : "plus"} size={13} tint="black" /> {adding ? "Batal" : "Tambah bank"}
           </button>
         </div>
         {error && <p className="mx-4 mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-200 sm:mx-5">{error}</p>}
@@ -160,18 +160,18 @@ export function PaymentMethodsManager() {
                 <input type="checkbox" checked={newBank.is_active} onChange={(event) => setNewBank((current) => ({ ...current, is_active: event.target.checked }))} className="accent-[#00E5FF]" />
                 Langsung aktif di checkout
               </label>
-              <button type="button" onClick={() => void createBank()} disabled={creating} className="h-10 rounded-xl bg-[#00E5FF] px-5 text-sm font-bold text-[#080C1E] disabled:opacity-50">
-                {creating ? "Menambahkan…" : "Tambah rekening"}
+              <button type="button" onClick={() => void createBank()} disabled={creating} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-[#00E5FF] px-5 text-sm font-bold text-[#080C1E] transition hover:bg-[#00D0E8] disabled:opacity-50">
+                {creating ? "Menambahkan…" : <><IosIcon name="plus" size={14} tint="black" /> Tambah rekening</>}
               </button>
             </div>
           </div>
         )}
         <div className="grid gap-4 p-4 sm:p-5 lg:grid-cols-3">
           {methods.map((method) => (
-            <article key={method.id} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+            <article key={method.id} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 transition hover:border-white/20">
               <div className="flex items-center justify-between gap-3">
-                <span className="rounded-full bg-white/10 px-2.5 py-1 font-mono text-[10px] uppercase tracking-wide text-white/50">{method.id}</span>
-                <label className="inline-flex items-center gap-2 text-xs text-white/60">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 font-mono text-[10px] uppercase tracking-wide text-white/60"><IosIcon name={method.id === "qris" ? "qr-code" : method.id === "seabank" || method.id.includes("bank") ? "bank" : "wallet"} size={11} tint={method.id === "qris" ? "#00E5FF" : method.id === "seabank" || method.id.includes("bank") ? "#229ED9" : "#25D366"} />{method.id}</span>
+                <label className="inline-flex shrink-0 items-center gap-2 text-xs text-white/60">
                   <input type="checkbox" checked={method.is_active} onChange={(event) => update(method.id, { is_active: event.target.checked })} className="accent-[#00E5FF]" />
                   Aktif
                 </label>
@@ -186,9 +186,10 @@ export function PaymentMethodsManager() {
                   <input value={method.account_name} onChange={(event) => update(method.id, { account_name: event.target.value })} className="h-10 rounded-xl border border-white/10 bg-white/[0.06] px-3 text-sm text-white focus:border-[#00E5FF]/40 focus:outline-none" />
                 </label>
                 {method.id === "qris" ? (
-                  <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/[0.08] px-3 py-3">
-                    <p className="text-xs font-semibold text-emerald-300">QRIS dinamis otomatis</p>
-                    <p className="mt-1 text-[11px] leading-5 text-white/45">Nominal unik dan gambar QR dibuat per pesanan dari DANA Business. Tidak ada gambar QRIS statis yang perlu diunggah.</p>
+                  <div className="flex items-start gap-2.5 rounded-xl border border-emerald-400/20 bg-emerald-400/[0.08] px-3 py-3">
+                    <IosIcon name="qr-code" size={16} tint="#22C55E" />
+                    <div><p className="text-xs font-semibold text-emerald-300">QRIS dinamis otomatis</p>
+                    <p className="mt-1 text-[11px] leading-5 text-white/45">Nominal unik dan gambar QR dibuat per pesanan dari DANA Business. Tidak ada gambar QRIS statis yang perlu diunggah.</p></div>
                   </div>
                 ) : (
                   <label className="grid gap-1">
@@ -201,8 +202,8 @@ export function PaymentMethodsManager() {
                   <input type="number" min={0} max={999} value={method.sort_order} onChange={(event) => update(method.id, { sort_order: Number(event.target.value) })} className="h-10 rounded-xl border border-white/10 bg-white/[0.06] px-3 text-sm text-white focus:border-[#00E5FF]/40 focus:outline-none" />
                 </label>
               </div>
-              <button type="button" onClick={() => void save(method)} disabled={saving === method.id} className="mt-4 h-10 w-full rounded-xl bg-[#00E5FF] text-sm font-bold text-[#080C1E] disabled:opacity-50">
-                {saving === method.id ? "Menyimpan…" : "Simpan"}
+              <button type="button" onClick={() => void save(method)} disabled={saving === method.id} className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#00E5FF] text-sm font-bold text-[#080C1E] transition hover:bg-[#00D0E8] disabled:opacity-50">
+                {saving === method.id ? "Menyimpan…" : <><IosIcon name="checked" size={14} tint="black" /> Simpan</>}
               </button>
             </article>
           ))}
