@@ -11,7 +11,7 @@ import {
   orderStatusKeyboard, variantsKeyboard, confirmVariantPurchaseKeyboard,
   qtyKeyboard, qrisInvoiceKeyboard, orderPaidKeyboard, parseCallback,
   TELEGRAM_MAX_QTY, myOrdersKeyboard, searchResultsKeyboard,
-  cartKeyboard,
+  cartKeyboard, mainReplyMenu,
   MENU_LABEL_CATALOG, MENU_LABEL_SEARCH, MENU_LABEL_ORDERS, MENU_LABEL_HELP,
   MENU_LABEL_CART,
 } from "@/lib/telegram/keyboards";
@@ -226,6 +226,16 @@ async function handleCommand(
       caption: welcomeMessage(from?.first_name ?? "Pengguna", bestsellers),
       parse_mode: "HTML",
       reply_markup: homeKeyboard(),
+    });
+    // Tombol tetap bawah (reply keyboard): Katalog · Cari · Keranjang · Pesanan · Bantuan.
+    // Dikirim sebagai pesan terpisah karena sendPhoto caption memakai inline keyboard.
+    // is_persistent=true → tetap nempel di semua chat private; user lama yang
+    // belum pernah /start ulang tetap bisa pakai /cart atau tombol 🛒 + Keranjang.
+    await sendMessage({
+      chat_id: chatId,
+      text: "👇 <b>Menu Cepat</b> — tombol tetap di bawah kolom ketik.",
+      parse_mode: "HTML",
+      reply_markup: mainReplyMenu(),
     });
     return;
   }

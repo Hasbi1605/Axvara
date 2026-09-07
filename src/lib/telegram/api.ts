@@ -163,6 +163,7 @@ export async function setMyCommands(): Promise<TelegramApiResponse> {
       { command: "start", description: "🏠 Menu utama" },
       { command: "katalog", description: "🛍 Lihat katalog produk" },
       { command: "cari", description: "🔎 Cari produk" },
+      { command: "cart", description: "🛒 Keranjang belanja" },
       { command: "orders", description: "📦 Riwayat pesanan saya" },
       { command: "pesanan", description: "📋 Cek status pesanan" },
       { command: "bantuan", description: "❓ Bantuan & cara beli" },

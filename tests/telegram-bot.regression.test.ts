@@ -113,13 +113,18 @@ describe("Telegram callback data", () => {
 });
 
 describe("Telegram keyboards", () => {
-  it("home keyboard has katalog, pesanan, garansi, bantuan", () => {
+  it("home keyboard has katalog, keranjang, pesanan, cari, garansi, bantuan", () => {
     const kb = homeKeyboard();
     const allTexts = kb.inline_keyboard.flat().map(b => b.text);
+    const allData = kb.inline_keyboard.flat().map(b => b.callback_data ?? "");
     expect(allTexts.some(t => t.includes("Katalog"))).toBe(true);
     expect(allTexts.some(t => t.includes("Bantuan"))).toBe(true);
     expect(allTexts.some(t => t.includes("Pesanan"))).toBe(true);
     expect(allTexts.some(t => t.includes("Garansi"))).toBe(true);
+    expect(allTexts.some(t => t.includes("Keranjang"))).toBe(true);
+    expect(allTexts.some(t => t.includes("Cari"))).toBe(true);
+    expect(allData).toContain("cart");
+    expect(allData).toContain("search");
   });
 
   it("warranty keyboard routes back to catalog and home", () => {
@@ -648,6 +653,12 @@ describe("Telegram Fase 2: cart + reminder (tanpa review/promo)", () => {
     expect(route).toContain("handleCartCheckout");
     expect(route).toContain("createAndSendCartInvoice");
     expect(route).toContain('"cconfirm"');
+    // /start WAJIB mengirim reply keyboard tetap — tanpanya tombol bawah
+    // tidak pernah muncul di Telegram user (bug: menu hanya didefinisikan).
+    expect(route).toContain("mainReplyMenu()");
+    expect(route).toContain("Menu Cepat");
+    const api = read("src/lib/telegram/api.ts");
+    expect(api).toContain('command: "cart"');
   });
 
   it("qty step offers add-to-cart alongside direct QRIS checkout", () => {

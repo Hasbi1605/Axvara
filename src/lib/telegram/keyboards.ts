@@ -80,7 +80,11 @@ export function homeKeyboard(): InlineKeyboardMarkup {
     inline_keyboard: [
       [
         { text: "🛍 Katalog", callback_data: cb.catalog() },
+        { text: "🛒 Keranjang", callback_data: cb.cart() },
+      ],
+      [
         { text: "📋 Pesanan", callback_data: "myorders" },
+        { text: "🔎 Cari", callback_data: cb.search() },
       ],
       [
         { text: "📜 Garansi & Ketentuan", callback_data: "warranty" },
