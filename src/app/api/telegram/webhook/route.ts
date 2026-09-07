@@ -117,21 +117,79 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // 6. Upsert telegram user
+  // 6. Upsert telegram user + bind verified private chat (issue #5).
+  // chat_id grup (negatif) TIDAK PERNAH disimpan sebagai identitas user:
+  // upsert memakai chat pribadi hanya bila update datang dari chat private,
+  // dan ensurePrivateRecipient mengikat ulang order lunas milik buyer ke
+  // chat pribadi terverifikasi tanpa memercayai id grup.
   const from = update.message?.from ?? update.callback_query?.from;
   const chatId = update.message?.chat.id ?? update.callback_query?.message?.chat.id;
+  const chatType = update.message?.chat.type ?? "private";
+  const isPrivateChat = chatType === "private";
   if (from && chatId) {
     try {
       if (isD1Mode()) {
-        await execRun(
-          `INSERT INTO telegram_users (user_id, chat_id, username, first_name, last_name)
-           VALUES (?, ?, ?, ?, ?)
-           ON CONFLICT(user_id) DO UPDATE SET chat_id=?, username=?, first_name=?, last_name=?, updated_at=datetime('now')`,
-          String(from.id), String(chatId), from.username ?? null, from.first_name, from.last_name ?? null,
-          String(chatId), from.username ?? null, from.first_name, from.last_name ?? null,
-        );
+        if (isPrivateChat) {
+          await execRun(
+            `INSERT INTO telegram_users (user_id, chat_id, username, first_name, last_name)
+             VALUES (?, ?, ?, ?, ?)
+             ON CONFLICT(user_id) DO UPDATE SET chat_id=?, username=?, first_name=?, last_name=?, updated_at=datetime('now')`,
+            String(from.id), String(chatId), from.username ?? null, from.first_name, from.last_name ?? null,
+            String(chatId), from.username ?? null, from.first_name, from.last_name ?? null,
+          );
+          const { ensurePrivateRecipient } = await import("@/lib/fulfillment/deliver");
+          await ensurePrivateRecipient(String(from.id), String(chatId)).catch(() => {});
+        } else {
+          await execRun(
+            `INSERT INTO telegram_users (user_id, chat_id, username, first_name, last_name)
+             VALUES (?, ?, ?, ?, ?)
+             ON CONFLICT(user_id) DO UPDATE SET username=?, first_name=?, last_name=?, updated_at=datetime('now')`,
+            String(from.id), String(from.id), from.username ?? null, from.first_name, from.last_name ?? null,
+            from.username ?? null, from.first_name, from.last_name ?? null,
+          );
+        }
       }
     } catch { /* best-effort user upsert */ }
+  }
+
+  // 6b. Group guard: checkout/callback dari grup tidak membawa state
+  // pembelian — balas dengan deep-link ke chat pribadi, lalu berhenti.
+  if (!isPrivateChat && chatId) {
+    try {
+      if (update.callback_query) {
+        const cq = update.callback_query;
+        await answerCallbackQuery(cq.id);
+        if (cq.data) {
+          const { SITE } = await import("@/lib/site");
+          const { groupCheckoutRedirectMessage } = await import("@/lib/telegram/messages");
+          await sendMessage({
+            chat_id: chatId,
+            text: groupCheckoutRedirectMessage(SITE.adminTelegram),
+            parse_mode: "HTML",
+          });
+        }
+        await markDone(updateId);
+        return NextResponse.json({ ok: true, status: "group_redirected" });
+      }
+      if (update.message?.text) {
+        const groupText = update.message.text.trim().toLowerCase().split(/\s+/)[0].split("@")[0];
+        const purchaseIntents = ["/start", "/katalog", "/cari", "/search", "/cart", "/keranjang", "/orders", "/riwayat", "/pesanan", "/bantuan", "/help", "/garansi"];
+        if (purchaseIntents.includes(groupText) || !groupText.startsWith("/")) {
+          // /chatid tetap dilayani di grup (admin setup); sisanya redirect.
+          if (groupText !== "/chatid") {
+            const { SITE } = await import("@/lib/site");
+            const { groupCheckoutRedirectMessage } = await import("@/lib/telegram/messages");
+            await sendMessage({
+              chat_id: chatId,
+              text: groupCheckoutRedirectMessage(SITE.adminTelegram),
+              parse_mode: "HTML",
+            });
+            await markDone(updateId);
+            return NextResponse.json({ ok: true, status: "group_redirected" });
+          }
+        }
+      }
+    } catch { /* redirect best-effort; lanjutkan routing normal */ }
   }
 
   try {
@@ -331,6 +389,36 @@ async function handleCommand(
 
 async function handleCallback(data: string, chatId: number, messageId: number, from: { id: number; first_name: string; username?: string }) {
   const { action, params } = parseCallback(data);
+
+  // Ownership guard (issue #5): callback sensitif order (bayar, keranjang,
+  // batal, refresh, status, wainput) hanya boleh dieksekusi pemilik order.
+  // from.id adalah identitas penekan tombol terverifikasi Telegram — chat_id
+  // grup tidak boleh dipakai untuk mengambil alih order orang lain.
+  const ownerBound = new Set(["pay", "pm", "cadd", "cinc", "cdec", "crm", "ccheckout", "cancel", "refresh", "order", "wainput"]);
+  if (ownerBound.has(action)) {
+    const targetCode = action === "cancel" || action === "refresh" || action === "order" || action === "wainput"
+      ? String(params[0] || "").toUpperCase()
+      : null;
+    if (targetCode) {
+      const owned = await queryFirst(
+        `SELECT code FROM orders WHERE code=? AND telegram_user_id=? AND sales_channel='telegram'`,
+        targetCode, String(from.id),
+      );
+      if (!owned) {
+        await sendMessage({ chat_id: chatId, text: "❌ Pesanan ini bukan milikmu. Buka chat pribadi bot dan buat pesanan sendiri.", parse_mode: "HTML" });
+        return;
+      }
+    }
+    // verifyPrivateChat: callback dari grup untuk aksi sensitif ditolak
+    // (grup sudah di-redirect di POST; ini lapis kedua bila pesan lama
+    // diteruskan). Chat pribadi selalu lolos (chatId positif = from.id).
+    if (Number(chatId) < 0) {
+      const { SITE } = await import("@/lib/site");
+      const { groupCheckoutRedirectMessage } = await import("@/lib/telegram/messages");
+      await sendMessage({ chat_id: chatId, text: groupCheckoutRedirectMessage(SITE.adminTelegram), parse_mode: "HTML" });
+      return;
+    }
+  }
 
   switch (action) {
     case "home":

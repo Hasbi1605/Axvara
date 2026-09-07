@@ -28,13 +28,17 @@ export type FulfillmentRecipient = {
 };
 
 /**
- * Resolve the delivery recipient for one order (issue #4).
+ * Resolve the delivery recipient for one order (issues #4, #5).
  *
- * - telegram → Telegram chat id pembeli (bukan grup admin).
+ * - telegram → telegram_user_id pembeli (chat pribadi terverifikasi).
+ *   telegram_chat_id TIDAK dipakai sebagai penerima kredensial: dari grup,
+ *   chat_id adalah ID grup, sehingga memakainya membocorkan kredensial ke
+ *   seluruh anggota grup. Order grup menyimpan chat pribadi setelah buyer
+ *   menekan START (ensurePrivateRecipient) atau item diarahkan manual.
  * - whatsapp → nomor anggota grup (channel_member_id) atau customer_wa.
  * - web → nomor WA pembeli (jalur manual/admin; tidak ada push otomatis).
  * Target kosong berarti item tidak dapat dikirim otomatis dan diarahkan ke
- * `manual_required` — bukan dikirim ke penerima kosong.
+ * `manual_required` — bukan dikirim ke penerima kosong/grup.
  */
 export function resolveRecipient(order: Row): FulfillmentRecipient {
   const channel = String(order.sales_channel || "telegram");
@@ -47,7 +51,52 @@ export function resolveRecipient(order: Row): FulfillmentRecipient {
   if (channel === "web") {
     return { channel: "web", target: String(order.customer_wa || "") };
   }
-  return { channel: "telegram", target: String(order.telegram_chat_id || "") };
+  // Private-only: telegram_user_id adalah identitas pembeli terverifikasi
+  // (from.id saat START/callback di chat pribadi). telegram_chat_id hanya
+  // dipakai untuk membalas pesan operasional non-kredensial.
+  return { channel: "telegram", target: String(order.telegram_user_id || "") };
+}
+
+/**
+ * Bind the verified private chat of a Telegram buyer to their user id
+ * (issue #5). Called on every private START/callback/message BEFORE any
+ * order or delivery work:
+ * - telegram_users.chat_id = chat pribadi terakhir yang terverifikasi.
+ * - paid orders of this buyer with no usable private recipient inherit it
+ *   (CAS: only when the stored target is empty or a negative group id),
+ *   so credentials created from a group checkout find the private chat as
+ *   soon as the buyer presses START — without ever trusting a group id.
+ */
+export async function ensurePrivateRecipient(
+  telegramUserId: string,
+  privateChatId: string,
+): Promise<void> {
+  if (!telegramUserId || !privateChatId) return;
+  if (Number(privateChatId) < 0) return; // never bind a group id
+  await execRun(
+    `UPDATE telegram_users SET chat_id=?, updated_at=datetime('now')
+     WHERE user_id=? AND (chat_id IS NULL OR chat_id!=? OR CAST(chat_id AS INTEGER) < 0)`,
+    privateChatId, telegramUserId, privateChatId,
+  ).catch(() => {});
+  await execRun(
+    `UPDATE orders SET telegram_chat_id=?
+     WHERE sales_channel='telegram' AND telegram_user_id=?
+       AND status='lunas' AND payment_status='paid'
+       AND (telegram_chat_id IS NULL OR telegram_chat_id!=? OR CAST(telegram_chat_id AS INTEGER) < 0)
+       AND fulfillment_status NOT IN ('delivered')`,
+    privateChatId, telegramUserId, privateChatId,
+  ).catch(() => {});
+  await execRun(
+    `UPDATE fulfillment_items SET recipient_target=?
+     WHERE recipient_channel='telegram' AND recipient_target!=?
+       AND (recipient_target IS NULL OR CAST(recipient_target AS INTEGER) < 0)
+       AND order_code IN (
+         SELECT code FROM orders
+         WHERE sales_channel='telegram' AND telegram_user_id=?
+           AND status='lunas' AND payment_status='paid'
+       )`,
+    privateChatId, privateChatId, telegramUserId,
+  ).catch(() => {});
 }
 
 /** Parse order.items into a normalized per-item list. */

@@ -111,8 +111,24 @@ export async function notifyTelegramBuyerPaid(orderCode: string): Promise<boolea
   );
   if (!order) return true;
 
-  const chatId = String(order.telegram_chat_id || "");
-  if (!chatId) return false;
+  // Private-only (issue #5): notifikasi lunas hanya ke chat pribadi buyer
+  // terverifikasi dari telegram_users (tidak pernah id grup). Bila buyer
+  // checkout dari grup dan belum START privat, kirim pemberitahuan aman
+  // TANPA kredensial ke grup + kembalikan false agar retry cron mengirim
+  // ulang ke private chat setelah buyer verifikasi (ensurePrivateRecipient).
+  const buyerId = String(order.telegram_user_id || "");
+  const privateChat = buyerId
+    ? String((await queryFirst(`SELECT chat_id FROM telegram_users WHERE user_id=?`, buyerId))?.chat_id || "")
+    : "";
+  const chatId = privateChat && Number(privateChat) > 0 ? privateChat : "";
+  if (!chatId) {
+    const groupId = String(order.telegram_chat_id || "");
+    if (groupId && Number(groupId) < 0) {
+      const { groupDeliveryNoticeMessage } = await import("@/lib/telegram/messages");
+      await sendMessage({ chat_id: groupId, text: groupDeliveryNoticeMessage(), parse_mode: "HTML" }).catch(() => {});
+    }
+    return false;
+  }
   const needsWhatsApp = fulfillmentMode(order.variant_snapshot) === "manual"
     && !String(order.customer_wa || "").trim();
   const sent = await sendMessage({
