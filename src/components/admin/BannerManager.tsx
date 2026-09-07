@@ -98,14 +98,14 @@ export function BannerManager() {
     <section className="mt-4">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-2">
         {[
-          ["Total banner", counts.total, "text-white", "image", "white"],
-          ["Aktif", counts.active, "text-[#22C55E]", "checked", "#22C55E"],
-          ["Nonaktif", counts.inactive, "text-white/70", "close", "white"],
-          ["Dengan CTA", counts.withCta, "text-[#00E5FF]", "link", "#00E5FF"],
-        ].map(([label, value, color, icon, iconTint]) => (
+          ["Total banner", counts.total, "text-white"],
+          ["Aktif", counts.active, "text-[#22C55E]"],
+          ["Nonaktif", counts.inactive, "text-white/70"],
+          ["Dengan CTA", counts.withCta, "text-[#00E5FF]"],
+        ].map(([label, value, color]) => (
           <div key={String(label)} className="ax-glass rounded-2xl p-4">
-            <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-white/50"><IosIcon name={icon as "image" | "checked" | "close" | "link"} size={12} tint={String(iconTint)} /> {label}</p>
-            <p className={`mt-1.5 text-2xl font-display font-bold ${color}`}>{value}</p>
+            <p className="text-[11px] uppercase tracking-wide text-white/50">{label}</p>
+            <p className={`mt-1 text-2xl font-display font-bold tabular-nums ${color}`}>{value}</p>
           </div>
         ))}
       </div>
@@ -114,9 +114,6 @@ export function BannerManager() {
         {/* Form — seragam card header + padding seperti laman Produk */}
         <div className="ax-glass rounded-[20px] overflow-hidden">
           <div className="flex items-center gap-2.5 p-4 sm:p-5 border-b border-white/10">
-            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/5 border border-white/5">
-              <IosIcon name="image" size={16} tint="white" />
-            </span>
             <h2 className="font-semibold text-white text-sm">{editing ? "Edit banner" : "Banner baru"}</h2>
             {editing && (
               <button
@@ -226,9 +223,6 @@ export function BannerManager() {
         {/* Daftar — ax-glass rounded-[20px] overflow-hidden + rows seperti Produk/Artikel */}
         <div className="ax-glass rounded-[20px] overflow-hidden">
           <div className="flex items-center gap-2.5 p-4 sm:p-5 border-b border-white/10">
-            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/5 border border-white/5">
-              <IosIcon name="full-image" size={16} tint="white" />
-            </span>
             <h2 className="font-semibold text-white text-sm">Daftar banner</h2>
             <span className="ml-auto text-xs text-white/40">{banners.length} banner</span>
           </div>
@@ -257,8 +251,7 @@ export function BannerManager() {
                       {banner.delay_ms} ms
                       {banner.cta_label ? ` · CTA: ${banner.cta_label}` : ""}
                     </p>
-                    <span className={`mt-1.5 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${banner.is_active ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-300" : "border-white/10 bg-white/[0.05] text-white/45"}`}>
-                      <IosIcon name={banner.is_active ? "checked" : "close"} size={10} tint={banner.is_active ? "#22C55E" : "white"} />
+                    <span className={`mt-1.5 inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${banner.is_active ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-300" : "border-white/10 bg-white/[0.05] text-white/45"}`}>
                       {banner.is_active ? "Aktif" : "Nonaktif"}
                     </span>
                   </div>

@@ -149,9 +149,9 @@ export function ImageDropzone({ area, value, onUploaded, onRemove }: Props) {
           {busy ? (
             "Mengonversi & upload…"
           ) : (
-            <span className="inline-flex flex-col items-center gap-1.5">
-              <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/5"><IosIcon name="upload" size={20} tint="white" /></span>
-              <span className="font-semibold">Tarik gambar atau klik · PNG/JPG/WebP</span>
+            <span className="inline-flex flex-col items-center gap-1">
+              <IosIcon name="upload" size={22} tint="white" />
+              <span>Tarik gambar atau klik · PNG/JPG/WebP</span>
               <span className="text-[11px] text-white/35">
                 {preserveRatio ? "Rasio asli dipertahankan · maks. 1920 px" : "Otomatis WebP 1600×900"}
               </span>

@@ -75,15 +75,14 @@ export function ProofThumbnail({ proof }: { proof?: string | null }) {
         </span>
       </button>
       {open && (
-        <div className="fixed inset-0 z-[80] isolate flex items-center justify-center overflow-hidden bg-[#050713]/95 p-3 backdrop-blur-sm sm:p-6" onClick={() => setOpen(false)} role="dialog" aria-modal="true" aria-label="Bukti pembayaran">
-          <div className="relative z-10 flex max-h-[92dvh] w-full max-w-5xl flex-col overflow-hidden rounded-[24px] border border-white/10 bg-[#0F1430] shadow-[0_28px_80px_rgba(0,0,0,0.55)]" onClick={(event) => event.stopPropagation()}>
-            <div className="flex items-center gap-3 border-b border-white/10 px-4 py-3 sm:px-5">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#00E5FF]/25 bg-[#00E5FF]/10"><IosIcon name="image" size={16} tint="#00E5FF" /></span>
-              <div className="min-w-0 flex-1">
+        <div className="fixed inset-0 z-[80] isolate flex items-center justify-center overflow-hidden bg-black/60 p-4 backdrop-blur-sm sm:p-6" onClick={() => setOpen(false)} role="dialog" aria-modal="true" aria-label="Bukti pembayaran">
+          <div className="relative z-10 flex max-h-[92dvh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-white/10 bg-[#0F1430] shadow-[0_24px_64px_rgba(0,0,0,0.6)]" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3 sm:px-5">
+              <div>
                 <p className="text-sm font-semibold text-white">Bukti pembayaran</p>
                 <p className="text-[11px] text-white/40">Periksa nominal, tanggal, dan rekening tujuan.</p>
               </div>
-              <button type="button" onClick={() => setOpen(false)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 transition hover:bg-white/15" aria-label="Tutup">
+              <button type="button" onClick={() => setOpen(false)} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 transition hover:bg-white/15" aria-label="Tutup">
                 <IosIcon name="close" size={13} tint="white" />
               </button>
             </div>

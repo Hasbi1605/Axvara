@@ -113,17 +113,14 @@ export function PaymentMethodsManager() {
   }
 
   return (
-    <section className="mt-5 space-y-4">
+    <section className="mt-4 space-y-4">
       <div className="inline-flex rounded-xl border border-white/10 bg-white/[0.04] p-1" role="tablist" aria-label="Bagian pembayaran">
-        <button role="tab" aria-selected={paymentTab === "methods"} onClick={() => setPaymentTab("methods")} className={`inline-flex h-9 items-center gap-2 rounded-lg px-4 text-xs font-semibold transition ${paymentTab === "methods" ? "bg-[#00E5FF] text-[#07101f]" : "text-white/55 hover:text-white"}`}><IosIcon name="wallet" size={13} tint={paymentTab === "methods" ? "black" : "white"} /> Metode Pembayaran</button>
-        <button role="tab" aria-selected={paymentTab === "qris"} onClick={() => setPaymentTab("qris")} className={`inline-flex h-9 items-center gap-2 rounded-lg px-4 text-xs font-semibold transition ${paymentTab === "qris" ? "bg-[#00E5FF] text-[#07101f]" : "text-white/55 hover:text-white"}`}><IosIcon name="qr-code" size={13} tint={paymentTab === "qris" ? "black" : "white"} /> QRIS &amp; Rekonsiliasi</button>
+        <button role="tab" aria-selected={paymentTab === "methods"} onClick={() => setPaymentTab("methods")} className={`h-9 rounded-lg px-4 text-xs font-semibold transition ${paymentTab === "methods" ? "bg-[#00E5FF] text-[#07101f]" : "text-white/55 hover:text-white"}`}>Metode Pembayaran</button>
+        <button role="tab" aria-selected={paymentTab === "qris"} onClick={() => setPaymentTab("qris")} className={`h-9 rounded-lg px-4 text-xs font-semibold transition ${paymentTab === "qris" ? "bg-[#00E5FF] text-[#07101f]" : "text-white/55 hover:text-white"}`}>QRIS &amp; Rekonsiliasi</button>
       </div>
       {paymentTab === "methods" ? <>
       <div className="ax-glass rounded-[20px] overflow-hidden">
         <div className="flex flex-wrap items-center gap-2.5 border-b border-white/10 p-4 sm:p-5">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-white/5">
-            <IosIcon name="credit-card" size={16} tint="white" />
-          </span>
           <div className="min-w-0">
             <h2 className="text-sm font-semibold text-white">Metode Pembayaran</h2>
             <p className="text-xs text-white/40">Sumber tunggal rekening yang ditampilkan saat checkout.</p>
@@ -170,7 +167,7 @@ export function PaymentMethodsManager() {
           {methods.map((method) => (
             <article key={method.id} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 transition hover:border-white/20">
               <div className="flex items-center justify-between gap-3">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 font-mono text-[10px] uppercase tracking-wide text-white/60"><IosIcon name={method.id === "qris" ? "qr-code" : method.id === "seabank" || method.id.includes("bank") ? "bank" : "wallet"} size={11} tint={method.id === "qris" ? "#00E5FF" : method.id === "seabank" || method.id.includes("bank") ? "#229ED9" : "#25D366"} />{method.id}</span>
+                <span className="rounded-full bg-white/10 px-2.5 py-1 font-mono text-[10px] uppercase tracking-wide text-white/60">{method.id}</span>
                 <label className="inline-flex shrink-0 items-center gap-2 text-xs text-white/60">
                   <input type="checkbox" checked={method.is_active} onChange={(event) => update(method.id, { is_active: event.target.checked })} className="accent-[#00E5FF]" />
                   Aktif
@@ -186,8 +183,7 @@ export function PaymentMethodsManager() {
                   <input value={method.account_name} onChange={(event) => update(method.id, { account_name: event.target.value })} className="h-10 rounded-xl border border-white/10 bg-white/[0.06] px-3 text-sm text-white focus:border-[#00E5FF]/40 focus:outline-none" />
                 </label>
                 {method.id === "qris" ? (
-                  <div className="flex items-start gap-2.5 rounded-xl border border-emerald-400/20 bg-emerald-400/[0.08] px-3 py-3">
-                    <IosIcon name="qr-code" size={16} tint="#22C55E" />
+                  <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/[0.08] px-3 py-3">
                     <div><p className="text-xs font-semibold text-emerald-300">QRIS dinamis otomatis</p>
                     <p className="mt-1 text-[11px] leading-5 text-white/45">Nominal unik dan gambar QR dibuat per pesanan dari DANA Business. Tidak ada gambar QRIS statis yang perlu diunggah.</p></div>
                   </div>

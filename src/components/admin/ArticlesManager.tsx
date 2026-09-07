@@ -182,14 +182,14 @@ export function ArticlesManager() {
     <section className="mt-4">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-2">
         {[
-          ["Total artikel", counts.total, "text-white", "news", "white"],
-          ["Draft", counts.draft, "text-white/80", "edit", "white"],
-          ["Review / jadwal", counts.review, "text-[#FFB800]", "clock", "#FFB800"],
-          ["Published", counts.published, "text-[#22C55E]", "checked", "#22C55E"],
-        ].map(([label, value, color, icon, iconTint]) => (
+          ["Total artikel", counts.total, "text-white"],
+          ["Draft", counts.draft, "text-white/80"],
+          ["Review / jadwal", counts.review, "text-[#FFB800]"],
+          ["Published", counts.published, "text-[#22C55E]"],
+        ].map(([label, value, color]) => (
           <div key={String(label)} className="ax-glass rounded-2xl p-4">
-            <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-white/50"><IosIcon name={icon as "news" | "edit" | "clock" | "checked"} size={12} tint={String(iconTint)} /> {label}</p>
-            <p className={`mt-1.5 text-2xl font-display font-bold ${color}`}>{value}</p>
+            <p className="text-[11px] uppercase tracking-wide text-white/50">{label}</p>
+            <p className={`mt-1 text-2xl font-display font-bold tabular-nums ${color}`}>{value}</p>
           </div>
         ))}
       </div>
@@ -199,14 +199,9 @@ export function ArticlesManager() {
         {/* Toolbar — seragam dengan Produk: search + button primary + filter */}
         <div className="flex flex-col gap-3 p-4 sm:p-5 border-b border-white/10">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/5 border border-white/5">
-                <IosIcon name="news" size={16} tint="white" />
-              </span>
-              <div>
-                <h2 className="font-semibold text-white text-sm">Artikel</h2>
-                <p className="text-xs text-white/40">Slug & ringkasan dibuat otomatis.</p>
-              </div>
+            <div className="min-w-0">
+              <h2 className="font-semibold text-white text-sm">Artikel</h2>
+              <p className="text-xs text-white/40">Slug & ringkasan dibuat otomatis.</p>
             </div>
             <button
               onClick={openNew}
@@ -267,13 +262,11 @@ export function ArticlesManager() {
                   )}
                   <div className="min-w-0">
                     <p className="line-clamp-1 text-sm font-semibold text-white leading-tight">{article.title}</p>
-                    <p className="mt-0.5 flex items-center gap-1.5 text-xs text-white/40 line-clamp-1">
-                      <IosIcon name={article.author_type === "agent" ? "chatbot" : "user-manual"} size={11} tint="white" />
+                    <p className="mt-0.5 text-xs text-white/40 line-clamp-1">
                       {article.author_type === "agent" ? `Agent: ${article.author_name ?? "unknown"} · ` : ""}
                       {article.updated_at ? new Date(article.updated_at).toLocaleDateString("id-ID") : "Belum disimpan"}
                     </p>
-                    <span className={`mt-1.5 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${article.status === "published" ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-300" : article.status === "draft" ? "border-white/10 bg-white/[0.05] text-white/55" : article.status === "rejected" ? "border-red-400/25 bg-red-500/10 text-red-300" : "border-[#FFB800]/25 bg-[#FFB800]/10 text-[#FFCF55]"}`}>
-                      <IosIcon name={article.status === "published" ? "checked" : article.status === "draft" ? "edit" : article.status === "rejected" ? "close" : "clock"} size={10} tint={article.status === "published" ? "#22C55E" : article.status === "draft" ? "white" : article.status === "rejected" ? "#F87171" : "#FFB800"} />
+                    <span className={`mt-1.5 inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${article.status === "published" ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-300" : article.status === "draft" ? "border-white/10 bg-white/[0.05] text-white/55" : article.status === "rejected" ? "border-red-400/25 bg-red-500/10 text-red-300" : "border-[#FFB800]/25 bg-[#FFB800]/10 text-[#FFCF55]"}`}>
                       {statusLabels[article.status] ?? article.status}
                     </span>
                   </div>
@@ -335,11 +328,10 @@ export function ArticlesManager() {
       </div>
 
       {form && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto overflow-hidden bg-black/70 p-0 backdrop-blur-sm sm:items-start sm:p-4 sm:pt-6" onClick={() => !saving && setForm(null)}>
-          <div className="w-full max-w-[820px] rounded-t-[26px] border border-white/10 bg-[#0d1126] p-5 shadow-2xl sm:rounded-[26px] sm:p-6" onClick={(event) => event.stopPropagation()}>
-            <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-[#00E5FF]/25 bg-[#00E5FF]/10"><IosIcon name="news" size={18} tint="#00E5FF" /></span>
-              <div className="min-w-0 flex-1">
+        <div className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto overflow-hidden bg-black/60 p-0 backdrop-blur-sm sm:items-start sm:p-6 sm:pt-10" onClick={() => !saving && setForm(null)}>
+          <div className="w-full max-w-[820px] rounded-t-3xl border border-white/10 bg-[#0d1126] p-6 shadow-[0_24px_64px_rgba(0,0,0,0.6)] sm:rounded-3xl" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-center justify-between gap-3">
+              <div>
                 <h3 className="font-display text-lg font-bold text-white">{editing ? "Edit Artikel" : "Artikel Baru"}</h3>
                 <p className="text-xs text-white/40">Editor visual menyimpan Markdown agar kompatibel dengan MCP/agent.</p>
               </div>

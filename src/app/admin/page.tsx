@@ -522,13 +522,13 @@ export default function AdminPage() {
       </div>
 
       {tab==="products" && <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3 mb-2">
-          <div className="ax-glass rounded-2xl p-4"><p className="flex items-center gap-1.5 text-[11px] tracking-wide text-white/50 uppercase"><IosIcon name="box" size={12} tint="white" /> Total produk</p><p className="mt-1 text-2xl font-display font-bold text-white">{prods.length}</p></div>
-          <div className="ax-glass rounded-2xl p-4"><p className="flex items-center gap-1.5 text-[11px] tracking-wide text-white/50 uppercase"><IosIcon name="checked" size={12} tint="#22C55E" /> Produk aktif</p><p className="mt-1 text-2xl font-display font-bold text-[#22C55E]">{activeProducts}</p></div>
-          <div className="ax-glass rounded-2xl p-4"><p className="flex items-center gap-1.5 text-[11px] tracking-wide text-white/50 uppercase"><IosIcon name="clock" size={12} tint="#FFB800" /> Stok menipis</p><p className="mt-1 text-2xl font-display font-bold text-[#FFB800]">{lowStock}</p></div>
-          <div className="ax-glass rounded-2xl p-4"><p className="flex items-center gap-1.5 text-[11px] tracking-wide text-white/50 uppercase"><IosIcon name="wallet" size={12} tint="white" /> Unit terjual</p><p className="mt-1 text-2xl font-display font-bold text-white">{soldProducts}</p></div>
+          <div className="ax-glass rounded-2xl p-4"><p className="text-[11px] tracking-wide text-white/50 uppercase">Total produk</p><p className="mt-1 text-2xl font-display font-bold text-white">{prods.length}</p></div>
+          <div className="ax-glass rounded-2xl p-4"><p className="text-[11px] tracking-wide text-white/50 uppercase">Produk aktif</p><p className="mt-1 text-2xl font-display font-bold text-[#22C55E]">{activeProducts}</p></div>
+          <div className="ax-glass rounded-2xl p-4"><p className="text-[11px] tracking-wide text-white/50 uppercase">Stok menipis</p><p className="mt-1 text-2xl font-display font-bold text-[#FFB800]">{lowStock}</p></div>
+          <div className="ax-glass rounded-2xl p-4"><p className="text-[11px] tracking-wide text-white/50 uppercase">Unit terjual</p><p className="mt-1 text-2xl font-display font-bold text-white">{soldProducts}</p></div>
       </div>}
 
-      {listError && <div className="mt-4 rounded-2xl bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-200 flex items-center justify-between gap-3"><span className="flex items-center gap-2"><IosIcon name="info" size={15} tint="#F87171" /> {listError}</span><button onClick={load} className="inline-flex h-8 shrink-0 items-center gap-1.5 px-3 rounded-full bg-white text-[#070a1e] text-xs font-bold transition hover:bg-white/90"><IosIcon name="refresh" size={12} tint="black" /> Coba lagi</button></div>}
+      {listError && <div className="mt-4 rounded-2xl bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-200 flex items-center justify-between gap-3"><span>{listError}</span><button onClick={load} className="h-8 px-3 rounded-full bg-white text-[#070a1e] text-xs font-bold shrink-0 transition hover:bg-white/90">Coba lagi</button></div>}
 
       {tab==="summary" && <AdminOverview data={overview} loading={overviewLoading} onNavigate={navigateAdmin} />}
       {tab==="orders" && <OrdersManager onChanged={loadOverview} />}
@@ -561,7 +561,7 @@ export default function AdminPage() {
                   <img src={p.image || "/brand/axvara-ribbon-mark.png"} alt="" className="h-14 w-14 shrink-0 rounded-xl bg-white/5 object-cover" />
                   <div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-semibold text-white">{p.name}</p><p className="mt-0.5 truncate text-[11px] text-white/35">{p.categorySlug} · {p.variantCount ? `${p.variantCount} varian` : "produk"}</p></div><button type="button" aria-pressed={p.isActive} aria-label={`Toggle aktif ${p.name}`} disabled={toggling === p.id} onClick={() => toggleActive(p)} className={`toggle-btn relative inline-flex h-6 w-[46px] shrink-0 items-center rounded-full border px-[2px] ${p.isActive ? "border-emerald-600 bg-emerald-500" : "border-white/20 bg-white/15"}`}><span className={`h-[18px] w-[18px] rounded-full bg-white transition-transform ${p.isActive ? "translate-x-[20px]" : "translate-x-0"}`} /></button></div><div className="mt-3 flex flex-wrap items-center gap-2 text-xs"><span className="font-semibold text-white">{p.minPrice != null && p.maxPrice != null && p.minPrice !== p.maxPrice ? `${formatRupiah(p.minPrice)}–${formatRupiah(p.maxPrice)}` : formatRupiah(p.price)}</span><span className="rounded-full bg-white/[0.07] px-2 py-1 text-white/50">Stok {p.stock === -1 ? "∞" : p.stock}</span><span className="text-white/35">{p.soldCount} terjual</span></div></div>
                 </div>
-                <div className="mt-4 grid grid-cols-[1fr_auto] gap-2"><button onClick={()=>openEdit(p)} className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-white text-xs font-bold text-[#080C1E] transition hover:bg-white/90"><IosIcon name="edit" size={12} tint="black" /> Edit Produk & Varian</button><button onClick={()=>setDeleteTarget(p)} className="flex h-9 w-10 shrink-0 items-center justify-center rounded-xl bg-red-500/15 transition hover:bg-red-500/25" aria-label={`Arsipkan ${p.name}`} title="Arsipkan produk"><IosIcon name="trash" size={14} tint="#F87171" /></button></div>
+                <div className="mt-4 grid grid-cols-[1fr_auto] gap-2"><button onClick={()=>openEdit(p)} className="h-9 rounded-xl bg-white text-xs font-bold text-[#080C1E] transition hover:bg-white/90">Edit Produk & Varian</button><button onClick={()=>setDeleteTarget(p)} className="flex h-9 w-10 shrink-0 items-center justify-center rounded-xl bg-red-500/15 transition hover:bg-red-500/25" aria-label={`Arsipkan ${p.name}`} title="Arsipkan produk"><IosIcon name="trash" size={14} tint="white" /></button></div>
               </article>)}
             </div>
             <div className="hidden overflow-x-auto md:block">
@@ -633,32 +633,31 @@ export default function AdminPage() {
       {tab==="subscribers" && <NewsletterSubscribers />}
 
       {(editing || showNew) && (
-        <div className="fixed inset-0 z-[80] isolate flex items-end justify-center overflow-hidden bg-[#040612]/95 p-0 sm:items-start sm:overflow-y-auto sm:p-5 sm:pt-10" onMouseDown={(event)=>{if(event.target===event.currentTarget&&!saving){if(productDirty)setConfirmProductClose(true);else closeModal();}}}>
-          <section role="dialog" aria-modal="true" aria-labelledby="product-editor-title" className="relative z-10 isolate max-h-[94dvh] w-full max-w-[720px] overflow-y-auto rounded-t-[26px] border border-white/10 bg-[#0B1025] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.85)] sm:max-h-[92vh] sm:rounded-[26px] sm:p-6">
-            <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-[#00E5FF]/25 bg-[#00E5FF]/10"><IosIcon name="box" size={18} tint="#00E5FF" /></span>
-              <div className="min-w-0 flex-1"><p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#00E5FF]">Katalog</p><h3 id="product-editor-title" className="mt-0.5 font-display text-lg font-bold text-white">{editing? "Edit Produk":"Produk Baru"}</h3></div>
+        <div className="fixed inset-0 z-[80] isolate flex items-end justify-center overflow-hidden bg-black/60 p-0 backdrop-blur-sm sm:items-start sm:overflow-y-auto sm:p-6 sm:pt-10" onMouseDown={(event)=>{if(event.target===event.currentTarget&&!saving){if(productDirty)setConfirmProductClose(true);else closeModal();}}}>
+          <section role="dialog" aria-modal="true" aria-labelledby="product-editor-title" className="relative z-10 isolate max-h-[92dvh] w-full max-w-[720px] overflow-y-auto rounded-t-3xl border border-white/10 bg-[#0B1025] p-6 shadow-[0_24px_64px_rgba(0,0,0,0.6)] sm:rounded-3xl">
+            <div className="flex items-center justify-between gap-3">
+              <div><p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#00E5FF]">Katalog</p><h3 id="product-editor-title" className="mt-0.5 font-display text-lg font-bold text-white">{editing? "Edit Produk":"Produk Baru"}</h3></div>
               <button onClick={()=>{if(productDirty)setConfirmProductClose(true);else closeModal();}} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-white/70 transition hover:bg-white/15" aria-label="Tutup editor produk"><IosIcon name="close" size={14} tint="white" /></button>
             </div>
 
-            {formError && <p className="mt-4 flex items-start gap-2 rounded-xl bg-red-500/10 border border-red-500/20 px-3 py-2 text-sm text-red-200"><IosIcon name="info" size={15} tint="#F87171" /><span>{formError}</span></p>}
+            {formError && <p className="mt-4 rounded-xl bg-red-500/10 border border-red-500/20 px-3 py-2 text-sm text-red-200">{formError}</p>}
 
             <div className="mt-5 grid sm:grid-cols-2 gap-4">
-              <label className="space-y-1.5"><span className="flex items-center gap-1.5 text-xs font-semibold text-white/60"><IosIcon name="edit" size={11} tint="white" /> Nama *</span><input value={form.name??""} onChange={e=>setForm({...form,name:e.target.value, slug: !editing? e.target.value.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""): form.slug})} placeholder="ChatGPT Plus 1 Bulan" className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#00E5FF]/30" /></label>
-              <label className="space-y-1.5"><span className="flex items-center gap-1.5 text-xs font-semibold text-white/60"><IosIcon name="link" size={11} tint="white" /> Slug *</span><input value={form.slug??""} onChange={e=>setForm({...form,slug:e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g,"-")})} placeholder="chatgpt-plus-1-bulan" className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 font-mono focus:outline-none focus:border-[#00E5FF]/30" /></label>
-              <label className="sm:col-span-2 space-y-1.5"><span className="flex items-center gap-1.5 text-xs font-semibold text-white/60"><IosIcon name="whatsapp" size={11} tint="#25D366" /> Nama di WhatsApp (Alias)</span><input value={form.whatsappAlias??""} onChange={e=>setForm({...form,whatsappAlias:e.target.value})} maxLength={50} placeholder="CHATGPT" className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#00E5FF]/30" /><span className="block text-[11px] leading-4 text-white/35">Dipakai pada daftar dan header detail produk WhatsApp. Jika kosong, bot memakai nama produk web.</span></label>
-              <label className="sm:col-span-2 space-y-1.5"><span className="flex items-center gap-1.5 text-xs font-semibold text-white/60"><IosIcon name="chat" size={11} tint="white" /> Deskripsi</span><textarea value={form.description??""} onChange={e=>setForm({...form,description:e.target.value})} rows={2} placeholder="Akses GPT-4o penuh..." className="w-full px-3 py-2.5 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 resize-none focus:outline-none focus:border-[#00E5FF]/30" /></label>
-              <label className="space-y-1.5"><span className="flex items-center gap-1.5 text-xs font-semibold text-white/60"><IosIcon name="category" size={11} tint="white" /> Kategori</span><select value={form.categorySlug??cats[0]?.slug??""} onChange={e=>setForm({...form,categorySlug:e.target.value})} className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white focus:outline-none focus:border-[#00E5FF]/30">
+              <label className="space-y-1.5"><span className="flex items-center gap-1.5 text-xs font-semibold text-white/60">Nama *</span><input value={form.name??""} onChange={e=>setForm({...form,name:e.target.value, slug: !editing? e.target.value.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""): form.slug})} placeholder="ChatGPT Plus 1 Bulan" className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#00E5FF]/30" /></label>
+              <label className="space-y-1.5"><span className="flex items-center gap-1.5 text-xs font-semibold text-white/60">Slug *</span><input value={form.slug??""} onChange={e=>setForm({...form,slug:e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g,"-")})} placeholder="chatgpt-plus-1-bulan" className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 font-mono focus:outline-none focus:border-[#00E5FF]/30" /></label>
+              <label className="sm:col-span-2 space-y-1.5"><span className="flex items-center gap-1.5 text-xs font-semibold text-white/60">Nama di WhatsApp (Alias)</span><input value={form.whatsappAlias??""} onChange={e=>setForm({...form,whatsappAlias:e.target.value})} maxLength={50} placeholder="CHATGPT" className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#00E5FF]/30" /><span className="block text-[11px] leading-4 text-white/35">Dipakai pada daftar dan header detail produk WhatsApp. Jika kosong, bot memakai nama produk web.</span></label>
+              <label className="sm:col-span-2 space-y-1.5"><span className="flex items-center gap-1.5 text-xs font-semibold text-white/60">Deskripsi</span><textarea value={form.description??""} onChange={e=>setForm({...form,description:e.target.value})} rows={2} placeholder="Akses GPT-4o penuh..." className="w-full px-3 py-2.5 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 resize-none focus:outline-none focus:border-[#00E5FF]/30" /></label>
+              <label className="space-y-1.5"><span className="flex items-center gap-1.5 text-xs font-semibold text-white/60">Kategori</span><select value={form.categorySlug??cats[0]?.slug??""} onChange={e=>setForm({...form,categorySlug:e.target.value})} className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white focus:outline-none focus:border-[#00E5FF]/30">
                 {cats.map((category) => <option key={category.id} value={category.slug} className="bg-[#0F1430]">{category.name}</option>)}
               </select></label>
-              <label className="space-y-1.5"><span className="flex items-center gap-1.5 text-xs font-semibold text-white/60"><IosIcon name="star" size={11} tint="#FFB800" /> Badge</span><input value={form.badge??""} onChange={e=>setForm({...form,badge:e.target.value})} placeholder="Terlaris / Baru / Hemat 92%" className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#00E5FF]/30" /></label>
+              <label className="space-y-1.5"><span className="flex items-center gap-1.5 text-xs font-semibold text-white/60">Badge</span><input value={form.badge??""} onChange={e=>setForm({...form,badge:e.target.value})} placeholder="Terlaris / Baru / Hemat 92%" className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#00E5FF]/30" /></label>
             </div>
 
             {/* Toggle Multi-Varian ala Marketplace */}
             <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <h4 className="flex items-center gap-1.5 text-sm font-semibold text-white"><IosIcon name="box" size={14} tint="#00E5FF" /> Variasi Produk</h4>
+                  <h4 className="text-sm font-semibold text-white">Variasi Produk</h4>
                   <p className="mt-0.5 text-xs text-white/45">Aktifkan jika produk memiliki beberapa pilihan durasi, akun, atau paket harga.</p>
                 </div>
                 <button
@@ -693,7 +692,7 @@ export default function AdminPage() {
               ) : hasMultiVariants ? (
                 <div className="mt-4 space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-1.5 text-xs font-semibold text-[#00E5FF]"><IosIcon name="box" size={12} tint="#00E5FF" /> Daftar Pilihan Paket / Varian</span>
+                    <span className="text-xs font-semibold text-[#00E5FF]">Daftar Pilihan Paket / Varian</span>
                     <button
                       type="button"
                       onClick={() => {
@@ -743,7 +742,6 @@ export default function AdminPage() {
                               title={v.is_active ? "Aktif" : "Nonaktif"}
                               className={`inline-flex h-8 items-center gap-1.5 px-3 rounded-xl text-xs font-bold transition ${v.is_active ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "bg-white/5 text-white/40 border border-white/10"}`}
                             >
-                              <IosIcon name={v.is_active ? "checked" : "close"} size={11} tint={v.is_active ? "#22C55E" : "white"} />
                               {v.is_active ? "Aktif" : "Mati"}
                             </button>
                             {formVariants.length > 1 && (
@@ -928,7 +926,7 @@ export default function AdminPage() {
             </div>
 
             <div className="mt-5">
-              <p className="flex items-center gap-1.5 text-xs font-semibold text-white/60 mb-2"><IosIcon name="image" size={13} tint="white" /> Foto Produk — maks 8 (PNG/JPG → WebP otomatis)</p>
+              <p className="text-xs font-semibold text-white/60 mb-2">Foto Produk — maks 8 (PNG/JPG → WebP otomatis)</p>
               <div className="grid grid-cols-4 gap-2">
                 {formImages.map((url,i)=>(
                   <div key={url} className="relative group aspect-square rounded-xl overflow-hidden bg-white/5 border border-white/10">

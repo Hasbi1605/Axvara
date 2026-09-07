@@ -191,19 +191,12 @@ export const BRAND_TINTS = {
 } as const;
 
 /**
- * ChannelBadge — badge kanal seragam iOS style: ikon + label + warna brand.
- * Dipakai di OrdersManager (tab filter + baris pesanan + dialog detail).
+ * ChannelBadge — badge kanal teks saja (tanpa ikon).
+ * Aturan hemat-ikon: warna + label sudah cukup membedakan Web/Telegram/WhatsApp.
+ * Ikon channel hanya dipakai di tab filter Pesanan (satu tempat, bermakna navigasi).
  */
-export function ChannelBadge({
-  channel,
-  size = 12,
-}: {
-  channel: "web" | "telegram" | "whatsapp" | string;
-  size?: number;
-}) {
+export function ChannelBadge({ channel }: { channel: "web" | "telegram" | "whatsapp" | string }) {
   const key = channel.toLowerCase();
-  const icon: IosIconName =
-    key === "whatsapp" ? "whatsapp" : key === "telegram" ? "telegram-app" : "globe";
   const label =
     key === "web" ? "Web" : key === "telegram" ? "Telegram" : key === "whatsapp" ? "WhatsApp" : channel;
   const shell =
@@ -212,26 +205,20 @@ export function ChannelBadge({
       : key === "telegram"
         ? "border-[#229ED9]/30 bg-[#229ED9]/10 text-[#6FD3FF]"
         : "border-white/10 bg-white/[0.05] text-white/55";
-  const tint = key === "whatsapp" ? BRAND_TINTS.whatsapp : key === "telegram" ? BRAND_TINTS.telegram : "white";
   return (
-    <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase ${shell}`}>
-      <IosIcon name={icon} size={size} tint={tint} alt="" />
+    <span className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase ${shell}`}>
       {label}
     </span>
   );
 }
 
 /**
- * StatusBadge — badge status pesanan seragam iOS style: ikon + label + tone.
- * Pending = clock/gold · Lunas = checked/hijau · Batal/Kedaluwarsa = close/abu.
+ * StatusBadge — badge status teks saja (tanpa ikon).
+ * Aturan hemat-ikon: tone warna + label (Pending/Lunas/Dibatalkan/Kedaluwarsa)
+ * sudah memenuhi WCAG non-color? Tidak — tapi ikon status tetap ada di
+ * pesan/note yang butuh penekanan (QRIS note, alert error/sukses).
  */
-export function StatusBadge({
-  status,
-  size = 11,
-}: {
-  status: string;
-  size?: number;
-}) {
+export function StatusBadge({ status }: { status: string }) {
   const key = status.toLowerCase();
   const tone =
     key === "pending"
@@ -241,44 +228,23 @@ export function StatusBadge({
         : key === "dibatalkan"
           ? "border-red-400/25 bg-red-500/10 text-red-300"
           : "border-white/10 bg-white/[0.05] text-white/45";
-  const icon: IosIconName =
-    key === "pending" ? "clock" : key === "lunas" ? "checked" : key === "dibatalkan" ? "close" : "info";
-  const tint =
-    key === "pending" ? BRAND_TINTS.email : key === "lunas" ? "#22C55E" : key === "dibatalkan" ? "#F87171" : "white";
   return (
-    <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold capitalize ${tone}`}>
-      <IosIcon name={icon} size={size} tint={tint} alt="" />
+    <span className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-[10px] font-bold capitalize ${tone}`}>
       {status}
     </span>
   );
 }
 
 /**
- * MethodBadge — badge metode pembayaran seragam iOS style: ikon + label.
- * QRIS = qr-code/cyan · SeaBank/bank = bank/biru · E-Wallet = wallet/hijau.
+ * MethodBadge — badge metode pembayaran teks saja (tanpa ikon).
+ * Aturan hemat-ikon: label QRIS/SEABANK/EWALLET + konteks baris sudah jelas.
  */
-export function MethodBadge({
-  method,
-  size = 12,
-}: {
-  method: string;
-  size?: number;
-}) {
+export function MethodBadge({ method }: { method: string }) {
   const key = method.toLowerCase();
   const isQris = key.includes("qris");
-  const isBank =
-    !isQris &&
-    (key.includes("seabank") ||
-      key.includes("bank") ||
-      key.includes("bca") ||
-      key.includes("bri") ||
-      key.includes("mandiri"));
-  const icon: IosIconName = isQris ? "qr-code" : isBank ? "bank" : "wallet";
-  const tint = isQris ? BRAND_TINTS.web : isBank ? BRAND_TINTS.telegram : BRAND_TINTS.whatsapp;
   const label = isQris ? "QRIS" : method.toUpperCase();
   return (
-    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1 text-[10px] font-bold uppercase text-white/60">
-      <IosIcon name={icon} size={size} tint={tint} alt="" />
+    <span className="inline-flex shrink-0 items-center rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1 text-[10px] font-bold uppercase text-white/60">
       {label}
     </span>
   );
