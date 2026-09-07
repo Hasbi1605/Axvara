@@ -31,7 +31,12 @@ export async function GET(req: NextRequest) {
                 WHEN MAX(CASE WHEN pv.stock=-1 THEN 1 ELSE 0 END)=1 THEN -1
                 ELSE SUM(CASE WHEN pv.stock>0 THEN pv.stock ELSE 0 END)
               END as variant_stock,
-              MAX(pv.compare_price) as variant_compare_price
+              -- Compare price dipasangkan dari varian harga-terendah yang sama
+              -- (issue #10): MIN(price)+MAX(compare_price) lintas varian dapat
+              -- membentuk diskon fiktif yang tak dimiliki varian mana pun.
+              (SELECT pv2.compare_price FROM product_variants pv2
+                WHERE pv2.product_id=p.id AND pv2.is_active=1
+                ORDER BY pv2.price ASC, pv2.id ASC LIMIT 1) as variant_compare_price
        FROM products p
        LEFT JOIN categories c ON c.id=p.category_id
        INNER JOIN product_variants pv ON pv.product_id=p.id AND pv.is_active=1
@@ -55,6 +60,13 @@ export async function GET(req: NextRequest) {
     if (primary && !images.includes(primary)) images.unshift(primary);
     const variantCount = variantCatalog ? Number(r.variant_count || 0) : undefined;
     const price = variantCatalog ? Number(r.min_price) : Number(r.price);
+    // Pasangan compare_price sudah dari varian harga-terendah yang sama
+    // (lihat subquery di atas). Jangan tampilkan harga coret yang tidak
+    // membentuk diskon valid (<= harga tampil): itu sisa data lama / varian
+    // termurah tanpa diskon, bukan klaim diskon.
+    const rawCompare = variantCatalog
+      ? (r.variant_compare_price == null ? undefined : Number(r.variant_compare_price))
+      : (r.compare_price as number | null | undefined) ?? undefined;
     return {
       id: String(r.id),
       slug: r.slug,
@@ -66,9 +78,7 @@ export async function GET(req: NextRequest) {
       minPrice: variantCatalog ? Number(r.min_price) : undefined,
       maxPrice: variantCatalog ? Number(r.max_price) : undefined,
       variantCount,
-      comparePrice: variantCatalog
-        ? (r.variant_compare_price == null ? undefined : Number(r.variant_compare_price))
-        : r.compare_price ?? undefined,
+      comparePrice: rawCompare != null && rawCompare > price ? rawCompare : undefined,
       categorySlug: (r.cat_slug as string) ?? "tools-pro",
       image: primary,
       images: images.slice(0,8),

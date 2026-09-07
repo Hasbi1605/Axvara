@@ -45,7 +45,13 @@ export function ProductCard({ product, index = 0, compact = false }: { product: 
     (product.minPrice != null && product.maxPrice != null && product.minPrice !== product.maxPrice)
   );
   const displayPrice = hasMultipleVariants && product.minPrice != null ? product.minPrice : product.price;
-  const discount = product.comparePrice ? Math.round((1 - displayPrice / product.comparePrice) * 100) : 0;
+  // Harga coret dari API sudah dipasangkan ke varian harga-terendah yang sama
+  // (issue #10) dan hanya ada bila > harga tampil — jadi diskon kartu selalu
+  // milik pasangan varian nyata, bukan silangan MIN/MAX.
+  const discount = product.comparePrice && product.comparePrice > displayPrice
+    ? Math.round((1 - displayPrice / product.comparePrice) * 100)
+    : 0;
+  const showCompare = product.comparePrice != null && product.comparePrice > displayPrice;
 
   const handleAdd = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -98,7 +104,7 @@ export function ProductCard({ product, index = 0, compact = false }: { product: 
             <span className="font-bold text-[13px] text-white tracking-[-0.02em] leading-none">
               {formatRupiah(displayPrice)}
             </span>
-            {product.comparePrice && <span className="text-[10px] text-white/30 line-through leading-none">{formatRupiah(product.comparePrice)}</span>}
+            {showCompare && <span className="text-[10px] text-white/30 line-through leading-none">{formatRupiah(product.comparePrice!)}</span>}
           </div>
           <div className="mt-1.5 flex items-center justify-between gap-1">
             <span className="text-[10px] text-white/35 font-medium">{product.soldCount ? `${product.soldCount} terjual` : "Terjual"}</span>
@@ -149,7 +155,7 @@ export function ProductCard({ product, index = 0, compact = false }: { product: 
             <span className="font-bold text-[14px] sm:text-[17px] text-white tracking-[-0.02em] leading-none">
               {formatRupiah(displayPrice)}
             </span>
-            {product.comparePrice && <span className="text-[10px] sm:text-xs text-white/35 line-through leading-none">{formatRupiah(product.comparePrice)}</span>}
+            {showCompare && <span className="text-[10px] sm:text-xs text-white/35 line-through leading-none">{formatRupiah(product.comparePrice!)}</span>}
           </div>
           <div className="mt-1.5 flex items-center justify-between gap-2">
             <span className="text-[11px] text-white/35 font-medium tracking-wide">{product.soldCount ? `${product.soldCount} terjual` : "Terjual"}</span>
