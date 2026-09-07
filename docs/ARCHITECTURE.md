@@ -394,11 +394,14 @@ R2 bucket: axvara-assets
 - Proteksi trafik & efisiensi query (issue #14, diverifikasi 7 Sep 2026 dari
   docs Cloudflare D1 Limits + WAF rate limiting rules — bukan asumsi):
   - WAF Free TERSEDIA: 1 rate limiting rule, counting IP, periode 10 dtk /
-    1 mnt, aksi Block. Klaim lama "WAF tidak tersedia" salah. Rule ke-1 yang
-    wajib dipasang di dashboard (Security → Security rules → Rate limiting):
-    `http.request.uri.path starts with "/api/"`, 100 request / 1 mnt / IP →
-    Block 1 mnt. Mencakup checkout/quote/upload/login sekaligus tanpa
-    menambah rule.
+    1 mnt, aksi Block. Klaim lama "WAF tidak tersedia" salah. Rule ke-1
+    TERPASANG 7 Sep 2026 via API (ruleset "AXVARA API rate limit",
+    `dff7ff5c17e34a97ac13b3264ca6a916`): `(http.request.uri.path wildcard
+    r"/api/*")`, 100 request / 10 dtk / IP → Block 429 selama 10 dtk.
+    Mencakup checkout/quote/upload/login sekaligus tanpa menambah rule.
+    Batas Free yang memaksa bentuk ini: period hanya boleh 10 dtk dan
+    characteristics wajib `cf.colo.id + ip.src` (API menolak period 60 dan
+    `ip.src` saja). Verifikasi: GET entrypoint `http_ratelimit` = 1 rule enabled.
   - In-memory `src/lib/rateLimit.ts` hanyalah lapis kedua (defense in depth
     per isolate, bukan proteksi DDoS global): checkout:orders 10/mnt,
     checkout:quote 20/mnt, proof:upload 5/mnt, upload:admin 20/mnt,

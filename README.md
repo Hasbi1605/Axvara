@@ -73,7 +73,7 @@ axvara/
 - Gambar kartu Unsplash memakai WebP `srcset` responsif.
 - Endpoint publik eksplisit (`products?active=1`, `categories`, `banners?active=1`) mengirim cache CDN singkat; varian produk admin/private selalu `no-store`.
 - PDP memakai `products?active=1&slug=` (1 baris) + `catalog?slug=` untuk varian + related `products?active=1&cat=` (8 baris) — tidak fetch seluruh katalog per halaman. Checkout `?buy=` memakai filter slug exact yang sama.
-- Proteksi trafik: WAF Free 1 rule global (`/api/*` 100/mnt/IP → Block) + rate-limit in-memory per scope di `src/lib/rateLimit.ts` (lapis kedua per isolate, 429 + `Retry-After: 60`); cron operations batch 8 agar satu run < 50 query/invocation (batas D1 Free).
+- Proteksi trafik: WAF 1 rule global TERPASANG (`/api/*` 100 req/10 dtk/IP → Block 429, ruleset "AXVARA API rate limit") + rate-limit in-memory per scope di `src/lib/rateLimit.ts` (lapis kedua per isolate, 429 + `Retry-After: 60`); cron operations batch 8 agar satu run < 50 query/invocation (batas D1 Free).
 - CSP development mengizinkan `unsafe-eval` hanya untuk React Refresh/webpack lokal. CSP production tetap tidak mengizinkannya.
 
 ---
