@@ -446,7 +446,7 @@ Implementasi native TypeScript di codebase AXVARA. Repo `mocasus/telegram-auto-o
 - **Payment:** `src/lib/payments/dana-qris.ts` mengubah payload merchant DANA Business menjadi EMVCo dynamic QRIS, menyuntikkan nominal unik, dan menghitung ulang CRC16. Tidak ada API/payment gateway pihak ketiga.
 - **Authority:** QRIS Hook Android mengirim JSON ke `POST /api/webhook/dana` dengan `X-Webhook-Secret`. Event dideduplikasi dan hanya nominal persis dari satu invoice DANA aktif yang dapat melunasi order.
 - **Setup Android:** gunakan URL publik `https://axvara.tech/api/webhook/dana`, isi field secret aplikasi dengan nilai rahasia Pages Secret `DANA_WEBHOOK_SECRET` (bukan teks nama variabel tersebut), aktifkan Notification Access + merchant DANA + QRIS Hook Active, dan matikan Debug Mode agar delivery tidak dilewati. Admin menampilkan URL kanonis, nama header, health, dan event masuk tanpa mengekspos nilai secret.
-- **Fulfillment:** AES-256-GCM via WebCrypto, fingerprint SHA-256 untuk deduplikasi. Tiga mode: `manual`, `shared`, `unique`. Outbox pattern dengan `fulfillment_jobs` tabel.
+- **Fulfillment:** AES-256-GCM via WebCrypto, fingerprint SHA-256 untuk deduplikasi. Tiga mode: `manual`, `shared`, `unique`. Outbox pattern dengan `fulfillment_jobs` (per order, kompatibilitas) + `fulfillment_items` per (order, item) sejak migrasi 0015: setiap item punya status/mode/penerima sendiri, order selesai hanya setelah seluruh item terminal sukses.
 - **Rekonsiliasi:** `POST /api/cron/operations` menangani stale initializing, invoice kedaluwarsa, due jobs, stale locks, serta retry notifikasi order/paid Telegram. DANA tidak menyediakan status polling; webhook adalah authority pembayaran.
 - **Notifikasi Telegram:** order Telegram mengirim notifikasi grup `TELEGRAM_ADMIN_CHAT_ID` segera setelah ledger QRIS terbentuk. Kolom marker idempoten pada `orders` mencegah duplikat. Setelah QRIS Hook mengubah order menjadi `paid`, buyer otomatis menerima pesan berhasil tanpa menekan cek status; untuk fulfillment manual pesan yang sama baru meminta nomor WA dan menampilkan kontak admin.
 
@@ -459,7 +459,8 @@ Implementasi native TypeScript di codebase AXVARA. Repo `mocasus/telegram-auto-o
 | `payment_transactions` | Ledger lintas-channel (base amount, payable amount unik, payload/URL QRIS, expiry) |
 | `dana_webhook_events` | Dedup/audit minimal event QRIS Hook dan order hasil pencocokan |
 | `fulfillment_inventory` | Vault secret terenkripsi per produk |
-| `fulfillment_jobs` | Outbox delivery dengan retry |
+| `fulfillment_jobs` | Outbox delivery per order dengan retry (kompatibilitas) |
+| `fulfillment_items` | Status/mode/penerima per item order (migrasi 0015) |
 | `store_settings` | Override nama, tagline, WhatsApp, jam dukungan, footer, dan logo storefront |
 
 Kolom baru di `products`: `fulfillment_mode`, `shared_secret_ciphertext`, `shared_secret_iv`, `telegram_enabled`.

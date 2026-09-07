@@ -15,6 +15,144 @@ import { notifyTelegramBuyerPaid } from "@/lib/telegram/order-notifications";
 
 type Row = Record<string, unknown>;
 
+export type FulfillmentOrderItem = {
+  product_id: number;
+  variant_id?: number | null;
+  qty?: number | null;
+  fulfillment_mode?: unknown;
+};
+
+export type FulfillmentRecipient = {
+  channel: "web" | "telegram" | "whatsapp";
+  target: string;
+};
+
+/**
+ * Resolve the delivery recipient for one order (issue #4).
+ *
+ * - telegram → Telegram chat id pembeli (bukan grup admin).
+ * - whatsapp → nomor anggota grup (channel_member_id) atau customer_wa.
+ * - web → nomor WA pembeli (jalur manual/admin; tidak ada push otomatis).
+ * Target kosong berarti item tidak dapat dikirim otomatis dan diarahkan ke
+ * `manual_required` — bukan dikirim ke penerima kosong.
+ */
+export function resolveRecipient(order: Row): FulfillmentRecipient {
+  const channel = String(order.sales_channel || "telegram");
+  if (channel === "whatsapp") {
+    return {
+      channel: "whatsapp",
+      target: String(order.channel_member_id || order.customer_wa || ""),
+    };
+  }
+  if (channel === "web") {
+    return { channel: "web", target: String(order.customer_wa || "") };
+  }
+  return { channel: "telegram", target: String(order.telegram_chat_id || "") };
+}
+
+/** Parse order.items into a normalized per-item list. */
+export function parseOrderItems(raw: unknown): FulfillmentOrderItem[] {
+  try {
+    const parsed = JSON.parse(String(raw ?? "[]"));
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((entry) => {
+        const row = entry as Record<string, unknown>;
+        const productId = Number(row.product_id || 0);
+        if (!productId) return null;
+        return {
+          product_id: productId,
+          variant_id: row.variant_id != null ? Number(row.variant_id) : null,
+          qty: Math.max(1, Number(row.qty || 1)),
+          fulfillment_mode: row.fulfillment_mode,
+        } as FulfillmentOrderItem;
+      })
+      .filter((entry): entry is FulfillmentOrderItem => entry !== null);
+  } catch {
+    return [];
+  }
+}
+
+/** Resolve one item's mode: snapshot → variant row → product fallback. */
+export async function resolveItemMode(
+  item: FulfillmentOrderItem,
+  order: Row,
+  productsById: Map<number, Row>,
+): Promise<"manual" | "shared" | "unique"> {
+  const snapshotModes = fulfillmentModesFromOrderSnapshot(order);
+  const snapshot = item.variant_id != null ? snapshotModes.get(item.variant_id) : undefined;
+  if (snapshot) return snapshot;
+  if (typeof item.fulfillment_mode === "string" && ["manual", "shared", "unique"].includes(item.fulfillment_mode)) {
+    return item.fulfillment_mode as "manual" | "shared" | "unique";
+  }
+  if (item.variant_id != null && isD1Mode()) {
+    const variant = await queryFirst(
+      `SELECT fulfillment_mode FROM product_variants WHERE id=? AND product_id=?`,
+      item.variant_id,
+      item.product_id,
+    );
+    const mode = String(variant?.fulfillment_mode || "");
+    if (["manual", "shared", "unique"].includes(mode)) return mode as "manual" | "shared" | "unique";
+  }
+  const product = productsById.get(item.product_id);
+  const fallback = String(product?.fulfillment_mode || "manual");
+  return (["manual", "shared", "unique"].includes(fallback) ? fallback : "manual") as "manual" | "shared" | "unique";
+}
+
+/**
+ * Ensure one fulfillment_items row per order item (issue #4).
+ * Idempotent via UNIQUE(order_code, item_index); existing rows are kept so
+ * retry/progress is never reset. Returns the rows in item order.
+ */
+export async function ensureFulfillmentItems(order: Row): Promise<Row[]> {
+  const orderCode = String(order.code);
+  const items = parseOrderItems(order.items);
+  const recipient = resolveRecipient(order);
+  const existing = await queryAll(
+    `SELECT * FROM fulfillment_items WHERE order_code=? ORDER BY item_index ASC`,
+    orderCode,
+  ).catch(() => [] as Row[]);
+  if (existing.length > 0 && existing.length === items.length) return existing;
+  const have = new Set(existing.map((row) => Number(row.item_index)));
+  const productsById = new Map<number, Row>();
+  for (const item of items) {
+    if (!productsById.has(item.product_id)) {
+      const product = await queryFirst(`SELECT * FROM products WHERE id=?`, item.product_id);
+      if (product) productsById.set(item.product_id, product);
+    }
+  }
+  for (let index = 0; index < items.length; index++) {
+    if (have.has(index)) continue;
+    const item = items[index];
+    const mode = await resolveItemMode(item, order, productsById);
+    const inventory = mode === "unique"
+      ? await queryFirst(
+          `SELECT id FROM fulfillment_inventory WHERE order_code=? AND status='reserved'`,
+          orderCode,
+        ).catch(() => null)
+      : null;
+    await execRun(
+      `INSERT OR IGNORE INTO fulfillment_items
+        (order_code, item_index, product_id, variant_id, qty, fulfillment_mode,
+         inventory_id, recipient_channel, recipient_target, status, attempt_count, next_attempt_at)
+       VALUES (?,?,?,?,?,?,?,?,?,'queued',0,datetime('now'))`,
+      orderCode, index, item.product_id, item.variant_id ?? null, item.qty ?? 1, mode,
+      inventory ? Number(inventory.id) : null,
+      recipient.channel, recipient.target || null,
+    ).catch(() => {});
+  }
+  return queryAll(
+    `SELECT * FROM fulfillment_items WHERE order_code=? ORDER BY item_index ASC`,
+    orderCode,
+  ).catch(() => existing);
+}
+
+/** True when every item row reached a successful terminal state. */
+export function allItemsSettled(rows: Row[]): boolean {
+  if (!rows.length) return false;
+  return rows.every((row) => ["delivered", "manual_required"].includes(String(row.status)));
+}
+
 // In-memory fallback for dev
 function getJobsMem(): Row[] {
   const g = process as unknown as { __AXVARA_FULFILLMENT_JOBS?: Row[] };
@@ -27,14 +165,42 @@ const RETRY_DELAYS = [1, 5, 15, 60];
 const MAX_ATTEMPTS = RETRY_DELAYS.length + 1;
 
 function fulfillmentModeFromOrderSnapshot(order: Row): string | null {
-  if (!order.variant_snapshot) return null;
+  return fulfillmentModesFromOrderSnapshot(order).get(-1)
+    ?? fulfillmentModesFromOrderSnapshot(order).get(
+      Number(order.variant_id || 0) || -1,
+    )
+    ?? null;
+}
+
+/**
+ * Read per-item modes from the order snapshot. Supports the legacy
+ * single-item shape (`{fulfillment_mode}`), the Telegram cart shape
+ * (`{lines:[{variant_id, fulfillment_mode}]}`), and per-item entries
+ * embedded in items[] itself (resolved separately).
+ */
+function fulfillmentModesFromOrderSnapshot(order: Row): Map<number, "manual" | "shared" | "unique"> {
+  const modes = new Map<number, "manual" | "shared" | "unique">();
+  if (!order.variant_snapshot) return modes;
   try {
-    const snapshot = JSON.parse(String(order.variant_snapshot)) as { fulfillment_mode?: unknown };
-    const mode = String(snapshot.fulfillment_mode || "");
-    return ["manual", "shared", "unique"].includes(mode) ? mode : null;
+    const snapshot = JSON.parse(String(order.variant_snapshot)) as {
+      fulfillment_mode?: unknown;
+      variant_id?: unknown;
+      lines?: { variant_id?: unknown; fulfillment_mode?: unknown }[];
+    };
+    const single = String(snapshot.fulfillment_mode || "");
+    if (["manual", "shared", "unique"].includes(single)) {
+      const key = Number(snapshot.variant_id ?? order.variant_id ?? -1);
+      modes.set(Number.isFinite(key) ? key : -1, single as "manual" | "shared" | "unique");
+    }
+    for (const line of snapshot.lines ?? []) {
+      const mode = String(line.fulfillment_mode || "");
+      if (!["manual", "shared", "unique"].includes(mode)) continue;
+      modes.set(Number(line.variant_id), mode as "manual" | "shared" | "unique");
+    }
   } catch {
-    return null;
+    /* snapshot rusak → fallback ke variant/product */
   }
+  return modes;
 }
 
 /**
@@ -178,8 +344,12 @@ export async function scheduleRetry(jobId: number, error: string): Promise<void>
 }
 
 /**
- * Process a single fulfillment job end-to-end.
- * Returns true if delivery succeeded, false otherwise.
+ * Process a single fulfillment job end-to-end, item by item (issue #4).
+ * Returns true only when EVERY item reached a successful terminal state
+ * (delivered/manual_required). A failure on one item retries that item
+ * alone; already-delivered items are never resent. The legacy single-item
+ * path (no fulfillment_items rows, e.g. pre-migration jobs) keeps the
+ * previous behavior via processLegacyJob below.
  */
 export async function processJob(
   jobId: number,
@@ -211,11 +381,271 @@ export async function processJob(
     if (!proof) return false;
   }
 
+  // WhatsApp fulfillment feature flag (if disabled, route to manual)
+  if (salesChannel === "whatsapp" && !isEnabled("WHATSAPP_FULFILLMENT")) {
+    await execRun(
+      `UPDATE fulfillment_jobs SET status='manual_required', locked_until=NULL, updated_at=datetime('now') WHERE id=?`,
+      jobId,
+    );
+    await execRun(
+      `UPDATE fulfillment_items SET status='manual_required', locked_until=NULL, updated_at=datetime('now')
+       WHERE order_code=? AND status IN ('queued','retry')`,
+      orderCode,
+    ).catch(() => {});
+    await execRun(
+      `UPDATE orders SET fulfillment_status='manual_required', updated_at=datetime('now') WHERE code=?`,
+      orderCode,
+    );
+    return true;
+  }
+
+  const itemRows = await queryAll(
+    `SELECT * FROM fulfillment_items WHERE order_code=? ORDER BY item_index ASC`,
+    orderCode,
+  ).catch(() => [] as Row[]);
+
+  // Legacy job without per-item rows (pre-migration or single-item flows
+  // that have not backfilled yet): keep previous single-item behavior, but
+  // first materialize the per-item rows so the next run converges.
+  if (!itemRows.length) {
+    await ensureFulfillmentItems(order).catch(() => {});
+    const fresh = await queryAll(
+      `SELECT * FROM fulfillment_items WHERE order_code=? ORDER BY item_index ASC`,
+      orderCode,
+    ).catch(() => [] as Row[]);
+    if (!fresh.length) {
+      const claimedLegacy = await claimJob(jobId);
+      if (!claimedLegacy) return false;
+      return processLegacyJob(jobId, order, product, claimedLegacy);
+    }
+  }
+
   const claimed = await claimJob(jobId);
   if (!claimed) return false;
 
-  const chatId = String(order.telegram_chat_id || "");
-  const waRecipient = String(order.channel_member_id || order.customer_wa || "");
+  const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
+  let allOk = true;
+  let firstError: string | null = null;
+
+  const rows = await queryAll(
+    `SELECT * FROM fulfillment_items WHERE order_code=? ORDER BY item_index ASC`,
+    orderCode,
+  ).catch(() => [] as Row[]);
+  for (const itemRow of rows) {
+    const status = String(itemRow.status);
+    if (status === "delivered" || status === "manual_required") continue;
+    if (status === "failed") { allOk = false; firstError ??= String(itemRow.last_error || "item failed"); continue; }
+    const ok = await processItem(order, itemRow, adminChatId);
+    if (!ok) {
+      allOk = false;
+      const fresh = await queryFirst(`SELECT last_error FROM fulfillment_items WHERE id=?`, Number(itemRow.id));
+      firstError ??= String(fresh?.last_error || itemRow.last_error || "item delivery failed");
+    }
+  }
+
+  const settled = await queryAll(
+    `SELECT status FROM fulfillment_items WHERE order_code=?`,
+    orderCode,
+  ).catch(() => [] as Row[]);
+  if (allOk && allItemsSettled(settled)) {
+    await markJobDelivered(jobId);
+    await execRun(
+      `UPDATE orders SET fulfillment_status='delivered', updated_at=datetime('now') WHERE code=?`,
+      orderCode,
+    );
+    return true;
+  }
+  // Partial progress: keep the job retryable WITHOUT resetting delivered
+  // items, surface the aggregate state on the order, and notify admin once.
+  await scheduleRetry(jobId, firstError ?? "partial_item_failure");
+  const orderStatus = settled.some((row) => String(row.status) === "failed")
+    ? "failed"
+    : settled.some((row) => ["delivered", "manual_required"].includes(String(row.status)))
+      ? "retry"
+      : String((await queryFirst(`SELECT status FROM fulfillment_jobs WHERE id=?`, jobId))?.status ?? "retry");
+  await execRun(
+    `UPDATE orders SET fulfillment_status=?, updated_at=datetime('now') WHERE code=?`,
+    orderStatus, orderCode,
+  );
+  if (adminChatId && firstError) {
+    try {
+      await sendMessage({
+        chat_id: adminChatId,
+        text: adminDeliveryFailedNotification(orderCode, firstError),
+        parse_mode: "HTML",
+      });
+    } catch { /* admin notification is best-effort */ }
+  }
+  return false;
+}
+
+/**
+ * Deliver exactly one fulfillment_items row. Claim is per-item
+ * (locked_until CAS) so concurrent workers never send the same item twice;
+ * delivered rows are skipped by the caller and never re-entered here.
+ */
+async function processItem(order: Row, itemRow: Row, adminChatId?: string): Promise<boolean> {
+  const orderCode = String(order.code);
+  const itemId = Number(itemRow.id);
+  const lockUntil = new Date(Date.now() + 60_000).toISOString();
+  const claim = await execRun(
+    `UPDATE fulfillment_items SET status='sending', locked_until=?, attempt_count=attempt_count+1, updated_at=datetime('now')
+     WHERE id=? AND status IN ('queued','retry')
+       AND (locked_until IS NULL OR datetime(locked_until) < datetime('now'))
+       AND next_attempt_at <= datetime('now')`,
+    lockUntil, itemId,
+  ).catch(() => ({ changes: 0 as number | undefined }));
+  if (!claim.changes) return String(itemRow.status) === "sending";
+  const item = (await queryFirst(`SELECT * FROM fulfillment_items WHERE id=?`, itemId)) ?? itemRow;
+
+  const mode = String(item.fulfillment_mode || "manual");
+  const recipientChannel = String(item.recipient_channel || order.sales_channel || "telegram");
+  const recipientTarget = String(item.recipient_target || "");
+  const productId = Number(item.product_id);
+  const variantId = item.variant_id != null ? Number(item.variant_id) : 0;
+  const qty = Math.max(1, Number(item.qty || 1));
+
+  try {
+    // Empty recipient → manual, never send to nobody (issue #4).
+    if ((recipientChannel === "telegram" || recipientChannel === "whatsapp") && !recipientTarget) {
+      throw new Error("no_recipient_for_channel");
+    }
+    if (mode === "manual") {
+      await execRun(
+        `UPDATE fulfillment_items SET status='manual_required', locked_until=NULL, updated_at=datetime('now') WHERE id=?`,
+        itemId,
+      );
+      return true;
+    }
+    if (mode === "shared") {
+      const secret = variantId && isD1Mode()
+        ? await queryFirst(
+            `SELECT shared_secret_ciphertext, shared_secret_iv FROM product_variants WHERE id=? AND product_id=?`,
+            variantId, productId,
+          )
+        : null;
+      const ct = String(secret?.shared_secret_ciphertext || "");
+      const iv = String(secret?.shared_secret_iv || "");
+      if (!ct || !iv) throw new Error("Shared secret not configured for product");
+      const plaintext = await decryptSecret(ct, iv);
+      await sendToRecipient(recipientChannel, recipientTarget, orderCode, plaintext, qty);
+      await execRun(
+        `UPDATE fulfillment_items SET status='delivered', delivered_message_id=?, locked_until=NULL, updated_at=datetime('now') WHERE id=?`,
+        `item:${itemId}`, itemId,
+      );
+      return true;
+    }
+    if (mode === "unique") {
+      // One reserved inventory row per unique item (reserved per order+variant
+      // at checkout; see reserveInventoryForLine). Deliver each exactly once.
+      const inventoryItem = await queryFirst(
+        `SELECT * FROM fulfillment_inventory WHERE id=? AND order_code=? AND status='reserved'`,
+        Number(item.inventory_id || 0), orderCode,
+      ) ?? await findReservedForOrderVariant(orderCode, productId, variantId || null);
+      if (!inventoryItem) throw new Error("No reserved inventory found");
+      const plaintext = await decryptSecret(
+        String(inventoryItem.secret_ciphertext),
+        String(inventoryItem.secret_iv),
+      );
+      await sendToRecipient(recipientChannel, recipientTarget, orderCode, plaintext, qty);
+      await markDelivered(Number(inventoryItem.id));
+      await execRun(
+        `UPDATE fulfillment_items SET status='delivered', delivered_message_id=?, locked_until=NULL, updated_at=datetime('now') WHERE id=?`,
+        `item:${itemId}`, itemId,
+      );
+      return true;
+    }
+    throw new Error(`Unknown fulfillment mode: ${mode}`);
+  } catch (error) {
+    const errMsg = (error instanceof Error ? error.message : "Unknown delivery error").slice(0, 500);
+    await scheduleItemRetry(itemId, errMsg);
+    void adminChatId;
+    return false;
+  }
+}
+
+async function sendToRecipient(
+  channel: string,
+  target: string,
+  orderCode: string,
+  plaintext: string,
+  qty: number,
+): Promise<void> {
+  const qtySuffix = qty > 1 ? ` (×${qty})` : "";
+  if (channel === "whatsapp") {
+    const sendResult = await sendTextMessage({
+      target,
+      message: `*PRODUK AXVARA SIAP!*\nOrder: ${orderCode}${qtySuffix}\n\nDetail akses/lisensi Anda:\n${plaintext}\n\nSimpan baik-baik. Ketik *garansi* untuk ketentuan.`,
+    });
+    if (!sendResult.ok) throw new Error(sendResult.error || "WhatsApp direct delivery failed");
+    return;
+  }
+  if (channel === "web") {
+    // Web has no push channel: credentials are handed over by the admin
+    // (manual_required), never auto-pushed. Reaching here means a routing
+    // bug, so fail loudly into retry instead of silently dropping.
+    throw new Error("web_channel_requires_manual_handover");
+  }
+  const sendResult = await sendMessage({
+    chat_id: target,
+    text: deliveryMessage(plaintext),
+    parse_mode: "HTML",
+  });
+  if (!sendResult.ok) throw new Error(sendResult.description || "Telegram send failed");
+}
+
+async function scheduleItemRetry(itemId: number, error: string): Promise<void> {
+  const item = await queryFirst(`SELECT attempt_count FROM fulfillment_items WHERE id=?`, itemId);
+  const attempts = Number(item?.attempt_count ?? 0);
+  if (attempts >= MAX_ATTEMPTS) {
+    await execRun(
+      `UPDATE fulfillment_items SET status='failed', last_error=?, locked_until=NULL, updated_at=datetime('now') WHERE id=?`,
+      error, itemId,
+    );
+    return;
+  }
+  const delayMinutes = RETRY_DELAYS[Math.min(Math.max(attempts - 1, 0), RETRY_DELAYS.length - 1)];
+  await execRun(
+    `UPDATE fulfillment_items SET status='retry', last_error=?, locked_until=NULL,
+     next_attempt_at=datetime('now', '+${delayMinutes} minutes'), updated_at=datetime('now') WHERE id=?`,
+    error, itemId,
+  );
+}
+
+async function findReservedForOrderVariant(
+  orderCode: string,
+  productId: number,
+  variantId: number | null,
+): Promise<Row | undefined> {
+  if (isD1Mode()) {
+    return await queryFirst(
+      `SELECT * FROM fulfillment_inventory
+       WHERE order_code=? AND product_id=? AND status='reserved'
+         AND (? IS NULL OR variant_id=? OR variant_id IS NULL)
+       ORDER BY CASE WHEN variant_id=? THEN 0 ELSE 1 END, id ASC LIMIT 1`,
+      orderCode, productId, variantId, variantId, variantId,
+    );
+  }
+  return findReservedForOrder(orderCode);
+}
+
+/**
+ * Legacy single-item processing for jobs without fulfillment_items rows
+ * (pre-migration data, or dev in-memory flows). Preserves the previous
+ * items[0]-centered behavior exactly; new code paths always materialize
+ * per-item rows first via ensureFulfillmentItems.
+ */
+async function processLegacyJob(
+  jobId: number,
+  order: Row,
+  product: Row,
+  claimed: Row,
+): Promise<boolean> {
+  const salesChannel = String(order.sales_channel || "telegram");
+  const orderCode = String(order.code);
+  const recipient = resolveRecipient(order);
+  const chatId = recipient.channel === "telegram" ? recipient.target : String(order.telegram_chat_id || "");
+  const waRecipient = recipient.channel === "whatsapp" ? recipient.target : String(order.channel_member_id || order.customer_wa || "");
   const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
 
   // WhatsApp fulfillment feature flag (if disabled, route to manual)
@@ -399,6 +829,12 @@ export async function ensureFulfillmentForPaidOrder(orderCode: string): Promise<
   const product = await queryFirst(`SELECT * FROM products WHERE id=?`, items[0].product_id);
   if (!product) return false;
 
+  // Materialize per-item rows FIRST (issue #4): every item gets its own
+  // status row with its own mode + recipient, so delivery below never
+  // drops items[1..n]. Idempotent (UNIQUE order_code+item_index); legacy
+  // rows keep their progress.
+  await ensureFulfillmentItems(order).catch(() => {});
+
   const variantId = Number(order.variant_id || items[0].variant_id || 0) || null;
   const variant = variantId && isD1Mode()
     ? await queryFirst(`SELECT fulfillment_mode FROM product_variants WHERE id=? AND product_id=?`, variantId, items[0].product_id)
@@ -407,14 +843,25 @@ export async function ensureFulfillmentForPaidOrder(orderCode: string): Promise<
     `SELECT id FROM fulfillment_inventory WHERE order_code=? AND status='reserved'`,
     orderCode,
   );
-  const fulfillmentMode = String(
-    inventory
-      ? "unique"
-      : fulfillmentModeFromOrderSnapshot(order)
-        || variant?.fulfillment_mode
-        || product.fulfillment_mode
-        || "manual",
-  );
+  // Aggregate order status stays informative: delivered/manual_required only
+  // when every item row settled (processJob enforces this); otherwise the
+  // order mirrors the job/item aggregate instead of items[0].
+  const itemRows = await queryAll(
+    `SELECT status FROM fulfillment_items WHERE order_code=?`,
+    orderCode,
+  ).catch(() => [] as Row[]);
+  const fulfillmentMode = itemRows.length
+    ? allItemsSettled(itemRows)
+      ? (itemRows.every((row) => String(row.status) === "manual_required") ? "manual_required" : "delivered")
+      : String(order.fulfillment_status || "queued")
+    : String(
+        inventory
+          ? "unique"
+          : fulfillmentModeFromOrderSnapshot(order)
+            || variant?.fulfillment_mode
+            || product.fulfillment_mode
+            || "manual",
+      );
 
   await createFulfillmentJob(
     orderCode,
@@ -485,6 +932,31 @@ export async function reconcileMissingFulfillmentJobs(limit = 25): Promise<numbe
     } catch { /* next cron run retries */ }
   }
   return healed;
+}
+
+/**
+ * Backfill per-item rows for paid orders that have a job but no item rows
+ * (pre-migration-0015 data, issue #4). Bounded and idempotent; each order
+ * reuses ensureFulfillmentItems so mode/recipient resolution stays single.
+ */
+export async function backfillMissingFulfillmentItems(limit = 25): Promise<number> {
+  const rows = await queryAll(
+    `SELECT o.* FROM orders o
+     JOIN fulfillment_jobs fj ON fj.order_code=o.code
+     LEFT JOIN fulfillment_items fi ON fi.order_code=o.code
+     WHERE o.status='lunas' AND o.payment_status='paid'
+       AND fi.order_code IS NULL
+     ORDER BY o.updated_at ASC LIMIT ?`,
+    limit,
+  ).catch(() => [] as Row[]);
+  let backfilled = 0;
+  for (const order of rows) {
+    try {
+      const created = await ensureFulfillmentItems(order);
+      if (created.length > 0) backfilled++;
+    } catch { /* next cron run retries */ }
+  }
+  return backfilled;
 }
 
 /**

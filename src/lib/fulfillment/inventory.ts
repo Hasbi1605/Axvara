@@ -233,6 +233,30 @@ export async function findReservedForOrder(orderCode: string): Promise<Row | und
 }
 
 /**
+ * Reserve one available inventory row PER LINE for a multi-item order
+ * (issue #4). Each unique line gets its own row tagged with the same
+ * order_code; callers pass the line's variant so parallel lines never share
+ * a secret. Returns the reserved ids in line order, or null when any line
+ * cannot be reserved (already-reserved rows are released before returning).
+ */
+export async function reserveInventoryForLines(
+  lines: { productId: number; variantId: number | null }[],
+  orderCode: string,
+): Promise<number[] | null> {
+  const reserved: number[] = [];
+  for (const line of lines) {
+    const id = await reserveInventory(line.productId, orderCode, line.variantId);
+    if (id === null) {
+      for (const done of reserved) await releaseInventory(done);
+      await releaseInventoryForOrder(orderCode);
+      return null;
+    }
+    reserved.push(id);
+  }
+  return reserved;
+}
+
+/**
  * Release all reserved inventory for an order (for cancel/expire).
  */
 export async function releaseInventoryForOrder(orderCode: string): Promise<number> {

@@ -320,6 +320,38 @@ CREATE TABLE IF NOT EXISTS fulfillment_jobs (
 CREATE INDEX IF NOT EXISTS idx_fulfillment_jobs_status ON fulfillment_jobs(status);
 CREATE INDEX IF NOT EXISTS idx_fulfillment_jobs_next ON fulfillment_jobs(next_attempt_at);
 
+-- Fulfillment per item (migration 0015, issue #4): satu baris per
+-- (order, item) agar setiap item punya status sendiri; order selesai hanya
+-- setelah seluruh baris terminal sukses. Job lama tetap kompatibel.
+CREATE TABLE IF NOT EXISTS fulfillment_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_code TEXT NOT NULL REFERENCES orders(code),
+  item_index INTEGER NOT NULL,
+  product_id INTEGER NOT NULL,
+  variant_id INTEGER,
+  qty INTEGER NOT NULL DEFAULT 1,
+  fulfillment_mode TEXT NOT NULL DEFAULT 'manual'
+    CHECK (fulfillment_mode IN ('manual','shared','unique','mixed')),
+  inventory_id INTEGER REFERENCES fulfillment_inventory(id),
+  recipient_channel TEXT NOT NULL DEFAULT 'telegram'
+    CHECK (recipient_channel IN ('web','telegram','whatsapp')),
+  recipient_target TEXT,
+  status TEXT NOT NULL DEFAULT 'queued'
+    CHECK (status IN ('queued','sending','delivered','manual_required','retry','failed')),
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at TEXT,
+  locked_until TEXT,
+  delivered_message_id TEXT,
+  last_error TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(order_code, item_index)
+);
+CREATE INDEX IF NOT EXISTS idx_fulfillment_items_order
+  ON fulfillment_items(order_code, status);
+CREATE INDEX IF NOT EXISTS idx_fulfillment_items_next
+  ON fulfillment_items(status, next_attempt_at);
+
 -- Product Variants (migration 0007)
 CREATE TABLE IF NOT EXISTS product_variants (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -485,6 +485,50 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
       }
     });
     const primaryVariantId = input.items.find((it) => it.variant_id)?.variant_id ?? null;
+    // Web orders may contain unique-fulfillment lines. Reserve one
+    // inventory row per such line inside the same atomic batch (issue #4):
+    // without this, a unique line has variant stock cut but no secret bound
+    // to the order, so delivery fails with "No reserved inventory".
+    // The mode guard is checked per line BEFORE the claim: only lines whose
+    // variant is unique-mode participate, and the batch aborts unless every
+    // one of them holds a reservation afterwards.
+    const uniqueItems = input.items.filter((it) => it.variant_id != null);
+    if (uniqueItems.length > 0) {
+      const uniqueGuardId = `${input.quoteId}:unique-inventory`;
+      statements.push(
+        d1.prepare(
+          `INSERT INTO operation_guards (operation_id,valid)
+           SELECT ?, CASE WHEN NOT EXISTS(
+             SELECT 1 FROM product_variants pv
+             WHERE pv.fulfillment_mode='unique'
+               AND pv.id IN (${uniqueItems.map(() => "?").join(",")})
+               AND NOT EXISTS(
+                 SELECT 1 FROM fulfillment_inventory fi
+                 WHERE fi.product_id=pv.product_id AND fi.status='available'
+                   AND (fi.variant_id=pv.id OR fi.variant_id IS NULL)
+               )
+           ) THEN 1 ELSE 0 END`,
+        ).bind(uniqueGuardId, ...uniqueItems.map((it) => it.variant_id)),
+      );
+      guardIds.push(uniqueGuardId);
+      for (const item of uniqueItems) {
+        statements.push(
+          d1.prepare(
+            `UPDATE fulfillment_inventory
+             SET status='reserved', order_code=?, reserved_at=datetime('now')
+             WHERE id=(
+               SELECT fi.id FROM fulfillment_inventory fi
+               JOIN product_variants pv ON pv.id=?
+               WHERE fi.product_id=pv.product_id AND fi.status='available'
+                 AND (fi.variant_id=pv.id OR fi.variant_id IS NULL)
+                 AND pv.fulfillment_mode='unique'
+               ORDER BY CASE WHEN fi.variant_id=pv.id THEN 0 ELSE 1 END, fi.id ASC
+               LIMIT 1
+             ) AND status='available'`,
+          ).bind(input.code, item.variant_id),
+        );
+      }
+    }
     statements.push(
       d1.prepare(
         "INSERT INTO orders (code,customer_name,customer_wa,customer_email,items,subtotal,payment_method,payment_account,proof_url,status,sales_channel,variant_id,quote_id,expires_at) VALUES (?,?,?,?,?,?,?,?,?,?,'web',?,?,datetime('now','+24 hours'))",

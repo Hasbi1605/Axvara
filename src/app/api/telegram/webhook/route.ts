@@ -718,17 +718,24 @@ async function createAndSendCartInvoice(
     }
 
     // Reservasi inventory unik per baris (qty selalu 1 untuk unique).
-    // findReservedForOrder + createFulfillmentJob memakai SATU order_code, jadi
-    // cart campuran unique dibatasi 1 baris unique (dijaga saat addToCart).
-    for (const line of lines) {
-      if (line.fulfillmentMode !== "unique") continue;
-      const inventoryId = await reserveInventory(line.productId, orderCode, line.variantId);
-      if (inventoryId === null) {
-        for (const code of reservedInventory) await releaseInventoryForOrder(code);
-        await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
-        return;
+    // Satu baris = satu secret: reserveInventoryForLines mengikat SATU unit
+    // per baris ke order_code yang sama (issue #4), dan deliver.ts memilih
+    // unit yang cocok per varian saat pengiriman tiap item.
+    {
+      const uniqueLines = lines.filter((line) => line.fulfillmentMode === "unique");
+      if (uniqueLines.length > 0) {
+        const { reserveInventoryForLines } = await import("@/lib/fulfillment/inventory");
+        const reserved = await reserveInventoryForLines(
+          uniqueLines.map((line) => ({ productId: line.productId, variantId: line.variantId })),
+          orderCode,
+        );
+        if (reserved === null) {
+          for (const code of reservedInventory) await releaseInventoryForOrder(code);
+          await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
+          return;
+        }
+        reservedInventory.push(orderCode);
       }
-      reservedInventory.push(orderCode);
     }
 
     // Potong stok finite per baris; gagal satu = kembalikan semua.

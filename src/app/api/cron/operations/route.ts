@@ -15,6 +15,8 @@ import {
 } from "@/lib/db";
 import { isExpiredIso } from "@/lib/expiry";
 import {
+  backfillMissingFulfillmentItems,
+  ensureFulfillmentItems,
   getDueJobs,
   processJob,
   reconcileMissingFulfillmentJobs,
@@ -41,6 +43,7 @@ export async function POST(request: NextRequest) {
     expired_payments: 0,
     repaired_legacy_expiry: 0,
     due_jobs_processed: 0,
+    fulfillment_items_backfilled: 0,
     fulfillment_orphans_healed: 0,
     stale_locks_released: 0,
     expired_manual_whatsapp_orders: 0,
@@ -223,16 +226,23 @@ export async function POST(request: NextRequest) {
     // forever. Healing reuses the same idempotent ensure path as every
     // payment callback, so recovery never double-delivers.
     results.fulfillment_orphans_healed = await reconcileMissingFulfillmentJobs(BATCH_LIMIT);
+    // Backfill per-item rows for paid orders whose job predates migration
+    // 0015 (issue #4): without rows, processJob falls back to the legacy
+    // single-item path and items[1..n] would never ship.
+    results.fulfillment_items_backfilled = await backfillMissingFulfillmentItems(BATCH_LIMIT);
     if (process.env.AUTO_FULFILLMENT_ENABLED === "true") {
       const dueJobs = await getDueJobs(BATCH_LIMIT);
       for (const job of dueJobs) {
         const order = await queryFirst(`SELECT * FROM orders WHERE code=?`, String(job.order_code));
         if (!order) continue;
+        // Per-item delivery resolves its own products per row; the legacy
+        // items[0] lookup below only feeds the pre-migration fallback.
         const items = JSON.parse(String(order.items ?? "[]")) as { product_id: number }[];
         if (!items.length) continue;
         const product = await queryFirst(`SELECT * FROM products WHERE id=?`, items[0].product_id);
         if (!product) continue;
         try {
+          await ensureFulfillmentItems(order).catch(() => {});
           await processJob(Number(job.id), order, product);
         } catch { /* individual job failure doesn't stop batch */ }
       }

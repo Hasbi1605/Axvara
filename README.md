@@ -120,7 +120,9 @@ welcome landing dengan 3 produk paling laris + `Terjual X` di kartu produk, riwa
 `/cari` via nama/alias. Fase 2 (tanpa review/promo): keranjang multi-item Telegram
 (`telegram_carts`, maks 20 varian/user; 1 baris unik saja) dengan tambah/ubah/hapus via
 tombol ➖/➕/❌ lalu ringkasan konfirmasi `cconfirm` dan checkout gabungan SATU order +
-SATU invoice QRIS + satu fulfillment job mode dominan; stok finite dipotong per baris
+SATU invoice QRIS + fulfillment per item (`fulfillment_items`: tiap baris punya
+status/mode/penerima sendiri, satu secret unique per baris, order selesai hanya
+setelah seluruh item terminal sukses); stok finite dipotong per baris
 dengan kompensasi penuh bila satu baris gagal; reminder order pending via cron 5-menit
 (maks 2x, interval ≥60 mnt, hanya invoice aktif, marker `telegram_reminder_count`
 idempoten). Flow Telegram setara WA grup: katalog datar nama produk (tanpa kategori wajib,
