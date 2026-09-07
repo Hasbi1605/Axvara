@@ -10,7 +10,7 @@ import {
   productDetailKeyboard, warrantyKeyboard,
   orderStatusKeyboard, variantsKeyboard, confirmVariantPurchaseKeyboard,
   qtyKeyboard, qrisInvoiceKeyboard, orderPaidKeyboard, parseCallback,
-  TELEGRAM_MAX_QTY, mainReplyMenu, myOrdersKeyboard, searchResultsKeyboard,
+  TELEGRAM_MAX_QTY, myOrdersKeyboard, searchResultsKeyboard,
   MENU_LABEL_CATALOG, MENU_LABEL_SEARCH, MENU_LABEL_ORDERS, MENU_LABEL_HELP,
 } from "@/lib/telegram/keyboards";
 import {
@@ -222,13 +222,6 @@ async function handleCommand(
       caption: welcomeMessage(from?.first_name ?? "Pengguna", bestsellers),
       parse_mode: "HTML",
       reply_markup: homeKeyboard(),
-    });
-    // Persistent bottom menu so new visitors always know what to tap next.
-    await sendMessage({
-      chat_id: chatId,
-      text: "👇 <b>Menu cepat</b> — selalu tersedia di bawah kolom chat.",
-      parse_mode: "HTML",
-      reply_markup: mainReplyMenu(),
     });
     return;
   }

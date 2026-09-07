@@ -60,11 +60,12 @@ describe("Telegram WIB greeting", () => {
     expect(msg).toContain("WIB");
   });
 
-  it("flat catalog message shows greeting + count without categories", () => {
+  it("flat catalog message shows count without repeated greeting/date/time", () => {
     const msg = catalogFlatMessage(5);
     expect(msg).toContain("Katalog AXVARA");
     expect(msg).toContain("5 produk tersedia");
-    expect(msg).toMatch(/Selamat (Pagi|Siang|Sore|Malam)/);
+    expect(msg).not.toMatch(/Selamat (Pagi|Siang|Sore|Malam)/);
+    expect(msg).not.toContain("WIB");
   });
 });
 

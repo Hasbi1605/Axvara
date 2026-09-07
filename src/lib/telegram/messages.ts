@@ -117,13 +117,9 @@ export function welcomeMessage(firstName: string, bestsellers: TelegramBestselle
 }
 
 export function catalogFlatMessage(total: number): string {
-  const { greeting, tanggal, jam } = formatWIBTime();
   return [
     "🛍 <b>Katalog AXVARA</b>",
     "━━━━━━━━━━━━━━━━━━━━━",
-    "",
-    `${greeting}! 👋`,
-    `📅 ${tanggal} • 🕐 ${jam}`,
     "",
     total > 0
       ? `${total} produk tersedia — langsung tap nama produk 👇`
