@@ -95,20 +95,53 @@ export async function POST(request: NextRequest) {
   const update = parsed.data;
   const updateId = String(update.update_id);
 
-  // 5. Claim update_id with lease (idempotency)
+  // 5. Claim update_id with lease (idempotency, issue #6). States:
+  // - done → sudah selesai penuh: jawab already_processed, janganยี ulangi.
+  // - processing + lease aktif → worker lain sedang kerja: jangan rebut.
+  // - failed / processing lease-kedaluwarsa → boleh reclaim atomik untuk
+  //   retry nyata (attempt_count+1), tanpa membuat order/invoice ganda
+  //   karena pembuatan order memakai idempotency key + guard D1.
   const leaseUntil = new Date(Date.now() + 30_000).toISOString();
+  const MAX_UPDATE_ATTEMPTS = 5;
   try {
     if (isD1Mode()) {
       const existing = await queryFirst(
-        `SELECT status FROM telegram_updates WHERE update_id=?`, updateId,
+        `SELECT status, attempt_count, lease_until FROM telegram_updates WHERE update_id=?`, updateId,
       );
       if (existing) {
-        return NextResponse.json({ ok: true, status: "already_processed" });
+        const status = String(existing.status);
+        const leaseUntilExisting = String(existing.lease_until || "");
+        const leaseActive = leaseUntilExisting
+          && Number.isFinite(Date.parse(leaseUntilExisting))
+          && Date.parse(leaseUntilExisting) > Date.now();
+        if (status === "done") {
+          return NextResponse.json({ ok: true, status: "already_processed" });
+        }
+        if (status === "processing" && leaseActive) {
+          return NextResponse.json({ ok: true, status: "already_processing" });
+        }
+        const attempts = Number(existing.attempt_count || 0);
+        if (attempts >= MAX_UPDATE_ATTEMPTS) {
+          return NextResponse.json({ ok: true, status: "already_processed" });
+        }
+        // Reclaim atomik: hanya menang bila baris masih failed / lease
+        // kedaluwarsa — kalah berarti worker lain baru saja claim.
+        const reclaimed = await execRun(
+          `UPDATE telegram_updates
+           SET status='processing', lease_until=?, attempt_count=attempt_count+1, updated_at=datetime('now')
+           WHERE update_id=? AND status IN ('failed','processing')
+             AND (status='failed' OR lease_until IS NULL OR datetime(lease_until) <= datetime('now'))`,
+          leaseUntil, updateId,
+        );
+        if (!reclaimed.changes) {
+          return NextResponse.json({ ok: true, status: "already_processing" });
+        }
+      } else {
+        await execRun(
+          `INSERT INTO telegram_updates (update_id, status, lease_until) VALUES (?, 'processing', ?)`,
+          updateId, leaseUntil,
+        );
       }
-      await execRun(
-        `INSERT INTO telegram_updates (update_id, status, lease_until) VALUES (?, 'processing', ?)`,
-        updateId, leaseUntil,
-      );
     }
   } catch (error) {
     const msg = error instanceof Error ? error.message : "";
