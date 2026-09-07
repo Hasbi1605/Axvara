@@ -68,7 +68,7 @@ describe("sitemap memakai produk aktif D1, bukan seed statis", () => {
 });
 
 describe("PDP server-rendered dengan metadata per produk", () => {
-  it("page.tsx server component: generateMetadata + notFound + JSON-LD + h1", () => {
+  it("page.tsx server component: generateMetadata + notFound + JSON-LD + h1 sr-only (tanpa blok visual ganda)", () => {
     const src = read("src/app/produk/[slug]/page.tsx");
     expect(src).not.toContain('"use client"');
     expect(src).toContain("generateMetadata");
@@ -79,6 +79,13 @@ describe("PDP server-rendered dengan metadata per produk", () => {
     expect(src).toContain("openGraph");
     expect(src).toMatch(/<h1[^>]*>/);
     expect(src).toContain("ProductDetailClient");
+    // Bug PDP ganda: blok visual server (nama + harga + deskripsi + gambar)
+    // tampil mentah di atas PDP client sehingga konten terlihat 2x. h1 SEO
+    // wajib sr-only; harga/deskripsi/gambar visual hanya milik client.
+    expect(src).toContain("sr-only");
+    expect(src).not.toMatch(/toLocaleString\("id-ID"\)/);
+    expect(src).not.toContain("whitespace-pre-line");
+    expect(src).not.toMatch(/<img[^>]*images\[0\]/);
   });
 
   it("query SEO hanya produk aktif dengan varian aktif; tanpa varian → 404", () => {

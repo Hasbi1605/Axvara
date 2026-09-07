@@ -5,7 +5,6 @@ import { queryFirst, queryAll } from "@/lib/db";
 import {
   seoDescription,
   seoImages,
-  seoMinPrice,
   seoProductJsonLd,
   type SeoProduct,
 } from "@/lib/product-seo";
@@ -94,32 +93,21 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
   }
   if (!product) return notFound();
   const canonical = `${SITE_BASE}/produk/${slug}`;
-  const minPrice = seoMinPrice(product);
-  const images = seoImages(product);
   const jsonLd = seoProductJsonLd(product, canonical);
   const safeJsonLd = JSON.stringify(jsonLd).replace(/</g, "\\u003c");
   return (
     <>
-      {/* Konten awal server-rendered untuk crawler/preview (issue #11):
-          h1 + harga + deskripsi + canonical + JSON-LD dari data nyata D1.
-          Interaktivitas (varian/keranjang/checkout) tetap di client di bawah,
-          yang memakai API yang sama sehingga tidak ada duplikasi sumber. */}
-      <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8">
-        <p className="text-xs tracking-[0.08em] text-[#00E5FF]/80 font-semibold uppercase">Produk AXVARA</p>
-        <h1 className="mt-2 font-display font-bold text-[22px] sm:text-[26px] leading-tight text-white">
-          {product.name}
-        </h1>
-        <p className="mt-3 font-display font-bold text-[26px] text-white">
-          {minPrice != null ? `Rp${minPrice.toLocaleString("id-ID")}` : ""}
-        </p>
-        {product.description && (
-          <p className="mt-3 text-sm text-white/75 leading-relaxed whitespace-pre-line">{product.description}</p>
-        )}
-        {images.length > 0 && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={images[0]} alt={product.name} className="mt-4 w-full max-w-[640px] aspect-[4/3] object-cover rounded-2xl" />
-        )}
-      </div>
+      {/* Konten SEO server-rendered untuk crawler/preview (issue #11):
+          JSON-LD dari data nyata D1. BLOK VISUAL DIHAPUS (bug PDP ganda):
+          h1 + harga + deskripsi + gambar versi server tampil mentah di atas
+          PDP client sehingga seluruh konten terlihat DUA KALI
+          (Canva Pro → Rp1.000 → deskripsi → gambar, lalu Kembali →
+          galeri → Canva Pro → Rp 1.000 → deskripsi lagi). Crawler/preview
+          tidak butuh blok visual — metadata + JSON-LD + h1 sr-only cukup.
+          Interaktivitas (galeri/varian/keranjang/checkout) tetap di client
+          di bawah, yang memakai API yang sama sehingga tidak ada duplikasi
+          sumber. */}
+      <h1 className="sr-only">{product.name}</h1>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd }} />
       <ProductDetailClient slug={slug} />
     </>
