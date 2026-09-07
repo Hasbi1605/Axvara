@@ -200,11 +200,67 @@ export async function verifyAdminPasswordProof(email: string, stored: string, ch
 
 export async function createAdminToken(email: string) {
   const now = Math.floor(Date.now() / 1000);
-  return await new jose.SignJWT({ email, role: "admin", iat: now })
+  const sessionId = randomSessionId();
+  const authVersion = await authVersionFor(getStoredHashForVersion());
+  const token = await new jose.SignJWT({ email, role: "admin", sid: sessionId, av: authVersion, iat: now })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt(now)
     .setExpirationTime("8h")
     .sign(secretKey());
+  return { token, sid: sessionId };
+}
+
+export type CreateIdleOptions = {
+  /** Override waktu terbit (ms) — dipakai test expiry deterministik. */
+  issuedAtMs?: number;
+};
+
+/**
+ * Terbitkan cookie idle bertanda tangan (JWT HS256 2 jam) yang terikat ke
+ * satu sesi login via `sid` yang sama dengan admin JWT.
+ *
+ * Desain ini memperbaiki temuan audit #8: sebelumnya cookie idle hanyalah
+ * string acak (`Date.now()+random`) yang hanya dicek keberadaannya, sehingga
+ * JWT valid + cookie idle sembarang tetap diterima. Sekarang idle membawa
+ * signature server (HS256), expiry 2 jam yang ditegakkan di server, binding
+ * `sid`, dan claim `av` (auth version dari hash password) agar rotasi
+ * password menggugurkan seluruh sesi lama.
+ */
+export async function createIdleToken(sid: string, options: CreateIdleOptions = {}): Promise<string> {
+  const issuedAtMs = options.issuedAtMs ?? Date.now();
+  const issuedAt = Math.floor(issuedAtMs / 1000);
+  const authVersion = await authVersionFor(getStoredHashForVersion());
+  return await new jose.SignJWT({ purpose: "admin_idle", sid, av: authVersion, iat: issuedAt })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt(issuedAt)
+    .setExpirationTime(issuedAt + 2 * 60 * 60)
+    .setJti(randomSessionId())
+    .sign(secretKey());
+}
+
+export type AdminIdlePayload = {
+  sid: string;
+  authVersion: string;
+  issuedAt: number;
+  expiresAt: number;
+};
+
+export async function verifyIdleToken(idle: string): Promise<AdminIdlePayload | null> {
+  try {
+    const segments = idle.split(".");
+    if (segments.length !== 3 || segments.some((segment) => jose.base64url.encode(jose.base64url.decode(segment)) !== segment)) return null;
+    const { payload } = await jose.jwtVerify(idle, secretKey());
+    if (payload.purpose !== "admin_idle" || typeof payload.sid !== "string" || !payload.sid) return null;
+    if (typeof payload.exp !== "number" || typeof payload.iat !== "number") return null;
+    return {
+      sid: payload.sid,
+      authVersion: typeof payload.av === "string" ? payload.av : "",
+      issuedAt: payload.iat,
+      expiresAt: payload.exp,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export async function createCheckoutQuoteToken(input: Omit<CheckoutQuotePayload, "quote_id">) {
@@ -268,18 +324,130 @@ export async function verifyCheckoutQuoteToken(token: string): Promise<CheckoutQ
   }
 }
 
+function randomSessionId(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * Auth version = fingerprint hash password admin. Rotasi password di Pages
+ * Secrets mengubah nilai ini sehingga seluruh JWT/idle lama (yang membawa
+ * `av` lama, atau tidak membawa `av` sama sekali) gugur — perilaku revokasi
+ * eksplisit untuk temuan audit #8. Stateless (tanpa tabel sesi) agar tetap
+ * Edge-safe di Cloudflare Pages.
+ */
+async function authVersionFor(storedHash: string): Promise<string> {
+  const normalized = normalizeStoredHash(storedHash);
+  try {
+    return await sha256Hex(`axvara-admin-auth-v1:${normalized}`);
+  } catch {
+    return `fallback:${normalized.length}:${normalized.slice(0, 12)}`;
+  }
+}
+
+function getStoredHashForVersion(): string {
+  // JANGAN paksa "dev-placeholder" di sini: test (NODE_ENV=test/non-prod
+  // dengan ADMIN_PASSWORD_SHA256 eksplisit) maupun produksi harus memakai
+  // hash yang sama dengan yang dipakai login, agar `av` di token cocok
+  // dengan `av` yang dihitung saat verifikasi.
+  try {
+    return getAdminCredentials().sha256;
+  } catch {
+    return "unconfigured";
+  }
+}
+
 export function getSessionDurations() {
   return { absoluteMax: 8 * 60 * 60, idleMax: 2 * 60 * 60 }; // seconds
 }
 
-export async function verifyAdminToken(token: string) {
+export type AdminTokenPayload = {
+  email: string;
+  role: string;
+  sid: string;
+  authVersion: string;
+  exp: number;
+  iat: number;
+};
+
+export async function verifyAdminToken(token: string): Promise<AdminTokenPayload | null> {
   try {
+    const segments = token.split(".");
+    if (segments.length !== 3 || segments.some((segment) => jose.base64url.encode(jose.base64url.decode(segment)) !== segment)) return null;
     const { payload } = await jose.jwtVerify(token, secretKey());
     if (payload.role !== "admin" || !payload.email) return null;
-    return payload as { email: string; role: string; exp: number; iat: number };
+    if (typeof payload.sid !== "string" || !payload.sid) return null;
+    return {
+      email: String(payload.email),
+      role: String(payload.role),
+      sid: payload.sid,
+      authVersion: typeof payload.av === "string" ? payload.av : "",
+      exp: Number(payload.exp),
+      iat: Number(payload.iat),
+    };
   } catch {
     return null;
   }
+}
+
+/**
+ * Hasil verifikasi terperinci agar UI dapat membedakan sesi habis idle
+ * (minta login ulang dengan pesan jelas) dari unauthorized umum.
+ */
+export type AdminAuthCheck =
+  | { ok: true; payload: AdminTokenPayload }
+  | { ok: false; reason: "unauthorized" | "idle_timeout" | "session_mismatch" | "revoked" };
+
+export type RequireAdminOptions = {
+  /** Override auth version — dipakai test revokasi deterministik. */
+  authVersion?: string;
+};
+
+async function checkAdminSession(req: Request, overrides: RequireAdminOptions = {}): Promise<AdminAuthCheck> {
+  const cookieHeader = req.headers.get("cookie");
+  const token = getTokenFromCookieHeader(cookieHeader);
+  if (!token) return { ok: false, reason: "unauthorized" };
+  let payload: AdminTokenPayload | null = null;
+  try {
+    payload = await verifyAdminToken(token);
+  } catch {
+    return { ok: false, reason: "unauthorized" };
+  }
+  if (!payload) return { ok: false, reason: "unauthorized" };
+  // Idle enforcement: cookie idle wajib berupa JWT HS256 server-issued yang
+  // masih berlaku (temuan audit #8 — nilai sembarang tidak lagi diterima).
+  const idleRaw = getIdleTokenFromCookieHeader(cookieHeader);
+  if (!idleRaw) return { ok: false, reason: "idle_timeout" };
+  const idle = await verifyIdleToken(idleRaw);
+  if (!idle) return { ok: false, reason: "idle_timeout" };
+  // Binding sesi: idle harus diterbitkan untuk sid yang sama dengan JWT.
+  if (idle.sid !== payload.sid) return { ok: false, reason: "session_mismatch" };
+  let expectedEmail = "";
+  let expectedVersion = overrides.authVersion;
+  try {
+    expectedEmail = getAdminCredentials().email;
+    expectedVersion ??= await authVersionFor(getAdminCredentials().sha256);
+  } catch {
+    return { ok: false, reason: "unauthorized" };
+  }
+  if (String(payload.email).toLowerCase() !== expectedEmail.toLowerCase()) return { ok: false, reason: "unauthorized" };
+  // Revokasi: token/idle lama (tanpa claim `av`, atau `av` basi setelah
+  // rotasi password) selalu gugur. Tanpa ini, rotate-secret tidak mencabut
+  // sesi yang sudah beredar.
+  if (!payload.authVersion || payload.authVersion !== expectedVersion || idle.authVersion !== expectedVersion) {
+    return { ok: false, reason: "revoked" };
+  }
+  return { ok: true, payload };
+}
+
+export async function requireAdminDetailed(req: Request, overrides: RequireAdminOptions = {}): Promise<AdminAuthCheck> {
+  return checkAdminSession(req, overrides);
+}
+
+export async function requireAdmin(req: Request, overrides: RequireAdminOptions = {}): Promise<AdminTokenPayload | null> {
+  const check = await checkAdminSession(req, overrides);
+  return check.ok ? check.payload : null;
 }
 
 export function getTokenFromCookieHeader(cookieHeader: string | null): string | null {
@@ -289,38 +457,13 @@ export function getTokenFromCookieHeader(cookieHeader: string | null): string | 
 }
 
 export function getTokenFromRequest(req: Request): string | null {
-  const cookie = req.headers.get("cookie");
-  const t = getTokenFromCookieHeader(cookie);
-  if (t) return t;
-  const auth = req.headers.get("authorization");
-  if (auth?.startsWith("Bearer ")) return auth.slice(7);
-  return null;
+  // Admin auth cookie-only: JANGAN fallback ke Authorization Bearer di sini.
+  // Jalur integrasi resmi memakai requireAgent (agent Bearer tokens), bukan
+  // JWT admin — Bearer admin tanpa cookie idle terikat selalu ditolak.
+  return getTokenFromCookieHeader(req.headers.get("cookie"));
 }
 
-export async function requireAdmin(req: Request) {
-  const token = getTokenFromRequest(req);
-  if (!token) return null;
-  let payload: { email: string; role: string } | null = null;
-  try {
-    payload = (await verifyAdminToken(token)) as { email: string; role: string } | null;
-  } catch {
-    return null;
-  }
-  if (!payload) return null;
-  // Idle enforcement: 2h tanpa aktivitas wajib login ulang (F-High)
-  const idle = getIdleTokenFromCookieHeader(req.headers.get("cookie"));
-  if (!idle) return null;
-  let email = "";
-  try {
-    email = getAdminCredentials().email;
-  } catch {
-    return null;
-  }
-  if (String(payload.email).toLowerCase() !== email.toLowerCase()) return null;
-  return payload;
-}
 
-// ---- Secure cookie helpers ----
 function isHttpsRequest(req: Request): boolean {
   const urlProto = (() => {
     try {

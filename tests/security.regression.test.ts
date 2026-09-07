@@ -42,11 +42,14 @@ describe("F-High: Order enumeration — code entropy + format", () => {
 });
 
 describe("F-High: Idle timeout — requireAdmin harus cek idle cookie", () => {
-  it("src/lib/auth.ts requireAdmin mengandung idle check", () => {
+  it("src/lib/auth.ts requireAdmin memvalidasi idle JWT (bukan sekadar ada)", () => {
     const src = fs.readFileSync(path.join(process.cwd(), "src/lib/auth.ts"), "utf-8");
     expect(src).toContain("getIdleTokenFromCookieHeader");
-    expect(src).toMatch(/getIdleTokenFromCookieHeader\(req\.headers\.get\("cookie"\)\)/);
-    expect(src).toContain("if (!idle) return null");
+    // Idle wajib JWT HS256 server-issued: signature + expiry + binding sid.
+    expect(src).toContain("verifyIdleToken");
+    expect(src).toContain("idle.sid !== payload.sid");
+    // Nilai sembarang tidak boleh diterima — tidak ada lagi `if (!idle) return null` polos.
+    expect(src).not.toMatch(/const idle = getIdleTokenFromCookieHeader\(req\.headers\.get\("cookie"\)\);\s*if \(!idle\) return null;/);
   });
 
   it("idle cookie helper ada dan parsing __Host- prefix", async () => {

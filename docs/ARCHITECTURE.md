@@ -63,7 +63,7 @@
 | State | Zustand (keranjang/pencarian) + Fetch API | Ringan, tanpa Redux |
 | Database | Cloudflare D1 (SQLite) | Gratis 5GB, 5M reads/hari, serverless |
 | Storage | Cloudflare R2 | Gratis 10GB, S3-compatible, untuk foto & bukti |
-| Auth Admin | JWT httpOnly + PBKDF2/SHA-256 Edge-safe | Simple, tanpa provider |
+| Auth Admin | JWT httpOnly + idle JWT terikat sesi + PBKDF2/SHA-256 Edge-safe | Cookie-only, idle 2h server-enforced, rotasi password mencabut sesi |
 | Deploy | Cloudflare Pages (via Git) | Auto deploy, preview URL |
 | Domain | .TECH Domains registrar + Cloudflare DNS | Nameserver Cloudflare, auto SSL, integrasi Pages |
 | Ikon | Aset SVG/PNG lokal + Lucide React | Menghindari request ikon pihak ketiga saat runtime |
@@ -384,7 +384,7 @@ R2 bucket: axvara-assets
 
 ## 9. Keamanan MVP
 
-- Admin auth: JWT httpOnly, password digest Edge-safe, rate limit 5/min
+- Admin auth: JWT httpOnly cookie-only 8 jam + idle JWT HS256 2 jam terikat `sid` yang sama (nilai sembarang ditolak server), refresh aktivitas tervalidasi penuh sebelum memutar idle baru, rotasi password mencabut seluruh sesi lama via claim `av` stateless, Bearer admin tanpa cookie ditolak (integrasi MCP/agent memakai Bearer scope via `requireAgent`, bukan JWT admin), rate limit 5/min
 - Upload: cek magic bytes (bukan cuma ext), max 5MB, sanitize filename
 - D1: prepared statement, no string concat
 - Checkout rate limit: 10/menit/IP via Cloudflare WAF / KV

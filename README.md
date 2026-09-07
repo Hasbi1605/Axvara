@@ -258,6 +258,7 @@ QRIS & Rekonsiliasi**.
 
 - URL: `/admin`
 - Credentials: set via Cloudflare Pages environment variables (`ADMIN_EMAIL`, `ADMIN_PASSWORD_SHA256` dalam format PBKDF2); satu pasang quote pembungkus dari paste shell/JSON didukung dan dinormalisasi server-side. Untuk PBKDF2, browser membuat proof atas challenge 5 menit sehingga Pages tidak melakukan derivasi berat.
+- Sesi: JWT httpOnly cookie-only 8 jam + cookie idle JWT 2 jam terikat sesi yang sama; batas idle ditegakkan di server, refresh memutar idle baru yang tervalidasi, dan rotasi password mencabut seluruh sesi lama (login ulang).
 - Dev mode: email `admin@axvara.tech` / password `axvara-dev-only`
 
 ## 🤖 Agent CMS dan Remote MCP

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { createAdminPasswordProofChallenge, createAdminToken, cookieForIdle, cookieForToken, getAdminCredentials, getAdminPasswordProofConfig, isSecureForRequest, verifyAdminPasswordProof, verifyPassword } from "@/lib/auth";
+import { createAdminPasswordProofChallenge, createAdminToken, cookieForIdle, cookieForToken, createIdleToken, getAdminCredentials, getAdminPasswordProofConfig, isSecureForRequest, verifyAdminPasswordProof, verifyPassword } from "@/lib/auth";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -93,17 +93,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Email atau password salah." }, { status: 401 });
   }
 
-  let token: string;
+  let session: Awaited<ReturnType<typeof createAdminToken>>;
   try {
-    token = await createAdminToken(cred.email);
+    session = await createAdminToken(cred.email);
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Gagal buat sesi" }, { status: 500 });
   }
   const isHttps = isSecureForRequest(req);
   const res = NextResponse.json({ ok: true, email: cred.email });
-  // Absolute 8h token + sliding 2h idle marker (refresh on activity via /api/auth/refresh)
-  const idleToken = `${Date.now()}.${Math.random().toString(36).slice(2, 8)}`;
-  res.headers.set("Set-Cookie", cookieForToken(token, isHttps));
+  // Absolute 8h token + sliding 2h idle JWT terikat sid yang sama.
+  // Idle lama format acak tidak lagi diterbitkan — hanya JWT HS256.
+  const idleToken = await createIdleToken(session.sid);
+  res.headers.set("Set-Cookie", cookieForToken(session.token, isHttps));
   res.headers.append("Set-Cookie", cookieForIdle(idleToken, isHttps));
   return res;
 }

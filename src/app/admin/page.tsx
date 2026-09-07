@@ -163,6 +163,8 @@ export default function AdminPage() {
       else {
         setAuthed(false);
         if (j.reason === "idle_timeout") toast.error("Sesi habis karena 2 jam tidak aktif. Silakan login ulang.");
+        else if (j.reason === "revoked") toast.error("Sesi dicabut (kredensial berubah). Silakan login ulang.");
+        else if (j.reason === "session_mismatch") toast.error("Sesi tidak cocok. Silakan login ulang.");
         else if (r.status === 401) { /* absolute 8h or not authed — stay on login */ }
       }
     } catch { setAuthed(false); }
