@@ -960,7 +960,7 @@ export async function ensureFulfillmentForPaidOrder(orderCode: string): Promise<
  * check fulfillment_status, and processJob claims each job exactly once, so
  * recovery never delivers credentials twice.
  */
-export async function reconcileMissingFulfillmentJobs(limit = 25): Promise<number> {
+export async function reconcileMissingFulfillmentJobs(limit = 8): Promise<number> {
   const orphans = await queryAll(
     `SELECT o.code FROM orders o
      LEFT JOIN fulfillment_jobs fj ON fj.order_code=o.code
@@ -992,7 +992,7 @@ export async function reconcileMissingFulfillmentJobs(limit = 25): Promise<numbe
  * (pre-migration-0015 data, issue #4). Bounded and idempotent; each order
  * reuses ensureFulfillmentItems so mode/recipient resolution stays single.
  */
-export async function backfillMissingFulfillmentItems(limit = 25): Promise<number> {
+export async function backfillMissingFulfillmentItems(limit = 8): Promise<number> {
   const rows = await queryAll(
     `SELECT o.* FROM orders o
      JOIN fulfillment_jobs fj ON fj.order_code=o.code
@@ -1014,8 +1014,13 @@ export async function backfillMissingFulfillmentItems(limit = 25): Promise<numbe
 
 /**
  * Get due jobs for cron processing.
+ *
+ * JOIN sudah membawa kolom order yang dibutuhkan processJob (issue #14),
+ * sehingga cron tidak perlu query order + produk per job (N+1) — cukup
+ * memakai baris yang sudah ada. Default limit diselaraskan ke BATCH_LIMIT
+ * cron (8) agar satu run tidak menembus 50 query/invocation D1 Free.
  */
-export async function getDueJobs(limit = 25): Promise<Row[]> {
+export async function getDueJobs(limit = 8): Promise<Row[]> {
   if (isD1Mode()) {
     return queryAll(
       `SELECT fj.*, o.telegram_chat_id, o.telegram_user_id, o.subtotal, o.code as order_code_ref

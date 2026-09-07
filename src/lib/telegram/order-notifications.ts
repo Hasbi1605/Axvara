@@ -209,7 +209,7 @@ export async function notifyTelegramPaidAdmin(orderCode: string): Promise<boolea
 }
 
 /** Retry best-effort Telegram notifications from the five-minute operations cron. */
-export async function retryPendingTelegramNotifications(limit = 25): Promise<{
+export async function retryPendingTelegramNotifications(limit = 8): Promise<{
   created: number;
   paid: number;
   paidAdmin: number;
@@ -264,7 +264,7 @@ export async function retryPendingTelegramNotifications(limit = 25): Promise<{
 export const TELEGRAM_REMINDER_MAX = 2;
 export const TELEGRAM_REMINDER_INTERVAL_MINUTES = 60;
 
-export async function sendPendingOrderReminders(limit = 25): Promise<number> {
+export async function sendPendingOrderReminders(limit = 8): Promise<number> {
   if (!telegramNotificationsConfigured()) return 0;
   // Same canonical JS expiry check as webhook/crons: only invoices whose
   // ISO `expires_at` is still in the future are reminded.

@@ -265,11 +265,20 @@ describe("BUG-06: Checkout block bank placeholder belum aktif", () => {
 });
 
 describe("BUG-07: Login rate limit 5/menit (bukan 12)", () => {
-  it("login route rate limit max 5", () => {
+  it("login route rate limit max 5", async () => {
+    // Sejak issue #14 limit terpusat di src/lib/rateLimit.ts (bukan salinan
+    // lokal `e.c > 5` di route). Batas perilaku tetap 5 — diverifikasi lewat
+    // konstanta + eksekusi nyata, bukan teks implementasi lama.
+    const { RATE_LIMITS, checkRateLimit, clearRateLimitBucketsForTest } = await import("@/lib/rateLimit");
+    expect(RATE_LIMITS["auth:login"]).toBe(5);
     const src = fs.readFileSync(path.join(process.cwd(), "src/app/api/auth/login/route.ts"), "utf-8");
-    // Harus > 5, BUKAN > 12
-    expect(src).toContain("e.c > 5");
+    expect(src).toContain('checkRateLimit(req, "auth:login")');
     expect(src).not.toContain("e.c > 12");
+    clearRateLimitBucketsForTest();
+    const req = { headers: { get: (k: string) => (k.toLowerCase() === "cf-connecting-ip" ? "198.51.100.9" : null) } } as unknown as import("next/server").NextRequest;
+    for (let i = 0; i < 5; i++) expect(checkRateLimit(req, "auth:login")).toBe(true);
+    expect(checkRateLimit(req, "auth:login")).toBe(false);
+    clearRateLimitBucketsForTest();
   });
 });
 

@@ -43,11 +43,13 @@ function CheckoutInner() {
     setDirectProduct(null);
     setDirectError(null);
     setDirectLoading(true);
-    fetch(`/api/products?active=1&q=${encodeURIComponent(buySlug)}`)
+    // Exact slug (issue #14): sebelumnya q=slug memindai seluruh katalog
+    // lewat LIKE; kini filter slug exact di server (1 baris).
+    fetch(`/api/products?active=1&slug=${encodeURIComponent(buySlug)}`)
       .then((r) => r.ok ? r.json() : Promise.reject())
       .then(async (j) => {
-        const found = (j.products as Product[] | undefined)?.find((p) => p.slug === buySlug);
-        if (!found) throw new Error("Produk tidak ditemukan atau sedang nonaktif.");
+        const found = (j.products as Product[] | undefined)?.[0];
+        if (!found || found.slug !== buySlug) throw new Error("Produk tidak ditemukan atau sedang nonaktif.");
         if (found.variantCount && found.variantCount > 0) {
           if (!buyVariantId) {
             throw new Error("Pilih varian dari halaman detail produk terlebih dahulu.");

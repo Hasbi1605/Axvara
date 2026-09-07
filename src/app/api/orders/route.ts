@@ -4,6 +4,7 @@ import { createOrderWithStock, queryFirst, StockReservationError, transitionPend
 import { generateOrderCode as generateCode, aggregateQty } from "@/lib/security";
 import { verifyCheckoutQuoteToken } from "@/lib/auth";
 import { createDanaQrisInvoice } from "@/lib/payments/dana-qris";
+import { checkRateLimit } from "@/lib/rateLimit";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -26,28 +27,13 @@ const schema = z.object({
   quote_token: z.string().trim().min(20, "Quote checkout wajib disertakan").max(8000),
 });
 
-// Simple in-memory rate limit per IP (edge isolate-safe best-effort) — with KV/WAF in prod
-const hits = new Map<string, { c: number; t: number }>();
-function rateLimit(ip: string, max = 10) {
-  const now = Date.now();
-  const e = hits.get(ip);
-  if (!e || now - e.t > 60_000) {
-    hits.set(ip, { c: 1, t: now });
-    return true;
-  }
-  e.c++;
-  if (e.c > max) return false;
-  return true;
-}
-function clientIp(req: NextRequest) {
-  return req.headers.get("cf-connecting-ip") || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "0.0.0.0";
-}
-
-
+// Rate-limit terpusat (issue #14): satu implementasi di src/lib/rateLimit.ts
+// agar batas tidak tersebar + IP anti-spoof (cf-connecting-ip > x-real-ip,
+// x-forwarded-for TIDAK dipakai karena dapat di-spoof client). WAF Free (1
+// rule, counting IP) tetap menjadi lapis pertama; ini lapis kedua per isolate.
 
 export async function POST(req: NextRequest) {
-  const ip = clientIp(req);
-  if (!rateLimit(ip, 10)) return NextResponse.json({ error: "Terlalu banyak percobaan, coba lagi 1 menit." }, { status: 429, headers: { "Retry-After": "60" } });
+  if (!checkRateLimit(req, "checkout:orders")) return NextResponse.json({ error: "Terlalu banyak percobaan, coba lagi 1 menit." }, { status: 429, headers: { "Retry-After": "60" } });
 
   let body: unknown;
   try {
@@ -200,8 +186,7 @@ async function notifyAdminTelegram(params: {
 }
 
 export async function GET(req: NextRequest) {
-  const ip = clientIp(req);
-  if (!rateLimit(ip, 20)) return NextResponse.json({ error: "Terlalu sering, coba lagi 1 menit." }, { status: 429, headers: { "Retry-After": "60" } });
+  if (!checkRateLimit(req, "orders:lookup")) return NextResponse.json({ error: "Terlalu sering, coba lagi 1 menit." }, { status: 429, headers: { "Retry-After": "60" } });
   const { searchParams } = new URL(req.url);
   const code = searchParams.get("code")?.trim();
   if (code) {

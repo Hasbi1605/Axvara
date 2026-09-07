@@ -1,23 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { queryFirst } from "@/lib/db";
+import { checkRateLimit } from "@/lib/rateLimit";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
-const hits = new Map<string, { c: number; t: number }>();
-function rateLimit(ip: string, max = 20) {
-  const now = Date.now();
-  const e = hits.get(ip);
-  if (!e || now - e.t > 60_000) { hits.set(ip, { c: 1, t: now }); return true; }
-  e.c++;
-  return e.c <= max;
-}
-function clientIp(req: NextRequest) {
-  return req.headers.get("cf-connecting-ip") || req.headers.get("x-real-ip") || "0.0.0.0";
-}
-
 export async function GET(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
-  if (!rateLimit(clientIp(req), 20)) return NextResponse.json({ error: "Terlalu sering, coba lagi 1 menit." }, { status: 429, headers: { "Retry-After": "60" } });
+  if (!checkRateLimit(req, "orders:lookup")) return NextResponse.json({ error: "Terlalu sering, coba lagi 1 menit." }, { status: 429, headers: { "Retry-After": "60" } });
   const { code } = await params;
   if (!code || !/^AXV-\d{8}-[A-Z0-9]{8}$/.test(code)) return NextResponse.json({ error: "Kode tidak valid" }, { status: 400 });
   const row = (await queryFirst(

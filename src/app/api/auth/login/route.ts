@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createAdminPasswordProofChallenge, createAdminToken, cookieForIdle, cookieForToken, createIdleToken, getAdminCredentials, getAdminPasswordProofConfig, isSecureForRequest, verifyAdminPasswordProof, verifyPassword } from "@/lib/auth";
+import { checkRateLimit } from "@/lib/rateLimit";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -14,23 +15,8 @@ const schema = z.object({
   message: "Email atau password tidak valid.",
 });
 
-// Simple in-memory rate limit per IP (edge isolate-safe best-effort)
-const hits = new Map<string, { c: number; t: number }>();
-function rateLimit(ip: string) {
-  const now = Date.now();
-  const e = hits.get(ip);
-  if (!e || now - e.t > 60_000) {
-    hits.set(ip, { c: 1, t: now });
-    return true;
-  }
-  e.c++;
-  if (e.c > 5) return false;
-  return true;
-}
-
-function clientIp(req: NextRequest) {
-  return req.headers.get("cf-connecting-ip") || req.headers.get("x-real-ip") || "0.0.0.0";
-}
+// Rate-limit terpusat (issue #14): 5/mnt/IP via lib anti-spoof (sebelumnya
+// salinan lokal memakai x-real-ip saja). WAF Free menambah 1 rule global.
 
 export async function GET() {
   try {
@@ -45,8 +31,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const ip = clientIp(req);
-  if (!rateLimit(ip)) {
+  if (!checkRateLimit(req, "auth:login")) {
     return NextResponse.json(
       { error: "Terlalu banyak percobaan. Coba lagi 1 menit." },
       { status: 429, headers: { "Retry-After": "60" } }

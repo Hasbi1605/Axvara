@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { checkRateLimit } from "@/lib/rateLimit";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -18,22 +19,13 @@ function randHex(n: number): string {
   crypto.getRandomValues(a);
   return Array.from(a).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
-const hits = new Map<string, { c: number; t: number }>();
-function rateLimit(ip: string, max = 5) {
-  const now = Date.now();
-  const e = hits.get(ip);
-  if (!e || now - e.t > 60_000) { hits.set(ip, { c: 1, t: now }); return true; }
-  e.c++;
-  return e.c <= max;
-}
-function ip(req: NextRequest) {
-  return req.headers.get("cf-connecting-ip") || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "0.0.0.0";
-}
+// Rate-limit terpusat (issue #14): IP anti-spoof dari lib (bukan salinan lokal
+// yang memakai x-forwarded-for).
 
 type Env = { R2_ASSETS?: { put: (k: string, b: ArrayBuffer, o?: Record<string, unknown>) => Promise<unknown> } };
 
 export async function POST(req: NextRequest) {
-  if (!rateLimit(ip(req), 5)) return NextResponse.json({ error: "Terlalu sering, coba lagi 1 menit." }, { status: 429, headers: { "Retry-After": "60" } });
+  if (!checkRateLimit(req, "proof:upload")) return NextResponse.json({ error: "Terlalu sering, coba lagi 1 menit." }, { status: 429, headers: { "Retry-After": "60" } });
   // F-07 fix: lightweight anti-abuse — require same-origin (CSRF middleware handles cross-origin, this blocks raw curl without referrer)
   const origin = req.headers.get("origin");
   if (!origin && !req.headers.get("referer")) {

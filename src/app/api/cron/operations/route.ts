@@ -29,7 +29,16 @@ import { processDueWhatsAppOutbox } from "@/lib/whatsapp/outbox";
 
 export const runtime = "edge";
 
-const BATCH_LIMIT = 25;
+// Batas query D1 aktual (issue #14, diverifikasi 7 Sep 2026 dari
+// developers.cloudflare.com/d1/platform/limits):
+// - Workers Free: MAKS 50 query per invocation (Paid: 1000).
+// - Tiap statement dalam d1.batch() tetap dihitung satu query.
+// Cron ini berjalan tiap 5 menit di Free, sehingga total query per run HARUS
+// < 50 dengan margin. Batch 25 + loop N+1 (1 order + 1 transisi multi-
+// statement) sebelumnya dapat menembus 25×(1+~6) ≈ 175 query — pasti gagal
+// parsial di Free. Batch baru 8 menjaga worst-case ≈ 8×4 + belasan query
+// baca ≈ < 50. Sisa antrean diproses run berikutnya (cron tiap 5 menit).
+const BATCH_LIMIT = 8;
 
 export async function POST(request: NextRequest) {
   // Auth: cron secret
@@ -58,16 +67,19 @@ export async function POST(request: NextRequest) {
   };
 
   try {
-    // 1. Stale initializing payments (older than 5 minutes)
+    // 1. Stale initializing payments (older than 5 minutes). JOIN sekali
+    // (issue #14): sebelumnya 1 query daftar + N query order (N+1) — kini
+    // items diambil dalam query yang sama agar 1 batch = 1 query baca.
     const staleInit = await queryAll(
-      `SELECT order_code FROM payment_transactions
-       WHERE status='initializing' AND created_at < datetime('now', '-5 minutes')
+      `SELECT pt.order_code, o.items FROM payment_transactions pt
+       JOIN orders o ON o.code=pt.order_code
+       WHERE pt.status='initializing' AND pt.created_at < datetime('now', '-5 minutes')
        LIMIT ?`,
       BATCH_LIMIT,
     );
     let staleTransitions = 0;
     for (const tx of staleInit) {
-      const order = await queryFirst(`SELECT items FROM orders WHERE code=?`, String(tx.order_code));
+      const order = { items: tx.items };
       if (order) {
         try {
           const items = JSON.parse(String(order.items ?? "[]")) as { product_id: number; variant_id?: number; qty: number }[];
@@ -95,18 +107,23 @@ export async function POST(request: NextRequest) {
     // simply makes this attempt a no-op (returns false) without restoring
     // stock twice — every stock/inventory/order/ledger write for one order
     // lives in a single D1 batch.
+    // Over-fetch dibatasi 2× batch (issue #14): sebelumnya 4× (100 baris)
+    // hanya untuk dibuang oleh filter JS — boros rows-read harian Free
+    // (5 jt/hari) tanpa manfaat.
     const expiredCandidates = await queryAll(
-      `SELECT order_code, provider_order_id, merchant_id, expires_at, status FROM payment_transactions
-       WHERE status='pending'
+      `SELECT pt.order_code, pt.provider_order_id, pt.merchant_id, pt.expires_at, pt.status, o.items, o.telegram_chat_id
+       FROM payment_transactions pt
+       JOIN orders o ON o.code=pt.order_code
+       WHERE pt.status='pending'
        LIMIT ?`,
-      BATCH_LIMIT * 4,
+      BATCH_LIMIT * 2,
     );
     const expiredPayments = expiredCandidates
       .filter((tx) => isExpiredIso(tx.expires_at))
       .slice(0, BATCH_LIMIT);
     let expiredTransitions = 0;
     for (const tx of expiredPayments) {
-      const order = await queryFirst(`SELECT items, telegram_chat_id FROM orders WHERE code=?`, String(tx.order_code));
+      const order = { items: tx.items, telegram_chat_id: tx.telegram_chat_id };
       if (order) {
         try {
           const items = JSON.parse(String(order.items ?? "[]")) as { product_id: number; variant_id?: number; qty: number }[];
@@ -197,7 +214,7 @@ export async function POST(request: NextRequest) {
          AND o.expires_at IS NOT NULL
          AND NOT EXISTS(SELECT 1 FROM payment_transactions pt WHERE pt.order_code=o.code)
        LIMIT ?`,
-      BATCH_LIMIT * 4,
+      BATCH_LIMIT * 2,
     );
     const expiredManualWhatsApp = manualCandidates
       .filter((order) => isExpiredIso(order.expires_at))

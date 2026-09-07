@@ -391,7 +391,33 @@ R2 bucket: axvara-assets
 - Admin auth: JWT httpOnly cookie-only 8 jam + idle JWT HS256 2 jam terikat `sid` yang sama (nilai sembarang ditolak server), refresh aktivitas tervalidasi penuh sebelum memutar idle baru, rotasi password mencabut seluruh sesi lama via claim `av` stateless, Bearer admin tanpa cookie ditolak (integrasi MCP/agent memakai Bearer scope via `requireAgent`, bukan JWT admin), rate limit 5/min
 - Upload: cek magic bytes (bukan cuma ext), max 5MB, sanitize filename
 - D1: prepared statement, no string concat
-- Checkout rate limit: 10/menit/IP via Cloudflare WAF / KV
+- Proteksi trafik & efisiensi query (issue #14, diverifikasi 7 Sep 2026 dari
+  docs Cloudflare D1 Limits + WAF rate limiting rules — bukan asumsi):
+  - WAF Free TERSEDIA: 1 rate limiting rule, counting IP, periode 10 dtk /
+    1 mnt, aksi Block. Klaim lama "WAF tidak tersedia" salah. Rule ke-1 yang
+    wajib dipasang di dashboard (Security → Security rules → Rate limiting):
+    `http.request.uri.path starts with "/api/"`, 100 request / 1 mnt / IP →
+    Block 1 mnt. Mencakup checkout/quote/upload/login sekaligus tanpa
+    menambah rule.
+  - In-memory `src/lib/rateLimit.ts` hanyalah lapis kedua (defense in depth
+    per isolate, bukan proteksi DDoS global): checkout:orders 10/mnt,
+    checkout:quote 20/mnt, proof:upload 5/mnt, upload:admin 20/mnt,
+    orders:lookup 20/mnt, auth:login 5/mnt, newsletter:subscribe 5/mnt, semua
+    429 + `Retry-After: 60`. IP anti-spoof: `cf-connecting-ip` utama,
+    fallback hanya `x-real-ip`; `x-forwarded-for` TIDAK dipakai (spoofable).
+    Tidak ada ketergantungan eksklusif pada counter per-isolate — WAF adalah
+    lapis pertama yang global.
+  - Batch cron operations = 8 (helper cron selaras: notifikasi Telegram,
+    reminder, outbox WA, fulfillment heal/backfill/due = 8). Alasan: Workers
+    Free maks 50 query/invocation dan tiap statement batch dihitung satu
+    query — batch 25 + loop N+1 sebelumnya dapat menembus ~175 query dan
+    gagal parsial. Sisa antrean diproses run 5-menit berikutnya.
+  - N+1 dihapus: quote memakai 2 query `IN` (produk + varian) untuk berapa
+    pun item; expiry cron JOIN order dalam 1 query; keranjang Telegram 1 JOIN
+    varian + 1 DELETE batch; PDP memakai `?slug=` exact (1 baris) dan related
+    `?cat=` (8 baris) — tidak ada lagi fetch seluruh katalog per halaman.
+  - Batas D1 yang dipatuhi kode: 100 bound parameter/query (batch IN
+    dipotong), LIKE max 50 byte (pola search dipotong 40 char).
 - CSP header via Next.js middleware
 - Jangan commit `.env`, `wrangler.toml` dengan secrets — pakai Pages Variables
 

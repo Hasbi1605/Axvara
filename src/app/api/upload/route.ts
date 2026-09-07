@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
+import { checkRateLimit } from "@/lib/rateLimit";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -38,8 +39,11 @@ export async function POST(req: NextRequest) {
   const admin = await requireAdmin(req);
   if (!admin) return NextResponse.json({ error: "Unauthorized — login admin dulu" }, { status: 401 });
 
-  // Rate limit for upload (best-effort in-memory per isolate)
-  // Cloudflare WAF rate limit should be added in dashboard for prod
+  // Rate limit upload admin (issue #14): 20/mnt/IP sebagai lapis kedua
+  // setelah auth + WAF. Sebelumnya endpoint ini TANPA limit sama sekali.
+  if (!checkRateLimit(req, "upload:admin")) {
+    return NextResponse.json({ error: "Terlalu banyak permintaan, coba lagi 1 menit." }, { status: 429, headers: { "Retry-After": "60" } });
+  }
 
   const form = await req.formData();
   const area = String(form.get("area") ?? "products");

@@ -113,39 +113,56 @@ export async function clearCart(userId: string): Promise<void> {
  * Baca keranjang + validasi harga/stok/varian terkini. Baris basi (varian
  * nonaktif/habis) dibersihkan otomatis agar checkout tidak pernah memakai
  * snapshot basi.
+ *
+ * Satu JOIN (issue #14): varian ikut diambil bersama baris keranjang agar
+ * tidak ada N query getActiveVariant per baris (keranjang 20 baris = 21
+ * query sebelumnya, kini 1 query).
  */
 export async function getCartSummary(userId: string): Promise<CartSummary> {
   const lines: CartLine[] = [];
   if (!isD1Mode()) return { lines, subtotal: 0, totalQty: 0 };
   const rows = await queryAll(
-    `SELECT c.product_id, c.variant_id, c.qty, p.name as product_name
+    `SELECT c.product_id, c.variant_id, c.qty, p.name as product_name,
+            pv.product_id AS v_product_id, pv.label AS v_label, pv.price AS v_price,
+            pv.stock AS v_stock, pv.fulfillment_mode AS v_mode, pv.is_active AS v_active
      FROM telegram_carts c
      JOIN products p ON p.id=c.product_id AND p.is_active=1
+     LEFT JOIN product_variants pv ON pv.id=c.variant_id AND pv.is_active=1
      WHERE c.user_id=?
      ORDER BY c.updated_at ASC
      LIMIT ?`,
     userId, MAX_LINES,
   );
+  const staleVariantIds: number[] = [];
   for (const row of rows) {
     const variantId = Number(row.variant_id);
-    const variant = await getActiveVariant(variantId);
-    if (!variant || variant.product_id !== Number(row.product_id) || variant.stock === 0) {
-      await execRun(`DELETE FROM telegram_carts WHERE user_id=? AND variant_id=?`, userId, variantId).catch(() => {});
+    const variantActive = Number(row.v_active ?? 0) === 1;
+    const variantStock = row.v_stock == null ? null : Number(row.v_stock);
+    if (!variantActive || variantStock == null || Number(row.v_product_id) !== Number(row.product_id) || variantStock === 0) {
+      staleVariantIds.push(variantId);
       continue;
     }
+    const fulfillmentMode = String(row.v_mode || "manual");
     let qty = clampLineQty(Number(row.qty || 1));
-    if (variant.fulfillment_mode === "unique") qty = 1;
-    else if (variant.stock !== -1) qty = Math.min(qty, Math.max(1, variant.stock));
+    if (fulfillmentMode === "unique") qty = 1;
+    else if (variantStock !== -1) qty = Math.min(qty, Math.max(1, variantStock));
     lines.push({
       productId: Number(row.product_id),
       variantId,
       qty,
       productName: String(row.product_name || "Produk"),
-      variantLabel: variant.label,
-      price: Number(variant.price),
-      stock: Number(variant.stock),
-      fulfillmentMode: String(variant.fulfillment_mode || "manual"),
+      variantLabel: String(row.v_label || ""),
+      price: Number(row.v_price),
+      stock: variantStock,
+      fulfillmentMode,
     });
+  }
+  // Hapus baris basi dalam 1 query (bukan N DELETE per baris).
+  if (staleVariantIds.length > 0) {
+    await execRun(
+      `DELETE FROM telegram_carts WHERE user_id=? AND variant_id IN (${staleVariantIds.map(() => "?").join(",")})`,
+      userId, ...staleVariantIds,
+    ).catch(() => {});
   }
   const subtotal = lines.reduce((sum, line) => sum + line.price * line.qty, 0);
   const totalQty = lines.reduce((sum, line) => sum + line.qty, 0);

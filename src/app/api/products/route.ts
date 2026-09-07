@@ -14,6 +14,7 @@ export async function GET(req: NextRequest) {
   const q = searchParams.get("q")?.toLowerCase().trim() ?? "";
   const cat = searchParams.get("cat") ?? "";
   const active = searchParams.get("active");
+  const slug = searchParams.get("slug")?.trim() ?? "";
   // The explicit active=1 path is public and always returns the same safe
   // subset, so it can skip auth work and be cached independently.
   const isPublicCatalog = active === "1";
@@ -47,7 +48,12 @@ export async function GET(req: NextRequest) {
   if (!isAdminRequest || active === "1") sql += ` AND p.is_active=1`;
   else if (active === "0") sql += ` AND p.is_active=0`;
   if (cat && cat !== "semua") { sql += ` AND c.slug=?`; params.push(cat); }
-  if (q) { sql += ` AND (lower(p.name) LIKE ? OR lower(p.description) LIKE ? OR lower(p.slug) LIKE ? OR lower(COALESCE(p.badge,'')) LIKE ?)`; const like=`%${q}%`; params.push(like,like,like,like); }
+  // Exact slug (issue #14): PDP/checkout hanya butuh 1 produk — jangan kirim
+  // seluruh katalog (rows-read + JSON + memori) untuk satu halaman.
+  if (slug) { sql += ` AND p.slug=?`; params.push(slug.slice(0, 80)); }
+  // D1 LIKE/GLOB max 50 byte (issue #14): potong pola agar query search
+  // tidak gagal untuk input panjang.
+  if (q) { sql += ` AND (lower(p.name) LIKE ? OR lower(p.description) LIKE ? OR lower(p.slug) LIKE ? OR lower(COALESCE(p.badge,'')) LIKE ?)`; const like=`%${q.slice(0, 40)}%`; params.push(like,like,like,like); }
   if (variantCatalog) sql += ` GROUP BY p.id`;
   sql += ` ORDER BY p.sort_order ASC, p.id ASC`;
   const rows = await queryAll(sql, ...params);

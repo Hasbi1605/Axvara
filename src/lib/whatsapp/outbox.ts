@@ -51,7 +51,7 @@ export async function enqueueWhatsAppMessage(
 }
 
 /** Ambil baris due untuk diproses cron (terbatas, terurut). */
-export async function getDueWhatsAppOutbox(limit = 25): Promise<Record<string, unknown>[]> {
+export async function getDueWhatsAppOutbox(limit = 8): Promise<Record<string, unknown>[]> {
   return queryAll(
     `SELECT * FROM whatsapp_outbox
      WHERE status IN ('pending','failed')
@@ -113,7 +113,7 @@ export async function processWhatsAppOutboxRow(row: Record<string, unknown>): Pr
 }
 
 /** Dipanggil cron operations: proses baris due, kembalikan jumlah terkirim. */
-export async function processDueWhatsAppOutbox(limit = 25): Promise<{ sent: number; dead: number }> {
+export async function processDueWhatsAppOutbox(limit = 8): Promise<{ sent: number; dead: number }> {
   const rows = await getDueWhatsAppOutbox(limit);
   let sent = 0;
   let dead = 0;

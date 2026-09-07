@@ -47,23 +47,25 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
     setCatalogProducts([]);
     setGalleryImages([]);
     setActiveImg(0);
-    fetch("/api/products?active=1")
+    // Exact slug (issue #14): sebelumnya fetch SELURUH katalog
+    // (/api/products?active=1 tanpa filter) hanya untuk 1 PDP + galeri.
+    // Kini 1 produk via slug — galeri dibangun dari produk itu sendiri.
+    // Related di bawah memakai daftar kecil ini (fallback: kosong).
+    fetch(`/api/products?active=1&slug=${encodeURIComponent(slug)}`)
       .then(async (r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then((data) => {
-        if (Array.isArray(data.products)) {
-          setCatalogProducts(data.products);
-          // Find the current product and build gallery
-          const found = data.products.find((p: Product) => p.slug === slug);
-          if (found) {
-            const imgs: string[] = [];
-            if (found.image) imgs.push(found.image);
-            if (Array.isArray(found.images)) {
-              for (const img of found.images) {
-                if (img && !imgs.includes(img)) imgs.push(img);
-              }
+        const list: Product[] = Array.isArray(data.products) ? data.products : [];
+        setCatalogProducts(list);
+        const found = list[0];
+        if (found) {
+          const imgs: string[] = [];
+          if (found.image) imgs.push(found.image);
+          if (Array.isArray(found.images)) {
+            for (const img of found.images) {
+              if (img && !imgs.includes(img)) imgs.push(img);
             }
-            if (imgs.length > 0) setGalleryImages(imgs);
           }
+          if (imgs.length > 0) setGalleryImages(imgs);
         }
       })
       .catch((e) => setDetailError(e instanceof Error ? e.message : "Gagal memuat produk"))
@@ -97,6 +99,23 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
   }, [slug]);
 
   const product = catalogProducts.find((p) => p.slug === slug);
+  const [related, setRelated] = useState<Product[]>([]);
+
+  useEffect(() => {
+    const current = catalogProducts.find((p) => p.slug === slug);
+    if (!current) { setRelated([]); return; }
+    // Related dibatasi server (issue #14): 8 produk kategori sama — bukan
+    // seluruh katalog. Abort bila slug berpindah sebelum respons tiba.
+    const controller = new AbortController();
+    fetch(`/api/products?active=1&cat=${encodeURIComponent(current.categorySlug)}`, { signal: controller.signal })
+      .then(async (r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then((data) => {
+        const list: Product[] = Array.isArray(data.products) ? data.products : [];
+        setRelated(list.filter((p) => p.slug !== slug).slice(0, 8));
+      })
+      .catch(() => setRelated([]));
+    return () => controller.abort();
+  }, [catalogProducts, slug]);
 
   const goPrev = useCallback(() => {
     setActiveImg((prev) => (prev - 1 + galleryImages.length) % galleryImages.length);
@@ -168,16 +187,6 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
     : selectedVariant ? selectedVariant.stock === 0 : false;
   const needsVariantSelection = variantsEnabled && !selectedVariant;
   const variantCatalogUnavailable = variantLoading || Boolean(variantError) || (variantsEnabled && activeVariants.length === 0);
-
-  const related = (() => {
-    const sameCat = catalogProducts.filter(
-      (p) => p.categorySlug === product.categorySlug && p.id !== product.id
-    );
-    const others = catalogProducts.filter(
-      (p) => p.categorySlug !== product.categorySlug && p.id !== product.id
-    );
-    return [...sameCat, ...others].slice(0, 8);
-  })();
 
   // Determine the display image — from gallery state or product.image fallback
   const displayImage =
