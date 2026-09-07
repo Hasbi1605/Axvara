@@ -25,6 +25,7 @@ import {
 import { sendMessage } from "@/lib/telegram/api";
 import { orderExpiredMessage } from "@/lib/telegram/messages";
 import { retryPendingTelegramNotifications, sendPendingOrderReminders } from "@/lib/telegram/order-notifications";
+import { processDueWhatsAppOutbox } from "@/lib/whatsapp/outbox";
 
 export const runtime = "edge";
 
@@ -51,6 +52,8 @@ export async function POST(request: NextRequest) {
     telegram_paid_notifications_retried: 0,
     telegram_paid_admin_notifications_retried: 0,
     telegram_pending_reminders_sent: 0,
+    whatsapp_outbox_sent: 0,
+    whatsapp_outbox_dead: 0,
     whatsapp_rows_cleaned: 0,
   };
 
@@ -218,6 +221,15 @@ export async function POST(request: NextRequest) {
 
     // 3b. Reminder order Telegram pending (maks 2x, interval ≥60 mnt, invoice aktif).
     results.telegram_pending_reminders_sent = await sendPendingOrderReminders(BATCH_LIMIT);
+
+    // 3c. Antrean WhatsApp idempoten (issue #13): kirim ulang notifikasi
+    // penting yang gagal (mis. "Pembayaran Diterima") dengan claim CAS +
+    // backoff; baris `dead` berhenti agar tidak spam selamanya.
+    try {
+      const waOutbox = await processDueWhatsAppOutbox(BATCH_LIMIT);
+      results.whatsapp_outbox_sent = waOutbox.sent;
+      results.whatsapp_outbox_dead = waOutbox.dead;
+    } catch { /* antrean bertahan; cron berikutnya retry */ }
 
     // 4. Process due fulfillment jobs
     // 4a first: heal paid orders that have NO job row at all (issue #3).

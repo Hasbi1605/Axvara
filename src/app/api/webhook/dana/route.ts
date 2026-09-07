@@ -9,8 +9,6 @@ import {
 } from "@/lib/payments/dana-qris";
 import { ensureFulfillmentForPaidOrder } from "@/lib/fulfillment/deliver";
 import { isFutureIso } from "@/lib/expiry";
-import { sendTextMessage } from "@/lib/whatsapp/gateway";
-import { paymentDetectedMessage } from "@/lib/whatsapp/messages";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -161,17 +159,30 @@ export async function POST(request: NextRequest) {
         orderCode,
       );
       const snap = orderDetail?.variant_snapshot ? JSON.parse(String(orderDetail.variant_snapshot)) : {};
-      await sendTextMessage({
-        target: String(transaction.channel_conversation_id),
-        message: paymentDetectedMessage({
+      // Notifikasi penting → antrean idempoten (issue #13), bukan best-effort
+      // sekali-kirim: gagal dikirim kini diretry cron via whatsapp_outbox.
+      const { paymentDetectedMessage } = await import("@/lib/whatsapp/messages");
+      const { enqueueWhatsAppMessage, waOutboxKey } = await import("@/lib/whatsapp/outbox");
+      const queued = await enqueueWhatsAppMessage(
+        waOutboxKey("payment_detected", orderCode),
+        String(transaction.channel_conversation_id),
+        paymentDetectedMessage({
           orderCode,
           productName: snap.product_name,
           variantLabel: snap.label,
           total: Number(orderDetail?.subtotal || 0),
           method: String(orderDetail?.payment_method || "QRIS").toUpperCase(),
         }),
-      });
-    } catch { /* Buyer notification is best-effort. */ }
+      );
+      if (queued) {
+        const { processWhatsAppOutboxRow } = await import("@/lib/whatsapp/outbox");
+        const row = await queryFirst(
+          `SELECT * FROM whatsapp_outbox WHERE idempotency_key=?`,
+          waOutboxKey("payment_detected", orderCode),
+        );
+        if (row) await processWhatsAppOutboxRow(row).catch(() => {});
+      }
+    } catch { /* Antrean bertahan; cron operations memproses yang due. */ }
   }
 
   return NextResponse.json({ ok: true, status: transitioned ? "paid" : "already_paid" });

@@ -20,6 +20,12 @@ export type AdminOverviewData = {
   top_product: null | { name: string; sold_count: number };
   channels: { web: number; telegram: number; whatsapp: number };
   systems: { telegram: boolean; whatsapp: boolean; qris: boolean; fulfillment: boolean };
+  system_details?: {
+    telegram?: { level: string; detail: string };
+    whatsapp?: { level: string; detail: string };
+    qris?: { level: string; detail: string };
+    fulfillment?: { level: string; detail: string };
+  };
 };
 
 export const EMPTY_ADMIN_OVERVIEW: AdminOverviewData = {
@@ -68,7 +74,13 @@ export function AdminOverview({ data, loading, onNavigate }: { data: AdminOvervi
 
     <div className="grid gap-4 lg:grid-cols-2">
       <section className="ax-glass rounded-[20px] p-5"><h2 className="text-sm font-semibold text-white">Kinerja toko</h2><div className="mt-4 grid grid-cols-2 gap-3 text-sm"><div className="rounded-xl bg-white/[0.04] p-3"><p className="text-[11px] text-white/40">Total lunas</p><p className="mt-1 font-bold tabular-nums text-emerald-300">{data.paid_orders}</p></div><div className="rounded-xl bg-white/[0.04] p-3"><p className="text-[11px] text-white/40">Omzet seluruhnya</p><p className="mt-1 font-bold text-white">{formatRupiah(data.revenue_total)}</p></div><div className="col-span-2 rounded-xl bg-white/[0.04] p-3"><p className="text-[11px] text-white/40">Produk terlaris</p><p className="mt-1 font-semibold text-white">{data.top_product ? `${data.top_product.name} · ${data.top_product.sold_count} terjual` : "Belum ada data"}</p></div></div></section>
-      <section className="ax-glass rounded-[20px] p-5"><h2 className="text-sm font-semibold text-white">Kesehatan sistem</h2><div className="mt-4 grid grid-cols-2 gap-3">{Object.entries({ Telegram: data.systems.telegram, WhatsApp: data.systems.whatsapp, "QRIS Hook": data.systems.qris, Fulfillment: data.systems.fulfillment }).map(([label, ok]) => <div key={label} className={`rounded-xl border px-3 py-3 text-xs font-semibold ${ok ? "border-emerald-400/15 bg-emerald-400/[0.07] text-emerald-300" : "border-red-400/15 bg-red-500/[0.07] text-red-300"}`}><span className={`mr-2 inline-block h-1.5 w-1.5 rounded-full ${ok ? "bg-emerald-400" : "bg-red-400"}`} />{label}</div>)}</div></section>
+      <section className="ax-glass rounded-[20px] p-5"><h2 className="text-sm font-semibold text-white">Kesehatan sistem</h2><div className="mt-4 grid grid-cols-2 gap-3">{Object.entries({ Telegram: data.systems.telegram, WhatsApp: data.systems.whatsapp, "QRIS Hook": data.systems.qris, Fulfillment: data.systems.fulfillment }).map(([label, ok]) => {
+        const key = label === "Telegram" ? "telegram" : label === "WhatsApp" ? "whatsapp" : label === "QRIS Hook" ? "qris" : "fulfillment";
+        const detail = data.system_details?.[key as keyof NonNullable<typeof data.system_details>];
+        const tone = detail?.level === "degraded" ? "red" : detail?.level === "unknown" ? "amber" : ok ? "emerald" : "red";
+        const dot = tone === "emerald" ? "bg-emerald-400" : tone === "amber" ? "bg-[#FFB800]" : "bg-red-400";
+        return <div key={label} title={detail?.detail || detail?.level || (ok ? "sehat" : "perlu perhatian")} className={`rounded-xl border px-3 py-3 text-xs font-semibold ${tone === "emerald" ? "border-emerald-400/15 bg-emerald-400/[0.07] text-emerald-300" : tone === "amber" ? "border-[#FFB800]/20 bg-[#FFB800]/[0.07] text-[#FFCF55]" : "border-red-400/15 bg-red-500/[0.07] text-red-300"}`}><span className={`mr-2 inline-block h-1.5 w-1.5 rounded-full ${dot}`} />{label}{detail && detail.level !== "healthy" ? <span className="ml-1 opacity-70">· {detail.level}</span> : null}</div>;
+      })}</div>{data.system_details && <p className="mt-3 text-[11px] leading-5 text-white/35" title="Detail status tiap layanan">configured = siap tapi belum ada pengukuran · unknown = belum bisa dinilai · degraded = perlu tindakan.</p>}</section>
     </div>
   </div>;
 }

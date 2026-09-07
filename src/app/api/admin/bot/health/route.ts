@@ -58,10 +58,41 @@ export async function GET(request: NextRequest) {
     );
     health.fulfillment_jobs = pendingJobs;
 
+    // Usia antrean tertua per status (issue #13): kegagalan/usia antrean
+    // adalah sinyal, bukan sekadar jumlah.
+    try {
+      const oldestJobs = await queryAll(
+        `SELECT status, MIN(next_attempt_at) AS oldest_due, MAX(attempt_count) AS max_attempts
+         FROM fulfillment_jobs WHERE status IN ('queued','retry','failed','manual_required','sending')
+         GROUP BY status`,
+      );
+      health.fulfillment_queue_age = oldestJobs;
+    } catch { /* kolom lama tetap kompatibel */ }
+
     const waOutbox = await queryAll(
       `SELECT status, COUNT(*) as count FROM whatsapp_outbox GROUP BY status`,
     );
     health.whatsapp_outbox = waOutbox;
+    try {
+      const oldestOutbox = await queryAll(
+        `SELECT status, MIN(next_attempt_at) AS oldest_due, MAX(attempt_count) AS max_attempts
+         FROM whatsapp_outbox WHERE status IN ('pending','failed','dead')
+         GROUP BY status`,
+      );
+      health.whatsapp_outbox_age = oldestOutbox;
+    } catch { /* tabel lama tetap kompatibel */ }
+
+    // Event QRIS 7 hari terakhir: tak-cocok vs gagal — sinyal degraded.
+    try {
+      const { queryFirst } = await import("@/lib/db");
+      const qrisEvents = await queryFirst(
+        `SELECT COUNT(*) AS unmatched, SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS failed,
+                MAX(CASE WHEN status='matched' THEN processed_at ELSE NULL END) AS last_match
+         FROM dana_webhook_events
+         WHERE status IN ('received','ignored','failed') AND datetime(created_at)>=datetime('now','-7 days')`,
+      );
+      health.qris_events_7d = qrisEvents ?? null;
+    } catch { /* tabel lama tetap kompatibel */ }
   } catch { /* ok if tables don't exist yet */ }
 
   return NextResponse.json(health);
