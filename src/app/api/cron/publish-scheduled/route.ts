@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { execRun, OrderTransitionError, queryAll, transitionPendingOrder } from "@/lib/db";
+import { isExpiredIso } from "@/lib/expiry";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -12,14 +13,33 @@ export async function POST(request: NextRequest) {
   }
 
   const now = new Date().toISOString();
-  const expiredOrders = (await queryAll(
-    "SELECT code,items,expires_at FROM orders WHERE status='pending' AND expires_at<=? ORDER BY expires_at ASC",
-    now,
-  )).filter((order) => (
+  // Expiry is evaluated in JS from the canonical ISO string (shared helper
+  // with the operations cron) so ISO-8601 and legacy space-separated values
+  // expire with identical semantics. Orders that carry a QRIS ledger are
+  // left to the operations cron's guarded ledger+order transition so the
+  // transaction row never stays `pending` while its order is kadaluarsa
+  // (which would pin the unique amount slot forever); that transition is
+  // idempotent, so whichever cron reaches such an order first wins.
+  const expiredCandidates = await queryAll(
+    "SELECT code,items,expires_at FROM orders WHERE status='pending' AND expires_at IS NOT NULL ORDER BY expires_at ASC LIMIT 200",
+  );
+  const expiredOrders = expiredCandidates.filter((order) => (
     order.status === undefined || order.status === "pending"
-  ) && Boolean(order.expires_at) && Date.parse(String(order.expires_at)) <= Date.now());
+  ) && isExpiredIso(order.expires_at));
   const expiredIds: string[] = [];
   for (const order of expiredOrders) {
+    // Skip orders owned by the QRIS ledger path: the operations cron
+    // expires their transaction row in the same guarded batch, which also
+    // releases the unique-amount slot. Expiring only the order here would
+    // strand a `pending` transaction and block amount reuse.
+    const ledger = await queryAll(
+      "SELECT status, expires_at FROM payment_transactions WHERE order_code=?",
+      String(order.code),
+    );
+    const activeLedger = ledger.some(
+      (tx) => ["initializing", "pending"].includes(String(tx.status)),
+    );
+    if (activeLedger) continue;
     try {
       const items = JSON.parse(String(order.items || "[]")) as { product_id: number; qty: number }[];
       await transitionPendingOrder(String(order.code), "kadaluarsa", "Kedaluwarsa otomatis setelah 24 jam.", items);

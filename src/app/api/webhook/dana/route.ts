@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { execRun, queryFirst, transitionPendingPaymentToPaid } from "@/lib/db";
+import { execRun, queryAll, queryFirst, transitionPendingPaymentToPaid } from "@/lib/db";
 import {
   constantTimeEqual,
   isDanaQrisConfigured,
@@ -7,6 +7,7 @@ import {
   sha256Hex,
 } from "@/lib/payments/dana-qris";
 import { ensureFulfillmentForPaidOrder } from "@/lib/fulfillment/deliver";
+import { isFutureIso } from "@/lib/expiry";
 import { sendTextMessage } from "@/lib/whatsapp/gateway";
 import { paymentDetectedMessage } from "@/lib/whatsapp/messages";
 
@@ -59,17 +60,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, status: "duplicate" });
   }
 
-  const transaction = await queryFirst(
-    `SELECT pt.order_code, pt.status, o.status AS order_status,
+  // Expiry is evaluated in JS from the canonical ISO string (shared helper
+  // with both crons): a raw `datetime(expires_at)>datetime('now')` SQL
+  // comparison would still match some formats, while a raw string comparison
+  // never matches ISO rows. Over-fetching one extra row and filtering here
+  // keeps webhook matching exactly as strict as cron expiry.
+  const candidates = await queryAll(
+    `SELECT pt.order_code, pt.status, pt.expires_at, o.status AS order_status,
             o.sales_channel, o.channel_conversation_id
      FROM payment_transactions pt
      JOIN orders o ON o.code=pt.order_code
      WHERE pt.provider='dana' AND pt.payable_amount=?
        AND pt.status='pending' AND o.status='pending'
-       AND datetime(pt.expires_at)>datetime('now')
-     LIMIT 1`,
+     LIMIT 2`,
     payment.amount,
   );
+  const transaction = candidates.find((row) => isFutureIso(row.expires_at));
   if (!transaction) {
     await execRun(
       `UPDATE dana_webhook_events

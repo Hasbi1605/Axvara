@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { execRun, isD1Mode, queryAll, queryFirst, transitionPendingPaymentToPaid } from "@/lib/db";
+import { isFutureIso } from "@/lib/expiry";
 import { ensureFulfillmentForPaidOrder } from "@/lib/fulfillment/deliver";
 import { sendTextMessage } from "@/lib/whatsapp/gateway";
 import { paymentDetectedMessage } from "@/lib/whatsapp/messages";
@@ -52,13 +53,16 @@ export async function POST(request: NextRequest) {
   if (!event) return NextResponse.json({ error: "event_not_found" }, { status: 404 });
   if (String(event.status) === "matched") return NextResponse.json({ ok: true, status: "already_matched", order_code: event.order_code });
 
-  const matches = await queryAll(
-    `SELECT pt.order_code,o.sales_channel,o.channel_conversation_id
+  // Same canonical JS expiry check as the webhook: an admin retry must
+  // never resurrect an already-expired invoice.
+  const candidates = await queryAll(
+    `SELECT pt.order_code,pt.expires_at,o.sales_channel,o.channel_conversation_id
      FROM payment_transactions pt JOIN orders o ON o.code=pt.order_code
      WHERE pt.provider='dana' AND pt.payable_amount=? AND pt.status='pending'
-       AND o.status='pending' AND datetime(pt.expires_at)>datetime('now') LIMIT 2`,
+       AND o.status='pending' LIMIT 3`,
     Number(event.amount),
   );
+  const matches = candidates.filter((row) => isFutureIso(row.expires_at));
   if (matches.length !== 1) {
     await execRun("UPDATE dana_webhook_events SET status='ignored',last_error=?,processed_at=datetime('now') WHERE id=?", matches.length > 1 ? "multiple_active_exact_amount" : "no_active_exact_amount", eventId);
     return NextResponse.json({ error: matches.length > 1 ? "multiple_active_exact_amount" : "no_active_exact_amount" }, { status: 409 });

@@ -25,7 +25,9 @@ export async function getSession(provider: string, conversationId: string, membe
   if (!isD1Mode()) return null;
 
   const row = await queryFirst(
-    `SELECT * FROM whatsapp_sessions WHERE provider=? AND conversation_id=? AND member_id=? AND expires_at > datetime('now')`,
+    // datetime() normalizes both ISO-8601 and legacy space-separated values;
+    // a raw string comparison would never match ISO rows.
+    `SELECT * FROM whatsapp_sessions WHERE provider=? AND conversation_id=? AND member_id=? AND datetime(expires_at) > datetime('now')`,
     provider, conversationId, memberId
   );
 

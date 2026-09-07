@@ -422,13 +422,19 @@ describe("Variant stock expiry lifecycle", () => {
     expect(callback).toContain("x-webhook-secret");
     expect(callback).toContain("constantTimeEqual");
     expect(callback).toContain("pt.payable_amount=?");
-    expect(callback).toContain("datetime(pt.expires_at)>datetime('now')");
+    // Canonical JS expiry shared with both crons (raw SQL string comparison
+    // can never match ISO rows).
+    expect(callback).toContain("isFutureIso(row.expires_at)");
+    expect(callback).toContain("pt.status='pending'");
   });
 
   it("deduplicates hook events and allows the atomic paid repair guard", () => {
     const db = read("src/lib/db.ts");
     const callback = read("src/app/api/webhook/dana/route.ts");
-    expect(db).toMatch(/status IN \('pending','paid'\)/);
+    // Paid wins only from a pending ledger while the order is still
+    // pending+unpaid, so a concurrent expiry batch settles deterministically.
+    expect(db).toContain("AND EXISTS(SELECT 1 FROM payment_transactions WHERE order_code=? AND status='pending')");
+    expect(db).toContain("payment_status IN ('unpaid','pending')");
     expect(callback).toContain("transitionPendingPaymentToPaid(orderCode");
     expect(callback).toContain("INSERT OR IGNORE INTO dana_webhook_events");
     expect(callback).toContain('status: "duplicate"');

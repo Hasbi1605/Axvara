@@ -393,6 +393,27 @@ export async function execRun(sql: string, ...params: unknown[]): Promise<{ last
   return { changes: 0 };
 }
 
+/**
+ * Canonical expiry predicate for every payment/order TTL comparison.
+ *
+ * All writers persist `expires_at` as an ISO-8601 UTC string
+ * (`new Date(...).toISOString()`, e.g. `2026-09-07T07:16:59.000Z`), while
+ * SQLite's `datetime('now')` returns `YYYY-MM-DD HH:MM:SS`. A raw string
+ * comparison (`expires_at < datetime('now')`) therefore never matches an
+ * ISO value because `'T' (0x54)` sorts after `' ' (0x20)`; such invoices
+ * would stay `pending` forever, keep their unique QRIS amount reserved,
+ * and diverge from their order. `datetime(expires_at)` normalizes both
+ * ISO-8601 (`T`/`Z`/milliseconds) and legacy space-separated values into
+ * the same `YYYY-MM-DD HH:MM:SS` domain before comparing.
+ *
+ * Keep every new expiry check on this predicate (or an equivalent JS
+ * `Date.parse(...) <= Date.now()` comparison) so QRIS ledgers, manual
+ * orders, sessions, locks, and reminders expire with identical semantics.
+ */
+export const D1_EXPIRY_PREDICATE = "datetime(expires_at) < datetime('now')";
+export const D1_NOT_EXPIRED_PREDICATE =
+  "(expires_at IS NULL OR datetime(expires_at) >= datetime('now'))";
+
 export class StockReservationError extends Error {
   constructor() {
     super("Stok atau status produk berubah. Muat ulang checkout.");
@@ -552,10 +573,14 @@ export async function transitionPendingOrder(
   const d1 = getD1();
   if (d1) {
     if (status === "dibatalkan" || status === "kadaluarsa") {
-      const guardId = `${code}:transition:${status}`;
+      // Deterministic loser for the payment-vs-expiry race: the guards
+      // require the order to still be pending AND unpaid. A concurrent
+      // `transitionPendingPaymentToPaid` flips payment_status to 'paid' in
+      // the same batch, so exactly one of the two batches commits.
+      const guardId = `${code}:transition:${status}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
       const statements: D1Statement[] = [
         d1.prepare(
-          "INSERT INTO operation_guards (operation_id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM orders WHERE code=? AND status='pending') THEN 1 ELSE 0 END",
+          "INSERT INTO operation_guards (operation_id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM orders WHERE code=? AND status='pending' AND payment_status IN ('unpaid','pending','expired','failed')) THEN 1 ELSE 0 END",
         ).bind(guardId, code),
       ];
       productQuantities.forEach((qty, productId) => {
@@ -638,12 +663,17 @@ export async function transitionPendingPaymentOrder(input: {
 
   const d1 = getD1();
   if (d1) {
-    const guardId = `${input.orderCode}:payment:${input.transactionStatus}`;
+    // Deterministic loser for the expiry-vs-payment race: the guard only
+    // passes while the transaction is still in the expected non-terminal
+    // state AND the order is still pending+unpaid. A concurrent paid batch
+    // moves both rows atomically, so a late expiry becomes a no-op instead
+    // of resurrecting stock or overwriting a paid order.
+    const guardId = `${input.orderCode}:payment:${input.transactionStatus}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
     const statements: D1Statement[] = [
       d1.prepare(
         `INSERT INTO operation_guards (operation_id,valid)
          SELECT ?, CASE WHEN
-           EXISTS(SELECT 1 FROM orders WHERE code=? AND status='pending')
+           EXISTS(SELECT 1 FROM orders WHERE code=? AND status='pending' AND payment_status IN ('unpaid','pending'))
            AND EXISTS(SELECT 1 FROM payment_transactions WHERE order_code=? AND status=?)
          THEN 1 ELSE 0 END`,
       ).bind(guardId, input.orderCode, input.orderCode, input.expectedTransactionStatus),
@@ -709,20 +739,25 @@ export async function transitionPendingPaymentToPaid(
 ): Promise<boolean> {
   const d1 = getD1();
   if (d1) {
-    const guardId = `${orderCode}:payment:paid`;
+    // Mirror image of the expiry guard: paid wins only while the order is
+    // still pending+unpaid and the ledger is still pending. A concurrent
+    // expiry batch moves both rows first, so a late payment becomes a
+    // no-op (returns false) instead of double-spending stock or reviving
+    // a kadaluarsa order.
+    const guardId = `${orderCode}:payment:paid:${Date.now()}:${Math.random().toString(36).slice(2)}`;
     const statements: D1Statement[] = [
       d1.prepare(
         `INSERT INTO operation_guards (operation_id,valid)
          SELECT ?, CASE WHEN
            EXISTS(SELECT 1 FROM orders WHERE code=? AND status='pending' AND payment_status IN ('unpaid','pending'))
-           AND EXISTS(SELECT 1 FROM payment_transactions WHERE order_code=? AND status IN ('pending','paid'))
+           AND EXISTS(SELECT 1 FROM payment_transactions WHERE order_code=? AND status='pending')
          THEN 1 ELSE 0 END`,
       ).bind(guardId, orderCode, orderCode),
       d1.prepare(
         `UPDATE payment_transactions
          SET status='paid', paid_at=COALESCE(paid_at,?,datetime('now')),
              last_checked_at=datetime('now'), last_error=NULL, updated_at=datetime('now')
-         WHERE order_code=? AND status IN ('pending','paid')`,
+         WHERE order_code=? AND status='pending'`,
       ).bind(providerPaidAt ?? null, orderCode),
       d1.prepare(
         `UPDATE orders

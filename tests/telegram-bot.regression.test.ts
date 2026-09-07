@@ -738,7 +738,11 @@ describe("Telegram Fase 2: cart + reminder (tanpa review/promo)", () => {
     expect(lib).toContain("TELEGRAM_REMINDER_MAX = 2");
     expect(lib).toContain("TELEGRAM_REMINDER_INTERVAL_MINUTES = 60");
     expect(lib).toContain("telegram_reminder_count < ?");
-    expect(lib).toContain("datetime(pt.expires_at)>datetime('now')");
+    // Canonical JS expiry (shared helper with both crons): raw SQL string
+    // comparison can never match ISO rows, so the active-invoice guard must
+    // go through isFutureIso.
+    expect(lib).toContain("isFutureIso");
+    expect(lib).toContain("pt.status='pending'");
     expect(lib).toContain("payment_status IN ('unpaid','pending')");
     const cron = read("src/app/api/cron/operations/route.ts");
     expect(cron).toContain("sendPendingOrderReminders");

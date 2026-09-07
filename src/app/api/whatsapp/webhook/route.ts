@@ -738,11 +738,14 @@ async function handleProofUpload(
 
   if (!orderCode) {
     const expectedMethod = claimedMethod ? paymentMethodId(claimedMethod) : null;
+    // Expiry is re-checked in JS via canAcceptWhatsAppPaymentProof (canonical
+    // Date.parse semantics shared with both crons); the SQL predicate below
+    // is only a coarse pre-filter so ISO rows are never skipped here.
     const latest = await queryFirst(
       `SELECT code FROM orders
        WHERE sales_channel='whatsapp' AND channel_conversation_id=? AND channel_member_id=?
          AND status='pending' AND payment_status IN ('unpaid','pending')
-         AND (expires_at IS NULL OR expires_at>datetime('now'))
+         AND (expires_at IS NULL OR datetime(expires_at) >= datetime('now'))
          AND (? IS NULL OR payment_method=?)
        ORDER BY created_at DESC LIMIT 1`,
       groupId,

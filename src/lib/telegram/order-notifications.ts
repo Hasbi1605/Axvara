@@ -1,4 +1,5 @@
 import { execRun, queryAll, queryFirst } from "@/lib/db";
+import { isFutureIso } from "@/lib/expiry";
 import { sendMessage } from "@/lib/telegram/api";
 import {
   adminTelegramOrderCreatedMessage,
@@ -249,20 +250,24 @@ export const TELEGRAM_REMINDER_INTERVAL_MINUTES = 60;
 
 export async function sendPendingOrderReminders(limit = 25): Promise<number> {
   if (!telegramNotificationsConfigured()) return 0;
-  const pending = await queryAll(
+  // Same canonical JS expiry check as webhook/crons: only invoices whose
+  // ISO `expires_at` is still in the future are reminded.
+  const candidates = await queryAll(
     `SELECT o.code, o.items, o.telegram_chat_id, o.telegram_reminder_count,
-            o.telegram_reminder_sent_at, pt.payable_amount, o.subtotal
+            o.telegram_reminder_sent_at, pt.payable_amount, pt.expires_at, o.subtotal
      FROM orders o
      JOIN payment_transactions pt ON pt.order_code=o.code AND pt.status='pending'
-       AND datetime(pt.expires_at)>datetime('now')
      WHERE o.sales_channel='telegram' AND o.status='pending'
        AND o.payment_status IN ('unpaid','pending')
        AND o.telegram_reminder_count < ?
        AND (o.telegram_reminder_sent_at IS NULL
          OR datetime(o.telegram_reminder_sent_at, '+' || ? || ' minutes') <= datetime('now'))
      ORDER BY o.created_at ASC LIMIT ?`,
-    TELEGRAM_REMINDER_MAX, TELEGRAM_REMINDER_INTERVAL_MINUTES, limit,
+    TELEGRAM_REMINDER_MAX, TELEGRAM_REMINDER_INTERVAL_MINUTES, limit * 4,
   );
+  const pending = candidates
+    .filter((order) => isFutureIso(order.expires_at))
+    .slice(0, limit);
   let sent = 0;
   for (const order of pending) {
     const code = String(order.code);

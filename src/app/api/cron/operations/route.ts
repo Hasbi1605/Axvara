@@ -13,6 +13,7 @@ import {
   transitionPendingOrder,
   transitionPendingPaymentOrder,
 } from "@/lib/db";
+import { isExpiredIso } from "@/lib/expiry";
 import {
   getDueJobs,
   processJob,
@@ -37,6 +38,7 @@ export async function POST(request: NextRequest) {
   const results: Record<string, unknown> = {
     stale_initializing: 0,
     expired_payments: 0,
+    repaired_legacy_expiry: 0,
     due_jobs_processed: 0,
     stale_locks_released: 0,
     expired_manual_whatsapp_orders: 0,
@@ -76,13 +78,24 @@ export async function POST(request: NextRequest) {
     }
     results.stale_initializing = staleTransitions;
 
-    // 2. Expired payments
-    const expiredPayments = await queryAll(
-      `SELECT order_code, provider_order_id, merchant_id FROM payment_transactions
-       WHERE status='pending' AND expires_at < datetime('now')
+    // 2. Expired payments. Expiry is evaluated in JS from the canonical
+    // ISO string so ISO-8601 (`T`/`Z`/millis) and legacy space-separated
+    // values share one semantic; a raw SQL string comparison would never
+    // match ISO rows and would leak the unique QRIS amount forever.
+    // The guarded transition is idempotent, so a concurrent publish-scheduled
+    // run (or a second operations worker) that reaches the same order first
+    // simply makes this attempt a no-op (returns false) without restoring
+    // stock twice — every stock/inventory/order/ledger write for one order
+    // lives in a single D1 batch.
+    const expiredCandidates = await queryAll(
+      `SELECT order_code, provider_order_id, merchant_id, expires_at, status FROM payment_transactions
+       WHERE status='pending'
        LIMIT ?`,
-      BATCH_LIMIT,
+      BATCH_LIMIT * 4,
     );
+    const expiredPayments = expiredCandidates
+      .filter((tx) => isExpiredIso(tx.expires_at))
+      .slice(0, BATCH_LIMIT);
     let expiredTransitions = 0;
     for (const tx of expiredPayments) {
       const order = await queryFirst(`SELECT items, telegram_chat_id FROM orders WHERE code=?`, String(tx.order_code));
@@ -114,17 +127,73 @@ export async function POST(request: NextRequest) {
     }
     results.expired_payments = expiredTransitions;
 
-    // 2b. Manual WhatsApp rails have no transaction ledger but still reserve
-    // variant stock. Expire them from the order TTL as well.
-    const expiredManualWhatsApp = await queryAll(
-      `SELECT o.code, o.items
-       FROM orders o
-       WHERE o.sales_channel='whatsapp' AND o.status='pending'
-         AND o.expires_at < datetime('now')
-         AND NOT EXISTS(SELECT 1 FROM payment_transactions pt WHERE pt.order_code=o.code)
+    // 2a. Safe repair for legacy rows stranded by the old raw-string expiry
+    // comparison: a kadaluarsa/dibatalkan order whose QRIS ledger is still
+    // `pending`/`initializing` pins its unique amount slot forever (the
+    // partial unique index only covers non-terminal states) and can never
+    // be matched by reconcile (which requires a pending order). The guarded
+    // transition below is a no-op for pending orders and for already-paid
+    // orders, so it only closes genuinely terminal ledgers — one order per
+    // batch item, restoring stock/inventory exactly once.
+    const strandedCandidates = await queryAll(
+      `SELECT pt.order_code, pt.status AS tx_status, o.items
+       FROM payment_transactions pt
+       JOIN orders o ON o.code=pt.order_code
+       WHERE pt.status IN ('pending','initializing')
+         AND o.status IN ('kadaluarsa','dibatalkan')
        LIMIT ?`,
       BATCH_LIMIT,
     );
+    let repairedLegacy = 0;
+    for (const row of strandedCandidates) {
+      try {
+        const items = JSON.parse(String(row.items ?? "[]")) as { product_id: number; variant_id?: number; qty: number }[];
+        const changed = await transitionPendingPaymentOrder({
+          orderCode: String(row.order_code),
+          expectedTransactionStatus: String(row.tx_status) === "initializing" ? "initializing" : "pending",
+          transactionStatus: String(row.tx_status) === "initializing" ? "failed" : "expired",
+          orderStatus: "kadaluarsa",
+          paymentStatus: "expired",
+          items,
+          lastError: "legacy_expiry_repair",
+        });
+        // transitionPendingPaymentOrder guards on a pending order, so for
+        // already-terminal orders close just the stranded ledger row: its
+        // status is still non-terminal, therefore still pinning the amount.
+        if (!changed) {
+          const closed = await execRun(
+            `UPDATE payment_transactions
+             SET status=?, last_error='legacy_expiry_repair', updated_at=datetime('now')
+             WHERE order_code=? AND status=?`,
+            String(row.tx_status) === "initializing" ? "failed" : "expired",
+            String(row.order_code),
+            String(row.tx_status),
+          );
+          if (closed.changes) repairedLegacy++;
+        } else {
+          repairedLegacy++;
+        }
+      } catch { /* keep the repair best-effort; next run retries */ }
+    }
+    results.repaired_legacy_expiry = repairedLegacy;
+
+    // 2b. Manual WhatsApp rails have no transaction ledger but still reserve
+    // variant stock. Expire them from the order TTL as well. Publish-scheduled
+    // covers every pending web/manual order; this leg only handles the
+    // WhatsApp subset and shares the same guarded transition, so whichever
+    // cron reaches an order first wins and the other becomes a no-op.
+    const manualCandidates = await queryAll(
+      `SELECT o.code, o.items, o.expires_at
+       FROM orders o
+       WHERE o.sales_channel='whatsapp' AND o.status='pending'
+         AND o.expires_at IS NOT NULL
+         AND NOT EXISTS(SELECT 1 FROM payment_transactions pt WHERE pt.order_code=o.code)
+       LIMIT ?`,
+      BATCH_LIMIT * 4,
+    );
+    const expiredManualWhatsApp = manualCandidates
+      .filter((order) => isExpiredIso(order.expires_at))
+      .slice(0, BATCH_LIMIT);
     let expiredStaticCount = 0;
     for (const order of expiredManualWhatsApp) {
       try {
@@ -167,8 +236,9 @@ export async function POST(request: NextRequest) {
 
     // 6. Keep transient WhatsApp state bounded. Proof metadata and orders are
     // retained; only expired sessions and old dedup events are removed.
+    // datetime() normalizes ISO-8601 as well as legacy space-separated values.
     const expiredSessions = await execRun(
-      `DELETE FROM whatsapp_sessions WHERE expires_at<datetime('now','-1 day')`,
+      `DELETE FROM whatsapp_sessions WHERE datetime(expires_at)<datetime('now','-1 day')`,
     );
     const oldInboxEvents = await execRun(
       `DELETE FROM whatsapp_inbox_events WHERE created_at<datetime('now','-7 days')`,
