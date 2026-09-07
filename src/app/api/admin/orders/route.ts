@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { queryAll, queryFirst } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
+import { csvCell } from "@/lib/csv";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -117,11 +118,6 @@ function validDate(value: string | null) {
 function clampNumber(value: string | null, min: number, max: number, fallback: number) {
   const parsed = Number(value);
   return Number.isInteger(parsed) ? Math.max(min, Math.min(max, parsed)) : fallback;
-}
-
-function csvCell(value: unknown) {
-  const text = String(value ?? "").replace(/\r?\n/g, " ");
-  return `"${text.replace(/"/g, '""')}"`;
 }
 
 function makeCsv(rows: Record<string, unknown>[]) {

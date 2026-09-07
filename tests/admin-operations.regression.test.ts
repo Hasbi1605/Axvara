@@ -26,6 +26,41 @@ describe("admin operational workspace", () => {
     expect(events).toContain("transitionPendingPaymentToPaid");
   });
 
+  it("neutralizes spreadsheet formulas in the CSV export (issue #9)", async () => {
+    const { sanitizeCsvField, csvCell } = await import("@/lib/csv");
+    // Payload klasik: dievaluasi sebagai formula tanpa sanitasi.
+    expect(sanitizeCsvField("=cmd|'/c calc'!A0")).toBe("'=cmd|'/c calc'!A0");
+    expect(sanitizeCsvField("+1+1")).toBe("'+1+1");
+    expect(sanitizeCsvField("-2+3")).toBe("'-2+3");
+    expect(sanitizeCsvField("@SUM(A1:A10)")).toBe("'@SUM(A1:A10)");
+    // Whitespace/control character di depan tidak boleh menyembunyikan trigger.
+    expect(sanitizeCsvField("  =HYPERLINK(\"http://x\")")).toBe("'  =HYPERLINK(\"http://x\")");
+    expect(sanitizeCsvField("\t+1+1")).toBe("'\t+1+1");
+    expect(sanitizeCsvField(" @evil")).toBe("' @evil");
+    // Keterbacaan data aman: tidak diubah.
+    expect(sanitizeCsvField("Budi Santoso")).toBe("Budi Santoso");
+    expect(sanitizeCsvField("082135277434")).toBe("082135277434");
+    expect(sanitizeCsvField("user@example.com")).toBe("user@example.com");
+    expect(sanitizeCsvField("AXV-20260907-AB12CD34")).toBe("AXV-20260907-AB12CD34");
+    expect(sanitizeCsvField("ChatGPT Plus 1 Bulan x1")).toBe("ChatGPT Plus 1 Bulan x1");
+    expect(sanitizeCsvField(89000)).toBe("89000");
+    expect(sanitizeCsvField(null)).toBe("");
+    // Newline tetap diratakan (perilaku lama dipertahankan), quote tetap di-escape.
+    expect(sanitizeCsvField("baris1\nbaris2")).toBe("baris1 baris2");
+    // Sel yang sudah disanitasi tidak menjadi formula saat di-quote:
+    // `"..."` di sekitar `'=...` membuat spreadsheet memperlakukannya teks.
+    const quoted = csvCell("=1+1");
+    expect(quoted).toBe("\"'=1+1\"");
+    expect(quoted.startsWith('"=')).toBe(false);
+    // Unicode dipertahankan (BOM + teks non-ASCII tidak rusak).
+    expect(sanitizeCsvField("Toko Kucing 🐱")).toContain("🐱");
+    // Seluruh kolom CSV (termasuk header) melewati sanitasi di kode route.
+    const api = read("src/app/api/admin/orders/route.ts");
+    expect(api).toContain('import { csvCell } from "@/lib/csv"');
+    expect(api).toContain("header.map(csvCell)");
+    expect(read("src/lib/csv.ts")).toContain("sanitizeCsvField");
+  });
+
   it("stores editable storefront settings without exposing admin writes", () => {
     const migration = read("drizzle/migrations/0011_store_settings.sql");
     const api = read("src/app/api/store-settings/route.ts");
