@@ -85,7 +85,17 @@ export async function POST(
     }
 
     if (d1) {
-      const guardId = `proof-review:${proofId}:manual-payment`;
+      // The fulfillment routing is resolved BEFORE the batch so the outbox
+      // row can land in the same commit (issue #3): no crash window between
+      // "proof approved + order lunas" and "job created".
+      const fulfillmentRouting = await queryFirst(
+        `SELECT o.variant_id, o.sales_channel,
+                (SELECT fi.id FROM fulfillment_inventory fi
+                  WHERE fi.order_code=o.code AND fi.status='reserved') AS inventory_id
+         FROM orders o WHERE o.code=?`,
+        orderCode,
+      );
+      const proofGuardId = `proof-review:${proofId}:manual-payment:${Date.now()}:${Math.random().toString(36).slice(2)}`;
       const statements: D1Statement[] = [
         d1.prepare(
           `INSERT INTO operation_guards (operation_id, valid)
@@ -99,7 +109,7 @@ export async function POST(
                SELECT 1 FROM payment_transactions WHERE order_code=? AND status='paid'
              )
            THEN 1 ELSE 0 END`,
-        ).bind(guardId, proofId, orderCode, orderCode),
+        ).bind(proofGuardId, proofId, orderCode, orderCode),
         d1.prepare(
           `UPDATE payment_proofs
            SET status='approved', reviewed_by=?, reviewed_at=datetime('now'), rejection_reason=NULL
@@ -116,7 +126,19 @@ export async function POST(
                updated_at=datetime('now')
            WHERE code=? AND status='pending' AND payment_status IN ('unpaid','pending')`,
         ).bind(authoritativeMethod, orderCode),
-        d1.prepare(`DELETE FROM operation_guards WHERE operation_id=?`).bind(guardId),
+        d1.prepare(
+          `INSERT OR IGNORE INTO fulfillment_jobs
+            (order_code, variant_id, inventory_id, sales_channel, status, attempt_count, next_attempt_at)
+           SELECT ?,?,?,?, 'queued', 0, datetime('now')
+           WHERE EXISTS(SELECT 1 FROM orders WHERE code=?)`,
+        ).bind(
+          orderCode,
+          fulfillmentRouting?.variant_id != null ? Number(fulfillmentRouting.variant_id) : null,
+          fulfillmentRouting?.inventory_id != null ? Number(fulfillmentRouting.inventory_id) : null,
+          String(fulfillmentRouting?.sales_channel || "whatsapp"),
+          orderCode,
+        ),
+        d1.prepare(`DELETE FROM operation_guards WHERE operation_id=?`).bind(proofGuardId),
       ];
 
       try {

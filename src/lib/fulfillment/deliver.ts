@@ -437,8 +437,54 @@ export async function ensureFulfillmentForPaidOrder(orderCode: string): Promise<
 
   const job = await queryFirst(`SELECT id FROM fulfillment_jobs WHERE order_code=?`, orderCode);
   if (!job) return false;
+  // When AUTO_FULFILLMENT_ENABLED is off, the durable part is done: the
+  // queued outbox row plus the Telegram paid ack above. Delivery itself
+  // waits for the flag (or the admin .d path) — the order is never lost,
+  // and recovery below never sends credentials twice (claimed exactly
+  // once via claimJob, settled via markJobDelivered idempotency below).
   if (!autoFulfillmentEnabled) return false;
   return processJob(Number(job.id), order, product);
+}
+
+/**
+ * Reconcile paid orders that have no fulfillment job (issue #3).
+ *
+ * Covers every gap between "payment stored" and "job created": crashes in
+ * legacy code paths, jobs deleted manually, and pre-fix rows. For each paid
+ * order without a job row, reuses ensureFulfillmentForPaidOrder so routing,
+ * idempotency, and the AUTO_FULFILLMENT_ENABLED gate stay identical to the
+ * live payment paths. Returns the number of orders healed.
+ *
+ * Idempotency: ensureFulfillmentForPaidOrder inserts exactly one job row
+ * (UNIQUE order_code); already-delivered orders are skipped by callers that
+ * check fulfillment_status, and processJob claims each job exactly once, so
+ * recovery never delivers credentials twice.
+ */
+export async function reconcileMissingFulfillmentJobs(limit = 25): Promise<number> {
+  const orphans = await queryAll(
+    `SELECT o.code FROM orders o
+     LEFT JOIN fulfillment_jobs fj ON fj.order_code=o.code
+     WHERE o.status='lunas' AND o.payment_status='paid'
+       AND fj.order_code IS NULL
+     ORDER BY o.updated_at ASC LIMIT ?`,
+    limit,
+  );
+  let healed = 0;
+  for (const orphan of orphans) {
+    try {
+      if (await ensureFulfillmentForPaidOrder(String(orphan.code))) healed++;
+      else {
+        // ensure returns false when auto-fulfillment is off yet still
+        // creates the queued job — count it as healed if the row exists.
+        const job = await queryFirst(
+          `SELECT id FROM fulfillment_jobs WHERE order_code=?`,
+          String(orphan.code),
+        );
+        if (job) healed++;
+      }
+    } catch { /* next cron run retries */ }
+  }
+  return healed;
 }
 
 /**

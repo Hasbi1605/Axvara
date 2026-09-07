@@ -78,7 +78,26 @@ export async function POST(request: NextRequest) {
   }
 
   const orderCode = String(matches[0].order_code);
-  const transitioned = await transitionPendingPaymentToPaid(orderCode, new Date().toISOString());
+  // Same atomic paid+job batch as the webhook (issue #3): the retry path
+  // must not reintroduce the crash window either.
+  const fulfillmentRouting = await queryFirst(
+    `SELECT o.variant_id, o.sales_channel,
+            (SELECT fi.id FROM fulfillment_inventory fi
+              WHERE fi.order_code=o.code AND fi.status='reserved') AS inventory_id
+     FROM orders o WHERE o.code=?`,
+    orderCode,
+  );
+  const transitioned = await transitionPendingPaymentToPaid(
+    orderCode,
+    new Date().toISOString(),
+    fulfillmentRouting
+      ? {
+          variantId: fulfillmentRouting.variant_id != null ? Number(fulfillmentRouting.variant_id) : null,
+          inventoryId: fulfillmentRouting.inventory_id != null ? Number(fulfillmentRouting.inventory_id) : null,
+          salesChannel: String(fulfillmentRouting.sales_channel || "telegram"),
+        }
+      : null,
+  );
   const paid = transitioned || Boolean(await queryFirst("SELECT code FROM orders WHERE code=? AND status='lunas' AND payment_status='paid'", orderCode));
   if (!paid) {
     await execRun("UPDATE dana_webhook_events SET status='failed',order_code=?,last_error='payment_transition_failed',processed_at=datetime('now') WHERE id=? AND status IN ('received','ignored','failed')", orderCode, eventId);

@@ -17,6 +17,7 @@ import { isExpiredIso } from "@/lib/expiry";
 import {
   getDueJobs,
   processJob,
+  reconcileMissingFulfillmentJobs,
   releaseStaleJobs,
 } from "@/lib/fulfillment/deliver";
 import { sendMessage } from "@/lib/telegram/api";
@@ -40,6 +41,7 @@ export async function POST(request: NextRequest) {
     expired_payments: 0,
     repaired_legacy_expiry: 0,
     due_jobs_processed: 0,
+    fulfillment_orphans_healed: 0,
     stale_locks_released: 0,
     expired_manual_whatsapp_orders: 0,
     telegram_order_notifications_retried: 0,
@@ -215,6 +217,12 @@ export async function POST(request: NextRequest) {
     results.telegram_pending_reminders_sent = await sendPendingOrderReminders(BATCH_LIMIT);
 
     // 4. Process due fulfillment jobs
+    // 4a first: heal paid orders that have NO job row at all (issue #3).
+    // The due-jobs query below only reads existing jobs, so without this
+    // step a payment stored without its outbox row would be forgotten
+    // forever. Healing reuses the same idempotent ensure path as every
+    // payment callback, so recovery never double-delivers.
+    results.fulfillment_orphans_healed = await reconcileMissingFulfillmentJobs(BATCH_LIMIT);
     if (process.env.AUTO_FULFILLMENT_ENABLED === "true") {
       const dueJobs = await getDueJobs(BATCH_LIMIT);
       for (const job of dueJobs) {

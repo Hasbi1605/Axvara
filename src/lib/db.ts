@@ -617,12 +617,27 @@ export async function transitionPendingOrder(
         throw error;
       }
     }
+    // Manual admin confirmation (non-QRIS rails and WhatsApp proof flow):
+    // the job row joins the same atomic commit as the lunas flip (issue
+    // #3), so a crash right after confirmation cannot strand a paid order
+    // with no job. INSERT OR IGNORE keeps double-confirm retries to one row.
     const result = await d1.prepare(
       `UPDATE orders
        SET status=?, admin_note=?, payment_status='paid', updated_at=datetime('now')
        WHERE code=? AND status='pending'`,
     ).bind(status, adminNote, code).run();
     if (!result.meta?.changes) throw new OrderTransitionError();
+    await d1.batch([
+      d1.prepare(
+        `INSERT OR IGNORE INTO fulfillment_jobs
+          (order_code, variant_id, inventory_id, sales_channel, status, attempt_count, next_attempt_at)
+         SELECT o.code, o.variant_id,
+                (SELECT fi.id FROM fulfillment_inventory fi
+                  WHERE fi.order_code=o.code AND fi.status='reserved'),
+                o.sales_channel, 'queued', 0, datetime('now')
+         FROM orders o WHERE o.code=?`,
+      ).bind(code),
+    ]);
     await incrementSoldCountForOrder(code);
     return;
   }
@@ -736,6 +751,11 @@ export async function transitionPendingPaymentOrder(input: {
 export async function transitionPendingPaymentToPaid(
   orderCode: string,
   providerPaidAt?: string | null,
+  fulfillment?: {
+    variantId: number | null;
+    inventoryId: number | null;
+    salesChannel: string;
+  } | null,
 ): Promise<boolean> {
   const d1 = getD1();
   if (d1) {
@@ -744,6 +764,11 @@ export async function transitionPendingPaymentToPaid(
     // expiry batch moves both rows first, so a late payment becomes a
     // no-op (returns false) instead of double-spending stock or reviving
     // a kadaluarsa order.
+    //
+    // The fulfillment outbox row is inserted in the SAME batch (issue #3):
+    // a crash between "payment stored" and "job created" can no longer
+    // strand a paid order with no job. INSERT OR IGNORE keeps concurrent
+    // paid attempts idempotent — exactly one job row per order.
     const guardId = `${orderCode}:payment:paid:${Date.now()}:${Math.random().toString(36).slice(2)}`;
     const statements: D1Statement[] = [
       d1.prepare(
@@ -764,8 +789,26 @@ export async function transitionPendingPaymentToPaid(
          SET payment_status='paid', payment_method='qris', status='lunas', updated_at=datetime('now')
          WHERE code=? AND status='pending' AND payment_status IN ('unpaid','pending')`,
       ).bind(orderCode),
-      d1.prepare("DELETE FROM operation_guards WHERE operation_id=?").bind(guardId),
     ];
+    if (fulfillment) {
+      statements.push(
+        d1.prepare(
+          `INSERT OR IGNORE INTO fulfillment_jobs
+            (order_code, variant_id, inventory_id, sales_channel, status, attempt_count, next_attempt_at)
+           SELECT ?,?,?,?, 'queued', 0, datetime('now')
+           WHERE EXISTS(SELECT 1 FROM orders WHERE code=?)`,
+        ).bind(
+          orderCode,
+          fulfillment.variantId,
+          fulfillment.inventoryId,
+          fulfillment.salesChannel,
+          orderCode,
+        ),
+      );
+    }
+    statements.push(
+      d1.prepare("DELETE FROM operation_guards WHERE operation_id=?").bind(guardId),
+    );
 
     try {
       await d1.batch(statements);

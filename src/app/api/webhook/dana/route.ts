@@ -99,7 +99,27 @@ export async function POST(request: NextRequest) {
   }
 
   const orderCode = String(transaction.order_code);
-  const transitioned = await transitionPendingPaymentToPaid(orderCode, new Date().toISOString());
+  // Resolve fulfillment routing BEFORE the atomic paid batch so the outbox
+  // row lands in the same commit (issue #3): no crash window between
+  // "payment stored" and "job created". Idempotent INSERT OR IGNORE keeps
+  // concurrent webhook deliveries to exactly one job row.
+  const fulfillmentRouting = await queryFirst(
+    `SELECT o.variant_id, o.sales_channel,
+            (SELECT fi.id FROM fulfillment_inventory fi
+              WHERE fi.order_code=o.code AND fi.status='reserved') AS inventory_id
+     FROM orders o WHERE o.code=?`,
+    orderCode,
+  );
+  const transitioned = await transitionPendingPaymentToPaid(orderCode,
+    new Date().toISOString(),
+    fulfillmentRouting
+      ? {
+          variantId: fulfillmentRouting.variant_id != null ? Number(fulfillmentRouting.variant_id) : null,
+          inventoryId: fulfillmentRouting.inventory_id != null ? Number(fulfillmentRouting.inventory_id) : null,
+          salesChannel: String(fulfillmentRouting.sales_channel || "telegram"),
+        }
+      : null,
+  );
   const paidOrder = transitioned || Boolean(await queryFirst(
     `SELECT code FROM orders WHERE code=? AND status='lunas' AND payment_status='paid'`,
     orderCode,
