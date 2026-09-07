@@ -291,7 +291,8 @@ describe("BUG-10: Sitemap domain configurable dengan fallback custom domain", ()
 
 describe("BUG-11: Product detail sold/stock conditional null-safe", () => {
   it("produk page menggunakan null-safe check untuk soldCount dan stock", () => {
-    const src = fs.readFileSync(path.join(process.cwd(), "src/app/produk/[slug]/page.tsx"), "utf-8");
+    // PDP interaktif kini di product-detail-client.tsx (page.tsx server-only, #11).
+    const src = fs.readFileSync(path.join(process.cwd(), "src/app/produk/[slug]/product-detail-client.tsx"), "utf-8");
     // Harus pakai explicit null check, bukan truthiness
     expect(src).toMatch(/product\.soldCount\s*!=\s*null\s*&&\s*product\.soldCount\s*>\s*0/);
     // TIDAK boleh pakai pattern lama: (product.soldCount || product.stock)
@@ -334,7 +335,9 @@ describe("BUG-14: Login response mengembalikan email", () => {
 describe("BUG-15: Client pages HARUS export runtime edge (required by CF Pages)", () => {
   it("produk/[slug]/page.tsx export runtime edge (CF Pages requirement)", () => {
     const src = fs.readFileSync(path.join(process.cwd(), "src/app/produk/[slug]/page.tsx"), "utf-8");
-    expect(src).toContain('"use client"');
+    // PDP kini server component + client interaktif terpisah (#11): keduanya edge.
+    const client = fs.readFileSync(path.join(process.cwd(), "src/app/produk/[slug]/product-detail-client.tsx"), "utf-8");
+    expect(client).toContain('"use client"');
     expect(src).toMatch(/export\s+const\s+runtime\s*=\s*["']edge["']/);
   });
 

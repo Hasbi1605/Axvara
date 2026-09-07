@@ -91,8 +91,8 @@ axvara/
 │   ├── artikel/[slug]/          # Artikel publik Markdown/legacy JSON
 │   ├── cara-order/               # Panduan order
 │   ├── garansi-replace/          # Ketentuan layanan & garansi third-party (acuan klaim, garansi ikut deskripsi produk)
-│   ├── produk/[slug]/
-│   ├── checkout/
+│   ├── produk/[slug]/          # PDP: server component SEO (metadata/JSON-LD/h1 D1) + client interaktif
+│   │   ├── checkout/       # Checkout — QRIS otomatis / bukti untuk transfer manual
 │   ├── pesanan/[code]/
 │   ├── admin/
 │   │   └── page.tsx             # Shell + modul admin berbasis query section

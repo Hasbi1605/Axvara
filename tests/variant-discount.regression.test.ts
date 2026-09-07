@@ -104,7 +104,8 @@ describe("pasangan harga-diskon berasal dari varian yang sama", () => {
   });
 
   it("jalur varian lain tetap per-varian: PDP/modal pakai compare varian terpilih", () => {
-    const pdp = read("src/app/produk/[slug]/page.tsx");
+    // PDP interaktif kini di product-detail-client.tsx (page.tsx server-only, #11).
+    const pdp = read("src/app/produk/[slug]/product-detail-client.tsx");
     const modal = read("src/components/storefront/QuickVariantModal.tsx");
     expect(pdp).toContain("selectedVariant ? selectedVariant.compare_price : product.comparePrice");
     expect(pdp).toContain("v.compare_price && v.compare_price > v.price");

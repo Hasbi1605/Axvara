@@ -46,7 +46,8 @@ describe("Checkout quote integrity", () => {
     const quote = read("src/app/api/checkout/quote/route.ts");
     const products = read("src/app/api/products/route.ts");
     const card = read("src/components/storefront/ProductCard.tsx");
-    const detail = read("src/app/produk/[slug]/page.tsx");
+    // PDP interaktif kini di product-detail-client.tsx (page.tsx server-only, #11).
+    const detail = read("src/app/produk/[slug]/product-detail-client.tsx");
     expect(quote).toContain('type: "variant_required"');
     expect(products).toContain("variant_count");
     expect(card).toContain("hasVariants");
@@ -136,7 +137,8 @@ describe("Atomic stock lifecycle", () => {
 describe("Authoritative UI and admin state", () => {
   it("homepage/detail/direct checkout tidak menghidupkan seed produk", () => {
     expect(read("src/app/page.tsx")).toContain("useState<Product[]>([])");
-    expect(read("src/app/produk/[slug]/page.tsx")).toContain("useState<Product[]>([])");
+    // PDP interaktif kini di product-detail-client.tsx (page.tsx server-only, #11).
+    expect(read("src/app/produk/[slug]/product-detail-client.tsx")).toContain("useState<Product[]>([])");
     expect(read("src/app/checkout/page.tsx")).not.toContain("products.find");
   });
 

@@ -93,6 +93,15 @@ export async function queryAll(sql: string, ...params: unknown[]): Promise<Recor
       : category);
     return rows.sort((a,b)=>Number(a.sort_order??0)-Number(b.sort_order??0));
   }
+  // Query SEO PDP / sitemap (server component, issue #11) memakai fallback
+  // in-memory saat dev tanpa D1: sediakan varian default dari kolom produk
+  // agar sitemap, metadata, dan JSON-LD tetap terisi di dev.
+  if (lower.includes("from product_variants") || lower.includes("join products p on")) {
+    const slug = String(params[0] ?? "");
+    const product = getSharedMem().find((r) => String(r.slug) === slug && Number(r.is_active) !== 0);
+    if (!product) return [];
+    return [{ price: product.price, compare_price: product.compare_price ?? null, stock: product.stock ?? -1 }];
+  }
   if (lower.includes("from products")) {
     let rows = [...getSharedMem()];
     if (lower.includes("is_active=1")) rows = rows.filter((r) => (r.is_active as number) !== 0);
@@ -199,6 +208,15 @@ export async function queryFirst(sql: string, ...params: unknown[]): Promise<Row
   const d1 = getD1();
   if (d1) return (await d1.prepare(sql).bind(...params).first()) as Row | undefined;
   const lower = sql.toLowerCase();
+  // Query SEO PDP (server component, issue #11) memakai fallback in-memory
+  // saat dev tanpa D1: sediakan varian default dari kolom produk agar
+  // halaman aktif, metadata, dan JSON-LD tetap terisi di dev.
+  if (lower.includes("from product_variants") || lower.includes("join products p on")) {
+    const slug = String(params[0] ?? "");
+    const product = getSharedMem().find((r) => String(r.slug) === slug && Number(r.is_active) !== 0);
+    if (!product) return undefined;
+    return { price: product.price, compare_price: product.compare_price ?? null, stock: product.stock ?? -1 };
+  }
   if (lower.includes("from categories where slug=?")) {
     return getCategoryMem().find((r) => String(r.slug) === String(params[0]));
   }
