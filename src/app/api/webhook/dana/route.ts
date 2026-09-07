@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { execRun, queryAll, queryFirst, transitionPendingPaymentToPaid } from "@/lib/db";
 import {
   constantTimeEqual,
+  isCausallyPlausiblePayment,
   isDanaQrisConfigured,
   parseDanaWebhook,
   sha256Hex,
@@ -54,7 +55,7 @@ export async function POST(request: NextRequest) {
     payment.senderName,
     payment.rawText,
   );
-  const event = await queryFirst(`SELECT id,status,order_code FROM dana_webhook_events WHERE event_key=?`, eventKey);
+  const event = await queryFirst(`SELECT id,status,order_code,created_at FROM dana_webhook_events WHERE event_key=?`, eventKey);
   if (!event) return NextResponse.json({ error: "event_not_persisted" }, { status: 500 });
   if (["matched", "ignored"].includes(String(event.status))) {
     return NextResponse.json({ ok: true, status: "duplicate" });
@@ -66,7 +67,8 @@ export async function POST(request: NextRequest) {
   // never matches ISO rows. Over-fetching one extra row and filtering here
   // keeps webhook matching exactly as strict as cron expiry.
   const candidates = await queryAll(
-    `SELECT pt.order_code, pt.status, pt.expires_at, o.status AS order_status,
+    `SELECT pt.order_code, pt.status, pt.expires_at, pt.created_at AS invoice_created_at,
+            o.status AS order_status,
             o.sales_channel, o.channel_conversation_id
      FROM payment_transactions pt
      JOIN orders o ON o.code=pt.order_code
@@ -75,12 +77,22 @@ export async function POST(request: NextRequest) {
      LIMIT 2`,
     payment.amount,
   );
-  const transaction = candidates.find((row) => isFutureIso(row.expires_at));
+  const live = candidates.filter((row) => isFutureIso(row.expires_at));
+  // Causal guard (issue #2): an event observed BEFORE the candidate invoice
+  // was issued cannot be its payment — money cannot pay an invoice that did
+  // not exist yet. Such a stale/relayed notification must not settle a new
+  // order; it goes to reconciliation instead of being force-matched.
+  const plausible = live.filter((row) =>
+    isCausallyPlausiblePayment(event.created_at, row.invoice_created_at),
+  );
+  const transaction = plausible.length === 1 ? plausible[0] : undefined;
   if (!transaction) {
+    const staleEventForLiveInvoice = live.length >= 1 && plausible.length === 0;
     await execRun(
       `UPDATE dana_webhook_events
-       SET status='ignored', last_error='no_active_exact_amount', processed_at=datetime('now')
+       SET status='ignored', last_error=?, processed_at=datetime('now')
        WHERE id=? AND status='received'`,
+      staleEventForLiveInvoice ? "event_predates_invoice" : "no_active_exact_amount",
       event.id,
     );
     return NextResponse.json({ ok: true, status: "unmatched" });
@@ -96,20 +108,27 @@ export async function POST(request: NextRequest) {
     await execRun(
       `UPDATE dana_webhook_events
        SET status='failed', order_code=?, last_error='payment_transition_failed', processed_at=datetime('now')
-       WHERE id=?`,
+       WHERE id=? AND status='received'`,
       orderCode,
       event.id,
     );
     return NextResponse.json({ error: "payment_transition_failed" }, { status: 409 });
   }
 
-  await execRun(
+  // CAS on status='received': a replayed duplicate that arrives after this
+  // event already settled (matched) or was triaged (ignored) must not flip
+  // it back or re-trigger fulfillment. Concurrent losers keep their
+  // 'received' row for the next retry instead of double-settling.
+  const claimed = await execRun(
     `UPDATE dana_webhook_events
      SET status='matched', order_code=?, last_error=NULL, processed_at=datetime('now')
-     WHERE id=?`,
+     WHERE id=? AND status='received'`,
     orderCode,
     event.id,
   );
+  if (!claimed.changes) {
+    return NextResponse.json({ ok: true, status: "duplicate" });
+  }
 
   try {
     await ensureFulfillmentForPaidOrder(orderCode);

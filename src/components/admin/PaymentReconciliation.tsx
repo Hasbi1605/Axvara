@@ -35,7 +35,7 @@ export function PaymentReconciliation() {
     try {
       const response = await fetch("/api/admin/payments/events", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "retry_match", event_id: eventId }) });
       const body = await response.json().catch(() => ({})) as { error?: string; order_code?: string };
-      if (!response.ok) throw new Error(body.error === "no_active_exact_amount" ? "Belum ada invoice aktif dengan nominal yang sama." : body.error || "Pencocokan ulang gagal");
+      if (!response.ok) throw new Error(retryErrorMessage(body.error) || "Pencocokan ulang gagal");
       toast.success(`Pembayaran cocok dengan ${body.order_code}.`); await load();
     } catch (cause) { toast.error(cause instanceof Error ? cause.message : "Pencocokan ulang gagal"); }
     finally { setRetrying(null); }
@@ -82,3 +82,16 @@ function EventBadge({ status }: { status: EventRow["status"] }) {
   return <span className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase ${tone}`}>{label}</span>;
 }
 function formatDate(value: string) { const date = new Date(value); return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Jakarta" }).format(date); }
+
+function retryErrorMessage(code?: string) {
+  switch (code) {
+    case "no_active_exact_amount":
+      return "Belum ada invoice aktif dengan nominal yang sama.";
+    case "multiple_active_exact_amount":
+      return "Ada lebih dari satu invoice aktif dengan nominal sama — selesaikan manual agar tidak salah pasang.";
+    case "event_predates_invoice":
+      return "Event ini tercatat SEBELUM invoice aktif dibuat, jadi tidak bisa menjadi pembayarnya. Cek mutasi DANA manual.";
+    default:
+      return code;
+  }
+}

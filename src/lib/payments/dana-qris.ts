@@ -27,6 +27,52 @@ export type DanaWebhookPayment = {
   sourceEventId: string | null;
 };
 
+/**
+ * Batas kausalitas pencocokan pembayaran (masalah #2).
+ *
+ * QRIS Hook hanya meneruskan nominal + teks notifikasi tanpa stempel waktu
+ * tepercaya dari DANA, sehingga "kapan uang benar-benar masuk" tidak dapat
+ * diobservasi langsung. Yang dapat diobservasi adalah kapan *server*
+ * pertama kali melihat event (`dana_webhook_events.created_at`). Syarat
+ * kausalitas minimal yang dapat ditegakkan secara deterministik:
+ *
+ *   event diamati (received_at) >= invoice diterbitkan (created_at)
+ *   — dalam praktik dengan toleransi jam miring kecil.
+ *
+ * Event yang diamati SEBELUM kandidat invoice dibuat tidak mungkin
+ * merupakan pembayaran atas invoice tersebut: uang tidak dapat membayar
+ * invoice yang belum ada. Mencocokkannya berarti pembayaran lama (atau
+ * notifikasi terlambat dari invoice lain yang nominalnya sama) melunasi
+ * order baru — tepat temuan audit #2.
+ *
+ * Batasan yang diakui (didokumentasikan, bukan disembunyikan):
+ * - `received_at` adalah waktu observasi server, bukan waktu otoritatif
+ *   DANA. Pembayaran yang terjadi sebelum invoice dibuat tetapi notifikasi
+ *   terlambat (masuk setelah invoice terbit) TETAP cocok secara nominal —
+ *   itu ambiguitas inheren kanal dan ditangani sebagai kasus rekonsiliasi
+ *   (lihat `requiresReview`), bukan dipaksakan cocok diam-diam.
+ * - Toleransi miring jam (default 60 detik) menutup beda jam D1 vs runtime
+ *   tanpa membuka jendela yang lebar.
+ */
+export const DANA_MATCH_CLOCK_SKEW_MS = 60_000;
+
+export type DanaMatchCandidate = {
+  orderCode: string;
+  invoiceCreatedAt: unknown;
+  invoiceExpiresAt: unknown;
+};
+
+export function isCausallyPlausiblePayment(
+  eventReceivedAt: unknown,
+  invoiceCreatedAt: unknown,
+  skewMs = DANA_MATCH_CLOCK_SKEW_MS,
+): boolean {
+  const received = Date.parse(String(eventReceivedAt ?? ""));
+  const invoiced = Date.parse(String(invoiceCreatedAt ?? ""));
+  if (!Number.isFinite(received) || !Number.isFinite(invoiced)) return false;
+  return received + skewMs >= invoiced;
+}
+
 export function calculateCrc16(input: string): string {
   let crc = 0xffff;
   for (let index = 0; index < input.length; index++) {
