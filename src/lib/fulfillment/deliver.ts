@@ -304,9 +304,13 @@ export async function claimJob(jobId: number): Promise<Row | null> {
   const lockUntil = new Date(Date.now() + 60_000).toISOString();
 
   if (isD1Mode()) {
+    // datetime() menormalkan ISO-8601 (T/Z/millis, format tulis lock) dan
+    // legacy space-separated ke domain yang sama (issue #7): perbandingan
+    // string mentah tidak pernah cocok untuk ISO sehingga lock kedaluwarsa
+    // tertahan berjam-jam. Lock aktif tetap tidak bisa direbut (CAS).
     const result = await execRun(
       `UPDATE fulfillment_jobs SET status='sending', locked_until=?, attempt_count=attempt_count+1, updated_at=datetime('now')
-       WHERE id=? AND status IN ('queued','retry') AND (locked_until IS NULL OR locked_until < datetime('now'))`,
+       WHERE id=? AND status IN ('queued','retry') AND (locked_until IS NULL OR datetime(locked_until) < datetime('now'))`,
       lockUntil, jobId,
     );
     if (!result.changes) return null;
@@ -541,7 +545,7 @@ async function processItem(order: Row, itemRow: Row, adminChatId?: string): Prom
     `UPDATE fulfillment_items SET status='sending', locked_until=?, attempt_count=attempt_count+1, updated_at=datetime('now')
      WHERE id=? AND status IN ('queued','retry')
        AND (locked_until IS NULL OR datetime(locked_until) < datetime('now'))
-       AND next_attempt_at <= datetime('now')`,
+       AND datetime(next_attempt_at) <= datetime('now')`,
     lockUntil, itemId,
   ).catch(() => ({ changes: 0 as number | undefined }));
   if (!claim.changes) return String(itemRow.status) === "sending";
@@ -1019,8 +1023,8 @@ export async function getDueJobs(limit = 25): Promise<Row[]> {
        JOIN orders o ON o.code = fj.order_code
        WHERE fj.status IN ('queued','retry')
        AND o.status='lunas' AND o.payment_status='paid'
-       AND (fj.locked_until IS NULL OR fj.locked_until < datetime('now'))
-       AND fj.next_attempt_at <= datetime('now')
+       AND (fj.locked_until IS NULL OR datetime(fj.locked_until) < datetime('now'))
+       AND datetime(fj.next_attempt_at) <= datetime('now')
        ORDER BY fj.next_attempt_at ASC
        LIMIT ?`,
       limit,
@@ -1039,7 +1043,7 @@ export async function releaseStaleJobs(): Promise<number> {
   if (isD1Mode()) {
     const result = await execRun(
       `UPDATE fulfillment_jobs SET status='retry', locked_until=NULL, updated_at=datetime('now')
-       WHERE status='sending' AND locked_until < datetime('now')`,
+       WHERE status='sending' AND datetime(locked_until) < datetime('now')`,
     );
     return result.changes ?? 0;
   }

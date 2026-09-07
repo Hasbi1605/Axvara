@@ -4,6 +4,8 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-07 — Kunci pengiriman kedaluwarsa dapat dipulihkan (#7): seluruh gerbang lock (claimJob, processItem, getDueJobs, releaseStaleJobs) memakai datetime() normalization agar ISO-8601 dan legacy cocok dalam satu domain — lock kedaluwarsa pulih sesuai waktu, lock aktif tetap tak bisa direbut (CAS) — deliver.ts, tests — (verifikasi: vitest 303/303, tsc + ESLint bersih, build:pages pass, dev GET / 200 + CSS 200, Obscura home/eval + PNG 1280×720 diperiksa)
+
 - 2026-09-07 — Perbaiki CI #6 (tsc ketat): pola createRequire DatabaseSync pada test retry diselaraskan ke tipe SqliteDatabase/SqliteStatement seperti test migrasi — tests/telegram-update-retry.regression.test.ts — (verifikasi: npm test 298/298, tsc bersih, build:pages pass, dev GET / 200 + CSS 200, Obscura home/eval + PNG 1280×720 diperiksa)
 
 - 2026-09-07 — Retry update Telegram yang gagal (#6): claim update_id kini membedakan done / processing aktif / failed / lease kedaluwarsa — reclaim atomik CAS + attempt_count (maks 5) memberi retry nyata tanpa order/invoice ganda — webhook Telegram, tests — (verifikasi: vitest 298/298, tsc + ESLint bersih, dev GET / 200 + CSS 200, Obscura home/eval + PNG 1280×720 diperiksa)
