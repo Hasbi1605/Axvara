@@ -10,6 +10,9 @@ export type AdminOverviewData = {
   revenue_total: number;
   revenue_today: number;
   revenue_month: number;
+  revenue_from?: string | null;
+  revenue_to?: string | null;
+  revenue_timezone?: string;
   pending_proofs: number;
   payment_attention: number;
   fulfillment_attention: number;
@@ -49,13 +52,13 @@ export function AdminOverview({ data, loading, onNavigate }: { data: AdminOvervi
         <p className={`mt-1 font-display text-xl font-bold tabular-nums sm:text-2xl ${tone}`}>{loading ? "—" : value}</p>
       </div>)}
     </div>
+    <p className="text-[11px] text-white/35">Omzet dihitung dari waktu pembayaran (WIB) dan tidak berubah saat pengiriman, catatan admin, atau notifikasi.</p>
 
     <section className="ax-glass overflow-hidden rounded-[20px]">
       <div className="border-b border-white/10 p-4 sm:p-5">
         <h2 className="text-sm font-semibold text-white">Perlu tindakan</h2>
         <p className="mt-0.5 text-xs text-white/40">Antrean operasional yang sebaiknya diselesaikan lebih dulu.</p>
-      </div>
-      <div className="grid gap-3 p-4 sm:grid-cols-2 sm:p-5 xl:grid-cols-5">
+      </div>      <div className="grid gap-3 p-4 sm:grid-cols-2 sm:p-5 xl:grid-cols-5">
         {actions.map((action) => <button key={action.title} onClick={() => onNavigate(action.section, action.params)} className="rounded-2xl border border-white/10 bg-white/[0.035] p-4 text-left transition hover:border-[#00E5FF]/25 hover:bg-white/[0.06]">
           <div className="flex items-start justify-between gap-3"><p className="text-xs font-semibold text-white/65">{action.title}</p><span className={`min-w-7 shrink-0 rounded-full px-2 py-1 text-center text-xs font-bold tabular-nums ${action.count > 0 ? action.tone === "red" ? "bg-red-500/15 text-red-300" : "bg-[#FFB800]/15 text-[#FFCF55]" : "bg-emerald-500/10 text-emerald-300"}`}>{loading ? "—" : action.count}</span></div>
           <p className="mt-3 text-[11px] leading-5 text-white/35">{action.count > 0 ? action.detail : "Tidak ada antrean"}</p>

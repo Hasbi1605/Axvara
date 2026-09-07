@@ -123,7 +123,7 @@ export async function POST(
         d1.prepare(
           `UPDATE orders
            SET status='lunas', payment_status='paid', payment_method=?,
-               updated_at=datetime('now')
+               paid_at=COALESCE(paid_at,datetime('now')), updated_at=datetime('now')
            WHERE code=? AND status='pending' AND payment_status IN ('unpaid','pending')`,
         ).bind(authoritativeMethod, orderCode),
         d1.prepare(
@@ -175,7 +175,7 @@ export async function POST(
     if (!res.changes) return NextResponse.json({ error: "concurrent_modification" }, { status: 409 });
 
     await execRun(
-      `UPDATE orders SET status='lunas', payment_status='paid', payment_method=?, updated_at=datetime('now') WHERE code=? AND status='pending'`,
+      `UPDATE orders SET status='lunas', payment_status='paid', payment_method=?, paid_at=COALESCE(paid_at,datetime('now')), updated_at=datetime('now') WHERE code=? AND status='pending'`,
       authoritativeMethod,
       orderCode,
     );

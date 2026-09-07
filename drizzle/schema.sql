@@ -67,11 +67,17 @@ CREATE TABLE IF NOT EXISTS orders (
   telegram_paid_admin_notified_at TEXT,
   telegram_reminder_count INTEGER NOT NULL DEFAULT 0,
   telegram_reminder_sent_at TEXT,
+  -- Waktu pembayaran tetap untuk laporan pendapatan (issue #12): ditulis
+  -- sekali saat transisi lunas, tidak pernah diubah oleh pengiriman/catatan/
+  -- notifikasi. Hari/bulan bisnis = WIB atas kolom ini (lihat src/lib/revenue.ts).
+  paid_at TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
 CREATE UNIQUE INDEX IF NOT EXISTS orders_quote_id_unique
   ON orders(quote_id) WHERE quote_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_orders_paid_at
+  ON orders(status, paid_at);
 CREATE INDEX IF NOT EXISTS idx_orders_channel
   ON orders(sales_channel, channel_conversation_id);
 CREATE INDEX IF NOT EXISTS idx_orders_status

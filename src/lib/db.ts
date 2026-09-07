@@ -683,10 +683,14 @@ export async function transitionPendingOrder(
     // the job row joins the same atomic commit as the lunas flip (issue
     // #3), so a crash right after confirmation cannot strand a paid order
     // with no job. INSERT OR IGNORE keeps double-confirm retries to one row.
+    // paid_at is written once (issue #12): COALESCE-guard keeps the first
+    // payment time fixed — later fulfillment steps, admin notes, or
+    // notification retries must not move revenue to another day/month.
     const result = await d1.prepare(
       `UPDATE orders
-       SET status=?, admin_note=?, payment_status='paid', updated_at=datetime('now')
-       WHERE code=? AND status='pending'`,
+        SET status=?, admin_note=?, payment_status='paid',
+            paid_at=COALESCE(paid_at,datetime('now')), updated_at=datetime('now')
+        WHERE code=? AND status='pending'`,
     ).bind(status, adminNote, code).run();
     if (!result.meta?.changes) throw new OrderTransitionError();
     await d1.batch([
@@ -714,6 +718,7 @@ export async function transitionPendingOrder(
   }
   order.status = status;
   order.payment_status = status === "lunas" ? "paid" : status === "kadaluarsa" ? "expired" : "failed";
+  if (status === "lunas" && !order.paid_at) order.paid_at = new Date().toISOString();
   if (status !== "lunas") order.fulfillment_status = "not_required";
   order.admin_note = adminNote;
   order.updated_at = new Date().toISOString();
@@ -848,9 +853,10 @@ export async function transitionPendingPaymentToPaid(
       ).bind(providerPaidAt ?? null, orderCode),
       d1.prepare(
         `UPDATE orders
-         SET payment_status='paid', payment_method='qris', status='lunas', updated_at=datetime('now')
-         WHERE code=? AND status='pending' AND payment_status IN ('unpaid','pending')`,
-      ).bind(orderCode),
+          SET payment_status='paid', payment_method='qris', status='lunas',
+              paid_at=COALESCE(paid_at,?,datetime('now')), updated_at=datetime('now')
+          WHERE code=? AND status='pending' AND payment_status IN ('unpaid','pending')`,
+      ).bind(providerPaidAt ?? null, orderCode),
     ];
     if (fulfillment) {
       statements.push(
@@ -895,6 +901,7 @@ export async function transitionPendingPaymentToPaid(
   order.status = "lunas";
   order.payment_status = "paid";
   order.payment_method = "qris";
+  if (!order.paid_at) order.paid_at = String(providerPaidAt ?? new Date().toISOString());
   order.updated_at = new Date().toISOString();
   return true;
 }
