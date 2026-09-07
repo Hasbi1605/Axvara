@@ -9,19 +9,24 @@ import path from "node:path";
 import { createRequire } from "node:module";
 
 const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), "utf8");
-const nodeRequire = createRequire(import.meta.url);
-const { DatabaseSync } = nodeRequire("node:sqlite") as {
-  DatabaseSync: new (location: string) => {
-    exec: (sql: string) => void;
-    prepare: (sql: string) => {
-      run: (...p: unknown[]) => void;
-      get: (...p: unknown[]) => Record<string, unknown>;
-      all: (...p: unknown[]) => Record<string, unknown>[];
-    };
-  };
+
+type SqliteStatement = {
+  run: (...p: unknown[]) => void;
+  get: (...p: unknown[]) => Record<string, unknown> | undefined;
+  all: (...p: unknown[]) => Record<string, unknown>[];
 };
 
-function updatesTable(db: ReturnType<typeof DatabaseSync>) {
+type SqliteDatabase = {
+  exec: (sql: string) => void;
+  prepare: (sql: string) => SqliteStatement;
+};
+
+const nodeRequire = createRequire(import.meta.url);
+const { DatabaseSync } = nodeRequire("node:sqlite") as {
+  DatabaseSync: new (location: string) => SqliteDatabase;
+};
+
+function updatesTable(db: SqliteDatabase) {
   db.exec(`CREATE TABLE telegram_updates(
     update_id TEXT PRIMARY KEY,
     status TEXT NOT NULL CHECK (status IN ('processing','done','failed')),
@@ -36,7 +41,7 @@ function updatesTable(db: ReturnType<typeof DatabaseSync>) {
 // Replika deterministik dari logika claim route (JS murni, tanpa HTTP):
 // done → skip; processing+lease aktif → skip; failed/lease kedaluwarsa → reclaim.
 function claim(
-  db: ReturnType<typeof DatabaseSync>,
+  db: SqliteDatabase,
   updateId: string,
   now: number,
   maxAttempts = 5,
