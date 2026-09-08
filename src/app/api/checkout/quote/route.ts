@@ -155,6 +155,14 @@ export async function POST(req: NextRequest) {
       effectivePrice = Number(variantRow.price);
       effectiveStock = variantRow.stock == null ? -1 : Number(variantRow.stock);
       displayName = `${row.name} — ${variantRow.label}`;
+      // Unique-fulfillment = one secret per unit (review R3, parity with
+      // Telegram cart which caps unique lines at qty 1): a web line asking
+      // for qty>1 of a unique variant can never be reserved coherently
+      // (one claim per line), so reject it at quote time with a clear rule.
+      if (String(variantRow.fulfillment_mode) === "unique" && item.qty > 1) {
+        issues.push({ product_id: productId, type: "invalid_quantity", message: `${displayName} hanya dapat dibeli 1 unit per pesanan (stok unik).` });
+        continue;
+      }
     }
 
     if (effectiveStock !== -1 && effectiveStock <= 0) {

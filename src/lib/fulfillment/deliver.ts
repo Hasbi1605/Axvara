@@ -605,6 +605,18 @@ async function processItem(order: Row, itemRow: Row, adminChatId?: string): Prom
     if ((recipientChannel === "telegram" || recipientChannel === "whatsapp") && !recipientTarget) {
       throw new Error("no_recipient_for_channel");
     }
+    // Web items have no push channel (review R3): route them straight to
+    // the admin handover queue instead of burning the retry budget on a
+    // delivery that can never succeed. manual_required IS the final,
+    // actionable state for web — the admin hands the credential over and
+    // records it in admin_note.
+    if (recipientChannel === "web") {
+      await execRun(
+        `UPDATE fulfillment_items SET status='manual_required', last_error='web_channel_requires_manual_handover:serahkan manual via admin_note', locked_until=NULL, updated_at=datetime('now') WHERE id=?`,
+        itemId,
+      );
+      return true;
+    }
     if (mode === "manual") {
       await execRun(
         `UPDATE fulfillment_items SET status='manual_required', locked_until=NULL, updated_at=datetime('now') WHERE id=?`,
@@ -676,10 +688,13 @@ async function sendToRecipient(
     return;
   }
   if (channel === "web") {
-    // Web has no push channel: credentials are handed over by the admin
-    // (manual_required), never auto-pushed. Reaching here means a routing
-    // bug, so fail loudly into retry instead of silently dropping.
-    throw new Error("web_channel_requires_manual_handover");
+    // Web has no push channel: a web item can only settle via an explicit
+    // admin handover (recorded through the admin orders UI, which writes
+    // the credential into admin_note and flips the item to delivered).
+    // Auto-delivery must NEVER push it — and must never spin forever in
+    // retry either. Mark it manual_required immediately so the order
+    // surfaces in the admin handover queue with a clear action.
+    throw new Error("web_channel_requires_manual_handover:serahkan manual via admin_note");
   }
   const sendResult = await sendMessage({
     chat_id: target,

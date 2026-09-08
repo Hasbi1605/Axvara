@@ -4,6 +4,8 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-08 — R3 inventory + kanal web: klaim satu unit per baris unique dalam batch atomik (scoped didahulukan, legacy pool dibagi adil, verifikasi pasca-klaim per mode → kurang = rollback total tanpa order/sisa stok), balapan dua checkout tepat satu menang, quote tolak qty>1 varian unique, item web langsung manual_required + antre serah-terima admin (stabil, tanpa retry loop) — db.ts, quote, deliver.ts, tests/fulfillment-inventory (7 perilaku) — (verifikasi: vitest 394/394, tsc bersih, fixture two-unique→StockReservationError 0 order, web-shared→manual_required)
+
 - 2026-09-08 — R2 agregat kirim tak prematur: all-manual → manual_required (bukan delivered), agregat butuh baris lengkap per identitas item, gagal materialisasi = order tetap terbuka, next_attempt_at hanya tempo cron bukan gate kirim — deliver.ts, tests/fulfillment-delivery (6 perilaku) + lock/per-item diselaraskan — (verifikasi: vitest 387/387, tsc bersih, fixture manual→manual_required + partial→terbuka + happy→delivered 2 kirim)
 
 - 2026-09-08 — R1 pembayaran tak salah pasang: event sebelum invoice + nominal dipakai-ulang tak auto-lunas (ignored + review manual terverifikasi), klaim event+payment+job satu batch atomik, skew 0 + parse UTC untuk timestamp D1 legacy — webhook dana, admin payments/events, db.ts transitionPendingPaymentToPaid, dana-qris.ts, PaymentReconciliation.tsx, migrasi 0017, tests/payment-review + dana-causal-match — (verifikasi: vitest 380+tes R1 hijau, tsc bersih, fixture nearby_old→409 event_predates_invoice + pending, delayed→unmatched + pending)
