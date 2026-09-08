@@ -4,6 +4,8 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-08 — R6 konfirmasi atomik: konfirmasi manual lunas + baris job kini satu batch D1 (crash di antaranya tak lagi strand order paid tanpa job), double-confirm tetap satu baris — db.ts, tests/order-confirm-atomic (3 perilaku) — (verifikasi: vitest 407/407, tsc bersih, interupsi injeksi→pending + 0 job)
+
 - 2026-09-08 — R5 retry Telegram nyata: gagal proses update jawab 500 error_retryable + baris failed agar Telegram redelivery (sebelumnya 200 = silent drop), penolakan permanen tetap 200 tanpa loop, retry klaim sekali tanpa order ganda — webhook Telegram, tests/telegram-retry (3 perilaku) — (verifikasi: vitest 404/404, tsc bersih, fixture crash→500 + failed + reclaim sekali)
 
 - 2026-09-08 — R4 recovery lock per item: releaseStaleJobs pulihkan job + item sending basi (fence parent job, hasil provider ambigu dicatat delivery_outcome_unknown, aktif tak pernah dicuri), tulis status dipagar lease (pekerja basi tak timpa pemilik baru), janji singular-delivery dilarang di komentar — deliver.ts, tests/fulfillment-lease (7 perilaku) + helper stubFulfillmentKey — (verifikasi: vitest 401/401, tsc bersih, fixture stale→released 2 + delivered 1 kirim)

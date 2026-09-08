@@ -737,20 +737,20 @@ export async function transitionPendingOrder(
       }
     }
     // Manual admin confirmation (non-QRIS rails and WhatsApp proof flow):
-    // the job row joins the same atomic commit as the lunas flip (issue
-    // #3), so a crash right after confirmation cannot strand a paid order
-    // with no job. INSERT OR IGNORE keeps double-confirm retries to one row.
-    // paid_at is written once (issue #12): COALESCE-guard keeps the first
-    // payment time fixed — later fulfillment steps, admin notes, or
+    // the lunas flip AND the job row commit in ONE D1 batch (review R6).
+    // Before, the UPDATE committed first and the job INSERT ran in a second
+    // batch — a crash between them stranded a paid order with zero job rows
+    // (no delivery ever). INSERT OR IGNORE keeps double-confirm retries to
+    // one row. paid_at is written once (issue #12): COALESCE-guard keeps the
+    // first payment time fixed — later fulfillment steps, admin notes, or
     // notification retries must not move revenue to another day/month.
-    const result = await d1.prepare(
-      `UPDATE orders
-        SET status=?, admin_note=?, payment_status='paid',
-            paid_at=COALESCE(paid_at,datetime('now')), updated_at=datetime('now')
-        WHERE code=? AND status='pending'`,
-    ).bind(status, adminNote, code).run();
-    if (!result.meta?.changes) throw new OrderTransitionError();
-    await d1.batch([
+    const lunasBatch: D1Statement[] = [
+      d1.prepare(
+        `UPDATE orders
+          SET status=?, admin_note=?, payment_status='paid',
+              paid_at=COALESCE(paid_at,datetime('now')), updated_at=datetime('now')
+          WHERE code=? AND status='pending'`,
+      ).bind(status, adminNote, code),
       d1.prepare(
         `INSERT OR IGNORE INTO fulfillment_jobs
           (order_code, variant_id, inventory_id, sales_channel, status, attempt_count, next_attempt_at)
@@ -760,7 +760,9 @@ export async function transitionPendingOrder(
                 o.sales_channel, 'queued', 0, datetime('now')
          FROM orders o WHERE o.code=?`,
       ).bind(code),
-    ]);
+    ];
+    const lunasResult = await d1.batch(lunasBatch);
+    if (!lunasResult[0]?.meta?.changes) throw new OrderTransitionError();
     await incrementSoldCountForOrder(code);
     return;
   }
