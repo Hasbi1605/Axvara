@@ -44,12 +44,12 @@ describe("atomic paid+job commit (no crash window)", () => {
 describe("idempotent recovery without double delivery", () => {
   it("cron heals paid orders that have no job row before processing due jobs", () => {
     const cron = read("src/app/api/cron/operations/route.ts");
-    expect(cron).toContain("reconcileMissingFulfillmentJobs(BATCH_LIMIT)");
+    expect(cron).toContain("reconcileMissingFulfillmentJobs(FULFILLMENT_PER_RUN)");
     expect(cron).toContain("fulfillment_orphans_healed");
     // Healing must precede due-job processing (import order is static, so
     // compare the call sites instead of import names).
-    const heal = cron.indexOf("reconcileMissingFulfillmentJobs(BATCH_LIMIT)");
-    const due = cron.indexOf("getDueJobs(BATCH_LIMIT)");
+    const heal = cron.indexOf("reconcileMissingFulfillmentJobs(FULFILLMENT_PER_RUN)");
+    const due = cron.indexOf("getDueJobs(FULFILLMENT_PER_RUN)");
     expect(heal).toBeGreaterThan(-1);
     expect(due).toBeGreaterThan(heal);
   });

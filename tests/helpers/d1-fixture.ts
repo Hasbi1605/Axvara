@@ -28,7 +28,7 @@ export function createD1Fixture() {
   const prepare = (query: string, params: unknown[] = []): InternalStatement => {
     const before = () => {
       control.queries++;
-      if (control.queries > control.limit) throw new Error("D1 query budget exceeded");
+      if (control.queries > control.limit) throw new Error(`D1 query budget exceeded at #${control.queries}: ${query.slice(0, 100)}`);
       if (control.fail?.(query, params)) throw new Error("Injected database interruption");
     };
     const execute = () => { before(); return sql.prepare(query).run(...params); };

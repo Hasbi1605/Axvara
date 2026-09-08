@@ -4,6 +4,8 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-08 — R12 budget query cron: expiry 4/run + helper 4/run + skip leg stranded saat expiry penuh + sinyal deferred jujur (8 expiry tuntas 2 run @39 query, limit 50 tak lagi abort) — cron operations, tests/cron-budget (2 perilaku) + selaraskan tes traffic/outbox/per-item — (verifikasi: vitest 418/418, tsc bersih)
+
 - 2026-09-08 — R11 monitoring jujur: query last_match mencakup matched (sebelumnya selalu null), kesehatan fulfillment membaca fulfillment_items + usia antrean tertua (macet = degraded, bukan configured), itemAttention dijumlahkan benar, urutan destructure query diperbaiki — overview/route, tests/overview-health (4 perilaku) — (verifikasi: vitest 416/416, tsc bersih, matched→healthy + gagal→degraded + antrean macet→degraded)
 
 - 2026-09-08 — R10 lease outbox WA: klaim sending + worker_id + locked_until 5 mnt (getDue lewati ter-lease, CAS gugurkan snapshot basi, crash-window pulih via migrasi 0018) — outbox.ts, schema, 0018_wa_outbox_lease, tests/wa-outbox-lease (2 perilaku) — (verifikasi: vitest 412/412, tsc bersih, worker ganda→1 kirim + lease lewat pulih retry)

@@ -83,11 +83,11 @@ describe("penerima kanal eksplisit per item", () => {
 
   it("cron backfill baris item untuk job pra-migrasi sebelum proses due jobs", () => {
     const cron = read("src/app/api/cron/operations/route.ts");
-    expect(cron).toContain("backfillMissingFulfillmentItems(BATCH_LIMIT)");
+    expect(cron).toContain("backfillMissingFulfillmentItems(FULFILLMENT_PER_RUN)");
     expect(cron).toContain("fulfillment_items_backfilled");
     expect(cron).toContain("ensureFulfillmentItems(order)");
-    const backfill = cron.indexOf("backfillMissingFulfillmentItems(BATCH_LIMIT)");
-    const due = cron.indexOf("getDueJobs(BATCH_LIMIT)");
+    const backfill = cron.indexOf("backfillMissingFulfillmentItems(FULFILLMENT_PER_RUN)");
+    const due = cron.indexOf("getDueJobs(FULFILLMENT_PER_RUN)");
     expect(backfill).toBeGreaterThan(-1);
     expect(due).toBeGreaterThan(backfill);
   });

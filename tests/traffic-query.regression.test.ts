@@ -77,7 +77,7 @@ describe("Issue #14 — proteksi trafik aktual, bukan klaim", () => {
 describe("Issue #14 — efisiensi query sesuai batas D1 aktual", () => {
   it("cron operations: batch 8 agar satu run < 50 query/invocation (D1 Free)", () => {
     const cron = read("src/app/api/cron/operations/route.ts");
-    expect(cron).toContain("const BATCH_LIMIT = 8");
+    expect(cron).toContain("const EXPIRY_PER_RUN = 4");
     expect(cron).not.toContain("BATCH_LIMIT * 4");
   });
 

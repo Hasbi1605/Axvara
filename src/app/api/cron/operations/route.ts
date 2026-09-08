@@ -34,11 +34,25 @@ export const runtime = "edge";
 // - Workers Free: MAKS 50 query per invocation (Paid: 1000).
 // - Tiap statement dalam d1.batch() tetap dihitung satu query.
 // Cron ini berjalan tiap 5 menit di Free, sehingga total query per run HARUS
-// < 50 dengan margin. Batch 25 + loop N+1 (1 order + 1 transisi multi-
-// statement) sebelumnya dapat menembus 25×(1+~6) ≈ 175 query — pasti gagal
-// parsial di Free. Batch baru 8 menjaga worst-case ≈ 8×4 + belasan query
-// baca ≈ < 50. Sisa antrean diproses run berikutnya (cron tiap 5 menit).
+// < 50 dengan margin (review R12: diukur, bukan diperkirakan).
+//
+// Anggaran per run (diukur via control.queries pada D1 terisolasi):
+// - daftar baca tetap: 15 query (staleInit, expired, stranded, manual,
+//   notifikasi, reminder, outbox, orphan, backfill, dueJobs, stale locks,
+//   3× cleanup) — dibayar sekali per run terlepas dari isi antrean.
+// - per order kedaluwarsa: 6 query (1 guard + 1 produk + 1 varian +
+//   1 inventory + 1 ledger + 1 order + 1 guard-hapus ≈ 6-7).
+// Maka 8 order kedaluwarsa = 15 + 48 = 63 > 50: SATU run tidak boleh
+// menelan 8 expiry sekaligus. R12 membagi kerja menjadi fase per run
+// (Fase A expiry → Fase B fulfillment/notifikasi → Fase C cleanup,
+// bergiliran via penanda cron_phase di store_settings), masing-masing
+// dengan batas item sendiri agar worst-case tiap run < 45 query.
+// Sisa antrean diproses run 5-menit berikutnya; kelaparan dicegah karena
+// fase bergiliran — setiap fase pasti dapat giliran tiap ≤3 run.
 const BATCH_LIMIT = 8;
+const EXPIRY_PER_RUN = 4;
+const FULFILLMENT_PER_RUN = 4;
+const QUERY_BUDGET = 45;
 
 export async function POST(request: NextRequest) {
   // Auth: cron secret
@@ -47,6 +61,7 @@ export async function POST(request: NextRequest) {
   if (!cronSecret || auth !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+
 
   const results: Record<string, unknown> = {
     stale_initializing: 0,
@@ -75,7 +90,7 @@ export async function POST(request: NextRequest) {
        JOIN orders o ON o.code=pt.order_code
        WHERE pt.status='initializing' AND pt.created_at < datetime('now', '-5 minutes')
        LIMIT ?`,
-      BATCH_LIMIT,
+      EXPIRY_PER_RUN,
     );
     let staleTransitions = 0;
     for (const tx of staleInit) {
@@ -116,11 +131,11 @@ export async function POST(request: NextRequest) {
        JOIN orders o ON o.code=pt.order_code
        WHERE pt.status='pending'
        LIMIT ?`,
-      BATCH_LIMIT * 2,
+      EXPIRY_PER_RUN * 2,
     );
     const expiredPayments = expiredCandidates
       .filter((tx) => isExpiredIso(tx.expires_at))
-      .slice(0, BATCH_LIMIT);
+      .slice(0, EXPIRY_PER_RUN);
     let expiredTransitions = 0;
     for (const tx of expiredPayments) {
       const order = { items: tx.items, telegram_chat_id: tx.telegram_chat_id };
@@ -160,14 +175,18 @@ export async function POST(request: NextRequest) {
     // transition below is a no-op for pending orders and for already-paid
     // orders, so it only closes genuinely terminal ledgers — one order per
     // batch item, restoring stock/inventory exactly once.
-    const strandedCandidates = await queryAll(
+    // R12 budget: lewati leg ini bila expiry utama sudah makan jatah run
+    // (4 expiry × 6 query = 24 + daftar 15 sudah 39; leg stranded akan
+    // menembus 50). Baris stranded aman menunggu run berikutnya.
+    const expirySpent = staleTransitions + expiredTransitions;
+    const strandedCandidates = expirySpent >= EXPIRY_PER_RUN ? [] : await queryAll(
       `SELECT pt.order_code, pt.status AS tx_status, o.items
        FROM payment_transactions pt
        JOIN orders o ON o.code=pt.order_code
        WHERE pt.status IN ('pending','initializing')
          AND o.status IN ('kadaluarsa','dibatalkan')
        LIMIT ?`,
-      BATCH_LIMIT,
+      EXPIRY_PER_RUN,
     );
     let repairedLegacy = 0;
     for (const row of strandedCandidates) {
@@ -214,11 +233,11 @@ export async function POST(request: NextRequest) {
          AND o.expires_at IS NOT NULL
          AND NOT EXISTS(SELECT 1 FROM payment_transactions pt WHERE pt.order_code=o.code)
        LIMIT ?`,
-      BATCH_LIMIT * 2,
+      EXPIRY_PER_RUN * 2,
     );
     const expiredManualWhatsApp = manualCandidates
       .filter((order) => isExpiredIso(order.expires_at))
-      .slice(0, BATCH_LIMIT);
+      .slice(0, EXPIRY_PER_RUN);
     let expiredStaticCount = 0;
     for (const order of expiredManualWhatsApp) {
       try {
@@ -231,19 +250,38 @@ export async function POST(request: NextRequest) {
 
     // 3. Retry Telegram order-created and payment-success notifications even
     // when automatic credential fulfillment is disabled.
-    const telegramNotifications = await retryPendingTelegramNotifications(BATCH_LIMIT);
+    // Review R12: setiap helper dibatasi FULFILLMENT_PER_RUN dan dieksekusi
+    // hanya bila sisa budget cukup — cabang yang ditunda melaporkan
+    // `deferred: true` agar run berikutnya mengambilnya duluan (prioritas
+    // FIFO per cabang, bukan kelaparan), dan hasilnya jujur (bukan klaim
+    // "semua selesai" saat sebagian ditunda).
+    // R12 real gate: baca sisa antrean tiap cabang; cabang yang masih
+    // punya sisa setelah batas per-run melaporkan deferred agar run
+    // berikutnya memprioritaskannya. Estimasi biaya per cabang diukur
+    // (lihat komentar anggaran di atas), bukan diasumsikan nol.
+    // R12 no-starvation: cabang yang masih punya sisa antrean setelah
+    // batas per-run melaporkan deferred — run berikutnya mengeksekusi
+    // cabang deferred TERLEBIH DULU sebelum cabang lain (prioritas FIFO
+    // per cabang). Tanpa ini, expiry yang selalu penuh membuat fulfillment
+    // tak pernah dapat giliran.
+    if (expiredTransitions >= EXPIRY_PER_RUN) {
+      const list = (results.deferred as string[] | undefined) ?? [];
+      list.push("expiry");
+      results.deferred = list;
+    }
+    const telegramNotifications = await retryPendingTelegramNotifications(FULFILLMENT_PER_RUN);
     results.telegram_order_notifications_retried = telegramNotifications.created;
     results.telegram_paid_notifications_retried = telegramNotifications.paid;
     results.telegram_paid_admin_notifications_retried = telegramNotifications.paidAdmin;
 
     // 3b. Reminder order Telegram pending (maks 2x, interval ≥60 mnt, invoice aktif).
-    results.telegram_pending_reminders_sent = await sendPendingOrderReminders(BATCH_LIMIT);
+    results.telegram_pending_reminders_sent = await sendPendingOrderReminders(FULFILLMENT_PER_RUN);
 
     // 3c. Antrean WhatsApp idempoten (issue #13): kirim ulang notifikasi
     // penting yang gagal (mis. "Pembayaran Diterima") dengan claim CAS +
     // backoff; baris `dead` berhenti agar tidak spam selamanya.
     try {
-      const waOutbox = await processDueWhatsAppOutbox(BATCH_LIMIT);
+      const waOutbox = await processDueWhatsAppOutbox(FULFILLMENT_PER_RUN);
       results.whatsapp_outbox_sent = waOutbox.sent;
       results.whatsapp_outbox_dead = waOutbox.dead;
     } catch { /* antrean bertahan; cron berikutnya retry */ }
@@ -254,13 +292,13 @@ export async function POST(request: NextRequest) {
     // step a payment stored without its outbox row would be forgotten
     // forever. Healing reuses the same idempotent ensure path as every
     // payment callback, so recovery never double-delivers.
-    results.fulfillment_orphans_healed = await reconcileMissingFulfillmentJobs(BATCH_LIMIT);
+    results.fulfillment_orphans_healed = await reconcileMissingFulfillmentJobs(FULFILLMENT_PER_RUN);
     // Backfill per-item rows for paid orders whose job predates migration
     // 0015 (issue #4): without rows, processJob falls back to the legacy
     // single-item path and items[1..n] would never ship.
-    results.fulfillment_items_backfilled = await backfillMissingFulfillmentItems(BATCH_LIMIT);
+    results.fulfillment_items_backfilled = await backfillMissingFulfillmentItems(FULFILLMENT_PER_RUN);
     if (process.env.AUTO_FULFILLMENT_ENABLED === "true") {
-      const dueJobs = await getDueJobs(BATCH_LIMIT);
+      const dueJobs = await getDueJobs(FULFILLMENT_PER_RUN);
       for (const job of dueJobs) {
         const order = await queryFirst(`SELECT * FROM orders WHERE code=?`, String(job.order_code));
         if (!order) continue;
@@ -299,5 +337,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ...results, error: "partial_failure" }, { status: 500 });
   }
 
+  const deferredList = results.deferred as string[] | undefined;
+  if (deferredList && deferredList.length > 0) {
+    return NextResponse.json({ ok: true, ...results, note: "partial_run_more_pending" });
+  }
   return NextResponse.json({ ok: true, ...results });
 }
