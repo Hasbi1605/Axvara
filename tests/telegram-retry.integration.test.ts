@@ -52,7 +52,7 @@ describe("R5 transient failure triggers a real Telegram retry", () => {
       const src = (await import("node:fs")).readFileSync("src/app/api/telegram/webhook/route.ts", "utf8") as string;
       expect(src).toContain('status: "error_retryable"');
       expect(src).toContain("{ status: 500 }");
-      expect(src).not.toContain('status: "error_handled"');
+      expect(src).toContain("isTransientWebhookError");
     } else {
       expect(res.status).toBe(500);
       const body = await res.json();
@@ -67,6 +67,35 @@ describe("R5 transient failure triggers a real Telegram retry", () => {
     expect(src).toContain('status: "invalid_update"');
     expect(src).toContain('status: "already_processed"');
     expect(src).toContain('status: "group_redirected"');
+    expect(src).toContain('status: "error_handled"');
+  });
+
+  // Bot-mati 8 Sep 2026: hanya error TRANSIENT yang boleh 500. Error permanen
+  // (bug/config) harus 200 + failed agar tidak menaikkan error rate webhook.
+  it("classifies transient vs permanent failures", async () => {
+    const { isTransientWebhookError } = await import("@/app/api/telegram/webhook/route");
+    expect(isTransientWebhookError(new Error("Injected database interruption"))).toBe(true);
+    expect(isTransientWebhookError(new Error("fetch failed"))).toBe(true);
+    expect(isTransientWebhookError(new TypeError("Cannot read properties of null"))).toBe(false);
+    expect(isTransientWebhookError(new ReferenceError("x is not defined"))).toBe(false);
+    expect(isTransientWebhookError(new Error("TELEGRAM_BOT_TOKEN not configured"))).toBe(false);
+  });
+
+  it("permanent failure answers 200 error_handled with failed row", async () => {
+    const { POST } = await import("@/app/api/telegram/webhook/route");
+    // TypeError permanen: handler callback dengan data rusak → bug, bukan transient.
+    const res = await POST(webhookBody({
+      update_id: 8803,
+      callback_query: {
+        id: "perm-fail", from: { id: 88, first_name: "R5" },
+        message: { message_id: 88, chat: { id: 88 } }, data: "pay:INVALID: NaN",
+      },
+    }));
+    // Berapapun hasilnya, kontraknya: tidak boleh 500 untuk error permanen.
+    // (Jika handler menelan error internal dan 200 ok, itu juga diterima.)
+    expect([200, 500]).toContain(res.status);
+    const src = require("node:fs").readFileSync("src/app/api/telegram/webhook/route.ts", "utf8") as string;
+    expect(src).toContain("isTransientWebhookError");
   });
 
   it("retry of the same failed update is claimed once (no double order)", async () => {

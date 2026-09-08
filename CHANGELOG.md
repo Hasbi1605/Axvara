@@ -4,6 +4,8 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-08 — Bot Telegram mati: hanya error transient yang jawab 500 (permanen/bug/config → 200 + failed agar tak menaikkan error rate webhook), catch selalu console.error + akses chat.type defensif — webhook Telegram, tests/telegram-retry (+2 perilaku klasifikasi) — (verifikasi: vitest 421/421, tsc bersih, normal 200 → transient 500 → retry 200)
+
 - 2026-09-08 — Tombol Telegram Admin di halaman sukses pesanan kini ke akun support manusia @axvara_support (sebelumnya ke bot @Axvara_bot) + tes guard — src/app/pesanan/[code]/page.tsx, tests/checkout-integrity — (verifikasi: vitest 419/419)
 
 - 2026-09-08 — Tandai remediasi R1–R12 selesai: docs/REVIEW-REMEDIATION-2026-09-08 (tabel bukti + dampak awam + migrasi 0017/0018 + limitasi), ARCHITECTURE (lease 0018/reviewed_by/R12 budget/R9 hierarki), README (tautan dokumen) — (verifikasi: vitest 418/418, tsc bersih, fixture 16/16, GET / 200 + CSS 200, Obscura PNG 1280x720)

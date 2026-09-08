@@ -251,7 +251,7 @@ export async function POST(request: NextRequest) {
     // 8. Route: text command
     if (update.message?.text && chatId) {
       const text = update.message.text.trim();
-      await handleCommand(text, chatId, update.message.chat.type, from);
+      await handleCommand(text, chatId, update.message.chat?.type ?? "private", from);
       await markDone(updateId);
       return NextResponse.json({ ok: true });
     }
@@ -259,14 +259,13 @@ export async function POST(request: NextRequest) {
     await markDone(updateId);
     return NextResponse.json({ ok: true });
   } catch (error) {
-    // A processing failure must leave the update retryable: mark it failed
-    // (lease expired by definition — a new delivery attempt may reclaim it)
-    // and answer NON-2xx so Telegram actually redelivers (review R5).
-    // Before this fix the handler returned 200 for every failure, which told
-    // Telegram "delivered" — Telegram never retried, and the transient
-    // outage became a silent drop. Permanent failures (invalid updates,
-    // budget exhausted, group redirects) still return 200 above and never
-    // reach this branch, so non-2xx here cannot loop forever.
+    // Klasifikasi error (bot-mati 8 Sep 2026): tidak semua kegagalan layak
+    // retry Telegram. Hanya kegagalan TRANSIENT (DB/jaringan/timeout) yang
+    // menjawab 500 agar Telegram redelivery (R5). Error permanen (bug kode,
+    // konfigurasi hilang) menjawab 200 + baris failed + pesan error ke user —
+    // retry 5x tidak akan memperbaikinya, malah menaikkan error rate webhook
+    // sampai Telegram menurunkan reputasi endpoint dan bot terlihat mati.
+    const transient = isTransientWebhookError(error);
     try {
       if (isD1Mode()) {
         await execRun(
@@ -276,11 +275,34 @@ export async function POST(request: NextRequest) {
       }
     } catch { /* best effort */ }
 
+    // Jejak diagnosis: tanpa log ini, penyebab 500 hanya bisa ditebak dari
+    // luar (Pages logs kosong → "bot mati misterius"). Tanpa PII.
+    console.error(
+      `telegram webhook update ${updateId} ${transient ? "transient" : "permanent"} failure:`,
+      error instanceof Error ? error.message : "Unknown",
+    );
+
     if (chatId) {
       try { await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" }); } catch { /* ok */ }
     }
-    return NextResponse.json({ ok: false, status: "error_retryable" }, { status: 500 });
+    if (transient) {
+      return NextResponse.json({ ok: false, status: "error_retryable" }, { status: 500 });
+    }
+    return NextResponse.json({ ok: true, status: "error_handled" });
   }
+}
+
+/**
+ * Bedakan kegagalan sementara (layak retry Telegram via 500) dari permanen.
+ * Default: transient — lebih aman mencoba lagi daripada diam. Pola permanen
+ * hanya yang jelas tidak bisa pulih sendiri: bug tipe/referensi, validasi,
+ * dan konfigurasi yang hilang (retry tidak menciptakan token yang hilang).
+ */
+export function isTransientWebhookError(error: unknown): boolean {
+  const msg = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+  if (/TELEGRAM_BOT_TOKEN not configured|bot_not_configured|not configured/i.test(msg)) return false;
+  if (/^(TypeError|ReferenceError|SyntaxError|RangeError):/i.test(msg)) return false;
+  return true;
 }
 
 async function markDone(updateId: string) {
