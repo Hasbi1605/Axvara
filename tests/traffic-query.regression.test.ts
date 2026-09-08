@@ -85,7 +85,9 @@ describe("Issue #14 — efisiensi query sesuai batas D1 aktual", () => {
     expect(read("src/lib/fulfillment/deliver.ts")).toContain("reconcileMissingFulfillmentJobs(limit = 8)");
     expect(read("src/lib/fulfillment/deliver.ts")).toContain("backfillMissingFulfillmentItems(limit = 8)");
     expect(read("src/lib/fulfillment/deliver.ts")).toContain("getDueJobs(limit = 8)");
-    expect(read("src/lib/telegram/order-notifications.ts")).toContain("retryPendingTelegramNotifications(limit = 8)");
+    // RR3-09: retry notifikasi mendukung filter per jenis agar cron hanya
+    // membayar daftar yang antreannya > 0 (hemat query baca kosong).
+    expect(read("src/lib/telegram/order-notifications.ts")).toContain("retryPendingTelegramNotifications(limit = 8");
     expect(read("src/lib/telegram/order-notifications.ts")).toContain("sendPendingOrderReminders(limit = 8)");
     expect(read("src/lib/whatsapp/outbox.ts")).toContain("getDueWhatsAppOutbox(limit = 8)");
     expect(read("src/lib/whatsapp/outbox.ts")).toContain("processDueWhatsAppOutbox(limit = 8)");

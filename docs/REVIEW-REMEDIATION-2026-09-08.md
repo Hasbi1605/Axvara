@@ -1,4 +1,15 @@
 # REVIEW-REMEDIATION-2026-09-08 — Penyelesaian R1–R12
+> ⚠️ KOREKSI STATUS (8 Sep 2026 sore — baca ini dulu): dokumen ini adalah
+> CATATAN HISTORIS per 8 Sep 2026 pagi dan sebagian isinya SUDAH TIDAK
+> BERLAKU setelah eksekusi round 3 (`docs/REVIEW-ROUND3-EXECUTION-2026-09-08.md`):
+> - "vitest 418/418" → kini **479/479** (40 file).
+> - "R8 stateless tanpa tabel sesi" → SALAH sejak migrasi **0020**
+>   (`admin_session_revocations` di D1; revokasi tahan restart/lintas
+>   instance; RR3-04 menutup celah baca-gagal).
+> - "Semua R selesai" → review independen round 3 (`/tmp/AXVARA-REVIEW-ROUND3-2026-09-08.md`,
+>   snapshot `16d1a17`) menemukan sembilan sisa (RR3-01–09); semuanya
+>   diperbaiki dengan bukti entrypoint di dokumen eksekusi round 3.
+> Isi asli di bawah dipertahankan sebagai arsip (append-only).
 
 Tanggal: 8 September 2026 (Asia/Jakarta). Snapshot review asal + perbaikan:
 `71aa840` (R1) → `b7e6906` (R2) → `259ccc8` (R3) → `789efdb` (R4) →

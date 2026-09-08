@@ -465,27 +465,38 @@ export function clearSessionCacheForTest(): void {
   revokedSessions.clear();
 }
 
+/** Kegagalan baca revokasi: bedakan "record tidak ada" dari "store gagal".
+ *
+ * RR3-04: `.catch(() => null)` di sini MENGUBAH gangguan baca menjadi
+ * seolah-olah tidak ada record (versi 0) — sesi yang sudah logout diterima
+ * kembali. Sekarang kegagalan dilempar agar pemanggil fail-closed; hanya
+ * "baris memang tidak ada" yang menghasilkan 0.
+ */
 async function readRevokedVersionFromStore(sid: string): Promise<number> {
-  try {
-    const { queryFirst, isD1Mode } = await import("@/lib/db");
-    if (!isD1Mode()) return 0;
-    const row = await queryFirst(
-      `SELECT version FROM admin_session_revocations WHERE sid=?`,
-      sid,
-    ).catch(() => null);
-    return Number((row as { version?: unknown } | null)?.version ?? 0);
-  } catch {
-    // Gangguan BACA revokasi: JANGAN fallback "anggap valid". Kembalikan
-    // -1 sebagai penanda store tak dapat dibaca; checkAdminSession
-    // memperlakukannya sebagai revoked (fail-closed) bila D1 diharapkan.
-    return -1;
-  }
+  const { queryFirst, isD1Mode } = await import("@/lib/db");
+  if (!isD1Mode()) return 0;
+  const row = await queryFirst(
+    `SELECT version FROM admin_session_revocations WHERE sid=?`,
+    sid,
+  );
+  // Tidak ada baris = sesi belum pernah dicabut → versi 0. Kegagalan query
+  // (throw) DITERUSKAN — bukan ditelan menjadi 0.
+  return Number((row as { version?: unknown } | null)?.version ?? 0);
 }
 
 async function sessionBumpFor(sid: string): Promise<number> {
   const local = revokedSessions.get(sid) ?? 0;
-  const stored = await readRevokedVersionFromStore(sid);
-  if (stored === -1) return -2; // store tak terbaca → fail-closed di pemanggil
+  let stored: number;
+  try {
+    stored = await readRevokedVersionFromStore(sid);
+  } catch {
+    // Gangguan BACA revokasi saat D1 diwajibkan: JANGAN fallback "anggap
+    // valid". Kembalikan -2 sebagai penanda store tak dapat dibaca;
+    // expectedAuthVersion memperlakukannya sebagai revoked (fail-closed).
+    // Tanpa D1 (dev), readRevokedVersionFromStore mengembalikan 0 dan
+    // tidak pernah melempar ke sini.
+    return -2;
+  }
   return Math.max(local, stored);
 }
 

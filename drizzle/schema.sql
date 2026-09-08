@@ -67,6 +67,11 @@ CREATE TABLE IF NOT EXISTS orders (
   telegram_paid_admin_notified_at TEXT,
   telegram_reminder_count INTEGER NOT NULL DEFAULT 0,
   telegram_reminder_sent_at TEXT,
+  -- Penanda pengiriman foto invoice Telegram (RR3-05, migrasi 0021):
+  -- NULL = foto belum (terbukti) sampai; timestamp = sendPhoto {ok:true}.
+  -- Cron menyapu invoice pending dan mengirim ulang foto yang SAMA.
+  telegram_invoice_sent_at TEXT,
+  telegram_invoice_attempts INTEGER NOT NULL DEFAULT 0,
   -- Waktu pembayaran tetap untuk laporan pendapatan (issue #12): ditulis
   -- sekali saat transisi lunas, tidak pernah diubah oleh pengiriman/catatan/
   -- notifikasi. Hari/bulan bisnis = WIB atas kolom ini (lihat src/lib/revenue.ts).

@@ -1,6 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createD1Fixture, insertTestProduct } from "./helpers/d1-fixture";
 
+vi.mock("@/lib/telegram/api", () => ({
+  sendMessage: vi.fn(async () => ({ ok: true, result: { message_id: 1 } })),
+  sendPhoto: vi.fn(async () => ({ ok: true, result: { message_id: 1 } })),
+  answerCallbackQuery: vi.fn(async () => ({ ok: true })),
+  safeEditOrSend: vi.fn(async () => ({ ok: true, result: { message_id: 1 } })),
+  showLoadingBar: vi.fn(async () => {}),
+  sendChatAction: vi.fn(async () => ({ ok: true })),
+}));
+vi.mock("@/lib/whatsapp/gateway", () => ({
+  sendTextMessage: vi.fn(async () => ({ ok: true, messageId: "cron-budget-wa" })),
+}));
+
 let fixture: ReturnType<typeof createD1Fixture>;
 beforeEach(async () => {
   fixture = createD1Fixture();
@@ -74,7 +86,12 @@ describe("R12 cron fits the per-invocation query budget", () => {
   });
 
   it("mixed expiry + WA outbox + fulfillment drains across runs under budget", async () => {
-    // Campuran: 4 expiry + 4 notifikasi WA + 1 fulfillment job multi-item.
+    // Campuran: 4 expiry + 4 notifikasi WA + 1 fulfillment job.
+    // RR3-01/03: AUTO_FULFILLMENT_ENABLED=true (pengiriman aktif — mematikan
+    // auto-fulfillment dalam skenario pengiriman dilarang) dan gateway WA
+    // sukses via mock, sehingga acceptance memeriksa STATUS AKHIR bisnis
+    // (job delivered, WA sent) — bukan sekadar HTTP 200 / deferred.
+    vi.stubEnv("AUTO_FULFILLMENT_ENABLED", "true");
     await seedExpired(4, "MIXE");
     const { enqueueWhatsAppMessage } = await import("@/lib/whatsapp/outbox");
     for (let i = 0; i < 4; i++) {
@@ -88,7 +105,7 @@ describe("R12 cron fits the per-invocation query budget", () => {
       VALUES('MIXF',1,'web','queued',0,datetime('now','-1 minute'))`).run();
     let runs = 0;
     let last: { queries: number; status: number; body: Record<string, unknown> } | null = null;
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 8; i++) {
       runs++;
       last = await run();
       expect(last.status).toBe(200);
@@ -96,28 +113,31 @@ describe("R12 cron fits the per-invocation query budget", () => {
       expect(last.body.error).toBeUndefined();
       const pendingExpiry = Number(fixture.sql.prepare("SELECT COUNT(*) n FROM payment_transactions WHERE status='pending'").get()?.n ?? 0);
       const pendingWa = Number(fixture.sql.prepare("SELECT COUNT(*) n FROM whatsapp_outbox WHERE status IN ('pending','failed')").get()?.n ?? 0);
-      if (pendingExpiry === 0 && pendingWa === 0) break;
+      const pendingJob = Number(fixture.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs WHERE status IN ('queued','retry')").get()?.n ?? 0);
+      if (pendingExpiry === 0 && pendingWa === 0 && pendingJob === 0) break;
     }
     expect(Number(fixture.sql.prepare("SELECT COUNT(*) n FROM payment_transactions WHERE status='pending'").get()?.n ?? 0)).toBe(0);
-    // WA terkirim atau dead (gateway asli tanpa mock → gagal → retry/dead,
-    // tetapi tidak hilang diam-diam dan tidak abort budget).
-    const waLeft = fixture.sql.prepare("SELECT status, COUNT(*) n FROM whatsapp_outbox GROUP BY status").all();
-    const sent = Number(waLeft.find((r) => String(r.status) === "sent")?.n ?? 0);
-    const dead = Number(waLeft.find((r) => String(r.status) === "dead")?.n ?? 0);
-    const failed = Number(waLeft.find((r) => String(r.status) === "failed")?.n ?? 0);
-    expect(sent + dead + failed).toBe(4);
-    expect(runs).toBeLessThanOrEqual(6);
-    expect(last?.body.query_budget_used).toBeLessThanOrEqual(45);
+    // WA sukses terkirim via mock (bukan dead/tertunda selamanya).
+    expect(Number(fixture.sql.prepare("SELECT COUNT(*) n FROM whatsapp_outbox WHERE status='sent'").get()?.n ?? 0)).toBe(4);
+    // Job fulfillment selesai delivered (web manual → manual_required adalah
+    // status akhir yang sah untuk item manual).
+    const jobStatus = String(fixture.sql.prepare("SELECT status FROM fulfillment_jobs WHERE order_code='MIXF'").get()?.status ?? "");
+    expect(["delivered", "manual_required"]).toContain(jobStatus);
+    expect(runs).toBeLessThanOrEqual(8);
+    expect(Number(last?.body.query_budget_used ?? 999)).toBeLessThanOrEqual(40);
   });
 
   it("continuous expiry stream still gives other channels their turn (no starvation)", async () => {
     // Antrean expiry diisi ulang tiap run (simulasi kedatangan terus) —
     // kanal notify/fulfillment harus tetap dapat giliran via fase deferred.
+    // RR3-01: auto-fulfillment AKTIF dan gateway WA sukses (mock di atas)
+    // agar "kemajuan" berarti pekerjaan selesai, bukan sekadar deferred.
+    vi.stubEnv("AUTO_FULFILLMENT_ENABLED", "true");
     await seedExpired(4, "STARVE-E");
     const { enqueueWhatsAppMessage } = await import("@/lib/whatsapp/outbox");
     await enqueueWhatsAppMessage("starve-wa-0", "628000000000", "DUMMY");
     const seenPhases = new Set<string>();
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 6; i++) {
       const r = await run();
       expect(r.status).toBe(200);
       expect(r.queries).toBeLessThan(50);
@@ -133,6 +153,10 @@ describe("R12 cron fits the per-invocation query budget", () => {
     const waDone = fixture.sql.prepare("SELECT COUNT(*) n FROM whatsapp_outbox WHERE status IN ('sent','dead')").get()?.n as number;
     const waDeferred = seenPhases.has("notify");
     expect(waDone > 0 || waDeferred).toBe(true);
+    // RR3: bila WA selesai, ia harus SENT (gateway sukses) — bukan dead.
+    if (waDone > 0) {
+      expect(Number(fixture.sql.prepare("SELECT COUNT(*) n FROM whatsapp_outbox WHERE status='sent'").get()?.n ?? 0)).toBeGreaterThan(0);
+    }
   });
 
   it("no lost work and no false completion across mixed runs", async () => {
@@ -145,9 +169,10 @@ describe("R12 cron fits the per-invocation query budget", () => {
       expect(r.body.error).toBeUndefined();
     }
     // Semua expiry tuntas; WA dalam status yang jelas (bukan hilang).
+    // RR3: gateway sukses via mock → WA harus SENT (bukan pending selamanya).
     expect(fixture.sql.prepare("SELECT COUNT(*) n FROM payment_transactions WHERE status='pending'").get()?.n).toBe(0);
     expect(fixture.sql.prepare("SELECT COUNT(*) n FROM whatsapp_outbox").get()?.n).toBe(1);
     const waStatus = String(fixture.sql.prepare("SELECT status FROM whatsapp_outbox").get()?.status ?? "");
-    expect(["sent", "failed", "dead", "pending"]).toContain(waStatus);
+    expect(waStatus).toBe("sent");
   });
 });

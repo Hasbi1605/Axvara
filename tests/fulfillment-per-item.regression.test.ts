@@ -81,12 +81,14 @@ describe("penerima kanal eksplisit per item", () => {
     expect(deliver).toContain("web_channel_requires_manual_handover");
   });
 
-  it("cron backfill baris item untuk job pra-migrasi sebelum proses due jobs", () => {
+  it("cron backfill baris item untuk job pra-migrasi sebelum proses due jobs", async () => {
+    // RR3-01/03: backfill inline per unit (bukan helper boros
+    // backfillMissingFulfillmentItems) dengan biaya konservatif per order.
     const cron = read("src/app/api/cron/operations/route.ts");
-    expect(cron).toContain("backfillMissingFulfillmentItems(FULFILLMENT_PER_RUN)");
+    expect(cron).toContain("COST_PER_BACKFILL_ORDER");
     expect(cron).toContain("fulfillment_items_backfilled");
     expect(cron).toContain("ensureFulfillmentItems(order)");
-    const backfill = cron.indexOf("backfillMissingFulfillmentItems(FULFILLMENT_PER_RUN)");
+    const backfill = cron.indexOf("fulfillment_items_backfilled");
     const due = cron.indexOf("getDueJobs(FULFILLMENT_PER_RUN)");
     expect(backfill).toBeGreaterThan(-1);
     expect(due).toBeGreaterThan(backfill);

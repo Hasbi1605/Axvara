@@ -14,6 +14,11 @@
 export function isTransientWebhookError(error: unknown): boolean {
   const msg = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
   if (/TELEGRAM_BOT_TOKEN not configured|bot_not_configured|not configured/i.test(msg)) return false;
+  // RR3-05: kegagalan pengiriman invoice (order sudah benar, hanya foto tak
+  // sampai) SELALU transient — retry Telegram + cron menyapu invoice yang
+  // sama tanpa order kedua. Klasifikasi ini mendahului aturan bug-tipe di
+  // bawah agar tidak salah menjadi permanen.
+  if (/telegram_invoice_send_failed/i.test(msg)) return true;
   if (/fetch failed|network|timeout|abort|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|socket hang up|TLS|SSL/i.test(msg)) return true;
   if (/^(TypeError|ReferenceError|SyntaxError|RangeError):/i.test(msg)) return false;
   return true;

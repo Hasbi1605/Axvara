@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { queryAll, queryFirst } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
-import { recordManualHandover } from "@/lib/fulfillment/deliver";
+import { findMissingFulfillmentLines, recordManualHandoverDetailed } from "@/lib/fulfillment/deliver";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -60,9 +60,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   );
   if (!item) return NextResponse.json({ error: "Item tidak ditemukan pada pesanan ini" }, { status: 404 });
 
-  let ok = false;
+  let result: Awaited<ReturnType<typeof recordManualHandoverDetailed>>;
   try {
-    ok = await recordManualHandover(code, parsed.data.item_index, admin.email, parsed.data.note ?? null);
+    result = await recordManualHandoverDetailed(code, parsed.data.item_index, admin.email, parsed.data.note ?? null);
   } catch {
     // Gangguan penyimpanan di tengah handover: baca ulang kebenaran —
     // bila item ternyata sudah delivered (race menang), laporkan sukses
@@ -82,7 +82,34 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
     return NextResponse.json({ error: "Gagal mencatat serah terima." }, { status: 500 });
   }
-  if (!ok) {
+  if (!result.ok) {
+    // RR3-02: manifest belum lengkap — laporkan kondisi belum selesai
+    // dengan jelas (409), bukan 200 seolah tuntas. Item yang diserahkan
+    // tetap tercatat; admin diminta memulihkan baris yang hilang lalu
+    // menyerahkan sisanya.
+    if (result.reason === "incomplete_manifest") {
+      const missing = await findMissingFulfillmentLines(code).catch(() => [] as number[]);
+      return NextResponse.json(
+        {
+          error: "handover_incomplete",
+          message: `Baris pesanan belum lengkap (baris hilang: ${missing.join(", ") || "?"}). Serah terima item ini tercatat; pulihkan materialisasi lalu serahkan sisanya.`,
+          missing_item_indexes: missing,
+        },
+        { status: 409 },
+      );
+    }
+    if (result.reason === "storage_error") {
+      return NextResponse.json({ error: "Gagal mencatat serah terima." }, { status: 500 });
+    }
+    if (result.reason === "not_paid") {
+      return NextResponse.json(
+        { error: "handover_requires_paid", message: "Serah terima hanya untuk pesanan lunas." },
+        { status: 409 },
+      );
+    }
+    if (result.reason === "not_found") {
+      return NextResponse.json({ error: "Item tidak ditemukan pada pesanan ini" }, { status: 404 });
+    }
     return NextResponse.json(
       { error: "handover_rejected", message: "Item tidak dalam status menunggu serah terima." },
       { status: 409 },

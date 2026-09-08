@@ -114,12 +114,25 @@ export function OrdersManager({ onChanged }: { onChanged?: () => void }) {
         const pending = items.filter((item) => item.status !== "delivered");
         if (!pending.length) { toast.success("Semua item sudah diserahkan."); }
         else {
+          // RR3-02/07: handover bisa mengembalikan 409 handover_incomplete
+          // (manifest belum lengkap) atau 500 parsial. Item yang TERCATAT
+          // tidak diserahkan ulang — lanjut ke item berikutnya, kumpulkan
+          // hasil per item, dan laporkan jujur di akhir (bukan gagal total
+          // pada item pertama). Klik ulang aman (idempoten + reconcile).
+          const failures: string[] = [];
+          let recorded = 0;
           for (const item of pending) {
             const response = await fetch(`/api/admin/orders/${encodeURIComponent(action.order.code)}/handover`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ item_index: item.item_index, note: actionNote.trim() || undefined }) });
-            const data = await response.json().catch(() => ({})) as { error?: string; message?: string };
-            if (!response.ok) throw new Error(data.message || data.error || "Serah terima gagal");
+            const data = await response.json().catch(() => ({})) as { error?: string; message?: string; missing_item_indexes?: number[] };
+            if (!response.ok) {
+              failures.push(`item ${item.item_index}: ${data.message || data.error || `HTTP ${response.status}`}${Array.isArray(data.missing_item_indexes) && data.missing_item_indexes.length ? ` (baris hilang: ${data.missing_item_indexes.join(", ")})` : ""}`);
+            } else {
+              recorded++;
+            }
           }
-          toast.success(`Serah terima ${pending.length} item tercatat.`);
+          if (!failures.length) toast.success(`Serah terima ${recorded} item tercatat.`);
+          else if (recorded > 0) toast.error(`${recorded} item tercatat, ${failures.length} gagal: ${failures.join("; ")}`);
+          else throw new Error(failures.join("; "));
         }
       } else {
         const nextStatus = action.kind === "paid" ? "lunas" : "dibatalkan";

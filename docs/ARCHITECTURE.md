@@ -410,15 +410,60 @@ R2 bucket: axvara-assets
     fallback hanya `x-real-ip`; `x-forwarded-for` TIDAK dipakai (spoofable).
     Tidak ada ketergantungan eksklusif pada counter per-isolate — WAF adalah
     lapis pertama yang global.
-  - Batch cron operations (review R12 lanjutan 2026-09-08, enforced bukan
-    komentar): `QueryBudget` 45 + fase bergiliran (`expiry/fulfillment/notify/
-    cleanup` via `cron_phase` + `cron_deferred` di `store_settings`). Setiap
-    cabang fits()-dulu, deferred-jujur dulu (anti-starvation: expiry yang
-    terus datang tak membuat kanal lain kelaparan), biaya per cabang diukur
-    (expiry 6/order, notifikasi 3, WA 4/baris, job 4+3/item, ekor tetap 14).
-    8 expiry tuntas 2 run @<45 query; campuran expiry+WA+fulfillment tuntas
-    ≤6 run tanpa lost work; respons memuat `query_budget_used/limit` +
-    `deferred[]`. Pembersihan revokasi sesi kedaluwarsa ikut anggaran cron.
+  - Batch cron operations (RR3-01/03/06/09, 8 Sep 2026 — menggantikan
+    anggaran R12 lanjutan): `QueryBudget` 40 (margin 10 dari batas platform
+    50) + fase bergiliran (`expiry/fulfillment/notify/cleanup` via
+    `cron_phase` + `cron_deferred` di `store_settings`). Setiap cabang
+    fits()-dulu per UNIT (bukan per kelompok — tidak ada gerbang "seluruh
+    grup harus muat", RR3-01), deferred-jujur, fulfillment selalu dapat slot
+    tiap run selama ada job due (anti-starvation dua arah). Antrean dibaca
+    dalam 1 query gabungan (8 COUNT subselect) + daftar hanya bila fase
+    aktif dan antreannya > 0. Biaya konservatif batas-atas terukur per unit:
+    orphan 12/order, backfill 10/order, job 6+5/item, notifikasi 4/order,
+    WA 2 recovery + 5/baris, cleanup 4, ekor tulis 2 (RESERVE_TAIL selalu
+    dicadangkan). `query_budget_used` = ESTIMASI batas atas (bukan hitungan
+    pasti) + `query_budget_note: estimate_upper_bound_not_measured`.
+    Empat order 2-item tuntas ≤5 run @<40 aktual; 5 order campuran tuntas
+    ≤5 run; order 4-item tak-termaterialisasi konvergen tanpa
+    partial_failure di bawah adapter limit-50.
+  - Recovery sending basi WA mandiri (RR3-06): gerbang cron =
+    pending/failed > 0 ATAU sending-lease-kedaluwarsa > 0 (COUNT sendiri),
+    sehingga antrean yang seluruhnya sending basi tetap dipulihkan via
+    entrypoint cron. Lease aktif tidak pernah dicuri.
+  - Notifikasi Telegram per jenis (RR3-09): antrean created / paid buyer /
+    paid admin dihitung terpisah (bukan hanya marker order-created);
+    `retryPendingTelegramNotifications(limit, {created,paid,paidAdmin})`
+    hanya membayar SELECT ke jenis yang antre.
+  - Retry foto invoice Telegram (RR3-05, migrasi 0021):
+    `orders.telegram_invoice_sent_at` (NULL = belum terbukti sampai) +
+    `telegram_invoice_attempts` (maks 5). Checkout menandai pending
+    sebelum sendPhoto dan sent hanya bila {ok:true}; {ok:false} melempar
+    agar update failed + 500 (redelivery nyata) dan stok/reservasi
+    DIPERTAHANKAN untuk invoice aktif. `retryTelegramInvoiceDelivery`
+    mengirim ulang foto yang SAMA (nominal/expiry dari ledger, caption
+    dari DB) tanpa order kedua; cron menyapu ≤2 invoice/run dalam budget.
+    Semantik jujur: Telegram tidak memberi exactly-once untuk sendPhoto —
+    retry dibatasi + dideduplikasi marker DB + guard double-tap order.
+  - Handover manual terverifikasi manifest (RR3-02/07):
+    `findMissingFulfillmentLines` mencocokkan baris fulfillment terhadap
+    order (item_index, product_id, variant_id, jumlah) — agregat TIDAK
+    delivered selama manifest belum lengkap (409 `handover_incomplete`
+    + daftar baris hilang). `reconcileHandoverWrites` menyelesaikan
+    inventory/audit/agregat/job secara idempoten; klik ulang/konkuren
+    menyembuhkan penulisan yang tertinggal tanpa kirim/stok ganda. UI
+    OrdersManager melaporkan hasil per item (bukan gagal total di item
+    pertama) dan menampilkan baris hilang.
+  - Revokasi sesi fail-closed (RR3-04): `readRevokedVersionFromStore`
+    melempar kegagalan baca (bukan `.catch(() => null)` menjadi versi 0);
+    `sessionBumpFor` mengembalikan -2 → `expectedAuthVersion` tak
+    mungkin-cocok → requireAdmin/refresh MENOLAK sesi logout saat store
+    revokasi tak terbaca, tanpa mutasi dan tanpa token baru.
+  - Fencing worker menyeluruh (RR3-08): kepemilikan lease melindungi
+    SELURUH mutasi turunan processJob (job + agregat order + error) — bila
+    job bukan retry milik sendiri (lease hilang), worker lama berhenti
+    sebelum menyentuh order. Order campuran tetap `manual_required`
+    (guard `NOT IN ('delivered','manual_required')`, bukan daftar
+    pengecualian baru).
   - Agregat fulfillment berpagar lease (review R4 lanjutan 2026-09-08):
     `processJob` menulis parent (delivered/retry) hanya bila `locked_until`
     miliknya masih berlaku (`scheduleRetryFenced`); worker basi yang kembali

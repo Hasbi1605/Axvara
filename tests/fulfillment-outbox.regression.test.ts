@@ -42,16 +42,57 @@ describe("atomic paid+job commit (no crash window)", () => {
 });
 
 describe("idempotent recovery without double delivery", () => {
-  it("cron heals paid orders that have no job row before processing due jobs", () => {
+  it("cron heals paid orders that have no job row before processing due jobs", async () => {
+    // RR3-01/03: cron tidak lagi memanggil helper boros
+    // reconcileMissingFulfillmentJobs() (1 query per helper yang menelan
+    // belasan query aktual); logika orphan yang SAMA kini inline per unit
+    // dengan biaya konservatif per unit (COST_PER_ORPHAN_ORDER) + fits().
     const cron = read("src/app/api/cron/operations/route.ts");
-    expect(cron).toContain("reconcileMissingFulfillmentJobs(FULFILLMENT_PER_RUN)");
     expect(cron).toContain("fulfillment_orphans_healed");
-    // Healing must precede due-job processing (import order is static, so
-    // compare the call sites instead of import names).
-    const heal = cron.indexOf("reconcileMissingFulfillmentJobs(FULFILLMENT_PER_RUN)");
+    expect(cron).toContain("COST_PER_ORPHAN_ORDER");
+    expect(cron).toContain("ensureFulfillmentForPaidOrder(String(orphan.code))");
+    // Healing (orphan scan) tetap mendahului pemrosesan due jobs.
+    const heal = cron.indexOf("fulfillment_orphans_healed");
     const due = cron.indexOf("getDueJobs(FULFILLMENT_PER_RUN)");
     expect(heal).toBeGreaterThan(-1);
     expect(due).toBeGreaterThan(heal);
+    // Perilaku dibuktikan integration test RR3 (bukan pencarian string):
+    // orphan paid order sembuh menjadi queued/delivered via entrypoint cron.
+    // Cron butuh: fase fulfillment aktif, AUTO_FULFILLMENT, dan Telegram
+    // notify yang tidak menelan budget (matikan agar fokus ke orphan).
+    const { createD1Fixture, insertTestProduct, stubFulfillmentKey } = await import("./helpers/d1-fixture");
+    const fx = createD1Fixture();
+    const prevAuto = process.env.AUTO_FULFILLMENT_ENABLED;
+    const prevBot = process.env.TELEGRAM_BOT_ENABLED;
+    const prevToken = process.env.TELEGRAM_BOT_TOKEN;
+    process.env.AUTO_FULFILLMENT_ENABLED = "true";
+    process.env.TELEGRAM_BOT_ENABLED = "false";
+    process.env.TELEGRAM_BOT_TOKEN = "";
+    stubFulfillmentKey();
+    try {
+      await insertTestProduct(fx.sql, "manual", 1);
+      fx.sql.prepare(`INSERT INTO orders
+        (code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,
+         sales_channel,fulfillment_status,variant_id,variant_snapshot)
+        VALUES ('AXV-20260908-ORPH01','Buyer','628',?,10000,'qris','lunas','paid','web','queued',1,?)`)
+        .run(JSON.stringify([{ product_id: 1, variant_id: 1, name: "M", price: 10000, qty: 1 }]),
+          JSON.stringify({ lines: [{ variant_id: 1, fulfillment_mode: "manual" }] }));
+      // Paksa fase fulfillment aktif pada run ini agar orphan scan jalan.
+      fx.sql.prepare("INSERT INTO store_settings(key,value) VALUES('cron_phase','fulfillment') ON CONFLICT(key) DO UPDATE SET value='fulfillment'").run();
+      const { POST } = await import("@/app/api/cron/operations/route");
+      const { NextRequest } = await import("next/server");
+      process.env.CRON_SECRET = "c";
+      const res = await POST(new NextRequest("http://localhost/api/cron/operations", {
+        method: "POST", headers: { authorization: "Bearer c" },
+      }));
+      expect(res.status).toBe(200);
+      expect(fx.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs WHERE order_code='AXV-20260908-ORPH01'").get()?.n).toBe(1);
+    } finally {
+      if (prevAuto === undefined) delete process.env.AUTO_FULFILLMENT_ENABLED; else process.env.AUTO_FULFILLMENT_ENABLED = prevAuto;
+      if (prevBot === undefined) delete process.env.TELEGRAM_BOT_ENABLED; else process.env.TELEGRAM_BOT_ENABLED = prevBot;
+      if (prevToken === undefined) delete process.env.TELEGRAM_BOT_TOKEN; else process.env.TELEGRAM_BOT_TOKEN = prevToken;
+      fx.close();
+    }
   });
 
   it("recovery reuses the single idempotent ensure path and respects the flag", () => {

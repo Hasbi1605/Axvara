@@ -34,6 +34,7 @@ import { createDanaQrisInvoice, isDanaQrisConfigured } from "@/lib/payments/dana
 import { reserveInventory, releaseInventoryForOrder, countInventory } from "@/lib/fulfillment/inventory";
 import { createFulfillmentJob } from "@/lib/fulfillment/deliver";
 import { notifyTelegramOrderCreated } from "@/lib/telegram/order-notifications";
+import { markInvoicePending, markInvoiceSent } from "@/lib/telegram/invoice-retry";
 
 export const runtime = "edge";
 
@@ -619,6 +620,15 @@ async function handleCallback(data: string, chatId: number, messageId: number, f
         String(chatId),
       );
       if (dupOrder) {
+        // RR3-05: redelivery setelah foto invoice gagal (update failed +
+        // 500) tiba di sini via reclaim — order pending dipakai ulang
+        // (TIDAK membuat order kedua). Bila foto invoice order ini belum
+        // terkirim, kirim ulang foto yang SAMA sekarang (provider mungkin
+        // sudah pulih); cron menyapu sisanya bila masih gagal.
+        try {
+          const { retryTelegramInvoiceDelivery } = await import("@/lib/telegram/invoice-retry");
+          await retryTelegramInvoiceDelivery(String(dupOrder.code)).catch(() => false);
+        } catch { /* sapuan cron berikutnya */ }
         await sendMessage({
           chat_id: chatId,
           text: alreadyPendingMessage(String(dupOrder.code)),
@@ -777,11 +787,17 @@ async function handleCartCheckout(
 
   // Guard double-tap: satu pending order Telegram per chat — checkout gabungan
   // tidak boleh menumpuk invoice aktif yang belum dibayar/dibatalkan.
+  // RR3-05: bila foto invoice order ini belum terkirim, kirim ulang foto
+  // yang SAMA (redelivery/cron-proof, tanpa order kedua).
   const existingOrder = await queryFirst(
     `SELECT code FROM orders WHERE telegram_chat_id=? AND status='pending' AND payment_status IN ('unpaid','pending')`,
     String(chatId),
   );
   if (existingOrder) {
+    try {
+      const { retryTelegramInvoiceDelivery } = await import("@/lib/telegram/invoice-retry");
+      await retryTelegramInvoiceDelivery(String(existingOrder.code)).catch(() => false);
+    } catch { /* sapuan cron berikutnya */ }
     await sendMessage({
       chat_id: chatId,
       text: alreadyPendingMessage(String(existingOrder.code)),
@@ -954,7 +970,15 @@ async function createAndSendCartInvoice(
     await notifyTelegramOrderCreated(orderCode).catch(() => false);
     await clearCart(String(from.id));
 
-    await sendPhoto({
+    // RR3-05: foto invoice adalah pengiriman transaksional — hasilnya WAJIB
+    // diperiksa sesuai kontrak provider {ok:false}. Tandai pending SEBELUM
+    // kirim; tandai terkirim HANYA bila {ok:true}. Gagal kirim = lempar
+    // agar update menjadi failed + 500 (Telegram redelivery) dan cron
+    // menyapu invoice pending via retryTelegramInvoiceDelivery — order,
+    // invoice, reservasi, dan stok yang sama dipertahankan (tanpa order
+    // kedua, tanpa potong stok ulang).
+    await markInvoicePending(orderCode);
+    const cartPhoto = await sendPhoto({
       chat_id: chatId,
       photo: invoiceResult.qrisUrl,
       caption: invoiceMessage({
@@ -969,8 +993,21 @@ async function createAndSendCartInvoice(
       parse_mode: "HTML",
       reply_markup: qrisInvoiceKeyboard(orderCode),
     });
+    if (isCriticalSendResult(cartPhoto, "transactional")) {
+      throw new Error(`telegram_invoice_send_failed:${cartPhoto.description || "unknown"}`);
+    }
+    await markInvoiceSent(orderCode);
   } catch (error) {
     console.error("Cart order creation failed:", error instanceof Error ? error.message : "unknown");
+    // RR3-05: kegagalan FOTO invoice (order + ledger + stok sudah benar,
+    // hanya foto tak sampai) = error TRANSIENT yang wajib retry nyata.
+    // Stok/reservasi dipertahankan (lihat fence di bawah), lalu RETHROW
+    // agar update menjadi failed + 500 → Telegram redelivery memakai ulang
+    // order yang sama via guard double-tap (TIDAK membuat order kedua).
+    // Kegagalan lain (stok habis, invoice gagal total) tetap pola lama:
+    // pesan error + done (tidak layak retry Telegram).
+    const cartInvoiceFailed = error instanceof Error
+      && error.message.startsWith("telegram_invoice_send_failed");
     try {
       if (orderInserted) {
         // Fence: jangan batalkan order yang mungkin sudah dibayar/diproses
@@ -991,14 +1028,22 @@ async function createAndSendCartInvoice(
           // Order tercatat tapi invoice gagal dan belum dibayar: lepas
           // reservasi agar tidak terkunci; cron/admin rekonsiliasi bila
           // pembayaran datang belakangan (order tetap pending + payable).
-          for (const done of decremented) {
-            await execRun(
-              `UPDATE product_variants SET stock=stock+?, updated_at=datetime('now')
-               WHERE id=? AND stock!=-1`,
-              done.qty, done.variantId,
-            );
+          // RR3-05: pengecualian — kegagalan FOTO invoice
+          // (telegram_invoice_send_failed) dengan ledger aktif = order
+          // masih hidup, cron kirim ulang foto yang sama → stok/reservasi
+          // DIPERTAHANKAN (satu order, potong sekali).
+          const invoiceFailed = error instanceof Error
+            && error.message.startsWith("telegram_invoice_send_failed");
+          if (!invoiceFailed) {
+            for (const done of decremented) {
+              await execRun(
+                `UPDATE product_variants SET stock=stock+?, updated_at=datetime('now')
+                 WHERE id=? AND stock!=-1`,
+                done.qty, done.variantId,
+              );
+            }
+            for (const code of reservedInventory) await releaseInventoryForOrder(code);
           }
-          for (const code of reservedInventory) await releaseInventoryForOrder(code);
         }
       } else {
         for (const done of decremented) {
@@ -1011,7 +1056,11 @@ async function createAndSendCartInvoice(
         for (const code of reservedInventory) await releaseInventoryForOrder(code);
       }
     } catch { /* Cron/admin reconciliation can handle any remaining reservation. */ }
-    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" }).catch(() => {});
+    // RR3-05: lempar ulang kegagalan foto invoice agar lapis POST menjawab
+    // 500 + failed (retry Telegram nyata + sapuan cron). BUKAN dari awal:
+    // guard double-tap memakai ulang order/invoice yang sama.
+    if (cartInvoiceFailed) throw error;
   }
 }
 
@@ -1364,12 +1413,17 @@ async function handleVariantConfirm(chatId: number, messageId: number, variantId
   const productId = product ? Number(product.id) : 0;
 
   // Guard: existing pending order for this chat+variant — resend it, never duplicate.
+  // RR3-05: kirim ulang foto invoice yang sama bila belum terkirim.
   const existingOrder = await queryFirst(
     `SELECT code FROM orders WHERE telegram_chat_id=? AND status='pending' AND payment_status IN ('unpaid','pending')
      AND variant_id=?`,
     String(chatId), variantId,
   );
   if (existingOrder) {
+    try {
+      const { retryTelegramInvoiceDelivery } = await import("@/lib/telegram/invoice-retry");
+      await retryTelegramInvoiceDelivery(String(existingOrder.code)).catch(() => false);
+    } catch { /* sapuan cron berikutnya */ }
     await sendMessage({
       chat_id: chatId,
       text: alreadyPendingMessage(String(existingOrder.code)),
@@ -1525,12 +1579,17 @@ async function handlePayWithQris(
   }
 
   // Guard double-tap: reuse pending order for same chat+variant, never duplicate.
+  // RR3-05: kirim ulang foto invoice yang sama bila belum terkirim.
   const existingOrder = await queryFirst(
     `SELECT code FROM orders WHERE telegram_chat_id=? AND status='pending' AND payment_status IN ('unpaid','pending')
      AND variant_id=?`,
     String(chatId), variantId,
   );
   if (existingOrder) {
+    try {
+      const { retryTelegramInvoiceDelivery } = await import("@/lib/telegram/invoice-retry");
+      await retryTelegramInvoiceDelivery(String(existingOrder.code)).catch(() => false);
+    } catch { /* sapuan cron berikutnya */ }
     await sendMessage({
       chat_id: chatId,
       text: alreadyPendingMessage(String(existingOrder.code)),
@@ -1648,8 +1707,11 @@ async function createAndSendVariantInvoice(
     await createFulfillmentJob(orderCode, inventoryId, fulfillmentMode, variant.id, "telegram").catch(() => null);
     await notifyTelegramOrderCreated(orderCode).catch(() => false);
 
+    // RR3-05: sama seperti jalur cart — foto invoice transaksional, periksa
+    // {ok:false}, tandai pending/sent, lempar agar retry nyata + cron retry.
+    await markInvoicePending(orderCode);
     const displayName = qty > 1 ? `${productName} — ${variant.label} ×${qty}` : `${productName} — ${variant.label}`;
-    await sendPhoto({
+    const variantPhoto = await sendPhoto({
       chat_id: chatId,
       photo: invoiceResult.qrisUrl,
       caption: invoiceMessage({
@@ -1662,8 +1724,17 @@ async function createAndSendVariantInvoice(
       parse_mode: "HTML",
       reply_markup: qrisInvoiceKeyboard(orderCode),
     });
+    if (isCriticalSendResult(variantPhoto, "transactional")) {
+      throw new Error(`telegram_invoice_send_failed:${variantPhoto.description || "unknown"}`);
+    }
+    await markInvoiceSent(orderCode);
   } catch (error) {
     console.error("Variant order creation failed:", error instanceof Error ? error.message : "unknown");
+    // RR3-05: sama seperti jalur cart — kegagalan foto invoice = transient,
+    // stok/reservasi dipertahankan, RETHROW agar retry nyata via redelivery
+    // Telegram (guard double-tap memakai ulang order yang sama) + cron.
+    const variantInvoiceFailed = error instanceof Error
+      && error.message.startsWith("telegram_invoice_send_failed");
     try {
       if (orderInserted) {
         // Fence (review R4): hanya batalkan bila order masih pending &
@@ -1681,14 +1752,27 @@ async function createAndSendVariantInvoice(
         if (!transaction) {
           await transitionPendingOrder(orderCode, "dibatalkan", "invoice_setup_failed", items);
         } else if (stillPending) {
-          if (finiteStockReserved) {
-            await execRun(
-              `UPDATE product_variants SET stock=stock+?, updated_at=datetime('now')
-               WHERE id=? AND stock!=-1`,
-              qty, variant.id,
-            );
+          // RR3-05: invoice aktif (ledger pending) + foto gagal = JANGAN
+          // lepas stok/reservasi — order masih hidup dan cron akan mengirim
+          // ulang foto yang sama. Stok hanya dilepas bila TIDAK ada ledger
+          // aktif (invoice memang gagal total). Kegagalan foto invoice
+          // (telegram_invoice_send_failed) TIDAK melepas stok.
+          const invoiceFailed = error instanceof Error
+            && error.message.startsWith("telegram_invoice_send_failed");
+          const activeLedger = invoiceFailed ? { id: 1 } : await queryFirst(
+            `SELECT id FROM payment_transactions WHERE order_code=? AND status='pending'`,
+            orderCode,
+          ).catch(() => ({ id: 1 }));
+          if (!activeLedger) {
+            if (finiteStockReserved) {
+              await execRun(
+                `UPDATE product_variants SET stock=stock+?, updated_at=datetime('now')
+                 WHERE id=? AND stock!=-1`,
+                qty, variant.id,
+              );
+            }
+            if (inventoryId) await releaseInventoryForOrder(orderCode);
           }
-          if (inventoryId) await releaseInventoryForOrder(orderCode);
         }
       } else {
         if (finiteStockReserved) {
@@ -1701,7 +1785,9 @@ async function createAndSendVariantInvoice(
         if (inventoryId) await releaseInventoryForOrder(orderCode);
       }
     } catch { /* Cron/admin reconciliation can handle any remaining reservation. */ }
-    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" }).catch(() => {});
+    // RR3-05: lempar ulang kegagalan foto invoice (lihat jalur cart).
+    if (variantInvoiceFailed) throw error;
   }
 }
 

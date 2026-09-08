@@ -1,4 +1,6 @@
 import { execRun, queryAll, queryFirst } from "@/lib/db";
+
+type Row = Record<string, unknown>;
 import { isFutureIso } from "@/lib/expiry";
 import { sendMessage } from "@/lib/telegram/api";
 import {
@@ -208,51 +210,70 @@ export async function notifyTelegramPaidAdmin(orderCode: string): Promise<boolea
   return true;
 }
 
-/** Retry best-effort Telegram notifications from the five-minute operations cron. */
-export async function retryPendingTelegramNotifications(limit = 8): Promise<{
+/** Retry best-effort Telegram notifications from the five-minute operations cron.
+ *
+ * RR3-09: ketiga jenis pekerjaan (order-created, paid buyer, paid admin)
+ * dihitung dan di-retry TERPISAH per marker — tidak lagi digantungkan pada
+ * satu gerbang "created IS NULL". `only` memungkinkan cron memanggil tiap
+ * jenis hanya bila antreannya > 0 (hemat query baca kosong, RR3-01).
+ */
+export async function retryPendingTelegramNotifications(limit = 8, only?: {
+  created?: boolean; paid?: boolean; paidAdmin?: boolean;
+}): Promise<{
   created: number;
   paid: number;
   paidAdmin: number;
 }> {
-  const pendingCreated = await queryAll(
-    `SELECT code FROM orders
-     WHERE sales_channel='telegram' AND telegram_order_notified_at IS NULL
-     ORDER BY created_at ASC LIMIT ?`,
-    limit,
-  );
+  const want = {
+    created: only?.created ?? true,
+    paid: only?.paid ?? true,
+    paidAdmin: only?.paidAdmin ?? true,
+  };
   let created = 0;
-  for (const order of pendingCreated) {
-    try {
-      if (await notifyTelegramOrderCreated(String(order.code))) created++;
-    } catch { /* Retry the same durable marker on the next cron run. */ }
-  }
-
-  const pendingPaid = await queryAll(
-    `SELECT code FROM orders
-     WHERE sales_channel='telegram' AND status='lunas' AND payment_status='paid'
-       AND telegram_paid_notified_at IS NULL
-     ORDER BY updated_at ASC LIMIT ?`,
-    limit,
-  );
   let paid = 0;
-  for (const order of pendingPaid) {
-    try {
-      if (await notifyTelegramBuyerPaid(String(order.code))) paid++;
-    } catch { /* Retry the same durable marker on the next cron run. */ }
+  let paidAdmin = 0;
+  if (want.created) {
+    const pendingCreated = await queryAll(
+      `SELECT code FROM orders
+       WHERE sales_channel='telegram' AND telegram_order_notified_at IS NULL
+       ORDER BY created_at ASC LIMIT ?`,
+      limit,
+    ).catch(() => [] as Row[]);
+    for (const order of pendingCreated) {
+      try {
+        if (await notifyTelegramOrderCreated(String(order.code))) created++;
+      } catch { /* Retry the same durable marker on the next cron run. */ }
+    }
   }
 
-  const pendingPaidAdmin = await queryAll(
-    `SELECT code FROM orders
-     WHERE sales_channel='telegram' AND status='lunas' AND payment_status='paid'
-       AND telegram_paid_admin_notified_at IS NULL
-     ORDER BY updated_at ASC LIMIT ?`,
-    limit,
-  );
-  let paidAdmin = 0;
-  for (const order of pendingPaidAdmin) {
-    try {
-      if (await notifyTelegramPaidAdmin(String(order.code))) paidAdmin++;
-    } catch { /* Retry the same durable marker on the next cron run. */ }
+  if (want.paid) {
+    const pendingPaid = await queryAll(
+      `SELECT code FROM orders
+       WHERE sales_channel='telegram' AND status='lunas' AND payment_status='paid'
+         AND telegram_paid_notified_at IS NULL
+       ORDER BY updated_at ASC LIMIT ?`,
+      limit,
+    ).catch(() => [] as Row[]);
+    for (const order of pendingPaid) {
+      try {
+        if (await notifyTelegramBuyerPaid(String(order.code))) paid++;
+      } catch { /* Retry the same durable marker on the next cron run. */ }
+    }
+  }
+
+  if (want.paidAdmin) {
+    const pendingPaidAdmin = await queryAll(
+      `SELECT code FROM orders
+       WHERE sales_channel='telegram' AND status='lunas' AND payment_status='paid'
+         AND telegram_paid_admin_notified_at IS NULL
+       ORDER BY updated_at ASC LIMIT ?`,
+      limit,
+    ).catch(() => [] as Row[]);
+    for (const order of pendingPaidAdmin) {
+      try {
+        if (await notifyTelegramPaidAdmin(String(order.code))) paidAdmin++;
+      } catch { /* Retry the same durable marker on the next cron run. */ }
+    }
   }
   return { created, paid, paidAdmin };
 }
