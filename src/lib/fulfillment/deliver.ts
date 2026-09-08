@@ -579,6 +579,14 @@ async function processItem(order: Row, itemRow: Row, adminChatId?: string): Prom
   // Immediate pass (no due-gate): retry rows become deliverable the
   // moment their cause is fixed (secret configured, recipient restored).
   // next_attempt_at only paces the cron, never blocks a live payment path.
+  // Lease fencing (review R4): the claim only wins when the row is
+  // queued/retry with no active lease. An ACTIVE `sending` lease is never
+  // stolen. Every state-changing write below is fenced by the exact
+  // locked_until value this worker holds (? fence): if a newer worker
+  // re-claimed the row after our claim expired, our writes affect zero
+  // rows and the result is dropped — a stale worker can never overwrite a
+  // new worker's progress (delivered rows, error markers, retries).
+  const leaseFence = lockUntil;
   const claim = await execRun(
     `UPDATE fulfillment_items SET status='sending', locked_until=?, attempt_count=attempt_count+1, updated_at=datetime('now')
       WHERE id=? AND status IN ('queued','retry')
@@ -636,15 +644,20 @@ async function processItem(order: Row, itemRow: Row, adminChatId?: string): Prom
       if (!ct || !iv) throw new Error("Shared secret not configured for product");
       const plaintext = await decryptSecret(ct, iv);
       await sendToRecipient(recipientChannel, recipientTarget, orderCode, plaintext, qty);
-      await execRun(
-        `UPDATE fulfillment_items SET status='delivered', delivered_message_id=?, locked_until=NULL, updated_at=datetime('now') WHERE id=?`,
-        `item:${itemId}`, itemId,
+      // Fenced write: only applies while THIS worker still holds the lease.
+      const settled = await execRun(
+        `UPDATE fulfillment_items SET status='delivered', delivered_message_id=?, locked_until=NULL, updated_at=datetime('now') WHERE id=? AND locked_until=?`,
+        `item:${itemId}`, itemId, leaseFence,
       );
+      if (!settled.changes) throw new Error("lease_lost_during_delivery");
       return true;
     }
     if (mode === "unique") {
       // One reserved inventory row per unique item (reserved per order+variant
-      // at checkout; see reserveInventoryForLine). Deliver each exactly once.
+      // at checkout; see reserveInventoryForLine). Each row is delivered at
+      // most once per successful claim (CAS); provider-level duplicates
+      // after an ambiguous crash are bounded by the retry budget, never
+      // guaranteed singular — see releaseStaleJobs.
       const inventoryItem = await queryFirst(
         `SELECT * FROM fulfillment_inventory WHERE id=? AND order_code=? AND status='reserved'`,
         Number(item.inventory_id || 0), orderCode,
@@ -656,16 +669,22 @@ async function processItem(order: Row, itemRow: Row, adminChatId?: string): Prom
       );
       await sendToRecipient(recipientChannel, recipientTarget, orderCode, plaintext, qty);
       await markDelivered(Number(inventoryItem.id));
-      await execRun(
-        `UPDATE fulfillment_items SET status='delivered', delivered_message_id=?, locked_until=NULL, updated_at=datetime('now') WHERE id=?`,
-        `item:${itemId}`, itemId,
+      // Fenced write (see shared branch): a stale worker that lost its
+      // lease mid-send must not flip the row after the new owner claimed it.
+      const settled = await execRun(
+        `UPDATE fulfillment_items SET status='delivered', delivered_message_id=?, locked_until=NULL, updated_at=datetime('now') WHERE id=? AND locked_until=?`,
+        `item:${itemId}`, itemId, leaseFence,
       );
+      if (!settled.changes) throw new Error("lease_lost_during_delivery");
       return true;
     }
     throw new Error(`Unknown fulfillment mode: ${mode}`);
   } catch (error) {
     const errMsg = (error instanceof Error ? error.message : "Unknown delivery error").slice(0, 500);
-    await scheduleItemRetry(itemId, errMsg);
+    // A lost lease is not a delivery failure: the new owner proceeds, and
+    // this worker must not consume the retry budget or overwrite its error.
+    if (errMsg === "lease_lost_during_delivery") return false;
+    await scheduleItemRetry(itemId, errMsg, leaseFence);
     void adminChatId;
     return false;
   }
@@ -704,21 +723,24 @@ async function sendToRecipient(
   if (!sendResult.ok) throw new Error(sendResult.description || "Telegram send failed");
 }
 
-async function scheduleItemRetry(itemId: number, error: string): Promise<void> {
-  const item = await queryFirst(`SELECT attempt_count FROM fulfillment_items WHERE id=?`, itemId);
+async function scheduleItemRetry(itemId: number, error: string, leaseFence?: string): Promise<void> {
+  const item = await queryFirst(`SELECT attempt_count, locked_until FROM fulfillment_items WHERE id=?`, itemId);
   const attempts = Number(item?.attempt_count ?? 0);
+  // Fence: never touch a row whose lease moved on (a newer worker owns it).
+  const fenceSql = leaseFence ? ` AND locked_until=?` : ``;
+  const fenceArgs = leaseFence ? [leaseFence] : [];
   if (attempts >= MAX_ATTEMPTS) {
     await execRun(
-      `UPDATE fulfillment_items SET status='failed', last_error=?, locked_until=NULL, updated_at=datetime('now') WHERE id=?`,
-      error, itemId,
+      `UPDATE fulfillment_items SET status='failed', last_error=?, locked_until=NULL, updated_at=datetime('now') WHERE id=?${fenceSql}`,
+      error, itemId, ...fenceArgs,
     );
     return;
   }
   const delayMinutes = RETRY_DELAYS[Math.min(Math.max(attempts - 1, 0), RETRY_DELAYS.length - 1)];
   await execRun(
     `UPDATE fulfillment_items SET status='retry', last_error=?, locked_until=NULL,
-     next_attempt_at=datetime('now', '+${delayMinutes} minutes'), updated_at=datetime('now') WHERE id=?`,
-    error, itemId,
+     next_attempt_at=datetime('now', '+${delayMinutes} minutes'), updated_at=datetime('now') WHERE id=?${fenceSql}`,
+    error, itemId, ...fenceArgs,
   );
 }
 
@@ -1032,8 +1054,11 @@ export async function ensureFulfillmentForPaidOrder(orderCode: string): Promise<
  *
  * Idempotency: ensureFulfillmentForPaidOrder inserts exactly one job row
  * (UNIQUE order_code); already-delivered orders are skipped by callers that
- * check fulfillment_status, and processJob claims each job exactly once, so
- * recovery never delivers credentials twice.
+ * check fulfillment_status, and processJob claims each job via CAS, so a
+ * retry or a recovered worker reuses progress instead of resending what
+ * already shipped. No singular-delivery promise is made about the provider:
+ * after an ambiguous crash the retry budget bounds redelivery; reconcile
+ * against provider logs when in doubt (see releaseStaleJobs).
  */
 export async function reconcileMissingFulfillmentJobs(limit = 8): Promise<number> {
   const orphans = await queryAll(
@@ -1117,22 +1142,73 @@ export async function getDueJobs(limit = 8): Promise<Row[]> {
 }
 
 /**
- * Release stale locks (jobs stuck in 'sending' past their lock).
+ * Release stale locks (jobs AND items stuck in 'sending' past their lock —
+ * review R4: previously only the job row recovered while the item row stayed
+ * `sending` forever, so the next run sent nothing).
+ *
+ * Recovery rules:
+ * - Lease active → never stolen (CAS on datetime(locked_until)).
+ * - Lease expired → row returns to retry with its progress intact
+ *   (delivered rows untouched, attempt_count preserved for the retry
+ *   budget, next_attempt_at due immediately so recovery does not wait out
+ *   a backoff for a worker that is already dead).
+ * - The item recovery is fenced by the job row: an item is only released
+ *   when its parent job is itself being released or already retryable
+ *   (queued/retry). A `sending` item under a `delivered` job is left alone
+ *   — the job finished, the item row is historical.
+ * - Unknown provider outcome is explicit: recovery CANNOT know whether the
+ *   dead worker's send reached Telegram/WhatsApp before dying. Recovered
+ *   rows carry last_error='stale_lock_recovered:delivery_outcome_unknown'
+ *   so the admin can reconcile against provider logs; resend is bounded by
+ *   the normal attempt budget and makes no singular-delivery promise.
  */
 export async function releaseStaleJobs(): Promise<number> {
   if (isD1Mode()) {
-    const result = await execRun(
+    const jobs = await execRun(
       `UPDATE fulfillment_jobs SET status='retry', locked_until=NULL, updated_at=datetime('now')
        WHERE status='sending' AND datetime(locked_until) < datetime('now')`,
     );
-    return result.changes ?? 0;
+    const items = await execRun(
+      `UPDATE fulfillment_items
+       SET status='retry', locked_until=NULL,
+           next_attempt_at=datetime('now'),
+           last_error='stale_lock_recovered:delivery_outcome_unknown',
+           updated_at=datetime('now')
+       WHERE status='sending' AND datetime(locked_until) < datetime('now')
+         AND EXISTS(
+           SELECT 1 FROM fulfillment_jobs fj
+           WHERE fj.order_code=fulfillment_items.order_code
+             AND fj.status IN ('queued','retry','sending')
+         )`,
+    );
+    return (jobs.changes ?? 0) + (items.changes ?? 0);
   }
 
   let count = 0;
+  const now = new Date();
   for (const job of getJobsMem()) {
-    if (job.status === "sending" && job.locked_until && new Date(String(job.locked_until)) < new Date()) {
+    if (job.status === "sending" && job.locked_until && new Date(String(job.locked_until)) < now) {
       job.status = "retry";
       job.locked_until = null;
+      count++;
+    }
+  }
+  return count;
+}
+
+/**
+ * Release stale per-item locks held in memory (dev fallback parity).
+ * Production D1 path is folded into releaseStaleJobs above.
+ */
+export function releaseStaleItemsMem(rows: Row[]): number {
+  const now = new Date();
+  let count = 0;
+  for (const row of rows) {
+    if (String(row.status) === "sending" && row.locked_until && new Date(String(row.locked_until)) < now) {
+      row.status = "retry";
+      row.locked_until = null;
+      row.next_attempt_at = new Date().toISOString();
+      row.last_error = "stale_lock_recovered:delivery_outcome_unknown";
       count++;
     }
   }

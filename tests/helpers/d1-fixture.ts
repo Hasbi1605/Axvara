@@ -80,3 +80,8 @@ export async function insertTestProduct(sql: Database, mode = "manual", variants
       .run(i, "SKU-" + i, "Variant " + i, mode, secret?.ciphertext ?? null, secret?.iv ?? null);
   }
 }
+
+/** Set the fulfillment encryption key for tests that encrypt/decrypt secrets. */
+export function stubFulfillmentKey() {
+  process.env.FULFILLMENT_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
+}

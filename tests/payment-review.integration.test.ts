@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { createD1Fixture, insertTestOrder, insertTestProduct } from "./helpers/d1-fixture";
+import { createD1Fixture, insertTestOrder, insertTestProduct, stubFulfillmentKey } from "./helpers/d1-fixture";
 import { calculateCrc16, createDanaQrisInvoice } from "@/lib/payments/dana-qris";
 import { createAdminToken, createIdleToken } from "@/lib/auth";
 import { POST as webhook } from "@/app/api/webhook/dana/route";
@@ -11,6 +11,7 @@ vi.mock("@/lib/whatsapp/gateway", () => ({ sendTextMessage: vi.fn(async () => ({
 let fixture: ReturnType<typeof createD1Fixture>;
 beforeEach(async () => {
   fixture = createD1Fixture();
+  stubFulfillmentKey();
   await insertTestProduct(fixture.sql);
   vi.stubEnv("DANA_QRIS_ENABLED", "true");
   vi.stubEnv("DANA_WEBHOOK_SECRET", "fixture-secret");

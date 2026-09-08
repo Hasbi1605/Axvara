@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createD1Fixture, insertTestOrder, insertTestProduct } from "./helpers/d1-fixture";
+import { createD1Fixture, insertTestProduct, stubFulfillmentKey } from "./helpers/d1-fixture";
 import {
   allItemsDelivered,
   allItemsSettled,
@@ -22,7 +22,7 @@ beforeEach(() => {
   vi.stubEnv("AUTO_FULFILLMENT_ENABLED", "true");
   vi.stubEnv("TELEGRAM_BOT_ENABLED", "false");
   vi.stubEnv("TELEGRAM_BOT_TOKEN", "");
-  vi.stubEnv("FULFILLMENT_ENCRYPTION_KEY", Buffer.alloc(32, 7).toString("base64"));
+  stubFulfillmentKey();
   vi.stubGlobal("fetch", vi.fn(() => { throw new Error("Network disabled in fixture"); }));
   vi.mocked(sendMessage).mockClear();
 });

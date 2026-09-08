@@ -80,6 +80,7 @@ describe("semua gerbang lock memakai datetime() normalization", () => {
   });
   it("in-memory fallback memakai Date komparasi (bukan string)", () => {
     const s = src();
-    expect(s).toContain("new Date(String(job.locked_until)) < new Date()");
+    expect(s).toContain("new Date(String(job.locked_until)) < now");
+    expect(s).toContain("new Date(String(row.locked_until)) < now");
   });
 });
