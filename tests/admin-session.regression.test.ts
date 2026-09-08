@@ -192,3 +192,79 @@ describe("issue #8: cookie idle sembarang tidak boleh diterima", () => {
     expect(await auth.verifyIdleToken(idle)).toMatchObject({ sid: expect.any(String) });
   });
 });
+
+describe("review R8: revokasi sesi tahan restart + lintas instance (D1)", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    setEnv(HASH_A);
+  });
+
+  it("replay cookie lama ditolak setelah simulasi restart (cache dibersihkan)", async () => {
+    const { createD1Fixture } = await import("./helpers/d1-fixture");
+    const fx = createD1Fixture();
+    try {
+      // Skema produksi WAJIB memuat tabel revokasi (migrasi 0020) — tanpa
+      // tabel ini tahan-restart tidak mungkin. Gagalkan bila hilang agar
+      // regresi skema tertangkap di sini, bukan di produksi.
+      const table = fx.sql.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='admin_session_revocations'").get();
+      expect(table?.name).toBe("admin_session_revocations");
+      const { auth, token, idle, sid } = await loginPair();
+      expect(await auth.requireAdmin(reqWithCookies(cookies(token, idle)))).not.toBeNull();
+      await auth.bumpAuthVersion(sid); // logout: tercatat di D1 + cache
+      expect(await auth.requireAdmin(reqWithCookies(cookies(token, idle)))).toBeNull();
+      // Simulasi restart/instance baru: cache memori hilang total.
+      auth.clearSessionCacheForTest();
+      const truth = fx.sql.prepare("SELECT version FROM admin_session_revocations WHERE sid=?").get(sid);
+      expect(Number(truth?.version ?? 0)).toBeGreaterThanOrEqual(1);
+      // Sumber kebenaran D1 tetap menolak replay — logout BUKAN palsu.
+      expect(await auth.requireAdmin(reqWithCookies(cookies(token, idle)))).toBeNull();
+      expect(await auth.requireAdminDetailed(reqWithCookies(cookies(token, idle))))
+        .toEqual({ ok: false, reason: "revoked" });
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("instance kedua (cache kosong) langsung menolak sesi yang sudah logout", async () => {
+    const { createD1Fixture } = await import("./helpers/d1-fixture");
+    const fx = createD1Fixture();
+    try {
+      const first = await loginPair();
+      await first.auth.bumpAuthVersion(first.sid);
+      // "Instance B": modul auth segar tanpa cache — hanya baca D1.
+      vi.resetModules();
+      setEnv(HASH_A);
+      const { createD1Fixture: create2 } = await import("./helpers/d1-fixture");
+      void create2;
+      const fresh = await import("@/lib/auth");
+      const { token, idle, sid } = first;
+      void sid;
+      expect(await fresh.requireAdmin(reqWithCookies(cookies(token, idle)))).toBeNull();
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("logout gagal jujur saat store revokasi mati (500, bukan ok:true palsu)", async () => {
+    const { createD1Fixture } = await import("./helpers/d1-fixture");
+    const fx = createD1Fixture();
+    try {
+      const { token, idle } = await loginPair();
+      const cookie = cookies(token, idle);
+      fx.control.fail = (q: string) =>
+        q.includes("admin_session_revocations") && (q.includes("INSERT") || q.includes("SELECT"));
+      const logout = await import("@/app/api/auth/logout/route");
+      const res = await logout.POST(
+        new Request("https://axvara.tech/api/auth/logout", { method: "POST", headers: { cookie } }) as unknown as import("next/server").NextRequest,
+      );
+      fx.control.fail = null;
+      // Gagal tulis revokasi → 500 jujur; cookie tetap dihapus perangkat ini.
+      expect(res.status).toBe(500);
+      expect(await res.json()).toMatchObject({ ok: false, error: "session_revocation_store_unavailable" });
+      const cleared = res.headers.getSetCookie?.() ?? [res.headers.get("Set-Cookie") ?? ""];
+      expect(cleared.join(";")).toContain("Max-Age=0");
+    } finally {
+      fx.close();
+    }
+  });
+});

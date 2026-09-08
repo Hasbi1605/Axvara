@@ -10,16 +10,31 @@ export async function POST(req: NextRequest) {
   // laptop, shared machine, backup restore) stays authenticated. Bumping the
   // per-session auth version invalidates this session's tokens on next
   // requireAdmin check, while other concurrent sessions keep working.
-  // Stateless (in-process map, no new table/migration): in multi-instance
-  // Edge runtimes the cookie clear is the guarantee and password rotation
-  // remains the global kill-switch — documented here, not hidden.
+  //
+  // Sumber kebenaran adalah tabel D1 `admin_session_revocations` (tahan
+  // restart + lintas instance). Gagal tulis revokasi = logout GAGAL (500,
+  // bukan ok:true palsu) — cookie tetap dihapus agar perangkat ini keluar,
+  // namun API jujur bahwa token lama sesi ini belum tentu gugur di semua
+  // instance sehingga admin dapat mengulang logout / rotasi password.
+  let revoked = false;
+  let revocationStoreDown = false;
   try {
     const raw = getTokenFromCookieHeader(req.headers.get("cookie"));
     const payload = raw ? await verifyAdminToken(raw).catch(() => null) : null;
-    if (payload?.sid) await bumpAuthVersion(payload.sid);
-  } catch { /* logout stays best-effort: cookies are cleared below regardless */ }
+    if (payload?.sid) {
+      await bumpAuthVersion(payload.sid);
+      revoked = true;
+    }
+  } catch {
+    revocationStoreDown = true;
+  }
   const isHttps = isSecureForRequest(req);
-  const res = NextResponse.json({ ok: true });
+  const res = revocationStoreDown
+    ? NextResponse.json(
+        { ok: false, error: "session_revocation_store_unavailable", revoked: false },
+        { status: 500 },
+      )
+    : NextResponse.json({ ok: true, revoked });
   res.headers.set("Set-Cookie", expiredCookie(isHttps));
   res.headers.append("Set-Cookie", expiredCookie(!isHttps));
   res.headers.append("Set-Cookie", expiredIdleCookie(isHttps));

@@ -4,6 +4,8 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-08 — Review lanjutan R2/R3/R4/R5/R6/R8/R10/R11/R12: status campuran manual_required (bukan premature delivered), inventory dinormalisasi sebelum mapping + handover manual per-item (endpoint+UI), agregat fulfillment berpagar lease (worker basi tak buka delivered), klasifikasi error di webhook-errors.ts (build pass), race cancel/confirm berpagar, revokasi sesi lintas instance (migrasi 0020), WA CHECK prod rebuild (migrasi 0019) + recovery runtime, attention=COUNT DISTINCT order + needsAction→degraded, cron QueryBudget 45 + fase bergiliran — deliver.ts, webhook-errors.ts, orders route+handover, auth.ts, outbox.ts, service-health.ts, overview/route, cron operations, schema, 0019/0020 — (verifikasi: vitest 459/459, tsc bersih, build pass, GET / 200 + CSS 200, Obscura PNG home+admin, fixture rereview: R4 delivered-tetap + R2/R3/R5/R6/R8/R10/R11/R12 hijau)
+
 - 2026-09-08 — Bot Telegram mati: hanya error transient yang jawab 500 (permanen/bug/config → 200 + failed agar tak menaikkan error rate webhook), catch selalu console.error + akses chat.type defensif — webhook Telegram, tests/telegram-retry (+2 perilaku klasifikasi) — (verifikasi: vitest 421/421, tsc bersih, normal 200 → transient 500 → retry 200)
 
 - 2026-09-08 — Tombol Telegram Admin di halaman sukses pesanan kini ke akun support manusia @axvara_support (sebelumnya ke bot @Axvara_bot) + tes guard — src/app/pesanan/[code]/page.tsx, tests/checkout-integrity — (verifikasi: vitest 419/419)

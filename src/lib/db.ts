@@ -744,7 +744,18 @@ export async function transitionPendingOrder(
     // one row. paid_at is written once (issue #12): COALESCE-guard keeps the
     // first payment time fixed — later fulfillment steps, admin notes, or
     // notification retries must not move revenue to another day/month.
+    //
+    // Race guard (review R6 lanjutan): INSERT job BERSYARAT pada transisi
+    // yang menang — `WHERE EXISTS(SELECT 1 FROM orders WHERE code=? AND
+    // status='lunas' AND payment_status='paid')`. Bila cancel/expiry menang
+    // duluan, UPDATE lunas 0 row DAN job tidak terbit (tak ada job yatim
+    // untuk order dibatalkan). Guard operation_guards di depan batch
+    // menggagalkan batch lebih awal bila order sudah tidak pending.
+    const transitionGuardId = `${code}:lunas-guard:${Date.now()}:${Math.random().toString(36).slice(2)}`;
     const lunasBatch: D1Statement[] = [
+      d1.prepare(
+        "INSERT INTO operation_guards (operation_id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM orders WHERE code=? AND status='pending') THEN 1 ELSE 0 END",
+      ).bind(transitionGuardId, code),
       d1.prepare(
         `UPDATE orders
           SET status=?, admin_note=?, payment_status='paid',
@@ -758,11 +769,22 @@ export async function transitionPendingOrder(
                 (SELECT fi.id FROM fulfillment_inventory fi
                   WHERE fi.order_code=o.code AND fi.status='reserved'),
                 o.sales_channel, 'queued', 0, datetime('now')
-         FROM orders o WHERE o.code=?`,
+         FROM orders o WHERE o.code=? AND o.status='lunas' AND o.payment_status='paid'`,
       ).bind(code),
+      d1.prepare("DELETE FROM operation_guards WHERE operation_id=?").bind(transitionGuardId),
     ];
     const lunasResult = await d1.batch(lunasBatch);
-    if (!lunasResult[0]?.meta?.changes) throw new OrderTransitionError();
+    if (!lunasResult[1]?.meta?.changes) throw new OrderTransitionError();
+    // Bila job yatim historis pernah terbit untuk order yang ternyata
+    // dibatalkan (bug pra-perbaikan), jangan biarkan queued menunjuk order
+    // non-lunas: operasi ini no-op pada jalur normal.
+    await d1.batch([
+      d1.prepare(
+        `UPDATE fulfillment_jobs SET status='failed', last_error='order_no_longer_payable', updated_at=datetime('now')
+         WHERE order_code=? AND status IN ('queued','retry')
+           AND NOT EXISTS(SELECT 1 FROM orders WHERE code=? AND status='lunas' AND payment_status='paid')`,
+      ).bind(code, code),
+    ]).catch(() => undefined);
     await incrementSoldCountForOrder(code);
     return;
   }

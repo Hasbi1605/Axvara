@@ -443,26 +443,87 @@ async function checkAdminSession(req: Request, overrides: RequireAdminOptions = 
 
 /** Logout satu sesi (review R8): naikkan versi sesi agar token/idle lama sesi
  * itu gugur saat verifikasi berikutnya. Sesi lain tidak tersentuh.
- * Stateless tanpa tabel baru: versi per-sesi disimpan di memori proses
- * (revokedSessions) dan ikut dihitung ke expectedVersion di checkAdminSession.
- * Di runtime Edge multi-instans, garansi adalah cookie yang dihapus +
- * rotasi password bila perangkat dicurigai — didokumentasikan di route. */
+ *
+ * Sumber kebenaran adalah tabel D1 `admin_session_revocations` (migrasi
+ * 0020) — tahan restart dan terbaca lintas instance. Map memori
+ * (revokedSessions) hanya cache proses-lokal agar verifikasi tidak
+ * menambah query D1 di jalur panas; setiap bump menulis D1 DULU lalu
+ * mengisi cache, dan setiap verifikasi memakai versi tertinggi yang
+ * diketahui (cache ∪ D1). Tanpa D1 (dev), Map tetap berfungsi.
+ * Rotasi password tetap kill-switch global via claim `av`.
+ * Gangguan tulis D1 saat logout → logout GAGAL (bukan sukses palsu):
+ * bumpAuthVersion melempar agar route menjawab 500, bukan revoked. */
 const revokedSessions = new Map<string, number>();
 
-/** Versi sesi saat ini (0 = belum pernah logout). Diekspor untuk test. */
+/** Versi sesi saat ini (cache lokal; dipakai test). Diekspor untuk test. */
 export function sessionVersionForTest(sid: string): number {
   return revokedSessions.get(sid) ?? 0;
 }
 
+/** Bersihkan cache lokal (simulasi restart/instance baru pada test). */
+export function clearSessionCacheForTest(): void {
+  revokedSessions.clear();
+}
+
+async function readRevokedVersionFromStore(sid: string): Promise<number> {
+  try {
+    const { queryFirst, isD1Mode } = await import("@/lib/db");
+    if (!isD1Mode()) return 0;
+    const row = await queryFirst(
+      `SELECT version FROM admin_session_revocations WHERE sid=?`,
+      sid,
+    ).catch(() => null);
+    return Number((row as { version?: unknown } | null)?.version ?? 0);
+  } catch {
+    // Gangguan BACA revokasi: JANGAN fallback "anggap valid". Kembalikan
+    // -1 sebagai penanda store tak dapat dibaca; checkAdminSession
+    // memperlakukannya sebagai revoked (fail-closed) bila D1 diharapkan.
+    return -1;
+  }
+}
+
+async function sessionBumpFor(sid: string): Promise<number> {
+  const local = revokedSessions.get(sid) ?? 0;
+  const stored = await readRevokedVersionFromStore(sid);
+  if (stored === -1) return -2; // store tak terbaca → fail-closed di pemanggil
+  return Math.max(local, stored);
+}
+
 export async function bumpAuthVersion(sid: string): Promise<void> {
+  const { execRun, queryFirst, isD1Mode } = await import("@/lib/db");
+  if (isD1Mode()) {
+    // Tulis D1 DULU (sumber kebenaran) — gagal tulis = gagal logout.
+    const current = await queryFirst(
+      `SELECT version FROM admin_session_revocations WHERE sid=?`, sid,
+    ).catch(() => null) as { version?: unknown } | null;
+    const next = Number(current?.version ?? 0) + 1;
+    try {
+      await execRun(
+        `INSERT INTO admin_session_revocations (sid, version, revoked_at, expires_at)
+         VALUES (?, ?, datetime('now'), datetime('now', '+9 hours'))
+         ON CONFLICT(sid) DO UPDATE SET version=?, revoked_at=datetime('now'),
+           expires_at=datetime('now', '+9 hours')`,
+        sid, next, next,
+      );
+    } catch {
+      throw new Error("session_revocation_store_unavailable");
+    }
+    revokedSessions.set(sid, next);
+    return;
+  }
   revokedSessions.set(sid, (revokedSessions.get(sid) ?? 0) + 1);
 }
 
-/** Expected `av` untuk sesi ini: versi password global + bump logout sesi. */
+/** Expected `av` untuk sesi ini: versi password global + bump logout sesi.
+ * Bump dibaca dari cache ∪ store D1 (tahan restart/lintas instance).
+ * Store tak terbaca (-2) → kembalikan penanda mustahil-cocok agar sesi
+ * DITOLAK (fail-closed), bukan dianggap valid.
+ */
 async function expectedAuthVersion(sid: string, overrides: RequireAdminOptions): Promise<string> {
   if (overrides.authVersion) return overrides.authVersion;
   const base = await authVersionFor(getAdminCredentials().sha256);
-  const bump = revokedSessions.get(sid) ?? 0;
+  const bump = await sessionBumpFor(sid);
+  if (bump === -2) return `${base}#store-unreadable`;
   return bump === 0 ? base : `${base}#s${bump}`;
 }
 

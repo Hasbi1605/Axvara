@@ -107,7 +107,7 @@ export async function GET(request: NextRequest) {
       LEFT JOIN (SELECT order_code, MAX(reviewed_at) AS reviewed_at
                  FROM payment_proofs WHERE status='approved' GROUP BY order_code) pp
         ON pp.order_code=o.code`;
-  const [orders, proofs, qris, fulfillment, itemAttention, stock, topProduct, channelRows, tgQueue, waQueue, oldestJobDue, oldestItemDue, oldestWaDue, tgSends, waSends, qrisEvents] = await Promise.all([
+  const [orders, proofs, qris, fulfillmentJobsRaw, fulfillmentOrdersNeedingAction, itemAttention, stock, topProduct, channelRows, tgQueue, waQueue, oldestJobDue, oldestItemDue, oldestWaDue, tgSends, waSends, qrisEvents] = await Promise.all([
     safeFirst(`SELECT
       COUNT(*) AS total_orders,
       SUM(CASE WHEN o.status='pending' THEN 1 ELSE 0 END) AS pending_orders,
@@ -124,7 +124,16 @@ export async function GET(request: NextRequest) {
     safeFirst(`SELECT COUNT(*) AS count FROM dana_webhook_events
       WHERE status IN ('received','ignored','failed') AND datetime(created_at)>=datetime('now','-7 days')`),
     safeFirst(`SELECT COUNT(*) AS count FROM fulfillment_jobs WHERE status IN ('manual_required','retry','failed')`),
-    safeAll(`SELECT status, COUNT(*) AS count FROM fulfillment_items GROUP BY status`),
+    // Unit hitung (review R11): fulfillment_attention = JUMLAH ORDER yang
+    // butuh tindakan (bukan jumlah job + jumlah item yang dihitung ganda).
+    // Satu order dihitung SEKALI walau punya 1 job + N item bermasalah.
+    // Item delivered/sending/queued tepat waktu TIDAK dihitung.
+    safeFirst(`SELECT COUNT(DISTINCT o.code) AS count FROM orders o
+      WHERE o.status='lunas' AND o.payment_status='paid' AND (
+        EXISTS(SELECT 1 FROM fulfillment_jobs fj WHERE fj.order_code=o.code AND fj.status IN ('manual_required','retry','failed'))
+        OR EXISTS(SELECT 1 FROM fulfillment_items fi WHERE fi.order_code=o.code AND fi.status IN ('manual_required','retry','failed'))
+      )`),
+    safeAll(`SELECT status, COUNT(*) AS count FROM fulfillment_items WHERE status IN ('manual_required','retry','failed','queued','sending') GROUP BY status`),
     safeFirst(`SELECT COUNT(*) AS count FROM product_variants WHERE is_active=1 AND stock BETWEEN 0 AND 5`),
     safeFirst(`SELECT name,sold_count FROM products WHERE is_active=1 ORDER BY sold_count DESC, sort_order ASC LIMIT 1`),
     safeAll(`SELECT sales_channel,COUNT(*) AS count FROM orders WHERE status='pending' GROUP BY sales_channel`),
@@ -147,14 +156,14 @@ export async function GET(request: NextRequest) {
       WHERE datetime(created_at)>=datetime('now','-7 days')`),
   ]);
   const channels = { web: 0, telegram: 0, whatsapp: 0 };
-  for (const row of channelRows) {
+  for (const row of (Array.isArray(channelRows) ? channelRows : [])) {
     const channel = String(row.sales_channel || "web") as keyof typeof channels;
     if (channel in channels) channels[channel] = Number(row.count || 0);
   }
   const systems = buildSystems({
-    tgQueue: (tgQueue ?? []) as Record<string, unknown>[],
-    itemQueue: (itemAttention ?? []) as Record<string, unknown>[],
-    waQueue: (waQueue ?? []) as Record<string, unknown>[],
+    tgQueue: (Array.isArray(tgQueue) ? tgQueue : []) as Record<string, unknown>[],
+    itemQueue: (Array.isArray(itemAttention) ? itemAttention : []) as Record<string, unknown>[],
+    waQueue: (Array.isArray(waQueue) ? waQueue : []) as Record<string, unknown>[],
     tgSends: tgSends ?? {},
     waSends: waSends ?? {},
     qrisEvents: qrisEvents ?? {},
@@ -176,7 +185,18 @@ export async function GET(request: NextRequest) {
     revenue_timezone: "Asia/Jakarta",
     pending_proofs: Number(proofs?.count || 0),
     payment_attention: Number(qris?.count || 0),
-    fulfillment_attention: Number(fulfillment?.count || 0) + (Array.isArray(itemAttention) ? itemAttention.reduce((sum, row) => sum + Number((row as Record<string, unknown>).count || 0), 0) : 0),
+    // fulfillment_attention = order-butuh-tindakan (tanpa hitung ganda;
+    // delivered tidak pernah dihitung — query di atas hanya memilih status
+    // aksi). Rincian per status tersedia di fulfillment_attention_by_status.
+    // fulfillment_jobs_raw dipertahankan untuk diagnosis (bukan angka utama).
+    fulfillment_attention: Number(fulfillmentOrdersNeedingAction?.count || 0),
+    fulfillment_jobs_attention: Number(fulfillmentJobsRaw?.count || 0),
+    fulfillment_attention_by_status: Object.fromEntries(
+      (Array.isArray(itemAttention) ? itemAttention : []).map((row) => [
+        String((row as Record<string, unknown>).status ?? ""),
+        Number((row as Record<string, unknown>).count || 0),
+      ]),
+    ),
     low_stock: Number(stock?.count || 0),
     top_product: topProduct ? { name: String(topProduct.name), sold_count: Number(topProduct.sold_count || 0) } : null,
     channels,
@@ -213,15 +233,24 @@ function legacySystems() {
 function buildSystems(input: SystemsInput): Record<string, boolean> {
   const tgQueueRows = input.tgQueue.map((row) => ({ status: String(row.status || ""), count: Number(row.count || 0) }));
   const waQueueRows = input.waQueue.map((row) => ({ status: String(row.status || ""), count: Number(row.count || 0) }));
-  const telegram = evaluateTelegram({
-    configured: Boolean(process.env.TELEGRAM_BOT_TOKEN),
-    enabled: process.env.TELEGRAM_BOT_ENABLED === "true",
-    webhookError: null,
-    webhookPending: null,
-    lastSendOkAt: input.tgSends.last_ok ? String(input.tgSends.last_ok) : null,
-    lastSendFailAt: null,
-    queue: summarizeQueue(tgQueueRows, null),
-  });
+  // Review R11: usia antrean Telegram HARUS nyata (tertua dari job+item),
+  // bukan null yang membuat antrean macet terlihat sehat. Dan verdict
+  // antrean dinilai DULU sebelum keberhasilan terakhir — kirim sukses yang
+  // baru tidak boleh menutupi antrean yang menua.
+  const tgOldest = input.oldestItemDue ?? input.oldestJobDue ?? null;
+  const telegramQueueFirst = summarizeQueue(tgQueueRows, tgOldest);
+  const telegramQueueVerdict = evaluateQueue(telegramQueueFirst, { maxPending: 25, maxAgeMinutes: 30 }, "Fulfillment Telegram");
+  const telegram = telegramQueueVerdict.level === "degraded"
+    ? telegramQueueVerdict
+    : evaluateTelegram({
+        configured: Boolean(process.env.TELEGRAM_BOT_TOKEN),
+        enabled: process.env.TELEGRAM_BOT_ENABLED === "true",
+        webhookError: null,
+        webhookPending: null,
+        lastSendOkAt: input.tgSends.last_ok ? String(input.tgSends.last_ok) : null,
+        lastSendFailAt: null,
+        queue: telegramQueueFirst,
+      });
   const whatsapp = evaluateWhatsApp({
     configured: Boolean(process.env.WHATSAPP_GATEWAY_URL),
     enabled: process.env.WHATSAPP_ENABLED === "true",

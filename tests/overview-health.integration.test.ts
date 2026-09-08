@@ -69,4 +69,50 @@ describe("R11 overview reflects the real database state", () => {
     expect(body.system_details.telegram.level).toBe("unknown");
     expect(body.systems.telegram).toBe(false);
   });
+
+  it("all settled: one delivered job+item counts zero attention", async () => {
+    fixture.sql.prepare(`INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel,fulfillment_status)
+      VALUES('DONE','X','6280','[]',10000,'qris','lunas','paid','web','delivered')`).run();
+    fixture.sql.prepare(`INSERT INTO fulfillment_jobs(order_code,status) VALUES('DONE','delivered')`).run();
+    fixture.sql.prepare(`INSERT INTO fulfillment_items(order_code,item_index,product_id,variant_id,fulfillment_mode,status)
+      VALUES('DONE',0,1,1,'shared','delivered')`).run();
+    const body = await overview();
+    // Unit hitung = order butuh tindakan: tidak ada → 0 (bukan 1+1=2,
+    // bukan 1). Item delivered TIDAK dihitung sebagai perlu perhatian.
+    expect(body.fulfillment_attention).toBe(0);
+    expect(body.system_details.fulfillment.level).toBe("healthy");
+  });
+
+  it("manual_required order counts exactly one attention with breakdown", async () => {
+    fixture.sql.prepare(`INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel,fulfillment_status)
+      VALUES('NEED','X','6280','[]',10000,'qris','lunas','paid','web','manual_required')`).run();
+    fixture.sql.prepare(`INSERT INTO fulfillment_jobs(order_code,status) VALUES('NEED','manual_required')`).run();
+    fixture.sql.prepare(`INSERT INTO fulfillment_items(order_code,item_index,product_id,variant_id,fulfillment_mode,status)
+      VALUES('NEED',0,1,1,'manual','manual_required'),('NEED',1,1,2,'manual','manual_required')`).run();
+    const body = await overview();
+    // Satu order butuh tindakan → 1 (bukan 1 job + 2 item = 3).
+    expect(body.fulfillment_attention).toBe(1);
+    expect(body.fulfillment_attention_by_status?.manual_required).toBe(2);
+    expect(body.system_details.fulfillment.level).toBe("degraded");
+  });
+
+  it("failed item counts attention and degrades health", async () => {
+    fixture.sql.prepare(`INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel,fulfillment_status)
+      VALUES('FAIL','X','6280','[]',10000,'qris','lunas','paid','web','failed')`).run();
+    fixture.sql.prepare(`INSERT INTO fulfillment_items(order_code,item_index,product_id,variant_id,fulfillment_mode,status)
+      VALUES('FAIL',0,1,1,'shared','failed')`).run();
+    const body = await overview();
+    expect(body.fulfillment_attention).toBe(1);
+    expect(body.system_details.fulfillment.level).toBe("degraded");
+  });
+
+  it("stale queued channel degrades telegram even after a recent success", async () => {
+    // Kirim sukses baru + antrean job macet 3 jam: verdict antrean menang.
+    fixture.sql.prepare(`INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel,telegram_paid_notified_at)
+      VALUES('TG','X','6280','[]',10000,'qris','lunas','paid','telegram',datetime('now'))`).run();
+    fixture.sql.prepare(`INSERT INTO fulfillment_jobs(order_code,status,next_attempt_at)
+      VALUES('TG','queued',datetime('now','-3 hours'))`).run();
+    const body = await overview();
+    expect(body.system_details.telegram.level).toBe("degraded");
+  });
 });

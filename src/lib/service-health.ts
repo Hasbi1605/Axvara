@@ -22,6 +22,8 @@ export type ServiceStatus = {
 export type QueueSample = {
   pending: number;
   failed: number;
+  /** Butuh tindakan manusia (manual_required) — degraded walau belum menua. */
+  needsAction?: number;
   oldestPendingAt: string | null;
 };
 
@@ -35,13 +37,19 @@ export type QueueThresholds = {
 export function summarizeQueue(rows: { status: string; count: number }[], oldestAt: string | null): QueueSample {
   let pending = 0;
   let failed = 0;
+  let needsAction = 0;
   for (const row of rows) {
     const status = String(row.status || "");
     const count = Number(row.count || 0);
+    // Review R11: manual_required adalah antrean butuh-tindakan (menunggu
+    // handover admin) — degraded walau belum menua/menumpuk. Dicatat
+    // terpisah agar evaluateQueue dapat menandainya tanpa menunggu
+    // threshold usia.
+    if (status === "manual_required") { needsAction += count; continue; }
     if (["queued", "retry", "pending", "sending", "processing"].includes(status)) pending += count;
     if (["failed", "dead"].includes(status)) failed += count;
   }
-  return { pending, failed, oldestPendingAt: oldestAt };
+  return { pending, failed, needsAction, oldestPendingAt: oldestAt };
 }
 
 export function queueAgeMinutes(oldestAt: string | null, now = Date.now()): number | null {
@@ -59,6 +67,9 @@ export function evaluateQueue(
 ): ServiceStatus {
   if (sample.failed > 0) {
     return { level: "degraded", detail: `${label}: ${sample.failed} gagal perlu tindakan` };
+  }
+  if ((sample.needsAction ?? 0) > 0) {
+    return { level: "degraded", detail: `${label}: ${sample.needsAction} menunggu serah terima manual` };
   }
   if (sample.pending > thresholds.maxPending) {
     return { level: "degraded", detail: `${label}: ${sample.pending} antre (batas ${thresholds.maxPending})` };

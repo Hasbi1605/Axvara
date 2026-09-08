@@ -56,12 +56,29 @@ describe("R2 aggregate delivery is never premature", () => {
     expect(vi.mocked(sendMessage)).not.toHaveBeenCalled();
   });
 
-  it("mixed shared+manual delivers exactly one credential and settles delivered", async () => {
+  it("mixed shared+manual delivers exactly one credential and waits for handover", async () => {
     await orderWith("R2-MIX", ["shared", "manual"]);
     await ensureFulfillmentForPaidOrder("R2-MIX");
-    expect(orderStatus("R2-MIX")).toBe("delivered");
+    // Invariant R2: order BELUM delivered selama item manual belum diserahkan.
+    expect(orderStatus("R2-MIX")).toBe("manual_required");
     expect(itemStatuses("R2-MIX")).toEqual(["delivered", "manual_required"]);
     expect(vi.mocked(sendMessage)).toHaveBeenCalledTimes(1);
+  });
+
+  it("mixed order reaches delivered only after the legitimate manual handover", async () => {
+    await orderWith("R2-MIX-HO", ["shared", "manual"]);
+    await ensureFulfillmentForPaidOrder("R2-MIX-HO");
+    expect(orderStatus("R2-MIX-HO")).toBe("manual_required");
+    vi.mocked(sendMessage).mockClear();
+    const { recordManualHandover } = await import("@/lib/fulfillment/deliver");
+    const handed = await recordManualHandover("R2-MIX-HO", 1, "admin@axvara.tech", "serah terima manual item 2");
+    expect(handed).toBe(true);
+    expect(itemStatuses("R2-MIX-HO")).toEqual(["delivered", "delivered"]);
+    expect(orderStatus("R2-MIX-HO")).toBe("delivered");
+    // Retry/konfirmasi ulang tidak mengirim ulang item otomatis.
+    await ensureFulfillmentForPaidOrder("R2-MIX-HO");
+    expect(vi.mocked(sendMessage)).not.toHaveBeenCalled();
+    expect(orderStatus("R2-MIX-HO")).toBe("delivered");
   });
 
   it("partial materialization never settles the aggregate", async () => {
@@ -108,7 +125,9 @@ describe("R2 aggregate delivery is never premature", () => {
   it("allItemsDelivered distinguishes handover-wait from real delivery", () => {
     expect(allItemsSettled([{ status: "manual_required" }])).toBe(true);
     expect(allItemsDelivered([{ status: "manual_required" }])).toBe(false);
-    expect(allItemsDelivered([{ status: "delivered" }, { status: "manual_required" }])).toBe(true);
+    // Campuran delivered + manual_required BELUM delivered (menunggu handover).
+    expect(allItemsDelivered([{ status: "delivered" }, { status: "manual_required" }])).toBe(false);
+    expect(allItemsDelivered([{ status: "delivered" }, { status: "delivered" }])).toBe(true);
     expect(allItemsDelivered([{ status: "delivered" }, { status: "retry" }])).toBe(false);
   });
 });

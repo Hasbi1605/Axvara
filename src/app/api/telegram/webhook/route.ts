@@ -28,6 +28,7 @@ import {
 } from "@/lib/telegram/messages";
 import { getProductDetail, getActiveVariant, formatDuration, formatWarranty, type VariantSummary } from "@/lib/catalog";
 import { addToCart, setCartLineQty, removeFromCart, clearCart, getCartSummary, type CartLine } from "@/lib/telegram/cart";
+import { isTransientWebhookError, isCriticalSendResult } from "@/lib/telegram/webhook-errors";
 import { generateOrderCode } from "@/lib/security";
 import { createDanaQrisInvoice, isDanaQrisConfigured } from "@/lib/payments/dana-qris";
 import { reserveInventory, releaseInventoryForOrder, countInventory } from "@/lib/fulfillment/inventory";
@@ -293,17 +294,11 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * Bedakan kegagalan sementara (layak retry Telegram via 500) dari permanen.
- * Default: transient — lebih aman mencoba lagi daripada diam. Pola permanen
- * hanya yang jelas tidak bisa pulih sendiri: bug tipe/referensi, validasi,
- * dan konfigurasi yang hilang (retry tidak menciptakan token yang hilang).
+ * Klasifikasi error dipusatkan di @/lib/telegram/webhook-errors (bukan di
+ * sini) agar Next.js build tidak menolak field export tambahan pada route.
+ * Re-export dihapus (R5-fix): `export {...} from` tetap dihitung sebagai
+ * field export route oleh validator Next.js.
  */
-export function isTransientWebhookError(error: unknown): boolean {
-  const msg = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
-  if (/TELEGRAM_BOT_TOKEN not configured|bot_not_configured|not configured/i.test(msg)) return false;
-  if (/^(TypeError|ReferenceError|SyntaxError|RangeError):/i.test(msg)) return false;
-  return true;
-}
 
 async function markDone(updateId: string) {
   if (isD1Mode()) {
@@ -668,7 +663,8 @@ async function handleShowCart(
   from?: { id: number; first_name: string; username?: string },
 ) {
   if (!from) {
-    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+    const missing = await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+    if (isCriticalSendResult(missing, "transactional")) throw new Error(`telegram_send_failed:${missing.description || "unknown"}`);
     return;
   }
   const summary = await getCartSummary(String(from.id));
@@ -680,11 +676,13 @@ async function handleShowCart(
   const text = cartMessage(summary.lines.map((line) => ({
     productName: line.productName, variantLabel: line.variantLabel, price: line.price, qty: line.qty,
   })));
-  if (messageId > 0) {
-    await safeEditOrSend({ chat_id: chatId, message_id: messageId, text, parse_mode: "HTML", reply_markup: keyboard });
-  } else {
-    await sendMessage({ chat_id: chatId, text, parse_mode: "HTML", reply_markup: keyboard });
-  }
+  // Review R5: hasil kirim transaksional {ok:false} TIDAK boleh markDone —
+  // lempar agar update menjadi failed + 500 sehingga Telegram redelivery.
+  // safeEditOrSend sudah fallback edit→send; yang dicek adalah hasil akhir.
+  const sent = messageId > 0
+    ? await safeEditOrSend({ chat_id: chatId, message_id: messageId, text, parse_mode: "HTML", reply_markup: keyboard })
+    : await sendMessage({ chat_id: chatId, text, parse_mode: "HTML", reply_markup: keyboard });
+  if (isCriticalSendResult(sent, "transactional")) throw new Error(`telegram_send_failed:${sent.description || "unknown"}`);
 }
 
 async function handleCartAdd(
@@ -975,12 +973,32 @@ async function createAndSendCartInvoice(
     console.error("Cart order creation failed:", error instanceof Error ? error.message : "unknown");
     try {
       if (orderInserted) {
-        const transaction = await queryFirst(
+        // Fence: jangan batalkan order yang mungkin sudah dibayar/diproses
+        // worker lain — hanya batalkan bila masih pending & unpaid.
+        const fence = await queryFirst(
+          `SELECT status, payment_status FROM orders WHERE code=?`,
+          orderCode,
+        ).catch(() => null) as { status?: unknown; payment_status?: unknown } | null;
+        const stillPending = fence
+          && String(fence.status) === "pending" && String(fence.payment_status) !== "paid";
+        const transaction = stillPending ? await queryFirst(
           `SELECT id FROM payment_transactions WHERE order_code=?`,
           orderCode,
-        );
+        ) : { id: 1 };
         if (!transaction) {
           await transitionPendingOrder(orderCode, "dibatalkan", "invoice_setup_failed", items);
+        } else if (stillPending) {
+          // Order tercatat tapi invoice gagal dan belum dibayar: lepas
+          // reservasi agar tidak terkunci; cron/admin rekonsiliasi bila
+          // pembayaran datang belakangan (order tetap pending + payable).
+          for (const done of decremented) {
+            await execRun(
+              `UPDATE product_variants SET stock=stock+?, updated_at=datetime('now')
+               WHERE id=? AND stock!=-1`,
+              done.qty, done.variantId,
+            );
+          }
+          for (const code of reservedInventory) await releaseInventoryForOrder(code);
         }
       } else {
         for (const done of decremented) {
@@ -1648,12 +1666,29 @@ async function createAndSendVariantInvoice(
     console.error("Variant order creation failed:", error instanceof Error ? error.message : "unknown");
     try {
       if (orderInserted) {
-        const transaction = await queryFirst(
+        // Fence (review R4): hanya batalkan bila order masih pending &
+        // unpaid — worker pembayaran lain mungkin sudah memproses.
+        const fence = await queryFirst(
+          `SELECT status, payment_status FROM orders WHERE code=?`,
+          orderCode,
+        ).catch(() => null) as { status?: unknown; payment_status?: unknown } | null;
+        const stillPending = fence
+          && String(fence.status) === "pending" && String(fence.payment_status) !== "paid";
+        const transaction = stillPending ? await queryFirst(
           `SELECT id FROM payment_transactions WHERE order_code=?`,
           orderCode,
-        );
+        ) : { id: 1 };
         if (!transaction) {
           await transitionPendingOrder(orderCode, "dibatalkan", "invoice_setup_failed", items);
+        } else if (stillPending) {
+          if (finiteStockReserved) {
+            await execRun(
+              `UPDATE product_variants SET stock=stock+?, updated_at=datetime('now')
+               WHERE id=? AND stock!=-1`,
+              qty, variant.id,
+            );
+          }
+          if (inventoryId) await releaseInventoryForOrder(orderCode);
         }
       } else {
         if (finiteStockReserved) {

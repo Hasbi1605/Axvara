@@ -50,6 +50,12 @@ export async function enqueueWhatsAppMessage(
   return result.ok;
 }
 
+/** Hasil claim: menang, kalah oleh worker lain, atau DB menolak (CHECK/dll). */
+export type WaClaimResult =
+  | { outcome: "claimed"; workerId: string }
+  | { outcome: "lost" }
+  | { outcome: "db_error"; error: string };
+
 /** Ambil baris due untuk diproses cron (terbatas, terurut). */
 export async function getDueWhatsAppOutbox(limit = 8): Promise<Record<string, unknown>[]> {
   return queryAll(
@@ -64,8 +70,14 @@ export async function getDueWhatsAppOutbox(limit = 8): Promise<Record<string, un
   ).catch(() => []);
 }
 
-/** Proses satu baris due dengan claim CAS; true bila selesai (sent/dead). */
-export async function processWhatsAppOutboxRow(row: Record<string, unknown>): Promise<boolean> {
+/**
+ * Klaim satu baris due menjadi `sending` dengan lease eksplisit.
+ * Berbeda dengan versi lama yang menelan error DB dan mengembalikannya
+ * sebagai "kalah claim": kegagalan database (mis. CHECK produksi yang
+ * menolak `sending`) kini dilaporkan sebagai `db_error` agar cron/admin
+ * dapat membedakannya dari perebutan worker yang normal.
+ */
+export async function claimWhatsAppOutboxRow(row: Record<string, unknown>): Promise<WaClaimResult> {
   const id = Number(row.id);
   const attempts = Number(row.attempt_count || 0);
   // Review R10: klaim adalah lease eksplisit, bukan sekadar bump attempt.
@@ -75,15 +87,64 @@ export async function processWhatsAppOutboxRow(row: Record<string, unknown>): Pr
   // attempt_count sudah naik. Tanpa lease, dua worker yang sama-sama lolos
   // getDue mengirim pesan ganda sebelum salah satunya selesai.
   const workerId = `wa-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-  const claimed = await execRun(
-    `UPDATE whatsapp_outbox
-     SET status='sending', attempt_count=attempt_count+1, worker_id=?, locked_until=datetime('now', '+5 minutes'), updated_at=datetime('now')
-     WHERE id=? AND status IN ('pending','failed') AND attempt_count=?`,
-    workerId,
-    id,
-    attempts,
-  ).catch(() => ({ changes: 0 as number | undefined }));
-  if (!claimed.changes) return false; // dimenangkan worker lain
+  let claimed: { changes?: number | undefined };
+  try {
+    claimed = await execRun(
+      `UPDATE whatsapp_outbox
+       SET status='sending', attempt_count=attempt_count+1, worker_id=?, locked_until=datetime('now', '+5 minutes'), updated_at=datetime('now')
+       WHERE id=? AND status IN ('pending','failed') AND attempt_count=?`,
+      workerId,
+      id,
+      attempts,
+    );
+  } catch (error) {
+    return { outcome: "db_error", error: error instanceof Error ? error.message : String(error) };
+  }
+  if (!claimed.changes) return { outcome: "lost" }; // dimenangkan worker lain
+  return { outcome: "claimed", workerId };
+}
+
+/** Pulihkan lease `sending` basi (worker mati di tengah kirim) ke `failed`.
+ *
+ * Harus dipanggil dari jalur runtime (cron) sebelum mengambil baris due —
+ * bukan dari SQL buatan tes. Syarat ketat:
+ * - hanya `sending` yang lease-nya sudah lewat (pekerja aktif tak tersentuh);
+ * - sent/dead tidak pernah diubah menjadi antrean kirim baru;
+ * - outcome tercatat ambigu (`lease_recovered:delivery_outcome_unknown`)
+ *   karena runtime tidak tahu apakah pesan sempat terkirim sebelum crash;
+ *   tanpa janji exactly-once tanpa dukungan provider.
+ * Mengembalikan jumlah baris yang dipulihkan.
+ */
+export async function recoverStaleWhatsAppLeases(): Promise<number> {
+  try {
+    const result = await execRun(
+      `UPDATE whatsapp_outbox
+       SET status='failed', worker_id=NULL, locked_until=NULL,
+           last_error='lease_recovered:delivery_outcome_unknown',
+           next_attempt_at=datetime('now'), updated_at=datetime('now')
+       WHERE status='sending'
+         AND (locked_until IS NULL OR datetime(locked_until) <= datetime('now'))`,
+    );
+    return Number(result.changes ?? 0);
+  } catch {
+    return 0;
+  }
+}
+
+/** Proses satu baris due dengan claim CAS; true bila selesai (sent/dead).
+ *
+ * Error database saat klaim (mis. CHECK produksi menolak `sending`)
+ * dilempar agar pemanggil dapat membedakannya dari kalah claim normal —
+ * menelannya sebagai `false` membuat outage schema terlihat seperti
+ * perebutan worker biasa.
+ */
+export async function processWhatsAppOutboxRow(row: Record<string, unknown>): Promise<boolean> {
+  const id = Number(row.id);
+  const attempts = Number(row.attempt_count || 0);
+  const claim = await claimWhatsAppOutboxRow(row);
+  if (claim.outcome === "lost") return false; // dimenangkan worker lain
+  if (claim.outcome === "db_error") throw new Error(`wa_outbox_claim_failed: ${claim.error}`);
+  const workerId = claim.workerId;
 
   const fresh = (await queryFirst(`SELECT * FROM whatsapp_outbox WHERE id=?`, id)) ?? row;
   const result = await sendTextMessage({
@@ -124,18 +185,40 @@ export async function processWhatsAppOutboxRow(row: Record<string, unknown>): Pr
   return false;
 }
 
-/** Dipanggil cron operations: proses baris due, kembalikan jumlah terkirim. */
-export async function processDueWhatsAppOutbox(limit = 8): Promise<{ sent: number; dead: number }> {
+/** Dipanggil cron operations: pulihkan lease basi lalu proses baris due.
+ * Mengembalikan jumlah terkirim/mati; `recovered` = lease basi yang
+ * dipulihkan runtime (bukan SQL buatan tes). Error DB saat klaim tidak
+ * ditelan diam-diam: baris dilewati tetapi dihitung sebagai `claimErrors`
+ * agar outage schema terlihat di hasil cron, bukan seperti kalah claim.
+ */
+export async function processDueWhatsAppOutbox(limit = 8): Promise<{ sent: number; dead: number; recovered?: number; claimErrors?: number }> {
+  const recovered = await recoverStaleWhatsAppLeases();
   const rows = await getDueWhatsAppOutbox(limit);
   let sent = 0;
   let dead = 0;
+  let claimErrors = 0;
   for (const row of rows) {
     const before = String(row.status || "");
-    const done = await processWhatsAppOutboxRow(row).catch(() => false);
+    let done = false;
+    try {
+      done = await processWhatsAppOutboxRow(row);
+    } catch (error) {
+      // Kegagalan database (CHECK/schema) — bukan kalah claim. Catat agar
+      // terlihat, jangan anggap sukses/perebutan normal.
+      claimErrors++;
+      try {
+        await execRun(
+          `UPDATE whatsapp_outbox SET last_error=?, updated_at=datetime('now') WHERE id=?`,
+          String(error instanceof Error ? error.message : String(error)).slice(0, 500),
+          Number(row.id),
+        );
+      } catch { /* best-effort marker */ }
+      continue;
+    }
     if (!done) continue;
     const after = await queryFirst(`SELECT status FROM whatsapp_outbox WHERE id=?`, Number(row.id));
     if (String(after?.status) === "sent") sent++;
     else if (String(after?.status) === "dead" && before !== "dead") dead++;
   }
-  return { sent, dead };
+  return { sent, dead, recovered, claimErrors };
 }

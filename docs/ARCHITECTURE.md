@@ -327,7 +327,7 @@ CREATE TABLE store_settings (
 
 **Laporan pendapatan (issue #12, review R9 2026-09-08):** sumber waktu kanonis `src/lib/revenue.ts` — `orders.paid_at` (ditulis sekali saat transisi lunas via COALESCE-guard di semua jalur QRIS/manual/admin, dalam batch yang sama dengan flip status) dengan bucket WIB (`datetime(..., '+7 hours')` di SQL, helper `isSameWibDay/isSameWibMonth` di dev-fallback). Hierarki: ledger `paid_at` → `paid_at` order → `reviewed_at` bukti → `updated_at` fallback. Migrasi `0016_revenue_paid_at.sql` membackfill data lama (QRIS dari ledger, manual dari `reviewed_at`, sisa lunas dari `updated_at`, non-lunas tetap NULL, idempoten). Overview menandai `revenue_timezone: Asia/Jakarta` + `revenue_from/to` agar mudah diaudit.
 
-**Monitoring & ketahanan notifikasi (issue #13, review R10/R11 2026-09-08):** status layanan jujur empat tingkat di `src/lib/service-health.ts` (`configured/healthy/degraded/unknown`) — overview memakai pengukuran (antrean fulfillment/outbox + usia, kirim terakhir, event QRIS 7 hari) dan mengembalikan `system_details` berdetail di samping boolean kompatibel; `last_match` mencakup event `matched`, kesehatan fulfillment membaca `fulfillment_items` + usia antrean tertua via `evaluateQueue` (macet = degraded), dan `fulfillment_attention` menjumlahkan job + item; kartu Kesehatan sistem tiga warna (hijau/kuning/merah) + tooltip + legenda. Bot health memaparkan usia antrean tertua + event QRIS. Notifikasi penting WhatsApp ("Pembayaran Diterima") masuk `whatsapp_outbox` idempoten (`UNIQUE idempotency_key`, klaim lease `sending` + `worker_id`/`locked_until`, backoff 1-5-15-60, `dead`, migrasi 0018) dan diproses cron operations 5-menit. Kesehatan sesi Baileys dinyatakan eksplisit sebagai milik gateway Heroku eksternal (dilaporkan endpoint `/health` gateway), bukan diklaim hijau dari Pages.
+**Monitoring & ketahanan notifikasi (issue #13, review R10/R11 2026-09-08):** status layanan jujur empat tingkat di `src/lib/service-health.ts` (`configured/healthy/degraded/unknown`) — overview memakai pengukuran (antrean fulfillment/outbox + usia, kirim terakhir, event QRIS 7 hari) dan mengembalikan `system_details` berdetail di samping boolean kompatibel; `last_match` mencakup event `matched`, kesehatan fulfillment membaca `fulfillment_items` + usia antrean tertua via `evaluateQueue` (macet = degraded; `manual_required` = needsAction → degraded langsung tanpa menunggu usia, review R11 lanjutan), dan `fulfillment_attention` = JUMLAH ORDER butuh tindakan (COUNT DISTINCT, tanpa hitung ganda job+item; rincian `fulfillment_attention_by_status`, `fulfillment_jobs_attention` untuk diagnosis); kartu Kesehatan sistem tiga warna (hijau/kuning/merah) + tooltip + legenda. Bot health memaparkan usia antrean tertua + event QRIS. Notifikasi penting WhatsApp ("Pembayaran Diterima") masuk `whatsapp_outbox` idempoten (`UNIQUE idempotency_key`, klaim lease `sending` + `worker_id`/`locked_until`, backoff 1-5-15-60, `dead`, migrasi 0019 rebuild CHECK prod), recovery lease basi oleh runtime (bukan hanya cron, review R10 lanjutan) + `claimErrors` terpisah, dan diproses cron operations 5-menit. Serah terima manual: `POST /api/admin/orders/[code]/handover` (item_index+note, admin-only, 90-hari TTL bukti, review R3 lanjutan) + tombol "Serahkan manual" di OrdersManager. Kesehatan sesi Baileys dinyatakan eksplisit sebagai milik gateway Heroku eksternal (dilaporkan endpoint `/health` gateway), bukan diklaim hijau dari Pages.
 
 **Proteksi garansi third-party:** `/garansi-replace` adalah acuan tunggal ketentuan layanan & garansi (AXVARA third-party independen, garansi 1x24 jam–30 hari mengikuti deskripsi tiap produk, klaim = penggantian bukan refund otomatis). Checkout mewajibkan checkbox persetujuan sebelum order dibuat; detail produk, footer, dan halaman sukses pesanan menautkan kembali ke halaman tersebut.
 
@@ -410,13 +410,23 @@ R2 bucket: axvara-assets
     fallback hanya `x-real-ip`; `x-forwarded-for` TIDAK dipakai (spoofable).
     Tidak ada ketergantungan eksklusif pada counter per-isolate — WAF adalah
     lapis pertama yang global.
-  - Batch cron operations (review R12 2026-09-08, diukur bukan diperkirakan):
-    expiry 4/run + helper fulfillment/notifikasi 4/run + skip leg stranded
-    saat expiry penuh + sinyal `deferred` jujur; 8 expiry tuntas 2 run @39
-    query (limit D1 Free 50 tak lagi abort). Sisa antrean run berikutnya. Alasan: Workers
-    Free maks 50 query/invocation dan tiap statement batch dihitung satu
-    query — batch 25 + loop N+1 sebelumnya dapat menembus ~175 query dan
-    gagal parsial. Sisa antrean diproses run 5-menit berikutnya.
+  - Batch cron operations (review R12 lanjutan 2026-09-08, enforced bukan
+    komentar): `QueryBudget` 45 + fase bergiliran (`expiry/fulfillment/notify/
+    cleanup` via `cron_phase` + `cron_deferred` di `store_settings`). Setiap
+    cabang fits()-dulu, deferred-jujur dulu (anti-starvation: expiry yang
+    terus datang tak membuat kanal lain kelaparan), biaya per cabang diukur
+    (expiry 6/order, notifikasi 3, WA 4/baris, job 4+3/item, ekor tetap 14).
+    8 expiry tuntas 2 run @<45 query; campuran expiry+WA+fulfillment tuntas
+    ≤6 run tanpa lost work; respons memuat `query_budget_used/limit` +
+    `deferred[]`. Pembersihan revokasi sesi kedaluwarsa ikut anggaran cron.
+  - Agregat fulfillment berpagar lease (review R4 lanjutan 2026-09-08):
+    `processJob` menulis parent (delivered/retry) hanya bila `locked_until`
+    miliknya masih berlaku (`scheduleRetryFenced`); worker basi yang kembali
+    membawa kegagalan mendapat 0 row — job/item/order TETAP delivered.
+  - Klasifikasi error webhook di `src/lib/telegram/webhook-errors.ts` (bukan
+    di route — validator Next.js menolak field export tambahan; R5-fix
+    2026-09-08): transient-by-cause (jejak jaringan selalu transient
+    termasuk TypeError fetch; bug tipe murni permanen; default transient).
   - N+1 dihapus: quote memakai 2 query `IN` (produk + varian) untuk berapa
     pun item; expiry cron JOIN order dalam 1 query; keranjang Telegram 1 JOIN
     varian + 1 DELETE batch; PDP memakai `?slug=` exact (1 baris) dan related
@@ -495,9 +505,10 @@ Implementasi native TypeScript di codebase AXVARA. Repo `mocasus/telegram-auto-o
 | `dana_webhook_events` | Dedup/audit minimal event QRIS Hook dan order hasil pencocokan |
 | `fulfillment_inventory` | Vault secret terenkripsi per produk |
 | `fulfillment_jobs` | Outbox delivery per order dengan retry (kompatibilitas) |
-| `fulfillment_items` | Status/mode/penerima per item order (migrasi 0015) |
+| `fulfillment_items` | Status/mode/penerima per item order (migrasi 0015). **Ringkasan status: satu order HANYA `delivered` bila SEMUA item delivered; campuran delivered+manual = `manual_required` (pelanggaran ini menutupi item manual yang belum diserahkan). Per-item klaim CAS (`sending` + locked_until) + agregat parent berpagar lease (R4 lanjutan); serah terima manual via `POST /api/admin/orders/[code]/handover`.** |
 | `dana_webhook_events.reviewed_by/review_note` | Audit verifikasi manual nominal dipakai-ulang (migrasi 0017, review R1) |
-| `whatsapp_outbox.worker_id/locked_until` + status `sending` | Lease klaim worker anti-kirim-ganda (migrasi 0018, review R10) |
+| `whatsapp_outbox.worker_id/locked_until` + status `sending` | Lease klaim worker anti-kirim-ganda (migrasi 0018, rebuild CHECK prod 0019, review R10 lanjutan: recovery lease basi oleh runtime + claimErrors terpisah) |
+| `admin_session_revocations` | Pencabutan sesi admin lintas instance/restart (migrasi 0020, review R8 lanjutan: logout menolak cookie basi di worker baru; TTL 90 hari dibersihkan cron) |
 | `store_settings` | Override nama, tagline, WhatsApp, jam dukungan, footer, dan logo storefront |
 
 Kolom baru di `products`: `fulfillment_mode`, `shared_secret_ciphertext`, `shared_secret_iv`, `telegram_enabled`.

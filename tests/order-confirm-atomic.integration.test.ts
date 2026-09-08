@@ -32,8 +32,9 @@ describe("R6 manual confirmation commits order + job atomically", () => {
     expect(fixture.sql.prepare("SELECT status,payment_status FROM orders WHERE code='ATOMIC'").get())
       .toMatchObject({ status: "lunas", payment_status: "paid" });
     expect(fixture.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs WHERE order_code='ATOMIC'").get()?.n).toBe(1);
-    // One batch for the confirm (UPDATE + INSERT) — never two commits.
-    expect(fixture.control.queries - before).toBeLessThanOrEqual(4);
+    // One batch for the confirm (guard + UPDATE + conditional INSERT) —
+    // never two commits.
+    expect(fixture.control.queries - before).toBeLessThanOrEqual(6);
   });
 
   it("double confirm stays idempotent (one job, still lunas)", async () => {
@@ -41,5 +42,45 @@ describe("R6 manual confirmation commits order + job atomically", () => {
     await expect(transitionPendingOrder("ATOMIC", "lunas", null, [{ product_id: 1, variant_id: 1, qty: 1 }]))
       .rejects.toThrow();
     expect(fixture.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs WHERE order_code='ATOMIC'").get()?.n).toBe(1);
+  });
+
+  it("cancel winning the race leaves no orphan queued job", async () => {
+    // Simulasi race deterministik: cancel menang dulu (order dibatalkan),
+    // lalu confirm datang terlambat — confirm harus kalah TANPA
+    // meninggalkan job queued yatim untuk order dibatalkan.
+    await transitionPendingOrder("ATOMIC", "dibatalkan", "cancel duluan", [{ product_id: 1, variant_id: 1, qty: 1 }]);
+    await expect(transitionPendingOrder("ATOMIC", "lunas", null, [{ product_id: 1, variant_id: 1, qty: 1 }]))
+      .rejects.toThrow();
+    expect(fixture.sql.prepare("SELECT status,payment_status FROM orders WHERE code='ATOMIC'").get())
+      .toMatchObject({ status: "dibatalkan", payment_status: "failed" });
+    expect(fixture.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs WHERE order_code='ATOMIC' AND status IN ('queued','retry')").get()?.n).toBe(0);
+  });
+
+  it("expiry winning the race leaves no orphan queued job", async () => {
+    fixture.sql.prepare("INSERT INTO orders (code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel) VALUES ('EXPIRY','Buyer','628','[]',10000,'qris','pending','pending','web')").run();
+    const { transitionPendingPaymentOrder } = await import("@/lib/db");
+    // Expiry menang: ledger pending → expired + order kadaluarsa.
+    fixture.sql.prepare(`INSERT INTO payment_transactions (order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,payable_amount,status,expires_at)
+      VALUES ('EXPIRY','dana','dynamic','po-expiry','m',10000,10000,'pending',datetime('now','-1 minute'))`).run();
+    const expired = await transitionPendingPaymentOrder({
+      orderCode: "EXPIRY", expectedTransactionStatus: "pending", transactionStatus: "expired",
+      orderStatus: "kadaluarsa", paymentStatus: "expired",
+      items: [{ product_id: 1, variant_id: 1, qty: 1 }],
+    });
+    expect(expired).toBe(true);
+    await expect(transitionPendingOrder("EXPIRY", "lunas", null, [{ product_id: 1, variant_id: 1, qty: 1 }]))
+      .rejects.toThrow();
+    expect(fixture.sql.prepare("SELECT status FROM orders WHERE code='EXPIRY'").get()?.status).toBe("kadaluarsa");
+    expect(fixture.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs WHERE order_code='EXPIRY' AND status IN ('queued','retry')").get()?.n).toBe(0);
+  });
+
+  it("storage failure rolls back the whole confirm (no partial state)", async () => {
+    fixture.control.fail = (q) => q.includes("UPDATE orders") && q.includes("payment_status='paid'");
+    await expect(transitionPendingOrder("ATOMIC", "lunas", null, [{ product_id: 1, variant_id: 1, qty: 1 }]))
+      .rejects.toThrow();
+    fixture.control.fail = null;
+    expect(fixture.sql.prepare("SELECT status,payment_status FROM orders WHERE code='ATOMIC'").get())
+      .toMatchObject({ status: "pending", payment_status: "unpaid" });
+    expect(fixture.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs WHERE order_code='ATOMIC'").get()?.n).toBe(0);
   });
 });

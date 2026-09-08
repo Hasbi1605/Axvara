@@ -513,3 +513,14 @@ INSERT OR IGNORE INTO store_settings (key, value) VALUES
   ('support_hours', '09.00–23.00 WIB'),
   ('footer_text', 'AXVARA adalah third-party independen, tidak terafiliasi dengan brand manapun.'),
   ('logo_url', '');
+
+-- Pencabutan sesi admin lintas instance/restart (migrasi 0020, review R8):
+-- sumber kebenaran bersama di D1; Map memori hanya cache.
+CREATE TABLE IF NOT EXISTS admin_session_revocations (
+  sid TEXT PRIMARY KEY,
+  version INTEGER NOT NULL DEFAULT 1,
+  revoked_at TEXT NOT NULL DEFAULT (datetime('now')),
+  expires_at TEXT NOT NULL DEFAULT (datetime('now', '+9 hours'))
+);
+CREATE INDEX IF NOT EXISTS idx_admin_session_revocations_expiry
+  ON admin_session_revocations(expires_at);

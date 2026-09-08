@@ -103,7 +103,8 @@ function normalizeOrder(row: Record<string, unknown>) {
     proof_claimed_method: row.proof_claimed_method,
     proof_rejection_reason: row.proof_rejection_reason, status: row.status,
     payment_status: row.payment_status, sales_channel: row.sales_channel || "web",
-    admin_note: row.admin_note, created_at: row.created_at, updated_at: row.updated_at,
+    fulfillment_status: row.fulfillment_status, admin_note: row.admin_note,
+    created_at: row.created_at, updated_at: row.updated_at,
   };
 }
 
