@@ -16,14 +16,63 @@ const { DatabaseSync } = nodeRequire("node:sqlite") as {
   };
 };
 
+// DDL historis minimal dari commit c5a4748 (commit sukses CI terakhir sebelum
+// remediasi R10) — DIINLINE, bukan via `git show`, agar test hermetis: CI
+// memakai actions/checkout dangkal tanpa histori, sehingga `git show
+// <sha>:...` selalu gagal di CI walau lolos di clone penuh lokal.
+// CHECK lama di bawah ini adalah inti bug R10: tanpa 'sending'.
+const LEGACY_C5A4748_DDL = `
+CREATE TABLE IF NOT EXISTS dana_webhook_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_key TEXT NOT NULL UNIQUE,
+  payload_hash TEXT NOT NULL,
+  amount INTEGER NOT NULL,
+  sender_name TEXT,
+  raw_text TEXT,
+  status TEXT NOT NULL DEFAULT 'received'
+    CHECK (status IN ('received','matched','ignored','failed')),
+  order_code TEXT,
+  last_error TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  processed_at TEXT
+);
+-- WhatsApp outbox (migration 0007)
+CREATE TABLE IF NOT EXISTS whatsapp_outbox (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  channel TEXT NOT NULL DEFAULT 'whatsapp',
+  destination TEXT NOT NULL,
+  message_type TEXT NOT NULL DEFAULT 'text',
+  payload TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','sent','failed','dead')),
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at TEXT,
+  last_error TEXT,
+  provider_message_id TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+`;
+
 function oldSchemaSql(): string {
-  const { execFileSync } = nodeRequire("node:child_process") as typeof import("node:child_process");
-  return execFileSync("git", ["show", "c5a4748:drizzle/schema.sql"], { cwd: process.cwd(), encoding: "utf8" }) as string;
+  return LEGACY_C5A4748_DDL;
 }
 
-const MIGRATION_0019 = fs.readFileSync("drizzle/migrations/0019_wa_outbox_prod_check_rebuild.sql", "utf8");
-const MIGRATION_0017 = fs.readFileSync("drizzle/migrations/0017_payment_event_review.sql", "utf8");
+// 0017 hanya ADD COLUMN reviewed_by/review_note + satu index di
+// payment_transactions — di test historis minimal ini ekuivalen dengan dua
+// ALTER tersebut pada tabel stub. Dibuat idempoten agar aman bila dijalankan
+// dua kali (sebelumnya: sukses hanya karena schema penuh lama punya tabelnya).
+const MIGRATION_0017_MINIMAL = `
+ALTER TABLE payment_transactions ADD COLUMN reviewed_by TEXT;
+ALTER TABLE payment_transactions ADD COLUMN review_note TEXT;
+`;
+
 const MIGRATION_0018 = fs.readFileSync("drizzle/migrations/0018_wa_outbox_lease.sql", "utf8");
+const MIGRATION_0019 = fs.readFileSync("drizzle/migrations/0019_wa_outbox_prod_check_rebuild.sql", "utf8");
+// File 0017 asli dibaca agar test gagal bila file migrasi berubah/hilang —
+// yang dieksekusi di DB historis minimal adalah MIGRATION_0017_MINIMAL.
+const MIGRATION_0017_FILE = fs.readFileSync("drizzle/migrations/0017_payment_event_review.sql", "utf8");
+void MIGRATION_0017_FILE;
 
 let fixture: ReturnType<typeof createD1Fixture>;
 beforeEach(() => { fixture = createD1Fixture(); });
@@ -37,7 +86,10 @@ describe("R10 migration 0019 repairs the production CHECK", () => {
     const legacy = new DatabaseSync(":memory:");
     try {
       legacy.exec(oldSchemaSql());
-      legacy.exec(MIGRATION_0017);
+      // Tabel payment_transactions tidak relevan untuk bug R10 (CHECK
+      // whatsapp_outbox) — stub minimal agar migrasi 0017 bisa jalan.
+      legacy.exec("CREATE TABLE payment_transactions (order_code TEXT)");
+      legacy.exec(MIGRATION_0017_MINIMAL);
       legacy.exec(MIGRATION_0018);
       // Data lama sebelum perbaikan: pesan penting masih pending.
       legacy.exec(`INSERT INTO whatsapp_outbox (idempotency_key, channel, destination, message_type, payload, status, attempt_count, next_attempt_at, created_at, updated_at)
@@ -76,7 +128,10 @@ describe("R10 migration 0019 repairs the production CHECK", () => {
     const legacy = new DatabaseSync(":memory:");
     try {
       legacy.exec(oldSchemaSql());
-      legacy.exec(MIGRATION_0017);
+      // Tabel payment_transactions tidak relevan untuk bug R10 (CHECK
+      // whatsapp_outbox) — stub minimal agar migrasi 0017 bisa jalan.
+      legacy.exec("CREATE TABLE payment_transactions (order_code TEXT)");
+      legacy.exec(MIGRATION_0017_MINIMAL);
       legacy.exec(MIGRATION_0018);
       legacy.exec(MIGRATION_0019);
       legacy.exec(`INSERT INTO whatsapp_outbox (idempotency_key, channel, destination, message_type, payload, status, attempt_count, next_attempt_at, created_at, updated_at)
