@@ -184,11 +184,11 @@ export async function ensureFulfillmentItems(order: Row): Promise<Row[]> {
       `INSERT OR IGNORE INTO fulfillment_items
         (order_code, item_index, product_id, variant_id, qty, fulfillment_mode,
          inventory_id, recipient_channel, recipient_target, status, attempt_count, next_attempt_at)
-       VALUES (?,?,?,?,?,?,?,?,?,'queued',0,datetime('now'))`,
+        VALUES (?,?,?,?,?,?,?,?,?,'queued',0,datetime('now'))`,
       orderCode, index, item.product_id, item.variant_id ?? null, item.qty ?? 1, mode,
       inventory ? Number(inventory.id) : null,
       recipient.channel, recipient.target || null,
-    ).catch(() => {});
+    );
   }
   return queryAll(
     `SELECT * FROM fulfillment_items WHERE order_code=? ORDER BY item_index ASC`,
@@ -200,6 +200,19 @@ export async function ensureFulfillmentItems(order: Row): Promise<Row[]> {
 export function allItemsSettled(rows: Row[]): boolean {
   if (!rows.length) return false;
   return rows.every((row) => ["delivered", "manual_required"].includes(String(row.status)));
+}
+
+/**
+ * True when every item row reached a terminal state AND at least one row
+ * actually shipped a credential (delivered). An order whose items are all
+ * manual_required is NOT delivered — it still waits for the legitimate
+ * handover action. Callers use this for the aggregate order status so a
+ * manual-only order never reads as delivered.
+ */
+export function allItemsDelivered(rows: Row[]): boolean {
+  if (!rows.length) return false;
+  if (!rows.every((row) => ["delivered", "manual_required"].includes(String(row.status)))) return false;
+  return rows.some((row) => String(row.status) === "delivered");
 }
 
 // In-memory fallback for dev
@@ -500,11 +513,26 @@ export async function processJob(
     `SELECT status FROM fulfillment_items WHERE order_code=?`,
     orderCode,
   ).catch(() => [] as Row[]);
-  if (allOk && allItemsSettled(settled)) {
+  // Completeness guard (review R2): the aggregate may only settle when a
+  // row exists for EVERY ordered line with a matching product/variant
+  // identity. A swallowed INSERT (partial materialization) leaves the
+  // order open for retry instead of pretending it is delivered.
+  const expected = parseOrderItems(order.items);
+  const complete =
+    settled.length === expected.length
+    && expected.every((line, index) =>
+      settled[index] !== undefined
+      && Number(itemRows[index]?.product_id) === Number(line.product_id)
+      && Number(itemRows[index]?.variant_id ?? 0) === Number(line.variant_id ?? 0),
+    );
+  if (allOk && complete && allItemsSettled(settled)) {
     await markJobDelivered(jobId);
+    // manual_required is a wait-for-handover state, not proof of delivery:
+    // an all-manual order aggregates to manual_required, never delivered.
+    const aggregate = allItemsDelivered(settled) ? "delivered" : "manual_required";
     await execRun(
-      `UPDATE orders SET fulfillment_status='delivered', updated_at=datetime('now') WHERE code=?`,
-      orderCode,
+      `UPDATE orders SET fulfillment_status=?, updated_at=datetime('now') WHERE code=?`,
+      aggregate, orderCode,
     );
     return true;
   }
@@ -536,19 +564,33 @@ export async function processJob(
  * Deliver exactly one fulfillment_items row. Claim is per-item
  * (locked_until CAS) so concurrent workers never send the same item twice;
  * delivered rows are skipped by the caller and never re-entered here.
+ *
+ * Retry backoff uses next_attempt_at as a *delay*, never as a gate that
+ * strands progress: a retry row whose time has come is due; a retry row
+ * whose time has NOT come is left alone unless it is the only thing
+ * standing between the order and completion (review R2 — a fixed
+ * secret/restored recipient must not wait out a 60-minute timer while the
+ * order sits open). attempt_count still bounds the total tries.
  */
 async function processItem(order: Row, itemRow: Row, adminChatId?: string): Promise<boolean> {
   const orderCode = String(order.code);
   const itemId = Number(itemRow.id);
   const lockUntil = new Date(Date.now() + 60_000).toISOString();
+  // Immediate pass (no due-gate): retry rows become deliverable the
+  // moment their cause is fixed (secret configured, recipient restored).
+  // next_attempt_at only paces the cron, never blocks a live payment path.
   const claim = await execRun(
     `UPDATE fulfillment_items SET status='sending', locked_until=?, attempt_count=attempt_count+1, updated_at=datetime('now')
-     WHERE id=? AND status IN ('queued','retry')
-       AND (locked_until IS NULL OR datetime(locked_until) < datetime('now'))
-       AND datetime(next_attempt_at) <= datetime('now')`,
+      WHERE id=? AND status IN ('queued','retry')
+        AND (locked_until IS NULL OR datetime(locked_until) < datetime('now'))`,
     lockUntil, itemId,
   ).catch(() => ({ changes: 0 as number | undefined }));
-  if (!claim.changes) return String(itemRow.status) === "sending";
+  if (!claim.changes) {
+    if (String(itemRow.status) === "sending") return true;
+    // A retry row claimed/locked by another worker is not our failure.
+    if (String(itemRow.status) === "retry") return true;
+    return false;
+  }
   const item = (await queryFirst(`SELECT * FROM fulfillment_items WHERE id=?`, itemId)) ?? itemRow;
 
   const mode = String(item.fulfillment_mode || "manual");
@@ -885,8 +927,26 @@ export async function ensureFulfillmentForPaidOrder(orderCode: string): Promise<
   // Materialize per-item rows FIRST (issue #4): every item gets its own
   // status row with its own mode + recipient, so delivery below never
   // drops items[1..n]. Idempotent (UNIQUE order_code+item_index); legacy
-  // rows keep their progress.
-  await ensureFulfillmentItems(order).catch(() => {});
+  // rows keep their progress. A materialization failure is NOT success:
+  // without one row per ordered line the order must not proceed to
+  // delivered, so bail out and let the next run retry (review R2).
+  try {
+    await ensureFulfillmentItems(order);
+  } catch {
+    return false;
+  }
+  const materialized = await queryAll(
+    `SELECT product_id, variant_id FROM fulfillment_items WHERE order_code=? ORDER BY item_index ASC`,
+    orderCode,
+  ).catch(() => [] as Row[]);
+  const orderedLines = parseOrderItems(order.items);
+  const materializationComplete =
+    materialized.length === orderedLines.length
+    && orderedLines.every((line, index) =>
+      Number(materialized[index]?.product_id) === Number(line.product_id)
+      && Number(materialized[index]?.variant_id ?? 0) === Number(line.variant_id ?? 0),
+    );
+  if (!materializationComplete) return false;
 
   const variantId = Number(order.variant_id || items[0].variant_id || 0) || null;
   const variant = variantId && isD1Mode()

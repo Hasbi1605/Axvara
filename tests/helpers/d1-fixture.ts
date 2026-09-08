@@ -71,10 +71,12 @@ export function insertTestOrder(sql: Database, code: string, options: {
   return sql.prepare("SELECT * FROM orders WHERE code=?").get(code)!;
 }
 
-export function insertTestProduct(sql: Database, mode = "manual", variants = 1) {
+export async function insertTestProduct(sql: Database, mode = "manual", variants = 1) {
   sql.exec("INSERT INTO products(id,name,slug,price,stock) VALUES(1,'Fixture','fixture',10000,100)");
+  const { encryptSecret } = await import("@/lib/fulfillment/crypto");
   for (let i = 1; i <= variants; i++) {
-    sql.prepare("INSERT INTO product_variants(id,product_id,sku,label,price,stock,fulfillment_mode) VALUES(?,1,?,?,10000,100,?)")
-      .run(i, "SKU-" + i, "Variant " + i, mode);
+    const secret = mode === "shared" ? await encryptSecret(`FIXTURE-SHARED-${i}`) : null;
+    sql.prepare("INSERT INTO product_variants(id,product_id,sku,label,price,stock,fulfillment_mode,shared_secret_ciphertext,shared_secret_iv) VALUES(?,1,?,?,10000,100,?,?,?)")
+      .run(i, "SKU-" + i, "Variant " + i, mode, secret?.ciphertext ?? null, secret?.iv ?? null);
   }
 }

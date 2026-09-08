@@ -67,13 +67,16 @@ describe("lock expiry lintas format waktu (reproduksi bug #7)", () => {
 
 describe("semua gerbang lock memakai datetime() normalization", () => {
   const src = () => read("src/lib/fulfillment/deliver.ts");
-  it("claimJob, getDueJobs, releaseStaleJobs, processItem ternormalisasi", () => {
+  it("claimJob, getDueJobs, releaseStaleJobs ternormalisasi; item retry tak digate waktu", () => {
     const s = src();
     expect(s).toContain("datetime(locked_until) < datetime('now')");
     expect(s).not.toMatch(/locked_until < datetime\('now'\)/);
     expect(s).toContain("datetime(fj.locked_until) < datetime('now')");
     expect(s).toContain("datetime(fj.next_attempt_at) <= datetime('now')");
-    expect(s).toContain("datetime(next_attempt_at) <= datetime('now')");
+    // Perilaku R2: next_attempt_at hanya mengatur tempo cron (getDueJobs),
+    // bukan menghalangi pengiriman item yang penyebab gagalnya sudah
+    // diperbaiki — lihat tests/fulfillment-delivery.integration.test.ts.
+    expect(s).not.toContain("AND datetime(next_attempt_at) <= datetime('now')");
   });
   it("in-memory fallback memakai Date komparasi (bukan string)", () => {
     const s = src();

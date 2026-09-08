@@ -4,6 +4,8 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-08 — R2 agregat kirim tak prematur: all-manual → manual_required (bukan delivered), agregat butuh baris lengkap per identitas item, gagal materialisasi = order tetap terbuka, next_attempt_at hanya tempo cron bukan gate kirim — deliver.ts, tests/fulfillment-delivery (6 perilaku) + lock/per-item diselaraskan — (verifikasi: vitest 387/387, tsc bersih, fixture manual→manual_required + partial→terbuka + happy→delivered 2 kirim)
+
 - 2026-09-08 — R1 pembayaran tak salah pasang: event sebelum invoice + nominal dipakai-ulang tak auto-lunas (ignored + review manual terverifikasi), klaim event+payment+job satu batch atomik, skew 0 + parse UTC untuk timestamp D1 legacy — webhook dana, admin payments/events, db.ts transitionPendingPaymentToPaid, dana-qris.ts, PaymentReconciliation.tsx, migrasi 0017, tests/payment-review + dana-causal-match — (verifikasi: vitest 380+tes R1 hijau, tsc bersih, fixture nearby_old→409 event_predates_invoice + pending, delayed→unmatched + pending)
 
 - 2026-09-07 — BUG parah PDP ganda: blok SEO server (#11) render nama+harga+deskripsi+gambar mentah di atas PDP client sehingga seluruh konten terlihat 2x (judul, Rp1.000, deskripsi, gambar, lalu galeri + kartu beli mengulang semuanya) — hapus blok visual server, sisakan h1 sr-only + JSON-LD (crawler tak butuh blok visual; metadata/OG/canonical tak berubah), visual 100% milik client — produk/[slug]/page.tsx, tests/product-seo — (verifikasi: vitest 373/373, tsc bersih, PDP 200 + slug-ngawur 404, Obscura PDP h1=1 + JSON-LD=1 + PNG diperiksa, home 200 + CSS 200)

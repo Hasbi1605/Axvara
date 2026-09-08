@@ -9,9 +9,9 @@ import { POST as retry } from "@/app/api/admin/payments/events/route";
 vi.mock("@/lib/telegram/api", () => ({ sendMessage: vi.fn(async () => ({ ok: true })) }));
 vi.mock("@/lib/whatsapp/gateway", () => ({ sendTextMessage: vi.fn(async () => ({ ok: true })) }));
 let fixture: ReturnType<typeof createD1Fixture>;
-beforeEach(() => {
+beforeEach(async () => {
   fixture = createD1Fixture();
-  insertTestProduct(fixture.sql);
+  await insertTestProduct(fixture.sql);
   vi.stubEnv("DANA_QRIS_ENABLED", "true");
   vi.stubEnv("DANA_WEBHOOK_SECRET", "fixture-secret");
   vi.stubEnv("AUTO_FULFILLMENT_ENABLED", "false");

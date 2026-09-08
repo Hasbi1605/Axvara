@@ -26,8 +26,10 @@ describe("fulfillment per item (no items[0] shortcut)", () => {
     expect(deliver).toContain("ensureFulfillmentItems");
     expect(deliver).toContain("processItem");
     expect(deliver).toContain("allItemsSettled");
-    // Order tidak boleh ditandai delivered dari satu item saja.
-    expect(deliver).toContain("allOk && allItemsSettled(settled)");
+    // Order tidak boleh ditandai delivered dari satu item saja (R2):
+    // agregat butuh semua baris lengkap + settled; all-manual → manual_required.
+    expect(deliver).toContain("allOk && complete && allItemsSettled(settled)");
+    expect(deliver).toContain("allItemsDelivered(settled)");
     // Item yang sudah delivered tidak pernah dikirim ulang.
     expect(deliver).toContain('if (status === "delivered" || status === "manual_required") continue');
   });
