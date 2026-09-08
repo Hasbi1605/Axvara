@@ -4,6 +4,8 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-08 — R8 revokasi logout: POST /api/auth/logout bump versi sesi → replay cookie lama ditolak revoked, sesi lain tetap hidup; stateless tanpa migrasi (rotasi password tetap kill-switch global) — auth.ts, logout/route, admin-session (+1 perilaku) — (verifikasi: vitest 409/409, tsc bersih, logout→replay revoked + sesi lain OK)
+
 - 2026-09-08 — R7 callback grup: callback tanpa chat.type inferensi privasi dari tanda chat id (negatif = grup → group_redirected), id grup tak pernah tersimpan sebagai identitas user — webhook Telegram, tests/telegram-retry (+1 perilaku) — (verifikasi: vitest 408/408, tsc bersih, fixture grup→redirect + chat tersimpan 77)
 
 - 2026-09-08 — R6 konfirmasi atomik: konfirmasi manual lunas + baris job kini satu batch D1 (crash di antaranya tak lagi strand order paid tanpa job), double-confirm tetap satu baris — db.ts, tests/order-confirm-atomic (3 perilaku) — (verifikasi: vitest 407/407, tsc bersih, interupsi injeksi→pending + 0 job)

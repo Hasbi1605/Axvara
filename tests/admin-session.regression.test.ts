@@ -140,6 +140,28 @@ describe("issue #8: cookie idle sembarang tidak boleh diterima", () => {
     expect(agentSrc).toContain('auth.startsWith("Bearer ")');
   });
 
+  it("logout mencabut sesi: replay cookie lama ditolak, sesi lain hidup", async () => {
+    const first = await loginPair();
+    const second = await loginPair();
+    expect(await first.auth.requireAdmin(reqWithCookies(cookies(first.token, first.idle)))).not.toBeNull();
+    expect(await second.auth.requireAdmin(reqWithCookies(cookies(second.token, second.idle)))).not.toBeNull();
+
+    // R8: logout sesi pertama via route — replay cookie lamanya harus gugur.
+    const logout = await import("@/app/api/auth/logout/route");
+    const logoutReq = new Request("https://axvara.tech/api/auth/logout", {
+      method: "POST",
+      headers: { cookie: cookies(first.token, first.idle) },
+    });
+    const logoutRes = await logout.POST(logoutReq as unknown as import("next/server").NextRequest);
+    expect(logoutRes.status).toBe(200);
+
+    expect(await first.auth.requireAdmin(reqWithCookies(cookies(first.token, first.idle)))).toBeNull();
+    expect(await first.auth.requireAdminDetailed(reqWithCookies(cookies(first.token, first.idle))))
+      .toEqual({ ok: false, reason: "revoked" });
+    // Sesi kedua (perangkat lain) tidak tersentuh logout sesi pertama.
+    expect(await second.auth.requireAdmin(reqWithCookies(cookies(second.token, second.idle)))).not.toBeNull();
+  });
+
   it("logout menghapus kedua cookie; alasan gagal dibedakan untuk UX", async () => {
     const logout = await import("@/app/api/auth/logout/route");
     const res = await logout.POST(

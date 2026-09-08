@@ -423,22 +423,47 @@ async function checkAdminSession(req: Request, overrides: RequireAdminOptions = 
   if (!idle) return { ok: false, reason: "idle_timeout" };
   // Binding sesi: idle harus diterbitkan untuk sid yang sama dengan JWT.
   if (idle.sid !== payload.sid) return { ok: false, reason: "session_mismatch" };
+  // Revokasi: token/idle lama (tanpa claim `av`, atau `av` basi setelah
+  // rotasi password maupun logout sesi ini) selalu gugur. Tanpa ini,
+  // rotate-secret tidak mencabut sesi yang sudah beredar, dan replay cookie
+  // lama setelah logout tetap diterima (review R8).
+  const expectedVersion = await expectedAuthVersion(payload.sid, overrides);
   let expectedEmail = "";
-  let expectedVersion = overrides.authVersion;
   try {
     expectedEmail = getAdminCredentials().email;
-    expectedVersion ??= await authVersionFor(getAdminCredentials().sha256);
   } catch {
     return { ok: false, reason: "unauthorized" };
   }
   if (String(payload.email).toLowerCase() !== expectedEmail.toLowerCase()) return { ok: false, reason: "unauthorized" };
-  // Revokasi: token/idle lama (tanpa claim `av`, atau `av` basi setelah
-  // rotasi password) selalu gugur. Tanpa ini, rotate-secret tidak mencabut
-  // sesi yang sudah beredar.
   if (!payload.authVersion || payload.authVersion !== expectedVersion || idle.authVersion !== expectedVersion) {
     return { ok: false, reason: "revoked" };
   }
   return { ok: true, payload };
+}
+
+/** Logout satu sesi (review R8): naikkan versi sesi agar token/idle lama sesi
+ * itu gugur saat verifikasi berikutnya. Sesi lain tidak tersentuh.
+ * Stateless tanpa tabel baru: versi per-sesi disimpan di memori proses
+ * (revokedSessions) dan ikut dihitung ke expectedVersion di checkAdminSession.
+ * Di runtime Edge multi-instans, garansi adalah cookie yang dihapus +
+ * rotasi password bila perangkat dicurigai — didokumentasikan di route. */
+const revokedSessions = new Map<string, number>();
+
+/** Versi sesi saat ini (0 = belum pernah logout). Diekspor untuk test. */
+export function sessionVersionForTest(sid: string): number {
+  return revokedSessions.get(sid) ?? 0;
+}
+
+export async function bumpAuthVersion(sid: string): Promise<void> {
+  revokedSessions.set(sid, (revokedSessions.get(sid) ?? 0) + 1);
+}
+
+/** Expected `av` untuk sesi ini: versi password global + bump logout sesi. */
+async function expectedAuthVersion(sid: string, overrides: RequireAdminOptions): Promise<string> {
+  if (overrides.authVersion) return overrides.authVersion;
+  const base = await authVersionFor(getAdminCredentials().sha256);
+  const bump = revokedSessions.get(sid) ?? 0;
+  return bump === 0 ? base : `${base}#s${bump}`;
 }
 
 export async function requireAdminDetailed(req: Request, overrides: RequireAdminOptions = {}): Promise<AdminAuthCheck> {
