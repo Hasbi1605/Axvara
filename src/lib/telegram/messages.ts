@@ -267,8 +267,6 @@ export function confirmVariantBuyMessage(params: {
   if (warranty) lines.push(`🛡 Garansi: ${escapeHtml(warranty)}`);
   lines.push(`💰 Harga satuan: ${formatRupiah(price)}`);
   lines.push("");
-  lines.push("🛡 <b>Third-party, bukan official.</b> Garansi ikut varian yang dipilih. Melanjutkan = setuju ketentuan. /garansi untuk detail.");
-  lines.push("");
   lines.push("Setelah ini kamu dapat mengatur jumlah pesanan.");
   return lines.join("\n");
 }
