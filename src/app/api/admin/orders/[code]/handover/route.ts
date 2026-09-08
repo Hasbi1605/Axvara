@@ -64,24 +64,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   try {
     result = await recordManualHandoverDetailed(code, parsed.data.item_index, admin.email, parsed.data.note ?? null);
   } catch {
-    // Gangguan penyimpanan di tengah handover: baca ulang kebenaran —
-    // bila item ternyata sudah delivered (race menang), laporkan sukses
-    // idempoten; bila tidak, JANGAN pernah klaim selesai palsu.
-    const verify = await queryFirst(
-      "SELECT status FROM fulfillment_items WHERE order_code=? AND item_index=?",
-      code, parsed.data.item_index,
-    ).catch(() => null);
-    if (verify && String(verify.status) === "delivered") {
-      const freshOrder = await queryFirst(
-        "SELECT fulfillment_status FROM orders WHERE code=?", code,
-      ).catch(() => null);
-      return NextResponse.json({
-        ok: true, code, item_index: parsed.data.item_index, item_status: "delivered",
-        fulfillment_status: String(freshOrder?.fulfillment_status ?? ""),
-      });
-    }
-    return NextResponse.json({ error: "Gagal mencatat serah terima." }, { status: 500 });
+    // An item row alone cannot prove that audit, inventory and aggregates committed.
+    return NextResponse.json({ error: "Gagal memulihkan serah terima. Muat ulang dan coba lagi." }, { status: 500 });
   }
+
   if (!result.ok) {
     // RR3-02: manifest belum lengkap — laporkan kondisi belum selesai
     // dengan jelas (409), bukan 200 seolah tuntas. Item yang diserahkan
@@ -92,7 +78,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       return NextResponse.json(
         {
           error: "handover_incomplete",
-          message: `Baris pesanan belum lengkap (baris hilang: ${missing.join(", ") || "?"}). Serah terima item ini tercatat; pulihkan materialisasi lalu serahkan sisanya.`,
+          message: `Rincian atau jumlah barang belum cocok (baris: ${missing.join(", ") || "?"}). Penyerahan yang sudah tercatat tetap disimpan; periksa kekurangan sebelum menyelesaikan pesanan.`,
           missing_item_indexes: missing,
         },
         { status: 409 },
@@ -145,7 +131,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   );
   // Idempoten: klik dua kali mengembalikan hasil yang sama tanpa efek ganda.
   return NextResponse.json({
-    ok: true, code, item_index: parsed.data.item_index,
+    ok: true, complete: result.complete, code, item_index: parsed.data.item_index,
     item_status: String(freshItem?.status ?? "delivered"),
     fulfillment_status: String(freshOrder?.fulfillment_status ?? ""),
   });

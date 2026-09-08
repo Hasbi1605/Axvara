@@ -28,10 +28,10 @@ describe("fulfillment per item (no items[0] shortcut)", () => {
     expect(deliver).toContain("allItemsSettled");
     // Order tidak boleh ditandai delivered dari satu item saja (R2):
     // agregat butuh semua baris lengkap + settled; all-manual → manual_required.
-    expect(deliver).toContain("allOk && complete && allItemsSettled(settled)");
-    expect(deliver).toContain("allItemsDelivered(settled)");
+    expect(deliver).toContain("!mismatches.length && allItemsSettled(rows)");
+    expect(deliver).toContain("allItemsDelivered(rows)");
     // Item yang sudah delivered tidak pernah dikirim ulang.
-    expect(deliver).toContain('if (status === "delivered" || status === "manual_required") continue');
+    expect(deliver).toContain('!["delivered", "manual_required"].includes(String(row.status))');
   });
 
   it("mode per item: snapshot lines + variant + fallback produk (bukan items[0])", () => {
@@ -82,15 +82,14 @@ describe("penerima kanal eksplisit per item", () => {
   });
 
   it("cron backfill baris item untuk job pra-migrasi sebelum proses due jobs", async () => {
-    // RR3-01/03: backfill inline per unit (bukan helper boros
-    // backfillMissingFulfillmentItems) dengan biaya konservatif per order.
     const cron = read("src/app/api/cron/operations/route.ts");
-    expect(cron).toContain("COST_PER_BACKFILL_ORDER");
-    expect(cron).toContain("fulfillment_items_backfilled");
-    expect(cron).toContain("ensureFulfillmentItems(order)");
-    const backfill = cron.indexOf("fulfillment_items_backfilled");
-    const due = cron.indexOf("getDueJobs(FULFILLMENT_PER_RUN)");
-    expect(backfill).toBeGreaterThan(-1);
-    expect(due).toBeGreaterThan(backfill);
+    const deliver = read("src/lib/fulfillment/deliver.ts");
+    expect(cron).toContain("processJobItems(Number(job.id)");
+    // The single processor materializes missing lines before claiming the job.
+    const processStart = deliver.indexOf("export async function processJobItems(");
+    const materialize = deliver.indexOf("await ensureFulfillmentItems(order, database", processStart);
+    const claim = deliver.indexOf("await claimJob(jobId, database", processStart);
+    expect(materialize).toBeGreaterThan(processStart);
+    expect(claim).toBeGreaterThan(materialize);
   });
 });

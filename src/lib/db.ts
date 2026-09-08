@@ -678,6 +678,7 @@ export async function transitionPendingOrder(
   status: "lunas" | "dibatalkan" | "kadaluarsa",
   adminNote: string | null,
   rawItems: { product_id: number; variant_id?: number; qty: number }[],
+  database?: D1 | null,
 ): Promise<void> {
   const productQuantities = new Map<number, number>();
   const variantQuantities = new Map<number, number>();
@@ -689,7 +690,7 @@ export async function transitionPendingOrder(
     }
   });
 
-  const d1 = getD1();
+  const d1 = database === undefined ? getD1() : database;
   if (d1) {
     if (status === "dibatalkan" || status === "kadaluarsa") {
       // Deterministic loser for the payment-vs-expiry race: the guards
@@ -813,7 +814,7 @@ export async function transitionPendingPaymentOrder(input: {
   paymentStatus: "failed" | "expired";
   items: { product_id: number; variant_id?: number; qty: number }[];
   lastError?: string | null;
-}): Promise<boolean> {
+}, database?: D1 | null): Promise<boolean> {
   const productQuantities = new Map<number, number>();
   const variantQuantities = new Map<number, number>();
   input.items.forEach((item) => {
@@ -824,7 +825,7 @@ export async function transitionPendingPaymentOrder(input: {
     }
   });
 
-  const d1 = getD1();
+  const d1 = database === undefined ? getD1() : database;
   if (d1) {
     // Deterministic loser for the expiry-vs-payment race: the guard only
     // passes while the transaction is still in the expected non-terminal

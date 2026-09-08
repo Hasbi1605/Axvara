@@ -1,3 +1,4 @@
+import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 // src/lib/telegram/invoice-retry.ts — Pemulihan pengiriman foto invoice
 // Telegram yang gagal (RR3-05).
 //
@@ -29,7 +30,7 @@
 //   backoff via next_attempt_at implisit cron 5-menit) dan dideduplikasi
 //   oleh marker DB + guard double-tap order pending yang sudah ada.
 
-import { execRun, queryFirst } from "@/lib/db";
+import { execRun } from "@/lib/db";
 import { sendPhoto } from "@/lib/telegram/api";
 import { invoiceMessage } from "@/lib/telegram/messages";
 import { qrisInvoiceKeyboard } from "@/lib/telegram/keyboards";
@@ -43,7 +44,8 @@ type InvoiceOrderRow = {
   telegram_invoice_attempts: number;
 };
 
-async function readInvoiceOrder(orderCode: string): Promise<InvoiceOrderRow | null> {
+async function readInvoiceOrder(orderCode: string, database: DatabaseAccess = createDatabaseAccess()): Promise<InvoiceOrderRow | null> {
+  const { queryFirst } = database;
   const row = await queryFirst(
     `SELECT code, items, telegram_chat_id, subtotal,
             telegram_invoice_sent_at, telegram_invoice_attempts
@@ -81,7 +83,8 @@ export async function markInvoicePending(orderCode: string): Promise<void> {
 }
 
 /** Tandai invoice sudah terkirim (HANYA bila sendPhoto {ok:true}). */
-export async function markInvoiceSent(orderCode: string): Promise<void> {
+export async function markInvoiceSent(orderCode: string, database: DatabaseAccess = createDatabaseAccess()): Promise<void> {
+  const { execRun } = database;
   await execRun(
     `UPDATE orders SET telegram_invoice_sent_at=datetime('now'), updated_at=datetime('now')
      WHERE code=? AND telegram_invoice_sent_at IS NULL`,
@@ -96,8 +99,9 @@ export async function markInvoiceSent(orderCode: string): Promise<void> {
  * terkirim sebelumnya), false bila order/invoice/chat tak valid atau
  * provider masih gagal (cron akan mencoba lagi).
  */
-export async function retryTelegramInvoiceDelivery(orderCode: string): Promise<boolean> {
-  const order = await readInvoiceOrder(orderCode);
+export async function retryTelegramInvoiceDelivery(orderCode: string, database: DatabaseAccess = createDatabaseAccess()): Promise<boolean> {
+  const { queryFirst, execRun } = database;
+  const order = await readInvoiceOrder(orderCode, database);
   if (!order || !order.telegram_chat_id) return false;
   if (order.telegram_invoice_sent_at) return true; // sudah terkirim
   if (order.telegram_invoice_attempts >= 5) return false; // budget retry habis
@@ -127,7 +131,7 @@ export async function retryTelegramInvoiceDelivery(orderCode: string): Promise<b
     reply_markup: qrisInvoiceKeyboard(order.code),
   }).catch(() => ({ ok: false as const, description: "send_threw" }));
   if (!result.ok) return false;
-  await markInvoiceSent(orderCode);
+  await markInvoiceSent(orderCode, database);
   return true;
 }
 
@@ -136,11 +140,11 @@ export async function retryTelegramInvoiceDelivery(orderCode: string): Promise<b
  * Batasan per panggilan agar tunduk pada budget cron. Mengembalikan jumlah
  * foto yang akhirnya terkirim pada panggilan ini.
  */
-export async function retryInvoicePendingTelegramInvoices(limit = 4): Promise<number> {
+export async function retryInvoicePendingTelegramInvoices(limit = 4, database: DatabaseAccess = createDatabaseAccess()): Promise<number> {
+  const { queryAll } = database;
   if (process.env.TELEGRAM_BOT_ENABLED !== "true") return 0;
-  const rows = await queryFirst(`SELECT 1`).catch(() => null);
-  void rows;
-  const { queryAll } = await import("@/lib/db");
+  if (!database.canSpend(1)) return 0;
+
   const pending = await queryAll(
     `SELECT o.code FROM orders o
      JOIN payment_transactions pt ON pt.order_code=o.code AND pt.provider='dana' AND pt.status='pending'
@@ -151,8 +155,9 @@ export async function retryInvoicePendingTelegramInvoices(limit = 4): Promise<nu
   ).catch(() => [] as Record<string, unknown>[]);
   let sent = 0;
   for (const row of pending) {
+    if (!database.canSpend(4)) break;
     try {
-      if (await retryTelegramInvoiceDelivery(String(row.code))) sent++;
+      if (await retryTelegramInvoiceDelivery(String(row.code), database)) sent++;
     } catch { /* cron berikutnya retry */ }
   }
   return sent;

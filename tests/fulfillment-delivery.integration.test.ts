@@ -89,7 +89,13 @@ describe("R2 aggregate delivery is never premature", () => {
     fixture.sql.prepare("INSERT INTO fulfillment_jobs(order_code,variant_id,sales_channel,status) VALUES('R2-PARTIAL',1,'telegram','queued')").run();
     const order = fixture.sql.prepare("SELECT * FROM orders WHERE code='R2-PARTIAL'").get()!;
     const product = fixture.sql.prepare("SELECT * FROM products WHERE id=1").get()!;
-    await processJob(1, order, product);
+    let injected = 0;
+    fixture.control.fail = (query, params) => {
+      if (query.includes("INSERT OR IGNORE INTO fulfillment_items") && Number(params[1]) === 1) { injected++; return true; }
+      return false;
+    };
+    await expect(processJob(1, order, product)).rejects.toThrow("Injected database interruption");
+    expect(injected).toBe(1);
     expect(orderStatus("R2-PARTIAL")).not.toBe("delivered");
     expect(fixture.sql.prepare("SELECT COUNT(*) n FROM fulfillment_items WHERE order_code='R2-PARTIAL'").get()?.n).toBe(1);
   });

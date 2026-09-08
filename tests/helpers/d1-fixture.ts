@@ -23,8 +23,11 @@ export function createD1Fixture() {
     queries: 0,
     limit: Infinity,
     fail: null as null | ((query: string, params: unknown[]) => boolean),
+    beforeRun: null as null | ((query: string) => Promise<void>),
+    afterRun: null as null | ((query: string) => Promise<void>),
+    afterBatch: null as null | ((queries: string[]) => Promise<void>),
   };
-  type InternalStatement = D1Statement & { execute: () => ReturnType<Statement["run"]> };
+  type InternalStatement = D1Statement & { query: string; execute: () => ReturnType<Statement["run"]> };
   const prepare = (query: string, params: unknown[] = []): InternalStatement => {
     const before = () => {
       control.queries++;
@@ -33,10 +36,16 @@ export function createD1Fixture() {
     };
     const execute = () => { before(); return sql.prepare(query).run(...params); };
     return {
+      query,
       bind: (...values) => prepare(query, values),
       first: async () => { before(); return sql.prepare(query).get(...params) ?? null; },
       all: async () => { before(); return { results: sql.prepare(query).all(...params) }; },
-      run: async () => { const r = execute(); return { meta: { changes: Number(r.changes), last_row_id: Number(r.lastInsertRowid) } }; },
+      run: async () => {
+        await control.beforeRun?.(query);
+        const r = execute();
+        await control.afterRun?.(query);
+        return { meta: { changes: Number(r.changes), last_row_id: Number(r.lastInsertRowid) } };
+      },
       execute,
     };
   };
@@ -44,14 +53,16 @@ export function createD1Fixture() {
     prepare,
     batch: async (statements) => {
       sql.exec("BEGIN");
+      let results;
       try {
-        const results = statements.map((statement) => {
+        results = statements.map((statement) => {
           const result = (statement as InternalStatement).execute();
           return { meta: { changes: Number(result.changes), last_row_id: Number(result.lastInsertRowid) } };
         });
         sql.exec("COMMIT");
-        return results;
       } catch (error) { sql.exec("ROLLBACK"); throw error; }
+      await control.afterBatch?.(statements.map((statement) => (statement as InternalStatement).query));
+      return results;
     },
   };
   (globalThis as unknown as { DB?: D1 }).DB = db;

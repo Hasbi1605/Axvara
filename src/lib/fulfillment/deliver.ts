@@ -1,3 +1,4 @@
+import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 // src/lib/fulfillment/deliver.ts — Outbox delivery: claim job, send via Telegram, retry
 // Decrypts secrets in memory only. Never logs plaintext.
 
@@ -112,7 +113,7 @@ export function parseOrderItems(raw: unknown): FulfillmentOrderItem[] {
         return {
           product_id: productId,
           variant_id: row.variant_id != null ? Number(row.variant_id) : null,
-          qty: Math.max(1, Number(row.qty || 1)),
+          qty: Number(row.qty ?? 1),
           fulfillment_mode: row.fulfillment_mode,
         } as FulfillmentOrderItem;
       })
@@ -126,8 +127,9 @@ export function parseOrderItems(raw: unknown): FulfillmentOrderItem[] {
 export async function resolveItemMode(
   item: FulfillmentOrderItem,
   order: Row,
-  productsById: Map<number, Row>,
+  productsById: Map<number, Row>, database: DatabaseAccess = createDatabaseAccess()
 ): Promise<"manual" | "shared" | "unique"> {
+  const { queryFirst, isD1Mode } = database;
   const snapshotModes = fulfillmentModesFromOrderSnapshot(order);
   const snapshot = item.variant_id != null ? snapshotModes.get(item.variant_id) : undefined;
   if (snapshot) return snapshot;
@@ -153,55 +155,46 @@ export async function resolveItemMode(
  * Idempotent via UNIQUE(order_code, item_index); existing rows are kept so
  * retry/progress is never reset. Returns the rows in item order.
  */
-export async function ensureFulfillmentItems(order: Row): Promise<Row[]> {
+export async function ensureFulfillmentItems(
+  order: Row, database: DatabaseAccess = createDatabaseAccess(), maxNewItems = Infinity,
+): Promise<Row[]> {
+  const { queryAll, queryFirst, execRun } = database;
   const orderCode = String(order.code);
   const items = parseOrderItems(order.items);
-  const recipient = resolveRecipient(order);
-  const existing = await queryAll(
-    `SELECT * FROM fulfillment_items WHERE order_code=? ORDER BY item_index ASC`,
-    orderCode,
-  ).catch(() => [] as Row[]);
-  if (existing.length > 0 && existing.length === items.length) return existing;
+  const existing = await queryAll(`SELECT * FROM fulfillment_items WHERE order_code=? ORDER BY item_index ASC`, orderCode);
+  if (existing.length === items.length) return existing;
   const have = new Set(existing.map((row) => Number(row.item_index)));
-  // Unit yang sudah terikat ke baris lain order ini — tidak boleh dipakai
-  // dua kali (review R3: satu unit = satu kebutuhan pengiriman).
-  const takenInventoryIds = new Set(
-    existing.map((row) => Number(row.inventory_id || 0)).filter((id) => id > 0),
-  );
+  const taken = new Set(existing.map((row) => Number(row.inventory_id || 0)).filter((id) => id > 0));
+  const recipient = resolveRecipient(order);
   const productsById = new Map<number, Row>();
-  for (const item of items) {
+  let created = 0;
+  for (let index = 0; index < items.length; index++) {
+    if (have.has(index)) continue;
+    // At most five statements to resolve/bind/insert one line; keep enough
+    // room to reread rows and finish the job without calling a provider.
+    if (created >= maxNewItems || !database.canSpend(5 + COST_PER_JOB_FRAME + 1)) break;
+    const item = items[index];
+    if (!Number.isSafeInteger(item.qty) || Number(item.qty) < 1) throw new Error("invalid_fulfillment_quantity");
     if (!productsById.has(item.product_id)) {
       const product = await queryFirst(`SELECT * FROM products WHERE id=?`, item.product_id);
       if (product) productsById.set(item.product_id, product);
     }
-  }
-  for (let index = 0; index < items.length; index++) {
-    if (have.has(index)) continue;
-    const item = items[index];
-    const mode = await resolveItemMode(item, order, productsById);
-    // Unique binding (review R3): ikat SATU unit ke baris ini secara
-    // eksplisit dan unik — pilih unit per (product, variant) yang belum
-    // dipakai baris lain order ini. Pemilihan hanya by order_code membuat
-    // dua item menunjuk inventory_id yang sama dan salah kirim kredensial.
+    const mode = await resolveItemMode(item, order, productsById, database);
     const inventory = mode === "unique"
-      ? await claimInventoryForItem(orderCode, item.product_id, item.variant_id ?? null, takenInventoryIds)
-        .catch(() => null)
+      ? await claimInventoryForItem(orderCode, item.product_id, item.variant_id ?? null, taken, database)
       : null;
-    if (inventory) takenInventoryIds.add(Number(inventory.id));
+    if (inventory) taken.add(Number(inventory.id));
     await execRun(
       `INSERT OR IGNORE INTO fulfillment_items
-        (order_code, item_index, product_id, variant_id, qty, fulfillment_mode,
-         inventory_id, recipient_channel, recipient_target, status, attempt_count, next_attempt_at)
-        VALUES (?,?,?,?,?,?,?,?,?,'queued',0,datetime('now'))`,
-      orderCode, index, item.product_id, item.variant_id ?? null, item.qty ?? 1, mode,
-      inventory ? Number(inventory.id) : null,
-      recipient.channel, recipient.target || null,
+       (order_code,item_index,product_id,variant_id,qty,fulfillment_mode,inventory_id,recipient_channel,recipient_target,status,attempt_count,next_attempt_at)
+       VALUES(?,?,?,?,?,?,?,?,?,'queued',0,datetime('now'))`,
+      orderCode, index, item.product_id, item.variant_id ?? null, item.qty, mode,
+      inventory ? Number(inventory.id) : null, recipient.channel, recipient.target || null,
     );
+    created++;
   }
-  return queryAll(
-    `SELECT * FROM fulfillment_items WHERE order_code=? ORDER BY item_index ASC`,
-    orderCode,
-  ).catch(() => existing);
+  if (!created) return existing;
+  return queryAll(`SELECT * FROM fulfillment_items WHERE order_code=? ORDER BY item_index ASC`, orderCode);
 }
 
 /**
@@ -217,8 +210,9 @@ async function claimInventoryForItem(
   orderCode: string,
   productId: number,
   variantId: number | null,
-  taken: Set<number>,
+  taken: Set<number>, database: DatabaseAccess = createDatabaseAccess()
 ): Promise<Row | null> {
+  const { queryAll } = database;
   const candidates = variantId == null
     ? await queryAll(
         `SELECT * FROM fulfillment_inventory
@@ -339,8 +333,9 @@ export async function createFulfillmentJob(
   inventoryId: number | null,
   fulfillmentMode: string,
   variantId: number | null = null,
-  salesChannel = "telegram",
+  salesChannel = "telegram", database: DatabaseAccess = createDatabaseAccess()
 ): Promise<number | null> {
+  const { execRun, isD1Mode } = database;
   // Jobs may be created before payment. They remain queued and are claimed
   // only after the linked order is authoritatively paid.
   const status = "queued";
@@ -379,7 +374,8 @@ export async function createFulfillmentJob(
  * Claim a queued/retry job for processing. Returns the job or null.
  * Uses locked_until to prevent concurrent processing.
  */
-export async function claimJob(jobId: number): Promise<Row | null> {
+export async function claimJob(jobId: number, database: DatabaseAccess = createDatabaseAccess(), countAttempt = true): Promise<Row | null> {
+  const { queryFirst, execRun, isD1Mode } = database;
   const lockUntil = new Date(Date.now() + 60_000).toISOString();
 
   if (isD1Mode()) {
@@ -388,12 +384,12 @@ export async function claimJob(jobId: number): Promise<Row | null> {
     // string mentah tidak pernah cocok untuk ISO sehingga lock kedaluwarsa
     // tertahan berjam-jam. Lock aktif tetap tidak bisa direbut (CAS).
     const result = await execRun(
-      `UPDATE fulfillment_jobs SET status='sending', locked_until=?, attempt_count=attempt_count+1, updated_at=datetime('now')
+      `UPDATE fulfillment_jobs SET status='sending', locked_until=?, attempt_count=attempt_count+${countAttempt ? 1 : 0}, updated_at=datetime('now')
        WHERE id=? AND status IN ('queued','retry') AND (locked_until IS NULL OR datetime(locked_until) < datetime('now'))`,
       lockUntil, jobId,
     );
     if (!result.changes) return null;
-    return (await queryFirst(`SELECT * FROM fulfillment_jobs WHERE id=?`, jobId)) ?? null;
+    return (await queryFirst(`SELECT * FROM fulfillment_jobs WHERE id=? AND locked_until=? AND status='sending'`, jobId, lockUntil)) ?? null;
   }
 
   const job = getJobsMem().find(
@@ -402,7 +398,7 @@ export async function claimJob(jobId: number): Promise<Row | null> {
   if (!job) return null;
   job.status = "sending";
   job.locked_until = lockUntil;
-  job.attempt_count = (Number(job.attempt_count) || 0) + 1;
+  job.attempt_count = (Number(job.attempt_count) || 0) + (countAttempt ? 1 : 0);
   job.updated_at = new Date().toISOString();
   return { ...job };
 }
@@ -497,47 +493,62 @@ export type FencedJobMutation =
  * bukti kepemilikan — bukti di sini adalah baris yang benar-benar diubah
  * oleh CAS milik worker ini (changes > 0).
  */
-export async function scheduleRetryFenced(jobId: number, error: string, lease?: string): Promise<FencedJobMutation> {
-  const sanitizedError = error.slice(0, 500);
-  if (isD1Mode() && lease) {
-    const job = await queryFirst(`SELECT attempt_count FROM fulfillment_jobs WHERE id=? AND locked_until=?`, jobId, lease);
-    if (!job) return { owned: false }; // lease hilang → pemilik baru menang, buang hasil basi
-    const attempts = Number(job?.attempt_count ?? 0);
-    if (attempts >= MAX_ATTEMPTS) {
-      const wrote = await execRun(
-        `UPDATE fulfillment_jobs SET status='failed', last_error=?, locked_until=NULL, updated_at=datetime('now')
-         WHERE id=? AND locked_until=?`,
-        sanitizedError, jobId, lease,
-      );
-      // CAS kedua memastikan tidak ada worker lain yang menyela antara baca
-      // dan tulis: 0 row = kehilangan kepemilikan di jeda tersebut.
-      return wrote.changes ? { owned: true, transition: "failed" } : { owned: false };
-    }
-    const delayMinutes = RETRY_DELAYS[Math.min(attempts - 1, RETRY_DELAYS.length - 1)];
-    const wrote = await execRun(
-      `UPDATE fulfillment_jobs SET status='retry', last_error=?, locked_until=NULL,
-       next_attempt_at=datetime('now', '+${delayMinutes} minutes'), updated_at=datetime('now')
-       WHERE id=? AND locked_until=?`,
-      sanitizedError, jobId, lease,
-    );
-    return wrote.changes ? { owned: true, transition: "retry" } : { owned: false };
+/** Commit the aggregate while the lease still belongs to this worker, then
+ * release the lease in the SAME D1 transaction. No writes follow its release. */
+async function writeJobOutcome(
+  jobId: number, lease: string, status: "queued" | "retry" | "failed" | "delivered" | "manual_required",
+  aggregate: string | null, database: DatabaseAccess,
+  options: { error?: string; attempts?: number; delay?: number; clearCursor?: boolean } = {},
+): Promise<boolean> {
+  const statements: { sql: string; params: unknown[] }[] = [];
+  if (aggregate !== null) statements.push({
+    sql: `UPDATE orders SET fulfillment_status=?, updated_at=datetime('now')
+          WHERE code=(SELECT order_code FROM fulfillment_jobs WHERE id=? AND locked_until=? AND status='sending')
+          AND status='lunas' AND payment_status='paid'
+          AND (COALESCE(fulfillment_status,'none')!='delivered' OR ?='delivered')`,
+    params: [aggregate, jobId, lease, aggregate],
+  });
+  statements.push({
+    sql: `UPDATE fulfillment_jobs SET status='${status}', locked_until=NULL,
+          last_error=?, attempt_count=COALESCE(?,attempt_count),
+          item_cursor=CASE WHEN ? THEN NULL ELSE item_cursor END,
+          next_attempt_at=datetime('now', ?), updated_at=datetime('now')
+          WHERE id=? AND locked_until=? AND status='sending'`,
+    params: [options.error ?? null, options.attempts ?? null, options.clearCursor ? 1 : 0,
+      `+${options.delay ?? 0} minutes`, jobId, lease],
+  });
+  if (database.d1) {
+    const results = await database.d1.batch(statements.map(({ sql, params }) => database.d1!.prepare(sql).bind(...params)));
+    return Boolean(results.at(-1)?.meta.changes);
   }
-  await scheduleRetry(jobId, error);
-  const after = await queryFirst(`SELECT status FROM fulfillment_jobs WHERE id=?`, jobId).catch(() => null);
-  const st = String(after?.status ?? "");
-  if (st === "failed") return { owned: true, transition: "failed" };
-  return { owned: true, transition: "retry" };
+  for (const statement of statements) await database.execRun(statement.sql, ...statement.params);
+  return true;
 }
 
-/**
- * Biaya query aktual satu item shared (DIUKUR, RR4-01): klaim 1 + baca
- * ulang 1 + secret 1 + tulis delivered 1 = 4. Manual 2 (klaim baca adalah
- * bagian dari klaim tulis: update 1 + tulis 1). Unique ≤ 6 (bound 1 +
- * fallback 2 + tulis ikatan 1 + markDelivered 1 + tulis 1). Batas atas
- * aman per item = 6.
- */
-export const COST_PER_DELIVERY_ITEM = 6;
-/** Biaya klaim job + baca baris + agregat akhir (DIUKUR): 2 + 1 + 3 = 6. */
+export async function scheduleRetryFenced(
+  jobId: number, error: string, lease?: string,
+  database: DatabaseAccess = createDatabaseAccess(), countFailure = false,
+): Promise<FencedJobMutation> {
+  if (database.d1 && lease) {
+    const job = await database.queryFirst(`SELECT attempt_count FROM fulfillment_jobs WHERE id=? AND locked_until=? AND status='sending'`, jobId, lease);
+    if (!job) return { owned: false };
+    const attempts = Number(job.attempt_count ?? 0) + (countFailure ? 1 : 0);
+    const transition = attempts >= MAX_ATTEMPTS ? "failed" : "retry";
+    const owned = await writeJobOutcome(jobId, lease, transition, transition, database, {
+      error: error.slice(0, 500), attempts,
+      delay: transition === "retry" ? RETRY_DELAYS[Math.max(0, Math.min(attempts - 1, RETRY_DELAYS.length - 1))] : 0,
+    });
+    return owned ? { owned: true, transition } : { owned: false };
+  }
+  await scheduleRetry(jobId, error);
+  const after = await database.queryFirst(`SELECT status FROM fulfillment_jobs WHERE id=?`, jobId);
+  return { owned: true, transition: after?.status === "failed" ? "failed" : "retry" };
+}
+
+/** Conservative admission reserve for item claims, inventory repair, retries,
+ * cursor writes and settlement. The scoped database enforces the actual cap. */
+export const COST_PER_DELIVERY_ITEM = 12;
+/** Claim/read plus final reconciliation, including the atomic outcome batch. */
 export const COST_PER_JOB_FRAME = 6;
 
 /**
@@ -564,8 +575,8 @@ export type JobUnitResult =
  * - Agregat job/order HANYA ditulis bila seluruh item terminal (selesai)
  *   ATAU ada kegagalan item yang butuh status retry/failed. Yield murni
  *   (semua item yang dicoba sukses tetapi masih ada sisa) TIDAK menulis
- *   retry — job tetap sending milik worker ini sampai invocation berikut
- *   (lease 60 detik > jeda cron 5 menit? TIDAK — lihat di bawah).
+ *   retry — job kembali queued dan melepas lease agar cron berikutnya
+ *   dapat melanjutkan tanpa menghabiskan jatah kegagalan.
  *
  * Kepemilikan lease antar invocation: klaim job per invocation (bukan
  * dipertahankan lintas cron). Tiap panggilan mengklaim ulang (CAS) bila
@@ -574,371 +585,87 @@ export type JobUnitResult =
  * kegagalan nyata, bukan oleh yield.
  */
 export async function processJobItems(
-  jobId: number,
-  order: Row,
-  product: Row,
-  maxItems: number,
-  shouldContinue?: () => boolean,
+  jobId: number, order: Row, product: Row, maxItems: number,
+  shouldContinue?: () => boolean, database: DatabaseAccess = createDatabaseAccess(),
 ): Promise<JobUnitResult> {
-  if (String(order.status) !== "lunas" || String(order.payment_status) !== "paid") {
-    return { done: false, reason: "not_paid", attempted: 0, finished: false };
-  }
+  const { queryAll, queryFirst, execRun } = database;
+  const empty = (reason: "not_paid" | "no_work" | "not_owned" | "budget_yield"): JobUnitResult => ({ done: false, reason, attempted: 0, finished: false });
+  if (order.status !== "lunas" || order.payment_status !== "paid") return empty("not_paid");
   const orderCode = String(order.code);
-  const salesChannel = String(order.sales_channel || "telegram");
-
-  if (
-    salesChannel === "whatsapp"
-    && String(order.payment_method) !== "qris"
-    && isEnabled("WHATSAPP_REQUIRE_PROOF_BEFORE_FULFILLMENT")
-  ) {
-    const proof = isD1Mode()
-      ? await queryFirst(
-        `SELECT id FROM payment_proofs WHERE order_code=? AND status IN ('submitted','approved')`,
-        orderCode,
-      )
-      : true;
-    if (!proof) return { done: false, reason: "no_work", attempted: 0, finished: false };
+  const channel = String(order.sales_channel || "telegram");
+  if (channel === "whatsapp" && isEnabled("WHATSAPP_FULFILLMENT") && order.payment_method !== "qris" && isEnabled("WHATSAPP_REQUIRE_PROOF_BEFORE_FULFILLMENT")) {
+    if (!database.canSpend(1)) return empty("budget_yield");
+    const proof = database.d1 ? await queryFirst(`SELECT id FROM payment_proofs WHERE order_code=? AND status IN ('submitted','approved')`, orderCode) : true;
+    if (!proof) return empty("no_work");
   }
-
-  // Pastikan baris item ada (materialisasi idempoten; murah bila lengkap).
-  let itemRows = await queryAll(
-    `SELECT * FROM fulfillment_items WHERE order_code=? ORDER BY item_index ASC`,
-    orderCode,
-  ).catch(() => [] as Row[]);
-  if (!itemRows.length) {
-    await ensureFulfillmentItems(order).catch(() => {});
-    itemRows = await queryAll(
-      `SELECT * FROM fulfillment_items WHERE order_code=? ORDER BY item_index ASC`,
-      orderCode,
-    ).catch(() => [] as Row[]);
-    if (!itemRows.length) return { done: false, reason: "no_work", attempted: 0, finished: false };
+  if (!database.canSpend(COST_PER_JOB_FRAME)) return empty("budget_yield");
+  const itemRows = await ensureFulfillmentItems(order, database, Number.isFinite(maxItems) ? Math.max(1, maxItems) : Infinity);
+  if (!itemRows.length) return empty("budget_yield");
+  // Admission includes claim + final reconciliation even if no item fits.
+  if (!database.canSpend(COST_PER_JOB_FRAME)) return empty("budget_yield");
+  const claimed = await claimJob(jobId, database, false);
+  if (!claimed) return empty("not_owned");
+  const lease = String(claimed.locked_until ?? "");
+  if (fulfillmentLineMismatches(order.items, itemRows).some((m) => m.kind !== "missing")) {
+    const owned = await writeJobOutcome(jobId, lease, "manual_required", "manual_required", database, { error: "fulfillment_manifest_mismatch" });
+    return empty(owned ? "no_work" : "not_owned");
   }
-
-  // Klaim job untuk invocation ini (CAS; sending basi boleh direbut).
-  const claimed = await claimJob(jobId);
-  if (!claimed) return { done: false, reason: "not_owned", attempted: 0, finished: false };
-  const jobLease = String((claimed as Row).locked_until ?? "");
-  const startCursor = Number((claimed as Row).item_cursor ?? 0) || 0;
-
-  const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
+  const start = Number(claimed.item_cursor ?? 0);
   let attempted = 0;
-  let itemFailed = false;
-  let firstError: string | null = null;
-  let cursor = Math.max(0, startCursor);
-
-  // Cari item berikutnya yang belum terminal, mulai dari cursor.
-  const pendingIndexes = itemRows
-    .map((r, i) => ({ row: r, index: Number(r.item_index ?? i) }))
-    .filter(({ row }) => !["delivered", "manual_required"].includes(String(row.status)))
-    .map(({ index }) => index)
-    .sort((a, b) => a - b);
-  const todo = pendingIndexes.filter((i) => i >= cursor).concat(pendingIndexes.filter((i) => i < cursor));
-  const budget = todo.slice(0, Math.max(0, maxItems));
-
-  for (const index of budget) {
-    if (shouldContinue && !shouldContinue()) break; // yield: budget habis
-    const itemRow = itemRows.find((r) => Number(r.item_index) === index);
-    if (!itemRow) continue;
-    const status = String(itemRow.status);
-    if (status === "delivered" || status === "manual_required") continue;
-    if (status === "failed") { itemFailed = true; firstError ??= String(itemRow.last_error || "item failed"); continue; }
-    const ok = await processItem(order, itemRow, adminChatId);
+  let failure: string | null = null;
+  const pending = itemRows.filter((row) => !["delivered", "manual_required"].includes(String(row.status)));
+  const todo = pending.filter((r) => Number(r.item_index) >= start).concat(pending.filter((r) => Number(r.item_index) < start));
+  for (const row of todo.slice(0, Math.max(0, maxItems))) {
+    // Worst-case item recovery + finalization are reserved before any provider call.
+    // Shared/manual need at most eight statements including a failed settle,
+    // retry, cursor and error reread; unique may also repair an inventory binding.
+    const itemCost = row.fulfillment_mode === "unique" ? COST_PER_DELIVERY_ITEM : 8;
+    if (!database.canSpend(itemCost + COST_PER_JOB_FRAME) || (shouldContinue && !shouldContinue())) break;
+    if (row.status === "failed") { failure ??= String(row.last_error || "item failed"); continue; }
+    const ok = await processItem(order, row, process.env.TELEGRAM_ADMIN_CHAT_ID, database, { jobId, lease });
     attempted++;
-    cursor = index + 1;
-    // Checkpoint per item: simpan segera (DB, bukan memori).
-    await execRun(`UPDATE fulfillment_jobs SET item_cursor=? WHERE id=?`, cursor, jobId).catch(() => {});
-    if (!ok) {
-      itemFailed = true;
-      const fresh = await queryFirst(`SELECT last_error FROM fulfillment_items WHERE id=?`, Number(itemRow.id));
-      firstError ??= String(fresh?.last_error || itemRow.last_error || "item delivery failed");
-    }
+    const checkpoint = await execRun(`UPDATE fulfillment_jobs SET item_cursor=? WHERE id=? AND locked_until=? AND status='sending'`, Number(row.item_index) + 1, jobId, lease);
+    if (!checkpoint.changes) return { done: false, reason: "not_owned", attempted, finished: false };
+    if (!ok) failure ??= String((await queryFirst(`SELECT last_error FROM fulfillment_items WHERE id=?`, Number(row.id)))?.last_error || "item delivery failed");
   }
-
-  const settled = await queryAll(
-    `SELECT status FROM fulfillment_items WHERE order_code=?`,
-    orderCode,
-  ).catch(() => [] as Row[]);
-  const expected = parseOrderItems(order.items);
-  const freshRows = await queryAll(
-    `SELECT product_id, variant_id FROM fulfillment_items WHERE order_code=? ORDER BY item_index ASC`,
-    orderCode,
-  ).catch(() => [] as Row[]);
-  const complete =
-    settled.length === expected.length
-    && expected.every((line, i) =>
-      settled[i] !== undefined
-      && Number(freshRows[i]?.product_id) === Number(line.product_id)
-      && Number(freshRows[i]?.variant_id ?? 0) === Number(line.variant_id ?? 0),
-    );
-  const finished = complete && allItemsSettled(settled);
-
-  if (finished) {
-    const delivered = await execRun(
-      `UPDATE fulfillment_jobs SET status='delivered', locked_until=NULL, item_cursor=NULL, updated_at=datetime('now')
-       WHERE id=? AND locked_until=?`,
-      jobId, jobLease,
-    ).catch(() => ({ changes: 0 as number | undefined }));
-    if (!delivered.changes) return { done: false, reason: "not_owned", attempted, finished: false };
-    const aggregate = allItemsDelivered(settled) ? "delivered" : "manual_required";
-    await execRun(
-      `UPDATE orders SET fulfillment_status=?, updated_at=datetime('now') WHERE code=?
-       AND fulfillment_status NOT IN ('delivered','manual_required')`,
-      aggregate, orderCode,
-    );
-    return { done: true, attempted, finished: true };
+  const rows = await queryAll(`SELECT * FROM fulfillment_items WHERE order_code=? ORDER BY item_index ASC`, orderCode);
+  const mismatches = fulfillmentLineMismatches(order.items, rows);
+  const missingOnly = mismatches.length > 0 && mismatches.every((m) => m.kind === "missing");
+  if (mismatches.length && !missingOnly) {
+    const owned = await writeJobOutcome(jobId, lease, "manual_required", "manual_required", database, { error: "fulfillment_manifest_mismatch" });
+    return { done: false, reason: owned ? "no_work" : "not_owned", attempted, finished: false };
   }
-
-  if (itemFailed) {
-    // Ada kegagalan nyata: konsumsi retry budget + sinkronkan agregat.
-    const mutation = await scheduleRetryFenced(jobId, firstError ?? "partial_item_failure", jobLease);
-    if (!mutation.owned) return { done: false, reason: "not_owned", attempted, finished: false };
-    if (mutation.transition === "failed") {
-      await execRun(
-        `UPDATE orders SET fulfillment_status='failed', updated_at=datetime('now') WHERE code=?
-         AND fulfillment_status NOT IN ('delivered','manual_required','failed')`,
-        orderCode,
-      ).catch(() => undefined);
-      return { done: false, reason: "item_failed", attempted, finished: false };
-    }
-    const orderStatus = settled.some((row) => String(row.status) === "failed")
-      ? "failed"
-      : settled.some((row) => ["delivered", "manual_required"].includes(String(row.status)))
-        ? "retry"
-        : "retry";
-    if (orderStatus === "retry" || orderStatus === "failed") {
-      await execRun(
-        `UPDATE orders SET fulfillment_status=?, updated_at=datetime('now') WHERE code=?
-         AND fulfillment_status NOT IN ('delivered','manual_required')`,
-        orderStatus, orderCode,
-      );
-    }
-    return { done: false, reason: "item_failed", attempted, finished: false };
+  if (!mismatches.length && allItemsSettled(rows)) {
+    const aggregate = allItemsDelivered(rows) ? "delivered" : "manual_required";
+    const owned = await writeJobOutcome(jobId, lease, "delivered", aggregate, database, { clearCursor: true });
+    return owned ? { done: true, attempted, finished: true } : { done: false, reason: "not_owned", attempted, finished: false };
   }
-
-  // Yield murni: item yang dicoba semuanya sukses tetapi masih ada sisa.
-  // Lepaskan lease TANPA mengonsumsi retry (job kembali queued, cursor
-  // tersimpan) agar invocation berikutnya melanjutkan — bukan gagal.
-  await execRun(
-    `UPDATE fulfillment_jobs SET status='queued', locked_until=NULL, next_attempt_at=datetime('now'), updated_at=datetime('now')
-     WHERE id=? AND locked_until=?`,
-    jobId, jobLease,
-  ).catch(() => undefined);
-  return { done: false, reason: "budget_yield", attempted, finished: false };
+  if (failure) {
+    const outcome = await scheduleRetryFenced(jobId, failure, lease, database, true);
+    return { done: false, reason: outcome.owned ? "item_failed" : "not_owned", attempted, finished: false };
+  }
+  // A normal checkpoint is not a failed delivery attempt.
+  const owned = await writeJobOutcome(jobId, lease, "queued", null, database);
+  return { done: false, reason: owned ? "budget_yield" : "not_owned", attempted, finished: false };
 }
 
-/**
- * Process a single fulfillment job end-to-end, item by item (issue #4).
- * Returns true only when EVERY item reached a successful terminal state
- * (delivered/manual_required). A failure on one item retries that item
- * alone; already-delivered items are never resent. The legacy single-item
- * path (no fulfillment_items rows, e.g. pre-migration jobs) keeps the
- * previous behavior via processLegacyJob below.
- *
- * RR4-01: jalur ini mendelegasikan ke processJobItems tanpa batas
- * (maxItems = semua sisa) sehingga perilaku lama (satu panggilan =
- * seluruh job) tetap sama untuk pemanggil langsung (webhook, test lama).
- * Cron memakai processJobItems dengan batas per invocation + checkpoint.
- */
+/** Direct and cron delivery share the same policy and state transitions. */
 export async function processJob(
-  jobId: number,
-  order: Row,
-  product: Row,
+  jobId: number, order: Row, product: Row,
+  database: DatabaseAccess = createDatabaseAccess(),
 ): Promise<boolean> {
-  // Never deliver credentials for an unpaid order, even if a job was queued
-  // at invoice creation time.
-  if (String(order.status) !== "lunas" || String(order.payment_status) !== "paid") {
-    return false;
+  // Dev's in-memory adapter has no per-item table; preserve its existing path.
+  if (!database.d1) {
+    if (order.status !== "lunas" || order.payment_status !== "paid") return false;
+    const claimed = await claimJob(jobId, database);
+    return claimed ? processLegacyJob(jobId, order, product, claimed) : false;
   }
-
-  const salesChannel = String(order.sales_channel || "telegram");
-  const orderCode = String(order.code);
-
-  // A proof hold is not a delivery attempt. Check it before claiming so a
-  // buyer waiting for review cannot exhaust the retry budget.
-  if (
-    salesChannel === "whatsapp"
-    && String(order.payment_method) !== "qris"
-    && isEnabled("WHATSAPP_REQUIRE_PROOF_BEFORE_FULFILLMENT")
-  ) {
-    const proof = isD1Mode()
-      ? await queryFirst(
-          `SELECT id FROM payment_proofs WHERE order_code=? AND status IN ('submitted','approved')`,
-          orderCode,
-        )
-      : true;
-    if (!proof) return false;
-  }
-
-  // WhatsApp fulfillment feature flag (if disabled, route to manual)
-  if (salesChannel === "whatsapp" && !isEnabled("WHATSAPP_FULFILLMENT")) {
-    await execRun(
-      `UPDATE fulfillment_jobs SET status='manual_required', locked_until=NULL, updated_at=datetime('now') WHERE id=?`,
-      jobId,
-    );
-    await execRun(
-      `UPDATE fulfillment_items SET status='manual_required', locked_until=NULL, updated_at=datetime('now')
-       WHERE order_code=? AND status IN ('queued','retry')`,
-      orderCode,
-    ).catch(() => {});
-    await execRun(
-      `UPDATE orders SET fulfillment_status='manual_required', updated_at=datetime('now') WHERE code=?`,
-      orderCode,
-    );
-    return true;
-  }
-
-  const itemRows = await queryAll(
-    `SELECT * FROM fulfillment_items WHERE order_code=? ORDER BY item_index ASC`,
-    orderCode,
-  ).catch(() => [] as Row[]);
-
-  // Legacy job without per-item rows (pre-migration or single-item flows
-  // that have not backfilled yet): keep previous single-item behavior, but
-  // first materialize the per-item rows so the next run converges.
-  if (!itemRows.length) {
-    await ensureFulfillmentItems(order).catch(() => {});
-    const fresh = await queryAll(
-      `SELECT * FROM fulfillment_items WHERE order_code=? ORDER BY item_index ASC`,
-      orderCode,
-    ).catch(() => [] as Row[]);
-    if (!fresh.length) {
-      const claimedLegacy = await claimJob(jobId);
-      if (!claimedLegacy) return false;
-      return processLegacyJob(jobId, order, product, claimedLegacy);
-    }
-  }
-
-  const claimed = await claimJob(jobId);
-  if (!claimed) return false;
-  // Fence milik worker ini: nilai locked_until yang baru ditulis. Seluruh
-  // penulisan parent di bawah (delivered berpagar, retry berpagar, agregat
-  // order berpagar) memakai fence ini — worker basi yang lease-nya
-  // kedaluwarsa tidak boleh menimpa hasil pemilik baru (R4).
-  const jobLease = String((claimed as Row).locked_until ?? "");
-
-  const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
-  let allOk = true;
-  let firstError: string | null = null;
-
-  const rows = await queryAll(
-    `SELECT * FROM fulfillment_items WHERE order_code=? ORDER BY item_index ASC`,
-    orderCode,
-  ).catch(() => [] as Row[]);
-  for (const itemRow of rows) {
-    const status = String(itemRow.status);
-    if (status === "delivered" || status === "manual_required") continue;
-    if (status === "failed") { allOk = false; firstError ??= String(itemRow.last_error || "item failed"); continue; }
-    const ok = await processItem(order, itemRow, adminChatId);
-    if (!ok) {
-      allOk = false;
-      const fresh = await queryFirst(`SELECT last_error FROM fulfillment_items WHERE id=?`, Number(itemRow.id));
-      firstError ??= String(fresh?.last_error || itemRow.last_error || "item delivery failed");
-    }
-  }
-
-  const settled = await queryAll(
-    `SELECT status FROM fulfillment_items WHERE order_code=?`,
-    orderCode,
-  ).catch(() => [] as Row[]);
-  // Completeness guard (review R2): the aggregate may only settle when a
-  // row exists for EVERY ordered line with a matching product/variant
-  // identity. A swallowed INSERT (partial materialization) leaves the
-  // order open for retry instead of pretending it is delivered.
-  const expected = parseOrderItems(order.items);
-  const complete =
-    settled.length === expected.length
-    && expected.every((line, index) =>
-      settled[index] !== undefined
-      && Number(itemRows[index]?.product_id) === Number(line.product_id)
-      && Number(itemRows[index]?.variant_id ?? 0) === Number(line.variant_id ?? 0),
-    );
-  if (allOk && complete && allItemsSettled(settled)) {
-    // Fenced parent writes (R4): hanya pemilik lease kini yang boleh
-    // menyelesaikan parent. Worker basi yang kembali setelah lease lewat
-    // (job diklaim ulang pemilik baru) mendapat 0 row dan hasilnya dibuang.
-    const delivered = await execRun(
-      `UPDATE fulfillment_jobs SET status='delivered', locked_until=NULL, updated_at=datetime('now')
-       WHERE id=? AND locked_until=?`,
-      jobId, jobLease,
-    ).catch(() => ({ changes: 0 as number | undefined }));
-    if (!delivered.changes) return false; // lease hilang → pemilik baru menang
-    // manual_required is a wait-for-handover state, not proof of delivery:
-    // an all-manual order aggregates to manual_required, never delivered.
-    // A mixed order stays manual_required until the handover action flips
-    // every remaining item to delivered (review R2).
-    const aggregate = allItemsDelivered(settled) ? "delivered" : "manual_required";
-    await execRun(
-      `UPDATE orders SET fulfillment_status=?, updated_at=datetime('now') WHERE code=?
-       AND fulfillment_status NOT IN ('delivered','manual_required')`,
-      aggregate, orderCode,
-    );
-    return true;
-  }
-  // Partial progress: keep the job retryable WITHOUT resetting delivered
-  // items, surface the aggregate state on the order, and notify admin once.
-  // Fenced juga (R4): worker basi tidak boleh menurunkan parent yang sudah
-  // diselesaikan pemilik baru menjadi retry.
-  // RR4-05: scheduleRetryFenced mengembalikan kepemilikan + transisi.
-  // - owned:false → berhenti SEBELUM menyentuh agregat order.
-  // - owned + failed → sinkronkan order ke failed (intervensi admin),
-  //   BUKAN dibiarkan queued seolah masih menunggu kirim.
-  // - owned + retry → agregat retry seperti sebelumnya.
-  const mutation = await scheduleRetryFenced(jobId, firstError ?? "partial_item_failure", jobLease);
-  if (!mutation.owned) return false; // lease hilang → pemilik baru menang, buang hasil basi
-  if (mutation.transition === "failed") {
-    await execRun(
-      `UPDATE orders SET fulfillment_status='failed', updated_at=datetime('now') WHERE code=?
-       AND fulfillment_status NOT IN ('delivered','manual_required','failed')`,
-      orderCode,
-    ).catch(() => undefined);
-    if (adminChatId && firstError) {
-      try {
-        await sendMessage({
-          chat_id: adminChatId,
-          text: adminDeliveryFailedNotification(orderCode, firstError),
-          parse_mode: "HTML",
-        });
-      } catch { /* admin notification is best-effort */ }
-    }
-    return false;
-  }
-  const orderStatus = settled.some((row) => String(row.status) === "failed")
-    ? "failed"
-    : settled.some((row) => ["delivered", "manual_required"].includes(String(row.status)))
-      ? "retry"
-      : String((await queryFirst(`SELECT status FROM fulfillment_jobs WHERE id=?`, jobId))?.status ?? "retry");
-  if (orderStatus === "retry" || orderStatus === "failed") {
-    await execRun(
-      `UPDATE orders SET fulfillment_status=?, updated_at=datetime('now') WHERE code=?
-       AND fulfillment_status NOT IN ('delivered','manual_required')`,
-      orderStatus, orderCode,
-    );
-  }
-  if (adminChatId && firstError) {
-    try {
-      await sendMessage({
-        chat_id: adminChatId,
-        text: adminDeliveryFailedNotification(orderCode, firstError),
-        parse_mode: "HTML",
-      });
-    } catch { /* admin notification is best-effort */ }
-  }
-  return false;
+  const result = await processJobItems(jobId, order, product, Infinity, undefined, database);
+  return result.done;
 }
 
-/**
- * Deliver exactly one fulfillment_items row. Claim is per-item
- * (locked_until CAS) so concurrent workers never send the same item twice;
- * delivered rows are skipped by the caller and never re-entered here.
- *
- * Retry backoff uses next_attempt_at as a *delay*, never as a gate that
- * strands progress: a retry row whose time has come is due; a retry row
- * whose time has NOT come is left alone unless it is the only thing
- * standing between the order and completion (review R2 — a fixed
- * secret/restored recipient must not wait out a 60-minute timer while the
- * order sits open). attempt_count still bounds the total tries.
- */
-async function processItem(order: Row, itemRow: Row, adminChatId?: string): Promise<boolean> {
+async function processItem(order: Row, itemRow: Row, adminChatId?: string, database: DatabaseAccess = createDatabaseAccess(), parent?: { jobId: number; lease: string }): Promise<boolean> {
+  const { queryFirst, execRun, isD1Mode } = database;
   const orderCode = String(order.code);
   const itemId = Number(itemRow.id);
   const lockUntil = new Date(Date.now() + 60_000).toISOString();
@@ -952,15 +679,13 @@ async function processItem(order: Row, itemRow: Row, adminChatId?: string): Prom
   // re-claimed the row after our claim expired, our writes affect zero
   // rows and the result is dropped — a stale worker can never overwrite a
   // new worker's progress (delivered rows, error markers, retries).
-  // Pengecualian: inventory_mismatch menandakan ikatan historis yang
-  // salah — scheduleItemRetry menulisnya TANPA fence agar jejak mismatch
-  // tidak hilang (admin perlu melihatnya untuk rekonsiliasi).
   const lockRequested = lockUntil;
   const claim = await execRun(
     `UPDATE fulfillment_items SET status='sending', locked_until=?, attempt_count=attempt_count+1, updated_at=datetime('now')
       WHERE id=? AND status IN ('queued','retry')
-        AND (locked_until IS NULL OR datetime(locked_until) < datetime('now'))`,
-    lockUntil, itemId,
+        AND (locked_until IS NULL OR datetime(locked_until) < datetime('now'))
+        ${parent ? "AND EXISTS (SELECT 1 FROM fulfillment_jobs WHERE id=? AND locked_until=? AND status='sending')" : ""}`,
+    lockUntil, itemId, ...(parent ? [parent.jobId, parent.lease] : []),
   ).catch(() => ({ changes: 0 as number | undefined }));
   if (!claim.changes) {
     if (String(itemRow.status) === "sending") return true;
@@ -968,19 +693,13 @@ async function processItem(order: Row, itemRow: Row, adminChatId?: string): Prom
     if (String(itemRow.status) === "retry") return true;
     return false;
   }
-  // Baca ulang SETELAH klaim: SQLite/D1 dapat menormalkan nilai
-  // locked_until tertulis (mis. millis dipotong), sehingga fence berbasis
-  // `leaseFence` tidak cocok dengan isi baris. Selaraskan fence ke nilai
-  // yang benar-benar tersimpan agar penulisan berpagar di bawah (delivered
-  // / retry / mismatch) tidak gagal diam-diam — itulah yang membuat
-  // last_error mismatch hilang pada kasus ikatan ganda.
-  const claimed = await queryFirst(`SELECT * FROM fulfillment_items WHERE id=?`, itemId);
-  const leaseFence = typeof claimed?.locked_until === "string" && claimed.locked_until
-    ? String(claimed.locked_until)
-    : lockRequested;
-  const item = claimed ?? itemRow;
+  // Read only the claim we actually won; never adopt a newer worker's lease.
+  const claimed = await queryFirst(`SELECT * FROM fulfillment_items WHERE id=? AND locked_until=? AND status='sending'`, itemId, lockRequested);
+  if (!claimed) return false;
+  const leaseFence = lockRequested;
+  const item = claimed;
 
-  const mode = String(item.fulfillment_mode || "manual");
+  const mode = String(order.sales_channel) === "whatsapp" && !isEnabled("WHATSAPP_FULFILLMENT") ? "manual" : String(item.fulfillment_mode || "manual");
   const recipientChannel = String(item.recipient_channel || order.sales_channel || "telegram");
   const recipientTarget = String(item.recipient_target || "");
   const productId = Number(item.product_id);
@@ -999,15 +718,15 @@ async function processItem(order: Row, itemRow: Row, adminChatId?: string): Prom
     // records it in admin_note.
     if (recipientChannel === "web") {
       await execRun(
-        `UPDATE fulfillment_items SET status='manual_required', last_error='web_channel_requires_manual_handover:serahkan manual via admin_note', locked_until=NULL, updated_at=datetime('now') WHERE id=?`,
-        itemId,
+        `UPDATE fulfillment_items SET status='manual_required', last_error='web_channel_requires_manual_handover:serahkan manual via admin_note', locked_until=NULL, updated_at=datetime('now') WHERE id=? AND locked_until=?`,
+        itemId, leaseFence,
       );
       return true;
     }
     if (mode === "manual") {
       await execRun(
-        `UPDATE fulfillment_items SET status='manual_required', locked_until=NULL, updated_at=datetime('now') WHERE id=?`,
-        itemId,
+        `UPDATE fulfillment_items SET status='manual_required', locked_until=NULL, updated_at=datetime('now') WHERE id=? AND locked_until=?`,
+        itemId, leaseFence,
       );
       return true;
     }
@@ -1056,14 +775,15 @@ async function processItem(order: Row, itemRow: Row, adminChatId?: string): Prom
         // apakah unit yang BENAR untuk baris ini masih tersedia: bila ya,
         // pakai unit benar itu (perilaku menyembuhkan, bukan macet); bila
         // tidak, gagal tertutup mismatch untuk rekonsiliasi admin.
-        const correct = await findReservedForOrderVariant(orderCode, productId, variantId || null);
+        const correct = await findReservedForOrderVariant(orderCode, productId, variantId || null, database);
         if (correct && inventoryMatchesItem(correct, productId, variantId || null)) {
           const takenElsewhere = await queryFirst(
             `SELECT id FROM fulfillment_items WHERE order_code=? AND id!=? AND inventory_id=?`,
             orderCode, itemId, Number(correct.id),
           );
           if (!takenElsewhere) {
-            await execRun(`UPDATE fulfillment_items SET inventory_id=? WHERE id=?`, Number(correct.id), itemId);
+            const rebound = await execRun(`UPDATE fulfillment_items SET inventory_id=? WHERE id=? AND locked_until=?`, Number(correct.id), itemId, leaseFence);
+            if (!rebound.changes) throw new Error("lease_lost_during_delivery");
             inventoryItem = correct;
           }
         }
@@ -1072,7 +792,7 @@ async function processItem(order: Row, itemRow: Row, adminChatId?: string): Prom
         }
       }
       if (!bound) {
-        const fallback = await findReservedForOrderVariant(orderCode, productId, variantId || null);
+        const fallback = await findReservedForOrderVariant(orderCode, productId, variantId || null, database);
         if (fallback && inventoryMatchesItem(fallback, productId, variantId || null)) {
           // Perbaiki ikatan baris ini ke unit yang cocok agar retry
           // berikutnya deterministik (bukan pencarian ulang tiap proses).
@@ -1083,7 +803,8 @@ async function processItem(order: Row, itemRow: Row, adminChatId?: string): Prom
             orderCode, itemId, Number(fallback.id),
           );
           if (!takenElsewhere) {
-            await execRun(`UPDATE fulfillment_items SET inventory_id=? WHERE id=?`, Number(fallback.id), itemId);
+            const rebound = await execRun(`UPDATE fulfillment_items SET inventory_id=? WHERE id=? AND locked_until=?`, Number(fallback.id), itemId, leaseFence);
+            if (!rebound.changes) throw new Error("lease_lost_during_delivery");
             inventoryItem = fallback;
           } else {
             throw new Error(`inventory_mismatch:unit ${Number(fallback.id)} sudah terikat ke baris lain order ${orderCode} (perlu rekonsiliasi admin)`);
@@ -1096,14 +817,25 @@ async function processItem(order: Row, itemRow: Row, adminChatId?: string): Prom
         String(inventoryItem.secret_iv),
       );
       await sendToRecipient(recipientChannel, recipientTarget, orderCode, plaintext, qty);
-      await markDelivered(Number(inventoryItem.id));
-      // Fenced write (see shared branch): a stale worker that lost its
-      // lease mid-send must not flip the row after the new owner claimed it.
-      const settled = await execRun(
-        `UPDATE fulfillment_items SET status='delivered', delivered_message_id=?, locked_until=NULL, updated_at=datetime('now') WHERE id=? AND locked_until=?`,
-        `item:${itemId}`, itemId, leaseFence,
-      );
-      if (!settled.changes) throw new Error("lease_lost_during_delivery");
+      const d1 = database.d1;
+      // Keep inventory and item settlement atomic, both under the item lease.
+      // A worker resuming after its lease was taken cannot consume the unit.
+      if (d1) {
+        const settled = await d1.batch([
+          d1.prepare(`UPDATE fulfillment_inventory SET status='delivered', delivered_at=datetime('now')
+            WHERE id=? AND order_code=? AND status='reserved'
+              AND EXISTS(SELECT 1 FROM fulfillment_items WHERE id=? AND inventory_id=? AND locked_until=? AND status='sending')`)
+            .bind(Number(inventoryItem.id), orderCode, itemId, Number(inventoryItem.id), leaseFence),
+          d1.prepare(`UPDATE fulfillment_items SET status='delivered', delivered_message_id=?, locked_until=NULL, updated_at=datetime('now')
+            WHERE id=? AND locked_until=? AND status='sending'
+              AND EXISTS(SELECT 1 FROM fulfillment_inventory WHERE id=? AND order_code=? AND status='delivered')`)
+            .bind(`item:${itemId}`, itemId, leaseFence, Number(inventoryItem.id), orderCode),
+        ]);
+        if (!settled.at(-1)?.meta.changes) throw new Error("lease_lost_during_delivery");
+      } else {
+        await markDelivered(Number(inventoryItem.id), database);
+        await execRun(`UPDATE fulfillment_items SET status='delivered', locked_until=NULL WHERE id=? AND locked_until=?`, itemId, leaseFence);
+      }
       return true;
     }
     throw new Error(`Unknown fulfillment mode: ${mode}`);
@@ -1111,25 +843,16 @@ async function processItem(order: Row, itemRow: Row, adminChatId?: string): Prom
     const errMsg = (error instanceof Error ? error.message : "Unknown delivery error").slice(0, 500);
     // A lost lease is not a delivery failure: the new owner proceeds, and
     // this worker must not consume the retry budget or overwrite its error.
-    // Pengecualian: inventory_mismatch menandakan ikatan historis yang
-    // salah — tulis sebagai retry TANPA fence (klaim milik sendiri baru
-    // saja dibuat; fence berbasis locked_until tertulis bisa meleset
-    // format dan menghapus jejak mismatch yang dibutuhkan admin).
     if (errMsg === "lease_lost_during_delivery") return false;
     if (errMsg.startsWith("inventory_mismatch")) {
-      // Catat mismatch TANPA fence dan TANPA pengecualian status: nilai
-      // locked_until tertulis dapat dinormalkan SQLite/D1 sehingga fence
-      // gagal cocok; status `sending` milik klaim sendiri selalu boleh
-      // kembali ke `retry` (baris delivered sejati tidak diproses di sini
-      // karena dilewati caller — hanya guard kedua bila race menutupnya).
       await execRun(
         `UPDATE fulfillment_items SET status='retry', last_error=?, locked_until=NULL,
-         next_attempt_at=datetime('now', '+60 minutes'), updated_at=datetime('now') WHERE id=?`,
-        errMsg, itemId,
+         next_attempt_at=datetime('now', '+60 minutes'), updated_at=datetime('now') WHERE id=? AND locked_until=?`,
+        errMsg, itemId, leaseFence,
       ).catch(() => undefined);
       return false;
     }
-    await scheduleItemRetry(itemId, errMsg, leaseFence);
+    await scheduleItemRetry(itemId, errMsg, leaseFence, database);
     void adminChatId;
     return false;
   }
@@ -1168,17 +891,13 @@ async function sendToRecipient(
   if (!sendResult.ok) throw new Error(sendResult.description || "Telegram send failed");
 }
 
-async function scheduleItemRetry(itemId: number, error: string, leaseFence?: string): Promise<void> {
+async function scheduleItemRetry(itemId: number, error: string, leaseFence?: string, database: DatabaseAccess = createDatabaseAccess()): Promise<void> {
+  const { queryFirst, execRun } = database;
   const item = await queryFirst(`SELECT attempt_count, locked_until FROM fulfillment_items WHERE id=?`, itemId);
   const attempts = Number(item?.attempt_count ?? 0);
   // Fence: never touch a row whose lease moved on (a newer worker owns it).
-  // Pengecualian: inventory_mismatch menandakan ikatan historis yang salah —
-  // unit untuk baris ini tidak pernah valid, sehingga lease fence tidak
-  // boleh menghapus jejak mismatch (admin perlu melihatnya untuk
-  // rekonsiliasi). Tulis tanpa fence agar last_error tercatat.
-  const isMismatch = error.startsWith("inventory_mismatch");
-  const fenceSql = leaseFence && !isMismatch ? ` AND locked_until=?` : ``;
-  const fenceArgs = leaseFence && !isMismatch ? [leaseFence] : [];
+  const fenceSql = leaseFence ? ` AND locked_until=?` : ``;
+  const fenceArgs = leaseFence ? [leaseFence] : [];
   if (attempts >= MAX_ATTEMPTS) {
     await execRun(
       `UPDATE fulfillment_items SET status='failed', last_error=?, locked_until=NULL, updated_at=datetime('now') WHERE id=?${fenceSql}`,
@@ -1197,8 +916,9 @@ async function scheduleItemRetry(itemId: number, error: string, leaseFence?: str
 async function findReservedForOrderVariant(
   orderCode: string,
   productId: number,
-  variantId: number | null,
-): Promise<Row | undefined> {
+  variantId: number | null, database: DatabaseAccess = createDatabaseAccess()
+): Promise<Row | null | undefined> {
+  const { queryFirst, isD1Mode } = database;
   if (isD1Mode()) {
     return await queryFirst(
       `SELECT * FROM fulfillment_inventory
@@ -1493,60 +1213,49 @@ export async function ensureFulfillmentForPaidOrder(orderCode: string): Promise<
   return processJob(Number(job.id), order, product);
 }
 
-/**
- * Rekonsiliasi orphan RINGAN per order (RR4-02): HANYA materialisasi baris
- * item + pembuatan baris job (queued) — TANPA pengiriman inline.
- * Pengiriman terjadi pada fase due-job (processJobItems) yang sudah
- * tunduk pada budget per-item. Ini memisahkan "rekonsiliasi" dari
- * "pengiriman" sehingga biaya orphan deterministik dan kecil:
- * 1 baca order + 1 baca item + produk unik (≤2) + materialisasi (1 + 1
- * produk + 1 baca ulang) + 1 insert job + 1 requeue + 1 baca job ≈ 9–11.
- *
- * Mengembalikan true bila baris job kini ada (baru dibuat atau sudah ada).
- */
-export async function reconcileOrphanLight(orderCode: string): Promise<boolean> {
-  const order = await queryFirst(
-    `SELECT * FROM orders WHERE code=? AND status='lunas' AND payment_status='paid'`,
-    orderCode,
-  );
+/** Create/read an orphan's durable job in three statements. Item materialization
+ * and delivery are separate bounded steps in processJobItems on subsequent work. */
+export async function reconcileOrphanLight(orderCode: string, database: DatabaseAccess = createDatabaseAccess()): Promise<boolean> {
+  // Create the durable queue entry FIRST. Materialization resumes in small
+  // units via processJobItems; it must never happen under a flat orphan cost.
+  const order = await database.queryFirst(`SELECT * FROM orders WHERE code=? AND status='lunas' AND payment_status='paid'`, orderCode);
   if (!order) return false;
-  // Fence: order yang sudah settled penuh bukan pekerjaan.
-  const agg = String(order.fulfillment_status ?? "");
-  if (agg === "delivered" || agg === "manual_required") {
-    const open = await queryFirst(
-      `SELECT id FROM fulfillment_items WHERE order_code=? AND status NOT IN ('delivered','failed','manual_required')`,
-      orderCode,
-    ).catch(() => ({ id: 1 }));
-    if (!open) return true; // truly settled — bukan orphan kerja
-  }
-  try {
-    await ensureFulfillmentItems(order);
-  } catch {
-    return false;
-  }
   const items = parseOrderItems(order.items);
   if (!items.length) return false;
-  const variantId = Number(order.variant_id || items[0].variant_id || 0) || null;
-  try {
-    await createFulfillmentJob(orderCode, null, "queued", variantId, String(order.sales_channel || "telegram"));
-  } catch { /* UNIQUE = sudah ada, lanjut */ }
-  // Requeue manual_required historis agar due-job melihatnya.
-  if (String(order.fulfillment_status || "") !== "manual_required") {
-    await execRun(
-      `UPDATE fulfillment_jobs
-       SET status='queued', next_attempt_at=datetime('now'), locked_until=NULL, updated_at=datetime('now')
-       WHERE order_code=? AND status='manual_required'`,
-      orderCode,
-    ).catch(() => undefined);
-  }
-  const job = await queryFirst(`SELECT id FROM fulfillment_jobs WHERE order_code=?`, orderCode);
-  return Boolean(job);
+  await createFulfillmentJob(orderCode, null, "queued", Number(order.variant_id || items[0].variant_id || 0) || null,
+    String(order.sales_channel || "telegram"), database);
+  return Boolean(await database.queryFirst(`SELECT id FROM fulfillment_jobs WHERE order_code=?`, orderCode));
 }
 
-/** Biaya orphan ringan: batas atas aman 11 query (DIUKUR, RR4-02). */
-export const COST_PER_ORPHAN_LIGHT = 11;
-/** Biaya backfill ringan: 1 baca + materialisasi idempoten ≈ 5. */
-export const COST_PER_BACKFILL_LIGHT = 5;
+export const COST_PER_ORPHAN_LIGHT = 3;
+
+/** Repair historical job/order splits without sending credentials again. */
+export async function reconcileSettledJobs(limit = 2, database: DatabaseAccess = createDatabaseAccess()): Promise<number> {
+  if (!database.canSpend(1)) return 0;
+  const orders = await database.queryAll(
+    `SELECT o.*, fj.id AS job_id FROM orders o JOIN fulfillment_jobs fj ON fj.order_code=o.code
+     WHERE o.status='lunas' AND o.payment_status='paid' AND fj.status='delivered'
+       AND COALESCE(o.fulfillment_status,'none') NOT IN ('delivered','manual_required') LIMIT ?`, limit,
+  );
+  let repaired = 0;
+  for (const order of orders) {
+    if (!database.canSpend(4)) break;
+    const rows = await database.queryAll(`SELECT * FROM fulfillment_items WHERE order_code=? ORDER BY item_index ASC`, order.code);
+    const complete = fulfillmentLineMismatches(order.items, rows).length === 0;
+    const aggregate = complete && allItemsDelivered(rows) ? "delivered" : "manual_required";
+    const d1 = database.d1;
+    if (d1) await d1.batch([
+      d1.prepare(`UPDATE orders SET fulfillment_status=?,updated_at=datetime('now') WHERE code=?
+        AND COALESCE(fulfillment_status,'none') NOT IN ('delivered','manual_required')
+        AND EXISTS(SELECT 1 FROM fulfillment_jobs WHERE id=? AND status='delivered')`).bind(aggregate, order.code, order.job_id),
+      d1.prepare(`UPDATE fulfillment_jobs SET status=?,last_error=?,updated_at=datetime('now') WHERE id=? AND status='delivered'`)
+        .bind(complete && allItemsSettled(rows) ? "delivered" : "manual_required", complete ? null : "fulfillment_manifest_mismatch", order.job_id),
+    ]);
+    else await database.execRun(`UPDATE orders SET fulfillment_status=? WHERE code=?`, aggregate, order.code);
+    repaired++;
+  }
+  return repaired;
+}
 
 /**
  * Reconcile paid orders that have no fulfillment job (issue #3).
@@ -1645,7 +1354,8 @@ export async function backfillMissingFulfillmentItems(limit = 8): Promise<number
  * memakai baris yang sudah ada. Default limit diselaraskan ke BATCH_LIMIT
  * cron (8) agar satu run tidak menembus 50 query/invocation D1 Free.
  */
-export async function getDueJobs(limit = 8): Promise<Row[]> {
+export async function getDueJobs(limit = 8, database: DatabaseAccess = createDatabaseAccess()): Promise<Row[]> {
+  const { queryAll, isD1Mode } = database;
   if (isD1Mode()) {
     return queryAll(
       `SELECT fj.*, o.telegram_chat_id, o.telegram_user_id, o.subtotal, o.code as order_code_ref
@@ -1687,7 +1397,8 @@ export async function getDueJobs(limit = 8): Promise<Row[]> {
  *   so the admin can reconcile against provider logs; resend is bounded by
  *   the normal attempt budget and makes no singular-delivery promise.
  */
-export async function releaseStaleJobs(): Promise<number> {
+export async function releaseStaleJobs(database: DatabaseAccess = createDatabaseAccess()): Promise<number> {
+  const { execRun, isD1Mode } = database;
   if (isD1Mode()) {
     const jobs = await execRun(
       `UPDATE fulfillment_jobs SET status='retry', locked_until=NULL, updated_at=datetime('now')
@@ -1785,18 +1496,23 @@ export type ManualHandoverResult =
  * sebelum kekurangan unit diselesaikan — bukan ditimpa qty-nya (fakta
  * pengiriman tidak boleh dipalsukan) dan bukan mereset item benar.
  */
-export type FulfillmentLineMismatch = { index: number; kind: "missing" | "identity" | "short_qty"; expectedQty: number; actualQty: number };
-export async function findMissingFulfillmentLines(orderCode: string): Promise<number[]> {
-  return (await findFulfillmentLineMismatches(orderCode)).map((m) => m.index);
+export type FulfillmentLineMismatch = { index: number; kind: "missing" | "identity" | "quantity" | "unexpected"; expectedQty: number; actualQty: number };
+export async function findMissingFulfillmentLines(orderCode: string, database: DatabaseAccess = createDatabaseAccess()): Promise<number[]> {
+
+  return (await findFulfillmentLineMismatches(orderCode, database)).map((m) => m.index);
 }
-export async function findFulfillmentLineMismatches(orderCode: string): Promise<FulfillmentLineMismatch[]> {
+export async function findFulfillmentLineMismatches(orderCode: string, database: DatabaseAccess = createDatabaseAccess()): Promise<FulfillmentLineMismatch[]> {
+  const { queryAll, queryFirst } = database;
   const order = await queryFirst(`SELECT items FROM orders WHERE code=?`, orderCode);
   if (!order) return [];
-  const expected = parseOrderItems(order.items);
   const rows = await queryAll(
-    `SELECT item_index, product_id, variant_id, qty FROM fulfillment_items WHERE order_code=? ORDER BY item_index ASC`,
-    orderCode,
-  ).catch(() => [] as Row[]);
+    `SELECT item_index, product_id, variant_id, qty FROM fulfillment_items WHERE order_code=? ORDER BY item_index ASC`, orderCode,
+  );
+  return fulfillmentLineMismatches(order.items, rows);
+}
+
+export function fulfillmentLineMismatches(rawItems: unknown, rows: Row[]): FulfillmentLineMismatch[] {
+  const expected = parseOrderItems(rawItems);
   const byIndex = new Map(rows.map((r) => [Number(r.item_index), r]));
   const missing: FulfillmentLineMismatch[] = [];
   expected.forEach((line, index) => {
@@ -1807,13 +1523,19 @@ export async function findFulfillmentLineMismatches(orderCode: string): Promise<
       missing.push({ index, kind: "identity", expectedQty: Math.max(1, Number(line.qty || 1)), actualQty: Number(row.qty ?? 0) });
       return;
     }
-    const need = Math.max(1, Number(line.qty || 1));
-    const have = Math.max(0, Number(row.qty ?? 0));
+    const need = Number(line.qty);
+    const have = Number(row.qty);
     // Nilai legacy tidak valid (qty 0/negatif/NaN → have 0) juga short.
-    if (have < need) {
-      missing.push({ index, kind: "short_qty", expectedQty: need, actualQty: have });
+    if (!Number.isSafeInteger(need) || need < 1 || !Number.isSafeInteger(have) || have !== need) {
+      missing.push({ index, kind: "quantity", expectedQty: need, actualQty: have });
     }
   });
+  for (const row of rows) {
+    const index = Number(row.item_index);
+    if (!Number.isInteger(index) || index < 0 || index >= expected.length) {
+      missing.push({ index, kind: "unexpected", expectedQty: 0, actualQty: Number(row.qty) });
+    }
+  }
   return missing;
 }
 
@@ -1829,93 +1551,59 @@ export async function findFulfillmentLineMismatches(orderCode: string): Promise<
  * marker audit kedua. Marker recovery (bila perlu) dicatat terpisah dengan
  * awalan berbeda, bukan sebagai handover baru.
  */
+/** Reconcile side effects from the ORIGINAL recorded fact. A literal prefix is
+ * the event identity; unlike LIKE it has no pattern-length/wildcard semantics. */
 export async function reconcileHandoverWrites(
-  orderCode: string,
-  itemIndex: number,
-  reviewer: string,
-  stamp: string,
+  orderCode: string, itemIndex: number, reviewer: string, stamp: string,
+  database: DatabaseAccess = createDatabaseAccess(),
 ): Promise<boolean> {
+  const { queryFirst, queryAll, execRun } = database;
   const item = await queryFirst(
-    `SELECT inventory_id, status FROM fulfillment_items WHERE order_code=? AND item_index=?`,
-    orderCode, itemIndex,
+    `SELECT * FROM fulfillment_items WHERE order_code=? AND item_index=?`, orderCode, itemIndex,
   );
   if (!item || String(item.status) !== "delivered") return false;
-  // 1. Inventory unique: reserved milik order ini → delivered.
-  if (Number(item.inventory_id || 0) > 0) {
-    try {
-      await execRun(
-        `UPDATE fulfillment_inventory SET status='delivered', delivered_at=datetime('now')
-         WHERE id=? AND status='reserved' AND order_code=?`,
-        Number(item.inventory_id), orderCode,
-      );
-    } catch { return false; }
-  }
-  // 2. Jejak audit: tambah bila stempel ini belum tercatat (idempoten).
-  // RR4-03: guard concurrency di SQL (NOT LIKE) — dua request bersamaan
-  // hanya satu yang menulis marker; fakta handover stabil dan tunggal.
+  const noteRow = await queryFirst(`SELECT admin_note FROM orders WHERE code=?`, orderCode);
+  const prefix = `handover item ${itemIndex} oleh `;
+  const oldNote = String(noteRow?.admin_note ?? "");
+  const recorded = String(item.last_error ?? "").match(/^manual_handover:([^:]+):(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)/);
+  // A legacy delivered row without a handover fact is recorded as recovery,
+  // not attributed to the current admin as a new physical handover.
+  const actor = recorded?.[1] ?? "legacy (pelaku tidak tercatat)";
+  const occurredAt = recorded?.[2] ?? String(item.updated_at ?? "waktu tidak tercatat");
+  const marker = ` [${prefix}${actor} ${occurredAt}]`;
+  const missing = await findMissingFulfillmentLines(orderCode, database);
+  const remaining = await queryAll(`SELECT status FROM fulfillment_items WHERE order_code=?`, orderCode);
+  const complete = missing.length === 0 && allItemsDelivered(remaining);
+  const aggregate = complete ? "delivered" : "manual_required";
+  const statements: { sql: string; params: unknown[] }[] = [];
+  if (Number(item.inventory_id || 0) > 0) statements.push({
+    sql: `UPDATE fulfillment_inventory SET status='delivered', delivered_at=datetime('now')
+          WHERE id=? AND status='reserved' AND order_code=?`, params: [Number(item.inventory_id), orderCode],
+  });
+  if (!oldNote.includes(prefix)) statements.push({
+    sql: `UPDATE orders SET admin_note=COALESCE(admin_note,'') || ?, updated_at=datetime('now')
+          WHERE code=? AND instr(COALESCE(admin_note,''), ?)=0`, params: [marker, orderCode, prefix],
+  });
+  statements.push({ sql: `UPDATE orders SET fulfillment_status=?, updated_at=datetime('now') WHERE code=?`, params: [aggregate, orderCode] });
+  if (complete) statements.push({
+    sql: `UPDATE fulfillment_jobs SET status='delivered', locked_until=NULL, item_cursor=NULL, updated_at=datetime('now')
+          WHERE order_code=? AND status!='delivered'`, params: [orderCode],
+  });
   try {
-    const marker = `handover item ${itemIndex} oleh ${reviewer} ${stamp}`;
-    const wrote = await execRun(
-      `UPDATE orders SET admin_note=COALESCE(admin_note,'') || ?, updated_at=datetime('now')
-       WHERE code=? AND COALESCE(admin_note,'') NOT LIKE '%' || ? || '%'`,
-      ` [${marker}]`, orderCode, marker,
-    );
-    void wrote;
-  } catch { return false; }
-  // 3+4. Agregat order + job (hanya delivered bila manifest lengkap dan
-  // semua item delivered — invariant RR3-02).
-  try {
-    const missing = await findMissingFulfillmentLines(orderCode);
-    const remaining = await queryAll(
-      `SELECT status FROM fulfillment_items WHERE order_code=?`, orderCode,
-    ).catch(() => [] as Row[]);
-    const allDelivered = missing.length === 0
-      && remaining.length > 0
-      && remaining.every((row) => String(row.status) === "delivered");
-    const aggregate = allDelivered ? "delivered" : "manual_required";
-    await execRun(
-      `UPDATE orders SET fulfillment_status=?, updated_at=datetime('now') WHERE code=?`,
-      aggregate, orderCode,
-    );
-    if (allDelivered) {
-      await execRun(
-        `UPDATE fulfillment_jobs SET status='delivered', locked_until=NULL, updated_at=datetime('now')
-         WHERE order_code=? AND status!='delivered'`,
-        orderCode,
-      );
-    }
+    if (database.d1) await database.d1.batch(statements.map(({ sql, params }) => database.d1!.prepare(sql).bind(...params)));
+    else for (const statement of statements) await execRun(statement.sql, ...statement.params);
   } catch { return false; }
   return true;
 }
 
-/**
- * Baca stempel handover stabil untuk satu item (RR4-03): bila admin_note
- * sudah memuat marker `handover item <i> oleh <reviewer> <stamp>`, pakai
- * stamp itu (fakta awal akurat, pelaku/waktu kejadian awal). Bila belum
- * ada, pakai stamp yang diberikan (kejadian pertama). Retry dengan reviewer
- * sama memakai fakta yang sama — tidak ada fakta handover kedua.
- * Aman terhadap concurrency: marker ditulis dengan guard
- * `NOT LIKE '%marker%'` di bawah (reconcile), sehingga dua request bersamaan
- * hanya satu yang menulis; pembaca lain menemukan marker itu.
- */
+/** Compatibility helper: use the winning item's durable timestamp. */
 export async function readHandoverStamp(
-  orderCode: string,
-  itemIndex: number,
-  reviewer: string,
-  fallbackStamp: string,
+  orderCode: string, itemIndex: number, reviewer: string, fallbackStamp: string,
+  database: DatabaseAccess = createDatabaseAccess(),
 ): Promise<string> {
-  try {
-    const noteRow = await queryFirst(`SELECT admin_note FROM orders WHERE code=?`, orderCode);
-    const note = String(noteRow?.admin_note ?? "");
-    const prefix = `handover item ${itemIndex} oleh ${reviewer} `;
-    const at = note.indexOf(prefix);
-    if (at < 0) return fallbackStamp;
-    const rest = note.slice(at + prefix.length, at + prefix.length + 40);
-    const stamp = rest.split(/[\]\s]/)[0]?.trim();
-    return stamp || fallbackStamp;
-  } catch {
-    return fallbackStamp;
-  }
+  const item = await database.queryFirst(`SELECT last_error, updated_at FROM fulfillment_items WHERE order_code=? AND item_index=?`, orderCode, itemIndex);
+  return String(item?.last_error ?? "").match(/^manual_handover:[^:]+:(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)/)?.[1]
+    ?? String(item?.updated_at ?? fallbackStamp);
 }
 
 export async function recordManualHandover(
@@ -1964,8 +1652,9 @@ export async function recordManualHandoverDetailed(
   orderCode: string,
   itemIndex: number,
   adminEmail: string,
-  note?: string | null,
+  note?: string | null, database: DatabaseAccess = createDatabaseAccess()
 ): Promise<ManualHandoverResult> {
+  const { queryAll, queryFirst, execRun } = database;
   const reviewer = String(adminEmail || "").trim().slice(0, 120);
   if (!reviewer) return { ok: false, reason: "not_found" };
   const order = await queryFirst(
@@ -1989,10 +1678,12 @@ export async function recordManualHandoverDetailed(
     // RR4-03: hasil reconcile DIPROPAGASI — bila DB masih gagal, kembalikan
     // reconcile_failed (JANGAN klaim sukses). Stamp stabil: baca marker yang
     // sudah tercatat untuk item ini (fakta awal), bukan stamp baru.
-    const stableStamp = await readHandoverStamp(orderCode, itemIndex, reviewer, firstStamp);
-    const healed = await reconcileHandoverWrites(orderCode, itemIndex, reviewer, stableStamp).catch(() => false);
+    const stableStamp = await readHandoverStamp(orderCode, itemIndex, reviewer, firstStamp, database);
+    const healed = await reconcileHandoverWrites(orderCode, itemIndex, reviewer, stableStamp, database).catch(() => false);
     if (!healed) return { ok: false, reason: "reconcile_failed" };
-    return { ok: true, complete: true };
+    if ((await findMissingFulfillmentLines(orderCode, database)).length) return { ok: false, reason: "incomplete_manifest" };
+    const remaining = await database.queryAll(`SELECT status FROM fulfillment_items WHERE order_code=?`, orderCode);
+    return { ok: true, complete: allItemsDelivered(remaining) };
   }
   if (!["manual_required", "retry", "queued", "failed"].includes(String(item.status))) {
     return { ok: false, reason: "bad_state" };
@@ -2016,9 +1707,11 @@ export async function recordManualHandoverDetailed(
         orderCode, itemIndex,
       );
       if (String(fresh?.status) === "delivered") {
-        const healed = await reconcileHandoverWrites(orderCode, itemIndex, reviewer, stamp).catch(() => false);
+        const healed = await reconcileHandoverWrites(orderCode, itemIndex, reviewer, stamp, database).catch(() => false);
         if (!healed) return { ok: false, reason: "reconcile_failed" };
-        return { ok: true, complete: true };
+        if ((await findMissingFulfillmentLines(orderCode, database)).length) return { ok: false, reason: "incomplete_manifest" };
+        const remaining = await database.queryAll(`SELECT status FROM fulfillment_items WHERE order_code=?`, orderCode);
+        return { ok: true, complete: allItemsDelivered(remaining) };
       }
       return { ok: false, reason: "bad_state" };
     }
@@ -2030,9 +1723,9 @@ export async function recordManualHandoverDetailed(
   // order dinyatakan selesai.
   try {
     const fullOrder = await queryFirst(`SELECT * FROM orders WHERE code=?`, orderCode);
-    if (fullOrder) await ensureFulfillmentItems(fullOrder).catch(() => {});
+    if (fullOrder) await ensureFulfillmentItems(fullOrder, database).catch(() => {});
   } catch { /* lanjut ke penilaian manifest di bawah */ }
-  const missing = await findMissingFulfillmentLines(orderCode).catch(() => [] as number[]);
+  const missing = await findMissingFulfillmentLines(orderCode, database);
   if (missing.length > 0) {
     // Manifest belum lengkap: item ini TETAP tercatat delivered (fakta
     // penyerahan tidak dihapus), tetapi agregat TIDAK boleh delivered.
@@ -2048,7 +1741,7 @@ export async function recordManualHandoverDetailed(
   // RR3-07: selesaikan seluruh penulisan lanjutan; kegagalan di sini =
   // storage_error yang jujur (bukan sukses palsu), dan retry berikutnya
   // menyembuhkan via reconcileHandoverWrites.
-  const reconciled = await reconcileHandoverWrites(orderCode, itemIndex, reviewer, stamp).catch(() => false);
+  const reconciled = await reconcileHandoverWrites(orderCode, itemIndex, reviewer, stamp, database).catch(() => false);
   if (!reconciled) return { ok: false, reason: "storage_error" };
   const remaining = await queryAll(
     `SELECT status FROM fulfillment_items WHERE order_code=?`,

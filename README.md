@@ -73,7 +73,7 @@ axvara/
 - Gambar kartu Unsplash memakai WebP `srcset` responsif.
 - Endpoint publik eksplisit (`products?active=1`, `categories`, `banners?active=1`) mengirim cache CDN singkat; varian produk admin/private selalu `no-store`.
 - PDP memakai `products?active=1&slug=` (1 baris) + `catalog?slug=` untuk varian + related `products?active=1&cat=` (8 baris) — tidak fetch seluruh katalog per halaman. Checkout `?buy=` memakai filter slug exact yang sama.
-- Proteksi trafik: WAF 1 rule global TERPASANG (`/api/*` 100 req/10 dtk/IP → Block 429, ruleset "AXVARA API rate limit") + rate-limit in-memory per scope di `src/lib/rateLimit.ts` (lapis kedua per isolate, 429 + `Retry-After: 60`); cron operations batch 8 agar satu run < 50 query/invocation (batas D1 Free).
+- Proteksi trafik: WAF 1 rule global TERPASANG (`/api/*` 100 req/10 dtk/IP → Block 429, ruleset "AXVARA API rate limit") + rate-limit in-memory per scope di `src/lib/rateLimit.ts` (lapis kedua per isolate, 429 + `Retry-After: 60`); cron operations memakai binding D1 berbudget 40 statement per invocation, termasuk helper dan anggota batch; pemulihan serta pengiriman dibagi menjadi unit yang dapat dilanjutkan.
 - CSP development mengizinkan `unsafe-eval` hanya untuk React Refresh/webpack lokal. CSP production tetap tidak mengizinkannya.
 
 ---
@@ -202,7 +202,8 @@ Hanya `npm run build` sebelum deploy/major config (`next.config.mjs`, `tailwind.
 - **Changelog:** `axvara/CHANGELOG.md` — setiap perubahan wajib catat entri paling atas (format: `YYYY-MM-DD — ringkas — file/area — (verifikasi: ...)`).
 - **Remediasi review R1–R12:** `docs/REVIEW-REMEDIATION-2026-09-08.md` — CATATAN HISTORIS per 8 Sep 2026 pagi (menyebut 418 test/logout stateless/semua selesai — SUDAH TIDAK BERLAKU; lihat koreksi di bawah).
 - **Eksekusi review round 3:** `docs/REVIEW-ROUND3-EXECUTION-2026-09-08.md` — CATATAN HISTORIS (klaim "semua selesai"/"per-item"/"qty" dikoreksi round 4; konteks dipertahankan).
-- **Eksekusi review round 4 (TERKINI):** `docs/REVIEW-ROUND4-EXECUTION-2026-09-08.md` — tabel RR4-01–06 + bukti query/run + verifikasi UI CDP + koreksi klaim round 3. Status terkini: 501 test (43 file), cron per-item + checkpoint DB (migrasi 0022), handover jujur + qty + UI recovery.
+- **Eksekusi review round 4 (historis):** `docs/REVIEW-ROUND4-EXECUTION-2026-09-08.md` — klaim budget, yield, audit dan recovery dikoreksi round 5.
+- **Eksekusi review round 5 (terkini):** [laporan RR5-01–08](docs/REVIEW-ROUND5-EXECUTION-2026-09-09.md) — handover D1 memakai pencarian literal + fakta audit pemenang; manifest/qty dan UI mengikuti status bisnis; budget request-scoped 40 termasuk helper/batch; materialisasi bertahap; yield tidak menambah kegagalan; finalisasi atomik + pemulihan split lama; flag WA konsisten. Tidak ada migrasi baru; membutuhkan skema sampai 0022. Bukti lokal: 527 test (44 file), termasuk 26 test RR5 baru; batas bukti dan before/after dijelaskan di laporan.
 - **Aturan project:** `axvara/AGENTS.md` — khusus project axvara (scope lokal, tidak ubah `~/AGENTS.md` global). Wajib baca sebelum ubah kode.
 
 ## ☁️ CI/CD Cloudflare

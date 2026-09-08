@@ -1,3 +1,4 @@
+import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 // src/lib/fulfillment/inventory.ts — Reserve/release/consume inventory atomically
 // Works with D1 in production, in-memory for dev.
 
@@ -182,7 +183,8 @@ export async function releaseInventory(inventoryId: number): Promise<boolean> {
 /**
  * Mark inventory as delivered after successful send.
  */
-export async function markDelivered(inventoryId: number): Promise<boolean> {
+export async function markDelivered(inventoryId: number, database: DatabaseAccess = createDatabaseAccess()): Promise<boolean> {
+  const { execRun, isD1Mode } = database;
   if (isD1Mode()) {
     const result = await execRun(
       `UPDATE fulfillment_inventory SET status='delivered', delivered_at=datetime('now')

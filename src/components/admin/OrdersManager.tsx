@@ -117,15 +117,11 @@ export function OrdersManager({ onChanged }: { onChanged?: () => void }) {
         // palsu — panggil pemulihan server (POST item 0 memicu reconcile
         // idempoten) lalu muat ulang status yang dikonfirmasi server.
         if (!pending.length) {
-          const needsRecovery = action.order.fulfillmentStatus !== "delivered";
-          if (!needsRecovery) {
-            toast.success("Semua item sudah diserahkan.");
-          } else {
-            const response = await fetch(`/api/admin/orders/${encodeURIComponent(action.order.code)}/handover`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ item_index: items[0]?.item_index ?? 0, note: actionNote.trim() || undefined }) });
-            const data = await response.json().catch(() => ({})) as { error?: string; message?: string; fulfillment_status?: string };
-            if (!response.ok) throw new Error(data.message || data.error || `Pemulihan gagal (HTTP ${response.status})`);
-            toast.success("Status serah terima dipulihkan dari server.");
-          }
+          const response = await fetch(`/api/admin/orders/${encodeURIComponent(action.order.code)}/handover`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ item_index: items[0]?.item_index ?? 0, note: actionNote.trim() || undefined }) });
+          const data = await response.json().catch(() => ({})) as { error?: string; message?: string; fulfillment_status?: string; complete?: boolean };
+          if (!response.ok) throw new Error(data.message || data.error || `Pemulihan gagal (HTTP ${response.status})`);
+          if (data.fulfillment_status !== "delivered" || data.complete === false) throw new Error("Serah terima belum lengkap. Periksa rincian dan jumlah barang sebelum menyelesaikan pesanan.");
+          toast.success("Status serah terima dipulihkan dari server.");
         } else {
           // RR3-02/07: handover bisa mengembalikan 409 handover_incomplete
           // (manifest belum lengkap) atau 500 parsial. Item yang TERCATAT
@@ -134,15 +130,18 @@ export function OrdersManager({ onChanged }: { onChanged?: () => void }) {
           // pada item pertama). Klik ulang aman (idempoten + reconcile).
           const failures: string[] = [];
           let recorded = 0;
+          let confirmedComplete = false;
           for (const item of pending) {
             const response = await fetch(`/api/admin/orders/${encodeURIComponent(action.order.code)}/handover`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ item_index: item.item_index, note: actionNote.trim() || undefined }) });
-            const data = await response.json().catch(() => ({})) as { error?: string; message?: string; missing_item_indexes?: number[] };
+            const data = await response.json().catch(() => ({})) as { error?: string; message?: string; missing_item_indexes?: number[]; fulfillment_status?: string; complete?: boolean };
             if (!response.ok) {
               failures.push(`item ${item.item_index}: ${data.message || data.error || `HTTP ${response.status}`}${Array.isArray(data.missing_item_indexes) && data.missing_item_indexes.length ? ` (baris hilang: ${data.missing_item_indexes.join(", ")})` : ""}`);
             } else {
               recorded++;
+              confirmedComplete = data.fulfillment_status === "delivered" && data.complete !== false;
             }
           }
+          if (!failures.length && !confirmedComplete) throw new Error("Penyerahan item tercatat, tetapi pesanan belum lengkap. Periksa rincian dan jumlah barang.");
           if (!failures.length) toast.success(`Serah terima ${recorded} item tercatat.`);
           else if (recorded > 0) toast.error(`${recorded} item tercatat, ${failures.length} gagal: ${failures.join("; ")}`);
           else throw new Error(failures.join("; "));

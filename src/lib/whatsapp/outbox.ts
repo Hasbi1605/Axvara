@@ -1,3 +1,4 @@
+import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 // src/lib/whatsapp/outbox.ts — Antrean pesan WhatsApp idempoten dengan retry (issue #13).
 //
 // Masalah: notifikasi penting (mis. "Pembayaran Diterima" ke buyer) hanya
@@ -8,7 +9,7 @@
 // sent/failed. Cron operations memproses baris due (pending/failed dalam
 // batas retry, next_attempt_at lewat) dengan claim CAS agar dua worker tidak
 // mengirim ganda. Backoff 1-5-15-60 menit, maks 5 percobaan lalu `dead`.
-import { execRun, getD1, queryAll, queryFirst, type D1Statement } from "@/lib/db";
+import { getD1, queryFirst, type D1Statement } from "@/lib/db";
 import { sendTextMessage } from "./gateway";
 
 export const WA_OUTBOX_RETRY_DELAYS_MINUTES = [1, 5, 15, 60];
@@ -57,7 +58,8 @@ export type WaClaimResult =
   | { outcome: "db_error"; error: string };
 
 /** Ambil baris due untuk diproses cron (terbatas, terurut). */
-export async function getDueWhatsAppOutbox(limit = 8): Promise<Record<string, unknown>[]> {
+export async function getDueWhatsAppOutbox(limit = 8, database: DatabaseAccess = createDatabaseAccess()): Promise<Record<string, unknown>[]> {
+  const { queryAll } = database;
   return queryAll(
     `SELECT * FROM whatsapp_outbox
      WHERE status IN ('pending','failed')
@@ -77,7 +79,8 @@ export async function getDueWhatsAppOutbox(limit = 8): Promise<Record<string, un
  * menolak `sending`) kini dilaporkan sebagai `db_error` agar cron/admin
  * dapat membedakannya dari perebutan worker yang normal.
  */
-export async function claimWhatsAppOutboxRow(row: Record<string, unknown>): Promise<WaClaimResult> {
+export async function claimWhatsAppOutboxRow(row: Record<string, unknown>, database: DatabaseAccess = createDatabaseAccess()): Promise<WaClaimResult> {
+  const { execRun } = database;
   const id = Number(row.id);
   const attempts = Number(row.attempt_count || 0);
   // Review R10: klaim adalah lease eksplisit, bukan sekadar bump attempt.
@@ -115,7 +118,8 @@ export async function claimWhatsAppOutboxRow(row: Record<string, unknown>): Prom
  *   tanpa janji exactly-once tanpa dukungan provider.
  * Mengembalikan jumlah baris yang dipulihkan.
  */
-export async function recoverStaleWhatsAppLeases(): Promise<number> {
+export async function recoverStaleWhatsAppLeases(database: DatabaseAccess = createDatabaseAccess()): Promise<number> {
+  const { execRun } = database;
   try {
     const result = await execRun(
       `UPDATE whatsapp_outbox
@@ -138,10 +142,11 @@ export async function recoverStaleWhatsAppLeases(): Promise<number> {
  * menelannya sebagai `false` membuat outage schema terlihat seperti
  * perebutan worker biasa.
  */
-export async function processWhatsAppOutboxRow(row: Record<string, unknown>): Promise<boolean> {
+export async function processWhatsAppOutboxRow(row: Record<string, unknown>, database: DatabaseAccess = createDatabaseAccess()): Promise<boolean> {
+  const { queryFirst, execRun } = database;
   const id = Number(row.id);
   const attempts = Number(row.attempt_count || 0);
-  const claim = await claimWhatsAppOutboxRow(row);
+  const claim = await claimWhatsAppOutboxRow(row, database);
   if (claim.outcome === "lost") return false; // dimenangkan worker lain
   if (claim.outcome === "db_error") throw new Error(`wa_outbox_claim_failed: ${claim.error}`);
   const workerId = claim.workerId;
@@ -191,17 +196,20 @@ export async function processWhatsAppOutboxRow(row: Record<string, unknown>): Pr
  * ditelan diam-diam: baris dilewati tetapi dihitung sebagai `claimErrors`
  * agar outage schema terlihat di hasil cron, bukan seperti kalah claim.
  */
-export async function processDueWhatsAppOutbox(limit = 8): Promise<{ sent: number; dead: number; recovered?: number; claimErrors?: number }> {
-  const recovered = await recoverStaleWhatsAppLeases();
-  const rows = await getDueWhatsAppOutbox(limit);
+export async function processDueWhatsAppOutbox(limit = 8, database: DatabaseAccess = createDatabaseAccess()): Promise<{ sent: number; dead: number; recovered?: number; claimErrors?: number }> {
+  const { queryFirst, execRun } = database;
+  if (!database.canSpend(2)) return { sent: 0, dead: 0, recovered: 0, claimErrors: 0 };
+  const recovered = await recoverStaleWhatsAppLeases(database);
+  const rows = await getDueWhatsAppOutbox(limit, database);
   let sent = 0;
   let dead = 0;
   let claimErrors = 0;
   for (const row of rows) {
+    if (!database.canSpend(5)) break;
     const before = String(row.status || "");
     let done = false;
     try {
-      done = await processWhatsAppOutboxRow(row);
+      done = await processWhatsAppOutboxRow(row, database);
     } catch (error) {
       // Kegagalan database (CHECK/schema) — bukan kalah claim. Catat agar
       // terlihat, jangan anggap sukses/perebutan normal.

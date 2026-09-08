@@ -468,7 +468,7 @@ describe("Telegram order and payment flow wiring", () => {
 
   it("follows every buyer paid push with an admin-group paid update", () => {
     const notifications = read("src/lib/telegram/order-notifications.ts");
-    const notifyEnd = notifications.indexOf("await notifyTelegramPaidAdmin(orderCode);");
+    const notifyEnd = notifications.indexOf("await notifyTelegramPaidAdmin(orderCode, database);");
     const sendBuyer = notifications.indexOf("reply_markup: orderPaidKeyboard");
     expect(sendBuyer).toBeGreaterThan(0);
     expect(notifyEnd).toBeGreaterThan(sendBuyer);

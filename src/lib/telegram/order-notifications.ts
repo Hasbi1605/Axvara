@@ -1,4 +1,4 @@
-import { execRun, queryAll, queryFirst } from "@/lib/db";
+import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 
 type Row = Record<string, unknown>;
 import { isFutureIso } from "@/lib/expiry";
@@ -51,7 +51,8 @@ function telegramNotificationsConfigured(): boolean {
 }
 
 /** Notify Axvara_Notif as soon as a Telegram order and its QRIS ledger exist. */
-export async function notifyTelegramOrderCreated(orderCode: string): Promise<boolean> {
+export async function notifyTelegramOrderCreated(orderCode: string, database: DatabaseAccess = createDatabaseAccess()): Promise<boolean> {
+  const { queryFirst, execRun } = database;
   const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
   if (!adminChatId || !telegramNotificationsConfigured()) return false;
 
@@ -100,7 +101,8 @@ export async function notifyTelegramOrderCreated(orderCode: string): Promise<boo
  * Push payment success without requiring the buyer to press "Cek Status".
  * For manual fulfillment, this is also the first point where WA is requested.
  */
-export async function notifyTelegramBuyerPaid(orderCode: string): Promise<boolean> {
+export async function notifyTelegramBuyerPaid(orderCode: string, database: DatabaseAccess = createDatabaseAccess()): Promise<boolean> {
+  const { queryFirst, execRun } = database;
   if (!telegramNotificationsConfigured()) return false;
 
   const order = await queryFirst(
@@ -159,13 +161,14 @@ export async function notifyTelegramBuyerPaid(orderCode: string): Promise<boolea
   // always follow up with a paid update to the admin group (best-effort here,
   // retried by the operations cron via its own durable marker).
   try {
-    await notifyTelegramPaidAdmin(orderCode);
+    await notifyTelegramPaidAdmin(orderCode, database);
   } catch { /* Cron retries via telegram_paid_admin_notified_at. */ }
   return true;
 }
 
 /** Announce a paid Telegram order to the admin group (separate from order-created). */
-export async function notifyTelegramPaidAdmin(orderCode: string): Promise<boolean> {
+export async function notifyTelegramPaidAdmin(orderCode: string, database: DatabaseAccess = createDatabaseAccess()): Promise<boolean> {
+  const { queryFirst, execRun } = database;
   const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
   if (!adminChatId || !telegramNotificationsConfigured()) return false;
 
@@ -219,11 +222,12 @@ export async function notifyTelegramPaidAdmin(orderCode: string): Promise<boolea
  */
 export async function retryPendingTelegramNotifications(limit = 8, only?: {
   created?: boolean; paid?: boolean; paidAdmin?: boolean;
-}): Promise<{
+}, database: DatabaseAccess = createDatabaseAccess()): Promise<{
   created: number;
   paid: number;
   paidAdmin: number;
 }> {
+  const { queryAll } = database;
   const want = {
     created: only?.created ?? true,
     paid: only?.paid ?? true,
@@ -232,7 +236,7 @@ export async function retryPendingTelegramNotifications(limit = 8, only?: {
   let created = 0;
   let paid = 0;
   let paidAdmin = 0;
-  if (want.created) {
+  if (want.created && database.canSpend(1)) {
     const pendingCreated = await queryAll(
       `SELECT code FROM orders
        WHERE sales_channel='telegram' AND telegram_order_notified_at IS NULL
@@ -240,13 +244,14 @@ export async function retryPendingTelegramNotifications(limit = 8, only?: {
       limit,
     ).catch(() => [] as Row[]);
     for (const order of pendingCreated) {
+      if (!database.canSpend(7)) break;
       try {
-        if (await notifyTelegramOrderCreated(String(order.code))) created++;
+        if (await notifyTelegramOrderCreated(String(order.code), database)) created++;
       } catch { /* Retry the same durable marker on the next cron run. */ }
     }
   }
 
-  if (want.paid) {
+  if (want.paid && database.canSpend(1)) {
     const pendingPaid = await queryAll(
       `SELECT code FROM orders
        WHERE sales_channel='telegram' AND status='lunas' AND payment_status='paid'
@@ -255,13 +260,14 @@ export async function retryPendingTelegramNotifications(limit = 8, only?: {
       limit,
     ).catch(() => [] as Row[]);
     for (const order of pendingPaid) {
+      if (!database.canSpend(7)) break;
       try {
-        if (await notifyTelegramBuyerPaid(String(order.code))) paid++;
+        if (await notifyTelegramBuyerPaid(String(order.code), database)) paid++;
       } catch { /* Retry the same durable marker on the next cron run. */ }
     }
   }
 
-  if (want.paidAdmin) {
+  if (want.paidAdmin && database.canSpend(1)) {
     const pendingPaidAdmin = await queryAll(
       `SELECT code FROM orders
        WHERE sales_channel='telegram' AND status='lunas' AND payment_status='paid'
@@ -270,8 +276,9 @@ export async function retryPendingTelegramNotifications(limit = 8, only?: {
       limit,
     ).catch(() => [] as Row[]);
     for (const order of pendingPaidAdmin) {
+      if (!database.canSpend(7)) break;
       try {
-        if (await notifyTelegramPaidAdmin(String(order.code))) paidAdmin++;
+        if (await notifyTelegramPaidAdmin(String(order.code), database)) paidAdmin++;
       } catch { /* Retry the same durable marker on the next cron run. */ }
     }
   }
@@ -285,7 +292,8 @@ export async function retryPendingTelegramNotifications(limit = 8, only?: {
 export const TELEGRAM_REMINDER_MAX = 2;
 export const TELEGRAM_REMINDER_INTERVAL_MINUTES = 60;
 
-export async function sendPendingOrderReminders(limit = 8): Promise<number> {
+export async function sendPendingOrderReminders(limit = 8, database: DatabaseAccess = createDatabaseAccess()): Promise<number> {
+  const { queryAll, execRun } = database;
   if (!telegramNotificationsConfigured()) return 0;
   // Same canonical JS expiry check as webhook/crons: only invoices whose
   // ISO `expires_at` is still in the future are reminded.
@@ -307,6 +315,7 @@ export async function sendPendingOrderReminders(limit = 8): Promise<number> {
     .slice(0, limit);
   let sent = 0;
   for (const order of pending) {
+    if (!database.canSpend(1)) break;
     const code = String(order.code);
     const chatId = String(order.telegram_chat_id || "");
     if (!chatId) continue;

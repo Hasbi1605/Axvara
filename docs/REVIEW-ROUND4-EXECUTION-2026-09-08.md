@@ -1,5 +1,7 @@
 # REVIEW-ROUND4-EXECUTION-2026-09-08 — Eksekusi perbaikan RR4-01–06
 
+> Koreksi 9 September 2026: laporan ini adalah catatan historis. Review independen snapshot `5c1d6e3` menemukan delapan tindak lanjut: batas LIKE D1, materialisasi 20 baris melebihi budget, yield mengonsumsi attempt, qty/recovery/UI belum konsisten, race setelah lease dilepas, flag WA terlewati, audit duplikat saat race, dan split finalisasi yang tidak dipulihkan. Klaim di bawah tidak menjadi status terkini. Lihat [eksekusi RR5-01–08](REVIEW-ROUND5-EXECUTION-2026-09-09.md) untuk perubahan dan batas bukti terbaru.
+
 Tanggal: 8 September 2026 (Asia/Jakarta). Snapshot awal: `906dbef`.
 Laporan review asal: `/tmp/AXVARA-REVIEW-ROUND4-2026-09-08.md`.
 Perintah eksekusi: `/tmp/AXVARA-PROMPT-PERBAIKAN-ROUND4-2026-09-08.md`.
