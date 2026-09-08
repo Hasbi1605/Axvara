@@ -410,9 +410,16 @@ describe("Telegram messages premium UX", () => {
   it("paid message confirms automatic detection, then asks WA only for manual delivery", () => {
     const msg = orderPaidMessage("AXV-20260904-AB12CD34", "Produk", true);
     expect(msg).toContain("Dana sudah diterima dan terverifikasi otomatis");
+    expect(msg).toContain("Produk akan dikirim admin melalui DM Telegram pribadi ini");
+    expect(msg).toContain("Untuk jaga-jaga");
+    expect(msg).toContain("jalur pengiriman cadangan");
     expect(msg).toContain("nomor WhatsApp aktif");
+    expect(msg).not.toContain("Tetap standby");
     expect(msg).toContain("@axvara_support");
     expect(msg).toContain("wa.me/6289519388264");
+    const auto = orderPaidMessage("AXV-20260904-AB12CD34", "Produk", false);
+    expect(auto).toContain("Produk akan dikirim admin melalui DM Telegram pribadi ini");
+    expect(auto).not.toContain("nomor WhatsApp aktif");
   });
 
   it("admin group notification identifies Telegram order creation", () => {

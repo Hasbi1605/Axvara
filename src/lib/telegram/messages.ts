@@ -480,12 +480,12 @@ export function orderPaidMessage(orderCode: string, productName: string, needsWh
     `🔢 <code>${escapeHtml(orderCode)}</code>`,
     "",
     "✅ Dana sudah diterima dan terverifikasi otomatis.",
-    "⏳ Pesanan akan segera diproses.",
+    "📩 Produk akan dikirim admin melalui DM Telegram pribadi ini.",
   ];
   if (needsWhatsApp) {
     lines.push(
       "",
-      "📱 <b>Balas chat ini dengan nomor WhatsApp aktif</b> untuk pengiriman produk.",
+      "📱 <i>Untuk jaga-jaga:</i> balas chat ini dengan nomor WhatsApp aktif sebagai jalur pengiriman cadangan.",
       "Contoh: <code>08123456789</code>",
     );
   }
