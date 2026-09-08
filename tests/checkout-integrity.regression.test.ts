@@ -171,6 +171,14 @@ describe("Authoritative UI and admin state", () => {
     expect(statusPage).toContain("Status terbaru gagal dimuat");
   });
 
+  it("tombol Telegram Admin mengarah ke akun support manusia, bukan bot", () => {
+    const statusPage = read("src/app/pesanan/[code]/page.tsx");
+    expect(statusPage).toContain("supportTelegramLink()");
+    expect(statusPage).not.toContain("adminTelegramLink()");
+    const site = read("src/lib/site.ts");
+    expect(site).toContain('supportTelegram: "axvara_support"');
+  });
+
   it("URL gambar 404 lama tidak ada di seed dan migrasi memperbarui production", () => {
     const products = read("src/lib/products.ts");
     const migration = read("drizzle/migrations/0003_checkout_integrity.sql");
