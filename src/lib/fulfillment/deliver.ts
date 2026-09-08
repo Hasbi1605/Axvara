@@ -476,35 +476,254 @@ export async function scheduleRetry(jobId: number, error: string): Promise<void>
 }
 
 /**
+ * Hasil mutasi job berpagar (RR4-05): bukan void buta, melainkan status
+ * yang menyatakan apakah worker masih berwenang dan transisi mana yang
+ * terjadi. Pemanggil WAJIB memakai hasil ini sebelum menyentuh agregat
+ * order — jeda antara mutasi job dan agregasi harus diproteksi ulang.
+ */
+export type FencedJobMutation =
+  | { owned: true; transition: "retry" | "failed" }
+  | { owned: false };
+
+/**
  * scheduleRetry yang dipagar lease (R4): worker basi yang lease-nya sudah
  * direbut pemilik baru (locked_until berbeda) mendapat 0 row — parent yang
  * sudah delivered TIDAK turun menjadi retry, dan error basi tidak menimpa
  * penanda pemilik baru. Tanpa fence = varian tanpa lease memakai jalur lama.
+ *
+ * RR4-05: mengembalikan FencedJobMutation agar pemanggil tahu (a) apakah
+ * worker masih pemilik (owned), dan (b) apakah job menjadi retry atau
+ * terminal failed. Jangan menambah 'failed' ke daftar status milik tanpa
+ * bukti kepemilikan — bukti di sini adalah baris yang benar-benar diubah
+ * oleh CAS milik worker ini (changes > 0).
  */
-export async function scheduleRetryFenced(jobId: number, error: string, lease?: string): Promise<void> {
+export async function scheduleRetryFenced(jobId: number, error: string, lease?: string): Promise<FencedJobMutation> {
   const sanitizedError = error.slice(0, 500);
   if (isD1Mode() && lease) {
     const job = await queryFirst(`SELECT attempt_count FROM fulfillment_jobs WHERE id=? AND locked_until=?`, jobId, lease);
-    if (!job) return; // lease hilang → pemilik baru menang, buang hasil basi
+    if (!job) return { owned: false }; // lease hilang → pemilik baru menang, buang hasil basi
     const attempts = Number(job?.attempt_count ?? 0);
     if (attempts >= MAX_ATTEMPTS) {
-      await execRun(
+      const wrote = await execRun(
         `UPDATE fulfillment_jobs SET status='failed', last_error=?, locked_until=NULL, updated_at=datetime('now')
          WHERE id=? AND locked_until=?`,
         sanitizedError, jobId, lease,
       );
-      return;
+      // CAS kedua memastikan tidak ada worker lain yang menyela antara baca
+      // dan tulis: 0 row = kehilangan kepemilikan di jeda tersebut.
+      return wrote.changes ? { owned: true, transition: "failed" } : { owned: false };
     }
     const delayMinutes = RETRY_DELAYS[Math.min(attempts - 1, RETRY_DELAYS.length - 1)];
-    await execRun(
+    const wrote = await execRun(
       `UPDATE fulfillment_jobs SET status='retry', last_error=?, locked_until=NULL,
        next_attempt_at=datetime('now', '+${delayMinutes} minutes'), updated_at=datetime('now')
        WHERE id=? AND locked_until=?`,
       sanitizedError, jobId, lease,
     );
-    return;
+    return wrote.changes ? { owned: true, transition: "retry" } : { owned: false };
   }
-  return scheduleRetry(jobId, error);
+  await scheduleRetry(jobId, error);
+  const after = await queryFirst(`SELECT status FROM fulfillment_jobs WHERE id=?`, jobId).catch(() => null);
+  const st = String(after?.status ?? "");
+  if (st === "failed") return { owned: true, transition: "failed" };
+  return { owned: true, transition: "retry" };
+}
+
+/**
+ * Biaya query aktual satu item shared (DIUKUR, RR4-01): klaim 1 + baca
+ * ulang 1 + secret 1 + tulis delivered 1 = 4. Manual 2 (klaim baca adalah
+ * bagian dari klaim tulis: update 1 + tulis 1). Unique ≤ 6 (bound 1 +
+ * fallback 2 + tulis ikatan 1 + markDelivered 1 + tulis 1). Batas atas
+ * aman per item = 6.
+ */
+export const COST_PER_DELIVERY_ITEM = 6;
+/** Biaya klaim job + baca baris + agregat akhir (DIUKUR): 2 + 1 + 3 = 6. */
+export const COST_PER_JOB_FRAME = 6;
+
+/**
+ * Hasil pemrosesan per-item (RR4-01): berapa item yang selesai diupayakan,
+ * apakah masih ada sisa, dan apakah worker masih pemilik.
+ */
+export type JobUnitResult =
+  | { done: true; attempted: number; finished: boolean }
+  | { done: false; reason: "not_owned" | "not_paid" | "no_work" | "item_failed" | "budget_yield"; attempted: number; finished: boolean };
+
+/**
+ * Proses SEBANYAK maxItems item berikutnya dari satu job (RR4-01).
+ *
+ * Unit kerja yang benar-benar bisa dilanjutkan: item yang sudah delivered/
+ * manual_required dilewati (TIDAK dikirim ulang), item berikutnya diklaim
+ * dan dikirim satu per satu, dan `item_cursor` (index berikutnya)
+ * disimpan ke DB setiap selesai satu item — sehingga invocation berikutnya
+ * (bahkan setelah restart worker) melanjutkan dari posisi yang benar.
+ *
+ * - `shouldContinue` dipanggil SEBELUM tiap item: kembalikan false untuk
+ *   yield (budget habis). Yield BUKAN kegagalan provider: attempt job tidak
+ *   dikonsumsi untuk item yang belum dicoba, dan item yang sudah delivered
+ *   tidak diulang.
+ * - Agregat job/order HANYA ditulis bila seluruh item terminal (selesai)
+ *   ATAU ada kegagalan item yang butuh status retry/failed. Yield murni
+ *   (semua item yang dicoba sukses tetapi masih ada sisa) TIDAK menulis
+ *   retry — job tetap sending milik worker ini sampai invocation berikut
+ *   (lease 60 detik > jeda cron 5 menit? TIDAK — lihat di bawah).
+ *
+ * Kepemilikan lease antar invocation: klaim job per invocation (bukan
+ * dipertahankan lintas cron). Tiap panggilan mengklaim ulang (CAS) bila
+ * status masih queued/retry/sending-lease-lewat; item delivered tidak
+ * disentuh ulang. Ini membuat retry budget hanya dikonsumsi oleh
+ * kegagalan nyata, bukan oleh yield.
+ */
+export async function processJobItems(
+  jobId: number,
+  order: Row,
+  product: Row,
+  maxItems: number,
+  shouldContinue?: () => boolean,
+): Promise<JobUnitResult> {
+  if (String(order.status) !== "lunas" || String(order.payment_status) !== "paid") {
+    return { done: false, reason: "not_paid", attempted: 0, finished: false };
+  }
+  const orderCode = String(order.code);
+  const salesChannel = String(order.sales_channel || "telegram");
+
+  if (
+    salesChannel === "whatsapp"
+    && String(order.payment_method) !== "qris"
+    && isEnabled("WHATSAPP_REQUIRE_PROOF_BEFORE_FULFILLMENT")
+  ) {
+    const proof = isD1Mode()
+      ? await queryFirst(
+        `SELECT id FROM payment_proofs WHERE order_code=? AND status IN ('submitted','approved')`,
+        orderCode,
+      )
+      : true;
+    if (!proof) return { done: false, reason: "no_work", attempted: 0, finished: false };
+  }
+
+  // Pastikan baris item ada (materialisasi idempoten; murah bila lengkap).
+  let itemRows = await queryAll(
+    `SELECT * FROM fulfillment_items WHERE order_code=? ORDER BY item_index ASC`,
+    orderCode,
+  ).catch(() => [] as Row[]);
+  if (!itemRows.length) {
+    await ensureFulfillmentItems(order).catch(() => {});
+    itemRows = await queryAll(
+      `SELECT * FROM fulfillment_items WHERE order_code=? ORDER BY item_index ASC`,
+      orderCode,
+    ).catch(() => [] as Row[]);
+    if (!itemRows.length) return { done: false, reason: "no_work", attempted: 0, finished: false };
+  }
+
+  // Klaim job untuk invocation ini (CAS; sending basi boleh direbut).
+  const claimed = await claimJob(jobId);
+  if (!claimed) return { done: false, reason: "not_owned", attempted: 0, finished: false };
+  const jobLease = String((claimed as Row).locked_until ?? "");
+  const startCursor = Number((claimed as Row).item_cursor ?? 0) || 0;
+
+  const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
+  let attempted = 0;
+  let itemFailed = false;
+  let firstError: string | null = null;
+  let cursor = Math.max(0, startCursor);
+
+  // Cari item berikutnya yang belum terminal, mulai dari cursor.
+  const pendingIndexes = itemRows
+    .map((r, i) => ({ row: r, index: Number(r.item_index ?? i) }))
+    .filter(({ row }) => !["delivered", "manual_required"].includes(String(row.status)))
+    .map(({ index }) => index)
+    .sort((a, b) => a - b);
+  const todo = pendingIndexes.filter((i) => i >= cursor).concat(pendingIndexes.filter((i) => i < cursor));
+  const budget = todo.slice(0, Math.max(0, maxItems));
+
+  for (const index of budget) {
+    if (shouldContinue && !shouldContinue()) break; // yield: budget habis
+    const itemRow = itemRows.find((r) => Number(r.item_index) === index);
+    if (!itemRow) continue;
+    const status = String(itemRow.status);
+    if (status === "delivered" || status === "manual_required") continue;
+    if (status === "failed") { itemFailed = true; firstError ??= String(itemRow.last_error || "item failed"); continue; }
+    const ok = await processItem(order, itemRow, adminChatId);
+    attempted++;
+    cursor = index + 1;
+    // Checkpoint per item: simpan segera (DB, bukan memori).
+    await execRun(`UPDATE fulfillment_jobs SET item_cursor=? WHERE id=?`, cursor, jobId).catch(() => {});
+    if (!ok) {
+      itemFailed = true;
+      const fresh = await queryFirst(`SELECT last_error FROM fulfillment_items WHERE id=?`, Number(itemRow.id));
+      firstError ??= String(fresh?.last_error || itemRow.last_error || "item delivery failed");
+    }
+  }
+
+  const settled = await queryAll(
+    `SELECT status FROM fulfillment_items WHERE order_code=?`,
+    orderCode,
+  ).catch(() => [] as Row[]);
+  const expected = parseOrderItems(order.items);
+  const freshRows = await queryAll(
+    `SELECT product_id, variant_id FROM fulfillment_items WHERE order_code=? ORDER BY item_index ASC`,
+    orderCode,
+  ).catch(() => [] as Row[]);
+  const complete =
+    settled.length === expected.length
+    && expected.every((line, i) =>
+      settled[i] !== undefined
+      && Number(freshRows[i]?.product_id) === Number(line.product_id)
+      && Number(freshRows[i]?.variant_id ?? 0) === Number(line.variant_id ?? 0),
+    );
+  const finished = complete && allItemsSettled(settled);
+
+  if (finished) {
+    const delivered = await execRun(
+      `UPDATE fulfillment_jobs SET status='delivered', locked_until=NULL, item_cursor=NULL, updated_at=datetime('now')
+       WHERE id=? AND locked_until=?`,
+      jobId, jobLease,
+    ).catch(() => ({ changes: 0 as number | undefined }));
+    if (!delivered.changes) return { done: false, reason: "not_owned", attempted, finished: false };
+    const aggregate = allItemsDelivered(settled) ? "delivered" : "manual_required";
+    await execRun(
+      `UPDATE orders SET fulfillment_status=?, updated_at=datetime('now') WHERE code=?
+       AND fulfillment_status NOT IN ('delivered','manual_required')`,
+      aggregate, orderCode,
+    );
+    return { done: true, attempted, finished: true };
+  }
+
+  if (itemFailed) {
+    // Ada kegagalan nyata: konsumsi retry budget + sinkronkan agregat.
+    const mutation = await scheduleRetryFenced(jobId, firstError ?? "partial_item_failure", jobLease);
+    if (!mutation.owned) return { done: false, reason: "not_owned", attempted, finished: false };
+    if (mutation.transition === "failed") {
+      await execRun(
+        `UPDATE orders SET fulfillment_status='failed', updated_at=datetime('now') WHERE code=?
+         AND fulfillment_status NOT IN ('delivered','manual_required','failed')`,
+        orderCode,
+      ).catch(() => undefined);
+      return { done: false, reason: "item_failed", attempted, finished: false };
+    }
+    const orderStatus = settled.some((row) => String(row.status) === "failed")
+      ? "failed"
+      : settled.some((row) => ["delivered", "manual_required"].includes(String(row.status)))
+        ? "retry"
+        : "retry";
+    if (orderStatus === "retry" || orderStatus === "failed") {
+      await execRun(
+        `UPDATE orders SET fulfillment_status=?, updated_at=datetime('now') WHERE code=?
+         AND fulfillment_status NOT IN ('delivered','manual_required')`,
+        orderStatus, orderCode,
+      );
+    }
+    return { done: false, reason: "item_failed", attempted, finished: false };
+  }
+
+  // Yield murni: item yang dicoba semuanya sukses tetapi masih ada sisa.
+  // Lepaskan lease TANPA mengonsumsi retry (job kembali queued, cursor
+  // tersimpan) agar invocation berikutnya melanjutkan — bukan gagal.
+  await execRun(
+    `UPDATE fulfillment_jobs SET status='queued', locked_until=NULL, next_attempt_at=datetime('now'), updated_at=datetime('now')
+     WHERE id=? AND locked_until=?`,
+    jobId, jobLease,
+  ).catch(() => undefined);
+  return { done: false, reason: "budget_yield", attempted, finished: false };
 }
 
 /**
@@ -514,6 +733,11 @@ export async function scheduleRetryFenced(jobId: number, error: string, lease?: 
  * alone; already-delivered items are never resent. The legacy single-item
  * path (no fulfillment_items rows, e.g. pre-migration jobs) keeps the
  * previous behavior via processLegacyJob below.
+ *
+ * RR4-01: jalur ini mendelegasikan ke processJobItems tanpa batas
+ * (maxItems = semua sisa) sehingga perilaku lama (satu panggilan =
+ * seluruh job) tetap sama untuk pemanggil langsung (webhook, test lama).
+ * Cron memakai processJobItems dengan batas per invocation + checkpoint.
  */
 export async function processJob(
   jobId: number,
@@ -654,21 +878,30 @@ export async function processJob(
   // items, surface the aggregate state on the order, and notify admin once.
   // Fenced juga (R4): worker basi tidak boleh menurunkan parent yang sudah
   // diselesaikan pemilik baru menjadi retry.
-  await scheduleRetryFenced(jobId, firstError ?? "partial_item_failure", jobLease);
-  // RR3-08: kepemilikan lease melindungi SELURUH mutasi turunan — bukan
-  // hanya baris job. scheduleRetryFenced menulis retry TANPA fence
-  // (locked_until=NULL) bila pemiliknya masih kami: cek apakah baris job
-  // masih retry hasil kerja KAMI (bukan milik worker baru). Bila lease
-  // hilang (job sudah claimed ulang / diselesaikan pemilik baru), worker
-  // lama BERHENTI di sini: tidak boleh menyentuh agregat order, item,
-  // inventory, atau catatan error. Tanpa fence ini, worker basi menimpa
-  // order campuran manual_required milik worker baru menjadi retry (bukan
-  // via daftar status yang dikecualikan, melainkan via kepemilikan lease
-  // yang sama dengan baris job).
-  const ownRetry = await queryFirst(
-    `SELECT id FROM fulfillment_jobs WHERE id=? AND status='retry' AND locked_until IS NULL`, jobId,
-  ).catch(() => null);
-  if (!ownRetry) return false; // lease hilang → pemilik baru menang, buang hasil basi
+  // RR4-05: scheduleRetryFenced mengembalikan kepemilikan + transisi.
+  // - owned:false → berhenti SEBELUM menyentuh agregat order.
+  // - owned + failed → sinkronkan order ke failed (intervensi admin),
+  //   BUKAN dibiarkan queued seolah masih menunggu kirim.
+  // - owned + retry → agregat retry seperti sebelumnya.
+  const mutation = await scheduleRetryFenced(jobId, firstError ?? "partial_item_failure", jobLease);
+  if (!mutation.owned) return false; // lease hilang → pemilik baru menang, buang hasil basi
+  if (mutation.transition === "failed") {
+    await execRun(
+      `UPDATE orders SET fulfillment_status='failed', updated_at=datetime('now') WHERE code=?
+       AND fulfillment_status NOT IN ('delivered','manual_required','failed')`,
+      orderCode,
+    ).catch(() => undefined);
+    if (adminChatId && firstError) {
+      try {
+        await sendMessage({
+          chat_id: adminChatId,
+          text: adminDeliveryFailedNotification(orderCode, firstError),
+          parse_mode: "HTML",
+        });
+      } catch { /* admin notification is best-effort */ }
+    }
+    return false;
+  }
   const orderStatus = settled.some((row) => String(row.status) === "failed")
     ? "failed"
     : settled.some((row) => ["delivered", "manual_required"].includes(String(row.status)))
@@ -1261,6 +1494,61 @@ export async function ensureFulfillmentForPaidOrder(orderCode: string): Promise<
 }
 
 /**
+ * Rekonsiliasi orphan RINGAN per order (RR4-02): HANYA materialisasi baris
+ * item + pembuatan baris job (queued) — TANPA pengiriman inline.
+ * Pengiriman terjadi pada fase due-job (processJobItems) yang sudah
+ * tunduk pada budget per-item. Ini memisahkan "rekonsiliasi" dari
+ * "pengiriman" sehingga biaya orphan deterministik dan kecil:
+ * 1 baca order + 1 baca item + produk unik (≤2) + materialisasi (1 + 1
+ * produk + 1 baca ulang) + 1 insert job + 1 requeue + 1 baca job ≈ 9–11.
+ *
+ * Mengembalikan true bila baris job kini ada (baru dibuat atau sudah ada).
+ */
+export async function reconcileOrphanLight(orderCode: string): Promise<boolean> {
+  const order = await queryFirst(
+    `SELECT * FROM orders WHERE code=? AND status='lunas' AND payment_status='paid'`,
+    orderCode,
+  );
+  if (!order) return false;
+  // Fence: order yang sudah settled penuh bukan pekerjaan.
+  const agg = String(order.fulfillment_status ?? "");
+  if (agg === "delivered" || agg === "manual_required") {
+    const open = await queryFirst(
+      `SELECT id FROM fulfillment_items WHERE order_code=? AND status NOT IN ('delivered','failed','manual_required')`,
+      orderCode,
+    ).catch(() => ({ id: 1 }));
+    if (!open) return true; // truly settled — bukan orphan kerja
+  }
+  try {
+    await ensureFulfillmentItems(order);
+  } catch {
+    return false;
+  }
+  const items = parseOrderItems(order.items);
+  if (!items.length) return false;
+  const variantId = Number(order.variant_id || items[0].variant_id || 0) || null;
+  try {
+    await createFulfillmentJob(orderCode, null, "queued", variantId, String(order.sales_channel || "telegram"));
+  } catch { /* UNIQUE = sudah ada, lanjut */ }
+  // Requeue manual_required historis agar due-job melihatnya.
+  if (String(order.fulfillment_status || "") !== "manual_required") {
+    await execRun(
+      `UPDATE fulfillment_jobs
+       SET status='queued', next_attempt_at=datetime('now'), locked_until=NULL, updated_at=datetime('now')
+       WHERE order_code=? AND status='manual_required'`,
+      orderCode,
+    ).catch(() => undefined);
+  }
+  const job = await queryFirst(`SELECT id FROM fulfillment_jobs WHERE order_code=?`, orderCode);
+  return Boolean(job);
+}
+
+/** Biaya orphan ringan: batas atas aman 11 query (DIUKUR, RR4-02). */
+export const COST_PER_ORPHAN_LIGHT = 11;
+/** Biaya backfill ringan: 1 baca + materialisasi idempoten ≈ 5. */
+export const COST_PER_BACKFILL_LIGHT = 5;
+
+/**
  * Reconcile paid orders that have no fulfillment job (issue #3).
  *
  * Covers every gap between "payment stored" and "job created": crashes in
@@ -1475,32 +1763,55 @@ export function releaseStaleItemsMem(rows: Row[]): number {
  * Hasil handover yang jujur (RR3-02/07): bukan boolean buta, melainkan
  * status yang membedakan "item tercatat" dari "seluruh order tuntas" dan
  * dari "manifest belum lengkap".
+ *
+ * RR4-03: tambah `reconcile_failed` — item sudah delivered tetapi penulisan
+ * lanjutan (agregat/audit) masih gagal SETELAH dicoba ulang. Cabang
+ * delivered dan kalah-CAS WAJIB mempropagasi ini (bukan void healed).
  */
 export type ManualHandoverResult =
   | { ok: true; complete: boolean }
-  | { ok: false; reason: "not_found" | "not_paid" | "bad_state" | "incomplete_manifest" | "storage_error" };
+  | { ok: false; reason: "not_found" | "not_paid" | "bad_state" | "incomplete_manifest" | "storage_error" | "reconcile_failed" };
 
 /**
  * Cocokkan baris fulfillment terhadap manifest order (RR3-02): setiap baris
  * order (product_id + variant_id + qty) HARUS punya baris fulfillment
  * dengan identitas yang sama. Mengembalikan daftar index yang hilang/salah.
+ *
+ * RR4-04: cocokkan JUMLAH UNIT juga. Kontrak representasi: SATU baris
+ * fulfillment mewakili SELURUH qty baris order itu (kolom qty disalin dari
+ * order saat materialisasi — bukan dipecah per unit). Bila baris fulfillment
+ * qty-nya lebih kecil dari kebutuhan order (data tidak konsisten, mis.
+ * qty 2 vs 1), baris itu DILAPORKAN hilang agar agregat tidak delivered
+ * sebelum kekurangan unit diselesaikan — bukan ditimpa qty-nya (fakta
+ * pengiriman tidak boleh dipalsukan) dan bukan mereset item benar.
  */
+export type FulfillmentLineMismatch = { index: number; kind: "missing" | "identity" | "short_qty"; expectedQty: number; actualQty: number };
 export async function findMissingFulfillmentLines(orderCode: string): Promise<number[]> {
+  return (await findFulfillmentLineMismatches(orderCode)).map((m) => m.index);
+}
+export async function findFulfillmentLineMismatches(orderCode: string): Promise<FulfillmentLineMismatch[]> {
   const order = await queryFirst(`SELECT items FROM orders WHERE code=?`, orderCode);
   if (!order) return [];
   const expected = parseOrderItems(order.items);
   const rows = await queryAll(
-    `SELECT item_index, product_id, variant_id FROM fulfillment_items WHERE order_code=? ORDER BY item_index ASC`,
+    `SELECT item_index, product_id, variant_id, qty FROM fulfillment_items WHERE order_code=? ORDER BY item_index ASC`,
     orderCode,
   ).catch(() => [] as Row[]);
   const byIndex = new Map(rows.map((r) => [Number(r.item_index), r]));
-  const missing: number[] = [];
+  const missing: FulfillmentLineMismatch[] = [];
   expected.forEach((line, index) => {
     const row = byIndex.get(index);
-    if (!row) { missing.push(index); return; }
+    if (!row) { missing.push({ index, kind: "missing", expectedQty: Math.max(1, Number(line.qty || 1)), actualQty: 0 }); return; }
     if (Number(row.product_id) !== Number(line.product_id)
       || Number(row.variant_id ?? 0) !== Number(line.variant_id ?? 0)) {
-      missing.push(index);
+      missing.push({ index, kind: "identity", expectedQty: Math.max(1, Number(line.qty || 1)), actualQty: Number(row.qty ?? 0) });
+      return;
+    }
+    const need = Math.max(1, Number(line.qty || 1));
+    const have = Math.max(0, Number(row.qty ?? 0));
+    // Nilai legacy tidak valid (qty 0/negatif/NaN → have 0) juga short.
+    if (have < need) {
+      missing.push({ index, kind: "short_qty", expectedQty: need, actualQty: have });
     }
   });
   return missing;
@@ -1512,6 +1823,11 @@ export async function findMissingFulfillmentLines(orderCode: string): Promise<nu
  * (guard status/CAS); tidak ada pengiriman ulang kredensial dan tidak ada
  * pemotongan stok ganda. Mengembalikan true bila seluruh efek samping kini
  * konsisten (atau sudah konsisten sebelumnya).
+ *
+ * RR4-03: stempel audit STABIL per fakta handover — pemanggil memberikan
+ * stamp kejadian awal; retry memakai stamp yang SAMA sehingga tidak tercipta
+ * marker audit kedua. Marker recovery (bila perlu) dicatat terpisah dengan
+ * awalan berbeda, bukan sebagai handover baru.
  */
 export async function reconcileHandoverWrites(
   orderCode: string,
@@ -1535,16 +1851,16 @@ export async function reconcileHandoverWrites(
     } catch { return false; }
   }
   // 2. Jejak audit: tambah bila stempel ini belum tercatat (idempoten).
+  // RR4-03: guard concurrency di SQL (NOT LIKE) — dua request bersamaan
+  // hanya satu yang menulis marker; fakta handover stabil dan tunggal.
   try {
-    const noteRow = await queryFirst(`SELECT admin_note FROM orders WHERE code=?`, orderCode);
-    const note = String(noteRow?.admin_note ?? "");
     const marker = `handover item ${itemIndex} oleh ${reviewer} ${stamp}`;
-    if (!note.includes(marker)) {
-      await execRun(
-        `UPDATE orders SET admin_note=COALESCE(admin_note,'') || ?, updated_at=datetime('now') WHERE code=?`,
-        ` [${marker}]`, orderCode,
-      );
-    }
+    const wrote = await execRun(
+      `UPDATE orders SET admin_note=COALESCE(admin_note,'') || ?, updated_at=datetime('now')
+       WHERE code=? AND COALESCE(admin_note,'') NOT LIKE '%' || ? || '%'`,
+      ` [${marker}]`, orderCode, marker,
+    );
+    void wrote;
   } catch { return false; }
   // 3+4. Agregat order + job (hanya delivered bila manifest lengkap dan
   // semua item delivered — invariant RR3-02).
@@ -1570,6 +1886,36 @@ export async function reconcileHandoverWrites(
     }
   } catch { return false; }
   return true;
+}
+
+/**
+ * Baca stempel handover stabil untuk satu item (RR4-03): bila admin_note
+ * sudah memuat marker `handover item <i> oleh <reviewer> <stamp>`, pakai
+ * stamp itu (fakta awal akurat, pelaku/waktu kejadian awal). Bila belum
+ * ada, pakai stamp yang diberikan (kejadian pertama). Retry dengan reviewer
+ * sama memakai fakta yang sama — tidak ada fakta handover kedua.
+ * Aman terhadap concurrency: marker ditulis dengan guard
+ * `NOT LIKE '%marker%'` di bawah (reconcile), sehingga dua request bersamaan
+ * hanya satu yang menulis; pembaca lain menemukan marker itu.
+ */
+export async function readHandoverStamp(
+  orderCode: string,
+  itemIndex: number,
+  reviewer: string,
+  fallbackStamp: string,
+): Promise<string> {
+  try {
+    const noteRow = await queryFirst(`SELECT admin_note FROM orders WHERE code=?`, orderCode);
+    const note = String(noteRow?.admin_note ?? "");
+    const prefix = `handover item ${itemIndex} oleh ${reviewer} `;
+    const at = note.indexOf(prefix);
+    if (at < 0) return fallbackStamp;
+    const rest = note.slice(at + prefix.length, at + prefix.length + 40);
+    const stamp = rest.split(/[\]\s]/)[0]?.trim();
+    return stamp || fallbackStamp;
+  } catch {
+    return fallbackStamp;
+  }
 }
 
 export async function recordManualHandover(
@@ -1635,21 +1981,23 @@ export async function recordManualHandoverDetailed(
     orderCode, itemIndex,
   );
   if (!item) return { ok: false, reason: "not_found" };
+  const firstStamp = new Date().toISOString();
   if (String(item.status) === "delivered") {
     // Idempoten TETAPI sembuhkan agregat yang tertinggal (RR3-07): item
     // delivered + agregat manual_required = penulisan lanjutan yang gagal
-    // dan belum pernah dicoba ulang. Klik ulang harus menyembuhkan, bukan
-    // sekadar return true.
-    const healed = await reconcileHandoverWrites(
-      orderCode, itemIndex, reviewer, new Date().toISOString(),
-    ).catch(() => false);
-    void healed;
+    // dan belum pernah dicoba ulang.
+    // RR4-03: hasil reconcile DIPROPAGASI — bila DB masih gagal, kembalikan
+    // reconcile_failed (JANGAN klaim sukses). Stamp stabil: baca marker yang
+    // sudah tercatat untuk item ini (fakta awal), bukan stamp baru.
+    const stableStamp = await readHandoverStamp(orderCode, itemIndex, reviewer, firstStamp);
+    const healed = await reconcileHandoverWrites(orderCode, itemIndex, reviewer, stableStamp).catch(() => false);
+    if (!healed) return { ok: false, reason: "reconcile_failed" };
     return { ok: true, complete: true };
   }
   if (!["manual_required", "retry", "queued", "failed"].includes(String(item.status))) {
     return { ok: false, reason: "bad_state" };
   }
-  const stamp = new Date().toISOString();
+  const stamp = firstStamp;
   const audit = `manual_handover:${reviewer}:${stamp}${note ? `:${String(note).slice(0, 200)}` : ""}`;
   try {
     const flipped = await execRun(
@@ -1661,13 +2009,15 @@ export async function recordManualHandoverDetailed(
     );
     if (!flipped.changes) {
       // Kalah race dengan worker lain yang baru menyelesaikan — baca ulang:
-      // bila kini delivered, anggap sukses idempoten.
+      // bila kini delivered, anggap sukses idempoten TETAPI tetap sembuhkan
+      // agregat; kegagalan reconcile dipropagasi (RR4-03).
       const fresh = await queryFirst(
         `SELECT status FROM fulfillment_items WHERE order_code=? AND item_index=?`,
         orderCode, itemIndex,
       );
       if (String(fresh?.status) === "delivered") {
-        await reconcileHandoverWrites(orderCode, itemIndex, reviewer, stamp).catch(() => false);
+        const healed = await reconcileHandoverWrites(orderCode, itemIndex, reviewer, stamp).catch(() => false);
+        if (!healed) return { ok: false, reason: "reconcile_failed" };
         return { ok: true, complete: true };
       }
       return { ok: false, reason: "bad_state" };

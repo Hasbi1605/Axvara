@@ -15,11 +15,17 @@ import {
 } from "@/lib/db";
 import { isExpiredIso } from "@/lib/expiry";
 import {
+  COST_PER_BACKFILL_LIGHT,
+  COST_PER_DELIVERY_ITEM,
+  COST_PER_JOB_FRAME,
+  COST_PER_ORPHAN_LIGHT,
   backfillMissingFulfillmentItems,
   ensureFulfillmentItems,
   getDueJobs,
   processJob,
+  processJobItems,
   reconcileMissingFulfillmentJobs,
+  reconcileOrphanLight,
   releaseStaleJobs,
 } from "@/lib/fulfillment/deliver";
 import { sendMessage } from "@/lib/telegram/api";
@@ -72,7 +78,8 @@ export const runtime = "edge";
 // - Ekor penulisan (fase berikutnya + deferred + checkpoint status)
 //   selalu dicadangkan (RESERVE_TAIL = 2) sebelum kerja dimulai.
 // - Satu order yang tidak muat penuh dikerjakan per ITEM pada invocation
-//   yang sama/berikutnya (processDueJobsUnit), bukan ditunda selamanya.
+//   yang sama/berikutnya (processJobItems + item_cursor), bukan ditunda
+//   selamanya.
 const BATCH_LIMIT = 8;
 const EXPIRY_PER_RUN = 4;
 const FULFILLMENT_PER_RUN = 4;
@@ -85,18 +92,16 @@ const FULFILLMENT_PER_RUN = 4;
 const QUERY_BUDGET = 40;
 // Biaya per cabang — DIUKUR via control.queries, bukan diperkirakan:
 // - expiry satu order ≈ 6 (guard+produk+varian+inventory+ledger+order);
-// - notifikasi TG satu order ≈ 3; WA satu baris ≈ 4;
-// - satu fulfillment job multi-item ≈ 4 + 3/item; recovery+cleanup ≈ 6.
+// - notifikasi TG satu order ≈ 4; WA recovery 2 + 5/baris;
+// - orphan RINGAN 11/order, backfill 5/order (RR4-02, tanpa kirim inline);
+// - frame job 6 + 6/item terkirim (RR4-01, per-item, bukan per order).
 //
-// RR3-03: biaya helper multi-query dihitung PENUH (konservatif, batas
-// atas terukur pada adapter limit-50):
-// - reconcile orphan 1 order ≈ 12 (scan 1 + order 1 + item 1 + produk N +
-//   materialisasi N + job 1 + baca ulang);
-// - backfill 1 order ≈ 10 (scan 1 + materialisasi N + produk N);
-// - satu fulfillment job 2 item ≈ 16; 4 item ≈ 24 (klaim 2 + item 2 +
-//   produk 1 + secret/item 1 + kirim + tulis 2 + agregat 3 + job 1);
-// - recovery sending basi WA ≈ 2 + 4/baris;
-// - retry notifikasi TG 1 order ≈ 4 (scan 1 + baca 1 + kirim + tandai 1).
+// RR4-01/02: konstanta lama per-order (ORPHAN 12, BACKFILL 10, JOB 6+5/item
+// sekaligus) DIGANTI mekanisme per-item: COST_PER_DELIVERY_ITEM=6,
+// COST_PER_JOB_FRAME=6 (deliver.ts), COST_PER_ORPHAN_LIGHT=11,
+// COST_PER_BACKFILL_LIGHT=5. Konstanta lama di bawah dipertahankan
+// sementara untuk heater dokumentasi dan dihapus pada pembersihan
+// berikutnya bila tak terpakai.
 const COST_PER_EXPIRY = 6;
 const COST_PER_NOTIFICATION = 4;
 const COST_PER_WA_ROW = 5;
@@ -165,6 +170,16 @@ function nextPhase(phase: CronPhase): CronPhase {
   return "expiry"; // cleanup kembali ke awal (cleanup jalan tiap run, ringan)
 }
 
+/**
+ * Gate budget per item untuk processJobItems (RR4-01): kembalikan false
+ * (yield) tepat sebelum item berikutnya akan menembus sisa budget +
+ * cadangan ekor. Closure melacak sisa lewat QueryBudget yang sama sehingga
+ * estimasi dan eksekusi memakai satu sumber kebenaran.
+ */
+function makeBudgetGate(budget: QueryBudget, costPerItem: number): () => boolean {
+  return () => budget.remaining - RESERVE_TAIL - COST_PER_JOB_FRAME >= costPerItem;
+}
+
 async function writeCronPhase(next: CronPhase, deferred: CronPhase[]): Promise<void> {
   try {
     await execRun(
@@ -229,6 +244,10 @@ export async function POST(request: NextRequest) {
     const queueRow = await queryFirst(
       `SELECT
         (SELECT COUNT(*) FROM payment_transactions WHERE status='pending') AS expiry,
+        (SELECT COUNT(*) FROM payment_transactions WHERE status='initializing' AND created_at < datetime('now', '-5 minutes')) AS expiry_init,
+        (SELECT COUNT(*) FROM orders WHERE sales_channel='whatsapp' AND status='pending' AND expires_at IS NOT NULL
+          AND datetime(expires_at) <= datetime('now')
+          AND NOT EXISTS(SELECT 1 FROM payment_transactions pt WHERE pt.order_code=orders.code)) AS expiry_manual_wa,
         (SELECT COUNT(*) FROM whatsapp_outbox WHERE status IN ('pending','failed') AND attempt_count < 5 AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime('now'))) AS wa,
         (SELECT COUNT(*) FROM whatsapp_outbox WHERE status='sending' AND (locked_until IS NULL OR datetime(locked_until) <= datetime('now'))) AS wa_stale,
         (SELECT COUNT(*) FROM fulfillment_jobs WHERE status IN ('queued','retry')) AS jobs,
@@ -238,6 +257,11 @@ export async function POST(request: NextRequest) {
         (SELECT COUNT(*) FROM fulfillment_jobs WHERE status='sending') AS stale`,
     ).catch(() => null);
     const pendingExpiry = Number(queueRow?.expiry ?? 0);
+    // RR4-06: sinyal expiry per JENIS — initializing basi dan manual-WA
+    // kedaluwarsa dihitung SENDIRI, bukan dari ada/tidaknya pending lain.
+    const pendingExpiryInit = Number((queueRow as Record<string, unknown> | null)?.expiry_init ?? 0);
+    const pendingExpiryManualWa = Number((queueRow as Record<string, unknown> | null)?.expiry_manual_wa ?? 0);
+    const pendingExpiryAny = pendingExpiry + pendingExpiryInit + pendingExpiryManualWa;
     const pendingWa = Number(queueRow?.wa ?? 0);
     const pendingStaleWa = Number(queueRow?.wa_stale ?? 0);
     const pendingJobs = Number(queueRow?.jobs ?? 0);
@@ -307,7 +331,9 @@ export async function POST(request: NextRequest) {
     // RR3-01: daftar dibaca HANYA bila fase expiry aktif DAN (ada sinyal
     // antrean ATAU belum pernah listing pada run ini dan budget longgar).
     // Tanpa guard ini, 4 daftar kosong tiap run mengusir satu job kirim.
-    const expiryDue = pendingExpiry > 0;
+    // RR4-06: sinyalnya per jenis (pending/init-basi/manual-WA) — initializing
+    // basi dipulihkan walau tidak ada pending lain.
+    const expiryDue = pendingExpiryAny > 0;
     if (activePhases.has("expiry") && expiryDue && budget.fits(4)) {
       staleInit = await queryAll(
         `SELECT pt.order_code, o.items FROM payment_transactions pt
@@ -326,7 +352,7 @@ export async function POST(request: NextRequest) {
       );
       budget.charge(4);
       expiryListed = true;
-    } else if (pendingExpiry > 0) {
+    } else if (pendingExpiryAny > 0) {
       deferredOut.push("expiry");
     }
     let staleTransitions = 0;
@@ -413,6 +439,7 @@ export async function POST(request: NextRequest) {
     } else if (pendingExpiry > EXPIRY_PER_RUN && !deferredOut.includes("expiry")) {
       deferredOut.push("expiry");
     }
+    // Deklarasi dipulihkan (terpotong saat edit RR4-06): loop stranded di bawah.
     let repairedLegacy = 0;
     for (const row of strandedCandidates) {
       if (!budget.fits(COST_PER_EXPIRY)) break;
@@ -454,8 +481,9 @@ export async function POST(request: NextRequest) {
     // WhatsApp subset and shares the same guarded transition, so whichever
     // cron reaches an order first wins and the other becomes a no-op.
     // 2b. Manual WhatsApp rails (tanpa ledger): expire dari TTL order.
-    // Hanya bila fase expiry aktif DAN budget cukup untuk daftar.
-    if (activePhases.has("expiry") && expiryListed && budget.fits(1)) {
+    // RR4-06: gerbangnya sinyal manual-WA SENDIRI (pendingExpiryManualWa),
+    // bukan ada/tidaknya ledger pending lain.
+    if (activePhases.has("expiry") && expiryListed && pendingExpiryManualWa > 0 && budget.fits(1)) {
       manualCandidates = await queryAll(
         `SELECT o.code, o.items, o.expires_at
          FROM orders o
@@ -482,8 +510,9 @@ export async function POST(request: NextRequest) {
     }
     results.expired_manual_whatsapp_orders = expiredStaticCount;
 
-    // Sinyal deferred expiry jujur: masih ada sisa antrean setelah batas.
-    if (pendingExpiry > staleTransitions + expiredTransitions + repairedLegacy + expiredStaticCount) {
+    // Sinyal deferred expiry jujur: masih ada sisa antrean setelah batas
+    // (semua jenis: pending + init-basi + manual-WA — RR4-06).
+    if (pendingExpiryAny > staleTransitions + expiredTransitions + repairedLegacy + expiredStaticCount) {
       if (!deferredOut.includes("expiry")) deferredOut.push("expiry");
     }
 
@@ -578,7 +607,13 @@ export async function POST(request: NextRequest) {
     // orphan tak pernah terdeteksi (bug: scan dilewati karena pendingJobs
     // hanya menghitung job yang sudah ada).
     if (activePhases.has("fulfillment")) {
-      // Orphan: satu per satu (scan 1 query di depan bila muat).
+      // Orphan RINGAN (RR4-02): HANYA materialisasi + pembuatan job queued
+      // (reconcileOrphanLight ≈ 11 query), TANPA pengiriman inline.
+      // Pengiriman terjadi di fase due-job di bawah (processJobItems) yang
+      // sudah tunduk pada budget per-item — sehingga satu invocation tidak
+      // pernah menembus 50 walau orphan berisi 4+ item (sebelumnya 51/90).
+      // RR4-02: yield budget di sini BUKAN kegagalan — HTTP tetap 200,
+      // sisa orphan deferred jujur ke run berikutnya.
       let orphanCount = 0;
       if (budget.fits(1)) {
         const oc = await queryFirst(
@@ -601,18 +636,13 @@ export async function POST(request: NextRequest) {
         budget.charge(1);
         let healed = 0;
         for (const orphan of orphans) {
-          if (!budget.fits(COST_PER_ORPHAN_ORDER)) {
+          if (!budget.fits(COST_PER_ORPHAN_LIGHT)) {
             if (!deferredOut.includes("fulfillment")) deferredOut.push("fulfillment");
             break;
           }
-          budget.charge(COST_PER_ORPHAN_ORDER);
+          budget.charge(COST_PER_ORPHAN_LIGHT);
           try {
-            const { ensureFulfillmentForPaidOrder } = await import("@/lib/fulfillment/deliver");
-            if (await ensureFulfillmentForPaidOrder(String(orphan.code))) healed++;
-            else {
-              const job = await queryFirst(`SELECT id FROM fulfillment_jobs WHERE order_code=?`, String(orphan.code));
-              if (job) healed++;
-            }
+            if (await reconcileOrphanLight(String(orphan.code))) healed++;
           } catch { /* run berikutnya retry */ }
         }
         results.fulfillment_orphans_healed = healed;
@@ -640,11 +670,11 @@ export async function POST(request: NextRequest) {
         budget.charge(1);
         let backfilled = 0;
         for (const order of missing) {
-          if (!budget.fits(COST_PER_BACKFILL_ORDER)) {
+          if (!budget.fits(COST_PER_BACKFILL_LIGHT)) {
             if (!deferredOut.includes("fulfillment")) deferredOut.push("fulfillment");
             break;
           }
-          budget.charge(COST_PER_BACKFILL_ORDER);
+          budget.charge(COST_PER_BACKFILL_LIGHT);
           try {
             const created = await ensureFulfillmentItems(order);
             if (created.length > 0) backfilled++;
@@ -660,23 +690,12 @@ export async function POST(request: NextRequest) {
           const dueJobs = await getDueJobs(FULFILLMENT_PER_RUN);
           budget.charge(1);
           let processed = 0;
+          // RR4-01: unit kerja = ITEM, bukan order. Untuk tiap job, hitung
+          // berapa item yang muat dari sisa budget (frame klaim+agregat +
+          // 6/item), proses sebanyak itu, simpan cursor ke DB, dan LANJUT
+          // ke job berikutnya (TANPA break) bila job ini yield — job kecil
+          // di belakang job besar tetap dapat giliran pada run yang sama.
           for (const job of dueJobs) {
-            // RR3-01: biaya per JOB AKTUAL (jumlah item job ini), bukan
-            // rata-rata grup — job kecil tidak ikut tertunda oleh job besar.
-            let itemsInJob = 1;
-            try {
-              const c = await queryFirst(
-                `SELECT COUNT(*) AS n FROM fulfillment_items WHERE order_code=?`,
-                String(job.order_code),
-              );
-              itemsInJob = Math.max(1, Math.min(8, Number(c?.n ?? 1)));
-              budget.charge(1);
-            } catch { /* default 1 */ }
-            const unitCost = COST_PER_JOB_BASE + COST_PER_JOB_ITEM * itemsInJob;
-            if (!budget.fits(unitCost)) {
-              if (!deferredOut.includes("fulfillment")) deferredOut.push("fulfillment");
-              break;
-            }
             const order = await queryFirst(`SELECT * FROM orders WHERE code=?`, String(job.order_code));
             if (!order) continue;
             const items = JSON.parse(String(order.items ?? "[]")) as { product_id: number }[];
@@ -685,16 +704,38 @@ export async function POST(request: NextRequest) {
             if (!product) continue;
             // Biaya baca order+produk ikut dicatat jujur (2 query).
             budget.charge(2);
+            // Sisa budget untuk item setelah frame + cadangan ekor.
+            const roomForItems = Math.max(
+              0,
+              Math.floor((budget.remaining - RESERVE_TAIL - COST_PER_JOB_FRAME) / COST_PER_DELIVERY_ITEM),
+            );
+            if (roomForItems < 1) {
+              if (!deferredOut.includes("fulfillment")) deferredOut.push("fulfillment");
+              continue; // bukan break: job berikutnya (lebih kecil) mungkin muat
+            }
             try {
               await ensureFulfillmentItems(order).catch(() => {});
-              await processJob(Number(job.id), order, product);
-              // RR3-03: kegagalan penyimpanan status (partial_failure) tidak
-              // boleh ditelan sebagai sukses — processJob melempar/HTTP 500
-              // bila tulis gagal; di sini kegagalan per job dicatat dan job
-              // tetap retryable pada run berikutnya.
-            } catch { /* individual job failure doesn't stop batch */ }
-            budget.charge(unitCost);
-            processed++;
+              const unit = await processJobItems(
+                Number(job.id), order, product, roomForItems,
+                // shouldContinue: berhenti bila item berikutnya tak muat.
+                // Diperiksa per item via sisa budget yang dilacak closure.
+                makeBudgetGate(budget, COST_PER_DELIVERY_ITEM),
+              );
+              // Catat biaya aktual konservatif: frame + 6 × item yang dicoba.
+              budget.charge(COST_PER_JOB_FRAME + COST_PER_DELIVERY_ITEM * Math.max(1, unit.attempted));
+              if (unit.done || unit.finished) processed++;
+              else if (unit.reason === "budget_yield") {
+                processed++;
+                if (!deferredOut.includes("fulfillment")) deferredOut.push("fulfillment");
+              } else if (unit.reason === "item_failed") {
+                processed++;
+                if (!deferredOut.includes("fulfillment")) deferredOut.push("fulfillment");
+              }
+              // not_owned / not_paid / no_work: lewati tanpa deferred palsu.
+            } catch {
+              budget.charge(COST_PER_JOB_FRAME);
+              if (!deferredOut.includes("fulfillment")) deferredOut.push("fulfillment");
+            }
           }
           results.due_jobs_processed = processed;
           if (dueJobs.length > processed && !deferredOut.includes("fulfillment")) deferredOut.push("fulfillment");
@@ -723,7 +764,7 @@ export async function POST(request: NextRequest) {
     // fulfillment/notify yang menunggu, ATAU (b) budget tersisa longgar
     // (sisa ≥ 10 setelah cadangan ekor). Deferred cleanup adalah normal,
     // bukan kegagalan.
-    const fulfilOrNotifyWaiting = pendingJobs > 0 || pendingNotify > 0 || waWorkPending > 0 || pendingExpiry > 0;
+    const fulfilOrNotifyWaiting = pendingJobs > 0 || pendingNotify > 0 || waWorkPending > 0 || pendingExpiryAny > 0;
     if (!fulfilOrNotifyWaiting && budget.fits(COST_PER_CLEANUP)) {
       const expiredSessions = await execRun(
         `DELETE FROM whatsapp_sessions WHERE datetime(expires_at)<datetime('now','-1 day')`,

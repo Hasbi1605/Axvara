@@ -201,7 +201,8 @@ Hanya `npm run build` sebelum deploy/major config (`next.config.mjs`, `tailwind.
 
 - **Changelog:** `axvara/CHANGELOG.md` — setiap perubahan wajib catat entri paling atas (format: `YYYY-MM-DD — ringkas — file/area — (verifikasi: ...)`).
 - **Remediasi review R1–R12:** `docs/REVIEW-REMEDIATION-2026-09-08.md` — CATATAN HISTORIS per 8 Sep 2026 pagi (menyebut 418 test/logout stateless/semua selesai — SUDAH TIDAK BERLAKU; lihat koreksi di bawah).
-- **Eksekusi review round 3 (TERKINI):** `docs/REVIEW-ROUND3-EXECUTION-2026-09-08.md` — tabel RR3-01–09 + akar masalah + bukti sebelum/sesudah + before/after awam + batas verifikasi. Status terkini: 479 test, logout revokasi D1 lintas instance (migrasi 0020), sembilan temuan round 3 diperbaiki dengan bukti entrypoint.
+- **Eksekusi review round 3:** `docs/REVIEW-ROUND3-EXECUTION-2026-09-08.md` — CATATAN HISTORIS (klaim "semua selesai"/"per-item"/"qty" dikoreksi round 4; konteks dipertahankan).
+- **Eksekusi review round 4 (TERKINI):** `docs/REVIEW-ROUND4-EXECUTION-2026-09-08.md` — tabel RR4-01–06 + bukti query/run + verifikasi UI CDP + koreksi klaim round 3. Status terkini: 501 test (43 file), cron per-item + checkpoint DB (migrasi 0022), handover jujur + qty + UI recovery.
 - **Aturan project:** `axvara/AGENTS.md` — khusus project axvara (scope lokal, tidak ubah `~/AGENTS.md` global). Wajib baca sebelum ubah kode.
 
 ## ☁️ CI/CD Cloudflare

@@ -328,6 +328,11 @@ CREATE TABLE IF NOT EXISTS fulfillment_jobs (
   locked_until TEXT,
   telegram_message_id TEXT,
   last_error TEXT,
+  -- Checkpoint pengiriman per item (RR4-01): index item berikutnya yang
+  -- harus diproses. Disimpan di DB (bukan memori) agar kemajuan bertahan
+  -- lintas invocation/restart worker. NULL = mulai dari item pertama yang
+  -- belum terminal.
+  item_cursor INTEGER,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );

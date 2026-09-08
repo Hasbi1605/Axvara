@@ -410,22 +410,23 @@ R2 bucket: axvara-assets
     fallback hanya `x-real-ip`; `x-forwarded-for` TIDAK dipakai (spoofable).
     Tidak ada ketergantungan eksklusif pada counter per-isolate — WAF adalah
     lapis pertama yang global.
-  - Batch cron operations (RR3-01/03/06/09, 8 Sep 2026 — menggantikan
-    anggaran R12 lanjutan): `QueryBudget` 40 (margin 10 dari batas platform
-    50) + fase bergiliran (`expiry/fulfillment/notify/cleanup` via
-    `cron_phase` + `cron_deferred` di `store_settings`). Setiap cabang
-    fits()-dulu per UNIT (bukan per kelompok — tidak ada gerbang "seluruh
-    grup harus muat", RR3-01), deferred-jujur, fulfillment selalu dapat slot
-    tiap run selama ada job due (anti-starvation dua arah). Antrean dibaca
-    dalam 1 query gabungan (8 COUNT subselect) + daftar hanya bila fase
-    aktif dan antreannya > 0. Biaya konservatif batas-atas terukur per unit:
-    orphan 12/order, backfill 10/order, job 6+5/item, notifikasi 4/order,
-    WA 2 recovery + 5/baris, cleanup 4, ekor tulis 2 (RESERVE_TAIL selalu
-    dicadangkan). `query_budget_used` = ESTIMASI batas atas (bukan hitungan
-    pasti) + `query_budget_note: estimate_upper_bound_not_measured`.
-    Empat order 2-item tuntas ≤5 run @<40 aktual; 5 order campuran tuntas
-    ≤5 run; order 4-item tak-termaterialisasi konvergen tanpa
-    partial_failure di bawah adapter limit-50.
+  - Batch cron operations (RR4-01/02/06, 8 Sep 2026 sore — menggantikan
+    anggaran RR3): `QueryBudget` 40 (margin 10 dari batas platform 50) +
+    fase bergiliran (`expiry/fulfillment/notify/cleanup` via `cron_phase` +
+    `cron_deferred` di `store_settings`). Unit kerja = ITEM (bukan order):
+    `processJobItems` mengirim sebanyak yang muat, menyimpan `item_cursor`
+    ke DB tiap item (checkpoint lintas restart), yield murni melepas lease
+    TANPA konsumsi retry; `continue` (bukan `break`) agar job kecil di
+    belakang besar tetap jalan. Antrean 1 query gabungan (10 COUNT:
+    pending + init-basi + manual-WA + WA + WA-basi + jobs + 3 notif + stale)
+    + daftar hanya bila fase aktif dan antreannya > 0. Biaya konservatif:
+    orphan-ringan 11/order, backfill 5/order, frame job 6 + 6/item,
+    notifikasi 4/order, WA 2 + 5/baris, cleanup 4, ekor 2 (RESERVE_TAIL).
+    `query_budget_used` = ESTIMASI batas atas + note. Order 5/8/20-item
+    tuntas lintas run @aktual ≤40; 2 orphan 4-item tuntas tiap run ≤40.
+    Sinyal expiry per jenis (pending/init-basi/manual-WA): initializing basi
+    pulih walau tanpa pending lain; `publish-scheduled` tetap cadangan order
+    tanpa ledger (initializing = operations cron).
   - Recovery sending basi WA mandiri (RR3-06): gerbang cron =
     pending/failed > 0 ATAU sending-lease-kedaluwarsa > 0 (COUNT sendiri),
     sehingga antrean yang seluruhnya sending basi tetap dipulihkan via
@@ -444,15 +445,21 @@ R2 bucket: axvara-assets
     dari DB) tanpa order kedua; cron menyapu ≤2 invoice/run dalam budget.
     Semantik jujur: Telegram tidak memberi exactly-once untuk sendPhoto —
     retry dibatasi + dideduplikasi marker DB + guard double-tap order.
-  - Handover manual terverifikasi manifest (RR3-02/07):
-    `findMissingFulfillmentLines` mencocokkan baris fulfillment terhadap
-    order (item_index, product_id, variant_id, jumlah) — agregat TIDAK
-    delivered selama manifest belum lengkap (409 `handover_incomplete`
-    + daftar baris hilang). `reconcileHandoverWrites` menyelesaikan
-    inventory/audit/agregat/job secara idempoten; klik ulang/konkuren
-    menyembuhkan penulisan yang tertinggal tanpa kirim/stok ganda. UI
-    OrdersManager melaporkan hasil per item (bukan gagal total di item
-    pertama) dan menampilkan baris hilang.
+  - Handover manual terverifikasi manifest + qty (RR3-02/07, RR4-03/04):
+    `findFulfillmentLineMismatches` mencocokkan item_index, product_id,
+    variant_id, DAN qty (1 baris = seluruh qty baris order; short → mismatch,
+    tanpa timpa qty / reset item benar). Agregat TIDAK delivered selama
+    mismatch (409 `handover_incomplete` + baris hilang). `reconcileHandoverWrites`
+    idempoten (guard `NOT LIKE` konkurensi-aman); cabang delivered/kalah-CAS
+    mempropagasi `reconcile_failed` (409 `handover_recovery_pending`, bukan
+    200 palsu). Audit 1 fakta stabil (`readHandoverStamp`, bukan marker baru
+    per retry). `POST /api/admin/orders/[code]/handover` juga = endpoint
+    pemulihan (item delivered + agregat tertinggal). UI OrdersManager:
+    semua-delivered + order belum delivered → POST pemulihan + toast SETELAH
+    200; gagal → toast error jujur. Migrasi 0022: `fulfillment_jobs.item_cursor`
+    (checkpoint per-item). Mutasi job berpagar mengembalikan
+    `FencedJobMutation` (owned + retry/failed); order tersinkron `failed`
+    bila attempt terakhir gagal (bukan queued).
   - Revokasi sesi fail-closed (RR3-04): `readRevokedVersionFromStore`
     melempar kegagalan baca (bukan `.catch(() => null)` menjadi versi 0);
     `sessionBumpFor` mengembalikan -2 → `expectedAuthVersion` tak

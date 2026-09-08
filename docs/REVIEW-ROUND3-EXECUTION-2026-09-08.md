@@ -9,6 +9,20 @@ deterministik; tanpa pesan nyata, transaksi pelanggan, atau DB produksi.
 Baseline sebelum perbaikan: vitest 459/459 (37 file) — angka ini MENUTUPI
 sembilan bug di bawah (lihat kolom "mengapa lolos").
 
+> ⚠️ KOREKSI ROUND 4 (8 Sep 2026 sore, `docs/REVIEW-ROUND4-EXECUTION-2026-09-08.md`
+> — konteks historis di bawah dipertahankan): empat klaim di dokumen ini
+> terlalu luas dan DIKOREKSI setelah bukti penerimaan independen:
+> - §RR3-01 "order besar bertahap" → hanya terbukti 4 item; 5–20 item baru
+>   terbukti di RR4-01 (`processJobItems` + `item_cursor`, migrasi 0022).
+> - §RR3-03 "konvergen tanpa partial_failure di bawah limit-50" → hanya 1
+>   orphan ringan; 2 orphan (90 query) baru tunduk budget di RR4-02
+>   (`reconcileOrphanLight`).
+> - "pemeriksaan qty" dan "dikerjakan per ITEM" → komentar tanpa implementasi;
+>   baru di RR4-04 (guard qty) dan RR4-01 (per-item nyata).
+> - "UI melaporkan per barang" → benar untuk item pending, tetapi kasus
+>   semua-delivered (toast palsu tanpa POST) baru diperbaiki di RR4-03.
+> Klaim revokasi/invoice/WA/notifikasi tetap berlaku.
+
 ## Tabel status RR3-01–09
 
 | ID | Status | Akar masalah | Perubahan | Test/bukti (sebelum → sesudah) | Command + hasil aktual |

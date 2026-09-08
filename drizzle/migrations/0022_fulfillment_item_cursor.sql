@@ -1,0 +1,11 @@
+-- 0022_fulfillment_item_cursor.sql — Checkpoint pengiriman per item (RR4-01).
+--
+-- Latar: cron memperlakukan satu order lengkap sebagai unit budget, sehingga
+-- order 5+ item tidak pernah muat dan macet selamanya (plus menahan job di
+-- belakangnya via break). Kolom ini menyimpan index item berikutnya yang
+-- harus diproses, di database (bukan memori), agar kemajuan bertahan lintas
+-- invocation dan restart worker.
+--
+-- Forward-only, nullable, idempoten: NULL = mulai dari item pertama yang
+-- belum terminal (perilaku lama tetap valid).
+ALTER TABLE fulfillment_jobs ADD COLUMN item_cursor INTEGER;

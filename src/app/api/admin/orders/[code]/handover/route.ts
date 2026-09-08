@@ -98,6 +98,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         { status: 409 },
       );
     }
+    // RR4-03: item sudah delivered tetapi agregat/audit belum konsisten
+    // (fault masih aktif). 409 + status bisnis kini — UI memanggil ulang
+    // sebagai pemulihan setelah storage sehat.
+    if (result.reason === "reconcile_failed") {
+      const freshOrder = await queryFirst(
+        "SELECT fulfillment_status FROM orders WHERE code=?", code,
+      ).catch(() => null);
+      const freshItem = await queryFirst(
+        "SELECT status FROM fulfillment_items WHERE order_code=? AND item_index=?",
+        code, parsed.data.item_index,
+      ).catch(() => null);
+      return NextResponse.json(
+        {
+          error: "handover_recovery_pending",
+          message: "Item sudah tercatat diserahkan, tetapi status pesanan belum konsisten (penulisan lanjutan gagal). Ulangi setelah penyimpanan pulih — tidak ada pengiriman ganda.",
+          item_status: String(freshItem?.status ?? "delivered"),
+          fulfillment_status: String(freshOrder?.fulfillment_status ?? ""),
+        },
+        { status: 409 },
+      );
+    }
     if (result.reason === "storage_error") {
       return NextResponse.json({ error: "Gagal mencatat serah terima." }, { status: 500 });
     }

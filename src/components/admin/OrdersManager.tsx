@@ -112,8 +112,21 @@ export function OrdersManager({ onChanged }: { onChanged?: () => void }) {
         const items = await fetchHandoverItems(action.order.code);
         if (!items.length) throw new Error("Item serah terima belum tersedia.");
         const pending = items.filter((item) => item.status !== "delivered");
-        if (!pending.length) { toast.success("Semua item sudah diserahkan."); }
-        else {
+        // RR4-03: item delivered SEMUA tetapi order masih manual_required =
+        // agregat tertinggal (penulisan lanjutan gagal). JANGAN toast sukses
+        // palsu — panggil pemulihan server (POST item 0 memicu reconcile
+        // idempoten) lalu muat ulang status yang dikonfirmasi server.
+        if (!pending.length) {
+          const needsRecovery = action.order.fulfillmentStatus !== "delivered";
+          if (!needsRecovery) {
+            toast.success("Semua item sudah diserahkan.");
+          } else {
+            const response = await fetch(`/api/admin/orders/${encodeURIComponent(action.order.code)}/handover`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ item_index: items[0]?.item_index ?? 0, note: actionNote.trim() || undefined }) });
+            const data = await response.json().catch(() => ({})) as { error?: string; message?: string; fulfillment_status?: string };
+            if (!response.ok) throw new Error(data.message || data.error || `Pemulihan gagal (HTTP ${response.status})`);
+            toast.success("Status serah terima dipulihkan dari server.");
+          }
+        } else {
           // RR3-02/07: handover bisa mengembalikan 409 handover_incomplete
           // (manifest belum lengkap) atau 500 parsial. Item yang TERCATAT
           // tidak diserahkan ulang — lanjut ke item berikutnya, kumpulkan

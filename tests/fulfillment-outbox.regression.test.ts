@@ -43,14 +43,14 @@ describe("atomic paid+job commit (no crash window)", () => {
 
 describe("idempotent recovery without double delivery", () => {
   it("cron heals paid orders that have no job row before processing due jobs", async () => {
-    // RR3-01/03: cron tidak lagi memanggil helper boros
-    // reconcileMissingFulfillmentJobs() (1 query per helper yang menelan
-    // belasan query aktual); logika orphan yang SAMA kini inline per unit
-    // dengan biaya konservatif per unit (COST_PER_ORPHAN_ORDER) + fits().
+    // RR4-02: orphan RINGAN (reconcileOrphanLight ≈ 11 query: materialisasi
+    // + job queued, TANPA kirim inline). Pengiriman di fase due-job
+    // (processJobItems per-item). Estimasi lama COST_PER_ORPHAN_ORDER sudah
+    // tidak dipakai di route.
     const cron = read("src/app/api/cron/operations/route.ts");
     expect(cron).toContain("fulfillment_orphans_healed");
-    expect(cron).toContain("COST_PER_ORPHAN_ORDER");
-    expect(cron).toContain("ensureFulfillmentForPaidOrder(String(orphan.code))");
+    expect(cron).toContain("reconcileOrphanLight(String(orphan.code))");
+    expect(cron).toContain("COST_PER_ORPHAN_LIGHT");
     // Healing (orphan scan) tetap mendahului pemrosesan due jobs.
     const heal = cron.indexOf("fulfillment_orphans_healed");
     const due = cron.indexOf("getDueJobs(FULFILLMENT_PER_RUN)");
