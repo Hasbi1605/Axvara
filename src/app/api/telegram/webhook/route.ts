@@ -157,7 +157,11 @@ export async function POST(request: NextRequest) {
   // chat pribadi terverifikasi tanpa memercayai id grup.
   const from = update.message?.from ?? update.callback_query?.from;
   const chatId = update.message?.chat.id ?? update.callback_query?.message?.chat.id;
-  const chatType = update.message?.chat.type ?? "private";
+  // Callback updates carry no chat.type — infer privacy from the chat id
+  // sign (review R7). Telegram group/supergroup/channel ids are negative;
+  // a callback from a negative chat must follow the group path even though
+  // there is no message.chat.type field to read.
+  const chatType = update.message?.chat.type ?? (typeof chatId === "number" && chatId < 0 ? "supergroup" : "private");
   const isPrivateChat = chatType === "private";
   if (from && chatId) {
     try {

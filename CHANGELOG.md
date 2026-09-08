@@ -4,6 +4,8 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-08 — R7 callback grup: callback tanpa chat.type inferensi privasi dari tanda chat id (negatif = grup → group_redirected), id grup tak pernah tersimpan sebagai identitas user — webhook Telegram, tests/telegram-retry (+1 perilaku) — (verifikasi: vitest 408/408, tsc bersih, fixture grup→redirect + chat tersimpan 77)
+
 - 2026-09-08 — R6 konfirmasi atomik: konfirmasi manual lunas + baris job kini satu batch D1 (crash di antaranya tak lagi strand order paid tanpa job), double-confirm tetap satu baris — db.ts, tests/order-confirm-atomic (3 perilaku) — (verifikasi: vitest 407/407, tsc bersih, interupsi injeksi→pending + 0 job)
 
 - 2026-09-08 — R5 retry Telegram nyata: gagal proses update jawab 500 error_retryable + baris failed agar Telegram redelivery (sebelumnya 200 = silent drop), penolakan permanen tetap 200 tanpa loop, retry klaim sekali tanpa order ganda — webhook Telegram, tests/telegram-retry (3 perilaku) — (verifikasi: vitest 404/404, tsc bersih, fixture crash→500 + failed + reclaim sekali)

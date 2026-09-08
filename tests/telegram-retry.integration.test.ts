@@ -91,4 +91,22 @@ describe("R5 transient failure triggers a real Telegram retry", () => {
     expect(await third.json()).toMatchObject({ ok: true, status: "already_processed" });
     expect(fixture.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(0);
   });
+
+  // R7: group callbacks carry no chat.type — the negative chat id must still
+  // route to group_redirected, never into private purchase handling, and the
+  // group chat id must never be stored as the user's identity.
+  it("group callback redirects without storing the group chat id", async () => {
+    const { POST } = await import("@/app/api/telegram/webhook/route");
+    const res = await POST(webhookBody({
+      update_id: 7701,
+      callback_query: {
+        id: "r7-cb", from: { id: 77, first_name: "R7" },
+        message: { message_id: 77, chat: { id: -10077 } }, data: "home",
+      },
+    }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, status: "group_redirected" });
+    expect(fixture.sql.prepare("SELECT chat_id FROM telegram_users WHERE user_id='77'").get()?.chat_id)
+      .not.toBe("-10077");
+  });
 });
