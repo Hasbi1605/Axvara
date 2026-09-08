@@ -4,6 +4,8 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-08 — R11 monitoring jujur: query last_match mencakup matched (sebelumnya selalu null), kesehatan fulfillment membaca fulfillment_items + usia antrean tertua (macet = degraded, bukan configured), itemAttention dijumlahkan benar, urutan destructure query diperbaiki — overview/route, tests/overview-health (4 perilaku) — (verifikasi: vitest 416/416, tsc bersih, matched→healthy + gagal→degraded + antrean macet→degraded)
+
 - 2026-09-08 — R10 lease outbox WA: klaim sending + worker_id + locked_until 5 mnt (getDue lewati ter-lease, CAS gugurkan snapshot basi, crash-window pulih via migrasi 0018) — outbox.ts, schema, 0018_wa_outbox_lease, tests/wa-outbox-lease (2 perilaku) — (verifikasi: vitest 412/412, tsc bersih, worker ganda→1 kirim + lease lewat pulih retry)
 
 - 2026-09-08 — R9 tanggal omzet kanonis: hierarki bucket WIB kini ledger paid_at → orders.paid_at → reviewed_at → updated_at (order lunas manual tanpa ledger tak lagi dilaporkan di tanggal review admin) — revenue.ts, revenue-time (+1 perilaku SQLite) — (verifikasi: vitest 410/410, tsc bersih, fixture paid 1 Sep/review 7 Sep→bucket 1 Sep)
