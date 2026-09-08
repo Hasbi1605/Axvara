@@ -255,7 +255,14 @@ export async function POST(request: NextRequest) {
     await markDone(updateId);
     return NextResponse.json({ ok: true });
   } catch (error) {
-    // Mark failed so lease expires and Telegram can retry
+    // A processing failure must leave the update retryable: mark it failed
+    // (lease expired by definition — a new delivery attempt may reclaim it)
+    // and answer NON-2xx so Telegram actually redelivers (review R5).
+    // Before this fix the handler returned 200 for every failure, which told
+    // Telegram "delivered" — Telegram never retried, and the transient
+    // outage became a silent drop. Permanent failures (invalid updates,
+    // budget exhausted, group redirects) still return 200 above and never
+    // reach this branch, so non-2xx here cannot loop forever.
     try {
       if (isD1Mode()) {
         await execRun(
@@ -265,11 +272,10 @@ export async function POST(request: NextRequest) {
       }
     } catch { /* best effort */ }
 
-    // Still return 200 for non-transient errors to prevent infinite retries
     if (chatId) {
       try { await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" }); } catch { /* ok */ }
     }
-    return NextResponse.json({ ok: true, status: "error_handled" });
+    return NextResponse.json({ ok: false, status: "error_retryable" }, { status: 500 });
   }
 }
 
