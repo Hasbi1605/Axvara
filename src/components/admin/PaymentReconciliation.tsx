@@ -30,10 +30,10 @@ export function PaymentReconciliation() {
   }, [page, status, toast]);
   useEffect(() => { void load(); }, [load]);
 
-  const retry = async (eventId: number) => {
+  const retry = async (eventId: number, verification?: { order_code: string; review_note: string; verified: boolean }) => {
     setRetrying(eventId);
     try {
-      const response = await fetch("/api/admin/payments/events", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "retry_match", event_id: eventId }) });
+      const response = await fetch("/api/admin/payments/events", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: verification ? "confirm_match" : "retry_match", event_id: eventId, ...verification }) });
       const body = await response.json().catch(() => ({})) as { error?: string; order_code?: string };
       if (!response.ok) throw new Error(retryErrorMessage(body.error) || "Pencocokan ulang gagal");
       toast.success(`Pembayaran cocok dengan ${body.order_code}.`); await load();
@@ -64,7 +64,7 @@ export function PaymentReconciliation() {
     </section>}
     <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.035]">
       <header className="flex flex-wrap items-center gap-3 border-b border-white/10 p-4"><div className="min-w-0"><h3 className="text-sm font-semibold text-white">Rekonsiliasi QRIS Hook</h3><p className="mt-0.5 text-[11px] text-white/40">Jejak aman tanpa payload mentah atau secret server.</p></div><button onClick={() => void load()} disabled={loading} className="ml-auto inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-xl border border-white/10 px-3 text-xs font-semibold text-white/60 transition hover:bg-white/5 hover:text-white"><IosIcon name="refresh" size={13} tint="white" /> Muat ulang</button><div className="flex w-full flex-wrap gap-2">{[["attention", "Perlu dicek"], ["all", "Semua"], ["matched", "Cocok"], ["failed", "Gagal"]].map(([value, label]) => <button key={value} onClick={() => { setStatus(value); setPage(1); }} className={`h-8 whitespace-nowrap rounded-lg px-3 text-xs font-semibold transition ${status === value ? "bg-[#00E5FF] text-[#07101f]" : "bg-white/[0.06] text-white/55 hover:bg-white/10 hover:text-white"}`}>{label}</button>)}</div></header>
-      {loading ? <div className="flex min-h-48 items-center justify-center gap-3 text-sm text-white/45"><Spinner size={20} /> Memuat event…</div> : !data.events?.length ? <p className="p-10 text-center text-sm text-white/40">Tidak ada event pada filter ini.</p> : <div className="divide-y divide-white/[0.06]">{data.events.map((event) => <article key={event.id} className="grid gap-3 p-4 transition hover:bg-white/[0.02] sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><EventBadge status={event.status} /><span className="font-semibold text-white">{formatRupiah(event.amount)}</span><span className="text-xs text-white/40">{event.sender_name || "Pengirim tidak terbaca"}</span></div><p className="mt-2 text-xs text-white/45">{formatDate(event.created_at)}{event.order_code ? ` · ${event.order_code}` : ""}</p>{event.last_error && <p className="mt-1 font-mono text-[10px] text-red-300/70">{event.last_error}</p>}</div>{["received", "ignored", "failed"].includes(event.status) && <button onClick={() => void retry(event.id)} disabled={retrying === event.id} className="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl bg-[#00E5FF] px-3.5 text-xs font-bold text-[#07101f] transition hover:bg-[#00D0E8] disabled:opacity-40">{retrying === event.id ? <Spinner size={13} /> : <IosIcon name="refresh" size={13} tint="black" />}{retrying === event.id ? "Mencocokkan…" : "Coba cocokkan"}</button>}</article>)}</div>}
+      {loading ? <div className="flex min-h-48 items-center justify-center gap-3 text-sm text-white/45"><Spinner size={20} /> Memuat event…</div> : !data.events?.length ? <p className="p-10 text-center text-sm text-white/40">Tidak ada event pada filter ini.</p> : <div className="divide-y divide-white/[0.06]">{data.events.map((event) => <article key={event.id} className="grid gap-3 p-4 transition hover:bg-white/[0.02] sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><EventBadge status={event.status} /><span className="font-semibold text-white">{formatRupiah(event.amount)}</span><span className="text-xs text-white/40">{event.sender_name || "Pengirim tidak terbaca"}</span></div><p className="mt-2 text-xs text-white/45">{formatDate(event.created_at)}{event.order_code ? ` · ${event.order_code}` : ""}</p>{event.last_error && <p className="mt-1 font-mono text-[10px] text-red-300/70">{event.last_error}</p>}</div>{["received", "ignored", "failed"].includes(event.status) && <button onClick={() => void retry(event.id)} disabled={retrying === event.id} className="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl bg-[#00E5FF] px-3.5 text-xs font-bold text-[#07101f] transition hover:bg-[#00D0E8] disabled:opacity-40">{retrying === event.id ? <Spinner size={13} /> : <IosIcon name="refresh" size={13} tint="black" />}{retrying === event.id ? "Mencocokkan…" : "Coba cocokkan"}</button>}{["received", "ignored", "failed"].includes(event.status) && <ManualPaymentReview disabled={retrying === event.id} onConfirm={values => void retry(event.id, values)} />}</article>)}</div>}
       <footer className="flex items-center justify-between border-t border-white/10 p-3 text-xs text-white/40"><span>Hal {data.pagination?.page || 1} dari {data.pagination?.pages || 1}</span><div className="flex gap-2"><button disabled={(data.pagination?.page || 1) <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))} className="h-8 rounded-full border border-white/10 px-3 transition hover:bg-white/5 disabled:opacity-30">Sebelumnya</button><button disabled={(data.pagination?.page || 1) >= (data.pagination?.pages || 1)} onClick={() => setPage((value) => value + 1)} className="h-8 rounded-full border border-white/10 px-3 transition hover:bg-white/5 disabled:opacity-30">Berikutnya</button></div></footer>
     </section>
   </div>;
@@ -85,6 +85,10 @@ function formatDate(value: string) { const date = new Date(value); return Number
 
 function retryErrorMessage(code?: string) {
   switch (code) {
+    case "amount_reused_requires_review":
+      return "Nominal ini pernah digunakan pesanan lain. Periksa mutasi, lalu gunakan Verifikasi manual.";
+    case "manual_verification_required":
+      return "Isi kode pesanan, catatan pemeriksaan, dan konfirmasi mutasi sebelum melunasi.";
     case "no_active_exact_amount":
       return "Belum ada invoice aktif dengan nominal yang sama.";
     case "multiple_active_exact_amount":
@@ -94,4 +98,25 @@ function retryErrorMessage(code?: string) {
     default:
       return code;
   }
+}
+
+function ManualPaymentReview({ disabled, onConfirm }: {
+  disabled: boolean;
+  onConfirm: (verification: { order_code: string; review_note: string; verified: boolean }) => void;
+}) {
+  return <details className="sm:col-span-2 rounded-xl border border-white/10 p-3 text-xs text-white/70">
+    <summary className="cursor-pointer font-semibold">Verifikasi manual</summary>
+    <form className="mt-3 grid gap-3" onSubmit={event => {
+      event.preventDefault();
+      if (disabled) return;
+      const values = new FormData(event.currentTarget);
+      onConfirm({ order_code: String(values.get("order_code") || "").trim(), review_note: String(values.get("review_note") || "").trim(), verified: values.get("verified") === "on" });
+    }}>
+      <p>Cocokkan mutasi pembayaran dengan pesanan. Tindakan ini melunasi pesanan yang dipilih.</p>
+      <label className="grid gap-1">Kode pesanan<input required name="order_code" maxLength={100} className="rounded-lg border border-white/15 bg-black/20 p-2 text-white" /></label>
+      <label className="grid gap-1">Catatan pemeriksaan<textarea required name="review_note" minLength={10} maxLength={500} className="rounded-lg border border-white/15 bg-black/20 p-2 text-white" placeholder="Referensi mutasi dan alasan pembayaran milik pesanan ini" /></label>
+      <label className="flex items-start gap-2"><input required type="checkbox" name="verified" />Saya sudah memeriksa mutasi dan memastikan pembayaran ini belum digunakan untuk pesanan lain.</label>
+      <button disabled={disabled} className="justify-self-start rounded-xl bg-[#00E5FF] px-4 py-2 font-bold text-[#07101f] disabled:opacity-40">Konfirmasi pembayaran</button>
+    </form>
+  </details>;
 }

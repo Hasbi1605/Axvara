@@ -1,4 +1,4 @@
-import { getD1, queryFirst } from "@/lib/db";
+import { getD1, queryAll, queryFirst } from "@/lib/db";
 
 export const DANA_QRIS_PROVIDER = "dana";
 export const DANA_QRIS_MODE = "dynamic-qris";
@@ -46,15 +46,12 @@ export type DanaWebhookPayment = {
  * order baru — tepat temuan audit #2.
  *
  * Batasan yang diakui (didokumentasikan, bukan disembunyikan):
- * - `received_at` adalah waktu observasi server, bukan waktu otoritatif
- *   DANA. Pembayaran yang terjadi sebelum invoice dibuat tetapi notifikasi
- *   terlambat (masuk setelah invoice terbit) TETAP cocok secara nominal —
- *   itu ambiguitas inheren kanal dan ditangani sebagai kasus rekonsiliasi
- *   (lihat `requiresReview`), bukan dipaksakan cocok diam-diam.
- * - Toleransi miring jam (default 60 detik) menutup beda jam D1 vs runtime
- *   tanpa membuka jendela yang lebar.
+ * - received_at bukan waktu pembayaran DANA. Nominal yang pernah digunakan
+ *   invoice lain wajib direkonsiliasi manual; riwayat ledger harus disimpan.
+ * - Kedua timestamp berasal dari database yang sama, sehingga tidak ada
+ *   toleransi yang membolehkan event mendahului invoice.
  */
-export const DANA_MATCH_CLOCK_SKEW_MS = 60_000;
+export const DANA_MATCH_CLOCK_SKEW_MS = 0;
 
 export type DanaMatchCandidate = {
   orderCode: string;
@@ -62,13 +59,32 @@ export type DanaMatchCandidate = {
   invoiceExpiresAt: unknown;
 };
 
+/**
+ * Parse a DB timestamp as UTC millis. Writers persist ISO-8601 UTC
+ * (`toISOString()`), while D1 defaults (`datetime('now')`) are legacy
+ * space-separated `YYYY-MM-DD HH:MM:SS` — which `Date.parse` reads as LOCAL
+ * time. On a WIB host that shifts invoice times by +7h and makes a stale
+ * event look newer than the invoice. Normalize: a space-separated value
+ * without offset is UTC (D1 `datetime('now')` is UTC).
+ */
+export function parseDbTimeUtc(value: unknown): number {
+  if (value === null || value === undefined) return NaN;
+  let text = String(value).trim();
+  if (!text) return NaN;
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?(\.\d+)?$/.test(text)) {
+    text = `${text.replace(" ", "T")}Z`;
+  }
+  const parsed = Date.parse(text);
+  return Number.isFinite(parsed) ? parsed : NaN;
+}
+
 export function isCausallyPlausiblePayment(
   eventReceivedAt: unknown,
   invoiceCreatedAt: unknown,
   skewMs = DANA_MATCH_CLOCK_SKEW_MS,
 ): boolean {
-  const received = Date.parse(String(eventReceivedAt ?? ""));
-  const invoiced = Date.parse(String(invoiceCreatedAt ?? ""));
+  const received = parseDbTimeUtc(eventReceivedAt);
+  const invoiced = parseDbTimeUtc(invoiceCreatedAt);
   if (!Number.isFinite(received) || !Number.isFinite(invoiced)) return false;
   return received + skewMs >= invoiced;
 }
@@ -189,9 +205,19 @@ export async function createDanaQrisInvoice(orderCode: string, requestedAmount: 
   const staticPayload = process.env.DANA_STATIC_QRIS!.trim();
   const expiresAt = new Date(Date.now() + DANA_QRIS_EXPIRY_MINUTES * 60_000).toISOString();
   const qrisUrl = publicQrisUrl(orderCode);
+  // Prefer unused amounts. Once the finite range is exhausted, reused
+  // amounts remain payable but require an administrator's bank verification.
+  const history = await queryAll(
+    "SELECT DISTINCT payable_amount FROM payment_transactions WHERE provider='dana' AND payable_amount BETWEEN ? AND ?",
+    requestedAmount + 1, requestedAmount + DANA_QRIS_MAX_UNIQUE_CODE,
+  );
+  const used = new Set(history.map(row => Number(row.payable_amount)));
+  const start = randomUniqueCode();
+  const codes = Array.from({ length: DANA_QRIS_MAX_UNIQUE_CODE }, (_, i) => 1 + ((start - 1 + i) % DANA_QRIS_MAX_UNIQUE_CODE))
+    .sort((a, b) => Number(used.has(requestedAmount + a)) - Number(used.has(requestedAmount + b)));
 
   for (let attempt = 0; attempt < 40; attempt++) {
-    const uniqueCode = randomUniqueCode();
+    const uniqueCode = codes[attempt];
     const payableAmount = requestedAmount + uniqueCode;
     const qrisPayload = makeDynamicQris(staticPayload, payableAmount);
     const guardId = `${orderCode}:dana-invoice`;

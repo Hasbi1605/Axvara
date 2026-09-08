@@ -4,6 +4,8 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-08 — R1 pembayaran tak salah pasang: event sebelum invoice + nominal dipakai-ulang tak auto-lunas (ignored + review manual terverifikasi), klaim event+payment+job satu batch atomik, skew 0 + parse UTC untuk timestamp D1 legacy — webhook dana, admin payments/events, db.ts transitionPendingPaymentToPaid, dana-qris.ts, PaymentReconciliation.tsx, migrasi 0017, tests/payment-review + dana-causal-match — (verifikasi: vitest 380+tes R1 hijau, tsc bersih, fixture nearby_old→409 event_predates_invoice + pending, delayed→unmatched + pending)
+
 - 2026-09-07 — BUG parah PDP ganda: blok SEO server (#11) render nama+harga+deskripsi+gambar mentah di atas PDP client sehingga seluruh konten terlihat 2x (judul, Rp1.000, deskripsi, gambar, lalu galeri + kartu beli mengulang semuanya) — hapus blok visual server, sisakan h1 sr-only + JSON-LD (crawler tak butuh blok visual; metadata/OG/canonical tak berubah), visual 100% milik client — produk/[slug]/page.tsx, tests/product-seo — (verifikasi: vitest 373/373, tsc bersih, PDP 200 + slug-ngawur 404, Obscura PDP h1=1 + JSON-LD=1 + PNG diperiksa, home 200 + CSS 200)
 
 - 2026-09-07 — Tutup #16 (BUKAN masalah, dikonfirmasi pemilik): 24 produk seed + angka aktivasi/rating/waktu statis + gambar placeholder adalah DATA UJI staging, bukan konten final menipu — katalog final menunggu keputusan pemilik soal daftar jualan; tanpa perubahan kode, tanpa klaim baru — CHANGELOG saja — (verifikasi: konfirmasi pemilik 2026-09-07, vitest 373/373, dev GET / 200 + CSS 200, Obscura home diperiksa)

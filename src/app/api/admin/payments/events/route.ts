@@ -47,9 +47,14 @@ export async function POST(request: NextRequest) {
   const admin = await requireAdmin(request);
   if (!admin) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!isD1Mode()) return NextResponse.json({ error: "d1_required" }, { status: 503 });
-  const body = await request.json().catch(() => null) as { event_id?: number; action?: string } | null;
+  const body = await request.json().catch(() => null) as { event_id?: number; action?: string; order_code?: string; review_note?: string; verified?: boolean } | null;
   const eventId = Number(body?.event_id || 0);
-  if (!eventId || body?.action !== "retry_match") return NextResponse.json({ error: "invalid_request" }, { status: 400 });
+  const manual = body?.action === "confirm_match";
+  if (!eventId || !["retry_match", "confirm_match"].includes(String(body?.action))) return NextResponse.json({ error: "invalid_request" }, { status: 400 });
+  if (manual && (body?.verified !== true || typeof body.order_code !== "string" || !body.order_code.trim()
+    || typeof body.review_note !== "string" || body.review_note.trim().length < 10 || body.review_note.length > 500)) {
+    return NextResponse.json({ error: "manual_verification_required" }, { status: 400 });
+  }
   const event = await queryFirst("SELECT id,amount,status,order_code,created_at FROM dana_webhook_events WHERE id=?", eventId);
   if (!event) return NextResponse.json({ error: "event_not_found" }, { status: 404 });
   if (String(event.status) === "matched") return NextResponse.json({ ok: true, status: "already_matched", order_code: event.order_code });
@@ -59,7 +64,10 @@ export async function POST(request: NextRequest) {
   // observed before the candidate invoice was issued cannot be its payment
   // (issue #2) — it stays in reconciliation instead of settling the order.
   const candidates = await queryAll(
-    `SELECT pt.order_code,pt.expires_at,pt.created_at AS invoice_created_at,o.sales_channel,o.channel_conversation_id
+    `SELECT pt.order_code,pt.expires_at,pt.created_at AS invoice_created_at,o.sales_channel,o.channel_conversation_id,
+       (SELECT COUNT(*) FROM payment_transactions history
+        WHERE history.provider=pt.provider AND history.payable_amount=pt.payable_amount
+          AND history.order_code<>pt.order_code) AS amount_history
      FROM payment_transactions pt JOIN orders o ON o.code=pt.order_code
      WHERE pt.provider='dana' AND pt.payable_amount=? AND pt.status='pending'
        AND o.status='pending' LIMIT 3`,
@@ -67,17 +75,22 @@ export async function POST(request: NextRequest) {
   );
   const live = candidates.filter((row) => isFutureIso(row.expires_at));
   const matches = live.filter((row) =>
-    isCausallyPlausiblePayment(event.created_at, row.invoice_created_at),
+    isCausallyPlausiblePayment(event.created_at, row.invoice_created_at)
+      && (!manual || row.order_code === body?.order_code?.trim()),
   );
   if (matches.length !== 1) {
-    const reason = live.length > 1 && matches.length === 0
+    const reason = live.length >= 1 && matches.length === 0
       ? "event_predates_invoice"
       : matches.length > 1 ? "multiple_active_exact_amount" : "no_active_exact_amount";
-    await execRun("UPDATE dana_webhook_events SET status='ignored',last_error=?,processed_at=datetime('now') WHERE id=?", reason, eventId);
+    await execRun("UPDATE dana_webhook_events SET status='ignored',last_error=?,processed_at=datetime('now') WHERE id=? AND status IN ('received','ignored','failed')", reason, eventId);
     return NextResponse.json({ error: reason }, { status: 409 });
   }
 
   const orderCode = String(matches[0].order_code);
+  if (!manual && Number(matches[0].amount_history) > 0) {
+    await execRun("UPDATE dana_webhook_events SET status='ignored',last_error='amount_reused_requires_review',processed_at=datetime('now') WHERE id=? AND status IN ('received','ignored','failed')", eventId);
+    return NextResponse.json({ error: "amount_reused_requires_review" }, { status: 409 });
+  }
   // Same atomic paid+job batch as the webhook (issue #3): the retry path
   // must not reintroduce the crash window either.
   const fulfillmentRouting = await queryFirst(
@@ -97,17 +110,13 @@ export async function POST(request: NextRequest) {
           salesChannel: String(fulfillmentRouting.sales_channel || "telegram"),
         }
       : null,
+    { id: eventId, ...(manual ? { reviewedBy: admin.email, reviewNote: body!.review_note!.trim() } : {}) },
   );
-  const paid = transitioned || Boolean(await queryFirst("SELECT code FROM orders WHERE code=? AND status='lunas' AND payment_status='paid'", orderCode));
-  if (!paid) {
+  if (!transitioned) {
+    const consumed = await queryFirst("SELECT order_code FROM dana_webhook_events WHERE id=? AND status='matched'", eventId);
+    if (consumed) return NextResponse.json({ ok: true, status: "already_matched", order_code: consumed.order_code });
     await execRun("UPDATE dana_webhook_events SET status='failed',order_code=?,last_error='payment_transition_failed',processed_at=datetime('now') WHERE id=? AND status IN ('received','ignored','failed')", orderCode, eventId);
     return NextResponse.json({ error: "payment_transition_failed" }, { status: 409 });
-  }
-  // CAS: only an un-settled event row may become matched. A concurrent
-  // webhook/retry winner keeps this retry from double-settling the order.
-  const claimed = await execRun("UPDATE dana_webhook_events SET status='matched',order_code=?,last_error=NULL,processed_at=datetime('now') WHERE id=? AND status IN ('received','ignored','failed')", orderCode, eventId);
-  if (!claimed.changes) {
-    return NextResponse.json({ ok: true, status: "already_matched", order_code: orderCode });
   }
   try { await ensureFulfillmentForPaidOrder(orderCode); } catch { /* Cron akan retry idempoten. */ }
   if (String(matches[0].sales_channel) === "whatsapp" && matches[0].channel_conversation_id) {

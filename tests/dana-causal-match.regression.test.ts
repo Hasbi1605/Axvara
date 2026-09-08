@@ -12,6 +12,7 @@ import path from "node:path";
 import {
   DANA_MATCH_CLOCK_SKEW_MS,
   isCausallyPlausiblePayment,
+  parseDbTimeUtc,
 } from "@/lib/payments/dana-qris";
 
 const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), "utf8");
@@ -33,12 +34,11 @@ describe("causal payment matching (event must not predate invoice)", () => {
     ).toBe(true);
   });
 
-  it("tolerates small clock skew but keeps the window tight", () => {
-    expect(DANA_MATCH_CLOCK_SKEW_MS).toBeLessThanOrEqual(60_000);
-    // 30 detik lebih awal masih ditoleransi (miring jam), 5 menit tidak.
+  it("does not tolerate events predating an invoice from the same database clock", () => {
+    expect(DANA_MATCH_CLOCK_SKEW_MS).toBe(0);
     expect(
       isCausallyPlausiblePayment("2026-09-07T10:04:30.000Z", "2026-09-07T10:05:00.000Z"),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       isCausallyPlausiblePayment("2026-09-07T10:00:00.000Z", "2026-09-07T10:05:00.000Z"),
     ).toBe(false);
@@ -48,6 +48,18 @@ describe("causal payment matching (event must not predate invoice)", () => {
     expect(isCausallyPlausiblePayment(null, "2026-09-07T10:05:00.000Z")).toBe(false);
     expect(isCausallyPlausiblePayment("2026-09-07T10:06:00.000Z", null)).toBe(false);
     expect(isCausallyPlausiblePayment("bukan-tanggal", "juga-bukan")).toBe(false);
+  });
+
+  it("reads legacy space-separated D1 timestamps as UTC, not server-local", () => {
+    // D1 datetime('now') is UTC; parsing it as WIB-local would shift the
+    // invoice +7h and make a stale event look newer than the invoice.
+    expect(parseDbTimeUtc("2026-09-07 10:05:00")).toBe(Date.parse("2026-09-07T10:05:00Z"));
+    expect(
+      isCausallyPlausiblePayment("2026-09-07T10:04:30.000Z", "2026-09-07 10:05:00"),
+    ).toBe(false);
+    expect(
+      isCausallyPlausiblePayment("2026-09-07T10:05:30.000Z", "2026-09-07 10:05:00"),
+    ).toBe(true);
   });
 });
 

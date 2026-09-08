@@ -823,6 +823,7 @@ export async function transitionPendingPaymentToPaid(
     inventoryId: number | null;
     salesChannel: string;
   } | null,
+  event?: { id: number; reviewedBy?: string; reviewNote?: string },
 ): Promise<boolean> {
   const d1 = getD1();
   if (d1) {
@@ -858,6 +859,31 @@ export async function transitionPendingPaymentToPaid(
           WHERE code=? AND status='pending' AND payment_status IN ('unpaid','pending')`,
       ).bind(providerPaidAt ?? null, orderCode),
     ];
+    if (event) {
+      // Claim the event in the same transaction as payment and outbox.
+      statements.unshift(d1.prepare(
+        `INSERT INTO operation_guards(operation_id,valid)
+         SELECT ?,CASE WHEN EXISTS(
+           SELECT 1 FROM dana_webhook_events e
+           JOIN payment_transactions pt ON pt.order_code=?
+           WHERE e.id=? AND e.status IN ('received','ignored','failed')
+             AND e.amount=pt.payable_amount
+             AND julianday(e.created_at)>=julianday(pt.created_at)
+             AND datetime(pt.expires_at)>datetime('now')
+             AND (?=1 OR NOT EXISTS(
+               SELECT 1 FROM payment_transactions history
+               WHERE history.provider=pt.provider AND history.payable_amount=pt.payable_amount
+                 AND history.order_code<>pt.order_code))
+         ) THEN 1 ELSE 0 END`,
+      ).bind(`${guardId}:event`, orderCode, event.id, event.reviewedBy && event.reviewNote ? 1 : 0));
+      statements.push(d1.prepare(
+        `UPDATE dana_webhook_events
+         SET status='matched',order_code=?,last_error=NULL,processed_at=datetime('now'),
+             reviewed_by=?,review_note=?
+         WHERE id=? AND status IN ('received','ignored','failed')`,
+      ).bind(orderCode, event.reviewedBy ?? null, event.reviewNote ?? null, event.id));
+      statements.push(d1.prepare("DELETE FROM operation_guards WHERE operation_id=?").bind(`${guardId}:event`));
+    }
     if (fulfillment) {
       statements.push(
         d1.prepare(

@@ -287,9 +287,12 @@ CREATE TABLE IF NOT EXISTS dana_webhook_events (
   order_code TEXT REFERENCES orders(code),
   last_error TEXT,
   created_at TEXT DEFAULT (datetime('now')),
-  processed_at TEXT
+  processed_at TEXT,
+  reviewed_by TEXT,
+  review_note TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_dana_webhook_events_status ON dana_webhook_events(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_payment_amount_history ON payment_transactions(provider,payable_amount);
 CREATE TABLE IF NOT EXISTS fulfillment_inventory (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   product_id INTEGER NOT NULL REFERENCES products(id),

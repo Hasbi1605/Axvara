@@ -67,6 +67,9 @@ export async function POST(request: NextRequest) {
   const candidates = await queryAll(
     `SELECT pt.order_code, pt.status, pt.expires_at, pt.created_at AS invoice_created_at,
             o.status AS order_status,
+            (SELECT COUNT(*) FROM payment_transactions history
+             WHERE history.provider=pt.provider AND history.payable_amount=pt.payable_amount
+               AND history.order_code<>pt.order_code) AS amount_history,
             o.sales_channel, o.channel_conversation_id
      FROM payment_transactions pt
      JOIN orders o ON o.code=pt.order_code
@@ -84,13 +87,13 @@ export async function POST(request: NextRequest) {
     isCausallyPlausiblePayment(event.created_at, row.invoice_created_at),
   );
   const transaction = plausible.length === 1 ? plausible[0] : undefined;
-  if (!transaction) {
+  if (!transaction || Number(transaction.amount_history) > 0) {
     const staleEventForLiveInvoice = live.length >= 1 && plausible.length === 0;
     await execRun(
       `UPDATE dana_webhook_events
        SET status='ignored', last_error=?, processed_at=datetime('now')
        WHERE id=? AND status='received'`,
-      staleEventForLiveInvoice ? "event_predates_invoice" : "no_active_exact_amount",
+      transaction ? "amount_reused_requires_review" : staleEventForLiveInvoice ? "event_predates_invoice" : "no_active_exact_amount",
       event.id,
     );
     return NextResponse.json({ ok: true, status: "unmatched" });
@@ -117,12 +120,11 @@ export async function POST(request: NextRequest) {
           salesChannel: String(fulfillmentRouting.sales_channel || "telegram"),
         }
       : null,
+    { id: Number(event.id) },
   );
-  const paidOrder = transitioned || Boolean(await queryFirst(
-    `SELECT code FROM orders WHERE code=? AND status='lunas' AND payment_status='paid'`,
-    orderCode,
-  ));
-  if (!paidOrder) {
+  if (!transitioned) {
+    const consumed = await queryFirst("SELECT order_code FROM dana_webhook_events WHERE id=? AND status='matched'", event.id);
+    if (consumed) return NextResponse.json({ ok: true, status: "duplicate" });
     await execRun(
       `UPDATE dana_webhook_events
        SET status='failed', order_code=?, last_error='payment_transition_failed', processed_at=datetime('now')
@@ -131,21 +133,6 @@ export async function POST(request: NextRequest) {
       event.id,
     );
     return NextResponse.json({ error: "payment_transition_failed" }, { status: 409 });
-  }
-
-  // CAS on status='received': a replayed duplicate that arrives after this
-  // event already settled (matched) or was triaged (ignored) must not flip
-  // it back or re-trigger fulfillment. Concurrent losers keep their
-  // 'received' row for the next retry instead of double-settling.
-  const claimed = await execRun(
-    `UPDATE dana_webhook_events
-     SET status='matched', order_code=?, last_error=NULL, processed_at=datetime('now')
-     WHERE id=? AND status='received'`,
-    orderCode,
-    event.id,
-  );
-  if (!claimed.changes) {
-    return NextResponse.json({ ok: true, status: "duplicate" });
   }
 
   try {
