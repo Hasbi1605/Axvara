@@ -4,6 +4,8 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-08 — R9 tanggal omzet kanonis: hierarki bucket WIB kini ledger paid_at → orders.paid_at → reviewed_at → updated_at (order lunas manual tanpa ledger tak lagi dilaporkan di tanggal review admin) — revenue.ts, revenue-time (+1 perilaku SQLite) — (verifikasi: vitest 410/410, tsc bersih, fixture paid 1 Sep/review 7 Sep→bucket 1 Sep)
+
 - 2026-09-08 — R8 revokasi logout: POST /api/auth/logout bump versi sesi → replay cookie lama ditolak revoked, sesi lain tetap hidup; stateless tanpa migrasi (rotasi password tetap kill-switch global) — auth.ts, logout/route, admin-session (+1 perilaku) — (verifikasi: vitest 409/409, tsc bersih, logout→replay revoked + sesi lain OK)
 
 - 2026-09-08 — R7 callback grup: callback tanpa chat.type inferensi privasi dari tanda chat id (negatif = grup → group_redirected), id grup tak pernah tersimpan sebagai identitas user — webhook Telegram, tests/telegram-retry (+1 perilaku) — (verifikasi: vitest 408/408, tsc bersih, fixture grup→redirect + chat tersimpan 77)

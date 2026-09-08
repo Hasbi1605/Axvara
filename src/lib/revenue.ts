@@ -10,8 +10,12 @@
 //   sebagai `datetime(<paid_at>, '+7 hours')` di SQL — tanpa mengubah nilai
 //   tersimpan, dan tanpa tergantung zona server/edge.
 // - Hierarki sumber waktu: `payment_transactions.paid_at` (jalur QRIS,
-//   otoritatif) → `payment_proofs.reviewed_at` (jalur manual, waktu admin
-//   mencocokkan mutasi) → `orders.updated_at` (fallback data lama).
+//   otoritatif) → `orders.paid_at` (SEMUA jalur — ditulis sekali saat transisi
+//   lunas via COALESCE, review R9) → `payment_proofs.reviewed_at` (jalur
+//   manual, waktu admin mencocokkan mutasi) → `orders.updated_at` (fallback
+//   data lama). orders.paid_at harus di atas reviewed_at: ia adalah waktu
+//   pembayaran kanonis yang tidak bergerak saat admin menambah catatan,
+//   retry notifikasi, atau fulfillment jalan belakangan.
 // - Data lama tanpa `paid_at`: backfill sekali dari `reviewed_at`/`updated_at`
 //   via migrasi 0016; baris yang tetap NULL memakai fallback saat baca agar
 //   tidak ada pendapatan yang hilang dari laporan.
@@ -19,7 +23,7 @@ export const REVENUE_TZ_OFFSET = "+7 hours";
 
 /** Ekspresi SQL: timestamp pembayaran dalam WIB dari kolom yang tersedia. */
 export function revenuePaidAtWibSql(alias = "o"): string {
-  return `datetime(COALESCE(pt.paid_at, pp.reviewed_at, ${alias}.updated_at), '${REVENUE_TZ_OFFSET}')`;
+  return `datetime(COALESCE(pt.paid_at, ${alias}.paid_at, pp.reviewed_at, ${alias}.updated_at), '${REVENUE_TZ_OFFSET}')`;
 }
 
 /** Ekspresi SQL: tanggal WIB (YYYY-MM-DD) kapan pendapatan diakui. */

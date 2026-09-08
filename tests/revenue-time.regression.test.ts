@@ -7,7 +7,7 @@
 // Perilaku yang seharusnya:
 // - Pendapatan memakai WAKTU PEMBAYARAN TETAP (`paid_at`, WIB), ditulis sekali
 //   saat transisi lunas dan tidak pernah diubah lagi.
-// - Hierarki: ledger paid_at → reviewed_at bukti → orders.paid_at → updated_at.
+// - Hierarki: ledger paid_at → orders.paid_at → reviewed_at bukti → updated_at.
 // - Data lama dibackfill via migrasi 0016 dengan aturan eksplisit.
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
@@ -39,7 +39,7 @@ const { DatabaseSync } = nodeRequire("node:sqlite") as {
 describe("helper zona WIB", () => {
   it("offset kanonis +7 jam dan bucket memakai paid_at hierarki", () => {
     expect(REVENUE_TZ_OFFSET).toBe("+7 hours");
-    expect(revenuePaidAtWibSql()).toContain("COALESCE(pt.paid_at, pp.reviewed_at, o.updated_at)");
+    expect(revenuePaidAtWibSql()).toContain("COALESCE(pt.paid_at, o.paid_at, pp.reviewed_at, o.updated_at)");
     expect(revenuePaidAtWibSql()).toContain("'+7 hours'");
     expect(revenueDateWibSql()).toContain("date(");
     expect(revenueMonthWibSql()).toContain("strftime('%Y-%m'");
@@ -158,5 +158,25 @@ describe("skema + backfill data lama", () => {
     for (const update of updates) db.exec(update);
     const rerun = db.prepare(`SELECT code, paid_at FROM orders ORDER BY code`).all();
     expect(rerun).toEqual(rows);
+  });
+});
+
+describe("R9: orders.paid_at kanonis mengalahkan reviewed_at/updated_at", () => {
+  it("order lunas manual tanpa ledger memakai paid_at order, bukan reviewed_at", () => {
+    const db = new DatabaseSync(":memory:");
+    db.exec(`CREATE TABLE orders(code TEXT, paid_at TEXT, updated_at TEXT);
+       CREATE TABLE payment_transactions(order_code TEXT, paid_at TEXT);
+       CREATE TABLE payment_proofs(order_code TEXT, reviewed_at TEXT);`);
+    // Order dibayar 1 Sep (paid_at kanonis), admin review bukti 7 Sep,
+    // fulfillment/notifikasi menyentuh updated_at 9 Sep → bucket tetap 1 Sep.
+    db.exec(`INSERT INTO orders VALUES ('R9','2026-09-01T10:00:00.000Z','2026-09-09T10:00:00.000Z')`);
+    db.exec(`INSERT INTO payment_proofs VALUES ('R9','2026-09-07 10:00:00')`);
+    const row = db.prepare(
+      `SELECT o.paid_at, ${revenueDateWibSql()} AS reported_day FROM orders o
+       LEFT JOIN payment_transactions pt ON pt.order_code=o.code
+       LEFT JOIN payment_proofs pp ON pp.order_code=o.code`,
+    ).get()!;
+    expect(String(row.paid_at)).toBe("2026-09-01T10:00:00.000Z");
+    expect(String(row.reported_day)).toBe("2026-09-01");
   });
 });
