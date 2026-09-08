@@ -4,6 +4,8 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-09 — Samakan ikon Grup WhatsApp jadi lingkaran hijau penuh ala icons8 seperti tombol Bot Telegram biru — public/brand/whatsapp-circle.svg (baru, circle #25D366 + bubble/telepon putih), src/components/storefront/CommunityBar.tsx (bg #25D366 + object-cover, hapus bg-white/p-0.5) — (verifikasi: vitest 527/527, dev GET / 200 + CSS 200 + /brand/whatsapp-circle.svg 200, Obscura home/eval + PNG 1280×720 diperiksa, user approve visual)
+
 - 2026-09-09 — Hilangkan teks disclaimer third-party/garansi di konfirmasi pembelian Telegram (Langkah 2/4) — src/lib/telegram/messages.ts (confirmVariantBuyMessage) — (verifikasi: vitest 527/527)
 
 - 2026-09-09 — Tutup RR5-01/04/07: deduplikasi audit handover dengan instr literal, fakta pelaku/waktu dari pemenang CAS, validasi identitas/qty seragam pada cron+recovery, UI mengikuti status bisnis akhir — deliver.ts, handover route, OrdersManager.tsx, tests/rr5-remediation — (verifikasi: vitest 527/527, Obscura admin 6 skenario termasuk fault storage/qty dan kontrol HTTP 200 yang belum lengkap)

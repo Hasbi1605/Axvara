@@ -12,9 +12,9 @@ export function CommunityBar() {
           target="_blank"
           className="group flex-1 flex items-center gap-2.5 sm:gap-3 px-3 sm:px-4 py-3 rounded-2xl ax-glass-card border border-white/10 hover:border-[#25D366]/30 hover:bg-white/[0.06] transition text-left"
         >
-          <span className="w-9 h-9 rounded-full overflow-hidden shrink-0 shadow-[0_4px_14px_rgba(37,211,102,0.35)] bg-white flex items-center justify-center p-0.5">
+          <span className="w-9 h-9 rounded-full overflow-hidden shrink-0 shadow-[0_4px_14px_rgba(37,211,102,0.35)] bg-[#25D366] flex items-center justify-center">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/brand/whatsapp.svg" alt="WhatsApp" width={36} height={36} className="w-full h-full object-contain" draggable={false} />
+            <img src="/brand/whatsapp-circle.svg" alt="WhatsApp" width={36} height={36} className="w-full h-full object-cover" draggable={false} />
           </span>
           <span className="min-w-0 flex-1">
             <span className="font-semibold text-[12px] sm:text-[13.5px] text-white tracking-[-0.01em] leading-tight">Grup WhatsApp</span>
