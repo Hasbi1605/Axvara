@@ -157,6 +157,12 @@ export async function POST(
       try {
         fulfillmentStarted = await ensureFulfillmentForPaidOrder(orderCode);
       } catch { /* Payment is durable; fulfillment remains retryable. */ }
+      // Bukti manual WA yang di-approve = order WA lunas → umumkan ke grup
+      // Telegram admin (best-effort; cron retry via marker bila gagal).
+      try {
+        const { notifyWhatsAppPaidAdmin } = await import("@/lib/telegram/order-notifications");
+        await notifyWhatsAppPaidAdmin(orderCode).catch(() => false);
+      } catch { /* Cron retries. */ }
       return NextResponse.json({
         ok: true,
         action: "approved",

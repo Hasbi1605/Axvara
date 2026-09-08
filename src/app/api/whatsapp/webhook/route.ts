@@ -603,6 +603,12 @@ async function handlePay(groupId: string, memberId: string, inboxId: string, met
     } else {
       await sendPaymentInfo(groupId, memberId, session, order.code, order.subtotal, method, inboxId);
     }
+    // Notif order-baru WA ke grup Telegram admin: best-effort di sini,
+    // gagal kirim disapu cron via marker telegram_order_notified_at.
+    try {
+      const { notifyWhatsAppOrderCreated } = await import("@/lib/telegram/order-notifications");
+      await notifyWhatsAppOrderCreated(order.code).catch(() => false);
+    } catch { /* cron retry */ }
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : "unknown";
     if (errMsg === "out_of_stock") {

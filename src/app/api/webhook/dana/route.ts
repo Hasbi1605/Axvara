@@ -170,6 +170,12 @@ export async function POST(request: NextRequest) {
         if (row) await processWhatsAppOutboxRow(row).catch(() => {});
       }
     } catch { /* Antrean bertahan; cron operations memproses yang due. */ }
+    // Grup Telegram admin juga wajib tahu WA lunas (best-effort; cron retry
+    // via telegram_paid_admin_notified_at bila gagal).
+    try {
+      const { notifyWhatsAppPaidAdmin } = await import("@/lib/telegram/order-notifications");
+      await notifyWhatsAppPaidAdmin(orderCode).catch(() => false);
+    } catch { /* Cron retries. */ }
   }
 
   return NextResponse.json({ ok: true, status: transitioned ? "paid" : "already_paid" });

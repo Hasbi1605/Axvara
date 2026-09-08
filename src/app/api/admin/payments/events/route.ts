@@ -134,6 +134,10 @@ export async function POST(request: NextRequest) {
         }),
       });
     } catch { /* best effort */ }
+    try {
+      const { notifyWhatsAppPaidAdmin } = await import("@/lib/telegram/order-notifications");
+      await notifyWhatsAppPaidAdmin(orderCode).catch(() => false);
+    } catch { /* cron retry via marker */ }
   }
   return NextResponse.json({ ok: true, status: "matched", order_code: orderCode });
 }

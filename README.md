@@ -135,7 +135,10 @@ QRIS otomatis—tidak menampilkan SeaBank/e-wallet. Setelah jumlah dikonfirmasi,
 QRIS langsung terbit; QRIS Hook mengabari buyer otomatis saat dana terverifikasi. Nomor WA
 baru diminta setelah status `paid` dan hanya untuk fulfillment manual. Order baru langsung
 masuk grup `Axvara_Notif`; setelah lunas grup menerima update `Lunas — Telegram` tersendiri
-agar tidak tertinggal status menunggu bayar. Penanda D1 + cron mencegah duplikat sekaligus me-retry kegagalan kirim.
+agar tidak tertinggal status menunggu bayar. Order WhatsApp ikut jalur yang sama:
+order baru mengirim `Order Baru — WhatsApp` dan order lunas mengirim `Lunas — WhatsApp`
+(via QRIS Hook / retry admin / approve bukti, migrasi 0023, tanpa replay riwayat lama).
+Penanda D1 + cron mencegah duplikat sekaligus me-retry kegagalan kirim.
 Dokumen `docs/TELEGRAM-BOT-KLIKQRIS-PLAN.md` hanya arsip provider lama dan telah digantikan
 oleh mesin `src/lib/payments/dana-qris.ts`, ledger D1, route QR image, dan QRIS Hook DANA.
 Feature flag terkait adalah `TELEGRAM_BOT_ENABLED`, `DANA_QRIS_ENABLED`, dan
@@ -177,8 +180,8 @@ Penghapusan produk/varian mengarsipkannya agar order historis tetap utuh. Konfig
 fulfillment shared/unique dipusatkan pada masing-masing varian, bukan digandakan di menu bot.
 
 Setelah pembayaran diterima, tombol support bot membuka akun manusia `@axvara_support`;
-username bot tetap `@Axvara_bot`. Seluruh notifikasi admin dari order web maupun Telegram
-memakai satu tujuan `TELEGRAM_ADMIN_CHAT_ID`. Untuk grup privat, tambahkan bot ke grup,
+username bot tetap `@Axvara_bot`. Seluruh notifikasi admin dari order web, Telegram,
+maupun WhatsApp memakai satu tujuan `TELEGRAM_ADMIN_CHAT_ID`. Untuk grup privat, tambahkan bot ke grup,
 kirim `/chatid`, lalu simpan ID numerik negatif yang dibalas bot sebagai secret tersebut
 (link undangan `t.me/+...` tidak dapat dipakai sebagai Bot API `chat_id`).
 

@@ -4,6 +4,8 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-09 — Order WA kini masuk grup Telegram admin: `Order Baru — WhatsApp` saat order dibuat + `Lunas — WhatsApp` saat lunas (QRIS Hook/retry admin/approve bukti), marker idempoten + retry cron yang sama dengan Telegram, anti-replay riwayat via migrasi 0023 — messages.ts, order-notifications.ts, webhook WA/DANA, events retry, proofs approve, cron operations, migrasi 0023, tests/whatsapp-admin-notifications, docs — (verifikasi: vitest 534/534, tsc bersih, dev GET / 200)
+
 - 2026-09-09 — Samakan ikon Grup WhatsApp jadi lingkaran hijau penuh ala icons8 seperti tombol Bot Telegram biru — public/brand/whatsapp-circle.svg (baru, circle #25D366 + bubble/telepon putih), src/components/storefront/CommunityBar.tsx (bg #25D366 + object-cover, hapus bg-white/p-0.5) — (verifikasi: vitest 527/527, dev GET / 200 + CSS 200 + /brand/whatsapp-circle.svg 200, Obscura home/eval + PNG 1280×720 diperiksa, user approve visual)
 
 - 2026-09-09 — Hilangkan teks disclaimer third-party/garansi di konfirmasi pembelian Telegram (Langkah 2/4) — src/lib/telegram/messages.ts (confirmVariantBuyMessage) — (verifikasi: vitest 527/527)

@@ -6,12 +6,15 @@ import { sendMessage } from "@/lib/telegram/api";
 import {
   adminTelegramOrderCreatedMessage,
   adminTelegramOrderPaidMessage,
+  adminWhatsAppOrderCreatedMessage,
+  adminWhatsAppOrderPaidMessage,
   orderPaidMessage,
   orderReminderMessage,
 } from "@/lib/telegram/messages";
 import {
   orderPaidKeyboard,
   telegramOrderAdminKeyboard,
+  webOrderAdminKeyboard,
 } from "@/lib/telegram/keyboards";
 
 type OrderItem = {
@@ -166,9 +169,111 @@ export async function notifyTelegramBuyerPaid(orderCode: string, database: Datab
   return true;
 }
 
-/** Announce a paid Telegram order to the admin group (separate from order-created). */
-export async function notifyTelegramPaidAdmin(orderCode: string, database: DatabaseAccess = createDatabaseAccess()): Promise<boolean> {
+/** Notify Axvara_Notif as soon as a WhatsApp order exists.
+ *
+ * Idempoten via kolom marker yang sama dengan jalur Telegram
+ * (`telegram_order_notified_at`): klaim CAS `IS NULL` + kirim + tandai,
+ * sehingga redelivery webhook / retry cron tidak mengirim ganda.
+ */
+export async function notifyWhatsAppOrderCreated(orderCode: string, database: DatabaseAccess = createDatabaseAccess()): Promise<boolean> {
   const { queryFirst, execRun } = database;
+  const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
+  if (!adminChatId || !telegramNotificationsConfigured()) return false;
+
+  const order = await queryFirst(
+    `SELECT o.code, o.items, o.customer_name, o.channel_member_id, o.customer_wa,
+            o.payment_method, o.telegram_order_notified_at,
+            pt.payable_amount, o.subtotal
+     FROM orders o
+     LEFT JOIN payment_transactions pt ON pt.order_code=o.code
+     WHERE o.code=? AND o.sales_channel='whatsapp'
+       AND o.telegram_order_notified_at IS NULL`,
+    orderCode,
+  );
+  if (!order) return true;
+
+  const siteUrl = (process.env.SITE_URL || "https://axvara.tech").replace(/\/$/, "");
+  const member = String(order.channel_member_id || order.customer_wa || "");
+  const paymentMethod = String(order.payment_method || "qris");
+  const sent = await sendMessage({
+    chat_id: adminChatId,
+    text: adminWhatsAppOrderCreatedMessage({
+      orderCode: String(order.code),
+      productNames: productNames(order.items),
+      amount: Number(order.payable_amount ?? order.subtotal ?? 0),
+      customerName: String(order.customer_name || member || "Pembeli WhatsApp"),
+      channelMember: member,
+      paymentMethod,
+    }),
+    parse_mode: "HTML",
+    reply_markup: webOrderAdminKeyboard({
+      customerWa: member,
+      customerName: String(order.customer_name || "Pembeli WhatsApp"),
+      orderCode: String(order.code),
+      siteUrl,
+    }),
+  });
+  if (!sent.ok) return false;
+
+  await execRun(
+    `UPDATE orders SET telegram_order_notified_at=datetime('now'), updated_at=datetime('now')
+     WHERE code=? AND telegram_order_notified_at IS NULL`,
+    orderCode,
+  );
+  return true;
+}
+
+/** Announce a paid WhatsApp order to the admin group (separate from order-created). */
+export async function notifyWhatsAppPaidAdmin(orderCode: string, database: DatabaseAccess = createDatabaseAccess()): Promise<boolean> {
+  const { queryFirst, execRun } = database;
+  const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
+  if (!adminChatId || !telegramNotificationsConfigured()) return false;
+
+  const order = await queryFirst(
+    `SELECT o.code, o.items, o.customer_name, o.channel_member_id, o.customer_wa,
+            o.payment_method, o.telegram_paid_admin_notified_at,
+            pt.payable_amount, o.subtotal
+     FROM orders o
+     LEFT JOIN payment_transactions pt ON pt.order_code=o.code
+     WHERE o.code=? AND o.sales_channel='whatsapp' AND o.status='lunas'
+       AND o.payment_status='paid' AND o.telegram_paid_admin_notified_at IS NULL`,
+    orderCode,
+  );
+  if (!order) return true;
+
+  const siteUrl = (process.env.SITE_URL || "https://axvara.tech").replace(/\/$/, "");
+  const member = String(order.channel_member_id || order.customer_wa || "");
+  const paymentMethod = String(order.payment_method || "qris");
+  const sent = await sendMessage({
+    chat_id: adminChatId,
+    text: adminWhatsAppOrderPaidMessage({
+      orderCode: String(order.code),
+      productNames: productNames(order.items),
+      amount: Number(order.payable_amount ?? order.subtotal ?? 0),
+      customerName: String(order.customer_name || member || "Pembeli WhatsApp"),
+      channelMember: member,
+      paymentMethod,
+    }),
+    parse_mode: "HTML",
+    reply_markup: webOrderAdminKeyboard({
+      customerWa: member,
+      customerName: String(order.customer_name || "Pembeli WhatsApp"),
+      orderCode: String(order.code),
+      siteUrl,
+    }),
+  });
+  if (!sent.ok) return false;
+
+  await execRun(
+    `UPDATE orders SET telegram_paid_admin_notified_at=datetime('now'), updated_at=datetime('now')
+     WHERE code=? AND telegram_paid_admin_notified_at IS NULL`,
+    orderCode,
+  );
+  return true;
+}
+
+/** Announce a paid Telegram order to the admin group (separate from order-created). */
+export async function notifyTelegramPaidAdmin(orderCode: string, database: DatabaseAccess = createDatabaseAccess()): Promise<boolean> {  const { queryFirst, execRun } = database;
   const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
   if (!adminChatId || !telegramNotificationsConfigured()) return false;
 
@@ -238,15 +343,18 @@ export async function retryPendingTelegramNotifications(limit = 8, only?: {
   let paidAdmin = 0;
   if (want.created && database.canSpend(1)) {
     const pendingCreated = await queryAll(
-      `SELECT code FROM orders
-       WHERE sales_channel='telegram' AND telegram_order_notified_at IS NULL
+      `SELECT code, sales_channel FROM orders
+       WHERE sales_channel IN ('telegram','whatsapp') AND telegram_order_notified_at IS NULL
        ORDER BY created_at ASC LIMIT ?`,
       limit,
     ).catch(() => [] as Row[]);
     for (const order of pendingCreated) {
       if (!database.canSpend(7)) break;
       try {
-        if (await notifyTelegramOrderCreated(String(order.code), database)) created++;
+        const ok = String(order.sales_channel || "telegram") === "whatsapp"
+          ? await notifyWhatsAppOrderCreated(String(order.code), database)
+          : await notifyTelegramOrderCreated(String(order.code), database);
+        if (ok) created++;
       } catch { /* Retry the same durable marker on the next cron run. */ }
     }
   }
@@ -269,8 +377,8 @@ export async function retryPendingTelegramNotifications(limit = 8, only?: {
 
   if (want.paidAdmin && database.canSpend(1)) {
     const pendingPaidAdmin = await queryAll(
-      `SELECT code FROM orders
-       WHERE sales_channel='telegram' AND status='lunas' AND payment_status='paid'
+      `SELECT code, sales_channel FROM orders
+       WHERE sales_channel IN ('telegram','whatsapp') AND status='lunas' AND payment_status='paid'
          AND telegram_paid_admin_notified_at IS NULL
        ORDER BY updated_at ASC LIMIT ?`,
       limit,
@@ -278,7 +386,10 @@ export async function retryPendingTelegramNotifications(limit = 8, only?: {
     for (const order of pendingPaidAdmin) {
       if (!database.canSpend(7)) break;
       try {
-        if (await notifyTelegramPaidAdmin(String(order.code), database)) paidAdmin++;
+        const ok = String(order.sales_channel || "telegram") === "whatsapp"
+          ? await notifyWhatsAppPaidAdmin(String(order.code), database)
+          : await notifyTelegramPaidAdmin(String(order.code), database);
+        if (ok) paidAdmin++;
       } catch { /* Retry the same durable marker on the next cron run. */ }
     }
   }

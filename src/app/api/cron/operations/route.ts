@@ -148,9 +148,9 @@ export async function POST(request: NextRequest) {
         (SELECT COUNT(*) FROM whatsapp_outbox WHERE status IN ('pending','failed') AND attempt_count < 5 AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime('now'))) AS wa,
         (SELECT COUNT(*) FROM whatsapp_outbox WHERE status='sending' AND (locked_until IS NULL OR datetime(locked_until) <= datetime('now'))) AS wa_stale,
         (SELECT COUNT(*) FROM fulfillment_jobs WHERE status IN ('queued','retry')) AS jobs,
-        (SELECT COUNT(*) FROM orders WHERE sales_channel='telegram' AND telegram_order_notified_at IS NULL) AS created,
+        (SELECT COUNT(*) FROM orders WHERE sales_channel IN ('telegram','whatsapp') AND telegram_order_notified_at IS NULL) AS created,
         (SELECT COUNT(*) FROM orders WHERE sales_channel='telegram' AND status='lunas' AND payment_status='paid' AND telegram_paid_notified_at IS NULL) AS paid,
-        (SELECT COUNT(*) FROM orders WHERE sales_channel='telegram' AND status='lunas' AND payment_status='paid' AND telegram_paid_admin_notified_at IS NULL) AS paid_admin,
+        (SELECT COUNT(*) FROM orders WHERE sales_channel IN ('telegram','whatsapp') AND status='lunas' AND payment_status='paid' AND telegram_paid_admin_notified_at IS NULL) AS paid_admin,
         (SELECT COUNT(*) FROM fulfillment_jobs WHERE status='sending') AS stale`,
     ).catch(() => null);
     const pendingExpiry = Number(queueRow?.expiry ?? 0);
