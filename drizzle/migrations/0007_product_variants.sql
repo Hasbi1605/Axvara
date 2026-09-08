@@ -95,7 +95,7 @@ CREATE TABLE IF NOT EXISTS whatsapp_outbox (
   destination TEXT NOT NULL,
   message_type TEXT NOT NULL DEFAULT 'text',
   payload TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','sent','failed','dead')),
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','sending','sent','failed','dead')),
   attempt_count INTEGER NOT NULL DEFAULT 0,
   next_attempt_at TEXT,
   last_error TEXT,

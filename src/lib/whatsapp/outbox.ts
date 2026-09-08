@@ -57,6 +57,7 @@ export async function getDueWhatsAppOutbox(limit = 8): Promise<Record<string, un
      WHERE status IN ('pending','failed')
        AND attempt_count < ?
        AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime('now'))
+       AND (locked_until IS NULL OR datetime(locked_until) <= datetime('now'))
      ORDER BY next_attempt_at ASC, id ASC LIMIT ?`,
     WA_OUTBOX_MAX_ATTEMPTS,
     limit,
@@ -67,10 +68,18 @@ export async function getDueWhatsAppOutbox(limit = 8): Promise<Record<string, un
 export async function processWhatsAppOutboxRow(row: Record<string, unknown>): Promise<boolean> {
   const id = Number(row.id);
   const attempts = Number(row.attempt_count || 0);
+  // Review R10: klaim adalah lease eksplisit, bukan sekadar bump attempt.
+  // Worker menulis worker_id + locked_until (+5 mnt, di luar jangkauan
+  // getDue dengan syarat locked_until NULL/lewat); worker kedua yang membaca
+  // snapshot basi tetap kalah CAS karena status sudah 'sending' dan
+  // attempt_count sudah naik. Tanpa lease, dua worker yang sama-sama lolos
+  // getDue mengirim pesan ganda sebelum salah satunya selesai.
+  const workerId = `wa-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const claimed = await execRun(
     `UPDATE whatsapp_outbox
-     SET status='pending', attempt_count=attempt_count+1, updated_at=datetime('now')
+     SET status='sending', attempt_count=attempt_count+1, worker_id=?, locked_until=datetime('now', '+5 minutes'), updated_at=datetime('now')
      WHERE id=? AND status IN ('pending','failed') AND attempt_count=?`,
+    workerId,
     id,
     attempts,
   ).catch(() => ({ changes: 0 as number | undefined }));
@@ -84,10 +93,11 @@ export async function processWhatsAppOutboxRow(row: Record<string, unknown>): Pr
   if (result.ok) {
     await execRun(
       `UPDATE whatsapp_outbox
-       SET status='sent', provider_message_id=?, last_error=NULL, updated_at=datetime('now')
-       WHERE id=?`,
+       SET status='sent', provider_message_id=?, worker_id=NULL, locked_until=NULL, last_error=NULL, updated_at=datetime('now')
+       WHERE id=? AND worker_id=?`,
       result.messageId ?? null,
       id,
+      workerId,
     );
     return true;
   }
@@ -95,19 +105,21 @@ export async function processWhatsAppOutboxRow(row: Record<string, unknown>): Pr
   if (nextAttempts >= WA_OUTBOX_MAX_ATTEMPTS) {
     await execRun(
       `UPDATE whatsapp_outbox
-       SET status='dead', last_error=?, updated_at=datetime('now') WHERE id=?`,
+       SET status='dead', worker_id=NULL, locked_until=NULL, last_error=?, updated_at=datetime('now') WHERE id=? AND worker_id=?`,
       String(result.error || "send_failed").slice(0, 500),
       id,
+      workerId,
     );
     return true;
   }
   const delay = WA_OUTBOX_RETRY_DELAYS_MINUTES[Math.min(nextAttempts - 1, WA_OUTBOX_RETRY_DELAYS_MINUTES.length - 1)];
   await execRun(
     `UPDATE whatsapp_outbox
-     SET status='failed', last_error=?, next_attempt_at=${nextAttemptSql(delay)}, updated_at=datetime('now')
-     WHERE id=?`,
+     SET status='failed', worker_id=NULL, locked_until=NULL, last_error=?, next_attempt_at=${nextAttemptSql(delay)}, updated_at=datetime('now')
+     WHERE id=? AND worker_id=?`,
     String(result.error || "send_failed").slice(0, 500),
     id,
+    workerId,
   );
   return false;
 }

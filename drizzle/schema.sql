@@ -458,16 +458,19 @@ CREATE TABLE IF NOT EXISTS whatsapp_outbox (
   destination TEXT NOT NULL,
   message_type TEXT NOT NULL DEFAULT 'text',
   payload TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','sent','failed','dead')),
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','sending','sent','failed','dead')),
   attempt_count INTEGER NOT NULL DEFAULT 0,
   next_attempt_at TEXT,
   last_error TEXT,
   provider_message_id TEXT,
+  worker_id TEXT,
+  locked_until TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_wa_outbox_status ON whatsapp_outbox(status, next_attempt_at);
+CREATE INDEX IF NOT EXISTS idx_wa_outbox_lease ON whatsapp_outbox(status, locked_until, next_attempt_at);
 
 -- Payment proofs (migration 0007)
 CREATE TABLE IF NOT EXISTS payment_proofs (
