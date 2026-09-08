@@ -200,6 +200,7 @@ Hanya `npm run build` sebelum deploy/major config (`next.config.mjs`, `tailwind.
 ## 📝 Changelog & Aturan Project
 
 - **Changelog:** `axvara/CHANGELOG.md` — setiap perubahan wajib catat entri paling atas (format: `YYYY-MM-DD — ringkas — file/area — (verifikasi: ...)`).
+- **Remediasi review R1–R12:** `docs/REVIEW-REMEDIATION-2026-09-08.md` — tabel bukti perilaku + dampak awam + migrasi 0017/0018 + keterbatasan produksi.
 - **Aturan project:** `axvara/AGENTS.md` — khusus project axvara (scope lokal, tidak ubah `~/AGENTS.md` global). Wajib baca sebelum ubah kode.
 
 ## ☁️ CI/CD Cloudflare
