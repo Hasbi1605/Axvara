@@ -56,7 +56,7 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
       .then((data) => {
         const list: Product[] = Array.isArray(data.products) ? data.products : [];
         setCatalogProducts(list);
-        const found = list[0];
+        const found = list.find((p) => p.slug === slug) ?? list[0];
         if (found) {
           const imgs: string[] = [];
           if (found.image) imgs.push(found.image);

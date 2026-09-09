@@ -4,6 +4,8 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-09 — Perbaiki galeri PDP lokal yang selalu tampilkan gambar katalog pertama: client find by slug (bukan list[0]) + fallback in-memory db.ts hormati filter p.slug=? — src/app/produk/[slug]/product-detail-client.tsx, src/lib/db.ts, tests/pdp-gallery.regression.test.ts — (verifikasi: vitest 538/538)
+
 - 2026-09-09 — Perbaiki copy pesan lunas Telegram: tegaskan produk dikirim admin via DM Telegram pribadi, nomor WA hanya jalur cadangan (Opsi 1 approved user) — src/lib/telegram/messages.ts (orderPaidMessage), tests/telegram-bot.regression.test.ts — (verifikasi: vitest 534/534)
 
 - 2026-09-09 — Order WA kini masuk grup Telegram admin: `Order Baru — WhatsApp` saat order dibuat + `Lunas — WhatsApp` saat lunas (QRIS Hook/retry admin/approve bukti), marker idempoten + retry cron yang sama dengan Telegram, anti-replay riwayat via migrasi 0023 — messages.ts, order-notifications.ts, webhook WA/DANA, events retry, proofs approve, cron operations, migrasi 0023, tests/whatsapp-admin-notifications, docs — (verifikasi: vitest 534/534, tsc bersih, dev GET / 200)

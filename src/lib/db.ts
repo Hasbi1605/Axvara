@@ -109,6 +109,10 @@ export async function queryAll(sql: string, ...params: unknown[]): Promise<Recor
       rows = rows.filter((r) => r.cat_slug === String(params[0]));
       params = params.slice(1);
     }
+    if (lower.includes("p.slug=?") && params.length) {
+      rows = rows.filter((r) => String(r.slug) === String(params[0]));
+      params = params.slice(1);
+    }
     if (lower.includes("like ?")) {
       const q = String((params as string[])[0] ?? "").replace(/%/g, "").toLowerCase();
       if (q) rows = rows.filter((r) => `${r.name} ${r.slug} ${r.badge ?? ""} ${r.description ?? ""}`.toLowerCase().includes(q));
