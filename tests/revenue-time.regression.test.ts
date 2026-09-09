@@ -94,7 +94,7 @@ describe("overview memakai paid_at WIB, bukan updated_at UTC", () => {
 
 describe("paid_at ditulis sekali dan tak berubah (semua jalur lunas)", () => {
   it("transisi QRIS + manual + bukti memakai COALESCE-guard", () => {
-    const db = read("src/lib/db.ts");
+    const db = read("src/lib/db/orders-transition.ts");
     expect(db).toContain("paid_at=COALESCE(paid_at,?,datetime('now'))");
     expect(db).toContain("paid_at=COALESCE(paid_at,datetime('now'))");
     const proofs = read("src/app/api/admin/proofs/[id]/route.ts");

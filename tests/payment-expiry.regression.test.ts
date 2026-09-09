@@ -73,7 +73,7 @@ describe("expiry paths use the canonical helper and guarded transitions", () => 
   });
 
   it("paid and expiry guards are mutually exclusive so concurrent runs settle deterministically", () => {
-    const db = read("src/lib/db.ts");
+    const db = read("src/lib/db/orders-transition.ts");
     // Paid wins only from a pending ledger; expiry wins only from a
     // pending/unpaid order — exactly one batch can commit.
     expect(db).toContain("AND EXISTS(SELECT 1 FROM payment_transactions WHERE order_code=? AND status='pending')");

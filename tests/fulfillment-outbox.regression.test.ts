@@ -22,7 +22,7 @@ const readDelivery = (): string => {
 
 describe("atomic paid+job commit (no crash window)", () => {
   it("QRIS paid batch inserts the outbox row in the same commit", () => {
-    const db = read("src/lib/db.ts");
+    const db = read("src/lib/db/orders-transition.ts");
     const fn = db.slice(db.indexOf("export async function transitionPendingPaymentToPaid"));
     expect(fn).toContain("INSERT OR IGNORE INTO fulfillment_jobs");
     expect(fn).toContain("WHERE EXISTS(SELECT 1 FROM orders WHERE code=?)");
@@ -45,7 +45,7 @@ describe("atomic paid+job commit (no crash window)", () => {
     expect(read("src/app/api/admin/proofs/[id]/route.ts")).toContain(
       "INSERT OR IGNORE INTO fulfillment_jobs",
     );
-    expect(read("src/lib/db.ts")).toContain(
+    expect(read("src/lib/db/orders-transition.ts")).toContain(
       "INSERT OR IGNORE INTO fulfillment_jobs",
     );
   });

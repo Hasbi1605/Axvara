@@ -25,7 +25,7 @@ describe("galeri PDP memakai produk yang diklik, bukan list[0]", () => {
   });
 
   it("fallback in-memory menghormati filter p.slug=? (urutan cat -> slug -> q)", () => {
-    const src = read("src/lib/db.ts");
+    const src = read("src/lib/db/client.ts");
     expect(src).toContain('lower.includes("p.slug=?")');
   });
 

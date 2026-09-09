@@ -428,7 +428,7 @@ describe("Reusable WhatsApp pending order", () => {
 
 describe("Variant stock expiry lifecycle", () => {
   it("DANA webhook and expiry cron use atomic payment/order transition helpers", () => {
-    const db = read("src/lib/db.ts");
+    const db = read("src/lib/db/orders-transition.ts");
     const callback = read("src/app/api/webhook/dana/route.ts");
     const cron = read("src/app/api/cron/operations/route.ts");
     expect(db).toContain("export async function transitionPendingPaymentOrder");
@@ -451,7 +451,7 @@ describe("Variant stock expiry lifecycle", () => {
   });
 
   it("deduplicates hook events and allows the atomic paid repair guard", () => {
-    const db = read("src/lib/db.ts");
+    const db = read("src/lib/db/orders-transition.ts");
     const callback = read("src/app/api/webhook/dana/route.ts");
     // Paid wins only from a pending ledger while the order is still
     // pending+unpaid, so a concurrent expiry batch settles deterministically.

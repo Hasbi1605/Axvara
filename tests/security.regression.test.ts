@@ -199,7 +199,7 @@ describe("BUG-01: Stock restore saat admin batalkan pesanan", () => {
     expect(src).toContain('"dibatalkan"');
     expect(src).toContain('"pending"');
     expect(src).toContain("transitionPendingOrder");
-    const db = fs.readFileSync(path.join(process.cwd(), "src/lib/db.ts"), "utf-8");
+    const db = fs.readFileSync(path.join(process.cwd(), "src/lib/db/orders-transition.ts"), "utf-8");
     expect(db).toContain("d1.batch(statements)");
     expect(db).toMatch(/stock=stock\+\?/);
     expect(db).toContain("operation_guards");

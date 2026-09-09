@@ -124,7 +124,7 @@ describe("Atomic stock lifecycle", () => {
   });
 
   it("D1 memakai batch+guard, quote id unik, dan expiry 24 jam", () => {
-    const db = read("src/lib/db.ts");
+    const db = read("src/lib/db/orders-create.ts");
     const schema = read("drizzle/schema.sql");
     expect(db).toContain("await d1.batch(statements)");
     expect(db).toContain("CASE WHEN stock=-1 THEN -1");

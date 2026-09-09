@@ -50,6 +50,13 @@ axvara/
 │   │   └── api/agent/      # Content API Bearer-token untuk MCP/agent
 │   │   └── globals.css     # Tokens Liquid Glass iOS 26
 │   ├── components/storefront/  # Navbar, OrbitHero, ProductCard, CartDrawer, PopupBanner, Footer, ScrollRope
+│   ├── components/admin/       # Shell + login gate + hooks + sections/ (satu per menu admin)
+│   ├── hooks/useModalA11y.ts   # Escape + focus trap + scroll lock, satu sumber untuk semua modal
+│   ├── lib/db.ts               # BARREL ke src/lib/db/* — impor dari sini, bukan file internalnya
+│   ├── lib/commerce.ts         # createChannelOrderAtomic: reservasi stok + order dalam satu batch
+│   ├── lib/fulfillment/deliver.ts # BARREL ke src/lib/fulfillment/delivery/*
+│   ├── lib/telegram/messages.ts   # BARREL ke src/lib/telegram/messages/*; handlers/ berisi router
+│   ├── lib/whatsapp/handlers/  # catalog, payment, proof, admin (gateway.ts memegang auth + SSRF)
 │   ├── lib/products.ts     # 24 produk seed development + kategori
 │   └── stores/cart.ts      # Zustand cart (persist axvara-cart)
 ├── wrangler.json           # Cloudflare Pages + D1 + R2 bindings/output
@@ -84,10 +91,12 @@ axvara/
 |--------|------------|-----|
 | E-Wallet | `082135277434` | DANA/Gopay/Shopeepay |
 | SeaBank | `901812349386` | Brotherstore06 |
-| QRIS | DANA Business | Dinamis per order, nominal unik, 15 menit |
+| QRIS | DANA Business | Dinamis per order, nominal unik, QR 15 menit (order hidup 60 menit) |
 | Bank lain | dinamis via admin | tambah/aktifkan tanpa deploy |
 
 Flow: server memvalidasi harga/stok dan menerbitkan quote bertanda tangan 60 menit → order dibuat idempotent dan stok direservasi atomik. Untuk QRIS, server membuat payload EMVCo dan nominal unik per order, menampilkan QR selama 15 menit, lalu QRIS Hook Android mengirim pembayaran ke `/api/webhook/dana`; nominal yang cocok tepat mengubah ledger+order menjadi lunas secara atomik. Transfer SeaBank/e-wallet tetap memakai bukti JPG/PNG/WebP dan review admin. Order yang kedaluwarsa mengembalikan stok atomik.
+
+**Masa hidup order dipisah dari masa hidup QR.** QR berlaku 15 menit, tetapi order QRIS hidup 60 menit. Ketika QR mati sementara order masih hidup, pembeli menekan **Minta QRIS Baru** di `/pesanan/[code]` atau tombol **🔄 QRIS Baru** di Telegram, dan mendapat nominal unik + masa berlaku baru untuk pesanan yang sama — tanpa memilih produk dan varian dari awal. Maksimal 3 kali per order. Penerbitan ulang hanya diizinkan setelah QR lama benar-benar kedaluwarsa; syarat itu yang membuat orang lain yang menebak kode order tidak dapat membatalkan QR yang sedang dipakai pembeli. Pembayaran yang telat masuk pada nominal lama tidak melunasi apa pun dan diarahkan ke rekonsiliasi manual.
 
 AXVARA adalah third-party independen (bukan official store). Garansi bervariasi 1x24 jam–30 hari mengikuti deskripsi tiap produk; klaim berupa penggantian/perbaikan, bukan refund otomatis. Checkout mewajibkan centang persetujuan ketentuan sebelum order dibuat; acuan lengkap di `/garansi-replace`.
 

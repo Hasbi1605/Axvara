@@ -113,7 +113,7 @@ describe("reservasi unique per baris", () => {
   });
 
   it("order web mereservasi unit unique dalam batch atomik yang sama", () => {
-    const db = read("src/lib/db.ts");
+    const db = read("src/lib/db/orders-create.ts");
     expect(db).toContain("unique-inventory");
     expect(db).toContain("fulfillment_mode='unique'");
   });

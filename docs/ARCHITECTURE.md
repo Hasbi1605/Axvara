@@ -115,9 +115,31 @@ axvara/
 ├── src/components/
 │   ├── ui/                      # Button, Input, Badge, Modal, Drawer, Toast
 │   ├── storefront/              # Navbar, Hero, ProductCard, CartDrawer, CheckoutForm, QrisDisplay
-│   └── admin/                   # Shell, overview, orders, rekonsiliasi, katalog, otomasi, settings
+│   └── admin/                   # Shell, login gate, hooks (useAdminAuth/useProductManager),
+│       └── sections/            # satu komponen per section admin (page.tsx tinggal shell + routing)
+├── src/hooks/
+│   └── useModalA11y.ts          # Escape + focus trap + scroll lock + restore fokus — SATU
+│                                # implementasi untuk CartDrawer, PopupBanner, QuickVariantModal.
+│                                # Sebelumnya disalin manual sehingga a11y tiap modal berbeda.
 ├── src/lib/
-│   ├── db.ts                    # D1 client (Cloudflare D1 binding)
+│   ├── db.ts                    # BARREL — entry point publik tunggal (jangan impor db/* langsung)
+│   ├── db/                      # client (+state dev in-memory), expiry, errors, orders-create,
+│   │                            # orders-transition, types
+│   ├── commerce.ts              # createChannelOrderAtomic: reservasi stok + inventory + INSERT
+│   │                            # order dalam SATU d1.batch, dipakai web/Telegram/WhatsApp
+│   ├── payments/dana-qris.ts    # invoice + reissue QRIS, konstanta masa hidup order vs invoice
+│   ├── fulfillment/
+│   │   ├── deliver.ts           # BARREL
+│   │   └── delivery/            # claim, send, process, ensure, reconcile, handover,
+│   │                            # inventory-binding, manifest, types
+│   ├── telegram/
+│   │   ├── messages.ts          # BARREL
+│   │   ├── messages/            # format, catalog, purchase, status, group, help, admin
+│   │   └── handlers/            # command, callback (guard ownerBound), catalog, discovery,
+│   │                            # orders, invoice, cart, cart-invoice, shared
+│   ├── whatsapp/
+│   │   ├── gateway.ts           # auth timing-safe + isPrivateIp (kontrol SSRF)
+│   │   └── handlers/            # catalog, payment, proof, admin, shared
 │   ├── r2.ts                    # R2 client (S3 API)
 │   ├── config.ts                # payment methods, site config
 │   └── utils.ts                 # formatRupiah, generateOrderCode
@@ -126,6 +148,15 @@ axvara/
 ├── drizzle/                     # atau raw SQL — schema D1
 └── wrangler.json                # Cloudflare bindings + Pages output
 ```
+
+### 3.0 Aturan modul (pasca refactor)
+
+Route API dan modul besar dipecah per domain, tetapi **path publik lama dipertahankan sebagai
+barrel** (`src/lib/db.ts`, `src/lib/fulfillment/deliver.ts`, `src/lib/telegram/messages.ts`).
+Impor dari barrel, bukan dari file internal di dalam foldernya — itu yang menjaga satu titik
+perubahan bila struktur internal digeser lagi. Handler webhook tidak boleh dipanggil langsung dari
+`route.ts`: Telegram hanya mengekspos `handleCommand`/`handleCallback` supaya guard kepemilikan
+`ownerBound` tidak bisa dilewati.
 
 ### 3.1 Runtime performa storefront
 
@@ -187,7 +218,10 @@ CREATE TABLE orders (
   status TEXT DEFAULT 'pending',   -- pending | lunas | dibatalkan | kadaluarsa
   admin_note TEXT,                 -- lisensi/key yang dikirim
   quote_id TEXT,                   -- jti quote signed; unique untuk idempotensi
-  expires_at TEXT,                 -- QRIS 15 menit; transfer manual 24 jam
+  expires_at TEXT,                 -- masa hidup ORDER: QRIS 60 menit, transfer manual 24 jam.
+                                   -- Ditulis ISO UTC, BUKAN datetime('now',...) yang formatnya
+                                   -- spasi dan ditafsirkan Date.parse sebagai waktu lokal.
+  qris_reissue_count INTEGER NOT NULL DEFAULT 0, -- migrasi 0024; batas MAX_QRIS_REISSUES = 3
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -262,6 +296,7 @@ CREATE TABLE store_settings (
 | POST | /api/orders | Verifikasi signed quote, buat pesanan idempotent, reservasi stok atomik | - |
 | GET | /api/orders/:code | Cek status pesanan via code | - |
 | GET | /api/payments/qris/:code/image | Render PNG QRIS dinamis untuk invoice aktif | code order |
+| POST | /api/payments/qris/:code/reissue | Terbitkan QRIS baru untuk order yang masih hidup tetapi QR-nya sudah kedaluwarsa. Hanya boleh saat invoice lama SUDAH mati — syarat itulah yang mencegah pemegang kode order lain membatalkan QR yang sedang dipakai. Maks 3x/order, rate limit 5/menit/IP | code order |
 | POST | /api/webhook/dana | Terima notifikasi QRIS Hook, dedup, cocokkan nominal, lunasi order | X-Webhook-Secret |
 | POST | /api/proof/upload | Upload bukti ke R2, return URL privat | same-origin |
 | GET | /api/admin/bukti/:key | Preview/download bukti | admin |
