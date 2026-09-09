@@ -18,6 +18,18 @@ const readDelivery = (): string => {
     .map((f) => fs.readFileSync(path.join(dir, f), "utf8"))
     .join("\n");
 };
+// Refactor 2026-09-10: jalur atomik Telegram (varian + cart) pindah ke
+// handlers/invoice.ts & handlers/cart.ts. Gabungkan route + handlers agar
+// jumlah pemanggilan createChannelOrderAtomic dinilai dari sumbernya.
+const readWebhook = (): string => {
+  const routeSrc = read("src/app/api/telegram/webhook/route.ts");
+  const dir = path.join(process.cwd(), "src/lib/telegram/handlers");
+  const handlers = fs.readdirSync(dir)
+    .filter((f) => f.endsWith(".ts"))
+    .map((f) => fs.readFileSync(path.join(dir, f), "utf8"))
+    .join("\n");
+  return routeSrc + "\n" + handlers;
+};
 
 describe("fulfillment per item (no items[0] shortcut)", () => {
   it("migrasi 0015 + schema mendefinisikan fulfillment_items per (order, item)", () => {
@@ -84,7 +96,7 @@ describe("reservasi unique per baris", () => {
   });
 
   it("checkout Telegram (varian + cart) memakai jalur atomik bersama", () => {
-    const route = read("src/app/api/telegram/webhook/route.ts");
+    const route = readWebhook();
     // Tidak boleh ada lagi INSERT order manual di route: itu jalur ketiga yang
     // menyimpang dari Web dan WhatsApp.
     expect(route).not.toContain("INSERT INTO orders");

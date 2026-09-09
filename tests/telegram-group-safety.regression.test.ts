@@ -64,7 +64,18 @@ describe("private-only recipient resolution (mock identitas dummy)", () => {
 });
 
 describe("webhook grup: redirect + ownership guard", () => {
-  const route = () => read("src/app/api/telegram/webhook/route.ts");
+  // Refactor 2026-09-10: handler webhook Telegram dipecah ke handlers/*.
+  // Gabungkan route + handlers agar guard ownerBound (kini di callback.ts) dan
+  // cek kepemilikan pembatalan (orders.ts) tetap terverifikasi dari sumbernya.
+  const route = () => {
+    const routeSrc = read("src/app/api/telegram/webhook/route.ts");
+    const dir = path.join(process.cwd(), "src/lib/telegram/handlers");
+    const handlers = fs.readdirSync(dir)
+      .filter((f) => f.endsWith(".ts"))
+      .map((f) => fs.readFileSync(path.join(dir, f), "utf8"))
+      .join("\n");
+    return routeSrc + "\n" + handlers;
+  };
 
   it("update grup tidak pernah menyimpan grup id sebagai identitas user", () => {
     const src = route();

@@ -380,8 +380,10 @@ describe("Feature Flags", () => {
   });
 
   it("runs payment-method preflight before a WhatsApp order is created", () => {
+    // Refactor PURE MOVE: handlePay (preflight + create order) pindah ke handler pembayaran;
+    // urutan preflight-sebelum-create tetap dipertahankan identik.
     const route = fs.readFileSync(
-      path.join(process.cwd(), "src/app/api/whatsapp/webhook/route.ts"),
+      path.join(process.cwd(), "src/lib/whatsapp/handlers/payment.ts"),
       "utf8",
     );
     const preflightAt = route.indexOf("preflightWhatsAppPayment(queryAll, method)");
@@ -731,8 +733,14 @@ describe("Outbound Baileys Reply with inboxId (P0.1)", () => {
     expect(route.slice(adminCommandAt, productSearchAt)).toContain("admin_command_ignored");
     expect(route).toContain("handleAdminDone");
     expect(route).toContain("isAdminMember(memberId)");
-    expect(route).toContain("fulfillment_status!='delivered'");
-    expect(route).toContain("belum berstatus lunas");
+    // Refactor PURE MOVE: guard status penyelesaian order pindah ke handler admin,
+    // sedangkan routing perintah `.d` (gate admin) tetap di route.ts.
+    const admin = fs.readFileSync(
+      path.join(process.cwd(), "src/lib/whatsapp/handlers/admin.ts"),
+      "utf8",
+    );
+    expect(admin).toContain("fulfillment_status!='delivered'");
+    expect(admin).toContain("belum berstatus lunas");
   });
 
   it("sends inboxId and gateway authentication when replying", async () => {

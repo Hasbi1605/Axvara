@@ -24,7 +24,17 @@ describe("R4 order-creation fencing and compensation", () => {
     // variant): pembatalan kompensasi hanya bila order masih pending &
     // unpaid. Buktikan sumbernya memuat fence.
     const fs = await import("node:fs");
-    const src = fs.readFileSync("src/app/api/telegram/webhook/route.ts", "utf8") as string;
+    const path = await import("node:path");
+    // Refactor 2026-09-10: fence kedua jalur (cart + variant) kini di
+    // handlers/cart.ts & handlers/invoice.ts. Gabungkan route + handlers agar
+    // kontrak fence tetap terverifikasi dari sumbernya.
+    const routeSrc = fs.readFileSync("src/app/api/telegram/webhook/route.ts", "utf8") as string;
+    const dir = path.join(process.cwd(), "src/lib/telegram/handlers");
+    const handlers = fs.readdirSync(dir)
+      .filter((f) => f.endsWith(".ts"))
+      .map((f) => fs.readFileSync(path.join(dir, f), "utf8"))
+      .join("\n");
+    const src = routeSrc + "\n" + handlers;
     const fences = src.match(/stillPending/g) ?? [];
     // Dua jalur (cart + variant) masing-masing punya fence sendiri.
     expect(fences.length).toBeGreaterThanOrEqual(4);

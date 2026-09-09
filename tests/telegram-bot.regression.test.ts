@@ -22,6 +22,19 @@ import fs from "node:fs";
 import path from "node:path";
 
 const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), "utf8");
+// Refactor 2026-09-10: implementasi handler webhook Telegram dipecah ke
+// src/lib/telegram/handlers/* (route.ts kini hanya validasi + routing).
+// Gabungkan route + seluruh handler agar assertion menilai implementasi
+// SEBENARNYA (pola sama seperti readDelivery pada refactor deliver.ts).
+const readWebhook = (): string => {
+  const routeSrc = read("src/app/api/telegram/webhook/route.ts");
+  const dir = path.join(process.cwd(), "src/lib/telegram/handlers");
+  const handlers = fs.readdirSync(dir)
+    .filter((f) => f.endsWith(".ts"))
+    .map((f) => fs.readFileSync(path.join(dir, f), "utf8"))
+    .join("\n");
+  return routeSrc + "\n" + handlers;
+};
 
 describe("Telegram HTML escaping", () => {
   it("escapes all HTML special characters", () => {
@@ -236,7 +249,7 @@ describe("Telegram keyboards", () => {
   });
 
   it("wainput callback still resolves safely for legacy buttons in old chats", () => {
-    const route = read("src/app/api/telegram/webhook/route.ts");
+    const route = readWebhook();
     expect(route).toContain('case "wainput"');
     expect(route).toContain("whatsAppInputPromptMessage");
   });
@@ -439,7 +452,7 @@ describe("Telegram messages premium UX", () => {
 
 describe("Telegram order and payment flow wiring", () => {
   it("offers only dynamic QRIS and never creates Telegram bank/e-wallet orders", () => {
-    const route = read("src/app/api/telegram/webhook/route.ts");
+    const route = readWebhook();
     expect(route).toContain("createDanaQrisInvoice");
     expect(route).not.toContain("createManualTransferOrder");
     expect(route).not.toContain("getActivePaymentMethods");
@@ -447,7 +460,7 @@ describe("Telegram order and payment flow wiring", () => {
   });
 
   it("clamps bulk qty to the Telegram 100/order cap", () => {
-    const route = read("src/app/api/telegram/webhook/route.ts");
+    const route = readWebhook();
     const keyboards = read("src/lib/telegram/keyboards.ts");
     expect(keyboards).toContain("TELEGRAM_MAX_QTY = 100");
     expect(route).toContain("TELEGRAM_MAX_QTY");
@@ -455,7 +468,7 @@ describe("Telegram order and payment flow wiring", () => {
   });
 
   it("notifies the admin group when a Telegram order is created", () => {
-    const route = read("src/app/api/telegram/webhook/route.ts");
+    const route = readWebhook();
     expect(route).toContain("notifyTelegramOrderCreated(orderCode)");
   });
 
@@ -560,7 +573,7 @@ describe("Telegram Fase 1: navigasi & marketing", () => {
   });
 
   it("webhook routes reply-menu labels and new commands", () => {
-    const route = read("src/app/api/telegram/webhook/route.ts");
+    const route = readWebhook();
     expect(route).toContain("MENU_LABEL_CATALOG");
     expect(route).toContain("MENU_LABEL_SEARCH");
     expect(route).toContain("MENU_LABEL_ORDERS");
@@ -656,7 +669,7 @@ describe("Telegram Fase 2: cart + reminder (tanpa review/promo)", () => {
     const menu = mainReplyMenu();
     const labels = menu.keyboard.flat().map((b) => b.text);
     expect(labels).toContain(MENU_LABEL_CART);
-    const route = read("src/app/api/telegram/webhook/route.ts");
+    const route = readWebhook();
     expect(route).toContain("MENU_LABEL_CART");
     expect(route).toContain('cmd === "/cart"');
     expect(route).toContain("handleShowCart");
@@ -715,7 +728,7 @@ describe("Telegram Fase 2: cart + reminder (tanpa review/promo)", () => {
   });
 
   it("cart checkout keeps one order + one QRIS invoice + per-mode fulfillment job", () => {
-    const route = read("src/app/api/telegram/webhook/route.ts");
+    const route = readWebhook();
     // Order dibuat lewat jalur atomik bersama (satu batch: guard stok +
     // reservasi inventory + INSERT order), bukan INSERT manual di route.
     expect(route).toContain("createChannelOrderAtomic({");

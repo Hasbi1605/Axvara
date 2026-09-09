@@ -19,6 +19,18 @@ const readDelivery = (): string => {
     .map((f) => fs.readFileSync(path.join(dir, f), "utf8"))
     .join("\n");
 };
+// Refactor 2026-09-10: handler webhook Telegram dipecah ke handlers/*
+// (variant_snapshot & kompensasi kini di handlers/invoice.ts). Gabungkan
+// route + handlers agar snapshot/kompensasi terverifikasi dari sumbernya.
+const readTelegramWebhook = (): string => {
+  const routeSrc = read("src/app/api/telegram/webhook/route.ts");
+  const dir = path.join(process.cwd(), "src/lib/telegram/handlers");
+  const handlers = fs.readdirSync(dir)
+    .filter((f) => f.endsWith(".ts"))
+    .map((f) => fs.readFileSync(path.join(dir, f), "utf8"))
+    .join("\n");
+  return routeSrc + "\n" + handlers;
+};
 
 type SqliteStatement = {
   all: () => unknown[];
@@ -451,9 +463,12 @@ describe("Variant stock expiry lifecycle", () => {
   });
 
   it("does not reuse an order after the member changes selected variant", () => {
-    const webhook = read("src/app/api/whatsapp/webhook/route.ts");
-    expect(webhook).toContain("session.selected_variant_id !== variantId");
-    expect(webhook).toContain("AND o.variant_id=?");
+    // Refactor PURE MOVE: guard reset varian pindah ke handler katalog,
+    // sedangkan JOIN idempotensi order pindah ke handler pembayaran.
+    const catalog = read("src/lib/whatsapp/handlers/catalog.ts");
+    const payment = read("src/lib/whatsapp/handlers/payment.ts");
+    expect(catalog).toContain("session.selected_variant_id !== variantId");
+    expect(payment).toContain("AND o.variant_id=?");
   });
 
   it("reuses an existing DANA ledger before allocating another unique amount", () => {
@@ -492,7 +507,7 @@ describe("Variant stock expiry lifecycle", () => {
   });
 
   it("pins Telegram variant fulfillment to an order snapshot and compensates partial invoice setup", () => {
-    const telegram = read("src/app/api/telegram/webhook/route.ts");
+    const telegram = readTelegramWebhook();
     const delivery = readDelivery();
     expect(telegram).toContain("variant_snapshot");
     expect(telegram).toContain("product_name: productName");
@@ -502,10 +517,11 @@ describe("Variant stock expiry lifecycle", () => {
 
   it("uses the persisted order snapshot for WhatsApp payment copy", () => {
     const commerce = read("src/lib/commerce.ts");
-    const webhook = read("src/app/api/whatsapp/webhook/route.ts");
+    // Refactor PURE MOVE: copy pembayaran WhatsApp (sendPaymentInfo) pindah ke handler pembayaran.
+    const payment = read("src/lib/whatsapp/handlers/payment.ts");
     expect(commerce).toContain("product_name: input.productName");
-    expect(webhook).toContain("parsePaymentDisplaySnapshot");
-    expect(webhook).toContain("SELECT items, variant_snapshot FROM orders WHERE code=?");
+    expect(payment).toContain("parsePaymentDisplaySnapshot");
+    expect(payment).toContain("SELECT items, variant_snapshot FROM orders WHERE code=?");
   });
 
   it("fails closed when a shared variant has no encrypted delivery secret", () => {

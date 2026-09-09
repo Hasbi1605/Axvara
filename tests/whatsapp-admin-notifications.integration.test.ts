@@ -153,7 +153,8 @@ describe("WhatsApp orders notify the Telegram admin group", () => {
   });
 
   it("wires the WhatsApp webhook, DANA webhook, and proof approval to the admin group", async () => {
-    const wa = await import("node:fs").then((fs) => fs.readFileSync("src/app/api/whatsapp/webhook/route.ts", "utf8"));
+    // Refactor PURE MOVE: notif order-baru WA dipindah ke handler pembayaran WhatsApp.
+    const wa = await import("node:fs").then((fs) => fs.readFileSync("src/lib/whatsapp/handlers/payment.ts", "utf8"));
     expect(wa).toContain("notifyWhatsAppOrderCreated");
     const dana = await import("node:fs").then((fs) => fs.readFileSync("src/app/api/webhook/dana/route.ts", "utf8"));
     expect(dana).toContain("notifyWhatsAppPaidAdmin");

@@ -95,8 +95,12 @@ describe("legacy QRIS rails removed", () => {
     const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), "utf8");
     for (const file of [
       "src/app/api/orders/route.ts",
-      "src/app/api/telegram/webhook/route.ts",
-      "src/app/api/whatsapp/webhook/route.ts",
+      // Refactor 2026-09-10: penerbitan DANA QRIS Telegram dipindah dari
+      // route.ts ke handler invoice (varian tunggal) dan cart-invoice (checkout gabungan).
+      "src/lib/telegram/handlers/invoice.ts",
+      "src/lib/telegram/handlers/cart-invoice.ts",
+      // Refactor: jalur DANA QRIS WhatsApp dipindah dari route.ts ke handler pembayaran.
+      "src/lib/whatsapp/handlers/payment.ts",
     ]) {
       expect(read(file)).toContain("createDanaQrisInvoice");
       expect(read(file)).not.toMatch(/getPaymentProvider|KLIKQRIS/);

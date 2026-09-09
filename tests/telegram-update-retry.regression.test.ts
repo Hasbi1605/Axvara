@@ -94,7 +94,18 @@ describe("klasifikasi status update (reproduksi bug #6)", () => {
 });
 
 describe("route memakai claim/reclaim atomik", () => {
-  const src = () => read("src/app/api/telegram/webhook/route.ts");
+  // Refactor 2026-09-10: generateOrderCode (idempotency) kini di handlers/
+  // invoice.ts & cart.ts; logika claim/reclaim tetap di route.ts. Gabungkan
+  // agar assertion menilai sumber sebenarnya.
+  const src = () => {
+    const routeSrc = read("src/app/api/telegram/webhook/route.ts");
+    const dir = path.join(process.cwd(), "src/lib/telegram/handlers");
+    const handlers = fs.readdirSync(dir)
+      .filter((f) => f.endsWith(".ts"))
+      .map((f) => fs.readFileSync(path.join(dir, f), "utf8"))
+      .join("\n");
+    return routeSrc + "\n" + handlers;
+  };
   it("membedakan done, processing aktif, gagal, dan lease kedaluwarsa", () => {
     const s = src();
     expect(s).toContain('status === "done"');
