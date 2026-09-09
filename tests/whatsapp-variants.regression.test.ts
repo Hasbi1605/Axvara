@@ -621,6 +621,43 @@ describe("SSRF Prevention and Media Magic Bytes (P0.5)", () => {
     expect(isPrivateIp("8.8.8.8")).toBe(false);
   });
 
+  it("memblokir metadata link-local dalam SEMUA notasi IPv4-mapped IPv6", () => {
+    // Celah nyata: daftar blokir lama mengenumerasi prefix string
+    // ("::ffff:127.", "::ffff:10.", "::ffff:192.168.", "::ffff:172.x.") dan
+    // TIDAK memuat 169.254 — sehingga endpoint metadata cloud lolos begitu
+    // ditulis sebagai IPv4-mapped. Bentuk panjang juga tidak tercakup.
+    // Sekarang tail dotted-quad dinormalisasi lalu diuji per oktet.
+    for (const address of [
+      "::ffff:169.254.169.254",
+      "[::ffff:169.254.169.254]",
+      "::FFFF:169.254.169.254",
+      "0:0:0:0:0:ffff:169.254.169.254",
+      "::169.254.169.254",
+      "::ffff:10.1.2.3",
+      "::ffff:192.168.0.1",
+      "::ffff:172.20.0.1",
+      "::ffff:0.0.0.0",
+    ]) {
+      expect(isPrivateIp(address), address).toBe(true);
+    }
+    // IPv4-mapped ke alamat publik tetap boleh — normalisasi tidak boleh
+    // memblokir semua yang berbentuk mapped.
+    expect(isPrivateIp("::ffff:8.8.8.8")).toBe(false);
+  });
+
+  it("memblokir rentang privat tambahan yang sebelumnya terlewat", () => {
+    expect(isPrivateIp("100.64.0.1")).toBe(true); // CGNAT 100.64.0.0/10
+    expect(isPrivateIp("100.127.255.254")).toBe(true);
+    expect(isPrivateIp("224.0.0.1")).toBe(true); // multicast
+    expect(isPrivateIp("255.255.255.255")).toBe(true); // broadcast
+    expect(isPrivateIp("0.0.0.0")).toBe(true);
+    // Batas rentang: 100.63 dan 100.128 BUKAN CGNAT.
+    expect(isPrivateIp("100.63.0.1")).toBe(false);
+    expect(isPrivateIp("100.128.0.1")).toBe(false);
+    // Oktet malformed diperlakukan tidak aman (fail closed).
+    expect(isPrivateIp("999.1.1.1")).toBe(true);
+  });
+
   it("validates magic bytes for JPG, PNG, WebP", () => {
     const jpgBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
     expect(checkImageMagicBytes(jpgBytes, "image/jpeg")).toBe(true);

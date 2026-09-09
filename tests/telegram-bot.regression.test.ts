@@ -713,10 +713,12 @@ describe("Telegram Fase 2: cart + reminder (tanpa review/promo)", () => {
 
   it("cart checkout keeps one order + one QRIS invoice + per-mode fulfillment job", () => {
     const route = read("src/app/api/telegram/webhook/route.ts");
-    expect(route).toContain("INSERT INTO orders (code, customer_name");
+    // Order dibuat lewat jalur atomik bersama (satu batch: guard stok +
+    // reservasi inventory + INSERT order), bukan INSERT manual di route.
+    expect(route).toContain("createChannelOrderAtomic({");
     expect(route).toContain("createDanaQrisInvoice(orderCode, subtotal)");
     expect(route).toContain("clearCart(String(from.id))");
-    expect(route).toContain("variant_snapshot");
+    expect(route).toContain("variantSnapshot");
     // Satu job per order (UNIQUE order_code): mode dominan, bukan per item.
     expect(route).toContain("cartFulfillmentMode");
     expect(route).not.toContain("for (const line of lines) {\n      const hasInventory");

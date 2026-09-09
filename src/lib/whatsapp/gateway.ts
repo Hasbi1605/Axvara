@@ -3,6 +3,7 @@
 // outbound calls, and SSRF-safe streaming media download.
 
 import { NextRequest } from "next/server";
+import { constantTimeEqual } from "@/lib/security";
 
 export const MAX_BODY_SIZE = 64_000; // 64 KB
 export const MAX_MEDIA_SIZE = 5 * 1024 * 1024; // 5 MB
@@ -46,17 +47,14 @@ export type SendImageParams = {
 
 // ---- Timing-Safe Comparison ----
 
+/**
+ * Nama publik dipertahankan (dipakai authenticateWebhook + test), tetapi
+ * implementasinya kini satu-satunya di src/lib/security.ts. Versi lama
+ * `return false` lebih awal saat panjang berbeda sehingga membocorkan
+ * panjang secret; helper kanonis selalu memindai sepanjang input terpanjang.
+ */
 export function timingSafeEqual(a: string, b: string): boolean {
-  if (typeof a !== "string" || typeof b !== "string") return false;
-  const enc = new TextEncoder();
-  const aBuf = enc.encode(a);
-  const bBuf = enc.encode(b);
-  if (aBuf.byteLength !== bBuf.byteLength) return false;
-  let c = 0;
-  for (let i = 0; i < aBuf.byteLength; i++) {
-    c |= aBuf[i] ^ bBuf[i];
-  }
-  return c === 0;
+  return constantTimeEqual(a, b);
 }
 
 // ---- Webhook Authentication ----
@@ -240,25 +238,32 @@ export function isPrivateIp(hostname: string): boolean {
   if (address === "localhost" || address.endsWith(".localhost") || address.endsWith(".local") || address === "::" || address === "::1") {
     return true;
   }
-  if (address.includes(":") && (
+  // IPv4-mapped/compat IPv6 (`::ffff:169.254.169.254`, `::169.254.169.254`,
+  // and the `0:0:...:ffff:a.b.c.d` long form) must be normalized to their
+  // dotted-quad tail BEFORE the octet test. Enumerating each private range
+  // as an `::ffff:`-prefixed string literal is what let link-local metadata
+  // slip through: the list omitted 169.254 and could not cover long forms.
+  const mappedTail = /^(?:0*:)*(?:0*:)?(?:ffff(?::0{1,4})?:)?((?:\d{1,3}\.){3}\d{1,3})$/.exec(address);
+  const candidate = mappedTail ? mappedTail[1] : address;
+  if (!mappedTail && address.includes(":") && (
     address.startsWith("fc")
     || address.startsWith("fd")
     || /^fe[89ab]/.test(address)
-    || address.startsWith("::ffff:127.")
-    || address.startsWith("::ffff:10.")
-    || address.startsWith("::ffff:192.168.")
-    || /^::ffff:172\.(1[6-9]|2\d|3[01])\./.test(address)
   )) return true;
   // Check IPv4 octets
-  const ipv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(address);
+  const ipv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(candidate);
   if (ipv4) {
-    const [, a, b] = ipv4.map(Number);
+    const octets = ipv4.slice(1).map(Number);
+    if (octets.some((part) => part > 255)) return true; // malformed → treat as unsafe
+    const [a, b] = octets;
     if (a === 127) return true; // 127.0.0.0/8
     if (a === 10) return true; // 10.0.0.0/8
     if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12
     if (a === 192 && b === 168) return true; // 192.168.0.0/16
     if (a === 169 && b === 254) return true; // 169.254.0.0/16 link-local
     if (a === 0) return true; // 0.0.0.0/8
+    if (a === 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10 CGNAT
+    if (a >= 224) return true; // multicast + reserved
   }
   return false;
 }

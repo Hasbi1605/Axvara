@@ -3,7 +3,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { queryFirst, queryAll, execRun, isD1Mode, transitionPendingOrder } from "@/lib/db";
+import { queryFirst, queryAll, execRun, isD1Mode, transitionPendingOrder, StockReservationError } from "@/lib/db";
 import { sendMessage, sendPhoto, safeEditOrSend, answerCallbackQuery, sendChatAction, showLoadingBar } from "@/lib/telegram/api";
 import {
   homeKeyboard, catalogFlatKeyboard, categoriesKeyboard, productsKeyboard,
@@ -24,17 +24,19 @@ import {
   whatsAppInputPromptMessage, chooseVariantMessage, chooseQtyMessage,
   confirmVariantBuyMessage, searchPromptMessage, searchResultsMessage,
   cartMessage, cartAddedMessage, cartCheckoutSummaryMessage,
+  qrisRenewRejectedMessage,
   type TelegramBestseller, type TelegramOrderRow,
 } from "@/lib/telegram/messages";
 import { getProductDetail, getActiveVariant, formatDuration, formatWarranty, type VariantSummary } from "@/lib/catalog";
 import { addToCart, setCartLineQty, removeFromCart, clearCart, getCartSummary, type CartLine } from "@/lib/telegram/cart";
 import { isTransientWebhookError, isCriticalSendResult } from "@/lib/telegram/webhook-errors";
-import { generateOrderCode } from "@/lib/security";
-import { createDanaQrisInvoice, isDanaQrisConfigured } from "@/lib/payments/dana-qris";
-import { reserveInventory, releaseInventoryForOrder, countInventory } from "@/lib/fulfillment/inventory";
+import { generateOrderCode, constantTimeEqual } from "@/lib/security";
+import { createDanaQrisInvoice, isDanaQrisConfigured, reissueDanaQrisInvoice } from "@/lib/payments/dana-qris";
+import { releaseInventoryForOrder, countInventory } from "@/lib/fulfillment/inventory";
 import { createFulfillmentJob } from "@/lib/fulfillment/deliver";
 import { notifyTelegramOrderCreated } from "@/lib/telegram/order-notifications";
 import { markInvoicePending, markInvoiceSent } from "@/lib/telegram/invoice-retry";
+import { createChannelOrderAtomic } from "@/lib/commerce";
 
 export const runtime = "edge";
 
@@ -70,7 +72,9 @@ export async function POST(request: NextRequest) {
   if (!expectedSecret) return NextResponse.json({ error: "bot_not_configured" }, { status: 503 });
 
   const secretHeader = request.headers.get("x-telegram-bot-api-secret-token");
-  if (secretHeader !== expectedSecret) {
+  // constantTimeEqual (bukan `!==`): tiga webhook lain sudah constant-time,
+  // Telegram tertinggal. Helper juga tidak membocorkan panjang secret.
+  if (!secretHeader || !constantTimeEqual(secretHeader, expectedSecret)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
@@ -455,9 +459,9 @@ async function handleCallback(data: string, chatId: number, messageId: number, f
   // batal, refresh, status, wainput) hanya boleh dieksekusi pemilik order.
   // from.id adalah identitas penekan tombol terverifikasi Telegram — chat_id
   // grup tidak boleh dipakai untuk mengambil alih order orang lain.
-  const ownerBound = new Set(["pay", "pm", "cadd", "cinc", "cdec", "crm", "ccheckout", "cancel", "refresh", "order", "wainput"]);
+  const ownerBound = new Set(["pay", "pm", "cadd", "cinc", "cdec", "crm", "ccheckout", "cancel", "refresh", "order", "wainput", "qrenew"]);
   if (ownerBound.has(action)) {
-    const targetCode = action === "cancel" || action === "refresh" || action === "order" || action === "wainput"
+    const targetCode = action === "cancel" || action === "refresh" || action === "order" || action === "wainput" || action === "qrenew"
       ? String(params[0] || "").toUpperCase()
       : null;
     if (targetCode) {
@@ -562,6 +566,10 @@ async function handleCallback(data: string, chatId: number, messageId: number, f
 
     case "cancel":
       await handleOrderCancel(chatId, messageId, params[0], from);
+      break;
+
+    case "qrenew":
+      await handleQrisRenew(chatId, params[0]);
       break;
 
     case "myorders":
@@ -884,66 +892,49 @@ async function createAndSendCartInvoice(
       }
     }
 
-    // Reservasi inventory unik per baris (qty selalu 1 untuk unique).
-    // Satu baris = satu secret: reserveInventoryForLines mengikat SATU unit
-    // per baris ke order_code yang sama (issue #4), dan deliver.ts memilih
-    // unit yang cocok per varian saat pengiriman tiap item.
-    {
-      const uniqueLines = lines.filter((line) => line.fulfillmentMode === "unique");
-      if (uniqueLines.length > 0) {
-        const { reserveInventoryForLines } = await import("@/lib/fulfillment/inventory");
-        const reserved = await reserveInventoryForLines(
-          uniqueLines.map((line) => ({ productId: line.productId, variantId: line.variantId })),
-          orderCode,
-        );
-        if (reserved === null) {
-          for (const code of reservedInventory) await releaseInventoryForOrder(code);
-          await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
-          return;
-        }
-        reservedInventory.push(orderCode);
+    // Reservasi inventory unik + potong stok per baris + INSERT order kini
+    // SATU batch atomik. Sebelumnya ini tiga tahap terpisah dengan kompensasi
+    // manual per baris (loop `decremented` mengembalikan stok satu per satu):
+    // benar untuk error yang dilempar, tetapi bila isolate dihentikan di
+    // tengah loop, sebagian stok terpotong permanen tanpa order.
+    const uniqueLineCount = lines.filter((line) => line.fulfillmentMode === "unique").length;
+    try {
+      await createChannelOrderAtomic({
+        orderCode,
+        lines: lines.map((line) => ({
+          productId: line.productId,
+          variantId: line.variantId,
+          qty: line.qty,
+          fulfillmentMode: line.fulfillmentMode,
+          stock: Number(line.stock),
+        })),
+        items,
+        variantSnapshot,
+        subtotal,
+        primaryVariantId: lines[0].variantId,
+        customerName: from.first_name,
+        salesChannel: "telegram",
+        telegramChatId: String(chatId),
+        telegramUserId: String(from.id),
+        paymentMethod: "qris",
+        paymentAccount: "DANA Business",
+        fulfillmentStatus: lines.every((line) => line.fulfillmentMode === "unique")
+          ? "reserved"
+          : "not_required",
+      });
+    } catch (reservationError) {
+      if (reservationError instanceof StockReservationError) {
+        await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
+        return;
       }
+      throw reservationError;
     }
-
-    // Potong stok finite per baris; gagal satu = kembalikan semua.
-    if (isD1Mode()) {
-      for (const line of lines) {
-        if (line.stock === -1) continue;
-        const stockResult = await execRun(
-          `UPDATE product_variants SET stock = stock - ?, updated_at = datetime('now')
-           WHERE id=? AND is_active=1 AND stock >= ?`,
-          line.qty, line.variantId, line.qty,
-        );
-        if (!stockResult.changes) {
-          for (const done of decremented) {
-            await execRun(
-              `UPDATE product_variants SET stock=stock+?, updated_at=datetime('now')
-               WHERE id=? AND stock!=-1`,
-              done.qty, done.variantId,
-            );
-          }
-          for (const code of reservedInventory) await releaseInventoryForOrder(code);
-          await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
-          return;
-        }
-        decremented.push({ variantId: line.variantId, qty: line.qty });
-      }
-    }
-
-    await execRun(
-      `INSERT INTO orders (code, customer_name, customer_wa, customer_email, items, subtotal,
-         payment_method, payment_account, proof_url, status, sales_channel,
-         telegram_chat_id, telegram_user_id, payment_status, fulfillment_status,
-         variant_id, variant_snapshot, expires_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      orderCode, from.first_name, "", null, JSON.stringify(items),
-      subtotal, "qris", "DANA Business",
-      null, "pending", "telegram",
-      String(chatId), String(from.id), "pending",
-      lines.every((line) => line.fulfillmentMode === "unique") ? "reserved" : "not_required",
-      lines[0].variantId, variantSnapshot, new Date(Date.now() + 15 * 60_000).toISOString(),
-    );
     orderInserted = true;
+    if (uniqueLineCount > 0) reservedInventory.push(orderCode);
+    for (const line of lines) {
+      if (Number(line.stock) === -1) continue;
+      decremented.push({ variantId: line.variantId, qty: line.qty });
+    }
 
     const invoiceResult = await createDanaQrisInvoice(orderCode, subtotal);
 
@@ -1659,46 +1650,56 @@ async function createAndSendVariantInvoice(
       }
     }
 
-    // Unique fulfillment is 1 secret per order — bulk qty routes to manual flow instead.
-    if (uniqueFulfillment) {
-      inventoryId = await reserveInventory(productId, orderCode, variant.id);
-      if (inventoryId === null) {
+    // Reservasi stok, reservasi inventory unik, dan INSERT order dijalankan
+    // sebagai SATU batch atomik (createChannelOrderAtomic). Sebelumnya ketiga
+    // langkah ini adalah statement terpisah dengan rollback manual di catch:
+    // aman untuk error yang dilempar, tetapi bila isolate dihentikan di tengah
+    // (batas CPU/eviction) stok terpotong tanpa order — dan tidak ada yang
+    // memulihkannya. Jalur Web dan WhatsApp sudah atomik sejak awal.
+    try {
+      await createChannelOrderAtomic({
+        orderCode,
+        lines: [{
+          productId,
+          variantId: variant.id,
+          qty,
+          fulfillmentMode,
+          stock: Number(variant.stock),
+        }],
+        items,
+        variantSnapshot,
+        subtotal,
+        primaryVariantId: variant.id,
+        customerName: from.first_name,
+        salesChannel: "telegram",
+        telegramChatId: String(chatId),
+        telegramUserId: String(from.id),
+        paymentMethod: "qris",
+        paymentAccount: "DANA Business",
+        fulfillmentStatus: uniqueFulfillment ? "reserved" : "not_required",
+      });
+    } catch (reservationError) {
+      // Guard gagal = stok/inventory habis saat commit. Batch dibatalkan
+      // seluruhnya, jadi tidak ada yang perlu di-rollback manual.
+      if (reservationError instanceof StockReservationError) {
         await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
         return;
       }
+      throw reservationError;
     }
-
-    // Decrement variant stock by qty (bulk-aware)
-    if (isD1Mode() && variant.stock !== -1) {
-      const stockResult = await execRun(
-        `UPDATE product_variants SET stock = stock - ?, updated_at = datetime('now')
-         WHERE id=? AND is_active=1 AND stock >= ?`,
-        qty, variant.id, qty,
-      );
-      if (!stockResult.changes) {
-        if (inventoryId) await releaseInventoryForOrder(orderCode);
-        inventoryId = null;
-        await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
-        return;
-      }
-      finiteStockReserved = true;
-    }
-
-    // QRIS invoice expires 15 min; created via DANA ledger right after insert.
-    await execRun(
-      `INSERT INTO orders (code, customer_name, customer_wa, customer_email, items, subtotal,
-         payment_method, payment_account, proof_url, status, sales_channel,
-         telegram_chat_id, telegram_user_id, payment_status, fulfillment_status,
-         variant_id, variant_snapshot, expires_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      orderCode, from.first_name, "", null, JSON.stringify(items),
-      subtotal, "qris", "DANA Business",
-      null, "pending", "telegram",
-      String(chatId), String(from.id), "pending",
-      uniqueFulfillment ? "reserved" : "not_required",
-      variant.id, variantSnapshot, new Date(Date.now() + 15 * 60_000).toISOString(),
-    );
     orderInserted = true;
+    finiteStockReserved = Number(variant.stock) !== -1;
+    if (uniqueFulfillment) {
+      // Inventory direservasi di dalam batch; id-nya dibaca kembali untuk
+      // createFulfillmentJob (jalur cart memang sudah memakai null + pemilihan
+      // per varian di deliver.ts).
+      const reservedUnit = await queryFirst(
+        `SELECT id FROM fulfillment_inventory
+         WHERE order_code=? AND status='reserved' ORDER BY id ASC`,
+        orderCode,
+      ).catch(() => null);
+      inventoryId = reservedUnit ? Number(reservedUnit.id) : null;
+    }
 
     const invoiceResult = await createDanaQrisInvoice(orderCode, subtotal);
 
@@ -2037,6 +2038,82 @@ async function handleOrderRefresh(chatId: number, messageId: number, orderCode: 
       ? orderStatusKeyboard(orderCode)
       : undefined,
   });
+}
+
+/**
+ * Kirim QRIS BARU untuk order yang masih hidup tetapi QR-nya sudah mati.
+ *
+ * Kepemilikan sudah diverifikasi di handleCallback (action "qrenew" masuk
+ * ownerBound), jadi di sini cukup urusan penerbitan + pengiriman foto.
+ * Reissue bersifat idempoten dari sisi pembeli: bila QR lama masih berlaku,
+ * `reissueDanaQrisInvoice` menolak dengan `invoice_still_active` dan pembeli
+ * diberi tahu untuk memakai QR yang sedang tampil.
+ */
+async function handleQrisRenew(chatId: number, rawOrderCode: string) {
+  const orderCode = String(rawOrderCode || "").toUpperCase();
+  if (!orderCode) return;
+
+  const order = await queryFirst(
+    `SELECT items FROM orders WHERE code=? AND sales_channel='telegram'`,
+    orderCode,
+  ).catch(() => null);
+  if (!order) {
+    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+    return;
+  }
+
+  let result: Awaited<ReturnType<typeof reissueDanaQrisInvoice>>;
+  try {
+    result = await reissueDanaQrisInvoice(orderCode);
+  } catch (error) {
+    console.error("Telegram QRIS renew failed:", error instanceof Error ? error.message : "unknown");
+    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+    return;
+  }
+
+  if (!result.ok) {
+    await sendMessage({
+      chat_id: chatId,
+      text: qrisRenewRejectedMessage(result.reason),
+      parse_mode: "HTML",
+    });
+    return;
+  }
+
+  // Nama produk dibaca ulang dari snapshot order, bukan dari memori request
+  // lama, agar caption selalu cocok dengan apa yang benar-benar dipesan.
+  let productLabel = "Pesanan";
+  try {
+    const items = JSON.parse(String(order.items ?? "[]")) as { name?: string; qty?: number }[];
+    if (Array.isArray(items) && items.length === 1) {
+      productLabel = String(items[0]?.name ?? "Pesanan");
+    } else if (Array.isArray(items) && items.length > 1) {
+      productLabel = `Keranjang (${items.length} item): ${items
+        .map((item) => `${String(item.name ?? "Item")} ×${Number(item.qty ?? 1)}`)
+        .join(", ")}`;
+    }
+  } catch { /* label fallback sudah aman */ }
+
+  const photo = await sendPhoto({
+    chat_id: chatId,
+    photo: result.invoice.qrisUrl,
+    caption: invoiceMessage({
+      orderCode,
+      productName: productLabel,
+      payableAmount: result.invoice.payableAmount,
+      expiresAt: result.invoice.expiresAt,
+      paymentMethod: "qris",
+    }),
+    parse_mode: "HTML",
+    reply_markup: qrisInvoiceKeyboard(orderCode),
+  });
+  if (isCriticalSendResult(photo, "transactional")) {
+    // Ledger sudah diperbarui; foto gagal = lempar agar Telegram redelivery
+    // dan cron menyapu invoice pending lewat jalur retry yang sudah ada.
+    await markInvoicePending(orderCode);
+    throw new Error(`telegram_invoice_send_failed:${photo.description || "unknown"}`);
+  }
+  await markInvoiceSent(orderCode);
 }
 
 async function handleOrderCancel(chatId: number, messageId: number, orderCode: string, from: { id: number }) {

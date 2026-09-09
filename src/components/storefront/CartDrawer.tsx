@@ -3,7 +3,8 @@ import { useCart } from "@/stores/cart";
 import { formatRupiah } from "@/lib/utils";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useCallback, useRef } from "react";
+import { useModalA11y } from "@/hooks/useModalA11y";
 // TRY: iOS glyph — rollback: cp /tmp/CartDrawer.lucide.bak src/components/storefront/CartDrawer.tsx
 
 export function CartDrawer() {
@@ -14,47 +15,16 @@ export function CartDrawer() {
   const totalQty = count();
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
+  // Identitas stabil: hook memakai onClose sebagai dependency effect, closure
+  // inline akan memasang/melepas listener tiap render.
+  const closeDrawer = useCallback(() => setDrawer(false), [setDrawer]);
 
-  useEffect(() => {
-    if (!drawerOpen || isAdmin) return;
-    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const focusTimer = window.setTimeout(() => closeRef.current?.focus(), 0);
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        setDrawer(false);
-        return;
-      }
-      if (event.key !== "Tab" || !panelRef.current) return;
-      const focusable = Array.from(panelRef.current.querySelectorAll<HTMLElement>(
-        'a[href],button:not([disabled]),input:not([disabled]),[tabindex]:not([tabindex="-1"])',
-      ));
-      if (focusable.length === 0) {
-        event.preventDefault();
-        panelRef.current.focus();
-        return;
-      }
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.clearTimeout(focusTimer);
-      document.removeEventListener("keydown", onKeyDown);
-      document.body.style.overflow = previousOverflow;
-      previousFocus?.focus();
-    };
-  }, [drawerOpen, isAdmin, setDrawer]);
+  useModalA11y({
+    active: drawerOpen && !isAdmin,
+    containerRef: panelRef,
+    onClose: closeDrawer,
+    initialFocusRef: closeRef,
+  });
 
   if (isAdmin) return null;
   if (!drawerOpen) return null;

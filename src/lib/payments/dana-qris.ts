@@ -3,6 +3,22 @@ import { getD1, queryAll, queryFirst } from "@/lib/db";
 export const DANA_QRIS_PROVIDER = "dana";
 export const DANA_QRIS_MODE = "dynamic-qris";
 export const DANA_QRIS_EXPIRY_MINUTES = 15;
+/**
+ * Masa hidup ORDER untuk pembayaran QRIS — sengaja BERBEDA dari
+ * DANA_QRIS_EXPIRY_MINUTES di atas.
+ *
+ * Dulu keduanya disamakan: pembuatan invoice menimpa `orders.expires_at`
+ * dengan expiry invoice 15 menit, sehingga saat QR mati order langsung
+ * kedaluwarsa, cron membatalkannya, dan stok dilepas. Akibatnya pembeli yang
+ * telat bayar wajib mengulang seluruh alur dan tidak pernah bisa memakai
+ * QRIS baru untuk order yang sama.
+ *
+ * 60 menit = 4 jendela QR 15 menit, selaras dengan MAX_QRIS_REISSUES.
+ * Ini juga batas atas lama stok tertahan oleh order yang belum dibayar.
+ */
+export const QRIS_ORDER_WINDOW_MINUTES = 60;
+/** Batas penerbitan ulang QRIS per order (3 reissue + 1 invoice asli). */
+export const MAX_QRIS_REISSUES = 3;
 export const DANA_QRIS_MAX_UNIQUE_CODE = 299;
 const MIN_AMOUNT = 1;
 const MAX_AMOUNT = 999_999_999;
@@ -204,6 +220,9 @@ export async function createDanaQrisInvoice(orderCode: string, requestedAmount: 
 
   const staticPayload = process.env.DANA_STATIC_QRIS!.trim();
   const expiresAt = new Date(Date.now() + DANA_QRIS_EXPIRY_MINUTES * 60_000).toISOString();
+  // Masa hidup ORDER sengaja lebih panjang dari masa hidup INVOICE supaya QR
+  // yang mati tidak ikut mematikan order dan melepas stok (lihat konstanta).
+  const orderExpiresAt = new Date(Date.now() + QRIS_ORDER_WINDOW_MINUTES * 60_000).toISOString();
   const qrisUrl = publicQrisUrl(orderCode);
   // Prefer unused amounts. Once the finite range is exhausted, reused
   // amounts remain payable but require an administrator's bank verification.
@@ -247,7 +266,7 @@ export async function createDanaQrisInvoice(orderCode: string, requestedAmount: 
            SET payment_method='qris', payment_account='DANA Business', payment_status='pending',
                expires_at=?, updated_at=datetime('now')
            WHERE code=? AND status='pending'`,
-        ).bind(expiresAt, orderCode),
+        ).bind(orderExpiresAt, orderCode),
         d1.prepare(`DELETE FROM operation_guards WHERE operation_id=?`).bind(guardId),
       ]);
       return { orderCode, requestedAmount, payableAmount, uniqueCode, qrisPayload, qrisUrl, expiresAt, isExisting: false };
@@ -264,6 +283,163 @@ export async function createDanaQrisInvoice(orderCode: string, requestedAmount: 
     }
   }
   throw new Error("dana_qris_unique_amount_unavailable");
+}
+
+/**
+ * True bila timestamp masih di masa depan. Memakai `parseDbTimeUtc` (bukan
+ * `Date.parse` langsung) agar baris lama berformat spasi "YYYY-MM-DD HH:MM:SS"
+ * dibaca sebagai UTC — `Date.parse` menafsirkannya sebagai waktu LOKAL, yang
+ * di WIB menggeser expiry 7 jam lebih awal. Nilai kosong dianggap masih
+ * berlaku (fail-safe: tidak menganggap sesuatu kedaluwarsa tanpa bukti).
+ */
+function isStillInFuture(value: unknown, now = Date.now()): boolean {
+  if (value === null || value === undefined || String(value).trim() === "") return true;
+  const parsed = parseDbTimeUtc(value);
+  return Number.isNaN(parsed) ? true : parsed > now;
+}
+
+export type QrisReissueResult =  | { ok: true; invoice: DanaQrisInvoice; remaining: number }
+  | { ok: false; reason: "order_not_reissuable" | "invoice_still_active" | "reissue_limit_reached" | "amount_unavailable" };
+
+/**
+ * Terbitkan QRIS BARU untuk order yang masih hidup.
+ *
+ * Kenapa perlu: `createDanaQrisInvoice` mengembalikan baris lama begitu
+ * `payment_transactions` ada (`isExisting: true`), dan `invoice-retry.ts` hanya
+ * mengirim ulang FOTO invoice yang sama. Jadi sebelum ini tidak ada satu pun
+ * jalur di mana pembeli bisa memperoleh QR yang masih berlaku setelah 15 menit.
+ *
+ * Aturan yang ditegakkan:
+ * 1. Order wajib masih `pending`, belum `paid`, dan belum melewati
+ *    `orders.expires_at` (jendela order 60 menit).
+ * 2. Invoice lama wajib SUDAH kedaluwarsa. Ini bukan sekadar kerapian: karena
+ *    endpoint reissue tidak butuh login (pembeli hanya memegang kode order),
+ *    syarat ini membuat pihak lain yang menebak kode TIDAK bisa membatalkan QR
+ *    yang sedang aktif dipakai pembeli.
+ * 3. Maksimal MAX_QRIS_REISSUES kali per order.
+ *
+ * `payment_transactions` punya UNIQUE(order_code), sehingga reissue meng-UPDATE
+ * baris yang sama di tempat. Konsekuensi yang disengaja: nominal LAMA tidak
+ * lagi cocok dengan invoice aktif mana pun, jadi pembayaran yang telat pada
+ * nominal lama akan jatuh ke `no_active_exact_amount` di webhook dan masuk
+ * rekonsiliasi manual — gagal-tertutup, bukan melunasi order yang salah.
+ */
+export async function reissueDanaQrisInvoice(orderCode: string): Promise<QrisReissueResult> {
+  if (!isDanaQrisConfigured()) throw new Error("dana_qris_not_configured");
+  const d1 = getD1();
+  if (!d1) throw new Error("dana_qris_requires_d1");
+
+  const row = await queryFirst(
+    `SELECT o.code, o.status, o.payment_status, o.expires_at AS order_expires_at,
+            o.qris_reissue_count,
+            pt.requested_amount, pt.payable_amount, pt.status AS tx_status,
+            pt.expires_at AS invoice_expires_at
+     FROM orders o
+     JOIN payment_transactions pt ON pt.order_code=o.code AND pt.provider='dana'
+     WHERE o.code=?`,
+    orderCode,
+  );
+  if (!row) return { ok: false, reason: "order_not_reissuable" };
+
+  const orderAlive = String(row.status) === "pending"
+    && ["unpaid", "pending"].includes(String(row.payment_status))
+    && String(row.tx_status) === "pending"
+    && isStillInFuture(row.order_expires_at);
+  if (!orderAlive) return { ok: false, reason: "order_not_reissuable" };
+
+  // Invoice yang masih berlaku tidak boleh diganti (lihat aturan 2 di atas).
+  if (isStillInFuture(row.invoice_expires_at)) return { ok: false, reason: "invoice_still_active" };
+
+  const usedReissues = Number(row.qris_reissue_count ?? 0);
+  if (usedReissues >= MAX_QRIS_REISSUES) return { ok: false, reason: "reissue_limit_reached" };
+
+  const requestedAmount = Number(row.requested_amount);
+  if (!Number.isSafeInteger(requestedAmount) || requestedAmount < MIN_AMOUNT) {
+    return { ok: false, reason: "order_not_reissuable" };
+  }
+
+  const staticPayload = process.env.DANA_STATIC_QRIS!.trim();
+  const previousAmount = Number(row.payable_amount);
+  const expiresAt = new Date(Date.now() + DANA_QRIS_EXPIRY_MINUTES * 60_000).toISOString();
+  const qrisUrl = publicQrisUrl(orderCode);
+
+  // Hindari nominal yang pernah dipakai order LAIN supaya webhook tidak
+  // menolaknya sebagai `amount_reused_requires_review`, dan hindari nominal
+  // yang baru saja dipakai order ini sendiri.
+  const history = await queryAll(
+    `SELECT DISTINCT payable_amount FROM payment_transactions
+     WHERE provider='dana' AND payable_amount BETWEEN ? AND ?`,
+    requestedAmount + 1, requestedAmount + DANA_QRIS_MAX_UNIQUE_CODE,
+  );
+  const used = new Set(history.map((historyRow) => Number(historyRow.payable_amount)));
+  const start = randomUniqueCode();
+  const codes = Array.from(
+    { length: DANA_QRIS_MAX_UNIQUE_CODE },
+    (_, index) => 1 + ((start - 1 + index) % DANA_QRIS_MAX_UNIQUE_CODE),
+  )
+    .filter((code) => requestedAmount + code !== previousAmount)
+    .sort((a, b) => Number(used.has(requestedAmount + a)) - Number(used.has(requestedAmount + b)));
+
+  for (let attempt = 0; attempt < Math.min(40, codes.length); attempt++) {
+    const uniqueCode = codes[attempt];
+    const payableAmount = requestedAmount + uniqueCode;
+    const qrisPayload = makeDynamicQris(staticPayload, payableAmount);
+    const guardId = `${orderCode}:dana-reissue:${usedReissues}`;
+    try {
+      await d1.batch([
+        // Fencing pada qris_reissue_count: dua permintaan reissue bersamaan
+        // hanya boleh menghasilkan SATU pemenang, kalau tidak QR yang tampil
+        // di layar pembeli bisa berbeda dari nominal yang tersimpan.
+        d1.prepare(
+          `INSERT INTO operation_guards (operation_id, valid)
+           SELECT ?, CASE WHEN EXISTS(
+             SELECT 1 FROM orders o
+             JOIN payment_transactions pt ON pt.order_code=o.code AND pt.provider='dana'
+             WHERE o.code=? AND o.status='pending' AND o.payment_status IN ('unpaid','pending')
+               AND o.qris_reissue_count=? AND pt.status='pending'
+           ) THEN 1 ELSE 0 END`,
+        ).bind(guardId, orderCode, usedReissues),
+        d1.prepare(
+          `UPDATE payment_transactions
+           SET payable_amount=?, unique_code=?, qris_payload=?, qris_url=?,
+               expires_at=?, last_error=NULL, updated_at=datetime('now')
+           WHERE order_code=? AND provider='dana' AND status='pending'`,
+        ).bind(payableAmount, uniqueCode, qrisPayload, qrisUrl, expiresAt, orderCode),
+        d1.prepare(
+          `UPDATE orders
+           SET qris_reissue_count=qris_reissue_count+1, updated_at=datetime('now')
+           WHERE code=? AND status='pending'`,
+        ).bind(orderCode),
+        d1.prepare(`DELETE FROM operation_guards WHERE operation_id=?`).bind(guardId),
+      ]);
+      return {
+        ok: true,
+        remaining: MAX_QRIS_REISSUES - (usedReissues + 1),
+        invoice: {
+          orderCode,
+          requestedAmount,
+          payableAmount,
+          uniqueCode,
+          qrisPayload,
+          qrisUrl,
+          expiresAt,
+          isExisting: false,
+        },
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      // Tabrakan pada index unique parsial payable_amount = nominal itu sedang
+      // dipakai invoice aktif order lain. Coba nominal berikutnya.
+      if (/UNIQUE|payment_transactions_active_dana_amount/i.test(message)) continue;
+      // Guard gagal = order sudah berubah (dibayar/dibatalkan) atau reissue
+      // lain menang. Tidak ada efek samping karena batch dibatalkan penuh.
+      if (/operation_guards|CHECK constraint/i.test(message)) {
+        return { ok: false, reason: "order_not_reissuable" };
+      }
+      throw error;
+    }
+  }
+  return { ok: false, reason: "amount_unavailable" };
 }
 
 function parseAmount(value: unknown): number | null {
@@ -303,15 +479,9 @@ export function parseDanaWebhook(body: unknown): DanaWebhookPayment | null {
   };
 }
 
-export function constantTimeEqual(left: string, right: string): boolean {
-  const encoder = new TextEncoder();
-  const a = encoder.encode(left);
-  const b = encoder.encode(right);
-  let diff = a.length ^ b.length;
-  const length = Math.max(a.length, b.length);
-  for (let index = 0; index < length; index++) diff |= (a[index] ?? 0) ^ (b[index] ?? 0);
-  return diff === 0;
-}
+// Re-export agar nama publik yang sudah dipakai webhook DANA + test tetap
+// stabil, tetapi implementasinya satu di src/lib/security.ts.
+export { constantTimeEqual } from "@/lib/security";
 
 export async function sha256Hex(value: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));

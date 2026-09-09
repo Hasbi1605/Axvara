@@ -72,6 +72,11 @@ CREATE TABLE IF NOT EXISTS orders (
   -- Cron menyapu invoice pending dan mengirim ulang foto yang SAMA.
   telegram_invoice_sent_at TEXT,
   telegram_invoice_attempts INTEGER NOT NULL DEFAULT 0,
+  -- Berapa kali pembeli meminta QRIS baru untuk order ini (migrasi 0024).
+  -- Masa hidup order (expires_at, 60 menit) DIPISAH dari masa hidup invoice
+  -- QRIS (payment_transactions.expires_at, 15 menit) supaya QR yang mati tidak
+  -- otomatis mematikan order dan melepas stok.
+  qris_reissue_count INTEGER NOT NULL DEFAULT 0,
   -- Waktu pembayaran tetap untuk laporan pendapatan (issue #12): ditulis
   -- sekali saat transisi lunas, tidak pernah diubah oleh pengiriman/catatan/
   -- notifikasi. Hari/bulan bisnis = WIB atas kolom ini (lihat src/lib/revenue.ts).
@@ -91,6 +96,13 @@ CREATE INDEX IF NOT EXISTS idx_orders_telegram_notifications
   ON orders(sales_channel, telegram_order_notified_at, telegram_paid_notified_at);
 CREATE INDEX IF NOT EXISTS idx_orders_telegram_paid_admin
   ON orders(sales_channel, telegram_paid_admin_notified_at);
+CREATE INDEX IF NOT EXISTS idx_orders_qris_reissue
+  ON orders(status, payment_method, qris_reissue_count);
+-- Index EKSPRESI: predikat penjadwalan selalu membungkus kolom dengan
+-- datetime() (wajib karena baris lama berformat spasi dan baris baru ISO),
+-- dan index kolom biasa tidak dapat dipakai untuk ekspresi fungsi.
+CREATE INDEX IF NOT EXISTS idx_orders_expires_dt
+  ON orders(status, datetime(expires_at));
 CREATE TABLE IF NOT EXISTS operation_guards (
   operation_id TEXT PRIMARY KEY,
   valid INTEGER NOT NULL CHECK (valid = 1)
@@ -338,6 +350,10 @@ CREATE TABLE IF NOT EXISTS fulfillment_jobs (
 );
 CREATE INDEX IF NOT EXISTS idx_fulfillment_jobs_status ON fulfillment_jobs(status);
 CREATE INDEX IF NOT EXISTS idx_fulfillment_jobs_next ON fulfillment_jobs(next_attempt_at);
+-- Index ekspresi: query lease/penjadwalan memakai `datetime(kolom)`, sehingga
+-- index kolom di atas tidak terpakai oleh planner.
+CREATE INDEX IF NOT EXISTS idx_fulfillment_jobs_next_dt ON fulfillment_jobs(status, datetime(next_attempt_at));
+CREATE INDEX IF NOT EXISTS idx_fulfillment_jobs_locked_dt ON fulfillment_jobs(status, datetime(locked_until));
 
 -- Fulfillment per item (migration 0015, issue #4): satu baris per
 -- (order, item) agar setiap item punya status sendiri; order selesai hanya
@@ -370,6 +386,8 @@ CREATE INDEX IF NOT EXISTS idx_fulfillment_items_order
   ON fulfillment_items(order_code, status);
 CREATE INDEX IF NOT EXISTS idx_fulfillment_items_next
   ON fulfillment_items(status, next_attempt_at);
+CREATE INDEX IF NOT EXISTS idx_fulfillment_items_next_dt
+  ON fulfillment_items(status, datetime(next_attempt_at));
 
 -- Product Variants (migration 0007)
 CREATE TABLE IF NOT EXISTS product_variants (
@@ -481,6 +499,9 @@ CREATE TABLE IF NOT EXISTS whatsapp_outbox (
 
 CREATE INDEX IF NOT EXISTS idx_wa_outbox_status ON whatsapp_outbox(status, next_attempt_at);
 CREATE INDEX IF NOT EXISTS idx_wa_outbox_lease ON whatsapp_outbox(status, locked_until, next_attempt_at);
+-- Index ekspresi: predikat outbox memakai `datetime(kolom)`.
+CREATE INDEX IF NOT EXISTS idx_whatsapp_outbox_next_dt ON whatsapp_outbox(status, datetime(next_attempt_at));
+CREATE INDEX IF NOT EXISTS idx_whatsapp_outbox_locked_dt ON whatsapp_outbox(status, datetime(locked_until));
 
 -- Payment proofs (migration 0007)
 CREATE TABLE IF NOT EXISTS payment_proofs (

@@ -782,8 +782,44 @@ export function breadcrumbLine(step: 1 | 2 | 3 | 4): string {
   return `🧭 ${steps.map((label, i) => (i + 1 === step ? `<b>[${label}]</b>` : label)).join(" → ")} (Langkah ${step}/4)`;
 }
 
-export function outOfStockMessage(): string {
+/**
+ * Alasan penolakan permintaan QRIS baru, dijelaskan dalam bahasa pembeli.
+ * Tiap alasan punya tindak lanjut yang jelas — bukan "terjadi kesalahan".
+ */
+export function qrisRenewRejectedMessage(
+  reason: "order_not_reissuable" | "invoice_still_active" | "reissue_limit_reached" | "amount_unavailable",
+): string {
+  if (reason === "invoice_still_active") {
+    return [
+      "ℹ️ <b>QRIS Kamu Masih Berlaku</b>",
+      "",
+      "Pakai QR yang sudah dikirim di atas ya — nominalnya masih aktif.",
+    ].join("\n");
+  }
+  if (reason === "reissue_limit_reached") {
+    return [
+      "⌛ <b>Batas Perpanjangan Habis</b>",
+      "",
+      "QRIS pesanan ini sudah diperpanjang maksimal 3 kali.",
+      "Silakan buat pesanan baru lewat /katalog.",
+    ].join("\n");
+  }
+  if (reason === "amount_unavailable") {
+    return [
+      "⏳ <b>Sedang Ramai</b>",
+      "",
+      "Nominal unik untuk harga ini sedang penuh. Coba lagi beberapa saat.",
+    ].join("\n");
+  }
   return [
+    "❌ <b>Pesanan Tidak Bisa Diperpanjang</b>",
+    "",
+    "Pesanan ini sudah lunas, dibatalkan, atau kedaluwarsa.",
+    "Buat pesanan baru lewat /katalog ya.",
+  ].join("\n");
+}
+
+export function outOfStockMessage(): string {  return [
     "❌ <b>Stok Habis</b>",
     "",
     "Maaf, produk ini sedang tidak tersedia.",

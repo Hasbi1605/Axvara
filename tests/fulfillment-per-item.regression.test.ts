@@ -49,15 +49,45 @@ describe("fulfillment per item (no items[0] shortcut)", () => {
 });
 
 describe("reservasi unique per baris", () => {
-  it("helper reservasi per baris dengan rollback saat gagal sebagian", () => {
+  it("reservasi per baris terjadi DI DALAM batch atomik, bukan helper terpisah", () => {
+    // Sebelumnya reservasi per baris memakai helper reserveInventoryForLines()
+    // yang menjalankan satu UPDATE per baris di luar transaksi order, dengan
+    // kompensasi manual bila sebagian gagal. Helper itu dihapus: dua jalur
+    // reservasi yang berbeda adalah sumber bug divergen antar kanal.
+    const commerce = read("src/lib/commerce.ts");
     const inventory = read("src/lib/fulfillment/inventory.ts");
-    expect(inventory).toContain("reserveInventoryForLines");
-    expect(inventory).toContain("releaseInventoryForOrder(orderCode)");
+    expect(inventory).not.toContain("reserveInventoryForLines");
+    // Satu UPDATE reservasi per baris unique, di dalam statements batch.
+    expect(commerce).toContain("UPDATE fulfillment_inventory");
+    expect(commerce).toContain("status='reserved'");
+    // Statement berurutan dalam batch melihat efek sebelumnya, sehingga
+    // `status='available'` tidak memilih ulang unit yang sudah diambil.
+    expect(commerce).toContain("AND status='available'");
   });
 
-  it("checkout cart Telegram memakai reservasi per baris", () => {
+  it("jumlah unit unique yang terklaim diverifikasi guard, bukan diasumsikan", () => {
+    // UPDATE yang tidak mengenai baris apa pun TIDAK melempar di SQLite, jadi
+    // tanpa guard hitungan ini order bisa terbit dengan inventory unik kurang.
+    const commerce = read("src/lib/commerce.ts");
+    expect(commerce).toContain("inventory-claimed");
+    expect(commerce).toContain("SELECT COUNT(*) FROM fulfillment_inventory");
+  });
+
+  it("checkout Telegram (varian + cart) memakai jalur atomik bersama", () => {
     const route = read("src/app/api/telegram/webhook/route.ts");
-    expect(route).toContain("reserveInventoryForLines");
+    // Tidak boleh ada lagi INSERT order manual di route: itu jalur ketiga yang
+    // menyimpang dari Web dan WhatsApp.
+    expect(route).not.toContain("INSERT INTO orders");
+    const atomicCalls = route.match(/createChannelOrderAtomic\(\{/g) ?? [];
+    expect(atomicCalls.length).toBe(2); // jalur varian tunggal + jalur cart
+    expect(route).toContain("StockReservationError");
+  });
+
+  it("stok dipotong dengan klausa fail-closed, bukan hanya bergantung guard", () => {
+    const commerce = read("src/lib/commerce.ts");
+    // Defense-in-depth: bila guard dan UPDATE suatu saat terpisah dari batch
+    // yang sama, stok gagal-tertutup alih-alih menjadi negatif.
+    expect(commerce).toContain("WHERE id=? AND is_active=1 AND (stock=-1 OR stock>=?)");
   });
 
   it("order web mereservasi unit unique dalam batch atomik yang sama", () => {

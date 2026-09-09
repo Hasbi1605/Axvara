@@ -38,6 +38,24 @@ export function isValidOrderCode(code: string): boolean {
   return /^AXV-\d{8}-[A-Z0-9]{8}$/.test(code);
 }
 
+/**
+ * Perbandingan rahasia yang tidak membocorkan posisi byte pertama yang
+ * berbeda MAUPUN panjang input: `diff` diseed dengan XOR panjang dan loop
+ * selalu berjalan sepanjang input terpanjang. Ini rumah kanonis — webhook
+ * DANA, WhatsApp, Telegram, dan admin memakai fungsi yang sama agar tidak
+ * ada kanal yang tertinggal saat implementasi diperbaiki.
+ */
+export function constantTimeEqual(left: string, right: string): boolean {
+  if (typeof left !== "string" || typeof right !== "string") return false;
+  const encoder = new TextEncoder();
+  const a = encoder.encode(left);
+  const b = encoder.encode(right);
+  let diff = a.length ^ b.length;
+  const length = Math.max(a.length, b.length);
+  for (let index = 0; index < length; index++) diff |= (a[index] ?? 0) ^ (b[index] ?? 0);
+  return diff === 0;
+}
+
 // F-01 fix: removed all hardcoded password hashes from source code
 // Dev password: "axvara-dev-only" (handled in auth.ts verifyPassword)
 // Prod password: set via ADMIN_PASSWORD_SHA256 in CF Pages Variables (PBKDF2 format)

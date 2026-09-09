@@ -47,6 +47,8 @@ export const cb = {
   cartClear: () => "cclear",
   cartCheckout: () => "ccheckout",
   waInput: (orderCode: string) => `wainput:${orderCode}`,
+  /** Minta QRIS baru untuk order yang masih hidup tetapi QR-nya sudah mati. */
+  qrisRenew: (orderCode: string) => `qrenew:${orderCode}`,
 } as const;
 
 // ---- Callback data parser ----
@@ -351,6 +353,9 @@ export function cartKeyboard(params: {
 export function qrisInvoiceKeyboard(orderCode: string): InlineKeyboardMarkup {
   return {
     inline_keyboard: [
+      // QR berlaku 15 menit sementara ORDER hidup 60 menit, jadi pembeli yang
+      // telat cukup meminta QR baru untuk pesanan yang sama.
+      [{ text: "🔄 QRIS Baru", callback_data: cb.qrisRenew(orderCode) }],
       [{ text: "❌ Batalkan Pesanan", callback_data: cb.cancel(orderCode) }],
       [{ text: "🏠 Menu Utama", callback_data: cb.home() }],
     ],

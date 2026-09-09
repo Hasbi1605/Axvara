@@ -24,6 +24,11 @@ export const RATE_LIMITS = {
   "checkout:quote": 20,
   "checkout:orders": 10,
   "orders:lookup": 20,
+  // Reissue mengubah state dan tidak butuh login (pembeli hanya memegang kode
+  // order), jadi batasnya ketat. Perlindungan utamanya tetap syarat "invoice
+  // lama HARUS sudah kedaluwarsa" di reissueDanaQrisInvoice, yang membuat
+  // pihak lain tidak bisa membatalkan QR yang sedang aktif.
+  "qris:reissue": 5,
   "proof:upload": 5,
   "upload:admin": 20,
   "products:write": 20,

@@ -10,7 +10,7 @@ AXVARA — Gerbang Semua Tools Premium. Toko digital premium Apple Store + glass
 Sebelum ubah kode di `axvara/`, baca:
 1. `docs/PRD.md` — requirement, flow, payment spec (E-Wallet 082135277434, SeaBank 901812349386, QRIS Brotherstore06)
 2. `docs/DESIGN.md` — token Midnight #080C1E/#070a1e + Cyan #00E5FF + Gold #FFB800, SF Pro, Liquid Glass
-3. `docs/ARCHITECTURE.md` — stack Next 14 + Pages + D1 + R2, schema, API contract, wrangler
+3. `docs/ARCHITECTURE.md` — stack Next 15 + Pages + D1 + R2, schema, API contract, wrangler
 4. `README.md` — struktur, brand, cara jalan & deploy
 5. `CHANGELOG.md` (root `axvara/`) — riwayat perubahan, baca dulu biar tidak duplikasi
 
@@ -36,7 +36,7 @@ Setiap kali mengubah kode di `axvara/`, **WAJIB update test yang terpengaruh** s
 - Jika mengubah output/format fungsi (misal menghapus field, mengubah teks, rename identifier), cari semua test yang assert output lama: `grep -rn "string_lama" tests/`.
 - Jika mengubah nilai di `src/lib/site.ts` atau konstanta global lain, cari semua test yang hardcode nilai lama.
 - Jangan menghapus test tanpa alasan — update assertion agar sesuai perilaku baru.
-- Test harus **194/194 pass** (atau jumlah terbaru) sebelum push.
+- Test harus **hijau seluruhnya** sebelum push. Jangan hardcode angka di aturan ini — jumlah terbaru selalu ada di entri teratas `CHANGELOG.md`, dan angka yang ditulis di sini akan usang dalam beberapa commit.
 
 ## Aturan Changelog (WAJIB — khusus axvara)
 Setiap kali ubah kode/docs di `axvara/`, **WAJIB catat di `axvara/CHANGELOG.md`** (bukan di AGENTS.md global):
@@ -93,7 +93,7 @@ Setiap kali ubah kode/docs di `axvara/`, **WAJIB catat di `axvara/CHANGELOG.md`*
 
 ## Sebelum menyelesaikan percakapan (checklist)
 Agent **wajib** pastikan sebelum jawab "selesai":
-- [ ] Test pass: `npx vitest run --run` — semua 194/194 (atau jumlah terbaru) pass, tidak ada test gagal
+- [ ] Test pass: `npx vitest run --run` — seluruh test hijau (jumlah terbaru ada di entri teratas `CHANGELOG.md`), tidak ada test gagal
 - [ ] `CHANGELOG.md` sudah di-update (entri paling atas)
 - [ ] Halaman jalan: `GET / 200` dan CSS `200` dari `http://127.0.0.1:3000` (atau `http://localhost:3000`)
 - [ ] Obscura berhasil memuat route yang diubah dan screenshot/evaluasi visual-fungsional sudah diperiksa

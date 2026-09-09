@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { formatRupiah } from "@/lib/utils";
 import type { VariantSummary } from "@/lib/catalog";
@@ -9,6 +9,7 @@ import { IosIcon } from "@/components/ui/IosIcon";
 import type { Product } from "@/lib/products";
 import { useCart } from "@/stores/cart";
 import { useRouter } from "next/navigation";
+import { useModalA11y } from "@/hooks/useModalA11y";
 
 export type VariantOption = VariantSummary;
 
@@ -25,6 +26,12 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+
+  // Escape, focus trap, scroll lock, dan restore fokus — sebelumnya modal ini
+  // tidak punya satu pun sehingga pengguna keyboard terjebak di latar.
+  useModalA11y({ active: true, containerRef: panelRef, onClose, initialFocusRef: closeRef });
 
   useEffect(() => {
     let cancelled = false;
@@ -85,9 +92,14 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
   return createPortal(
     <div
       className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-0 sm:p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="quick-variant-title"
       onClick={onClose}
     >
       <div
+        ref={panelRef}
+        tabIndex={-1}
         className="w-full max-w-[480px] rounded-t-[24px] sm:rounded-[24px] ax-glass-strong border border-white/10 p-5 sm:p-6 shadow-2xl animate-[fadeInUp_0.25s_var(--ease-apple)] text-left"
         onClick={(e) => e.stopPropagation()}
       >
@@ -100,7 +112,7 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
               className="h-14 w-14 rounded-xl object-cover bg-white/5 border border-white/10 shrink-0"
             />
             <div className="min-w-0">
-              <h3 className="font-semibold text-white text-sm line-clamp-1 leading-snug">
+              <h3 id="quick-variant-title" className="font-semibold text-white text-sm line-clamp-1 leading-snug">
                 {product.name}
               </h3>
               <div className="mt-1 flex items-baseline gap-2">
@@ -121,8 +133,10 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
             </div>
           </div>
           <button
+            ref={closeRef}
             type="button"
             onClick={onClose}
+            aria-label="Tutup pilihan varian"
             className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white/60 hover:text-white"
           >
             <IosIcon name="close" size={14} tint="white" />
@@ -147,7 +161,7 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
               Tidak ada varian tersedia.
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[260px] overflow-y-auto pr-1">
+            <div role="radiogroup" aria-label="Pilih paket atau varian" className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[260px] overflow-y-auto pr-1">
               {variants.map((v) => {
                 const active = v.id === selectedId;
                 const outStock = v.stock === 0;
@@ -155,6 +169,9 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
                   <button
                     key={v.id}
                     type="button"
+                    role="radio"
+                    aria-checked={active}
+                    aria-label={`${v.label} — ${formatRupiah(v.price)}${outStock ? " — stok habis" : ""}`}
                     disabled={outStock}
                     onClick={() => setSelectedId(v.id)}
                     className={`flex flex-col items-start p-3 rounded-xl border text-left transition relative ${

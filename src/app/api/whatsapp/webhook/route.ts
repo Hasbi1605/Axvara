@@ -611,6 +611,9 @@ async function handlePay(groupId: string, memberId: string, inboxId: string, met
     } catch { /* cron retry */ }
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : "unknown";
+    // Jalur uang tanpa jejak = penjualan hilang tanpa petunjuk. Web
+    // (orders/route.ts) dan Telegram sudah melog; WA sebelumnya diam total.
+    if (errMsg !== "out_of_stock") console.error("WA handlePay failed:", errMsg);
     if (errMsg === "out_of_stock") {
       await sendTextMessage({ target: groupId, message: msg.variantUnavailableMessage(), inboxId });
     } else {

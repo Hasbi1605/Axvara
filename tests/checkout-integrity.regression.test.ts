@@ -156,12 +156,28 @@ describe("Authoritative UI and admin state", () => {
     expect(read("src/app/checkout/page.tsx")).not.toContain('pmQris.qris_url || "/qris/axvara-qris.jpg"');
   });
 
-  it("drawer mengunci scroll, menangani Escape, dan memulihkan fokus", () => {
-    const drawer = read("src/components/storefront/CartDrawer.tsx");
-    expect(drawer).toContain('document.body.style.overflow = "hidden"');
-    expect(drawer).toContain('event.key === "Escape"');
-    expect(drawer).toContain("previousFocus?.focus()");
-    expect(drawer).toContain('aria-modal="true"');
+  it("semua modal storefront memakai satu hook a11y kanonis", () => {
+    // Perilaku sebenarnya (Escape, focus trap, scroll lock, restore fokus)
+    // diuji secara nyata di tests/modal-a11y.behavior.test.tsx memakai jsdom.
+    // Test ini hanya menjaga WIRING: tidak ada modal yang kembali menyalin
+    // logikanya sendiri, karena salinan itulah yang dulu membuat
+    // QuickVariantModal tidak punya a11y sama sekali.
+    const hook = read("src/hooks/useModalA11y.ts");
+    expect(hook).toContain('document.body.style.overflow = "hidden"');
+    expect(hook).toContain('event.key === "Escape"');
+    expect(hook).toContain("previousFocus?.focus()");
+
+    for (const file of [
+      "src/components/storefront/CartDrawer.tsx",
+      "src/components/storefront/PopupBanner.tsx",
+      "src/components/storefront/QuickVariantModal.tsx",
+    ]) {
+      const source = read(file);
+      expect(source, file).toContain("useModalA11y");
+      expect(source, file).toContain('aria-modal="true"');
+      // Tidak boleh ada reimplementasi lokal yang bisa menyimpang dari hook.
+      expect(source, file).not.toContain('document.body.style.overflow = "hidden"');
+    }
   });
 
   it("halaman status memakai visual per status dan menampilkan kegagalan polling", () => {

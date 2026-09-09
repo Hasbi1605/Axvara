@@ -53,6 +53,8 @@ export default function OrderSuccessPage() {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
+  const [reissuing, setReissuing] = useState(false);
+  const [reissueError, setReissueError] = useState<string | null>(null);
 
   const fetchOrder = useCallback(async () => {
     if (!code || typeof code !== "string") return;
@@ -67,6 +69,29 @@ export default function OrderSuccessPage() {
     setOrder(fromApi(body.order));
     setFetchError(null);
   }, [code]);
+
+  /** Minta QRIS baru untuk order yang masih hidup tetapi QR-nya sudah mati. */
+  const requestNewQris = useCallback(async () => {
+    if (!code || typeof code !== "string") return;
+    setReissuing(true);
+    setReissueError(null);
+    try {
+      const response = await fetch(`/api/payments/qris/${encodeURIComponent(code)}/reissue`, {
+        method: "POST",
+        cache: "no-store",
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || "Gagal menerbitkan QRIS baru.");
+      // Ambil ulang order agar nominal + expiry + gambar QR yang tampil selalu
+      // berasal dari server, bukan hasil tebakan klien.
+      await fetchOrder();
+      setNow(Date.now());
+    } catch (error) {
+      setReissueError(error instanceof Error ? error.message : "Gagal menerbitkan QRIS baru.");
+    } finally {
+      setReissuing(false);
+    }
+  }, [code, fetchOrder]);
 
   useEffect(() => {
     setLoading(true);
@@ -112,6 +137,8 @@ export default function OrderSuccessPage() {
   const isPaid = order.status === "lunas";
   const isCancelled = order.status === "dibatalkan";
   const payableAmount = Number(order.qris?.payable_amount || order.subtotal);
+  // QR bisa mati sementara ORDER masih hidup — dua masa berlaku yang berbeda.
+  const qrisExpired = Boolean(order.qris) && Date.parse(String(order.qris?.expires_at)) <= now;
   const statusVisual = isPaid
     ? { icon: "/icons/ios11/checked-96.png", shell: "bg-emerald-500/15", filter: "brightness(0) saturate(100%) invert(65%) sepia(51%) saturate(717%) hue-rotate(90deg)" }
     : isCancelled
@@ -150,14 +177,39 @@ export default function OrderSuccessPage() {
 
         {order.qris && order.status === "pending" && (
           <section className="mt-6 rounded-2xl border border-[#00E5FF]/20 bg-[#00E5FF]/[0.05] p-4" aria-label="QRIS dinamis">
-            <div className="mx-auto max-w-[330px] rounded-2xl bg-white p-3">
-              <img src={order.qris.image_url} alt={`QRIS dinamis pesanan ${order.code}`} className="h-auto w-full rounded-xl" />
-            </div>
-            <p className="mt-4 text-xs uppercase tracking-[0.12em] text-white/45">Total bayar</p>
-            <p className="mt-1 font-display text-3xl font-bold text-white">{formatRupiah(payableAmount)}</p>
-            <p className="mt-1 text-xs text-white/45">Termasuk kode unik <span className="font-mono text-[#00E5FF]">+{order.qris.unique_code}</span></p>
-            <div className="mt-3 flex items-center justify-center gap-2 text-xs text-[#FFB800]"><span className="h-2 w-2 animate-pulse rounded-full bg-[#FFB800]" />Berlaku {countdown(order.qris.expires_at, now)}</div>
-            <a href={order.qris.image_url} download={`AXVARA-${order.code}-QRIS.png`} className="mt-4 inline-flex h-9 items-center rounded-xl border border-white/15 px-4 text-xs font-semibold text-white/70 hover:bg-white/10">Download QRIS</a>
+            {qrisExpired ? (
+              // QR mati tetapi ORDER masih hidup: pembeli bisa minta QR baru
+              // tanpa mengulang alur. Sebelumnya order ikut mati bersama QR
+              // sehingga keranjang/varian harus dipilih lagi dari nol.
+              <div className="py-2">
+                <p className="font-display text-base font-bold text-white">QRIS sudah kedaluwarsa</p>
+                <p className="mx-auto mt-2 max-w-[360px] text-xs leading-relaxed text-white/55">
+                  Pesanan kamu masih aktif. Minta QRIS baru dengan nominal baru — jumlah dan produknya tetap sama.
+                </p>
+                <button
+                  type="button"
+                  onClick={requestNewQris}
+                  disabled={reissuing}
+                  className="mt-4 inline-flex h-11 items-center gap-2 rounded-xl bg-[#00E5FF] px-5 text-sm font-bold text-[#080C1E] transition hover:bg-[#00D0E8] disabled:opacity-50"
+                >
+                  {reissuing ? "Menerbitkan QRIS baru…" : "Minta QRIS Baru"}
+                </button>
+                {reissueError && (
+                  <p role="alert" className="mt-3 text-xs text-amber-200">{reissueError}</p>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="mx-auto max-w-[330px] rounded-2xl bg-white p-3">
+                  <img src={order.qris.image_url} alt={`QRIS dinamis pesanan ${order.code}`} className="h-auto w-full rounded-xl" />
+                </div>
+                <p className="mt-4 text-xs uppercase tracking-[0.12em] text-white/45">Total bayar</p>
+                <p className="mt-1 font-display text-3xl font-bold text-white">{formatRupiah(payableAmount)}</p>
+                <p className="mt-1 text-xs text-white/45">Termasuk kode unik <span className="font-mono text-[#00E5FF]">+{order.qris.unique_code}</span></p>
+                <div className="mt-3 flex items-center justify-center gap-2 text-xs text-[#FFB800]"><span className="h-2 w-2 animate-pulse rounded-full bg-[#FFB800]" />Berlaku {countdown(order.qris.expires_at, now)}</div>
+                <a href={order.qris.image_url} download={`AXVARA-${order.code}-QRIS.png`} className="mt-4 inline-flex h-9 items-center rounded-xl border border-white/15 px-4 text-xs font-semibold text-white/70 hover:bg-white/10">Download QRIS</a>
+              </>
+            )}
           </section>
         )}
 

@@ -36,6 +36,9 @@
   },
   "devDependencies": {
     "@cloudflare/next-on-pages": "1.13",
+    "@testing-library/dom": "10.4.0",
+    "@testing-library/react": "16.1.0",
+    "@testing-library/user-event": "14.5.2",
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^20.19.43",
     "@types/qrcode": "^1.5.6",
@@ -44,6 +47,7 @@
     "autoprefixer": "^10.5.4",
     "eslint": "^8.57.1",
     "eslint-config-next": "15.5.24",
+    "jsdom": "25.0.1",
     "postcss": "^8.5.26",
     "tailwindcss": "^3.4.15",
     "typescript": "^5.6.3",
@@ -51,7 +55,7 @@
   },
   "overrides": {
     "next": {
-      "sharp": "0.35.3"
+      "sharp": "0.35.4"
     }
   }
 }

@@ -1,6 +1,7 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
+import { useModalA11y } from "@/hooks/useModalA11y";
 
 type Banner = {
   id: number;
@@ -21,6 +22,9 @@ export function PopupBanner() {
   const [banner, setBanner] = useState<Banner | null>(null);
   const [open, setOpen] = useState(false);
   const [imageRatio, setImageRatio] = useState<number | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const close = useCallback(() => setOpen(false), []);
 
   useEffect(() => {
     setOpen(false);
@@ -76,37 +80,32 @@ export function PopupBanner() {
     };
   }, [isAdmin, isHome]);
 
-  useEffect(() => {
-    if (!open) return;
-    const previousOverflow = document.body.style.overflow;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open]);
+  // Sebelumnya modal ini hanya punya Escape + scroll lock: Tab bisa lolos ke
+  // konten di belakang dan fokus tidak dikembalikan ke pemicu. Hook kanonis
+  // menambahkan focus trap + restore focus tanpa mengubah perilaku lain.
+  useModalA11y({
+    active: Boolean(open && banner) && !isAdmin && isHome,
+    containerRef: panelRef,
+    onClose: close,
+    initialFocusRef: closeRef,
+  });
 
   if (isAdmin || !isHome || !banner || !open) return null;
 
-  const close = () => {
-    setOpen(false);
-  };
   const adaptiveWidth = imageRatio
     ? Math.min(960, Math.max(320, Math.round(imageRatio * 520)))
     : 520;
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-5" role="dialog" aria-modal="true" aria-label={banner.title}>
-      <div className="absolute inset-0 bg-[#070a1e]/70 backdrop-blur-sm" onClick={close} />
+      <div aria-hidden="true" className="absolute inset-0 bg-[#070a1e]/70 backdrop-blur-sm" onClick={close} />
       <div
+        ref={panelRef}
+        tabIndex={-1}
         className="relative max-h-[92dvh] max-w-[94vw] overflow-y-auto rounded-[24px] border border-white/10 bg-[#0f1430] shadow-[0_24px_64px_rgba(0,0,0,0.5)] animate-[fadeInUp_0.32s_var(--ease-apple)]"
         style={{ width: `min(94vw, ${adaptiveWidth}px)` }}
       >
-        <button onClick={close} className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-black/55 text-white/80 backdrop-blur-md hover:bg-black/75 hover:text-white" aria-label="Tutup banner">✕</button>
+        <button ref={closeRef} onClick={close} className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-black/55 text-white/80 backdrop-blur-md hover:bg-black/75 hover:text-white" aria-label="Tutup banner">✕</button>
         {banner.image_url && (
           // eslint-disable-next-line @next/next/no-img-element
           <div className="flex w-full justify-center overflow-hidden bg-black/15">
