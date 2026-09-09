@@ -9,6 +9,16 @@ import {
 } from "@/lib/commerce";
 
 const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), "utf8");
+// deliver.ts kini barrel; fulfillmentModeFromOrderSnapshot pindah ke
+// delivery/* (refactor 2026-09-09). Gabungkan modul delivery agar assertion
+// menilai implementasi sebenarnya.
+const readDelivery = (): string => {
+  const dir = path.join(process.cwd(), "src/lib/fulfillment/delivery");
+  return fs.readdirSync(dir)
+    .filter((f) => f.endsWith(".ts"))
+    .map((f) => fs.readFileSync(path.join(dir, f), "utf8"))
+    .join("\n");
+};
 
 type SqliteStatement = {
   all: () => unknown[];
@@ -483,7 +493,7 @@ describe("Variant stock expiry lifecycle", () => {
 
   it("pins Telegram variant fulfillment to an order snapshot and compensates partial invoice setup", () => {
     const telegram = read("src/app/api/telegram/webhook/route.ts");
-    const delivery = read("src/lib/fulfillment/deliver.ts");
+    const delivery = readDelivery();
     expect(telegram).toContain("variant_snapshot");
     expect(telegram).toContain("product_name: productName");
     expect(telegram).toContain("transitionPendingOrder");

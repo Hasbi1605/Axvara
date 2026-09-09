@@ -9,6 +9,16 @@ import fs from "node:fs";
 import path from "node:path";
 
 const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), "utf8");
+// deliver.ts kini barrel; implementasi outbox pindah ke delivery/*. Gabungkan
+// seluruh modul delivery agar assertion menilai implementasi sebenarnya
+// (refactor 2026-09-09).
+const readDelivery = (): string => {
+  const dir = path.join(process.cwd(), "src/lib/fulfillment/delivery");
+  return fs.readdirSync(dir)
+    .filter((f) => f.endsWith(".ts"))
+    .map((f) => fs.readFileSync(path.join(dir, f), "utf8"))
+    .join("\n");
+};
 
 describe("atomic paid+job commit (no crash window)", () => {
   it("QRIS paid batch inserts the outbox row in the same commit", () => {
@@ -96,7 +106,7 @@ describe("idempotent recovery without double delivery", () => {
   });
 
   it("recovery reuses the single idempotent ensure path and respects the flag", () => {
-    const deliver = read("src/lib/fulfillment/deliver.ts");
+    const deliver = readDelivery();
     expect(deliver).toContain("export async function reconcileMissingFulfillmentJobs");
     expect(deliver).toContain("ensureFulfillmentForPaidOrder");
     expect(deliver).toContain("UNIQUE order_code");
@@ -104,7 +114,7 @@ describe("idempotent recovery without double delivery", () => {
   });
 
   it("delivery still claims each job exactly once", () => {
-    const deliver = read("src/lib/fulfillment/deliver.ts");
+    const deliver = readDelivery();
     expect(deliver).toContain("status IN ('queued','retry')");
     expect(deliver).toContain("markJobDelivered");
   });

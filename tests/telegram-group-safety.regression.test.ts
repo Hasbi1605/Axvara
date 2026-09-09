@@ -15,6 +15,16 @@ import {
 } from "@/lib/telegram/messages";
 
 const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), "utf8");
+// deliver.ts kini barrel; resolveRecipient/ensurePrivateRecipient pindah ke
+// delivery/*. Gabungkan modul delivery agar assertion menilai implementasi
+// sebenarnya (refactor 2026-09-09).
+const readDelivery = (): string => {
+  const dir = path.join(process.cwd(), "src/lib/fulfillment/delivery");
+  return fs.readdirSync(dir)
+    .filter((f) => f.endsWith(".ts"))
+    .map((f) => fs.readFileSync(path.join(dir, f), "utf8"))
+    .join("\n");
+};
 
 // Identitas dummy: buyer 777TMP (private chat 777TMP), grup -100999, penyerang 888TMP.
 const GROUP_ID = "-100999";
@@ -35,7 +45,7 @@ describe("private-only recipient resolution (mock identitas dummy)", () => {
   });
 
   it("target kosong atau grup diarahkan manual, bukan dikirim", () => {
-    const deliver = read("src/lib/fulfillment/deliver.ts");
+    const deliver = readDelivery();
     expect(deliver).toContain("no_recipient_for_channel");
     expect(deliver).toContain("telegram_user_id");
   });
@@ -75,7 +85,7 @@ describe("webhook grup: redirect + ownership guard", () => {
   });
 
   it("buyer grup yang START privat mewarisi chat pribadi tanpa memercayai id grup", () => {
-    const deliver = read("src/lib/fulfillment/deliver.ts");
+    const deliver = readDelivery();
     expect(deliver).toContain("export async function ensurePrivateRecipient");
     expect(deliver).toContain("Number(privateChatId) < 0) return");
     expect(deliver).toContain("CAST(telegram_chat_id AS INTEGER) < 0");

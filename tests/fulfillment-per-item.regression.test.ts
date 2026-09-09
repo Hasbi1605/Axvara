@@ -8,6 +8,16 @@ import fs from "node:fs";
 import path from "node:path";
 
 const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), "utf8");
+// deliver.ts kini barrel; implementasi per-item pindah ke delivery/*.
+// Gabungkan seluruh modul delivery agar assertion menilai implementasi
+// sebenarnya (refactor 2026-09-09).
+const readDelivery = (): string => {
+  const dir = path.join(process.cwd(), "src/lib/fulfillment/delivery");
+  return fs.readdirSync(dir)
+    .filter((f) => f.endsWith(".ts"))
+    .map((f) => fs.readFileSync(path.join(dir, f), "utf8"))
+    .join("\n");
+};
 
 describe("fulfillment per item (no items[0] shortcut)", () => {
   it("migrasi 0015 + schema mendefinisikan fulfillment_items per (order, item)", () => {
@@ -22,7 +32,7 @@ describe("fulfillment per item (no items[0] shortcut)", () => {
   });
 
   it("processJob mengirim SEMUA item dan delivered hanya saat semua settled", () => {
-    const deliver = read("src/lib/fulfillment/deliver.ts");
+    const deliver = readDelivery();
     expect(deliver).toContain("ensureFulfillmentItems");
     expect(deliver).toContain("processItem");
     expect(deliver).toContain("allItemsSettled");
@@ -35,14 +45,14 @@ describe("fulfillment per item (no items[0] shortcut)", () => {
   });
 
   it("mode per item: snapshot lines + variant + fallback produk (bukan items[0])", () => {
-    const deliver = read("src/lib/fulfillment/deliver.ts");
+    const deliver = readDelivery();
     expect(deliver).toContain("resolveItemMode");
     expect(deliver).toContain("fulfillmentModesFromOrderSnapshot");
     expect(deliver).toContain("snapshot.lines");
   });
 
   it("claim per item dengan CAS agar worker konkuren tidak kirim ganda", () => {
-    const deliver = read("src/lib/fulfillment/deliver.ts");
+    const deliver = readDelivery();
     expect(deliver).toContain("UPDATE fulfillment_items SET status='sending'");
     expect(deliver).toContain("scheduleItemRetry");
   });
@@ -99,7 +109,7 @@ describe("reservasi unique per baris", () => {
 
 describe("penerima kanal eksplisit per item", () => {
   it("resolveRecipient memetakan tiap kanal ke target yang benar", () => {
-    const deliver = read("src/lib/fulfillment/deliver.ts");
+    const deliver = readDelivery();
     expect(deliver).toContain("export function resolveRecipient");
     expect(deliver).toContain("channel_member_id");
     // Target kosong → manual, bukan kirim ke nobody.
@@ -107,13 +117,13 @@ describe("penerima kanal eksplisit per item", () => {
   });
 
   it("web tanpa push channel gagal keras ke retry (bukan drop diam-diam)", () => {
-    const deliver = read("src/lib/fulfillment/deliver.ts");
+    const deliver = readDelivery();
     expect(deliver).toContain("web_channel_requires_manual_handover");
   });
 
   it("cron backfill baris item untuk job pra-migrasi sebelum proses due jobs", async () => {
     const cron = read("src/app/api/cron/operations/route.ts");
-    const deliver = read("src/lib/fulfillment/deliver.ts");
+    const deliver = readDelivery();
     expect(cron).toContain("processJobItems(Number(job.id)");
     // The single processor materializes missing lines before claiming the job.
     const processStart = deliver.indexOf("export async function processJobItems(");

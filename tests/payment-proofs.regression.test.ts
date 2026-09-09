@@ -7,6 +7,16 @@ import {
 } from "@/lib/payment-proofs";
 
 const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), "utf8");
+// deliver.ts kini barrel; mode/shared-secret resolution pindah ke delivery/*
+// (refactor 2026-09-09). Gabungkan modul delivery agar assertion menilai
+// implementasi sebenarnya.
+const readDelivery = (): string => {
+  const dir = path.join(process.cwd(), "src/lib/fulfillment/delivery");
+  return fs.readdirSync(dir)
+    .filter((f) => f.endsWith(".ts"))
+    .map((f) => fs.readFileSync(path.join(dir, f), "utf8"))
+    .join("\n");
+};
 
 describe("WhatsApp payment proof review", () => {
   it("allows manual rails but keeps every QRIS payment hook-authoritative", () => {
@@ -76,7 +86,7 @@ describe("WhatsApp payment proof review", () => {
   });
 
   it("resolves fulfillment mode and shared secret from the selected variant", () => {
-    const delivery = read("src/lib/fulfillment/deliver.ts");
+    const delivery = readDelivery();
     const fulfillmentApi = read("src/app/api/admin/fulfillment/route.ts");
     const editor = read("src/components/admin/VariantEditor.tsx");
     const inventory = read("src/components/admin/FulfillmentInventoryPanel.tsx");

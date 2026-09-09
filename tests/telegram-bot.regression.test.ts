@@ -460,7 +460,10 @@ describe("Telegram order and payment flow wiring", () => {
   });
 
   it("pushes paid notification before checking the auto-fulfillment flag", () => {
-    const delivery = read("src/lib/fulfillment/deliver.ts");
+    // deliver.ts kini barrel; ensureFulfillmentForPaidOrder pindah ke
+    // delivery/ensure.ts (refactor 2026-09-09). Urutan push-paid sebelum
+    // gate flag tetap diverifikasi pada implementasi sebenarnya.
+    const delivery = read("src/lib/fulfillment/delivery/ensure.ts");
     const notifyIndex = delivery.indexOf("await notifyTelegramBuyerPaid(orderCode)");
     const autoFlagReturnIndex = delivery.indexOf("if (!autoFulfillmentEnabled) return false", notifyIndex);
     expect(notifyIndex).toBeGreaterThan(0);

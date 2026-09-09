@@ -53,10 +53,14 @@ describe("Article contracts", () => {
   });
 
   it("uses live categories in the product editor and bypasses public cache in admin", () => {
-    const admin = read("src/app/admin/page.tsx");
+    // Editor produk dan pemuatan katalog dipindah saat refactor struktural. Dropdown
+    // kategori (cats.map) kini dirender di ProductEditorModal, sedangkan fetch kategori
+    // dengan cache-bypass (?all=1) pindah ke hook useProductManager. Intent tetap sama.
+    const editor = read("src/components/admin/ProductEditorModal.tsx");
+    const manager = read("src/components/admin/useProductManager.ts");
     const categories = read("src/app/api/categories/route.ts");
-    expect(admin).toContain("cats.map");
-    expect(admin).toContain("/api/categories?all=1");
+    expect(editor).toContain("cats.map");
+    expect(manager).toContain("/api/categories?all=1");
     expect(categories).toContain('wantAll ? "private, no-store"');
   });
 

@@ -10,6 +10,16 @@ import path from "node:path";
 import { createRequire } from "node:module";
 
 const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), "utf8");
+// deliver.ts kini barrel; logika lock pindah ke delivery/*. Gabungkan seluruh
+// modul delivery agar assertion "gerbang lock ternormalisasi" tetap menilai
+// implementasi sebenarnya, bukan barrel kosong (refactor 2026-09-09).
+const readDelivery = (): string => {
+  const dir = path.join(process.cwd(), "src/lib/fulfillment/delivery");
+  return fs.readdirSync(dir)
+    .filter((f) => f.endsWith(".ts"))
+    .map((f) => fs.readFileSync(path.join(dir, f), "utf8"))
+    .join("\n");
+};
 
 type SqliteStatement = {
   run: (...p: unknown[]) => void;
@@ -66,7 +76,7 @@ describe("lock expiry lintas format waktu (reproduksi bug #7)", () => {
 });
 
 describe("semua gerbang lock memakai datetime() normalization", () => {
-  const src = () => read("src/lib/fulfillment/deliver.ts");
+  const src = () => readDelivery();
   it("claimJob, getDueJobs, releaseStaleJobs ternormalisasi; item retry tak digate waktu", () => {
     const s = src();
     expect(s).toContain("datetime(locked_until) < datetime('now')");

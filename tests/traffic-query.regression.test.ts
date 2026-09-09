@@ -5,6 +5,16 @@ import { checkRateLimit, clearRateLimitBucketsForTest, clientIp, RATE_LIMITS, ra
 import { NextRequest } from "next/server";
 
 const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), "utf8");
+// deliver.ts kini barrel; signature helper cron pindah ke delivery/*.
+// Gabungkan modul delivery agar assertion signature menilai implementasi
+// sebenarnya (refactor 2026-09-09).
+const readDelivery = (): string => {
+  const dir = path.join(process.cwd(), "src/lib/fulfillment/delivery");
+  return fs.readdirSync(dir)
+    .filter((f) => f.endsWith(".ts"))
+    .map((f) => fs.readFileSync(path.join(dir, f), "utf8"))
+    .join("\n");
+};
 
 function reqWithIp(ipHeaders: Record<string, string>): NextRequest {
   return {
@@ -82,9 +92,9 @@ describe("Issue #14 — efisiensi query sesuai batas D1 aktual", () => {
   });
 
   it("helper cron selaras ke batch kecil yang sama", () => {
-    expect(read("src/lib/fulfillment/deliver.ts")).toContain("reconcileMissingFulfillmentJobs(limit = 8)");
-    expect(read("src/lib/fulfillment/deliver.ts")).toContain("backfillMissingFulfillmentItems(limit = 8)");
-    expect(read("src/lib/fulfillment/deliver.ts")).toContain("getDueJobs(limit = 8, database: DatabaseAccess");
+    expect(readDelivery()).toContain("reconcileMissingFulfillmentJobs(limit = 8)");
+    expect(readDelivery()).toContain("backfillMissingFulfillmentItems(limit = 8)");
+    expect(readDelivery()).toContain("getDueJobs(limit = 8, database: DatabaseAccess");
     // RR3-09: retry notifikasi mendukung filter per jenis agar cron hanya
     // membayar daftar yang antreannya > 0 (hemat query baca kosong).
     expect(read("src/lib/telegram/order-notifications.ts")).toContain("retryPendingTelegramNotifications(limit = 8");
