@@ -9,13 +9,13 @@ import { queryFirst, queryAll, execRun, isD1Mode } from "@/lib/db";
 import { sendMessage, sendPhoto, safeEditOrSend, showLoadingBar } from "@/lib/telegram/api";
 import {
   catalogFlatKeyboard, categoriesKeyboard, productsKeyboard,
-  productDetailKeyboard, variantsKeyboard, confirmVariantPurchaseKeyboard,
+  productDetailKeyboard, variantsKeyboard,
   qtyKeyboard, TELEGRAM_MAX_QTY,
 } from "@/lib/telegram/keyboards";
 import {
   catalogFlatMessage, categoriesMessage, categoryProductsMessage,
   productDetailMessage, outOfStockMessage, errorMessage,
-  chooseVariantMessage, chooseQtyMessage, confirmVariantBuyMessage,
+  chooseVariantMessage, chooseQtyMessage,
 } from "@/lib/telegram/messages";
 import { getProductDetail, getActiveVariant, formatDuration, formatWarranty } from "@/lib/catalog";
 import { clampQty } from "./shared";
@@ -209,7 +209,6 @@ export async function handleVariantConfirm(chatId: number, messageId: number, va
 
   // Get product for name
   const product = await queryFirst(`SELECT id, name FROM products WHERE id=?`, variant.product_id);
-  const productName = product ? String(product.name) : "Produk";
   const productId = product ? Number(product.id) : 0;
 
   // Guard: existing pending order for this chat+variant — resend it, never duplicate.
@@ -235,19 +234,7 @@ export async function handleVariantConfirm(chatId: number, messageId: number, va
     return;
   }
 
-  await safeEditOrSend({
-    chat_id: chatId,
-    message_id: messageId,
-    text: confirmVariantBuyMessage({
-      productName,
-      variantLabel: variant.label,
-      duration: formatDuration(variant) || null,
-      warranty: formatWarranty(variant) || null,
-      price: variant.price,
-    }),
-    parse_mode: "HTML",
-    reply_markup: confirmVariantPurchaseKeyboard(productId, variantId),
-  });
+  await handleShowQty(chatId, messageId, productId, variantId);
 }
 
 export async function handleShowQty(

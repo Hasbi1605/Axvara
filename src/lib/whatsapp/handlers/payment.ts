@@ -23,6 +23,7 @@ import {
   isReusablePendingOrder,
   parsePaymentDisplaySnapshot,
 } from "@/lib/commerce";
+import { isExpiredIso } from "@/lib/expiry";
 import { createDanaQrisInvoice } from "@/lib/payments/dana-qris";
 import * as msg from "@/lib/whatsapp/messages";
 import {
@@ -56,13 +57,20 @@ export async function handlePay(groupId: string, memberId: string, inboxId: stri
     const existingOrder = await queryFirst(
       `SELECT o.code, o.subtotal, o.status, o.payment_status, o.expires_at,
               pt.payable_amount, pt.qris_url, pt.provider AS payment_provider,
-              pt.status AS payment_transaction_status
+              pt.status AS payment_transaction_status, pt.expires_at AS invoice_expires_at
        FROM orders o
        LEFT JOIN payment_transactions pt ON pt.order_code=o.code
        WHERE o.code=? AND o.variant_id=?`,
       session.current_order_code,
       session.selected_variant_id,
     );
+    if (existingOrder && ["pending", "kadaluarsa"].includes(String(existingOrder.status))
+      && existingOrder.payment_status !== "paid" && existingOrder.payment_provider === "dana"
+      && isExpiredIso(existingOrder.invoice_expires_at)) {
+      await sendTextMessage({ target: groupId, message: msg.qrisExpiredMessage(String(existingOrder.code)), inboxId });
+      await upsertSession("baileys", groupId, memberId, { current_order_code: null, current_order_id: null, selected_variant_id: null, selected_product_id: null });
+      return;
+    }
     if (existingOrder && isReusablePendingOrder(existingOrder)) {
       if (
         method !== "QRIS"
@@ -177,10 +185,18 @@ async function createAndSendDanaQrisPayment(
   inboxId: string,
 ) {
   const existingTransaction = await queryFirst(
-    `SELECT payable_amount, qris_url FROM payment_transactions WHERE order_code=? AND provider='dana'`,
+    `SELECT payable_amount, qris_url, expires_at, status FROM payment_transactions WHERE order_code=? AND provider='dana'`,
     orderCode,
   );
   if (existingTransaction) {
+    if (existingTransaction.status === "paid") {
+      await sendTextMessage({ target: groupId, message: `Pembayaran pesanan ${orderCode} sudah diterima.`, inboxId });
+      return;
+    }
+    if (existingTransaction.status !== "pending" || isExpiredIso(existingTransaction.expires_at)) {
+      await sendTextMessage({ target: groupId, message: msg.qrisExpiredMessage(orderCode), inboxId });
+      return;
+    }
     await sendPaymentInfo(
       groupId,
       memberId,

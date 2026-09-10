@@ -165,6 +165,8 @@ export function paymentMessage(params: {
   lines.push("");
 
   if (params.method === "QRIS") {
+    lines.push("⏰ QRIS berlaku 15 menit sejak diterbitkan. Setelah itu QRIS hangus dan pesanan kedaluwarsa.");
+    lines.push("Tidak ada perpanjangan QRIS. Jangan bayar QRIS yang hangus; buat pesanan ulang untuk mendapatkan QRIS baru.");
     lines.push("Scan gambar QRIS yang dikirim setelah pesan ini.");
     lines.push("Bayar tepat sesuai total; status lunas terdeteksi otomatis.");
     lines.push("Screenshot opsional. Jika dikirim, cukup beri caption *QRIS*.");
@@ -351,4 +353,8 @@ export function welcomeNewMemberMessage(name?: string): string {
     `✈️ ${adminTelegramLink()}`,
   ];
   return lines.join("\n");
+}
+
+export function qrisExpiredMessage(orderCode: string): string {
+  return `⏰ *QRIS Hangus — Pesanan Kedaluwarsa*\n${orderCode}\n\nBatas pembayaran 15 menit sudah habis. Jangan bayar QRIS lama. Tidak ada perpanjangan QRIS. Ketik *list* dan buat pesanan ulang untuk mendapatkan QRIS baru.`;
 }

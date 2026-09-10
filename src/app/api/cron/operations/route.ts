@@ -15,6 +15,7 @@ import {
 } from "@/lib/fulfillment/deliver";
 import { sendMessage } from "@/lib/telegram/api";
 import { orderExpiredMessage } from "@/lib/telegram/messages";
+import { QRIS_EXPIRY_NOTICE_WHERE, sendQrisExpiryNotifications } from "@/lib/payments/qris-expiry-notifications";
 import { retryPendingTelegramNotifications, sendPendingOrderReminders } from "@/lib/telegram/order-notifications";
 import { retryInvoicePendingTelegramInvoices } from "@/lib/telegram/invoice-retry";
 import { processDueWhatsAppOutbox } from "@/lib/whatsapp/outbox";
@@ -141,6 +142,7 @@ export async function POST(request: NextRequest) {
     const queueRow = await queryFirst(
       `SELECT
         (SELECT COUNT(*) FROM payment_transactions WHERE status='pending') AS expiry,
+        (SELECT COUNT(*) FROM payment_transactions pt JOIN orders o ON o.code=pt.order_code WHERE ${QRIS_EXPIRY_NOTICE_WHERE}) AS qris_notice,
         (SELECT COUNT(*) FROM payment_transactions WHERE status='initializing' AND created_at < datetime('now', '-5 minutes')) AS expiry_init,
         (SELECT COUNT(*) FROM orders WHERE sales_channel='whatsapp' AND status='pending' AND expires_at IS NOT NULL
           AND datetime(expires_at) <= datetime('now')
@@ -159,7 +161,8 @@ export async function POST(request: NextRequest) {
     const pendingExpiryInit = Number((queueRow as Record<string, unknown> | null)?.expiry_init ?? 0);
     const pendingExpiryManualWa = Number((queueRow as Record<string, unknown> | null)?.expiry_manual_wa ?? 0);
     const pendingExpiryAny = pendingExpiry + pendingExpiryInit + pendingExpiryManualWa;
-    const pendingWa = Number(queueRow?.wa ?? 0);
+    const pendingQrisNotice = Number(queueRow?.qris_notice ?? 0);
+    let pendingWa = Number(queueRow?.wa ?? 0);
     const pendingStaleWa = Number(queueRow?.wa_stale ?? 0);
     const pendingJobs = Number(queueRow?.jobs ?? 0);
     const pendingCreated = Number(queueRow?.created ?? 0);
@@ -197,7 +200,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const waWorkPending = pendingWa + pendingStaleWa;
+    let waWorkPending = pendingWa + pendingStaleWa;
     const runExpiry = async () => {
       // === FASE EXPIRY: stale-init + expired + stranded + manual-WA ===
       // Daftar expiry HANYA dibaca bila fase expiry aktif — pembacaan murah
@@ -225,7 +228,7 @@ export async function POST(request: NextRequest) {
           EXPIRY_PER_RUN,
         );
         expiredCandidates = await queryAll(
-          `SELECT pt.order_code, pt.provider_order_id, pt.merchant_id,
+          `SELECT pt.order_code, pt.provider, pt.provider_order_id, pt.merchant_id,
                   COALESCE(CASE WHEN pt.provider='dana' THEN o.expires_at END,pt.expires_at) AS expires_at,
                   pt.status, o.items, o.telegram_chat_id
            FROM payment_transactions pt
@@ -295,18 +298,13 @@ export async function POST(request: NextRequest) {
             });
             if (!changed) continue;
             expiredTransitions++;
+            if (tx.provider !== "dana" && order.telegram_chat_id) {
+              await sendMessage({ chat_id: String(order.telegram_chat_id),
+                text: orderExpiredMessage(String(tx.order_code)), parse_mode: "HTML" }).catch(() => {});
+            }
           } catch { /* ok */ }
         }
-        // Notify buyer
-        if (order?.telegram_chat_id) {
-          try {
-            await sendMessage({
-              chat_id: String(order.telegram_chat_id),
-              text: orderExpiredMessage(String(tx.order_code)),
-              parse_mode: "HTML",
-            });
-          } catch { /* best-effort */ }
-        }
+
       }
       results.expired_payments = expiredTransitions;
 
@@ -407,6 +405,15 @@ export async function POST(request: NextRequest) {
 
     };
     const runNotify = async () => {
+      // Invoice-expired notice and terminal notice survive delivery failures.
+      const noticeCount = pendingQrisNotice + Number(results.expired_payments);
+      if (activePhases.has("notify") && noticeCount > 0 && budget.fits(5)) {
+        const notices = await sendQrisExpiryNotifications(2, database);
+        results.qris_expiry_notifications = notices.sent;
+        pendingWa += notices.whatsappQueued;
+        waWorkPending += notices.whatsappQueued;
+        if (noticeCount > Number(results.qris_expiry_notifications) && !deferredOut.includes("notify")) deferredOut.push("notify");
+      } else if (noticeCount > 0 && !deferredOut.includes("notify")) deferredOut.push("notify");
       // === FASE NOTIFY: notifikasi TG + reminder + outbox WA ===
       // RR3-09: retry notifikasi mencakup created + paid buyer + paid admin
       // (hitung pendingNotify di atas = ketiganya). Daftar dibaca HANYA bila

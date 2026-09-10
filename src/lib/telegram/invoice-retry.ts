@@ -30,6 +30,7 @@ import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 //   backoff via next_attempt_at implisit cron 5-menit) dan dideduplikasi
 //   oleh marker DB + guard double-tap order pending yang sudah ada.
 
+import { isFutureIso } from "@/lib/expiry";
 import { execRun } from "@/lib/db";
 import { sendPhoto } from "@/lib/telegram/api";
 import { invoiceMessage } from "@/lib/telegram/messages";
@@ -110,7 +111,7 @@ export async function retryTelegramInvoiceDelivery(orderCode: string, database: 
      WHERE order_code=? AND provider='dana' AND status='pending'`,
     orderCode,
   );
-  if (!ledger) return false;
+  if (!ledger || !isFutureIso(ledger.expires_at)) return false;
   const payableAmount = Number(ledger.payable_amount ?? order.subtotal ?? 0);
   if (!Number.isSafeInteger(payableAmount) || payableAmount <= 0) return false;
   await execRun(
@@ -150,6 +151,7 @@ export async function retryInvoicePendingTelegramInvoices(limit = 4, database: D
      JOIN payment_transactions pt ON pt.order_code=o.code AND pt.provider='dana' AND pt.status='pending'
      WHERE o.sales_channel='telegram' AND o.status='pending'
        AND o.telegram_invoice_sent_at IS NULL AND o.telegram_invoice_attempts < 5
+       AND julianday(pt.expires_at)>julianday('now')
      ORDER BY o.created_at ASC LIMIT ?`,
     limit,
   ).catch(() => [] as Record<string, unknown>[]);

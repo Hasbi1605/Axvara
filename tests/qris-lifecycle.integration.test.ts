@@ -125,7 +125,6 @@ describe("QRIS amount history survives renewal", () => {
   });
   it("does not repeat a previous amount of the same order even with a repeating RNG", async () => {
     chooseCode(42); const old = await checkout(); expireInvoice();
-    vi.restoreAllMocks(); chooseCode(100); await reissueDanaQrisInvoice(A); expireInvoice();
     vi.restoreAllMocks(); chooseCode(42); const result = await reissueDanaQrisInvoice(A);
     expect(result.ok).toBe(true);
     expect(result.ok && result.invoice.payableAmount).not.toBe(old.payableAmount);

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { queryFirst } from "@/lib/db";
+import { MAX_QRIS_REISSUES } from "@/lib/payments/dana-qris";
 import { checkRateLimit } from "@/lib/rateLimit";
 
 export const runtime = "edge";
@@ -34,6 +35,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ code
       proof_url: row.proof_url,
       status: row.status,
       created_at: row.created_at,
+      expires_at: row.expires_at,
+      qris_reissue_allowed: row.status === "pending" && row.sales_channel !== "whatsapp" && Number(row.qris_reissue_count || 0) < MAX_QRIS_REISSUES,
       qris: row.dynamic_qris_url ? {
         payable_amount: row.payable_amount,
         unique_code: row.unique_code,

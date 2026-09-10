@@ -275,6 +275,7 @@ CREATE TABLE IF NOT EXISTS payment_transactions (
   status TEXT NOT NULL DEFAULT 'initializing',
   provider_signature TEXT,
   invoice_issued_at TEXT,
+  expiry_notice_state TEXT,
   qris_url TEXT,
   qris_payload TEXT,
   direct_url TEXT,

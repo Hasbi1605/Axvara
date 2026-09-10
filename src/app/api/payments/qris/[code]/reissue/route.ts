@@ -13,7 +13,7 @@
 // disalahgunakan untuk mengganggu pembeli lain adalah invariannya di
 // `reissueDanaQrisInvoice`: reissue HANYA boleh saat invoice lama sudah
 // kedaluwarsa, sehingga QR yang sedang aktif tidak pernah bisa dibatalkan
-// pihak luar. Ditambah rate limit 5/menit/IP dan batas 3 reissue per order.
+// pihak luar. Ditambah rate limit 5/menit/IP dan batas 1 reissue per order.
 
 import { NextRequest, NextResponse } from "next/server";
 import { reissueDanaQrisInvoice, isDanaQrisEnabled, isDanaQrisConfigured } from "@/lib/payments/dana-qris";

@@ -26,6 +26,8 @@ type Order = {
   subtotal: number;
   status: string;
   qris?: QrisInvoice | null;
+  expiresAt?: string;
+  qrisReissueAllowed: boolean;
 };
 
 function fromApi(value: Record<string, unknown>): Order {
@@ -37,6 +39,8 @@ function fromApi(value: Record<string, unknown>): Order {
     items: (value.items || []) as Order["items"],
     subtotal: Number(value.subtotal),
     status: String(value.status),
+    expiresAt: value.expires_at ? String(value.expires_at) : undefined,
+    qrisReissueAllowed: value.qris_reissue_allowed === true,
     qris: value.qris as QrisInvoice | null | undefined,
   };
 }
@@ -133,7 +137,7 @@ export default function OrderSuccessPage() {
     return <div className="mx-auto max-w-[640px] px-4 py-16 text-center"><p className="text-white/60">Pesanan tidak ditemukan</p><Link href="/" className="mt-3 inline-block text-sm text-[#00E5FF]">Kembali ke beranda</Link></div>;
   }
 
-  const isExpired = order.status === "kadaluarsa";
+  const isExpired = order.status === "kadaluarsa" || (order.status === "pending" && Boolean(order.expiresAt) && Date.parse(order.expiresAt!) <= now);
   const isPaid = order.status === "lunas";
   const isCancelled = order.status === "dibatalkan";
   const payableAmount = Number(order.qris?.payable_amount || order.subtotal);
@@ -169,13 +173,15 @@ export default function OrderSuccessPage() {
             : isCancelled
               ? <>Pesanan ini dibatalkan. Hubungi admin jika kamu sudah melakukan transfer.</>
               : isExpired
-                ? <>Batas pembayaran sudah habis dan stok telah dilepas. Silakan buat pesanan baru.</>
-                : order.qris
+                ? <>Batas pembayaran sudah habis. Jangan bayar QRIS lama. Silakan buat pesanan baru.</>
+                : order.qris && qrisExpired
+                  ? <>QRIS sudah hangus. Jangan bayar QRIS lama.</>
+                  : order.qris
                   ? <>Scan QRIS di bawah dan bayar <span className="font-semibold text-white">tepat sesuai total</span>. Status akan diperbarui otomatis.</>
                   : <>Terima kasih, <span className="font-medium text-white">{order.name}</span>! Admin akan memverifikasi bukti pembayaran dan menghubungi kamu.</>}
         </p>
 
-        {order.qris && order.status === "pending" && (
+        {order.qris && order.status === "pending" && !isExpired && (
           <section className="mt-6 rounded-2xl border border-[#00E5FF]/20 bg-[#00E5FF]/[0.05] p-4" aria-label="QRIS dinamis">
             {qrisExpired ? (
               // QR mati tetapi ORDER masih hidup: pembeli bisa minta QR baru
@@ -184,16 +190,16 @@ export default function OrderSuccessPage() {
               <div className="py-2">
                 <p className="font-display text-base font-bold text-white">QRIS sudah kedaluwarsa</p>
                 <p className="mx-auto mt-2 max-w-[360px] text-xs leading-relaxed text-white/55">
-                  Pesanan kamu masih aktif. Minta QRIS baru dengan nominal baru — jumlah dan produknya tetap sama.
+                  {order.qrisReissueAllowed ? "Pesanan masih aktif. Kamu dapat meminta QRIS baru 1 kali. Jangan bayar QRIS lama." : "QRIS sudah hangus. Tidak ada pembaruan QRIS lagi; buat pesanan ulang."}
                 </p>
-                <button
+                {order.qrisReissueAllowed && <button
                   type="button"
                   onClick={requestNewQris}
                   disabled={reissuing}
-                  className="mt-4 inline-flex h-11 items-center gap-2 rounded-xl bg-[#00E5FF] px-5 text-sm font-bold text-[#080C1E] transition hover:bg-[#00D0E8] disabled:opacity-50"
+                  className="mt-4 inline-flex h-11 items-center gap-2 whitespace-nowrap rounded-xl bg-[#00E5FF] px-5 text-sm font-bold text-[#080C1E] transition hover:bg-[#00D0E8] disabled:opacity-50"
                 >
                   {reissuing ? "Menerbitkan QRIS baru…" : "Minta QRIS Baru"}
-                </button>
+                </button>}
                 {reissueError && (
                   <p role="alert" className="mt-3 text-xs text-amber-200">{reissueError}</p>
                 )}

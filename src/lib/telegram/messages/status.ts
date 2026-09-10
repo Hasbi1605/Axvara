@@ -158,7 +158,7 @@ export function qrisRenewRejectedMessage(
     return [
       "⌛ <b>Batas Perpanjangan Habis</b>",
       "",
-      "QRIS pesanan ini sudah diperpanjang maksimal 3 kali.",
+      "QRIS pesanan ini sudah diperpanjang maksimal 1 kali.",
       "Silakan buat pesanan baru lewat /katalog.",
     ].join("\n");
   }
@@ -225,5 +225,13 @@ export function invalidWhatsAppMessage(): string {
     "Contoh: <code>08123456789</code>",
     "",
     "Coba lagi atau ketik /katalog untuk batal.",
+  ].join("\n");
+}
+
+export function qrisExpiredMessage(orderCode: string): string {
+  return ["⏰ <b>QRIS Kedaluwarsa</b>", "", `<code>${escapeHtml(orderCode)}</code>`, "",
+    "QRIS pertama sudah hangus setelah 15 menit. Jangan bayar QRIS lama.",
+    "Kamu dapat meminta QRIS baru 1 kali lewat tombol di bawah selama pesanan masih aktif.",
+    "Jika QRIS pengganti juga tidak dibayar sampai batas waktunya, pesanan kedaluwarsa dan harus order ulang.",
   ].join("\n");
 }

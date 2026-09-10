@@ -353,9 +353,6 @@ export function cartKeyboard(params: {
 export function qrisInvoiceKeyboard(orderCode: string): InlineKeyboardMarkup {
   return {
     inline_keyboard: [
-      // QR berlaku 15 menit sementara ORDER hidup 60 menit, jadi pembeli yang
-      // telat cukup meminta QR baru untuk pesanan yang sama.
-      [{ text: "🔄 QRIS Baru", callback_data: cb.qrisRenew(orderCode) }],
       [{ text: "❌ Batalkan Pesanan", callback_data: cb.cancel(orderCode) }],
       [{ text: "🏠 Menu Utama", callback_data: cb.home() }],
     ],
@@ -458,4 +455,12 @@ export function webOrderAdminKeyboard(params: {
       ],
     ],
   };
+}
+
+/** Hanya ditampilkan bersama pesan QR pertama yang sudah kedaluwarsa. */
+export function qrisExpiredKeyboard(orderCode: string): InlineKeyboardMarkup {
+  return { inline_keyboard: [
+    [{ text: "🔄 QRIS Baru", callback_data: cb.qrisRenew(orderCode) }],
+    ...qrisInvoiceKeyboard(orderCode).inline_keyboard,
+  ] };
 }

@@ -3,22 +3,10 @@ import { getD1, queryAll, queryFirst } from "@/lib/db";
 export const DANA_QRIS_PROVIDER = "dana";
 export const DANA_QRIS_MODE = "dynamic-qris";
 export const DANA_QRIS_EXPIRY_MINUTES = 15;
-/**
- * Masa hidup ORDER untuk pembayaran QRIS — sengaja BERBEDA dari
- * DANA_QRIS_EXPIRY_MINUTES di atas.
- *
- * Dulu keduanya disamakan: pembuatan invoice menimpa `orders.expires_at`
- * dengan expiry invoice 15 menit, sehingga saat QR mati order langsung
- * kedaluwarsa, cron membatalkannya, dan stok dilepas. Akibatnya pembeli yang
- * telat bayar wajib mengulang seluruh alur dan tidak pernah bisa memakai
- * QRIS baru untuk order yang sama.
- *
- * 60 menit = 4 jendela QR 15 menit, selaras dengan MAX_QRIS_REISSUES.
- * Ini juga batas atas lama stok tertahan oleh order yang belum dibayar.
- */
+/** Batas menunggu permintaan QR pengganti untuk Web/Telegram. WA hanya 15 menit. */
 export const QRIS_ORDER_WINDOW_MINUTES = 60;
-/** Batas penerbitan ulang QRIS per order (3 reissue + 1 invoice asli). */
-export const MAX_QRIS_REISSUES = 3;
+/** Satu invoice asli dan maksimal satu QR pengganti. */
+export const MAX_QRIS_REISSUES = 1;
 export const DANA_QRIS_MAX_UNIQUE_CODE = 299;
 const MIN_AMOUNT = 1;
 const MAX_AMOUNT = 999_999_999;
@@ -264,9 +252,9 @@ export async function createDanaQrisInvoice(orderCode: string, requestedAmount: 
         d1.prepare(
           `UPDATE orders
            SET payment_method='qris', payment_account='DANA Business', payment_status='pending',
-               expires_at=?, updated_at=datetime('now')
+               expires_at=CASE WHEN sales_channel='whatsapp' THEN ? ELSE ? END, updated_at=datetime('now')
            WHERE code=? AND status='pending'`,
-        ).bind(orderExpiresAt, orderCode),
+        ).bind(expiresAt, orderExpiresAt, orderCode),
         d1.prepare(`DELETE FROM operation_guards WHERE operation_id=?`).bind(guardId),
       ]);
       return { orderCode, requestedAmount, payableAmount, uniqueCode, qrisPayload, qrisUrl, expiresAt, isExisting: false };
@@ -331,7 +319,7 @@ export async function reissueDanaQrisInvoice(orderCode: string): Promise<QrisRei
 
   const row = await queryFirst(
     `SELECT o.code, o.status, o.payment_status, o.expires_at AS order_expires_at,
-            o.qris_reissue_count,
+            o.qris_reissue_count, o.sales_channel,
             pt.requested_amount, pt.payable_amount, pt.status AS tx_status,
             pt.expires_at AS invoice_expires_at
      FROM orders o
@@ -339,7 +327,7 @@ export async function reissueDanaQrisInvoice(orderCode: string): Promise<QrisRei
      WHERE o.code=?`,
     orderCode,
   );
-  if (!row) return { ok: false, reason: "order_not_reissuable" };
+  if (!row || row.sales_channel === "whatsapp") return { ok: false, reason: "order_not_reissuable" };
 
   const orderAlive = String(row.status) === "pending"
     && ["unpaid", "pending"].includes(String(row.payment_status))
@@ -401,7 +389,7 @@ export async function reissueDanaQrisInvoice(orderCode: string): Promise<QrisRei
              SELECT 1 FROM orders o
              JOIN payment_transactions pt ON pt.order_code=o.code AND pt.provider='dana'
              WHERE o.code=? AND o.status='pending' AND o.payment_status IN ('unpaid','pending')
-               AND o.qris_reissue_count=? AND o.qris_reissue_count<? AND pt.status='pending'
+               AND o.sales_channel!='whatsapp' AND o.qris_reissue_count=? AND o.qris_reissue_count<? AND pt.status='pending'
                AND (o.expires_at IS NULL OR julianday(o.expires_at)>julianday('now'))
                AND julianday(pt.expires_at)<=julianday('now')
                AND NOT EXISTS (
@@ -413,14 +401,15 @@ export async function reissueDanaQrisInvoice(orderCode: string): Promise<QrisRei
         d1.prepare(
           `UPDATE payment_transactions
            SET payable_amount=?, unique_code=?, qris_payload=?, qris_url=?,
-               expires_at=?, invoice_issued_at=datetime('now'), last_error=NULL, updated_at=datetime('now')
+               expires_at=?, invoice_issued_at=datetime('now'), expiry_notice_state=NULL, last_error=NULL, updated_at=datetime('now')
            WHERE order_code=? AND provider='dana' AND status='pending'`,
         ).bind(payableAmount, uniqueCode, qrisPayload, qrisUrl, expiresAt, orderCode),
         d1.prepare(
           `UPDATE orders
-           SET qris_reissue_count=qris_reissue_count+1, updated_at=datetime('now')
+           SET qris_reissue_count=qris_reissue_count+1, expires_at=?,
+               telegram_invoice_sent_at=NULL, telegram_invoice_attempts=0, updated_at=datetime('now')
            WHERE code=? AND status='pending'`,
-        ).bind(orderCode),
+        ).bind(expiresAt, orderCode),
         d1.prepare(`DELETE FROM operation_guards WHERE operation_id=?`).bind(guardId),
       ]);
       return {
