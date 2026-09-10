@@ -96,7 +96,9 @@ axvara/
 
 Flow: server memvalidasi harga/stok dan menerbitkan quote bertanda tangan 60 menit → order dibuat idempotent dan stok direservasi atomik. Untuk QRIS, server membuat payload EMVCo dan nominal unik per order, menampilkan QR selama 15 menit, lalu QRIS Hook Android mengirim pembayaran ke `/api/webhook/dana`; nominal yang cocok tepat mengubah ledger+order menjadi lunas secara atomik. Transfer SeaBank/e-wallet tetap memakai bukti JPG/PNG/WebP dan review admin. Order yang kedaluwarsa mengembalikan stok atomik.
 
-**Masa hidup order dipisah dari masa hidup QR.** QR berlaku 15 menit, tetapi order QRIS hidup 60 menit. Ketika QR mati sementara order masih hidup, pembeli menekan **Minta QRIS Baru** di `/pesanan/[code]` atau tombol **🔄 QRIS Baru** di Telegram, dan mendapat nominal unik + masa berlaku baru untuk pesanan yang sama — tanpa memilih produk dan varian dari awal. Maksimal 3 kali per order. Penerbitan ulang hanya diizinkan setelah QR lama benar-benar kedaluwarsa; syarat itu yang membuat orang lain yang menebak kode order tidak dapat membatalkan QR yang sedang dipakai pembeli. Pembayaran yang telat masuk pada nominal lama tidak melunasi apa pun dan diarahkan ke rekonsiliasi manual.
+**Masa hidup order dipisah dari masa hidup QR.** QR berlaku 15 menit, tetapi order QRIS hidup 60 menit. Ketika QR mati sementara order masih hidup, pembeli menekan **Minta QRIS Baru** di `/pesanan/[code]` atau tombol **🔄 QRIS Baru** di Telegram, dan mendapat nominal unik + masa berlaku baru untuk pesanan yang sama — tanpa memilih produk dan varian dari awal. Maksimal 3 kali per order. Penerbitan ulang hanya diizinkan setelah QR lama benar-benar kedaluwarsa; syarat itu yang membuat orang lain yang menebak kode order tidak dapat membatalkan QR yang sedang dipakai pembeli. QR baru berlaku paling lama 15 menit dan tidak melewati batas akhir order. Cron mempertahankan order serta reservasi stok ketika hanya QR yang habis; ledger dan order ditutup bersama ketika masa hidup order habis. Pembayaran yang telat masuk pada nominal lama tidak melunasi order lain dan diarahkan ke rekonsiliasi manual.
+
+Migrasi `0025_qris_invoice_history.sql` menyimpan setiap nominal dan waktu penerbitan di `payment_invoice_history` melalui trigger dalam transaksi ledger yang sama. Allocator, webhook, retry admin, dan guard pelunasan membaca riwayat tersebut. Jika versi lama sudah menghapus riwayat lewat reissue, rentang nominal yang terdampak dicatat di `dana_qris_legacy_ranges` dan memerlukan verifikasi mutasi manual; migrasi tidak menghidupkan kembali order terminal.
 
 AXVARA adalah third-party independen (bukan official store). Garansi bervariasi 1x24 jam–30 hari mengikuti deskripsi tiap produk; klaim berupa penggantian/perbaikan, bukan refund otomatis. Checkout mewajibkan centang persetujuan ketentuan sebelum order dibuat; acuan lengkap di `/garansi-replace`.
 
@@ -195,6 +197,8 @@ kirim `/chatid`, lalu simpan ID numerik negatif yang dibalas bot sebagai secret 
 (link undangan `t.me/+...` tidak dapat dipakai sebagai Bot API `chat_id`).
 
 ---
+
+Panel admin memuat produk, kategori, dan ringkasan setelah autentikasi. Callback pemuatan memakai dependency setter sesi yang stabil agar perpindahan menu dan render ulang biasa tidak memicu pengambilan data tanpa henti.
 
 ## ▶️ Jalankan Local (dev-only, tanpa build tiap ubahan)
 

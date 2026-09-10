@@ -1,3 +1,4 @@
+import { DANA_AMOUNT_REUSED_SQL } from "@/lib/payments/dana-history";
 import { NextRequest, NextResponse } from "next/server";
 import { execRun, queryAll, queryFirst, transitionPendingPaymentToPaid } from "@/lib/db";
 import {
@@ -65,11 +66,9 @@ export async function POST(request: NextRequest) {
   // never matches ISO rows. Over-fetching one extra row and filtering here
   // keeps webhook matching exactly as strict as cron expiry.
   const candidates = await queryAll(
-    `SELECT pt.order_code, pt.status, pt.expires_at, pt.created_at AS invoice_created_at,
+    `SELECT pt.order_code, pt.status, pt.expires_at, COALESCE(pt.invoice_issued_at,pt.created_at) AS invoice_created_at,o.expires_at AS order_expires_at,
             o.status AS order_status,
-            (SELECT COUNT(*) FROM payment_transactions history
-             WHERE history.provider=pt.provider AND history.payable_amount=pt.payable_amount
-               AND history.order_code<>pt.order_code) AS amount_history,
+            ${DANA_AMOUNT_REUSED_SQL} AS amount_history,
             o.sales_channel, o.channel_conversation_id
      FROM payment_transactions pt
      JOIN orders o ON o.code=pt.order_code
@@ -78,7 +77,7 @@ export async function POST(request: NextRequest) {
      LIMIT 2`,
     payment.amount,
   );
-  const live = candidates.filter((row) => isFutureIso(row.expires_at));
+  const live = candidates.filter((row) => isFutureIso(row.expires_at) && isFutureIso(row.order_expires_at));
   // Causal guard (issue #2): an event observed BEFORE the candidate invoice
   // was issued cannot be its payment — money cannot pay an invoice that did
   // not exist yet. Such a stale/relayed notification must not settle a new

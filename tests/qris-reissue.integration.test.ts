@@ -29,7 +29,7 @@ beforeEach(async () => {
   vi.stubEnv("DANA_WEBHOOK_SECRET", "secret-dana");
   vi.stubGlobal("fetch", vi.fn(() => { throw new Error("Network disabled"); }));
 });
-afterEach(() => { fixture.close(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+afterEach(() => { fixture.close(); vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
 const CODE = "AXV-20260909-AAAAAAA1";
 
@@ -147,6 +147,11 @@ describe("reissue QRIS mengubah state, bukan mengembalikan invoice lama", () => 
   it("nominal lama tidak dipakai ulang langsung pada reissue berikutnya", async () => {
     await seedPendingQrisOrder({ invoiceExpiresAt: new Date(Date.now() - 60_000).toISOString() });
     const { reissueDanaQrisInvoice } = await import("@/lib/payments/dana-qris");
+    // Force the allocator to revisit old candidates on every attempt.
+    vi.spyOn(crypto, "getRandomValues").mockImplementation((array) => {
+      (array as Uint32Array)[0] = 41;
+      return array;
+    });
     const seen = new Set<number>([10_042]);
     for (let round = 0; round < 3; round++) {
       // Matikan invoice terbaru agar syarat reissue terpenuhi lagi.

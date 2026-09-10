@@ -227,6 +227,8 @@ describe("RR3-03 cron stays under the platform query limit with measured account
         .run(code, "X", "6280", JSON.stringify([{ product_id: 1, qty: 1 }]));
       await createDanaQrisInvoice(code, 10000);
       fixture.sql.prepare("UPDATE payment_transactions SET expires_at=datetime('now','-1 minute') WHERE order_code=?").run(code);
+      // Invoice creation establishes the order window; expire the ORDER too.
+      fixture.sql.prepare("UPDATE orders SET expires_at=datetime('now','-1 minute') WHERE code=?").run(code);
     }
     await paidSharedOrder("RR303-F", 2);
     await enqueueWhatsAppMessage("rr303-wa", "628000000000", "DUMMY");

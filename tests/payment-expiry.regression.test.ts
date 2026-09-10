@@ -22,7 +22,7 @@ const { DatabaseSync } = nodeRequire("node:sqlite") as {
 describe("canonical expiry semantics (ISO vs legacy)", () => {
   it("parses both ISO-8601 and legacy space-separated timestamps", () => {
     expect(parseExpiry("2026-09-07T07:16:59.000Z")).toBe(Date.parse("2026-09-07T07:16:59.000Z"));
-    expect(parseExpiry("2026-09-07 07:16:59")).toBe(Date.parse("2026-09-07 07:16:59"));
+    expect(parseExpiry("2026-09-07 07:16:59")).toBe(Date.parse("2026-09-07T07:16:59Z"));
     expect(parseExpiry(null)).toBeNull();
     expect(parseExpiry("not-a-date")).toBeNull();
   });

@@ -1,3 +1,4 @@
+import { DANA_AMOUNT_REUSED_SQL } from "@/lib/payments/dana-history";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { execRun, isD1Mode, queryAll, queryFirst, transitionPendingPaymentToPaid } from "@/lib/db";
@@ -64,16 +65,14 @@ export async function POST(request: NextRequest) {
   // observed before the candidate invoice was issued cannot be its payment
   // (issue #2) — it stays in reconciliation instead of settling the order.
   const candidates = await queryAll(
-    `SELECT pt.order_code,pt.expires_at,pt.created_at AS invoice_created_at,o.sales_channel,o.channel_conversation_id,
-       (SELECT COUNT(*) FROM payment_transactions history
-        WHERE history.provider=pt.provider AND history.payable_amount=pt.payable_amount
-          AND history.order_code<>pt.order_code) AS amount_history
+    `SELECT pt.order_code,pt.expires_at,COALESCE(pt.invoice_issued_at,pt.created_at) AS invoice_created_at,o.expires_at AS order_expires_at,o.sales_channel,o.channel_conversation_id,
+       ${DANA_AMOUNT_REUSED_SQL} AS amount_history
      FROM payment_transactions pt JOIN orders o ON o.code=pt.order_code
      WHERE pt.provider='dana' AND pt.payable_amount=? AND pt.status='pending'
        AND o.status='pending' LIMIT 3`,
     Number(event.amount),
   );
-  const live = candidates.filter((row) => isFutureIso(row.expires_at));
+  const live = candidates.filter((row) => isFutureIso(row.expires_at) && isFutureIso(row.order_expires_at));
   const matches = live.filter((row) =>
     isCausallyPlausiblePayment(event.created_at, row.invoice_created_at)
       && (!manual || row.order_code === body?.order_code?.trim()),

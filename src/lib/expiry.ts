@@ -2,14 +2,18 @@
 //
 // Writers persist `expires_at` as ISO-8601 UTC (`toISOString()`), while
 // older rows may hold legacy space-separated `YYYY-MM-DD HH:MM:SS` values.
-// `Date.parse` handles both, so every cron/webhook/session check goes
+// Legacy timestamps without an offset are UTC, just like D1 datetime('now').
+// Normalize them before Date.parse so every cron/webhook/session check goes
 // through these helpers instead of raw SQL string comparison
 // (`expires_at < datetime('now')`), which can never match an ISO value
 // because 'T' (0x54) sorts after ' ' (0x20).
 
 export function parseExpiry(value: unknown): number | null {
   if (value === null || value === undefined) return null;
-  const parsed = Date.parse(String(value));
+  const text = String(value).trim();
+  const utc = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?(\.\d+)?$/.test(text)
+    ? `${text.replace(" ", "T")}Z` : text;
+  const parsed = Date.parse(utc);
   return Number.isFinite(parsed) ? parsed : null;
 }
 

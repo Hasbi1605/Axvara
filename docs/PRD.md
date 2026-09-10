@@ -137,7 +137,7 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 ### 3.2 Flow Pembeli — Batal / Error
 
 - Jika upload bukti transfer manual gagal (file >5MB / bukan gambar) → error inline, tetap di halaman checkout
-- Jika QRIS kedaluwarsa → invoice/order menjadi Kadaluarsa dan stok dikembalikan
+- Jika QRIS kedaluwarsa → order tetap aktif sampai batas 60 menit; pembeli dapat meminta QR baru maksimal 3 kali. QR baru tidak melewati batas akhir order. Setelah order kedaluwarsa, ledger ditutup dan stok dikembalikan.
 - Jika pembeli tutup tab sebelum upload → pesanan tetap tercipta status Pending tanpa bukti, admin bisa follow-up WA
 - Jika admin tolak (bukti palsu) → status Dibatalkan + WA "Bukti tidak valid, silakan hubungi admin"
 
@@ -159,7 +159,7 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 Pending (baru, tunggu verifikasi) 
   → Lunas (admin konfirmasi, bukti valid)
   → Dibatalkan (admin batalkan / bukti tidak valid)
-  → Kadaluarsa (QRIS 15 menit; transfer manual 24 jam; stok dikembalikan)
+  → Kadaluarsa (order QRIS 60 menit, QR maksimal 15 menit; transfer manual 24 jam; stok dikembalikan)
 ```
 
 ---

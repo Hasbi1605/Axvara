@@ -225,10 +225,14 @@ export async function POST(request: NextRequest) {
           EXPIRY_PER_RUN,
         );
         expiredCandidates = await queryAll(
-          `SELECT pt.order_code, pt.provider_order_id, pt.merchant_id, pt.expires_at, pt.status, o.items, o.telegram_chat_id
+          `SELECT pt.order_code, pt.provider_order_id, pt.merchant_id,
+                  COALESCE(CASE WHEN pt.provider='dana' THEN o.expires_at END,pt.expires_at) AS expires_at,
+                  pt.status, o.items, o.telegram_chat_id
            FROM payment_transactions pt
            JOIN orders o ON o.code=pt.order_code
            WHERE pt.status='pending'
+             AND julianday(COALESCE(CASE WHEN pt.provider='dana' THEN o.expires_at END,pt.expires_at))<=julianday('now')
+           ORDER BY julianday(COALESCE(CASE WHEN pt.provider='dana' THEN o.expires_at END,pt.expires_at)) ASC
            LIMIT ?`,
           EXPIRY_PER_RUN * 2,
         );
@@ -263,7 +267,9 @@ export async function POST(request: NextRequest) {
       }
       results.stale_initializing = staleTransitions;
 
-      // 2. Expired payments (evaluasi JS atas ISO kanonis — lihat komentar lama).
+      // 2. A dead QR may be renewed while its order still owns the stock.
+      // Close DANA ledger + order only at the ORDER deadline (legacy fallback:
+      // invoice deadline when the order has none). Keep the JS check as well.
       const expiredPayments = expiredCandidates
         .filter((tx) => isExpiredIso(tx.expires_at))
         .slice(0, EXPIRY_PER_RUN);
@@ -282,6 +288,7 @@ export async function POST(request: NextRequest) {
               orderCode: String(tx.order_code),
               expectedTransactionStatus: "pending",
               transactionStatus: "expired",
+              expiredOnly: true,
               orderStatus: "kadaluarsa",
               paymentStatus: "expired",
               items,

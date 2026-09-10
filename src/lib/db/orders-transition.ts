@@ -1,11 +1,11 @@
 // Transisi status order (pending → lunas/dibatalkan/kadaluarsa dan varian
 // pembayaran QRIS) dipisah dari pembuatan order supaya tiap modul jalur uang
-// tetap kecil dan dapat diaudit terpisah. PURE MOVE: seluruh SQL, urutan
-// statement dalam d1.batch(), guard operation_guards, pesan error, dan
-// komentar ras/idempotensi identik dengan src/lib/db.ts lama. State dev
+// tetap kecil dan dapat diaudit terpisah. Guard atomik mengikat status,
+// deadline order, serta riwayat nominal/waktu penerbitan invoice. State dev
 // (getOrderMem/getSharedMem) diimpor dari client.ts sebagai SATU sumber
 // tunggal agar tidak ada dua salinan store yang desinkron.
 
+import { DANA_AMOUNT_REUSED_SQL } from "@/lib/payments/dana-history";
 import { getD1, getOrderMem, getSharedMem, execRun } from "./client";
 import { OrderTransitionError } from "./errors";
 import type { D1, D1Statement } from "./types";
@@ -151,6 +151,8 @@ export async function transitionPendingPaymentOrder(input: {
   paymentStatus: "failed" | "expired";
   items: { product_id: number; variant_id?: number; qty: number }[];
   lastError?: string | null;
+  /** Cron rechecks the deadline inside the same transaction as stock release. */
+  expiredOnly?: boolean;
 }, database?: D1 | null): Promise<boolean> {
   const productQuantities = new Map<number, number>();
   const variantQuantities = new Map<number, number>();
@@ -176,8 +178,15 @@ export async function transitionPendingPaymentOrder(input: {
          SELECT ?, CASE WHEN
            EXISTS(SELECT 1 FROM orders WHERE code=? AND status='pending' AND payment_status IN ('unpaid','pending'))
            AND EXISTS(SELECT 1 FROM payment_transactions WHERE order_code=? AND status=?)
+           AND (?=0 OR EXISTS (
+             SELECT 1 FROM payment_transactions pt JOIN orders o ON o.code=pt.order_code
+             WHERE pt.order_code=? AND julianday(COALESCE(
+               CASE WHEN pt.provider='dana' THEN o.expires_at END,pt.expires_at
+             ))<=julianday('now')
+           ))
          THEN 1 ELSE 0 END`,
-      ).bind(guardId, input.orderCode, input.orderCode, input.expectedTransactionStatus),
+      ).bind(guardId, input.orderCode, input.orderCode, input.expectedTransactionStatus,
+        input.expiredOnly ? 1 : 0, input.orderCode),
     ];
 
     productQuantities.forEach((qty, productId) => {
@@ -261,7 +270,8 @@ export async function transitionPendingPaymentToPaid(
       d1.prepare(
         `INSERT INTO operation_guards (operation_id,valid)
          SELECT ?, CASE WHEN
-           EXISTS(SELECT 1 FROM orders WHERE code=? AND status='pending' AND payment_status IN ('unpaid','pending'))
+           EXISTS(SELECT 1 FROM orders WHERE code=? AND status='pending' AND payment_status IN ('unpaid','pending')
+             AND (expires_at IS NULL OR julianday(expires_at)>julianday('now')))
            AND EXISTS(SELECT 1 FROM payment_transactions WHERE order_code=? AND status='pending')
          THEN 1 ELSE 0 END`,
       ).bind(guardId, orderCode, orderCode),
@@ -287,12 +297,9 @@ export async function transitionPendingPaymentToPaid(
            JOIN payment_transactions pt ON pt.order_code=?
            WHERE e.id=? AND e.status IN ('received','ignored','failed')
              AND e.amount=pt.payable_amount
-             AND julianday(e.created_at)>=julianday(pt.created_at)
+             AND julianday(e.created_at)>=julianday(COALESCE(pt.invoice_issued_at,pt.created_at))
              AND datetime(pt.expires_at)>datetime('now')
-             AND (?=1 OR NOT EXISTS(
-               SELECT 1 FROM payment_transactions history
-               WHERE history.provider=pt.provider AND history.payable_amount=pt.payable_amount
-                 AND history.order_code<>pt.order_code))
+             AND (?=1 OR NOT ${DANA_AMOUNT_REUSED_SQL})
          ) THEN 1 ELSE 0 END`,
       ).bind(`${guardId}:event`, orderCode, event.id, event.reviewedBy && event.reviewNote ? 1 : 0));
       statements.push(d1.prepare(

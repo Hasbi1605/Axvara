@@ -39,6 +39,8 @@ async function seedExpired(n: number, prefix: string) {
       .run(code, "X", "6280", JSON.stringify([{ product_id: 1, qty: 1 }]));
     await createDanaQrisInvoice(code, 10000);
     fixture.sql.prepare("UPDATE payment_transactions SET expires_at=datetime('now','-1 minute') WHERE order_code=?").run(code);
+    // Invoice creation establishes the order window; expire the ORDER too.
+    fixture.sql.prepare("UPDATE orders SET expires_at=datetime('now','-1 minute') WHERE code=?").run(code);
   }
 }
 

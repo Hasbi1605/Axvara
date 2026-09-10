@@ -127,7 +127,9 @@ axvara/
 │   │                            # orders-transition, types
 │   ├── commerce.ts              # createChannelOrderAtomic: reservasi stok + inventory + INSERT
 │   │                            # order dalam SATU d1.batch, dipakai web/Telegram/WhatsApp
-│   ├── payments/dana-qris.ts    # invoice + reissue QRIS, konstanta masa hidup order vs invoice
+│   ├── payments/
+│   │   ├── dana-qris.ts        # invoice + reissue QRIS, masa hidup order vs invoice
+│   │   └── dana-history.ts     # predikat riwayat nominal untuk webhook/retry/guard atomik
 │   ├── fulfillment/
 │   │   ├── deliver.ts           # BARREL
 │   │   └── delivery/            # claim, send, process, ensure, reconcile, handover,
@@ -157,6 +159,8 @@ Impor dari barrel, bukan dari file internal di dalam foldernya — itu yang menj
 perubahan bila struktur internal digeser lagi. Handler webhook tidak boleh dipanggil langsung dari
 `route.ts`: Telegram hanya mengekspos `handleCommand`/`handleCallback` supaya guard kepemilikan
 `ownerBound` tidak bisa dilewati.
+
+Pada admin, `onUnauthorized` bergantung pada setter `setAuthed` yang stabil, bukan objek hasil `useAdminAuth`. Dengan demikian `load` tetap stabil dan effect pemuatan tidak berulang setiap render; test komponen memeriksa jumlah request sesudah autentikasi dan perpindahan menu.
 
 ### 3.1 Runtime performa storefront
 
@@ -597,7 +601,7 @@ Implementasi native TypeScript di codebase AXVARA. Repo `mocasus/telegram-auto-o
 - **Authority:** QRIS Hook Android mengirim JSON ke `POST /api/webhook/dana` dengan `X-Webhook-Secret`. Event dideduplikasi dan hanya nominal persis dari satu invoice DANA aktif yang dapat melunasi order.
 - **Setup Android:** gunakan URL publik `https://axvara.tech/api/webhook/dana`, isi field secret aplikasi dengan nilai rahasia Pages Secret `DANA_WEBHOOK_SECRET` (bukan teks nama variabel tersebut), aktifkan Notification Access + merchant DANA + QRIS Hook Active, dan matikan Debug Mode agar delivery tidak dilewati. Admin menampilkan URL kanonis, nama header, health, dan event masuk tanpa mengekspos nilai secret.
 - **Fulfillment:** AES-256-GCM via WebCrypto, fingerprint SHA-256 untuk deduplikasi. Tiga mode: `manual`, `shared`, `unique`. Outbox pattern dengan `fulfillment_jobs` (per order, kompatibilitas) + `fulfillment_items` per (order, item) sejak migrasi 0015: setiap item punya status/mode/penerima sendiri, order selesai hanya setelah seluruh item terminal sukses.
-- **Rekonsiliasi:** `POST /api/cron/operations` menangani stale initializing, invoice kedaluwarsa, due jobs, stale locks, serta retry notifikasi order/paid Telegram dan order/paid-admin WhatsApp. DANA tidak menyediakan status polling; webhook adalah authority pembayaran.
+- **Rekonsiliasi:** `POST /api/cron/operations` menangani stale initializing, order QRIS yang mencapai batas akhir, due jobs, stale locks, serta retry notifikasi order/paid Telegram dan order/paid-admin WhatsApp. DANA tidak menyediakan status polling; webhook adalah authority pembayaran.
 - **Notifikasi Telegram:** order Telegram mengirim notifikasi grup `TELEGRAM_ADMIN_CHAT_ID` segera setelah ledger QRIS terbentuk. Kolom marker idempoten pada `orders` mencegah duplikat. Setelah QRIS Hook mengubah order menjadi `paid`, buyer otomatis menerima pesan berhasil tanpa menekan cek status; untuk fulfillment manual pesan yang sama baru meminta nomor WA dan menampilkan kontak admin.
 
 ### Tabel Baru (migrasi 0005)
@@ -608,6 +612,8 @@ Implementasi native TypeScript di codebase AXVARA. Repo `mocasus/telegram-auto-o
 | `telegram_updates` | Idempotency + lease untuk webhook |
 | `payment_transactions` | Ledger lintas-channel (base amount, payable amount unik, payload/URL QRIS, expiry) |
 | `dana_webhook_events` | Dedup/audit minimal event QRIS Hook dan order hasil pencocokan |
+| `payment_invoice_history` | Riwayat nominal, waktu terbit, dan expiry setiap QRIS; trigger insert/update ledger menjaganya dalam transaksi yang sama (migrasi 0025) |
+| `dana_qris_legacy_ranges` | Rentang nominal dengan riwayat lama yang sudah terhapus oleh reissue; wajib verifikasi mutasi manual (migrasi 0025) |
 | `fulfillment_inventory` | Vault secret terenkripsi per produk |
 | `fulfillment_jobs` | Outbox delivery per order dengan retry (kompatibilitas) |
 | `fulfillment_items` | Status/mode/penerima per item order (migrasi 0015). **Ringkasan status: satu order HANYA `delivered` bila SEMUA item delivered; campuran delivered+manual = `manual_required` (pelanggaran ini menutupi item manual yang belum diserahkan). Per-item klaim CAS (`sending` + locked_until) + agregat parent berpagar lease (R4 lanjutan); serah terima manual via `POST /api/admin/orders/[code]/handover`.** |
@@ -722,5 +728,11 @@ Migrasi `0010_dana_dynamic_qris.sql` menambah `unique_code` dan `qris_payload` p
 - **Inbox & Order Idempotency:** Event tanpa `inboxid` ditolak. Event yang sama dideduplikasi; event gagal dapat direclaim oleh satu retry. Satu pesan `pay` memakai `conversation + member + inboxid + variant` sebagai idempotency key, sementara pesan `pay` baru tetap dapat membuat pembelian ulang varian yang sama. Pending order lama hanya dipakai ulang jika masih unpaid dan belum kedaluwarsa. Webhook membatasi 12 event per anggota/grup per menit; cron menghapus session yang lewat masa simpan dan inbox dedupe lebih dari tujuh hari.
 - **Media Bukti & Anti-SSRF:** Gateway Baileys mengunduh image message dan menyediakan token URL acak sekali pakai selama 10 menit. Pages hanya menerima HTTPS, memvalidasi anti-SSRF terhadap private IP/loopback, men-stream maksimal 5 MB, memverifikasi magic bytes (JPG/PNG/WebP), menghitung SHA-256, lalu menyimpan privat di Cloudflare R2 prefix `bukti/whatsapp/`. Shared gateway token tidak pernah diteruskan ke URL media.
 - **Review & Otoritas Pembayaran:** Bukti QRIS hanya evidence opsional dan tidak dapat melunasi order. `POST /api/webhook/dana` adalah satu-satunya authority QRIS; SeaBank/e-wallet tetap memakai review admin CAS. Pembayaran QRIS yang sudah terdeteksi tidak ditahan oleh kewajiban screenshot WhatsApp.
-- **Lifecycle Stok & Pembayaran:** QRIS Hook memperbarui ledger+order dalam satu batch guard. Invoice kedaluwarsa mengembalikan stok varian/inventory dalam batch yang sama; rail manual WhatsApp tanpa ledger juga diekspirasi dari TTL. Halaman web/quote tidak dapat fallback ke harga atau stok produk induk ketika mode varian aktif.
+- **Lifecycle Stok & Pembayaran:** QRIS Hook memperbarui ledger+order dalam satu batch guard. QRIS yang habis masa berlakunya tidak membatalkan order yang masih aktif: masa QR maksimal 15 menit, masa order 60 menit, reissue maksimal 3 kali dan expiry baru dibatasi expiry order. Cron operasi memakai deadline order DANA (fallback deadline invoice untuk baris legacy tanpa expiry order), lalu menutup ledger+order dan mengembalikan stok varian/inventory dalam satu batch dengan pemeriksaan deadline ulang; rail manual WhatsApp tanpa ledger juga diekspirasi dari TTL. Halaman web/quote tidak dapat fallback ke harga atau stok produk induk ketika mode varian aktif.
 - **Proteksi Kredensial Fulfillment:** Job hanya dapat di-claim setelah order `lunas/paid`; mode dipatok oleh `variant_snapshot` order dan shared secret diambil dari varian terpilih. Varian shared tanpa secret terenkripsi dan varian unique tanpa inventory gagal tertutup sebelum order bot dibuat. Pengiriman WhatsApp selalu via pesan langsung (DM) ke `channel_member_id`/`customer_wa`, tidak pernah ke grup. Gate `WHATSAPP_REQUIRE_PROOF_BEFORE_FULFILLMENT` menahan job sampai bukti diserahkan, dan `WHATSAPP_FULFILLMENT` dapat memaksa jalur manual selama rollout.
+
+### Migrasi 0025 — Riwayat penerbitan QRIS
+
+`payment_transactions` tetap satu baris per order. `invoice_issued_at` menyimpan waktu penerbitan QR terkini, sedangkan `created_at` tetap waktu pembuatan ledger. Trigger insert/update menyalin setiap nominal ke `payment_invoice_history` (kunci provider/order/nominal); reissue tidak pernah memakai kembali nominal milik order yang sama. Allocator mengutamakan nominal yang belum pernah dipakai. Jika pool mengharuskan pemakaian nominal order lain, webhook dan retry otomatis menolak lewat predikat bersama `DANA_AMOUNT_REUSED_SQL`; hanya verifikasi mutasi admin yang dapat melewati pemeriksaan reuse. Waktu event juga harus berada pada atau setelah `invoice_issued_at`, termasuk di dalam guard pelunasan atomik.
+
+Migrasi mengisi riwayat yang masih tersedia. Untuk order dengan `qris_reissue_count>0` sebelum migrasi, nominal sebelumnya tidak bisa dipulihkan dari ledger: rentang harga dasar +1 sampai +299 dicatat di `dana_qris_legacy_ranges`, sehingga pembayaran dalam rentang itu memerlukan verifikasi manual. Order terminal tidak diaktifkan kembali. `publish-scheduled` tetap menyerahkan order yang memiliki ledger aktif ke cron operasi. Test integrasi menjalankan checkout → QR expired → kedua cron → reissue → webhook, juga pelepasan stok tepat sekali pada deadline order.

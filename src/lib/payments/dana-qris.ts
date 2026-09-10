@@ -227,7 +227,7 @@ export async function createDanaQrisInvoice(orderCode: string, requestedAmount: 
   // Prefer unused amounts. Once the finite range is exhausted, reused
   // amounts remain payable but require an administrator's bank verification.
   const history = await queryAll(
-    "SELECT DISTINCT payable_amount FROM payment_transactions WHERE provider='dana' AND payable_amount BETWEEN ? AND ?",
+    "SELECT DISTINCT payable_amount FROM payment_invoice_history WHERE provider='dana' AND payable_amount BETWEEN ? AND ?",
     requestedAmount + 1, requestedAmount + DANA_QRIS_MAX_UNIQUE_CODE,
   );
   const used = new Set(history.map(row => Number(row.payable_amount)));
@@ -319,10 +319,10 @@ export type QrisReissueResult =  | { ok: true; invoice: DanaQrisInvoice; remaini
  * 3. Maksimal MAX_QRIS_REISSUES kali per order.
  *
  * `payment_transactions` punya UNIQUE(order_code), sehingga reissue meng-UPDATE
- * baris yang sama di tempat. Konsekuensi yang disengaja: nominal LAMA tidak
- * lagi cocok dengan invoice aktif mana pun, jadi pembayaran yang telat pada
- * nominal lama akan jatuh ke `no_active_exact_amount` di webhook dan masuk
- * rekonsiliasi manual — gagal-tertutup, bukan melunasi order yang salah.
+ * baris yang sama di tempat. Trigger D1 menyimpan setiap penerbitan dalam
+ * payment_invoice_history sebelum nominal lama hilang. Nominal lama tidak
+ * boleh dipakai lagi oleh order ini; jika dipakai order lain setelah pool
+ * habis, webhook dan retry admin mewajibkan rekonsiliasi manual.
  */
 export async function reissueDanaQrisInvoice(orderCode: string): Promise<QrisReissueResult> {
   if (!isDanaQrisConfigured()) throw new Error("dana_qris_not_configured");
@@ -360,24 +360,29 @@ export async function reissueDanaQrisInvoice(orderCode: string): Promise<QrisRei
 
   const staticPayload = process.env.DANA_STATIC_QRIS!.trim();
   const previousAmount = Number(row.payable_amount);
-  const expiresAt = new Date(Date.now() + DANA_QRIS_EXPIRY_MINUTES * 60_000).toISOString();
+  const orderDeadline = parseDbTimeUtc(row.order_expires_at);
+  const expiresAt = new Date(Math.min(
+    Date.now() + DANA_QRIS_EXPIRY_MINUTES * 60_000,
+    Number.isFinite(orderDeadline) ? orderDeadline : Infinity,
+  )).toISOString();
   const qrisUrl = publicQrisUrl(orderCode);
 
   // Hindari nominal yang pernah dipakai order LAIN supaya webhook tidak
   // menolaknya sebagai `amount_reused_requires_review`, dan hindari nominal
   // yang baru saja dipakai order ini sendiri.
   const history = await queryAll(
-    `SELECT DISTINCT payable_amount FROM payment_transactions
+    `SELECT payable_amount, order_code FROM payment_invoice_history
      WHERE provider='dana' AND payable_amount BETWEEN ? AND ?`,
     requestedAmount + 1, requestedAmount + DANA_QRIS_MAX_UNIQUE_CODE,
   );
   const used = new Set(history.map((historyRow) => Number(historyRow.payable_amount)));
+  const usedByOrder = new Set(history.filter((h) => h.order_code === orderCode).map((h) => Number(h.payable_amount)));
   const start = randomUniqueCode();
   const codes = Array.from(
     { length: DANA_QRIS_MAX_UNIQUE_CODE },
     (_, index) => 1 + ((start - 1 + index) % DANA_QRIS_MAX_UNIQUE_CODE),
   )
-    .filter((code) => requestedAmount + code !== previousAmount)
+    .filter((code) => requestedAmount + code !== previousAmount && !usedByOrder.has(requestedAmount + code))
     .sort((a, b) => Number(used.has(requestedAmount + a)) - Number(used.has(requestedAmount + b)));
 
   for (let attempt = 0; attempt < Math.min(40, codes.length); attempt++) {
@@ -396,13 +401,19 @@ export async function reissueDanaQrisInvoice(orderCode: string): Promise<QrisRei
              SELECT 1 FROM orders o
              JOIN payment_transactions pt ON pt.order_code=o.code AND pt.provider='dana'
              WHERE o.code=? AND o.status='pending' AND o.payment_status IN ('unpaid','pending')
-               AND o.qris_reissue_count=? AND pt.status='pending'
+               AND o.qris_reissue_count=? AND o.qris_reissue_count<? AND pt.status='pending'
+               AND (o.expires_at IS NULL OR julianday(o.expires_at)>julianday('now'))
+               AND julianday(pt.expires_at)<=julianday('now')
+               AND NOT EXISTS (
+                 SELECT 1 FROM payment_invoice_history h
+                 WHERE h.provider='dana' AND h.order_code=o.code AND h.payable_amount=?
+               )
            ) THEN 1 ELSE 0 END`,
-        ).bind(guardId, orderCode, usedReissues),
+        ).bind(guardId, orderCode, usedReissues, MAX_QRIS_REISSUES, payableAmount),
         d1.prepare(
           `UPDATE payment_transactions
            SET payable_amount=?, unique_code=?, qris_payload=?, qris_url=?,
-               expires_at=?, last_error=NULL, updated_at=datetime('now')
+               expires_at=?, invoice_issued_at=datetime('now'), last_error=NULL, updated_at=datetime('now')
            WHERE order_code=? AND provider='dana' AND status='pending'`,
         ).bind(payableAmount, uniqueCode, qrisPayload, qrisUrl, expiresAt, orderCode),
         d1.prepare(
