@@ -9,7 +9,6 @@ import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 import {
   fetchProducts,
   isWrSyncEnabled,
-  WrApiError,
   type WrProduct,
   type WrVariant,
 } from "./client";
@@ -212,7 +211,7 @@ export async function upsertWrProduct(
 
   // Produk baru yang di-exclude: catat di registry saja, jangan buat katalog.
   if (exclude.excluded) {
-    const inserted = await execRun(
+    await execRun(
       `INSERT INTO wr_products
         (wr_product_id, wr_product_name, wr_category, wr_description,
          axvara_product_id, is_excluded, exclude_reason, last_synced_at)

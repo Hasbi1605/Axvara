@@ -30,7 +30,8 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "validation_failed" }, { status: 400 });
   }
-  let { pattern, reason } = parsed.data;
+  const { reason } = parsed.data;
+  let pattern = parsed.data.pattern;
   // Normalisasi: pola tanpa wildcard dianggap contains.
   if (!pattern.includes("%")) pattern = `%${pattern}%`;
   try {

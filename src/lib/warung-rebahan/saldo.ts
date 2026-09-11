@@ -32,7 +32,7 @@ export async function checkAndLogSaldo(
   const threshold = getSaldoThreshold();
   const isLow = amount < threshold;
   if (isLow) {
-    await notifyLowSaldo(amount, threshold, db).catch(() => undefined);
+    await notifyLowSaldo(amount, threshold).catch(() => undefined);
   }
   await db.execRun(
     `INSERT INTO wr_sync_log (sync_type, status, saldo_amount, duration_ms)
@@ -45,7 +45,6 @@ export async function checkAndLogSaldo(
 async function notifyLowSaldo(
   balance: number,
   threshold: number,
-  _db: DatabaseAccess,
 ): Promise<void> {
   const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
   if (!adminChatId || process.env.TELEGRAM_BOT_ENABLED !== "true") return;
