@@ -97,7 +97,9 @@ export class WrNetworkError extends Error {
 }
 
 export const WR_API_TIMEOUT_MS = 30_000;
-// Outbound HANYA ke host ini — tidak ada dynamic URL dari user input (SSRF-safe).
+// Outbound langsung HANYA ke host ini — tidak ada dynamic URL dari user input
+// (SSRF-safe). Bila WARUNG_REBAHAN_PROXY_URL diset (Opsi A: proxy Heroku agar
+// lolos IP whitelist WR), request pergi ke proxy + host proxy diizinkan.
 const WR_ALLOWED_HOST = "warungrebahan.com";
 
 export function isWrEnabled(): boolean {
@@ -119,9 +121,28 @@ export function isWrSandbox(): boolean {
 }
 
 export function getWrApiKey(): string {
+  // Mode proxy (Opsi A): key WR asli dipegang proxy Heroku (WR_API_KEY di
+  // dyno), Pages tidak menyimpan/mengirim key asli sama sekali.
+  if (getWrProxyUrl()) return "via-proxy";
   const key = process.env.WARUNG_REBAHAN_API_KEY?.trim();
   if (!key) throw new Error("WARUNG_REBAHAN_API_KEY not configured");
   return key;
+}
+
+/**
+ * Opsi A lawan IP whitelist: alihkan seluruh panggilan WR lewat proxy Heroku
+ * (satu dyno = egress IP stabil yang di-whitelist di dashboard WR).
+ * Kosong = mode langsung ke warungrebahan.com (butuh IP Pages di-whitelist —
+ * tidak realistis, hanya untuk dev/test lokal).
+ */
+export function getWrProxyUrl(): string {
+  return (process.env.WARUNG_REBAHAN_PROXY_URL || "").trim().replace(/\/+$/, "");
+}
+
+function getWrProxyToken(): string {
+  const token = process.env.WARUNG_REBAHAN_PROXY_TOKEN?.trim();
+  if (!token) throw new Error("WARUNG_REBAHAN_PROXY_TOKEN not configured");
+  return token;
 }
 
 export function getWrBaseUrl(): string {
@@ -138,9 +159,19 @@ function assertAllowedUrl(url: string, endpoint: string): void {
   } catch {
     throw new WrNetworkError("invalid_wr_url", endpoint);
   }
-  if (host !== WR_ALLOWED_HOST && !host.endsWith(`.${WR_ALLOWED_HOST}`)) {
-    throw new WrNetworkError("wr_host_not_allowed", endpoint);
+  if (host === WR_ALLOWED_HOST || host.endsWith(`.${WR_ALLOWED_HOST}`)) return;
+  // Mode proxy: host proxy (Heroku) juga diizinkan — nilainya dari env
+  // server, bukan dari user input, jadi tetap SSRF-safe.
+  const proxyUrl = getWrProxyUrl();
+  if (proxyUrl) {
+    try {
+      const proxyHost = new URL(proxyUrl).hostname.toLowerCase();
+      if (host === proxyHost) return;
+    } catch {
+      throw new WrNetworkError("invalid_wr_proxy_url", endpoint);
+    }
   }
+  throw new WrNetworkError("wr_host_not_allowed", endpoint);
 }
 
 export function classifyWrError(
@@ -172,17 +203,23 @@ export async function wrFetch<T>(
   endpoint: string,
   payload: Record<string, unknown> = {},
 ): Promise<WrApiResponse<T>> {
-  const baseUrl = getWrBaseUrl();
-  const url = `${baseUrl}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
+  const proxyUrl = getWrProxyUrl();
+  // Mode proxy: POST https://<proxy>/wr/<endpoint> + x-proxy-token; api_key
+  // disuntik proxy dari env dyno. Mode langsung: POST ke WR + api_key body.
+  const baseUrl = proxyUrl || getWrBaseUrl();
+  const path = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+  const url = proxyUrl ? `${baseUrl}/wr${path}` : `${baseUrl}${path}`;
   assertAllowedUrl(url, endpoint);
   const apiKey = getWrApiKey();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (proxyUrl) headers["x-proxy-token"] = getWrProxyToken();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), WR_API_TIMEOUT_MS);
   try {
     const res = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ api_key: apiKey, ...payload }),
+      headers,
+      body: JSON.stringify(proxyUrl ? payload : { api_key: apiKey, ...payload }),
       signal: controller.signal,
     });
     const json = (await res

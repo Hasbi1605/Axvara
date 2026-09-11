@@ -111,6 +111,52 @@ describe("Warung Rebahan API client fetch", () => {
     await expect(fetchBalance()).rejects.toBeInstanceOf(WrApiError);
   });
 
+  it("mode proxy: ke /wr/* + token, tanpa api_key asli", async () => {
+    vi.stubEnv("WARUNG_REBAHAN_API_KEY", "");
+    vi.stubEnv(
+      "WARUNG_REBAHAN_PROXY_URL",
+      "https://axvara-wa-gateway-82ca358cd56f.herokuapp.com/",
+    );
+    vi.stubEnv("WARUNG_REBAHAN_PROXY_TOKEN", "proxy-secret");
+    let seenUrl = "";
+    let seenHeaders: Record<string, string> = {};
+    let seenBody: Record<string, unknown> = {};
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init: RequestInit) => {
+        seenUrl = url;
+        seenHeaders = (init.headers ?? {}) as Record<string, string>;
+        seenBody = JSON.parse(String(init.body)) as Record<string, unknown>;
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            message: "ok",
+            data: { balance: 100000, currency: "IDR" },
+          }),
+        };
+      }),
+    );
+    const { fetchBalance } = await import("@/lib/warung-rebahan/client");
+    expect(await fetchBalance()).toEqual({ balance: 100000, currency: "IDR" });
+    expect(seenUrl).toBe(
+      "https://axvara-wa-gateway-82ca358cd56f.herokuapp.com/wr/balance",
+    );
+    expect(seenHeaders["x-proxy-token"]).toBe("proxy-secret");
+    expect("api_key" in seenBody).toBe(false);
+  });
+
+  it("mode proxy tanpa token melempar sebelum fetch", async () => {
+    vi.stubEnv("WARUNG_REBAHAN_API_KEY", "");
+    vi.stubEnv("WARUNG_REBAHAN_PROXY_URL", "https://proxy.example");
+    vi.stubEnv("WARUNG_REBAHAN_PROXY_TOKEN", "");
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { fetchBalance } = await import("@/lib/warung-rebahan/client");
+    await expect(fetchBalance()).rejects.toThrow("WARUNG_REBAHAN_PROXY_TOKEN");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("menolak host di luar warungrebahan.com (SSRF-safe)", async () => {
     vi.stubEnv("WARUNG_REBAHAN_API_KEY", "k");
     vi.stubEnv("WARUNG_REBAHAN_BASE_URL", "https://evil.example/api");
