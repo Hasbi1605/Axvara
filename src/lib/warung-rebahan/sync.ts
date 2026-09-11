@@ -201,42 +201,57 @@ export async function upsertWrProduct(
         (wrProduct as { description?: string }).description ?? null,
         exclude.reason,
         now,
+        now,
         wrProduct.id,
       );
       return { axvaraProductId: 0, isNew: false };
     }
     const linked = existing.axvara_product_id != null ? Number(existing.axvara_product_id) : 0;
-    if (linked <= 0) {
-      const made = await createAxvaraCatalogForWr(wrProduct, db, now);
-      await execRun(
-        `UPDATE wr_products SET wr_product_name=?, wr_category=?, wr_description=?,
-          axvara_product_id=?, is_excluded=0, exclude_reason=NULL,
-          last_synced_at=?, updated_at=? WHERE wr_product_id=?`,
-        wrProduct.name,
-        wrProduct.category || null,
-        (wrProduct as { description?: string }).description ?? null,
-        made,
-        now,
+    if (linked > 0) {
+      // Guard link yatim (temuan 2026-09-11): axvara_product_id menunjuk ke
+      // produk yang sudah tidak ada (dihapus manual saat bersih-bersih
+      // duplikat) → anggap belum punya pasangan, buat baru di bawah.
+      const target = await queryFirst(
+        `SELECT id FROM products WHERE id=? AND source='warung_rebahan' AND wr_product_id=?`,
+        linked,
         wrProduct.id,
       );
-      return { axvaraProductId: made, isNew: true };
+      if (target) {
+        await execRun(
+          `UPDATE wr_products SET wr_product_name=?, wr_category=?, wr_description=?,
+            is_excluded=0, exclude_reason=NULL, last_synced_at=?, updated_at=?
+           WHERE wr_product_id=?`,
+          wrProduct.name,
+          wrProduct.category || null,
+          (wrProduct as { description?: string }).description ?? null,
+          now,
+          now,
+          wrProduct.id,
+        );
+        await execRun(
+          `UPDATE products SET description=?, updated_at=datetime('now') WHERE id=?`,
+          (wrProduct as { description?: string }).description ?? null,
+          linked,
+        ).catch(() => ({ changes: 0 }));
+        return { axvaraProductId: linked, isNew: false };
+      }
     }
+    // linked <= 0 ATAU menunjuk produk yang sudah hilang → buat pasangan
+    // katalog baru (idempoten: satu registry = satu produk WR hidup).
+    const made = await createAxvaraCatalogForWr(wrProduct, db, now);
     await execRun(
       `UPDATE wr_products SET wr_product_name=?, wr_category=?, wr_description=?,
-        is_excluded=0, exclude_reason=NULL, last_synced_at=?, updated_at=?
-       WHERE wr_product_id=?`,
+        axvara_product_id=?, is_excluded=0, exclude_reason=NULL,
+        last_synced_at=?, updated_at=? WHERE wr_product_id=?`,
       wrProduct.name,
       wrProduct.category || null,
       (wrProduct as { description?: string }).description ?? null,
+      made,
+      now,
       now,
       wrProduct.id,
     );
-    await execRun(
-      `UPDATE products SET description=?, updated_at=datetime('now') WHERE id=?`,
-      (wrProduct as { description?: string }).description ?? null,
-      linked,
-    ).catch(() => ({ changes: 0 }));
-    return { axvaraProductId: linked, isNew: false };
+    return { axvaraProductId: made, isNew: true };
   }
 
   // Produk BARU (belum ada di registry).
@@ -278,6 +293,10 @@ export async function upsertWrProduct(
  * - slug: slug dasar, atau slug + "-wr" (hingga 5x varian) bila sudah dipakai
  *   produk manual sendiri (kasus "Canva Premium" WR vs "Canva Pro / Premium").
  * - nama: selalu "<nama WR> (WR)" agar tidak tertukar di storefront/admin.
+ *
+ * Guard duplikat (temuan 2026-09-11): SEBELUM insert, cari dulu produk WR
+ * hidup dengan wr_product_id yang sama (dibuat sync sebelumnya yang
+ * registry-nya ke-reset). Bila ada → pakai ulang, jangan buat baris kedua.
  */
 async function createAxvaraCatalogForWr(
   wrProduct: WrProduct,
@@ -285,6 +304,11 @@ async function createAxvaraCatalogForWr(
   now: string,
 ): Promise<number> {
   const { queryFirst, execRun } = db;
+  const dupe = await queryFirst(
+    `SELECT id FROM products WHERE source='warung_rebahan' AND wr_product_id=? LIMIT 1`,
+    wrProduct.id,
+  );
+  if (dupe) return Number(dupe.id);
   const baseSlug = generateProductSlug(wrProduct.name);
   let slug = baseSlug;
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -350,6 +374,7 @@ export async function upsertWrVariant(
       wrVariant.terms ?? null,
       wrVariant.delivery_terms ?? null,
       sellPrice,
+      now,
       now,
       wrVariant.id,
     );
