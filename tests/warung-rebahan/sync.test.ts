@@ -230,7 +230,7 @@ describe("Warung Rebahan product sync", () => {
     }
   });
 
-  it("slug collision dengan produk manual mendapat suffix -wr", async () => {
+  it("slug collision dengan produk manual mendapat suffix -wr + nama (WR)", async () => {
     const fs = await import("node:fs");
     const fx = createD1Fixture();
     try {
@@ -241,9 +241,96 @@ describe("Warung Rebahan product sync", () => {
       const db = createDatabaseAccess(fx.db);
       await syncProducts(db, async () => [fixtureProduct()]);
       const product = fx.sql
-        .prepare("SELECT slug FROM products WHERE wr_product_id='prod-capcut'")
-        .get() as { slug: string };
+        .prepare("SELECT slug, name FROM products WHERE wr_product_id='prod-capcut'")
+        .get() as { slug: string; name: string };
       expect(String(product.slug)).toBe("capcut-pro-wr");
+      expect(String(product.name)).toBe("CapCut Pro (WR)");
+      // Produk manual tidak tersentuh.
+      const manual = fx.sql.prepare("SELECT name, price FROM products WHERE id=99").get() as {
+        name: string;
+        price: number;
+      };
+      expect(manual.name).toBe("CapCut Pro");
+      expect(Number(manual.price)).toBe(10000);
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("produk WR tanpa collision tetap dapat suffix nama (WR)", async () => {
+    const fs = await import("node:fs");
+    const fx = createD1Fixture();
+    try {
+      fx.sql.exec(fs.readFileSync("drizzle/migrations/0027_warung_rebahan.sql", "utf8"));
+      const db = createDatabaseAccess(fx.db);
+      await syncProducts(db, async () => [fixtureProduct()]);
+      const product = fx.sql
+        .prepare("SELECT slug, name FROM products WHERE wr_product_id='prod-capcut'")
+        .get() as { slug: string; name: string };
+      expect(String(product.slug)).toBe("capcut-pro");
+      expect(String(product.name)).toBe("CapCut Pro (WR)");
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("registry excluded yang diurungkan jadi katalog WR tanpa ganggu manual (skenario Canva)", async () => {
+    const fs = await import("node:fs");
+    const fx = createD1Fixture();
+    try {
+      fx.sql.exec(fs.readFileSync("drizzle/migrations/0027_warung_rebahan.sql", "utf8"));
+      // Produk manual sendiri yang sudah live.
+      fx.sql
+        .prepare("INSERT INTO products(id,name,slug,price,stock) VALUES(1,'Canva Pro / Premium','canva-premium',2000,-1)")
+        .run();
+      fx.sql
+        .prepare("INSERT INTO product_variants(id,product_id,sku,label,price,stock) VALUES(1,1,'CANVA-PRO-1','Invite 1 Bulan',2000,-1)")
+        .run();
+      // Registry WR dari masa excluded (axvara_product_id NULL).
+      fx.sql
+        .prepare("INSERT INTO wr_products(wr_product_id,wr_product_name,wr_category,axvara_product_id,is_excluded) VALUES('wr-canva-1','Canva Premium','Design',NULL,1)")
+        .run();
+      const db = createDatabaseAccess(fx.db);
+      // Exclusion sudah dihapus → sync membuat pasangan katalog baru.
+      fx.sql.prepare("DELETE FROM wr_exclusions WHERE pattern LIKE '%canva%'").run();
+      const result = await syncProducts(db, async () => [
+        {
+          id: "wr-canva-1",
+          name: "Canva Premium",
+          category: "Design",
+          description: "Canva via WR",
+          variants: [
+            { id: "wr-canva-v1", name: "1 Bulan", price: 8000, duration: "30 Hari", type: "Private", warranty: "30 Hari", stock: 7, terms: null, delivery_terms: null },
+          ],
+        },
+      ]);
+      expect(result.newProducts).toBe(1);
+      expect(result.excluded).toBe(0);
+      const wrProduct = fx.sql
+        .prepare("SELECT slug, name, source FROM products WHERE wr_product_id='wr-canva-1'")
+        .get() as { slug: string; name: string; source: string };
+      // Slug dasar "canva-premium" dipakai manual → WR dapat suffix.
+      expect(String(wrProduct.slug)).toBe("canva-premium-wr");
+      expect(String(wrProduct.name)).toBe("Canva Premium (WR)");
+      expect(String(wrProduct.source)).toBe("warung_rebahan");
+      // Manual tetap persis seperti semula.
+      const manual = fx.sql.prepare("SELECT name, slug, price FROM products WHERE id=1").get() as {
+        name: string;
+        slug: string;
+        price: number;
+      };
+      expect(manual).toMatchObject({ name: "Canva Pro / Premium", slug: "canva-premium", price: 2000 });
+      const manualVariants = fx.sql.prepare("SELECT COUNT(*) n FROM product_variants WHERE product_id=1").get() as { n: number };
+      expect(Number(manualVariants.n)).toBe(1);
+      // Varian WR menempel ke produk WR, bukan ke manual.
+      const wrVariant = fx.sql
+        .prepare("SELECT product_id, price FROM product_variants WHERE wr_variant_id='wr-canva-v1'")
+        .get() as { product_id: number; price: number };
+      const wrProductId = Number(
+        (fx.sql.prepare("SELECT id FROM products WHERE wr_product_id='wr-canva-1'").get() as { id: number }).id,
+      );
+      expect(Number(wrVariant.product_id)).toBe(wrProductId);
+      expect(Number(wrVariant.price)).toBe(12000); // 8000 + 50% markup
     } finally {
       fx.close();
     }

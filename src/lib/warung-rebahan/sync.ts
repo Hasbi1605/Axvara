@@ -185,32 +185,63 @@ export async function upsertWrProduct(
     `SELECT id, axvara_product_id FROM wr_products WHERE wr_product_id=?`,
     wrProduct.id,
   );
+  // Produk yang SUDAH terdaftar (baris registry ada, mis. dari masa excluded):
+  // bila sekarang tidak lagi di-exclude TAPI belum punya pasangan katalog
+  // (axvara_product_id NULL — kasus Canva/Gemini yang "diurungkan"
+  // pengecualiannya), buat pasangan katalognya sekarang dengan aturan
+  // anti-bentrok yang sama seperti produk baru (suffix -wr + nama "(WR)").
   if (existing) {
+    if (exclude.excluded) {
+      await execRun(
+        `UPDATE wr_products SET wr_product_name=?, wr_category=?, wr_description=?,
+          is_excluded=1, exclude_reason=?, last_synced_at=?, updated_at=?
+         WHERE wr_product_id=?`,
+        wrProduct.name,
+        wrProduct.category || null,
+        (wrProduct as { description?: string }).description ?? null,
+        exclude.reason,
+        now,
+        wrProduct.id,
+      );
+      return { axvaraProductId: 0, isNew: false };
+    }
+    const linked = existing.axvara_product_id != null ? Number(existing.axvara_product_id) : 0;
+    if (linked <= 0) {
+      const made = await createAxvaraCatalogForWr(wrProduct, db, now);
+      await execRun(
+        `UPDATE wr_products SET wr_product_name=?, wr_category=?, wr_description=?,
+          axvara_product_id=?, is_excluded=0, exclude_reason=NULL,
+          last_synced_at=?, updated_at=? WHERE wr_product_id=?`,
+        wrProduct.name,
+        wrProduct.category || null,
+        (wrProduct as { description?: string }).description ?? null,
+        made,
+        now,
+        wrProduct.id,
+      );
+      return { axvaraProductId: made, isNew: true };
+    }
     await execRun(
       `UPDATE wr_products SET wr_product_name=?, wr_category=?, wr_description=?,
-        is_excluded=?, exclude_reason=?, last_synced_at=?, updated_at=?
+        is_excluded=0, exclude_reason=NULL, last_synced_at=?, updated_at=?
        WHERE wr_product_id=?`,
       wrProduct.name,
       wrProduct.category || null,
       (wrProduct as { description?: string }).description ?? null,
-      exclude.excluded ? 1 : 0,
-      exclude.reason,
       now,
       wrProduct.id,
     );
-    const linked = existing.axvara_product_id != null ? Number(existing.axvara_product_id) : 0;
-    if (linked > 0) {
-      await execRun(
-        `UPDATE products SET description=?, updated_at=datetime('now') WHERE id=?`,
-        (wrProduct as { description?: string }).description ?? null,
-        linked,
-      ).catch(() => ({ changes: 0 }));
-    }
+    await execRun(
+      `UPDATE products SET description=?, updated_at=datetime('now') WHERE id=?`,
+      (wrProduct as { description?: string }).description ?? null,
+      linked,
+    ).catch(() => ({ changes: 0 }));
     return { axvaraProductId: linked, isNew: false };
   }
 
-  // Produk baru yang di-exclude: catat di registry saja, jangan buat katalog.
+  // Produk BARU (belum ada di registry).
   if (exclude.excluded) {
+    // Produk baru yang di-exclude: catat di registry saja, jangan buat katalog.
     await execRun(
       `INSERT INTO wr_products
         (wr_product_id, wr_product_name, wr_category, wr_description,
@@ -226,27 +257,7 @@ export async function upsertWrProduct(
     return { axvaraProductId: 0, isNew: false };
   }
 
-  // Slug unik dengan suffix -wr bila collision dengan produk manual.
-  const baseSlug = generateProductSlug(wrProduct.name);
-  let slug = baseSlug;
-  const collision = await queryFirst(`SELECT id FROM products WHERE slug=?`, slug);
-  if (collision) slug = `${baseSlug}-wr`.slice(0, 80);
-  const categoryId = mapWrCategory(wrProduct.category);
-  const created = await execRun(
-    `INSERT INTO products
-      (category_id, name, slug, description, price, stock, is_active, sort_order,
-       source, wr_product_id, wr_auto_managed, created_at, updated_at)
-     VALUES (?,?,?,?,0,0,1,0,'warung_rebahan',?,1,?,?)`,
-    categoryId,
-    wrProduct.name,
-    slug,
-    (wrProduct as { description?: string }).description ?? null,
-    wrProduct.id,
-    now,
-    now,
-  );
-  const axvaraProductId = Number(created.lastInsertRowid ?? 0);
-  if (!axvaraProductId) throw new Error("wr_product_insert_failed");
+  const axvaraProductId = await createAxvaraCatalogForWr(wrProduct, db, now);
   await execRun(
     `INSERT INTO wr_products
       (wr_product_id, wr_product_name, wr_category, wr_description,
@@ -260,6 +271,47 @@ export async function upsertWrProduct(
     now,
   );
   return { axvaraProductId, isNew: true };
+}
+
+/**
+ * Buat baris katalog Axvara untuk satu produk WR dengan aturan anti-bentrok:
+ * - slug: slug dasar, atau slug + "-wr" (hingga 5x varian) bila sudah dipakai
+ *   produk manual sendiri (kasus "Canva Premium" WR vs "Canva Pro / Premium").
+ * - nama: selalu "<nama WR> (WR)" agar tidak tertukar di storefront/admin.
+ */
+async function createAxvaraCatalogForWr(
+  wrProduct: WrProduct,
+  db: DatabaseAccess,
+  now: string,
+): Promise<number> {
+  const { queryFirst, execRun } = db;
+  const baseSlug = generateProductSlug(wrProduct.name);
+  let slug = baseSlug;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const collision = await queryFirst(`SELECT id FROM products WHERE slug=?`, slug);
+    if (!collision) break;
+    slug = `${baseSlug}-wr${attempt > 0 ? `-${attempt + 1}` : ""}`.slice(0, 80);
+  }
+  const slugTaken = await queryFirst(`SELECT id FROM products WHERE slug=?`, slug);
+  if (slugTaken) throw new Error(`wr_slug_collision:${slug}`);
+  const displayName = `${wrProduct.name} (WR)`;
+  const categoryId = mapWrCategory(wrProduct.category);
+  const created = await execRun(
+    `INSERT INTO products
+      (category_id, name, slug, description, price, stock, is_active, sort_order,
+       source, wr_product_id, wr_auto_managed, created_at, updated_at)
+     VALUES (?,?,?,?,0,0,1,0,'warung_rebahan',?,1,?,?)`,
+    categoryId,
+    displayName,
+    slug,
+    (wrProduct as { description?: string }).description ?? null,
+    wrProduct.id,
+    now,
+    now,
+  );
+  const axvaraProductId = Number(created.lastInsertRowid ?? 0);
+  if (!axvaraProductId) throw new Error("wr_product_insert_failed");
+  return axvaraProductId;
 }
 
 export async function upsertWrVariant(
