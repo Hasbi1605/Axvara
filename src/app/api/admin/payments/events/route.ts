@@ -118,6 +118,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "payment_transition_failed" }, { status: 409 });
   }
   try { await ensureFulfillmentForPaidOrder(orderCode); } catch { /* Cron akan retry idempoten. */ }
+  try {
+    const { createWrOrderLinksForOrder, processWrPendingOrders } = await import("@/lib/warung-rebahan/order");
+    const { isWrAutoOrderEnabled } = await import("@/lib/warung-rebahan/client");
+    if (isWrAutoOrderEnabled() && (await createWrOrderLinksForOrder(orderCode)) > 0) {
+      await processWrPendingOrders().catch(() => undefined);
+    }
+  } catch { /* Link WR menyusul via cron. */ }
   if (String(matches[0].sales_channel) === "whatsapp" && matches[0].channel_conversation_id) {
     try {
       const orderDetail = await queryFirst(`SELECT subtotal, payment_method, variant_snapshot FROM orders WHERE code=?`, orderCode);

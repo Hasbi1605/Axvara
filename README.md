@@ -198,6 +198,16 @@ maupun WhatsApp memakai satu tujuan `TELEGRAM_ADMIN_CHAT_ID`. Untuk grup privat,
 kirim `/chatid`, lalu simpan ID numerik negatif yang dibalas bot sebagai secret tersebut
 (link undangan `t.me/+...` tidak dapat dipakai sebagai Bot API `chat_id`).
 
+### Warung Rebahan H2H (reseller otomatis, default mati)
+
+Axvara dapat menjadi reseller layer di atas Warung Rebahan: produk tersinkronisasi otomatis
+(kecuali Canva & Gemini yang margin lokalnya lebih tinggi), stok/harga diperbarui cron tiap
+30 menit, order lunas diteruskan otomatis ke WR, dan detail akun dikirim ke customer via
+Telegram/WhatsApp/Web. Blueprint: `docs/WARUNG-REBAHAN-INTEGRATION.md`; arsitektur terpasang:
+`docs/ARCHITECTURE.md` §15. Seluruhnya di balik `WARUNG_REBAHAN_ENABLED=false` (lihat
+`.env.example`); set API key + webhook secret di Pages Secrets, lalu Force Sync dari tab
+**Warung Rebahan** di admin. Webhook WR: `https://axvara.tech/api/webhook/warung`.
+
 ---
 
 Panel admin memuat produk, kategori, dan ringkasan setelah autentikasi. Callback pemuatan memakai dependency setter sesi yang stabil agar perpindahan menu dan render ulang biasa tidak memicu pengambilan data tanpa henti.

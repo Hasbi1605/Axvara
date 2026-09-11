@@ -25,6 +25,12 @@ export async function GET(request: NextRequest) {
     whatsapp_discovery: process.env.WHATSAPP_GROUP_DISCOVERY === "true",
     whatsapp_payment: process.env.WHATSAPP_GROUP_PAYMENT === "true",
     whatsapp_proof_intake: process.env.WHATSAPP_PROOF_INTAKE === "true",
+    warung_rebahan_enabled: process.env.WARUNG_REBAHAN_ENABLED === "true",
+    warung_rebahan_configured: process.env.WARUNG_REBAHAN_ENABLED === "true"
+      && Boolean(process.env.WARUNG_REBAHAN_API_KEY?.trim()),
+    warung_rebahan_sync: process.env.WARUNG_REBAHAN_SYNC_ENABLED !== "false",
+    warung_rebahan_auto_order: process.env.WARUNG_REBAHAN_AUTO_ORDER_ENABLED === "true",
+    warung_rebahan_sandbox: process.env.WARUNG_REBAHAN_SANDBOX === "true",
   };
 
   // Webhook info (if configured)
@@ -81,6 +87,20 @@ export async function GET(request: NextRequest) {
       );
       health.whatsapp_outbox_age = oldestOutbox;
     } catch { /* tabel lama tetap kompatibel */ }
+
+    // Antrean WR (no-op aman bila tabel belum ada — migrasi 0027 belum jalan).
+    try {
+      const wrQueue = await queryAll(
+        `SELECT status, COUNT(*) as count FROM wr_order_links GROUP BY status`,
+      );
+      health.warung_rebahan_queue = wrQueue;
+      const { queryFirst } = await import("@/lib/db");
+      const wrSync = await queryFirst(
+        `SELECT status, products_synced, variants_synced, created_at
+         FROM wr_sync_log WHERE sync_type='products' ORDER BY id DESC LIMIT 1`,
+      );
+      health.warung_rebahan_last_sync = wrSync ?? null;
+    } catch { /* tabel WR belum ada */ }
 
     // Event QRIS 7 hari terakhir: tak-cocok vs gagal — sinyal degraded.
     try {

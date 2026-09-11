@@ -15,11 +15,12 @@ import { OrdersManager } from "@/components/admin/OrdersManager";
 import { StoreSettingsManager } from "@/components/admin/StoreSettingsManager";
 import { AdminAuthChecking, AdminLoginGate } from "@/components/admin/AdminLoginGate";
 import { ProductsSection } from "@/components/admin/sections/ProductsSection";
+import { WarungRebahanManager } from "@/components/admin/WarungRebahanManager";
 import { ProductEditorModal } from "@/components/admin/ProductEditorModal";
 import { useProductManager } from "@/components/admin/useProductManager";
 import { useAdminAuth } from "@/components/admin/useAdminAuth";
 
-const ADMIN_SECTIONS: AdminSection[] = ["summary","products","orders","categories","payments","articles","banners","subscribers","bot","agent","settings"];
+const ADMIN_SECTIONS: AdminSection[] = ["summary","products","orders","categories","payments","warung","articles","banners","subscribers","bot","agent","settings"];
 
 export default function AdminPage() {
   const toast = useToast();
@@ -93,6 +94,7 @@ export default function AdminPage() {
       {tab==="orders" && <OrdersManager onChanged={loadOverview} />}
       {tab==="categories" && <CategoryManager />}
       {tab==="payments" && <PaymentMethodsManager />}
+      {tab==="warung" && <WarungRebahanManager />}
       {tab==="agent" && <AgentIntegration />}
       {tab==="bot" && <BotAutomationManager />}
       {tab==="settings" && <StoreSettingsManager />}

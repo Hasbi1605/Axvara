@@ -736,3 +736,56 @@ Migrasi `0010_dana_dynamic_qris.sql` menambah `unique_code` dan `qris_payload` p
 `payment_transactions` tetap satu baris per order. `invoice_issued_at` menyimpan waktu penerbitan QR terkini, sedangkan `created_at` tetap waktu pembuatan ledger. Trigger insert/update menyalin setiap nominal ke `payment_invoice_history` (kunci provider/order/nominal); reissue tidak pernah memakai kembali nominal milik order yang sama. Allocator mengutamakan nominal yang belum pernah dipakai. Jika pool mengharuskan pemakaian nominal order lain, webhook dan retry otomatis menolak lewat predikat bersama `DANA_AMOUNT_REUSED_SQL`; hanya verifikasi mutasi admin yang dapat melewati pemeriksaan reuse. Waktu event juga harus berada pada atau setelah `invoice_issued_at`, termasuk di dalam guard pelunasan atomik.
 
 Migrasi mengisi riwayat yang masih tersedia. Untuk order dengan `qris_reissue_count>0` sebelum migrasi, nominal sebelumnya tidak bisa dipulihkan dari ledger: rentang harga dasar +1 sampai +299 dicatat di `dana_qris_legacy_ranges`, sehingga pembayaran dalam rentang itu memerlukan verifikasi manual. Order terminal tidak diaktifkan kembali. `publish-scheduled` tetap menyerahkan order yang memiliki ledger aktif ke cron operasi. Test integrasi menjalankan checkout → QR expired → kedua cron → reissue → webhook, juga pelepasan stok tepat sekali pada deadline order.
+
+## 15. Warung Rebahan H2H Reseller Layer (Terimplementasi)
+
+Axvara menjadi reseller layer di atas Warung Rebahan H2H API (`https://warungrebahan.com/api/v1`).
+Blueprint lengkap: `docs/WARUNG-REBAHAN-INTEGRATION.md`. Implementasi Sep 2026 mencakup
+Fase 1–4 (foundation, sync, auto-order, saldo+admin); storefront tidak diubah karena produk
+WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" existing dipakai).
+
+### Arsitektur
+
+- **Modul:** `src/lib/warung-rebahan/` — `client.ts` (fetch edge + HMAC webhook + error
+  classification), `sync.ts` (upsert produk/varian + exclusion + markup + agregat induk),
+  `order.ts` (link pending + proses + retry backoff + reconcile stuck), `deliver.ts`
+  (enkripsi akun AES-256-GCM + delivery Telegram/WhatsApp/Web), `saldo.ts` (check + alert + estimasi).
+- **Routes:** `POST /api/webhook/warung` (HMAC, rate-limit, selalu 200 pasca-verifikasi);
+  admin `GET /api/admin/warung/saldo`, `POST /api/admin/warung/sync` (rate-limit products:write),
+  `GET /api/admin/warung/sync-log`, `GET /api/admin/warung/orders` (ciphertext disamarkan),
+  `POST /api/admin/warung/orders/[id]/retry`, `GET/POST/DELETE /api/admin/warung/exclusions`,
+  `GET/PUT /api/admin/warung/markup`.
+- **Admin UI:** tab "Warung Rebahan" (`WarungRebahanManager.tsx`, section `warung` di
+  `AdminShell` + `admin/page.tsx`): saldo + estimasi, sync terakhir + force sync, antrean
+  order + retry, exclusions, markup per varian. Health WR ikut `GET /api/admin/bot/health`.
+- **Cron:** fase baru `warung_rebahan` disisipkan `fulfillment → warung_rebahan → notify`
+  (`src/app/api/cron/operations/route.ts`): sync produk tiap 30 mnt, proses order due (maks 4),
+  reconcile processing >1 jam via `/transactions`, cek saldo tiap 1 jam. COUNT WR dihitung
+  query terpisah agar DB pre-migrasi tidak meruntuhkan query gabungan; fase no-op bila
+  master switch mati atau tabel WR belum ada.
+- **Hook payment:** setelah lunas di 4 jalur (webhook DANA, retry admin, approve bukti,
+  konfirmasi admin) → `createWrOrderLinksForOrder` + `processWrPendingOrders` best-effort;
+  cron memproses sisanya. Produk WR dikenali dari `product_variants.wr_variant_id`.
+
+### Skema (migrasi 0027)
+
+`wr_products` (registry + link `axvara_product_id` + flag excluded), `wr_variants`
+(registry + `markup_percent/fixed` + `axvara_sell_price` + link varian), `wr_order_links`
+(order Axvara ↔ order WR, status pending/ordering/processing/completed/failed/retry,
+attempt 3x backoff 1/5/15 mnt, saldo-habis tunda 1 jam, akun terenkripsi),
+`wr_sync_log`, `wr_saldo_log`, `wr_exclusions` (seed `%canva%`, `%gemini%`).
+Kolom baru: `products(source, wr_product_id, wr_auto_managed)`,
+`product_variants(wr_variant_id, wr_auto_managed)`. Produk WR pakai
+`fulfillment_mode='manual'`; delivery via pipeline `wr_order_links`, bukan
+`fulfillment_inventory` lokal. Varian hilang dari API di-nol-kan stoknya (tidak dihapus).
+
+### Proteksi
+
+- `WARUNG_REBAHAN_ENABLED=false` mematikan segalanya (sync/order/webhook/cron no-op).
+- API key server-only, outbound hanya ke `warungrebahan.com` (assert host), timeout 30 dtk.
+- Webhook HMAC-SHA256 (`X-Rebahan-Signature`, secret = API key), 401 bila salah.
+- Detail akun dienkripsi sebelum disimpan; decrypt hanya server-side saat delivery.
+- Markup default 50% + pembulatan 500; Canva/Gemini excluded (margin lokal lebih tinggi).
+- Saldo habis → tunda 1 jam + notif admin (bukan retry cepat); gagal 3x → failed + admin
+  putuskan manual (tanpa auto-refund). Order failed WR → `fulfillment_status='failed'`,
+  status uang `lunas` tidak diubah otomatis.

@@ -157,6 +157,13 @@ export async function POST(
       try {
         fulfillmentStarted = await ensureFulfillmentForPaidOrder(orderCode);
       } catch { /* Payment is durable; fulfillment remains retryable. */ }
+      try {
+        const { createWrOrderLinksForOrder, processWrPendingOrders } = await import("@/lib/warung-rebahan/order");
+        const { isWrAutoOrderEnabled } = await import("@/lib/warung-rebahan/client");
+        if (isWrAutoOrderEnabled() && (await createWrOrderLinksForOrder(orderCode)) > 0) {
+          await processWrPendingOrders().catch(() => undefined);
+        }
+      } catch { /* Link WR menyusul via cron. */ }
       // Bukti manual WA yang di-approve = order WA lunas → umumkan ke grup
       // Telegram admin (best-effort; cron retry via marker bila gagal).
       try {
@@ -193,6 +200,11 @@ export async function POST(
     );
     try {
       await ensureFulfillmentForPaidOrder(orderCode);
+    } catch { /* best effort in dev */ }
+    try {
+      const { createWrOrderLinksForOrder } = await import("@/lib/warung-rebahan/order");
+      const { isWrAutoOrderEnabled } = await import("@/lib/warung-rebahan/client");
+      if (isWrAutoOrderEnabled()) await createWrOrderLinksForOrder(orderCode).catch(() => 0);
     } catch { /* best effort in dev */ }
     await incrementSoldCountForOrder(orderCode);
     return NextResponse.json({ ok: true, action: "approved", order_code: orderCode });

@@ -138,6 +138,17 @@ export async function POST(request: NextRequest) {
     await ensureFulfillmentForPaidOrder(orderCode);
   } catch { /* Payment is durable; fulfillment cron remains idempotent. */ }
 
+  // Produk WR: buat link auto-order segera (best-effort; cron memprosesnya).
+  // WR tidak memakai fulfillment_inventory lokal — pipeline wr_order_links
+  // yang menentukan delivery.
+  try {
+    const { createWrOrderLinksForOrder, processWrPendingOrders } = await import("@/lib/warung-rebahan/order");
+    const { isWrAutoOrderEnabled } = await import("@/lib/warung-rebahan/client");
+    if (isWrAutoOrderEnabled() && (await createWrOrderLinksForOrder(orderCode)) > 0) {
+      await processWrPendingOrders().catch(() => undefined);
+    }
+  } catch { /* Link WR menyusul via cron. */ }
+
   if (String(transaction.sales_channel) === "whatsapp" && transaction.channel_conversation_id) {
     try {
       const orderDetail = await queryFirst(

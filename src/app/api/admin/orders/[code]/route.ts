@@ -64,6 +64,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     try {
       await ensureFulfillmentForPaidOrder(code);
     } catch { /* Paid state is durable; cron retries notification/fulfillment. */ }
+    // Produk WR: buat link auto-order (best-effort; cron memprosesnya).
+    try {
+      const { createWrOrderLinksForOrder, processWrPendingOrders } = await import("@/lib/warung-rebahan/order");
+      const { isWrAutoOrderEnabled } = await import("@/lib/warung-rebahan/client");
+      if (isWrAutoOrderEnabled() && (await createWrOrderLinksForOrder(code)) > 0) {
+        await processWrPendingOrders().catch(() => undefined);
+      }
+    } catch { /* Link WR menyusul via cron. */ }
   }
 
   return NextResponse.json({ ok: true, code, status: nxt });

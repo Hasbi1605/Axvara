@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { IosIcon, type IosIconName } from "@/components/ui/IosIcon";
 
-export type AdminSection = "summary" | "products" | "orders" | "categories" | "payments" | "articles" | "banners" | "subscribers" | "bot" | "agent" | "settings";
+export type AdminSection = "summary" | "products" | "orders" | "categories" | "payments" | "warung" | "articles" | "banners" | "subscribers" | "bot" | "agent" | "settings";
 
 const navigationGroups: { label: string; items: [AdminSection, string, IosIconName][] }[] = [
   { label: "Operasional", items: [
@@ -17,6 +17,7 @@ const navigationGroups: { label: string; items: [AdminSection, string, IosIconNa
   ] },
   { label: "Pembayaran", items: [
     ["payments", "Metode & Rekonsiliasi", "credit-card"],
+    ["warung", "Warung Rebahan", "shopping-bag"],
   ] },
   { label: "Konten", items: [
     ["articles", "Artikel", "news"],
