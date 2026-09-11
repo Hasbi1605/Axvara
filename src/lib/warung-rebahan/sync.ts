@@ -385,14 +385,20 @@ export async function upsertWrVariant(
   const sellPrice = calculateSellPrice(Number(wrVariant.price), markupPercent, markupFixed);
   const duration = parseWrDuration(wrVariant.duration);
   const warranty = parseWrWarranty(wrVariant.warranty);
-  const sku = `WR-${String(wrVariant.id).replace(/[^A-Za-z0-9]/g, "").slice(0, 24).toUpperCase() || "X"}`;
+  // SKU dari UUID WR tanpa strip (36 char alnum) + suffix 6 char dari UUID agar
+  // unik per varian. Temuan 2026-09-11: strip+slice(0,24) membuat "Member Pro"
+  // Canva (2 varian) dan "Pro Member"/"Head" Gemini (3 varian) tabrakan SKU
+  // karena 24 char pertama UUID-nya sama — varian ke-2 dst gagal dengan
+  // D1_ERROR binding/UNIQUE lalu seluruh produk dicatat error (stok 0).
+  const uuidAlnum = String(wrVariant.id).replace(/[^A-Za-z0-9]/g, "").toUpperCase() || "X";
+  const sku = `WR-${uuidAlnum.slice(0, 24)}${uuidAlnum.slice(-6)}`;
   const created = await execRun(
     `INSERT INTO product_variants
       (product_id, sku, label, duration_value, duration_unit, duration_label,
        warranty_type, warranty_value, warranty_unit, warranty_label,
        price, stock, fulfillment_mode, is_active, sort_order,
        wr_variant_id, wr_auto_managed, created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'manual', 1, 0, ?,1,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?,?,?,?)`,
     axvaraProductId,
     sku,
     wrVariant.name,
@@ -405,7 +411,11 @@ export async function upsertWrVariant(
     warranty.label || null,
     sellPrice,
     Number(wrVariant.stock),
+    "manual",
+    1,
+    0,
     wrVariant.id,
+    1,
     now,
     now,
   ).catch(() => ({ changes: 0 as number | undefined, lastInsertRowid: undefined as number | undefined }));

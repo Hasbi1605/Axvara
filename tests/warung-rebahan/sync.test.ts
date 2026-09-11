@@ -356,8 +356,44 @@ describe("Warung Rebahan product sync", () => {
     }
   });
 
-  it("upsert varian tanpa produk Axvara tidak melempar", async () => {
+  it("dua varian beda UUID tapi 24-char awal sama tidak tabrakan SKU (kasus Canva/Gemini)", async () => {
+    vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
+    vi.stubEnv("WARUNG_REBAHAN_SYNC_ENABLED", "true");
     const fs = await import("node:fs");
+    const fx = createD1Fixture();
+    try {
+      fx.sql.exec(fs.readFileSync("drizzle/migrations/0027_warung_rebahan.sql", "utf8"));
+      // Pasca-migrasi 0028: Canva/Gemini tidak lagi di-exclude.
+      fx.sql.exec(fs.readFileSync("drizzle/migrations/0028_unexclude_canva_gemini.sql", "utf8"));
+      const db = createDatabaseAccess(fx.db);
+      // UUID Canva asli: 24 char alnum pertama sama, beda di ekor.
+      const result = await syncProducts(db, async () => [
+        {
+          id: "122f6159-03cd-11f1-bf18-bc241112a182",
+          name: "Canva Premium",
+          category: "Productivity",
+          description: "Canva via WR",
+          variants: [
+            { id: "24731e47-03cf-11f1-bf18-bc241112a182", name: "Member Pro", price: 5000, duration: "30 Hari", type: "Link", warranty: "30 Hari", stock: 0, terms: null, delivery_terms: null },
+            { id: "60218877-9bda-11f1-af43-fa163e9e64f4", name: "Member Pro", price: 7000, duration: "80 Hari", type: "Link", warranty: "No Garansi", stock: 0, terms: null, delivery_terms: null },
+            { id: "5c141bf5-0446-11f1-bf18-bc241112a182", name: "Member Edu Lifetime", price: 4000, duration: "365 Hari", type: "Link", warranty: "No Garansi", stock: 4, terms: null, delivery_terms: null },
+          ],
+        },
+      ]);
+      expect(result.errors).toEqual([]);
+      expect(result.newVariants).toBe(3);
+      const skus = fx.sql.prepare("SELECT sku FROM product_variants ORDER BY sku").all() as { sku: string }[];
+      expect(new Set(skus.map((s) => s.sku)).size).toBe(3);
+      const stocked = fx.sql
+        .prepare("SELECT stock FROM product_variants WHERE wr_variant_id='5c141bf5-0446-11f1-bf18-bc241112a182'")
+        .get() as { stock: number };
+      expect(Number(stocked.stock)).toBe(4);
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("upsert varian tanpa produk Axvara tidak melempar", async () => {    const fs = await import("node:fs");
     const fx = createD1Fixture();
     try {
       fx.sql.exec(fs.readFileSync("drizzle/migrations/0027_warung_rebahan.sql", "utf8"));
