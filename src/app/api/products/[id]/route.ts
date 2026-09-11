@@ -124,13 +124,23 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
   }
 
-  const nextPrice = hasExplicitVariants && data.variants && data.variants.length > 0
-    ? Math.min(...data.variants.filter(v => (v.is_active ?? 1) !== 0).map(v => v.price))
+  const nextPrice = hasExplicitVariants
+    ? (() => {
+        const activePrices = (data.variants ?? [])
+          .filter((v) => (v.is_active ?? 1) !== 0)
+          .map((v) => v.price);
+        return activePrices.length > 0 ? Math.min(...activePrices) : Number(existing.price);
+      })()
     : (data.price ?? Number(existing.price));
-  const nextComparePrice = data.comparePrice !== undefined
-    ? data.comparePrice
-    : existing.compare_price;
-  if (nextComparePrice != null && nextComparePrice <= nextPrice) {
+  // FIX Canva 409: bila varian eksplisit dikirim, master price/stock/compare
+  // dihitung ulang dari varian aktif oleh sync query di bawah. Abaikan field
+  // legacy untuk validasi coret + guard agar auto-sync client lama (min price,
+  // -1, null) atau master yang stale tidak ditolak sebagai "edit legacy".
+  const ignoreLegacyCommerce = hasExplicitVariants;
+  const nextComparePrice = ignoreLegacyCommerce
+    ? existing.compare_price
+    : (data.comparePrice !== undefined ? data.comparePrice : existing.compare_price);
+  if (!ignoreLegacyCommerce && nextComparePrice != null && nextComparePrice <= nextPrice) {
     return NextResponse.json({ error: "Harga coret harus lebih besar dari harga jual" }, { status: 400 });
   }
   const variantSummary = isD1Mode()
@@ -145,10 +155,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     && variantSummary?.default_variant_id
     ? Number(variantSummary.default_variant_id)
     : null;
-  const changesLegacyCommerceFields =
+  // Hanya anggap sebagai edit manual kolom legacy bila request TIDAK membawa
+  // varian eksplisit. Bila varian dikirim, master dihitung ulang dari varian
+  // sehingga field legacy pendamping tidak boleh memicu guard 409.
+  const changesLegacyCommerceFields = !ignoreLegacyCommerce && (
     (data.price !== undefined && Number(data.price) !== Number(existing.price))
     || (data.comparePrice !== undefined && (data.comparePrice ?? null) !== (existing.compare_price ?? null))
-    || (data.stock !== undefined && Number(data.stock) !== Number(existing.stock));
+    || (data.stock !== undefined && Number(data.stock) !== Number(existing.stock)));
   if (isD1Mode() && changesLegacyCommerceFields && !defaultVariant) {
     return NextResponse.json(
       { error: "Harga dan stok dikelola per varian. Gunakan tombol Varian pada produk ini." },
@@ -169,7 +182,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (cat) { fields.push("category_id=?"); vals.push(cat.id); }
     else return NextResponse.json({ error: "Kategori tidak dikenal" }, { status: 400 });
   }
+  // Bila varian dikirim, master price/stock/compare dihitung ulang oleh sync
+  // query di bawah — jangan tulis nilai legacy pendamping dari client.
+  const skipLegacyCommerceWrite = hasExplicitVariants && Array.isArray(data.variants) && data.variants.length > 0;
   for (const [k,col] of Object.entries(map)) {
+    if (skipLegacyCommerceWrite && (k === "price" || k === "comparePrice" || k === "stock")) continue;
     const v = (data as Record<string, unknown>)[k];
     if (v !== undefined) {
       if (k==="isActive") { fields.push(`${col}=?`); vals.push(v ? 1:0); }

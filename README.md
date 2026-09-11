@@ -185,7 +185,7 @@ dan diverifikasi sebagai gambar sebelum disimpan privat. Copy pembayaran memakai
 order agar perubahan nama/durasi/garansi di CMS tidak mengubah transaksi yang sudah dibuat.
 Produk baru otomatis mendapat varian default. Harga/stok pada form produk lama hanya
 disinkronkan untuk varian default tunggal; produk multi-varian dikelola lewat tombol
-**Kelola Varian**. Panel **Pesanan** menyediakan pencarian server-side, filter channel
+**Kelola Varian**. `PUT /api/products/:id` yang membawa `variants` menghitung ulang master dari varian aktif dan mengabaikan kolom legacy, sehingga edit produk multi-varian (mis. Canva) tidak lagi ditolak 409. Panel **Pesanan** menyediakan pencarian server-side, filter channel
 Web/Telegram/WhatsApp, status, pembayaran, rentang tanggal, pagination, detail order,
 konfirmasi aman, serta export CSV. QRIS tidak dapat dilunasi dari bukti gambar; QRIS Hook
 tetap menjadi authority dan event yang tidak cocok ditangani pada **Metode & Rekonsiliasi**.

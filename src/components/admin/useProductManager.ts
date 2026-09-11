@@ -205,8 +205,11 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
     setSaving(true);
     setFormError(null);
 
-    const minVarPrice = hasMultiVariants && formVariants.length > 0
-      ? Math.min(...formVariants.filter((vr) => (vr.is_active ?? 1) !== 0).map((vr) => vr.price))
+    const activeVarPrices = hasMultiVariants && formVariants.length > 0
+      ? formVariants.filter((vr) => (vr.is_active ?? 1) !== 0).map((vr) => vr.price)
+      : [];
+    const minVarPrice = activeVarPrices.length > 0
+      ? Math.min(...activeVarPrices)
       : Number(form.price || 0);
 
     const payload = {
@@ -214,9 +217,13 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
       name: form.name!.trim(),
       slug: form.slug!.trim().toLowerCase(),
       description: (form.description ?? "").trim(),
-      price: minVarPrice,
-      comparePrice: hasMultiVariants ? null : (form.comparePrice ? Number(form.comparePrice) : null),
-      stock: hasMultiVariants ? -1 : (form.stock != null ? Number(form.stock) : -1),
+      // FIX Canva 409: mode varian jangan kirim kolom legacy sama sekali.
+      // Server menghitung ulang master price/stock/compare dari varian aktif,
+      // sehingga nilai pendamping (min price, -1, null) tak lagi dibaca
+      // sebagai "edit legacy" yang memicu guard 409.
+      price: hasMultiVariants ? undefined : minVarPrice,
+      comparePrice: hasMultiVariants ? undefined : (form.comparePrice ? Number(form.comparePrice) : null),
+      stock: hasMultiVariants ? undefined : (form.stock != null ? Number(form.stock) : -1),
       soldCount: form.soldCount ? Number(form.soldCount) : 0,
       sortOrder: 0,
       images: formImages,
