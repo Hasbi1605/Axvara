@@ -22,9 +22,42 @@ const config: Config = {
         },
       },
       fontFamily: {
-        display: ["-apple-system", "SF Pro Display", "Helvetica Neue", "sans-serif"],
-        sans: ["-apple-system", "SF Pro Text", "Helvetica Neue", "sans-serif"],
-        mono: ["SF Mono", "monospace"],
+        // Urutan disengaja: webfont cross-platform dulu (Inter/Space Grotesk
+        // via next/font CSS vars), lalu SF Apple di iOS/Mac, lalu Segoe UI
+        // (Windows) / Roboto (Android) agar tidak pernah jatuh ke Arial tipis.
+        display: [
+          "var(--font-ax-display)",
+          "Space Grotesk",
+          "Inter",
+          "-apple-system",
+          "BlinkMacSystemFont",
+          "SF Pro Display",
+          "Segoe UI",
+          "Roboto",
+          "Helvetica Neue",
+          "Arial",
+          "sans-serif",
+        ],
+        sans: [
+          "var(--font-ax-sans)",
+          "Inter",
+          "-apple-system",
+          "BlinkMacSystemFont",
+          "SF Pro Text",
+          "Segoe UI",
+          "Roboto",
+          "Helvetica Neue",
+          "Arial",
+          "sans-serif",
+        ],
+        mono: [
+          "var(--font-ax-mono)",
+          "JetBrains Mono",
+          "SF Mono",
+          "Consolas",
+          "Menlo",
+          "monospace",
+        ],
       },
       borderRadius: {
         "4xl": "2rem",

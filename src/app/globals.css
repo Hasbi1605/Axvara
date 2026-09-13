@@ -2,7 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ===== AXVARA — Apple SF Pro + iOS 26 Liquid Glass ===== */
+/* ===== AXVARA — Cross-platform type + iOS 26 Liquid Glass ===== */
+/* Body: Inter (webfont) → SF Apple → Segoe UI (Windows) → Roboto → Arial.
+   Display: Space Grotesk → Inter → SF Display → Segoe UI. Sesuai DESIGN.md. */
 :root {
   --ax-bg: #070a1e;
   --ax-bg-2: #0f1430;
@@ -22,20 +24,33 @@
 
 html { scroll-behavior: smooth; }
 
-/* Apple system font — SF Pro Display/Text */
+/* Cross-platform system font — webfont Inter/Space Grotesk (next/font CSS
+   vars) diutamakan agar Chrome Windows tidak jatuh ke Arial tipis. */
 body {
   color: var(--ax-text);
   background: var(--ax-bg);
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
+  font-family: var(--font-ax-sans), Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  line-height: 1.6;
+  /* Biarkan ClearType/DirectWrite Windows memakai hinting natural.
+     Penipisan antialiased hanya untuk WebKit Apple (Retina). */
   -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
-  font-feature-settings: "ss01" 1, "ss02" 1;
+}
+
+/* Penipisan ala iOS — hanya di Safari/WebKit Apple agar teks kecil
+   Windows tidak pudar. */
+@supports (-webkit-touch-callout: none) {
+  body {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
 }
 
 .font-display {
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
-  letter-spacing: -0.03em;
+  font-family: var(--font-ax-display), "Space Grotesk", Inter, -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  /* -0.03em terlalu rapat untuk Arial/Segoe fallback di Windows;
+     Space Grotesk sudah condensed secara natural. */
+  letter-spacing: -0.02em;
+  line-height: 1.1;
 }
 
 /* Scrollbar */

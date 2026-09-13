@@ -72,7 +72,7 @@ export default function HomePage() {
           {/* Grid layout — single OrbitHero, responsive via CSS */}
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-6 lg:gap-8 items-center">
             <div className="max-w-3xl w-full">
-              <h1 className="font-display font-[700] tracking-[-0.045em] leading-[0.88] text-[42px] sm:text-[56px] lg:text-[62px] text-white">
+              <h1 className="font-display font-[700] tracking-[-0.02em] leading-[0.98] text-[42px] sm:text-[56px] lg:text-[62px] text-white">
                 Satu tempat untuk
                 <br />
                 semua tools premium.
