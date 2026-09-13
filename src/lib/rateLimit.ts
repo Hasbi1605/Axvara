@@ -29,6 +29,13 @@ export const RATE_LIMITS = {
   // lama HARUS sudah kedaluwarsa" di reissueDanaQrisInvoice, yang membuat
   // pihak lain tidak bisa membatalkan QR yang sedang aktif.
   "qris:reissue": 5,
+  // Webhook Warung Rebahan: provider me-retry event; scope khusus agar tidak
+  // berbagi bucket dengan lookup pembeli. Batas longgar-menengah: cukup
+  // menahan burst per isolate, verifikasi HMAC tetap garis depan.
+  // WAJIB terdaftar: insiden CI #131 — scope dipakai route tanpa definisi
+  // ini → max undefined → request pertama per isolate lolos, sisanya 429
+  // selamanya (self-DoS). Dikunci tests/rate-limit-scopes.test.ts.
+  "webhook:warung": 60,
   "proof:upload": 5,
   "upload:admin": 20,
   "products:write": 20,
@@ -75,5 +82,15 @@ export function rateLimitKey(req: NextRequest, scope: string): string {
  * lanjut, false bila sudah melampaui batas (caller membalas 429 + Retry-After).
  */
 export function checkRateLimit(req: NextRequest, scope: RateLimitScope): boolean {
-  return rateLimit(rateLimitKey(req, scope), RATE_LIMITS[scope]);
+  const max = RATE_LIMITS[scope];
+  if (typeof max !== "number") {
+    // Fail-open yang berisik: scope tak dikenal tidak boleh me-429-kan
+    // seluruh traffic (insiden CI #131 — route webhook memakai scope
+    // "webhook:warung" yang belum terdaftar → max undefined → request
+    // pertama per isolate lolos, sisanya 429 = self-DoS).
+    // Test tests/rate-limit-scopes.test.ts mengunci daftar scope.
+    console.error(`[rateLimit] scope tidak terdaftar: ${String(scope)} — fail open`);
+    return true;
+  }
+  return rateLimit(rateLimitKey(req, scope), max);
 }
