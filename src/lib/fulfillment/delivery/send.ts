@@ -233,9 +233,24 @@ export async function processItem(order: Row, itemRow: Row, adminChatId?: string
   const { execRun } = database;
   const orderCode = String(order.code);
   const itemId = Number(itemRow.id);
+  // Item milik pipeline Warung Rebahan (P0-5): JANGAN klaim/kirim sebagai
+  // manual palsu. Dicek SEBELUM claimItemLease agar attempt_count tidak
+  // terbuang dan lease tidak tertahan. WR menyelesaikan item ini via
+  // wr_order_links; agregat order dihitung refreshOrderAggregate.
+  if (itemRow.wr_link_id != null) return false;
   const lease = await claimItemLease(itemRow, database, parent);
   if ("skip" in lease) return lease.skip;
   const { item, leaseFence } = lease;
+  // Race: item dikaitkan WR setelah baris dibaca — verifikasi ulang di bawah
+  // lease; bila milik WR, lepas lease tanpa konsumsi hasil.
+  if (item.wr_link_id != null) {
+    await execRun(
+      `UPDATE fulfillment_items SET status='queued', locked_until=NULL, updated_at=datetime('now')
+       WHERE id=? AND locked_until=?`,
+      itemId, leaseFence,
+    ).catch(() => undefined);
+    return false;
+  }
 
   const mode = String(order.sales_channel) === "whatsapp" && !isEnabled("WHATSAPP_FULFILLMENT") ? "manual" : String(item.fulfillment_mode || "manual");
   const recipientChannel = String(item.recipient_channel || order.sales_channel || "telegram");

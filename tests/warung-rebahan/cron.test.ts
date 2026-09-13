@@ -15,9 +15,7 @@ vi.mock("@/lib/whatsapp/gateway", () => ({
 
 let fixture: ReturnType<typeof createD1Fixture>;
 beforeEach(async () => {
-  const fs = await import("node:fs");
   fixture = createD1Fixture();
-  fixture.sql.exec(fs.readFileSync("drizzle/migrations/0027_warung_rebahan.sql", "utf8"));
   vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
   vi.stubEnv("WARUNG_REBAHAN_API_KEY", "k");
   vi.stubEnv("CRON_SECRET", "c");

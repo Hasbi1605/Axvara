@@ -14,7 +14,44 @@ const { DatabaseSync } = createRequire(import.meta.url)("node:sqlite") as {
 };
 
 /** Real SQLite statements; batches execute without yielding and rollback together,
- * like D1. Gateway/network boundaries belong in the calling test's mocks. */
+ * like D1. Gateway/network boundaries belong in the calling test's mocks.
+ *
+ * STRICT BIND CHECK (temuan WR 2026-09-13): D1 asli melempar saat jumlah `?`
+ * placeholder tidak sama dengan jumlah values, tetapi node:sqlite diam-diam
+ * `changes:0` — bug B2/B4 lolos seluruh test hijau. Maka setiap first/all/
+ * run/batch di sini menghitung `?` di luar string literal dan MELEMPAR bila
+ * tidak sama dengan params. Ini berlaku surut ke SEMUA test repo.
+ */
+export function countPlaceholders(query: string): number {
+  let count = 0;
+  let inSingle = false;
+  let inDouble = false;
+  for (let i = 0; i < query.length; i++) {
+    const ch = query[i];
+    if (inSingle) {
+      if (ch === "'") inSingle = false;
+      continue;
+    }
+    if (inDouble) {
+      if (ch === '"') inDouble = false;
+      continue;
+    }
+    if (ch === "'") { inSingle = true; continue; }
+    if (ch === '"') { inDouble = true; continue; }
+    if (ch === "?") count++;
+  }
+  return count;
+}
+
+export function assertBindCount(query: string, params: unknown[]): void {
+  const expected = countPlaceholders(query);
+  if (params.length !== expected) {
+    throw new Error(
+      `D1 bind mismatch: query has ${expected} placeholder(s) but got ${params.length} value(s): ${query.slice(0, 120)}`,
+    );
+  }
+}
+
 export function createD1Fixture() {
   const sql = new DatabaseSync(":memory:");
   sql.exec(fs.readFileSync("drizzle/schema.sql", "utf8"));
@@ -33,6 +70,7 @@ export function createD1Fixture() {
       control.queries++;
       if (control.queries > control.limit) throw new Error(`D1 query budget exceeded at #${control.queries}: ${query.slice(0, 100)}`);
       if (control.fail?.(query, params)) throw new Error("Injected database interruption");
+      assertBindCount(query, params);
     };
     const execute = () => { before(); return sql.prepare(query).run(...params); };
     return {
@@ -52,6 +90,8 @@ export function createD1Fixture() {
   const db: D1 = {
     prepare,
     batch: async (statements) => {
+      // Tiap member melewati execute() → before() → assertBindCount, sama
+      // seperti D1 asli yang menolak batch bila binding salah.
       sql.exec("BEGIN");
       let results;
       try {

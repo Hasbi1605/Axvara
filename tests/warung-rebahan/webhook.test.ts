@@ -69,4 +69,35 @@ describe("POST /api/webhook/warung", () => {
     );
     expect(res.status).toBe(415);
   });
+
+  it("200 + monotonik: completed lalu failed replay tetap completed", async () => {
+    const { createD1Fixture, stubFulfillmentKey } = await import("../helpers/d1-fixture");
+    const fx = createD1Fixture();
+    try {
+      stubFulfillmentKey();
+      fx.sql.prepare("INSERT INTO products(id,name,slug,price,stock) VALUES(1,'P','p-wh',100,10)").run();
+      fx.sql.prepare("INSERT INTO product_variants(id,product_id,sku,label,price,stock) VALUES(1,1,'S','V',100,10)").run();
+      fx.sql.prepare("INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel) VALUES('AXV-20260913-WH01','B','628','[]',100,'qris','lunas','paid','web')").run();
+      fx.sql.prepare("INSERT INTO fulfillment_items(order_code,item_index,product_id,variant_id,qty,fulfillment_mode,recipient_channel,status,attempt_count) VALUES('AXV-20260913-WH01',0,1,1,1,'manual','web','queued',0)").run();
+      fx.sql.prepare("INSERT INTO wr_order_links(order_code,wr_order_id,wr_variant_id,quantity,wr_cost,status) VALUES('AXV-20260913-WH01','ORD-WH-1','var-1',1,5000,'processing')").run();
+      vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
+      vi.stubEnv("WARUNG_REBAHAN_API_KEY", "s");
+      vi.stubEnv("WARUNG_REBAHAN_WEBHOOK_SECRET", "s");
+      const { POST } = await import("@/app/api/webhook/warung/route");
+      const completedBody = JSON.stringify({ event: "order.completed", data: { order_id: "ORD-WH-1", account_details: [{ email: "a@b.c" }] } });
+      const res1 = await POST(webhookRequest(completedBody, await signedBody("s", completedBody)) as unknown as Parameters<typeof POST>[0]);
+      expect(res1.status).toBe(200);
+      // Replay failed yang terlambat: tetap 200, status tidak regresi.
+      const failedBody = JSON.stringify({ event: "order.failed", data: { order_id: "ORD-WH-1", status: "failed" } });
+      const res2 = await POST(webhookRequest(failedBody, await signedBody("s", failedBody)) as unknown as Parameters<typeof POST>[0]);
+      expect(res2.status).toBe(200);
+      const link = fx.sql.prepare("SELECT status FROM wr_order_links WHERE wr_order_id='ORD-WH-1'").get() as { status: string };
+      expect(link.status).toBe("completed");
+      // Regresi yang diblokir tercatat di event log (observable).
+      const blocked = fx.sql.prepare("SELECT COUNT(*) n FROM wr_webhook_events WHERE applied=0").get() as { n: number };
+      expect(Number(blocked.n)).toBeGreaterThan(0);
+    } finally {
+      fx.close();
+    }
+  });
 });

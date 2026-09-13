@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from "react";
 import { formatRupiah } from "@/lib/utils";
 import { supportTelegramLink } from "@/lib/site";
 import { StoreWhatsAppLink } from "@/components/storefront/StoreWhatsAppLink";
+import { WrCredentialsPanel } from "@/components/storefront/WrCredentialsPanel";
 
 type QrisInvoice = {
   payable_amount: number;
@@ -226,6 +227,8 @@ export default function OrderSuccessPage() {
           <div className="mt-3 space-y-2">{order.items.map((item, index) => <div key={index} className="flex justify-between gap-4 text-sm"><span className="text-white/70">{item.name} × {item.qty}</span><span className="font-medium text-white">{formatRupiah(item.price * item.qty)}</span></div>)}</div>
           <div className="mt-3 flex justify-between border-t border-white/10 pt-3"><span className="text-sm text-white/60">Total • {order.method.toUpperCase()}</span><span className="font-bold text-white">{formatRupiah(payableAmount)}</span></div>
         </div>
+
+        {isPaid && <WrCredentialsPanel code={order.code} />}
 
         <div className="mt-6 flex flex-col gap-3 sm:flex-row">
           <Link href="/" className="ax-glass-card flex h-11 flex-1 items-center justify-center rounded-xl font-semibold text-white hover:bg-white/10">Lanjut Belanja</Link>

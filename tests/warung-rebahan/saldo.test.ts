@@ -8,7 +8,6 @@ import {
   getSaldoThreshold,
 } from "@/lib/warung-rebahan/saldo";
 
-const MIGRATION = "drizzle/migrations/0027_warung_rebahan.sql";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -24,10 +23,8 @@ describe("Warung Rebahan saldo monitor", () => {
   });
 
   it("checkAndLogSaldo mencatat + mendeteksi saldo rendah", async () => {
-    const fs = await import("node:fs");
     const fx = createD1Fixture();
     try {
-      fx.sql.exec(fs.readFileSync(MIGRATION, "utf8"));
       vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
       vi.stubEnv("WARUNG_REBAHAN_API_KEY", "k");
       vi.stubEnv("WARUNG_REBAHAN_SALDO_ALERT_THRESHOLD", "50000");
@@ -54,10 +51,8 @@ describe("Warung Rebahan saldo monitor", () => {
   });
 
   it("saldo cukup tidak isLow", async () => {
-    const fs = await import("node:fs");
     const fx = createD1Fixture();
     try {
-      fx.sql.exec(fs.readFileSync(MIGRATION, "utf8"));
       vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
       vi.stubEnv("WARUNG_REBAHAN_API_KEY", "k");
       vi.stubEnv("TELEGRAM_BOT_ENABLED", "false");
@@ -76,10 +71,8 @@ describe("Warung Rebahan saldo monitor", () => {
   });
 
   it("estimasi kapasitas dari rata-rata wr_cost completed", async () => {
-    const fs = await import("node:fs");
     const fx = createD1Fixture();
     try {
-      fx.sql.exec(fs.readFileSync(MIGRATION, "utf8"));
       fx.sql.prepare("INSERT INTO wr_saldo_log(balance,source) VALUES(100000,'api_check')").run();
       fx.sql.prepare(`INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel) VALUES('A','X','6280','[]',10000,'qris','lunas','paid','web'),('B','X','6280','[]',10000,'qris','lunas','paid','web')`).run();
       fx.sql.prepare("INSERT INTO wr_order_links(order_code,wr_variant_id,quantity,wr_cost,status) VALUES('A','v',1,5000,'completed'),('B','v',1,15000,'completed')").run();
@@ -93,10 +86,8 @@ describe("Warung Rebahan saldo monitor", () => {
   });
 
   it("disabled melempar, bukan mencatat diam-diam", async () => {
-    const fs = await import("node:fs");
     const fx = createD1Fixture();
     try {
-      fx.sql.exec(fs.readFileSync(MIGRATION, "utf8"));
       vi.stubEnv("WARUNG_REBAHAN_ENABLED", "false");
       await expect(checkAndLogSaldo(createDatabaseAccess(fx.db))).rejects.toThrow("warung_rebahan_disabled");
     } finally {

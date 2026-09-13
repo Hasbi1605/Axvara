@@ -1,13 +1,19 @@
 // POST /api/admin/warung/orders/[id]/retry — Manual retry satu WR order link.
-// Hanya untuk status retry/failed/pending; attempt_count dihormati.
+// CAS berpagar (P1-9): klaim retry memakai UPDATE bersyarat atas
+// (status, attempt_count) yang dibaca — worker/admin lain yang sudah
+// mengklaim/mengubah baris membuat UPDATE ini 0 changes → 409, bukan
+// retry ganda.
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { queryFirst, execRun } from "@/lib/db";
 import { isWrEnabled } from "@/lib/warung-rebahan/client";
+import { WR_LINK_STATUSES } from "@/lib/warung-rebahan/order";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
+
+const RETRYABLE = ["pending", "retry", "failed", "blocked_balance"];
 
 export async function POST(
   request: NextRequest,
@@ -21,19 +27,39 @@ export async function POST(
   if (!Number.isInteger(linkId) || linkId <= 0) {
     return NextResponse.json({ error: "invalid_id" }, { status: 400 });
   }
-  const link = await queryFirst(`SELECT * FROM wr_order_links WHERE id=?`, linkId);
+  const link = await queryFirst(
+    `SELECT id, status, attempt_count, max_attempts FROM wr_order_links WHERE id=?`,
+    linkId,
+  );
   if (!link) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  if (!["pending", "retry", "failed"].includes(String(link.status))) {
-    return NextResponse.json({ error: "not_retryable", status: String(link.status) }, { status: 409 });
+  const status = String(link.status || "");
+  if (!(WR_LINK_STATUSES as readonly string[]).includes(status)) {
+    return NextResponse.json({ error: "unknown_status", status }, { status: 500 });
+  }
+  if (!RETRYABLE.includes(status)) {
+    return NextResponse.json({ error: "not_retryable", status }, { status: 409 });
   }
   if (Number(link.attempt_count || 0) >= Number(link.max_attempts || 3)) {
     return NextResponse.json({ error: "max_attempts_reached" }, { status: 409 });
   }
-  await execRun(
+  // CAS: menangkan klaim hanya bila status + attempt_count masih sama
+  // seperti saat dibaca. Kalah race (worker cron/admin lain) → 409.
+  const claimed = await execRun(
     `UPDATE wr_order_links SET status='retry', next_attempt_at=datetime('now'),
-      last_error=NULL, updated_at=datetime('now') WHERE id=?`,
+       last_error=NULL, lease_owner=NULL, lease_expires_at=NULL,
+       request_sent_at=NULL, updated_at=datetime('now')
+     WHERE id=? AND status=? AND attempt_count=?`,
     linkId,
-  );
+    status,
+    Number(link.attempt_count || 0),
+  ).catch(() => ({ changes: 0 as number | undefined }));
+  if (Number(claimed.changes ?? 0) === 0) {
+    const current = await queryFirst(`SELECT status, attempt_count FROM wr_order_links WHERE id=?`, linkId);
+    return NextResponse.json(
+      { error: "retry_race_lost", status: String(current?.status ?? "unknown") },
+      { status: 409 },
+    );
+  }
   try {
     const { processWrPendingOrders } = await import("@/lib/warung-rebahan/order");
     await processWrPendingOrders();

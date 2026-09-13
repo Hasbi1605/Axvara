@@ -2,8 +2,13 @@
 // Idempoten: upsert by wr_product_id / wr_variant_id. Produk yang hilang dari
 // respons WR hanya di-nol-kan stoknya (WR bisa hide sementara), tidak dihapus.
 //
-// Budget-aware: pemanggil (cron/admin) memakai DatabaseAccess berbudget; modul
-// ini tidak menghitung budget sendiri, hanya memakai query hemat.
+// BUDGET-AWARE (P0-4): syncProducts menerima maxStatements dan berhenti
+// sebelum budget habis, menyimpan cursor di wr_sync_state agar invocation
+// berikutnya MELANJUTKAN (bukan mengulang dari awal). Kapasitas order
+// diprioritaskan: pemanggil (cron) menjalankan processWrPendingOrders DULU
+// sebelum sync produk. Exclusion rules di-cache sekali per run.
+// DESTRUCTIVE GUARD: zeroMissingVariants hanya berjalan setelah satu sweep
+// PENUH tervalidasi; respons malformed/empty/partial tidak me-zero katalog.
 
 import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 import {
@@ -24,12 +29,21 @@ export type SyncResult = {
   priceChanges: number;
   errors: string[];
   durationMs: number;
+  /** True bila berhenti karena budget (cursor tersimpan, lanjutkan run berikut). */
+  budgetYielded: boolean;
+  /** True bila sweep penuh selesai tervalidasi (zero-missing diizinkan). */
+  snapshotComplete: boolean;
 };
 
 // Biaya query konservatif per entitas (lihat plan §6).
 export const COST_PER_WR_PRODUCT_SYNC = 3;
 export const COST_PER_WR_VARIANT_SYNC = 2;
 export const COST_WR_EXCLUSION_FETCH = 1;
+// Ukuran batch produk per run sync (bounded agar order tidak starvation).
+export const WR_SYNC_PRODUCTS_PER_RUN = 12;
+// Generasi: bila upstream mengembalikan data yang bentuknya berubah total
+// (mis. array kosong padahal sebelumnya 48 produk), sweep ditandai parsial.
+export const WR_SYNC_MIN_PRODUCTS_GUARD = 1;
 
 type Row = Record<string, unknown>;
 
@@ -146,14 +160,18 @@ export function mapWrCategory(wrCategory: string | null | undefined): number {
 /**
  * Cek exclusion via tabel wr_exclusions (LIKE case-insensitive).
  * Pattern disimpan lowercase-safe: bandingkan lower(nama) LIKE lower(pattern).
+ * `cachedRules`: cache sekali per run (P0-4) — null = baca dari DB.
  */
 export async function isExcluded(
   productName: string,
   db: DatabaseAccess,
+  cachedRules?: { pattern: string; reason: string | null }[] | null,
 ): Promise<{ excluded: boolean; reason: string | null }> {
-  const rules = await db
-    .queryAll(`SELECT pattern, reason FROM wr_exclusions`)
-    .catch(() => [] as Row[]);
+  const rules =
+    cachedRules ??
+    ((await db
+      .queryAll(`SELECT pattern, reason FROM wr_exclusions`)
+      .catch(() => [] as Row[])) as { pattern: string; reason: string | null }[]);
   const lowered = productName.toLowerCase();
   for (const rule of rules) {
     const pattern = String(rule.pattern || "").toLowerCase();
@@ -552,12 +570,73 @@ export async function zeroMissingVariants(
   return zeroed;
 }
 
+/** Baca state sync durable (cursor/generation). Aman bila tabel belum ada. */
+export async function readSyncState(
+  db: DatabaseAccess,
+): Promise<{ cursor: number; generation: string; snapshotComplete: boolean }> {
+  const out = { cursor: 0, generation: "", snapshotComplete: false };
+  try {
+    const rows = await db.queryAll(`SELECT key, value FROM wr_sync_state`);
+    for (const row of rows) {
+      const key = String(row.key || "");
+      if (key === "products_cursor") out.cursor = Math.max(0, Number(row.value || 0));
+      else if (key === "products_generation") out.generation = String(row.value || "");
+      else if (key === "products_snapshot_complete") out.snapshotComplete = String(row.value) === "1";
+    }
+  } catch {
+    /* DB pre-0029: mulai dari awal */
+  }
+  return out;
+}
+
+async function writeSyncState(db: DatabaseAccess, key: string, value: string): Promise<void> {
+  try {
+    await db.execRun(
+      `INSERT INTO wr_sync_state (key, value, updated_at) VALUES (?,?,datetime('now'))
+       ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')`,
+      key,
+      value,
+    );
+  } catch {
+    /* DB pre-0029: cursor best-effort */
+  }
+}
+
+/**
+ * Validasi respons katalog upstream (P0-4): tolak data mencurigakan SEBELUM
+ * menyentuh stok lokal.
+ * - bukan array / null / object → malformed (jangan zero apa pun).
+ * - array kosong padahal generasi sebelumnya punya produk → suspicious
+ *   (upstream error / akun kena suspend) — JANGAN zero seluruh katalog.
+ * Mengembalikan { ok, reason } — reason null bila aman diproses.
+ */
+export function validateCatalogResponse(
+  products: unknown,
+  previousGeneration: string,
+  previousCount: number,
+): { ok: boolean; reason: string | null } {
+  if (!Array.isArray(products)) return { ok: false, reason: "catalog_malformed_not_array" };
+  if (products.length === 0 && previousCount > 0) {
+    return { ok: false, reason: "catalog_suspicious_empty" };
+  }
+  return { ok: true, reason: null };
+}
+
+export type SyncOptions = {
+  /** Batas produk per run (default WR_SYNC_PRODUCTS_PER_RUN). */
+  maxProducts?: number;
+  /** Izinkan zeroMissingVariants bila sweep penuh (default true). */
+  allowZeroMissing?: boolean;
+};
+
 export async function syncProducts(
   database?: DatabaseAccess,
   fetchFn: () => Promise<WrProduct[]> = fetchProducts,
+  options: SyncOptions = {},
 ): Promise<SyncResult> {
   const started = Date.now();
   const db = database ?? createDatabaseAccess();
+  const maxProducts = Math.max(1, Math.min(options.maxProducts ?? WR_SYNC_PRODUCTS_PER_RUN, 48));
   const result: SyncResult = {
     total: 0,
     synced: 0,
@@ -569,12 +648,16 @@ export async function syncProducts(
     priceChanges: 0,
     errors: [],
     durationMs: 0,
+    budgetYielded: false,
+    snapshotComplete: false,
   };
   if (!isWrSyncEnabled()) {
     result.errors.push("warung_rebahan_disabled");
     result.durationMs = Date.now() - started;
     return result;
   }
+  // Cursor durable: lanjutkan dari posisi run sebelumnya (P0-4).
+  const state = await readSyncState(db);
   let products: WrProduct[];
   try {
     products = await fetchFn();
@@ -585,14 +668,52 @@ export async function syncProducts(
     result.durationMs = Date.now() - started;
     return result;
   }
+  // Guard data mencurigakan SEBELUM menyentuh stok (P0-4).
+  const validation = validateCatalogResponse(products, state.generation, state.snapshotComplete ? Math.max(state.cursor, 1) : 0);
+  if (!validation.ok) {
+    result.errors.push(validation.reason || "catalog_rejected");
+    await logSync({ ...result, status: "failed" }, db).catch(() => undefined);
+    result.durationMs = Date.now() - started;
+    return result;
+  }
   result.total = products.length;
+  // Generasi berubah (jumlah produk upstream berubah drastis) → catat, tapi
+  // tetap proses (bukan tolak): penambahan/penghapusan massal yang sah
+  // tetap harus tersync; yang dilarang hanya ZERO buta (di bawah).
+  const generation = `${products.length}:${products[0] ? String((products[0] as WrProduct).id || "").slice(0, 8) : ""}`;
+  // Cache exclusion rules sekali per run (P0-4): 1 query, bukan N.
+  const cachedRules = (await db
+    .queryAll(`SELECT pattern, reason FROM wr_exclusions`)
+    .catch(() => [] as Row[])) as { pattern: string; reason: string | null }[];
   const seenVariantIds = new Set<string>();
-  for (const product of products) {
+  // Urutan stabil agar cursor bermakna lintas run.
+  const ordered = [...products].sort((a, b) => String(a.id || "").localeCompare(String(b.id || "")));
+  const startAt = state.cursor >= ordered.length ? 0 : state.cursor;
+  let cursor = startAt;
+  let processedInRun = 0;
+  for (let i = startAt; i < ordered.length; i++) {
+    const product = ordered[i];
+    // Admission biaya aktual (P0-4): berhenti SEBELUM budget habis.
+    // Biaya konservatif per produk = upsert produk + varian-variannya +
+    // agregat induk + margin tulis log.
+    const variantCount = Array.isArray(product.variants) ? product.variants.length : 0;
+    const cost =
+      COST_PER_WR_PRODUCT_SYNC + variantCount * COST_PER_WR_VARIANT_SYNC + 2;
+    if (!db.canSpend(cost + 4)) {
+      result.budgetYielded = true;
+      break;
+    }
+    if (processedInRun >= maxProducts) {
+      result.budgetYielded = true;
+      break;
+    }
     try {
-      const exclude = await isExcluded(String(product.name || ""), db);
+      const exclude = await isExcluded(String(product.name || ""), db, cachedRules);
       if (exclude.excluded) {
         result.excluded++;
         await upsertWrProduct(product, exclude, db);
+        cursor = i + 1;
+        processedInRun++;
         continue;
       }
       const { axvaraProductId, isNew } = await upsertWrProduct(
@@ -619,16 +740,53 @@ export async function syncProducts(
         }`.slice(0, 300),
       );
     }
+    cursor = i + 1;
+    processedInRun++;
   }
-  try {
-    result.stockChanges += await zeroMissingVariants(seenVariantIds, db);
-  } catch (error) {
-    result.errors.push(error instanceof Error ? error.message : String(error));
+  const sweepComplete = cursor >= ordered.length;
+  // Simpan cursor + generasi (durable, lintas invocation).
+  await writeSyncState(db, "products_cursor", String(sweepComplete ? 0 : cursor));
+  await writeSyncState(db, "products_generation", generation);
+  if (sweepComplete) {
+    await writeSyncState(db, "products_snapshot_complete", "1");
+    result.snapshotComplete = true;
+    // DESTRUCTIVE GUARD (P0-4): zero-missing HANYA setelah sweep penuh
+    // tervalidasi dalam run ini. Sweep parsial/budget-yield TIDAK BOLEH
+    // me-zero varian yang belum terlihat.
+    if (options.allowZeroMissing !== false) {
+      try {
+        result.stockChanges += await zeroMissingVariants(seenVariantIds, db);
+      } catch (error) {
+        result.errors.push(error instanceof Error ? error.message : String(error));
+      }
+      // Refresh agregat induk setelah zero (P0-4): stok parent harus
+      // mencerminkan varian yang baru di-nol-kan.
+      try {
+        await refreshAllParentAggregates(db);
+      } catch {
+        /* best-effort */
+      }
+    }
+  } else if (!result.budgetYielded) {
+    result.budgetYielded = true;
   }
   result.durationMs = Date.now() - started;
   const status = result.errors.length === 0 ? "success" : result.synced > 0 ? "partial" : "failed";
   await logSync({ ...result, status }, db).catch(() => undefined);
   return result;
+}
+
+/** Refresh agregat semua produk WR (dipanggil setelah zero-missing). */
+async function refreshAllParentAggregates(db: DatabaseAccess): Promise<void> {
+  const rows = await db
+    .queryAll(`SELECT DISTINCT product_id FROM product_variants WHERE wr_auto_managed=1`)
+    .catch(() => [] as Row[]);
+  for (const row of rows) {
+    const productId = Number(row.product_id || 0);
+    if (productId > 0 && db.canSpend(2)) {
+      await refreshParentAggregates(productId, db);
+    }
+  }
 }
 
 async function logSync(

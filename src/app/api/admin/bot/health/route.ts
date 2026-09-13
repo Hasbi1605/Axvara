@@ -26,8 +26,13 @@ export async function GET(request: NextRequest) {
     whatsapp_payment: process.env.WHATSAPP_GROUP_PAYMENT === "true",
     whatsapp_proof_intake: process.env.WHATSAPP_PROOF_INTAKE === "true",
     warung_rebahan_enabled: process.env.WARUNG_REBAHAN_ENABLED === "true",
+    // Proxy mode (Opsi A): API key WR dipegang proxy Heroku — Pages cukup
+    // proxy URL + proxy token + webhook secret. API key boleh kosong.
     warung_rebahan_configured: process.env.WARUNG_REBAHAN_ENABLED === "true"
-      && Boolean(process.env.WARUNG_REBAHAN_API_KEY?.trim()),
+      && Boolean(process.env.WARUNG_REBAHAN_PROXY_URL?.trim() || process.env.WARUNG_REBAHAN_API_KEY?.trim())
+      && Boolean(process.env.WARUNG_REBAHAN_PROXY_URL?.trim() ? process.env.WARUNG_REBAHAN_PROXY_TOKEN?.trim() : true)
+      && Boolean(process.env.WARUNG_REBAHAN_WEBHOOK_SECRET?.trim() || process.env.WARUNG_REBAHAN_API_KEY?.trim()),
+    warung_rebahan_proxy_mode: Boolean(process.env.WARUNG_REBAHAN_PROXY_URL?.trim()),
     warung_rebahan_sync: process.env.WARUNG_REBAHAN_SYNC_ENABLED !== "false",
     warung_rebahan_auto_order: process.env.WARUNG_REBAHAN_AUTO_ORDER_ENABLED === "true",
     warung_rebahan_sandbox: process.env.WARUNG_REBAHAN_SANDBOX === "true",

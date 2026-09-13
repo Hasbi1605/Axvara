@@ -747,14 +747,22 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
 ### Arsitektur
 
 - **Modul:** `src/lib/warung-rebahan/` — `client.ts` (fetch edge + HMAC webhook + error
-  classification), `sync.ts` (upsert produk/varian + exclusion + markup + agregat induk),
-  `order.ts` (link pending + proses + retry backoff + reconcile stuck), `deliver.ts`
-  (enkripsi akun AES-256-GCM + delivery Telegram/WhatsApp/Web), `saldo.ts` (check + alert + estimasi).
-- **Routes:** `POST /api/webhook/warung` (HMAC, rate-limit, selalu 200 pasca-verifikasi);
-  admin `GET /api/admin/warung/saldo`, `POST /api/admin/warung/sync` (rate-limit products:write),
+  classification + mode proxy Opsi A), `sync.ts` (upsert produk/varian + exclusion +
+  markup + agregat induk + sync cursor budget-aware), `order.ts` (link pending +
+  claim/lease exact-once + retry backoff + reconcile stuck + reconciler lunas-tanpa-link),
+  `deliver.ts` (enkripsi akun AES-256-GCM + delivery Telegram/WhatsApp/Web +
+  token kapabilitas + antrean delivery durable + agregat order), `saldo.ts`
+  (check + alert + estimasi).
+- **Routes:** `POST /api/webhook/warung` (HMAC, rate-limit, monotonik + event log,
+  selalu 200 pasca-verifikasi); pembeli `GET/POST /api/orders/[code]/credentials`
+  (retrieval via verifikasi WA / capability token); admin
+  `GET /api/admin/warung/saldo`, `POST /api/admin/warung/sync` (rate-limit products:write),
   `GET /api/admin/warung/sync-log`, `GET /api/admin/warung/orders` (ciphertext disamarkan),
-  `POST /api/admin/warung/orders/[id]/retry`, `GET/POST/DELETE /api/admin/warung/exclusions`,
-  `GET/PUT /api/admin/warung/markup`.
+  `POST /api/admin/warung/orders/[id]/retry` (CAS — race kalah → 409),
+  `GET/POST/DELETE /api/admin/warung/exclusions`, `GET/PUT /api/admin/warung/markup`,
+  `GET/POST /api/admin/warung/credentials` (retrieval + resend admin).
+- **Storefront:** `WrCredentialsPanel.tsx` di halaman pesanan (lunas): verifikasi
+  nomor WA checkout → tampilkan detail akun + capability token (sessionStorage).
 - **Admin UI:** tab "Warung Rebahan" (`WarungRebahanManager.tsx`, section `warung` di
   `AdminShell` + `admin/page.tsx`): saldo + estimasi, sync terakhir + force sync, antrean
   order + retry, exclusions, markup per varian. Health WR ikut `GET /api/admin/bot/health`.
@@ -767,25 +775,41 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   konfirmasi admin) → `createWrOrderLinksForOrder` + `processWrPendingOrders` best-effort;
   cron memproses sisanya. Produk WR dikenali dari `product_variants.wr_variant_id`.
 
-### Skema (migrasi 0027)
+### Skema (migrasi 0027 Ralph: final = 0027 + 0028 + 0029; schema.sql bootstrap)
 
 `wr_products` (registry + link `axvara_product_id` + flag excluded), `wr_variants`
 (registry + `markup_percent/fixed` + `axvara_sell_price` + link varian), `wr_order_links`
-(order Axvara ↔ order WR, status pending/ordering/processing/completed/failed/retry,
-attempt 3x backoff 1/5/15 mnt, saldo-habis tunda 1 jam, akun terenkripsi),
-`wr_sync_log`, `wr_saldo_log`, `wr_exclusions` (seed `%canva%`, `%gemini%`).
+(order Axvara ↔ order WR, **exactly-once**: pending→claimed→submitted→ordering→
+processing→completed/failed, retry/blocked_balance, `idempotency_key` UNIQUE,
+lease `lease_owner/lease_expires_at` 5 mnt, kunci `request_sent_at` anti-resend,
+delivery durable `delivery_status/attempt_count/next_attempt_at`, akun terenkripsi,
+`fulfillment_item_id` milik fulfillment per-item), `wr_sync_log`, `wr_saldo_log`,
+`wr_exclusions` (**KOSONG** — seed Canva/Gemini 0027 dihapus 0028), `wr_sync_state`
+(cursor/generation/snapshot sync), `wr_credential_tokens` (hash + expiry 30 hari +
+revoke), `wr_webhook_events` (log monotonik anti-replay).
 Kolom baru: `products(source, wr_product_id, wr_auto_managed)`,
-`product_variants(wr_variant_id, wr_auto_managed)`. Produk WR pakai
-`fulfillment_mode='manual'`; delivery via pipeline `wr_order_links`, bukan
-`fulfillment_inventory` lokal. Varian hilang dari API di-nol-kan stoknya (tidak dihapus).
+`product_variants(wr_variant_id, wr_auto_managed)`,
+`fulfillment_items(wr_link_id)` — item milik WR diselesaikan via link, dilewati
+`processItem` generik; agregat order di-refresh dari item (bukan status link).
+Varian hilang dari API di-nol-kan stoknya (tidak dihapus). Seluruh tabel di atas
+ada di `drizzle/schema.sql` — bootstrap baru langsung final tanpa migrasi manual.
 
 ### Proteksi
 
 - `WARUNG_REBAHAN_ENABLED=false` mematikan segalanya (sync/order/webhook/cron no-op).
-- API key server-only, outbound hanya ke `warungrebahan.com` (assert host), timeout 30 dtk.
-- Webhook HMAC-SHA256 (`X-Rebahan-Signature`, secret = API key), 401 bila salah.
+- API key server-only, outbound hanya ke `warungrebahan.com` (assert host, https saja),
+  timeout 30 dtk. Mode proxy Opsi A: API key dipegang proxy Heroku; Pages cukup
+  `WARUNG_REBAHAN_PROXY_URL` (https) + `WARUNG_REBAHAN_PROXY_TOKEN` — kontrak
+  dikunci di `client.test.ts` (endpoint allowlist + shape respons).
+- Webhook HMAC-SHA256 (`X-Rebahan-Signature`, secret = API key), 401 bila salah;
+  event monotonik (completed tidak bisa diregresi failed terlambat) + event log.
 - Detail akun dienkripsi sebelum disimpan; decrypt hanya server-side saat delivery.
-- Markup default 50% + pembulatan 500; Canva/Gemini excluded (margin lokal lebih tinggi).
+- Pembeli web TIDAK bisa membuka kredensial hanya dengan kode order: verifikasi
+  6 digit WA checkout (sekali) atau capability token (30 hari, hash-only, revoke).
+  Admin punya retrieval/resend fallback.
+- Exact-once: klaim atomik (UPDATE bersyarat, lease 5 mnt, fencing `request_sent_at`),
+  idempotency `wr:order:variant:item`, dedup webhook `event_id`, admin retry CAS→409.
+- Markup default 50% + pembulatan 500; exclusion kosong default (Canva/Gemini ikut).
 - Saldo habis → tunda 1 jam + notif admin (bukan retry cepat); gagal 3x → failed + admin
   putuskan manual (tanpa auto-refund). Order failed WR → `fulfillment_status='failed'`,
   status uang `lunas` tidak diubah otomatis.

@@ -4,7 +4,6 @@ import { createDatabaseAccess } from "@/lib/db-access";
 import {
   calculateSellPrice,
   generateProductSlug,
-  isExcluded,
   mapWrCategory,
   parseWrDuration,
   parseWrWarranty,
@@ -79,33 +78,10 @@ describe("Warung Rebahan pricing & parsing", () => {
   });
 });
 
-describe("Warung Rebahan exclusion rules", () => {
-  it("Canva dan Gemini di-exclude dari seed migrasi 0027", async () => {
-    const fx = createD1Fixture();
-    try {
-      fx.sql.exec(
-        (await import("node:fs")).readFileSync(
-          "drizzle/migrations/0027_warung_rebahan.sql",
-          "utf8",
-        ),
-      );
-      const db = createDatabaseAccess(fx.db);
-      expect((await isExcluded("Canva Pro 1 Tahun", db)).excluded).toBe(true);
-      expect((await isExcluded("CANVA EDU INVITE", db)).excluded).toBe(true);
-      expect((await isExcluded("Gemini Advanced 1 Bulan", db)).excluded).toBe(true);
-      expect((await isExcluded("CapCut Pro", db)).excluded).toBe(false);
-    } finally {
-      fx.close();
-    }
-  });
-});
-
 describe("Warung Rebahan product sync", () => {
   it("sync produk baru: registry + katalog + varian + agregat induk", async () => {
-    const fs = await import("node:fs");
     const fx = createD1Fixture();
     try {
-      fx.sql.exec(fs.readFileSync("drizzle/migrations/0027_warung_rebahan.sql", "utf8"));
       const db = createDatabaseAccess(fx.db);
       const result = await syncProducts(db, async () => [fixtureProduct()]);
       expect(result.synced).toBe(1);
@@ -138,17 +114,17 @@ describe("Warung Rebahan product sync", () => {
     }
   });
 
-  it("produk Canva/Gemini hanya masuk registry excluded, tidak ke katalog", async () => {
-    const fs = await import("node:fs");
+  it("exclusion manual: produk cocok pola hanya masuk registry excluded, tidak ke katalog", async () => {
     const fx = createD1Fixture();
     try {
-      fx.sql.exec(fs.readFileSync("drizzle/migrations/0027_warung_rebahan.sql", "utf8"));
+      // Rule manual (seed 0027 sudah dihapus 0028): uji mekanisme exclusion.
+      fx.sql.prepare("INSERT INTO wr_exclusions(pattern,reason) VALUES('%netflix%','uji')").run();
       const db = createDatabaseAccess(fx.db);
       const before = Number(
         (fx.sql.prepare("SELECT COUNT(*) n FROM products").get() as { n: number }).n,
       );
       const result = await syncProducts(db, async () => [
-        fixtureProduct({ id: "prod-canva", name: "Canva Pro Invite" }),
+        fixtureProduct({ id: "prod-netflix", name: "Netflix Premium" }),
       ]);
       expect(result.excluded).toBe(1);
       expect(result.synced).toBe(0);
@@ -157,7 +133,7 @@ describe("Warung Rebahan product sync", () => {
       );
       expect(after).toBe(before);
       const registry = fx.sql
-        .prepare("SELECT is_excluded FROM wr_products WHERE wr_product_id='prod-canva'")
+        .prepare("SELECT is_excluded FROM wr_products WHERE wr_product_id='prod-netflix'")
         .get() as { is_excluded: number };
       expect(Number(registry.is_excluded)).toBe(1);
     } finally {
@@ -166,10 +142,8 @@ describe("Warung Rebahan product sync", () => {
   });
 
   it("sync kedua: update harga/stok idempoten tanpa produk ganda", async () => {
-    const fs = await import("node:fs");
     const fx = createD1Fixture();
     try {
-      fx.sql.exec(fs.readFileSync("drizzle/migrations/0027_warung_rebahan.sql", "utf8"));
       const db = createDatabaseAccess(fx.db);
       await syncProducts(db, async () => [fixtureProduct()]);
       const second = await syncProducts(db, async () => [
@@ -208,10 +182,8 @@ describe("Warung Rebahan product sync", () => {
   });
 
   it("varian hilang dari API di-nol-kan stoknya, bukan dihapus", async () => {
-    const fs = await import("node:fs");
     const fx = createD1Fixture();
     try {
-      fx.sql.exec(fs.readFileSync("drizzle/migrations/0027_warung_rebahan.sql", "utf8"));
       const db = createDatabaseAccess(fx.db);
       await syncProducts(db, async () => [fixtureProduct()]);
       await syncProducts(db, async () => [
@@ -231,10 +203,8 @@ describe("Warung Rebahan product sync", () => {
   });
 
   it("slug collision dengan produk manual mendapat suffix -wr + nama (WR)", async () => {
-    const fs = await import("node:fs");
     const fx = createD1Fixture();
     try {
-      fx.sql.exec(fs.readFileSync("drizzle/migrations/0027_warung_rebahan.sql", "utf8"));
       fx.sql
         .prepare("INSERT INTO products(id,name,slug,price,stock) VALUES(99,'CapCut Pro','capcut-pro',10000,5)")
         .run();
@@ -258,10 +228,8 @@ describe("Warung Rebahan product sync", () => {
   });
 
   it("produk WR tanpa collision tetap dapat suffix nama (WR)", async () => {
-    const fs = await import("node:fs");
     const fx = createD1Fixture();
     try {
-      fx.sql.exec(fs.readFileSync("drizzle/migrations/0027_warung_rebahan.sql", "utf8"));
       const db = createDatabaseAccess(fx.db);
       await syncProducts(db, async () => [fixtureProduct()]);
       const product = fx.sql
@@ -275,10 +243,8 @@ describe("Warung Rebahan product sync", () => {
   });
 
   it("registry excluded yang diurungkan jadi katalog WR tanpa ganggu manual (skenario Canva)", async () => {
-    const fs = await import("node:fs");
     const fx = createD1Fixture();
     try {
-      fx.sql.exec(fs.readFileSync("drizzle/migrations/0027_warung_rebahan.sql", "utf8"));
       // Produk manual sendiri yang sudah live.
       fx.sql
         .prepare("INSERT INTO products(id,name,slug,price,stock) VALUES(1,'Canva Pro / Premium','canva-premium',2000,-1)")
@@ -337,10 +303,8 @@ describe("Warung Rebahan product sync", () => {
   });
 
   it("API down: sync gagal jujur tanpa menghapus katalog", async () => {
-    const fs = await import("node:fs");
     const fx = createD1Fixture();
     try {
-      fx.sql.exec(fs.readFileSync("drizzle/migrations/0027_warung_rebahan.sql", "utf8"));
       const db = createDatabaseAccess(fx.db);
       const result = await syncProducts(db, async () => {
         throw new Error("Network disabled in fixture");
@@ -359,12 +323,9 @@ describe("Warung Rebahan product sync", () => {
   it("dua varian beda UUID tapi 24-char awal sama tidak tabrakan SKU (kasus Canva/Gemini)", async () => {
     vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
     vi.stubEnv("WARUNG_REBAHAN_SYNC_ENABLED", "true");
-    const fs = await import("node:fs");
     const fx = createD1Fixture();
     try {
-      fx.sql.exec(fs.readFileSync("drizzle/migrations/0027_warung_rebahan.sql", "utf8"));
       // Pasca-migrasi 0028: Canva/Gemini tidak lagi di-exclude.
-      fx.sql.exec(fs.readFileSync("drizzle/migrations/0028_unexclude_canva_gemini.sql", "utf8"));
       const db = createDatabaseAccess(fx.db);
       // UUID Canva asli: 24 char alnum pertama sama, beda di ekor.
       const result = await syncProducts(db, async () => [
@@ -393,10 +354,48 @@ describe("Warung Rebahan product sync", () => {
     }
   });
 
-  it("upsert varian tanpa produk Axvara tidak melempar", async () => {    const fs = await import("node:fs");
+    it("registry reset + produk WR yatim tidak membuat baris kedua (skenario prod 09:24)", async () => {
+    vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
+    vi.stubEnv("WARUNG_REBAHAN_SYNC_ENABLED", "true");
     const fx = createD1Fixture();
     try {
-      fx.sql.exec(fs.readFileSync("drizzle/migrations/0027_warung_rebahan.sql", "utf8"));
+      // Keadaan prod: registry ke-reset NULL padahal produk WR 51/52 masih ada.
+      fx.sql.prepare("INSERT INTO products(id,name,slug,price,stock,source,wr_product_id,wr_auto_managed) VALUES(51,'Canva Premium (WR)','canva-premium-wr-2',0,0,'warung_rebahan','wr-canva-1',1)").run();
+      fx.sql.prepare("INSERT INTO wr_products(wr_product_id,wr_product_name,axvara_product_id,is_excluded) VALUES('wr-canva-1','Canva Premium',NULL,0)").run();
+      const db = createDatabaseAccess(fx.db);
+      const result = await syncProducts(db, async () => [
+        {
+          id: "wr-canva-1",
+          name: "Canva Premium",
+          category: "Design",
+          description: "x",
+          variants: [
+            { id: "wr-canva-v1", name: "Edu", price: 4000, duration: "365 Hari", type: "Link", warranty: "No Garansi", stock: 4, terms: null, delivery_terms: null },
+          ],
+        },
+      ]);
+      expect(result.errors).toEqual([]);
+      // TIDAK ada baris kedua: registry menaut ulang ke produk yatim 51.
+      const rows = fx.sql.prepare("SELECT id FROM products WHERE wr_product_id='wr-canva-1'").all() as { id: number }[];
+      expect(rows.map((r) => Number(r.id))).toEqual([51]);
+      const reg = fx.sql.prepare("SELECT axvara_product_id FROM wr_products WHERE wr_product_id='wr-canva-1'").get() as { axvara_product_id: number };
+      expect(Number(reg.axvara_product_id)).toBe(51);
+      // Varian menempel + stok terbaca.
+      const variant = fx.sql.prepare("SELECT product_id, stock, price FROM product_variants WHERE wr_variant_id='wr-canva-v1'").get() as { product_id: number; stock: number; price: number };
+      expect(Number(variant.product_id)).toBe(51);
+      expect(Number(variant.stock)).toBe(4);
+      expect(Number(variant.price)).toBe(6000);
+      const parent = fx.sql.prepare("SELECT price, stock FROM products WHERE id=51").get() as { price: number; stock: number };
+      expect(Number(parent.price)).toBe(6000);
+      expect(Number(parent.stock)).toBe(4);
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("upsert varian tanpa produk Axvara tidak melempar", async () => {
+    const fx = createD1Fixture();
+    try {
       const db = createDatabaseAccess(fx.db);
       const outcome = await upsertWrVariant(
         fixtureProduct().variants[0],

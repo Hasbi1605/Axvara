@@ -173,9 +173,20 @@ export async function POST(request: NextRequest) {
        WHERE status IN ('pending','retry') AND attempt_count < max_attempts
          AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime('now'))`,
     ).catch(() => null);
+    // Antrean delivery kredensial + blocked_balance (P0-6/P1-8): fase WR
+    // tetap aktif selama ada pekerjaan ini walau order kosong.
+    const wrDeliveryRow = await queryFirst(
+      `SELECT COUNT(*) AS wr_delivery_due FROM wr_order_links
+       WHERE delivery_status IN ('queued','failed')
+         AND (delivery_next_attempt_at IS NULL OR datetime(delivery_next_attempt_at) <= datetime('now'))`,
+    ).catch(() => null);
+    const wrBlockedRow = await queryFirst(
+      `SELECT COUNT(*) AS wr_blocked FROM wr_order_links WHERE status='blocked_balance'`,
+    ).catch(() => null);
     // DB lama tanpa tabel WR: seluruh query gabungan gagal → queueRow null →
     // semua pending 0 (perilaku lama) dan fase WR menjadi no-op via guard tabel.
     const wrTablesReady = wrDueRow != null;
+    const wrDeliveryReady = wrDeliveryRow != null;
     const pendingExpiry = Number(queueRow?.expiry ?? 0);
     // RR4-06: sinyal expiry per JENIS — initializing basi dan manual-WA
     // kedaluwarsa dihitung SENDIRI, bukan dari ada/tidaknya pending lain.
@@ -193,6 +204,9 @@ export async function POST(request: NextRequest) {
     // pendingNotify = seluruh jenis pekerjaan notifikasi (RR3-09).
     const pendingNotify = pendingCreated + pendingPaid + pendingPaidAdmin;
     const pendingWrDue = wrTablesReady ? Number(wrDueRow?.wr_due ?? 0) : 0;
+    const pendingWrDelivery = wrDeliveryReady ? Number(wrDeliveryRow?.wr_delivery_due ?? 0) : 0;
+    const pendingWrBlocked = wrTablesReady ? Number((wrBlockedRow as Record<string, unknown> | null)?.wr_blocked ?? 0) : 0;
+    const pendingWrAny = pendingWrDue + pendingWrDelivery + pendingWrBlocked;
 
     // Urutan eksekusi: deferred tersimpan dulu (anti-starvation — expiry
     // yang terus berdatangan tidak membuat kanal lain kelaparan), lalu fase
@@ -570,7 +584,7 @@ export async function POST(request: NextRequest) {
       const { isWrEnabled } = await import("@/lib/warung-rebahan/client");
       if (!isWrEnabled() || !wrTablesReady) return;
       if (!activePhases.has("warung_rebahan")) {
-        if (pendingWrDue > 0 && !deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan");
+        if (pendingWrAny > 0 && !deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan");
         return;
       }
       if (!budget.fits(COST_PER_WR_WORK)) {
@@ -578,13 +592,38 @@ export async function POST(request: NextRequest) {
         return;
       }
       try {
-        const { syncProducts } = await import("@/lib/warung-rebahan/sync");
-        const { processWrPendingOrders, retryFailedWrOrders, reconcileStuckWrOrders } = await import("@/lib/warung-rebahan/order");
+        const { syncProducts, WR_SYNC_PRODUCTS_PER_RUN } = await import("@/lib/warung-rebahan/sync");
+        const { processWrPendingOrders, retryFailedWrOrders, reconcileStuckWrOrders, reconcileBlockedBalance, recoverStaleClaims } = await import("@/lib/warung-rebahan/order");
+        const { processDueCredentialDeliveries } = await import("@/lib/warung-rebahan/deliver");
         const { checkAndLogSaldo } = await import("@/lib/warung-rebahan/saldo");
         const syncOn = process.env.WARUNG_REBAHAN_SYNC_ENABLED !== "false";
         const autoOrder = process.env.WARUNG_REBAHAN_AUTO_ORDER_ENABLED === "true";
 
-        // 1. Product & stock sync — tiap 30 menit (hemat: skip bila baru sync).
+        // 0. Recover lease basi (worker crash) + pulihkan blocked_balance
+        //    setelah top-up — murah, selalu jalan bila fase aktif.
+        if (budget.fits(4)) {
+          try {
+            await recoverStaleClaims(database);
+            await reconcileBlockedBalance(database);
+          } catch { /* best-effort */ }
+        }
+
+        // 1. Kapasitas ORDER diprioritaskan SEBELUM sync produk (P0-4):
+        //    sync katalog besar tidak boleh membuat WR order starvation.
+        if (autoOrder && pendingWrDue > 0 && budget.fits(COST_PER_WR_WORK)) {
+          try {
+            await retryFailedWrOrders(database);
+            const processed = await processWrPendingOrders(database);
+            results.wr_orders_processed = processed.processed;
+            results.wr_orders_succeeded = processed.succeeded;
+            results.wr_orders_blocked = processed.blocked;
+            results.wr_orders_reconciled = (processed.reconciled ?? 0) + Number(results.wr_orders_reconciled ?? 0);
+            if (processed.processed > processed.succeeded && !deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan");
+          } catch { if (!deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan"); }
+        }
+
+        // 2. Product & stock sync — tiap 30 menit, RESUMABLE via cursor
+        //    (P0-4): katalog lebih besar dari budget maju lintas invocation.
         if (syncOn && budget.fits(COST_PER_WR_WORK)) {
           const lastSync = await queryFirst(
             `SELECT created_at FROM wr_sync_log
@@ -597,29 +636,29 @@ export async function POST(request: NextRequest) {
           const lastTs = parseExpiry(lastSync?.created_at);
           if (lastTs == null || lastTs < Date.parse(thirtyMinAgo)) {
             try {
-              const syncResult = await syncProducts(database);
+              const syncResult = await syncProducts(database, undefined, { maxProducts: WR_SYNC_PRODUCTS_PER_RUN });
               results.wr_products_synced = syncResult.synced;
+              if (syncResult.budgetYielded && !deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan");
               if (syncResult.errors.length && !deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan");
             } catch { if (!deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan"); }
           }
         }
 
-        // 2. Process pending + retry jatuh tempo (maks 4 order/run).
-        if (autoOrder && pendingWrDue > 0 && budget.fits(COST_PER_WR_WORK)) {
-          try {
-            await retryFailedWrOrders(database);
-            const processed = await processWrPendingOrders(database);
-            results.wr_orders_processed = processed.processed;
-            results.wr_orders_succeeded = processed.succeeded;
-            if (processed.processed > processed.succeeded && !deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan");
-          } catch { if (!deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan"); }
-        }
-
-        // 3. Reconcile processing menggantung >1 jam via /transactions.
+        // 3. Reconcile processing/ambigu menggantung >1 jam via /transactions.
         if (autoOrder && budget.fits(3)) {
           try {
-            results.wr_orders_reconciled = await reconcileStuckWrOrders(database);
+            results.wr_orders_reconciled = Number(results.wr_orders_reconciled ?? 0) + await reconcileStuckWrOrders(database);
           } catch { /* best-effort; run berikutnya retry */ }
+        }
+
+        // 4. Delivery kredensial durable (P0-6): antrean queued/failed.
+        if (budget.fits(4)) {
+          try {
+            const delivery = await processDueCredentialDeliveries(database);
+            results.wr_deliveries_processed = delivery.processed;
+            results.wr_deliveries_delivered = delivery.delivered;
+            if (delivery.processed > delivery.delivered && !deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan");
+          } catch { /* best-effort */ }
         }
 
         // 4. Saldo check — tiap 1 jam.

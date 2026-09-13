@@ -29,9 +29,16 @@ CREATE TABLE IF NOT EXISTS products (
   shared_secret_ciphertext TEXT,
   shared_secret_iv TEXT,
   telegram_enabled INTEGER NOT NULL DEFAULT 1,
+  -- Warung Rebahan H2H (migrasi 0027): sumber katalog + tautan produk WR.
+  source TEXT NOT NULL DEFAULT 'manual'
+    CHECK (source IN ('manual', 'warung_rebahan')),
+  wr_product_id TEXT,
+  wr_auto_managed INTEGER NOT NULL DEFAULT 0,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
+CREATE INDEX IF NOT EXISTS idx_products_source ON products(source) WHERE source = 'warung_rebahan';
+CREATE INDEX IF NOT EXISTS idx_products_wr_id ON products(wr_product_id) WHERE wr_product_id IS NOT NULL;
 CREATE TABLE IF NOT EXISTS orders (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   code TEXT UNIQUE NOT NULL,
@@ -435,10 +442,15 @@ CREATE TABLE IF NOT EXISTS fulfillment_items (
   locked_until TEXT,
   delivered_message_id TEXT,
   last_error TEXT,
+  -- Warung Rebahan H2H (migrasi 0029): item milik pipeline WR (bukan manual
+  -- palsu) — diselesaikan via wr_order_links, dilewati processItem generik.
+  wr_link_id INTEGER REFERENCES wr_order_links(id) ON DELETE SET NULL,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),
   UNIQUE(order_code, item_index)
 );
+CREATE INDEX IF NOT EXISTS idx_fulfillment_items_wr_link
+  ON fulfillment_items(wr_link_id) WHERE wr_link_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_fulfillment_items_order
   ON fulfillment_items(order_code, status);
 CREATE INDEX IF NOT EXISTS idx_fulfillment_items_next
@@ -470,11 +482,16 @@ CREATE TABLE IF NOT EXISTS product_variants (
   shared_secret_ciphertext TEXT,
   shared_secret_iv TEXT,
 
+  -- Warung Rebahan H2H (migrasi 0027): tautan varian WR + auto-managed.
+  wr_variant_id TEXT,
+  wr_auto_managed INTEGER NOT NULL DEFAULT 0,
+
   is_active INTEGER NOT NULL DEFAULT 1,
   sort_order INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE INDEX IF NOT EXISTS idx_variants_wr_id ON product_variants(wr_variant_id) WHERE wr_variant_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_product_variants_product ON product_variants(product_id, is_active, sort_order);
 CREATE INDEX IF NOT EXISTS idx_product_variants_sku ON product_variants(sku);
@@ -612,3 +629,163 @@ CREATE TABLE IF NOT EXISTS admin_session_revocations (
 );
 CREATE INDEX IF NOT EXISTS idx_admin_session_revocations_expiry
   ON admin_session_revocations(expires_at);
+
+-- ────────────────────────────────────────────────────────────
+-- Warung Rebahan H2H (migrasi 0027 Ralph: state final = 0027 + 0028 + 0029).
+-- JANGAN menghidupkan kembali exclusion Canva/Gemini: tabel wr_exclusions
+-- dibuat KOSONG di bootstrap baru (0028 menghapus seed 0027).
+-- ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS wr_products (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  wr_product_id   TEXT NOT NULL UNIQUE,
+  wr_product_name TEXT NOT NULL,
+  wr_category     TEXT,
+  wr_description  TEXT,
+  axvara_product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
+  is_excluded     INTEGER NOT NULL DEFAULT 0,
+  exclude_reason  TEXT,
+  last_synced_at  TEXT,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS wr_variants (
+  id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+  wr_variant_id         TEXT NOT NULL UNIQUE,
+  wr_product_id         TEXT NOT NULL REFERENCES wr_products(wr_product_id),
+  wr_variant_name       TEXT NOT NULL,
+  wr_price              INTEGER NOT NULL,
+  wr_duration           TEXT,
+  wr_type               TEXT,
+  wr_warranty           TEXT,
+  wr_stock              INTEGER NOT NULL DEFAULT 0,
+  wr_terms              TEXT,
+  wr_delivery_terms     TEXT,
+  axvara_variant_id     INTEGER REFERENCES product_variants(id) ON DELETE SET NULL,
+  markup_percent        INTEGER NOT NULL DEFAULT 50,
+  markup_fixed          INTEGER NOT NULL DEFAULT 0,
+  axvara_sell_price     INTEGER NOT NULL DEFAULT 0,
+  is_active             INTEGER NOT NULL DEFAULT 1,
+  last_synced_at        TEXT,
+  created_at            TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at            TEXT NOT NULL DEFAULT (datetime('now'))
+);
+-- State machine exactly-once (0029): pending/claimed/submitted/ordering/
+-- processing/completed/failed/retry/blocked_balance.
+CREATE TABLE IF NOT EXISTS wr_order_links (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_code      TEXT NOT NULL REFERENCES orders(code),
+  wr_order_id     TEXT,
+  wr_variant_id   TEXT NOT NULL,
+  quantity        INTEGER NOT NULL DEFAULT 1,
+  wr_cost         INTEGER NOT NULL,
+  status          TEXT NOT NULL DEFAULT 'pending'
+                  CHECK (status IN (
+                    'pending', 'claimed', 'submitted', 'ordering',
+                    'processing', 'completed', 'failed', 'retry',
+                    'blocked_balance'
+                  )),
+  attempt_count   INTEGER NOT NULL DEFAULT 0,
+  max_attempts    INTEGER NOT NULL DEFAULT 3,
+  next_attempt_at TEXT,
+  last_error      TEXT,
+  wr_account_details TEXT,
+  wr_account_iv   TEXT,
+  completed_at    TEXT,
+  idempotency_key TEXT,
+  lease_owner TEXT,
+  lease_expires_at TEXT,
+  request_sent_at TEXT,
+  last_claim_at TEXT,
+  last_event_id TEXT,
+  last_event_at TEXT,
+  delivery_status TEXT NOT NULL DEFAULT 'not_required'
+    CHECK (delivery_status IN ('not_required','queued','sending','delivered','failed')),
+  delivery_channel TEXT,
+  delivery_attempt_count INTEGER NOT NULL DEFAULT 0,
+  delivery_next_attempt_at TEXT,
+  delivery_last_error TEXT,
+  delivered_at TEXT,
+  fulfillment_item_id INTEGER REFERENCES fulfillment_items(id) ON DELETE SET NULL,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_wr_links_idempotency
+  ON wr_order_links(idempotency_key) WHERE idempotency_key IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_wr_order_links_order_code ON wr_order_links(order_code);
+CREATE INDEX IF NOT EXISTS idx_wr_order_links_status ON wr_order_links(status);
+CREATE INDEX IF NOT EXISTS idx_wr_order_links_retry ON wr_order_links(status, next_attempt_at)
+  WHERE status IN ('pending', 'retry');
+CREATE INDEX IF NOT EXISTS idx_wr_links_lease
+  ON wr_order_links(status, lease_expires_at)
+  WHERE status IN ('claimed','submitted','ordering');
+CREATE INDEX IF NOT EXISTS idx_wr_links_delivery
+  ON wr_order_links(delivery_status, delivery_next_attempt_at)
+  WHERE delivery_status IN ('queued','failed');
+CREATE INDEX IF NOT EXISTS idx_wr_links_item
+  ON wr_order_links(fulfillment_item_id) WHERE fulfillment_item_id IS NOT NULL;
+CREATE TABLE IF NOT EXISTS wr_sync_log (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  sync_type         TEXT NOT NULL CHECK (sync_type IN ('products', 'saldo', 'order_status')),
+  status            TEXT NOT NULL CHECK (status IN ('success', 'partial', 'failed')),
+  products_total    INTEGER,
+  products_synced   INTEGER,
+  products_excluded INTEGER,
+  products_new      INTEGER,
+  variants_synced   INTEGER,
+  stock_changes     INTEGER,
+  price_changes     INTEGER,
+  saldo_amount      INTEGER,
+  error_message     TEXT,
+  duration_ms       INTEGER,
+  created_at        TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS wr_saldo_log (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  balance     INTEGER NOT NULL,
+  source      TEXT NOT NULL DEFAULT 'api_check'
+              CHECK (source IN ('api_check', 'order_deduct', 'manual_topup')),
+  note        TEXT,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+-- Kosong di bootstrap baru (0028): Canva/Gemini ikut disync.
+CREATE TABLE IF NOT EXISTS wr_exclusions (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  pattern   TEXT NOT NULL UNIQUE,
+  reason    TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS wr_sync_state (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+INSERT OR IGNORE INTO wr_sync_state (key, value) VALUES
+  ('products_cursor', '0'),
+  ('products_generation', ''),
+  ('products_snapshot_complete', '0');
+CREATE TABLE IF NOT EXISTS wr_credential_tokens (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_code TEXT NOT NULL REFERENCES orders(code) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  expires_at TEXT,
+  revoked INTEGER NOT NULL DEFAULT 0,
+  last_used_at TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_wr_cred_token_hash ON wr_credential_tokens(token_hash);
+CREATE INDEX IF NOT EXISTS idx_wr_cred_order ON wr_credential_tokens(order_code) WHERE revoked = 0;
+CREATE TABLE IF NOT EXISTS wr_webhook_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  wr_order_id TEXT NOT NULL,
+  event TEXT NOT NULL,
+  event_id TEXT,
+  received_at TEXT NOT NULL DEFAULT (datetime('now')),
+  applied INTEGER NOT NULL DEFAULT 0,
+  result TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_wr_webhook_order ON wr_webhook_events(wr_order_id, id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_wr_webhook_event
+  ON wr_webhook_events(wr_order_id, event, event_id) WHERE event_id IS NOT NULL;
+
+-- Kolom WR di katalog utama (0027) + marker kepemilikan WR (0029).
+-- Guard PRAGMA agar schema.sql tetap rerun-aman di fixture/dev.

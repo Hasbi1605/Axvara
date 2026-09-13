@@ -94,7 +94,10 @@ export async function processJobItems(
   const start = Number(claimed.item_cursor ?? 0);
   let attempted = 0;
   let failure: string | null = null;
-  const pending = itemRows.filter((row) => !["delivered", "manual_required"].includes(String(row.status)));
+  // Item milik pipeline WR (wr_link_id NOT NULL) dilewati di sini (P0-5):
+  // WR menyelesaikannya via wr_order_links, bukan processItem. Tanpa filter
+  // ini, item WR queued memicu scheduleRetryFenced selamanya.
+  const pending = itemRows.filter((row) => !["delivered", "manual_required"].includes(String(row.status)) && row.wr_link_id == null);
   const todo = pending.filter((r) => Number(r.item_index) >= start).concat(pending.filter((r) => Number(r.item_index) < start));
   for (const row of todo.slice(0, Math.max(0, maxItems))) {
     // Worst-case item recovery + finalization are reserved before any provider call.

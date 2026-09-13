@@ -123,10 +123,10 @@ describe("Warung Rebahan API client fetch", () => {
     let seenBody: Record<string, unknown> = {};
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (url: string, init: RequestInit) => {
+      vi.fn(async (url: string, init?: RequestInit) => {
         seenUrl = url;
-        seenHeaders = (init.headers ?? {}) as Record<string, string>;
-        seenBody = JSON.parse(String(init.body)) as Record<string, unknown>;
+        seenHeaders = ((init?.headers ?? {}) as Record<string, string>);
+        seenBody = JSON.parse(String(init?.body)) as Record<string, unknown>; // proxy test
         return {
           ok: true,
           json: async () => ({
@@ -178,6 +178,30 @@ describe("Warung Rebahan API client fetch", () => {
     );
     const { fetchProducts } = await import("@/lib/warung-rebahan/client");
     await expect(fetchProducts()).rejects.toBeInstanceOf(WrNetworkError);
+  });
+
+  it("kontrak proxy (source proxy tidak di repo): hanya endpoint allowlist + https + token", async () => {
+    // Blocker audit: source Heroku tidak ada di repo ini — kontrak sisi
+    // AXVARA dikunci di sini (URL, token, timeout, response shape).
+    vi.stubEnv("WARUNG_REBAHAN_API_KEY", "");
+    vi.stubEnv("WARUNG_REBAHAN_PROXY_URL", "https://proxy.example");
+    vi.stubEnv("WARUNG_REBAHAN_PROXY_TOKEN", "t");
+    const seen: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        seen.push(String(url));
+        // Kontrak respons: {success, message, data} seperti upstream.
+        return { ok: true, json: async () => ({ success: true, message: "ok", data: [] }) };
+      }),
+    );
+    const mod = await import("@/lib/warung-rebahan/client");
+    await mod.fetchProducts();
+    await mod.fetchTransactions();
+    expect(seen).toEqual(["https://proxy.example/wr/products", "https://proxy.example/wr/transactions"]);
+    // Proxy URL http ditolak (token tidak boleh lewat plaintext).
+    vi.stubEnv("WARUNG_REBAHAN_PROXY_URL", "http://proxy.example");
+    await expect(mod.fetchBalance()).rejects.toThrow();
   });
 });
 

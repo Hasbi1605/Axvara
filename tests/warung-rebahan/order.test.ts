@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createD1Fixture, stubFulfillmentKey } from "../helpers/d1-fixture";
 import { createDatabaseAccess } from "@/lib/db-access";
 import {
   createWrOrderLink,
@@ -13,28 +12,12 @@ import {
   handleWrOrderCompleted,
   handleWrOrderFailed,
 } from "@/lib/warung-rebahan/deliver";
-
-const MIGRATION = "drizzle/migrations/0027_warung_rebahan.sql";
-
-async function setup() {
-  const fs = await import("node:fs");
-  const fx = createD1Fixture();
-  fx.sql.exec(fs.readFileSync(MIGRATION, "utf8"));
-  stubFulfillmentKey();
-  return fx;
-}
-
-function seedCatalog(fx: ReturnType<typeof createD1Fixture>) {
-  fx.sql.prepare("INSERT INTO products(id,name,slug,price,stock,source,wr_product_id,wr_auto_managed) VALUES(1,'CapCut Pro','capcut-pro',7500,10,'warung_rebahan','prod-capcut',1)").run();
-  fx.sql.prepare("INSERT INTO product_variants(id,product_id,sku,label,price,stock,fulfillment_mode,wr_variant_id,wr_auto_managed) VALUES(1,1,'WR-VAR1','Pro 7 Hari',7500,10,'manual','var-1',1)").run();
-  fx.sql.prepare("INSERT INTO wr_products(wr_product_id,wr_product_name,axvara_product_id) VALUES('prod-capcut','CapCut Pro',1)").run();
-  fx.sql.prepare("INSERT INTO wr_variants(wr_variant_id,wr_product_id,wr_variant_name,wr_price,wr_stock,axvara_variant_id,axvara_sell_price) VALUES('var-1','prod-capcut','Pro 7 Hari',5000,10,1,7500)").run();
-}
-
-function seedOrder(fx: ReturnType<typeof createD1Fixture>, code: string, channel = "web") {
-  fx.sql.prepare(`INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel,fulfillment_status,variant_id) VALUES(?,?,?,?,?,?,'lunas','paid',?,'queued',1)`)
-    .run(code, "Buyer", "628000000000", JSON.stringify([{ product_id: 1, variant_id: 1, name: "CapCut Pro — Pro 7 Hari", price: 7500, qty: 1 }]), 7500, "qris", channel);
-}
+import {
+  seedWrCatalog as seedCatalog,
+  seedWrFulfillmentItem as seedFulfillmentItem,
+  seedWrOrder as seedOrder,
+  setupWrFixture as setup,
+} from "./helpers";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -125,7 +108,7 @@ describe("Warung Rebahan process pending orders", () => {
     }
   });
 
-  it("saldo habis: retry 1 jam + notif admin (tanpa retry cepat)", async () => {
+  it("saldo habis: blocked_balance 1 jam + tidak makan retry transport", async () => {
     const fx = await setup();
     try {
       seedCatalog(fx);
@@ -138,9 +121,11 @@ describe("Warung Rebahan process pending orders", () => {
       const db = createDatabaseAccess(fx.db);
       await createWrOrderLink("AXV-20260911-AAAAEEEE", [{ product_id: 1, variant_id: 1, qty: 1 }], db);
       const result = await processWrPendingOrders(db);
-      expect(result.retried).toBe(1);
-      const link = fx.sql.prepare("SELECT status, next_attempt_at, last_error FROM wr_order_links").get() as { status: string; next_attempt_at: string; last_error: string };
-      expect(link.status).toBe("retry");
+      expect(result.blocked).toBe(1);
+      const link = fx.sql.prepare("SELECT status, attempt_count, next_attempt_at, last_error FROM wr_order_links").get() as { status: string; attempt_count: number; next_attempt_at: string; last_error: string };
+      expect(link.status).toBe("blocked_balance");
+      // attempt_count TIDAK naik (slot retry transport tidak terbuang).
+      expect(Number(link.attempt_count)).toBe(0);
       expect(String(link.last_error)).toContain("saldo_wr_habis");
       // Format spasi SQLite dibaca sebagai UTC via parseExpiry (lihat
       // src/lib/expiry.ts) — Date.parse mentah menggeser zona waktu.
@@ -188,15 +173,18 @@ describe("Warung Rebahan process pending orders", () => {
 });
 
 describe("Warung Rebahan webhook completion", () => {
-  it("completed: akun terenkripsi + delivered + tidak plaintext di DB", async () => {
+  it("completed: akun terenkripsi + item WR delivered + agregat jujur", async () => {
     const fx = await setup();
     try {
       seedCatalog(fx);
       seedOrder(fx, "AXV-20260911-AAAAGGGG", "telegram");
+      seedFulfillmentItem(fx, "AXV-20260911-AAAAGGGG");
       fx.sql.prepare("INSERT INTO telegram_users(user_id,chat_id) VALUES('100','12345')").run();
       fx.sql.prepare("UPDATE orders SET telegram_user_id='100', telegram_chat_id='12345' WHERE code='AXV-20260911-AAAAGGGG'").run();
-      fx.sql.prepare("INSERT INTO wr_order_links(order_code,wr_order_id,wr_variant_id,quantity,wr_cost,status) VALUES('AXV-20260911-AAAAGGGG','ORD-9','var-1',1,5000,'processing')").run();
+      fx.sql.prepare("INSERT INTO wr_order_links(order_code,wr_order_id,wr_variant_id,quantity,wr_cost,status,fulfillment_item_id) VALUES('AXV-20260911-AAAAGGGG','ORD-9','var-1',1,5000,'processing',1)").run();
+      fx.sql.prepare("UPDATE fulfillment_items SET wr_link_id=1 WHERE order_code='AXV-20260911-AAAAGGGG'").run();
       vi.stubEnv("TELEGRAM_BOT_ENABLED", "false");
+      vi.stubEnv("TELEGRAM_BOT_TOKEN", "test-token");
       const sent: string[] = [];
       vi.stubGlobal("fetch", vi.fn(async (_u: string, init: RequestInit) => {
         sent.push(String(init.body));
@@ -209,14 +197,21 @@ describe("Warung Rebahan webhook completion", () => {
         db,
       );
       expect(ok).toBe(true);
-      const link = fx.sql.prepare("SELECT status, wr_account_details, completed_at FROM wr_order_links WHERE wr_order_id='ORD-9'").get() as { status: string; wr_account_details: string; completed_at: string };
+      const link = fx.sql.prepare("SELECT status, wr_account_details, completed_at, delivery_status FROM wr_order_links WHERE wr_order_id='ORD-9'").get() as { status: string; wr_account_details: string; completed_at: string; delivery_status: string };
       expect(link.status).toBe("completed");
       expect(String(link.wr_account_details)).not.toContain("rahasia-123");
       expect(link.completed_at).toBeTruthy();
+      // Delivery durable: telegram terkirim (mock ok) → delivered.
+      expect(link.delivery_status).toBe("delivered");
+      // HANYA item WR yang delivered; agregat dari seluruh item.
+      const item = fx.sql.prepare("SELECT status FROM fulfillment_items WHERE order_code='AXV-20260911-AAAAGGGG'").get() as { status: string };
+      expect(item.status).toBe("delivered");
       const order = fx.sql.prepare("SELECT fulfillment_status FROM orders WHERE code='AXV-20260911-AAAAGGGG'").get() as { fulfillment_status: string };
       expect(order.fulfillment_status).toBe("delivered");
-      // Decrypt round-trip membuktikan enkripsi valid.
-      const decrypted = await getDecryptedAccountDetails("AXV-20260911-AAAAGGGG", db);
+      // Retrieval WAJIB capability: tanpa token → kosong (regresi #8).
+      expect(await getDecryptedAccountDetails("AXV-20260911-AAAAGGGG", db)).toEqual([]);
+      // Dengan capability admin → dekripsi round-trip valid.
+      const decrypted = await getDecryptedAccountDetails("AXV-20260911-AAAAGGGG", db, { admin: true });
       expect(decrypted.length).toBe(1);
       expect(decrypted[0].details).toContain("akun@example.com");
       // Idempoten: completed kedua tetap true tanpa duplikat kirim.
@@ -226,12 +221,14 @@ describe("Warung Rebahan webhook completion", () => {
     }
   });
 
-  it("failed: status failed + order failed tanpa auto-refund", async () => {
+  it("failed: monotonik + item WR failed + agregat jujur tanpa auto-refund", async () => {
     const fx = await setup();
     try {
       seedCatalog(fx);
       seedOrder(fx, "AXV-20260911-AAAAHHHH");
-      fx.sql.prepare("INSERT INTO wr_order_links(order_code,wr_order_id,wr_variant_id,quantity,wr_cost,status) VALUES('AXV-20260911-AAAAHHHH','ORD-8','var-1',1,5000,'processing')").run();
+      seedFulfillmentItem(fx, "AXV-20260911-AAAAHHHH");
+      fx.sql.prepare("INSERT INTO wr_order_links(order_code,wr_order_id,wr_variant_id,quantity,wr_cost,status,fulfillment_item_id) VALUES('AXV-20260911-AAAAHHHH','ORD-8','var-1',1,5000,'processing',1)").run();
+      fx.sql.prepare("UPDATE fulfillment_items SET wr_link_id=1 WHERE order_code='AXV-20260911-AAAAHHHH'").run();
       vi.stubEnv("TELEGRAM_BOT_ENABLED", "false");
       const db = createDatabaseAccess(fx.db);
       expect(await handleWrOrderFailed("ORD-8", "stok WR habis", db)).toBe(true);
@@ -240,6 +237,12 @@ describe("Warung Rebahan webhook completion", () => {
       const order = fx.sql.prepare("SELECT status, fulfillment_status FROM orders WHERE code='AXV-20260911-AAAAHHHH'").get() as { status: string; fulfillment_status: string };
       expect(order.status).toBe("lunas");
       expect(order.fulfillment_status).toBe("failed");
+      // Regresi terlarang (regresi #9): failed yang datang SETELAH completed
+      // tidak boleh mengubah completed.
+      fx.sql.prepare("UPDATE wr_order_links SET status='completed' WHERE wr_order_id='ORD-8'").run();
+      expect(await handleWrOrderFailed("ORD-8", "terlambat", db)).toBe(true);
+      const after = fx.sql.prepare("SELECT status FROM wr_order_links WHERE wr_order_id='ORD-8'").get() as { status: string };
+      expect(after.status).toBe("completed");
     } finally {
       fx.close();
     }

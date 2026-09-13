@@ -153,11 +153,17 @@ export function getWrBaseUrl(): string {
 }
 
 function assertAllowedUrl(url: string, endpoint: string): void {
-  let host = "";
+  let parsed: URL;
   try {
-    host = new URL(url).hostname.toLowerCase();
+    parsed = new URL(url);
   } catch {
     throw new WrNetworkError("invalid_wr_url", endpoint);
+  }
+  // Token proxy tidak boleh lewat plaintext (kecuali localhost untuk dev).
+  const host = parsed.hostname.toLowerCase();
+  const isLocal = host === "localhost" || host === "127.0.0.1";
+  if (parsed.protocol !== "https:" && !isLocal) {
+    throw new WrNetworkError("wr_insecure_protocol", endpoint);
   }
   if (host === WR_ALLOWED_HOST || host.endsWith(`.${WR_ALLOWED_HOST}`)) return;
   // Mode proxy: host proxy (Heroku) juga diizinkan — nilainya dari env
