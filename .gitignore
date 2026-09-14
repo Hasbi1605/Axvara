@@ -55,6 +55,8 @@ cache/**
 .cf-credentials
 .cf-credentials
 .cf-credentials*
+.heroku-credentials
+.heroku-credentials*
 .opencode/
 /axvara-homepage-optimized.png
 /whatsapp-logo-512.png

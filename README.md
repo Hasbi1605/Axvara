@@ -221,15 +221,15 @@ markup diubah di tab **Warung Rebahan**. Deskripsi override disimpan di
 sync, dan menjadi teks yang tampil di storefront saat terisi. Badge "WR" hanya
 muncul di editor admin; storefront tidak menampilkan penanda WR.
 
-**Handoff operasional Heroku + Cloudflare.** Dyno `axvara-wa-gateway` memegang
-API key WR dan menjadi satu-satunya sumber IP egress yang di-whitelist WR. IP
-dyno Common Runtime **dapat berubah saat restart/redeploy**: setelah setiap
-restart, cek `GET /wr/egress-ip` pada gateway dan perbarui satu IP di dashboard
-WR, atau pindah ke static-egress (Fixie) / VPS ber-IP reserved untuk
-menghilangkan perawatan manual ini. Cloudflare Pages tidak boleh memegang API
+**Handoff operasional Heroku + Cloudflare.** Sejak 2026-09-14 proxy WR terpisah:
+akun #1 (`axvara-wa-gateway`) = WhatsApp SAJA; akun #2 (`axvara-wr-proxy` +
+QuotaGuard Spike, IP statis `54.88.136.216, 54.84.188.199`) memegang API key WR
+dan menjadi satu-satunya egress yang di-whitelist WR — lihat
+`docs/ARCHITECTURE.md` §16. Cloudflare Pages tidak boleh memegang API
 key WR; yang disimpan di Pages hanya URL + token proxy dan
 `WARUNG_REBAHAN_WEBHOOK_SECRET` untuk verifikasi HMAC. Kredensial Cloudflare
-manual diambil dari `.cf-credentials` (git-ignored); CI/CD memakai GitHub
+manual diambil dari `.cf-credentials` (git-ignored); kredensial Heroku dua akun
+di `.heroku-credentials` (git-ignored, pola sama); CI/CD memakai GitHub
 Actions Secrets.
 
 ---

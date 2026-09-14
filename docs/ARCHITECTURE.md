@@ -857,3 +857,44 @@ walaupun seluruh katalog gagal. Batch yang berhenti di batas budget
 - Saldo habis → tunda 1 jam + notif admin (bukan retry cepat); gagal 3x → failed + admin
   putuskan manual (tanpa auto-refund). Order failed WR → `fulfillment_status='failed'`,
   status uang `lunas` tidak diubah otomatis.
+
+## 16. Insiden operasional 2026-09-14 + arsitektur proxy terpisah (WAJIB DIBACA agent)
+
+Hari ini prod lumpuh total (login 503, bot WA/Telegram mati, QRIS hilang, varian
+tidak tampil, pagination lama kembali) lalu dipulihkan. Tiga akar + aturan
+kerasnya agar tidak terulang:
+
+### 16.1 Arsitektur proxy WR terpisah (hasil permanen hari ini)
+- Akun Heroku #1 (`terry.delvon0805@gmail.com`): `axvara-wa-gateway` = WhatsApp SAJA
+  (route `/wr/*` mengembalikan 410 `wr_proxy_moved`).
+- Akun Heroku #2 (`sailinnadia1@gmail.com`): `axvara-wr-proxy` (source:
+  `/Users/macbookair/axvara-wr-proxy/`) = proxy stateless WR → QuotaGuard Spike
+  (~$5/mo, 5.000 req, IP `54.88.136.216, 54.84.188.199` di-whitelist WR).
+- Jangan satukan lagi: restart gateway WA tidak boleh memutus sync WR.
+
+### 16.2 Env Pages WAJIB `secret_text` (bukan `plain_text`)
+Terbukti berulang: entri `plain_text` (FLAG, URL proxy) hilang dari deployment
+berikutnya, `secret_text` terbawa. **Semua env Pages ditulis sebagai
+`secret_text`, tanpa kecuali** — termasuk flag boolean dan URL. Secret Pages
+bersifat write-only (GET selalu tampil kosong): verifikasi lewat perilaku
+(endpoint 200), bukan lewat GET.
+
+### 16.3 Jangan redeploy wrangler tanpa direktori
+`wrangler pages deployment create` tanpa argumen me-redeploy artefak LAMA =
+rollback prod (hari ini menimpa build CI PR#1: pagination angka + badge lama
+kembali). **Deploy HANYA via CI** (`git push origin main`). Pengecualian
+recovery butuh instruksi eksplisit pemilik.
+
+### 16.4 SITE_URL bisa kosong di worker
+`process.env.SITE_URL` berupa string kosong (bukan null) sehingga `?? fallback`
+tidak menolong → URL relatif → Telegram "URL host is empty". Pola wajib untuk
+URL absolut: `const raw=(process.env.SITE_URL??"").trim().replace(/\/$/,"");
+const site=/^https?:\/\//i.test(raw)?raw:"https://axvara.tech"`.
+
+### 16.5 Ekosistem 5 folder (detail di masing-masing AGENTS.md)
+`axvara` (toko) · `axvara-wa-gateway` (WA, akun #1) · `axvara-qris-gateway`
+(riset QRIS, `.env` = sumber nilai Pages) · `axvara-wr-proxy` (proxy WR, akun
+#2) · `axvara-tg-bot` (kredensial Telegram). Kredensial Heroku dua akun di
+`.heroku-credentials` (git-ignored, pola sama dengan `.cf-credentials`).
+Perintah akun #2 wajib prefix `HEROKU_API_KEY=<kunci-akun-2>`; jangan
+`heroku login` ulang (merusak sesi akun #1).

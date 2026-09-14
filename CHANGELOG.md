@@ -4,6 +4,8 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area utama> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-14 — Rangkuman insiden 14 Sep + aturan anti-ulang: ARCHITECTURE §16 (proxy WR terpisah 2 akun, env wajib secret_text, larang redeploy wrangler tanpa direktori, SITE_URL absolut, ekosistem 5 folder) + README handoff + `.heroku-credentials` 2 akun (git-ignored) — docs/ARCHITECTURE.md, README.md, .heroku-credentials, .gitignore, AGENTS.md — (verifikasi: 757/757 test, tsc bersih, dev GET / 200 + CSS 200, akses Heroku akun1+akun2 via file OK)
+
 - 2026-09-14 — Foto /start Telegram: SITE_URL kosong di worker → URL foto relatif → Telegram "URL host is empty"; paksa absolut https + buang pesan keyboard ekstra (tanpa "Menu Cepat"/"—") + hapus endpoint debug — src/lib/telegram/handlers/command.ts — (verifikasi: telegram 69/69, tsc bersih)
 
 - 2026-09-14 — Foto welcome /start Telegram pulih: PNG R2 2,2 MB (7,8 dtk, timeout edge 10 dtk → sendPhoto gagal diam-diam) diganti WebP 31 KB di public/banners + retry 1x + fallback teks; hapus teks "Menu Cepat" (ganti "Pilih menu di bawah 👇") — public/banners/tg-welcome.webp, src/lib/telegram/handlers/command.ts, tests/telegram-bot.regression.test.ts — (verifikasi: telegram 69/69, tsc bersih)
