@@ -8,7 +8,7 @@
 
 import { sendMessage, sendPhoto, showLoadingBar } from "@/lib/telegram/api";
 import {
-  homeKeyboard, warrantyKeyboard, mainReplyMenu,
+  homeKeyboard, warrantyKeyboard,
   MENU_LABEL_CATALOG, MENU_LABEL_SEARCH, MENU_LABEL_ORDERS, MENU_LABEL_HELP,
   MENU_LABEL_CART,
 } from "@/lib/telegram/keyboards";
@@ -71,16 +71,9 @@ export async function handleCommand(
         reply_markup: homeKeyboard(),
       });
     }
-    // Reply keyboard tetap dipasang tanpa pesan teks tambahan apa pun.
-    // Trik: kirim message dengan text satu spasi + reply_markup; Telegram
-    // tetap memasang keyboard walau bubble-nya nyaris tak terlihat.
-    // (is_persistent=true membuatnya nempel di semua chat private.)
-    await sendMessage({
-      chat_id: chatId,
-      text: "—",
-      parse_mode: "HTML",
-      reply_markup: mainReplyMenu(),
-    });
+    // SELESAI. Reply keyboard (is_persistent) sudah diinstal user sejak
+    // /start pertama — tidak perlu dikirim ulang. Satu pesan tambahan di
+    // sini justru jadi bubble sampah ("—", "Menu Cepat", dsb).
     return;
   }
 

@@ -676,10 +676,11 @@ describe("Telegram Fase 2: cart + reminder (tanpa review/promo)", () => {
     expect(route).toContain("handleCartCheckout");
     expect(route).toContain("createAndSendCartInvoice");
     expect(route).toContain('"cconfirm"');
-    // /start WAJIB mengirim reply keyboard tetap — tanpanya tombol bawah
-    // tidak pernah muncul di Telegram user (bug: menu hanya didefinisikan).
-    // Keyboard dipasang tanpa pesan teks tambahan apa pun (cukup "—").
-    expect(route).toContain("mainReplyMenu()");
+    // /start TIDAK mengirim pesan keyboard terpisah apa pun: reply keyboard
+    // (is_persistent) sudah diinstal sejak /start pertama user. Satu pesan
+    // tambahan ("Menu Cepat", "—", dsb) hanya jadi bubble sampah.
+    // Foto welcome + inline keyboard dikirim via sendPhoto di command.ts.
+    expect(route).not.toContain("mainReplyMenu()");
     const api = read("src/lib/telegram/api.ts");
     expect(api).toContain('command: "cart"');
   });
