@@ -678,8 +678,10 @@ describe("Telegram Fase 2: cart + reminder (tanpa review/promo)", () => {
     expect(route).toContain('"cconfirm"');
     // /start WAJIB mengirim reply keyboard tetap — tanpanya tombol bawah
     // tidak pernah muncul di Telegram user (bug: menu hanya didefinisikan).
+    // Teks pengantarnya ringkas ("Pilih menu di bawah 👇"); label lama
+    // "Menu Cepat" dihapus karena membingungkan user.
     expect(route).toContain("mainReplyMenu()");
-    expect(route).toContain("Menu Cepat");
+    expect(route).toContain("Pilih menu di bawah");
     const api = read("src/lib/telegram/api.ts");
     expect(api).toContain('command: "cart"');
   });

@@ -39,38 +39,43 @@ export async function handleCommand(
   if (cmd === "/start") {
     // Clear any pending conversational state
     await clearPendingAction(from);
-    console.log(`tg /start begin chat=${chatId}`);
     await showLoadingBar(chatId, "🚀 Menyiapkan AXVARA");
-    console.log(`tg /start loading done chat=${chatId}`);
     const siteUrl = process.env.SITE_URL ?? "https://axvara.tech";
     const bestsellers = await getBestsellers(3);
-    console.log(`tg /start bestsellers=${bestsellers.length} chat=${chatId}`);
-    const photoRes = await sendPhoto({
+    const caption = welcomeMessage(from?.first_name ?? "Pengguna", bestsellers);
+    // Foto welcome: WebP 31 KB dari public/ (bukan PNG 2,2 MB dari R2 yang
+    // timeout 10 dtk di edge). Retry 1x, lalu fallback teks + keyboard agar
+    // sapaan tetap tampil bila Telegram gagal ambil foto.
+    const photoUrl = `${siteUrl}/banners/tg-welcome.webp`;
+    let photoRes = await sendPhoto({
       chat_id: chatId,
-      photo: `${siteUrl}/r2/banners/tg-welcome.png`,
-      caption: welcomeMessage(from?.first_name ?? "Pengguna", bestsellers),
+      photo: photoUrl,
+      caption,
       parse_mode: "HTML",
       reply_markup: homeKeyboard(),
     });
-    console.log(`tg /start photo ok=${photoRes.ok} desc=${(photoRes.description || "").slice(0, 120)} chat=${chatId}`);
     if (!photoRes.ok) {
-      // Fallback: foto gagal (timeout/R2) — kirim teks welcome + keyboard
-      // agar user tetap dapat sapaan, bukan hanya Menu Cepat.
-      await sendMessage({
+      photoRes = await sendPhoto({
         chat_id: chatId,
-        text: welcomeMessage(from?.first_name ?? "Pengguna", bestsellers),
+        photo: photoUrl,
+        caption,
         parse_mode: "HTML",
         reply_markup: homeKeyboard(),
       });
-      console.log(`tg /start photo fallback sent chat=${chatId}`);
     }
-    // Tombol tetap bawah (reply keyboard): Katalog · Cari · Keranjang · Pesanan · Bantuan.
-    // Dikirim sebagai pesan terpisah karena sendPhoto caption memakai inline keyboard.
-    // is_persistent=true → tetap nempel di semua chat private; user lama yang
-    // belum pernah /start ulang tetap bisa pakai /cart atau tombol 🛒 + Keranjang.
+    if (!photoRes.ok) {
+      await sendMessage({
+        chat_id: chatId,
+        text: caption,
+        parse_mode: "HTML",
+        reply_markup: homeKeyboard(),
+      });
+    }
+    // Reply keyboard tetap dipasang diam-diam (tanpa pesan "Menu Cepat"):
+    // is_persistent=true membuatnya nempel di semua chat private.
     await sendMessage({
       chat_id: chatId,
-      text: "👇 <b>Menu Cepat</b> — tombol tetap di bawah kolom ketik.",
+      text: "Pilih menu di bawah 👇",
       parse_mode: "HTML",
       reply_markup: mainReplyMenu(),
     });
