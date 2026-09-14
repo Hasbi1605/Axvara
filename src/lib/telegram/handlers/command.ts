@@ -71,11 +71,13 @@ export async function handleCommand(
         reply_markup: homeKeyboard(),
       });
     }
-    // Reply keyboard tetap dipasang diam-diam (tanpa pesan "Menu Cepat"):
-    // is_persistent=true membuatnya nempel di semua chat private.
+    // Reply keyboard tetap dipasang tanpa pesan teks tambahan apa pun.
+    // Trik: kirim message dengan text satu spasi + reply_markup; Telegram
+    // tetap memasang keyboard walau bubble-nya nyaris tak terlihat.
+    // (is_persistent=true membuatnya nempel di semua chat private.)
     await sendMessage({
       chat_id: chatId,
-      text: "Pilih menu di bawah 👇",
+      text: "—",
       parse_mode: "HTML",
       reply_markup: mainReplyMenu(),
     });
