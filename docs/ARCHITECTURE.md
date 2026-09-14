@@ -793,6 +793,50 @@ Kolom baru: `products(source, wr_product_id, wr_auto_managed)`,
 `processItem` generik; agregat order di-refresh dari item (bukan status link).
 Varian hilang dari API di-nol-kan stoknya (tidak dihapus). Seluruh tabel di atas
 ada di `drizzle/schema.sql` — bootstrap baru langsung final tanpa migrasi manual.
+Migrasi 0030 menambahkan `products.admin_description_override` (lihat kepemilikan
+field di bawah).
+
+### Kepemilikan field produk WR (migrasi 0030)
+
+Sync menimpa field miliknya setiap sweep, jadi batas kepemilikan ditegakkan di
+API (`src/lib/warung-rebahan/ownership.ts`), bukan hanya disable input di UI —
+agent CMS, curl, dan tab admin lama tidak terikat aturan UI.
+
+| Pemilik | Field |
+| --- | --- |
+| WR (read-only di admin) | `name`, `slug`, `description`, harga & stok master, label varian, harga varian, harga coret, stok varian, durasi, garansi |
+| Admin | foto/`images`, `badge`, kategori, `sort_order`, `is_active`, `admin_description_override` |
+| Panel WR | markup (`wr_variants.markup_percent/markup_fixed`) |
+
+Guard dipasang di **kedua jalur tulis varian**: `PUT /api/products/:id` dan
+`/api/admin/variants` (PUT tunggal + POST batch, dipakai `VariantEditor`).
+Menutup hanya salah satunya tidak cukup — panel varian lama akan tetap
+menjadi pintu belakang untuk perubahan yang pasti hilang di sweep berikutnya.
+
+`PUT /api/products/:id` membalas **409** dengan `{error, field}` bila request
+mengubah field WR-owned pada produk `wr_auto_managed=1`; mengirim ulang nilai
+yang sama tidak dianggap pelanggaran (form admin mengirim payload utuh).
+`admin_description_override` adalah teks milik admin: bila terisi, itulah yang
+tampil di storefront dan `GET /api/products`; sync TIDAK PERNAH menulis kolom
+tersebut. Resolusi "override menang atas `description`" dipusatkan di
+`displayDescription()` pada `src/lib/catalog.ts`, sehingga **seluruh kanal**
+(web, PDP `/produk/[slug]` termasuk meta SEO/Open Graph/JSON-LD, `/api/catalog`,
+bot Telegram, bot WhatsApp) menampilkan teks yang sama — bukan hanya web.
+Setiap pembaca deskripsi produk baru WAJIB memakai helper ini, bukan membaca
+kolom `description` langsung. `GET /api/products/:id` memisahkan keduanya
+(`description` = teks yang tampil, `wrDescription` = teks WR,
+`adminDescriptionOverride`, `wrManaged`).
+Badge "WR • dikelola otomatis" hanya tampil di editor produk admin — storefront
+tidak menampilkan penanda WR apa pun.
+
+### Force Sync melaporkan status apa adanya
+
+`POST /api/admin/warung/sync` mengembalikan `status` `success` | `partial` |
+`failed` (sama dengan yang ditulis ke `wr_sync_log`) dan `ok:false` saat gagal
+total. Sebelumnya route selalu `{ok:true}` sehingga admin melihat "Sync selesai"
+walaupun seluruh katalog gagal. Batch yang berhenti di batas budget
+(`budgetYielded`) dilaporkan `partial`, bukan sukses penuh.
+
 
 ### Proteksi
 

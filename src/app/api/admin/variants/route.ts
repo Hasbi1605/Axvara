@@ -7,6 +7,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { queryAll, queryFirst, execRun, getD1, D1Statement } from "@/lib/db";
 import { isEnabled } from "@/lib/feature-flags";
+import {
+  WR_OWNED_VARIANT_FIELDS,
+  WR_OWNERSHIP_MESSAGE,
+  findWrOwnedViolation,
+  isWrManaged,
+} from "@/lib/warung-rebahan/ownership";
 
 export const runtime = "edge";
 
@@ -146,6 +152,24 @@ export async function POST(request: NextRequest) {
         : await queryFirst(`SELECT id FROM product_variants WHERE sku=?`, v.sku);
       if (conflict) {
         return NextResponse.json({ error: `SKU ${v.sku} sudah digunakan oleh varian lain.` }, { status: 409 });
+      }
+    }
+
+    // Guard kepemilikan WR untuk batch (lihat PUT di bawah): varian
+    // auto-managed hanya boleh berubah lewat sync, bukan dari panel.
+    const wrExisting = await queryAll(
+      `SELECT id, label, price, compare_price, stock, duration_value, duration_unit, duration_label,
+              warranty_type, warranty_value, warranty_unit, warranty_label
+       FROM product_variants WHERE product_id=? AND wr_auto_managed=1`,
+      product_id,
+    );
+    if (wrExisting.length > 0) {
+      const byId = new Map(wrExisting.map((row) => [Number(row.id), row]));
+      for (const v of variants) {
+        const current = v.id ? byId.get(Number(v.id)) : undefined;
+        if (!current) continue;
+        const violation = findWrOwnedViolation(v as Record<string, unknown>, current, WR_OWNED_VARIANT_FIELDS);
+        if (violation) return NextResponse.json({ error: WR_OWNERSHIP_MESSAGE, field: violation }, { status: 409 });
       }
     }
 
@@ -313,6 +337,15 @@ export async function PUT(request: NextRequest) {
   const merged = { ...existing, ...v } as z.infer<typeof SingleVariantSchema>;
   const crossErr = validateCrossFields(merged);
   if (crossErr) return NextResponse.json({ error: crossErr }, { status: 400 });
+
+  // Varian milik sync WR: field harga/stok/label/durasi/garansi tidak boleh
+  // ditulis dari sini. Route ini jalur tulis KEDUA di samping PUT /api/products/:id,
+  // jadi tanpa guard yang sama ia menjadi pintu belakang untuk perubahan yang
+  // pasti hilang di sweep sync berikutnya.
+  if (isWrManaged(existing)) {
+    const violation = findWrOwnedViolation(v as Record<string, unknown>, existing, WR_OWNED_VARIANT_FIELDS);
+    if (violation) return NextResponse.json({ error: WR_OWNERSHIP_MESSAGE, field: violation }, { status: 409 });
+  }
 
   // Active product check if deactivating
   if (v.is_active === 0 && Number(existing.is_active) === 1) {

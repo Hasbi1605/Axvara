@@ -1,0 +1,32 @@
+-- ============================================================
+-- Migration 0030: Kepemilikan field produk Warung Rebahan.
+--
+-- Dijalankan SEKALI oleh `wrangler d1 migrations apply` terhadap DB
+-- production yang sudah ada. SQLite tidak punya ADD COLUMN IF NOT EXISTS,
+-- jadi menjalankan ulang berkas ini secara manual akan gagal dengan
+-- "duplicate column name" — sama seperti migrasi ALTER lain di repo ini
+-- (0025/0026/0027). Wrangler mencatat migrasi yang sudah diterapkan, jadi
+-- jalur CI normal aman; JANGAN apply manual untuk DB yang sudah berisi
+-- kolom ini. Bootstrap D1 baru memakai `drizzle/schema.sql` yang sudah
+-- final (kolom di bawah sudah ada di sana), bukan replay migrasi.
+--
+-- Masalah yang diperbaiki:
+--   Deskripsi produk WR ditimpa setiap sync (sync.ts UPDATE products
+--   SET description=?), sehingga copywriting admin hilang tanpa jejak.
+--   Admin butuh kolom terpisah agar teksnya tidak beradu dengan
+--   deskripsi upstream — bukan sekadar "jangan sync deskripsi", karena
+--   deskripsi WR tetap berguna sebagai fallback saat admin belum menulis.
+--
+-- Kontrak kepemilikan setelah migrasi ini:
+--   WR    : stok, harga modal, label varian, durasi, garansi, description.
+--   Admin : foto, badge, sort_order, is_active, admin_description_override.
+--   Panel : markup (wr_variants.markup_percent/markup_fixed).
+--
+-- Backfill TIDAK diperlukan: NULL adalah nilai yang benar untuk seluruh
+-- baris lama (artinya "pakai deskripsi WR"), dan kolom nullable tanpa
+-- default sehingga tabel besar tidak perlu ditulis ulang.
+-- ============================================================
+
+-- Teks deskripsi milik admin. NULL = pakai `description` (milik WR).
+-- Sync TIDAK PERNAH menulis kolom ini.
+ALTER TABLE products ADD COLUMN admin_description_override TEXT;

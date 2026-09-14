@@ -34,6 +34,9 @@ CREATE TABLE IF NOT EXISTS products (
     CHECK (source IN ('manual', 'warung_rebahan')),
   wr_product_id TEXT,
   wr_auto_managed INTEGER NOT NULL DEFAULT 0,
+  -- Migrasi 0030: deskripsi milik admin. NULL = pakai `description` (milik WR).
+  -- Sync WR tidak pernah menulis kolom ini.
+  admin_description_override TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );

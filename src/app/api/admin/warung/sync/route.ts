@@ -20,7 +20,14 @@ export async function POST(request: NextRequest) {
   try {
     const { syncProducts } = await import("@/lib/warung-rebahan/sync");
     const result = await syncProducts();
-    return NextResponse.json({ ok: true, ...result });
+    // Sync yang menyimpan error TIDAK boleh dilaporkan sebagai sukses.
+    // Sebelumnya route selalu membalas {ok:true} sehingga UI menampilkan
+    // "Sync selesai" walau seluruh katalog gagal. `status` di sini sama
+    // dengan yang ditulis ke wr_sync_log.
+    const status = result.errors.length === 0
+      ? (result.budgetYielded ? "partial" : "success")
+      : result.synced > 0 ? "partial" : "failed";
+    return NextResponse.json({ ok: status !== "failed", status, ...result });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "sync_failed" },

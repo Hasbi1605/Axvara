@@ -41,7 +41,7 @@ export default function AdminPage() {
 
   // Katalog produk (state + handler) di hook tersendiri; onUnauthorized memaksa sesi
   // kembali ke gerbang login bila fetch kategori membalas 401.
-  const auth = useAdminAuth(toast, () => Promise.all([load(), loadOverview()]).then(() => undefined));
+  const auth = useAdminAuth(toast);
   const { setAuthed } = auth;
   const onUnauthorized = useCallback(() => setAuthed(false), [setAuthed]);
   const pm = useProductManager(toast, onUnauthorized);

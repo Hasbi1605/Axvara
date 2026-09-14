@@ -22,6 +22,9 @@ export function ProductVariantRows({
     <div className="mt-4 space-y-3">
       <div className="flex items-center justify-between">
         <span className="text-xs font-semibold text-[#00E5FF]">Daftar Pilihan Paket / Varian</span>
+        {form.wrManaged ? (
+          <span className="text-[11px] text-[#FFD980]/80">Varian dikelola Warung Rebahan — markup diatur di tab Warung Rebahan.</span>
+        ) : (
         <button
           type="button"
           onClick={() => {
@@ -43,23 +46,32 @@ export function ProductVariantRows({
         >
           <IosIcon name="plus" size={12} tint="#00E5FF" /> Tambah Varian
         </button>
+        )}
       </div>
 
       <div className="space-y-3">
-        {formVariants.map((v, idx) => (
+        {formVariants.map((v, idx) => {
+          // Varian WR: label, harga, harga coret, stok, durasi, dan garansi
+          // dimiliki sync. Dibuat read-only agar admin tidak mengedit nilai
+          // yang pasti hilang di sweep berikutnya (API juga menolaknya 409).
+          const wrLocked = Number(v.wr_auto_managed ?? 0) === 1 || Boolean(form.wrManaged);
+          const lockedInput = "h-9 w-full rounded-xl bg-white/[0.03] border border-white/5 px-3 text-xs text-white/50 cursor-not-allowed";
+          const openInput = "h-9 w-full rounded-xl bg-white/[0.06] border border-white/10 px-3 text-xs text-white placeholder:text-white/25 focus:border-[#00E5FF]/50 focus:outline-none";
+          return (
           <div key={v.id || idx} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 transition hover:border-white/20">
             {/* Baris 1: Nama Varian & Aksi */}
             <div className="flex items-center justify-between gap-3 pb-3 border-b border-white/5">
               <div className="flex-1 min-w-0">
-                <span className="block text-[10px] uppercase font-semibold text-white/40 mb-1">Nama Varian / Paket *</span>
+                <span className="block text-[10px] uppercase font-semibold text-white/40 mb-1">Nama Varian / Paket *{wrLocked ? " (WR)" : ""}</span>
                 <input
                   value={v.label}
+                  readOnly={wrLocked}
                   onChange={(e) => {
                     const val = e.target.value;
                     onSetFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, label: val } : item));
                   }}
                   placeholder="Contoh: 1 Bulan Private / 1 Tahun Sharing"
-                  className="h-9 w-full rounded-xl bg-white/[0.06] border border-white/10 px-3 text-xs text-white placeholder:text-white/25 focus:border-[#00E5FF]/50 focus:outline-none"
+                  className={wrLocked ? lockedInput : openInput}
                 />
               </div>
               <div className="flex items-center gap-2 pt-4">
@@ -73,7 +85,7 @@ export function ProductVariantRows({
                 >
                   {v.is_active ? "Aktif" : "Mati"}
                 </button>
-                {formVariants.length > 1 && (
+                {formVariants.length > 1 && !wrLocked && (
                   <button
                     type="button"
                     onClick={() => {
@@ -92,13 +104,14 @@ export function ProductVariantRows({
             {/* Baris 2: Harga, Harga Coret, Stok */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 py-3 border-b border-white/5">
               <div>
-                <span className="block text-[10px] uppercase font-semibold text-white/40 mb-1">Harga Jual (Rp) *</span>
+                <span className="block text-[10px] uppercase font-semibold text-white/40 mb-1">Harga Jual (Rp) *{wrLocked ? " (WR)" : ""}</span>
                 <MoneyInput
                   value={v.price}
+                  readOnly={wrLocked}
                   onChange={(val) => {
                     onSetFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, price: val ?? 0 } : item));
                   }}
-                  className="h-9 w-full rounded-xl bg-white/[0.06] border border-white/10 px-3 text-xs text-white focus:border-[#00E5FF]/50 focus:outline-none"
+                  className={wrLocked ? lockedInput : openInput}
                 />
               </div>
               <div>
@@ -106,34 +119,37 @@ export function ProductVariantRows({
                 <MoneyInput
                   value={v.comparePrice}
                   allowEmpty
+                  readOnly={wrLocked}
                   onChange={(val) => {
                     onSetFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, comparePrice: val } : item));
                   }}
                   placeholder="Opsional"
-                  className="h-9 w-full rounded-xl bg-white/[0.06] border border-white/10 px-3 text-xs text-white placeholder:text-white/25 focus:border-[#00E5FF]/50 focus:outline-none"
+                  className={wrLocked ? lockedInput : openInput}
                 />
               </div>
               <div>
-                <span className="block text-[10px] uppercase font-semibold text-white/40 mb-1">Stok (-1 = ∞)</span>
+                <span className="block text-[10px] uppercase font-semibold text-white/40 mb-1">Stok (-1 = ∞){wrLocked ? " (WR)" : ""}</span>
                 <input
                   type="number"
                   min={-1}
                   value={v.stock}
+                  readOnly={wrLocked}
                   onChange={(e) => {
                     const val = Number(e.target.value);
                     onSetFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, stock: val } : item));
                   }}
-                  className="h-9 w-full rounded-xl bg-white/[0.06] border border-white/10 px-3 text-xs text-white focus:border-[#00E5FF]/50 focus:outline-none"
+                  className={wrLocked ? lockedInput : openInput}
                 />
               </div>
             </div>
 
             {/* Baris 3: Pengaturan Garansi yang Jelas & Rapi */}
             <div className="pt-3">
-              <span className="block text-[10px] uppercase font-semibold text-white/40 mb-1.5">Masa Garansi</span>
+              <span className="block text-[10px] uppercase font-semibold text-white/40 mb-1.5">Masa Garansi{wrLocked ? " (WR)" : ""}</span>
               <div className="flex flex-wrap items-center gap-2">
                 <select
                   value={v.warranty_type || "full"}
+                  disabled={wrLocked}
                   onChange={(e) => {
                     const wType = e.target.value;
                     onSetFormVariants((curr) => curr.map((item, i) => i === idx ? {
@@ -157,14 +173,16 @@ export function ProductVariantRows({
                       type="number"
                       min={1}
                       value={v.warranty_value ?? 1}
+                      readOnly={wrLocked}
                       onChange={(e) => {
                         const val = Math.max(1, Number(e.target.value) || 1);
                         onSetFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, warranty_value: val, duration_value: val } : item));
                       }}
-                      className="h-9 w-16 rounded-xl bg-white/[0.06] border border-white/10 px-2 text-xs text-white text-center focus:border-[#00E5FF]/50 focus:outline-none"
+                      className={`h-9 w-16 rounded-xl border px-2 text-xs text-center focus:outline-none ${wrLocked ? "bg-white/[0.03] border-white/5 text-white/50 cursor-not-allowed" : "bg-white/[0.06] border-white/10 text-white focus:border-[#00E5FF]/50"}`}
                     />
                     <select
                       value={v.warranty_unit || "month"}
+                      disabled={wrLocked}
                       onChange={(e) => {
                         const unit = e.target.value;
                         onSetFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, warranty_unit: unit, duration_unit: unit } : item));
@@ -182,12 +200,13 @@ export function ProductVariantRows({
                 {v.warranty_type === "custom" && (
                   <input
                     value={v.warranty_label || ""}
+                    readOnly={wrLocked}
                     onChange={(e) => {
                       const val = e.target.value;
                       onSetFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, warranty_label: val } : item));
                     }}
                     placeholder="Contoh: Garansi 24 Jam Ganti Akun"
-                    className="h-9 flex-1 min-w-[200px] rounded-xl bg-white/[0.06] border border-white/10 px-3 text-xs text-white placeholder:text-white/20 focus:border-[#00E5FF]/50 focus:outline-none"
+                    className={`h-9 flex-1 min-w-[200px] rounded-xl border px-3 text-xs focus:outline-none ${wrLocked ? "bg-white/[0.03] border-white/5 text-white/50 cursor-not-allowed" : "bg-white/[0.06] border-white/10 text-white placeholder:text-white/20 focus:border-[#00E5FF]/50"}`}
                   />
                 )}
 
@@ -198,7 +217,8 @@ export function ProductVariantRows({
               </div>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {formVariants.length > 0 && (

@@ -32,11 +32,17 @@ export async function GET(req: NextRequest) {
                 WHEN MAX(CASE WHEN pv.stock=-1 THEN 1 ELSE 0 END)=1 THEN -1
                 ELSE SUM(CASE WHEN pv.stock>0 THEN pv.stock ELSE 0 END)
               END as variant_stock,
+              -- Harga kartu harus milik varian yang BISA DIBELI. MIN(price)
+              -- polos memakai varian termurah walau stoknya habis, sehingga
+              -- kartu menjanjikan harga yang tidak tersedia di modal varian.
+              -- NULL bila semua varian habis; fallback ke min_price di mapper.
+              MIN(CASE WHEN pv.stock=-1 OR pv.stock>0 THEN pv.price END) as available_min_price,
               -- Compare price dipasangkan dari varian harga-terendah yang sama
               -- (issue #10): MIN(price)+MAX(compare_price) lintas varian dapat
               -- membentuk diskon fiktif yang tak dimiliki varian mana pun.
               (SELECT pv2.compare_price FROM product_variants pv2
                 WHERE pv2.product_id=p.id AND pv2.is_active=1
+                  AND (pv2.stock=-1 OR pv2.stock>0)
                 ORDER BY pv2.price ASC, pv2.id ASC LIMIT 1) as variant_compare_price
        FROM products p
        LEFT JOIN categories c ON c.id=p.category_id
@@ -53,7 +59,7 @@ export async function GET(req: NextRequest) {
   if (slug) { sql += ` AND p.slug=?`; params.push(slug.slice(0, 80)); }
   // D1 LIKE/GLOB max 50 byte (issue #14): potong pola agar query search
   // tidak gagal untuk input panjang.
-  if (q) { sql += ` AND (lower(p.name) LIKE ? OR lower(p.description) LIKE ? OR lower(p.slug) LIKE ? OR lower(COALESCE(p.badge,'')) LIKE ?)`; const like=`%${q.slice(0, 40)}%`; params.push(like,like,like,like); }
+  if (q) { sql += ` AND (lower(p.name) LIKE ? OR lower(COALESCE(p.admin_description_override, p.description)) LIKE ? OR lower(p.slug) LIKE ? OR lower(COALESCE(p.badge,'')) LIKE ?)`; const like=`%${q.slice(0, 40)}%`; params.push(like,like,like,like); }
   if (variantCatalog) sql += ` GROUP BY p.id`;
   sql += ` ORDER BY p.sort_order ASC, p.id ASC`;
   const rows = await queryAll(sql, ...params);
@@ -65,7 +71,10 @@ export async function GET(req: NextRequest) {
     const primary = (r.image_url as string) ?? images[0] ?? "";
     if (primary && !images.includes(primary)) images.unshift(primary);
     const variantCount = variantCatalog ? Number(r.variant_count || 0) : undefined;
-    const price = variantCatalog ? Number(r.min_price) : Number(r.price);
+    // Varian tersedia lebih dulu; bila semua habis, kartu jatuh kembali ke
+    // harga terendah keseluruhan agar tetap punya angka untuk ditampilkan.
+    const availableMin = variantCatalog && r.available_min_price != null ? Number(r.available_min_price) : null;
+    const price = variantCatalog ? (availableMin ?? Number(r.min_price)) : Number(r.price);
     // Pasangan compare_price sudah dari varian harga-terendah yang sama
     // (lihat subquery di atas). Jangan tampilkan harga coret yang tidak
     // membentuk diskon valid (<= harga tampil): itu sisa data lama / varian
@@ -79,9 +88,10 @@ export async function GET(req: NextRequest) {
       name: r.name,
       whatsappAlias: String(r.whatsapp_alias || "").trim() || undefined,
       aliases: Array.isArray(aliases) ? aliases.map(String) : [],
-      description: r.description ?? "",
+      description: r.admin_description_override ?? r.description ?? "",
+      wrManaged: Number(r.wr_auto_managed ?? 0) === 1 || String(r.source ?? "") === "warung_rebahan",
       price,
-      minPrice: variantCatalog ? Number(r.min_price) : undefined,
+      minPrice: variantCatalog ? price : undefined,
       maxPrice: variantCatalog ? Number(r.max_price) : undefined,
       variantCount,
       comparePrice: rawCompare != null && rawCompare > price ? rawCompare : undefined,

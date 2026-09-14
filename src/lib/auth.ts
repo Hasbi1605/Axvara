@@ -24,11 +24,17 @@ function isDev(): boolean {
   return process.env.NODE_ENV !== "production";
 }
 
-// Development JWT fallback is generated at runtime and never committed.
-let _devSecret: string | null = null;
+// Fallback JWT khusus development. NILAINYA HARUS DETERMINISTIK.
+//
+// Sebelumnya nilai ini diacak per module-instance. Setiap isolate/bundle
+// (route handler berbeda, worker restart, HMR) karenanya memegang secret
+// berbeda, sehingga cookie yang ditandatangani saat login gagal diverifikasi
+// oleh /api/auth/me — persis gejala "login berhasil lalu langsung keluar".
+// Nilai tetap di bawah tidak menurunkan keamanan produksi: getJwtSecretRaw
+// dan requireEnv melempar bila ADMIN_JWT_SECRET kosong di production.
+const DEV_JWT_FALLBACK_SECRET = "axvara-dev-only-jwt-secret-do-not-use-in-production";
 function getDevSecret(): string {
-  if (!_devSecret) _devSecret = "dev-" + Math.random().toString(36).slice(2) + "-" + Date.now().toString(36);
-  return _devSecret;
+  return process.env.ADMIN_JWT_SECRET?.trim() || DEV_JWT_FALLBACK_SECRET;
 }
 
 function requireEnv(name: string): string {

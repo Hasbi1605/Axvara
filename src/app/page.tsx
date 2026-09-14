@@ -9,11 +9,16 @@ import type { Product } from "@/lib/products";
 import { useSearch } from "@/stores/search";
 import { StoreWhatsAppLink } from "@/components/storefront/StoreWhatsAppLink";
 
-const PER_PAGE = 8;
+const PER_PAGE = 12;
+
+/** Produk tanpa stok tetap tampil, tetapi selalu di belakang yang masih ready. */
+function isSoldOut(p: Product): boolean {
+  return p.stock != null && p.stock !== -1 && p.stock <= 0;
+}
 
 export default function HomePage() {
   const [activeCat, setActiveCat] = useState("semua");
-  const [page, setPage] = useState(1);
+  const [visible, setVisible] = useState(PER_PAGE);
   const q = useSearch((s) => s.q);
   const [catalogProducts, setCatalogProducts] = useState<Product[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(true);
@@ -40,24 +45,29 @@ export default function HomePage() {
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return catalogProducts.filter((p) => {
+    const matched = catalogProducts.filter((p) => {
       const catOk = activeCat === "semua" || p.categorySlug === activeCat;
       if (!needle) return catOk;
       const hay = `${p.name} ${p.description} ${p.categorySlug} ${p.badge ?? ""}`.toLowerCase();
       return catOk && hay.includes(needle);
     });
+    // Urutan stabil: ready dulu, lalu sort_order admin, lalu id. Tanpa kunci
+    // terakhir, dua produk dengan sort_order sama dapat bertukar posisi antar
+    // render dan katalog terlihat "loncat-loncat".
+    return matched.slice().sort((a, b) => {
+      const bySold = Number(isSoldOut(a)) - Number(isSoldOut(b));
+      if (bySold !== 0) return bySold;
+      const byOrder = (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+      if (byOrder !== 0) return byOrder;
+      return Number(a.id) - Number(b.id);
+    });
   }, [activeCat, q, catalogProducts]);
 
-  // B02: pagination reset on filter
-  useEffect(() => { setPage(1); }, [q, activeCat]);
-  const totalPages = filtered.length ? Math.ceil(filtered.length / PER_PAGE) : 0;
-  const safePage = totalPages ? Math.min(page, totalPages) : 1;
-  const paged = filtered.length ? filtered.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE) : [];
-
-  const goPage = (n: number) => {
-    setPage(n);
-    document.getElementById("katalog")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
+  // Filter baru = daftar baru: kembali ke batch pertama.
+  useEffect(() => { setVisible(PER_PAGE); }, [q, activeCat]);
+  const paged = filtered.slice(0, visible);
+  const remaining = Math.max(0, filtered.length - paged.length);
+  const nextBatch = Math.min(PER_PAGE, remaining);
 
   return (
     <>
@@ -108,10 +118,10 @@ export default function HomePage() {
       <section id="katalog" className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 pt-2 pb-10">
         <div className="flex items-center justify-between gap-4">
           <h2 className="font-display font-bold text-[20px] sm:text-[24px] text-white tracking-[-0.02em]">Katalog Premium</h2>
-          <span className="text-xs text-white/40">{filtered.length} produk{totalPages ? ` • Hal ${safePage}/${totalPages}` : ""}</span>
+          <span className="text-xs text-white/40">{filtered.length} produk{filtered.length ? ` • tampil ${paged.length}` : ""}</span>
         </div>
         <div className="mt-4">
-          <CategoryPills active={activeCat} onChange={(c) => { setActiveCat(c); setPage(1); }} />
+          <CategoryPills active={activeCat} onChange={(c) => { setActiveCat(c); setVisible(PER_PAGE); }} />
         </div>
         {catalogError && (
           <div className="mt-4 rounded-2xl bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-200 flex items-center justify-between gap-3">
@@ -138,36 +148,18 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="mt-8 flex items-center justify-center gap-2">
+        {/* Load more — marketplace tidak memakai nomor halaman; satu tombol
+            menambah batch berikutnya tanpa memindahkan posisi scroll. Bukan
+            infinite scroll murni agar footer tetap dapat dijangkau. */}
+        {remaining > 0 && (
+          <div className="mt-8 flex flex-col items-center gap-2">
             <button
-              onClick={() => safePage > 1 && goPage(safePage - 1)}
-              disabled={safePage === 1}
-              className="w-9 h-9 rounded-full ax-glass-card flex items-center justify-center text-white/70 disabled:opacity-30 disabled:pointer-events-none hover:bg-white/10 transition active:scale-95"
-              aria-label="Prev"
+              onClick={() => setVisible((v) => v + PER_PAGE)}
+              className="h-11 px-6 rounded-full bg-white text-[#080C1E] font-semibold text-sm inline-flex items-center justify-center hover:bg-white/90 transition active:scale-[0.98]"
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/icons/ios11/chevron-left-32.png" alt="" width={16} height={16} className="w-4 h-4 object-contain brightness-0 invert opacity-70" draggable={false} />
+              Tampilkan {nextBatch} produk lagi
             </button>
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => (
-              <button
-                key={n}
-                onClick={() => goPage(n)}
-                className={`min-w-9 h-9 px-3 rounded-full text-sm font-semibold transition active:scale-95 ${n === safePage ? "bg-white text-[#080C1E] shadow" : "ax-glass-card text-white/70 hover:text-white hover:bg-white/10"}`}
-              >
-                {n}
-              </button>
-            ))}
-            <button
-              onClick={() => safePage < totalPages && goPage(safePage + 1)}
-              disabled={safePage === totalPages}
-              className="w-9 h-9 rounded-full ax-glass-card flex items-center justify-center text-white/70 disabled:opacity-30 disabled:pointer-events-none hover:bg-white/10 transition active:scale-95"
-              aria-label="Next"
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/icons/ios11/chevron-right-32.png" alt="" width={16} height={16} className="w-4 h-4 object-contain brightness-0 invert opacity-70" draggable={false} />
-            </button>
+            <span className="text-xs text-white/35">{remaining} produk lainnya</span>
           </div>
         )}
       </section>
