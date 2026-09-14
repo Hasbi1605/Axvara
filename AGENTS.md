@@ -102,6 +102,18 @@ Agent **wajib** pastikan sebelum jawab "selesai":
 - [ ] Kredensial CF tidak ter-commit (cek `git check-ignore -v .cf-credentials`)
 - [ ] Jangan pernah ubah `/Users/macbookair/AGENTS.md` global
 
+## Ekosistem terkait (WAJIB TAHU sebelum ubah integrasi)
+Repo ini tidak berdiri sendiri. Tiga folder lokal lain saling berkaitan:
+
+| Folder lokal | Peran | Keterkaitan dengan repo ini |
+|---|---|---|
+| `/Users/macbookair/axvara-wa-gateway` | Gateway WhatsApp Baileys (akun Heroku #1, `terry.delvon0805@gmail.com`). Route `/wr/*` di sana SUDAH DIMATIKAN (410) pasca-migrasi 2026-09-14 | `WHATSAPP_GATEWAY_URL` + `WHATSAPP_WEBHOOK_TOKEN` (Pages) berpasangan dengan `AXVARA_WEBHOOK_TOKEN` (gateway). Jangan push dari folder ini ke remote heroku (remote sudah dicabut) |
+| `/Users/macbookair/axvara-qris-gateway` | Riset QRIS DANA + nilai rujukan (`DOKUMENTASI_PRODUKSI.md`, `.env` = payload statis Brotherstore06 + secret). BUKAN deploy target | `DANA_STATIC_QRIS` + `DANA_WEBHOOK_SECRET` Pages berasal dari sini. Engine prod ada di `src/lib/payments/dana-qris.ts` |
+| `/Users/macbookair/axvara-wr-proxy` | Proxy stateless Warung Rebahan (akun Heroku #2, `sailinnadia1@gmail.com`, QuotaGuard Spike) | `WARUNG_REBAHAN_PROXY_URL/TOKEN` Pages menunjuk ke sini. Kontrak: `POST /wr/:endpoint` + `x-proxy-token`, `api_key` server-side |
+| `/Users/macbookair/axvara-tg-bot` | Kredensial + rujukan Bot Telegram (kode bot tetap di repo ini: `src/lib/telegram/`) | `TELEGRAM_BOT_TOKEN` + `TELEGRAM_WEBHOOK_SECRET` + `TELEGRAM_ADMIN_CHAT_ID` Pages dicatat di sana. Isi manual, lalu set sebagai `secret_text` |
+
+Aturan lintas-repo: (1) Env Pages bertipe `secret_text` SELALU (plain_text tidak terbawa deploy); (2) Jangan `wrangler pages deployment create` tanpa direktori (me-redeploy artefak lama = rollback prod); (3) Deploy hanya via CI (`git push origin main`); (4) Perintah Heroku akun #2 wajib prefix `HEROKU_API_KEY=<kunci-akun-2>`.
+
 ## Done when
 - Tujuan tugas tercapai
 - Perubahan diimplementasi
