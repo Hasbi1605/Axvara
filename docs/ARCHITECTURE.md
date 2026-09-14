@@ -808,13 +808,22 @@ agent CMS, curl, dan tab admin lama tidak terikat aturan UI.
 | Admin | foto/`images`, `badge`, kategori, `sort_order`, `is_active`, `admin_description_override` |
 | Panel WR | markup (`wr_variants.markup_percent/markup_fixed`) |
 
+Guard dipasang di **kedua jalur tulis varian**: `PUT /api/products/:id` dan
+`/api/admin/variants` (PUT tunggal + POST batch, dipakai `VariantEditor`).
+Menutup hanya salah satunya tidak cukup — panel varian lama akan tetap
+menjadi pintu belakang untuk perubahan yang pasti hilang di sweep berikutnya.
+
 `PUT /api/products/:id` membalas **409** dengan `{error, field}` bila request
 mengubah field WR-owned pada produk `wr_auto_managed=1`; mengirim ulang nilai
 yang sama tidak dianggap pelanggaran (form admin mengirim payload utuh).
 `admin_description_override` adalah teks milik admin: bila terisi, itulah yang
 tampil di storefront dan `GET /api/products`; sync TIDAK PERNAH menulis kolom
-tersebut. `GET /api/products/:id` memisahkan keduanya (`description` = teks yang
-tampil, `wrDescription` = teks WR, `adminDescriptionOverride`, `wrManaged`).
+tersebut. Resolusi "override menang atas `description`" dipusatkan di
+`displayDescription()` pada `src/lib/catalog.ts`, sehingga **seluruh kanal**
+(web, `/api/catalog`, bot Telegram, bot WhatsApp) menampilkan teks yang sama —
+bukan hanya web. `GET /api/products/:id` memisahkan keduanya (`description` =
+teks yang tampil, `wrDescription` = teks WR, `adminDescriptionOverride`,
+`wrManaged`).
 Badge "WR • dikelola otomatis" hanya tampil di editor produk admin — storefront
 tidak menampilkan penanda WR apa pun.
 

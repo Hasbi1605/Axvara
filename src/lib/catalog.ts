@@ -78,7 +78,8 @@ export async function listActiveProducts(): Promise<ProductSummary[]> {
 
   const rows = await queryAll(`
     SELECT
-      p.id, p.slug, p.name, p.whatsapp_alias, p.aliases, p.image_url, p.badge, p.description, p.category_id,
+      p.id, p.slug, p.name, p.whatsapp_alias, p.aliases, p.image_url, p.badge, p.description,
+      p.admin_description_override, p.category_id,
       MIN(pv.price) as min_price,
       MAX(pv.price) as max_price,
       COUNT(pv.id) as variant_count,
@@ -99,7 +100,7 @@ export async function listActiveProducts(): Promise<ProductSummary[]> {
     aliases: parseAliases(r.aliases),
     image: r.image_url ? String(r.image_url) : null,
     badge: r.badge ? String(r.badge) : null,
-    description: r.description ? String(r.description) : null,
+    description: displayDescription(r),
     minPrice: Number(r.min_price),
     maxPrice: Number(r.max_price),
     variantCount: Number(r.variant_count),
@@ -110,7 +111,8 @@ export async function listActiveProducts(): Promise<ProductSummary[]> {
 
 async function listActiveProductsLegacy(): Promise<ProductSummary[]> {
   const rows = await queryAll(
-    `SELECT id, slug, name, whatsapp_alias, image_url, badge, description, price, compare_price, stock, category_id
+    `SELECT id, slug, name, whatsapp_alias, image_url, badge, description,
+            admin_description_override, price, compare_price, stock, category_id
      FROM products WHERE is_active=1 ORDER BY sort_order ASC, name ASC`
   );
   return rows.map(r => ({
@@ -121,7 +123,7 @@ async function listActiveProductsLegacy(): Promise<ProductSummary[]> {
     aliases: [],
     image: r.image_url ? String(r.image_url) : null,
     badge: r.badge ? String(r.badge) : null,
-    description: r.description ? String(r.description) : null,
+    description: displayDescription(r),
     minPrice: Number(r.price),
     maxPrice: Number(r.price),
     variantCount: 1,
@@ -160,7 +162,7 @@ export async function getProductDetail(slugOrId: string | number): Promise<Produ
     name: String(product.name),
     whatsappAlias: nullableText(product.whatsapp_alias),
     aliases: parseAliases(product.aliases),
-    description: product.description ? String(product.description) : null,
+    description: displayDescription(product),
     image: product.image_url ? String(product.image_url) : null,
     images: product.images ? String(product.images) : null,
     badge: product.badge ? String(product.badge) : null,
@@ -206,7 +208,7 @@ async function getProductDetailLegacy(slugOrId: string | number): Promise<Produc
     name: String(product.name),
     whatsappAlias: nullableText(product.whatsapp_alias),
     aliases: [],
-    description: product.description ? String(product.description) : null,
+    description: displayDescription(product),
     image: product.image_url ? String(product.image_url) : null,
     images: product.images ? String(product.images) : null,
     badge: product.badge ? String(product.badge) : null,
@@ -332,6 +334,16 @@ function parseAliases(raw: unknown): string[] {
 function nullableText(raw: unknown): string | null {
   const value = raw == null ? "" : String(raw).trim();
   return value || null;
+}
+
+/**
+ * Deskripsi yang TAMPIL untuk pembeli. `admin_description_override`
+ * (migrasi 0030) milik admin dan menang atas `description` milik sync WR.
+ * Dipakai seluruh kanal — web, Telegram, WhatsApp — agar teks yang dilihat
+ * pembeli sama di mana pun; tanpa ini override hanya berlaku di web.
+ */
+function displayDescription(row: Record<string, unknown>): string | null {
+  return nullableText(row.admin_description_override) ?? nullableText(row.description);
 }
 
 function mapVariant(row: Record<string, unknown>): VariantSummary {

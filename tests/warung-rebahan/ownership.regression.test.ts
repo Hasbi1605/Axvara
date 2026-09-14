@@ -187,6 +187,36 @@ describe("/api/admin/variants bukan pintu belakang", () => {
   });
 });
 
+describe("override konsisten di SEMUA kanal (web, Telegram, WhatsApp)", () => {
+  // `src/lib/catalog.ts` melayani /api/catalog dan bot Telegram/WhatsApp.
+  // Kalau ia membaca `description` mentah, override admin hanya tampil di
+  // web sementara bot tetap mengirim teks WR — pembeli melihat dua versi.
+  beforeEach(() => {
+    vi.stubEnv("PRODUCT_VARIANTS_READ", "true");
+    fixture.sql.prepare("UPDATE products SET admin_description_override='Teks AXVARA' WHERE id=1").run();
+  });
+
+  it("listActiveProducts memakai override, bukan deskripsi WR", async () => {
+    const { listActiveProducts } = await import("@/lib/catalog");
+    const rows = await listActiveProducts();
+    const wr = rows.find((r) => r.slug === "capcut-pro-wr");
+    expect(wr?.description).toBe("Teks AXVARA");
+  });
+
+  it("getProductDetail memakai override, bukan deskripsi WR", async () => {
+    const { getProductDetail } = await import("@/lib/catalog");
+    const detail = await getProductDetail("capcut-pro-wr");
+    expect(detail?.description).toBe("Teks AXVARA");
+  });
+
+  it("tanpa override, kanal tetap memakai deskripsi WR", async () => {
+    fixture.sql.prepare("UPDATE products SET admin_description_override=NULL WHERE id=1").run();
+    const { getProductDetail } = await import("@/lib/catalog");
+    const detail = await getProductDetail("capcut-pro-wr");
+    expect(detail?.description).toBe("Deskripsi dari WR");
+  });
+});
+
 describe("admin_description_override (migrasi 0030)", () => {  it("admin dapat menyimpan override tanpa menyentuh deskripsi WR", async () => {
     const res = await putProduct(1, { adminDescriptionOverride: "Versi copywriting AXVARA" });
     expect(res.status).toBe(200);
