@@ -215,6 +215,23 @@ describe("override konsisten di SEMUA kanal (web, Telegram, WhatsApp)", () => {
     const detail = await getProductDetail("capcut-pro-wr");
     expect(detail?.description).toBe("Deskripsi dari WR");
   });
+
+  it("PDP (meta SEO / OG / JSON-LD) memakai override yang sama", async () => {
+    // Halaman produk dibaca pembeli DAN mesin pencari. Kalau ia memakai teks
+    // WR sementara storefront memakai override, hasil pencarian Google
+    // menampilkan deskripsi yang berbeda dari halaman yang dibuka.
+    const { displayDescription } = await import("@/lib/catalog");
+    const row = fixture.sql.prepare(
+      "SELECT description, admin_description_override FROM products WHERE id=1",
+    ).get() as Record<string, unknown>;
+    expect(displayDescription(row)).toBe("Teks AXVARA");
+
+    const source = await import("node:fs").then((fs) =>
+      fs.readFileSync("src/app/produk/[slug]/page.tsx", "utf8"),
+    );
+    expect(source, "PDP harus ikut mengambil kolom override").toContain("admin_description_override");
+    expect(source, "PDP harus memakai resolver bersama").toContain("displayDescription(product)");
+  });
 });
 
 describe("admin_description_override (migrasi 0030)", () => {  it("admin dapat menyimpan override tanpa menyentuh deskripsi WR", async () => {

@@ -342,7 +342,7 @@ function nullableText(raw: unknown): string | null {
  * Dipakai seluruh kanal — web, Telegram, WhatsApp — agar teks yang dilihat
  * pembeli sama di mana pun; tanpa ini override hanya berlaku di web.
  */
-function displayDescription(row: Record<string, unknown>): string | null {
+export function displayDescription(row: Record<string, unknown>): string | null {
   return nullableText(row.admin_description_override) ?? nullableText(row.description);
 }
 

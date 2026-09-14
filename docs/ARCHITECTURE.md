@@ -820,10 +820,12 @@ yang sama tidak dianggap pelanggaran (form admin mengirim payload utuh).
 tampil di storefront dan `GET /api/products`; sync TIDAK PERNAH menulis kolom
 tersebut. Resolusi "override menang atas `description`" dipusatkan di
 `displayDescription()` pada `src/lib/catalog.ts`, sehingga **seluruh kanal**
-(web, `/api/catalog`, bot Telegram, bot WhatsApp) menampilkan teks yang sama —
-bukan hanya web. `GET /api/products/:id` memisahkan keduanya (`description` =
-teks yang tampil, `wrDescription` = teks WR, `adminDescriptionOverride`,
-`wrManaged`).
+(web, PDP `/produk/[slug]` termasuk meta SEO/Open Graph/JSON-LD, `/api/catalog`,
+bot Telegram, bot WhatsApp) menampilkan teks yang sama — bukan hanya web.
+Setiap pembaca deskripsi produk baru WAJIB memakai helper ini, bukan membaca
+kolom `description` langsung. `GET /api/products/:id` memisahkan keduanya
+(`description` = teks yang tampil, `wrDescription` = teks WR,
+`adminDescriptionOverride`, `wrManaged`).
 Badge "WR • dikelola otomatis" hanya tampil di editor produk admin — storefront
 tidak menampilkan penanda WR apa pun.
 

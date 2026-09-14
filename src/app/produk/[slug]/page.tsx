@@ -2,6 +2,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { queryFirst, queryAll } from "@/lib/db";
+import { displayDescription } from "@/lib/catalog";
 import {
   seoDescription,
   seoImages,
@@ -19,7 +20,8 @@ type SeoRow = Record<string, unknown>;
 
 async function getSeoProduct(slug: string): Promise<SeoProduct | null> {
   const product = (await queryFirst(
-    `SELECT p.slug, p.name, p.description, p.image_url, p.images, p.badge,
+    `SELECT p.slug, p.name, p.description, p.admin_description_override,
+            p.image_url, p.images, p.badge,
             p.sold_count, p.updated_at
      FROM products p
      WHERE p.slug=? AND p.is_active=1`,
@@ -38,7 +40,10 @@ async function getSeoProduct(slug: string): Promise<SeoProduct | null> {
   return {
     slug: String(product.slug),
     name: String(product.name),
-    description: product.description ? String(product.description) : null,
+    // Override admin (migrasi 0030) menang atas deskripsi WR, sama seperti
+    // storefront dan bot. PDP adalah halaman yang dibaca pembeli DAN mesin
+    // pencari, jadi meta/OG/JSON-LD tidak boleh memakai teks yang berbeda.
+    description: displayDescription(product),
     image: product.image_url ? String(product.image_url) : null,
     images: product.images ? String(product.images) : null,
     badge: product.badge ? String(product.badge) : null,
