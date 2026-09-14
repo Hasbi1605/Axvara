@@ -39,16 +39,31 @@ export async function handleCommand(
   if (cmd === "/start") {
     // Clear any pending conversational state
     await clearPendingAction(from);
+    console.log(`tg /start begin chat=${chatId}`);
     await showLoadingBar(chatId, "🚀 Menyiapkan AXVARA");
+    console.log(`tg /start loading done chat=${chatId}`);
     const siteUrl = process.env.SITE_URL ?? "https://axvara.tech";
     const bestsellers = await getBestsellers(3);
-    await sendPhoto({
+    console.log(`tg /start bestsellers=${bestsellers.length} chat=${chatId}`);
+    const photoRes = await sendPhoto({
       chat_id: chatId,
       photo: `${siteUrl}/r2/banners/tg-welcome.png`,
       caption: welcomeMessage(from?.first_name ?? "Pengguna", bestsellers),
       parse_mode: "HTML",
       reply_markup: homeKeyboard(),
     });
+    console.log(`tg /start photo ok=${photoRes.ok} desc=${(photoRes.description || "").slice(0, 120)} chat=${chatId}`);
+    if (!photoRes.ok) {
+      // Fallback: foto gagal (timeout/R2) — kirim teks welcome + keyboard
+      // agar user tetap dapat sapaan, bukan hanya Menu Cepat.
+      await sendMessage({
+        chat_id: chatId,
+        text: welcomeMessage(from?.first_name ?? "Pengguna", bestsellers),
+        parse_mode: "HTML",
+        reply_markup: homeKeyboard(),
+      });
+      console.log(`tg /start photo fallback sent chat=${chatId}`);
+    }
     // Tombol tetap bawah (reply keyboard): Katalog · Cari · Keranjang · Pesanan · Bantuan.
     // Dikirim sebagai pesan terpisah karena sendPhoto caption memakai inline keyboard.
     // is_persistent=true → tetap nempel di semua chat private; user lama yang
