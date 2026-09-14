@@ -134,8 +134,60 @@ describe("produk WR: field milik sync ditolak di API", () => {
   });
 });
 
-describe("admin_description_override (migrasi 0030)", () => {
-  it("admin dapat menyimpan override tanpa menyentuh deskripsi WR", async () => {
+describe("/api/admin/variants bukan pintu belakang", () => {
+  // Jalur tulis KEDUA untuk varian. Tanpa guard yang sama, panel varian
+  // lama (VariantEditor) tetap bisa mengubah harga/stok varian WR dan
+  // perubahannya hilang diam-diam di sweep sync berikutnya.
+  // `@/lib/auth` sudah dimock di level modul (requireAdmin selalu lolos),
+  // jadi request cukup membawa body — tidak ada token yang diverifikasi.
+  function variantsRequest(path: string, init: { method: string; headers: Record<string, string>; body: string }) {
+    return new NextRequest(`http://localhost${path}`, init);
+  }
+
+  it("PUT menolak ubah harga varian WR (409) dan tidak menulis", async () => {
+    vi.stubEnv("PRODUCT_VARIANTS_WRITE", "true");
+    const { PUT } = await import("@/app/api/admin/variants/route");
+    const res = await PUT(variantsRequest("/api/admin/variants?id=1", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ product_id: 1, price: 99000 }),
+    }));
+    expect(res.status).toBe(409);
+    expect((await res.json()).field).toBe("price");
+    const row = fixture.sql.prepare("SELECT price FROM product_variants WHERE id=1").get() as { price: number };
+    expect(row.price).toBe(7500);
+  });
+
+  it("POST batch menolak ubah stok varian WR (409)", async () => {
+    vi.stubEnv("PRODUCT_VARIANTS_WRITE", "true");
+    const { POST } = await import("@/app/api/admin/variants/route");
+    const res = await POST(variantsRequest("/api/admin/variants", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        product_id: 1,
+        variants: [{ id: 1, product_id: 1, sku: "WR-VAR1", label: "Pro 7 Hari", price: 7500, stock: 999, is_active: 1, sort_order: 0 }],
+      }),
+    }));
+    expect(res.status).toBe(409);
+    expect((await res.json()).field).toBe("stock");
+  });
+
+  it("PUT varian manual tetap bisa diubah", async () => {
+    vi.stubEnv("PRODUCT_VARIANTS_WRITE", "true");
+    const { PUT } = await import("@/app/api/admin/variants/route");
+    const res = await PUT(variantsRequest("/api/admin/variants?id=2", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ product_id: 2, price: 8000 }),
+    }));
+    expect(res.status).toBe(200);
+    const row = fixture.sql.prepare("SELECT price FROM product_variants WHERE id=2").get() as { price: number };
+    expect(row.price).toBe(8000);
+  });
+});
+
+describe("admin_description_override (migrasi 0030)", () => {  it("admin dapat menyimpan override tanpa menyentuh deskripsi WR", async () => {
     const res = await putProduct(1, { adminDescriptionOverride: "Versi copywriting AXVARA" });
     expect(res.status).toBe(200);
     const row = fixture.sql.prepare(
