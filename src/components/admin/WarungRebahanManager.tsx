@@ -233,6 +233,10 @@ export function WarungRebahanManager() {
   };
 
   const lastLog = logs[0];
+  // logs[0] adalah sync PRODUK terakhir (endpoint memfilter baris saldo).
+  // Bila endpoint lama masih mengembalikan baris saldo (products_synced
+  // NULL), jangan tampilkan 0/0/0 — tampilkan strip agar tidak menipu.
+  const lastProductLog = lastLog && lastLog.sync_type === "products" ? lastLog : null;
   const balance = saldo.current?.balance ?? saldo.capacity?.balance ?? null;
 
   return (
@@ -262,9 +266,9 @@ export function WarungRebahanManager() {
           </div>
           <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
             <p className="text-[11px] uppercase tracking-wide text-white/40">Sync terakhir</p>
-            <p className="mt-1 text-sm font-semibold text-white">{lastLog ? `${lastLog.status} · ${formatDate(lastLog.created_at)}` : "Belum pernah"}</p>
+            <p className="mt-1 text-sm font-semibold text-white">{lastProductLog ? `${lastProductLog.status} · ${formatDate(lastProductLog.created_at)}` : lastLog ? `${lastLog.status} · ${formatDate(lastLog.created_at)}` : "Belum pernah"}</p>
             <p className="mt-1 text-[11px] text-white/40">
-              {lastLog ? `${lastLog.products_synced ?? 0} produk · ${lastLog.variants_synced ?? 0} varian · ${lastLog.products_excluded ?? 0} excluded` : "Tekan Force Sync untuk sync pertama."}
+              {lastProductLog ? `${lastProductLog.products_synced ?? 0} produk · ${lastProductLog.variants_synced ?? 0} varian · ${lastProductLog.products_excluded ?? 0} excluded` : lastLog ? "sync produk" : "Tekan Force Sync untuk sync pertama."}
             </p>
             <button onClick={() => void forceSync()} disabled={syncing} className="mt-3 inline-flex h-9 items-center gap-2 rounded-xl bg-[#00E5FF] px-3.5 text-xs font-bold text-[#07101f] transition hover:bg-[#00D0E8] disabled:opacity-40">
               {syncing ? <Spinner size={13} /> : <IosIcon name="refresh" size={13} tint="black" />}{syncing ? "Sync…" : "Force Sync Now"}

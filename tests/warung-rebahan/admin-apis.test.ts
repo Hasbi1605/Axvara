@@ -35,6 +35,20 @@ describe("admin WR APIs auth & validation", () => {
     expect(res.status).toBe(401);
   });
 
+  it("sync-log mengembalikan sync PRODUK terakhir, bukan baris saldo (kartu tidak 0/0/0)", async () => {
+    const { GET } = await import("@/app/api/admin/warung/sync-log/route");
+    const fx = fixture;
+    (fx as unknown as { sql: { exec: (s: string) => void } }).sql.exec(`INSERT INTO wr_sync_log (sync_type, status, products_total, products_synced, products_excluded, variants_synced) VALUES ('products','success',48,12,0,25)`);
+    (fx as unknown as { sql: { exec: (s: string) => void } }).sql.exec(`INSERT INTO wr_sync_log (sync_type, status, saldo_amount) VALUES ('saldo','success',10000)`);
+    (fx as unknown as { sql: { exec: (s: string) => void } }).sql.exec(`INSERT INTO wr_sync_log (sync_type, status, saldo_amount) VALUES ('saldo','success',10000)`);
+    const body = await (await GET(await adminRequest("/api/admin/warung/sync-log?limit=5") as never)).json() as { logs: { sync_type: string; products_synced: number | null }[] };
+    // Baris pertama WAJIB sync produk (12), bukan saldo (NULL) — inilah bug
+    // kartu "0 produk · 0 varian · 0 excluded" setelah login ulang.
+    expect(body.logs.length).toBeGreaterThan(0);
+    expect(body.logs[0].sync_type).toBe("products");
+    expect(body.logs[0].products_synced).toBe(12);
+  });
+
   it("exclusions: tambah + validasi + duplikat 409 + hapus", async () => {
     const { GET, POST, DELETE } = await import("@/app/api/admin/warung/exclusions/route");
     // Pasca-migrasi 0028 seed %canva%/%gemini% sudah dihapus (keputusan
