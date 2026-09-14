@@ -40,7 +40,11 @@ export async function handleCommand(
     // Clear any pending conversational state
     await clearPendingAction(from);
     await showLoadingBar(chatId, "🚀 Menyiapkan AXVARA");
-    const siteUrl = process.env.SITE_URL ?? "https://axvara.tech";
+    // SITE_URL kosong di sebagian worker (secret write-only yang belum
+    // terbaca) → URL relatif membuat Telegram menolak ("URL host is empty").
+    // Paksa absolut https axvara.tech bila env kosong.
+    const rawSite = (process.env.SITE_URL ?? "").trim().replace(/\/$/, "");
+    const siteUrl = /^https?:\/\//i.test(rawSite) ? rawSite : "https://axvara.tech";
     const bestsellers = await getBestsellers(3);
     const caption = welcomeMessage(from?.first_name ?? "Pengguna", bestsellers);
     // Foto welcome: WebP 31 KB dari public/ (bukan PNG 2,2 MB dari R2 yang

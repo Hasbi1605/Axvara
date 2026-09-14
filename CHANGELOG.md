@@ -4,6 +4,8 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area utama> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-14 — Foto /start Telegram: SITE_URL kosong di worker → URL foto relatif → Telegram "URL host is empty"; paksa absolut https + buang pesan keyboard ekstra (tanpa "Menu Cepat"/"—") + hapus endpoint debug — src/lib/telegram/handlers/command.ts — (verifikasi: telegram 69/69, tsc bersih)
+
 - 2026-09-14 — Foto welcome /start Telegram pulih: PNG R2 2,2 MB (7,8 dtk, timeout edge 10 dtk → sendPhoto gagal diam-diam) diganti WebP 31 KB di public/banners + retry 1x + fallback teks; hapus teks "Menu Cepat" (ganti "Pilih menu di bawah 👇") — public/banners/tg-welcome.webp, src/lib/telegram/handlers/command.ts, tests/telegram-bot.regression.test.ts — (verifikasi: telegram 69/69, tsc bersih)
 
 - 2026-09-14 — Telegram aktif + anti-spam notif saldo: set TELEGRAM_BOT_TOKEN/SECRET/ADMIN_CHAT_ID (grup Axvara_Notif) + webhook terdaftar (pending 0, no error); throttle low_saldo via wr_sync_state (maks 1 pesan/6 jam, ulang bila turun ≥Rp5rb) + test regresi — src/lib/warung-rebahan/saldo.ts, tests/warung-rebahan/saldo.test.ts — (verifikasi: 757/757 test, tsc bersih)
