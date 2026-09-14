@@ -40,7 +40,14 @@ export const COST_PER_WR_PRODUCT_SYNC = 3;
 export const COST_PER_WR_VARIANT_SYNC = 2;
 export const COST_WR_EXCLUSION_FETCH = 1;
 // Ukuran batch produk per run sync (bounded agar order tidak starvation).
-export const WR_SYNC_PRODUCTS_PER_RUN = 12;
+// Opsi A 2026-09-14: 48 = seluruh katalog WR saat ini dalam SATU sweep.
+// Cursor antar-run tetap disimpan sebagai fallback bila run terpotong.
+export const WR_SYNC_PRODUCTS_PER_RUN = 48;
+// Plafon tambahan khusus sync katalog (lihat raiseCeilingForCatalogSync):
+// Produk baru ~15 query/produk (upsert produk + kategori + 2 varian +
+// agregat + log) — jauh di atas estimasi admission konservatif. 48 × 16 +
+// margin = 800. Hanya untuk sync produk.
+export const WR_SYNC_CATALOG_BUDGET_EXTRA = 800;
 // Generasi: bila upstream mengembalikan data yang bentuknya berubah total
 // (mis. array kosong padahal sebelumnya 48 produk), sweep ditandai parsial.
 export const WR_SYNC_MIN_PRODUCTS_GUARD = 1;
@@ -661,6 +668,11 @@ export async function syncProducts(
   }
   // Cursor durable: lanjutkan dari posisi run sebelumnya (P0-4).
   const state = await readSyncState(db);
+  // Opsi A: longgarkan plafon KHUSUS sync katalog agar 48 produk tuntas
+  // satu sweep. Hanya bila db menyediakan hook-nya (BudgetedDatabase cron);
+  // DatabaseAccess polos (admin/test) canSpend-nya selalu true.
+  (db as unknown as { raiseCeilingForCatalogSync?: (n: number) => void })
+    .raiseCeilingForCatalogSync?.(WR_SYNC_CATALOG_BUDGET_EXTRA);
   let products: WrProduct[];
   try {
     products = await fetchFn();

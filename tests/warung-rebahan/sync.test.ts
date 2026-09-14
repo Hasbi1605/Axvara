@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createD1Fixture } from "../helpers/d1-fixture";
-import { createDatabaseAccess } from "@/lib/db-access";
+import { createBudgetedDatabase, createDatabaseAccess } from "@/lib/db-access";
 import {
   calculateSellPrice,
   generateProductSlug,
@@ -404,6 +404,34 @@ describe("Warung Rebahan product sync", () => {
         db,
       );
       expect(outcome.isNew).toBe(false);
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("Opsi A: 48 produk tuntas SATU sweep dalam budget cron (tanpa cursor parsial)", async () => {
+    const fx = createD1Fixture();
+    try {
+      // Tiru budget cron prod: 40 query, cadangan 2 → plafon 38.
+      const budget = createBudgetedDatabase(40, 2, fx.db);
+      const products = Array.from({ length: 48 }, (_, i) =>
+        fixtureProduct({
+          id: `prod-sweep-${String(i).padStart(2, "0")}`,
+          name: `Sweep Product ${i}`,
+          variants: [
+            { ...fixtureProduct().variants[0], id: `var-sweep-${i}-a`, name: "A" },
+            { ...fixtureProduct().variants[0], id: `var-sweep-${i}-b`, name: "B" },
+          ],
+        }),
+      );
+      const result = await syncProducts(budget.access, async () => products);
+      // Tanpa raiseCeiling: berhenti di ~4 produk (budgetYielded). Dengan
+      // Opsi A: seluruh 48 tuntas, cursor reset, snapshot lengkap.
+      expect(result.budgetYielded).toBe(false);
+      expect(result.synced).toBe(48);
+      expect(result.snapshotComplete).toBe(true);
+      const cursor = fx.sql.prepare("SELECT value FROM wr_sync_state WHERE key='products_cursor'").get() as Record<string, unknown>;
+      expect(String(cursor.value)).toBe("0");
     } finally {
       fx.close();
     }

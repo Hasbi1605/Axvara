@@ -4,6 +4,8 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area utama> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-14 — Sync WR satu sweep (Opsi A): budget khusus katalog +800 query (produk baru ~15 query, bukan estimasi 8,6) + cap 12→48; cursor tetap fallback; jalur order/fulfillment tetap budget 40 — src/lib/db-access.ts, src/lib/warung-rebahan/sync.ts, tests/warung-rebahan/sync.test.ts — (verifikasi: 758/758 test, tsc bersih)
+
 - 2026-09-14 — Kartu sync tidak 0/0/0 setelah login ulang: endpoint sync-log memfilter baris saldo (products_synced NULL) + UI pakai sync produk terakhir + test regresi — src/app/api/admin/warung/sync-log/route.ts, src/components/admin/WarungRebahanManager.tsx, tests/warung-rebahan/admin-apis.test.ts — (verifikasi: 758/758 test, tsc bersih)
 
 - 2026-09-14 — Rangkuman insiden 14 Sep + aturan anti-ulang: ARCHITECTURE §16 (proxy WR terpisah 2 akun, env wajib secret_text, larang redeploy wrangler tanpa direktori, SITE_URL absolut, ekosistem 5 folder) + README handoff + `.heroku-credentials` 2 akun (git-ignored) — docs/ARCHITECTURE.md, README.md, .heroku-credentials, .gitignore, AGENTS.md — (verifikasi: 757/757 test, tsc bersih, dev GET / 200 + CSS 200, akses Heroku akun1+akun2 via file OK)

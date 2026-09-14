@@ -67,8 +67,19 @@ export function createBudgetedDatabase(limit = 40, reserveTail = 2, base = getD1
     }
   }
   access.canSpend = (n) => used + n <= ceiling;
+  const raiseCeilingForCatalogSync = (extra: number) => { ceiling += Math.max(0, Math.floor(extra)); };
+  // Tempel di access juga (bukan hanya di wrapper): syncProducts menerima
+  // DatabaseAccess, bukan wrapper budget — tanpa ini hook tak ditemukan.
+  (access as unknown as { raiseCeilingForCatalogSync?: (n: number) => void })
+    .raiseCeilingForCatalogSync = raiseCeilingForCatalogSync;
   return { access, get used() { return used; }, get remaining() { return ceiling - used; },
     fits: (n: number) => access.canSpend(n),
     beginTail: () => { ceiling = limit; },
+    /** Longgarkan plafon khusus sync katalog (Opsi A 2026-09-14): sweep 48
+     * produk butuh ~410 query, jauh di atas budget cron 40. Hanya dipakai
+     * jalur sync produk WR — JANGAN untuk order/fulfillment (pelindung
+     * exactly-once harus tetap ketat). D1 free 5jt reads + 100rb writes/hari;
+     * satu sweep ~1.000 reads + ~200 writes (<2% kuota). */
+    raiseCeilingForCatalogSync,
   };
 }
