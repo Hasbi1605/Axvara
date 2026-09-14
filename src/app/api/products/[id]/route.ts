@@ -3,6 +3,13 @@ import { z } from "zod";
 import { queryFirst, queryAll, execRun, getD1, isD1Mode } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
 import { rateLimit, rateLimitKey } from "@/lib/rateLimit";
+import {
+  WR_OWNED_PRODUCT_FIELDS,
+  WR_OWNED_VARIANT_FIELDS,
+  WR_OWNERSHIP_MESSAGE,
+  findWrOwnedViolation,
+  isWrManaged,
+} from "@/lib/warung-rebahan/ownership";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -19,7 +26,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
   const variants = await queryAll(
     `SELECT id, product_id, sku, label, duration_value, duration_unit, duration_label,
             warranty_type, warranty_value, warranty_unit, warranty_label,
-            price, compare_price, stock, fulfillment_mode, is_active, sort_order
+            price, compare_price, stock, fulfillment_mode, is_active, sort_order, wr_auto_managed
      FROM product_variants
      WHERE product_id=? AND is_active=1
      ORDER BY sort_order ASC, price ASC, id ASC`,
@@ -33,7 +40,11 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
       name: row.name,
       whatsappAlias: String(row.whatsapp_alias || "").trim() || undefined,
       aliases,
-      description: row.description ?? "",
+      description: row.admin_description_override ?? row.description ?? "",
+      // Admin perlu melihat kedua teks agar tahu mana yang sedang tampil.
+      wrDescription: row.description ?? "",
+      adminDescriptionOverride: (row.admin_description_override as string | null) ?? null,
+      wrManaged: isWrManaged(row),
       price: row.price,
       comparePrice: row.compare_price ?? undefined,
       categorySlug: row.cat_slug as string,
@@ -75,6 +86,7 @@ const updateSchema = z.object({
   name: z.string().trim().min(3).max(120).optional(),
   slug: z.string().trim().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).min(3).max(80).optional(),
   description: z.string().trim().max(2000).optional(),
+  adminDescriptionOverride: z.string().trim().max(2000).nullable().optional(),
   whatsappAlias: z.string().trim().max(50).nullable().optional(),
   price: z.coerce.number().int().min(0).max(999_999_999).optional(),
   comparePrice: z.coerce.number().int().min(0).max(999_999_999).nullable().optional(),
@@ -100,10 +112,37 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
   const data = parsed.data;
   const existing = await queryFirst(
-    "SELECT id, price, compare_price, stock FROM products WHERE id=?",
+    "SELECT id, name, slug, description, price, compare_price, stock, source, wr_auto_managed FROM products WHERE id=?",
     id,
-  ) as { id: number; price: number; compare_price: number | null; stock: number } | undefined;
+  ) as { id: number; name: string; slug: string; description: string | null; price: number; compare_price: number | null; stock: number; source?: string; wr_auto_managed?: number } | undefined;
   if (!existing) return NextResponse.json({ error: "not found" }, { status: 404 });
+  // Produk WR: tolak perubahan field milik sync SEBELUM menulis apa pun.
+  // Tanpa guard ini, edit admin tampak tersimpan lalu hilang diam-diam di
+  // sweep berikutnya. Foto, badge, sort order, aktif/nonaktif, dan
+  // admin_description_override tetap boleh diubah.
+  if (isWrManaged(existing)) {
+    const violation = findWrOwnedViolation(
+      data as Record<string, unknown>,
+      existing as unknown as Record<string, unknown>,
+      WR_OWNED_PRODUCT_FIELDS,
+    );
+    if (violation) return NextResponse.json({ error: WR_OWNERSHIP_MESSAGE, field: violation }, { status: 409 });
+    if (Array.isArray(data.variants)) {
+      const wrVariants = await queryAll(
+        `SELECT id, label, price, compare_price, stock, duration_value, duration_unit, duration_label,
+                warranty_type, warranty_value, warranty_unit, warranty_label
+         FROM product_variants WHERE product_id=? AND wr_auto_managed=1`,
+        Number(id),
+      ) as Record<string, unknown>[];
+      const byId = new Map(wrVariants.map((v) => [Number(v.id), v]));
+      for (const incoming of data.variants) {
+        const current = incoming.id ? byId.get(Number(incoming.id)) : undefined;
+        if (!current) continue;
+        const violated = findWrOwnedViolation(incoming as Record<string, unknown>, current, WR_OWNED_VARIANT_FIELDS);
+        if (violated) return NextResponse.json({ error: WR_OWNERSHIP_MESSAGE, field: violated }, { status: 409 });
+      }
+    }
+  }
   if (data.isActive === true && isD1Mode()) {
     const activeVariant = await queryFirst(
       "SELECT id FROM product_variants WHERE product_id=? AND is_active=1 LIMIT 1",
@@ -176,7 +215,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (data.imageUrl && !urlOk(data.imageUrl)) return NextResponse.json({ error: "URL gambar utama tidak diizinkan" }, { status: 400 });
   const fields: string[] = [];
   const vals: unknown[] = [];
-  const map: Record<string,string> = { name:"name", slug:"slug", description:"description", whatsappAlias:"whatsapp_alias", price:"price", comparePrice:"compare_price", imageUrl:"image_url", badge:"badge", soldCount:"sold_count", stock:"stock", isActive:"is_active", sortOrder:"sort_order" };
+  const map: Record<string,string> = { name:"name", slug:"slug", description:"description", adminDescriptionOverride:"admin_description_override", whatsappAlias:"whatsapp_alias", price:"price", comparePrice:"compare_price", imageUrl:"image_url", badge:"badge", soldCount:"sold_count", stock:"stock", isActive:"is_active", sortOrder:"sort_order" };
   if (data.categorySlug) {
     const cat = await queryFirst("SELECT id FROM categories WHERE slug=?", data.categorySlug) as { id:number }|undefined;
     if (cat) { fields.push("category_id=?"); vals.push(cat.id); }
@@ -193,6 +232,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       else if (k==="imageUrl") { fields.push(`${col}=?`); vals.push((v as string | null) ?? null); }
       else if (k==="whatsappAlias") { fields.push(`${col}=?`); vals.push(String(v || "").trim() || null); }
       else if (k==="comparePrice") { fields.push(`${col}=?`); vals.push(v ? Number(v) : null); }
+      // String kosong = admin menghapus override → kembali ke deskripsi WR.
+      else if (k==="adminDescriptionOverride") { fields.push(`${col}=?`); vals.push(String(v ?? "").trim() || null); }
       else { fields.push(`${col}=?`); vals.push(v); }
     }
   }

@@ -144,7 +144,15 @@ export function WarungRebahanManager() {
       const res = await fetch("/api/admin/warung/sync", { method: "POST" });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || "Sync gagal");
-      toast.success(`Sync selesai: ${body.synced} produk, ${body.variantsSynced} varian.`);
+      const ringkas = `${body.synced} produk, ${body.variantsSynced} varian`;
+      const errors: string[] = Array.isArray(body.errors) ? body.errors : [];
+      if (body.status === "failed") throw new Error(errors[0] || "Sync gagal tanpa satu pun produk tersimpan.");
+      else if (body.status === "partial") {
+        // Sukses palsu dihapus: batch yang berhenti karena budget atau menyimpan
+        // error harus terlihat berbeda dari sync yang benar-benar tuntas.
+        const sebab = errors.length ? `${errors.length} error — ${errors[0]}` : "berhenti di batas budget, lanjut otomatis di cron berikutnya";
+        toast.error(`Sync sebagian: ${ringkas}. ${sebab}`);
+      } else toast.success(`Sync selesai: ${ringkas}.`);
       await Promise.all([loadLogs(), loadSaldo()]);
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : "Sync gagal");

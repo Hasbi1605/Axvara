@@ -247,6 +247,9 @@ export async function upsertWrProduct(
           wrProduct.id,
         );
         await execRun(
+          // Hanya `description` (milik WR). `admin_description_override`
+          // TIDAK PERNAH disentuh sync — itu kolom milik admin (migrasi 0030)
+          // dan storefront memprioritaskannya saat terisi.
           `UPDATE products SET description=?, updated_at=datetime('now') WHERE id=?`,
           (wrProduct as { description?: string }).description ?? null,
           linked,

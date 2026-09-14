@@ -212,9 +212,31 @@ nomor WA + capability token. Blueprint: `docs/WARUNG-REBAHAN-INTEGRATION.md`; ar
 Opsi A (disarankan): API key dipegang proxy Heroku — Pages cukup
 `WARUNG_REBAHAN_PROXY_URL` + `WARUNG_REBAHAN_PROXY_TOKEN`.
 
+**Kepemilikan field produk WR.** Produk hasil sync (`wr_auto_managed=1`) hanya
+bisa diubah sebagian dari admin: foto, badge, kategori, urutan, aktif/nonaktif,
+dan **Deskripsi khusus (override)**. Nama, slug, deskripsi WR, harga, stok,
+label varian, durasi, dan garansi dimiliki sync dan ditolak API dengan 409 —
+markup diubah di tab **Warung Rebahan**. Deskripsi override disimpan di
+`products.admin_description_override` (migrasi 0030), tidak pernah ditimpa
+sync, dan menjadi teks yang tampil di storefront saat terisi. Badge "WR" hanya
+muncul di editor admin; storefront tidak menampilkan penanda WR.
+
+**Handoff operasional Heroku + Cloudflare.** Dyno `axvara-wa-gateway` memegang
+API key WR dan menjadi satu-satunya sumber IP egress yang di-whitelist WR. IP
+dyno Common Runtime **dapat berubah saat restart/redeploy**: setelah setiap
+restart, cek `GET /wr/egress-ip` pada gateway dan perbarui satu IP di dashboard
+WR, atau pindah ke static-egress (Fixie) / VPS ber-IP reserved untuk
+menghilangkan perawatan manual ini. Cloudflare Pages tidak boleh memegang API
+key WR; yang disimpan di Pages hanya URL + token proxy dan
+`WARUNG_REBAHAN_WEBHOOK_SECRET` untuk verifikasi HMAC. Kredensial Cloudflare
+manual diambil dari `.cf-credentials` (git-ignored); CI/CD memakai GitHub
+Actions Secrets.
+
 ---
 
-Panel admin memuat produk, kategori, dan ringkasan setelah autentikasi. Callback pemuatan memakai dependency setter sesi yang stabil agar perpindahan menu dan render ulang biasa tidak memicu pengambilan data tanpa henti.
+Panel admin memuat produk, kategori, dan ringkasan setelah autentikasi. Aksi toast memakai identitas yang stabil seumur provider, sehingga satu error fetch tidak lagi membentuk rantai toast → rerender → fetch ulang. Login memuat data tepat sekali (transisi sesi adalah satu-satunya pemicu), dan hanya `401` yang mengakhiri sesi — respons `5xx` atau kegagalan jaringan tidak menendang admin ke gerbang login.
+
+Katalog storefront menampilkan 12 produk lebih dulu dengan tombol **"Tampilkan N produk lagi"** (bukan nomor halaman), produk ready diurutkan di depan sementara produk stok habis tetap tampil di belakang, dan harga kartu diambil dari varian termurah yang **masih tersedia**.
 
 ## ▶️ Jalankan Local (dev-only, tanpa build tiap ubahan)
 

@@ -29,7 +29,12 @@ async function makePasswordProof(password: string, config: LoginChallenge): Prom
   return hexFromBytes(new Uint8Array(await crypto.subtle.sign("HMAC", hmacKey, encoder.encode(config.challenge))));
 }
 
-export function useAdminAuth(toast: AdminToast, onAuthenticated: () => void | Promise<void>) {
+// Pemanggil TIDAK lagi mengoper callback "muat data setelah login". Dulu login
+// sukses memanggil callback itu SEKALIGUS menyalakan `authed`, sedangkan
+// effect pemilik juga memuat saat `authed` menyala — setiap login menembak
+// /api/products, /api/categories, dan /api/admin/overview dua kali. Sekarang
+// hook ini hanya mengurus sesi; transisi `authed` adalah satu-satunya pemicu.
+export function useAdminAuth(toast: AdminToast) {
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [authed, setAuthed] = useState(false);
   const [authEmail, setAuthEmail] = useState("");
@@ -50,19 +55,22 @@ export function useAdminAuth(toast: AdminToast, onAuthenticated: () => void | Pr
       const r = await fetch("/api/auth/me", { cache: "no-store" });
       const j = await r.json().catch(()=>({}));
       if (r.ok && j.authed) { sessionEndedRef.current = false; setAuthed(true); setAuthEmail(j.email || ""); }
-      else {
+      else if (r.ok) setAuthed(false);
+      else if (r.status === 401) {
         setAuthed(false);
-        if (r.status === 401) {
-          // Tandai SEBELUM toast agar panggilan bersamaan yang sudah
-          // terlanjur jalan tidak ikut mendorong toast kedua dst.
-          sessionEndedRef.current = true;
-          if (j.reason === "idle_timeout") toast.error("Sesi habis karena 2 jam tidak aktif. Silakan login ulang.");
-          else if (j.reason === "revoked") toast.error("Sesi dicabut (kredensial berubah). Silakan login ulang.");
-          else if (j.reason === "session_mismatch") toast.error("Sesi tidak cocok. Silakan login ulang.");
-          // 401 tanpa reason (absolute 8h / belum login) — diam ke gerbang login.
-        }
+        // Tandai SEBELUM toast agar panggilan bersamaan yang sudah
+        // terlanjur jalan tidak ikut mendorong toast kedua dst.
+        sessionEndedRef.current = true;
+        if (j.reason === "idle_timeout") toast.error("Sesi habis karena 2 jam tidak aktif. Silakan login ulang.");
+        else if (j.reason === "revoked") toast.error("Sesi dicabut (kredensial berubah). Silakan login ulang.");
+        else if (j.reason === "session_mismatch") toast.error("Sesi tidak cocok. Silakan login ulang.");
+        // 401 tanpa reason (absolute 8h / belum login) — diam ke gerbang login.
       }
-    } catch { setAuthed(false); }
+      // Status lain (5xx, 502 dari edge, HTML error page) BUKAN bukti sesi
+      // berakhir. Mengeluarkan admin di sini membuat satu hiccup backend
+      // terasa seperti "login berhasil lalu keluar lagi". Biarkan state sesi
+      // apa adanya; 401 yang berwenang mengakhirinya.
+    } catch { /* Network error: tahan state sesi, jangan paksa logout. */ }
     finally { setCheckingAuth(false); }
   },[toast]);
 
@@ -125,7 +133,6 @@ export function useAdminAuth(toast: AdminToast, onAuthenticated: () => void | Pr
       setAuthEmail(j.email || email.trim());
       setPass("");
       toast.success("Berhasil masuk.");
-      await onAuthenticated();
     } catch (e) {
       setLoginError(e instanceof Error ? e.message : "Gagal masuk");
     } finally { setLoginLoading(false); }

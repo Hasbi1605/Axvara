@@ -64,7 +64,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
   },[onUnauthorized]);
 
   const openEdit = async (p: Prod) => {
-    const nextForm = { ...p, categorySlug: p.categorySlug };
+    const nextForm: ProductForm = { ...p, categorySlug: p.categorySlug };
     const nextImages = p.images?.length ? p.images : p.image ? [p.image] : [];
     setEditing(p);
     setShowNew(false);
@@ -78,9 +78,21 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
       let rawVars: FormVariant[] = [];
       const prodRes = await fetch(`/api/products/${p.id}`);
       if (prodRes.ok) {
-        const prodData = (await prodRes.json().catch(() => ({}))) as { product?: { variants?: FormVariant[] } };
+        const prodData = (await prodRes.json().catch(() => ({}))) as {
+          product?: { variants?: FormVariant[]; wrDescription?: string; adminDescriptionOverride?: string | null; wrManaged?: boolean };
+        };
         if (Array.isArray(prodData.product?.variants) && prodData.product.variants.length > 0) {
           rawVars = prodData.product.variants;
+        }
+        // Daftar produk mengirim deskripsi yang TAMPIL (override bila ada).
+        // Editor harus memisahkan keduanya: teks WR di kolom Deskripsi,
+        // teks admin di kolom override — kalau tidak, menyimpan ulang akan
+        // menyalin override ke kolom milik WR.
+        if (prodData.product) {
+          nextForm.description = prodData.product.wrDescription ?? nextForm.description;
+          nextForm.adminDescriptionOverride = prodData.product.adminDescriptionOverride ?? "";
+          nextForm.wrManaged = Boolean(prodData.product.wrManaged);
+          setForm({ ...nextForm });
         }
       }
 
@@ -107,6 +119,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
         warranty_unit: v.warranty_unit,
         warranty_label: v.warranty_label,
         is_active: v.is_active ?? 1,
+        wr_auto_managed: (v as Record<string, unknown>).wr_auto_managed as number | undefined,
       }));
       setFormVariants(mapped);
       setProductInitialSignature(productFormSignature(nextForm, nextImages, isMulti, mapped));
@@ -217,6 +230,10 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
       name: form.name!.trim(),
       slug: form.slug!.trim().toLowerCase(),
       description: (form.description ?? "").trim(),
+      adminDescriptionOverride: form.wrManaged ? (form.adminDescriptionOverride ?? "").trim() : undefined,
+      // Field milik WR tidak pernah dikirim ulang untuk produk auto-managed:
+      // server menolaknya dengan 409 dan nilainya toh ditimpa sync berikutnya.
+      wrManaged: undefined,
       // FIX Canva 409: mode varian jangan kirim kolom legacy sama sekali.
       // Server menghitung ulang master price/stock/compare dari varian aktif,
       // sehingga nilai pendamping (min price, -1, null) tak lagi dibaca

@@ -1,0 +1,189 @@
+// tests/warung-rebahan/ownership.regression.test.ts — Kepemilikan field produk WR.
+//
+// Masalah yang dikunci:
+//  1. Admin bisa mengedit harga/stok/label varian produk WR; tersimpan, lalu
+//     hilang diam-diam di sweep sync berikutnya. Validasi harus di API,
+//     karena disable input UI tidak mengikat agent CMS / curl / tab lama.
+//  2. Deskripsi produk WR ditimpa tiap sync, jadi copywriting admin hilang.
+//     Kolom `admin_description_override` (migrasi 0030) memberi admin teks
+//     sendiri yang TIDAK PERNAH disentuh sync dan diprioritaskan storefront.
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { NextRequest } from "next/server";
+import { createD1Fixture } from "../helpers/d1-fixture";
+import { createDatabaseAccess } from "@/lib/db-access";
+import { upsertWrProduct } from "@/lib/warung-rebahan/sync";
+import type { WrProduct } from "@/lib/warung-rebahan/client";
+
+vi.mock("@/lib/auth", () => ({ requireAdmin: vi.fn(async () => ({ email: "fixture@example.test" })) }));
+
+let fixture: ReturnType<typeof createD1Fixture>;
+
+beforeEach(() => {
+  fixture = createD1Fixture();
+  vi.stubGlobal("fetch", vi.fn(() => { throw new Error("External network disabled"); }));
+  // Produk WR auto-managed dengan satu varian WR.
+  fixture.sql.prepare(
+    `INSERT INTO products (id, category_id, name, slug, description, price, stock, is_active, sort_order,
+                           source, wr_product_id, wr_auto_managed)
+     VALUES (1, 2, 'CapCut Pro (WR)', 'capcut-pro-wr', 'Deskripsi dari WR', 7500, 10, 1, 0,
+             'warung_rebahan', 'prod-capcut', 1)`,
+  ).run();
+  fixture.sql.prepare(
+    `INSERT INTO product_variants (id, product_id, sku, label, price, stock, is_active, sort_order, wr_variant_id, wr_auto_managed)
+     VALUES (1, 1, 'WR-VAR1', 'Pro 7 Hari', 7500, 10, 1, 0, 'var-1', 1)`,
+  ).run();
+  // Produk manual sebagai kontrol: tidak boleh ikut terkunci.
+  fixture.sql.prepare(
+    `INSERT INTO products (id, category_id, name, slug, description, price, stock, is_active, sort_order)
+     VALUES (2, 2, 'Produk Manual', 'produk-manual', 'Punya admin', 5000, -1, 1, 1)`,
+  ).run();
+  fixture.sql.prepare(
+    `INSERT INTO product_variants (id, product_id, sku, label, price, stock, is_active, sort_order)
+     VALUES (2, 2, 'MANUAL-1', 'Paket 1', 5000, -1, 1, 0)`,
+  ).run();
+});
+
+afterEach(() => {
+  fixture.close();
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+});
+
+async function putProduct(id: number, body: Record<string, unknown>) {
+  const { PUT } = await import("@/app/api/products/[id]/route");
+  const request = new NextRequest(`http://localhost/api/products/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return PUT(request, { params: Promise.resolve({ id: String(id) }) });
+}
+
+describe("produk WR: field milik sync ditolak di API", () => {
+  it("menolak ubah harga varian WR dengan 409 dan TIDAK menulis apa pun", async () => {
+    const res = await putProduct(1, {
+      name: "CapCut Pro (WR)",
+      slug: "capcut-pro-wr",
+      variants: [{ id: 1, sku: "WR-VAR1", label: "Pro 7 Hari", price: 99000, stock: 10, is_active: 1, sort_order: 0 }],
+    });
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.field).toBe("price");
+    const row = fixture.sql.prepare("SELECT price FROM product_variants WHERE id=1").get() as { price: number };
+    expect(row.price).toBe(7500);
+  });
+
+  it("menolak ubah stok dan label varian WR", async () => {
+    const stok = await putProduct(1, {
+      variants: [{ id: 1, sku: "WR-VAR1", label: "Pro 7 Hari", price: 7500, stock: 999, is_active: 1, sort_order: 0 }],
+    });
+    expect(stok.status).toBe(409);
+    expect((await stok.json()).field).toBe("stock");
+
+    const label = await putProduct(1, {
+      variants: [{ id: 1, sku: "WR-VAR1", label: "Label Karangan Admin", price: 7500, stock: 10, is_active: 1, sort_order: 0 }],
+    });
+    expect(label.status).toBe(409);
+    expect((await label.json()).field).toBe("label");
+  });
+
+  it("menolak ubah nama dan deskripsi produk WR", async () => {
+    const nama = await putProduct(1, { name: "Nama Baru Admin" });
+    expect(nama.status).toBe(409);
+    expect((await nama.json()).field).toBe("name");
+
+    const desc = await putProduct(1, { description: "Deskripsi tulisan admin" });
+    expect(desc.status).toBe(409);
+    expect((await desc.json()).field).toBe("description");
+  });
+
+  it("MENGIZINKAN field milik admin: badge, foto, sort order, aktif/nonaktif", async () => {
+    const res = await putProduct(1, {
+      badge: "Terlaris",
+      sortOrder: 7,
+      isActive: true,
+      images: ["https://images.unsplash.com/photo-1?w=600"],
+    });
+    expect(res.status).toBe(200);
+    const row = fixture.sql.prepare("SELECT badge, sort_order FROM products WHERE id=1").get() as { badge: string; sort_order: number };
+    expect(row.badge).toBe("Terlaris");
+    expect(row.sort_order).toBe(7);
+  });
+
+  it("mengirim ulang nilai WR yang SAMA bukan pelanggaran (form admin kirim utuh)", async () => {
+    const res = await putProduct(1, {
+      name: "CapCut Pro (WR)",
+      slug: "capcut-pro-wr",
+      description: "Deskripsi dari WR",
+      badge: "Hemat",
+      variants: [{ id: 1, sku: "WR-VAR1", label: "Pro 7 Hari", price: 7500, stock: 10, is_active: 1, sort_order: 0 }],
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("produk manual tidak ikut terkunci", async () => {
+    const res = await putProduct(2, {
+      name: "Produk Manual Baru",
+      description: "Deskripsi baru",
+      variants: [{ id: 2, sku: "MANUAL-1", label: "Paket Baru", price: 9000, stock: -1, is_active: 1, sort_order: 0 }],
+    });
+    expect(res.status).toBe(200);
+    const row = fixture.sql.prepare("SELECT price, label FROM product_variants WHERE id=2").get() as { price: number; label: string };
+    expect(row.price).toBe(9000);
+    expect(row.label).toBe("Paket Baru");
+  });
+});
+
+describe("admin_description_override (migrasi 0030)", () => {
+  it("admin dapat menyimpan override tanpa menyentuh deskripsi WR", async () => {
+    const res = await putProduct(1, { adminDescriptionOverride: "Versi copywriting AXVARA" });
+    expect(res.status).toBe(200);
+    const row = fixture.sql.prepare(
+      "SELECT description, admin_description_override FROM products WHERE id=1",
+    ).get() as { description: string; admin_description_override: string };
+    expect(row.description).toBe("Deskripsi dari WR");
+    expect(row.admin_description_override).toBe("Versi copywriting AXVARA");
+  });
+
+  it("override string kosong menghapus override (kembali ke deskripsi WR)", async () => {
+    await putProduct(1, { adminDescriptionOverride: "Sementara" });
+    const res = await putProduct(1, { adminDescriptionOverride: "" });
+    expect(res.status).toBe(200);
+    const row = fixture.sql.prepare("SELECT admin_description_override FROM products WHERE id=1").get() as { admin_description_override: string | null };
+    expect(row.admin_description_override).toBeNull();
+  });
+
+  it("sync WR memperbarui description TAPI TIDAK PERNAH menimpa override", async () => {
+    fixture.sql.prepare("UPDATE products SET admin_description_override='Punya admin' WHERE id=1").run();
+    fixture.sql.prepare(
+      "INSERT INTO wr_products(wr_product_id, wr_product_name, axvara_product_id) VALUES('prod-capcut','CapCut Pro',1)",
+    ).run();
+    const wrProduct: WrProduct = {
+      id: "prod-capcut",
+      name: "CapCut Pro",
+      category: "Productivity",
+      description: "Deskripsi WR yang diperbarui upstream",
+      variants: [],
+    } as unknown as WrProduct;
+    await upsertWrProduct(wrProduct, { excluded: false, reason: null }, createDatabaseAccess(fixture.db));
+    const row = fixture.sql.prepare(
+      "SELECT description, admin_description_override FROM products WHERE id=1",
+    ).get() as { description: string; admin_description_override: string };
+    expect(row.description).toBe("Deskripsi WR yang diperbarui upstream");
+    expect(row.admin_description_override).toBe("Punya admin");
+  });
+
+  it("GET produk memisahkan teks WR dan override; storefront memakai override", async () => {
+    fixture.sql.prepare("UPDATE products SET admin_description_override='Teks tampil' WHERE id=1").run();
+    const { GET } = await import("@/app/api/products/[id]/route");
+    const detail = await GET(
+      new NextRequest("http://localhost/api/products/1"),
+      { params: Promise.resolve({ id: "1" }) },
+    );
+    const body = await detail.json();
+    expect(body.product.description).toBe("Teks tampil");
+    expect(body.product.wrDescription).toBe("Deskripsi dari WR");
+    expect(body.product.adminDescriptionOverride).toBe("Teks tampil");
+    expect(body.product.wrManaged).toBe(true);
+  });
+});

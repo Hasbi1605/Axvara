@@ -8,6 +8,7 @@ type Props = {
   placeholder?: string;
   className?: string;
   allowEmpty?: boolean;
+  readOnly?: boolean;
 };
 
 function formatThousands(num: number | null | undefined): string {
@@ -21,6 +22,7 @@ export function MoneyInput({
   placeholder = "0",
   className = "",
   allowEmpty = false,
+  readOnly = false,
 }: Props) {
   const [displayValue, setDisplayValue] = React.useState<string>(formatThousands(value));
 
@@ -47,6 +49,7 @@ export function MoneyInput({
       inputMode="numeric"
       value={displayValue}
       onChange={handleChange}
+      readOnly={readOnly}
       placeholder={placeholder}
       className={className}
     />
