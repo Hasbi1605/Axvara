@@ -50,6 +50,40 @@ describe("Warung Rebahan saldo monitor", () => {
     }
   });
 
+  it("notifikasi saldo rendah di-throttle (tidak spam tiap cek)", async () => {
+    const fx = createD1Fixture();
+    try {
+      vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
+      vi.stubEnv("WARUNG_REBAHAN_API_KEY", "k");
+      vi.stubEnv("WARUNG_REBAHAN_SALDO_ALERT_THRESHOLD", "50000");
+      vi.stubEnv("TELEGRAM_BOT_ENABLED", "true");
+      vi.stubEnv("TELEGRAM_ADMIN_CHAT_ID", "-1000");
+      vi.stubEnv("TELEGRAM_BOT_TOKEN", "t");
+      const sent: unknown[] = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: unknown) => {
+          if (String(url).includes("api.telegram.org")) {
+            sent.push(url);
+            return { ok: true, json: async () => ({ ok: true, result: {} }) };
+          }
+          return {
+            ok: true,
+            json: async () => ({ success: true, message: "ok", data: { balance: 10000, currency: "IDR" } }),
+          };
+        }),
+      );
+      const db = createDatabaseAccess(fx.db);
+      await checkAndLogSaldo(db);
+      await checkAndLogSaldo(db);
+      await checkAndLogSaldo(db);
+      // 3x cek saldo sama dalam <6 jam → hanya 1 notifikasi (skenario 8 pesan duplikat).
+      expect(sent.length).toBe(1);
+    } finally {
+      fx.close();
+    }
+  });
+
   it("saldo cukup tidak isLow", async () => {
     const fx = createD1Fixture();
     try {

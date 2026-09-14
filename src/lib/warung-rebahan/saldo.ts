@@ -32,7 +32,30 @@ export async function checkAndLogSaldo(
   const threshold = getSaldoThreshold();
   const isLow = amount < threshold;
   if (isLow) {
-    await notifyLowSaldo(amount, threshold).catch(() => undefined);
+    // Throttle: spam 8 pesan identik terjadi saat cek manual berulang +
+    // cron per jam. State disimpan di wr_sync_state (bukan wr_saldo_log
+    // yang CHECK-constraint source-nya menolak nilai baru) agar survive
+    // restart/isolate. Kirim ulang hanya bila (a) belum pernah kirim dalam
+    // 6 jam terakhir, atau (b) saldo TURUN melewati kelipatan Rp5.000.
+    const shouldNotify = await db.queryFirst(
+      `SELECT value FROM wr_sync_state WHERE key='low_saldo_notified'`,
+    ).then((row) => {
+      if (!row?.value) return true;
+      const [lastBalanceStr, lastTsStr] = String(row.value).split("|");
+      const lastBalance = Number(lastBalanceStr);
+      const lastTs = Number(lastTsStr);
+      if (!Number.isFinite(lastBalance) || !Number.isFinite(lastTs)) return true;
+      if (lastTs < Date.now() - 6 * 60 * 60 * 1000) return true;
+      return amount <= Math.floor(lastBalance / 5000) * 5000 - 5000;
+    }).catch(() => true);
+    if (shouldNotify) {
+      await notifyLowSaldo(amount, threshold).catch(() => undefined);
+      await db.execRun(
+        `INSERT INTO wr_sync_state (key, value) VALUES ('low_saldo_notified',?)
+         ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+        `${amount}|${Date.now()}`,
+      ).catch(() => undefined);
+    }
   }
   await db.execRun(
     `INSERT INTO wr_sync_log (sync_type, status, saldo_amount, duration_ms)

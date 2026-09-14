@@ -4,6 +4,8 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area utama> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-14 — Telegram aktif + anti-spam notif saldo: set TELEGRAM_BOT_TOKEN/SECRET/ADMIN_CHAT_ID (grup Axvara_Notif) + webhook terdaftar (pending 0, no error); throttle low_saldo via wr_sync_state (maks 1 pesan/6 jam, ulang bila turun ≥Rp5rb) + test regresi — src/lib/warung-rebahan/saldo.ts, tests/warung-rebahan/saldo.test.ts — (verifikasi: 757/757 test, tsc bersih)
+
 - 2026-09-14 — Login admin prod pulih: ADMIN_EMAIL tertulis nama-key bukan alamat (challenge JWT mengikat email salah → proof 401 walau password benar); perbaiki + reset hash PBKDF2; juga: env Pages wajib secret_text, DANA QRIS + WA tersambung, folder axvara-wr-proxy permanen + axvara-tg-bot — Cloudflare Pages env — (verifikasi: login 200 adamimin@axvara.tech, /me authed:true, QRIS muncul di quote, WR balance via proxy 200)
 
 - 2026-09-14 — Pulihkan prod pasca-rollback redeploy: env Pages wajib `secret_text` (plain_text tidak terbawa deploy — terbukti FLAG hilang tiap deploy), set DANA QRIS (payload+secret dari axvara-qris-gateway/.env) + sambung WA (salin AXVARA_WEBHOOK_TOKEN gateway→WHATSAPP_WEBHOOK_TOKEN + URL+nomor bot) + PRODUCT_VARIANTS_READ + 2 var proxy WR sebagai secret; catat ekosistem 5 folder di AGENTS.md (tambah axvara-tg-bot untuk kredensial Telegram) + folder permanen axvara-wr-proxy (pindah dari /tmp) — AGENTS.md (5 folder), Cloudflare Pages env — (verifikasi: CI success; live varian Canva 3 baris + coret, badge, load-more, login pbkdf2-proof 200)
