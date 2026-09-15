@@ -38,6 +38,24 @@ Setiap kali mengubah kode di `axvara/`, **WAJIB update test yang terpengaruh** s
 - Jangan menghapus test tanpa alasan — update assertion agar sesuai perilaku baru.
 - Test harus **hijau seluruhnya** sebelum push. Jangan hardcode angka di aturan ini — jumlah terbaru selalu ada di entri teratas `CHANGELOG.md`, dan angka yang ditulis di sini akan usang dalam beberapa commit.
 
+## Aturan Dokumentasi (WAJIB — bukan cuma changelog)
+Setiap perubahan perilaku/kontrak/env/arsitektur WAJIB dicatat di SEMUA dokumen
+yang relevan dalam PR/commit yang sama — bukan cuma `CHANGELOG.md`:
+
+| Jenis perubahan | Dokumen yang WAJIB ikut di-update |
+|---|---|
+| Perilaku produk / requirement / flow / payment spec | `docs/PRD.md` (tandai ✅ live / ubah status) + `CHANGELOG.md` |
+| Token warna, font, layout, komponen, animasi, aset visual | `docs/DESIGN.md` + `CHANGELOG.md` |
+| Struktur folder, route `src/app/*`, komponen storefront, `drizzle/schema.sql` atau migrasi baru, `wrangler.json`, flow checkout/admin, kontrak bot/webhook, env baru, cron, flag | `docs/ARCHITECTURE.md` + `README.md` (bagian terkait) + `CHANGELOG.md` |
+| Env Pages baru/diubah, kredensial, handoff Heroku/Cloudflare | `docs/ARCHITECTURE.md` §16 + `README.md` + AGENTS.md folder terkait |
+| Kontrak antar-repo (proxy/gateway/bot/QRIS) | AGENTS.md di SEMUA folder yang terpengaruh |
+
+Aturan: (1) Dokumen adalah spec hidup — kode yang menyimpang dari docs = bug docs
+yang harus dibetulkan di commit yang sama; (2) Dilarang menulis docs basi
+("Pre-Build", "rencana", "segera") untuk perilaku yang sudah live — tandai
+tanggal + status live; (3) Checklist sebelum selesai memeriksa butir dokumentasi,
+bukan cuma test.
+
 ## Aturan Changelog (WAJIB — khusus axvara)
 Setiap kali ubah kode/docs di `axvara/`, **WAJIB catat di `axvara/CHANGELOG.md`** (bukan di AGENTS.md global):
 
@@ -98,6 +116,7 @@ Agent **wajib** pastikan sebelum jawab "selesai":
 - [ ] Halaman jalan: `GET / 200` dan CSS `200` dari `http://127.0.0.1:3000` (atau `http://localhost:3000`)
 - [ ] Obscura berhasil memuat route yang diubah dan screenshot/evaluasi visual-fungsional sudah diperiksa
 - [ ] Tidak ada error `Compiled` di `/tmp/axvara-dev.log`
+- [ ] Dokumentasi: tabel Aturan Dokumentasi di atas sudah dipenuhi (PRD/DESIGN/ARCHITECTURE/README/AGENTS folder terkait ikut di-update sesuai jenis perubahan)
 - [ ] Jika ubah struktur/flow, `docs/ARCHITECTURE.md`/`README.md` ikut di-update
 - [ ] Kredensial CF tidak ter-commit (cek `git check-ignore -v .cf-credentials`)
 - [ ] Jangan pernah ubah `/Users/macbookair/AGENTS.md` global
@@ -118,6 +137,7 @@ Aturan lintas-repo: (1) Env Pages bertipe `secret_text` SELALU (plain_text tidak
 - Tujuan tugas tercapai
 - Perubahan diimplementasi
 - `CHANGELOG.md` terisi
+- Dokumentasi terkait terisi (PRD/DESIGN/ARCHITECTURE/README sesuai tabel Aturan Dokumentasi)
 - Verifikasi dev (GET / 200 + CSS 200) jelas
 - Untuk tugas perubahan kode: commit dan `git push origin main` berhasil; setelah itu berhenti tanpa memantau CI/CD
 - Risiko/tindak lanjut diringkas

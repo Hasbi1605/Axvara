@@ -4,6 +4,8 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area utama> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-15 — Aturan dokumentasi lintas-repo: setiap perubahan WAJIB update SEMUA docs relevan (tabel PRD/DESIGN/ARCHITECTURE/README/AGENTS per jenis perubahan) + checklist docs + pengingat di 4 AGENTS folder lain — axvara/AGENTS.md, axvara-wa-gateway/AGENTS.md, axvara-qris-gateway/AGENTS.md, axvara-wr-proxy/AGENTS.md, axvara-tg-bot/AGENTS.md — (verifikasi: 759/759 test, tsc bersih, dev GET / 200)
+
 - 2026-09-15 — Sinkron docs vs prod 90%: PRD v1.1 (status live, glossary WR/proxy/gateway/bot/varian, FR-S14–S17/SYS7–SYS8, seed→data produksi) + DESIGN v1.1 (font cross-platform, kartu varian-termurah, load-more, foto welcome Telegram) + ARCHITECTURE §16.6 (sync satu sweep, produk baru otomatis, sync-log filter, throttle saldo) — docs/PRD.md, docs/DESIGN.md, docs/ARCHITECTURE.md — (verifikasi: 759/759 test, tsc bersih, dev GET / 200)
 
 - 2026-09-14 — Sync WR satu sweep (Opsi A): budget khusus katalog +800 query (produk baru ~15 query, bukan estimasi 8,6) + cap 12→48; cursor tetap fallback; jalur order/fulfillment tetap budget 40 — src/lib/db-access.ts, src/lib/warung-rebahan/sync.ts, tests/warung-rebahan/sync.test.ts — (verifikasi: 758/758 test, tsc bersih)
