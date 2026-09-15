@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-09-15 — Foto katalog batch2 (10 produk: loklok, capcut-pro, claude-pro, youtube-premium, leonardo-ai, getcontact-premium, apple-music, vidio-platinum, viu-premium, zoom-premium) 1600x900 WebP tile 3D napak live R2/D1 — /tmp/axvara-16x9/batch2/, R2 products/ — (verifikasi: 10/10 R2 live 200, D1 15 berfoto, catalog API image terisi 10/10, Obscura loklok+claude tampil sempurna, test 759/759)
+
 > Riwayat perubahan project `axvara/` — terbaru di atas. Append-only, jangan hapus entri lama.
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area utama> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
