@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-09-15 — Redo 12 foto katalog via muse compose (referensi canva+gsuite pemilik, tight close-up sejiwa: netflix fd15f96a, spotify e8f664ac, chatgpt f87f491e, loklok c113eff8, capcut 27082073, claude 6b3418cf, leonardo 23ae5893, getcontact 8ce220b4, apple-music 38e02cf8, vidio 570e5cb2, viu 3c76e50d, zoom d33cab69; YT skip manual pemilik) 1600x900 WebP — /tmp/axvara-compose/, R2 products/, docs/DESIGN.md §9 — (verifikasi: 12/12 R2 live 200, catalog API image 12/12 terisi, 759/759 test, dev GET / 200, Obscura PNG diperiksa)
+
 - 2026-09-15 — Foto katalog batch2 (10 produk: loklok, capcut-pro, claude-pro, youtube-premium, leonardo-ai, getcontact-premium, apple-music, vidio-platinum, viu-premium, zoom-premium) 1600x900 WebP tile 3D napak live R2/D1 — /tmp/axvara-16x9/batch2/, R2 products/ — (verifikasi: 10/10 R2 live 200, D1 15 berfoto, catalog API image terisi 10/10, Obscura loklok+claude tampil sempurna, test 759/759)
 
 > Riwayat perubahan project `axvara/` — terbaru di atas. Append-only, jangan hapus entri lama.

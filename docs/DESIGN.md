@@ -240,20 +240,22 @@
 - **QRIS:** dirender sebagai PNG per order dari payload DANA Business server-only; tidak ada aset QRIS statis publik
 - **Logo:** Wordmark "AXVARA" Space Grotesk Bold, X stylized sebagai vault gate (gap di tengah X dengan glow cyan). Versi light di dark bg. SVG.
 - **Ikon:** Lucide React (outline, 20px, stroke 1.75)
-- **Foto produk (standar 2026-09-15):** Muse Image 3D tile — squircle hitam glossy
-  di tengah, logo resmi produk dibuat 3D akurat dan mudah dikenali (tanpa
-  wordmark/watermark), background navy `#0a1230`, rim cyan kiri + magenta
-  kanan, tile NAPAK menempel ke lantai (contact shadow rapat, tanpa gap
-  melayang — lihat revisi Spotify v2→v3), refleksi lantai. Generate
-  `landscape` (output 1920×1280) dengan prompt 16:9-safe (tile ≤55% tinggi
-  frame + ruang kosong lega atas-bawah), lalu center-crop ke 1600×900 +
-  resize LANCZOS, simpan WebP q82 (~17–22 KB). Upload ke R2
-  `axvara-assets/products/<sha>.webp` via `wrangler r2 object put ...
-  --remote --jurisdiction default` (tanpa `--jurisdiction default` objek
-  masuk jurisdiction lain → live 404 walau bucket list ada), lalu
-  `UPDATE products SET image_url='/r2/products/<sha>.webp',
-  images='["/r2/products/<sha>.webp"]' WHERE slug=...` di D1 remote.
-  Live: Netflix + ChatGPT (2026-09-15); Spotify v3 menunggu OK pemilik.
+- **Foto produk (standar 2026-09-15, revisi compose):** Muse Image `compose`
+  dengan 2 referensi asli pemilik (`canva.webp` + `gsuite.webp`, 1600×900)
+  sebagai kunci gaya — BUKAN prompt-only. Hasil: tight close-up tile huge
+  ~85% tinggi frame, background navy luminous + glow halo biru, rim cyan
+  kiri tebal + magenta kanan tebal, specular putih atas, refleksi lantai
+  terang, emblem 3D glossy besar ~75% muka tile, tile NAPAK. Pelajaran:
+  generate prompt-only menghasilkan tile kecil distant (~55%, bg gelap, rim
+  tipis) yang dinilai pemilik beda style. Output compose 2096×1184 →
+  center-crop 16:9 + resize LANCZOS 1600×900, WebP q82 (~19–32 KB). Upload
+  ke R2 `axvara-assets/products/<md5>.webp` via `wrangler r2 object put ...
+  --remote --jurisdiction default`, lalu `UPDATE products SET
+  image_url='/r2/products/<md5>.webp',
+  images='["/r2/products/<md5>.webp"]' WHERE slug=...` di D1 remote.
+  Live compose 2026-09-15: 12 produk (netflix, spotify, chatgpt, loklok,
+  capcut, claude, leonardo, getcontact, apple-music, vidio, viu, zoom);
+  youtube diganti manual oleh pemilik (skip).
 
 ---
 
