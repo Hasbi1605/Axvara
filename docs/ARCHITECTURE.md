@@ -898,3 +898,15 @@ const site=/^https?:\/\//i.test(raw)?raw:"https://axvara.tech"`.
 `.heroku-credentials` (git-ignored, pola sama dengan `.cf-credentials`).
 Perintah akun #2 wajib prefix `HEROKU_API_KEY=<kunci-akun-2>`; jangan
 `heroku login` ulang (merusak sesi akun #1).
+
+### 16.6 Perilaku sync WR satu sweep (Opsi A, 2026-09-14)
+- `WR_SYNC_PRODUCTS_PER_RUN = 48` + plafon khusus katalog +800 query
+  (`raiseCeilingForCatalogSync`, hanya jalur sync produk; budget cron umum +
+  order/fulfillment tetap 40).
+- Satu sweep ≈ 410 query (~1.000 rows-read + ~200 writes, <2% kuota D1 free);
+  tanpa tambahan biaya D1/R2/Heroku. Cursor antar-run tetap sebagai fallback.
+- Produk BARU WR otomatis masuk katalog tiap sync (`products_new`): registry
+  baru → baris katalog (slug anti-bentrok `-wr`, markup default 50%) +
+  varian-variannya; kena exclusion → registry saja.
+- Endpoint `sync-log` memfilter baris `saldo` (kartu admin tidak 0/0/0);
+  notif saldo rendah di-throttle (maks 1 pesan/6 jam, ulang bila turun ≥Rp5rb).

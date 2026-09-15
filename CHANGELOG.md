@@ -4,6 +4,8 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area utama> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-15 — Sinkron docs vs prod 90%: PRD v1.1 (status live, glossary WR/proxy/gateway/bot/varian, FR-S14–S17/SYS7–SYS8, seed→data produksi) + DESIGN v1.1 (font cross-platform, kartu varian-termurah, load-more, foto welcome Telegram) + ARCHITECTURE §16.6 (sync satu sweep, produk baru otomatis, sync-log filter, throttle saldo) — docs/PRD.md, docs/DESIGN.md, docs/ARCHITECTURE.md — (verifikasi: 759/759 test, tsc bersih, dev GET / 200)
+
 - 2026-09-14 — Sync WR satu sweep (Opsi A): budget khusus katalog +800 query (produk baru ~15 query, bukan estimasi 8,6) + cap 12→48; cursor tetap fallback; jalur order/fulfillment tetap budget 40 — src/lib/db-access.ts, src/lib/warung-rebahan/sync.ts, tests/warung-rebahan/sync.test.ts — (verifikasi: 758/758 test, tsc bersih)
 
 - 2026-09-14 — Kartu sync tidak 0/0/0 setelah login ulang: endpoint sync-log memfilter baris saldo (products_synced NULL) + UI pakai sync produk terakhir + test regresi — src/app/api/admin/warung/sync-log/route.ts, src/components/admin/WarungRebahanManager.tsx, tests/warung-rebahan/admin-apis.test.ts — (verifikasi: 758/758 test, tsc bersih)

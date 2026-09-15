@@ -1,10 +1,10 @@
 # PRD — AXVARA
 
-**Product:** AXVARA — Gerbang Semua Tools Premium  
-**Tagline:** Satu Gerbang, Semua Tools Premium  
-**Version:** 1.0 — Pre-Build  
-**Status:** Draft Approved — Menuju MVP  
-**Platform:** Cloudflare Pages (Free) + D1 + R2  
+**Product:** AXVARA — Gerbang Semua Tools Premium
+**Tagline:** Satu Gerbang, Semua Tools Premium
+**Version:** 1.1 — Production (sinkron 2026-09-15, sebelumnya 1.0 Pre-Build 31 Agu 2026)
+**Status:** Live di axvara.tech — 50 produk, 97 varian, 30 order
+**Platform:** Cloudflare Pages + D1 + R2 + Heroku (WA gateway + WR proxy) + Telegram Bot API  
 **Tanggal:** 31 Agustus 2026  
 **Author:** Axvara Team + AI Architect  
 
@@ -47,6 +47,11 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 - **Glassmorphism:** Efek kaca blur transparan ala Apple/macOS
 - **Vault:** Metafora brand Axvara — gerbang akses ke semua tools premium
 - **Kontak Admin:** WhatsApp dukungan `089519388264`; berbeda dari nomor e-wallet tujuan pembayaran `082135277434`
+- **Varian Terpusat:** Setiap produk punya ≥1 varian (harga/stok/durasi/garansi per varian); harga kartu = varian termurah yang masih tersedia
+- **Warung Rebahan (WR):** Supplier H2H (`warungrebahan.com/api/v1`); produk WR disync ke katalog (source=`warung_rebahan`), order lunas diteruskan otomatis (exactly-once), sync satu sweep penuh per run (Opsi A)
+- **Proxy WR:** App Heroku akun #2 (`axvara-wr-proxy` + QuotaGuard Spike, IP statis) — satu-satunya egress yang di-whitelist WR; Pages hanya pegang URL + token proxy
+- **Gateway WA:** App Heroku akun #1 (`axvara-wa-gateway`, Baileys) — bot grup WhatsApp; route `/wr/*` lama sudah dimatikan (410)
+- **Bot Telegram:** `@Axvara_bot` — katalog/keranjang/checkout/QRIS/garansi via Bot API webhook; foto welcome WebP ringan di `public/banners/tg-welcome.webp`
 
 ---
 
@@ -66,9 +71,13 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 | FR-S8 | Jika pilih QRIS: setelah order tampilkan QRIS dinamis, nominal unik, countdown 15 menit, tombol Download, dan polling status | P0 MVP |
 | FR-S9 | Bukti transfer JPG/PNG/WebP max 5MB wajib untuk SeaBank/e-wallet; QRIS tidak memerlukan upload bukti | P0 MVP |
 | FR-S10 | Setelah order sukses: halaman Terima Kasih + nomor pesanan (AXV-XXXX) + WA admin + status Pending | P0 MVP |
-| FR-S11 | Pembeli bisa cek status pesanan via nomor WA / kode pesanan (tanpa login) | P1 |
-| FR-S12 | Notifikasi WA otomatis ke pembeli saat admin konfirmasi lunas (kirim lisensi) | P1 |
+| FR-S11 | Pembeli bisa cek status pesanan via nomor WA / kode pesanan (tanpa login) | P1 ✅ live |
+| FR-S12 | Notifikasi WA otomatis ke pembeli saat admin konfirmasi lunas (kirim lisensi) | P1 ✅ live (gateway Baileys) |
 | FR-S13 | Wishlist & histori pesanan jika pembeli login (opsional, email/WA OTP) | P2 |
+| FR-S14 | Bot Telegram @Axvara_bot: /start (foto welcome + sapaan), katalog, cari, keranjang, checkout QRIS, pesanan, garansi | P0 ✅ live |
+| FR-S15 | Bot grup WhatsApp (Baileys): list/katalog, cari, bayar, bukti transfer, perintah admin `.d` | P0 ✅ live |
+| FR-S16 | Produk varian terpusat: harga/stok/durasi/garansi per varian; harga kartu dari varian termurah tersedia | P0 ✅ live |
+| FR-S17 | Integrasi Warung Rebahan H2H: sync katalog terjadwal, auto-order exactly-once, webhook status, saldo monitor + throttle notif | P0 ✅ live (auto-order flag default off) |
 
 ### 2.2 Functional — Admin
 
@@ -94,8 +103,10 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 | FR-SYS2 | Simpan data produk, pesanan, kategori di Cloudflare D1 (SQLite, 5GB gratis) |
 | FR-SYS3 | Generate kode pesanan unik format `AXV-YYYYMMDD-XXXX` |
 | FR-SYS4 | Validasi file bukti: hanya JPG/PNG/WebP, max 5MB |
-| FR-SYS5 | Kirim dan balas notifikasi WA via gateway Baileys Heroku atau link WA manual jika gateway belum ada |
-| FR-SYS6 | SEO basic: meta title/description per produk, sitemap, OG image |
+| FR-SYS5 | Kirim dan balas notifikasi WA via gateway Baileys Heroku akun #1 (`axvara-wa-gateway`); allowlist grup + flag discovery/payment/proof/fulfillment | P0 ✅ live |
+| FR-SYS6 | SEO basic: meta title/description per produk, sitemap, OG image | ✅ live |
+| FR-SYS7 | Sync WR satu sweep penuh per run (Opsi A, budget khusus katalog; cursor sebagai fallback); produk baru WR otomatis masuk katalog | ✅ live |
+| FR-SYS8 | Env Pages WAJIB `secret_text` (plain_text tidak terbawa deploy); deploy hanya via CI | Aturan operasional |
 
 ### 2.4 Non-Functional
 
@@ -174,6 +185,9 @@ Kategori:
 
 MVP seed: 8–12 produk dummy dengan foto placeholder premium + harga realistis (Rp 25.000 – Rp 350.000)
 
+> Status 2026-09-15: katalog live 50 produk / 97 varian (manual + sync WR 48 produk);
+> seed dummy sudah digantikan data produksi.
+
 ---
 
 ## 5. Payment Spec — Manual Transfer & QRIS Dinamis DANA
@@ -207,6 +221,9 @@ MVP seed: 8–12 produk dummy dengan foto placeholder premium + harga realistis 
 - Homepage Apple Store premium, katalog, detail produk, keranjang drawer, checkout, upload bukti, halaman sukses
 - Admin login, dashboard, CRUD produk/kategori, kelola pesanan Pending/Lunas, dan pantau konfigurasi QRIS dinamis
 - Deploy ke Cloudflare Pages dengan domain publik tunggal axvara.tech (`axvara.pages.dev` redirect permanen ke domain utama)
+
+> Status 2026-09-15: MVP + P1 selesai dan live (bot Telegram + bot WA + varian + WR).
+> Sisa P2: rating/testimoni, kupon, affiliate, Midtrans opsional.
 
 ### P1 — Minggu 2
 - Cek status pesanan via kode, notifikasi WA otomatis (Baileys), OTP login pembeli, export CSV

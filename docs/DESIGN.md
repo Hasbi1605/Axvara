@@ -1,8 +1,8 @@
 # DESIGN.md — AXVARA Design System
 
-**Tema:** Apple Store + Glassmorphism + Premium Vault  
-**Tagline Visual:** Midnight Navy + Electric Cyan Glow  
-**Version:** 1.0  
+**Tema:** Apple Store + Glassmorphism + Premium Vault
+**Tagline Visual:** Midnight Navy + Electric Cyan Glow
+**Version:** 1.1 (sinkron 2026-09-15: font cross-platform + katalog load-more + foto Telegram)
 **Tanggal:** 31 Agustus 2026  
 
 ---
@@ -48,6 +48,13 @@
 ---
 
 ## 3. Tipografi
+
+> Status 2026-09-14 (commit `cc8eaa1`): font cross-platform via `next/font`
+> self-hosted — Inter (body) + Space Grotesk (display/harga) + JetBrains Mono
+> (kode pesanan). Di Chrome Windows tidak lagi jatuh ke Arial tipis;
+> `-webkit-font-smoothing: antialiased` hanya untuk WebKit Apple agar teks
+> kecil Windows tidak pudar. Tabel di bawah adalah fondasi (dilengkapi webfont
+> di `src/app/layout.tsx` + `tailwind.config.ts`).
 
 | Level | Font | Size (desktop) | Weight | Usage |
 |-------|------|----------------|--------|-------|
@@ -118,10 +125,21 @@
 - Gambar: object-cover, rounded-xl, hover scale 1.03
 - Badge kategori di atas gambar (glass pill + dot)
 - Nama produk: H2, 2 baris max, ellipsis
-- Harga: besar cyan, harga coret kecil muted jika diskon
+- Harga: besar cyan, harga coret kecil muted jika diskon (dari varian termurah
+  yang masih tersedia — bukan varian habis)
 - Tombol: "Tambah" (glass → cyan solid saat hover), icon keranjang
 - Hover: border `rgba(0,229,255,0.35)`, glow radial, lift `translateY(-4px)`, shadow cyan soft
 - Grid: 1 col mobile, 2 tablet, 3-4 desktop, gap 20px
+- Katalog: 12 produk + tombol **"Tampilkan N produk lagi"** (bukan nomor halaman);
+  produk ready di depan, stok habis tetap tampil di belakang (urutan stabil)
+
+### 5.3b Foto Welcome Telegram
+- File: `public/banners/tg-welcome.webp` (WebP ~31 KB, 1280px) — dikirim via
+  `sendPhoto` di `/start` dengan caption sapaan + inline keyboard.
+- JANGAN pakai PNG 2,2 MB dari R2 (timeout 10 dtk di edge → foto gagal diam-diam).
+  Bila `sendPhoto` gagal: retry 1x, lalu fallback teks + keyboard.
+- `/start` TIDAK mengirim pesan teks tambahan apa pun setelah foto
+  (reply keyboard persistent sudah terinstal sejak /start pertama).
 
 ### 5.4 Keranjang Drawer
 - Overlay: `rgba(8,12,30,0.6)` + `backdrop-blur-sm`
