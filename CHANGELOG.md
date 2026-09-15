@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-09-15 — Revisi bg drakor-id (badge merah + play putih aeb595ab) + iqiyi (badge hijau + iQIYI putih 98aaa094) sesuai referensi user — /tmp/axvara-compose/*-bgfix.webp, R2 products/ — (verifikasi: 2/2 R2 live 200, 2/2 catalog API terisi, 759/759 test, Obscura homepage OK)
+
 - 2026-09-15 — Redo 7 tile dari referensi logo milik user (compose canva+gsuite+Referensi/1-7.png): leonardo-ai→da Vinci geometris 15569c51, drakor-id→play origami 20d1a26c, iqiyi→iQIYI frame 28b610f8, adobe→infinity pelangi 41131d84, devin→3-hexagon 8b2a8418, copilot→robot ungu 14251c3d, office365→loop M365 040646b3 — /tmp/axvara-compose/*-userref.webp, R2 products/ — (verifikasi: 7/7 R2 live 200, 7/7 catalog API terisi, 759/759 test, Obscura homepage OK)
 
 - 2026-09-15 — Redo 15 tile ke logo asli terbaru via compose 3-referensi (ikon Play Store asli + gaya canva+gsuite): disney-hotstar→Disney+ 19970cc8, grok-ai→black-hole G c4418092, surfshark→sirip hiu 62292fdf, leonardo→LEO ungu fd064c67, office365→M365 Copilot fluid 74543134, youku→biru-oranye 84829e65, scribd→[S] 2025 a24144ef, wink→senyum 79e4e7ad, remini→merah familiar cf49fe81, prime-video→wordmark 2024 079d2e6c, copilot→knot+octocat 0e976247, adobe→infinity 10a30168, iqiyi→iQIYI putih 8ad57a37, devin-ai-windsurf→devin 1eacb5d9, drakor-id→badge merah 546f9039; Antigravity dicoret (tetap sparkle Gemini sesuai pemakaian), generik C tidak diubah — /tmp/axvara-compose/*-redo2.webp, R2 products/ — (verifikasi: 15/15 R2 live 200, 15/15 catalog API terisi, 759/759 test, Obscura homepage OK)
