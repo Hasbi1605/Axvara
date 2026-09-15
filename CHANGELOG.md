@@ -4,6 +4,8 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area utama> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-15 — Foto katalog 3 produk via Muse Image 3D tile (squircle hitam glossy + logo resmi 3D akurat, navy #0a1230, rim cyan/magenta, tile napak; 1600×900 WebP q82 ~17–22 KB): Netflix + ChatGPT + Spotify(v3 revisi melayang→napak) live di R2 + D1 prod; pelajaran: wrangler R2 WAJIB --jurisdiction default + generate landscape 16:9-safe — docs/DESIGN.md (standar foto produk), D1 products image_url — (verifikasi: R2 live 200 ketiga file, catalog API image terisi, Obscura katalog visual OK)
+
 - 2026-09-15 — Aturan dokumentasi lintas-repo: setiap perubahan WAJIB update SEMUA docs relevan (tabel PRD/DESIGN/ARCHITECTURE/README/AGENTS per jenis perubahan) + checklist docs + pengingat di 4 AGENTS folder lain — axvara/AGENTS.md, axvara-wa-gateway/AGENTS.md, axvara-qris-gateway/AGENTS.md, axvara-wr-proxy/AGENTS.md, axvara-tg-bot/AGENTS.md — (verifikasi: 759/759 test, tsc bersih, dev GET / 200)
 
 - 2026-09-15 — Sinkron docs vs prod 90%: PRD v1.1 (status live, glossary WR/proxy/gateway/bot/varian, FR-S14–S17/SYS7–SYS8, seed→data produksi) + DESIGN v1.1 (font cross-platform, kartu varian-termurah, load-more, foto welcome Telegram) + ARCHITECTURE §16.6 (sync satu sweep, produk baru otomatis, sync-log filter, throttle saldo) — docs/PRD.md, docs/DESIGN.md, docs/ARCHITECTURE.md — (verifikasi: 759/759 test, tsc bersih, dev GET / 200)

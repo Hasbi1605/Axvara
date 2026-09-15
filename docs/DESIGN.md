@@ -240,7 +240,20 @@
 - **QRIS:** dirender sebagai PNG per order dari payload DANA Business server-only; tidak ada aset QRIS statis publik
 - **Logo:** Wordmark "AXVARA" Space Grotesk Bold, X stylized sebagai vault gate (gap di tengah X dengan glow cyan). Versi light di dark bg. SVG.
 - **Ikon:** Lucide React (outline, 20px, stroke 1.75)
-- **Foto produk:** Placeholder premium via `picsum` / `unsplash` di MVP, nanti upload ke R2
+- **Foto produk (standar 2026-09-15):** Muse Image 3D tile — squircle hitam glossy
+  di tengah, logo resmi produk dibuat 3D akurat dan mudah dikenali (tanpa
+  wordmark/watermark), background navy `#0a1230`, rim cyan kiri + magenta
+  kanan, tile NAPAK menempel ke lantai (contact shadow rapat, tanpa gap
+  melayang — lihat revisi Spotify v2→v3), refleksi lantai. Generate
+  `landscape` (output 1920×1280) dengan prompt 16:9-safe (tile ≤55% tinggi
+  frame + ruang kosong lega atas-bawah), lalu center-crop ke 1600×900 +
+  resize LANCZOS, simpan WebP q82 (~17–22 KB). Upload ke R2
+  `axvara-assets/products/<sha>.webp` via `wrangler r2 object put ...
+  --remote --jurisdiction default` (tanpa `--jurisdiction default` objek
+  masuk jurisdiction lain → live 404 walau bucket list ada), lalu
+  `UPDATE products SET image_url='/r2/products/<sha>.webp',
+  images='["/r2/products/<sha>.webp"]' WHERE slug=...` di D1 remote.
+  Live: Netflix + ChatGPT (2026-09-15); Spotify v3 menunggu OK pemilik.
 
 ---
 
