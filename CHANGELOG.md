@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-09-15 — Redo kiro-ai (hantu putih + bg ungu e97e136a) + getcontact-premium (pin biru + telepon 8bfba635) dari referensi logo user — /tmp/axvara-compose/*-userref2.webp, R2 products/ — (verifikasi: 2/2 R2 live 200, 2/2 catalog API terisi, 759/759 test, Obscura homepage OK)
+
 - 2026-09-15 — Revisi bg drakor-id (badge merah + play putih aeb595ab) + iqiyi (badge hijau + iQIYI putih 98aaa094) sesuai referensi user — /tmp/axvara-compose/*-bgfix.webp, R2 products/ — (verifikasi: 2/2 R2 live 200, 2/2 catalog API terisi, 759/759 test, Obscura homepage OK)
 
 - 2026-09-15 — Redo 7 tile dari referensi logo milik user (compose canva+gsuite+Referensi/1-7.png): leonardo-ai→da Vinci geometris 15569c51, drakor-id→play origami 20d1a26c, iqiyi→iQIYI frame 28b610f8, adobe→infinity pelangi 41131d84, devin→3-hexagon 8b2a8418, copilot→robot ungu 14251c3d, office365→loop M365 040646b3 — /tmp/axvara-compose/*-userref.webp, R2 products/ — (verifikasi: 7/7 R2 live 200, 7/7 catalog API terisi, 759/759 test, Obscura homepage OK)
