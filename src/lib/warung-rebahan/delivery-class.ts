@@ -81,7 +81,11 @@ export function guessDeliveryClass(input: {
   const type = String(input.type || "").toLowerCase();
   const blob = `${input.terms || ""} ${input.deliveryTerms || ""}`.toLowerCase();
   const stock = Number(input.stock || 0);
-  // 2. Tipe Invite/Link butuh data pembeli dulu → tidak bisa full-otomatis.
+  // 2. Tipe Invite/Link butuh email_invite pembeli dulu: order Axvara HARUS
+  //    membawa customer_email (diteruskan processOneLink → createOrder).
+  //    Tanpa email, WR 422 dan retry tidak sembuh (uji live 2026-09-16).
+  //    Kelasnya tetap bisa restock bila daftar screenshot, tapi checkout
+  //    WAJIB minta email untuk tipe ini.
   if (type === "invite" || type === "link") return "made_by_order";
   // 3. Kata slow/proses/antri = antrean manusia di sisi WR.
   if (/(slow|antri|queue|manual|proses \d|sesuai antrian)/.test(blob)) return "made_by_order";

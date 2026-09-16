@@ -421,9 +421,27 @@ async function processOneLink(link: Row, db: DatabaseAccess): Promise<"succeeded
     id,
   ).catch(() => undefined);
   try {
+    // 2026-09-16 (uji live #1): upstream WR 422 "email_invite is required
+    // for invite-based products" (Apple Music tipe Invite). Link hanya bawa
+    // variant_id+qty — email pembeli tidak ikut. Ambil customer_email dari
+    // order Axvara; bila ada, teruskan sebagai email_invite. Bila kosong
+    // untuk produk Invite, WR tetap 422 — retry tidak akan sembuh, admin
+    // harus minta email pembeli (lihat last_error).
+    let emailInvite: string | undefined;
+    try {
+      const orderRow = await db.queryFirst(
+        `SELECT customer_email FROM orders WHERE code=?`,
+        String(link.order_code),
+      ).catch(() => null) as { customer_email?: unknown } | null;
+      const rawEmail = String(orderRow?.customer_email || "").trim();
+      if (rawEmail && rawEmail.includes("@")) emailInvite = rawEmail;
+    } catch {
+      /* email opsional — lanjut tanpa invite */
+    }
     const order = await createOrder({
       variant_id: String(link.wr_variant_id),
       quantity: Math.max(1, Number(link.quantity || 1)),
+      ...(emailInvite ? { email_invite: emailInvite } : {}),
     });
     await execRun(
       `UPDATE wr_order_links SET status='processing', wr_order_id=?,

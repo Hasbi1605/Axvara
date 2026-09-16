@@ -135,15 +135,23 @@ describe("Warung Rebahan process pending orders", () => {
       vi.stubEnv("WARUNG_REBAHAN_AUTO_ORDER_ENABLED", "true");
       vi.stubEnv("WARUNG_REBAHAN_API_KEY", "k");
       vi.stubEnv("TELEGRAM_BOT_ENABLED", "false");
-      stubWrApi(() => ({
-        success: true,
-        message: "ok",
-        data: { order_id: "ORD-1", status: "processing", payment_status: "paid", total_amount: 5000, current_balance: 240000 },
-      }));
+      // 2026-09-16: email_invite diteruskan dari customer_email order
+      // (uji live: WR 422 untuk produk Invite tanpa email).
+      fx.sql.prepare(`UPDATE orders SET customer_email='buyer@contoh.id' WHERE code='AXV-20260911-AAAADDDD'`).run();
+      let seenInvite: unknown = null;
+      stubWrApi((_url, body) => {
+        seenInvite = (body as Record<string, unknown>).email_invite ?? null;
+        return {
+          success: true,
+          message: "ok",
+          data: { order_id: "ORD-1", status: "processing", payment_status: "paid", total_amount: 5000, current_balance: 240000 },
+        };
+      });
       const db = createDatabaseAccess(fx.db);
       await createWrOrderLink("AXV-20260911-AAAADDDD", [{ product_id: 1, variant_id: 1, qty: 1 }], db);
       const result = await processWrPendingOrders(db);
       expect(result).toMatchObject({ processed: 1, succeeded: 1 });
+      expect(seenInvite).toBe("buyer@contoh.id");
       const link = fx.sql.prepare("SELECT status, wr_order_id FROM wr_order_links").get() as { status: string; wr_order_id: string };
       expect(link.status).toBe("processing");
       expect(link.wr_order_id).toBe("ORD-1");
