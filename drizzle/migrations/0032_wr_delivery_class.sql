@@ -26,26 +26,29 @@ ALTER TABLE wr_variants ADD COLUMN wr_delivery_class TEXT
 ALTER TABLE wr_variants ADD COLUMN wr_delivery_source TEXT
   CHECK (wr_delivery_source IN ('screenshot', 'system', 'admin'));
 
--- 2. Seed modal awal dari daftar admin WR 2026-09-16 (cocok nama produk,
---    case-insensitive; INSERT OR IGNORE tidak berlaku untuk UPDATE sehingga
---    guard memakai WHERE class IS NULL — rerun aman, kunci admin/sistem
---    yang sudah ada tidak tertimpa).
+-- 2. Seed modal awal dari daftar admin WR 2026-09-16 (cocok nama PRODUK,
+--    case-insensitive — nama VARIAN ("Sharing", "Pro Member") generik dan
+--    tidak cocok. Koreksi 2026-09-16: versi awal cocok wr_variant_name dan
+--    hanya kena 4 (Wink/Meitu VIP); versi ini JOIN wr_products.
+--    Rerun aman via WHERE class IS NULL — kunci yang sudah ada tak tertimpa).
 -- RESTOK (stok siap, auto): Netflix, Capcut, Gemini, Apple Music, Canva Pro,
 -- Canva Edu, Loklok, ILovePDF, Vidio, Microsoft Office 365.
 UPDATE wr_variants SET wr_delivery_class='restock', wr_delivery_source='screenshot'
-  WHERE wr_delivery_class IS NULL AND (
-    wr_variant_name LIKE '%Netflix%' OR wr_variant_name LIKE '%Capcut%'
-    OR wr_variant_name LIKE '%Gemini%' OR wr_variant_name LIKE '%Apple Music%'
-    OR wr_variant_name LIKE '%Canva%' OR wr_variant_name LIKE '%Loklok%'
-    OR wr_variant_name LIKE '%ILovePDF%' OR wr_variant_name LIKE '%Vidio%'
-    OR wr_variant_name LIKE '%Office%' OR wr_variant_name LIKE '%Microsoft%'
+  WHERE wr_delivery_class IS NULL AND wr_product_id IN (
+    SELECT wr_product_id FROM wr_products WHERE
+      wr_product_name LIKE '%Netflix%' OR wr_product_name LIKE '%Capcut%'
+      OR wr_product_name LIKE '%Gemini%' OR wr_product_name LIKE '%Apple Music%'
+      OR wr_product_name LIKE '%Canva%' OR wr_product_name LIKE '%Loklok%'
+      OR wr_product_name LIKE '%ILovePDF%' OR wr_product_name LIKE '%Vidio%'
+      OR wr_product_name LIKE '%Office%' OR wr_product_name LIKE '%Microsoft%'
   );
 -- MADE BY ORDER (slow, manual): Wink, Meitu, Zoom, Picsart, Scribd,
 -- VPN Express, VPN Hidemyass.
 UPDATE wr_variants SET wr_delivery_class='made_by_order', wr_delivery_source='screenshot'
-  WHERE wr_delivery_class IS NULL AND (
-    wr_variant_name LIKE '%Wink%' OR wr_variant_name LIKE '%Meitu%'
-    OR wr_variant_name LIKE '%Zoom%' OR wr_variant_name LIKE '%Picsart%'
-    OR wr_variant_name LIKE '%Scribd%' OR wr_variant_name LIKE '%VPN%'
-    OR wr_variant_name LIKE '%Hidemyass%' OR wr_variant_name LIKE '%HMA%'
+  WHERE wr_delivery_class IS NULL AND wr_product_id IN (
+    SELECT wr_product_id FROM wr_products WHERE
+      wr_product_name LIKE '%Wink%' OR wr_product_name LIKE '%Meitu%'
+      OR wr_product_name LIKE '%Zoom%' OR wr_product_name LIKE '%Picsart%'
+      OR wr_product_name LIKE '%Scribd%' OR wr_product_name LIKE '%VPN%'
+      OR wr_product_name LIKE '%Hidemyass%' OR wr_product_name LIKE '%HMA%'
   );
