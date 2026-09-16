@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-09-16 — Garansi varian PDP pindah ke baris sendiri di bawah nama varian (block, bukan inline di sebelah label) — src/app/produk/[slug]/product-detail-client.tsx, docs/DESIGN.md (§5.3c) — (verifikasi: 764/764 test, tsc bersih, dev GET / 200 + CSS 200, Obscura PDP OK)
+
 - 2026-09-16 — PDP tampilkan S&K + cara aktivasi per varian WR (JOIN wr_variants via wr_variant_id, tanpa migrasi; section terikat varian terpilih + fallback varian aktif pertama, desktop + mobile) + label garansi kanonis "Garansi N Hari" (formatWarranty limited abaikan label mentah "12 Hari" yang ambigu) + ikon shield — src/lib/catalog.ts, src/app/produk/[slug]/product-detail-client.tsx, src/components/storefront/QuickVariantModal.tsx, src/lib/warung-rebahan/ownership.ts, tests/warung-rebahan/ownership.regression.test.ts, tests/whatsapp-variants.regression.test.ts, docs/PRD.md (FR-S18), docs/DESIGN.md (§5.3c), docs/ARCHITECTURE.md (S&K tanpa migrasi) — (verifikasi: 764/764 test, tsc bersih, dev GET / 200 + CSS 200, Obscura PDP OK)
 
 - 2026-09-15 — Redo kiro-ai (hantu putih + bg ungu e97e136a) + getcontact-premium (pin biru + telepon 8bfba635) dari referensi logo user — /tmp/axvara-compose/*-userref2.webp, R2 products/ — (verifikasi: 2/2 R2 live 200, 2/2 catalog API terisi, 759/759 test, Obscura homepage OK)

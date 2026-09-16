@@ -207,8 +207,13 @@ export default function OrderSuccessPage() {
               </div>
             ) : (
               <>
-                <div className="mx-auto max-w-[330px] rounded-2xl bg-white p-3">
+                <p className="font-display text-xl font-bold text-white">Scan QRIS</p>
+                <div className="mx-auto mt-3 max-w-[330px] rounded-2xl bg-white p-3">
                   <img src={order.qris.image_url} alt={`QRIS dinamis pesanan ${order.code}`} className="h-auto w-full rounded-xl" />
+                </div>
+                <div className="mt-3 flex items-center justify-center gap-2" aria-label="QRIS National Payment Standard">
+                  <img src="/brand/qris.svg" alt="Logo QRIS resmi" width={72} height={28} className="h-7 w-auto object-contain" draggable={false} />
+                  <span className="text-sm text-white/70">National Payment Standard</span>
                 </div>
                 <p className="mt-4 text-xs uppercase tracking-[0.12em] text-white/45">Total bayar</p>
                 <p className="mt-1 font-display text-3xl font-bold text-white">{formatRupiah(payableAmount)}</p>

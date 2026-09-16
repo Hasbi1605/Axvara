@@ -140,7 +140,8 @@
 - Desktop: kartu glass di kolom kiri bawah deskripsi. Mobile: kartu di bawah
   accordion deskripsi.
 - Label garansi varian SELALU kanonis `Garansi N Unit` ("Garansi 12 Hari") +
-  ikon shield — JANGAN render label mentah ("12 Hari" ambigu dengan durasi).
+  ikon shield — di baris sendiri di BAWAH nama varian (block, bukan inline),
+  JANGAN render label mentah ("12 Hari" ambigu dengan durasi).
 
 ### 5.3b Foto Welcome Telegram- File: `public/banners/tg-welcome.webp` (WebP ~31 KB, 1280px) — dikirim via
   `sendPhoto` di `/start` dengan caption sapaan + inline keyboard.

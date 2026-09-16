@@ -390,10 +390,10 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
                       disabled={v.stock === 0}
                     >
                       <div className="flex justify-between items-start">
-                        <div>
-                          <span className="text-sm font-medium text-white">{v.label}</span>
+                        <div className="min-w-0">
+                          <span className="block text-sm font-medium text-white">{v.label}</span>
                           {v.warranty_type !== 'none' && formatWarranty(v) && (
-                            <div className="text-xs text-[#00E5FF]/80 font-medium mt-1 inline-flex items-center gap-1">
+                            <div className="text-xs text-[#00E5FF]/80 font-medium mt-1 flex items-center gap-1">
                               <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M9 12l2 2 4-4"/><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                               {formatWarranty(v)}
                             </div>
