@@ -13,7 +13,9 @@ export function seedWrCatalog(fx: ReturnType<typeof createD1Fixture>) {
   fx.sql.prepare("INSERT INTO products(id,name,slug,price,stock,source,wr_product_id,wr_auto_managed) VALUES(1,'CapCut Pro','capcut-pro',7500,10,'warung_rebahan','prod-capcut',1)").run();
   fx.sql.prepare("INSERT INTO product_variants(id,product_id,sku,label,price,stock,fulfillment_mode,wr_variant_id,wr_auto_managed) VALUES(1,1,'WR-VAR1','Pro 7 Hari',7500,10,'manual','var-1',1)").run();
   fx.sql.prepare("INSERT INTO wr_products(wr_product_id,wr_product_name,axvara_product_id) VALUES('prod-capcut','CapCut Pro',1)").run();
-  fx.sql.prepare("INSERT INTO wr_variants(wr_variant_id,wr_product_id,wr_variant_name,wr_price,wr_stock,axvara_variant_id,axvara_sell_price) VALUES('var-1','prod-capcut','Pro 7 Hari',5000,10,1,7500)").run();
+  // 2026-09-16: CapCut = RESTOK (daftar admin WR) agar auto-order jalan di
+  // test process. Test gate MBO memakai UPDATE eksplisit ke made_by_order.
+  fx.sql.prepare("INSERT INTO wr_variants(wr_variant_id,wr_product_id,wr_variant_name,wr_price,wr_stock,axvara_variant_id,axvara_sell_price,wr_delivery_class,wr_delivery_source) VALUES('var-1','prod-capcut','Pro 7 Hari',5000,10,1,7500,'restock','screenshot')").run();
 }
 
 export function seedWrOrder(fx: ReturnType<typeof createD1Fixture>, code: string, channel = "web") {

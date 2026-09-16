@@ -96,7 +96,10 @@ describe("overview memakai pengukuran + system_details", () => {
     const src = read("src/app/api/admin/overview/route.ts");
     expect(src).toContain("system_details");
     expect(src).toContain("whatsapp_outbox GROUP BY status");
-    expect(src).toContain("fulfillment_jobs GROUP BY status");
+    // 2026-09-16: query antrean JOIN orders (hanya lunas+paid) agar job
+    // order final tidak menyeret status (false alarm Telegram degraded).
+    expect(src).toContain("FROM fulfillment_jobs fj");
+    expect(src).toContain("JOIN orders o ON o.code=fj.order_code");
     expect(src).toContain("evaluateTelegram");
     expect(src).toContain("evaluateWhatsApp");
     expect(src).toContain("evaluateQris");

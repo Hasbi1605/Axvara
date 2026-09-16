@@ -115,4 +115,15 @@ describe("R11 overview reflects the real database state", () => {
     const body = await overview();
     expect(body.system_details.telegram.level).toBe("degraded");
   });
+
+  it("failed job milik order final tidak menyeret telegram ke degraded (2026-09-16)", async () => {
+    // Skenario prod: 7 failed dari order batal/kadaluarsa. Bot sehat + tidak
+    // ada antrean order lunas → telegram TIDAK boleh degraded.
+    fixture.sql.prepare(`INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel)
+      VALUES('DEAD','X','6280','[]',10000,'qris','dibatalkan','failed','telegram')`).run();
+    fixture.sql.prepare(`INSERT INTO fulfillment_jobs(order_code,status,next_attempt_at)
+      VALUES('DEAD','failed',datetime('now','-3 hours'))`).run();
+    const body = await overview();
+    expect(body.system_details.telegram.level).not.toBe("degraded");
+  });
 });

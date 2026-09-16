@@ -92,6 +92,8 @@ export type TelegramVariantLine = {
   warranty?: string | null;
   duration?: string | null;
   stock?: number | null;
+  /** Kelas pengiriman WR (migrasi 0032): restock = ⚡, selainnya = ✋. */
+  wr_delivery_class?: string | null;
 };
 
 export function productDetailMessage(product: {
@@ -161,7 +163,10 @@ export function productDetailMessage(product: {
       const war = v.warranty?.trim() || "Tanpa Garansi";
       const dur = v.duration?.trim() ? ` • ${escapeHtml(v.duration.trim())}` : "";
       const out = v.stock === 0 ? " ❌ <i>HABIS</i>" : "";
-      lines.push(`${num}. <b>${escapeHtml(truncate(v.label, 60))}</b>${dur}${out}`);
+      // Label pengiriman WR singkat (migrasi 0032): restock = ⚡ otomatis,
+      // selainnya = ✋ admin. Null (non-WR / belum dikunci) = ✋ aman.
+      const deliv = v.wr_delivery_class === "restock" ? " ⚡" : " ✋";
+      lines.push(`${num}. <b>${escapeHtml(truncate(v.label, 60))}</b>${dur}${out}${deliv}`);
       lines.push(`   🛡 ${escapeHtml(war)} • ${formatRupiah(v.price)}`);
     });
     if (product.variants.length > 6) {

@@ -17,6 +17,7 @@ import {
   type WrProduct,
   type WrVariant,
 } from "./client";
+import { guessDeliveryClass } from "./delivery-class";
 
 export type SyncResult = {
   total: number;
@@ -406,6 +407,23 @@ export async function upsertWrVariant(
       now,
       wrVariant.id,
     );
+    // 2026-09-16: kelas pengiriman yang SUDAH dikunci (screenshot/admin/
+    // system) tidak pernah ditimpa sync — pola admin_description_override.
+    // HANYA yang masih NULL ditebak sistem dari sinyal API saat ini.
+    await execRun(
+      `UPDATE wr_variants SET wr_delivery_class=?, wr_delivery_source='system',
+        updated_at=? WHERE wr_variant_id=? AND wr_delivery_class IS NULL`,
+      guessDeliveryClass({
+        productName: String((existing as { wr_product_name?: unknown }).wr_product_name || ""),
+        variantName: wrVariant.name,
+        type: wrVariant.type,
+        stock: Number(wrVariant.stock),
+        terms: wrVariant.terms,
+        deliveryTerms: wrVariant.delivery_terms,
+      }),
+      now,
+      wrVariant.id,
+    ).catch(() => ({ changes: 0 }));
     const axvaraVariantId =
       existing.axvara_variant_id != null ? Number(existing.axvara_variant_id) : 0;
     if (axvaraVariantId > 0) {
@@ -481,13 +499,24 @@ export async function upsertWrVariant(
     );
     axvaraVariantId = conflict ? Number(conflict.id) : 0;
   }
+  // 2026-09-16: varian baru langsung ditebak kelasnya (sumber 'system');
+  // seed screenshot 0032 + kunci admin menimpa via UPDATE terpisah. Sync
+  // tidak pernah menimpa yang sudah terisi (kolom baru = NULL → ditebak).
+  const guessedClass = guessDeliveryClass({
+    productName: "",
+    variantName: wrVariant.name,
+    type: wrVariant.type,
+    stock: Number(wrVariant.stock),
+    terms: wrVariant.terms,
+    deliveryTerms: wrVariant.delivery_terms,
+  });
   await execRun(
     `INSERT OR IGNORE INTO wr_variants
       (wr_variant_id, wr_product_id, wr_variant_name, wr_price, wr_duration,
        wr_type, wr_warranty, wr_stock, wr_terms, wr_delivery_terms,
        axvara_variant_id, markup_percent, markup_fixed, axvara_sell_price,
-       is_active, last_synced_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?)`,
+       is_active, last_synced_at, wr_delivery_class, wr_delivery_source)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)`,
     wrVariant.id,
     wrProductId,
     wrVariant.name,
@@ -503,6 +532,8 @@ export async function upsertWrVariant(
     markupFixed,
     sellPrice,
     now,
+    guessedClass,
+    "system",
   );
   if (axvaraVariantId > 0) {
     await execRun(

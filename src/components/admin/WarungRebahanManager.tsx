@@ -53,6 +53,8 @@ type MarkupRow = {
   markup_fixed: number;
   axvara_sell_price: number;
   wr_product_name: string | null;
+  wr_delivery_class: string | null;
+  wr_delivery_source: string | null;
 };
 
 const WR_STATUS_LABEL: Record<string, string> = {
@@ -232,6 +234,22 @@ export function WarungRebahanManager() {
     }
   };
 
+  const setDeliveryClass = async (row: MarkupRow, deliveryClass: "restock" | "made_by_order") => {
+    try {
+      const res = await fetch("/api/admin/warung/markup", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wr_variant_id: row.wr_variant_id, delivery_class: deliveryClass }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "Gagal mengunci kelas");
+      toast.success(deliveryClass === "restock" ? "Dikunci: RESTOK • auto." : "Dikunci: MBO • manual.");
+      await loadMarkups();
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Gagal mengunci kelas");
+    }
+  };
+
   const lastLog = logs[0];
   // logs[0] adalah sync PRODUK terakhir (endpoint memfilter baris saldo).
   // Bila endpoint lama masih mengembalikan baris saldo (products_synced
@@ -353,13 +371,18 @@ export function WarungRebahanManager() {
               return (
                 <article key={row.wr_variant_id} className="grid gap-3 p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-white">{row.wr_product_name ? `${row.wr_product_name} — ` : ""}{row.wr_variant_name}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="truncate text-sm font-semibold text-white">{row.wr_product_name ? `${row.wr_product_name} — ` : ""}{row.wr_variant_name}</p>
+                      <DeliveryBadge wrClass={row.wr_delivery_class} source={row.wr_delivery_source} />
+                    </div>
                     <p className="mt-1 text-xs text-white/45">Modal {formatRupiah(row.wr_price)} · Jual {formatRupiah(row.axvara_sell_price)} · Stok {row.wr_stock}</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <label className="flex items-center gap-1.5 text-xs text-white/55">%<input value={edit.percent} onChange={(e) => setEditingMarkup((s) => ({ ...s, [row.wr_variant_id]: { percent: e.target.value, fixed: edit.fixed } }))} inputMode="numeric" className="h-9 w-16 rounded-lg border border-white/10 bg-black/20 px-2 text-right text-xs text-white focus:border-[#00E5FF]/50 focus:outline-none" /></label>
                     <label className="flex items-center gap-1.5 text-xs text-white/55">+Rp<input value={edit.fixed} onChange={(e) => setEditingMarkup((s) => ({ ...s, [row.wr_variant_id]: { percent: edit.percent, fixed: e.target.value } }))} inputMode="numeric" className="h-9 w-24 rounded-lg border border-white/10 bg-black/20 px-2 text-right text-xs text-white focus:border-[#00E5FF]/50 focus:outline-none" /></label>
                     <button onClick={() => void saveMarkup(row)} className="inline-flex h-9 items-center rounded-xl bg-white px-3.5 text-xs font-bold text-[#07101f] transition hover:bg-white/90">Simpan</button>
+                    <button onClick={() => void setDeliveryClass(row, "restock")} title="Kunci sebagai RESTOK (auto)" className="inline-flex h-9 items-center rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-2.5 text-[11px] font-bold text-emerald-300 transition hover:bg-emerald-500/20">⚡</button>
+                    <button onClick={() => void setDeliveryClass(row, "made_by_order")} title="Kunci sebagai MBO (manual)" className="inline-flex h-9 items-center rounded-xl border border-[#FFB800]/25 bg-[#FFB800]/10 px-2.5 text-[11px] font-bold text-[#FFD66B] transition hover:bg-[#FFB800]/20">✋</button>
                   </div>
                 </article>
               );
@@ -377,6 +400,19 @@ function StatusBadge({ status }: { status: string }) {
     : status === "processing" || status === "ordering" ? "border-[#00E5FF]/25 bg-[#00E5FF]/10 text-[#5cefff]"
     : "border-[#FFB800]/25 bg-[#FFB800]/10 text-[#FFD66B]";
   return <span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold ${tone}`}>{WR_STATUS_LABEL[status] ?? status}</span>;
+}
+
+/** Badge kelas pengiriman WR (admin saja): RESTOK/MBO + sumber kunci. */
+function DeliveryBadge({ wrClass, source }: { wrClass: string | null; source: string | null }) {
+  if (wrClass === "restock") {
+    const src = source === "admin" ? "kunci admin" : source === "screenshot" ? "daftar WR" : source === "system" ? "tebakan" : "";
+    return <span title={src ? `RESTOK • auto • ${src}` : "RESTOK • auto"} className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300">⚡ RESTOK{src ? ` • ${src}` : ""}</span>;
+  }
+  if (wrClass === "made_by_order") {
+    const src = source === "admin" ? "kunci admin" : source === "screenshot" ? "daftar WR" : source === "system" ? "tebakan" : "";
+    return <span title={src ? `MBO • manual • ${src}` : "MBO • manual"} className="rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFD66B]">✋ MBO{src ? ` • ${src}` : ""}</span>;
+  }
+  return <span title="Belum dikunci — label pembeli = Dikirim admin" className="rounded-full border border-white/15 bg-white/[0.05] px-2 py-0.5 text-[10px] font-bold text-white/45">? belum dikunci</span>;
 }
 
 function formatDate(value: string): string {

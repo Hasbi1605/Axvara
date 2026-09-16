@@ -133,18 +133,32 @@ export async function GET(request: NextRequest) {
         EXISTS(SELECT 1 FROM fulfillment_jobs fj WHERE fj.order_code=o.code AND fj.status IN ('manual_required','retry','failed'))
         OR EXISTS(SELECT 1 FROM fulfillment_items fi WHERE fi.order_code=o.code AND fi.status IN ('manual_required','retry','failed'))
       )`),
-    safeAll(`SELECT status, COUNT(*) AS count FROM fulfillment_items WHERE status IN ('manual_required','retry','failed','queued','sending') GROUP BY status`),
+    safeAll(`SELECT fi.status AS status, COUNT(*) AS count FROM fulfillment_items fi
+      JOIN orders o ON o.code=fi.order_code
+      WHERE fi.status IN ('manual_required','retry','failed','queued','sending')
+        AND o.status='lunas' AND o.payment_status='paid' GROUP BY fi.status`),
     safeFirst(`SELECT COUNT(*) AS count FROM product_variants WHERE is_active=1 AND stock BETWEEN 0 AND 5`),
     safeFirst(`SELECT name,sold_count FROM products WHERE is_active=1 ORDER BY sold_count DESC, sort_order ASC LIMIT 1`),
     safeAll(`SELECT sales_channel,COUNT(*) AS count FROM orders WHERE status='pending' GROUP BY sales_channel`),
     // Sinyal kesehatan berbasis pengukuran (issue #13), bukan sekadar env:
     // antrean fulfillment + usia kirim Telegram terakhir.
-    safeAll(`SELECT status, COUNT(*) AS count FROM fulfillment_jobs GROUP BY status`),
+    // 2026-09-16: tgQueue/fulfillment HANYA dari order yang masih butuh
+    // kirim (lunas+paid). Job/item milik order final (dibatalkan/kadaluarsa)
+    // tidak dihitung — sebelumnya 7 failed order final menyeret Telegram ke
+    // degraded padahal bot sehat (false alarm).
+    safeAll(`SELECT fj.status AS status, COUNT(*) AS count FROM fulfillment_jobs fj
+      JOIN orders o ON o.code=fj.order_code
+      WHERE o.status='lunas' AND o.payment_status='paid' GROUP BY fj.status`),
     safeAll(`SELECT status, COUNT(*) AS count FROM whatsapp_outbox GROUP BY status`),
     // Usia antrean tertua (review R11): tanpa ini, satu kirim sukses yang
-    // baru menutupi antrean macet berjam-jam.
-    safeFirst(`SELECT MIN(next_attempt_at) AS oldest_due FROM fulfillment_jobs WHERE status IN ('queued','retry')`),
-    safeFirst(`SELECT MIN(next_attempt_at) AS oldest_due FROM fulfillment_items WHERE status IN ('queued','retry')`),
+    // baru menutupi antrean macet berjam-jam. Filter order sama: hanya order
+    // lunas+paid yang menua yang dihitung; bangkai order final diabaikan.
+    safeFirst(`SELECT MIN(fj.next_attempt_at) AS oldest_due FROM fulfillment_jobs fj
+      JOIN orders o ON o.code=fj.order_code
+      WHERE fj.status IN ('queued','retry') AND o.status='lunas' AND o.payment_status='paid'`),
+    safeFirst(`SELECT MIN(fi.next_attempt_at) AS oldest_due FROM fulfillment_items fi
+      JOIN orders o ON o.code=fi.order_code
+      WHERE fi.status IN ('queued','retry') AND o.status='lunas' AND o.payment_status='paid'`),
     safeFirst(`SELECT MIN(next_attempt_at) AS oldest_due FROM whatsapp_outbox WHERE status IN ('pending','failed')`),
     safeFirst(`SELECT MAX(CASE WHEN telegram_paid_notified_at IS NOT NULL THEN telegram_paid_notified_at ELSE NULL END) AS last_ok,
       MAX(updated_at) AS last_touch FROM orders WHERE sales_channel='telegram'`),

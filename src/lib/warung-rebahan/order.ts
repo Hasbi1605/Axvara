@@ -320,11 +320,16 @@ export async function processWrPendingOrders(
   }
   const due = await db
     .queryAll(
-      `SELECT * FROM wr_order_links
-       WHERE status IN ('pending','retry')
-         AND attempt_count < max_attempts
-         AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime('now'))
-       ORDER BY next_attempt_at ASC, id ASC LIMIT 4`,
+      `SELECT l.* FROM wr_order_links l
+       LEFT JOIN wr_variants wv ON wv.wr_variant_id = l.wr_variant_id
+       WHERE l.status IN ('pending','retry')
+         AND l.attempt_count < l.max_attempts
+         AND (l.next_attempt_at IS NULL OR datetime(l.next_attempt_at) <= datetime('now'))
+         -- 2026-09-16: gate per kelas — HANYA restock yang auto-order.
+         -- made_by_order (slow, antrean manusia WR) + NULL (belum dikunci)
+         -- tetap antre manual: link dibiarkan pending, bukan failed.
+         AND COALESCE(wv.wr_delivery_class, 'made_by_order') = 'restock'
+       ORDER BY l.next_attempt_at ASC, l.id ASC LIMIT 4`,
     )
     .catch(() => [] as Row[]);
   for (const link of due) {

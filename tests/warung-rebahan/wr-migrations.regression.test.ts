@@ -122,6 +122,37 @@ describe("migrasi WR berurutan di DB production lama", () => {
       sql.close();
     }
   });
+
+  it("0032: kelas pengiriman restock/MBO + seed screenshot + CHECK", async () => {
+    const sql = createPreWrDatabase();
+    try {
+      sql.exec(fs.readFileSync("drizzle/migrations/0027_warung_rebahan.sql", "utf8"));
+      sql.exec(fs.readFileSync("drizzle/migrations/0032_wr_delivery_class.sql", "utf8"));
+      // FK wr_variants → wr_products: induk dulu.
+      sql.prepare(`INSERT INTO wr_products(wr_product_id,wr_product_name) VALUES('p-old','Produk Lama'),('p-new','Netflix Premium'),('p-bad','X')`).run();
+      // Baris lama default NULL (belum dikunci → label pembeli = Dikirim admin).
+      sql.prepare(`INSERT INTO wr_variants(wr_variant_id,wr_product_id,wr_variant_name,wr_price)
+        VALUES('v-old','p-old','Produk Lama',5000)`).run();
+      sql.prepare(`INSERT INTO wr_variants(wr_variant_id,wr_product_id,wr_variant_name,wr_price,wr_delivery_class,wr_delivery_source)
+        VALUES('v-new','p-new','Netflix Premium Anti Limit',8000,'restock','screenshot')`).run();
+      const old = sql.prepare(`SELECT wr_delivery_class c FROM wr_variants WHERE wr_variant_id='v-old'`).get() as { c: string | null };
+      expect(old.c).toBeNull();
+      // Nilai liar ditolak CHECK.
+      expect(() => sql.prepare(`INSERT INTO wr_variants(wr_variant_id,wr_product_id,wr_variant_name,wr_price,wr_delivery_class)
+        VALUES('v-bad','p-bad','X',100,'instan')`).run()).toThrow();
+      // Seed screenshot tidak menimpa kunci manual (rerun ALTER akan gagal
+      // duplicate column — wajar SQLite; jalur CI aman karena Wrangler
+      // mencatat migrasi. Uji keterjagaan via UPDATE guard, bukan rerun file).
+      sql.prepare(`UPDATE wr_variants SET wr_delivery_class='made_by_order', wr_delivery_source='admin' WHERE wr_variant_id='v-old'`).run();
+      sql.prepare(`UPDATE wr_variants SET wr_delivery_class='restock', wr_delivery_source='screenshot'
+        WHERE wr_delivery_class IS NULL AND (wr_variant_name LIKE '%Netflix%')`).run();
+      const kept = sql.prepare(`SELECT wr_delivery_class c, wr_delivery_source s FROM wr_variants WHERE wr_variant_id='v-old'`).get() as { c: string; s: string };
+      expect(kept.c).toBe("made_by_order");
+      expect(kept.s).toBe("admin");
+    } finally {
+      sql.close();
+    }
+  });
 });
 
 describe("regresi #14: bootstrap schema.sql mendukung seluruh operasi WR", () => {

@@ -90,7 +90,9 @@ export function productDetailMessage(productName: string, _description: string |
   variants.forEach((v, i) => {
     const num = i + 1;
     const war = formatWarranty(v);
-    lines.push(`${num}. *${v.label}*`);
+    // Label pengiriman WR singkat (migrasi 0032, parity Telegram).
+    const deliv = (v as { wr_delivery_class?: string | null }).wr_delivery_class === "restock" ? " ⚡" : " ✋";
+    lines.push(`${num}. *${v.label}*${deliv}`);
     lines.push(`   🛡 ${war || "Tanpa Garansi"}`);
     lines.push(`   「 *${formatRupiah(v.price)}* 」`);
     if (v.stock === 0) lines.push("   ❌ *HABIS*");

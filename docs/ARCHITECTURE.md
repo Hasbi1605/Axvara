@@ -936,3 +936,21 @@ Perintah akun #2 wajib prefix `HEROKU_API_KEY=<kunci-akun-2>`; jangan
   (dibatalkan/kadaluarsa) dibersihkan + `pendingJobs` hanya order lunas/paid;
   slot `warung_rebahan` dijamin bila sync basi >45 menit (guard histori agar
   budget R12 deterministik di fixture tanpa WR).
+
+### 16.7 Health anti-false-alarm + kelas pengiriman WR (2026-09-16)
+- Query health `tgQueue`/`fulfillmentQueue`/`oldestDue` JOIN orders dan hanya
+  menghitung order lunas+paid. Sebelumnya 7 `failed` order final menyeret
+  Telegram ke `degraded` padahal bot sehat (webhook 0 pending, no error).
+- Migrasi 0032: `wr_variants(wr_delivery_class, wr_delivery_source)`.
+  API WR tidak memberi penanda auto/manual — desain hibrida: seed 17 nama
+  screenshot admin (`screenshot`) + `guessDeliveryClass()` untuk sisanya dan
+  varian baru (`system`) + kunci manual owner (`admin`). Sync TIDAK PERNAH
+  menimpa yang sudah terisi (pola override 0030). Default ragu = manual.
+- Label pembeli singkat: restock = "⚡ Kirim otomatis", selainnya =
+  "✋ Dikirim admin" (PDP web, Telegram ⚡/✋, WA ⚡/✋). Admin: badge
+  RESTOK/MBO + sumber + tombol kunci ⚡/✋ di tabel markup (PUT
+  `delivery_class`). Kunci: `PUT /api/admin/warung/markup
+  {wr_variant_id, delivery_class}` → source 'admin'.
+- Gate auto-order per kelas: `processWrPendingOrders` hanya memproses link
+  `restock`; MBO/NULL tetap pending (antre manual). Jangan bypass gate tanpa
+  persetujuan owner — MBO = antrean manusia di sisi WR (slow).

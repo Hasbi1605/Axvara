@@ -669,6 +669,11 @@ CREATE TABLE IF NOT EXISTS wr_variants (
   axvara_sell_price     INTEGER NOT NULL DEFAULT 0,
   is_active             INTEGER NOT NULL DEFAULT 1,
   last_synced_at        TEXT,
+  -- Kelas pengiriman WR (migrasi 0032): 'restock' (auto) vs 'made_by_order'
+  -- (manual slow). NULL = belum dikunci (tebakan sistem / default manual).
+  -- Sync TIDAK PERNAH menimpa yang sudah terisi (pola override admin 0030).
+  wr_delivery_class     TEXT CHECK (wr_delivery_class IN ('restock', 'made_by_order')),
+  wr_delivery_source    TEXT CHECK (wr_delivery_source IN ('screenshot', 'system', 'admin')),
   created_at            TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at            TEXT NOT NULL DEFAULT (datetime('now'))
 );

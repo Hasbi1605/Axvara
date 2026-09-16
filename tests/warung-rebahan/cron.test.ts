@@ -57,7 +57,7 @@ describe("cron fase warung_rebahan", () => {
     fixture.sql.prepare("INSERT INTO products(id,name,slug,price,stock,source,wr_product_id,wr_auto_managed) VALUES(1,'CapCut Pro','capcut-pro',7500,10,'warung_rebahan','prod-capcut',1)").run();
     fixture.sql.prepare("INSERT INTO product_variants(id,product_id,sku,label,price,stock,fulfillment_mode,wr_variant_id,wr_auto_managed) VALUES(1,1,'WR-V1','Pro 7 Hari',7500,10,'manual','var-1',1)").run();
     fixture.sql.prepare("INSERT INTO wr_products(wr_product_id,wr_product_name,axvara_product_id) VALUES('prod-capcut','CapCut Pro',1)").run();
-    fixture.sql.prepare("INSERT INTO wr_variants(wr_variant_id,wr_product_id,wr_variant_name,wr_price,wr_stock,axvara_variant_id,axvara_sell_price) VALUES('var-1','prod-capcut','Pro 7 Hari',5000,10,1,7500)").run();
+    fixture.sql.prepare("INSERT INTO wr_variants(wr_variant_id,wr_product_id,wr_variant_name,wr_price,wr_stock,axvara_variant_id,axvara_sell_price,wr_delivery_class,wr_delivery_source) VALUES('var-1','prod-capcut','Pro 7 Hari',5000,10,1,7500,'restock','screenshot')").run();
     fixture.sql.prepare(`INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel,fulfillment_status,variant_id) VALUES('AXV-20260911-WR0001','B','6280',?,7500,'qris','lunas','paid','web','queued',1)`)
       .run(JSON.stringify([{ product_id: 1, variant_id: 1, name: "CapCut", price: 7500, qty: 1 }]));
     fixture.sql.prepare("INSERT INTO wr_order_links(order_code,wr_variant_id,quantity,wr_cost,status,attempt_count,max_attempts,next_attempt_at) VALUES('AXV-20260911-WR0001','var-1',1,5000,'pending',0,3,datetime('now','-1 minute'))").run();

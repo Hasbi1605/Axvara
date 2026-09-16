@@ -127,6 +127,7 @@ export async function handleShowProduct(chatId: number, messageId: number, produ
     warranty: formatWarranty(v) || null,
     duration: formatDuration(v) || null,
     stock: v.stock,
+    wr_delivery_class: v.wr_delivery_class ?? null,
   }));
 
   // No description rendered on Telegram (WA parity). Warranty per variant above

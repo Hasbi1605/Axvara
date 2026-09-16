@@ -22,6 +22,12 @@ export type VariantSummary = {
   terms: string | null;
   /** Cara aktivasi/pengiriman dari WR (read-only, null bila WR tidak memberi). */
   delivery_terms: string | null;
+  /**
+   * Kelas pengiriman WR (migrasi 0032): 'restock' (auto) | 'made_by_order'
+   * (manual slow) | null (belum dikunci). Label pembeli:
+   * restock = "⚡ Kirim otomatis", selainnya = "✋ Dikirim admin".
+   */
+  wr_delivery_class: string | null;
   price: number;
   compare_price: number | null;
   stock: number;
@@ -154,7 +160,8 @@ export async function getProductDetail(slugOrId: string | number): Promise<Produ
     `SELECT pv.id, pv.product_id, pv.sku, pv.label, pv.duration_value, pv.duration_unit, pv.duration_label,
             pv.warranty_type, pv.warranty_value, pv.warranty_unit, pv.warranty_label,
             pv.price, pv.compare_price, pv.stock, pv.fulfillment_mode, pv.is_active, pv.sort_order,
-            wv.wr_terms AS wr_terms, wv.wr_delivery_terms AS wr_delivery_terms
+            wv.wr_terms AS wr_terms, wv.wr_delivery_terms AS wr_delivery_terms,
+            wv.wr_delivery_class AS wr_delivery_class
      FROM product_variants pv
      LEFT JOIN wr_variants wv ON wv.wr_variant_id = pv.wr_variant_id
      WHERE pv.product_id=? AND pv.is_active=1
@@ -202,6 +209,9 @@ async function getProductDetailLegacy(slugOrId: string | number): Promise<Produc
     warranty_label: null,
     terms: null,
     delivery_terms: null,
+    // Varian sintetis legacy (non-WR / tanpa join wr_variants): tidak ada
+    // kelas → label pembeli jatuh ke "✋ Dikirim admin" (default aman).
+    wr_delivery_class: null,
     price: Number(product.price),
     compare_price: product.compare_price ? Number(product.compare_price) : null,
     stock: Number(product.stock ?? -1),
@@ -379,6 +389,7 @@ function mapVariant(row: Record<string, unknown>): VariantSummary {
     warranty_label: row.warranty_label ? String(row.warranty_label) : null,
     terms: nullableText(row.wr_terms),
     delivery_terms: nullableText(row.wr_delivery_terms),
+    wr_delivery_class: row.wr_delivery_class ? String(row.wr_delivery_class) : null,
     price: Number(row.price),
     compare_price: row.compare_price != null ? Number(row.compare_price) : null,
     stock: Number(row.stock ?? -1),

@@ -444,11 +444,16 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
           {/* Divider */}
           <div className="mt-5 border-t border-white/8" />
 
-          {/* Feature list */}
+          {/* Feature list — baris pertama mengikuti kelas pengiriman WR
+              varian terpilih (migrasi 0032): restock = kirim otomatis,
+              selainnya = dikirim admin. Jangan janji "5–15 menit" umum
+              untuk produk manual/slow. */}
           <ul className="mt-5 space-y-2.5 text-[13px] text-white/60">
             <li className="flex items-start gap-2">
               <svg viewBox="0 0 16 16" className="w-4 h-4 mt-0.5 shrink-0 text-emerald-400/80" fill="none" stroke="currentColor" strokeWidth={2}><path d="M3 8.5l3 3 7-7" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              Aktivasi 5–15 menit setelah pembayaran dikonfirmasi
+              {termsVariant?.wr_delivery_class === "restock"
+                ? "⚡ Kirim otomatis setelah pembayaran dikonfirmasi"
+                : "✋ Dikirim admin ke kontak setelah pembayaran"}
             </li>
             <li className="flex items-start gap-2">
               <svg viewBox="0 0 16 16" className="w-4 h-4 mt-0.5 shrink-0 text-emerald-400/80" fill="none" stroke="currentColor" strokeWidth={2}><path d="M3 8.5l3 3 7-7" strokeLinecap="round" strokeLinejoin="round"/></svg>
