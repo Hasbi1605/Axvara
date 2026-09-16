@@ -180,6 +180,21 @@
 - Instruksi: "Admin verifikasi 5-15 menit, cek WA kamu"
 - Tombol: "Lanjut Belanja" + "Hubungi Admin via WA" (link wa.me)
 
+### 5.7b Framing QRIS di /pesanan/[code] (2026-09-16, live)
+- Urutan vertikal: label **"Scan QRIS"** (font-display 20px bold putih) →
+  kotak QR putih `max-w-[330px] rounded-2xl p-3` (QR + quiet zone TIDAK
+  tersentuh) → lockup resmi (logo + teks lengkap **"National Payment
+  Standard"**, tidak terpotong "...") → Total bayar → kode unik →
+  countdown → Download.
+- Lockup: `public/brand/qris.svg` (logo resmi QRIS Bank Indonesia versi
+  mono putih untuk bg gelap, sumber Wikimedia Commons `Logo_QRIS.svg`
+  karya BI) + teks Inter 14px `white/70`, `aria-label="QRIS National
+  Payment Standard"`.
+- Framing MURNI frontend — generator `src/lib/payments/qris-png.ts` dan
+  route `/api/payments/qris/[code]/image` TIDAK disentuh (QR tetap murni
+  agar scan + file unduhan tidak rusak). Berlaku hanya di cabang QR aktif;
+  state kedaluwarsa/lunas/dibatalkan tidak ikut.
+
 ### 5.8 Admin UI (Clean, Bukan Glass Berat)
 - Sidebar midnight solid, main area `bg-[#080C1E]`
 - Kartu stat: glass subtle, angka besar Space Grotesk
@@ -246,7 +261,8 @@
 
 ## 9. Asset
 
-- **QRIS:** dirender sebagai PNG per order dari payload DANA Business server-only; tidak ada aset QRIS statis publik
+- **QRIS:** dirender sebagai PNG per order dari payload DANA Business server-only; tidak ada aset QRIS statis publik. Framing (label + lockup) murni frontend di `/pesanan/[code]` — lihat §5.7b
+- **Logo QRIS resmi:** `public/brand/qris.svg` (mono putih, sumber resmi BI via Wikimedia Commons; JANGAN ketik ulang dengan font / comot JPG)
 - **Logo:** Wordmark "AXVARA" Space Grotesk Bold, X stylized sebagai vault gate (gap di tengah X dengan glow cyan). Versi light di dark bg. SVG.
 - **Ikon:** Lucide React (outline, 20px, stroke 1.75)
 - **Foto produk (standar 2026-09-15, revisi compose):** Muse Image `compose`

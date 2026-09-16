@@ -187,6 +187,20 @@ describe("Authoritative UI and admin state", () => {
     expect(statusPage).toContain("Status terbaru gagal dimuat");
   });
 
+  it("framing QRIS menempel di QR: label Scan QRIS + lockup resmi + kontrak gambar utuh", () => {
+    const statusPage = read("src/app/pesanan/[code]/page.tsx");
+    // Label instruksi persis di atas QR, di cabang QR aktif saja.
+    expect(statusPage).toContain("Scan QRIS");
+    // Lockup resmi di bawah QR: logo resmi + teks lengkap (tidak terpotong "...").
+    expect(statusPage).toContain("/brand/qris.svg");
+    expect(statusPage).toContain("National Payment Standard");
+    // Kontrak gambar TIDAK berubah: src QR tetap ke route image per order.
+    expect(statusPage).toContain("order.qris.image_url");
+    expect(statusPage).toContain('alt={`QRIS dinamis pesanan ${order.code}`}');
+    // Aset logo resmi versi putih tema gelap wajib ada.
+    expect(fs.existsSync(path.join(process.cwd(), "public/brand/qris.svg"))).toBe(true);
+  });
+
   it("tombol Telegram Admin mengarah ke akun support manusia, bukan bot", () => {
     const statusPage = read("src/app/pesanan/[code]/page.tsx");
     expect(statusPage).toContain("supportTelegramLink()");
