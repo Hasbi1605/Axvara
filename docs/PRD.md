@@ -77,6 +77,7 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 | FR-S14 | Bot Telegram @Axvara_bot: /start (foto welcome + sapaan), katalog, cari, keranjang, checkout QRIS, pesanan, garansi | P0 ✅ live |
 | FR-S15 | Bot grup WhatsApp (Baileys): list/katalog, cari, bayar, bukti transfer, perintah admin `.d` | P0 ✅ live |
 | FR-S16 | Produk varian terpusat: harga/stok/durasi/garansi per varian; harga kartu dari varian termurah tersedia | P0 ✅ live |
+| FR-S18 | PDP menampilkan S&K + cara aktivasi per varian WR (read-only, ikut varian terpilih); label garansi kanonis "Garansi N Unit" | P0 ✅ live |
 | FR-S17 | Integrasi Warung Rebahan H2H: sync katalog terjadwal, auto-order exactly-once, webhook status, saldo monitor + throttle notif | P0 ✅ live (auto-order flag default off) |
 
 ### 2.2 Functional — Admin

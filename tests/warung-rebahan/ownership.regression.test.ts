@@ -234,6 +234,46 @@ describe("override konsisten di SEMUA kanal (web, Telegram, WhatsApp)", () => {
   });
 });
 
+describe("S&K varian WR terbaca storefront via JOIN (tanpa migrasi)", () => {
+  // `wr_terms`/`wr_delivery_terms` hidup di wr_variants (milik sync).
+  // getProductDetail JOIN via wr_variant_id agar PDP menampilkannya tanpa
+  // kolom baru / dual-write. Varian manual (tanpa wr_variant_id) → null.
+  beforeEach(() => {
+    vi.stubEnv("PRODUCT_VARIANTS_READ", "true");
+    fixture.sql.prepare(
+      `INSERT INTO wr_products (wr_product_id, wr_product_name, axvara_product_id)
+       VALUES ('prod-capcut', 'CapCut (WR)', 1)`,
+    ).run();
+    fixture.sql.prepare(
+      `INSERT INTO wr_variants (wr_variant_id, wr_product_id, wr_variant_name, wr_price, wr_stock, wr_terms, wr_delivery_terms, axvara_variant_id, axvara_sell_price)
+       VALUES ('var-1', 'prod-capcut', 'Pro 7 Hari', 5000, 10, '1. Fresh, made by order\n2. Garansi sejak pembelian', 'Klik Verifikasi via kode sandi', 1, 7500)`,
+    ).run();
+  });
+
+  it("getProductDetail mengembalikan terms + delivery_terms varian WR", async () => {
+    const { getProductDetail } = await import("@/lib/catalog");
+    const detail = await getProductDetail("capcut-pro-wr");
+    expect(detail?.variants[0]?.terms).toContain("Fresh, made by order");
+    expect(detail?.variants[0]?.delivery_terms).toContain("Verifikasi via kode sandi");
+  });
+
+  it("varian manual tanpa wr_variant_id mendapat terms null", async () => {
+    const { getProductDetail } = await import("@/lib/catalog");
+    const detail = await getProductDetail("produk-manual");
+    expect(detail?.variants[0]?.terms).toBeNull();
+    expect(detail?.variants[0]?.delivery_terms).toBeNull();
+  });
+
+  it("PDP merender section Syarat & Ketentuan per varian", async () => {
+    const source = await import("node:fs").then((fs) =>
+      fs.readFileSync("src/app/produk/[slug]/product-detail-client.tsx", "utf8"),
+    );
+    expect(source).toContain("Syarat &");
+    expect(source).toContain("termsVariant");
+    expect(source).toContain("delivery_terms");
+  });
+});
+
 describe("admin_description_override (migrasi 0030)", () => {  it("admin dapat menyimpan override tanpa menyentuh deskripsi WR", async () => {
     const res = await putProduct(1, { adminDescriptionOverride: "Versi copywriting AXVARA" });
     expect(res.status).toBe(200);

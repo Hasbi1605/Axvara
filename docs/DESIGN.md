@@ -133,8 +133,16 @@
 - Katalog: 12 produk + tombol **"Tampilkan N produk lagi"** (bukan nomor halaman);
   produk ready di depan, stok habis tetap tampil di belakang (urutan stabil)
 
-### 5.3b Foto Welcome Telegram
-- File: `public/banners/tg-welcome.webp` (WebP ~31 KB, 1280px) — dikirim via
+### 5.3c PDP: Syarat & Ketentuan per Varian + Label Garansi
+- Section "Syarat & Ketentuan" terikat **varian terpilih** (fallback varian
+  aktif pertama): judul + badge label varian, isi numbered-list bernomor
+  otomatis (prefix angka mentah WR di-strip), sub-blok "Cara Aktivasi" bila ada.
+- Desktop: kartu glass di kolom kiri bawah deskripsi. Mobile: kartu di bawah
+  accordion deskripsi.
+- Label garansi varian SELALU kanonis `Garansi N Unit` ("Garansi 12 Hari") +
+  ikon shield — JANGAN render label mentah ("12 Hari" ambigu dengan durasi).
+
+### 5.3b Foto Welcome Telegram- File: `public/banners/tg-welcome.webp` (WebP ~31 KB, 1280px) — dikirim via
   `sendPhoto` di `/start` dengan caption sapaan + inline keyboard.
 - JANGAN pakai PNG 2,2 MB dari R2 (timeout 10 dtk di edge → foto gagal diam-diam).
   Bila `sendPhoto` gagal: retry 1x, lalu fallback teks + keyboard.

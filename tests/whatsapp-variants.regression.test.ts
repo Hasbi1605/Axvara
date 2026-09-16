@@ -92,6 +92,8 @@ describe("Catalog Formatting Helpers", () => {
     warranty_value: null,
     warranty_unit: null,
     warranty_label: null,
+    terms: null,
+    delivery_terms: null,
     price: 18000,
     compare_price: 25000,
     stock: -1,
@@ -123,7 +125,7 @@ describe("Catalog Formatting Helpers", () => {
       warranty_type: "limited",
       warranty_value: 1,
       warranty_unit: "month",
-    })).toBe("Garansi Terbatas 1 Bulan");
+    })).toBe("Garansi 1 Bulan");
     expect(formatWarranty({
       ...baseVariant,
       warranty_type: "full",
@@ -131,6 +133,22 @@ describe("Catalog Formatting Helpers", () => {
       warranty_unit: "month",
     })).toBe("Full Garansi 12 Bulan");
     expect(formatWarranty({ ...baseVariant, warranty_type: "custom", warranty_label: "Garansi Akun 14 Hari" })).toBe("Garansi Akun 14 Hari");
+    // Label mentah WR ("12 Hari") wajib dikanoniskan jadi "Garansi 12 Hari"
+    // agar tak ambigu dengan durasi produk.
+    expect(formatWarranty({
+      ...baseVariant,
+      warranty_type: "limited",
+      warranty_value: 12,
+      warranty_unit: "day",
+      warranty_label: "12 Hari",
+    })).toBe("Garansi 12 Hari");
+    expect(formatWarranty({
+      ...baseVariant,
+      warranty_type: "limited",
+      warranty_value: 20,
+      warranty_unit: "day",
+      warranty_label: "20 Hari",
+    })).toBe("Garansi 20 Hari");
   });
 
   it("formats Rupiah correctly", () => {
@@ -170,12 +188,14 @@ describe("WhatsApp Message Formatting", () => {
         id: 1, product_id: 1, sku: "GEM-INV", label: "Invite",
         duration_value: 12, duration_unit: "month", duration_label: null,
         warranty_type: "full", warranty_value: null, warranty_unit: null, warranty_label: null,
+        terms: null, delivery_terms: null,
         price: 18000, compare_price: null, stock: -1, fulfillment_mode: "manual", is_active: 1, sort_order: 0,
       },
       {
         id: 2, product_id: 1, sku: "GEM-HEAD", label: "Head",
         duration_value: 3, duration_unit: "month", duration_label: null,
         warranty_type: "limited", warranty_value: 1, warranty_unit: "month", warranty_label: null,
+        terms: null, delivery_terms: null,
         price: 25000, compare_price: null, stock: 5, fulfillment_mode: "manual", is_active: 1, sort_order: 10,
       },
     ];
@@ -186,7 +206,7 @@ describe("WhatsApp Message Formatting", () => {
     expect(msg).toContain("🛡 Full Garansi");
     expect(msg).toContain("「 *Rp18.000* 」");
     expect(msg).toContain("2. *Head*");
-    expect(msg).toContain("🛡 Garansi Terbatas 1 Bulan");
+    expect(msg).toContain("🛡 Garansi 1 Bulan");
     expect(msg).toContain("「 *Rp25.000* 」");
     expect(msg).toContain("Balas dengan angka *1-2* untuk memilih.");
   });
@@ -197,6 +217,7 @@ describe("WhatsApp Message Formatting", () => {
         id: 1, product_id: 1, sku: "TEST-OUT", label: "Solo",
         duration_value: 1, duration_unit: "month", duration_label: null,
         warranty_type: "none", warranty_value: null, warranty_unit: null, warranty_label: null,
+        terms: null, delivery_terms: null,
         price: 10000, compare_price: null, stock: 0, fulfillment_mode: "manual", is_active: 1, sort_order: 0,
       },
     ];
@@ -209,12 +230,13 @@ describe("WhatsApp Message Formatting", () => {
       id: 2, product_id: 1, sku: "GEM-HEAD", label: "Head",
       duration_value: 3, duration_unit: "month", duration_label: null,
       warranty_type: "limited", warranty_value: 1, warranty_unit: "month", warranty_label: null,
+      terms: null, delivery_terms: null,
       price: 25000, compare_price: null, stock: 5, fulfillment_mode: "manual", is_active: 1, sort_order: 10,
     };
     const msg = waMsg.variantSelectedMessage("Gemini", variant);
     expect(msg).toContain("*VARIAN DIPILIH*");
     expect(msg).toContain("GEMINI — *Head*");
-    expect(msg).toContain("🛡 Garansi Terbatas 1 Bulan");
+    expect(msg).toContain("🛡 Garansi 1 Bulan");
     expect(msg).toContain("Rp25.000");
     expect(msg).toContain("*QRIS* · *SEABANK* · *EWALLET*");
   });

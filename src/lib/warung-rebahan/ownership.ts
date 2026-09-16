@@ -7,7 +7,9 @@
 // (agent CMS, curl, tab lama yang masih terbuka).
 //
 // Kontrak:
-//   WR-owned    : label varian, harga jual, stok, durasi, garansi, deskripsi.
+//   WR-owned    : label varian, harga jual, stok, durasi, garansi, deskripsi,
+//                 S&K varian (terms) + cara aktivasi (delivery_terms, read-only
+//                 dari wr_variants — tampil di PDP, tak bisa diedit admin).
 //   Admin-owned : foto, badge, sort_order, is_active, admin_description_override.
 //   Markup      : hanya lewat panel WR (wr_variants.markup_percent/fixed).
 

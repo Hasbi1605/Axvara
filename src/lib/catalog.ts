@@ -18,6 +18,10 @@ export type VariantSummary = {
   warranty_value: number | null;
   warranty_unit: string | null;
   warranty_label: string | null;
+  /** S&K per varian dari WR (read-only, milik sync — lihat ownership.ts). */
+  terms: string | null;
+  /** Cara aktivasi/pengiriman dari WR (read-only, null bila WR tidak memberi). */
+  delivery_terms: string | null;
   price: number;
   compare_price: number | null;
   stock: number;
@@ -147,12 +151,14 @@ export async function getProductDetail(slugOrId: string | number): Promise<Produ
   if (!product) return null;
 
   const variants = await queryAll(
-    `SELECT id, product_id, sku, label, duration_value, duration_unit, duration_label,
-            warranty_type, warranty_value, warranty_unit, warranty_label,
-            price, compare_price, stock, fulfillment_mode, is_active, sort_order
-     FROM product_variants
-     WHERE product_id=? AND is_active=1
-     ORDER BY sort_order ASC, price ASC, id ASC`,
+    `SELECT pv.id, pv.product_id, pv.sku, pv.label, pv.duration_value, pv.duration_unit, pv.duration_label,
+            pv.warranty_type, pv.warranty_value, pv.warranty_unit, pv.warranty_label,
+            pv.price, pv.compare_price, pv.stock, pv.fulfillment_mode, pv.is_active, pv.sort_order,
+            wv.wr_terms AS wr_terms, wv.wr_delivery_terms AS wr_delivery_terms
+     FROM product_variants pv
+     LEFT JOIN wr_variants wv ON wv.wr_variant_id = pv.wr_variant_id
+     WHERE pv.product_id=? AND pv.is_active=1
+     ORDER BY pv.sort_order ASC, pv.price ASC, pv.id ASC`,
     Number(product.id)
   );
 
@@ -194,6 +200,8 @@ async function getProductDetailLegacy(slugOrId: string | number): Promise<Produc
     warranty_value: null,
     warranty_unit: null,
     warranty_label: null,
+    terms: null,
+    delivery_terms: null,
     price: Number(product.price),
     compare_price: product.compare_price ? Number(product.compare_price) : null,
     stock: Number(product.stock ?? -1),
@@ -225,9 +233,11 @@ export async function getActiveVariant(variantId: number): Promise<VariantSummar
   if (!isD1Mode() || !isVariantsReadEnabled()) return null;
 
   const row = await queryFirst(
-    `SELECT pv.*, p.is_active as product_active
+    `SELECT pv.*, p.is_active as product_active,
+            wv.wr_terms AS wr_terms, wv.wr_delivery_terms AS wr_delivery_terms
      FROM product_variants pv
      JOIN products p ON p.id = pv.product_id
+     LEFT JOIN wr_variants wv ON wv.wr_variant_id = pv.wr_variant_id
      WHERE pv.id=? AND pv.is_active=1 AND p.is_active=1`,
     variantId
   );
@@ -294,23 +304,31 @@ export function formatDuration(v: VariantSummary): string {
 }
 
 export function formatWarranty(v: VariantSummary): string {
-  if (v.warranty_label) return v.warranty_label;
+  // Tipe limited: SELALU bentuk kanonis "Garansi X Unit" dari field
+  // terstruktur — JANGAN pulangkan warranty_label mentah ("12 Hari" ambigu:
+  // pembeli tak bisa bedakan itu durasi atau garansi). Label mentah hanya
+  // dipakai untuk tipe custom yang memang tak terstruktur.
+  if (v.warranty_type === "limited") {
+    if (v.warranty_value && v.warranty_unit) {
+      return `Garansi ${v.warranty_value} ${unitMap(v.warranty_unit)}`;
+    }
+    return "Garansi";
+  }
   if (v.warranty_type === "none") return "Tanpa Garansi";
-  const unitMap: Record<string, string> = { day: "Hari", month: "Bulan", year: "Tahun", lifetime: "Selamanya" };
+  if (v.warranty_label) return v.warranty_label;
   if (v.warranty_type === "full") {
     if (v.warranty_value && v.warranty_unit) {
-      return `Full Garansi ${v.warranty_value} ${unitMap[v.warranty_unit] || v.warranty_unit}`;
+      return `Full Garansi ${v.warranty_value} ${unitMap(v.warranty_unit)}`;
     }
     return "Full Garansi";
   }
-  if (v.warranty_type === "limited") {
-    if (v.warranty_value && v.warranty_unit) {
-      return `Garansi Terbatas ${v.warranty_value} ${unitMap[v.warranty_unit] || v.warranty_unit}`;
-    }
-    return "Garansi Terbatas";
-  }
   if (v.warranty_type === "custom") return v.warranty_label || "Custom";
   return "";
+}
+
+function unitMap(unit: string): string {
+  const map: Record<string, string> = { day: "Hari", month: "Bulan", year: "Tahun", lifetime: "Selamanya" };
+  return map[unit] || unit;
 }
 
 export function formatRupiah(amount: number): string {
@@ -359,6 +377,8 @@ function mapVariant(row: Record<string, unknown>): VariantSummary {
     warranty_value: row.warranty_value != null ? Number(row.warranty_value) : null,
     warranty_unit: row.warranty_unit ? String(row.warranty_unit) : null,
     warranty_label: row.warranty_label ? String(row.warranty_label) : null,
+    terms: nullableText(row.wr_terms),
+    delivery_terms: nullableText(row.wr_delivery_terms),
     price: Number(row.price),
     compare_price: row.compare_price != null ? Number(row.compare_price) : null,
     stock: Number(row.stock ?? -1),

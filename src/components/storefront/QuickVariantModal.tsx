@@ -198,7 +198,8 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
                     </span>
                     <div className="mt-0.5 flex items-center justify-between w-full text-[10.5px]">
                       {v.warranty_type && v.warranty_type !== "none" && formatWarranty(v) ? (
-                        <span className="text-white/50 font-medium truncate pr-1">
+                        <span className="text-white/50 font-medium truncate pr-1 inline-flex items-center gap-1">
+                          <svg viewBox="0 0 24 24" className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M9 12l2 2 4-4"/><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                           {formatWarranty(v)}
                         </span>
                       ) : <span />}

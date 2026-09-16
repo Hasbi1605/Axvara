@@ -804,7 +804,7 @@ agent CMS, curl, dan tab admin lama tidak terikat aturan UI.
 
 | Pemilik | Field |
 | --- | --- |
-| WR (read-only di admin) | `name`, `slug`, `description`, harga & stok master, label varian, harga varian, harga coret, stok varian, durasi, garansi |
+| WR (read-only di admin) | `name`, `slug`, `description`, harga & stok master, label varian, harga varian, harga coret, stok varian, durasi, garansi, S&K varian (`terms`) + cara aktivasi (`delivery_terms`, read-only dari `wr_variants`) |
 | Admin | foto/`images`, `badge`, kategori, `sort_order`, `is_active`, `admin_description_override` |
 | Panel WR | markup (`wr_variants.markup_percent/markup_fixed`) |
 
@@ -828,6 +828,25 @@ kolom `description` langsung. `GET /api/products/:id` memisahkan keduanya
 `adminDescriptionOverride`, `wrManaged`).
 Badge "WR • dikelola otomatis" hanya tampil di editor produk admin — storefront
 tidak menampilkan penanda WR apa pun.
+
+### S&K varian WR di PDP (tanpa migrasi) + label garansi kanonis
+
+S&K WR adalah data **per varian** (`terms` + `delivery_terms`, 87/87 dan 37/87
+varian terisi di prod) yang hidup di tabel cermin `wr_variants` milik sync.
+`product_variants` sengaja TIDAK diberi kolom baru (hindari dual-write/drift):
+`getProductDetail`/`getActiveVariant` di `src/lib/catalog.ts` LEFT JOIN
+`wr_variants` via `wr_variant_id` dan memaparkannya di `VariantSummary.terms` /
+`.delivery_terms`. PDP `/produk/[slug]` merender section "Syarat & Ketentuan"
+**terikat varian terpilih** (fallback varian aktif pertama), bernomor otomatis
++ sub-blok "Cara Aktivasi" bila ada — desktop di kolom kiri bawah deskripsi,
+mobile sebagai kartu di bawah accordion deskripsi. Varian manual (tanpa
+`wr_variant_id`) mendapat `null` dan section disembunyikan.
+
+`formatWarranty()` untuk tipe `limited` SELALU membentuk kanonis
+`Garansi {value} {unit}` dari field terstruktur ("Garansi 12 Hari") — label
+mentah WR ("12 Hari", ambigu dengan durasi) hanya dipakai untuk tipe `custom`.
+Satu helper dipakai web + Telegram + WA sekaligus; label ditampilkan dengan
+ikon shield agar setara badge "Garansi N Hari" di web WR.
 
 ### Force Sync melaporkan status apa adanya
 
