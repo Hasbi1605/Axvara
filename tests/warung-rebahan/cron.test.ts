@@ -142,3 +142,42 @@ describe("cron fase warung_rebahan", () => {
     }
   });
 });
+
+describe("cron anti-starvation WR (2026-09-16)", () => {
+  it("job sampah order final tidak memaksa slot fulfillment", async () => {
+    // Skenario prod 6–14 Sep: job queued milik order dibatalkan/kadaluarsa
+    // membuat pendingJobs>0 selamanya → fulfillment merebut slot tiap run →
+    // fase warung_rebahan tak pernah giliran → sync cron mati total.
+    fixture.sql.prepare("INSERT INTO products(id,name,slug,price,stock) VALUES(9,'Sampah','sampah',1000,1)").run();
+    fixture.sql.prepare("INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel) VALUES('AXV-SAMP','X','628','[]',1000,'qris','dibatalkan','failed','web')").run();
+    fixture.sql.prepare("INSERT INTO fulfillment_jobs(order_code,status) VALUES('AXV-SAMP','queued')").run();
+    fixture.sql.prepare("INSERT INTO store_settings(key,value) VALUES('cron_phase','notify') ON CONFLICT(key) DO UPDATE SET value='notify'").run();
+    const { status, body } = await runCron();
+    expect(status).toBe(200);
+    // fulfillment TIDAK boleh diklaim aktif hanya karena job sampah.
+    const deferred = (body.deferred ?? []) as string[];
+    expect(deferred).not.toContain("fulfillment");
+  });
+
+  it("sync produk basi >45 menit memaksa slot warung_rebahan", async () => {
+    vi.stubEnv("WARUNG_REBAHAN_AUTO_ORDER_ENABLED", "false");
+    vi.stubEnv("WARUNG_REBAHAN_SYNC_ENABLED", "true");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ success: true, message: "ok", data: [] }),
+      })),
+    );
+    // Sync terakhir 2 jam lalu + fase tersimpan notify (bukan WR).
+    fixture.sql.prepare("INSERT INTO wr_sync_log(sync_type,status) VALUES('products','success')").run();
+    fixture.sql.prepare("UPDATE wr_sync_log SET created_at=datetime('now','-2 hours') WHERE sync_type='products'").run();
+    fixture.sql.prepare("INSERT INTO store_settings(key,value) VALUES('cron_phase','notify') ON CONFLICT(key) DO UPDATE SET value='notify'").run();
+    const { status, body } = await runCron();
+    expect(status).toBe(200);
+    // Fase WR dipaksa aktif walau bukan giliran → sync tercatat.
+    expect(Number(body.wr_products_synced ?? 0)).toBeGreaterThanOrEqual(0);
+    const log = fixture.sql.prepare("SELECT COUNT(*) n FROM wr_sync_log WHERE sync_type='products'").get() as { n: number };
+    expect(Number(log.n)).toBeGreaterThanOrEqual(2);
+  });
+});

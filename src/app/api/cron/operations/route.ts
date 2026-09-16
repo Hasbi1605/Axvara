@@ -161,7 +161,7 @@ export async function POST(request: NextRequest) {
           AND NOT EXISTS(SELECT 1 FROM payment_transactions pt WHERE pt.order_code=orders.code)) AS expiry_manual_wa,
         (SELECT COUNT(*) FROM whatsapp_outbox WHERE status IN ('pending','failed') AND attempt_count < 5 AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime('now'))) AS wa,
         (SELECT COUNT(*) FROM whatsapp_outbox WHERE status='sending' AND (locked_until IS NULL OR datetime(locked_until) <= datetime('now'))) AS wa_stale,
-        (SELECT COUNT(*) FROM fulfillment_jobs WHERE status IN ('queued','retry')) AS jobs,
+        (SELECT COUNT(*) FROM fulfillment_jobs fj JOIN orders o ON o.code=fj.order_code WHERE fj.status IN ('queued','retry') AND o.status='lunas' AND o.payment_status='paid') AS jobs,
         (SELECT COUNT(*) FROM orders WHERE sales_channel IN ('telegram','whatsapp') AND telegram_order_notified_at IS NULL) AS created,
         (SELECT COUNT(*) FROM orders WHERE sales_channel='telegram' AND status='lunas' AND payment_status='paid' AND telegram_paid_notified_at IS NULL) AS paid,
         (SELECT COUNT(*) FROM orders WHERE sales_channel IN ('telegram','whatsapp') AND status='lunas' AND payment_status='paid' AND telegram_paid_admin_notified_at IS NULL) AS paid_admin,
@@ -233,6 +233,38 @@ export async function POST(request: NextRequest) {
         const idx = deferredOut.indexOf("fulfillment");
         if (idx >= 0) deferredOut.splice(idx, 1);
         if (!deferredOut.includes(victim)) deferredOut.push(victim);
+      }
+    }
+    // Jaminan anti-starvation WR (2026-09-16): sync produk cron MATI TOTAL
+    // sejak 14 Sep karena fulfillment (22 job queued, 7 di antaranya sampah
+    // order final) mengusir warung_rebahan dari 3 slot tiap run. Bila sync
+    // produk terakhir >45 menit lalu dan tidak ada order WR due, paksa satu
+    // slot untuk warung_rebahan dengan mengorbankan fase non-fulfillment
+    // terakhir (pola sama seperti jaminan fulfillment di atas).
+    // Syarat ganda (hemat query di fixture/test): wrTablesReady (ada tabel)
+    // DAN wrEverSynced (pernah ada baris products — dibaca dari lastSync di
+    // bawah via query yang sama, tanpa query tambahan). Fixture R12 tanpa
+    // histori WR tidak mengubah komposisi fase — budget tetap deterministik.
+    const wrEverSyncedProbe = wrTablesReady ? await queryFirst(
+      `SELECT 1 AS x FROM wr_sync_log WHERE sync_type='products' LIMIT 1`,
+    ).catch(() => null) : null;
+    if (wrEverSyncedProbe && pendingWrDue === 0 && pendingWrDelivery === 0 && !activePhases.has("warung_rebahan")) {
+      const wrStale = await queryFirst(
+        `SELECT created_at FROM wr_sync_log WHERE sync_type='products'
+         ORDER BY id DESC LIMIT 1`,
+      ).catch(() => null);
+      const { parseExpiry } = await import("@/lib/expiry");
+      const lastTs = parseExpiry((wrStale as Record<string, unknown> | null)?.created_at);
+      if (lastTs == null || lastTs < Date.now() - 45 * 60 * 1000) {
+        const actives = ordered.filter((p) => activePhases.has(p));
+        const victim = [...actives].reverse().find((p) => p !== "fulfillment" && p !== "warung_rebahan");
+        if (victim) {
+          activePhases.delete(victim);
+          activePhases.add("warung_rebahan");
+          const idx = deferredOut.indexOf("warung_rebahan");
+          if (idx >= 0) deferredOut.splice(idx, 1);
+          if (!deferredOut.includes(victim)) deferredOut.push(victim);
+        }
       }
     }
 

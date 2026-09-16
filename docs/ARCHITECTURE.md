@@ -932,3 +932,7 @@ Perintah akun #2 wajib prefix `HEROKU_API_KEY=<kunci-akun-2>`; jangan
 - Migrasi 0031: kolom `wr_sync_log.trigger` (`manual`/`cron`, default manual
   untuk histori lama). Kartu admin tampil dua-baris (🔵 manual terakhir +
   🟢 cron terakhir) agar sync manual tidak menutupi jejak cron otomatis.
+- Anti-starvation cron (2026-09-16): job `queued` milik order final
+  (dibatalkan/kadaluarsa) dibersihkan + `pendingJobs` hanya order lunas/paid;
+  slot `warung_rebahan` dijamin bila sync basi >45 menit (guard histori agar
+  budget R12 deterministik di fixture tanpa WR).
