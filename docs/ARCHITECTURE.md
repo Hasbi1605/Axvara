@@ -954,3 +954,8 @@ Perintah akun #2 wajib prefix `HEROKU_API_KEY=<kunci-akun-2>`; jangan
 - Gate auto-order per kelas: `processWrPendingOrders` hanya memproses link
   `restock`; MBO/NULL tetap pending (antre manual). Jangan bypass gate tanpa
   persetujuan owner — MBO = antrean manusia di sisi WR (slow).
+- `email_invite` (uji live 2026-09-16): produk WR tipe Invite/Link WAJIB
+  kirim `email_invite` — `processOneLink` meneruskan `customer_email` order
+  Axvara. Tanpa email, WR 422 "Email Invite is required" dan retry tidak
+  sembuh (saldo aman, tidak terpotong). Checkout produk Invite/Link wajib
+  meminta email pembeli.
