@@ -30,6 +30,8 @@
 > Format: `- YYYY-MM-DD — <ringkas perubahan> — <file/area utama> — (verifikasi: <hasil>)`
 > Aturan lengkap: `axvara/AGENTS.md` → Aturan Changelog & Verifikasi WAJIB.
 
+- 2026-09-16 — Cron WR hidup lagi: CRON_SECRET Pages vs AXVARA_CRON_SECRET Worker tidak sama (401 diam-diam, fase basi sejak 14 Sep); rotasi keduanya + verifikasi cron manual 200 — Cloudflare Pages env + Worker secret — (verifikasi: fase notify→fulfillment, sync cron 48 produk tercatat trigger=cron)
+
 - 2026-09-16 — Cron WR anti-starvation: bersihkan 7 job sampah order final (D1 prod) + pendingJobs hanya order lunas/paid + jaminan slot warung_rebahan bila sync basi >45 mnt (guard histori agar R12 deterministik) + 2 test — src/app/api/cron/operations/route.ts, tests/warung-rebahan/cron.test.ts — (verifikasi: 767/767 test, tsc bersih)
 
 - 2026-09-16 — Kartu sync bedakan manual vs cron: migrasi 0031 kolom trigger + SyncOptions + kartu dua-baris (🔵 manual / 🟢 otomatis) + 2 test — drizzle/migrations/0031_wr_sync_trigger.sql, drizzle/schema.sql, src/lib/warung-rebahan/sync.ts, src/app/api/cron/operations/route.ts, src/app/api/admin/warung/sync/route.ts, src/app/api/admin/warung/sync-log/route.ts, src/components/admin/WarungRebahanManager.tsx, tests/warung-rebahan/admin-apis.test.ts, tests/warung-rebahan/wr-migrations.regression.test.ts — (verifikasi: 761/761 test, tsc bersih, dev GET / 200 + CSS 200)
