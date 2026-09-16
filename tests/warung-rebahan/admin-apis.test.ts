@@ -49,6 +49,19 @@ describe("admin WR APIs auth & validation", () => {
     expect(body.logs[0].products_synced).toBe(12);
   });
 
+  it("sync-log menandai trigger manual vs cron (kartu dua-baris)", async () => {
+    const { GET } = await import("@/app/api/admin/warung/sync-log/route");
+    const fx = fixture;
+    const rawExec = (fx as unknown as { sql: { exec: (s: string) => void } }).sql.exec.bind((fx as unknown as { sql: object }).sql);
+    rawExec(`INSERT INTO wr_sync_log (sync_type, status, products_total, products_synced, variants_synced, trigger) VALUES ('products','success',48,48,87,'cron')`);
+    rawExec(`INSERT INTO wr_sync_log (sync_type, status, products_total, products_synced, variants_synced, trigger) VALUES ('products','success',48,48,87,'manual')`);
+    const body = await (await GET(await adminRequest("/api/admin/warung/sync-log?limit=5") as never)).json() as { logs: { sync_type: string; trigger: string }[] };
+    const triggers = body.logs.map((l) => l.trigger);
+    // Manual terbaru di atas, cron tepat di bawahnya — kartu bisa tampilkan keduanya.
+    expect(triggers[0]).toBe("manual");
+    expect(triggers).toContain("cron");
+  });
+
   it("exclusions: tambah + validasi + duplikat 409 + hapus", async () => {
     const { GET, POST, DELETE } = await import("@/app/api/admin/warung/exclusions/route");
     // Pasca-migrasi 0028 seed %canva%/%gemini% sudah dihapus (keputusan

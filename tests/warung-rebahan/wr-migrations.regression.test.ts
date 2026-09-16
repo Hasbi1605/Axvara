@@ -103,6 +103,25 @@ describe("migrasi WR berurutan di DB production lama", () => {
       sql.close();
     }
   });
+
+  it("0031: trigger manual/cron tercatat; baris lama default manual", async () => {
+    const sql = createPreWrDatabase();
+    try {
+      sql.exec(fs.readFileSync("drizzle/migrations/0027_warung_rebahan.sql", "utf8"));
+      sql.exec(fs.readFileSync("drizzle/migrations/0031_wr_sync_trigger.sql", "utf8"));
+      // Baris lama (pra-0031) otomatis manual.
+      sql.prepare("INSERT INTO wr_sync_log(sync_type,status,products_synced) VALUES('products','success',12)").run();
+      // Cron menandai dirinya; manual eksplisit juga valid.
+      sql.prepare("INSERT INTO wr_sync_log(sync_type,status,products_synced,trigger) VALUES('products','success',48,'cron')").run();
+      sql.prepare("INSERT INTO wr_sync_log(sync_type,status,products_synced,trigger) VALUES('products','success',48,'manual')").run();
+      const rows = sql.prepare("SELECT trigger FROM wr_sync_log ORDER BY id").all() as { trigger: string }[];
+      expect(rows.map((r) => r.trigger)).toEqual(["manual", "cron", "manual"]);
+      // Nilai liar ditolak.
+      expect(() => sql.prepare("INSERT INTO wr_sync_log(sync_type,status,trigger) VALUES('products','success','otomatis')").run()).toThrow();
+    } finally {
+      sql.close();
+    }
+  });
 });
 
 describe("regresi #14: bootstrap schema.sql mendukung seluruh operasi WR", () => {

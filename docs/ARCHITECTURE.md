@@ -910,3 +910,6 @@ Perintah akun #2 wajib prefix `HEROKU_API_KEY=<kunci-akun-2>`; jangan
   varian-variannya; kena exclusion → registry saja.
 - Endpoint `sync-log` memfilter baris `saldo` (kartu admin tidak 0/0/0);
   notif saldo rendah di-throttle (maks 1 pesan/6 jam, ulang bila turun ≥Rp5rb).
+- Migrasi 0031: kolom `wr_sync_log.trigger` (`manual`/`cron`, default manual
+  untuk histori lama). Kartu admin tampil dua-baris (🔵 manual terakhir +
+  🟢 cron terakhir) agar sync manual tidak menutupi jejak cron otomatis.

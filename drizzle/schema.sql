@@ -740,6 +740,8 @@ CREATE TABLE IF NOT EXISTS wr_sync_log (
   saldo_amount      INTEGER,
   error_message     TEXT,
   duration_ms       INTEGER,
+  trigger           TEXT NOT NULL DEFAULT 'manual'
+                    CHECK (trigger IN ('manual', 'cron')),
   created_at        TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS wr_saldo_log (

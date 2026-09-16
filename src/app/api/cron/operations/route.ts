@@ -636,7 +636,7 @@ export async function POST(request: NextRequest) {
           const lastTs = parseExpiry(lastSync?.created_at);
           if (lastTs == null || lastTs < Date.parse(thirtyMinAgo)) {
             try {
-              const syncResult = await syncProducts(database, undefined, { maxProducts: WR_SYNC_PRODUCTS_PER_RUN });
+              const syncResult = await syncProducts(database, undefined, { maxProducts: WR_SYNC_PRODUCTS_PER_RUN, trigger: "cron" });
               results.wr_products_synced = syncResult.synced;
               if (syncResult.budgetYielded && !deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan");
               if (syncResult.errors.length && !deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan");

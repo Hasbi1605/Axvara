@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
   if (!isWrEnabled()) return NextResponse.json({ error: "warung_rebahan_disabled" }, { status: 503 });
   try {
     const { syncProducts } = await import("@/lib/warung-rebahan/sync");
-    const result = await syncProducts();
+    const result = await syncProducts(undefined, undefined, { trigger: "manual" });
     // Sync yang menyimpan error TIDAK boleh dilaporkan sebagai sukses.
     // Sebelumnya route selalu membalas {ok:true} sehingga UI menampilkan
     // "Sync selesai" walau seluruh katalog gagal. `status` di sini sama

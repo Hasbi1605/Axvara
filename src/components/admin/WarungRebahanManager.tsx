@@ -237,6 +237,10 @@ export function WarungRebahanManager() {
   // Bila endpoint lama masih mengembalikan baris saldo (products_synced
   // NULL), jangan tampilkan 0/0/0 — tampilkan strip agar tidak menipu.
   const lastProductLog = lastLog && lastLog.sync_type === "products" ? lastLog : null;
+  // Sync manual menutupi jejak cron (keduanya menulis baris products):
+  // tampilkan keduanya agar pemilik bisa verifikasi cron berjalan.
+  const lastManualLog = logs.find((l) => l.sync_type === "products" && (l as SyncLogRow & { trigger?: string }).trigger !== "cron") ?? null;
+  const lastCronLog = logs.find((l) => l.sync_type === "products" && (l as SyncLogRow & { trigger?: string }).trigger === "cron") ?? null;
   const balance = saldo.current?.balance ?? saldo.capacity?.balance ?? null;
 
   return (
@@ -270,6 +274,12 @@ export function WarungRebahanManager() {
             <p className="mt-1 text-[11px] text-white/40">
               {lastProductLog ? `${lastProductLog.products_synced ?? 0} produk · ${lastProductLog.variants_synced ?? 0} varian · ${lastProductLog.products_excluded ?? 0} excluded` : lastLog ? "sync produk" : "Tekan Force Sync untuk sync pertama."}
             </p>
+            {(lastManualLog || lastCronLog) && (
+              <div className="mt-2 space-y-1 border-t border-white/10 pt-2 text-[11px] text-white/40">
+                <p>🔵 Manual: {lastManualLog ? `${lastManualLog.status} · ${formatDate(lastManualLog.created_at)} · ${lastManualLog.products_synced ?? 0}p/${lastManualLog.variants_synced ?? 0}v` : "—"}</p>
+                <p>🟢 Otomatis: {lastCronLog ? `${lastCronLog.status} · ${formatDate(lastCronLog.created_at)} · ${lastCronLog.products_synced ?? 0}p/${lastCronLog.variants_synced ?? 0}v` : "—"}</p>
+              </div>
+            )}
             <button onClick={() => void forceSync()} disabled={syncing} className="mt-3 inline-flex h-9 items-center gap-2 rounded-xl bg-[#00E5FF] px-3.5 text-xs font-bold text-[#07101f] transition hover:bg-[#00D0E8] disabled:opacity-40">
               {syncing ? <Spinner size={13} /> : <IosIcon name="refresh" size={13} tint="black" />}{syncing ? "Sync…" : "Force Sync Now"}
             </button>

@@ -637,6 +637,10 @@ export type SyncOptions = {
   maxProducts?: number;
   /** Izinkan zeroMissingVariants bila sweep penuh (default true). */
   allowZeroMissing?: boolean;
+  /** Sumber sync: 'manual' (Force Sync admin) atau 'cron' (terjadwal).
+   * Dicatat ke wr_sync_log.trigger agar kartu admin bisa membedakan
+   * keduanya (default 'manual' agar pemanggil lama tetap bermakna). */
+  trigger?: "manual" | "cron";
 };
 
 export async function syncProducts(
@@ -646,6 +650,7 @@ export async function syncProducts(
 ): Promise<SyncResult> {
   const started = Date.now();
   const db = database ?? createDatabaseAccess();
+  const trigger = options.trigger ?? "manual";
   const maxProducts = Math.max(1, Math.min(options.maxProducts ?? WR_SYNC_PRODUCTS_PER_RUN, 48));
   const result: SyncResult = {
     total: 0,
@@ -679,7 +684,7 @@ export async function syncProducts(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     result.errors.push(message.slice(0, 300));
-    await logSync({ ...result, status: "failed" }, db).catch(() => undefined);
+    await logSync({ ...result, status: "failed" }, db, trigger).catch(() => undefined);
     result.durationMs = Date.now() - started;
     return result;
   }
@@ -687,7 +692,7 @@ export async function syncProducts(
   const validation = validateCatalogResponse(products, state.generation, state.snapshotComplete ? Math.max(state.cursor, 1) : 0);
   if (!validation.ok) {
     result.errors.push(validation.reason || "catalog_rejected");
-    await logSync({ ...result, status: "failed" }, db).catch(() => undefined);
+    await logSync({ ...result, status: "failed" }, db, trigger).catch(() => undefined);
     result.durationMs = Date.now() - started;
     return result;
   }
@@ -787,7 +792,7 @@ export async function syncProducts(
   }
   result.durationMs = Date.now() - started;
   const status = result.errors.length === 0 ? "success" : result.synced > 0 ? "partial" : "failed";
-  await logSync({ ...result, status }, db).catch(() => undefined);
+  await logSync({ ...result, status }, db, trigger).catch(() => undefined);
   return result;
 }
 
@@ -807,13 +812,14 @@ async function refreshAllParentAggregates(db: DatabaseAccess): Promise<void> {
 async function logSync(
   result: SyncResult & { status: "success" | "partial" | "failed" },
   db: DatabaseAccess,
+  trigger: "manual" | "cron" = "manual",
 ): Promise<void> {
   await db.execRun(
     `INSERT INTO wr_sync_log
       (sync_type, status, products_total, products_synced, products_excluded,
        products_new, variants_synced, stock_changes, price_changes,
-       error_message, duration_ms)
-     VALUES ('products',?,?,?,?,?,?,?,?,?,?)`,
+       error_message, duration_ms, trigger)
+     VALUES ('products',?,?,?,?,?,?,?,?,?,?,?)`,
     result.status,
     result.total,
     result.synced,
@@ -824,5 +830,6 @@ async function logSync(
     result.priceChanges,
     result.errors.length ? result.errors.slice(0, 5).join(" | ").slice(0, 1000) : null,
     result.durationMs,
+    trigger,
   );
 }
