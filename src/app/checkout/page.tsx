@@ -110,6 +110,10 @@ function CheckoutInner() {
   const [showIssueDialog, setShowIssueDialog] = useState(false);
   const [quoteToken, setQuoteToken] = useState<string | null>(null);
   const [quoteAccepted, setQuoteAccepted] = useState(false);
+  // Email wajib? (migrasi 0033): true bila keranjang berisi varian WR
+  // Invite/Link atau produk require_email=1. Dihitung server di quote agar
+  // tidak bisa diakali client; form + API menegakkan sebelum bayar.
+  const [emailRequired, setEmailRequired] = useState(false);
   const quoteRequestId = React.useRef(0);
 
   const fetchQuote = useCallback(async (quoteItems: { slug: string; variant_id?: number; qty: number; expected_price: number }[]) => {
@@ -146,6 +150,7 @@ function CheckoutInner() {
       setQuotedSubtotal(j.subtotal ?? 0);
       setQuotedPaymentMethods(j.paymentMethods ?? []);
       setQuoteToken(j.quoteToken ?? null);
+      setEmailRequired(j.emailRequired === true);
       setPriceChanges(changes);
       if (changes.length > 0) {
         setShowIssueDialog(true);
@@ -231,7 +236,11 @@ function CheckoutInner() {
     else if (name.trim().length < 3) fe.name = "Nama minimal 3 karakter.";
     if (!wa.trim()) fe.wa = "No WA wajib diisi.";
     else if (!/^(\+62|62|0)8\d{8,13}$/.test(wa.trim().replace(/\s|-/g,""))) fe.wa = "No WA harus format 08… atau +62… (10–15 digit).";
-    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) fe.email = "Format email tidak valid.";
+    // Email wajib bila keranjang butuh (Invite/Link WR atau produk
+    // require_email): tanpa email valid, API menolak 422 dan WR 422 —
+    // order lunas tanpa email = macet. Minta SEBELUM bayar.
+    if (emailRequired && !email.trim()) fe.email = "Produk ini dikirim via email invite — tulis email aktif sebelum bayar.";
+    else if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) fe.email = "Format email tidak valid.";
     if (Object.keys(fe).length) { setFieldErrors(fe); setError("Periksa field yang ditandai."); return; }
     if (!method) {
       setError("Pilih metode pembayaran terlebih dahulu");
@@ -327,7 +336,7 @@ function CheckoutInner() {
                 {fieldErrors.wa && <p className="mt-1.5 text-xs text-red-300">{fieldErrors.wa}</p>}
               </div>
               <div>
-                <label htmlFor="checkout-email" className="block text-xs font-medium text-white/60 mb-1">Email (opsional)</label>
+                <label htmlFor="checkout-email" className="block text-xs font-medium text-white/60 mb-1">Email {emailRequired ? "(wajib — produk ini dikirim via email)" : "(opsional)"}</label>
                 <input id="checkout-email" value={email} onChange={(e) => { setEmail(e.target.value); setFieldErrors(f=> ({...f, email: ""})); }} placeholder="email@contoh.com" aria-invalid={!!fieldErrors.email} className={`w-full h-11 px-4 rounded-xl bg-white/[0.06] border text-sm text-white placeholder:text-white/30 focus:outline-none ${fieldErrors.email ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`} />
                 {fieldErrors.email && <p className="mt-1.5 text-xs text-red-300">{fieldErrors.email}</p>}
               </div>

@@ -109,6 +109,25 @@ export async function handlePay(groupId: string, memberId: string, inboxId: stri
     return;
   }
 
+  // Email wajib (migrasi 0033): Invite/Link WR atau produk require_email.
+  // Grup WA tidak punya alur ketik-email terstruktur — tolak dengan pesan
+  // jelas + arahkan ke web/Telegram yang punya form. Order lunas tanpa
+  // email = macet di WR (422), jadi JANGAN buat order sama sekali.
+  try {
+    const { needsEmailForVariant } = await import("@/lib/warung-rebahan/delivery-class");
+    const waProductRow = await queryFirst(`SELECT require_email FROM products WHERE id=?`, session.selected_product_id).catch(() => null) as { require_email?: unknown } | null;
+    if (needsEmailForVariant({ wrType: variant.wr_type ?? null, requireEmail: Number(waProductRow?.require_email ?? variant.require_email ?? 0) })) {
+      await sendTextMessage({
+        target: groupId,
+        message: "Produk ini dikirim via email invite — tulis email aktif. Lanjut via web (axvara.tech) atau Telegram @Axvara_bot agar email tercatat sebelum bayar.",
+        inboxId,
+      });
+      return;
+    }
+  } catch {
+    /* guard best-effort — gagal cek = lanjut seperti biasa */
+  }
+
   const detail = await getProductDetail(session.selected_product_id);
   if (!detail) {
     await sendTextMessage({ target: groupId, message: msg.gatewayErrorMessage(), inboxId });

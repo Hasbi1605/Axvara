@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { createOrderWithStock, queryFirst, StockReservationError, transitionPendingOrder } from "@/lib/db";
+import { createOrderWithStock, queryAll, queryFirst, StockReservationError, transitionPendingOrder } from "@/lib/db";
 import { generateOrderCode as generateCode, aggregateQty } from "@/lib/security";
 import { verifyCheckoutQuoteToken } from "@/lib/auth";
 import { createDanaQrisInvoice, MAX_QRIS_REISSUES } from "@/lib/payments/dana-qris";
@@ -66,6 +66,48 @@ export async function POST(req: NextRequest) {
     && [...requested.entries()].every(([key, qty]) => quoted.get(key) === qty);
   if (!sameItems) {
     return NextResponse.json({ error: "Isi keranjang berubah setelah harga dikunci. Muat ulang checkout." }, { status: 409 });
+  }
+
+  // Email wajib (migrasi 0033): hitung ulang dari DB — JANGAN percaya flag
+  // client. Invite/Link WR atau produk require_email=1 tanpa email valid =
+  // 422 sebelum order dibuat (order lunas tanpa email = macet di WR).
+  try {
+    const { needsEmailForVariant } = await import("@/lib/warung-rebahan/delivery-class");
+    const variantIds = [...new Set(quote.items.map((i) => Number(i.variant_id || 0)).filter((v) => v > 0))];
+    let emailNeeded = false;
+    if (variantIds.length > 0) {
+      const rows = await queryAll(
+        `SELECT pv.id, wv.wr_type AS wr_type, p.require_email AS require_email
+         FROM product_variants pv
+         LEFT JOIN wr_variants wv ON wv.wr_variant_id = pv.wr_variant_id
+         LEFT JOIN products p ON p.id = pv.product_id
+         WHERE pv.id IN (${variantIds.map(() => "?").join(",")})`,
+        ...variantIds,
+      );
+      for (const r of rows) {
+        if (needsEmailForVariant({
+          wrType: r.wr_type != null ? String(r.wr_type) : null,
+          requireEmail: Number(r.require_email ?? 0),
+        })) { emailNeeded = true; break; }
+      }
+    } else {
+      const productIds = [...new Set(quote.items.map((i) => Number(i.product_id || 0)).filter((v) => v > 0))];
+      if (productIds.length > 0) {
+        const rows = await queryAll(
+          `SELECT require_email FROM products WHERE id IN (${productIds.map(() => "?").join(",")})`,
+          ...productIds,
+        );
+        emailNeeded = rows.some((r) => Number(r.require_email ?? 0) === 1);
+      }
+    }
+    const emailOk = typeof customer_email === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer_email.trim());
+    if (emailNeeded && !emailOk) {
+      return NextResponse.json({ error: "Produk ini dikirim via email invite — tulis email aktif yang benar sebelum bayar." }, { status: 422 });
+    }
+  } catch {
+    // Guard email best-effort: bila query gagal (DB glitch), biarkan order
+    // jalan agar checkout tidak mati total karena helper. Respons 422 di
+    // atas sudah return langsung, jadi tidak perlu diteruskan.
   }
 
   // Normalize WA to 62

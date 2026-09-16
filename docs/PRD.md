@@ -108,6 +108,7 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 | FR-SYS6 | SEO basic: meta title/description per produk, sitemap, OG image | ✅ live |
 | FR-SYS7 | Sync WR satu sweep penuh per run (Opsi A, budget khusus katalog; cursor sebagai fallback); produk baru WR otomatis masuk katalog | ✅ live |
 | FR-SYS8 | Env Pages WAJIB `secret_text` (plain_text tidak terbawa deploy); deploy hanya via CI | Aturan operasional |
+| FR-S19 | Email wajib SEBELUM bayar bila keranjang berisi varian WR Invite/Link (otomatis dari `wr_type`) atau produk `require_email=1` (toggle admin): form web validasi + label dinamis, API 422 guard DB, Telegram minta + simpan + teruskan ke WR, WA tolak + arahkan kanal ber-form | P0 ✅ live |
 
 ### 2.4 Non-Functional
 

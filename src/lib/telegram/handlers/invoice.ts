@@ -58,6 +58,40 @@ export async function handlePayWithQris(
     await handleShowQty(chatId, messageId, productId, variantId, 1);
     return;
   }
+  // Email wajib (migrasi 0033): Invite/Link WR atau produk require_email.
+  // Minta SEBELUM invoice — order lunas tanpa email = macet di WR (422).
+  try {
+    const { needsEmailForVariant, EMAIL_REQUIRED_MESSAGE } = await import("@/lib/warung-rebahan/delivery-class");
+    const productRow = await queryFirst(`SELECT require_email FROM products WHERE id=?`, productId).catch(() => null) as { require_email?: unknown } | null;
+    if (needsEmailForVariant({ wrType: variant.wr_type ?? null, requireEmail: Number(productRow?.require_email ?? variant.require_email ?? 0) })) {
+      const userRow = await queryFirst(`SELECT buyer_email FROM telegram_users WHERE user_id=?`, String(from.id)).catch(() => null) as { buyer_email?: unknown } | null;
+      const savedEmail = String(userRow?.buyer_email || "").trim();
+      if (!savedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(savedEmail)) {
+        if (isD1Mode()) {
+          await execRun(
+            `UPDATE telegram_users SET pending_action=?, updated_at=datetime('now') WHERE user_id=?`,
+            `email_for:${productId}:${variantId}:${qty}`,
+            String(from.id),
+          ).catch(() => {});
+        }
+        await sendMessage({
+          chat_id: chatId,
+          text: [
+            "📧 <b>Email dibutuhkan</b>",
+            "",
+            EMAIL_REQUIRED_MESSAGE,
+            "",
+            "Balas dengan email aktif kamu (contoh: <code>nama@email.com</code>).",
+            "Ketik /batal untuk membatalkan.",
+          ].join("\n"),
+          parse_mode: "HTML",
+        });
+        return;
+      }
+    }
+  } catch {
+    /* guard best-effort — gagal cek = lanjut seperti biasa */
+  }
   if (variant.stock === 0 || (variant.stock !== -1 && variant.stock < qty)) {
     await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
     return;
@@ -157,6 +191,13 @@ export async function createAndSendVariantInvoice(
     // (batas CPU/eviction) stok terpotong tanpa order — dan tidak ada yang
     // memulihkannya. Jalur Web dan WhatsApp sudah atomik sejak awal.
     try {
+      // Email tersimpan (alur email_for:) — untuk Invite/Link WR, ini yang
+      // diteruskan ke WR sebagai email_invite saat lunas.
+      const buyerEmailRow = await queryFirst(
+        `SELECT buyer_email FROM telegram_users WHERE user_id=?`,
+        String(from.id),
+      ).catch(() => null) as { buyer_email?: unknown } | null;
+      const buyerEmail = String(buyerEmailRow?.buyer_email || "").trim() || null;
       await createChannelOrderAtomic({
         orderCode,
         lines: [{
@@ -171,6 +212,7 @@ export async function createAndSendVariantInvoice(
         subtotal,
         primaryVariantId: variant.id,
         customerName: from.first_name,
+        customerEmail: buyerEmail,
         salesChannel: "telegram",
         telegramChatId: String(chatId),
         telegramUserId: String(from.id),

@@ -207,6 +207,67 @@ export async function handleCallback(data: string, chatId: number, messageId: nu
         await handleShowCart(chatId, messageId, from);
         break;
       }
+      // Email wajib keranjang (migrasi 0033): bila ada baris Invite/Link WR
+      // atau produk require_email dan email tersimpan belum ada → minta
+      // dulu via alur email_for:, JANGAN terbitkan invoice.
+      try {
+        const { needsEmailForVariant } = await import("@/lib/warung-rebahan/delivery-class");
+        const { queryAll } = await import("@/lib/db");
+        const vIds = [...new Set(cartSummary.lines.map((l) => Number(l.variantId || 0)).filter((v) => v > 0))];
+        let cartNeedsEmail = false;
+        if (vIds.length > 0) {
+          const rows = await queryAll(
+            `SELECT pv.id, wv.wr_type AS wr_type, p.require_email AS require_email
+             FROM product_variants pv
+             LEFT JOIN wr_variants wv ON wv.wr_variant_id = pv.wr_variant_id
+             LEFT JOIN products p ON p.id = pv.product_id
+             WHERE pv.id IN (${vIds.map(() => "?").join(",")})`,
+            ...vIds,
+          ).catch(() => [] as Record<string, unknown>[]);
+          for (const r of rows) {
+            if (needsEmailForVariant({
+              wrType: r.wr_type != null ? String(r.wr_type) : null,
+              requireEmail: Number(r.require_email ?? 0),
+            })) { cartNeedsEmail = true; break; }
+          }
+        }
+        if (cartNeedsEmail) {
+          const { queryFirst } = await import("@/lib/db");
+          const emailRow = await queryFirst(
+            `SELECT buyer_email FROM telegram_users WHERE user_id=?`,
+            String(from.id),
+          ).catch(() => null) as { buyer_email?: unknown } | null;
+          const savedCartEmail = String(emailRow?.buyer_email || "").trim();
+          if (!savedCartEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(savedCartEmail)) {
+            const first = cartSummary.lines[0];
+            const { execRun } = await import("@/lib/db");
+            const { isD1Mode } = await import("@/lib/db");
+            if (isD1Mode()) {
+              await execRun(
+                `UPDATE telegram_users SET pending_action=?, updated_at=datetime('now') WHERE user_id=?`,
+                `emailcart:${cartSummary.lines.length}`,
+                String(from.id),
+              ).catch(() => {});
+            }
+            const { EMAIL_REQUIRED_MESSAGE } = await import("@/lib/warung-rebahan/delivery-class");
+            await sendMessage({
+              chat_id: chatId,
+              text: [
+                "📧 <b>Email dibutuhkan</b>",
+                "",
+                EMAIL_REQUIRED_MESSAGE,
+                "",
+                "Balas dengan email aktif kamu (contoh: <code>nama@email.com</code>).",
+                "Ketik /batal untuk membatalkan.",
+              ].join("\n"),
+              parse_mode: "HTML",
+            });
+            break;
+          }
+        }
+      } catch {
+        /* guard best-effort — gagal cek = lanjut seperti biasa */
+      }
       const dupOrder = await queryFirst(
         `SELECT code FROM orders WHERE telegram_chat_id=? AND status='pending' AND payment_status IN ('unpaid','pending')`,
         String(chatId),

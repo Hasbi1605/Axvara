@@ -246,6 +246,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
       images: formImages,
       imageUrl: formImages[0] ?? form.image ?? null,
       isActive: form.isActive !== false,
+      requireEmail: form.requireEmail === true,
       variants: hasMultiVariants
         ? formVariants.map((vr, idx) => ({
             id: vr.id,

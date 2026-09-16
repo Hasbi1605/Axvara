@@ -37,6 +37,15 @@ const STRIP_SNIPPETS = [
   wr_variant_id TEXT,
   wr_auto_managed INTEGER NOT NULL DEFAULT 0,
 `,
+  `  -- Migrasi 0033: toggle email wajib per produk (untuk non-WR masa depan).
+  -- Varian WR tipe Invite/Link otomatis butuh email tanpa toggle ini.
+  require_email INTEGER NOT NULL DEFAULT 0
+    CHECK (require_email IN (0, 1)),
+`,
+  `  -- Migrasi 0033: email pembeli tersimpan (alur email_for:) untuk produk
+  -- Invite/Link WR + require_email. Ditanya sekali, dipakai ulang.
+  buyer_email TEXT DEFAULT NULL,
+`,
   `CREATE INDEX IF NOT EXISTS idx_products_source ON products(source) WHERE source = 'warung_rebahan';
 CREATE INDEX IF NOT EXISTS idx_products_wr_id ON products(wr_product_id) WHERE wr_product_id IS NOT NULL;
 `,
@@ -149,6 +158,24 @@ describe("migrasi WR berurutan di DB production lama", () => {
       const kept = sql.prepare(`SELECT wr_delivery_class c, wr_delivery_source s FROM wr_variants WHERE wr_variant_id='v-old'`).get() as { c: string; s: string };
       expect(kept.c).toBe("made_by_order");
       expect(kept.s).toBe("admin");
+    } finally {
+      sql.close();
+    }
+  });
+
+  it("0033: require_email default 0 + buyer_email telegram; CHECK menolak >1", async () => {
+    const sql = createPreWrDatabase();
+    try {
+      sql.exec(fs.readFileSync("drizzle/migrations/0027_warung_rebahan.sql", "utf8"));
+      sql.exec(fs.readFileSync("drizzle/migrations/0033_product_require_email.sql", "utf8"));
+      sql.prepare(`INSERT INTO products(name,slug,price) VALUES('Ebook','ebook',5000)`).run();
+      const p = sql.prepare(`SELECT require_email r FROM products WHERE slug='ebook'`).get() as { r: number };
+      expect(Number(p.r)).toBe(0);
+      sql.prepare(`UPDATE products SET require_email=1 WHERE slug='ebook'`).run();
+      expect(() => sql.prepare(`UPDATE products SET require_email=2 WHERE slug='ebook'`).run()).toThrow();
+      sql.prepare(`INSERT INTO telegram_users(user_id,chat_id,buyer_email) VALUES('u1','c1','a@b.id')`).run();
+      const u = sql.prepare(`SELECT buyer_email e FROM telegram_users WHERE user_id='u1'`).get() as { e: string };
+      expect(u.e).toBe("a@b.id");
     } finally {
       sql.close();
     }

@@ -18,6 +18,28 @@ export function deliveryLabelForBuyer(wrClass: string | null | undefined): strin
   return wrClass === "restock" ? "⚡ Kirim otomatis" : "✋ Dikirim admin";
 }
 
+/**
+ * Apakah varian ini WAJIB email pembeli SEBELUM bayar (2026-09-16)?
+ * Aturan gabungan (keputusan owner):
+ * - Varian WR tipe Invite/Link OTOMATIS butuh (tanpa setting): WR 422
+ *   "Email Invite is required" bila tanpa email_invite (uji live #1).
+ * - Produk non-WR: ikut toggle products.require_email (untuk e-book,
+ *   lisensi, akun masa depan).
+ * Email selalu diminta sebelum bayar — order lunas tanpa email = macet WR.
+ */
+export function needsEmailForVariant(input: {
+  wrType?: string | null;
+  requireEmail?: number | boolean | null;
+}): boolean {
+  if (input.requireEmail === 1 || input.requireEmail === true) return true;
+  const type = String(input.wrType || "").trim().toLowerCase();
+  return type === "invite" || type === "link";
+}
+
+/** Pesan penjelasan saat email wajib tapi kosong/tidak valid. */
+export const EMAIL_REQUIRED_MESSAGE =
+  "Produk ini dikirim via email invite — tulis email aktif yang benar sebelum bayar.";
+
 /** Label admin lengkap (panel saja, bukan storefront). */
 export function deliveryLabelForAdmin(
   wrClass: string | null | undefined,

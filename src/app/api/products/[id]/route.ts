@@ -55,6 +55,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
       stock: row.stock as number ?? -1,
       isActive: (row.is_active as number) !== 0,
       sortOrder: row.sort_order,
+      requireEmail: (row.require_email as number) === 1,
       variants,
     },
   });
@@ -98,6 +99,9 @@ const updateSchema = z.object({
   stock: z.coerce.number().int().min(-1).max(999999).optional(),
   isActive: z.boolean().optional(),
   sortOrder: z.coerce.number().int().min(0).max(999999).optional(),
+  // Toggle email wajib (migrasi 0033): untuk produk non-WR yang butuh kirim
+  // ke email. Varian WR Invite/Link otomatis butuh tanpa toggle ini.
+  requireEmail: z.boolean().optional(),
   variants: z.array(variantInputSchema).optional(),
 }).passthrough();
 
@@ -215,7 +219,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (data.imageUrl && !urlOk(data.imageUrl)) return NextResponse.json({ error: "URL gambar utama tidak diizinkan" }, { status: 400 });
   const fields: string[] = [];
   const vals: unknown[] = [];
-  const map: Record<string,string> = { name:"name", slug:"slug", description:"description", adminDescriptionOverride:"admin_description_override", whatsappAlias:"whatsapp_alias", price:"price", comparePrice:"compare_price", imageUrl:"image_url", badge:"badge", soldCount:"sold_count", stock:"stock", isActive:"is_active", sortOrder:"sort_order" };
+  const map: Record<string,string> = { name:"name", slug:"slug", description:"description", adminDescriptionOverride:"admin_description_override", whatsappAlias:"whatsapp_alias", price:"price", comparePrice:"compare_price", imageUrl:"image_url", badge:"badge", soldCount:"sold_count", stock:"stock", isActive:"is_active", sortOrder:"sort_order", requireEmail:"require_email" };
   if (data.categorySlug) {
     const cat = await queryFirst("SELECT id FROM categories WHERE slug=?", data.categorySlug) as { id:number }|undefined;
     if (cat) { fields.push("category_id=?"); vals.push(cat.id); }
@@ -228,7 +232,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (skipLegacyCommerceWrite && (k === "price" || k === "comparePrice" || k === "stock")) continue;
     const v = (data as Record<string, unknown>)[k];
     if (v !== undefined) {
-      if (k==="isActive") { fields.push(`${col}=?`); vals.push(v ? 1:0); }
+      if (k==="isActive" || k==="requireEmail") { fields.push(`${col}=?`); vals.push(v ? 1:0); }
       else if (k==="imageUrl") { fields.push(`${col}=?`); vals.push((v as string | null) ?? null); }
       else if (k==="whatsappAlias") { fields.push(`${col}=?`); vals.push(String(v || "").trim() || null); }
       else if (k==="comparePrice") { fields.push(`${col}=?`); vals.push(v ? Number(v) : null); }

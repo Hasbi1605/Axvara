@@ -23,6 +23,85 @@ import { countInventory } from "@/lib/fulfillment/inventory";
 import { clampQty } from "./shared";
 import { handleShowCatalog, handleShowQty, handleShowVariants } from "./catalog";
 
+/**
+ * Jawaban email untuk alur email_for: (migrasi 0033): user diminta email
+ * karena varian butuh Invite/Link WR atau produk require_email. Validasi,
+ * simpan ke telegram_users.buyer_email, lalu LANJUTKAN ke invoice (jangan
+ * suruh tekan tombol lagi). /batal membersihkan state.
+ */
+export async function handlePendingEmailInput(
+  text: string,
+  chatId: number,
+  from: { id: number; first_name: string; username?: string },
+): Promise<boolean> {
+  if (!isD1Mode()) return false;
+  const user = await queryFirst(
+    `SELECT pending_action FROM telegram_users WHERE user_id=?`,
+    String(from.id),
+  );
+  const action = user?.pending_action ? String(user.pending_action) : "";
+  if (!action.startsWith("email_for:") && !action.startsWith("emailcart:")) return false;
+  if (action.startsWith("emailcart:")) {
+    // Alur keranjang: tidak ada product/variant tunggal — setelah email
+    // tersimpan, user menekan Lanjut lagi (cconfirm) seperti biasa.
+    if (/^\/batal$/i.test(text.trim())) {
+      await execRun(
+        `UPDATE telegram_users SET pending_action=NULL, updated_at=datetime('now') WHERE user_id=?`,
+        String(from.id),
+      ).catch(() => {});
+      await sendMessage({ chat_id: chatId, text: "Dibatalkan. Ketik /start untuk mulai lagi.", parse_mode: "HTML" });
+      return true;
+    }
+    const cartEmail = text.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cartEmail)) {
+      await sendMessage({
+        chat_id: chatId,
+        text: "❌ Format email tidak valid. Contoh: <code>nama@email.com</code>\nKetik /batal untuk membatalkan.",
+        parse_mode: "HTML",
+      });
+      return true;
+    }
+    await execRun(
+      `UPDATE telegram_users SET buyer_email=?, pending_action=NULL, updated_at=datetime('now') WHERE user_id=?`,
+      cartEmail,
+      String(from.id),
+    ).catch(() => {});
+    await sendMessage({ chat_id: chatId, text: `✅ Email <code>${cartEmail}</code> tersimpan. Tekan <b>Lanjut — Bayar QRIS</b> untuk melanjutkan.`, parse_mode: "HTML" });
+    return true;
+  }
+  const [, productIdRaw, variantIdRaw, qtyRaw] = action.split(":");
+  const productId = Number(productIdRaw);
+  const variantId = Number(variantIdRaw);
+  const qty = Math.max(1, Number(qtyRaw) || 1);
+  if (!productId || !variantId) return false;
+  if (/^\/batal$/i.test(text.trim())) {
+    await execRun(
+      `UPDATE telegram_users SET pending_action=NULL, updated_at=datetime('now') WHERE user_id=?`,
+      String(from.id),
+    ).catch(() => {});
+    await sendMessage({ chat_id: chatId, text: "Dibatalkan. Ketik /start untuk mulai lagi.", parse_mode: "HTML" });
+    return true;
+  }
+  const email = text.trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    await sendMessage({
+      chat_id: chatId,
+      text: "❌ Format email tidak valid. Contoh: <code>nama@email.com</code>\nKetik /batal untuk membatalkan.",
+      parse_mode: "HTML",
+    });
+    return true;
+  }
+  await execRun(
+    `UPDATE telegram_users SET buyer_email=?, pending_action=NULL, updated_at=datetime('now') WHERE user_id=?`,
+    email,
+    String(from.id),
+  ).catch(() => {});
+  await sendMessage({ chat_id: chatId, text: `✅ Email <code>${email}</code> tersimpan. Lanjut buat invoice…`, parse_mode: "HTML" });
+  const { handlePayWithQris } = await import("./invoice");
+  await handlePayWithQris(chatId, 0, productId, variantId, qty, from);
+  return true;
+}
+
 // --- /orders: real order history with reorder shortcuts ---
 
 export async function handleMyOrders(

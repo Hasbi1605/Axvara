@@ -37,6 +37,10 @@ CREATE TABLE IF NOT EXISTS products (
   -- Migrasi 0030: deskripsi milik admin. NULL = pakai `description` (milik WR).
   -- Sync WR tidak pernah menulis kolom ini.
   admin_description_override TEXT,
+  -- Migrasi 0033: toggle email wajib per produk (untuk non-WR masa depan).
+  -- Varian WR tipe Invite/Link otomatis butuh email tanpa toggle ini.
+  require_email INTEGER NOT NULL DEFAULT 0
+    CHECK (require_email IN (0, 1)),
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -248,6 +252,9 @@ CREATE TABLE IF NOT EXISTS telegram_users (
   last_name TEXT,
   is_blocked INTEGER NOT NULL DEFAULT 0,
   pending_action TEXT DEFAULT NULL,
+  -- Migrasi 0033: email pembeli tersimpan (alur email_for:) untuk produk
+  -- Invite/Link WR + require_email. Ditanya sekali, dipakai ulang.
+  buyer_email TEXT DEFAULT NULL,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );

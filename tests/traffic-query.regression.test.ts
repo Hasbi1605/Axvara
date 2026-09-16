@@ -107,7 +107,10 @@ describe("Issue #14 — efisiensi query sesuai batas D1 aktual", () => {
     const quote = read("src/app/api/checkout/quote/route.ts");
     expect(quote).toContain("WHERE p.id IN (");
     expect(quote).toContain("WHERE p.slug IN (");
-    expect(quote).toContain("FROM product_variants WHERE id IN (");
+    // 2026-09-16: query varian JOIN wr_variants (wr_type) + products
+    // (require_email) untuk flag emailRequired — tetap 1 query IN.
+    expect(quote).toContain("FROM product_variants pv");
+    expect(quote).toContain("WHERE pv.id IN (");
     expect(quote).toContain("variantById.get(item.variant_id)");
   });
 

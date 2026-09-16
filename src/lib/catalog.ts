@@ -28,6 +28,10 @@ export type VariantSummary = {
    * restock = "⚡ Kirim otomatis", selainnya = "✋ Dikirim admin".
    */
   wr_delivery_class: string | null;
+  /** Tipe WR mentah (Invite/Link/Private/Sharing/...) — penentu email wajib. */
+  wr_type: string | null;
+  /** Toggle email wajib per produk (migrasi 0033, untuk non-WR). */
+  require_email: number;
   price: number;
   compare_price: number | null;
   stock: number;
@@ -161,8 +165,10 @@ export async function getProductDetail(slugOrId: string | number): Promise<Produ
             pv.warranty_type, pv.warranty_value, pv.warranty_unit, pv.warranty_label,
             pv.price, pv.compare_price, pv.stock, pv.fulfillment_mode, pv.is_active, pv.sort_order,
             wv.wr_terms AS wr_terms, wv.wr_delivery_terms AS wr_delivery_terms,
-            wv.wr_delivery_class AS wr_delivery_class
+            wv.wr_delivery_class AS wr_delivery_class, wv.wr_type AS wr_type,
+            COALESCE(p.require_email, 0) AS require_email
      FROM product_variants pv
+     JOIN products p ON p.id = pv.product_id
      LEFT JOIN wr_variants wv ON wv.wr_variant_id = pv.wr_variant_id
      WHERE pv.product_id=? AND pv.is_active=1
      ORDER BY pv.sort_order ASC, pv.price ASC, pv.id ASC`,
@@ -212,6 +218,8 @@ async function getProductDetailLegacy(slugOrId: string | number): Promise<Produc
     // Varian sintetis legacy (non-WR / tanpa join wr_variants): tidak ada
     // kelas → label pembeli jatuh ke "✋ Dikirim admin" (default aman).
     wr_delivery_class: null,
+    wr_type: null,
+    require_email: Number((product as Record<string, unknown>).require_email ?? 0),
     price: Number(product.price),
     compare_price: product.compare_price ? Number(product.compare_price) : null,
     stock: Number(product.stock ?? -1),
@@ -244,7 +252,9 @@ export async function getActiveVariant(variantId: number): Promise<VariantSummar
 
   const row = await queryFirst(
     `SELECT pv.*, p.is_active as product_active,
-            wv.wr_terms AS wr_terms, wv.wr_delivery_terms AS wr_delivery_terms
+            p.require_email AS require_email,
+            wv.wr_terms AS wr_terms, wv.wr_delivery_terms AS wr_delivery_terms,
+            wv.wr_delivery_class AS wr_delivery_class, wv.wr_type AS wr_type
      FROM product_variants pv
      JOIN products p ON p.id = pv.product_id
      LEFT JOIN wr_variants wv ON wv.wr_variant_id = pv.wr_variant_id
@@ -390,6 +400,8 @@ function mapVariant(row: Record<string, unknown>): VariantSummary {
     terms: nullableText(row.wr_terms),
     delivery_terms: nullableText(row.wr_delivery_terms),
     wr_delivery_class: row.wr_delivery_class ? String(row.wr_delivery_class) : null,
+    wr_type: row.wr_type ? String(row.wr_type) : null,
+    require_email: Number(row.require_email ?? 0),
     price: Number(row.price),
     compare_price: row.compare_price != null ? Number(row.compare_price) : null,
     stock: Number(row.stock ?? -1),

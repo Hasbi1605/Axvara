@@ -105,11 +105,19 @@ export async function POST(req: NextRequest) {
   const variantById = new Map<number, Record<string, unknown>>();
   if (variantIds.size > 0) {
     const rows = await queryAll(
-      `SELECT * FROM product_variants WHERE id IN (${[...variantIds].map(() => "?").join(",")})`,
+      `SELECT pv.*, wv.wr_type AS wr_type, p.require_email AS require_email
+       FROM product_variants pv
+       LEFT JOIN wr_variants wv ON wv.wr_variant_id = pv.wr_variant_id
+       LEFT JOIN products p ON p.id = pv.product_id
+       WHERE pv.id IN (${[...variantIds].map(() => "?").join(",")})`,
       ...[...variantIds],
     );
     for (const row of rows) variantById.set(Number(row.id), row);
   }
+  // Email wajib? (migrasi 0033): true bila ada item varian Invite/Link WR
+  // atau produk require_email=1. Dibawa di respons agar form checkout
+  // mengubah label + validasi SEBELUM bayar; API orders menegakkan lagi.
+  let emailRequired = false;
 
   for (const item of aggregate.values()) {
     if (item.qty > 20) {
@@ -184,6 +192,19 @@ export async function POST(req: NextRequest) {
       });
     }
     subtotal += effectivePrice * item.qty;
+    // Penentu email wajib per item (lihat needsEmailForVariant): wr_type
+    // Invite/Link dari JOIN di atas + toggle produk require_email.
+    try {
+      const { needsEmailForVariant } = await import("@/lib/warung-rebahan/delivery-class");
+      const itemVariant = item.variant_id ? variantById.get(item.variant_id) : null;
+      if (itemVariant && needsEmailForVariant({
+        wrType: itemVariant.wr_type != null ? String(itemVariant.wr_type) : null,
+        requireEmail: Number(itemVariant.require_email ?? row.require_email ?? 0),
+      })) emailRequired = true;
+      else if (!item.variant_id && Number(row.require_email ?? 0) === 1) emailRequired = true;
+    } catch {
+      /* helper murni — gagal impor = anggap tidak wajib, API orders tetap jaga */
+    }
     quotedItems.push({
       product_id: productId,
       variant_id: item.variant_id,
@@ -226,5 +247,6 @@ export async function POST(req: NextRequest) {
     changes,
     quoteToken: signed.token,
     quoteExpiresAt: new Date(signed.expiresAt * 1000).toISOString(),
+    emailRequired,
   });
 }

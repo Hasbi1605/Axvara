@@ -150,10 +150,17 @@ export function ProductEditorModal({
               )}
             </div>
 
-            <div className="mt-4 flex items-center justify-between">
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
               <label className="flex items-center gap-2">
                 <input type="checkbox" checked={form.isActive !== false} onChange={(e) => onSetForm({ ...form, isActive: e.target.checked })} className="w-4 h-4 rounded accent-[#00E5FF]" />
                 <span className="text-sm text-white/80">Aktif tampil di toko</span>
+              </label>
+              {/* Toggle email wajib (migrasi 0033): untuk produk non-WR yang
+                  butuh kirim ke email. Varian WR Invite/Link otomatis butuh
+                  tanpa toggle ini. */}
+              <label className="flex items-center gap-2" title="Pembeli wajib isi email sebelum bayar (untuk produk yang dikirim via email)">
+                <input type="checkbox" checked={form.requireEmail === true} onChange={(e) => onSetForm({ ...form, requireEmail: e.target.checked })} className="w-4 h-4 rounded accent-[#00E5FF]" />
+                <span className="text-sm text-white/80">Wajib email pembeli</span>
               </label>
               <div className="text-xs text-white/40">
                 Terjual: <span className="text-white/70 font-semibold">{form.soldCount ?? 0}</span>

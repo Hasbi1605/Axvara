@@ -88,6 +88,14 @@ export async function createAndSendCartInvoice(
     // benar untuk error yang dilempar, tetapi bila isolate dihentikan di
     // tengah loop, sebagian stok terpotong permanen tanpa order.
     const uniqueLineCount = lines.filter((line) => line.fulfillmentMode === "unique").length;
+    // Email tersimpan (alur email_for:) — keranjang berisi Invite/Link WR
+    // dicek di handleCartCheckout SEBELUM sampai sini; email diteruskan agar
+    // order lunas bisa auto-order WR tanpa macet 422.
+    const cartBuyerEmailRow = await queryFirst(
+      `SELECT buyer_email FROM telegram_users WHERE user_id=?`,
+      String(from.id),
+    ).catch(() => null) as { buyer_email?: unknown } | null;
+    const cartBuyerEmail = String(cartBuyerEmailRow?.buyer_email || "").trim() || null;
     try {
       await createChannelOrderAtomic({
         orderCode,
@@ -103,6 +111,7 @@ export async function createAndSendCartInvoice(
         subtotal,
         primaryVariantId: lines[0].variantId,
         customerName: from.first_name,
+        customerEmail: cartBuyerEmail,
         salesChannel: "telegram",
         telegramChatId: String(chatId),
         telegramUserId: String(from.id),

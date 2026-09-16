@@ -959,3 +959,13 @@ Perintah akun #2 wajib prefix `HEROKU_API_KEY=<kunci-akun-2>`; jangan
   Axvara. Tanpa email, WR 422 "Email Invite is required" dan retry tidak
   sembuh (saldo aman, tidak terpotong). Checkout produk Invite/Link wajib
   meminta email pembeli.
+- Email wajib SEBELUM bayar (migrasi 0033, 2026-09-16): `products.require_email`
+  (toggle admin, untuk non-WR) + `telegram_users.buyer_email` (sekali isi,
+  dipakai ulang). Aturan: varian WR Invite/Link OTOMATIS butuh (dari
+  `wr_type`, tanpa setting) ATAU produk `require_email=1`. Quote menghitung
+  `emailRequired` (1 query IN, tetap hemat); form web validasi + label
+  dinamis; `POST /api/orders` 422 guard hitung-ulang DB (jangan percaya
+  flag client); Telegram minta via `pending_action=email_for:/emailcart:`
+  lalu lanjut invoice otomatis + `customerEmail` diteruskan ke WR;
+  WA grup (tanpa form) menolak jelas + arahkan web/Telegram. Jangan ubah
+  menjadi opsional-sesudah-bayar: order lunas tanpa email = macet WR.

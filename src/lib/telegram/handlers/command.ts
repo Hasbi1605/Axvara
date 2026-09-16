@@ -17,7 +17,7 @@ import { clearPendingAction, getBestsellers } from "./shared";
 import { handleShowCatalog } from "./catalog";
 import {
   handleSearchPrompt, handleMyOrders, handlePendingSearchInput,
-  handlePendingQtyInput, handlePendingWaInput,
+  handlePendingQtyInput, handlePendingWaInput, handlePendingEmailInput,
 } from "./discovery";
 import { handleOrderStatus } from "./orders";
 import { handleShowCart } from "./cart";
@@ -115,6 +115,14 @@ export async function handleCommand(
   if (from && /^\d{1,3}$/.test(cmd)) {
     const handled = await handlePendingQtyInput(text, chatId, from);
     if (handled) return;
+  }
+
+  // Email input: user menjawab prompt email_for: (produk Invite/Link WR atau
+  // require_email). Dicek SEBELUM search agar alamat email tidak dianggap
+  // kata kunci pencarian.
+  if (from && !cmd.startsWith("/")) {
+    const handledEmail = await handlePendingEmailInput(text, chatId, from);
+    if (handledEmail) return;
   }
 
   // Search text: user is answering the 🔎 Cari prompt (pending_action=search:).
