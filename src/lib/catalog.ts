@@ -25,7 +25,7 @@ export type VariantSummary = {
   /**
    * Kelas pengiriman WR (migrasi 0032): 'restock' (auto) | 'made_by_order'
    * (manual slow) | null (belum dikunci). Label pembeli:
-   * restock = "⚡ Kirim otomatis", selainnya = "✋ Dikirim admin".
+   * restock = "Kirim otomatis", selainnya = "Dikirim admin".
    */
   wr_delivery_class: string | null;
   /** Tipe WR mentah (Invite/Link/Private/Sharing/...) — penentu email wajib. */
@@ -216,7 +216,7 @@ async function getProductDetailLegacy(slugOrId: string | number): Promise<Produc
     terms: null,
     delivery_terms: null,
     // Varian sintetis legacy (non-WR / tanpa join wr_variants): tidak ada
-    // kelas → label pembeli jatuh ke "✋ Dikirim admin" (default aman).
+    // kelas → label pembeli jatuh ke "Dikirim admin" (default aman).
     wr_delivery_class: null,
     wr_type: null,
     require_email: Number((product as Record<string, unknown>).require_email ?? 0),

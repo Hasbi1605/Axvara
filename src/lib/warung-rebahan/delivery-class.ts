@@ -13,9 +13,9 @@
 
 export type WrDeliveryClass = "restock" | "made_by_order";
 
-/** Label pembeli singkat (web/Telegram/WA). Jangan panjang. */
+/** Label pembeli singkat (web/Telegram/WA). Tanpa emoji — badge/styling diurus UI. */
 export function deliveryLabelForBuyer(wrClass: string | null | undefined): string {
-  return wrClass === "restock" ? "⚡ Kirim otomatis" : "✋ Dikirim admin";
+  return wrClass === "restock" ? "Kirim otomatis" : "Dikirim admin";
 }
 
 /**

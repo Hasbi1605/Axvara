@@ -969,3 +969,14 @@ Perintah akun #2 wajib prefix `HEROKU_API_KEY=<kunci-akun-2>`; jangan
   lalu lanjut invoice otomatis + `customerEmail` diteruskan ke WR;
   WA grup (tanpa form) menolak jelas + arahkan web/Telegram. Jangan ubah
   menjadi opsional-sesudah-bayar: order lunas tanpa email = macet WR.
+- Matriks sandbox (2026-09-16, `WARUNG_REBAHAN_SANDBOX=true` → `client.ts`
+  tambah `is_test` ke payload `/order`; saldo tidak terpotong, respons
+  valid): 3 restock (Prime Video Private, I Love PDF Sharing, Canva Edu
+  Link) → `processing` TEST-ORD-*; 3 MBO (Picsart, Express VPN, Zoom 14D)
+  → gate menolak (link pending, nol API call); Remini Link tanpa email →
+  pending; quote apple-music `emailRequired:true`. Sandbox WAJIB dimatikan
+  lagi setelah tes (flag global — order pembeli asli ikut jadi test bila
+  lupa). TEST-ORD-* fiktif (WR tak mencatat order test): bukti = validasi
+  lolos, bukan delivery. Cara: secret ON → push kosong (deploy) → order
+  test via D1 + PATCH lunas → cek link → secret OFF → push kosong → hapus
+  order/link/job/item test.
