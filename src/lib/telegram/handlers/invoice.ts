@@ -58,6 +58,18 @@ export async function handlePayWithQris(
     await handleShowQty(chatId, messageId, productId, variantId, 1);
     return;
   }
+  // Minimum pembelian per varian (migrasi 0034, generik — GSuite min 50):
+  // tolak SEBELUM invoice dengan pesan jelas, bukan diam-diam menaikkan.
+  const minQty = Math.max(1, Number(variant.min_qty ?? 1) || 1);
+  if (variant.fulfillment_mode !== "unique" && minQty > 1 && qty < minQty) {
+    await sendMessage({
+      chat_id: chatId,
+      text: `📦 <b>Minimal Pembelian ${minQty}</b>\n\nVarian ini minimal order ${minQty} (mis. akun corporate yang dijual grosir). Naikkan jumlah ke minimal ${minQty} lalu bayar 👇`,
+      parse_mode: "HTML",
+    });
+    await handleShowQty(chatId, messageId, productId, variantId, minQty);
+    return;
+  }
   // Email wajib (migrasi 0033): Invite/Link WR atau produk require_email.
   // Minta SEBELUM invoice — order lunas tanpa email = macet di WR (422).
   try {

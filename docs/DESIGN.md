@@ -149,6 +149,20 @@
   desktop + QuickVariantModal. JANGAN taruh di card deskripsi/S&K (datanya
   per-varian, bukan per-produk) dan JANGAN pakai emoji ⚡/✋.
 
+### 5.3d Badge Minimum Pembelian per Varian (2026-09-17, live)
+- Kolom `product_variants.min_qty` (migrasi 0034, default 1 = bebas; GSuite =
+  50): bila N > 1, tampilkan pill `gold/25 + gold/10` teks "Min. N pembelian"
+  (PDP kartu varian desktop) / "Min. N" (QuickVariantModal) — di bawah nama
+  varian, di atas harga/garansi, TANPA emoji (anti AI slop, konsisten §5.3c).
+- Keranjang drawer: baris min>1 menampilkan "Min. N · qty di bawah ini
+  ditolak saat checkout".
+- Dialog quote 409 `below_minimum` berjudul "Minimal Pembelian Belum
+  Terpenuhi" (bukan "Perubahan Harga / Stok").
+- Stepper Telegram tidak turun di bawah min; pesan penolakan "Minimal
+  Pembelian N" di qty/ketik/keranjang/invoice. WhatsApp (qty selalu 1):
+  varian min>1 ditolak jelas sejak pilih varian + saat bayar, dengan arahan
+  ke web/Telegram bulk.
+
 ### 5.3b Foto Welcome Telegram- File: `public/banners/tg-welcome.webp` (WebP ~31 KB, 1280px) — dikirim via
   `sendPhoto` di `/start` dengan caption sapaan + inline keyboard.
 - JANGAN pakai PNG 2,2 MB dari R2 (timeout 10 dtk di edge → foto gagal diam-diam).

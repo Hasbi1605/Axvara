@@ -26,7 +26,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
   const variants = await queryAll(
     `SELECT id, product_id, sku, label, duration_value, duration_unit, duration_label,
             warranty_type, warranty_value, warranty_unit, warranty_label,
-            price, compare_price, stock, fulfillment_mode, is_active, sort_order, wr_auto_managed
+            price, compare_price, stock, min_qty, fulfillment_mode, is_active, sort_order, wr_auto_managed
      FROM product_variants
      WHERE product_id=? AND is_active=1
      ORDER BY sort_order ASC, price ASC, id ASC`,
@@ -68,6 +68,8 @@ const variantInputSchema = z.object({
   price: z.coerce.number().int().min(0).max(999_999_999),
   comparePrice: z.coerce.number().int().min(0).max(999_999_999).nullable().optional(),
   stock: z.coerce.number().int().min(-1).max(999999).default(-1),
+  // Minimum pembelian (migrasi 0034, generik — GSuite = 50, plafon 100).
+  min_qty: z.coerce.number().int().min(1).max(100).optional(),
   duration_value: z.coerce.number().int().nonnegative().nullable().optional(),
   duration_unit: z.enum(["day", "month", "year", "lifetime", "custom"]).nullable().optional(),
   duration_label: z.string().trim().max(100).nullable().optional(),
@@ -272,13 +274,16 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
           const existingSlug = (data.slug || (await queryFirst("SELECT slug FROM products WHERE id=?", id) as { slug: string })?.slug || "PROD").toUpperCase();
           data.variants.forEach((v, idx) => {
             const autoSku = (v.sku?.trim() || `${existingSlug}-${idx + 1}`).replace(/[^A-Z0-9-]/g, "");
+            // min_qty milik ADMIN (bukan WR-owned): boleh ditulis dari sini.
+            // Sync WR tidak pernah menyentuh kolom ini (lihat sync.ts).
+            const minQty = Math.max(1, Math.min(100, Number(v.min_qty ?? 1) || 1));
             if (v.id) {
               statements.push(
                 d1.prepare(
                   `UPDATE product_variants SET
                      sku=?, label=?, duration_value=?, duration_unit=?, duration_label=?,
                      warranty_type=?, warranty_value=?, warranty_unit=?, warranty_label=?,
-                     price=?, compare_price=?, stock=?, fulfillment_mode=?, is_active=?,
+                     price=?, compare_price=?, stock=?, min_qty=?, fulfillment_mode=?, is_active=?,
                      sort_order=?, updated_at=datetime('now')
                    WHERE id=? AND product_id=?`
                 ).bind(
@@ -294,6 +299,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
                   Number(v.price),
                   v.comparePrice ? Number(v.comparePrice) : null,
                   v.stock != null ? Number(v.stock) : -1,
+                  minQty,
                   v.fulfillment_mode || "manual",
                   v.is_active ?? 1,
                   v.sort_order ?? idx,
@@ -307,8 +313,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
                   `INSERT INTO product_variants (
                      product_id, sku, label, duration_value, duration_unit, duration_label,
                      warranty_type, warranty_value, warranty_unit, warranty_label,
-                     price, compare_price, stock, fulfillment_mode, is_active, sort_order
-                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+                     price, compare_price, stock, min_qty, fulfillment_mode, is_active, sort_order
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
                 ).bind(
                   id,
                   autoSku,
@@ -323,6 +329,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
                   Number(v.price),
                   v.comparePrice ? Number(v.comparePrice) : null,
                   v.stock != null ? Number(v.stock) : -1,
+                  minQty,
                   v.fulfillment_mode || "manual",
                   v.is_active ?? 1,
                   v.sort_order ?? idx

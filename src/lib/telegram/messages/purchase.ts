@@ -71,13 +71,17 @@ export function chooseQtyMessage(params: {
   stock: number;
   qty: number;
   maxQty?: number;
+  minQty?: number;
 }): string {
   const { productName, variantLabel, price, stock } = params;
   // Telegram bulk cap is 100/order.
-  const qty = Math.max(1, Math.min(100, Math.floor(params.qty || 1)));
+  const minQty = Math.max(1, Math.floor(Number(params.minQty ?? 1) || 1));
+  const qty = Math.min(Math.max(minQty, Math.floor(params.qty || minQty)), 100);
   const maxQty = params.maxQty ?? (stock === -1 ? 100 : Math.max(1, Math.min(stock, 100)));
   const stockLine = maxQty === 1
     ? "📦 Produk unik — maksimal 1 per pesanan"
+    : minQty > 1
+    ? `📦 Minimal pembelian ${minQty}${stock === -1 ? " — stok tersedia" : stock > 0 ? ` — stok ${stock}` : " — stok habis"}`
     : stock === -1
     ? "📦 Stok tersedia"
     : stock > 0
@@ -98,7 +102,7 @@ export function chooseQtyMessage(params: {
     "",
     "Gunakan tombol ➖ / ➕ di bawah.",
     maxQty > 1
-      ? `Untuk bulk, kamu juga bisa ketik angka 1–${maxQty}.`
+      ? `Untuk bulk, kamu juga bisa ketik angka ${minQty > 1 ? `${minQty}–` : "1–"}${maxQty}.`
       : "Varian ini tidak mendukung bulk order.",
   ].join("\n");
 }

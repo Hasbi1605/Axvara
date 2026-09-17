@@ -13,7 +13,7 @@ const itemSchema = z.object({
   product_id: z.coerce.number().int().min(1).optional(),
   variant_id: z.coerce.number().int().min(1).optional(),
   slug: z.string().trim().min(1).max(100).optional(),
-  qty: z.coerce.number().int().min(1).max(20),
+  qty: z.coerce.number().int().min(1).max(100),
   expected_price: z.coerce.number().int().min(0).optional(),
 }).refine((item) => item.product_id || item.slug, "Produk tidak valid");
 
@@ -21,7 +21,7 @@ const schema = z.object({ items: z.array(itemSchema).min(1).max(20) });
 
 type QuoteIssue = {
   product_id?: number;
-  type: "missing" | "inactive" | "out_of_stock" | "insufficient_stock" | "invalid_quantity" | "variant_required";
+  type: "missing" | "inactive" | "out_of_stock" | "insufficient_stock" | "invalid_quantity" | "below_minimum" | "variant_required";
   message: string;
 };
 
@@ -114,14 +114,23 @@ export async function POST(req: NextRequest) {
     );
     for (const row of rows) variantById.set(Number(row.id), row);
   }
+  // Cache min_qty per varian (migrasi 0034): baris fixture lama tanpa kolom
+  // tetap aman (fallback 1) karena akses memakai ?? di bawah.
+  const minQtyOf = (variantId: number): number => {
+    const row = variantById.get(variantId);
+    return Math.max(1, Number(row?.min_qty ?? 1) || 1);
+  };
   // Email wajib? (migrasi 0033): true bila ada item varian Invite/Link WR
   // atau produk require_email=1. Dibawa di respons agar form checkout
   // mengubah label + validasi SEBELUM bayar; API orders menegakkan lagi.
   let emailRequired = false;
 
+  // Batas atas web = 100/baris (paritas Telegram TELEGRAM_MAX_QTY) agar
+  // produk min-besar (mis. GSuite min 50) tetap bisa dibeli dari web.
+  // Sebelumnya 20 — varian min_qty > 20 mustahil lolos web.
   for (const item of aggregate.values()) {
-    if (item.qty > 20) {
-      issues.push({ product_id: item.product_id, type: "invalid_quantity", message: "Maksimal 20 unit per produk." });
+    if (item.qty > 100) {
+      issues.push({ product_id: item.product_id, type: "invalid_quantity", message: "Maksimal 100 unit per produk." });
       continue;
     }
     const row = item.slug ? productBySlug.get(item.slug) : item.product_id ? productById.get(item.product_id) : undefined;
@@ -180,6 +189,16 @@ export async function POST(req: NextRequest) {
     if (effectiveStock !== -1 && item.qty > effectiveStock) {
       issues.push({ product_id: productId, type: "insufficient_stock", message: `${displayName} stok tersisa ${effectiveStock} (diminta ${item.qty}).` });
       continue;
+    }
+    // Minimum pembelian per varian (migrasi 0034, generik — GSuite min 50).
+    // Dicek setelah stok agar pesan "habis" tetap menang atas pesan "kurang".
+    // Qty agregat per baris (bukan per item mentah) yang dinilai.
+    if (item.variant_id) {
+      const minQty = minQtyOf(item.variant_id);
+      if (minQty > 1 && item.qty < minQty) {
+        issues.push({ product_id: productId, type: "below_minimum", message: `${displayName} minimal pembelian ${minQty} (kamu pilih ${item.qty}).` });
+        continue;
+      }
     }
 
     if (item.expected_price != null && item.expected_price !== effectivePrice) {

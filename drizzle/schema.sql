@@ -488,6 +488,13 @@ CREATE TABLE IF NOT EXISTS product_variants (
   compare_price INTEGER CHECK (compare_price IS NULL OR compare_price > price),
   stock INTEGER NOT NULL DEFAULT -1,
 
+  -- Migrasi 0034: minimum pembelian per varian (mode generik, milik admin).
+  -- Default 1 = tanpa perubahan perilaku. GSuite dikunci 50 via UPDATE di
+  -- migrasi; sync WR tidak pernah menulis kolom ini. Label pembeli:
+  -- "Min. N pembelian" bila N > 1.
+  min_qty INTEGER NOT NULL DEFAULT 1
+    CHECK (min_qty >= 1),
+
   fulfillment_mode TEXT NOT NULL DEFAULT 'manual' CHECK (fulfillment_mode IN ('manual','shared','unique')),
   shared_secret_ciphertext TEXT,
   shared_secret_iv TEXT,

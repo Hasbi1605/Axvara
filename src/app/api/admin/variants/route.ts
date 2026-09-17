@@ -41,6 +41,9 @@ const SingleVariantSchema = z.object({
   price: z.number().int().nonnegative(),
   compare_price: z.number().int().positive().nullable().optional(),
   stock: z.number().int().min(-1).default(-1),
+  // Minimum pembelian per baris (migrasi 0034, generik — GSuite = 50).
+  // Batas 100 = plafon channel (web/Telegram) agar aturan tetap bisa dibeli.
+  min_qty: z.number().int().min(1).max(100).default(1),
   fulfillment_mode: z.enum(["manual", "shared", "unique"]).default("manual"),
   is_active: z.number().int().min(0).max(1).default(1),
   sort_order: z.number().int().nonnegative().default(0),
@@ -85,7 +88,7 @@ export async function GET(request: NextRequest) {
     `SELECT id, product_id, sku, label,
             duration_value, duration_unit, duration_label,
             warranty_type, warranty_value, warranty_unit, warranty_label,
-            price, compare_price, stock, fulfillment_mode,
+            price, compare_price, stock, min_qty, fulfillment_mode,
             CASE WHEN shared_secret_ciphertext IS NOT NULL AND shared_secret_iv IS NOT NULL THEN 1 ELSE 0 END
               AS shared_secret_configured,
             is_active, sort_order, created_at, updated_at
@@ -202,14 +205,14 @@ export async function POST(request: NextRequest) {
               `UPDATE product_variants SET
                  sku=?, label=?, duration_value=?, duration_unit=?, duration_label=?,
                  warranty_type=?, warranty_value=?, warranty_unit=?, warranty_label=?,
-                 price=?, compare_price=?, stock=?, fulfillment_mode=?, is_active=?,
+                 price=?, compare_price=?, stock=?, min_qty=?, fulfillment_mode=?, is_active=?,
                  sort_order=?, updated_at=datetime('now')
                WHERE id=? AND product_id=?`,
             ).bind(
               v.sku, v.label,
               v.duration_value ?? null, v.duration_unit ?? null, v.duration_label ?? null,
               v.warranty_type, v.warranty_value ?? null, v.warranty_unit ?? null, v.warranty_label ?? null,
-              v.price, v.compare_price ?? null, v.stock, v.fulfillment_mode, v.is_active,
+              v.price, v.compare_price ?? null, v.stock, v.min_qty ?? 1, v.fulfillment_mode, v.is_active,
               v.sort_order, v.id, product_id,
             ),
           );
@@ -219,14 +222,14 @@ export async function POST(request: NextRequest) {
               `INSERT INTO product_variants (
                  product_id, sku, label, duration_value, duration_unit, duration_label,
                  warranty_type, warranty_value, warranty_unit, warranty_label,
-                 price, compare_price, stock, fulfillment_mode, is_active, sort_order,
+                 price, compare_price, stock, min_qty, fulfillment_mode, is_active, sort_order,
                  created_at, updated_at
-               ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+               ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
             ).bind(
               product_id, v.sku, v.label,
               v.duration_value ?? null, v.duration_unit ?? null, v.duration_label ?? null,
               v.warranty_type, v.warranty_value ?? null, v.warranty_unit ?? null, v.warranty_label ?? null,
-              v.price, v.compare_price ?? null, v.stock, v.fulfillment_mode, v.is_active,
+              v.price, v.compare_price ?? null, v.stock, v.min_qty ?? 1, v.fulfillment_mode, v.is_active,
               v.sort_order, now, now,
             ),
           );
@@ -272,8 +275,8 @@ export async function POST(request: NextRequest) {
     for (const v of variants) {
       if (v.id) {
         await execRun(
-          `UPDATE product_variants SET sku=?, label=?, price=?, stock=?, is_active=?, sort_order=? WHERE id=?`,
-          v.sku, v.label, v.price, v.stock, v.is_active, v.sort_order, v.id,
+          `UPDATE product_variants SET sku=?, label=?, price=?, stock=?, min_qty=?, is_active=?, sort_order=? WHERE id=?`,
+          v.sku, v.label, v.price, v.stock, v.min_qty ?? 1, v.is_active, v.sort_order, v.id,
         );
       }
     }
@@ -300,12 +303,12 @@ export async function POST(request: NextRequest) {
   const result = await execRun(
     `INSERT INTO product_variants (product_id, sku, label, duration_value, duration_unit, duration_label,
        warranty_type, warranty_value, warranty_unit, warranty_label,
-       price, compare_price, stock, fulfillment_mode, is_active, sort_order, created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       price, compare_price, stock, min_qty, fulfillment_mode, is_active, sort_order, created_at, updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     v.product_id, v.sku, v.label,
     v.duration_value ?? null, v.duration_unit ?? null, v.duration_label ?? null,
     v.warranty_type, v.warranty_value ?? null, v.warranty_unit ?? null, v.warranty_label ?? null,
-    v.price, v.compare_price ?? null, v.stock, v.fulfillment_mode,
+    v.price, v.compare_price ?? null, v.stock, v.min_qty ?? 1, v.fulfillment_mode,
     v.is_active, v.sort_order, now, now,
   );
 
@@ -388,6 +391,7 @@ export async function PUT(request: NextRequest) {
     ["duration_value", v.duration_value], ["duration_unit", v.duration_unit], ["duration_label", v.duration_label],
     ["warranty_type", v.warranty_type], ["warranty_value", v.warranty_value], ["warranty_unit", v.warranty_unit], ["warranty_label", v.warranty_label],
     ["price", v.price], ["compare_price", v.compare_price], ["stock", v.stock],
+    ["min_qty", v.min_qty],
     ["fulfillment_mode", v.fulfillment_mode], ["is_active", v.is_active], ["sort_order", v.sort_order],
   ];
   for (const [col, val] of fields) {

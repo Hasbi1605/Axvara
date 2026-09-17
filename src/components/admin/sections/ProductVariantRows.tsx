@@ -27,21 +27,22 @@ export function ProductVariantRows({
         ) : (
         <button
           type="button"
-          onClick={() => {
-            const idx = formVariants.length + 1;
-            onSetFormVariants((curr) => [
-              ...curr,
-              {
-                sku: `${(form.slug || "PROD").toUpperCase()}-${idx}`,
-                label: `Paket ${idx}`,
-                price: 50000,
-                comparePrice: null,
-                stock: -1,
-                warranty_type: "none",
-                is_active: 1,
-              },
-            ]);
-          }}
+            onClick={() => {
+              const idx = formVariants.length + 1;
+              onSetFormVariants((curr) => [
+                ...curr,
+                {
+                  sku: `${(form.slug || "PROD").toUpperCase()}-${idx}`,
+                  label: `Paket ${idx}`,
+                  price: 50000,
+                  comparePrice: null,
+                  stock: -1,
+                  min_qty: 1,
+                  warranty_type: "none",
+                  is_active: 1,
+                },
+              ]);
+            }}
           className="inline-flex h-8 items-center gap-1 rounded-full border border-[#00E5FF]/25 bg-[#00E5FF]/10 px-3 text-xs font-bold text-[#5cefff] transition hover:bg-[#00E5FF]/20"
         >
           <IosIcon name="plus" size={12} tint="#00E5FF" /> Tambah Varian
@@ -104,8 +105,8 @@ export function ProductVariantRows({
               </div>
             </div>
 
-            {/* Baris 2: Harga, Harga Coret, Stok */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 py-3 border-b border-white/5">
+            {/* Baris 2: Harga, Harga Coret, Stok, Min. Beli */}
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 py-3 border-b border-white/5">
               <div>
                 <span className="block text-[10px] uppercase font-semibold text-white/40 mb-1">Harga Jual (Rp) *{wrLocked ? " (WR)" : ""}</span>
                 <MoneyInput
@@ -142,6 +143,22 @@ export function ProductVariantRows({
                     onSetFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, stock: val } : item));
                   }}
                   className={wrLocked ? lockedInput : openInput}
+                />
+              </div>
+              {/* Minimum pembelian (migrasi 0034, milik admin — bukan WR):
+                  GSuite = 50; produk lain tinggal set angka bila butuh. */}
+              <div>
+                <span className="block text-[10px] uppercase font-semibold text-white/40 mb-1">Min. Beli <span className="normal-case tracking-normal text-white/25">(1 = bebas)</span></span>
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={v.min_qty ?? 1}
+                  onChange={(e) => {
+                    const val = Math.max(1, Math.min(100, Number(e.target.value) || 1));
+                    onSetFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, min_qty: val } : item));
+                  }}
+                  className={openInput}
                 />
               </div>
             </div>

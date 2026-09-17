@@ -95,7 +95,7 @@ describe("Catalog Formatting Helpers", () => {
     terms: null,
     delivery_terms: null,
     wr_delivery_class: null,
-    wr_type: null, require_email: 0,
+    wr_type: null, require_email: 0, min_qty: 1,
     price: 18000,
     compare_price: 25000,
     stock: -1,
@@ -191,7 +191,7 @@ describe("WhatsApp Message Formatting", () => {
         duration_value: 12, duration_unit: "month", duration_label: null,
         warranty_type: "full", warranty_value: null, warranty_unit: null, warranty_label: null,
         terms: null, delivery_terms: null, wr_delivery_class: null,
-        wr_type: null, require_email: 0,
+        wr_type: null, require_email: 0, min_qty: 1,
         price: 18000, compare_price: null, stock: -1, fulfillment_mode: "manual", is_active: 1, sort_order: 0,
       },
       {
@@ -199,7 +199,7 @@ describe("WhatsApp Message Formatting", () => {
         duration_value: 3, duration_unit: "month", duration_label: null,
         warranty_type: "limited", warranty_value: 1, warranty_unit: "month", warranty_label: null,
         terms: null, delivery_terms: null, wr_delivery_class: null,
-        wr_type: null, require_email: 0,
+        wr_type: null, require_email: 0, min_qty: 1,
         price: 25000, compare_price: null, stock: 5, fulfillment_mode: "manual", is_active: 1, sort_order: 10,
       },
     ];
@@ -222,7 +222,7 @@ describe("WhatsApp Message Formatting", () => {
         duration_value: 1, duration_unit: "month", duration_label: null,
         warranty_type: "none", warranty_value: null, warranty_unit: null, warranty_label: null,
         terms: null, delivery_terms: null, wr_delivery_class: null,
-        wr_type: null, require_email: 0,
+        wr_type: null, require_email: 0, min_qty: 1,
         price: 10000, compare_price: null, stock: 0, fulfillment_mode: "manual", is_active: 1, sort_order: 0,
       },
     ];
@@ -236,7 +236,7 @@ describe("WhatsApp Message Formatting", () => {
       duration_value: 3, duration_unit: "month", duration_label: null,
       warranty_type: "limited", warranty_value: 1, warranty_unit: "month", warranty_label: null,
       terms: null, delivery_terms: null, wr_delivery_class: null,
-      wr_type: null, require_email: 0,
+      wr_type: null, require_email: 0, min_qty: 1,
       price: 25000, compare_price: null, stock: 5, fulfillment_mode: "manual", is_active: 1, sort_order: 10,
     };
     const msg = waMsg.variantSelectedMessage("Gemini", variant);

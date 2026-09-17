@@ -20,6 +20,8 @@ type Variant = {
   price: number;
   compare_price: number | null;
   stock: number;
+  /** Minimum pembelian per baris (migrasi 0034, milik admin, default 1). */
+  min_qty: number;
   fulfillment_mode: string;
   is_active: number;
   sort_order: number;
@@ -75,7 +77,7 @@ export default function VariantEditor({ productId, productName, onClose }: Props
       const response = await fetch(`/api/admin/variants?product_id=${productId}`);
       const data = (await response.json().catch(() => ({}))) as { variants?: Variant[]; aliases?: string[]; error?: string };
       if (!response.ok) throw new Error(data.error === "variants_not_enabled" ? "Pengelolaan varian belum diaktifkan pada environment ini." : data.error || "Gagal memuat varian");
-      setVariants((data.variants || []).map((variant) => ({ ...variant, _dirty: false, _new: false })));
+      setVariants((data.variants || []).map((variant) => ({ ...variant, min_qty: Number(variant.min_qty ?? 1) || 1, _dirty: false, _new: false })));
       setAliasesText((data.aliases || []).join(", "));
       setAliasesDirty(false);
     } catch (cause) {
@@ -109,6 +111,7 @@ export default function VariantEditor({ productId, productName, onClose }: Props
       price: 0,
       compare_price: null,
       stock: -1,
+      min_qty: 1,
       fulfillment_mode: "manual",
       is_active: 1,
       sort_order: sortOrder,
@@ -175,6 +178,7 @@ export default function VariantEditor({ productId, productName, onClose }: Props
         price: Number(variant.price),
         compare_price: variant.compare_price ? Number(variant.compare_price) : null,
         stock: Number(variant.stock),
+        min_qty: Math.max(1, Math.floor(Number(variant.min_qty ?? 1) || 1)),
         fulfillment_mode: variant.fulfillment_mode,
         is_active: Number(variant.is_active),
         sort_order: Number(variant.sort_order),
@@ -183,6 +187,7 @@ export default function VariantEditor({ productId, productName, onClose }: Props
         if (!variant.sku) throw new Error(`Varian "${variant.label || "tanpa nama"}": SKU wajib diisi.`);
         if (!variant.label) throw new Error(`SKU ${variant.sku}: nama varian wajib diisi.`);
         if (variant.price < 0) throw new Error(`Varian "${variant.label}": harga tidak boleh negatif.`);
+        if (variant.min_qty < 1 || variant.min_qty > 100) throw new Error(`Varian "${variant.label}": minimal pembelian 1–100 (produk min-besar tetap harus ≤ 100 agar bisa dibeli).`);
       }
       const response = await fetch("/api/admin/variants", {
         method: "POST",
@@ -271,6 +276,8 @@ export default function VariantEditor({ productId, productName, onClose }: Props
                     <label className={labelClass}>Harga jual<input type="number" min={0} value={variant.price} onChange={(event) => update(index, "price", Number(event.target.value))} className={inputClass} /></label>
                     <label className={labelClass}>Harga coret<input type="number" min={0} value={variant.compare_price ?? ""} onChange={(event) => update(index, "compare_price", event.target.value ? Number(event.target.value) : null)} className={inputClass} placeholder="Opsional" /></label>
                     <label className={labelClass}>Stok <span className="normal-case tracking-normal text-white/25">(-1 = ∞)</span><input type="number" min={-1} value={variant.stock} onChange={(event) => update(index, "stock", Number(event.target.value))} className={inputClass} /></label>
+                    {/* Minimum pembelian (migrasi 0034, generik): GSuite = 50. Milik admin — sync WR tak menyentuh. */}
+                    <label className={labelClass}>Min. beli <span className="normal-case tracking-normal text-white/25">(1 = bebas)</span><input type="number" min={1} max={100} value={variant.min_qty ?? 1} onChange={(event) => update(index, "min_qty", Math.max(1, Math.min(100, Number(event.target.value) || 1)))} className={inputClass} /></label>
                     <label className={labelClass}>Fulfillment<select value={variant.fulfillment_mode} onChange={(event) => update(index, "fulfillment_mode", event.target.value)} className={inputClass}>{FULFILLMENT_MODES.map((item) => <option key={item.value} value={item.value} className="bg-[#10152d]">{item.label}</option>)}</select></label>
                   </div>
                   {variant.id ? <FulfillmentInventoryPanel productId={productId} variantId={variant.id} mode={variant.fulfillment_mode} /> : <p className="mt-4 rounded-xl border border-white/10 bg-white/[0.025] px-3 py-3 text-xs text-white/40">Simpan varian baru terlebih dahulu sebelum mengisi konten fulfillment.</p>}

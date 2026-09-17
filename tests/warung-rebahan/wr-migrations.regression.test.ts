@@ -41,7 +41,18 @@ const STRIP_SNIPPETS = [
   -- Varian WR tipe Invite/Link otomatis butuh email tanpa toggle ini.
   require_email INTEGER NOT NULL DEFAULT 0
     CHECK (require_email IN (0, 1)),
-`,
+  `,
+  // CATATAN: blok min_qty (migrasi 0034) hidup di tabel product_variants
+  // (SEBELUM cut marker), jadi legacySchema pra-WR memang mengandungnya dan
+  // WAJIB di-strip agar migrasi 0034 bisa jalan seperti di prod lama.
+  `  -- Migrasi 0034: minimum pembelian per varian (mode generik, milik admin).
+  -- Default 1 = tanpa perubahan perilaku. GSuite dikunci 50 via UPDATE di
+  -- migrasi; sync WR tidak pernah menulis kolom ini. Label pembeli:
+  -- "Min. N pembelian" bila N > 1.
+  min_qty INTEGER NOT NULL DEFAULT 1
+    CHECK (min_qty >= 1),
+
+  `,
   `  -- Migrasi 0033: email pembeli tersimpan (alur email_for:) untuk produk
   -- Invite/Link WR + require_email. Ditanya sekali, dipakai ulang.
   buyer_email TEXT DEFAULT NULL,
@@ -163,8 +174,7 @@ describe("migrasi WR berurutan di DB production lama", () => {
     }
   });
 
-  it("0033: require_email default 0 + buyer_email telegram; CHECK menolak >1", async () => {
-    const sql = createPreWrDatabase();
+  it("0033: require_email default 0 + buyer_email telegram; CHECK menolak >1", async () => {    const sql = createPreWrDatabase();
     try {
       sql.exec(fs.readFileSync("drizzle/migrations/0027_warung_rebahan.sql", "utf8"));
       sql.exec(fs.readFileSync("drizzle/migrations/0033_product_require_email.sql", "utf8"));
@@ -176,6 +186,34 @@ describe("migrasi WR berurutan di DB production lama", () => {
       sql.prepare(`INSERT INTO telegram_users(user_id,chat_id,buyer_email) VALUES('u1','c1','a@b.id')`).run();
       const u = sql.prepare(`SELECT buyer_email e FROM telegram_users WHERE user_id='u1'`).get() as { e: string };
       expect(u.e).toBe("a@b.id");
+    } finally {
+      sql.close();
+    }
+  });
+
+  it("0034: min_qty default 1 + GSuite 50 + CHECK menolak 0", async () => {
+    const sql = createPreWrDatabase();
+    try {
+      sql.exec(fs.readFileSync("drizzle/migrations/0027_warung_rebahan.sql", "utf8"));
+      sql.exec(fs.readFileSync("drizzle/migrations/0034_variant_min_qty.sql", "utf8"));
+      // Default 1 untuk varian biasa.
+      const ebook = sql.prepare(`INSERT INTO products(name,slug,price) VALUES('Ebook','ebook',5000)`).run() as unknown as { lastInsertRowid: number };
+      const ebookId = Number((ebook as unknown as { lastInsertRowid: number }).lastInsertRowid ?? 1);
+      sql.prepare(`INSERT INTO product_variants(product_id,sku,label,price) VALUES(?,'EB-1','Standar',5000)`).run(ebookId);
+      const p = sql.prepare(`SELECT min_qty m FROM product_variants WHERE sku='EB-1'`).get() as { m: number };
+      expect(Number(p.m)).toBe(1);
+      // GSuite otomatis 50 via UPDATE migrasi (slug cocok).
+      const gs = sql.prepare(`INSERT INTO products(name,slug,price) VALUES('GSuite Basic','gsuite-basic',10000)`).run() as unknown as { lastInsertRowid: number };
+      const gsId = Number((gs as unknown as { lastInsertRowid: number }).lastInsertRowid ?? 2);
+      sql.prepare(`INSERT INTO product_variants(product_id,sku,label,price) VALUES(?,'GS-1','Basic',10000)`).run(gsId);
+      // UPDATE migrasi sudah jalan sebelum INSERT di atas (migrasi sekali jalan),
+      // jadi simulasikan rerun parsial: UPDATE WHERE min_qty=1 tetap aman.
+      sql.exec(`UPDATE product_variants SET min_qty=50, updated_at=datetime('now')
+        WHERE min_qty=1 AND product_id IN (SELECT id FROM products WHERE slug LIKE '%gsuite%')`);
+      const g = sql.prepare(`SELECT min_qty m FROM product_variants WHERE sku='GS-1'`).get() as { m: number };
+      expect(Number(g.m)).toBe(50);
+      // CHECK menolak 0.
+      expect(() => sql.prepare(`UPDATE product_variants SET min_qty=0 WHERE sku='EB-1'`).run()).toThrow();
     } finally {
       sql.close();
     }

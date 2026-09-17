@@ -66,6 +66,11 @@ export function CartDrawer() {
                       </p>
                     )}
                     <p className="text-xs text-[#00E5FF] font-semibold mt-1">{formatRupiah(it.price)}</p>
+                    {(it.minQty ?? 1) > 1 && (
+                      <p className="mt-0.5 inline-flex items-center rounded-full border border-[#FFB800]/30 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFB800]">
+                        Min. {it.minQty} · qty di bawah ini ditolak saat checkout
+                      </p>
+                    )}
                     <div className="mt-2 flex items-center gap-2">
                       <button onClick={() => setQty(it.id, it.qty - 1, it.variantId)} className="w-7 h-7 rounded-full ax-glass flex items-center justify-center text-white/70" aria-label="Kurangi">
                         {/* eslint-disable-next-line @next/next/no-img-element */}

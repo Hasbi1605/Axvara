@@ -20,7 +20,10 @@ const schema = z.object({
   items: z.array(z.object({
     product_id: z.coerce.number().int().min(1),
     variant_id: z.coerce.number().int().min(1).optional(),
-    qty: z.coerce.number().int().min(1).max(20),
+    // Batas atas web = 100/baris (paritas Telegram) agar varian min-besar
+    // (mis. GSuite min 50) tetap bisa dibeli dari web. Minimum per varian
+    // ditegakkan ulang dari DB di bawah (JANGAN percaya angka client).
+    qty: z.coerce.number().int().min(1).max(100),
   })).min(1).max(20),
   payment_method: z.string().trim().regex(/^(qris|ewallet|bank:[a-z0-9][a-z0-9_-]{0,31})$/, "Metode pembayaran tidak valid"),
   proof_url: z.string().trim().max(600).nullable().optional().default(null),
@@ -108,6 +111,45 @@ export async function POST(req: NextRequest) {
     // Guard email best-effort: bila query gagal (DB glitch), biarkan order
     // jalan agar checkout tidak mati total karena helper. Respons 422 di
     // atas sudah return langsung, jadi tidak perlu diteruskan.
+  }
+
+  // Minimum pembelian per varian (migrasi 0034): hitung ulang dari DB —
+  // JANGAN percaya angka client. GSuite (min 50) yang lolos quote tapi
+  // diubah client jadi qty kecil DITOLAK 409 di sini sebelum order dibuat.
+  try {
+    const variantIds = [...new Set(quote.items.map((i) => Number(i.variant_id || 0)).filter((v) => v > 0))];
+    if (variantIds.length > 0) {
+      const rows = await queryAll(
+        `SELECT pv.id, pv.min_qty AS min_qty, pv.label AS label, p.name AS product_name
+         FROM product_variants pv
+         LEFT JOIN products p ON p.id = pv.product_id
+         WHERE pv.id IN (${variantIds.map(() => "?").join(",")})`,
+        ...variantIds,
+      );
+      const minById = new Map<number, { min: number; name: string }>();
+      for (const r of rows) {
+        minById.set(Number(r.id), {
+          min: Math.max(1, Number(r.min_qty ?? 1) || 1),
+          name: `${String(r.product_name ?? "Produk")} — ${String(r.label ?? "")}`.trim(),
+        });
+      }
+      // Qty agregat per varian (keranjang bisa kirim baris ganda varian sama).
+      const qtyByVariant = new Map<number, number>();
+      for (const qi of quote.items) {
+        const vid = Number(qi.variant_id || 0);
+        if (vid > 0) qtyByVariant.set(vid, (qtyByVariant.get(vid) ?? 0) + Number(qi.qty || 0));
+      }
+      for (const [vid, qty] of qtyByVariant) {
+        const rule = minById.get(vid);
+        const need = rule?.min ?? 1;
+        if (need > 1 && qty < need) {
+          return NextResponse.json({ error: `${rule?.name ?? "Produk ini"} minimal pembelian ${need} (kamu pilih ${qty}). Tambah jumlahnya lalu checkout ulang.` }, { status: 409 });
+        }
+      }
+    }
+  } catch {
+    // Guard best-effort: bila query gagal (DB glitch), biarkan guard atomik
+    // createOrderWithStock yang memutuskan agar checkout tidak mati total.
   }
 
   // Normalize WA to 62

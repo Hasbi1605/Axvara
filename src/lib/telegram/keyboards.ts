@@ -298,19 +298,28 @@ export function qtyKeyboard(params: {
   qty: number;
   price: number;
   maxQty?: number;
+  /** Minimum pembelian per varian (migrasi 0034, default 1). */
+  minQty?: number;
 }): InlineKeyboardMarkup {
   const { productId, variantId, stock, price } = params;
   // Telegram bulk cap is 100/order (matches TELEGRAM_MAX_QTY in the webhook).
   const stockMax = stock === -1 ? 100 : Math.max(1, Math.min(stock, 100));
-  const max = Math.max(1, Math.min(params.maxQty ?? stockMax, stockMax));
-  const qty = Math.max(1, Math.min(max, Math.floor(params.qty || 1)));
-  const minusQty = Math.max(1, qty - 1);
+  const cap = Math.max(1, Math.min(params.maxQty ?? stockMax, stockMax));
+  // Minimum pembelian (GSuite min 50): stepper tidak boleh turun di bawah
+  // min. Bila min > cap (stok menipis), biarkan tombol bayar tampil dan
+  // serahkan penolakan ke guard stok invoice — jangan clamp diam-diam.
+  const minQty = Math.max(1, Math.floor(Number(params.minQty ?? 1) || 1));
+  const max = Math.max(minQty, cap);
+  const qty = Math.min(Math.max(minQty, Math.floor(params.qty || minQty)), max);
+  const minusQty = Math.max(minQty, qty - 1);
   const plusQty = Math.min(max, qty + 1);
   const total = new Intl.NumberFormat("id-ID").format(price * qty);
+  const minusCb = qty > minQty ? cb.setQty(productId, variantId, minusQty) : "noop";
+  const minusLabel = qty > minQty ? "➖ Kurangi" : "➖";
   return {
     inline_keyboard: [
       [
-        { text: qty > 1 ? "➖ Kurangi" : "➖", callback_data: qty > 1 ? cb.setQty(productId, variantId, minusQty) : "noop" },
+        { text: minusLabel, callback_data: minusCb },
         { text: `${qty} item`, callback_data: "noop" },
         { text: qty < max ? "Tambah ➕" : "➕", callback_data: qty < max ? cb.setQty(productId, variantId, plusQty) : "noop" },
       ],

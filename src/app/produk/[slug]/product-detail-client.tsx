@@ -182,6 +182,8 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
   const selectedVariant = selectedVariantId ? activeVariants.find((v: VariantItem) => v.id === selectedVariantId) : null;
   const displayPrice = selectedVariant ? selectedVariant.price : product.price;
   const displayComparePrice = selectedVariant ? selectedVariant.compare_price : product.comparePrice;
+  // Minimum pembelian varian terpilih (migrasi 0034): GSuite = 50.
+  const selectedMinQty = selectedVariant ? Math.max(1, Number(selectedVariant.min_qty ?? 1) || 1) : 1;
   const variantOutOfStock = variantsEnabled && activeVariants.length > 0
     ? activeVariants.every((variant) => variant.stock === 0)
     : selectedVariant ? selectedVariant.stock === 0 : false;
@@ -392,6 +394,12 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
                       <div className="flex justify-between items-start">
                         <div className="min-w-0">
                           <span className="block text-sm font-medium text-white">{v.label}</span>
+                          {/* Minimum pembelian (migrasi 0034): badge generik — GSuite min 50. */}
+                          {Number(v.min_qty ?? 1) > 1 && (
+                            <span className="mt-1 inline-flex items-center rounded-full border border-[#FFB800]/30 bg-[#FFB800]/10 px-2 py-0.5 text-[11px] font-bold text-[#FFB800]">
+                              Min. {Number(v.min_qty)} pembelian
+                            </span>
+                          )}
                           <span className="mt-1.5 inline-flex">
                             {v.wr_delivery_class === "restock" ? (
                               <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300">Kirim otomatis</span>
@@ -562,9 +570,9 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
               <button
                 onClick={() => {
                   const cartProduct = selectedVariant
-                    ? { ...product, price: selectedVariant.price, stock: selectedVariant.stock === -1 ? undefined : selectedVariant.stock, variantId: selectedVariant.id, variantLabel: selectedVariant.label }
+                    ? { ...product, price: selectedVariant.price, stock: selectedVariant.stock === -1 ? undefined : selectedVariant.stock, variantId: selectedVariant.id, variantLabel: selectedVariant.label, minQty: selectedMinQty }
                     : product;
-                  add(cartProduct);
+                  add(cartProduct, selectedMinQty > 1 ? selectedMinQty : 1);
                 }}
                 disabled={needsVariantSelection || variantCatalogUnavailable}
                 className={`w-full h-[48px] rounded-xl ax-glass-card font-semibold text-sm flex items-center justify-center gap-2 transition ${
@@ -590,9 +598,9 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
             onClick={() => {
               if (needsVariantSelection) { setVariantModal("cart"); return; }
               const cartProduct = selectedVariant
-                ? { ...product, price: selectedVariant.price, stock: selectedVariant.stock === -1 ? undefined : selectedVariant.stock, variantId: selectedVariant.id, variantLabel: selectedVariant.label }
+                ? { ...product, price: selectedVariant.price, stock: selectedVariant.stock === -1 ? undefined : selectedVariant.stock, variantId: selectedVariant.id, variantLabel: selectedVariant.label, minQty: selectedMinQty }
                 : product;
-              add(cartProduct);
+              add(cartProduct, selectedMinQty > 1 ? selectedMinQty : 1);
             }}
             className="flex-1 h-11 rounded-xl ax-glass-card font-semibold text-xs flex items-center justify-center gap-1.5 transition text-white hover:bg-white/10 active:scale-95"
           >

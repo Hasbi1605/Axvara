@@ -109,6 +109,19 @@ export async function handlePay(groupId: string, memberId: string, inboxId: stri
     return;
   }
 
+  // Minimum pembelian (migrasi 0034): WA order selalu qty 1/baris, jadi
+  // varian min>1 (mis. GSuite 50) DITOLAK dengan pesan jelas — order qty-1
+  // yang lolos justru melanggar aturan grosir dan macet di fulfillment.
+  const payMinQty = Math.max(1, Number(variant.min_qty ?? 1) || 1);
+  if (variant.fulfillment_mode !== "unique" && payMinQty > 1) {
+    await sendTextMessage({
+      target: groupId,
+      message: `Varian ini minimal pembelian ${payMinQty} — order grup ini 1 per pesanan. Lanjut via web (axvara.tech) atau Telegram @Axvara_bot dengan jumlah ≥ ${payMinQty}.`,
+      inboxId,
+    });
+    return;
+  }
+
   // Email wajib (migrasi 0033): Invite/Link WR atau produk require_email.
   // Grup WA tidak punya alur ketik-email terstruktur — tolak dengan pesan
   // jelas + arahkan ke web/Telegram yang punya form. Order lunas tanpa

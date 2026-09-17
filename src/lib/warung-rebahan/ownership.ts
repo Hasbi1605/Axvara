@@ -16,6 +16,9 @@
 //                 Sync TIDAK PERNAH menulis compare_price (lihat sync.ts:
 //                 UPDATE/INSERT varian hanya menyentuh label/price/stock/
 //                 durasi/garansi), jadi nilai admin aman lintas sweep.
+//                 MINIMUM BELI (min_qty, migrasi 0034) — milik admin, generik
+//                 per varian (GSuite = 50). Sync tidak pernah menyentuh kolom
+//                 ini, jadi sengaja TIDAK masuk WR_OWNED_VARIANT_FIELDS.
 //   Markup      : hanya lewat panel WR (wr_variants.markup_percent/fixed).
 
 /** Field varian yang hanya boleh ditulis oleh sync WR. */

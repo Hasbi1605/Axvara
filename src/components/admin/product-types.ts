@@ -13,6 +13,8 @@ export type FormVariant = {
   price: number;
   comparePrice?: number | null;
   stock: number;
+  /** Minimum pembelian per baris (migrasi 0034, generik — GSuite = 50). */
+  min_qty?: number;
   duration_value?: number | null;
   duration_unit?: string | null;
   duration_label?: string | null;

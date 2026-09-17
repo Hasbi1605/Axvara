@@ -16,6 +16,8 @@ export type CartLine = {
   price: number;
   stock: number;
   fulfillmentMode: string;
+  /** Minimum pembelian per baris (migrasi 0034, default 1). */
+  minQty: number;
 };
 
 export type CartSummary = {
@@ -37,12 +39,17 @@ export async function addToCart(
   productId: number,
   variantId: number,
   rawQty: number,
-): Promise<{ ok: boolean; reason?: "invalid_variant" | "out_of_stock" | "cart_full" | "unique_conflict" }> {
+  // Minimum pembelian (migrasi 0034): pemanggil (handler qty) meneruskan
+  // min_qty varian agar keranjang menolak qty di bawah minimum SEBELUM
+  // invoice; default 1 = perilaku lama.
+  minQtyRaw = 1,
+): Promise<{ ok: boolean; reason?: "invalid_variant" | "out_of_stock" | "cart_full" | "unique_conflict" | "below_minimum" }> {
   if (!isD1Mode()) return { ok: false, reason: "invalid_variant" };
   const variant = await getActiveVariant(variantId);
   if (!variant || variant.product_id !== productId) return { ok: false, reason: "invalid_variant" };
   if (variant.stock === 0) return { ok: false, reason: "out_of_stock" };
 
+  const minQty = Math.max(1, Math.floor(Number(minQtyRaw) || variant.min_qty || 1));
   const cappedQty = variant.fulfillment_mode === "unique" ? 1 : clampLineQty(rawQty);
   const existing = await queryFirst(
     `SELECT qty FROM telegram_carts WHERE user_id=? AND variant_id=?`,
@@ -65,6 +72,12 @@ export async function addToCart(
         userId,
       );
       if (uniqueCount) return { ok: false, reason: "unique_conflict" };
+    }
+    // Minimum pembelian: baris baru di bawah min langsung ditolak dengan
+    // pesan jelas (bukan diam-diam dibulatkan naik — pembeli harus sadar
+    // aturan "min. N", mis. GSuite 50).
+    if (variant.fulfillment_mode !== "unique" && minQty > 1 && cappedQty < minQty) {
+      return { ok: false, reason: "below_minimum" };
     }
   }
   const nextQty = variant.fulfillment_mode === "unique"
@@ -124,7 +137,8 @@ export async function getCartSummary(userId: string): Promise<CartSummary> {
   const rows = await queryAll(
     `SELECT c.product_id, c.variant_id, c.qty, p.name as product_name,
             pv.product_id AS v_product_id, pv.label AS v_label, pv.price AS v_price,
-            pv.stock AS v_stock, pv.fulfillment_mode AS v_mode, pv.is_active AS v_active
+            pv.stock AS v_stock, pv.fulfillment_mode AS v_mode, pv.is_active AS v_active,
+            pv.min_qty AS v_min_qty
      FROM telegram_carts c
      JOIN products p ON p.id=c.product_id AND p.is_active=1
      LEFT JOIN product_variants pv ON pv.id=c.variant_id AND pv.is_active=1
@@ -143,6 +157,7 @@ export async function getCartSummary(userId: string): Promise<CartSummary> {
       continue;
     }
     const fulfillmentMode = String(row.v_mode || "manual");
+    const minQty = Math.max(1, Number(row.v_min_qty ?? 1) || 1);
     let qty = clampLineQty(Number(row.qty || 1));
     if (fulfillmentMode === "unique") qty = 1;
     else if (variantStock !== -1) qty = Math.min(qty, Math.max(1, variantStock));
@@ -155,6 +170,7 @@ export async function getCartSummary(userId: string): Promise<CartSummary> {
       price: Number(row.v_price),
       stock: variantStock,
       fulfillmentMode,
+      minQty,
     });
   }
   // Hapus baris basi dalam 1 query (bukan N DELETE per baris).

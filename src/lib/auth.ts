@@ -309,7 +309,10 @@ export async function verifyCheckoutQuoteToken(token: string): Promise<CheckoutQ
         && Number(value.price) >= 0
         && Number.isInteger(value.qty)
         && Number(value.qty) >= 1
-        && Number(value.qty) <= 20;
+        // Batas atas web = 100/baris (paritas Telegram) agar varian
+        // min-besar (GSuite 50) bisa dibeli dari web. Minimum per varian
+        // ditegakkan dari DB di quote/orders, bukan dari token.
+        && Number(value.qty) <= 100;
     });
     const paymentMethods = payload.payment_methods.filter((method): method is CheckoutQuotePaymentMethod => {
       if (!method || typeof method !== "object") return false;

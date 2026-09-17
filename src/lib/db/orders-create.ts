@@ -29,10 +29,14 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
     const statements: D1Statement[] = [];
     input.items.forEach((item, index) => {
       if (item.variant_id) {
+        // Guard stok + guard minimum pembelian (migrasi 0034) dalam SATU
+        // operation_guards: race/toctou client (quote lolos, DB berubah)
+        // menggagalkan SELURUH batch — tanpa order, tanpa potong stok.
+        // COALESCE(min_qty,1): baris fixture lama tanpa kolom tetap valid.
         statements.push(
           d1.prepare(
-            "INSERT INTO operation_guards (operation_id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM product_variants WHERE id=? AND is_active=1 AND (stock=-1 OR stock>=?)) THEN 1 ELSE 0 END",
-          ).bind(guardIds[index], item.variant_id, item.qty),
+            "INSERT INTO operation_guards (operation_id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM product_variants WHERE id=? AND is_active=1 AND (stock=-1 OR stock>=?) AND ? >= COALESCE(min_qty,1)) THEN 1 ELSE 0 END",
+          ).bind(guardIds[index], item.variant_id, item.qty, item.qty),
         );
       } else {
         statements.push(

@@ -99,6 +99,12 @@ export async function handleNumberSelection(groupId: string, memberId: string, n
     return;
   }
 
+  // Minimum pembelian (migrasi 0034, generik — GSuite min 50): beri tahu
+  // SEJAK varian dipilih (WA order selalu qty 1/baris) agar pembeli tahu
+  // sebelum bayar. Order WA qty-1 untuk varian min>1 tetap ditolak di
+  // payment (handlePay) — bukan diam-diam diloloskan.
+  const waMinQty = Math.max(1, Number(variant.min_qty ?? 1) || 1);
+
   const detail = await getProductDetail(session.selected_product_id!);
   const productName = detail ? msg.getWhatsAppDisplayName(detail) : "PRODUK";
 
@@ -116,7 +122,7 @@ export async function handleNumberSelection(groupId: string, memberId: string, n
 
   const result = await sendTextMessage({
     target: groupId,
-    message: msg.variantSelectedMessage(productName, variant),
+    message: msg.variantSelectedMessage(productName, variant, waMinQty > 1 ? waMinQty : undefined),
     inboxId,
   });
 

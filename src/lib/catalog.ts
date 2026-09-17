@@ -35,6 +35,12 @@ export type VariantSummary = {
   price: number;
   compare_price: number | null;
   stock: number;
+  /**
+   * Minimum pembelian per baris (migrasi 0034, milik admin, default 1).
+   * GSuite dikunci 50; produk lain tinggal set angka dari admin bila butuh.
+   * Sync WR tidak pernah menulis kolom ini.
+   */
+  min_qty: number;
   fulfillment_mode: string;
   is_active: number;
   sort_order: number;
@@ -163,7 +169,7 @@ export async function getProductDetail(slugOrId: string | number): Promise<Produ
   const variants = await queryAll(
     `SELECT pv.id, pv.product_id, pv.sku, pv.label, pv.duration_value, pv.duration_unit, pv.duration_label,
             pv.warranty_type, pv.warranty_value, pv.warranty_unit, pv.warranty_label,
-            pv.price, pv.compare_price, pv.stock, pv.fulfillment_mode, pv.is_active, pv.sort_order,
+            pv.price, pv.compare_price, pv.stock, pv.min_qty, pv.fulfillment_mode, pv.is_active, pv.sort_order,
             wv.wr_terms AS wr_terms, wv.wr_delivery_terms AS wr_delivery_terms,
             wv.wr_delivery_class AS wr_delivery_class, wv.wr_type AS wr_type,
             COALESCE(p.require_email, 0) AS require_email
@@ -216,10 +222,11 @@ async function getProductDetailLegacy(slugOrId: string | number): Promise<Produc
     terms: null,
     delivery_terms: null,
     // Varian sintetis legacy (non-WR / tanpa join wr_variants): tidak ada
-    // kelas → label pembeli jatuh ke "Dikirim admin" (default aman).
+    // kelas → label pembeli jatuh ke "✋ Dikirim admin" (default aman).
     wr_delivery_class: null,
     wr_type: null,
     require_email: Number((product as Record<string, unknown>).require_email ?? 0),
+    min_qty: 1,
     price: Number(product.price),
     compare_price: product.compare_price ? Number(product.compare_price) : null,
     stock: Number(product.stock ?? -1),
@@ -405,6 +412,7 @@ function mapVariant(row: Record<string, unknown>): VariantSummary {
     price: Number(row.price),
     compare_price: row.compare_price != null ? Number(row.compare_price) : null,
     stock: Number(row.stock ?? -1),
+    min_qty: Math.max(1, Number(row.min_qty ?? 1) || 1),
     fulfillment_mode: String(row.fulfillment_mode || "manual"),
     is_active: Number(row.is_active ?? 1),
     sort_order: Number(row.sort_order ?? 0),

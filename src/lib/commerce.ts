@@ -175,20 +175,23 @@ export async function createChannelOrderAtomic(
   input.lines.forEach((line, index) => {
     const guardId = `${input.orderCode}:stock:${line.variantId}:${index}`;
     guardIds.push(guardId);
-    // Prasyarat per baris: varian aktif, stok cukup (atau unlimited), dan
-    // untuk mode shared secret-nya benar-benar terkonfigurasi.
+    // Prasyarat per baris: varian aktif, stok cukup (atau unlimited),
+    // qty memenuhi minimum pembelian (migrasi 0034, COALESCE agar baris
+    // lama tanpa kolom tetap valid), dan untuk mode shared secret-nya
+    // benar-benar terkonfigurasi.
     statements.push(
       d1.prepare(
         `INSERT INTO operation_guards (operation_id, valid)
          SELECT ?, CASE WHEN EXISTS(
            SELECT 1 FROM product_variants
            WHERE id=? AND is_active=1 AND (stock=-1 OR stock>=?)
+             AND ? >= COALESCE(min_qty,1)
              AND (
                fulfillment_mode!='shared'
                OR (shared_secret_ciphertext IS NOT NULL AND shared_secret_iv IS NOT NULL)
              )
          ) THEN 1 ELSE 0 END`,
-      ).bind(guardId, line.variantId, line.qty),
+      ).bind(guardId, line.variantId, line.qty, line.qty),
     );
     // Klausa `(stock=-1 OR stock>=?)` di UPDATE bersifat defense-in-depth:
     // guard di atas sudah menjamin, tetapi tanpa klausa ini korektnes
@@ -431,11 +434,13 @@ export async function createPendingChannelOrder(input: ChannelOrderInput): Promi
     const statements: D1Statement[] = [
       // 1. Guard check: variant stock and, for unique delivery, one matching
       // encrypted inventory item must both be available.
+      // Migrasi 0034: qty (+ batas minimum pembelian) ikut dipagar atomik.
       d1.prepare(
         `INSERT INTO operation_guards (operation_id, valid)
          SELECT ?, CASE WHEN EXISTS(
            SELECT 1 FROM product_variants
            WHERE id=? AND is_active=1 AND (stock=-1 OR stock>=1)
+             AND 1 >= COALESCE(min_qty,1)
              AND (
                fulfillment_mode!='shared'
                OR (shared_secret_ciphertext IS NOT NULL AND shared_secret_iv IS NOT NULL)

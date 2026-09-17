@@ -258,6 +258,21 @@ export async function handlePendingQtyInput(
     });
     return true;
   }
+  // Minimum pembelian (migrasi 0034): angka ketik di bawah min ditolak di
+  // sini dengan pesan jelas, bukan diam-diam dibulatkan ke min.
+  try {
+    const { getActiveVariant } = await import("@/lib/catalog");
+    const typedVariant = await getActiveVariant(variantId);
+    const need = Math.max(1, Number(typedVariant?.min_qty ?? 1) || 1);
+    if (typedVariant && typedVariant.fulfillment_mode !== "unique" && need > 1 && typedQty < need) {
+      await sendMessage({
+        chat_id: chatId,
+        text: `📦 <b>Minimal Pembelian ${need}</b>\n\nVarian ini minimal order ${need}. Ketik angka ${need}–${TELEGRAM_MAX_QTY}, misalnya <code>${need}</code>.`,
+        parse_mode: "HTML",
+      });
+      return true;
+    }
+  } catch { /* gagal baca = lanjut seperti biasa, stepper+invoice tetap jaga */ }
   const qty = clampQty(typedQty);
   await execRun(
     `UPDATE telegram_users SET pending_action=NULL, updated_at=datetime('now') WHERE user_id=?`,

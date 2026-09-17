@@ -14,6 +14,13 @@ type QuotePaymentMethod = { id: string; label: string; account_number: string; a
 type QuoteIssue = { product_id: number; type: string; message: string };
 type PriceChange = { product_id: number; name: string; previous_price: number; current_price: number; message: string };
 
+// Beli Langsung selalu qty 1 — bila varian punya min > 1 (mis. GSuite 50),
+// quote PASTI menjawab 409 below_minimum. Tampilkan panduan jelas + arahkan
+// ke PDP agar pembeli menaikkan qty via keranjang (bulk), bukan dead-end.
+function isBelowMinimumIssue(issues: QuoteIssue[]): boolean {
+  return issues.some((i) => i.type === "below_minimum");
+}
+
 type DirectProduct = Product & {
   variantId?: number;
   variantLabel?: string;
@@ -24,6 +31,7 @@ type CatalogVariant = {
   label: string;
   price: number;
   stock: number;
+  min_qty?: number;
 };
 
 function CheckoutInner() {
@@ -67,7 +75,8 @@ function CheckoutInner() {
             stock: variant.stock === -1 ? undefined : variant.stock,
             variantId: variant.id,
             variantLabel: variant.label,
-          });
+            minQty: Math.max(1, Number(variant.min_qty ?? 1) || 1),
+          } as DirectProduct & { minQty: number });
           return;
         }
         setDirectProduct(found);
@@ -79,11 +88,14 @@ function CheckoutInner() {
   const isDirect = Boolean(buySlug);
   const items = useMemo(
     () => isDirect
-      ? (buyProduct ? [{ ...buyProduct, qty: 1, id: buyProduct.id, price: buyProduct.price, image: buyProduct.image, name: buyProduct.name, variantId: buyProduct.variantId, variantLabel: buyProduct.variantLabel }] : [])
+      ? (buyProduct ? [{ ...buyProduct, qty: 1, id: buyProduct.id, price: buyProduct.price, image: buyProduct.image, name: buyProduct.name, variantId: buyProduct.variantId, variantLabel: buyProduct.variantLabel, minQty: (buyProduct as { minQty?: number }).minQty }] : [])
       : cartItems,
     [isDirect, buyProduct, cartItems],
   );
   const subtotal = items.reduce((a, b) => a + b.price * b.qty, 0);
+  // Beli Langsung untuk varian min>1 selalu gagal quote — tampilkan hint
+  // dini (sebelum dialog 409) agar pembeli paham harus via keranjang bulk.
+  const directMinQty = isDirect && buyProduct ? Math.max(1, Number((buyProduct as { minQty?: number }).minQty ?? 1) || 1) : 1;
 
   const [method, setMethod] = useState<Method | null>(null);
   const [bankKey, setBankKey] = useState<string | null>(null);
@@ -562,12 +574,12 @@ function CheckoutInner() {
         </div>
       </div>
 
-      {/* Price-change / stock issue dialog */}
+      {/* Price-change / stock / minimum-qty issue dialog */}
       {showIssueDialog && (quoteIssues.length > 0 || priceChanges.length > 0) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4" role="dialog" aria-modal="true" aria-labelledby="quote-change-title">
           <div className="ax-glass-card rounded-2xl p-6 max-w-md w-full space-y-4">
-            <h3 id="quote-change-title" className="text-white font-semibold text-base">Perubahan Harga / Stok</h3>
-            <p className="text-sm text-white/60">Beberapa item berubah sejak kamu menambahkannya:</p>
+            <h3 id="quote-change-title" className="text-white font-semibold text-base">{isBelowMinimumIssue(quoteIssues) ? "Minimal Pembelian Belum Terpenuhi" : "Perubahan Harga / Stok"}</h3>
+            <p className="text-sm text-white/60">{isBelowMinimumIssue(quoteIssues) ? "Varian ini dijual grosir — jumlah di bawah ini ditolak sebelum bayar:" : "Beberapa item berubah sejak kamu menambahkannya:"}</p>
             <ul className="space-y-2">
               {quoteIssues.map((issue, i) => (
                 <li key={i} className="text-sm text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2">{issue.message}</li>

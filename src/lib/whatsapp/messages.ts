@@ -112,8 +112,9 @@ export function productDetailMessage(productName: string, _description: string |
   return lines.join("\n");
 }
 
-export function variantSelectedMessage(productName: string, variant: VariantSummary): string {
+export function variantSelectedMessage(productName: string, variant: VariantSummary, minQty = 1): string {
   const war = formatWarranty(variant);
+  const need = Math.max(1, Number(minQty) || 1);
   const lines = [
     "━━━━━━━━━━━━━━━━━━━━",
     "*VARIAN DIPILIH*",
@@ -122,6 +123,14 @@ export function variantSelectedMessage(productName: string, variant: VariantSumm
   ];
   lines.push(`🛡 ${war || "Tanpa Garansi"}`);
   lines.push(`「 *${formatRupiah(variant.price)}* 」`);
+  // Minimum pembelian (migrasi 0034): WA order selalu qty 1, jadi varian
+  // min>1 (mis. GSuite 50) tidak bisa dibeli dari WA — arahkan ke web/Telegram.
+  if (need > 1) {
+    lines.push("");
+    lines.push(`📦 *Minimal pembelian ${need}* — order grup ini 1 per pesanan.`);
+    lines.push(`Lanjut via web (axvara.tech) atau Telegram @Axvara_bot dengan jumlah ≥ ${need}.`);
+    return lines.join("\n");
+  }
   lines.push("");
   lines.push("Pilih pembayaran dengan mengetik:");
   lines.push("*QRIS* · *SEABANK* · *EWALLET*");

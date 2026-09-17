@@ -69,6 +69,8 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
   const currentPrice = selected ? selected.price : (product.minPrice ?? product.price);
   const currentCompare = selected ? selected.compare_price : product.comparePrice;
   const isOutOfStock = selected ? selected.stock === 0 : false;
+  // Minimum pembelian varian terpilih (migrasi 0034): qty dibuka di min.
+  const selectedMinQty = selected ? Math.max(1, Number(selected.min_qty ?? 1) || 1) : 1;
 
   const handleConfirm = () => {
     if (!selected || isOutOfStock) return;
@@ -80,7 +82,8 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
         stock: selected.stock,
         variantId: selected.id,
         variantLabel: selected.label,
-      });
+        minQty: selectedMinQty,
+      }, selectedMinQty > 1 ? selectedMinQty : 1);
       onClose();
     } else {
       router.push(`/checkout?buy=${encodeURIComponent(product.slug)}&variant=${selected.id}`);
@@ -171,7 +174,7 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
                     type="button"
                     role="radio"
                     aria-checked={active}
-                    aria-label={`${v.label} — ${formatRupiah(v.price)}${outStock ? " — stok habis" : ""}`}
+                    aria-label={`${v.label} — ${formatRupiah(v.price)}${outStock ? " — stok habis" : ""}${Number(v.min_qty ?? 1) > 1 ? ` — minimal ${Number(v.min_qty)}` : ""}`}
                     disabled={outStock}
                     onClick={() => setSelectedId(v.id)}
                     className={`flex flex-col items-start p-3 rounded-xl border text-left transition relative ${
@@ -185,6 +188,12 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
                     <span className="text-xs font-bold leading-tight truncate w-full">
                       {v.label}
                     </span>
+                    {/* Minimum pembelian (migrasi 0034): GSuite min 50. */}
+                    {Number(v.min_qty ?? 1) > 1 && (
+                      <span className="mt-1 inline-flex items-center rounded-full border border-[#FFB800]/30 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFB800]">
+                        Min. {Number(v.min_qty)}
+                      </span>
+                    )}
                     <span className="mt-1.5 inline-flex">
                       {v.wr_delivery_class === "restock" ? (
                         <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold text-emerald-300">Kirim otomatis</span>

@@ -79,6 +79,7 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 | FR-S16 | Produk varian terpusat: harga/stok/durasi/garansi per varian; harga kartu dari varian termurah tersedia | P0 ✅ live |
 | FR-S18 | PDP menampilkan S&K + cara aktivasi per varian WR (read-only, ikut varian terpilih); label garansi kanonis "Garansi N Unit" | P0 ✅ live |
 | FR-S17 | Integrasi Warung Rebahan H2H: sync katalog terjadwal, auto-order exactly-once, webhook status, saldo monitor + throttle notif | P0 ✅ live (auto-order flag default off) |
+| FR-S19 | Minimum pembelian per varian (generik, default 1): GSuite min. 50 akun; label "Min. N" di PDP/modal/keranjang/bot; quote 409 + orders 409 + guard atomik; web/Telegram plafon 100/baris; WA qty-1 ditolak jelas untuk varian min>1 | P0 ✅ live (migrasi 0034) |
 
 ### 2.2 Functional — Admin
 
@@ -97,7 +98,6 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 | FR-A11 | Daftar email dari form footer tersimpan dan hanya dapat dilihat admin |
 
 ### 2.3 Functional — Sistem
-
 | ID | Requirement |
 |----|-------------|
 | FR-SYS1 | Upload gambar produk & bukti transfer ke Cloudflare R2 (10GB gratis) |
@@ -108,6 +108,7 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 | FR-SYS6 | SEO basic: meta title/description per produk, sitemap, OG image | ✅ live |
 | FR-SYS7 | Sync WR satu sweep penuh per run (Opsi A, budget khusus katalog; cursor sebagai fallback); produk baru WR otomatis masuk katalog | ✅ live |
 | FR-SYS8 | Env Pages WAJIB `secret_text` (plain_text tidak terbawa deploy); deploy hanya via CI | Aturan operasional |
+| FR-SYS9 | Minimum pembelian ditegakkan server: quote 409 `below_minimum`, orders 409, guard atomik batch; UI/bot hanya cermin | P0 ✅ live (migrasi 0034) |
 | FR-S19 | Email wajib SEBELUM bayar bila keranjang berisi varian WR Invite/Link (otomatis dari `wr_type`) atau produk `require_email=1` (toggle admin): form web validasi + label dinamis, API 422 guard DB, Telegram minta + simpan + teruskan ke WR, WA tolak + arahkan kanal ber-form | P0 ✅ live |
 
 ### 2.4 Non-Functional

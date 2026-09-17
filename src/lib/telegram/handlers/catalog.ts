@@ -257,8 +257,14 @@ export async function handleShowQty(
   const product = await queryFirst(`SELECT id, name FROM products WHERE id=?`, productId);
   const productName = product ? String(product.name) : "Produk";
   const stockMax = variant.stock === -1 ? TELEGRAM_MAX_QTY : Math.max(1, Math.min(variant.stock, TELEGRAM_MAX_QTY));
-  const maxQty = variant.fulfillment_mode === "unique" ? 1 : stockMax;
-  const qty = Math.min(clampQty(requestedQty), maxQty);
+  const uniqueMax = variant.fulfillment_mode === "unique" ? 1 : stockMax;
+  // Minimum pembelian (migrasi 0034): stepper dibuka LANGSUNG di min agar
+  // pembeli GSuite (min 50) tidak mulai dari 1 lalu ditolak saat bayar.
+  // Bila min > stok tersedia: biarkan qty tampil min (invoice tetap menolak
+  // via guard stok) — jangan clamp diam-diam ke stok lalu lolos min.
+  const minQty = variant.fulfillment_mode === "unique" ? 1 : Math.max(1, Number(variant.min_qty ?? 1) || 1);
+  const maxQty = Math.max(minQty, uniqueMax);
+  const qty = Math.min(Math.max(clampQty(requestedQty), minQty), maxQty);
 
   // Remember qty context so a typed number (1-100) works without buttons.
   if (isD1Mode()) {
@@ -279,8 +285,9 @@ export async function handleShowQty(
       stock: variant.stock,
       qty,
       maxQty,
+      minQty,
     }),
     parse_mode: "HTML",
-    reply_markup: qtyKeyboard({ productId, variantId, stock: variant.stock, qty, price: variant.price, maxQty }),
+    reply_markup: qtyKeyboard({ productId, variantId, stock: variant.stock, qty, price: variant.price, maxQty, minQty }),
   });
 }

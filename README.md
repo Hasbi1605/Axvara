@@ -241,6 +241,8 @@ Panel admin memuat produk, kategori, dan ringkasan setelah autentikasi. Aksi toa
 
 Katalog storefront menampilkan 12 produk lebih dulu dengan tombol **"Tampilkan N produk lagi"** (bukan nomor halaman), produk ready diurutkan di depan sementara produk stok habis tetap tampil di belakang, dan harga kartu diambil dari varian termurah yang **masih tersedia**.
 
+**Minimum pembelian per varian (migrasi 0034, generik):** `product_variants.min_qty` (default 1 = bebas, milik admin, plafon 100) mengatur batas bawah qty per baris — GSuite dikunci **min. 50** via migrasi, produk lain tinggal set angka dari admin bila butuh aturan grosir serupa. Label "Min. N" tampil di PDP/modal/keranjang/bot; server menolak qty di bawah min (quote 409 → orders 409 → guard atomik), plafon web/Telegram 100/baris, dan order WhatsApp (qty selalu 1) ditolak jelas untuk varian min>1 dengan arahan ke web/Telegram bulk.
+
 ## ▶️ Jalankan Local (dev-only, tanpa build tiap ubahan)
 
 ```bash

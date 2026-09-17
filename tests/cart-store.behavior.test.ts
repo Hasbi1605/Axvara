@@ -73,10 +73,10 @@ describe("cart store — batas stok dan validasi", () => {
     expect(useCart.getState().items[0].qty).toBe(3);
   });
 
-  it("stok unlimited (-1) tetap dibatasi 20 per baris", () => {
+  it("stok unlimited (-1) tetap dibatasi 100 per baris (paritas Telegram)", () => {
     const { add } = useCart.getState();
     add({ ...makeProduct({ stock: -1 }), variantId: 1 }, 999);
-    expect(useCart.getState().items[0].qty).toBe(20);
+    expect(useCart.getState().items[0].qty).toBe(100);
   });
 
   it("produk dengan stok 0 tidak masuk keranjang", () => {

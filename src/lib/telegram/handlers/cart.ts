@@ -62,12 +62,22 @@ export async function handleCartAdd(
   await sendChatAction(chatId, "typing");
   const result = await addToCart(String(from.id), productId, variantId, qty);
   if (!result.ok) {
+    // GSuite dkk: butuh min_qty agar pesan jelas ("min. 50"), bukan generik.
+    let belowMinText: string | null = null;
+    if (result.reason === "below_minimum") {
+      try {
+        const { getActiveVariant } = await import("@/lib/catalog");
+        const failed = await getActiveVariant(variantId);
+        const need = Math.max(1, Number(failed?.min_qty ?? 1) || 1);
+        belowMinText = `📦 <b>Minimal Pembelian ${need}</b>\n\nVarian ini hanya dijual kelipatan order ≥ ${need} (mis. akun corporate). Naikkan jumlah ke minimal ${need} lalu tambah lagi 👇`;
+      } catch { /* fallback generik di bawah */ }
+    }
     await sendMessage({
       chat_id: chatId,
       text: result.reason === "out_of_stock" ? outOfStockMessage()
         : result.reason === "cart_full" ? "🛒 <b>Keranjang Penuh</b>\n\nMaksimal 20 varian. Checkout dulu sebelum tambah lagi 👇"
         : result.reason === "unique_conflict" ? "⚠️ <b>Produk Unik Satu per Order</b>\n\nProduk stok unik (1 secret = 1 order) tidak bisa digabung dengan produk unik lain. Checkout dulu, baru order produk unik berikutnya 👇"
-        : errorMessage(),
+        : belowMinText ?? errorMessage(),
       parse_mode: "HTML",
     });
     return;
@@ -137,6 +147,22 @@ export async function handleCartCheckout(
 
   const summary = await getCartSummary(String(from.id));
   if (summary.lines.length === 0) {
+    await handleShowCart(chatId, messageId, from);
+    return;
+  }
+
+  // Minimum pembelian per baris (migrasi 0034): keranjang lama (dibuat
+  // sebelum aturan) atau qty yang diturunkan tombol ➖ bisa berada di bawah
+  // min. Tolak SEBELUM invoice dengan pesan jelas + arahkan naikkan qty.
+  const shortLine = summary.lines.find(
+    (line) => line.fulfillmentMode !== "unique" && line.minQty > 1 && line.qty < line.minQty,
+  );
+  if (shortLine) {
+    await sendMessage({
+      chat_id: chatId,
+      text: `📦 <b>Minimal Pembelian ${shortLine.minQty}</b>\n\n${shortLine.productName} — ${shortLine.variantLabel} minimal ${shortLine.minQty} (sekarang ×${shortLine.qty}). Naikkan jumlah lewat tombol ➕ di keranjang, lalu checkout lagi 👇`,
+      parse_mode: "HTML",
+    });
     await handleShowCart(chatId, messageId, from);
     return;
   }
