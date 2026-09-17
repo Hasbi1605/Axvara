@@ -196,12 +196,12 @@
 
 ### 5.6 Checkout (1 Halaman, Apple Form)
 - Max-width 640px, centered, glass card rounded-3xl, padding 32px
-- Step: ① Data Pembeli (Nama, WA, Email opsional) → ② Pembayaran → ③ Upload Bukti
+- Step: ① Data Pembeli (Nama, WA, Email opsional) → ② Pembayaran → ③ Verifikasi Otomatis
 - Input: glass input `bg-white/[0.06] border-white/10 rounded-xl h-48px focus:border-cyan/50 focus:ring-cyan/20`
-- Payment selector: 3 kartu glass radio (E-Wallet / SeaBank / QRIS) — selected → border cyan + bg cyan/10
+- Payment selector: 3 kartu (QRIS aktif / E-Wallet + Transfer Bank maintenance 2026-09-17) — kartu maintenance: `opacity-50 cursor-not-allowed`, `aria-disabled`, badge gold "Maintenance", tidak bisa diklik; QRIS selected → border cyan + bg cyan/10
 - Jika QRIS: tampil QR image rounded-2xl, shadow, tombol "Download QRIS"
-- Upload: drag-drop glass area, dashed border, preview thumb, validasi inline
-- Tombol submit: cyan solid, full-width, h-52px, rounded-xl, disabled jika form invalid
+- Upload bukti: disembunyikan total selama maintenance (tidak dirender, bukan disabled); panel ③ selalu "Verifikasi Otomatis"
+- Tombol submit: cyan solid, full-width, h-52px, rounded-xl, disabled jika form invalid atau metode bukan QRIS
 - Ringkasan pesanan sticky di kanan desktop, di bawah form di mobile
 
 ### 5.7 Halaman Sukses

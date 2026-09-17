@@ -99,15 +99,15 @@ function CheckoutInner() {
   // menjelaskan penyesuaian), bukan dead-end "kembali belanja".
   const directMinQty = isDirect && buyProduct ? Math.max(1, Number((buyProduct as { minQty?: number }).minQty ?? 1) || 1) : 1;
 
+  // Maintenance sementara (2026-09-17): jalur manual E-Wallet/Bank
+  // dinonaktifkan, QRIS saja. Field tetap tampil tapi disabled + badge
+  // Maintenance di WEB; upload bukti disembunyikan. Backend (/api/orders)
+  // menolak non-QRIS dengan 503 agar tidak bisa di-bypass client.
+  const MANUAL_PAYMENTS_MAINTENANCE = true;
   const [method, setMethod] = useState<Method | null>(null);
-  const [bankKey, setBankKey] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [wa, setWa] = useState("");
   const [email, setEmail] = useState("");
-  const [fileName, setFileName] = useState<string | null>(null);
-  const [proofUrl, setProofUrl] = useState<string | null>(null);
-  const [proofUploading, setProofUploading] = useState(false);
-  const [copied, setCopied] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -140,8 +140,6 @@ function CheckoutInner() {
     setShowIssueDialog(false);
     setQuoteToken(null);
     setQuoteAccepted(false);
-    setProofUrl(null);
-    setFileName(null);
     try {
       const r = await fetch("/api/checkout/quote", {
         method: "POST",
@@ -251,12 +249,6 @@ function CheckoutInner() {
     );
   }
 
-  const copy = async (t: string, id: string) => {
-    await navigator.clipboard.writeText(t);
-    setCopied(id);
-    setTimeout(() => setCopied(null), 1500);
-  };
-
   const submit = async () => {
     setError(null);
     setFieldErrors({});
@@ -275,13 +267,10 @@ function CheckoutInner() {
       setError("Pilih metode pembayaran terlebih dahulu");
       return;
     }
-    if (method === "bank" && !bankKey) {
-      setError("Pilih bank tujuan terlebih dahulu");
-      return;
-    }
-    const selectedPaymentId = method === "bank" ? bankKey : method;
-    if (!selectedPaymentId || !quotedPaymentMethods.some((payment) => payment.id === selectedPaymentId)) {
-      setError("Metode pembayaran berubah atau sudah tidak aktif. Muat ulang checkout.");
+    // Maintenance: jalur manual tidak bisa dipilih (button disabled), tapi
+    // jaga lapis client bila state lama tersisa.
+    if (MANUAL_PAYMENTS_MAINTENANCE && method !== "qris") {
+      setError("E-Wallet & Transfer Bank sedang maintenance. Silakan bayar via QRIS.");
       return;
     }
     if (quoteLoading) {
@@ -292,20 +281,12 @@ function CheckoutInner() {
       setError("Harga atau stok belum tervalidasi. Muat ulang checkout dan konfirmasi perubahan.");
       return;
     }
-    if (method !== "qris" && !proofUrl) {
-      setError("Upload bukti transfer terlebih dahulu (JPG/PNG/WebP max 5MB, wajib).");
-      return;
-    }
-    if (proofUploading) {
-      setError("Tunggu upload bukti selesai.");
-      return;
-    }
     if (!agreed) {
       setError("Centang persetujuan ketentuan third-party & garansi terlebih dahulu.");
       return;
     }
     setLoading(true);
-    const payMethod = method === "bank" ? `bank:${bankKey}` as const : method!;
+    const payMethod = "qris" as const;
     const payloadItems = quotedItems.map((item) => ({
       product_id: item.product_id,
       variant_id: item.variant_id,
@@ -321,7 +302,7 @@ function CheckoutInner() {
           customer_email: email.trim() || undefined,
           items: payloadItems,
           payment_method: payMethod,
-          proof_url: method === "qris" ? null : proofUrl,
+          proof_url: null,
           quote_token: quoteToken,
         }),
       });
@@ -330,7 +311,7 @@ function CheckoutInner() {
       const code = j.code as string;
       // Also keep a local copy for UX fallback (pesanan page can fetch from server if local missing)
       try {
-        const localOrder = { code, name, wa, email, method: payMethod, items: displayItems, subtotal: j.subtotal ?? displaySubtotal, fileName, status: "pending", createdAt: new Date().toISOString() };
+        const localOrder = { code, name, wa, email, method: payMethod, items: displayItems, subtotal: j.subtotal ?? displaySubtotal, fileName: null, status: "pending", createdAt: new Date().toISOString() };
         const existing = JSON.parse(localStorage.getItem("axvara-orders") || "[]");
         localStorage.setItem("axvara-orders", JSON.stringify([...existing, localOrder]));
       } catch {}
@@ -401,36 +382,49 @@ function CheckoutInner() {
               )}
 
               {pmEwallet && (
-              <button type="button" aria-pressed={method === "ewallet"} onClick={() => setMethod("ewallet")} className={`text-left rounded-2xl border p-4 flex items-center justify-between transition ${method === "ewallet" ? "bg-[#00E5FF]/10 border-[#00E5FF]/40" : "ax-glass-card border-white/10 hover:bg-white/10"}`}>
+              <div
+                role="button"
+                aria-disabled="true"
+                aria-label="E-Wallet sedang maintenance"
+                title="E-Wallet sedang maintenance"
+                className="text-left rounded-2xl border p-4 flex items-center justify-between transition ax-glass-card border-white/10 opacity-50 cursor-not-allowed select-none"
+              >
                 <div className="flex items-center gap-3">
-                  <img src="/icons/ios11/wallet-32.png" alt="" width={20} height={20} className="w-5 h-5 object-contain brightness-0 invert opacity-80" draggable={false} />
+                  <img src="/icons/ios11/wallet-32.png" alt="" width={20} height={20} className="w-5 h-5 object-contain brightness-0 invert opacity-50" draggable={false} />
                   <div>
-                    <p className="text-sm font-semibold text-white">E-WALLET</p>
+                    <p className="text-sm font-semibold text-white flex items-center gap-2">E-WALLET <span className="text-[10px] bg-[#FFB800]/20 text-[#FFB800] border border-[#FFB800]/30 font-bold px-2 py-0.5 rounded-full">Maintenance</span></p>
                     <p className="text-xs text-white/45 mt-0.5">{pmEwallet.label}</p>
                   </div>
                 </div>
-                <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${method === "ewallet" ? "border-[#00E5FF] bg-[#00E5FF]" : "border-white/20"}`}>{method === "ewallet" && <span className="w-2 h-2 rounded-full bg-[#080C1E]" />}</span>
-              </button>
+                <span className="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 border-white/20" />
+              </div>
               )}
 
               {pmBanks.length > 0 && (
-              <button type="button" aria-pressed={method === "bank"} onClick={() => setMethod("bank")} className={`text-left rounded-2xl border p-4 flex items-center justify-between transition ${method === "bank" ? "bg-[#00E5FF]/10 border-[#00E5FF]/40" : "ax-glass-card border-white/10 hover:bg-white/10"}`}>
+              <div
+                role="button"
+                aria-disabled="true"
+                aria-label="Transfer Bank sedang maintenance"
+                title="Transfer Bank sedang maintenance"
+                className="text-left rounded-2xl border p-4 flex items-center justify-between transition ax-glass-card border-white/10 opacity-50 cursor-not-allowed select-none"
+              >
                 <div className="flex items-center gap-3">
-                  <img src="/icons/ios11/bank-32.png" alt="" width={20} height={20} className="w-5 h-5 object-contain brightness-0 invert opacity-80" draggable={false} />
+                  <img src="/icons/ios11/bank-32.png" alt="" width={20} height={20} className="w-5 h-5 object-contain brightness-0 invert opacity-50" draggable={false} />
                   <div>
-                    <p className="text-sm font-semibold text-white">TRANSFER BANK</p>
+                    <p className="text-sm font-semibold text-white flex items-center gap-2">TRANSFER BANK <span className="text-[10px] bg-[#FFB800]/20 text-[#FFB800] border border-[#FFB800]/30 font-bold px-2 py-0.5 rounded-full">Maintenance</span></p>
                     <p className="text-xs text-white/45 mt-0.5">{pmBanks.map((b) => b.label).join(", ")}</p>
                   </div>
                 </div>
-                <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${method === "bank" ? "border-[#00E5FF] bg-[#00E5FF]" : "border-white/20"}`}>{method === "bank" && <span className="w-2 h-2 rounded-full bg-[#080C1E]" />}</span>
-              </button>
+                <span className="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 border-white/20" />
+              </div>
               )}
             </div>
 
-            {/* Detail metode — hanya muncul setelah pilih, default null */}
-            {method && (
+            {/* Detail metode — hanya QRIS selama maintenance. Cabang
+                ewallet/bank dihapus dari render agar tidak bisa diakses;
+                kembalikan dari git bila maintenance selesai. */}
+            {method === "qris" && pmQris && (
               <div className="mt-4 ax-glass-card rounded-2xl p-4 animate-in fade-in">
-                {method === "qris" && pmQris && (
                   <div className="flex items-start gap-3 text-left">
                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#00E5FF]/10">
                       <img src="/icons/ios11/qr-code-32.png" alt="" width={20} height={20} className="h-5 w-5 object-contain" draggable={false} />
@@ -440,100 +434,18 @@ function CheckoutInner() {
                       <p className="mt-1 text-xs leading-5 text-white/50">QR sudah termasuk nominal pembayaran. Setelah dibayar, status otomatis menjadi lunas—tanpa upload bukti.</p>
                     </div>
                   </div>
-                )}
-                {method === "ewallet" && pmEwallet && (
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-xs text-white/50">Transfer ke E-Wallet</p>
-                      <p className="font-mono font-bold text-white flex items-center gap-2">{pmEwallet.account_number} <img src="/icons/ios11/wallet-32.png" alt="" width={14} height={14} className="w-3.5 h-3.5 object-contain brightness-0 invert opacity-60" draggable={false} /></p>
-                      <p className="text-xs text-white/40">a.n. {pmEwallet.account_name}</p>
-                      <p className="text-[11px] text-white/30 mt-1">Transfer tepat Rp subtotal & screenshot bukti.</p>
-                    </div>
-                    <button onClick={() => copy(pmEwallet.account_number, "ewallet")} className="h-9 px-4 rounded-full bg-white text-[#080C1E] text-sm font-semibold flex items-center gap-1.5 shrink-0">
-                      <img src={copied === "ewallet" ? "/icons/ios11/checked-32.png" : "/icons/ios11/copy-32.png"} alt="" width={16} height={16} className="w-4 h-4 object-contain" draggable={false} /> {copied === "ewallet" ? "Disalin" : "Salin"}
-                    </button>
-                  </div>
-                )}
-                {method === "bank" && (
-                  <div className="space-y-2">
-                    <p className="text-xs text-white/40 mb-1">Pilih bank tujuan:</p>
-                    {pmBanks.map((b) => {
-                      const bKey = b.id.replace("bank:", "");
-                      const active = bankKey === bKey;
-                      return (
-                        <div key={b.id} className={`rounded-xl border overflow-hidden transition ${active ? "border-[#00E5FF]/40 bg-white/[0.06]" : "border-white/10 bg-white/[0.03]"}`}>
-                          <button onClick={() => setBankKey(bKey)} className="w-full flex items-center justify-between p-3 text-left">
-                            <span className="flex items-center gap-2.5">
-                              <img src="/icons/ios11/bank-32.png" alt="" width={16} height={16} className="w-4 h-4 object-contain brightness-0 invert opacity-60" draggable={false} />
-                              <span>
-                                <span className="text-sm font-semibold text-white">{b.label}</span>
-                                <span className="text-xs font-mono text-white/60 ml-2">{b.account_number}</span>
-                              </span>
-                            </span>
-                            <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${active ? "border-[#00E5FF] bg-[#00E5FF]" : "border-white/20"}`}>{active && <span className="w-2 h-2 rounded-full bg-[#080C1E]" />}</span>
-                          </button>
-                          {active && (
-                            <div className="px-3 pb-3 pt-1 border-t border-white/10">
-                              <p className="text-xs text-white/50">a.n. {b.account_name}</p>
-                              <button onClick={() => copy(b.account_number, b.id)} className="mt-2 h-8 px-3 rounded-full bg-white text-[#080C1E] text-xs font-semibold inline-flex items-center gap-1.5">
-                                <img src={copied === b.id ? "/icons/ios11/checked-32.png" : "/icons/ios11/copy-32.png"} alt="" width={14} height={14} className="w-3.5 h-3.5 object-contain" draggable={false} /> {copied === b.id ? "Disalin" : "Salin No Rek"}
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                    {!bankKey && <p className="text-[11px] text-white/30 text-center">Pilih salah satu bank di atas.</p>}
-                  </div>
-                )}
               </div>
             )}
               </>
             )}
           </div>
 
-          {method === "qris" ? (
-            <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.06] p-4">
-              <h2 className="text-sm font-semibold text-emerald-300">③ Verifikasi Otomatis</h2>
-              <p className="mt-1 text-xs leading-5 text-white/50">QRIS dan total bayar akan muncul di halaman pesanan. Biarkan halaman terbuka; status diperbarui otomatis setelah pembayaran diterima.</p>
-            </div>
-          ) : (
-          <div>
-            <h2 className="text-sm font-semibold text-white">③ Upload Bukti Transfer *</h2>
-            <label className={`mt-3 flex flex-col items-center justify-center gap-2 ax-glass-card rounded-2xl border-dashed p-6 cursor-pointer transition text-center ${proofUploading ? "opacity-60 pointer-events-none" : "hover:bg-white/10"}`}>
-              <img src="/icons/ios11/upload-32.png" alt="" width={24} height={24} className="w-6 h-6 object-contain brightness-0 invert opacity-60" draggable={false} />
-              <span className="text-sm text-white/70">{proofUploading ? "Mengupload..." : fileName ? fileName : "Klik untuk upload bukti (JPG/PNG/WebP, max 5MB)"}</span>
-              {proofUrl && <span className="text-[11px] text-emerald-300">✓ Terupload</span>}
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                className="hidden"
-                onChange={async (e) => {
-                  const f = e.target.files?.[0];
-                  if (!f) return;
-                  setProofUrl(null);
-                  setFileName(null);
-                  setError(null);
-                  if (f.size > 5 * 1024 * 1024) { setError("File max 5MB"); e.target.value = ""; return; }
-                  if (!["image/jpeg","image/jpg","image/png","image/webp"].includes(f.type)) { setError("Hanya JPG/PNG/WebP"); e.target.value = ""; return; }
-                  setFileName(f.name);
-                  setProofUploading(true);
-                  try {
-                    const fd = new FormData();
-                    fd.append("file", f);
-                    const r = await fetch("/api/proof/upload", { method: "POST", body: fd });
-                    const j = await r.json().catch(()=> ({}));
-                    if (!r.ok) throw new Error(j.error || `Upload gagal (${r.status})`);
-                    setProofUrl(j.url);
-                  } catch (err) { setError(err instanceof Error ? err.message : "Upload gagal"); setFileName(null); setProofUrl(null); }
-                  finally { setProofUploading(false); }
-                  e.target.value = "";
-                }}
-              />
-            </label>
-            <p className="text-[11px] text-white/30 mt-2">Pastikan bukti jelas: nominal, tanggal, dan tujuan transfer terlihat. Upload dulu sebelum buat pesanan.</p>
+          {/* Verifikasi otomatis selalu tampil selama maintenance (QRIS saja);
+              panel upload manual disembunyikan total di WEB. */}
+          <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.06] p-4">
+            <h2 className="text-sm font-semibold text-emerald-300">③ Verifikasi Otomatis</h2>
+            <p className="mt-1 text-xs leading-5 text-white/50">QRIS dan total bayar akan muncul di halaman pesanan. Biarkan halaman terbuka; status diperbarui otomatis setelah pembayaran diterima.</p>
           </div>
-          )}
 
           {error && <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2">{error}</p>}
 
@@ -552,7 +464,7 @@ function CheckoutInner() {
             </span>
           </label>
 
-          <button onClick={submit} disabled={loading || proofUploading || (method !== "qris" && !proofUrl) || quoteLoading || !method || !quoteToken || !quoteAccepted || quoteIssues.length > 0 || !agreed} className="w-full h-[52px] rounded-xl bg-[#00E5FF] text-[#080C1E] font-bold hover:bg-[#00D0E8] disabled:opacity-60 transition inline-flex items-center justify-center gap-2">
+          <button onClick={submit} disabled={loading || quoteLoading || method !== "qris" || !quoteToken || !quoteAccepted || quoteIssues.length > 0 || !agreed} className="w-full h-[52px] rounded-xl bg-[#00E5FF] text-[#080C1E] font-bold hover:bg-[#00D0E8] disabled:opacity-60 transition inline-flex items-center justify-center gap-2">
             {loading && <span className="w-5 h-5 rounded-full border-2 border-[#080C1E]/20 border-t-[#080C1E] animate-spin" />}
             {loading ? "Memproses…" : `Bayar ${formatRupiah(displaySubtotal)} — Buat Pesanan`}
           </button>
@@ -587,7 +499,7 @@ function CheckoutInner() {
           </div>
           </>
           )}
-          <p className="text-xs text-white/30 mt-3 text-center">QRIS diverifikasi otomatis; transfer manual tetap ditinjau admin.</p>
+          <p className="text-xs text-white/30 mt-3 text-center">QRIS diverifikasi otomatis — pembayaran terkonfirmasi tanpa upload bukti.</p>
         </div>
       </div>
 

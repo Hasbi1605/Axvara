@@ -27,8 +27,9 @@ describe("Issue #15 — advisory PostCSS dibedakan dari eksploitasi terbukti", (
       expect(src, f).not.toMatch(/require\(["']postcss["']\)/);
       expect(src, f).not.toMatch(/\.process\(.*css/i);
     }
-    // Upload publik hanya gambar (magic bytes), bukan CSS.
-    expect(read("src/app/api/proof/upload/route.ts")).toContain("ALLOWED");
+    // Upload publik hanya gambar (magic bytes), bukan CSS — selama
+    // maintenance 2026-09-17 endpoint proof/upload 503 (QRIS saja).
+    expect(read("src/app/api/proof/upload/route.ts")).toContain("503");
     expect(read("src/app/api/upload/route.ts")).toContain("ALLOWED_TYPES");
   });
 

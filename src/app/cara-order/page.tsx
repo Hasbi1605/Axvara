@@ -6,7 +6,7 @@ export const metadata = { title: "Cara Order | AXVARA", description: "Panduan me
 const steps = [
   ["1", "Pilih produk", "Buka katalog, pilih produk yang dibutuhkan, lalu tekan Beli Langsung atau masukkan ke keranjang."],
   ["2", "Isi data pembeli", "Masukkan nama, nomor WhatsApp aktif, dan email bila diperlukan. Pastikan datanya benar sebelum melanjutkan."],
-  ["3", "Bayar dan unggah bukti", "Pilih metode pembayaran yang tersedia, lakukan pembayaran sesuai detail di checkout, lalu unggah bukti transfer."],
+  ["3", "Bayar via QRIS", "Pilih QRIS, scan kode yang muncul di halaman pesanan, dan bayar tepat sesuai nominal. Status lunas terdeteksi otomatis."],
   ["4", "Tunggu & lacak status", "Simpan kode pesanan, lalu pantau statusnya di halaman Lacak Pesanan — cukup kode + nomor WA, tanpa login. Admin memeriksa pembayaran dan mengirim detail akses melalui WhatsApp."],
 ];
 

@@ -133,7 +133,9 @@ export function variantSelectedMessage(productName: string, variant: VariantSumm
   }
   lines.push("");
   lines.push("Pilih pembayaran dengan mengetik:");
-  lines.push("*QRIS* · *SEABANK* · *EWALLET*");
+  // Maintenance sementara (2026-09-17): E-Wallet & SeaBank dinonaktifkan
+  // di semua platform — hanya QRIS. Teks opsi manual dihilangkan di WA.
+  lines.push("*QRIS*");
   return lines.join("\n");
 }
 
@@ -145,8 +147,17 @@ export function paymentChoiceMessage(): string {
     "Ketik salah satu metode berikut:",
     "",
     "• *QRIS* — scan kode QR",
-    "• *SEABANK* — transfer bank",
-    "• *EWALLET* — transfer dompet digital",
+  ].join("\n");
+}
+
+/** Pesan maintenance untuk metode manual yang diminta selama maintenance. */
+export function manualPaymentMaintenanceMessage(): string {
+  return [
+    "━━━━━━━━━━━━━━━━━━━━",
+    "*PEMBAYARAN MAINTENANCE*",
+    "━━━━━━━━━━━━━━━━━━━━",
+    "E-Wallet & Transfer Bank sedang maintenance.",
+    "Silakan bayar via *QRIS* — ketik *QRIS* untuk lanjut.",
   ].join("\n");
 }
 
@@ -246,7 +257,7 @@ export function proofFormatErrorMessage(orderCode: string): string {
   return [
     "Bukti belum dapat dikenali. Kirim ulang foto/screenshot dengan caption:",
     "",
-    "*QRIS*, *SEABANK*, atau *EWALLET*.",
+    "*QRIS*.",
     `Referensi aktif: ${orderCode}`,
   ].join("\n");
 }

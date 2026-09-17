@@ -54,12 +54,13 @@ describe("Checkout quote integrity", () => {
     expect(detail).toContain("variant_catalog_unavailable");
   });
 
-  it("pemilihan file baru menghapus bukti lama sebelum validasi", () => {
+  it("panel upload bukti disembunyikan selama maintenance jalur manual", () => {
     const checkout = read("src/app/checkout/page.tsx");
-    const clearIndex = checkout.indexOf("setProofUrl(null);", checkout.indexOf("const f = e.target.files"));
-    const sizeIndex = checkout.indexOf("f.size > 5 * 1024 * 1024", clearIndex);
-    expect(clearIndex).toBeGreaterThan(0);
-    expect(clearIndex).toBeLessThan(sizeIndex);
+    // Maintenance 2026-09-17: tidak ada input file bukti di checkout (QRIS
+    // saja). Revert: kembalikan blok upload + setProofUrl(null) reset.
+    expect(checkout).toContain("MANUAL_PAYMENTS_MAINTENANCE");
+    expect(checkout).not.toContain('type="file"');
+    expect(checkout).not.toContain("Klik untuk upload bukti");
   });
 });
 

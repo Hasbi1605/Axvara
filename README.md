@@ -2,7 +2,7 @@
 
 > **Satu Gerbang, Semua Tools Premium** — Toko digital premium Apple Store + Glassmorphism
 
-AXVARA adalah toko digital untuk akun, aplikasi, dan tools premium dengan kategori yang dikelola dari panel admin — checkout memakai **transfer manual atau QRIS dinamis DANA Business** tanpa payment gateway pihak ketiga, dan hosting Cloudflare Pages.
+AXVARA adalah toko digital untuk akun, aplikasi, dan tools premium dengan kategori yang dikelola dari panel admin — checkout memakai **QRIS dinamis DANA Business** tanpa payment gateway pihak ketiga, dan hosting Cloudflare Pages. Jalur manual (E-Wallet/Bank + upload bukti) ⏸️ **maintenance sejak 2026-09-17**: field tampil disabled + badge Maintenance di WEB, dihilangkan di WA/TELE, upload disembunyikan, backend menolak non-QRIS 503.
 
 **Live dev:** `http://localhost:3000` — Next 15.5.24
 
@@ -37,7 +37,7 @@ axvara/
 │   ├── app/
 │   │   ├── page.tsx        # Homepage — Hero + Orbit + Katalog pagination 8/page
 │   │   ├── produk/[slug]/  # Detail produk
-│   │   ├── checkout/       # Checkout — QRIS otomatis / bukti untuk transfer manual
+│   │   ├── checkout/       # Checkout — QRIS saja (manual maintenance 2026-09-17: disabled + badge, upload disembunyikan)
 │   │   ├── pesanan/[code]/ # Status + QRIS dinamis + polling lunas
 │   │   ├── lacak-pesanan/  # Lacak mandiri kode + WA (tanpa login) + timeline status
 │   │   ├── admin/          # Workspace operasional, katalog, pembayaran, konten, otomasi, settings

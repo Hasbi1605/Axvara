@@ -51,8 +51,13 @@ export async function POST(req: NextRequest) {
 
   // Proofs are private R2 objects. External URLs would bypass the protected
   // admin viewer and could be used as a tracking pixel.
-  if (payment_method !== "qris" && !proof_url) {
-    return NextResponse.json({ error: "Bukti transfer wajib diupload" }, { status: 400 });
+  // Maintenance sementara (2026-09-17): jalur manual E-Wallet/Bank
+  // dinonaktifkan di semua platform — hanya QRIS yang diterima.
+  if (payment_method !== "qris") {
+    return NextResponse.json({ error: "E-Wallet & Transfer Bank sedang maintenance. Silakan bayar via QRIS." }, { status: 503 });
+  }
+  if (proof_url) {
+    return NextResponse.json({ error: "Upload bukti sedang dinonaktifkan. Silakan bayar via QRIS." }, { status: 503 });
   }
   if (proof_url && (!proof_url.startsWith("/r2/bukti/") || proof_url.includes(".."))) {
     return NextResponse.json({ error: "URL bukti tidak valid" }, { status: 400 });
@@ -157,6 +162,13 @@ export async function POST(req: NextRequest) {
   if (wa.startsWith("+62")) wa = wa.slice(1);
   else if (wa.startsWith("0")) wa = "62" + wa.slice(1);
 
+  // Maintenance sementara (2026-09-17): quote hanya boleh berisi QRIS.
+  // Token lama yang masih membawa ewallet/bank ditolak agar tidak bisa
+  // dipakai untuk membuat order manual selama maintenance.
+  const quoteHasQris = quote.payment_methods.some((method) => method.id === "qris");
+  if (!quoteHasQris) {
+    return NextResponse.json({ error: "E-Wallet & Transfer Bank sedang maintenance. Muat ulang checkout dan bayar via QRIS." }, { status: 503 });
+  }
   const code = generateCode();
   const pm = String(payment_method);
   const paymentId = pm.startsWith("bank:") ? pm.slice(5) : pm;

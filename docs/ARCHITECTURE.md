@@ -304,7 +304,7 @@ CREATE TABLE store_settings (
 | GET | /api/payments/qris/:code/image | Render PNG QRIS dinamis untuk invoice aktif | code order |
 | POST | /api/payments/qris/:code/reissue | Terbitkan QRIS baru untuk order yang masih hidup tetapi QR-nya sudah kedaluwarsa. Hanya boleh saat invoice lama SUDAH mati — syarat itulah yang mencegah pemegang kode order lain membatalkan QR yang sedang dipakai. Maks 3x/order, rate limit 5/menit/IP | code order |
 | POST | /api/webhook/dana | Terima notifikasi QRIS Hook, dedup, cocokkan nominal, lunasi order | X-Webhook-Secret |
-| POST | /api/proof/upload | Upload bukti ke R2, return URL privat | same-origin |
+| POST | /api/proof/upload | ⏸️ maintenance 2026-09-17: selalu 503 (upload bukti disembunyikan di WEB; QRIS saja) | same-origin |
 | GET | /api/admin/bukti/:key | Preview/download bukti | admin |
 | POST | /api/upload | Upload WebP produk/artikel/banner ke R2 | admin |
 | * | /api/agent/* | Context, artikel, media, dan audit | agent scope |
@@ -318,16 +318,16 @@ CREATE TABLE store_settings (
 | PUT | /api/admin/products/:id | Update produk | admin |
 | DELETE | /api/admin/products/:id | Soft delete | admin |
 
-**Validasi POST /api/orders:**
+**Validasi POST /api/orders (maintenance 2026-09-17: QRIS saja — non-QRIS 503):**
 ```ts
 {
   customer_name: string (min 3),
   customer_wa: string (regex 08..., 10-15 digit),
   customer_email?: string (email),
   items: { product_id: number, qty: number }[] (min 1),
-  payment_method: "ewallet" | "seabank" | "qris" | string,
-  proof_url?: string | null // null hanya untuk QRIS; wajib dan private-R2 untuk rail manual
-  quote_token: string // signed HS256, snapshot item/subtotal/payment account
+  payment_method: "qris", // ewallet/bank:* ditolak 503 selama maintenance
+  proof_url?: string | null // proof apa pun ditolak 503 selama maintenance
+  quote_token: string // signed HS256, snapshot item/subtotal/payment account; quote tanpa QRIS ditolak 503
 }
 ```
 
@@ -354,13 +354,13 @@ CREATE TABLE store_settings (
    ↓ POST /api/checkout/quote { slug/id, qty, expected_price }
 [Server] Validasi produk aktif, stok, harga, dan payment_methods D1
    ↓ response quote HS256 60 menit + snapshot authoritative
-[Client] Konfirmasi perubahan harga → pilih QRIS atau rekening manual
+[Client] Konfirmasi perubahan harga → pilih QRIS (E-Wallet/Bank maintenance 2026-09-17: tampil disabled + badge di WEB, dihilangkan di WA/TELE)
    ↓ POST /api/orders { customer, item IDs/qty, payment_method, proof_url, quote_token }
-[Server] Verifikasi signature+expiry+isi item → D1 batch guard+decrement+INSERT order
+[Server] Verifikasi signature+expiry+isi item → tolak non-QRIS 503 → D1 batch guard+decrement+INSERT order
    ├─ QRIS: alokasikan kode unik 1–299 → EMVCo dynamic payload + ledger 15 menit
    │    ↓ /pesanan/[code] menampilkan PNG dan polling 5 detik
    │    ↓ QRIS Hook → POST /api/webhook/dana → exact amount + event dedup → lunas atomik
-   └─ Manual: bukti R2 → review admin
+   └─ Manual: ⏸️ maintenance 2026-09-17 (upload disembunyikan WEB, endpoint 503, order manual 503)
         ↓ cron: jatuh tempo → status kadaluarsa + restore stok dalam satu batch
 ```
 

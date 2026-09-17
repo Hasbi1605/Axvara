@@ -25,6 +25,12 @@ export async function handleProofUpload(
 ) {
   const legacyMatch = caption.trim().match(/^BUKTI\s+(AXV-\S+)\s+(QRIS|SEABANK|E[\s-]?WALLET)$/i);
   let claimedMethod = parsePaymentMethod(legacyMatch?.[2] || caption);
+  // Maintenance sementara (2026-09-17): bukti manual (SeaBank/e-wallet)
+  // ditolak — hanya QRIS. WA: hilangkan jalur manual, arahkan ke QRIS.
+  if (claimedMethod && claimedMethod !== "QRIS") {
+    await sendTextMessage({ target: groupId, message: msg.manualPaymentMaintenanceMessage(), inboxId: messageId });
+    return;
+  }
   const session = await getSession("baileys", groupId, sender);
   let orderCode = legacyMatch?.[1]?.toUpperCase() || session?.current_order_code || null;
 
@@ -67,6 +73,12 @@ export async function handleProofUpload(
 
   const storedMethod = parsePaymentMethod(String(order.payment_method || ""));
   if (!claimedMethod) claimedMethod = storedMethod;
+  // Maintenance: order manual lama (SEABANK/EWALLET) yang masih pending
+  // tidak bisa lanjut kirim bukti — arahkan buat order QRIS baru.
+  if (storedMethod && storedMethod !== "QRIS") {
+    await sendTextMessage({ target: groupId, message: msg.manualPaymentMaintenanceMessage(), inboxId: messageId });
+    return;
+  }
   if (!claimedMethod) {
     await sendTextMessage({ target: groupId, message: msg.proofFormatErrorMessage(orderCode), inboxId: messageId });
     return;

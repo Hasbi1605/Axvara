@@ -244,10 +244,13 @@ describe("WhatsApp Message Formatting", () => {
     expect(msg).toContain("GEMINI — *Head*");
     expect(msg).toContain("🛡 Garansi 1 Bulan");
     expect(msg).toContain("Rp25.000");
-    expect(msg).toContain("*QRIS* · *SEABANK* · *EWALLET*");
+    // Maintenance 2026-09-17: opsi manual dihilangkan di WA (QRIS saja).
+    expect(msg).toContain("*QRIS*");
+    expect(msg).not.toContain("*SEABANK*");
+    expect(msg).not.toContain("*EWALLET*");
   });
 
-  it("formats one selected payment rail with simple proof instructions", () => {
+  it("formats QRIS payment rail (jalur manual dihilangkan selama maintenance)", () => {
     const msg = waMsg.paymentMessage({
       orderCode: "AXV-20260904-TEST1234",
       productName: "Gemini",
@@ -255,7 +258,7 @@ describe("WhatsApp Message Formatting", () => {
       duration: "3 Bulan",
       warranty: "1 Bulan",
       total: 25000,
-      method: "SEABANK",
+      method: "QRIS",
       qrisUrl: "/qris/test.jpg",
       seabankAccount: "901812349386",
       seabankName: "Brotherstore06",
@@ -266,12 +269,21 @@ describe("WhatsApp Message Formatting", () => {
     expect(msg).toContain("*PEMBAYARAN AXVARA*");
     expect(msg).toContain("🛍 GEMINI — *Head*");
     expect(msg).toContain("💰 Total: *Rp25.000*");
-    expect(msg).toContain("💳 Metode: *SEABANK*");
-    expect(msg).toContain("901812349386");
-    expect(msg).not.toContain("082135277434");
-    expect(msg).toContain("caption *SEABANK*");
-    expect(msg).toContain("Tidak perlu mengetik kode pesanan");
+    expect(msg).toContain("💳 Metode: *QRIS*");
     expect(msg).toContain("Referensi otomatis: AXV-20260904-TEST1234");
+  });
+
+  it("menampilkan pesan maintenance untuk metode manual", () => {
+    const msg = waMsg.manualPaymentMaintenanceMessage();
+    expect(msg).toContain("*PEMBAYARAN MAINTENANCE*");
+    expect(msg).toContain("*QRIS*");
+  });
+
+  it("paymentChoiceMessage hanya menawarkan QRIS selama maintenance", () => {
+    const msg = waMsg.paymentChoiceMessage();
+    expect(msg).toContain("*QRIS*");
+    expect(msg).not.toContain("*SEABANK*");
+    expect(msg).not.toContain("*EWALLET*");
   });
 
   it("formats proof acknowledgement message with warning", () => {

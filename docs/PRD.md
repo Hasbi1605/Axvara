@@ -65,18 +65,18 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 | FR-S2 | Katalog produk dengan grid Apple-style, filter kategori (AI Gateway, Akun Premium, Tools Pro, Bundle Kucing), search, dan sorting | P0 MVP |
 | FR-S3 | Halaman detail produk: galeri gambar, harga (diskon/coret), stok, deskripsi, benefit, tombol Tambah ke Keranjang & Beli Langsung | P0 MVP |
 | FR-S4 | Keranjang slide-drawer dari kanan (tanpa pindah halaman), ubah qty, hapus item, lihat subtotal | P0 MVP |
-| FR-S5 | Checkout 1 halaman: data pembeli (nama, WA, email opsional) → pilih metode pembayaran (Transfer E-Wallet / SeaBank / QRIS) → ringkasan order | P0 MVP |
-| FR-S6 | Jika pilih E-Wallet: tampilkan nomor 082135277434 + nama pemilik + tombol Copy + instruksi | P0 MVP |
-| FR-S7 | Jika pilih SeaBank: tampilkan 901812349386 + instruksi | P0 MVP |
+| FR-S5 | Checkout 1 halaman: data pembeli (nama, WA, email opsional) → pilih metode pembayaran (QRIS; E-Wallet/SeaBank maintenance 2026-09-17) → ringkasan order | P0 MVP |
+| FR-S6 | Jika pilih E-Wallet: tampilkan nomor 082135277434 + nama pemilik + tombol Copy + instruksi | P0 MVP ⏸️ maintenance 2026-09-17 (field tampil disabled + badge Maintenance di WEB; dihilangkan di WA/TELE; upload bukti disembunyikan) |
+| FR-S7 | Jika pilih SeaBank: tampilkan 901812349386 + instruksi | P0 MVP ⏸️ maintenance 2026-09-17 (lihat FR-S6) |
 | FR-S8 | Jika pilih QRIS: setelah order tampilkan QRIS dinamis, nominal unik, countdown 15 menit, tombol Download, dan polling status | P0 MVP |
-| FR-S9 | Bukti transfer JPG/PNG/WebP max 5MB wajib untuk SeaBank/e-wallet; QRIS tidak memerlukan upload bukti | P0 MVP |
+| FR-S9 | Bukti transfer JPG/PNG/WebP max 5MB wajib untuk SeaBank/e-wallet; QRIS tidak memerlukan upload bukti | P0 MVP ⏸️ maintenance 2026-09-17 (upload disembunyikan di WEB; `POST /api/proof/upload` 503; `POST /api/orders` tolak non-QRIS 503) |
 | FR-S10 | Setelah order sukses: halaman Terima Kasih + nomor pesanan (AXV-XXXX) + WA admin + status Pending | P0 MVP |
 | FR-S11 | Pembeli bisa cek status pesanan via nomor WA / kode pesanan (tanpa login) | P1 ✅ live |
 | FR-S11a | Halaman `/lacak-pesanan`: form kode pesanan (AXV-YYYYMMDD-XXXXXXXX) + nomor WA checkout, verifikasi server via `POST /api/orders/lookup`, timeline Dibuat → Pembayaran → Diproses, badge Pending/Lunas/Dibatalkan/Kedaluwarsa, auto-refresh Pending 10 detik, deep-link `?code=&wa=`, riwayat lokal 5 terakhir, tautan dari navbar/footer/bottom-nav/cara-order/halaman pesanan | P1 ✅ live 2026-09-17 |
 | FR-S12 | Notifikasi WA otomatis ke pembeli saat admin konfirmasi lunas (kirim lisensi) | P1 ✅ live (gateway Baileys) |
 | FR-S13 | Wishlist & histori pesanan jika pembeli login (opsional, email/WA OTP) | P2 |
 | FR-S14 | Bot Telegram @Axvara_bot: /start (foto welcome + sapaan), katalog, cari, keranjang, checkout QRIS, pesanan, garansi | P0 ✅ live |
-| FR-S15 | Bot grup WhatsApp (Baileys): list/katalog, cari, bayar, bukti transfer, perintah admin `.d` | P0 ✅ live |
+| FR-S15 | Bot grup WhatsApp (Baileys): list/katalog, cari, bayar QRIS, perintah admin `.d` (jalur manual + bukti SEABANK/EWALLET maintenance 2026-09-17) | P0 ✅ live |
 | FR-S16 | Produk varian terpusat: harga/stok/durasi/garansi per varian; harga kartu dari varian termurah tersedia | P0 ✅ live |
 | FR-S18 | PDP menampilkan S&K + cara aktivasi per varian WR (read-only, ikut varian terpilih); label garansi kanonis "Garansi N Unit" | P0 ✅ live |
 | FR-S17 | Integrasi Warung Rebahan H2H: sync katalog terjadwal, auto-order exactly-once, webhook status, saldo monitor + throttle notif | P0 ✅ live (auto-order flag default off) |

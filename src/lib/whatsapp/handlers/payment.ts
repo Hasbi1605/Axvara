@@ -42,6 +42,14 @@ export async function handlePay(groupId: string, memberId: string, inboxId: stri
     return;
   }
 
+  // Maintenance sementara (2026-09-17): E-Wallet & SeaBank dinonaktifkan
+  // di semua platform. WA: tolak langsung dengan pesan maintenance (opsi
+  // manual dihilangkan dari teks, bukan ditampilkan sebagai maintenance).
+  if (method !== "QRIS") {
+    await sendTextMessage({ target: groupId, message: msg.manualPaymentMaintenanceMessage(), inboxId });
+    return;
+  }
+
   const paymentPreflight = await preflightWhatsAppPayment(queryAll, method);
   if (!paymentPreflight.ok) {
     await sendTextMessage({

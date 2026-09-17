@@ -164,26 +164,30 @@ describe("F-Medium: Payment proof — upload strict", () => {
     expect(checkMagicBytes(jpg, "image/png")).toBe(false); // mismatch
   });
 
-  it("src/app/api/proof/upload/route.ts ada dan gunakan bukti/ prefix private", () => {
+  it("src/app/api/proof/upload/route.ts ditutup 503 selama maintenance jalur manual", () => {
     const src = fs.readFileSync(path.join(process.cwd(), "src/app/api/proof/upload/route.ts"), "utf-8");
-    expect(src).toContain('bukti/');
-    expect(src).toContain("MAX");
-    expect(src).toContain("5 * 1024 * 1024");
+    // Maintenance 2026-09-17: upload bukti WEB disembunyikan + endpoint 503 (QRIS saja).
+    expect(src).toContain("503");
+    expect(src).toContain("Upload bukti sedang dinonaktifkan");
   });
 
-  it("checkout page mewajibkan proofUrl hanya untuk transfer manual", () => {
+  it("checkout page QRIS-only selama maintenance (upload bukti disembunyikan)", () => {
     const src = fs.readFileSync(path.join(process.cwd(), "src/app/checkout/page.tsx"), "utf-8");
-    expect(src).toContain("proofUrl");
-    expect(src).toContain("Upload bukti");
-    expect(src).toContain('method !== "qris" && !proofUrl');
+    // Maintenance 2026-09-17: E-Wallet/Bank disabled + badge Maintenance,
+    // panel upload tidak dirender, submit hanya QRIS.
+    expect(src).toContain("MANUAL_PAYMENTS_MAINTENANCE");
+    expect(src).toContain("Maintenance");
+    expect(src).toContain('method !== "qris"');
   });
 });
 
 describe("Regression: checkout proof_url conditional", () => {
-  it("POST /api/orders hanya mengizinkan proof kosong untuk QRIS dinamis", () => {
+  it("POST /api/orders menolak jalur manual 503 selama maintenance (QRIS saja)", () => {
     const src = fs.readFileSync(path.join(process.cwd(), "src/app/api/orders/route.ts"), "utf-8");
     expect(src).toContain("proof_url");
-    expect(src).toContain('payment_method !== "qris" && !proof_url');
+    // Maintenance 2026-09-17: non-QRIS + proof_url apa pun ditolak 503.
+    expect(src).toContain('payment_method !== "qris"');
+    expect(src).toContain("503");
     expect(src).toContain('proof_url: z.string().trim().max(600).nullable().optional()');
   });
 });
@@ -254,12 +258,15 @@ describe("BUG-05: Tidak ada duplicate generateOrderCode lemah di utils.ts", () =
 });
 
 describe("BUG-06: Checkout block bank placeholder belum aktif", () => {
-  it("checkout hanya menerima bank aktif dari quote server", () => {
+  it("checkout QRIS-only selama maintenance (quote guard server)", () => {
     const checkout = fs.readFileSync(path.join(process.cwd(), "src/app/checkout/page.tsx"), "utf-8");
     const orders = fs.readFileSync(path.join(process.cwd(), "src/app/api/orders/route.ts"), "utf-8");
-    expect(checkout).toContain("quotedPaymentMethods.some");
+    // Maintenance 2026-09-17: client hanya submit QRIS; server menolak
+    // non-QRIS 503 + menolak quote tanpa QRIS. Revert: kembalikan validasi
+    // quotedPaymentMethods + quote.payment_methods.find.
     expect(checkout).toContain("quote_token");
-    expect(orders).toContain("quote.payment_methods.find");
+    expect(checkout).toContain('method !== "qris"');
+    expect(orders).toContain("quoteHasQris");
     expect(orders).not.toContain("accountMap");
   });
 });
@@ -319,17 +326,13 @@ describe("BUG-12: CommunityBar WA link live (bukan dead href=#)", () => {
 });
 
 describe("BUG-13: Proof upload extension sesuai tipe (bukan selalu .webp)", () => {
-  it("proof upload route menentukan extension dari content type", () => {
+  it("proof upload route ditutup 503 selama maintenance (implementasi normal diarsipkan)", () => {
     const src = fs.readFileSync(path.join(process.cwd(), "src/app/api/proof/upload/route.ts"), "utf-8");
-    // Harus ada logic: const ext = type === "image/png" ? "png" : ...
-    expect(src).toMatch(/const ext\s*=/);
-    expect(src).toContain('"image/png"');
-    // Extension values harus ada: "png", "jpg", "webp"
-    expect(src).toMatch(/\?\s*"png"/);
-    expect(src).toMatch(/\?\s*"webp"/);
-    expect(src).toMatch(/:\s*"jpg"/);
-    // Key harus pakai ${ext}, BUKAN hardcoded .webp
-    expect(src).toMatch(/`bukti\/.*\$\{ext\}`/);
+    // Maintenance 2026-09-17: POST selalu 503. Revert: hapus early-return
+    // 503 dan kembalikan blok validasi magic-bytes + extension per tipe
+    // (const ext = type === "image/png" ? "png" : ... + `bukti/...${ext}`).
+    expect(src).toContain("503");
+    expect(src).toContain("Upload bukti sedang dinonaktifkan");
   });
 });
 

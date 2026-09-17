@@ -101,7 +101,7 @@ export function adminWebOrderNotification(params: {
     `📱 ${escapeHtml(customerWa)}`,
     `💳 ${escapeHtml(paymentMethod.toUpperCase())}`,
     "",
-    "Cek bukti transfer di panel admin",
+    "Cek pesanan di panel admin",
   ].join("\n");
 }
 
