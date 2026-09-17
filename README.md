@@ -39,6 +39,7 @@ axvara/
 │   │   ├── produk/[slug]/  # Detail produk
 │   │   ├── checkout/       # Checkout — QRIS otomatis / bukti untuk transfer manual
 │   │   ├── pesanan/[code]/ # Status + QRIS dinamis + polling lunas
+│   │   ├── lacak-pesanan/  # Lacak mandiri kode + WA (tanpa login) + timeline status
 │   │   ├── admin/          # Workspace operasional, katalog, pembayaran, konten, otomasi, settings
 │   │   ├── artikel/        # Indeks dan detail artikel publik
 │   │   ├── cara-order/     # Panduan order dari footer
@@ -105,6 +106,8 @@ Migrasi `0025_qris_invoice_history.sql` menyimpan setiap nominal dan waktu pener
 AXVARA adalah third-party independen (bukan official store). Garansi bervariasi 1x24 jam–30 hari mengikuti deskripsi tiap produk; klaim berupa penggantian/perbaikan, bukan refund otomatis. Checkout mewajibkan centang persetujuan ketentuan sebelum order dibuat; acuan lengkap di `/garansi-replace`.
 
 Nomor dukungan default adalah `089519388264`, terpisah dari nomor tujuan pembayaran e-wallet. `src/lib/site.ts` menyediakan fallback, sedangkan override operasional disimpan lewat menu **Pengaturan Toko**.
+
+Pembeli memantau pesanan mandiri di `/lacak-pesanan`: cukup kode pesanan + nomor WA checkout (tanpa login), diverifikasi server via `POST /api/orders/lookup`, timeline Dibuat → Pembayaran → Diproses, auto-refresh saat Pending.
 
 ### Kategori dan footer
 

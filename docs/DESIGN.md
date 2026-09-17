@@ -207,7 +207,25 @@
 ### 5.7 Halaman Sukses
 - Icon centang besar cyan glow, headline "Pesanan Diterima!", kode `AXV-20260831-0012` mono, status badge Pending warning
 - Instruksi: "Admin verifikasi 5-15 menit, cek WA kamu"
-- Tombol: "Lanjut Belanja" + "Hubungi Admin via WA" (link wa.me)
+- Tombol: "Lacak Status" (ke `/lacak-pesanan`) + "Lanjut Belanja" + "Hubungi Admin via WA" (link wa.me)
+
+### 5.7a Halaman Lacak Pesanan `/lacak-pesanan` (2026-09-17, live)
+- Riset pola marketplace (Shopee/Tokopedia/Apple order tracking): satu form
+  hero (kode + WA, tanpa login) → hasil timeline vertikal 3 tahap
+  (Dibuat → Pembayaran → Diproses) dengan ikon IosIcon + garis penghubung,
+  bukan teks status mentah. Auto-refresh 10 detik hanya saat Pending.
+- Konsistensi AXVARA: `ax-glass-card` rounded 24–28px, JetBrains Mono untuk
+  kode, badge Pending gold / Lunas emerald / Batal red / Kedaluwarsa muted,
+  CTA cyan solid + WA hijau `#25D366` + Telegram `#2AABEE` (sama dengan
+  halaman `/pesanan/[code]`), FAQ `<details>` + kartu cara 1-2-3 seperti
+  `/cara-order`. Mobile-first max-w 720px, tap target ≥44px.
+- Privasi: verifikasi `POST /api/orders/lookup` (kode + WA dinormalisasi
+  08/+62/62, banding `constantTimeEqual`), 404 generik untuk kode-salah
+  maupun WA-tidak-cocok (anti-oracle enumerasi), WA/email tampil mask,
+  rate-limit scope `orders:lookup` yang sama dengan lookup lain.
+- Nyaman: validasi inline format kode & WA, tombol Salin kode, riwayat lokal
+  5 terakhir (`axvara-track-recent`, mask WA), deep-link `?code=&wa=` dari
+  chat bot, tautan "Lacak pesanan lain" tanpa reload halaman.
 
 ### 5.7b Framing QRIS di /pesanan/[code] (2026-09-16, live)
 - Urutan vertikal: label **"Scan QRIS"** (font-display 20px bold putih) →

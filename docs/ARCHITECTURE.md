@@ -93,7 +93,8 @@ axvara/
 │   ├── garansi-replace/          # Ketentuan layanan & garansi third-party (acuan klaim, garansi ikut deskripsi produk)
 │   ├── produk/[slug]/          # PDP: server component SEO (metadata/JSON-LD/h1 D1) + client interaktif
 │   │   ├── checkout/       # Checkout — QRIS otomatis / bukti untuk transfer manual
-│   ├── pesanan/[code]/
+│   ├── pesanan/[code]/         # Status + QRIS dinamis + polling lunas (dari checkout)
+│   ├── lacak-pesanan/          # Lacak mandiri kode + WA via POST /api/orders/lookup + timeline + auto-refresh
 │   ├── admin/
 │   │   └── page.tsx             # Shell + modul admin berbasis query section
 │   ├── api/
@@ -298,6 +299,7 @@ CREATE TABLE store_settings (
 | GET/POST/PUT | /api/payment-methods[?id=] | Baca metode aktif / tambah bank / kelola rekening dan QRIS | public/admin |
 | GET/PUT | /api/store-settings | Baca identitas storefront / perbarui nama, kontak, footer, logo | public/admin |
 | POST | /api/orders | Verifikasi signed quote, buat pesanan idempotent, reservasi stok atomik | - |
+| POST | /api/orders/lookup | Lacak mandiri: verifikasi pasangan kode + WA (normalisasi 08/+62/62, constant-time), 404 generik anti-enumerasi, WA/email mask, rate-limit `orders:lookup` | - |
 | GET | /api/orders/:code | Cek status pesanan via code | - |
 | GET | /api/payments/qris/:code/image | Render PNG QRIS dinamis untuk invoice aktif | code order |
 | POST | /api/payments/qris/:code/reissue | Terbitkan QRIS baru untuk order yang masih hidup tetapi QR-nya sudah kedaluwarsa. Hanya boleh saat invoice lama SUDAH mati — syarat itulah yang mencegah pemegang kode order lain membatalkan QR yang sedang dipakai. Maks 3x/order, rate limit 5/menit/IP | code order |

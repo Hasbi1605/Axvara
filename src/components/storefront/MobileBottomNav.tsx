@@ -37,6 +37,12 @@ export function MobileBottomNav() {
       active: pathname === "/cara-order",
     },
     {
+      label: "Lacak",
+      href: "/lacak-pesanan",
+      icon: "purchase-order" as const,
+      active: pathname?.startsWith("/lacak-pesanan"),
+    },
+    {
       label: "Katalog",
       href: "/#katalog",
       icon: "shopping-bag" as const,

@@ -72,6 +72,7 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 | FR-S9 | Bukti transfer JPG/PNG/WebP max 5MB wajib untuk SeaBank/e-wallet; QRIS tidak memerlukan upload bukti | P0 MVP |
 | FR-S10 | Setelah order sukses: halaman Terima Kasih + nomor pesanan (AXV-XXXX) + WA admin + status Pending | P0 MVP |
 | FR-S11 | Pembeli bisa cek status pesanan via nomor WA / kode pesanan (tanpa login) | P1 ✅ live |
+| FR-S11a | Halaman `/lacak-pesanan`: form kode pesanan (AXV-YYYYMMDD-XXXXXXXX) + nomor WA checkout, verifikasi server via `POST /api/orders/lookup`, timeline Dibuat → Pembayaran → Diproses, badge Pending/Lunas/Dibatalkan/Kedaluwarsa, auto-refresh Pending 10 detik, deep-link `?code=&wa=`, riwayat lokal 5 terakhir, tautan dari navbar/footer/bottom-nav/cara-order/halaman pesanan | P1 ✅ live 2026-09-17 |
 | FR-S12 | Notifikasi WA otomatis ke pembeli saat admin konfirmasi lunas (kirim lisensi) | P1 ✅ live (gateway Baileys) |
 | FR-S13 | Wishlist & histori pesanan jika pembeli login (opsional, email/WA OTP) | P2 |
 | FR-S14 | Bot Telegram @Axvara_bot: /start (foto welcome + sapaan), katalog, cari, keranjang, checkout QRIS, pesanan, garansi | P0 ✅ live |

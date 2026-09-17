@@ -79,6 +79,7 @@ export function Navbar() {
           </button>
           <nav className="hidden sm:flex items-center gap-1 text-sm text-white/70">
             <Link href="/#katalog" className="px-3 py-2 rounded-full hover:text-white hover:bg-white/10 transition">Katalog</Link>
+            <Link href="/lacak-pesanan" className="px-3 py-2 rounded-full hover:text-white hover:bg-white/10 transition">Lacak Pesanan</Link>
             <Link href="/artikel" className="px-3 py-2 rounded-full hover:text-white hover:bg-white/10 transition">Artikel</Link>
           </nav>
           <button
