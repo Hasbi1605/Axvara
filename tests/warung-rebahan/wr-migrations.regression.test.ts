@@ -218,6 +218,22 @@ describe("migrasi WR berurutan di DB production lama", () => {
       sql.close();
     }
   });
+
+  it("0036: log forward email WR idempoten (UNIQUE gmail_message_id)", async () => {
+    const sql = createPreWrDatabase();
+    try {
+      sql.exec(fs.readFileSync("drizzle/migrations/0027_warung_rebahan.sql", "utf8"));
+      sql.exec(fs.readFileSync("drizzle/migrations/0036_wr_email_forward.sql", "utf8"));
+      sql.prepare("INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status) VALUES('AXV-F','B','628','[]',100,'qris','lunas','paid')").run();
+      sql.prepare("INSERT INTO wr_email_forward_log(gmail_message_id,wr_invoice,axvara_order_code,kind,buyer_email,channel) VALUES('msg-1','RBHN-1','AXV-F','invite_sent','b@x.id','email')").run();
+      // Retry forwarder dengan gmail_message_id sama → ditolak UNIQUE.
+      expect(() => sql.prepare("INSERT INTO wr_email_forward_log(gmail_message_id,wr_invoice,kind) VALUES('msg-1','RBHN-1','order_update')").run()).toThrow();
+      // Kind liar ditolak CHECK.
+      expect(() => sql.prepare("INSERT INTO wr_email_forward_log(gmail_message_id,kind) VALUES('msg-2','spam')").run()).toThrow();
+    } finally {
+      sql.close();
+    }
+  });
 });
 
 describe("regresi #14: bootstrap schema.sql mendukung seluruh operasi WR", () => {

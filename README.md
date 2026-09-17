@@ -214,7 +214,11 @@ nomor WA + capability token. Blueprint: `docs/WARUNG-REBAHAN-INTEGRATION.md`; ar
 **Warung Rebahan** di admin. Webhook WR: `https://axvara.tech/api/webhook/warung`.
 Antrean order di tab yang sama bisa dicari by invoice WR (`#RBHN-…` dari email
 WR) — baris hasil menampilkan buyer Axvara (nama · WA · email) untuk forward
-manual email WR dengan branding Axvara.
+manual email WR dengan branding Axvara. **Bot otomatis (2026-09-17):** email WR
+(label Gmail `WR-INGEST`) diteruskan otomatis sebagai email branding Axvara via
+`POST /api/webhook/wr-email` + Resend (fallback WA bila buyer tanpa email);
+pasang forwarder `docs/WR-EMAIL-FORWARDER.gs.js` + 3 env (`WR_EMAIL_WEBHOOK_SECRET`,
+`RESEND_API_KEY`, `FORWARD_FROM_EMAIL`) sebagai `secret_text`.
 Opsi A (disarankan): API key dipegang proxy Heroku — Pages cukup
 `WARUNG_REBAHAN_PROXY_URL` + `WARUNG_REBAHAN_PROXY_TOKEN`.
 

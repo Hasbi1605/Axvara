@@ -884,6 +884,34 @@ walaupun seluruh katalog gagal. Batch yang berhenti di batas budget
   putuskan manual (tanpa auto-refund). Order failed WR → `fulfillment_status='failed'`,
   status uang `lunas` tidak diubah otomatis.
 
+### Bot email WR→buyer (white-label, 2026-09-17)
+
+Email WR (`info@warungrebahan.com`) masuk mailbox ingest, bukan ke buyer —
+bot meneruskannya sebagai email branding Axvara (nol jejak "Warung Rebahan"):
+
+- **Ingest:** filter Gmail `from:info@warungrebahan.com` → label `WR-INGEST` +
+  Skip Inbox. Apps Script `docs/WR-EMAIL-FORWARDER.gs.js` (trigger per-menit)
+  POST subject + body ke `POST /api/webhook/wr-email` dengan
+  `WR_EMAIL_WEBHOOK_SECRET`, lalu cap label `WR-SENT`. Hanya 5xx/429/timeout
+  yang di-retry; Gmail TIDAK pernah dipanggil dari Pages (tidak edge-safe).
+- **Parse:** `src/lib/warung-rebahan/email-forward.ts` ambil invoice
+  `RBHN-…` (kunci join), status, produk/varian, email tujuan invite, total.
+  Dua template Axvara: `order_update` (Pesanan Diproses) + `invite_sent`
+  (Invite Terkirim) — link invoice + kontak selalu ke Axvara.
+- **Join + kirim:** invoice → `wr_order_links.wr_order_id` → buyer
+  (`orders.customer_email`). Kirim via Resend (`RESEND_API_KEY` +
+  `FORWARD_FROM_EMAIL`, mis. `noreply@axvara.id` — JANGAN SMTP Gmail
+  pribadi). Buyer tanpa email → fallback teks ke WA via `whatsapp_outbox`
+  (idempoten `wr-email:order:invoice:kind`, diproses cron).
+- **Idempoten:** `wr_email_forward_log.gmail_message_id` UNIQUE (migrasi
+  0036) — retry forwarder = `duplicate` tanpa kirim ulang. Status:
+  `forwarded` / `duplicate` / `unmatched` (invoice tak dikenal, untuk
+  reconciler manual) / `skipped` (tanpa invoice) / `held` 202 (Resend belum
+  dikonfigurasi / buyer tanpa kontak — tidak hilang).
+- **Env baru** (`secret_text`, lihat `.env.example`): `WR_EMAIL_WEBHOOK_SECRET`,
+  `RESEND_API_KEY`, `FORWARD_FROM_EMAIL`.
+- **Batas LIKE D1** (50 byte) berlaku untuk param `?q=` pencarian admin WR.
+
 ## 16. Insiden operasional 2026-09-14 + arsitektur proxy terpisah (WAJIB DIBACA agent)
 
 Hari ini prod lumpuh total (login 503, bot WA/Telegram mati, QRIS hilang, varian
