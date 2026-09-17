@@ -109,6 +109,12 @@ Setiap kali ubah kode/docs di `axvara/`, **WAJIB catat di `axvara/CHANGELOG.md`*
 - Deploy CI/CD memakai GitHub Actions Secrets `CLOUDFLARE_API_KEY`, `CLOUDFLARE_EMAIL`, dan `CLOUDFLARE_ACCOUNT_ID`. Operasi Cloudflare manual/recovery WAJIB mengambil kredensial dari `.cf-credentials` dengan `set -a; source .cf-credentials; set +a`.
 - Jangan hardcode key di kode/docs/AGENTS.md — rujuk file ini saja.
 
+## Kredensial Resend + bot email (WAJIB)
+- File sumber tunggal: `axvara/.resend-credentials` — berisi `RESEND_API_KEY` + `WR_EMAIL_WEBHOOK_SECRET` + `FORWARD_FROM_EMAIL` (pengirim `noreply@axvara.tech`, domain verified Tokyo).
+- **File ini di-ignore git** (`.gitignore: .resend-credentials*`) — JANGAN pernah commit/push, jangan echo isinya di log/chat. Aturan yang sama dengan `.cf-credentials`/`.heroku-credentials`.
+- Script Apps Script final (dengan secret terisi) HANYA di `/tmp/axvara-wr-forwarder-paste.js` (di luar repo, `*forwarder-paste*` di-ignore) — JANGAN tulis secret ke `docs/WR-EMAIL-FORWARDER.gs.js` (masuk git).
+- Rotasi: generate baru → update file ini → update 3 Pages Secrets (`secret_text`) → redeploy → update Apps Script.
+
 ## Sebelum menyelesaikan percakapan (checklist)
 Agent **wajib** pastikan sebelum jawab "selesai":
 - [ ] Test pass: `npx vitest run --run` — seluruh test hijau (jumlah terbaru ada di entri teratas `CHANGELOG.md`), tidak ada test gagal

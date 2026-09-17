@@ -57,6 +57,10 @@ cache/**
 .cf-credentials*
 .heroku-credentials
 .heroku-credentials*
+.resend-credentials
+.resend-credentials*
+*wr-forwarder-paste*
+*forwarder-paste*
 .opencode/
 /axvara-homepage-optimized.png
 /whatsapp-logo-512.png
