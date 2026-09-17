@@ -109,21 +109,34 @@ function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-function shell(title: string, subtitle: string, inner: string): string {
-  // Header email Axvara: logo Prism wireframe (inline SVG, currentColor=cyan)
-  // + wordmark tracking lebar — sama seperti Navbar (font 300, 0.22em).
-  // Body terang agar nyaman dibaca di Gmail (light default) dan tetap
-  // terbaca di dark-mode (background kartu putih solid, bukan transparan).
-  const logo = `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="37" viewBox="0 0 120 110" fill="none" stroke="#00E5FF" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"><path d="M60 4 L6.5 104 L113.5 104 Z"/><path d="M60 4 L60 49.5"/><path d="M60 49.5 L35.8 78.5 L84.2 78.5 Z"/><path d="M35.8 78.5 L84.2 78.5"/><path d="M35.8 78.5 L6.5 104"/><path d="M84.2 78.5 L113.5 104"/></svg>`;
-  return `<!doctype html><html lang="id"><body style="margin:0;background:#080C1E;font-family:-apple-system,'SF Pro Text',Inter,Arial,sans-serif">`
+/** Nomor WA tampil (0895…) → link wa.me internasional (62…). */
+function waLink(local: string): string {
+  const digits = local.replace(/\D/g, "");
+  const intl = digits.startsWith("0") ? `62${digits.slice(1)}` : digits;
+  return `https://wa.me/${intl}?text=${encodeURIComponent("Halo AXVARA, saya butuh bantuan pesanan")}`;
+}
+
+/** URL absolut logo email — Gmail tidak render SVG inline, jadi pakai PNG
+ *  (path Prism SAMA PERSIS dengan Navbar, stroke putih seperti navbar).
+ *  siteUrl diteruskan dari webhook agar preview lokal juga bisa (localhost). */
+export function emailLogoUrl(siteUrl: string): string {
+  const base = /^https?:\/\//i.test(siteUrl.trim()) ? siteUrl.trim().replace(/\/$/, "") : "https://axvara.tech";
+  return `${base}/brand/axvara-email-mark.png`;
+}
+
+function shell(title: string, subtitle: string, inner: string, opts: { logoUrl: string; siteUrl: string }): string {
+  // Header: logo Prism PNG (asli navbar) + wordmark tracking lebar.
+  // Body email TERANG PENUH (termasuk area luar kartu) — background midnight
+  // di Gmail tampil sebagai blok hitam jelek dan mempergelap kartu.
+  return `<!doctype html><html lang="id"><body style="margin:0;background:#f1f5ff;font-family:-apple-system,'SF Pro Text',Inter,Arial,sans-serif">`
     + `<div style="max-width:560px;margin:0 auto;padding:24px 16px">`
-    + `<div style="background:#0B1025;border:1px solid rgba(255,255,255,.08);border-radius:20px 20px 0 0;padding:28px 24px;text-align:center">`
-    + `<div style="margin:0;text-align:center;line-height:0">` + logo + `</div>`
+    + `<div style="background:#080C1E;border-radius:20px 20px 0 0;padding:28px 24px;text-align:center">`
+    + `<div style="margin:0;text-align:center;line-height:0"><img src="${esc(opts.logoUrl)}" width="72" height="66" alt="AXVARA" style="display:inline-block;border:0;outline:none" /></div>`
     + `<p style="margin:10px 0 0;color:#fff;font-size:15px;font-weight:300;letter-spacing:4.5px">AXVARA</p>`
     + `<h1 style="margin:12px 0 0;color:#fff;font-size:22px;font-weight:700">${esc(title)}</h1>`
     + `<p style="margin:8px 0 0;color:rgba(241,245,255,.65);font-size:14px">${esc(subtitle)}</p></div>`
     + `<div style="background:#fff;border-radius:0 0 20px 20px;padding:24px">${inner}</div>`
-    + `<p style="text-align:center;color:rgba(241,245,255,.4);font-size:12px;margin:16px 0 0">Email otomatis Axvara — mohon jangan dibalas.</p>`
+    + `<p style="text-align:center;color:#8892a8;font-size:12px;margin:16px 0 0">Email otomatis <a href="${esc(opts.siteUrl)}" style="color:#8892a8;text-decoration:underline">Axvara</a> — mohon jangan dibalas.</p>`
     + `</div></body></html>`;
 }
 
@@ -141,6 +154,16 @@ function cta(href: string, label: string): string {
 export function buildAxvaraForwardTemplate(ctx: ForwardContext): AxvaraForwardTemplate {
   const { parsed } = ctx;
   const firstName = ctx.buyerName.trim().split(/\s+/)[0] || "Kak";
+  // siteUrl = origin invoice (https://axvara.tech di prod) — untuk logo + link.
+  const siteUrl = ctx.invoiceUrl.match(/^https?:\/\/[^/]+/i)?.[0] ?? "https://axvara.tech";
+  const logoUrl = emailLogoUrl(siteUrl);
+  const waHref = waLink(ctx.supportWa);
+  // Footer: "Butuh bantuan?" (teks) → tombol wa.me klikable → "Axvara" link web.
+  const supportBlock =
+    `<p style="text-align:center;font-size:13px;color:#0f1430;font-weight:700;margin:20px 0 8px">Butuh bantuan? Tim kami siap membantu:</p>`
+    + `<p style="text-align:center;margin:0">`
+    + `<a href="${esc(waHref)}" style="display:inline-block;background:#22C55E;color:#fff;text-decoration:none;font-weight:700;font-size:13px;padding:11px 24px;border-radius:999px">Hubungi Kami via WhatsApp</a></p>`
+    + `<p style="text-align:center;font-size:13px;color:#64748b;margin:12px 0 0">Terima kasih sudah berbelanja di <a href="${esc(siteUrl)}" style="color:#0f1430;font-weight:700;text-decoration:none">Axvara</a>.</p>`;
   if (parsed.kind === "invite_sent") {
     const target = parsed.targetEmail ?? "email tujuan kamu";
     const product = parsed.product ?? "produk kamu";
@@ -159,8 +182,8 @@ export function buildAxvaraForwardTemplate(ctx: ForwardContext): AxvaraForwardTe
       + `<p style="margin:8px 0 0"><span style="color:#94a3b8;font-size:11px;letter-spacing:1px">EMAIL TUJUAN</span><br><b style="color:#0f1430">${esc(target)}</b></p></div>`
       + `<div style="background:#f0fdff;border:1px solid rgba(0,229,255,.35);border-radius:12px;padding:12px 16px;margin-top:12px;font-size:13px;color:#0e7490">Silakan periksa <b>Inbox</b> atau folder <b>Spam</b>, lalu klik tautan di email undangan untuk mulai menggunakan layanan.</div>`
       + cta(ctx.invoiceUrl, "Lihat Invoice →")
-      + `<p style="text-align:center;font-size:13px;color:#64748b;margin:20px 0 0">Butuh bantuan? Tim kami siap membantu: <b>WA ${esc(ctx.supportWa)}</b></p>`
-      + `<p style="text-align:center;font-size:13px;color:#64748b;margin:12px 0 0">Terima kasih sudah berbelanja di <b style="color:#0f1430">Axvara</b>.</p>`,
+      + supportBlock,
+      { logoUrl, siteUrl },
     );
     return { subject, text, html };
   }
@@ -181,8 +204,8 @@ export function buildAxvaraForwardTemplate(ctx: ForwardContext): AxvaraForwardTe
     + `<p style="color:#334155;font-size:14px;line-height:1.7;margin:0 0 12px">Halo ${esc(firstName)}, pesanan <b>${esc(product)}</b> kamu sedang diproses. Detail akun akan segera tersedia di halaman invoice.</p>`
     + (detailRows ? `<div style="background:#f8fafc;border-left:3px solid #00E5FF;border-radius:0 12px 12px 0;padding:12px 16px;font-size:13px;color:#475569">${detailRows}</div>` : "")
     + cta(ctx.invoiceUrl, "Lihat Invoice →")
-    + `<p style="text-align:center;font-size:13px;color:#64748b;margin:20px 0 0">Butuh bantuan? Tim kami siap membantu: <b>WA ${esc(ctx.supportWa)}</b></p>`
-    + `<p style="text-align:center;font-size:13px;color:#64748b;margin:12px 0 0">Terima kasih sudah berbelanja di <b style="color:#0f1430">Axvara</b>.</p>`,
+    + supportBlock,
+    { logoUrl, siteUrl },
   );
   return { subject, text, html };
 }

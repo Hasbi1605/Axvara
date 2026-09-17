@@ -65,6 +65,11 @@ describe("parser email WR", () => {
     expect(tpl.html).toContain("uji.wr.tes@gmail.com");
     expect(tpl.html).toContain("https://axvara.tech/pesanan/AXV-20260916-AAAAAA");
     expect(tpl.text).not.toMatch(/warung.?rebahan/i);
+    // Revisi buyer 2026-09-17: logo PNG asli navbar + tombol WA + link Axvara.
+    expect(tpl.html).toContain("https://axvara.tech/brand/axvara-email-mark.png");
+    expect(tpl.html).not.toContain("<svg");
+    expect(tpl.html).toContain("https://wa.me/6289519388264");
+    expect(tpl.html).toContain('href="https://axvara.tech"');
   });
 
   it("update: ambil invoice + status + total, template tanpa brand WR", () => {
@@ -83,6 +88,8 @@ describe("parser email WR", () => {
     });
     expect(tpl.html).not.toMatch(/warung.?rebahan/i);
     expect(tpl.html).toContain("Pesanan Diproses");
+    expect(tpl.html).toContain("https://axvara.tech/brand/axvara-email-mark.png");
+    expect(tpl.html).toContain("https://wa.me/6289519388264");
   });
 
   it("tanpa invoice → unknown → webhook skip tanpa kirim", async () => {
