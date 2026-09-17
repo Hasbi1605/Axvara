@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-09-17 — Bersih antrean tes: 2 event QRIS tes koneksi 14 Sep + 7 job yatim (order sudah dihapus) + order Ferdi (tes teman, manual_required) + anaknya — docs/ARCHITECTURE.md tak perlu ubah (data tes, bukan perilaku) — (verifikasi: kartu QRIS 0 + Fulfillment 0 di D1 prod)
+
 - 2026-09-17 — Koreksi vonis cron + hapus 14 order test lama: cron_phase=notify basi BUKAN bukti macet (itu giliran berikutnya dalam rotasi 5 fase) — bukti hidup = wr_sync_log trigger=cron tiap ~30 mnt penuh 12 jam (48p/87v success) + phase berpindah; hapus 14 order test 6–8 Sep + anaknya (items/jobs/transactions/history/dana events), sisa lunas tinggal Ferdi (asli) + AB12 (uji WR) — docs/ARCHITECTURE.md (§16.6 koreksi cara baca indikator) — (verifikasi: D1 sisa lunas 2, sync cron ritmis per jam)
 
 - 2026-09-17 — Badge pengiriman tanpa emoji (anti AI slop) + sinkron docs: pill "Kirim otomatis" (emerald) / "Dikirim admin" (gold) per kartu varian PDP + QuickVariantModal, teks polos per baris di Telegram/WA, tombol admin AUTO/MANUAL, docs ARCHITECTURE §16.7 + DESIGN §5.3c diselaraskan dari label emoji lama — docs/ARCHITECTURE.md, docs/DESIGN.md — (verifikasi: 785/785 test, dev GET / 200 + CSS 200, Obscura PDP BADGE-OK)
