@@ -381,8 +381,8 @@ export function WarungRebahanManager() {
                     <label className="flex items-center gap-1.5 text-xs text-white/55">%<input value={edit.percent} onChange={(e) => setEditingMarkup((s) => ({ ...s, [row.wr_variant_id]: { percent: e.target.value, fixed: edit.fixed } }))} inputMode="numeric" className="h-9 w-16 rounded-lg border border-white/10 bg-black/20 px-2 text-right text-xs text-white focus:border-[#00E5FF]/50 focus:outline-none" /></label>
                     <label className="flex items-center gap-1.5 text-xs text-white/55">+Rp<input value={edit.fixed} onChange={(e) => setEditingMarkup((s) => ({ ...s, [row.wr_variant_id]: { percent: edit.percent, fixed: e.target.value } }))} inputMode="numeric" className="h-9 w-24 rounded-lg border border-white/10 bg-black/20 px-2 text-right text-xs text-white focus:border-[#00E5FF]/50 focus:outline-none" /></label>
                     <button onClick={() => void saveMarkup(row)} className="inline-flex h-9 items-center rounded-xl bg-white px-3.5 text-xs font-bold text-[#07101f] transition hover:bg-white/90">Simpan</button>
-                    <button onClick={() => void setDeliveryClass(row, "restock")} title="Kunci sebagai RESTOK (auto)" className="inline-flex h-9 items-center rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-2.5 text-[11px] font-bold text-emerald-300 transition hover:bg-emerald-500/20">⚡</button>
-                    <button onClick={() => void setDeliveryClass(row, "made_by_order")} title="Kunci sebagai MBO (manual)" className="inline-flex h-9 items-center rounded-xl border border-[#FFB800]/25 bg-[#FFB800]/10 px-2.5 text-[11px] font-bold text-[#FFD66B] transition hover:bg-[#FFB800]/20">✋</button>
+                    <button onClick={() => void setDeliveryClass(row, "restock")} title="Kunci sebagai RESTOK (auto)" className="inline-flex h-9 items-center rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-2.5 text-[11px] font-bold text-emerald-300 transition hover:bg-emerald-500/20">AUTO</button>
+                    <button onClick={() => void setDeliveryClass(row, "made_by_order")} title="Kunci sebagai MBO (manual)" className="inline-flex h-9 items-center rounded-xl border border-[#FFB800]/25 bg-[#FFB800]/10 px-2.5 text-[11px] font-bold text-[#FFD66B] transition hover:bg-[#FFB800]/20">MANUAL</button>
                   </div>
                 </article>
               );
@@ -406,11 +406,11 @@ function StatusBadge({ status }: { status: string }) {
 function DeliveryBadge({ wrClass, source }: { wrClass: string | null; source: string | null }) {
   if (wrClass === "restock") {
     const src = source === "admin" ? "kunci admin" : source === "screenshot" ? "daftar WR" : source === "system" ? "tebakan" : "";
-    return <span title={src ? `RESTOK • auto • ${src}` : "RESTOK • auto"} className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300">⚡ RESTOK{src ? ` • ${src}` : ""}</span>;
+    return <span title={src ? `RESTOK • auto • ${src}` : "RESTOK • auto"} className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300">RESTOK{src ? ` • ${src}` : ""}</span>;
   }
   if (wrClass === "made_by_order") {
     const src = source === "admin" ? "kunci admin" : source === "screenshot" ? "daftar WR" : source === "system" ? "tebakan" : "";
-    return <span title={src ? `MBO • manual • ${src}` : "MBO • manual"} className="rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFD66B]">✋ MBO{src ? ` • ${src}` : ""}</span>;
+    return <span title={src ? `MBO • manual • ${src}` : "MBO • manual"} className="rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFD66B]">MBO{src ? ` • ${src}` : ""}</span>;
   }
   return <span title="Belum dikunci — label pembeli = Dikirim admin" className="rounded-full border border-white/15 bg-white/[0.05] px-2 py-0.5 text-[10px] font-bold text-white/45">? belum dikunci</span>;
 }

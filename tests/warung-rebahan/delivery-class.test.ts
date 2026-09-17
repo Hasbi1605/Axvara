@@ -38,10 +38,10 @@ describe("wr delivery class", () => {
     expect(guessDeliveryClass({ productName: "Produk Misterius", variantName: "Varian X" })).toBe("made_by_order");
   });
 
-  it("label pembeli singkat", () => {
-    expect(deliveryLabelForBuyer("restock")).toBe("⚡ Kirim otomatis");
-    expect(deliveryLabelForBuyer("made_by_order")).toBe("✋ Dikirim admin");
-    expect(deliveryLabelForBuyer(null)).toBe("✋ Dikirim admin");
+  it("label pembeli singkat (tanpa emoji — styling diurus UI)", () => {
+    expect(deliveryLabelForBuyer("restock")).toBe("Kirim otomatis");
+    expect(deliveryLabelForBuyer("made_by_order")).toBe("Dikirim admin");
+    expect(deliveryLabelForBuyer(null)).toBe("Dikirim admin");
   });
 
   it("label admin menyebut sumber", () => {

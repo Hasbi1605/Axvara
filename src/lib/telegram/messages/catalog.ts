@@ -92,7 +92,7 @@ export type TelegramVariantLine = {
   warranty?: string | null;
   duration?: string | null;
   stock?: number | null;
-  /** Kelas pengiriman WR (migrasi 0032): restock = ⚡, selainnya = ✋. */
+  /** Kelas pengiriman WR (migrasi 0032): restock = otomatis, selainnya = via admin. */
   wr_delivery_class?: string | null;
 };
 
@@ -163,10 +163,12 @@ export function productDetailMessage(product: {
       const war = v.warranty?.trim() || "Tanpa Garansi";
       const dur = v.duration?.trim() ? ` • ${escapeHtml(v.duration.trim())}` : "";
       const out = v.stock === 0 ? " ❌ <i>HABIS</i>" : "";
-      // Label pengiriman WR singkat (migrasi 0032): restock = ⚡ otomatis,
-      // selainnya = ✋ admin. Null (non-WR / belum dikunci) = ✋ aman.
-      const deliv = v.wr_delivery_class === "restock" ? " ⚡" : " ✋";
-      lines.push(`${num}. <b>${escapeHtml(truncate(v.label, 60))}</b>${dur}${out}${deliv}`);
+      // Label pengiriman WR singkat (migrasi 0032): restock = otomatis,
+      // selainnya = via admin. Null (non-WR / belum dikunci) = admin (aman).
+      // Tanpa emoji — teks polos agar tidak terlihat seperti AI slop.
+      const deliv = v.wr_delivery_class === "restock" ? "Kirim otomatis" : "Dikirim admin";
+      lines.push(`${num}. <b>${escapeHtml(truncate(v.label, 60))}</b>${dur}${out}`);
+      lines.push(`   ${escapeHtml(deliv)}`);
       lines.push(`   🛡 ${escapeHtml(war)} • ${formatRupiah(v.price)}`);
     });
     if (product.variants.length > 6) {

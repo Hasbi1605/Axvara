@@ -185,6 +185,13 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
                     <span className="text-xs font-bold leading-tight truncate w-full">
                       {v.label}
                     </span>
+                    <span className="mt-1.5 inline-flex">
+                      {v.wr_delivery_class === "restock" ? (
+                        <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold text-emerald-300">Kirim otomatis</span>
+                      ) : (
+                        <span className="rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-[9px] font-bold text-[#FFD66B]">Dikirim admin</span>
+                      )}
+                    </span>
                     <span className="mt-1 text-xs font-semibold text-[#00E5FF]">
                       {formatRupiah(v.price)}
                       {v.compare_price && v.compare_price > v.price && (

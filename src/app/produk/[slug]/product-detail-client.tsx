@@ -392,6 +392,13 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
                       <div className="flex justify-between items-start">
                         <div className="min-w-0">
                           <span className="block text-sm font-medium text-white">{v.label}</span>
+                          <span className="mt-1.5 inline-flex">
+                            {v.wr_delivery_class === "restock" ? (
+                              <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300">Kirim otomatis</span>
+                            ) : (
+                              <span className="rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFD66B]">Dikirim admin</span>
+                            )}
+                          </span>
                           {v.warranty_type !== 'none' && formatWarranty(v) && (
                             <div className="text-xs text-[#00E5FF]/80 font-medium mt-1 flex items-center gap-1">
                               <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M9 12l2 2 4-4"/><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
@@ -446,14 +453,15 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
 
           {/* Feature list — baris pertama mengikuti kelas pengiriman WR
               varian terpilih (migrasi 0032): restock = kirim otomatis,
-              selainnya = dikirim admin. Jangan janji "5–15 menit" umum
+              selainnya = dikirim admin. Tanpa emoji — badge per-varian di
+              atas yang bicara. Jangan janji "5–15 menit" umum
               untuk produk manual/slow. */}
           <ul className="mt-5 space-y-2.5 text-[13px] text-white/60">
             <li className="flex items-start gap-2">
               <svg viewBox="0 0 16 16" className="w-4 h-4 mt-0.5 shrink-0 text-emerald-400/80" fill="none" stroke="currentColor" strokeWidth={2}><path d="M3 8.5l3 3 7-7" strokeLinecap="round" strokeLinejoin="round"/></svg>
               {termsVariant?.wr_delivery_class === "restock"
-                ? "⚡ Kirim otomatis setelah pembayaran dikonfirmasi"
-                : "✋ Dikirim admin ke kontak setelah pembayaran"}
+                ? "Kirim otomatis setelah pembayaran dikonfirmasi"
+                : "Dikirim admin ke kontak setelah pembayaran"}
             </li>
             <li className="flex items-start gap-2">
               <svg viewBox="0 0 16 16" className="w-4 h-4 mt-0.5 shrink-0 text-emerald-400/80" fill="none" stroke="currentColor" strokeWidth={2}><path d="M3 8.5l3 3 7-7" strokeLinecap="round" strokeLinejoin="round"/></svg>

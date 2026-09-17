@@ -91,8 +91,10 @@ export function productDetailMessage(productName: string, _description: string |
     const num = i + 1;
     const war = formatWarranty(v);
     // Label pengiriman WR singkat (migrasi 0032, parity Telegram).
-    const deliv = (v as { wr_delivery_class?: string | null }).wr_delivery_class === "restock" ? " ⚡" : " ✋";
-    lines.push(`${num}. *${v.label}*${deliv}`);
+    // Tanpa emoji — teks polos agar tidak terlihat seperti AI slop.
+    const deliv = (v as { wr_delivery_class?: string | null }).wr_delivery_class === "restock" ? "Kirim otomatis" : "Dikirim admin";
+    lines.push(`${num}. *${v.label}*`);
+    lines.push(`   ${deliv}`);
     lines.push(`   🛡 ${war || "Tanpa Garansi"}`);
     lines.push(`   「 *${formatRupiah(v.price)}* 」`);
     if (v.stock === 0) lines.push("   ❌ *HABIS*");
