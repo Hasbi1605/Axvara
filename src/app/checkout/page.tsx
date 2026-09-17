@@ -14,13 +14,6 @@ type QuotePaymentMethod = { id: string; label: string; account_number: string; a
 type QuoteIssue = { product_id: number; type: string; message: string };
 type PriceChange = { product_id: number; name: string; previous_price: number; current_price: number; message: string };
 
-// Beli Langsung selalu qty 1 — bila varian punya min > 1 (mis. GSuite 50),
-// quote PASTI menjawab 409 below_minimum. Tampilkan panduan jelas + arahkan
-// ke PDP agar pembeli menaikkan qty via keranjang (bulk), bukan dead-end.
-function isBelowMinimumIssue(issues: QuoteIssue[]): boolean {
-  return issues.some((i) => i.type === "below_minimum");
-}
-
 type DirectProduct = Product & {
   variantId?: number;
   variantLabel?: string;
@@ -46,6 +39,13 @@ function CheckoutInner() {
   const [directError, setDirectError] = React.useState<string | null>(null);
   const buySlug = searchParams.get("buy");
   const buyVariantId = searchParams.get("variant");
+  // Qty dari PDP stepper (?qty=) ala marketplace. Tanpa param = 1 (perilaku
+  // lama). Selalu di-clamp server oleh quote — ini hanya preferensi awal.
+  const buyQtyRaw = searchParams.get("qty");
+  const buyQty = (() => {
+    const n = Math.floor(Number(buyQtyRaw));
+    return Number.isFinite(n) && n >= 1 ? Math.min(100, n) : 1;
+  })();
   React.useEffect(() => {
     if (!buySlug) { setDirectProduct(null); setDirectError(null); return; }
     setDirectProduct(null);
@@ -88,13 +88,15 @@ function CheckoutInner() {
   const isDirect = Boolean(buySlug);
   const items = useMemo(
     () => isDirect
-      ? (buyProduct ? [{ ...buyProduct, qty: 1, id: buyProduct.id, price: buyProduct.price, image: buyProduct.image, name: buyProduct.name, variantId: buyProduct.variantId, variantLabel: buyProduct.variantLabel, minQty: (buyProduct as { minQty?: number }).minQty }] : [])
+      ? (buyProduct ? [{ ...buyProduct, qty: buyQty, id: buyProduct.id, price: buyProduct.price, image: buyProduct.image, name: buyProduct.name, variantId: buyProduct.variantId, variantLabel: buyProduct.variantLabel, minQty: (buyProduct as { minQty?: number }).minQty }] : [])
       : cartItems,
-    [isDirect, buyProduct, cartItems],
+    [isDirect, buyProduct, buyQty, cartItems],
   );
   const subtotal = items.reduce((a, b) => a + b.price * b.qty, 0);
-  // Beli Langsung untuk varian min>1 selalu gagal quote — tampilkan hint
-  // dini (sebelum dialog 409) agar pembeli paham harus via keranjang bulk.
+  // Beli Langsung kini membawa qty stepper PDP (?qty=), jadi quote
+  // below_minimum hanya untuk keranjang lama di bawah min — tawarkan
+  // penyesuaian inline ke min (ala Shopee: server authoritative, frontend
+  // menjelaskan penyesuaian), bukan dead-end "kembali belanja".
   const directMinQty = isDirect && buyProduct ? Math.max(1, Number((buyProduct as { minQty?: number }).minQty ?? 1) || 1) : 1;
 
   const [method, setMethod] = useState<Method | null>(null);
@@ -187,6 +189,21 @@ function CheckoutInner() {
     [items],
   );
   const quoteKey = JSON.stringify(quoteRequestItems);
+  // Cart store (untuk penyesuaian inline min): Beli Langsung tidak pakai
+  // store, jadi penyesuaian di bawah hanya untuk mode keranjang.
+  const setQty = useCart((s) => s.setQty);
+  // below_minimum hanya dari keranjang lama di bawah min: tawarkan naikkan
+  // ke min inline (qty + refetch quote), bukan dead-end.
+  const belowMinIssues = quoteIssues.filter((i) => i.type === "below_minimum");
+  const adjustToMinimum = () => {
+    for (const issue of belowMinIssues) {
+      const target = items.find((it) => Number(it.id) === Number(issue.product_id));
+      if (!target) continue;
+      const m = Math.floor(Number(issue.message.match(/minimal pembelian (\d+)/)?.[1] ?? 0));
+      if (m > target.qty) setQty(target.id, m, target.variantId);
+    }
+    setShowIssueDialog(false);
+  };
 
   // Fetch quote whenever product identity, quantity, or snapshot price changes.
   useEffect(() => {
@@ -574,12 +591,14 @@ function CheckoutInner() {
         </div>
       </div>
 
-      {/* Price-change / stock / minimum-qty issue dialog */}
+      {/* Price-change / stock / minimum-qty issue dialog.
+          Dialog memakai panel solid yang sama dengan modal admin
+          (bg #0B1025, bukan glass transparan) agar konsisten. */}
       {showIssueDialog && (quoteIssues.length > 0 || priceChanges.length > 0) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4" role="dialog" aria-modal="true" aria-labelledby="quote-change-title">
-          <div className="ax-glass-card rounded-2xl p-6 max-w-md w-full space-y-4">
-            <h3 id="quote-change-title" className="text-white font-semibold text-base">{isBelowMinimumIssue(quoteIssues) ? "Minimal Pembelian Belum Terpenuhi" : "Perubahan Harga / Stok"}</h3>
-            <p className="text-sm text-white/60">{isBelowMinimumIssue(quoteIssues) ? "Varian ini dijual grosir — jumlah di bawah ini ditolak sebelum bayar:" : "Beberapa item berubah sejak kamu menambahkannya:"}</p>
+          <div className="rounded-2xl border border-white/10 bg-[#0B1025] p-6 max-w-md w-full space-y-4 shadow-[0_24px_64px_rgba(0,0,0,0.6)]">
+            <h3 id="quote-change-title" className="text-white font-semibold text-base">{belowMinIssues.length > 0 ? "Sesuaikan Jumlah Pembelian" : "Perubahan Harga / Stok"}</h3>
+            <p className="text-sm text-white/60">{belowMinIssues.length > 0 ? "Produk ini punya minimal pembelian — naikkan jumlah ke batasnya untuk lanjut:" : "Beberapa item berubah sejak kamu menambahkannya:"}</p>
             <ul className="space-y-2">
               {quoteIssues.map((issue, i) => (
                 <li key={i} className="text-sm text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2">{issue.message}</li>
@@ -591,10 +610,12 @@ function CheckoutInner() {
               ))}
             </ul>
             <div className="flex gap-3">
-              {quoteIssues.length === 0 && priceChanges.length > 0 && (
+              {belowMinIssues.length > 0 && !isDirect ? (
+                <button onClick={adjustToMinimum} className="flex-1 h-10 rounded-xl bg-[#00E5FF] text-[#080C1E] font-semibold text-sm">Sesuaikan ke minimum</button>
+              ) : quoteIssues.length === 0 && priceChanges.length > 0 ? (
                 <button onClick={() => { setShowIssueDialog(false); setQuoteAccepted(true); }} className="flex-1 h-10 rounded-xl bg-[#00E5FF] text-[#080C1E] font-semibold text-sm">Setujui harga baru</button>
-              )}
-              <button onClick={() => { setShowIssueDialog(false); router.push("/#katalog"); }} className="flex-1 h-10 rounded-xl border border-white/20 text-white/70 text-sm">Kembali belanja</button>
+              ) : null}
+              <button onClick={() => { setShowIssueDialog(false); if (belowMinIssues.length === 0) router.push("/#katalog"); }} className="flex-1 h-10 rounded-xl border border-white/20 text-white/70 text-sm">{belowMinIssues.length > 0 && !isDirect ? "Ubah manual" : "Kembali belanja"}</button>
             </div>
           </div>
         </div>

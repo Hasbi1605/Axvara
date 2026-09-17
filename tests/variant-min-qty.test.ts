@@ -111,12 +111,23 @@ describe("variant min_qty — bot & storefront", () => {
     expect(messages).toContain("Minimal pembelian");
   });
 
-  it("web: badge min + keranjang dibuka di min + dialog quote paham below_minimum", () => {
-    expect(read("src/app/produk/[slug]/product-detail-client.tsx")).toContain("Min.");
-    expect(read("src/components/storefront/QuickVariantModal.tsx")).toContain("Min.");
-    expect(read("src/components/storefront/CartDrawer.tsx")).toContain("Min.");
-    expect(read("src/stores/cart.ts")).toContain("WEB_MAX_QTY = 100");
-    expect(read("src/app/checkout/page.tsx")).toContain("below_minimum");
+  it("web: stepper PDP/modal + Beli Langsung bawa qty, dialog konsisten solid", () => {
+    const pdp = read("src/app/produk/[slug]/product-detail-client.tsx");
+    // Badge TIDAK di tiap kartu varian (menumpuk) — info min hanya di stepper.
+    expect(pdp).not.toContain("Min. {Number");
+    expect(pdp).toContain("Jumlah");
+    expect(pdp).toContain("Min. pembelian");
+    expect(pdp).toContain("qty=${safePdpQty}");
+    const modal = read("src/components/storefront/QuickVariantModal.tsx");
+    // Panel solid axvara (#0B1025), bukan glass transparan.
+    expect(modal).toContain('background: "#0B1025"');
+    expect(modal).not.toContain("ax-glass-strong");
+    expect(modal).toContain("Min. pembelian");
+    expect(modal).toContain("qty=${modalQty}");
+    const checkout = read("src/app/checkout/page.tsx");
+    expect(checkout).toContain("Sesuaikan ke minimum");
+    expect(checkout).toContain("bg-[#0B1025]");
+    expect(checkout).not.toContain("isBelowMinimumIssue");
   });
 
   it("admin: input Min. Beli di VariantEditor + ProductVariantRows + API", () => {

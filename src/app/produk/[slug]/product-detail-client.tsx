@@ -40,6 +40,10 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
   const [variantError, setVariantError] = useState<string | null>(null);
   const [descExpanded, setDescExpanded] = useState(false);
   const [variantModal, setVariantModal] = useState<"cart" | "checkout" | null>(null);
+  // Qty stepper PDP ala marketplace — state di atas (sebelum early return)
+  // agar urutan hooks stabil. Nilai valid (min..max) dihitung di bawah dan
+  // dipakai render; effect sinkronisasi ada setelah selectedMinQty dihitung.
+  const [pdpQty, setPdpQty] = useState(1);
 
   useEffect(() => {
     setDetailLoading(true);
@@ -184,6 +188,15 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
   const displayComparePrice = selectedVariant ? selectedVariant.compare_price : product.comparePrice;
   // Minimum pembelian varian terpilih (migrasi 0034): GSuite = 50.
   const selectedMinQty = selectedVariant ? Math.max(1, Number(selectedVariant.min_qty ?? 1) || 1) : 1;
+  // Qty terpilih ala marketplace (Shopee/Tokopedia): stepper dibuka di min,
+  // tidak turun di bawah min, plafon 100. Direset ke min tiap ganti varian.
+  const selectedMaxQty = selectedVariant
+    ? Math.max(selectedMinQty, selectedVariant.stock === -1 ? 100 : Math.max(selectedMinQty, Math.min(100, selectedVariant.stock)))
+    : 100;
+  // Clamp render-time (bukan effect): qty selalu dalam [min, max] varian
+  // aktif tanpa useEffect di bawah early-return (Rules of Hooks). Naik bila
+  // min varian baru lebih besar, turun bila max menyusut.
+  const safePdpQty = Math.min(Math.max(pdpQty, selectedMinQty), selectedMaxQty);
   const variantOutOfStock = variantsEnabled && activeVariants.length > 0
     ? activeVariants.every((variant) => variant.stock === 0)
     : selectedVariant ? selectedVariant.stock === 0 : false;
@@ -394,12 +407,6 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
                       <div className="flex justify-between items-start">
                         <div className="min-w-0">
                           <span className="block text-sm font-medium text-white">{v.label}</span>
-                          {/* Minimum pembelian (migrasi 0034): badge generik — GSuite min 50. */}
-                          {Number(v.min_qty ?? 1) > 1 && (
-                            <span className="mt-1 inline-flex items-center rounded-full border border-[#FFB800]/30 bg-[#FFB800]/10 px-2 py-0.5 text-[11px] font-bold text-[#FFB800]">
-                              Min. {Number(v.min_qty)} pembelian
-                            </span>
-                          )}
                           <span className="mt-1.5 inline-flex">
                             {v.wr_delivery_class === "restock" ? (
                               <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300">Kirim otomatis</span>
@@ -458,6 +465,48 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
 
           {/* Divider */}
           <div className="mt-5 border-t border-white/8" />
+
+          {/* Jumlah pembelian ala marketplace (Shopee/Tokopedia): stepper di
+              bawah varian, dibuka di minimum, floor = min. Satu-satunya
+              tempat info "Min. N" tampil — tidak di tiap kartu varian agar
+              tidak menumpuk. */}
+          {variantsEnabled && selectedVariant && (
+            <div className="mt-4">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-sm font-medium text-white/60">Jumlah</h3>
+                {selectedMinQty > 1 && (
+                  <span className="text-[11px] font-semibold text-[#FFD66B]">Min. pembelian {selectedMinQty}</span>
+                )}
+              </div>
+              <div className="mt-2 flex items-center gap-3">
+                <div className="inline-flex items-center rounded-xl border border-white/10 bg-white/[0.04]">
+                  <button
+                    type="button"
+                    onClick={() => setPdpQty((q) => Math.max(selectedMinQty, q - 1))}
+                    disabled={safePdpQty <= selectedMinQty}
+                    aria-label="Kurangi jumlah"
+                    className="flex h-10 w-10 items-center justify-center rounded-l-xl text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
+                  >
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M5 12h14" /></svg>
+                  </button>
+                  <span aria-live="polite" className="w-12 text-center text-sm font-bold tabular-nums text-white">{safePdpQty}</span>
+                  <button
+                    type="button"
+                    onClick={() => setPdpQty((q) => Math.min(selectedMaxQty, q + 1))}
+                    disabled={safePdpQty >= selectedMaxQty}
+                    aria-label="Tambah jumlah"
+                    className="flex h-10 w-10 items-center justify-center rounded-r-xl text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
+                  >
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+                  </button>
+                </div>
+                <p className="text-xs text-white/40">
+                  {selectedVariant.stock === -1 ? "Stok tersedia" : `Sisa ${selectedVariant.stock}`}
+                  {selectedMinQty > 1 && <> · total {formatRupiah(displayPrice * safePdpQty)}</>}
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Feature list — baris pertama mengikuti kelas pengiriman WR
               varian terpilih (migrasi 0032): restock = kirim otomatis,
@@ -552,8 +601,11 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
               )}
               <button
                 onClick={() => {
+                  // Beli Langsung membawa qty stepper (bukan selalu 1):
+                  // varian min>1 (GSuite 50) langsung lolos quote tanpa
+                  // dead-end "kembali belanja".
                   const buyUrl = selectedVariantId
-                    ? `/checkout?buy=${product.slug}&variant=${selectedVariantId}`
+                    ? `/checkout?buy=${product.slug}&variant=${selectedVariantId}&qty=${safePdpQty}`
                     : `/checkout?buy=${product.slug}`;
                   router.push(buyUrl);
                 }}
@@ -572,7 +624,7 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
                   const cartProduct = selectedVariant
                     ? { ...product, price: selectedVariant.price, stock: selectedVariant.stock === -1 ? undefined : selectedVariant.stock, variantId: selectedVariant.id, variantLabel: selectedVariant.label, minQty: selectedMinQty }
                     : product;
-                  add(cartProduct, selectedMinQty > 1 ? selectedMinQty : 1);
+                  add(cartProduct, safePdpQty);
                 }}
                 disabled={needsVariantSelection || variantCatalogUnavailable}
                 className={`w-full h-[48px] rounded-xl ax-glass-card font-semibold text-sm flex items-center justify-center gap-2 transition ${
@@ -600,7 +652,7 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
               const cartProduct = selectedVariant
                 ? { ...product, price: selectedVariant.price, stock: selectedVariant.stock === -1 ? undefined : selectedVariant.stock, variantId: selectedVariant.id, variantLabel: selectedVariant.label, minQty: selectedMinQty }
                 : product;
-              add(cartProduct, selectedMinQty > 1 ? selectedMinQty : 1);
+              add(cartProduct, safePdpQty);
             }}
             className="flex-1 h-11 rounded-xl ax-glass-card font-semibold text-xs flex items-center justify-center gap-1.5 transition text-white hover:bg-white/10 active:scale-95"
           >
@@ -612,7 +664,7 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
             onClick={() => {
               if (needsVariantSelection) { setVariantModal("checkout"); return; }
               const buyUrl = selectedVariantId
-                ? `/checkout?buy=${product.slug}&variant=${selectedVariantId}`
+                ? `/checkout?buy=${product.slug}&variant=${selectedVariantId}&qty=${safePdpQty}`
                 : `/checkout?buy=${product.slug}`;
               router.push(buyUrl);
             }}

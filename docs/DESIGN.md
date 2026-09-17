@@ -149,19 +149,25 @@
   desktop + QuickVariantModal. JANGAN taruh di card deskripsi/S&K (datanya
   per-varian, bukan per-produk) dan JANGAN pakai emoji ⚡/✋.
 
-### 5.3d Badge Minimum Pembelian per Varian (2026-09-17, live)
+### 5.3d Minimum Pembelian per Varian (2026-09-17, live — revisi UX ala marketplace)
 - Kolom `product_variants.min_qty` (migrasi 0034, default 1 = bebas; GSuite =
-  50): bila N > 1, tampilkan pill `gold/25 + gold/10` teks "Min. N pembelian"
-  (PDP kartu varian desktop) / "Min. N" (QuickVariantModal) — di bawah nama
-  varian, di atas harga/garansi, TANPA emoji (anti AI slop, konsisten §5.3c).
-- Keranjang drawer: baris min>1 menampilkan "Min. N · qty di bawah ini
-  ditolak saat checkout".
-- Dialog quote 409 `below_minimum` berjudul "Minimal Pembelian Belum
-  Terpenuhi" (bukan "Perubahan Harga / Stok").
-- Stepper Telegram tidak turun di bawah min; pesan penolakan "Minimal
-  Pembelian N" di qty/ketik/keranjang/invoice. WhatsApp (qty selalu 1):
-  varian min>1 ditolak jelas sejak pilih varian + saat bayar, dengan arahan
-  ke web/Telegram bulk.
+  50). Riset pola Shopee/Tokopedia: (1) qty selector dibuka di minimum dan
+  minus tidak turun di bawahnya; (2) info "Min. N" SATU tempat di dekat
+  kontrol jumlah — bukan badge di tiap kartu varian (menumpuk bila 7 varian);
+  (3) Beli Langsung membawa qty terpilih (tidak selalu 1 → tidak dead-end);
+  (4) server authoritative, frontend menjelaskan penyesuaian.
+- PDP (desktop + mobile): blok **Jumlah** di bawah varian — stepper
+  (−/+), floor = min, plafon 100, teks "Min. pembelian N" + total berjalan
+  untuk min>1. Beli Langsung → `/checkout?buy=&variant=&qty=`; Tambah ke
+  Keranjang memakai qty stepper.
+- QuickVariantModal: panel SOLID `#0B1025` (konsisten ConfirmDialog /
+  ProductEditorModal / dialog checkout — bukan glass transparan) + blok
+  Jumlah yang sama + tombol aksi menampilkan TOTAL (qty × harga).
+- Checkout: keranjang lama di bawah min → dialog solid "Sesuaikan Jumlah
+  Pembelian" dengan tombol **Sesuaikan ke minimum** (1 klik menaikkan qty +
+  refetch quote), bukan dead-end "kembali belanja".
+- Telegram: stepper floor = min; WhatsApp (qty selalu 1): varian min>1
+  ditolak jelas + arahan bulk.
 
 ### 5.3b Foto Welcome Telegram- File: `public/banners/tg-welcome.webp` (WebP ~31 KB, 1280px) — dikirim via
   `sendPhoto` di `/start` dengan caption sapaan + inline keyboard.

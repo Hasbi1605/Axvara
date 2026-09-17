@@ -69,8 +69,16 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
   const currentPrice = selected ? selected.price : (product.minPrice ?? product.price);
   const currentCompare = selected ? selected.compare_price : product.comparePrice;
   const isOutOfStock = selected ? selected.stock === 0 : false;
-  // Minimum pembelian varian terpilih (migrasi 0034): qty dibuka di min.
+  // Minimum pembelian varian terpilih (migrasi 0034): stepper dibuka di min.
   const selectedMinQty = selected ? Math.max(1, Number(selected.min_qty ?? 1) || 1) : 1;
+  const selectedMaxQty = selected
+    ? Math.max(selectedMinQty, selected.stock === -1 ? 100 : Math.max(selectedMinQty, Math.min(100, selected.stock)))
+    : 100;
+  const [modalQty, setModalQty] = useState(selectedMinQty);
+  // Reset qty ke min tiap ganti varian (pola marketplace).
+  useEffect(() => {
+    setModalQty(selectedMinQty);
+  }, [selectedId, selectedMinQty]);
 
   const handleConfirm = () => {
     if (!selected || isOutOfStock) return;
@@ -83,18 +91,20 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
         variantId: selected.id,
         variantLabel: selected.label,
         minQty: selectedMinQty,
-      }, selectedMinQty > 1 ? selectedMinQty : 1);
+      }, modalQty);
       onClose();
     } else {
-      router.push(`/checkout?buy=${encodeURIComponent(product.slug)}&variant=${selected.id}`);
+      router.push(`/checkout?buy=${encodeURIComponent(product.slug)}&variant=${selected.id}&qty=${modalQty}`);
       onClose();
     }
   };
 
-  // Portal to body so `position:fixed` escapes any parent transform/overflow
+  // Portal to body so `position:fixed` escapes any parent transform/overflow.
+  // Panel SOLID (#0B1025) seperti modal admin (ConfirmDialog/ProductEditor),
+  // bukan glass transparan — isi modal harus terbaca di atas backdrop blur.
   return createPortal(
     <div
-      className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-0 sm:p-4"
+      className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="quick-variant-title"
@@ -103,7 +113,8 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
       <div
         ref={panelRef}
         tabIndex={-1}
-        className="w-full max-w-[480px] rounded-t-[24px] sm:rounded-[24px] ax-glass-strong border border-white/10 p-5 sm:p-6 shadow-2xl animate-[fadeInUp_0.25s_var(--ease-apple)] text-left"
+        className="w-full max-w-[480px] rounded-t-[24px] sm:rounded-[24px] border border-white/10 p-5 sm:p-6 shadow-[0_24px_64px_rgba(0,0,0,0.6)] animate-[fadeInUp_0.25s_var(--ease-apple)] text-left"
+        style={{ background: "#0B1025" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3 border-b border-white/10 pb-4">
@@ -188,12 +199,6 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
                     <span className="text-xs font-bold leading-tight truncate w-full">
                       {v.label}
                     </span>
-                    {/* Minimum pembelian (migrasi 0034): GSuite min 50. */}
-                    {Number(v.min_qty ?? 1) > 1 && (
-                      <span className="mt-1 inline-flex items-center rounded-full border border-[#FFB800]/30 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFB800]">
-                        Min. {Number(v.min_qty)}
-                      </span>
-                    )}
                     <span className="mt-1.5 inline-flex">
                       {v.wr_delivery_class === "restock" ? (
                         <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold text-emerald-300">Kirim otomatis</span>
@@ -237,6 +242,46 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
           )}
         </div>
 
+        {/* Jumlah ala marketplace: stepper dibuka di minimum, floor = min.
+            Satu-satunya tempat info "Min. N" di modal — tidak di tiap kartu
+            varian agar tidak menumpuk. */}
+        {selected && !isOutOfStock && (
+          <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-white">Jumlah</p>
+              {selectedMinQty > 1 ? (
+                <p className="mt-0.5 text-[11px] font-semibold text-[#FFD66B]">Min. pembelian {selectedMinQty}</p>
+              ) : (
+                <p className="mt-0.5 text-[11px] text-white/40">Total {formatRupiah(currentPrice * modalQty)}</p>
+              )}
+            </div>
+            <div className="inline-flex shrink-0 items-center rounded-xl border border-white/10 bg-white/[0.04]">
+              <button
+                type="button"
+                onClick={() => setModalQty((q) => Math.max(selectedMinQty, q - 1))}
+                disabled={modalQty <= selectedMinQty}
+                aria-label="Kurangi jumlah"
+                className="flex h-9 w-9 items-center justify-center rounded-l-xl text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M5 12h14" /></svg>
+              </button>
+              <span aria-live="polite" className="w-11 text-center text-sm font-bold tabular-nums text-white">{modalQty}</span>
+              <button
+                type="button"
+                onClick={() => setModalQty((q) => Math.min(selectedMaxQty, q + 1))}
+                disabled={modalQty >= selectedMaxQty}
+                aria-label="Tambah jumlah"
+                className="flex h-9 w-9 items-center justify-center rounded-r-xl text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+              </button>
+            </div>
+          </div>
+        )}
+        {selected && selectedMinQty > 1 && !isOutOfStock && (
+          <p className="mt-2 text-[11px] text-white/40">Total {formatRupiah(currentPrice * modalQty)} untuk {modalQty} · harga satuan {formatRupiah(currentPrice)}</p>
+        )}
+
         <div className="pt-2">
           <button
             type="button"
@@ -250,11 +295,11 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
           >
             {mode === "checkout" ? (
               <>
-                <IosIcon name="lightning-bolt" size={14} tint="black" /> Beli Sekarang · {formatRupiah(currentPrice)}
+                <IosIcon name="lightning-bolt" size={14} tint="black" /> Beli Sekarang · {formatRupiah(currentPrice * modalQty)}
               </>
             ) : (
               <>
-                <IosIcon name="shopping-bag" size={14} tint="black" /> Tambah ke Keranjang · {formatRupiah(currentPrice)}
+                <IosIcon name="shopping-bag" size={14} tint="black" /> Tambah ke Keranjang · {formatRupiah(currentPrice * modalQty)}
               </>
             )}
           </button>

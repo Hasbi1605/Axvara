@@ -133,11 +133,26 @@ describe("QuickVariantModal — alur pemilihan varian", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("mode checkout mengarahkan ke checkout dengan slug + variant yang benar", async () => {
+  it("mode checkout mengarahkan ke checkout dengan slug + variant + qty stepper", async () => {
     await renderModal("checkout");
     fireEvent.click(screen.getByRole("radio", { name: /3 Bulan/ }));
     fireEvent.click(screen.getByRole("button", { name: /Beli Sekarang/ }));
-    expect(push).toHaveBeenCalledWith("/checkout?buy=netflix-premium&variant=12");
+    // Qty default = min (1 untuk varian biasa) — dibawa eksplisit agar Beli
+    // Langsung varian min>1 tidak dead-end di quote.
+    expect(push).toHaveBeenCalledWith("/checkout?buy=netflix-premium&variant=12&qty=1");
+  });
+
+  it("stepper modal dibuka di minimum dan floor di min (varian min-besar)", async () => {
+    vi.stubGlobal("fetch", mockCatalog({
+      product: { variants: [{ id: 21, label: "GSuite", price: 10_000, stock: -1, is_active: 1, warranty_type: "none", min_qty: 50 }] },
+    }));
+    render(<QuickVariantModal product={product} mode="cart" onClose={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("50")).toBeTruthy());
+    expect(screen.getByText(/Min\. pembelian 50/)).toBeTruthy();
+    // Tombol kurang disabled di floor min.
+    expect((screen.getByRole("button", { name: "Kurangi jumlah" }) as HTMLButtonElement).disabled).toBe(true);
+    // Harga aksi = total (50 × 10.000).
+    expect(screen.getByRole("button", { name: /Tambah ke Keranjang/ }).textContent).toContain("500.000");
   });
 
   it("varian nonaktif disaring dari daftar", async () => {

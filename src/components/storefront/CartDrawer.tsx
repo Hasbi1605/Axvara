@@ -67,8 +67,8 @@ export function CartDrawer() {
                     )}
                     <p className="text-xs text-[#00E5FF] font-semibold mt-1">{formatRupiah(it.price)}</p>
                     {(it.minQty ?? 1) > 1 && (
-                      <p className="mt-0.5 inline-flex items-center rounded-full border border-[#FFB800]/30 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFB800]">
-                        Min. {it.minQty} · qty di bawah ini ditolak saat checkout
+                      <p className="mt-0.5 text-[11px] font-semibold text-[#FFD66B]">
+                        Min. {it.minQty} · {formatRupiah(it.price * it.qty)}
                       </p>
                     )}
                     <div className="mt-2 flex items-center gap-2">
