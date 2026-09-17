@@ -157,6 +157,11 @@ export async function POST(request: NextRequest) {
 
     // Guard kepemilikan WR untuk batch (lihat PUT di bawah): varian
     // auto-managed hanya boleh berubah lewat sync, bukan dari panel.
+    // PENGECUALIAN: harga coret (compare_price/comparePrice) milik admin.
+    // CATATAN: `variants` hasil Zod parse (bukan body mentah), tapi batch
+    // selalu membawa SEMUA field varian (DTO penuh dari panel) — jadi
+    // bandingkan nilai aktual; nilai SAMA dengan DB bukan pelanggaran
+    // (findWrOwnedViolation sudah menangani itu).
     const wrExisting = await queryAll(
       `SELECT id, label, price, compare_price, stock, duration_value, duration_unit, duration_label,
               warranty_type, warranty_value, warranty_unit, warranty_label
@@ -342,8 +347,16 @@ export async function PUT(request: NextRequest) {
   // ditulis dari sini. Route ini jalur tulis KEDUA di samping PUT /api/products/:id,
   // jadi tanpa guard yang sama ia menjadi pintu belakang untuk perubahan yang
   // pasti hilang di sweep sync berikutnya.
+  // PENGECUALIAN: harga coret (compare_price) milik admin — boleh diubah.
+  // CATATAN ZOD: `.partial()` tetap menerapkan `.default()` (stock → -1,
+  // warranty → none, dst) sehingga `v` SELALU membawa field-field itu walau
+  // request hanya mengirim compare_price. Bandingkan HANYA key yang benar-benar
+  // ada di body mentah — kalau tidak, edit coret saja selalu 409 "stock".
   if (isWrManaged(existing)) {
-    const violation = findWrOwnedViolation(v as Record<string, unknown>, existing, WR_OWNED_VARIANT_FIELDS);
+    const rawBody = (body ?? {}) as Record<string, unknown>;
+    const incomingOnly: Record<string, unknown> = {};
+    for (const key of Object.keys(rawBody)) incomingOnly[key] = (v as Record<string, unknown>)[key];
+    const violation = findWrOwnedViolation(incomingOnly, existing, WR_OWNED_VARIANT_FIELDS);
     if (violation) return NextResponse.json({ error: WR_OWNERSHIP_MESSAGE, field: violation }, { status: 409 });
   }
 

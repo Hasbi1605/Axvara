@@ -7,6 +7,9 @@
 //  2. Deskripsi produk WR ditimpa tiap sync, jadi copywriting admin hilang.
 //     Kolom `admin_description_override` (migrasi 0030) memberi admin teks
 //     sendiri yang TIDAK PERNAH disentuh sync dan diprioritaskan storefront.
+//  3. HARGA CORET (compare_price) adalah PENGECUALIAN: milik admin agar
+//     katalog WR bisa pasang diskon/badge seperti produk manual. Sync tidak
+//     pernah menulis compare_price, jadi nilai admin aman lintas sweep.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { createD1Fixture } from "../helpers/d1-fixture";
@@ -132,6 +135,15 @@ describe("produk WR: field milik sync ditolak di API", () => {
     expect(row.price).toBe(9000);
     expect(row.label).toBe("Paket Baru");
   });
+
+  it("MENGIZINKAN harga coret produk WR via PUT /api/products/:id", async () => {
+    const res = await putProduct(1, {
+      variants: [{ id: 1, sku: "WR-VAR1", label: "Pro 7 Hari", price: 7500, comparePrice: 15000, stock: 10, is_active: 1, sort_order: 0 }],
+    });
+    expect(res.status).toBe(200);
+    const row = fixture.sql.prepare("SELECT compare_price FROM product_variants WHERE id=1").get() as { compare_price: number };
+    expect(row.compare_price).toBe(15000);
+  });
 });
 
 describe("/api/admin/variants bukan pintu belakang", () => {
@@ -184,6 +196,35 @@ describe("/api/admin/variants bukan pintu belakang", () => {
     expect(res.status).toBe(200);
     const row = fixture.sql.prepare("SELECT price FROM product_variants WHERE id=2").get() as { price: number };
     expect(row.price).toBe(8000);
+  });
+
+  it("MENGIZINKAN harga coret varian WR (milik admin, sync tak pernah timpa)", async () => {
+    vi.stubEnv("PRODUCT_VARIANTS_WRITE", "true");
+    const { PUT } = await import("@/app/api/admin/variants/route");
+    const res = await PUT(variantsRequest("/api/admin/variants?id=1", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ product_id: 1, compare_price: 15000 }),
+    }));
+    expect(res.status).toBe(200);
+    const row = fixture.sql.prepare("SELECT compare_price FROM product_variants WHERE id=1").get() as { compare_price: number };
+    expect(row.compare_price).toBe(15000);
+  });
+
+  it("POST batch MENGIZINKAN harga coret varian WR", async () => {
+    vi.stubEnv("PRODUCT_VARIANTS_WRITE", "true");
+    const { POST } = await import("@/app/api/admin/variants/route");
+    const res = await POST(variantsRequest("/api/admin/variants", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        product_id: 1,
+        variants: [{ id: 1, product_id: 1, sku: "WR-VAR1", label: "Pro 7 Hari", price: 7500, compare_price: 15000, stock: 10, is_active: 1, sort_order: 0 }],
+      }),
+    }));
+    expect(res.status).toBe(200);
+    const row = fixture.sql.prepare("SELECT compare_price FROM product_variants WHERE id=1").get() as { compare_price: number };
+    expect(row.compare_price).toBe(15000);
   });
 });
 

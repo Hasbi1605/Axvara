@@ -40,10 +40,18 @@ export async function GET(req: NextRequest) {
               -- Compare price dipasangkan dari varian harga-terendah yang sama
               -- (issue #10): MIN(price)+MAX(compare_price) lintas varian dapat
               -- membentuk diskon fiktif yang tak dimiliki varian mana pun.
-              (SELECT pv2.compare_price FROM product_variants pv2
-                WHERE pv2.product_id=p.id AND pv2.is_active=1
-                  AND (pv2.stock=-1 OR pv2.stock>0)
-                ORDER BY pv2.price ASC, pv2.id ASC LIMIT 1) as variant_compare_price
+              -- Prioritas: varian TERSEDIA termurah; bila semua habis, jatuh ke
+              -- varian termurah keseluruhan agar kartu tetap menampilkan coret
+              -- (harga tampilnya pun fallback ke min_price — pasangan konsisten).
+              COALESCE(
+                (SELECT pv2.compare_price FROM product_variants pv2
+                  WHERE pv2.product_id=p.id AND pv2.is_active=1
+                    AND (pv2.stock=-1 OR pv2.stock>0)
+                  ORDER BY pv2.price ASC, pv2.id ASC LIMIT 1),
+                (SELECT pv3.compare_price FROM product_variants pv3
+                  WHERE pv3.product_id=p.id AND pv3.is_active=1
+                  ORDER BY pv3.price ASC, pv3.id ASC LIMIT 1)
+              ) as variant_compare_price
        FROM products p
        LEFT JOIN categories c ON c.id=p.category_id
        INNER JOIN product_variants pv ON pv.product_id=p.id AND pv.is_active=1

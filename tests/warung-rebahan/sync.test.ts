@@ -181,6 +181,42 @@ describe("Warung Rebahan product sync", () => {
     }
   });
 
+  it("sync TIDAK PERNAH menimpa harga coret milik admin", async () => {
+    const fx = createD1Fixture();
+    try {
+      const db = createDatabaseAccess(fx.db);
+      await syncProducts(db, async () => [fixtureProduct()]);
+      // Admin pasang diskon manual di panel.
+      fx.sql.prepare("UPDATE product_variants SET compare_price=15000 WHERE wr_variant_id='var-capcut-7h'").run();
+      // Sweep sync berikutnya (harga/stok berubah) wajib mempertahankan coret.
+      await syncProducts(db, async () => [
+        fixtureProduct({
+          variants: [
+            {
+              id: "var-capcut-7h",
+              name: "Pro 7 Hari",
+              price: 6000,
+              duration: "7 Hari",
+              type: "Private",
+              warranty: "7 Hari",
+              stock: 4,
+              terms: null,
+              delivery_terms: null,
+            },
+          ],
+        }),
+      ]);
+      const variant = fx.sql
+        .prepare("SELECT price, stock, compare_price FROM product_variants WHERE wr_variant_id='var-capcut-7h'")
+        .get() as { price: number; stock: number; compare_price: number };
+      expect(Number(variant.price)).toBe(9000);
+      expect(Number(variant.stock)).toBe(4);
+      expect(Number(variant.compare_price)).toBe(15000);
+    } finally {
+      fx.close();
+    }
+  });
+
   it("varian hilang dari API di-nol-kan stoknya, bukan dihapus", async () => {
     const fx = createD1Fixture();
     try {

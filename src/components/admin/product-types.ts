@@ -22,6 +22,7 @@ export type FormVariant = {
   warranty_label?: string | null;
   is_active: number;
   /** Varian milik sync WR: harga/stok/label/durasi/garansi read-only di admin. */
+  /** PENGECUALIAN: harga coret (comparePrice) milik admin — tetap bisa diedit. */
   wr_auto_managed?: number;
 };
 

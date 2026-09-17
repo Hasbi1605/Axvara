@@ -804,8 +804,8 @@ agent CMS, curl, dan tab admin lama tidak terikat aturan UI.
 
 | Pemilik | Field |
 | --- | --- |
-| WR (read-only di admin) | `name`, `slug`, `description`, harga & stok master, label varian, harga varian, harga coret, stok varian, durasi, garansi, S&K varian (`terms`) + cara aktivasi (`delivery_terms`, read-only dari `wr_variants`) |
-| Admin | foto/`images`, `badge`, kategori, `sort_order`, `is_active`, `admin_description_override` |
+| WR (read-only di admin) | `name`, `slug`, `description`, harga & stok master, label varian, harga varian, stok varian, durasi, garansi, S&K varian (`terms`) + cara aktivasi (`delivery_terms`, read-only dari `wr_variants`) |
+| Admin | foto/`images`, `badge`, kategori, `sort_order`, `is_active`, `admin_description_override`, **harga coret (`compare_price`)** — milik admin agar katalog WR bisa pasang diskon/badge seperti produk manual (2026-09-17); sync TIDAK PERNAH menulis `compare_price` (UPDATE/INSERT varian hanya label/price/stock/durasi/garansi), jadi nilai admin aman lintas sweep; input Harga Coret di modal edit selalu terbuka (label "✎ bisa diedit") |
 | Panel WR | markup (`wr_variants.markup_percent/markup_fixed`) |
 
 Guard dipasang di **kedua jalur tulis varian**: `PUT /api/products/:id` dan

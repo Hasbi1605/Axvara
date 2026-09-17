@@ -23,7 +23,7 @@ export function ProductVariantRows({
       <div className="flex items-center justify-between">
         <span className="text-xs font-semibold text-[#00E5FF]">Daftar Pilihan Paket / Varian</span>
         {form.wrManaged ? (
-          <span className="text-[11px] text-[#FFD980]/80">Varian dikelola Warung Rebahan — markup diatur di tab Warung Rebahan.</span>
+          <span className="text-[11px] text-[#FFD980]/80">Varian dikelola Warung Rebahan — markup diatur di tab Warung Rebahan. Harga coret tetap bisa kamu edit ✎.</span>
         ) : (
         <button
           type="button"
@@ -51,9 +51,12 @@ export function ProductVariantRows({
 
       <div className="space-y-3">
         {formVariants.map((v, idx) => {
-          // Varian WR: label, harga, harga coret, stok, durasi, dan garansi
-          // dimiliki sync. Dibuat read-only agar admin tidak mengedit nilai
-          // yang pasti hilang di sweep berikutnya (API juga menolaknya 409).
+          // Varian WR: label, harga, stok, durasi, dan garansi dimiliki sync.
+          // Dibuat read-only agar admin tidak mengedit nilai yang pasti
+          // hilang di sweep berikutnya (API juga menolaknya 409).
+          // PENGECUALIAN: harga coret (comparePrice) milik admin — tetap bisa
+          // diedit agar katalog WR bisa pasang diskon/badge seperti produk
+          // manual. Sync tidak pernah menulis compare_price.
           const wrLocked = Number(v.wr_auto_managed ?? 0) === 1 || Boolean(form.wrManaged);
           const lockedInput = "h-9 w-full rounded-xl bg-white/[0.03] border border-white/5 px-3 text-xs text-white/50 cursor-not-allowed";
           const openInput = "h-9 w-full rounded-xl bg-white/[0.06] border border-white/10 px-3 text-xs text-white placeholder:text-white/25 focus:border-[#00E5FF]/50 focus:outline-none";
@@ -115,16 +118,16 @@ export function ProductVariantRows({
                 />
               </div>
               <div>
-                <span className="block text-[10px] uppercase font-semibold text-white/40 mb-1">Harga Coret (Rp)</span>
+                <span className="block text-[10px] uppercase font-semibold text-white/40 mb-1">Harga Coret (Rp) <span className="normal-case tracking-normal text-emerald-300/70">✎ bisa diedit</span></span>
                 <MoneyInput
                   value={v.comparePrice}
                   allowEmpty
-                  readOnly={wrLocked}
+                  readOnly={false}
                   onChange={(val) => {
                     onSetFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, comparePrice: val } : item));
                   }}
                   placeholder="Opsional"
-                  className={wrLocked ? lockedInput : openInput}
+                  className={openInput}
                 />
               </div>
               <div>

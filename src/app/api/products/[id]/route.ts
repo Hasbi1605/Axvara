@@ -242,14 +242,19 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
   }
   if (data.images !== undefined) { fields.push("images=?"); vals.push(JSON.stringify(Array.isArray(data.images) ? data.images.slice(0,8) : [])); }
-  if (fields.length) {
-    fields.push("updated_at=datetime('now')");
+  // Jalur D1 memakai SATU batch untuk update produk + varian. Bila tidak ada
+  // field produk yang berubah (mis. edit coret varian saja), fields kosong
+  // tetapi update varian di bawah TETAP harus jalan — jangan return dini.
+  const needsProductUpdate = fields.length > 0;
+  const needsVariantWrite = hasExplicitVariants && Array.isArray(data.variants) && data.variants.length > 0;
+  if (needsProductUpdate || needsVariantWrite) {
+    if (needsProductUpdate) fields.push("updated_at=datetime('now')");
     try {
       const d1 = getD1();
       if (d1) {
-        const statements = [
-          d1.prepare(`UPDATE products SET ${fields.join(",")} WHERE id=?`).bind(...vals, id),
-        ];
+        const statements = needsProductUpdate
+          ? [d1.prepare(`UPDATE products SET ${fields.join(",")} WHERE id=?`).bind(...vals, id)]
+          : [];
 
         if (hasExplicitVariants && data.variants) {
           // If variants are provided, update existing or insert new, and deactivate removed ones
@@ -368,7 +373,24 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         }
         await d1.batch(statements);
       } else {
-        await execRun(`UPDATE products SET ${fields.join(",")} WHERE id=?`, ...vals, id);
+        // Jalur dev non-D1: tulis produk bila ada, dan tulis varian bila ada.
+        if (needsProductUpdate) {
+          await execRun(`UPDATE products SET ${fields.join(",")} WHERE id=?`, ...vals, id);
+        }
+        if (needsVariantWrite && data.variants) {
+          for (const v of data.variants) {
+            if (!v.id) continue;
+            const vFields: string[] = [];
+            const vVals: unknown[] = [];
+            if (v.price !== undefined) { vFields.push("price=?"); vVals.push(Number(v.price)); }
+            if (v.comparePrice !== undefined) { vFields.push("compare_price=?"); vVals.push(v.comparePrice ? Number(v.comparePrice) : null); }
+            if (v.stock !== undefined) { vFields.push("stock=?"); vVals.push(Number(v.stock)); }
+            if (v.is_active !== undefined) { vFields.push("is_active=?"); vVals.push(Number(v.is_active)); }
+            if (vFields.length === 0) continue;
+            vFields.push("updated_at=datetime('now')");
+            await execRun(`UPDATE product_variants SET ${vFields.join(",")} WHERE id=?`, ...vVals, v.id);
+          }
+        }
       }
     }
     catch (e: unknown) {

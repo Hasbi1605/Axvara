@@ -10,15 +10,18 @@
 //   WR-owned    : label varian, harga jual, stok, durasi, garansi, deskripsi,
 //                 S&K varian (terms) + cara aktivasi (delivery_terms, read-only
 //                 dari wr_variants — tampil di PDP, tak bisa diedit admin).
-//   Admin-owned : foto, badge, sort_order, is_active, admin_description_override.
+//   Admin-owned : foto, badge, sort_order, is_active, admin_description_override,
+//                 HARGA CORET (compare_price/comparePrice) — milik admin agar
+//                 katalog bisa pasang diskon/badge seperti produk manual.
+//                 Sync TIDAK PERNAH menulis compare_price (lihat sync.ts:
+//                 UPDATE/INSERT varian hanya menyentuh label/price/stock/
+//                 durasi/garansi), jadi nilai admin aman lintas sweep.
 //   Markup      : hanya lewat panel WR (wr_variants.markup_percent/fixed).
 
 /** Field varian yang hanya boleh ditulis oleh sync WR. */
 export const WR_OWNED_VARIANT_FIELDS = [
   "label",
   "price",
-  "compare_price",
-  "comparePrice",
   "stock",
   "duration_value",
   "duration_unit",
@@ -30,7 +33,7 @@ export const WR_OWNED_VARIANT_FIELDS = [
 ] as const;
 
 /** Field produk yang hanya boleh ditulis oleh sync WR. */
-export const WR_OWNED_PRODUCT_FIELDS = ["name", "slug", "description", "price", "comparePrice", "stock"] as const;
+export const WR_OWNED_PRODUCT_FIELDS = ["name", "slug", "description", "price", "stock"] as const;
 
 export const WR_OWNERSHIP_MESSAGE =
   "Produk ini dikelola otomatis oleh Warung Rebahan. Harga, stok, label, durasi, dan garansi ikut katalog WR — ubah markup di tab Warung Rebahan. Untuk deskripsi sendiri, isi 'Deskripsi khusus (override)'.";

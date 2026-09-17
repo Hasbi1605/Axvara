@@ -213,10 +213,13 @@ Opsi A (disarankan): API key dipegang proxy Heroku — Pages cukup
 `WARUNG_REBAHAN_PROXY_URL` + `WARUNG_REBAHAN_PROXY_TOKEN`.
 
 **Kepemilikan field produk WR.** Produk hasil sync (`wr_auto_managed=1`) hanya
-bisa diubah sebagian dari admin: foto, badge, kategori, urutan, aktif/nonaktif,
-dan **Deskripsi khusus (override)**. Nama, slug, deskripsi WR, harga, stok,
-label varian, durasi, dan garansi dimiliki sync dan ditolak API dengan 409 —
-markup diubah di tab **Warung Rebahan**. Deskripsi override disimpan di
+bisa diubah sebagian dari admin: foto, badge, **harga coret (diskon)**,
+kategori, urutan, aktif/nonaktif, dan **Deskripsi khusus (override)**. Nama,
+slug, deskripsi WR, harga, stok, label varian, durasi, dan garansi dimiliki
+sync dan ditolak API dengan 409 — markup diubah di tab **Warung Rebahan**.
+Harga coret adalah PENGECUALIAN: milik admin (sync tidak pernah menulis
+`compare_price`), jadi diskon WR aman lintas sweep dan tampil di kartu
+seperti produk manual. Deskripsi override disimpan di
 `products.admin_description_override` (migrasi 0030), tidak pernah ditimpa
 sync, dan menjadi teks yang tampil di storefront saat terisi. Badge "WR" hanya
 muncul di editor admin; storefront tidak menampilkan penanda WR.

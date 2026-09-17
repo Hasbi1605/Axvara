@@ -61,4 +61,23 @@ describe("harga kartu berasal dari varian yang tersedia", () => {
     expect(habis.price).toBe(3000);
     expect(habis.stock).toBe(0);
   });
+
+  it("bila semua varian habis, coret ikut jatuh ke varian termurah (kartu tetap diskon)", async () => {
+    // Regresi 2026-09-17: 26/50 kartu prod tanpa diskon walau DB sudah bercoret —
+    // subquery compare hanya membaca varian tersedia, sementara harga tampilnya
+    // fallback ke min_price. Keduanya harus jatuh ke pasangan yang sama.
+    fixture.sql.prepare(
+      `INSERT INTO products (id, category_id, name, slug, description, price, stock, is_active, sort_order)
+       VALUES (3, 2, 'Habis Bercoret', 'habis-bercoret', 'desc', 7500, 0, 1, 2)`,
+    ).run();
+    fixture.sql.prepare(
+      `INSERT INTO product_variants (id, product_id, sku, label, price, compare_price, stock, is_active, sort_order)
+       VALUES (5, 3, 'HB-1', 'Habis A', 7500, 22500, 0, 1, 0),
+              (6, 3, 'HB-2', 'Habis B', 8500, 25500, 0, 1, 1)`,
+    ).run();
+    const products = await publicCatalog();
+    const habis = products.find((p) => p.slug === "habis-bercoret")!;
+    expect(habis.price).toBe(7500);
+    expect(habis.comparePrice).toBe(22500);
+  });
 });

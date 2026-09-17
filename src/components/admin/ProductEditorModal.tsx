@@ -60,7 +60,7 @@ export function ProductEditorModal({
             {form.wrManaged && (
               <p className="mt-4 flex items-start gap-2 rounded-xl border border-[#FFB800]/25 bg-[#FFB800]/10 px-3 py-2 text-xs leading-5 text-[#FFD980]">
                 <span className="mt-[1px] shrink-0 rounded-full bg-[#FFB800]/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#FFD980]">WR</span>
-                <span>Dikelola otomatis Warung Rebahan. Nama, slug, deskripsi, harga, stok, label varian, durasi, dan garansi ikut katalog WR dan akan ditimpa tiap sync. Yang bisa kamu atur di sini: foto, badge, kategori, urutan, aktif/nonaktif, dan deskripsi khusus di bawah. Markup diatur di tab Warung Rebahan.</span>
+                <span>Dikelola otomatis Warung Rebahan. Nama, slug, deskripsi, harga, stok, label varian, durasi, dan garansi ikut katalog WR dan akan ditimpa tiap sync. Yang bisa kamu atur di sini: foto, badge, <strong>harga coret (diskon)</strong>, kategori, urutan, aktif/nonaktif, dan deskripsi khusus di bawah. Markup diatur di tab Warung Rebahan.</span>
               </p>
             )}
 
