@@ -936,6 +936,15 @@ Perintah akun #2 wajib prefix `HEROKU_API_KEY=<kunci-akun-2>`; jangan
   (dibatalkan/kadaluarsa) dibersihkan + `pendingJobs` hanya order lunas/paid;
   slot `warung_rebahan` dijamin bila sync basi >45 menit (guard histori agar
   budget R12 deterministik di fixture tanpa WR).
+- Koreksi vonis 2026-09-17 (PENTING — jangan ulangi salah baca ini):
+  `store_settings.cron_phase` yang menunjuk `notify` dengan `updated_at` lama
+  BUKAN bukti cron macet. Nilai itu = giliran BERIKUTNYA dalam rotasi 5 fase
+  (expiry → fulfillment → warung_rebahan → notify → cleanup), bukan fase yang
+  sedang jalan. Bukti cron hidup yang benar = baris `wr_sync_log
+  trigger='cron'` tiap ~30 menit (12 jam terakhir 2026-09-16/17 penuh tanpa
+  jam kosong: 48 produk + 87 varian `success` tiap run) + `cron_phase.value`
+  yang berpindah + `updated_at` segar. Jangan vonis "cron mati" dari satu
+  snapshot `cron_phase` tanpa cek distribusi `wr_sync_log` per jam.
 
 ### 16.7 Health anti-false-alarm + kelas pengiriman WR (2026-09-16)
 - Query health `tgQueue`/`fulfillmentQueue`/`oldestDue` JOIN orders dan hanya
