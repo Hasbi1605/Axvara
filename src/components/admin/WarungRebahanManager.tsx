@@ -40,6 +40,10 @@ type WrOrderRow = {
   attempt_count: number;
   last_error: string | null;
   order_status?: string;
+  sales_channel?: string;
+  customer_name?: string | null;
+  customer_wa?: string | null;
+  customer_email?: string | null;
 };
 
 type ExclusionRow = { id: number; pattern: string; reason: string | null };
@@ -74,6 +78,8 @@ export function WarungRebahanManager() {
   const [syncing, setSyncing] = useState(false);
   const [orders, setOrders] = useState<WrOrderRow[]>([]);
   const [orderStatus, setOrderStatus] = useState("all");
+  const [orderQuery, setOrderQuery] = useState("");
+  const [orderQueryLive, setOrderQueryLive] = useState("");
   const [retrying, setRetrying] = useState<number | null>(null);
   const [exclusions, setExclusions] = useState<ExclusionRow[]>([]);
   const [newPattern, setNewPattern] = useState("");
@@ -105,14 +111,14 @@ export function WarungRebahanManager() {
 
   const loadOrders = useCallback(async () => {
     try {
-      const res = await fetch(`/api/admin/warung/orders?status=${encodeURIComponent(orderStatus)}&limit=20`, { cache: "no-store" });
+      const res = await fetch(`/api/admin/warung/orders?status=${encodeURIComponent(orderStatus)}&limit=20${orderQueryLive ? `&q=${encodeURIComponent(orderQueryLive)}` : ""}`, { cache: "no-store" });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || "Gagal memuat antrean WR");
       setOrders(body.orders || []);
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : "Gagal memuat antrean WR");
     }
-  }, [orderStatus, toast]);
+  }, [orderStatus, orderQueryLive, toast]);
 
   const loadExclusions = useCallback(async () => {
     try {
@@ -139,6 +145,14 @@ export function WarungRebahanManager() {
   useEffect(() => {
     void loadOrders();
   }, [loadOrders]);
+
+  // Cari manual email WR: debounce 400ms agar paste invoice #RBHN-... tidak
+  // menembak API per karakter. Inilah jembatan manual sementara sebelum bot
+  // email otomatis (fase 2) — paste invoice WR langsung ketemu buyer Axvara.
+  useEffect(() => {
+    const timer = setTimeout(() => setOrderQueryLive(orderQuery.trim()), 400);
+    return () => clearTimeout(timer);
+  }, [orderQuery]);
 
   const forceSync = async () => {
     setSyncing(true);
@@ -307,8 +321,9 @@ export function WarungRebahanManager() {
 
       <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.035]">
         <header className="flex flex-wrap items-center gap-3 border-b border-white/10 p-4">
-          <div className="min-w-0"><h3 className="text-sm font-semibold text-white">Antrean order WR</h3><p className="mt-0.5 text-[11px] text-white/40">Order lunas yang diteruskan ke Warung Rebahan.</p></div>
-          <div className="ml-auto flex flex-wrap gap-2">
+          <div className="min-w-0"><h3 className="text-sm font-semibold text-white">Antrean order WR</h3><p className="mt-0.5 text-[11px] text-white/40">Order lunas yang diteruskan ke Warung Rebahan. Cari by invoice WR (#RBHN-…) atau kode Axvara untuk forward manual email WR ke buyer.</p></div>
+          <input value={orderQuery} onChange={(e) => setOrderQuery(e.target.value)} placeholder="Cari invoice WR / kode Axvara…" className="h-9 w-full max-w-[240px] rounded-xl border border-white/10 bg-white/[0.05] px-3 text-xs text-white placeholder:text-white/30 focus:border-[#00E5FF]/50 focus:outline-none sm:ml-auto" />
+          <div className="flex flex-wrap gap-2">
             {[["all", "Semua"], ["pending", "Pending"], ["processing", "Diproses"], ["retry", "Retry"], ["failed", "Gagal"], ["completed", "Selesai"]].map(([value, label]) => (
               <button key={value} onClick={() => setOrderStatus(value)} className={`h-8 whitespace-nowrap rounded-lg px-3 text-xs font-semibold transition ${orderStatus === value ? "bg-[#00E5FF] text-[#07101f]" : "bg-white/[0.06] text-white/55 hover:bg-white/10 hover:text-white"}`}>{label}</button>
             ))}
@@ -325,6 +340,12 @@ export function WarungRebahanManager() {
                     <span className="text-xs text-white/45">{formatRupiah(order.wr_cost)} modal</span>
                     {order.wr_order_id && <span className="font-mono text-[11px] text-white/35">{order.wr_order_id}</span>}
                   </div>
+                  {(order.customer_name || order.customer_wa || order.customer_email) && (
+                    <p className="mt-1 text-[11px] text-white/55">
+                      {[order.customer_name, order.customer_wa, order.customer_email].filter(Boolean).join(" · ")}
+                      {order.sales_channel ? ` · ${order.sales_channel}` : ""}
+                    </p>
+                  )}
                   {order.last_error && <p className="mt-1 font-mono text-[10px] text-red-300/70">{order.last_error}</p>}
                 </div>
                 {["pending", "retry", "failed"].includes(order.status) && (

@@ -144,6 +144,33 @@ describe("admin WR APIs auth & validation", () => {
     expect(body.orders[0].wr_account_details).toBe("(encrypted)");
   });
 
+  it("orders list: cari by invoice WR (#RBHN-…) langsung ketemu buyer Axvara", async () => {
+    fixture.sql.prepare(`INSERT INTO orders(code,customer_name,customer_wa,customer_email,items,subtotal,payment_method,status,payment_status,sales_channel) VALUES('AXV-20260916-DCB922','Uji','628111','buyer@axvara.id','[]',3500,'qris','lunas','paid','web')`).run();
+    fixture.sql.prepare(`INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel) VALUES('AXV-20260916-XXXXXX','Lain','628222','[]',5000,'qris','lunas','paid','web')`).run();
+    fixture.sql.prepare("INSERT INTO wr_order_links(order_code,wr_order_id,wr_variant_id,quantity,wr_cost,status) VALUES('AXV-20260916-DCB922','RBHN-20260916-DCB922','v-music',1,3500,'processing')").run();
+    fixture.sql.prepare("INSERT INTO wr_order_links(order_code,wr_order_id,wr_variant_id,quantity,wr_cost,status) VALUES('AXV-20260916-XXXXXX','RBHN-20260916-AAAAAA','v-other',1,4000,'processing')").run();
+    const { GET } = await import("@/app/api/admin/warung/orders/route");
+    // Paste mentah dari email WR (dengan #) tetap cocok — jembatan manual
+    // forward email WR ke buyer sebelum bot otomatis fase 2.
+    const res = await GET(await adminRequest("/api/admin/warung/orders?q=%23RBHN-20260916-DCB922") as never);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { orders: { order_code: string; wr_order_id: string; customer_email: string; customer_wa: string }[] };
+    expect(body.orders.length).toBe(1);
+    expect(body.orders[0].order_code).toBe("AXV-20260916-DCB922");
+    expect(body.orders[0].wr_order_id).toBe("RBHN-20260916-DCB922");
+    expect(body.orders[0].customer_email).toBe("buyer@axvara.id");
+    expect(body.orders[0].customer_wa).toBe("628111");
+    // Cari kode Axvara juga bisa (alur balik dari admin Orders).
+    const res2 = await GET(await adminRequest("/api/admin/warung/orders?q=AXV-20260916-XXXXXX") as never);
+    const body2 = (await res2.json()) as { orders: { order_code: string }[] };
+    expect(body2.orders.length).toBe(1);
+    expect(body2.orders[0].order_code).toBe("AXV-20260916-XXXXXX");
+    // Karakter LIKE (% dan _) di-escape — tidak melebar ke semua baris.
+    const res3 = await GET(await adminRequest("/api/admin/warung/orders?q=%25") as never);
+    const body3 = (await res3.json()) as { orders: unknown[] };
+    expect(body3.orders.length).toBe(0);
+  });
+
   it("retry menolak status completed + id tak valid", async () => {
     fixture.sql.prepare(`INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel) VALUES('AXV-20260911-WR0003','B','6280','[]',7500,'qris','lunas','paid','web')`).run();
     fixture.sql.prepare("INSERT INTO wr_order_links(order_code,wr_variant_id,quantity,wr_cost,status) VALUES('AXV-20260911-WR0003','v',1,5000,'completed')").run();

@@ -760,7 +760,8 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   selalu 200 pasca-verifikasi); pembeli `GET/POST /api/orders/[code]/credentials`
   (retrieval via verifikasi WA / capability token); admin
   `GET /api/admin/warung/saldo`, `POST /api/admin/warung/sync` (rate-limit products:write),
-  `GET /api/admin/warung/sync-log`, `GET /api/admin/warung/orders` (ciphertext disamarkan),
+  `GET /api/admin/warung/sync-log`, `GET /api/admin/warung/orders` (ciphertext disamarkan,
+  cari manual by invoice WR `?q=#RBHN-…` + tampilkan buyer Axvara untuk forward email WR),
   `POST /api/admin/warung/orders/[id]/retry` (CAS — race kalah → 409),
   `GET/POST/DELETE /api/admin/warung/exclusions`, `GET/PUT /api/admin/warung/markup`,
   `GET/POST /api/admin/warung/credentials` (retrieval + resend admin).
@@ -768,7 +769,10 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   nomor WA checkout → tampilkan detail akun + capability token (sessionStorage).
 - **Admin UI:** tab "Warung Rebahan" (`WarungRebahanManager.tsx`, section `warung` di
   `AdminShell` + `admin/page.tsx`): saldo + estimasi, sync terakhir + force sync, antrean
-  order + retry, exclusions, markup per varian. Health WR ikut `GET /api/admin/bot/health`.
+  order + retry, exclusions, markup per varian. Antrean order punya kolom cari
+  invoice WR (`#RBHN-…` / kode Axvara, debounce 400ms, LIKE di-escape) +
+  baris buyer (nama · WA · email · channel) — jembatan manual forward email WR
+  ke buyer Axvara sebelum bot email otomatis fase 2. Health WR ikut `GET /api/admin/bot/health`.
 - **Cron:** fase baru `warung_rebahan` disisipkan `fulfillment → warung_rebahan → notify`
   (`src/app/api/cron/operations/route.ts`): sync produk tiap 30 mnt, proses order due (maks 4),
   reconcile processing >1 jam via `/transactions`, cek saldo tiap 1 jam. COUNT WR dihitung

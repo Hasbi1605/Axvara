@@ -212,6 +212,9 @@ nomor WA + capability token. Blueprint: `docs/WARUNG-REBAHAN-INTEGRATION.md`; ar
 `docs/ARCHITECTURE.md` §15. Seluruhnya di balik `WARUNG_REBAHAN_ENABLED=false` (lihat
 `.env.example`); set API key + webhook secret di Pages Secrets, lalu Force Sync dari tab
 **Warung Rebahan** di admin. Webhook WR: `https://axvara.tech/api/webhook/warung`.
+Antrean order di tab yang sama bisa dicari by invoice WR (`#RBHN-…` dari email
+WR) — baris hasil menampilkan buyer Axvara (nama · WA · email) untuk forward
+manual email WR dengan branding Axvara.
 Opsi A (disarankan): API key dipegang proxy Heroku — Pages cukup
 `WARUNG_REBAHAN_PROXY_URL` + `WARUNG_REBAHAN_PROXY_TOKEN`.
 
