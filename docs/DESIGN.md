@@ -142,6 +142,12 @@
 - Label garansi varian SELALU kanonis `Garansi N Unit` ("Garansi 12 Hari") +
   ikon shield — di baris sendiri di BAWAH nama varian (block, bukan inline),
   JANGAN render label mentah ("12 Hari" ambigu dengan durasi).
+- Badge pengiriman per varian TANPA emoji (anti AI slop, 2026-09-17): di
+  bawah label varian (block, di atas harga/garansi) — restock = pill
+  `emerald-400/25 + emerald-500/10` teks "Kirim otomatis", selainnya = pill
+  `gold/25 + gold/10` teks "Dikirim admin". Berlaku di kartu varian PDP
+  desktop + QuickVariantModal. JANGAN taruh di card deskripsi/S&K (datanya
+  per-varian, bukan per-produk) dan JANGAN pakai emoji ⚡/✋.
 
 ### 5.3b Foto Welcome Telegram- File: `public/banners/tg-welcome.webp` (WebP ~31 KB, 1280px) — dikirim via
   `sendPhoto` di `/start` dengan caption sapaan + inline keyboard.

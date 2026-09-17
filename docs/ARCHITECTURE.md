@@ -946,11 +946,13 @@ Perintah akun #2 wajib prefix `HEROKU_API_KEY=<kunci-akun-2>`; jangan
   screenshot admin (`screenshot`) + `guessDeliveryClass()` untuk sisanya dan
   varian baru (`system`) + kunci manual owner (`admin`). Sync TIDAK PERNAH
   menimpa yang sudah terisi (pola override 0030). Default ragu = manual.
-- Label pembeli singkat: restock = "⚡ Kirim otomatis", selainnya =
-  "✋ Dikirim admin" (PDP web, Telegram ⚡/✋, WA ⚡/✋). Admin: badge
-  RESTOK/MBO + sumber + tombol kunci ⚡/✋ di tabel markup (PUT
-  `delivery_class`). Kunci: `PUT /api/admin/warung/markup
-  {wr_variant_id, delivery_class}` → source 'admin'.
+- Badge pengiriman per varian TANPA emoji (2026-09-17, anti AI slop):
+  restock = "Kirim otomatis" (pill emerald), selainnya = "Dikirim admin"
+  (pill gold). Web: badge di kartu varian PDP + QuickVariantModal. Telegram/WA:
+  baris teks polos sendiri per varian. Admin: badge RESTOK/MBO + sumber +
+  tombol kunci teks AUTO/MANUAL di tabel markup (PUT `delivery_class`). Kunci:
+  `PUT /api/admin/warung/markup {wr_variant_id, delivery_class}` → source
+  'admin'.
 - Gate auto-order per kelas: `processWrPendingOrders` hanya memproses link
   `restock`; MBO/NULL tetap pending (antre manual). Jangan bypass gate tanpa
   persetujuan owner — MBO = antrean manusia di sisi WR (slow).
