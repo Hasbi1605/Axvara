@@ -157,12 +157,15 @@
   (3) Beli Langsung membawa qty terpilih (tidak selalu 1 → tidak dead-end);
   (4) server authoritative, frontend menjelaskan penyesuaian.
 - PDP (desktop + mobile): blok **Jumlah** di bawah varian — stepper
-  (−/+), floor = min, plafon 100, teks "Min. pembelian N" + total berjalan
-  untuk min>1. Beli Langsung → `/checkout?buy=&variant=&qty=`; Tambah ke
-  Keranjang memakai qty stepper.
+  (−/input ketik/+) dibuka di min, minus tidak turun di bawah min, ketik
+  manual bebas (digit saja, maks 3) lalu commit clamp [min, 100] saat
+  blur/Enter — tidak bisa di bawah min. Teks "Min. pembelian N" + total
+  berjalan untuk min>1. Beli Langsung → `/checkout?buy=&variant=&qty=`;
+  Tambah ke Keranjang memakai qty stepper.
 - QuickVariantModal: panel SOLID `#0B1025` (konsisten ConfirmDialog /
   ProductEditorModal / dialog checkout — bukan glass transparan) + blok
-  Jumlah yang sama + tombol aksi menampilkan TOTAL (qty × harga).
+  Jumlah yang sama (stepper + ketik manual clamp) + tombol aksi menampilkan
+  TOTAL (qty × harga).
 - Checkout: keranjang lama di bawah min → dialog solid "Sesuaikan Jumlah
   Pembelian" dengan tombol **Sesuaikan ke minimum** (1 klik menaikkan qty +
   refetch quote), bukan dead-end "kembali belanja".

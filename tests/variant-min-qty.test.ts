@@ -123,7 +123,7 @@ describe("variant min_qty — bot & storefront", () => {
     expect(modal).toContain('background: "#0B1025"');
     expect(modal).not.toContain("ax-glass-strong");
     expect(modal).toContain("Min. pembelian");
-    expect(modal).toContain("qty=${modalQty}");
+    expect(modal).toContain("qty=${safeModalQty}");
     const checkout = read("src/app/checkout/page.tsx");
     expect(checkout).toContain("Sesuaikan ke minimum");
     expect(checkout).toContain("bg-[#0B1025]");

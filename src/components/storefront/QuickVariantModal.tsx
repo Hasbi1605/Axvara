@@ -75,10 +75,23 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
     ? Math.max(selectedMinQty, selected.stock === -1 ? 100 : Math.max(selectedMinQty, Math.min(100, selected.stock)))
     : 100;
   const [modalQty, setModalQty] = useState(selectedMinQty);
-  // Reset qty ke min tiap ganti varian (pola marketplace).
+  // Draft ketikan manual (pola marketplace): string terpisah agar mengetik
+  // "5"→"50" tidak dipaksa jadi min di tiap keystroke; commit saat blur/Enter.
+  const [modalQtyDraft, setModalQtyDraft] = useState<string | null>(null);
+  // Reset qty + draft ke min tiap ganti varian (pola marketplace).
   useEffect(() => {
     setModalQty(selectedMinQty);
+    setModalQtyDraft(null);
   }, [selectedId, selectedMinQty]);
+  const safeModalQty = Math.min(Math.max(modalQty, selectedMinQty), selectedMaxQty);
+  const commitModalQtyDraft = (raw: string | null) => {
+    setModalQtyDraft(null);
+    if (raw == null) return;
+    const digits = raw.replace(/[^\d]/g, "");
+    const n = Math.floor(Number(digits));
+    if (!digits || !Number.isFinite(n)) return;
+    setModalQty(Math.min(Math.max(n, selectedMinQty), selectedMaxQty));
+  };
 
   const handleConfirm = () => {
     if (!selected || isOutOfStock) return;
@@ -91,10 +104,10 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
         variantId: selected.id,
         variantLabel: selected.label,
         minQty: selectedMinQty,
-      }, modalQty);
+      }, safeModalQty);
       onClose();
     } else {
-      router.push(`/checkout?buy=${encodeURIComponent(product.slug)}&variant=${selected.id}&qty=${modalQty}`);
+      router.push(`/checkout?buy=${encodeURIComponent(product.slug)}&variant=${selected.id}&qty=${safeModalQty}`);
       onClose();
     }
   };
@@ -258,18 +271,29 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
             <div className="inline-flex shrink-0 items-center rounded-xl border border-white/10 bg-white/[0.04]">
               <button
                 type="button"
-                onClick={() => setModalQty((q) => Math.max(selectedMinQty, q - 1))}
-                disabled={modalQty <= selectedMinQty}
+                onClick={() => { commitModalQtyDraft(null); setModalQty((q) => Math.max(selectedMinQty, Math.min(selectedMaxQty, q) - 1)); }}
+                disabled={safeModalQty <= selectedMinQty}
                 aria-label="Kurangi jumlah"
                 className="flex h-9 w-9 items-center justify-center rounded-l-xl text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
               >
                 <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M5 12h14" /></svg>
               </button>
-              <span aria-live="polite" className="w-11 text-center text-sm font-bold tabular-nums text-white">{modalQty}</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={modalQtyDraft ?? String(safeModalQty)}
+                onChange={(e) => setModalQtyDraft(e.target.value.replace(/[^\d]/g, "").slice(0, 3))}
+                onBlur={(e) => commitModalQtyDraft(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                aria-live="polite"
+                aria-label={`Jumlah pembelian, minimal ${selectedMinQty}`}
+                className="w-12 bg-transparent text-center text-sm font-bold tabular-nums text-white outline-none"
+              />
               <button
                 type="button"
-                onClick={() => setModalQty((q) => Math.min(selectedMaxQty, q + 1))}
-                disabled={modalQty >= selectedMaxQty}
+                onClick={() => { commitModalQtyDraft(null); setModalQty((q) => Math.min(selectedMaxQty, Math.max(selectedMinQty, q) + 1)); }}
+                disabled={safeModalQty >= selectedMaxQty}
                 aria-label="Tambah jumlah"
                 className="flex h-9 w-9 items-center justify-center rounded-r-xl text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
               >
@@ -279,7 +303,7 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
           </div>
         )}
         {selected && selectedMinQty > 1 && !isOutOfStock && (
-          <p className="mt-2 text-[11px] text-white/40">Total {formatRupiah(currentPrice * modalQty)} untuk {modalQty} · harga satuan {formatRupiah(currentPrice)}</p>
+          <p className="mt-2 text-[11px] text-white/40">Total {formatRupiah(currentPrice * safeModalQty)} untuk {safeModalQty} · harga satuan {formatRupiah(currentPrice)}</p>
         )}
 
         <div className="pt-2">
@@ -295,11 +319,11 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
           >
             {mode === "checkout" ? (
               <>
-                <IosIcon name="lightning-bolt" size={14} tint="black" /> Beli Sekarang · {formatRupiah(currentPrice * modalQty)}
+                <IosIcon name="lightning-bolt" size={14} tint="black" /> Beli Sekarang · {formatRupiah(currentPrice * safeModalQty)}
               </>
             ) : (
               <>
-                <IosIcon name="shopping-bag" size={14} tint="black" /> Tambah ke Keranjang · {formatRupiah(currentPrice * modalQty)}
+                <IosIcon name="shopping-bag" size={14} tint="black" /> Tambah ke Keranjang · {formatRupiah(currentPrice * safeModalQty)}
               </>
             )}
           </button>

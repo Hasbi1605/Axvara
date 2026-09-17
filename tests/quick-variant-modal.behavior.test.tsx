@@ -147,12 +147,39 @@ describe("QuickVariantModal — alur pemilihan varian", () => {
       product: { variants: [{ id: 21, label: "GSuite", price: 10_000, stock: -1, is_active: 1, warranty_type: "none", min_qty: 50 }] },
     }));
     render(<QuickVariantModal product={product} mode="cart" onClose={vi.fn()} />);
-    await waitFor(() => expect(screen.getByText("50")).toBeTruthy());
+    // Angka kini di dalam input ketik (bukan teks) — dibuka di min 50.
+    await waitFor(() => expect((screen.getByRole("textbox", { name: /Jumlah pembelian/ }) as HTMLInputElement).value).toBe("50"));
     expect(screen.getByText(/Min\. pembelian 50/)).toBeTruthy();
     // Tombol kurang disabled di floor min.
     expect((screen.getByRole("button", { name: "Kurangi jumlah" }) as HTMLButtonElement).disabled).toBe(true);
     // Harga aksi = total (50 × 10.000).
     expect(screen.getByRole("button", { name: /Tambah ke Keranjang/ }).textContent).toContain("500.000");
+  });
+
+  it("tombol + menaikkan qty dan ketik manual di-clamp ke [min, max]", async () => {
+    vi.stubGlobal("fetch", mockCatalog({
+      product: { variants: [{ id: 21, label: "GSuite", price: 10_000, stock: -1, is_active: 1, warranty_type: "none", min_qty: 50 }] },
+    }));
+    const onClose = vi.fn();
+    render(<QuickVariantModal product={product} mode="cart" onClose={onClose} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Tambah jumlah" })).toBeTruthy());
+    // + : 50 → 51, total ikut berubah.
+    fireEvent.click(screen.getByRole("button", { name: "Tambah jumlah" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Tambah ke Keranjang/ }).textContent).toContain("510.000"));
+    // Ketik 75 → commit blur → total 750.000.
+    const input = screen.getByRole("textbox", { name: /Jumlah pembelian/ }) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "75" } });
+    fireEvent.blur(input);
+    await waitFor(() => expect(screen.getByRole("button", { name: /Tambah ke Keranjang/ }).textContent).toContain("750.000"));
+    // Ketik 5 (di bawah min) → commit blur → kembali ke 50.
+    fireEvent.change(input, { target: { value: "5" } });
+    fireEvent.blur(input);
+    await waitFor(() => expect(screen.getByRole("button", { name: /Tambah ke Keranjang/ }).textContent).toContain("500.000"));
+    // Confirm memakai qty ter-commit (50) → add + tutup.
+    fireEvent.click(screen.getByRole("button", { name: /Tambah ke Keranjang/ }));
+    const { useCart } = await import("@/stores/cart");
+    expect(useCart.getState().items[0]?.qty).toBe(50);
+    expect(onClose).toHaveBeenCalled();
   });
 
   it("varian nonaktif disaring dari daftar", async () => {

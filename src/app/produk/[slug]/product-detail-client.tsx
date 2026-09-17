@@ -129,6 +129,26 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
     setActiveImg((prev) => (prev + 1) % galleryImages.length);
   }, [galleryImages.length]);
 
+  // Draft ketikan manual ala marketplace (Shopee/Tokopedia): string terpisah
+  // agar "5" + ketik "0" (="50") tidak dipaksa jadi min di tiap keystroke.
+  // Commit (clamp min..max) hanya saat blur/Enter. Hook di atas (sebelum
+  // early return) agar urutan hooks stabil; reset tiap ganti varian.
+  const [pdpQtyDraft, setPdpQtyDraft] = useState<string | null>(null);
+  useEffect(() => {
+    setPdpQtyDraft(null);
+  }, [selectedVariantId, slug]);
+
+  // Commit ketikan manual: kosong/non-angka = kembali ke nilai aman;
+  // angka di-clamp ke [min, max] (min TIDAK bisa ditembus ke bawah).
+  const commitPdpQtyDraft = (raw: string | null) => {
+    setPdpQtyDraft(null);
+    if (raw == null) return;
+    const digits = raw.replace(/[^\d]/g, "");
+    const n = Math.floor(Number(digits));
+    if (!digits || !Number.isFinite(n)) return;
+    setPdpQty(Math.min(Math.max(n, selectedMinQty), selectedMaxQty));
+  };
+
   if (detailLoading) {
     return (
       <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 py-10">
@@ -482,17 +502,30 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
                 <div className="inline-flex items-center rounded-xl border border-white/10 bg-white/[0.04]">
                   <button
                     type="button"
-                    onClick={() => setPdpQty((q) => Math.max(selectedMinQty, q - 1))}
+                    onClick={() => { commitPdpQtyDraft(null); setPdpQty((q) => Math.max(selectedMinQty, Math.min(selectedMaxQty, q) - 1)); }}
                     disabled={safePdpQty <= selectedMinQty}
                     aria-label="Kurangi jumlah"
                     className="flex h-10 w-10 items-center justify-center rounded-l-xl text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
                   >
                     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M5 12h14" /></svg>
                   </button>
-                  <span aria-live="polite" className="w-12 text-center text-sm font-bold tabular-nums text-white">{safePdpQty}</span>
+                  {/* Ketik manual ala marketplace: draft string, commit clamp
+                      min..max saat blur/Enter. Tidak bisa di bawah min. */}
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    value={pdpQtyDraft ?? String(safePdpQty)}
+                    onChange={(e) => setPdpQtyDraft(e.target.value.replace(/[^\d]/g, "").slice(0, 3))}
+                    onBlur={(e) => commitPdpQtyDraft(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                    aria-live="polite"
+                    aria-label={`Jumlah pembelian, minimal ${selectedMinQty}`}
+                    className="w-14 bg-transparent text-center text-sm font-bold tabular-nums text-white outline-none [appearance:textfield]"
+                  />
                   <button
                     type="button"
-                    onClick={() => setPdpQty((q) => Math.min(selectedMaxQty, q + 1))}
+                    onClick={() => { commitPdpQtyDraft(null); setPdpQty((q) => Math.min(selectedMaxQty, Math.max(selectedMinQty, q) + 1)); }}
                     disabled={safePdpQty >= selectedMaxQty}
                     aria-label="Tambah jumlah"
                     className="flex h-10 w-10 items-center justify-center rounded-r-xl text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
