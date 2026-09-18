@@ -162,7 +162,7 @@ async function deliverLegacyShared(
     if (!waRecipient) throw new Error("No WhatsApp recipient phone number");
     const sendResult = await sendTextMessage({
       target: waRecipient,
-      message: `*PRODUK AXVARA SIAP!*\nOrder: ${orderCode}\n\nDetail akses/lisensi Anda:\n${plaintext}\n\nSimpan baik-baik. Ketik *garansi* untuk ketentuan.`,
+      message: `*PRODUK AXVARA SIAP!*\nOrder: ${orderCode}\n\nDetail akses/lisensi Anda:\n${plaintext}\n\nSimpan baik-baik.`,
     });
     if (!sendResult.ok) throw new Error(sendResult.error || "WhatsApp direct delivery failed");
     await markJobDelivered(jobId, sendResult.messageId || "");
@@ -198,7 +198,7 @@ async function deliverLegacyUnique(
     if (!waRecipient) throw new Error("No WhatsApp recipient phone number");
     const sendResult = await sendTextMessage({
       target: waRecipient,
-      message: `*PRODUK AXVARA SIAP!*\nOrder: ${orderCode}\n\nDetail akses/lisensi Anda:\n${plaintext}\n\nSimpan baik-baik. Ketik *garansi* untuk ketentuan.`,
+      message: `*PRODUK AXVARA SIAP!*\nOrder: ${orderCode}\n\nDetail akses/lisensi Anda:\n${plaintext}\n\nSimpan baik-baik.`,
     });
     if (!sendResult.ok) throw new Error(sendResult.error || "WhatsApp direct delivery failed");
     await markDelivered(Number(inventoryItem.id));

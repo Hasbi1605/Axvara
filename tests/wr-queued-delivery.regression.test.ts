@@ -182,7 +182,7 @@ describe("peringatan umur antrean", () => {
 });
 
 describe("kabar WA pembeli web saat akun siap", () => {
-  it("mengirim pemberitahuan + tautan invoice, BUKAN kredensialnya", () => {
+  it("mengirim pemberitahuan + tautan invoice, BUKAN kredensialnya, tanpa footer /garansi", () => {
     const src = read("src/lib/warung-rebahan/deliver.ts");
     expect(src).toContain("notifyWebBuyerCredentialsReady");
     expect(src).toContain("wr-web-ready:");
@@ -191,6 +191,8 @@ describe("kabar WA pembeli web saat akun siap", () => {
     const fn = src.slice(src.indexOf("async function notifyWebBuyerCredentialsReady"));
     const body = fn.slice(0, fn.indexOf("\n}\n"));
     expect(body).not.toContain("plaintext");
+    // Footer /garansi dihapus dari DM (keputusan owner 2026-09-18).
+    expect(body).not.toContain("garansi");
     expect(body).toContain("WHATSAPP_ENABLED");
   });
 });
@@ -256,6 +258,10 @@ describe("Fase B — kredensial 3 jalur (keputusan owner 2026-09-18)", () => {
       expect(waRows.n).toBe(1);
       const body = fx.sql.prepare("SELECT payload FROM whatsapp_outbox WHERE idempotency_key LIKE '%wr-delivery:AXV-20260918-WB0001%'").get() as { payload: string };
       expect(body.payload).toContain("Email: a@b.c");
+      // Footer /garansi dihapus dari DM kredensial (keputusan owner 2026-09-18):
+      // perintah itu untuk grup (webhook /garansi), bukan DM buyer.
+      expect(body.payload).not.toContain("garansi");
+      expect(body.payload).toContain("JANGAN bagikan");
       // Tanpa email: skip diam, bukan error.
       await expect(deliverWebCredentialViaEmail("AXV-20260918-WB0001", "Email: a@b.c", db)).resolves.toBeUndefined();
     } finally {

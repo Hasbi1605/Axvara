@@ -303,7 +303,7 @@ export async function sendToRecipient(
   if (channel === "whatsapp") {
     const sendResult = await sendTextMessage({
       target,
-      message: `*PRODUK AXVARA SIAP!*\nOrder: ${orderCode}${qtySuffix}\n\nDetail akses/lisensi Anda:\n${plaintext}\n\nSimpan baik-baik. Ketik *garansi* untuk ketentuan.`,
+      message: `*PRODUK AXVARA SIAP!*\nOrder: ${orderCode}${qtySuffix}\n\nDetail akses/lisensi Anda:\n${plaintext}\n\nSimpan baik-baik.`,
     });
     if (!sendResult.ok) throw new Error(sendResult.error || "WhatsApp direct delivery failed");
     return;

@@ -819,7 +819,7 @@ async function deliverTelegramCredential(orderCode: string, plaintext: string, d
       `✅ <b>Pesanan ${orderCode} sudah siap!</b>\n` +
       `📦 ${escapeHtml(productNames)}\n\n` +
       `<pre>${escapeHtml(plaintext)}</pre>\n\n` +
-      `Simpan baik-baik. Ketik /garansi untuk ketentuan.`,
+      `Simpan baik-baik.`,
     parse_mode: "HTML",
   });
   if (!sent.ok) throw new Error("telegram_delivery_failed");
@@ -849,7 +849,7 @@ async function notifyWebBuyerCredentialsReady(orderCode: string, db: DatabaseAcc
     target,
     `*PESANAN AXVARA SUDAH SIAP!*\nOrder: ${orderCode}\n${productNames}\n\n`
       + `Buka halaman pesanan untuk melihat detail akunmu:\n${invoiceUrl}\n\n`
-      + `Masukkan nomor WA ini saat diminta. Ketik *garansi* untuk ketentuan.`,
+      + `Masukkan nomor WA ini saat diminta.`,
   );
 }
 
@@ -867,7 +867,7 @@ async function deliverWhatsAppCredential(orderCode: string, plaintext: string, d
   const queued = await enqueueWhatsAppMessage(
     waOutboxKey("text", `wr-delivery:${orderCode}`),
     target,
-    `*PRODUK AXVARA SIAP!*\nOrder: ${orderCode}\n${productNames}\n\nDetail akses:\n${plaintext}\n\nSimpan baik-baik. Ketik *garansi* untuk ketentuan.`,
+    `*PRODUK AXVARA SIAP!*\nOrder: ${orderCode}\n${productNames}\n\nDetail akses:\n${plaintext}\n\nSimpan baik-baik.`,
   );
   if (!queued) throw new Error("whatsapp_outbox_enqueue_failed");
   // Outbox = durable queue: cron WA mengirimnya; delivery WR settled saat
@@ -920,7 +920,7 @@ export async function deliverWebCredentialViaWhatsApp(
       waOutboxKey("text", `wr-delivery:${orderCode}${chunks.length > 1 ? `:p${i + 1}` : ""}`),
       target,
       `*DETAIL AKUN SIAP — ${orderCode}*${part}\nHalo ${firstName}, ini detail ${productNames} kamu:\n\n${chunks[i]}\n\n`
-      + `Simpan baik-baik dan JANGAN bagikan ke siapa pun. Ketik *garansi* untuk ketentuan.`,
+      + `Simpan baik-baik dan JANGAN bagikan ke siapa pun.`,
     );
     if (!queued) throw new Error("whatsapp_outbox_enqueue_failed");
   }

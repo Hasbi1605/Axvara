@@ -843,7 +843,19 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   detail akun diserahkan.
 - **Pengawasan antrean (18 Sep 2026, live).** `notifyWebBuyerCredentialsReady()`
   mengantrekan pesan WA idempoten (`wr-web-ready:<order>`) saat detail akun siap
-  untuk channel web — isinya kabar + tautan invoice.
+  untuk channel web — isinya kabar + tautan invoice. DM kredensial (`wr-delivery`,
+  `wr-web-ready`) TANPA footer `/garansi` sejak 19 Sep (keputusan owner — perintah
+  itu untuk grup via webhook `/garansi`, bukan DM buyer; handler grup tak tersentuh).
+- **Pemantauan wajib sepekan (19–26 Sep 2026, keputusan owner).**
+  Setiap hari cek: (1) sweep sync tercatat (`wr_sync_log trigger='cron'`
+  tiap ~30 mnt, bukan hanya `manual`); (2) `whatsapp_outbox` tanpa `failed/dead`
+  ber-`last_error='whatsapp_not_connected'` (tanda gateway 401 loop kambuh);
+  (3) `wr_order_links` tanpa `delivery_status` menggantung di `queued/failed/sending`
+  melewati backoff; (4) pairing ulang gateway HANYA dengan sesi yang sama
+  (jangan hapus kunci auth manual — sesi `registered:false` + `me.id` terisi
+  = minta pairing code baru di HP yang sama via `pair-d1.ts`, bukan sesi mati).
+  Bila `connected:false` >30 menit → restart dyno (`heroku restart`), bila 401 loop
+  persisten → pairing ulang + catat di CHANGELOG.
 - **Kredensial 3 jalur (18 Sep 2026, live — keputusan owner, Fase B).** Isi
   detail akun dikirim LANGSUNG, bukan hanya kabar: (a) WA via outbox durable
   (`deliverWebCredentialViaWhatsApp`, kunci `wr-delivery:<code>[:pN]`, potong
