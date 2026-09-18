@@ -210,6 +210,28 @@ describe("Authoritative UI and admin state", () => {
     expect(site).toContain('supportTelegram: "axvara_support"');
   });
 
+  it("blok tombol bantuan 2-tier: navigasi di atas, WA/Telegram pill ringan di bawah (anti wrap/gepeng)", () => {
+    for (const file of ["src/app/pesanan/[code]/page.tsx", "src/app/lacak-pesanan/lacak-pesanan-client.tsx"]) {
+      const src = read(file);
+      // Tier 1 navigasi: grid 2 kolom + nowrap + text-sm (proporsional, tidak wrap).
+      expect(src, file).toContain("grid grid-cols-2 gap-2.5");
+      expect(src, file).toContain("whitespace-nowrap");
+      // Tier 2 bantuan: konteks mikro + label pendek + ikon brand, bukan solid full-bleed.
+      expect(src, file).toContain("Butuh bantuan?");
+      expect(src, file).toContain("WA Admin");
+      expect(src, file).toContain("/brand/whatsapp-circle.svg");
+      expect(src, file).toContain("/brand/telegram.svg");
+      // Tidak ada lagi tombol solid hijau/biru full-bleed + label panjang penyebab wrap 2 baris.
+      expect(src, file).not.toContain("bg-[#25D366]");
+      expect(src, file).not.toContain("bg-[#2AABEE]");
+      expect(src, file).not.toContain("WhatsApp Admin");
+      expect(src, file).not.toContain("Telegram Admin");
+      // Kontrak tidak berubah: message WA + link support Telegram tetap ada.
+      expect(src, file).toContain("StoreWhatsAppLink");
+      expect(src, file).toContain("supportTelegramLink()");
+    }
+  });
+
   it("URL gambar 404 lama tidak ada di seed dan migrasi memperbarui production", () => {
     const products = read("src/lib/products.ts");
     const migration = read("drizzle/migrations/0003_checkout_integrity.sql");

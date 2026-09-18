@@ -213,7 +213,14 @@
 ### 5.7 Halaman Sukses
 - Icon centang besar cyan glow, headline "Pesanan Diterima!", kode `AXV-20260831-0012` mono, status badge Pending warning
 - Instruksi: "Admin verifikasi 5-15 menit, cek WA kamu"
-- Tombol: "Lacak Status" (ke `/lacak-pesanan`) + "Lanjut Belanja" + "Hubungi Admin via WA" (link wa.me)
+- Blok tombol 2-tier (revisi proporsi 2026-09-18, live — fix wrap 2 baris +
+  menara 4 tombol di mobile): Tier 1 navigasi ("Lacak Status" + "Lanjut
+  Belanja") grid 2 kolom `h-11 text-sm whitespace-nowrap` style glass/ghost;
+  Tier 2 bantuan di bawah konteks mikro "Butuh bantuan?" — 2 pill outline
+  `border-white/10 h-11 text-[13px]` (brand hanya di ikon
+  `whatsapp-circle.svg` / `telegram.svg` + hover border brand 40%, bukan
+  background solid full-bleed), label pendek "WA Admin" / "Telegram" agar
+  muat 1 baris tanpa wrap. Tap target tetap ≥44px.
 
 ### 5.7a Halaman Lacak Pesanan `/lacak-pesanan` (2026-09-17, live)
 - Riset pola marketplace (Shopee/Tokopedia/Apple order tracking): satu form
@@ -222,8 +229,11 @@
   bukan teks status mentah. Auto-refresh 10 detik hanya saat Pending.
 - Konsistensi AXVARA: `ax-glass-card` rounded 24–28px, JetBrains Mono untuk
   kode, badge Pending gold / Lunas emerald / Batal red / Kedaluwarsa muted,
-  CTA cyan solid + WA hijau `#25D366` + Telegram `#2AABEE` (sama dengan
-  halaman `/pesanan/[code]`), FAQ `<details>` + kartu cara 1-2-3 seperti
+  CTA cyan solid + bantuan tier-2 pill outline + ikon brand (revisi proporsi
+  2026-09-18, sama dengan halaman `/pesanan/[code]`: Tier 1 navigasi grid 2
+  kolom, Tier 2 "WA Admin"/"Telegram" di bawah "Butuh bantuan?"; tombol
+  kondisional primary `Buka Halaman Pembayaran / Buat Pesanan Baru / Lanjut
+  Belanja` full-width `col-span-2`), FAQ `<details>` + kartu cara 1-2-3 seperti
   `/cara-order`. Mobile-first max-w 720px, tap target ≥44px.
 - Privasi: verifikasi `POST /api/orders/lookup` (kode + WA dinormalisasi
   08/+62/62, banding `constantTimeEqual`), 404 generik untuk kode-salah

@@ -469,16 +469,21 @@ export default function LacakPesananClient() {
             </div>
           </div>
 
-          <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+          <div className="mt-6 grid grid-cols-2 gap-2.5">
             {isPending && !isExpired ? (
-              <Link href={`/pesanan/${order.code}`} className="flex h-11 flex-1 items-center justify-center rounded-xl bg-[#00E5FF] font-bold text-[#080C1E] transition hover:bg-[#00D0E8]">Buka Halaman Pembayaran</Link>
+              <Link href={`/pesanan/${order.code}`} className="col-span-2 flex h-11 items-center justify-center whitespace-nowrap rounded-xl bg-[#00E5FF] px-3 text-sm font-bold text-[#080C1E] transition hover:bg-[#00D0E8]">Buka Halaman Pembayaran</Link>
             ) : isExpired || isCancelled ? (
-              <Link href="/#katalog" className="flex h-11 flex-1 items-center justify-center rounded-xl bg-[#00E5FF] font-bold text-[#080C1E] transition hover:bg-[#00D0E8]">Buat Pesanan Baru</Link>
+              <Link href="/#katalog" className="col-span-2 flex h-11 items-center justify-center whitespace-nowrap rounded-xl bg-[#00E5FF] px-3 text-sm font-bold text-[#080C1E] transition hover:bg-[#00D0E8]">Buat Pesanan Baru</Link>
             ) : (
-              <Link href="/" className="ax-glass-card flex h-11 flex-1 items-center justify-center rounded-xl font-semibold text-white hover:bg-white/10">Lanjut Belanja</Link>
+              <Link href="/" className="ax-glass-card col-span-2 flex h-11 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-white hover:bg-white/10">Lanjut Belanja</Link>
             )}
-            <StoreWhatsAppLink message={`saya ingin menanyakan pesanan ${order.code} sebesar ${formatRupiah(payableAmount)}`} className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-[#25D366] font-semibold text-white hover:bg-[#1DA851]">WhatsApp Admin</StoreWhatsAppLink>
-            <a href={supportTelegramLink()} target="_blank" rel="noreferrer" className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-[#2AABEE] font-semibold text-white hover:bg-[#229ED9]">Telegram Admin</a>
+          </div>
+          <div className="mt-3">
+            <p className="text-center text-[11px] text-white/35">Butuh bantuan?</p>
+            <div className="mt-2 grid grid-cols-2 gap-2.5">
+              <StoreWhatsAppLink message={`saya ingin menanyakan pesanan ${order.code} sebesar ${formatRupiah(payableAmount)}`} className="flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-white/10 px-3 text-[13px] font-medium text-white/80 transition hover:border-[#25D366]/40 hover:bg-white/[0.06]"><img src="/brand/whatsapp-circle.svg" alt="" width={20} height={20} className="h-5 w-5 shrink-0 rounded-full object-cover" draggable={false} /><span>WA Admin</span></StoreWhatsAppLink>
+              <a href={supportTelegramLink()} target="_blank" rel="noreferrer" className="flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-white/10 px-3 text-[13px] font-medium text-white/80 transition hover:border-[#2AABEE]/40 hover:bg-white/[0.06]"><img src="/brand/telegram.svg" alt="" width={20} height={20} className="h-5 w-5 shrink-0 rounded-full object-cover" draggable={false} /><span>Telegram</span></a>
+            </div>
           </div>
           <button type="button" onClick={() => { setOrder(null); setUpdatedAt(null); lastQuery.current = null; }} className="mt-4 text-xs font-semibold text-white/45 underline decoration-white/20 underline-offset-4 hover:text-white">Lacak pesanan lain</button>
           <p className="mt-3 text-center text-[11px] leading-5 text-white/35">Produk third-party AXVARA — simpan kode pesanan untuk klaim. Garansi berupa penggantian sesuai <Link href="/garansi-replace" className="text-white/50 underline decoration-white/20 underline-offset-2 hover:text-white">ketentuan garansi</Link>.</p>

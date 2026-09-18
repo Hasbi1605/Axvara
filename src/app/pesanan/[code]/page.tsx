@@ -235,11 +235,16 @@ export default function OrderSuccessPage() {
 
         {isPaid && <WrCredentialsPanel code={order.code} />}
 
-        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-          <Link href="/lacak-pesanan" className="ax-glass-card flex h-11 flex-1 items-center justify-center rounded-xl font-semibold text-white hover:bg-white/10">Lacak Status</Link>
-          <Link href="/" className="ax-glass-card flex h-11 flex-1 items-center justify-center rounded-xl font-semibold text-white hover:bg-white/10">Lanjut Belanja</Link>
-          <StoreWhatsAppLink message={`saya ingin menanyakan pesanan ${order.code} sebesar ${formatRupiah(payableAmount)}`} className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-[#25D366] font-semibold text-white hover:bg-[#1DA851]">WhatsApp Admin</StoreWhatsAppLink>
-          <a href={supportTelegramLink()} target="_blank" rel="noreferrer" className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-[#2AABEE] font-semibold text-white hover:bg-[#229ED9]">Telegram Admin</a>
+        <div className="mt-6 grid grid-cols-2 gap-2.5">
+          <Link href="/lacak-pesanan" className="ax-glass-card flex h-11 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-white hover:bg-white/10">Lacak Status</Link>
+          <Link href="/" className="ax-glass-card flex h-11 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-white hover:bg-white/10">Lanjut Belanja</Link>
+        </div>
+        <div className="mt-3">
+          <p className="text-center text-[11px] text-white/35">Butuh bantuan?</p>
+          <div className="mt-2 grid grid-cols-2 gap-2.5">
+            <StoreWhatsAppLink message={`saya ingin menanyakan pesanan ${order.code} sebesar ${formatRupiah(payableAmount)}`} className="flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-white/10 px-3 text-[13px] font-medium text-white/80 transition hover:border-[#25D366]/40 hover:bg-white/[0.06]"><img src="/brand/whatsapp-circle.svg" alt="" width={20} height={20} className="h-5 w-5 shrink-0 rounded-full object-cover" draggable={false} /><span>WA Admin</span></StoreWhatsAppLink>
+            <a href={supportTelegramLink()} target="_blank" rel="noreferrer" className="flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-white/10 px-3 text-[13px] font-medium text-white/80 transition hover:border-[#2AABEE]/40 hover:bg-white/[0.06]"><img src="/brand/telegram.svg" alt="" width={20} height={20} className="h-5 w-5 shrink-0 rounded-full object-cover" draggable={false} /><span>Telegram</span></a>
+          </div>
         </div>
 
         <p className="mt-4 text-center text-[11px] leading-5 text-white/35">Produk third-party AXVARA — simpan kode pesanan untuk klaim. Garansi berupa penggantian sesuai <Link href="/garansi-replace" className="text-white/50 underline decoration-white/20 underline-offset-2 hover:text-white">ketentuan garansi</Link>.</p>

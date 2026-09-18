@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-09-18 — Rapikan blok tombol pesanan 2-tier (anti wrap/gepeng): Tier 1 navigasi grid 2 kolom h-11 text-sm nowrap, Tier 2 bantuan pill outline h-11 text-13px + ikon brand + label pendek WA Admin/Telegram + konteks "Butuh bantuan?", hapus solid hijau/biru full-bleed; berlaku di /pesanan/[code] + /lacak-pesanan (kondisional cyan col-span-2) + guard regresi — src/app/pesanan/[code]/page.tsx, src/app/lacak-pesanan/lacak-pesanan-client.tsx, tests/checkout-integrity.regression.test.ts, docs/DESIGN.md (§5.7/§5.7a) — (verifikasi: 829/829 test)
+
 - 2026-09-18 — Lebarkan QuickVariantModal di desktop (mobile dikunci): panel `max-w-[480px]` → `sm:max-w-[620px] lg:max-w-[660px]` + `sm:p-7`, grid tetap 2 kolom `sm:gap-3` + kartu `sm:p-4`, list `sm:max-h-[340px]` agar 4-6 varian tidak langsung scroll internal, CTA `sm:h-12` + thumb header `sm:h-16`; mobile tetap bottom-sheet 480px; test regresi kelas responsif — src/components/storefront/QuickVariantModal.tsx, tests/quick-variant-modal.behavior.test.tsx, docs/DESIGN.md (§5.3d) — (verifikasi: 828/828 test, tsc bersih, dev GET / 200 + CSS 200, Obscura home OK)
 
 - 2026-09-18 — Perbaiki ikon Deskripsi Produk PDP yang hancur: path SVG terpotong (`2-2V8z` → `2 2h12a2 2 0 0 0 2-2V8z`, kontur dokumen utuh, ikon rill sama tidak diganti) — src/app/produk/[slug]/product-detail-client.tsx — (verifikasi: 827/827 test, tsc bersih, dev GET / 200 + CSS 200 + PDP 200, Obscura PDP ikon dokumen utuh)
