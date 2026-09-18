@@ -18,6 +18,7 @@
 
 import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 import { decryptSecret, encryptSecret } from "@/lib/fulfillment/crypto";
+import { isEnabled } from "@/lib/feature-flags";
 
 export type WrOrderLinkRow = {
   id: number;
@@ -835,6 +836,10 @@ async function deliverTelegramCredential(orderCode: string, plaintext: string, d
  */
 async function notifyWebBuyerCredentialsReady(orderCode: string, db: DatabaseAccess): Promise<void> {
   if (process.env.WHATSAPP_ENABLED !== "true") return;
+  // Kill-switch DM kredensial (19 Sep 2026, default mati pasca-restriction nomor
+  // BOT — memulai chat baru = yang dibatasi WA). Skip DIAM agar delivery tetap
+  // settled via email + panel; kode + mekanisme UTUH, nyalakan via env.
+  if (!isEnabled("WHATSAPP_CREDENTIAL_DM_ENABLED")) return;
   const order = await db
     .queryFirst(`SELECT customer_wa, items FROM orders WHERE code=?`, orderCode)
     .catch(() => null);
@@ -854,6 +859,8 @@ async function notifyWebBuyerCredentialsReady(orderCode: string, db: DatabaseAcc
 }
 
 async function deliverWhatsAppCredential(orderCode: string, plaintext: string, db: DatabaseAccess): Promise<void> {
+  // Kill-switch DM kredensial (lihat notifyWebBuyerCredentialsReady).
+  if (!isEnabled("WHATSAPP_CREDENTIAL_DM_ENABLED")) return;
   const order = await db
     .queryFirst(`SELECT channel_member_id, customer_wa FROM orders WHERE code=?`, orderCode)
     .catch(() => null);
@@ -904,6 +911,11 @@ export async function deliverWebCredentialViaWhatsApp(
   db: DatabaseAccess,
 ): Promise<void> {
   if (process.env.WHATSAPP_ENABLED !== "true") throw new Error("whatsapp_disabled");
+  // Kill-switch DM kredensial (lihat notifyWebBuyerCredentialsReady). Beda dari
+  // fungsi di atas: pemanggil (processCredentialDelivery) mengandalkan throw
+  // untuk tahu push gagal — tapi saat flag mati, skip = settled via email/panel,
+  // jadi return diam agar TIDAK menggagalkan delivery.
+  if (!isEnabled("WHATSAPP_CREDENTIAL_DM_ENABLED")) return;
   const order = await db
     .queryFirst(`SELECT customer_name, customer_wa, items FROM orders WHERE code=?`, orderCode)
     .catch(() => null);

@@ -301,6 +301,12 @@ export async function sendToRecipient(
 ): Promise<void> {
   const qtySuffix = qty > 1 ? ` (×${qty})` : "";
   if (channel === "whatsapp") {
+    // Kill-switch DM kredensial (19 Sep 2026, default mati pasca-restriction
+    // nomor BOT). Skip diam — order channel whatsapp dialihkan ke manual
+    // (admin kirim dari HP), kode + mekanisme UTUH.
+    if (!isEnabled("WHATSAPP_CREDENTIAL_DM_ENABLED")) {
+      throw new Error("web_channel_requires_manual_handover:serahkan manual via admin_note");
+    }
     const sendResult = await sendTextMessage({
       target,
       message: `*PRODUK AXVARA SIAP!*\nOrder: ${orderCode}${qtySuffix}\n\nDetail akses/lisensi Anda:\n${plaintext}\n\nSimpan baik-baik.`,

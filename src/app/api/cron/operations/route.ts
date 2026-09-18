@@ -141,6 +141,7 @@ export async function POST(request: NextRequest) {
     whatsapp_outbox_dead: 0,
     whatsapp_outbox_recovered: 0,
     whatsapp_outbox_claim_errors: 0,
+    whatsapp_outbox_paused: 0,
     whatsapp_rows_cleaned: 0,
     wr_products_synced: 0,
     wr_orders_processed: 0,
@@ -606,6 +607,7 @@ export async function POST(request: NextRequest) {
             results.whatsapp_outbox_dead = waOutbox.dead;
             results.whatsapp_outbox_recovered = waOutbox.recovered ?? 0;
             results.whatsapp_outbox_claim_errors = waOutbox.claimErrors ?? 0;
+            results.whatsapp_outbox_paused = waOutbox.paused ?? 0;
           } catch { /* antrean bertahan; cron berikutnya retry */ }
           const waLeft = pendingWa - (Number(results.whatsapp_outbox_sent) + Number(results.whatsapp_outbox_dead));
           if ((waLeft > 0 || pendingStaleWa > Number(results.whatsapp_outbox_recovered)) && !deferredOut.includes("notify")) deferredOut.push("notify");

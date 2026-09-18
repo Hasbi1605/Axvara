@@ -265,6 +265,7 @@ describe("RR5 bounded recovery and delivery", () => {
   });
   it("RR5-06 enabled WhatsApp delivery honors proof hold, then sends after proof is present", async () => {
     await seed({ channel: "whatsapp" });
+    vi.stubEnv("WHATSAPP_CREDENTIAL_DM_ENABLED", "true");
     vi.stubEnv("WHATSAPP_REQUIRE_PROOF_BEFORE_FULFILLMENT", "true");
     fixture.sql.exec("UPDATE orders SET payment_method='seabank'");
     await cron(); expect(sendTextMessage).not.toHaveBeenCalled();

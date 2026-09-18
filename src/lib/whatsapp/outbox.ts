@@ -14,6 +14,45 @@ import { sendTextMessage } from "./gateway";
 
 export const WA_OUTBOX_RETRY_DELAYS_MINUTES = [1, 5, 15, 60];
 export const WA_OUTBOX_MAX_ATTEMPTS = WA_OUTBOX_RETRY_DELAYS_MINUTES.length + 1;
+// Pacing manusiawi antar kirim dalam satu run (19 Sep 2026, pasca-restriction
+// nomor BOT): kirim beruntun tanpa jeda = signature bot. Default 6 dtk +
+// jitter ≤3 dtk; override via env untuk test. Kadaluarsa juga untuk cooldown
+// per destinasi (satu nomor tidak dihujani pesan berurutan).
+export const WA_OUTBOX_PACE_BASE_MS = Number(process.env.WHATSAPP_OUTBOX_PACE_MS || 6000);
+export const WA_OUTBOX_PACE_JITTER_MS = 3000;
+export const WA_OUTBOX_DEST_COOLDOWN_MS = 60_000;
+// Auto-pause lunak: N sinyal bahaya (gateway mati / 401 / 403 / cooldown)
+// berurutan dalam satu run → berhenti memproses sisa antrean (jangan retry
+// buta yang memperpanjang restriction). Di-test via counter, bukan timer.
+export const WA_OUTBOX_DANGER_PAUSE_AFTER = 3;
+const WA_DANGER_SIGNALS = [
+  "whatsapp_not_connected",
+  "gateway_cooldown_active",
+  "401",
+  "403",
+  "logged_out",
+  "timelock",
+  "forbidden",
+  "restricted",
+];
+
+export function isOutboxDangerSignal(error: unknown): boolean {
+  const low = String(error || "").toLowerCase();
+  return WA_DANGER_SIGNALS.some((s) => low.includes(s));
+}
+
+export function paceDelayMs(): number {
+  return Math.max(0, WA_OUTBOX_PACE_BASE_MS) + Math.floor(Math.random() * WA_OUTBOX_PACE_JITTER_MS);
+}
+
+/** Dibaca per-panggilan (bukan sekali di import) agar test bisa override via env. */
+export function outboxPaceBaseMs(): number {
+  return Number(process.env.WHATSAPP_OUTBOX_PACE_MS || 6000);
+}
+
+function paceDelayMsLive(): number {
+  return Math.max(0, outboxPaceBaseMs()) + Math.floor(Math.random() * WA_OUTBOX_PACE_JITTER_MS);
+}
 
 export type WaOutboxKind = "payment_detected" | "text";
 
@@ -195,8 +234,10 @@ export async function processWhatsAppOutboxRow(row: Record<string, unknown>, dat
  * dipulihkan runtime (bukan SQL buatan tes). Error DB saat klaim tidak
  * ditelan diam-diam: baris dilewati tetapi dihitung sebagai `claimErrors`
  * agar outage schema terlihat di hasil cron, bukan seperti kalah claim.
+ * `paused` = sisa antrean yang TIDAK diproses karena auto-pause lunak
+ * (3 sinyal bahaya berurutan — gateway mati / 401 / 403).
  */
-export async function processDueWhatsAppOutbox(limit = 8, database: DatabaseAccess = createDatabaseAccess()): Promise<{ sent: number; dead: number; recovered?: number; claimErrors?: number }> {
+export async function processDueWhatsAppOutbox(limit = 8, database: DatabaseAccess = createDatabaseAccess()): Promise<{ sent: number; dead: number; recovered?: number; claimErrors?: number; paused?: number }> {
   const { queryFirst, execRun } = database;
   if (!database.canSpend(2)) return { sent: 0, dead: 0, recovered: 0, claimErrors: 0 };
   const recovered = await recoverStaleWhatsAppLeases(database);
@@ -204,9 +245,30 @@ export async function processDueWhatsAppOutbox(limit = 8, database: DatabaseAcce
   let sent = 0;
   let dead = 0;
   let claimErrors = 0;
+  let paused = 0;
+  let dangerStreak = 0;
+  let attempted = 0;
+  const lastSentAtByDest = new Map<string, number>();
   for (const row of rows) {
     if (!database.canSpend(5)) break;
+    // Auto-pause lunak: 3 sinyal bahaya berurutan → stop run ini.
+    if (dangerStreak >= WA_OUTBOX_DANGER_PAUSE_AFTER) {
+      paused = rows.length - attempted;
+      break;
+    }
     const before = String(row.status || "");
+    const dest = String(row.destination || "");
+    // Cooldown per destinasi: jangan hujani satu nomor berurutan.
+    const lastToDest = lastSentAtByDest.get(dest) || 0;
+    const sinceDest = Date.now() - lastToDest;
+    if (lastToDest > 0 && sinceDest < WA_OUTBOX_DEST_COOLDOWN_MS) {
+      continue; // lewati baris ini run ini; due lagi run berikut.
+    }
+    // Pacing manusiawi antar kirim (bukan sleep sebelum baris pertama).
+    if (attempted > 0) {
+      await new Promise((r) => setTimeout(r, paceDelayMsLive()));
+    }
+    attempted++;
     let done = false;
     try {
       done = await processWhatsAppOutboxRow(row, database);
@@ -214,6 +276,7 @@ export async function processDueWhatsAppOutbox(limit = 8, database: DatabaseAcce
       // Kegagalan database (CHECK/schema) — bukan kalah claim. Catat agar
       // terlihat, jangan anggap sukses/perebutan normal.
       claimErrors++;
+      dangerStreak = 0; // error DB lokal, bukan sinyal WA — jangan picu pause.
       try {
         await execRun(
           `UPDATE whatsapp_outbox SET last_error=?, updated_at=datetime('now') WHERE id=?`,
@@ -223,10 +286,23 @@ export async function processDueWhatsAppOutbox(limit = 8, database: DatabaseAcce
       } catch { /* best-effort marker */ }
       continue;
     }
-    if (!done) continue;
-    const after = await queryFirst(`SELECT status FROM whatsapp_outbox WHERE id=?`, Number(row.id));
-    if (String(after?.status) === "sent") sent++;
-    else if (String(after?.status) === "dead" && before !== "dead") dead++;
+    if (!done) {
+      // Gagal kirim (failed lagi, bukan sent/dead): cek apakah sinyal bahaya.
+      const cur = await queryFirst(`SELECT last_error FROM whatsapp_outbox WHERE id=?`, Number(row.id));
+      if (isOutboxDangerSignal(cur?.last_error)) dangerStreak++;
+      else dangerStreak = 0;
+      continue;
+    }
+    const after = await queryFirst(`SELECT status, last_error FROM whatsapp_outbox WHERE id=?`, Number(row.id));
+    if (String(after?.status) === "sent") {
+      sent++;
+      dangerStreak = 0;
+      lastSentAtByDest.set(dest, Date.now());
+    } else if (String(after?.status) === "dead" && before !== "dead") {
+      dead++;
+      if (isOutboxDangerSignal(after?.last_error)) dangerStreak++;
+      else dangerStreak = 0;
+    }
   }
-  return { sent, dead, recovered, claimErrors };
+  return { sent, dead, recovered, claimErrors, paused };
 }

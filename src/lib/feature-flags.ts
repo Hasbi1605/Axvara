@@ -10,6 +10,11 @@ export const flags = {
   WHATSAPP_PROOF_INTAKE: () => process.env.WHATSAPP_PROOF_INTAKE === "true",
   WHATSAPP_REQUIRE_PROOF_BEFORE_FULFILLMENT: () => process.env.WHATSAPP_REQUIRE_PROOF_BEFORE_FULFILLMENT === "true",
   WHATSAPP_FULFILLMENT: () => process.env.WHATSAPP_FULFILLMENT === "true",
+  // DM kredensial otomatis ke buyer (19 Sep 2026, default MATI pasca-restriction
+  // nomor BOT). Grup tetap hidup penuh; kredensial jalan via email + panel web.
+  // Kode + mekanisme DM UTUH di bawah gate ini — menyalakan lagi = set env
+  // "true" + deploy, tanpa ubah kode (lihat issue disable-wa-credential-dm).
+  WHATSAPP_CREDENTIAL_DM_ENABLED: () => process.env.WHATSAPP_CREDENTIAL_DM_ENABLED === "true",
 } as const;
 
 export type FlagName = keyof typeof flags;

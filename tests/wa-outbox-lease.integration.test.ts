@@ -7,7 +7,10 @@ vi.mock("@/lib/whatsapp/gateway", () => ({
 
 let fixture: ReturnType<typeof createD1Fixture>;
 beforeEach(() => { fixture = createD1Fixture(); });
-afterEach(() => { fixture.close(); vi.clearAllMocks(); });
+afterEach(async () => { fixture.close(); vi.clearAllMocks(); vi.unstubAllEnvs();
+  const gateway = await import("@/lib/whatsapp/gateway");
+  (gateway.sendTextMessage as unknown as ReturnType<typeof vi.fn>).mockImplementation(async () => ({ ok: true, messageId: "dummy" }));
+});
 
 // R10: dua worker konkuren tidak boleh mengirim pesan yang sama dua kali.
 // Klaim lease (status+sending, worker_id, locked_until) membuat worker kedua
@@ -141,5 +144,44 @@ describe("R10 WA outbox lease prevents concurrent double-send", () => {
       fixture.sql.exec("DROP TABLE whatsapp_outbox");
       fixture.sql.exec("ALTER TABLE whatsapp_outbox_backup_tmp RENAME TO whatsapp_outbox");
     }
+  });
+});
+
+// Kill-switch DM kredensial 19 Sep 2026 (pasca-restriction nomor BOT):
+// pacing manusiawi + auto-pause lunak setelah sinyal bahaya berurutan.
+describe("WA outbox pacing + danger auto-pause", () => {
+  it("isOutboxDangerSignal mengenali sinyal gateway mati/restriction", async () => {
+    const outbox = await import("@/lib/whatsapp/outbox");
+    expect(outbox.isOutboxDangerSignal("whatsapp_not_connected")).toBe(true);
+    expect(outbox.isOutboxDangerSignal("gateway_cooldown_active")).toBe(true);
+    expect(outbox.isOutboxDangerSignal("send failed: 401 logged out")).toBe(true);
+    expect(outbox.isOutboxDangerSignal("boom")).toBe(false);
+    expect(outbox.isOutboxDangerSignal(null)).toBe(false);
+  });
+
+  it("3x gagal sinyal bahaya berurutan menghentikan sisa antrean (paused)", async () => {
+    vi.stubEnv("WHATSAPP_OUTBOX_PACE_MS", "0");
+    const outbox = await import("@/lib/whatsapp/outbox");
+    const gateway = await import("@/lib/whatsapp/gateway");
+    const send = gateway.sendTextMessage as unknown as ReturnType<typeof vi.fn>;
+    send.mockImplementation(async () => ({ ok: false, error: "whatsapp_not_connected" }));
+    for (const k of ["pz-1", "pz-2", "pz-3", "pz-4", "pz-5"]) {
+      await outbox.enqueueWhatsAppMessage(k, `62800000000${k.slice(-1)}`, "DUMMY");
+    }
+    const result = await outbox.processDueWhatsAppOutbox(8);
+    // 3 diproses (gagal sinyal bahaya) lalu auto-pause: sisa 2 tidak disentuh.
+    expect(result.paused).toBe(2);
+    expect(fixture.sql.prepare("SELECT COUNT(*) n FROM whatsapp_outbox WHERE status IN ('pending','failed')").get()?.n).toBe(5);
+  });
+
+  it("kirim sukses berurutan tetap jalan (tidak false-pause)", async () => {
+    vi.stubEnv("WHATSAPP_OUTBOX_PACE_MS", "0");
+    const outbox = await import("@/lib/whatsapp/outbox");
+    for (const k of ["ok-1", "ok-2"]) {
+      await outbox.enqueueWhatsAppMessage(k, `62811111111${k.slice(-1)}`, "DUMMY");
+    }
+    const result = await outbox.processDueWhatsAppOutbox(8);
+    expect(result.sent).toBe(2);
+    expect(result.paused ?? 0).toBe(0);
   });
 });

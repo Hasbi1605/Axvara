@@ -270,7 +270,9 @@ async function processLegacyJob(
   const waRecipient = recipient.channel === "whatsapp" ? recipient.target : String(order.channel_member_id || order.customer_wa || "");
 
   // WhatsApp fulfillment feature flag (if disabled, route to manual)
-  if (salesChannel === "whatsapp" && !isEnabled("WHATSAPP_FULFILLMENT")) {
+  // Kill-switch DM kredensial 19 Sep 2026: flag MATI juga me-route ke manual
+  // (admin kirim dari HP). Kode + mekanisme UTUH, nyalakan via env.
+  if (salesChannel === "whatsapp" && (!isEnabled("WHATSAPP_FULFILLMENT") || !isEnabled("WHATSAPP_CREDENTIAL_DM_ENABLED"))) {
     await execRun(
       `UPDATE fulfillment_jobs SET status='manual_required', locked_until=NULL, updated_at=datetime('now') WHERE id=?`,
       jobId,
