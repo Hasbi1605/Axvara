@@ -1011,6 +1011,21 @@ berikutnya, `secret_text` terbawa. **Semua env Pages ditulis sebagai
 bersifat write-only (GET selalu tampil kosong): verifikasi lewat perilaku
 (endpoint 200), bukan lewat GET.
 
+Cara mengubah satu env tanpa merusak yang lain (2026-09-18): pakai
+`wrangler pages secret put <KEY> --project-name axvara` (satu kunci per
+operasi). **JANGAN** PATCH `deployment_configs.production.env_vars` lewat REST
+API dengan objek sebagian — payload itu berisiko menggantikan seluruh peta env
+(38 secret) alih-alih menggabungkannya. Setelah `secret put`, nilai baru baru
+terbaca oleh **deployment berikutnya**: dorong satu commit agar CI membuat
+deployment baru, jangan `wrangler pages deployment create` (lihat 16.3).
+
+Nilai yang diset 2026-09-18 (semua `secret_text`): `WARUNG_REBAHAN_AUTO_ORDER_ENABLED=true`
+(gate auto-order — ini yang membelanjakan saldo sungguhan),
+`WARUNG_REBAHAN_AUTO_ORDER_MBO=true` (kelas antrean ikut auto-order; set `false`
+sebagai saklar mundur tanpa deploy), dan `WARUNG_REBAHAN_SALDO_ALERT_THRESHOLD=250000`
+(sebelumnya tidak ada di Pages sehingga memakai default kode). Total secret
+produksi menjadi 38.
+
 ### 16.3 Jangan redeploy wrangler tanpa direktori
 `wrangler pages deployment create` tanpa argumen me-redeploy artefak LAMA =
 rollback prod (hari ini menimpa build CI PR#1: pagination angka + badge lama
