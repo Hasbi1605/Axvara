@@ -5,46 +5,58 @@
 // kepemilikan lewat nomor WA checkout (sekali), lalu menerima capability
 // token untuk akses ulang (disimpan di sessionStorage perangkat ini saja).
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Credential = { details: string; completed_at: string | null };
 
-export function WrCredentialsPanel({ code }: { code: string }) {
-  const [wa, setWa] = useState("");
+export function WrCredentialsPanel({ code, prefillWa = "" }: { code: string; prefillWa?: string }) {
+  const [wa, setWa] = useState(prefillWa);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [creds, setCreds] = useState<Credential[] | null>(null);
   const [token, setToken] = useState<string | null>(null);
 
   // Akses ulang otomatis bila capability token tersimpan di perangkat ini.
+  // prefillWa (dari hasil lacak yang WA-nya sudah diverifikasi server) ikut
+  // dicoba sekali otomatis — verifikasi TETAP di server via endpoint
+  // credentials, jadi tidak ada kepercayaan pada klaim client.
+  const triedPrefill = useRef(false);
   useEffect(() => {
     const saved = sessionStorage.getItem(`wr-cred-token:${code}`);
-    if (!saved) return;
-    setLoading(true);
-    fetch(`/api/orders/${encodeURIComponent(code)}/credentials?token=${encodeURIComponent(saved)}`)
-      .then(async (r) => {
-        if (!r.ok) {
-          sessionStorage.removeItem(`wr-cred-token:${code}`);
-          return;
-        }
-        const body = (await r.json()) as { credentials?: Credential[] };
-        if (body.credentials?.length) {
-          setCreds(body.credentials);
-          setToken(saved);
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    if (saved) {
+      setLoading(true);
+      fetch(`/api/orders/${encodeURIComponent(code)}/credentials?token=${encodeURIComponent(saved)}`)
+        .then(async (r) => {
+          if (!r.ok) {
+            sessionStorage.removeItem(`wr-cred-token:${code}`);
+            return;
+          }
+          const body = (await r.json()) as { credentials?: Credential[] };
+          if (body.credentials?.length) {
+            setCreds(body.credentials);
+            setToken(saved);
+          }
+        })
+        .catch(() => {})
+        .finally(() => setLoading(false));
+      return;
+    }
+    if (prefillWa.trim().length >= 6 && !triedPrefill.current) {
+      triedPrefill.current = true;
+      setWa(prefillWa);
+      void verifyWith(prefillWa);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
 
-  async function verify() {
+  async function verifyWith(waValue: string) {
     setLoading(true);
     setError(null);
     try {
       const r = await fetch(`/api/orders/${encodeURIComponent(code)}/credentials`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ wa }),
+        body: JSON.stringify({ wa: waValue }),
       });
       const body = (await r.json().catch(() => ({}))) as {
         credentials?: Credential[];
@@ -65,6 +77,10 @@ export function WrCredentialsPanel({ code }: { code: string }) {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function verify() {
+    await verifyWith(wa);
   }
 
   if (creds?.length) {

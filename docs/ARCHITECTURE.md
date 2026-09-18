@@ -836,8 +836,25 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   detail akun diserahkan.
 - **Pengawasan antrean (18 Sep 2026, live).** `notifyWebBuyerCredentialsReady()`
   mengantrekan pesan WA idempoten (`wr-web-ready:<order>`) saat detail akun siap
-  untuk channel web — isinya hanya kabar + tautan invoice, BUKAN kredensial
-  (pengambilan tetap wajib verifikasi WA + capability token). `alertAgingWrOrders()`
+  untuk channel web — isinya kabar + tautan invoice.
+- **Kredensial 3 jalur (18 Sep 2026, live — keputusan owner, Fase B).** Isi
+  detail akun dikirim LANGSUNG, bukan hanya kabar: (a) WA via outbox durable
+  (`deliverWebCredentialViaWhatsApp`, kunci `wr-delivery:<code>[:pN]`, potong
+  1500 char/bagian, hanya DM `customer_wa`); (b) email via Resend
+  (`deliverWebCredentialViaEmail`, template "Detail Akun Siap" berisi isi +
+  peringatan jangan bagikan, idempoten `wr-cred-email:<code>` di
+  `wr_email_forward_log`, migrasi 0038 membuka kind `credential_ready` +
+  channel `email-credential` — CHECK lama menolak INSERT diam-diam sehingga
+  retry mengirim ganda, tertangkap test sebelum live; pembeli tanpa email
+  dilewati diam); (c) panel web: `WrCredentialsPanel` dipakai ulang di hasil
+  `/lacak-pesanan` dengan `prefillWa` dari input lookup + auto-verify sekali
+  (verifikasi tetap di server via `/api/orders/[code]/credentials`; lookup
+  sudah `constantTimeEqual` penuh sehingga setara halaman pesanan).
+  `formatWrAccountDetails` memakai key map normalisasi (`akses otp`/URL/
+  username tampil rapi, key asing dikapitalisasi — bukan JSON mentah).
+  Aturan settled: dua-duanya gagal = throw agar retry; satu gagal = catat
+  `web_push_partial` tapi settled (token + panel tetap jalan).
+  `alertAgingWrOrders()`
   memberi tahu admin via Telegram bila link masih `processing/submitted/ordering/claimed`
   melewati `WR_QUEUED_ALERT_HOURS`, idempoten lewat kolom `aging_alerted_at`
   (migrasi 0037) dan ditandai SEBELUM kirim agar kegagalan notifikasi tidak

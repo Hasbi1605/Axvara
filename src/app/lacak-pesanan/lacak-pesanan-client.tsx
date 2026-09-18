@@ -8,6 +8,7 @@ import { useSearchParams } from "next/navigation";
 import { formatRupiah } from "@/lib/utils";
 import { supportTelegramLink } from "@/lib/site";
 import { StoreWhatsAppLink } from "@/components/storefront/StoreWhatsAppLink";
+import { WrCredentialsPanel } from "@/components/storefront/WrCredentialsPanel";
 import { IosIcon } from "@/components/ui/IosIcon";
 
 type QrisInvoice = {
@@ -30,6 +31,8 @@ type TrackedOrder = {
   expiresAt?: string;
   qris?: QrisInvoice | null;
   qrisReissueAllowed: boolean;
+  /** true bila detail akun WR sudah siap (dari /api/orders/lookup). */
+  credentialsReady: boolean;
 };
 
 type RecentEntry = { code: string; wa: string };
@@ -85,6 +88,7 @@ function fromApi(value: Record<string, unknown>): TrackedOrder {
     createdAt: value.created_at ? String(value.created_at) : undefined,
     expiresAt: value.expires_at ? String(value.expires_at) : undefined,
     qrisReissueAllowed: value.qris_reissue_allowed === true,
+    credentialsReady: value.credentials_ready === true,
     qris: value.qris as QrisInvoice | null | undefined,
   };
 }
@@ -437,6 +441,13 @@ export default function LacakPesananClient() {
               Pembayaran <span className="font-semibold text-white">{order.name}</span> sudah diterima. Detail akses dikirim
               via WA / Telegram. Simpan kode pesanan untuk klaim garansi.
             </p>
+          )}
+          {/* Detail akun WR di hasil lacak (Fase B): WA sudah diverifikasi
+              penuh oleh /api/orders/lookup, jadi panel menerima prefill dan
+              mencoba verifikasi sekali otomatis — verifikasi tetap di server
+              via /api/orders/[code]/credentials, bukan kepercayaan client. */}
+          {isPaid && order.credentialsReady && (
+            <WrCredentialsPanel code={order.code} prefillWa={wa} />
           )}
           {isCancelled && (
             <p className="mt-5 rounded-2xl border border-red-500/20 bg-red-500/[0.06] p-4 text-left text-xs leading-6 text-red-200">

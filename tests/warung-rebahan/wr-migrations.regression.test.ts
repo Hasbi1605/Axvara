@@ -234,6 +234,29 @@ describe("migrasi WR berurutan di DB production lama", () => {
       sql.close();
     }
   });
+
+  it("0038: kind credential_ready + channel email-credential diizinkan; data lama utuh", async () => {
+    const sql = createPreWrDatabase();
+    try {
+      sql.exec(fs.readFileSync("drizzle/migrations/0027_warung_rebahan.sql", "utf8"));
+      sql.exec(fs.readFileSync("drizzle/migrations/0036_wr_email_forward.sql", "utf8"));
+      sql.prepare("INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status) VALUES('AXV-F','B','628','[]',100,'qris','lunas','paid')").run();
+      sql.prepare("INSERT INTO wr_email_forward_log(gmail_message_id,wr_invoice,axvara_order_code,kind,buyer_email,channel) VALUES('msg-1','RBHN-1','AXV-F','invite_sent','b@x.id','email')").run();
+      // Sebelum 0038: kind/channel kredensial DITOLAK.
+      expect(() => sql.prepare("INSERT INTO wr_email_forward_log(gmail_message_id,axvara_order_code,kind,buyer_email,channel) VALUES('wr-cred-email:AXV-F','AXV-F','credential_ready','b@x.id','email-credential')").run()).toThrow();
+      sql.exec(fs.readFileSync("drizzle/migrations/0038_credential_email_log.sql", "utf8"));
+      // Sesudah 0038: diizinkan + idempoten via UNIQUE.
+      sql.prepare("INSERT INTO wr_email_forward_log(gmail_message_id,axvara_order_code,kind,buyer_email,channel) VALUES('wr-cred-email:AXV-F','AXV-F','credential_ready','b@x.id','email-credential')").run();
+      sql.prepare("INSERT OR IGNORE INTO wr_email_forward_log(gmail_message_id,axvara_order_code,kind,buyer_email,channel) VALUES('wr-cred-email:AXV-F','AXV-F','credential_ready','b@x.id','email-credential')").run();
+      const n = sql.prepare("SELECT COUNT(*) n FROM wr_email_forward_log WHERE gmail_message_id='wr-cred-email:AXV-F'").get() as { n: number };
+      expect(n.n).toBe(1);
+      // Data lama utuh + kind liar tetap ditolak.
+      expect((sql.prepare("SELECT COUNT(*) n FROM wr_email_forward_log").get() as { n: number }).n).toBe(2);
+      expect(() => sql.prepare("INSERT INTO wr_email_forward_log(gmail_message_id,kind) VALUES('msg-9','spam')").run()).toThrow();
+    } finally {
+      sql.close();
+    }
+  });
 });
 
 describe("regresi #14: bootstrap schema.sql mendukung seluruh operasi WR", () => {

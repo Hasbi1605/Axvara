@@ -216,8 +216,10 @@ diteruskan otomatis ke WR begitu lunas — sebelumnya link-nya diam `pending` sa
 sadar. Ekspektasi waktunya jujur per kelas dan disebut SEBELUM bayar (PDP, modal varian,
 checkout): instan = 5–15 menit, antrean = "umumnya lebih cepat, maksimal 12 jam pada jam
 layanan" (estimasi supplier 6–12 jam). Saklar mundur: `WARUNG_REBAHAN_AUTO_ORDER_MBO=false`.
-Pembeli web dikabari WA otomatis saat detail akun siap (kabar + tautan invoice, bukan
-kredensialnya), admin dapat notifikasi Telegram bila satu order melewati 13 jam
+Pembeli web menerima ISI kredensial langsung via WA (outbox durable) + email
+Resend "Detail Akun Siap" (idempoten; tanpa email dilewati diam), plus kabar +
+tautan invoice, dan panel Detail Akun tampil di halaman pesanan + hasil
+lacak-pesanan. Admin dapat notifikasi Telegram bila satu order melewati 13 jam
 (migrasi 0037), panel antrean admin menampilkan umur tiap baris, dan ambang alert saldo
 default naik ke Rp250.000 karena modal varian termahal Rp200.000. Blueprint: `docs/WARUNG-REBAHAN-INTEGRATION.md`; arsitektur terpasang:
 `docs/ARCHITECTURE.md` §15. Seluruhnya di balik `WARUNG_REBAHAN_ENABLED=false` (lihat

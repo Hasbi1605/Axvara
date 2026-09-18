@@ -164,6 +164,50 @@ async function logWebhookEvent(
   }
 }
 
+/** Normalisasi key detail akun WR: case/spasi/underscore-insensitive
+ *  ("Akses OTP", "akses_otp" → "aksesotp") agar varian baru WR yang memakai
+ *  key tak dikenal tetap tampil rapi, bukan JSON mentah. */
+function normDetailKey(raw: string): string {
+  return raw.toLowerCase().replace(/[\s_]+/g, "");
+}
+
+/** Key → label Indonesia. Key tak dikenal tampil apa adanya (kapitalisasi
+ *  rapi), bukan JSON — pembeli tidak boleh melihat `{...}`. */
+const DETAIL_KEY_LABELS: Record<string, string> = {
+  email: "Email",
+  username: "Username",
+  user: "User",
+  akun: "Akun",
+  password: "Password",
+  pass: "Password",
+  pin: "PIN",
+  aksesotp: "Akses OTP",
+  otp: "OTP",
+  url: "Tautan",
+  link: "Tautan",
+  note: "Catatan",
+  keterangan: "Keterangan",
+};
+
+function labelDetailKey(raw: string): string {
+  return DETAIL_KEY_LABELS[normDetailKey(raw)] ?? raw.trim().replace(/[_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** Satu objek detail → "Label: nilai · Label: nilai". Nilai URL/OTP panjang
+ *  tidak dipotong per-field (batas 2000 char ditegakkan di tingkat hasil). */
+function formatDetailObject(o: Record<string, unknown>): string {
+  const parts: string[] = [];
+  for (const [k, v] of Object.entries(o)) {
+    if (v == null) continue;
+    const text = String(v).trim();
+    if (!text) continue;
+    // Lewati metadata non-kredensial bila ada.
+    if (["id", "order_id", "status", "created_at"].includes(normDetailKey(k))) continue;
+    parts.push(`${labelDetailKey(k)}: ${text}`);
+  }
+  return parts.join(" · ");
+}
+
 export function formatWrAccountDetails(raw: unknown): string {
   if (raw == null) return "";
   if (typeof raw === "string") return raw.slice(0, 2000);
@@ -174,19 +218,14 @@ export function formatWrAccountDetails(raw: unknown): string {
       return details
         .map((d) => {
           if (typeof d === "string") return d;
-          const o = d as Record<string, unknown>;
-          const parts = ["email", "username", "user", "password", "pass", "pin", "akun", "note", "keterangan"]
-            .map((k) => (o[k] != null && String(o[k]).trim() ? `${k}: ${String(o[k]).trim()}` : ""))
-            .filter(Boolean);
-          return parts.length ? parts.join(" · ") : JSON.stringify(o).slice(0, 500);
+          const text = formatDetailObject(d as Record<string, unknown>);
+          return text || JSON.stringify(d).slice(0, 500);
         })
+        .filter(Boolean)
         .join("\n")
         .slice(0, 2000);
     }
-    const flat = ["email", "username", "password"]
-      .map((k) => (data[k] != null ? `${k}: ${String(data[k])}` : ""))
-      .filter(Boolean)
-      .join("\n");
+    const flat = formatDetailObject(data);
     if (flat) return flat.slice(0, 2000);
     return JSON.stringify(raw).slice(0, 2000);
   } catch {
@@ -531,10 +570,34 @@ export async function processCredentialDelivery(
       }
       // Kabari pembeli lewat WA (2026-09-18). Wajib sejak kelas antrean ikut
       // auto-order: tunggunya bisa berjam-jam, jadi pembeli sudah menutup
-      // halaman dan tidak akan tahu produknya siap. Yang dikirim HANYA
-      // pemberitahuan + tautan invoice, BUKAN kredensialnya — pengambilan
-      // tetap lewat verifikasi WA + capability token di halaman pesanan.
+      // halaman dan tidak akan tahu produknya siap.
       await notifyWebBuyerCredentialsReady(String(link.order_code), db).catch(() => undefined);
+      // Kirim ISI kredensial via WA + email (keputusan owner 2026-09-18,
+      // Fase B). Pembeli MBO menunggu jam-jaman — kabar + tautan saja tidak
+      // cukup; mereka harus menerima detailnya di kontaknya langsung.
+      // Keduanya best-effort idempoten: kegagalan salah satu TIDAK
+      // menggagalkan delivery (token + panel tetap jalan sebagai jalur
+      // pengambilan), tapi dicatat di last_error untuk retry berikutnya.
+      // Urutan: WA dulu (kontak utama checkout), lalu email.
+      const webPushErrors: string[] = [];
+      try {
+        await deliverWebCredentialViaWhatsApp(String(link.order_code), plaintext, db);
+      } catch (e) { webPushErrors.push(`wa:${e instanceof Error ? e.message : String(e)}`); }
+      try {
+        await deliverWebCredentialViaEmail(String(link.order_code), plaintext, db);
+      } catch (e) { webPushErrors.push(`email:${e instanceof Error ? e.message : String(e)}`); }
+      if (webPushErrors.length === 2) {
+        // Dua-duanya gagal = tidak ada jalur push yang sampai; tandai agar
+        // retry berikutnya mencoba lagi (jangan settled diam-diam).
+        throw new Error(webPushErrors.join(" | ").slice(0, 300));
+      }
+      if (webPushErrors.length === 1) {
+        await execRun(
+          `UPDATE wr_order_links SET delivery_last_error=? WHERE id=?`,
+          `web_push_partial: ${webPushErrors[0].slice(0, 200)}`,
+          linkId,
+        ).catch(() => undefined);
+      }
     } else if (channel === "telegram") {
       await deliverTelegramCredential(String(link.order_code), plaintext, db);
     } else {
@@ -708,6 +771,110 @@ async function deliverWhatsAppCredential(orderCode: string, plaintext: string, d
   if (!queued) throw new Error("whatsapp_outbox_enqueue_failed");
   // Outbox = durable queue: cron WA mengirimnya; delivery WR settled saat
   // pesan durable di antrean (kontrak outbox: retry sampai sent/dead).
+}
+
+/** Potong teks panjang menjadi beberapa pesan WA (maks ~1500 char/pesan).
+ *  Batas formatter 2000 char → maksimal 2 pesan. */
+function splitWaMessages(text: string, maxLen = 1500): string[] {
+  if (text.length <= maxLen) return [text];
+  const out: string[] = [];
+  let rest = text;
+  while (rest.length > 0 && out.length < 3) {
+    if (rest.length <= maxLen) { out.push(rest); break; }
+    let cut = rest.lastIndexOf("\n", maxLen);
+    if (cut < maxLen * 0.5) cut = maxLen;
+    out.push(rest.slice(0, cut));
+    rest = rest.slice(cut).replace(/^\n+/, "");
+  }
+  return out;
+}
+
+/**
+ * Isi kredensial untuk pembeli channel WEB via WA (Fase B, 2026-09-18).
+ * Beda dari notifyWebBuyerCredentialsReady (kabar + tautan): ini mengirim
+ * ISI detail akun — keputusan owner agar pembeli MBO yang menunggu
+ * jam-jaman menerima produknya di kontaknya langsung.
+ * Idempoten via kunci outbox `wr-delivery:<code>[:pN]` — retry tidak ganda.
+ * Hanya DM (customer_wa checkout); tidak pernah ke grup.
+ */
+export async function deliverWebCredentialViaWhatsApp(
+  orderCode: string,
+  plaintext: string,
+  db: DatabaseAccess,
+): Promise<void> {
+  if (process.env.WHATSAPP_ENABLED !== "true") throw new Error("whatsapp_disabled");
+  const order = await db
+    .queryFirst(`SELECT customer_name, customer_wa, items FROM orders WHERE code=?`, orderCode)
+    .catch(() => null);
+  if (!order) throw new Error("order_not_found");
+  const target = String(order.customer_wa || "").trim();
+  if (!target) throw new Error("no_whatsapp_target");
+  const { enqueueWhatsAppMessage, waOutboxKey } = await import("@/lib/whatsapp/outbox");
+  const productNames = parseProductNames(order.items);
+  const firstName = String(order.customer_name || "").trim().split(/\s+/)[0] || "Kak";
+  const chunks = splitWaMessages(plaintext);
+  for (let i = 0; i < chunks.length; i++) {
+    const part = chunks.length > 1 ? ` (bagian ${i + 1}/${chunks.length})` : "";
+    const queued = await enqueueWhatsAppMessage(
+      waOutboxKey("text", `wr-delivery:${orderCode}${chunks.length > 1 ? `:p${i + 1}` : ""}`),
+      target,
+      `*DETAIL AKUN SIAP — ${orderCode}*${part}\nHalo ${firstName}, ini detail ${productNames} kamu:\n\n${chunks[i]}\n\n`
+      + `Simpan baik-baik dan JANGAN bagikan ke siapa pun. Ketik *garansi* untuk ketentuan.`,
+    );
+    if (!queued) throw new Error("whatsapp_outbox_enqueue_failed");
+  }
+}
+
+/**
+ * Isi kredensial untuk pembeli channel WEB via email (Fase B, 2026-09-18).
+ * Template "Detail Akun Siap" via Resend (lihat buildCredentialReadyTemplate).
+ * Idempoten via `wr_email_forward_log` kunci `wr-cred-email:<order>` —
+ * retry delivery tidak mengirim email ganda. Pembeli tanpa email = skip
+ * diam (bukan error): jalur WA + panel tetap mencakupnya.
+ */
+export async function deliverWebCredentialViaEmail(
+  orderCode: string,
+  plaintext: string,
+  db: DatabaseAccess,
+): Promise<void> {
+  const { queryFirst, execRun } = db;
+  const order = await db
+    .queryFirst(
+      `SELECT customer_name, customer_email, customer_wa, items FROM orders WHERE code=?`,
+      orderCode,
+    )
+    .catch(() => null);
+  if (!order) throw new Error("order_not_found");
+  const buyerEmail = String(order.customer_email || "").trim();
+  if (!buyerEmail || !buyerEmail.includes("@")) return; // tanpa email: WA + panel cukup.
+  const idempotencyKey = `wr-cred-email:${orderCode}`;
+  const already = await queryFirst(
+    `SELECT id FROM wr_email_forward_log WHERE gmail_message_id=? AND buyer_notified_at IS NOT NULL`,
+    idempotencyKey,
+  ).catch(() => null);
+  if (already) return;
+  const { isForwardEmailConfigured, sendForwardEmail } = await import("./forward-sender");
+  const { buildCredentialReadyTemplate } = await import("./email-forward");
+  const { SITE } = await import("@/lib/site");
+  if (!isForwardEmailConfigured()) throw new Error("forward_email_not_configured");
+  const siteUrl = (process.env.SITE_URL || SITE.webUrl).replace(/\/$/, "");
+  const template = buildCredentialReadyTemplate({
+    axvaraOrderCode: orderCode,
+    buyerName: String(order.customer_name || ""),
+    productNames: parseProductNames(order.items),
+    details: plaintext,
+    invoiceUrl: `${siteUrl}/pesanan/${encodeURIComponent(orderCode)}`,
+    supportWa: SITE.adminWaLocal,
+  });
+  const sent = await sendForwardEmail({ to: buyerEmail, subject: template.subject, html: template.html, text: template.text });
+  await execRun(
+    `INSERT OR IGNORE INTO wr_email_forward_log
+       (gmail_message_id, wr_invoice, axvara_order_code, kind, buyer_email, buyer_notified_at, channel, error)
+     VALUES (?,?,?,?,?,${sent.ok ? "datetime('now')" : "NULL"},'email-credential',?)`,
+    idempotencyKey, null, orderCode, "credential_ready", buyerEmail,
+    sent.ok ? null : String(sent.error || "send_failed"),
+  ).catch(() => undefined);
+  if (!sent.ok) throw new Error(String(sent.error || "credential_email_send_failed"));
 }
 
 /**

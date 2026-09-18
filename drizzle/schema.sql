@@ -825,11 +825,11 @@ CREATE TABLE IF NOT EXISTS wr_email_forward_log (
   wr_invoice TEXT,
   axvara_order_code TEXT REFERENCES orders(code),
   kind TEXT NOT NULL DEFAULT 'order_update'
-    CHECK (kind IN ('order_update', 'invite_sent', 'unknown', 'unmatched', 'skipped')),
+    CHECK (kind IN ('order_update', 'invite_sent', 'unknown', 'unmatched', 'skipped', 'credential_ready')),
   buyer_email TEXT,
   buyer_notified_at TEXT,
   channel TEXT NOT NULL DEFAULT 'email'
-    CHECK (channel IN ('email', 'whatsapp', 'none')),
+    CHECK (channel IN ('email', 'whatsapp', 'none', 'email-credential')),
   error TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

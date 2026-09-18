@@ -185,8 +185,19 @@ export function buildAxvaraForwardTemplate(ctx: ForwardContext): AxvaraForwardTe
       + supportBlock,
       { logoUrl, siteUrl },
     );
-    return { subject, text, html };
+  return { subject, text, html };
   }
+  return buildOrderUpdateTemplate(ctx, firstName, siteUrl, logoUrl, supportBlock);
+}
+
+function buildOrderUpdateTemplate(
+  ctx: ForwardContext,
+  firstName: string,
+  siteUrl: string,
+  logoUrl: string,
+  supportBlock: string,
+): AxvaraForwardTemplate {
+  const { parsed } = ctx;
   const product = parsed.product ?? "pesanan kamu";
   const subject = `Pesanan ${product} sedang diproses — AXVARA ${ctx.axvaraOrderCode}`;
   const text =
@@ -205,6 +216,58 @@ export function buildAxvaraForwardTemplate(ctx: ForwardContext): AxvaraForwardTe
     + (detailRows ? `<div style="background:#f8fafc;border-left:3px solid #00E5FF;border-radius:0 12px 12px 0;padding:12px 16px;font-size:13px;color:#475569">${detailRows}</div>` : "")
     + cta(ctx.invoiceUrl, "Lihat Invoice →")
     + supportBlock,
+    { logoUrl, siteUrl },
+  );
+  return { subject, text, html };
+}
+
+/** Konteks email kredensial: isi detail akun dikirim LANGSUNG ke pembeli
+ *  (keputusan owner 2026-09-18) — bukan hanya kabar. Dipakai delivery web
+ *  untuk channel email; pengirim tetap Axvara via Resend. */
+export type CredentialEmailContext = {
+  axvaraOrderCode: string;
+  buyerName: string;
+  productNames: string;
+  /** Detail akun terformat (sudah didekripsi). */
+  details: string;
+  invoiceUrl: string;
+  supportWa: string;
+};
+
+/** Template "Detail Akun Siap" — MEMUAT ISI KREDENSIAL (keputusan owner).
+ *  Nol jejak supplier; ada peringatan jangan bagikan + tombol invoice
+ *  sebagai cadangan bila email ini diteruskan orang lain. */
+export function buildCredentialReadyTemplate(ctx: CredentialEmailContext): AxvaraForwardTemplate {
+  const firstName = ctx.buyerName.trim().split(/\s+/)[0] || "Kak";
+  const siteUrl = ctx.invoiceUrl.match(/^https?:\/\/[^/]+/i)?.[0] ?? "https://axvara.tech";
+  const logoUrl = emailLogoUrl(siteUrl);
+  const waHref = waLink(ctx.supportWa);
+  const product = ctx.productNames || "pesanan kamu";
+  const subject = `Detail akun ${product} sudah siap — AXVARA ${ctx.axvaraOrderCode}`;
+  const text =
+    `Halo ${firstName}, detail akun ${product} kamu sudah siap.\n\n` +
+    `${ctx.details}\n\n` +
+    `Simpan baik-baik dan JANGAN bagikan ke siapa pun.\n` +
+    `Invoice Axvara: ${ctx.invoiceUrl}\nButuh bantuan? WA ${ctx.supportWa}`;
+  // Detail di-render sebagai blok monospace per baris agar mudah disalin;
+  // di-escape penuh (nilai dari upstream, bukan dari kita).
+  const detailBlock = ctx.details
+    .split("\n")
+    .filter((l) => l.trim())
+    .map((l) => `<p style="margin:0 0 6px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;color:#0f1430;word-break:break-all">${esc(l)}</p>`)
+    .join("");
+  const html = shell(
+    "Detail Akun Siap",
+    "Simpan baik-baik — jangan bagikan ke siapa pun.",
+    invoiceBadge(ctx.axvaraOrderCode)
+    + `<p style="color:#334155;font-size:14px;line-height:1.7;margin:0 0 12px">Halo ${esc(firstName)}, detail akun <b>${esc(product)}</b> kamu sudah siap:</p>`
+    + `<div style="background:#f8fafc;border-left:3px solid #00E5FF;border-radius:0 12px 12px 0;padding:12px 16px;font-size:13px;color:#475569">${detailBlock}</div>`
+    + `<div style="background:#fef9e7;border:1px solid rgba(255,184,0,.4);border-radius:12px;padding:12px 16px;margin-top:12px;font-size:13px;color:#92690e">Jangan bagikan detail ini ke siapa pun, termasuk yang mengaku admin. Admin Axvara tidak pernah meminta detail akunmu.</div>`
+    + cta(ctx.invoiceUrl, "Lihat Invoice →")
+    + `<p style="text-align:center;font-size:13px;color:#0f1430;font-weight:700;margin:20px 0 8px">Butuh bantuan? Tim kami siap membantu:</p>`
+    + `<p style="text-align:center;margin:0">`
+    + `<a href="${esc(waHref)}" style="display:inline-block;background:#22C55E;color:#fff;text-decoration:none;font-weight:700;font-size:13px;padding:11px 24px;border-radius:999px">Hubungi Kami via WhatsApp</a></p>`
+    + `<p style="text-align:center;font-size:13px;color:#64748b;margin:12px 0 0">Terima kasih sudah berbelanja di <a href="${esc(siteUrl)}" style="color:#0f1430;font-weight:700;text-decoration:none">Axvara</a>.</p>`,
     { logoUrl, siteUrl },
   );
   return { subject, text, html };

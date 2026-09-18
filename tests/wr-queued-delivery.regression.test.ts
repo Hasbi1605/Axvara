@@ -17,6 +17,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createD1Fixture } from "./helpers/d1-fixture";
+import { insertTestProduct } from "./helpers/d1-fixture";
 import { createDatabaseAccess } from "@/lib/db-access";
 import {
   deliveryEtaForBuyer,
@@ -191,5 +192,108 @@ describe("kabar WA pembeli web saat akun siap", () => {
     const body = fn.slice(0, fn.indexOf("\n}\n"));
     expect(body).not.toContain("plaintext");
     expect(body).toContain("WHATSAPP_ENABLED");
+  });
+});
+
+describe("Fase B — kredensial 3 jalur (keputusan owner 2026-09-18)", () => {
+  it("formatter: key 'akses otp'/URL dinormalisasi, bukan JSON mentah", async () => {
+    const { formatWrAccountDetails } = await import("@/lib/warung-rebahan/deliver");
+    const out = formatWrAccountDetails([
+      { email: "angeloledner5912@gsmail.id", password: "@Masuk123", "akses otp": "https://gomail.id/angeloledner5912@gsmail.id" },
+    ]);
+    expect(out).toContain("Email: angelolvedner5912@gsmail.id".replace("angelolvedner", "angeloledner"));
+    expect(out).toContain("Password: @Masuk123");
+    expect(out).toContain("Akses OTP: https://gomail.id/");
+    expect(out).not.toContain("{");
+    // Key aneh tetap tampil rapi, bukan JSON.
+    expect(formatWrAccountDetails([{ "Nama Pengguna": "budi" }])).toContain("Nama Pengguna: budi");
+    // Null/aneh tidak meledak.
+    expect(formatWrAccountDetails(null)).toBe("");
+    expect(formatWrAccountDetails("plain-teks")).toBe("plain-teks");
+  });
+
+  it("template Detail Akun Siap: memuat isi + nol jejak supplier", async () => {
+    const { buildCredentialReadyTemplate } = await import("@/lib/warung-rebahan/email-forward");
+    const t = buildCredentialReadyTemplate({
+      axvaraOrderCode: "AXV-20260918-95FC8669",
+      buyerName: "hasbi",
+      productNames: "Meitu Premium",
+      details: "Email: a@b.c · Password: p",
+      invoiceUrl: "https://axvara.tech/pesanan/AXV-20260918-95FC8669",
+      supportWa: "089519388264",
+    });
+    expect(t.subject).toContain("sudah siap");
+    expect(t.text).toContain("Email: a@b.c");
+    expect(t.html).toContain("Email: a@b.c");
+    expect(t.html).toContain("Jangan bagikan");
+    for (const blob of [t.subject, t.text, t.html]) {
+      const low = blob.toLowerCase();
+      expect(low).not.toContain("warung");
+      expect(low).not.toContain("rebahan");
+      expect(low).not.toContain("supplier");
+      expect(low).not.toContain("pemasok");
+    }
+  });
+
+  it("delivery web mengantrekan isi WA (idempoten) + skip email bila tanpa alamat", async () => {
+    const fx = createD1Fixture();
+    try {
+      await insertTestProduct(fx.sql, "manual", 1);
+      fx.sql.prepare(
+        `INSERT INTO orders(code,customer_name,customer_wa,customer_email,items,subtotal,payment_method,status,payment_status,sales_channel)
+         VALUES('AXV-20260918-WB0001','Buyer','628000000000',NULL,'[]',10000,'qris','lunas','paid','web')`,
+      ).run();
+      const { createDatabaseAccess } = await import("@/lib/db-access");
+      const db = createDatabaseAccess(fx.db);
+      const { deliverWebCredentialViaWhatsApp, deliverWebCredentialViaEmail } =
+        await import("@/lib/warung-rebahan/deliver");
+      vi.stubEnv("WHATSAPP_ENABLED", "true");
+      const { enqueueWhatsAppMessage } = await import("@/lib/whatsapp/outbox");
+      void enqueueWhatsAppMessage;
+      await deliverWebCredentialViaWhatsApp("AXV-20260918-WB0001", "Email: a@b.c · Password: p", db);
+      await deliverWebCredentialViaWhatsApp("AXV-20260918-WB0001", "Email: a@b.c · Password: p", db);
+      const waRows = fx.sql.prepare("SELECT COUNT(*) n FROM whatsapp_outbox WHERE idempotency_key LIKE '%wr-delivery:AXV-20260918-WB0001%'").get() as { n: number };
+      expect(waRows.n).toBe(1);
+      const body = fx.sql.prepare("SELECT payload FROM whatsapp_outbox WHERE idempotency_key LIKE '%wr-delivery:AXV-20260918-WB0001%'").get() as { payload: string };
+      expect(body.payload).toContain("Email: a@b.c");
+      // Tanpa email: skip diam, bukan error.
+      await expect(deliverWebCredentialViaEmail("AXV-20260918-WB0001", "Email: a@b.c", db)).resolves.toBeUndefined();
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("email kredensial idempoten: kirim 2x hanya 1 email keluar", async () => {
+    const fx = createD1Fixture();
+    try {
+      await insertTestProduct(fx.sql, "manual", 1);
+      fx.sql.prepare(
+        `INSERT INTO orders(code,customer_name,customer_wa,customer_email,items,subtotal,payment_method,status,payment_status,sales_channel)
+         VALUES('AXV-20260918-WB0002','Buyer','628000000000','buyer@x.id','[]',10000,'qris','lunas','paid','web')`,
+      ).run();
+      vi.stubEnv("RESEND_API_KEY", "test-key");
+      vi.stubEnv("FORWARD_FROM_EMAIL", "noreply@axvara.tech");
+      let calls = 0;
+      vi.stubGlobal("fetch", vi.fn(async () => { calls++; return { ok: true, json: async () => ({ id: "em-1" }) }; }));
+      const { createDatabaseAccess } = await import("@/lib/db-access");
+      const db = createDatabaseAccess(fx.db);
+      const { deliverWebCredentialViaEmail } = await import("@/lib/warung-rebahan/deliver");
+      await deliverWebCredentialViaEmail("AXV-20260918-WB0002", "Email: a@b.c", db);
+      await deliverWebCredentialViaEmail("AXV-20260918-WB0002", "Email: a@b.c", db);
+      expect(calls).toBe(1);
+      const log = fx.sql.prepare("SELECT COUNT(*) n FROM wr_email_forward_log WHERE gmail_message_id='wr-cred-email:AXV-20260918-WB0002'").get() as { n: number };
+      expect(log.n).toBe(1);
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("hasil lacak order lunas + kredensial siap me-render panel (tanpa input WA ulang di server)", async () => {
+    const page = read("src/app/lacak-pesanan/lacak-pesanan-client.tsx");
+    expect(page).toContain("WrCredentialsPanel");
+    expect(page).toContain("prefillWa");
+    expect(page).toContain("order.credentialsReady");
+    const lookup = read("src/app/api/orders/lookup/route.ts");
+    expect(lookup).toContain("credentials_ready");
   });
 });

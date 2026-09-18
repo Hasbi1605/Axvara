@@ -75,6 +75,19 @@ export async function POST(req: NextRequest) {
   } catch {
     items = [];
   }
+  // Flag kredensial siap (Fase B): lookup SUDAH memverifikasi WA penuh
+  // (constantTimeEqual di atas), jadi panel di hasil lacak sama amannya
+  // dengan halaman pesanan — tanpa input WA ulang.
+  let credentialsReady = false;
+  if (String(row.status) === "lunas") {
+    const cred = await queryFirst(
+      `SELECT 1 AS ok FROM wr_order_links
+       WHERE order_code=? AND status='completed' AND wr_account_details IS NOT NULL
+       LIMIT 1`,
+      code,
+    ).catch(() => null);
+    credentialsReady = Boolean(cred);
+  }
   return NextResponse.json({
     order: {
       code: row.code,
@@ -91,6 +104,7 @@ export async function POST(req: NextRequest) {
       fulfillment_status: row.fulfillment_status ?? null,
       created_at: row.created_at,
       expires_at: row.expires_at,
+      credentials_ready: credentialsReady,
       qris_reissue_allowed: row.status === "pending" && row.sales_channel !== "whatsapp" && Number(row.qris_reissue_count || 0) < MAX_QRIS_REISSUES,
       qris: row.dynamic_qris_url
         ? {
