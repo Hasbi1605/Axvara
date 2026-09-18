@@ -15,6 +15,7 @@ import {
   decryptAccountDetails,
   getDecryptedAccountDetails,
   issueCredentialToken,
+  normalizeAccountDetailsForDisplay,
 } from "@/lib/warung-rebahan/deliver";
 
 export const runtime = "edge";
@@ -59,8 +60,9 @@ async function readVerifiedDetails(code: string, db: DatabaseAccess) {
   const out: { details: string; completed_at: string | null }[] = [];
   for (const row of rows) {
     try {
-      const details = await decryptAccountDetails(String(row.wr_account_details), String(row.wr_account_iv));
-      out.push({ details, completed_at: row.completed_at ? String(row.completed_at) : null });
+      const stored = await decryptAccountDetails(String(row.wr_account_details), String(row.wr_account_iv));
+      // Normalisasi display di USE-time (data lama JSON mentah tampil rapi).
+      out.push({ details: normalizeAccountDetailsForDisplay(stored), completed_at: row.completed_at ? String(row.completed_at) : null });
     } catch {
       /* lewati baris korup */
     }

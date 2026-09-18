@@ -818,6 +818,40 @@ describe("Outbound Baileys Reply with inboxId (P0.1)", () => {
   });
 });
 
+describe("WhatsApp Target Normalization (2026-09-18)", () => {
+  it("bare HP number becomes DM JID; group JID untouched", async () => {
+    const { normalizeWhatsAppTarget } = await import("@/lib/whatsapp/gateway");
+    // Bukti prod: baris outbox menyimpan 628… mentah → Baileys jidDecode
+    // versi baru melempar (tanpa '@' = undefined) → 4x gagal.
+    expect(normalizeWhatsAppTarget("6283878525697")).toBe("6283878525697@s.whatsapp.net");
+    expect(normalizeWhatsAppTarget("083878525697")).toBe("6283878525697@s.whatsapp.net");
+    expect(normalizeWhatsAppTarget("+62 838-7852-5697")).toBe("6283878525697@s.whatsapp.net");
+    // Grup JID jangan dinormalisasi (salah alamat = bocor ke grup).
+    expect(normalizeWhatsAppTarget("120363024823948293@g.us")).toBe("120363024823948293@g.us");
+    expect(normalizeWhatsAppTarget("120363024823948293")).toBe("120363024823948293");
+    expect(normalizeWhatsAppTarget("")).toBe("");
+  });
+
+  it("sendTextMessage posts normalized JID to gateway", async () => {
+    process.env.WHATSAPP_GATEWAY_URL = "https://gateway.example";
+    process.env.WHATSAPP_WEBHOOK_TOKEN = "dummy_token";
+    const { sendTextMessage } = await import("@/lib/whatsapp/gateway");
+
+    let interceptedBody = "";
+    vi.stubGlobal("fetch", vi.fn(async (_u, options) => {
+      interceptedBody = String((options as RequestInit).body);
+      return { ok: true, json: async () => ({ status: true, id: "jid_ok" }) };
+    }));
+    const res = await sendTextMessage({ target: "6283878525697", message: "halo" });
+    expect(res.ok).toBe(true);
+    expect(JSON.parse(interceptedBody).target).toBe("6283878525697@s.whatsapp.net");
+
+    vi.unstubAllGlobals();
+    delete process.env.WHATSAPP_GATEWAY_URL;
+    delete process.env.WHATSAPP_WEBHOOK_TOKEN;
+  });
+});
+
 describe("Cart Matching Logic with Variants (P1.6)", () => {
   type TestItem = { id: string; price: number; qty: number; variantId?: number; variantLabel?: string };
 

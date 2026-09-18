@@ -330,10 +330,35 @@ describe("Warung Rebahan webhook completion", () => {
     }
   });
 
-  it("format detail akun menangani array/string/object", () => {
+  it("format detail akun: JSON {product,details} + \\r\\n + envelope (bukti prod 95FC8669)", async () => {
+    // BUKTI PROD 2026-09-18 sore: panel menampilkan mentah
+    // {"product":"Meitu Premium - Meitu VIP+","details":"email: a@x.id\r\npassword: p\r\nakses otp: https://..."}
+    // karena cabang `typeof raw === "string"` mengembalikan string apa pun
+    // mentah. Sekarang: normalizeAccountDetailsForDisplay (dipakai SEMUA
+    // kanal: panel, WA, email, Telegram) mengupas envelope + menormalkan
+    // \r\n + merapikan label. formatWrAccountDetails tetap untuk simpan.
+    const { normalizeAccountDetailsForDisplay } = await import("@/lib/warung-rebahan/deliver");
+    const prodRaw = `{"product":"Meitu Premium - Meitu VIP+","details":"email:  angelolvedner5912@gsmail.id\\r\\npassword:  @Masuk123\\r\\nakses otp:  https://gomail.id/angeloledner5912@gsmail.id"}`;
+    const out = normalizeAccountDetailsForDisplay(prodRaw);
+    expect(out).not.toContain("{");
+    expect(out).not.toContain("Meitu Premium - Meitu VIP+");
+    expect(out).not.toContain("\r");
+    expect(out).toContain("Email: angelolvedner5912@gsmail.id");
+    expect(out).toContain("Password: @Masuk123");
+    expect(out).toContain("Akses OTP: https://gomail.id/angeloledner5912@gsmail.id");
+    expect(out).not.toContain("{");
+    expect(out).not.toContain("Meitu Premium - Meitu VIP+");
+    expect(out).not.toContain("\r");
+    expect(out).toContain("Email: angelolvedner5912@gsmail.id");
+    expect(out).toContain("Password: @Masuk123");
+    expect(out).toContain("Akses OTP: https://gomail.id/angeloledner5912@gsmail.id");
+    // format lama tetap didukung (tidak regresi).
     expect(formatWrAccountDetails("user:pass")).toBe("user:pass");
     expect(formatWrAccountDetails([{ email: "a@b.c", password: "p" }])).toContain("a@b.c");
     expect(formatWrAccountDetails({ email: "x@y.z", password: "q" })).toContain("x@y.z");
-    expect(formatWrAccountDetails(null)).toBe("");
+    // envelope account_details + label ganda tidak bocor (jalur display).
+    expect(normalizeAccountDetailsForDisplay({ account_details: [{ email: "e@x.id" }] })).toContain("Email: e@x.id");
+    expect(normalizeAccountDetailsForDisplay("Email: Email: a@b.c")).toBe("Email: a@b.c");
+    expect(normalizeAccountDetailsForDisplay(null)).toBe("");
   });
 });

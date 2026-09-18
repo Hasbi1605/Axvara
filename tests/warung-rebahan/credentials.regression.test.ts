@@ -233,3 +233,41 @@ describe("GET /api/orders?code= — flag credentials_ready", () => {
     }
   });
 });
+
+// Payload JSON-string persis prod 95FC8669 → retrieval rapi di semua titik
+// (panel web, WA, email). Sebelum 2026-09-18 sore: panel menampilkan mentah
+// {"product":..,"details":"email:..\r\npassword:.."} karena cabang string
+// mengembalikan apa pun mentah + \r tidak dinormalisasi.
+describe("retrieval payload JSON-string envelope (bukti prod 95FC8669)", () => {
+  const PROD_RAW = `{"product":"Meitu Premium - Meitu VIP+","details":"email:  angelolvedner5912@gsmail.id\\r\\npassword:  @Masuk123\\r\\nakses otp:  https://gomail.id/angeloledner5912@gsmail.id"}`;
+  it("POST credentials mengembalikan details rapi, bukan JSON mentah", async () => {
+    const code = "AXV-20260918-CC000009";
+    const fx = await setupWrFixture();
+    try {
+      seedWrCatalog(fx);
+      seedWrOrder(fx, code, "web");
+      seedWrFulfillmentItem(fx, code);
+      fx.sql.prepare("INSERT INTO wr_order_links(order_code,wr_order_id,wr_variant_id,quantity,wr_cost,status) VALUES(?,?,'var-1',1,5000,'processing')").run(code, `ORD-0009`);
+      vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
+      vi.stubEnv("WARUNG_REBAHAN_SYNC_ENABLED", "true");
+      const db = createDatabaseAccess(fx.db);
+      expect(await handleWrOrderCompleted("ORD-0009", JSON.parse(PROD_RAW), db)).toBe(true);
+      const { POST } = await import("@/app/api/orders/[code]/credentials/route");
+      const params = { params: Promise.resolve({ code }) };
+      fx.sql.prepare("UPDATE wr_credential_tokens SET revoked=1 WHERE order_code=?").run(code);
+      const ok = await POST(
+        new Request("http://localhost/x", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ wa: "080000000000" }) }) as never,
+        params,
+      );
+      expect(ok.status).toBe(200);
+      const body = (await ok.json()) as { credentials: { details: string }[] };
+      expect(body.credentials.length).toBe(1);
+      expect(body.credentials[0].details).not.toContain("{");
+      expect(body.credentials[0].details).not.toContain("Meitu Premium - Meitu VIP+");
+      expect(body.credentials[0].details).toContain("Email: angelolvedner5912@gsmail.id");
+      expect(body.credentials[0].details).toContain("Akses OTP: https://gomail.id/");
+    } finally {
+      fx.close();
+    }
+  });
+});

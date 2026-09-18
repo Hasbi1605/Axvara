@@ -32,10 +32,34 @@ export type WhatsAppSendResult = {
 };
 
 export type SendMessageParams = {
-  target: string; // group JID or phone number
+  target: string; // group JID, nomor HP (628…/08…), atau JID lengkap
   message: string;
   inboxId?: string; // reply to incoming inboxid
 };
+
+/**
+ * Normalisasi target kirim ke JID Baileys (2026-09-18 sore).
+ * Baris outbox menyimpan nomor HP mentah (`628…`) — bukan JID. Baileys
+ * `jidDecode` versi baru melempar `Cannot destructure property 'user'`
+ * untuk target tanpa domain (bukti prod: 2 baris `wr-web-ready` gagal 4x
+ * sejak 13:20 UTC, attempt habis tanpa satu pun terkirim). Aturan:
+ * - sudah JID (`@g.us` / `@s.whatsapp.net` / `@lid`) → apa adanya;
+ * - digit saja → DM: `62…` / `08…` dinormalisasi ke `<62…>@s.whatsapp.net`;
+ * - kosong / bukan digit → kembalikan apa adanya (gateway yang menolak).
+ */
+export function normalizeWhatsAppTarget(raw: unknown): string {
+  const target = String(raw || "").trim();
+  if (!target) return target;
+  if (target.includes("@")) return target;
+  const digits = target.replace(/\D/g, "");
+  if (!digits) return target;
+  // Pola DM Indonesia KETAT (10–15 digit, 62…/08…): nomor di luar pola
+  // (grup-ID 18 digit, LID, dsb) dikembalikan APA ADANYA agar gateway yang
+  // menolak — salah normalisasi = salah alamat = bocor ke grup.
+  if (/^62\d{9,13}$/.test(digits)) return `${digits}@s.whatsapp.net`;
+  if (/^0\d{9,13}$/.test(digits)) return `62${digits.slice(1)}@s.whatsapp.net`;
+  return target;
+}
 
 export type SendImageParams = {
   target: string;
@@ -217,12 +241,12 @@ async function callGateway(path: string, payload: Record<string, unknown>, timeo
 }
 
 export function sendTextMessage(params: SendMessageParams): Promise<WhatsAppSendResult> {
-  return callGateway("/send", { target: params.target, message: params.message, inboxId: params.inboxId }, 15_000);
+  return callGateway("/send", { target: normalizeWhatsAppTarget(params.target), message: params.message, inboxId: params.inboxId }, 15_000);
 }
 
 export function sendImageMessage(params: SendImageParams): Promise<WhatsAppSendResult> {
   return callGateway("/send-image", {
-    target: params.target,
+    target: normalizeWhatsAppTarget(params.target),
     imageUrl: params.imageUrl,
     caption: params.caption,
     inboxId: params.inboxId,

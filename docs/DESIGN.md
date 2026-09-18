@@ -241,6 +241,12 @@
   menit `text-[11px] text-white/40`. Prinsipnya: JANGAN pernah tampilkan
   kontrol yang pasti gagal ke pembeli yang baru membayar — form mati lebih
   bikin panik daripada tidak ada form.
+  Hasil "Detail Akun Digital" SELALU multi-baris rapi per field (2026-09-18
+  sore, live): `normalizeAccountDetailsForDisplay` mengupas envelope JSON
+  (`{product,details}`), menormalisasi `\r\n`, memisah `key: value` /
+  `key:: value`, memberi label Indonesia (Akses OTP, Tautan), dan membuang
+  label ganda — tidak pernah JSON mentah (bukti prod: link 95FC8669 tampil
+  `{"product":...,"details":"email:...\r\npassword:..."}` sebelum ini).
 
 ### 5.7a Halaman Lacak Pesanan `/lacak-pesanan` (2026-09-17, live)
 - Riset pola marketplace (Shopee/Tokopedia/Apple order tracking): satu form

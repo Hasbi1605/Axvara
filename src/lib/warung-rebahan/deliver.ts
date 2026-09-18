@@ -194,18 +194,113 @@ function labelDetailKey(raw: string): string {
 }
 
 /** Satu objek detail → "Label: nilai · Label: nilai". Nilai URL/OTP panjang
- *  tidak dipotong per-field (batas 2000 char ditegakkan di tingkat hasil). */
+ *  tidak dipotong per-field (batas 2000 char ditegakkan di tingkat hasil).
+ *  Objek PEMBUNGKUS hulu (`{product, details}` — bukti prod 95FC8669) tidak
+ *  dirender sebagai field: hanya `details`-nya yang dipakai (rekursif),
+ *  `product` dibuang (nama produk sudah ada di konteks order/pesan). */
 function formatDetailObject(o: Record<string, unknown>): string {
+  const keys = Object.keys(o);
+  if ("details" in o && typeof o.details === "string" && keys.every((k) => ["product", "details", "data", "account_details"].includes(normDetailKey(k)))) {
+    return normalizeAccountDetailsForDisplay(o.details);
+  }
   const parts: string[] = [];
   for (const [k, v] of Object.entries(o)) {
     if (v == null) continue;
-    const text = String(v).trim();
+    const text = String(v).trim().replace(/\r\n?/g, "\n");
     if (!text) continue;
     // Lewati metadata non-kredensial bila ada.
     if (["id", "order_id", "status", "created_at"].includes(normDetailKey(k))) continue;
+    // Nilai multiline (details berisi \n) dirender sebagai blok lanjutan,
+    // bukan satu field "Details: a\nb".
+    if (text.includes("\n") && ["details", "detail", "data", "accountdetails"].includes(normDetailKey(k))) {
+      const nested = normalizeAccountDetailsForDisplay(text);
+      if (nested) parts.push(nested);
+      continue;
+    }
     parts.push(`${labelDetailKey(k)}: ${text}`);
   }
   return parts.join(" · ");
+}
+
+/**
+ * Uraikan satu baris "k: v" toleran pemisah ganda ("::" / ": " ganda).
+ * `akses otp:  https://...` → ["akses otp", "https://..."].
+ * Nilai yang sendiri mengandung ":" (URL, waktu) TIDAK dipotong.
+ */
+function splitDetailLine(line: string): [string, string] | null {
+  const m = /^([^:]+?)\s*:{1,2}\s+(.+)$/.exec(line.trim());
+  if (!m) return null;
+  const key = m[1].trim();
+  const value = m[2].trim();
+  if (!key || !value) return null;
+  return [key, value];
+}
+
+/**
+ * Normalisasi SATU baris detail untuk display (dipakai semua kanal: panel
+ * web, WA, email, Telegram). Menangani:
+ * - `\r\n` / `\r` sisa Windows (SEBELUM split baris — penyebab screenshot
+ *   JSON mentah 18 Sep 2026: `\r` ikut jadi bagian key/nilai);
+ * - string JSON `{"product": ..., "details": "..."}` (payload reconcile
+ *   /transactions kadang membungkus; sebelum 2026-09-18 string apa pun
+ *   dikembalikan mentah karena cabang `typeof raw === "string"`);
+ * - envelope `{account_details: [...]}` / `{details: "..."}` / `{data: ...}`;
+ * - baris `key: value` / `key:: value` (spasi/pemisah ganda) + baris polos.
+ * Output SELALU multi-baris rapi — tidak pernah JSON mentah.
+ */
+export function normalizeAccountDetailsForDisplay(raw: unknown): string {
+  const cleaned = decodeCredentialEnvelope(raw);
+  if (cleaned == null) return "";
+  if (typeof cleaned === "string") {
+    const lines = cleaned
+      .replace(/\r\n?/g, "\n")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const kv = splitDetailLine(line);
+        if (!kv) return line; // baris polos (catatan) — tampilkan apa adanya.
+        return `${labelDetailKey(kv[0])}: ${kv[1]}`;
+      });
+    // Label ganda ("Email: Email: x") = nilai sudah berlabel dari hulu.
+    return lines
+      .map((l) => l.replace(/^([A-Za-z ]+):\s*\1\s*:\s*/u, "$1: "))
+      .join("\n")
+      .slice(0, 2000);
+  }
+  return formatWrAccountDetails(cleaned);
+}
+
+/**
+ * Kupas envelope JSON bertingkat sampai ke inti (string / array / objek
+ * datar). `"{\"a\":1}"` → `{a:1}`; `{account_details:[...]}` / `{details}`
+ * / `{data}` → isinya. Batas 3 lapis anti loop. Gagal parse = kembalikan
+ * apa adanya (bukan error).
+ */
+function decodeCredentialEnvelope(raw: unknown, depth = 0): unknown {
+  if (raw == null || depth > 3) return raw;
+  if (typeof raw === "string") {
+    const t = raw.trim();
+    if ((t.startsWith("{") && t.endsWith("}")) || (t.startsWith("[") && t.endsWith("]"))) {
+      try {
+        return decodeCredentialEnvelope(JSON.parse(t), depth + 1);
+      } catch {
+        return raw;
+      }
+    }
+    return raw;
+  }
+  if (Array.isArray(raw)) return raw.map((d) => decodeCredentialEnvelope(d, depth + 1));
+  if (typeof raw === "object") {
+    const o = raw as Record<string, unknown>;
+    for (const k of ["account_details", "details", "data"]) {
+      if (o[k] !== undefined) return decodeCredentialEnvelope(o[k], depth + 1);
+    }
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(o)) out[k] = decodeCredentialEnvelope(v, depth + 1);
+    return out;
+  }
+  return raw;
 }
 
 export function formatWrAccountDetails(raw: unknown): string {
@@ -553,7 +648,13 @@ export async function processCredentialDelivery(
   }
   const attempts = Number(link.delivery_attempt_count || 0);
   try {
-    const plaintext = await decryptSecret(String(link.wr_account_details), String(link.wr_account_iv));
+    const stored = await decryptSecret(String(link.wr_account_details), String(link.wr_account_iv));
+    // Normalisasi display di USE-time (2026-09-18 sore): data lama yang
+    // tersimpan sebagai JSON mentah `{"product":..,"details":"a:\r\nb"}`
+    // (bukti prod: link 95FC8669 tampil mentah di panel) diformat rapi
+    // SEKARANG untuk SEMUA kanal (panel, WA, email, Telegram) — tanpa
+    // mengubah ciphertext yang tersimpan.
+    const plaintext = normalizeAccountDetailsForDisplay(stored);
     const channel = String(link.delivery_channel || "web") as WrDeliveryChannel;
     if (channel === "web") {
       // Web: tidak ada push channel. Delivery = token capability diterbitkan
@@ -1013,10 +1114,12 @@ export async function getDecryptedAccountDetails(
   const out: { order_code: string; details: string; completed_at: string | null }[] = [];
   for (const row of rows) {
     try {
-      const details = await decryptSecret(String(row.wr_account_details), String(row.wr_account_iv));
+      const stored = await decryptSecret(String(row.wr_account_details), String(row.wr_account_iv));
       out.push({
         order_code: String(row.order_code),
-        details,
+        // Normalisasi display di USE-time (lihat processCredentialDelivery):
+        // data lama berformat JSON mentah tampil rapi tanpa migrasi data.
+        details: normalizeAccountDetailsForDisplay(stored),
         completed_at: row.completed_at ? String(row.completed_at) : null,
       });
     } catch {

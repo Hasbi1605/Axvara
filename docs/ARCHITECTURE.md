@@ -740,7 +740,7 @@ Sistem varian produk terpusat dan bot WhatsApp telah diimplementasikan sesuai `d
 
 ### Status Rollout Produksi WhatsApp
 
-Mulai 5 September 2026, Baileys gateway produksi berjalan di Heroku dan seluruh fitur transaksi WhatsApp aktif untuk GID pada `WHATSAPP_GROUP_ALLOWLIST`. Flag aktif meliputi `PRODUCT_VARIANTS_READ`, `WHATSAPP_ENABLED`, `WHATSAPP_GROUP_DISCOVERY`, `WHATSAPP_GROUP_PAYMENT`, `WHATSAPP_PROOF_INTAKE`, `WHATSAPP_REQUIRE_PROOF_BEFORE_FULFILLMENT`, dan `WHATSAPP_FULFILLMENT`. Mode fulfillment varian unique tanpa stok dialihkan aman ke manual agar tidak terjadi silent drop. Outbound `/send` dan `/send-image` wajib memakai shared gateway token; pesan inbound di-cache terbatas selama 20 menit agar balasan dapat memakai quoted message Baileys.
+Mulai 5 September 2026, Baileys gateway produksi berjalan di Heroku dan seluruh fitur transaksi WhatsApp aktif untuk GID pada `WHATSAPP_GROUP_ALLOWLIST`. Flag aktif meliputi `PRODUCT_VARIANTS_READ`, `WHATSAPP_ENABLED`, `WHATSAPP_GROUP_DISCOVERY`, `WHATSAPP_GROUP_PAYMENT`, `WHATSAPP_PROOF_INTAKE`, `WHATSAPP_REQUIRE_PROOF_BEFORE_FULFILLMENT`, dan `WHATSAPP_FULFILLMENT`. Mode fulfillment varian unique tanpa stok dialihkan aman ke manual agar tidak terjadi silent drop. Outbound `/send` dan `/send-image` wajib memakai shared gateway token; pesan inbound di-cache terbatas selama 20 menit agar balasan dapat memakai quoted message Baileys. Target kirim dinormalisasi di adapter via `normalizeWhatsAppTarget` (2026-09-18 sore, live): nomor HP mentah (`628…`/`08…`, seperti tersimpan di outbox) menjadi JID DM `<62…>@s.whatsapp.net` — Baileys baru melempar `jidDecode(...)` undefined untuk target tanpa domain (bukti prod: 2 baris `wr-web-ready` gagal 4x sejak 13:20 UTC 18 Sep). Pola DM ketat (`^62\d{9,13}$`/`^0\d{9,13}$`); JID grup (`@g.us`) dan ID non-pola dikembalikan apa adanya agar gateway yang menolak, bukan salah alamat.
 
 ### Tabel Baru (migrasi 0007)
 | Tabel | Tujuan |
@@ -813,6 +813,13 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   gagal `not_ready`. Selama `lunas && !credentials_ready`, halaman mem-poll
   `GET /api/orders?code=` tiap 20 dtk maksimal 30 kali (±10 mnt) agar panel muncul
   sendiri tanpa reload; retrieval tetap wajib verifikasi WA/capability token.
+  Display dinormalisasi di USE-time via `normalizeAccountDetailsForDisplay`
+  (2026-09-18 sore, live): data lama tersimpan sebagai JSON mentah
+  `{"product":..,"details":"email:..\r\npassword:.."}` diformat rapi di SEMUA
+  kanal (panel, WA, email, Telegram) tanpa migrasi data — envelope dikupas
+  (maks 3 lapis), `\r\n` dinormalisasi SEBELUM split, pembungkus
+  `{product,details}` hanya memakai `details`-nya, label ganda dibuang.
+  Ciphertext TIDAK diubah (format simpan tetap).
 - **Kelas pengiriman + auto-order antrean (18 Sep 2026, live).** `wr_delivery_class`
   membedakan `restock` (instan) dari `made_by_order` (dikerjakan manusia di sisi
   supplier; estimasi supplier 6–12 jam, "<1 jam bila lancar"). Gate lama hanya
