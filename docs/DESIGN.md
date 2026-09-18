@@ -166,6 +166,12 @@
   ProductEditorModal / dialog checkout — bukan glass transparan) + blok
   Jumlah yang sama (stepper + ketik manual clamp) + tombol aksi menampilkan
   TOTAL (qty × harga).
+- QuickVariantModal (revisi lebar desktop 2026-09-18, live): mobile dikunci
+  bottom-sheet `max-w-[480px]` (sudah pas); desktop `sm+` panel tengah
+  `sm:max-w-[620px] lg:max-w-[660px]` + `sm:p-7`, grid tetap 2 kolom dengan
+  `sm:gap-3 + sm:p-4` per kartu, list `sm:max-h-[340px]` agar 4-6 varian
+  (kasus GSuite) jarang kena scroll internal, CTA `sm:h-12`. Pola tidak
+  berubah: tetap modal fokus, bukan drawer/page baru.
 - Checkout: keranjang lama di bawah min → dialog solid "Sesuaikan Jumlah
   Pembelian" dengan tombol **Sesuaikan ke minimum** (1 klik menaikkan qty +
   refetch quote), bukan dead-end "kembali belanja".

@@ -126,7 +126,10 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
       <div
         ref={panelRef}
         tabIndex={-1}
-        className="w-full max-w-[480px] rounded-t-[24px] sm:rounded-[24px] border border-white/10 p-5 sm:p-6 shadow-[0_24px_64px_rgba(0,0,0,0.6)] animate-[fadeInUp_0.25s_var(--ease-apple)] text-left"
+        // Mobile = bottom-sheet 480px (dikunci, sudah pas). Desktop (sm+) =
+        // panel tengah yang dilebarkan (620→660px) + napas lebih lega agar
+        // kartu varian 2 kolom tidak sempit dan scroll internal muncul belakangan.
+        className="w-full max-w-[480px] sm:max-w-[620px] lg:max-w-[660px] rounded-t-[24px] sm:rounded-[24px] border border-white/10 p-5 sm:p-7 shadow-[0_24px_64px_rgba(0,0,0,0.6)] animate-[fadeInUp_0.25s_var(--ease-apple)] text-left"
         style={{ background: "#0B1025" }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -136,7 +139,7 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
             <img
               src={product.image || "/brand/axvara-ribbon-mark.png"}
               alt={product.name}
-              className="h-14 w-14 rounded-xl object-cover bg-white/5 border border-white/10 shrink-0"
+              className="h-14 w-14 sm:h-16 sm:w-16 rounded-xl object-cover bg-white/5 border border-white/10 shrink-0"
             />
             <div className="min-w-0">
               <h3 id="quick-variant-title" className="font-semibold text-white text-sm line-clamp-1 leading-snug">
@@ -188,7 +191,7 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
               Tidak ada varian tersedia.
             </div>
           ) : (
-            <div role="radiogroup" aria-label="Pilih paket atau varian" className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[260px] overflow-y-auto pr-1">
+            <div role="radiogroup" aria-label="Pilih paket atau varian" className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 max-h-[260px] sm:max-h-[340px] overflow-y-auto pr-1">
               {variants.map((v) => {
                 const active = v.id === selectedId;
                 const outStock = v.stock === 0;
@@ -201,7 +204,7 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
                     aria-label={`${v.label} — ${formatRupiah(v.price)}${outStock ? " — stok habis" : ""}${Number(v.min_qty ?? 1) > 1 ? ` — minimal ${Number(v.min_qty)}` : ""}`}
                     disabled={outStock}
                     onClick={() => setSelectedId(v.id)}
-                    className={`flex flex-col items-start p-3 rounded-xl border text-left transition relative ${
+                    className={`flex flex-col items-start p-3 sm:p-4 rounded-xl border text-left transition relative ${
                       outStock
                         ? "opacity-35 bg-white/[0.02] border-white/5 cursor-not-allowed"
                         : active
@@ -311,7 +314,7 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
             type="button"
             disabled={!selected || isOutOfStock || loading}
             onClick={handleConfirm}
-            className={`w-full h-11 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition active:scale-[0.98] ${
+            className={`w-full h-11 sm:h-12 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition active:scale-[0.98] ${
               mode === "checkout"
                 ? "bg-[#00E5FF] text-[#080C1E] hover:bg-[#00D0E8] shadow-[0_4px_16px_rgba(0,229,255,0.3)]"
                 : "bg-white text-[#080C1E] hover:bg-white/90"

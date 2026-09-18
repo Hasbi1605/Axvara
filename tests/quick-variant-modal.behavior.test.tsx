@@ -196,4 +196,22 @@ describe("QuickVariantModal — alur pemilihan varian", () => {
     render(<QuickVariantModal product={product} mode="cart" onClose={vi.fn()} />);
     await waitFor(() => expect(screen.getByText(/Gagal mengambil varian/)).toBeTruthy());
   });
+
+  it("panel desktop dilebarkan (mobile tetap bottom-sheet 480px)", async () => {
+    // Regresi visual 2026-09-18: panel 480px terlalu sempit di desktop —
+    // sm+ harus 620→660px, grid 2 kolom, dan list lebih tinggi agar scroll
+    // internal tidak muncul untuk 4 varian. Cukup assert kelas responsif.
+    await renderModal();
+    const dialog = screen.getByRole("dialog");
+    const panel = dialog.firstElementChild as HTMLElement | null;
+    expect(panel).toBeTruthy();
+    const classes = panel?.getAttribute("class") ?? "";
+    expect(classes).toContain("max-w-[480px]");
+    expect(classes).toContain("sm:max-w-[620px]");
+    expect(classes).toContain("lg:max-w-[660px]");
+    const group = screen.getByRole("radiogroup", { name: "Pilih paket atau varian" });
+    const groupClasses = group.getAttribute("class") ?? "";
+    expect(groupClasses).toContain("sm:grid-cols-2");
+    expect(groupClasses).toContain("sm:max-h-[340px]");
+  });
 });
