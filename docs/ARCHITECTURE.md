@@ -1071,8 +1071,22 @@ Perintah akun #2 wajib prefix `HEROKU_API_KEY=<kunci-akun-2>`; jangan
   Meitu 04:38–07:14 UTC). Fase WR juga didahulukan ke depan urutan eksekusi
   saat sync basi (admission sync memakai budget baseline 40 + deadline 45 s,
   sehingga bila jalan belakangan sisa budget/waktu sering habis dan sweep
-  di-skip diam-diam). Skip sweep karena budget/deadline WAJIB ditandai
-  (`cron_deferred` + `results.wr_sync_skipped = "deadline"|"query_budget"`).
+   di-skip diam-diam). Skip sweep karena budget/deadline WAJIB ditandai
+   (`cron_deferred` + `results.wr_sync_skipped = "deadline"|"query_budget"`).
+ - Pelajaran Fase A 18 Sep (PENTING — cek env SEBELUM tuduh kode): sync mati
+   8+ jam setelah semua guard benar ternyata karena `WARUNG_REBAHAN_ENABLED` /
+   `SYNC_ENABLED` tidak `"true"` di Pages — `isWrEnabled()` false membuat fase
+   WR return awal TANPA JEJAK (semua jalur skip menandai deferred; deferred
+   kosong = return awal, bukan tersendat). Dua vonis salah yang sempat terjadi:
+   (1) "fase bergerak = fase bekerja" — ekor + poison-pill guard jalan selalu,
+   fase berpindah tiap 5 menit walau fase WR no-op; (2) "`wr_saldo_log
+   api_check` = bukti cron" — refresh manual dashboard memakai source yang
+   sama. Bukti kerja WR yang benar = baris `wr_sync_log trigger='cron'` +
+   perubahan status link + `reconcile` menarik order. Diagnosis definitif =
+   tembak `POST /api/cron/operations` langsung dan baca respons
+   (`wr_products_synced` / `wr_sync_skipped`); 401 = rotasi CRON_SECRET
+   (Pages + Worker + lokal harus sama; Pages secret baru terbaca deployment
+   berikutnya, jadi rotasi selalu diikuti commit pemicu deploy).
 - Koreksi vonis 2026-09-17 (PENTING — jangan ulangi salah baca ini):
   `store_settings.cron_phase` yang menunjuk `notify` dengan `updated_at` lama
   BUKAN bukti cron macet. Nilai itu = giliran BERIKUTNYA dalam rotasi 5 fase
