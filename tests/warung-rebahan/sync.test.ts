@@ -472,4 +472,43 @@ describe("Warung Rebahan product sync", () => {
       fx.close();
     }
   });
+
+  it("sweep LANJUTAN dari cursor tidak boleh me-nol-kan stok varian di luar potongannya", async () => {
+    const fx = createD1Fixture();
+    try {
+      const products = Array.from({ length: 6 }, (_, i) =>
+        fixtureProduct({
+          id: `prod-cursor-${i}`,
+          name: `Cursor Product ${i}`,
+          variants: [{ ...fixtureProduct().variants[0], id: `var-cursor-${i}`, name: "A" }],
+        }),
+      );
+      // Sweep penuh pertama: seluruh 6 produk masuk, stok normal.
+      expect((await syncProducts(undefined, async () => products)).snapshotComplete).toBe(true);
+      const stockOf = (id: string) =>
+        Number(
+          (fx.sql.prepare("SELECT wr_stock FROM wr_variants WHERE wr_variant_id=?").get(id) as Record<string, unknown>)
+            ?.wr_stock ?? -1,
+        );
+      expect(stockOf("var-cursor-0")).toBeGreaterThan(0);
+
+      // Paksa kondisi "run sebelumnya yield di tengah": cursor menunjuk produk
+      // ke-4 sehingga run berikutnya HANYA melihat 2 produk terakhir tetapi
+      // tetap mencapai akhir daftar (sweepComplete true).
+      fx.sql
+        .prepare(
+          `INSERT INTO wr_sync_state (key,value,updated_at) VALUES ('products_cursor','4',datetime('now'))
+           ON CONFLICT(key) DO UPDATE SET value='4', updated_at=datetime('now')`,
+        )
+        .run();
+      const tail = await syncProducts(undefined, async () => products);
+      expect(tail.synced).toBe(2);
+      // Sebelum perbaikan 2026-09-18: 4 varian pertama di-nol-kan (stock wipe).
+      expect(tail.stockChanges).toBe(0);
+      expect(stockOf("var-cursor-0")).toBeGreaterThan(0);
+      expect(stockOf("var-cursor-1")).toBeGreaterThan(0);
+    } finally {
+      fx.close();
+    }
+  });
 });

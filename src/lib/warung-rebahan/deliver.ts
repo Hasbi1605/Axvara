@@ -464,6 +464,10 @@ export async function queueCredentialDelivery(linkId: number, database?: Databas
 
 const WR_DELIVERY_MAX_ATTEMPTS = 5;
 const WR_DELIVERY_DELAYS_MINUTES = [1, 5, 15, 60];
+// Lease pengiriman kredensial: baris 'sending' yang melewati batas ini
+// dianggap milik worker yang mati dan dipulihkan (lihat
+// recoverStaleCredentialDeliveries). 2 menit >> durasi pengiriman normal.
+const WR_DELIVERY_LEASE_MS = 120_000;
 
 /**
  * Proses satu delivery kredensial dengan claim/lease (P0-6). Telegram hanya
@@ -477,12 +481,22 @@ export async function processCredentialDelivery(
   const db = database ?? createDatabaseAccess();
   const { queryFirst, execRun } = db;
   const leaseOwner = `dlv-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
-  const leaseUntil = new Date(Date.now() + 120_000).toISOString();
+  const leaseUntil = new Date(Date.now() + WR_DELIVERY_LEASE_MS).toISOString();
+  // Klaim + PERSIST lease. Sebelum 2026-09-18 lease hanya dihitung lalu
+  // dibuang (`void leaseOwner`), sehingga run yang dibunuh platform di tengah
+  // pengiriman meninggalkan baris di 'sending' selamanya: recovery hanya
+  // memungut ('queued','failed'), jadi tidak ada yang me-retry. Bukti prod:
+  // link AXV-20260917-0D35043E berhenti di delivery_status='sending' sejak
+  // 17 Sep. Lease disimpan di delivery_next_attempt_at (semantiknya sama:
+  // "jangan sentuh sebelum T"), jadi tidak perlu kolom/migrasi baru.
   const claimed = await execRun(
     `UPDATE wr_order_links SET delivery_status='sending',
-       delivery_attempt_count=delivery_attempt_count+1, updated_at=datetime('now')
+       delivery_attempt_count=delivery_attempt_count+1,
+       delivery_next_attempt_at=?, delivery_last_error=?, updated_at=datetime('now')
      WHERE id=? AND delivery_status IN ('queued','failed')
        AND (delivery_next_attempt_at IS NULL OR datetime(delivery_next_attempt_at) <= datetime('now'))`,
+    leaseUntil,
+    `lease:${leaseOwner}`,
     linkId,
   ).catch(() => ({ changes: 0 as number | undefined }));
   if (Number(claimed.changes ?? 0) === 0) {
@@ -491,8 +505,6 @@ export async function processCredentialDelivery(
     );
     return String(cur?.delivery_status || "") === "delivered";
   }
-  void leaseOwner;
-  void leaseUntil;
   const link = await queryFirst(`SELECT * FROM wr_order_links WHERE id=?`, linkId).catch(() => null);
   if (!link || !link.wr_account_details) {
     await execRun(`UPDATE wr_order_links SET delivery_status='failed', delivery_last_error='no_credential' WHERE id=?`, linkId).catch(
@@ -508,7 +520,15 @@ export async function processCredentialDelivery(
       // Web: tidak ada push channel. Delivery = token capability diterbitkan
       // durable (lihat issueCredentialToken). settled saat token ada.
       const token = await issueCredentialToken(String(link.order_code), db);
-      if (!token) throw new Error("capability_token_issue_failed");
+      // `null` punya DUA arti karena issueCredentialToken idempoten: (a) token
+      // valid sudah ada → delivery web memang sudah settled, atau (b) order
+      // belum siap. Sebelum 2026-09-18 keduanya dianggap gagal, sehingga
+      // SETIAP retry delivery web pasti gagal ("capability_token_issue_failed")
+      // sampai kehabisan attempt — terlihat begitu pemulihan lease 'sending'
+      // dinyalakan. Hanya (b) yang boleh dianggap error.
+      if (!token && !(await hasValidCredentialToken(String(link.order_code), db))) {
+        throw new Error("capability_token_issue_failed");
+      }
     } else if (channel === "telegram") {
       await deliverTelegramCredential(String(link.order_code), plaintext, db);
     } else {
@@ -517,7 +537,8 @@ export async function processCredentialDelivery(
     const now = new Date().toISOString();
     await execRun(
       `UPDATE wr_order_links SET delivery_status='delivered', delivered_at=?,
-         delivery_last_error=NULL, updated_at=datetime('now') WHERE id=?`,
+         delivery_last_error=NULL, delivery_next_attempt_at=NULL,
+         updated_at=datetime('now') WHERE id=?`,
       now,
       linkId,
     );
@@ -545,14 +566,41 @@ export async function processCredentialDelivery(
   }
 }
 
+/**
+ * Pulihkan pengiriman kredensial yang tergantung di 'sending' setelah lease
+ * habis (worker/invocation dibunuh di tengah jalan). Baris dikembalikan ke
+ * 'failed' agar masuk lagi ke antrean queued/failed dengan backoff normal —
+ * bukan langsung 'queued', supaya batas WR_DELIVERY_MAX_ATTEMPTS tetap
+ * berlaku dan tidak ada loop kirim tanpa henti.
+ */
+export async function recoverStaleCredentialDeliveries(
+  database?: DatabaseAccess,
+): Promise<number> {
+  const db = database ?? createDatabaseAccess();
+  const res = await db
+    .execRun(
+      `UPDATE wr_order_links SET delivery_status='failed',
+         delivery_last_error='delivery_lease_expired',
+         delivery_next_attempt_at=datetime('now'), updated_at=datetime('now')
+       WHERE delivery_status='sending'
+         AND (delivery_next_attempt_at IS NULL
+              OR datetime(delivery_next_attempt_at) <= datetime('now'))`,
+    )
+    .catch(() => ({ changes: 0 as number | undefined }));
+  return Number(res.changes ?? 0);
+}
+
 /** Cron delivery: proses antrean kredensial due (bounded). */
 export async function processDueCredentialDeliveries(
   database?: DatabaseAccess,
   limit = 4,
-): Promise<{ processed: number; delivered: number }> {
+): Promise<{ processed: number; delivered: number; recovered: number }> {
   const db = database ?? createDatabaseAccess();
-  const out = { processed: 0, delivered: 0 };
+  const out = { processed: 0, delivered: 0, recovered: 0 };
   if (!db.canSpend(4)) return out;
+  // Lease basi dipulihkan LEBIH DULU agar baris yang ditinggalkan run yang
+  // dibunuh ikut terangkat pada run ini, bukan menunggu order baru.
+  out.recovered = await recoverStaleCredentialDeliveries(db);
   const due = await db
     .queryAll(
       `SELECT id FROM wr_order_links
@@ -666,6 +714,26 @@ export async function issueCredentialToken(
     return null;
   }
   return raw;
+}
+
+/**
+ * true bila order masih memegang capability token yang sah. Dipakai untuk
+ * membedakan "token sudah ada" (delivery web settled) dari "gagal terbit".
+ */
+export async function hasValidCredentialToken(
+  orderCode: string,
+  database?: DatabaseAccess,
+): Promise<boolean> {
+  const db = database ?? createDatabaseAccess();
+  const row = await db
+    .queryFirst(
+      `SELECT id FROM wr_credential_tokens WHERE order_code=? AND revoked=0
+         AND (expires_at IS NULL OR datetime(expires_at) > datetime('now'))
+       LIMIT 1`,
+      orderCode,
+    )
+    .catch(() => null);
+  return row != null;
 }
 
 async function randomTokenHex(bytes: number): Promise<string> {

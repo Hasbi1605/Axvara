@@ -795,6 +795,13 @@ export async function syncProducts(
     processedInRun++;
   }
   const sweepComplete = cursor >= ordered.length;
+  // Sweep dianggap PENUH hanya bila run ini memulai dari awal daftar. Tanpa
+  // syarat startAt===0, run yang melanjutkan cursor (mis. 30→47) juga lolos
+  // sebagai "complete" padahal seenVariantIds hanya berisi varian dari potongan
+  // itu — zeroMissingVariants lalu me-nol-kan stok ~60 varian yang tidak
+  // pernah dilihat run ini. Komentar guard di bawah sudah menyebut "dalam run
+  // ini"; kondisinya yang belum menegakkan (ditutup 2026-09-18).
+  const fullSweepInThisRun = sweepComplete && startAt === 0;
   // Simpan cursor + generasi (durable, lintas invocation).
   await writeSyncState(db, "products_cursor", String(sweepComplete ? 0 : cursor));
   await writeSyncState(db, "products_generation", generation);
@@ -802,9 +809,9 @@ export async function syncProducts(
     await writeSyncState(db, "products_snapshot_complete", "1");
     result.snapshotComplete = true;
     // DESTRUCTIVE GUARD (P0-4): zero-missing HANYA setelah sweep penuh
-    // tervalidasi dalam run ini. Sweep parsial/budget-yield TIDAK BOLEH
-    // me-zero varian yang belum terlihat.
-    if (options.allowZeroMissing !== false) {
+    // tervalidasi dalam run ini. Sweep parsial/budget-yield/lanjutan-cursor
+    // TIDAK BOLEH me-zero varian yang belum terlihat.
+    if (options.allowZeroMissing !== false && fullSweepInThisRun) {
       try {
         result.stockChanges += await zeroMissingVariants(seenVariantIds, db);
       } catch (error) {

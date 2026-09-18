@@ -25,6 +25,22 @@ export const runtime = "edge";
 // A request-scoped D1 wrapper counts all nested queries, including batch members.
 // Budget 40 leaves ten queries of platform margin; two are reserved for phase state.
 const QUERY_BUDGET = 40;
+// Deadline wall-clock per invocation (2026-09-18). D1 punya budget statement,
+// tetapi TIDAK ada yang membatasi waktu tunggu jaringan: notify bisa
+// merangkai 14 panggilan Telegram/WA @10 s dan fase WR 3 panggilan @12 s
+// dalam satu invocation. Insiden 17–18 Sep: run cron mencapai wallTime
+// 125.003 ms lalu dipotong platform (outcome `canceled`, cpuTime hanya
+// ~175 ms) sehingga penanda fase di ekor tidak pernah tertulis. 45 s memberi
+// margin besar terhadap plafon itu; pekerjaan yang tidak kebagian waktu
+// menjadi `deferred` jujur dan dilanjutkan run berikutnya (5 menit lagi).
+const RUN_DEADLINE_MS = 45_000;
+// Ambang waktu minimum sebelum memulai satu unit kerja jaringan.
+const TIME_TELEGRAM_BATCH = 12_000;
+const TIME_WA_BATCH = 12_000;
+const TIME_FULFILLMENT_UNIT = 10_000;
+const TIME_WR_NETWORK = 14_000;
+const TIME_WR_LIGHT = 8_000;
+const TIME_SINGLE_MESSAGE = 3_000;
 const EXPIRY_PER_RUN = 4;
 const FULFILLMENT_PER_RUN = 4;
 const COST_PER_NOTIFICATION = 4;
@@ -101,6 +117,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
+  const runStartedAt = Date.now();
+  /** Sisa waktu invocation (ms) sebelum deadline lunak. */
+  const timeLeftMs = () => RUN_DEADLINE_MS - (Date.now() - runStartedAt);
+  /** true bila masih ada waktu untuk satu unit kerja seukuran `needMs`. */
+  const hasTime = (needMs: number) => timeLeftMs() >= needMs;
 
   const results: Record<string, unknown> = {
     stale_initializing: 0,
@@ -140,6 +161,18 @@ export async function POST(request: NextRequest) {
     const deferredOut: CronPhase[] = [];
     const { phase: storedPhase, deferred: storedDeferred } = await readCronPhase(database);
 
+    // POISON-PILL GUARD (2026-09-18). `writeCronPhase` hanya dipanggil di ekor
+    // handler, jadi run yang dibunuh platform di tengah jalan meninggalkan
+    // fase + deferred yang sama untuk run berikutnya. Insiden 17 Sep 13:06 UTC
+    // → 18 Sep 04:55 UTC: fase terkunci di `warung_rebahan`, tiap run 5 menit
+    // mengulang pekerjaan berat yang sama, dipotong pada ~125 s, dan sync
+    // otomatis WR tidak pernah tercatat selama ~16 jam (baris cron terakhir
+    // di wr_sync_log: 17 Sep 11:37 UTC). Majukan rotasi + kosongkan deferred
+    // SEKARANG; ekor menimpa dengan nilai final bila run selesai normal.
+    // Konsekuensi yang disengaja: run yang mati kehilangan hint deferred-nya,
+    // tetapi rotasi tetap bergerak sehingga tidak ada fase yang mengunci cron.
+    await writeCronPhase(nextPhase(storedPhase), [], database);
+
     // Hitung antrean dalam SATU query gabungan (1 query, bukan 8 — RR3-01/
     // RR3-03): tiap COUNT adalah subselect murah atas indeks status. Tanpa
     // ini, 10 query baca di depan + heater + 3 scan = 14 query sebelum satu
@@ -174,11 +207,15 @@ export async function POST(request: NextRequest) {
          AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime('now'))`,
     ).catch(() => null);
     // Antrean delivery kredensial + blocked_balance (P0-6/P1-8): fase WR
-    // tetap aktif selama ada pekerjaan ini walau order kosong.
+    // tetap aktif selama ada pekerjaan ini walau order kosong. Baris 'sending'
+    // dengan lease kedaluwarsa IKUT dihitung (2026-09-18): tanpa itu, delivery
+    // yang ditinggalkan run yang dibunuh tidak pernah mengaktifkan fase WR.
     const wrDeliveryRow = await queryFirst(
       `SELECT COUNT(*) AS wr_delivery_due FROM wr_order_links
-       WHERE delivery_status IN ('queued','failed')
-         AND (delivery_next_attempt_at IS NULL OR datetime(delivery_next_attempt_at) <= datetime('now'))`,
+       WHERE (delivery_status IN ('queued','failed')
+              OR delivery_status='sending')
+         AND (delivery_next_attempt_at IS NULL
+              OR datetime(delivery_next_attempt_at) <= datetime('now'))`,
     ).catch(() => null);
     const wrBlockedRow = await queryFirst(
       `SELECT COUNT(*) AS wr_blocked FROM wr_order_links WHERE status='blocked_balance'`,
@@ -350,6 +387,12 @@ export async function POST(request: NextRequest) {
           if (!deferredOut.includes("expiry")) deferredOut.push("expiry");
           break;
         }
+        // Deadline: transisi DB murah, tetapi cabang non-DANA mengirim pesan
+        // Telegram (10 s timeout) — jangan mulai bila waktu tidak cukup.
+        if (!hasTime(TIME_SINGLE_MESSAGE)) {
+          if (!deferredOut.includes("expiry")) deferredOut.push("expiry");
+          break;
+        }
         const order = { items: tx.items, telegram_chat_id: tx.telegram_chat_id };
         if (order) {
           try {
@@ -475,7 +518,7 @@ export async function POST(request: NextRequest) {
     const runNotify = async () => {
       // Invoice-expired notice and terminal notice survive delivery failures.
       const noticeCount = pendingQrisNotice + Number(results.expired_payments);
-      if (activePhases.has("notify") && noticeCount > 0 && budget.fits(5)) {
+      if (activePhases.has("notify") && noticeCount > 0 && budget.fits(5) && hasTime(TIME_TELEGRAM_BATCH)) {
         const notices = await sendQrisExpiryNotifications(2, database);
         results.qris_expiry_notifications = notices.sent;
         pendingWa += notices.whatsappQueued;
@@ -490,7 +533,7 @@ export async function POST(request: NextRequest) {
       // Biaya konservatif: 1 list + per order 4 (baca+validasi+kirim+tandai).
       if (activePhases.has("notify") && pendingNotify > 0) {
         const units = Math.min(FULFILLMENT_PER_RUN, pendingNotify);
-        if (budget.fits(1 + COST_PER_NOTIFICATION * units)) {
+        if (budget.fits(1 + COST_PER_NOTIFICATION * units) && hasTime(TIME_TELEGRAM_BATCH)) {
           const telegramNotifications = await retryPendingTelegramNotifications(FULFILLMENT_PER_RUN, {
             created: pendingCreated > 0, paid: pendingPaid > 0, paidAdmin: pendingPaidAdmin > 0,
           }, database);
@@ -510,7 +553,7 @@ export async function POST(request: NextRequest) {
       // per order, tanpa order/invoice/reservasi/stok kedua. Tunduk pada
       // budget yang sama (1 list + 4/order konservatif).
       if (activePhases.has("notify")) {
-        if (budget.fits(1 + COST_PER_NOTIFICATION * 2)) {
+        if (budget.fits(1 + COST_PER_NOTIFICATION * 2) && hasTime(TIME_TELEGRAM_BATCH)) {
           try {
             const invoiceSent = await retryInvoicePendingTelegramInvoices(2, database);
 
@@ -522,7 +565,7 @@ export async function POST(request: NextRequest) {
       }
 
       if (activePhases.has("notify")) {
-        if (budget.fits(1 + COST_PER_NOTIFICATION * FULFILLMENT_PER_RUN)) {
+        if (budget.fits(1 + COST_PER_NOTIFICATION * FULFILLMENT_PER_RUN) && hasTime(TIME_TELEGRAM_BATCH)) {
           const reminders = await sendPendingOrderReminders(FULFILLMENT_PER_RUN, database);
 
           results.telegram_pending_reminders_sent = reminders;
@@ -539,7 +582,7 @@ export async function POST(request: NextRequest) {
       // cron (bukan hanya bila ada pesan pending/failed baru).
       if (activePhases.has("notify") && waWorkPending > 0) {
         const waUnits = Math.min(FULFILLMENT_PER_RUN, Math.max(pendingWa, pendingStaleWa > 0 ? 1 : 0));
-        if (budget.fits(COST_PER_WA_RECOVERY + waUnits * COST_PER_WA_ROW)) {
+        if (budget.fits(COST_PER_WA_RECOVERY + waUnits * COST_PER_WA_ROW) && hasTime(TIME_WA_BATCH)) {
           try {
             const waOutbox = await processDueWhatsAppOutbox(FULFILLMENT_PER_RUN, database);
 
@@ -590,6 +633,9 @@ export async function POST(request: NextRequest) {
             );
           for (const job of jobs) {
             if (!budget.fits(2 + COST_PER_JOB_FRAME + COST_PER_DELIVERY_ITEM)) { deferredOut.push("fulfillment"); break; }
+            // Pengiriman item memanggil kanal luar (Telegram/WA) — hormati
+            // deadline invocation agar run tidak dipotong platform.
+            if (!hasTime(TIME_FULFILLMENT_UNIT)) { deferredOut.push("fulfillment"); break; }
             const order = await queryFirst(`SELECT * FROM orders WHERE code=?`, String(job.order_code));
             if (!order) continue;
             // processJobItems resolves each item's product; no eager products scan.
@@ -642,7 +688,7 @@ export async function POST(request: NextRequest) {
 
         // 1. Kapasitas ORDER diprioritaskan SEBELUM sync produk (P0-4):
         //    sync katalog besar tidak boleh membuat WR order starvation.
-        if (autoOrder && pendingWrDue > 0 && budget.fits(COST_PER_WR_WORK)) {
+        if (autoOrder && pendingWrDue > 0 && budget.fits(COST_PER_WR_WORK) && hasTime(TIME_WR_NETWORK)) {
           try {
             await retryFailedWrOrders(database);
             const processed = await processWrPendingOrders(database);
@@ -656,7 +702,10 @@ export async function POST(request: NextRequest) {
 
         // 2. Product & stock sync — tiap 30 menit, RESUMABLE via cursor
         //    (P0-4): katalog lebih besar dari budget maju lintas invocation.
-        if (syncOn && budget.fits(COST_PER_WR_WORK)) {
+        //    Sweep penuh 48 produk memakan ~10 s (lihat wr_sync_log
+        //    duration_ms): wajib punya sisa waktu, kalau tidak run dipotong
+        //    platform sebelum log/penanda tertulis.
+        if (syncOn && budget.fits(COST_PER_WR_WORK) && hasTime(TIME_WR_NETWORK)) {
           const lastSync = await queryFirst(
             `SELECT created_at FROM wr_sync_log
              WHERE sync_type='products' AND status IN ('success','partial')
@@ -677,24 +726,26 @@ export async function POST(request: NextRequest) {
         }
 
         // 3. Reconcile processing/ambigu menggantung >1 jam via /transactions.
-        if (autoOrder && budget.fits(3)) {
+        if (autoOrder && budget.fits(3) && hasTime(TIME_WR_LIGHT)) {
           try {
             results.wr_orders_reconciled = Number(results.wr_orders_reconciled ?? 0) + await reconcileStuckWrOrders(database);
           } catch { /* best-effort; run berikutnya retry */ }
         }
 
-        // 4. Delivery kredensial durable (P0-6): antrean queued/failed.
-        if (budget.fits(4)) {
+        // 4. Delivery kredensial durable (P0-6): antrean queued/failed +
+        //    pemulihan lease 'sending' yang basi (run sebelumnya dibunuh).
+        if (budget.fits(4) && hasTime(TIME_WR_LIGHT)) {
           try {
             const delivery = await processDueCredentialDeliveries(database);
             results.wr_deliveries_processed = delivery.processed;
             results.wr_deliveries_delivered = delivery.delivered;
+            results.wr_deliveries_lease_recovered = delivery.recovered;
             if (delivery.processed > delivery.delivered && !deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan");
           } catch { /* best-effort */ }
         }
 
         // 4. Saldo check — tiap 1 jam.
-        if (budget.fits(3)) {
+        if (budget.fits(3) && hasTime(TIME_WR_LIGHT)) {
           const lastCheck = await queryFirst(
             `SELECT created_at FROM wr_saldo_log WHERE source='api_check'
              ORDER BY created_at DESC LIMIT 1`,
@@ -746,6 +797,12 @@ export async function POST(request: NextRequest) {
     // Execute in the persisted priority order, so busy expiry cannot always
     // consume the budget before a deferred delivery or notification gets a turn.
     for (const phase of ordered) {
+      // Deadline invocation: berhenti menambah pekerjaan baru dan tandai
+      // sisanya deferred, supaya ekor (penanda fase) SELALU kebagian jalan.
+      if (!hasTime(TIME_SINGLE_MESSAGE)) {
+        if (!deferredOut.includes(phase)) deferredOut.push(phase);
+        continue;
+      }
       try { await phases[phase](); }
       catch (error) {
         if (!(error instanceof QueryBudgetExceeded)) throw error;
@@ -760,6 +817,8 @@ export async function POST(request: NextRequest) {
     results.query_budget_used = budget.used;
     results.query_budget_limit = QUERY_BUDGET;
     results.query_budget_note = "submitted_statements_including_batch_members";
+    results.run_duration_ms = Date.now() - runStartedAt;
+    results.run_deadline_ms = RUN_DEADLINE_MS;
     if (deferred.length > 0) results.deferred = deferred;
 
   } catch (error) {

@@ -89,6 +89,82 @@ describe("POST /api/orders/[code]/credentials", () => {
   });
 });
 
+// Lease pengiriman kredensial: baris 'sending' yang ditinggalkan run yang
+// dibunuh platform harus bisa dipulihkan. Sebelum 2026-09-18 lease dihitung
+// lalu dibuang dan recovery hanya memungut ('queued','failed'), sehingga
+// link AXV-20260917-0D35043E terjebak di 'sending' sejak 17 Sep dan pembeli
+// tidak pernah menerima detail akun.
+describe("delivery kredensial — pemulihan lease 'sending' basi", () => {
+  it("lease disimpan saat klaim, dan 'sending' basi dipulihkan lalu terkirim", async () => {
+    const code = "AXV-20260918-CC000007";
+    const fx = await seedCompletedWeb(code);
+    try {
+      const { processDueCredentialDeliveries, recoverStaleCredentialDeliveries } = await import(
+        "@/lib/warung-rebahan/deliver"
+      );
+      const db = createDatabaseAccess(fx.db);
+      const row = () =>
+        fx.sql
+          .prepare("SELECT delivery_status, delivery_next_attempt_at, delivery_attempt_count FROM wr_order_links WHERE order_code=?")
+          .get(code) as Record<string, unknown>;
+
+      // handleWrOrderCompleted sudah mengirim (web → capability token).
+      expect(String(row().delivery_status)).toBe("delivered");
+
+      // Simulasikan run yang dibunuh di tengah pengiriman: 'sending' dengan
+      // lease yang sudah lewat.
+      fx.sql
+        .prepare(
+          `UPDATE wr_order_links SET delivery_status='sending',
+             delivery_next_attempt_at=datetime('now','-5 minutes') WHERE order_code=?`,
+        )
+        .run(code);
+
+      // Lease basi → dikembalikan ke 'failed' agar masuk antrean lagi.
+      expect(await recoverStaleCredentialDeliveries(db)).toBe(1);
+      expect(String(row().delivery_status)).toBe("failed");
+
+      // Cron memungutnya pada run yang sama dengan recovery.
+      fx.sql
+        .prepare(
+          `UPDATE wr_order_links SET delivery_status='sending',
+             delivery_next_attempt_at=datetime('now','-5 minutes') WHERE order_code=?`,
+        )
+        .run(code);
+      const out = await processDueCredentialDeliveries(db);
+      expect(out.recovered).toBe(1);
+      expect(out.delivered).toBe(1);
+      expect(String(row().delivery_status)).toBe("delivered");
+      // Sukses membersihkan lease agar tidak dianggap due lagi.
+      expect(row().delivery_next_attempt_at).toBeNull();
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("lease yang MASIH hidup tidak dirampas (tidak ada kirim ganda)", async () => {
+    const code = "AXV-20260918-CC000008";
+    const fx = await seedCompletedWeb(code);
+    try {
+      const { recoverStaleCredentialDeliveries } = await import("@/lib/warung-rebahan/deliver");
+      const db = createDatabaseAccess(fx.db);
+      fx.sql
+        .prepare(
+          `UPDATE wr_order_links SET delivery_status='sending',
+             delivery_next_attempt_at=datetime('now','+2 minutes') WHERE order_code=?`,
+        )
+        .run(code);
+      expect(await recoverStaleCredentialDeliveries(db)).toBe(0);
+      const after = fx.sql
+        .prepare("SELECT delivery_status FROM wr_order_links WHERE order_code=?")
+        .get(code) as Record<string, unknown>;
+      expect(String(after.delivery_status)).toBe("sending");
+    } finally {
+      fx.close();
+    }
+  });
+});
+
 // Panel "Detail Akun Digital" hanya untuk order yang detailnya benar-benar
 // ada. Sebelum ini panel tampil untuk SEMUA order lunas (termasuk fulfillment
 // manual yang tidak pernah punya wr_order_links) sehingga pembeli melihat form

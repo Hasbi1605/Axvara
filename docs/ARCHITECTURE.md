@@ -476,6 +476,44 @@ R2 bucket: axvara-assets
     baris agar job lengkap tidak menahan antrean berikutnya. Ini batas kerja per invocation, bukan janji
     throughput atau durasi pemulihan antrean. Bukti dan durasi simulasi:
     [laporan RR5](REVIEW-ROUND5-EXECUTION-2026-09-09.md).
+  - **Deadline wall-clock + poison-pill guard (18 Sep 2026, live).** Budget D1
+    tidak membatasi waktu tunggu jaringan, dan penanda fase dulu hanya ditulis
+    di ekor handler. Akibatnya (insiden 17–18 Sep): satu run merangkai
+    banyak panggilan luar (notify sampai 14 × 10 s Telegram/WA, fase WR
+    order + `/transactions` + `/products` + `/balance`), mencapai wallTime
+    ~125 s, dipotong platform (`outcome: canceled`, cpuTime hanya ~175 ms),
+    lalu run berikutnya membaca fase yang sama dan mengulang pekerjaan berat
+    yang sama tiap 5 menit. `cron_phase` beku di `warung_rebahan` sejak
+    17 Sep 13:06 UTC dan baris `trigger='cron'` terakhir di `wr_sync_log`
+    adalah 17 Sep 11:37 UTC — sync otomatis WR mati ~16 jam meski cron
+    tetap dipanggil dan auth benar. Dua obatnya: (1) `writeCronPhase`
+    dipanggil DI AWAL run (fase dimajukan + `cron_deferred` dikosongkan)
+    sehingga run yang mati tidak bisa mengunci rotasi; ekor menimpa dengan
+    nilai final saat run selesai normal. (2) Deadline lunak
+    `RUN_DEADLINE_MS = 45_000`: setiap unit kerja jaringan (batch Telegram,
+    outbox WA, item fulfillment, tiap langkah WR) hanya dimulai bila sisa
+    waktu cukup, sisanya menjadi `deferred` jujur untuk run 5 menit
+    berikutnya. Respons cron menyertakan `run_duration_ms` +
+    `run_deadline_ms`. Timeout API WR juga diturunkan 30 s → 12 s
+    (`WR_API_TIMEOUT_MS`); referensi: sweep katalog penuh 48 produk ~10 s
+    total termasuk ~250 statement D1 (`wr_sync_log.duration_ms`).
+  - **Lease pengiriman kredensial WR + guard zero-missing (18 Sep 2026, live).**
+    `processCredentialDelivery` kini MENYIMPAN lease-nya
+    (`delivery_next_attempt_at`, 2 menit) dan
+    `recoverStaleCredentialDeliveries` mengembalikan baris `sending` yang
+    lease-nya habis ke `failed` agar masuk antrean lagi dengan backoff;
+    hitungan antrean cron ikut memasukkan baris tersebut. Sebelumnya lease
+    dihitung lalu dibuang dan recovery hanya memungut `('queued','failed')`,
+    sehingga run yang dibunuh meninggalkan pengiriman menggantung permanen
+    (bukti prod: link `AXV-20260917-0D35043E` di `sending` sejak 17 Sep).
+    Sekalian ditutup: delivery web menganggap `issueCredentialToken()`
+    bernilai `null` sebagai gagal padahal `null` juga berarti "token valid
+    sudah ada" — membuat SETIAP retry web pasti gagal; sekarang dibedakan
+    lewat `hasValidCredentialToken()`. Di `syncProducts`, zero-missing hanya
+    berjalan bila sweep dimulai dari awal daftar dalam run itu
+    (`startAt === 0`); tanpa syarat ini run lanjutan dari cursor lolos
+    sebagai "sweep penuh" dan me-nol-kan stok varian yang tidak pernah
+    dilihatnya (terbukti 4 varian pada test regresi).
   - Recovery sending basi WA mandiri (RR3-06): gerbang cron =
     pending/failed > 0 ATAU sending-lease-kedaluwarsa > 0 (COUNT sendiri),
     sehingga antrean yang seluruhnya sending basi tetap dipulihkan via

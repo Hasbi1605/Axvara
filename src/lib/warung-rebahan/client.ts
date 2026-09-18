@@ -96,7 +96,14 @@ export class WrNetworkError extends Error {
   }
 }
 
-export const WR_API_TIMEOUT_MS = 30_000;
+// Timeout per panggilan WR. Diturunkan 30 s → 12 s pada 2026-09-18: satu
+// invocation cron bisa merangkai beberapa panggilan (order, /transactions,
+// /products, /balance), dan 30 s masing-masing sudah cukup untuk melewati
+// plafon waktu invocation (insiden run `canceled` pada 125 s). Referensi
+// nyata: sweep katalog penuh 48 produk = ~10 s TOTAL termasuk ~250 statement
+// D1 (wr_sync_log.duration_ms 9.587/11.886), jadi 12 s lapang untuk fetch
+// tunggal; kegagalan tetap punya retry + backoff.
+export const WR_API_TIMEOUT_MS = 12_000;
 // Outbound langsung HANYA ke host ini — tidak ada dynamic URL dari user input
 // (SSRF-safe). Bila WARUNG_REBAHAN_PROXY_URL diset (Opsi A: proxy Heroku agar
 // lolos IP whitelist WR), request pergi ke proxy + host proxy diizinkan.
