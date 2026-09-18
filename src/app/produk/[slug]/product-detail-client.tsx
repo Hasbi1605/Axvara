@@ -9,7 +9,6 @@ import { formatWarranty } from "@/lib/catalog";
 import { useCart } from "@/stores/cart";
 import { ProductCard } from "@/components/storefront/ProductCard";
 import { QuickVariantModal } from "@/components/storefront/QuickVariantModal";
-import { TermsHighlight } from "@/components/storefront/TermsHighlight";
 
 type VariantItem = VariantSummary;
 
@@ -323,17 +322,31 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
             </div>
           )}
 
-          {/* Wajib Dipatuhi — S&K WR ala Axvara (Kolom Kiri Desktop).
-              Highlight tegas selalu terlihat + full text 1 tap. Format saat
-              render via TermsHighlight — DB mentah tak disentuh. */}
-          {(termsVariant?.terms || termsVariant?.delivery_terms) && (
+          {/* Syarat & Ketentuan — per varian WR (Kolom Kiri Desktop) */}
+          {termsVariant?.terms && (
             <div className="hidden lg:block ax-glass-card rounded-[24px] p-6 sm:p-8">
-              <TermsHighlight
-                terms={termsVariant.terms}
-                deliveryTerms={termsVariant.delivery_terms}
-                variantLabel={termsVariant.label}
-                idSuffix="desktop"
-              />
+              <h2 className="font-display font-bold text-[18px] text-white tracking-tight flex items-center gap-2.5">
+                <svg viewBox="0 0 24 24" className="w-5 h-5 text-[#00E5FF]" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M9 12l2 2 4-4"/><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                Syarat &amp; Ketentuan
+                <span className="text-xs font-semibold text-[#00E5FF]/80 tracking-normal">{termsVariant.label}</span>
+              </h2>
+              <ol className="mt-4 border-t border-white/8 pt-5 text-sm text-white/75 leading-relaxed space-y-2 list-none">
+                {termsVariant.terms.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((line, i) => {
+                  const stripped = line.replace(/^\s*\d+[\.\)]\s*/, "");
+                  return (
+                    <li key={i} className="flex items-start gap-2.5">
+                      <span className="text-[#00E5FF] font-bold shrink-0 min-w-[20px]">{i + 1}.</span>
+                      <span>{stripped}</span>
+                    </li>
+                  );
+                })}
+              </ol>
+              {termsVariant.delivery_terms && (
+                <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                  <h3 className="text-xs font-bold text-white/80 uppercase tracking-wide">Cara Aktivasi</h3>
+                  <p className="mt-2 text-sm text-white/70 leading-relaxed whitespace-pre-line">{termsVariant.delivery_terms}</p>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -573,16 +586,30 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
             </div>
           )}
 
-          {/* Wajib Dipatuhi — S&K WR ala Axvara (Khusus Mobile, compact).
-              Highlight tegas tanpa scroll panjang; full text 1 tap. */}
-          {(termsVariant?.terms || termsVariant?.delivery_terms) && (
+          {/* Syarat & Ketentuan — per varian WR (Khusus Mobile) */}
+          {termsVariant?.terms && (
             <div className="mt-4 lg:hidden rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-              <TermsHighlight
-                terms={termsVariant.terms}
-                deliveryTerms={termsVariant.delivery_terms}
-                variantLabel={termsVariant.label}
-                idSuffix="mobile"
-              />
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <svg viewBox="0 0 24 24" className="w-4 h-4 text-[#00E5FF]" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M9 12l2 2 4-4"/><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                <span>Syarat &amp; Ketentuan <span className="text-[#00E5FF]/80 font-semibold">· {termsVariant.label}</span></span>
+              </h3>
+              <ol className="mt-2.5 text-xs text-white/70 leading-relaxed space-y-1.5 list-none">
+                {termsVariant.terms.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((line, i) => {
+                  const stripped = line.replace(/^\s*\d+[\.\)]\s*/, "");
+                  return (
+                    <li key={i} className="flex items-start gap-2">
+                      <span className="text-[#00E5FF] font-bold shrink-0">{i + 1}.</span>
+                      <span>{stripped}</span>
+                    </li>
+                  );
+                })}
+              </ol>
+              {termsVariant.delivery_terms && (
+                <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                  <h4 className="text-[11px] font-bold text-white/80 uppercase tracking-wide">Cara Aktivasi</h4>
+                  <p className="mt-1.5 text-xs text-white/70 leading-relaxed whitespace-pre-line">{termsVariant.delivery_terms}</p>
+                </div>
+              )}
             </div>
           )}
 

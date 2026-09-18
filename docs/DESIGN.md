@@ -134,24 +134,11 @@
   produk ready di depan, stok habis tetap tampil di belakang (urutan stabil)
 
 ### 5.3c PDP: Syarat & Ketentuan per Varian + Label Garansi
-- Section "Wajib Dipatuhi" terikat **varian terpilih** (fallback varian
-  aktif pertama): judul + badge label varian. S&K mentah supplier TIDAK
-  tampil apa adanya — `src/lib/warung-rebahan/terms-display.ts` memformat
-  saat render (DB tak disentuh, read-only milik sync tetap).
-- Nada TEGAS tapi tidak membentak: kata perintah dipertahankan (Wajib /
-  Jangan / Hanya / Tidak berlaku), shouting dibuang (CAPS-lock, "!!!!",
-  "DILARANG KERAS", "TOLERANSI", "HANGUS", "denda", "bl4ckmarket"),
-  singkatan dikembangkan (tnggal→tinggal, incor→incorrect password),
-  istilah dijelaskan inline (backfree = kembali ke gratis, maximum login
-  = terlalu sering pindah device). Produk tanpa garansi tetap jujur
-  tanpa garansi — tidak dilembutkan jadi bergaransi.
-- Pola hemat tempat (anti koran): **highlight 2-3 aturan tegas selalu
-  terlihat** + full text terkelompok (Akun & Login / Perangkat / Garansi /
-  Cara Pakai) di balik 1 tap (`Lihat semua N ketentuan`) + sub-blok "Cara
-  Aktivasi" langkah bernomor + outro "chat admin dengan kode pesanan".
-  Full text tetap di DOM (collapse CSS) — tak ada pesan supplier hilang.
+- Section "Syarat & Ketentuan" terikat **varian terpilih** (fallback varian
+  aktif pertama): judul + badge label varian, isi numbered-list bernomor
+  otomatis (prefix angka mentah WR di-strip), sub-blok "Cara Aktivasi" bila ada.
 - Desktop: kartu glass di kolom kiri bawah deskripsi. Mobile: kartu di bawah
-  accordion deskripsi, highlight terbaca tanpa scroll panjang.
+  accordion deskripsi.
 - Label garansi varian SELALU kanonis `Garansi N Unit` ("Garansi 12 Hari") +
   ikon shield — di baris sendiri di BAWAH nama varian (block, bukan inline),
   JANGAN render label mentah ("12 Hari" ambigu dengan durasi).

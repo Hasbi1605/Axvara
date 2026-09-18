@@ -843,20 +843,11 @@ varian terisi di prod) yang hidup di tabel cermin `wr_variants` milik sync.
 `product_variants` sengaja TIDAK diberi kolom baru (hindari dual-write/drift):
 `getProductDetail`/`getActiveVariant` di `src/lib/catalog.ts` LEFT JOIN
 `wr_variants` via `wr_variant_id` dan memaparkannya di `VariantSummary.terms` /
-`.delivery_terms`. PDP `/produk/[slug]` merender section "Wajib Dipatuhi"
-**terikat varian terpilih** (fallback varian aktif pertama) via komponen
-`src/components/storefront/TermsHighlight.tsx` — highlight 2-3 aturan +
-full terkelompok 1 tap + langkah aktivasi, desktop di kolom kiri bawah
-deskripsi, mobile sebagai kartu di bawah accordion deskripsi. Varian manual
-(tanpa `wr_variant_id`) mendapat `null` dan section disembunyikan.
-
-Nada S&K diatur `src/lib/warung-rebahan/terms-display.ts` (formatter murni
-saat render, DB tak disentuh): tegas (Wajib/Jangan/Hanya/konsekuensi
-spesifik) tapi tanpa shouting supplier (CAPS/!!!!/DILARANG KERAS/TOLERANSI/
-HANGUS/denda/bl4ckmarket); singkatan dikembangkan, istilah dijelaskan
-inline; SEMUA baris supplier tercakup (tak ada pesan hilang — diverifikasi
-87/87 varian prod). Deskripsi jualan ala Axvara milik admin via
-`admin_description_override` (pilot: netflix-premium, capcut-pro, loklok).
+`.delivery_terms`. PDP `/produk/[slug]` merender section "Syarat & Ketentuan"
+**terikat varian terpilih** (fallback varian aktif pertama), bernomor otomatis
++ sub-blok "Cara Aktivasi" bila ada — desktop di kolom kiri bawah deskripsi,
+mobile sebagai kartu di bawah accordion deskripsi. Varian manual (tanpa
+`wr_variant_id`) mendapat `null` dan section disembunyikan.
 
 `formatWarranty()` untuk tipe `limited` SELALU membentuk kanonis
 `Garansi {value} {unit}` dari field terstruktur ("Garansi 12 Hari") — label
