@@ -305,13 +305,27 @@ describe("S&K varian WR terbaca storefront via JOIN (tanpa migrasi)", () => {
     expect(detail?.variants[0]?.delivery_terms).toBeNull();
   });
 
-  it("PDP merender section Syarat & Ketentuan per varian", async () => {
+  it("PDP merender Wajib Dipatuhi ala Axvara per varian (highlight + full 1 tap)", async () => {
     const source = await import("node:fs").then((fs) =>
       fs.readFileSync("src/app/produk/[slug]/product-detail-client.tsx", "utf8"),
     );
-    expect(source).toContain("Syarat &");
+    expect(source).toContain("TermsHighlight");
     expect(source).toContain("termsVariant");
     expect(source).toContain("delivery_terms");
+    // Render mentah tanpa formatter dilarang: DB supplier tak boleh tampil apa adanya.
+    expect(source).not.toContain("termsVariant.terms.split");
+  });
+
+  it("TermsHighlight memformat saat render, tanpa menulis DB supplier", async () => {
+    const cmp = await import("node:fs").then((fs) =>
+      fs.readFileSync("src/components/storefront/TermsHighlight.tsx", "utf8"),
+    );
+    expect(cmp).toContain("formatTermsForDisplay");
+    expect(cmp).not.toMatch(/UPDATE|INSERT INTO wr_variants/);
+    const fmt = await import("node:fs").then((fs) =>
+      fs.readFileSync("src/lib/warung-rebahan/terms-display.ts", "utf8"),
+    );
+    expect(fmt).toContain("Database TIDAK disentuh");
   });
 });
 
