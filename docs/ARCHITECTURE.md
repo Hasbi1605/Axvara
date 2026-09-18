@@ -300,7 +300,7 @@ CREATE TABLE store_settings (
 | GET/PUT | /api/store-settings | Baca identitas storefront / perbarui nama, kontak, footer, logo | public/admin |
 | POST | /api/orders | Verifikasi signed quote, buat pesanan idempotent, reservasi stok atomik | - |
 | POST | /api/orders/lookup | Lacak mandiri: verifikasi pasangan kode + WA (normalisasi 08/+62/62, constant-time), 404 generik anti-enumerasi, WA/email mask, rate-limit `orders:lookup` | - |
-| GET | /api/orders/:code | Cek status pesanan via code | - |
+| GET | /api/orders?code= | Cek status pesanan via code. WA/email dimask; `credentials_ready` (boolean) menandai detail akun WR sudah siap diambil sehingga storefront tahu kapan panel retrieval boleh tampil | - |
 | GET | /api/payments/qris/:code/image | Render PNG QRIS dinamis untuk invoice aktif | code order |
 | POST | /api/payments/qris/:code/reissue | Terbitkan QRIS baru untuk order yang masih hidup tetapi QR-nya sudah kedaluwarsa. Hanya boleh saat invoice lama SUDAH mati — syarat itulah yang mencegah pemegang kode order lain membatalkan QR yang sedang dipakai. Maks 3x/order, rate limit 5/menit/IP | code order |
 | POST | /api/webhook/dana | Terima notifikasi QRIS Hook, dedup, cocokkan nominal, lunasi order | X-Webhook-Secret |
@@ -767,6 +767,14 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   `GET/POST /api/admin/warung/credentials` (retrieval + resend admin).
 - **Storefront:** `WrCredentialsPanel.tsx` di halaman pesanan (lunas): verifikasi
   nomor WA checkout → tampilkan detail akun + capability token (sessionStorage).
+  Panel HANYA dirender bila `credentials_ready === true` dari `GET /api/orders?code=`
+  (flag boolean: ada `wr_order_links` `completed` + `wr_account_details`, dievaluasi
+  hanya untuk order `lunas`, `.catch` → `false` pada D1 pra-0027). Order lunas tanpa
+  kredensial (fulfillment manual) mendapat blok statis **Pengiriman Produk** berisi
+  tujuan pengiriman (WA + email checkout tersamar) — bukan form verifikasi yang pasti
+  gagal `not_ready`. Selama `lunas && !credentials_ready`, halaman mem-poll
+  `GET /api/orders?code=` tiap 20 dtk maksimal 30 kali (±10 mnt) agar panel muncul
+  sendiri tanpa reload; retrieval tetap wajib verifikasi WA/capability token.
 - **Admin UI:** tab "Warung Rebahan" (`WarungRebahanManager.tsx`, section `warung` di
   `AdminShell` + `admin/page.tsx`): saldo + estimasi, sync terakhir + force sync, antrean
   order + retry, exclusions, markup per varian. Antrean order punya kolom cari

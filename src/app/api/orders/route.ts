@@ -300,6 +300,24 @@ export async function GET(req: NextRequest) {
     const waMasked = waFull.length >= 7 ? waFull.slice(0, 5) + "****" + waFull.slice(-4) : waFull ? waFull.slice(0, 3) + "****" : "";
     const emailFull = String(row.customer_email ?? "");
     const emailMasked = emailFull.includes("@") ? emailFull.replace(/(^.).+(@.*)/, (_, a, b) => `${a}***${b}`) : emailFull ? "***" : null;
+    // Panel "Detail Akun Digital" di /pesanan/[code] hanya boleh tampil bila
+    // detail akun BENAR-BENAR sudah ada. Produk fulfillment manual tidak
+    // pernah punya baris wr_order_links, jadi sebelumnya form verifikasi WA
+    // muncul untuk semua order lunas dan selalu berakhir "not_ready" —
+    // form mati yang bikin pembeli panik tepat setelah bayar.
+    // Boolean saja (tanpa isi kredensial); retrieval tetap wajib verifikasi
+    // WA/capability token di /api/orders/[code]/credentials.
+    let credentialsReady = false;
+    if (String(row.status) === "lunas") {
+      // .catch: D1 lama tanpa tabel WR (pra-0027) → false, bukan 500.
+      const cred = await queryFirst(
+        `SELECT 1 AS ok FROM wr_order_links
+         WHERE order_code=? AND status='completed' AND wr_account_details IS NOT NULL
+         LIMIT 1`,
+        code,
+      ).catch(() => null);
+      credentialsReady = Boolean(cred);
+    }
     return NextResponse.json({
       order: {
         code: row.code,
@@ -314,6 +332,7 @@ export async function GET(req: NextRequest) {
         status: row.status,
         created_at: row.created_at,
         expires_at: row.expires_at,
+        credentials_ready: credentialsReady,
         qris_reissue_allowed: row.status === "pending" && row.sales_channel !== "whatsapp" && Number(row.qris_reissue_count || 0) < MAX_QRIS_REISSUES,
         qris: row.dynamic_qris_url ? {
           payable_amount: row.payable_amount,

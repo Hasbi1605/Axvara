@@ -210,6 +210,21 @@ describe("Authoritative UI and admin state", () => {
     expect(site).toContain('supportTelegram: "axvara_support"');
   });
 
+  it("panel detail akun hanya tampil bila kredensial siap; sisanya info pengiriman ke kontak checkout", () => {
+    const statusPage = read("src/app/pesanan/[code]/page.tsx");
+    // Render kondisional — bukan lagi `isPaid` saja (form mati untuk produk manual).
+    expect(statusPage).toContain("order.credentialsReady");
+    expect(statusPage).toMatch(/isPaid && \(order\.credentialsReady \?/);
+    // Fallback: info pengiriman ke kontak checkout, bukan form verifikasi WA.
+    expect(statusPage).toContain("Pengiriman Produk");
+    expect(statusPage).toContain("Detail akun dikirim ke WhatsApp");
+    // Polling terbatas agar panel muncul sendiri tanpa reload manual.
+    expect(statusPage).toContain('orderStatus !== "lunas" || credentialsReady');
+    expect(statusPage).toContain("attempts > 30");
+    // Flag berasal dari server, tidak diakali di client.
+    expect(statusPage).toContain("credentialsReady: value.credentials_ready === true");
+  });
+
   it("blok tombol bantuan 2-tier: navigasi di atas, WA/Telegram pill ringan di bawah (anti wrap/gepeng)", () => {
     for (const file of ["src/app/pesanan/[code]/page.tsx", "src/app/lacak-pesanan/lacak-pesanan-client.tsx"]) {
       const src = read(file);

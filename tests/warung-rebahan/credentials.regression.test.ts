@@ -88,3 +88,72 @@ describe("POST /api/orders/[code]/credentials", () => {
     }
   });
 });
+
+// Panel "Detail Akun Digital" hanya untuk order yang detailnya benar-benar
+// ada. Sebelum ini panel tampil untuk SEMUA order lunas (termasuk fulfillment
+// manual yang tidak pernah punya wr_order_links) sehingga pembeli melihat form
+// verifikasi WA yang pasti berakhir "not_ready" tepat setelah membayar.
+describe("GET /api/orders?code= — flag credentials_ready", () => {
+  const lookup = async (code: string) => {
+    const { GET } = await import("@/app/api/orders/route");
+    const { NextRequest } = await import("next/server");
+    const res = await GET(new NextRequest(`http://localhost/api/orders?code=${code}`) as never);
+    return (await res.json()) as { order: { credentials_ready: boolean; status: string } };
+  };
+
+  it("order lunas dengan detail akun WR siap → true", async () => {
+    const code = "AXV-20260918-CC000003";
+    const fx = await seedCompletedWeb(code);
+    try {
+      const body = await lookup(code);
+      expect(body.order.status).toBe("lunas");
+      expect(body.order.credentials_ready).toBe(true);
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("order lunas fulfillment manual (tanpa link WR) → false", async () => {
+    const code = "AXV-20260918-CC000004";
+    const fx = await setupWrFixture();
+    try {
+      seedWrCatalog(fx);
+      seedWrOrder(fx, code, "web");
+      const body = await lookup(code);
+      expect(body.order.status).toBe("lunas");
+      expect(body.order.credentials_ready).toBe(false);
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("order pending tidak memicu query WR sama sekali → false", async () => {
+    const code = "AXV-20260918-CC000005";
+    const fx = await setupWrFixture();
+    try {
+      seedWrCatalog(fx);
+      seedWrOrder(fx, code, "web");
+      fx.sql.prepare("UPDATE orders SET status='pending',payment_status='unpaid' WHERE code=?").run(code);
+      fx.control.fail = (query) => query.includes("wr_order_links");
+      const body = await lookup(code);
+      expect(body.order.credentials_ready).toBe(false);
+    } finally {
+      fx.control.fail = null;
+      fx.close();
+    }
+  });
+
+  it("D1 lama tanpa tabel WR → false, bukan 500", async () => {
+    const code = "AXV-20260918-CC000006";
+    const fx = await setupWrFixture();
+    try {
+      seedWrCatalog(fx);
+      seedWrOrder(fx, code, "web");
+      fx.sql.exec("DROP TABLE wr_order_links");
+      const body = await lookup(code);
+      expect(body.order.credentials_ready).toBe(false);
+    } finally {
+      fx.close();
+    }
+  });
+});

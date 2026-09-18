@@ -81,6 +81,7 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 | FR-S18 | PDP menampilkan S&K + cara aktivasi per varian WR (read-only, ikut varian terpilih); label garansi kanonis "Garansi N Unit" | P0 ✅ live |
 | FR-S17 | Integrasi Warung Rebahan H2H: sync katalog terjadwal, auto-order exactly-once, webhook status, saldo monitor + throttle notif | P0 ✅ live (auto-order flag default off) |
 | FR-S19 | Minimum pembelian per varian (generik, default 1): GSuite min. 50 akun; label "Min. N" di PDP/modal/keranjang/bot; quote 409 + orders 409 + guard atomik; web/Telegram plafon 100/baris; WA qty-1 ditolak jelas untuk varian min>1 | P0 ✅ live (migrasi 0034) |
+| FR-S20 | Halaman pesanan lunas jujur soal pengiriman: panel "Detail Akun Digital" (verifikasi WA + capability token) hanya muncul saat `credentials_ready` dari server; order lunas tanpa kredensial otomatis (fulfillment manual) menampilkan blok "Pengiriman Produk" berisi tujuan WA/email checkout tersamar + estimasi 5–15 menit, dan halaman mem-poll terbatas (20 dtk × maks 30) agar panel muncul sendiri tanpa reload | P0 ✅ live 2026-09-18 |
 
 ### 2.2 Functional — Admin
 

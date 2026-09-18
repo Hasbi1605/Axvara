@@ -22,6 +22,7 @@ type Order = {
   code: string;
   name: string;
   wa: string;
+  email?: string | null;
   method: string;
   items: { name: string; price: number; qty: number }[];
   subtotal: number;
@@ -29,6 +30,8 @@ type Order = {
   qris?: QrisInvoice | null;
   expiresAt?: string;
   qrisReissueAllowed: boolean;
+  /** true HANYA bila detail akun digital (WR) sudah siap diambil pembeli. */
+  credentialsReady: boolean;
 };
 
 function fromApi(value: Record<string, unknown>): Order {
@@ -36,12 +39,14 @@ function fromApi(value: Record<string, unknown>): Order {
     code: String(value.code),
     name: String(value.customer_name),
     wa: String(value.customer_wa),
+    email: value.customer_email ? String(value.customer_email) : null,
     method: String(value.payment_method),
     items: (value.items || []) as Order["items"],
     subtotal: Number(value.subtotal),
     status: String(value.status),
     expiresAt: value.expires_at ? String(value.expires_at) : undefined,
     qrisReissueAllowed: value.qris_reissue_allowed === true,
+    credentialsReady: value.credentials_ready === true,
     qris: value.qris as QrisInvoice | null | undefined,
   };
 }
@@ -121,6 +126,27 @@ export default function OrderSuccessPage() {
     }, isDynamicQris ? 5_000 : 30_000);
     return () => clearInterval(interval);
   }, [orderStatus, isDynamicQris, fetchOrder]);
+
+  // Order lunas tetapi detail akun belum ada: periksa berkala supaya panel
+  // muncul sendiri begitu fulfillment otomatis selesai — pembeli tidak perlu
+  // reload manual. Dibatasi 30 percobaan × 20 dtk (±10 mnt) agar tab yang
+  // ditinggal terbuka tidak memukul endpoint selamanya (orders:lookup 20/mnt).
+  const credentialsReady = order?.credentialsReady === true;
+  useEffect(() => {
+    if (orderStatus !== "lunas" || credentialsReady) return;
+    let attempts = 0;
+    const interval = setInterval(() => {
+      attempts += 1;
+      if (attempts > 30) {
+        clearInterval(interval);
+        return;
+      }
+      // Diam-diam saja: kegagalan poli di sini bukan error yang perlu
+      // ditampilkan, status utama sudah "Lunas".
+      void fetchOrder().catch(() => undefined);
+    }, 20_000);
+    return () => clearInterval(interval);
+  }, [orderStatus, credentialsReady, fetchOrder]);
 
   useEffect(() => {
     if (!order?.qris || order.status !== "pending") return;
@@ -233,7 +259,23 @@ export default function OrderSuccessPage() {
           <div className="mt-3 flex justify-between border-t border-white/10 pt-3"><span className="text-sm text-white/60">Total • {order.method.toUpperCase()}</span><span className="font-bold text-white">{formatRupiah(payableAmount)}</span></div>
         </div>
 
-        {isPaid && <WrCredentialsPanel code={order.code} />}
+        {isPaid && (order.credentialsReady ? (
+          <WrCredentialsPanel code={order.code} />
+        ) : (
+          // Detail akun belum/tidak pernah ada (fulfillment manual): jangan
+          // tampilkan form verifikasi WA yang pasti gagal. Beri kepastian
+          // ke mana produk dikirim.
+          <section className="ax-glass-card mt-6 rounded-2xl p-4 text-left" aria-label="Pengiriman produk">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">Pengiriman Produk</p>
+            <p className="mt-2 text-xs leading-5 text-white/55">
+              Pesanan sedang diproses. Detail akun dikirim ke WhatsApp <span className="font-medium text-white/80">{order.wa}</span>
+              {order.email ? <> dan email <span className="font-medium text-white/80">{order.email}</span></> : null} yang kamu masukkan saat checkout.
+            </p>
+            <p className="mt-2 text-[11px] leading-5 text-white/40">
+              Estimasi 5–15 menit pada jam layanan. Halaman ini memeriksa sendiri, jadi detail akan tampil otomatis di sini kalau produknya terkirim instan.
+            </p>
+          </section>
+        ))}
 
         <div className="mt-6 grid grid-cols-2 gap-2.5">
           <Link href="/lacak-pesanan" className="ax-glass-card flex h-11 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-white hover:bg-white/10">Lacak Status</Link>

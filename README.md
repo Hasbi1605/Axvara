@@ -208,7 +208,9 @@ Axvara dapat menjadi reseller layer di atas Warung Rebahan: produk tersinkronisa
 30 menit, order lunas diteruskan otomatis ke WR (exactly-once: klaim atomik + lease +
 idempotency), dan detail akun dikirim ke customer via
 Telegram/WhatsApp/Web. Pembeli web mengambil kredensial di halaman pesanan via verifikasi
-nomor WA + capability token. Blueprint: `docs/WARUNG-REBAHAN-INTEGRATION.md`; arsitektur terpasang:
+nomor WA + capability token — panel itu hanya muncul saat detail akun benar-benar sudah ada
+(`credentials_ready`); order lunas dengan fulfillment manual menampilkan blok "Pengiriman
+Produk" (tujuan WA/email checkout + estimasi 5–15 menit), bukan form yang pasti gagal. Blueprint: `docs/WARUNG-REBAHAN-INTEGRATION.md`; arsitektur terpasang:
 `docs/ARCHITECTURE.md` §15. Seluruhnya di balik `WARUNG_REBAHAN_ENABLED=false` (lihat
 `.env.example`); set API key + webhook secret di Pages Secrets, lalu Force Sync dari tab
 **Warung Rebahan** di admin. Webhook WR: `https://axvara.tech/api/webhook/warung`.

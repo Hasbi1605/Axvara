@@ -221,6 +221,15 @@
   `whatsapp-circle.svg` / `telegram.svg` + hover border brand 40%, bukan
   background solid full-bleed), label pendek "WA Admin" / "Telegram" agar
   muat 1 baris tanpa wrap. Tap target tetap ≥44px.
+- Blok pasca-pembayaran (revisi 2026-09-18, live): satu kartu `ax-glass-card`
+  di bawah Ringkasan, isinya bergantung `credentials_ready` dari server.
+  Siap → panel "Detail Akun Digital" (input WA + CTA cyan `Tampilkan`, hasil
+  kartu mono emerald). Belum/tidak pernah ada (fulfillment manual) → blok
+  informasi "Pengiriman Produk": kalimat tujuan pengiriman dengan WA + email
+  checkout tersamar di-highlight `text-white/80`, lalu catatan estimasi 5–15
+  menit `text-[11px] text-white/40`. Prinsipnya: JANGAN pernah tampilkan
+  kontrol yang pasti gagal ke pembeli yang baru membayar — form mati lebih
+  bikin panik daripada tidak ada form.
 
 ### 5.7a Halaman Lacak Pesanan `/lacak-pesanan` (2026-09-17, live)
 - Riset pola marketplace (Shopee/Tokopedia/Apple order tracking): satu form
