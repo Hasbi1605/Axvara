@@ -210,7 +210,7 @@ describe("Authoritative UI and admin state", () => {
     expect(site).toContain('supportTelegram: "axvara_support"');
   });
 
-  it("panel detail akun hanya tampil bila kredensial siap; sisanya info pengiriman ke kontak checkout", () => {
+  it("panel detail akun hanya tampil bila kredensial siap; estimasi dibedakan per kelas pengiriman", () => {
     const statusPage = read("src/app/pesanan/[code]/page.tsx");
     // Render kondisional — bukan lagi `isPaid` saja (form mati untuk produk manual).
     expect(statusPage).toContain("order.credentialsReady");
@@ -218,11 +218,18 @@ describe("Authoritative UI and admin state", () => {
     // Fallback: info pengiriman ke kontak checkout, bukan form verifikasi WA.
     expect(statusPage).toContain("Pengiriman Produk");
     expect(statusPage).toContain("Detail akun dikirim ke WhatsApp");
-    // Polling terbatas agar panel muncul sendiri tanpa reload manual.
+    // Kelas antrean TIDAK boleh dijanjikan 5–15 menit (plafon 12 jam).
+    expect(statusPage).toContain("order.queuedDelivery");
+    expect(statusPage).toContain("dikerjakan sesuai antrean");
+    expect(statusPage).toContain("WR_QUEUED_MAX_HOURS} jam pada jam layanan");
+    // Polling terbatas agar panel muncul sendiri tanpa reload manual, dan
+    // lebih pendek untuk antrean (polling tak mungkin menutup 12 jam).
     expect(statusPage).toContain('orderStatus !== "lunas" || credentialsReady');
-    expect(statusPage).toContain("attempts > 30");
+    expect(statusPage).toContain("queuedDelivery ? 3 : 30");
+    expect(statusPage).toContain("attempts > maxAttempts");
     // Flag berasal dari server, tidak diakali di client.
     expect(statusPage).toContain("credentialsReady: value.credentials_ready === true");
+    expect(statusPage).toContain("queuedDelivery: value.queued_delivery === true");
   });
 
   it("blok tombol bantuan 2-tier: navigasi di atas, WA/Telegram pill ringan di bawah (anti wrap/gepeng)", () => {

@@ -728,6 +728,9 @@ CREATE TABLE IF NOT EXISTS wr_order_links (
   delivery_last_error TEXT,
   delivered_at TEXT,
   fulfillment_item_id INTEGER REFERENCES fulfillment_items(id) ON DELETE SET NULL,
+  -- Penanda idempoten peringatan umur antrean (migrasi 0037): diisi sekali saat
+  -- admin sudah dikabari bahwa link ini menggantung melewati plafon layanan.
+  aging_alerted_at TEXT,
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -743,6 +746,8 @@ CREATE INDEX IF NOT EXISTS idx_wr_links_lease
 CREATE INDEX IF NOT EXISTS idx_wr_links_delivery
   ON wr_order_links(delivery_status, delivery_next_attempt_at)
   WHERE delivery_status IN ('queued','failed');
+CREATE INDEX IF NOT EXISTS idx_wr_links_aging
+  ON wr_order_links(status, aging_alerted_at);
 CREATE INDEX IF NOT EXISTS idx_wr_links_item
   ON wr_order_links(fulfillment_item_id) WHERE fulfillment_item_id IS NOT NULL;
 CREATE TABLE IF NOT EXISTS wr_sync_log (

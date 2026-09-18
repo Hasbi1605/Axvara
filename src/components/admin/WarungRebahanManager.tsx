@@ -44,6 +44,10 @@ type WrOrderRow = {
   customer_name?: string | null;
   customer_wa?: string | null;
   customer_email?: string | null;
+  created_at?: string | null;
+  request_sent_at?: string | null;
+  updated_at?: string | null;
+  aging_alerted_at?: string | null;
 };
 
 type ExclusionRow = { id: number; pattern: string; reason: string | null };
@@ -60,6 +64,21 @@ type MarkupRow = {
   wr_delivery_class: string | null;
   wr_delivery_source: string | null;
 };
+
+/** Umur antrean, dihitung dari saat request dikirim ke upstream (fallback
+ *  created_at). Kelas antrean dikerjakan manusia 6–12 jam, jadi umur adalah
+ *  satu-satunya sinyal cepat "ini sudah kelamaan" di panel. */
+function ageLabel(order: { request_sent_at?: string | null; created_at?: string | null; updated_at?: string | null }): { text: string; hours: number } | null {
+  const raw = order.request_sent_at || order.created_at || order.updated_at;
+  if (!raw) return null;
+  // D1 menyimpan datetime('now') UTC tanpa zona — perlakukan sebagai UTC.
+  const iso = /(Z|[+-]\d{2}:?\d{2})$/.test(raw) ? raw : `${raw.replace(" ", "T")}Z`;
+  const started = Date.parse(iso);
+  if (!Number.isFinite(started)) return null;
+  const minutes = Math.max(0, Math.floor((Date.now() - started) / 60000));
+  const hours = minutes / 60;
+  return { text: minutes < 60 ? `${minutes} mnt` : `${Math.floor(hours)} jam ${minutes % 60} mnt`, hours };
+}
 
 const WR_STATUS_LABEL: Record<string, string> = {
   pending: "Menunggu",
@@ -339,6 +358,17 @@ export function WarungRebahanManager() {
                     <span className="font-mono text-xs font-semibold text-[#5cefff]">{order.order_code}</span>
                     <span className="text-xs text-white/45">{formatRupiah(order.wr_cost)} modal</span>
                     {order.wr_order_id && <span className="font-mono text-[11px] text-white/35">{order.wr_order_id}</span>}
+                    {!["completed", "failed"].includes(order.status) && (() => {
+                      const age = ageLabel(order);
+                      if (!age) return null;
+                      // >13 jam = melewati ambang internal (plafon pembeli 12 jam).
+                      const late = age.hours >= 13;
+                      return (
+                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${late ? "border-red-400/30 bg-red-500/10 text-red-300" : "border-white/10 bg-white/[0.04] text-white/45"}`}>
+                          {age.text}{late ? " · lewat batas" : ""}
+                        </span>
+                      );
+                    })()}
                   </div>
                   {(order.customer_name || order.customer_wa || order.customer_email) && (
                     <p className="mt-1 text-[11px] text-white/55">

@@ -79,7 +79,7 @@ describe("Warung Rebahan process pending orders", () => {
     );
   }
 
-  it("gate per kelas: made_by_order TIDAK auto-order, tetap pending (2026-09-16)", async () => {
+  it("kelas antrean (made_by_order) IKUT auto-order sejak 2026-09-18", async () => {
     const fx = await setup();
     try {
       seedCatalog(fx);
@@ -90,11 +90,38 @@ describe("Warung Rebahan process pending orders", () => {
       vi.stubEnv("WARUNG_REBAHAN_API_KEY", "k");
       vi.stubEnv("TELEGRAM_BOT_ENABLED", "false");
       let calls = 0;
-      stubWrApi(() => { calls++; return { success: true, message: "ok", data: null }; });
+      stubWrApi(() => { calls++; return { success: true, message: "ok", data: { order_id: "RBHN-MBO-1", status: "processing", current_balance: 90000 } }; });
       const db = createDatabaseAccess(fx.db);
       await createWrOrderLink("AXV-20260911-AAAMBO01", [{ product_id: 1, variant_id: 1, qty: 1 }], db);
       const result = await processWrPendingOrders(db);
-      // Link dibuat (butuh dibayar→dicatat) tapi TIDAK diproses ke WR.
+      // Dulu: 0 call, link diam 'pending' selamanya sampai admin sadar.
+      expect(calls).toBe(1);
+      expect(result.processed).toBe(1);
+      expect(result.succeeded).toBe(1);
+      const link = fx.sql.prepare("SELECT status, wr_order_id FROM wr_order_links").get() as { status: string; wr_order_id: string };
+      expect(link.status).toBe("processing");
+      expect(link.wr_order_id).toBe("RBHN-MBO-1");
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("saklar mundur WARUNG_REBAHAN_AUTO_ORDER_MBO='false' menahan kelas antrean seperti perilaku lama", async () => {
+    const fx = await setup();
+    try {
+      seedCatalog(fx);
+      fx.sql.prepare(`UPDATE wr_variants SET wr_delivery_class='made_by_order', wr_delivery_source='screenshot' WHERE wr_variant_id='var-1'`).run();
+      seedOrder(fx, "AXV-20260911-AAAMBO02");
+      vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
+      vi.stubEnv("WARUNG_REBAHAN_AUTO_ORDER_ENABLED", "true");
+      vi.stubEnv("WARUNG_REBAHAN_AUTO_ORDER_MBO", "false");
+      vi.stubEnv("WARUNG_REBAHAN_API_KEY", "k");
+      vi.stubEnv("TELEGRAM_BOT_ENABLED", "false");
+      let calls = 0;
+      stubWrApi(() => { calls++; return { success: true, message: "ok", data: null }; });
+      const db = createDatabaseAccess(fx.db);
+      await createWrOrderLink("AXV-20260911-AAAMBO02", [{ product_id: 1, variant_id: 1, qty: 1 }], db);
+      const result = await processWrPendingOrders(db);
       expect(calls).toBe(0);
       expect(result.processed).toBe(0);
       const link = fx.sql.prepare("SELECT status FROM wr_order_links").get() as { status: string };
@@ -104,7 +131,7 @@ describe("Warung Rebahan process pending orders", () => {
     }
   });
 
-  it("NULL (belum dikunci) juga TIDAK auto-order — default aman manual", async () => {
+  it("kelas NULL (belum dikunci) juga ikut auto-order", async () => {
     const fx = await setup();
     try {
       seedCatalog(fx);
@@ -115,12 +142,12 @@ describe("Warung Rebahan process pending orders", () => {
       vi.stubEnv("WARUNG_REBAHAN_API_KEY", "k");
       vi.stubEnv("TELEGRAM_BOT_ENABLED", "false");
       let calls = 0;
-      stubWrApi(() => { calls++; return { success: true, message: "ok", data: null }; });
+      stubWrApi(() => { calls++; return { success: true, message: "ok", data: { order_id: "RBHN-NULL-1", status: "processing", current_balance: 80000 } }; });
       const db = createDatabaseAccess(fx.db);
       await createWrOrderLink("AXV-20260911-AAANULL1", [{ product_id: 1, variant_id: 1, qty: 1 }], db);
       const result = await processWrPendingOrders(db);
-      expect(calls).toBe(0);
-      expect(result.processed).toBe(0);
+      expect(calls).toBe(1);
+      expect(result.succeeded).toBe(1);
     } finally {
       fx.close();
     }

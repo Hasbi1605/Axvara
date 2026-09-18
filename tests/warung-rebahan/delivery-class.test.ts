@@ -40,8 +40,8 @@ describe("wr delivery class", () => {
 
   it("label pembeli singkat (tanpa emoji — styling diurus UI)", () => {
     expect(deliveryLabelForBuyer("restock")).toBe("Kirim otomatis");
-    expect(deliveryLabelForBuyer("made_by_order")).toBe("Dikirim admin");
-    expect(deliveryLabelForBuyer(null)).toBe("Dikirim admin");
+    expect(deliveryLabelForBuyer("made_by_order")).toBe("Diproses antrean");
+    expect(deliveryLabelForBuyer(null)).toBe("Diproses antrean");
   });
 
   it("label admin menyebut sumber", () => {

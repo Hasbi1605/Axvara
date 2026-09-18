@@ -13,9 +13,59 @@
 
 export type WrDeliveryClass = "restock" | "made_by_order";
 
+// Plafon janji publik untuk varian antrean (keputusan owner 2026-09-18).
+// Owner supplier menyebut 6–12 jam, "kalau lancar tidak sampai 1 jam".
+// Yang DIJANJIKAN ke pembeli hanya batas atasnya + "umumnya lebih cepat":
+// rentang mentah 6–12 jam akan dibaca sebagai janji minimum 6 jam, dan
+// tanpa angka sama sekali pembeli tetap menanyakannya lewat support.
+// Angka ini juga dipakai untuk ambang peringatan internal (alert di
+// WR_QUEUED_ALERT_HOURS, sengaja di ATAS plafon publik).
+export const WR_QUEUED_MAX_HOURS = 12;
+export const WR_QUEUED_ALERT_HOURS = 13;
+
 /** Label pembeli singkat (web/Telegram/WA). Tanpa emoji — badge/styling diurus UI. */
 export function deliveryLabelForBuyer(wrClass: string | null | undefined): string {
-  return wrClass === "restock" ? "Kirim otomatis" : "Dikirim admin";
+  return wrClass === "restock" ? "Kirim otomatis" : "Diproses antrean";
+}
+
+/**
+ * Satu kalimat ekspektasi waktu untuk pembeli. WAJIB dipakai di SEMUA
+ * permukaan sebelum bayar (PDP, modal varian, checkout, Telegram, WA) —
+ * bukan hanya di halaman pesanan. Alasan: varian antrean butuh jam-jaman,
+ * jadi pembeli harus tahu SEBELUM uangnya masuk, bukan sesudah.
+ * Tidak pernah menyebut pemasok/pihak ketiga: semua tampil sebagai proses
+ * Axvara (keputusan owner 2026-09-18).
+ */
+export function deliveryEtaForBuyer(wrClass: string | null | undefined): string {
+  return wrClass === "restock"
+    ? "Kirim otomatis setelah pembayaran dikonfirmasi"
+    : `Diproses sesuai antrean — umumnya lebih cepat, maksimal ${WR_QUEUED_MAX_HOURS} jam pada jam layanan`;
+}
+
+/** true bila varian ini masuk kelas antrean (bukan kirim otomatis). */
+export function isQueuedDelivery(wrClass: string | null | undefined): boolean {
+  return wrClass !== "restock";
+}
+
+/**
+ * Apakah baris ini butuh antrean (manusia) alih-alih kirim instan?
+ * - Varian WR: hanya kelas `restock` yang instan.
+ * - Varian non-WR: `shared`/`unique` instan dari stok sendiri; `manual`
+ *   berarti diserahkan admin, jadi ikut kelas antrean.
+ * Dipakai quote checkout + halaman pesanan supaya ekspektasi waktu yang
+ * ditampilkan berasal dari satu aturan, bukan tebakan per layar.
+ */
+export function isQueuedFulfillment(input: {
+  wrVariantId?: unknown;
+  wrClass?: unknown;
+  fulfillmentMode?: unknown;
+}): boolean {
+  const wrId = input.wrVariantId == null ? "" : String(input.wrVariantId).trim();
+  if (wrId) {
+    const raw = input.wrClass == null ? "" : String(input.wrClass).trim();
+    return isQueuedDelivery(raw || null);
+  }
+  return String(input.fulfillmentMode ?? "").trim().toLowerCase() === "manual";
 }
 
 /**

@@ -529,6 +529,12 @@ export async function processCredentialDelivery(
       if (!token && !(await hasValidCredentialToken(String(link.order_code), db))) {
         throw new Error("capability_token_issue_failed");
       }
+      // Kabari pembeli lewat WA (2026-09-18). Wajib sejak kelas antrean ikut
+      // auto-order: tunggunya bisa berjam-jam, jadi pembeli sudah menutup
+      // halaman dan tidak akan tahu produknya siap. Yang dikirim HANYA
+      // pemberitahuan + tautan invoice, BUKAN kredensialnya — pengambilan
+      // tetap lewat verifikasi WA + capability token di halaman pesanan.
+      await notifyWebBuyerCredentialsReady(String(link.order_code), db).catch(() => undefined);
     } else if (channel === "telegram") {
       await deliverTelegramCredential(String(link.order_code), plaintext, db);
     } else {
@@ -653,6 +659,34 @@ async function deliverTelegramCredential(orderCode: string, plaintext: string, d
     parse_mode: "HTML",
   });
   if (!sent.ok) throw new Error("telegram_delivery_failed");
+}
+
+/**
+ * Pemberitahuan WA untuk pembeli channel WEB saat detail akun siap.
+ * Sengaja TIDAK mengirim kredensial: isinya hanya kabar + tautan invoice,
+ * karena pengambilan tetap wajib verifikasi nomor WA + capability token.
+ * Best-effort dan idempoten (kunci outbox per order): kegagalan kirim tidak
+ * boleh menggagalkan delivery — token sudah terbit dan panel sudah bisa
+ * dipakai, jadi kabar adalah nilai tambah, bukan syarat settled.
+ */
+async function notifyWebBuyerCredentialsReady(orderCode: string, db: DatabaseAccess): Promise<void> {
+  if (process.env.WHATSAPP_ENABLED !== "true") return;
+  const order = await db
+    .queryFirst(`SELECT customer_wa, items FROM orders WHERE code=?`, orderCode)
+    .catch(() => null);
+  const target = String(order?.customer_wa || "").trim();
+  if (!target) return;
+  const { enqueueWhatsAppMessage, waOutboxKey } = await import("@/lib/whatsapp/outbox");
+  const productNames = parseProductNames(order?.items);
+  const siteUrl = (process.env.SITE_URL || "https://axvara.tech").replace(/\/$/, "");
+  const invoiceUrl = `${siteUrl}/pesanan/${orderCode}`;
+  await enqueueWhatsAppMessage(
+    waOutboxKey("text", `wr-web-ready:${orderCode}`),
+    target,
+    `*PESANAN AXVARA SUDAH SIAP!*\nOrder: ${orderCode}\n${productNames}\n\n`
+      + `Buka halaman pesanan untuk melihat detail akunmu:\n${invoiceUrl}\n\n`
+      + `Masukkan nomor WA ini saat diminta. Ketik *garansi* untuk ketentuan.`,
+  );
 }
 
 async function deliverWhatsAppCredential(orderCode: string, plaintext: string, db: DatabaseAccess): Promise<void> {

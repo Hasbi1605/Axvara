@@ -6,6 +6,7 @@ import type { Product } from "@/lib/products";
 import { formatRupiah } from "@/lib/utils";
 import type { VariantSummary } from "@/lib/catalog";
 import { formatWarranty } from "@/lib/catalog";
+import { deliveryEtaForBuyer, WR_QUEUED_MAX_HOURS } from "@/lib/warung-rebahan/delivery-class";
 import { useCart } from "@/stores/cart";
 import { ProductCard } from "@/components/storefront/ProductCard";
 import { QuickVariantModal } from "@/components/storefront/QuickVariantModal";
@@ -431,7 +432,7 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
                             {v.wr_delivery_class === "restock" ? (
                               <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300">Kirim otomatis</span>
                             ) : (
-                              <span className="rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFD66B]">Dikirim admin</span>
+                              <span className="rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFD66B]">Diproses antrean · maks {WR_QUEUED_MAX_HOURS} jam</span>
                             )}
                           </span>
                           {v.warranty_type !== 'none' && formatWarranty(v) && (
@@ -551,7 +552,7 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
               <svg viewBox="0 0 16 16" className="w-4 h-4 mt-0.5 shrink-0 text-emerald-400/80" fill="none" stroke="currentColor" strokeWidth={2}><path d="M3 8.5l3 3 7-7" strokeLinecap="round" strokeLinejoin="round"/></svg>
               {termsVariant?.wr_delivery_class === "restock"
                 ? "Kirim otomatis setelah pembayaran dikonfirmasi"
-                : "Dikirim admin ke kontak setelah pembayaran"}
+                : deliveryEtaForBuyer(termsVariant?.wr_delivery_class)}
             </li>
             <li className="flex items-start gap-2">
               <svg viewBox="0 0 16 16" className="w-4 h-4 mt-0.5 shrink-0 text-emerald-400/80" fill="none" stroke="currentColor" strokeWidth={2}><path d="M3 8.5l3 3 7-7" strokeLinecap="round" strokeLinejoin="round"/></svg>

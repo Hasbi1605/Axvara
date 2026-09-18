@@ -308,15 +308,30 @@ export async function GET(req: NextRequest) {
     // Boolean saja (tanpa isi kredensial); retrieval tetap wajib verifikasi
     // WA/capability token di /api/orders/[code]/credentials.
     let credentialsReady = false;
+    let queuedDelivery = false;
     if (String(row.status) === "lunas") {
-      // .catch: D1 lama tanpa tabel WR (pra-0027) → false, bukan 500.
-      const cred = await queryFirst(
-        `SELECT 1 AS ok FROM wr_order_links
-         WHERE order_code=? AND status='completed' AND wr_account_details IS NOT NULL
-         LIMIT 1`,
+      // Satu query untuk dua flag halaman pesanan (hemat statement):
+      // - creds: detail akun sudah siap diambil pembeli.
+      // - queued: ada baris yang dikerjakan sesuai antrean (varian WR non-restock
+      //   atau varian manual) → teks estimasi TIDAK boleh bilang 5–15 menit.
+      // .catch: D1 lama tanpa tabel WR (pra-0027) → kedua flag false, bukan 500.
+      const flags = await queryFirst(
+        `SELECT
+          EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND status='completed'
+                   AND wr_account_details IS NOT NULL) AS creds,
+          EXISTS(SELECT 1 FROM json_each(CASE WHEN json_valid(?) THEN ? ELSE '[]' END) je
+                 JOIN product_variants pv
+                   ON pv.id = CAST(json_extract(je.value,'$.variant_id') AS INTEGER)
+                 LEFT JOIN wr_variants wv ON wv.wr_variant_id = pv.wr_variant_id
+                 WHERE CASE WHEN pv.wr_variant_id IS NOT NULL
+                            THEN COALESCE(wv.wr_delivery_class,'made_by_order') <> 'restock'
+                            ELSE pv.fulfillment_mode = 'manual' END) AS queued`,
         code,
+        String(row.items ?? "[]"),
+        String(row.items ?? "[]"),
       ).catch(() => null);
-      credentialsReady = Boolean(cred);
+      credentialsReady = Number(flags?.creds ?? 0) === 1;
+      queuedDelivery = Number(flags?.queued ?? 0) === 1;
     }
     return NextResponse.json({
       order: {
@@ -333,6 +348,7 @@ export async function GET(req: NextRequest) {
         created_at: row.created_at,
         expires_at: row.expires_at,
         credentials_ready: credentialsReady,
+        queued_delivery: queuedDelivery,
         qris_reissue_allowed: row.status === "pending" && row.sales_channel !== "whatsapp" && Number(row.qris_reissue_count || 0) < MAX_QRIS_REISSUES,
         qris: row.dynamic_qris_url ? {
           payable_amount: row.payable_amount,

@@ -15,9 +15,9 @@ afterEach(() => {
 });
 
 describe("Warung Rebahan saldo monitor", () => {
-  it("threshold default 50000 dan bisa di-override", () => {
+  it("threshold default 250000 (modal termahal 200rb) dan bisa di-override", () => {
     vi.stubEnv("WARUNG_REBAHAN_SALDO_ALERT_THRESHOLD", "");
-    expect(getSaldoThreshold()).toBe(50000);
+    expect(getSaldoThreshold()).toBe(250_000);
     vi.stubEnv("WARUNG_REBAHAN_SALDO_ALERT_THRESHOLD", "100000");
     expect(getSaldoThreshold()).toBe(100000);
   });
@@ -94,7 +94,7 @@ describe("Warung Rebahan saldo monitor", () => {
         "fetch",
         vi.fn(async () => ({
           ok: true,
-          json: async () => ({ success: true, message: "ok", data: { balance: 245000, currency: "IDR" } }),
+          json: async () => ({ success: true, message: "ok", data: { balance: 300000, currency: "IDR" } }),
         })),
       );
       const result = await checkAndLogSaldo(createDatabaseAccess(fx.db));

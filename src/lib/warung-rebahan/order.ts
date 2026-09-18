@@ -33,11 +33,13 @@ import {
   createOrder,
   fetchTransactions,
   isWrAutoOrderEnabled,
+  isWrAutoOrderQueuedEnabled,
   isWrEnabled,
   WrInsufficientBalanceError,
   WrOutOfStockError,
   type WrTransaction,
 } from "./client";
+import { WR_QUEUED_ALERT_HOURS, WR_QUEUED_MAX_HOURS } from "./delivery-class";
 
 export type OrderItemLike = {
   product_id?: number;
@@ -325,10 +327,15 @@ export async function processWrPendingOrders(
        WHERE l.status IN ('pending','retry')
          AND l.attempt_count < l.max_attempts
          AND (l.next_attempt_at IS NULL OR datetime(l.next_attempt_at) <= datetime('now'))
-         -- 2026-09-16: gate per kelas — HANYA restock yang auto-order.
-         -- made_by_order (slow, antrean manusia WR) + NULL (belum dikunci)
-         -- tetap antre manual: link dibiarkan pending, bukan failed.
-         AND COALESCE(wv.wr_delivery_class, 'made_by_order') = 'restock'
+         -- 2026-09-18: gate kelas DIBUKA (keputusan owner). Sebelumnya hanya
+         -- 'restock' yang auto-order sehingga link made_by_order/NULL diam di
+         -- 'pending' selamanya: tidak ada request keluar, pembeli menunggu
+         -- tanpa ada yang mengerjakan sampai admin sadar. Sekarang seluruh
+         -- kelas diteruskan otomatis; ekspektasi waktunya yang dijujurkan di
+         -- storefront (maks 12 jam, lihat delivery-class.ts).
+         -- Saklar mundur: WARUNG_REBAHAN_AUTO_ORDER_MBO='false' mengembalikan
+         -- perilaku lama tanpa deploy (kelas antrean kembali ditahan).
+         ${isWrAutoOrderQueuedEnabled() ? "" : "AND COALESCE(wv.wr_delivery_class, 'made_by_order') = 'restock'"}
        ORDER BY l.next_attempt_at ASC, l.id ASC LIMIT 4`,
     )
     .catch(() => [] as Row[]);
@@ -726,6 +733,65 @@ export async function reconcileStuckWrOrders(database?: DatabaseAccess): Promise
     }
   }
   return reconciled;
+}
+
+/**
+ * Peringatan umur antrean (2026-09-18). Upstream mengerjakan kelas antrean
+ * secara manual (estimasi 6–12 jam) dan TIDAK mengirim apa pun saat lambat;
+ * `reconcileStuckWrOrders` juga hanya bertindak bila upstream sudah melaporkan
+ * status terminal. Tanpa ini, link yang tetap `processing` 15 jam diam total
+ * dan pembeli yang sudah dijanjikan plafon 12 jam tidak ada yang mengurus.
+ * Ambangnya sengaja DI ATAS plafon publik supaya notifikasi hanya menyala
+ * untuk anomali, bukan untuk setiap order normal (alert fatigue).
+ * Idempoten via kolom `aging_alerted_at` (migrasi 0037).
+ */
+export async function alertAgingWrOrders(database?: DatabaseAccess): Promise<number> {
+  const db = database ?? createDatabaseAccess();
+  if (!isWrEnabled()) return 0;
+  const rows = await db
+    .queryAll(
+      `SELECT l.id, l.order_code, l.wr_order_id, l.status, l.wr_cost,
+              COALESCE(l.request_sent_at, l.updated_at, l.created_at) AS since
+       FROM wr_order_links l
+       WHERE l.status IN ('processing','submitted','ordering','claimed')
+         AND l.aging_alerted_at IS NULL
+         AND datetime(COALESCE(l.request_sent_at, l.updated_at, l.created_at))
+             <= datetime('now', '-${WR_QUEUED_ALERT_HOURS} hours')
+       ORDER BY l.id ASC LIMIT 3`,
+    )
+    .catch(() => [] as Row[]);
+  if (!rows.length) return 0;
+  const chatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
+  let alerted = 0;
+  for (const row of rows) {
+    // Tandai LEBIH DULU: kalau notifikasi gagal, lebih baik kehilangan satu
+    // ping daripada mengirim ulang tiap 5 menit selamanya.
+    const marked = await db
+      .execRun(
+        `UPDATE wr_order_links SET aging_alerted_at=datetime('now'), updated_at=datetime('now')
+         WHERE id=? AND aging_alerted_at IS NULL`,
+        Number(row.id),
+      )
+      .catch(() => ({ changes: 0 as number | undefined }));
+    if (Number(marked.changes ?? 0) === 0) continue;
+    alerted++;
+    if (!chatId || process.env.TELEGRAM_BOT_ENABLED !== "true") continue;
+    try {
+      const { sendMessage } = await import("@/lib/telegram/api");
+      await sendMessage({
+        chat_id: chatId,
+        text:
+          `⏳ <b>Order antrean lewat batas</b> <code>${String(row.order_code)}</code>\n`
+          + `Status: ${String(row.status)} · sejak ${String(row.since)}\n`
+          + `Upstream: <code>${String(row.wr_order_id || "-")}</code> · modal Rp${Number(row.wr_cost || 0).toLocaleString("id-ID")}\n`
+          + `Sudah melewati ${WR_QUEUED_ALERT_HOURS} jam (plafon janji pembeli ${WR_QUEUED_MAX_HOURS} jam). Cek manual sekarang.`,
+        parse_mode: "HTML",
+      });
+    } catch {
+      /* penanda sudah tertulis; ping berikutnya tidak diulang */
+    }
+  }
+  return alerted;
 }
 
 /**

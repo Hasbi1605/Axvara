@@ -142,12 +142,23 @@
 - Label garansi varian SELALU kanonis `Garansi N Unit` ("Garansi 12 Hari") +
   ikon shield — di baris sendiri di BAWAH nama varian (block, bukan inline),
   JANGAN render label mentah ("12 Hari" ambigu dengan durasi).
-- Badge pengiriman per varian TANPA emoji (anti AI slop, 2026-09-17): di
-  bawah label varian (block, di atas harga/garansi) — restock = pill
-  `emerald-400/25 + emerald-500/10` teks "Kirim otomatis", selainnya = pill
-  `gold/25 + gold/10` teks "Dikirim admin". Berlaku di kartu varian PDP
-  desktop + QuickVariantModal. JANGAN taruh di card deskripsi/S&K (datanya
-  per-varian, bukan per-produk) dan JANGAN pakai emoji ⚡/✋.
+- Badge pengiriman per varian TANPA emoji (anti AI slop, 2026-09-17; teks
+  direvisi 2026-09-18): di bawah label varian (block, di atas harga/garansi) —
+  restock = pill `emerald-400/25 + emerald-500/10` teks "Kirim otomatis",
+  selainnya = pill `gold/25 + gold/10` teks "Diproses antrean · maks 12 jam"
+  (PDP) / "Antrean · maks 12 jam" (QuickVariantModal, ruang lebih sempit).
+  "Dikirim admin" dibuang karena maknanya samar: pembeli tidak bisa menebak
+  itu berarti jam-jaman. Berlaku di kartu varian PDP desktop +
+  QuickVariantModal. JANGAN taruh di card deskripsi/S&K (datanya per-varian,
+  bukan per-produk) dan JANGAN pakai emoji ⚡/✋.
+- Ekspektasi waktu (2026-09-18, live): kalimat `deliveryEtaForBuyer()` wajib
+  tampil SEBELUM pembeli bayar — baris fitur PDP, tepat di atas CTA
+  QuickVariantModal (`text-[11px]`, gold untuk antrean / `white/40` untuk
+  instan), dan blok checkout "Waktu pengerjaan pesanan ini" (border+bg gold
+  `#FFB800/25` + `/[0.07]`). Angka yang dijanjikan hanya PLAFON (maksimal 12
+  jam) plus "umumnya lebih cepat"; jangan tampilkan rentang mentah 6–12 jam
+  (dibaca sebagai janji minimum) dan jangan tanpa angka (pembeli tetap
+  bertanya via support). Nama pemasok tidak pernah muncul di copy pembeli.
 
 ### 5.3d Minimum Pembelian per Varian (2026-09-17, live — revisi UX ala marketplace)
 - Kolom `product_variants.min_qty` (migrasi 0034, default 1 = bebas; GSuite =

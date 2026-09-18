@@ -4,12 +4,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useCart } from "@/stores/cart";
 import { formatRupiah } from "@/lib/utils";
+import { WR_QUEUED_MAX_HOURS } from "@/lib/warung-rebahan/delivery-class";
 import type { Product } from "@/lib/products";
 
 
 type Method = "qris" | "ewallet" | "bank";
 
-type QuotedItem = { product_id: number; variant_id?: number; name: string; price: number; qty: number; stock: number; image: string };
+type QuotedItem = { product_id: number; variant_id?: number; name: string; price: number; qty: number; stock: number; image: string; queued_delivery?: boolean };
 type QuotePaymentMethod = { id: string; label: string; account_number: string; account_name: string; qris_url: string | null };
 type QuoteIssue = { product_id: number; type: string; message: string };
 type PriceChange = { product_id: number; name: string; previous_price: number; current_price: number; message: string };
@@ -226,6 +227,9 @@ function CheckoutInner() {
 
   // Display items: prefer quoted (authoritative), fallback to cart snapshot
   const displayItems = quotedItems.length > 0 ? quotedItems.map((qi) => ({ id: qi.product_id, name: qi.name, price: qi.price, qty: qi.qty, image: qi.image })) : items;
+  // Nama produk yang dikerjakan sesuai antrean (dari quote server, bukan
+  // tebakan client) — dipakai untuk peringatan waktu sebelum bayar.
+  const queuedNames = quotedItems.filter((qi) => qi.queued_delivery === true).map((qi) => qi.name);
   const displaySubtotal = quotedItems.length > 0 ? quotedSubtotal : subtotal;
 
   if (buySlug && !directError && (directLoading || !directProduct)) {
@@ -446,6 +450,24 @@ function CheckoutInner() {
             <h2 className="text-sm font-semibold text-emerald-300">③ Verifikasi Otomatis</h2>
             <p className="mt-1 text-xs leading-5 text-white/50">QRIS dan total bayar akan muncul di halaman pesanan. Biarkan halaman terbuka; status diperbarui otomatis setelah pembayaran diterima.</p>
           </div>
+
+          {/* Ekspektasi waktu SEBELUM bayar. Wajib di sini, bukan hanya di
+              halaman pesanan: varian antrean butuh jam-jaman, dan pembeli yang
+              baru tahu setelah uangnya masuk berhak merasa dibohongi. */}
+          {queuedNames.length > 0 && (
+            <div className="rounded-2xl border border-[#FFB800]/25 bg-[#FFB800]/[0.07] p-4">
+              <h2 className="text-sm font-semibold text-[#FFD66B]">Waktu pengerjaan pesanan ini</h2>
+              <p className="mt-1 text-xs leading-5 text-white/60">
+                {queuedNames.length === 1 ? (
+                  <><span className="font-semibold text-white">{queuedNames[0]}</span> dikerjakan sesuai antrean</>
+                ) : (
+                  <><span className="font-semibold text-white">{queuedNames.length} produk</span> di pesanan ini dikerjakan sesuai antrean</>
+                )}
+                {" "}— umumnya lebih cepat, <span className="font-semibold text-white">maksimal {WR_QUEUED_MAX_HOURS} jam</span> pada jam layanan. Bukan pengiriman instan.
+              </p>
+              <p className="mt-1.5 text-[11px] leading-4 text-white/40">Detail akun dikirim ke WhatsApp{email.trim() ? "/email" : ""} yang kamu isi di atas dan muncul di halaman pesanan. Tidak perlu menunggu halaman ini terbuka.</p>
+            </div>
+          )}
 
           {error && <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2">{error}</p>}
 

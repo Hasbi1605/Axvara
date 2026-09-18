@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { formatRupiah } from "@/lib/utils";
 import type { VariantSummary } from "@/lib/catalog";
 import { formatWarranty } from "@/lib/catalog";
+import { deliveryEtaForBuyer, WR_QUEUED_MAX_HOURS } from "@/lib/warung-rebahan/delivery-class";
 import { IosIcon } from "@/components/ui/IosIcon";
 import type { Product } from "@/lib/products";
 import { useCart } from "@/stores/cart";
@@ -219,7 +220,7 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
                       {v.wr_delivery_class === "restock" ? (
                         <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold text-emerald-300">Kirim otomatis</span>
                       ) : (
-                        <span className="rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-[9px] font-bold text-[#FFD66B]">Dikirim admin</span>
+                        <span className="rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-[9px] font-bold text-[#FFD66B]">Antrean · maks {WR_QUEUED_MAX_HOURS} jam</span>
                       )}
                     </span>
                     <span className="mt-1 text-xs font-semibold text-[#00E5FF]">
@@ -310,6 +311,13 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
         )}
 
         <div className="pt-2">
+          {/* Ekspektasi waktu WAJIB terlihat sebelum CTA: varian antrean butuh
+              jam-jaman, jadi pembeli harus tahu sebelum bayar, bukan sesudah. */}
+          {selected && !isOutOfStock && (
+            <p className={`mb-2 text-[11px] leading-4 ${selected.wr_delivery_class === "restock" ? "text-white/40" : "text-[#FFD66B]"}`}>
+              {deliveryEtaForBuyer(selected.wr_delivery_class)}
+            </p>
+          )}
           <button
             type="button"
             disabled={!selected || isOutOfStock || loading}

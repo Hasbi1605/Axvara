@@ -123,6 +123,20 @@ export function isWrAutoOrderEnabled(): boolean {
   );
 }
 
+/**
+ * Auto-order untuk kelas ANTREAN (made_by_order / kelas belum dikunci).
+ * Default AKTIF begitu auto-order menyala (keputusan owner 2026-09-18):
+ * menahan kelas ini membuat pesanan diam di 'pending' sampai admin sadar.
+ * Set `WARUNG_REBAHAN_AUTO_ORDER_MBO='false'` untuk mengembalikan perilaku
+ * lama (hanya restock) tanpa deploy — saklar mundur bila respons upstream
+ * ternyata tidak seperti dugaan (kelas ini belum pernah diuji via API).
+ */
+export function isWrAutoOrderQueuedEnabled(): boolean {
+  return (
+    isWrAutoOrderEnabled() && process.env.WARUNG_REBAHAN_AUTO_ORDER_MBO !== "false"
+  );
+}
+
 export function isWrSandbox(): boolean {
   return process.env.WARUNG_REBAHAN_SANDBOX === "true";
 }

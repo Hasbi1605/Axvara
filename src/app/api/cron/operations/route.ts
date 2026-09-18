@@ -671,7 +671,7 @@ export async function POST(request: NextRequest) {
       }
       try {
         const { syncProducts, WR_SYNC_PRODUCTS_PER_RUN } = await import("@/lib/warung-rebahan/sync");
-        const { processWrPendingOrders, retryFailedWrOrders, reconcileStuckWrOrders, reconcileBlockedBalance, recoverStaleClaims } = await import("@/lib/warung-rebahan/order");
+        const { processWrPendingOrders, retryFailedWrOrders, reconcileStuckWrOrders, reconcileBlockedBalance, recoverStaleClaims, alertAgingWrOrders } = await import("@/lib/warung-rebahan/order");
         const { processDueCredentialDeliveries } = await import("@/lib/warung-rebahan/deliver");
         const { checkAndLogSaldo } = await import("@/lib/warung-rebahan/saldo");
         const syncOn = process.env.WARUNG_REBAHAN_SYNC_ENABLED !== "false";
@@ -730,6 +730,15 @@ export async function POST(request: NextRequest) {
           try {
             results.wr_orders_reconciled = Number(results.wr_orders_reconciled ?? 0) + await reconcileStuckWrOrders(database);
           } catch { /* best-effort; run berikutnya retry */ }
+        }
+
+        // 3b. Peringatan umur antrean: link yang masih diproses melewati
+        //     ambang internal (di atas plafon janji pembeli). Murni D1 +
+        //     Telegram, idempoten via aging_alerted_at.
+        if (budget.fits(4)) {
+          try {
+            results.wr_orders_aging_alerted = await alertAgingWrOrders(database);
+          } catch { /* best-effort */ }
         }
 
         // 4. Delivery kredensial durable (P0-6): antrean queued/failed +

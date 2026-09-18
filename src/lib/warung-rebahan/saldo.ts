@@ -11,11 +11,19 @@ export type SaldoCheckResult = {
   threshold: number;
 };
 
+// Default ambang peringatan saldo. Dinaikkan 50.000 → 250.000 pada
+// 2026-09-18 bersama pembukaan auto-order kelas antrean: varian termahal
+// bermodal Rp200.000, jadi ambang 50.000 memberi rasa aman palsu — alert
+// menyala saat saldo 45.000 sementara order 200.000 sudah pasti gagal.
+// Ambang di atas modal termahal membuat peringatan datang SEBELUM ada
+// pesanan yang tidak bisa dibayar.
+const SALDO_THRESHOLD_DEFAULT = 250_000;
+
 export function getSaldoThreshold(): number {
   const rawText = (process.env.WARUNG_REBAHAN_SALDO_ALERT_THRESHOLD ?? "").trim();
-  if (!rawText) return 50000;
+  if (!rawText) return SALDO_THRESHOLD_DEFAULT;
   const raw = Number(rawText);
-  return Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : 50000;
+  return Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : SALDO_THRESHOLD_DEFAULT;
 }
 
 export async function checkAndLogSaldo(

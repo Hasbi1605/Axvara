@@ -4,6 +4,7 @@ import { queryAll, queryFirst, isD1Mode } from "@/lib/db";
 import { isVariantsReadEnabled } from "@/lib/catalog";
 import { createCheckoutQuoteToken } from "@/lib/auth";
 import { isDanaQrisConfigured } from "@/lib/payments/dana-qris";
+import { isQueuedFulfillment } from "@/lib/warung-rebahan/delivery-class";
 import { checkRateLimit } from "@/lib/rateLimit";
 
 export const runtime = "edge";
@@ -59,7 +60,7 @@ export async function POST(req: NextRequest) {
   }
 
   let subtotal = 0;
-  const quotedItems: { product_id: number; variant_id?: number; name: string; price: number; qty: number; stock: number; image: string }[] = [];
+  const quotedItems: { product_id: number; variant_id?: number; name: string; price: number; qty: number; stock: number; image: string; queued_delivery: boolean }[] = [];
   const issues: QuoteIssue[] = [];
   const changes: PriceChange[] = [];
   const variantsRequired = isD1Mode() && isVariantsReadEnabled();
@@ -105,7 +106,7 @@ export async function POST(req: NextRequest) {
   const variantById = new Map<number, Record<string, unknown>>();
   if (variantIds.size > 0) {
     const rows = await queryAll(
-      `SELECT pv.*, wv.wr_type AS wr_type, p.require_email AS require_email
+      `SELECT pv.*, wv.wr_type AS wr_type, wv.wr_delivery_class AS wr_delivery_class, p.require_email AS require_email
        FROM product_variants pv
        LEFT JOIN wr_variants wv ON wv.wr_variant_id = pv.wr_variant_id
        LEFT JOIN products p ON p.id = pv.product_id
@@ -232,6 +233,15 @@ export async function POST(req: NextRequest) {
       qty: item.qty,
       stock: effectiveStock,
       image: String(row.image_url ?? ""),
+      // Kelas pengiriman per baris: checkout WAJIB memberi tahu pembeli
+      // sebelum bayar kalau ada varian antrean (bukan kirim otomatis).
+      queued_delivery: item.variant_id
+        ? isQueuedFulfillment({
+            wrVariantId: variantById.get(item.variant_id)?.wr_variant_id,
+            wrClass: variantById.get(item.variant_id)?.wr_delivery_class,
+            fulfillmentMode: variantById.get(item.variant_id)?.fulfillment_mode,
+          })
+        : false,
     });
   }
 

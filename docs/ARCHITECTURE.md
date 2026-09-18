@@ -813,6 +813,38 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   gagal `not_ready`. Selama `lunas && !credentials_ready`, halaman mem-poll
   `GET /api/orders?code=` tiap 20 dtk maksimal 30 kali (±10 mnt) agar panel muncul
   sendiri tanpa reload; retrieval tetap wajib verifikasi WA/capability token.
+- **Kelas pengiriman + auto-order antrean (18 Sep 2026, live).** `wr_delivery_class`
+  membedakan `restock` (instan) dari `made_by_order` (dikerjakan manusia di sisi
+  supplier; estimasi supplier 6–12 jam, "<1 jam bila lancar"). Gate lama hanya
+  meneruskan `restock`, sehingga link kelas antrean diam di `pending` selamanya:
+  tidak ada request keluar dan pembeli menunggu sampai admin sadar. Sejak
+  2026-09-18 SELURUH kelas diteruskan otomatis; `WARUNG_REBAHAN_AUTO_ORDER_MBO=false`
+  adalah saklar mundur tanpa deploy. Satu sumber copy + ambang ada di
+  `src/lib/warung-rebahan/delivery-class.ts`: `WR_QUEUED_MAX_HOURS = 12` (plafon
+  janji pembeli), `WR_QUEUED_ALERT_HOURS = 13` (ambang alert internal, sengaja di
+  atas plafon agar tidak alert fatigue), `deliveryEtaForBuyer()`, dan
+  `isQueuedFulfillment()` (varian WR non-restock ATAU varian non-WR `manual`).
+  Ekspektasi waktu WAJIB tampil SEBELUM bayar: PDP (badge + baris fitur), modal
+  varian (kalimat di atas CTA), dan checkout (blok "Waktu pengerjaan pesanan ini"
+  dari flag `queued_delivery` per baris di respons quote). `GET /api/orders?code=`
+  mengirim `queued_delivery` (satu query gabungan dengan `credentials_ready`,
+  memakai `json_each(orders.items)`), dan halaman pesanan memakainya untuk memilih
+  teks serta memperpendek polling ke 3 percobaan (polling tidak mungkin menutup
+  12 jam — kabarnya lewat WA/email). Nama supplier tidak pernah muncul di copy
+  pembeli; keterangan "third-party independen" DIPERTAHANKAN di `/garansi-replace`
+  sebagai dasar klaim garansi, dan masa garansi kelas antrean dinyatakan mulai saat
+  detail akun diserahkan.
+- **Pengawasan antrean (18 Sep 2026, live).** `notifyWebBuyerCredentialsReady()`
+  mengantrekan pesan WA idempoten (`wr-web-ready:<order>`) saat detail akun siap
+  untuk channel web — isinya hanya kabar + tautan invoice, BUKAN kredensial
+  (pengambilan tetap wajib verifikasi WA + capability token). `alertAgingWrOrders()`
+  memberi tahu admin via Telegram bila link masih `processing/submitted/ordering/claimed`
+  melewati `WR_QUEUED_ALERT_HOURS`, idempoten lewat kolom `aging_alerted_at`
+  (migrasi 0037) dan ditandai SEBELUM kirim agar kegagalan notifikasi tidak
+  menghasilkan ping berulang tiap 5 menit. Panel admin menampilkan umur tiap baris
+  antrean (merah + "lewat batas" di ≥13 jam). Ambang alert saldo default naik
+  50.000 → 250.000 karena modal varian termahal Rp200.000 — ambang lama memberi
+  rasa aman palsu saat auto-order kelas antrean dibuka.
 - **Admin UI:** tab "Warung Rebahan" (`WarungRebahanManager.tsx`, section `warung` di
   `AdminShell` + `admin/page.tsx`): saldo + estimasi, sync terakhir + force sync, antrean
   order + retry, exclusions, markup per varian. Antrean order punya kolom cari

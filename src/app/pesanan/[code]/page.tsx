@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { formatRupiah } from "@/lib/utils";
 import { supportTelegramLink } from "@/lib/site";
+import { WR_QUEUED_MAX_HOURS } from "@/lib/warung-rebahan/delivery-class";
 import { StoreWhatsAppLink } from "@/components/storefront/StoreWhatsAppLink";
 import { WrCredentialsPanel } from "@/components/storefront/WrCredentialsPanel";
 
@@ -32,6 +33,8 @@ type Order = {
   qrisReissueAllowed: boolean;
   /** true HANYA bila detail akun digital (WR) sudah siap diambil pembeli. */
   credentialsReady: boolean;
+  /** true bila ada baris yang dikerjakan sesuai antrean (bukan kirim instan). */
+  queuedDelivery: boolean;
 };
 
 function fromApi(value: Record<string, unknown>): Order {
@@ -47,6 +50,7 @@ function fromApi(value: Record<string, unknown>): Order {
     expiresAt: value.expires_at ? String(value.expires_at) : undefined,
     qrisReissueAllowed: value.qris_reissue_allowed === true,
     credentialsReady: value.credentials_ready === true,
+    queuedDelivery: value.queued_delivery === true,
     qris: value.qris as QrisInvoice | null | undefined,
   };
 }
@@ -131,13 +135,18 @@ export default function OrderSuccessPage() {
   // muncul sendiri begitu fulfillment otomatis selesai — pembeli tidak perlu
   // reload manual. Dibatasi 30 percobaan × 20 dtk (±10 mnt) agar tab yang
   // ditinggal terbuka tidak memukul endpoint selamanya (orders:lookup 20/mnt).
+  // Baris antrean (maks 12 jam) hanya dipoll sebentar: polling tidak mungkin
+  // menutup rentang belasan jam, jadi kabarnya lewat WA/email — 3 percobaan
+  // cukup untuk kasus "ternyata cepat" tanpa membuang request.
   const credentialsReady = order?.credentialsReady === true;
+  const queuedDelivery = order?.queuedDelivery === true;
   useEffect(() => {
     if (orderStatus !== "lunas" || credentialsReady) return;
+    const maxAttempts = queuedDelivery ? 3 : 30;
     let attempts = 0;
     const interval = setInterval(() => {
       attempts += 1;
-      if (attempts > 30) {
+      if (attempts > maxAttempts) {
         clearInterval(interval);
         return;
       }
@@ -146,7 +155,7 @@ export default function OrderSuccessPage() {
       void fetchOrder().catch(() => undefined);
     }, 20_000);
     return () => clearInterval(interval);
-  }, [orderStatus, credentialsReady, fetchOrder]);
+  }, [orderStatus, credentialsReady, queuedDelivery, fetchOrder]);
 
   useEffect(() => {
     if (!order?.qris || order.status !== "pending") return;
@@ -264,15 +273,19 @@ export default function OrderSuccessPage() {
         ) : (
           // Detail akun belum/tidak pernah ada (fulfillment manual): jangan
           // tampilkan form verifikasi WA yang pasti gagal. Beri kepastian
-          // ke mana produk dikirim.
+          // ke mana produk dikirim, dan JANGAN janji menit untuk baris
+          // antrean — plafonnya 12 jam (keputusan owner 2026-09-18).
           <section className="ax-glass-card mt-6 rounded-2xl p-4 text-left" aria-label="Pengiriman produk">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">Pengiriman Produk</p>
             <p className="mt-2 text-xs leading-5 text-white/55">
-              Pesanan sedang diproses. Detail akun dikirim ke WhatsApp <span className="font-medium text-white/80">{order.wa}</span>
-              {order.email ? <> dan email <span className="font-medium text-white/80">{order.email}</span></> : null} yang kamu masukkan saat checkout.
+              {order.queuedDelivery
+                ? <>Pesanan sedang dikerjakan sesuai antrean. Detail akun dikirim ke WhatsApp <span className="font-medium text-white/80">{order.wa}</span>{order.email ? <> dan email <span className="font-medium text-white/80">{order.email}</span></> : null} yang kamu masukkan saat checkout.</>
+                : <>Pesanan sedang diproses. Detail akun dikirim ke WhatsApp <span className="font-medium text-white/80">{order.wa}</span>{order.email ? <> dan email <span className="font-medium text-white/80">{order.email}</span></> : null} yang kamu masukkan saat checkout.</>}
             </p>
             <p className="mt-2 text-[11px] leading-5 text-white/40">
-              Estimasi 5–15 menit pada jam layanan. Halaman ini memeriksa sendiri, jadi detail akan tampil otomatis di sini kalau produknya terkirim instan.
+              {order.queuedDelivery
+                ? <>Umumnya lebih cepat, maksimal {WR_QUEUED_MAX_HOURS} jam pada jam layanan. Tidak perlu menunggu halaman ini terbuka — kami kabari lewat kontak di atas, dan detailnya juga tampil di sini saat kamu buka lagi.</>
+                : <>Estimasi 5–15 menit pada jam layanan. Halaman ini memeriksa sendiri, jadi detail akan tampil otomatis di sini kalau produknya terkirim instan.</>}
             </p>
           </section>
         ))}
