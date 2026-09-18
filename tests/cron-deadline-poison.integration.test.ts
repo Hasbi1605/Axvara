@@ -68,6 +68,54 @@ function setPhase(value: string, deferredList: string[] = []) {
   }
 }
 
+describe("cron operations — anti-starvation sync WR", () => {
+  // 18 Sep 2026: sync otomatis tetap mati 2,5 jam SETELAH perbaikan deadline.
+  // Sebabnya guard anti-starvation memveto dirinya sendiri: syaratnya
+  // `pendingWrDue === 0 && pendingWrDelivery === 0`, padahal fase WR
+  // menangani order DAN sync — selama ada order WR menggantung (dua order
+  // Meitu) slot paksa tidak pernah diberikan dan sweep tidak pernah jalan.
+  function seedWrHistory(hoursAgo: number) {
+    fixture.sql.prepare(
+      `INSERT INTO wr_sync_log(sync_type,status,products_synced,variants_synced,trigger,created_at)
+       VALUES('products','success',48,87,'cron',datetime('now','-${hoursAgo} hours'))`,
+    ).run();
+  }
+  function seedPendingWrLink(code: string) {
+    fixture.sql.prepare(
+      `INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel)
+       VALUES(?,'Buyer','628000000000','[]',10000,'qris','lunas','paid','web')`,
+    ).run(code);
+    fixture.sql.prepare(
+      `INSERT INTO wr_order_links(order_code,wr_variant_id,quantity,wr_cost,status,next_attempt_at)
+       VALUES(?, 'var-1',1,8000,'pending',datetime('now','-10 minutes'))`,
+    ).run(code);
+  }
+
+  it("sync basi mendapat slot WALAU ada order WR menggantung", async () => {
+    // Fase tersimpan 'notify' → rotasi normal TIDAK memberi slot WR
+    // (active = notify, expiry, fulfillment).
+    setPhase("notify");
+    seedWrHistory(3);
+    seedPendingWrLink("AXV-20260918-STARV001");
+    const res = await run();
+    expect(res.status).toBe(200);
+    // Guard memaksa slot: warung_rebahan TIDAK boleh ada di deferred sebagai
+    // fase yang dibuang, dan salah satu fase lain yang mengalah.
+    const deferredList = (res.body.deferred as string[]) ?? [];
+    expect(deferredList).not.toContain("warung_rebahan");
+  });
+
+  it("tanpa histori sync WR, komposisi fase tidak diubah (fixture tetap deterministik)", async () => {
+    setPhase("notify");
+    seedPendingWrLink("AXV-20260918-STARV002");
+    const res = await run();
+    expect(res.status).toBe(200);
+    // Tidak ada baris wr_sync_log products → guard tidak menyala; WR tetap
+    // di luar 3 slot aktif sehingga dilaporkan deferred.
+    expect((res.body.deferred as string[]) ?? []).toContain("warung_rebahan");
+  });
+});
+
 describe("cron operations — poison-pill guard", () => {
   it("fase maju di AWAL run, sebelum pekerjaan berat dijalankan", async () => {
     setPhase("warung_rebahan");

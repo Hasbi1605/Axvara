@@ -272,20 +272,26 @@ export async function POST(request: NextRequest) {
         if (!deferredOut.includes(victim)) deferredOut.push(victim);
       }
     }
-    // Jaminan anti-starvation WR (2026-09-16): sync produk cron MATI TOTAL
-    // sejak 14 Sep karena fulfillment (22 job queued, 7 di antaranya sampah
-    // order final) mengusir warung_rebahan dari 3 slot tiap run. Bila sync
-    // produk terakhir >45 menit lalu dan tidak ada order WR due, paksa satu
-    // slot untuk warung_rebahan dengan mengorbankan fase non-fulfillment
-    // terakhir (pola sama seperti jaminan fulfillment di atas).
-    // Syarat ganda (hemat query di fixture/test): wrTablesReady (ada tabel)
-    // DAN wrEverSynced (pernah ada baris products — dibaca dari lastSync di
-    // bawah via query yang sama, tanpa query tambahan). Fixture R12 tanpa
-    // histori WR tidak mengubah komposisi fase — budget tetap deterministik.
+    // Jaminan anti-starvation WR (2026-09-16, diperbaiki 2026-09-18): sync
+    // produk cron pernah MATI TOTAL karena fulfillment mengusir
+    // warung_rebahan dari 3 slot tiap run. Bila sync produk terakhir >45
+    // menit lalu, paksa satu slot untuk warung_rebahan dengan mengorbankan
+    // fase non-fulfillment terakhir (pola sama seperti jaminan fulfillment).
+    //
+    // 2026-09-18: syarat `pendingWrDue === 0 && pendingWrDelivery === 0`
+    // DIBUANG. Syarat itu membuat guard memveto dirinya sendiri: fase WR
+    // menangani order DAN sync, jadi selama ada order WR menggantung (dua
+    // order Meitu 04:38–07:14 UTC) guard tidak pernah menyala dan sync tetap
+    // mati 2,5 jam. Adanya order due bukan alasan membiarkan katalog basi.
+    //
+    // Fase WR juga dipindah ke DEPAN urutan eksekusi saat sync terlambat:
+    // gerbang admission sync memakai budget baseline (40 statement) dan
+    // deadline 45 detik, jadi bila ia baru dijalankan setelah expiry/notify,
+    // sisa budget/waktunya sering tidak cukup dan sweep di-skip diam-diam.
     const wrEverSyncedProbe = wrTablesReady ? await queryFirst(
       `SELECT 1 AS x FROM wr_sync_log WHERE sync_type='products' LIMIT 1`,
     ).catch(() => null) : null;
-    if (wrEverSyncedProbe && pendingWrDue === 0 && pendingWrDelivery === 0 && !activePhases.has("warung_rebahan")) {
+    if (wrEverSyncedProbe) {
       const wrStale = await queryFirst(
         `SELECT created_at FROM wr_sync_log WHERE sync_type='products'
          ORDER BY id DESC LIMIT 1`,
@@ -293,14 +299,24 @@ export async function POST(request: NextRequest) {
       const { parseExpiry } = await import("@/lib/expiry");
       const lastTs = parseExpiry((wrStale as Record<string, unknown> | null)?.created_at);
       if (lastTs == null || lastTs < Date.now() - 45 * 60 * 1000) {
-        const actives = ordered.filter((p) => activePhases.has(p));
-        const victim = [...actives].reverse().find((p) => p !== "fulfillment" && p !== "warung_rebahan");
-        if (victim) {
-          activePhases.delete(victim);
-          activePhases.add("warung_rebahan");
-          const idx = deferredOut.indexOf("warung_rebahan");
-          if (idx >= 0) deferredOut.splice(idx, 1);
-          if (!deferredOut.includes(victim)) deferredOut.push(victim);
+        if (!activePhases.has("warung_rebahan")) {
+          const actives = ordered.filter((p) => activePhases.has(p));
+          const victim = [...actives].reverse().find((p) => p !== "fulfillment" && p !== "warung_rebahan");
+          if (victim) {
+            activePhases.delete(victim);
+            activePhases.add("warung_rebahan");
+            const idx = deferredOut.indexOf("warung_rebahan");
+            if (idx >= 0) deferredOut.splice(idx, 1);
+            if (!deferredOut.includes(victim)) deferredOut.push(victim);
+          }
+        }
+        // Dahulukan eksekusinya agar sweep bertemu budget + waktu yang segar.
+        if (activePhases.has("warung_rebahan")) {
+          const at = ordered.indexOf("warung_rebahan");
+          if (at > 0) {
+            ordered.splice(at, 1);
+            ordered.unshift("warung_rebahan");
+          }
         }
       }
     }
@@ -723,6 +739,12 @@ export async function POST(request: NextRequest) {
               if (syncResult.errors.length && !deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan");
             } catch { if (!deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan"); }
           }
+        } else if (syncOn) {
+          // Skip karena budget/waktu habis. WAJIB ditandai: tanpa ini sweep
+          // hilang diam-diam (cron_deferred kosong padahal katalog basi) dan
+          // tidak ada yang mendorong fase WR ke depan pada run berikutnya.
+          if (!deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan");
+          results.wr_sync_skipped = budget.fits(COST_PER_WR_WORK) ? "deadline" : "query_budget";
         }
 
         // 3. Reconcile processing/ambigu menggantung >1 jam via /transactions.

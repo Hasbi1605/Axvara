@@ -1060,10 +1060,19 @@ Perintah akun #2 wajib prefix `HEROKU_API_KEY=<kunci-akun-2>`; jangan
 - Migrasi 0031: kolom `wr_sync_log.trigger` (`manual`/`cron`, default manual
   untuk histori lama). Kartu admin tampil dua-baris (🔵 manual terakhir +
   🟢 cron terakhir) agar sync manual tidak menutupi jejak cron otomatis.
-- Anti-starvation cron (2026-09-16): job `queued` milik order final
-  (dibatalkan/kadaluarsa) dibersihkan + `pendingJobs` hanya order lunas/paid;
-  slot `warung_rebahan` dijamin bila sync basi >45 menit (guard histori agar
-  budget R12 deterministik di fixture tanpa WR).
+- Anti-starvation cron (2026-09-16, diperbaiki 2026-09-18): job `queued`
+  milik order final (dibatalkan/kadaluarsa) dibersihkan + `pendingJobs` hanya
+  order lunas/paid; slot `warung_rebahan` dijamin bila sync basi >45 menit
+  (guard histori agar budget R12 deterministik di fixture tanpa WR).
+  Koreksi 18 Sep: syarat lama `pendingWrDue === 0 && pendingWrDelivery === 0`
+  DIBUANG — syarat itu memveto dirinya sendiri karena fase WR menangani order
+  DAN sync, sehingga selama ada order WR menggantung guard tidak pernah
+  menyala (sync mati 2,5 jam setelah perbaikan deadline 18 Sep, dua order
+  Meitu 04:38–07:14 UTC). Fase WR juga didahulukan ke depan urutan eksekusi
+  saat sync basi (admission sync memakai budget baseline 40 + deadline 45 s,
+  sehingga bila jalan belakangan sisa budget/waktu sering habis dan sweep
+  di-skip diam-diam). Skip sweep karena budget/deadline WAJIB ditandai
+  (`cron_deferred` + `results.wr_sync_skipped = "deadline"|"query_budget"`).
 - Koreksi vonis 2026-09-17 (PENTING — jangan ulangi salah baca ini):
   `store_settings.cron_phase` yang menunjuk `notify` dengan `updated_at` lama
   BUKAN bukti cron macet. Nilai itu = giliran BERIKUTNYA dalam rotasi 5 fase
