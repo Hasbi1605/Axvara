@@ -130,6 +130,10 @@ describe("QRIS amount history survives renewal", () => {
     expect(result.ok && result.invoice.payableAmount).not.toBe(old.payableAmount);
   });
   it("rejects an event observed before the renewed invoice was issued", async () => {
+    // Mock SEBELUM checkout (seperti test saudara): nominal dasar deterministik.
+    // Tanpa ini checkout memakai RNG asli dan ekspektasi 10100 di bawah flaky
+    // (CI 18 Sep: 10101 — bukan bug produk, bukan regresi commit lain).
+    chooseCode(42);
     await checkout(); expireInvoice();
     fixture.sql.prepare("UPDATE payment_transactions SET created_at=datetime('now','-30 minutes') WHERE order_code=?").run(A);
     chooseCode(100);
