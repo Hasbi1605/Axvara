@@ -147,7 +147,7 @@ axvara/
 │   ├── config.ts                # payment methods, site config
 │   └── utils.ts                 # formatRupiah, generateOrderCode
 ├── stores/
-│   └── cart.ts                  # Zustand cart store (localStorage)
+│   └── cart.ts                  # Zustand cart store (localStorage) — badge/judul pakai lineCount() = jumlah baris varian (2026-09-19); count() sum-qty hanya untuk subtotal
 ├── drizzle/                     # atau raw SQL — schema D1
 └── wrangler.json                # Cloudflare bindings + Pages output
 ```

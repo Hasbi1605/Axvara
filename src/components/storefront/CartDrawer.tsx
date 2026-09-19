@@ -10,9 +10,10 @@ import { useModalA11y } from "@/hooks/useModalA11y";
 export function CartDrawer() {
   const pathname = usePathname();
   const isAdmin = pathname?.startsWith("/admin");
-  const { items, drawerOpen, setDrawer, setQty, remove, subtotal, count } = useCart();
+  const { items, drawerOpen, setDrawer, setQty, remove, subtotal, lineCount } = useCart();
   const total = subtotal();
-  const totalQty = count();
+  // Judul = jumlah BARIS varian, bukan sum qty (pola marketplace).
+  const totalLines = lineCount();
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   // Identitas stabil: hook memakai onClose sebagai dependency effect, closure
@@ -34,7 +35,7 @@ export function CartDrawer() {
       <div aria-hidden="true" className="absolute inset-0 bg-[#080C1E]/60 backdrop-blur-sm" onClick={() => setDrawer(false)} />
       <div ref={panelRef} tabIndex={-1} className="relative w-full max-w-[420px] h-full ax-glass-strong flex flex-col rounded-l-[24px] sm:rounded-l-[28px] overflow-hidden animate-[slideInRight_0.42s_var(--ease-apple)]">
         <div className="h-[64px] flex items-center justify-between px-5 border-b border-white/10 shrink-0">
-          <h2 className="font-display font-bold text-white">Keranjang ({totalQty})</h2>
+          <h2 className="font-display font-bold text-white">Keranjang ({totalLines})</h2>
           <button ref={closeRef} onClick={() => setDrawer(false)} className="w-8 h-8 rounded-full ax-glass flex items-center justify-center text-white/70 hover:text-white" aria-label="Tutup">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/icons/ios11/close-32.png" alt="" width={16} height={16} className="w-4 h-4 object-contain brightness-0 invert opacity-70" draggable={false} />

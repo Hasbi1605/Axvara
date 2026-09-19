@@ -14,6 +14,13 @@ type CartStore = {
   setQty: (id: string, qty: number, variantId?: number) => void;
   clear: () => void;
   count: () => number;
+  /**
+   * Jumlah BARIS varian (items.length) — untuk badge Navbar + judul Drawer.
+   * Pola marketplace: badge = jenis barang, bukan sum qty (GSuite min 50
+   * dalam 1 baris harus tampil "1", bukan "50"). count() tetap sum qty
+   * untuk logika subtotal/qty — jangan tukar pemakaiannya.
+   */
+  lineCount: () => number;
   subtotal: () => number;
 };
 
@@ -76,6 +83,7 @@ export const useCart = create<CartStore>()(
         }),
       clear: () => set({ items: [] }),
       count: () => get().items.reduce((a, b) => a + b.qty, 0),
+      lineCount: () => get().items.length,
       subtotal: () => get().items.reduce((a, b) => a + b.price * b.qty, 0),
     }),
     { name: "axvara-cart" }

@@ -11,7 +11,9 @@ import { useStoreSettings } from "@/hooks/useStoreSettings";
 export function Navbar() {
   const pathname = usePathname();
   const isAdmin = pathname?.startsWith("/admin");
-  const count = useCart((s) => s.items.reduce((a, b) => a + b.qty, 0));
+  // Badge = jumlah BARIS varian (lineCount), bukan sum qty — GSuite min 50
+  // dalam 1 baris tampil "1". Animasi shake mengikuti perubahan baris.
+  const count = useCart((s) => s.items.length);
   const setDrawer = useCart((s) => s.setDrawer);
   const q = useSearch((s) => s.q);
   const setQ = useSearch((s) => s.setQ);

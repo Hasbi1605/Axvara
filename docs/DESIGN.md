@@ -109,7 +109,7 @@
 - Height 64px, sticky, glass-strong, blur
 - Kiri: Logo AXVARA (X sebagai gerbang/vault dengan glow cyan) + wordmark Space Grotesk 700
 - Tengah: Search pill glass (icon + placeholder "Cari AI Gateway, ChatGPT Plus...")
-- Kanan: Kategori dropdown, Keranjang (icon + badge count cyan), Admin (icon)
+- Kanan: Kategori dropdown, Keranjang (icon + badge jumlah baris varian — pola marketplace: 1 baris GSuite min-50 tampil "1", bukan "50"), Admin (icon)
 - Scroll: navbar tambah shadow + background lebih opaque
 
 ### 5.2 Hero Section
@@ -203,7 +203,7 @@
 ### 5.4 Keranjang Drawer
 - Overlay: `rgba(8,12,30,0.6)` + `backdrop-blur-sm`
 - Panel: 420px desktop, full-width mobile, glass-strong, rounded-l-3xl desktop
-- Header: "Keranjang (3)" + tombol tutup X
+- Header: "Keranjang (N)" — N = jumlah baris varian (`lineCount()`, 2026-09-19), bukan sum qty — + tombol tutup X
 - List item: thumb 64px rounded-xl, nama, qty stepper glass, harga
 - Footer sticky glass: subtotal, tombol "Checkout — Rp 89.000" (cyan, full-width, glow)
 - Animasi: spring slide `transform: translateX(0)` dengan `cubic-bezier(0.32, 0.72, 0, 1)` 420ms

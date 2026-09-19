@@ -122,6 +122,22 @@ describe("cart store — aritmetika total", () => {
     expect(state.subtotal()).toBe(25_000 * 2 + 40_000 * 3);
   });
 
+  it("lineCount menghitung BARIS varian, bukan sum qty (badge marketplace)", () => {
+    const { add } = useCart.getState();
+    // GSuite min 50 dalam 1 baris → badge "1", bukan "50".
+    add({ ...makeProduct({ id: "gsuite" }), variantId: 9, minQty: 50 }, 50);
+    expect(useCart.getState().lineCount()).toBe(1);
+    expect(useCart.getState().count()).toBe(50);
+    // + Canva qty 10 → 2 baris, badge "2" (bukan 60).
+    add({ ...makeProduct({ id: "canva" }), variantId: 3 }, 10);
+    expect(useCart.getState().lineCount()).toBe(2);
+    expect(useCart.getState().count()).toBe(60);
+  });
+
+  it("lineCount 0 saat keranjang kosong (badge hilang)", () => {
+    expect(useCart.getState().lineCount()).toBe(0);
+  });
+
   it("subtotal tetap integer rupiah (tanpa pembulatan float)", () => {
     const { add } = useCart.getState();
     add({ ...makeProduct({ price: 33_333 }), variantId: 1 }, 3);
