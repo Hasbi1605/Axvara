@@ -513,7 +513,7 @@ function CheckoutInner() {
               panel upload manual disembunyikan total di WEB. */}
           <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.06] p-4">
             <h2 className="text-sm font-semibold text-emerald-300">② Verifikasi Otomatis</h2>
-            <p className="mt-1 text-xs leading-5 text-white/50">QRIS dan total bayar akan muncul di halaman pesanan. Biarkan halaman terbuka; status diperbarui otomatis setelah pembayaran diterima.</p>
+            <p className="mt-1 text-xs leading-5 text-white/50">QRIS dan total bayar akan muncul di halaman pesanan. Status diperbarui otomatis setelah pembayaran diterima.</p>
           </div>
 
           {/* Ekspektasi waktu SEBELUM bayar. Wajib di sini, bukan hanya di

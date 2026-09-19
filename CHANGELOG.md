@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-09-19 — Potong "Biarkan halaman terbuka;" dari ② Verifikasi Otomatis checkout — src/app/checkout/page.tsx — (verifikasi: 881/881 test [84 file] hijau, tsc bersih)
+
 - 2026-09-19 — Potong catatan mikro CTA checkout → "QRIS diverifikasi otomatis." (tanpa embel-embel upload bukti) — src/app/checkout/page.tsx — (verifikasi: 881/881 test [84 file] hijau, tsc bersih)
 
 - 2026-09-19 — Hapus blok detail "QRIS dinamis dibuat setelah pesanan…" dari paymentBlock checkout (redundan dengan ② Verifikasi Otomatis di kiri) — src/app/checkout/page.tsx — (verifikasi: 881/881 test [84 file] hijau, tsc bersih)
