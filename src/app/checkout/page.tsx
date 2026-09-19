@@ -409,22 +409,6 @@ function CheckoutInner() {
         )}
       </div>
 
-      {/* Detail metode — hanya QRIS selama maintenance. Cabang
-          ewallet/bank dihapus dari render agar tidak bisa diakses;
-          kembalikan dari git bila maintenance selesai. */}
-      {method === "qris" && pmQris && (
-        <div className="mt-4 ax-glass-card rounded-2xl p-4 animate-in fade-in">
-            <div className="flex items-start gap-3 text-left">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#00E5FF]/10">
-                <img src="/icons/ios11/qr-code-32.png" alt="" width={20} height={20} className="h-5 w-5 object-contain" draggable={false} />
-              </span>
-              <div>
-                <p className="text-sm font-semibold text-white">QRIS dinamis dibuat setelah pesanan</p>
-                <p className="mt-1 text-xs leading-5 text-white/50">QR sudah termasuk nominal pembayaran. Setelah dibayar, status otomatis menjadi lunas—tanpa upload bukti.</p>
-              </div>
-            </div>
-        </div>
-      )}
         </>
       )}
     </div>
