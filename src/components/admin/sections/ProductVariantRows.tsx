@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { formatRupiah } from "@/lib/utils";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { MoneyInput } from "@/components/ui/MoneyInput";
@@ -19,13 +19,20 @@ import type { FormVariant, ProductForm } from "../product-types";
  * dipakai halaman mana pun — produk non-WR yang dibuat/diubah lewat modal
  * resmi TIDAK PERNAH bisa diisi stoknya dari admin.
  *
+ * Keputusan owner 2026-09-19: admin MELIHAT isi kredensial (bukan one-way).
+ * Alasan: admin = pemilik toko yang butuh audit/edit/bersih-bersih; enkripsi
+ * tetap di DB (AES-GCM), reveal hanya di route admin ini, tidak ke pembeli.
+ *
  * Mode "manual" → catatan (admin kirim sendiri).
- * Mode "shared"/"unique" → textarea + simpan via /api/admin/fulfillment.
+ * Mode "shared" → tampilkan pesan bersama saat ini + form ganti.
+ * Mode "unique" → daftar stok tersedia saat ini + impor/hapus per baris.
  * Mode "__wr__" → varian WR: baca counts saja, tanpa form tulis.
  */
 function NonWrFulfillmentPanel({ productId, variantId, mode }: { productId?: number | string; variantId?: number; mode: string }) {
   const toast = useToast();
   const [counts, setCounts] = useState<{ available: number; reserved: number; delivered: number } | null>(null);
+  const [sharedCurrent, setSharedCurrent] = useState<string | null>(null);
+  const [inventory, setInventory] = useState<{ id: number; secret: string }[]>([]);
   const [sharedText, setSharedText] = useState("");
   const [inventoryText, setInventoryText] = useState("");
   const [loading, setLoading] = useState(false);
@@ -35,10 +42,21 @@ function NonWrFulfillmentPanel({ productId, variantId, mode }: { productId?: num
     if (!pid || !variantId) return;
     try {
       const res = await fetch(`/api/admin/fulfillment?product_id=${pid}&variant_id=${variantId}`, { cache: "no-store" });
-      const data = await res.json().catch(() => ({})) as { available?: number; reserved?: number; delivered?: number };
-      if (res.ok) setCounts({ available: Number(data.available || 0), reserved: Number(data.reserved || 0), delivered: Number(data.delivered || 0) });
+      const data = await res.json().catch(() => ({})) as {
+        available?: number; reserved?: number; delivered?: number;
+        shared_secret?: string | null;
+        inventory?: { id: number; secret: string }[];
+      };
+      if (!res.ok) return;
+      setCounts({ available: Number(data.available || 0), reserved: Number(data.reserved || 0), delivered: Number(data.delivered || 0) });
+      setSharedCurrent(typeof data.shared_secret === "string" ? data.shared_secret : null);
+      setInventory(Array.isArray(data.inventory) ? data.inventory : []);
     } catch { /* counts pendukung — gagal muat tidak menghalangi simpan. */ }
   };
+
+  // Auto-load saat panel dibuka / mode berubah — tanpa ini counts selalu
+  // null ("Tersedia 0") sampai admin menekan tombol manual.
+  useEffect(() => { void load(); }, [pid, variantId, mode]);
 
   const post = async (payload: Record<string, unknown>) => {
     const res = await fetch("/api/admin/fulfillment", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ product_id: pid, variant_id: variantId, ...payload }) });
@@ -50,7 +68,7 @@ function NonWrFulfillmentPanel({ productId, variantId, mode }: { productId?: num
   const saveShared = async () => {
     if (!sharedText.trim()) return;
     setLoading(true);
-    try { await post({ action: "set_shared_secret", shared_secret: sharedText.trim() }); setSharedText(""); toast.success("Pesan bersama disimpan terenkripsi."); await load(); }
+    try { await post({ action: "set_shared_secret", shared_secret: sharedText.trim() }); setSharedText(""); toast.success("Pesan bersama disimpan."); await load(); }
     catch (e) { toast.error(e instanceof Error ? e.message : "Gagal menyimpan"); }
     finally { setLoading(false); }
   };
@@ -64,6 +82,17 @@ function NonWrFulfillmentPanel({ productId, variantId, mode }: { productId?: num
       const data = await post({ action: "import", secrets });
       setInventoryText(""); toast.success(`${data.inserted || 0} stok unik ditambahkan.`); await load();
     } catch (e) { toast.error(e instanceof Error ? e.message : "Gagal mengimpor"); }
+    finally { setLoading(false); }
+  };
+
+  const removeOne = async (inventoryId: number) => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/fulfillment", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ inventory_id: inventoryId }) });
+      const data = await res.json().catch(() => ({})) as { error?: string };
+      if (!res.ok) throw new Error(data.error || "Gagal menghapus");
+      toast.success("Stok dihapus."); await load();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Gagal menghapus"); }
     finally { setLoading(false); }
   };
 
@@ -83,7 +112,7 @@ function NonWrFulfillmentPanel({ productId, variantId, mode }: { productId?: num
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="text-xs font-semibold text-white">Konten fulfillment</p>
-          <p className="mt-0.5 text-[11px] text-white/35">Tersimpan terenkripsi dan tidak pernah ditampilkan kembali.</p>
+          <p className="mt-0.5 text-[11px] text-white/35">Tersimpan terenkripsi di database; terlihat di panel admin ini.</p>
         </div>
         <div className="flex items-center gap-2">
           {counts && <div className="flex flex-wrap gap-1.5 text-[10px]"><span className="rounded-full bg-emerald-500/10 px-2 py-1 text-emerald-300">Tersedia {counts.available}</span><span className="rounded-full bg-white/[0.06] px-2 py-1 text-white/45">Terpakai {counts.delivered}</span><span className="rounded-full bg-[#FFB800]/10 px-2 py-1 text-[#FFCF55]">Dipesan {counts.reserved}</span></div>}
@@ -92,12 +121,32 @@ function NonWrFulfillmentPanel({ productId, variantId, mode }: { productId?: num
       </div>
       {mode === "shared" ? (
         <div className="mt-3">
-          <textarea value={sharedText} onChange={(e) => setSharedText(e.target.value)} rows={3} placeholder="Link, akun bersama, atau instruksi yang dikirim ke setiap pembeli…" className="w-full resize-none rounded-xl border border-white/10 bg-[#080C1E]/65 p-3 text-sm text-white outline-none placeholder:text-white/25 focus:border-[#00E5FF]/40" />
-          <button type="button" onClick={() => void saveShared()} disabled={loading || !sharedText.trim()} className="mt-2 inline-flex h-9 items-center gap-2 rounded-xl bg-[#00E5FF] px-4 text-xs font-bold text-[#07101f] transition hover:bg-[#00D0E8] disabled:opacity-40">{loading && <Spinner size={13} />} Simpan pesan bersama</button>
+          {sharedCurrent ? (
+            <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/[0.06] p-3">
+              <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-emerald-300/80">Isi saat ini</p>
+              <p className="mt-1 whitespace-pre-wrap break-words text-sm text-white">{sharedCurrent}</p>
+            </div>
+          ) : (
+            <p className="rounded-xl border border-white/10 bg-white/[0.025] px-3 py-2.5 text-xs text-white/40">Belum ada pesan bersama — isi di bawah lalu simpan.</p>
+          )}
+          <textarea value={sharedText} onChange={(e) => setSharedText(e.target.value)} rows={3} placeholder={sharedCurrent ? "Tulis pesan baru untuk MENGGANTI isi di atas…" : "Link, akun bersama, atau instruksi yang dikirim ke setiap pembeli…"} className="mt-3 w-full resize-none rounded-xl border border-white/10 bg-[#080C1E]/65 p-3 text-sm text-white outline-none placeholder:text-white/25 focus:border-[#00E5FF]/40" />
+          <button type="button" onClick={() => void saveShared()} disabled={loading || !sharedText.trim()} className="mt-2 inline-flex h-9 items-center gap-2 rounded-xl bg-[#00E5FF] px-4 text-xs font-bold text-[#07101f] transition hover:bg-[#00D0E8] disabled:opacity-40">{loading && <Spinner size={13} />} {sharedCurrent ? "Ganti pesan bersama" : "Simpan pesan bersama"}</button>
         </div>
       ) : (
         <div className="mt-3">
-          <textarea value={inventoryText} onChange={(e) => setInventoryText(e.target.value)} rows={4} placeholder={"Satu akun/key per baris\nemail:password\nLICENSE-KEY"} className="w-full resize-none rounded-xl border border-white/10 bg-[#080C1E]/65 p-3 font-mono text-xs text-white outline-none placeholder:text-white/25 focus:border-[#00E5FF]/40" />
+          {inventory.length > 0 ? (
+            <ul className="max-h-48 space-y-1.5 overflow-y-auto rounded-xl border border-white/10 bg-[#080C1E]/65 p-2.5">
+              {inventory.map((row) => (
+                <li key={row.id} className="flex items-center justify-between gap-2 rounded-lg bg-white/[0.04] px-2.5 py-1.5">
+                  <span className="min-w-0 flex-1 truncate font-mono text-xs text-white">{row.secret}</span>
+                  <button type="button" onClick={() => void removeOne(row.id)} disabled={loading} className="shrink-0 text-[11px] font-semibold text-red-300 hover:text-red-200 hover:underline disabled:opacity-40">Hapus</button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="rounded-xl border border-white/10 bg-white/[0.025] px-3 py-2.5 text-xs text-white/40">Belum ada stok unik — impor di bawah.</p>
+          )}
+          <textarea value={inventoryText} onChange={(e) => setInventoryText(e.target.value)} rows={4} placeholder={"Satu akun/key per baris\nemail:password\nLICENSE-KEY"} className="mt-3 w-full resize-none rounded-xl border border-white/10 bg-[#080C1E]/65 p-3 font-mono text-xs text-white outline-none placeholder:text-white/25 focus:border-[#00E5FF]/40" />
           <div className="mt-2 flex items-center justify-between gap-3">
             <p className="text-[10px] text-white/35">Maksimal 100 entri per impor.</p>
             <button type="button" onClick={() => void importInventory()} disabled={loading || !inventoryText.trim()} className="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl bg-[#00E5FF] px-4 text-xs font-bold text-[#07101f] transition hover:bg-[#00D0E8] disabled:opacity-40">{loading && <Spinner size={13} />} Impor stok unik</button>

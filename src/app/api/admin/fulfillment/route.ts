@@ -1,9 +1,9 @@
 // /api/admin/fulfillment — Inventory management: import, count, revoke
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
-import { queryFirst } from "@/lib/db";
+import { queryAll, queryFirst } from "@/lib/db";
 import { importInventory, countInventory, revokeInventory } from "@/lib/fulfillment/inventory";
-import { encryptSecret } from "@/lib/fulfillment/crypto";
+import { decryptSecret, encryptSecret } from "@/lib/fulfillment/crypto";
 import { execRun } from "@/lib/db";
 
 export const runtime = "edge";
@@ -26,10 +26,44 @@ export async function GET(request: NextRequest) {
   if (!target) return NextResponse.json({ error: variantId ? "variant_not_found" : "product_not_found" }, { status: 404 });
 
   const counts = await countInventory(productId, variantId);
+  // Keputusan owner 2026-09-19: admin BOLEH melihat isi kredensial plaintext
+  // di panel (mereka pemilik toko). Dekripsi terjadi server-side per request
+  // dan TIDAK PERNAH dikirim ke storefront/pembeli — hanya route admin ini.
+  let sharedSecret: string | null = null;
+  let inventory: { id: number; secret: string; status: string }[] = [];
+  try {
+    if (variantId) {
+      const row = await queryFirst(
+        `SELECT shared_secret_ciphertext, shared_secret_iv FROM product_variants WHERE id=? AND product_id=?`,
+        variantId, productId,
+      );
+      const ct = String(row?.shared_secret_ciphertext || "");
+      const iv = String(row?.shared_secret_iv || "");
+      if (ct && iv) {
+        try { sharedSecret = await decryptSecret(ct, iv); } catch { sharedSecret = null; }
+      }
+      const rows = await queryAll(
+        `SELECT id, secret_ciphertext, secret_iv, status FROM fulfillment_inventory
+         WHERE product_id=? AND variant_id=? AND status='available' ORDER BY id ASC LIMIT 100`,
+        productId, variantId,
+      );
+      for (const r of rows) {
+        try {
+          inventory.push({
+            id: Number(r.id),
+            secret: await decryptSecret(String(r.secret_ciphertext || ""), String(r.secret_iv || "")),
+            status: String(r.status || ""),
+          });
+        } catch { /* baris rusak dilewati, tidak menggagalkan reveal */ }
+      }
+    }
+  } catch { /* reveal pendukung — counts tetap dikembalikan */ }
   return NextResponse.json({
     product_id: productId,
     variant_id: variantId,
     fulfillment_mode: String(target.fulfillment_mode || "manual"),
+    shared_secret: sharedSecret,
+    inventory,
     ...counts,
   });
 }

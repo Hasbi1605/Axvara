@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
-import { createD1Fixture, insertTestProduct } from "./helpers/d1-fixture";
+import { createD1Fixture, insertTestProduct, stubFulfillmentKey } from "./helpers/d1-fixture";
 
 const read = (file: string) => fs.readFileSync(file, "utf8");
 
@@ -152,9 +152,40 @@ describe("variant min_qty — bot & storefront", () => {
     expect(rows).toContain("/api/admin/fulfillment");
     expect(rows).toContain("Simpan pesan bersama");
     expect(rows).toContain("Impor stok unik");
+    // Keputusan owner 2026-09-19: admin MELIHAT isi (bukan one-way) +
+    // auto-load saat dibuka — tanpa ini counts "0" walau data ada.
+    expect(rows).toContain("Isi saat ini");
+    expect(rows).toContain("Ganti pesan bersama");
+    expect(rows).toContain("useEffect");
     // Jalur simpan resmi meneruskan fulfillment_mode sampai DB.
     expect(read("src/components/admin/useProductManager.ts")).toContain("fulfillment_mode");
     expect(read("src/app/api/products/[id]/route.ts")).toContain("fulfillment_mode");
+  });
+
+  it("GET /api/admin/fulfillment me-reveal isi plaintext untuk admin (2026-09-19)", async () => {
+    stubFulfillmentKey();
+    vi.mock("@/lib/auth", () => ({ requireAdmin: vi.fn(async () => ({ email: "fixture@example.test" })) }));
+    const { GET } = await import("@/app/api/admin/fulfillment/route");
+    const { encryptSecret } = await import("@/lib/fulfillment/crypto");
+    const fx = createD1Fixture();
+    try {
+      fx.sql.prepare("INSERT INTO products(id,name,slug,price,stock) VALUES(1,'Fixture','fixture',10000,100)").run();
+      fx.sql.prepare("INSERT INTO product_variants(id,product_id,sku,label,price,stock,fulfillment_mode) VALUES(1,1,'SKU-1','V1',10000,100,'shared')").run();
+      const s = await encryptSecret("LINK-RAHASIA-ADMIN");
+      fx.sql.prepare("UPDATE product_variants SET shared_secret_ciphertext=?, shared_secret_iv=? WHERE id=1").run(s.ciphertext, s.iv);
+      const u = await encryptSecret("akun1:pass1");
+      fx.sql.prepare("INSERT INTO fulfillment_inventory(product_id,variant_id,secret_ciphertext,secret_iv,secret_fingerprint,status) VALUES(1,1,?,?,'fp-1','available')").run(u.ciphertext, u.iv);
+      const { NextRequest } = await import("next/server");
+      const req = new NextRequest("http://localhost/api/admin/fulfillment?product_id=1&variant_id=1");
+      const res = await GET(req);
+      expect(res.status).toBe(200);
+      const body = await res.json() as { shared_secret?: string | null; inventory?: { id: number; secret: string }[]; available?: number };
+      expect(body.shared_secret).toBe("LINK-RAHASIA-ADMIN");
+      expect(body.inventory?.[0]?.secret).toBe("akun1:pass1");
+      expect(body.available).toBe(1);
+    } finally {
+      fx.close();
+    }
   });
 });
 
