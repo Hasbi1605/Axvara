@@ -66,6 +66,51 @@ polanya rapuh. Nilainya ditulis lalu dibaca dalam satu alur sinkron sehingga
 belum terbukti salah di produksi, tetapi tidak ada alasan untuk tidak
 mengembalikannya sebagai nilai biasa.
 
+### A8. Membuka produk saat varian gagal dimuat = form kosong yang diam (RISIKO DATA)
+`useProductManager.ts` `openEdit`: bila `GET /api/products/:id` tidak OK, kode
+jatuh ke `GET /api/admin/variants`; bila **keduanya** gagal, `rawVars` tetap `[]`
+dan `catch` lama me-reset `setFormVariants([])` **tanpa pesan apa pun**.
+
+Mengapa ini bukan sekadar UX: dari keadaan itu admin melihat produk
+multi-varian seolah tak punya varian. Jika ia menekan Simpan,
+`save()` mengirim `variants: []` → `products/[id]/route.ts:270`
+menjalankan `UPDATE product_variants SET is_active=0 WHERE product_id=?`
+(cabang `incomingIds.length === 0`) — **seluruh varian produk dinonaktifkan**
+karena satu hiccup jaringan. Sudah diperbaiki: sumber yang gagal kini melempar,
+`formError` + toast menahan admin, dengan pesan eksplisit "jangan simpan
+sebelum varian tampil".
+
+### A9. Dead code: `VariantEditor.tsx` + `FulfillmentInventoryPanel.tsx`
+`grep -rn "VariantEditor" src/` tidak menemukan satu pun import — satu-satunya
+kemunculan adalah komentar di `ProductVariantRows.tsx:18`.
+`FulfillmentInventoryPanel` hanya diimpor oleh `VariantEditor.tsx:6`, jadi
+keduanya membentuk pulau mati (~360 baris) yang tak terjangkau route mana pun.
+
+Yang membuatnya berbahaya: **test justru memakukan keduanya** —
+`tests/payment-proofs.regression.test.ts:91-97` dan
+`tests/variant-min-qty.test.ts:134` membaca isi file mati itu dan menuntut
+string tertentu ada di dalamnya. Jadi suite hijau ikut "membuktikan" fitur
+yang tidak pernah dirender, dan siapa pun yang menghapus file mati akan
+memerahkan test yang tampak sah. Ini akar historis bug 2026-09-19 (panel isi
+kredensial hilang): jalur resmi tak punya panel, tapi test tetap hijau karena
+menguji file mati. Menghapusnya perlu mengubah test tersebut agar menunjuk ke
+`ProductVariantRows` — di luar cakupan commit ini, dicatat sebagai butir C.
+
+### A10. Test flaky di CI: jitter WA outbox tidak bisa di-override
+`tests/wa-outbox-lease.integration.test.ts` men-stub
+`WHATSAPP_OUTBOX_PACE_MS=0`, tetapi `outbox.ts` membaca jitter dari konstanta
+modul `WA_OUTBOX_PACE_JITTER_MS` (0–3000 ms acak) yang **tidak** bisa
+di-override. Tiga kirim berarti rata-rata ~4,5 dtk melawan batas default
+Vitest 5 dtk — test memerah acak tanpa perubahan kode (terlihat sekali pada
+run audit ini: 5009 ms, lalu hijau saat diulang).
+
+Ditemukan bukan dari membaca panel admin, melainkan dari satu kegagalan pada
+run suite penuh. Diperbaiki karena flake di jalur deploy menghukum commit yang
+tidak bersalah: jitter kini dibaca per-panggilan
+(`outboxPaceJitterMs()`, env `WHATSAPP_OUTBOX_PACE_JITTER_MS`) dan test
+men-stub-nya ke 0. Durasi test turun dari 2174 ms → 8 ms. Perilaku produksi
+tidak berubah (env kosong = tetap jitter 3000 ms).
+
 ---
 
 ## B. UX / konsistensi (sumber rasa "acak-acakan")
@@ -129,13 +174,16 @@ tetap menampilkan "Total pesanan 26".
 
 ## C. Rekomendasi (urut dampak)
 
-**Dikerjakan di commit ini** — A1, A2, A4, A6, B1, B2:
+**Dikerjakan di commit ini** — A1, A2, A4, A6, A8, A10, B1, B2:
 1. Filter stok menipis nyata di Produk, dipicu dari kartu Ringkasan.
 2. Satukan definisi "stok menipis" ke basis varian di kedua layar.
 3. Chip filter aktif di Pesanan, termasuk `proof` yang sebelumnya tak terlihat.
 4. Heading section Produk + samakan level heading antar-section.
 5. `ConfirmDialog` untuk hapus kategori, banner, dan artikel.
 6. Modal kategori: `role="dialog"` + `aria-modal` + Escape + scroll-lock.
+7. Gagal muat varian kini memperingatkan admin sebelum ia menyimpan di atas
+   data yang belum termuat (mencegah seluruh varian ternonaktifkan).
+8. Flake WA outbox dihilangkan agar CI tidak menghukum commit tak bersalah.
 
 **Belum — butuh keputusan owner** (mengubah struktur/flow, bukan kosmetik):
 8. B5 — pecah modal produk jadi tab Produk / Varian / Media, atau varian
@@ -148,3 +196,10 @@ tetap menampilkan "Total pesanan 26".
 11. B4 — Banner mengikuti pola modal seperti Kategori.
 12. A5 — kartu Fulfillment membawa filter status ke Kanal & Fulfillment.
 13. A7 — `systemsDetails` dikembalikan sebagai nilai, bukan variabel modul.
+14. A9 — hapus `VariantEditor.tsx` + `FulfillmentInventoryPanel.tsx` DAN
+    arahkan `tests/payment-proofs.regression.test.ts` +
+    `tests/variant-min-qty.test.ts` ke `ProductVariantRows`. Selama test masih
+    menunjuk file mati, suite hijau tidak membuktikan panel yang benar-benar
+    dirender.
+15. Subscriber Email tanpa search/export/pagination; Banner memuat senyap tanpa
+    indikator; pola empty/error/loading berbeda-beda tiap manager.

@@ -161,6 +161,9 @@ describe("WA outbox pacing + danger auto-pause", () => {
 
   it("3x gagal sinyal bahaya berurutan menghentikan sisa antrean (paused)", async () => {
     vi.stubEnv("WHATSAPP_OUTBOX_PACE_MS", "0");
+    // Jitter juga harus nol: tanpa ini tiap kirim tidur acak 0–3 dtk dan
+    // test ini berlomba dengan batas 5 dtk Vitest (flaky, bukan bug produk).
+    vi.stubEnv("WHATSAPP_OUTBOX_PACE_JITTER_MS", "0");
     const outbox = await import("@/lib/whatsapp/outbox");
     const gateway = await import("@/lib/whatsapp/gateway");
     const send = gateway.sendTextMessage as unknown as ReturnType<typeof vi.fn>;
@@ -176,6 +179,9 @@ describe("WA outbox pacing + danger auto-pause", () => {
 
   it("kirim sukses berurutan tetap jalan (tidak false-pause)", async () => {
     vi.stubEnv("WHATSAPP_OUTBOX_PACE_MS", "0");
+    // Jitter juga harus nol: tanpa ini tiap kirim tidur acak 0–3 dtk dan
+    // test ini berlomba dengan batas 5 dtk Vitest (flaky, bukan bug produk).
+    vi.stubEnv("WHATSAPP_OUTBOX_PACE_JITTER_MS", "0");
     const outbox = await import("@/lib/whatsapp/outbox");
     for (const k of ["ok-1", "ok-2"]) {
       await outbox.enqueueWhatsAppMessage(k, `62811111111${k.slice(-1)}`, "DUMMY");

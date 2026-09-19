@@ -42,7 +42,7 @@ export function isOutboxDangerSignal(error: unknown): boolean {
 }
 
 export function paceDelayMs(): number {
-  return Math.max(0, WA_OUTBOX_PACE_BASE_MS) + Math.floor(Math.random() * WA_OUTBOX_PACE_JITTER_MS);
+  return Math.max(0, WA_OUTBOX_PACE_BASE_MS) + Math.floor(Math.random() * outboxPaceJitterMs());
 }
 
 /** Dibaca per-panggilan (bukan sekali di import) agar test bisa override via env. */
@@ -50,8 +50,19 @@ export function outboxPaceBaseMs(): number {
   return Number(process.env.WHATSAPP_OUTBOX_PACE_MS || 6000);
 }
 
+/**
+ * Jitter juga dibaca per-panggilan. Sebelumnya hanya base yang bisa
+ * di-override, sehingga `WHATSAPP_OUTBOX_PACE_MS=0` tetap menyisakan tidur
+ * acak 0–3 dtk per kirim: test 3-kirim rata-rata ~4,5 dtk melawan batas
+ * default Vitest 5 dtk — flaky yang muncul-hilang tanpa perubahan kode.
+ */
+export function outboxPaceJitterMs(): number {
+  const raw = process.env.WHATSAPP_OUTBOX_PACE_JITTER_MS;
+  return raw == null || raw === "" ? WA_OUTBOX_PACE_JITTER_MS : Math.max(0, Number(raw) || 0);
+}
+
 function paceDelayMsLive(): number {
-  return Math.max(0, outboxPaceBaseMs()) + Math.floor(Math.random() * WA_OUTBOX_PACE_JITTER_MS);
+  return Math.max(0, outboxPaceBaseMs()) + Math.floor(Math.random() * outboxPaceJitterMs());
 }
 
 export type WaOutboxKind = "payment_detected" | "text";

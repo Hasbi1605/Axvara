@@ -99,7 +99,12 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
 
       if (rawVars.length === 0) {
         const res = await fetch(`/api/admin/variants?product_id=${p.id}`);
-        const data = (await res.json().catch(() => ({}))) as { variants?: FormVariant[] };
+        const data = (await res.json().catch(() => ({}))) as { variants?: FormVariant[]; error?: string };
+        // Kedua sumber varian boleh kosong (produk memang tanpa varian), tapi
+        // sumber yang GAGAL bukan "kosong". Dulu respons non-OK jatuh diam ke
+        // rawVars=[] sehingga produk multi-varian terbuka sebagai form kosong
+        // tanpa satu pun pesan — admin mengira variannya hilang.
+        if (!res.ok && !prodRes.ok) throw new Error(data.error || `Varian gagal dimuat (${res.status})`);
         rawVars = data.variants || [];
       }
 
@@ -128,10 +133,15 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
       }));
       setFormVariants(mapped);
       setProductInitialSignature(productFormSignature(nextForm, nextImages, isMulti, mapped));
-    } catch {
+    } catch (cause) {
       setHasMultiVariants(false);
       setFormVariants([]);
       setProductInitialSignature(productFormSignature(nextForm, nextImages, false, []));
+      // Form kosong TANPA penjelasan adalah jebakan: admin bisa mengira
+      // varian terhapus lalu menyimpan ulang di atas data yang belum termuat.
+      const message = cause instanceof Error ? cause.message : "Varian produk gagal dimuat";
+      setFormError(`${message}. Tutup editor dan coba lagi — jangan simpan sebelum varian tampil.`);
+      toast.error(message);
     } finally {
       setLoadingVariants(false);
     }
