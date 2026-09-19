@@ -144,6 +144,16 @@ export async function POST(request: NextRequest) {
     whatsapp_outbox_paused: 0,
     whatsapp_rows_cleaned: 0,
     wr_products_synced: 0,
+    // Observability sync (issue wr-sync-observability, 2026-09-19): alasan
+    // skip sweep dilaporkan jujur — tanpa ini `synced:0 + skipped:null`
+    // ambigu untuk 4 kondisi berbeda (fase tak aktif / interval belum tempo /
+    // switch mati / tabel belum siap) dan gap 3 jam tak terlihat. Nilai:
+    // "disabled" | "phase_inactive" | "interval" | "sync_disabled" |
+    // "deadline" | "query_budget" (dua terakhir sudah ada).
+    wr_sync_skipped: null as string | null,
+    // `created_at` sweep products terakhir (atau null) — respons tunggal
+    // cukup untuk diagnosa tanpa query D1 tambahan.
+    wr_last_sync_at: null as string | null,
     wr_orders_processed: 0,
     wr_orders_succeeded: 0,
     wr_saldo_balance: null as number | null,
@@ -173,6 +183,18 @@ export async function POST(request: NextRequest) {
     // Konsekuensi yang disengaja: run yang mati kehilangan hint deferred-nya,
     // tetapi rotasi tetap bergerak sehingga tidak ada fase yang mengunci cron.
     await writeCronPhase(nextPhase(storedPhase), [], database);
+
+    // HEARTBEAT (issue wr-sync-observability, 2026-09-19): bukti "pemicu
+    // memanggil + handler hidup sampai sini". 1 statement ringan, best-effort.
+    // Tanpa ini run yang kepotong deploy vs pemicu yang mati terlihat identik
+    // (keduanya: tanpa baris sync baru). Baca: `cron_last_hit_at` segar +
+    // sync basi = run kepotong; keduanya basi = pemicu mati.
+    try {
+      await execRun(
+        `INSERT INTO store_settings (key, value, updated_at) VALUES ('cron_last_hit_at', datetime('now'), datetime('now'))
+         ON CONFLICT(key) DO UPDATE SET value=datetime('now'), updated_at=datetime('now')`,
+      );
+    } catch { /* heartbeat tak boleh menggagalkan run */ }
 
     // Hitung antrean dalam SATU query gabungan (1 query, bukan 8 — RR3-01/
     // RR3-03): tiap COUNT adalah subselect murah atas indeks status. Tanpa
@@ -678,9 +700,17 @@ export async function POST(request: NextRequest) {
       // No-op total bila master switch mati atau tabel WR belum ada (DB lama
       // sebelum migrasi 0027): jangan bakar budget, jangan deferred palsu.
       const { isWrEnabled } = await import("@/lib/warung-rebahan/client");
-      if (!isWrEnabled() || !wrTablesReady) return;
+      if (!isWrEnabled() || !wrTablesReady) {
+        // Dulu: return diam tanpa jejak (pelajaran Fase A 18 Sep — env mati
+        // = seluruh fase no-op total, vonis salah "kode rusak"). Kini jujur.
+        if (results.wr_sync_skipped == null) results.wr_sync_skipped = "disabled";
+        return;
+      }
       if (!activePhases.has("warung_rebahan")) {
         if (pendingWrAny > 0 && !deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan");
+        // Fase tak aktif = rotasi normal, BUKAN kegagalan — tapi laporkan
+        // agar `synced:0` tidak ambigu dengan skip lain.
+        if (results.wr_sync_skipped == null) results.wr_sync_skipped = "phase_inactive";
         return;
       }
       if (!budget.fits(COST_PER_WR_WORK)) {
@@ -723,7 +753,11 @@ export async function POST(request: NextRequest) {
         //    Sweep penuh 48 produk memakan ~10 s (lihat wr_sync_log
         //    duration_ms): wajib punya sisa waktu, kalau tidak run dipotong
         //    platform sebelum log/penanda tertulis.
-        if (syncOn && budget.fits(COST_PER_WR_WORK) && hasTime(TIME_WR_NETWORK)) {
+        if (!syncOn) {
+          // Saklar sync dimatikan eksplisit — bedakan dari "disabled" (master
+          // switch / tabel belum siap) agar diagnosa env tepat sasaran.
+          if (results.wr_sync_skipped == null) results.wr_sync_skipped = "sync_disabled";
+        } else if (budget.fits(COST_PER_WR_WORK) && hasTime(TIME_WR_NETWORK)) {
           const lastSync = await queryFirst(
             `SELECT created_at FROM wr_sync_log
              WHERE sync_type='products' AND status IN ('success','partial')
@@ -733,6 +767,9 @@ export async function POST(request: NextRequest) {
           // Bandingkan sebagai UTC via parseExpiry (baris lama format spasi).
           const { parseExpiry } = await import("@/lib/expiry");
           const lastTs = parseExpiry(lastSync?.created_at);
+          // Selalu laporkan posisi terakhir — respons tunggal cukup untuk
+          // diagnosa ("kapan sweep terakhir?") tanpa query D1 tambahan.
+          if (typeof lastSync?.created_at === "string") results.wr_last_sync_at = String(lastSync.created_at);
           if (lastTs == null || lastTs < Date.parse(thirtyMinAgo)) {
             try {
               const syncResult = await syncProducts(database, undefined, { maxProducts: WR_SYNC_PRODUCTS_PER_RUN, trigger: "cron" });
@@ -740,6 +777,11 @@ export async function POST(request: NextRequest) {
               if (syncResult.budgetYielded && !deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan");
               if (syncResult.errors.length && !deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan");
             } catch { if (!deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan"); }
+          } else {
+            // Interval 30 menit belum jatuh tempo — kondisi normal tersering.
+            // Dulu: tanpa jejak (skipped tetap null) sehingga gap abnormal
+            // tak bisa dibedakan dari rotasi sehat.
+            if (results.wr_sync_skipped == null) results.wr_sync_skipped = "interval";
           }
         } else if (syncOn) {
           // Skip karena budget/waktu habis. WAJIB ditandai: tanpa ini sweep

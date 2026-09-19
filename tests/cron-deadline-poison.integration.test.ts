@@ -116,6 +116,67 @@ describe("cron operations — anti-starvation sync WR", () => {
   });
 });
 
+describe("cron operations — observability skip sync (issue wr-sync-observability)", () => {
+  // 19 Sep 2026: gap sync 07:12→10:24 UTC tak terlihat karena semua jalur
+  // skip mengembalikan `synced:0 + skipped:null` yang ambigu. Setiap jalur
+  // kini WAJIB melapor jujur + heartbeat tiap hit.
+  const heartbeat = () =>
+    String(fixture.sql.prepare("SELECT value FROM store_settings WHERE key='cron_last_hit_at'").get()?.value ?? "");
+
+  it("switch mati → skipped=disabled + heartbeat tertulis", async () => {
+    setPhase("warung_rebahan");
+    const res = await run();
+    expect(res.status).toBe(200);
+    // beforeEach: WARUNG_REBAHAN_ENABLED=false → no-op total, kini jujur.
+    expect(res.body.wr_sync_skipped).toBe("disabled");
+    expect(heartbeat()).not.toBe("");
+  });
+
+  it("fase tak aktif + tanpa antrean WR → skipped=phase_inactive", async () => {
+    vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
+    // Fase tersimpan notify + deferred kosong → 3 slot aktif tanpa WR,
+    // dan tidak ada link WR sehingga pendingWrAny=0.
+    setPhase("notify");
+    const res = await run();
+    expect(res.status).toBe(200);
+    expect(res.body.wr_products_synced).toBe(0);
+    expect(res.body.wr_sync_skipped).toBe("phase_inactive");
+  });
+
+  it("sync baru saja jalan → skipped=interval + last_sync_at terisi", async () => {
+    vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
+    // Fase WR aktif (giliran) + histori sync segar → gerbang 30 menit
+    // menolak sweep. Dulu: skipped null (ambigu). Kini: "interval".
+    setPhase("warung_rebahan");
+    fixture.sql.prepare(
+      `INSERT INTO wr_sync_log(sync_type,status,products_synced,variants_synced,trigger,created_at)
+       VALUES('products','success',48,87,'cron',datetime('now'))`,
+    ).run();
+    const res = await run();
+    expect(res.status).toBe(200);
+    expect(res.body.wr_products_synced).toBe(0);
+    expect(res.body.wr_sync_skipped).toBe("interval");
+    expect(typeof res.body.wr_last_sync_at).toBe("string");
+  });
+
+  it("sync dimatikan eksplisit → skipped=sync_disabled", async () => {
+    vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
+    vi.stubEnv("WARUNG_REBAHAN_SYNC_ENABLED", "false");
+    setPhase("warung_rebahan");
+    const res = await run();
+    expect(res.status).toBe(200);
+    expect(res.body.wr_sync_skipped).toBe("sync_disabled");
+  });
+
+  it("heartbeat tertulis di setiap run sehat", async () => {
+    setPhase("expiry");
+    const res = await run();
+    expect(res.status).toBe(200);
+    // Format datetime('now') SQLite: 'YYYY-MM-DD HH:MM:SS'.
+    expect(heartbeat()).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+  });
+});
+
 describe("cron operations — poison-pill guard", () => {
   it("fase maju di AWAL run, sebelum pekerjaan berat dijalankan", async () => {
     setPhase("warung_rebahan");

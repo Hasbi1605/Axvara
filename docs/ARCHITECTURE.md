@@ -1111,6 +1111,21 @@ Perintah akun #2 wajib prefix `HEROKU_API_KEY=<kunci-akun-2>`; jangan
   sehingga bila jalan belakangan sisa budget/waktu sering habis dan sweep
    di-skip diam-diam). Skip sweep karena budget/deadline WAJIB ditandai
    (`cron_deferred` + `results.wr_sync_skipped = "deadline"|"query_budget"`).
+ - Observability skip jujur + heartbeat (2026-09-19, live): gap sync
+   07:12→10:24 UTC tak terlihat karena SEMUA jalur skip selain
+   budget/deadline mengembalikan `synced:0 + skipped:null` yang ambigu
+   (fase tak aktif / interval 30 mnt belum tempo / switch mati / tabel belum
+   siap). Kini `results.wr_sync_skipped` terisi di semua jalur: `"disabled"`
+   (master switch mati / tabel WR belum ada), `"phase_inactive"` (fase tak
+   aktif, rotasi normal), `"interval"` (sweep terakhir <30 mnt — kondisi
+   tersering), `"sync_disabled"` (`WARUNG_REBAHAN_SYNC_ENABLED=false`),
+   ditambah `"deadline"`/`"query_budget"` yang sudah ada. `results.
+   wr_last_sync_at` = `created_at` sweep terakhir agar respons tunggal cukup
+   untuk diagnosa. Heartbeat `store_settings.cron_last_hit_at` ditulis tiap
+   hit (1 statement, best-effort): cara baca — heartbeat segar + sync basi =
+   run kepotong (deploy); keduanya basi = pemicu Worker mati. Kontrak respons
+   ini bagian dari diagnosis definitif di bawah (`wr_products_synced` /
+   `wr_sync_skipped` / `wr_last_sync_at`).
  - Pelajaran Fase A 18 Sep (PENTING — cek env SEBELUM tuduh kode): sync mati
    8+ jam setelah semua guard benar ternyata karena `WARUNG_REBAHAN_ENABLED` /
    `SYNC_ENABLED` tidak `"true"` di Pages — `isWrEnabled()` false membuat fase
