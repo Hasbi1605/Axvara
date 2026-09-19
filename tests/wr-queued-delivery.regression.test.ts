@@ -96,8 +96,9 @@ describe("copy pembeli", () => {
       // Angka jam hanya di kalimat ETA/template, bukan di badge.
       expect(src, file).not.toContain("Made By Order · maks");
     }
-    // Modal menampilkan kalimat ETA persis di atas CTA beli.
-    expect(read("src/components/storefront/QuickVariantModal.tsx")).toContain("deliveryEtaForBuyer(selected.wr_delivery_class)");
+    // Modal menampilkan badge, TANPA kalimat ETA (dihapus 2026-09-19,
+    // keputusan owner: ekspektasi detail hanya di blok checkout MBO).
+    expect(read("src/components/storefront/QuickVariantModal.tsx")).not.toContain("deliveryEtaForBuyer(");
   });
 
   it("halaman ketentuan MEMPERTAHANKAN status third-party + garansi mulai saat diserahkan", () => {

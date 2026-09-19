@@ -159,8 +159,8 @@
   otomatis, selainnya = Made By Order + estimasi supplier); non-WR ikut
   `fulfillment_mode` milik admin (shared/unique = Kirim otomatis dari stok
   sendiri, manual = Made By Order + kalimat admin tanpa angka supplier).
-  Berlaku di kartu varian PDP + badge PDP + QuickVariantModal (badge + ETA di
-  atas CTA). Opsi admin "Cara Pengiriman" di ProductVariantRows sinkron 1:1
+  Berlaku di kartu varian PDP + badge PDP + QuickVariantModal (badge per
+  kartu; kalimat ETA di atas CTA modal dihapus 2026-09-19). Opsi admin "Cara Pengiriman" di ProductVariantRows sinkron 1:1
   dengan `fulfillment_mode` + preview badge; panel konten fulfillment
   (shared/unique) hidup di jalur resmi — bukan hanya VariantEditor mati.
 - Nama varian pembeli SELALU `formatVariantLabel()` (2026-09-19, live): label +
@@ -186,14 +186,13 @@
   bukan per-produk) dan JANGAN pakai emoji ⚡/✋.
 - Ekspektasi waktu (2026-09-18, revisi kata 2026-09-19, live): kalimat `deliveryEtaForBuyer()` wajib
   tampil SEBELUM pembeli bayar — badge pengiriman PDP (tanpa ikon checklist
-  ganda sejak 2026-09-19) + teks di bawahnya, tepat di atas CTA
-  QuickVariantModal (`text-[11px]`, gold untuk antrean / `white/40` untuk
-  instan), dan blok checkout "Made By Order" (border+bg gold
-  `#FFB800/25` + `/[0.07]`; template sejak 2026-09-19: "dibuat setelah orderan
-  masuk — dikerjakan sesuai antrean, estimasi 6–12 jam jika ramai, biasanya
-  lebih cepat, mohon bersabar"; paragraf
+  ganda sejak 2026-09-19) + teks di bawahnya, dan blok checkout "Made By Order"
+  (border+bg gold `#FFB800/25` + `/[0.07]`; template sejak 2026-09-19:
+  "{produk} dibuat setelah pembayaran terkonfirmasi. Umumnya terkirim cepat,
+  maksimal 12 jam pada jam layanan"; paragraf
   "Detail akun dikirim ke WhatsApp…Tidak perlu menunggu" dihapus 2026-09-19).
-  Angka yang dijanjikan hanya PLAFON (maksimal 12
+  QuickVariantModal HANYA badge per kartu varian — kalimat ETA di atas CTA
+  dihapus 2026-09-19 (keputusan owner). Angka yang dijanjikan hanya PLAFON (maksimal 12
   jam) plus "umumnya lebih cepat"; jangan tampilkan rentang mentah 6–12 jam
   (dibaca sebagai janji minimum) dan jangan tanpa angka (pembeli tetap
   bertanya via support). Nama pemasok tidak pernah muncul di copy pembeli.

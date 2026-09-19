@@ -4,8 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { formatRupiah } from "@/lib/utils";
 import type { VariantSummary } from "@/lib/catalog";
-import { formatWarranty, formatVariantLabel, buyerDeliveryEtaNonWr, buyerDeliveryKind } from "@/lib/catalog";
-import { deliveryEtaForBuyer } from "@/lib/warung-rebahan/delivery-class";
+import { formatWarranty, formatVariantLabel, buyerDeliveryKind } from "@/lib/catalog";
 import { IosIcon } from "@/components/ui/IosIcon";
 import type { Product } from "@/lib/products";
 import { useCart } from "@/stores/cart";
@@ -310,18 +309,11 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
           <p className="mt-2 text-[11px] text-white/40">Total {formatRupiah(currentPrice * safeModalQty)} untuk {safeModalQty} · harga satuan {formatRupiah(currentPrice)}</p>
         )}
 
+        {/* Badge pengiriman sudah ada di tiap kartu varian (2026-09-19,
+            keputusan owner): kalimat "Made By Order — dikerjakan sesuai
+            antrean…" dihapus dari modal — detail ekspektasi dijelask
+            di blok checkout "Made By Order", bukan di tahap pilih varian. */}
         <div className="pt-2">
-          {/* Ekspektasi waktu WAJIB terlihat sebelum CTA. Non-WR manual memakai
-              kalimat admin (tanpa angka supplier) — lihat buyerDeliveryEtaNonWr. */}
-          {selected && !isOutOfStock && (
-            <p className={`mb-2 text-[11px] leading-4 ${buyerDeliveryKind(selected) === "instant" ? "text-white/40" : "text-[#FFD66B]"}`}>
-              {(() => {
-                if (buyerDeliveryKind(selected) === "instant") return deliveryEtaForBuyer("restock");
-                const wrId = (selected as { wr_variant_id?: unknown }).wr_variant_id;
-                return wrId ? deliveryEtaForBuyer(selected.wr_delivery_class) : buyerDeliveryEtaNonWr();
-              })()}
-            </p>
-          )}
           <button
             type="button"
             disabled={!selected || isOutOfStock || loading}
