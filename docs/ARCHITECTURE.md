@@ -1123,7 +1123,10 @@ Perintah akun #2 wajib prefix `HEROKU_API_KEY=<kunci-akun-2>`; jangan
    wr_last_sync_at` = `created_at` sweep terakhir agar respons tunggal cukup
    untuk diagnosa. Heartbeat `store_settings.cron_last_hit_at` ditulis tiap
    hit (1 statement, best-effort): cara baca — heartbeat segar + sync basi =
-   run kepotong (deploy); keduanya basi = pemicu Worker mati. Kontrak respons
+   run kepotong (deploy); keduanya basi = pemicu Worker mati. Revisi 19 Sep
+   sore: `wr_last_sync_at` dibaca DI DEPAN (sebelum cabang fase) sehingga
+   respons `phase_inactive`/`sync_disabled` pun membawa posisi sweep terakhir
+   dan bisa dinilai basi vs segar dari JSON saja. Kontrak respons
    ini bagian dari diagnosis definitif di bawah (`wr_products_synced` /
    `wr_sync_skipped` / `wr_last_sync_at`).
  - Pelajaran Fase A 18 Sep (PENTING — cek env SEBELUM tuduh kode): sync mati

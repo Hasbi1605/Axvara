@@ -706,6 +706,19 @@ export async function POST(request: NextRequest) {
         if (results.wr_sync_skipped == null) results.wr_sync_skipped = "disabled";
         return;
       }
+      // Posisi sweep terakhir DIBACA DI DEPAN (1 query murah) agar SEMUA
+      // respons — termasuk phase_inactive/sync_disabled — membawa
+      // `wr_last_sync_at`. Tanpa ini diagnosa "kapan terakhir?" butuh query
+      // D1 tambahan, dan respons phase_inactive tak bisa dinilai
+      // (basi vs segar) dari JSON saja.
+      try {
+        const lastSyncRow = await queryFirst(
+          `SELECT created_at FROM wr_sync_log
+           WHERE sync_type='products' AND status IN ('success','partial')
+           ORDER BY created_at DESC LIMIT 1`,
+        ).catch(() => null);
+        if (typeof lastSyncRow?.created_at === "string") results.wr_last_sync_at = String(lastSyncRow.created_at);
+      } catch { /* last_sync_at best-effort, tak boleh menggagalkan fase */ }
       if (!activePhases.has("warung_rebahan")) {
         if (pendingWrAny > 0 && !deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan");
         // Fase tak aktif = rotasi normal, BUKAN kegagalan — tapi laporkan

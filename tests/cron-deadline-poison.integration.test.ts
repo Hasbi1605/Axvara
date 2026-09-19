@@ -143,6 +143,25 @@ describe("cron operations — observability skip sync (issue wr-sync-observabili
     expect(res.body.wr_sync_skipped).toBe("phase_inactive");
   });
 
+  it("fase tak aktif TETAP membawa last_sync_at (diagnosa tanpa query D1)", async () => {
+    vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
+    setPhase("notify");
+    // Histori SEGAR (5 menit) agar guard anti-starvation 45-menit TIDAK
+    // menyala dan fase WR benar tak aktif. Dengan histori basi, guard
+    // memaksa slot WR sehingga skip-nya "interval"/attempted, bukan
+    // "phase_inactive" — itu skenario lain yang sudah di-cover.
+    fixture.sql.prepare(
+      `INSERT INTO wr_sync_log(sync_type,status,products_synced,variants_synced,trigger,created_at)
+       VALUES('products','success',48,87,'cron',datetime('now','-5 minutes'))`,
+    ).run();
+    const res = await run();
+    expect(res.status).toBe(200);
+    expect(res.body.wr_sync_skipped).toBe("phase_inactive");
+    // last_sync dibaca DI DEPAN, sebelum cabang fase — respons
+    // phase_inactive pun bisa dinilai basi vs segar dari JSON saja.
+    expect(typeof res.body.wr_last_sync_at).toBe("string");
+  });
+
   it("sync baru saja jalan → skipped=interval + last_sync_at terisi", async () => {
     vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
     // Fase WR aktif (giliran) + histori sync segar → gerbang 30 menit
