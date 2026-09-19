@@ -4,6 +4,11 @@ import {
   deliveryLabelForBuyer,
   guessDeliveryClass,
 } from "@/lib/warung-rebahan/delivery-class";
+import {
+  buyerDeliveryBadge,
+  buyerDeliveryEtaNonWr,
+  buyerDeliveryKind,
+} from "@/lib/catalog";
 
 // 2026-09-16: kelas pengiriman WR (restock vs made_by_order). API WR tidak
 // memberi penanda auto/manual — tebakan sistem + seed screenshot + kunci
@@ -48,5 +53,28 @@ describe("wr delivery class", () => {
     expect(deliveryLabelForAdmin("restock", "screenshot")).toContain("daftar WR");
     expect(deliveryLabelForAdmin("made_by_order", "admin")).toContain("kunci admin");
     expect(deliveryLabelForAdmin(null, null)).toContain("belum dikunci");
+  });
+});
+
+describe("kelas pengiriman pembeli non-WR (2026-09-19)", () => {
+  it("WR ikut wr_delivery_class, non-WR ikut fulfillment_mode", () => {
+    expect(buyerDeliveryKind({ wr_variant_id: "x", wr_delivery_class: "restock", fulfillment_mode: "manual" })).toBe("instant");
+    expect(buyerDeliveryKind({ wr_variant_id: "x", wr_delivery_class: "made_by_order", fulfillment_mode: "unique" })).toBe("queued");
+    expect(buyerDeliveryKind({ wr_variant_id: null, fulfillment_mode: "shared" })).toBe("instant");
+    expect(buyerDeliveryKind({ wr_variant_id: null, fulfillment_mode: "unique" })).toBe("instant");
+    expect(buyerDeliveryKind({ wr_variant_id: null, fulfillment_mode: "manual" })).toBe("queued");
+  });
+
+  it("badge: instan = Kirim otomatis, antrean = Made By Order", () => {
+    expect(buyerDeliveryBadge({ wr_variant_id: null, fulfillment_mode: "shared" })).toBe("Kirim otomatis");
+    expect(buyerDeliveryBadge({ wr_variant_id: null, fulfillment_mode: "manual" })).toBe("Made By Order");
+  });
+
+  it("ETA non-WR manual jujur tanpa angka supplier (admin yang kerjakan)", () => {
+    const eta = buyerDeliveryEtaNonWr();
+    expect(eta).toContain("Made By Order");
+    expect(eta).toContain("admin");
+    expect(eta).not.toContain("6–12");
+    expect(eta).not.toContain("12 jam");
   });
 });

@@ -7,6 +7,7 @@ import { formatRupiah } from "@/lib/utils";
 import type { VariantSummary } from "@/lib/catalog";
 import { formatWarranty } from "@/lib/catalog";
 import { formatVariantLabel } from "@/lib/catalog";
+import { buyerDeliveryBadge, buyerDeliveryEtaNonWr, buyerDeliveryKind } from "@/lib/catalog";
 import { deliveryEtaForBuyer } from "@/lib/warung-rebahan/delivery-class";
 import { useCart } from "@/stores/cart";
 import { ProductCard } from "@/components/storefront/ProductCard";
@@ -430,7 +431,7 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
                         <div className="min-w-0">
                           <span className="block text-sm font-medium text-white">{formatVariantLabel(v)}</span>
                           <span className="mt-1.5 inline-flex">
-                            {v.wr_delivery_class === "restock" ? (
+                            {buyerDeliveryKind(v) === "instant" ? (
                               <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300">Kirim otomatis</span>
                             ) : (
                               <span className="rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFD66B]">Made By Order</span>
@@ -544,19 +545,24 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
           )}
 
           {/* Badge pengiriman — satu sinyal, tanpa ikon checklist ganda.
-              Badge per-varian di atas yang bicara; di sini badge mengikuti
-              varian terpilih. Jangan janji "5–15 menit" umum
-              untuk produk manual/slow. */}
+              Mengikuti varian terpilih via buyerDeliveryKind: WR ikut
+              wr_delivery_class, non-WR ikut fulfillment_mode (shared/unique =
+              instan, manual = antrean admin). Non-WR manual memakai kalimat
+              ETA admin (tanpa angka supplier 6–12 jam). */}
           <div className="mt-5">
-            {termsVariant?.wr_delivery_class === "restock" ? (
+            {buyerDeliveryKind(termsVariant ?? { fulfillment_mode: "manual" }) === "instant" ? (
               <span className="inline-flex rounded-full border border-emerald-400/25 bg-emerald-500/10 px-3 py-1 text-[11px] font-bold text-emerald-300">Kirim otomatis</span>
             ) : (
-              <span className="inline-flex rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-3 py-1 text-[11px] font-bold text-[#FFD66B]">Made By Order</span>
+              <span className="inline-flex rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-3 py-1 text-[11px] font-bold text-[#FFD66B]">{buyerDeliveryBadge(termsVariant ?? { fulfillment_mode: "manual" })}</span>
             )}
             <p className="mt-2 text-[12px] leading-5 text-white/50">
-              {termsVariant?.wr_delivery_class === "restock"
-                ? "Kirim otomatis setelah pembayaran dikonfirmasi"
-                : deliveryEtaForBuyer(termsVariant?.wr_delivery_class)}
+              {(() => {
+                const tv = termsVariant;
+                if (!tv) return deliveryEtaForBuyer(null);
+                if (buyerDeliveryKind(tv) === "instant") return "Kirim otomatis setelah pembayaran dikonfirmasi";
+                const wrId = tv.wr_variant_id == null ? "" : String(tv.wr_variant_id).trim();
+                return wrId ? deliveryEtaForBuyer(tv.wr_delivery_class) : buyerDeliveryEtaNonWr();
+              })()}
             </p>
           </div>
           <ul className="mt-3 space-y-2.5 text-[13px] text-white/60">

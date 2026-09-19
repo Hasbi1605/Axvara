@@ -28,6 +28,9 @@ export type VariantSummary = {
    * restock = "Kirim otomatis", selainnya = "Dikirim admin".
    */
   wr_delivery_class: string | null;
+  /** Penanda varian milik sync WR (null/0 = produk non-WR milik admin). */
+  wr_variant_id?: string | null;
+  wr_auto_managed?: number;
   /** Tipe WR mentah (Invite/Link/Private/Sharing/...) — penentu email wajib. */
   wr_type: string | null;
   /** Toggle email wajib per produk (migrasi 0033, untuk non-WR). */
@@ -170,6 +173,7 @@ export async function getProductDetail(slugOrId: string | number): Promise<Produ
     `SELECT pv.id, pv.product_id, pv.sku, pv.label, pv.duration_value, pv.duration_unit, pv.duration_label,
             pv.warranty_type, pv.warranty_value, pv.warranty_unit, pv.warranty_label,
             pv.price, pv.compare_price, pv.stock, pv.min_qty, pv.fulfillment_mode, pv.is_active, pv.sort_order,
+            pv.wr_variant_id AS wr_variant_id, pv.wr_auto_managed AS wr_auto_managed,
             wv.wr_terms AS wr_terms, wv.wr_delivery_terms AS wr_delivery_terms,
             wv.wr_delivery_class AS wr_delivery_class, wv.wr_type AS wr_type,
             COALESCE(p.require_email, 0) AS require_email
@@ -347,6 +351,40 @@ export function formatVariantLabel(v: Pick<VariantSummary, "label"> & Partial<Pi
   return `${label} - ${dur}`;
 }
 
+/**
+ * Kelas pengiriman PEMBELI per varian (2026-09-19): WR ikut `wr_delivery_class`
+ * (restock = instan, selainnya = antrean); non-WR ikut `fulfillment_mode`
+ * (shared/unique = instan dari stok sendiri, manual = dikerjakan admin).
+ * Satu fungsi agar PDP/modal/checkout tidak menebak per layar — dan agar
+ * produk non-WR seperti Canva/Gsuite (semua `manual` hari ini) tidak
+ * diklaim "instan" secara diam-diam.
+ */
+export type BuyerDeliveryKind = "instant" | "queued";
+
+export function buyerDeliveryKind(v: Pick<VariantSummary, "fulfillment_mode"> & Partial<Pick<VariantSummary, "wr_delivery_class">> & { wr_variant_id?: unknown }): BuyerDeliveryKind {
+  const wrId = v.wr_variant_id == null ? "" : String(v.wr_variant_id).trim();
+  if (wrId) {
+    return String(v.wr_delivery_class ?? "").trim() === "restock" ? "instant" : "queued";
+  }
+  const mode = String(v.fulfillment_mode ?? "manual").trim().toLowerCase();
+  return mode === "shared" || mode === "unique" ? "instant" : "queued";
+}
+
+/** Badge pembeli: "Kirim otomatis" (instan) atau "Made By Order" (antrean). */
+export function buyerDeliveryBadge(v: Parameters<typeof buyerDeliveryKind>[0]): string {
+  return buyerDeliveryKind(v) === "instant" ? "Kirim otomatis" : "Made By Order";
+}
+
+/**
+ * Kalimat ekspektasi pengiriman pembeli untuk varian NON-WR manual
+ * (2026-09-19): tidak boleh meminjam estimasi supplier WR (6–12 jam) karena
+ * pengerjaannya oleh admin Axvara sendiri. Kalimat jujur tanpa angka: admin
+ * yang pegang antreannya, bukan supplier.
+ */
+export function buyerDeliveryEtaNonWr(): string {
+  return "Made By Order — disiapkan admin setelah pembayaran dikonfirmasi, dikerjakan sesuai antrean pada jam layanan";
+}
+
 export function formatWarranty(v: VariantSummary): string {
   // Tipe limited: SELALU bentuk kanonis "Garansi X Unit" dari field
   // terstruktur — JANGAN pulangkan warranty_label mentah ("12 Hari" ambigu:
@@ -424,6 +462,8 @@ function mapVariant(row: Record<string, unknown>): VariantSummary {
     terms: nullableText(row.wr_terms),
     delivery_terms: nullableText(row.wr_delivery_terms),
     wr_delivery_class: row.wr_delivery_class ? String(row.wr_delivery_class) : null,
+    wr_variant_id: row.wr_variant_id != null ? String(row.wr_variant_id) : null,
+    wr_auto_managed: row.wr_auto_managed != null ? Number(row.wr_auto_managed) : 0,
     wr_type: row.wr_type ? String(row.wr_type) : null,
     require_email: Number(row.require_email ?? 0),
     price: Number(row.price),

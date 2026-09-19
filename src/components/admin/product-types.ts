@@ -23,6 +23,15 @@ export type FormVariant = {
   warranty_unit?: string | null;
   warranty_label?: string | null;
   is_active: number;
+  /**
+   * Cara pengiriman non-WR (milik admin, default "manual"):
+   * - "manual" = Made By Order, dikerjakan admin (badge kuning)
+   * - "shared" = Kirim otomatis, pesan bersama dari stok sendiri (badge hijau)
+   * - "unique" = Kirim otomatis, 1 kredensial unik per pembeli (badge hijau)
+   * Sinkron 1:1 dengan kolom `fulfillment_mode` (dipakai engine fulfillment).
+   * Varian WR mengabaikan field ini (ikut wr_delivery_class dari sync).
+   */
+  fulfillment_mode?: string;
   /** Varian milik sync WR: harga/stok/label/durasi/garansi read-only di admin. */
   /** PENGECUALIAN: harga coret (comparePrice) milik admin — tetap bisa diedit. */
   wr_auto_managed?: number;

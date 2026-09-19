@@ -154,6 +154,15 @@
   otomatis (prefix angka mentah WR di-strip), sub-blok "Cara Aktivasi" bila ada.
 - Desktop: kartu glass di kolom kiri bawah deskripsi. Mobile: kartu di bawah
   accordion deskripsi.
+- Badge pengiriman pembeli fulfillment-aware (2026-09-19, live):
+  `buyerDeliveryKind()` — WR ikut `wr_delivery_class` (restock = Kirim
+  otomatis, selainnya = Made By Order + estimasi supplier); non-WR ikut
+  `fulfillment_mode` milik admin (shared/unique = Kirim otomatis dari stok
+  sendiri, manual = Made By Order + kalimat admin tanpa angka supplier).
+  Berlaku di kartu varian PDP + badge PDP + QuickVariantModal (badge + ETA di
+  atas CTA). Opsi admin "Cara Pengiriman" di ProductVariantRows sinkron 1:1
+  dengan `fulfillment_mode` + preview badge; panel konten fulfillment
+  (shared/unique) hidup di jalur resmi — bukan hanya VariantEditor mati.
 - Nama varian pembeli SELALU `formatVariantLabel()` (2026-09-19, live): label +
   " - durasi" bila durasi belum terkandung di label (case-insensitive).
   Latar: sync WR menulis label = nama API verbatim ("Meitu VIP") dan durasi di

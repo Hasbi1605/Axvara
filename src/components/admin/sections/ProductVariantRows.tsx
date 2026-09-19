@@ -1,7 +1,10 @@
 "use client";
+import { useState } from "react";
 import { formatRupiah } from "@/lib/utils";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { MoneyInput } from "@/components/ui/MoneyInput";
+import { useToast } from "@/components/ui/Toast";
+import { Spinner } from "@/components/ui/Loading";
 import type { FormVariant, ProductForm } from "../product-types";
 
 // Blok daftar varian dipisah dari ProductEditorModal karena inilah sub-form paling padat
@@ -9,15 +12,121 @@ import type { FormVariant, ProductForm } from "../product-types";
 // modal tetap ringkas dan membuat aturan render baris varian mudah dibaca sendiri.
 // Tetap tanpa state lokal: seluruh mutasi diteruskan ke setter formVariants milik page.tsx.
 
+/**
+ * Panel konten fulfillment non-WR di dalam baris varian ProductEditorModal.
+ * Inilah yang selama ini "hilang": satu-satunya panel pengisian kredensial
+ * (FulfillmentInventoryPanel) hanya dirender VariantEditor yang tidak
+ * dipakai halaman mana pun — produk non-WR yang dibuat/diubah lewat modal
+ * resmi TIDAK PERNAH bisa diisi stoknya dari admin.
+ *
+ * Mode "manual" → catatan (admin kirim sendiri).
+ * Mode "shared"/"unique" → textarea + simpan via /api/admin/fulfillment.
+ * Mode "__wr__" → varian WR: baca counts saja, tanpa form tulis.
+ */
+function NonWrFulfillmentPanel({ productId, variantId, mode }: { productId?: number | string; variantId?: number; mode: string }) {
+  const toast = useToast();
+  const [counts, setCounts] = useState<{ available: number; reserved: number; delivered: number } | null>(null);
+  const [sharedText, setSharedText] = useState("");
+  const [inventoryText, setInventoryText] = useState("");
+  const [loading, setLoading] = useState(false);
+  const pid = Number(productId);
+
+  const load = async () => {
+    if (!pid || !variantId) return;
+    try {
+      const res = await fetch(`/api/admin/fulfillment?product_id=${pid}&variant_id=${variantId}`, { cache: "no-store" });
+      const data = await res.json().catch(() => ({})) as { available?: number; reserved?: number; delivered?: number };
+      if (res.ok) setCounts({ available: Number(data.available || 0), reserved: Number(data.reserved || 0), delivered: Number(data.delivered || 0) });
+    } catch { /* counts pendukung — gagal muat tidak menghalangi simpan. */ }
+  };
+
+  const post = async (payload: Record<string, unknown>) => {
+    const res = await fetch("/api/admin/fulfillment", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ product_id: pid, variant_id: variantId, ...payload }) });
+    const data = await res.json().catch(() => ({})) as { error?: string; inserted?: number };
+    if (!res.ok) throw new Error(data.error || "Gagal menyimpan");
+    return data;
+  };
+
+  const saveShared = async () => {
+    if (!sharedText.trim()) return;
+    setLoading(true);
+    try { await post({ action: "set_shared_secret", shared_secret: sharedText.trim() }); setSharedText(""); toast.success("Pesan bersama disimpan terenkripsi."); await load(); }
+    catch (e) { toast.error(e instanceof Error ? e.message : "Gagal menyimpan"); }
+    finally { setLoading(false); }
+  };
+
+  const importInventory = async () => {
+    const secrets = inventoryText.split("\n").map((s) => s.trim()).filter(Boolean);
+    if (!secrets.length) return;
+    setLoading(true);
+    try {
+      await post({ action: "set_mode", fulfillment_mode: "unique" });
+      const data = await post({ action: "import", secrets });
+      setInventoryText(""); toast.success(`${data.inserted || 0} stok unik ditambahkan.`); await load();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Gagal mengimpor"); }
+    finally { setLoading(false); }
+  };
+
+  if (!variantId) return <p className="mt-3 rounded-xl border border-white/10 bg-white/[0.025] px-3 py-3 text-xs text-white/40">Simpan produk terlebih dahulu (agar varian punya ID), lalu buka Edit untuk mengisi konten fulfillment.</p>;
+  if (mode === "__wr__") {
+    return (
+      <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.025] px-3 py-3 text-xs text-white/40">
+        <button type="button" onClick={() => void load()} className="font-semibold text-[#5cefff] hover:underline">Muat status stok WR</button>
+        {counts && <span className="ml-2">Tersedia {counts.available} · Terpakai {counts.delivered} · Dipesan {counts.reserved}</span>}
+      </div>
+    );
+  }
+  if (mode === "manual") return <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.025] px-3 py-3 text-xs text-white/40">Fulfillment manual: admin mengirim akses setelah pembayaran dikonfirmasi.</div>;
+
+  return (
+    <div className="mt-3 rounded-2xl border border-[#00E5FF]/15 bg-[#00E5FF]/[0.035] p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-xs font-semibold text-white">Konten fulfillment</p>
+          <p className="mt-0.5 text-[11px] text-white/35">Tersimpan terenkripsi dan tidak pernah ditampilkan kembali.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {counts && <div className="flex flex-wrap gap-1.5 text-[10px]"><span className="rounded-full bg-emerald-500/10 px-2 py-1 text-emerald-300">Tersedia {counts.available}</span><span className="rounded-full bg-white/[0.06] px-2 py-1 text-white/45">Terpakai {counts.delivered}</span><span className="rounded-full bg-[#FFB800]/10 px-2 py-1 text-[#FFCF55]">Dipesan {counts.reserved}</span></div>}
+          <button type="button" onClick={() => void load()} className="text-[11px] font-semibold text-[#5cefff] hover:underline">Muat ulang</button>
+        </div>
+      </div>
+      {mode === "shared" ? (
+        <div className="mt-3">
+          <textarea value={sharedText} onChange={(e) => setSharedText(e.target.value)} rows={3} placeholder="Link, akun bersama, atau instruksi yang dikirim ke setiap pembeli…" className="w-full resize-none rounded-xl border border-white/10 bg-[#080C1E]/65 p-3 text-sm text-white outline-none placeholder:text-white/25 focus:border-[#00E5FF]/40" />
+          <button type="button" onClick={() => void saveShared()} disabled={loading || !sharedText.trim()} className="mt-2 inline-flex h-9 items-center gap-2 rounded-xl bg-[#00E5FF] px-4 text-xs font-bold text-[#07101f] transition hover:bg-[#00D0E8] disabled:opacity-40">{loading && <Spinner size={13} />} Simpan pesan bersama</button>
+        </div>
+      ) : (
+        <div className="mt-3">
+          <textarea value={inventoryText} onChange={(e) => setInventoryText(e.target.value)} rows={4} placeholder={"Satu akun/key per baris\nemail:password\nLICENSE-KEY"} className="w-full resize-none rounded-xl border border-white/10 bg-[#080C1E]/65 p-3 font-mono text-xs text-white outline-none placeholder:text-white/25 focus:border-[#00E5FF]/40" />
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <p className="text-[10px] text-white/35">Maksimal 100 entri per impor.</p>
+            <button type="button" onClick={() => void importInventory()} disabled={loading || !inventoryText.trim()} className="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl bg-[#00E5FF] px-4 text-xs font-bold text-[#07101f] transition hover:bg-[#00D0E8] disabled:opacity-40">{loading && <Spinner size={13} />} Impor stok unik</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ProductVariantRows({
   form,
   formVariants,
   onSetFormVariants,
+  productId,
 }: {
   form: ProductForm;
   formVariants: FormVariant[];
   onSetFormVariants: (updater: (prev: FormVariant[]) => FormVariant[]) => void;
+  productId?: number | string;
 }) {
+  // Opsi label pengiriman non-WR (milik admin): Manual = MBO dikerjakan
+  // admin; shared/unique = instan dari stok sendiri. Sinkron 1:1 dengan
+  // fulfillment_mode agar display buyer (badge/ETA) tidak menebak.
+  const FULFILLMENT_OPTIONS = [
+    { value: "manual", label: "Made By Order — admin kerjakan manual" },
+    { value: "shared", label: "Kirim otomatis — pesan/instruksi bersama" },
+    { value: "unique", label: "Kirim otomatis — stok kredensial unik" },
+  ];
   return (
     <div className="mt-4 space-y-3">
       <div className="flex items-center justify-between">
@@ -39,6 +148,7 @@ export function ProductVariantRows({
                   stock: -1,
                   min_qty: 1,
                   warranty_type: "none",
+                  fulfillment_mode: "manual",
                   is_active: 1,
                 },
               ]);
@@ -236,6 +346,34 @@ export function ProductVariantRows({
                 </span>
               </div>
             </div>
+
+            {/* Baris 4: Cara pengiriman (non-WR, milik admin) + panel konten
+                fulfillment. Opsi ini sinkron 1:1 dengan fulfillment_mode yang
+                dipakai engine + display buyer — bukan label bebas. Varian WR
+                (wrLocked) menyembunyikan opsi ini (ikut kelas sync); panel
+                read-only status stok tetap tampil. */}
+            {!wrLocked ? (
+              <div className="pt-3">
+                <span className="block text-[10px] uppercase font-semibold text-white/40 mb-1.5">Cara Pengiriman</span>
+                <select
+                  value={v.fulfillment_mode || "manual"}
+                  onChange={(e) => {
+                    onSetFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, fulfillment_mode: e.target.value } : item));
+                  }}
+                  className="h-9 rounded-xl bg-white/[0.06] border border-white/10 px-3 text-xs text-white focus:border-[#00E5FF]/50 focus:outline-none"
+                >
+                  {FULFILLMENT_OPTIONS.map((opt) => <option key={opt.value} value={opt.value} className="bg-[#0F1430]">{opt.label}</option>)}
+                </select>
+                <p className="mt-1.5 text-[11px] leading-4 text-white/35">
+                  {(v.fulfillment_mode || "manual") === "manual"
+                    ? "Badge pembeli: Made By Order (disiapkan admin)."
+                    : "Badge pembeli: Kirim otomatis (dikirim sistem dari stok di bawah)."}
+                </p>
+                <NonWrFulfillmentPanel productId={productId} variantId={typeof v.id === "number" ? v.id : undefined} mode={v.fulfillment_mode || "manual"} />
+              </div>
+            ) : (
+              <NonWrFulfillmentPanel productId={productId} variantId={typeof v.id === "number" ? v.id : undefined} mode="__wr__" />
+            )}
           </div>
           );
         })}

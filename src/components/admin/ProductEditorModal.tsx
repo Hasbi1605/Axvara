@@ -12,6 +12,7 @@ import { ProductVariantRows } from "./sections/ProductVariantRows";
 
 export function ProductEditorModal({
   editing,
+  editingId,
   saving,
   uploading,
   loadingVariants,
@@ -30,6 +31,8 @@ export function ProductEditorModal({
   onSave,
 }: {
   editing: boolean;
+  /** ID produk numerik saat mode edit (untuk panel fulfillment per varian). */
+  editingId?: number | string;
   saving: boolean;
   uploading: boolean;
   loadingVariants: boolean;
@@ -115,7 +118,7 @@ export function ProductEditorModal({
               {loadingVariants ? (
                 <div className="py-6 text-center text-xs text-white/40">Memuat rincian varian...</div>
               ) : hasMultiVariants ? (
-                <ProductVariantRows form={form} formVariants={formVariants} onSetFormVariants={onSetFormVariants} />
+                <ProductVariantRows form={form} formVariants={formVariants} onSetFormVariants={onSetFormVariants} productId={editingId} />
               ) : (
                 <div className="mt-4 grid sm:grid-cols-3 gap-3">
                   <div>

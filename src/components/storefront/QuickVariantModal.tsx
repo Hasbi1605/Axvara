@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { formatRupiah } from "@/lib/utils";
 import type { VariantSummary } from "@/lib/catalog";
-import { formatWarranty, formatVariantLabel } from "@/lib/catalog";
+import { formatWarranty, formatVariantLabel, buyerDeliveryEtaNonWr, buyerDeliveryKind } from "@/lib/catalog";
 import { deliveryEtaForBuyer } from "@/lib/warung-rebahan/delivery-class";
 import { IosIcon } from "@/components/ui/IosIcon";
 import type { Product } from "@/lib/products";
@@ -217,7 +217,7 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
                       {formatVariantLabel(v)}
                     </span>
                     <span className="mt-1.5 inline-flex">
-                      {v.wr_delivery_class === "restock" ? (
+                      {buyerDeliveryKind(v) === "instant" ? (
                         <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold text-emerald-300">Kirim otomatis</span>
                       ) : (
                         <span className="rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-[9px] font-bold text-[#FFD66B]">Made By Order</span>
@@ -311,11 +311,15 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
         )}
 
         <div className="pt-2">
-          {/* Ekspektasi waktu WAJIB terlihat sebelum CTA: varian antrean butuh
-              jam-jaman, jadi pembeli harus tahu sebelum bayar, bukan sesudah. */}
+          {/* Ekspektasi waktu WAJIB terlihat sebelum CTA. Non-WR manual memakai
+              kalimat admin (tanpa angka supplier) — lihat buyerDeliveryEtaNonWr. */}
           {selected && !isOutOfStock && (
-            <p className={`mb-2 text-[11px] leading-4 ${selected.wr_delivery_class === "restock" ? "text-white/40" : "text-[#FFD66B]"}`}>
-              {deliveryEtaForBuyer(selected.wr_delivery_class)}
+            <p className={`mb-2 text-[11px] leading-4 ${buyerDeliveryKind(selected) === "instant" ? "text-white/40" : "text-[#FFD66B]"}`}>
+              {(() => {
+                if (buyerDeliveryKind(selected) === "instant") return deliveryEtaForBuyer("restock");
+                const wrId = (selected as { wr_variant_id?: unknown }).wr_variant_id;
+                return wrId ? deliveryEtaForBuyer(selected.wr_delivery_class) : buyerDeliveryEtaNonWr();
+              })()}
             </p>
           )}
           <button

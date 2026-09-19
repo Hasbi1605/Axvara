@@ -137,6 +137,25 @@ describe("variant min_qty — bot & storefront", () => {
     expect(read("src/app/api/products/[id]/route.ts")).toContain("min_qty");
     expect(read("src/app/api/products/route.ts")).toContain("min_qty");
   });
+
+  it("admin: opsi Cara Pengiriman + panel konten non-WR di ProductVariantRows (2026-09-19)", () => {
+    const rows = read("src/components/admin/sections/ProductVariantRows.tsx");
+    // Opsi milik admin sinkron 1:1 dengan fulfillment_mode engine.
+    expect(rows).toContain("Cara Pengiriman");
+    expect(rows).toContain("Made By Order — admin kerjakan manual");
+    expect(rows).toContain("Kirim otomatis — pesan/instruksi bersama");
+    expect(rows).toContain("Kirim otomatis — stok kredensial unik");
+    expect(rows).toContain("fulfillment_mode");
+    // Panel konten fulfillment (shared/unique) hidup di jalur resmi —
+    // bukan hanya VariantEditor yang tak dirender halaman mana pun.
+    expect(rows).toContain("NonWrFulfillmentPanel");
+    expect(rows).toContain("/api/admin/fulfillment");
+    expect(rows).toContain("Simpan pesan bersama");
+    expect(rows).toContain("Impor stok unik");
+    // Jalur simpan resmi meneruskan fulfillment_mode sampai DB.
+    expect(read("src/components/admin/useProductManager.ts")).toContain("fulfillment_mode");
+    expect(read("src/app/api/products/[id]/route.ts")).toContain("fulfillment_mode");
+  });
 });
 
 describe("variant min_qty — perilaku guard atomik (SQLite)", () => {

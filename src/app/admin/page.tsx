@@ -131,6 +131,7 @@ export default function AdminPage() {
       {(pm.editing || pm.showNew) && (
         <ProductEditorModal
           editing={Boolean(pm.editing)}
+          editingId={pm.editing?.id}
           saving={pm.saving}
           uploading={pm.uploading}
           loadingVariants={pm.loadingVariants}

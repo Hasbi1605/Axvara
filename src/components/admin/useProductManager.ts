@@ -120,6 +120,9 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
         warranty_unit: v.warranty_unit,
         warranty_label: v.warranty_label,
         is_active: v.is_active ?? 1,
+        // Cara pengiriman non-WR (milik admin; default manual agar
+        // produk lama tanpa kolom ini tetap MBO, bukan instan).
+        fulfillment_mode: String((v as Record<string, unknown>).fulfillment_mode ?? "manual"),
         wr_auto_managed: (v as Record<string, unknown>).wr_auto_managed as number | undefined,
       }));
       setFormVariants(mapped);
@@ -133,6 +136,8 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
     }
   };
 
+  // Toggle varian tunggal (migrasi varian generik): produk baru tanpa
+  // varian mengembalikan varian bawaan DEFAULT.
   const openNew = () => {
     const nextForm = {
       name: "",
@@ -264,6 +269,9 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
             warranty_value: vr.warranty_value,
             warranty_unit: vr.warranty_unit,
             warranty_label: vr.warranty_label,
+            // Cara pengiriman non-WR (milik admin — sync WR tidak menyentuh,
+            // guard WR hanya menolak field miliknya bila produk auto-managed).
+            fulfillment_mode: (["manual", "shared", "unique"] as const).includes(vr.fulfillment_mode as "manual" | "shared" | "unique") ? (vr.fulfillment_mode as "manual" | "shared" | "unique") : "manual",
             is_active: vr.is_active ?? 1,
             sort_order: idx,
           }))
