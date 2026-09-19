@@ -335,7 +335,27 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
   const activeProducts=prods.filter(p=>p.isActive).length;
   const lowStock=prods.filter(p=>p.stock>=0&&p.stock<=5).length;
   const soldProducts=prods.reduce((total,product)=>total+product.soldCount,0);
-  const filtered = useMemo(()=> prods.filter(p=> !q || `${p.name} ${p.slug} ${p.badge??""}`.toLowerCase().includes(q.toLowerCase())), [prods, q]);
+  // Urutan daftar admin meniru storefront (page.tsx): ready dulu, habis
+  // belakangan — plus nonaktif PALING belakang (storefront tak menampilkan
+  // nonaktif sama sekali karena ?active=1, tapi admin perlu melihatnya).
+  // Tanpa ini produk habis/nonaktif (Netflix, Capcut, Claude di screenshot
+  // owner 2026-09-19) nangkring di atas dan produk ready tenggelam.
+  const isOut = (p: Prod): boolean => p.stock != null && p.stock !== -1 && p.stock <= 0;
+  const filtered = useMemo(
+    () => prods
+      .filter(p=> !q || `${p.name} ${p.slug} ${p.badge??""}`.toLowerCase().includes(q.toLowerCase()))
+      .slice()
+      .sort((a, b) => {
+        const byActive = Number(!b.isActive) - Number(!a.isActive);
+        if (byActive !== 0) return byActive;
+        const bySold = Number(isOut(a)) - Number(isOut(b));
+        if (bySold !== 0) return bySold;
+        const byOrder = (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+        if (byOrder !== 0) return byOrder;
+        return Number(a.id) - Number(b.id);
+      }),
+    [prods, q],
+  );
   const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE_ADMIN));
   const safePage = Math.min(page, totalPages);
   const paged = filtered.slice((safePage-1)*PER_PAGE_ADMIN, safePage*PER_PAGE_ADMIN);

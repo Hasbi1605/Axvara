@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-09-19 — Daftar produk admin meniru storefront (screenshot owner): ready dulu, stok habis belakangan, nonaktif PALING belakang (sebelumnya urutan DB mentah — Netflix/Capcut/Claude stok 0 nangkring di atas); kunci sort_order admin + id sebagai tiebreak, pola sama dengan page.tsx — src/components/admin/useProductManager.ts, tests/product-variant-save.integration.test.ts — (verifikasi: 897/897 test [85 file] hijau, tsc bersih)
+
 - 2026-09-19 — formatVariantLabel khusus WR (insiden Canva screenshot owner): helper B2 menggabung durasi untuk SEMUA produk → non-WR Canva tampil "Invite Lifetime - 6 Bulan" + "Head 1 Bulan - 14 Hari" (DB: duration 6 month/14 day = duplikat kolom garansi, bukan display); kini append hanya bila wr_variant_id terisi (Meitu dkk tetap "- 7 Hari"), non-WR label admin final apa adanya; DB tak tersentuh (tak perlu edit manual, hilang sendiri setelah deploy) — src/lib/catalog.ts, tests/whatsapp-variants.regression.test.ts — (verifikasi: 896/896 test [85 file] hijau, tsc bersih)
 
 - 2026-09-19 — Hint WA checkout: "Untuk pengiriman detail produk — tidak untuk spam." → "Untuk pengiriman detail produk, lacak pesanan, dan klaim garansi / reffund" (permintaan owner) — src/app/checkout/page.tsx — (verifikasi: 896/896 test [84 file] hijau)

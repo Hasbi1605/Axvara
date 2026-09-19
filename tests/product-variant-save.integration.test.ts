@@ -149,4 +149,12 @@ describe("payload useProductManager mode varian", () => {
     expect(saveBlock).toContain("comparePrice: hasMultiVariants ? undefined");
     expect(saveBlock).toContain("stock: hasMultiVariants ? undefined");
   });
+
+  it("daftar admin meniru storefront: ready dulu, habis belakangan, nonaktif paling belakang (2026-09-19)", async () => {
+    const src = (await import("node:fs")).readFileSync("src/components/admin/useProductManager.ts", "utf8");
+    // Kunci urutan: nonaktif dulu, lalu habis, lalu sort_order admin, lalu id.
+    expect(src).toContain("Number(!b.isActive) - Number(!a.isActive)");
+    expect(src).toContain("Number(isOut(a)) - Number(isOut(b))");
+    expect(src).toContain("(a.sortOrder ?? 0) - (b.sortOrder ?? 0)");
+  });
 });
