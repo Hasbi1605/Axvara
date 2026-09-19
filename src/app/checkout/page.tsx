@@ -498,7 +498,8 @@ function CheckoutInner() {
               </div>
               <div>
                 <label htmlFor="checkout-wa" className="block text-xs font-medium text-white/60 mb-1">No WA aktif *</label>
-                <input id="checkout-wa" value={wa} onChange={(e) => { setWa(e.target.value); setFieldErrors(f=> ({...f, wa: ""})); }} placeholder="08..." aria-invalid={!!fieldErrors.wa} className={`w-full h-11 px-4 rounded-xl bg-white/[0.06] border text-sm text-white placeholder:text-white/30 focus:outline-none ${fieldErrors.wa ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`} />
+                <input id="checkout-wa" value={wa} onChange={(e) => { setWa(e.target.value); setFieldErrors(f=> ({...f, wa: ""})); }} placeholder="08..." aria-invalid={!!fieldErrors.wa} aria-describedby="checkout-wa-hint" className={`w-full h-11 px-4 rounded-xl bg-white/[0.06] border text-sm text-white placeholder:text-white/30 focus:outline-none ${fieldErrors.wa ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`} />
+                <p id="checkout-wa-hint" className="mt-1.5 text-[11px] leading-4 text-white/40">Untuk pengiriman detail produk — tidak untuk spam.</p>
                 {fieldErrors.wa && <p className="mt-1.5 text-xs text-red-300">{fieldErrors.wa}</p>}
               </div>
               <div>

@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-09-19 — Mikrocopy WA checkout: hint "Untuk pengiriman detail produk — tidak untuk spam." di bawah input No WA (aria-describedby) agar pembeli tak ragu memberi nomor — src/app/checkout/page.tsx — (verifikasi: 881/881 test [84 file] hijau, tsc bersih)
+
 - 2026-09-19 — Potong "Biarkan halaman terbuka;" dari ② Verifikasi Otomatis checkout — src/app/checkout/page.tsx — (verifikasi: 881/881 test [84 file] hijau, tsc bersih)
 
 - 2026-09-19 — Potong catatan mikro CTA checkout → "QRIS diverifikasi otomatis." (tanpa embel-embel upload bukti) — src/app/checkout/page.tsx — (verifikasi: 881/881 test [84 file] hijau, tsc bersih)
