@@ -139,6 +139,15 @@
   otomatis (prefix angka mentah WR di-strip), sub-blok "Cara Aktivasi" bila ada.
 - Desktop: kartu glass di kolom kiri bawah deskripsi. Mobile: kartu di bawah
   accordion deskripsi.
+- Nama varian pembeli SELALU `formatVariantLabel()` (2026-09-19, live): label +
+  " - durasi" bila durasi belum terkandung di label (case-insensitive).
+  Latar: sync WR menulis label = nama API verbatim ("Meitu VIP") dan durasi di
+  kolom `duration_*` ("7 Hari"); PDP web yang hanya render label kehilangan
+  durasi di 88/97 varian aktif, padahal web WR menggabung ("Meitu VIP - 7
+  Hari"). Berlaku di kartu varian PDP + QuickVariantModal + displayName quote
+  checkout (ringkasan + blok Made By Order). Label yang sudah mengandung durasi
+  ("GSuite 1 Hari", "Invite 1 Bulan") tidak digandakan. DB tak tersentuh agar
+  sync tetap aman menimpa.
 - Label garansi varian SELALU kanonis `Garansi N Unit` ("Garansi 12 Hari") +
   ikon shield — di baris sendiri di BAWAH nama varian (block, bukan inline),
   JANGAN render label mentah ("12 Hari" ambigu dengan durasi).

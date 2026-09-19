@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { formatRupiah } from "@/lib/utils";
 import type { VariantSummary } from "@/lib/catalog";
-import { formatWarranty } from "@/lib/catalog";
+import { formatWarranty, formatVariantLabel } from "@/lib/catalog";
 import { deliveryEtaForBuyer } from "@/lib/warung-rebahan/delivery-class";
 import { IosIcon } from "@/components/ui/IosIcon";
 import type { Product } from "@/lib/products";
@@ -214,7 +214,7 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
                     }`}
                   >
                     <span className="text-xs font-bold leading-tight truncate w-full">
-                      {v.label}
+                      {formatVariantLabel(v)}
                     </span>
                     <span className="mt-1.5 inline-flex">
                       {v.wr_delivery_class === "restock" ? (

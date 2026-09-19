@@ -42,6 +42,16 @@ describe("Checkout quote integrity", () => {
     expect(checkout).toContain("issue.message");
   });
 
+  it("displayName quote menggabung label + durasi anti-duplikasi (audit Meitu 2026-09-19)", () => {
+    const quote = read("src/app/api/checkout/quote/route.ts");
+    // Quote memakai helper kanonis, bukan label mentah — ringkasan checkout
+    // + blok Made By Order menampilkan "Meitu VIP - 7 Hari".
+    expect(quote).toContain("formatVariantLabel");
+    // PDP + modal memakai helper yang sama (satu pola, bukan tambal per layar).
+    expect(read("src/app/produk/[slug]/product-detail-client.tsx")).toContain("formatVariantLabel(v)");
+    expect(read("src/components/storefront/QuickVariantModal.tsx")).toContain("formatVariantLabel(v)");
+  });
+
   it("variant mode tidak dapat dibypass dengan checkout tanpa variant_id", () => {
     const quote = read("src/app/api/checkout/quote/route.ts");
     const products = read("src/app/api/products/route.ts");

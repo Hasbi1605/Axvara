@@ -172,7 +172,21 @@ export async function POST(req: NextRequest) {
       }
       effectivePrice = Number(variantRow.price);
       effectiveStock = variantRow.stock == null ? -1 : Number(variantRow.stock);
-      displayName = `${row.name} — ${variantRow.label}`;
+      // Label + durasi anti-duplikasi (audit 2026-09-19: 88/97 varian aktif
+      // kehilangan durasi karena sync WR menulis label = nama verbatim;
+      // web WR menggabung "Meitu VIP - 7 Hari"). formatVariantLabel hanya
+      // append bila durasi belum ada di label — "GSuite 1 Hari" tidak ganda.
+      try {
+        const { formatVariantLabel } = await import("@/lib/catalog");
+        displayName = `${row.name} — ${formatVariantLabel({
+          label: String(variantRow.label ?? ""),
+          duration_label: variantRow.duration_label != null ? String(variantRow.duration_label) : null,
+          duration_value: variantRow.duration_value != null ? Number(variantRow.duration_value) : null,
+          duration_unit: variantRow.duration_unit != null ? String(variantRow.duration_unit) : null,
+        })}`;
+      } catch {
+        displayName = `${row.name} — ${variantRow.label}`;
+      }
       // Unique-fulfillment = one secret per unit (review R3, parity with
       // Telegram cart which caps unique lines at qty 1): a web line asking
       // for qty>1 of a unique variant can never be reserved coherently

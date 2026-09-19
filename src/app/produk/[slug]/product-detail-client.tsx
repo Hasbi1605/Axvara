@@ -6,6 +6,7 @@ import type { Product } from "@/lib/products";
 import { formatRupiah } from "@/lib/utils";
 import type { VariantSummary } from "@/lib/catalog";
 import { formatWarranty } from "@/lib/catalog";
+import { formatVariantLabel } from "@/lib/catalog";
 import { deliveryEtaForBuyer } from "@/lib/warung-rebahan/delivery-class";
 import { useCart } from "@/stores/cart";
 import { ProductCard } from "@/components/storefront/ProductCard";
@@ -427,7 +428,7 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
                     >
                       <div className="flex justify-between items-start">
                         <div className="min-w-0">
-                          <span className="block text-sm font-medium text-white">{v.label}</span>
+                          <span className="block text-sm font-medium text-white">{formatVariantLabel(v)}</span>
                           <span className="mt-1.5 inline-flex">
                             {v.wr_delivery_class === "restock" ? (
                               <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300">Kirim otomatis</span>

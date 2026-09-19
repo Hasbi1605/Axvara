@@ -330,6 +330,23 @@ export function formatDuration(v: VariantSummary): string {
   return `${v.duration_value} ${unitMap[v.duration_unit] || v.duration_unit}`;
 }
 
+/**
+ * Label varian untuk pembeli: label + durasi bila durasi belum terkandung
+ * di label (cek case-insensitive). Menutup lubang sync WR 2026-09-19: API WR
+ * memisah nama ("Meitu VIP") dan durasi ("7 Hari"); sync menulis label =
+ * nama verbatim sehingga PDP web yang hanya render label kehilangan durasi
+ * (88/97 varian aktif; web WR menggabung "Meitu VIP - 7 Hari"). Guard
+ * includes mencegah duplikasi "7 Hari - 7 Hari" untuk label yang sudah
+ * mengandung durasi ("GSuite 1 Hari", "Canva Invite 1 Bulan").
+ */
+export function formatVariantLabel(v: Pick<VariantSummary, "label"> & Partial<Pick<VariantSummary, "duration_label" | "duration_value" | "duration_unit">>): string {
+  const label = String(v.label || "").trim();
+  const dur = formatDuration(v as VariantSummary).trim();
+  if (!dur) return label;
+  if (label.toLowerCase().includes(dur.toLowerCase())) return label;
+  return `${label} - ${dur}`;
+}
+
 export function formatWarranty(v: VariantSummary): string {
   // Tipe limited: SELALU bentuk kanonis "Garansi X Unit" dari field
   // terstruktur — JANGAN pulangkan warranty_label mentah ("12 Hari" ambigu:

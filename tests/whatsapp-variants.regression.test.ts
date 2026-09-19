@@ -14,6 +14,7 @@ import {
 } from "@/lib/warranty-policy";
 import {
   formatDuration,
+  formatVariantLabel,
   formatWarranty,
   formatRupiah,
   type VariantSummary,
@@ -113,6 +114,17 @@ describe("Catalog Formatting Helpers", () => {
 
   it("prefers duration_label when provided", () => {
     expect(formatDuration({ ...baseVariant, duration_label: "3 Bulan + 1 Bulan Bonus" })).toBe("3 Bulan + 1 Bulan Bonus");
+  });
+
+  it("formatVariantLabel append durasi hanya bila belum ada di label (audit Meitu 2026-09-19)", () => {
+    // Kasus Meitu: label "Meitu VIP" + durasi "7 Hari" → digabung.
+    expect(formatVariantLabel({ ...baseVariant, label: "Meitu VIP", duration_label: "7 Hari" })).toBe("Meitu VIP - 7 Hari");
+    expect(formatVariantLabel({ ...baseVariant, label: "Meitu VIP+", duration_label: "14 Hari" })).toBe("Meitu VIP+ - 14 Hari");
+    // Label yang sudah mengandung durasi TIDAK digandakan.
+    expect(formatVariantLabel({ ...baseVariant, label: "GSuite 1 Hari", duration_value: 1, duration_unit: "day", duration_label: null })).toBe("GSuite 1 Hari");
+    expect(formatVariantLabel({ ...baseVariant, label: "Canva Pro / Premium — Invite 1 Bulan", duration_value: 1, duration_unit: "month", duration_label: null })).toBe("Canva Pro / Premium — Invite 1 Bulan");
+    // Tanpa durasi → label apa adanya.
+    expect(formatVariantLabel({ ...baseVariant, label: "Pro", duration_label: null, duration_value: null, duration_unit: null })).toBe("Pro");
   });
 
   it("returns empty string when duration fields are null", () => {

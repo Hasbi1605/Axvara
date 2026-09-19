@@ -77,7 +77,7 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 | FR-S13 | Wishlist & histori pesanan jika pembeli login (opsional, email/WA OTP) | P2 |
 | FR-S14 | Bot Telegram @Axvara_bot: /start (foto welcome + sapaan), katalog, cari, keranjang, checkout QRIS, pesanan, garansi | P0 ✅ live |
 | FR-S15 | Bot grup WhatsApp (Baileys): list/katalog, cari, bayar QRIS, perintah admin `.d` (jalur manual + bukti SEABANK/EWALLET maintenance 2026-09-17) | P0 ✅ live |
-| FR-S16 | Produk varian terpusat: harga/stok/durasi/garansi per varian; harga kartu dari varian termurah tersedia | P0 ✅ live |
+| FR-S16 | Produk varian terpusat: harga/stok/durasi/garansi per varian; harga kartu dari varian termurah tersedia; label pembeli = label + durasi via `formatVariantLabel()` (audit 2026-09-19: 88/97 varian kehilangan durasi karena sync WR menulis label=nama verbatim — PDP/modal/quote web kini gabung "Meitu VIP - 7 Hari" ala web WR, anti-duplikasi case-insensitive) | P0 ✅ live |
 | FR-S18 | PDP menampilkan S&K + cara aktivasi per varian WR (read-only, ikut varian terpilih); label garansi kanonis "Garansi N Unit" | P0 ✅ live |
 | FR-S17 | Integrasi Warung Rebahan H2H: sync katalog terjadwal, auto-order exactly-once, webhook status, saldo monitor + throttle notif | P0 ✅ live (auto-order flag default off) |
 | FR-S19 | Minimum pembelian per varian (generik, default 1): GSuite min. 50 akun; label "Min. N" di PDP/modal/keranjang/bot; quote 409 + orders 409 + guard atomik; web/Telegram plafon 100/baris; WA qty-1 ditolak jelas untuk varian min>1 | P0 ✅ live (migrasi 0034) |
