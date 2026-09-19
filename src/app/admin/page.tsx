@@ -59,28 +59,22 @@ export default function AdminPage() {
     window.history.pushState(null, "", `${url.pathname}?${url.searchParams}`);
   }, [setOnlyLowStock, setProductPage]);
 
+  // Satu listener popstate untuk SELURUH state yang berasal dari URL: section
+  // dan filter yang dibawanya (mis. kartu "Stok menipis" → ?low_stock=1).
+  // Dua listener terpisah mem-parse URL yang sama dua kali per back/forward
+  // dan memisahkan aturan yang sebenarnya satu: "URL adalah sumber kebenaran".
   useEffect(()=>{
-    const syncSection=()=>{
-      const section=new URLSearchParams(window.location.search).get("section") as AdminSection|null;
-      if(section&&ADMIN_SECTIONS.includes(section))setTab(section);
-    };
-    syncSection();
-    window.addEventListener("popstate",syncSection);
-    return()=>window.removeEventListener("popstate",syncSection);
-  },[]);
-
-  // Kartu "Stok menipis" di Ringkasan mengirim ?low_stock=1. Tanpa jembatan
-  // ini kartu tersebut hanya memindah tab tanpa membawa konteksnya.
-  useEffect(()=>{
-    const syncLowStock=()=>{
+    const syncFromUrl=()=>{
       const params=new URLSearchParams(window.location.search);
-      const on=params.get("section")==="products"&&params.get("low_stock")==="1";
-      setOnlyLowStock(on);
-      if(on)setProductPage(()=>1);
+      const section=params.get("section") as AdminSection|null;
+      if(section&&ADMIN_SECTIONS.includes(section))setTab(section);
+      const lowStock=section==="products"&&params.get("low_stock")==="1";
+      setOnlyLowStock(lowStock);
+      if(lowStock)setProductPage(()=>1);
     };
-    syncLowStock();
-    window.addEventListener("popstate",syncLowStock);
-    return()=>window.removeEventListener("popstate",syncLowStock);
+    syncFromUrl();
+    window.addEventListener("popstate",syncFromUrl);
+    return()=>window.removeEventListener("popstate",syncFromUrl);
   },[setOnlyLowStock, setProductPage]);
 
   useEffect(()=>{ if(auth.authed) { void load(); void loadOverview(); } },[auth.authed, load, loadOverview]);

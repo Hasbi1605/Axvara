@@ -106,10 +106,15 @@ run audit ini: 5009 ms, lalu hijau saat diulang).
 
 Ditemukan bukan dari membaca panel admin, melainkan dari satu kegagalan pada
 run suite penuh. Diperbaiki karena flake di jalur deploy menghukum commit yang
-tidak bersalah: jitter kini dibaca per-panggilan
-(`outboxPaceJitterMs()`, env `WHATSAPP_OUTBOX_PACE_JITTER_MS`) dan test
-men-stub-nya ke 0. Durasi test turun dari 2174 ms → 8 ms. Perilaku produksi
-tidak berubah (env kosong = tetap jitter 3000 ms).
+tidak bersalah: base 0 kini berarti TANPA jeda sama sekali termasuk jitter
+(`if (base === 0) return 0`). Durasi test turun dari 2174 ms → 8 ms. Perilaku
+produksi tidak berubah (base 6000 = tetap + jitter ≤3000 ms).
+
+Catatan sinkronisasi (review 2026-09-19): upstream `Hasbi1605:main` fbc7235
+ternyata menambal flake yang SAMA dengan pendekatan berbeda. Implementasi di
+sini sengaja diselaraskan dengan milik upstream (guard `base === 0`, tanpa env
+baru) supaya file ini tidak bentrok saat sync — konvergensi lebih murah
+daripada dua perbaikan benar yang saling tabrak.
 
 ---
 

@@ -42,7 +42,9 @@ export function isOutboxDangerSignal(error: unknown): boolean {
 }
 
 export function paceDelayMs(): number {
-  return Math.max(0, WA_OUTBOX_PACE_BASE_MS) + Math.floor(Math.random() * outboxPaceJitterMs());
+  const base = Math.max(0, WA_OUTBOX_PACE_BASE_MS);
+  if (base === 0) return 0;
+  return base + Math.floor(Math.random() * WA_OUTBOX_PACE_JITTER_MS);
 }
 
 /** Dibaca per-panggilan (bukan sekali di import) agar test bisa override via env. */
@@ -50,19 +52,14 @@ export function outboxPaceBaseMs(): number {
   return Number(process.env.WHATSAPP_OUTBOX_PACE_MS || 6000);
 }
 
-/**
- * Jitter juga dibaca per-panggilan. Sebelumnya hanya base yang bisa
- * di-override, sehingga `WHATSAPP_OUTBOX_PACE_MS=0` tetap menyisakan tidur
- * acak 0–3 dtk per kirim: test 3-kirim rata-rata ~4,5 dtk melawan batas
- * default Vitest 5 dtk — flaky yang muncul-hilang tanpa perubahan kode.
- */
-export function outboxPaceJitterMs(): number {
-  const raw = process.env.WHATSAPP_OUTBOX_PACE_JITTER_MS;
-  return raw == null || raw === "" ? WA_OUTBOX_PACE_JITTER_MS : Math.max(0, Number(raw) || 0);
-}
-
 function paceDelayMsLive(): number {
-  return Math.max(0, outboxPaceBaseMs()) + Math.floor(Math.random() * outboxPaceJitterMs());
+  // Base 0 (dipakai test via WHATSAPP_OUTBOX_PACE_MS=0) = TANPA jeda sama
+  // sekali, termasuk jitter. Tanpa guard ini, jitter acak ≤3 dtk per baris
+  // membuat test multi-baris melewati timeout 5 dtk vitest di CI — flaky yang
+  // muncul-hilang tanpa perubahan kode. Produksi (base 6000) tidak berubah.
+  const base = Math.max(0, outboxPaceBaseMs());
+  if (base === 0) return 0;
+  return base + Math.floor(Math.random() * WA_OUTBOX_PACE_JITTER_MS);
 }
 
 export type WaOutboxKind = "payment_detected" | "text";
