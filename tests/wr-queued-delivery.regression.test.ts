@@ -73,20 +73,23 @@ describe("copy pembeli", () => {
     const checkout = read("src/app/checkout/page.tsx");
     expect(checkout).toContain("queuedNames");
     expect(checkout).toContain("Made By Order");
-    expect(checkout).toContain("WR_QUEUED_MAX_HOURS");
-    expect(checkout).toContain("Bukan pengiriman instan");
+    expect(checkout).toContain("estimasi 6–12 jam jika ramai");
+    expect(checkout).toContain("biasanya lebih cepat");
+    expect(checkout).toContain("mohon bersabar");
     // Flag berasal dari quote server, bukan tebakan client.
     expect(checkout).toContain("qi.queued_delivery === true");
   });
 
-  it("PDP + modal varian memakai label antrean, bukan 'Dikirim admin' yang samar", () => {
+  it("PDP + modal varian memakai badge Made By Order polos (tanpa angka jam)", () => {
     for (const file of [
       "src/app/produk/[slug]/product-detail-client.tsx",
       "src/components/storefront/QuickVariantModal.tsx",
     ]) {
       const src = read(file);
       expect(src, file).not.toContain("Dikirim admin");
-      expect(src, file).toContain("WR_QUEUED_MAX_HOURS");
+      expect(src, file).toContain("Made By Order");
+      // Angka jam hanya di kalimat ETA/template, bukan di badge.
+      expect(src, file).not.toContain("Made By Order · maks");
     }
     // Modal menampilkan kalimat ETA persis di atas CTA beli.
     expect(read("src/components/storefront/QuickVariantModal.tsx")).toContain("deliveryEtaForBuyer(selected.wr_delivery_class)");

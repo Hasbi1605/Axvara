@@ -4,7 +4,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useCart } from "@/stores/cart";
 import { formatRupiah } from "@/lib/utils";
-import { WR_QUEUED_MAX_HOURS } from "@/lib/warung-rebahan/delivery-class";
 import type { Product } from "@/lib/products";
 
 
@@ -463,7 +462,7 @@ function CheckoutInner() {
                 ) : (
                   <><span className="font-semibold text-white">{queuedNames.length} produk</span> di pesanan ini dibuat setelah orderan masuk</>
                 )}
-                {" "}— dikerjakan sesuai antrean, <span className="font-semibold text-white">maksimal {WR_QUEUED_MAX_HOURS} jam</span> pada jam layanan, mohon bersabar. Bukan pengiriman instan.
+                {" "}— dikerjakan sesuai antrean, <span className="font-semibold text-white">estimasi 6–12 jam jika ramai, biasanya lebih cepat</span>, mohon bersabar.
               </p>
             </div>
           )}

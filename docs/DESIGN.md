@@ -145,8 +145,8 @@
 - Badge pengiriman per varian TANPA emoji (anti AI slop, 2026-09-17; teks
   direvisi 2026-09-18/19): di bawah label varian (block, di atas harga/garansi) —
   restock = pill `emerald-400/25 + emerald-500/10` teks "Kirim otomatis",
-  selainnya = pill `gold/25 + gold/10` teks "Made By Order · maks 12 jam"
-  (PDP) / "Made By Order · maks 12 jam" (QuickVariantModal, ruang lebih sempit).
+  selainnya = pill `gold/25 + gold/10` teks "Made By Order" polos tanpa angka
+  jam (2026-09-19; sebelumnya "Made By Order · maks 12 jam").
   "Dikirim admin" dan "Diproses antrean" dibuang (samar / diganti istilah owner
   2026-09-19). Berlaku di kartu varian PDP desktop +
   QuickVariantModal. JANGAN taruh di card deskripsi/S&K (datanya per-varian,
@@ -156,8 +156,9 @@
   ganda sejak 2026-09-19) + teks di bawahnya, tepat di atas CTA
   QuickVariantModal (`text-[11px]`, gold untuk antrean / `white/40` untuk
   instan), dan blok checkout "Made By Order" (border+bg gold
-  `#FFB800/25` + `/[0.07]`; template "dibuat setelah orderan masuk —
-  dikerjakan sesuai antrean, maksimal 12 jam, mohon bersabar"; paragraf
+  `#FFB800/25` + `/[0.07]`; template sejak 2026-09-19: "dibuat setelah orderan
+  masuk — dikerjakan sesuai antrean, estimasi 6–12 jam jika ramai, biasanya
+  lebih cepat, mohon bersabar"; paragraf
   "Detail akun dikirim ke WhatsApp…Tidak perlu menunggu" dihapus 2026-09-19).
   Angka yang dijanjikan hanya PLAFON (maksimal 12
   jam) plus "umumnya lebih cepat"; jangan tampilkan rentang mentah 6–12 jam
