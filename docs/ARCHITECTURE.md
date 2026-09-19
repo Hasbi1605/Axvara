@@ -1145,7 +1145,18 @@ Perintah akun #2 wajib prefix `HEROKU_API_KEY=<kunci-akun-2>`; jangan
    (cek respons cron / Force Sync). Idempoten per episode (maks 1 ping;
    sweep sukses me-reset via pengosongan state), best-effort ≤4 query di
    dalam `budget.fits(4)`, hasil di `results.wr_sync_stale_alerted`. Ritme
-   normal tak pernah menyentuh 90 menit → tanpa alert palsu. Force Sync
+   normal tak pernah menyentuh 90 menit → tanpa alert palsu.
+   Revisi permanen malam 19 Sep (pelajaran insiden 18:26→23:32, 5 jam tanpa
+   ping): evaluasi watchdog PINDAH ke depan handler SETIAP RUN (bukan hanya
+   fase WR aktif) dengan konteks seadanya (`pre_phase` bila fase WR tak
+   aktif); blok 3c menjadi refresh konteks presisi 1x (`refreshStaleWrSyncContext`,
+   state `sync_stale_alert_context`) saat fase WR aktif mengetahui
+   `wr_sync_skipped` run itu. Hemat budget: skip total bila switch WR mati
+   (0 query — pelajaran RR5-02: query depan mencuri slot fulfillment drain
+   20-baris); 1 query baca bila tanpa histori. Urutan penting: blok depan
+   berjalan SEBELUM `wrTablesReady` didefinisikan → pakai probe `.catch`
+   langsung, JANGAN referensi variabel itu (ReferenceError tertelan catch =
+   watchdog mati diam — tertangkap test sebelum live). Force Sync
    dashboard (`POST /api/admin/warung/sync`) mem-bypass gerbang 30-menit dan
    melaporkan status jujur (success/partial/failed + errors) — pemulihan
    mandiri pemilik tanpa keahlian teknis.

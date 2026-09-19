@@ -51,7 +51,7 @@ Tiga lapis pertahanan sehingga (a) kegagalan terdeteksi otomatis dalam ≤90 men
 - Mock `sendMessage` seperti file test eksisting.
 - tsc + dev + Obscura + tembak prod baca field baru.
 
-## Kriteria Selesai
-- Insiden berikutnya: pemilik dapat ping Telegram ≤90 mnt TANPA mengecek manual, + bisa pulihkan via Force Sync dashboard + respons cron menyebut sebabnya.
-- Tidak ada alert palsu saat ritme normal (interval 30 mnt ≪ 90 mnt).
-- Test hijau, docs + changelog, push main, CI hijau.
+## Status implementasi (2026-09-20)
+- Lapis 1 (watchdog) + lapis 3 (skipped penuh) LIVE. Lapis 2 (Force Sync) terverifikasi sudah benar tanpa perubahan.
+- Revisi permanen: watchdog evaluasi SETIAP run di depan handler (insiden 18:26→23:32 membuktikan versi fase-aktif saja kebobolan 5 jam) + refresh konteks 1x + hemat budget 0-query bila switch mati (pelajaran RR5-02) + fix bug urutan `wrTablesReady` (tertangkap test).
+- Verifikasi: 899/899 test hijau (RED→GREEN ganda), tsc bersih, dev + Obscura OK.

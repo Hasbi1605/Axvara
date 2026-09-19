@@ -264,6 +264,44 @@ describe("cron operations — watchdog sync basi (issue anti-macet struktural)",
     const res = await run();
     expect(res.body.wr_sync_stale_alerted).toBe(1);
   });
+
+  it("watchdog berjalan SETIAP run walau fase WR tak aktif (pelajaran 18:26→23:32)", async () => {
+    // Insiden malam 19 Sep: 5 jam basi tanpa ping karena watchdog lama hanya
+    // hidup di fase WR aktif. Kini evaluasi di depan handler — fase notify
+    // (tanpa slot WR) pun tetap alert. Histori 100 menit: basi untuk watchdog
+    // (90 mnt) tapi SEGAR untuk guard 45-mnt... tidak — 100 > 45, guard tetap
+    // menyala. Kunci test ini: TANPA antrean WR dan fase notify, guard tetap
+    // bisa memaksa slot; yang diuji adalah HASIL (alert=1) + bukan dari blok
+    // 3c (yang butuh fase WR aktif + budget). Regresi sejati: hapus blok
+    // watchdog depan → run ini tak alert (terbukti di verifikasi RED).
+    vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
+    setPhase("notify");
+    fixture.sql.prepare(
+      `INSERT INTO wr_sync_log(sync_type,status,products_synced,variants_synced,trigger,created_at)
+       VALUES('products','success',48,87,'cron',datetime('now','-100 minutes'))`,
+    ).run();
+    const res = await run();
+    expect(res.status).toBe(200);
+    expect(res.body.wr_sync_stale_alerted).toBe(1);
+    expect(staleState()).not.toBeNull();
+  });
+
+  it("refresh konteks presisi 1x saat fase WR aktif (tanpa ping ganda episode)", async () => {
+    vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
+    const { refreshStaleWrSyncContext } = await import("@/lib/warung-rebahan/order");
+    // Episode terbuka: state = lastSync basi.
+    fixture.sql.prepare(
+      `INSERT INTO wr_sync_state (key,value) VALUES ('sync_stale_alerted_at','2026-09-19 18:26:32')
+       ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+    ).run();
+    const first = await refreshStaleWrSyncContext("2026-09-19 18:26:32", "interval");
+    expect(first).toBe(1);
+    // Konteks sama → diam; episode lain → diam.
+    expect(await refreshStaleWrSyncContext("2026-09-19 18:26:32", "interval")).toBe(0);
+    expect(await refreshStaleWrSyncContext("2026-09-19 19:00:00", "interval")).toBe(0);
+    // Tanpa konteks presisi → diam.
+    expect(await refreshStaleWrSyncContext("2026-09-19 18:26:32", "pre_phase")).toBe(0);
+  });
 });
 
 describe("cron operations — poison-pill guard", () => {

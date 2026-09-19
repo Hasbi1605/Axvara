@@ -854,6 +854,57 @@ export async function alertStaleWrSync(
 }
 
 /**
+ * Refresh konteks episode basi (pendamping alertStaleWrSync, permanen
+ * 2026-09-19 malam). Watchdog utama berjalan di DEPAN handler setiap run
+ * dengan konteks seadanya ("pre_phase" bila fase WR tak aktif). Bila fase WR
+ * aktif di run yang sama dan mengetahui sebab presisi (`wr_sync_skipped`),
+ * kirim SATU ping koreksi konteks hanya bila episode masih terbuka (state =
+ * lastSyncAt yang sama) dan konteks presisi berbeda dari "pre_phase".
+ * Tanpa refresh ini, satu-satunya ping episode membawa konteks buta.
+ * Idempoten: tak ada tulis state, tak ada ping ulang — murni 1x koreksi.
+ */
+export async function refreshStaleWrSyncContext(
+  lastSyncAt: string,
+  context: string | null,
+  database?: DatabaseAccess,
+): Promise<number> {
+  const db = database ?? createDatabaseAccess();
+  if (!isWrEnabled()) return 0;
+  if (!context || context === "pre_phase") return 0;
+  const prior = await db
+    .queryFirst(`SELECT value FROM wr_sync_state WHERE key='sync_stale_alerted_at'`)
+    .catch(() => null);
+  if (String(prior?.value || "") !== String(lastSyncAt)) return 0;
+  const corrected = await db
+    .queryFirst(`SELECT value FROM wr_sync_state WHERE key='sync_stale_alert_context'`)
+    .catch(() => null);
+  if (String(corrected?.value || "") === String(context)) return 0;
+  await db
+    .execRun(
+      `INSERT INTO wr_sync_state (key, value) VALUES ('sync_stale_alert_context',?)
+       ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+      String(context),
+    )
+    .catch(() => undefined);
+  const chatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
+  if (!chatId || process.env.TELEGRAM_BOT_ENABLED !== "true") return 1;
+  try {
+    const { sendMessage } = await import("@/lib/telegram/api");
+    await sendMessage({
+      chat_id: chatId,
+      text:
+        `🔍 <b>Konteks sync basi</b> <code>${escapeHtml(String(lastSyncAt))}</code>\n`
+        + `Sebab presisi: <code>${escapeHtml(String(context))}</code>\n`
+        + `Cek /api/cron/operations atau tekan Force Sync di admin → Warung Rebahan.`,
+      parse_mode: "HTML",
+    });
+  } catch {
+    /* konteks sudah tertulis; koreksi tak diulang */
+  }
+  return 1;
+}
+
+/**
  * Recover link stale: claimed yang lease-nya kedaluwarsa dan request belum
  * keluar → kembalikan ke pending (fenced, hanya bila lease masih milik
  * yang basi). Submitted/ordering stale → serahkan ke reconcile transaksi.

@@ -196,6 +196,44 @@ export async function POST(request: NextRequest) {
       );
     } catch { /* heartbeat tak boleh menggagalkan run */ }
 
+    // WATCHDOG SYNC BASI — SETIAP RUN (permanen, 2026-09-19 malam). Pelajaran
+    // insiden 18:26→23:32 UTC: watchdog lama hanya berjalan di fase WR AKTIF,
+    // sehingga run-run bergiliran fase lain tidak pernah mengevaluasinya dan
+    // pemilik tak dapat ping selama 5 jam basi. Evaluasi di sini memakai
+    // konteks seadanya (fase WR mungkin tak aktif → skipped="phase_inactive"
+    // sebagai konteks); blok 3c di fase WR memperkaya konteks + me-reset
+    // episode saat sweep sukses.
+    // HEMAT BUDGET (pelajaran RR5-02): watchdog depan berjalan SEBELUM
+    // admission budget fase mana pun, jadi tiap query-nya mencuri slot
+    // fulfillment pada drain 20-baris yang pas-pasan. Maka: (a) skip total
+    // bila switch WR mati (alertStaleWrSync return 0 juga — tanpa query);
+    // (b) SATU query baca last_sync; bila null (tak ada histori: fixture
+    // non-WR, DB baru) → selesai, 1 query tanpa efek. Hanya bila histori ADA,
+    // evaluasi alert (1-2 query tambahan yang memang dibutuhkan).
+    // CATATAN URUTAN: blok ini berjalan SEBELUM `wrTablesReady` didefinisikan
+    // di bawah (perhitungan antrean), jadi JANGAN referensikannya — pakai
+    // probe tabel langsung dengan `.catch(() => null)` (DB pra-0027 → null
+    // → skip, sama seperti guard tabel di runWarungRebahan).
+    try {
+      const { isWrEnabled } = await import("@/lib/warung-rebahan/client");
+      if (isWrEnabled()) {
+        const staleRow = await queryFirst(
+          `SELECT created_at FROM wr_sync_log
+           WHERE sync_type='products' AND status IN ('success','partial')
+           ORDER BY created_at DESC LIMIT 1`,
+        ).catch(() => null);
+        if (typeof staleRow?.created_at === "string") {
+          results.wr_last_sync_at = String(staleRow.created_at);
+          const { alertStaleWrSync } = await import("@/lib/warung-rebahan/order");
+          results.wr_sync_stale_alerted = await alertStaleWrSync(
+            String(staleRow.created_at),
+            typeof results.wr_sync_skipped === "string" ? String(results.wr_sync_skipped) : "pre_phase",
+            database,
+          );
+        }
+      }
+    } catch { /* watchdog tak boleh menggagalkan run */ }
+
     // Hitung antrean dalam SATU query gabungan (1 query, bukan 8 — RR3-01/
     // RR3-03): tiap COUNT adalah subselect murah atas indeks status. Tanpa
     // ini, 10 query baca di depan + heater + 3 scan = 14 query sebelum satu
@@ -790,8 +828,13 @@ export async function POST(request: NextRequest) {
               if (typeof syncResult.synced === "number" && syncResult.synced > 0) {
                 // Sweep sukses me-reset episode basi watchdog: sweep berikut
                 // yang basi lagi akan alert ulang (state = lastSync LAMA).
+                // Konteks koreksi ikut dibersihkan agar episode baru segar.
                 await execRun(
                   `INSERT INTO wr_sync_state (key, value) VALUES ('sync_stale_alerted_at','')
+                   ON CONFLICT(key) DO UPDATE SET value=''`,
+                ).catch(() => undefined);
+                await execRun(
+                  `INSERT INTO wr_sync_state (key, value) VALUES ('sync_stale_alert_context','')
                    ON CONFLICT(key) DO UPDATE SET value=''`,
                 ).catch(() => undefined);
               }
@@ -841,17 +884,19 @@ export async function POST(request: NextRequest) {
           } catch { /* best-effort */ }
         }
 
-        // 3c. Watchdog sync basi (anti-macet struktural, 2026-09-19): bila
-        //     sweep terakhir >90 menit, ping Telegram admin MAKS 1x per
-        //     episode (idempoten via wr_sync_state). Berjalan di fase WR
-        //     aktif SETELAH blok sync agar `wr_sync_skipped` run ini ikut
-        //     jadi konteks alert. Ritme normal 30 mnt ≪ 90 mnt → tak ada
-        //     alert palsu.
-        if (budget.fits(4)) {
+        // 3c. Watchdog sync basi — REFRESH konteks (anti-macet struktural):
+        //     evaluasi utama SUDAH berjalan di depan handler setiap run
+        //     (lihat blok watchdog di atas) agar tak tergantung fase WR aktif
+        //     — pelajaran insiden 18:26→23:32 UTC (5 jam tanpa ping karena
+        //     watchdog lama hanya hidup di fase WR). Di sini, bila fase WR
+        //     aktif dan `wr_sync_skipped` run ini terisi, segarkan konteks
+        //     alert bila episode masih terbuka (state = last_sync yang sama).
+        //     Ritme normal 30 mnt ≪ 90 mnt → tak ada alert palsu.
+        if (budget.fits(4) && typeof results.wr_last_sync_at === "string") {
           try {
-            const { alertStaleWrSync } = await import("@/lib/warung-rebahan/order");
-            results.wr_sync_stale_alerted = await alertStaleWrSync(
-              typeof results.wr_last_sync_at === "string" ? String(results.wr_last_sync_at) : null,
+            const { refreshStaleWrSyncContext } = await import("@/lib/warung-rebahan/order");
+            await refreshStaleWrSyncContext(
+              String(results.wr_last_sync_at),
               typeof results.wr_sync_skipped === "string" ? String(results.wr_sync_skipped) : null,
               database,
             );
