@@ -128,6 +128,10 @@ function CheckoutInner() {
   // Invite/Link atau produk require_email=1. Dihitung server di quote agar
   // tidak bisa diakali client; form + API menegakkan sebelum bayar.
   const [emailRequired, setEmailRequired] = useState(false);
+  // Ringkasan accordion mobile (Batch C): state HARUS di sini bersama hooks
+  // lain — di bawah ada early return (direct loading/error, keranjang
+  // kosong) dan hook setelah return = crash "Rendered more hooks".
+  const [summaryOpen, setSummaryOpen] = useState(true);
   const quoteRequestId = React.useRef(0);
 
   const fetchQuote = useCallback(async (quoteItems: { slug: string; variant_id?: number; qty: number; expected_price: number }[]) => {
@@ -327,12 +331,66 @@ function CheckoutInner() {
     }
   };
 
+  // Sticky bottom CTA (mobile) + rail CTA (desktop) memanggil submit yang
+  // sama dengan tombol utama di kolom kiri — satu handler, tanpa duplikasi
+  // logika validasi/quote.
+  const ctaDisabled = loading || quoteLoading || method !== "qris" || !quoteToken || !quoteAccepted || quoteIssues.length > 0 || !agreed;
+  const ctaLabel = loading ? "Memproses…" : `Bayar ${formatRupiah(displaySubtotal)} — Buat Pesanan`;
+
   return (
     <div className="mx-auto max-w-[1100px] px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
       <h1 className="font-display font-bold text-2xl text-white tracking-[-0.02em]">Checkout</h1>
       <p className="text-sm text-white/50">Isi data, pilih pembayaran, lalu selesaikan pesanan.</p>
 
-      <div className="mt-6 grid lg:grid-cols-[1fr_380px] gap-6">
+      {/* Ringkasan accordion — MOBILE ONLY (lg:hidden). Di desktop ringkasan
+          hidup di rail kanan yang sticky; di mobile rail jatuh ke bawah dan
+          CTA tenggelam — accordion di atas mengembalikan total ke viewport
+          awal tanpa menambah field. */}
+      <div className="mt-4 lg:hidden ax-glass-card rounded-[20px] overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setSummaryOpen((v) => !v)}
+          aria-expanded={summaryOpen}
+          aria-controls="checkout-summary-mobile"
+          className="w-full flex items-center justify-between px-4 py-3 text-left"
+        >
+          <span className="text-sm font-semibold text-white">Ringkasan Pesanan</span>
+          <span className="flex items-center gap-2">
+            <span className="font-display font-bold text-white text-sm">{formatRupiah(displaySubtotal)}</span>
+            <svg viewBox="0 0 24 24" className={`w-4 h-4 text-white/50 transition-transform ${summaryOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M6 9l6 6 6-6" /></svg>
+          </span>
+        </button>
+        {summaryOpen && (
+          <div id="checkout-summary-mobile" className="px-4 pb-4">
+            {quoteLoading ? (
+              <div className="flex items-center gap-2 text-sm text-white/50">
+                <span className="w-4 h-4 rounded-full border-2 border-white/20 border-t-[#00E5FF] animate-spin" />
+                Memuat…
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {displayItems.map((it) => (
+                  <div key={it.id} className="flex gap-3">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={it.image} alt={it.name} className="w-12 h-12 rounded-xl object-cover" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13px] text-white leading-4 line-clamp-2">{it.name}</p>
+                      <p className="text-[11px] text-white/50">Qty {it.qty} × {formatRupiah(it.price)}</p>
+                    </div>
+                    <span className="text-[13px] font-semibold text-white">{formatRupiah(it.price * it.qty)}</span>
+                  </div>
+                ))}
+                <div className="pt-3 border-t border-white/10 flex justify-between">
+                  <span className="text-[13px] text-white/60">Total</span>
+                  <span className="font-display font-bold text-white">{formatRupiah(displaySubtotal)}</span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="mt-6 grid lg:grid-cols-[1fr_380px] gap-6 items-start">
         {/* Form */}
         <div className="ax-glass-card rounded-[24px] p-5 sm:p-6 space-y-6">
           <div>
@@ -484,43 +542,86 @@ function CheckoutInner() {
             </span>
           </label>
 
-          <button onClick={submit} disabled={loading || quoteLoading || method !== "qris" || !quoteToken || !quoteAccepted || quoteIssues.length > 0 || !agreed} className="w-full h-[52px] rounded-xl bg-[#00E5FF] text-[#080C1E] font-bold hover:bg-[#00D0E8] disabled:opacity-60 transition inline-flex items-center justify-center gap-2">
+          <button onClick={submit} disabled={ctaDisabled} className="w-full h-[52px] rounded-xl bg-[#00E5FF] text-[#080C1E] font-bold hover:bg-[#00D0E8] disabled:opacity-60 transition inline-flex items-center justify-center gap-2">
             {loading && <span className="w-5 h-5 rounded-full border-2 border-[#080C1E]/20 border-t-[#080C1E] animate-spin" />}
-            {loading ? "Memproses…" : `Bayar ${formatRupiah(displaySubtotal)} — Buat Pesanan`}
+            {ctaLabel}
           </button>
+          {/* Sticky bottom CTA — MOBILE ONLY. Menghilangkan jarak antara
+              keputusan dan aksi: pembeli tidak perlu scroll melewati 3 step
+              untuk menemukan tombol bayar. Memakai handler + state disabled
+              yang sama dengan tombol utama (tidak ada logika ganda). */}
+          <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#080C1E]/90 backdrop-blur-xl border-t border-white/10 px-4 py-2.5 pb-[max(10px,env(safe-area-inset-bottom))]">
+            <button onClick={submit} disabled={ctaDisabled} className="w-full h-12 rounded-xl bg-[#00E5FF] text-[#080C1E] font-bold text-sm hover:bg-[#00D0E8] disabled:opacity-60 transition inline-flex items-center justify-center gap-2">
+              {loading && <span className="w-4 h-4 rounded-full border-2 border-[#080C1E]/20 border-t-[#080C1E] animate-spin" />}
+              {ctaLabel}
+            </button>
+          </div>
+          {/* Spacer agar konten tidak tertutup sticky CTA mobile. */}
+          <div className="lg:hidden h-[68px]" aria-hidden />
         </div>
 
-        {/* Ringkasan */}
-        <div className="ax-glass-card rounded-[24px] p-5 h-fit sticky top-[72px]">
-          <h3 className="font-semibold text-white text-sm">Ringkasan Pesanan</h3>
-          {quoteLoading ? (
-            <div className="mt-4 flex items-center gap-2 text-sm text-white/50">
-              <span className="w-4 h-4 rounded-full border-2 border-white/20 border-t-[#00E5FF] animate-spin" />
-              Memuat…
-            </div>
-          ) : (
-          <>
-          <div className="mt-4 space-y-3">
-            {displayItems.map((it) => (
-              <div key={it.id} className="flex gap-3">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={it.image} alt={it.name} className="w-14 h-14 rounded-xl object-cover" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-white leading-4 line-clamp-2">{it.name}</p>
-                  <p className="text-xs text-white/50">Qty {it.qty} × {formatRupiah(it.price)}</p>
-                </div>
-                <span className="text-sm font-semibold text-white">{formatRupiah(it.price * it.qty)}</span>
+        {/* Action rail kanan — RINGKASAN + AKSI (pola WR). Sticky agar total
+            + CTA selalu terlihat saat pembeli mengisi form panjang di kiri.
+            Tidak menambah field/metode/diskon — murni susun ulang. */}
+        <aside className="ax-glass-card rounded-[24px] p-5 h-fit lg:sticky lg:top-[72px] space-y-4" aria-label="Ringkasan dan pembayaran">
+          <div>
+            <h3 className="font-semibold text-white text-sm">Ringkasan Pesanan</h3>
+            {quoteLoading ? (
+              <div className="mt-4 flex items-center gap-2 text-sm text-white/50">
+                <span className="w-4 h-4 rounded-full border-2 border-white/20 border-t-[#00E5FF] animate-spin" />
+                Memuat…
               </div>
-            ))}
+            ) : (
+            <>
+            <div className="mt-4 space-y-3">
+              {displayItems.map((it) => (
+                <div key={it.id} className="flex gap-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={it.image} alt={it.name} className="w-14 h-14 rounded-xl object-cover" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-white leading-4 line-clamp-2">{it.name}</p>
+                    <p className="text-xs text-white/50">Qty {it.qty} × {formatRupiah(it.price)}</p>
+                  </div>
+                  <span className="text-sm font-semibold text-white">{formatRupiah(it.price * it.qty)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 pt-4 border-t border-white/10 flex justify-between">
+              <span className="text-sm text-white/60">Total</span>
+              <span className="font-display font-bold text-white text-lg">{formatRupiah(displaySubtotal)}</span>
+            </div>
+            </>
+            )}
           </div>
-          <div className="mt-4 pt-4 border-t border-white/10 flex justify-between">
-            <span className="text-sm text-white/60">Total</span>
-            <span className="font-display font-bold text-white text-lg">{formatRupiah(displaySubtotal)}</span>
-          </div>
-          </>
+
+          {/* Badge Made By Order di rail — kepastian waktu sedekat mungkin
+              dengan tombol bayar (pembeli ragu di detik terakhir). */}
+          {queuedNames.length > 0 && (
+            <div className="rounded-xl border border-[#FFB800]/25 bg-[#FFB800]/[0.07] px-3 py-2.5">
+              <span className="inline-flex rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFD66B]">Made By Order</span>
+              <p className="mt-1.5 text-[11px] leading-4 text-white/55">Estimasi 6–12 jam jika ramai, biasanya lebih cepat, mohon bersabar.</p>
+            </div>
           )}
-          <p className="text-xs text-white/30 mt-3 text-center">QRIS diverifikasi otomatis — pembayaran terkonfirmasi tanpa upload bukti.</p>
-        </div>
+
+          {/* Trust rail — 3 sinyal Batch A, diulang ringkas di titik aksi. */}
+          <ul className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-white/45">
+            <li>QRIS otomatis</li>
+            <li className="opacity-30">•</li>
+            <li>Garansi replace</li>
+            <li className="opacity-30">•</li>
+            <li>Support WA admin</li>
+          </ul>
+
+          {/* CTA duplikat desktop — sama handler/disabled dengan tombol kiri.
+              Mobile disembunyikan (sudah ada sticky bottom) agar tidak ganda. */}
+          <div className="hidden lg:block">
+            <button onClick={submit} disabled={ctaDisabled} className="w-full h-[52px] rounded-xl bg-[#00E5FF] text-[#080C1E] font-bold hover:bg-[#00D0E8] disabled:opacity-60 transition inline-flex items-center justify-center gap-2">
+              {loading && <span className="w-5 h-5 rounded-full border-2 border-[#080C1E]/20 border-t-[#080C1E] animate-spin" />}
+              {ctaLabel}
+            </button>
+            <p className="text-xs text-white/30 mt-3 text-center">QRIS diverifikasi otomatis — pembayaran terkonfirmasi tanpa upload bukti.</p>
+          </div>
+        </aside>
       </div>
 
       {/* Price-change / stock / minimum-qty issue dialog.

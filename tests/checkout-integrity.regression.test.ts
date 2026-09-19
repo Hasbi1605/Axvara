@@ -52,6 +52,30 @@ describe("Checkout quote integrity", () => {
     expect(read("src/components/storefront/QuickVariantModal.tsx")).toContain("formatVariantLabel(v)");
   });
 
+  it("layout action-rail (Batch C 2026-09-19): kanan sticky berisi ringkasan + CTA, mobile ada accordion + sticky CTA", () => {
+    const checkout = read("src/app/checkout/page.tsx");
+    // Rail kanan: aside sticky dengan ringkasan + badge MBO + CTA duplikat.
+    expect(checkout).toContain("Action rail kanan");
+    expect(checkout).toContain("lg:sticky lg:top-[72px]");
+    expect(checkout).toContain("Ringkasan dan pembayaran");
+    // Satu handler submit dipakai 3 tombol (kiri + rail + sticky mobile) —
+    // tidak ada logika validasi ganda.
+    expect(checkout).toContain("ctaDisabled");
+    expect(checkout).toContain("ctaLabel");
+    const submitCount = (checkout.match(/onClick=\{submit\}/g) || []).length;
+    expect(submitCount).toBe(3);
+    // Mobile: accordion ringkasan di atas + sticky bottom CTA + spacer.
+    expect(checkout).toContain("Ringkasan accordion");
+    expect(checkout).toContain("checkout-summary-mobile");
+    expect(checkout).toContain("Sticky bottom CTA");
+    expect(checkout).toContain("fixed bottom-0");
+    // Batasan batch: tidak ada metode/voucher/logic quote baru — hanya 3
+    // tombol submit yang berbagi satu handler + tidak ada input kode promo.
+    expect(checkout).not.toContain("kode promo");
+    expect(checkout).not.toContain("kode voucher");
+    expect(checkout).not.toContain("Masukkan voucher");
+  });
+
   it("variant mode tidak dapat dibypass dengan checkout tanpa variant_id", () => {
     const quote = read("src/app/api/checkout/quote/route.ts");
     const products = read("src/app/api/products/route.ts");

@@ -65,7 +65,7 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 | FR-S2 | Katalog produk dengan grid Apple-style, filter kategori (AI Gateway, Akun Premium, Tools Pro, Bundle Kucing), search, dan sorting | P0 MVP |
 | FR-S3 | Halaman detail produk: galeri gambar, harga (diskon/coret), stok, deskripsi, benefit, tombol Tambah ke Keranjang & Beli Langsung | P0 MVP |
 | FR-S4 | Keranjang slide-drawer dari kanan (tanpa pindah halaman), ubah qty, hapus item, lihat subtotal | P0 MVP |
-| FR-S5 | Checkout 1 halaman: data pembeli (nama, WA, email opsional) → pilih metode pembayaran (QRIS; E-Wallet/SeaBank maintenance 2026-09-17) → ringkasan order | P0 MVP |
+| FR-S5 | Checkout 1 halaman: data pembeli (nama, WA, email opsional) → pilih metode pembayaran (QRIS; E-Wallet/SeaBank maintenance 2026-09-17) → ringkasan order; layout action-rail sejak 2026-09-19 (kiri 3 step, kanan sticky ringkasan + CTA; mobile accordion ringkasan + CTA sticky bottom) | P0 MVP |
 | FR-S6 | Jika pilih E-Wallet: tampilkan nomor 082135277434 + nama pemilik + tombol Copy + instruksi | P0 MVP ⏸️ maintenance 2026-09-17 (field tampil disabled + badge Maintenance di WEB; dihilangkan di WA/TELE; upload bukti disembunyikan) |
 | FR-S7 | Jika pilih SeaBank: tampilkan 901812349386 + instruksi | P0 MVP ⏸️ maintenance 2026-09-17 (lihat FR-S6) |
 | FR-S8 | Jika pilih QRIS: setelah order tampilkan QRIS dinamis, nominal unik, countdown 15 menit, tombol Download, dan polling status | P0 MVP |
