@@ -157,6 +157,10 @@ describe("variant min_qty — bot & storefront", () => {
     expect(rows).toContain("Isi saat ini");
     expect(rows).toContain("Ganti pesan bersama");
     expect(rows).toContain("useEffect");
+    // Mode shared tidak memakai inventory count — badge-nya status pesan
+    // bersama, bukan "Tersedia 0" yang menipu (bug screenshot 2026-09-19:
+    // pesan sudah ada tapi badge 0 semua karena count inventory = 0/0).
+    expect(rows).toContain("Pesan bersama aktif");
     // Jalur simpan resmi meneruskan fulfillment_mode sampai DB.
     expect(read("src/components/admin/useProductManager.ts")).toContain("fulfillment_mode");
     expect(read("src/app/api/products/[id]/route.ts")).toContain("fulfillment_mode");

@@ -115,7 +115,15 @@ function NonWrFulfillmentPanel({ productId, variantId, mode }: { productId?: num
           <p className="mt-0.5 text-[11px] text-white/35">Tersimpan terenkripsi di database; terlihat di panel admin ini.</p>
         </div>
         <div className="flex items-center gap-2">
-          {counts && <div className="flex flex-wrap gap-1.5 text-[10px]"><span className="rounded-full bg-emerald-500/10 px-2 py-1 text-emerald-300">Tersedia {counts.available}</span><span className="rounded-full bg-white/[0.06] px-2 py-1 text-white/45">Terpakai {counts.delivered}</span><span className="rounded-full bg-[#FFB800]/10 px-2 py-1 text-[#FFCF55]">Dipesan {counts.reserved}</span></div>}
+          {mode === "shared" ? (
+            sharedCurrent ? (
+              <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[10px] font-bold text-emerald-300">Pesan bersama aktif</span>
+            ) : (
+              <span className="rounded-full bg-white/[0.06] px-2 py-1 text-[10px] text-white/45">Belum ada isi</span>
+            )
+          ) : (
+            counts && <div className="flex flex-wrap gap-1.5 text-[10px]"><span className="rounded-full bg-emerald-500/10 px-2 py-1 text-emerald-300">Tersedia {counts.available}</span><span className="rounded-full bg-white/[0.06] px-2 py-1 text-white/45">Terpakai {counts.delivered}</span><span className="rounded-full bg-[#FFB800]/10 px-2 py-1 text-[#FFCF55]">Dipesan {counts.reserved}</span></div>
+          )}
           <button type="button" onClick={() => void load()} className="text-[11px] font-semibold text-[#5cefff] hover:underline">Muat ulang</button>
         </div>
       </div>
