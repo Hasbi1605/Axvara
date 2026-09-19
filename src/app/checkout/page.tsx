@@ -598,7 +598,7 @@ function CheckoutInner() {
               {loading && <span className="w-5 h-5 rounded-full border-2 border-[#080C1E]/20 border-t-[#080C1E] animate-spin" />}
               {ctaLabel}
             </button>
-            <p className="text-xs text-white/30 mt-3 text-center">QRIS diverifikasi otomatis — pembayaran terkonfirmasi tanpa upload bukti.</p>
+            <p className="text-xs text-white/30 mt-3 text-center">QRIS diverifikasi otomatis.</p>
           </div>
         </aside>
       </div>

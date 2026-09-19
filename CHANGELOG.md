@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-09-19 — Potong catatan mikro CTA checkout → "QRIS diverifikasi otomatis." (tanpa embel-embel upload bukti) — src/app/checkout/page.tsx — (verifikasi: 881/881 test [84 file] hijau, tsc bersih)
+
 - 2026-09-19 — Hapus blok detail "QRIS dinamis dibuat setelah pesanan…" dari paymentBlock checkout (redundan dengan ② Verifikasi Otomatis di kiri) — src/app/checkout/page.tsx — (verifikasi: 881/881 test [84 file] hijau, tsc bersih)
 
 - 2026-09-19 — Batch C revisi anti-redundan (feedback owner + screenshot): (1) mini-blok MBO + trust sebaris "QRIS otomatis • Garansi replace • Support WA admin" DIHAPUS dari rail kanan (estimasi sudah di kiri, trust sudah di hero); (2) gaya WR penuh — Metode Pembayaran + S&K agreement + error + CTA pindah ke rail kanan (variabel paymentBlock/agreeBlock satu definisi, state tetap satu sumber); kiri hanya ① Data Pembeli + ② Verifikasi Otomatis + blok Made By Order (+ error/sticky-mobile); 2 tombol submit berbagi handler ctaDisabled/ctaLabel — src/app/checkout/page.tsx, tests/checkout-integrity.regression.test.ts (guard: paymentBlock+agreeBlock di rail, tanpa Trust rail, 2× onClick submit) — (verifikasi: 881/881 test [84 file] hijau, tsc bersih)
