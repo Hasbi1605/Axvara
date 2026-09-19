@@ -55,8 +55,9 @@ export function outboxPaceBaseMs(): number {
 function paceDelayMsLive(): number {
   // Base 0 (dipakai test via WHATSAPP_OUTBOX_PACE_MS=0) = TANPA jeda sama
   // sekali, termasuk jitter. Tanpa guard ini, jitter acak ≤3 dtk per baris
-  // membuat test multi-baris melewati timeout 5 dtk vitest di CI — flaky yang
-  // muncul-hilang tanpa perubahan kode. Produksi (base 6000) tidak berubah.
+  // membuat test 5-baris butuh ~7,5 dtk > timeout vitest 5 dtk di CI
+  // (insiden run 35454769472, 2026-09-19 — di lokal lolos karena paralelisme
+  // worker menutupi sleep).
   const base = Math.max(0, outboxPaceBaseMs());
   if (base === 0) return 0;
   return base + Math.floor(Math.random() * WA_OUTBOX_PACE_JITTER_MS);
