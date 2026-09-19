@@ -73,9 +73,14 @@ describe("copy pembeli", () => {
     const checkout = read("src/app/checkout/page.tsx");
     expect(checkout).toContain("queuedNames");
     expect(checkout).toContain("Made By Order");
-    expect(checkout).toContain("estimasi 6–12 jam jika ramai");
-    expect(checkout).toContain("biasanya lebih cepat");
-    expect(checkout).toContain("mohon bersabar");
+    // Copy 2026-09-19 (framing positif): tanpa kata antre/ramai/sabar,
+    // tanpa rentang 6–12 jam — hanya janji plafon 12 jam.
+    expect(checkout).toContain("dibuat setelah pembayaran terkonfirmasi");
+    expect(checkout).toContain("Umumnya terkirim cepat");
+    expect(checkout).toContain("maksimal 12 jam pada jam layanan");
+    expect(checkout).not.toContain("estimasi 6–12 jam jika ramai");
+    expect(checkout).not.toContain("mohon bersabar");
+    expect(checkout).not.toContain("dikerjakan sesuai antrean");
     // Flag berasal dari quote server, bukan tebakan client.
     expect(checkout).toContain("qi.queued_delivery === true");
   });

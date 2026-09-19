@@ -230,7 +230,7 @@ function CheckoutInner() {
 
   // Display items: prefer quoted (authoritative), fallback to cart snapshot
   const displayItems = quotedItems.length > 0 ? quotedItems.map((qi) => ({ id: qi.product_id, name: qi.name, price: qi.price, qty: qi.qty, image: qi.image })) : items;
-  // Nama produk yang dikerjakan sesuai antrean (dari quote server, bukan
+  // Nama produk Made By Order (dari quote server, bukan
   // tebakan client) — dipakai untuk peringatan waktu sebelum bayar.
   const queuedNames = quotedItems.filter((qi) => qi.queued_delivery === true).map((qi) => qi.name);
   const displaySubtotal = quotedItems.length > 0 ? quotedSubtotal : subtotal;
@@ -519,17 +519,20 @@ function CheckoutInner() {
 
           {/* Ekspektasi waktu SEBELUM bayar. Wajib di sini, bukan hanya di
               halaman pesanan: varian antrean butuh jam-jaman, dan pembeli yang
-              baru tahu setelah uangnya masuk berhak merasa dibohongi. */}
+              baru tahu setelah uangnya masuk berhak merasa dibohongi.
+              Copy 2026-09-19 (keputusan owner): framing positif "dibuat
+              khusus", tanpa kata antre/ramai/sabar dan tanpa rentang
+              6–12 jam — hanya janji plafon 12 jam. */}
           {queuedNames.length > 0 && (
             <div className="rounded-2xl border border-[#FFB800]/25 bg-[#FFB800]/[0.07] p-4">
               <h2 className="text-sm font-semibold text-[#FFD66B]">Made By Order</h2>
               <p className="mt-1 text-xs leading-5 text-white/60">
                 {queuedNames.length === 1 ? (
-                  <><span className="font-semibold text-white">{queuedNames[0]}</span> dibuat setelah orderan masuk</>
+                  <><span className="font-semibold text-white">{queuedNames[0]}</span> dibuat setelah pembayaran terkonfirmasi.</>
                 ) : (
-                  <><span className="font-semibold text-white">{queuedNames.length} produk</span> di pesanan ini dibuat setelah orderan masuk</>
+                  <><span className="font-semibold text-white">{queuedNames.length} produk</span> di pesanan ini dibuat setelah pembayaran terkonfirmasi.</>
                 )}
-                {" "}— dikerjakan sesuai antrean, <span className="font-semibold text-white">estimasi 6–12 jam jika ramai, biasanya lebih cepat</span>, mohon bersabar.
+                {" "}Umumnya terkirim cepat, maksimal 12 jam pada jam layanan.
               </p>
             </div>
           )}

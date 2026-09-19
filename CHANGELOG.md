@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-09-19 — Copy Made By Order checkout di-reframe positif (keputusan owner): "{produk} dibuat setelah pembayaran terkonfirmasi. Umumnya terkirim cepat, maksimal 12 jam pada jam layanan." — kata antre/ramai/sabar + rentang 6–12 jam dibuang; komentar kode diselaraskan — src/app/checkout/page.tsx, tests/wr-queued-delivery.regression.test.ts (guard: wajib ada kalimat baru, wajib tidak ada frasa lama) — (verifikasi: 881/881 test [84 file] hijau, tsc bersih)
+
 - 2026-09-19 — Mikrocopy WA checkout: hint "Untuk pengiriman detail produk — tidak untuk spam." di bawah input No WA (aria-describedby) agar pembeli tak ragu memberi nomor — src/app/checkout/page.tsx — (verifikasi: 881/881 test [84 file] hijau, tsc bersih)
 
 - 2026-09-19 — Potong "Biarkan halaman terbuka;" dari ② Verifikasi Otomatis checkout — src/app/checkout/page.tsx — (verifikasi: 881/881 test [84 file] hijau, tsc bersih)
