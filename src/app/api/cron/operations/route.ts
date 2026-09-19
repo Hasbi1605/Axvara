@@ -149,7 +149,7 @@ export async function POST(request: NextRequest) {
     // ambigu untuk 4 kondisi berbeda (fase tak aktif / interval belum tempo /
     // switch mati / tabel belum siap) dan gap 3 jam tak terlihat. Nilai:
     // "disabled" | "phase_inactive" | "interval" | "sync_disabled" |
-    // "deadline" | "query_budget" (dua terakhir sudah ada).
+    // "budget_yielded" | "attempted_failed" | "deadline" | "query_budget".
     wr_sync_skipped: null as string | null,
     // `created_at` sweep products terakhir (atau null) — respons tunggal
     // cukup untuk diagnosa tanpa query D1 tambahan.
@@ -787,8 +787,29 @@ export async function POST(request: NextRequest) {
             try {
               const syncResult = await syncProducts(database, undefined, { maxProducts: WR_SYNC_PRODUCTS_PER_RUN, trigger: "cron" });
               results.wr_products_synced = syncResult.synced;
-              if (syncResult.budgetYielded && !deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan");
-              if (syncResult.errors.length && !deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan");
+              if (typeof syncResult.synced === "number" && syncResult.synced > 0) {
+                // Sweep sukses me-reset episode basi watchdog: sweep berikut
+                // yang basi lagi akan alert ulang (state = lastSync LAMA).
+                await execRun(
+                  `INSERT INTO wr_sync_state (key, value) VALUES ('sync_stale_alerted_at','')
+                   ON CONFLICT(key) DO UPDATE SET value=''`,
+                ).catch(() => undefined);
+              }
+              if (syncResult.budgetYielded) {
+                if (!deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan");
+                // Respons jujur penuh: budget-yield HANYA mendorong deferred
+                // tanpa mengisi skipped — masih ambigu di JSON. attempted
+                // sweep yang tak tuntas = "budget_yielded".
+                if (results.wr_sync_skipped == null) results.wr_sync_skipped = "budget_yielded";
+              }
+              if (syncResult.errors.length) {
+                if (!deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan");
+                // Sama: errors tanpa skipped = ambigu. Sweep dicoba tapi
+                // menyimpan error = "attempted_failed" (lebih informatif
+                // daripada interval/disabled, jadi TIMPA).
+                results.wr_sync_skipped = "attempted_failed";
+                results.wr_sync_errors = syncResult.errors.slice(0, 3);
+              }
             } catch { if (!deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan"); }
           } else {
             // Interval 30 menit belum jatuh tempo — kondisi normal tersering.
@@ -818,6 +839,23 @@ export async function POST(request: NextRequest) {
           try {
             results.wr_orders_aging_alerted = await alertAgingWrOrders(database);
           } catch { /* best-effort */ }
+        }
+
+        // 3c. Watchdog sync basi (anti-macet struktural, 2026-09-19): bila
+        //     sweep terakhir >90 menit, ping Telegram admin MAKS 1x per
+        //     episode (idempoten via wr_sync_state). Berjalan di fase WR
+        //     aktif SETELAH blok sync agar `wr_sync_skipped` run ini ikut
+        //     jadi konteks alert. Ritme normal 30 mnt ≪ 90 mnt → tak ada
+        //     alert palsu.
+        if (budget.fits(4)) {
+          try {
+            const { alertStaleWrSync } = await import("@/lib/warung-rebahan/order");
+            results.wr_sync_stale_alerted = await alertStaleWrSync(
+              typeof results.wr_last_sync_at === "string" ? String(results.wr_last_sync_at) : null,
+              typeof results.wr_sync_skipped === "string" ? String(results.wr_sync_skipped) : null,
+              database,
+            );
+          } catch { /* watchdog tak boleh menggagalkan fase */ }
         }
 
         // 4. Delivery kredensial durable (P0-6): antrean queued/failed +

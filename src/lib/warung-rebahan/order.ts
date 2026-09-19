@@ -795,6 +795,65 @@ export async function alertAgingWrOrders(database?: DatabaseAccess): Promise<num
 }
 
 /**
+ * Watchdog sync basi (2026-09-19, anti-macet struktural). Empat insiden sync
+ * mati berulang (poison-pill 16 jam, guard veto 2,5 jam, env mati 8 jam,
+ * gap misterius ~3 jam) semuanya butuh forensik manual 1–3 jam karena tidak
+ * ada yang memberi tahu pemilik. Watchdog ini ping Telegram admin MAKSIMAL
+ * 1x per episode basi (3x interval normal = 90 menit) dengan konteks sebab
+ * terakhir, lalu diam sampai sweep sukses me-reset-nya.
+ * Idempoten via wr_sync_state(sync_stale_alerted_at) — pola yang sama dengan
+ * alertAgingWrOrders: tandai DULU, kirim kemudian; ping hilang lebih baik
+ * daripada spam tiap 5 menit. Best-effort: Telegram down tak menggagalkan run.
+ */
+export const WR_SYNC_STALE_ALERT_MINUTES = 90;
+
+export async function alertStaleWrSync(
+  lastSyncAt: string | null,
+  context: string | null,
+  database?: DatabaseAccess,
+): Promise<number> {
+  const db = database ?? createDatabaseAccess();
+  if (!isWrEnabled()) return 0;
+  if (lastSyncAt == null) return 0;
+  const { parseExpiry } = await import("@/lib/expiry");
+  const lastTs = parseExpiry(lastSyncAt);
+  if (lastTs == null) return 0;
+  if (lastTs >= Date.now() - WR_SYNC_STALE_ALERT_MINUTES * 60 * 1000) return 0;
+  // Sudah alert untuk kebasian ini? State menyimpan `lastSyncAt` yang sudah
+  // dialert — sweep sukses baru (lastSyncAt berubah) me-reset otomatis.
+  const prior = await db
+    .queryFirst(`SELECT value FROM wr_sync_state WHERE key='sync_stale_alerted_at'`)
+    .catch(() => null);
+  if (String(prior?.value || "") === String(lastSyncAt)) return 0;
+  // Tandai DULU sebelum kirim (anti-spam bila sendMessage gagal).
+  await db
+    .execRun(
+      `INSERT INTO wr_sync_state (key, value) VALUES ('sync_stale_alerted_at',?)
+       ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+      String(lastSyncAt),
+    )
+    .catch(() => undefined);
+  const ageMin = Math.max(1, Math.round((Date.now() - lastTs) / 60000));
+  const chatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
+  if (!chatId || process.env.TELEGRAM_BOT_ENABLED !== "true") return 1;
+  try {
+    const { sendMessage } = await import("@/lib/telegram/api");
+    await sendMessage({
+      chat_id: chatId,
+      text:
+        `⚠️ <b>Sync Warung Rebahan basi ${ageMin} mnt</b>\n`
+        + `Sweep terakhir: <code>${escapeHtml(String(lastSyncAt))}</code>\n`
+        + `Sebab terakhir: <code>${escapeHtml(String(context || "-"))}</code>\n`
+        + `Cek /api/cron/operations (wr_sync_skipped) atau tekan Force Sync di admin → Warung Rebahan.`,
+      parse_mode: "HTML",
+    });
+  } catch {
+    /* penanda sudah tertulis; ping berikutnya tidak diulang */
+  }
+  return 1;
+}
+
+/**
  * Recover link stale: claimed yang lease-nya kedaluwarsa dan request belum
  * keluar → kembalikan ke pending (fenced, hanya bila lease masih milik
  * yang basi). Submitted/ordering stale → serahkan ke reconcile transaksi.

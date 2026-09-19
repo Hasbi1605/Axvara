@@ -196,6 +196,76 @@ describe("cron operations — observability skip sync (issue wr-sync-observabili
   });
 });
 
+describe("cron operations — watchdog sync basi (issue anti-macet struktural)", () => {
+  // Empat insiden berulang semuanya butuh forensik manual 1–3 jam. Watchdog
+  // ping admin MAKS 1x per episode basi (>90 mnt = 3x interval normal).
+  beforeEach(() => {
+    vi.stubEnv("TELEGRAM_BOT_ENABLED", "false");
+    vi.stubEnv("TELEGRAM_ADMIN_CHAT_ID", "12345");
+  });
+
+  function seedStaleSync(hoursAgo: number) {
+    fixture.sql.prepare(
+      `INSERT INTO wr_sync_log(sync_type,status,products_synced,variants_synced,trigger,created_at)
+       VALUES('products','success',48,87,'cron',datetime('now','-${hoursAgo} hours'))`,
+    ).run();
+  }
+  const staleState = () =>
+    fixture.sql.prepare("SELECT value FROM wr_sync_state WHERE key='sync_stale_alerted_at'").get()?.value ?? null;
+
+  it("sync basi 3 jam → alert 1x + state tertulis", async () => {
+    vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
+    setPhase("warung_rebahan");
+    seedStaleSync(3);
+    const res = await run();
+    expect(res.status).toBe(200);
+    // Guard 45-mnt memaksa fase WR aktif; gerbang 30-mnt lolos → syncProducts
+    // dipanggil (fetch asli melempar di fixture → catch → deferred). Watchdog
+    // tetap menilai kebasian dari last_sync (3 jam) → alert.
+    expect(res.body.wr_sync_stale_alerted).toBe(1);
+    expect(staleState()).not.toBeNull();
+  });
+
+  it("run berikutnya di episode yang sama → tidak alert lagi", async () => {
+    vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
+    setPhase("warung_rebahan");
+    seedStaleSync(3);
+    const first = await run();
+    expect(first.body.wr_sync_stale_alerted).toBe(1);
+    const second = await run();
+    expect(second.status).toBe(200);
+    expect(second.body.wr_sync_stale_alerted).toBe(0);
+  });
+
+  it("sync segar → tidak alert", async () => {
+    vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
+    setPhase("warung_rebahan");
+    fixture.sql.prepare(
+      `INSERT INTO wr_sync_log(sync_type,status,products_synced,variants_synced,trigger,created_at)
+       VALUES('products','success',48,87,'cron',datetime('now','-5 minutes'))`,
+    ).run();
+    const res = await run();
+    expect(res.status).toBe(200);
+    expect(res.body.wr_sync_stale_alerted ?? 0).toBe(0);
+  });
+
+  it("sweep sukses me-reset episode (basi lagi → alert ulang)", async () => {
+    vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
+    setPhase("warung_rebahan");
+    seedStaleSync(3);
+    await run();
+    expect(staleState()).not.toBeNull();
+    // Simulasi sweep sukses baru: last_sync berubah → state episode lama
+    // (yang menyimpan lastSync lama) tak lagi cocok → alert ulang.
+    fixture.sql.prepare(
+      `INSERT INTO wr_sync_log(sync_type,status,products_synced,variants_synced,trigger,created_at)
+       VALUES('products','success',48,87,'cron',datetime('now','-2 hours'))`,
+    ).run();
+    const res = await run();
+    expect(res.body.wr_sync_stale_alerted).toBe(1);
+  });
+});
+
 describe("cron operations — poison-pill guard", () => {
   it("fase maju di AWAL run, sebelum pekerjaan berat dijalankan", async () => {
     setPhase("warung_rebahan");

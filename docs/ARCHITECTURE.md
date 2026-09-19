@@ -1126,9 +1126,29 @@ Perintah akun #2 wajib prefix `HEROKU_API_KEY=<kunci-akun-2>`; jangan
    run kepotong (deploy); keduanya basi = pemicu Worker mati. Revisi 19 Sep
    sore: `wr_last_sync_at` dibaca DI DEPAN (sebelum cabang fase) sehingga
    respons `phase_inactive`/`sync_disabled` pun membawa posisi sweep terakhir
-   dan bisa dinilai basi vs segar dari JSON saja. Kontrak respons
+   dan bisa dinilai basi vs segar dari JSON saja. Nilai `wr_sync_skipped`
+   penuh: `disabled`/`phase_inactive`/`interval`/`sync_disabled`/
+   `budget_yielded` (sweep dicoba tapi berhenti di plafon)/`attempted_failed`
+   (sweep dicoba tapi menyimpan error + `wr_sync_errors` 3 pertama)/
+   `deadline`/`query_budget`. Kontrak respons
    ini bagian dari diagnosis definitif di bawah (`wr_products_synced` /
    `wr_sync_skipped` / `wr_last_sync_at`).
+
+   Watchdog sync basi (anti-macet struktural, 2026-09-19): empat insiden
+   berulang (poison-pill, guard veto, env mati, gap misterius) semuanya butuh
+   forensik manual karena tak ada yang memberi tahu pemilik. `alertStaleWrSync`
+   (`src/lib/warung-rebahan/order.ts`, ambang `WR_SYNC_STALE_ALERT_MINUTES=90`
+   = 3x interval normal) berjalan di fase WR aktif setelah blok sync: bila
+   sweep terakhir >90 menit + belum pernah alert untuk kebasian ini → tandai
+   `wr_sync_state(sync_stale_alerted_at)` DULU lalu ping Telegram admin berisi
+   umur basi + waktu sweep terakhir + `wr_sync_skipped` run ini + arahan
+   (cek respons cron / Force Sync). Idempoten per episode (maks 1 ping;
+   sweep sukses me-reset via pengosongan state), best-effort ≤4 query di
+   dalam `budget.fits(4)`, hasil di `results.wr_sync_stale_alerted`. Ritme
+   normal tak pernah menyentuh 90 menit → tanpa alert palsu. Force Sync
+   dashboard (`POST /api/admin/warung/sync`) mem-bypass gerbang 30-menit dan
+   melaporkan status jujur (success/partial/failed + errors) — pemulihan
+   mandiri pemilik tanpa keahlian teknis.
  - Pelajaran Fase A 18 Sep (PENTING — cek env SEBELUM tuduh kode): sync mati
    8+ jam setelah semua guard benar ternyata karena `WARUNG_REBAHAN_ENABLED` /
    `SYNC_ENABLED` tidak `"true"` di Pages — `isWrEnabled()` false membuat fase
