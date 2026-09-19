@@ -335,16 +335,24 @@ export function formatDuration(v: VariantSummary): string {
 }
 
 /**
- * Label varian untuk pembeli: label + durasi bila durasi belum terkandung
- * di label (cek case-insensitive). Menutup lubang sync WR 2026-09-19: API WR
- * memisah nama ("Meitu VIP") dan durasi ("7 Hari"); sync menulis label =
- * nama verbatim sehingga PDP web yang hanya render label kehilangan durasi
- * (88/97 varian aktif; web WR menggabung "Meitu VIP - 7 Hari"). Guard
- * includes mencegah duplikasi "7 Hari - 7 Hari" untuk label yang sudah
- * mengandung durasi ("GSuite 1 Hari", "Canva Invite 1 Bulan").
+ * Label varian untuk pembeli (2026-09-19, direvisi malam hari).
+ *
+ * Aturan final — HANYA varian WR yang digabung label + durasi:
+ * - WR: sync menulis label = nama API verbatim ("Meitu VIP") dan durasi di
+ *   kolom `duration_*` ("7 Hari"); web WR menggabung ("Meitu VIP - 7 Hari").
+ *   Guard includes mencegah duplikasi bila nama sudah mengandung durasi.
+ * - Non-WR: label diketik manual oleh admin di modal ("Invite Lifetime",
+ *   "Head 1 Bulan", "GSuite 1 Hari") — SUDAH final, JANGAN di-append apa pun.
+ *   Kolom duration_* non-WR ganda dengan garansi (warranty_value/unit SAMA
+ *   PERSIS: 6/6, 14/14) dan bukan sumber kebenaran display (DB Canva:
+ *   Invite Lifetime duration 6 month, Head 1 Bulan duration 14 day — salah
+ *   semua bila ditempel). Insiden 2026-09-19: helper lama menggabung untuk
+ *   semua produk → "Invite Lifetime - 6 Bulan", "Head 1 Bulan - 14 Hari".
  */
-export function formatVariantLabel(v: Pick<VariantSummary, "label"> & Partial<Pick<VariantSummary, "duration_label" | "duration_value" | "duration_unit">>): string {
+export function formatVariantLabel(v: Pick<VariantSummary, "label"> & Partial<Pick<VariantSummary, "duration_label" | "duration_value" | "duration_unit">> & { wr_variant_id?: unknown }): string {
   const label = String(v.label || "").trim();
+  const wrId = (v as { wr_variant_id?: unknown }).wr_variant_id;
+  if (wrId == null || String(wrId).trim() === "") return label;
   const dur = formatDuration(v as VariantSummary).trim();
   if (!dur) return label;
   if (label.toLowerCase().includes(dur.toLowerCase())) return label;

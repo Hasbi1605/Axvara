@@ -163,8 +163,10 @@
   kartu; kalimat ETA di atas CTA modal dihapus 2026-09-19). Opsi admin "Cara Pengiriman" di ProductVariantRows sinkron 1:1
   dengan `fulfillment_mode` + preview badge; panel konten fulfillment
   (shared/unique) hidup di jalur resmi — bukan hanya VariantEditor mati.
-- Nama varian pembeli SELALU `formatVariantLabel()` (2026-09-19, live): label +
-  " - durasi" bila durasi belum terkandung di label (case-insensitive).
+- Nama varian pembeli `formatVariantLabel()` (2026-09-19, revisi malam: HANYA
+  WR digabung): varian WR = label + " - durasi" bila belum terkandung
+  (case-insensitive); non-WR = label admin apa adanya (kolom duration_*
+  non-WR duplikat garansi — ditempel malah jadi "Invite Lifetime - 6 Bulan").
   Latar: sync WR menulis label = nama API verbatim ("Meitu VIP") dan durasi di
   kolom `duration_*` ("7 Hari"); PDP web yang hanya render label kehilangan
   durasi di 88/97 varian aktif, padahal web WR menggabung ("Meitu VIP - 7

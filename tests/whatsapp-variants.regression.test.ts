@@ -116,15 +116,21 @@ describe("Catalog Formatting Helpers", () => {
     expect(formatDuration({ ...baseVariant, duration_label: "3 Bulan + 1 Bulan Bonus" })).toBe("3 Bulan + 1 Bulan Bonus");
   });
 
-  it("formatVariantLabel append durasi hanya bila belum ada di label (audit Meitu 2026-09-19)", () => {
-    // Kasus Meitu: label "Meitu VIP" + durasi "7 Hari" → digabung.
-    expect(formatVariantLabel({ ...baseVariant, label: "Meitu VIP", duration_label: "7 Hari" })).toBe("Meitu VIP - 7 Hari");
-    expect(formatVariantLabel({ ...baseVariant, label: "Meitu VIP+", duration_label: "14 Hari" })).toBe("Meitu VIP+ - 14 Hari");
-    // Label yang sudah mengandung durasi TIDAK digandakan.
-    expect(formatVariantLabel({ ...baseVariant, label: "GSuite 1 Hari", duration_value: 1, duration_unit: "day", duration_label: null })).toBe("GSuite 1 Hari");
-    expect(formatVariantLabel({ ...baseVariant, label: "Canva Pro / Premium — Invite 1 Bulan", duration_value: 1, duration_unit: "month", duration_label: null })).toBe("Canva Pro / Premium — Invite 1 Bulan");
+  it("formatVariantLabel: HANYA WR digabung durasi; non-WR label apa adanya (insiden Canva 2026-09-19)", () => {
+    const wr = { ...baseVariant, wr_variant_id: "wr-1" };
+    // Kasus Meitu (WR): label "Meitu VIP" + durasi "7 Hari" → digabung.
+    expect(formatVariantLabel({ ...wr, label: "Meitu VIP", duration_label: "7 Hari" })).toBe("Meitu VIP - 7 Hari");
+    expect(formatVariantLabel({ ...wr, label: "Meitu VIP+", duration_label: "14 Hari" })).toBe("Meitu VIP+ - 14 Hari");
+    // WR yang labelnya sudah mengandung durasi TIDAK digandakan.
+    expect(formatVariantLabel({ ...wr, label: "Pro Member - 29 Hari", duration_label: "29 Hari" })).toBe("Pro Member - 29 Hari");
+    // Non-WR: label admin final — JANGAN append walau duration_* terisi.
+    // DB Canva: Invite Lifetime (duration 6 month), Head 1 Bulan (14 day).
+    const nonWr = { ...baseVariant, wr_variant_id: null };
+    expect(formatVariantLabel({ ...nonWr, label: "Invite Lifetime", duration_value: 6, duration_unit: "month", duration_label: null })).toBe("Invite Lifetime");
+    expect(formatVariantLabel({ ...nonWr, label: "Head 1 Bulan", duration_value: 14, duration_unit: "day", duration_label: null })).toBe("Head 1 Bulan");
+    expect(formatVariantLabel({ ...nonWr, label: "GSuite 1 Hari", duration_value: 1, duration_unit: "day", duration_label: null })).toBe("GSuite 1 Hari");
     // Tanpa durasi → label apa adanya.
-    expect(formatVariantLabel({ ...baseVariant, label: "Pro", duration_label: null, duration_value: null, duration_unit: null })).toBe("Pro");
+    expect(formatVariantLabel({ ...nonWr, label: "Pro", duration_label: null, duration_value: null, duration_unit: null })).toBe("Pro");
   });
 
   it("returns empty string when duration fields are null", () => {
