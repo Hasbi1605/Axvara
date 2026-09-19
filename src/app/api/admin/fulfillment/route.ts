@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
   // di panel (mereka pemilik toko). Dekripsi terjadi server-side per request
   // dan TIDAK PERNAH dikirim ke storefront/pembeli — hanya route admin ini.
   let sharedSecret: string | null = null;
-  let inventory: { id: number; secret: string; status: string }[] = [];
+  const inventory: { id: number; secret: string; status: string }[] = [];
   try {
     if (variantId) {
       const row = await queryFirst(
