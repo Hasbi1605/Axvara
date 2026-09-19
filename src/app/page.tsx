@@ -97,11 +97,11 @@ export default function HomePage() {
                 </StoreWhatsAppLink>
               </div>
               <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] tracking-wide text-white/40">
-                <span>1.200+ aktivasi</span>
+                <span>QRIS otomatis</span>
                 <span className="opacity-30">•</span>
-                <span>Rata-rata 8 menit</span>
+                <span>Garansi replace</span>
                 <span className="opacity-30">•</span>
-                <span className="inline-flex items-center gap-1"><img src="/icons/ios11/star-32.png" alt="" width={11} height={11} className="w-[11px] h-[11px] object-contain brightness-0 invert opacity-50" draggable={false} /> 4.9/5</span>
+                <span>Support WA admin</span>
               </div>
             </div>
             {/* Single orbit — shown at center on mobile, right on desktop */}

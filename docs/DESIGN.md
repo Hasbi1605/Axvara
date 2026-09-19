@@ -143,19 +143,23 @@
   ikon shield — di baris sendiri di BAWAH nama varian (block, bukan inline),
   JANGAN render label mentah ("12 Hari" ambigu dengan durasi).
 - Badge pengiriman per varian TANPA emoji (anti AI slop, 2026-09-17; teks
-  direvisi 2026-09-18): di bawah label varian (block, di atas harga/garansi) —
+  direvisi 2026-09-18/19): di bawah label varian (block, di atas harga/garansi) —
   restock = pill `emerald-400/25 + emerald-500/10` teks "Kirim otomatis",
-  selainnya = pill `gold/25 + gold/10` teks "Diproses antrean · maks 12 jam"
-  (PDP) / "Antrean · maks 12 jam" (QuickVariantModal, ruang lebih sempit).
-  "Dikirim admin" dibuang karena maknanya samar: pembeli tidak bisa menebak
-  itu berarti jam-jaman. Berlaku di kartu varian PDP desktop +
+  selainnya = pill `gold/25 + gold/10` teks "Made By Order · maks 12 jam"
+  (PDP) / "Made By Order · maks 12 jam" (QuickVariantModal, ruang lebih sempit).
+  "Dikirim admin" dan "Diproses antrean" dibuang (samar / diganti istilah owner
+  2026-09-19). Berlaku di kartu varian PDP desktop +
   QuickVariantModal. JANGAN taruh di card deskripsi/S&K (datanya per-varian,
   bukan per-produk) dan JANGAN pakai emoji ⚡/✋.
-- Ekspektasi waktu (2026-09-18, live): kalimat `deliveryEtaForBuyer()` wajib
-  tampil SEBELUM pembeli bayar — baris fitur PDP, tepat di atas CTA
+- Ekspektasi waktu (2026-09-18, revisi kata 2026-09-19, live): kalimat `deliveryEtaForBuyer()` wajib
+  tampil SEBELUM pembeli bayar — badge pengiriman PDP (tanpa ikon checklist
+  ganda sejak 2026-09-19) + teks di bawahnya, tepat di atas CTA
   QuickVariantModal (`text-[11px]`, gold untuk antrean / `white/40` untuk
-  instan), dan blok checkout "Waktu pengerjaan pesanan ini" (border+bg gold
-  `#FFB800/25` + `/[0.07]`). Angka yang dijanjikan hanya PLAFON (maksimal 12
+  instan), dan blok checkout "Made By Order" (border+bg gold
+  `#FFB800/25` + `/[0.07]`; template "dibuat setelah orderan masuk —
+  dikerjakan sesuai antrean, maksimal 12 jam, mohon bersabar"; paragraf
+  "Detail akun dikirim ke WhatsApp…Tidak perlu menunggu" dihapus 2026-09-19).
+  Angka yang dijanjikan hanya PLAFON (maksimal 12
   jam) plus "umumnya lebih cepat"; jangan tampilkan rentang mentah 6–12 jam
   (dibaca sebagai janji minimum) dan jangan tanpa angka (pembeli tetap
   bertanya via support). Nama pemasok tidak pernah muncul di copy pembeli.

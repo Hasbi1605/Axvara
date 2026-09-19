@@ -220,7 +220,7 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
                       {v.wr_delivery_class === "restock" ? (
                         <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold text-emerald-300">Kirim otomatis</span>
                       ) : (
-                        <span className="rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-[9px] font-bold text-[#FFD66B]">Antrean · maks {WR_QUEUED_MAX_HOURS} jam</span>
+                        <span className="rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-[9px] font-bold text-[#FFD66B]">Made By Order · maks {WR_QUEUED_MAX_HOURS} jam</span>
                       )}
                     </span>
                     <span className="mt-1 text-xs font-semibold text-[#00E5FF]">

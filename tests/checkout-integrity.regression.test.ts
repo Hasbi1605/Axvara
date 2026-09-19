@@ -220,7 +220,7 @@ describe("Authoritative UI and admin state", () => {
     expect(statusPage).toContain("Detail akun dikirim ke WhatsApp");
     // Kelas antrean TIDAK boleh dijanjikan 5–15 menit (plafon 12 jam).
     expect(statusPage).toContain("order.queuedDelivery");
-    expect(statusPage).toContain("dikerjakan sesuai antrean");
+    expect(statusPage).toContain("Made By Order");
     expect(statusPage).toContain("WR_QUEUED_MAX_HOURS} jam pada jam layanan");
     // Polling terbatas agar panel muncul sendiri tanpa reload manual, dan
     // lebih pendek untuk antrean (polling tak mungkin menutup 12 jam).

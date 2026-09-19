@@ -279,7 +279,7 @@ export default function OrderSuccessPage() {
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">Pengiriman Produk</p>
             <p className="mt-2 text-xs leading-5 text-white/55">
               {order.queuedDelivery
-                ? <>Pesanan sedang dikerjakan sesuai antrean. Detail akun dikirim ke WhatsApp <span className="font-medium text-white/80">{order.wa}</span>{order.email ? <> dan email <span className="font-medium text-white/80">{order.email}</span></> : null} yang kamu masukkan saat checkout.</>
+                ? <>Pesanan <span className="font-medium text-[#FFD66B]">Made By Order</span> — dibuat setelah orderan masuk. Detail akun dikirim ke WhatsApp <span className="font-medium text-white/80">{order.wa}</span>{order.email ? <> dan email <span className="font-medium text-white/80">{order.email}</span></> : null} yang kamu masukkan saat checkout.</>
                 : <>Pesanan sedang diproses. Detail akun dikirim ke WhatsApp <span className="font-medium text-white/80">{order.wa}</span>{order.email ? <> dan email <span className="font-medium text-white/80">{order.email}</span></> : null} yang kamu masukkan saat checkout.</>}
             </p>
             <p className="mt-2 text-[11px] leading-5 text-white/40">

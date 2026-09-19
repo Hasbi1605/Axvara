@@ -95,11 +95,11 @@ describe("/pesanan/[code] — blok pasca-pembayaran", () => {
     expect(screen.queryByText("Detail Akun Digital")).toBeNull();
   });
 
-  it("credentials_ready=false + queued → teks antrean dengan plafon 12 jam, TANPA janji 5–15 menit", async () => {
+  it("credentials_ready=false + queued → teks Made By Order dengan plafon 12 jam, TANPA janji 5–15 menit", async () => {
     mockFetch(orderPayload({ queued_delivery: true }));
     render(<OrderStatusPage />);
     await waitFor(() => expect(screen.getByText("Pengiriman Produk")).toBeTruthy());
-    expect(screen.getByText(/dikerjakan sesuai antrean/)).toBeTruthy();
+    expect(screen.getByText(/Made By Order/)).toBeTruthy();
     expect(screen.getByText(/maksimal 12 jam pada jam layanan/)).toBeTruthy();
     expect(screen.queryByText(/5–15 menit/)).toBeNull();
   });

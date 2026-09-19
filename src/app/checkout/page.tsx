@@ -456,16 +456,15 @@ function CheckoutInner() {
               baru tahu setelah uangnya masuk berhak merasa dibohongi. */}
           {queuedNames.length > 0 && (
             <div className="rounded-2xl border border-[#FFB800]/25 bg-[#FFB800]/[0.07] p-4">
-              <h2 className="text-sm font-semibold text-[#FFD66B]">Waktu pengerjaan pesanan ini</h2>
+              <h2 className="text-sm font-semibold text-[#FFD66B]">Made By Order</h2>
               <p className="mt-1 text-xs leading-5 text-white/60">
                 {queuedNames.length === 1 ? (
-                  <><span className="font-semibold text-white">{queuedNames[0]}</span> dikerjakan sesuai antrean</>
+                  <><span className="font-semibold text-white">{queuedNames[0]}</span> dibuat setelah orderan masuk</>
                 ) : (
-                  <><span className="font-semibold text-white">{queuedNames.length} produk</span> di pesanan ini dikerjakan sesuai antrean</>
+                  <><span className="font-semibold text-white">{queuedNames.length} produk</span> di pesanan ini dibuat setelah orderan masuk</>
                 )}
-                {" "}— umumnya lebih cepat, <span className="font-semibold text-white">maksimal {WR_QUEUED_MAX_HOURS} jam</span> pada jam layanan. Bukan pengiriman instan.
+                {" "}— dikerjakan sesuai antrean, <span className="font-semibold text-white">maksimal {WR_QUEUED_MAX_HOURS} jam</span> pada jam layanan, mohon bersabar. Bukan pengiriman instan.
               </p>
-              <p className="mt-1.5 text-[11px] leading-4 text-white/40">Detail akun dikirim ke WhatsApp{email.trim() ? "/email" : ""} yang kamu isi di atas dan muncul di halaman pesanan. Tidak perlu menunggu halaman ini terbuka.</p>
             </div>
           )}
 
@@ -482,7 +481,7 @@ function CheckoutInner() {
             <span className="text-xs leading-5 text-white/60">
               Saya paham AXVARA adalah <span className="font-semibold text-white">third-party independen, bukan official store</span>, dan saya setuju dengan{" "}
               <Link href="/garansi-replace" target="_blank" rel="noreferrer" className="font-semibold text-[#00E5FF] hover:underline">ketentuan layanan & garansi</Link>{" "}
-              serta ketentuan di deskripsi tiap produk. <span className="font-semibold text-white">DYOR, DWYOR.</span>
+              serta ketentuan di deskripsi tiap produk.
             </span>
           </label>
 

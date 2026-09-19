@@ -432,7 +432,7 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
                             {v.wr_delivery_class === "restock" ? (
                               <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300">Kirim otomatis</span>
                             ) : (
-                              <span className="rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFD66B]">Diproses antrean · maks {WR_QUEUED_MAX_HOURS} jam</span>
+                              <span className="rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFD66B]">Made By Order · maks {WR_QUEUED_MAX_HOURS} jam</span>
                             )}
                           </span>
                           {v.warranty_type !== 'none' && formatWarranty(v) && (
@@ -542,18 +542,23 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
             </div>
           )}
 
-          {/* Feature list — baris pertama mengikuti kelas pengiriman WR
-              varian terpilih (migrasi 0032): restock = kirim otomatis,
-              selainnya = dikirim admin. Tanpa emoji — badge per-varian di
-              atas yang bicara. Jangan janji "5–15 menit" umum
+          {/* Badge pengiriman — satu sinyal, tanpa ikon checklist ganda.
+              Badge per-varian di atas yang bicara; di sini badge mengikuti
+              varian terpilih. Jangan janji "5–15 menit" umum
               untuk produk manual/slow. */}
-          <ul className="mt-5 space-y-2.5 text-[13px] text-white/60">
-            <li className="flex items-start gap-2">
-              <svg viewBox="0 0 16 16" className="w-4 h-4 mt-0.5 shrink-0 text-emerald-400/80" fill="none" stroke="currentColor" strokeWidth={2}><path d="M3 8.5l3 3 7-7" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          <div className="mt-5">
+            {termsVariant?.wr_delivery_class === "restock" ? (
+              <span className="inline-flex rounded-full border border-emerald-400/25 bg-emerald-500/10 px-3 py-1 text-[11px] font-bold text-emerald-300">Kirim otomatis</span>
+            ) : (
+              <span className="inline-flex rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-3 py-1 text-[11px] font-bold text-[#FFD66B]">Made By Order · maks {WR_QUEUED_MAX_HOURS} jam</span>
+            )}
+            <p className="mt-2 text-[12px] leading-5 text-white/50">
               {termsVariant?.wr_delivery_class === "restock"
                 ? "Kirim otomatis setelah pembayaran dikonfirmasi"
                 : deliveryEtaForBuyer(termsVariant?.wr_delivery_class)}
-            </li>
+            </p>
+          </div>
+          <ul className="mt-3 space-y-2.5 text-[13px] text-white/60">
             <li className="flex items-start gap-2">
               <svg viewBox="0 0 16 16" className="w-4 h-4 mt-0.5 shrink-0 text-emerald-400/80" fill="none" stroke="currentColor" strokeWidth={2}><path d="M3 8.5l3 3 7-7" strokeLinecap="round" strokeLinejoin="round"/></svg>
               Support WA admin selama masa aktif

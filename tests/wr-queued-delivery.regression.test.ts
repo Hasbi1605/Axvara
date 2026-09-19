@@ -44,6 +44,7 @@ describe("aturan kelas pengiriman (satu sumber)", () => {
     const instant = deliveryEtaForBuyer("restock");
     const queued = deliveryEtaForBuyer("made_by_order");
     expect(instant).toContain("otomatis");
+    expect(queued).toContain("Made By Order");
     expect(queued).toContain("antrean");
     expect(queued).toContain(`${WR_QUEUED_MAX_HOURS} jam`);
     // Kelas antrean TIDAK boleh membawa janji menit.
@@ -71,7 +72,7 @@ describe("copy pembeli", () => {
   it("checkout memperingatkan waktu antrean SEBELUM bayar", () => {
     const checkout = read("src/app/checkout/page.tsx");
     expect(checkout).toContain("queuedNames");
-    expect(checkout).toContain("Waktu pengerjaan pesanan ini");
+    expect(checkout).toContain("Made By Order");
     expect(checkout).toContain("WR_QUEUED_MAX_HOURS");
     expect(checkout).toContain("Bukan pengiriman instan");
     // Flag berasal dari quote server, bukan tebakan client.
@@ -94,7 +95,7 @@ describe("copy pembeli", () => {
   it("halaman ketentuan MEMPERTAHANKAN status third-party + garansi mulai saat diserahkan", () => {
     const page = read("src/app/garansi-replace/page.tsx");
     expect(page).toContain("third-party");
-    expect(page).toContain("dikerjakan sesuai antrean");
+    expect(page).toContain("antrean");
     expect(page).toContain("bukan");
     expect(page.toLowerCase()).not.toContain("warung rebahan");
   });

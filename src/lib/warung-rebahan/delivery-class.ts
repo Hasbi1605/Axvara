@@ -25,7 +25,7 @@ export const WR_QUEUED_ALERT_HOURS = 13;
 
 /** Label pembeli singkat (web/Telegram/WA). Tanpa emoji — badge/styling diurus UI. */
 export function deliveryLabelForBuyer(wrClass: string | null | undefined): string {
-  return wrClass === "restock" ? "Kirim otomatis" : "Diproses antrean";
+  return wrClass === "restock" ? "Kirim otomatis" : "Made By Order";
 }
 
 /**
@@ -39,7 +39,7 @@ export function deliveryLabelForBuyer(wrClass: string | null | undefined): strin
 export function deliveryEtaForBuyer(wrClass: string | null | undefined): string {
   return wrClass === "restock"
     ? "Kirim otomatis setelah pembayaran dikonfirmasi"
-    : `Diproses sesuai antrean — umumnya lebih cepat, maksimal ${WR_QUEUED_MAX_HOURS} jam pada jam layanan`;
+    : `Made By Order — dikerjakan sesuai antrean, umumnya lebih cepat, maksimal ${WR_QUEUED_MAX_HOURS} jam pada jam layanan`;
 }
 
 /** true bila varian ini masuk kelas antrean (bukan kirim otomatis). */

@@ -832,8 +832,9 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   janji pembeli), `WR_QUEUED_ALERT_HOURS = 13` (ambang alert internal, sengaja di
   atas plafon agar tidak alert fatigue), `deliveryEtaForBuyer()`, dan
   `isQueuedFulfillment()` (varian WR non-restock ATAU varian non-WR `manual`).
-  Ekspektasi waktu WAJIB tampil SEBELUM bayar: PDP (badge + baris fitur), modal
-  varian (kalimat di atas CTA), dan checkout (blok "Waktu pengerjaan pesanan ini"
+  Ekspektasi waktu WAJIB tampil SEBELUM bayar: PDP (badge, tanpa ikon
+  checklist ganda sejak 2026-09-19), modal
+  varian (kalimat di atas CTA), dan checkout (blok "Made By Order"
   dari flag `queued_delivery` per baris di respons quote). `GET /api/orders?code=`
   mengirim `queued_delivery` (satu query gabungan dengan `credentials_ready`,
   memakai `json_each(orders.items)`), dan halaman pesanan memakainya untuk memilih
