@@ -24,6 +24,8 @@ export function ProductsSection({
   soldProducts,
   onQueryChange,
   onPageChange,
+  onlyLowStock,
+  onClearLowStock,
   onNew,
   onEdit,
   onDelete,
@@ -43,6 +45,8 @@ export function ProductsSection({
   soldProducts: number;
   onQueryChange: (value: string) => void;
   onPageChange: (updater: (prev: number) => number) => void;
+  onlyLowStock: boolean;
+  onClearLowStock: () => void;
   onNew: () => void;
   onEdit: (p: Prod) => void;
   onDelete: (p: Prod) => void;
@@ -58,6 +62,10 @@ export function ProductsSection({
       </div>
 
       <div className="mt-5">
+          <div className="mb-3 min-w-0">
+            <h2 className="text-sm font-semibold text-white">Produk</h2>
+            <p className="mt-0.5 text-xs text-white/40">Katalog, harga, stok varian, dan status tampil di toko.</p>
+          </div>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2 flex-1 max-w-[420px]">
               <div className="relative flex-1">
@@ -67,6 +75,16 @@ export function ProductsSection({
             </div>
             <button onClick={onNew} className="inline-flex h-10 items-center gap-1.5 whitespace-nowrap px-5 rounded-full bg-[#00E5FF] text-[#080C1E] text-sm font-bold hover:bg-[#00D0E8] transition"><IosIcon name="plus" size={14} tint="black" /> Produk Baru</button>
           </div>
+
+          {onlyLowStock && (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="text-[11px] uppercase tracking-wide text-white/35">Filter aktif</span>
+              <button type="button" onClick={onClearLowStock} className="inline-flex h-8 items-center gap-2 rounded-full border border-[#FFB800]/30 bg-[#FFB800]/10 px-3 text-xs font-semibold text-[#FFCF55] transition hover:bg-[#FFB800]/20">
+                Stok menipis · varian ≤ 5
+                <IosIcon name="close" size={10} tint="#FFCF55" />
+              </button>
+            </div>
+          )}
 
           <div className="mt-4 ax-glass rounded-[20px] overflow-hidden">
             {loadingList ? (
@@ -128,7 +146,7 @@ export function ProductsSection({
                 </tbody>
               </table>
             </div>
-            {filtered.length===0 && <p className="p-8 text-center text-sm text-white/40">Tidak ada produk — coba ubah kata kunci.</p>}
+            {filtered.length===0 && <p className="p-8 text-center text-sm text-white/40">{onlyLowStock ? "Tidak ada varian dengan stok ≤ 5 — semua aman." : "Tidak ada produk — coba ubah kata kunci."}</p>}
             </>)}
             {filtered.length > perPage && !loadingList && (
               <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-white/10">

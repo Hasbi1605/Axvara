@@ -48,7 +48,7 @@ export function AdminOverview({ data, loading, onNavigate }: { data: AdminOvervi
     { title: "Bukti manual", count: data.pending_proofs, detail: "Menunggu pemeriksaan", section: "orders", params: { proof: "submitted", method: "manual" }, tone: "amber" },
     { title: "QRIS perlu dicek", count: data.payment_attention, detail: "Unmatched atau gagal 7 hari", section: "payments", params: { payment_tab: "qris", event_status: "attention" }, tone: "red" },
     { title: "Fulfillment", count: data.fulfillment_attention, detail: "Manual, retry, atau gagal", section: "bot", params: {}, tone: "red" },
-    { title: "Stok menipis", count: data.low_stock, detail: "Varian tersisa ≤ 5", section: "products", params: {}, tone: "amber" },
+    { title: "Stok menipis", count: data.low_stock, detail: "Varian tersisa ≤ 5", section: "products", params: { low_stock: "1" }, tone: "amber" },
   ];
 
   return <div className="mt-4 space-y-4">

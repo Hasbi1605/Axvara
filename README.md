@@ -269,6 +269,19 @@ Actions Secrets.
 
 Panel admin memuat produk, kategori, dan ringkasan setelah autentikasi. Aksi toast memakai identitas yang stabil seumur provider, sehingga satu error fetch tidak lagi membentuk rantai toast → rerender → fetch ulang. Login memuat data tepat sekali (transisi sesi adalah satu-satunya pemicu), dan hanya `401` yang mengakhiri sesi — respons `5xx` atau kegagalan jaringan tidak menendang admin ke gerbang login.
 
+**Filter yang kasat mata (2026-09-19).** Kartu **Stok menipis** di Ringkasan kini
+membawa filternya ke daftar Produk lewat `?section=products&low_stock=1` — dulu
+kartu itu hanya berpindah tab dan daftarnya tetap menampilkan semua produk.
+Satuannya juga disamakan: Ringkasan dan Produk sama-sama menghitung **varian
+aktif berstok 0–5** (sebelumnya Ringkasan menghitung varian dan Produk
+menghitung produk, sehingga satu label menampilkan dua angka berbeda).
+Di **Pesanan**, setiap filter aktif tampil sebagai chip yang bisa dilepas satu
+per satu — termasuk filter `proof` dari kartu "Bukti manual" yang sebelumnya
+menyaring daftar tanpa jejak apa pun di layar. Penghapusan kategori, banner,
+dan artikel memakai `ConfirmDialog` bertema (bukan `confirm()` bawaan browser),
+dan modal Kategori kini dialog yang sah: `role="dialog"`, `aria-modal`, tutup
+dengan Escape, dan scroll halaman terkunci.
+
 Katalog storefront menampilkan 12 produk lebih dulu dengan tombol **"Tampilkan N produk lagi"** (bukan nomor halaman), produk ready diurutkan di depan sementara produk stok habis tetap tampil di belakang, dan harga kartu diambil dari varian termurah yang **masih tersedia**.
 
 **Minimum pembelian per varian (migrasi 0034, generik):** `product_variants.min_qty` (default 1 = bebas, milik admin, plafon 100) mengatur batas bawah qty per baris — GSuite dikunci **min. 50** via migrasi, produk lain tinggal set angka dari admin bila butuh aturan grosir serupa. Label "Min. N" tampil di PDP/modal/keranjang/bot; server menolak qty di bawah min (quote 409 → orders 409 → guard atomik), plafon web/Telegram 100/baris, dan order WhatsApp (qty selalu 1) ditolak jelas untuk varian min>1 dengan arahan ke web/Telegram bulk.

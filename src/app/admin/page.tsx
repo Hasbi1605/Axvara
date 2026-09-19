@@ -45,16 +45,19 @@ export default function AdminPage() {
   const { setAuthed } = auth;
   const onUnauthorized = useCallback(() => setAuthed(false), [setAuthed]);
   const pm = useProductManager(toast, onUnauthorized);
-  const { load } = pm;
+  const { load, setOnlyLowStock, setPage: setProductPage } = pm;
 
   const navigateAdmin = useCallback((section: AdminSection, params: Record<string,string> = {}) => {
     setTab(section);
+    // Filter yang dibawa antar-section harus ikut berpindah, bukan hanya
+    // tersimpan di URL: pushState tidak memicu popstate.
+    if (section === "products") { setOnlyLowStock(params.low_stock === "1"); setProductPage(()=>1); }
     const url = new URL(window.location.href);
     url.search = "";
     url.searchParams.set("section", section);
     Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
     window.history.pushState(null, "", `${url.pathname}?${url.searchParams}`);
-  }, []);
+  }, [setOnlyLowStock, setProductPage]);
 
   useEffect(()=>{
     const syncSection=()=>{
@@ -65,6 +68,20 @@ export default function AdminPage() {
     window.addEventListener("popstate",syncSection);
     return()=>window.removeEventListener("popstate",syncSection);
   },[]);
+
+  // Kartu "Stok menipis" di Ringkasan mengirim ?low_stock=1. Tanpa jembatan
+  // ini kartu tersebut hanya memindah tab tanpa membawa konteksnya.
+  useEffect(()=>{
+    const syncLowStock=()=>{
+      const params=new URLSearchParams(window.location.search);
+      const on=params.get("section")==="products"&&params.get("low_stock")==="1";
+      setOnlyLowStock(on);
+      if(on)setProductPage(()=>1);
+    };
+    syncLowStock();
+    window.addEventListener("popstate",syncLowStock);
+    return()=>window.removeEventListener("popstate",syncLowStock);
+  },[setOnlyLowStock, setProductPage]);
 
   useEffect(()=>{ if(auth.authed) { void load(); void loadOverview(); } },[auth.authed, load, loadOverview]);
 
@@ -115,6 +132,13 @@ export default function AdminPage() {
           soldProducts={pm.soldProducts}
           onQueryChange={pm.setQ}
           onPageChange={pm.setPage}
+          onlyLowStock={pm.onlyLowStock}
+          onClearLowStock={()=>{
+            pm.setOnlyLowStock(false);
+            const url=new URL(window.location.href);
+            url.searchParams.delete("low_stock");
+            window.history.replaceState(null,"",`${url.pathname}?${url.searchParams}`);
+          }}
           onNew={pm.openNew}
           onEdit={pm.openEdit}
           onDelete={pm.setDeleteTarget}

@@ -24,6 +24,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
   const [prods, setProds] = useState<Prod[]>([]);
   const [cats, setCats] = useState<Cat[]>([]);
   const [q, setQ] = useState("");
+  const [onlyLowStock, setOnlyLowStock] = useState(false);
   const [page, setPage] = useState(1);
   const [loadingList, setLoadingList] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
@@ -333,9 +334,19 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
   };
 
   const activeProducts=prods.filter(p=>p.isActive).length;
-  const lowStock=prods.filter(p=>p.stock>=0&&p.stock<=5).length;
+  // Satuan "stok menipis" = VARIAN aktif berstok 0..5, sama persis dengan
+  // kartu Ringkasan. Sebelumnya layar ini menghitung produk, sehingga satu
+  // label menampilkan dua angka berbeda (66 di Ringkasan vs 33 di sini).
+  const lowStock = prods.reduce((total, p) => total + (p.lowStockVariants ?? (p.stock >= 0 && p.stock <= 5 ? 1 : 0)), 0);
   const soldProducts=prods.reduce((total,product)=>total+product.soldCount,0);
-  const filtered = useMemo(()=> prods.filter(p=> !q || `${p.name} ${p.slug} ${p.badge??""}`.toLowerCase().includes(q.toLowerCase())), [prods, q]);
+  // Filter "hanya stok menipis" dipicu dari kartu Ringkasan (?low_stock=1).
+  // Tanpa ini kartu itu cuma memindah tab: daftar tetap menampilkan semua
+  // produk dan admin harus mencari sendiri varian mana yang tipis.
+  const filtered = useMemo(()=> prods.filter(p=> {
+    if (q && !`${p.name} ${p.slug} ${p.badge??""}`.toLowerCase().includes(q.toLowerCase())) return false;
+    if (onlyLowStock && !((p.lowStockVariants ?? (p.stock >= 0 && p.stock <= 5 ? 1 : 0)) > 0)) return false;
+    return true;
+  }), [prods, q, onlyLowStock]);
   const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE_ADMIN));
   const safePage = Math.min(page, totalPages);
   const paged = filtered.slice((safePage-1)*PER_PAGE_ADMIN, safePage*PER_PAGE_ADMIN);
@@ -368,7 +379,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
   return {
     // data & daftar
     prods, cats, q, page, loadingList, listError, load,
-    setQ, setPage,
+    setQ, setPage, onlyLowStock, setOnlyLowStock,
     activeProducts, lowStock, soldProducts, filtered, paged, safePage, totalPages, perPage: PER_PAGE_ADMIN,
     // editor
     editing, showNew, uploading, form, formImages, hasMultiVariants, formVariants,
