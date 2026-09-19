@@ -92,7 +92,7 @@ axvara/
 │   ├── cara-order/               # Panduan order
 │   ├── garansi-replace/          # Ketentuan layanan & garansi third-party (acuan klaim, garansi ikut deskripsi produk)
 │   ├── produk/[slug]/          # PDP: server component SEO (metadata/JSON-LD/h1 D1) + client interaktif
-│   │   ├── checkout/       # Checkout — QRIS otomatis / bukti untuk transfer manual; layout action-rail 2026-09-19 (kiri 3 step, kanan aside sticky ringkasan+CTA; mobile accordion + CTA sticky bottom; 1 handler submit)
+│   │   ├── checkout/       # Checkout — QRIS otomatis / bukti untuk transfer manual; layout action-rail ala WR 2026-09-19 (kiri data+ekspektasi, kanan aside sticky ringkasan+metode+S&K+CTA; mobile accordion + CTA sticky bottom; 1 handler submit)
 │   ├── pesanan/[code]/         # Status + QRIS dinamis + polling lunas (dari checkout)
 │   ├── lacak-pesanan/          # Lacak mandiri kode + WA via POST /api/orders/lookup + timeline + auto-refresh
 │   ├── admin/

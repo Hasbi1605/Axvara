@@ -105,19 +105,20 @@
 
 ## 5. Komponen Utama
 
-### 5.0 Checkout Action-Rail (Batch C 2026-09-19, live)
-- Desktop 2 kolom: kiri = form 3 step bernomor (① Data Pembeli, ② Metode
-  Pembayaran QRIS pre-selected, ③ Verifikasi Otomatis + blok Made By Order +
-  agreement + CTA utama). Kanan = `aside` sticky `top-[72px]` "Ringkasan dan
-  pembayaran": ringkasan item + total + mini-blok Made By Order (badge + 1
-  baris estimasi) + trust sebaris (QRIS otomatis • Garansi replace • Support
-  WA admin) + CTA duplikat + catatan tanpa-upload-bukti.
-- 3 tombol submit (kiri + rail desktop + sticky mobile) berbagi SATU handler
-  + state `ctaDisabled`/`ctaLabel` — tidak ada logika validasi ganda.
+### 5.0 Checkout Action-Rail ala WR (Batch C 2026-09-19, revisi anti-redundan, live)
+- Desktop 2 kolom: kiri = DATA + EKSPEKTASI (① Data Pembeli, ② Verifikasi
+  Otomatis, blok Made By Order bila antrean). Kanan = `aside` sticky
+  `top-[72px]` "Ringkasan dan pembayaran": ringkasan item + total + Metode
+  Pembayaran (QRIS pre-selected, variabel `paymentBlock` satu definisi) +
+  S&K agreement (`agreeBlock`) + error + CTA + catatan tanpa-upload-bukti.
+- Mini-blok MBO + trust sebaris di rail DIHAPUS (redundan: estimasi sudah di
+  kiri, trust sudah di hero).
+- 2 tombol submit (rail + sticky mobile) berbagi SATU handler + state
+  `ctaDisabled`/`ctaLabel` — tidak ada logika validasi ganda.
 - Mobile: accordion "Ringkasan Pesanan" collapsed-able di atas (buka default,
   total selalu terlihat di header-nya) + CTA sticky bottom `fixed` (dengan
-  `safe-area-inset-bottom`) + spacer 68px agar konten tak tertutup. CTA rail
-  desktop `hidden lg:block`; sticky bottom `lg:hidden`.
+  `safe-area-inset-bottom`) + spacer 68px agar konten tak tertutup. Sticky
+  bottom `lg:hidden`.
 
 ### 5.1 Navbar (Apple Style)
 - Height 64px, sticky, glass-strong, blur

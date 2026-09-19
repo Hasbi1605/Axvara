@@ -337,6 +337,116 @@ function CheckoutInner() {
   const ctaDisabled = loading || quoteLoading || method !== "qris" || !quoteToken || !quoteAccepted || quoteIssues.length > 0 || !agreed;
   const ctaLabel = loading ? "Memproses…" : `Bayar ${formatRupiah(displaySubtotal)} — Buat Pesanan`;
 
+  // --- Blok aksi (metode + S&K): SATU definisi, dipakai di rail kanan
+  // (desktop + mobile setelah ringkasan). Kiri TIDAK lagi memuatnya (revisi
+  // Batch C 2026-09-19 ala WR: kiri = data, kanan = aksi). Didefinisikan
+  // sebagai variabel agar state/validasi tetap satu sumber.
+  const paymentBlock = (
+    <div>
+      <h2 className="text-sm font-semibold text-white">Metode Pembayaran</h2>
+      {quoteLoading ? (
+        <div className="mt-3 flex items-center gap-2 text-sm text-white/50">
+          <span className="w-4 h-4 rounded-full border-2 border-white/20 border-t-[#00E5FF] animate-spin" />
+          Memuat harga & metode pembayaran…
+        </div>
+      ) : quoteError ? (
+        <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-2">
+          <p className="text-sm text-red-300">{quoteError}</p>
+          <button type="button" onClick={() => void fetchQuote(quoteRequestItems)} className="shrink-0 text-xs font-semibold text-[#00E5FF]">Coba lagi</button>
+        </div>
+      ) : (
+        <>
+      <div className="mt-3 grid gap-3">
+        {pmQris && (
+        <button type="button" aria-pressed={method === "qris"} onClick={() => setMethod("qris")} className={`text-left rounded-2xl border p-4 flex items-center justify-between transition ${method === "qris" ? "bg-[#00E5FF]/10 border-[#00E5FF]/40" : "ax-glass-card border-white/10 hover:bg-white/10"}`}>
+          <div className="flex items-center gap-3">
+            <img src="/icons/ios11/qr-code-32.png" alt="" width={20} height={20} className="w-5 h-5 object-contain" style={{ filter: "brightness(0) saturate(100%) invert(72%) sepia(68%) saturate(4000%) hue-rotate(145deg) brightness(1.05)" }} draggable={false} />
+            <div>
+              <p className="text-sm font-semibold text-white flex items-center gap-2">QRIS <span className="text-[10px] bg-[#00E5FF] text-[#080C1E] font-bold px-2 py-0.5 rounded-full">Paling Cepat</span></p>
+              <p className="text-xs text-white/45 mt-0.5">Scan untuk semua e-wallet & bank</p>
+            </div>
+          </div>
+          <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${method === "qris" ? "border-[#00E5FF] bg-[#00E5FF]" : "border-white/20"}`}>{method === "qris" && <span className="w-2 h-2 rounded-full bg-[#080C1E]" />}</span>
+        </button>
+        )}
+
+        {pmEwallet && (
+        <div
+          role="button"
+          aria-disabled="true"
+          aria-label="E-Wallet sedang maintenance"
+          title="E-Wallet sedang maintenance"
+          className="text-left rounded-2xl border p-4 flex items-center justify-between transition ax-glass-card border-white/10 opacity-50 cursor-not-allowed select-none"
+        >
+          <div className="flex items-center gap-3">
+            <img src="/icons/ios11/wallet-32.png" alt="" width={20} height={20} className="w-5 h-5 object-contain brightness-0 invert opacity-50" draggable={false} />
+            <div>
+              <p className="text-sm font-semibold text-white flex items-center gap-2">E-WALLET <span className="text-[10px] bg-[#FFB800]/20 text-[#FFB800] border border-[#FFB800]/30 font-bold px-2 py-0.5 rounded-full">Maintenance</span></p>
+              <p className="text-xs text-white/45 mt-0.5">{pmEwallet.label}</p>
+            </div>
+          </div>
+          <span className="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 border-white/20" />
+        </div>
+        )}
+
+        {pmBanks.length > 0 && (
+        <div
+          role="button"
+          aria-disabled="true"
+          aria-label="Transfer Bank sedang maintenance"
+          title="Transfer Bank sedang maintenance"
+          className="text-left rounded-2xl border p-4 flex items-center justify-between transition ax-glass-card border-white/10 opacity-50 cursor-not-allowed select-none"
+        >
+          <div className="flex items-center gap-3">
+            <img src="/icons/ios11/bank-32.png" alt="" width={20} height={20} className="w-5 h-5 object-contain brightness-0 invert opacity-50" draggable={false} />
+            <div>
+              <p className="text-sm font-semibold text-white flex items-center gap-2">TRANSFER BANK <span className="text-[10px] bg-[#FFB800]/20 text-[#FFB800] border border-[#FFB800]/30 font-bold px-2 py-0.5 rounded-full">Maintenance</span></p>
+              <p className="text-xs text-white/45 mt-0.5">{pmBanks.map((b) => b.label).join(", ")}</p>
+            </div>
+          </div>
+          <span className="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 border-white/20" />
+        </div>
+        )}
+      </div>
+
+      {/* Detail metode — hanya QRIS selama maintenance. Cabang
+          ewallet/bank dihapus dari render agar tidak bisa diakses;
+          kembalikan dari git bila maintenance selesai. */}
+      {method === "qris" && pmQris && (
+        <div className="mt-4 ax-glass-card rounded-2xl p-4 animate-in fade-in">
+            <div className="flex items-start gap-3 text-left">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#00E5FF]/10">
+                <img src="/icons/ios11/qr-code-32.png" alt="" width={20} height={20} className="h-5 w-5 object-contain" draggable={false} />
+              </span>
+              <div>
+                <p className="text-sm font-semibold text-white">QRIS dinamis dibuat setelah pesanan</p>
+                <p className="mt-1 text-xs leading-5 text-white/50">QR sudah termasuk nominal pembayaran. Setelah dibayar, status otomatis menjadi lunas—tanpa upload bukti.</p>
+              </div>
+            </div>
+        </div>
+      )}
+        </>
+      )}
+    </div>
+  );
+
+  const agreeBlock = (
+    <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-left">
+      <input
+        id="checkout-agree"
+        type="checkbox"
+        checked={agreed}
+        onChange={(e) => setAgreed(e.target.checked)}
+        className="mt-1 h-4 w-4 shrink-0 accent-[#00E5FF]"
+      />
+      <span className="text-xs leading-5 text-white/60">
+        Saya paham AXVARA adalah <span className="font-semibold text-white">third-party independen, bukan official store</span>, dan saya setuju dengan{" "}
+        <Link href="/garansi-replace" target="_blank" rel="noreferrer" className="font-semibold text-[#00E5FF] hover:underline">ketentuan layanan & garansi</Link>{" "}
+        serta ketentuan di deskripsi tiap produk.
+      </span>
+    </label>
+  );
+
   return (
     <div className="mx-auto max-w-[1100px] px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
       <h1 className="font-display font-bold text-2xl text-white tracking-[-0.02em]">Checkout</h1>
@@ -391,7 +501,8 @@ function CheckoutInner() {
       </div>
 
       <div className="mt-6 grid lg:grid-cols-[1fr_380px] gap-6 items-start">
-        {/* Form */}
+        {/* Kiri — DATA + EKSPEKTASI (pola WR). Metode/S&K/CTA pindah ke rail
+            kanan; kiri tidak lagi memuatnya (revisi Batch C 2026-09-19). */}
         <div className="ax-glass-card rounded-[24px] p-5 sm:p-6 space-y-6">
           <div>
             <h2 className="text-sm font-semibold text-white">① Data Pembeli</h2>
@@ -414,97 +525,10 @@ function CheckoutInner() {
             </div>
           </div>
 
-          <div>
-            <h2 className="text-sm font-semibold text-white">② Metode Pembayaran</h2>
-            {quoteLoading ? (
-              <div className="mt-3 flex items-center gap-2 text-sm text-white/50">
-                <span className="w-4 h-4 rounded-full border-2 border-white/20 border-t-[#00E5FF] animate-spin" />
-                Memuat harga & metode pembayaran…
-              </div>
-            ) : quoteError ? (
-              <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-2">
-                <p className="text-sm text-red-300">{quoteError}</p>
-                <button type="button" onClick={() => void fetchQuote(quoteRequestItems)} className="shrink-0 text-xs font-semibold text-[#00E5FF]">Coba lagi</button>
-              </div>
-            ) : (
-              <>
-            <div className="mt-3 grid gap-3">
-              {pmQris && (
-              <button type="button" aria-pressed={method === "qris"} onClick={() => setMethod("qris")} className={`text-left rounded-2xl border p-4 flex items-center justify-between transition ${method === "qris" ? "bg-[#00E5FF]/10 border-[#00E5FF]/40" : "ax-glass-card border-white/10 hover:bg-white/10"}`}>
-                <div className="flex items-center gap-3">
-                  <img src="/icons/ios11/qr-code-32.png" alt="" width={20} height={20} className="w-5 h-5 object-contain" style={{ filter: "brightness(0) saturate(100%) invert(72%) sepia(68%) saturate(4000%) hue-rotate(145deg) brightness(1.05)" }} draggable={false} />
-                  <div>
-                    <p className="text-sm font-semibold text-white flex items-center gap-2">QRIS <span className="text-[10px] bg-[#00E5FF] text-[#080C1E] font-bold px-2 py-0.5 rounded-full">Paling Cepat</span></p>
-                    <p className="text-xs text-white/45 mt-0.5">Scan untuk semua e-wallet & bank</p>
-                  </div>
-                </div>
-                <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${method === "qris" ? "border-[#00E5FF] bg-[#00E5FF]" : "border-white/20"}`}>{method === "qris" && <span className="w-2 h-2 rounded-full bg-[#080C1E]" />}</span>
-              </button>
-              )}
-
-              {pmEwallet && (
-              <div
-                role="button"
-                aria-disabled="true"
-                aria-label="E-Wallet sedang maintenance"
-                title="E-Wallet sedang maintenance"
-                className="text-left rounded-2xl border p-4 flex items-center justify-between transition ax-glass-card border-white/10 opacity-50 cursor-not-allowed select-none"
-              >
-                <div className="flex items-center gap-3">
-                  <img src="/icons/ios11/wallet-32.png" alt="" width={20} height={20} className="w-5 h-5 object-contain brightness-0 invert opacity-50" draggable={false} />
-                  <div>
-                    <p className="text-sm font-semibold text-white flex items-center gap-2">E-WALLET <span className="text-[10px] bg-[#FFB800]/20 text-[#FFB800] border border-[#FFB800]/30 font-bold px-2 py-0.5 rounded-full">Maintenance</span></p>
-                    <p className="text-xs text-white/45 mt-0.5">{pmEwallet.label}</p>
-                  </div>
-                </div>
-                <span className="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 border-white/20" />
-              </div>
-              )}
-
-              {pmBanks.length > 0 && (
-              <div
-                role="button"
-                aria-disabled="true"
-                aria-label="Transfer Bank sedang maintenance"
-                title="Transfer Bank sedang maintenance"
-                className="text-left rounded-2xl border p-4 flex items-center justify-between transition ax-glass-card border-white/10 opacity-50 cursor-not-allowed select-none"
-              >
-                <div className="flex items-center gap-3">
-                  <img src="/icons/ios11/bank-32.png" alt="" width={20} height={20} className="w-5 h-5 object-contain brightness-0 invert opacity-50" draggable={false} />
-                  <div>
-                    <p className="text-sm font-semibold text-white flex items-center gap-2">TRANSFER BANK <span className="text-[10px] bg-[#FFB800]/20 text-[#FFB800] border border-[#FFB800]/30 font-bold px-2 py-0.5 rounded-full">Maintenance</span></p>
-                    <p className="text-xs text-white/45 mt-0.5">{pmBanks.map((b) => b.label).join(", ")}</p>
-                  </div>
-                </div>
-                <span className="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 border-white/20" />
-              </div>
-              )}
-            </div>
-
-            {/* Detail metode — hanya QRIS selama maintenance. Cabang
-                ewallet/bank dihapus dari render agar tidak bisa diakses;
-                kembalikan dari git bila maintenance selesai. */}
-            {method === "qris" && pmQris && (
-              <div className="mt-4 ax-glass-card rounded-2xl p-4 animate-in fade-in">
-                  <div className="flex items-start gap-3 text-left">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#00E5FF]/10">
-                      <img src="/icons/ios11/qr-code-32.png" alt="" width={20} height={20} className="h-5 w-5 object-contain" draggable={false} />
-                    </span>
-                    <div>
-                      <p className="text-sm font-semibold text-white">QRIS dinamis dibuat setelah pesanan</p>
-                      <p className="mt-1 text-xs leading-5 text-white/50">QR sudah termasuk nominal pembayaran. Setelah dibayar, status otomatis menjadi lunas—tanpa upload bukti.</p>
-                    </div>
-                  </div>
-              </div>
-            )}
-              </>
-            )}
-          </div>
-
           {/* Verifikasi otomatis selalu tampil selama maintenance (QRIS saja);
               panel upload manual disembunyikan total di WEB. */}
           <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.06] p-4">
-            <h2 className="text-sm font-semibold text-emerald-300">③ Verifikasi Otomatis</h2>
+            <h2 className="text-sm font-semibold text-emerald-300">② Verifikasi Otomatis</h2>
             <p className="mt-1 text-xs leading-5 text-white/50">QRIS dan total bayar akan muncul di halaman pesanan. Biarkan halaman terbuka; status diperbarui otomatis setelah pembayaran diterima.</p>
           </div>
 
@@ -527,29 +551,10 @@ function CheckoutInner() {
 
           {error && <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2">{error}</p>}
 
-          <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-left">
-            <input
-              id="checkout-agree"
-              type="checkbox"
-              checked={agreed}
-              onChange={(e) => setAgreed(e.target.checked)}
-              className="mt-1 h-4 w-4 shrink-0 accent-[#00E5FF]"
-            />
-            <span className="text-xs leading-5 text-white/60">
-              Saya paham AXVARA adalah <span className="font-semibold text-white">third-party independen, bukan official store</span>, dan saya setuju dengan{" "}
-              <Link href="/garansi-replace" target="_blank" rel="noreferrer" className="font-semibold text-[#00E5FF] hover:underline">ketentuan layanan & garansi</Link>{" "}
-              serta ketentuan di deskripsi tiap produk.
-            </span>
-          </label>
-
-          <button onClick={submit} disabled={ctaDisabled} className="w-full h-[52px] rounded-xl bg-[#00E5FF] text-[#080C1E] font-bold hover:bg-[#00D0E8] disabled:opacity-60 transition inline-flex items-center justify-center gap-2">
-            {loading && <span className="w-5 h-5 rounded-full border-2 border-[#080C1E]/20 border-t-[#080C1E] animate-spin" />}
-            {ctaLabel}
-          </button>
-          {/* Sticky bottom CTA — MOBILE ONLY. Menghilangkan jarak antara
-              keputusan dan aksi: pembeli tidak perlu scroll melewati 3 step
-              untuk menemukan tombol bayar. Memakai handler + state disabled
-              yang sama dengan tombol utama (tidak ada logika ganda). */}
+          {/* Sticky bottom CTA — MOBILE ONLY. Di mobile rail kanan jatuh ke
+              bawah; sticky ini menjaga tombol bayar selalu dalam jangkauan.
+              Memakai handler + state disabled yang sama (tidak ada logika
+              ganda). */}
           <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#080C1E]/90 backdrop-blur-xl border-t border-white/10 px-4 py-2.5 pb-[max(10px,env(safe-area-inset-bottom))]">
             <button onClick={submit} disabled={ctaDisabled} className="w-full h-12 rounded-xl bg-[#00E5FF] text-[#080C1E] font-bold text-sm hover:bg-[#00D0E8] disabled:opacity-60 transition inline-flex items-center justify-center gap-2">
               {loading && <span className="w-4 h-4 rounded-full border-2 border-[#080C1E]/20 border-t-[#080C1E] animate-spin" />}
@@ -560,10 +565,12 @@ function CheckoutInner() {
           <div className="lg:hidden h-[68px]" aria-hidden />
         </div>
 
-        {/* Action rail kanan — RINGKASAN + AKSI (pola WR). Sticky agar total
-            + CTA selalu terlihat saat pembeli mengisi form panjang di kiri.
-            Tidak menambah field/metode/diskon — murni susun ulang. */}
-        <aside className="ax-glass-card rounded-[24px] p-5 h-fit lg:sticky lg:top-[72px] space-y-4" aria-label="Ringkasan dan pembayaran">
+        {/* Action rail kanan — RINGKASAN + METODE + S&K + CTA (pola WR).
+            Sticky agar total + tombol bayar selalu terlihat. Mini-blok MBO dan
+            trust sebaris Batch C awal DIHAPUS 2026-09-19 (redundan: estimasi
+            sudah di kiri, trust sudah di hero) — rail hanya: ringkasan,
+            metode, S&K, error, CTA. */}
+        <aside className="ax-glass-card rounded-[24px] p-5 h-fit lg:sticky lg:top-[72px] space-y-5" aria-label="Ringkasan dan pembayaran">
           <div>
             <h3 className="font-semibold text-white text-sm">Ringkasan Pesanan</h3>
             {quoteLoading ? (
@@ -594,27 +601,15 @@ function CheckoutInner() {
             )}
           </div>
 
-          {/* Badge Made By Order di rail — kepastian waktu sedekat mungkin
-              dengan tombol bayar (pembeli ragu di detik terakhir). */}
-          {queuedNames.length > 0 && (
-            <div className="rounded-xl border border-[#FFB800]/25 bg-[#FFB800]/[0.07] px-3 py-2.5">
-              <span className="inline-flex rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFD66B]">Made By Order</span>
-              <p className="mt-1.5 text-[11px] leading-4 text-white/55">Estimasi 6–12 jam jika ramai, biasanya lebih cepat, mohon bersabar.</p>
-            </div>
-          )}
+          <div className="border-t border-white/10 pt-5">
+            {paymentBlock}
+          </div>
 
-          {/* Trust rail — 3 sinyal Batch A, diulang ringkas di titik aksi. */}
-          <ul className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-white/45">
-            <li>QRIS otomatis</li>
-            <li className="opacity-30">•</li>
-            <li>Garansi replace</li>
-            <li className="opacity-30">•</li>
-            <li>Support WA admin</li>
-          </ul>
+          {error && <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2">{error}</p>}
 
-          {/* CTA duplikat desktop — sama handler/disabled dengan tombol kiri.
-              Mobile disembunyikan (sudah ada sticky bottom) agar tidak ganda. */}
-          <div className="hidden lg:block">
+          {agreeBlock}
+
+          <div>
             <button onClick={submit} disabled={ctaDisabled} className="w-full h-[52px] rounded-xl bg-[#00E5FF] text-[#080C1E] font-bold hover:bg-[#00D0E8] disabled:opacity-60 transition inline-flex items-center justify-center gap-2">
               {loading && <span className="w-5 h-5 rounded-full border-2 border-[#080C1E]/20 border-t-[#080C1E] animate-spin" />}
               {ctaLabel}

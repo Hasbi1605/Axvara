@@ -52,25 +52,32 @@ describe("Checkout quote integrity", () => {
     expect(read("src/components/storefront/QuickVariantModal.tsx")).toContain("formatVariantLabel(v)");
   });
 
-  it("layout action-rail (Batch C 2026-09-19): kanan sticky berisi ringkasan + CTA, mobile ada accordion + sticky CTA", () => {
+  it("layout action-rail ala WR (Batch C 2026-09-19, revisi anti-redundan): kiri data, kanan aksi", () => {
     const checkout = read("src/app/checkout/page.tsx");
-    // Rail kanan: aside sticky dengan ringkasan + badge MBO + CTA duplikat.
+    // Rail kanan: aside sticky berisi ringkasan + metode + S&K + CTA.
     expect(checkout).toContain("Action rail kanan");
     expect(checkout).toContain("lg:sticky lg:top-[72px]");
     expect(checkout).toContain("Ringkasan dan pembayaran");
-    // Satu handler submit dipakai 3 tombol (kiri + rail + sticky mobile) —
+    expect(checkout).toContain("{paymentBlock}");
+    expect(checkout).toContain("{agreeBlock}");
+    // Redundan Batch C awal DIHAPUS: mini-blok MBO + trust sebaris di rail.
+    expect(checkout).not.toContain("Trust rail");
+    expect(checkout).not.toContain("Badge Made By Order di rail");
+    // Kiri hanya data + ekspektasi: tidak ada lagi blok metode/S&K/CTA utama.
+    expect(checkout).toContain("Kiri — DATA + EKSPEKTASI");
+    // Satu handler submit dipakai 2 tombol (rail + sticky mobile) —
     // tidak ada logika validasi ganda.
     expect(checkout).toContain("ctaDisabled");
     expect(checkout).toContain("ctaLabel");
     const submitCount = (checkout.match(/onClick=\{submit\}/g) || []).length;
-    expect(submitCount).toBe(3);
+    expect(submitCount).toBe(2);
     // Mobile: accordion ringkasan di atas + sticky bottom CTA + spacer.
     expect(checkout).toContain("Ringkasan accordion");
     expect(checkout).toContain("checkout-summary-mobile");
     expect(checkout).toContain("Sticky bottom CTA");
     expect(checkout).toContain("fixed bottom-0");
-    // Batasan batch: tidak ada metode/voucher/logic quote baru — hanya 3
-    // tombol submit yang berbagi satu handler + tidak ada input kode promo.
+    // Batasan batch: tidak ada metode/diskon/logic quote baru — hanya 1
+    // blok metode (variabel dipakai ulang) + tidak ada input kode diskon.
     expect(checkout).not.toContain("kode promo");
     expect(checkout).not.toContain("kode voucher");
     expect(checkout).not.toContain("Masukkan voucher");
