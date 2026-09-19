@@ -51,7 +51,14 @@ export function outboxPaceBaseMs(): number {
 }
 
 function paceDelayMsLive(): number {
-  return Math.max(0, outboxPaceBaseMs()) + Math.floor(Math.random() * WA_OUTBOX_PACE_JITTER_MS);
+  // Base 0 (dipakai test via WHATSAPP_OUTBOX_PACE_MS=0) = TANPA jeda sama
+  // sekali, termasuk jitter. Tanpa guard ini, jitter acak ≤3 dtk per baris
+  // membuat test 5-baris butuh ~7,5 dtk > timeout vitest 5 dtk di CI
+  // (insiden run 35454769472, 2026-09-19 — di lokal lolos karena paralelisme
+  // worker menutupi sleep).
+  const base = Math.max(0, outboxPaceBaseMs());
+  if (base === 0) return 0;
+  return base + Math.floor(Math.random() * WA_OUTBOX_PACE_JITTER_MS);
 }
 
 export type WaOutboxKind = "payment_detected" | "text";

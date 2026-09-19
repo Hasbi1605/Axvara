@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-09-20 — Perbaiki flaky timeout CI run 35454769472 (wa-outbox pacing): test set WHATSAPP_OUTBOX_PACE_MS=0 tapi jitter acak ≤3 dtk/baris tetap jalan → 5 baris ≈7,5 dtk > timeout vitest 5 dtk (di lokal lolos karena paralelisme); paceDelayMsLive() kini 0 total saat base 0 (pacing prod 6 dtk + jitter tak berubah) — src/lib/whatsapp/outbox.ts — (verifikasi: file target 4x hijau ~279ms dari 5012ms; full 897/897 test hijau, tsc bersih)
+
 - 2026-09-19 — Daftar produk admin meniru storefront (screenshot owner): ready dulu, stok habis belakangan, nonaktif PALING belakang (sebelumnya urutan DB mentah — Netflix/Capcut/Claude stok 0 nangkring di atas); kunci sort_order admin + id sebagai tiebreak, pola sama dengan page.tsx — src/components/admin/useProductManager.ts, tests/product-variant-save.integration.test.ts — (verifikasi: 897/897 test [85 file] hijau, tsc bersih)
 
 - 2026-09-19 — formatVariantLabel khusus WR (insiden Canva screenshot owner): helper B2 menggabung durasi untuk SEMUA produk → non-WR Canva tampil "Invite Lifetime - 6 Bulan" + "Head 1 Bulan - 14 Hari" (DB: duration 6 month/14 day = duplikat kolom garansi, bukan display); kini append hanya bila wr_variant_id terisi (Meitu dkk tetap "- 7 Hari"), non-WR label admin final apa adanya; DB tak tersentuh (tak perlu edit manual, hilang sendiri setelah deploy) — src/lib/catalog.ts, tests/whatsapp-variants.regression.test.ts — (verifikasi: 896/896 test [85 file] hijau, tsc bersih)
