@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { formatRupiah } from "@/lib/utils";
+import { formatRupiah, formatWibDateTime } from "@/lib/utils";
 import { ChannelBadge, IosIcon, MethodBadge, StatusBadge } from "@/components/ui/IosIcon";
 import { Spinner } from "@/components/ui/Loading";
 import { ProofThumbnail } from "@/components/admin/ProofThumbnail";
@@ -247,5 +247,7 @@ async function fetchHandoverItems(code: string): Promise<{ item_index: number; s
 }
 
 function Info({ label, value }: { label: string; value: string }) { return <div className="rounded-xl border border-white/[0.06] bg-white/[0.035] p-3"><p className="text-[10px] uppercase tracking-wide text-white/35">{label}</p><p className="mt-1 break-words text-sm text-white/75">{value}</p></div>; }
-function formatDate(value: string) { const date = new Date(value); return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Jakarta" }).format(date); }
+// Timestamp D1 berformat spasi adalah UTC — parsing wajib lewat helper kanonis
+// (formatWibDateTime), bukan `new Date(value)` yang membacanya sebagai lokal.
+function formatDate(value: string) { return formatWibDateTime(value) ?? value; }
 function normalizeOrder(raw: Record<string, unknown>): Order { return { code: String(raw.code || ""), name: String(raw.customer_name || ""), wa: String(raw.customer_wa || ""), email: String(raw.customer_email || ""), method: String(raw.payment_method || ""), items: Array.isArray(raw.items) ? raw.items as Order["items"] : [], subtotal: Number(raw.subtotal || 0), paymentAmount: Number(raw.payment_amount || raw.subtotal || 0), status: String(raw.status || "pending"), paymentStatus: String(raw.payment_status || "unpaid"), fulfillmentStatus: raw.fulfillment_status ? String(raw.fulfillment_status) : undefined, salesChannel: (["web", "telegram", "whatsapp"].includes(String(raw.sales_channel)) ? raw.sales_channel : "web") as OrderChannel, fileName: raw.proof_url ? String(raw.proof_url) : undefined, proofId: raw.proof_id == null ? undefined : Number(raw.proof_id), proofStatus: (["submitted", "approved", "rejected"].includes(String(raw.proof_status)) ? raw.proof_status : undefined) as Order["proofStatus"], proofClaimedMethod: raw.proof_claimed_method as Order["proofClaimedMethod"], proofRejectionReason: raw.proof_rejection_reason ? String(raw.proof_rejection_reason) : undefined, adminNote: raw.admin_note ? String(raw.admin_note) : undefined, createdAt: String(raw.created_at || "") }; }

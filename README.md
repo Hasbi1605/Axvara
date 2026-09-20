@@ -379,6 +379,19 @@ QRIS & Rekonsiliasi**.
 - Sesi: JWT httpOnly cookie-only 8 jam + cookie idle JWT 2 jam terikat sesi yang sama; batas idle ditegakkan di server, refresh memutar idle baru yang tervalidasi, dan rotasi password mencabut seluruh sesi lama (login ulang).
 - Dev mode: email `admin@axvara.tech` / password `axvara-dev-only`
 
+### Aturan yang dikunci audit 2026-09-20
+
+- **Jam selalu WIB.** D1 menyimpan UTC berformat spasi; `new Date(nilai)` di JS
+  membacanya sebagai waktu lokal sehingga di perangkat Indonesia jam tampil
+  mundur 7 jam. Pakai `formatWibDateTime` (`src/lib/utils.ts`) untuk SETIAP
+  timestamp yang tampil — jangan memformat `new Date(<string>)` langsung.
+- **Rahasia dibandingkan konstan-waktu.** Bearer/HMAC apa pun (webhook DANA,
+  Telegram, WhatsApp, Warung Rebahan, dan `CRON_SECRET`) memakai
+  `constantTimeEqual` dari `src/lib/security.ts`.
+- **Endpoint order publik tidak membocorkan `proof_url`.** `GET /api/orders?code=`
+  dan `GET /api/orders/:code` melayani halaman yang sama dan isinya wajib
+  sepadan; kunci objek R2 privat hanya boleh lewat `/api/admin/bukti/*`.
+
 ## 🤖 Agent CMS dan Remote MCP
 
 - Admin memakai sidebar responsif yang dikelompokkan sebagai Operasional, Katalog, Pembayaran, Konten, Otomasi, dan Sistem. Query `section` mendukung deep-link/back-forward, sedangkan ringkasan menjadi action center untuk antrean penting.

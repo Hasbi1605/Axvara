@@ -6,6 +6,7 @@
 // token untuk akses ulang (disimpan di sessionStorage perangkat ini saja).
 
 import { useEffect, useRef, useState } from "react";
+import { formatWibDateTime } from "@/lib/utils";
 
 type Credential = { details: string; completed_at: string | null };
 
@@ -91,7 +92,7 @@ export function WrCredentialsPanel({ code, prefillWa = "" }: { code: string; pre
           {creds.map((c, i) => (
             <div key={i} className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.07] p-3">
               <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5 text-emerald-100">{c.details}</pre>
-              {c.completed_at && <p className="mt-2 text-[11px] text-white/40">Diterima {new Date(c.completed_at).toLocaleString("id-ID")}</p>}
+              {c.completed_at && <p className="mt-2 text-[11px] text-white/40">Diterima {formatWibDateTime(c.completed_at) ?? "—"}</p>}
             </div>
           ))}
         </div>

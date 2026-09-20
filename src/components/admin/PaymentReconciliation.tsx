@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { formatRupiah } from "@/lib/utils";
+import { formatRupiah, formatWibDateTime } from "@/lib/utils";
 import { Spinner } from "@/components/ui/Loading";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { useToast } from "@/components/ui/Toast";
@@ -81,7 +81,8 @@ function EventBadge({ status }: { status: EventRow["status"] }) {
         : "border-[#FFB800]/25 bg-[#FFB800]/10 text-[#FFCF55]";
   return <span className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase ${tone}`}>{label}</span>;
 }
-function formatDate(value: string) { const date = new Date(value); return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Jakarta" }).format(date); }
+// Sama seperti OrdersManager: timestamp D1 berformat spasi adalah UTC.
+function formatDate(value: string) { return formatWibDateTime(value) ?? value; }
 
 function retryErrorMessage(code?: string) {
   switch (code) {

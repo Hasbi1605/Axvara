@@ -6,6 +6,12 @@ import { checkRateLimit } from "@/lib/rateLimit";
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
+// Endpoint publik: identitas pembeli hanya kode order, jadi isi respons WAJIB
+// tetap sepadan dengan `GET /api/orders?code=` — keduanya melayani halaman
+// /pesanan/[code] yang sama. `proof_url` TIDAK pernah ikut: ia adalah kunci
+// objek R2 privat yang hanya boleh dibaca admin lewat /api/admin/bukti/*,
+// dan membocorkannya di sini memberi penebak kode order sebuah nama file
+// bukti pembayaran milik orang lain.
 export async function GET(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   if (!checkRateLimit(req, "orders:lookup")) return NextResponse.json({ error: "Terlalu sering, coba lagi 1 menit." }, { status: 429, headers: { "Retry-After": "60" } });
   const { code } = await params;
@@ -32,7 +38,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ code
       subtotal: row.subtotal,
       payment_method: row.payment_method,
       payment_account: row.payment_account,
-      proof_url: row.proof_url,
       status: row.status,
       created_at: row.created_at,
       expires_at: row.expires_at,
