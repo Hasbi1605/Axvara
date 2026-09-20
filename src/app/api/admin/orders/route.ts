@@ -65,11 +65,15 @@ export async function GET(req: NextRequest) {
   const [rows, totalRow, statsRow, channelRows, statusRows, methodRows] = await Promise.all([
     queryAll(`${select} LIMIT ? OFFSET ?`, ...bindings, limit, offset),
     queryFirst(`SELECT COUNT(*) AS count FROM orders o${where}`, ...bindings),
+    // Kartu metrik WAJIB memakai `where` yang sama dengan daftarnya. Dulu
+    // query ini tanpa WHERE, sehingga memfilter ke "Pending" tetap
+    // menampilkan "Total pesanan 26" — kartu dan daftar di layar yang sama
+    // bercerita beda. Join pt dipertahankan untuk omzet.
     queryFirst(`SELECT COUNT(*) AS total,
       SUM(CASE WHEN o.status='pending' THEN 1 ELSE 0 END) AS pending,
       SUM(CASE WHEN o.status='lunas' THEN 1 ELSE 0 END) AS paid,
       SUM(CASE WHEN o.status='lunas' THEN COALESCE(pt.payable_amount,o.subtotal) ELSE 0 END) AS revenue
-      FROM orders o LEFT JOIN payment_transactions pt ON pt.order_code=o.code`),
+      FROM orders o LEFT JOIN payment_transactions pt ON pt.order_code=o.code${where}`, ...bindings),
     queryAll("SELECT COALESCE(sales_channel,'web') AS value,COUNT(*) AS count FROM orders GROUP BY COALESCE(sales_channel,'web')"),
     queryAll("SELECT status AS value,COUNT(*) AS count FROM orders GROUP BY status"),
     queryAll("SELECT LOWER(payment_method) AS value,COUNT(*) AS count FROM orders GROUP BY LOWER(payment_method) ORDER BY count DESC"),

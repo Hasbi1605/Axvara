@@ -24,6 +24,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
   const [prods, setProds] = useState<Prod[]>([]);
   const [cats, setCats] = useState<Cat[]>([]);
   const [q, setQ] = useState("");
+  const [onlyLowStock, setOnlyLowStock] = useState(false);
   const [page, setPage] = useState(1);
   const [loadingList, setLoadingList] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
@@ -98,7 +99,12 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
 
       if (rawVars.length === 0) {
         const res = await fetch(`/api/admin/variants?product_id=${p.id}`);
-        const data = (await res.json().catch(() => ({}))) as { variants?: FormVariant[] };
+        const data = (await res.json().catch(() => ({}))) as { variants?: FormVariant[]; error?: string };
+        // Kedua sumber varian boleh kosong (produk memang tanpa varian), tapi
+        // sumber yang GAGAL bukan "kosong". Dulu respons non-OK jatuh diam ke
+        // rawVars=[] sehingga produk multi-varian terbuka sebagai form kosong
+        // tanpa satu pun pesan — admin mengira variannya hilang.
+        if (!res.ok && !prodRes.ok) throw new Error(data.error || `Varian gagal dimuat (${res.status})`);
         rawVars = data.variants || [];
       }
 
@@ -127,10 +133,15 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
       }));
       setFormVariants(mapped);
       setProductInitialSignature(productFormSignature(nextForm, nextImages, isMulti, mapped));
-    } catch {
+    } catch (cause) {
       setHasMultiVariants(false);
       setFormVariants([]);
       setProductInitialSignature(productFormSignature(nextForm, nextImages, false, []));
+      // Form kosong TANPA penjelasan adalah jebakan: admin bisa mengira
+      // varian terhapus lalu menyimpan ulang di atas data yang belum termuat.
+      const message = cause instanceof Error ? cause.message : "Varian produk gagal dimuat";
+      setFormError(`${message}. Tutup editor dan coba lagi — jangan simpan sebelum varian tampil.`);
+      toast.error(message);
     } finally {
       setLoadingVariants(false);
     }
@@ -333,7 +344,10 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
   };
 
   const activeProducts=prods.filter(p=>p.isActive).length;
-  const lowStock=prods.filter(p=>p.stock>=0&&p.stock<=5).length;
+  // Satuan "stok menipis" = VARIAN aktif berstok 0..5, sama persis dengan
+  // kartu Ringkasan. Sebelumnya layar ini menghitung produk, sehingga satu
+  // label menampilkan dua angka berbeda (66 di Ringkasan vs 33 di sini).
+  const lowStock = prods.reduce((total, p) => total + (p.lowStockVariants ?? (p.stock >= 0 && p.stock <= 5 ? 1 : 0)), 0);
   const soldProducts=prods.reduce((total,product)=>total+product.soldCount,0);
   // Urutan daftar admin meniru storefront (page.tsx): ready dulu, habis
   // belakangan — plus nonaktif PALING belakang (storefront tak menampilkan
@@ -341,9 +355,16 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
   // Tanpa ini produk habis/nonaktif (Netflix, Capcut, Claude di screenshot
   // owner 2026-09-19) nangkring di atas dan produk ready tenggelam.
   const isOut = (p: Prod): boolean => p.stock != null && p.stock !== -1 && p.stock <= 0;
+  // Filter "hanya stok menipis" dipicu dari kartu Ringkasan (?low_stock=1).
+  // Tanpa ini kartu itu cuma memindah tab: daftar tetap menampilkan semua
+  // produk dan admin harus mencari sendiri varian mana yang tipis.
   const filtered = useMemo(
     () => prods
-      .filter(p=> !q || `${p.name} ${p.slug} ${p.badge??""}`.toLowerCase().includes(q.toLowerCase()))
+      .filter(p=> {
+        if (q && !`${p.name} ${p.slug} ${p.badge??""}`.toLowerCase().includes(q.toLowerCase())) return false;
+        if (onlyLowStock && !((p.lowStockVariants ?? (p.stock >= 0 && p.stock <= 5 ? 1 : 0)) > 0)) return false;
+        return true;
+      })
       .slice()
       .sort((a, b) => {
         const byActive = Number(!b.isActive) - Number(!a.isActive);
@@ -354,7 +375,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
         if (byOrder !== 0) return byOrder;
         return Number(a.id) - Number(b.id);
       }),
-    [prods, q],
+    [prods, q, onlyLowStock],
   );
   const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE_ADMIN));
   const safePage = Math.min(page, totalPages);
@@ -388,7 +409,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
   return {
     // data & daftar
     prods, cats, q, page, loadingList, listError, load,
-    setQ, setPage,
+    setQ, setPage, onlyLowStock, setOnlyLowStock,
     activeProducts, lowStock, soldProducts, filtered, paged, safePage, totalPages, perPage: PER_PAGE_ADMIN,
     // editor
     editing, showNew, uploading, form, formImages, hasMultiVariants, formVariants,

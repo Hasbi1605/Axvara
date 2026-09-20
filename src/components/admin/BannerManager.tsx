@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ImageDropzone } from "@/components/admin/ImageDropzone";
 import { useToast } from "@/components/ui/Toast";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { IosIcon } from "@/components/ui/IosIcon";
 
 type Banner = {
@@ -36,6 +37,8 @@ export function BannerManager() {
   const [form, setForm] = useState<Banner>(blankBanner);
   const [editing, setEditing] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Banner | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -82,16 +85,21 @@ export function BannerManager() {
   }
 
   async function remove(banner: Banner) {
-    if (!window.confirm(`Hapus banner “${banner.title}”?`)) return;
-    const response = await fetch(`/api/banners?id=${banner.id}`, { method: "DELETE" });
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) return toast.error(body.error ?? "Banner gagal dihapus");
-    if (editing === banner.id) {
-      setEditing(null);
-      setForm(blankBanner);
+    setDeleting(true);
+    try {
+      const response = await fetch(`/api/banners?id=${banner.id}`, { method: "DELETE" });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) return toast.error(body.error ?? "Banner gagal dihapus");
+      if (editing === banner.id) {
+        setEditing(null);
+        setForm(blankBanner);
+      }
+      setDeleteTarget(null);
+      await load();
+      toast.success("Banner dihapus.");
+    } finally {
+      setDeleting(false);
     }
-    await load();
-    toast.success("Banner dihapus.");
   }
 
   return (
@@ -266,7 +274,7 @@ export function BannerManager() {
                       <IosIcon name="edit" size={12} tint="black" /> Edit
                     </button>
                     <button
-                      onClick={() => void remove(banner)}
+                      onClick={() => setDeleteTarget(banner)}
                       className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600 shadow-[0_2px_10px_rgba(239,68,68,0.35)] transition"
                       aria-label={`Hapus ${banner.title}`}
                       title="Hapus banner"
@@ -280,6 +288,18 @@ export function BannerManager() {
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="Hapus banner?"
+        description={deleteTarget ? `“${deleteTarget.title}” akan dihapus permanen dan langsung berhenti tampil di storefront.` : ""}
+        confirmLabel="Hapus banner"
+        cancelLabel="Batal"
+        variant="danger"
+        loading={deleting}
+        onClose={() => !deleting && setDeleteTarget(null)}
+        onConfirm={() => deleteTarget && void remove(deleteTarget)}
+      />
     </section>
   );
 }

@@ -6,6 +6,7 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useRef, useState } from "react";
 import { toWebp16x9 } from "@/components/admin/ImageDropzone";
+import { useToast } from "@/components/ui/Toast";
 
 function legacyJson(value: string): Record<string, unknown> | null {
   try {
@@ -24,6 +25,7 @@ export function ArticleEditor({
   onChange: (value: string) => void;
 }) {
   const fileInput = useRef<HTMLInputElement>(null);
+  const toast = useToast();
   const [uploading, setUploading] = useState(false);
   const initialJson = legacyJson(value);
   const editor = useEditor({
@@ -63,7 +65,7 @@ export function ArticleEditor({
       if (!response.ok) throw new Error(body.error ?? "Upload gambar gagal");
       editor.chain().focus().setImage({ src: body.urls[0], alt: file.name }).run();
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : "Upload gambar gagal");
+      toast.error(error instanceof Error ? error.message : "Upload gambar gagal");
     } finally {
       setUploading(false);
       if (fileInput.current) fileInput.current.value = "";

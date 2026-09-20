@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { CATEGORY_ICON_OPTIONS, IosIcon, categoryIcon, resolveCategoryIconName } from "@/components/ui/IosIcon";
 import { Spinner } from "@/components/ui/Loading";
 import { useToast } from "@/components/ui/Toast";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 type Cat = { id: number; name: string; slug: string; icon?: string | null; sort_order: number; product_count?: number };
 type CategoryForm = { name: string; icon: string; sort_order: number };
@@ -20,6 +21,7 @@ export function CategoryManager() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Cat | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -37,6 +39,18 @@ export function CategoryManager() {
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+
+  // Modal kategori dulu bukan dialog yang sah: halaman di belakangnya masih
+  // bisa di-scroll dan Escape tidak menutup apa pun, padahal modal produk dan
+  // ConfirmDialog sudah punya keduanya.
+  useEffect(() => {
+    if (!showForm) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape" && !saving) setShowForm(false); };
+    window.addEventListener("keydown", onKeyDown);
+    return () => { document.body.style.overflow = previousOverflow; window.removeEventListener("keydown", onKeyDown); };
+  }, [showForm, saving]);
 
   const openNew = () => {
     const nextOrder = Math.max(0, ...list.map((category) => Number(category.sort_order) || 0)) + 1;
@@ -77,7 +91,8 @@ export function CategoryManager() {
   };
 
   const remove = async (category: Cat) => {
-    if ((category.product_count ?? 0) > 0 || !confirm(`Hapus kategori “${category.name}”?`)) return;
+    if ((category.product_count ?? 0) > 0) return;
+    setDeleteTarget(null);
     setDeleting(category.id);
     try {
       const response = await fetch(`/api/categories?id=${category.id}`, { method: "DELETE" });
@@ -114,7 +129,7 @@ export function CategoryManager() {
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-white/5"><IosIcon name={categoryIcon(category.slug, category.icon)} size={18} tint="white" /></span>
                   <div className="min-w-0 flex-1"><p className="text-sm font-semibold text-white">{category.name}</p><p className="text-xs text-white/40">/{category.slug} · urutan {category.sort_order ?? 0} · {category.product_count ?? 0} produk</p></div>
                   <button type="button" onClick={() => openEdit(category)} className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full bg-white px-3 text-xs font-bold text-[#080C1E] transition hover:bg-white/90"><IosIcon name="edit" size={12} tint="black" /> Edit</button>
-                  <button type="button" onClick={() => void remove(category)} disabled={hasProducts || deleting === category.id} title={hasProducts ? "Pindahkan semua produk sebelum menghapus kategori" : "Hapus kategori"} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-500 text-white shadow-[0_2px_10px_rgba(239,68,68,0.35)] transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-30" aria-label={`Hapus ${category.name}`}><IosIcon name="trash" size={16} tint="white" /></button>
+                  <button type="button" onClick={() => setDeleteTarget(category)} disabled={hasProducts || deleting === category.id} title={hasProducts ? "Pindahkan semua produk sebelum menghapus kategori" : "Hapus kategori"} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-500 text-white shadow-[0_2px_10px_rgba(239,68,68,0.35)] transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-30" aria-label={`Hapus ${category.name}`}><IosIcon name="trash" size={16} tint="white" /></button>
                 </div>
               );
             })}
@@ -124,8 +139,8 @@ export function CategoryManager() {
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-end justify-center overflow-hidden bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={() => !saving && setShowForm(false)}>
-          <div className="ax-glass-strong max-h-[92dvh] w-full max-w-[560px] overflow-y-auto rounded-t-3xl border border-white/10 p-6 shadow-[0_24px_64px_rgba(0,0,0,0.6)] sm:rounded-3xl" onClick={(event) => event.stopPropagation()}>
-            <div className="flex items-center justify-between gap-3"><div><h3 className="text-lg font-bold text-white">{editing ? "Edit Kategori" : "Kategori Baru"}</h3><p className="mt-0.5 text-xs text-white/45">Slug dibuat sekali dan tetap stabil ketika nama diganti.</p></div>
+          <div role="dialog" aria-modal="true" aria-labelledby="category-form-title" className="ax-glass-strong max-h-[92dvh] w-full max-w-[560px] overflow-y-auto rounded-t-3xl border border-white/10 p-6 shadow-[0_24px_64px_rgba(0,0,0,0.6)] sm:rounded-3xl" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-center justify-between gap-3"><div><h3 id="category-form-title" className="text-lg font-bold text-white">{editing ? "Edit Kategori" : "Kategori Baru"}</h3><p className="mt-0.5 text-xs text-white/45">Slug dibuat sekali dan tetap stabil ketika nama diganti.</p></div>
               <button type="button" onClick={() => setShowForm(false)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 transition hover:bg-white/15" aria-label="Tutup form kategori"><IosIcon name="close" size={14} tint="white" /></button>
             </div>
             {editing && <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2"><p className="text-[11px] text-white/40">Slug permanen</p><code className="text-sm text-white/70">/{editing.slug}</code></div>}
@@ -145,6 +160,18 @@ export function CategoryManager() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="Hapus kategori?"
+        description={deleteTarget ? `“${deleteTarget.name}” akan dihapus permanen. Katalog dan footer langsung berhenti menampilkannya.` : ""}
+        confirmLabel="Hapus kategori"
+        cancelLabel="Batal"
+        variant="danger"
+        loading={deleting === deleteTarget?.id}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => deleteTarget && void remove(deleteTarget)}
+      />
     </section>
   );
 }

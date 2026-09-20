@@ -95,6 +95,20 @@ export function OrdersManager({ onChanged }: { onChanged?: () => void }) {
 
   const changeFilter = (setter: (value: string) => void, value: string) => { setter(value); setPage(1); };
   const clearFilters = () => { setChannel("all"); setStatus("all"); setMethod("all"); setProof(""); setDraftQuery(""); setQuery(""); setDateFrom(""); setDateTo(""); setPage(1); };
+  // Filter yang tidak punya kontrol sendiri di layar (terutama `proof`, yang
+  // datang dari kartu "Bukti manual" di Ringkasan) sebelumnya menyaring daftar
+  // secara diam-diam: semua dropdown menampilkan "Semua" sementara hasilnya
+  // tersaring, sehingga pesanan terlihat hilang. Chip ini membuat setiap
+  // filter aktif terlihat dan bisa dilepas satu per satu.
+  const activeFilters: { label: string; clear: () => void }[] = [];
+  if (proof === "submitted") activeFilters.push({ label: "Bukti manual menunggu", clear: () => changeFilter(setProof, "") });
+  if (channel !== "all") activeFilters.push({ label: `Kanal: ${channel}`, clear: () => changeFilter(setChannel, "all") });
+  if (status !== "all") activeFilters.push({ label: `Status: ${status}`, clear: () => changeFilter(setStatus, "all") });
+  if (method !== "all") activeFilters.push({ label: `Pembayaran: ${method}`, clear: () => changeFilter(setMethod, "all") });
+  if (query) activeFilters.push({ label: `Cari: ${query}`, clear: () => { setDraftQuery(""); setQuery(""); setPage(1); } });
+  if (dateFrom) activeFilters.push({ label: `Dari: ${dateFrom}`, clear: () => { setDateFrom(""); setPage(1); } });
+  if (dateTo) activeFilters.push({ label: `Sampai: ${dateTo}`, clear: () => { setDateTo(""); setPage(1); } });
+  const hasActiveFilters = activeFilters.length > 0;
   const exportHref = `/api/admin/orders?${new URLSearchParams([...requestParams.entries()].filter(([key]) => !["page", "limit"].includes(key)).concat([["export", "csv"]])).toString()}`;
 
   const runAction = async () => {
@@ -159,11 +173,15 @@ export function OrdersManager({ onChanged }: { onChanged?: () => void }) {
     finally { setSaving(false); }
   };
 
-  const channelTabs = [["all", "Semua", stats.total, null], ["web", "Web", counts.web || 0, "globe"], ["telegram", "Telegram", counts.telegram || 0, "telegram-app"], ["whatsapp", "WhatsApp", counts.whatsapp || 0, "whatsapp"]] as const;
+  // Tab kanal adalah PEMILIH, jadi angkanya tetap global (berapa pesanan ada
+  // di tiap kanal) — bukan hasil filter. `stats` kini mengikuti filter, maka
+  // "Semua" dihitung dari counts kanal, bukan stats.total.
+  const channelTotal = (counts.web || 0) + (counts.telegram || 0) + (counts.whatsapp || 0);
+  const channelTabs = [["all", "Semua", channelTotal, null], ["web", "Web", counts.web || 0, "globe"], ["telegram", "Telegram", counts.telegram || 0, "telegram-app"], ["whatsapp", "WhatsApp", counts.whatsapp || 0, "whatsapp"]] as const;
 
   return <div className="mt-4 space-y-4">
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-      {[["Total pesanan", stats.total, "text-white"], ["Pending", stats.pending, "text-[#FFB800]"], ["Lunas", stats.paid, "text-emerald-300"], ["Omzet", formatRupiah(stats.revenue), "text-white"]].map(([label, value, tone]) => <div key={String(label)} className="ax-glass rounded-2xl p-4"><p className="text-[11px] uppercase tracking-wide text-white/50">{label}</p><p className={`mt-1 font-display text-xl font-bold tabular-nums sm:text-2xl ${tone}`}>{loading ? "—" : value}</p></div>)}
+      {[["Total pesanan", stats.total, "text-white"], ["Pending", stats.pending, "text-[#FFB800]"], ["Lunas", stats.paid, "text-emerald-300"], ["Omzet", formatRupiah(stats.revenue), "text-white"]].map(([label, value, tone]) => <div key={String(label)} className="ax-glass rounded-2xl p-4"><p className="text-[11px] uppercase tracking-wide text-white/50">{label}</p><p className={`mt-1 font-display text-xl font-bold tabular-nums sm:text-2xl ${tone}`}>{loading ? "—" : value}</p>{hasActiveFilters && <p className="mt-1 text-[10px] text-[#5cefff]">hasil filter</p>}</div>)}
     </div>
 
     <section className="ax-glass overflow-hidden rounded-[20px]">
@@ -178,6 +196,10 @@ export function OrdersManager({ onChanged }: { onChanged?: () => void }) {
           <label className="block"><span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-white/35">Sampai tanggal</span><input type="date" value={dateTo} onChange={(event) => { setDateTo(event.target.value); setPage(1); }} className={inputClass} /></label>
           <button onClick={clearFilters} className="h-10 whitespace-nowrap rounded-xl border border-white/10 px-3 text-xs font-semibold text-white/55 hover:bg-white/5">Reset</button>
         </div>
+        {activeFilters.length > 0 && <div className="mt-3 flex flex-wrap items-center gap-2">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-white/35">Filter aktif</span>
+          {activeFilters.map((filter) => <button key={filter.label} type="button" onClick={filter.clear} className="inline-flex h-8 items-center gap-2 rounded-full border border-[#00E5FF]/30 bg-[#00E5FF]/10 px-3 text-xs font-semibold text-[#5cefff] transition hover:bg-[#00E5FF]/20" aria-label={`Hapus filter ${filter.label}`}>{filter.label}<IosIcon name="close" size={10} tint="#5cefff" /></button>)}
+        </div>}
       </header>
 
       {error ? <div className="m-4 flex items-center justify-between gap-3 rounded-xl border border-red-400/20 bg-red-500/10 p-3 text-sm text-red-200"><span>{error}</span><button onClick={() => void load()} className="rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-[#080C1E]">Coba lagi</button></div> : loading ? <div className="flex min-h-56 items-center justify-center gap-3 text-sm text-white/45"><Spinner size={22} /> Memuat pesanan…</div> : orders.length === 0 ? <p className="p-10 text-center text-sm text-white/40">Tidak ada pesanan yang cocok dengan filter.</p> : <div className="divide-y divide-white/[0.06]">{orders.map((order) => <OrderRow key={order.code} order={order} onDetail={() => setSelected(order)} onAction={(kind) => { setAction({ kind, order }); setActionNote(""); }} />)}</div>}

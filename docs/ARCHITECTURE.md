@@ -287,7 +287,7 @@ CREATE TABLE store_settings (
 
 | Method | Path | Deskripsi | Auth |
 |--------|------|-----------|------|
-| GET | /api/products | List produk (filter category, search, active) | - |
+| GET | /api/products | List produk (filter category, search, active). Permintaan admin juga menerima `lowStockVariants` per produk = jumlah varian aktif berstok 0–5, satuan yang sama dengan `low_stock` di `/api/admin/overview` | - |
 | GET | /api/products/:slug | Detail produk | - |
 | GET | /api/categories | List kategori | - |
 | POST/PUT/DELETE | /api/categories[?id=] | Kelola kategori | admin |
@@ -1234,3 +1234,43 @@ Perintah akun #2 wajib prefix `HEROKU_API_KEY=<kunci-akun-2>`; jangan
   lolos, bukan delivery. Cara: secret ON → push kosong (deploy) → order
   test via D1 + PATCH lunas → cek link → secret OFF → push kosong → hapus
   order/link/job/item test.
+
+---
+
+## Kontrak navigasi panel admin (2026-09-19)
+
+Panel admin adalah satu route (`src/app/admin/page.tsx`) yang berpindah section
+lewat query `?section=<AdminSection>`. Sebagian kartu Ringkasan juga membawa
+**parameter filter**; supaya kartu tidak menjadi tombol hias, setiap parameter
+WAJIB punya pembaca di section tujuan.
+
+| Pemicu | URL | Dibaca oleh |
+|---|---|---|
+| Kartu "Pesanan pending" | `?section=orders&status=pending` | `OrdersManager.tsx` (`initial.get("status")`) |
+| Kartu "Bukti manual" | `?section=orders&proof=submitted&method=manual` | `OrdersManager.tsx` (`proof`, `method`) |
+| Kartu "QRIS perlu dicek" | `?section=payments&payment_tab=qris&event_status=attention` | `PaymentMethodsManager.tsx` + `PaymentReconciliation.tsx` |
+| Kartu "Stok menipis" | `?section=products&low_stock=1` | `page.tsx` → `useProductManager.onlyLowStock` |
+| Kartu "Fulfillment" | `?section=bot` | belum ada filter (lihat `issue/audit-admin-panel-2026-09-19.md` A5) |
+
+Section `agent` dan `subscribers` (2026-09-20) tidak lagi punya entri sidebar —
+keduanya tab di dalam `settings` (`src/components/admin/SystemTabs.tsx`).
+Nilainya TETAP sah di `ADMIN_SECTIONS` supaya tautan lama membuka tab yang
+benar, dan `AdminShell` menyimpan judul fallback untuk header mobile.
+
+`GET /api/admin/orders` (2026-09-20): blok `stats` memakai `where` + `bindings`
+yang sama dengan daftar, sedangkan `counts.channels` sengaja TETAP global
+karena menjadi sumber angka tab kanal (pemilih). Mengubah `counts` menjadi
+ikut filter akan membuat tab kanal menampilkan 0 dan tidak bisa dipakai
+kembali.
+
+Aturan turunan:
+1. `navigateAdmin()` memakai `pushState`, yang **tidak** memicu `popstate`.
+   Karena itu filter lintas-section harus diterapkan langsung di
+   `navigateAdmin` DAN disinkronkan ulang di listener `popstate` (tombol
+   back/forward browser), bukan salah satu saja.
+2. Setiap filter yang aktif wajib terlihat sebagai chip yang bisa dilepas.
+   Filter tanpa kontrol di layar (dulu: `proof`) menyaring daftar secara
+   diam-diam sehingga pesanan tampak hilang.
+3. Satuan metrik harus sama antar-layar. "Stok menipis" = **varian aktif
+   berstok 0–5** di Ringkasan (`/api/admin/overview`) maupun Produk
+   (`lowStockVariants` dari `/api/products`).
