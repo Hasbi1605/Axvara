@@ -863,6 +863,17 @@ export async function syncProducts(
   if (sweepComplete) {
     await writeSyncState(db, "products_snapshot_complete", "1");
     result.snapshotComplete = true;
+  } else {
+    // Sweep berhenti di tengah (budget query/waktu habis). Penanda WAJIB
+    // turun ke '0': cron membacanya untuk memutuskan "lanjutkan SEGERA"
+    // alih-alih menunggu interval 30 menit. Tanpa reset ini penanda macet
+    // di '1' sejak sweep penuh terakhir, dan sisa katalog baru tersentuh
+    // setengah jam kemudian — saat D1 lambat, katalog 48 produk butuh ~90
+    // menit padahal kerjanya hanya ~2 menit CPU.
+    await writeSyncState(db, "products_snapshot_complete", "0");
+    result.snapshotComplete = false;
+  }
+  if (sweepComplete) {
     // DESTRUCTIVE GUARD (P0-4): zero-missing HANYA setelah sweep penuh
     // tervalidasi dalam run ini. Sweep parsial/budget-yield/lanjutan-cursor
     // TIDAK BOLEH me-zero varian yang belum terlihat.

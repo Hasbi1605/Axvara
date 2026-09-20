@@ -119,6 +119,72 @@ describe("WR sync — sweep wajib berhenti sebelum invocation dibunuh platform",
     }
   });
 
+  it("sweep parsial menurunkan products_snapshot_complete ke '0' (sinyal lanjutkan)", async () => {
+    vi.useFakeTimers();
+    const fx = createD1Fixture();
+    try {
+      const db = createDatabaseAccess(slowD1(fx.db, 300) as never);
+      // Seed '1' dulu — meniru kondisi nyata setelah sweep penuh terakhir.
+      // Tanpa ini migrasi 0029 sudah menyeed '0' dan test lolos PALSU walau
+      // kode tidak pernah me-reset penanda (terbukti lewat mutation-test).
+      fx.sql
+        .prepare("UPDATE wr_sync_state SET value='1' WHERE key='products_snapshot_complete'")
+        .run();
+      const res = await syncProducts(db, async () => bigCatalog(), {
+        maxProducts: WR_SYNC_PRODUCTS_PER_RUN,
+        trigger: "cron",
+        timeBudgetMs: 30_000,
+      });
+      expect(res.snapshotComplete).toBe(false);
+      // Penanda durable WAJIB '0' — inilah yang dibaca cron untuk melanjutkan
+      // segera. Bila tetap '1' (nilai dari sweep penuh terakhir), sisa katalog
+      // baru tersentuh 30 menit kemudian.
+      const row = fx.sql
+        .prepare("SELECT value FROM wr_sync_state WHERE key='products_snapshot_complete'")
+        .get() as { value?: string } | undefined;
+      expect(String(row?.value)).toBe("0");
+    } finally {
+      vi.useRealTimers();
+      fx.close();
+    }
+  });
+
+  it("sweep tuntas menaikkan penanda kembali ke '1'", async () => {
+    const fx = createD1Fixture();
+    try {
+      const db = createDatabaseAccess(fx.db);
+      const res = await syncProducts(db, async () => bigCatalog(), {
+        maxProducts: WR_SYNC_PRODUCTS_PER_RUN,
+        trigger: "cron",
+      });
+      expect(res.snapshotComplete).toBe(true);
+      const row = fx.sql
+        .prepare("SELECT value FROM wr_sync_state WHERE key='products_snapshot_complete'")
+        .get() as { value?: string } | undefined;
+      expect(String(row?.value)).toBe("1");
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("cron melanjutkan sweep yang belum tuntas tanpa menunggu interval 30 menit", () => {
+    const fs = require("node:fs") as typeof import("node:fs");
+    const path = require("node:path") as typeof import("node:path");
+    const cron = fs.readFileSync(
+      path.join(process.cwd(), "src/app/api/cron/operations/route.ts"),
+      "utf8",
+    );
+    // Saat D1 lambat, sweep berhenti karena WAKTU dengan errors kosong →
+    // tercatat 'success'. Tanpa jalur resume, gerbang interval membacanya
+    // sebagai "baru sukses" dan menahan lanjutannya 30 menit: katalog 48
+    // produk butuh ~90 menit padahal kerjanya ~2 menit CPU.
+    // Sinyalnya products_cursor (tidak ambigu), bukan snapshot_complete
+    // yang di-seed '0' oleh migrasi 0029 untuk DB yang belum pernah sync.
+    expect(cron).toContain("products_cursor");
+    expect(cron).toMatch(/resumeNow\s*\|\|\s*lastTs == null/);
+    expect(cron).toMatch(/Number\(cursorRow\?\.value \?\? 0\) > 0/);
+  });
+
   it("cron mengoper sisa deadline ke sweep, bukan membiarkannya tanpa batas", () => {
     const fs = require("node:fs") as typeof import("node:fs");
     const path = require("node:path") as typeof import("node:path");

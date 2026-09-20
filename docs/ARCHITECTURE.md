@@ -1197,6 +1197,16 @@ Perintah akun #2 wajib prefix `HEROKU_API_KEY=<kunci-akun-2>`; jangan
    **Aturan umum yang dipetik:** jangan pernah membuat gerbang admission yang
    inputnya HANYA bisa diperbarui oleh pekerjaan yang digerbanginya sendiri —
    itu resep deadlock. Batasi pekerjaannya dari dalam, bukan tolak dari depan.
+   **Resume sweep parsial (2026-09-20):** sweep yang berhenti karena WAKTU
+   punya `errors` kosong sehingga tercatat `success`; tanpa penanganan khusus
+   gerbang interval 30 menit membacanya sebagai "baru sukses" dan menahan
+   lanjutannya, sehingga katalog 48 produk butuh ~90 menit (4 potongan × 30
+   mnt) padahal kerjanya ~2 menit CPU. Cron karena itu melanjutkan SEGERA
+   bila `products_cursor > 0`. Sinyalnya sengaja **cursor**, bukan
+   `products_snapshot_complete`: penanda itu di-seed `'0'` oleh migrasi 0029
+   sehingga DB yang belum pernah sync tidak bisa dibedakan dari sweep parsial
+   yang tertunda. `syncProducts` juga menurunkan penanda ke `'0'` saat sweep
+   berhenti di tengah (sebelumnya hanya pernah dinaikkan ke `'1'`).
    Revisi permanen malam 19 Sep (pelajaran insiden 18:26→23:32, 5 jam tanpa
    ping): evaluasi watchdog PINDAH ke depan handler SETIAP RUN (bukan hanya
    fase WR aktif) dengan konteks seadanya (`pre_phase` bila fase WR tak

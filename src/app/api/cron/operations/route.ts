@@ -832,7 +832,25 @@ export async function POST(request: NextRequest) {
           // Selalu laporkan posisi terakhir — respons tunggal cukup untuk
           // diagnosa ("kapan sweep terakhir?") tanpa query D1 tambahan.
           if (typeof lastSync?.created_at === "string") results.wr_last_sync_at = String(lastSync.created_at);
-          if (lastTs == null || lastTs < Date.parse(thirtyMinAgo)) {
+          // Sweep yang BELUM tuntas tidak boleh ikut menunggu interval 30
+          // menit. Saat D1 lambat, sweep berhenti karena WAKTU dengan
+          // `errors` kosong sehingga tercatat `success` — gerbang interval
+          // lalu membacanya sebagai "baru saja sukses" dan menahan
+          // lanjutannya setengah jam. Efeknya katalog 48 produk butuh ~90
+          // menit (4 potongan × 30 mnt) padahal kerjanya hanya ~2 menit CPU,
+          // dan selama itu harga/stok separuh katalog basi.
+          // Sinyalnya `products_cursor`, BUKAN `products_snapshot_complete`.
+          // Penanda snapshot ambigu: migrasi 0029 menyeednya '0' sehingga DB
+          // yang belum pernah sync tidak bisa dibedakan dari sweep parsial
+          // yang tertunda. Cursor tidak ambigu — ia ditulis `0` tepat ketika
+          // sweep mencapai ujung daftar, jadi `cursor > 0` berarti PASTI ada
+          // potongan katalog yang belum tersentuh pada sweep berjalan.
+          const cursorRow = await queryFirst(
+            `SELECT value FROM wr_sync_state WHERE key='products_cursor'`,
+          ).catch(() => null);
+          const resumeNow = Number(cursorRow?.value ?? 0) > 0;
+          if (resumeNow) results.wr_sync_resume = true;
+          if (resumeNow || lastTs == null || lastTs < Date.parse(thirtyMinAgo)) {
             // CATATAN (2026-09-20): admission proporsional berbasis
             // `duration_ms × 1,5` DIBUANG — ia mematikan sync secara PERMANEN.
             // `hasTime()` diukur terhadap RUN_DEADLINE_MS = 45 dtk, jadi
