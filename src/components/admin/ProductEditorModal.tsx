@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import { Spinner } from "@/components/ui/Loading";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { MoneyInput } from "@/components/ui/MoneyInput";
@@ -50,9 +51,16 @@ export function ProductEditorModal({
   onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onSave: () => void;
 }) {
+  // Modal ini memuat 3 pekerjaan berbeda (identitas, varian, media). Untuk
+  // produk 5 varian isinya ~3100px / 46 kontrol, sehingga tombol Simpan ada
+  // ~2600px di bawah tempat admin bekerja. Tab memotong scroll per pekerjaan;
+  // footer sticky membuat Simpan selalu terjangkau.
+  const [tab, setTab] = useState<"detail" | "varian" | "media">("detail");
+  const tabs: [typeof tab, string][] = [["detail", "Produk"], ["varian", "Varian"], ["media", "Foto"]];
   return (
     <div className="fixed inset-0 z-[80] isolate flex items-end justify-center overflow-hidden bg-black/60 p-0 backdrop-blur-sm sm:items-start sm:overflow-y-auto sm:p-6 sm:pt-10" onMouseDown={(event)=>{if(event.target===event.currentTarget&&!saving){onRequestClose();}}}>
-          <section role="dialog" aria-modal="true" aria-labelledby="product-editor-title" className="relative z-10 isolate max-h-[92dvh] w-full max-w-[720px] overflow-y-auto rounded-t-3xl border border-white/10 bg-[#0B1025] p-6 shadow-[0_24px_64px_rgba(0,0,0,0.6)] sm:rounded-3xl">
+          <section role="dialog" aria-modal="true" aria-labelledby="product-editor-title" className="relative z-10 isolate flex max-h-[92dvh] w-full max-w-[720px] flex-col overflow-hidden rounded-t-3xl border border-white/10 bg-[#0B1025] shadow-[0_24px_64px_rgba(0,0,0,0.6)] sm:rounded-3xl">
+            <div className="shrink-0 px-6 pt-6">
             <div className="flex items-center justify-between gap-3">
               <div><p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#00E5FF]">Katalog</p><h3 id="product-editor-title" className="mt-0.5 font-display text-lg font-bold text-white">{editing? "Edit Produk":"Produk Baru"}</h3></div>
               <button onClick={onRequestClose} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-white/70 transition hover:bg-white/15" aria-label="Tutup editor produk"><IosIcon name="close" size={14} tint="white" /></button>
@@ -67,6 +75,17 @@ export function ProductEditorModal({
               </p>
             )}
 
+            <div className="mt-4 inline-flex rounded-xl border border-white/10 bg-white/[0.04] p-1" role="tablist" aria-label="Bagian editor produk">
+              {tabs.map(([id, label]) => (
+                <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={`h-9 rounded-lg px-4 text-xs font-semibold transition ${tab === id ? "bg-[#00E5FF] text-[#07101f]" : "text-white/55 hover:text-white"}`}>
+                  {label}{id === "varian" && hasMultiVariants && formVariants.length > 0 ? ` (${formVariants.length})` : ""}
+                </button>
+              ))}
+            </div>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-2">
+            <div className={`${tab === "detail" ? "" : "hidden"}`}>
             <div className="mt-5 grid sm:grid-cols-2 gap-4">
               <label className="space-y-1.5"><span className="flex items-center gap-1.5 text-xs font-semibold text-white/60">Nama *</span><input value={form.name??""} readOnly={form.wrManaged} onChange={e=>onSetForm({...form,name:e.target.value, slug: !editing? e.target.value.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""): form.slug})} placeholder="ChatGPT Plus 1 Bulan" className={`w-full h-11 px-3 rounded-xl border text-sm text-white placeholder:text-white/30 focus:outline-none ${form.wrManaged ? "bg-white/[0.03] border-white/5 text-white/50 cursor-not-allowed" : "bg-white/[0.06] border-white/10 focus:border-[#00E5FF]/30"}`} /></label>
               <label className="space-y-1.5"><span className="flex items-center gap-1.5 text-xs font-semibold text-white/60">Slug *</span><input value={form.slug??""} readOnly={form.wrManaged} onChange={e=>onSetForm({...form,slug:e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g,"-")})} placeholder="chatgpt-plus-1-bulan" className={`w-full h-11 px-3 rounded-xl border text-sm text-white placeholder:text-white/30 font-mono focus:outline-none ${form.wrManaged ? "bg-white/[0.03] border-white/5 text-white/50 cursor-not-allowed" : "bg-white/[0.06] border-white/10 focus:border-[#00E5FF]/30"}`} /></label>
@@ -81,7 +100,10 @@ export function ProductEditorModal({
               <label className="space-y-1.5"><span className="flex items-center gap-1.5 text-xs font-semibold text-white/60">Badge</span><input value={form.badge??""} onChange={e=>onSetForm({...form,badge:e.target.value})} placeholder="Terlaris / Baru / Hemat 92%" className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#00E5FF]/30" /></label>
             </div>
 
+            </div>
+
             {/* Toggle Multi-Varian ala Marketplace */}
+            <div className={`${tab === "varian" ? "" : "hidden"}`}>
             <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
@@ -170,6 +192,9 @@ export function ProductEditorModal({
               </div>
             </div>
 
+            </div>
+
+            <div className={`${tab === "media" ? "" : "hidden"}`}>
             <div className="mt-5">
               <p className="text-xs font-semibold text-white/60 mb-2">Foto Produk — maks 8 (PNG/JPG → WebP otomatis)</p>
               <div className="grid grid-cols-4 gap-2">
@@ -192,7 +217,10 @@ export function ProductEditorModal({
               <p className="text-[11px] text-white/30 mt-2">Foto disesuaikan ke WebP 1600×900 — ringan dan konsisten. Foto pertama = cover card.</p>
             </div>
 
-            <div className="mt-6 flex gap-3 justify-end">
+            </div>
+            </div>
+
+            <div className="shrink-0 flex gap-3 justify-end border-t border-white/10 bg-[#0B1025] px-6 py-4">
               <button onClick={onRequestClose} disabled={saving} className="h-11 px-5 rounded-full border border-white/10 bg-white/[0.06] text-sm font-semibold text-white/80 transition hover:bg-white/10 disabled:opacity-50">Batal</button>
               <button onClick={onSave} disabled={saving || uploading} className="h-11 px-6 rounded-full bg-[#00E5FF] text-[#080C1E] text-sm font-bold hover:bg-[#00D0E8] transition disabled:opacity-60 inline-flex items-center gap-2">
                 {saving ? <Spinner size={16} className="border-[#080C1E]/20 border-t-[#080C1E]" /> : <IosIcon name="checked" size={15} tint="black" />} {saving ? "Menyimpan…" : "Simpan Produk"}

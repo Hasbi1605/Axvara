@@ -19,6 +19,7 @@ import { WarungRebahanManager } from "@/components/admin/WarungRebahanManager";
 import { ProductEditorModal } from "@/components/admin/ProductEditorModal";
 import { useProductManager } from "@/components/admin/useProductManager";
 import { useAdminAuth } from "@/components/admin/useAdminAuth";
+import { SystemTabs, SYSTEM_TABS } from "@/components/admin/SystemTabs";
 
 const ADMIN_SECTIONS: AdminSection[] = ["summary","products","orders","categories","payments","warung","articles","banners","subscribers","bot","agent","settings"];
 
@@ -106,9 +107,14 @@ export default function AdminPage() {
       {tab==="categories" && <CategoryManager />}
       {tab==="payments" && <PaymentMethodsManager />}
       {tab==="warung" && <WarungRebahanManager />}
-      {tab==="agent" && <AgentIntegration />}
       {tab==="bot" && <BotAutomationManager />}
-      {tab==="settings" && <StoreSettingsManager />}
+      {SYSTEM_TABS.some(([id])=>id===tab) && (
+        <SystemTabs section={tab} onSection={navigateAdmin}>
+          {tab==="settings" && <StoreSettingsManager />}
+          {tab==="agent" && <AgentIntegration />}
+          {tab==="subscribers" && <NewsletterSubscribers />}
+        </SystemTabs>
+      )}
 
       {tab==="products" && (
         <ProductsSection
@@ -144,7 +150,6 @@ export default function AdminPage() {
 
       {tab==="banners" && <BannerManager />}
 
-      {tab==="subscribers" && <NewsletterSubscribers />}
 
       {(pm.editing || pm.showNew) && (
         <ProductEditorModal

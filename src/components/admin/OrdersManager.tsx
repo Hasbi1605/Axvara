@@ -108,6 +108,7 @@ export function OrdersManager({ onChanged }: { onChanged?: () => void }) {
   if (query) activeFilters.push({ label: `Cari: ${query}`, clear: () => { setDraftQuery(""); setQuery(""); setPage(1); } });
   if (dateFrom) activeFilters.push({ label: `Dari: ${dateFrom}`, clear: () => { setDateFrom(""); setPage(1); } });
   if (dateTo) activeFilters.push({ label: `Sampai: ${dateTo}`, clear: () => { setDateTo(""); setPage(1); } });
+  const hasActiveFilters = activeFilters.length > 0;
   const exportHref = `/api/admin/orders?${new URLSearchParams([...requestParams.entries()].filter(([key]) => !["page", "limit"].includes(key)).concat([["export", "csv"]])).toString()}`;
 
   const runAction = async () => {
@@ -172,11 +173,15 @@ export function OrdersManager({ onChanged }: { onChanged?: () => void }) {
     finally { setSaving(false); }
   };
 
-  const channelTabs = [["all", "Semua", stats.total, null], ["web", "Web", counts.web || 0, "globe"], ["telegram", "Telegram", counts.telegram || 0, "telegram-app"], ["whatsapp", "WhatsApp", counts.whatsapp || 0, "whatsapp"]] as const;
+  // Tab kanal adalah PEMILIH, jadi angkanya tetap global (berapa pesanan ada
+  // di tiap kanal) — bukan hasil filter. `stats` kini mengikuti filter, maka
+  // "Semua" dihitung dari counts kanal, bukan stats.total.
+  const channelTotal = (counts.web || 0) + (counts.telegram || 0) + (counts.whatsapp || 0);
+  const channelTabs = [["all", "Semua", channelTotal, null], ["web", "Web", counts.web || 0, "globe"], ["telegram", "Telegram", counts.telegram || 0, "telegram-app"], ["whatsapp", "WhatsApp", counts.whatsapp || 0, "whatsapp"]] as const;
 
   return <div className="mt-4 space-y-4">
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-      {[["Total pesanan", stats.total, "text-white"], ["Pending", stats.pending, "text-[#FFB800]"], ["Lunas", stats.paid, "text-emerald-300"], ["Omzet", formatRupiah(stats.revenue), "text-white"]].map(([label, value, tone]) => <div key={String(label)} className="ax-glass rounded-2xl p-4"><p className="text-[11px] uppercase tracking-wide text-white/50">{label}</p><p className={`mt-1 font-display text-xl font-bold tabular-nums sm:text-2xl ${tone}`}>{loading ? "—" : value}</p></div>)}
+      {[["Total pesanan", stats.total, "text-white"], ["Pending", stats.pending, "text-[#FFB800]"], ["Lunas", stats.paid, "text-emerald-300"], ["Omzet", formatRupiah(stats.revenue), "text-white"]].map(([label, value, tone]) => <div key={String(label)} className="ax-glass rounded-2xl p-4"><p className="text-[11px] uppercase tracking-wide text-white/50">{label}</p><p className={`mt-1 font-display text-xl font-bold tabular-nums sm:text-2xl ${tone}`}>{loading ? "—" : value}</p>{hasActiveFilters && <p className="mt-1 text-[10px] text-[#5cefff]">hasil filter</p>}</div>)}
     </div>
 
     <section className="ax-glass overflow-hidden rounded-[20px]">
