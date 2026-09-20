@@ -1,0 +1,67 @@
+name: Sync upstream main
+
+# Sinkronisasi SATU ARAH: Hasbi1605/Axvara (upstream) -> fork ini.
+# Branch kerja `hoplite/*` tidak pernah ikut tersentuh.
+#
+# CATATAN PENTING soal deploy (AGENTS.md: "satu push tidak memicu deploy
+# ganda"): push di sini memakai GITHUB_TOKEN bawaan, dan GitHub SENGAJA tidak
+# menjalankan workflow lain untuk event yang dipicu token itu. Jadi `ci.yml`
+# (yang men-deploy Cloudflare Pages + D1 + MCP Worker pada push ke main) TIDAK
+# ikut jalan saat sync — deploy tetap milik CI upstream.
+# JANGAN mengganti GITHUB_TOKEN dengan PAT/deploy key tanpa memikirkan ini:
+# begitu diganti, tiap sync akan memicu deploy kedua ke project Cloudflare yang
+# sama.
+
+on:
+  schedule:
+    - cron: "15 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+# Sync yang tumpang tindih bisa saling menimpa hasil merge.
+concurrency:
+  group: sync-upstream-main
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    # Fork saja. Bila file ini suatu saat ikut ter-merge ke upstream, jangan
+    # sampai upstream menyinkronkan dirinya sendiri.
+    if: github.repository == 'marylynnsigala/Axvara'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout fork main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Merge upstream/main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/Hasbi1605/Axvara.git
+          git fetch --no-tags upstream main
+
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "Fork sudah memuat seluruh commit upstream — tidak ada yang perlu di-sync."
+            exit 0
+          fi
+
+          # Fast-forward bila fork belum punya commit sendiri; selain itu merge
+          # commit biasa supaya history PR yang sudah masuk tidak dirusak.
+          if ! git merge --ff-only upstream/main; then
+            if ! git merge --no-edit upstream/main -m "chore: sync upstream main $(date -u +%F)"; then
+              git merge --abort || true
+              echo "::error::Merge upstream/main konflik — selesaikan manual, JANGAN force-push."
+              exit 1
+            fi
+          fi
+
+          git push origin main
+          echo "Fork main tersinkron dengan upstream."

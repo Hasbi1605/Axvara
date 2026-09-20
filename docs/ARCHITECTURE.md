@@ -1198,6 +1198,55 @@ Perintah akun #2 wajib prefix `HEROKU_API_KEY=<kunci-akun-2>`; jangan
 
 ---
 
+## Sinkronisasi fork <- upstream (2026-09-20)
+
+> ⚠️ **BELUM TERPASANG — butuh satu langkah manual owner.** Kredensial GitHub
+> App yang dipakai agent tidak memiliki izin `workflows`, sehingga GitHub
+> MENOLAK push apa pun yang menyentuh `.github/workflows/*`
+> (`refusing to allow a GitHub App to create or update workflow ... without
+> workflows permission`). File finalnya karena itu disimpan di
+> **`docs/workflows/sync-upstream.yml`** agar tetap tertinjau dan teruji.
+> Pasang dengan:
+>
+> ```bash
+> mkdir -p .github/workflows
+> cp docs/workflows/sync-upstream.yml .github/workflows/sync-upstream.yml
+> git add .github/workflows/sync-upstream.yml
+> git commit -m "Pasang workflow sync upstream"
+> git push
+> ```
+>
+> Lalu aktifkan Actions di tab Actions fork (scheduled workflow di fork publik
+> mati secara default).
+
+`docs/workflows/sync-upstream.yml` menarik `Hasbi1605/Axvara@main` ke
+`marylynnsigala/Axvara@main` tiap jam (dan bisa dijalankan manual lewat
+`workflow_dispatch`). SATU ARAH; branch kerja `hoplite/*` tidak tersentuh.
+
+**Kenapa memakai `GITHUB_TOKEN` bawaan dan bukan PAT.** `ci.yml` men-deploy
+Cloudflare Pages + migrasi D1 + MCP Worker pada setiap push ke `main`. GitHub
+sengaja TIDAK menjalankan workflow lain untuk event yang dipicu `GITHUB_TOKEN`,
+sehingga sync tidak ikut memicu deploy — sejalan dengan aturan AGENTS.md "satu
+push tidak memicu deploy ganda". Mengganti token ini dengan PAT/deploy key akan
+membuat tiap sync memicu deploy kedua ke project Cloudflare yang sama.
+
+**Perilaku yang dijaga test** (`tests/sync-upstream-workflow.regression.test.ts`):
+fast-forward bila fork belum punya commit sendiri, merge commit bila sudah
+(history PR tidak dirusak), berhenti lebih dulu bila upstream sudah termuat
+(idempoten, tanpa merge commit kosong), dan saat konflik → `git merge --abort`
+lalu job GAGAL. Tidak ada force-push di jalur mana pun.
+
+**Catatan operasional.** GitHub menonaktifkan scheduled workflow di fork publik
+secara default; jadwal baru jalan setelah Actions diaktifkan di tab Actions
+fork. Cek posisi kapan saja:
+
+```bash
+gh api repos/marylynnsigala/Axvara/compare/main...Hasbi1605:main \
+  --jq '{status, ahead_by, behind_by}'   # ideal: behind_by = 0
+```
+
+---
+
 ## Kontrak navigasi panel admin (2026-09-19)
 
 Panel admin adalah satu route (`src/app/admin/page.tsx`) yang berpindah section

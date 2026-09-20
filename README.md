@@ -269,6 +269,16 @@ Actions Secrets.
 
 Panel admin memuat produk, kategori, dan ringkasan setelah autentikasi. Aksi toast memakai identitas yang stabil seumur provider, sehingga satu error fetch tidak lagi membentuk rantai toast → rerender → fetch ulang. Login memuat data tepat sekali (transisi sesi adalah satu-satunya pemicu), dan hanya `401` yang mengakhiri sesi — respons `5xx` atau kegagalan jaringan tidak menendang admin ke gerbang login.
 
+**Sync fork ← upstream (2026-09-20, menunggu pemasangan).** File ada di
+`docs/workflows/sync-upstream.yml` — belum di `.github/workflows/` karena
+kredensial GitHub App agent tidak punya izin `workflows` (push ditolak
+GitHub). Salin manual lalu aktifkan Actions di fork. Workflow ini
+menarik `Hasbi1605/Axvara@main` ke fork ini tiap jam (satu arah; `hoplite/*`
+tidak tersentuh). Memakai `GITHUB_TOKEN` bawaan supaya sync TIDAK memicu
+`ci.yml` — tanpa itu setiap sync akan men-deploy ulang Cloudflare. Konflik
+membuat job gagal (disengaja); selesaikan manual, jangan force-push. Scheduled
+workflow di fork publik mati secara default, aktifkan di tab Actions.
+
 **Panel admin dirapikan (2026-09-20, persetujuan owner).** Modal produk kini
 bertab (Produk / Varian / Foto) dengan tombol **Simpan Produk** di footer yang
 tidak ikut ter-scroll — untuk produk 5 varian tombol itu dulu berada ~2600px di
