@@ -680,6 +680,29 @@ export type SyncOptions = {
    * Dicatat ke wr_sync_log.trigger agar kartu admin bisa membedakan
    * keduanya (default 'manual' agar pemanggil lama tetap bermakna). */
   trigger?: "manual" | "cron";
+  /**
+   * Sisa waktu invocation (ms) yang boleh dipakai sweep ini.
+   *
+   * KENAPA WAJIB ADA (akar \"sync tersendat berminggu-minggu\"): loop di bawah
+   * hanya punya gerbang BUDGET QUERY (`canSpend`), tidak pernah gerbang
+   * WAKTU. Sweep penuh 48 produk / 87 varian = ~366 query D1 BERURUTAN;
+   * biayanya sepenuhnya ditentukan latensi D1 yang tidak kita kendalikan.
+   * Terukur di produksi dengan beban identik: 12 dtk saat D1 sehat (~33 ms/
+   * query) tetapi 115-122 dtk saat D1 lambat (~314 ms/query) — 68 dari 391
+   * sweep (17%) melewati deadline cron 45 dtk.
+   *
+   * Akibatnya berantai: run dibunuh platform SEBELUM ekor handler menulis
+   * `wr_sync_log` dan penanda fase, sehingga sweep tidak pernah tercatat,
+   * fase terkunci, dan run 5-menit berikutnya mengulang pekerjaan berat yang
+   * sama sampai kebetulan bertemu D1 cepat. Persis gejala \"rusak di tengah
+   * jalan tanpa sebab\" — tanpa error, tanpa jejak.
+   *
+   * Dengan budget waktu, sweep berhenti di batas produk terakhir yang utuh,
+   * menyimpan cursor, dan melaporkan `budgetYielded` — sama persis dengan
+   * perilaku saat budget query habis, yang sudah terbukti aman dan dilanjut
+   * run berikutnya.
+   */
+  timeBudgetMs?: number;
 };
 
 export async function syncProducts(
@@ -691,6 +714,11 @@ export async function syncProducts(
   const db = database ?? createDatabaseAccess();
   const trigger = options.trigger ?? "manual";
   const maxProducts = Math.max(1, Math.min(options.maxProducts ?? WR_SYNC_PRODUCTS_PER_RUN, 48));
+  // Deadline sweep: 0/undefined = tanpa batas (Force Sync admin lewat route
+  // sendiri, bukan invocation cron yang dibunuh platform).
+  const timeBudgetMs = Number(options.timeBudgetMs ?? 0);
+  const hasTimeBudget = Number.isFinite(timeBudgetMs) && timeBudgetMs > 0;
+  const timeLeftMs = () => timeBudgetMs - (Date.now() - started);
   const result: SyncResult = {
     total: 0,
     synced: 0,
@@ -761,6 +789,17 @@ export async function syncProducts(
     if (!db.canSpend(cost + 4)) {
       result.budgetYielded = true;
       break;
+    }
+    // Admission WAKTU, sejajar dengan admission budget di atas. Biaya satu
+    // produk = (1 + varian) × RTT D1 yang bisa 10x lebih lambat saat D1
+    // sedang buruk, jadi sisa waktu diukur ulang TIAP iterasi memakai
+    // latensi terukur run ini sendiri — bukan konstanta optimistis.
+    if (hasTimeBudget && processedInRun > 0) {
+      const msPerProductSoFar = (Date.now() - started) / processedInRun;
+      if (timeLeftMs() < msPerProductSoFar) {
+        result.budgetYielded = true;
+        break;
+      }
     }
     if (processedInRun >= maxProducts) {
       result.budgetYielded = true;

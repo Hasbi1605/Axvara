@@ -49,6 +49,14 @@ const TIME_WR_NETWORK = 14_000;
 // lama — fail-open pertama kali, tak boleh lebih ketat dari deadline).
 const WR_SWEEP_ESTIMATE_FACTOR = 1.5;
 const TIME_WR_LIGHT = 8_000;
+/**
+ * Cadangan waktu yang TIDAK boleh dipakai sweep katalog: sisa langkah fase WR
+ * (reconcile, saldo, delivery) + ekor handler yang menulis `wr_sync_log` dan
+ * penanda fase. Sweep yang memakan seluruh sisa deadline akan dibunuh
+ * platform tepat sebelum hasilnya tercatat — persis pola kegagalan yang
+ * membuat sync terlihat "rusak di tengah jalan tanpa sebab".
+ */
+const TIME_WR_SWEEP_RESERVE = 8_000;
 const TIME_SINGLE_MESSAGE = 3_000;
 const EXPIRY_PER_RUN = 4;
 const FULFILLMENT_PER_RUN = 4;
@@ -853,7 +861,17 @@ export async function POST(request: NextRequest) {
               results.wr_sync_skipped = "deadline";
             } else {
             try {
-              const syncResult = await syncProducts(database, undefined, { maxProducts: WR_SYNC_PRODUCTS_PER_RUN, trigger: "cron" });
+              // Budget WAKTU sweep = sisa deadline invocation dikurangi
+              // cadangan ekor. Tanpa ini sweep berjalan tanpa batas waktu
+              // (hanya batas budget query) dan run dibunuh platform SEBELUM
+              // `wr_sync_log` + penanda fase tertulis — akar \"sync tersendat
+              // berminggu-minggu\": beban identik terukur 12 dtk saat D1 sehat
+              // vs 115-122 dtk saat D1 lambat.
+              const syncResult = await syncProducts(database, undefined, {
+                maxProducts: WR_SYNC_PRODUCTS_PER_RUN,
+                trigger: "cron",
+                timeBudgetMs: Math.max(0, timeLeftMs() - TIME_WR_SWEEP_RESERVE),
+              });
               results.wr_products_synced = syncResult.synced;
               if (typeof syncResult.synced === "number" && syncResult.synced > 0) {
                 // Sweep sukses me-reset episode basi watchdog: sweep berikut

@@ -911,6 +911,20 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   reconcile processing >1 jam via `/transactions`, cek saldo tiap 1 jam. COUNT WR dihitung
   query terpisah agar DB pre-migrasi tidak meruntuhkan query gabungan; fase no-op bila
   master switch mati atau tabel WR belum ada.
+- **Budget WAKTU sweep katalog (akar "sync tersendat", diperbaiki 2026-09-20):** sweep penuh
+  = 48 produk / 87 varian = **~366 query D1 berurutan**, sehingga durasinya ditentukan latensi
+  D1, bukan jumlah pekerjaan. Terukur di produksi dengan beban identik: **12 dtk saat D1 sehat
+  (~33 ms/query) vs 115-122 dtk saat D1 lambat (~314 ms/query)**; 68 dari 391 sweep (17%)
+  melewati deadline run 45 dtk. Run yang terpotong mati SEBELUM ekor menulis `wr_sync_log` +
+  penanda fase, sehingga sweep tak tercatat, fase terkunci, dan jeda sync melonjak 39-40 mnt
+  → 163/305 mnt. Aturan sekarang: `syncProducts` menerima `timeBudgetMs` dan mengecek sisa
+  waktu TIAP iterasi memakai latensi terukur run itu sendiri (adaptif, bukan konstanta), lalu
+  berhenti di produk utuh terakhir + simpan cursor + `budgetYielded=true` — jalur yang sama
+  dengan saat budget query habis. Cron mengoper `timeLeftMs() - TIME_WR_SWEEP_RESERVE`
+  (cadangan 8 dtk untuk reconcile/saldo/delivery + ekor). Force Sync admin sengaja TIDAK
+  memasang `timeBudgetMs` (bukan invocation cron yang dibunuh platform).
+  **Pelajaran:** gerbang budget query saja tidak cukup — biaya nyata sweep adalah WAKTU,
+  dan seluruh perbaikan sebelumnya hanya mengatur KAPAN sweep dimulai.
 - **Hook payment:** setelah lunas di 4 jalur (webhook DANA, retry admin, approve bukti,
   konfirmasi admin) → `createWrOrderLinksForOrder` + `processWrPendingOrders` best-effort;
   cron memproses sisanya. Produk WR dikenali dari `product_variants.wr_variant_id`.
