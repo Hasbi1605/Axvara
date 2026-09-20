@@ -32,6 +32,33 @@ sync-workflow, jadi tidak ada lagi file khusus-fork yang ikut ke upstream.
 (dan komentarnya, verbatim) ke `fbc7235` upstream. Dua perbaikan benar yang
 saling tabrak lebih mahal daripada satu implementasi bersama.
 
+## Jangan panik melihat angka 5
+
+`git merge-tree` di git versi baru menandai **5** file sebagai "changed in
+both": `docs/ARCHITECTURE.md`, `docs/DESIGN.md`, `src/lib/whatsapp/outbox.ts`,
+`CHANGELOG.md`, dan `src/components/admin/useProductManager.ts`.
+
+Tiga yang pertama **tidak** menghasilkan marker `<<<<<<<` — `git merge` biasa
+menggabungkannya sendiri tanpa keputusan manusia. Yang benar-benar butuh otak
+hanya **2 file** di bawah. Jangan memperlakukan 5 file itu sebagai 5 konflik
+lalu "menyelesaikan" file yang sebetulnya sudah benar.
+
+Dibuktikan ulang 2026-09-20 dengan `git merge` sungguhan (bukan `merge-tree`):
+
+```
+Auto-merging docs/ARCHITECTURE.md          <- bersih
+Auto-merging docs/DESIGN.md                <- bersih
+Auto-merging src/lib/whatsapp/outbox.ts    <- bersih
+CONFLICT (content): CHANGELOG.md
+CONFLICT (content): src/components/admin/useProductManager.ts
+```
+
+`git diff --name-only --diff-filter=U` mengembalikan tepat 2 nama itu.
+
+> Jebakan saat menguji: kalau ada perubahan belum ter-commit di working tree,
+> `git merge` menolak jalan dan bisa terbaca seolah "0 konflik". Stash dulu
+> sebelum merge-trial.
+
 ## Sisa konflik: 2 file, keduanya wajar
 
 ### 1. `CHANGELOG.md` — append-only
