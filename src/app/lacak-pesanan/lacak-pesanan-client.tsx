@@ -5,7 +5,7 @@ export const runtime = "edge";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { formatRupiah } from "@/lib/utils";
+import { formatRupiah, formatWibDateTime } from "@/lib/utils";
 import { supportTelegramLink } from "@/lib/site";
 import { StoreWhatsAppLink } from "@/components/storefront/StoreWhatsAppLink";
 import { WrCredentialsPanel } from "@/components/storefront/WrCredentialsPanel";
@@ -58,10 +58,11 @@ function countdown(expiresAt: string, now: number): string {
 }
 
 function formatDateTime(raw?: string): string {
-  if (!raw) return "—";
-  const date = new Date(raw);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleString("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  // `created_at` datang dari D1 sebagai UTC berformat spasi; `new Date(raw)`
+  // akan membacanya sebagai waktu lokal dan memundurkan jam 7 jam di WIB.
+  return formatWibDateTime(raw, {
+    day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
+  }) ?? "—";
 }
 
 function fromApi(value: Record<string, unknown>): TrackedOrder {

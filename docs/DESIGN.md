@@ -287,6 +287,19 @@
   label ganda — tidak pernah JSON mentah (bukti prod: link 95FC8669 tampil
   `{"product":...,"details":"email:...\r\npassword:..."}` sebelum ini).
 
+### 5.x Format Tanggal & Jam (audit 2026-09-20, live)
+- Semua tanggal/jam ditulis dalam **WIB** dan dirender lewat satu helper
+  kanonis `formatWibDateTime` (`src/lib/utils.ts`) — bukan
+  `new Date(nilai).toLocaleString(...)`. D1 menyimpan UTC berformat spasi,
+  dan konstruktor `Date` membacanya sebagai waktu lokal sehingga di perangkat
+  Indonesia jam tampil mundur 7 jam (order 23.25 tampil 16.25) dan tanggalnya
+  ikut salah selepas tengah malam.
+- Zona dikunci eksplisit (`timeZone: "Asia/Jakarta"`) supaya admin yang
+  bepergian tetap melihat jam operasional toko, bukan jam perangkatnya.
+- Locale tetap `id-ID`. Nilai kosong/tak terbaca jatuh ke fallback teks milik
+  masing-masing layar (`—`, nilai mentah, atau "Belum disimpan") — jangan
+  pernah menampilkan `Invalid Date`.
+
 ### 5.7a Halaman Lacak Pesanan `/lacak-pesanan` (2026-09-17, live)
 - Riset pola marketplace (Shopee/Tokopedia/Apple order tracking): satu form
   hero (kode + WA, tanpa login) → hasil timeline vertikal 3 tahap

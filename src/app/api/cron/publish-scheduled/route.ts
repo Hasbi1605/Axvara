@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { execRun, OrderTransitionError, queryAll, transitionPendingOrder } from "@/lib/db";
 import { isExpiredIso } from "@/lib/expiry";
+import { constantTimeEqual } from "@/lib/security";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -8,7 +9,10 @@ export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   const secret = process.env.CRON_SECRET;
   if (!secret) return NextResponse.json({ error: "CRON_SECRET belum dikonfigurasi" }, { status: 503 });
-  if (request.headers.get("authorization") !== `Bearer ${secret}`) {
+  // `!==` membocorkan posisi byte pertama yang berbeda. CRON_SECRET adalah
+  // kredensial bearer statis seperti secret webhook DANA/Telegram/WhatsApp,
+  // jadi ia memakai pembanding kanonis yang sama (src/lib/security.ts).
+  if (!constantTimeEqual(request.headers.get("authorization") ?? "", `Bearer ${secret}`)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

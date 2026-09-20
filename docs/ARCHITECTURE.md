@@ -301,6 +301,7 @@ CREATE TABLE store_settings (
 | POST | /api/orders | Verifikasi signed quote, buat pesanan idempotent, reservasi stok atomik | - |
 | POST | /api/orders/lookup | Lacak mandiri: verifikasi pasangan kode + WA (normalisasi 08/+62/62, constant-time), 404 generik anti-enumerasi, WA/email mask, rate-limit `orders:lookup` | - |
 | GET | /api/orders?code= | Cek status pesanan via code. WA/email dimask; `credentials_ready` (boolean) menandai detail akun WR sudah siap diambil sehingga storefront tahu kapan panel retrieval boleh tampil | - |
+| GET | /api/orders/:code | Kembaran segmen dari `?code=` untuk halaman pesanan yang sama. **Invarian (audit 2026-09-20): isinya WAJIB sepadan — `proof_url` TIDAK pernah ikut di kedua endpoint.** Nilai itu adalah kunci objek R2 privat yang hanya boleh dibaca admin lewat `/api/admin/bukti/*`; membocorkannya memberi penebak kode order nama berkas bukti bayar milik orang lain. Dikunci `tests/audit-2026-09-20.regression.test.ts` | - |
 | GET | /api/payments/qris/:code/image | Render PNG QRIS dinamis untuk invoice aktif | code order |
 | POST | /api/payments/qris/:code/reissue | Terbitkan QRIS baru untuk order yang masih hidup tetapi QR-nya sudah kedaluwarsa. Hanya boleh saat invoice lama SUDAH mati — syarat itulah yang mencegah pemegang kode order lain membatalkan QR yang sedang dipakai. Maks 3x/order, rate limit 5/menit/IP | code order |
 | POST | /api/webhook/dana | Terima notifikasi QRIS Hook, dedup, cocokkan nominal, lunasi order | X-Webhook-Secret |
@@ -432,6 +433,22 @@ R2 bucket: axvara-assets
 - Admin auth: JWT httpOnly cookie-only 8 jam + idle JWT HS256 2 jam terikat `sid` yang sama (nilai sembarang ditolak server), refresh aktivitas tervalidasi penuh sebelum memutar idle baru, rotasi password mencabut seluruh sesi lama via claim `av` stateless, Bearer admin tanpa cookie ditolak (integrasi MCP/agent memakai Bearer scope via `requireAgent`, bukan JWT admin), rate limit 5/min
 - Upload: cek magic bytes (bukan cuma ext), max 5MB, sanitize filename
 - D1: prepared statement, no string concat
+- Pembanding rahasia: SEMUA kredensial bearer/HMAC memakai `constantTimeEqual`
+  (`src/lib/security.ts`) — webhook DANA, Telegram, WhatsApp, Warung Rebahan,
+  DAN cron. Audit 2026-09-20 menemukan `/api/cron/operations` +
+  `/api/cron/publish-scheduled` masih memakai `!==` pada bearer `CRON_SECRET`
+  (satu-satunya pemegangnya adalah Worker `axvara-mcp`, sehingga bocornya
+  secret ini membuka seluruh endpoint operasi); keduanya kini seragam dan
+  tetap fail-closed ketika `CRON_SECRET` kosong.
+- Waktu tampil (audit 2026-09-20): D1 menulis `datetime('now')` sebagai UTC
+  berformat spasi (`YYYY-MM-DD HH:MM:SS`), sedangkan `new Date(nilai)` di JS
+  membacanya sebagai waktu LOKAL — di perangkat WIB seluruh timestamp mundur
+  7 jam dan tanggalnya salah bila melewati tengah malam. Rumah kanonis untuk
+  SEMUA tampilan adalah `formatWibDateTime` (`src/lib/utils.ts`): ia mem-parse
+  lewat `parseExpiry` (sumber yang sama dengan cron/webhook) lalu mengunci
+  `timeZone: "Asia/Jakarta"` supaya admin dari zona mana pun melihat jam
+  operasional toko. Dilarang memformat hasil `new Date(<string timestamp>)`
+  langsung di komponen.
 - Proteksi trafik & efisiensi query (issue #14, diverifikasi 7 Sep 2026 dari
   docs Cloudflare D1 Limits + WAF rate limiting rules — bukan asumsi):
   - WAF Free TERSEDIA: 1 rate limiting rule, counting IP, periode 10 dtk /

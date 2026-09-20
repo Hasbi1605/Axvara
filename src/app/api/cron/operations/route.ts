@@ -18,6 +18,7 @@ import { orderExpiredMessage } from "@/lib/telegram/messages";
 import { QRIS_EXPIRY_NOTICE_WHERE, sendQrisExpiryNotifications } from "@/lib/payments/qris-expiry-notifications";
 import { retryPendingTelegramNotifications, sendPendingOrderReminders } from "@/lib/telegram/order-notifications";
 import { retryInvoicePendingTelegramInvoices } from "@/lib/telegram/invoice-retry";
+import { constantTimeEqual } from "@/lib/security";
 import { processDueWhatsAppOutbox } from "@/lib/whatsapp/outbox";
 
 export const runtime = "edge";
@@ -113,7 +114,9 @@ export async function POST(request: NextRequest) {
   // Auth: cron secret
   const auth = request.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret || auth !== `Bearer ${cronSecret}`) {
+  // Pembanding kanonis (src/lib/security.ts) — sama dengan webhook DANA/
+  // Telegram/WhatsApp. `!==` membocorkan posisi byte pertama yang berbeda.
+  if (!cronSecret || !constantTimeEqual(auth ?? "", `Bearer ${cronSecret}`)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 

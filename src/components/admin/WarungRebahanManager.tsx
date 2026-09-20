@@ -5,7 +5,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { formatRupiah } from "@/lib/utils";
+import { formatRupiah, formatWibDateTime } from "@/lib/utils";
 import { Spinner } from "@/components/ui/Loading";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { useToast } from "@/components/ui/Toast";
@@ -467,7 +467,8 @@ function DeliveryBadge({ wrClass, source }: { wrClass: string | null; source: st
 }
 
 function formatDate(value: string): string {
-  const parsed = Date.parse(String(value).replace(" ", "T") + (String(value).includes("T") ? "" : "Z"));
-  if (!Number.isFinite(parsed)) return String(value);
-  return new Date(parsed).toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  // Parsing di sini sudah benar sejak awal; dipindah ke helper kanonis agar
+  // zona tampilan ikut dikunci ke WIB (admin dari perangkat non-WIB pun
+  // melihat jam operasional toko yang sama).
+  return formatWibDateTime(value, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) ?? String(value);
 }

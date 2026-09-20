@@ -7,6 +7,7 @@ import { ImageDropzone } from "@/components/admin/ImageDropzone";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { IosIcon } from "@/components/ui/IosIcon";
+import { formatWibDateTime } from "@/lib/utils";
 
 type ArticleStatus = "draft" | "review" | "scheduled" | "published" | "rejected";
 type Article = {
@@ -272,7 +273,7 @@ export function ArticlesManager() {
                     <p className="line-clamp-1 text-sm font-semibold text-white leading-tight">{article.title}</p>
                     <p className="mt-0.5 text-xs text-white/40 line-clamp-1">
                       {article.author_type === "agent" ? `Agent: ${article.author_name ?? "unknown"} · ` : ""}
-                      {article.updated_at ? new Date(article.updated_at).toLocaleDateString("id-ID") : "Belum disimpan"}
+                      {formatWibDateTime(article.updated_at, { dateStyle: "short" }) ?? "Belum disimpan"}
                     </p>
                     <span className={`mt-1.5 inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${article.status === "published" ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-300" : article.status === "draft" ? "border-white/10 bg-white/[0.05] text-white/55" : article.status === "rejected" ? "border-red-400/25 bg-red-500/10 text-red-300" : "border-[#FFB800]/25 bg-[#FFB800]/10 text-[#FFCF55]"}`}>
                       {statusLabels[article.status] ?? article.status}

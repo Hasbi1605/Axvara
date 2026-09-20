@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { Spinner } from "@/components/ui/Loading";
+import { formatWibDateTime } from "@/lib/utils";
 
 type Subscriber = { id: number; email: string; status: string; source: string; created_at: string };
 
@@ -40,7 +41,7 @@ export function NewsletterSubscribers() {
       {error ? <div className="p-8 text-center"><p className="text-sm text-red-300">{error}</p><button type="button" onClick={() => void load()} className="mt-3 text-sm font-semibold text-[#00E5FF]">Coba lagi</button></div>
       : loading ? <div className="flex items-center justify-center gap-2 p-10 text-sm text-white/50"><Spinner size={18} /> Memuat email…</div>
       : filtered.length === 0 ? <p className="p-8 text-center text-sm text-white/40">{query ? "Email tidak ditemukan." : "Belum ada email yang masuk."}</p>
-      : <div className="divide-y divide-white/5">{filtered.map((subscriber) => <div key={subscriber.id} className="flex flex-wrap items-center gap-3 px-4 py-3 transition hover:bg-white/[0.03] sm:px-5"><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium text-white">{subscriber.email}</p><p className="mt-0.5 text-xs text-white/35">Dari footer · {new Date(subscriber.created_at).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}</p></div><span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-300">Aktif</span></div>)}</div>}
+      : <div className="divide-y divide-white/5">{filtered.map((subscriber) => <div key={subscriber.id} className="flex flex-wrap items-center gap-3 px-4 py-3 transition hover:bg-white/[0.03] sm:px-5"><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium text-white">{subscriber.email}</p><p className="mt-0.5 text-xs text-white/35">Dari footer · {formatWibDateTime(subscriber.created_at) ?? "—"}</p></div><span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-300">Aktif</span></div>)}</div>}
     </section>
   );
 }
