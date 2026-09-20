@@ -269,6 +269,16 @@ Actions Secrets.
 
 Panel admin memuat produk, kategori, dan ringkasan setelah autentikasi. Aksi toast memakai identitas yang stabil seumur provider, sehingga satu error fetch tidak lagi membentuk rantai toast → rerender → fetch ulang. Login memuat data tepat sekali (transisi sesi adalah satu-satunya pemicu), dan hanya `401` yang mengakhiri sesi — respons `5xx` atau kegagalan jaringan tidak menendang admin ke gerbang login.
 
+**Panel admin dirapikan (2026-09-20, persetujuan owner).** Modal produk kini
+bertab (Produk / Varian / Foto) dengan tombol **Simpan Produk** di footer yang
+tidak ikut ter-scroll — untuk produk 5 varian tombol itu dulu berada ~2600px di
+bawah area kerja. **Integrasi Agent** dan **Subscriber Email** turun menjadi tab
+di **Pengaturan Toko** (sidebar 12 → 10 menu); `?section=agent` dan
+`?section=subscribers` tetap berfungsi untuk tautan lama. Kartu metrik di
+**Pesanan** kini mengikuti filter yang sedang aktif dan menandai dirinya
+"hasil filter" — sebelumnya memfilter ke Pending tetap menampilkan total
+seluruh toko. Tab kanal sengaja tetap global karena ia pemilih.
+
 **Filter yang kasat mata (2026-09-19).** Kartu **Stok menipis** di Ringkasan kini
 membawa filternya ke daftar Produk lewat `?section=products&low_stock=1` — dulu
 kartu itu hanya berpindah tab dan daftarnya tetap menampilkan semua produk.

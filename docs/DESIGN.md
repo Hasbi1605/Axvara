@@ -342,6 +342,14 @@
   data hilang.
 - **Satu label = satu satuan.** Metrik dengan nama sama di dua layar wajib
   memakai basis hitung yang sama.
+- **Form panjang = tab + aksi sticky (2026-09-20).** Modal yang memuat lebih
+  dari satu pekerjaan dipecah dengan tab, dan tombol simpan hidup di footer
+  `shrink-0` di luar area scroll. Patokan: tombol simpan tidak boleh berada
+  di luar layar saat admin mengedit baris paling bawah.
+- **Menu sidebar hanya untuk tempat kerja.** Layar yang diatur sekali
+  (token integrasi) atau baca-saja (daftar subscriber) jadi tab di dalam
+  Pengaturan, bukan slot sidebar sendiri. Nilai `?section=` lama tetap
+  dipertahankan agar tautan/bookmark tidak mati.
 
 ---
 

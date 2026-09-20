@@ -190,6 +190,28 @@ tetap menampilkan "Total pesanan 26".
    data yang belum termuat (mencegah seluruh varian ternonaktifkan).
 8. Flake WA outbox dihilangkan agar CI tidak menghukum commit tak bersalah.
 
+**Disetujui owner 2026-09-20 dan SUDAH dikerjakan** (butir 8, 9-sebagian, 10):
+- **B5 / butir 1+1b** — modal produk: header + tab tetap di atas, isi scroll,
+  footer Simpan sticky. Terukur untuk produk 5 varian: tombol Simpan dulu
+  2597px di bawah area kerja, kini selalu terlihat. Scroll per tab: Produk
+  388px, Foto 239px (dulu satu kolom 3126px). Tab Varian tetap panjang
+  (2370px) karena memang berisi 5 baris — itu isinya, bukan tata letaknya.
+- **B7 / butir 3** — `Integrasi Agent` + `Subscriber Email` turun jadi tab di
+  Pengaturan Toko; sidebar 12 → 10 menu. `?section=agent` dan
+  `?section=subscribers` TETAP sah (tautan lama tidak mati) dan header mobile
+  dapat judul fallback.
+- **B8 / butir 4** — query stats Pesanan kini memakai `${where}` yang sama
+  dengan daftarnya + penanda "hasil filter" di kartu. Tab kanal sengaja tetap
+  global karena ia pemilih; "Semua" dihitung dari counts kanal agar tidak
+  ikut mengecil menjadi 0.
+
+**DIBATALKAN atas kesepakatan owner:**
+- **B7-gabung (butir 2)** — menggabungkan `Kanal & Fulfillment` + `Warung
+  Rebahan` dibatalkan setelah isinya dibaca: WR = urusan *supplier* (saldo,
+  sync, markup, antrean WR), Kanal = urusan *kanal* (health Telegram/WA,
+  webhook, outbox). Menggabungkan justru membuat satu halaman dua konteks.
+  Yang membingungkan hanya namanya; cukup pertimbangkan rename.
+
 **Belum — butuh keputusan owner** (mengubah struktur/flow, bukan kosmetik):
 8. B5 — pecah modal produk jadi tab Produk / Varian / Media, atau varian
    pindah ke panel sendiri dengan simpan per-varian.

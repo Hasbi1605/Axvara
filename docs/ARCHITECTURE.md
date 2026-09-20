@@ -1213,6 +1213,17 @@ WAJIB punya pembaca di section tujuan.
 | Kartu "Stok menipis" | `?section=products&low_stock=1` | `page.tsx` → `useProductManager.onlyLowStock` |
 | Kartu "Fulfillment" | `?section=bot` | belum ada filter (lihat `issue/audit-admin-panel-2026-09-19.md` A5) |
 
+Section `agent` dan `subscribers` (2026-09-20) tidak lagi punya entri sidebar —
+keduanya tab di dalam `settings` (`src/components/admin/SystemTabs.tsx`).
+Nilainya TETAP sah di `ADMIN_SECTIONS` supaya tautan lama membuka tab yang
+benar, dan `AdminShell` menyimpan judul fallback untuk header mobile.
+
+`GET /api/admin/orders` (2026-09-20): blok `stats` memakai `where` + `bindings`
+yang sama dengan daftar, sedangkan `counts.channels` sengaja TETAP global
+karena menjadi sumber angka tab kanal (pemilih). Mengubah `counts` menjadi
+ikut filter akan membuat tab kanal menampilkan 0 dan tidak bisa dipakai
+kembali.
+
 Aturan turunan:
 1. `navigateAdmin()` memakai `pushState`, yang **tidak** memicu `popstate`.
    Karena itu filter lintas-section harus diterapkan langsung di
