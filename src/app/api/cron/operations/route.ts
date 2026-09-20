@@ -40,14 +40,6 @@ const TIME_TELEGRAM_BATCH = 12_000;
 const TIME_WA_BATCH = 12_000;
 const TIME_FULFILLMENT_UNIT = 10_000;
 const TIME_WR_NETWORK = 14_000;
-// Admission sweep proporsional (anti-gap-tanpa-jejak, 2026-09-20): sweep cron
-// terbukti 50–116 detik sementara gerbang lama hanya menuntut sisa 14 detik —
-// sweep dimulai, kepotong di tengah, tanpa jejak. Estimasi = durasi sweep
-// sukses terakhir × faktor aman; bila sisa waktu tak cukup, skip SEBELUM
-// fetch dengan `deadline` (jujur) daripada mati diam sesudah fetch.
-// Fallback = TIME_WR_NETWORK bila belum ada histori (sama seperti gerbang
-// lama — fail-open pertama kali, tak boleh lebih ketat dari deadline).
-const WR_SWEEP_ESTIMATE_FACTOR = 1.5;
 const TIME_WR_LIGHT = 8_000;
 /**
  * Cadangan waktu yang TIDAK boleh dipakai sweep katalog: sisa langkah fase WR
@@ -841,25 +833,23 @@ export async function POST(request: NextRequest) {
           // diagnosa ("kapan sweep terakhir?") tanpa query D1 tambahan.
           if (typeof lastSync?.created_at === "string") results.wr_last_sync_at = String(lastSync.created_at);
           if (lastTs == null || lastTs < Date.parse(thirtyMinAgo)) {
-            // Admission proporsional (anti-gap-tanpa-jejak): estimasi durasi
-            // dari sweep sukses terakhir × 1,5. Bila sisa waktu tak cukup,
-            // JANGAN mulai (skip `deadline` jujur SEBELUM fetch) — memulai
-            // sweep 115 detik dengan sisa 20 detik = mati diam tanpa jejak.
-            // Fallback 60 dtk bila belum ada histori (fail-open pertama kali).
-            const lastDurRow = await queryFirst(
-              `SELECT duration_ms FROM wr_sync_log
-               WHERE sync_type='products' AND status IN ('success','partial')
-               ORDER BY created_at DESC LIMIT 1`,
-            ).catch(() => null);
-            const lastDur = Number(lastDurRow?.duration_ms ?? 0);
-            const estimateMs = Number.isFinite(lastDur) && lastDur > 0
-              ? Math.ceil(lastDur * WR_SWEEP_ESTIMATE_FACTOR)
-              : TIME_WR_NETWORK;
-            results.wr_sweep_estimate_ms = estimateMs;
-            if (!hasTime(estimateMs)) {
-              if (!deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan");
-              results.wr_sync_skipped = "deadline";
-            } else {
+            // CATATAN (2026-09-20): admission proporsional berbasis
+            // `duration_ms × 1,5` DIBUANG — ia mematikan sync secara PERMANEN.
+            // `hasTime()` diukur terhadap RUN_DEADLINE_MS = 45 dtk, jadi
+            // estimasi apa pun di atas 45 dtk tidak akan PERNAH terpenuhi.
+            // Ambangnya `duration_ms > 30.000`; pada data produksi 69 dari 104
+            // sweep (66%) melewatinya — termasuk seluruh blok 00:12–07:07 UTC
+            // (114–116 dtk). Karena jalur skip TIDAK menulis `wr_sync_log`,
+            // `duration_ms` terakhir membeku selamanya: satu-satunya penulis
+            // nilai itu adalah sweep, dan sweep tidak pernah diizinkan jalan
+            // lagi. Deadlock tertutup — pemulihan hanya lewat Force Sync manual.
+            //
+            // Penggantinya bukan gerbang di depan, melainkan budget waktu DI
+            // DALAM sweep (lihat `timeBudgetMs`): sweep selalu boleh mulai,
+            // mengerjakan sebanyak yang muat, lalu berhenti sendiri di produk
+            // utuh terakhir + menyimpan cursor + MENULIS log. Dengan begitu
+            // durasi tercatat selalu ≤ budget dan tidak ada nilai beku yang
+            // bisa mengunci run berikutnya.
             try {
               // Budget WAKTU sweep = sisa deadline invocation dikurangi
               // cadangan ekor. Tanpa ini sweep berjalan tanpa batas waktu
@@ -902,7 +892,6 @@ export async function POST(request: NextRequest) {
                 results.wr_sync_errors = syncResult.errors.slice(0, 3);
               }
             } catch { if (!deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan"); }
-            } // end else: sisa waktu cukup untuk estimasi sweep
           } else {
             // Interval 30 menit belum jatuh tempo — kondisi normal tersering.
             // Dulu: tanpa jejak (skipped tetap null) sehingga gap abnormal

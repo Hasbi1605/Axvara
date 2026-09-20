@@ -1184,12 +1184,19 @@ Perintah akun #2 wajib prefix `HEROKU_API_KEY=<kunci-akun-2>`; jangan
    + ulang dari awal + kepotong lagi (fetch 200 tiap 5 mnt di log proxy =
    kerja terbuang). Kini (a) checkpoint cursor + `products_progress_at` tiap
    8 produk (`WR_SYNC_CHECKPOINT_EVERY`) — run berikut melanjutkan; (b)
-   admission = durasi sukses terakhir × 1,5 (`WR_SWEEP_ESTIMATE_FACTOR`),
-   fallback = `TIME_WR_NETWORK` bila tanpa histori (fail-open pertama kali —
-   pelajaran: fallback 60 dtk mustahil lolos deadline 45 dtk, tertangkap
-   test cron lama sebelum live); tak cukup → skip `deadline` SEBELUM fetch
-   + `wr_sweep_estimate_ms` di respons; (c) partial log + `budget_yielded`
+   ~~admission = durasi sukses terakhir × 1,5~~ **DIBUANG 2026-09-20 — lihat
+   blok "Budget WAKTU sweep katalog" di atas**: gerbang itu diukur terhadap
+   `RUN_DEADLINE_MS` (45 dtk), sehingga estimasi >45 dtk MUSTAHIL terpenuhi
+   (ambang mati: `duration_ms > 30.000`). Produksi: 69 dari 104 sweep (66%)
+   melewatinya. Karena jalur skip tidak menulis `wr_sync_log`, `duration_ms`
+   terakhir membeku selamanya dan sweep tak pernah jalan lagi = sync MATI
+   PERMANEN (pulih hanya via Force Sync manual). Penggantinya adalah budget
+   waktu DI DALAM sweep, yang membuat durasi tercatat selalu ≤ budget
+   sehingga tidak ada nilai beku yang bisa mengunci; (c) partial log + `budget_yielded`
    saat yield dengan kemajuan >0.
+   **Aturan umum yang dipetik:** jangan pernah membuat gerbang admission yang
+   inputnya HANYA bisa diperbarui oleh pekerjaan yang digerbanginya sendiri —
+   itu resep deadlock. Batasi pekerjaannya dari dalam, bukan tolak dari depan.
    Revisi permanen malam 19 Sep (pelajaran insiden 18:26→23:32, 5 jam tanpa
    ping): evaluasi watchdog PINDAH ke depan handler SETIAP RUN (bukan hanya
    fase WR aktif) dengan konteks seadanya (`pre_phase` bila fase WR tak
