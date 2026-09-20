@@ -1163,6 +1163,19 @@ Perintah akun #2 wajib prefix `HEROKU_API_KEY=<kunci-akun-2>`; jangan
    sweep sukses me-reset via pengosongan state), best-effort ≤4 query di
    dalam `budget.fits(4)`, hasil di `results.wr_sync_stale_alerted`. Ritme
    normal tak pernah menyentuh 90 menit → tanpa alert palsu.
+   Sweep resumable + admission proporsional (2026-09-20, akar ketiga gap
+   misterius): sweep cron terbukti 50–116 detik (`duration_ms`) sementara
+   gerbang lama hanya menuntut sisa 14 detik — sweep dimulai, kepotong
+   platform/deploy di tengah, cursor+log hanya ditulis di ujung = NOL jejak
+   + ulang dari awal + kepotong lagi (fetch 200 tiap 5 mnt di log proxy =
+   kerja terbuang). Kini (a) checkpoint cursor + `products_progress_at` tiap
+   8 produk (`WR_SYNC_CHECKPOINT_EVERY`) — run berikut melanjutkan; (b)
+   admission = durasi sukses terakhir × 1,5 (`WR_SWEEP_ESTIMATE_FACTOR`),
+   fallback = `TIME_WR_NETWORK` bila tanpa histori (fail-open pertama kali —
+   pelajaran: fallback 60 dtk mustahil lolos deadline 45 dtk, tertangkap
+   test cron lama sebelum live); tak cukup → skip `deadline` SEBELUM fetch
+   + `wr_sweep_estimate_ms` di respons; (c) partial log + `budget_yielded`
+   saat yield dengan kemajuan >0.
    Revisi permanen malam 19 Sep (pelajaran insiden 18:26→23:32, 5 jam tanpa
    ping): evaluasi watchdog PINDAH ke depan handler SETIAP RUN (bukan hanya
    fase WR aktif) dengan konteks seadanya (`pre_phase` bila fase WR tak

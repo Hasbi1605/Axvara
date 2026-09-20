@@ -52,6 +52,14 @@ export const WR_SYNC_CATALOG_BUDGET_EXTRA = 800;
 // Generasi: bila upstream mengembalikan data yang bentuknya berubah total
 // (mis. array kosong padahal sebelumnya 48 produk), sweep ditandai parsial.
 export const WR_SYNC_MIN_PRODUCTS_GUARD = 1;
+// Checkpoint kemajuan sweep (anti-gap-tanpa-jejak, 2026-09-20). Sweep cron
+// memakan 50–116 detik sementara plafon platform ~125 detik dan deploy bisa
+// me-recycle Functions kapan saja. Dulu cursor + logSync HANYA ditulis di
+// ujung — run kepotong = NOL jejak + ulang dari awal + kepotong lagi (tiga
+// gap misterius 19–20 Sep, fetch 200 tiap 5 mnt di log proxy sebagai bukti
+// kerja terbuang). Kini cursor + penanda kemajuan disimpan tiap N produk
+// (6 tulis/run — murah) sehingga run berikut MELANJUTKAN, bukan mengulang.
+export const WR_SYNC_CHECKPOINT_EVERY = 8;
 
 type Row = Record<string, unknown>;
 
@@ -793,6 +801,14 @@ export async function syncProducts(
     }
     cursor = i + 1;
     processedInRun++;
+    // Checkpoint tahan-potong: simpan posisi + kemajuan tiap N produk agar
+    // run yang dibunuh platform/deploy menyisakan jejak dan run berikut
+    // melanjutkan (bukan mengulang 48 dari awal). writeSyncState best-effort
+    // (try/catch di dalam) — checkpoint gagal tak menghentikan sweep.
+    if (processedInRun % WR_SYNC_CHECKPOINT_EVERY === 0 && cursor < ordered.length) {
+      await writeSyncState(db, "products_cursor", String(cursor));
+      await writeSyncState(db, "products_progress_at", new Date().toISOString());
+    }
   }
   const sweepComplete = cursor >= ordered.length;
   // Sweep dianggap PENUH hanya bila run ini memulai dari awal daftar. Tanpa

@@ -40,6 +40,14 @@ const TIME_TELEGRAM_BATCH = 12_000;
 const TIME_WA_BATCH = 12_000;
 const TIME_FULFILLMENT_UNIT = 10_000;
 const TIME_WR_NETWORK = 14_000;
+// Admission sweep proporsional (anti-gap-tanpa-jejak, 2026-09-20): sweep cron
+// terbukti 50–116 detik sementara gerbang lama hanya menuntut sisa 14 detik —
+// sweep dimulai, kepotong di tengah, tanpa jejak. Estimasi = durasi sweep
+// sukses terakhir × faktor aman; bila sisa waktu tak cukup, skip SEBELUM
+// fetch dengan `deadline` (jujur) daripada mati diam sesudah fetch.
+// Fallback = TIME_WR_NETWORK bila belum ada histori (sama seperti gerbang
+// lama — fail-open pertama kali, tak boleh lebih ketat dari deadline).
+const WR_SWEEP_ESTIMATE_FACTOR = 1.5;
 const TIME_WR_LIGHT = 8_000;
 const TIME_SINGLE_MESSAGE = 3_000;
 const EXPIRY_PER_RUN = 4;
@@ -825,6 +833,25 @@ export async function POST(request: NextRequest) {
           // diagnosa ("kapan sweep terakhir?") tanpa query D1 tambahan.
           if (typeof lastSync?.created_at === "string") results.wr_last_sync_at = String(lastSync.created_at);
           if (lastTs == null || lastTs < Date.parse(thirtyMinAgo)) {
+            // Admission proporsional (anti-gap-tanpa-jejak): estimasi durasi
+            // dari sweep sukses terakhir × 1,5. Bila sisa waktu tak cukup,
+            // JANGAN mulai (skip `deadline` jujur SEBELUM fetch) — memulai
+            // sweep 115 detik dengan sisa 20 detik = mati diam tanpa jejak.
+            // Fallback 60 dtk bila belum ada histori (fail-open pertama kali).
+            const lastDurRow = await queryFirst(
+              `SELECT duration_ms FROM wr_sync_log
+               WHERE sync_type='products' AND status IN ('success','partial')
+               ORDER BY created_at DESC LIMIT 1`,
+            ).catch(() => null);
+            const lastDur = Number(lastDurRow?.duration_ms ?? 0);
+            const estimateMs = Number.isFinite(lastDur) && lastDur > 0
+              ? Math.ceil(lastDur * WR_SWEEP_ESTIMATE_FACTOR)
+              : TIME_WR_NETWORK;
+            results.wr_sweep_estimate_ms = estimateMs;
+            if (!hasTime(estimateMs)) {
+              if (!deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan");
+              results.wr_sync_skipped = "deadline";
+            } else {
             try {
               const syncResult = await syncProducts(database, undefined, { maxProducts: WR_SYNC_PRODUCTS_PER_RUN, trigger: "cron" });
               results.wr_products_synced = syncResult.synced;
@@ -857,6 +884,7 @@ export async function POST(request: NextRequest) {
                 results.wr_sync_errors = syncResult.errors.slice(0, 3);
               }
             } catch { if (!deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan"); }
+            } // end else: sisa waktu cukup untuk estimasi sweep
           } else {
             // Interval 30 menit belum jatuh tempo — kondisi normal tersering.
             // Dulu: tanpa jejak (skipped tetap null) sehingga gap abnormal

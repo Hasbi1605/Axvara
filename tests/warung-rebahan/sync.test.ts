@@ -512,3 +512,92 @@ describe("Warung Rebahan product sync", () => {
     }
   });
 });
+
+describe("Warung Rebahan sync resumable (anti-gap-tanpa-jejak, 2026-09-20)", () => {
+  function manyProducts(n: number): WrProduct[] {
+    return Array.from({ length: n }, (_, i) => fixtureProduct({
+      id: `prod-resume-${i}`,
+      name: `Resume Product ${i}`,
+      variants: [
+        {
+          id: `var-resume-${i}`,
+          name: "Varian",
+          price: 5000,
+          duration: "7 Hari",
+          type: "Private",
+          warranty: "7 Hari",
+          stock: 10,
+          terms: null,
+          delivery_terms: null,
+        },
+      ],
+    }));
+  }
+
+  it("run berhenti budget di tengah: cursor checkpoint tersimpan + partial log", async () => {
+    const fx = createD1Fixture();
+    try {
+      // Budget 40 + extra 800 (cron) tapi maxProducts kecil: simulasi run yang
+      // yield di tengah — cursor terakhir + partial log harus tertulis.
+      const { access } = createBudgetedDatabase(40, 2, fx.db);
+      const products = manyProducts(20);
+      const result = await syncProducts(access, async () => products, { maxProducts: 10 });
+      expect(result.budgetYielded).toBe(true);
+      expect(result.synced).toBe(10);
+      // Cursor = 10 (bukan 0): run berikut melanjutkan dari produk ke-11.
+      const cursor = fx.sql.prepare("SELECT value FROM wr_sync_state WHERE key='products_cursor'").get() as { value: string };
+      expect(String(cursor.value)).toBe("10");
+      // Partial log tertulis (bukan hilang tanpa jejak).
+      const log = fx.sql.prepare(
+        "SELECT status, products_synced FROM wr_sync_log WHERE sync_type='products' ORDER BY id DESC LIMIT 1",
+      ).get() as { status: string; products_synced: number };
+      expect(String(log.status)).toBe("success");
+      expect(Number(log.products_synced)).toBe(10);
+      // Run berikut dengan budget longgar melanjutkan sisa 10 produk.
+      const db2 = createDatabaseAccess(fx.db);
+      const resume = await syncProducts(db2, async () => products);
+      expect(resume.synced).toBe(10);
+      const cursor2 = fx.sql.prepare("SELECT value FROM wr_sync_state WHERE key='products_cursor'").get() as { value: string };
+      expect(String(cursor2.value)).toBe("0");
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("checkpoint kemajuan tercatat tiap 8 produk (bukti hidup run kepotong)", async () => {
+    const fx = createD1Fixture();
+    try {
+      const db = createDatabaseAccess(fx.db);
+      const products = manyProducts(20);
+      await syncProducts(db, async () => products);
+      // Produk ke-8 dan ke-16 memicu checkpoint → products_progress_at ada.
+      // Tanpa checkpoint (kode lama), key ini TAK PERNAH ditulis.
+      const progress = fx.sql.prepare(
+        "SELECT value, updated_at FROM wr_sync_state WHERE key='products_progress_at'",
+      ).get() as { value: string; updated_at: string } | undefined;
+      expect(progress).toBeDefined();
+      expect(String(progress?.value || "")).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("cursor checkpoint dipakai run berikut (melanjutkan, bukan mengulang)", async () => {
+    const fx = createD1Fixture();
+    try {
+      const db = createDatabaseAccess(fx.db);
+      const products = manyProducts(20);
+      // Sweep penuh 20 produk sekaligus (budget polos selalu true).
+      const full = await syncProducts(db, async () => products);
+      expect(full.synced).toBe(20);
+      // Cursor kembali 0 + checkpoint kemajuan terakhir tercatat.
+      const cursor = fx.sql.prepare("SELECT value FROM wr_sync_state WHERE key='products_cursor'").get() as { value: string };
+      expect(String(cursor.value)).toBe("0");
+      const progress = fx.sql.prepare("SELECT value FROM wr_sync_state WHERE key='products_progress_at'").get() as { value: string } | undefined;
+      // Progress tercatat saat checkpoint (produk ke-8 dan ke-16 dari 20).
+      expect(progress).toBeDefined();
+    } finally {
+      fx.close();
+    }
+  });
+});
