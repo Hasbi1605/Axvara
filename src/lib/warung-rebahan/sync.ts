@@ -229,7 +229,10 @@ export async function upsertWrProduct(
       await execRun(
         `UPDATE wr_products SET wr_product_name=?, wr_category=?, wr_description=?,
           is_excluded=1, exclude_reason=?, last_synced_at=?, updated_at=?
-         WHERE wr_product_id=?`,
+         WHERE wr_product_id=?
+           AND (wr_product_name IS NOT ? OR wr_category IS NOT ?
+                OR wr_description IS NOT ? OR is_excluded IS NOT 1
+                OR exclude_reason IS NOT ?)`,
         wrProduct.name,
         wrProduct.category || null,
         (wrProduct as { description?: string }).description ?? null,
@@ -237,6 +240,10 @@ export async function upsertWrProduct(
         now,
         now,
         wrProduct.id,
+        wrProduct.name,
+        wrProduct.category || null,
+        (wrProduct as { description?: string }).description ?? null,
+        exclude.reason,
       );
       return { axvaraProductId: 0, isNew: false };
     }
@@ -254,21 +261,29 @@ export async function upsertWrProduct(
         await execRun(
           `UPDATE wr_products SET wr_product_name=?, wr_category=?, wr_description=?,
             is_excluded=0, exclude_reason=NULL, last_synced_at=?, updated_at=?
-           WHERE wr_product_id=?`,
+           WHERE wr_product_id=?
+             AND (wr_product_name IS NOT ? OR wr_category IS NOT ?
+                  OR wr_description IS NOT ? OR is_excluded IS NOT 0
+                  OR exclude_reason IS NOT NULL)`,
           wrProduct.name,
           wrProduct.category || null,
           (wrProduct as { description?: string }).description ?? null,
           now,
           now,
           wrProduct.id,
+          wrProduct.name,
+          wrProduct.category || null,
+          (wrProduct as { description?: string }).description ?? null,
         );
         await execRun(
           // Hanya `description` (milik WR). `admin_description_override`
           // TIDAK PERNAH disentuh sync — itu kolom milik admin (migrasi 0030)
           // dan storefront memprioritaskannya saat terisi.
-          `UPDATE products SET description=?, updated_at=datetime('now') WHERE id=?`,
+          `UPDATE products SET description=?, updated_at=datetime('now')
+           WHERE id=? AND description IS NOT ?`,
           (wrProduct as { description?: string }).description ?? null,
           linked,
+          (wrProduct as { description?: string }).description ?? null,
         ).catch(() => ({ changes: 0 }));
         return { axvaraProductId: linked, isNew: false };
       }
@@ -397,11 +412,20 @@ export async function upsertWrVariant(
     const priceChanged =
       Number(existing.wr_price ?? -1) !== Number(wrVariant.price) ||
       Number(existing.axvara_sell_price ?? -1) !== sellPrice;
+    // Kuota D1: sweep menulis 96 baris wr_variants + 96 product_variants tiap
+    // 5 menit walau WR tidak berubah sama sekali (~28k rows-written/hari dari
+    // kuota 100k). `last_synced_at` TIDAK dibaca siapa pun, jadi menyegarkannya
+    // sendirian tidak bernilai — guard null-safe (`IS NOT`) membuat baris yang
+    // benar-benar sama tidak ditulis ulang.
     await execRun(
       `UPDATE wr_variants SET wr_variant_name=?, wr_price=?, wr_duration=?,
         wr_type=?, wr_warranty=?, wr_stock=?, wr_terms=?, wr_delivery_terms=?,
         axvara_sell_price=?, last_synced_at=?, updated_at=?
-       WHERE wr_variant_id=?`,
+       WHERE wr_variant_id=?
+         AND (wr_variant_name IS NOT ? OR wr_price IS NOT ? OR wr_duration IS NOT ?
+              OR wr_type IS NOT ? OR wr_warranty IS NOT ? OR wr_stock IS NOT ?
+              OR wr_terms IS NOT ? OR wr_delivery_terms IS NOT ?
+              OR axvara_sell_price IS NOT ?)`,
       wrVariant.name,
       Number(wrVariant.price),
       wrVariant.duration || null,
@@ -414,6 +438,15 @@ export async function upsertWrVariant(
       now,
       now,
       wrVariant.id,
+      wrVariant.name,
+      Number(wrVariant.price),
+      wrVariant.duration || null,
+      wrVariant.type || null,
+      wrVariant.warranty || null,
+      Number(wrVariant.stock),
+      wrVariant.terms ?? null,
+      wrVariant.delivery_terms ?? null,
+      sellPrice,
     );
     // 2026-09-16: kelas pengiriman yang SUDAH dikunci (screenshot/admin/
     // system) tidak pernah ditimpa sync — pola admin_description_override.
@@ -441,7 +474,13 @@ export async function upsertWrVariant(
         `UPDATE product_variants SET label=?, price=?, stock=?,
           duration_value=?, duration_unit=?, duration_label=?,
           warranty_type=?, warranty_value=?, warranty_unit=?, warranty_label=?,
-          updated_at=datetime('now') WHERE id=?`,
+          updated_at=datetime('now')
+         WHERE id=?
+           AND (label IS NOT ? OR price IS NOT ? OR stock IS NOT ?
+                OR duration_value IS NOT ? OR duration_unit IS NOT ?
+                OR duration_label IS NOT ? OR warranty_type IS NOT ?
+                OR warranty_value IS NOT ? OR warranty_unit IS NOT ?
+                OR warranty_label IS NOT ?)`,
         wrVariant.name,
         sellPrice,
         Number(wrVariant.stock),
@@ -453,6 +492,16 @@ export async function upsertWrVariant(
         warranty.unit,
         warranty.label || null,
         axvaraVariantId,
+        wrVariant.name,
+        sellPrice,
+        Number(wrVariant.stock),
+        duration.value,
+        duration.unit,
+        duration.label || null,
+        warranty.type,
+        warranty.value,
+        warranty.unit,
+        warranty.label || null,
       ).catch(() => ({ changes: 0 }));
     }
     return { stockChanged, priceChanged, isNew: false };
@@ -561,6 +610,10 @@ export async function refreshParentAggregates(
 ): Promise<void> {
   if (!axvaraProductId) return;
   const { execRun } = db;
+  // Guard kuota D1 (2026-09-20): agregat induk dihitung ulang tiap sweep dan
+  // dulu SELALU ditulis walau hasilnya identik — 48 baris per sweep tanpa
+  // perubahan apa pun. Subquery yang sama dipakai di WHERE sebagai pembanding
+  // sehingga UPDATE hanya terjadi saat harga/stok agregat benar-benar bergeser.
   await execRun(
     `UPDATE products
      SET price=COALESCE((
@@ -575,7 +628,21 @@ export async function refreshParentAggregates(
            FROM product_variants WHERE product_id=? AND is_active=1
          ),0) END,
          updated_at=datetime('now')
-     WHERE id=?`,
+     WHERE id=?
+       AND (price IS NOT COALESCE((
+              SELECT MIN(price) FROM product_variants
+              WHERE product_id=? AND is_active=1
+            ),price)
+         OR stock IS NOT CASE WHEN EXISTS(
+              SELECT 1 FROM product_variants
+              WHERE product_id=? AND is_active=1 AND stock=-1
+            ) THEN -1 ELSE COALESCE((
+              SELECT SUM(CASE WHEN stock>0 THEN stock ELSE 0 END)
+              FROM product_variants WHERE product_id=? AND is_active=1
+            ),0) END)`,
+    axvaraProductId,
+    axvaraProductId,
+    axvaraProductId,
     axvaraProductId,
     axvaraProductId,
     axvaraProductId,
@@ -642,7 +709,8 @@ async function writeSyncState(db: DatabaseAccess, key: string, value: string): P
   try {
     await db.execRun(
       `INSERT INTO wr_sync_state (key, value, updated_at) VALUES (?,?,datetime('now'))
-       ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')`,
+       ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')
+       WHERE wr_sync_state.value IS NOT excluded.value`,
       key,
       value,
     );
