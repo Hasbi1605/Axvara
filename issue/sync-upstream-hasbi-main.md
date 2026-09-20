@@ -1,4 +1,4 @@
-# Resep sync ke `Hasbi1605:main` (diverifikasi 2026-09-19)
+# Resep sync ke `Hasbi1605:main` (diverifikasi ulang 2026-09-20 vs `8ffc7a0`)
 
 Ditulis setelah review PR #1 menandai risiko rebase. **Bukan spekulasi** —
 merge percobaan benar-benar dijalankan lokal, konflik diselesaikan, lalu
@@ -13,7 +13,20 @@ merge percobaan benar-benar dijalankan lokal, konflik diselesaikan, lalu
 |---|---|---|
 | File konflik | 3 | **2** |
 | `src/lib/whatsapp/outbox.ts` | CONFLICT | **auto-merge** |
-| Suite di hasil merge | — | **909/909 hijau, tsc bersih** |
+| Suite di hasil merge | — | **hijau, tsc bersih** |
+
+**Verifikasi ulang 2026-09-20 melawan upstream `8ffc7a0`** (permintaan review:
+angka lama dihitung dari base lama, jadi diulang penuh):
+
+| Gate | Hasil di hasil merge |
+|---|---|
+| `npx tsc --noEmit` | bersih |
+| `npx vitest run --run` | **924/924 hijau (89 file)** |
+| `npm run build:pages` | **sukses, 17,36 dtk** (12 prerendered route + worker) |
+
+Konflik tetap 2 file yang sama (CHANGELOG + `useProductManager`);
+`outbox.ts` tetap auto-merge. Branch PR sudah dibersihkan dari file
+sync-workflow, jadi tidak ada lagi file khusus-fork yang ikut ke upstream.
 
 `outbox.ts` dihilangkan dari daftar konflik dengan menyelaraskan implementasi
 (dan komentarnya, verbatim) ke `fbc7235` upstream. Dua perbaikan benar yang
@@ -63,7 +76,8 @@ di luar `useMemo` seperti aslinya.
 
 ## Setelah resolusi
 ```bash
-npx tsc --noEmit && npx vitest run --run   # harap 909/909
+npx tsc --noEmit && npx vitest run --run && npm run build:pages
 ```
-Angka 909 = 903 (branch PR) + 6 dari commit upstream. Bila lebih rendah,
-kemungkinan besar salah satu sisi konflik terbuang.
+Patokan terhadap `8ffc7a0`: **924/924 (89 file)** dan build Pages sukses.
+Bila jumlah test lebih rendah, kemungkinan besar salah satu sisi konflik
+terbuang saat resolusi.
