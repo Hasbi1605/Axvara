@@ -1119,8 +1119,25 @@ Perintah akun #2 wajib prefix `HEROKU_API_KEY=<kunci-akun-2>`; jangan
 - `WR_SYNC_PRODUCTS_PER_RUN = 48` + plafon khusus katalog +800 query
   (`raiseCeilingForCatalogSync`, hanya jalur sync produk; budget cron umum +
   order/fulfillment tetap 40).
-- Satu sweep ≈ 410 query (~1.000 rows-read + ~200 writes, <2% kuota D1 free);
-  tanpa tambahan biaya D1/R2/Heroku. Cursor antar-run tetap sebagai fallback.
+- Satu sweep ≈ 410 query. **Koreksi 2026-09-20 (terukur, bukan estimasi):**
+  angka "~200 writes" di atas terlalu optimistis — sebelum guard bersyarat
+  satu sweep TANPA perubahan apa pun menulis **398 baris** (96 `wr_variants`
+  + 96 `product_variants` + 96 agregat `products` + 48 `wr_products` + 48
+  deskripsi + state/log), karena semua `UPDATE` berjalan tanpa syarat dan
+  `last_synced_at`/`updated_at` selalu disegarkan. Dikali ~56 sweep/hari =
+  ~28k rows-written/hari, cocok dengan puncak GraphQL Analytics produksi
+  (28.518 pada 18 Sep = **28,5% kuota Free 100k/hari**). Sejak 1 Sep 2026
+  kuota tulis habis = query D1 **diblokir** (toko mati sampai tengah malam
+  UTC), bukan sekadar peringatan.
+  Sejak 2026-09-20 setiap `UPDATE` sync memakai guard null-safe (`IS NOT`)
+  sehingga baris yang nilainya identik tidak ditulis ulang: sweep tanpa
+  perubahan turun ke **12 baris (−97%)**, sementara perubahan nyata tetap
+  merambat ke tiga lapis (`wr_variants` → `product_variants` → agregat
+  induk). `last_synced_at` sengaja ikut tidak disegarkan saat tidak ada
+  perubahan — kolom itu tidak dibaca kode mana pun (kesegaran sync dibaca
+  dari `wr_sync_log`, bukan dari kolom ini).
+  Dikunci oleh `tests/warung-rebahan/sync-write-quota.regression.test.ts`.
+  Cursor antar-run tetap sebagai fallback.
 - Produk BARU WR otomatis masuk katalog tiap sync (`products_new`): registry
   baru → baris katalog (slug anti-bentrok `-wr`, markup default 50%) +
   varian-variannya; kena exclusion → registry saja.
