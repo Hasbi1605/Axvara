@@ -119,6 +119,8 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 | FR-SYS9 | Minimum pembelian ditegakkan server: quote 409 `below_minimum`, orders 409, guard atomik batch; UI/bot hanya cermin | P0 ✅ live (migrasi 0034) |
 | FR-S19 | Email wajib SEBELUM bayar bila keranjang berisi varian WR Invite/Link (otomatis dari `wr_type`) atau produk `require_email=1` (toggle admin): form web validasi + label dinamis, API 422 guard DB, Telegram minta + simpan + teruskan ke WR, WA tolak + arahkan kanal ber-form | P0 ✅ live |
 | FR-SYS10 | Bot email WR→buyer white-label: email WR (label Gmail WR-INGEST) diteruskan otomatis sebagai email branding Axvara (template Diproses/Invite Terkirim, nol jejak WR) via Resend; fallback WA bila buyer tanpa email; idempoten gmail_message_id; cari manual invoice WR di tab Warung Rebahan | P0 ✅ live 2026-09-17 |
+| FR-SYS11 | Kartu antrean Ringkasan wajib membawa filternya ke section tujuan (bukan sekadar pindah tab), setiap filter aktif tampil sebagai chip yang bisa dilepas, dan satu nama metrik memakai satu satuan di semua layar | P1 ✅ live 2026-09-19 |
+| FR-SYS12 | Editor produk bertab dengan aksi simpan yang selalu terjangkau; menu sidebar hanya untuk layar kerja harian (layar konfigurasi sekali-pakai jadi tab Pengaturan, `?section=` lama tetap sah); kartu metrik mengikuti filter aktif | P1 ✅ live 2026-09-20 |
 
 ### 2.4 Non-Functional
 

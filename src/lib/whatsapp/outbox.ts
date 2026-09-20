@@ -42,7 +42,9 @@ export function isOutboxDangerSignal(error: unknown): boolean {
 }
 
 export function paceDelayMs(): number {
-  return Math.max(0, WA_OUTBOX_PACE_BASE_MS) + Math.floor(Math.random() * WA_OUTBOX_PACE_JITTER_MS);
+  const base = Math.max(0, WA_OUTBOX_PACE_BASE_MS);
+  if (base === 0) return 0;
+  return base + Math.floor(Math.random() * WA_OUTBOX_PACE_JITTER_MS);
 }
 
 /** Dibaca per-panggilan (bukan sekali di import) agar test bisa override via env. */

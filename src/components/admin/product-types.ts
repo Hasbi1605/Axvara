@@ -2,7 +2,8 @@
 // baru bisa mengacu ke bentuk data yang sama tanpa impor melingkar. Tidak ada logika
 // di sini — hanya kontrak bentuk data produk, kategori, dan varian form.
 
-export type Prod = { id:string; slug:string; name:string; whatsappAlias?:string; description:string; adminDescriptionOverride?:string|null; wrManaged?:boolean; price:number; minPrice?:number; maxPrice?:number; variantCount?:number; comparePrice?:number; categorySlug:string; image:string; images:string[]; badge?:string; soldCount:number; stock:number; isActive:boolean; sortOrder?:number; requireEmail?:boolean };
+/** `lowStockVariants` hanya dikirim untuk permintaan admin (varian aktif berstok 0..5). */
+export type Prod = { id:string; slug:string; name:string; whatsappAlias?:string; description:string; adminDescriptionOverride?:string|null; wrManaged?:boolean; price:number; minPrice?:number; maxPrice?:number; variantCount?:number; lowStockVariants?:number; comparePrice?:number; categorySlug:string; image:string; images:string[]; badge?:string; soldCount:number; stock:number; isActive:boolean; sortOrder?:number; requireEmail?:boolean };
 
 export type Cat = { id:number; slug:string; name:string };
 

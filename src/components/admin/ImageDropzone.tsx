@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { IosIcon } from "@/components/ui/IosIcon";
+import { useToast } from "@/components/ui/Toast";
 
 type Props = {
   area: "products" | "articles/covers" | "banners" | "qris";
@@ -73,6 +74,7 @@ export async function toWebpOriginalRatio(file: File) {
 
 export function ImageDropzone({ area, value, onUploaded, onRemove }: Props) {
   const input = useRef<HTMLInputElement>(null);
+  const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const preserveRatio = area === "banners" || area === "qris";
@@ -90,7 +92,7 @@ export function ImageDropzone({ area, value, onUploaded, onRemove }: Props) {
       if (!response.ok) throw new Error(body.error ?? "Upload gagal");
       onUploaded(body.urls[0]);
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Upload gagal");
+      toast.error(error instanceof Error ? error.message : "Upload gagal");
     } finally {
       setBusy(false);
       setDragActive(false);

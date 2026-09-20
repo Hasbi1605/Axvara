@@ -71,6 +71,17 @@ export async function GET(req: NextRequest) {
   if (variantCatalog) sql += ` GROUP BY p.id`;
   sql += ` ORDER BY p.sort_order ASC, p.id ASC`;
   const rows = await queryAll(sql, ...params);
+  // Jumlah varian tipis per produk, hanya untuk admin. Satuannya sengaja
+  // sama dengan Ringkasan (varian is_active dengan stok 0..5) supaya satu
+  // label "Stok menipis" tidak lagi menampilkan dua angka berbeda di dua
+  // layar. Query terpisah agar tidak mengubah GROUP BY katalog publik.
+  const lowStockByProduct = new Map<string, number>();
+  if (isAdminRequest && isD1Mode()) {
+    const lowRows = await queryAll(
+      "SELECT product_id, COUNT(*) AS count FROM product_variants WHERE is_active=1 AND stock BETWEEN 0 AND 5 GROUP BY product_id",
+    ).catch(() => [] as Record<string, unknown>[]);
+    for (const row of lowRows) lowStockByProduct.set(String(row.product_id), Number(row.count || 0));
+  }
   const data = rows.map((r: Record<string, unknown>) => {
     let images: string[] = [];
     let aliases: string[] = [];
@@ -109,6 +120,10 @@ export async function GET(req: NextRequest) {
       badge: (r.badge as string) ?? undefined,
       soldCount: (r.sold_count as number) ?? 0,
       stock: variantCatalog ? Number(r.variant_stock ?? 0) : (r.stock as number) ?? -1,
+      // Hanya dikirim bila benar-benar dihitung (mode D1). Mengirim 0 di mode
+      // dev tanpa D1 akan menindih fallback per-produk di admin dan membuat
+      // "stok menipis" selalu nol.
+      lowStockVariants: isAdminRequest && isD1Mode() ? (lowStockByProduct.get(String(r.id)) ?? 0) : undefined,
       isActive: (r.is_active as number) !== 0,
       sortOrder: r.sort_order,
     };

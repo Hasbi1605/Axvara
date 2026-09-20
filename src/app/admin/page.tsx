@@ -19,6 +19,7 @@ import { WarungRebahanManager } from "@/components/admin/WarungRebahanManager";
 import { ProductEditorModal } from "@/components/admin/ProductEditorModal";
 import { useProductManager } from "@/components/admin/useProductManager";
 import { useAdminAuth } from "@/components/admin/useAdminAuth";
+import { SystemTabs, SYSTEM_TABS } from "@/components/admin/SystemTabs";
 
 const ADMIN_SECTIONS: AdminSection[] = ["summary","products","orders","categories","payments","warung","articles","banners","subscribers","bot","agent","settings"];
 
@@ -45,26 +46,37 @@ export default function AdminPage() {
   const { setAuthed } = auth;
   const onUnauthorized = useCallback(() => setAuthed(false), [setAuthed]);
   const pm = useProductManager(toast, onUnauthorized);
-  const { load } = pm;
+  const { load, setOnlyLowStock, setPage: setProductPage } = pm;
 
   const navigateAdmin = useCallback((section: AdminSection, params: Record<string,string> = {}) => {
     setTab(section);
+    // Filter yang dibawa antar-section harus ikut berpindah, bukan hanya
+    // tersimpan di URL: pushState tidak memicu popstate.
+    if (section === "products") { setOnlyLowStock(params.low_stock === "1"); setProductPage(()=>1); }
     const url = new URL(window.location.href);
     url.search = "";
     url.searchParams.set("section", section);
     Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
     window.history.pushState(null, "", `${url.pathname}?${url.searchParams}`);
-  }, []);
+  }, [setOnlyLowStock, setProductPage]);
 
+  // Satu listener popstate untuk SELURUH state yang berasal dari URL: section
+  // dan filter yang dibawanya (mis. kartu "Stok menipis" → ?low_stock=1).
+  // Dua listener terpisah mem-parse URL yang sama dua kali per back/forward
+  // dan memisahkan aturan yang sebenarnya satu: "URL adalah sumber kebenaran".
   useEffect(()=>{
-    const syncSection=()=>{
-      const section=new URLSearchParams(window.location.search).get("section") as AdminSection|null;
+    const syncFromUrl=()=>{
+      const params=new URLSearchParams(window.location.search);
+      const section=params.get("section") as AdminSection|null;
       if(section&&ADMIN_SECTIONS.includes(section))setTab(section);
+      const lowStock=section==="products"&&params.get("low_stock")==="1";
+      setOnlyLowStock(lowStock);
+      if(lowStock)setProductPage(()=>1);
     };
-    syncSection();
-    window.addEventListener("popstate",syncSection);
-    return()=>window.removeEventListener("popstate",syncSection);
-  },[]);
+    syncFromUrl();
+    window.addEventListener("popstate",syncFromUrl);
+    return()=>window.removeEventListener("popstate",syncFromUrl);
+  },[setOnlyLowStock, setProductPage]);
 
   useEffect(()=>{ if(auth.authed) { void load(); void loadOverview(); } },[auth.authed, load, loadOverview]);
 
@@ -95,9 +107,14 @@ export default function AdminPage() {
       {tab==="categories" && <CategoryManager />}
       {tab==="payments" && <PaymentMethodsManager />}
       {tab==="warung" && <WarungRebahanManager />}
-      {tab==="agent" && <AgentIntegration />}
       {tab==="bot" && <BotAutomationManager />}
-      {tab==="settings" && <StoreSettingsManager />}
+      {SYSTEM_TABS.some(([id])=>id===tab) && (
+        <SystemTabs section={tab} onSection={navigateAdmin}>
+          {tab==="settings" && <StoreSettingsManager />}
+          {tab==="agent" && <AgentIntegration />}
+          {tab==="subscribers" && <NewsletterSubscribers />}
+        </SystemTabs>
+      )}
 
       {tab==="products" && (
         <ProductsSection
@@ -115,6 +132,13 @@ export default function AdminPage() {
           soldProducts={pm.soldProducts}
           onQueryChange={pm.setQ}
           onPageChange={pm.setPage}
+          onlyLowStock={pm.onlyLowStock}
+          onClearLowStock={()=>{
+            pm.setOnlyLowStock(false);
+            const url=new URL(window.location.href);
+            url.searchParams.delete("low_stock");
+            window.history.replaceState(null,"",`${url.pathname}?${url.searchParams}`);
+          }}
           onNew={pm.openNew}
           onEdit={pm.openEdit}
           onDelete={pm.setDeleteTarget}
@@ -126,7 +150,6 @@ export default function AdminPage() {
 
       {tab==="banners" && <BannerManager />}
 
-      {tab==="subscribers" && <NewsletterSubscribers />}
 
       {(pm.editing || pm.showNew) && (
         <ProductEditorModal

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArticleEditor } from "@/components/admin/ArticleEditor";
 import { ImageDropzone } from "@/components/admin/ImageDropzone";
 import { useToast } from "@/components/ui/Toast";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { IosIcon } from "@/components/ui/IosIcon";
 
 type ArticleStatus = "draft" | "review" | "scheduled" | "published" | "rejected";
@@ -68,6 +69,8 @@ export function ArticlesManager() {
   const [editing, setEditing] = useState<Article | null>(null);
   const [form, setForm] = useState<ArticleForm | null>(null);
   const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Article | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -170,12 +173,17 @@ export function ArticlesManager() {
   }
 
   async function remove(article: Article) {
-    if (!window.confirm(`Hapus artikel “${article.title}”? Tindakan ini tidak dapat dibatalkan.`)) return;
-    const response = await fetch(`/api/articles?id=${article.id}`, { method: "DELETE" });
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) return toast.error(body.error ?? "Artikel gagal dihapus");
-    await load();
-    toast.success("Artikel dihapus.");
+    setDeleting(true);
+    try {
+      const response = await fetch(`/api/articles?id=${article.id}`, { method: "DELETE" });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) return toast.error(body.error ?? "Artikel gagal dihapus");
+      setDeleteTarget(null);
+      await load();
+      toast.success("Artikel dihapus.");
+    } finally {
+      setDeleting(false);
+    }
   }
 
   return (
@@ -288,7 +296,7 @@ export function ArticlesManager() {
                     <IosIcon name="edit" size={12} tint="black" /> Edit
                   </button>
                   <button
-                    onClick={() => void remove(article)}
+                    onClick={() => setDeleteTarget(article)}
                     className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600 shadow-[0_2px_10px_rgba(239,68,68,0.35)] transition"
                     aria-label={`Hapus ${article.title}`}
                     title="Hapus artikel"
@@ -379,6 +387,18 @@ export function ArticlesManager() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="Hapus artikel?"
+        description={deleteTarget ? `“${deleteTarget.title}” akan dihapus permanen dan tidak dapat dikembalikan.` : ""}
+        confirmLabel="Hapus artikel"
+        cancelLabel="Batal"
+        variant="danger"
+        loading={deleting}
+        onClose={() => !deleting && setDeleteTarget(null)}
+        onConfirm={() => deleteTarget && void remove(deleteTarget)}
+      />
     </section>
   );
 }

@@ -22,18 +22,28 @@ const navigationGroups: { label: string; items: [AdminSection, string, IosIconNa
   { label: "Konten", items: [
     ["articles", "Artikel", "news"],
     ["banners", "Banner", "image"],
-    ["subscribers", "Subscriber Email", "email"],
   ] },
   { label: "Otomasi", items: [
     ["bot", "Kanal & Fulfillment", "bot"],
   ] },
   { label: "Sistem", items: [
-    ["agent", "Integrasi Agent", "chatbot"],
+    // Integrasi Agent (token MCP, diatur sekali) dan Subscriber Email (daftar
+    // baca-saja) dulu punya slot sidebar sejajar Pesanan/Produk padahal bukan
+    // tempat kerja harian. Keduanya kini tab di dalam Pengaturan Toko —
+    // nilai section-nya tetap sah agar tautan lama tidak mati.
     ["settings", "Pengaturan Toko", "settings"],
   ] },
 ];
 
 const navigation = navigationGroups.flatMap((group) => group.items);
+
+// Section yang sah tapi tidak punya entri sidebar (kini tab di Pengaturan).
+// Tanpa ini header mobile menampilkan judul kosong saat ?section=agent dibuka
+// dari tautan lama.
+const sectionFallbackTitles: Partial<Record<AdminSection, [string, IosIconName]>> = {
+  agent: ["Integrasi Agent", "chatbot"],
+  subscribers: ["Subscriber Email", "email"],
+};
 
 export function AdminShell({
   section,
@@ -146,8 +156,8 @@ export function AdminShell({
       <div className="fixed inset-x-0 top-0 z-40 flex h-12 items-center gap-3 border-b border-white/10 bg-[#090e25]/90 px-4 backdrop-blur lg:hidden">
         <button onClick={() => setMobileOpen(true)} className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/5 text-white" aria-label="Buka navigasi admin"><IosIcon name="menu" size={16} tint="white" /></button>
         <span className="flex items-center gap-2 text-sm font-semibold text-white">
-          <IosIcon name={navigation.find(([id]) => id === section)?.[2] ?? "dashboard"} size={16} tint="white" />
-          {navigation.find(([id]) => id === section)?.[1]}
+          <IosIcon name={navigation.find(([id]) => id === section)?.[2] ?? sectionFallbackTitles[section]?.[1] ?? "dashboard"} size={16} tint="white" />
+          {navigation.find(([id]) => id === section)?.[1] ?? sectionFallbackTitles[section]?.[0]}
         </span>
       </div>
       {mobileOpen && (

@@ -329,6 +329,30 @@
 - Tabel pesanan: glass row, status badge (Pending kuning, Lunas hijau), foto bukti thumb klik untuk lightbox
 - Form produk: 2 kolom, upload drag-drop, preview, kategori select
 
+**Aturan konsistensi admin (2026-09-19, live).**
+- **Judul section wajib.** Tiap section punya `h2` + satu baris deskripsi di
+  header cardnya. Produk sebelumnya satu-satunya section tanpa judul apa pun.
+- **Dialog selalu bertema.** `confirm()`/`alert()` bawaan browser dilarang di
+  panel admin — pakai `ConfirmDialog` (hapus) atau toast (error). Dialog OS
+  putih-abu di atas panel midnight adalah cacat visual, bukan pilihan.
+- **Modal = dialog yang sah.** Setiap overlay wajib `role="dialog"` +
+  `aria-modal="true"` + tutup dengan Escape + `body` scroll-lock, mengikuti
+  `ConfirmDialog` dan `ProductEditorModal`.
+- **Chip filter aktif.** Filter yang sedang menyaring daftar harus terlihat
+  sebagai chip yang bisa dilepas (cyan `#00E5FF` untuk Pesanan, amber
+  `#FFB800` untuk Stok menipis). Tanpa chip, daftar tersaring terlihat seperti
+  data hilang.
+- **Satu label = satu satuan.** Metrik dengan nama sama di dua layar wajib
+  memakai basis hitung yang sama.
+- **Form panjang = tab + aksi sticky (2026-09-20).** Modal yang memuat lebih
+  dari satu pekerjaan dipecah dengan tab, dan tombol simpan hidup di footer
+  `shrink-0` di luar area scroll. Patokan: tombol simpan tidak boleh berada
+  di luar layar saat admin mengedit baris paling bawah.
+- **Menu sidebar hanya untuk tempat kerja.** Layar yang diatur sekali
+  (token integrasi) atau baca-saja (daftar subscriber) jadi tab di dalam
+  Pengaturan, bukan slot sidebar sendiri. Nilai `?section=` lama tetap
+  dipertahankan agar tautan/bookmark tidak mati.
+
 ---
 
 ## 6. Animasi — Apple Motion
