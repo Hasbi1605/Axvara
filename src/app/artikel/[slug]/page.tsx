@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { normalizeArticle } from "@/lib/articles";
 import { queryFirst } from "@/lib/db";
+import { formatWibDateTime } from "@/lib/utils";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -168,7 +169,7 @@ export default async function ArtikelDetail({ params }: { params: Promise<{ slug
       <p className="mt-6 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#00E5FF]/70">Artikel</p>
       <h1 className="mt-2 font-display text-[28px] font-bold leading-[1.05] tracking-[-0.02em] text-white sm:text-[36px]">{article.title}</h1>
       {article.excerpt && <p className="mt-3 text-[15px] leading-6 text-white/60">{article.excerpt}</p>}
-      {article.published_at && <p className="mt-2 text-xs text-white/35">{new Date(article.published_at).toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} · AXVARA</p>}
+      {article.published_at && <p className="mt-2 text-xs text-white/35">{formatWibDateTime(article.published_at, { weekday: "long", day: "numeric", month: "long", year: "numeric" }) ?? ""} · AXVARA</p>}
       {article.cover_url && (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={article.cover_url} alt={article.title} className="mt-6 aspect-[16/9] w-full rounded-[20px] bg-white/5 object-cover" />

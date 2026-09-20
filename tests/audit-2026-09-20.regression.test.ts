@@ -77,6 +77,10 @@ describe("WIB-SKEW — timestamp D1 tidak boleh dibaca sebagai waktu lokal", () 
       "src/components/admin/AgentIntegration.tsx",
       "src/components/storefront/WrCredentialsPanel.tsx",
       "src/app/lacak-pesanan/lacak-pesanan-client.tsx",
+      // Susulan 2026-09-20: halaman /artikel (list + detail) ketinggalan dari
+      // audit awal — published_at D1 diformat langsung via new Date(...).
+      "src/app/artikel/page.tsx",
+      "src/app/artikel/[slug]/page.tsx",
     ];
     for (const file of surfaces) {
       const source = read(file);

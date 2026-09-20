@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { queryAll } from "@/lib/db";
 import { normalizeArticle } from "@/lib/articles";
+import { formatWibDateTime } from "@/lib/utils";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -52,7 +53,7 @@ export default async function ArtikelListPage() {
                 {a.cover_url ? <img src={a.cover_url} alt={a.title} className="w-full h-full object-cover group-hover:scale-[1.02] transition duration-500" /> : <div className="w-full h-full bg-gradient-to-br from-white/10 to-white/[0.04]" />}
               </div>
               <div className="p-4 sm:p-5">
-                <p className="text-[11px] tracking-[0.08em] text-white/40 uppercase">{a.published_at ? new Date(a.published_at).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) : ""}</p>
+                <p className="text-[11px] tracking-[0.08em] text-white/40 uppercase">{formatWibDateTime(a.published_at, { day: "numeric", month: "short", year: "numeric" }) ?? ""}</p>
                 <h2 className="mt-1 font-semibold text-white leading-snug line-clamp-2 group-hover:text-white">{a.title}</h2>
                 {a.excerpt && <p className="mt-1.5 text-sm leading-5 text-white/55 line-clamp-2">{a.excerpt}</p>}
                 <span className="mt-3 inline-flex text-xs font-semibold text-[#00E5FF] group-hover:text-white">Baca →</span>
