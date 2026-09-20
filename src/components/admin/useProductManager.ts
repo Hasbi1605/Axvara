@@ -367,7 +367,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
       })
       .slice()
       .sort((a, b) => {
-        const byActive = Number(!b.isActive) - Number(!a.isActive);
+        const byActive = Number(!a.isActive) - Number(!b.isActive);
         if (byActive !== 0) return byActive;
         const bySold = Number(isOut(a)) - Number(isOut(b));
         if (bySold !== 0) return bySold;

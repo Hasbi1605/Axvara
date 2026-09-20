@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-09-20 — Urutan nonaktif dibalik: komparator `byActive` tertulis `Number(!b) - Number(!a)` sehingga produk yang dimatikan (API Testing, Canva WR di screenshot owner) nangkring di baris 1-2; kini `Number(!a) - Number(!b)` — nonaktif PALING belakang, sesuai komentar kode yang sudah benar sejak awal — src/components/admin/useProductManager.ts, tests/product-variant-save.integration.test.ts — (verifikasi: test sort 8/8, tsc bersih)
+
 - 2026-09-20 — Merge PR #2 upstream (fork marylynnsigala#1 → Hasbi1605:main): audit panel admin + 8 bug + 4 butir approved owner; resolusi konflik CHANGELOG (append-only) + blok `filtered` useProductManager (gabung sort upstream + filter onlyLowStock + dep array) — src/components/admin/useProductManager.ts, CHANGELOG.md — (verifikasi: tsc bersih, 924/924 test [89 file], build:pages sukses, dev GET / 200 + CSS 200 + /admin 200)
 
 - 2026-09-20 — Watchdog konteks tak-pernah-kosong (bukti prod: ping 06:32 "Sebab terakhir: -"): (1) `alertStaleWrSync` mencatat konteks awal (`sync_stale_alert_context`, "pre_phase" bila buta) saat menandai episode; (2) `refreshStaleWrSyncContext` dilonggarkan — syarat fase-WR-aktif dicabut, setiap run ber-sebab presisi boleh koreksi 1x/episode (run basi jarang pegang fase WR); RED→GREEN: test konteks gagal dulu di kode lama — src/lib/warung-rebahan/order.ts, tests/cron-deadline-poison.integration.test.ts — (verifikasi: 900/900 test [84 file] hijau, tsc bersih, dev GET / 200 + CSS 200, Obscura OK + PNG nonblank)

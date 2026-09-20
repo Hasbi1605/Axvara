@@ -152,9 +152,21 @@ describe("payload useProductManager mode varian", () => {
 
   it("daftar admin meniru storefront: ready dulu, habis belakangan, nonaktif paling belakang (2026-09-19)", async () => {
     const src = (await import("node:fs")).readFileSync("src/components/admin/useProductManager.ts", "utf8");
-    // Kunci urutan: nonaktif dulu, lalu habis, lalu sort_order admin, lalu id.
-    expect(src).toContain("Number(!b.isActive) - Number(!a.isActive)");
+    // Kunci urutan: aktif dulu, lalu habis, lalu sort_order admin, lalu id.
+    expect(src).toContain("Number(!a.isActive) - Number(!b.isActive)");
     expect(src).toContain("Number(isOut(a)) - Number(isOut(b))");
     expect(src).toContain("(a.sortOrder ?? 0) - (b.sortOrder ?? 0)");
+  });
+
+  it("produk nonaktif diurut PALING belakang, bukan depan (bug screenshot owner 2026-09-20)", async () => {
+    // Regresi: komparator byActive pernah tertulis terbalik
+    // (Number(!b) - Number(!a)) sehingga produk yang dimatikan (API Testing,
+    // Canva WR di screenshot) nangkring di baris 1-2.
+    const src = (await import("node:fs")).readFileSync("src/components/admin/useProductManager.ts", "utf8");
+    expect(src).not.toContain("Number(!b.isActive) - Number(!a.isActive)");
+    // Urutan nyata: aktif (isActive=1) harus menang atas nonaktif (isActive=0).
+    const byActive = (a: { isActive: boolean }, b: { isActive: boolean }) => Number(!a.isActive) - Number(!b.isActive);
+    expect(byActive({ isActive: true }, { isActive: false })).toBeLessThan(0);
+    expect(byActive({ isActive: false }, { isActive: true })).toBeGreaterThan(0);
   });
 });
