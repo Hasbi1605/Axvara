@@ -28,9 +28,19 @@ type CartStore = {
  * Batas atas web = 100/baris (paritas Telegram TELEGRAM_MAX_QTY) agar
  * varian min-besar (mis. GSuite min 50) tetap bisa dibeli dari web.
  * Minimum per baris ikut dari minQty produk (migrasi 0034, default 1).
+ *
+ * Varian yang stoknya di bawah minimum (stock < min, stock !== -1) TIDAK
+ * BISA dibeli dalam jumlah berapa pun: qty berapa pun pasti gagal di quote
+ * (insufficient_stock bila >= min, below_minimum bila < min). Tolak sejak
+ * keranjang agar tidak jadi dead-end di checkout.
  */
 const WEB_MAX_QTY = 100;
 const minOf = (p: { minQty?: number }): number => Math.max(1, Math.floor(Number(p.minQty ?? 1) || 1));
+const isBelowMinimumStock = (p: { stock?: number | null; minQty?: number }): boolean => {
+  const stock = p.stock;
+  if (stock == null || stock === -1) return false;
+  return stock < minOf(p);
+};
 
 export const useCart = create<CartStore>()(
   persist(
@@ -41,6 +51,9 @@ export const useCart = create<CartStore>()(
       add: (product, qty = 1) =>
         set((s) => {
           if (product.isActive === false) return s;
+          // Stok di bawah minimum (mis. stok 3, min 50): qty berapa pun
+          // pasti gagal di quote — tolak di sini, bukan di checkout.
+          if (isBelowMinimumStock(product)) return s;
           // Baris baru dibuka LANGSUNG di minimum (bukan 1) agar pembeli
           // GSuite (min 50) tidak mulai dari 1 lalu ditolak saat checkout.
           const min = minOf(product);
@@ -73,6 +86,9 @@ export const useCart = create<CartStore>()(
           if (qty <= 0) return { items: s.items.filter((i) => itemKey(i) !== matchKey) };
           const it = s.items.find((i) => itemKey(i) === matchKey);
           const min = it ? minOf(it) : 1;
+          // Baris lama yang stoknya kini di bawah minimum (stok turun setelah
+          // masuk keranjang): keluarkan, jangan pertahankan qty mustahil.
+          if (it && isBelowMinimumStock(it)) return { items: s.items.filter((i) => itemKey(i) !== matchKey) };
           // Tombol kurang tidak boleh turun di bawah minimum (quote server
           // tetap menjadi sumber kebenaran; ini hanya cermin UX).
           if (qty < min) qty = min;

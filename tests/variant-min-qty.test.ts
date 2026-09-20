@@ -130,12 +130,46 @@ describe("variant min_qty — bot & storefront", () => {
     expect(checkout).not.toContain("isBelowMinimumIssue");
   });
 
+  it("web: varian stok di bawah min diperlakukan tak tersedia (bukan dead-end checkout)", () => {
+    // Temuan review: varian stok 3/min 50 bisa dipilih lalu pasti gagal di
+    // quote (qty>=min → insufficient_stock, qty<min → below_minimum).
+    // Definisi "tak bisa dibeli": stock !== -1 && stock < min.
+    const pdp = read("src/app/produk/[slug]/product-detail-client.tsx");
+    expect(pdp).toContain("isBelowMinimum");
+    expect(pdp).toContain("STOK &lt; MIN");
+    const modal = read("src/components/storefront/QuickVariantModal.tsx");
+    expect(modal).toContain("isBelowMinimum");
+    expect(modal).toContain("Stok < min");
+    const cart = read("src/stores/cart.ts");
+    expect(cart).toContain("isBelowMinimumStock");
+    const checkout = read("src/app/checkout/page.tsx");
+    expect(checkout).toContain("stok di bawah minimum");
+    // Unlimited (-1) jangan ikut dimatikan.
+    expect(cart).toContain("stock === -1");
+    expect(modal).toContain("v.stock !== -1");
+  });
+
   it("admin: input Min. Beli di VariantEditor + ProductVariantRows + API", () => {
     expect(read("src/components/admin/VariantEditor.tsx")).toContain("Min. beli");
     expect(read("src/components/admin/sections/ProductVariantRows.tsx")).toContain("Min. Beli");
     expect(read("src/app/api/admin/variants/route.ts")).toContain("min_qty");
     expect(read("src/app/api/products/[id]/route.ts")).toContain("min_qty");
     expect(read("src/app/api/products/route.ts")).toContain("min_qty");
+  });
+
+  it("admin: editor memuat SEMUA varian termasuk nonaktif (bisa reaktivasi)", () => {
+    // Temuan review: GET /api/products/:id filter is_active=1 sehingga varian
+    // nonaktif tak terlihat di editor — dan menyimpan dari daftar parsial
+    // menonaktifkan permanen yang tak terlihat via `id NOT IN (...)`.
+    // Storefront tidak memakai route ini (ia memakai /api/catalog yang tetap
+    // hanya-aktif), jadi melonggarkan filter di sini aman.
+    const route = read("src/app/api/products/[id]/route.ts");
+    // Query GET daftar varian editor (is_active di SELECT, bukan di WHERE)
+    // wajib tanpa filter aktif — varian nonaktif harus ikut termuat agar
+    // bisa diaktifkan ulang. Query lain (guard PUT) tetap boleh filter aktif.
+    const getBlock = route.slice(0, route.indexOf("const variantInputSchema"));
+    expect(getBlock).not.toMatch(/WHERE product_id=\? AND is_active=1/);
+    expect(getBlock).toContain("WHERE product_id=?");
   });
 
   it("admin: opsi Cara Pengiriman + panel konten non-WR di ProductVariantRows (2026-09-19)", () => {

@@ -191,6 +191,23 @@ describe("QuickVariantModal — alur pemilihan varian", () => {
     expect(screen.queryByRole("radio", { name: /Arsip/ })).toBeNull();
   });
 
+  it("varian stok di bawah min tidak bisa dipilih (bukan dead-end checkout)", async () => {
+    // Temuan review: stok 3/min 50 — qty berapa pun pasti gagal di quote.
+    vi.stubGlobal("fetch", mockCatalog({
+      product: { variants: [
+        { id: 31, label: "Kecil", price: 10_000, stock: 3, is_active: 1, warranty_type: "none", min_qty: 50 },
+        { id: 32, label: "Normal", price: 20_000, stock: 10, is_active: 1, warranty_type: "none", min_qty: 1 },
+      ] },
+    }));
+    render(<QuickVariantModal product={product} mode="cart" onClose={vi.fn()} />);
+    await waitFor(() => expect(screen.getByRole("radio", { name: /Normal/ })).toBeTruthy());
+    const kecil = screen.getByRole("radio", { name: /Kecil/ }) as HTMLButtonElement;
+    expect(kecil.disabled).toBe(true);
+    expect(kecil.getAttribute("aria-label")).toMatch(/stok di bawah minimum/);
+    // Auto-select melewati yang tak bisa dibeli → Normal yang terpilih.
+    expect(screen.getByRole("radio", { name: /Normal/ }).getAttribute("aria-checked")).toBe("true");
+  });
+
   it("kegagalan fetch varian menampilkan pesan error, bukan modal kosong senyap", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, json: async () => ({}) }));
     render(<QuickVariantModal product={product} mode="cart" onClose={vi.fn()} />);

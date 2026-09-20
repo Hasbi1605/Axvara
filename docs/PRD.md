@@ -122,6 +122,7 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 | FR-SYS11 | Kartu antrean Ringkasan wajib membawa filternya ke section tujuan (bukan sekadar pindah tab), setiap filter aktif tampil sebagai chip yang bisa dilepas, dan satu nama metrik memakai satu satuan di semua layar | P1 ✅ live 2026-09-19 |
 | FR-SYS12 | Editor produk bertab dengan aksi simpan yang selalu terjangkau; menu sidebar hanya untuk layar kerja harian (layar konfigurasi sekali-pakai jadi tab Pengaturan, `?section=` lama tetap sah); kartu metrik mengikuti filter aktif | P1 ✅ live 2026-09-20 |
 | FR-SYS13 | Setiap timestamp yang ditampilkan ke pembeli/admin memakai jam WIB yang benar: nilai D1 (UTC berformat spasi) di-parse sebagai UTC lalu dirender `timeZone: "Asia/Jakarta"` lewat satu helper kanonis, sehingga jam yang terlihat sama di perangkat mana pun dan tidak mundur 7 jam | P0 ✅ live 2026-09-20 |
+| FR-SYS14 | Varian yang stoknya di bawah minimum (stock < min_qty, stock ≠ -1) diperlakukan tak tersedia di PDP/modal/keranjang/checkout-direct — qty berapa pun pasti gagal di quote, jadi tolak sejak awal, bukan dead-end di checkout; editor admin memuat SEMUA varian termasuk nonaktif agar bisa diaktifkan ulang | P1 ✅ live 2026-09-20 |
 
 ### 2.4 Non-Functional
 

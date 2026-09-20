@@ -96,7 +96,7 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
         setCatalogDetail(data.product);
         setVariantsEnabled(data.variantsEnabled === true);
         // Auto-select if only one active, in-stock variant.
-        const activeVars = (data.product.variants || []).filter((v: VariantItem) => v.is_active && v.stock !== 0);
+        const activeVars = (data.product.variants || []).filter((v: VariantItem) => v.is_active && v.stock !== 0 && !(v.stock !== -1 && v.stock < Math.max(1, Number(v.min_qty ?? 1) || 1)));
         if (activeVars.length === 1) {
           setSelectedVariantId(activeVars[0].id);
         }
@@ -206,6 +206,14 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
   // Variant-aware derived values
   const variants = catalogDetail?.variants || [];
   const activeVariants = variants.filter((v: VariantItem) => v.is_active);
+  // Varian yang stoknya di bawah minimum (stock < min, stock !== -1) TIDAK
+  // BISA dibeli dalam jumlah berapa pun (lihat QuickVariantModal + cart):
+  // qty berapa pun pasti gagal di quote. Perlakukan sama dengan habis agar
+  // tidak jadi dead-end di checkout.
+  const variantMinQtyOf = (v: VariantItem): number => Math.max(1, Number(v.min_qty ?? 1) || 1);
+  const isBelowMinimum = (v: VariantItem): boolean =>
+    v.stock !== -1 && v.stock < variantMinQtyOf(v);
+  const isPurchasable = (v: VariantItem): boolean => v.stock !== 0 && !isBelowMinimum(v);
   const selectedVariant = selectedVariantId ? activeVariants.find((v: VariantItem) => v.id === selectedVariantId) : null;
   const displayPrice = selectedVariant ? selectedVariant.price : product.price;
   const displayComparePrice = selectedVariant ? selectedVariant.compare_price : product.comparePrice;
@@ -221,8 +229,8 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
   // min varian baru lebih besar, turun bila max menyusut.
   const safePdpQty = Math.min(Math.max(pdpQty, selectedMinQty), selectedMaxQty);
   const variantOutOfStock = variantsEnabled && activeVariants.length > 0
-    ? activeVariants.every((variant) => variant.stock === 0)
-    : selectedVariant ? selectedVariant.stock === 0 : false;
+    ? activeVariants.every((variant) => !isPurchasable(variant))
+    : selectedVariant ? !isPurchasable(selectedVariant) : false;
   const needsVariantSelection = variantsEnabled && !selectedVariant;
   const variantCatalogUnavailable = variantLoading || Boolean(variantError) || (variantsEnabled && activeVariants.length === 0);
 
@@ -424,8 +432,8 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
                         selectedVariantId === v.id
                           ? "border-[#00E5FF]/50 bg-[#00E5FF]/10"
                           : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"
-                      } ${v.stock === 0 ? "opacity-50 cursor-not-allowed" : ""}`}
-                      disabled={v.stock === 0}
+                      } ${!isPurchasable(v) ? "opacity-50 cursor-not-allowed" : ""}`}
+                      disabled={!isPurchasable(v)}
                     >
                       <div className="flex justify-between items-start">
                         <div className="min-w-0">
@@ -457,6 +465,8 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
                           <div className="mt-0.5">
                             {v.stock === 0 ? (
                               <span className="text-[11px] font-semibold text-red-400">HABIS</span>
+                            ) : isBelowMinimum(v) ? (
+                              <span className="text-[11px] font-semibold text-red-400">STOK &lt; MIN</span>
                             ) : (
                               <span className="text-[11px] text-white/45">
                                 Sisa {v.stock === -1 ? "∞" : v.stock}

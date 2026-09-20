@@ -66,7 +66,11 @@ function CheckoutInner() {
           if (!catRes.ok) throw new Error("Pilihan varian gagal dimuat.");
           const catData = await catRes.json() as { product?: { variants?: CatalogVariant[] } };
           const variant = (catData.product?.variants || []).find((v) => String(v.id) === buyVariantId);
-          if (!variant || variant.stock === 0) {
+          // Varian stok di bawah minimum (stock < min, stock !== -1) tidak
+          // bisa dibeli dalam jumlah berapa pun — tolak di sini, bukan di
+          // quote (paritas product-detail + QuickVariantModal + cart).
+          const variantMin = Math.max(1, Number(variant?.min_qty ?? 1) || 1);
+          if (!variant || variant.stock === 0 || (variant.stock !== -1 && variant.stock < variantMin)) {
             throw new Error("Varian tidak tersedia. Pilih ulang dari halaman produk.");
           }
           setDirectProduct({

@@ -85,6 +85,29 @@ describe("cart store — batas stok dan validasi", () => {
     expect(useCart.getState().items).toHaveLength(0);
   });
 
+  it("varian stok di bawah min (stok 3, min 50) tidak masuk keranjang", () => {
+    // Temuan review: qty berapa pun pasti gagal di quote — jangan jadi
+    // dead-end di checkout. Unlimited (-1) tetap boleh.
+    const { add } = useCart.getState();
+    add({ ...makeProduct({ stock: 3 }), variantId: 1, minQty: 50 });
+    expect(useCart.getState().items).toHaveLength(0);
+    add({ ...makeProduct({ stock: -1 }), variantId: 2, minQty: 50 }, 50);
+    expect(useCart.getState().items).toHaveLength(1);
+  });
+
+  it("setQty mengeluarkan baris yang stoknya kini di bawah min", () => {
+    const { add, setQty } = useCart.getState();
+    // Stok snapshot meniru Product dengan minQty 1 agar lolos add.
+    add({ ...makeProduct({ stock: 10 }), variantId: 1 });
+    expect(useCart.getState().items).toHaveLength(1);
+    // Stok turun di bawah min setelah masuk keranjang → baris dibuang.
+    useCart.setState({
+      items: useCart.getState().items.map((i) => ({ ...i, stock: 3, minQty: 50 })),
+    });
+    setQty("prod-1", 3, 1);
+    expect(useCart.getState().items).toHaveLength(0);
+  });
+
   it("produk nonaktif tidak masuk keranjang", () => {
     const { add } = useCart.getState();
     add({ ...makeProduct({ isActive: false }), variantId: 1 });
@@ -124,8 +147,9 @@ describe("cart store — aritmetika total", () => {
 
   it("lineCount menghitung BARIS varian, bukan sum qty (badge marketplace)", () => {
     const { add } = useCart.getState();
-    // GSuite min 50 dalam 1 baris → badge "1", bukan "50".
-    add({ ...makeProduct({ id: "gsuite" }), variantId: 9, minQty: 50 }, 50);
+    // GSuite min 50 dalam 1 baris → badge "1", bukan "50". Stok -1
+    // (unlimited, sesuai produk digital nyata) agar lolos guard stok<min.
+    add({ ...makeProduct({ id: "gsuite", stock: -1 }), variantId: 9, minQty: 50 }, 50);
     expect(useCart.getState().lineCount()).toBe(1);
     expect(useCart.getState().count()).toBe(50);
     // + Canva qty 10 → 2 baris, badge "2" (bukan 60).

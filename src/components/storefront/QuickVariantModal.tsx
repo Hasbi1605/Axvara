@@ -49,8 +49,14 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
         );
         setVariants(list);
         if (list.length > 0) {
-          const firstInStock = list.find((v) => v.stock !== 0) || list[0];
-          setSelectedId(firstInStock.id);
+          // Auto-select varian pertama yang benar-benar bisa dibeli (stok
+          // cukup untuk minimum). Varian stok<min dilewati — memilihnya
+          // pasti gagal di quote dalam jumlah berapa pun.
+          const minOf = (v: VariantOption): number => Math.max(1, Number(v.min_qty ?? 1) || 1);
+          const purchasable = (v: VariantOption): boolean =>
+            v.stock !== 0 && (v.stock === -1 || v.stock >= minOf(v));
+          const firstBuyable = list.find(purchasable) || list.find((v) => v.stock !== 0) || list[0];
+          setSelectedId(firstBuyable.id);
         }
       })
       .catch((err) => {
@@ -68,7 +74,14 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
   const selected = variants.find((v) => v.id === selectedId) || null;
   const currentPrice = selected ? selected.price : (product.minPrice ?? product.price);
   const currentCompare = selected ? selected.compare_price : product.comparePrice;
-  const isOutOfStock = selected ? selected.stock === 0 : false;
+  // Varian yang stoknya di bawah minimum (stock < min, stock !== -1) TIDAK
+  // BISA dibeli dalam jumlah berapa pun: qty berapa pun pasti gagal di quote
+  // (insufficient_stock bila >= min, below_minimum bila < min). Perlakukan
+  // sama dengan habis agar tidak jadi dead-end di checkout.
+  const variantMinQtyOf = (v: VariantOption): number => Math.max(1, Number(v.min_qty ?? 1) || 1);
+  const isBelowMinimum = (v: VariantOption): boolean =>
+    v.stock !== -1 && v.stock < variantMinQtyOf(v);
+  const isOutOfStock = selected ? selected.stock === 0 || isBelowMinimum(selected) : false;
   // Minimum pembelian varian terpilih (migrasi 0034): stepper dibuka di min.
   const selectedMinQty = selected ? Math.max(1, Number(selected.min_qty ?? 1) || 1) : 1;
   const selectedMaxQty = selected
@@ -194,14 +207,15 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
             <div role="radiogroup" aria-label="Pilih paket atau varian" className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 max-h-[260px] sm:max-h-[340px] overflow-y-auto pr-1">
               {variants.map((v) => {
                 const active = v.id === selectedId;
-                const outStock = v.stock === 0;
+                const outStock = v.stock === 0 || isBelowMinimum(v);
+                const belowMin = !!(v.stock !== 0 && isBelowMinimum(v));
                 return (
                   <button
                     key={v.id}
                     type="button"
                     role="radio"
                     aria-checked={active}
-                    aria-label={`${v.label} — ${formatRupiah(v.price)}${outStock ? " — stok habis" : ""}${Number(v.min_qty ?? 1) > 1 ? ` — minimal ${Number(v.min_qty)}` : ""}`}
+                    aria-label={`${v.label} — ${formatRupiah(v.price)}${outStock ? (belowMin ? " — stok di bawah minimum" : " — stok habis") : ""}${Number(v.min_qty ?? 1) > 1 ? ` — minimal ${Number(v.min_qty)}` : ""}`}
                     disabled={outStock}
                     onClick={() => setSelectedId(v.id)}
                     className={`flex flex-col items-start p-3 sm:p-4 rounded-xl border text-left transition relative ${
@@ -241,7 +255,7 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
                         </span>
                       ) : <span />}
                       {outStock ? (
-                        <span className="text-red-400 font-semibold shrink-0">Habis</span>
+                        <span className="text-red-400 font-semibold shrink-0">{belowMin ? "Stok < min" : "Habis"}</span>
                       ) : (
                         <span className="text-white/40 shrink-0">
                           Sisa {v.stock === -1 ? "∞" : v.stock}

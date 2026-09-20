@@ -299,6 +299,10 @@
 - Locale tetap `id-ID`. Nilai kosong/tak terbaca jatuh ke fallback teks milik
   masing-masing layar (`—`, nilai mentah, atau "Belum disimpan") — jangan
   pernah menampilkan `Invalid Date`.
+- **Varian stok < min = tak tersedia (2026-09-20).** Varian yang stoknya di
+  bawah minimum (stock < min_qty, stock ≠ -1) tidak bisa dibeli dalam jumlah
+  berapa pun — tampilkan sebagai tak tersedia ("STOK < MIN" di PDP,
+  "Stok < min" di modal) dan tolak di keranjang, bukan dead-end di checkout.
 
 ### 5.7a Halaman Lacak Pesanan `/lacak-pesanan` (2026-09-17, live)
 - Riset pola marketplace (Shopee/Tokopedia/Apple order tracking): satu form
