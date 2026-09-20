@@ -132,28 +132,34 @@ describe("cron operations — observability skip sync (issue wr-sync-observabili
     expect(heartbeat()).not.toBe("");
   });
 
-  it("admission proporsional: sisa waktu < estimasi sweep → deadline SEBELUM fetch", async () => {
-    // Akar gap 19–20 Sep: sweep 50–116 detik dimulai dengan sisa waktu 14+
-    // detik lalu mati diam tanpa jejak. Kini estimasi = durasi terakhir ×1,5.
-    // Tanpa histori durasi, fallback = TIME_WR_NETWORK (14 dtk, sama seperti
-    // gerbang lama — fail-open pertama kali; pelajaran: fallback 60 dtk
-    // MUSTAHIL lolos deadline 45 dtk dan mematikan SEMUA sweep fixture).
+  it("sweep lambat TIDAK mengunci sync permanen (anti-deadlock admission)", async () => {
+    // REGRESI 2026-09-20. Versi sebelumnya memakai admission proporsional
+    // `duration_ms × 1,5` dan menolak sweep bila `!hasTime(estimate)`.
+    // `hasTime` diukur terhadap RUN_DEADLINE_MS = 45 dtk, sehingga estimasi
+    // apa pun di atas 45 dtk MUSTAHIL terpenuhi — ambangnya duration_ms
+    // > 30.000 ms. Pada data produksi 69 dari 104 sweep (66%) melewatinya,
+    // termasuk seluruh blok 00:12–07:07 UTC (114–116 dtk).
+    //
+    // Yang membuatnya fatal: jalur skip TIDAK menulis wr_sync_log, jadi
+    // duration_ms terakhir MEMBEKU. Satu-satunya penulis nilai itu adalah
+    // sweep, dan sweep tak pernah diizinkan jalan lagi → sync mati permanen,
+    // hanya bisa dipulihkan lewat Force Sync manual.
+    //
+    // Kontrak sekarang: sweep SELALU boleh mulai; pembatasnya adalah budget
+    // waktu DI DALAM sweep (timeBudgetMs) yang membuatnya berhenti sendiri
+    // di produk utuh terakhir sambil tetap menulis log.
     vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
     setPhase("warung_rebahan");
-    // Histori basi (2 jam) + durasi terakhir 100 detik → estimasi 150 detik.
-    // Deadline lunak 45 detik → sisa waktu PASTI tak cukup → skip jujur
-    // tanpa fetch upstream sama sekali.
+    // Histori basi (2 jam) + durasi terakhir 100 dtk — persis kondisi yang
+    // dulu mengunci sync selamanya.
     fixture.sql.prepare(
       `INSERT INTO wr_sync_log(sync_type,status,products_synced,variants_synced,trigger,duration_ms,created_at)
        VALUES('products','success',48,87,'cron',100000,datetime('now','-2 hours'))`,
     ).run();
-    const fetchSpy = vi.fn(() => { throw new Error("fetch must not run"); });
-    vi.stubGlobal("fetch", fetchSpy);
     const res = await run();
     expect(res.status).toBe(200);
-    expect(res.body.wr_sync_skipped).toBe("deadline");
-    expect(typeof res.body.wr_sweep_estimate_ms).toBe("number");
-    expect(Number(res.body.wr_sweep_estimate_ms)).toBeGreaterThanOrEqual(100000);
+    // Sweep TIDAK boleh ditolak hanya karena sweep sebelumnya lambat.
+    expect(res.body.wr_sync_skipped).not.toBe("deadline");
   });
 
   it("fase tak aktif + tanpa antrean WR → skipped=phase_inactive", async () => {
