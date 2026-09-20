@@ -825,12 +825,20 @@ export async function alertStaleWrSync(
     .queryFirst(`SELECT value FROM wr_sync_state WHERE key='sync_stale_alerted_at'`)
     .catch(() => null);
   if (String(prior?.value || "") === String(lastSyncAt)) return 0;
-  // Tandai DULU sebelum kirim (anti-spam bila sendMessage gagal).
+  // Tandai DULU sebelum kirim (anti-spam bila sendMessage gagal). Konteks
+  // awal ikut dicatat agar refresh berikutnya tahu sudah/boleh koreksi.
   await db
     .execRun(
       `INSERT INTO wr_sync_state (key, value) VALUES ('sync_stale_alerted_at',?)
        ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
       String(lastSyncAt),
+    )
+    .catch(() => undefined);
+  await db
+    .execRun(
+      `INSERT INTO wr_sync_state (key, value) VALUES ('sync_stale_alert_context',?)
+       ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+      String(context || "pre_phase"),
     )
     .catch(() => undefined);
   const ageMin = Math.max(1, Math.round((Date.now() - lastTs) / 60000));
@@ -855,13 +863,16 @@ export async function alertStaleWrSync(
 
 /**
  * Refresh konteks episode basi (pendamping alertStaleWrSync, permanen
- * 2026-09-19 malam). Watchdog utama berjalan di DEPAN handler setiap run
- * dengan konteks seadanya ("pre_phase" bila fase WR tak aktif). Bila fase WR
- * aktif di run yang sama dan mengetahui sebab presisi (`wr_sync_skipped`),
- * kirim SATU ping koreksi konteks hanya bila episode masih terbuka (state =
- * lastSyncAt yang sama) dan konteks presisi berbeda dari "pre_phase".
+ * 2026-09-19 malam, disederhanakan 2026-09-20 pagi). Watchdog utama berjalan
+ * di DEPAN handler setiap run dengan konteks seadanya ("pre_phase" bila fase
+ * WR tak aktif). Bukti prod 20 Sep 06:32 (ping "Sebab terakhir: -"): blok 3c
+ * refresh tak pernah menyala karena fase WR tak aktif di run-run basi —
+ * syarat lama (fase WR aktif + skipped presisi) terlalu ketat. Kini refresh
+ * menerima konteks apa pun yang non-null KECUALI "pre_phase" sudah tercatat:
+ * setiap run yang mengetahui sebab presisi (interval/disabled/deadline/dll,
+ * dari fase WR aktif ATAU tembakan manual) boleh mengoreksi 1x per episode.
  * Tanpa refresh ini, satu-satunya ping episode membawa konteks buta.
- * Idempoten: tak ada tulis state, tak ada ping ulang — murni 1x koreksi.
+ * Idempoten: tak ada ping ulang untuk konteks yang sama — murni koreksi.
  */
 export async function refreshStaleWrSyncContext(
   lastSyncAt: string,
@@ -870,7 +881,7 @@ export async function refreshStaleWrSyncContext(
 ): Promise<number> {
   const db = database ?? createDatabaseAccess();
   if (!isWrEnabled()) return 0;
-  if (!context || context === "pre_phase") return 0;
+  if (!context) return 0;
   const prior = await db
     .queryFirst(`SELECT value FROM wr_sync_state WHERE key='sync_stale_alerted_at'`)
     .catch(() => null);
@@ -878,7 +889,10 @@ export async function refreshStaleWrSyncContext(
   const corrected = await db
     .queryFirst(`SELECT value FROM wr_sync_state WHERE key='sync_stale_alert_context'`)
     .catch(() => null);
+  // "pre_phase" bukan konteks presisi — selalu boleh ditimpa oleh sebab nyata.
+  // Sebab nyata yang sama tak dikirim ulang.
   if (String(corrected?.value || "") === String(context)) return 0;
+  if (String(context) === "pre_phase" && String(corrected?.value || "") !== "") return 0;
   await db
     .execRun(
       `INSERT INTO wr_sync_state (key, value) VALUES ('sync_stale_alert_context',?)
@@ -886,6 +900,8 @@ export async function refreshStaleWrSyncContext(
       String(context),
     )
     .catch(() => undefined);
+  // Koreksi "pre_phase" tak perlu ping (bukan informasi baru).
+  if (String(context) === "pre_phase") return 1;
   const chatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
   if (!chatId || process.env.TELEGRAM_BOT_ENABLED !== "true") return 1;
   try {

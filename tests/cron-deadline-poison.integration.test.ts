@@ -302,6 +302,22 @@ describe("cron operations — watchdog sync basi (issue anti-macet struktural)",
     // Tanpa konteks presisi → diam.
     expect(await refreshStaleWrSyncContext("2026-09-19 18:26:32", "pre_phase")).toBe(0);
   });
+
+  it("ping awal mencatat konteks sehingga tak pernah kosong (pelajaran 20 Sep 06:32)", async () => {
+    // Bukti prod: ping "Sebab terakhir: -" karena alertStaleWrSync menerima
+    // konteks null (fase WR tak aktif, skipped belum terisi) dan tak mencatat
+    // konteks awal. Kini konteks awal ("pre_phase" bila buta) ikut tertulis
+    // agar refresh berikutnya bisa mengoreksi.
+    vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
+    const { alertStaleWrSync } = await import("@/lib/warung-rebahan/order");
+    fixture.sql.prepare(`DELETE FROM wr_sync_state WHERE key LIKE 'sync_stale%'`).run();
+    const alerted = await alertStaleWrSync("2026-09-19 18:26:32", null);
+    expect(alerted).toBe(1);
+    const ctx = fixture.sql.prepare(
+      "SELECT value FROM wr_sync_state WHERE key='sync_stale_alert_context'",
+    ).get()?.value;
+    expect(String(ctx || "")).not.toBe("");
+  });
 });
 
 describe("cron operations — poison-pill guard", () => {

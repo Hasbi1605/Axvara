@@ -1156,7 +1156,12 @@ Perintah akun #2 wajib prefix `HEROKU_API_KEY=<kunci-akun-2>`; jangan
    20-baris); 1 query baca bila tanpa histori. Urutan penting: blok depan
    berjalan SEBELUM `wrTablesReady` didefinisikan → pakai probe `.catch`
    langsung, JANGAN referensi variabel itu (ReferenceError tertelan catch =
-   watchdog mati diam — tertangkap test sebelum live). Force Sync
+   watchdog mati diam — tertangkap test sebelum live). Revisi 20 Sep pagi
+   (bukti prod: ping 06:32 "Sebab terakhir: -"): `alertStaleWrSync` kini
+   MENCATAT konteks awal (`sync_stale_alert_context`, "pre_phase" bila buta)
+   saat menandai episode, dan refresh dilonggarkan — setiap run ber-sebab
+   presisi boleh mengoreksi 1x per episode (syarat fase-WR-aktif dicabut,
+   karena run-run basi justru jarang memegang fase WR). Force Sync
    dashboard (`POST /api/admin/warung/sync`) mem-bypass gerbang 30-menit dan
    melaporkan status jujur (success/partial/failed + errors) — pemulihan
    mandiri pemilik tanpa keahlian teknis.
