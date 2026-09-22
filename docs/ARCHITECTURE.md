@@ -925,6 +925,31 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   memasang `timeBudgetMs` (bukan invocation cron yang dibunuh platform).
   **Pelajaran:** gerbang budget query saja tidak cukup — biaya nyata sweep adalah WAKTU,
   dan seluruh perbaikan sebelumnya hanya mengatur KAPAN sweep dimulai.
+- **Batching D1 sweep katalog (akar latensi, diperbaiki 2026-09-22):** butir di atas
+  mengelola AKIBAT (sweep berhenti sebelum dibunuh); butir ini memangkas SEBABNYA.
+  Terukur: `sql_duration_ms` D1 produksi hanya **0,12–0,19 ms**, tetapi sweep memakai
+  **~197 ms per query** — jadi **99,9% durasi sweep adalah menunggu jaringan**, bukan
+  kerja database. Penyebabnya D1 primary di **SIN** (`served_by_colo: SIN`,
+  `read_replication: null`) sementara Pages Function jalan di colo terdekat pemanggil,
+  sehingga tiap round-trip menyeberang benua. Bukti beban IDENTIK (48 produk/87 varian):
+  **8.551 ms (178 ms/produk) vs 122.473 ms (2.552 ms/produk)** — selisih 14x tanpa
+  perubahan pekerjaan. Perbaikan: tulis satu produk dikumpulkan sebagai rencana
+  (`SqlWrite`) lalu dikirim SATU `d1.batch()`, dan baris pembanding (`wr_variants` +
+  registry `wr_products` + verifikasi tautan katalog) di-prefetch massal via `IN (...)`
+  (dipotong per 50 id — D1 menolak >100 bound parameter). Terukur pada fixture 48/87:
+  **642 → 117 round-trip (−82%)** dengan baris tertulis tetap 12 (guard kuota tidak
+  bergeser). **Cakupan batch SENGAJA per produk, bukan per sweep:** `batch()` adalah
+  transaksi, jadi satu produk bermasalah tidak boleh membatalkan produk lain — jalur lama
+  mencatat error per produk lalu lanjut, dan sifat itu dipertahankan. Varian/produk BARU
+  tetap berurutan karena butuh `lastInsertRowid` untuk menautkan barisnya. Bila `batch()`
+  gagal, tulis diulang satu per satu agar statement `optional` (dulu `.catch()`) kembali
+  toleran seperti sebelum batching. Efek samping penting: round-trip yang turun ikut
+  menurunkan CPU — produksi mencatat **270 invocation `exceededResources` dengan
+  `cpuTimeP50` mentok 10.000 µs**, yaitu plafon CPU Workers Free, pada irama cron 5 menit.
+  Karena itu **menaikkan `RUN_DEADLINE_MS` justru berbahaya** (lebih banyak produk per run
+  = lebih banyak CPU = lebih banyak run dibunuh sebelum menulis log); pengikatnya CPU dan
+  round-trip, bukan deadline. Dikunci oleh
+  `tests/warung-rebahan/sync-roundtrip.regression.test.ts`.
 - **Hook payment:** setelah lunas di 4 jalur (webhook DANA, retry admin, approve bukti,
   konfirmasi admin) → `createWrOrderLinksForOrder` + `processWrPendingOrders` best-effort;
   cron memproses sisanya. Produk WR dikenali dari `product_variants.wr_variant_id`.
@@ -1138,6 +1163,12 @@ Perintah akun #2 wajib prefix `HEROKU_API_KEY=<kunci-akun-2>`; jangan
   dari `wr_sync_log`, bukan dari kolom ini).
   Dikunci oleh `tests/warung-rebahan/sync-write-quota.regression.test.ts`.
   Cursor antar-run tetap sebagai fallback.
+- **Round-trip (2026-09-22):** angka "≈410 query" di atas adalah jumlah
+  STATEMENT, dan itu bukan lagi jumlah perjalanan jaringan. Sejak sweep
+  memakai `d1.batch()` per produk + prefetch massal, sweep 48/87 terukur
+  **117 round-trip (dari 642, −82%)** sementara jumlah statement-nya tetap.
+  Yang menentukan durasi sweep adalah round-trip, bukan statement: kerja SQL
+  D1 hanya 0,15 ms/query sedangkan satu round-trip ke primary SIN ~197 ms.
 - Produk BARU WR otomatis masuk katalog tiap sync (`products_new`): registry
   baru → baris katalog (slug anti-bentrok `-wr`, markup default 50%) +
   varian-variannya; kena exclusion → registry saja.

@@ -63,6 +63,76 @@ export const WR_SYNC_CHECKPOINT_EVERY = 8;
 
 type Row = Record<string, unknown>;
 
+/**
+ * Satu statement tulis yang SUDAH terikat parameternya tapi BELUM dikirim.
+ *
+ * KENAPA ADA (akar "sweep 32 detik untuk 13 produk"): kerja D1-nya sendiri
+ * hampir gratis — `sql_duration_ms` terukur di produksi hanya 0,12–0,19 ms.
+ * Yang mahal adalah JUMLAH round-trip: sweep lama mengirim 4 query per
+ * produk + 4 per varian + 1 agregat secara BERURUTAN (13 produk/25 varian =
+ * 165 round-trip), dan tiap round-trip menyeberang ke D1 primary di SIN.
+ * Terukur ~197 ms per query, jadi 99,9% durasi sweep adalah menunggu
+ * jaringan, bukan database.
+ *
+ * Dengan merencanakan tulis lebih dulu, seluruh tulis satu produk dikirim
+ * sebagai SATU `batch()`. SQL-nya tetap tinggal di satu tempat (planner di
+ * bawah) sehingga jalur berurutan lama dan jalur batch tidak bisa berbeda.
+ */
+type SqlWrite = {
+  sql: string;
+  params: unknown[];
+  /** Tulis yang boleh gagal diam-diam (dulu `.catch()` di jalur berurutan). */
+  optional?: boolean;
+};
+
+/**
+ * Kirim sekumpulan tulis. Dengan D1 nyata seluruh tulis satu produk pergi
+ * sebagai SATU `batch()` — itulah sumber penghematan round-trip.
+ *
+ * Cakupan batch SENGAJA per produk, bukan per sweep: `batch()` adalah
+ * transaksi, jadi satu produk bermasalah tidak boleh membatalkan produk lain
+ * (jalur berurutan lama mencatat error per produk lalu lanjut — sifat itu
+ * wajib dipertahankan).
+ *
+ * Bila batch gagal, tulis diulang satu per satu supaya `optional`
+ * kembali bersifat toleran persis seperti sebelum batching: di batch, satu
+ * statement gagal me-rollback semuanya, termasuk tulis wajib yang tadinya
+ * sukses.
+ */
+async function runWrites(writes: SqlWrite[], db: DatabaseAccess): Promise<void> {
+  if (!writes.length) return;
+  const d1 = db.d1;
+  if (d1 && writes.length > 1) {
+    try {
+      await d1.batch(writes.map((write) => d1.prepare(write.sql).bind(...write.params)));
+      return;
+    } catch {
+      /* turun ke jalur berurutan di bawah */
+    }
+  }
+  for (const write of writes) {
+    if (write.optional) {
+      await db.execRun(write.sql, ...write.params).catch(() => ({ changes: 0 }));
+    } else {
+      await db.execRun(write.sql, ...write.params);
+    }
+  }
+}
+
+/** `?,?,?` sebanyak n. */
+function placeholders(count: number): string {
+  return new Array(count).fill("?").join(",");
+}
+
+/** D1 menolak query dengan >100 bound parameter, jadi prefetch dipotong. */
+const PREFETCH_PARAM_CHUNK = 50;
+
+function chunked<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
 function defaultMarkupPercent(): number {
   const raw = Number(process.env.WARUNG_REBAHAN_DEFAULT_MARKUP_PERCENT ?? 50);
   return Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : 50;
@@ -208,6 +278,48 @@ export async function isExcluded(
   return { excluded: false, reason: null };
 }
 
+/**
+ * Rencanakan tulis untuk produk yang SUDAH terdaftar, punya pasangan katalog
+ * hidup, dan tidak di-exclude — jalur terpanas (48 dari 48 produk pada sweep
+ * normal). Nol round-trip: baris registry dan verifikasi tautan katalog
+ * disuplai dari prefetch massal, tulisnya menyusul ikut batch produk.
+ *
+ * Jalur lain (excluded, tautan yatim, produk baru) TETAP berurutan karena
+ * butuh `lastInsertRowid` atau membuat baris baru.
+ */
+function planLinkedProductWrites(wrProduct: WrProduct, linked: number, now: string): SqlWrite[] {
+  const description = (wrProduct as { description?: string }).description ?? null;
+  return [
+    {
+      sql: `UPDATE wr_products SET wr_product_name=?, wr_category=?, wr_description=?,
+            is_excluded=0, exclude_reason=NULL, last_synced_at=?, updated_at=?
+           WHERE wr_product_id=?
+             AND (wr_product_name IS NOT ? OR wr_category IS NOT ?
+                  OR wr_description IS NOT ? OR is_excluded IS NOT 0
+                  OR exclude_reason IS NOT NULL)`,
+      params: [
+        wrProduct.name,
+        wrProduct.category || null,
+        description,
+        now,
+        now,
+        wrProduct.id,
+        wrProduct.name,
+        wrProduct.category || null,
+        description,
+      ],
+    },
+    {
+      // Hanya `description` (milik WR). `admin_description_override` TIDAK
+      // PERNAH disentuh sync — itu kolom milik admin (migrasi 0030).
+      sql: `UPDATE products SET description=?, updated_at=datetime('now')
+           WHERE id=? AND description IS NOT ?`,
+      params: [description, linked, description],
+      optional: true,
+    },
+  ];
+}
+
 export async function upsertWrProduct(
   wrProduct: WrProduct,
   exclude: { excluded: boolean; reason: string | null },
@@ -258,33 +370,7 @@ export async function upsertWrProduct(
         wrProduct.id,
       );
       if (target) {
-        await execRun(
-          `UPDATE wr_products SET wr_product_name=?, wr_category=?, wr_description=?,
-            is_excluded=0, exclude_reason=NULL, last_synced_at=?, updated_at=?
-           WHERE wr_product_id=?
-             AND (wr_product_name IS NOT ? OR wr_category IS NOT ?
-                  OR wr_description IS NOT ? OR is_excluded IS NOT 0
-                  OR exclude_reason IS NOT NULL)`,
-          wrProduct.name,
-          wrProduct.category || null,
-          (wrProduct as { description?: string }).description ?? null,
-          now,
-          now,
-          wrProduct.id,
-          wrProduct.name,
-          wrProduct.category || null,
-          (wrProduct as { description?: string }).description ?? null,
-        );
-        await execRun(
-          // Hanya `description` (milik WR). `admin_description_override`
-          // TIDAK PERNAH disentuh sync — itu kolom milik admin (migrasi 0030)
-          // dan storefront memprioritaskannya saat terisi.
-          `UPDATE products SET description=?, updated_at=datetime('now')
-           WHERE id=? AND description IS NOT ?`,
-          (wrProduct as { description?: string }).description ?? null,
-          linked,
-          (wrProduct as { description?: string }).description ?? null,
-        ).catch(() => ({ changes: 0 }));
+        await runWrites(planLinkedProductWrites(wrProduct, linked, now), db);
         return { axvaraProductId: linked, isNew: false };
       }
     }
@@ -390,22 +476,20 @@ async function createAxvaraCatalogForWr(
   return axvaraProductId;
 }
 
-export async function upsertWrVariant(
+export type VariantOutcome = { stockChanged: boolean; priceChanged: boolean; isNew: boolean };
+
+/**
+ * Rencanakan tulis untuk satu varian yang SUDAH ada barisnya, tanpa menyentuh
+ * D1. Baris `existing` disuplai pemanggil (satu SELECT massal per produk),
+ * jadi jalur ini nol round-trip sampai `runWrites` mengirimnya sebagai batch.
+ */
+function planExistingVariantWrites(
   wrVariant: WrVariant,
-  wrProductId: string,
-  axvaraProductId: number,
-  db: DatabaseAccess,
-): Promise<{ stockChanged: boolean; priceChanged: boolean; isNew: boolean }> {
-  const { queryFirst, execRun } = db;
-  const now = new Date().toISOString();
-  const existing = await queryFirst(
-    `SELECT id, wr_price, wr_stock, markup_percent, markup_fixed,
-            axvara_variant_id, axvara_sell_price
-     FROM wr_variants WHERE wr_variant_id=?`,
-    wrVariant.id,
-  );
-  if (existing) {
-    const markupPercent = Number(existing.markup_percent ?? defaultMarkupPercent());
+  existing: Row,
+  now: string,
+): { writes: SqlWrite[]; outcome: VariantOutcome } {
+  const writes: SqlWrite[] = [];
+  const markupPercent = Number(existing.markup_percent ?? defaultMarkupPercent());
     const markupFixed = Number(existing.markup_fixed ?? 0);
     const sellPrice = calculateSellPrice(Number(wrVariant.price), markupPercent, markupFixed);
     const stockChanged = Number(existing.wr_stock ?? -1) !== Number(wrVariant.stock);
@@ -417,8 +501,8 @@ export async function upsertWrVariant(
     // kuota 100k). `last_synced_at` TIDAK dibaca siapa pun, jadi menyegarkannya
     // sendirian tidak bernilai — guard null-safe (`IS NOT`) membuat baris yang
     // benar-benar sama tidak ditulis ulang.
-    await execRun(
-      `UPDATE wr_variants SET wr_variant_name=?, wr_price=?, wr_duration=?,
+    writes.push({
+      sql: `UPDATE wr_variants SET wr_variant_name=?, wr_price=?, wr_duration=?,
         wr_type=?, wr_warranty=?, wr_stock=?, wr_terms=?, wr_delivery_terms=?,
         axvara_sell_price=?, last_synced_at=?, updated_at=?
        WHERE wr_variant_id=?
@@ -426,52 +510,57 @@ export async function upsertWrVariant(
               OR wr_type IS NOT ? OR wr_warranty IS NOT ? OR wr_stock IS NOT ?
               OR wr_terms IS NOT ? OR wr_delivery_terms IS NOT ?
               OR axvara_sell_price IS NOT ?)`,
-      wrVariant.name,
-      Number(wrVariant.price),
-      wrVariant.duration || null,
-      wrVariant.type || null,
-      wrVariant.warranty || null,
-      Number(wrVariant.stock),
-      wrVariant.terms ?? null,
-      wrVariant.delivery_terms ?? null,
-      sellPrice,
-      now,
-      now,
-      wrVariant.id,
-      wrVariant.name,
-      Number(wrVariant.price),
-      wrVariant.duration || null,
-      wrVariant.type || null,
-      wrVariant.warranty || null,
-      Number(wrVariant.stock),
-      wrVariant.terms ?? null,
-      wrVariant.delivery_terms ?? null,
-      sellPrice,
-    );
+      params: [
+        wrVariant.name,
+        Number(wrVariant.price),
+        wrVariant.duration || null,
+        wrVariant.type || null,
+        wrVariant.warranty || null,
+        Number(wrVariant.stock),
+        wrVariant.terms ?? null,
+        wrVariant.delivery_terms ?? null,
+        sellPrice,
+        now,
+        now,
+        wrVariant.id,
+        wrVariant.name,
+        Number(wrVariant.price),
+        wrVariant.duration || null,
+        wrVariant.type || null,
+        wrVariant.warranty || null,
+        Number(wrVariant.stock),
+        wrVariant.terms ?? null,
+        wrVariant.delivery_terms ?? null,
+        sellPrice,
+      ],
+    });
     // 2026-09-16: kelas pengiriman yang SUDAH dikunci (screenshot/admin/
     // system) tidak pernah ditimpa sync — pola admin_description_override.
     // HANYA yang masih NULL ditebak sistem dari sinyal API saat ini.
-    await execRun(
-      `UPDATE wr_variants SET wr_delivery_class=?, wr_delivery_source='system',
+    writes.push({
+      sql: `UPDATE wr_variants SET wr_delivery_class=?, wr_delivery_source='system',
         updated_at=? WHERE wr_variant_id=? AND wr_delivery_class IS NULL`,
-      guessDeliveryClass({
-        productName: String((existing as { wr_product_name?: unknown }).wr_product_name || ""),
-        variantName: wrVariant.name,
-        type: wrVariant.type,
-        stock: Number(wrVariant.stock),
-        terms: wrVariant.terms,
-        deliveryTerms: wrVariant.delivery_terms,
-      }),
-      now,
-      wrVariant.id,
-    ).catch(() => ({ changes: 0 }));
+      params: [
+        guessDeliveryClass({
+          productName: String((existing as { wr_product_name?: unknown }).wr_product_name || ""),
+          variantName: wrVariant.name,
+          type: wrVariant.type,
+          stock: Number(wrVariant.stock),
+          terms: wrVariant.terms,
+          deliveryTerms: wrVariant.delivery_terms,
+        }),
+        now,
+        wrVariant.id,
+      ],
+      optional: true,
+    });
     const axvaraVariantId =
       existing.axvara_variant_id != null ? Number(existing.axvara_variant_id) : 0;
     if (axvaraVariantId > 0) {
       const duration = parseWrDuration(wrVariant.duration);
       const warranty = parseWrWarranty(wrVariant.warranty);
-      await execRun(
-        `UPDATE product_variants SET label=?, price=?, stock=?,
+      writes.push({
+        sql: `UPDATE product_variants SET label=?, price=?, stock=?,
           duration_value=?, duration_unit=?, duration_label=?,
           warranty_type=?, warranty_value=?, warranty_unit=?, warranty_label=?,
           updated_at=datetime('now')
@@ -481,32 +570,71 @@ export async function upsertWrVariant(
                 OR duration_label IS NOT ? OR warranty_type IS NOT ?
                 OR warranty_value IS NOT ? OR warranty_unit IS NOT ?
                 OR warranty_label IS NOT ?)`,
-        wrVariant.name,
-        sellPrice,
-        Number(wrVariant.stock),
-        duration.value,
-        duration.unit,
-        duration.label || null,
-        warranty.type,
-        warranty.value,
-        warranty.unit,
-        warranty.label || null,
-        axvaraVariantId,
-        wrVariant.name,
-        sellPrice,
-        Number(wrVariant.stock),
-        duration.value,
-        duration.unit,
-        duration.label || null,
-        warranty.type,
-        warranty.value,
-        warranty.unit,
-        warranty.label || null,
-      ).catch(() => ({ changes: 0 }));
+        params: [
+          wrVariant.name,
+          sellPrice,
+          Number(wrVariant.stock),
+          duration.value,
+          duration.unit,
+          duration.label || null,
+          warranty.type,
+          warranty.value,
+          warranty.unit,
+          warranty.label || null,
+          axvaraVariantId,
+          wrVariant.name,
+          sellPrice,
+          Number(wrVariant.stock),
+          duration.value,
+          duration.unit,
+          duration.label || null,
+          warranty.type,
+          warranty.value,
+          warranty.unit,
+          warranty.label || null,
+        ],
+        optional: true,
+      });
     }
-    return { stockChanged, priceChanged, isNew: false };
-  }
+  return { writes, outcome: { stockChanged, priceChanged, isNew: false } };
+}
 
+export async function upsertWrVariant(
+  wrVariant: WrVariant,
+  wrProductId: string,
+  axvaraProductId: number,
+  db: DatabaseAccess,
+): Promise<VariantOutcome> {
+  const { queryFirst } = db;
+  const now = new Date().toISOString();
+  const existing = await queryFirst(
+    `SELECT id, wr_price, wr_stock, markup_percent, markup_fixed,
+            axvara_variant_id, axvara_sell_price
+     FROM wr_variants WHERE wr_variant_id=?`,
+    wrVariant.id,
+  );
+  if (existing) {
+    const planned = planExistingVariantWrites(wrVariant, existing, now);
+    await runWrites(planned.writes, db);
+    return planned.outcome;
+  }
+  return insertNewVariant(wrVariant, wrProductId, axvaraProductId, db, now);
+}
+
+/**
+ * Varian BARU. Tetap berurutan (tidak di-batch): butuh `lastInsertRowid` dari
+ * insert `product_variants` untuk menautkan `wr_variants.axvara_variant_id`,
+ * dan `batch()` tidak bisa memakai hasil statement sebelumnya. Varian baru
+ * juga jarang — 0 dari 87 pada sweep normal — jadi tidak memengaruhi biaya.
+ */
+async function insertNewVariant(
+  wrVariant: WrVariant,
+  wrProductId: string,
+  axvaraProductId: number,
+  db: DatabaseAccess,
+  now: string,
+): Promise<VariantOutcome> {
+  const { queryFirst, execRun } = db;
   if (!axvaraProductId) return { stockChanged: false, priceChanged: false, isNew: false };
   const markupPercent = defaultMarkupPercent();
   const markupFixed = defaultMarkupFixed();
@@ -603,19 +731,17 @@ export async function upsertWrVariant(
   return { stockChanged: true, priceChanged: true, isNew: true };
 }
 
-/** Sinkronkan stok induk dari agregat varian aktif (SUM, unlimited bila ada -1). */
-export async function refreshParentAggregates(
-  axvaraProductId: number,
-  db: DatabaseAccess,
-): Promise<void> {
-  if (!axvaraProductId) return;
-  const { execRun } = db;
-  // Guard kuota D1 (2026-09-20): agregat induk dihitung ulang tiap sweep dan
-  // dulu SELALU ditulis walau hasilnya identik — 48 baris per sweep tanpa
-  // perubahan apa pun. Subquery yang sama dipakai di WHERE sebagai pembanding
-  // sehingga UPDATE hanya terjadi saat harga/stok agregat benar-benar bergeser.
-  await execRun(
-    `UPDATE products
+/**
+ * Statement agregat induk. SATU sumber SQL untuk jalur berurutan maupun batch.
+ *
+ * Guard kuota D1 (2026-09-20): agregat induk dihitung ulang tiap sweep dan
+ * dulu SELALU ditulis walau hasilnya identik — 48 baris per sweep tanpa
+ * perubahan apa pun. Subquery yang sama dipakai di WHERE sebagai pembanding
+ * sehingga UPDATE hanya terjadi saat harga/stok agregat benar-benar bergeser.
+ */
+function planParentAggregateWrite(axvaraProductId: number): SqlWrite {
+  return {
+    sql: `UPDATE products
      SET price=COALESCE((
            SELECT MIN(price) FROM product_variants
            WHERE product_id=? AND is_active=1
@@ -640,14 +766,96 @@ export async function refreshParentAggregates(
               SELECT SUM(CASE WHEN stock>0 THEN stock ELSE 0 END)
               FROM product_variants WHERE product_id=? AND is_active=1
             ),0) END)`,
-    axvaraProductId,
-    axvaraProductId,
-    axvaraProductId,
-    axvaraProductId,
-    axvaraProductId,
-    axvaraProductId,
-    axvaraProductId,
-  ).catch(() => ({ changes: 0 }));
+    params: new Array(7).fill(axvaraProductId),
+    optional: true,
+  };
+}
+
+/** Sinkronkan stok induk dari agregat varian aktif (SUM, unlimited bila ada -1). */
+export async function refreshParentAggregates(
+  axvaraProductId: number,
+  db: DatabaseAccess,
+): Promise<void> {
+  if (!axvaraProductId) return;
+  const write = planParentAggregateWrite(axvaraProductId);
+  await db.execRun(write.sql, ...write.params).catch(() => ({ changes: 0 }));
+}
+
+/**
+ * Ambil SEMUA baris `wr_variants` yang dibutuhkan sweep ini dalam beberapa
+ * query `IN (...)`, bukan satu SELECT per varian.
+ *
+ * Ini separuh penghematan round-trip: sweep lama menembak 1 SELECT per varian
+ * (87 round-trip untuk katalog penuh) hanya untuk membaca harga/stok/markup
+ * lama sebagai pembanding. Dipotong per 50 id karena D1 menolak query dengan
+ * lebih dari 100 bound parameter.
+ */
+async function prefetchVariantRows(
+  wrVariantIds: string[],
+  db: DatabaseAccess,
+): Promise<Map<string, Row>> {
+  const map = new Map<string, Row>();
+  if (!wrVariantIds.length) return map;
+  for (const chunk of chunked(wrVariantIds, PREFETCH_PARAM_CHUNK)) {
+    const rows = await db
+      .queryAll(
+        // Kolom PERSIS sama dengan SELECT per-varian yang digantikan — jangan
+        // tambah kolom. `wr_product_name` sengaja TIDAK diambil: SELECT lama
+        // juga tidak mengambilnya, sehingga guessDeliveryClass selalu
+        // menerima productName "" dan menambahkannya akan mengubah kelas
+        // pengiriman yang ditebak (perubahan perilaku, bukan performa).
+        `SELECT id, wr_variant_id, wr_price, wr_stock, markup_percent,
+                markup_fixed, axvara_variant_id, axvara_sell_price
+         FROM wr_variants WHERE wr_variant_id IN (${placeholders(chunk.length)})`,
+        ...chunk,
+      )
+      .catch(() => [] as Row[]);
+    for (const row of rows) {
+      const id = String(row.wr_variant_id || "");
+      if (id) map.set(id, row);
+    }
+  }
+  return map;
+}
+
+/**
+ * Ambil baris registri produk + verifikasi tautan katalognya sekaligus.
+ *
+ * Menggantikan 2 SELECT berurutan per produk (`wr_products` lalu guard link
+ * yatim di `products`). `catalog_id` hanya terisi bila tautannya benar-benar
+ * masih hidup — syarat yang sama dengan guard lama
+ * (`id=? AND source='warung_rebahan' AND wr_product_id=?`), sehingga tautan
+ * yatim tetap jatuh ke jalur pembuatan pasangan baru.
+ */
+async function prefetchProductRows(
+  wrProductIds: string[],
+  db: DatabaseAccess,
+): Promise<Map<string, { linked: number; catalogAlive: boolean }>> {
+  const map = new Map<string, { linked: number; catalogAlive: boolean }>();
+  if (!wrProductIds.length) return map;
+  for (const chunk of chunked(wrProductIds, PREFETCH_PARAM_CHUNK)) {
+    const rows = await db
+      .queryAll(
+        `SELECT wp.wr_product_id, wp.axvara_product_id, wp.is_excluded, p.id AS catalog_id
+         FROM wr_products wp
+         LEFT JOIN products p
+           ON p.id = wp.axvara_product_id
+          AND p.source = 'warung_rebahan'
+          AND p.wr_product_id = wp.wr_product_id
+         WHERE wp.wr_product_id IN (${placeholders(chunk.length)})`,
+        ...chunk,
+      )
+      .catch(() => [] as Row[]);
+    for (const row of rows) {
+      const id = String(row.wr_product_id || "");
+      if (!id) continue;
+      map.set(id, {
+        linked: row.axvara_product_id != null ? Number(row.axvara_product_id) : 0,
+        catalogAlive: row.catalog_id != null,
+      });
+    }
+  }
+  return map;
 }
 
 /**
@@ -844,6 +1052,20 @@ export async function syncProducts(
   // Urutan stabil agar cursor bermakna lintas run.
   const ordered = [...products].sort((a, b) => String(a.id || "").localeCompare(String(b.id || "")));
   const startAt = state.cursor >= ordered.length ? 0 : state.cursor;
+  // Prefetch baris varian untuk potongan yang AKAN dikerjakan run ini saja
+  // (`maxProducts` dari cursor), bukan seluruh katalog: sweep parsial tidak
+  // boleh membayar pembacaan produk yang tidak disentuhnya.
+  const plannedSlice = ordered.slice(startAt, startAt + maxProducts);
+  const variantRows = await prefetchVariantRows(
+    plannedSlice
+      .flatMap((product) => (product.variants || []).map((variant) => String(variant?.id || "")))
+      .filter((id) => id.length > 0),
+    db,
+  );
+  const productRows = await prefetchProductRows(
+    plannedSlice.map((product) => String(product.id || "")).filter((id) => id.length > 0),
+    db,
+  );
   let cursor = startAt;
   let processedInRun = 0;
   for (let i = startAt; i < ordered.length; i++) {
@@ -882,23 +1104,49 @@ export async function syncProducts(
         processedInRun++;
         continue;
       }
-      const { axvaraProductId, isNew } = await upsertWrProduct(
-        product,
-        { excluded: false, reason: null },
-        db,
-      );
-      if (isNew) result.newProducts++;
-      result.synced++;
+      // Tulis SATU produk dikumpulkan lalu dikirim sebagai satu batch:
+      // seluruh varian + agregat induk = 1 round-trip, bukan 4 per varian + 1.
+      const pendingWrites: SqlWrite[] = [];
+      const now = new Date().toISOString();
+      // Jalur terpanas: produk sudah terdaftar dengan pasangan katalog hidup
+      // (48/48 pada sweep normal). Tulisnya ikut batch produk, jadi tidak ada
+      // round-trip sebelum batch. Sisanya (baru/yatim/excluded) tetap lewat
+      // upsertWrProduct yang berurutan.
+      const registry = productRows.get(String(product.id || ""));
+      let axvaraProductId: number;
+      if (registry && registry.catalogAlive && registry.linked > 0) {
+        axvaraProductId = registry.linked;
+        pendingWrites.push(...planLinkedProductWrites(product, registry.linked, now));
+        result.synced++;
+      } else {
+        const upserted = await upsertWrProduct(product, { excluded: false, reason: null }, db);
+        axvaraProductId = upserted.axvaraProductId;
+        if (upserted.isNew) result.newProducts++;
+        result.synced++;
+      }
       for (const variant of product.variants || []) {
         if (!variant?.id) continue;
         seenVariantIds.add(String(variant.id));
-        const outcome = await upsertWrVariant(variant, product.id, axvaraProductId, db);
+        const existing = variantRows.get(String(variant.id));
+        let outcome: VariantOutcome;
+        if (existing) {
+          const planned = planExistingVariantWrites(variant, existing, now);
+          pendingWrites.push(...planned.writes);
+          outcome = planned.outcome;
+        } else {
+          // Varian baru butuh lastInsertRowid untuk menautkan barisnya, jadi
+          // ia tetap berurutan. Tulis yang sudah terkumpul dikirim DULU agar
+          // urutan efek ke DB tidak bergeser dari jalur lama.
+          await runWrites(pendingWrites.splice(0), db);
+          outcome = await insertNewVariant(variant, product.id, axvaraProductId, db, now);
+        }
         result.variantsSynced++;
         if (outcome.isNew) result.newVariants++;
         if (outcome.stockChanged) result.stockChanges++;
         if (outcome.priceChanged) result.priceChanges++;
       }
-      await refreshParentAggregates(axvaraProductId, db);
+      if (axvaraProductId) pendingWrites.push(planParentAggregateWrite(axvaraProductId));
+      await runWrites(pendingWrites, db);
     } catch (error) {
       result.errors.push(
         `${String(product?.name || product?.id).slice(0, 80)}: ${

@@ -207,6 +207,13 @@ Axvara dapat menjadi reseller layer di atas Warung Rebahan: produk tersinkronisa
 (Canva & Gemini ikut — exclusion default kosong), stok/harga diperbarui cron tiap
 30 menit, order lunas diteruskan otomatis ke WR (exactly-once: klaim atomik + lease +
 idempotency), dan detail akun dikirim ke customer via
+Telegram/WhatsApp/Web. Sejak 22 Sep 2026 sweep katalog mengirim tulisnya sebagai
+satu `d1.batch()` per produk + prefetch massal baris pembanding: **642 → 117
+round-trip D1 (−82%)** untuk 48 produk/87 varian. Ini memangkas SEBAB sweep lambat —
+kerja SQL D1 hanya 0,15 ms/query sementara satu round-trip ke primary SIN ~197 ms,
+jadi 99,9% durasi sweep adalah menunggu jaringan. Cakupan batch sengaja per produk
+(bukan per sweep) karena `batch()` adalah transaksi: satu produk bermasalah tidak
+boleh membatalkan produk lain.
 Telegram/WhatsApp/Web. Pembeli web mengambil kredensial di halaman pesanan via verifikasi
 nomor WA + capability token — panel itu hanya muncul saat detail akun benar-benar sudah ada
 (`credentials_ready`); order lunas dengan fulfillment manual menampilkan blok "Pengiriman
