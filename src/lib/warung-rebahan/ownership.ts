@@ -39,7 +39,11 @@ export const WR_OWNED_VARIANT_FIELDS = [
 export const WR_OWNED_PRODUCT_FIELDS = ["name", "slug", "description", "price", "stock"] as const;
 
 export const WR_OWNERSHIP_MESSAGE =
-  "Produk ini dikelola otomatis oleh Warung Rebahan. Harga, stok, label, durasi, dan garansi ikut katalog WR — ubah markup di tab Warung Rebahan. Untuk deskripsi sendiri, isi 'Deskripsi khusus (override)'.";
+  // Sebut juga nama/slug (ikut WR_OWNED_PRODUCT_FIELDS) dan TEGASKAN apa yang
+  // masih milik admin — tanpa itu admin menyimpulkan produk WR sama sekali
+  // tidak bisa disesuaikan, padahal harga coret, min. beli, foto, dan badge
+  // aman lintas sweep.
+  "Produk ini dikelola otomatis oleh Warung Rebahan. Nama, slug, deskripsi, harga, stok, label varian, durasi, dan garansi ikut katalog WR — ubah markup di tab Warung Rebahan. Yang tetap milik Anda: foto, badge, kategori, urutan, aktif/nonaktif, harga coret, min. beli, dan 'Deskripsi khusus (override)'.";
 
 type Row = Record<string, unknown> | undefined | null;
 

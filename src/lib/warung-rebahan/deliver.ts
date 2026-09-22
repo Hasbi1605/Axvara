@@ -860,7 +860,19 @@ async function notifyWebBuyerCredentialsReady(orderCode: string, db: DatabaseAcc
 
 async function deliverWhatsAppCredential(orderCode: string, plaintext: string, db: DatabaseAccess): Promise<void> {
   // Kill-switch DM kredensial (lihat notifyWebBuyerCredentialsReady).
-  if (!isEnabled("WHATSAPP_CREDENTIAL_DM_ENABLED")) return;
+  //
+  // WAJIB THROW, bukan `return` diam (2026-09-22). Beda tegas dengan
+  // `deliverWebCredentialViaWhatsApp` di bawah: pembeli kanal WEB punya jalur
+  // pengambilan lain (token capability + panel pesanan + email), jadi skip DM
+  // di sana memang "settled". Pembeli kanal WHATSAPP tidak punya jalur lain —
+  // tidak ada panel, tidak ada email wajib. `return` diam membuat pemanggil
+  // (processCredentialDelivery) menulis `delivery_status='delivered'` padahal
+  // NOL pesan terkirim: pembeli melihat "Selesai" dan menerima nihil,
+  // sementara admin mengira beres. Dengan throw, link jatuh ke jalur retry →
+  // `failed` → antrean handover manual yang terlihat admin.
+  if (!isEnabled("WHATSAPP_CREDENTIAL_DM_ENABLED")) {
+    throw new Error("whatsapp_credential_dm_disabled");
+  }
   const order = await db
     .queryFirst(`SELECT channel_member_id, customer_wa FROM orders WHERE code=?`, orderCode)
     .catch(() => null);

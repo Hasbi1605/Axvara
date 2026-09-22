@@ -11,6 +11,23 @@ import type { Prod, Cat, FormVariant, ProductForm } from "@/components/admin/pro
 
 const PER_PAGE_ADMIN = 8;
 
+/** Nama field WR-owned dalam bahasa yang dikenali admin di form. */
+const WR_FIELD_LABEL: Record<string, string> = {
+  name: "Nama",
+  slug: "Slug",
+  description: "Deskripsi",
+  price: "Harga Jual",
+  stock: "Stok",
+  label: "Nama Varian",
+  duration_value: "Durasi",
+  duration_unit: "Durasi",
+  duration_label: "Durasi",
+  warranty_type: "Garansi",
+  warranty_value: "Garansi",
+  warranty_unit: "Garansi",
+  warranty_label: "Garansi",
+};
+
 export type AdminToast = {
   success: (msg: string) => void;
   error: (msg: string) => void;
@@ -294,7 +311,19 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
     try {
       const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j.error || `Gagal simpan (${r.status})`);
+      if (!r.ok) {
+        // Guard kepemilikan WR membalas `{ error, field }`. Dulu `field`
+        // dibuang, sehingga admin yang mengubah banyak field sekaligus hanya
+        // melihat pesan generik dan harus coba-coba — sementara perubahan yang
+        // SAH (foto/badge/harga coret) ikut hangus karena PUT gagal utuh.
+        const field = typeof j.field === "string" ? j.field : "";
+        const label = WR_FIELD_LABEL[field] ?? field;
+        throw new Error(
+          label
+            ? `Field "${label}" tidak bisa diubah. ${j.error || ""}`.trim()
+            : (j.error || `Gagal simpan (${r.status})`),
+        );
+      }
       toast.success(editing ? "Produk diperbarui." : "Produk dibuat.");
       await load(); closeModal();
     } catch (e) {

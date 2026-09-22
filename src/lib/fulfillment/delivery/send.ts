@@ -286,8 +286,26 @@ export async function processItem(order: Row, itemRow: Row, adminChatId?: string
       ).catch(() => undefined);
       return false;
     }
-    await scheduleItemRetry(itemId, errMsg, leaseFence, database);
-    void adminChatId;
+    // Alarm admin saat item JATUH TERMINAL (2026-09-22). Sebelumnya
+    // `void adminChatId` membuang parameternya: jalur fulfillment modern gagal
+    // dalam diam sementara jalur legacy (delivery/process.ts) mengirim ping
+    // Telegram. Akibatnya stok habis / secret belum diset menumpuk berhari-hari
+    // tanpa ada yang tahu — dan order itu sekaligus jatuh ke
+    // `fulfillment_status='failed'` yang dulu tak punya tombol handover.
+    const becameTerminal = await scheduleItemRetry(itemId, errMsg, leaseFence, database);
+    if (becameTerminal) {
+      const chatId = adminChatId || process.env.TELEGRAM_ADMIN_CHAT_ID;
+      if (chatId) {
+        try {
+          const { adminDeliveryFailedNotification } = await import("@/lib/telegram/messages");
+          await sendMessage({
+            chat_id: chatId,
+            text: adminDeliveryFailedNotification(orderCode, errMsg),
+            parse_mode: "HTML",
+          });
+        } catch { /* ping admin best-effort; jangan gagalkan worker */ }
+      }
+    }
     return false;
   }
 }
@@ -331,7 +349,13 @@ export async function sendToRecipient(
   if (!sendResult.ok) throw new Error(sendResult.description || "Telegram send failed");
 }
 
-export async function scheduleItemRetry(itemId: number, error: string, leaseFence?: string, database: DatabaseAccess = createDatabaseAccess()): Promise<void> {
+/**
+ * Jadwalkan retry item, atau tandai `failed` bila attempt habis.
+ *
+ * Mengembalikan `true` HANYA pada transisi terminal (menjadi `failed`) agar
+ * pemanggil bisa membunyikan alarm admin sekali saja — bukan tiap percobaan.
+ */
+export async function scheduleItemRetry(itemId: number, error: string, leaseFence?: string, database: DatabaseAccess = createDatabaseAccess()): Promise<boolean> {
   const { queryFirst, execRun } = database;
   const item = await queryFirst(`SELECT attempt_count, locked_until FROM fulfillment_items WHERE id=?`, itemId);
   const attempts = Number(item?.attempt_count ?? 0);
@@ -339,11 +363,13 @@ export async function scheduleItemRetry(itemId: number, error: string, leaseFenc
   const fenceSql = leaseFence ? ` AND locked_until=?` : ``;
   const fenceArgs = leaseFence ? [leaseFence] : [];
   if (attempts >= MAX_ATTEMPTS) {
-    await execRun(
+    const result = await execRun(
       `UPDATE fulfillment_items SET status='failed', last_error=?, locked_until=NULL, updated_at=datetime('now') WHERE id=?${fenceSql}`,
       error, itemId, ...fenceArgs,
     );
-    return;
+    // Hanya baris yang benar-benar berubah = transisi terminal milik worker
+    // ini. Fence yang kalah race menghasilkan 0 changes → jangan alert ganda.
+    return Number(result?.changes ?? 0) > 0;
   }
   const delayMinutes = RETRY_DELAYS[Math.min(Math.max(attempts - 1, 0), RETRY_DELAYS.length - 1)];
   await execRun(
@@ -351,4 +377,5 @@ export async function scheduleItemRetry(itemId: number, error: string, leaseFenc
      next_attempt_at=datetime('now', '+${delayMinutes} minutes'), updated_at=datetime('now') WHERE id=?${fenceSql}`,
     error, itemId, ...fenceArgs,
   );
+  return false;
 }

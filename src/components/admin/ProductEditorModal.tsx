@@ -144,16 +144,17 @@ export function ProductEditorModal({
               ) : (
                 <div className="mt-4 grid sm:grid-cols-3 gap-3">
                   <div>
-                    <span className="text-xs font-semibold text-white/60">Harga Jual *</span>
+                    <span className="text-xs font-semibold text-white/60">Harga Jual *{form.wrManaged ? " (WR)" : ""}</span>
                     <MoneyInput
                       value={form.price}
+                      readOnly={form.wrManaged}
                       onChange={(val) => onSetForm({ ...form, price: val ?? 0 })}
                       placeholder="89000"
-                      className="mt-1 h-10 w-full px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white focus:outline-none focus:border-[#00E5FF]/30"
+                      className={`mt-1 h-10 w-full px-3 rounded-xl border text-sm focus:outline-none ${form.wrManaged ? "bg-white/[0.03] border-white/5 text-white/50 cursor-not-allowed" : "bg-white/[0.06] border-white/10 text-white focus:border-[#00E5FF]/30"}`}
                     />
                   </div>
                   <div>
-                    <span className="text-xs font-semibold text-white/60">Harga Coret</span>
+                    <span className="text-xs font-semibold text-white/60">Harga Coret <span className="normal-case text-emerald-300/70">✎ bisa diedit</span></span>
                     <MoneyInput
                       value={form.comparePrice}
                       allowEmpty
@@ -163,12 +164,13 @@ export function ProductEditorModal({
                     />
                   </div>
                   <div>
-                    <span className="text-xs font-semibold text-white/60">Stok (-1 = ∞)</span>
+                    <span className="text-xs font-semibold text-white/60">Stok (-1 = ∞){form.wrManaged ? " (WR)" : ""}</span>
                     <input
                       type="number"
                       value={form.stock ?? -1}
+                      readOnly={form.wrManaged}
                       onChange={(e) => onSetForm({ ...form, stock: Number(e.target.value) })}
-                      className="mt-1 h-10 w-full px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white focus:outline-none focus:border-[#00E5FF]/30"
+                      className={`mt-1 h-10 w-full px-3 rounded-xl border text-sm focus:outline-none ${form.wrManaged ? "bg-white/[0.03] border-white/5 text-white/50 cursor-not-allowed" : "bg-white/[0.06] border-white/10 text-white focus:border-[#00E5FF]/30"}`}
                     />
                   </div>
                 </div>

@@ -82,12 +82,36 @@ function ageLabel(order: { request_sent_at?: string | null; created_at?: string 
 
 const WR_STATUS_LABEL: Record<string, string> = {
   pending: "Menunggu",
+  claimed: "Diklaim worker",
+  submitted: "Terkirim ke WR",
   ordering: "Dipesan…",
   processing: "Diproses WR",
   completed: "Selesai",
   failed: "Gagal",
   retry: "Retry",
+  // Bukan kegagalan: order menunggu saldo WR cukup, lalu `reconcileBlockedBalance`
+  // membangkitkannya sendiri. Dulu tanpa label sehingga admin melihat teks
+  // mentah "blocked_balance" berwarna kuning generik tanpa tahu tindakannya.
+  blocked_balance: "Saldo WR habis",
 };
+
+/**
+ * Status yang diterima `POST /api/admin/warung/orders/[id]/retry`.
+ *
+ * WAJIB sama dengan `RETRYABLE` di route itu (2026-09-22). Sebelumnya UI
+ * memakai daftar sendiri yang justru TERBALIK terhadap API: `blocked_balance`
+ * (retryable, `attempt_count` masih 0) tidak pernah dapat tombol, sedangkan
+ * `failed` selalu dapat tombol padahal API menolaknya — status `failed` hanya
+ * ditulis ketika `attempt >= max_attempts`, tepat kondisi yang ditolak route
+ * dengan `max_attempts_reached`.
+ */
+const RETRYABLE_WR_STATUS = ["pending", "retry", "failed", "blocked_balance"];
+
+/** Retry hanya berguna bila kuota percobaan masih ada (API menolak bila habis). */
+function canRetryWrLink(order: { status: string; attempt_count?: number; max_attempts?: number }): boolean {
+  if (!RETRYABLE_WR_STATUS.includes(order.status)) return false;
+  return Number(order.attempt_count ?? 0) < Number(order.max_attempts ?? 3);
+}
 
 export function WarungRebahanManager() {
   const toast = useToast();
@@ -343,7 +367,7 @@ export function WarungRebahanManager() {
           <div className="min-w-0"><h3 className="text-sm font-semibold text-white">Antrean order WR</h3><p className="mt-0.5 text-[11px] text-white/40">Order lunas yang diteruskan ke Warung Rebahan. Cari by invoice WR (#RBHN-…) atau kode Axvara untuk forward manual email WR ke buyer.</p></div>
           <input value={orderQuery} onChange={(e) => setOrderQuery(e.target.value)} placeholder="Cari invoice WR / kode Axvara…" className="h-9 w-full max-w-[240px] rounded-xl border border-white/10 bg-white/[0.05] px-3 text-xs text-white placeholder:text-white/30 focus:border-[#00E5FF]/50 focus:outline-none sm:ml-auto" />
           <div className="flex flex-wrap gap-2">
-            {[["all", "Semua"], ["pending", "Pending"], ["processing", "Diproses"], ["retry", "Retry"], ["failed", "Gagal"], ["completed", "Selesai"]].map(([value, label]) => (
+            {[["all", "Semua"], ["pending", "Pending"], ["submitted", "Terkirim"], ["processing", "Diproses"], ["retry", "Retry"], ["blocked_balance", "Saldo habis"], ["failed", "Gagal"], ["completed", "Selesai"]].map(([value, label]) => (
               <button key={value} onClick={() => setOrderStatus(value)} className={`h-8 whitespace-nowrap rounded-lg px-3 text-xs font-semibold transition ${orderStatus === value ? "bg-[#00E5FF] text-[#07101f]" : "bg-white/[0.06] text-white/55 hover:bg-white/10 hover:text-white"}`}>{label}</button>
             ))}
           </div>
@@ -378,11 +402,15 @@ export function WarungRebahanManager() {
                   )}
                   {order.last_error && <p className="mt-1 font-mono text-[10px] text-red-300/70">{order.last_error}</p>}
                 </div>
-                {["pending", "retry", "failed"].includes(order.status) && (
+                {canRetryWrLink(order) ? (
                   <button onClick={() => void retryOrder(order.id)} disabled={retrying === order.id} className="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl bg-[#00E5FF] px-3.5 text-xs font-bold text-[#07101f] transition hover:bg-[#00D0E8] disabled:opacity-40">
                     {retrying === order.id ? <Spinner size={13} /> : <IosIcon name="refresh" size={13} tint="black" />} Retry
                   </button>
-                )}
+                ) : RETRYABLE_WR_STATUS.includes(order.status) ? (
+                  <span title="Percobaan otomatis sudah habis. Serahkan manual dari tab Pesanan, atau naikkan batas percobaan." className="inline-flex h-9 shrink-0 items-center rounded-xl border border-red-400/25 bg-red-500/10 px-3 text-[11px] font-semibold text-red-200">
+                    Percobaan habis
+                  </span>
+                ) : null}
               </article>
             ))}
           </div>

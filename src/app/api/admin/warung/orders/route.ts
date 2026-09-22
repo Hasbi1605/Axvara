@@ -16,7 +16,14 @@ export async function GET(request: NextRequest) {
   // order Axvara + buyer. Dipotong 40 char (batas LIKE D1 50 byte).
   const rawQ = request.nextUrl.searchParams.get("q")?.trim().slice(0, 40) || "";
   const q = rawQ.replace(/^#/, "");
-  const allowed = ["pending", "ordering", "processing", "completed", "failed", "retry"];
+  // Harus mencakup SELURUH WR_LINK_STATUSES yang mungkin tersimpan, kalau tidak
+  // filter UI dibuang diam-diam menjadi "all" (2026-09-22): `blocked_balance`
+  // adalah status order yang benar-benar tertahan di produksi, dan justru itu
+  // yang paling perlu bisa disaring admin.
+  const allowed = [
+    "pending", "claimed", "submitted", "ordering", "processing",
+    "completed", "failed", "retry", "blocked_balance",
+  ];
   const whereParts: string[] = [];
   const params: unknown[] = [];
   if (allowed.includes(status)) { whereParts.push(`l.status=?`); params.push(status); }

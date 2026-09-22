@@ -950,6 +950,40 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   = lebih banyak CPU = lebih banyak run dibunuh sebelum menulis log); pengikatnya CPU dan
   round-trip, bukan deadline. Dikunci oleh
   `tests/warung-rebahan/sync-roundtrip.regression.test.ts`.
+- **Kejujuran status pengiriman + jalan keluar admin (audit UX 2026-09-22):** pola akar yang
+  ditutup di sini bukan satu bug, melainkan **server sudah tahu jawabannya tetapi UI
+  membuangnya**. (1) `deliverWhatsAppCredential` dulu `return` diam saat kill-switch
+  `WHATSAPP_CREDENTIAL_DM_ENABLED` mati, sehingga `processCredentialDelivery` tetap menulis
+  `delivery_status='delivered'` walau NOL pesan terkirim — pembeli kanal WhatsApp melihat
+  "Selesai" dan menerima nihil. Kini **throw** (`whatsapp_credential_dm_disabled`) → retry →
+  `failed` → antrean handover. Bedakan tegas dengan `deliverWebCredentialViaWhatsApp` yang
+  MEMANG boleh skip diam: kanal web punya token capability + panel pesanan + email sebagai
+  jalur pengambilan, kanal WhatsApp tidak punya jalur lain. (2) `fulfillment_status='failed'`
+  (ditulis `warung-rebahan/order.ts` saat attempt WR habis dan `deliver.ts` saat delivery
+  habis 5 percobaan) tidak punya tombol apa pun di admin padahal
+  `recordManualHandoverDetailed` menerimanya — order lunas yang gagal kirim = jalan buntu
+  yang hanya bisa dipulihkan lewat operasi DB. (3) Jalur fulfillment modern
+  (`delivery/send.ts:processItem`) membuang `adminChatId` dengan `void`, jadi kegagalan
+  terminal tidak pernah membunyikan Telegram — padahal jalur legacy mengirimnya; kini
+  `scheduleItemRetry` mengembalikan `true` HANYA pada transisi terminal (berbasis
+  `meta.changes`, sehingga fence yang kalah race tidak mengirim alert ganda). (4) Gerbang
+  retry link WR di UI **terbalik** terhadap API: `blocked_balance` (retryable,
+  `attempt_count` masih 0) tak pernah dapat tombol, sedangkan `failed` selalu dapat tombol
+  padahal route menolaknya dengan `max_attempts_reached` — `failed` hanya ditulis ketika
+  `attempt >= max_attempts`. Kini UI memakai `RETRYABLE_WR_STATUS` yang wajib identik dengan
+  `RETRYABLE` route plus cek kuota percobaan, dan status `claimed`/`submitted`/
+  `blocked_balance` akhirnya punya label + bisa difilter (`allowed` di
+  `admin/warung/orders`). (5) Approve screenshot QRIS membalas `payment_updated:false`
+  (QRIS Hook tetap otoritatif) tetapi admin selalu melihat toast "dikonfirmasi lunas" —
+  kabar palsu yang bisa memicu pengiriman sebelum uang masuk. (6) `proofRejectionReason` dan
+  `fulfillment_status` sudah di-parse `normalizeOrder` tetapi tidak pernah dirender; modal
+  Detail juga kehilangan tombol Tolak + handover sehingga alur wajar "buka Detail untuk
+  memeriksa dulu" justru mematikan aksinya. (7) Produk WR: blok harga/stok **mode single**
+  tidak ikut terkunci seperti Nama/Slug, jadi admin yang mematikan toggle Variasi mengedit
+  nilai yang dijamin ditolak 409; dan `field` pada respons 409 dibuang sehingga admin tidak
+  tahu field mana pemicunya. Dikunci oleh `tests/admin-ux-dead-end.regression.test.ts`,
+  `tests/admin-failed-order-actionable.behavior.test.tsx`, dan
+  `tests/warung-rebahan/wa-credential-killswitch.regression.test.ts`.
 - **Hook payment:** setelah lunas di 4 jalur (webhook DANA, retry admin, approve bukti,
   konfirmasi admin) → `createWrOrderLinksForOrder` + `processWrPendingOrders` best-effort;
   cron memproses sisanya. Produk WR dikenali dari `product_variants.wr_variant_id`.
