@@ -1042,6 +1042,21 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   sendiri sudah tertutup CAS (klik bersamaan → 409, dikunci
   `admin-retry-race.regression.test.ts`) dan status `claimed` yang bukan anggota `RETRYABLE`
   (klik berurutan → 409). Dikunci oleh `tests/round3-name-and-money-silence.regression.test.ts`.
+- **F7 — pengingat kedaluwarsa QRIS akhirnya sampai ke pembeli WEB (2026-09-23):**
+  `QRIS_EXPIRY_NOTICE_WHERE` dulu memfilter `sales_channel IN ('telegram','whatsapp')` sehingga
+  kanal web tidak pernah masuk hasil query. Ironisnya justru pembeli WEB yang boleh
+  memperpanjang QRIS (`qris_reissue_allowed` hanya mengecualikan WhatsApp, dan gerbang
+  `reissueDanaQrisInvoice` memakai `sales_channel!='whatsapp'`), tetapi mereka tidak pernah
+  diberi tahu bahwa QR-nya hangus — baru tahu bila kebetulan membuka halaman lagi; tab yang
+  sudah ditutup berarti tidak tahu sama sekali. Kebalikannya terjadi di WhatsApp: hanya dapat
+  kabar terminal, tidak pernah kabar "masih bisa diselamatkan".
+  Jalur untuk web adalah **email (Resend, `sendForwardEmail`)** karena web tidak punya kanal
+  chat; email selalu terisi untuk order web sejak revamp checkout 2026-09-23 mewajibkannya.
+  Dua nada dipisah sesuai apa yang masih bisa dilakukan pembeli: renewable = ajakan menekan
+  "Perpanjang QRIS" di `/pesanan/[code]`, terminal = pesanan sudah mati. Order web lama tanpa
+  email dilewati **tanpa** menulis `expiry_notice_state`, dan kegagalan kirim juga tidak
+  menandai — keduanya agar cron berikutnya mencoba lagi, bukan kehilangan kabar diam-diam.
+  Dikunci oleh `tests/qris-expiry-web-email.integration.test.ts`.
 - **Hook payment:** setelah lunas di 4 jalur (webhook DANA, retry admin, approve bukti,
   konfirmasi admin) → `createWrOrderLinksForOrder` + `processWrPendingOrders` best-effort;
   cron memproses sisanya. Produk WR dikenali dari `product_variants.wr_variant_id`.
