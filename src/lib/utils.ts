@@ -18,6 +18,40 @@ export function formatRupiah(n: number): string {
 /** Zona waktu operasional toko — sama dengan REVENUE_TZ_OFFSET (+7) di server. */
 export const WIB_TIME_ZONE = "Asia/Jakarta";
 
+/** Nama tampilan terakhir bila email tidak menyisakan apa pun yang layak. */
+export const FALLBACK_CUSTOMER_NAME = "Pembeli Axvara";
+
+/**
+ * Turunkan nama orang yang layak tampil dari alamat email.
+ *
+ * KENAPA ADA (regresi revamp checkout 2026-09-23): form web tidak lagi meminta
+ * nama, dan fallback-nya `email.split("@")[0]` mentah. Prefix email BUKAN nama:
+ * `budi123@…` menjadi "budi123" dan `first.last+promo@…` menjadi
+ * "first.last+promo". Nilai itu tersimpan di `orders.customer_name` lalu
+ * merembes ke sapaan halaman pesanan ("Terima kasih, budi123!"), notifikasi
+ * Telegram admin, prefill tombol WA follow-up, pencarian admin, dan ekspor CSV.
+ *
+ * Pembersihan sengaja konservatif — tujuannya membuat nama LAYAK TAMPIL, bukan
+ * menebak identitas: buang plus-addressing, ubah pemisah menjadi spasi, buang
+ * angka di ujung, lalu kapitalkan. Nama yang diisi pembeli sendiri TIDAK
+ * PERNAH disentuh fungsi ini.
+ */
+export function deriveNameFromEmail(email: string): string {
+  const local = String(email || "").trim().split("@")[0] ?? "";
+  // Plus-addressing adalah tag, bukan bagian nama.
+  const withoutTag = local.split("+")[0] ?? "";
+  const words = withoutTag
+    .replace(/[._\-]+/g, " ")
+    .replace(/\d+/g, " ")
+    .replace(/[^a-zA-Z ]/g, "")
+    .split(/\s+/)
+    .filter((word) => word.length > 1)
+    .slice(0, 3)
+    .map((word) => word[0].toUpperCase() + word.slice(1).toLowerCase());
+  const name = words.join(" ").trim();
+  return name.length >= 2 ? name.slice(0, 80) : FALLBACK_CUSTOMER_NAME;
+}
+
 /**
  * Rumah kanonis format timestamp D1 untuk SEMUA tampilan (admin + storefront).
  *

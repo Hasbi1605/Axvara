@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { deriveNameFromEmail } from "@/lib/utils";
 import { z } from "zod";
 import { createOrderWithStock, queryAll, queryFirst, StockReservationError, transitionPendingOrder } from "@/lib/db";
 import { generateOrderCode as generateCode, aggregateQty } from "@/lib/security";
@@ -222,8 +223,13 @@ export async function POST(req: NextRequest) {
   }
 
   // Revamp 2026-09-23: customer_name opsional dari web (form tanpa nama).
-  // Fallback prefix email agar kolom DB NOT NULL + notif admin bernama.
-  const fallbackName = (customer_name?.trim() || customer_email.trim().split("@")[0]?.trim() || "").slice(0, 80) || "Pembeli Axvara";
+  // Fallback DIBERSIHKAN (2026-09-23): prefix email mentah bukan nama —
+  // `budi123@…` dulu tersimpan apa adanya lalu merembes ke sapaan halaman
+  // pesanan, notifikasi Telegram admin, prefill tombol WA, pencarian admin,
+  // dan CSV. Nama yang diisi pembeli sendiri tidak pernah disentuh.
+  const fallbackName = customer_name?.trim()
+    ? customer_name.trim().slice(0, 80)
+    : deriveNameFromEmail(customer_email);
   try {
     await createOrderWithStock({
       code,

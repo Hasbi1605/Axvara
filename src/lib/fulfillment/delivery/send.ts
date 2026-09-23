@@ -305,6 +305,13 @@ export async function processItem(order: Row, itemRow: Row, adminChatId?: string
           });
         } catch { /* ping admin best-effort; jangan gagalkan worker */ }
       }
+      // Kabari PEMBELI juga (2026-09-23): sebelumnya hanya admin yang tahu,
+      // sehingga pembeli yang sudah lunas menunggu tanpa batas tanpa satu pun
+      // kabar. Best-effort — kegagalan kirim tidak boleh mengubah status item.
+      try {
+        const { notifyBuyerDeliveryFailed } = await import("@/lib/notify-buyer");
+        await notifyBuyerDeliveryFailed(orderCode, database);
+      } catch { /* kabar pembeli best-effort */ }
     }
     return false;
   }

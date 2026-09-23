@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useCart } from "@/stores/cart";
-import { formatRupiah } from "@/lib/utils";
+import { deriveNameFromEmail, formatRupiah } from "@/lib/utils";
 import type { Product } from "@/lib/products";
 
 
@@ -301,7 +301,8 @@ function CheckoutInner() {
       return;
     }
     const emailClean = email.trim();
-    const fallbackName = emailClean.split("@")[0]?.trim().slice(0, 80) || "Pembeli Axvara";
+    // Nama layak tampil (bukan prefix email mentah) — lihat deriveNameFromEmail.
+    const fallbackName = deriveNameFromEmail(emailClean);
     setLoading(true);
     const payMethod = "qris" as const;
     // Nama dihapus dari form (revamp 2026-09-23 ala Sekalipay): fallback

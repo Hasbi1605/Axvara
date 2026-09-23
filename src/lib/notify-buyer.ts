@@ -103,3 +103,27 @@ export async function notifyBuyerProofPendingHook(
     database,
   ).catch(() => false);
 }
+
+/**
+ * Pesan saat pengiriman produk GAGAL permanen padahal order sudah lunas.
+ *
+ * Dulu kegagalan terminal hanya membunyikan Telegram ADMIN
+ * (`adminDeliveryFailedNotification`); pembeli yang sudah membayar tidak
+ * pernah diberi tahu dan menunggu tanpa batas — pasangan alami dari
+ * ketiadaan alur refund. Nada pesan sengaja menjanjikan tindak lanjut manual
+ * (admin memang sudah dapat notifikasi + tombol "Serahkan manual").
+ */
+export async function notifyBuyerDeliveryFailed(
+  orderCode: string,
+  database: DatabaseAccess = createDatabaseAccess(),
+): Promise<boolean> {
+  return await sendToBuyer(
+    orderCode,
+    `⚠️ <b>Pengiriman produk bermasalah</b>\nOrder: <code>${orderCode}</code>\n\n`
+      + "Pembayaranmu sudah kami terima, tetapi produk gagal dikirim otomatis. "
+      + "Admin sudah mendapat notifikasi dan akan menyerahkannya manual. "
+      + "Balas pesan ini bila belum ada kabar.",
+    `delivery-failed:${orderCode}`,
+    database,
+  ).catch(() => false);
+}

@@ -95,6 +95,29 @@ export async function POST(request: NextRequest) {
       transaction ? "amount_reused_requires_review" : staleEventForLiveInvoice ? "event_predates_invoice" : "no_active_exact_amount",
       event.id,
     );
+    // Uang MASUK tetapi tidak bisa dipasangkan ke invoice mana pun. Dulu
+    // cabang ini berakhir sunyi total: pembeli menunggu sampai order-nya
+    // kedaluwarsa (lalu menuduh toko menipu), dan admin hanya tahu bila
+    // kebetulan mengintip tabel `dana_webhook_events`. Ping admin agar ada
+    // yang bisa merekonsiliasi secara manual — best-effort, tidak boleh
+    // menggagalkan ack webhook (DANA akan retry bila kita balas non-2xx).
+    try {
+      const chatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
+      if (chatId) {
+        const { sendMessage } = await import("@/lib/telegram/api");
+        const reason = transaction
+          ? "nominal sudah pernah dipakai"
+          : staleEventForLiveInvoice ? "pembayaran mendahului invoice" : "tidak ada invoice aktif dengan nominal itu";
+        await sendMessage({
+          chat_id: chatId,
+          text: `⚠️ <b>Pembayaran masuk tanpa pasangan invoice</b>\n`
+            + `Nominal: <b>Rp ${Number(payment.amount ?? 0).toLocaleString("id-ID")}</b>\n`
+            + `Sebab: ${reason}\n\n`
+            + `Uang sudah diterima DANA tetapi tidak ada order yang cocok. Rekonsiliasi manual di panel admin → Metode &amp; Rekonsiliasi.`,
+          parse_mode: "HTML",
+        });
+      }
+    } catch { /* ping admin best-effort */ }
     return NextResponse.json({ ok: true, status: "unmatched" });
   }
 

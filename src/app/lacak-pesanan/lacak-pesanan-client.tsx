@@ -33,6 +33,8 @@ type TrackedOrder = {
   qrisReissueAllowed: boolean;
   /** true bila detail akun WR sudah siap (dari /api/orders/lookup). */
   credentialsReady: boolean;
+  /** Status pengiriman produk. `failed` = lunas tetapi produk belum sampai. */
+  fulfillmentStatus?: string;
 };
 
 type RecentEntry = { code: string; wa: string };
@@ -90,6 +92,7 @@ function fromApi(value: Record<string, unknown>): TrackedOrder {
     expiresAt: value.expires_at ? String(value.expires_at) : undefined,
     qrisReissueAllowed: value.qris_reissue_allowed === true,
     credentialsReady: value.credentials_ready === true,
+    fulfillmentStatus: value.fulfillment_status ? String(value.fulfillment_status) : undefined,
     qris: value.qris as QrisInvoice | null | undefined,
   };
 }
@@ -262,8 +265,16 @@ export default function LacakPesananClient() {
   const isExpired = Boolean(order && (order.status === "kadaluarsa" || (order.status === "pending" && order.expiresAt && Date.parse(order.expiresAt) <= now)));
   const isPaid = order?.status === "lunas";
   const isCancelled = order?.status === "dibatalkan";
+  // Lunas TAPI pengiriman gagal (2026-09-23). `/api/orders/lookup` sudah
+  // mengembalikan `fulfillment_status`, tetapi halaman ini dulu hanya membaca
+  // status pembayaran — order yang produknya gagal terkirim tetap tampil hijau
+  // "Lunas — pembayaran diterima" selamanya. Pembeli yang menghapus chat atau
+  // ganti HP jadi buta total: satu-satunya kabar ada di chat.
+  const isDeliveryFailed = isPaid && order?.fulfillmentStatus === "failed";
   const payableAmount = Number(order?.qris?.payable_amount || order?.subtotal || 0);
-  const statusMeta = isPaid
+  const statusMeta = isDeliveryFailed
+    ? { title: "Lunas — pengiriman bermasalah", badge: "Perlu bantuan", badgeClass: "border-red-500/25 bg-red-500/15 text-red-300", icon: "/icons/ios11/close-96.png", shell: "bg-red-500/15", filter: "brightness(0) saturate(100%) invert(57%) sepia(55%) saturate(1800%) hue-rotate(322deg)" }
+    : isPaid
     ? { title: "Lunas — pembayaran diterima", badge: "Lunas", badgeClass: "border-[#22C55E]/25 bg-[#22C55E]/15 text-[#4ADE80]", icon: "/icons/ios11/checked-96.png", shell: "bg-emerald-500/15", filter: "brightness(0) saturate(100%) invert(65%) sepia(51%) saturate(717%) hue-rotate(90deg)" }
     : isCancelled
       ? { title: "Pesanan dibatalkan", badge: "Dibatalkan", badgeClass: "border-red-500/25 bg-red-500/15 text-red-300", icon: "/icons/ios11/close-96.png", shell: "bg-red-500/15", filter: "brightness(0) saturate(100%) invert(57%) sepia(55%) saturate(1800%) hue-rotate(322deg)" }
@@ -447,6 +458,14 @@ export default function LacakPesananClient() {
               penuh oleh /api/orders/lookup, jadi panel menerima prefill dan
               mencoba verifikasi sekali otomatis — verifikasi tetap di server
               via /api/orders/[code]/credentials, bukan kepercayaan client. */}
+          {isDeliveryFailed && (
+            <div className="mt-4 rounded-2xl border border-red-500/25 bg-red-500/[0.07] p-4">
+              <p className="text-sm font-semibold text-red-200">Pembayaran sudah kami terima, tetapi produk gagal dikirim otomatis.</p>
+              <p className="mt-1 text-xs leading-5 text-white/60">
+                Tim kami sudah mendapat notifikasi dan akan menyerahkan produkmu secara manual. Bila belum ada kabar, hubungi admin dengan menyebut kode pesanan di atas.
+              </p>
+            </div>
+          )}
           {isPaid && order.credentialsReady && (
             <WrCredentialsPanel code={order.code} prefillWa={wa} />
           )}

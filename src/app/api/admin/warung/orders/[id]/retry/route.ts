@@ -44,6 +44,17 @@ export async function POST(
   }
   // CAS: menangkan klaim hanya bila status + attempt_count masih sama
   // seperti saat dibaca. Kalah race (worker cron/admin lain) → 409.
+  //
+  // Klaim ini SENGAJA tidak menaikkan `attempt_count` dan tidak memakai
+  // debounce waktu (ditinjau 2026-09-23, klaim "spam-klik = amplifikasi"
+  // DITOLAK): penaikan counter milik worker saat mengklaim (order.ts
+  // `attempt_count=?`), dan `handleInsufficientBalance` justru
+  // mengembalikannya agar saldo habis tidak memakan jatah transport —
+  // menaikkan di sini akan menghitung GANDA. Amplifikasi sendiri sudah
+  // tertutup: klik bersamaan disaring CAS ini (lihat
+  // admin-retry-race.regression.test.ts), dan klik berurutan menemukan status
+  // sudah `claimed` sepulang `processWrPendingOrders()` — `claimed` bukan
+  // anggota RETRYABLE, jadi ditolak 409.
   const claimed = await execRun(
     `UPDATE wr_order_links SET status='retry', next_attempt_at=datetime('now'),
        last_error=NULL, lease_owner=NULL, lease_expires_at=NULL,

@@ -1016,6 +1016,32 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   `items LIKE '%"product_id":1%'` yang juga cocok dengan `10`/`11`/`100` karena JSON tersimpan
   tanpa spasi — pembeli produk #10 ditolak gara-gara pending produk #1; kini LIKE berpembatas.
   Dikunci oleh `tests/buyer-silence-and-atomicity.regression.test.ts`.
+- **Audit ronde 3 — nama pembeli, uang tanpa pasangan, dan kegagalan yang terlihat (2026-09-23):**
+  **Prioritas kanal (keputusan owner):** WEB + TELEGRAM wajib sempurna; WhatsApp bukan kanal
+  utama untuk 2-5 bulan ke depan (bot sedang mati, grup dikunci admin-only), jadi temuan
+  khusus-WA sengaja TIDAK dikerjakan. (1) Revamp checkout `3d83dd9` menghapus field nama dan
+  memakai `email.split("@")[0]` mentah sebagai `customer_name` — prefix email BUKAN nama:
+  `budi123@…` tersimpan sebagai "budi123" dan `first.last+promo@…` sebagai
+  "first.last+promo", lalu merembes ke sapaan halaman pesanan, notifikasi Telegram admin,
+  prefill tombol WA follow-up, pencarian admin, dan ekspor CSV. Kini `deriveNameFromEmail`
+  (`src/lib/utils.ts`) membuang plus-addressing + angka, mengubah pemisah jadi spasi, lalu
+  mengapitalkan; UX revamp (form tanpa nama) dipertahankan, dan nama yang diisi pembeli
+  sendiri TIDAK PERNAH disentuh. (2) Cabang `unmatched` webhook DANA dulu berakhir sunyi
+  total — uang MASUK tetapi tidak cocok dengan invoice mana pun, pembeli menunggu sampai
+  order kedaluwarsa dan admin hanya tahu bila mengintip `dana_webhook_events`. Kini admin
+  di-ping Telegram dengan nominal + sebab (`amount_reused_requires_review` /
+  `event_predates_invoice` / `no_active_exact_amount`); ack webhook tetap 2xx agar DANA tidak
+  retry. (3) Kegagalan pengiriman terminal kini mengabari PEMBELI
+  (`notifyBuyerDeliveryFailed`), bukan hanya admin, dan halaman lacak pesanan membedakan
+  lunas-terkirim dari **lunas-tetapi-gagal-kirim** — `/api/orders/lookup` sudah mengembalikan
+  `fulfillment_status`, tetapi halaman itu dulu hanya membaca status pembayaran sehingga
+  order gagal tampil hijau "Lunas" selamanya (pembeli yang menghapus chat jadi buta total).
+  **DITOLAK setelah ditelaah:** klaim "retry WR spam-klik = amplifikasi upstream" — usulannya
+  (`attempt_count+1` di route retry) justru MENGHITUNG GANDA karena penaikan counter milik
+  worker saat mengklaim dan `handleInsufficientBalance` sengaja mengembalikannya; amplifikasi
+  sendiri sudah tertutup CAS (klik bersamaan → 409, dikunci
+  `admin-retry-race.regression.test.ts`) dan status `claimed` yang bukan anggota `RETRYABLE`
+  (klik berurutan → 409). Dikunci oleh `tests/round3-name-and-money-silence.regression.test.ts`.
 - **Hook payment:** setelah lunas di 4 jalur (webhook DANA, retry admin, approve bukti,
   konfirmasi admin) → `createWrOrderLinksForOrder` + `processWrPendingOrders` best-effort;
   cron memproses sisanya. Produk WR dikenali dari `product_variants.wr_variant_id`.
