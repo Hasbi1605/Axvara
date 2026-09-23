@@ -984,6 +984,38 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   tahu field mana pemicunya. Dikunci oleh `tests/admin-ux-dead-end.regression.test.ts`,
   `tests/admin-failed-order-actionable.behavior.test.tsx`, dan
   `tests/warung-rebahan/wa-credential-killswitch.regression.test.ts`.
+- **Pembeli berhenti menunggu dalam sunyi + atomisitas jalur uang (audit ronde 2, 2026-09-23):**
+  ronde 1 menutup kebohongan status di sisi ADMIN; ronde 2 menemukan lubang yang sama di sisi
+  PEMBELI. (1) `handleOrderCancel` (Telegram) dulu memulihkan stok LEBIH DULU, lalu
+  `UPDATE orders` bergerbang `status='pending'`, lalu `UPDATE payment_transactions` **tanpa
+  gerbang apa pun**. Bila webhook DANA melunasi order tepat di sela itu: stok menggelembung,
+  order tetap sah `lunas`, tetapi ledger-nya ditimpa `cancelled` — order lunas tanpa transaksi
+  `paid`, fulfillment yatim. Kini pembatalan **mengklaim lebih dulu** (CAS `status='pending'
+  AND payment_status IN ('unpaid','pending')`); bila kalah balapan, handler berhenti tanpa
+  menyentuh stok maupun ledger, dan UPDATE ledger diberi gerbang
+  `status IN ('pending','unpaid','expired')` agar baris `paid` tidak pernah tertimpa.
+  (2) **Harga basi**: token quote berlaku 1 jam (`createCheckoutQuoteToken`) sementara sync WR
+  menulis ulang harga varian tiap ~5 menit; `sameItems` hanya menyamakan identitas + qty dan
+  `createOrderWithStock` **tidak punya satu pun guard harga**, sehingga order + invoice QRIS
+  bisa terbit dari `quote.subtotal` yang usang (harga naik = toko rugi, turun = pembeli
+  dirugikan). Kini harga DB dibandingkan dengan harga quote → `409 price_changed`, dan
+  checkout memuat ulang quote agar pembeli melihat nominal baru, bukan buntu di pesan error.
+  (3) **Kabar ke pembeli** lewat `src/lib/notify-buyer.ts` (kanal ditentukan dari
+  `orders.sales_channel`; Telegram hanya ke chat pribadi terverifikasi, web/WA lewat outbox
+  durable yang idempoten): serah terima manual dulu menandai item `delivered` tanpa satu pun
+  pesan padahal pesan lunas Telegram sudah berjanji "Produk akan dikirim admin melalui DM
+  Telegram pribadi ini"; penolakan bukti hanya menulis `status='rejected'` sehingga pembeli
+  melihat "Pending" selamanya tanpa alasan; dan persetujuan screenshot QRIS membalas
+  `payment_updated:false` (Hook tetap otoritatif) tanpa memberi tahu pembeli harus menunggu
+  apa. Semua kabar best-effort dan tidak pernah melempar — kegagalan kirim tidak boleh
+  membatalkan serah terima/review yang sudah sah tercatat. (4) **Guard order ganda**: jalur
+  keranjang menegakkan satu pending per chat, tetapi beli-langsung dan katalog hanya
+  mencocokkan `variant_id` — satu chat bisa memegang 2 order pending + 2 QRIS aktif dengan
+  stok tertahan ganda. Kini ketiganya per-chat, dengan varian yang sama tetap diprioritaskan
+  agar kirim-ulang invoice (RR3-05) tidak bergeser. (5) Pencocokan produk pending memakai
+  `items LIKE '%"product_id":1%'` yang juga cocok dengan `10`/`11`/`100` karena JSON tersimpan
+  tanpa spasi — pembeli produk #10 ditolak gara-gara pending produk #1; kini LIKE berpembatas.
+  Dikunci oleh `tests/buyer-silence-and-atomicity.regression.test.ts`.
 - **Hook payment:** setelah lunas di 4 jalur (webhook DANA, retry admin, approve bukti,
   konfirmasi admin) → `createWrOrderLinksForOrder` + `processWrPendingOrders` best-effort;
   cron memproses sisanya. Produk WR dikenali dari `product_variants.wr_variant_id`.

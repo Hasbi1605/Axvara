@@ -318,6 +318,14 @@ function CheckoutInner() {
         }),
       });
       const j = await r.json().catch(() => ({}));
+      // Harga berubah antara quote dan submit: jangan sekadar melempar teks
+      // error mentah. Ambil harga terbaru supaya pembeli melihat nominal baru
+      // dan bisa memutuskan, bukan buntu di pesan "Gagal buat pesanan".
+      if (r.status === 409 && j.error === "price_changed") {
+        setQuoteAccepted(false);
+        await fetchQuote(quoteRequestItems);
+        throw new Error(j.message || "Harga produk berubah. Periksa harga terbaru lalu lanjutkan.");
+      }
       if (!r.ok) throw new Error(j.error || `Gagal buat pesanan (${r.status})`);
       const code = j.code as string;
       // Also keep a local copy for UX fallback (pesanan page can fetch from server if local missing)

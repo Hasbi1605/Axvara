@@ -307,10 +307,17 @@ export async function handleBuyConfirm(chatId: number, messageId: number, produc
   }
 
   // Check for existing pending order from this user for same product
+  // LIKE WAJIB berpembatas (2026-09-23): pola `%"product_id":1%` juga cocok
+  // dengan `"product_id":10`, `11`, `100`, … karena JSON tersimpan tanpa spasi
+  // (`{"product_id":10,"variant_id":3,...}`). Efeknya pembeli produk #10
+  // ditolak `alreadyPendingMessage` gara-gara pending produk #1 — jalan buntu
+  // lintas produk yang tidak bisa dijelaskan pembeli maupun admin. Pembatas
+  // `,` menutupnya karena `product_id` selalu diikuti field lain pada item
+  // order; varian `}` disertakan agar item berfield-tunggal tetap terdeteksi.
   const existingOrder = await queryFirst(
     `SELECT code FROM orders WHERE telegram_chat_id=? AND status='pending' AND payment_status IN ('unpaid','pending')
-     AND items LIKE ?`,
-    String(chatId), `%"product_id":${productId}%`,
+     AND (items LIKE ? OR items LIKE ?)`,
+    String(chatId), `%"product_id":${productId},%`, `%"product_id":${productId}}%`,
   );
   if (existingOrder) {
     await sendMessage({

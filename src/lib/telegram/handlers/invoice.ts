@@ -117,9 +117,18 @@ export async function handlePayWithQris(
 
   // Guard double-tap: reuse pending order for same chat+variant, never duplicate.
   // RR3-05: kirim ulang foto invoice yang sama bila belum terkirim.
+  //
+  // Cakupan SENGAJA per-chat, bukan per-chat+varian (2026-09-23). Jalur
+  // keranjang (callback.ts) sudah menegakkan "satu pending per chat", tetapi
+  // jalur beli-langsung dulu hanya mencocokkan varian yang sama — sehingga
+  // pembeli dengan pending varian X masih bisa menerbitkan invoice varian Y:
+  // dua order pending + dua QRIS aktif sekaligus, stok tertahan ganda, dan
+  // pembeli bisa membayar nominal yang salah karena dua invoice beredar.
+  // `variant_id=?` didahulukan agar perilaku kirim-ulang invoice untuk varian
+  // yang SAMA tidak bergeser.
   const existingOrder = await queryFirst(
     `SELECT code FROM orders WHERE telegram_chat_id=? AND status='pending' AND payment_status IN ('unpaid','pending')
-     AND variant_id=?`,
+     ORDER BY CASE WHEN variant_id=? THEN 0 ELSE 1 END, id DESC LIMIT 1`,
     String(chatId), variantId,
   );
   if (existingOrder) {

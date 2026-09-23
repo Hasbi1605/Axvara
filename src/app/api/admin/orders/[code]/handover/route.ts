@@ -129,6 +129,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     "SELECT item_index, status FROM fulfillment_items WHERE order_code=? AND item_index=?",
     code, parsed.data.item_index,
   );
+  // Kabari pembeli (2026-09-23). Sebelumnya serah terima manual menandai item
+  // `delivered` tanpa satu pun pesan, padahal pesan lunas Telegram sudah
+  // berjanji "Produk akan dikirim admin melalui DM Telegram pribadi ini" —
+  // pembeli menunggu selamanya. Hanya saat seluruh item tuntas, agar order
+  // multi-item tidak mengirim kabar "selesai" sebelum waktunya.
+  if (result.complete) {
+    const { notifyBuyerHandover } = await import("@/lib/notify-buyer");
+    await notifyBuyerHandover(code).catch(() => undefined);
+  }
   // Idempoten: klik dua kali mengembalikan hasil yang sama tanpa efek ganda.
   return NextResponse.json({
     ok: true, complete: result.complete, code, item_index: parsed.data.item_index,

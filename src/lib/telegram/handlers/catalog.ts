@@ -212,11 +212,15 @@ export async function handleVariantConfirm(chatId: number, messageId: number, va
   const product = await queryFirst(`SELECT id, name FROM products WHERE id=?`, variant.product_id);
   const productId = product ? Number(product.id) : 0;
 
-  // Guard: existing pending order for this chat+variant — resend it, never duplicate.
+  // Guard: existing pending order for this chat — resend it, never duplicate.
   // RR3-05: kirim ulang foto invoice yang sama bila belum terkirim.
+  // Per-chat, sejajar dengan jalur keranjang & beli-langsung (2026-09-23):
+  // mencocokkan varian saja membuat satu chat bisa memegang dua order pending
+  // + dua QRIS aktif. Varian yang sama tetap diprioritaskan agar kirim-ulang
+  // invoice tidak berubah perilaku.
   const existingOrder = await queryFirst(
     `SELECT code FROM orders WHERE telegram_chat_id=? AND status='pending' AND payment_status IN ('unpaid','pending')
-     AND variant_id=?`,
+     ORDER BY CASE WHEN variant_id=? THEN 0 ELSE 1 END, id DESC LIMIT 1`,
     String(chatId), variantId,
   );
   if (existingOrder) {

@@ -157,6 +157,44 @@ export async function POST(req: NextRequest) {
     // createOrderWithStock yang memutuskan agar checkout tidak mati total.
   }
 
+  // Harga BASI (2026-09-23): token quote berlaku 1 jam, sementara sync WR
+  // menulis ulang harga varian tiap ~5 menit. `sameItems` di atas hanya
+  // menyamakan identitas + qty, dan `createOrderWithStock` tidak punya satu
+  // pun guard harga — jadi order dibuat dari `quote.subtotal` yang bisa sudah
+  // usang, lalu invoice QRIS diterbitkan dari nominal usang itu. Bila harga
+  // naik, toko rugi; bila turun, pembeli yang dirugikan.
+  //
+  // Sengaja MEMBANDINGKAN, bukan diam-diam memakai harga baru: nominal yang
+  // dibayar harus sama dengan yang dilihat pembeli saat menekan bayar.
+  try {
+    const variantIds = [...new Set(quote.items.map((i) => Number(i.variant_id || 0)).filter((v) => v > 0))];
+    if (variantIds.length > 0) {
+      const rows = await queryAll(
+        `SELECT id, price FROM product_variants WHERE id IN (${variantIds.map(() => "?").join(",")})`,
+        ...variantIds,
+      );
+      const priceById = new Map<number, number>();
+      for (const r of rows) priceById.set(Number(r.id), Number(r.price ?? 0));
+      const stale = quote.items.find((qi) => {
+        const vid = Number(qi.variant_id || 0);
+        if (vid <= 0) return false;
+        const live = priceById.get(vid);
+        return live != null && live !== Number(qi.price ?? 0);
+      });
+      if (stale) {
+        return NextResponse.json(
+          {
+            error: "price_changed",
+            message: "Harga produk berubah sejak halaman checkout dibuka. Muat ulang agar kamu membayar harga terbaru.",
+          },
+          { status: 409 },
+        );
+      }
+    }
+  } catch {
+    // Sama dengan guard lain: kegagalan query tidak boleh mematikan checkout.
+  }
+
   // Normalize WA to 62
   let wa = customer_wa.replace(/\s|-/g, "");
   if (wa.startsWith("+62")) wa = wa.slice(1);
