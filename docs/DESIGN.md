@@ -105,19 +105,27 @@
 
 ## 5. Komponen Utama
 
-### 5.0 Checkout Action-Rail ala WR (Batch C 2026-09-19, revisi anti-redundan, live)
-- Desktop 2 kolom: kiri = DATA + EKSPEKTASI (① Data Pembeli, ② Verifikasi
-  Otomatis, blok Made By Order bila antrean). Kanan = `aside` sticky
-  `top-[72px]` "Ringkasan dan pembayaran": ringkasan item + total + Metode
-  Pembayaran (QRIS pre-selected, variabel `paymentBlock` satu definisi) +
-  S&K agreement (`agreeBlock`) + error + CTA + catatan tanpa-upload-bukti.
-- Mini-blok MBO + trust sebaris di rail DIHAPUS (redundan: estimasi sudah di
-  kiri, trust sudah di hero).
-- 2 tombol submit (rail + sticky mobile) berbagi SATU handler + state
-  `ctaDisabled`/`ctaLabel` — tidak ada logika validasi ganda.
+### 5.0 Checkout Revamp ala Sekalipay (2026-09-23, live — ganti Batch C 2026-09-19)
+- Alur 1 halaman: ① Metode Pembayaran di atas → ② Data Pembeli minimal
+  (No WA + Email wajib, tanpa Nama) → S&K → 1 CTA. QRIS auto-select
+  selama maintenance (hemat 1 klik). Copy hint: WA = terima produk/info/
+  bantuan; Email = detail pesanan & produk dikirim ke email aktif.
+- Desktop 2 kolom: kiri = METODE + DATA + S&K mobile + Made By Order bila
+  antrean (sub-hint verifikasi otomatis di bawah metode, bukan step
+  bernomor). Kanan = `aside` DESKTOP ONLY (`hidden lg:block`) sticky
+  `top-[72px]` "Ringkasan dan pembayaran": ringkasan item + total + S&K
+  (`renderAgreeBlock("checkout-agree")`) + error + CTA + catatan QRIS
+  otomatis. Metode TIDAK lagi di rail.
+- S&K SATU fungsi `renderAgreeBlock(id)` dirender 1x per viewport (mobile
+  `checkout-agree-mobile` di kiri, desktop `checkout-agree` di rail) —
+  satu state `agreed`, tanpa duplikat id.
+- 2 tombol submit (rail desktop + sticky mobile) berbagi SATU handler +
+  state `ctaDisabled`/`ctaLabel` — tidak ada logika validasi ganda.
 - Mobile: accordion "Ringkasan Pesanan" collapsed-able di atas (buka default,
   total selalu terlihat di header-nya) + CTA sticky bottom `fixed` (dengan
-  `safe-area-inset-bottom`) + spacer 68px agar konten tak tertutup. Sticky
+  `safe-area-inset-bottom`) + spacer 68px agar konten tak tertutup. Rail
+  disembunyikan total di mobile agar tidak duplikat (anomali: 2x ringkasan
+  + 2x CTA). Sticky
   bottom `lg:hidden`.
 
 ### 5.1 Navbar (Apple Style)
@@ -250,15 +258,15 @@
 - CTA: "Beli Langsung" (cyan solid) + "Tambah ke Keranjang" (glass)
 - Animasi: galeri fade + scale saat ganti thumb
 
-### 5.6 Checkout (1 Halaman, Apple Form)
-- Max-width 640px, centered, glass card rounded-3xl, padding 32px
-- Step: ① Data Pembeli (Nama, WA, Email opsional) → ② Pembayaran → ③ Verifikasi Otomatis
+### 5.6 Checkout (1 Halaman, Apple Form — revamp ala Sekalipay 2026-09-23)
+- Layout: max-width 1100px, grid `lg:grid-cols-[1fr_380px]`; kiri = ① Metode → ② Data minimal → S&K mobile (+ Made By Order bila antrean), kanan = rail desktop-only
+- Step: ① Metode Pembayaran (QRIS auto-select selama maintenance) → ② Data Pembeli (No WA + Email SELALU wajib, tanpa Nama; hint jelas ala Sekalipay) → S&K → 1 CTA
 - Input: glass input `bg-white/[0.06] border-white/10 rounded-xl h-48px focus:border-cyan/50 focus:ring-cyan/20`
 - Payment selector: 3 kartu (QRIS aktif / E-Wallet + Transfer Bank maintenance 2026-09-17) — kartu maintenance: `opacity-50 cursor-not-allowed`, `aria-disabled`, badge gold "Maintenance", tidak bisa diklik; QRIS selected → border cyan + bg cyan/10
-- Jika QRIS: tampil QR image rounded-2xl, shadow, tombol "Download QRIS"
-- Upload bukti: disembunyikan total selama maintenance (tidak dirender, bukan disabled); panel ③ selalu "Verifikasi Otomatis"
-- Tombol submit: cyan solid, full-width, h-52px, rounded-xl, disabled jika form invalid atau metode bukan QRIS
-- Ringkasan pesanan sticky di kanan desktop, di bawah form di mobile
+- Jika QRIS: QR + total bayar muncul di halaman pesanan (sub-hint di bawah metode, bukan step bernomor); polling status otomatis
+- Upload bukti: disembunyikan total selama maintenance (tidak dirender, bukan disabled)
+- Tombol submit: cyan solid, full-width, h-52px, rounded-xl, disabled jika form invalid atau metode bukan QRIS; 2 tombol (rail desktop + sticky mobile) 1 handler
+- Ringkasan 1x per viewport: mobile accordion collapsed di atas (`lg:hidden`), desktop rail sticky (`hidden lg:block`); rail disembunyikan total di mobile agar tidak duplikat ringkasan/CTA
 
 ### 5.7 Halaman Sukses
 - Icon centang besar cyan glow, headline "Pesanan Diterima!", kode `AXV-20260831-0012` mono, status badge Pending warning

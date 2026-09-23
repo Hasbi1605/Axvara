@@ -92,7 +92,7 @@ axvara/
 │   ├── cara-order/               # Panduan order
 │   ├── garansi-replace/          # Ketentuan layanan & garansi third-party (acuan klaim, garansi ikut deskripsi produk)
 │   ├── produk/[slug]/          # PDP: server component SEO (metadata/JSON-LD/h1 D1) + client interaktif
-│   │   ├── checkout/       # Checkout — QRIS otomatis / bukti untuk transfer manual; layout action-rail ala WR 2026-09-19 (kiri data+ekspektasi, kanan aside sticky ringkasan+metode+S&K+CTA; mobile accordion + CTA sticky bottom; 1 handler submit)
+│   │   ├── checkout/       # Checkout revamp ala Sekalipay 2026-09-23 — ① Metode (QRIS auto-select) → ② Data minimal WA+Email wajib tanpa Nama (fallback prefix email) → S&K → 1 CTA; rail kanan DESKTOP ONLY (hidden lg:block, ringkasan+S&K+CTA), mobile accordion ringkasan + S&K kiri + sticky CTA; 1 handler submit
 │   ├── pesanan/[code]/         # Status + QRIS dinamis + polling lunas (dari checkout)
 │   ├── lacak-pesanan/          # Lacak mandiri kode + WA via POST /api/orders/lookup + timeline + auto-refresh
 │   ├── admin/
@@ -355,8 +355,8 @@ CREATE TABLE store_settings (
    ↓ POST /api/checkout/quote { slug/id, qty, expected_price }
 [Server] Validasi produk aktif, stok, harga, dan payment_methods D1
    ↓ response quote HS256 60 menit + snapshot authoritative
-[Client] Konfirmasi perubahan harga → pilih QRIS (E-Wallet/Bank maintenance 2026-09-17: tampil disabled + badge di WEB, dihilangkan di WA/TELE)
-   ↓ POST /api/orders { customer, item IDs/qty, payment_method, proof_url, quote_token }
+[Client] Konfirmasi perubahan harga → QRIS auto-select (E-Wallet/Bank maintenance 2026-09-17: tampil disabled + badge di WEB, dihilangkan di WA/TELE)
+   ↓ POST /api/orders { customer (nama opsional fallback prefix email, email SELALU wajib), item IDs/qty, payment_method, proof_url, quote_token }
 [Server] Verifikasi signature+expiry+isi item → tolak non-QRIS 503 → D1 batch guard+decrement+INSERT order
    ├─ QRIS: alokasikan kode unik 1–299 → EMVCo dynamic payload + ledger 15 menit
    │    ↓ /pesanan/[code] menampilkan PNG dan polling 5 detik

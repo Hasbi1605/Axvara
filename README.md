@@ -37,7 +37,7 @@ axvara/
 │   ├── app/
 │   │   ├── page.tsx        # Homepage — Hero + Orbit + Katalog pagination 8/page
 │   │   ├── produk/[slug]/  # Detail produk
-│   │   ├── checkout/       # Checkout — QRIS saja (manual maintenance 2026-09-17: disabled + badge, upload disembunyikan)
+│   │   ├── checkout/       # Checkout revamp ala Sekalipay 2026-09-23: ① Metode (QRIS auto-select) → ② Data minimal WA+Email wajib tanpa Nama → S&K → 1 CTA; rail desktop-only, mobile accordion + sticky CTA (manual maintenance 2026-09-17: disabled + badge, upload disembunyikan)
 │   │   ├── pesanan/[code]/ # Status + QRIS dinamis + polling lunas
 │   │   ├── lacak-pesanan/  # Lacak mandiri kode + WA (tanpa login) + timeline status
 │   │   ├── admin/          # Workspace operasional, katalog, pembayaran, konten, otomasi, settings

@@ -10,13 +10,17 @@ export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
 const schema = z.object({
-  customer_name: z.string().trim().min(3).max(80),
+  // Revamp 2026-09-23 ala Sekalipay: nama dihapus dari form web. Opsional di
+  // API (fallback prefix email di handler); kanal TG/WA tetap kirim nama.
+  customer_name: z.string().trim().max(80).optional().or(z.literal("")),
   customer_wa: z
     .string()
     .trim()
     .transform((s) => s.replace(/\s|-/g, ""))
     .refine((s) => /^(\+62|62|0)8\d{8,13}$/.test(s), "No WA harus 08... atau +62... (10-15 digit)"),
-  customer_email: z.string().trim().email().max(120).optional().or(z.literal("")),
+  // Revamp 2026-09-23: email SELALU wajib (semua produk digital — order
+  // tanpa email = macet). Sebelumnya opsional kecuali varian butuh-email.
+  customer_email: z.string().trim().email("Tulis email aktif yang benar sebelum bayar.").max(120),
   items: z.array(z.object({
     product_id: z.coerce.number().int().min(1),
     variant_id: z.coerce.number().int().min(1).optional(),
@@ -76,9 +80,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Isi keranjang berubah setelah harga dikunci. Muat ulang checkout." }, { status: 409 });
   }
 
-  // Email wajib (migrasi 0033): hitung ulang dari DB — JANGAN percaya flag
-  // client. Invite/Link WR atau produk require_email=1 tanpa email valid =
-  // 422 sebelum order dibuat (order lunas tanpa email = macet di WR).
+  // Guard email lapis kedua (migrasi 0033 + revamp 2026-09-23): zod di atas
+  // SUDAH mewajibkan email valid untuk semua order web, jadi blok ini kini
+  // defense-in-depth — hitung ulang dari DB, JANGAN percaya flag client.
+  // Invite/Link WR atau produk require_email=1 tanpa email valid = 422
+  // sebelum order dibuat (order lunas tanpa email = macet di WR).
   try {
     const { needsEmailForVariant } = await import("@/lib/warung-rebahan/delivery-class");
     const variantIds = [...new Set(quote.items.map((i) => Number(i.variant_id || 0)).filter((v) => v > 0))];
@@ -177,13 +183,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Metode pembayaran berubah atau sudah tidak aktif. Muat ulang checkout." }, { status: 409 });
   }
 
+  // Revamp 2026-09-23: customer_name opsional dari web (form tanpa nama).
+  // Fallback prefix email agar kolom DB NOT NULL + notif admin bernama.
+  const fallbackName = (customer_name?.trim() || customer_email.trim().split("@")[0]?.trim() || "").slice(0, 80) || "Pembeli Axvara";
   try {
     await createOrderWithStock({
       code,
       quoteId: quote.quote_id,
-      customerName: customer_name,
+      customerName: fallbackName,
       customerWa: wa,
-      customerEmail: customer_email || null,
+      customerEmail: customer_email,
       items: quote.items,
       subtotal: quote.subtotal,
       paymentMethod: pm,
@@ -222,7 +231,7 @@ export async function POST(req: NextRequest) {
   // Keep the request alive until Telegram accepts the notification attempt.
   // Failure stays isolated inside notifyAdminTelegram and never rolls back the order.
   const itemsForNotif = quote.items as { name: string; price: number; qty: number }[];
-  await notifyAdminTelegram({ code, customerName: customer_name, customerWa: wa, items: itemsForNotif, subtotal: qrisInvoice?.payableAmount ?? quote.subtotal, paymentMethod: pm });
+  await notifyAdminTelegram({ code, customerName: fallbackName, customerWa: wa, items: itemsForNotif, subtotal: qrisInvoice?.payableAmount ?? quote.subtotal, paymentMethod: pm });
 
   return NextResponse.json({
     code,

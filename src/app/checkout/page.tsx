@@ -109,7 +109,6 @@ function CheckoutInner() {
   // menolak non-QRIS dengan 503 agar tidak bisa di-bypass client.
   const MANUAL_PAYMENTS_MAINTENANCE = true;
   const [method, setMethod] = useState<Method | null>(null);
-  const [name, setName] = useState("");
   const [wa, setWa] = useState("");
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
@@ -128,10 +127,9 @@ function CheckoutInner() {
   const [showIssueDialog, setShowIssueDialog] = useState(false);
   const [quoteToken, setQuoteToken] = useState<string | null>(null);
   const [quoteAccepted, setQuoteAccepted] = useState(false);
-  // Email wajib? (migrasi 0033): true bila keranjang berisi varian WR
-  // Invite/Link atau produk require_email=1. Dihitung server di quote agar
-  // tidak bisa diakali client; form + API menegakkan sebelum bayar.
-  const [emailRequired, setEmailRequired] = useState(false);
+  // Email SELALU wajib (revamp 2026-09-23 ala Sekalipay): semua produk
+  // Axvara digital — order tanpa email = macet. Flag server emailRequired
+  // (migrasi 0033) tetap dibaca quote tapi tidak lagi mengubah validasi.
   // Ringkasan accordion mobile (Batch C): state HARUS di sini bersama hooks
   // lain — di bawah ada early return (direct loading/error, keranjang
   // kosong) dan hook setelah return = crash "Rendered more hooks".
@@ -170,7 +168,6 @@ function CheckoutInner() {
       setQuotedSubtotal(j.subtotal ?? 0);
       setQuotedPaymentMethods(j.paymentMethods ?? []);
       setQuoteToken(j.quoteToken ?? null);
-      setEmailRequired(j.emailRequired === true);
       setPriceChanges(changes);
       if (changes.length > 0) {
         setShowIssueDialog(true);
@@ -226,6 +223,16 @@ function CheckoutInner() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quoteKey, directLoading, fetchQuote]);
 
+  // Auto-select QRIS (revamp 2026-09-23): selama maintenance hanya ada 1
+  // opsi aktif — hemat 1 klik + hilangkan error pilih-metode. Hanya jalan
+  // saat method null agar tidak menimpa pilihan user bila opsi hidup lagi.
+  // Hook ini HARUS di sini (sebelum early return di bawah) — aturan hooks.
+  useEffect(() => {
+    if (method === null && quotedPaymentMethods.some((pm) => pm.id === "qris")) {
+      setMethod("qris");
+    }
+  }, [quotedPaymentMethods, method]);
+
   // Derived: payment method groups from quote
   // IDs from DB: "qris", "ewallet", "seabank", "bca", etc. — bank = anything not qris/ewallet
   const pmQris = quotedPaymentMethods.find((pm) => pm.id === "qris");
@@ -264,15 +271,12 @@ function CheckoutInner() {
     setError(null);
     setFieldErrors({});
     const fe: Record<string,string> = {};
-    if (!name.trim()) fe.name = "Nama wajib diisi (min 3 karakter).";
-    else if (name.trim().length < 3) fe.name = "Nama minimal 3 karakter.";
     if (!wa.trim()) fe.wa = "No WA wajib diisi.";
     else if (!/^(\+62|62|0)8\d{8,13}$/.test(wa.trim().replace(/\s|-/g,""))) fe.wa = "No WA harus format 08… atau +62… (10–15 digit).";
-    // Email wajib bila keranjang butuh (Invite/Link WR atau produk
-    // require_email): tanpa email valid, API menolak 422 dan WR 422 —
-    // order lunas tanpa email = macet. Minta SEBELUM bayar.
-    if (emailRequired && !email.trim()) fe.email = "Produk ini dikirim via email invite — tulis email aktif sebelum bayar.";
-    else if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) fe.email = "Format email tidak valid.";
+    // Email SELALU wajib (revamp 2026-09-23 ala Sekalipay): semua produk
+    // Axvara digital — order lunas tanpa email = macet. Minta SEBELUM bayar.
+    if (!email.trim()) fe.email = "Tulis email aktif — detail pesanan & produk dikirim ke email ini.";
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) fe.email = "Format email tidak valid.";
     if (Object.keys(fe).length) { setFieldErrors(fe); setError("Periksa field yang ditandai."); return; }
     if (!method) {
       setError("Pilih metode pembayaran terlebih dahulu");
@@ -296,8 +300,12 @@ function CheckoutInner() {
       setError("Centang persetujuan ketentuan third-party & garansi terlebih dahulu.");
       return;
     }
+    const emailClean = email.trim();
+    const fallbackName = emailClean.split("@")[0]?.trim().slice(0, 80) || "Pembeli Axvara";
     setLoading(true);
     const payMethod = "qris" as const;
+    // Nama dihapus dari form (revamp 2026-09-23 ala Sekalipay): fallback
+    // dari prefix email agar kolom DB NOT NULL + notif admin tetap bernama.
     const payloadItems = quotedItems.map((item) => ({
       product_id: item.product_id,
       variant_id: item.variant_id,
@@ -308,9 +316,9 @@ function CheckoutInner() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          customer_name: name.trim(),
+          customer_name: fallbackName,
           customer_wa: wa.trim(),
-          customer_email: email.trim() || undefined,
+          customer_email: email.trim(),
           items: payloadItems,
           payment_method: payMethod,
           proof_url: null,
@@ -322,7 +330,7 @@ function CheckoutInner() {
       const code = j.code as string;
       // Also keep a local copy for UX fallback (pesanan page can fetch from server if local missing)
       try {
-        const localOrder = { code, name, wa, email, method: payMethod, items: displayItems, subtotal: j.subtotal ?? displaySubtotal, fileName: null, status: "pending", createdAt: new Date().toISOString() };
+        const localOrder = { code, name: fallbackName, wa, email, method: payMethod, items: displayItems, subtotal: j.subtotal ?? displaySubtotal, fileName: null, status: "pending", createdAt: new Date().toISOString() };
         const existing = JSON.parse(localStorage.getItem("axvara-orders") || "[]");
         localStorage.setItem("axvara-orders", JSON.stringify([...existing, localOrder]));
       } catch {}
@@ -341,13 +349,13 @@ function CheckoutInner() {
   const ctaDisabled = loading || quoteLoading || method !== "qris" || !quoteToken || !quoteAccepted || quoteIssues.length > 0 || !agreed;
   const ctaLabel = loading ? "Memproses…" : `Bayar ${formatRupiah(displaySubtotal)} — Buat Pesanan`;
 
-  // --- Blok aksi (metode + S&K): SATU definisi, dipakai di rail kanan
-  // (desktop + mobile setelah ringkasan). Kiri TIDAK lagi memuatnya (revisi
-  // Batch C 2026-09-19 ala WR: kiri = data, kanan = aksi). Didefinisikan
-  // sebagai variabel agar state/validasi tetap satu sumber.
+  // --- Blok metode: SATU definisi, dirender di kolom kiri (revamp
+  // 2026-09-23 ala Sekalipay: Metode ① → Data ②). Rail kanan desktop
+  // TIDAK lagi memuatnya. Didefinisikan sebagai variabel agar
+  // state/validasi tetap satu sumber.
   const paymentBlock = (
     <div>
-      <h2 className="text-sm font-semibold text-white">Metode Pembayaran</h2>
+      <h2 className="text-sm font-semibold text-white">① Metode Pembayaran</h2>
       {quoteLoading ? (
         <div className="mt-3 flex items-center gap-2 text-sm text-white/50">
           <span className="w-4 h-4 rounded-full border-2 border-white/20 border-t-[#00E5FF] animate-spin" />
@@ -418,10 +426,13 @@ function CheckoutInner() {
     </div>
   );
 
-  const agreeBlock = (
+  // Checkbox S&K: SATU definisi fungsi agar bisa dirender 1x per viewport
+  // (mobile di kolom kiri, desktop di rail) tanpa duplikat id + tetap satu
+  // state `agreed`.
+  const renderAgreeBlock = (inputId: string) => (
     <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-left">
       <input
-        id="checkout-agree"
+        id={inputId}
         type="checkbox"
         checked={agreed}
         onChange={(e) => setAgreed(e.target.checked)}
@@ -438,7 +449,7 @@ function CheckoutInner() {
   return (
     <div className="mx-auto max-w-[1100px] px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
       <h1 className="font-display font-bold text-2xl text-white tracking-[-0.02em]">Checkout</h1>
-      <p className="text-sm text-white/50">Isi data, pilih pembayaran, lalu selesaikan pesanan.</p>
+      <p className="text-sm text-white/50">Pilih pembayaran, isi data, lalu selesaikan pesanan.</p>
 
       {/* Ringkasan accordion — MOBILE ONLY (lg:hidden). Di desktop ringkasan
           hidup di rail kanan yang sticky; di mobile rail jatuh ke bawah dan
@@ -489,36 +500,34 @@ function CheckoutInner() {
       </div>
 
       <div className="mt-6 grid lg:grid-cols-[1fr_380px] gap-6 items-start">
-        {/* Kiri — DATA + EKSPEKTASI (pola WR). Metode/S&K/CTA pindah ke rail
-            kanan; kiri tidak lagi memuatnya (revisi Batch C 2026-09-19). */}
+        {/* Kiri — METODE + DATA + S&K (revamp 2026-09-23 ala Sekalipay:
+            ① Metode di atas → ② Data minimal (WA + Email) → S&K mobile.
+            Rail kanan desktop hanya ringkasan + S&K + CTA.) */}
         <div className="ax-glass-card rounded-[24px] p-5 sm:p-6 space-y-6">
           <div>
-            <h2 className="text-sm font-semibold text-white">① Data Pembeli</h2>
+            {paymentBlock}
+            {/* Verifikasi otomatis: sub-hint di bawah metode, bukan step
+                bernomor yang memotong alur (revamp 2026-09-23). Panel upload
+                manual tetap disembunyikan total di WEB selama maintenance. */}
+            <p className="mt-2 text-[11px] leading-4 text-emerald-300/70">QRIS dan total bayar muncul di halaman pesanan. Status diperbarui otomatis setelah pembayaran diterima.</p>
+          </div>
+
+          <div>
+            <h2 className="text-sm font-semibold text-white">② Data Pembeli</h2>
             <div className="mt-3 grid gap-3">
-              <div>
-                <label htmlFor="checkout-name" className="block text-xs font-medium text-white/60 mb-1">Nama lengkap *</label>
-                <input id="checkout-name" value={name} onChange={(e) => { setName(e.target.value); setFieldErrors(f=> ({...f, name: ""})); }} placeholder="Nama lengkap" aria-invalid={!!fieldErrors.name} className={`w-full h-11 px-4 rounded-xl bg-white/[0.06] border text-sm text-white placeholder:text-white/30 focus:outline-none ${fieldErrors.name ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`} />
-                {fieldErrors.name && <p className="mt-1.5 text-xs text-red-300">{fieldErrors.name}</p>}
-              </div>
               <div>
                 <label htmlFor="checkout-wa" className="block text-xs font-medium text-white/60 mb-1">No WA aktif *</label>
                 <input id="checkout-wa" value={wa} onChange={(e) => { setWa(e.target.value); setFieldErrors(f=> ({...f, wa: ""})); }} placeholder="08..." aria-invalid={!!fieldErrors.wa} aria-describedby="checkout-wa-hint" className={`w-full h-11 px-4 rounded-xl bg-white/[0.06] border text-sm text-white placeholder:text-white/30 focus:outline-none ${fieldErrors.wa ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`} />
-                <p id="checkout-wa-hint" className="mt-1.5 text-[11px] leading-4 text-white/40">Untuk pengiriman detail produk, lacak pesanan, dan klaim garansi / reffund</p>
+                <p id="checkout-wa-hint" className="mt-1.5 text-[11px] leading-4 text-white/40">Nomor aktif untuk terima produk, info pesanan, dan bantuan via WhatsApp bila ada kendala.</p>
                 {fieldErrors.wa && <p className="mt-1.5 text-xs text-red-300">{fieldErrors.wa}</p>}
               </div>
               <div>
-                <label htmlFor="checkout-email" className="block text-xs font-medium text-white/60 mb-1">Email {emailRequired ? "(wajib — produk ini dikirim via email)" : "(opsional)"}</label>
-                <input id="checkout-email" value={email} onChange={(e) => { setEmail(e.target.value); setFieldErrors(f=> ({...f, email: ""})); }} placeholder="email@contoh.com" aria-invalid={!!fieldErrors.email} className={`w-full h-11 px-4 rounded-xl bg-white/[0.06] border text-sm text-white placeholder:text-white/30 focus:outline-none ${fieldErrors.email ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`} />
+                <label htmlFor="checkout-email" className="block text-xs font-medium text-white/60 mb-1">Email *</label>
+                <input id="checkout-email" value={email} onChange={(e) => { setEmail(e.target.value); setFieldErrors(f=> ({...f, email: ""})); }} placeholder="email@contoh.com" aria-invalid={!!fieldErrors.email} aria-describedby="checkout-email-hint" className={`w-full h-11 px-4 rounded-xl bg-white/[0.06] border text-sm text-white placeholder:text-white/30 focus:outline-none ${fieldErrors.email ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`} />
+                <p id="checkout-email-hint" className="mt-1.5 text-[11px] leading-4 text-white/40">Detail pesanan & produk dikirim ke email ini. Gunakan email aktif yang bisa menerima pesan.</p>
                 {fieldErrors.email && <p className="mt-1.5 text-xs text-red-300">{fieldErrors.email}</p>}
               </div>
             </div>
-          </div>
-
-          {/* Verifikasi otomatis selalu tampil selama maintenance (QRIS saja);
-              panel upload manual disembunyikan total di WEB. */}
-          <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.06] p-4">
-            <h2 className="text-sm font-semibold text-emerald-300">② Verifikasi Otomatis</h2>
-            <p className="mt-1 text-xs leading-5 text-white/50">QRIS dan total bayar akan muncul di halaman pesanan. Status diperbarui otomatis setelah pembayaran diterima.</p>
           </div>
 
           {/* Ekspektasi waktu SEBELUM bayar. Wajib di sini, bukan hanya di
@@ -541,6 +550,12 @@ function CheckoutInner() {
             </div>
           )}
 
+          {/* S&K mobile — rail S&K desktop-only, jadi mobile butuh salinannya
+              di sini. Satu state `agreed`, id berbeda agar tidak duplikat. */}
+          <div className="lg:hidden">
+            {renderAgreeBlock("checkout-agree-mobile")}
+          </div>
+
           {error && <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2">{error}</p>}
 
           {/* Sticky bottom CTA — MOBILE ONLY. Di mobile rail kanan jatuh ke
@@ -557,12 +572,14 @@ function CheckoutInner() {
           <div className="lg:hidden h-[68px]" aria-hidden />
         </div>
 
-        {/* Action rail kanan — RINGKASAN + METODE + S&K + CTA (pola WR).
-            Sticky agar total + tombol bayar selalu terlihat. Mini-blok MBO dan
-            trust sebaris Batch C awal DIHAPUS 2026-09-19 (redundan: estimasi
-            sudah di kiri, trust sudah di hero) — rail hanya: ringkasan,
-            metode, S&K, error, CTA. */}
-        <aside className="ax-glass-card rounded-[24px] p-5 h-fit lg:sticky lg:top-[72px] space-y-5" aria-label="Ringkasan dan pembayaran">
+        {/* Action rail kanan — DESKTOP ONLY (hidden lg:block). Revamp
+            2026-09-23 ala Sekalipay: metode pindah ke kolom kiri; rail hanya
+            ringkasan + S&K + CTA. Di mobile rail disembunyikan total agar
+            tidak duplikat dengan accordion ringkasan + S&K kiri + sticky CTA
+            (anomali screenshot owner: 2x ringkasan + 2x CTA). Mini-blok MBO
+            dan trust sebaris Batch C awal DIHAPUS 2026-09-19 (redundan:
+            estimasi sudah di kiri, trust sudah di hero). */}
+        <aside className="hidden lg:block ax-glass-card rounded-[24px] p-5 h-fit lg:sticky lg:top-[72px] space-y-5" aria-label="Ringkasan dan pembayaran">
           <div>
             <h3 className="font-semibold text-white text-sm">Ringkasan Pesanan</h3>
             {quoteLoading ? (
@@ -593,13 +610,9 @@ function CheckoutInner() {
             )}
           </div>
 
-          <div className="border-t border-white/10 pt-5">
-            {paymentBlock}
-          </div>
-
           {error && <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2">{error}</p>}
 
-          {agreeBlock}
+          {renderAgreeBlock("checkout-agree")}
 
           <div>
             <button onClick={submit} disabled={ctaDisabled} className="w-full h-[52px] rounded-xl bg-[#00E5FF] text-[#080C1E] font-bold hover:bg-[#00D0E8] disabled:opacity-60 transition inline-flex items-center justify-center gap-2">
