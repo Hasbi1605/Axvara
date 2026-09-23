@@ -1053,10 +1053,25 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   Jalur untuk web adalah **email (Resend, `sendForwardEmail`)** karena web tidak punya kanal
   chat; email selalu terisi untuk order web sejak revamp checkout 2026-09-23 mewajibkannya.
   Dua nada dipisah sesuai apa yang masih bisa dilakukan pembeli: renewable = ajakan menekan
-  "Perpanjang QRIS" di `/pesanan/[code]`, terminal = pesanan sudah mati. Order web lama tanpa
-  email dilewati **tanpa** menulis `expiry_notice_state`, dan kegagalan kirim juga tidak
-  menandai — keduanya agar cron berikutnya mencoba lagi, bukan kehilangan kabar diam-diam.
-  Dikunci oleh `tests/qris-expiry-web-email.integration.test.ts`.
+  "Perpanjang QRIS" di `/pesanan/[code]`, terminal = pesanan sudah mati. Kegagalan kirim tidak
+  menandai, agar cron berikutnya mencoba lagi. Dikunci oleh
+  `tests/qris-expiry-web-email.integration.test.ts`.
+- **Perbaikan antrean notifikasi kedaluwarsa (2026-09-23, live bersama F7 12:58 UTC):**
+  8 menit setelah F7 live, antreannya terlihat tersumbat permanen. Migrasi 0026 hanya menandai
+  riwayat `terminal` saat kolom dibuat, sehingga 8 order web yang expired sesudahnya (15–23 Sep)
+  langsung ikut antre saat kanal web dimasukkan. Dua baris terdepan (urutan terlama-dulu,
+  `LIMIT 2`) tidak punya email. Baris tanpa email dulu dilewati tanpa menandai, jadi keduanya
+  terpilih ulang setiap cron dan tidak ada notifikasi lain, termasuk Telegram, yang bisa lewat.
+  Aturan sekarang, semuanya di `QRIS_EXPIRY_NOTICE_WHERE` sehingga hitungan `qris_notice` cron
+  ikut akurat: (1) antrean **hanya berisi baris yang punya tujuan kirim** (web: email; Telegram:
+  chat id; WA: conversation). Baris tanpa tujuan tidak dipilih, tidak memakan query, dan tidak
+  ditandai, jadi bila email terisi kemudian kabarnya tetap terkirim. Menandainya justru
+  memakan kuota query yang dibutuhkan fase expiry (dikunci `cron-budget.integration.test.ts`);
+  (2) cabang terminal hanya untuk order dengan `orders.expires_at` <24 jam, karena kabar
+  "pesanan kedaluwarsa" yang basi hanyalah spam; (3) urutan: renewable dulu, lalu
+  `pt.expires_at` **terbaru** dulu, supaya baris yang gagal terus (bot diblokir, email
+  ditolak) tenggelam ke belakang dan tidak menahan kabar baru. Dikunci oleh
+  `tests/qris-expiry-queue-blocking.regression.test.ts`.
 - **Hook payment:** setelah lunas di 4 jalur (webhook DANA, retry admin, approve bukti,
   konfirmasi admin) → `createWrOrderLinksForOrder` + `processWrPendingOrders` best-effort;
   cron memproses sisanya. Produk WR dikenali dari `product_variants.wr_variant_id`.

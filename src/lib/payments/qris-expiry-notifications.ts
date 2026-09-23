@@ -14,13 +14,26 @@ import { qrisExpiredMessage as waExpiredMessage } from "@/lib/whatsapp/messages"
 // membuka halaman lagi; tab yang sudah ditutup = tidak tahu sama sekali.
 // Jalurnya email (Resend), yang sejak revamp checkout 2026-09-23 selalu
 // terisi untuk order web karena email kini wajib di form.
+//
+// Antrean hanya berisi baris yang BISA dikirim. Baris tanpa tujuan (order web
+// pra-revamp tanpa email) dulu terpilih ulang tiap cron lalu dilewati; dengan
+// LIMIT 2 dua baris seperti itu menyumbat seluruh antrean, termasuk Telegram.
+// Karena disaring di sini, bila email terisi kemudian kabarnya tetap terkirim.
+// Cabang terminal dibatasi order yang kedaluwarsa <24 jam: migrasi 0026 hanya
+// menandai riwayat saat kolom dibuat, jadi tanpa batas ini seluruh riwayat
+// web sesudahnya ikut antre, dan kabar yang telat berhari-hari hanyalah spam.
 export const QRIS_EXPIRY_NOTICE_WHERE = `pt.provider='dana'
   AND o.sales_channel IN ('telegram','whatsapp','web')
+  AND CASE o.sales_channel
+        WHEN 'web' THEN TRIM(COALESCE(o.customer_email,''))!=''
+        WHEN 'telegram' THEN COALESCE(o.telegram_chat_id,'')!=''
+        ELSE COALESCE(o.channel_conversation_id,'')!='' END
   AND ((o.status='pending' AND pt.status='pending' AND o.sales_channel IN ('telegram','web')
         AND o.qris_reissue_count=0 AND julianday(o.expires_at)>julianday('now')
         AND julianday(pt.expires_at)<=julianday('now')
         AND COALESCE(pt.expiry_notice_state,'')!='renewable')
     OR (o.status='kadaluarsa' AND pt.status='expired'
+        AND julianday(o.expires_at)>julianday('now','-1 day')
         AND COALESCE(pt.expiry_notice_state,'')!='terminal'))`;
 
 /**
@@ -72,10 +85,14 @@ async function sendWebQrisExpiryEmail(
 }
 
 export async function sendQrisExpiryNotifications(limit = 2, database: DatabaseAccess = createDatabaseAccess()) {
+  // Renewable dulu (pembeli masih bisa bayar), lalu yang TERBARU dulu, supaya
+  // baris yang gagal terus (bot diblokir, email ditolak) tenggelam ke belakang
+  // alih-alih selalu terpilih pertama seperti pada urutan terlama-dulu.
   const rows = await database.queryAll(`SELECT o.code, o.status, o.sales_channel, o.telegram_chat_id,
     o.channel_conversation_id, o.customer_email, pt.expires_at FROM payment_transactions pt
     JOIN orders o ON o.code=pt.order_code WHERE ${QRIS_EXPIRY_NOTICE_WHERE}
-    ORDER BY julianday(pt.expires_at), o.code LIMIT ?`, limit);
+    ORDER BY CASE WHEN o.status='pending' THEN 0 ELSE 1 END, julianday(pt.expires_at) DESC, o.code
+    LIMIT ?`, limit);
   let sent = 0;
   let whatsappQueued = 0;
   let emailSent = 0;
@@ -94,8 +111,7 @@ export async function sendQrisExpiryNotifications(limit = 2, database: DatabaseA
         whatsappQueued++;
       } else if (row.sales_channel === "web") {
         // Web tidak punya kanal chat: satu-satunya jalur push adalah email.
-        // Tanpa email terisi, lewati TANPA menandai `expiry_notice_state` agar
-        // tidak ada kabar yang hilang diam-diam (order lama pra-revamp).
+        // Baris tanpa email sudah disaring WHERE; guard ini hanya pengaman.
         const to = String(row.customer_email || "").trim();
         if (!to) continue;
         const result = await sendWebQrisExpiryEmail(to, code, terminal);
