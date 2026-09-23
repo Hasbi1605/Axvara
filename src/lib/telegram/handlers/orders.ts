@@ -181,6 +181,35 @@ export async function handleOrderCancel(chatId: number, messageId: number, order
     return;
   }
 
+  // KLAIM PEMBATALAN DULU, baru pulihkan stok (2026-09-23).
+  //
+  // Urutan lama berbahaya: stok dipulihkan lebih dulu, lalu `UPDATE orders`
+  // bergerbang `status='pending'`, lalu `UPDATE payment_transactions` TANPA
+  // gerbang sama sekali. Bila webhook DANA melunasi order tepat di sela itu,
+  // hasilnya rusak permanen: stok terlanjur digelembungkan, order sah tetap
+  // `lunas`, tetapi ledger-nya ditimpa `cancelled` — order lunas tanpa
+  // transaksi `paid`, dan fulfillment jadi yatim.
+  //
+  // Dengan mengklaim lebih dulu (CAS: hanya menang bila masih pending DAN
+  // belum dibayar), seluruh efek samping di bawah hanya berjalan untuk
+  // pembatalan yang benar-benar memenangkan balapan.
+  const claim = await execRun(
+    `UPDATE orders SET status='dibatalkan', payment_status='failed', fulfillment_status='not_required',
+     updated_at=datetime('now')
+     WHERE code=? AND status='pending' AND payment_status IN ('unpaid','pending')`,
+    orderCode,
+  );
+  if (Number(claim.changes ?? 0) === 0) {
+    // Kalah balapan: order sudah lunas/kedaluwarsa di antara SELECT dan UPDATE.
+    // JANGAN pulihkan stok dan JANGAN sentuh ledger.
+    await sendMessage({
+      chat_id: chatId,
+      text: "❌ Pesanan tidak dapat dibatalkan — statusnya sudah berubah. Tekan 🔄 Cek Status untuk melihat kondisi terbaru.",
+      parse_mode: "HTML",
+    });
+    return;
+  }
+
   // Restore stock — use product_variants (synced with web/WA)
   try {
     const items = JSON.parse(String(order.items)) as { product_id: number; variant_id?: number; qty: number }[];
@@ -203,16 +232,11 @@ export async function handleOrderCancel(chatId: number, messageId: number, order
   // Release inventory
   await releaseInventoryForOrder(orderCode);
 
-  // Update order
+  // Ledger: HANYA transaksi yang masih menggantung. Tanpa gerbang status,
+  // baris `paid` milik pembayaran sah ikut ditimpa `cancelled`.
   await execRun(
-    `UPDATE orders SET status='dibatalkan', payment_status='failed', fulfillment_status='not_required',
-     updated_at=datetime('now') WHERE code=? AND status='pending'`,
-    orderCode,
-  );
-
-  // Update payment transaction
-  await execRun(
-    `UPDATE payment_transactions SET status='cancelled', updated_at=datetime('now') WHERE order_code=?`,
+    `UPDATE payment_transactions SET status='cancelled', updated_at=datetime('now')
+     WHERE order_code=? AND status IN ('pending','unpaid','expired')`,
     orderCode,
   );
 

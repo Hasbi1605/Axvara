@@ -81,6 +81,12 @@ export async function POST(
       try {
         await ensureFulfillmentForPaidOrder(orderCode);
       } catch { /* Paid-state reconciliation will retry if applicable. */ }
+      // Bukti QRIS = pendukung; QRIS Hook tetap otoritatif sehingga order
+      // SENGAJA tetap pending. Tanpa kabar ini pembeli mengira sudah beres
+      // dan admin pun sempat melihat toast "lunas" yang keliru (diperbaiki
+      // f48c41f) — sisi pembelinya baru ditutup di sini.
+      const { notifyBuyerProofPendingHook } = await import("@/lib/notify-buyer");
+      await notifyBuyerProofPendingHook(orderCode).catch(() => undefined);
       return NextResponse.json({ ok: true, action: "approved", order_code: orderCode, payment_updated: false });
     }
 
@@ -223,6 +229,7 @@ export async function POST(
     if (!res.changes) {
       return NextResponse.json({ error: "concurrent_modification" }, { status: 409 });
     }
+    await notifyProofRejected(orderCode, reason);
     return NextResponse.json({ ok: true, action: "rejected", order_code: orderCode });
   }
 
@@ -233,5 +240,21 @@ export async function POST(
     reason || "Bukti ditolak oleh admin",
     proofId,
   );
+  await notifyProofRejected(orderCode, reason);
   return NextResponse.json({ ok: true, action: "rejected", order_code: orderCode });
+}
+
+/**
+ * Kabari pembeli bahwa buktinya ditolak (2026-09-23).
+ *
+ * Dulu cabang reject HANYA menulis `status='rejected'` — tanpa WA/Telegram,
+ * tanpa outbox, dan tanpa satu pun field yang dirender ke pembeli. Bukti yang
+ * ditolak jadi tak bisa dibedakan dari "belum ada bukti": pembeli melihat
+ * "Pending" selamanya, tidak tahu alasannya, dan tidak tahu harus bayar ulang.
+ */
+async function notifyProofRejected(orderCode: string, reason?: string): Promise<void> {
+  try {
+    const { notifyBuyerProofRejected } = await import("@/lib/notify-buyer");
+    await notifyBuyerProofRejected(orderCode, reason || "Bukti ditolak oleh admin");
+  } catch { /* kabar best-effort: penolakan sudah sah tercatat */ }
 }
