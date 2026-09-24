@@ -1,10 +1,12 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Spinner } from "@/components/ui/Loading";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { MoneyInput } from "@/components/ui/MoneyInput";
 import type { Cat, FormVariant, ProductForm } from "./product-types";
 import { ProductVariantRows } from "./sections/ProductVariantRows";
+import { ProductCopyTab } from "./sections/ProductCopyTab";
+import { useVariantCopyEntries } from "./sections/VariantCopyEditor";
 
 // Modal editor produk dipisah karena ini form terpanjang di admin: identitas produk,
 // toggle multi-varian dengan tabel varian penuh (harga/stok/garansi), dan galeri foto.
@@ -51,12 +53,20 @@ export function ProductEditorModal({
   onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onSave: () => void;
 }) {
-  // Modal ini memuat 3 pekerjaan berbeda (identitas, varian, media). Untuk
+  // Modal ini memuat 4 pekerjaan berbeda (identitas, varian, teks, media). Untuk
   // produk 5 varian isinya ~3100px / 46 kontrol, sehingga tombol Simpan ada
   // ~2600px di bawah tempat admin bekerja. Tab memotong scroll per pekerjaan;
   // footer sticky membuat Simpan selalu terjangkau.
-  const [tab, setTab] = useState<"detail" | "varian" | "media">("detail");
-  const tabs: [typeof tab, string][] = [["detail", "Produk"], ["varian", "Varian"], ["media", "Foto"]];
+  const [tab, setTab] = useState<"detail" | "varian" | "konten" | "media">("detail");
+  // Badan modal di-scroll bersama semua tab; ganti tab mulai dari atas.
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const tabs: [typeof tab, string][] = [["detail", "Produk"], ["varian", "Varian"], ["konten", "Deskripsi & S&K"], ["media", "Foto"]];
+  // Dimuat saat modal dibuka (bukan saat tab dibuka) agar penanda "perlu
+  // ditinjau" di tab langsung akurat; sebelum termuat pakai angka dari daftar.
+  const variantCopy = useVariantCopyEntries(editing ? editingId : undefined);
+  const copyReviewCount = variantCopy.entries.size > 0
+    ? [...variantCopy.entries.values()].filter((entry) => entry.isActive && entry.needsReview).length
+    : (form.copyReview ?? 0);
   return (
     <div className="fixed inset-0 z-[80] isolate flex items-end justify-center overflow-hidden bg-black/60 p-0 backdrop-blur-sm sm:items-start sm:overflow-y-auto sm:p-6 sm:pt-10" onMouseDown={(event)=>{if(event.target===event.currentTarget&&!saving){onRequestClose();}}}>
           <section role="dialog" aria-modal="true" aria-labelledby="product-editor-title" className="relative z-10 isolate flex max-h-[92dvh] w-full max-w-[720px] flex-col overflow-hidden rounded-t-3xl border border-white/10 bg-[#0B1025] shadow-[0_24px_64px_rgba(0,0,0,0.6)] sm:rounded-3xl">
@@ -71,29 +81,30 @@ export function ProductEditorModal({
             {form.wrManaged && (
               <p className="mt-4 flex items-start gap-2 rounded-xl border border-[#FFB800]/25 bg-[#FFB800]/10 px-3 py-2 text-xs leading-5 text-[#FFD980]">
                 <span className="mt-[1px] shrink-0 rounded-full bg-[#FFB800]/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#FFD980]">WR</span>
-                <span>Dikelola otomatis Warung Rebahan. Nama, slug, deskripsi, harga, stok, label varian, durasi, dan garansi ikut katalog WR dan akan ditimpa tiap sync. Yang bisa kamu atur di sini: foto, badge, <strong>harga coret (diskon)</strong>, kategori, urutan, aktif/nonaktif, deskripsi khusus di bawah, serta S&amp;K + cara aktivasi per varian (tab Varian). Markup diatur di tab Warung Rebahan.</span>
+                <span>Dikelola otomatis Warung Rebahan. Nama, slug, deskripsi, harga, stok, label varian, durasi, dan garansi ikut katalog WR dan akan ditimpa tiap sync. Yang bisa kamu atur di sini: foto, badge, <strong>harga coret (diskon)</strong>, kategori, urutan, aktif/nonaktif, serta deskripsi khusus dan S&amp;K + cara aktivasi per varian di tab Deskripsi &amp; S&amp;K. Markup diatur di tab Warung Rebahan.</span>
               </p>
             )}
 
-            <div className="mt-4 inline-flex rounded-xl border border-white/10 bg-white/[0.04] p-1" role="tablist" aria-label="Bagian editor produk">
+            <div className="mt-4 inline-flex max-w-full overflow-x-auto rounded-xl border border-white/10 bg-white/[0.04] p-1" role="tablist" aria-label="Bagian editor produk">
               {tabs.map(([id, label]) => (
-                <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={`h-9 rounded-lg px-4 text-xs font-semibold transition ${tab === id ? "bg-[#00E5FF] text-[#07101f]" : "text-white/55 hover:text-white"}`}>
+                <button key={id} id={`product-editor-tab-${id}`} type="button" role="tab" aria-selected={tab === id} aria-controls={`product-editor-panel-${id}`} onClick={() => { setTab(id); if (bodyRef.current) bodyRef.current.scrollTop = 0; }} className={`inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-xs font-semibold transition sm:px-4 ${tab === id ? "bg-[#00E5FF] text-[#07101f]" : "text-white/55 hover:text-white"}`}>
                   {label}{id === "varian" && hasMultiVariants && formVariants.length > 0 ? ` (${formVariants.length})` : ""}
+                  {id === "konten" && copyReviewCount > 0 && (
+                    <span className="rounded-full bg-[#FFB800] px-1.5 py-px text-[10px] font-bold text-[#07101f]">
+                      {copyReviewCount}<span className="sr-only"> varian S&amp;K perlu ditinjau</span>
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-2">
-            <div className={`${tab === "detail" ? "" : "hidden"}`}>
+            <div ref={bodyRef} className="min-h-0 flex-1 overflow-y-auto px-6 pb-2">
+            <div id="product-editor-panel-detail" role="tabpanel" aria-labelledby="product-editor-tab-detail" hidden={tab !== "detail"}>
             <div className="mt-5 grid sm:grid-cols-2 gap-4">
               <label className="space-y-1.5"><span className="flex items-center gap-1.5 text-xs font-semibold text-white/60">Nama *</span><input value={form.name??""} readOnly={form.wrManaged} onChange={e=>onSetForm({...form,name:e.target.value, slug: !editing? e.target.value.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""): form.slug})} placeholder="ChatGPT Plus 1 Bulan" className={`w-full h-11 px-3 rounded-xl border text-sm text-white placeholder:text-white/30 focus:outline-none ${form.wrManaged ? "bg-white/[0.03] border-white/5 text-white/50 cursor-not-allowed" : "bg-white/[0.06] border-white/10 focus:border-[#00E5FF]/30"}`} /></label>
               <label className="space-y-1.5"><span className="flex items-center gap-1.5 text-xs font-semibold text-white/60">Slug *</span><input value={form.slug??""} readOnly={form.wrManaged} onChange={e=>onSetForm({...form,slug:e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g,"-")})} placeholder="chatgpt-plus-1-bulan" className={`w-full h-11 px-3 rounded-xl border text-sm text-white placeholder:text-white/30 font-mono focus:outline-none ${form.wrManaged ? "bg-white/[0.03] border-white/5 text-white/50 cursor-not-allowed" : "bg-white/[0.06] border-white/10 focus:border-[#00E5FF]/30"}`} /></label>
               <label className="sm:col-span-2 space-y-1.5"><span className="flex items-center gap-1.5 text-xs font-semibold text-white/60">Nama di WhatsApp (Alias)</span><input value={form.whatsappAlias??""} onChange={e=>onSetForm({...form,whatsappAlias:e.target.value})} maxLength={50} placeholder="CHATGPT" className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#00E5FF]/30" /><span className="block text-[11px] leading-4 text-white/35">Dipakai pada daftar dan header detail produk WhatsApp. Jika kosong, bot memakai nama produk web.</span></label>
-              <label className="sm:col-span-2 space-y-1.5"><span className="flex items-center gap-1.5 text-xs font-semibold text-white/60">Deskripsi{form.wrManaged ? " (dari WR)" : ""}</span><textarea value={form.description??""} readOnly={form.wrManaged} onChange={e=>onSetForm({...form,description:e.target.value})} rows={form.wrManaged ? 2 : 5} placeholder="Akses GPT-4o penuh..." className={`w-full px-3 py-2.5 rounded-xl border text-sm text-white placeholder:text-white/30 resize-none focus:outline-none ${form.wrManaged ? "bg-white/[0.03] border-white/5 text-white/50 cursor-not-allowed" : "bg-white/[0.06] border-white/10 focus:border-[#00E5FF]/30"}`} />{!form.wrManaged && <span className="block text-[11px] leading-4 text-white/35">Format: paragraf pembuka, lalu baris &quot;- &quot; untuk keunggulan. Baris &quot;Syarat &amp; Ketentuan:&quot; / &quot;Cara Aktivasi:&quot; memisahkan bagian yang tampil di kartu S&amp;K (terlipat di mobile).</span>}</label>
-              {form.wrManaged && (
-                <label className="sm:col-span-2 space-y-1.5"><span className="flex items-center gap-1.5 text-xs font-semibold text-white/60">Deskripsi khusus (override)</span><textarea value={form.adminDescriptionOverride??""} onChange={e=>onSetForm({...form,adminDescriptionOverride:e.target.value})} rows={5} maxLength={2000} placeholder="Tulis deskripsi versimu sendiri di sini…" className="w-full px-3 py-2.5 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 resize-none focus:outline-none focus:border-[#00E5FF]/30" /><span className="block text-[11px] leading-4 text-white/35">Jika diisi, teks ini yang tampil di storefront dan tidak akan ditimpa sync. Kosongkan untuk kembali memakai deskripsi WR. S&amp;K dan cara aktivasi per varian disunting di bagian varian di bawah.</span><span className="block text-[11px] leading-4 text-white/35">Format: paragraf pembuka, lalu baris &quot;- &quot; untuk keunggulan. Baris &quot;Syarat &amp; Ketentuan:&quot; / &quot;Cara Aktivasi:&quot; memisahkan bagian yang tampil di kartu S&amp;K (terlipat di mobile).</span></label>
-              )}
               <label className="space-y-1.5"><span className="flex items-center gap-1.5 text-xs font-semibold text-white/60">Kategori</span><select value={form.categorySlug??cats[0]?.slug??""} onChange={e=>onSetForm({...form,categorySlug:e.target.value})} className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white focus:outline-none focus:border-[#00E5FF]/30">
                 {cats.map((category) => <option key={category.id} value={category.slug} className="bg-[#0F1430]">{category.name}</option>)}
               </select></label>
@@ -103,7 +114,7 @@ export function ProductEditorModal({
             </div>
 
             {/* Toggle Multi-Varian ala Marketplace */}
-            <div className={`${tab === "varian" ? "" : "hidden"}`}>
+            <div id="product-editor-panel-varian" role="tabpanel" aria-labelledby="product-editor-tab-varian" hidden={tab !== "varian"}>
             <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
@@ -196,7 +207,18 @@ export function ProductEditorModal({
 
             </div>
 
-            <div className={`${tab === "media" ? "" : "hidden"}`}>
+            <div id="product-editor-panel-konten" role="tabpanel" aria-labelledby="product-editor-tab-konten" hidden={tab !== "konten"}>
+              <ProductCopyTab
+                form={form}
+                onSetForm={onSetForm}
+                formVariants={formVariants}
+                hasMultiVariants={hasMultiVariants}
+                loadingVariants={loadingVariants}
+                variantCopy={variantCopy}
+              />
+            </div>
+
+            <div id="product-editor-panel-media" role="tabpanel" aria-labelledby="product-editor-tab-media" hidden={tab !== "media"}>
             <div className="mt-5">
               <p className="text-xs font-semibold text-white/60 mb-2">Foto Produk — maks 8 (PNG/JPG → WebP otomatis)</p>
               <div className="grid grid-cols-4 gap-2">

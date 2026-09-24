@@ -184,8 +184,14 @@
     tanpa emoji, tanpa tanda seru, tanpa titik di akhir poin, tanpa bahasa gaul
     pemasok; larangan tetap tegas ("Dilarang …", "Wajib …", "Tanpa toleransi …").
     Semua angka, batas, dan larangan pemasok wajib terbawa (dijaga test).
-  - Panel admin (2026-09-24, live): editor "Syarat & Ketentuan · Cara
-    Aktivasi" per baris varian, terlipat dengan badge status — emerald
+  - Panel admin (2026-09-24, live): editor produk punya 4 tab — Produk,
+    Varian, **Deskripsi & S&K**, Foto (tablist `max-w-full overflow-x-auto`,
+    tab `shrink-0 whitespace-nowrap px-2.5 sm:px-4` agar muat di layar 390px;
+    panel `role=tabpanel` + atribut `hidden`; ganti tab menggulir badan modal
+    ke atas). Tab Deskripsi & S&K berisi kolom deskripsi (dan deskripsi khusus
+    untuk WR) lalu daftar varian; tab diberi pill gold berisi jumlah varian
+    aktif yang S&K-nya perlu ditinjau. Tiap varian = panel terlipat berjudul
+    nama varian (+ durasi bila label WR sama, pill abu "Nonaktif"), badge status — emerald
     "Disunting admin", cyan "Versi Axvara (otomatis)", gold "Teks WR — belum
     versi Axvara", merah "WR mengubah teks — suntingan dijeda" (+ kotak
     peringatan `role=alert`), abu "Pakai S&K produk" (non-WR tanpa suntingan).

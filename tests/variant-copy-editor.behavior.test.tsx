@@ -3,12 +3,13 @@
 // tests/variant-copy-editor.behavior.test.tsx — Editor S&K + cara aktivasi
 // per varian di panel admin (migrasi 0041) dan penandanya di daftar produk.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { ToastProvider } from "@/components/ui/Toast";
 import { VariantCopyEditor } from "@/components/admin/sections/VariantCopyEditor";
 import { ProductsSection } from "@/components/admin/sections/ProductsSection";
+import { ProductEditorModal } from "@/components/admin/ProductEditorModal";
 import type { VariantCopyEntry } from "@/lib/product-copy/format";
-import type { Prod } from "@/components/admin/product-types";
+import type { FormVariant, Prod, ProductForm } from "@/components/admin/product-types";
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
@@ -128,5 +129,92 @@ describe("daftar produk admin", () => {
     // Tampil di kartu mobile dan baris tabel desktop.
     expect(screen.getAllByText("S&K perlu ditinjau · 2 varian")).toHaveLength(2);
     expect(screen.queryByText(/S&K perlu ditinjau · 0/)).toBeNull();
+  });
+});
+
+describe("editor produk: tab Deskripsi & S&K (terpisah dari tab Varian)", () => {
+  const variants: FormVariant[] = [
+    { id: 12, sku: "WR-12", label: "Premium Anti Limit", duration_label: "28 Hari", price: 35000, stock: 0, is_active: 1, wr_auto_managed: 1 },
+    { id: 13, sku: "WR-13", label: "Premium Legal", duration_label: "28 Hari", price: 55000, stock: 3, is_active: 1, wr_auto_managed: 1 },
+  ];
+  const entries: VariantCopyEntry[] = [
+    { ...base, variantId: 12, label: "Premium Anti Limit" },
+    { ...base, variantId: 13, status: "pemasok", adminStale: true, needsReview: true, hasOverride: true, adminTerms: "Aturan pakai:\n- Dilarang berbagi akun" },
+  ];
+
+  function renderModal(form: ProductForm, formVariants = variants, onSetForm = vi.fn(), editing = true) {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => ({
+      ok: true,
+      status: 200,
+      json: async () => (String(url).startsWith("/api/admin/variant-copy") ? { variants: entries } : {}),
+    })));
+    render(
+      <ToastProvider>
+        <ProductEditorModal
+          editing={editing} editingId={editing ? 1 : undefined} saving={false} uploading={false} loadingVariants={false}
+          hasMultiVariants formError={null} form={form} formImages={[]} formVariants={formVariants} cats={[]}
+          onRequestClose={vi.fn()} onSetForm={onSetForm} onSetFormImages={vi.fn()} onSetHasMultiVariants={vi.fn()}
+          onSetFormVariants={vi.fn()} onUpload={vi.fn()} onSave={vi.fn()}
+        />
+      </ToastProvider>,
+    );
+    return { onSetForm };
+  }
+
+  const wrForm: ProductForm = { name: "Netflix Premium", slug: "netflix-premium", description: "Teks WR", adminDescriptionOverride: "Versi Axvara", wrManaged: true };
+
+  it("empat tab; deskripsi dan S&K per varian hanya ada di tab Deskripsi & S&K", async () => {
+    renderModal(wrForm);
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual([
+      "Produk", "Varian (2)", expect.stringMatching(/^Deskripsi & S&K/), "Foto",
+    ]);
+    // Tab Produk aktif: deskripsi tidak lagi di sini.
+    expect(screen.queryByRole("textbox", { name: "Deskripsi khusus (override)" })).toBeNull();
+    // Hanya panel tab aktif yang tampil (atribut hidden), bukan semua sekaligus.
+    expect(screen.getAllByRole("tabpanel").map((p) => p.getAttribute("aria-labelledby"))).toEqual(["product-editor-tab-detail"]);
+
+    fireEvent.click(screen.getByRole("tab", { name: /^Varian/ }));
+    expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
+    const variantPanel = screen.getByRole("tabpanel", { name: /^Varian/ });
+    expect(within(variantPanel).queryByText("Syarat & Ketentuan · Cara Aktivasi")).toBeNull();
+    expect(within(variantPanel).queryByRole("button", { name: /Sunting/ })).toBeNull();
+
+    fireEvent.click(screen.getByRole("tab", { name: /^Deskripsi & S&K/ }));
+    expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
+    expect(screen.queryByRole("textbox", { name: /^Nama/ })).toBeNull();
+    const copyPanel = screen.getByRole("tabpanel", { name: /^Deskripsi & S&K/ });
+    expect((within(copyPanel).getByRole("textbox", { name: "Deskripsi (dari WR)" }) as HTMLTextAreaElement).readOnly).toBe(true);
+    expect((within(copyPanel).getByRole("textbox", { name: "Deskripsi khusus (override)" }) as HTMLTextAreaElement).value).toBe("Versi Axvara");
+    const legal = await within(copyPanel).findByRole("button", { name: /Premium Legal · 28 Hari.*WR mengubah teks/ });
+    expect(within(copyPanel).getByRole("button", { name: /Premium Anti Limit · 28 Hari.*Versi Axvara/ })).toBeTruthy();
+    fireEvent.click(legal);
+    expect((within(copyPanel).getByRole("textbox", { name: "Syarat & Ketentuan" }) as HTMLTextAreaElement).value).toBe("Aturan pakai:\n- Dilarang berbagi akun");
+  });
+
+  it("tab menampilkan jumlah varian yang S&K-nya perlu ditinjau", async () => {
+    renderModal(wrForm);
+    await waitFor(() => expect(screen.getByRole("tab", { name: /^Deskripsi & S&K/ }).textContent).toContain("1 varian S&K perlu ditinjau"));
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => url === "/api/admin/variant-copy?product_id=1")).toBe(true);
+  });
+
+  it("produk non-WR: kolom Deskripsi bisa diedit dari tab ini", () => {
+    const { onSetForm } = renderModal({ name: "Canva Pro", slug: "canva-premium", description: "Lama", wrManaged: false }, [
+      { id: 1, sku: "CANVA-1", label: "Invite 1 Bulan", price: 2000, stock: -1, is_active: 1 },
+      { id: 3, sku: "CANVA-3", label: "Head 1 Bulan", price: 5000, stock: 10, is_active: 0 },
+    ]);
+    fireEvent.click(screen.getByRole("tab", { name: /^Deskripsi & S&K/ }));
+    const panel = screen.getByRole("tabpanel", { name: /^Deskripsi & S&K/ });
+    expect(within(panel).queryByRole("textbox", { name: "Deskripsi khusus (override)" })).toBeNull();
+    fireEvent.change(within(panel).getByRole("textbox", { name: "Deskripsi" }), { target: { value: "Baru" } });
+    expect(onSetForm).toHaveBeenCalledWith(expect.objectContaining({ description: "Baru" }));
+    expect(within(panel).getByRole("button", { name: /Head 1 Bulan.*Nonaktif/ })).toBeTruthy();
+  });
+
+  it("produk baru: tanpa permintaan S&K ke server, varian diminta disimpan dulu", () => {
+    renderModal({ name: "Baru", slug: "baru" }, [{ sku: "BARU-1", label: "Paket 1", price: 50000, stock: -1, is_active: 1 }], vi.fn(), false);
+    fireEvent.click(screen.getByRole("tab", { name: /^Deskripsi & S&K/ }));
+    const panel = screen.getByRole("tabpanel", { name: /^Deskripsi & S&K/ });
+    expect(within(panel).getByText(/Simpan produk terlebih dahulu/).textContent).toContain("Paket 1");
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).startsWith("/api/admin/variant-copy"))).toBe(false);
   });
 });

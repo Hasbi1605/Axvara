@@ -31,10 +31,13 @@ describe("butir 4 — metrik Pesanan mengikuti filter", () => {
 describe("butir 1/1b — modal produk bertab dengan Simpan sticky", () => {
   const modal = read("src/components/admin/ProductEditorModal.tsx");
 
-  it("punya tab Produk/Varian/Foto", () => {
+  it("punya tab Produk/Varian/Deskripsi & S&K/Foto", () => {
     expect(modal).toContain('role="tablist"');
     expect(modal).toContain('["detail", "Produk"]');
     expect(modal).toContain('["varian", "Varian"]');
+    // 2026-09-24: deskripsi + S&K per varian pindah ke tab sendiri agar tab
+    // Varian hanya berisi harga/stok/garansi/pengiriman (permintaan owner).
+    expect(modal).toContain('["konten", "Deskripsi & S&K"]');
     expect(modal).toContain('["media", "Foto"]');
   });
 

@@ -286,10 +286,11 @@ baris `- ` untuk keunggulan, lalu baris `Syarat & Ketentuan:` / `Cara
 Aktivasi:` untuk bagian yang pindah ke kartu S&K. Detail: `docs/ARCHITECTURE.md`
 §15 "Salinan produk versi Axvara".
 
-**S&K + cara aktivasi bisa disunting admin per varian (migrasi 0041).** Di
-editor produk, tab Varian, tiap varian (WR maupun non-WR) punya panel
-"Syarat & Ketentuan · Cara Aktivasi" yang terbuka berisi salinan yang sedang
-tampil, plus teks asli WR sebagai pembanding. Simpan dengan tombol di panel itu
+**S&K + cara aktivasi bisa disunting admin per varian (migrasi 0041).** Editor
+produk punya tab **Deskripsi & S&K** (terpisah dari tab Varian): deskripsi
+produk / deskripsi khusus, lalu daftar varian (WR maupun non-WR) dengan panel
+S&K + cara aktivasi yang terbuka berisi salinan yang sedang tampil, plus teks
+asli WR sebagai pembanding. Tab menampilkan jumlah varian yang perlu ditinjau. Simpan dengan tombol di panel itu
 (`PUT /api/admin/variant-copy`), bukan tombol Simpan Produk. Suntingan tampil
 selama teks WR belum berubah; bila WR mengubahnya, pembeli kembali melihat teks
 WR terbaru dan daftar produk admin memberi badge "S&K perlu ditinjau" sampai

@@ -39,6 +39,8 @@ export function useVariantCopyEntries(productId?: number | string) {
   return { entries, loading, error, reload: load, update };
 }
 
+export type VariantCopyState = ReturnType<typeof useVariantCopyEntries>;
+
 function statusBadge(entry: VariantCopyEntry): { label: string; className: string } {
   if (entry.adminStale) return { label: "WR mengubah teks — suntingan dijeda", className: "border-red-400/30 bg-red-500/10 text-red-200" };
   if (entry.status === "admin") return { label: "Disunting admin", className: "border-emerald-400/25 bg-emerald-500/10 text-emerald-300" };
@@ -55,12 +57,17 @@ export function VariantCopyEditor({
   loading,
   error,
   onSaved,
+  title,
+  inactive = false,
 }: {
   variantId?: number;
   entry?: VariantCopyEntry;
   loading: boolean;
   error: string | null;
   onSaved: (entry: VariantCopyEntry) => void;
+  /** Nama varian di daftar tab Deskripsi & S&K; default judul generik. */
+  title?: string;
+  inactive?: boolean;
 }) {
   const toast = useToast();
   const [open, setOpen] = useState(false);
@@ -76,7 +83,12 @@ export function VariantCopyEditor({
   }, [initialTerms, initialActivation]);
 
   if (!variantId) {
-    return <p className="mt-3 rounded-xl border border-white/10 bg-white/[0.025] px-3 py-3 text-xs text-white/40">Simpan produk terlebih dahulu, lalu buka Edit untuk menyunting S&amp;K varian ini.</p>;
+    return (
+      <p className="rounded-xl border border-white/10 bg-white/[0.025] px-3 py-3 text-xs text-white/40">
+        {title && <span className="font-semibold text-white/70">{title}: </span>}
+        Simpan produk terlebih dahulu, lalu buka Edit untuk menyunting S&amp;K varian ini.
+      </p>
+    );
   }
 
   const dirty = terms !== initialTerms || activation !== initialActivation;
@@ -102,7 +114,7 @@ export function VariantCopyEditor({
   };
 
   return (
-    <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.025]">
+    <div className="rounded-2xl border border-white/10 bg-white/[0.025]">
       <button
         type="button"
         aria-expanded={open}
@@ -110,7 +122,8 @@ export function VariantCopyEditor({
         className="flex w-full flex-wrap items-center justify-between gap-2 px-4 py-3 text-left"
       >
         <span className="flex min-w-0 flex-wrap items-center gap-2">
-          <span className="text-xs font-semibold text-white">Syarat &amp; Ketentuan · Cara Aktivasi</span>
+          <span className="text-xs font-semibold text-white">{title ?? "Syarat & Ketentuan · Cara Aktivasi"}</span>
+          {inactive && <span className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px] font-semibold text-white/45">Nonaktif</span>}
           {loading && !entry ? <Spinner size={12} /> : badge && (
             <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${badge.className}`}>{badge.label}</span>
           )}
@@ -157,7 +170,7 @@ export function VariantCopyEditor({
               </label>
               <p className="mt-2 text-[11px] leading-4 text-white/35">
                 S&amp;K: judul &quot;Detail paket:&quot;, &quot;Proses &amp; pengiriman:&quot;, &quot;Aturan pakai:&quot;, &quot;Garansi:&quot;, lalu baris &quot;- &quot; (baris tanpa judul dikelompokkan otomatis). Cara aktivasi: baris bernomor; judul bebas untuk kelompok langkah, &quot;Catatan:&quot; untuk catatan.
-                {!entry.wrManaged && " S&K yang berlaku untuk semua varian tetap ditulis di Deskripsi produk (judul “Syarat & Ketentuan:”)."}
+                {!entry.wrManaged && " S&K yang berlaku untuk semua varian cukup ditulis sekali di kolom Deskripsi di atas (judul “Syarat & Ketentuan:”)."}
               </p>
               {entry.wrManaged && (entry.supplierTerms || entry.supplierActivation) && (
                 <details className="mt-3 rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2">

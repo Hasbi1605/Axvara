@@ -14,7 +14,7 @@ function CopyReviewBadge({ count }: { count?: number }) {
   if (!count) return null;
   return (
     <span
-      title="Buka Edit Produk & Varian, lalu bagian Syarat & Ketentuan di tiap varian"
+      title="Buka Edit Produk & Varian, lalu tab Deskripsi & S&K"
       className="mt-1 inline-flex rounded-full border border-[#FFB800]/30 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFCF55]"
     >
       S&amp;K perlu ditinjau · {count} varian
