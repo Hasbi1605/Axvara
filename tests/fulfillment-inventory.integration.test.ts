@@ -266,7 +266,9 @@ describe("R3 inventory maps one unit to exactly one line", () => {
 });
 
 describe("R3 web channel ends in an actionable handover, not a retry loop", () => {
-  it("web shared item lands manual_required with handover note, stable on retry", async () => {
+  // Sejak 2026-09-25 web shared/unique dikirim lewat email pembeli; order ini
+  // TANPA email (order lama), jadi tetap berakhir di antrean serah terima.
+  it("web shared item without buyer email lands manual_required with handover note, stable on retry", async () => {
     fixture.sql.exec("INSERT INTO products(id,name,slug,price,stock) VALUES(1,'Fixture','fixture',10000,100)");
     const s = await encryptSecret("WEB-SHARED");
     fixture.sql.prepare(`INSERT INTO product_variants(id,product_id,sku,label,price,stock,fulfillment_mode,shared_secret_ciphertext,shared_secret_iv)
@@ -276,7 +278,7 @@ describe("R3 web channel ends in an actionable handover, not a retry loop", () =
     await ensureFulfillmentForPaidOrder("R3-WEB");
     const row = fixture.sql.prepare("SELECT status,recipient_channel,last_error FROM fulfillment_items WHERE order_code='R3-WEB'").get()!;
     expect(row).toMatchObject({ status: "manual_required", recipient_channel: "web" });
-    expect(String(row.last_error)).toContain("web_channel_requires_manual_handover");
+    expect(String(row.last_error)).toContain("web_no_buyer_email");
     expect(fixture.sql.prepare("SELECT fulfillment_status FROM orders WHERE code='R3-WEB'").get()?.fulfillment_status)
       .toBe("manual_required");
     await ensureFulfillmentForPaidOrder("R3-WEB");

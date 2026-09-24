@@ -27,24 +27,29 @@ import { escapeHtml } from "@/lib/telegram/messages/format";
 
 type Notice = {
   subject: string;
-  /** HTML sederhana (`<b>`, `<code>`, baris baru) — sah untuk Telegram & email. */
+  /** HTML sederhana Telegram (`<b>`, `<code>`, baris baru) + teks WA. */
   body: string;
   /** Ajakan khusus chat, mis. "balas pesan ini" (tidak berlaku untuk email noreply). */
   chatCta?: string;
+  /**
+   * Isi email bermerek (shell Midnight + Cyan yang sama dengan email WR,
+   * 2026-09-25). Tanpa emoji; paragraf teks polos di-escape saat render.
+   */
+  email: { title: string; subtitle: string; paragraphs: string[]; callout?: { text: string; tone: "info" | "warning" } | null };
+  /** Email yang sudah jadi (mis. "Pesanan Siap" berisi detail produk). */
+  emailOverride?: { subject: string; html: string; text: string };
   refKey: string;
 };
 
 /** Batas kirim per kabar: dipanggil dari webhook/cron yang punya deadline. */
 const NOTICE_EMAIL_TIMEOUT_MS = 8_000;
 
-const EMAIL_CTA = "Butuh bantuan? Buka halaman pesanan di bawah lalu hubungi admin lewat tombol WA Admin atau Telegram.";
-
 function siteUrl(): string {
   return (process.env.SITE_URL || "https://axvara.tech").replace(/\/$/, "");
 }
 
 /** true = pemanggil ini berhak mengirim; false = sudah terkirim / sedang dikirim worker lain. */
-async function claimNotice(database: DatabaseAccess, key: string, orderCode: string, channel: "email" | "telegram"): Promise<boolean> {
+export async function claimNotice(database: DatabaseAccess, key: string, orderCode: string, channel: "email" | "telegram"): Promise<boolean> {
   try {
     const result = await database.execRun(
       `INSERT INTO buyer_notice_log (idempotency_key, order_code, channel, status)
@@ -62,7 +67,7 @@ async function claimNotice(database: DatabaseAccess, key: string, orderCode: str
   }
 }
 
-async function settleNotice(database: DatabaseAccess, key: string, ok: boolean, providerId?: string, error?: string) {
+export async function settleNotice(database: DatabaseAccess, key: string, ok: boolean, providerId?: string, error?: string) {
   await database.execRun(
     `UPDATE buyer_notice_log SET status=?, provider_id=?, error=?, updated_at=datetime('now') WHERE idempotency_key=?`,
     ok ? "sent" : "failed", providerId ?? null, ok ? null : String(error || "send_failed").slice(0, 300), key,
@@ -73,20 +78,20 @@ async function sendEmailNotice(database: DatabaseAccess, orderCode: string, to: 
   const key = `email:${notice.refKey}`;
   if (!(await claimNotice(database, key, orderCode, "email"))) return true;
   const orderUrl = `${siteUrl()}/pesanan/${encodeURIComponent(orderCode)}`;
-  const plain = notice.body.replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"").replace(/&amp;/g, "&");
   let result: { ok: boolean; providerId?: string; error?: string };
   try {
     const { sendForwardEmail } = await import("@/lib/warung-rebahan/forward-sender");
+    const { renderBrandedNotice } = await import("@/lib/warung-rebahan/email-forward");
+    const { SITE } = await import("@/lib/site");
+    const rendered = notice.emailOverride ?? {
+      subject: notice.subject,
+      ...renderBrandedNotice({ orderCode, orderUrl, supportWa: SITE.adminWaLocal, ...notice.email }),
+    };
     result = await sendForwardEmail({
       to,
-      subject: notice.subject,
-      html: `<div style="font-family:system-ui,-apple-system,sans-serif;line-height:1.6">
-  <p>${notice.body.replace(/\n/g, "<br>")}</p>
-  <p>${EMAIL_CTA}</p>
-  <p><a href="${orderUrl}">${orderUrl}</a></p>
-  <p style="color:#666;font-size:12px">Email otomatis dari Axvara.</p>
-</div>`,
-      text: `${plain}\n\n${EMAIL_CTA}\n${orderUrl}\n\nEmail otomatis dari Axvara.`,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
       timeoutMs: NOTICE_EMAIL_TIMEOUT_MS,
     });
   } catch (error) {
@@ -142,17 +147,64 @@ async function sendToBuyer(
   return await enqueueWhatsAppMessage(waOutboxKey("text", notice.refKey), target, chatText).catch(() => false);
 }
 
-/** Pesan setelah admin menyerahkan produk secara manual. */
+/**
+ * Pesan setelah admin menyerahkan produk secara manual.
+ *
+ * Sejak 2026-09-25 isi "Detail untuk pembeli" yang diketik admin di dialog
+ * Kirim ke pembeli ikut terkirim: email "Pesanan Siap" (web) atau DM
+ * Telegram. Tanpa isi (produk dikirim admin di luar sistem) pesannya tetap
+ * kabar "sudah diserahkan" seperti dulu.
+ */
 export async function notifyBuyerHandover(
   orderCode: string,
   database: DatabaseAccess = createDatabaseAccess(),
 ): Promise<boolean> {
-  return await sendToBuyer(orderCode, {
-    subject: `Pesanan ${orderCode} sudah diserahkan`,
-    body: `✅ <b>Pesanan selesai diserahkan</b>\nOrder: <code>${orderCode}</code>\n\nAdmin sudah mengirimkan produkmu.`,
-    chatCta: "Jika belum menerimanya, balas pesan ini.",
-    refKey: `handover:${orderCode}`,
-  }, database).catch(() => false);
+  try {
+    const { readDeliveredSnapshots } = await import("@/lib/fulfillment/delivery/buyer-email");
+    const contents = await readDeliveredSnapshots(orderCode, database, { manualOnly: true });
+    if (!contents.length) {
+      return await sendToBuyer(orderCode, {
+        subject: `Pesanan ${orderCode} sudah diserahkan`,
+        body: `✅ <b>Pesanan selesai diserahkan</b>\nOrder: <code>${orderCode}</code>\n\nAdmin sudah mengirimkan produkmu.`,
+        chatCta: "Jika belum menerimanya, balas pesan ini.",
+        email: {
+          title: "Pesanan Diserahkan",
+          subtitle: "Admin sudah mengirimkan produkmu.",
+          paragraphs: [
+            `Admin sudah mengirimkan produk untuk pesanan ${orderCode}.`,
+            "Belum menerimanya? Hubungi admin lewat tombol di bawah dengan menyebut kode pesanan.",
+          ],
+        },
+        refKey: `handover:${orderCode}`,
+      }, database);
+    }
+    const order = await database.queryFirst(`SELECT customer_name FROM orders WHERE code=?`, orderCode).catch(() => null);
+    const { buildOrderReadyTemplate } = await import("@/lib/warung-rebahan/email-forward");
+    const { SITE } = await import("@/lib/site");
+    const template = buildOrderReadyTemplate({
+      axvaraOrderCode: orderCode,
+      buyerName: String(order?.customer_name ?? ""),
+      invoiceUrl: `${siteUrl()}/pesanan/${encodeURIComponent(orderCode)}`,
+      supportWa: SITE.adminWaLocal,
+      items: contents.map((c) => ({ label: c.label, details: c.details })),
+    });
+    const chatBody = `✅ <b>Pesanan siap</b>\nOrder: <code>${orderCode}</code>\n`
+      + contents.map((c) => `\n<b>${escapeHtml(c.label)}</b>\n<code>${escapeHtml(c.details)}</code>`).join("\n")
+      + "\n\nSimpan baik-baik dan jangan bagikan ke siapa pun.";
+    return await sendToBuyer(orderCode, {
+      subject: template.subject,
+      body: chatBody,
+      chatCta: "Ada kendala? Balas pesan ini.",
+      email: { title: "Pesanan Siap", subtitle: "Produkmu sudah siap dipakai.", paragraphs: [] },
+      emailOverride: template,
+      refKey: `handover:${orderCode}`,
+      // Isi kredensial TIDAK boleh masuk outbox WA (disimpan teks polos dan
+      // bot WA mati): order web tanpa email = pembeli tidak dikabari, dan
+      // admin melihat peringatan "pembeli belum dikabari".
+    }, database, { whatsappFallback: false });
+  } catch {
+    return false;
+  }
 }
 
 /** Pesan saat bukti pembayaran ditolak — alasan WAJIB disertakan. */
@@ -167,6 +219,15 @@ export async function notifyBuyerProofRejected(
     body: `⚠️ <b>Bukti pembayaran ditolak</b>\nOrder: <code>${orderCode}</code>\n`
       + (clean ? `Alasan: ${escapeHtml(clean)}\n` : "")
       + "\nPesananmu belum lunas. Silakan bayar ulang lewat QRIS atau hubungi admin bila merasa ini keliru.",
+    email: {
+      title: "Bukti Pembayaran Ditolak",
+      subtitle: "Pesananmu belum lunas.",
+      paragraphs: [
+        `Bukti pembayaran untuk pesanan ${orderCode} belum bisa kami terima.`,
+        "Silakan bayar ulang lewat QRIS di halaman pesanan, atau hubungi admin bila merasa ini keliru.",
+      ],
+      callout: clean ? { text: `Alasan: ${clean}`, tone: "warning" } : null,
+    },
     // Alasan ikut kunci: penolakan kedua dengan alasan berbeda tetap terkirim.
     refKey: `proof-rejected:${orderCode}:${clean.slice(0, 40)}`,
   }, database).catch(() => false);
@@ -186,6 +247,14 @@ export async function notifyBuyerProofPendingHook(
     body: `ℹ️ <b>Bukti diterima</b>\nOrder: <code>${orderCode}</code>\n\n`
       + "Pembayaran QRIS dikonfirmasi otomatis oleh sistem, jadi statusnya masih "
       + "menunggu verifikasi. Kamu akan dikabari lagi begitu pembayaran tercatat lunas.",
+    email: {
+      title: "Bukti Pembayaran Diterima",
+      subtitle: "Menunggu verifikasi otomatis.",
+      paragraphs: [
+        `Bukti pembayaran untuk pesanan ${orderCode} sudah kami terima.`,
+        "Pembayaran QRIS dikonfirmasi otomatis oleh sistem, jadi statusnya masih menunggu verifikasi. Kamu akan dikabari lagi begitu pembayaran tercatat lunas.",
+      ],
+    },
     refKey: `proof-pending-hook:${orderCode}`,
   }, database).catch(() => false);
 }
@@ -210,6 +279,14 @@ export async function notifyBuyerDeliveryFailed(
     body: `⚠️ <b>Pengiriman produk bermasalah</b>\nOrder: <code>${orderCode}</code>\n\n`
       + "Pembayaranmu sudah kami terima, tetapi produk gagal dikirim otomatis. "
       + "Admin sudah mendapat notifikasi dan akan menyerahkannya manual.",
+    email: {
+      title: "Pengiriman Tertunda",
+      subtitle: "Pembayaranmu aman dan sudah kami terima.",
+      paragraphs: [
+        `Pembayaran untuk pesanan ${orderCode} sudah kami terima, tetapi produk gagal dikirim otomatis.`,
+        "Admin sudah mendapat notifikasi dan akan mengirimkannya manual. Bila belum ada kabar, hubungi admin lewat tombol di bawah.",
+      ],
+    },
     chatCta: "Balas pesan ini bila belum ada kabar.",
     refKey: `delivery-failed:${orderCode}`,
   }, database).catch(() => false);
@@ -232,6 +309,14 @@ export async function notifyBuyerPaymentReceived(
     body: `✅ <b>Pembayaran diterima</b>\nOrder: <code>${orderCode}</code>\n\n`
       + "Pembayaranmu sudah tercatat dan pesanan sedang diproses. Detail produk dikirim "
       + "ke email ini dan juga tampil di halaman pesanan.",
+    email: {
+      title: "Pembayaran Diterima",
+      subtitle: "Pesananmu sedang diproses.",
+      paragraphs: [
+        `Pembayaran untuk pesanan ${orderCode} sudah tercatat dan pesanan sedang diproses.`,
+        "Detail produk dikirim ke email ini dan juga tampil di halaman pesanan.",
+      ],
+    },
     refKey: `payment-received:${orderCode}`,
   }, database, { whatsappFallback: false }).catch(() => false);
 }

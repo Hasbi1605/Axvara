@@ -19,6 +19,7 @@ import { deliveryMessage } from "@/lib/telegram/messages";
 import type { Row } from "./types";
 import { MAX_ATTEMPTS, RETRY_DELAYS } from "./types";
 import { findReservedForOrderVariant, inventoryMatchesItem } from "./inventory-binding";
+import { isValidBuyerEmail, sendWebDeliveryEmail } from "./buyer-email";
 
 /**
  * Klaim lease baris item (FASE 1). Immediate pass (no due-gate): retry rows
@@ -63,19 +64,19 @@ async function claimItemLease(
 }
 
 /**
- * Rute manual/web (FASE 2). Web items have no push channel (review R3): route
- * them straight to the admin handover queue instead of burning the retry
- * budget on a delivery that can never succeed. manual_required IS the final,
- * actionable state for web — the admin hands the credential over and records
- * it in admin_note.
+ * Rute manual (FASE 2). Varian Made By Order (mode manual) masuk antrean
+ * serah terima admin di semua kanal. Kanal web mengirim item shared/unique
+ * lewat email pembeli (2026-09-25); order web tanpa email valid (order lama)
+ * tidak punya tujuan kirim, jadi langsung ke antrean admin alih-alih
+ * menghabiskan jatah retry.
  */
 async function settleManualOrWeb(
-  itemId: number, leaseFence: string, recipientChannel: string, mode: string, database: DatabaseAccess,
+  itemId: number, leaseFence: string, recipientChannel: string, mode: string, buyerEmail: unknown, database: DatabaseAccess,
 ): Promise<boolean | null> {
   const { execRun } = database;
-  if (recipientChannel === "web") {
+  if (recipientChannel === "web" && mode !== "manual" && !isValidBuyerEmail(buyerEmail)) {
     await execRun(
-      `UPDATE fulfillment_items SET status='manual_required', last_error='web_channel_requires_manual_handover:serahkan manual via admin_note', locked_until=NULL, updated_at=datetime('now') WHERE id=? AND locked_until=?`,
+      `UPDATE fulfillment_items SET status='manual_required', last_error='web_no_buyer_email:serahkan manual lewat panel admin', locked_until=NULL, updated_at=datetime('now') WHERE id=? AND locked_until=?`,
       itemId, leaseFence,
     );
     return true;
@@ -108,11 +109,14 @@ async function deliverShared(
   const iv = String(secret?.shared_secret_iv || "");
   if (!ct || !iv) throw new Error("Shared secret not configured for product");
   const plaintext = await decryptSecret(ct, iv);
-  await sendToRecipient(recipientChannel, recipientTarget, orderCode, plaintext, qty);
+  await sendItem(recipientChannel, recipientTarget, orderCode, itemId, plaintext, qty, database);
   // Fenced write: only applies while THIS worker still holds the lease.
+  // Ciphertext yang barusan dikirim ikut disalin (migrasi 0043) supaya
+  // halaman pesanan tetap menampilkan isi yang SAMA walau pesan bersama
+  // varian diganti kemudian.
   const settled = await execRun(
-    `UPDATE fulfillment_items SET status='delivered', delivered_message_id=?, locked_until=NULL, updated_at=datetime('now') WHERE id=? AND locked_until=?`,
-    `item:${itemId}`, itemId, leaseFence,
+    `UPDATE fulfillment_items SET status='delivered', delivered_message_id=?, delivered_ciphertext=?, delivered_iv=?, locked_until=NULL, updated_at=datetime('now') WHERE id=? AND locked_until=?`,
+    `item:${itemId}`, ct, iv, itemId, leaseFence,
   );
   if (!settled.changes) throw new Error("lease_lost_during_delivery");
   return true;
@@ -202,11 +206,10 @@ async function deliverUnique(
 ): Promise<boolean> {
   const { execRun } = database;
   const inventoryItem = await resolveUniqueInventory(item, itemId, leaseFence, orderCode, productId, variantId, database);
-  const plaintext = await decryptSecret(
-    String(inventoryItem.secret_ciphertext),
-    String(inventoryItem.secret_iv),
-  );
-  await sendToRecipient(recipientChannel, recipientTarget, orderCode, plaintext, qty);
+  const secretCt = String(inventoryItem.secret_ciphertext);
+  const secretIv = String(inventoryItem.secret_iv);
+  const plaintext = await decryptSecret(secretCt, secretIv);
+  await sendItem(recipientChannel, recipientTarget, orderCode, itemId, plaintext, qty, database);
   const d1 = database.d1;
   // Keep inventory and item settlement atomic, both under the item lease.
   // A worker resuming after its lease was taken cannot consume the unit.
@@ -216,15 +219,15 @@ async function deliverUnique(
         WHERE id=? AND order_code=? AND status='reserved'
           AND EXISTS(SELECT 1 FROM fulfillment_items WHERE id=? AND inventory_id=? AND locked_until=? AND status='sending')`)
         .bind(Number(inventoryItem.id), orderCode, itemId, Number(inventoryItem.id), leaseFence),
-      d1.prepare(`UPDATE fulfillment_items SET status='delivered', delivered_message_id=?, locked_until=NULL, updated_at=datetime('now')
+      d1.prepare(`UPDATE fulfillment_items SET status='delivered', delivered_message_id=?, delivered_ciphertext=?, delivered_iv=?, locked_until=NULL, updated_at=datetime('now')
         WHERE id=? AND locked_until=? AND status='sending'
           AND EXISTS(SELECT 1 FROM fulfillment_inventory WHERE id=? AND order_code=? AND status='delivered')`)
-        .bind(`item:${itemId}`, itemId, leaseFence, Number(inventoryItem.id), orderCode),
+        .bind(`item:${itemId}`, secretCt, secretIv, itemId, leaseFence, Number(inventoryItem.id), orderCode),
     ]);
     if (!settled.at(-1)?.meta.changes) throw new Error("lease_lost_during_delivery");
   } else {
     await markDelivered(Number(inventoryItem.id), database);
-    await execRun(`UPDATE fulfillment_items SET status='delivered', locked_until=NULL WHERE id=? AND locked_until=?`, itemId, leaseFence);
+    await execRun(`UPDATE fulfillment_items SET status='delivered', delivered_ciphertext=?, delivered_iv=?, locked_until=NULL WHERE id=? AND locked_until=?`, secretCt, secretIv, itemId, leaseFence);
   }
   return true;
 }
@@ -264,7 +267,7 @@ export async function processItem(order: Row, itemRow: Row, adminChatId?: string
     if ((recipientChannel === "telegram" || recipientChannel === "whatsapp") && !recipientTarget) {
       throw new Error("no_recipient_for_channel");
     }
-    const settledManual = await settleManualOrWeb(itemId, leaseFence, recipientChannel, mode, database);
+    const settledManual = await settleManualOrWeb(itemId, leaseFence, recipientChannel, mode, order.customer_email, database);
     if (settledManual !== null) return settledManual;
     if (mode === "shared") {
       return await deliverShared(itemId, leaseFence, recipientChannel, recipientTarget, orderCode, productId, variantId, qty, database);
@@ -317,6 +320,17 @@ export async function processItem(order: Row, itemRow: Row, adminChatId?: string
   }
 }
 
+/** Kanal web lewat email pembeli; kanal lain lewat sendToRecipient. */
+async function sendItem(
+  channel: string, target: string, orderCode: string, itemId: number, plaintext: string, qty: number, database: DatabaseAccess,
+): Promise<void> {
+  if (channel === "web") {
+    await sendWebDeliveryEmail({ database, orderCode, itemId, plaintext });
+    return;
+  }
+  await sendToRecipient(channel, target, orderCode, plaintext, qty);
+}
+
 export async function sendToRecipient(
   channel: string,
   target: string,
@@ -340,13 +354,9 @@ export async function sendToRecipient(
     return;
   }
   if (channel === "web") {
-    // Web has no push channel: a web item can only settle via an explicit
-    // admin handover (recorded through the admin orders UI, which writes
-    // the credential into admin_note and flips the item to delivered).
-    // Auto-delivery must NEVER push it — and must never spin forever in
-    // retry either. Mark it manual_required immediately so the order
-    // surfaces in the admin handover queue with a clear action.
-    throw new Error("web_channel_requires_manual_handover:serahkan manual via admin_note");
+    // Kanal web dikirim lewat email oleh sendItem; jalur ini tidak boleh
+    // dipakai untuk web (tidak ada tujuan push selain email).
+    throw new Error("web_channel_uses_email_delivery");
   }
   const sendResult = await sendMessage({
     chat_id: target,

@@ -1023,10 +1023,13 @@ export async function issueCredentialToken(
 ): Promise<string | null> {
   const db = database ?? createDatabaseAccess();
   const { queryFirst, execRun } = db;
+  // Siap = ada detail WR ATAU isi produk non-WR terkirim (migrasi 0043).
   const ready = await queryFirst(
-    `SELECT id FROM wr_order_links WHERE order_code=? AND status='completed'
-       AND wr_account_details IS NOT NULL LIMIT 1`,
-    orderCode,
+    `SELECT 1 AS ok WHERE EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND status='completed'
+                                   AND wr_account_details IS NOT NULL)
+       OR EXISTS(SELECT 1 FROM fulfillment_items WHERE order_code=? AND status='delivered'
+                   AND delivered_ciphertext IS NOT NULL)`,
+    orderCode, orderCode,
   ).catch(() => null);
   if (!ready) return null;
   const existing = await queryFirst(

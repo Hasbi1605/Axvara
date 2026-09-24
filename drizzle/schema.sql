@@ -455,6 +455,10 @@ CREATE TABLE IF NOT EXISTS fulfillment_items (
   -- Warung Rebahan H2H (migrasi 0029): item milik pipeline WR (bukan manual
   -- palsu) — diselesaikan via wr_order_links, dilewati processItem generik.
   wr_link_id INTEGER REFERENCES wr_order_links(id) ON DELETE SET NULL,
+  -- Migrasi 0043: salinan terenkripsi isi yang dikirim ke pembeli (dibaca
+  -- halaman pesanan setelah verifikasi WA/token).
+  delivered_ciphertext TEXT,
+  delivered_iv TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),
   UNIQUE(order_code, item_index)
@@ -510,6 +514,10 @@ CREATE TABLE IF NOT EXISTS product_variants (
   admin_terms TEXT,
   admin_activation TEXT,
   admin_copy_fingerprint TEXT,
+
+  -- Migrasi 0043: template pesan serah terima (varian Made By Order non-WR).
+  -- Milik admin; ditulis hanya lewat POST /api/admin/fulfillment.
+  handover_template TEXT,
 
   is_active INTEGER NOT NULL DEFAULT 1,
   sort_order INTEGER NOT NULL DEFAULT 0,

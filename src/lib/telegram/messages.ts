@@ -54,6 +54,6 @@ export {
 
 export {
   adminTelegramOrderCreatedMessage, adminTelegramOrderPaidMessage,
-  adminDeliveryFailedNotification, adminWebOrderNotification,
+  adminDeliveryFailedNotification, adminWebOrderNotification, adminWebHandoverNeededMessage,
   adminWhatsAppOrderCreatedMessage, adminWhatsAppOrderPaidMessage,
 } from "./messages/admin";

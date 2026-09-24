@@ -65,8 +65,8 @@ describe("/pesanan/[code] — blok pasca-pembayaran", () => {
     mockFetch(orderPayload());
     render(<OrderStatusPage />);
     await waitFor(() => expect(screen.getByText("Pengiriman Produk")).toBeTruthy());
-    // Nomor WA tersamar dari server ikut ditampilkan supaya pembeli tahu tujuan.
-    expect(screen.getByText(/Detail akun dikirim ke WhatsApp/)).toBeTruthy();
+    // Order lama TANPA email: nomor WA tersamar jadi satu-satunya tujuan.
+    expect(screen.getByText(/Detail produk dikirim ke/).textContent).toContain("WhatsApp");
     expect(screen.getByText("08213****7434")).toBeTruthy();
     // Form mati tidak boleh ada lagi.
     expect(screen.queryByText("Detail Akun Digital")).toBeNull();
@@ -112,10 +112,14 @@ describe("/pesanan/[code] — blok pasca-pembayaran", () => {
     expect(screen.queryByText(/maksimal 12 jam/)).toBeNull();
   });
 
-  it("email checkout ikut disebut bila pembeli mengisinya", async () => {
+  it("email checkout menjadi tujuan kabar; WhatsApp tidak lagi dijanjikan (bot WA mati)", async () => {
     mockFetch(orderPayload({ customer_email: "h***@gmail.com" }));
     render(<OrderStatusPage />);
     await waitFor(() => expect(screen.getByText("Pengiriman Produk")).toBeTruthy());
     expect(screen.getByText("h***@gmail.com")).toBeTruthy();
+    const line = screen.getByText(/Detail produk dikirim ke/).textContent ?? "";
+    expect(line).toContain("email");
+    expect(line).not.toContain("WhatsApp");
+    expect(screen.queryByText("08213****7434")).toBeNull();
   });
 });

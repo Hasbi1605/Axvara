@@ -55,30 +55,38 @@ async function sendWebQrisExpiryEmail(
   const subject = terminal
     ? `Pesanan ${orderCode} kedaluwarsa`
     : `Kode QRIS pesanan ${orderCode} sudah hangus — perpanjang sekarang`;
-  const headline = terminal
-    ? "Pesanan kamu kedaluwarsa karena pembayaran tidak diterima sampai batas waktu."
-    : "Kode QRIS-mu sudah hangus, tetapi pesanan masih bisa diselamatkan.";
-  const action = terminal
-    ? "Silakan pesan ulang bila masih membutuhkan produknya."
-    : "Buka halaman pesanan lalu tekan <b>Perpanjang QRIS</b> untuk mendapatkan kode baru. Perpanjangan tersedia satu kali.";
-  const actionText = terminal
-    ? "Silakan pesan ulang bila masih membutuhkan produknya."
-    : "Buka halaman pesanan lalu tekan \"Perpanjang QRIS\" untuk mendapatkan kode baru. Perpanjangan tersedia satu kali.";
   try {
     const { sendForwardEmail } = await import("@/lib/warung-rebahan/forward-sender");
+    const { renderBrandedNotice } = await import("@/lib/warung-rebahan/email-forward");
+    const { SITE } = await import("@/lib/site");
+    // Shell bermerek yang sama dengan email pembeli lain (2026-09-25).
+    const rendered = renderBrandedNotice(terminal
+      ? {
+          orderCode, orderUrl, supportWa: SITE.adminWaLocal,
+          title: "Pesanan Kedaluwarsa",
+          subtitle: "Pembayaran tidak diterima sampai batas waktu.",
+          paragraphs: [
+            `Pesanan ${orderCode} kedaluwarsa karena pembayaran tidak diterima sampai batas waktu.`,
+            "Silakan pesan ulang bila masih membutuhkan produknya.",
+          ],
+        }
+      : {
+          orderCode, orderUrl, supportWa: SITE.adminWaLocal,
+          title: "Kode QRIS Hangus",
+          subtitle: "Pesananmu masih bisa diselamatkan.",
+          paragraphs: [
+            `Kode QRIS untuk pesanan ${orderCode} sudah hangus, tetapi pesanannya masih aktif.`,
+            "Buka halaman pesanan lalu tekan Perpanjang QRIS untuk mendapatkan kode baru.",
+          ],
+          callout: { text: "Perpanjangan QRIS tersedia satu kali.", tone: "info" },
+        });
     const result = await sendForwardEmail({
       to,
       subject,
       // Cron: dua kiriman × 20 dtk dulu bisa melewati deadline run 45 dtk.
       timeoutMs: 8_000,
-      html: `<div style="font-family:system-ui,-apple-system,sans-serif;line-height:1.6">
-  <p>${headline}</p>
-  <p>Kode pesanan: <b>${orderCode}</b></p>
-  <p>${action}</p>
-  <p><a href="${orderUrl}">${orderUrl}</a></p>
-  <p style="color:#666;font-size:12px">Email otomatis dari Axvara. Balas email ini bila butuh bantuan.</p>
-</div>`,
-      text: `${headline}\n\nKode pesanan: ${orderCode}\n${actionText}\n${orderUrl}\n\nEmail otomatis dari Axvara.`,
+      html: rendered.html,
+      text: rendered.text,
     });
     return { ok: result.ok };
   } catch {

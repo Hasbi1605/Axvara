@@ -61,7 +61,8 @@ it("order lunas yang gagal kirim tetap bisa diserahkan manual dari daftar", asyn
   // Badge status pengiriman terlihat (dulu fulfillment_status di-parse lalu dibuang).
   expect(screen.getAllByText("Kirim GAGAL").length).toBeGreaterThan(0);
   // Aksi pemulihan tersedia — inilah jalan keluar yang dulu hilang.
-  expect(screen.getAllByText(/Serahkan manual/).length).toBeGreaterThan(0);
+  // Tombolnya bernama "Kirim ke pembeli" sejak 2026-09-25 (isi ikut terkirim).
+  expect(screen.getAllByText(/Kirim ke pembeli/).length).toBeGreaterThan(0);
 });
 
 it("modal Detail juga menyediakan serah terima manual, bukan hanya baris daftar", async () => {
@@ -70,5 +71,5 @@ it("modal Detail juga menyediakan serah terima manual, bukan hanya baris daftar"
   fireEvent.click(detail!);
   await act(async () => {});
   // Alur wajar admin: buka Detail untuk memeriksa dulu, lalu bertindak.
-  expect(screen.getAllByText(/Serahkan manual/).length).toBeGreaterThan(0);
+  expect(screen.getAllByText(/Kirim ke pembeli/).length).toBeGreaterThan(0);
 });

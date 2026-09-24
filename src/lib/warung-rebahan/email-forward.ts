@@ -272,3 +272,141 @@ export function buildCredentialReadyTemplate(ctx: CredentialEmailContext): Axvar
   );
   return { subject, text, html };
 }
+
+// ---------------------------------------------------------------------------
+// Email pembeli di luar alur WR (2026-09-25). Semua kabar pembeli memakai
+// shell bermerek yang sama dengan email WR, bukan HTML polos tanpa logo.
+// ---------------------------------------------------------------------------
+
+function originOf(url: string): string {
+  return url.match(/^https?:\/\/[^/]+/i)?.[0] ?? "https://axvara.tech";
+}
+
+function firstNameOf(buyerName: string): string {
+  return buyerName.trim().split(/\s+/)[0] || "Kak";
+}
+
+function supportBlockHtml(siteUrl: string, supportWa: string): string {
+  return `<p style="text-align:center;font-size:13px;color:#0f1430;font-weight:700;margin:20px 0 8px">Butuh bantuan? Tim kami siap membantu:</p>`
+    + `<p style="text-align:center;margin:0">`
+    + `<a href="${esc(waLink(supportWa))}" style="display:inline-block;background:#22C55E;color:#fff;text-decoration:none;font-weight:700;font-size:13px;padding:11px 24px;border-radius:999px">Hubungi Kami via WhatsApp</a></p>`
+    + `<p style="text-align:center;font-size:13px;color:#64748b;margin:12px 0 0">Terima kasih sudah berbelanja di <a href="${esc(siteUrl)}" style="color:#0f1430;font-weight:700;text-decoration:none">Axvara</a>.</p>`;
+}
+
+function detailLinesHtml(details: string): string {
+  return details
+    .split("\n")
+    .filter((line) => line.trim())
+    .map((line) => `<p style="margin:0 0 6px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;color:#0f1430;word-break:break-all">${esc(line)}</p>`)
+    .join("");
+}
+
+function rupiah(value: number): string {
+  return `Rp${Math.max(0, Math.round(value)).toLocaleString("id-ID")}`;
+}
+
+export type OrderReadyEmailContext = {
+  axvaraOrderCode: string;
+  buyerName: string;
+  invoiceUrl: string;
+  supportWa: string;
+  /** Isi yang dikirim ke pembeli, satu blok per baris pesanan. */
+  items: { label: string; details: string }[];
+  /**
+   * Tanda terima pembayaran. Diisi pada pengiriman otomatis: pembeli produk
+   * kirim otomatis menerima SATU email (pembayaran diterima + isi produk),
+   * bukan dua email terpisah (keputusan owner 2026-09-25).
+   */
+  receipt?: { total: number; method: string; lines: string[] } | null;
+};
+
+/** Template "Pesanan Siap": isi produk non-WR (otomatis atau dari admin). */
+export function buildOrderReadyTemplate(ctx: OrderReadyEmailContext): AxvaraForwardTemplate {
+  const siteUrl = originOf(ctx.invoiceUrl);
+  const firstName = firstNameOf(ctx.buyerName);
+  const product = ctx.items.map((item) => item.label).filter(Boolean).join(", ") || "Pesanan kamu";
+  const subject = ctx.receipt
+    ? `Pembayaran diterima, ${product} sudah siap — AXVARA ${ctx.axvaraOrderCode}`
+    : `${product} sudah siap — AXVARA ${ctx.axvaraOrderCode}`;
+  const intro = ctx.receipt
+    ? `Halo ${firstName}, pembayaranmu sudah kami terima dan pesananmu sudah siap.`
+    : `Halo ${firstName}, pesananmu sudah siap.`;
+  const receiptHtml = ctx.receipt
+    ? `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:12px 16px;margin:0 0 12px;font-size:13px;color:#475569">`
+      + `<p style="margin:0 0 6px;color:#94a3b8;font-size:11px;letter-spacing:1px">PEMBAYARAN DITERIMA</p>`
+      + ctx.receipt.lines.map((line) => `<p style="margin:0 0 4px;color:#0f1430">${esc(line)}</p>`).join("")
+      + `<p style="margin:8px 0 0;color:#0f1430"><b>Total ${esc(rupiah(ctx.receipt.total))}</b>${ctx.receipt.method ? ` · ${esc(ctx.receipt.method)}` : ""}</p></div>`
+    : "";
+  const itemsHtml = ctx.items
+    .map((item) => `<div style="background:#f8fafc;border-left:3px solid #00E5FF;border-radius:0 12px 12px 0;padding:12px 16px;margin:0 0 10px;font-size:13px;color:#475569">`
+      + `<p style="margin:0 0 8px;color:#94a3b8;font-size:11px;letter-spacing:1px">${esc(item.label.toUpperCase())}</p>`
+      + detailLinesHtml(item.details)
+      + `</div>`)
+    .join("");
+  const html = shell(
+    "Pesanan Siap",
+    ctx.receipt ? "Pembayaran diterima dan produkmu sudah siap." : "Produkmu sudah siap dipakai.",
+    invoiceBadge(ctx.axvaraOrderCode)
+    + `<p style="color:#334155;font-size:14px;line-height:1.7;margin:0 0 12px">${esc(intro)}</p>`
+    + receiptHtml
+    + itemsHtml
+    + `<div style="background:#fef9e7;border:1px solid rgba(255,184,0,.4);border-radius:12px;padding:12px 16px;margin-top:12px;font-size:13px;color:#92690e">Jangan bagikan detail ini ke siapa pun, termasuk yang mengaku admin. Detail yang sama juga tersimpan di halaman pesanan.</div>`
+    + cta(ctx.invoiceUrl, "Lihat Pesanan →")
+    + supportBlockHtml(siteUrl, ctx.supportWa),
+    { logoUrl: emailLogoUrl(siteUrl), siteUrl },
+  );
+  const text = [
+    intro,
+    ctx.receipt ? `\nPembayaran diterima:\n${ctx.receipt.lines.join("\n")}\nTotal ${rupiah(ctx.receipt.total)}${ctx.receipt.method ? ` · ${ctx.receipt.method}` : ""}` : "",
+    ...ctx.items.map((item) => `\n${item.label}:\n${item.details}`),
+    "\nJangan bagikan detail ini ke siapa pun.",
+    `Halaman pesanan: ${ctx.invoiceUrl}`,
+    `Butuh bantuan? WA ${ctx.supportWa}`,
+  ].filter(Boolean).join("\n");
+  return { subject, text, html };
+}
+
+export type BrandedNoticeContext = {
+  orderCode: string;
+  /** Judul di header gelap, mis. "Pembayaran Diterima". */
+  title: string;
+  subtitle: string;
+  /** Paragraf isi (teks polos, di-escape di sini). */
+  paragraphs: string[];
+  /** Kotak penegasan di bawah paragraf (mis. alasan penolakan). */
+  callout?: { text: string; tone: "info" | "warning" } | null;
+  orderUrl: string;
+  supportWa: string;
+};
+
+/** Shell bermerek untuk kabar pembeli (tanda terima, serah terima, penolakan, dst). */
+export function renderBrandedNotice(ctx: BrandedNoticeContext): { html: string; text: string } {
+  const siteUrl = originOf(ctx.orderUrl);
+  const calloutHtml = ctx.callout
+    ? ctx.callout.tone === "warning"
+      ? `<div style="background:#fef9e7;border:1px solid rgba(255,184,0,.4);border-radius:12px;padding:12px 16px;margin-top:12px;font-size:13px;color:#92690e">${esc(ctx.callout.text)}</div>`
+      : `<div style="background:#f0fdff;border:1px solid rgba(0,229,255,.35);border-radius:12px;padding:12px 16px;margin-top:12px;font-size:13px;color:#0e7490">${esc(ctx.callout.text)}</div>`
+    : "";
+  const html = shell(
+    ctx.title,
+    ctx.subtitle,
+    invoiceBadge(ctx.orderCode)
+    + ctx.paragraphs.map((p) => `<p style="color:#334155;font-size:14px;line-height:1.7;margin:0 0 12px">${esc(p)}</p>`).join("")
+    + calloutHtml
+    + cta(ctx.orderUrl, "Lihat Pesanan →")
+    + supportBlockHtml(siteUrl, ctx.supportWa),
+    { logoUrl: emailLogoUrl(siteUrl), siteUrl },
+  );
+  const text = [
+    `${ctx.title} — ${ctx.orderCode}`,
+    "",
+    ...ctx.paragraphs,
+    ctx.callout ? `\n${ctx.callout.text}` : "",
+    "",
+    `Halaman pesanan: ${ctx.orderUrl}`,
+    `Butuh bantuan? WA ${ctx.supportWa}`,
+    "",
+    "Email otomatis dari Axvara, mohon jangan dibalas.",
+  ].join("\n");
+  return { html, text };
+}

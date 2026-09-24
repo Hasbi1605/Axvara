@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
 
   const target = variantId
     ? await queryFirst(
-        `SELECT id, fulfillment_mode FROM product_variants WHERE id=? AND product_id=?`,
+        `SELECT id, fulfillment_mode, handover_template FROM product_variants WHERE id=? AND product_id=?`,
         variantId, productId,
       )
     : await queryFirst(`SELECT id, fulfillment_mode FROM products WHERE id=?`, productId);
@@ -62,6 +62,7 @@ export async function GET(request: NextRequest) {
     product_id: productId,
     variant_id: variantId,
     fulfillment_mode: String(target.fulfillment_mode || "manual"),
+    handover_template: typeof target.handover_template === "string" ? target.handover_template : "",
     shared_secret: sharedSecret,
     inventory,
     ...counts,
@@ -84,6 +85,7 @@ export async function POST(request: NextRequest) {
     shared_secret?: string;
     fulfillment_mode?: string;
     variant_id?: number;
+    handover_template?: string;
   };
 
   const productId = Number(body.product_id);
@@ -119,6 +121,19 @@ export async function POST(request: NextRequest) {
       );
     }
     return NextResponse.json({ ok: true, mode: body.fulfillment_mode });
+  }
+
+  // Template pesan serah terima (varian Made By Order non-WR, migrasi 0043).
+  // Bukan rahasia (teks instruksi), jadi disimpan polos; kosong = hapus.
+  if (body.action === "set_handover_template") {
+    if (!variantId) return NextResponse.json({ error: "variant_id required" }, { status: 400 });
+    const template = String(body.handover_template ?? "").trim();
+    if (template.length > 2000) return NextResponse.json({ error: "template_too_long" }, { status: 400 });
+    await execRun(
+      `UPDATE product_variants SET handover_template=?, updated_at=datetime('now') WHERE id=? AND product_id=?`,
+      template || null, variantId, productId,
+    );
+    return NextResponse.json({ ok: true, handover_template: template });
   }
 
   // Set shared secret

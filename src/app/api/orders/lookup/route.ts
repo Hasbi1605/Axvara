@@ -80,11 +80,13 @@ export async function POST(req: NextRequest) {
   // dengan halaman pesanan — tanpa input WA ulang.
   let credentialsReady = false;
   if (String(row.status) === "lunas") {
+    // Detail WR ATAU isi produk non-WR terkirim (migrasi 0043).
     const cred = await queryFirst(
-      `SELECT 1 AS ok FROM wr_order_links
-       WHERE order_code=? AND status='completed' AND wr_account_details IS NOT NULL
-       LIMIT 1`,
-      code,
+      `SELECT 1 AS ok WHERE EXISTS(SELECT 1 FROM wr_order_links
+         WHERE order_code=? AND status='completed' AND wr_account_details IS NOT NULL)
+       OR EXISTS(SELECT 1 FROM fulfillment_items
+         WHERE order_code=? AND status='delivered' AND delivered_ciphertext IS NOT NULL)`,
+      code, code,
     ).catch(() => null);
     credentialsReady = Boolean(cred);
   }

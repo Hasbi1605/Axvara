@@ -128,9 +128,10 @@ describe("penerima kanal eksplisit per item", () => {
     expect(deliver).toContain("no_recipient_for_channel");
   });
 
-  it("web tanpa push channel gagal keras ke retry (bukan drop diam-diam)", () => {
+  it("web dikirim lewat email; tanpa email valid langsung ke antrean admin (bukan drop diam-diam)", () => {
     const deliver = readDelivery();
-    expect(deliver).toContain("web_channel_requires_manual_handover");
+    expect(deliver).toContain("sendWebDeliveryEmail");
+    expect(deliver).toContain("web_no_buyer_email");
   });
 
   it("cron backfill baris item untuk job pra-migrasi sebelum proses due jobs", async () => {

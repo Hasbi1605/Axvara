@@ -376,9 +376,11 @@ export default function OrderSuccessPage() {
           <section className="ax-glass-card mt-6 rounded-2xl p-4 text-left" aria-label="Pengiriman produk">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">Pengiriman Produk</p>
             <p className="mt-2 text-xs leading-5 text-white/55">
+              {/* Kabar web lewat EMAIL (bot WA mati sejak 18 Sep 2026); nomor WA
+                  hanya disebut untuk order lama tanpa email. */}
               {order.queuedDelivery
-                ? <>Pesanan <span className="font-medium text-[#FFD66B]">Made By Order</span> — dibuat setelah orderan masuk. Detail akun dikirim ke WhatsApp <span className="font-medium text-white/80">{order.wa}</span>{order.email ? <> dan email <span className="font-medium text-white/80">{order.email}</span></> : null} yang kamu masukkan saat checkout.</>
-                : <>Pesanan sedang diproses. Detail akun dikirim ke WhatsApp <span className="font-medium text-white/80">{order.wa}</span>{order.email ? <> dan email <span className="font-medium text-white/80">{order.email}</span></> : null} yang kamu masukkan saat checkout.</>}
+                ? <>Pesanan <span className="font-medium text-[#FFD66B]">Made By Order</span> — disiapkan admin setelah pembayaran masuk. Detail produk dikirim ke {order.email ? <>email <span className="font-medium text-white/80">{order.email}</span></> : <>WhatsApp <span className="font-medium text-white/80">{order.wa}</span></>} yang kamu masukkan saat checkout, dan tampil di halaman ini.</>
+                : <>Pesanan sedang diproses. Detail produk dikirim ke {order.email ? <>email <span className="font-medium text-white/80">{order.email}</span></> : <>WhatsApp <span className="font-medium text-white/80">{order.wa}</span></>} yang kamu masukkan saat checkout, dan tampil di halaman ini.</>}
             </p>
             <p className="mt-2 text-[11px] leading-5 text-white/40">
               {order.queuedDelivery

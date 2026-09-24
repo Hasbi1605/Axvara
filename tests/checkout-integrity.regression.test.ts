@@ -277,7 +277,8 @@ describe("Authoritative UI and admin state", () => {
     expect(statusPage).toMatch(/isPaid && \(order\.credentialsReady \?/);
     // Fallback: info pengiriman ke kontak checkout, bukan form verifikasi WA.
     expect(statusPage).toContain("Pengiriman Produk");
-    expect(statusPage).toContain("Detail akun dikirim ke WhatsApp");
+    // Kabar web lewat email (bot WA mati); WA hanya untuk order tanpa email.
+    expect(statusPage).toContain("Detail produk dikirim ke {order.email ?");
     // Kelas antrean TIDAK boleh dijanjikan 5–15 menit (plafon 12 jam).
     expect(statusPage).toContain("order.queuedDelivery");
     expect(statusPage).toContain("Made By Order");

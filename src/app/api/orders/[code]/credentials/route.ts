@@ -6,7 +6,8 @@
 //   sekali + beri capability token untuk akses ulang.
 // - GET ?token=: akses ulang dengan capability token.
 // Rate-limit ketat (orders:lookup). Tidak pernah mengembalikan data selain
-// detail akun WR milik order itu.
+// detail akun milik order itu: detail WR + isi produk non-WR yang terkirim
+// (fulfillment_items.delivered_ciphertext, migrasi 0043).
 
 import { NextRequest, NextResponse } from "next/server";
 import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
@@ -16,7 +17,9 @@ import {
   getDecryptedAccountDetails,
   issueCredentialToken,
   normalizeAccountDetailsForDisplay,
+  verifyCredentialToken,
 } from "@/lib/warung-rebahan/deliver";
+import { readDeliveredSnapshots } from "@/lib/fulfillment/delivery/buyer-email";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -34,14 +37,16 @@ async function orderReady(code: string) {
   if (String(order.status) !== "lunas" || String(order.payment_status) !== "paid") {
     return { error: "not_paid" as const, status: 403 };
   }
-  const links = await db
-    .queryAll(
-      `SELECT id FROM wr_order_links WHERE order_code=? AND status='completed'
-         AND wr_account_details IS NOT NULL LIMIT 1`,
-      code,
+  const ready = await db
+    .queryFirst(
+      `SELECT 1 AS ok WHERE EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND status='completed'
+                                     AND wr_account_details IS NOT NULL)
+         OR EXISTS(SELECT 1 FROM fulfillment_items WHERE order_code=? AND status='delivered'
+                     AND delivered_ciphertext IS NOT NULL)`,
+      code, code,
     )
-    .catch(() => []);
-  if (!links.length) return { error: "not_ready" as const, status: 404 };
+    .catch(() => null);
+  if (!ready) return { error: "not_ready" as const, status: 404 };
   return { order, db };
 }
 
@@ -57,7 +62,7 @@ async function readVerifiedDetails(code: string, db: DatabaseAccess) {
       code,
     )
     .catch(() => []);
-  const out: { details: string; completed_at: string | null }[] = [];
+  const out: { label?: string; details: string; completed_at: string | null }[] = [];
   for (const row of rows) {
     try {
       const stored = await decryptAccountDetails(String(row.wr_account_details), String(row.wr_account_iv));
@@ -66,6 +71,9 @@ async function readVerifiedDetails(code: string, db: DatabaseAccess) {
     } catch {
       /* lewati baris korup */
     }
+  }
+  for (const snapshot of await readDeliveredSnapshots(code, db)) {
+    out.push({ label: snapshot.label, details: snapshot.details, completed_at: snapshot.completed_at });
   }
   return out;
 }
@@ -106,10 +114,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (!token) return NextResponse.json({ error: "token_required" }, { status: 401 });
   const ready = await orderReady(code);
   if ("error" in ready) return NextResponse.json({ error: ready.error }, { status: ready.status });
-  const details = await getDecryptedAccountDetails(code, ready.db, { token });
-  if (!details.length) return NextResponse.json({ error: "invalid_token" }, { status: 403 });
-  return NextResponse.json({
-    ok: true,
-    credentials: details.map((d) => ({ details: d.details, completed_at: d.completed_at })),
-  });
+  if (!(await verifyCredentialToken(code, token, ready.db))) return NextResponse.json({ error: "invalid_token" }, { status: 403 });
+  const wr = await getDecryptedAccountDetails(code, ready.db, { token });
+  const generic = await readDeliveredSnapshots(code, ready.db);
+  const credentials = [
+    ...wr.map((d) => ({ details: d.details, completed_at: d.completed_at })),
+    ...generic.map((d) => ({ label: d.label, details: d.details, completed_at: d.completed_at })),
+  ];
+  if (!credentials.length) return NextResponse.json({ error: "invalid_token" }, { status: 403 });
+  return NextResponse.json({ ok: true, credentials });
 }

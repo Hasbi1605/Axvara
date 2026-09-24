@@ -3,6 +3,8 @@ import { z } from "zod";
 import { queryAll, queryFirst } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
 import { findMissingFulfillmentLines, recordManualHandoverDetailed } from "@/lib/fulfillment/deliver";
+import { orderLineLabel } from "@/lib/fulfillment/delivery/buyer-email";
+import { renderHandoverTemplate } from "@/lib/fulfillment/handover-template";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -10,6 +12,8 @@ export const dynamic = "force-dynamic";
 const handoverSchema = z.object({
   item_index: z.number().int().min(0).max(100),
   note: z.string().trim().max(500).optional().nullable(),
+  // Isi yang dikirim ke pembeli (email/DM + halaman pesanan), terenkripsi.
+  buyer_message: z.string().trim().max(4000).optional().nullable(),
 });
 
 // GET — daftar item fulfillment satu order beserta status handover.
@@ -19,14 +23,41 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ code
   const { code } = await params;
   if (!code || !/^AXV-\d{8}-[A-Z0-9]{8}$/.test(code)) return NextResponse.json({ error: "Kode tidak valid" }, { status: 400 });
   const order = await queryFirst(
-    "SELECT code, status, payment_status, fulfillment_status FROM orders WHERE code=?", code,
+    "SELECT code, status, payment_status, fulfillment_status, sales_channel, customer_name, customer_email, items FROM orders WHERE code=?", code,
   );
   if (!order) return NextResponse.json({ error: "Pesanan tidak ditemukan" }, { status: 404 });
-  const items = await queryAll(
-    `SELECT item_index, product_id, variant_id, qty, fulfillment_mode, status, recipient_channel, last_error, updated_at
-     FROM fulfillment_items WHERE order_code=? ORDER BY item_index ASC`, code,
+  const rows = await queryAll(
+    `SELECT fi.item_index, fi.product_id, fi.variant_id, fi.qty, fi.fulfillment_mode, fi.status, fi.recipient_channel,
+            fi.last_error, fi.updated_at, (fi.delivered_ciphertext IS NOT NULL) AS has_content, pv.handover_template
+     FROM fulfillment_items fi LEFT JOIN product_variants pv ON pv.id=fi.variant_id
+     WHERE fi.order_code=? ORDER BY fi.item_index ASC`, code,
   );
-  return NextResponse.json({ ok: true, code, order, items });
+  // Template varian diisi di server (email/nama/kode sudah nyata) supaya
+  // admin melihat teks final di dialog dan tinggal menyunting bila perlu.
+  const items = rows.map((row) => {
+    const label = orderLineLabel(order.items, Number(row.item_index));
+    const { handover_template: template, ...rest } = row;
+    return {
+      ...rest,
+      label,
+      has_content: Number(row.has_content ?? 0) === 1,
+      template_text: renderHandoverTemplate(String(template ?? ""), {
+        email: String(order.customer_email ?? ""),
+        name: String(order.customer_name ?? ""),
+        code,
+        product: label,
+      }),
+    };
+  });
+  return NextResponse.json({
+    ok: true, code,
+    order: {
+      code: order.code, status: order.status, payment_status: order.payment_status,
+      fulfillment_status: order.fulfillment_status, sales_channel: order.sales_channel,
+      customer_email: order.customer_email ?? null,
+    },
+    items,
+  });
 }
 
 // POST — catat penyerahan manual satu item (handover admin yang nyata).
@@ -62,7 +93,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   let result: Awaited<ReturnType<typeof recordManualHandoverDetailed>>;
   try {
-    result = await recordManualHandoverDetailed(code, parsed.data.item_index, admin.email, parsed.data.note ?? null);
+    result = await recordManualHandoverDetailed(
+      code, parsed.data.item_index, admin.email, parsed.data.note ?? null, undefined,
+      { buyerMessage: parsed.data.buyer_message ?? null },
+    );
   } catch {
     // An item row alone cannot prove that audit, inventory and aggregates committed.
     return NextResponse.json({ error: "Gagal memulihkan serah terima. Muat ulang dan coba lagi." }, { status: 500 });

@@ -320,9 +320,12 @@
   di bawah Ringkasan, isinya bergantung `credentials_ready` dari server.
   Siap → panel "Detail Akun Digital" (input WA + CTA cyan `Tampilkan`, hasil
   kartu mono emerald). Belum/tidak pernah ada (fulfillment manual) → blok
-  informasi "Pengiriman Produk": kalimat tujuan pengiriman dengan WA + email
-  checkout tersamar di-highlight `text-white/80`, lalu catatan estimasi 5–15
-  menit `text-[11px] text-white/40`. Prinsipnya: JANGAN pernah tampilkan
+  informasi "Pengiriman Produk": kalimat tujuan pengiriman dengan email
+  checkout tersamar di-highlight `text-white/80` (WA hanya untuk order lama tanpa
+  email, 2026-09-25), lalu catatan estimasi 5–15
+  menit `text-[11px] text-white/40`. Isi produk non-WR ikut tampil di panel
+  "Detail Akun Digital" dengan label baris pesanan `text-[11px] text-emerald-200/80`
+  di atas kartu mono. Prinsipnya: JANGAN pernah tampilkan
   kontrol yang pasti gagal ke pembeli yang baru membayar — form mati lebih
   bikin panik daripada tidak ada form.
   Hasil "Detail Akun Digital" SELALU multi-baris rapi per field (2026-09-18
@@ -331,6 +334,24 @@
   `key:: value`, memberi label Indonesia (Akses OTP, Tautan), dan membuang
   label ganda — tidak pernah JSON mentah (bukti prod: link 95FC8669 tampil
   `{"product":...,"details":"email:...\r\npassword:..."}` sebelum ini).
+
+### 5.x Email pembeli bermerek (2026-09-25)
+- SEMUA email ke pembeli memakai satu shell (`email-forward.ts`): body terang
+  `#f1f5ff`, header Midnight `#080C1E` dengan logo Prism PNG + wordmark
+  AXVARA ber-tracking lebar, kartu putih, badge nomor invoice, tombol Cyan
+  `#00E5FF` bertuliskan "Lihat Pesanan →", dan blok bantuan dengan tombol WhatsApp
+  hijau. Dipakai untuk "Pesanan Siap" (isi produk non-WR, versi gabungan memuat
+  kotak "PEMBAYARAN DITERIMA"), tanda terima, pesanan diserahkan, bukti ditolak
+  (kotak kuning untuk alasan), bukti menunggu Hook, pengiriman tertunda, dan
+  pengingat QRIS. Dulu kabar non-WR memakai HTML polos tanpa logo.
+- Isi produk ditampilkan per baris dalam blok mono (mudah disalin) dengan garis
+  kiri Cyan, diikuti kotak kuning "Jangan bagikan detail ini". Tanpa emoji dan
+  tanpa tanda seru. Semua isi di-escape.
+- Panel admin "Kirim ke pembeli": satu textarea mono per item ("Detail untuk
+  pembeli · {nama baris}") yang terisi dari template varian, kalimat tujuan
+  (email/DM Telegram), dan input "Catatan internal" yang tidak dikirim ke pembeli.
+- PDP varian campuran sebelum dipilih: badge netral `border-white/15
+  bg-white/[0.06]` "Tergantung varian", bukan hijau "Kirim otomatis".
 
 ### 5.x Format Tanggal & Jam (audit 2026-09-20, live)
 - Semua tanggal/jam ditulis dalam **WIB** dan dirender lewat satu helper

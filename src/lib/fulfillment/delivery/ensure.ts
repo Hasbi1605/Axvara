@@ -9,6 +9,7 @@
 // NOL perubahan perilaku: urutan, SQL, dan gate identik dengan versi monolit.
 
 import { queryFirst, queryAll, execRun, isD1Mode } from "@/lib/db";
+import { createDatabaseAccess } from "@/lib/db-access";
 import { notifyTelegramBuyerPaid } from "@/lib/telegram/order-notifications";
 import type { Row } from "./types";
 import {
@@ -42,15 +43,42 @@ export async function ensureFulfillmentForPaidOrder(orderCode: string): Promise<
     try {
       await notifyTelegramBuyerPaid(orderCode);
     } catch { /* Payment remains durable; notification cron retries it. */ }
-  } else if (String(order.sales_channel) === "web") {
-    // Tanda terima email untuk pembeli web; idempoten lewat buyer_notice_log
-    // sehingga pemanggilan ulang (webhook ulang, konfirmasi admin) aman.
-    try {
-      const { notifyBuyerPaymentReceived } = await import("@/lib/notify-buyer");
-      await notifyBuyerPaymentReceived(orderCode);
-    } catch { /* kabar pembeli best-effort; pembayaran tetap sah */ }
   }
 
+  const result = await materializeAndDeliver(order, orderCode, autoFulfillmentEnabled);
+  if (String(order.sales_channel) === "web") await followUpWebOrder(orderCode);
+  return result;
+}
+
+/**
+ * Kabar setelah upaya kirim pertama untuk order web (2026-09-25).
+ *
+ * Tanda terima: bila SEMUA baris sudah terkirim otomatis, pembeli sudah
+ * menerima email "Pesanan Siap" yang memuat tanda terima, jadi email tanda
+ * terima terpisah tidak dikirim (satu email, keputusan owner). Selain itu
+ * (Made By Order, kirim tertunda/gagal, AUTO_FULFILLMENT mati, early return
+ * materialisasi) tanda terima tetap dikirim. Idempoten lewat buyer_notice_log.
+ *
+ * Admin: order web lunas yang punya item `manual_required` memicu ping
+ * Telegram sekali. Dulu admin hanya dikabari saat order DIBUAT (sebelum
+ * bayar), jadi Made By Order web yang sudah lunas bisa terlewat.
+ */
+async function followUpWebOrder(orderCode: string): Promise<void> {
+  const database = createDatabaseAccess();
+  try {
+    const { webOrderAutoDelivered } = await import("./buyer-email");
+    if (!(await webOrderAutoDelivered(orderCode, database))) {
+      const { notifyBuyerPaymentReceived } = await import("@/lib/notify-buyer");
+      await notifyBuyerPaymentReceived(orderCode, database);
+    }
+  } catch { /* kabar pembeli best-effort; pembayaran tetap sah */ }
+  try {
+    const { notifyAdminWebHandoverNeeded } = await import("@/lib/telegram/order-notifications");
+    await notifyAdminWebHandoverNeeded(orderCode, database);
+  } catch { /* ping admin best-effort; antrean panel tetap menampilkan order */ }
+}
+
+async function materializeAndDeliver(order: Row, orderCode: string, autoFulfillmentEnabled: boolean): Promise<boolean> {
   let items: { product_id: number; variant_id?: number }[];
   try {
     items = JSON.parse(String(order.items ?? "[]"));

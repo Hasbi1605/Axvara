@@ -290,6 +290,12 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
   // varian aktif pertama bila pembeli belum memilih — meniru panel WR yang
   // berganti isi tiap varian dipilih).
   const termsVariant = selectedVariant ?? activeVariants[0] ?? null;
+  // Sebelum pembeli memilih, ringkasan pengiriman dulu mengikuti varian
+  // pertama saja: Canva (Invite 1 Bulan kirim otomatis, dua varian lain Made
+  // By Order) tampil "Kirim otomatis" untuk seluruh produk. Varian campuran
+  // kini disebut apa adanya sampai satu varian dipilih.
+  const mixedDelivery = !selectedVariant
+    && new Set(activeVariants.map((v) => buyerDeliveryKind(v))).size > 1;
   // Deskripsi + S&K + cara aktivasi dalam satu format untuk WR dan non-WR:
   // S&K varian (WR) digabung dengan bagian "Syarat & Ketentuan:" / "Cara
   // Aktivasi:" di deskripsi (produk non-WR); tiap baris tampil sekali.
@@ -615,13 +621,16 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
               instan, manual = antrean admin). Non-WR manual memakai kalimat
               ETA admin (tanpa angka supplier 6–12 jam). */}
           <div className="mt-5">
-            {buyerDeliveryKind(termsVariant ?? { fulfillment_mode: "manual" }) === "instant" ? (
+            {mixedDelivery ? (
+              <span className="inline-flex rounded-full border border-white/15 bg-white/[0.06] px-3 py-1 text-[11px] font-bold text-white/75">Tergantung varian</span>
+            ) : buyerDeliveryKind(termsVariant ?? { fulfillment_mode: "manual" }) === "instant" ? (
               <span className="inline-flex rounded-full border border-emerald-400/25 bg-emerald-500/10 px-3 py-1 text-[11px] font-bold text-emerald-300">Kirim otomatis</span>
             ) : (
               <span className="inline-flex rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-3 py-1 text-[11px] font-bold text-[#FFD66B]">{buyerDeliveryBadge(termsVariant ?? { fulfillment_mode: "manual" })}</span>
             )}
             <p className="mt-2 text-[12px] leading-5 text-white/50">
               {(() => {
+                if (mixedDelivery) return "Varian Kirim otomatis dikirim setelah pembayaran dikonfirmasi. Varian Made By Order disiapkan admin.";
                 const tv = termsVariant;
                 if (!tv) return deliveryEtaForBuyer(null);
                 if (buyerDeliveryKind(tv) === "instant") return "Kirim otomatis setelah pembayaran dikonfirmasi";

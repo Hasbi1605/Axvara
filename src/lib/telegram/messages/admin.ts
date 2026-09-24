@@ -69,6 +69,34 @@ export function adminTelegramOrderPaidMessage(params: {
   ].join("\n");
 }
 
+/**
+ * Order WEB lunas yang punya item Made By Order / tanpa email (2026-09-25).
+ * Dulu admin hanya menerima kabar order web saat DIBUAT (belum bayar).
+ */
+export function adminWebHandoverNeededMessage(params: {
+  orderCode: string;
+  productNames: string;
+  amount: number;
+  customerName: string;
+  customerEmail: string;
+  customerWa: string;
+}): string {
+  const { orderCode, productNames, amount, customerName, customerEmail, customerWa } = params;
+  return [
+    "🛠 <b>Lunas — Web, perlu dikirim admin</b>",
+    "━━━━━━━━━━━━━━━━━━━━━",
+    "",
+    `📦 ${escapeHtml(truncate(productNames, 120))}`,
+    `🔢 <code>${escapeHtml(orderCode)}</code>`,
+    `💰 ${formatRupiah(amount)}`,
+    `👤 ${escapeHtml(truncate(customerName || "—", 50))}`,
+    `📧 ${escapeHtml(truncate(customerEmail || "— tanpa email", 80))}`,
+    `📱 ${escapeHtml(truncate(customerWa || "—", 30))}`,
+    "",
+    "Panel → Pesanan → <b>Kirim ke pembeli</b>",
+  ].join("\n");
+}
+
 export function adminDeliveryFailedNotification(orderCode: string, error: string): string {
   return [
     "🚨 <b>Delivery Gagal</b>",

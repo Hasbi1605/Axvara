@@ -257,6 +257,14 @@ mengirim tanda terima pembayaran, pengiriman gagal (termasuk kegagalan WR),
 serah terima manual, dan bukti ditolak ke `customer_email` lewat Resend yang
 sama (env di atas), bukan outbox WA yang mati. Idempoten via tabel
 `buyer_notice_log` (migrasi 0039, diterapkan otomatis oleh CI).
+**Produk non-WR untuk pembeli web (2026-09-25, migrasi 0043):** varian
+Kirim otomatis (pesan bersama / stok unik) dikirim lewat SATU email "Pesanan
+Siap" (isi produk + tanda terima). Varian Made By Order diserahkan admin lewat
+Pesanan → **Kirim ke pembeli**: kolom "Detail untuk pembeli" terisi dari
+template varian (panel varian, placeholder `{email}` `{nama}` `{kode}`
+`{produk}`), dikirim lewat email/DM Telegram, dan tersimpan terenkripsi untuk
+halaman pesanan. Admin mendapat ping Telegram saat order web lunas perlu
+diserahkan. Semua email pembeli memakai shell bermerek yang sama.
 Opsi A (disarankan): API key dipegang proxy Heroku — Pages cukup
 `WARUNG_REBAHAN_PROXY_URL` + `WARUNG_REBAHAN_PROXY_TOKEN`.
 

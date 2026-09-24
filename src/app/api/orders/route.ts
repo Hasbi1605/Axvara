@@ -370,8 +370,10 @@ export async function GET(req: NextRequest) {
       // .catch: D1 lama tanpa tabel WR (pra-0027) → kedua flag false, bukan 500.
       const flags = await queryFirst(
         `SELECT
-          EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND status='completed'
-                   AND wr_account_details IS NOT NULL) AS creds,
+          (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND status='completed'
+                    AND wr_account_details IS NOT NULL)
+           OR EXISTS(SELECT 1 FROM fulfillment_items WHERE order_code=? AND status='delivered'
+                    AND delivered_ciphertext IS NOT NULL)) AS creds,
           EXISTS(SELECT 1 FROM json_each(CASE WHEN json_valid(?) THEN ? ELSE '[]' END) je
                  JOIN product_variants pv
                    ON pv.id = CAST(json_extract(je.value,'$.variant_id') AS INTEGER)
@@ -379,6 +381,7 @@ export async function GET(req: NextRequest) {
                  WHERE CASE WHEN pv.wr_variant_id IS NOT NULL
                             THEN COALESCE(wv.wr_delivery_class,'made_by_order') <> 'restock'
                             ELSE pv.fulfillment_mode = 'manual' END) AS queued`,
+        code,
         code,
         String(row.items ?? "[]"),
         String(row.items ?? "[]"),

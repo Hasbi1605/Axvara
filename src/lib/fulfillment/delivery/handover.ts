@@ -129,7 +129,14 @@ export async function recordManualHandoverDetailed(
   orderCode: string,
   itemIndex: number,
   adminEmail: string,
-  note?: string | null, database: DatabaseAccess = createDatabaseAccess()
+  note?: string | null, database: DatabaseAccess = createDatabaseAccess(),
+  /**
+   * Isi "Detail untuk pembeli" (2026-09-25). Dienkripsi lalu disimpan di
+   * baris item (migrasi 0043) dalam UPDATE yang sama dengan flip status,
+   * sehingga email/DM serah terima dan halaman pesanan membaca isi yang
+   * persis sama. Kosong = admin mengirim di luar sistem (perilaku lama).
+   */
+  options: { buyerMessage?: string | null } = {},
 ): Promise<ManualHandoverResult> {
   const { queryAll, queryFirst, execRun } = database;
   const reviewer = String(adminEmail || "").trim().slice(0, 120);
@@ -167,13 +174,26 @@ export async function recordManualHandoverDetailed(
   }
   const stamp = firstStamp;
   const audit = `manual_handover:${reviewer}:${stamp}${note ? `:${String(note).slice(0, 200)}` : ""}`;
+  const buyerMessage = String(options.buyerMessage ?? "").trim();
+  let sealed: { ciphertext: string; iv: string } | null = null;
+  if (buyerMessage) {
+    try {
+      const { encryptSecret } = await import("../crypto");
+      sealed = await encryptSecret(buyerMessage);
+    } catch {
+      // Tanpa kunci enkripsi isi tidak boleh disimpan polos: tolak, jangan
+      // diam-diam menyerahkan tanpa isi yang admin ketik.
+      return { ok: false, reason: "storage_error" };
+    }
+  }
   try {
     const flipped = await execRun(
       `UPDATE fulfillment_items
        SET status='delivered', delivered_message_id='manual', locked_until=NULL,
-           last_error=?, updated_at=datetime('now')
+           last_error=?, delivered_ciphertext=COALESCE(?, delivered_ciphertext),
+           delivered_iv=COALESCE(?, delivered_iv), updated_at=datetime('now')
        WHERE order_code=? AND item_index=? AND status IN ('manual_required','retry','queued','failed')`,
-      audit, orderCode, itemIndex,
+      audit, sealed?.ciphertext ?? null, sealed?.iv ?? null, orderCode, itemIndex,
     );
     if (!flipped.changes) {
       // Kalah race dengan worker lain yang baru menyelesaikan — baca ulang:

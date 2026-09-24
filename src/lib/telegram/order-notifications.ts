@@ -6,6 +6,7 @@ import { sendMessage } from "@/lib/telegram/api";
 import {
   adminTelegramOrderCreatedMessage,
   adminTelegramOrderPaidMessage,
+  adminWebHandoverNeededMessage,
   adminWhatsAppOrderCreatedMessage,
   adminWhatsAppOrderPaidMessage,
   orderPaidMessage,
@@ -316,6 +317,52 @@ export async function notifyTelegramPaidAdmin(orderCode: string, database: Datab
     orderCode,
   );
   return true;
+}
+
+/**
+ * Ping admin saat order WEB lunas punya item yang harus diserahkan manual
+ * (Made By Order non-WR, atau order lama tanpa email). Sekali per order,
+ * idempoten lewat buyer_notice_log (kunci `admin-handover:<kode>`, kanal
+ * telegram); baris `failed` boleh dicoba ulang pada pemanggilan berikutnya.
+ */
+export async function notifyAdminWebHandoverNeeded(orderCode: string, database: DatabaseAccess = createDatabaseAccess()): Promise<boolean> {
+  const { queryFirst } = database;
+  const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
+  if (!adminChatId || !telegramNotificationsConfigured()) return false;
+  const pending = await queryFirst(
+    `SELECT COUNT(*) AS n FROM fulfillment_items
+     WHERE order_code=? AND status='manual_required' AND wr_link_id IS NULL`,
+    orderCode,
+  ).catch(() => null);
+  if (!Number(pending?.n ?? 0)) return true;
+  const order = await queryFirst(
+    `SELECT o.code, o.items, o.customer_name, o.customer_email, o.customer_wa, o.subtotal,
+            (SELECT pt.payable_amount FROM payment_transactions pt WHERE pt.order_code=o.code
+              ORDER BY pt.id DESC LIMIT 1) AS payable_amount
+     FROM orders o
+     WHERE o.code=? AND o.sales_channel='web' AND o.status='lunas' AND o.payment_status='paid'`,
+    orderCode,
+  ).catch(() => null);
+  if (!order) return true;
+  const { claimNotice, settleNotice } = await import("@/lib/notify-buyer");
+  const key = `admin-handover:${orderCode}`;
+  if (!(await claimNotice(database, key, orderCode, "telegram"))) return true;
+  const siteUrl = (process.env.SITE_URL || "https://axvara.tech").replace(/\/$/, "");
+  const sent = await sendMessage({
+    chat_id: adminChatId,
+    text: adminWebHandoverNeededMessage({
+      orderCode: String(order.code),
+      productNames: productNames(order.items),
+      amount: Number(order.payable_amount ?? order.subtotal ?? 0),
+      customerName: String(order.customer_name || ""),
+      customerEmail: String(order.customer_email || ""),
+      customerWa: String(order.customer_wa || ""),
+    }),
+    parse_mode: "HTML",
+    reply_markup: telegramOrderAdminKeyboard({ orderCode: String(order.code), siteUrl }),
+  }).catch(() => ({ ok: false as const, description: "telegram_send_failed" }));
+  await settleNotice(database, key, Boolean(sent?.ok), undefined, (sent as { description?: string })?.description);
+  return Boolean(sent?.ok);
 }
 
 /** Retry best-effort Telegram notifications from the five-minute operations cron.

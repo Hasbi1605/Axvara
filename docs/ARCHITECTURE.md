@@ -693,7 +693,7 @@ Implementasi native TypeScript di codebase AXVARA. Repo `mocasus/telegram-auto-o
 | `dana_qris_legacy_ranges` | Rentang nominal dengan riwayat lama yang sudah terhapus oleh reissue; wajib verifikasi mutasi manual (migrasi 0025) |
 | `fulfillment_inventory` | Vault secret terenkripsi per produk |
 | `fulfillment_jobs` | Outbox delivery per order dengan retry (kompatibilitas) |
-| `fulfillment_items` | Status/mode/penerima per item order (migrasi 0015). **Ringkasan status: satu order HANYA `delivered` bila SEMUA item delivered; campuran delivered+manual = `manual_required` (pelanggaran ini menutupi item manual yang belum diserahkan). Per-item klaim CAS (`sending` + locked_until) + agregat parent berpagar lease (R4 lanjutan); serah terima manual via `POST /api/admin/orders/[code]/handover`.** |
+| `fulfillment_items` | Status/mode/penerima per item order (migrasi 0015). **Ringkasan status: satu order HANYA `delivered` bila SEMUA item delivered; campuran delivered+manual = `manual_required` (pelanggaran ini menutupi item manual yang belum diserahkan). Per-item klaim CAS (`sending` + locked_until) + agregat parent berpagar lease (R4 lanjutan); serah terima manual via `POST /api/admin/orders/[code]/handover`.** Migrasi 0043: `delivered_ciphertext`/`delivered_iv` = salinan terenkripsi isi yang dikirim ke pembeli (ciphertext sumber disalin untuk shared/unique; isi "Detail untuk pembeli" dienkripsi untuk serah terima admin), dibaca `/api/orders/[code]/credentials` setelah verifikasi WA/token. |
 | `dana_webhook_events.reviewed_by/review_note` | Audit verifikasi manual nominal dipakai-ulang (migrasi 0017, review R1) |
 | `whatsapp_outbox.worker_id/locked_until` + status `sending` | Lease klaim worker anti-kirim-ganda (migrasi 0018, rebuild CHECK prod 0019, review R10 lanjutan: recovery lease basi oleh runtime + claimErrors terpisah) |
 | `admin_session_revocations` | Pencabutan sesi admin lintas instance/restart (migrasi 0020, review R8 lanjutan: logout menolak cookie basi di worker baru; TTL 90 hari dibersihkan cron) |
@@ -714,7 +714,8 @@ Kolom baru di `orders`: `sales_channel`, `telegram_chat_id`, `telegram_user_id`,
 | GET | `/api/admin/bot/health` | admin | Health check tanpa secret |
 | GET | `/api/admin/overview` | admin | KPI/action queue lintas channel |
 | GET/POST | `/api/admin/payments/events` | admin | Event QRIS Hook aman + retry exact-match |
-| GET/POST/DELETE | `/api/admin/fulfillment` | admin | Inventory management |
+| GET/POST/DELETE | `/api/admin/fulfillment` | admin | Inventory management + template pesan serah terima varian Made By Order (`action:"set_handover_template"`, migrasi 0043) |
+| GET/POST | `/api/admin/orders/:code/handover` | admin | Kirim ke pembeli: GET item + `label` + `template_text` terisi; POST `{item_index, note?, buyer_message?}` → isi dienkripsi, dikirim ke pembeli (email/DM), tampil di halaman pesanan |
 | GET/PUT | `/api/store-settings` | public/admin | Identitas storefront / update terautentikasi |
 | GET | `/api/catalog[?slug=]` | public | Katalog produk/varian aktif terpusat. Detail `?slug=` (sejak 2026-09-24): tiap varian membawa `copy` (S&K berkelompok + cara aktivasi versi Axvara, atau teks WR yang dirapikan) dan `terms`/`delivery_terms` mentah dikosongkan (`null`) |
 | GET/PUT | `/api/admin/variant-copy` | admin | S&K + cara aktivasi versi admin per varian (migrasi 0041): `GET ?product_id=` status tiap varian (admin/axvara/pemasok/none, `adminStale`, `needsReview`) + teks editor + teks asli WR; `PUT {variant_id, terms, activation}` simpan (mencap sidik jari teks WR saat itu; kosong/sama dengan otomatis = hapus suntingan) |
@@ -751,6 +752,64 @@ Rollout bertahap: `TELEGRAM_BOT_ENABLED=false`, `DANA_QRIS_ENABLED=false`, `AUTO
 - Konfirmasi beli memakai tombol `✅ Saya Paham, Lanjut Bayar` + tombol `📜 Syarat Garansi`; invoice/pre-bayar menegaskan lanjut bayar = setuju ketentuan.
 - Detail produk menunjuk garansi ikut deskripsi + `/garansi`; pesan delivery/manual mengingatkan simpan invoice untuk klaim.
 
+### Pengiriman non-WR ke pembeli web + Kirim ke pembeli (2026-09-25, migrasi 0043)
+
+Laporan owner, 2026-09-25.
+Temuan read-only produksi: 100% item non-WR kanal web berakhir `manual_required`
+karena `send.ts` memaksa semua item web ke antrean admin
+(`web_channel_requires_manual_handover`), padahal checkout web mewajibkan email dan
+badge storefront menjanjikan "Kirim otomatis". Perubahan:
+- **Kirim otomatis lewat email.** Item web mode `shared`/`unique` dikirim oleh
+  `sendWebDeliveryEmail` (`src/lib/fulfillment/delivery/buyer-email.ts`) dengan template
+  **"Pesanan Siap"** (`buildOrderReadyTemplate`). Emailnya sekaligus memuat tanda terima
+  pembayaran, jadi pembeli menerima SATU email (keputusan owner). Idempoten per item lewat
+  `buyer_notice_log` kunci `email:fulfillment-item:<id>`: baris `sent` tidak dikirim ulang
+  saat retry (kirim sukses tetapi tulis status gagal). Resend gagal → jadwal retry
+  1/5/15/60 menit → `failed` + alarm admin + kabar pembeli (mesin lama). Mode `manual`
+  (Made By Order) → `manual_required` di semua kanal. Order web tanpa email valid →
+  `manual_required` dengan `web_no_buyer_email`.
+- **Tanda terima terpisah hanya bila perlu.** `ensureFulfillmentForPaidOrder` kini
+  mengirim tanda terima web SETELAH upaya kirim pertama, dan melewatkannya bila semua baris
+  sudah `delivered` otomatis (`webOrderAutoDelivered`: `delivered_message_id LIKE 'item:%'`).
+  Made By Order, pesanan campuran, kirim tertunda, dan `AUTO_FULFILLMENT_ENABLED` mati
+  tetap menerima tanda terima.
+- **Salinan isi terkirim** (`fulfillment_items.delivered_ciphertext/iv`). Isinya ciphertext
+  pesan bersama atau unit stok yang disalin apa adanya saat kirim, jadi halaman pesanan tetap
+  menampilkan isi yang sama walau pesan bersama diganti kemudian. `/api/orders/[code]/credentials`
+  (POST verifikasi 6 digit WA, GET capability token yang diverifikasi dulu) mengembalikan
+  detail WR + salinan ini dengan `label` baris pesanan. `credentials_ready`
+  (`GET /api/orders?code=`, `/api/orders/lookup`) dan `issueCredentialToken` kini juga
+  menghitung salinan ini.
+- **Kirim ke pembeli** (dulu "Serahkan manual"). `GET /api/admin/orders/[code]/handover`
+  mengembalikan `label`, `has_content`, dan `template_text`, yaitu
+  `product_variants.handover_template` yang placeholder `{email}`, `{nama}`, `{kode}`,
+  `{produk}`-nya sudah diisi di server. `POST` menerima `buyer_message` (≤4000). Isi itu
+  dienkripsi (`encryptSecret`, tanpa kunci → `storage_error`, tidak pernah disimpan polos) di
+  UPDATE yang sama dengan flip `delivered`. `notifyBuyerHandover` mengirim isi itu lewat email
+  "Pesanan Siap" (web) atau DM Telegram (di-escape). Isi **tidak pernah** masuk outbox WA
+  (`whatsappFallback:false`), karena outbox menyimpan teks polos dan bot WA mati: order web
+  tanpa email → `buyer_notified:false`. Tanpa isi, pembeli menerima kabar "Pesanan
+  Diserahkan". Template per varian disunting di panel varian Made By Order
+  (`ProductVariantRows`) dan disimpan lewat `POST /api/admin/fulfillment`
+  `action:"set_handover_template"` (≤2000; kosong = hapus).
+- **Ping admin saat order web lunas perlu diserahkan.** `notifyAdminWebHandoverNeeded`
+  (`order-notifications.ts`) dipanggil `ensureFulfillmentForPaidOrder` untuk kanal web bila
+  ada item `manual_required` non-WR. Ping dikirim sekali per order lewat `buyer_notice_log`
+  kunci `admin-handover:<kode>` (kanal telegram); baris `failed` dicoba lagi pada pemanggilan
+  berikutnya. Dulu admin hanya dikabari saat order web DIBUAT.
+- **Semua email pembeli bermerek.** `renderBrandedNotice` (shell Midnight + Cyan, logo,
+  tombol Lihat Pesanan, blok bantuan WA) dipakai untuk tanda terima, serah terima, bukti
+  ditolak, bukti menunggu Hook, pengiriman tertunda, dan pengingat QRIS kedaluwarsa. Isi di-escape
+  dan tanpa emoji.
+- **Teks pembeli.** Blok "Pengiriman Produk" di `/pesanan/[code]` menyebut email sebagai
+  tujuan (WA hanya untuk order lama tanpa email). PDP menampilkan "Tergantung varian" untuk
+  varian campuran sebelum pembeli memilih. Dulu ringkasannya mengikuti varian pertama, jadi
+  Canva tampil "Kirim otomatis" walau 2 dari 3 variannya Made By Order.
+- Dikunci oleh `tests/nonwr-web-delivery.integration.test.ts`,
+  `tests/nonwr-handover-content.integration.test.ts`, `tests/admin-handover-dialog.behavior.test.tsx`,
+  dan `tests/nonwr-delivery-copy.test.tsx`. Item web `manual_required` lama di produksi tidak
+  dikirim ulang otomatis; admin menyelesaikannya lewat Kirim ke pembeli.
+
 ## 14. Varian Produk Terpusat dan Bot Grup WhatsApp AXVARA (Terimplementasi)
 
 Sistem varian produk terpusat dan bot WhatsApp telah diimplementasikan sesuai `docs/WHATSAPP-GROUP-BOT-PLAN.md`:
@@ -784,7 +843,7 @@ Mulai 5 September 2026, Baileys gateway produksi berjalan di Heroku dan seluruh 
 ### Tabel Baru (migrasi 0007)
 | Tabel | Tujuan |
 |---|---|
-| `product_variants` | SKU varian produk (harga, stok, durasi, garansi, fulfillment) |
+| `product_variants` | SKU varian produk (harga, stok, durasi, garansi, fulfillment). Migrasi 0043: `handover_template` (milik admin, varian Made By Order non-WR; ditulis hanya lewat `POST /api/admin/fulfillment` action `set_handover_template`) |
 | `whatsapp_sessions` | Sesi percakapan per anggota grup WhatsApp (TTL 15 menit) |
 | `whatsapp_inbox_events` | Idempotency / dedup webhook WhatsApp |
 | `whatsapp_outbox` | Antrean pengiriman pesan WhatsApp dengan retry |
