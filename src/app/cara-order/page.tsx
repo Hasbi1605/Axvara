@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { StoreWhatsAppLink } from "@/components/storefront/StoreWhatsAppLink";
 
-export const metadata = { title: "Cara Order | AXVARA", description: "Panduan memesan produk digital di AXVARA." };
+export const metadata = { title: "Cara Order | AXVARA", description: "Panduan memesan produk digital di AXVARA.", alternates: { canonical: "/cara-order" } };
 
 const steps = [
   ["1", "Pilih produk", "Buka katalog, pilih produk yang dibutuhkan, lalu tekan Beli Langsung atau masukkan ke keranjang."],

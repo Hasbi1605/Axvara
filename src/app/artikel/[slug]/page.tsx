@@ -1,9 +1,12 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { marked } from "marked";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { normalizeArticle } from "@/lib/articles";
 import { queryFirst } from "@/lib/db";
+import { absoluteUrl } from "@/lib/site-seo";
+import { parseExpiry } from "@/lib/expiry";
 import { formatWibDateTime } from "@/lib/utils";
 
 export const runtime = "edge";
@@ -47,6 +50,38 @@ async function getArticle(slug: string): Promise<Article | null> {
   const article = normalizeArticle(row);
   if (article.status !== "published") return null;
   return article as unknown as Article;
+}
+
+/**
+ * Dulu artikel tidak punya metadata sendiri: SEMUA artikel tampil dengan judul
+ * dan deskripsi beranda, tanpa canonical dan tanpa gambar preview — judul
+ * ganda di Google dan link WhatsApp/Telegram tanpa gambar.
+ */
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params;
+  const article = await getArticle(slug).catch(() => null);
+  if (!article) return { title: "Artikel tidak ditemukan | AXVARA", robots: { index: false } };
+  const canonical = `/artikel/${article.slug}`;
+  const description = String(article.excerpt || article.title).replace(/\s+/g, " ").trim().slice(0, 160);
+  const images = article.cover_url ? [{ url: absoluteUrl(article.cover_url) }] : [{ url: "/og/axvara-og.png", width: 1200, height: 630 }];
+  const publishedMs = parseExpiry(article.published_at);
+  return {
+    title: `${article.title} | AXVARA`,
+    description,
+    alternates: { canonical },
+    // openGraph halaman menggantikan milik root: ulangi siteName/locale.
+    openGraph: {
+      type: "article",
+      url: canonical,
+      siteName: "AXVARA",
+      locale: "id_ID",
+      title: article.title,
+      description,
+      publishedTime: publishedMs !== null ? new Date(publishedMs).toISOString() : undefined,
+      images,
+    },
+    twitter: { card: "summary_large_image", title: article.title, description, images: images.map((image) => image.url) },
+  };
 }
 
 function safeImageSource(source?: string) {
@@ -155,7 +190,7 @@ export default async function ArtikelDetail({ params }: { params: Promise<{ slug
     "@type": "Article",
     headline: article.title,
     description: article.excerpt ?? article.title,
-    image: article.cover_url ?? undefined,
+    image: article.cover_url ? absoluteUrl(article.cover_url) : undefined,
     datePublished: article.published_at ?? undefined,
     author: { "@type": "Organization", name: article.author_name ?? "AXVARA" },
     mainEntityOfPage: canonicalUrl,

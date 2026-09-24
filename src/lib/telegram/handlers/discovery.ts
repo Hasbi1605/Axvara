@@ -19,6 +19,7 @@ import {
   type TelegramOrderRow,
 } from "@/lib/telegram/messages";
 import { getProductDetail } from "@/lib/catalog";
+import { purchasableStockSql } from "@/lib/catalog-availability";
 import { countInventory } from "@/lib/fulfillment/inventory";
 import { clampQty } from "./shared";
 import { handleShowCatalog, handleShowQty, handleShowVariants } from "./catalog";
@@ -209,12 +210,14 @@ export async function handlePendingSearchInput(
 
 export async function handleSearchResults(chatId: number, keyword: string) {
   const like = `%${keyword.trim().toLowerCase()}%`;
+  const match = `p.is_active=1 AND p.telegram_enabled=1
+       AND (LOWER(p.name) LIKE ? OR LOWER(COALESCE(p.whatsapp_alias,'')) LIKE ? OR LOWER(COALESCE(p.aliases,'[]')) LIKE ?)`;
+  // Sama dengan katalog: hanya produk yang bisa dibeli.
   const rows = await queryAll(
-    `SELECT p.id, p.name, COALESCE(MIN(pv.price), p.price) as price
+    `SELECT p.id, p.name, MIN(pv.price) AS price
      FROM products p
-     LEFT JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1
-     WHERE p.is_active=1 AND p.telegram_enabled=1
-       AND (LOWER(p.name) LIKE ? OR LOWER(COALESCE(p.whatsapp_alias,'')) LIKE ? OR LOWER(COALESCE(p.aliases,'[]')) LIKE ?)
+     JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1 AND ${purchasableStockSql("pv")}
+     WHERE ${match}
      GROUP BY p.id
      ORDER BY p.sold_count DESC, p.sort_order ASC
      LIMIT 10`,
@@ -225,9 +228,15 @@ export async function handleSearchResults(chatId: number, keyword: string) {
     name: String(row.name),
     price: Number(row.price),
   }));
+  // Kata kunci cocok tapi semuanya habis: katakan habis, bukan "tidak ada".
+  let soldOut = 0;
+  if (products.length === 0) {
+    const row = await queryFirst(`SELECT COUNT(*) AS n FROM products p WHERE ${match}`, like, like, like).catch(() => null);
+    soldOut = Number(row?.n ?? 0);
+  }
   await sendMessage({
     chat_id: chatId,
-    text: searchResultsMessage(keyword, products.length),
+    text: searchResultsMessage(keyword, products.length, soldOut),
     parse_mode: "HTML",
     reply_markup: products.length > 0 ? searchResultsKeyboard(products) : homeKeyboard(),
   });

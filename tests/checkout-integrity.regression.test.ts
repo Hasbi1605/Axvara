@@ -192,7 +192,12 @@ describe("Atomic stock lifecycle", () => {
 
 describe("Authoritative UI and admin state", () => {
   it("homepage/detail/direct checkout tidak menghidupkan seed produk", () => {
-    expect(read("src/app/page.tsx")).toContain("useState<Product[]>([])");
+    // Beranda: state awal = produk D1 dari server (page.tsx memanggil handler
+    // /api/products) atau kosong — tidak pernah seed statis.
+    const home = read("src/app/home-client.tsx");
+    expect(home).toContain("useState<Product[]>(initialProducts ?? [])");
+    expect(home).not.toMatch(/import \{[^}]*\bproducts\b[^}]*\} from "@\/lib\/products"/);
+    expect(read("src/app/page.tsx")).toContain("@/app/api/products/route");
     // PDP interaktif kini di product-detail-client.tsx (page.tsx server-only, #11).
     expect(read("src/app/produk/[slug]/product-detail-client.tsx")).toContain("useState<Product[]>([])");
     expect(read("src/app/checkout/page.tsx")).not.toContain("products.find");

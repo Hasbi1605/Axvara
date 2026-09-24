@@ -345,8 +345,10 @@ function CheckoutInner() {
       if (!r.ok) throw new Error(j.error || `Gagal buat pesanan (${r.status})`);
       const code = j.code as string;
       // Also keep a local copy for UX fallback (pesanan page can fetch from server if local missing)
+      // Tanpa WA/email: perangkat bersama tidak boleh menyimpan kontak pembeli
+      // secara permanen (server sudah menyamarkannya di setiap respons).
       try {
-        const localOrder = { code, name: fallbackName, wa, email, method: payMethod, items: displayItems, subtotal: j.subtotal ?? displaySubtotal, fileName: null, status: "pending", createdAt: new Date().toISOString() };
+        const localOrder = { code, name: fallbackName, method: payMethod, items: displayItems, subtotal: j.subtotal ?? displaySubtotal, fileName: null, status: "pending", createdAt: new Date().toISOString() };
         const existing = JSON.parse(localStorage.getItem("axvara-orders") || "[]");
         localStorage.setItem("axvara-orders", JSON.stringify([...existing, localOrder]));
       } catch {}

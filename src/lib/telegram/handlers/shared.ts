@@ -6,6 +6,7 @@
 // dan menjaga perilaku IDENTIK dengan route.ts lama (pemindahan murni).
 
 import { queryAll, execRun, isD1Mode } from "@/lib/db";
+import { purchasableStockSql } from "@/lib/catalog-availability";
 import { TELEGRAM_MAX_QTY } from "@/lib/telegram/keyboards";
 import type { TelegramBestseller } from "@/lib/telegram/messages";
 import type { CartLine } from "@/lib/telegram/cart";
@@ -33,10 +34,11 @@ export async function clearPendingAction(from?: { id: number }) {
 // Bestsellers for the welcome landing (free marketing from sold_count).
 export async function getBestsellers(limit = 3): Promise<TelegramBestseller[]> {
   try {
+    // Sapaan /start tidak boleh mempromosikan produk yang habis.
     const rows = await queryAll(
-      `SELECT p.id, p.name, COALESCE(MIN(pv.price), p.price) as price, p.sold_count
+      `SELECT p.id, p.name, MIN(pv.price) AS price, p.sold_count
        FROM products p
-       LEFT JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1
+       JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1 AND ${purchasableStockSql("pv")}
        WHERE p.is_active=1 AND p.telegram_enabled=1
        GROUP BY p.id
        ORDER BY p.sold_count DESC, p.sort_order ASC

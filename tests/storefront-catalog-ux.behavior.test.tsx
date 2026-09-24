@@ -10,7 +10,9 @@
 //     batch 12 dan reset ke batch pertama saat filter berubah.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import HomePage from "@/app/page";
+// Beranda interaktif kini di home-client.tsx (page.tsx = server, SSR katalog).
+// Tanpa `initialProducts` klien memuat /api/products seperti sebelumnya.
+import { HomeClient as HomePage } from "@/app/home-client";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/",

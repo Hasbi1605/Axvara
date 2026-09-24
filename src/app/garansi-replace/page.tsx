@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { StoreWhatsAppLink } from "@/components/storefront/StoreWhatsAppLink";
 
-export const metadata = { title: "Ketentuan Layanan & Garansi | AXVARA", description: "AXVARA adalah third-party independen. Pahami ketentuan garansi 1x24 jam–30 hari sebelum membeli." };
+export const metadata = { title: "Ketentuan Layanan & Garansi | AXVARA", description: "AXVARA adalah third-party independen. Pahami ketentuan garansi 1x24 jam–30 hari sebelum membeli.", alternates: { canonical: "/garansi-replace" } };
 
 export default function GaransiReplacePage() {
   return <main className="mx-auto max-w-[920px] px-4 py-10 sm:px-6 sm:py-14">

@@ -5,11 +5,14 @@
 // tanpa JSON-LD, dan slug ngawur tetap 200. Helper ini dipakai oleh
 // `generateMetadata` + JSON-LD server component agar metadata selalu dari
 // data nyata D1 (produk aktif + varian aktif), bukan seed statis.
+import { isPurchasableStock } from "@/lib/catalog-availability";
+import { SITE_BASE, absoluteUrl } from "@/lib/site-seo";
 
 export type SeoVariant = {
   price: number;
   compare_price: number | null;
   stock: number;
+  min_qty?: number | null;
 };
 
 export type SeoProduct = {
@@ -30,19 +33,27 @@ export function seoDescription(product: SeoProduct, maxLen = 160): string {
   return `${product.name} — tersedia di AXVARA dengan garansi sesuai deskripsi produk.`;
 }
 
+/** Harga dari varian yang bisa dibeli bila ada (sama dengan kartu web), selain itu semua varian. */
+function priceSource(product: SeoProduct): SeoVariant[] {
+  const buyable = product.variants.filter((v) => isPurchasableStock(v.stock, v.min_qty));
+  return buyable.length > 0 ? buyable : product.variants;
+}
+
 export function seoMinPrice(product: SeoProduct): number | null {
-  if (product.variants.length === 0) return null;
-  return Math.min(...product.variants.map((v) => v.price));
+  const source = priceSource(product);
+  if (source.length === 0) return null;
+  return Math.min(...source.map((v) => v.price));
 }
 
 export function seoMaxPrice(product: SeoProduct): number | null {
-  if (product.variants.length === 0) return null;
-  return Math.max(...product.variants.map((v) => v.price));
+  const source = priceSource(product);
+  if (source.length === 0) return null;
+  return Math.max(...source.map((v) => v.price));
 }
 
 export function seoAvailability(product: SeoProduct): "InStock" | "OutOfStock" {
   if (product.variants.length === 0) return "OutOfStock";
-  const anyAvailable = product.variants.some((v) => v.stock === -1 || v.stock > 0);
+  const anyAvailable = product.variants.some((v) => isPurchasableStock(v.stock, v.min_qty));
   return anyAvailable ? "InStock" : "OutOfStock";
 }
 
@@ -62,7 +73,8 @@ export function seoImages(product: SeoProduct): string[] {
 
 export function seoProductJsonLd(product: SeoProduct, canonicalUrl: string): Record<string, unknown> {
   const minPrice = seoMinPrice(product);
-  const images = seoImages(product);
+  // Gambar tersimpan relatif (/r2/...); Google menolak URL relatif di JSON-LD.
+  const images = seoImages(product).map(absoluteUrl);
   return {
     "@context": "https://schema.org",
     "@type": "Product",
@@ -70,15 +82,16 @@ export function seoProductJsonLd(product: SeoProduct, canonicalUrl: string): Rec
     description: seoDescription(product),
     image: images.length > 0 ? images : undefined,
     sku: product.slug,
-    brand: { "@type": "Brand", name: "AXVARA" },
+    // AXVARA penjual pihak ketiga, bukan pemilik merek (Canva, Netflix, …).
     offers: {
       "@type": "AggregateOffer",
       url: canonicalUrl,
       priceCurrency: "IDR",
       lowPrice: minPrice ?? undefined,
       highPrice: seoMaxPrice(product) ?? undefined,
-      offerCount: product.variants.length || undefined,
+      offerCount: priceSource(product).length || undefined,
       availability: `https://schema.org/${seoAvailability(product)}`,
+      seller: { "@type": "Organization", "@id": `${SITE_BASE}/#organization`, name: "AXVARA" },
     },
   };
 }

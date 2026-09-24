@@ -61,13 +61,24 @@ export async function editMessageText(params: EditMessageTextParams): Promise<Te
 }
 
 /**
- * Try editMessageText first; if it fails (e.g. target is a photo message),
- * fall back to sendMessage. This prevents "stuck" callbacks after sendPhoto.
+ * Try editMessageText first; fall back to sendMessage ONLY when the target
+ * message cannot hold this text (photo caption message, deleted message).
+ *
+ * Dulu fallback berlaku untuk kegagalan APA PUN, sehingga paginasi katalog
+ * kadang memunculkan pesan katalog baru: ketuk ▶️ dua kali cepat → dua
+ * callback `catalog:N` yang sama → edit kedua ditolak Telegram "message is
+ * not modified" → pesan baru. 429 dan timeout juga memicu pesan baru padahal
+ * edit pertama mungkin sudah mendarat.
  */
 export async function safeEditOrSend(params: EditMessageTextParams): Promise<TelegramApiResponse> {
   const editResult = await editMessageText(params);
   if (editResult.ok) return editResult;
-  // Edit failed — send as new message instead
+  const description = String(editResult.description || "");
+  // Pesan sudah menampilkan isi yang diminta — itu keberhasilan, bukan gagal.
+  if (/message is not modified/i.test(description)) return { ok: true, description };
+  // Hanya 400 (pesan target tak bisa diedit) yang layak diganti pesan baru;
+  // 429/5xx/timeout/jaringan tanpa error_code 400 tidak.
+  if (editResult.error_code !== 400) return editResult;
   return sendMessage({
     chat_id: params.chat_id,
     text: params.text,

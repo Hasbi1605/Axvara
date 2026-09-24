@@ -364,6 +364,33 @@
   m-banking" (dulu "QRIS / DANA / SeaBank", padahal E-Wallet/SeaBank
   maintenance sejak 2026-09-17).
 
+### 5.7d Pengingat Melayang "Pesanan belum dibayar" (2026-09-24, PR storefront)
+- Komponen `PendingOrderReminder` (layout root), tampil di seluruh
+  storefront kecuali `/checkout`, `/pesanan/*`, `/admin`.
+- Posisi: mobile/tablet `fixed inset-x-3` dengan `bottom: 84px + safe-area`
+  (di atas nav bawah & bar beli PDP, jarak ±13px); `lg+` kanan bawah
+  `bottom-6 right-6 w-[380px]`. `z-40` (sama dengan nav bawah, di bawah
+  navbar/dialog).
+- Panel **hampir solid** `bg-[#0B1025]/95` + `backdrop-blur-xl`, border
+  Gold `#FFB800/30`, radius 2xl. Kaca `ax-glass-strong` (45%) ditolak:
+  ikon orbit hero menembus teks.
+- Isi: ikon jam Gold dalam lingkaran `#FFB800/15` → judul 13px semibold
+  ("Pesanan belum dibayar" / "QRIS hangus") → sub 12px `white/60`
+  ("Bayar dalam" / "Sisa waktu") + timer `font-mono` bold Gold → tombol
+  Cyan `#00E5FF` ("Bayar" / "Perpanjang") → ✕ `aria-label="Tutup pengingat"`.
+- Timer berada DI LUAR area `truncate`: di layar 390px label boleh
+  terpotong, hitung mundur tidak (versi awal menyembunyikan timer di mode
+  perpanjang). Timer `aria-live="off"` agar pembaca layar tidak dibanjiri
+  tiap detik; container `role="region"`.
+
+### 5.7e Gambar Open Graph (2026-09-24)
+- `public/og/axvara-og.png` 1200×630 (±160 KB): Midnight `#080C1E`, glow
+  Cyan kanan atas + Gold kiri bawah, mark Prism + wordmark AXVARA,
+  headline "Satu Gerbang, / Semua Tools Premium." (baris 2 gradasi Cyan),
+  pill kategori + "QRIS otomatis" (Gold), domain di kanan bawah. Dipakai
+  preview link WhatsApp/Telegram/Facebook untuk halaman tanpa gambar
+  sendiri (produk & artikel memakai gambarnya masing-masing).
+
 ### 5.8 Admin UI (Clean, Bukan Glass Berat)
 - Sidebar midnight solid, main area `bg-[#080C1E]`
 - Kartu stat: glass subtle, angka besar Space Grotesk

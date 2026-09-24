@@ -1,168 +1,41 @@
-"use client";
-import { useState, useMemo, useEffect } from "react";
-import { OrbitHero } from "@/components/storefront/OrbitHero";
-import { ScrollRope } from "@/components/storefront/ScrollRope";
-import { CategoryPills } from "@/components/storefront/CategoryPills";
-import { ProductCard } from "@/components/storefront/ProductCard";
-import { CommunityBar } from "@/components/storefront/CommunityBar";
+import type { Metadata } from "next";
+import { NextRequest } from "next/server";
 import type { Product } from "@/lib/products";
-import { useSearch } from "@/stores/search";
-import { StoreWhatsAppLink } from "@/components/storefront/StoreWhatsAppLink";
+import { homeJsonLd, safeJsonLd } from "@/lib/site-seo";
+import { HomeClient } from "./home-client";
 
-const PER_PAGE = 12;
+export const runtime = "edge";
+export const dynamic = "force-dynamic";
 
-/** Produk tanpa stok tetap tampil, tetapi selalu di belakang yang masih ready. */
-function isSoldOut(p: Product): boolean {
-  return p.stock != null && p.stock !== -1 && p.stock <= 0;
+// Hanya canonical: `openGraph` di sini akan MENGGANTIKAN seluruh openGraph
+// root (merge metadata Next.js dangkal), termasuk judul & gambar.
+export const metadata: Metadata = {
+  alternates: { canonical: "/" },
+};
+
+/**
+ * Katalog dirender server agar produk + link ada di HTML awal (SEO & GEO).
+ * Memanggil handler `/api/products` yang sama dengan klien — satu sumber
+ * query + mapper, tanpa self-fetch HTTP (gagal di edge untuk URL relatif).
+ */
+async function loadCatalog(): Promise<Product[] | undefined> {
+  try {
+    const { GET } = await import("@/app/api/products/route");
+    const response = await GET(new NextRequest("https://axvara.tech/api/products?active=1"));
+    if (!response.ok) return undefined;
+    const data = (await response.json()) as { products?: Product[] };
+    return Array.isArray(data.products) ? data.products : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
-export default function HomePage() {
-  const [activeCat, setActiveCat] = useState("semua");
-  const [visible, setVisible] = useState(PER_PAGE);
-  const q = useSearch((s) => s.q);
-  const [catalogProducts, setCatalogProducts] = useState<Product[]>([]);
-  const [catalogLoading, setCatalogLoading] = useState(true);
-  const [catalogError, setCatalogError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const requestedCategory = new URLSearchParams(window.location.search).get("category");
-    if (requestedCategory) setActiveCat(requestedCategory);
-  }, []);
-
-  // D1 is authoritative. Static seeds must never resurrect inactive/deleted products.
-  useEffect(() => {
-    const controller = new AbortController();
-    fetch("/api/products?active=1", { signal: controller.signal })
-        .then(async (r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-        .then((data) => { if (Array.isArray(data.products)) setCatalogProducts(data.products); setCatalogError(null); })
-        .catch((e) => {
-          if (e instanceof DOMException && e.name === "AbortError") return;
-          setCatalogError(e instanceof Error ? e.message : "Gagal memuat katalog");
-        })
-        .finally(() => setCatalogLoading(false));
-    return () => controller.abort();
-  }, []);
-
-  const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    const matched = catalogProducts.filter((p) => {
-      const catOk = activeCat === "semua" || p.categorySlug === activeCat;
-      if (!needle) return catOk;
-      const hay = `${p.name} ${p.description} ${p.categorySlug} ${p.badge ?? ""}`.toLowerCase();
-      return catOk && hay.includes(needle);
-    });
-    // Urutan stabil: ready dulu, lalu sort_order admin, lalu id. Tanpa kunci
-    // terakhir, dua produk dengan sort_order sama dapat bertukar posisi antar
-    // render dan katalog terlihat "loncat-loncat".
-    return matched.slice().sort((a, b) => {
-      const bySold = Number(isSoldOut(a)) - Number(isSoldOut(b));
-      if (bySold !== 0) return bySold;
-      const byOrder = (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
-      if (byOrder !== 0) return byOrder;
-      return Number(a.id) - Number(b.id);
-    });
-  }, [activeCat, q, catalogProducts]);
-
-  // Filter baru = daftar baru: kembali ke batch pertama.
-  useEffect(() => { setVisible(PER_PAGE); }, [q, activeCat]);
-  const paged = filtered.slice(0, visible);
-  const remaining = Math.max(0, filtered.length - paged.length);
-  const nextBatch = Math.min(PER_PAGE, remaining);
-
+export default async function HomePage() {
+  const products = await loadCatalog();
   return (
     <>
-      <ScrollRope />
-      {/* Hero with orbit — single instance, CSS responsive layout */}
-      <section className="relative overflow-hidden">
-        <div className="pointer-events-none absolute inset-0">
-          <div className="absolute -top-32 left-1/2 -translate-x-1/2 w-[900px] h-[520px] rounded-full opacity-60 blur-[80px]" style={{ background: "radial-gradient(ellipse at center, rgba(0,229,255,0.18), transparent 70%)" }} />
-          <div className="absolute top-24 right-[10%] w-[420px] h-[420px] rounded-full opacity-30 blur-[60px]" style={{ background: "radial-gradient(ellipse at center, rgba(255,184,0,0.15), transparent 70%)" }} />
-        </div>
-        <div className="relative mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 pt-10 sm:pt-14 pb-4">
-          {/* Grid layout — single OrbitHero, responsive via CSS */}
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-6 lg:gap-8 items-center">
-            <div className="max-w-3xl w-full">
-              <h1 className="font-display font-[700] tracking-[-0.02em] leading-[0.98] text-[42px] sm:text-[56px] lg:text-[62px] text-white">
-                Satu tempat untuk
-                <br />
-                semua tools premium.
-              </h1>
-              <p className="mt-4 text-[15px] leading-6 text-white/60 max-w-[46ch]">
-                Berbagai tools AI dan aplikasi premium dengan harga jauh lebih murah dibanding official. Garansi sesuai deskripsi tiap produk.
-              </p>
-              <div className="mt-6 flex flex-wrap gap-3">
-                <a href="#katalog" className="h-11 px-6 rounded-full bg-white text-[#080C1E] font-semibold text-sm inline-flex items-center justify-center hover:bg-white/90 transition active:scale-[0.98]">Lihat Katalog</a>
-                <StoreWhatsAppLink className="h-11 px-6 rounded-full border border-white/14 bg-white/[0.06] text-white font-medium text-sm inline-flex items-center justify-center gap-1.5 hover:bg-white/10 transition active:scale-[0.98]">
-                  <img src="/icons/ios11/chat-32.png" alt="" width={14} height={14} className="w-3.5 h-3.5 object-contain brightness-0 invert opacity-70" draggable={false} /> Hubungi Admin
-                </StoreWhatsAppLink>
-              </div>
-              <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] tracking-wide text-white/40">
-                <span>QRIS otomatis</span>
-                <span className="opacity-30">•</span>
-                <span>Garansi replace</span>
-                <span className="opacity-30">•</span>
-                <span>Support WA admin</span>
-              </div>
-            </div>
-            {/* Single orbit — shown at center on mobile, right on desktop */}
-            <div className="flex justify-center lg:justify-end shrink-0 mt-6 lg:mt-0">
-              <OrbitHero />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <CommunityBar />
-
-      {/* Katalog with pagination — authoritative D1 data */}
-      <section id="katalog" className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 pt-2 pb-10">
-        <div className="flex items-center justify-between gap-4">
-          <h2 className="font-display font-bold text-[20px] sm:text-[24px] text-white tracking-[-0.02em]">Katalog Premium</h2>
-          <span className="text-xs text-white/40">{filtered.length} produk{filtered.length ? ` • tampil ${paged.length}` : ""}</span>
-        </div>
-        <div className="mt-4">
-          <CategoryPills active={activeCat} onChange={(c) => { setActiveCat(c); setVisible(PER_PAGE); }} />
-        </div>
-        {catalogError && (
-          <div className="mt-4 rounded-2xl bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-200 flex items-center justify-between gap-3">
-            <span>Gagal memuat katalog: {catalogError}</span>
-            <button onClick={() => location.reload()} className="h-8 px-3 rounded-full bg-white text-[#070a1e] text-xs font-bold shrink-0">Muat ulang</button>
-          </div>
-        )}
-        {catalogLoading ? (
-          <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5" aria-label="Memuat katalog">
-            {Array.from({ length: 8 }, (_, index) => (
-              <div key={index} className="aspect-[3/4] rounded-[16px] sm:rounded-[22px] bg-white/[0.05] animate-pulse" />
-            ))}
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="mt-10 ax-glass-card rounded-[20px] p-10 text-center">
-            <p className="text-white font-medium">Tidak ada produk yang cocok</p>
-            <p className="text-sm text-white/50 mt-1">Coba ubah kata kunci atau kategori.</p>
-          </div>
-        ) : (
-          <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
-            {paged.map((p, i) => (
-              <ProductCard key={p.id} product={p} index={i} />
-            ))}
-          </div>
-        )}
-
-        {/* Load more — marketplace tidak memakai nomor halaman; satu tombol
-            menambah batch berikutnya tanpa memindahkan posisi scroll. Bukan
-            infinite scroll murni agar footer tetap dapat dijangkau. */}
-        {remaining > 0 && (
-          <div className="mt-8 flex flex-col items-center gap-2">
-            <button
-              onClick={() => setVisible((v) => v + PER_PAGE)}
-              className="h-11 px-6 rounded-full bg-white text-[#080C1E] font-semibold text-sm inline-flex items-center justify-center hover:bg-white/90 transition active:scale-[0.98]"
-            >
-              Tampilkan {nextBatch} produk lagi
-            </button>
-            <span className="text-xs text-white/35">{remaining} produk lainnya</span>
-          </div>
-        )}
-      </section>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(homeJsonLd(products ?? [])) }} />
+      <HomeClient initialProducts={products} />
     </>
   );
 }

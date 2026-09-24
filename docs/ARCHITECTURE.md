@@ -87,13 +87,16 @@ axvara/
 │   └── logo/
 │       └── axvara-wordmark.svg
 ├── src/app/                     # Next.js App Router
-│   ├── page.tsx                 # Homepage
+│   ├── page.tsx                 # Homepage (server, edge): muat katalog D1 via handler GET /api/products → HomeClient + JSON-LD Organization/WebSite/ItemList (2026-09-24)
+│   ├── home-client.tsx          # Homepage interaktif (kategori, cari, load more); `initialProducts` dari server, fallback fetch
+│   ├── llms.txt/route.ts        # GEO: profil toko + produk yang bisa dibeli (markdown, cache 10 mnt)
+│   ├── robots.ts / sitemap.ts   # robots: tutup /admin, /api/ (kecuali 3 endpoint baca publik), /checkout, /pesanan/; crawler AI eksplisit
 │   ├── artikel/[slug]/          # Artikel publik Markdown/legacy JSON
 │   ├── cara-order/               # Panduan order
 │   ├── garansi-replace/          # Ketentuan layanan & garansi third-party (acuan klaim, garansi ikut deskripsi produk)
 │   ├── produk/[slug]/          # PDP: server component SEO (metadata/JSON-LD/h1 D1) + client interaktif
 │   │   ├── checkout/       # Checkout revamp ala Sekalipay 2026-09-23 — ① Metode (QRIS auto-select) → ② Data minimal WA+Email wajib tanpa Nama (fallback prefix email) → S&K → 1 CTA; rail kanan DESKTOP ONLY (hidden lg:block, ringkasan+S&K+CTA), mobile accordion ringkasan + S&K kiri + sticky CTA; 1 handler submit
-│   ├── pesanan/[code]/         # Status + QRIS dinamis + polling lunas (dari checkout)
+│   ├── pesanan/[code]/         # Status + QRIS dinamis + polling lunas (dari checkout); pesanan/layout.tsx = noindex
 │   ├── lacak-pesanan/          # Lacak mandiri kode + WA via POST /api/orders/lookup + timeline + auto-refresh
 │   ├── admin/
 │   │   └── page.tsx             # Shell + modul admin berbasis query section
@@ -742,7 +745,7 @@ Sistem varian produk terpusat dan bot WhatsApp telah diimplementasikan sesuai `d
 - **Telegram Bot:** Menambahkan langkah pemilihan varian sebelum konfirmasi beli (`TELEGRAM_VARIANT_FLOW`). Menggunakan harga dan konfigurasi varian.
 - **Navigasi & marketing Telegram Fase 1:** label menu bawah (`MENU_LABEL_*`: 🛍 Katalog · 🔎 Cari · 🛒 Keranjang · 📦 Pesanan · ❓ Bantuan terpusat di `keyboards.ts` dan tetap di-route sebagai teks di webhook untuk keyboard lama); `/start` hanya mengirim satu foto welcome + `homeKeyboard` tanpa bubble "Menu cepat" tambahan; command `/cari`+`/search`, `/orders`+`/riwayat`, `/cart`+`/keranjang`; welcome landing `/start` menampilkan 3 bestseller by `sold_count`; `Terjual X` (compact `1.5rb+` di ≥1000) di kartu produk; riwayat `/orders` 10 terakhir by `telegram_user_id` dengan keyboard `myOrdersKeyboard` (detail + `reorder:*` → beli lagi); pencarian nama/alias via `pending_action=search:` + `/batal`; breadcrumb `breadcrumbLine` (`Langkah X/4`) di pilihan varian (2), langsung qty (3) tanpa konfirmasi tambahan, invoice (4). Payment/fulfillment tidak berubah.
 - **Keranjang + reminder Telegram Fase 2 (tanpa review/promo):** tabel `telegram_carts` (migrasi 0014, `UNIQUE(user_id, variant_id)`, CHECK qty 1–100, maks 20 baris/user; maksimal 1 baris fulfillment `unique` per keranjang karena `findReservedForOrder` + `fulfillment_jobs` memakai satu `order_code`); lib `src/lib/telegram/cart.ts` (`addToCart`/`setCartLineQty`/`removeFromCart`/`clearCart`/`getCartSummary` dengan pembersihan baris basi); tombol `🛒 + Keranjang` (`cadd:*`) di langkah qty berdampingan dengan Bayar QRIS langsung; `/cart` memakai `cartKeyboard` (➖/➕/❌ per baris, `ccheckout`, `cclear`) lalu ringkasan `cartCheckoutSummaryMessage` + konfirmasi `cconfirm` sebelum invoice terbit; checkout gabungan `createAndSendCartInvoice` = SATU order + SATU `createDanaQrisInvoice` + SATU `createFulfillmentJob` mode dominan (unique > shared > manual; campuran → job manual + snapshot `mixed` informatif), stok finite dipotong per baris dengan rollback kompensasi; cart dikosongkan hanya setelah invoice terbit; reminder pending via `sendPendingOrderReminders` di cron operasi (maks 2x/order, interval ≥60 mnt, JOIN invoice aktif `pt.status='pending'` + `expires_at` masa depan, claim CAS `telegram_reminder_count`, copy eskalatif `orderReminderMessage`).
-- **Flow order Telegram (WA parity, payment khusus QRIS):** `/katalog` menampilkan daftar datar nama produk + harga (tanpa kategori wajib; kategori hanya filter opsional). Detail produk tanpa deskripsi, menampilkan foto produk web + list garansi per varian dari `product_variants` yang sama dengan web/WA. Alur beli: `Produk → Varian → Qty stepper (➖ / jumlah / ➕, angka manual 1–100) → QRIS DANA dinamis`; tidak ada SeaBank/e-wallet di Telegram. CTA jumlah langsung menerbitkan satu pesan QRIS tanpa layar pemilihan metode dan tanpa kewajiban menekan cek status. QRIS Hook melunasi order atomik, menambah `sold_count`, lalu mengirim pesan sukses otomatis. Untuk fulfillment manual, pending input WA baru dipasang setelah `paid`; buyer juga mendapat tombol WhatsApp admin dan `@axvara_support` — input WA reply-only tanpa tombol loop. Order-created ke grup admin dan paid ke buyer memakai marker D1 idempoten serta retry cron; paid juga dikirim sebagai pesan `Lunas — Telegram` tersendiri ke grup admin via `telegram_paid_admin_notified_at` (migrasi 0013) agar status grup tidak tertinggal menunggu bayar. Guard anti-double-tap memakai ulang order pending chat+varian yang sama; varian stok unik dibatasi qty 1. Sapaan WIB dinamis (Pagi/Siang/Sore/Malam + tanggal/jam) hanya di welcome/bantuan — katalog tampil bersih tanpa pengulangan sapaan/tanggal/jam.
+- **Flow order Telegram (WA parity, payment khusus QRIS):** `/katalog` menampilkan daftar datar nama produk + harga (tanpa kategori wajib; kategori hanya filter opsional). **Sejak 2026-09-24 katalog, filter kategori, pencarian, dan bestseller `/start` hanya memuat produk yang BISA DIBELI** (`listTelegramProducts` + `purchasableStockSql` di `src/lib/catalog-availability.ts`, aturan yang sama dengan kartu web `/api/products`, PDP, keranjang, dan JSON-LD: varian aktif dengan stok -1 atau ≥ `min_qty`), dibaca ulang dari D1 setiap dibuka, dengan harga = varian tersedia termurah. Halaman dari tombol lama dibatasi ke halaman terakhir yang ada. Detail produk tanpa deskripsi, menampilkan foto produk web + list garansi per varian dari `product_variants` yang sama dengan web/WA. Alur beli: `Produk → Varian → Qty stepper (➖ / jumlah / ➕, angka manual 1–100) → QRIS DANA dinamis`; tidak ada SeaBank/e-wallet di Telegram. CTA jumlah langsung menerbitkan satu pesan QRIS tanpa layar pemilihan metode dan tanpa kewajiban menekan cek status. QRIS Hook melunasi order atomik, menambah `sold_count`, lalu mengirim pesan sukses otomatis. Untuk fulfillment manual, pending input WA baru dipasang setelah `paid`; buyer juga mendapat tombol WhatsApp admin dan `@axvara_support` — input WA reply-only tanpa tombol loop. Order-created ke grup admin dan paid ke buyer memakai marker D1 idempoten serta retry cron; paid juga dikirim sebagai pesan `Lunas — Telegram` tersendiri ke grup admin via `telegram_paid_admin_notified_at` (migrasi 0013) agar status grup tidak tertinggal menunggu bayar. Guard anti-double-tap memakai ulang order pending chat+varian yang sama; varian stok unik dibatasi qty 1. Sapaan WIB dinamis (Pagi/Siang/Sore/Malam + tanggal/jam) hanya di welcome/bantuan — katalog tampil bersih tanpa pengulangan sapaan/tanggal/jam.
 - **WhatsApp Bot:** Webhook di `POST /api/whatsapp/webhook` via Baileys gateway Heroku. Mendukung:
   - `list` (header `LIST MENU AXVARA`, nama alias/fallback produk aktif tanpa kategori/harga, lalu footer promosi Telegram dan website resmi)
   - Pencarian nama produk/alias → detail bergaya garis dengan header alias dan varian bernomor
@@ -1112,6 +1115,34 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   `tests/round4-buyer-notices.regression.test.ts`, `tests/round4-telegram.regression.test.ts`,
   `tests/order-page-delivery-failed.behavior.test.tsx`, dan
   `tests/qris-expiry-queue-blocking.regression.test.ts`.
+- **Permintaan owner 2026-09-24 — pengingat pesanan, SEO & GEO, katalog Telegram (PR 2026-09-24):**
+  (1) **Pengingat melayang pesanan belum dibayar** (`src/components/storefront/PendingOrderReminder.tsx`,
+  dipasang di layout root): membaca kode pesanan terbaru dari salinan lokal checkout
+  (`axvara-orders`, hanya yang dibuat <75 menit), lalu **selalu** memastikan status + tenggat ke
+  `GET /api/orders?code=` (salinan lokal tidak pernah diperbarui dan bisa sudah dibayar dari
+  perangkat lain). Tampil dengan hitung mundur QRIS (atau tenggat pesanan bila QR hangus dan
+  perpanjangan masih boleh), satu ketukan ke `/pesanan/[code]`; disembunyikan di `/checkout`,
+  `/pesanan/*`, `/admin`; cek ulang tiap 30 dtk saat tab terlihat (jauh di bawah limit
+  `orders:lookup` 20/mnt); tombol ✕ menyembunyikan per pesanan per sesi. Salinan lokal checkout
+  tidak lagi menyimpan WA/email pembeli. (2) **SEO & GEO:** beranda dirender server (HTML dulu
+  "0 produk" tanpa link produk — crawler tanpa JS/crawler AI melihat toko kosong); JSON-LD
+  Organization + WebSite + ItemList; default OG/Twitter dengan gambar `public/og/axvara-og.png`
+  1200×630 (tanpa canonical/og:url di root agar tidak diwarisi semua halaman); JSON-LD produk
+  memakai URL gambar absolut (dulu relatif `/r2/...`, ditolak Google) dan AXVARA sebagai
+  `offers.seller` (bukan `brand`); **artikel kini punya `generateMetadata`** (dulu semua artikel
+  berjudul beranda, tanpa canonical/gambar); canonical di halaman statis; `/checkout` dan
+  `/pesanan/*` noindex (layout segmen); `robots.txt` menutup halaman transaksi, membuka
+  `/api/products|categories|store-settings` untuk renderer Google, dan mengizinkan crawler AI
+  secara eksplisit; `/llms.txt` baru. (3) **Katalog Telegram** hanya produk yang bisa dibeli
+  (produksi 24 Sep: 20 dari 48 produk tersedia; 28 lainnya jalan buntu). (4) **Paginasi katalog
+  Telegram tidak lagi membuat pesan baru:** `safeEditOrSend` dulu mengirim pesan baru untuk
+  kegagalan edit apa pun; ketuk ▶️ dua kali = dua callback halaman yang sama → edit kedua ditolak
+  `message is not modified` → pesan katalog baru. Kini "not modified" = berhasil, dan fallback
+  pesan baru hanya untuk HTTP 400 (pesan target foto/terhapus), tidak untuk 429/5xx/timeout.
+  Tombol produk yang sudah nonaktif dijawab, bukan diam. Dikunci oleh
+  `tests/telegram-catalog-stock.regression.test.ts`, `tests/telegram-safe-edit.regression.test.ts`,
+  `tests/seo-geo.regression.test.ts`, `tests/home-ssr-catalog.behavior.test.tsx`, dan
+  `tests/pending-order-reminder.behavior.test.tsx`.
 - **Hook payment:** setelah lunas di 4 jalur (webhook DANA, retry admin, approve bukti,
   konfirmasi admin) → `createWrOrderLinksForOrder` + `processWrPendingOrders` best-effort;
   cron memproses sisanya. Produk WR dikenali dari `product_variants.wr_variant_id`.

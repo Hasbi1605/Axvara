@@ -6,6 +6,12 @@ import { formatWibDateTime } from "@/lib/utils";
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
+export const metadata = {
+  title: "Artikel Seputar AI & Teknologi | AXVARA",
+  description: "Tips, panduan, dan kabar terbaru seputar tools AI, aplikasi premium, dan produktivitas dari AXVARA.",
+  alternates: { canonical: "/artikel" },
+};
+
 type Article = { id: number; slug: string; title: string; excerpt: string | null; cover_url: string | null; published_at: string | null };
 
 async function getArticles(): Promise<Article[]> {

@@ -29,7 +29,7 @@ async function getSeoProduct(slug: string): Promise<SeoProduct | null> {
   )) as SeoRow | undefined;
   if (!product) return null;
   const variants = (await queryAll(
-    `SELECT pv.price, pv.compare_price, pv.stock
+    `SELECT pv.price, pv.compare_price, pv.stock, pv.min_qty
      FROM product_variants pv
      JOIN products p ON p.id=pv.product_id
      WHERE p.slug=? AND p.is_active=1 AND pv.is_active=1
@@ -53,6 +53,7 @@ async function getSeoProduct(slug: string): Promise<SeoProduct | null> {
       price: Number(v.price),
       compare_price: v.compare_price != null ? Number(v.compare_price) : null,
       stock: Number(v.stock ?? -1),
+      min_qty: v.min_qty != null ? Number(v.min_qty) : 1,
     })),
   };
 }

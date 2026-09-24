@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { queryAll, queryFirst, execRun, getD1, isD1Mode } from "@/lib/db";
 import { isVariantsReadEnabled } from "@/lib/catalog";
+import { purchasableStockSql } from "@/lib/catalog-availability";
 import { requireAdmin } from "@/lib/auth";
 import { rateLimit, rateLimitKey } from "@/lib/rateLimit";
 
@@ -23,6 +24,9 @@ export async function GET(req: NextRequest) {
     ? false
     : !!(await import("@/lib/auth").then((m) => m.requireAdmin(req).catch(() => null)));
 
+  // Stok kartu = varian yang BISA DIBELI (lihat catalog-availability): varian
+  // stok 3 min 50 dulu membuat kartu "tersedia" padahal PDP menolaknya.
+  const buyable = purchasableStockSql("pv");
   let sql = variantCatalog
     ? `SELECT p.*, c.slug as cat_slug,
               MIN(pv.price) as min_price,
@@ -30,13 +34,13 @@ export async function GET(req: NextRequest) {
               COUNT(pv.id) as variant_count,
               CASE
                 WHEN MAX(CASE WHEN pv.stock=-1 THEN 1 ELSE 0 END)=1 THEN -1
-                ELSE SUM(CASE WHEN pv.stock>0 THEN pv.stock ELSE 0 END)
+                ELSE SUM(CASE WHEN ${buyable} THEN pv.stock ELSE 0 END)
               END as variant_stock,
               -- Harga kartu harus milik varian yang BISA DIBELI. MIN(price)
               -- polos memakai varian termurah walau stoknya habis, sehingga
               -- kartu menjanjikan harga yang tidak tersedia di modal varian.
               -- NULL bila semua varian habis; fallback ke min_price di mapper.
-              MIN(CASE WHEN pv.stock=-1 OR pv.stock>0 THEN pv.price END) as available_min_price,
+              MIN(CASE WHEN ${buyable} THEN pv.price END) as available_min_price,
               -- Compare price dipasangkan dari varian harga-terendah yang sama
               -- (issue #10): MIN(price)+MAX(compare_price) lintas varian dapat
               -- membentuk diskon fiktif yang tak dimiliki varian mana pun.
@@ -46,7 +50,7 @@ export async function GET(req: NextRequest) {
               COALESCE(
                 (SELECT pv2.compare_price FROM product_variants pv2
                   WHERE pv2.product_id=p.id AND pv2.is_active=1
-                    AND (pv2.stock=-1 OR pv2.stock>0)
+                    AND ${purchasableStockSql("pv2")}
                   ORDER BY pv2.price ASC, pv2.id ASC LIMIT 1),
                 (SELECT pv3.compare_price FROM product_variants pv3
                   WHERE pv3.product_id=p.id AND pv3.is_active=1

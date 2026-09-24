@@ -9,6 +9,7 @@ import { Spotlight } from "@/components/ui/Spotlight";
 import { ToastProvider } from "@/components/ui/Toast";
 import { RouteLoading } from "@/components/ui/RouteLoading";
 import { PopupBanner } from "@/components/storefront/PopupBanner";
+import { PendingOrderReminder } from "@/components/storefront/PendingOrderReminder";
 import { Suspense } from "react";
 
 // Cross-platform type: Inter (body, ClearType-hinted for Windows) +
@@ -35,14 +36,31 @@ const jetbrainsMono = JetBrains_Mono({
   display: "swap",
 });
 
+// Default seluruh situs. JANGAN taruh `alternates.canonical`/`openGraph.url`
+// di sini: halaman tanpa override akan mewarisinya dan menunjuk ke beranda.
+const SITE_TITLE = "AXVARA — Satu tempat untuk semua tools premium";
+const SITE_DESCRIPTION = "Akun premium, AI gateway, dan tools pro dengan harga jauh lebih hemat dari official. Bayar QRIS terverifikasi otomatis, bergaransi.";
+const OG_IMAGE = { url: "/og/axvara-og.png", width: 1200, height: 630, alt: "AXVARA — Satu gerbang, semua tools premium" };
+
 export const metadata: Metadata = {
   metadataBase: new URL("https://axvara.tech"),
-  title: "AXVARA — Satu tempat untuk semua tools premium",
-  description: "Berbagai tools AI dan aplikasi premium dengan harga jauh lebih hemat dari official. Bergaransi.",
+  title: SITE_TITLE,
+  description: SITE_DESCRIPTION,
+  applicationName: "AXVARA",
   icons: { icon: "/favicon.svg" },
   openGraph: {
-    title: "AXVARA — Satu tempat untuk semua tools premium",
-    description: "Berbagai tools AI dan aplikasi premium dengan harga jauh lebih hemat dari official. Bergaransi.",
+    type: "website",
+    siteName: "AXVARA",
+    locale: "id_ID",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    images: [OG_IMAGE],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    images: [OG_IMAGE.url],
   },
 };
 
@@ -61,6 +79,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <main className="flex-1 min-h-[50vh]">{children}</main>
           <Footer />
           <MobileBottomNav />
+          <PendingOrderReminder />
         </ToastProvider>
       </body>
     </html>

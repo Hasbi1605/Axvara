@@ -18,41 +18,50 @@ import {
   chooseVariantMessage, chooseQtyMessage,
 } from "@/lib/telegram/messages";
 import { getProductDetail, getActiveVariant, formatDuration, formatWarranty } from "@/lib/catalog";
+import { purchasableStockSql } from "@/lib/catalog-availability";
 import { clampQty } from "./shared";
 import { handleBuyConfirm } from "./discovery";
 
-// Flat catalog (WA parity): product names only, no mandatory categories.
-export async function handleShowCatalog(chatId: number) {
-  const products = await queryAll(
-    `SELECT p.id, p.name, COALESCE(MIN(pv.price), p.price) as price
+type CatalogProduct = { id: number; name: string; price: number };
+
+/**
+ * Produk yang BISA DIBELI saja (keputusan owner 2026-09-24): produk tanpa
+ * satu pun varian tersedia tidak tampil di katalog Telegram. Dulu 28 dari 48
+ * produk di katalog adalah jalan buntu "stok habis". Membaca tabel yang sama
+ * dengan web setiap kali dibuka, jadi habis/ready di web langsung berlaku di
+ * sini. Harga = varian tersedia termurah, sama dengan kartu web.
+ */
+export async function listTelegramProducts(categoryId?: number): Promise<CatalogProduct[]> {
+  const rows = await queryAll(
+    `SELECT p.id, p.name, MIN(pv.price) AS price
      FROM products p
-     LEFT JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1
-     WHERE p.is_active=1 AND p.telegram_enabled=1
+     JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1 AND ${purchasableStockSql("pv")}
+     WHERE p.is_active=1 AND p.telegram_enabled=1${categoryId ? " AND p.category_id=?" : ""}
      GROUP BY p.id
      ORDER BY p.sort_order ASC, p.name ASC`,
+    ...(categoryId ? [categoryId] : []),
   );
+  return rows.map((row) => ({ id: Number(row.id), name: String(row.name), price: Number(row.price) }));
+}
+
+// Flat catalog (WA parity): product names only, no mandatory categories.
+export async function handleShowCatalog(chatId: number) {
+  const products = await listTelegramProducts();
   await sendMessage({
     chat_id: chatId,
     text: catalogFlatMessage(products.length),
     parse_mode: "HTML",
-    reply_markup: catalogFlatKeyboard(products as { id: number; name: string; price: number }[], 0),
+    reply_markup: catalogFlatKeyboard(products, 0),
   });
 }
 
 export async function handleShowCatalogEdit(chatId: number, messageId: number, page: number) {
-  const products = await queryAll(
-    `SELECT p.id, p.name, COALESCE(MIN(pv.price), p.price) as price
-     FROM products p
-     LEFT JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1
-     WHERE p.is_active=1 AND p.telegram_enabled=1
-     GROUP BY p.id
-     ORDER BY p.sort_order ASC, p.name ASC`,
-  );
+  const products = await listTelegramProducts();
   await safeEditOrSend({
     chat_id: chatId, message_id: messageId,
     text: catalogFlatMessage(products.length),
     parse_mode: "HTML",
-    reply_markup: catalogFlatKeyboard(products as { id: number; name: string; price: number }[], page),
+    reply_markup: catalogFlatKeyboard(products, page),
   });
 }
 
@@ -72,25 +81,13 @@ export async function handleShowProducts(chatId: number, messageId: number, cate
   const category = await queryFirst(`SELECT name FROM categories WHERE id=?`, categoryId);
   if (!category) return;
 
-  // Use variant-level min price for accurate display (synced with web/WA)
-  const products = await queryAll(
-    `SELECT p.id, p.name, COALESCE(MIN(pv.price), p.price) as price
-     FROM products p
-     LEFT JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1
-     WHERE p.category_id=? AND p.is_active=1 AND p.telegram_enabled=1
-     GROUP BY p.id
-     ORDER BY p.sort_order ASC`,
-    categoryId,
-  );
+  const products = await listTelegramProducts(categoryId);
 
   await safeEditOrSend({
     chat_id: chatId, message_id: messageId,
     text: categoryProductsMessage(String(category.name), products.length),
     parse_mode: "HTML",
-    reply_markup: productsKeyboard(
-      products as { id: number; name: string; price: number }[],
-      categoryId, page,
-    ),
+    reply_markup: productsKeyboard(products, categoryId, page),
   });
 }
 
@@ -99,14 +96,17 @@ export async function handleShowProduct(chatId: number, messageId: number, produ
 
   // Use catalog.ts for variant-level stock (synced with web/WA)
   const detail = await getProductDetail(productId);
-  if (!detail) return;
-
   // Check telegram_enabled flag
   const meta = await queryFirst(
     `SELECT telegram_enabled FROM products WHERE id=? AND is_active=1`,
     productId,
   );
-  if (!meta || Number(meta.telegram_enabled) !== 1) return;
+  // Tombol dari pesan katalog lama bisa menunjuk produk yang sudah nonaktif:
+  // jawab, jangan diam (spinner berhenti tanpa penjelasan).
+  if (!detail || !meta || Number(meta.telegram_enabled) !== 1) {
+    await sendMessage({ chat_id: chatId, text: "Produk ini sedang tidak tersedia. Buka /katalog untuk produk yang ready 🙏", parse_mode: "HTML" });
+    return;
+  }
 
   // Aggregate stock from variants for display
   const activeVariants = detail.variants.filter(v => v.is_active);

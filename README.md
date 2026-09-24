@@ -35,10 +35,12 @@ axvara/
 ├── mcp-worker/             # Remote MCP stateless + cron publisher
 ├── src/
 │   ├── app/
-│   │   ├── page.tsx        # Homepage — Hero + Orbit + Katalog pagination 8/page
+│   │   ├── page.tsx        # Homepage (server): katalog D1 dirender di HTML + JSON-LD (SEO & GEO, 2026-09-24)
+│   │   ├── home-client.tsx # Homepage interaktif — Hero + Orbit + Katalog (load more 12)
+│   │   ├── llms.txt/       # GEO: ringkasan toko + produk tersedia untuk mesin jawab AI
 │   │   ├── produk/[slug]/  # Detail produk
 │   │   ├── checkout/       # Checkout revamp ala Sekalipay 2026-09-23: ① Metode (QRIS auto-select) → ② Data minimal WA+Email wajib tanpa Nama → S&K → 1 CTA; rail desktop-only, mobile accordion + sticky CTA (manual maintenance 2026-09-17: disabled + badge, upload disembunyikan)
-│   │   ├── pesanan/[code]/ # Status + QRIS dinamis + polling lunas
+│   │   ├── pesanan/[code]/ # Status + QRIS dinamis + polling lunas (noindex)
 │   │   ├── lacak-pesanan/  # Lacak mandiri kode + WA (tanpa login) + timeline status
 │   │   ├── admin/          # Workspace operasional, katalog, pembayaran, konten, otomasi, settings
 │   │   ├── artikel/        # Indeks dan detail artikel publik

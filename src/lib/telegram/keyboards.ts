@@ -26,6 +26,16 @@ export function buttonPrice(price: number): string {
   return `Rp${amount.toLocaleString("id-ID")}`;
 }
 
+/**
+ * Halaman dari tombol pesan lama bisa melewati jumlah halaman sekarang
+ * (produk habis → katalog menyusut): tampilkan halaman terakhir yang ada,
+ * bukan daftar kosong berlabel "6/3".
+ */
+function clampPage(page: number, total: number, perPage: number): number {
+  const lastPage = Math.max(0, Math.ceil(total / perPage) - 1);
+  return Math.min(Math.max(0, Math.floor(Number(page) || 0)), lastPage);
+}
+
 // Telegram bulk cap: 100/order for bulk purchase (web checkout keeps its own cap).
 export const TELEGRAM_MAX_QTY = 100;
 
@@ -112,10 +122,11 @@ export function homeKeyboard(): InlineKeyboardMarkup {
 
 export function catalogFlatKeyboard(
   products: { id: number; name: string; price: number }[],
-  page = 0,
+  requestedPage = 0,
   perPage = 8,
 ): InlineKeyboardMarkup {
   // Flat product list (WA parity) — product names only, categories optional filter.
+  const page = clampPage(requestedPage, products.length, perPage);
   const start = page * perPage;
   const pageItems = products.slice(start, start + perPage);
 
@@ -187,8 +198,9 @@ export function categoriesKeyboard(
 export function productsKeyboard(
   products: { id: number; name: string; price: number }[],
   categoryId: number,
-  page = 0,
+  requestedPage = 0,
 ): InlineKeyboardMarkup {
+  const page = clampPage(requestedPage, products.length, PER_PAGE);
   const start = page * PER_PAGE;
   const pageItems = products.slice(start, start + PER_PAGE);
 

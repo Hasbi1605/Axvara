@@ -256,7 +256,7 @@ export function searchPromptMessage(): string {
   ].join("\n");
 }
 
-export function searchResultsMessage(keyword: string, total: number): string {
+export function searchResultsMessage(keyword: string, total: number, soldOut = 0): string {
   const kw = escapeHtml(truncate(keyword, 60));
   return [
     `🔎 <b>Hasil: “${kw}”</b>`,
@@ -264,6 +264,8 @@ export function searchResultsMessage(keyword: string, total: number): string {
     "",
     total > 0
       ? `${total} produk cocok — tap untuk lihat detail 👇`
-      : "Tidak ada produk yang cocok. Coba kata lain atau lihat /katalog 🙏",
+      : soldOut > 0
+        ? "Produk yang cocok sedang habis. Cek lagi nanti atau lihat /katalog untuk produk yang ready 🙏"
+        : "Tidak ada produk yang cocok. Coba kata lain atau lihat /katalog 🙏",
   ].join("\n");
 }
