@@ -1,15 +1,17 @@
 
 import type { Metadata } from "next";
+import { NextRequest } from "next/server";
 import { notFound } from "next/navigation";
 import { queryFirst, queryAll } from "@/lib/db";
 import { displayDescription } from "@/lib/catalog";
+import type { Product } from "@/lib/products";
 import {
   seoDescription,
   seoImages,
   seoProductJsonLd,
   type SeoProduct,
 } from "@/lib/product-seo";
-import ProductDetailClient from "./product-detail-client";
+import ProductDetailClient, { type InitialCatalog } from "./product-detail-client";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -58,6 +60,35 @@ async function getSeoProduct(slug: string): Promise<SeoProduct | null> {
   };
 }
 
+/**
+ * Data interaktif PDP diambil server lewat handler API yang sama dengan
+ * klien (pola beranda): halaman tampil lengkap dari satu respons navigasi,
+ * bukan skeleton lalu dua fetch klien lagi. Gagal = undefined → klien fetch.
+ */
+async function loadInitialProducts(slug: string): Promise<Product[] | undefined> {
+  try {
+    const { GET } = await import("@/app/api/products/route");
+    const response = await GET(new NextRequest(`https://axvara.tech/api/products?active=1&slug=${encodeURIComponent(slug)}`));
+    if (!response.ok) return undefined;
+    const data = (await response.json()) as { products?: Product[] };
+    return Array.isArray(data.products) ? data.products : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function loadInitialCatalog(slug: string): Promise<InitialCatalog | undefined> {
+  try {
+    const { GET } = await import("@/app/api/catalog/route");
+    const response = await GET(new Request(`https://axvara.tech/api/catalog?slug=${encodeURIComponent(slug)}`));
+    if (!response.ok) return undefined;
+    const data = (await response.json()) as { product?: InitialCatalog["product"]; variantsEnabled?: boolean };
+    return data.product ? { slug, product: data.product, variantsEnabled: data.variantsEnabled === true } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
   const canonical = `${SITE_BASE}/produk/${slug}`;
@@ -91,12 +122,11 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
 export default async function ProductDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  let product: SeoProduct | null = null;
-  try {
-    product = await getSeoProduct(slug);
-  } catch {
-    product = null;
-  }
+  const [product, initialProducts, initialCatalog] = await Promise.all([
+    getSeoProduct(slug).catch(() => null),
+    loadInitialProducts(slug),
+    loadInitialCatalog(slug),
+  ]);
   if (!product) return notFound();
   const canonical = `${SITE_BASE}/produk/${slug}`;
   const jsonLd = seoProductJsonLd(product, canonical);
@@ -113,9 +143,11 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
           Interaktivitas (galeri/varian/keranjang/checkout) tetap di client
           di bawah, yang memakai API yang sama sehingga tidak ada duplikasi
           sumber. */}
-      <h1 className="sr-only">{product.name}</h1>
+      {/* Client yang di-seed server merender h1 visual di HTML awal; h1
+          sr-only hanya cadangan bila seed gagal (klien mulai dari skeleton). */}
+      {!initialProducts && <h1 className="sr-only">{product.name}</h1>}
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd }} />
-      <ProductDetailClient slug={slug} />
+      <ProductDetailClient slug={slug} initialProducts={initialProducts} initialCatalog={initialCatalog} />
     </>
   );
 }

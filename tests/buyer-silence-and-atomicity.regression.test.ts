@@ -86,7 +86,10 @@ describe("C-H1: harga divalidasi ulang antara quote dan pembuatan order", () => 
 
   it("checkout memuat harga terbaru, bukan sekadar melempar error mentah", () => {
     const page = read("src/app/checkout/page.tsx");
-    const handler = page.slice(page.indexOf('fetch("/api/orders"'));
+    // POST order kini lewat fetchWithTimeout (batas 60 dtk untuk jaringan lambat).
+    const start = page.indexOf('fetchWithTimeout("/api/orders"');
+    expect(start).toBeGreaterThan(-1);
+    const handler = page.slice(start);
     expect(handler).toContain("price_changed");
     expect(handler).toContain("fetchQuote(quoteRequestItems)");
   });

@@ -1,12 +1,13 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { formatRupiah } from "@/lib/utils";
 import type { Product } from "@/lib/products";
 import { useCart } from "@/stores/cart";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { QuickVariantModal } from "@/components/storefront/QuickVariantModal";
+import { InlineSpinner } from "@/components/storefront/Skeletons";
+import { usePendingNavigation } from "@/hooks/usePendingNavigation";
 
 /**
  * Responsive image helper — for Unsplash URLs, generates srcset with
@@ -36,7 +37,7 @@ function responsiveImg(url: string) {
 
 export function ProductCard({ product, index = 0, compact = false }: { product: Product; index?: number; compact?: boolean }) {
   const add = useCart((s) => s.add);
-  const router = useRouter();
+  const { navigate, pending: checkoutPending } = usePendingNavigation();
   const [modalMode, setModalMode] = useState<"cart" | "checkout" | null>(null);
 
   const hasVariants = Boolean(product.variantCount && product.variantCount > 0);
@@ -68,7 +69,7 @@ export function ProductCard({ product, index = 0, compact = false }: { product: 
     if (hasVariants) {
       setModalMode("checkout");
     } else {
-      router.push(`/checkout?buy=${product.slug}`);
+      navigate(`/checkout?buy=${product.slug}`);
     }
   };
 
@@ -183,9 +184,11 @@ export function ProductCard({ product, index = 0, compact = false }: { product: 
                 <button
                   type="button"
                   onClick={handleCheckout}
-                  className="h-8 sm:h-9 rounded-[10px] sm:rounded-xl bg-[#00E5FF] text-[#080C1E] text-[11px] sm:text-[13px] font-bold flex items-center justify-center gap-1 sm:gap-1.5 hover:bg-[#00D0E8] shadow-[0_4px_16px_rgba(0,229,255,0.28)] transition leading-none active:scale-95"
+                  disabled={checkoutPending}
+                  aria-busy={checkoutPending}
+                  className="h-8 sm:h-9 rounded-[10px] sm:rounded-xl bg-[#00E5FF] text-[#080C1E] text-[11px] sm:text-[13px] font-bold flex items-center justify-center gap-1 sm:gap-1.5 hover:bg-[#00D0E8] shadow-[0_4px_16px_rgba(0,229,255,0.28)] transition leading-none active:scale-95 disabled:cursor-wait disabled:opacity-80"
                 >
-                  <IosIcon name="lightning-bolt" size={12} tint="black" /> Checkout
+                  {checkoutPending ? <InlineSpinner className="w-3 h-3" tone="dark" /> : <IosIcon name="lightning-bolt" size={12} tint="black" />} Checkout
                 </button>
               </>
             )}

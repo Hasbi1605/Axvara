@@ -5,6 +5,10 @@ import Link from "next/link";
 import { useCart } from "@/stores/cart";
 import { deriveNameFromEmail, formatRupiah } from "@/lib/utils";
 import type { Product } from "@/lib/products";
+import { fetchWithTimeout, FetchTimeoutError } from "@/lib/fetch-timeout";
+import { SLOW_MS, useLoadingStage } from "@/hooks/useLoadingStage";
+import { startNavigation } from "@/stores/navigation";
+import { CheckoutSkeleton, InlineSpinner } from "@/components/storefront/Skeletons";
 
 
 type Method = "qris" | "ewallet" | "bank";
@@ -53,16 +57,22 @@ function CheckoutInner() {
     setDirectLoading(true);
     // Exact slug (issue #14): sebelumnya q=slug memindai seluruh katalog
     // lewat LIKE; kini filter slug exact di server (1 baris).
-    fetch(`/api/products?active=1&slug=${encodeURIComponent(buySlug)}`)
+    // Produk + varian diambil paralel: dulu berurutan sehingga Beli Langsung
+    // menunggu 3 round-trip (produk → varian → quote) di jaringan lambat.
+    const catalogRequest = buyVariantId
+      ? fetchWithTimeout(`/api/catalog?slug=${encodeURIComponent(buySlug)}`, {}, 25_000)
+      : null;
+    catalogRequest?.catch(() => undefined);
+    fetchWithTimeout(`/api/products?active=1&slug=${encodeURIComponent(buySlug)}`, {}, 25_000)
       .then((r) => r.ok ? r.json() : Promise.reject())
       .then(async (j) => {
         const found = (j.products as Product[] | undefined)?.[0];
         if (!found || found.slug !== buySlug) throw new Error("Produk tidak ditemukan atau sedang nonaktif.");
         if (found.variantCount && found.variantCount > 0) {
-          if (!buyVariantId) {
+          if (!buyVariantId || !catalogRequest) {
             throw new Error("Pilih varian dari halaman detail produk terlebih dahulu.");
           }
-          const catRes = await fetch(`/api/catalog?slug=${encodeURIComponent(buySlug)}`);
+          const catRes = await catalogRequest;
           if (!catRes.ok) throw new Error("Pilihan varian gagal dimuat.");
           const catData = await catRes.json() as { product?: { variants?: CatalogVariant[] } };
           const variant = (catData.product?.variants || []).find((v) => String(v.id) === buyVariantId);
@@ -135,6 +145,17 @@ function CheckoutInner() {
   // kosong) dan hook setelah return = crash "Rendered more hooks".
   const [summaryOpen, setSummaryOpen] = useState(true);
   const quoteRequestId = React.useRef(0);
+  // Kode pesanan yang sudah dibuat: layar "membuka pembayaran" tampil sampai
+  // /pesanan/[code] dirender, bukan kembali ke form (atau "Keranjang kosong").
+  const [redirectCode, setRedirectCode] = useState<string | null>(null);
+  const quoteStage = useLoadingStage(quoteLoading, [SLOW_MS]);
+  const submitStage = useLoadingStage(loading, [4_000, 12_000]);
+  const redirectStage = useLoadingStage(Boolean(redirectCode), [SLOW_MS]);
+  // CTA sticky ditekan di dasar form panjang; tanpa ini layar pendek
+  // "Pesanan dibuat" muncul di luar viewport dan pembeli hanya melihat footer.
+  useEffect(() => {
+    if (redirectCode) window.scrollTo({ top: 0 });
+  }, [redirectCode]);
 
   const fetchQuote = useCallback(async (quoteItems: { slug: string; variant_id?: number; qty: number; expected_price: number }[]) => {
     if (quoteItems.length === 0) return;
@@ -147,11 +168,11 @@ function CheckoutInner() {
     setQuoteToken(null);
     setQuoteAccepted(false);
     try {
-      const r = await fetch("/api/checkout/quote", {
+      const r = await fetchWithTimeout("/api/checkout/quote", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ items: quoteItems }),
-      });
+      }, 25_000);
       const j = await r.json().catch(() => ({}));
       if (requestId !== quoteRequestId.current) return;
       if (r.status === 409 && j.ok === false && Array.isArray(j.issues)) {
@@ -246,8 +267,26 @@ function CheckoutInner() {
   const queuedNames = quotedItems.filter((qi) => qi.queued_delivery === true).map((qi) => qi.name);
   const displaySubtotal = quotedItems.length > 0 ? quotedSubtotal : subtotal;
 
+  if (redirectCode) {
+    return (
+      <div className="mx-auto max-w-[520px] px-4 py-16 text-center" role="status" aria-live="polite">
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#00E5FF]/10">
+          <InlineSpinner className="h-8 w-8" />
+        </div>
+        <h1 className="mt-5 font-display text-xl font-bold text-white">Pesanan dibuat</h1>
+        <p className="mt-1 font-mono text-sm font-bold tracking-[0.08em] text-[#00E5FF]">{redirectCode}</p>
+        <p className="mt-3 text-sm leading-6 text-white/60">Membuka halaman pembayaran QRIS… Jangan tutup halaman atau buat pesanan ulang.</p>
+        {redirectStage >= 1 && (
+          <p className="mt-4 text-xs leading-5 text-[#FFD66B]/90">
+            Koneksi lambat. Pesananmu aman —{" "}
+            <a href={`/pesanan/${encodeURIComponent(redirectCode)}`} className="font-semibold text-[#00E5FF] underline underline-offset-2">buka halaman pembayaran</a>
+          </p>
+        )}
+      </div>
+    );
+  }
   if (buySlug && !directError && (directLoading || !directProduct)) {
-    return <div className="mx-auto max-w-[640px] px-4 py-16 text-center text-white/60">Memuat produk…</div>;
+    return <CheckoutSkeleton label="Memuat produk…" />;
   }
   if (buySlug && directError) {
     return (
@@ -319,8 +358,10 @@ function CheckoutInner() {
       variant_id: item.variant_id,
       qty: item.qty,
     }));
+    let redirected = false;
     try {
-      const r = await fetch("/api/orders", {
+      // 60 dtk: jalur ini menunggu stok + QRIS + notifikasi admin di server.
+      const r = await fetchWithTimeout("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -332,7 +373,7 @@ function CheckoutInner() {
           proof_url: null,
           quote_token: quoteToken,
         }),
-      });
+      }, 60_000);
       const j = await r.json().catch(() => ({}));
       // Harga berubah antara quote dan submit: jangan sekadar melempar teks
       // error mentah. Ambil harga terbaru supaya pembeli melihat nominal baru
@@ -348,16 +389,29 @@ function CheckoutInner() {
       // Tanpa WA/email: perangkat bersama tidak boleh menyimpan kontak pembeli
       // secara permanen (server sudah menyamarkannya di setiap respons).
       try {
-        const localOrder = { code, name: fallbackName, method: payMethod, items: displayItems, subtotal: j.subtotal ?? displaySubtotal, fileName: null, status: "pending", createdAt: new Date().toISOString() };
+        // `qris` dari respons create: halaman pesanan langsung menampilkan QR
+        // tanpa menunggu round-trip GET pertama.
+        const localOrder = { code, name: fallbackName, method: payMethod, items: displayItems, subtotal: j.subtotal ?? displaySubtotal, fileName: null, status: "pending", createdAt: new Date().toISOString(), qris: j.qris ?? null };
         const existing = JSON.parse(localStorage.getItem("axvara-orders") || "[]");
         localStorage.setItem("axvara-orders", JSON.stringify([...existing, localOrder]));
       } catch {}
+      setRedirectCode(code);
+      redirected = true;
       if (!isDirect) clear();
-      router.push(`/pesanan/${code}`);
+      const target = `/pesanan/${code}`;
+      startNavigation(target, { overlay: false });
+      router.push(target);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Gagal buat pesanan");
+      // Timeout/putus jaringan: server mungkin sudah membuat pesanan. Quote
+      // token yang sama membuat percobaan ulang idempoten (orders.quote_id
+      // UNIQUE → pesanan yang sama dikembalikan), jadi aman menekan Bayar lagi.
+      if (e instanceof FetchTimeoutError || e instanceof TypeError) {
+        setError("Koneksi terputus saat membuat pesanan. Tekan Bayar lagi — pesanan yang sama dilanjutkan, tidak dibuat dobel.");
+      } else {
+        setError(e instanceof Error ? e.message : "Gagal buat pesanan");
+      }
     } finally {
-      setLoading(false);
+      if (!redirected) setLoading(false);
     }
   };
 
@@ -369,7 +423,10 @@ function CheckoutInner() {
   // persetujuan…" di atas tidak pernah tampil dan sticky CTA mobile mati
   // tanpa penjelasan. Klik kini menjelaskan + membawa ke checkbox.
   const ctaDisabled = loading || quoteLoading || method !== "qris" || !quoteToken || !quoteAccepted || quoteIssues.length > 0;
-  const ctaLabel = loading ? "Memproses…" : `Bayar ${formatRupiah(displaySubtotal)} — Buat Pesanan`;
+  // Label bertahap: proses create (stok + QRIS) bisa belasan detik di
+  // jaringan lambat; spinner dengan teks yang sama terlihat macet.
+  const submitLabel = submitStage === 0 ? "Membuat pesanan…" : submitStage === 1 ? "Menyiapkan QRIS…" : "Koneksi lambat, tetap di halaman ini…";
+  const ctaLabel = loading ? submitLabel : `Bayar ${formatRupiah(displaySubtotal)} — Buat Pesanan`;
 
   // --- Blok metode: SATU definisi, dirender di kolom kiri (revamp
   // 2026-09-23 ala Sekalipay: Metode ① → Data ②). Rail kanan desktop
@@ -379,9 +436,12 @@ function CheckoutInner() {
     <div>
       <h2 className="text-sm font-semibold text-white">① Metode Pembayaran</h2>
       {quoteLoading ? (
-        <div className="mt-3 flex items-center gap-2 text-sm text-white/50">
-          <span className="w-4 h-4 rounded-full border-2 border-white/20 border-t-[#00E5FF] animate-spin" />
-          Memuat harga & metode pembayaran…
+        <div className="mt-3 text-sm text-white/50" role="status">
+          <div className="flex items-center gap-2">
+            <span className="w-4 h-4 rounded-full border-2 border-white/20 border-t-[#00E5FF] animate-spin" />
+            Memuat harga & metode pembayaran…
+          </div>
+          {quoteStage >= 1 && <p className="mt-2 text-xs text-[#FFD66B]/90">Koneksi lambat — harga masih divalidasi server, tunggu sebentar.</p>}
         </div>
       ) : quoteError ? (
         <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-2">
@@ -681,7 +741,7 @@ function CheckoutInner() {
 
 export default function CheckoutPage() {
   return (
-    <React.Suspense fallback={<div className="mx-auto max-w-[640px] px-4 py-16 text-center text-white/60">Memuat checkout…</div>}>
+    <React.Suspense fallback={<CheckoutSkeleton />}>
       <CheckoutInner />
     </React.Suspense>
   );

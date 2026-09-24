@@ -7,7 +7,7 @@ import { CartDrawer } from "@/components/storefront/CartDrawer";
 import { MobileBottomNav } from "@/components/storefront/MobileBottomNav";
 import { Spotlight } from "@/components/ui/Spotlight";
 import { ToastProvider } from "@/components/ui/Toast";
-import { RouteLoading } from "@/components/ui/RouteLoading";
+import { NavigationProgress } from "@/components/ui/NavigationProgress";
 import { PopupBanner } from "@/components/storefront/PopupBanner";
 import { PendingOrderReminder } from "@/components/storefront/PendingOrderReminder";
 import { Suspense } from "react";
@@ -73,7 +73,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Navbar />
           <CartDrawer />
           <Suspense fallback={null}>
-            <RouteLoading />
+            <NavigationProgress />
           </Suspense>
           <PopupBanner />
           <main className="flex-1 min-h-[50vh]">{children}</main>

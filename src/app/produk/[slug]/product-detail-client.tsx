@@ -14,6 +14,9 @@ import { ProductCard } from "@/components/storefront/ProductCard";
 import { QuickVariantModal } from "@/components/storefront/QuickVariantModal";
 import { ActivationBody, DescriptionBody, MobileCollapsible, TermsBody, activationStepCount } from "@/components/storefront/ProductCopy";
 import { isLongDescription, mergeProductCopy, parseProductDescription, type VariantCopy } from "@/lib/product-copy/format";
+import { Bone, InlineSpinner, ProductDetailSkeleton } from "@/components/storefront/Skeletons";
+import { usePendingNavigation } from "@/hooks/usePendingNavigation";
+import { fetchWithTimeout } from "@/lib/fetch-timeout";
 
 // /api/catalog mengganti teks mentah WR (terms/delivery_terms) dengan `copy`
 // siap tampil — versi Axvara atau teks pemasok yang dirapikan.
@@ -38,25 +41,54 @@ type CatalogDetail = {
   variants: VariantItem[];
 };
 
+/** Respons /api/catalog?slug= yang sudah diambil server untuk slug ini. */
+export type InitialCatalog = { slug: string; product: CatalogDetail; variantsEnabled: boolean };
+
+function galleryOf(list: Product[], slug: string): string[] {
+  const found = list.find((p) => p.slug === slug) ?? list[0];
+  if (!found) return [];
+  const imgs: string[] = [];
+  if (found.image) imgs.push(found.image);
+  if (Array.isArray(found.images)) {
+    for (const img of found.images) {
+      if (img && !imgs.includes(img)) imgs.push(img);
+    }
+  }
+  return imgs;
+}
+
+/** Varian aktif + bisa dibeli satu-satunya dipilih otomatis. */
+function soleBuyableVariantId(detail: CatalogDetail | null | undefined): number | null {
+  const activeVars = (detail?.variants || []).filter((v: VariantItem) => v.is_active && v.stock !== 0 && !(v.stock !== -1 && v.stock < Math.max(1, Number(v.min_qty ?? 1) || 1)));
+  return activeVars.length === 1 ? activeVars[0].id : null;
+}
+
 // Interaktivitas PDP (varian/keranjang/checkout). Dipisah dari page.tsx
 // server component (issue #11) agar metadata + JSON-LD + h1 awal tetap
 // server-rendered untuk crawler/preview, tanpa mengubah flow pembelian.
-export default function ProductDetailClient({ slug: slugProp }: { slug?: string }) {
+// `initialProducts`/`initialCatalog` diisi page.tsx dari handler API yang
+// sama: PDP tampil lengkap dari respons navigasi, tanpa dua round-trip
+// tambahan (skeleton kedua) di jaringan lambat. Tanpa prop = fetch di klien.
+export default function ProductDetailClient({ slug: slugProp, initialProducts, initialCatalog }: { slug?: string; initialProducts?: Product[]; initialCatalog?: InitialCatalog | null }) {
   const params = useParams<{ slug: string }>();
   const slug = slugProp ?? params.slug;
   const router = useRouter();
   const add = useCart((s) => s.add);
+  const { navigate: goCheckout, pending: checkoutPending } = usePendingNavigation();
+  const seededProducts = initialProducts?.some((p) => p.slug === slug) ? initialProducts : undefined;
+  const seededCatalog = initialCatalog?.slug === slug ? initialCatalog : undefined;
 
-  const [catalogProducts, setCatalogProducts] = useState<Product[]>([]);
-  const [galleryImages, setGalleryImages] = useState<string[]>([]);
+  const [catalogProducts, setCatalogProducts] = useState<Product[]>(seededProducts ?? []);
+  const [galleryImages, setGalleryImages] = useState<string[]>(() => galleryOf(seededProducts ?? [], slug));
   const [activeImg, setActiveImg] = useState(0);
-  const [detailLoading, setDetailLoading] = useState(true);
+  const [detailLoading, setDetailLoading] = useState(!seededProducts);
   const [detailError, setDetailError] = useState<string | null>(null);
-  const [catalogDetail, setCatalogDetail] = useState<CatalogDetail | null>(null);
-  const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null);
-  const [variantsEnabled, setVariantsEnabled] = useState(false);
-  const [variantLoading, setVariantLoading] = useState(true);
+  const [catalogDetail, setCatalogDetail] = useState<CatalogDetail | null>(seededCatalog?.product ?? null);
+  const [selectedVariantId, setSelectedVariantId] = useState<number | null>(() => soleBuyableVariantId(seededCatalog?.product));
+  const [variantsEnabled, setVariantsEnabled] = useState(seededCatalog?.variantsEnabled === true);
+  const [variantLoading, setVariantLoading] = useState(!seededCatalog);
   const [variantError, setVariantError] = useState<string | null>(null);
+  const [variantAttempt, setVariantAttempt] = useState(0);
   const [descExpanded, setDescExpanded] = useState(false);
   const [variantModal, setVariantModal] = useState<"cart" | "checkout" | null>(null);
   // Qty stepper PDP ala marketplace — state di atas (sebelum early return)
@@ -65,6 +97,13 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
   const [pdpQty, setPdpQty] = useState(1);
 
   useEffect(() => {
+    if (initialProducts?.some((p) => p.slug === slug)) {
+      setCatalogProducts(initialProducts);
+      setGalleryImages(galleryOf(initialProducts, slug));
+      setDetailError(null);
+      setDetailLoading(false);
+      return;
+    }
     setDetailLoading(true);
     setDetailError(null);
     setCatalogProducts([]);
@@ -74,35 +113,34 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
     // (/api/products?active=1 tanpa filter) hanya untuk 1 PDP + galeri.
     // Kini 1 produk via slug — galeri dibangun dari produk itu sendiri.
     // Related di bawah memakai daftar kecil ini (fallback: kosong).
-    fetch(`/api/products?active=1&slug=${encodeURIComponent(slug)}`)
+    fetchWithTimeout(`/api/products?active=1&slug=${encodeURIComponent(slug)}`, {}, 25_000)
       .then(async (r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then((data) => {
         const list: Product[] = Array.isArray(data.products) ? data.products : [];
         setCatalogProducts(list);
-        const found = list.find((p) => p.slug === slug) ?? list[0];
-        if (found) {
-          const imgs: string[] = [];
-          if (found.image) imgs.push(found.image);
-          if (Array.isArray(found.images)) {
-            for (const img of found.images) {
-              if (img && !imgs.includes(img)) imgs.push(img);
-            }
-          }
-          if (imgs.length > 0) setGalleryImages(imgs);
-        }
+        const imgs = galleryOf(list, slug);
+        if (imgs.length > 0) setGalleryImages(imgs);
       })
       .catch((e) => setDetailError(e instanceof Error ? e.message : "Gagal memuat produk"))
       .finally(()=> setDetailLoading(false));
-  }, [slug]);
+  }, [slug, initialProducts]);
 
   // Fetch variant-aware catalog detail
   useEffect(() => {
+    if (variantAttempt === 0 && initialCatalog?.slug === slug) {
+      setCatalogDetail(initialCatalog.product);
+      setVariantsEnabled(initialCatalog.variantsEnabled === true);
+      setSelectedVariantId(soleBuyableVariantId(initialCatalog.product));
+      setVariantError(null);
+      setVariantLoading(false);
+      return;
+    }
     setCatalogDetail(null);
     setSelectedVariantId(null);
     setVariantsEnabled(false);
     setVariantError(null);
     setVariantLoading(true);
-    fetch(`/api/catalog?slug=${encodeURIComponent(slug)}`)
+    fetchWithTimeout(`/api/catalog?slug=${encodeURIComponent(slug)}`, {}, 25_000)
       .then(async (r) => {
         if (!r.ok) throw new Error(`variant_catalog_unavailable:${r.status}`);
         return r.json();
@@ -111,32 +149,32 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
         if (!data?.product) throw new Error("variant_catalog_unavailable:not_found");
         setCatalogDetail(data.product);
         setVariantsEnabled(data.variantsEnabled === true);
-        // Auto-select if only one active, in-stock variant.
-        const activeVars = (data.product.variants || []).filter((v: VariantItem) => v.is_active && v.stock !== 0 && !(v.stock !== -1 && v.stock < Math.max(1, Number(v.min_qty ?? 1) || 1)));
-        if (activeVars.length === 1) {
-          setSelectedVariantId(activeVars[0].id);
-        }
+        const sole = soleBuyableVariantId(data.product);
+        if (sole !== null) setSelectedVariantId(sole);
       })
-      .catch(() => setVariantError("Pilihan varian gagal dimuat. Muat ulang halaman."))
+      .catch(() => setVariantError("Pilihan varian gagal dimuat."))
       .finally(() => setVariantLoading(false));
-  }, [slug]);
+  }, [slug, initialCatalog, variantAttempt]);
 
   const product = catalogProducts.find((p) => p.slug === slug);
   const [related, setRelated] = useState<Product[]>([]);
+  const [relatedLoading, setRelatedLoading] = useState(true);
 
   useEffect(() => {
     const current = catalogProducts.find((p) => p.slug === slug);
-    if (!current) { setRelated([]); return; }
+    if (!current) { setRelated([]); setRelatedLoading(false); return; }
     // Related dibatasi server (issue #14): 8 produk kategori sama — bukan
     // seluruh katalog. Abort bila slug berpindah sebelum respons tiba.
     const controller = new AbortController();
-    fetch(`/api/products?active=1&cat=${encodeURIComponent(current.categorySlug)}`, { signal: controller.signal })
+    setRelatedLoading(true);
+    fetchWithTimeout(`/api/products?active=1&cat=${encodeURIComponent(current.categorySlug)}`, { signal: controller.signal }, 25_000)
       .then(async (r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then((data) => {
         const list: Product[] = Array.isArray(data.products) ? data.products : [];
         setRelated(list.filter((p) => p.slug !== slug).slice(0, 8));
       })
-      .catch(() => setRelated([]));
+      .catch(() => setRelated([]))
+      .finally(() => { if (!controller.signal.aborted) setRelatedLoading(false); });
     return () => controller.abort();
   }, [catalogProducts, slug]);
 
@@ -169,23 +207,8 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
   };
 
   if (detailLoading) {
-    return (
-      <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 py-10">
-        <div className="h-6 w-24 rounded-full bg-white/10 animate-pulse" />
-        <div className="mt-6 grid lg:grid-cols-[1fr_38%] gap-6">
-          <div className="ax-glass-card rounded-[24px] p-3">
-            <div className="aspect-[4/3] rounded-2xl bg-white/10 animate-pulse" />
-            <div className="mt-3 flex gap-2"><div className="w-[90px] h-[68px] rounded-xl bg-white/10 animate-pulse" /><div className="w-[90px] h-[68px] rounded-xl bg-white/10 animate-pulse" /></div>
-          </div>
-          <div className="ax-glass-card rounded-[24px] p-8 space-y-4">
-            <div className="h-4 w-32 rounded-full bg-white/10 animate-pulse" />
-            <div className="h-7 w-[80%] rounded-xl bg-white/10 animate-pulse" />
-            <div className="h-4 w-full rounded-full bg-white/10 animate-pulse" />
-            <div className="h-12 rounded-xl bg-white/10 animate-pulse" />
-          </div>
-        </div>
-      </div>
-    );
+    // Bentuk yang sama dengan skeleton overlay navigasi: tidak melompat.
+    return <ProductDetailSkeleton />;
   }
 
   if (detailError) {
@@ -249,6 +272,12 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
     : selectedVariant ? !isPurchasable(selectedVariant) : false;
   const needsVariantSelection = variantsEnabled && !selectedVariant;
   const variantCatalogUnavailable = variantLoading || Boolean(variantError) || (variantsEnabled && activeVariants.length === 0);
+  // Varian gagal dimuat untuk produk bervarian: jangan checkout tanpa varian
+  // (dulu buntu di "Pilih varian dari halaman detail"); modal memuat ulang.
+  const mustPickInModal = needsVariantSelection || (Boolean(variantError) && Boolean(product.variantCount));
+  const buyUrl = selectedVariantId
+    ? `/checkout?buy=${product.slug}&variant=${selectedVariantId}&qty=${safePdpQty}`
+    : `/checkout?buy=${product.slug}`;
 
   // Determine the display image — from gallery state or product.image fallback
   const displayImage =
@@ -675,28 +704,40 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
               {needsVariantSelection && (
                 <p className="text-xs text-[#FFB800]/80 text-center">Pilih varian terlebih dahulu</p>
               )}
-              {variantCatalogUnavailable && (
-                <p className="text-xs text-red-300/80 text-center">{variantError || "Pilihan varian sedang dimuat…"}</p>
+              {variantLoading && (
+                <p role="status" className="text-xs text-white/55 flex items-center justify-center gap-2"><InlineSpinner className="w-3.5 h-3.5" />Memuat pilihan varian…</p>
+              )}
+              {variantError && (
+                <p className="text-xs text-red-300/80 text-center">
+                  {variantError}{" "}
+                  <button type="button" onClick={() => setVariantAttempt((n) => n + 1)} className="font-semibold text-[#00E5FF] underline underline-offset-2">Coba lagi</button>
+                </p>
+              )}
+              {!variantLoading && !variantError && variantsEnabled && activeVariants.length === 0 && (
+                <p className="text-xs text-white/55 text-center">Belum ada varian yang bisa dibeli saat ini.</p>
               )}
               <button
                 onClick={() => {
                   // Beli Langsung membawa qty stepper (bukan selalu 1):
                   // varian min>1 (GSuite 50) langsung lolos quote tanpa
                   // dead-end "kembali belanja".
-                  const buyUrl = selectedVariantId
-                    ? `/checkout?buy=${product.slug}&variant=${selectedVariantId}&qty=${safePdpQty}`
-                    : `/checkout?buy=${product.slug}`;
-                  router.push(buyUrl);
+                  goCheckout(buyUrl);
                 }}
-                disabled={needsVariantSelection || variantCatalogUnavailable}
+                disabled={needsVariantSelection || variantCatalogUnavailable || checkoutPending}
                 className={`w-full h-[52px] rounded-xl font-bold flex items-center justify-center gap-2 transition active:scale-[0.98] ${
                   needsVariantSelection || variantCatalogUnavailable
                     ? "bg-[#00E5FF]/30 text-[#080C1E]/50 cursor-not-allowed"
-                    : "bg-[#00E5FF] text-[#080C1E] hover:bg-[#00D0E8]"
+                    : "bg-[#00E5FF] text-[#080C1E] hover:bg-[#00D0E8] disabled:opacity-80 disabled:cursor-wait"
                 }`}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/icons/ios11/lightning-bolt-32.png" alt="" width={16} height={16} className="w-4 h-4 object-contain brightness-0" style={{ filter: "brightness(0)" }} draggable={false} /> Beli Langsung
+                {checkoutPending ? (
+                  <><InlineSpinner tone="dark" /> Membuka checkout…</>
+                ) : (
+                  <>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src="/icons/ios11/lightning-bolt-32.png" alt="" width={16} height={16} className="w-4 h-4 object-contain brightness-0" style={{ filter: "brightness(0)" }} draggable={false} /> Beli Langsung
+                  </>
+                )}
               </button>
               <button
                 onClick={() => {
@@ -721,19 +762,22 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
         </div>
       </div>
 
-      {/* Floating Sticky Bottom Action Bar — Mobile Shopee-style: always enabled */}
+      {/* Floating Sticky Bottom Action Bar — Mobile Shopee-style. Nonaktif +
+          spinner selama varian dimuat: dulu tombol aktif sejak awal dan klik
+          cepat membawa ke checkout TANPA varian (buntu). */}
       {!outOfStock && !variantOutOfStock && (
         <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#080C1E]/90 backdrop-blur-xl border-t border-white/10 px-4 py-2.5 pb-[max(10px,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(0,0,0,0.5)] flex items-center gap-2.5">
           <button
             type="button"
             onClick={() => {
-              if (needsVariantSelection) { setVariantModal("cart"); return; }
+              if (mustPickInModal) { setVariantModal("cart"); return; }
               const cartProduct = selectedVariant
                 ? { ...product, price: selectedVariant.price, stock: selectedVariant.stock === -1 ? undefined : selectedVariant.stock, variantId: selectedVariant.id, variantLabel: selectedVariant.label, minQty: selectedMinQty }
                 : product;
               add(cartProduct, safePdpQty);
             }}
-            className="flex-1 h-11 rounded-xl ax-glass-card font-semibold text-xs flex items-center justify-center gap-1.5 transition text-white hover:bg-white/10 active:scale-95"
+            disabled={variantLoading || checkoutPending}
+            className="flex-1 h-11 rounded-xl ax-glass-card font-semibold text-xs flex items-center justify-center gap-1.5 transition text-white hover:bg-white/10 active:scale-95 disabled:opacity-40 disabled:cursor-wait"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/icons/ios11/shopping-bag-32.png" alt="" width={15} height={15} className="w-3.5 h-3.5 object-contain brightness-0 invert" draggable={false} /> Keranjang
@@ -741,16 +785,22 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
           <button
             type="button"
             onClick={() => {
-              if (needsVariantSelection) { setVariantModal("checkout"); return; }
-              const buyUrl = selectedVariantId
-                ? `/checkout?buy=${product.slug}&variant=${selectedVariantId}&qty=${safePdpQty}`
-                : `/checkout?buy=${product.slug}`;
-              router.push(buyUrl);
+              if (mustPickInModal) { setVariantModal("checkout"); return; }
+              goCheckout(buyUrl);
             }}
-            className="flex-[1.5] h-11 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition active:scale-95 bg-[#00E5FF] text-[#080C1E] hover:bg-[#00D0E8] shadow-[0_2px_12px_rgba(0,229,255,0.25)]"
+            disabled={variantLoading || checkoutPending}
+            className="flex-[1.5] h-11 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition active:scale-95 bg-[#00E5FF] text-[#080C1E] hover:bg-[#00D0E8] shadow-[0_2px_12px_rgba(0,229,255,0.25)] disabled:opacity-70 disabled:cursor-wait"
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/icons/ios11/lightning-bolt-32.png" alt="" width={15} height={15} className="w-3.5 h-3.5 object-contain brightness-0" style={{ filter: "brightness(0)" }} draggable={false} /> Beli Sekarang · {formatRupiah(displayPrice)}
+            {variantLoading ? (
+              <><InlineSpinner className="w-3.5 h-3.5" tone="dark" /> Memuat varian…</>
+            ) : checkoutPending ? (
+              <><InlineSpinner className="w-3.5 h-3.5" tone="dark" /> Membuka checkout…</>
+            ) : (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/icons/ios11/lightning-bolt-32.png" alt="" width={15} height={15} className="w-3.5 h-3.5 object-contain brightness-0" style={{ filter: "brightness(0)" }} draggable={false} /> Beli Sekarang · {formatRupiah(displayPrice)}
+              </>
+            )}
           </button>
         </div>
       )}
@@ -779,7 +829,12 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
           style={{ scrollbarWidth: "none" }}
         >
           <div className="flex gap-3 sm:gap-5 pb-3 pr-4 sm:pr-0" style={{ minWidth: "min-content" }}>
-            {related.map((p, i) => (
+            {relatedLoading && related.length === 0 ? Array.from({ length: 4 }, (_, i) => (
+              <div key={`s${i}`} className="snap-start shrink-0 w-[156px] sm:w-[300px] ax-glass-card rounded-[14px] p-1" aria-hidden>
+                <Bone className="aspect-[4/3] rounded-[10px]" />
+                <div className="px-1.5 py-2 space-y-1.5"><Bone className="h-2.5 w-14 rounded-full" /><Bone className="h-3 w-[85%] rounded-full" /><Bone className="h-3.5 w-16 rounded-full" /></div>
+              </div>
+            )) : related.map((p, i) => (
               <div key={p.id} className="snap-start shrink-0 w-[156px] sm:w-[300px]">
                 <ProductCard product={p} index={i} compact />
               </div>

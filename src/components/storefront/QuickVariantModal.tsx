@@ -8,8 +8,11 @@ import { formatWarranty, formatVariantLabel, buyerDeliveryKind } from "@/lib/cat
 import { IosIcon } from "@/components/ui/IosIcon";
 import type { Product } from "@/lib/products";
 import { useCart } from "@/stores/cart";
-import { useRouter } from "next/navigation";
 import { useModalA11y } from "@/hooks/useModalA11y";
+import { usePendingNavigation } from "@/hooks/usePendingNavigation";
+import { SLOW_MS, useLoadingStage } from "@/hooks/useLoadingStage";
+import { fetchWithTimeout } from "@/lib/fetch-timeout";
+import { Bone, InlineSpinner } from "@/components/storefront/Skeletons";
 
 export type VariantOption = VariantSummary;
 
@@ -20,11 +23,13 @@ type Props = {
 };
 
 export function QuickVariantModal({ product, mode, onClose }: Props) {
-  const router = useRouter();
+  const { navigate, pending: navigating } = usePendingNavigation();
   const add = useCart((s) => s.add);
   const [variants, setVariants] = useState<VariantOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const loadingStage = useLoadingStage(loading, [SLOW_MS]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -37,7 +42,7 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetch(`/api/catalog?slug=${encodeURIComponent(product.slug)}`)
+    fetchWithTimeout(`/api/catalog?slug=${encodeURIComponent(product.slug)}`, {}, 20_000)
       .then(async (res) => {
         if (!res.ok) throw new Error("Gagal mengambil varian produk.");
         return res.json();
@@ -69,7 +74,7 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [product.slug]);
+  }, [product.slug, attempt]);
 
   const selected = variants.find((v) => v.id === selectedId) || null;
   const currentPrice = selected ? selected.price : (product.minPrice ?? product.price);
@@ -120,8 +125,10 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
       }, safeModalQty);
       onClose();
     } else {
-      router.push(`/checkout?buy=${encodeURIComponent(product.slug)}&variant=${selected.id}&qty=${safeModalQty}`);
-      onClose();
+      // Modal tetap terbuka dengan spinner sampai checkout tampil (ikut
+      // unmount bersama halaman). Dulu modal langsung tertutup dan pembeli
+      // kembali melihat katalog diam seolah klik tidak jalan.
+      navigate(`/checkout?buy=${encodeURIComponent(product.slug)}&variant=${selected.id}&qty=${safeModalQty}`);
     }
   };
 
@@ -192,12 +199,19 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
           </p>
 
           {loading ? (
-            <div className="py-8 text-center text-xs text-white/40 animate-pulse">
-              Memuat pilihan paket...
+            <div role="status" aria-label="Memuat pilihan paket">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3" aria-hidden>
+                {Array.from({ length: 4 }, (_, i) => <Bone key={i} className="h-[76px] rounded-xl" />)}
+              </div>
+              <p className="mt-3 flex items-center justify-center gap-2 text-xs text-white/45">
+                <InlineSpinner className="w-3.5 h-3.5" />
+                {loadingStage >= 1 ? "Koneksi lambat — pilihan paket masih dimuat…" : "Memuat pilihan paket…"}
+              </p>
             </div>
           ) : error ? (
-            <div className="py-4 text-center text-xs text-red-300 bg-red-500/10 rounded-xl border border-red-500/20">
-              {error}
+            <div className="py-4 px-3 text-center text-xs text-red-300 bg-red-500/10 rounded-xl border border-red-500/20">
+              <p>{error}</p>
+              <button type="button" onClick={() => setAttempt((n) => n + 1)} className="mt-2 h-8 rounded-full bg-white px-4 text-xs font-bold text-[#080C1E]">Coba lagi</button>
             </div>
           ) : variants.length === 0 ? (
             <div className="py-4 text-center text-xs text-white/40">
@@ -330,7 +344,7 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
         <div className="pt-2">
           <button
             type="button"
-            disabled={!selected || isOutOfStock || loading}
+            disabled={!selected || isOutOfStock || loading || navigating}
             onClick={handleConfirm}
             className={`w-full h-11 sm:h-12 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition active:scale-[0.98] ${
               mode === "checkout"
@@ -338,7 +352,11 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
                 : "bg-white text-[#080C1E] hover:bg-white/90"
             } disabled:opacity-40 disabled:cursor-not-allowed`}
           >
-            {mode === "checkout" ? (
+            {navigating ? (
+              <>
+                <InlineSpinner tone="dark" /> Membuka checkout…
+              </>
+            ) : mode === "checkout" ? (
               <>
                 <IosIcon name="lightning-bolt" size={14} tint="black" /> Beli Sekarang · {formatRupiah(currentPrice * safeModalQty)}
               </>

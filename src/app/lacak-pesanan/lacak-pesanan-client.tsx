@@ -10,6 +10,8 @@ import { supportTelegramLink } from "@/lib/site";
 import { StoreWhatsAppLink } from "@/components/storefront/StoreWhatsAppLink";
 import { WrCredentialsPanel } from "@/components/storefront/WrCredentialsPanel";
 import { IosIcon } from "@/components/ui/IosIcon";
+import { fetchWithTimeout } from "@/lib/fetch-timeout";
+import { SLOW_MS, useLoadingStage } from "@/hooks/useLoadingStage";
 
 type QrisInvoice = {
   payable_amount: number;
@@ -110,6 +112,7 @@ export default function LacakPesananClient() {
   const [codeTouched, setCodeTouched] = useState(false);
   const [waTouched, setWaTouched] = useState(false);
   const [loading, setLoading] = useState(false);
+  const lookupStage = useLoadingStage(loading, [SLOW_MS]);
   const [error, setError] = useState<string | null>(null);
   const [order, setOrder] = useState<TrackedOrder | null>(null);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
@@ -171,12 +174,12 @@ export default function LacakPesananClient() {
       setPollError(null);
     }
     try {
-      const response = await fetch("/api/orders/lookup", {
+      const response = await fetchWithTimeout("/api/orders/lookup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: cleanCode, wa: cleanWa }),
         cache: "no-store",
-      });
+      }, 20_000);
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || `Gagal melacak (${response.status})`);
       const found = fromApi(body.order);
@@ -349,7 +352,7 @@ export default function LacakPesananClient() {
           className="mt-4 inline-flex h-[52px] w-full items-center justify-center gap-2 rounded-xl bg-[#00E5FF] font-bold text-[#080C1E] transition hover:bg-[#00D0E8] disabled:opacity-60"
         >
           {loading && <span className="h-5 w-5 animate-spin rounded-full border-2 border-[#080C1E]/20 border-t-[#080C1E]" />}
-          {loading ? "Melacak…" : "Lacak Pesanan"}
+          {loading ? (lookupStage >= 1 ? "Koneksi lambat, masih melacak…" : "Melacak…") : "Lacak Pesanan"}
         </button>
         <p className="mt-3 text-center text-[11px] leading-5 text-white/30">Kode dan WA dicocokkan di server. Kombinasi salah tidak membocorkan data.</p>
       </form>

@@ -117,15 +117,19 @@ axvara/
 │   ├── layout.tsx
 │   └── globals.css
 ├── src/components/
-│   ├── ui/                      # Button, Input, Badge, Modal, Drawer, Toast
+│   ├── ui/                      # Button, Input, Badge, Modal, Drawer, Toast,
+│   │                            # NavigationProgress (bar + skeleton rute + pil koneksi lambat)
 │   ├── storefront/              # Navbar, Hero, ProductCard, CartDrawer, CheckoutForm, QrisDisplay,
-│   │                            # ProductCopy (deskripsi + S&K + cara aktivasi PDP, panel lipat mobile)
+│   │                            # ProductCopy (deskripsi + S&K + cara aktivasi PDP, panel lipat mobile),
+│   │                            # Skeletons (satu bentuk skeleton per halaman: overlay navigasi + loading halaman)
 │   └── admin/                   # Shell, login gate, hooks (useAdminAuth/useProductManager),
 │       └── sections/            # satu komponen per section admin (page.tsx tinggal shell + routing)
 ├── src/hooks/
-│   └── useModalA11y.ts          # Escape + focus trap + scroll lock + restore fokus — SATU
+│   ├── useModalA11y.ts          # Escape + focus trap + scroll lock + restore fokus — SATU
 │                                # implementasi untuk CartDrawer, PopupBanner, QuickVariantModal.
 │                                # Sebelumnya disalin manual sehingga a11y tiap modal berbeda.
+│   ├── useLoadingStage.ts       # tahap tunggu (8 dtk lambat, 20 dtk macet) untuk label bertahap
+│   └── usePendingNavigation.ts  # router.push + status pending tombol CTA sampai rute tujuan tampil
 ├── src/lib/
 │   ├── db.ts                    # BARREL — entry point publik tunggal (jangan impor db/* langsung)
 │   ├── db/                      # client (+state dev in-memory), expiry, errors, orders-create,
@@ -153,9 +157,11 @@ axvara/
 │   │                            # curated (S&K/aktivasi versi Axvara, SERVER-ONLY), resolve
 │   │                            # (dipakai /api/catalog; jangan impor dari catalog.ts/komponen)
 │   ├── config.ts                # payment methods, site config
+│   ├── fetch-timeout.ts         # fetchWithTimeout + FetchTimeoutError (fetch browser tak punya batas waktu)
 │   └── utils.ts                 # formatRupiah, generateOrderCode
 ├── stores/
-│   └── cart.ts                  # Zustand cart store (localStorage) — badge/judul pakai lineCount() = jumlah baris varian (2026-09-19); count() sum-qty hanya untuk subtotal
+│   ├── cart.ts                  # Zustand cart store (localStorage) — badge/judul pakai lineCount() = jumlah baris varian (2026-09-19); count() sum-qty hanya untuk subtotal
+│   └── navigation.ts            # status navigasi sejak klik sampai pathname berubah (dibaca NavigationProgress)
 ├── drizzle/                     # atau raw SQL — schema D1
 └── wrangler.json                # Cloudflare bindings + Pages output
 ```
@@ -177,6 +183,9 @@ Pada admin, `onUnauthorized` bergantung pada setter `setAuthed` yang stabil, buk
 - `ScrollRope` dan `Spotlight` event-driven; tidak mempertahankan loop idle. ScrollRope tidak memasang listener pada viewport mobile.
 - Kartu berulang memakai `ax-glass-card` tanpa `backdrop-filter`; blur penuh dipertahankan untuk navbar, drawer, modal, dan overlay.
 - Homepage/detail merender skeleton sampai respons D1 tersedia. Seed produk hanya menjadi database in-memory saat development dan tidak pernah dipakai sebagai fallback UI produksi.
+- **Umpan balik jaringan lambat (2026-09-24, PR loading storefront).** Route dinamis (`/`, `/produk/[slug]`, `/artikel*`, `/pesanan/[code]`) tidak di-prefetch dan App Router menunggu respons server SEBELUM URL berubah, jadi dulu halaman lama diam total setelah klik (`RouteLoading` lama baru menyala setelah halaman baru tampil). Kini `NavigationProgress` (layout root) menangkap klik `<a>`/`<Link>` internal di fase capture + `startNavigation()` untuk `router.push`, lalu setelah 120 ms menampilkan bar cyan yang merayap + skeleton rute tujuan (`Skeletons.tsx`, `fixed` di bawah navbar, z-35 agar tombol CTA pending di halaman lama tetap terlihat); 8 dtk → pil "Koneksi lambat", 20 dtk → "Coba lagi" (navigasi keras ke URL tujuan) / "Batal". Selesai saat pathname/search berubah. **Sengaja tanpa `loading.tsx`:** boundary Suspense membuat respons awal streaming, sehingga `notFound()` produk/artikel nonaktif menjadi 200 + noindex (Next 15.5 tanpa PPR juga streaming untuk bot) dan katalog SSR berpindah ke `<div hidden>` di akhir HTML. `/produk/tidak-ada` tetap 404.
+- PDP (`produk/[slug]/page.tsx`) memanggil handler `/api/products?slug=` + `/api/catalog?slug=` di server (pola beranda) dan mengoper `initialProducts`/`initialCatalog` ke client: PDP tampil lengkap dari satu respons navigasi, tanpa skeleton kedua + dua round-trip klien. Gagal = undefined → client fetch seperti dulu (h1 sr-only hanya dirender pada jalur cadangan ini agar tidak ada h1 ganda).
+- Fetch storefront memakai `fetchWithTimeout` (quote 25 dtk, `POST /api/orders` 60 dtk, lookup/pesanan/varian 20–25 dtk) sehingga permintaan menggantung berakhir dengan pesan + "Coba lagi", bukan spinner selamanya. Polling `/pesanan/[code]` melewati tick bila permintaan sebelumnya belum selesai.
 - Cache publik ditetapkan langsung oleh Edge handler: produk aktif 30 detik, kategori/banner aktif 60 detik. Respons admin atau varian produk non-eksplisit tetap `private, no-store`.
 - Middleware hanya menambahkan `unsafe-eval` pada CSP saat `NODE_ENV=development`, karena React Refresh membutuhkannya. Header production tetap ketat.
 
@@ -367,13 +376,16 @@ CREATE TABLE store_settings (
    ↓ POST /api/orders { customer (nama opsional fallback prefix email, email SELALU wajib), item IDs/qty, payment_method, proof_url, quote_token }
 [Server] Verifikasi signature+expiry+isi item → tolak non-QRIS 503 → D1 batch guard+decrement+INSERT order
    ├─ QRIS: alokasikan kode unik 1–299 → EMVCo dynamic payload + ledger 15 menit
-   │    ↓ /pesanan/[code] menampilkan PNG dan polling 5 detik
+   │    ↓ client: layar "Pesanan dibuat · Membuka halaman pembayaran" sampai /pesanan tampil
+   │      (keranjang dikosongkan di balik layar ini; `qris` respons create disimpan di salinan lokal)
+   │    ↓ /pesanan/[code] menampilkan QR dari salinan lokal segar (≤10 mnt, ada `qris`) lalu
+   │      diganti data server; PNG ber-placeholder + "Muat ulang QRIS"; polling 5 detik
    │    ↓ QRIS Hook → POST /api/webhook/dana → exact amount + event dedup → lunas atomik
    └─ Manual: ⏸️ maintenance 2026-09-17 (upload disembunyikan WEB, endpoint 503, order manual 503)
         ↓ cron: jatuh tempo → status kadaluarsa + restore stok dalam satu batch
 ```
 
-**Anti-tamper:** Harga, rekening, subtotal, dan item order terikat ke quote server; body client tidak dapat mengganti snapshot. Quote id unik membuat retry idempotent. Reservasi/restore stok memakai batch D1 dengan guard CHECK agar kegagalan rollback seluruh operasi; stok `-1` tetap unlimited.
+**Anti-tamper:** Harga, rekening, subtotal, dan item order terikat ke quote server; body client tidak dapat mengganti snapshot. Quote id unik membuat retry idempotent — checkout mengandalkan ini saat `POST /api/orders` timeout/putus jaringan: pesan "Tekan Bayar lagi — pesanan yang sama dilanjutkan, tidak dibuat dobel" (token quote yang sama → `orders.quote_id` UNIQUE mengembalikan pesanan yang sudah ada). Reservasi/restore stok memakai batch D1 dengan guard CHECK agar kegagalan rollback seluruh operasi; stok `-1` tetap unlimited.
 
 **Laporan pendapatan (issue #12, review R9 2026-09-08):** sumber waktu kanonis `src/lib/revenue.ts` — `orders.paid_at` (ditulis sekali saat transisi lunas via COALESCE-guard di semua jalur QRIS/manual/admin, dalam batch yang sama dengan flip status) dengan bucket WIB (`datetime(..., '+7 hours')` di SQL, helper `isSameWibDay/isSameWibMonth` di dev-fallback). Hierarki: ledger `paid_at` → `paid_at` order → `reviewed_at` bukti → `updated_at` fallback. Migrasi `0016_revenue_paid_at.sql` membackfill data lama (QRIS dari ledger, manual dari `reviewed_at`, sisa lunas dari `updated_at`, non-lunas tetap NULL, idempoten). Overview menandai `revenue_timezone: Asia/Jakarta` + `revenue_from/to` agar mudah diaudit.
 

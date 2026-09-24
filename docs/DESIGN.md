@@ -471,7 +471,27 @@
 | Badge count | `scale(1.4)→1` 200ms spring saat tambah keranjang |
 | Button press | `scale(0.98)` 100ms |
 | Toast | `slideUp + fade` 300ms, auto dismiss 3s |
-| Page transition | `fade 180ms` (jika SPA) atau instant (MPA) |
+| Page transition | Bar cyan 3px di atas: merayap `scaleX 0.08→0.9` (14 dtk, ease-out) selama menunggu server, penuh + fade 220ms saat rute tampil; skeleton rute tujuan fade-in 150ms (lihat 6.1) |
+
+### 6.1 Loading & Jaringan Lambat (2026-09-24, PR loading storefront)
+
+Prinsip: **tidak ada klik yang bisu.** Pembeli di jaringan lambat harus melihat
+respons dalam ≤120 ms dan tahu apa yang sedang ditunggu.
+
+| Situasi | Umpan balik |
+|---|---|
+| Klik link/kartu/nav internal | Setelah 120 ms (navigasi instan tidak berkedip): bar cyan + skeleton halaman tujuan menutupi halaman lama di bawah navbar. 8 dtk → pil "Koneksi lambat — halaman masih dimuat…" (border gold), 20 dtk → "Halaman belum terbuka. Coba lagi · Batal" |
+| Checkout kartu / Beli Langsung / Beli Sekarang / modal varian | Tombol nonaktif + spinner "Membuka checkout…" sampai checkout tampil; modal varian TIDAK menutup sendiri |
+| Tombol Bayar | Label bertahap: "Membuat pesanan…" → 4 dtk "Menyiapkan QRIS…" → 12 dtk "Koneksi lambat, tetap di halaman ini…"; sukses → layar "Pesanan dibuat" + kode + "Membuka halaman pembayaran QRIS…" (8 dtk → tautan manual). Putus jaringan → "Koneksi terputus… Tekan Bayar lagi — pesanan yang sama dilanjutkan, tidak dibuat dobel" |
+| Harga & metode checkout | Spinner "Memuat harga & metode pembayaran…" + 8 dtk pesan lambat; timeout 25 dtk → pesan + Coba lagi |
+| QR di `/pesanan/[code]` | Kotak putih ukuran tetap (aspect-square) + spinner "Memuat QRIS…", fade-in saat gambar siap; gagal → "QRIS gagal dimuat" + "Muat ulang QRIS" |
+| Varian PDP | Netral (bukan merah) "Memuat pilihan varian…" + spinner; sticky bar mobile nonaktif "Memuat varian…"; gagal → merah + Coba lagi |
+
+Skeleton memakai `.ax-skeleton` (shimmer 1.6 dtk) dengan bentuk yang sama
+antara overlay navigasi dan loading di halaman itu sendiri
+(`Skeletons.tsx`), sehingga peralihan tidak melompat. Setiap skeleton punya
+`role="status"` sr-only. `prefers-reduced-motion`: bar statis 60%, shimmer
+dimatikan.
 
 ---
 

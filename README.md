@@ -82,6 +82,7 @@ axvara/
 ### Catatan performa storefront
 
 - Homepage dan detail menampilkan skeleton lalu hanya merender katalog aktif dari D1; seed hanya dipakai fallback database development, bukan fallback UI produksi.
+- Jaringan lambat tidak lagi "bisu" (2026-09-24): klik link/CTA langsung memunculkan bar cyan + skeleton halaman tujuan (`src/components/ui/NavigationProgress.tsx`, `src/components/storefront/Skeletons.tsx`), 8 dtk → pil "Koneksi lambat", 20 dtk → "Coba lagi". Tombol Checkout/Beli Sekarang/modal varian berputar sampai checkout tampil (`usePendingNavigation`); Bayar menampilkan label bertahap lalu layar "Pesanan dibuat · Membuka halaman pembayaran"; `/pesanan/[code]` langsung menampilkan QR dari respons create dengan placeholder + "Muat ulang QRIS". PDP dirender server lengkap (`initialProducts`/`initialCatalog`). Fetch storefront dibatasi waktu (`src/lib/fetch-timeout.ts`). Tanpa `loading.tsx` agar status 404 dan HTML SSR tidak berubah.
 - Logo orbit disajikan sebagai SVG lokal; tidak ada request runtime ke Iconify.
 - Gambar kartu Unsplash memakai WebP `srcset` responsif.
 - Endpoint publik eksplisit (`products?active=1`, `categories`, `banners?active=1`) mengirim cache CDN singkat; varian produk admin/private selalu `no-store`.

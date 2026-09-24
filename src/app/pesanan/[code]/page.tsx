@@ -4,12 +4,14 @@ export const runtime = "edge";
 
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { formatRupiah } from "@/lib/utils";
 import { supportTelegramLink } from "@/lib/site";
 import { WR_QUEUED_MAX_HOURS } from "@/lib/warung-rebahan/delivery-class";
 import { StoreWhatsAppLink } from "@/components/storefront/StoreWhatsAppLink";
 import { WrCredentialsPanel } from "@/components/storefront/WrCredentialsPanel";
+import { InlineSpinner, OrderStatusSkeleton } from "@/components/storefront/Skeletons";
+import { fetchWithTimeout } from "@/lib/fetch-timeout";
 
 type QrisInvoice = {
   payable_amount: number;
@@ -64,6 +66,70 @@ function countdown(expiresAt: string, now: number): string {
   return `${String(minutes).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
+/**
+ * Salinan lokal checkout hanya dipakai sebagai tampilan sementara bila baru
+ * dibuat (≤10 mnt) DAN membawa QRIS dari respons create — kasus redirect
+ * checkout → halaman ini. Salinan lama tidak pernah diperbarui (bisa sudah
+ * lunas/kedaluwarsa), jadi menampilkannya dulu = menyuruh bayar pesanan mati;
+ * dulu juga memunculkan "Pesanan Diterima! Admin akan memverifikasi bukti".
+ */
+const LOCAL_FRESH_MS = 10 * 60_000;
+function fromFreshLocal(value: Record<string, unknown> | undefined, now: number): Order | null {
+  if (!value || value.status !== "pending") return null;
+  const created = Date.parse(String(value.createdAt || ""));
+  const qris = value.qris as Partial<QrisInvoice> | null | undefined;
+  if (!Number.isFinite(created) || now - created > LOCAL_FRESH_MS || !qris?.image_url || !qris.expires_at) return null;
+  const subtotal = Number(value.subtotal) || 0;
+  return {
+    code: String(value.code),
+    name: String(value.name ?? ""),
+    wa: "",
+    email: null,
+    method: String(value.method ?? "qris"),
+    items: Array.isArray(value.items) ? (value.items as Order["items"]) : [],
+    subtotal,
+    status: "pending",
+    qris: {
+      payable_amount: Number(qris.payable_amount) || subtotal,
+      unique_code: Number(qris.unique_code) || 0,
+      image_url: String(qris.image_url),
+      expires_at: String(qris.expires_at),
+      status: "pending",
+    },
+    qrisReissueAllowed: false,
+    credentialsReady: false,
+    queuedDelivery: false,
+    fulfillmentStatus: null,
+  };
+}
+
+/** QR dengan placeholder berukuran tetap: tidak ada kotak putih kosong yang lalu melompat. */
+function QrisImage({ src, alt }: { src: string; alt: string }) {
+  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+  const [attempt, setAttempt] = useState(0);
+  const url = attempt > 0 ? `${src}${src.includes("?") ? "&" : "?"}retry=${attempt}` : src;
+  return (
+    <div className="mx-auto mt-3 max-w-[330px] rounded-2xl bg-white p-3">
+      <div className="relative aspect-square w-full">
+        {state !== "ready" && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-xl bg-[#080C1E]/[0.04] text-[#080C1E]/60" role="status">
+            {state === "loading" ? (
+              <><InlineSpinner className="h-7 w-7" tone="dark" /><span className="text-xs font-medium">Memuat QRIS…</span></>
+            ) : (
+              <>
+                <span className="text-xs font-semibold text-[#080C1E]/80">QRIS gagal dimuat</span>
+                <button type="button" onClick={() => { setState("loading"); setAttempt((n) => n + 1); }} className="h-9 rounded-xl bg-[#080C1E] px-4 text-xs font-bold text-white">Muat ulang QRIS</button>
+              </>
+            )}
+          </div>
+        )}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img key={url} src={url} alt={alt} onLoad={() => setState("ready")} onError={() => setState("error")} className={`h-full w-full rounded-xl object-contain transition-opacity duration-300 ${state === "ready" ? "opacity-100" : "opacity-0"}`} />
+      </div>
+    </div>
+  );
+}
+
 export default function OrderSuccessPage() {
   const { code } = useParams<{ code: string }>();
   const [order, setOrder] = useState<Order | null>(null);
@@ -72,10 +138,11 @@ export default function OrderSuccessPage() {
   const [now, setNow] = useState(Date.now());
   const [reissuing, setReissuing] = useState(false);
   const [reissueError, setReissueError] = useState<string | null>(null);
+  const polling = useRef(false);
 
   const fetchOrder = useCallback(async () => {
     if (!code || typeof code !== "string") return;
-    const response = await fetch(`/api/orders?code=${encodeURIComponent(code)}`, { cache: "no-store" });
+    const response = await fetchWithTimeout(`/api/orders?code=${encodeURIComponent(code)}`, { cache: "no-store" }, 20_000);
     const body = await response.json().catch(() => ({}));
     if (response.status === 404) {
       setOrder(null);
@@ -86,6 +153,14 @@ export default function OrderSuccessPage() {
     setOrder(fromApi(body.order));
     setFetchError(null);
   }, [code]);
+
+  // Poll berikutnya dilewati selama yang sebelumnya belum selesai: di jaringan
+  // lambat interval 5 dtk dulu menumpuk permintaan dan memperparah antrean.
+  const pollOrder = useCallback(async () => {
+    if (polling.current) return;
+    polling.current = true;
+    try { await fetchOrder(); } finally { polling.current = false; }
+  }, [fetchOrder]);
 
   /** Minta QRIS baru untuk order yang masih hidup tetapi QR-nya sudah mati. */
   const requestNewQris = useCallback(async () => {
@@ -114,9 +189,9 @@ export default function OrderSuccessPage() {
     setLoading(true);
     setFetchError(null);
     try {
-      const all: Order[] = JSON.parse(localStorage.getItem("axvara-orders") || "[]");
-      const found = all.find((item) => item.code === code);
-      if (found) setOrder(found);
+      const all = JSON.parse(localStorage.getItem("axvara-orders") || "[]") as Record<string, unknown>[];
+      const provisional = fromFreshLocal(Array.isArray(all) ? all.find((item) => item?.code === code) : undefined, Date.now());
+      if (provisional) setOrder(provisional);
     } catch { /* Server state remains authoritative. */ }
     void fetchOrder()
       .catch((error) => setFetchError(error instanceof Error ? error.message : "Gagal memuat pesanan"))
@@ -129,10 +204,10 @@ export default function OrderSuccessPage() {
     if (orderStatus !== "pending") return;
     const interval = setInterval(() => {
       setNow(Date.now());
-      void fetchOrder().catch((error) => setFetchError(error instanceof Error ? error.message : "Status terbaru gagal dimuat"));
+      void pollOrder().catch((error) => setFetchError(error instanceof Error ? error.message : "Status terbaru gagal dimuat"));
     }, isDynamicQris ? 5_000 : 30_000);
     return () => clearInterval(interval);
-  }, [orderStatus, isDynamicQris, fetchOrder]);
+  }, [orderStatus, isDynamicQris, pollOrder]);
 
   // Order lunas tetapi detail akun belum ada: periksa berkala supaya panel
   // muncul sendiri begitu fulfillment otomatis selesai — pembeli tidak perlu
@@ -155,10 +230,10 @@ export default function OrderSuccessPage() {
       }
       // Diam-diam saja: kegagalan poli di sini bukan error yang perlu
       // ditampilkan, status utama sudah "Lunas".
-      void fetchOrder().catch(() => undefined);
+      void pollOrder().catch(() => undefined);
     }, 20_000);
     return () => clearInterval(interval);
-  }, [orderStatus, credentialsReady, queuedDelivery, fetchOrder]);
+  }, [orderStatus, credentialsReady, queuedDelivery, pollOrder]);
 
   useEffect(() => {
     if (!order?.qris || order.status !== "pending") return;
@@ -167,7 +242,7 @@ export default function OrderSuccessPage() {
   }, [order?.qris, order?.status]);
 
   if (loading && !order) {
-    return <div className="mx-auto max-w-[640px] px-4 py-16 text-center"><div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-[#00E5FF]" /><p className="mt-4 text-sm text-white/50">Memuat pesanan…</p></div>;
+    return <OrderStatusSkeleton />;
   }
   if (fetchError && !order) {
     return <div className="mx-auto max-w-[640px] px-4 py-16 text-center"><p className="text-sm text-red-300">{fetchError}</p><button onClick={() => location.reload()} className="mt-3 text-sm text-[#00E5FF]">Coba lagi</button></div>;
@@ -248,6 +323,7 @@ export default function OrderSuccessPage() {
                   disabled={reissuing}
                   className="mt-4 inline-flex h-11 items-center gap-2 whitespace-nowrap rounded-xl bg-[#00E5FF] px-5 text-sm font-bold text-[#080C1E] transition hover:bg-[#00D0E8] disabled:opacity-50"
                 >
+                  {reissuing && <InlineSpinner tone="dark" />}
                   {reissuing ? "Menerbitkan QRIS baru…" : "Minta QRIS Baru"}
                 </button>}
                 {reissueError && (
@@ -257,9 +333,8 @@ export default function OrderSuccessPage() {
             ) : (
               <>
                 <p className="font-display text-xl font-bold text-white">Scan QRIS</p>
-                <div className="mx-auto mt-3 max-w-[330px] rounded-2xl bg-white p-3">
-                  <img src={order.qris.image_url} alt={`QRIS dinamis pesanan ${order.code}`} className="h-auto w-full rounded-xl" />
-                </div>
+                {/* key: QR terbitan ulang memakai URL yang sama, jadi status muat direset lewat expires_at. */}
+                <QrisImage key={`${order.qris.image_url}|${order.qris.expires_at}`} src={order.qris.image_url} alt={`QRIS dinamis pesanan ${order.code}`} />
                 <div className="mt-3 flex items-center justify-center gap-2" aria-label="QRIS National Payment Standard">
                   <img src="/brand/qris.svg" alt="Logo QRIS resmi" width={72} height={28} className="h-7 w-auto object-contain" draggable={false} />
                   <span className="text-sm text-white/70">National Payment Standard</span>
