@@ -19,18 +19,20 @@ export type ForwardSendResult = {
   error?: string;
 };
 
-/** Kirim 1 email transaksional via Resend. Timeout 20 dtk. */
+/** Kirim 1 email transaksional via Resend. Timeout default 20 dtk. */
 export async function sendForwardEmail(params: {
   to: string;
   subject: string;
   html: string;
   text: string;
+  /** Pemanggil di jalur cron/webhook memakai batas lebih pendek (deadline run 45 dtk). */
+  timeoutMs?: number;
 }): Promise<ForwardSendResult> {
   const apiKey = process.env.RESEND_API_KEY?.trim() || "";
   const from = process.env.FORWARD_FROM_EMAIL?.trim() || "";
   if (!apiKey || !from) return { ok: false, error: "forward_email_not_configured" };
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 20_000);
+  const timer = setTimeout(() => controller.abort(), params.timeoutMs ?? 20_000);
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",

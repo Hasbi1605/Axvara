@@ -1001,8 +1001,9 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   dirugikan). Kini harga DB dibandingkan dengan harga quote → `409 price_changed`, dan
   checkout memuat ulang quote agar pembeli melihat nominal baru, bukan buntu di pesan error.
   (3) **Kabar ke pembeli** lewat `src/lib/notify-buyer.ts` (kanal ditentukan dari
-  `orders.sales_channel`; Telegram hanya ke chat pribadi terverifikasi, web/WA lewat outbox
-  durable yang idempoten): serah terima manual dulu menandai item `delivered` tanpa satu pun
+  `orders.sales_channel`; Telegram hanya ke chat pribadi terverifikasi, **web lewat email
+  Resend sejak 2026-09-24** (lihat entri audit ronde 4), WA lewat outbox durable yang
+  idempoten): serah terima manual dulu menandai item `delivered` tanpa satu pun
   pesan padahal pesan lunas Telegram sudah berjanji "Produk akan dikirim admin melalui DM
   Telegram pribadi ini"; penolakan bukti hanya menulis `status='rejected'` sehingga pembeli
   melihat "Pending" selamanya tanpa alasan; dan persetujuan screenshot QRIS membalas
@@ -1071,6 +1072,45 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   "pesanan kedaluwarsa" yang basi hanyalah spam; (3) urutan: renewable dulu, lalu
   `pt.expires_at` **terbaru** dulu, supaya baris yang gagal terus (bot diblokir, email
   ditolak) tenggelam ke belakang dan tidak menahan kabar baru. Dikunci oleh
+  `tests/qris-expiry-queue-blocking.regression.test.ts`.
+- **Audit ronde 4 — kabar kegagalan akhirnya sampai (2026-09-24, PR ronde 4):**
+  (1) **Kabar pembeli kanal WEB lewat email.** `sendToBuyer` dulu mengirim kabar web lewat
+  outbox WhatsApp, padahal bot WA mati (outbox produksi 18–19 Sep: 3 baris `dead`,
+  `whatsapp_not_connected`). Akibatnya serah terima, bukti ditolak, bukti menunggu Hook,
+  dan gagal kirim **tidak pernah sampai** ke pembeli web. Kini web → email Resend ke
+  `orders.customer_email` (wajib sejak revamp checkout); order web lama tanpa email tetap
+  jatuh ke outbox WA. Email dan DM Telegram diberi kunci idempoten di tabel baru
+  **`buyer_notice_log`** (migrasi 0039: `idempotency_key` PK, `channel` email/telegram,
+  `status` sending/sent/failed). Baris `failed` dan `sending` basi >10 menit boleh diklaim
+  ulang. Teks email tanpa ajakan "balas pesan ini" (pengirim noreply), menautkan
+  `/pesanan/[code]`, timeout 8 dtk. (2) **Kegagalan WR mengabari pembeli (T-H1).**
+  Dulu `handleWrOrderFailed` dan jalur percobaan-habis di `order.ts` hanya mem-ping
+  admin; `notifyBuyerDeliveryFailed` di `send.ts` tidak pernah tercapai untuk item WR
+  (`return false` sebelum lease). Kini `refreshOrderAggregate` mengabari pembeli saat
+  agregat pertama kali menjadi `failed` (titik tunggal untuk webhook, reconciler, dan cart
+  campuran), dan jalur percobaan-habis ikut memanggilnya; ledger menjaga satu kabar per
+  order. (3) **Tanda terima pembayaran web (B-H1):** `ensureFulfillmentForPaidOrder`
+  mengirim email "Pembayaran diterima" untuk kanal web (idempoten
+  `payment-received:<code>`, tanpa fallback WA). (4) **`/pesanan/[code]` mengenal gagal
+  kirim (W-H1):** `GET /api/orders?code=` dan `/api/orders/[code]` kini mengembalikan
+  `fulfillment_status`; halaman tidak lagi merayakan "Pembayaran Dikonfirmasi 🎉 … 5–15
+  menit" untuk order `failed`, melainkan status merah + langkah hubungi admin (pola
+  `/lacak-pesanan`). (5) **Antrean kedaluwarsa (B-H2/B-H3):** peringkat dihitung per jalur
+  (`ROW_NUMBER() OVER (PARTITION BY status='pending')`), jadi renewable yang gagal terus
+  tidak lagi menahan kabar terminal; `hasTime(10 dtk)` dicek sebelum tiap kiriman dan email
+  kedaluwarsa memakai timeout 8 dtk (dulu 20 dtk × 2 bisa melewati deadline run 45 dtk).
+  (6) Handover mengembalikan `buyer_notified` dan panel admin menampilkan peringatan bila
+  kabar gagal (T-M5). (7) Telegram: `wa_after_paid` hanya menangkap teks mirip nomor
+  telepon sehingga tombol menu tidak lagi dibalas "Nomor WA tidak valid" (T-M4); label
+  harga tombol memakai `buttonPrice` (nominal utuh bila bukan kelipatan ribuan, dulu
+  Rp7.500 tampil "Rp8rb") (T-M3). **Ditolak setelah diverifikasi:** email-gate Telegram
+  "fail-open saat DB timeout" (T-H3; setiap query sudah `.catch(() => null)` dan
+  `wr_type` dimuat dari varian, jadi timeout justru membuat bot MEMINTA email), hero
+  search mati (W-M1; `Hero.tsx` tidak dirender di mana pun, homepage memakai
+  `OrbitHero`), dan `ctaDisabled` hardcode QRIS (W-M4; `submit()` sendiri meng-hardcode
+  `payMethod="qris"`, jadi checkout memang sengaja QRIS-only). Dikunci oleh
+  `tests/round4-buyer-notices.regression.test.ts`, `tests/round4-telegram.regression.test.ts`,
+  `tests/order-page-delivery-failed.behavior.test.tsx`, dan
   `tests/qris-expiry-queue-blocking.regression.test.ts`.
 - **Hook payment:** setelah lunas di 4 jalur (webhook DANA, retry admin, approve bukti,
   konfirmasi admin) → `createWrOrderLinksForOrder` + `processWrPendingOrders` best-effort;

@@ -35,6 +35,8 @@ type Order = {
   credentialsReady: boolean;
   /** true bila ada baris yang dikerjakan sesuai antrean (bukan kirim instan). */
   queuedDelivery: boolean;
+  /** `failed` = lunas tetapi produk gagal dikirim otomatis. */
+  fulfillmentStatus?: string | null;
 };
 
 function fromApi(value: Record<string, unknown>): Order {
@@ -51,6 +53,7 @@ function fromApi(value: Record<string, unknown>): Order {
     qrisReissueAllowed: value.qris_reissue_allowed === true,
     credentialsReady: value.credentials_ready === true,
     queuedDelivery: value.queued_delivery === true,
+    fulfillmentStatus: value.fulfillment_status ? String(value.fulfillment_status) : null,
     qris: value.qris as QrisInvoice | null | undefined,
   };
 }
@@ -175,11 +178,18 @@ export default function OrderSuccessPage() {
 
   const isExpired = order.status === "kadaluarsa" || (order.status === "pending" && Boolean(order.expiresAt) && Date.parse(order.expiresAt!) <= now);
   const isPaid = order.status === "lunas";
+  // Lunas TAPI gagal kirim (audit ronde 4, W-H1). Halaman ini dibuka paling
+  // sering pasca-bayar (redirect checkout), tetapi dulu tetap merayakan
+  // "Pembayaran Dikonfirmasi 🎉 … diproses 5–15 menit" selamanya. Salinan
+  // pola `/lacak-pesanan`, yang sudah benar sejak ronde 3.
+  const isDeliveryFailed = isPaid && order.fulfillmentStatus === "failed";
   const isCancelled = order.status === "dibatalkan";
   const payableAmount = Number(order.qris?.payable_amount || order.subtotal);
   // QR bisa mati sementara ORDER masih hidup — dua masa berlaku yang berbeda.
   const qrisExpired = Boolean(order.qris) && Date.parse(String(order.qris?.expires_at)) <= now;
-  const statusVisual = isPaid
+  const statusVisual = isDeliveryFailed
+    ? { icon: "/icons/ios11/close-96.png", shell: "bg-red-500/15", filter: "brightness(0) saturate(100%) invert(57%) sepia(55%) saturate(1800%) hue-rotate(322deg)" }
+    : isPaid
     ? { icon: "/icons/ios11/checked-96.png", shell: "bg-emerald-500/15", filter: "brightness(0) saturate(100%) invert(65%) sepia(51%) saturate(717%) hue-rotate(90deg)" }
     : isCancelled
       ? { icon: "/icons/ios11/close-96.png", shell: "bg-red-500/15", filter: "brightness(0) saturate(100%) invert(57%) sepia(55%) saturate(1800%) hue-rotate(322deg)" }
@@ -191,9 +201,11 @@ export default function OrderSuccessPage() {
         <div className={`mx-auto flex h-16 w-16 items-center justify-center rounded-full ${statusVisual.shell}`}>
           <img src={statusVisual.icon} alt="" width={32} height={32} className="h-8 w-8 object-contain" style={{ filter: statusVisual.filter }} draggable={false} />
         </div>
-        <h1 className="mt-4 font-display text-2xl font-bold text-white">{isPaid ? "Pembayaran Dikonfirmasi! 🎉" : isCancelled ? "Pesanan Dibatalkan" : isExpired ? "Pesanan Kedaluwarsa" : order.qris ? "Selesaikan Pembayaran QRIS" : "Pesanan Diterima!"}</h1>
+        <h1 className="mt-4 font-display text-2xl font-bold text-white">{isDeliveryFailed ? "Pengiriman Produk Bermasalah" : isPaid ? "Pembayaran Dikonfirmasi! 🎉" : isCancelled ? "Pesanan Dibatalkan" : isExpired ? "Pesanan Kedaluwarsa" : order.qris ? "Selesaikan Pembayaran QRIS" : "Pesanan Diterima!"}</h1>
         <p className="mt-2 font-mono text-sm font-bold tracking-[0.08em] text-[#00E5FF]">{order.code}</p>
-        {isPaid ? (
+        {isDeliveryFailed ? (
+          <span className="mt-3 inline-flex rounded-full border border-red-500/25 bg-red-500/15 px-3 py-1.5 text-xs font-semibold text-red-300">Lunas — Perlu Bantuan</span>
+        ) : isPaid ? (
           <span className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-[#22C55E]/20 bg-[#22C55E]/15 px-3 py-1.5 text-xs font-semibold text-[#22C55E]">Lunas — Terdeteksi Otomatis</span>
         ) : isCancelled ? (
           <span className="mt-3 inline-flex rounded-full border border-red-500/20 bg-red-500/15 px-3 py-1.5 text-xs font-semibold text-red-300">Dibatalkan</span>
@@ -204,7 +216,9 @@ export default function OrderSuccessPage() {
         )}
 
         <p className="mt-4 text-sm leading-6 text-white/60">
-          {isPaid
+          {isDeliveryFailed
+            ? <>Pembayaran <span className="font-medium text-white">{order.name}</span> sudah kami terima, tetapi produknya gagal dikirim otomatis.</>
+            : isPaid
             ? <>Pembayaran <span className="font-medium text-white">{order.name}</span> sudah diterima. Pesanan sekarang diproses.</>
             : isCancelled
               ? <>Pesanan ini dibatalkan. Hubungi admin jika kamu sudah melakukan transfer.</>
@@ -268,9 +282,18 @@ export default function OrderSuccessPage() {
           <div className="mt-3 flex justify-between border-t border-white/10 pt-3"><span className="text-sm text-white/60">Total • {order.method.toUpperCase()}</span><span className="font-bold text-white">{formatRupiah(payableAmount)}</span></div>
         </div>
 
+        {isDeliveryFailed && (
+          <section className="mt-6 rounded-2xl border border-red-500/25 bg-red-500/[0.07] p-4 text-left" aria-label="Pengiriman bermasalah">
+            <p className="text-sm font-semibold text-red-200">Pembayaran sudah kami terima, tetapi produk gagal dikirim otomatis.</p>
+            <p className="mt-1 text-xs leading-5 text-white/60">
+              Tim kami sudah mendapat notifikasi dan akan menyerahkan produkmu secara manual. Bila belum ada kabar, hubungi admin lewat tombol di bawah dengan menyebut kode pesanan di atas.
+            </p>
+          </section>
+        )}
+
         {isPaid && (order.credentialsReady ? (
           <WrCredentialsPanel code={order.code} />
-        ) : (
+        ) : !isDeliveryFailed && (
           // Detail akun belum/tidak pernah ada (fulfillment manual): jangan
           // tampilkan form verifikasi WA yang pasti gagal. Beri kepastian
           // ke mana produk dikirim, dan JANGAN janji menit untuk baris

@@ -838,5 +838,19 @@ CREATE INDEX IF NOT EXISTS idx_wr_email_forward_invoice
 CREATE INDEX IF NOT EXISTS idx_wr_email_forward_order
   ON wr_email_forward_log(axvara_order_code) WHERE axvara_order_code IS NOT NULL;
 
+-- Ledger idempoten kabar pembeli (migrasi 0039): kanal web lewat email
+-- Resend, Telegram lewat DM. WA tetap memakai whatsapp_outbox.
+CREATE TABLE IF NOT EXISTS buyer_notice_log (
+  idempotency_key TEXT PRIMARY KEY,
+  order_code TEXT NOT NULL,
+  channel TEXT NOT NULL CHECK (channel IN ('email', 'telegram')),
+  status TEXT NOT NULL DEFAULT 'sending' CHECK (status IN ('sending', 'sent', 'failed')),
+  provider_id TEXT,
+  error TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_buyer_notice_order ON buyer_notice_log(order_code);
+
 -- Kolom WR di katalog utama (0027) + marker kepemilikan WR (0029).
 -- Guard PRAGMA agar schema.sql tetap rerun-aman di fixture/dev.

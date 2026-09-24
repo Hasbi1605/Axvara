@@ -15,6 +15,17 @@ export const MENU_LABEL_ORDERS = "📦 Pesanan";
 export const MENU_LABEL_HELP = "❓ Bantuan";
 export const MENU_LABEL_CART = "🛒 Keranjang";
 
+/**
+ * Harga untuk label tombol. "Rp89rb" hanya bila tepat ribuan; selain itu
+ * nominal utuh. Dulu `(harga/1000).toFixed(0)` membulatkan: Rp7.500 tampil
+ * "Rp8rb" dan Rp1.500 "Rp2rb", jadi keputusan klik diambil dari angka salah.
+ */
+export function buttonPrice(price: number): string {
+  const amount = Math.max(0, Math.round(Number(price) || 0));
+  if (amount >= 1000 && amount % 1000 === 0) return `Rp${amount / 1000}rb`;
+  return `Rp${amount.toLocaleString("id-ID")}`;
+}
+
 // Telegram bulk cap: 100/order for bulk purchase (web checkout keeps its own cap).
 export const TELEGRAM_MAX_QTY = 100;
 
@@ -109,7 +120,7 @@ export function catalogFlatKeyboard(
   const pageItems = products.slice(start, start + perPage);
 
   const rows: InlineKeyboardButton[][] = pageItems.map((p) => {
-    const priceStr = `Rp${(p.price / 1000).toFixed(0)}rb`;
+    const priceStr = buttonPrice(p.price);
     const label = truncateLabel(p.name, 28);
     return [{ text: `${label} • ${priceStr}`, callback_data: cb.product(p.id) }];
   });
@@ -183,7 +194,7 @@ export function productsKeyboard(
 
   // Single-column for products (longer labels with price)
   const rows: InlineKeyboardButton[][] = pageItems.map((p) => {
-    const priceStr = `Rp${(p.price / 1000).toFixed(0)}rb`;
+    const priceStr = buttonPrice(p.price);
     const label = truncateLabel(p.name, 25);
     return [{ text: `${label} • ${priceStr}`, callback_data: cb.product(p.id) }];
   });
@@ -228,7 +239,7 @@ export function searchResultsKeyboard(
   products: { id: number; name: string; price: number }[],
 ): InlineKeyboardMarkup {
   const rows: InlineKeyboardButton[][] = products.slice(0, 10).map((p) => {
-    const priceStr = `Rp${(p.price / 1000).toFixed(0)}rb`;
+    const priceStr = buttonPrice(p.price);
     const label = truncateLabel(p.name, 28);
     return [{ text: `${label} • ${priceStr}`, callback_data: cb.product(p.id) }];
   });
@@ -257,7 +268,7 @@ export function variantsKeyboard(
   variants: { id: number; label: string; price: number; stock: number; duration_label?: string | null }[],
 ): InlineKeyboardMarkup {
   const rows: InlineKeyboardButton[][] = variants.map((v) => {
-    const priceStr = `Rp${(v.price / 1000).toFixed(0)}rb`;
+    const priceStr = buttonPrice(v.price);
     const dur = v.duration_label ? ` • ${v.duration_label}` : "";
     const isOutOfStock = v.stock === 0;
     const text = isOutOfStock

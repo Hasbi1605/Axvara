@@ -107,7 +107,7 @@ export function CartDrawer() {
             >
               Checkout — {formatRupiah(total)}
             </Link>
-            <p className="mt-2 text-center text-xs text-white/40">Bayar via QRIS / DANA / SeaBank</p>
+            <p className="mt-2 text-center text-xs text-white/40">Bayar via QRIS — semua e-wallet &amp; m-banking</p>
           </div>
         )}
       </div>

@@ -577,6 +577,12 @@ async function handleOrderError(
        WHERE code=? AND status='lunas'`,
       String(link.order_code),
     ).catch(() => undefined);
+    // Pembeli juga dikabari (audit ronde 4, T-H1): jalur ini menulis
+    // `failed` langsung tanpa lewat refreshOrderAggregate.
+    try {
+      const { notifyBuyerDeliveryFailed } = await import("@/lib/notify-buyer");
+      await notifyBuyerDeliveryFailed(String(link.order_code), db);
+    } catch { /* kabar pembeli best-effort */ }
     return "failed";
   }
   await execRun(

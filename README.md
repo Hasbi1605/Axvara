@@ -246,6 +246,11 @@ manual email WR dengan branding Axvara. **Bot otomatis (2026-09-17):** email WR
 `POST /api/webhook/wr-email` + Resend (fallback WA bila buyer tanpa email);
 pasang forwarder `docs/WR-EMAIL-FORWARDER.gs.js` + 3 env (`WR_EMAIL_WEBHOOK_SECRET`,
 `RESEND_API_KEY`, `FORWARD_FROM_EMAIL`) sebagai `secret_text`.
+**Kabar pembeli web lewat email (2026-09-24):** `src/lib/notify-buyer.ts`
+mengirim tanda terima pembayaran, pengiriman gagal (termasuk kegagalan WR),
+serah terima manual, dan bukti ditolak ke `customer_email` lewat Resend yang
+sama (env di atas), bukan outbox WA yang mati. Idempoten via tabel
+`buyer_notice_log` (migrasi 0039, diterapkan otomatis oleh CI).
 Opsi A (disarankan): API key dipegang proxy Heroku — Pages cukup
 `WARUNG_REBAHAN_PROXY_URL` + `WARUNG_REBAHAN_PROXY_TOKEN`.
 

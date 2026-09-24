@@ -41,6 +41,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ code
       status: row.status,
       created_at: row.created_at,
       expires_at: row.expires_at,
+      fulfillment_status: row.fulfillment_status ?? null,
       qris_reissue_allowed: row.status === "pending" && row.sales_channel !== "whatsapp" && Number(row.qris_reissue_count || 0) < MAX_QRIS_REISSUES,
       qris: row.dynamic_qris_url ? {
         payable_amount: row.payable_amount,

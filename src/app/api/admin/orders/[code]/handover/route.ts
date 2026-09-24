@@ -134,14 +134,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   // berjanji "Produk akan dikirim admin melalui DM Telegram pribadi ini" —
   // pembeli menunggu selamanya. Hanya saat seluruh item tuntas, agar order
   // multi-item tidak mengirim kabar "selesai" sebelum waktunya.
+  // `buyer_notified` dilaporkan ke admin (audit ronde 4, T-M5): dulu hasilnya
+  // dibuang sehingga admin mengira pembeli sudah dikabari padahal belum.
+  let buyerNotified: boolean | null = null;
   if (result.complete) {
     const { notifyBuyerHandover } = await import("@/lib/notify-buyer");
-    await notifyBuyerHandover(code).catch(() => undefined);
+    buyerNotified = await notifyBuyerHandover(code).catch(() => false);
   }
   // Idempoten: klik dua kali mengembalikan hasil yang sama tanpa efek ganda.
   return NextResponse.json({
     ok: true, complete: result.complete, code, item_index: parsed.data.item_index,
     item_status: String(freshItem?.status ?? "delivered"),
     fulfillment_status: String(freshOrder?.fulfillment_status ?? ""),
+    buyer_notified: buyerNotified,
   });
 }

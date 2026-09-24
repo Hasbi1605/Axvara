@@ -37,6 +37,8 @@ const QUERY_BUDGET = 40;
 const RUN_DEADLINE_MS = 45_000;
 // Ambang waktu minimum sebelum memulai satu unit kerja jaringan.
 const TIME_TELEGRAM_BATCH = 12_000;
+// Satu kabar kedaluwarsa: Telegram timeout 10 dtk, email 8 dtk.
+const TIME_EXPIRY_NOTICE = 10_000;
 const TIME_WA_BATCH = 12_000;
 const TIME_FULFILLMENT_UNIT = 10_000;
 const TIME_WR_NETWORK = 14_000;
@@ -607,7 +609,7 @@ export async function POST(request: NextRequest) {
       // Invoice-expired notice and terminal notice survive delivery failures.
       const noticeCount = pendingQrisNotice + Number(results.expired_payments);
       if (activePhases.has("notify") && noticeCount > 0 && budget.fits(5) && hasTime(TIME_TELEGRAM_BATCH)) {
-        const notices = await sendQrisExpiryNotifications(2, database);
+        const notices = await sendQrisExpiryNotifications(2, database, { hasTime: () => hasTime(TIME_EXPIRY_NOTICE) });
         results.qris_expiry_notifications = notices.sent;
         pendingWa += notices.whatsappQueued;
         waWorkPending += notices.whatsappQueued;

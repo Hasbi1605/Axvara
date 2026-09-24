@@ -298,6 +298,13 @@ function CheckoutInner() {
     }
     if (!agreed) {
       setError("Centang persetujuan ketentuan third-party & garansi terlebih dahulu.");
+      // Bawa pembeli ke checkbox yang terlihat (mobile & desktop punya id
+      // berbeda); di mobile checkbox jauh di atas sticky CTA.
+      const box = ["checkout-agree-mobile", "checkout-agree"]
+        .map((id) => document.getElementById(id))
+        .find((el) => el && el.getClientRects().length > 0);
+      box?.scrollIntoView({ behavior: "smooth", block: "center" });
+      box?.focus({ preventScroll: true });
       return;
     }
     const emailClean = email.trim();
@@ -355,7 +362,11 @@ function CheckoutInner() {
   // Sticky bottom CTA (mobile) + rail CTA (desktop) memanggil submit yang
   // sama dengan tombol utama di kolom kiri — satu handler, tanpa duplikasi
   // logika validasi/quote.
-  const ctaDisabled = loading || quoteLoading || method !== "qris" || !quoteToken || !quoteAccepted || quoteIssues.length > 0 || !agreed;
+  // `!agreed` sengaja TIDAK menonaktifkan tombol (audit ronde 4, W-M3):
+  // tombol disabled tidak memanggil submit(), sehingga pesan "Centang
+  // persetujuan…" di atas tidak pernah tampil dan sticky CTA mobile mati
+  // tanpa penjelasan. Klik kini menjelaskan + membawa ke checkbox.
+  const ctaDisabled = loading || quoteLoading || method !== "qris" || !quoteToken || !quoteAccepted || quoteIssues.length > 0;
   const ctaLabel = loading ? "Memproses…" : `Bayar ${formatRupiah(displaySubtotal)} — Buat Pesanan`;
 
   // --- Blok metode: SATU definisi, dirender di kolom kiri (revamp

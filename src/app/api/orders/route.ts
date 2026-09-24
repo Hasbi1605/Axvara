@@ -402,6 +402,9 @@ export async function GET(req: NextRequest) {
         expires_at: row.expires_at,
         credentials_ready: credentialsReady,
         queued_delivery: queuedDelivery,
+        // /pesanan/[code] membutuhkan ini untuk membedakan lunas-terkirim dari
+        // lunas-gagal-kirim (audit ronde 4, W-H1); /api/orders/lookup sudah punya.
+        fulfillment_status: row.fulfillment_status ?? null,
         qris_reissue_allowed: row.status === "pending" && row.sales_channel !== "whatsapp" && Number(row.qris_reissue_count || 0) < MAX_QRIS_REISSUES,
         qris: row.dynamic_qris_url ? {
           payable_amount: row.payable_amount,

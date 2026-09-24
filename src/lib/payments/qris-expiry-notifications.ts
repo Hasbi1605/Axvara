@@ -69,6 +69,8 @@ async function sendWebQrisExpiryEmail(
     const result = await sendForwardEmail({
       to,
       subject,
+      // Cron: dua kiriman × 20 dtk dulu bisa melewati deadline run 45 dtk.
+      timeoutMs: 8_000,
       html: `<div style="font-family:system-ui,-apple-system,sans-serif;line-height:1.6">
   <p>${headline}</p>
   <p>Kode pesanan: <b>${orderCode}</b></p>
@@ -84,20 +86,33 @@ async function sendWebQrisExpiryEmail(
   }
 }
 
-export async function sendQrisExpiryNotifications(limit = 2, database: DatabaseAccess = createDatabaseAccess()) {
-  // Renewable dulu (pembeli masih bisa bayar), lalu yang TERBARU dulu, supaya
-  // baris yang gagal terus (bot diblokir, email ditolak) tenggelam ke belakang
-  // alih-alih selalu terpilih pertama seperti pada urutan terlama-dulu.
-  const rows = await database.queryAll(`SELECT o.code, o.status, o.sales_channel, o.telegram_chat_id,
-    o.channel_conversation_id, o.customer_email, pt.expires_at FROM payment_transactions pt
-    JOIN orders o ON o.code=pt.order_code WHERE ${QRIS_EXPIRY_NOTICE_WHERE}
-    ORDER BY CASE WHEN o.status='pending' THEN 0 ELSE 1 END, julianday(pt.expires_at) DESC, o.code
+export async function sendQrisExpiryNotifications(
+  limit = 2,
+  database: DatabaseAccess = createDatabaseAccess(),
+  options: { hasTime?: () => boolean } = {},
+) {
+  // Satu jalur per jenis kabar: peringkat dihitung per cabang (renewable /
+  // terminal), lalu diambil bergiliran, jadi dengan LIMIT 2 masing-masing
+  // dapat satu slot bila keduanya ada. Dulu renewable-selalu-dulu membuat
+  // renewable yang gagal terus (bot diblokir) menahan kabar terminal sampai
+  // ±45 menit. Di dalam jalur, yang TERBARU dulu agar baris gagal tenggelam.
+  const rows = await database.queryAll(`SELECT * FROM (
+      SELECT o.code, o.status, o.sales_channel, o.telegram_chat_id,
+        o.channel_conversation_id, o.customer_email, pt.expires_at,
+        ROW_NUMBER() OVER (PARTITION BY o.status='pending'
+                           ORDER BY julianday(pt.expires_at) DESC, o.code) AS lane_rank
+      FROM payment_transactions pt JOIN orders o ON o.code=pt.order_code
+      WHERE ${QRIS_EXPIRY_NOTICE_WHERE})
+    ORDER BY lane_rank, CASE WHEN status='pending' THEN 0 ELSE 1 END, code
     LIMIT ?`, limit);
   let sent = 0;
   let whatsappQueued = 0;
   let emailSent = 0;
   for (const row of rows) {
     if (!database.canSpend(2)) break;
+    // Gerbang fase hanya dicek sekali di depan; tiap kiriman bisa menunggu
+    // jaringan sampai ±10 dtk, jadi cek ulang sebelum baris berikutnya.
+    if (options.hasTime && !options.hasTime()) break;
     const terminal = row.status === "kadaluarsa";
     const state = terminal ? "terminal" : "renewable";
     const code = String(row.code);

@@ -13,7 +13,7 @@ import { calculateCrc16, createDanaQrisInvoice } from "@/lib/payments/dana-qris"
 import { QRIS_EXPIRY_NOTICE_WHERE, sendQrisExpiryNotifications } from "@/lib/payments/qris-expiry-notifications";
 import { sendMessage } from "@/lib/telegram/api";
 
-type MailArgs = { to: string; subject: string; html: string; text: string };
+type MailArgs = { to: string; subject: string; html: string; text: string; timeoutMs?: number };
 const sendForwardEmail = vi.fn(async (_params: MailArgs) => ({ ok: true as boolean, providerId: "res_1" }));
 vi.mock("@/lib/warung-rebahan/forward-sender", () => ({ sendForwardEmail }));
 vi.mock("@/lib/telegram/api", async (original) => ({
@@ -118,6 +118,8 @@ it("baris yang gagal terus (bot diblokir) tidak menahan kabar yang lebih baru", 
   const result = await sendQrisExpiryNotifications(2);
   expect(result.emailSent).toBe(1);
   expect(sendForwardEmail.mock.calls[0][0].to).toBe("buyer@example.test");
+  // Dulu 20 dtk per email: dua kiriman macet bisa melewati deadline run cron 45 dtk.
+  expect(sendForwardEmail.mock.calls[0][0].timeoutMs).toBeLessThanOrEqual(8_000);
   expect(marker("AXV-HOL-WEB-NEW")).toBe("terminal");
   // Baris yang ditolak Telegram tetap tidak ditandai: masih dicoba ulang, tetapi dari belakang antrean.
   expect(marker("AXV-HOL-BLOCK-1")).toBe("");
@@ -152,4 +154,34 @@ it("riwayat order web yang kedaluwarsa berhari-hari tidak diemail sekarang (tida
   expect(sendForwardEmail).toHaveBeenCalledTimes(1);
   expect(sendForwardEmail.mock.calls[0][0].to).toBe("fresh@example.test");
   expect(marker("AXV-HOL-STALE")).toBe("");
+});
+
+// Audit ronde 4 (B-H3): renewable-selalu-dulu membuat renewable yang gagal
+// terus menahan kabar terminal sampai order-nya ikut kedaluwarsa (±45 menit).
+it("renewable yang gagal terus tidak menahan kabar terminal: tiap jenis punya jalur sendiri", async () => {
+  await order("AXV-HOL-RNW-1", "telegram", { chatId: "901" });
+  expireInvoice("AXV-HOL-RNW-1", "-3 minutes");
+  await order("AXV-HOL-RNW-2", "telegram", { chatId: "902" });
+  expireInvoice("AXV-HOL-RNW-2", "-2 minutes");
+  await order("AXV-HOL-TERM", "telegram", { chatId: "77" });
+  expireOrder("AXV-HOL-TERM", "-30 minutes");
+
+  const result = await sendQrisExpiryNotifications(2);
+  expect(result.sent).toBe(1);
+  expect(telegramSentTo("77")).toBe(1);
+  expect(marker("AXV-HOL-TERM")).toBe("terminal");
+});
+
+// Audit ronde 4 (B-H2): gerbang waktu fase notify hanya dicek sekali di depan.
+it("waktu run habis: berhenti sebelum kiriman berikutnya, sisanya untuk run berikutnya", async () => {
+  await order("AXV-HOL-T-1", "telegram", { chatId: "71" });
+  expireOrder("AXV-HOL-T-1", "-2 minutes");
+  await order("AXV-HOL-T-2", "telegram", { chatId: "72" });
+  expireOrder("AXV-HOL-T-2", "-1 minutes");
+
+  let checks = 0;
+  const result = await sendQrisExpiryNotifications(2, undefined, { hasTime: () => ++checks === 1 });
+  expect(result.sent).toBe(1);
+  expect(vi.mocked(sendMessage)).toHaveBeenCalledTimes(1);
+  expect(queued()).toBe(1);
 });

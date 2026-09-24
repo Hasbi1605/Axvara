@@ -382,6 +382,13 @@ export async function handlePendingWaInput(
   const action = String(user.pending_action);
   if (!action.startsWith("wa_after_paid:")) return false;
 
+  // Hanya teks yang MIRIP nomor telepon yang dianggap jawaban (audit ronde 4,
+  // T-M4). Router memanggil handler ini PERTAMA untuk semua teks non-slash,
+  // jadi dulu tombol menu persisten ("🛍 Katalog", "🔎 Cari", …) dan kata
+  // kunci biasa dibalas "Nomor WA tidak valid" dan pembeli terjebak sampai
+  // /start. Teks lain diteruskan ke router; tombol menu membersihkan state.
+  if (!/^[+\d\s().-]{6,}$/.test(text.trim())) return false;
+
   // Validate WA number
   const wa = text.trim().replace(/\s|-/g, "");
   if (!/^(\+62|62|0)8\d{8,13}$/.test(wa)) {

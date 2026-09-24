@@ -567,6 +567,15 @@ export async function refreshOrderAggregate(
   await execRun(`UPDATE orders SET fulfillment_status=?, updated_at=datetime('now') WHERE code=?`, aggregate, orderCode).catch(
     () => undefined,
   );
+  // Titik tunggal transisi ke `failed` untuk item WR (webhook order.failed,
+  // reconciler, maupun cart campuran yang item terakhirnya baru tuntas).
+  // Dulu hanya admin yang di-ping; pembeli lunas menunggu tanpa kabar.
+  if (aggregate === "failed") {
+    try {
+      const { notifyBuyerDeliveryFailed } = await import("@/lib/notify-buyer");
+      await notifyBuyerDeliveryFailed(orderCode, db);
+    } catch { /* kabar pembeli best-effort */ }
+  }
   return aggregate;
 }
 

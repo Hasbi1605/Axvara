@@ -42,6 +42,13 @@ export async function ensureFulfillmentForPaidOrder(orderCode: string): Promise<
     try {
       await notifyTelegramBuyerPaid(orderCode);
     } catch { /* Payment remains durable; notification cron retries it. */ }
+  } else if (String(order.sales_channel) === "web") {
+    // Tanda terima email untuk pembeli web; idempoten lewat buyer_notice_log
+    // sehingga pemanggilan ulang (webhook ulang, konfirmasi admin) aman.
+    try {
+      const { notifyBuyerPaymentReceived } = await import("@/lib/notify-buyer");
+      await notifyBuyerPaymentReceived(orderCode);
+    } catch { /* kabar pembeli best-effort; pembayaran tetap sah */ }
   }
 
   let items: { product_id: number; variant_id?: number }[];

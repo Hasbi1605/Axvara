@@ -121,6 +121,10 @@
   satu state `agreed`, tanpa duplikat id.
 - 2 tombol submit (rail desktop + sticky mobile) berbagi SATU handler +
   state `ctaDisabled`/`ctaLabel` — tidak ada logika validasi ganda.
+- S&K belum dicentang **tidak** menonaktifkan CTA (2026-09-24, audit ronde 4
+  W-M3): tombol disabled tidak memanggil `submit()`, jadi pembeli (terutama
+  sticky CTA mobile) melihat tombol redup tanpa alasan. Klik kini menampilkan
+  "Centang persetujuan…" dan menggulir + memfokuskan checkbox yang terlihat.
 - Mobile: accordion "Ringkasan Pesanan" collapsed-able di atas (buka default,
   total selalu terlihat di header-nya) + CTA sticky bottom `fixed` (dengan
   `safe-area-inset-bottom`) + spacer 68px agar konten tak tertutup. Rail
@@ -347,6 +351,18 @@
   route `/api/payments/qris/[code]/image` TIDAK disentuh (QR tetap murni
   agar scan + file unduhan tidak rusak). Berlaku hanya di cabang QR aktif;
   state kedaluwarsa/lunas/dibatalkan tidak ikut.
+
+### 5.7c Status "Pengiriman Produk Bermasalah" di /pesanan/[code] (2026-09-24, PR audit ronde 4)
+- Order lunas dengan `fulfillment_status='failed'`: ikon silang merah
+  (`close-96` + filter merah, sama dengan Dibatalkan), judul "Pengiriman
+  Produk Bermasalah", badge merah `border-red-500/25 bg-red-500/15
+  text-red-300` "Lunas — Perlu Bantuan", dan panel merah
+  (`aria-label="Pengiriman bermasalah"`) berisi langkah hubungi admin yang
+  menggantikan panel "Pengiriman Produk" (estimasi 5–15 menit tidak tampil).
+  Pola dan teks selaras dengan `/lacak-pesanan` (ronde 3).
+- Drawer keranjang: catatan bawah kini "Bayar via QRIS — semua e-wallet &
+  m-banking" (dulu "QRIS / DANA / SeaBank", padahal E-Wallet/SeaBank
+  maintenance sejak 2026-09-17).
 
 ### 5.8 Admin UI (Clean, Bukan Glass Berat)
 - Sidebar midnight solid, main area `bg-[#080C1E]`
