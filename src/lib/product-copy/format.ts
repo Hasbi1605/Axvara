@@ -9,8 +9,8 @@ export type CopySectionKind = "paket" | "proses" | "aturan" | "garansi";
 export type CopySection = { kind: CopySectionKind; items: string[] };
 export type ActivationGroup = { title: string | null; steps: string[] };
 export type VariantCopy = {
-  /** axvara = salinan kurasi; pemasok = teks WR yang dirapikan otomatis. */
-  source: "axvara" | "pemasok";
+  /** admin = disunting di panel; axvara = kurasi di kode; pemasok = teks WR dirapikan. */
+  source: "admin" | "axvara" | "pemasok";
   sections: CopySection[];
   activation: ActivationGroup[];
   notes: string[];
@@ -113,6 +113,128 @@ export function supplierVariantCopy(terms: string | null | undefined, deliveryTe
     activation: groups,
     notes: [],
   };
+}
+
+// ---- Teks editor admin (S&K + cara aktivasi per varian) ----
+//
+// Format yang sama dengan hasil serializeVariantCopy(), jadi editor dibuka
+// dengan salinan yang sedang tampil dan admin cukup mengubah seperlunya:
+//   S&K       : judul "Detail paket:" / "Proses & pengiriman:" / "Aturan
+//               pakai:" / "Garansi:" lalu baris "- ". Baris tanpa judul
+//               dikelompokkan otomatis.
+//   Aktivasi  : baris bernomor; judul baris bebas menjadi judul kelompok
+//               langkah, judul "Catatan:" untuk catatan.
+
+const SECTION_BY_HEADING: Record<string, CopySectionKind> = {
+  "detail paket": "paket",
+  paket: "paket",
+  detail: "paket",
+  "proses & pengiriman": "proses",
+  "proses dan pengiriman": "proses",
+  proses: "proses",
+  pengiriman: "proses",
+  "aturan pakai": "aturan",
+  aturan: "aturan",
+  garansi: "garansi",
+};
+const NOTE_HEADING = /^(?:catatan|note|notes|tips|info)$/i;
+const ADMIN_LIST_PREFIX = /^(?:[-–—•·*▪]+\s*|\d{1,2}[.)](?![\d.])\s*)/u;
+
+/** Batas panjang tiap kolom editor (salinan terpanjang saat ini ±1.500 karakter). */
+export const VARIANT_COPY_MAX_CHARS = 4000;
+
+/** Satu varian di editor admin (respons /api/admin/variant-copy). */
+export type VariantCopyEntry = {
+  variantId: number;
+  label: string;
+  isActive: boolean;
+  wrManaged: boolean;
+  status: "admin" | "axvara" | "pemasok" | "none";
+  /** Ada suntingan admin, tapi WR mengubah teks sejak disimpan (suntingan dijeda). */
+  adminStale: boolean;
+  needsReview: boolean;
+  hasOverride: boolean;
+  adminTerms: string;
+  adminActivation: string;
+  /** Salinan otomatis (kurasi atau teks WR dirapikan) dalam format editor. */
+  autoTerms: string;
+  autoActivation: string;
+  /** Teks asli WR saat ini, untuk pembanding. */
+  supplierTerms: string;
+  supplierActivation: string;
+};
+
+type AdminLine = { text: string; heading: string | null };
+
+function adminLines(raw: string | null | undefined): AdminLine[] {
+  if (!raw) return [];
+  const out: AdminLine[] = [];
+  for (const original of raw.split(/\r?\n/)) {
+    const trimmed = original.replace(/\s+/g, " ").trim();
+    if (!trimmed) continue;
+    const listed = ADMIN_LIST_PREFIX.test(trimmed);
+    const text = trimmed.replace(ADMIN_LIST_PREFIX, "").trim();
+    if (!text) continue;
+    out.push({ text, heading: !listed && isHeading(text) ? stripHeading(text) : null });
+  }
+  return out;
+}
+
+/** Salinan varian → dua teks editor admin. Kebalikan dari parseAdminVariantCopy(). */
+export function serializeVariantCopy(copy: VariantCopy | null | undefined): { terms: string; activation: string } {
+  if (!copy) return { terms: "", activation: "" };
+  const terms = copy.sections
+    .map((section) => [`${COPY_SECTION_TITLES[section.kind]}:`, ...section.items.map((item) => `- ${item}`)].join("\n"))
+    .join("\n\n");
+  const blocks = copy.activation.map((group) =>
+    [...(group.title ? [`${group.title}:`] : []), ...group.steps.map((step, i) => `${i + 1}. ${step}`)].join("\n"),
+  );
+  if (copy.notes.length) blocks.push(["Catatan:", ...copy.notes.map((note) => `- ${note}`)].join("\n"));
+  return { terms, activation: blocks.join("\n\n") };
+}
+
+/** Teks editor admin → salinan varian; null bila keduanya kosong. */
+export function parseAdminVariantCopy(terms: string | null | undefined, activation: string | null | undefined): VariantCopy | null {
+  const seen = new Set<string>();
+  const fresh = (text: string) => {
+    const key = lineKey(text);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  };
+
+  const buckets: Partial<Record<CopySectionKind, string[]>> = {};
+  let kind: CopySectionKind | null = null;
+  for (const line of adminLines(terms)) {
+    if (line.heading !== null) {
+      kind = SECTION_BY_HEADING[line.heading.toLowerCase()] ?? null;
+      continue;
+    }
+    if (!fresh(line.text)) continue;
+    (buckets[kind ?? classifyTermLine(line.text)] ??= []).push(line.text);
+  }
+
+  const groups: ActivationGroup[] = [];
+  const notes: string[] = [];
+  let inNotes = false;
+  for (const line of adminLines(activation)) {
+    if (line.heading !== null) {
+      inNotes = NOTE_HEADING.test(line.heading);
+      if (!inNotes) groups.push({ title: line.heading, steps: [] });
+      continue;
+    }
+    if (!fresh(line.text)) continue;
+    if (inNotes) notes.push(line.text);
+    else {
+      if (!groups.length) groups.push({ title: null, steps: [] });
+      groups[groups.length - 1].steps.push(line.text);
+    }
+  }
+
+  const sections = buildSections(buckets);
+  const activationGroups = groups.filter((group) => group.steps.length > 0);
+  if (!sections.length && !activationGroups.length && !notes.length) return null;
+  return { source: "admin", sections, activation: activationGroups, notes };
 }
 
 // ---- Deskripsi produk ----

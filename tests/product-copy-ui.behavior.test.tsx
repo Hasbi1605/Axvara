@@ -4,6 +4,7 @@
 // dalam satu format untuk produk WR maupun non-WR, dan S&K + cara aktivasi
 // TERLIPAT di mobile (permintaan owner 2026-09-24). Data varian memakai hasil
 // resolver sungguhan dari snapshot teks WR produksi.
+import fs from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import snapshot from "./fixtures/product-copy-snapshot.json";
@@ -119,6 +120,21 @@ describe("PDP produk WR: salinan Axvara per varian", () => {
 });
 
 describe("PDP produk non-WR: format yang sama dari deskripsi admin", () => {
+  it("Canva (migrasi 0042): S&K undangan email + cara aktivasi tampil di panel lipat", async () => {
+    const migration = fs.readFileSync("drizzle/migrations/0042_canva_invite_terms.sql", "utf8");
+    const canvaDesc = migration.match(/SET description = '([\s\S]*?)', updated_at/)![1].replace(/''/g, "'");
+    stubCatalog("akun-gsuite", canvaDesc, [variant(1, "Invite 1 Bulan", { wr_variant_id: null, copy: null, wr_delivery_class: null, fulfillment_mode: "shared" })]);
+    render(<ProductDetailClient slug="akun-gsuite" />);
+    const termsButton = await screen.findByRole("button", { name: /Syarat & Ketentuan/ });
+    fireEvent.click(termsButton);
+    const panel = screen.getByRole("region", { name: /Syarat & Ketentuan/ });
+    expect(within(panel).getByRole("region", { name: "Proses & pengiriman" }).textContent).toContain("Undangan Canva dikirim lewat email");
+    expect(within(panel).getByRole("region", { name: "Aturan pakai" }).textContent).toContain("Pastikan email yang kamu isi saat checkout aktif");
+    const activationButton = screen.getByRole("button", { name: /Cara Aktivasi · 1 langkah/ });
+    fireEvent.click(activationButton);
+    expect(screen.getByRole("region", { name: /Cara Aktivasi/ }).textContent).toContain("Buka email undangan dari Canva, lalu terima undangannya");
+  });
+
   it("bagian 'Syarat & Ketentuan:' pindah ke panel S&K dan tidak tampil ganda di deskripsi", async () => {
     stubCatalog("akun-gsuite", GSUITE_DESC, [variant(4, "1 Hari", { wr_variant_id: null, copy: null, wr_delivery_class: null })]);
     render(<ProductDetailClient slug="akun-gsuite" />);

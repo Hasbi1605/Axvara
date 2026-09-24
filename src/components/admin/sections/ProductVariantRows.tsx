@@ -6,6 +6,7 @@ import { MoneyInput } from "@/components/ui/MoneyInput";
 import { useToast } from "@/components/ui/Toast";
 import { Spinner } from "@/components/ui/Loading";
 import type { FormVariant, ProductForm } from "../product-types";
+import { VariantCopyEditor, useVariantCopyEntries } from "./VariantCopyEditor";
 
 // Blok daftar varian dipisah dari ProductEditorModal karena inilah sub-form paling padat
 // (harga, harga coret, stok, dan matriks garansi per baris). Memisahkannya menjaga file
@@ -184,6 +185,7 @@ export function ProductVariantRows({
     { value: "shared", label: "Kirim otomatis — pesan/instruksi bersama" },
     { value: "unique", label: "Kirim otomatis — stok kredensial unik" },
   ];
+  const variantCopy = useVariantCopyEntries(productId);
   return (
     <div className="mt-4 space-y-3">
       <div className="flex items-center justify-between">
@@ -431,6 +433,16 @@ export function ProductVariantRows({
             ) : (
               <NonWrFulfillmentPanel productId={productId} variantId={typeof v.id === "number" ? v.id : undefined} mode="__wr__" />
             )}
+
+            {/* Baris 5: S&K + cara aktivasi versi admin (migrasi 0041) — juga
+                untuk varian WR; disimpan dengan tombolnya sendiri. */}
+            <VariantCopyEditor
+              variantId={typeof v.id === "number" ? v.id : undefined}
+              entry={typeof v.id === "number" ? variantCopy.entries.get(v.id) : undefined}
+              loading={variantCopy.loading}
+              error={variantCopy.error}
+              onSaved={variantCopy.update}
+            />
           </div>
           );
         })}

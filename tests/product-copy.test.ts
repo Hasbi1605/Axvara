@@ -13,10 +13,14 @@ import {
   descriptionSummary,
   isLongDescription,
   mergeProductCopy,
+  parseAdminVariantCopy,
   parseProductDescription,
+  serializeVariantCopy,
   supplierVariantCopy,
+  VARIANT_COPY_MAX_CHARS,
 } from "@/lib/product-copy/format";
-import { resolveVariantCopy, withVariantCopy } from "@/lib/product-copy/resolve";
+import { CURATED_VARIANT_COPY } from "@/lib/product-copy/curated";
+import { curatedToCopy, needsCopyReview, resolveVariantCopy, resolveVariantCopyDetailed, withVariantCopy } from "@/lib/product-copy/resolve";
 import { seoDescription } from "@/lib/product-seo";
 import type { ProductDetail, VariantSummary } from "@/lib/catalog";
 
@@ -227,5 +231,101 @@ describe("mergeProductCopy — S&K varian + bagian deskripsi, tiap baris sekali"
     ]);
     expect(merged.activation).toEqual([{ title: null, steps: ["Login di aplikasi"] }]);
     expect(merged.notes).toEqual(["Hubungi admin bila gagal"]);
+  });
+});
+
+describe("teks editor admin (migrasi 0041) — serialize ⇄ parse", () => {
+  it("semua 83 salinan kurasi bolak-balik tanpa kehilangan isi dan muat di batas kolom", () => {
+    for (const entry of CURATED_VARIANT_COPY) {
+      const copy = curatedToCopy(entry);
+      const text = serializeVariantCopy(copy);
+      expect(parseAdminVariantCopy(text.terms, text.activation), entry.label).toEqual({ ...copy, source: "admin" });
+      expect(text.terms.length, entry.label).toBeLessThanOrEqual(VARIANT_COPY_MAX_CHARS);
+      expect(text.activation.length, entry.label).toBeLessThanOrEqual(VARIANT_COPY_MAX_CHARS);
+    }
+  });
+
+  it("format editor: judul bagian, langkah berkelompok, catatan", () => {
+    const legal = pair("netflix-premium · Premium Legal");
+    const text = serializeVariantCopy(resolveVariantCopy(legal.terms, legal.deliveryTerms));
+    expect(text.terms.split("\n").slice(0, 2)).toEqual(["Detail paket:", "- Paket Premium Ultra HD 4K"]);
+    expect(text.terms).toContain("\n\nAturan pakai:\n- Hanya login di 1 perangkat");
+    expect(text.activation.split("\n").slice(0, 3)).toEqual(["Sebelum login:", "1. Wajib uninstall aplikasi Netflix dulu, lalu install ulang", "2. Wajib login memakai data seluler (atau hotspot dari HP), terutama saat login pertama, karena tidak semua WiFi bisa dipakai login Netflix"]);
+    const zoom = pair("zoom-premium · Pro 14D");
+    expect(serializeVariantCopy(resolveVariantCopy(zoom.terms, zoom.deliveryTerms)).activation).toMatch(/\n\nCatatan:\n- Rekaman cloud/);
+  });
+
+  it("tulisan bebas admin tetap terbaca: tanpa judul dikelompokkan otomatis, penomoran & bullet apa pun", () => {
+    const copy = parseAdminVariantCopy(
+      "Berupa akun siap pakai\n• Dilarang ganti password\n* Garansi 7 hari\n\nAturan pakai:\nLogin maksimal 2 perangkat\n- Login maksimal 2 perangkat",
+      "1) Buka aplikasi\n2. Login\nCatatan:\nHubungi admin bila gagal",
+    );
+    expect(copy).toEqual({
+      source: "admin",
+      sections: [
+        { kind: "paket", items: ["Berupa akun siap pakai"] },
+        { kind: "aturan", items: ["Dilarang ganti password", "Login maksimal 2 perangkat"] },
+        { kind: "garansi", items: ["Garansi 7 hari"] },
+      ],
+      activation: [{ title: null, steps: ["Buka aplikasi", "Login"] }],
+      notes: ["Hubungi admin bila gagal"],
+    });
+  });
+
+  it("kosong / hanya judul → null (kembali ke salinan otomatis)", () => {
+    expect(parseAdminVariantCopy("", "  ")).toBeNull();
+    expect(parseAdminVariantCopy("Garansi:\n", "Catatan:")).toBeNull();
+  });
+});
+
+describe("resolveVariantCopy — suntingan admin per varian", () => {
+  const legal = pair("netflix-premium · Premium Legal");
+  const adminText = { terms: "Aturan pakai:\n- Dilarang berbagi akun", activation: "1. Login di aplikasi" };
+
+  it("suntingan yang ditulis untuk teks WR saat ini menang atas kurasi", () => {
+    const key = supplierFingerprint(legal.terms, legal.deliveryTerms);
+    const res = resolveVariantCopyDetailed(legal.terms, legal.deliveryTerms, { ...adminText, fingerprint: key });
+    expect(res.status).toBe("admin");
+    expect(res.copy?.sections).toEqual([{ kind: "aturan", items: ["Dilarang berbagi akun"] }]);
+    expect(res.auto?.source).toBe("axvara");
+    expect(needsCopyReview(res)).toBe(false);
+  });
+
+  it("WR mengubah teks sejak disunting → suntingan dijeda, teks WR terbaru tampil, perlu ditinjau", () => {
+    const key = supplierFingerprint(legal.terms, legal.deliveryTerms);
+    const changed = `${legal.terms}\nDilarang login di Smart TV`;
+    const res = resolveVariantCopyDetailed(changed, legal.deliveryTerms, { ...adminText, fingerprint: key });
+    expect(res.status).toBe("pemasok");
+    expect(res.adminStale).toBe(true);
+    expect(res.copy?.sections.flatMap((s) => s.items)).toContain("Dilarang login di Smart TV");
+    expect(needsCopyReview(res)).toBe(true);
+  });
+
+  it("varian non-WR: suntingan admin berlaku (sidik jari kosong), tanpa suntingan → tanpa salinan", () => {
+    expect(resolveVariantCopyDetailed(null, null, { ...adminText, fingerprint: "" }).status).toBe("admin");
+    expect(resolveVariantCopyDetailed(null, null, { ...adminText, fingerprint: null }).status).toBe("admin");
+    const none = resolveVariantCopyDetailed(null, null, { terms: null, activation: null, fingerprint: null });
+    expect(none).toMatchObject({ status: "none", copy: null, adminStale: false });
+    expect(needsCopyReview(none)).toBe(false);
+  });
+
+  it("teks WR belum dikurasi tanpa suntingan → perlu ditinjau", () => {
+    const res = resolveVariantCopyDetailed("Mendapatkan akun\nGaransi 3 hari", null);
+    expect(res.status).toBe("pemasok");
+    expect(needsCopyReview(res)).toBe(true);
+  });
+
+  it("withVariantCopy memakai suntingan admin dan tidak mengirim kolom mentahnya", () => {
+    const key = supplierFingerprint(legal.terms, legal.deliveryTerms);
+    const variant = {
+      id: 1, terms: legal.terms, delivery_terms: legal.deliveryTerms,
+      admin_terms: adminText.terms, admin_activation: adminText.activation, admin_copy_fingerprint: key,
+    } as unknown as VariantSummary;
+    const [out] = withVariantCopy({ id: 1, variants: [variant] } as unknown as ProductDetail).variants;
+    expect(out.copy?.source).toBe("admin");
+    expect(out.admin_terms).toBeUndefined();
+    expect(out.admin_activation).toBeUndefined();
+    expect(out.admin_copy_fingerprint).toBeUndefined();
+    expect(JSON.parse(JSON.stringify(out))).not.toHaveProperty("admin_terms");
   });
 });

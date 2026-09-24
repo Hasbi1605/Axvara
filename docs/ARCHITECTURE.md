@@ -717,6 +717,7 @@ Kolom baru di `orders`: `sales_channel`, `telegram_chat_id`, `telegram_user_id`,
 | GET/POST/DELETE | `/api/admin/fulfillment` | admin | Inventory management |
 | GET/PUT | `/api/store-settings` | public/admin | Identitas storefront / update terautentikasi |
 | GET | `/api/catalog[?slug=]` | public | Katalog produk/varian aktif terpusat. Detail `?slug=` (sejak 2026-09-24): tiap varian membawa `copy` (S&K berkelompok + cara aktivasi versi Axvara, atau teks WR yang dirapikan) dan `terms`/`delivery_terms` mentah dikosongkan (`null`) |
+| GET/PUT | `/api/admin/variant-copy` | admin | S&K + cara aktivasi versi admin per varian (migrasi 0041): `GET ?product_id=` status tiap varian (admin/axvara/pemasok/none, `adminStale`, `needsReview`) + teks editor + teks asli WR; `PUT {variant_id, terms, activation}` simpan (mencap sidik jari teks WR saat itu; kosong/sama dengan otomatis = hapus suntingan) |
 | GET/POST/PUT/DELETE | `/api/admin/variants` | admin | Kelola SKU, durasi, garansi, harga, stok, dan mode fulfillment varian |
 | POST | `/api/whatsapp/webhook` | Shared Baileys webhook token | Command grup, order, pembayaran, dan intake bukti |
 | POST | `/api/admin/proofs/:id` | admin | CAS approve/reject bukti dari baris Pesanan dan otorisasi pembayaran manual |
@@ -1194,7 +1195,7 @@ agent CMS, curl, dan tab admin lama tidak terikat aturan UI.
 | Pemilik | Field |
 | --- | --- |
 | WR (read-only di admin) | `name`, `slug`, `description`, harga & stok master, label varian, harga varian, stok varian, durasi, garansi, S&K varian (`terms`) + cara aktivasi (`delivery_terms`, read-only dari `wr_variants`) |
-| Admin | foto/`images`, `badge`, kategori, `sort_order`, `is_active`, `admin_description_override`, **harga coret (`compare_price`)** — milik admin agar katalog WR bisa pasang diskon/badge seperti produk manual (2026-09-17); sync TIDAK PERNAH menulis `compare_price` (UPDATE/INSERT varian hanya label/price/stock/durasi/garansi), jadi nilai admin aman lintas sweep; input Harga Coret di modal edit selalu terbuka (label "✎ bisa diedit") |
+| Admin | foto/`images`, `badge`, kategori, `sort_order`, `is_active`, `admin_description_override`, S&K + cara aktivasi versi admin per varian (`product_variants.admin_terms`/`admin_activation`/`admin_copy_fingerprint`, migrasi 0041, hanya ditulis `PUT /api/admin/variant-copy`), **harga coret (`compare_price`)** — milik admin agar katalog WR bisa pasang diskon/badge seperti produk manual (2026-09-17); sync TIDAK PERNAH menulis `compare_price` (UPDATE/INSERT varian hanya label/price/stock/durasi/garansi), jadi nilai admin aman lintas sweep; input Harga Coret di modal edit selalu terbuka (label "✎ bisa diedit") |
 | Panel WR | markup (`wr_variants.markup_percent/markup_fixed`) |
 
 Guard dipasang di **kedua jalur tulis varian**: `PUT /api/products/:id` dan
@@ -1238,17 +1239,27 @@ menghilangkan maksud/ketegasan pemasok**. Kode di `src/lib/product-copy/`:
 
 | Bagian | Sumber | Mekanisme |
 | --- | --- | --- |
-| S&K + cara aktivasi varian WR | `wr_variants` (milik sync, tidak disentuh) | `resolve.ts` menghitung `supplierFingerprint(wr_terms, wr_delivery_terms)` (`text.ts`: cyrb53 atas kata+angka per baris — kebal huruf besar/emoji/tanda baca/spasi, berubah bila kata/angka berubah). Cocok dengan entri `curated.ts` → salinan Axvara (83 pasangan teks prod). Tidak cocok (WR mengubah teks / varian baru) → `supplierVariantCopy()` di `format.ts`: teks WR dirapikan (tanpa emoji, huruf tebal Unicode dinormalkan NFKC, huruf besar berteriak jadi kalimat, baris ganda dibuang), dikelompokkan heuristik, baris aturan di teks aktivasi dipindah ke S&K. Aturan baru pemasok tidak pernah tertutup salinan lama. |
+| S&K + cara aktivasi varian WR | `wr_variants` (milik sync, tidak disentuh) | `resolve.ts` menghitung `supplierFingerprint(wr_terms, wr_delivery_terms)` (`text.ts`: cyrb53 atas kata+angka per baris — kebal huruf besar/emoji/tanda baca/spasi, berubah bila kata/angka berubah). Urutan: **suntingan admin** (kolom varian migrasi 0041, lihat di bawah) → entri `curated.ts` (83 pasangan teks prod) → `supplierVariantCopy()` di `format.ts`: teks WR dirapikan (tanpa emoji, huruf tebal Unicode dinormalkan NFKC, huruf besar berteriak jadi kalimat, baris ganda dibuang), dikelompokkan heuristik, baris aturan di teks aktivasi dipindah ke S&K. Suntingan admin dan kurasi hanya berlaku selama sidik jari sama dengan saat ditulis — aturan baru pemasok tidak pernah tertutup salinan lama. |
+| S&K + cara aktivasi versi admin per varian (WR & non-WR) | `product_variants.admin_terms`, `admin_activation`, `admin_copy_fingerprint` (migrasi **0041**, milik admin) | Editor "Syarat & Ketentuan · Cara Aktivasi" di tiap baris varian (`VariantCopyEditor.tsx`), dibuka berisi salinan yang sedang tampil. Disimpan HANYA lewat `PUT /api/admin/variant-copy` (tombol sendiri) yang mencap `admin_copy_fingerprint` = sidik jari teks WR saat itu (`''` untuk varian non-WR). Sync WR dan `PUT /api/products/:id` tidak pernah menulis kolom ini, jadi menyimpan foto/badge tidak diam-diam mencap ulang suntingan yang dijeda. Teks yang isinya sama dengan salinan otomatis tidak disimpan (NULL), teks kosong = kembali otomatis. Bila WR mengubah teks sesudahnya: storefront kembali ke teks WR terbaru, editor menampilkan peringatan + teks asli WR, daftar produk admin memberi badge "S&K perlu ditinjau · N varian" (`copyReview` di `GET /api/products` admin, juga untuk teks WR yang belum punya versi Axvara) sampai admin menyimpan ulang. |
 | Deskripsi produk WR | `products.admin_description_override` (milik admin) | Migrasi **0040** (data-only) mengisi versi Axvara untuk 47 produk WR hanya bila override masih kosong; `description` milik WR tetap utuh. |
-| Deskripsi + S&K produk non-WR | `products.description` (milik admin) | Migrasi 0040 mengganti 2 produk (Canva, GSuite) hanya bila isinya masih persis teks lama. |
+| Deskripsi + S&K produk non-WR | `products.description` (milik admin) | Migrasi 0040 mengganti 2 produk (Canva, GSuite) hanya bila isinya masih persis teks lama. Migrasi **0042** menambah S&K Canva (undangan dikirim lewat email + pastikan email aktif, keputusan owner) dengan guard yang sama. S&K yang berlaku untuk semua varian ditulis di sini; yang khusus satu varian lewat editor varian. |
 
 Kontrak data (`format.ts`, aman untuk browser): `VariantCopy = { source:
-"axvara"|"pemasok", sections: {kind: paket|proses|aturan|garansi, items}[],
+"admin"|"axvara"|"pemasok", sections: {kind: paket|proses|aturan|garansi, items}[],
 activation: {title|null, steps}[], notes }`. `withVariantCopy()` dipanggil
 route `/api/catalog?slug=` — BUKAN `catalog.ts`, karena `catalog.ts` ikut
 diimpor komponen client dan `curated.ts` tidak boleh masuk bundle browser
-(diverifikasi `next build`). Bot Telegram/WhatsApp tidak menampilkan deskripsi
-maupun S&K (tetap seperti sebelumnya).
+(diverifikasi `next build`); ia juga mengosongkan kolom mentah WR & admin
+sebelum dikirim. Bot Telegram/WhatsApp tidak menampilkan deskripsi maupun S&K
+(tetap seperti sebelumnya).
+
+Format editor varian (`serializeVariantCopy()` ⇄ `parseAdminVariantCopy()`,
+bolak-balik tanpa kehilangan isi untuk ke-83 salinan kurasi — dikunci test):
+S&K = judul `Detail paket:` / `Proses & pengiriman:` / `Aturan pakai:` /
+`Garansi:` lalu baris `- ` (baris tanpa judul dikelompokkan otomatis); cara
+aktivasi = baris bernomor, judul bebas menjadi judul kelompok langkah, judul
+`Catatan:` untuk catatan. Batas 4.000 karakter per kolom
+(`VARIANT_COPY_MAX_CHARS`).
 
 Format deskripsi (juga untuk admin, dijelaskan di editor produk): paragraf
 pembuka → baris `- ` untuk keunggulan → opsional judul baris `Syarat &
@@ -1263,9 +1274,13 @@ dengan snapshot teks WR produksi (`tests/fixtures/product-copy-snapshot.json`)
 refund, batas perangkat, sanksi, platform, dst.) wajib terbawa; gaya seragam
 (tanpa emoji/huruf besar berteriak/bahasa gaul/titik di akhir poin). Catatan
 harga internal pemasok untuk reseller ("harga naik karena VCC susah")
-sengaja tidak ditampilkan ke pembeli. **Kurasi ulang** saat WR mengubah teks:
-ekspor ulang pasangan teks (read-only) ke snapshot, tulis entri baru di
-`curated.ts` dengan kunci sidik jari barunya, jalankan test.
+sengaja tidak ditampilkan ke pembeli. **Saat WR mengubah teks** (badge "S&K
+perlu ditinjau"): cara tercepat, tulis ulang versi Axvara di editor varian
+admin. Kurasi permanen di kode tetap bisa: ekspor ulang pasangan teks
+(read-only) ke snapshot, tulis entri baru di `curated.ts` dengan kunci sidik
+jari barunya, jalankan test. Suntingan admin tidak diperiksa test integritas —
+admin bertanggung jawab membawa angka, larangan, dan batas garansi WR (editor
+menampilkan teks asli WR sebagai pembanding).
 
 `formatWarranty()` untuk tipe `limited` SELALU membentuk kanonis
 `Garansi {value} {unit}` dari field terstruktur ("Garansi 12 Hari") — label

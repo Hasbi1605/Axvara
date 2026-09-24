@@ -184,6 +184,15 @@
     tanpa emoji, tanpa tanda seru, tanpa titik di akhir poin, tanpa bahasa gaul
     pemasok; larangan tetap tegas ("Dilarang …", "Wajib …", "Tanpa toleransi …").
     Semua angka, batas, dan larangan pemasok wajib terbawa (dijaga test).
+  - Panel admin (2026-09-24, live): editor "Syarat & Ketentuan · Cara
+    Aktivasi" per baris varian, terlipat dengan badge status — emerald
+    "Disunting admin", cyan "Versi Axvara (otomatis)", gold "Teks WR — belum
+    versi Axvara", merah "WR mengubah teks — suntingan dijeda" (+ kotak
+    peringatan `role=alert`), abu "Pakai S&K produk" (non-WR tanpa suntingan).
+    Dua textarea mono (S&K, Cara Aktivasi) terisi salinan yang sedang tampil,
+    `<details>` teks asli WR, tombol sendiri "Simpan S&K varian" / "Tandai
+    sudah ditinjau" / "Pakai versi otomatis". Daftar produk: pill gold
+    "S&K perlu ditinjau · N varian" di bawah slug (desktop) / kategori (mobile).
 - Badge pengiriman pembeli fulfillment-aware (2026-09-19, live):
   `buyerDeliveryKind()` — WR ikut `wr_delivery_class` (restock = Kirim
   otomatis, selainnya = Made By Order + estimasi supplier); non-WR ikut

@@ -23,6 +23,14 @@ export type VariantSummary = {
   /** Cara aktivasi/pengiriman dari WR (read-only, null bila WR tidak memberi). */
   delivery_terms: string | null;
   /**
+   * S&K + cara aktivasi versi admin (migrasi 0041, milik admin, sync tidak
+   * pernah menulis). Hanya dibaca resolver server (product-copy/resolve.ts)
+   * dan dikosongkan sebelum dikirim ke storefront.
+   */
+  admin_terms?: string | null;
+  admin_activation?: string | null;
+  admin_copy_fingerprint?: string | null;
+  /**
    * Kelas pengiriman WR (migrasi 0032): 'restock' (auto) | 'made_by_order'
    * (manual slow) | null (belum dikunci). Label pembeli:
    * restock = "Kirim otomatis", selainnya = "Dikirim admin".
@@ -174,6 +182,7 @@ export async function getProductDetail(slugOrId: string | number): Promise<Produ
             pv.warranty_type, pv.warranty_value, pv.warranty_unit, pv.warranty_label,
             pv.price, pv.compare_price, pv.stock, pv.min_qty, pv.fulfillment_mode, pv.is_active, pv.sort_order,
             pv.wr_variant_id AS wr_variant_id, pv.wr_auto_managed AS wr_auto_managed,
+            pv.admin_terms, pv.admin_activation, pv.admin_copy_fingerprint,
             wv.wr_terms AS wr_terms, wv.wr_delivery_terms AS wr_delivery_terms,
             wv.wr_delivery_class AS wr_delivery_class, wv.wr_type AS wr_type,
             COALESCE(p.require_email, 0) AS require_email
@@ -469,6 +478,9 @@ function mapVariant(row: Record<string, unknown>): VariantSummary {
     warranty_label: row.warranty_label ? String(row.warranty_label) : null,
     terms: nullableText(row.wr_terms),
     delivery_terms: nullableText(row.wr_delivery_terms),
+    admin_terms: nullableText(row.admin_terms),
+    admin_activation: nullableText(row.admin_activation),
+    admin_copy_fingerprint: row.admin_copy_fingerprint == null ? null : String(row.admin_copy_fingerprint),
     wr_delivery_class: row.wr_delivery_class ? String(row.wr_delivery_class) : null,
     wr_variant_id: row.wr_variant_id != null ? String(row.wr_variant_id) : null,
     wr_auto_managed: row.wr_auto_managed != null ? Number(row.wr_auto_managed) : 0,

@@ -503,6 +503,14 @@ CREATE TABLE IF NOT EXISTS product_variants (
   wr_variant_id TEXT,
   wr_auto_managed INTEGER NOT NULL DEFAULT 0,
 
+  -- Migrasi 0041: S&K + cara aktivasi versi admin per varian (milik admin,
+  -- sync WR tidak pernah menulis). Tampil selama admin_copy_fingerprint sama
+  -- dengan sidik jari teks WR saat ini ('' untuk varian non-WR); lihat
+  -- src/lib/product-copy/resolve.ts.
+  admin_terms TEXT,
+  admin_activation TEXT,
+  admin_copy_fingerprint TEXT,
+
   is_active INTEGER NOT NULL DEFAULT 1,
   sort_order INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),

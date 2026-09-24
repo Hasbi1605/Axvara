@@ -286,6 +286,17 @@ baris `- ` untuk keunggulan, lalu baris `Syarat & Ketentuan:` / `Cara
 Aktivasi:` untuk bagian yang pindah ke kartu S&K. Detail: `docs/ARCHITECTURE.md`
 §15 "Salinan produk versi Axvara".
 
+**S&K + cara aktivasi bisa disunting admin per varian (migrasi 0041).** Di
+editor produk, tab Varian, tiap varian (WR maupun non-WR) punya panel
+"Syarat & Ketentuan · Cara Aktivasi" yang terbuka berisi salinan yang sedang
+tampil, plus teks asli WR sebagai pembanding. Simpan dengan tombol di panel itu
+(`PUT /api/admin/variant-copy`), bukan tombol Simpan Produk. Suntingan tampil
+selama teks WR belum berubah; bila WR mengubahnya, pembeli kembali melihat teks
+WR terbaru dan daftar produk admin memberi badge "S&K perlu ditinjau" sampai
+admin menyimpan ulang. Badge yang sama muncul untuk teks WR yang belum punya
+versi Axvara. S&K Canva (undangan lewat email, email wajib aktif) diisi migrasi
+0042.
+
 **Handoff operasional Heroku + Cloudflare.** Sejak 2026-09-14 proxy WR terpisah:
 akun #1 (`axvara-wa-gateway`) = WhatsApp SAJA; akun #2 (`axvara-wr-proxy` +
 QuotaGuard Spike, IP statis `54.88.136.216, 54.84.188.199`) memegang API key WR

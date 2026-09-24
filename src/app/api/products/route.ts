@@ -3,6 +3,7 @@ import { z } from "zod";
 import { queryAll, queryFirst, execRun, getD1, isD1Mode } from "@/lib/db";
 import { isVariantsReadEnabled } from "@/lib/catalog";
 import { purchasableStockSql } from "@/lib/catalog-availability";
+import { needsCopyReview, resolveVariantCopyDetailed } from "@/lib/product-copy/resolve";
 import { requireAdmin } from "@/lib/auth";
 import { rateLimit, rateLimitKey } from "@/lib/rateLimit";
 
@@ -86,6 +87,33 @@ export async function GET(req: NextRequest) {
     ).catch(() => [] as Record<string, unknown>[]);
     for (const row of lowRows) lowStockByProduct.set(String(row.product_id), Number(row.count || 0));
   }
+  // Varian aktif yang S&K-nya perlu ditinjau admin (teks WR belum punya versi
+  // Axvara, atau suntingan admin dijeda karena WR mengubah teks). Hanya admin.
+  const copyReviewByProduct = new Map<string, number>();
+  if (isAdminRequest && isD1Mode()) {
+    const copyRows = await queryAll(
+      `SELECT pv.product_id, pv.admin_terms, pv.admin_activation, pv.admin_copy_fingerprint,
+              wv.wr_terms, wv.wr_delivery_terms
+         FROM product_variants pv
+         LEFT JOIN wr_variants wv ON wv.wr_variant_id = pv.wr_variant_id
+        WHERE pv.is_active=1
+          AND (wv.wr_variant_id IS NOT NULL OR pv.admin_terms IS NOT NULL OR pv.admin_activation IS NOT NULL)`,
+    ).catch(() => [] as Record<string, unknown>[]);
+    for (const row of copyRows) {
+      const resolution = resolveVariantCopyDetailed(
+        row.wr_terms as string | null,
+        row.wr_delivery_terms as string | null,
+        {
+          terms: row.admin_terms as string | null,
+          activation: row.admin_activation as string | null,
+          fingerprint: row.admin_copy_fingerprint == null ? null : String(row.admin_copy_fingerprint),
+        },
+      );
+      if (!needsCopyReview(resolution)) continue;
+      const key = String(row.product_id);
+      copyReviewByProduct.set(key, (copyReviewByProduct.get(key) ?? 0) + 1);
+    }
+  }
   const data = rows.map((r: Record<string, unknown>) => {
     let images: string[] = [];
     let aliases: string[] = [];
@@ -128,6 +156,7 @@ export async function GET(req: NextRequest) {
       // dev tanpa D1 akan menindih fallback per-produk di admin dan membuat
       // "stok menipis" selalu nol.
       lowStockVariants: isAdminRequest && isD1Mode() ? (lowStockByProduct.get(String(r.id)) ?? 0) : undefined,
+      copyReview: isAdminRequest && isD1Mode() ? (copyReviewByProduct.get(String(r.id)) ?? 0) : undefined,
       isActive: (r.is_active as number) !== 0,
       sortOrder: r.sort_order,
     };

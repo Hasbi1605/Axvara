@@ -16,6 +16,10 @@
 //   Admin-owned : foto, badge, sort_order, is_active, admin_description_override,
 //                 (sejak migrasi 0040 berisi deskripsi versi Axvara untuk
 //                 produk WR — tetap milik admin, bebas diubah/dikosongkan),
+//                 S&K + cara aktivasi per varian (product_variants.admin_terms,
+//                 admin_activation, admin_copy_fingerprint — migrasi 0041,
+//                 hanya ditulis PUT /api/admin/variant-copy; tampil selama
+//                 teks WR belum berubah sejak disimpan),
 //                 HARGA CORET (compare_price/comparePrice) — milik admin agar
 //                 katalog bisa pasang diskon/badge seperti produk manual.
 //                 Sync TIDAK PERNAH menulis compare_price (lihat sync.ts:
@@ -48,7 +52,7 @@ export const WR_OWNERSHIP_MESSAGE =
   // masih milik admin — tanpa itu admin menyimpulkan produk WR sama sekali
   // tidak bisa disesuaikan, padahal harga coret, min. beli, foto, dan badge
   // aman lintas sweep.
-  "Produk ini dikelola otomatis oleh Warung Rebahan. Nama, slug, deskripsi, harga, stok, label varian, durasi, dan garansi ikut katalog WR — ubah markup di tab Warung Rebahan. Yang tetap milik Anda: foto, badge, kategori, urutan, aktif/nonaktif, harga coret, min. beli, dan 'Deskripsi khusus (override)'.";
+  "Produk ini dikelola otomatis oleh Warung Rebahan. Nama, slug, deskripsi, harga, stok, label varian, durasi, dan garansi ikut katalog WR — ubah markup di tab Warung Rebahan. Yang tetap milik Anda: foto, badge, kategori, urutan, aktif/nonaktif, harga coret, min. beli, 'Deskripsi khusus (override)', dan S&K + cara aktivasi per varian.";
 
 type Row = Record<string, unknown> | undefined | null;
 
