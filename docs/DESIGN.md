@@ -162,10 +162,28 @@
 
 ### 5.3c PDP: Syarat & Ketentuan per Varian + Label Garansi
 - Section "Syarat & Ketentuan" terikat **varian terpilih** (fallback varian
-  aktif pertama): judul + badge label varian, isi numbered-list bernomor
-  otomatis (prefix angka mentah WR di-strip), sub-blok "Cara Aktivasi" bila ada.
-- Desktop: kartu glass di kolom kiri bawah deskripsi. Mobile: kartu di bawah
-  accordion deskripsi.
+  aktif pertama): judul + label varian (`formatVariantLabel`, mis. "Premium
+  Legal - 28 Hari"; tanpa label bila S&K berasal dari deskripsi produk non-WR).
+- **Satu format untuk WR dan non-WR (2026-09-24, live — permintaan owner):**
+  - Deskripsi = paragraf pembuka + daftar keunggulan (ikon check cyan), tanpa
+    aturan pakai (aturan hanya di S&K → tidak ada kalimat berulang).
+  - S&K dikelompokkan dengan judul kecil uppercase `text-[11px]` + titik warna:
+    Detail paket (cyan), Proses & pengiriman (cyan/60), Aturan pakai (gold
+    `#FFB800`), Garansi (emerald).
+  - Cara Aktivasi = langkah bernomor dalam lingkaran `bg-[#00E5FF]/15`, boleh
+    berkelompok berjudul (mis. "Login di aplikasi" / "Login di website"),
+    catatan di kotak kecil ber-ikon info.
+  - Desktop: kartu glass di kolom kiri (Deskripsi, lalu S&K dengan sub-kartu
+    Cara Aktivasi). Mobile: deskripsi dilipat dengan mask fade + "Lihat
+    Selengkapnya" hanya bila melebihi ±6 baris; **S&K dan Cara Aktivasi
+    masing-masing panel terlipat** (`aria-expanded`, chevron, meta "· label
+    varian" / "· N langkah"). Label panel boleh membungkus — jangan
+    `truncate`/nowrap (teks nowrap melebarkan grid PDP di layar 390px); URL
+    panjang dipotong dengan `[overflow-wrap:anywhere]`.
+  - Suara Axvara: sapaan "kamu", kalimat biasa (tanpa HURUF BESAR berteriak),
+    tanpa emoji, tanpa tanda seru, tanpa titik di akhir poin, tanpa bahasa gaul
+    pemasok; larangan tetap tegas ("Dilarang …", "Wajib …", "Tanpa toleransi …").
+    Semua angka, batas, dan larangan pemasok wajib terbawa (dijaga test).
 - Badge pengiriman pembeli fulfillment-aware (2026-09-19, live):
   `buyerDeliveryKind()` — WR ikut `wr_delivery_class` (restock = Kirim
   otomatis, selainnya = Made By Order + estimasi supplier); non-WR ikut

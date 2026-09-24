@@ -118,7 +118,8 @@ axvara/
 │   └── globals.css
 ├── src/components/
 │   ├── ui/                      # Button, Input, Badge, Modal, Drawer, Toast
-│   ├── storefront/              # Navbar, Hero, ProductCard, CartDrawer, CheckoutForm, QrisDisplay
+│   ├── storefront/              # Navbar, Hero, ProductCard, CartDrawer, CheckoutForm, QrisDisplay,
+│   │                            # ProductCopy (deskripsi + S&K + cara aktivasi PDP, panel lipat mobile)
 │   └── admin/                   # Shell, login gate, hooks (useAdminAuth/useProductManager),
 │       └── sections/            # satu komponen per section admin (page.tsx tinggal shell + routing)
 ├── src/hooks/
@@ -147,6 +148,10 @@ axvara/
 │   │   ├── gateway.ts           # auth timing-safe + isPrivateIp (kontrol SSRF)
 │   │   └── handlers/            # catalog, payment, proof, admin, shared
 │   ├── r2.ts                    # R2 client (S3 API)
+│   ├── product-copy/            # Salinan produk PDP (2026-09-24): text (pembersih teks pemasok +
+│   │                            # sidik jari), format (parser deskripsi + fallback, aman client),
+│   │                            # curated (S&K/aktivasi versi Axvara, SERVER-ONLY), resolve
+│   │                            # (dipakai /api/catalog; jangan impor dari catalog.ts/komponen)
 │   ├── config.ts                # payment methods, site config
 │   └── utils.ts                 # formatRupiah, generateOrderCode
 ├── stores/
@@ -699,7 +704,7 @@ Kolom baru di `orders`: `sales_channel`, `telegram_chat_id`, `telegram_user_id`,
 | GET/POST | `/api/admin/payments/events` | admin | Event QRIS Hook aman + retry exact-match |
 | GET/POST/DELETE | `/api/admin/fulfillment` | admin | Inventory management |
 | GET/PUT | `/api/store-settings` | public/admin | Identitas storefront / update terautentikasi |
-| GET | `/api/catalog[?slug=]` | public | Katalog produk/varian aktif terpusat |
+| GET | `/api/catalog[?slug=]` | public | Katalog produk/varian aktif terpusat. Detail `?slug=` (sejak 2026-09-24): tiap varian membawa `copy` (S&K berkelompok + cara aktivasi versi Axvara, atau teks WR yang dirapikan) dan `terms`/`delivery_terms` mentah dikosongkan (`null`) |
 | GET/POST/PUT/DELETE | `/api/admin/variants` | admin | Kelola SKU, durasi, garansi, harga, stok, dan mode fulfillment varian |
 | POST | `/api/whatsapp/webhook` | Shared Baileys webhook token | Command grup, order, pembayaran, dan intake bukti |
 | POST | `/api/admin/proofs/:id` | admin | CAS approve/reject bukti dari baris Pesanan dan otorisasi pembayaran manual |
@@ -1209,10 +1214,46 @@ varian terisi di prod) yang hidup di tabel cermin `wr_variants` milik sync.
 `getProductDetail`/`getActiveVariant` di `src/lib/catalog.ts` LEFT JOIN
 `wr_variants` via `wr_variant_id` dan memaparkannya di `VariantSummary.terms` /
 `.delivery_terms`. PDP `/produk/[slug]` merender section "Syarat & Ketentuan"
-**terikat varian terpilih** (fallback varian aktif pertama), bernomor otomatis
-+ sub-blok "Cara Aktivasi" bila ada — desktop di kolom kiri bawah deskripsi,
-mobile sebagai kartu di bawah accordion deskripsi. Varian manual (tanpa
-`wr_variant_id`) mendapat `null` dan section disembunyikan.
+**terikat varian terpilih** (fallback varian aktif pertama) — desktop di kolom
+kiri bawah deskripsi, mobile sebagai panel terlipat. Varian manual (tanpa
+`wr_variant_id`) mendapat `null`.
+
+### Salinan produk versi Axvara (2026-09-24, live)
+
+Permintaan owner: deskripsi, S&K, dan cara aktivasi seragam untuk produk WR
+maupun non-WR, tanpa kalimat berulang, dalam suara Axvara, **tanpa
+menghilangkan maksud/ketegasan pemasok**. Kode di `src/lib/product-copy/`:
+
+| Bagian | Sumber | Mekanisme |
+| --- | --- | --- |
+| S&K + cara aktivasi varian WR | `wr_variants` (milik sync, tidak disentuh) | `resolve.ts` menghitung `supplierFingerprint(wr_terms, wr_delivery_terms)` (`text.ts`: cyrb53 atas kata+angka per baris — kebal huruf besar/emoji/tanda baca/spasi, berubah bila kata/angka berubah). Cocok dengan entri `curated.ts` → salinan Axvara (83 pasangan teks prod). Tidak cocok (WR mengubah teks / varian baru) → `supplierVariantCopy()` di `format.ts`: teks WR dirapikan (tanpa emoji, huruf tebal Unicode dinormalkan NFKC, huruf besar berteriak jadi kalimat, baris ganda dibuang), dikelompokkan heuristik, baris aturan di teks aktivasi dipindah ke S&K. Aturan baru pemasok tidak pernah tertutup salinan lama. |
+| Deskripsi produk WR | `products.admin_description_override` (milik admin) | Migrasi **0040** (data-only) mengisi versi Axvara untuk 47 produk WR hanya bila override masih kosong; `description` milik WR tetap utuh. |
+| Deskripsi + S&K produk non-WR | `products.description` (milik admin) | Migrasi 0040 mengganti 2 produk (Canva, GSuite) hanya bila isinya masih persis teks lama. |
+
+Kontrak data (`format.ts`, aman untuk browser): `VariantCopy = { source:
+"axvara"|"pemasok", sections: {kind: paket|proses|aturan|garansi, items}[],
+activation: {title|null, steps}[], notes }`. `withVariantCopy()` dipanggil
+route `/api/catalog?slug=` — BUKAN `catalog.ts`, karena `catalog.ts` ikut
+diimpor komponen client dan `curated.ts` tidak boleh masuk bundle browser
+(diverifikasi `next build`). Bot Telegram/WhatsApp tidak menampilkan deskripsi
+maupun S&K (tetap seperti sebelumnya).
+
+Format deskripsi (juga untuk admin, dijelaskan di editor produk): paragraf
+pembuka → baris `- ` untuk keunggulan → opsional judul baris `Syarat &
+Ketentuan:` / `Cara Aktivasi:`. `parseProductDescription()` memindahkan dua
+bagian itu ke kartu S&K/aktivasi PDP (digabung dengan S&K varian WR, tiap
+baris tampil sekali lewat `mergeProductCopy()`), sisanya tetap di kartu
+deskripsi. Meta SEO/OG memakai `descriptionSummary()` (paragraf pembuka saja).
+
+Penjaga: `tests/product-copy-content.test.ts` membandingkan setiap salinan
+dengan snapshot teks WR produksi (`tests/fixtures/product-copy-snapshot.json`)
+— semua angka, URL, dan keluarga aturan (larangan, kewajiban, tanpa garansi,
+refund, batas perangkat, sanksi, platform, dst.) wajib terbawa; gaya seragam
+(tanpa emoji/huruf besar berteriak/bahasa gaul/titik di akhir poin). Catatan
+harga internal pemasok untuk reseller ("harga naik karena VCC susah")
+sengaja tidak ditampilkan ke pembeli. **Kurasi ulang** saat WR mengubah teks:
+ekspor ulang pasangan teks (read-only) ke snapshot, tulis entri baru di
+`curated.ts` dengan kunci sidik jari barunya, jalankan test.
 
 `formatWarranty()` untuk tipe `limited` SELALU membentuk kanonis
 `Garansi {value} {unit}` dari field terstruktur ("Garansi 12 Hari") — label

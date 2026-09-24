@@ -305,13 +305,30 @@ describe("S&K varian WR terbaca storefront via JOIN (tanpa migrasi)", () => {
     expect(detail?.variants[0]?.delivery_terms).toBeNull();
   });
 
-  it("PDP merender section Syarat & Ketentuan per varian", async () => {
-    const source = await import("node:fs").then((fs) =>
-      fs.readFileSync("src/app/produk/[slug]/product-detail-client.tsx", "utf8"),
-    );
-    expect(source).toContain("Syarat &");
-    expect(source).toContain("termsVariant");
-    expect(source).toContain("delivery_terms");
+  it("/api/catalog mengirim salinan siap tampil per varian, bukan teks mentah WR", async () => {
+    // Kontrak 2026-09-24: storefront menerima `copy` (versi Axvara bila teks
+    // WR sudah dikurasi, selain itu teks WR yang dirapikan). Isi pemasok tetap
+    // utuh di fallback — tidak ada aturan yang hilang karena belum dikurasi.
+    const { GET } = await import("@/app/api/catalog/route");
+    const res = await GET(new Request("http://localhost/api/catalog?slug=capcut-pro-wr"));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const variant = body.product.variants[0];
+    expect(variant.terms).toBeNull();
+    expect(variant.delivery_terms).toBeNull();
+    expect(variant.copy.source).toBe("pemasok");
+    expect(variant.copy.sections).toEqual([
+      { kind: "proses", items: ["Fresh, made by order"] },
+      { kind: "garansi", items: ["Garansi sejak pembelian"] },
+    ]);
+    expect(variant.copy.activation).toEqual([{ title: null, steps: ["Klik Verifikasi via kode sandi"] }]);
+  });
+
+  it("varian manual di /api/catalog tidak punya salinan S&K", async () => {
+    const { GET } = await import("@/app/api/catalog/route");
+    const res = await GET(new Request("http://localhost/api/catalog?slug=produk-manual"));
+    const body = await res.json();
+    expect(body.product.variants[0].copy).toBeNull();
   });
 });
 

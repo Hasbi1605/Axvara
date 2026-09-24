@@ -12,8 +12,24 @@ import { deliveryEtaForBuyer } from "@/lib/warung-rebahan/delivery-class";
 import { useCart } from "@/stores/cart";
 import { ProductCard } from "@/components/storefront/ProductCard";
 import { QuickVariantModal } from "@/components/storefront/QuickVariantModal";
+import { ActivationBody, DescriptionBody, MobileCollapsible, TermsBody, activationStepCount } from "@/components/storefront/ProductCopy";
+import { isLongDescription, mergeProductCopy, parseProductDescription, type VariantCopy } from "@/lib/product-copy/format";
 
-type VariantItem = VariantSummary;
+// /api/catalog mengganti teks mentah WR (terms/delivery_terms) dengan `copy`
+// siap tampil — versi Axvara atau teks pemasok yang dirapikan.
+type VariantItem = VariantSummary & { copy?: VariantCopy | null };
+
+const DESC_FADE = {
+  WebkitMaskImage: "linear-gradient(to bottom, #000 55%, transparent)",
+  maskImage: "linear-gradient(to bottom, #000 55%, transparent)",
+};
+
+const ShieldIcon = ({ className }: { className: string }) => (
+  <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 12l2 2 4-4"/><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+);
+const StepsIcon = ({ className }: { className: string }) => (
+  <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 6h11"/><path d="M9 12h11"/><path d="M9 18h11"/><path d="M4 6h1v4"/><path d="M4 10h2"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/></svg>
+);
 
 type CatalogDetail = {
   id: number;
@@ -245,6 +261,17 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
   // varian aktif pertama bila pembeli belum memilih — meniru panel WR yang
   // berganti isi tiap varian dipilih).
   const termsVariant = selectedVariant ?? activeVariants[0] ?? null;
+  // Deskripsi + S&K + cara aktivasi dalam satu format untuk WR dan non-WR:
+  // S&K varian (WR) digabung dengan bagian "Syarat & Ketentuan:" / "Cara
+  // Aktivasi:" di deskripsi (produk non-WR); tiap baris tampil sekali.
+  const parsedDescription = parseProductDescription(product.description);
+  const productCopy = mergeProductCopy(termsVariant?.copy ?? null, parsedDescription);
+  const hasDescription = parsedDescription.blocks.length > 0 || parsedDescription.sections.length > 0;
+  const descCollapsible = isLongDescription(parsedDescription);
+  const hasTerms = productCopy.sections.length > 0;
+  const activationSteps = activationStepCount(productCopy.activation);
+  const hasActivation = activationSteps > 0 || productCopy.notes.length > 0;
+  const termsLabel = productCopy.fromVariant && termsVariant ? formatVariantLabel(termsVariant) : null;
 
   return (
     <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
@@ -321,41 +348,40 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
           </div>
 
           {/* Deskripsi Produk — Kolom Kiri di Desktop (Lega & Rapi) */}
-          {product.description && (
+          {hasDescription && (
             <div className="hidden lg:block ax-glass-card rounded-[24px] p-6 sm:p-8">
               <h2 className="font-display font-bold text-[18px] text-white tracking-tight flex items-center gap-2.5">
                 <svg viewBox="0 0 24 24" className="w-5 h-5 text-[#00E5FF]" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
                 Deskripsi Produk
               </h2>
-              <div className="mt-4 border-t border-white/8 pt-5 text-sm text-white/75 leading-relaxed whitespace-pre-line">
-                {product.description}
+              <div className="mt-4 border-t border-white/10 pt-5 text-sm text-white/75 leading-relaxed">
+                <DescriptionBody parsed={parsedDescription} />
               </div>
             </div>
           )}
 
-          {/* Syarat & Ketentuan — per varian WR (Kolom Kiri Desktop) */}
-          {termsVariant?.terms && (
+          {/* Syarat & Ketentuan + Cara Aktivasi (Kolom Kiri Desktop) */}
+          {(hasTerms || hasActivation) && (
             <div className="hidden lg:block ax-glass-card rounded-[24px] p-6 sm:p-8">
               <h2 className="font-display font-bold text-[18px] text-white tracking-tight flex items-center gap-2.5">
-                <svg viewBox="0 0 24 24" className="w-5 h-5 text-[#00E5FF]" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M9 12l2 2 4-4"/><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                Syarat &amp; Ketentuan
-                <span className="text-xs font-semibold text-[#00E5FF]/80 tracking-normal">{termsVariant.label}</span>
+                <ShieldIcon className="w-5 h-5 text-[#00E5FF]" />
+                {hasTerms ? <>Syarat &amp; Ketentuan</> : "Cara Aktivasi"}
+                {termsLabel && <span className="text-xs font-semibold text-[#00E5FF]/80 tracking-normal">{termsLabel}</span>}
               </h2>
-              <ol className="mt-4 border-t border-white/8 pt-5 text-sm text-white/75 leading-relaxed space-y-2 list-none">
-                {termsVariant.terms.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((line, i) => {
-                  const stripped = line.replace(/^\s*\d+[\.\)]\s*/, "");
-                  return (
-                    <li key={i} className="flex items-start gap-2.5">
-                      <span className="text-[#00E5FF] font-bold shrink-0 min-w-[20px]">{i + 1}.</span>
-                      <span>{stripped}</span>
-                    </li>
-                  );
-                })}
-              </ol>
-              {termsVariant.delivery_terms && (
-                <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-                  <h3 className="text-xs font-bold text-white/80 uppercase tracking-wide">Cara Aktivasi</h3>
-                  <p className="mt-2 text-sm text-white/70 leading-relaxed whitespace-pre-line">{termsVariant.delivery_terms}</p>
+              {hasTerms && (
+                <div className="mt-4 border-t border-white/10 pt-5 text-sm text-white/75 leading-relaxed">
+                  <TermsBody sections={productCopy.sections} />
+                </div>
+              )}
+              {hasActivation && (
+                <div className={`${hasTerms ? "mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-5" : "mt-4 border-t border-white/10 pt-5"} text-sm text-white/75 leading-relaxed`}>
+                  {hasTerms && (
+                    <h3 className="mb-3 flex items-center gap-2 text-xs font-bold text-white/80 uppercase tracking-wide">
+                      <StepsIcon className="w-4 h-4 text-[#00E5FF]" />
+                      Cara Aktivasi
+                    </h3>
+                  )}
+                  <ActivationBody groups={productCopy.activation} notes={productCopy.notes} />
                 </div>
               )}
             </div>
@@ -582,56 +608,53 @@ export default function ProductDetailClient({ slug: slugProp }: { slug?: string 
             </li>
             <li className="flex items-start gap-2">
               <svg viewBox="0 0 16 16" className="w-4 h-4 mt-0.5 shrink-0 text-emerald-400/80" fill="none" stroke="currentColor" strokeWidth={2}><path d="M3 8.5l3 3 7-7" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              Garansi replace sesuai ketentuan di deskripsi produk ini
+              Garansi sesuai Syarat &amp; Ketentuan produk ini
             </li>
           </ul>
 
           {/* Deskripsi Produk — Khusus Mobile ala Shopee (Expandable Accordion) */}
-          {product.description && (
+          {hasDescription && (
             <div className="mt-6 lg:hidden rounded-2xl border border-white/10 bg-white/[0.03] p-4">
               <h3 className="text-sm font-bold text-white flex items-center justify-between">
                 <span>Deskripsi Produk</span>
               </h3>
               <div
-                className={`mt-2.5 text-xs text-white/70 leading-relaxed whitespace-pre-line ${
-                  descExpanded ? "" : "line-clamp-4"
-                }`}
+                id="pdp-description-mobile"
+                className={`mt-2.5 text-xs text-white/70 leading-relaxed ${descCollapsible && !descExpanded ? "max-h-32 overflow-hidden" : ""}`}
+                style={descCollapsible && !descExpanded ? DESC_FADE : undefined}
               >
-                {product.description}
+                <DescriptionBody parsed={parsedDescription} size="xs" />
               </div>
-              <button
-                type="button"
-                onClick={() => setDescExpanded(!descExpanded)}
-                className="mt-2 text-xs font-semibold text-[#00E5FF] hover:underline flex items-center gap-1"
-              >
-                {descExpanded ? "Tutup Deskripsi ∧" : "Lihat Selengkapnya ∨"}
-              </button>
+              {descCollapsible && (
+                <button
+                  type="button"
+                  aria-expanded={descExpanded}
+                  aria-controls="pdp-description-mobile"
+                  onClick={() => setDescExpanded(!descExpanded)}
+                  className="mt-2 text-xs font-semibold text-[#00E5FF] hover:underline flex items-center gap-1"
+                >
+                  {descExpanded ? "Tutup Deskripsi ∧" : "Lihat Selengkapnya ∨"}
+                </button>
+              )}
             </div>
           )}
 
-          {/* Syarat & Ketentuan — per varian WR (Khusus Mobile) */}
-          {termsVariant?.terms && (
-            <div className="mt-4 lg:hidden rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <svg viewBox="0 0 24 24" className="w-4 h-4 text-[#00E5FF]" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M9 12l2 2 4-4"/><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                <span>Syarat &amp; Ketentuan <span className="text-[#00E5FF]/80 font-semibold">· {termsVariant.label}</span></span>
-              </h3>
-              <ol className="mt-2.5 text-xs text-white/70 leading-relaxed space-y-1.5 list-none">
-                {termsVariant.terms.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((line, i) => {
-                  const stripped = line.replace(/^\s*\d+[\.\)]\s*/, "");
-                  return (
-                    <li key={i} className="flex items-start gap-2">
-                      <span className="text-[#00E5FF] font-bold shrink-0">{i + 1}.</span>
-                      <span>{stripped}</span>
-                    </li>
-                  );
-                })}
-              </ol>
-              {termsVariant.delivery_terms && (
-                <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                  <h4 className="text-[11px] font-bold text-white/80 uppercase tracking-wide">Cara Aktivasi</h4>
-                  <p className="mt-1.5 text-xs text-white/70 leading-relaxed whitespace-pre-line">{termsVariant.delivery_terms}</p>
-                </div>
+          {/* S&K + Cara Aktivasi — Khusus Mobile, terlipat (permintaan owner) */}
+          {(hasTerms || hasActivation) && (
+            <div className="mt-4 lg:hidden space-y-3" data-testid="pdp-mobile-copy">
+              {hasTerms && (
+                <MobileCollapsible title="Syarat & Ketentuan" meta={termsLabel} icon={<ShieldIcon className="w-4 h-4 shrink-0 text-[#00E5FF]" />}>
+                  <TermsBody sections={productCopy.sections} size="xs" />
+                </MobileCollapsible>
+              )}
+              {hasActivation && (
+                <MobileCollapsible
+                  title="Cara Aktivasi"
+                  meta={activationSteps > 0 ? `${activationSteps} langkah` : null}
+                  icon={<StepsIcon className="w-4 h-4 shrink-0 text-[#00E5FF]" />}
+                >
+                  <ActivationBody groups={productCopy.activation} notes={productCopy.notes} size="xs" />
+                </MobileCollapsible>
               )}
             </div>
           )}

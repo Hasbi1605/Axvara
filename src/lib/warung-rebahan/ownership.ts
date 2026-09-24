@@ -9,8 +9,13 @@
 // Kontrak:
 //   WR-owned    : label varian, harga jual, stok, durasi, garansi, deskripsi,
 //                 S&K varian (terms) + cara aktivasi (delivery_terms, read-only
-//                 dari wr_variants — tampil di PDP, tak bisa diedit admin).
+//                 dari wr_variants, tak bisa diedit admin). PDP menampilkan
+//                 versi Axvara dari src/lib/product-copy/curated.ts selama
+//                 teks WR masih sama dengan saat dikurasi (sidik jari);
+//                 bila WR mengubahnya, teks WR yang dirapikan yang tampil.
 //   Admin-owned : foto, badge, sort_order, is_active, admin_description_override,
+//                 (sejak migrasi 0040 berisi deskripsi versi Axvara untuk
+//                 produk WR — tetap milik admin, bebas diubah/dikosongkan),
 //                 HARGA CORET (compare_price/comparePrice) — milik admin agar
 //                 katalog bisa pasang diskon/badge seperti produk manual.
 //                 Sync TIDAK PERNAH menulis compare_price (lihat sync.ts:

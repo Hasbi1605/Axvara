@@ -6,6 +6,7 @@
 // `generateMetadata` + JSON-LD server component agar metadata selalu dari
 // data nyata D1 (produk aktif + varian aktif), bukan seed statis.
 import { isPurchasableStock } from "@/lib/catalog-availability";
+import { descriptionSummary } from "@/lib/product-copy/format";
 import { SITE_BASE, absoluteUrl } from "@/lib/site-seo";
 
 export type SeoVariant = {
@@ -28,9 +29,10 @@ export type SeoProduct = {
 };
 
 export function seoDescription(product: SeoProduct, maxLen = 160): string {
-  const raw = String(product.description ?? "").replace(/\s+/g, " ").trim();
+  // Paragraf pembuka saja: daftar keunggulan & bagian S&K bukan kalimat meta.
+  const raw = descriptionSummary(product.description).replace(/\s+/g, " ").trim();
   if (raw) return raw.length > maxLen ? `${raw.slice(0, maxLen - 1).trimEnd()}…` : raw;
-  return `${product.name} — tersedia di AXVARA dengan garansi sesuai deskripsi produk.`;
+  return `${product.name} — tersedia di AXVARA dengan garansi sesuai syarat & ketentuan produk.`;
 }
 
 /** Harga dari varian yang bisa dibeli bila ada (sama dengan kartu web), selain itu semua varian. */

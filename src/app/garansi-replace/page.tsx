@@ -22,12 +22,12 @@ export default function GaransiReplacePage() {
       <h2 className="font-semibold text-white">Garansi tetap ada, tapi bervariasi</h2>
       <div className="mt-3 space-y-3 text-sm leading-6 text-white/55">
         <p>Garansi AXVARA bersifat <span className="text-white font-medium">terbatas dan bervariasi, mulai dari 1x24 jam hingga 30 hari tergantung produk</span>. Masa garansi dan jenis garansi sangat mempengaruhi harga — semakin panjang garansi, semakin tinggi harga.</p>
-        <p>Silakan <span className="text-white font-medium">pilih produk sesuai budget dan kebutuhan garansimu</span>. Baca deskripsi produk dengan teliti sebelum membeli.</p>
+        <p>Silakan <span className="text-white font-medium">pilih produk sesuai budget dan kebutuhan garansimu</span>. Baca deskripsi serta Syarat &amp; Ketentuan produk dengan teliti sebelum membeli.</p>
         <p>Dengan membeli di AXVARA, kamu dianggap telah memahami dan menyetujui bahwa:</p>
         <ol className="list-decimal pl-5 space-y-1.5">
           <li>Kamu membeli produk third-party dengan segala risikonya.</li>
           <li>Selalu <span className="text-white font-medium">DYOR — Do Your Own Research & DWYOR — Do With Your Own Risk</span>.</li>
-          <li>Klaim garansi hanya berlaku <span className="text-white font-medium">sesuai ketentuan di deskripsi produk masing-masing</span>, bukan garansi uang kembali otomatis.</li>
+          <li>Klaim garansi hanya berlaku <span className="text-white font-medium">sesuai Syarat &amp; Ketentuan di halaman produk masing-masing</span>, bukan garansi uang kembali otomatis.</li>
         </ol>
         <p>Terima kasih atas pengertianmu.</p>
       </div>
@@ -35,8 +35,8 @@ export default function GaransiReplacePage() {
 
     <div className="mt-4 grid gap-4 lg:grid-cols-3">
       <section className="rounded-[22px] ax-glass-card p-5"><h2 className="font-semibold text-white">Yang perlu disiapkan</h2><ul className="mt-3 space-y-2 text-sm leading-6 text-white/55"><li>Kode pesanan AXV</li><li>Nama produk yang bermasalah</li><li>Video / screenshot error yang jelas</li></ul></section>
-      <section className="rounded-[22px] ax-glass-card p-5"><h2 className="font-semibold text-white">Proses pemeriksaan</h2><p className="mt-3 text-sm leading-6 text-white/55">Admin memverifikasi pesanan dan penyebab kendala. Jika memenuhi ketentuan di deskripsi produk, akses akan diperbaiki atau diganti dalam 1x24 jam kerja.</p></section>
-      <section className="rounded-[22px] ax-glass-card p-5"><h2 className="font-semibold text-white">Masa garansi</h2><p className="mt-3 text-sm leading-6 text-white/55">Masa dan cakupan garansi mengikuti keterangan di deskripsi masing-masing produk. Terhitung sejak produk dikirim. Lewat masa aktif = hangus.</p><p className="mt-2 text-sm leading-6 text-white/55">Untuk produk <span className="text-white font-medium">Made By Order</span> (ditandai di halaman produk), masa garansi mulai berjalan saat detail akun diserahkan ke kamu — <span className="text-white font-medium">bukan</span> saat pembayaran. Waktu tunggu antrean tidak memotong masa garansi.</p></section>
+      <section className="rounded-[22px] ax-glass-card p-5"><h2 className="font-semibold text-white">Proses pemeriksaan</h2><p className="mt-3 text-sm leading-6 text-white/55">Admin memverifikasi pesanan dan penyebab kendala. Jika memenuhi Syarat &amp; Ketentuan produk, akses akan diperbaiki atau diganti dalam 1x24 jam kerja.</p></section>
+      <section className="rounded-[22px] ax-glass-card p-5"><h2 className="font-semibold text-white">Masa garansi</h2><p className="mt-3 text-sm leading-6 text-white/55">Masa dan cakupan garansi mengikuti Syarat &amp; Ketentuan masing-masing produk. Terhitung sejak produk dikirim. Lewat masa aktif = hangus.</p><p className="mt-2 text-sm leading-6 text-white/55">Untuk produk <span className="text-white font-medium">Made By Order</span> (ditandai di halaman produk), masa garansi mulai berjalan saat detail akun diserahkan ke kamu — <span className="text-white font-medium">bukan</span> saat pembayaran. Waktu tunggu antrean tidak memotong masa garansi.</p></section>
     </div>
 
     <section className="mt-4 rounded-[22px] border border-white/10 bg-white/[0.03] p-5 sm:p-6">
@@ -44,10 +44,10 @@ export default function GaransiReplacePage() {
       <ol className="mt-3 list-decimal space-y-2.5 pl-5 text-sm leading-6 text-white/60">
         <li>Garansi berupa <span className="text-white font-medium">penggantian produk / perbaikan, BUKAN refund dana</span>. Refund hanya jika stok pengganti kosong dan disetujui admin.</li>
         <li>Wajib sertakan <span className="text-white font-medium">bukti video / screenshot error + kode pesanan / invoice</span>. Tanpa bukti = klaim ditolak.</li>
-        <li>Klaim hanya selama <span className="text-white font-medium">masa garansi aktif</span> sesuai deskripsi produk, terhitung sejak produk dikirim.</li>
-        <li>Garansi <span className="text-white font-medium">HANGUS</span> jika: password / email diganti tanpa izin, login di banyak device / IP bersamaan, melanggar aturan pakai di deskripsi, akun kena suspend karena pelanggaran user, atau order sudah dikonfirmasi selesai.</li>
+        <li>Klaim hanya selama <span className="text-white font-medium">masa garansi aktif</span> sesuai Syarat &amp; Ketentuan produk, terhitung sejak produk dikirim.</li>
+        <li>Garansi <span className="text-white font-medium">HANGUS</span> jika: password / email diganti tanpa izin, login di banyak device / IP bersamaan, melanggar aturan pakai di Syarat &amp; Ketentuan produk, akun kena suspend karena pelanggaran user, atau order sudah dikonfirmasi selesai.</li>
         <li>Durasi proses penggantian <span className="text-white font-medium">1x24 jam kerja</span>, bukan instan. Harap antre.</li>
-        <li>Satu order = satu kali klaim penggantian, kecuali produk bergaransi 30 hari (maksimal 2–3x ganti, lihat deskripsi produk).</li>
+        <li>Satu order = satu kali klaim penggantian, kecuali produk bergaransi 30 hari (maksimal 2–3x ganti, lihat Syarat &amp; Ketentuan produk).</li>
       </ol>
     </section>
 

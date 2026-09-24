@@ -52,7 +52,8 @@ axvara/
 │   │   ├── api/subscribers/# Form email footer + daftar terproteksi admin
 │   │   └── api/agent/      # Content API Bearer-token untuk MCP/agent
 │   │   └── globals.css     # Tokens Liquid Glass iOS 26
-│   ├── components/storefront/  # Navbar, OrbitHero, ProductCard, CartDrawer, PopupBanner, Footer, ScrollRope
+│   ├── components/storefront/  # Navbar, OrbitHero, ProductCard, CartDrawer, PopupBanner, Footer, ScrollRope,
+│   │                           # ProductCopy (deskripsi + S&K + cara aktivasi PDP, terlipat di mobile)
 │   ├── components/admin/       # Shell + login gate + hooks + sections/ (satu per menu admin)
 │   ├── hooks/useModalA11y.ts   # Escape + focus trap + scroll lock, satu sumber untuk semua modal
 │   ├── lib/db.ts               # BARREL ke src/lib/db/* — impor dari sini, bukan file internalnya
@@ -60,6 +61,8 @@ axvara/
 │   ├── lib/fulfillment/deliver.ts # BARREL ke src/lib/fulfillment/delivery/*
 │   ├── lib/telegram/messages.ts   # BARREL ke src/lib/telegram/messages/*; handlers/ berisi router
 │   ├── lib/whatsapp/handlers/  # catalog, payment, proof, admin (gateway.ts memegang auth + SSRF)
+│   ├── lib/product-copy/       # Salinan produk versi Axvara: text, format (aman client),
+│   │                           # curated + resolve (server-only, dipakai /api/catalog)
 │   ├── lib/products.ts     # 24 produk seed development + kategori
 │   └── stores/cart.ts      # Zustand cart (persist axvara-cart)
 ├── wrangler.json           # Cloudflare Pages + D1 + R2 bindings/output
@@ -267,6 +270,20 @@ seperti produk manual. Deskripsi override disimpan di
 `products.admin_description_override` (migrasi 0030), tidak pernah ditimpa
 sync, dan menjadi teks yang tampil di storefront saat terisi. Badge "WR" hanya
 muncul di editor admin; storefront tidak menampilkan penanda WR.
+
+**Salinan produk versi Axvara (2026-09-24).** Deskripsi, S&K, dan cara
+aktivasi tampil dalam satu format untuk produk WR maupun non-WR: deskripsi =
+paragraf pembuka + daftar keunggulan; S&K dikelompokkan (Detail paket, Proses &
+pengiriman, Aturan pakai, Garansi); cara aktivasi bernomor. Di mobile, S&K dan
+cara aktivasi terlipat. S&K + cara aktivasi WR versi Axvara dipilih di kode
+(`src/lib/product-copy/curated.ts`) lewat sidik jari teks WR; bila WR mengubah
+teksnya, PDP otomatis kembali ke teks WR yang dirapikan (aturan baru tidak
+pernah tertutup). Deskripsi versi Axvara diisi migrasi 0040 (diterapkan CI):
+produk WR ke `admin_description_override` bila masih kosong, produk non-WR ke
+`description` bila belum disunting. Format deskripsi untuk admin: paragraf,
+baris `- ` untuk keunggulan, lalu baris `Syarat & Ketentuan:` / `Cara
+Aktivasi:` untuk bagian yang pindah ke kartu S&K. Detail: `docs/ARCHITECTURE.md`
+§15 "Salinan produk versi Axvara".
 
 **Handoff operasional Heroku + Cloudflare.** Sejak 2026-09-14 proxy WR terpisah:
 akun #1 (`axvara-wa-gateway`) = WhatsApp SAJA; akun #2 (`axvara-wr-proxy` +
