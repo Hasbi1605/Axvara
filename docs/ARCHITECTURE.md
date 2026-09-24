@@ -1593,6 +1593,13 @@ Perintah akun #2 wajib prefix `HEROKU_API_KEY=<kunci-akun-2>`; jangan
   lalu lanjut invoice otomatis + `customerEmail` diteruskan ke WR;
   WA grup (tanpa form) menolak jelas + arahkan web/Telegram. Jangan ubah
   menjadi opsional-sesudah-bayar: order lunas tanpa email = macet WR.
+- Toggle admin `require_email` (fix 2026-09-25): daftar produk admin
+  (`GET /api/products`) tidak membawa kolom ini, jadi editor membacanya dari
+  `GET /api/products/:id` (`requireEmail`). Simpan hanya mengirim
+  `requireEmail` bila nilainya sudah termuat (detail gagal dibaca = kunci
+  tidak dikirim, `PUT` tidak menyentuh kolom). `POST /api/products` menerima
+  `requireEmail` (default `false`). Dulu centang selalu tampil mati setelah
+  refresh dan Simpan berikutnya diam-diam menulis 0.
 - Matriks sandbox (2026-09-16, `WARUNG_REBAHAN_SANDBOX=true` → `client.ts`
   tambah `is_test` ke payload `/order`; saldo tidak terpotong, respons
   valid): 3 restock (Prime Video Private, I Love PDF Sharing, Canva Edu

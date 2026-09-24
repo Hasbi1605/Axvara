@@ -209,6 +209,9 @@ const productSchema = z.object({
   stock: z.coerce.number().int().min(-1).max(999999).optional().default(-1),
   isActive: z.boolean().optional().default(true),
   sortOrder: z.coerce.number().int().min(0).max(999999).optional().default(0),
+  // Toggle email wajib (migrasi 0033). Dulu tidak ada di skema ini, sehingga
+  // produk baru selalu tersimpan require_email=0 walau dicentang.
+  requireEmail: z.boolean().optional().default(false),
   variants: z.array(variantInputSchema).optional(),
 });
 
@@ -221,7 +224,7 @@ export async function POST(req: NextRequest) {
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Body tidak valid" }, { status: 400 }); }
   const parsed = productSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
-  const { name, slug, description, whatsappAlias, price, comparePrice, categorySlug, imageUrl, images, badge, soldCount, stock, isActive, sortOrder, variants } = parsed.data as z.infer<typeof productSchema> & { comparePrice?: number | null };
+  const { name, slug, description, whatsappAlias, price, comparePrice, categorySlug, imageUrl, images, badge, soldCount, stock, isActive, sortOrder, requireEmail, variants } = parsed.data as z.infer<typeof productSchema> & { comparePrice?: number | null };
 
   const hasExplicitVariants = Array.isArray(variants) && variants.length > 0;
   if (hasExplicitVariants) {
@@ -259,11 +262,14 @@ export async function POST(req: NextRequest) {
       badge ?? null, soldCount ? Number(soldCount) : 0,
       stock != null ? Number(stock) : -1, isActive === false ? 0 : 1,
       sortOrder ? Number(sortOrder) : 0,
+      requireEmail ? 1 : 0,
     ];
+    // require_email sengaja kolom TERAKHIR: adaptor dev in-memory membaca
+    // parameter INSERT ini berdasarkan posisi.
     const insertSql = `INSERT INTO products (
       category_id,name,slug,description,whatsapp_alias,price,compare_price,image_url,images,
-      badge,sold_count,stock,is_active,sort_order
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
+      badge,sold_count,stock,is_active,sort_order,require_email
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
     const d1 = getD1();
     if (d1) {
       const statements = [
