@@ -41,7 +41,7 @@ axvara/
 │   │   ├── produk/[slug]/  # Detail produk
 │   │   ├── checkout/       # Checkout revamp ala Sekalipay 2026-09-23: ① Metode (QRIS auto-select) → ② Data minimal WA+Email wajib tanpa Nama → S&K → 1 CTA; rail desktop-only, mobile accordion + sticky CTA (manual maintenance 2026-09-17: disabled + badge, upload disembunyikan)
 │   │   ├── pesanan/[code]/ # Status + QRIS dinamis + polling lunas (noindex)
-│   │   ├── lacak-pesanan/  # Lacak mandiri kode + WA (tanpa login) + timeline status
+│   │   ├── lacak-pesanan/  # Lacak mandiri kode + No. WA/email (tanpa login) + timeline status
 │   │   ├── admin/          # Workspace operasional, katalog, pembayaran, konten, otomasi, settings
 │   │   ├── artikel/        # Indeks dan detail artikel publik
 │   │   ├── cara-order/     # Panduan order dari footer
@@ -113,7 +113,7 @@ AXVARA adalah third-party independen (bukan official store). Garansi bervariasi 
 
 Nomor dukungan default adalah `089519388264`, terpisah dari nomor tujuan pembayaran e-wallet. `src/lib/site.ts` menyediakan fallback, sedangkan override operasional disimpan lewat menu **Pengaturan Toko**.
 
-Pembeli memantau pesanan mandiri di `/lacak-pesanan`: cukup kode pesanan + nomor WA checkout (tanpa login), diverifikasi server via `POST /api/orders/lookup`, timeline Dibuat → Pembayaran → Diproses, auto-refresh saat Pending.
+Pembeli memantau pesanan mandiri di `/lacak-pesanan`: cukup kode pesanan + No. WA atau email checkout (tanpa login), diverifikasi server via `POST /api/orders/lookup`, timeline Dibuat → Pembayaran → Diproses, auto-refresh saat Pending.
 
 ### Kategori dan footer
 
@@ -224,7 +224,7 @@ jadi 99,9% durasi sweep adalah menunggu jaringan. Cakupan batch sengaja per prod
 (bukan per sweep) karena `batch()` adalah transaksi: satu produk bermasalah tidak
 boleh membatalkan produk lain.
 Telegram/WhatsApp/Web. Pembeli web mengambil kredensial di halaman pesanan via verifikasi
-nomor WA + capability token — panel itu hanya muncul saat detail akun benar-benar sudah ada
+No. WA atau email checkout + capability token (terbuka otomatis sekali di tab checkout yang sama) — panel itu hanya muncul saat detail akun benar-benar sudah ada
 (`credentials_ready`); order lunas dengan fulfillment manual menampilkan blok "Pengiriman
 Produk" (tujuan WA/email checkout + estimasi 5–15 menit), bukan form yang pasti gagal.
 Sejak 18 Sep 2026 produk kelas **antrean** (`made_by_order`, dibuatkan setelah order) juga

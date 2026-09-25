@@ -2,8 +2,9 @@
 
 // Panel pengambilan detail akun digital (Warung Rebahan) di halaman pesanan.
 // Kredensial TIDAK dibuka hanya dengan kode order: pembeli memverifikasi
-// kepemilikan lewat nomor WA checkout (sekali), lalu menerima capability
-// token untuk akses ulang (disimpan di sessionStorage perangkat ini saja).
+// kepemilikan lewat No. WA atau email checkout (sekali), lalu menerima
+// capability token untuk akses ulang (disimpan di sessionStorage perangkat ini
+// saja).
 
 import { useEffect, useRef, useState } from "react";
 import { formatWibDateTime } from "@/lib/utils";
@@ -11,17 +12,20 @@ import { formatWibDateTime } from "@/lib/utils";
 // `label` hanya ada untuk isi produk non-WR (nama baris pesanan).
 type Credential = { label?: string; details: string; completed_at: string | null };
 
-export function WrCredentialsPanel({ code, prefillWa = "" }: { code: string; prefillWa?: string }) {
-  const [wa, setWa] = useState(prefillWa);
+/** Diisi checkout di tab yang sama; dipakai sekali lalu dihapus. */
+export const checkoutContactKey = (code: string) => `axvara-checkout-contact:${code}`;
+
+export function WrCredentialsPanel({ code, prefillContact = "", contactHint = "" }: { code: string; prefillContact?: string; contactHint?: string }) {
+  const [wa, setWa] = useState(prefillContact);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [creds, setCreds] = useState<Credential[] | null>(null);
   const [token, setToken] = useState<string | null>(null);
 
   // Akses ulang otomatis bila capability token tersimpan di perangkat ini.
-  // prefillWa (dari hasil lacak yang WA-nya sudah diverifikasi server) ikut
-  // dicoba sekali otomatis — verifikasi TETAP di server via endpoint
-  // credentials, jadi tidak ada kepercayaan pada klaim client.
+  // prefillContact (hasil lacak yang kontaknya sudah diverifikasi server) atau
+  // kontak dari checkout di tab yang sama ikut dicoba sekali otomatis —
+  // verifikasi TETAP di server via endpoint credentials.
   const triedPrefill = useRef(false);
   useEffect(() => {
     const saved = sessionStorage.getItem(`wr-cred-token:${code}`);
@@ -43,10 +47,13 @@ export function WrCredentialsPanel({ code, prefillWa = "" }: { code: string; pre
         .finally(() => setLoading(false));
       return;
     }
-    if (prefillWa.trim().length >= 6 && !triedPrefill.current) {
+    const fromCheckout = sessionStorage.getItem(checkoutContactKey(code)) || "";
+    if (fromCheckout) sessionStorage.removeItem(checkoutContactKey(code));
+    const initial = prefillContact.trim() || fromCheckout.trim();
+    if (initial.length >= 6 && !triedPrefill.current) {
       triedPrefill.current = true;
-      setWa(prefillWa);
-      void verifyWith(prefillWa);
+      setWa(initial);
+      void verifyWith(initial);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
@@ -58,7 +65,7 @@ export function WrCredentialsPanel({ code, prefillWa = "" }: { code: string; pre
       const r = await fetch(`/api/orders/${encodeURIComponent(code)}/credentials`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ wa: waValue }),
+        body: JSON.stringify({ contact: waValue.trim() }),
       });
       const body = (await r.json().catch(() => ({}))) as {
         credentials?: Credential[];
@@ -66,7 +73,7 @@ export function WrCredentialsPanel({ code, prefillWa = "" }: { code: string; pre
         error?: string;
       };
       if (!r.ok) {
-        setError(body.error === "verification_failed" ? "Nomor WA tidak cocok dengan data pesanan." : body.error === "not_ready" ? "Detail akun belum tersedia — tunggu beberapa menit lalu muat ulang." : "Gagal memverifikasi. Coba lagi.");
+        setError(body.error === "verification_failed" ? "No. WA atau email tidak cocok dengan data pesanan." : body.error === "not_ready" ? "Detail akun belum tersedia — tunggu beberapa menit lalu muat ulang." : "Gagal memverifikasi. Coba lagi.");
         return;
       }
       setCreds(body.credentials ?? []);
@@ -106,15 +113,19 @@ export function WrCredentialsPanel({ code, prefillWa = "" }: { code: string; pre
   return (
     <section className="ax-glass-card mt-6 rounded-2xl p-4 text-left" aria-label="Ambil detail akun">
       <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">Detail Akun Digital</p>
-      <p className="mt-2 text-xs leading-5 text-white/55">Produk digital pesanan ini sudah siap. Masukkan nomor WA yang dipakai saat checkout untuk menampilkannya.</p>
+      <p className="mt-2 text-xs leading-5 text-white/55">Produk digital pesanan ini sudah siap. Masukkan No. WA atau email yang dipakai saat checkout untuk menampilkannya.</p>
+      {contactHint && <p className="mt-1 text-[11px] text-white/40">Terdaftar: {contactHint}</p>}
       <div className="mt-3 flex gap-2">
         <input
           value={wa}
           onChange={(e) => setWa(e.target.value)}
-          inputMode="tel"
-          autoComplete="tel"
-          placeholder="08xxxxxxxxxx"
-          aria-label="Nomor WhatsApp checkout"
+          inputMode="email"
+          autoComplete="email"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          placeholder="08… atau nama@email.com"
+          aria-label="No. WA atau email checkout"
           className="h-11 min-w-0 flex-1 rounded-xl border border-white/15 bg-white/5 px-3 text-sm text-white placeholder:text-white/30 focus:border-[#00E5FF]/60 focus:outline-none"
         />
         <button

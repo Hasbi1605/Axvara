@@ -4,25 +4,17 @@ import { queryFirst } from "@/lib/db";
 import { MAX_QRIS_REISSUES } from "@/lib/payments/dana-qris";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { constantTimeEqual } from "@/lib/security";
+import { emailMatches, normalizeWa, parseBuyerContact } from "@/lib/order-contact";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
+// `contact` = No. WA atau email checkout; `wa` tetap diterima (tautan lama ?wa=).
 const schema = z.object({
   code: z.string().trim().min(1).max(32),
-  wa: z.string().trim().min(1).max(20),
+  contact: z.string().trim().max(254).optional(),
+  wa: z.string().trim().max(254).optional(),
 });
-
-/** Normalisasi nomor WA ke format 62... agar 08... / +62... / 62... sama. */
-function normalizeWa(raw: unknown): string {
-  const digits = String(raw ?? "").replace(/\D/g, "");
-  if (digits.startsWith("0")) return `62${digits.slice(1)}`;
-  return digits;
-}
-
-function isValidWaFormat(raw: string): boolean {
-  return /^(\+62|62|0)8\d{8,13}$/.test(raw.replace(/[\s-]/g, ""));
-}
 
 export async function POST(req: NextRequest) {
   if (!checkRateLimit(req, "orders:lookup")) {
@@ -35,16 +27,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Body tidak valid." }, { status: 400 });
   }
   const parsed = schema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ error: "Kode pesanan dan nomor WA wajib diisi." }, { status: 400 });
+  const contactRaw = parsed.success ? (parsed.data.contact ?? parsed.data.wa ?? "").trim() : "";
+  if (!parsed.success || !contactRaw) {
+    return NextResponse.json({ error: "Kode pesanan dan No. WA atau email wajib diisi." }, { status: 400 });
   }
   const code = parsed.data.code.trim().toUpperCase();
-  const waRaw = parsed.data.wa.trim();
   if (!/^AXV-\d{8}-[A-Z0-9]{8}$/.test(code)) {
     return NextResponse.json({ error: "Format kode tidak valid. Contoh: AXV-20260917-AB12CD34." }, { status: 400 });
   }
-  if (!isValidWaFormat(waRaw)) {
-    return NextResponse.json({ error: "Nomor WA tidak valid. Gunakan format 08... atau +62...." }, { status: 400 });
+  const contact = parseBuyerContact(contactRaw);
+  if (!contact) {
+    return NextResponse.json({
+      error: contactRaw.includes("@")
+        ? "Format email tidak valid. Contoh: nama@gmail.com."
+        : "Nomor WA tidak valid. Gunakan format 08... atau +62..., atau isi email checkout.",
+    }, { status: 400 });
   }
 
   const row = (await queryFirst(
@@ -58,12 +55,15 @@ export async function POST(req: NextRequest) {
   // Respons generik untuk tidak-ditemukan maupun WA-tidak-cocok agar kode
   // order tidak bisa di-oracle satu per satu (enumerasi).
   const notFound = () =>
-    NextResponse.json({ error: "Pesanan tidak ditemukan atau nomor WA tidak cocok. Periksa kembali kode dan nomor WA yang dipakai saat checkout." }, { status: 404 });
+    NextResponse.json({ error: "Pesanan tidak ditemukan atau No. WA/email tidak cocok. Periksa kembali kode serta No. WA atau email yang dipakai saat checkout." }, { status: 404 });
 
   if (!row) return notFound();
-  const storedWa = normalizeWa(row.customer_wa);
-  const providedWa = normalizeWa(waRaw);
-  if (!storedWa || !providedWa || !constantTimeEqual(providedWa, storedWa)) return notFound();
+  if (contact.kind === "email") {
+    if (!emailMatches(contact.value, row.customer_email)) return notFound();
+  } else {
+    const storedWa = normalizeWa(row.customer_wa);
+    if (!storedWa || !constantTimeEqual(contact.value, storedWa)) return notFound();
+  }
 
   const waFull = String(row.customer_wa ?? "");
   const waMasked = waFull.length >= 7 ? `${waFull.slice(0, 5)}****${waFull.slice(-4)}` : waFull ? `${waFull.slice(0, 3)}****` : "";

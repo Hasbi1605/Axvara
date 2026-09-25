@@ -318,7 +318,7 @@
   muat 1 baris tanpa wrap. Tap target tetap ≥44px.
 - Blok pasca-pembayaran (revisi 2026-09-18, live): satu kartu `ax-glass-card`
   di bawah Ringkasan, isinya bergantung `credentials_ready` dari server.
-  Siap → panel "Detail Akun Digital" (input WA + CTA cyan `Tampilkan`, hasil
+  Siap → panel "Detail Akun Digital" (input "No. WA atau email checkout" + CTA cyan `Tampilkan`, baris `Terdaftar: …` kontak tersamar `text-[11px] text-white/40`, hasil
   kartu mono emerald). Belum/tidak pernah ada (fulfillment manual) → blok
   informasi "Pengiriman Produk": kalimat tujuan pengiriman dengan email
   checkout tersamar di-highlight `text-white/80` (WA hanya untuk order lama tanpa
@@ -384,8 +384,8 @@
   Belanja` full-width `col-span-2`), FAQ `<details>` + kartu cara 1-2-3 seperti
   `/cara-order`. Mobile-first max-w 720px, tap target ≥44px.
 - Privasi: verifikasi `POST /api/orders/lookup` (kode + WA dinormalisasi
-  08/+62/62, banding `constantTimeEqual`), 404 generik untuk kode-salah
-  maupun WA-tidak-cocok (anti-oracle enumerasi), WA/email tampil mask,
+  08/+62/62 atau email checkout huruf kecil, banding `constantTimeEqual`), 404 generik untuk kode-salah
+  maupun kontak-tidak-cocok (anti-oracle enumerasi), WA/email tampil mask,
   rate-limit scope `orders:lookup` yang sama dengan lookup lain.
 - Nyaman: validasi inline format kode & WA, tombol Salin kode, riwayat lokal
   5 terakhir (`axvara-track-recent`, mask WA), deep-link `?code=&wa=` dari

@@ -1,9 +1,10 @@
 // GET/POST /api/orders/[code]/credentials — Retrieval kredensial WR untuk pembeli web.
 // P0-6: kredensial TIDAK dibuka hanya dengan kode order. Pembeli membuktikan
-// kepemilikan via nomor WA yang dipakai saat checkout (knowledge factor) atau
-// capability token yang diterbitkan sebelumnya.
-// - POST {wa}: verifikasi 6 digit terakhir customer_wa → tampilkan details
-//   sekali + beri capability token untuk akses ulang.
+// kepemilikan via No. WA ATAU email yang dipakai saat checkout (knowledge
+// factor) atau capability token yang diterbitkan sebelumnya.
+// - POST {contact} (atau {wa} lama): WA = 6 digit terakhir customer_wa, email =
+//   cocok penuh tanpa beda huruf besar/kecil → tampilkan details sekali + beri
+//   capability token untuk akses ulang.
 // - GET ?token=: akses ulang dengan capability token.
 // Rate-limit ketat (orders:lookup). Tidak pernah mengembalikan data selain
 // detail akun milik order itu: detail WR + isi produk non-WR yang terkirim
@@ -20,6 +21,7 @@ import {
   verifyCredentialToken,
 } from "@/lib/warung-rebahan/deliver";
 import { readDeliveredSnapshots } from "@/lib/fulfillment/delivery/buyer-email";
+import { emailMatches } from "@/lib/order-contact";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -31,7 +33,7 @@ function digitsOnly(raw: unknown): string {
 async function orderReady(code: string) {
   const db = createDatabaseAccess();
   const order = await db
-    .queryFirst(`SELECT code, customer_wa, status, payment_status FROM orders WHERE code=?`, code)
+    .queryFirst(`SELECT code, customer_wa, customer_email, status, payment_status FROM orders WHERE code=?`, code)
     .catch(() => null);
   if (!order) return { error: "not_found" as const, status: 404 };
   if (String(order.status) !== "lunas" || String(order.payment_status) !== "paid") {
@@ -90,12 +92,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if ("error" in ready) return NextResponse.json({ error: ready.error }, { status: ready.status });
   const { order, db } = ready;
   const body = await request.json().catch(() => null);
-  const provided = digitsOnly(body?.wa);
-  const expected = digitsOnly(order.customer_wa);
-  // Cocokkan 6 digit terakhir (cukup spesifik, toleran format +62/0).
-  if (provided.length < 6 || expected.length < 6 || provided.slice(-6) !== expected.slice(-6)) {
-    return NextResponse.json({ error: "verification_failed" }, { status: 403 });
+  const raw = String(body?.contact ?? body?.wa ?? "").trim();
+  let verified: boolean;
+  if (raw.includes("@")) {
+    verified = emailMatches(raw.toLowerCase(), order.customer_email);
+  } else {
+    const provided = digitsOnly(raw);
+    const expected = digitsOnly(order.customer_wa);
+    // Cocokkan 6 digit terakhir (cukup spesifik, toleran format +62/0).
+    verified = provided.length >= 6 && expected.length >= 6 && provided.slice(-6) === expected.slice(-6);
   }
+  if (!verified) return NextResponse.json({ error: "verification_failed" }, { status: 403 });
   // Terbitkan capability token untuk akses ulang (idempoten).
   const freshToken = await issueCredentialToken(code, db);
   const credentials = await readVerifiedDetails(code, db);

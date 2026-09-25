@@ -44,12 +44,16 @@ type RecentEntry = { code: string; wa: string };
 const RECENT_KEY = "axvara-track-recent";
 const CODE_RE = /^AXV-\d{8}-[A-Z0-9]{8}$/;
 const WA_RE = /^(\+62|62|0)8\d{8,13}$/;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/** No. WA ATAU email checkout (2026-09-25). */
+const isValidContact = (raw: string) => raw.includes("@") ? EMAIL_RE.test(raw.trim()) : WA_RE.test(raw.trim().replace(/[\s-]/g, ""));
 
 function normalizeCode(raw: string): string {
   return raw.trim().toUpperCase().replace(/\s+/g, "");
 }
 
 function maskWaShort(wa: string): string {
+  if (wa.includes("@")) return wa.trim().replace(/(^.).*(@.*)$/, "$1***$2");
   const digits = wa.replace(/\D/g, "");
   if (digits.length < 7) return "***";
   return `${digits.slice(0, 4)}****${digits.slice(-4)}`;
@@ -177,7 +181,7 @@ export default function LacakPesananClient() {
       const response = await fetchWithTimeout("/api/orders/lookup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: cleanCode, wa: cleanWa }),
+        body: JSON.stringify({ code: cleanCode, contact: cleanWa }),
         cache: "no-store",
       }, 20_000);
       const body = await response.json().catch(() => ({}));
@@ -206,16 +210,16 @@ export default function LacakPesananClient() {
     }
   }, [saveRecent]);
 
-  // Deep-link dari pesan WA/Telegram: ?code=AXV-...&wa=08... langsung cek sekali.
+  // Deep-link dari pesan WA/Telegram: ?code=AXV-...&wa=08... (atau &email=) langsung cek sekali.
   useEffect(() => {
     if (autoSubmitted.current) return;
     const paramCode = normalizeCode(searchParams.get("code") || "");
-    const paramWa = (searchParams.get("wa") || "").trim();
+    const paramWa = (searchParams.get("contact") || searchParams.get("email") || searchParams.get("wa") || "").trim();
     if (!paramCode && !paramWa) return;
     autoSubmitted.current = true;
     if (paramCode) setCode(paramCode);
     if (paramWa) setWa(paramWa);
-    if (CODE_RE.test(paramCode) && WA_RE.test(paramWa.replace(/[\s-]/g, ""))) {
+    if (CODE_RE.test(paramCode) && isValidContact(paramWa)) {
       void lookup(paramCode, paramWa);
     } else if (paramCode || paramWa) {
       setCodeTouched(true);
@@ -242,10 +246,10 @@ export default function LacakPesananClient() {
   const codeError = codeTouched && normalizeCode(code) && !CODE_RE.test(normalizeCode(code))
     ? "Format kode belum tepat. Contoh: AXV-20260917-AB12CD34."
     : null;
-  const waError = waTouched && wa.trim() && !WA_RE.test(wa.trim().replace(/[\s-]/g, ""))
-    ? "Nomor WA belum tepat. Contoh: 0812... atau +62812...."
+  const waError = waTouched && wa.trim() && !isValidContact(wa)
+    ? "Isi No. WA (0812… / +62812…) atau email yang dipakai saat checkout."
     : null;
-  const canSubmit = CODE_RE.test(normalizeCode(code)) && WA_RE.test(wa.trim().replace(/[\s-]/g, "")) && !loading;
+  const canSubmit = CODE_RE.test(normalizeCode(code)) && isValidContact(wa) && !loading;
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -299,7 +303,7 @@ export default function LacakPesananClient() {
       <h1 className="mt-2 font-display text-3xl font-bold tracking-[-0.02em] text-white sm:text-4xl">Cek status pesananmu</h1>
       <p className="mt-3 max-w-[58ch] text-sm leading-6 text-white/55">
         Masukkan <span className="font-semibold text-white">kode pesanan</span> dan{" "}
-        <span className="font-semibold text-white">nomor WA yang dipakai saat checkout</span>. Status diperbarui otomatis
+        <span className="font-semibold text-white">No. WA atau email yang dipakai saat checkout</span>. Status diperbarui otomatis
         dari Pending ke Lunas, Dibatalkan, atau Kedaluwarsa.
       </p>
 
@@ -309,7 +313,7 @@ export default function LacakPesananClient() {
             <IosIcon name="search" size={20} tint="#00E5FF" />
           </span>
           <div>
-            <p className="text-sm font-semibold text-white">Kode + nomor WA</p>
+            <p className="text-sm font-semibold text-white">Kode + No. WA atau email</p>
             <p className="text-xs text-white/45">Tanpa login, tanpa daftar akun.</p>
           </div>
         </div>
@@ -330,19 +334,22 @@ export default function LacakPesananClient() {
             {codeError ? <p className="mt-1.5 text-xs text-red-300">{codeError}</p> : <p className="mt-1.5 text-[11px] text-white/30">Lihat di halaman sukses, chat Telegram, atau grup WA setelah checkout.</p>}
           </div>
           <div>
-            <label htmlFor="track-wa" className="mb-1 block text-xs font-medium text-white/60">Nomor WA checkout *</label>
+            <label htmlFor="track-wa" className="mb-1 block text-xs font-medium text-white/60">No. WA atau email checkout *</label>
             <input
               id="track-wa"
               value={wa}
-              onChange={(event) => { setWa(event.target.value.replace(/[^\d+]/g, "")); setWaTouched(true); }}
+              onChange={(event) => { setWa(event.target.value); setWaTouched(true); }}
               onBlur={() => setWaTouched(true)}
-              placeholder="0812..."
-              inputMode="tel"
+              placeholder="0812… atau nama@email.com"
+              inputMode="email"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               autoComplete="tel"
               aria-invalid={Boolean(waError)}
               className={`h-12 w-full rounded-xl border bg-white/[0.06] px-4 text-sm text-white placeholder:text-white/30 focus:outline-none ${waError ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`}
             />
-            {waError ? <p className="mt-1.5 text-xs text-red-300">{waError}</p> : <p className="mt-1.5 text-[11px] text-white/30">Harus sama dengan nomor yang diisi saat checkout.</p>}
+            {waError ? <p className="mt-1.5 text-xs text-red-300">{waError}</p> : <p className="mt-1.5 text-[11px] text-white/30">Harus sama dengan No. WA atau email yang diisi saat checkout.</p>}
           </div>
         </div>
         {error && <p role="alert" className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-2.5 text-sm text-red-300">{error}</p>}
@@ -354,7 +361,7 @@ export default function LacakPesananClient() {
           {loading && <span className="h-5 w-5 animate-spin rounded-full border-2 border-[#080C1E]/20 border-t-[#080C1E]" />}
           {loading ? (lookupStage >= 1 ? "Koneksi lambat, masih melacak…" : "Melacak…") : "Lacak Pesanan"}
         </button>
-        <p className="mt-3 text-center text-[11px] leading-5 text-white/30">Kode dan WA dicocokkan di server. Kombinasi salah tidak membocorkan data.</p>
+        <p className="mt-3 text-center text-[11px] leading-5 text-white/30">Kode dan kontak dicocokkan di server. Kombinasi salah tidak membocorkan data.</p>
       </form>
 
       {recent.length > 0 && !order && (
@@ -369,7 +376,7 @@ export default function LacakPesananClient() {
                   className="min-w-0 flex-1 text-left"
                 >
                   <span className="block truncate font-mono text-xs font-bold text-[#00E5FF]">{entry.code}</span>
-                  <span className="block text-[11px] text-white/40">WA {maskWaShort(entry.wa)}</span>
+                  <span className="block text-[11px] text-white/40">{entry.wa.includes("@") ? "Email" : "WA"} {maskWaShort(entry.wa)}</span>
                 </button>
                 <button
                   type="button"
@@ -470,7 +477,7 @@ export default function LacakPesananClient() {
             </div>
           )}
           {isPaid && order.credentialsReady && (
-            <WrCredentialsPanel code={order.code} prefillWa={wa} />
+            <WrCredentialsPanel code={order.code} prefillContact={wa} />
           )}
           {isCancelled && (
             <p className="mt-5 rounded-2xl border border-red-500/20 bg-red-500/[0.06] p-4 text-left text-xs leading-6 text-red-200">
@@ -527,7 +534,7 @@ export default function LacakPesananClient() {
       <section className="mt-8 grid gap-3 sm:grid-cols-3" aria-label="Cara melacak">
         {[
           ["1", "Siapkan kode", "Format AXV-YYYYMMDD-XXXXXXXX dari halaman sukses atau chat bot."],
-          ["2", "Samakan nomor WA", "Pakai nomor yang diisi saat checkout, 08… atau +62… sama saja."],
+          ["2", "Samakan No. WA atau email", "Pakai No. WA atau email yang diisi saat checkout. Untuk WA, 08… atau +62… sama saja."],
           ["3", "Pantau status", "Pending → Lunas otomatis. Transfer manual diverifikasi admin."],
         ].map(([number, title, body]) => (
           <div key={number} className="ax-glass-card rounded-[20px] p-4">
@@ -541,7 +548,7 @@ export default function LacakPesananClient() {
       <section className="mt-4 space-y-2" aria-label="Pertanyaan umum">
         {[
           ["Di mana saya menemukan kode pesanan?", "Setelah checkout kamu diarahkan ke halaman /pesanan/AXV-... Simpan kodenya. Order Telegram bisa dilihat lagi lewat /orders, order WA tercatat di grup."],
-          ["Nomor WA saya berubah / salah ketik?", "Pencarian memakai nomor persis seperti saat checkout. Jika salah ketik, hubungi admin via tombol di atas dengan menyebutkan kode pesanan dan nomor yang benar."],
+          ["No. WA atau email saya salah ketik?", "Pencarian memakai No. WA atau email persis seperti saat checkout, jadi coba yang satunya bila salah satu keliru. Bila keduanya salah ketik, hubungi admin via tombol di atas dengan menyebutkan kode pesanan."],
           ["Status Pending padahal sudah bayar QRIS?", "Tunggu 1–2 menit lalu halaman ini memeriksa ulang otomatis tiap 10 detik. Pastikan nominal tepat. Jika lebih dari 10 menit, hubungi admin dengan kode pesanan."],
           ["Status Pending untuk transfer manual?", "Admin memverifikasi bukti pada jam dukungan 09.00–23.00 WIB, biasanya 5–15 menit. Pastikan bukti sudah terupload saat checkout."],
         ].map(([question, answer]) => (

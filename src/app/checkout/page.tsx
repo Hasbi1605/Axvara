@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { checkoutContactKey } from "@/components/storefront/WrCredentialsPanel";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useCart } from "@/stores/cart";
@@ -395,6 +396,9 @@ function CheckoutInner() {
         const existing = JSON.parse(localStorage.getItem("axvara-orders") || "[]");
         localStorage.setItem("axvara-orders", JSON.stringify([...existing, localOrder]));
       } catch {}
+      // Buka otomatis detail akun di halaman pesanan TAB INI: sessionStorage
+      // (hilang saat tab ditutup) dan dihapus panel begitu dipakai sekali.
+      try { sessionStorage.setItem(checkoutContactKey(code), wa.trim()); } catch {}
       setRedirectCode(code);
       redirected = true;
       if (!isDirect) clear();

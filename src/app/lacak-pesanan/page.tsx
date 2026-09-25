@@ -5,7 +5,7 @@ export const runtime = "edge";
 
 export const metadata = {
   title: "Lacak Pesanan | AXVARA",
-  description: "Cek status pesanan AXVARA hanya dengan kode pesanan dan nomor WA — Pending, Lunas, Dibatalkan, atau Kedaluwarsa.",
+  description: "Cek status pesanan AXVARA hanya dengan kode pesanan dan No. WA atau email — Pending, Lunas, Dibatalkan, atau Kedaluwarsa.",
   alternates: { canonical: "/lacak-pesanan" },
 };
 

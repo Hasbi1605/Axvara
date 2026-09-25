@@ -308,7 +308,7 @@ describe("Fase B — kredensial 3 jalur (keputusan owner 2026-09-18)", () => {
   it("hasil lacak order lunas + kredensial siap me-render panel (tanpa input WA ulang di server)", async () => {
     const page = read("src/app/lacak-pesanan/lacak-pesanan-client.tsx");
     expect(page).toContain("WrCredentialsPanel");
-    expect(page).toContain("prefillWa");
+    expect(page).toContain("prefillContact");
     expect(page).toContain("order.credentialsReady");
     const lookup = read("src/app/api/orders/lookup/route.ts");
     expect(lookup).toContain("credentials_ready");

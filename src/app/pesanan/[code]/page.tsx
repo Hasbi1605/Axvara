@@ -367,7 +367,7 @@ export default function OrderSuccessPage() {
         )}
 
         {isPaid && (order.credentialsReady ? (
-          <WrCredentialsPanel code={order.code} />
+          <WrCredentialsPanel code={order.code} contactHint={[order.wa, order.email].filter(Boolean).join(" · ")} />
         ) : !isDeliveryFailed && (
           // Detail akun belum/tidak pernah ada (fulfillment manual): jangan
           // tampilkan form verifikasi WA yang pasti gagal. Beri kepastian

@@ -71,14 +71,16 @@ describe("/pesanan/[code] — blok pasca-pembayaran", () => {
     // Form mati tidak boleh ada lagi.
     expect(screen.queryByText("Detail Akun Digital")).toBeNull();
     expect(screen.queryByRole("button", { name: "Tampilkan" })).toBeNull();
-    expect(screen.queryByLabelText("Nomor WhatsApp checkout")).toBeNull();
+    expect(screen.queryByLabelText("No. WA atau email checkout")).toBeNull();
   });
 
   it("credentials_ready=true → panel retrieval kredensial tampil", async () => {
     mockFetch(orderPayload({ credentials_ready: true }));
     render(<OrderStatusPage />);
     await waitFor(() => expect(screen.getByText("Detail Akun Digital")).toBeTruthy());
-    expect(screen.getByLabelText("Nomor WhatsApp checkout")).toBeTruthy();
+    // Sejak 2026-09-25 verifikasi menerima No. WA atau email checkout.
+    expect(screen.getByLabelText("No. WA atau email checkout")).toBeTruthy();
+    expect(screen.getByText(/Terdaftar: 08213\*\*\*\*7434/)).toBeTruthy();
     expect(screen.queryByText("Pengiriman Produk")).toBeNull();
   });
 

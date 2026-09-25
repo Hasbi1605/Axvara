@@ -97,7 +97,7 @@ axvara/
 │   ├── produk/[slug]/          # PDP: server component SEO (metadata/JSON-LD/h1 D1) + client interaktif
 │   │   ├── checkout/       # Checkout revamp ala Sekalipay 2026-09-23 — ① Metode (QRIS auto-select) → ② Data minimal WA+Email wajib tanpa Nama (fallback prefix email) → S&K → 1 CTA; rail kanan DESKTOP ONLY (hidden lg:block, ringkasan+S&K+CTA), mobile accordion ringkasan + S&K kiri + sticky CTA; 1 handler submit
 │   ├── pesanan/[code]/         # Status + QRIS dinamis + polling lunas (dari checkout); pesanan/layout.tsx = noindex
-│   ├── lacak-pesanan/          # Lacak mandiri kode + WA via POST /api/orders/lookup + timeline + auto-refresh
+│   ├── lacak-pesanan/          # Lacak mandiri kode + No. WA/email via POST /api/orders/lookup + timeline + auto-refresh
 │   ├── admin/
 │   │   └── page.tsx             # Shell + modul admin berbasis query section
 │   ├── api/
@@ -316,7 +316,7 @@ CREATE TABLE store_settings (
 | GET/POST/PUT | /api/payment-methods[?id=] | Baca metode aktif / tambah bank / kelola rekening dan QRIS | public/admin |
 | GET/PUT | /api/store-settings | Baca identitas storefront / perbarui nama, kontak, footer, logo | public/admin |
 | POST | /api/orders | Verifikasi signed quote, buat pesanan idempotent, reservasi stok atomik | - |
-| POST | /api/orders/lookup | Lacak mandiri: verifikasi pasangan kode + WA (normalisasi 08/+62/62, constant-time), 404 generik anti-enumerasi, WA/email mask, rate-limit `orders:lookup` | - |
+| POST | /api/orders/lookup | Lacak mandiri: verifikasi pasangan kode + WA (normalisasi 08/+62/62, constant-time) atau email checkout (cocok penuh, huruf kecil; sejak 2026-09-25, field `contact`, field `wa` lama tetap diterima, helper `src/lib/order-contact.ts`), 404 generik anti-enumerasi, WA/email mask, rate-limit `orders:lookup` | - |
 | GET | /api/orders?code= | Cek status pesanan via code. WA/email dimask; `credentials_ready` (boolean) menandai detail akun WR sudah siap diambil sehingga storefront tahu kapan panel retrieval boleh tampil | - |
 | GET | /api/orders/:code | Kembaran segmen dari `?code=` untuk halaman pesanan yang sama. **Invarian (audit 2026-09-20): isinya WAJIB sepadan — `proof_url` TIDAK pernah ikut di kedua endpoint.** Nilai itu adalah kunci objek R2 privat yang hanya boleh dibaca admin lewat `/api/admin/bukti/*`; membocorkannya memberi penebak kode order nama berkas bukti bayar milik orang lain. Dikunci `tests/audit-2026-09-20.regression.test.ts` | - |
 | GET | /api/payments/qris/:code/image | Render PNG QRIS dinamis untuk invoice aktif | code order |
@@ -776,7 +776,7 @@ badge storefront menjanjikan "Kirim otomatis". Perubahan:
 - **Salinan isi terkirim** (`fulfillment_items.delivered_ciphertext/iv`). Isinya ciphertext
   pesan bersama atau unit stok yang disalin apa adanya saat kirim, jadi halaman pesanan tetap
   menampilkan isi yang sama walau pesan bersama diganti kemudian. `/api/orders/[code]/credentials`
-  (POST verifikasi 6 digit WA, GET capability token yang diverifikasi dulu) mengembalikan
+  (POST verifikasi 6 digit WA atau email checkout, GET capability token yang diverifikasi dulu) mengembalikan
   detail WR + salinan ini dengan `label` baris pesanan. `credentials_ready`
   (`GET /api/orders?code=`, `/api/orders/lookup`) dan `issueCredentialToken` kini juga
   menghitung salinan ini.
@@ -926,7 +926,10 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   `GET/POST/DELETE /api/admin/warung/exclusions`, `GET/PUT /api/admin/warung/markup`,
   `GET/POST /api/admin/warung/credentials` (retrieval + resend admin).
 - **Storefront:** `WrCredentialsPanel.tsx` di halaman pesanan (lunas): verifikasi
-  nomor WA checkout → tampilkan detail akun + capability token (sessionStorage).
+  No. WA atau email checkout (email sejak 2026-09-25; order tanpa email tidak pernah cocok) →
+  tampilkan detail akun + capability token (sessionStorage). Setelah checkout di tab yang sama
+  panel membuka otomatis sekali memakai kontak checkout (`sessionStorage`
+  `axvara-checkout-contact:<kode>` via `checkoutContactKey`, dihapus begitu dipakai).
   Panel HANYA dirender bila `credentials_ready === true` dari `GET /api/orders?code=`
   (flag boolean: ada `wr_order_links` `completed` + `wr_account_details`, dievaluasi
   hanya untuk order `lunas`, `.catch` → `false` pada D1 pra-0027). Order lunas tanpa
@@ -1391,7 +1394,7 @@ walaupun seluruh katalog gagal. Batch yang berhenti di batas budget
   event monotonik (completed tidak bisa diregresi failed terlambat) + event log.
 - Detail akun dienkripsi sebelum disimpan; decrypt hanya server-side saat delivery.
 - Pembeli web TIDAK bisa membuka kredensial hanya dengan kode order: verifikasi
-  6 digit WA checkout (sekali) atau capability token (30 hari, hash-only, revoke).
+  6 digit WA atau email checkout (sekali) atau capability token (30 hari, hash-only, revoke).
   Admin punya retrieval/resend fallback.
 - Exact-once: klaim atomik (UPDATE bersyarat, lease 5 mnt, fencing `request_sent_at`),
   idempotency `wr:order:variant:item`, dedup webhook `event_id`, admin retry CAS→409.
