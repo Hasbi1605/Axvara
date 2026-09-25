@@ -2,6 +2,7 @@
 // Admin-authenticated. Does NOT expose bot token.
 
 import { NextRequest, NextResponse } from "next/server";
+import { siteOrigin } from "@/lib/site-url";
 import { requireAdmin } from "@/lib/auth";
 import { setWebhook, getWebhookInfo, deleteWebhook, setMyCommands } from "@/lib/telegram/api";
 
@@ -12,7 +13,8 @@ export async function POST(request: NextRequest) {
   if (!admin) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const body = await request.json() as { action?: string };
-  const siteUrl = process.env.SITE_URL ?? "https://axvara.tech";
+  // SITE_URL bisa kosong di worker (§16.4): `??` menghasilkan URL webhook relatif.
+  const siteUrl = siteOrigin();
   const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
 

@@ -102,11 +102,16 @@ describe("non-WR kanal web: kirim otomatis lewat email", () => {
     expect(mail.html).toContain("/brand/axvara-email-mark.png");
     expect(mail.text).toContain("UNDANGAN-123");
     expect(fixture.sql.prepare("SELECT fulfillment_status FROM orders WHERE code=?").get("AXV-20260925-AAAAAAA1")?.fulfillment_status).toBe("delivered");
-    expect(await adminPings()).toHaveLength(0);
+    // Admin menerima satu notif "Lunas — Web" berstatus terkirim otomatis.
+    const [ping] = await adminPings();
+    expect(ping.text).toContain("Lunas — Web");
+    expect(ping.text).toContain("1 item terkirim otomatis ke email pembeli");
+    expect(ping.text).not.toContain("perlu dikirim");
 
     // Panggilan ulang (webhook ulang / konfirmasi admin) tidak mengirim apa pun lagi.
     await ensureFulfillmentForPaidOrder("AXV-20260925-AAAAAAA1");
     expect(emails).toHaveLength(1);
+    expect(await adminPings()).toHaveLength(1);
   });
 
   it("unique + email → unit stok terkirim, unit ditandai delivered, salinan = ciphertext unit", async () => {
@@ -139,6 +144,7 @@ describe("non-WR kanal web: kirim otomatis lewat email", () => {
     expect(pings).toHaveLength(1);
     expect(pings[0].text).toContain("AXV-20260925-AAAAAAA3");
     expect(pings[0].text).toContain("pembeli@contoh.test");
+    expect(pings[0].text).toContain("Lunas — Web · perlu dikirim admin");
     expect(pings[0].text).toContain("Kirim ke pembeli");
 
     await ensureFulfillmentForPaidOrder("AXV-20260925-AAAAAAA3");

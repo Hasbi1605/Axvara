@@ -489,6 +489,18 @@ export function webOrderAdminKeyboard(params: {
   };
 }
 
+/**
+ * Tombol notif "Lunas — Web". Tombol WA hanya bila nomor valid (62…), karena
+ * satu URL tombol yang ditolak Telegram menggagalkan seluruh pesan.
+ */
+export function webPaidAdminKeyboard(params: { customerWa: string; orderCode: string; siteUrl: string }): InlineKeyboardMarkup {
+  const rows: InlineKeyboardButton[][] = [];
+  const digits = params.customerWa.replace(/\D/g, "");
+  if (/^62\d{8,13}$/.test(digits)) rows.push([{ text: "💬 WA Pembeli", url: `https://wa.me/${digits}` }]);
+  rows.push([{ text: "🔧 Buka Pesanan", url: `${params.siteUrl}/admin?section=orders&q=${encodeURIComponent(params.orderCode)}` }]);
+  return { inline_keyboard: rows };
+}
+
 /** Hanya ditampilkan bersama pesan QR pertama yang sudah kedaluwarsa. */
 export function qrisExpiredKeyboard(orderCode: string): InlineKeyboardMarkup {
   return { inline_keyboard: [

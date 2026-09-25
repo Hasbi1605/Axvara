@@ -70,20 +70,24 @@ export function adminTelegramOrderPaidMessage(params: {
 }
 
 /**
- * Order WEB lunas yang punya item Made By Order / tanpa email (2026-09-25).
- * Dulu admin hanya menerima kabar order web saat DIBUAT (belum bayar).
+ * Notif admin "Lunas — Web" (2026-09-25, keputusan owner: web cukup notif
+ * lunas, tanpa "Order Baru"). Satu pesan per order, dikirim setelah upaya kirim
+ * pertama sehingga status pengirimannya sudah diketahui.
  */
-export function adminWebHandoverNeededMessage(params: {
+export function adminWebOrderPaidMessage(params: {
   orderCode: string;
   productNames: string;
   amount: number;
   customerName: string;
   customerEmail: string;
   customerWa: string;
+  paymentMethod: string;
+  needsAdmin: boolean;
+  deliveryLines: string[];
 }): string {
-  const { orderCode, productNames, amount, customerName, customerEmail, customerWa } = params;
+  const { orderCode, productNames, amount, customerName, customerEmail, customerWa, paymentMethod, needsAdmin, deliveryLines } = params;
   return [
-    "🛠 <b>Lunas — Web, perlu dikirim admin</b>",
+    needsAdmin ? "🛠 <b>Lunas — Web · perlu dikirim admin</b>" : "✅ <b>Lunas — Web</b>",
     "━━━━━━━━━━━━━━━━━━━━━",
     "",
     `📦 ${escapeHtml(truncate(productNames, 120))}`,
@@ -92,8 +96,9 @@ export function adminWebHandoverNeededMessage(params: {
     `👤 ${escapeHtml(truncate(customerName || "—", 50))}`,
     `📧 ${escapeHtml(truncate(customerEmail || "— tanpa email", 80))}`,
     `📱 ${escapeHtml(truncate(customerWa || "—", 30))}`,
+    `💳 ${escapeHtml((paymentMethod || "qris").toUpperCase())}`,
     "",
-    "Panel → Pesanan → <b>Kirim ke pembeli</b>",
+    ...deliveryLines.map((line) => escapeHtml(line)),
   ].join("\n");
 }
 
@@ -106,30 +111,6 @@ export function adminDeliveryFailedNotification(orderCode: string, error: string
     `❌ ${escapeHtml(truncate(error, 200))}`,
     "",
     "Buka panel admin untuk retry / manual",
-  ].join("\n");
-}
-
-export function adminWebOrderNotification(params: {
-  orderCode: string;
-  productNames: string;
-  amount: number;
-  customerName: string;
-  customerWa: string;
-  paymentMethod: string;
-}): string {
-  const { orderCode, productNames, amount, customerName, customerWa, paymentMethod } = params;
-  return [
-    "🔔 <b>Order Baru — Web</b>",
-    "━━━━━━━━━━━━━━━━━━━━━",
-    "",
-    `📦 ${escapeHtml(truncate(productNames, 120))}`,
-    `🔢 <code>${escapeHtml(orderCode)}</code>`,
-    `💰 ${formatRupiah(amount)}`,
-    `👤 ${escapeHtml(truncate(customerName, 50))}`,
-    `📱 ${escapeHtml(customerWa)}`,
-    `💳 ${escapeHtml(paymentMethod.toUpperCase())}`,
-    "",
-    "Cek pesanan di panel admin",
   ].join("\n");
 }
 

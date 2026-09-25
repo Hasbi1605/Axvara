@@ -6,7 +6,7 @@ import { sendMessage } from "@/lib/telegram/api";
 import {
   adminTelegramOrderCreatedMessage,
   adminTelegramOrderPaidMessage,
-  adminWebHandoverNeededMessage,
+  adminWebOrderPaidMessage,
   adminWhatsAppOrderCreatedMessage,
   adminWhatsAppOrderPaidMessage,
   orderPaidMessage,
@@ -16,7 +16,9 @@ import {
   orderPaidKeyboard,
   telegramOrderAdminKeyboard,
   webOrderAdminKeyboard,
+  webPaidAdminKeyboard,
 } from "@/lib/telegram/keyboards";
+import { siteOrigin } from "@/lib/site-url";
 
 type OrderItem = {
   name?: string;
@@ -319,24 +321,45 @@ export async function notifyTelegramPaidAdmin(orderCode: string, database: Datab
   return true;
 }
 
+/** Ringkasan status kirim order web untuk notif admin (dibaca setelah upaya kirim pertama). */
+export function summarizeWebDelivery(items: Row[]): { needsAdmin: boolean; lines: string[] } {
+  let auto = 0, manualDone = 0, needsAdmin = 0, inProgress = 0, wr = 0;
+  for (const item of items) {
+    const status = String(item.status ?? "");
+    if (item.wr_link_id != null) wr++;
+    else if (status === "delivered") {
+      if (String(item.delivered_message_id ?? "").startsWith("item:")) auto++;
+      else manualDone++;
+    }
+    else if (status === "manual_required" || status === "failed") needsAdmin++;
+    else inProgress++;
+  }
+  const lines: string[] = [];
+  if (needsAdmin) lines.push(`🛠 ${needsAdmin} item perlu dikirim: Panel → Pesanan → Kirim ke pembeli`);
+  if (auto) lines.push(`📧 ${auto} item terkirim otomatis ke email pembeli`);
+  if (manualDone) lines.push(`✅ ${manualDone} item sudah diserahkan admin`);
+  if (inProgress) lines.push(`⏳ ${inProgress} item sedang dikirim otomatis`);
+  if (wr) lines.push(`🤖 ${wr} item diproses otomatis lewat Warung Rebahan`);
+  if (!lines.length) lines.push("⏳ Menunggu proses pengiriman");
+  return { needsAdmin: needsAdmin > 0, lines };
+}
+
 /**
- * Ping admin saat order WEB lunas punya item yang harus diserahkan manual
- * (Made By Order non-WR, atau order lama tanpa email). Sekali per order,
- * idempoten lewat buyer_notice_log (kunci `admin-handover:<kode>`, kanal
- * telegram); baris `failed` boleh dicoba ulang pada pemanggilan berikutnya.
+ * Notif admin "Lunas — Web" (2026-09-25). Dulu order web hanya mengirim
+ * "Order Baru — Web" saat dibuat, dengan tombol `SITE_URL ?? fallback` yang
+ * menjadi URL relatif ketika SITE_URL kosong (§16.4) sehingga Telegram menolak
+ * seluruh pesan, dan hasil kirimnya diabaikan. Kini: sekali per order lewat
+ * buyer_notice_log (kunci `admin-paid:<kode>`, kanal telegram, kolom `error`
+ * menyimpan alasan gagal), URL tombol selalu absolut (`siteOrigin`), dan bila
+ * Telegram tetap menolak tombol (400 Bad Request) pesan dikirim ulang tanpa
+ * tombol. Cron mengulang yang gagal (retryPendingTelegramNotifications).
  */
-export async function notifyAdminWebHandoverNeeded(orderCode: string, database: DatabaseAccess = createDatabaseAccess()): Promise<boolean> {
-  const { queryFirst } = database;
+export async function notifyWebPaidAdmin(orderCode: string, database: DatabaseAccess = createDatabaseAccess()): Promise<boolean> {
+  const { queryFirst, queryAll } = database;
   const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
   if (!adminChatId || !telegramNotificationsConfigured()) return false;
-  const pending = await queryFirst(
-    `SELECT COUNT(*) AS n FROM fulfillment_items
-     WHERE order_code=? AND status='manual_required' AND wr_link_id IS NULL`,
-    orderCode,
-  ).catch(() => null);
-  if (!Number(pending?.n ?? 0)) return true;
   const order = await queryFirst(
-    `SELECT o.code, o.items, o.customer_name, o.customer_email, o.customer_wa, o.subtotal,
+    `SELECT o.code, o.items, o.customer_name, o.customer_email, o.customer_wa, o.subtotal, o.payment_method,
             (SELECT pt.payable_amount FROM payment_transactions pt WHERE pt.order_code=o.code
               ORDER BY pt.id DESC LIMIT 1) AS payable_amount
      FROM orders o
@@ -344,26 +367,51 @@ export async function notifyAdminWebHandoverNeeded(orderCode: string, database: 
     orderCode,
   ).catch(() => null);
   if (!order) return true;
+  const items = await queryAll(
+    `SELECT status, delivered_message_id, wr_link_id FROM fulfillment_items WHERE order_code=?`,
+    orderCode,
+  ).catch(() => [] as Row[]);
   const { claimNotice, settleNotice } = await import("@/lib/notify-buyer");
-  const key = `admin-handover:${orderCode}`;
+  const key = `admin-paid:${orderCode}`;
   if (!(await claimNotice(database, key, orderCode, "telegram"))) return true;
-  const siteUrl = (process.env.SITE_URL || "https://axvara.tech").replace(/\/$/, "");
-  const sent = await sendMessage({
+  const delivery = summarizeWebDelivery(items);
+  const text = adminWebOrderPaidMessage({
+    orderCode: String(order.code),
+    productNames: productNames(order.items),
+    amount: Number(order.payable_amount ?? order.subtotal ?? 0),
+    customerName: String(order.customer_name || ""),
+    customerEmail: String(order.customer_email || ""),
+    customerWa: String(order.customer_wa || ""),
+    paymentMethod: String(order.payment_method || "qris"),
+    needsAdmin: delivery.needsAdmin,
+    deliveryLines: delivery.lines,
+  });
+  const failed = (description: string) => ({ ok: false as const, description });
+  let sent = await sendMessage({
     chat_id: adminChatId,
-    text: adminWebHandoverNeededMessage({
-      orderCode: String(order.code),
-      productNames: productNames(order.items),
-      amount: Number(order.payable_amount ?? order.subtotal ?? 0),
-      customerName: String(order.customer_name || ""),
-      customerEmail: String(order.customer_email || ""),
-      customerWa: String(order.customer_wa || ""),
-    }),
+    text,
     parse_mode: "HTML",
-    reply_markup: telegramOrderAdminKeyboard({ orderCode: String(order.code), siteUrl }),
-  }).catch(() => ({ ok: false as const, description: "telegram_send_failed" }));
-  await settleNotice(database, key, Boolean(sent?.ok), undefined, (sent as { description?: string })?.description);
+    reply_markup: webPaidAdminKeyboard({ customerWa: String(order.customer_wa || ""), orderCode: String(order.code), siteUrl: siteOrigin() }),
+  }).catch(() => failed("telegram_send_failed"));
+  let note: string | null = null;
+  // Hanya 400 (pesan ditolak, jadi pasti belum terkirim) yang dikirim ulang;
+  // timeout bisa saja sudah sampai, jadi tidak diulang di sini agar tidak dobel.
+  if (!sent?.ok && String(sent?.description ?? "").startsWith("Bad Request")) {
+    const plain = await sendMessage({ chat_id: adminChatId, text, parse_mode: "HTML" }).catch(() => failed("telegram_send_failed"));
+    if (plain?.ok) note = `terkirim tanpa tombol: ${String(sent?.description ?? "")}`;
+    sent = plain;
+  }
+  await settleNotice(database, key, Boolean(sent?.ok), undefined, sent?.ok ? undefined : String(sent?.description ?? "telegram_send_failed"));
+  if (note) {
+    await database.execRun(`UPDATE buyer_notice_log SET error=? WHERE idempotency_key=?`, note.slice(0, 300), key).catch(() => undefined);
+  }
   return Boolean(sent?.ok);
 }
+
+/** Order web lunas dalam 6 jam terakhir yang notif adminnya belum terkirim (retry cron). */
+export const WEB_PAID_ADMIN_PENDING_WHERE = `o.sales_channel='web' AND o.status='lunas' AND o.payment_status='paid'
+  AND julianday(COALESCE(o.paid_at, o.updated_at)) >= julianday('now','-6 hours')
+  AND NOT EXISTS(SELECT 1 FROM buyer_notice_log b WHERE b.idempotency_key='admin-paid:' || o.code AND b.status='sent')`;
 
 /** Retry best-effort Telegram notifications from the five-minute operations cron.
  *
@@ -373,17 +421,21 @@ export async function notifyAdminWebHandoverNeeded(orderCode: string, database: 
  * jenis hanya bila antreannya > 0 (hemat query baca kosong, RR3-01).
  */
 export async function retryPendingTelegramNotifications(limit = 8, only?: {
-  created?: boolean; paid?: boolean; paidAdmin?: boolean;
+  created?: boolean; paid?: boolean; paidAdmin?: boolean; paidAdminWeb?: boolean;
 }, database: DatabaseAccess = createDatabaseAccess()): Promise<{
   created: number;
   paid: number;
   paidAdmin: number;
+  paidAdminWeb: number;
 }> {
   const { queryAll } = database;
   const want = {
     created: only?.created ?? true,
     paid: only?.paid ?? true,
     paidAdmin: only?.paidAdmin ?? true,
+    // Pemanggil lama yang memberi `only` tanpa kunci ini tidak ikut membaca
+    // antrean web (menjaga anggaran query cron, RR3-01).
+    paidAdminWeb: only ? only.paidAdminWeb === true : true,
   };
   let created = 0;
   let paid = 0;
@@ -440,7 +492,21 @@ export async function retryPendingTelegramNotifications(limit = 8, only?: {
       } catch { /* Retry the same durable marker on the next cron run. */ }
     }
   }
-  return { created, paid, paidAdmin };
+  let paidAdminWeb = 0;
+  if (want.paidAdminWeb && database.canSpend(1)) {
+    const pendingWeb = await queryAll(
+      `SELECT o.code FROM orders o WHERE ${WEB_PAID_ADMIN_PENDING_WHERE}
+       ORDER BY COALESCE(o.paid_at, o.updated_at) ASC LIMIT ?`,
+      limit,
+    ).catch(() => [] as Row[]);
+    for (const order of pendingWeb) {
+      if (!database.canSpend(7)) break;
+      try {
+        if (await notifyWebPaidAdmin(String(order.code), database)) paidAdminWeb++;
+      } catch { /* Ledger tetap failed/sending; run berikutnya mencoba lagi. */ }
+    }
+  }
+  return { created, paid, paidAdmin, paidAdminWeb };
 }
 
 // Reminder order pending Telegram: maksimal 2x per order (interval ≥60 mnt,

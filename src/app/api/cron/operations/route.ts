@@ -16,7 +16,7 @@ import {
 import { sendMessage } from "@/lib/telegram/api";
 import { orderExpiredMessage } from "@/lib/telegram/messages";
 import { QRIS_EXPIRY_NOTICE_WHERE, sendQrisExpiryNotifications } from "@/lib/payments/qris-expiry-notifications";
-import { retryPendingTelegramNotifications, sendPendingOrderReminders } from "@/lib/telegram/order-notifications";
+import { retryPendingTelegramNotifications, sendPendingOrderReminders, WEB_PAID_ADMIN_PENDING_WHERE } from "@/lib/telegram/order-notifications";
 import { retryInvoicePendingTelegramInvoices } from "@/lib/telegram/invoice-retry";
 import { constantTimeEqual } from "@/lib/security";
 import { processDueWhatsAppOutbox } from "@/lib/whatsapp/outbox";
@@ -272,6 +272,7 @@ export async function POST(request: NextRequest) {
         (SELECT COUNT(*) FROM orders WHERE sales_channel IN ('telegram','whatsapp') AND telegram_order_notified_at IS NULL) AS created,
         (SELECT COUNT(*) FROM orders WHERE sales_channel='telegram' AND status='lunas' AND payment_status='paid' AND telegram_paid_notified_at IS NULL) AS paid,
         (SELECT COUNT(*) FROM orders WHERE sales_channel IN ('telegram','whatsapp') AND status='lunas' AND payment_status='paid' AND telegram_paid_admin_notified_at IS NULL) AS paid_admin,
+        (SELECT COUNT(*) FROM orders o WHERE ${WEB_PAID_ADMIN_PENDING_WHERE}) AS paid_admin_web,
         (SELECT COUNT(*) FROM fulfillment_jobs WHERE status='sending') AS stale`,
     ).catch(() => null);
     // DB lama tanpa tabel WR: query terpisah gagal → 0 (bukan null-kan semua).
@@ -311,9 +312,10 @@ export async function POST(request: NextRequest) {
     const pendingCreated = Number(queueRow?.created ?? 0);
     const pendingPaid = Number(queueRow?.paid ?? 0);
     const pendingPaidAdmin = Number(queueRow?.paid_admin ?? 0);
+    const pendingPaidAdminWeb = Number(queueRow?.paid_admin_web ?? 0);
     const pendingStale = Number(queueRow?.stale ?? 0);
     // pendingNotify = seluruh jenis pekerjaan notifikasi (RR3-09).
-    const pendingNotify = pendingCreated + pendingPaid + pendingPaidAdmin;
+    const pendingNotify = pendingCreated + pendingPaid + pendingPaidAdmin + pendingPaidAdminWeb;
     const pendingWrDue = wrTablesReady ? Number(wrDueRow?.wr_due ?? 0) : 0;
     const pendingWrDelivery = wrDeliveryReady ? Number(wrDeliveryRow?.wr_delivery_due ?? 0) : 0;
     const pendingWrBlocked = wrTablesReady ? Number((wrBlockedRow as Record<string, unknown> | null)?.wr_blocked ?? 0) : 0;
@@ -625,12 +627,13 @@ export async function POST(request: NextRequest) {
         const units = Math.min(FULFILLMENT_PER_RUN, pendingNotify);
         if (budget.fits(1 + COST_PER_NOTIFICATION * units) && hasTime(TIME_TELEGRAM_BATCH)) {
           const telegramNotifications = await retryPendingTelegramNotifications(FULFILLMENT_PER_RUN, {
-            created: pendingCreated > 0, paid: pendingPaid > 0, paidAdmin: pendingPaidAdmin > 0,
+            created: pendingCreated > 0, paid: pendingPaid > 0, paidAdmin: pendingPaidAdmin > 0, paidAdminWeb: pendingPaidAdminWeb > 0,
           }, database);
 
           results.telegram_order_notifications_retried = telegramNotifications.created;
           results.telegram_paid_notifications_retried = telegramNotifications.paid;
           results.telegram_paid_admin_notifications_retried = telegramNotifications.paidAdmin;
+          results.telegram_paid_admin_web_notifications_retried = telegramNotifications.paidAdminWeb;
         } else {
           deferredOut.push("notify");
         }

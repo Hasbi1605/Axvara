@@ -160,6 +160,9 @@ masuk grup `Axvara_Notif`; setelah lunas grup menerima update `Lunas — Telegra
 agar tidak tertinggal status menunggu bayar. Order WhatsApp ikut jalur yang sama:
 order baru mengirim `Order Baru — WhatsApp` dan order lunas mengirim `Lunas — WhatsApp`
 (via QRIS Hook / retry admin / approve bukti, migrasi 0023, tanpa replay riwayat lama).
+Order web hanya dinotif saat lunas (2026-09-25): `Lunas — Web` memuat status kirimnya
+(terkirim otomatis / perlu **Kirim ke pembeli** / diproses Warung Rebahan), sekali per order,
+dengan retry cron 6 jam; notif `Order Baru — Web` dihapus.
 Penanda D1 + cron mencegah duplikat sekaligus me-retry kegagalan kirim.
 Dokumen `docs/TELEGRAM-BOT-KLIKQRIS-PLAN.md` hanya arsip provider lama dan telah digantikan
 oleh mesin `src/lib/payments/dana-qris.ts`, ledger D1, route QR image, dan QRIS Hook DANA.

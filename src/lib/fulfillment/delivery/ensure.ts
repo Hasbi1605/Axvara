@@ -59,9 +59,9 @@ export async function ensureFulfillmentForPaidOrder(orderCode: string): Promise<
  * (Made By Order, kirim tertunda/gagal, AUTO_FULFILLMENT mati, early return
  * materialisasi) tanda terima tetap dikirim. Idempoten lewat buyer_notice_log.
  *
- * Admin: order web lunas yang punya item `manual_required` memicu ping
- * Telegram sekali. Dulu admin hanya dikabari saat order DIBUAT (sebelum
- * bayar), jadi Made By Order web yang sudah lunas bisa terlewat.
+ * Admin: satu notif "Lunas — Web" per order berisi status kirimnya
+ * (terkirim otomatis / perlu Kirim ke pembeli / diproses WR). Keputusan owner
+ * 2026-09-25: order web cukup dinotif saat lunas, tanpa "Order Baru".
  */
 async function followUpWebOrder(orderCode: string): Promise<void> {
   const database = createDatabaseAccess();
@@ -73,9 +73,9 @@ async function followUpWebOrder(orderCode: string): Promise<void> {
     }
   } catch { /* kabar pembeli best-effort; pembayaran tetap sah */ }
   try {
-    const { notifyAdminWebHandoverNeeded } = await import("@/lib/telegram/order-notifications");
-    await notifyAdminWebHandoverNeeded(orderCode, database);
-  } catch { /* ping admin best-effort; antrean panel tetap menampilkan order */ }
+    const { notifyWebPaidAdmin } = await import("@/lib/telegram/order-notifications");
+    await notifyWebPaidAdmin(orderCode, database);
+  } catch { /* ping admin best-effort; cron mengulang, antrean panel tetap menampilkan order */ }
 }
 
 async function materializeAndDeliver(order: Row, orderCode: string, autoFulfillmentEnabled: boolean): Promise<boolean> {

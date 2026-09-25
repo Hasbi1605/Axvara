@@ -272,10 +272,8 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Keep the request alive until Telegram accepts the notification attempt.
-  // Failure stays isolated inside notifyAdminTelegram and never rolls back the order.
-  const itemsForNotif = quote.items as { name: string; price: number; qty: number }[];
-  await notifyAdminTelegram({ code, customerName: fallbackName, customerWa: wa, items: itemsForNotif, subtotal: qrisInvoice?.payableAmount ?? quote.subtotal, paymentMethod: pm });
+  // Tanpa notif "Order Baru" ke admin (keputusan owner 2026-09-25): order web
+  // dinotif sekali saat LUNAS lewat notifyWebPaidAdmin (ensureFulfillmentForPaidOrder).
 
   return NextResponse.json({
     code,
@@ -288,50 +286,6 @@ export async function POST(req: NextRequest) {
       expires_at: qrisInvoice.expiresAt,
     } : null,
   }, { status: 201 });
-}
-
-/** Best-effort Telegram notification to admin for web orders */
-async function notifyAdminTelegram(params: {
-  code: string;
-  customerName: string;
-  customerWa: string;
-  items: { name: string; price: number; qty: number }[];
-  subtotal: number;
-  paymentMethod: string;
-}) {
-  const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
-  const botToken = process.env.TELEGRAM_BOT_TOKEN;
-  if (!adminChatId || !botToken || process.env.TELEGRAM_BOT_ENABLED !== "true") return;
-
-  try {
-    const { adminWebOrderNotification } = await import("@/lib/telegram/messages");
-    const { webOrderAdminKeyboard } = await import("@/lib/telegram/keyboards");
-    const { sendMessage } = await import("@/lib/telegram/api");
-
-    const productNames = params.items.map((i) => `${i.name} ×${i.qty}`).join(", ");
-    const siteUrl = process.env.SITE_URL ?? "https://axvara.tech";
-
-    await sendMessage({
-      chat_id: adminChatId,
-      text: adminWebOrderNotification({
-        orderCode: params.code,
-        productNames,
-        amount: params.subtotal,
-        customerName: params.customerName,
-        customerWa: params.customerWa,
-        paymentMethod: params.paymentMethod,
-      }),
-      parse_mode: "HTML",
-      reply_markup: webOrderAdminKeyboard({
-        customerWa: params.customerWa,
-        customerName: params.customerName,
-        orderCode: params.code,
-        siteUrl,
-      }),
-    });
-  } catch {
-    // Admin notification is best-effort — never block order response
-  }
 }
 
 export async function GET(req: NextRequest) {

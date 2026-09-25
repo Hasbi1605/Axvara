@@ -792,11 +792,8 @@ badge storefront menjanjikan "Kirim otomatis". Perubahan:
   Diserahkan". Template per varian disunting di panel varian Made By Order
   (`ProductVariantRows`) dan disimpan lewat `POST /api/admin/fulfillment`
   `action:"set_handover_template"` (≤2000; kosong = hapus).
-- **Ping admin saat order web lunas perlu diserahkan.** `notifyAdminWebHandoverNeeded`
-  (`order-notifications.ts`) dipanggil `ensureFulfillmentForPaidOrder` untuk kanal web bila
-  ada item `manual_required` non-WR. Ping dikirim sekali per order lewat `buyer_notice_log`
-  kunci `admin-handover:<kode>` (kanal telegram); baris `failed` dicoba lagi pada pemanggilan
-  berikutnya. Dulu admin hanya dikabari saat order web DIBUAT.
+- **Notif admin "Lunas — Web"** (menggantikan ping serah terima terpisah, 2026-09-25): lihat
+  subbagian berikut.
 - **Semua email pembeli bermerek.** `renderBrandedNotice` (shell Midnight + Cyan, logo,
   tombol Lihat Pesanan, blok bantuan WA) dipakai untuk tanda terima, serah terima, bukti
   ditolak, bukti menunggu Hook, pengiriman tertunda, dan pengingat QRIS kedaluwarsa. Isi di-escape
@@ -809,6 +806,33 @@ badge storefront menjanjikan "Kirim otomatis". Perubahan:
   `tests/nonwr-handover-content.integration.test.ts`, `tests/admin-handover-dialog.behavior.test.tsx`,
   dan `tests/nonwr-delivery-copy.test.tsx`. Item web `manual_required` lama di produksi tidak
   dikirim ulang otomatis; admin menyelesaikannya lewat Kirim ke pembeli.
+
+### Notif admin order web: "Lunas — Web" (2026-09-25)
+
+Laporan owner: order web tidak pernah muncul di grup `Axvara_Notif`, order Telegram muncul.
+Notif lama "Order Baru — Web" (`POST /api/orders`) membangun tombol dengan
+`SITE_URL ?? fallback`. SITE_URL kosong di worker (§16.4), jadi tombol "Panel Admin" menjadi
+URL relatif dan Telegram menolak SELURUH pesan. Hasil kirim diabaikan: tanpa log, penanda,
+atau retry. Notif Telegram/WA memakai `||` sehingga tetap jalan.
+- Keputusan owner: order web **hanya dinotif saat lunas**. "Order Baru — Web" dihapus dari
+  `POST /api/orders` (11 dari 20 order web dua minggu terakhir tidak dibayar).
+- `notifyWebPaidAdmin` (`order-notifications.ts`) dipanggil `ensureFulfillmentForPaidOrder`
+  setelah upaya kirim pertama, sehingga pesannya memuat status kirim (`summarizeWebDelivery`):
+  jumlah item terkirim otomatis ke email, perlu **Kirim ke pembeli**, sudah diserahkan admin,
+  sedang dikirim, atau diproses Warung Rebahan. Judulnya "Lunas — Web", atau "Lunas — Web ·
+  perlu dikirim admin" bila ada item `manual_required`/`failed`.
+- Sekali per order lewat `buyer_notice_log` kunci `admin-paid:<kode>` (kanal telegram). Kolom
+  `error` menyimpan alasan penolakan Telegram, jadi kegagalan berikutnya bisa dibaca di D1.
+- URL tombol lewat `siteOrigin()` (`src/lib/site-url.ts`), selalu absolut. Tombol WA
+  (`webPaidAdminKeyboard`) hanya dipasang untuk nomor `62…` yang valid. Bila Telegram tetap
+  menolak tombol (400 Bad Request), pesan dikirim ulang **tanpa tombol**. Timeout tidak diulang
+  seketika (pesan bisa saja sudah sampai); cron yang mengulang.
+- Cron `operations` (fase notify) menghitung `paid_admin_web` dengan
+  `WEB_PAID_ADMIN_PENDING_WHERE`: order web lunas dalam 6 jam terakhir tanpa ledger `sent`.
+  `retryPendingTelegramNotifications` menerima `paidAdminWeb`; pemanggil lama yang memberi
+  `only` tanpa kunci ini tidak membaca antrean web (anggaran query RR3-01). Order lama
+  (>6 jam) tidak pernah dikirim ulang, jadi deploy tidak membanjiri grup.
+- Dikunci oleh `tests/web-paid-admin-notif.integration.test.ts` (termasuk cron sungguhan).
 
 ## 14. Varian Produk Terpusat dan Bot Grup WhatsApp AXVARA (Terimplementasi)
 
@@ -1451,6 +1475,9 @@ recovery butuh instruksi eksplisit pemilik.
 tidak menolong → URL relatif → Telegram "URL host is empty". Pola wajib untuk
 URL absolut: `const raw=(process.env.SITE_URL??"").trim().replace(/\/$/,"");
 const site=/^https?:\/\//i.test(raw)?raw:"https://axvara.tech"`.
+Sejak 2026-09-25 pola ini tersedia sebagai `siteOrigin()` (`src/lib/site-url.ts`) dan dipakai
+notif "Lunas — Web" serta setup webhook Telegram (`/api/admin/telegram/setup`). Kode baru yang
+membuat URL absolut di server wajib memakainya.
 
 ### 16.5 Ekosistem 5 folder (detail di masing-masing AGENTS.md)
 `axvara` (toko) · `axvara-wa-gateway` (WA, akun #1) · `axvara-qris-gateway`
