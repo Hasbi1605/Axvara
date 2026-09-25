@@ -322,7 +322,7 @@ CREATE TABLE store_settings (
 | GET/PUT | /api/store-settings | Baca identitas storefront / perbarui nama, kontak, footer, logo | public/admin |
 | POST | /api/orders | Verifikasi signed quote, buat pesanan idempotent, reservasi stok atomik | - |
 | POST | /api/orders/lookup | Lacak mandiri: verifikasi pasangan kode + WA (normalisasi 08/+62/62, constant-time) atau email checkout (cocok penuh, huruf kecil; sejak 2026-09-25, field `contact`, field `wa` lama tetap diterima, helper `src/lib/order-contact.ts`), 404 generik anti-enumerasi, WA/email mask, rate-limit `orders:lookup` | - |
-| GET | /api/orders?code= | Cek status pesanan via code. WA/email dimask; `credentials_ready` (boolean) menandai detail akun WR sudah siap diambil sehingga storefront tahu kapan panel retrieval boleh tampil | - |
+| GET | /api/orders?code= | Cek status pesanan via code. WA/email dimask; flag boolean dari satu query gabungan (hanya order `lunas`): `credentials_ready` = detail akun (WR atau isi produk non-WR) sudah siap diambil sehingga storefront tahu kapan panel retrieval boleh tampil, `queued_delivery` = ada baris antrean (Made By Order), `instant_delivery` (2026-09-25) = SEMUA baris dikirim dari stok sendiri (varian non-WR `shared`/`unique`) sehingga halaman memeriksa rapat; plus `fulfillment_status` | - |
 | GET | /api/orders/:code | Kembaran segmen dari `?code=` untuk halaman pesanan yang sama. **Invarian (audit 2026-09-20): isinya WAJIB sepadan — `proof_url` TIDAK pernah ikut di kedua endpoint.** Nilai itu adalah kunci objek R2 privat yang hanya boleh dibaca admin lewat `/api/admin/bukti/*`; membocorkannya memberi penebak kode order nama berkas bukti bayar milik orang lain. Dikunci `tests/audit-2026-09-20.regression.test.ts` | - |
 | GET | /api/payments/qris/:code/image | Render PNG QRIS dinamis untuk invoice aktif | code order |
 | POST | /api/payments/qris/:code/reissue | Terbitkan QRIS baru untuk order yang masih hidup tetapi QR-nya sudah kedaluwarsa. Hanya boleh saat invoice lama SUDAH mati — syarat itulah yang mencegah pemegang kode order lain membatalkan QR yang sedang dipakai. Maks 3x/order, rate limit 5/menit/IP | code order |
@@ -804,7 +804,9 @@ badge storefront menjanjikan "Kirim otomatis". Perubahan:
   ditolak, bukti menunggu Hook, pengiriman tertunda, dan pengingat QRIS kedaluwarsa. Isi di-escape
   dan tanpa emoji.
 - **Teks pembeli.** Blok "Pengiriman Produk" di `/pesanan/[code]` menyebut email sebagai
-  tujuan (WA hanya untuk order lama tanpa email). PDP menampilkan "Tergantung varian" untuk
+  tujuan (WA hanya untuk order lama tanpa email); sejak 2026-09-25 produk kirim otomatis
+  menampilkan "Mengirim produkmu…" dan detailnya dalam hitungan detik (lihat Storefront di
+  bagian Warung Rebahan). PDP menampilkan "Tergantung varian" untuk
   varian campuran sebelum pembeli memilih. Dulu ringkasannya mengikuti varian pertama, jadi
   Canva tampil "Kirim otomatis" walau 2 dari 3 variannya Made By Order.
 - Dikunci oleh `tests/nonwr-web-delivery.integration.test.ts`,
@@ -933,16 +935,30 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
 - **Storefront:** `WrCredentialsPanel.tsx` di halaman pesanan (lunas): verifikasi
   No. WA atau email checkout (email sejak 2026-09-25; order tanpa email tidak pernah cocok) →
   tampilkan detail akun + capability token (sessionStorage). Setelah checkout di tab yang sama
-  panel membuka otomatis sekali memakai kontak checkout (`sessionStorage`
-  `axvara-checkout-contact:<kode>` via `checkoutContactKey`, dihapus begitu dipakai).
+  panel membuka otomatis memakai kontak checkout (`sessionStorage`
+  `axvara-checkout-contact:<kode>` via `checkoutContactKey`). Sejak 2026-09-25 kontak itu
+  TIDAK dihapus saat dipakai dan bertahan sampai tab ditutup: dulu muat ulang di tengah
+  verifikasi pertama membuat token tidak pernah tersimpan (server tidak menerbitkan token
+  kedua, `issueCredentialToken` idempoten) sehingga panel kembali ke form kosong. Token
+  tersimpan yang ditolak server (401/403) dibuang lalu panel jatuh ke kontak checkout;
+  429/5xx/jaringan tidak membuang token.
   Panel HANYA dirender bila `credentials_ready === true` dari `GET /api/orders?code=`
-  (flag boolean: ada `wr_order_links` `completed` + `wr_account_details`, dievaluasi
-  hanya untuk order `lunas`, `.catch` → `false` pada D1 pra-0027). Order lunas tanpa
-  kredensial (fulfillment manual) mendapat blok statis **Pengiriman Produk** berisi
-  tujuan pengiriman (WA + email checkout tersamar) — bukan form verifikasi yang pasti
-  gagal `not_ready`. Selama `lunas && !credentials_ready`, halaman mem-poll
-  `GET /api/orders?code=` tiap 20 dtk maksimal 30 kali (±10 mnt) agar panel muncul
-  sendiri tanpa reload; retrieval tetap wajib verifikasi WA/capability token.
+  (flag boolean: ada `wr_order_links` `completed` + `wr_account_details` ATAU item non-WR
+  `delivered` bersalinan, dievaluasi hanya untuk order `lunas`, `.catch` → `false` pada D1
+  pra-0027). Order lunas tanpa kredensial mendapat blok **Pengiriman Produk** berisi
+  tujuan pengiriman (email checkout tersamar; WA hanya order lama tanpa email) — bukan
+  form verifikasi yang pasti gagal `not_ready`. Teksnya, berurutan:
+  `fulfillment_status='delivered'` → "Produk sudah dikirim"; `queued_delivery` → Made By
+  Order + plafon 12 jam; `instant_delivery` + `manual_required` → "sedang disiapkan admin"
+  + plafon 12 jam; `instant_delivery` belum selesai → "Mengirim produkmu…" (spinner), lewat
+  ±30 dtk → "butuh waktu lebih lama"; selain itu (produk WR) → estimasi 5–15 menit.
+  Selama `lunas && !credentials_ready`, halaman mem-poll `GET /api/orders?code=`: order
+  `instant_delivery` yang belum `delivered`/`manual_required`/`failed` dicek rapat dulu
+  2 dtk ×5 lalu 5 dtk ×4 (±30 dtk, 9 permintaan — tetap di bawah `orders:lookup` 20/mnt
+  walau bertemu sisa polling pending 5 dtk; di produksi item terkirim 0–4 dtk setelah
+  lunas), lalu tiap 20 dtk maksimal 30 kali (±10 mnt); antrean dan kirim otomatis yang
+  diserahkan ke admin hanya 3 percobaan. Retrieval tetap wajib verifikasi WA/email atau
+  capability token.
   Display dinormalisasi di USE-time via `normalizeAccountDetailsForDisplay`
   (2026-09-18 sore, live): data lama tersimpan sebagai JSON mentah
   `{"product":..,"details":"email:..\r\npassword:.."}` diformat rapi di SEMUA
@@ -965,8 +981,8 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   checklist ganda sejak 2026-09-19) dan checkout (blok "Made By Order"
   dari flag `queued_delivery` per baris di respons quote; kalimat ETA modal
   dihapus 2026-09-19). `GET /api/orders?code=`
-  mengirim `queued_delivery` (satu query gabungan dengan `credentials_ready`,
-  memakai `json_each(orders.items)`), dan halaman pesanan memakainya untuk memilih
+  mengirim `queued_delivery` dan `instant_delivery` (satu query gabungan dengan
+  `credentials_ready`, CTE `lines` dari `json_each(orders.items)`), dan halaman pesanan memakainya untuk memilih
   teks serta memperpendek polling ke 3 percobaan (polling tidak mungkin menutup
   12 jam — kabarnya lewat WA/email). Nama supplier tidak pernah muncul di copy
   pembeli; keterangan "third-party independen" DIPERTAHANKAN di `/garansi-replace`

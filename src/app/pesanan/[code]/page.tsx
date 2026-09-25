@@ -4,7 +4,7 @@ export const runtime = "edge";
 
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { formatRupiah } from "@/lib/utils";
 import { supportTelegramLink } from "@/lib/site";
 import { WR_QUEUED_MAX_HOURS } from "@/lib/warung-rebahan/delivery-class";
@@ -38,6 +38,8 @@ type Order = {
   credentialsReady: boolean;
   /** true bila ada baris yang dikerjakan sesuai antrean (bukan kirim instan). */
   queuedDelivery: boolean;
+  /** true bila SEMUA baris dikirim otomatis dari stok sendiri (selesai hitungan detik). */
+  instantDelivery: boolean;
   /** `failed` = lunas tetapi produk gagal dikirim otomatis. */
   fulfillmentStatus?: string | null;
 };
@@ -56,6 +58,7 @@ function fromApi(value: Record<string, unknown>): Order {
     qrisReissueAllowed: value.qris_reissue_allowed === true,
     credentialsReady: value.credentials_ready === true,
     queuedDelivery: value.queued_delivery === true,
+    instantDelivery: value.instant_delivery === true,
     fulfillmentStatus: value.fulfillment_status ? String(value.fulfillment_status) : null,
     qris: value.qris as QrisInvoice | null | undefined,
   };
@@ -66,6 +69,12 @@ function countdown(expiresAt: string, now: number): string {
   const minutes = Math.floor(seconds / 60);
   return `${String(minutes).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 }
+
+// Kirim otomatis dari stok sendiri selesai 0–4 dtk setelah lunas (D1 produksi
+// 2026-09-25), jadi dicek rapat dulu lalu melandai. 9 permintaan per ±30 dtk
+// tetap di bawah orders:lookup 20/mnt walau bertemu sisa polling pending 5 dtk.
+const INSTANT_POLL_DELAYS_MS = [2_000, 2_000, 2_000, 2_000, 2_000, 5_000, 5_000, 5_000, 5_000];
+const SLOW_POLL_MS = 20_000;
 
 /**
  * Salinan lokal checkout hanya dipakai sebagai tampilan sementara bila baru
@@ -100,6 +109,7 @@ function fromFreshLocal(value: Record<string, unknown> | undefined, now: number)
     qrisReissueAllowed: false,
     credentialsReady: false,
     queuedDelivery: false,
+    instantDelivery: false,
     fulfillmentStatus: null,
   };
 }
@@ -139,6 +149,7 @@ export default function OrderSuccessPage() {
   const [now, setNow] = useState(Date.now());
   const [reissuing, setReissuing] = useState(false);
   const [reissueError, setReissueError] = useState<string | null>(null);
+  const [instantSlow, setInstantSlow] = useState(false);
   const polling = useRef(false);
 
   const fetchOrder = useCallback(async () => {
@@ -215,29 +226,41 @@ export default function OrderSuccessPage() {
 
   // Order lunas tetapi detail akun belum ada: periksa berkala supaya panel
   // muncul sendiri begitu fulfillment otomatis selesai — pembeli tidak perlu
-  // reload manual. Dibatasi 30 percobaan × 20 dtk (±10 mnt) agar tab yang
-  // ditinggal terbuka tidak memukul endpoint selamanya (orders:lookup 20/mnt).
-  // Baris antrean (maks 12 jam) hanya dipoll sebentar: polling tidak mungkin
-  // menutup rentang belasan jam, jadi kabarnya lewat WA/email — 3 percobaan
-  // cukup untuk kasus "ternyata cepat" tanpa membuang request.
+  // reload manual. Kirim otomatis dari stok sendiri dicek rapat dulu
+  // (INSTANT_POLL_DELAYS_MS); sesudahnya tiap 20 dtk maksimal 30 kali (±10 mnt)
+  // agar tab yang ditinggal terbuka tidak memukul endpoint selamanya.
+  // Baris antrean / yang diserahkan ke admin (maks 12 jam) hanya dipoll
+  // sebentar: polling tidak mungkin menutup rentang belasan jam, jadi kabarnya
+  // lewat email — 3 percobaan cukup untuk kasus "ternyata cepat".
   const credentialsReady = order?.credentialsReady === true;
   const queuedDelivery = order?.queuedDelivery === true;
+  const fulfillmentStatus = order?.fulfillmentStatus ?? null;
+  const instantDelivery = order?.instantDelivery === true;
+  const handedToAdmin = queuedDelivery || (instantDelivery && fulfillmentStatus === "manual_required");
+  const instantSending = instantDelivery && !["delivered", "manual_required", "failed"].includes(String(fulfillmentStatus));
   useEffect(() => {
     if (orderStatus !== "lunas" || credentialsReady) return;
-    const maxAttempts = queuedDelivery ? 3 : 30;
+    const fast = instantSending ? INSTANT_POLL_DELAYS_MS : [];
+    const maxAttempts = fast.length + (handedToAdmin ? 3 : 30);
     let attempts = 0;
-    const interval = setInterval(() => {
-      attempts += 1;
-      if (attempts > maxAttempts) {
-        clearInterval(interval);
-        return;
-      }
-      // Diam-diam saja: kegagalan poli di sini bukan error yang perlu
-      // ditampilkan, status utama sudah "Lunas".
-      void pollOrder().catch(() => undefined);
-    }, 20_000);
-    return () => clearInterval(interval);
-  }, [orderStatus, credentialsReady, queuedDelivery, pollOrder]);
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const scheduleNext = () => {
+      if (cancelled || attempts >= maxAttempts) return;
+      if (fast.length > 0 && attempts === fast.length) setInstantSlow(true);
+      timer = setTimeout(() => {
+        attempts += 1;
+        // Diam-diam saja: kegagalan poll di sini bukan error yang perlu
+        // ditampilkan, status utama sudah "Lunas".
+        void pollOrder().catch(() => undefined).finally(scheduleNext);
+      }, fast[attempts] ?? SLOW_POLL_MS);
+    };
+    scheduleNext();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [orderStatus, credentialsReady, instantSending, handedToAdmin, pollOrder]);
 
   useEffect(() => {
     if (!order?.qris || order.status !== "pending") return;
@@ -273,6 +296,51 @@ export default function OrderSuccessPage() {
     : isCancelled
       ? { icon: "/icons/ios11/close-96.png", shell: "bg-red-500/15", filter: "brightness(0) saturate(100%) invert(57%) sepia(55%) saturate(1800%) hue-rotate(322deg)" }
       : { icon: "/icons/ios11/clock-96.png", shell: isExpired ? "bg-white/10" : "bg-[#FFB800]/15", filter: isExpired ? "brightness(0) invert(1) opacity(.55)" : "brightness(0) saturate(100%) invert(72%) sepia(92%) saturate(1800%) hue-rotate(360deg)" };
+
+  // Isi blok "Pengiriman Produk" (lunas, detail akun belum ada). Urutan penting:
+  // yang sudah terkirim tidak boleh lagi "diproses", dan kirim otomatis dari
+  // stok sendiri tidak memakai estimasi 5–15 menit milik produk WR. Kabar web
+  // lewat EMAIL (bot WA mati sejak 18 Sep 2026); nomor WA hanya disebut untuk
+  // order lama tanpa email.
+  const destination = order.email
+    ? <>email <span className="font-medium text-white/80">{order.email}</span></>
+    : <>WhatsApp <span className="font-medium text-white/80">{order.wa}</span></>;
+  const toBuyer = <>Detail produk dikirim ke {destination} yang kamu masukkan saat checkout, dan tampil di halaman ini.</>;
+  let delivery: { lead: ReactNode; note: ReactNode; sending?: boolean };
+  if (order.fulfillmentStatus === "delivered") {
+    delivery = {
+      lead: <>Produk sudah dikirim ke {destination} yang kamu masukkan saat checkout.</>,
+      note: <>{order.email ? "Belum masuk? Cek juga folder spam atau promosi. " : ""}Kalau tetap belum ada, hubungi admin lewat tombol di bawah dengan menyebut kode pesanan.</>,
+    };
+  } else if (order.queuedDelivery) {
+    delivery = {
+      lead: <>Pesanan <span className="font-medium text-[#FFD66B]">Made By Order</span> — disiapkan admin setelah pembayaran masuk. {toBuyer}</>,
+      note: <>Umumnya lebih cepat, maksimal {WR_QUEUED_MAX_HOURS} jam pada jam layanan. Tidak perlu menunggu halaman ini terbuka — kami kabari lewat kontak di atas, dan detailnya juga tampil di sini saat kamu buka lagi.</>,
+    };
+  } else if (handedToAdmin) {
+    // Kirim otomatis tidak bisa diselesaikan sistem (mis. stok unik habis) dan
+    // admin menyerahkannya lewat "Kirim ke pembeli": plafonnya sama dengan antrean.
+    delivery = {
+      lead: <>Produkmu sedang disiapkan admin. {toBuyer}</>,
+      note: <>Umumnya lebih cepat, maksimal {WR_QUEUED_MAX_HOURS} jam pada jam layanan. Kami kabari lewat kontak di atas, dan detailnya juga tampil di sini saat kamu buka lagi.</>,
+    };
+  } else if (instantSending && !instantSlow) {
+    delivery = {
+      sending: true,
+      lead: <><span className="font-medium text-white/80">Mengirim produkmu…</span> Detail produk tampil di sini dan dikirim ke {destination} yang kamu masukkan saat checkout.</>,
+      note: <>Biasanya hanya beberapa detik. Tidak perlu memuat ulang halaman.</>,
+    };
+  } else if (instantSending) {
+    delivery = {
+      lead: <>Pengiriman butuh waktu lebih lama dari biasanya. {toBuyer}</>,
+      note: <>Halaman ini terus memeriksa sendiri. Kalau belum ada kabar dalam beberapa menit, hubungi admin lewat tombol di bawah dengan menyebut kode pesanan.</>,
+    };
+  } else {
+    delivery = {
+      lead: <>Pesanan sedang diproses. {toBuyer}</>,
+      note: <>Estimasi 5–15 menit pada jam layanan. Halaman ini memeriksa sendiri, jadi detail akan tampil otomatis di sini kalau produknya terkirim instan.</>,
+    };
+  }
 
   return (
     <div className="mx-auto max-w-[640px] px-4 py-10 sm:px-6">
@@ -373,24 +441,17 @@ export default function OrderSuccessPage() {
         {isPaid && (order.credentialsReady ? (
           <WrCredentialsPanel code={order.code} contactHint={[order.wa, order.email].filter(Boolean).join(" · ")} />
         ) : !isDeliveryFailed && (
-          // Detail akun belum/tidak pernah ada (fulfillment manual): jangan
-          // tampilkan form verifikasi WA yang pasti gagal. Beri kepastian
-          // ke mana produk dikirim, dan JANGAN janji menit untuk baris
-          // antrean — plafonnya 12 jam (keputusan owner 2026-09-18).
-          <section className="ax-glass-card mt-6 rounded-2xl p-4 text-left" aria-label="Pengiriman produk">
+          // Detail akun belum/tidak pernah ada: jangan tampilkan form verifikasi
+          // yang pasti gagal. Beri kepastian ke mana produk dikirim, dan JANGAN
+          // janji menit untuk baris antrean — plafonnya 12 jam (keputusan owner
+          // 2026-09-18). Teksnya dipilih di `delivery` di atas.
+          <section className="ax-glass-card mt-6 rounded-2xl p-4 text-left" aria-label="Pengiriman produk" aria-live="polite">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">Pengiriman Produk</p>
             <p className="mt-2 text-xs leading-5 text-white/55">
-              {/* Kabar web lewat EMAIL (bot WA mati sejak 18 Sep 2026); nomor WA
-                  hanya disebut untuk order lama tanpa email. */}
-              {order.queuedDelivery
-                ? <>Pesanan <span className="font-medium text-[#FFD66B]">Made By Order</span> — disiapkan admin setelah pembayaran masuk. Detail produk dikirim ke {order.email ? <>email <span className="font-medium text-white/80">{order.email}</span></> : <>WhatsApp <span className="font-medium text-white/80">{order.wa}</span></>} yang kamu masukkan saat checkout, dan tampil di halaman ini.</>
-                : <>Pesanan sedang diproses. Detail produk dikirim ke {order.email ? <>email <span className="font-medium text-white/80">{order.email}</span></> : <>WhatsApp <span className="font-medium text-white/80">{order.wa}</span></>} yang kamu masukkan saat checkout, dan tampil di halaman ini.</>}
+              {delivery.sending && <InlineSpinner className="mr-1.5 h-3 w-3 align-[-2px]" />}
+              {delivery.lead}
             </p>
-            <p className="mt-2 text-[11px] leading-5 text-white/40">
-              {order.queuedDelivery
-                ? <>Umumnya lebih cepat, maksimal {WR_QUEUED_MAX_HOURS} jam pada jam layanan. Tidak perlu menunggu halaman ini terbuka — kami kabari lewat kontak di atas, dan detailnya juga tampil di sini saat kamu buka lagi.</>
-                : <>Estimasi 5–15 menit pada jam layanan. Halaman ini memeriksa sendiri, jadi detail akan tampil otomatis di sini kalau produknya terkirim instan.</>}
-            </p>
+            <p className="mt-2 text-[11px] leading-5 text-white/40">{delivery.note}</p>
           </section>
         ))}
 

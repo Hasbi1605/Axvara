@@ -278,7 +278,8 @@ describe("Authoritative UI and admin state", () => {
     // Fallback: info pengiriman ke kontak checkout, bukan form verifikasi WA.
     expect(statusPage).toContain("Pengiriman Produk");
     // Kabar web lewat email (bot WA mati); WA hanya untuk order tanpa email.
-    expect(statusPage).toContain("Detail produk dikirim ke {order.email ?");
+    expect(statusPage).toContain("const destination = order.email");
+    expect(statusPage).toContain("Detail produk dikirim ke {destination}");
     // Kelas antrean TIDAK boleh dijanjikan 5–15 menit (plafon 12 jam).
     expect(statusPage).toContain("order.queuedDelivery");
     expect(statusPage).toContain("Made By Order");
@@ -286,11 +287,12 @@ describe("Authoritative UI and admin state", () => {
     // Polling terbatas agar panel muncul sendiri tanpa reload manual, dan
     // lebih pendek untuk antrean (polling tak mungkin menutup 12 jam).
     expect(statusPage).toContain('orderStatus !== "lunas" || credentialsReady');
-    expect(statusPage).toContain("queuedDelivery ? 3 : 30");
-    expect(statusPage).toContain("attempts > maxAttempts");
+    expect(statusPage).toContain("handedToAdmin ? 3 : 30");
+    expect(statusPage).toContain("attempts >= maxAttempts");
     // Flag berasal dari server, tidak diakali di client.
     expect(statusPage).toContain("credentialsReady: value.credentials_ready === true");
     expect(statusPage).toContain("queuedDelivery: value.queued_delivery === true");
+    expect(statusPage).toContain("instantDelivery: value.instant_delivery === true");
   });
 
   it("blok tombol bantuan 2-tier: navigasi di atas, WA/Telegram pill ringan di bawah (anti wrap/gepeng)", () => {

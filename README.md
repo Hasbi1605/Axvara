@@ -225,9 +225,12 @@ jadi 99,9% durasi sweep adalah menunggu jaringan. Cakupan batch sengaja per prod
 (bukan per sweep) karena `batch()` adalah transaksi: satu produk bermasalah tidak
 boleh membatalkan produk lain.
 Telegram/WhatsApp/Web. Pembeli web mengambil kredensial di halaman pesanan via verifikasi
-No. WA atau email checkout + capability token (terbuka otomatis sekali di tab checkout yang sama) — panel itu hanya muncul saat detail akun benar-benar sudah ada
-(`credentials_ready`); order lunas dengan fulfillment manual menampilkan blok "Pengiriman
-Produk" (tujuan WA/email checkout + estimasi 5–15 menit), bukan form yang pasti gagal.
+No. WA atau email checkout + capability token (terbuka otomatis di tab checkout yang sama, termasuk setelah dimuat ulang) — panel itu hanya muncul saat detail akun benar-benar sudah ada
+(`credentials_ready`); order lunas yang detailnya belum ada menampilkan blok "Pengiriman
+Produk" (tujuan email checkout + teks per keadaan), bukan form yang pasti gagal. Produk kirim
+otomatis dari stok sendiri (`instant_delivery`, mis. Canva Invite) tampil "Mengirim produkmu…"
+dan halaman memeriksa rapat (2 dtk ×5, 5 dtk ×4) sehingga detail muncul beberapa detik setelah
+terkirim tanpa reload; estimasi 5–15 menit hanya untuk produk WR.
 Sejak 18 Sep 2026 produk kelas **antrean** (`made_by_order`, dibuatkan setelah order) juga
 diteruskan otomatis ke WR begitu lunas — sebelumnya link-nya diam `pending` sampai admin
 sadar. Ekspektasi waktunya jujur per kelas dan disebut SEBELUM bayar (PDP, modal varian,

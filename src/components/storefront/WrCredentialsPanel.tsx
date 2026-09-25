@@ -12,7 +12,7 @@ import { formatWibDateTime } from "@/lib/utils";
 // `label` hanya ada untuk isi produk non-WR (nama baris pesanan).
 type Credential = { label?: string; details: string; completed_at: string | null };
 
-/** Diisi checkout di tab yang sama; dipakai sekali lalu dihapus. */
+/** Diisi checkout; bertahan selama tab itu terbuka (sessionStorage), jadi muat ulang tetap membuka otomatis. */
 export const checkoutContactKey = (code: string) => `axvara-checkout-contact:${code}`;
 
 export function WrCredentialsPanel({ code, prefillContact = "", contactHint = "" }: { code: string; prefillContact?: string; contactHint?: string }) {
@@ -24,37 +24,48 @@ export function WrCredentialsPanel({ code, prefillContact = "", contactHint = ""
 
   // Akses ulang otomatis bila capability token tersimpan di perangkat ini.
   // prefillContact (hasil lacak yang kontaknya sudah diverifikasi server) atau
-  // kontak dari checkout di tab yang sama ikut dicoba sekali otomatis —
-  // verifikasi TETAP di server via endpoint credentials.
+  // kontak dari checkout di tab yang sama ikut dicoba otomatis — verifikasi
+  // TETAP di server via endpoint credentials. Kontak checkout TIDAK dihapus
+  // saat dipakai: dulu muat ulang di tengah verifikasi pertama membuat panel
+  // kembali ke form kosong (laporan owner 2026-09-25).
   const triedPrefill = useRef(false);
   useEffect(() => {
-    const saved = sessionStorage.getItem(`wr-cred-token:${code}`);
-    if (saved) {
-      setLoading(true);
-      fetch(`/api/orders/${encodeURIComponent(code)}/credentials?token=${encodeURIComponent(saved)}`)
-        .then(async (r) => {
-          if (!r.ok) {
-            sessionStorage.removeItem(`wr-cred-token:${code}`);
-            return;
-          }
+    const tokenKey = `wr-cred-token:${code}`;
+    const verifyFromContact = () => {
+      const initial = prefillContact.trim() || (sessionStorage.getItem(checkoutContactKey(code)) || "").trim();
+      if (initial.length >= 6 && !triedPrefill.current) {
+        triedPrefill.current = true;
+        setWa(initial);
+        void verifyWith(initial);
+      }
+    };
+    const saved = sessionStorage.getItem(tokenKey);
+    if (!saved) {
+      verifyFromContact();
+      return;
+    }
+    setLoading(true);
+    void (async () => {
+      try {
+        const r = await fetch(`/api/orders/${encodeURIComponent(code)}/credentials?token=${encodeURIComponent(saved)}`);
+        if (r.ok) {
           const body = (await r.json()) as { credentials?: Credential[] };
           if (body.credentials?.length) {
             setCreds(body.credentials);
             setToken(saved);
+            return;
           }
-        })
-        .catch(() => {})
-        .finally(() => setLoading(false));
-      return;
-    }
-    const fromCheckout = sessionStorage.getItem(checkoutContactKey(code)) || "";
-    if (fromCheckout) sessionStorage.removeItem(checkoutContactKey(code));
-    const initial = prefillContact.trim() || fromCheckout.trim();
-    if (initial.length >= 6 && !triedPrefill.current) {
-      triedPrefill.current = true;
-      setWa(initial);
-      void verifyWith(initial);
-    }
+        } else if (r.status === 401 || r.status === 403) {
+          // Hanya token yang ditolak server yang dibuang; 429/5xx sementara tidak.
+          sessionStorage.removeItem(tokenKey);
+        }
+      } catch {
+        /* jaringan: lanjut ke kontak checkout */
+      } finally {
+        setLoading(false);
+      }
+      verifyFromContact();
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
 

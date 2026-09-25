@@ -338,8 +338,14 @@
   kartu mono emerald). Belum/tidak pernah ada (fulfillment manual) → blok
   informasi "Pengiriman Produk": kalimat tujuan pengiriman dengan email
   checkout tersamar di-highlight `text-white/80` (WA hanya untuk order lama tanpa
-  email, 2026-09-25), lalu catatan estimasi 5–15
-  menit `text-[11px] text-white/40`. Isi produk non-WR ikut tampil di panel
+  email, 2026-09-25), lalu catatan `text-[11px] text-white/40` sesuai keadaan
+  (2026-09-25): kirim otomatis stok sendiri yang sedang berjalan → `InlineSpinner`
+  cyan `h-3 w-3` + "Mengirim produkmu…" `font-medium text-white/80`, catatan
+  "Biasanya hanya beberapa detik. Tidak perlu memuat ulang halaman."; lewat ±30 dtk →
+  "Pengiriman butuh waktu lebih lama dari biasanya" tanpa spinner; diserahkan ke admin →
+  "Produkmu sedang disiapkan admin" + plafon 12 jam; sudah terkirim tanpa detail →
+  "Produk sudah dikirim ke …" + cek folder spam; estimasi 5–15 menit hanya untuk
+  produk WR. Kartu memakai `aria-live="polite"`. Isi produk non-WR ikut tampil di panel
   "Detail Akun Digital" dengan label baris pesanan `text-[11px] text-emerald-200/80`
   di atas kartu mono. Prinsipnya: JANGAN pernah tampilkan
   kontrol yang pasti gagal ke pembeli yang baru membayar — form mati lebih

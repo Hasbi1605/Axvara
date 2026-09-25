@@ -20,26 +20,73 @@ const CODE = "AXV-20260925-CONTACT1";
 beforeEach(() => { sessionStorage.clear(); localStorage.clear(); nav.params = new URLSearchParams(); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
-function stubCredentials(ok = true) {
+function stubCredentials(ok = true, capabilityToken: string | null = "a".repeat(64)) {
   const calls: { url: string; body: Record<string, unknown> | null }[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     calls.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : null });
     return ok
-      ? { ok: true, status: 200, json: async () => ({ ok: true, credentials: [{ label: "Canva Pro — Invite 1 Bulan", details: "Link undangan: https://canva.com/join/ABC", completed_at: null }], capability_token: "a".repeat(64) }) }
+      ? { ok: true, status: 200, json: async () => ({ ok: true, credentials: [{ label: "Canva Pro — Invite 1 Bulan", details: "Link undangan: https://canva.com/join/ABC", completed_at: null }], capability_token: capabilityToken }) }
       : { ok: false, status: 403, json: async () => ({ error: "verification_failed" }) };
   }));
   return calls;
 }
 
+/** Token tersimpan dijawab `tokenStatus`; verifikasi kontak (POST) berhasil tanpa token baru. */
+function stubTokenThenContact(tokenStatus: number) {
+  const calls: string[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+    calls.push(`${init?.method ?? "GET"} ${url}`);
+    if (!init?.method) return { ok: false, status: tokenStatus, json: async () => ({ error: tokenStatus === 403 ? "invalid_token" : "rate_limited" }) };
+    return { ok: true, status: 200, json: async () => ({ ok: true, credentials: [{ details: "Link undangan: https://canva.com/join/ABC", completed_at: null }], capability_token: null }) };
+  }));
+  return calls;
+}
+
 describe("panel Detail Akun Digital", () => {
-  it("kontak dari checkout di tab yang sama dipakai sekali untuk membuka otomatis, lalu dihapus", async () => {
+  it("kontak dari checkout di tab yang sama membuka otomatis dan TETAP tersimpan selama tab terbuka", async () => {
     sessionStorage.setItem(checkoutContactKey(CODE), "081234567890");
     const calls = stubCredentials();
     render(<WrCredentialsPanel code={CODE} />);
     await waitFor(() => expect(screen.getByText("Link undangan: https://canva.com/join/ABC")).toBeTruthy());
     expect(calls[0]).toEqual({ url: `/api/orders/${CODE}/credentials`, body: { contact: "081234567890" } });
-    expect(sessionStorage.getItem(checkoutContactKey(CODE))).toBeNull();
+    expect(sessionStorage.getItem(checkoutContactKey(CODE))).toBe("081234567890");
     expect(sessionStorage.getItem(`wr-cred-token:${CODE}`)).toBe("a".repeat(64));
+  });
+
+  // Laporan owner 2026-09-25: halaman dimuat ulang saat verifikasi otomatis
+  // pertama belum dijawab → token tidak pernah tersimpan dan kontak sudah
+  // dihapus → form kosong. Server juga tidak menerbitkan token kedua.
+  it("muat ulang saat verifikasi pertama belum dijawab → tetap membuka otomatis, bukan form kosong", async () => {
+    sessionStorage.setItem(checkoutContactKey(CODE), "081234567890");
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    render(<WrCredentialsPanel code={CODE} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Memeriksa…" })).toBeTruthy());
+    cleanup();
+    const calls = stubCredentials(true, null);
+    render(<WrCredentialsPanel code={CODE} />);
+    await waitFor(() => expect(screen.getByText("Link undangan: https://canva.com/join/ABC")).toBeTruthy());
+    expect(calls).toEqual([{ url: `/api/orders/${CODE}/credentials`, body: { contact: "081234567890" } }]);
+    expect(sessionStorage.getItem(checkoutContactKey(CODE))).toBe("081234567890");
+  });
+
+  it("token ditolak server (403) → token dibuang lalu kontak checkout dipakai", async () => {
+    sessionStorage.setItem(`wr-cred-token:${CODE}`, "b".repeat(64));
+    sessionStorage.setItem(checkoutContactKey(CODE), "081234567890");
+    const calls = stubTokenThenContact(403);
+    render(<WrCredentialsPanel code={CODE} />);
+    await waitFor(() => expect(screen.getByText("Link undangan: https://canva.com/join/ABC")).toBeTruthy());
+    expect(calls).toEqual([`GET /api/orders/${CODE}/credentials?token=${"b".repeat(64)}`, `POST /api/orders/${CODE}/credentials`]);
+    expect(sessionStorage.getItem(`wr-cred-token:${CODE}`)).toBeNull();
+  });
+
+  it("token gagal sementara (429) → token TIDAK dibuang, kontak checkout tetap dicoba", async () => {
+    sessionStorage.setItem(`wr-cred-token:${CODE}`, "b".repeat(64));
+    sessionStorage.setItem(checkoutContactKey(CODE), "081234567890");
+    const calls = stubTokenThenContact(429);
+    render(<WrCredentialsPanel code={CODE} />);
+    await waitFor(() => expect(screen.getByText("Link undangan: https://canva.com/join/ABC")).toBeTruthy());
+    expect(calls).toHaveLength(2);
+    expect(sessionStorage.getItem(`wr-cred-token:${CODE}`)).toBe("b".repeat(64));
   });
 
   it("checkout menyimpan kontak dengan kunci yang sama, di sessionStorage (bukan localStorage)", () => {

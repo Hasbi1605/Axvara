@@ -316,32 +316,44 @@ export async function GET(req: NextRequest) {
     // WA/capability token di /api/orders/[code]/credentials.
     let credentialsReady = false;
     let queuedDelivery = false;
+    let instantDelivery = false;
     if (String(row.status) === "lunas") {
-      // Satu query untuk dua flag halaman pesanan (hemat statement):
+      // Satu query untuk tiga flag halaman pesanan (hemat statement):
       // - creds: detail akun sudah siap diambil pembeli.
       // - queued: ada baris yang dikerjakan sesuai antrean (varian WR non-restock
       //   atau varian manual) → teks estimasi TIDAK boleh bilang 5–15 menit.
-      // .catch: D1 lama tanpa tabel WR (pra-0027) → kedua flag false, bukan 500.
+      // - instant: SEMUA baris dikirim dari stok sendiri (varian non-WR
+      //   shared/unique) → selesai hitungan detik, halaman memeriksa rapat.
+      // .catch: D1 lama tanpa tabel WR (pra-0027) → semua flag false, bukan 500.
       const flags = await queryFirst(
-        `SELECT
+        `WITH lines AS (
+           SELECT CAST(json_extract(je.value,'$.variant_id') AS INTEGER) AS variant_id
+           FROM json_each(CASE WHEN json_valid(?) THEN ? ELSE '[]' END) je
+         )
+         SELECT
           (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND status='completed'
                     AND wr_account_details IS NOT NULL)
            OR EXISTS(SELECT 1 FROM fulfillment_items WHERE order_code=? AND status='delivered'
                     AND delivered_ciphertext IS NOT NULL)) AS creds,
-          EXISTS(SELECT 1 FROM json_each(CASE WHEN json_valid(?) THEN ? ELSE '[]' END) je
-                 JOIN product_variants pv
-                   ON pv.id = CAST(json_extract(je.value,'$.variant_id') AS INTEGER)
+          EXISTS(SELECT 1 FROM lines l
+                 JOIN product_variants pv ON pv.id = l.variant_id
                  LEFT JOIN wr_variants wv ON wv.wr_variant_id = pv.wr_variant_id
                  WHERE CASE WHEN pv.wr_variant_id IS NOT NULL
                             THEN COALESCE(wv.wr_delivery_class,'made_by_order') <> 'restock'
-                            ELSE pv.fulfillment_mode = 'manual' END) AS queued`,
-        code,
-        code,
+                            ELSE pv.fulfillment_mode = 'manual' END) AS queued,
+          (EXISTS(SELECT 1 FROM lines)
+           AND NOT EXISTS(SELECT 1 FROM lines l
+                          LEFT JOIN product_variants pv ON pv.id = l.variant_id
+                          WHERE pv.wr_variant_id IS NOT NULL
+                             OR COALESCE(pv.fulfillment_mode,'manual') NOT IN ('shared','unique'))) AS instant`,
         String(row.items ?? "[]"),
         String(row.items ?? "[]"),
+        code,
+        code,
       ).catch(() => null);
       credentialsReady = Number(flags?.creds ?? 0) === 1;
       queuedDelivery = Number(flags?.queued ?? 0) === 1;
+      instantDelivery = Number(flags?.instant ?? 0) === 1;
     }
     return NextResponse.json({
       order: {
@@ -359,6 +371,7 @@ export async function GET(req: NextRequest) {
         expires_at: row.expires_at,
         credentials_ready: credentialsReady,
         queued_delivery: queuedDelivery,
+        instant_delivery: instantDelivery,
         // /pesanan/[code] membutuhkan ini untuk membedakan lunas-terkirim dari
         // lunas-gagal-kirim (audit ronde 4, W-H1); /api/orders/lookup sudah punya.
         fulfillment_status: row.fulfillment_status ?? null,

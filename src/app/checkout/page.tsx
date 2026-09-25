@@ -396,8 +396,8 @@ function CheckoutInner() {
         const existing = JSON.parse(localStorage.getItem("axvara-orders") || "[]");
         localStorage.setItem("axvara-orders", JSON.stringify([...existing, localOrder]));
       } catch {}
-      // Buka otomatis detail akun di halaman pesanan TAB INI: sessionStorage
-      // (hilang saat tab ditutup) dan dihapus panel begitu dipakai sekali.
+      // Buka otomatis detail akun di halaman pesanan TAB INI, termasuk setelah
+      // dimuat ulang: sessionStorage hilang sendiri saat tab ditutup.
       try { sessionStorage.setItem(checkoutContactKey(code), wa.trim()); } catch {}
       setRedirectCode(code);
       redirected = true;
