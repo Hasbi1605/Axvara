@@ -5,6 +5,7 @@
 ## Stage 1 — Minimal (Sekarang, DONE)
 - [x] `metadata` Next.js per page: `title`, `description`, `openGraph`, `icons`
 - [x] `sitemap.xml` dynamic (via `src/app/sitemap.ts`) + `robots.txt` (allow, sitemap link)
+- [x] Verifikasi kepemilikan Google Search Console via file HTML `public/google0ff9ac31de94bad3.html` (2026-09-25, tersaji di `/google0ff9ac31de94bad3.html` — JANGAN dihapus walau verifikasi sudah sukses)
 - [x] `JSON-LD` Organization + Product + Article di `/produk/[slug]` & `/artikel/[slug]`
 - [x] Canonical URL per page (`https://axvara.tech`)
 - [x] Security headers + CSP (SEO trust)
