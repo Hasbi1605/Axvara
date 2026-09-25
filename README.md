@@ -53,7 +53,8 @@ axvara/
 │   │   └── api/agent/      # Content API Bearer-token untuk MCP/agent
 │   │   └── globals.css     # Tokens Liquid Glass iOS 26
 │   ├── components/storefront/  # Navbar, OrbitHero, ProductCard, CartDrawer, PopupBanner, Footer, ScrollRope,
-│   │                           # ProductCopy (deskripsi + S&K + cara aktivasi PDP, terlipat di mobile)
+│   │                           # ProductCopy (deskripsi + S&K + cara aktivasi PDP, terlipat di mobile),
+│   │                           # MobileBottomNav + HelpSheet + DeviceOrders (bottom nav mobile 4 tab)
 │   ├── components/admin/       # Shell + login gate + hooks + sections/ (satu per menu admin)
 │   ├── hooks/useModalA11y.ts   # Escape + focus trap + scroll lock, satu sumber untuk semua modal
 │   ├── lib/db.ts               # BARREL ke src/lib/db/* — impor dari sini, bukan file internalnya
@@ -113,7 +114,7 @@ AXVARA adalah third-party independen (bukan official store). Garansi bervariasi 
 
 Nomor dukungan default adalah `089519388264`, terpisah dari nomor tujuan pembayaran e-wallet. `src/lib/site.ts` menyediakan fallback, sedangkan override operasional disimpan lewat menu **Pengaturan Toko**.
 
-Pembeli memantau pesanan mandiri di `/lacak-pesanan`: cukup kode pesanan + No. WA atau email checkout (tanpa login), diverifikasi server via `POST /api/orders/lookup`, timeline Dibuat → Pembayaran → Diproses, auto-refresh saat Pending.
+Bottom nav mobile (2026-09-25): **Beranda · Keranjang · Pesanan · Bantuan**. Tab Pesanan membuka `/lacak-pesanan` yang langsung menampilkan pesanan dari perangkat ini (status dari server, tombol Bayar/Lihat); tab Bantuan membuka panel WA Admin, Telegram, Cara Order, Garansi, dan Artikel. Pembeli memantau pesanan mandiri di `/lacak-pesanan`: cukup kode pesanan + No. WA atau email checkout (tanpa login), diverifikasi server via `POST /api/orders/lookup`, timeline Dibuat → Pembayaran → Diproses, auto-refresh saat Pending.
 
 ### Kategori dan footer
 
@@ -287,7 +288,9 @@ muncul di editor admin; storefront tidak menampilkan penanda WR.
 aktivasi tampil dalam satu format untuk produk WR maupun non-WR: deskripsi =
 paragraf pembuka + daftar keunggulan; S&K dikelompokkan (Detail paket, Proses &
 pengiriman, Aturan pakai, Garansi); cara aktivasi bernomor. Di mobile, S&K dan
-cara aktivasi terlipat. S&K + cara aktivasi WR versi Axvara dipilih di kode
+cara aktivasi terlipat, dan varian dipilih lewat panel (baris "Varian" → ketuk
+varian → harga, S&K, cara aktivasi, dan tombol beli ikut varian itu; judul S&K
+punya tautan "Ganti varian" bila isinya berbeda antar varian, 2026-09-25). S&K + cara aktivasi WR versi Axvara dipilih di kode
 (`src/lib/product-copy/curated.ts`) lewat sidik jari teks WR; bila WR mengubah
 teksnya, PDP otomatis kembali ke teks WR yang dirapikan (aturan baru tidak
 pernah tertutup). Deskripsi versi Axvara diisi migrasi 0040 (diterapkan CI):

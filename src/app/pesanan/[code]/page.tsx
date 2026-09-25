@@ -9,6 +9,7 @@ import { formatRupiah } from "@/lib/utils";
 import { supportTelegramLink } from "@/lib/site";
 import { WR_QUEUED_MAX_HOURS } from "@/lib/warung-rebahan/delivery-class";
 import { StoreWhatsAppLink } from "@/components/storefront/StoreWhatsAppLink";
+import { settleLocalOrder } from "@/lib/local-orders";
 import { WrCredentialsPanel } from "@/components/storefront/WrCredentialsPanel";
 import { InlineSpinner, OrderStatusSkeleton } from "@/components/storefront/Skeletons";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
@@ -152,6 +153,9 @@ export default function OrderSuccessPage() {
     if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
     setOrder(fromApi(body.order));
     setFetchError(null);
+    // Titik "belum dibayar" di tab Pesanan membaca salinan lokal; catat status
+    // akhir begitu server tidak lagi pending.
+    if (body.order?.status && body.order.status !== "pending") settleLocalOrder(code, String(body.order.status));
   }, [code]);
 
   // Poll berikutnya dilewati selama yang sebelumnya belum selesai: di jaringan

@@ -16,13 +16,28 @@ import { Bone, InlineSpinner } from "@/components/storefront/Skeletons";
 
 export type VariantOption = VariantSummary;
 
+/** Di atas angka ini kartu varian menjadi baris ringkas satu kolom. */
+export const COMPACT_VARIANTS_AFTER = 6;
+/** Di atas angka ini panel menampilkan kotak cari varian. */
+export const SEARCH_VARIANTS_AFTER = 10;
+
 type Props = {
   product: Product;
-  mode: "cart" | "checkout";
+  /**
+   * `select` (PDP mobile, 2026-09-25): mengetuk varian langsung memilihnya
+   * untuk halaman lalu menutup panel, tanpa stepper dan tanpa ke checkout.
+   */
+  mode: "cart" | "checkout" | "select";
   onClose: () => void;
+  /** Varian yang sudah dimuat halaman (PDP): panel tidak fetch ulang. */
+  variants?: VariantOption[];
+  /** Varian yang sedang terpilih di halaman saat panel dibuka. */
+  initialVariantId?: number | null;
+  /** Dipanggil hanya saat pembeli MENGETUK varian, bukan pilihan otomatis. */
+  onVariantChange?: (variantId: number) => void;
 };
 
-export function QuickVariantModal({ product, mode, onClose }: Props) {
+export function QuickVariantModal({ product, mode, onClose, variants: preloadedVariants, initialVariantId = null, onVariantChange }: Props) {
   const { navigate, pending: navigating } = usePendingNavigation();
   const add = useCart((s) => s.add);
   const [variants, setVariants] = useState<VariantOption[]>([]);
@@ -31,6 +46,12 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
   const [attempt, setAttempt] = useState(0);
   const loadingStage = useLoadingStage(loading, [SLOW_MS]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [query, setQuery] = useState("");
+  // Diambil sekali saat panel dibuka: array dari halaman dibuat ulang tiap
+  // render, dan memakainya sebagai dependensi effect akan mereset pilihan.
+  const [preloaded] = useState<VariantOption[] | null>(() =>
+    preloadedVariants?.length ? preloadedVariants.filter((v) => (v.is_active ?? 1) !== 0) : null,
+  );
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
 
@@ -40,6 +61,24 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
 
   useEffect(() => {
     let cancelled = false;
+    // Pilihan awal: varian halaman bila masih bisa dibeli; mode select tidak
+    // memilih otomatis (pembeli yang menentukan); mode lain memilih varian
+    // pertama yang bisa dibeli agar tombol aksi langsung bisa dipakai.
+    const minOf = (v: VariantOption): number => Math.max(1, Number(v.min_qty ?? 1) || 1);
+    const purchasable = (v: VariantOption): boolean => v.stock !== 0 && (v.stock === -1 || v.stock >= minOf(v));
+    const initialFor = (list: VariantOption[]): number | null => {
+      const fromPage = list.find((v) => v.id === initialVariantId && purchasable(v));
+      if (fromPage) return fromPage.id;
+      if (mode === "select" || list.length === 0) return null;
+      return (list.find(purchasable) || list.find((v) => v.stock !== 0) || list[0]).id;
+    };
+    if (preloaded && attempt === 0) {
+      setVariants(preloaded);
+      setSelectedId(initialFor(preloaded));
+      setError(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     fetchWithTimeout(`/api/catalog?slug=${encodeURIComponent(product.slug)}`, {}, 20_000)
@@ -53,16 +92,8 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
           (v) => (v.is_active ?? 1) !== 0
         );
         setVariants(list);
-        if (list.length > 0) {
-          // Auto-select varian pertama yang benar-benar bisa dibeli (stok
-          // cukup untuk minimum). Varian stok<min dilewati — memilihnya
-          // pasti gagal di quote dalam jumlah berapa pun.
-          const minOf = (v: VariantOption): number => Math.max(1, Number(v.min_qty ?? 1) || 1);
-          const purchasable = (v: VariantOption): boolean =>
-            v.stock !== 0 && (v.stock === -1 || v.stock >= minOf(v));
-          const firstBuyable = list.find(purchasable) || list.find((v) => v.stock !== 0) || list[0];
-          setSelectedId(firstBuyable.id);
-        }
+        // Varian stok<min dilewati — memilihnya pasti gagal di quote.
+        setSelectedId(initialFor(list));
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : "Gagal memuat varian.");
@@ -74,7 +105,27 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [product.slug, attempt]);
+    // initialVariantId/mode hanya dibaca saat panel dibuka.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product.slug, attempt, preloaded]);
+
+  // Daftar panjang: tampilkan varian terpilih tanpa pembeli harus menggulir.
+  useEffect(() => {
+    if (loading || selectedId == null) return;
+    document.getElementById(`quick-variant-${selectedId}`)?.scrollIntoView?.({ block: "nearest" });
+  }, [loading, selectedId]);
+
+  const pick = (variantId: number) => {
+    setSelectedId(variantId);
+    onVariantChange?.(variantId);
+    if (mode === "select") onClose();
+  };
+  const compact = variants.length > COMPACT_VARIANTS_AFTER;
+  const searchable = variants.length > SEARCH_VARIANTS_AFTER;
+  const needle = query.trim().toLowerCase();
+  const visibleVariants = searchable && needle
+    ? variants.filter((v) => formatVariantLabel(v).toLowerCase().includes(needle))
+    : variants;
 
   const selected = variants.find((v) => v.id === selectedId) || null;
   const currentPrice = selected ? selected.price : (product.minPrice ?? product.price);
@@ -218,20 +269,80 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
               Tidak ada varian tersedia.
             </div>
           ) : (
-            <div role="radiogroup" aria-label="Pilih paket atau varian" className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 max-h-[260px] sm:max-h-[340px] overflow-y-auto pr-1">
-              {variants.map((v) => {
+            <>
+            {searchable && (
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={`Cari di ${variants.length} varian`}
+                aria-label="Cari varian"
+                className="mb-3 h-10 w-full rounded-xl border border-white/10 bg-white/[0.05] px-3 text-sm text-white placeholder:text-white/35 focus:border-[#00E5FF]/50 focus:outline-none"
+              />
+            )}
+            {visibleVariants.length === 0 ? (
+              <p className="py-4 text-center text-xs text-white/45">Tidak ada varian yang cocok dengan &ldquo;{query.trim()}&rdquo;.</p>
+            ) : (
+            <div
+              role="radiogroup"
+              aria-label="Pilih paket atau varian"
+              className={`grid grid-cols-1 overflow-y-auto pr-1 ${compact ? "gap-1.5" : "sm:grid-cols-2 gap-2 sm:gap-3"} ${
+                mode === "select" ? "max-h-[min(60vh,460px)]" : "max-h-[260px] sm:max-h-[340px]"
+              }`}
+            >
+              {visibleVariants.map((v) => {
                 const active = v.id === selectedId;
                 const outStock = v.stock === 0 || isBelowMinimum(v);
                 const belowMin = !!(v.stock !== 0 && isBelowMinimum(v));
+                const ariaLabel = `${v.label} — ${formatRupiah(v.price)}${outStock ? (belowMin ? " — stok di bawah minimum" : " — stok habis") : ""}${Number(v.min_qty ?? 1) > 1 ? ` — minimal ${Number(v.min_qty)}` : ""}`;
+                const instant = buyerDeliveryKind(v) === "instant";
+                if (compact) {
+                  // Baris ringkas satu kolom (>6 varian, mis. GSuite): tinggi
+                  // tetap ≥44px, info inti saja agar daftar tidak memanjang.
+                  return (
+                    <button
+                      key={v.id}
+                      id={`quick-variant-${v.id}`}
+                      type="button"
+                      role="radio"
+                      aria-checked={active}
+                      aria-label={ariaLabel}
+                      disabled={outStock}
+                      onClick={() => pick(v.id)}
+                      className={`flex min-h-[48px] w-full items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left transition ${
+                        outStock
+                          ? "opacity-35 bg-white/[0.02] border-white/5 cursor-not-allowed"
+                          : active
+                          ? "border-[#00E5FF] bg-[#00E5FF]/10 text-white"
+                          : "border-white/10 bg-white/[0.04] text-white/75 hover:border-white/20 hover:text-white"
+                      }`}
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-xs font-bold">{formatVariantLabel(v)}</span>
+                        <span className={`mt-0.5 block truncate text-[10px] font-semibold ${instant ? "text-emerald-300" : "text-[#FFD66B]"}`}>
+                          {instant ? "Kirim otomatis" : "Made By Order"}
+                          {v.warranty_type && v.warranty_type !== "none" && formatWarranty(v) ? <span className="font-medium text-white/45"> · {formatWarranty(v)}</span> : null}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-right">
+                        <span className="block text-xs font-semibold text-[#00E5FF]">{formatRupiah(v.price)}</span>
+                        <span className={`block text-[10px] ${outStock ? "font-semibold text-red-400" : "text-white/40"}`}>
+                          {outStock ? (belowMin ? "Stok < min" : "Habis") : `Sisa ${v.stock === -1 ? "∞" : v.stock}`}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                }
                 return (
                   <button
                     key={v.id}
+                    id={`quick-variant-${v.id}`}
                     type="button"
                     role="radio"
                     aria-checked={active}
-                    aria-label={`${v.label} — ${formatRupiah(v.price)}${outStock ? (belowMin ? " — stok di bawah minimum" : " — stok habis") : ""}${Number(v.min_qty ?? 1) > 1 ? ` — minimal ${Number(v.min_qty)}` : ""}`}
+                    aria-label={ariaLabel}
                     disabled={outStock}
-                    onClick={() => setSelectedId(v.id)}
+                    onClick={() => pick(v.id)}
                     className={`flex flex-col items-start p-3 sm:p-4 rounded-xl border text-left transition relative ${
                       outStock
                         ? "opacity-35 bg-white/[0.02] border-white/5 cursor-not-allowed"
@@ -244,7 +355,7 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
                       {formatVariantLabel(v)}
                     </span>
                     <span className="mt-1.5 inline-flex">
-                      {buyerDeliveryKind(v) === "instant" ? (
+                      {instant ? (
                         <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold text-emerald-300">Kirim otomatis</span>
                       ) : (
                         <span className="rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-[9px] font-bold text-[#FFD66B]">Made By Order</span>
@@ -283,13 +394,18 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
                 );
               })}
             </div>
+            )}
+            {mode === "select" && (
+              <p className="mt-3 text-center text-[11px] text-white/40">Ketuk varian untuk memilih. Harga, S&amp;K, dan cara aktivasi di halaman ikut berganti.</p>
+            )}
+            </>
           )}
         </div>
 
         {/* Jumlah ala marketplace: stepper dibuka di minimum, floor = min.
             Satu-satunya tempat info "Min. N" di modal — tidak di tiap kartu
             varian agar tidak menumpuk. */}
-        {selected && !isOutOfStock && (
+        {mode !== "select" && selected && !isOutOfStock && (
           <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5">
             <div className="min-w-0">
               <p className="text-xs font-semibold text-white">Jumlah</p>
@@ -333,7 +449,7 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
             </div>
           </div>
         )}
-        {selected && selectedMinQty > 1 && !isOutOfStock && (
+        {mode !== "select" && selected && selectedMinQty > 1 && !isOutOfStock && (
           <p className="mt-2 text-[11px] text-white/40">Total {formatRupiah(currentPrice * safeModalQty)} untuk {safeModalQty} · harga satuan {formatRupiah(currentPrice)}</p>
         )}
 
@@ -341,6 +457,7 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
             keputusan owner): kalimat "Made By Order — dikerjakan sesuai
             antrean…" dihapus dari modal — detail ekspektasi dijelask
             di blok checkout "Made By Order", bukan di tahap pilih varian. */}
+        {mode !== "select" && (
         <div className="pt-2">
           <button
             type="button"
@@ -367,6 +484,7 @@ export function QuickVariantModal({ product, mode, onClose }: Props) {
             )}
           </button>
         </div>
+        )}
       </div>
     </div>,
     document.body

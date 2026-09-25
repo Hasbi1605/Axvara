@@ -267,6 +267,11 @@
   `sm:gap-3 + sm:p-4` per kartu, list `sm:max-h-[340px]` agar 4-6 varian
   (kasus GSuite) jarang kena scroll internal, CTA `sm:h-12`. Pola tidak
   berubah: tetap modal fokus, bukan drawer/page baru.
+- QuickVariantModal daftar panjang (2026-09-25): lebih dari 6 varian →
+  baris ringkas satu kolom (`min-h-[48px]`, label + badge teks + harga +
+  sisa stok, `gap-1.5`); lebih dari 10 → kotak "Cari di N varian" di atas
+  daftar. Varian terpilih digulir ke dalam pandangan saat panel dibuka. Mode
+  select memakai tinggi daftar `max-h-[min(60vh,460px)]` karena tanpa CTA.
 - Checkout: keranjang lama di bawah min → dialog solid "Sesuaikan Jumlah
   Pembelian" dengan tombol **Sesuaikan ke minimum** (1 klik menaikkan qty +
   refetch quote), bukan dead-end "kembali belanja".
@@ -294,6 +299,17 @@
 - Deskripsi + benefit list (icon check cyan)
 - CTA: "Beli Langsung" (cyan solid) + "Tambah ke Keranjang" (glass)
 - Animasi: galeri fade + scale saat ganti thumb
+- **Mobile: pilih varian lewat panel, bukan daftar panjang (2026-09-25).**
+  Desktop tetap daftar kartu varian inline. Di mobile, baris "Varian"
+  (glass `white/[0.03]`) menampilkan pilihan aktif: label `text-sm
+  semibold`, harga cyan, badge Kirim otomatis / Made By Order, dan teks
+  "Ganti ›". Belum memilih: "Pilih varian · N pilihan" cyan. Ketuk membuka
+  QuickVariantModal mode **select**: mengetuk varian langsung memilihnya untuk
+  halaman lalu menutup panel (tanpa stepper/CTA, tanpa ke checkout). Harga,
+  badge, stok, stepper Jumlah, S&K, cara aktivasi, dan tombol Beli Sekarang
+  ikut varian itu. Menutup panel tidak membuang pilihan. Judul S&K mobile
+  diberi tautan kecil "Ganti varian" (cyan `text-xs`, di bawah judul, di
+  luar tombol lipat) hanya bila S&K/cara aktivasi antar varian memang berbeda.
 
 ### 5.6 Checkout (1 Halaman, Apple Form — revamp ala Sekalipay 2026-09-23)
 - Layout: max-width 1100px, grid `lg:grid-cols-[1fr_380px]`; kiri = ① Metode → ② Data minimal → S&K mobile (+ Made By Order bila antrean), kanan = rail desktop-only
@@ -391,6 +407,27 @@
   5 terakhir (`axvara-track-recent`, mask WA), deep-link `?code=&wa=` dari
   chat bot, tautan "Lacak pesanan lain" tanpa reload halaman.
 
+### 5.7e Bottom Nav Mobile (revisi 2026-09-25)
+- Empat tab: **Beranda · Keranjang · Pesanan · Bantuan** (dulu Beranda,
+  Artikel, Cara Order, Lacak, Katalog; Katalog hanya menggulir Beranda dan
+  tidak pernah menyala). Bar, tinggi, dan gaya aktif (cyan + titik glow)
+  tidak berubah. Tersembunyi di `/admin`, `/checkout`, `/produk/*`.
+- Keranjang membuka drawer (aktif selama drawer terbuka) dengan badge jumlah
+  baris Gold `#FFB800` seperti navbar. Pesanan → `/lacak-pesanan` (aktif juga
+  di `/pesanan/*`), titik Gold bila ada pesanan perangkat ini yang belum
+  dibayar (maks 75 menit). Badge/titik baru muncul setelah mount (isi
+  localStorage tidak dikenal server).
+- Bantuan membuka bottom-sheet solid `#0B1025` (pola QuickVariantModal):
+  dua tombol kontak WA Admin + Telegram (ikon brand), lalu daftar Cara Order,
+  Garansi & Replace, Artikel (ikon cyan dalam kotak `#00E5FF/10`, judul +
+  keterangan satu baris, chevron). Ikon dekoratif `aria-hidden`.
+- `/lacak-pesanan` membuka bagian **"Pesanan di perangkat ini"** di atas form
+  (maks 5 pesanan 30 hari terakhir): nama produk, kode mono cyan, waktu +
+  total, badge status (Menunggu pembayaran Gold, Selesai/Lunas emerald,
+  Lunas · sedang diproses cyan, Pengiriman bermasalah merah, Dibatalkan/
+  Kedaluwarsa muted), tombol "Bayar sekarang" (cyan solid) atau "Lihat
+  pesanan" (outline), dan tombol sembunyikan per pesanan.
+
 ### 5.7b Framing QRIS di /pesanan/[code] (2026-09-16, live)
 - Urutan vertikal: label **"Scan QRIS"** (font-display 20px bold putih) →
   kotak QR putih `max-w-[330px] rounded-2xl p-3` (QR + quiet zone TIDAK
@@ -420,7 +457,8 @@
 
 ### 5.7d Pengingat Melayang "Pesanan belum dibayar" (2026-09-24, PR storefront)
 - Komponen `PendingOrderReminder` (layout root), tampil di seluruh
-  storefront kecuali `/checkout`, `/pesanan/*`, `/admin`.
+  storefront kecuali `/checkout`, `/pesanan/*`, `/lacak-pesanan` (sejak
+  2026-09-25: daftar "Pesanan di perangkat ini" sudah memuat tombol Bayar), `/admin`.
 - Posisi: mobile/tablet `fixed inset-x-3` dengan `bottom: 84px + safe-area`
   (di atas nav bawah & bar beli PDP, jarak ±13px); `lg+` kanan bawah
   `bottom-6 right-6 w-[380px]`. `z-40` (sama dengan nav bawah, di bawah

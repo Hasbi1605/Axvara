@@ -9,6 +9,7 @@ import { formatRupiah, formatWibDateTime } from "@/lib/utils";
 import { supportTelegramLink } from "@/lib/site";
 import { StoreWhatsAppLink } from "@/components/storefront/StoreWhatsAppLink";
 import { WrCredentialsPanel } from "@/components/storefront/WrCredentialsPanel";
+import { DeviceOrders } from "@/components/storefront/DeviceOrders";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
 import { SLOW_MS, useLoadingStage } from "@/hooks/useLoadingStage";
@@ -306,6 +307,9 @@ export default function LacakPesananClient() {
         <span className="font-semibold text-white">No. WA atau email yang dipakai saat checkout</span>. Status diperbarui otomatis
         dari Pending ke Lunas, Dibatalkan, atau Kedaluwarsa.
       </p>
+
+      {/* Tab Pesanan (bottom nav): pesanan dari perangkat ini tampil tanpa isi form. */}
+      {!order && <DeviceOrders />}
 
       <form onSubmit={submit} className="ax-glass-card mt-6 rounded-[24px] p-5 sm:p-6" aria-label="Formulir lacak pesanan">
         <div className="flex items-center gap-3">

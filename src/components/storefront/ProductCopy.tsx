@@ -118,11 +118,14 @@ export function MobileCollapsible({
   title,
   meta,
   icon,
+  action,
   children,
 }: {
   title: string;
   meta?: string | null;
   icon?: ReactNode;
+  /** Aksi kecil di bawah judul (mis. "Ganti varian"). Di luar tombol lipat: button tidak boleh bersarang. */
+  action?: ReactNode;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -150,6 +153,7 @@ export function MobileCollapsible({
         </span>
         <ChevronDown aria-hidden className={`h-4 w-4 shrink-0 text-white/50 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
+      {action && <div className="-mt-2 pb-3 pl-10 pr-4">{action}</div>}
       <div
         id={panelId}
         role="region"

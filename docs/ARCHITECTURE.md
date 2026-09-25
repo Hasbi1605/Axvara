@@ -120,6 +120,9 @@ axvara/
 │   ├── ui/                      # Button, Input, Badge, Modal, Drawer, Toast,
 │   │                            # NavigationProgress (bar + skeleton rute + pil koneksi lambat)
 │   ├── storefront/              # Navbar, Hero, ProductCard, CartDrawer, CheckoutForm, QrisDisplay,
+│   │                            # MobileBottomNav (Beranda · Keranjang · Pesanan · Bantuan) + HelpSheet,
+│   │                            # DeviceOrders ("Pesanan di perangkat ini" di /lacak-pesanan),
+│   │                            # QuickVariantModal (beli cepat + mode select untuk PDP mobile),
 │   │                            # ProductCopy (deskripsi + S&K + cara aktivasi PDP, panel lipat mobile),
 │   │                            # Skeletons (satu bentuk skeleton per halaman: overlay navigasi + loading halaman)
 │   └── admin/                   # Shell, login gate, hooks (useAdminAuth/useProductManager),
@@ -131,6 +134,8 @@ axvara/
 │   ├── useLoadingStage.ts       # tahap tunggu (8 dtk lambat, 20 dtk macet) untuk label bertahap
 │   └── usePendingNavigation.ts  # router.push + status pending tombol CTA sampai rute tujuan tampil
 ├── src/lib/
+│   ├── local-orders.ts          # salinan lokal pesanan perangkat ini (localStorage axvara-orders,
+│   │                            # tanpa WA/email): pengingat, titik tab Pesanan, DeviceOrders
 │   ├── db.ts                    # BARREL — entry point publik tunggal (jangan impor db/* langsung)
 │   ├── db/                      # client (+state dev in-memory), expiry, errors, orders-create,
 │   │                            # orders-transition, types

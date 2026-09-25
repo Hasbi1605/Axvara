@@ -14,26 +14,15 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { parseExpiry } from "@/lib/expiry";
+import { freshPendingCodes, settleLocalOrder } from "@/lib/local-orders";
 
-const STORAGE_KEY = "axvara-orders";
 const DISMISS_KEY = "axvara-pending-reminder-dismissed";
-/** Order QRIS mati paling lambat 60 menit setelah dibuat; sisanya cadangan jam perangkat. */
-const CANDIDATE_MAX_AGE_MS = 75 * 60_000;
 /** 2 permintaan/menit — jauh di bawah limit `orders:lookup` 20/menit. */
 const RECHECK_MS = 30_000;
-const HIDDEN_PREFIXES = ["/checkout", "/pesanan", "/admin"];
+// /lacak-pesanan (tab Pesanan) sudah menampilkan pesanan belum dibayar + tombol Bayar.
+const HIDDEN_PREFIXES = ["/checkout", "/pesanan", "/lacak-pesanan", "/admin"];
 
-type LocalOrder = { code?: string; status?: string; createdAt?: string };
 type Pending = { code: string; qrisExpiresAt: number | null; orderExpiresAt: number | null; reissueAllowed: boolean };
-
-function readLocal(): LocalOrder[] {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
 
 function dismissedCodes(): string[] {
   try {
@@ -46,21 +35,7 @@ function dismissedCodes(): string[] {
 
 /** Pesanan lokal terbaru yang masih mungkin hidup. */
 function newestCandidate(now: number): string | null {
-  const dismissed = new Set(dismissedCodes());
-  const candidates = readLocal()
-    .filter((o) => o?.code && o.status === "pending" && !dismissed.has(String(o.code)))
-    .map((o) => ({ code: String(o.code), created: Date.parse(String(o.createdAt || "")) }))
-    .filter((o) => Number.isFinite(o.created) && now - o.created < CANDIDATE_MAX_AGE_MS)
-    .sort((a, b) => b.created - a.created);
-  return candidates[0]?.code ?? null;
-}
-
-/** Catat status akhir ke salinan lokal agar order ini tidak dicek ulang. */
-function settleLocal(code: string, status: string) {
-  try {
-    const next = readLocal().map((o) => (o?.code === code ? { ...o, status: status || "closed" } : o));
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-  } catch { /* storage penuh/diblokir: cukup sembunyikan */ }
+  return freshPendingCodes(now, new Set(dismissedCodes()))[0] ?? null;
 }
 
 function mmss(ms: number): string {
@@ -83,7 +58,7 @@ export function PendingOrderReminder() {
     try {
       const response = await fetch(`/api/orders?code=${encodeURIComponent(code)}`, { cache: "no-store" });
       if (response.status === 404) {
-        settleLocal(code, "missing");
+        settleLocalOrder(code, "missing");
         setPending(null);
         return;
       }
@@ -91,7 +66,7 @@ export function PendingOrderReminder() {
       if (!response.ok) return;
       const { order } = (await response.json()) as { order?: Record<string, unknown> };
       if (!order || order.status !== "pending") {
-        settleLocal(code, String(order?.status ?? ""));
+        settleLocalOrder(code, String(order?.status ?? ""));
         setPending(null);
         return;
       }

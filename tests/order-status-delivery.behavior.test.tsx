@@ -74,6 +74,13 @@ describe("/pesanan/[code] — blok pasca-pembayaran", () => {
     expect(screen.queryByLabelText("No. WA atau email checkout")).toBeNull();
   });
 
+  it("status akhir dari server dicatat ke salinan lokal (titik tab Pesanan ikut hilang)", async () => {
+    localStorage.setItem("axvara-orders", JSON.stringify([{ code: CODE, status: "pending", createdAt: new Date().toISOString() }]));
+    mockFetch(orderPayload());
+    render(<OrderStatusPage />);
+    await waitFor(() => expect(JSON.parse(localStorage.getItem("axvara-orders") || "[]")[0]?.status).toBe("lunas"));
+  });
+
   it("credentials_ready=true → panel retrieval kredensial tampil", async () => {
     mockFetch(orderPayload({ credentials_ready: true }));
     render(<OrderStatusPage />);

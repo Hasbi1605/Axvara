@@ -61,7 +61,8 @@ it("sudah lunas (mis. dibayar dari HP lain): tidak tampil dan salinan lokal dita
 it("tidak tampil (dan tidak memanggil server) di halaman pesanan/checkout itu sendiri", async () => {
   localOrder();
   const fetchSpy = serverOrder({ status: "pending", expires_at: inMinutes(50), qris: { expires_at: inMinutes(10) } });
-  for (const path of [`/pesanan/${CODE}`, "/checkout"]) {
+  // /lacak-pesanan (tab Pesanan, 2026-09-25) sudah menampilkan pesanan belum dibayar + tombol Bayar.
+  for (const path of [`/pesanan/${CODE}`, "/checkout", "/lacak-pesanan"]) {
     pathname = path;
     await mount();
     expect(screen.queryByRole("region", { name: "Pesanan menunggu pembayaran" })).toBeNull();

@@ -90,7 +90,8 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
   const [variantError, setVariantError] = useState<string | null>(null);
   const [variantAttempt, setVariantAttempt] = useState(0);
   const [descExpanded, setDescExpanded] = useState(false);
-  const [variantModal, setVariantModal] = useState<"cart" | "checkout" | null>(null);
+  // `select` = panel pilih varian untuk halaman (mobile); cart/checkout = beli cepat.
+  const [variantModal, setVariantModal] = useState<"cart" | "checkout" | "select" | null>(null);
   // Qty stepper PDP ala marketplace — state di atas (sebelum early return)
   // agar urutan hooks stabil. Nilai valid (min..max) dihitung di bawah dan
   // dipakai render; effect sinkronisasi ada setelah selectedMinQty dihitung.
@@ -307,6 +308,9 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
   const activationSteps = activationStepCount(productCopy.activation);
   const hasActivation = activationSteps > 0 || productCopy.notes.length > 0;
   const termsLabel = productCopy.fromVariant && termsVariant ? formatVariantLabel(termsVariant) : null;
+  // "Ganti varian" di judul S&K mobile hanya bila isinya memang berbeda antar varian.
+  const variantCopiesDiffer = activeVariants.length > 1
+    && new Set(activeVariants.map((v: VariantItem) => JSON.stringify(v.copy ?? null))).size > 1;
 
   return (
     <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
@@ -540,19 +544,40 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                   ))}
                 </div>
               </div>
-              {/* Mobile: compact variant hint (Shopee-style) — tap to open bottom-sheet */}
+              {/* Mobile: baris varian menampilkan pilihan aktif; ketuk membuka
+                  panel PILIH (bukan checkout). Dulu panel ini langsung ke
+                  checkout dan pilihannya hilang saat ditutup, sehingga S&K di
+                  mobile selalu milik varian pertama (laporan owner 2026-09-25). */}
               <button
                 type="button"
-                onClick={() => setVariantModal("checkout")}
-                className="mt-4 lg:hidden w-full flex items-center justify-between p-3 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] transition text-left"
+                onClick={() => setVariantModal("select")}
+                aria-label={selectedVariant
+                  ? `Varian: ${formatVariantLabel(selectedVariant)}, ${formatRupiah(selectedVariant.price)}. Ganti varian`
+                  : `Pilih varian, ${activeVariants.length} pilihan`}
+                className="mt-4 lg:hidden w-full flex items-center justify-between gap-3 p-3 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] transition text-left"
               >
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-white/70">Varian</span>
-                  <span className="text-xs font-semibold text-[#00E5FF]">
-                    Tersedia {activeVariants.length} varian
-                  </span>
-                </div>
-                <svg viewBox="0 0 24 24" className="w-4 h-4 text-white/40" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[11px] font-medium text-white/50">Varian</span>
+                  {selectedVariant ? (
+                    <>
+                      <span className="mt-0.5 block truncate text-sm font-semibold text-white">{formatVariantLabel(selectedVariant)}</span>
+                      <span className="mt-1 flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-semibold text-[#00E5FF]">{formatRupiah(selectedVariant.price)}</span>
+                        {buyerDeliveryKind(selectedVariant) === "instant" ? (
+                          <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300">Kirim otomatis</span>
+                        ) : (
+                          <span className="rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFD66B]">Made By Order</span>
+                        )}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="mt-0.5 block text-sm font-semibold text-[#00E5FF]">Pilih varian · {activeVariants.length} pilihan</span>
+                  )}
+                </span>
+                <span className="flex shrink-0 items-center gap-1 text-xs font-semibold text-white/55">
+                  {selectedVariant && activeVariants.length > 1 ? "Ganti" : null}
+                  <svg viewBox="0 0 24 24" className="w-4 h-4 text-white/40" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 18l6-6-6-6"/></svg>
+                </span>
               </button>
             </>
           )}
@@ -681,7 +706,16 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
           {(hasTerms || hasActivation) && (
             <div className="mt-4 lg:hidden space-y-3" data-testid="pdp-mobile-copy">
               {hasTerms && (
-                <MobileCollapsible title="Syarat & Ketentuan" meta={termsLabel} icon={<ShieldIcon className="w-4 h-4 shrink-0 text-[#00E5FF]" />}>
+                <MobileCollapsible
+                  title="Syarat & Ketentuan"
+                  meta={termsLabel}
+                  icon={<ShieldIcon className="w-4 h-4 shrink-0 text-[#00E5FF]" />}
+                  action={variantCopiesDiffer ? (
+                    <button type="button" onClick={() => setVariantModal("select")} className="text-xs font-semibold text-[#00E5FF] hover:underline">
+                      Ganti varian
+                    </button>
+                  ) : undefined}
+                >
                   <TermsBody sections={productCopy.sections} size="xs" />
                 </MobileCollapsible>
               )}
@@ -814,12 +848,17 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
         </div>
       )}
 
-      {/* QuickVariantModal — triggered from mobile sticky bar or variant hint */}
+      {/* QuickVariantModal — baris varian / S&K (mode select) atau sticky bar
+          saat belum memilih (beli cepat). Varian dari halaman dipakai langsung
+          (tanpa fetch ulang); ketukan pembeli selalu menjadi pilihan halaman. */}
       {variantModal && product && (
         <QuickVariantModal
           product={product}
           mode={variantModal}
           onClose={() => setVariantModal(null)}
+          variants={catalogDetail && !variantError && activeVariants.length > 0 ? activeVariants : undefined}
+          initialVariantId={selectedVariantId}
+          onVariantChange={setSelectedVariantId}
         />
       )}
 
