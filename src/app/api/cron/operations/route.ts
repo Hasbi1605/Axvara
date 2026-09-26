@@ -634,6 +634,14 @@ export async function POST(request: NextRequest) {
 
     };
     const runNotify = async () => {
+      if (forcePromo && activePhases.has("notify") && budget.fits(8) && hasTime(TIME_TELEGRAM_BATCH * 2)) {
+        const { sendDueAdminPromoDigest } = await import("@/lib/telegram/promo-digest");
+        const promo = await sendDueAdminPromoDigest(database, new Date(), "morning");
+        results.telegram_promo_full_sent = promo.fullSent ? 1 : 0;
+        results.telegram_promo_short_sent = promo.shortSent ? 1 : 0;
+        if (promo.skipped) results.telegram_promo_skipped = promo.skipped;
+        return;
+      }
       // Invoice-expired notice and terminal notice survive delivery failures.
       const noticeCount = pendingQrisNotice + Number(results.expired_payments);
       if (activePhases.has("notify") && noticeCount > 0 && budget.fits(5) && hasTime(TIME_TELEGRAM_BATCH)) {
