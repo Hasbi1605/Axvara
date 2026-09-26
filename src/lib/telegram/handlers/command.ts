@@ -31,7 +31,7 @@ export async function handleCommand(
   const cmd = text.toLowerCase().split(/\s+/)[0].split("@")[0];
 
   // Check for pending WA input before processing commands
-  if (from && !cmd.startsWith("/")) {
+  if (from && (!cmd.startsWith("/") || cmd === "/batal")) {
     const handled = await handlePendingWaInput(text, chatId, from);
     if (handled) return;
   }

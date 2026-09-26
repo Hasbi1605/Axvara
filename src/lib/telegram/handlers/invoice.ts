@@ -35,6 +35,7 @@ export async function handlePayWithQris(
   variantId: number,
   rawQty: number,
   from: { id: number; first_name: string; username?: string },
+  emailConfirmed = false,
 ) {
   await sendChatAction(chatId, "typing");
   await clearPendingAction(from);
@@ -97,7 +98,13 @@ export async function handlePayWithQris(
             "Ketik /batal untuk membatalkan.",
           ].join("\n"),
           parse_mode: "HTML",
+          reply_markup: { force_reply: true, selective: true, input_field_placeholder: "nama@email.com" },
         });
+        return;
+      }
+      if (!emailConfirmed) {
+        const { showEmailConfirmation } = await import("./discovery");
+        await showEmailConfirmation(chatId, productId, variantId, qty, savedEmail);
         return;
       }
     }

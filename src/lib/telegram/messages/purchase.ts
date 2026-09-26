@@ -72,6 +72,7 @@ export function chooseQtyMessage(params: {
   qty: number;
   maxQty?: number;
   minQty?: number;
+  requiresEmail?: boolean;
 }): string {
   const { productName, variantLabel, price, stock } = params;
   // Telegram bulk cap is 100/order.
@@ -99,11 +100,33 @@ export function chooseQtyMessage(params: {
     "",
     `🔢 <b>Jumlah dipilih: ${qty}</b>`,
     `🧾 <b>Total: ${formatRupiah(price * qty)}</b>`,
+    ...(params.requiresEmail ? ["📧 Email aktif diperlukan sebelum bayar"] : []),
     "",
-    "Gunakan tombol ➖ / ➕ di bawah.",
+    "Ubah jumlah dengan tombol ➖ / ➕.",
     maxQty > 1
-      ? `Untuk bulk, kamu juga bisa ketik angka ${minQty > 1 ? `${minQty}–` : "1–"}${maxQty}.`
+      ? `Untuk lebih cepat, tekan <b>Masukkan Jumlah</b> lalu kirim angka ${minQty}–${maxQty}.`
       : "Varian ini tidak mendukung bulk order.",
+  ].join("\n");
+}
+
+export function emailConfirmationMessage(params: {
+  productName: string;
+  variantLabel: string;
+  qty: number;
+  total: number;
+  maskedEmail: string;
+}): string {
+  return [
+    "📧 <b>Konfirmasi Email</b>",
+    "━━━━━━━━━━━━━━━━━━━━━",
+    "",
+    `📦 <b>${escapeHtml(truncate(params.productName, 80))}</b>`,
+    `🏷 ${escapeHtml(truncate(params.variantLabel, 80))}`,
+    `🔢 Jumlah: ${params.qty}`,
+    `📧 Email: <code>${escapeHtml(params.maskedEmail)}</code>`,
+    `🧾 <b>Total: ${formatRupiah(params.total)}</b>`,
+    "",
+    "Pastikan email benar. Undangan produk akan dikirim ke alamat tersebut.",
   ].join("\n");
 }
 

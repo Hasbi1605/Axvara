@@ -155,7 +155,9 @@ tanpa pengulangan sapaan/tanggal/jam dari welcome). Sejak 2026-09-27 detail
 produk dibuat ringkas (nama, harga/diskon, penjualan, stok) tanpa daftar varian
 panjang; tombol **Pilih Varian** membuka inline keyboard yang membawa
 nama/durasi/garansi/harga, dengan varian habis nonaktif di urutan terakhir. Alur
-`Produk → Varian → Qty stepper (1–100/bulk) → QRIS dinamis`. Telegram hanya menawarkan
+`Produk → Varian → Qty (−/+ atau Masukkan Jumlah) → Email bila wajib → QRIS dinamis`.
+Input jumlah memakai ForceReply dengan rentang minimum/stok live; email ditampilkan masked
+untuk dikonfirmasi dan bisa diubah sebelum invoice dibuat. Telegram hanya menawarkan
 QRIS otomatis—tidak menampilkan SeaBank/e-wallet. Setelah jumlah dikonfirmasi, satu pesan
 QRIS langsung terbit; QRIS Hook mengabari buyer otomatis saat dana terverifikasi. Nomor WA
 baru diminta setelah status `paid` dan hanya untuk fulfillment manual. Order baru langsung

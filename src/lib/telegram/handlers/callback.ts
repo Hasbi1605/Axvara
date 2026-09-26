@@ -22,6 +22,7 @@ import { clearPendingAction, getBestsellers } from "./shared";
 import {
   handleShowCatalogEdit, handleShowCategoriesEdit, handleShowProducts,
   handleShowProduct, handleShowVariants, handleVariantConfirm, handleShowQty,
+  handleQtyInputPrompt,
 } from "./catalog";
 import {
   handleMyOrders, handleSearchPrompt, handleBuyConfirm, handleConfirmPurchase,
@@ -43,7 +44,7 @@ export async function handleCallback(data: string, chatId: number, messageId: nu
   // batal, refresh, status, wainput) hanya boleh dieksekusi pemilik order.
   // from.id adalah identitas penekan tombol terverifikasi Telegram — chat_id
   // grup tidak boleh dipakai untuk mengambil alih order orang lain.
-  const ownerBound = new Set(["pay", "pm", "cadd", "cinc", "cdec", "crm", "ccheckout", "cancel", "refresh", "order", "wainput", "qrenew"]);
+  const ownerBound = new Set(["pay", "pm", "qinput", "epay", "eedit", "cadd", "cinc", "cdec", "crm", "ccheckout", "cancel", "refresh", "order", "wainput", "qrenew"]);
   if (ownerBound.has(action)) {
     const targetCode = action === "cancel" || action === "refresh" || action === "order" || action === "wainput" || action === "qrenew"
       ? String(params[0] || "").toUpperCase()
@@ -118,6 +119,10 @@ export async function handleCallback(data: string, chatId: number, messageId: nu
       await handleShowQty(chatId, messageId, Number(params[0]), Number(params[1]), Number(params[2]));
       break;
 
+    case "qinput":
+      await handleQtyInputPrompt(chatId, Number(params[0]), Number(params[1]), from);
+      break;
+
     case "pay":
       await handlePayWithQris(chatId, messageId, Number(params[0]), Number(params[1]), Number(params[2]), from);
       break;
@@ -126,6 +131,25 @@ export async function handleCallback(data: string, chatId: number, messageId: nu
       // Compatibility for buttons from older messages: Telegram now always uses QRIS.
       await handlePayWithQris(chatId, messageId, Number(params[0]), Number(params[1]), Number(params[2]), from);
       break;
+
+    case "epay":
+      await handlePayWithQris(chatId, messageId, Number(params[0]), Number(params[1]), Number(params[2]), from, true);
+      break;
+
+    case "eedit": {
+      const productId = Number(params[0]);
+      const variantId = Number(params[1]);
+      const qty = Number(params[2]);
+      const { execRun, isD1Mode } = await import("@/lib/db");
+      if (isD1Mode()) await execRun(`UPDATE telegram_users SET pending_action=?, updated_at=datetime('now') WHERE user_id=?`, `email_for:${productId}:${variantId}:${qty}`, String(from.id)).catch(() => {});
+      await sendMessage({
+        chat_id: chatId,
+        text: "📧 <b>Ubah Email</b>\n\nBalas pesan ini dengan email aktif yang benar.\nContoh: <code>nama@email.com</code>",
+        parse_mode: "HTML",
+        reply_markup: { force_reply: true, selective: true, input_field_placeholder: "nama@email.com" },
+      });
+      break;
+    }
 
     case "wainput":
       await handleWaInput(chatId, String(params[0] || ""), from);

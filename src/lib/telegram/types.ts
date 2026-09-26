@@ -70,7 +70,13 @@ export interface ReplyKeyboardMarkup {
   input_field_placeholder?: string;
 }
 
-export type AnyReplyMarkup = InlineKeyboardMarkup | ReplyKeyboardMarkup;
+export interface ForceReply {
+  force_reply: true;
+  input_field_placeholder?: string;
+  selective?: boolean;
+}
+
+export type AnyReplyMarkup = InlineKeyboardMarkup | ReplyKeyboardMarkup | ForceReply;
 
 export interface SendMessageParams {
   chat_id: number | string;

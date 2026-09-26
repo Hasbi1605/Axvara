@@ -54,6 +54,9 @@ export const cb = {
   qty: (productId: number, variantId: number) => `qty:${productId}:${variantId}`,
   setQty: (productId: number, variantId: number, qty: number) => `q:${productId}:${variantId}:${qty}`,
   pay: (productId: number, variantId: number, qty: number) => `pay:${productId}:${variantId}:${qty}`,
+  qtyInput: (productId: number, variantId: number) => `qinput:${productId}:${variantId}`,
+  emailPay: (productId: number, variantId: number, qty: number) => `epay:${productId}:${variantId}:${qty}`,
+  emailEdit: (productId: number, variantId: number, qty: number) => `eedit:${productId}:${variantId}:${qty}`,
   order: (orderCode: string) => `order:${orderCode}`,
   cancel: (orderCode: string) => `cancel:${orderCode}`,
   refresh: (orderCode: string) => `refresh:${orderCode}`,
@@ -326,6 +329,7 @@ export function qtyKeyboard(params: {
   maxQty?: number;
   /** Minimum pembelian per varian (migrasi 0034, default 1). */
   minQty?: number;
+  requiresEmail?: boolean;
 }): InlineKeyboardMarkup {
   const { productId, variantId, stock, price } = params;
   // Telegram bulk cap is 100/order (matches TELEGRAM_MAX_QTY in the webhook).
@@ -346,10 +350,11 @@ export function qtyKeyboard(params: {
     inline_keyboard: [
       [
         { text: minusLabel, callback_data: minusCb },
-        { text: `${qty} item`, callback_data: "noop" },
+        { text: `Jumlah: ${qty}`, callback_data: "noop" },
         { text: qty < max ? "Tambah ➕" : "➕", callback_data: qty < max ? cb.setQty(productId, variantId, plusQty) : "noop" },
       ],
-      [{ text: `✅ Bayar QRIS • Rp${total}`, callback_data: cb.pay(productId, variantId, qty) }],
+      ...(max > 1 ? [[{ text: "✍️ Masukkan Jumlah", callback_data: cb.qtyInput(productId, variantId) }]] : []),
+      [{ text: params.requiresEmail ? `📧 Lanjut Isi Email • Rp${total}` : `✅ Bayar QRIS • Rp${total}`, callback_data: cb.pay(productId, variantId, qty) }],
       [{ text: "🛒 + Keranjang", callback_data: cb.cartAdd(productId, variantId, qty) }],
       [
         { text: "◀️ Ganti Varian", callback_data: cb.variants(productId) },
@@ -357,6 +362,17 @@ export function qtyKeyboard(params: {
       ],
     ],
   };
+}
+
+export function emailConfirmationKeyboard(productId: number, variantId: number, qty: number, total: number): InlineKeyboardMarkup {
+  return { inline_keyboard: [
+    [{ text: `✅ Bayar QRIS • ${buttonPrice(total)}`, callback_data: cb.emailPay(productId, variantId, qty) }],
+    [{ text: "✏️ Ubah Email", callback_data: cb.emailEdit(productId, variantId, qty) }],
+    [
+      { text: "◀️ Ubah Jumlah", callback_data: cb.qty(productId, variantId) },
+      { text: "🏠 Menu", callback_data: cb.home() },
+    ],
+  ] };
 }
 
 export function cartKeyboard(params: {

@@ -10,13 +10,14 @@ import { queryFirst, queryAll, execRun, isD1Mode } from "@/lib/db";
 import { sendMessage, sendChatAction } from "@/lib/telegram/api";
 import {
   homeKeyboard, orderStatusKeyboard, myOrdersKeyboard, searchResultsKeyboard,
-  orderPaidKeyboard, TELEGRAM_MAX_QTY,
+  orderPaidKeyboard, TELEGRAM_MAX_QTY, emailConfirmationKeyboard,
 } from "@/lib/telegram/keyboards";
 import {
   outOfStockMessage, alreadyPendingMessage, errorMessage,
   myOrdersPrompt, myOrdersMessage, invalidWhatsAppMessage, waSavedAfterPaymentMessage,
   whatsAppInputPromptMessage, searchPromptMessage, searchResultsMessage,
   type TelegramOrderRow,
+  emailConfirmationMessage,
 } from "@/lib/telegram/messages";
 import { getProductDetail } from "@/lib/catalog";
 import { purchasableStockSql } from "@/lib/catalog-availability";
@@ -27,8 +28,8 @@ import { handleShowCatalog, handleShowQty, handleShowVariants } from "./catalog"
 /**
  * Jawaban email untuk alur email_for: (migrasi 0033): user diminta email
  * karena varian butuh Invite/Link WR atau produk require_email. Validasi,
- * simpan ke telegram_users.buyer_email, lalu LANJUTKAN ke invoice (jangan
- * suruh tekan tombol lagi). /batal membersihkan state.
+ * simpan ke telegram_users.buyer_email, lalu tampilkan konfirmasi masked
+ * sebelum invoice diterbitkan. /batal membersihkan state.
  */
 export async function handlePendingEmailInput(
   text: string,
@@ -93,14 +94,33 @@ export async function handlePendingEmailInput(
     return true;
   }
   await execRun(
-    `UPDATE telegram_users SET buyer_email=?, pending_action=NULL, updated_at=datetime('now') WHERE user_id=?`,
+    `UPDATE telegram_users SET buyer_email=?, pending_action=?, updated_at=datetime('now') WHERE user_id=?`,
     email,
+    `email_confirm:${productId}:${variantId}:${qty}`,
     String(from.id),
   ).catch(() => {});
-  await sendMessage({ chat_id: chatId, text: `✅ Email <code>${email}</code> tersimpan. Lanjut buat invoice…`, parse_mode: "HTML" });
-  const { handlePayWithQris } = await import("./invoice");
-  await handlePayWithQris(chatId, 0, productId, variantId, qty, from);
+  await showEmailConfirmation(chatId, productId, variantId, qty, email);
   return true;
+}
+
+function maskEmail(email: string): string {
+  const [local, domain] = email.split("@");
+  if (!domain) return "***";
+  return `${local.length <= 2 ? local[0] ?? "*" : `${local[0]}***${local.at(-1)}`}@${domain}`;
+}
+
+export async function showEmailConfirmation(chatId: number, productId: number, variantId: number, qty: number, email?: string) {
+  const { getActiveVariant } = await import("@/lib/catalog");
+  const variant = await getActiveVariant(variantId);
+  if (!variant || variant.product_id !== productId) return;
+  const product = await queryFirst(`SELECT name FROM products WHERE id=?`, productId);
+  const saved = email ?? String((await queryFirst(`SELECT buyer_email FROM telegram_users WHERE user_id=(SELECT user_id FROM telegram_users WHERE chat_id=? LIMIT 1)`, String(chatId)))?.buyer_email ?? "");
+  await sendMessage({
+    chat_id: chatId,
+    text: emailConfirmationMessage({ productName: String(product?.name ?? "Produk"), variantLabel: variant.label, qty, total: variant.price * qty, maskedEmail: maskEmail(saved) }),
+    parse_mode: "HTML",
+    reply_markup: emailConfirmationKeyboard(productId, variantId, qty, variant.price * qty),
+  });
 }
 
 // --- /orders: real order history with reorder shortcuts ---
@@ -267,16 +287,16 @@ export async function handlePendingQtyInput(
     });
     return true;
   }
-  // Minimum pembelian (migrasi 0034): angka ketik di bawah min ditolak di
-  // sini dengan pesan jelas, bukan diam-diam dibulatkan ke min.
+  // Validate against the live dynamic range; never silently clamp typed bulk.
   try {
     const { getActiveVariant } = await import("@/lib/catalog");
     const typedVariant = await getActiveVariant(variantId);
-    const need = Math.max(1, Number(typedVariant?.min_qty ?? 1) || 1);
-    if (typedVariant && typedVariant.fulfillment_mode !== "unique" && need > 1 && typedQty < need) {
+    const need = typedVariant?.fulfillment_mode === "unique" ? 1 : Math.max(1, Number(typedVariant?.min_qty ?? 1) || 1);
+    const max = typedVariant?.fulfillment_mode === "unique" ? 1 : typedVariant?.stock === -1 ? TELEGRAM_MAX_QTY : Math.min(Number(typedVariant?.stock ?? 0), TELEGRAM_MAX_QTY);
+    if (typedVariant && (typedQty < need || typedQty > max)) {
       await sendMessage({
         chat_id: chatId,
-        text: `📦 <b>Minimal Pembelian ${need}</b>\n\nVarian ini minimal order ${need}. Ketik angka ${need}–${TELEGRAM_MAX_QTY}, misalnya <code>${need}</code>.`,
+        text: `❌ Jumlah di luar batas. Kirim angka ${need}–${max}, misalnya <code>${need}</code>.`,
         parse_mode: "HTML",
       });
       return true;

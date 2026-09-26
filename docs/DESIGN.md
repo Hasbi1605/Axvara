@@ -299,6 +299,14 @@
 - Detail produk multi-varian menutup dengan jumlah pilihan dan arahan memilih
   varian. Garansi lengkap tidak digandakan di caption karena sudah terlihat
   pada tombol varian dan tetap mempunyai halaman `/garansi` di flow transaksi.
+- Layar Jumlah memakai `Jumlah: N`, stepper −/+, dan tombol **Masukkan Jumlah**
+  yang mengirim ForceReply dengan rentang live (`min_qty`–min(stok,100)); input
+  di luar rentang ditolak eksplisit, tidak di-clamp diam-diam. Produk unik
+  maksimal satu tidak menampilkan tombol input manual.
+- Varian wajib email menampilkan CTA **Lanjut Isi Email**, bukan Bayar QRIS yang
+  mengejutkan dengan form tambahan. Email dikumpulkan melalui ForceReply, lalu
+  ditampilkan masked pada Konfirmasi Email dengan aksi Bayar QRIS, Ubah Email,
+  dan Ubah Jumlah. Invoice belum dibuat sebelum pembeli menekan Bayar QRIS.
 
 ### 5.4 Keranjang Drawer
 - Overlay: `rgba(8,12,30,0.6)` + `backdrop-blur-sm`

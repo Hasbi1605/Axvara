@@ -96,7 +96,8 @@ describe("variant min_qty — bot & storefront", () => {
   it("Telegram: stepper dibuka di min, tolak ketik/invoice di bawah min", () => {
     expect(read("src/lib/telegram/handlers/catalog.ts")).toContain("variant.min_qty");
     expect(read("src/lib/telegram/handlers/invoice.ts")).toContain("Minimal Pembelian");
-    expect(read("src/lib/telegram/handlers/discovery.ts")).toContain("Minimal Pembelian");
+    expect(read("src/lib/telegram/handlers/discovery.ts")).toContain("Jumlah di luar batas");
+    expect(read("src/lib/telegram/handlers/discovery.ts")).toContain("typedQty > max");
     expect(read("src/lib/telegram/keyboards.ts")).toContain("minQty");
     expect(read("src/lib/telegram/messages/purchase.ts")).toContain("Minimal pembelian");
     expect(read("src/lib/telegram/handlers/cart.ts")).toContain("Minimal Pembelian");

@@ -9,12 +9,13 @@ import {
   adminTelegramOrderCreatedMessage, myOrdersMessage, searchPromptMessage,
   searchResultsMessage, breadcrumbLine, formatSoldCountLabel,
   cartMessage, cartAddedMessage, cartCheckoutSummaryMessage, orderReminderMessage,
+  emailConfirmationMessage,
 } from "@/lib/telegram/messages";
 import {
   cb, parseCallback, homeKeyboard, warrantyKeyboard, categoriesKeyboard,
   productsKeyboard, catalogFlatKeyboard, qtyKeyboard, qrisInvoiceKeyboard,
   orderPaidKeyboard, mainReplyMenu, myOrdersKeyboard, searchResultsKeyboard,
-  cartKeyboard, productDetailKeyboard, variantsKeyboard,
+  cartKeyboard, productDetailKeyboard, variantsKeyboard, emailConfirmationKeyboard,
   MENU_LABEL_CATALOG, MENU_LABEL_SEARCH, MENU_LABEL_ORDERS, MENU_LABEL_HELP,
   MENU_LABEL_CART,
 } from "@/lib/telegram/keyboards";
@@ -99,6 +100,9 @@ describe("Telegram callback data", () => {
       cb.qty(99999, 88888),
       cb.setQty(99999, 88888, 100),
       cb.pay(99999, 88888, 100),
+      cb.qtyInput(99999, 88888),
+      cb.emailPay(99999, 88888, 100),
+      cb.emailEdit(99999, 88888, 100),
       cb.order("AXV-20260903-ABCD1234"),
       cb.cancel("AXV-20260903-ABCD1234"),
       cb.refresh("AXV-20260903-ABCD1234"),
@@ -243,9 +247,23 @@ describe("Telegram keyboards", () => {
     expect(datas.some(d => d === "q:1:2:1")).toBe(true);
     expect(datas.some(d => d === "q:1:2:3")).toBe(true);
     expect(datas.some(d => d === "pay:1:2:2")).toBe(true);
-    expect(texts).toContain("2 item");
+    expect(texts).toContain("Jumlah: 2");
+    expect(texts).toContain("✍️ Masukkan Jumlah");
     expect(texts.some(t => t.includes("Bayar QRIS") && t.includes("10.000"))).toBe(true);
     expect(texts.some(t => t.includes("1️⃣") || t.includes("2️⃣") || t.includes("3️⃣"))).toBe(false);
+  });
+
+  it("email-required quantity uses an honest continue CTA", () => {
+    const kb = qtyKeyboard({ productId: 1, variantId: 2, stock: 10, qty: 3, price: 5000, requiresEmail: true });
+    expect(kb.inline_keyboard.flat().some((b) => b.text === "📧 Lanjut Isi Email • Rp15.000" && b.callback_data === "pay:1:2:3")).toBe(true);
+  });
+
+  it("email confirmation offers pay, edit email, and edit quantity", () => {
+    const kb = emailConfirmationKeyboard(1, 2, 3, 15000);
+    const callbacks = kb.inline_keyboard.flat().map((b) => b.callback_data);
+    expect(callbacks).toContain("epay:1:2:3");
+    expect(callbacks).toContain("eedit:1:2:3");
+    expect(callbacks).toContain("qty:1:2");
   });
 
   it("QRIS invoice keyboard has no manual status-check requirement", () => {
@@ -271,6 +289,12 @@ describe("Telegram keyboards", () => {
     const route = readWebhook();
     expect(route).toContain('case "wainput"');
     expect(route).toContain("whatsAppInputPromptMessage");
+  });
+
+  it("routes /batal into pending email handling", () => {
+    const route = readWebhook();
+    expect(route).toContain('cmd === "/batal"');
+    expect(route).toContain("handlePendingEmailInput");
   });
 });
 
@@ -403,6 +427,14 @@ describe("Telegram messages premium UX", () => {
     expect(msg).toContain("Jumlah dipilih: 3");
     expect(msg).toContain("Total: Rp15.000");
     expect(msg).toContain("1–100");
+    expect(msg).toContain("Masukkan Jumlah");
+  });
+
+  it("email confirmation masks buyer email", () => {
+    const msg = emailConfirmationMessage({ productName: "Canva Pro", variantLabel: "Invite", qty: 3, total: 15000, maskedEmail: "n***a@gmail.com" });
+    expect(msg).toContain("n***a@gmail.com");
+    expect(msg).toContain("Jumlah: 3");
+    expect(msg).toContain("Total: Rp15.000");
   });
 
   it("qty supports bulk up to 100 for unlimited and finite stock", () => {

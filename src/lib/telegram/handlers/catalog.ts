@@ -18,6 +18,7 @@ import {
   chooseVariantMessage, chooseQtyMessage,
 } from "@/lib/telegram/messages";
 import { getProductDetail, getActiveVariant, formatDuration, formatWarranty } from "@/lib/catalog";
+import { needsEmailForVariant } from "@/lib/warung-rebahan/delivery-class";
 import { purchasableStockSql } from "@/lib/catalog-availability";
 import { clampQty } from "./shared";
 import { handleBuyConfirm } from "./discovery";
@@ -261,6 +262,11 @@ export async function handleShowQty(
   }
   const product = await queryFirst(`SELECT id, name FROM products WHERE id=?`, productId);
   const productName = product ? String(product.name) : "Produk";
+  const productEmail = await queryFirst(`SELECT require_email FROM products WHERE id=?`, productId).catch(() => null);
+  const requiresEmail = needsEmailForVariant({
+    wrType: variant.wr_type ?? null,
+    requireEmail: Number(productEmail?.require_email ?? variant.require_email ?? 0),
+  });
   const stockMax = variant.stock === -1 ? TELEGRAM_MAX_QTY : Math.max(1, Math.min(variant.stock, TELEGRAM_MAX_QTY));
   const uniqueMax = variant.fulfillment_mode === "unique" ? 1 : stockMax;
   // Minimum pembelian (migrasi 0034): stepper dibuka LANGSUNG di min agar
@@ -291,8 +297,25 @@ export async function handleShowQty(
       qty,
       maxQty,
       minQty,
+      requiresEmail,
     }),
     parse_mode: "HTML",
-    reply_markup: qtyKeyboard({ productId, variantId, stock: variant.stock, qty, price: variant.price, maxQty, minQty }),
+    reply_markup: qtyKeyboard({ productId, variantId, stock: variant.stock, qty, price: variant.price, maxQty, minQty, requiresEmail }),
+  });
+}
+
+export async function handleQtyInputPrompt(chatId: number, productId: number, variantId: number, from: { id: number }) {
+  const variant = await getActiveVariant(variantId);
+  if (!variant || variant.product_id !== productId) return;
+  const minQty = variant.fulfillment_mode === "unique" ? 1 : Math.max(1, Number(variant.min_qty ?? 1) || 1);
+  const maxQty = variant.fulfillment_mode === "unique" ? 1 : variant.stock === -1 ? TELEGRAM_MAX_QTY : Math.min(variant.stock, TELEGRAM_MAX_QTY);
+  if (isD1Mode()) {
+    await execRun(`UPDATE telegram_users SET pending_action=?, updated_at=datetime('now') WHERE user_id=?`, `qty_for:${productId}:${variantId}`, String(from.id)).catch(() => {});
+  }
+  await sendMessage({
+    chat_id: chatId,
+    text: `✍️ <b>Masukkan Jumlah</b>\n\nBalas pesan ini dengan angka ${minQty}–${maxQty}.\nContoh: <code>${Math.min(Math.max(minQty, 20), maxQty)}</code>\n\nAngka hanya mengubah jumlah. Pesanan belum dibuat sampai kamu menekan tombol bayar atau keranjang.`,
+    parse_mode: "HTML",
+    reply_markup: { force_reply: true, selective: true, input_field_placeholder: `Ketik ${minQty}–${maxQty}` },
   });
 }
