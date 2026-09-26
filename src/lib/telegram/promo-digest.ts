@@ -110,13 +110,8 @@ export function promoMessages(slot: PromoSlot, products: PromoProduct[]): { full
 export async function sendDueAdminPromoDigest(
   database: DatabaseAccess,
   now = new Date(),
-  forceSlot?: PromoSlot,
 ): Promise<PromoDigestResult> {
-  const actual = promoSlotAt(now);
-  const businessDate = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit",
-  }).format(now);
-  const due = forceSlot ? { businessDate, slot: forceSlot } : actual;
+  const due = promoSlotAt(now);
   if (!due) return { due: false, fullSent: false, shortSent: false, complete: false };
   if (
     process.env.TELEGRAM_PROMO_DIGEST_ENABLED !== "true" ||

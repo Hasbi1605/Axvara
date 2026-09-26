@@ -126,14 +126,7 @@ export async function POST(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
   // Pembanding kanonis (src/lib/security.ts) — sama dengan webhook DANA/
   // Telegram/WhatsApp. `!==` membocorkan posisi byte pertama yang berbeda.
-  if (!cronSecret || !auth) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
-  const promoTestSecret = process.env.PROMO_TEST_SECRET;
-  const forcePromo = request.nextUrl.searchParams.get("promo_test") === "1";
-  const authorized = constantTimeEqual(auth, `Bearer ${cronSecret}`);
-  const promoTestAuthorized = Boolean(forcePromo && promoTestSecret && constantTimeEqual(auth ?? "", `Bearer ${promoTestSecret}`));
-  if (!authorized && !promoTestAuthorized) {
+  if (!cronSecret || !constantTimeEqual(auth ?? "", `Bearer ${cronSecret}`)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
@@ -323,7 +316,7 @@ export async function POST(request: NextRequest) {
     const pendingPaidAdmin = Number(queueRow?.paid_admin ?? 0);
     const pendingPaidAdminWeb = Number(queueRow?.paid_admin_web ?? 0);
     const pendingStale = Number(queueRow?.stale ?? 0);
-    const promoDue = forcePromo || process.env.TELEGRAM_PROMO_DIGEST_ENABLED === "true" && (() => {
+    const promoDue = process.env.TELEGRAM_PROMO_DIGEST_ENABLED === "true" && (() => {
       const hour = Number(new Intl.DateTimeFormat("en-GB", {
         timeZone: "Asia/Jakarta", hour: "2-digit", hourCycle: "h23",
       }).format(new Date()));
@@ -634,14 +627,6 @@ export async function POST(request: NextRequest) {
 
     };
     const runNotify = async () => {
-      if (forcePromo && activePhases.has("notify") && budget.fits(8) && hasTime(TIME_TELEGRAM_BATCH * 2)) {
-        const { sendDueAdminPromoDigest } = await import("@/lib/telegram/promo-digest");
-        const promo = await sendDueAdminPromoDigest(database, new Date(), "morning");
-        results.telegram_promo_full_sent = promo.fullSent ? 1 : 0;
-        results.telegram_promo_short_sent = promo.shortSent ? 1 : 0;
-        if (promo.skipped) results.telegram_promo_skipped = promo.skipped;
-        return;
-      }
       // Invoice-expired notice and terminal notice survive delivery failures.
       const noticeCount = pendingQrisNotice + Number(results.expired_payments);
       if (activePhases.has("notify") && noticeCount > 0 && budget.fits(5) && hasTime(TIME_TELEGRAM_BATCH)) {
@@ -707,7 +692,7 @@ export async function POST(request: NextRequest) {
       if (activePhases.has("notify") && budget.fits(8) && hasTime(TIME_TELEGRAM_BATCH * 2)) {
         try {
           const { sendDueAdminPromoDigest } = await import("@/lib/telegram/promo-digest");
-          const promo = await sendDueAdminPromoDigest(database, new Date(), forcePromo ? "morning" : undefined);
+          const promo = await sendDueAdminPromoDigest(database);
           results.telegram_promo_full_sent = promo.fullSent ? 1 : 0;
           results.telegram_promo_short_sent = promo.shortSent ? 1 : 0;
           if (promo.due && !promo.complete && !promo.skipped && !deferredOut.includes("notify")) deferredOut.push("notify");
