@@ -173,7 +173,7 @@ async function deliverLegacyShared(
       parse_mode: "HTML",
     });
     if (!sendResult.ok) throw new Error(sendResult.description || "Telegram send failed");
-    await markJobDelivered(jobId, String((sendResult.result as Record<string, unknown>)?.message_id ?? ""));
+    await markJobDelivered(jobId, String(sendResult.result?.message_id ?? ""));
   }
 
   await execRun(
@@ -211,7 +211,7 @@ async function deliverLegacyUnique(
     });
     if (!sendResult.ok) throw new Error(sendResult.description || "Telegram send failed");
     await markDelivered(Number(inventoryItem.id));
-    await markJobDelivered(jobId, String((sendResult.result as Record<string, unknown>)?.message_id ?? ""));
+    await markJobDelivered(jobId, String(sendResult.result?.message_id ?? ""));
   }
 
   await execRun(

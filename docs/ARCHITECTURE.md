@@ -710,6 +710,7 @@ Implementasi native TypeScript di codebase AXVARA. Repo `mocasus/telegram-auto-o
 | `whatsapp_outbox.worker_id/locked_until` + status `sending` | Lease klaim worker anti-kirim-ganda (migrasi 0018, rebuild CHECK prod 0019, review R10 lanjutan: recovery lease basi oleh runtime + claimErrors terpisah) |
 | `admin_session_revocations` | Pencabutan sesi admin lintas instance/restart (migrasi 0020, review R8 lanjutan: logout menolak cookie basi di worker baru; TTL 90 hari dibersihkan cron) |
 | `store_settings` | Override nama, tagline, WhatsApp, jam dukungan, footer, dan logo storefront |
+| `telegram_promo_digests` | Ledger Daily Promo dua slot (`business_date + slot` unik), snapshot product IDs, marker/attempt/error terpisah untuk bubble lengkap dan ringkas (migrasi 0044) |
 
 Kolom baru di `products`: `fulfillment_mode`, `shared_secret_ciphertext`, `shared_secret_iv`, `telegram_enabled`.
 Kolom baru di `orders`: `sales_channel`, `telegram_chat_id`, `telegram_user_id`, `payment_status`, `fulfillment_status`, `telegram_order_notified_at`, dan `telegram_paid_notified_at`.
@@ -743,7 +744,7 @@ Semua nilai nyata di Cloudflare Pages Secrets:
 TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET, TELEGRAM_ADMIN_CHAT_ID
 DANA_STATIC_QRIS, DANA_WEBHOOK_SECRET
 FULFILLMENT_ENCRYPTION_KEY
-TELEGRAM_BOT_ENABLED, DANA_QRIS_ENABLED, AUTO_FULFILLMENT_ENABLED
+TELEGRAM_BOT_ENABLED, TELEGRAM_PROMO_DIGEST_ENABLED, DANA_QRIS_ENABLED, AUTO_FULFILLMENT_ENABLED
 ```
 
 `TELEGRAM_ADMIN_CHAT_ID` adalah satu tujuan untuk seluruh notifikasi admin yang berasal
@@ -755,8 +756,17 @@ wajib memakai ID numerik negatif (`-100...`), bukan link undangan. Tambahkan
 support manusia `@axvara_support` ditampilkan bersama tombol WhatsApp admin pada
 pesan setelah pembayaran berhasil.
 
+Daily Promo Digest (`src/lib/telegram/promo-digest.ts`) berjalan di fase `notify`
+cron operations, sesudah notifikasi transaksional. `Intl.DateTimeFormat` dengan
+`Asia/Jakarta` membuka jendela retry pagi 09.00–11.59 dan sore 17.00–19.59.
+Produk dipilih dari varian aktif yang stoknya unlimited atau memenuhi `min_qty`;
+minimum tiga, target empat. `PRIMARY KEY (business_date, slot)` mengunci snapshot
+pilihan. `full_message_id` dan `short_message_id` ditulis segera setelah masing-masing
+send sukses, sehingga kegagalan bubble kedua hanya mengulang bubble kedua. Flag
+`TELEGRAM_PROMO_DIGEST_ENABLED` default mati mencegah outbound saat setup belum siap.
+
 ### Feature Flags
-Rollout bertahap: `TELEGRAM_BOT_ENABLED=false`, `DANA_QRIS_ENABLED=false`, `AUTO_FULFILLMENT_ENABLED=false`. Semua default off di contoh environment; secret produksi dikelola di Pages.
+Rollout bertahap: `TELEGRAM_BOT_ENABLED=false`, `TELEGRAM_PROMO_DIGEST_ENABLED=false`, `DANA_QRIS_ENABLED=false`, `AUTO_FULFILLMENT_ENABLED=false`. Semua default off di contoh environment; secret produksi dikelola di Pages.
 
 ### Proteksi Garansi BOT
 - `/start` tampil bersih (welcome simpel) + tombol `📜 Garansi & Ketentuan` dan `🛍️ Lanjut Belanja`.
@@ -870,6 +880,11 @@ Sistem varian produk terpusat dan bot WhatsApp telah diimplementasikan sesuai `d
   emailConfirmed=true)`, sehingga guard stok, minimum, pending-order, dan
   atomisitas invoice tetap dilalui. `eedit:*` membuka ForceReply email baru dan
   `qty:*` kembali ke jumlah; tidak ada email mentah di callback data.
+- **Daily Promo Digest (2026-09-27):** fase notify cron membuat dua materi siap
+  salin pada 09.00/17.00 WIB. Seleksi deterministik 3–4 produk memakai harga
+  varian purchasable termurah, menghindari produk slot hari yang sama dan dua
+  hari terakhir bila kandidat cukup. Dua bubble memakai ledger migrasi 0044;
+  retry parsial tidak mengirim ulang bubble yang sudah memiliki `message_id`.
 - **Flow order Telegram (WA parity, payment khusus QRIS):** `/katalog` menampilkan daftar datar nama produk + harga (tanpa kategori wajib; kategori hanya filter opsional). **Sejak 2026-09-24 katalog, filter kategori, pencarian, dan bestseller `/start` hanya memuat produk yang BISA DIBELI** (`listTelegramProducts` + `purchasableStockSql` di `src/lib/catalog-availability.ts`: varian aktif dengan stok -1 atau ≥ `min_qty`), dibaca ulang dari D1 setiap dibuka, dengan harga = varian tersedia termurah. Definisi "tersedia" ini sama dengan kartu web `/api/products`, PDP, keranjang, dan JSON-LD, **tetapi web sengaja tetap menampilkan produk habis** (keputusan owner: badge "Stok Habis", diurutkan ke belakang); di web aturan ini hanya menentukan label stok, harga kartu, dan urutan. Dikunci oleh `tests/seo-geo.regression.test.ts`. Halaman dari tombol lama dibatasi ke halaman terakhir yang ada. Detail produk tanpa deskripsi, menampilkan foto produk web + list garansi per varian dari `product_variants` yang sama dengan web/WA. Alur beli: `Produk → Varian → Qty stepper (➖ / jumlah / ➕, angka manual 1–100) → QRIS DANA dinamis`; tidak ada SeaBank/e-wallet di Telegram. CTA jumlah langsung menerbitkan satu pesan QRIS tanpa layar pemilihan metode dan tanpa kewajiban menekan cek status. QRIS Hook melunasi order atomik, menambah `sold_count`, lalu mengirim pesan sukses otomatis. Untuk fulfillment manual, pending input WA baru dipasang setelah `paid`; buyer juga mendapat tombol WhatsApp admin dan `@axvara_support` — input WA reply-only tanpa tombol loop. Order-created ke grup admin dan paid ke buyer memakai marker D1 idempoten serta retry cron; paid juga dikirim sebagai pesan `Lunas — Telegram` tersendiri ke grup admin via `telegram_paid_admin_notified_at` (migrasi 0013) agar status grup tidak tertinggal menunggu bayar. Guard anti-double-tap memakai ulang order pending chat+varian yang sama; varian stok unik dibatasi qty 1. Sapaan WIB dinamis (Pagi/Siang/Sore/Malam + tanggal/jam) hanya di welcome/bantuan — katalog tampil bersih tanpa pengulangan sapaan/tanggal/jam.
 - **WhatsApp Bot:** Webhook di `POST /api/whatsapp/webhook` via Baileys gateway Heroku. Mendukung:
   - `list` (header `LIST MENU AXVARA`, nama alias/fallback produk aktif tanpa kategori/harga, lalu footer promosi Telegram dan website resmi)

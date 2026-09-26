@@ -6,6 +6,7 @@ import type {
   SendMessageParams,
   SendPhotoParams,
   EditMessageTextParams,
+  TelegramMessage,
   WebhookInfo,
 } from "./types";
 
@@ -48,8 +49,8 @@ async function callApi<T>(
   }
 }
 
-export async function sendMessage(params: SendMessageParams): Promise<TelegramApiResponse> {
-  return callApi("sendMessage", params as unknown as Record<string, unknown>);
+export async function sendMessage(params: SendMessageParams): Promise<TelegramApiResponse<TelegramMessage>> {
+  return callApi<TelegramMessage>("sendMessage", params as unknown as Record<string, unknown>);
 }
 
 export async function sendPhoto(params: SendPhotoParams): Promise<TelegramApiResponse> {
@@ -152,7 +153,7 @@ export async function showLoadingBar(
 
   const msg = await sendMessage({ chat_id: chatId, text: `${label}\n${bar(0)}` });
   if (!msg.ok || !msg.result) return;
-  const msgId = (msg.result as Record<string, unknown>).message_id as number;
+  const msgId = msg.result.message_id;
 
   await wait(400);
   await editMessageText({ chat_id: chatId, message_id: msgId, text: `${label}\n${bar(4)}` });

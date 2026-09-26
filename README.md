@@ -169,9 +169,15 @@ Order web hanya dinotif saat lunas (2026-09-25): `Lunas — Web` memuat status k
 (terkirim otomatis / perlu **Kirim ke pembeli** / diproses Warung Rebahan), sekali per order,
 dengan retry cron 6 jam; notif `Order Baru — Web` dihapus.
 Penanda D1 + cron mencegah duplikat sekaligus me-retry kegagalan kirim.
+Daily Promo Digest mengirim bahan promosi internal ke tujuan yang sama pukul
+09.00 dan 17.00 WIB: versi lengkap + ringkas, masing-masing berisi 3–4 produk
+ready dengan harga mulai aktual serta CTA **Order melalui Bot Telegram** dan
+**Order melalui Website**. Ledger `telegram_promo_digests` (migrasi 0044)
+mencegah duplikat per tanggal/slot dan mengulang hanya bubble yang gagal.
+Aktifkan eksplisit `TELEGRAM_PROMO_DIGEST_ENABLED=true`; default tetap mati.
 Dokumen `docs/TELEGRAM-BOT-KLIKQRIS-PLAN.md` hanya arsip provider lama dan telah digantikan
 oleh mesin `src/lib/payments/dana-qris.ts`, ledger D1, route QR image, dan QRIS Hook DANA.
-Feature flag terkait adalah `TELEGRAM_BOT_ENABLED`, `DANA_QRIS_ENABLED`, dan
+Feature flag terkait adalah `TELEGRAM_BOT_ENABLED`, `TELEGRAM_PROMO_DIGEST_ENABLED`, `DANA_QRIS_ENABLED`, dan
 `AUTO_FULFILLMENT_ENABLED`; nilai rahasia disimpan di Cloudflare Pages Secrets.
 Repo `mocasus/telegram-auto-order-bot` hanya referensi UX, bukan source/fork.
 
