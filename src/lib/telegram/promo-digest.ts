@@ -127,16 +127,16 @@ export async function sendDueAdminPromoDigest(
 
   const products = (await database.queryAll(
     `SELECT p.id, p.name, COALESCE(c.name, 'Produk Premium') AS category,
-            MIN(CASE WHEN pv.stock = -1 OR pv.stock >= pv.min_qty THEN pv.price END) AS price
+            MIN(CASE WHEN pv.stock = -1 OR pv.stock >= pv.min_qty THEN pv.price END) AS promo_price
        FROM products p
        JOIN product_variants pv ON pv.product_id=p.id AND pv.is_active=1
        LEFT JOIN categories c ON c.id=p.category_id
       WHERE p.is_active=1 AND p.telegram_enabled=1
       GROUP BY p.id
-     HAVING price IS NOT NULL
+     HAVING promo_price IS NOT NULL
       ORDER BY p.sort_order ASC, p.id ASC`,
   )).map((row) => ({
-    id: Number(row.id), name: String(row.name), category: String(row.category), price: Number(row.price),
+    id: Number(row.id), name: String(row.name), category: String(row.category), price: Number(row.promo_price),
   }));
   if (products.length < 3) {
     return { due: true, fullSent: false, shortSent: false, complete: false, skipped: "insufficient_products" };

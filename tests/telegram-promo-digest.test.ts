@@ -14,10 +14,11 @@ const products = [
 ];
 
 function database(rows: Record<string, unknown>[] = products): DatabaseAccess {
+  const databaseRows = rows.map((row) => ({ ...row, promo_price: row.price }));
   let digest: Record<string, unknown> | null = null;
   return {
     d1: null, getD1: () => null, isD1Mode: () => false, canSpend: () => true,
-    queryAll: vi.fn(async (query: string) => query.includes("FROM products") ? rows : []),
+    queryAll: vi.fn(async (query: string) => query.includes("FROM products") ? databaseRows : []),
     queryFirst: vi.fn(async () => digest),
     execRun: vi.fn(async (query: string, ...params: unknown[]) => {
       if (query.includes("INSERT OR IGNORE")) digest ??= { product_ids: params[2], full_message_id: null, short_message_id: null };
@@ -36,7 +37,7 @@ function databaseWithFullSent(): DatabaseAccess {
   };
   return {
     d1: null, getD1: () => null, isD1Mode: () => false, canSpend: () => true,
-    queryAll: vi.fn(async (query: string) => query.includes("FROM products") ? products : [{ business_date: "2026-09-27", slot: "morning", product_ids: digest.product_ids }]),
+    queryAll: vi.fn(async (query: string) => query.includes("FROM products") ? products.map((row) => ({ ...row, promo_price: row.price })) : [{ business_date: "2026-09-27", slot: "morning", product_ids: digest.product_ids }]),
     queryFirst: vi.fn(async () => digest),
     execRun: vi.fn(async (query: string, ...params: unknown[]) => {
       if (query.includes("short_message_id=?")) digest.short_message_id = params[0];
