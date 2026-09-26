@@ -126,9 +126,12 @@ export async function POST(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
   // Pembanding kanonis (src/lib/security.ts) — sama dengan webhook DANA/
   // Telegram/WhatsApp. `!==` membocorkan posisi byte pertama yang berbeda.
+  if (!cronSecret || !auth) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
   const promoTestSecret = process.env.PROMO_TEST_SECRET;
   const forcePromo = request.nextUrl.searchParams.get("promo_test") === "1";
-  const authorized = Boolean(cronSecret && constantTimeEqual(auth ?? "", `Bearer ${cronSecret}`));
+  const authorized = constantTimeEqual(auth, `Bearer ${cronSecret}`);
   const promoTestAuthorized = Boolean(forcePromo && promoTestSecret && constantTimeEqual(auth ?? "", `Bearer ${promoTestSecret}`));
   if (!authorized && !promoTestAuthorized) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
