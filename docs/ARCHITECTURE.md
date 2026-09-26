@@ -150,7 +150,7 @@ axvara/
 │   │                            # inventory-binding, manifest, types
 │   ├── telegram/
 │   │   ├── messages.ts          # BARREL
-│   │   ├── messages/            # format, catalog, purchase, status, group, help, admin
+│   │   ├── messages/            # format, catalog (detail ringkas; detail varian di keyboard), purchase, status, group, help, admin
 │   │   └── handlers/            # command, callback (guard ownerBound), catalog, discovery,
 │   │                            # orders, invoice, cart, cart-invoice, shared
 │   ├── whatsapp/
@@ -181,6 +181,13 @@ perubahan bila struktur internal digeser lagi. Handler webhook tidak boleh dipan
 `ownerBound` tidak bisa dilewati.
 
 Pada admin, `onUnauthorized` bergantung pada setter `setAuthed` yang stabil, bukan objek hasil `useAdminAuth`. Dengan demikian `load` tetap stabil dan effect pemuatan tidak berulang setiap render; test komponen memeriksa jumlah request sesudah autentikasi dan perpindahan menu.
+
+Katalog Telegram memakai presenter dua tingkat tanpa state baru: `catalog.ts`
+merender ringkasan produk, sedangkan `keyboards.ts::variantsKeyboard` membawa
+nama/durasi/garansi/harga ke callback `var:{variantId}` yang sudah ada. Varian
+habis tetap terlihat sebagai informasi, tetapi dipindahkan ke akhir dan memakai
+`noop`; validasi stok/minimum/ownership server pada handler quantity dan invoice
+tetap menjadi otoritas transaksi.
 
 ### 3.1 Runtime performa storefront
 

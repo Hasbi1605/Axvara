@@ -83,7 +83,7 @@ export function categoryProductsMessage(categoryName: string, total: number): st
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// PRODUCT DETAIL (no description — warranty synced with web/WA via variants)
+// PRODUCT DETAIL (ringkas; detail varian hidup di inline keyboard)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export type TelegramVariantLine = {
@@ -145,40 +145,18 @@ export function productDetailMessage(product: {
   const stock = product.stock ?? -1;
   if (stock === -1) {
     lines.push("📦 Stok tersedia");
-  } else if (stock > 10) {
-    lines.push(`📦 Stok: ${stock}`);
+  } else if (stock > 3) {
+    lines.push(`📦 Tersedia ${stock}`);
   } else if (stock > 0) {
-    lines.push(`📦 ⚡ Sisa ${stock} — segera order!`);
+    lines.push(`⚡ Tersisa ${stock}`);
   } else {
     lines.push("📦 ❌ Stok habis");
   }
 
-  // Variant warranty list — synced with web/WA (same product_variants source).
-  // Capped so photo captions stay under Telegram's 1024-char limit.
-  if (product.variants && product.variants.length > 0) {
-    lines.push("");
-    lines.push("🎁 <b>Pilihan Varian:</b>");
-    product.variants.slice(0, 6).forEach((v, i) => {
-      const num = i + 1;
-      const war = v.warranty?.trim() || "Tanpa Garansi";
-      const dur = v.duration?.trim() ? ` • ${escapeHtml(v.duration.trim())}` : "";
-      const out = v.stock === 0 ? " ❌ <i>HABIS</i>" : "";
-      // Label pengiriman WR singkat (migrasi 0032): restock = otomatis,
-      // selainnya = via admin. Null (non-WR / belum dikunci) = admin (aman).
-      // Tanpa emoji — teks polos agar tidak terlihat seperti AI slop.
-      const deliv = v.wr_delivery_class === "restock" ? "Kirim otomatis" : "Dikirim admin";
-      lines.push(`${num}. <b>${escapeHtml(truncate(v.label, 60))}</b>${dur}${out}`);
-      lines.push(`   ${escapeHtml(deliv)}`);
-      lines.push(`   🛡 ${escapeHtml(war)} • ${formatRupiah(v.price)}`);
-    });
-    if (product.variants.length > 6) {
-      lines.push(`   <i>+${product.variants.length - 6} varian lain — tap Beli untuk lihat semua</i>`);
-    }
-  }
-
-  // Warranty pointer — per-variant above, detail via /garansi
   lines.push("");
-  lines.push("🛡 Garansi mengikuti varian yang dipilih. Ketik /garansi.");
+  lines.push(product.variants && product.variants.length > 1
+    ? `${product.variants.length} pilihan tersedia. Pilih varian untuk melihat harga dan garansi.`
+    : "Pilih lanjut untuk melihat detail varian dan jumlah.");
 
   return lines.join("\n");
 }

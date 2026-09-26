@@ -40,7 +40,7 @@ export function chooseVariantMessage(productName: string): string {
     breadcrumbLine(2),
     "━━━━━━━━━━━━━━━━━━━━━",
     "",
-    "Pilih varian yang sesuai kebutuhan kamu:",
+    "Harga, durasi, dan garansi tercantum pada pilihan di bawah.",
   ].join("\n");
 }
 

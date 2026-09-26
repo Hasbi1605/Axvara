@@ -185,6 +185,7 @@ export async function handleShowVariants(chatId: number, messageId: number, prod
     price: v.price,
     stock: v.stock,
     duration_label: formatDuration(v) || null,
+    warranty_label: formatWarranty(v) || null,
   }));
 
   await safeEditOrSend({

@@ -285,6 +285,21 @@
 - `/start` TIDAK mengirim pesan teks tambahan apa pun setelah foto
   (reply keyboard persistent sudah terinstal sejak /start pertama).
 
+### 5.3e Katalog Produk Telegram (2026-09-27, live)
+- Alur presentasi: daftar produk ringkas → detail satu produk → **Pilih Varian**
+  → jumlah → QRIS/keranjang. Detail produk hanya menampilkan nama, badge,
+  harga/diskon, penjualan, dan stok; daftar varian panjang tidak diulang di
+  caption foto.
+- Inline keyboard varian adalah tempat keputusan: satu tombol memuat nama,
+  durasi, garansi, dan harga. Varian tersedia selalu di atas; varian habis
+  diletakkan terakhir, berlabel `❌ … (Habis)`, dan memakai callback `noop`.
+- Copy stok netral `Tersedia N`; urgensi `⚡ Tersisa N` hanya untuk stok 1–3.
+  Jangan menambahkan `segera order` generik. Emoji dibatasi pada status utama,
+  tanpa garis/ASCII terminal atau code block yang memunculkan tombol Copy.
+- Detail produk multi-varian menutup dengan jumlah pilihan dan arahan memilih
+  varian. Garansi lengkap tidak digandakan di caption karena sudah terlihat
+  pada tombol varian dan tetap mempunyai halaman `/garansi` di flow transaksi.
+
 ### 5.4 Keranjang Drawer
 - Overlay: `rgba(8,12,30,0.6)` + `backdrop-blur-sm`
 - Panel: 420px desktop, full-width mobile, glass-strong, rounded-l-3xl desktop

@@ -266,7 +266,7 @@ export function searchResultsKeyboard(
 export function productDetailKeyboard(productId: number): InlineKeyboardMarkup {
   return {
     inline_keyboard: [
-      [{ text: "🛒 Beli Sekarang", callback_data: cb.buy(productId) }],
+      [{ text: "Pilih Varian", callback_data: cb.buy(productId) }],
       [
         { text: "◀️ Katalog", callback_data: cb.catalog() },
         { text: "🏠 Menu", callback_data: cb.home() },
@@ -277,15 +277,18 @@ export function productDetailKeyboard(productId: number): InlineKeyboardMarkup {
 
 export function variantsKeyboard(
   productId: number,
-  variants: { id: number; label: string; price: number; stock: number; duration_label?: string | null }[],
+  variants: { id: number; label: string; price: number; stock: number; duration_label?: string | null; warranty_label?: string | null }[],
 ): InlineKeyboardMarkup {
-  const rows: InlineKeyboardButton[][] = variants.map((v) => {
+  const available = variants.filter((v) => v.stock !== 0);
+  const unavailable = variants.filter((v) => v.stock === 0);
+  const rows: InlineKeyboardButton[][] = [...available, ...unavailable].map((v) => {
     const priceStr = buttonPrice(v.price);
     const dur = v.duration_label ? ` • ${v.duration_label}` : "";
+    const warranty = v.warranty_label ? ` • ${v.warranty_label}` : "";
     const isOutOfStock = v.stock === 0;
     const text = isOutOfStock
       ? `❌ ${v.label} (Habis)`
-      : `${v.label}${dur} • ${priceStr}`;
+      : `${v.label}${dur}${warranty} — ${priceStr}`;
     return [{
       text,
       callback_data: isOutOfStock ? "noop" : cb.variant(v.id),

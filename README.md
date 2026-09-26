@@ -151,8 +151,10 @@ setelah seluruh item terminal sukses); stok finite dipotong per baris
 dengan kompensasi penuh bila satu baris gagal; reminder order pending via cron 5-menit
 (maks 2x, interval ≥60 mnt, hanya invoice aktif, marker `telegram_reminder_count`
 idempoten). Flow Telegram setara WA grup: katalog datar nama produk (tanpa kategori wajib,
-tanpa pengulangan sapaan/tanggal/jam dari welcome),
-detail tanpa deskripsi + garansi per varian sinkron web/WA, alur
+tanpa pengulangan sapaan/tanggal/jam dari welcome). Sejak 2026-09-27 detail
+produk dibuat ringkas (nama, harga/diskon, penjualan, stok) tanpa daftar varian
+panjang; tombol **Pilih Varian** membuka inline keyboard yang membawa
+nama/durasi/garansi/harga, dengan varian habis nonaktif di urutan terakhir. Alur
 `Produk → Varian → Qty stepper (1–100/bulk) → QRIS dinamis`. Telegram hanya menawarkan
 QRIS otomatis—tidak menampilkan SeaBank/e-wallet. Setelah jumlah dikonfirmasi, satu pesan
 QRIS langsung terbit; QRIS Hook mengabari buyer otomatis saat dana terverifikasi. Nomor WA

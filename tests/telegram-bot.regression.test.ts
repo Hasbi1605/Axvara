@@ -14,7 +14,7 @@ import {
   cb, parseCallback, homeKeyboard, warrantyKeyboard, categoriesKeyboard,
   productsKeyboard, catalogFlatKeyboard, qtyKeyboard, qrisInvoiceKeyboard,
   orderPaidKeyboard, mainReplyMenu, myOrdersKeyboard, searchResultsKeyboard,
-  cartKeyboard,
+  cartKeyboard, productDetailKeyboard, variantsKeyboard,
   MENU_LABEL_CATALOG, MENU_LABEL_SEARCH, MENU_LABEL_ORDERS, MENU_LABEL_HELP,
   MENU_LABEL_CART,
 } from "@/lib/telegram/keyboards";
@@ -216,6 +216,25 @@ describe("Telegram keyboards", () => {
     expect(allTexts.some(t => t.includes("1/2"))).toBe(true); // page indicator
   });
 
+  it("product detail CTA says what happens next", () => {
+    expect(productDetailKeyboard(7).inline_keyboard[0][0]).toEqual({
+      text: "Pilih Varian",
+      callback_data: "buy:7",
+    });
+  });
+
+  it("variant keyboard carries decision details and puts sold-out choices last", () => {
+    const kb = variantsKeyboard(7, [
+      { id: 1, label: "Legal", price: 36500, stock: 0, duration_label: "28 Hari", warranty_label: "Garansi 25 Hari" },
+      { id: 2, label: "Anti Limit", price: 26000, stock: 4, duration_label: "28 Hari", warranty_label: "Garansi 20 Hari" },
+    ]);
+    const buttons = kb.inline_keyboard.flat();
+    expect(buttons[0].text).toBe("Anti Limit • 28 Hari • Garansi 20 Hari — Rp26rb");
+    expect(buttons[0].callback_data).toBe("var:2");
+    expect(buttons[1].text).toBe("❌ Legal (Habis)");
+    expect(buttons[1].callback_data).toBe("noop");
+  });
+
   it("qty keyboard uses one clear stepper and a direct QRIS CTA", () => {
     const kb = qtyKeyboard({ productId: 1, variantId: 2, stock: 3, qty: 2, price: 5000 });
     const buttons = kb.inline_keyboard.flat();
@@ -305,7 +324,7 @@ describe("Telegram messages premium UX", () => {
     expect(msg).toContain("Canva Pro");
   });
 
-  it("product detail lists per-variant warranty synced with web/WA", () => {
+  it("product detail stays compact and leaves variant details to buttons", () => {
     const msg = productDetailMessage({
       name: "Canva Pro",
       price: 5000,
@@ -315,10 +334,11 @@ describe("Telegram messages premium UX", () => {
         { label: "Pro Invite 1 Bulan", price: 10000, warranty: "Garansi Terbatas 7 Hari", duration: "1 Bulan", stock: 0 },
       ],
     });
-    expect(msg).toContain("Full Garansi 1 Bulan");
-    expect(msg).toContain("Garansi Terbatas 7 Hari");
-    expect(msg).toContain("HABIS");
-    expect(msg).toContain("Garansi mengikuti varian");
+    expect(msg).toContain("2 pilihan tersedia");
+    expect(msg).not.toContain("Full Garansi 1 Bulan");
+    expect(msg).not.toContain("Garansi Terbatas 7 Hari");
+    expect(msg).not.toContain("HABIS");
+    expect(msg.length).toBeLessThan(300);
   });
 
   it("product detail shows urgency for low stock", () => {
@@ -327,8 +347,8 @@ describe("Telegram messages premium UX", () => {
       price: 50000,
       stock: 3,
     });
-    expect(msg).toContain("Sisa 3");
-    expect(msg).toContain("segera order");
+    expect(msg).toContain("Tersisa 3");
+    expect(msg).not.toContain("segera order");
   });
 
   it("product detail handles out-of-stock", () => {
@@ -530,10 +550,10 @@ describe("Telegram warranty anti-refund copy", () => {
     expect(msg).toContain("setuju");
   });
 
-  it("product detail points warranty to variant + /garansi", () => {
+  it("product detail defers variant terms without duplicating warranty copy", () => {
     const msg = productDetailMessage({ name: "Test", price: 50000, stock: 5 });
-    expect(msg).toContain("Garansi mengikuti varian");
-    expect(msg).toContain("/garansi");
+    expect(msg).toContain("melihat detail varian");
+    expect(msg).not.toContain("/garansi");
   });
 
   it("warranty terms disclose third-party, no 100% guarantee, DYOR", () => {
