@@ -278,6 +278,26 @@ describe("Warung Rebahan product sync", () => {
     }
   });
 
+  it("Antigravity memakai nama publik tanpa suffix supplier", async () => {
+    const fx = createD1Fixture();
+    try {
+      const db = createDatabaseAccess(fx.db);
+      await syncProducts(db, async () => [{
+        id: "wr-antigravity",
+        name: "Gemini AI Antigravity",
+        category: "AI",
+        description: "Gemini AI",
+        variants: [{ id: "wr-antigravity-pro", name: "Pro", price: 10000, duration: "30 Hari", type: "Invite", warranty: "30 Hari", stock: 5, terms: null, delivery_terms: null }],
+      }]);
+      const product = fx.sql
+        .prepare("SELECT name, source FROM products WHERE wr_product_id='wr-antigravity'")
+        .get() as { name: string; source: string };
+      expect(product).toEqual({ name: "Gemini AI Antigravity", source: "warung_rebahan" });
+    } finally {
+      fx.close();
+    }
+  });
+
   it("registry excluded yang diurungkan jadi katalog WR tanpa ganggu manual (skenario Canva)", async () => {
     const fx = createD1Fixture();
     try {

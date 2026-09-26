@@ -228,7 +228,9 @@ Axvara dapat menjadi reseller layer di atas Warung Rebahan: produk tersinkronisa
 30 menit, order lunas diteruskan otomatis ke WR (exactly-once: klaim atomik + lease +
 idempotency), dan detail akun dikirim ke customer via
 Telegram/WhatsApp/Web. Sejak 22 Sep 2026 sweep katalog mengirim tulisnya sebagai
-satu `d1.batch()` per produk + prefetch massal baris pembanding: **642 → 117
+satu `d1.batch()` per produk; nama publik Gemini AI Antigravity sengaja tanpa
+suffix `(WR)` karena identitas supplier tetap disimpan pada metadata internal.
+Prefetch massal baris pembanding menghasilkan **642 → 117
 round-trip D1 (−82%)** untuk 48 produk/87 varian. Ini memangkas SEBAB sweep lambat —
 kerja SQL D1 hanya 0,15 ms/query sementara satu round-trip ke primary SIN ~197 ms,
 jadi 99,9% durasi sweep adalah menunggu jaringan. Cakupan batch sengaja per produk

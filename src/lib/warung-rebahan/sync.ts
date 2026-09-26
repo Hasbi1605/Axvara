@@ -335,7 +335,8 @@ export async function upsertWrProduct(
   // bila sekarang tidak lagi di-exclude TAPI belum punya pasangan katalog
   // (axvara_product_id NULL — kasus Canva/Gemini yang "diurungkan"
   // pengecualiannya), buat pasangan katalognya sekarang dengan aturan
-  // anti-bentrok yang sama seperti produk baru (suffix -wr + nama "(WR)").
+  // anti-bentrok yang sama seperti produk baru (suffix -wr + nama "(WR)",
+  // kecuali Antigravity yang nama publiknya tanpa suffix supplier).
   if (existing) {
     if (exclude.excluded) {
       await execRun(
@@ -430,7 +431,8 @@ export async function upsertWrProduct(
  * Buat baris katalog Axvara untuk satu produk WR dengan aturan anti-bentrok:
  * - slug: slug dasar, atau slug + "-wr" (hingga 5x varian) bila sudah dipakai
  *   produk manual sendiri (kasus "Canva Premium" WR vs "Canva Pro / Premium").
- * - nama: selalu "<nama WR> (WR)" agar tidak tertukar di storefront/admin.
+ * - nama: "<nama WR> (WR)" agar tidak tertukar di storefront/admin —
+ *   kecuali Antigravity yang nama publiknya tanpa suffix supplier.
  *
  * Guard duplikat (temuan 2026-09-11): SEBELUM insert, cari dulu produk WR
  * hidup dengan wr_product_id yang sama (dibuat sync sebelumnya yang
@@ -456,7 +458,9 @@ async function createAxvaraCatalogForWr(
   }
   const slugTaken = await queryFirst(`SELECT id FROM products WHERE slug=?`, slug);
   if (slugTaken) throw new Error(`wr_slug_collision:${slug}`);
-  const displayName = `${wrProduct.name} (WR)`;
+  // Antigravity memang hanya punya satu listing publik; suffix supplier tidak
+  // membantu membedakan produk dan justru membuat nama storefront terasa kasar.
+  const displayName = baseSlug === "gemini-ai-antigravity" ? wrProduct.name : `${wrProduct.name} (WR)`;
   const categoryId = mapWrCategory(wrProduct.category);
   const created = await execRun(
     `INSERT INTO products

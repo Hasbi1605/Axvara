@@ -48,7 +48,7 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 - **Vault:** Metafora brand Axvara — gerbang akses ke semua tools premium
 - **Kontak Admin:** WhatsApp dukungan `089519388264`; berbeda dari nomor e-wallet tujuan pembayaran `082135277434`
 - **Varian Terpusat:** Setiap produk punya ≥1 varian (harga/stok/durasi/garansi per varian); harga kartu = varian termurah yang masih tersedia
-- **Warung Rebahan (WR):** Supplier H2H (`warungrebahan.com/api/v1`); produk WR disync ke katalog (source=`warung_rebahan`), order lunas diteruskan otomatis (exactly-once), sync satu sweep penuh per run (Opsi A)
+- **Warung Rebahan (WR):** Supplier H2H (`warungrebahan.com/api/v1`); produk WR disync ke katalog (source=`warung_rebahan`), order lunas diteruskan otomatis (exactly-once), sync satu sweep penuh per run (Opsi A). Nama publik Gemini AI Antigravity sengaja tanpa suffix `(WR)`; kepemilikan supplier tetap dibedakan lewat `source`/`wr_product_id`.
 - **Proxy WR:** App Heroku akun #2 (`axvara-wr-proxy` + QuotaGuard Spike, IP statis) — satu-satunya egress yang di-whitelist WR; Pages hanya pegang URL + token proxy
 - **Gateway WA:** App Heroku akun #1 (`axvara-wa-gateway`, Baileys) — bot grup WhatsApp; route `/wr/*` lama sudah dimatikan (410)
 - **Bot Telegram:** `@Axvara_bot` — katalog/keranjang/checkout/QRIS/garansi via Bot API webhook; foto welcome WebP ringan di `public/banners/tg-welcome.webp`
