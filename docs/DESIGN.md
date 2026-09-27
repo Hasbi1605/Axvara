@@ -450,11 +450,14 @@
 
 ### 5.7a2 Halaman Link-in-Bio `/link` (2026-09-27, pengganti Linktree bio IG)
 - Satu kolom `max-w-[480px]`: logo Prism + `@axvara.tech` + tagline + 3 badge
-  trust (Bergaransi / QRIS otomatis / Support jam layanan), lalu 6 tombol
-  (Katalog Web, Bot Telegram `?start=beli`, Grup WA, Lacak Pesanan, WA Admin,
-  Telegram Bantuan) + tombol share + footer third-party.
+  trust (Order Tanpa Login / Bergaransi / Fast Respon), lalu 6 tombol
+  (Katalog Web → `/`, Bot Telegram `?start=beli`, Grup WA, Lacak Pesanan,
+  WA Admin, Telegram Bantuan) + tombol share + footer third-party.
 - Ikon AXVARA style: aset brand resmi (`telegram.svg`,
-  `whatsapp-circle.svg`) + glyph SVG outline (globe/track/chat) — TANPA emoji.
+  `whatsapp-circle.svg`) + aset question upload owner
+  (`support-wa-question.png` hijau untuk WA Admin,
+  `support-telegram-question.png` biru untuk Telegram Bantuan) + glyph SVG
+  outline (globe/track) — TANPA emoji.
   Dua tombol fitur (Katalog, Bot) memakai aksen cyan; sisanya glass netral.
 - Animasi tipis: `fadeInUp` stagger 60ms per tombol (`ease-apple`), glow
   radial cyan + gold di header, hover border + active scale 0.98. Hormati

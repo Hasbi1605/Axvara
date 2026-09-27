@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-09-27 — Ikon tombol bantuan `/link` diganti aset question upload owner: WA Admin = question hijau, Telegram Bantuan = question biru — public/brand/support-{wa-question,telegram-question}.png, src/app/link/link-bio-client.tsx, tests/link-bio.regression.test.ts — (verifikasi: link-bio hijau; tsc bersih; dev GET /link 200; Obscura screenshot nonblank)
+
 - 2026-09-27 — Revisi `/link` (permintaan owner): tombol Katalog Web ke `/` (tanpa `#katalog`), badge trust jadi Order Tanpa Login | Bergaransi | Fast Respon — src/app/link/link-bio-client.tsx, tests/link-bio.regression.test.ts — (verifikasi: link-bio 8/8 hijau; tsc bersih; dev GET /link 200; Obscura screenshot nonblank)
 
 - 2026-09-27 — Halaman link-in-bio `/link` pengganti Linktree untuk bio IG: 6 tombol (Katalog Web, Bot Telegram `?start=beli`, Grup WA, Lacak Pesanan, WA Admin, Telegram Bantuan), logo Prism + ikon brand resmi tanpa emoji, animasi stagger fadeInUp, tombol share (native + fallback salin), tanpa navbar/footer/bottom-nav/reminder, masuk sitemap + skeleton — src/app/link/, src/components/storefront/{Navbar,Footer,MobileBottomNav,PendingOrderReminder,Skeletons}.tsx, src/app/sitemap.ts, tests/link-bio.regression.test.ts, docs/{ARCHITECTURE,README,DESIGN}.md — (verifikasi: 1620/1620 test [131 file] hijau; tsc bersih; dev GET /link 200 + CSS 200; Obscura screenshot nonblank)

@@ -20,7 +20,9 @@ type BioLink = {
 
 function iconSrc(icon: BioLink["icon"]): string {
   if (icon === "telegram") return "/brand/telegram.svg";
-  if (icon === "whatsapp" || icon === "support-wa") return "/brand/whatsapp-circle.svg";
+  if (icon === "whatsapp") return "/brand/whatsapp-circle.svg";
+  if (icon === "support-wa") return "/brand/support-wa-question.png";
+  if (icon === "support-tg") return "/brand/support-telegram-question.png";
   return "";
 }
 

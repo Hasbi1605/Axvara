@@ -43,7 +43,14 @@ describe("Halaman /link — tombol link-in-bio", () => {
     const src = read("src/app/link/link-bio-client.tsx");
     expect(src).toContain("/brand/telegram.svg");
     expect(src).toContain("/brand/whatsapp-circle.svg");
+    expect(src).toContain("/brand/support-wa-question.png");
+    expect(src).toContain("/brand/support-telegram-question.png");
     expect(src).toContain("<svg");
+  });
+
+  it("aset ikon bantuan question hijau/biru ada di public/brand", () => {
+    expect(fs.existsSync(path.join(process.cwd(), "public/brand/support-wa-question.png"))).toBe(true);
+    expect(fs.existsSync(path.join(process.cwd(), "public/brand/support-telegram-question.png"))).toBe(true);
   });
 
   it("punya tombol share: native navigator.share + fallback salin tautan", () => {
