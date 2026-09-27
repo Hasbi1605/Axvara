@@ -535,20 +535,6 @@ export default function LacakPesananClient() {
         </div>
       )}
 
-      <section className="mt-8 grid gap-3 sm:grid-cols-3" aria-label="Cara melacak">
-        {[
-          ["1", "Siapkan kode", "Format AXV-YYYYMMDD-XXXXXXXX dari halaman sukses atau chat bot."],
-          ["2", "Samakan No. WA atau email", "Pakai No. WA atau email yang diisi saat checkout. Untuk WA, 08… atau +62… sama saja."],
-          ["3", "Pantau status", "Pending → Lunas otomatis. Transfer manual diverifikasi admin."],
-        ].map(([number, title, body]) => (
-          <div key={number} className="ax-glass-card rounded-[20px] p-4">
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#00E5FF]/[0.12] text-xs font-bold text-[#00E5FF]">{number}</span>
-            <p className="mt-3 text-sm font-semibold text-white">{title}</p>
-            <p className="mt-1 text-xs leading-5 text-white/50">{body}</p>
-          </div>
-        ))}
-      </section>
-
       <section className="mt-4 space-y-2" aria-label="Pertanyaan umum">
         {[
           ["Di mana saya menemukan kode pesanan?", "Setelah checkout kamu diarahkan ke halaman /pesanan/AXV-... Simpan kodenya. Order Telegram bisa dilihat lagi lewat /orders, order WA tercatat di grup."],

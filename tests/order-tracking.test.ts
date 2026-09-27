@@ -108,6 +108,8 @@ describe("Halaman /lacak-pesanan — wiring UX", () => {
     expect(client).toContain("Terakhir dilacak");
     expect(client).toContain("Alur status pesanan");
     expect(client).toContain("Lacak pesanan lain");
+    expect(client).not.toContain("Cara melacak");
+    expect(client).not.toContain("Siapkan kode");
   });
 
   it("ditautkan dari navigasi utama, footer, bottom-nav, cara-order, dan halaman pesanan", () => {
