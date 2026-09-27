@@ -27,6 +27,8 @@ export function Footer() {
   }, [pathname]);
 
   if (pathname?.startsWith("/admin")) return null;
+  // Halaman link-in-bio (/link) tampil tanpa chrome global agar fokus ala Linktree.
+  if (pathname === "/link") return null;
 
   const subscribe = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();

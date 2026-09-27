@@ -42,6 +42,7 @@ axvara/
 │   │   ├── checkout/       # Checkout revamp ala Sekalipay 2026-09-23: ① Metode (QRIS auto-select) → ② Data minimal WA+Email wajib tanpa Nama → S&K → 1 CTA; rail desktop-only, mobile accordion + sticky CTA (manual maintenance 2026-09-17: disabled + badge, upload disembunyikan)
 │   │   ├── pesanan/[code]/ # Status + QRIS dinamis + polling lunas (noindex)
 │   │   ├── lacak-pesanan/  # Lacak mandiri kode + No. WA/email (tanpa login) + timeline status
+│   │   ├── link/           # Link-in-bio pengganti Linktree (bio IG): 6 tombol + share, tanpa chrome global
 │   │   ├── admin/          # Workspace operasional, katalog, pembayaran, konten, otomasi, settings
 │   │   ├── artikel/        # Indeks dan detail artikel publik
 │   │   ├── cara-order/     # Panduan order dari footer

@@ -98,6 +98,7 @@ axvara/
 │   │   ├── checkout/       # Checkout revamp ala Sekalipay 2026-09-23 — ① Metode (QRIS auto-select) → ② Data minimal WA+Email wajib tanpa Nama (fallback prefix email) → S&K → 1 CTA; rail kanan DESKTOP ONLY (hidden lg:block, ringkasan+S&K+CTA), mobile accordion ringkasan + S&K kiri + sticky CTA; 1 handler submit
 │   ├── pesanan/[code]/         # Status + QRIS dinamis + polling lunas (dari checkout); pesanan/layout.tsx = noindex
 │   ├── lacak-pesanan/          # Lacak mandiri kode + No. WA/email via POST /api/orders/lookup + timeline + auto-refresh
+│   ├── link/                   # Link-in-bio pengganti Linktree (bio IG): 6 tombol + share, tanpa chrome global
 │   ├── admin/
 │   │   └── page.tsx             # Shell + modul admin berbasis query section
 │   ├── api/

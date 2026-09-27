@@ -38,6 +38,8 @@ export function Navbar() {
   };
 
   if (isAdmin) return null;
+  // Halaman link-in-bio (/link) tampil tanpa chrome global agar fokus ala Linktree.
+  if (pathname === "/link") return null;
 
   return (
     <header className="sticky top-0 z-50 ax-glass-strong border-b border-white/10">

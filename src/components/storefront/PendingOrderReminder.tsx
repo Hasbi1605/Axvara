@@ -20,7 +20,8 @@ const DISMISS_KEY = "axvara-pending-reminder-dismissed";
 /** 2 permintaan/menit — jauh di bawah limit `orders:lookup` 20/menit. */
 const RECHECK_MS = 30_000;
 // /lacak-pesanan (tab Pesanan) sudah menampilkan pesanan belum dibayar + tombol Bayar.
-const HIDDEN_PREFIXES = ["/checkout", "/pesanan", "/lacak-pesanan", "/admin"];
+// /link (link-in-bio) tampil tanpa chrome global agar fokus ala Linktree.
+const HIDDEN_PREFIXES = ["/checkout", "/pesanan", "/lacak-pesanan", "/admin", "/link"];
 
 type Pending = { code: string; qrisExpiresAt: number | null; orderExpiresAt: number | null; reissueAllowed: boolean };
 

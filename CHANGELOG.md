@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-09-27 — Halaman link-in-bio `/link` pengganti Linktree untuk bio IG: 6 tombol (Katalog Web, Bot Telegram `?start=beli`, Grup WA, Lacak Pesanan, WA Admin, Telegram Bantuan), logo Prism + ikon brand resmi tanpa emoji, animasi stagger fadeInUp, tombol share (native + fallback salin), tanpa navbar/footer/bottom-nav/reminder, masuk sitemap + skeleton — src/app/link/, src/components/storefront/{Navbar,Footer,MobileBottomNav,PendingOrderReminder,Skeletons}.tsx, src/app/sitemap.ts, tests/link-bio.regression.test.ts, docs/{ARCHITECTURE,README,DESIGN}.md — (verifikasi: 1620/1620 test [131 file] hijau; tsc bersih; dev GET /link 200 + CSS 200; Obscura screenshot nonblank)
+
 - 2026-09-27 — Pill Bot Telegram CommunityBar memakai deep-link `https://t.me/Axvara_bot?start=beli` agar tap langsung membawa payload start `beli` — src/components/storefront/CommunityBar.tsx, tests/security.regression.test.ts — (verifikasi: 1613/1613 test [130 file] hijau; dev GET / + CSS 200; Obscura screenshot nonblank)
 
 - 2026-09-27 — Hilangkan suffix `(WR)` dari nama publik produk Gemini AI Antigravity tanpa mengubah identitas/source supplier; sync produk baru memakai nama normal dan migrasi 0045 merapikan baris existing — src/lib/warung-rebahan/sync.ts, drizzle/migrations/0045_antigravity_display_name.sql, tests/warung-rebahan/sync.test.ts, docs/{PRD,ARCHITECTURE}.md, README.md — (verifikasi: 1612/1612 test [130 file] hijau; tsc bersih; lint tanpa error, warning lama di area lain; dev GET / + CSS 200; Obscura screenshot nonblank)

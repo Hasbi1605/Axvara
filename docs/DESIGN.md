@@ -448,6 +448,23 @@
   5 terakhir (`axvara-track-recent`, mask WA), deep-link `?code=&wa=` dari
   chat bot, tautan "Lacak pesanan lain" tanpa reload halaman.
 
+### 5.7a2 Halaman Link-in-Bio `/link` (2026-09-27, pengganti Linktree bio IG)
+- Satu kolom `max-w-[480px]`: logo Prism + `@axvara.tech` + tagline + 3 badge
+  trust (Bergaransi / QRIS otomatis / Support jam layanan), lalu 6 tombol
+  (Katalog Web, Bot Telegram `?start=beli`, Grup WA, Lacak Pesanan, WA Admin,
+  Telegram Bantuan) + tombol share + footer third-party.
+- Ikon AXVARA style: aset brand resmi (`telegram.svg`,
+  `whatsapp-circle.svg`) + glyph SVG outline (globe/track/chat) — TANPA emoji.
+  Dua tombol fitur (Katalog, Bot) memakai aksen cyan; sisanya glass netral.
+- Animasi tipis: `fadeInUp` stagger 60ms per tombol (`ease-apple`), glow
+  radial cyan + gold di header, hover border + active scale 0.98. Hormati
+  `prefers-reduced-motion` via token global.
+- Tombol share: `navigator.share` bila ada, fallback salin `axvara.tech/link`
+  via clipboard + toast; ikon berubah centang + label "Tautan disalin".
+- Tanpa chrome global: navbar/footer/bottom-nav/reminder disembunyikan di
+  `/link` (fokus ala Linktree), masuk sitemap + skeleton `content`.
+  Tap target ≥44px (tombol `min-h-[64px]`, share `h-12`).
+
 ### 5.7e Bottom Nav Mobile (revisi 2026-09-25)
 - Empat tab: **Beranda · Keranjang · Pesanan · Bantuan** (dulu Beranda,
   Artikel, Cara Order, Lacak, Katalog; Katalog hanya menggulir Beranda dan

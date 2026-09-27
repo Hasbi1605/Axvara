@@ -51,6 +51,7 @@ export async function GET() {
     `- [Cara Order](${SITE_BASE}/cara-order): panduan pemesanan`,
     `- [Ketentuan Layanan & Garansi](${SITE_BASE}/garansi-replace): syarat garansi penggantian`,
     `- [Lacak Pesanan](${SITE_BASE}/lacak-pesanan): cek status dengan kode pesanan + nomor WA`,
+    `- [Link Bio](${SITE_BASE}/link): semua link AXVARA (katalog, bot Telegram, grup WA, bantuan)`,
     `- [Artikel](${SITE_BASE}/artikel): panduan seputar AI & aplikasi premium`,
     "",
     "## Kontak",

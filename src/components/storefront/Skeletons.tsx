@@ -149,7 +149,7 @@ export function ContentPageSkeleton({ slowHint = true }: { slowHint?: boolean })
   );
 }
 
-const CONTENT_ROUTES = ["/artikel", "/lacak-pesanan", "/cara-order", "/garansi-replace"];
+const CONTENT_ROUTES = ["/artikel", "/lacak-pesanan", "/cara-order", "/garansi-replace", "/link"];
 
 /** Jenis skeleton rute tujuan; null = cukup bar (mis. /admin punya loader sendiri). */
 export function routeSkeletonKind(pathname: string): "home" | "product" | "checkout" | "order" | "content" | null {
