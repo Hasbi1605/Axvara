@@ -15,7 +15,8 @@ function read(p: string): string {
 describe("Halaman /link — tombol link-in-bio", () => {
   it("memuat 6 tujuan: web, bot Telegram, grup WA, lacak, WA admin, Telegram bantuan", () => {
     const src = read("src/app/link/link-bio-client.tsx");
-    expect(src).toContain('href: "/#katalog"');
+    expect(src).toContain('{ href: "/", label: "Katalog Web"');
+    expect(src).not.toContain("/#katalog");
     expect(src).toContain("TG_BOT_HREF");
     expect(src).toContain("`https://t.me/${SITE.adminTelegram}?start=beli`");
     expect(src).toContain("WA_GROUP_HREF");
@@ -23,6 +24,14 @@ describe("Halaman /link — tombol link-in-bio", () => {
     expect(src).toContain('href: "/lacak-pesanan"');
     expect(src).toContain("adminWaLink(");
     expect(src).toContain("supportTelegramLink()");
+  });
+
+  it("badge trust: Order Tanpa Login, Bergaransi, Fast Respon", () => {
+    const src = read("src/app/link/link-bio-client.tsx");
+    expect(src).toContain("Order Tanpa Login");
+    expect(src).toContain("Bergaransi");
+    expect(src).toContain("Fast Respon");
+    expect(src).not.toContain("QRIS otomatis");
   });
 
   it("tanpa emoji di label/hint tombol", () => {

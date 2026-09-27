@@ -87,7 +87,7 @@ export function LinkBioClient() {
   }, [toast]);
 
   const links: BioLink[] = [
-    { href: "/#katalog", label: "Katalog Web", hint: "Semua tools premium + checkout QRIS", icon: "globe", feature: true },
+    { href: "/", label: "Katalog Web", hint: "Semua tools premium + checkout QRIS", icon: "globe", feature: true },
     { href: TG_BOT_HREF, external: true, label: "Bot Telegram", hint: "Auto order 24 jam", icon: "telegram", feature: true },
     { href: WA_GROUP_HREF, external: true, label: "Grup WhatsApp", hint: "Info promo & restock", icon: "whatsapp" },
     { href: "/lacak-pesanan", label: "Lacak Pesanan", hint: "Cek status dengan kode + WA/email", icon: "track" },
@@ -127,9 +127,9 @@ export function LinkBioClient() {
         <h1 className="mt-4 font-display text-[22px] font-bold tracking-[-0.01em] text-white">@axvara.tech</h1>
         <p className="mt-1.5 max-w-[36ch] text-[13px] leading-6 text-white/55">Satu gerbang, semua tools premium — AI, streaming, desain, dan musik.</p>
         <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
+          <span className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[11px] text-white/60">Order Tanpa Login</span>
           <span className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[11px] text-white/60">Bergaransi</span>
-          <span className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[11px] text-white/60">QRIS otomatis</span>
-          <span className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[11px] text-white/60">Support {settings.supportHours}</span>
+          <span className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[11px] text-white/60">Fast Respon</span>
         </div>
       </div>
 
