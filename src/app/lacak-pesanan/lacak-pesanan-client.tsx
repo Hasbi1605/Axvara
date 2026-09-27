@@ -308,9 +308,7 @@ export default function LacakPesananClient() {
         dari Pending ke Lunas, Dibatalkan, atau Kedaluwarsa.
       </p>
 
-      {/* Tab Pesanan (bottom nav): pesanan dari perangkat ini tampil tanpa isi form. */}
-      {!order && <DeviceOrders />}
-
+      {/* Form utama dulu; daftar perangkat diringkas di bawah agar hemat ruang. */}
       <form onSubmit={submit} className="ax-glass-card mt-6 rounded-[24px] p-5 sm:p-6" aria-label="Formulir lacak pesanan">
         <div className="flex items-center gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#00E5FF]/10">
@@ -395,6 +393,9 @@ export default function LacakPesananClient() {
           </ul>
         </section>
       )}
+
+      {/* Di bawah "Terakhir dilacak": ringkas collapsed agar tidak memakan ruang. */}
+      {!order && <DeviceOrders />}
 
       {order && (
         <div ref={resultRef} className="ax-glass-card mt-6 scroll-mt-24 rounded-[28px] p-6 text-center sm:p-8" aria-live="polite">

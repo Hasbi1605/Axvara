@@ -151,6 +151,22 @@ describe("Pesanan di perangkat ini (/lacak-pesanan)", () => {
     expect(readLocalOrders().some((o) => o.code === "AXV-20260925-MANY0000")).toBe(false);
   });
 
+  it("accordion collapsed default: ringkas judul + badge, daftar tersembunyi sampai dibuka", async () => {
+    seedLocal([{ code: "AXV-20260925-PEND0001", status: "kadaluarsa", createdAt: minutesAgo(3), items: [{ name: "Canva", qty: 1 }], subtotal: 2_000 }]);
+    stubStatuses({});
+    render(<DeviceOrders />);
+    const section = await screen.findByRole("region", { name: "Pesanan di perangkat ini" });
+    const details = section.closest("details");
+    // <details> tertutup default: properti open false.
+    expect(details?.open).toBe(false);
+    // Ringkasan terlihat: judul + badge jumlah.
+    expect(details?.querySelector("summary")?.textContent).toContain("Pesanan di perangkat ini");
+    // Buka via klik summary: properti open true, daftar ikut tampil.
+    fireEvent.click(details?.querySelector("summary") as HTMLElement);
+    await waitFor(() => expect(details?.open).toBe(true));
+    expect(within(section).getByText("AXV-20260925-PEND0001")).toBeTruthy();
+  });
+
   it("tanpa pesanan lokal, bagian ini tidak tampil", () => {
     render(<DeviceOrders />);
     expect(screen.queryByRole("region", { name: "Pesanan di perangkat ini" })).toBeNull();

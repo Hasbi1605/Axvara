@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-09-27 — `/lacak-pesanan`: "Pesanan di perangkat ini" pindah ke bawah "Terakhir dilacak" + jadi accordion collapsed default (badge jumlah + penanda belum dibayar) — src/components/storefront/DeviceOrders.tsx, src/app/lacak-pesanan/lacak-pesanan-client.tsx, tests/mobile-bottom-nav.behavior.test.tsx, docs/{DESIGN,ARCHITECTURE}.md, README.md — (verifikasi: behavior hijau; tsc bersih; dev GET /lacak-pesanan 200; Obscura screenshot nonblank)
+
 - 2026-09-27 — Hapus 3 kartu panduan "Cara melacak" di `/lacak-pesanan` (permintaan owner; form + FAQ dipertahankan) — src/app/lacak-pesanan/lacak-pesanan-client.tsx, tests/order-tracking.test.ts — (verifikasi: order-tracking hijau; tsc bersih; dev GET /lacak-pesanan 200; Obscura screenshot nonblank)
 
 - 2026-09-27 — Outline biru glossy tipis ke semua 6 pill `/link` (permintaan owner, pill netral kurang terlihat; ROLLBACK: revert commit ini) — src/app/link/link-bio-client.tsx, tests/link-bio.regression.test.ts, docs/DESIGN.md — (verifikasi: link-bio hijau; tsc bersih; dev GET /link 200; Obscura screenshot nonblank)

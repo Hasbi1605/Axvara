@@ -99,12 +99,24 @@ export function DeviceOrders() {
 
   if (!rows.length) return null;
 
+  const pendingCount = rows.filter(({ live }) => live !== "loading" && live !== "error" && live.status === "pending").length;
+
   return (
-    <section aria-labelledby="device-orders-title" className="ax-glass-card mt-6 rounded-[24px] p-4 sm:p-5">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <h2 id="device-orders-title" className="text-sm font-semibold text-white">Pesanan di perangkat ini</h2>
-        <span className="text-[11px] text-white/35">Status langsung dari server</span>
-      </div>
+    <details className="ax-glass-card group mt-4 rounded-[24px] p-4 sm:p-5">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden" aria-label={`Pesanan di perangkat ini, ${rows.length} pesanan`}>
+        <span className="flex min-w-0 items-center gap-2.5">
+          <span className="text-sm font-semibold text-white">Pesanan di perangkat ini</span>
+          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-white/10 px-1.5 text-[11px] font-bold text-white/70">{rows.length}</span>
+          {pendingCount > 0 && (
+            <span className="inline-flex items-center rounded-full border border-[#FFB800]/30 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFD66B]">{pendingCount} belum dibayar</span>
+          )}
+        </span>
+        <span className="flex shrink-0 items-center gap-2 text-[11px] text-white/35">
+          <span className="hidden sm:inline">Status langsung dari server</span>
+          <IosIcon name="chevron" size={14} tint="white" className="opacity-40 transition-transform group-open:rotate-180" />
+        </span>
+      </summary>
+      <div role="region" aria-label="Pesanan di perangkat ini">
       <ul className="mt-3 space-y-2.5">
         {rows.map(({ local, live }) => {
           const view = deviceOrderStatus(live);
@@ -139,10 +151,11 @@ export function DeviceOrders() {
                   {view.pay ? "Bayar sekarang" : "Lihat pesanan"}
                 </Link>
               </div>
-            </li>
-          );
+          </li>
+        );
         })}
       </ul>
-    </section>
+      </div>
+    </details>
   );
 }

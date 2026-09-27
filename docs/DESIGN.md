@@ -447,6 +447,11 @@
 - Nyaman: validasi inline format kode & WA, tombol Salin kode, riwayat lokal
   5 terakhir (`axvara-track-recent`, mask WA), deep-link `?code=&wa=` dari
   chat bot, tautan "Lacak pesanan lain" tanpa reload halaman.
+- "Pesanan di perangkat ini" (`DeviceOrders`) tampil DI BAWAH "Terakhir
+  dilacak" (2026-09-27, permintaan owner — dulu paling atas menutupi form) +
+  accordion `<details>` **collapsed default**: ringkas judul + badge jumlah +
+  pil "N belum dibayar", daftar status server hanya dimuat saat dibuka.
+  Fetch status tetap lazy per baris non-final (hemat kuota `orders:lookup`).
 
 ### 5.7a2 Halaman Link-in-Bio `/link` (2026-09-27, pengganti Linktree bio IG)
 - Satu kolom `max-w-[480px]`: logo Prism + `@axvara.tech` + tagline + 3 badge
