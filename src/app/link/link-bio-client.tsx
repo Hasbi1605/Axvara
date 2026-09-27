@@ -15,7 +15,6 @@ type BioLink = {
   label: string;
   hint: string;
   icon: "globe" | "telegram" | "whatsapp" | "track" | "support-wa" | "support-tg";
-  feature?: boolean;
 };
 
 function iconSrc(icon: BioLink["icon"]): string {
@@ -26,7 +25,7 @@ function iconSrc(icon: BioLink["icon"]): string {
   return "";
 }
 
-function IconBadge({ icon, feature }: { icon: BioLink["icon"]; feature?: boolean }) {
+function IconBadge({ icon }: { icon: BioLink["icon"] }) {
   const src = iconSrc(icon);
   if (src) {
     // eslint-disable-next-line @next/next/no-img-element
@@ -46,7 +45,7 @@ function IconBadge({ icon, feature }: { icon: BioLink["icon"]; feature?: boolean
         <circle cx="17.5" cy="17.5" r="1.6" />
       </svg>
     ) : (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke={feature ? "#229ED9" : "#25D366"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="#25D366" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
         <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l.9-4.9A8 8 0 1 1 21 12Z" />
         <path d="M9 11.5c.8 1.6 2 2.8 3.6 3.6l1.4-1.4 2 1c-.3 1.2-1.4 1.9-2.6 1.6-2.8-.7-5-2.9-5.7-5.7-.3-1.2.4-2.3 1.6-2.6l1 2L9 11.5Z" />
       </svg>
@@ -89,8 +88,8 @@ export function LinkBioClient() {
   }, [toast]);
 
   const links: BioLink[] = [
-    { href: "/", label: "Katalog Web", hint: "Semua tools premium + checkout QRIS", icon: "globe", feature: true },
-    { href: TG_BOT_HREF, external: true, label: "Bot Telegram", hint: "Auto order 24 jam", icon: "telegram", feature: true },
+    { href: "/", label: "Katalog Web", hint: "Semua tools premium", icon: "globe" },
+    { href: TG_BOT_HREF, external: true, label: "Bot Telegram", hint: "Auto order 24 jam", icon: "telegram" },
     { href: WA_GROUP_HREF, external: true, label: "Grup WhatsApp", hint: "Info promo & restock", icon: "whatsapp" },
     { href: "/lacak-pesanan", label: "Lacak Pesanan", hint: "Cek status dengan kode + WA/email", icon: "track" },
     { href: adminWaLink("Halo AXVARA, saya butuh bantuan."), external: true, label: "WA Admin", hint: settings.supportHours, icon: "support-wa" },
@@ -143,13 +142,9 @@ export function LinkBioClient() {
             href={link.href}
             {...(link.external ? { target: "_blank", rel: "noreferrer" } : {})}
             style={{ animationDelay: `${80 + i * 60}ms` }}
-            className={`group flex min-h-[64px] items-center gap-3.5 rounded-2xl border px-4 py-3.5 text-left backdrop-blur-xl transition duration-300 animate-[fadeInUp_0.45s_var(--ease-apple)_both] active:scale-[0.98] ${
-              link.feature
-                ? "border-[#00E5FF]/25 bg-[#00E5FF]/[0.08] shadow-[0_8px_28px_rgba(0,229,255,0.12)] hover:border-[#00E5FF]/50 hover:bg-[#00E5FF]/[0.12]"
-                : "border-white/10 bg-white/[0.04] hover:border-white/25 hover:bg-white/[0.07]"
-            }`}
+            className="group flex min-h-[64px] items-center gap-3.5 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3.5 text-left backdrop-blur-xl transition duration-300 animate-[fadeInUp_0.45s_var(--ease-apple)_both] hover:border-white/25 hover:bg-white/[0.07] active:scale-[0.98]"
           >
-            <IconBadge icon={link.icon} feature={link.feature} />
+            <IconBadge icon={link.icon} />
             <span className="min-w-0 flex-1">
               <span className="block text-[15px] font-semibold leading-tight text-white">{link.label}</span>
               <span className="mt-0.5 block truncate text-xs leading-tight text-white/50">{link.hint}</span>

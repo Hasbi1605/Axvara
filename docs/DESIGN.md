@@ -458,7 +458,9 @@
   (`support-wa-question.png` hijau untuk WA Admin,
   `support-telegram-question.png` biru untuk Telegram Bantuan) + glyph SVG
   outline (globe/track) — TANPA emoji.
-  Dua tombol fitur (Katalog, Bot) memakai aksen cyan; sisanya glass netral.
+- Semua 6 pill NETRAL seragam (glass `white/[0.04]`, hover border/putih) —
+  aksen cyan khusus Katalog/Bot dihapus 2026-09-27 (keputusan owner);
+  hint Katalog = "Semua tools premium" (tanpa "checkout QRIS").
 - Animasi tipis: `fadeInUp` stagger 60ms per tombol (`ease-apple`), glow
   radial cyan + gold di header, hover border + active scale 0.98. Hormati
   `prefers-reduced-motion` via token global.

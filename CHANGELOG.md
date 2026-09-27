@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-09-27 — Seragamkan pill `/link` netral (permintaan owner): aksen cyan Katalog Web + Bot Telegram dihapus, semua 6 pill glass netral; hint katalog jadi "Semua tools premium" — src/app/link/link-bio-client.tsx, tests/link-bio.regression.test.ts — (verifikasi: link-bio hijau; tsc bersih; dev GET /link 200; Obscura screenshot nonblank)
+
 - 2026-09-27 — Revisi copy `/link` (permintaan owner): tagline dua baris tanpa strip ("Satu gerbang, semua tools premium" + "AI, streaming, desain, dan musik."), footer jadi "© 2026 AXVARA" — src/app/link/link-bio-client.tsx, tests/link-bio.regression.test.ts — (verifikasi: link-bio hijau; tsc bersih; dev GET /link 200; Obscura screenshot nonblank)
 
 - 2026-09-27 — Ikon tombol bantuan `/link` diganti aset question upload owner: WA Admin = question hijau, Telegram Bantuan = question biru — public/brand/support-{wa-question,telegram-question}.png, src/app/link/link-bio-client.tsx, tests/link-bio.regression.test.ts — (verifikasi: link-bio hijau; tsc bersih; dev GET /link 200; Obscura screenshot nonblank)
