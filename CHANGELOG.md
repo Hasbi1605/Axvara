@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-09-27 — Pill Bot Telegram CommunityBar memakai deep-link `https://t.me/Axvara_bot?start=beli` agar tap langsung membawa payload start `beli` — src/components/storefront/CommunityBar.tsx, tests/security.regression.test.ts — (verifikasi: 1613/1613 test [130 file] hijau; dev GET / + CSS 200; Obscura screenshot nonblank)
+
 - 2026-09-27 — Hilangkan suffix `(WR)` dari nama publik produk Gemini AI Antigravity tanpa mengubah identitas/source supplier; sync produk baru memakai nama normal dan migrasi 0045 merapikan baris existing — src/lib/warung-rebahan/sync.ts, drizzle/migrations/0045_antigravity_display_name.sql, tests/warung-rebahan/sync.test.ts, docs/{PRD,ARCHITECTURE}.md, README.md — (verifikasi: 1612/1612 test [130 file] hijau; tsc bersih; lint tanpa error, warning lama di area lain; dev GET / + CSS 200; Obscura screenshot nonblank)
 
 - 2026-09-27 — Aktifkan Daily Promo Digest di Pages production dan kirim tes pertama ke `Axvara_Notif` (dua bubble berhasil); perbaiki query D1 yang semula memakai alias ambigu `price` menjadi `promo_price`, lalu hapus kembali trigger/secret tes sementara — src/lib/telegram/promo-digest.ts, Pages secret `TELEGRAM_PROMO_DIGEST_ENABLED` — (verifikasi: respons production `telegram_promo_full_sent=1`, `telegram_promo_short_sent=1`; D1 migration 0044 current; 1611/1611 test hijau; tsc bersih; `PROMO_TEST_SECRET` dihapus)

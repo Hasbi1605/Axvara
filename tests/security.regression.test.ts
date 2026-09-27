@@ -323,6 +323,11 @@ describe("BUG-12: CommunityBar WA link live (bukan dead href=#)", () => {
     // WA link TIDAK boleh pakai onClick={comingSoon}
     expect(src).not.toMatch(/href=\{waHref\}[^>]*onClick=\{comingSoon\}/);
   });
+
+  it("CommunityBar Telegram pill memakai deep-link ?start=beli", () => {
+    const src = fs.readFileSync(path.join(process.cwd(), "src/components/storefront/CommunityBar.tsx"), "utf-8");
+    expect(src).toContain("https://t.me/Axvara_bot?start=beli");
+  });
 });
 
 describe("BUG-13: Proof upload extension sesuai tipe (bukan selalu .webp)", () => {
