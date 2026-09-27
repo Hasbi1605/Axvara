@@ -51,18 +51,49 @@ describe("Halaman /link — tombol link-in-bio", () => {
     expect(src).not.toContain("checkout QRIS");
   });
 
+  it("label support: Support WhatsApp + Support Telegram (bukan WA Admin)", () => {
+    const src = read("src/app/link/link-bio-client.tsx");
+    expect(src).toContain('label: "Support WhatsApp"');
+    expect(src).toContain('label: "Support Telegram"');
+    expect(src).not.toContain('label: "WA Admin"');
+    expect(src).not.toContain('label: "Telegram Bantuan"');
+  });
+
+  it("anti geser kanan mobile: wrapper overflow-x-clip + glow overflow-hidden (tanpa main ganda)", () => {
+    const src = read("src/app/link/link-bio-client.tsx");
+    expect(src).toContain("overflow-x-clip");
+    expect(src).toContain("ax-meteors");
+    expect(src).toContain("overflow-hidden");
+    expect(src).not.toContain("<main");
+  });
+
+  it("meteor jatuh tipis: 3 garis GPU-only + mati saat reduced-motion", () => {
+    const src = read("src/app/link/link-bio-client.tsx");
+    expect(src.match(/ax-meteor"/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
+    const css = read("src/app/globals.css");
+    expect(css).toContain("@keyframes axMeteor");
+    expect(css).toContain(".ax-meteor");
+    expect(css).toContain(".ax-meteors { display: none; }");
+  });
+
   it("tanpa emoji di label/hint tombol", () => {
     const src = read("src/app/link/link-bio-client.tsx");
     expect(src).not.toMatch(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}]/u);
   });
 
-  it("ikon memakai aset brand resmi + glyph SVG (bukan emoji)", () => {
+  it("ikon memakai aset solid-circle seragam 6 tombol (bukan emoji/glyph)", () => {
     const src = read("src/app/link/link-bio-client.tsx");
     expect(src).toContain("/brand/telegram.svg");
     expect(src).toContain("/brand/whatsapp-circle.svg");
     expect(src).toContain("/brand/support-wa-question.png");
     expect(src).toContain("/brand/support-telegram-question.png");
-    expect(src).toContain("<svg");
+    expect(src).toContain("/brand/website-circle.png");
+    expect(src).toContain("/brand/track-circle.png");
+  });
+
+  it("aset ikon solid-circle website + lacak ada di public/brand", () => {
+    expect(fs.existsSync(path.join(process.cwd(), "public/brand/website-circle.png"))).toBe(true);
+    expect(fs.existsSync(path.join(process.cwd(), "public/brand/track-circle.png"))).toBe(true);
   });
 
   it("aset ikon bantuan question hijau/biru ada di public/brand", () => {

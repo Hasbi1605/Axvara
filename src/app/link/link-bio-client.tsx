@@ -22,39 +22,16 @@ function iconSrc(icon: BioLink["icon"]): string {
   if (icon === "whatsapp") return "/brand/whatsapp-circle.svg";
   if (icon === "support-wa") return "/brand/support-wa-question.png";
   if (icon === "support-tg") return "/brand/support-telegram-question.png";
+  if (icon === "globe") return "/brand/website-circle.png";
+  if (icon === "track") return "/brand/track-circle.png";
   return "";
 }
 
 function IconBadge({ icon }: { icon: BioLink["icon"] }) {
   const src = iconSrc(icon);
-  if (src) {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img src={src} alt="" width={40} height={40} className="h-10 w-10 shrink-0 rounded-full object-cover" draggable={false} />;
-  }
-  const glyph =
-    icon === "globe" ? (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="#00E5FF" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-        <circle cx="12" cy="12" r="8.5" />
-        <path d="M3.5 12h17M12 3.5c2.4 2.4 3.6 5.3 3.6 8.5s-1.2 6.1-3.6 8.5c-2.4-2.4-3.6-5.3-3.6-8.5s1.2-6.1 3.6-8.5Z" />
-      </svg>
-    ) : icon === "track" ? (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="#00E5FF" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-        <path d="M4 7.5h13v9H6.5A2.5 2.5 0 0 1 4 14V7.5Z" />
-        <path d="M17 10h2.6a1.5 1.5 0 0 1 1.4 2v4.5h-2.5" />
-        <circle cx="8" cy="17.5" r="1.6" />
-        <circle cx="17.5" cy="17.5" r="1.6" />
-      </svg>
-    ) : (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="#25D366" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-        <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l.9-4.9A8 8 0 1 1 21 12Z" />
-        <path d="M9 11.5c.8 1.6 2 2.8 3.6 3.6l1.4-1.4 2 1c-.3 1.2-1.4 1.9-2.6 1.6-2.8-.7-5-2.9-5.7-5.7-.3-1.2.4-2.3 1.6-2.6l1 2L9 11.5Z" />
-      </svg>
-    );
-  return (
-    <span aria-hidden className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.06]">
-      {glyph}
-    </span>
-  );
+  // Semua ikon kini solid-circle 160px — seragam dengan Telegram/WA/bantuan.
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={src} alt="" width={40} height={40} className="h-10 w-10 shrink-0 rounded-full object-cover" draggable={false} />;
 }
 
 export function LinkBioClient() {
@@ -92,13 +69,19 @@ export function LinkBioClient() {
     { href: TG_BOT_HREF, external: true, label: "Bot Telegram", hint: "Auto order 24 jam", icon: "telegram" },
     { href: WA_GROUP_HREF, external: true, label: "Grup WhatsApp", hint: "Info promo & restock", icon: "whatsapp" },
     { href: "/lacak-pesanan", label: "Lacak Pesanan", hint: "Cek status dengan kode + WA/email", icon: "track" },
-    { href: adminWaLink("Halo AXVARA, saya butuh bantuan."), external: true, label: "WA Admin", hint: settings.supportHours, icon: "support-wa" },
-    { href: supportTelegramLink(), external: true, label: "Telegram Bantuan", hint: `@${SITE.supportTelegram}`, icon: "support-tg" },
+    { href: adminWaLink("Halo AXVARA, saya butuh bantuan."), external: true, label: "Support WhatsApp", hint: settings.supportHours, icon: "support-wa" },
+    { href: supportTelegramLink(), external: true, label: "Support Telegram", hint: `@${SITE.supportTelegram}`, icon: "support-tg" },
   ];
 
   return (
-    <main className="relative mx-auto w-full max-w-[480px] px-5 pb-14 pt-10 sm:pt-14">
-      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[420px]">
+    <div className="relative mx-auto w-full max-w-[480px] overflow-x-clip px-5 pb-14 pt-10 sm:pt-14">
+      {/* Meteor jatuh tipis — GPU-only (transform/opacity), dimatikan bila reduced-motion */}
+      <div aria-hidden className="ax-meteors pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+        <span className="ax-meteor" style={{ left: "12%", animationDelay: "0.6s", animationDuration: "7.5s" }} />
+        <span className="ax-meteor" style={{ left: "48%", animationDelay: "2.8s", animationDuration: "9s" }} />
+        <span className="ax-meteor" style={{ left: "78%", animationDelay: "4.5s", animationDuration: "8s" }} />
+      </div>
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[420px] overflow-hidden">
         <div className="absolute left-1/2 top-[-140px] h-[340px] w-[520px] -translate-x-1/2 rounded-full opacity-25 blur-[70px]" style={{ background: "radial-gradient(ellipse at center, #00E5FF, transparent 70%)" }} />
         <div className="absolute right-[-60px] top-[120px] h-[180px] w-[180px] rounded-full opacity-15 blur-[60px]" style={{ background: "radial-gradient(circle, #FFB800, transparent 70%)" }} />
       </div>
@@ -170,6 +153,6 @@ export function LinkBioClient() {
       </button>
 
       <p className="mt-6 text-center text-xs text-white/35">© 2026 {settings.name}</p>
-    </main>
+    </div>
   );
 }

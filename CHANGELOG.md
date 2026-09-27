@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-09-27 — Polish `/link` batch 2 (permintaan owner): label jadi Support WhatsApp/Support Telegram; anti geser-kanan mobile (`overflow-x-clip` + glow `overflow-hidden`); meteor jatuh tipis 3 garis GPU-only + mati saat reduced-motion; ikon website (globe biru) + lacak (paket-pin gold) solid-circle serasi 6 tombol — src/app/link/link-bio-client.tsx, src/app/globals.css, public/brand/{website,track}-circle.png, tests/link-bio.regression.test.ts — (verifikasi: link-bio hijau; tsc bersih; dev GET /link 200; Obscura mobile 390px + screenshot nonblank)
+
 - 2026-09-27 — Seragamkan pill `/link` netral (permintaan owner): aksen cyan Katalog Web + Bot Telegram dihapus, semua 6 pill glass netral; hint katalog jadi "Semua tools premium" — src/app/link/link-bio-client.tsx, tests/link-bio.regression.test.ts — (verifikasi: link-bio hijau; tsc bersih; dev GET /link 200; Obscura screenshot nonblank)
 
 - 2026-09-27 — Revisi copy `/link` (permintaan owner): tagline dua baris tanpa strip ("Satu gerbang, semua tools premium" + "AI, streaming, desain, dan musik."), footer jadi "© 2026 AXVARA" — src/app/link/link-bio-client.tsx, tests/link-bio.regression.test.ts — (verifikasi: link-bio hijau; tsc bersih; dev GET /link 200; Obscura screenshot nonblank)
