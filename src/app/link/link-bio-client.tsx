@@ -125,7 +125,7 @@ export function LinkBioClient() {
             href={link.href}
             {...(link.external ? { target: "_blank", rel: "noreferrer" } : {})}
             style={{ animationDelay: `${80 + i * 60}ms` }}
-            className="group flex min-h-[64px] items-center gap-3.5 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3.5 text-left backdrop-blur-xl transition duration-300 animate-[fadeInUp_0.45s_var(--ease-apple)_both] hover:border-white/25 hover:bg-white/[0.07] active:scale-[0.98]"
+            className="group flex min-h-[64px] items-center gap-3.5 rounded-2xl border border-[#00E5FF]/25 bg-[#00E5FF]/[0.08] px-4 py-3.5 text-left shadow-[0_8px_28px_rgba(0,229,255,0.12)] backdrop-blur-xl transition duration-300 animate-[fadeInUp_0.45s_var(--ease-apple)_both] hover:border-[#00E5FF]/50 hover:bg-[#00E5FF]/[0.12] active:scale-[0.98]"
           >
             <IconBadge icon={link.icon} />
             <span className="min-w-0 flex-1">

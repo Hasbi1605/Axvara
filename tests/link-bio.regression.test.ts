@@ -43,10 +43,11 @@ describe("Halaman /link — tombol link-in-bio", () => {
     expect(src).not.toContain("third-party independen.</p>");
   });
 
-  it("semua pill netral seragam tanpa aksen feature + hint katalog tanpa checkout", () => {
+  it("semua 6 pill outline biru glossy tipis seragam (rollback: revert commit ini)", () => {
     const src = read("src/app/link/link-bio-client.tsx");
-    expect(src).not.toContain("feature");
-    expect(src).not.toContain("border-[#00E5FF]/25");
+    expect(src).toContain("border-[#00E5FF]/25");
+    expect(src).toContain("bg-[#00E5FF]/[0.08]");
+    expect(src).toContain("hover:border-[#00E5FF]/50");
     expect(src).toContain('hint: "Semua tools premium"');
     expect(src).not.toContain("checkout QRIS");
   });

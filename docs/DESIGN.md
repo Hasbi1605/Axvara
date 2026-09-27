@@ -458,9 +458,10 @@
   (`support-wa-question.png` hijau untuk WA Admin,
   `support-telegram-question.png` biru untuk Telegram Bantuan) + glyph SVG
   outline (globe/track) — TANPA emoji.
-- Semua 6 pill NETRAL seragam (glass `white/[0.04]`, hover border/putih) —
-  aksen cyan khusus Katalog/Bot dihapus 2026-09-27 (keputusan owner);
-  hint Katalog = "Semua tools premium" (tanpa "checkout QRIS").
+- Semua 6 pill outline biru glossy tipis seragam (`border-[#00E5FF]/25` +
+  `bg-[#00E5FF]/[0.08]` + glow, hover `/50` + `/[0.12]`) — dikembalikan
+  2026-09-27 (keputusan owner, versi netral kurang terlihat; ROLLBACK: revert
+  commit ini); hint Katalog = "Semua tools premium" (tanpa "checkout QRIS").
 - Animasi tipis: `fadeInUp` stagger 60ms per tombol (`ease-apple`), glow
   radial cyan + gold di header, hover border + active scale 0.98. Hormati
   `prefers-reduced-motion` via token global.
