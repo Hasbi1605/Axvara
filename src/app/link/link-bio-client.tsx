@@ -127,7 +127,8 @@ export function LinkBioClient() {
           )}
         </span>
         <h1 className="mt-4 font-display text-[22px] font-bold tracking-[-0.01em] text-white">@axvara.tech</h1>
-        <p className="mt-1.5 max-w-[36ch] text-[13px] leading-6 text-white/55">Satu gerbang, semua tools premium — AI, streaming, desain, dan musik.</p>
+        <p className="mt-1.5 text-[15px] font-semibold leading-6 text-white/85">Satu gerbang, semua tools premium</p>
+        <p className="mt-1 text-[13px] leading-6 text-white/55">AI, streaming, desain, dan musik.</p>
         <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
           <span className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[11px] text-white/60">Order Tanpa Login</span>
           <span className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[11px] text-white/60">Bergaransi</span>
@@ -173,7 +174,7 @@ export function LinkBioClient() {
         {shared ? "Tautan disalin" : "Bagikan halaman ini"}
       </button>
 
-      <p className="mt-6 text-center text-xs text-white/35">© 2026 {settings.name} — third-party independen.</p>
+      <p className="mt-6 text-center text-xs text-white/35">© 2026 {settings.name}</p>
     </main>
   );
 }

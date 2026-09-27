@@ -34,6 +34,15 @@ describe("Halaman /link — tombol link-in-bio", () => {
     expect(src).not.toContain("QRIS otomatis");
   });
 
+  it("hierarki tagline dua baris tanpa strip + footer tanpa embel-embel", () => {
+    const src = read("src/app/link/link-bio-client.tsx");
+    expect(src).toContain("Satu gerbang, semua tools premium</p>");
+    expect(src).toContain("AI, streaming, desain, dan musik.</p>");
+    expect(src).not.toContain("semua tools premium — AI");
+    expect(src).toContain("© 2026 {settings.name}</p>");
+    expect(src).not.toContain("third-party independen.</p>");
+  });
+
   it("tanpa emoji di label/hint tombol", () => {
     const src = read("src/app/link/link-bio-client.tsx");
     expect(src).not.toMatch(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}]/u);

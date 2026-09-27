@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-09-27 — Revisi copy `/link` (permintaan owner): tagline dua baris tanpa strip ("Satu gerbang, semua tools premium" + "AI, streaming, desain, dan musik."), footer jadi "© 2026 AXVARA" — src/app/link/link-bio-client.tsx, tests/link-bio.regression.test.ts — (verifikasi: link-bio hijau; tsc bersih; dev GET /link 200; Obscura screenshot nonblank)
+
 - 2026-09-27 — Ikon tombol bantuan `/link` diganti aset question upload owner: WA Admin = question hijau, Telegram Bantuan = question biru — public/brand/support-{wa-question,telegram-question}.png, src/app/link/link-bio-client.tsx, tests/link-bio.regression.test.ts — (verifikasi: link-bio hijau; tsc bersih; dev GET /link 200; Obscura screenshot nonblank)
 
 - 2026-09-27 — Revisi `/link` (permintaan owner): tombol Katalog Web ke `/` (tanpa `#katalog`), badge trust jadi Order Tanpa Login | Bergaransi | Fast Respon — src/app/link/link-bio-client.tsx, tests/link-bio.regression.test.ts — (verifikasi: link-bio 8/8 hijau; tsc bersih; dev GET /link 200; Obscura screenshot nonblank)
