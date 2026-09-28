@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-09-28 — Produk baru Email Kampus: deskripsi + S&K diolah gaya Axvara (manfaat student plan, acak kampus, no garansi, cara aktivasi) + tile 3D amplop+toga via compose canva+gsuite 1600x900 WebP 23KB — D1 id 59 (R2 products/c204df6e…, image_url+images) — (verifikasi: R2 200; catalog API terisi; Obscura /produk/email-kampus-student-ac-id tampil sempurna; test 1630/1630)
+
 - 2026-09-27 — Hapus mikrocopy `/lacak-pesanan` (permintaan owner): "Status langsung dari server" di ringkasan DeviceOrders + catatan "Kode dan kontak dicocokkan…" di bawah tombol — src/components/storefront/DeviceOrders.tsx, src/app/lacak-pesanan/lacak-pesanan-client.tsx, tests/{mobile-bottom-nav.behavior,order-tracking}.test.ts — (verifikasi: terkait hijau; tsc bersih; dev GET /lacak-pesanan 200)
 
 - 2026-09-27 — `/lacak-pesanan`: "Pesanan di perangkat ini" pindah ke bawah "Terakhir dilacak" + jadi accordion collapsed default (badge jumlah + penanda belum dibayar) — src/components/storefront/DeviceOrders.tsx, src/app/lacak-pesanan/lacak-pesanan-client.tsx, tests/mobile-bottom-nav.behavior.test.tsx, docs/{DESIGN,ARCHITECTURE}.md, README.md — (verifikasi: behavior hijau; tsc bersih; dev GET /lacak-pesanan 200; Obscura screenshot nonblank)
