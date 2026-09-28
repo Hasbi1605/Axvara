@@ -47,10 +47,12 @@ export async function handleCommand(
     const siteUrl = /^https?:\/\//i.test(rawSite) ? rawSite : "https://axvara.tech";
     const bestsellers = await getBestsellers(3);
     const caption = welcomeMessage(from?.first_name ?? "Pengguna", bestsellers);
-    // Foto welcome: WebP 31 KB dari public/ (bukan PNG 2,2 MB dari R2 yang
-    // timeout 10 dtk di edge). Retry 1x, lalu fallback teks + keyboard agar
-    // sapaan tetap tampil bila Telegram gagal ambil foto.
-    const photoUrl = `${siteUrl}/banners/tg-welcome.webp`;
+    // Foto welcome: WebP ringan dari public/ (bukan PNG 2,2 MB dari R2 yang
+    // timeout 10 dtk di edge). Query ?v= cache-buster: Telegram meng-cache
+    // foto kirim-via-URL per URL, jadi tiap ganti gambar WAJIB naikkan versi
+    // agar foto baru langsung terkirim. Retry 1x, lalu fallback teks +
+    // keyboard agar sapaan tetap tampil bila Telegram gagal ambil foto.
+    const photoUrl = `${siteUrl}/banners/tg-welcome.webp?v=20260928b`;
     let photoRes = await sendPhoto({
       chat_id: chatId,
       photo: photoUrl,
