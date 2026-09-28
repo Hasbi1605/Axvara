@@ -218,3 +218,59 @@ describe("editor produk: tab Deskripsi & S&K (terpisah dari tab Varian)", () => 
     expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).startsWith("/api/admin/variant-copy"))).toBe(false);
   });
 });
+
+describe("editor produk mode single: paritas garansi + pengiriman + template (2026-09-28)", () => {
+  const singleForm: ProductForm = {
+    name: "Canva Single", slug: "canva-single", description: "desc",
+    price: 7500, stock: 20, min_qty: 1,
+    warranty_type: "full", warranty_value: 1, warranty_unit: "month",
+    fulfillment_mode: "manual",
+  };
+  const defaultVariant: FormVariant[] = [
+    { id: 4, sku: "DEFAULT-2", label: "Default", price: 7500, stock: 20, is_active: 1 },
+  ];
+
+  function renderSingleModal(form = singleForm, formVariants = defaultVariant) {
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, json: async () => ({}) })));
+    const onSetForm = vi.fn();
+    render(
+      <ToastProvider>
+        <ProductEditorModal
+          editing editingId={2} saving={false} uploading={false} loadingVariants={false}
+          hasMultiVariants={false} formError={null} form={form} formImages={[]} formVariants={formVariants} cats={[]}
+          onRequestClose={vi.fn()} onSetForm={onSetForm} onSetFormImages={vi.fn()} onSetHasMultiVariants={vi.fn()}
+          onSetFormVariants={vi.fn()} onUpload={vi.fn()} onSave={vi.fn()}
+        />
+      </ToastProvider>,
+    );
+    return { onSetForm };
+  }
+
+  it("tab Varian mode single menampilkan Min. Beli + Masa Garansi + Cara Pengiriman + Template pesan", () => {
+    renderSingleModal();
+    fireEvent.click(screen.getByRole("tab", { name: /^Varian/ }));
+    const panel = screen.getByRole("tabpanel", { name: /^Varian/ });
+    expect(within(panel).getByText("Min. Beli")).toBeTruthy();
+    expect(within(panel).getByText("Masa Garansi")).toBeTruthy();
+    expect(within(panel).getByText("Cara Pengiriman")).toBeTruthy();
+    expect(within(panel).getByText("Template pesan untuk pembeli")).toBeTruthy();
+    expect(within(panel).getByRole("textbox", { name: "Template pesan untuk pembeli" })).toBeTruthy();
+  });
+
+  it("mengubah garansi + pengiriman mode single memanggil onSetForm", () => {
+    const { onSetForm } = renderSingleModal();
+    fireEvent.click(screen.getByRole("tab", { name: /^Varian/ }));
+    const panel = screen.getByRole("tabpanel", { name: /^Varian/ });
+    const selects = within(panel).getAllByRole("combobox");
+    expect(selects.length).toBeGreaterThanOrEqual(2); // garansi + pengiriman
+    fireEvent.change(selects[0], { target: { value: "limited" } });
+    expect(onSetForm).toHaveBeenCalledWith(expect.objectContaining({ warranty_type: "limited" }));
+  });
+
+  it("produk baru tanpa variantId: panel fulfillment meminta simpan dulu", () => {
+    renderSingleModal(singleForm, []);
+    fireEvent.click(screen.getByRole("tab", { name: /^Varian/ }));
+    const panel = screen.getByRole("tabpanel", { name: /^Varian/ });
+    expect(within(panel).getByText(/Simpan produk terlebih dahulu/).textContent).toContain("agar varian punya ID");
+  });
+});

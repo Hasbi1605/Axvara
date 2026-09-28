@@ -38,4 +38,18 @@ export type FormVariant = {
   wr_auto_managed?: number;
 };
 
-export type ProductForm = Partial<Prod> & { comparePrice?: number; categorySlug?: string };
+export type ProductForm = Partial<Prod> & {
+  comparePrice?: number;
+  categorySlug?: string;
+  /**
+   * Field mode single (toggle varian OFF) — paritas 2026-09-28.
+   * Disimpan sebagai 1 varian `Default` eksplisit saat save, bukan kolom legacy.
+   * Seluruhnya milik admin (bukan WR-owned); produk WR-managed tetap read-only di UI.
+   */
+  min_qty?: number;
+  warranty_type?: string;
+  warranty_value?: number | null;
+  warranty_unit?: string | null;
+  warranty_label?: string | null;
+  fulfillment_mode?: string;
+};

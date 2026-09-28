@@ -103,7 +103,7 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 |----|-------------|
 | FR-A1 | Admin login terpisah di `/admin` (email + password, rate-limited) |
 | FR-A2 | Dashboard admin: total pesanan, pending, lunas, omzet hari/bulan, produk terlaris |
-| FR-A3 | CRUD Produk: tambah/edit/hapus, upload foto (ke R2), set harga, diskon, kategori, stok, deskripsi, status aktif/nonaktif. **2026-09-24 ✅ live:** S&K + cara aktivasi per varian bisa disunting admin (WR & non-WR, migrasi 0041); suntingan varian WR dijeda otomatis bila WR mengubah teksnya (pembeli melihat teks WR terbaru, admin mendapat badge "S&K perlu ditinjau") |
+| FR-A3 | CRUD Produk: tambah/edit/hapus, upload foto (ke R2), set harga, diskon, kategori, stok, deskripsi, status aktif/nonaktif. **2026-09-24 ✅ live:** S&K + cara aktivasi per varian bisa disunting admin (WR & non-WR, migrasi 0041); suntingan varian WR dijeda otomatis bila WR mengubah teksnya (pembeli melihat teks WR terbaru, admin mendapat badge "S&K perlu ditinjau"). **2026-09-28:** produk single/non-varian (toggle varian OFF) paritas dengan multi-varian — Min. Beli + Masa Garansi + Cara Pengiriman + Template pesan tampil di tab Varian dan disimpan sebagai 1 varian `Default` eksplisit (update in-place, bukan insert baru) |
 | FR-A4 | Kategori management: AI Gateway, Akun Premium, Tools Pro, Bundle Kucing (bisa tambah) |
 | FR-A5 | Manajemen Pesanan: list semua pesanan (filter Pending/Lunas/Dibatalkan), detail pesanan + foto bukti transfer, tombol Konfirmasi Lunas / Batalkan |
 | FR-A6 | Saat konfirmasi: admin bisa input catatan/lisensi/key yang akan dikirim ke pembeli |
