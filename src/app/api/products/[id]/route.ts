@@ -398,6 +398,15 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
             if (v.comparePrice !== undefined) { vFields.push("compare_price=?"); vVals.push(v.comparePrice ? Number(v.comparePrice) : null); }
             if (v.stock !== undefined) { vFields.push("stock=?"); vVals.push(Number(v.stock)); }
             if (v.is_active !== undefined) { vFields.push("is_active=?"); vVals.push(Number(v.is_active)); }
+            // Paritas single 2026-09-28: mode single kini mengirim variants
+            // eksplisit juga di dev — field milik admin ini harus ikut
+            // tertulis, seperti cabang D1 di atas.
+            if (v.min_qty !== undefined) { vFields.push("min_qty=?"); vVals.push(Math.max(1, Math.min(100, Number(v.min_qty ?? 1) || 1))); }
+            if (v.warranty_type !== undefined) { vFields.push("warranty_type=?"); vVals.push(v.warranty_type || "none"); }
+            if (v.warranty_value !== undefined) { vFields.push("warranty_value=?"); vVals.push(v.warranty_value ?? null); }
+            if (v.warranty_unit !== undefined) { vFields.push("warranty_unit=?"); vVals.push(v.warranty_unit || null); }
+            if (v.warranty_label !== undefined) { vFields.push("warranty_label=?"); vVals.push(v.warranty_label?.trim() || null); }
+            if (v.fulfillment_mode !== undefined) { vFields.push("fulfillment_mode=?"); vVals.push(v.fulfillment_mode || "manual"); }
             if (vFields.length === 0) continue;
             vFields.push("updated_at=datetime('now')");
             await execRun(`UPDATE product_variants SET ${vFields.join(",")} WHERE id=?`, ...vVals, v.id);

@@ -6,11 +6,22 @@ import { MoneyInput } from "@/components/ui/MoneyInput";
 import { useToast } from "@/components/ui/Toast";
 import { Spinner } from "@/components/ui/Loading";
 import type { FormVariant, ProductForm } from "../product-types";
+import { WarrantyFields } from "./VariantWarrantyFields";
 
 // Blok daftar varian dipisah dari ProductEditorModal karena inilah sub-form paling padat
 // (harga, harga coret, stok, dan matriks garansi per baris). Memisahkannya menjaga file
 // modal tetap ringkas dan membuat aturan render baris varian mudah dibaca sendiri.
 // Tetap tanpa state lokal: seluruh mutasi diteruskan ke setter formVariants milik page.tsx.
+
+// Opsi label pengiriman non-WR (milik admin): Manual = MBO dikerjakan
+// admin; shared/unique = instan dari stok sendiri. Sinkron 1:1 dengan
+// fulfillment_mode agar display buyer (badge/ETA) tidak menebak.
+// Diekspor 2026-09-28 agar mode single memakai opsi yang sama (paritas).
+export const FULFILLMENT_OPTIONS = [
+  { value: "manual", label: "Made By Order — admin kerjakan manual" },
+  { value: "shared", label: "Kirim otomatis — pesan/instruksi bersama" },
+  { value: "unique", label: "Kirim otomatis — stok kredensial unik" },
+];
 
 /**
  * Panel konten fulfillment non-WR di dalam baris varian ProductEditorModal.
@@ -28,7 +39,7 @@ import type { FormVariant, ProductForm } from "../product-types";
  * Mode "unique" → daftar stok tersedia saat ini + impor/hapus per baris.
  * Mode "__wr__" → varian WR: baca counts saja, tanpa form tulis.
  */
-function NonWrFulfillmentPanel({ productId, variantId, mode }: { productId?: number | string; variantId?: number; mode: string }) {
+export function NonWrFulfillmentPanel({ productId, variantId, mode }: { productId?: number | string; variantId?: number; mode: string }) {
   const toast = useToast();
   const [counts, setCounts] = useState<{ available: number; reserved: number; delivered: number } | null>(null);
   const [sharedCurrent, setSharedCurrent] = useState<string | null>(null);
@@ -216,14 +227,6 @@ export function ProductVariantRows({
   onSetFormVariants: (updater: (prev: FormVariant[]) => FormVariant[]) => void;
   productId?: number | string;
 }) {
-  // Opsi label pengiriman non-WR (milik admin): Manual = MBO dikerjakan
-  // admin; shared/unique = instan dari stok sendiri. Sinkron 1:1 dengan
-  // fulfillment_mode agar display buyer (badge/ETA) tidak menebak.
-  const FULFILLMENT_OPTIONS = [
-    { value: "manual", label: "Made By Order — admin kerjakan manual" },
-    { value: "shared", label: "Kirim otomatis — pesan/instruksi bersama" },
-    { value: "unique", label: "Kirim otomatis — stok kredensial unik" },
-  ];
   return (
     <div className="mt-4 space-y-3">
       <div className="flex items-center justify-between">
@@ -370,79 +373,21 @@ export function ProductVariantRows({
               </div>
             </div>
 
-            {/* Baris 3: Pengaturan Garansi yang Jelas & Rapi */}
-            <div className="pt-3">
-              <span className="block text-[10px] uppercase font-semibold text-white/40 mb-1.5">Masa Garansi{wrLocked ? " (WR)" : ""}</span>
-              <div className="flex flex-wrap items-center gap-2">
-                <select
-                  value={v.warranty_type || "full"}
-                  disabled={wrLocked}
-                  onChange={(e) => {
-                    const wType = e.target.value;
-                    onSetFormVariants((curr) => curr.map((item, i) => i === idx ? {
-                      ...item,
-                      warranty_type: wType,
-                      warranty_value: item.warranty_value ?? 1,
-                      warranty_unit: item.warranty_unit || "month",
-                    } : item));
-                  }}
-                  className="h-9 rounded-xl bg-white/[0.06] border border-white/10 px-3 text-xs text-white focus:border-[#00E5FF]/50 focus:outline-none"
-                >
-                  <option value="full" className="bg-[#0F1430]">Full Garansi</option>
-                  <option value="limited" className="bg-[#0F1430]">Garansi Terbatas</option>
-                  <option value="none" className="bg-[#0F1430]">Tanpa Garansi</option>
-                  <option value="custom" className="bg-[#0F1430]">Teks Kustom</option>
-                </select>
-
-                {(v.warranty_type === "full" || v.warranty_type === "limited") && (
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="number"
-                      min={1}
-                      value={v.warranty_value ?? 1}
-                      readOnly={wrLocked}
-                      onChange={(e) => {
-                        const val = Math.max(1, Number(e.target.value) || 1);
-                        onSetFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, warranty_value: val, duration_value: val } : item));
-                      }}
-                      className={`h-9 w-16 rounded-xl border px-2 text-xs text-center focus:outline-none ${wrLocked ? "bg-white/[0.03] border-white/5 text-white/50 cursor-not-allowed" : "bg-white/[0.06] border-white/10 text-white focus:border-[#00E5FF]/50"}`}
-                    />
-                    <select
-                      value={v.warranty_unit || "month"}
-                      disabled={wrLocked}
-                      onChange={(e) => {
-                        const unit = e.target.value;
-                        onSetFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, warranty_unit: unit, duration_unit: unit } : item));
-                      }}
-                      className="h-9 rounded-xl bg-white/[0.06] border border-white/10 px-3 text-xs text-white focus:border-[#00E5FF]/50 focus:outline-none"
-                    >
-                      <option value="day" className="bg-[#0F1430]">Hari</option>
-                      <option value="month" className="bg-[#0F1430]">Bulan</option>
-                      <option value="year" className="bg-[#0F1430]">Tahun</option>
-                      <option value="lifetime" className="bg-[#0F1430]">Selamanya</option>
-                    </select>
-                  </div>
-                )}
-
-                {v.warranty_type === "custom" && (
-                  <input
-                    value={v.warranty_label || ""}
-                    readOnly={wrLocked}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      onSetFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, warranty_label: val } : item));
-                    }}
-                    placeholder="Contoh: Garansi 24 Jam Ganti Akun"
-                    className={`h-9 flex-1 min-w-[200px] rounded-xl border px-3 text-xs focus:outline-none ${wrLocked ? "bg-white/[0.03] border-white/5 text-white/50 cursor-not-allowed" : "bg-white/[0.06] border-white/10 text-white placeholder:text-white/20 focus:border-[#00E5FF]/50"}`}
-                  />
-                )}
-
-                {/* Label Hasil Preview Badge */}
-                <span className="text-[11px] text-[#00E5FF]/80 font-medium ml-auto pl-2 py-1">
-                  Hasil: {v.warranty_type === "none" ? "Tanpa Garansi" : v.warranty_type === "custom" ? (v.warranty_label || "Kustom") : `${v.warranty_type === "full" ? "Full Garansi" : "Garansi Terbatas"} ${v.warranty_value ?? 1} ${v.warranty_unit === "day" ? "Hari" : v.warranty_unit === "year" ? "Tahun" : v.warranty_unit === "lifetime" ? "Selamanya" : "Bulan"}`}
-                </span>
-              </div>
-            </div>
+            {/* Baris 3: Pengaturan Garansi — komponen bersama dengan mode single
+                (paritas 2026-09-28). Sinkron durasi dipertahankan: nilai/satuan
+                garansi ikut menjadi durasi, seperti sebelumnya. */}
+            <WarrantyFields
+              value={v}
+              wrLocked={wrLocked}
+              onChange={(patch) => {
+                onSetFormVariants((curr) => curr.map((item, i) => i === idx ? {
+                  ...item,
+                  ...patch,
+                  ...(patch.warranty_value !== undefined && patch.warranty_type === undefined ? { duration_value: patch.warranty_value } : {}),
+                  ...(patch.warranty_unit !== undefined && patch.warranty_type === undefined ? { duration_unit: patch.warranty_unit } : {}),
+                } : item));
+              }}
+            />
 
             {/* Baris 4: Cara pengiriman (non-WR, milik admin) + panel konten
                 fulfillment. Opsi ini sinkron 1:1 dengan fulfillment_mode yang

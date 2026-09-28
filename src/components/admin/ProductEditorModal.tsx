@@ -5,6 +5,7 @@ import { IosIcon } from "@/components/ui/IosIcon";
 import { MoneyInput } from "@/components/ui/MoneyInput";
 import type { Cat, FormVariant, ProductForm } from "./product-types";
 import { ProductVariantRows } from "./sections/ProductVariantRows";
+import { SingleVariantFields } from "./sections/SingleVariantFields";
 import { ProductCopyTab } from "./sections/ProductCopyTab";
 import { useVariantCopyEntries } from "./sections/VariantCopyEditor";
 
@@ -126,20 +127,61 @@ export function ProductEditorModal({
                   onClick={() => {
                     const next = !hasMultiVariants;
                     onSetHasMultiVariants(next);
-                    if (next && formVariants.length === 0) {
-                      onSetFormVariants(() => [
-                        {
-                          sku: `${(form.slug || "PROD").toUpperCase()}-1`,
-                          label: "1 Bulan",
-                          price: form.price ? Number(form.price) : 50000,
-                          comparePrice: form.comparePrice ? Number(form.comparePrice) : null,
-                          stock: form.stock != null ? Number(form.stock) : -1,
-                          duration_value: 1,
-                          duration_unit: "month",
-                          warranty_type: "full",
-                          is_active: 1,
-                        },
-                      ]);
+                    // Paritas single↔multi 2026-09-28: jangan hilangkan nilai
+                    // saat bolak-balik toggle.
+                    if (next) {
+                      // OFF → ON: bawa nilai form single ke baris varian.
+                      if (formVariants.length === 0) {
+                        onSetFormVariants(() => [
+                          {
+                            sku: `${(form.slug || "PROD").toUpperCase()}-1`,
+                            label: "1 Bulan",
+                            price: form.price ? Number(form.price) : 50000,
+                            comparePrice: form.comparePrice ? Number(form.comparePrice) : null,
+                            stock: form.stock != null ? Number(form.stock) : -1,
+                            min_qty: form.min_qty ?? 1,
+                            duration_value: 1,
+                            duration_unit: "month",
+                            warranty_type: form.warranty_type || "full",
+                            warranty_value: form.warranty_value ?? 1,
+                            warranty_unit: form.warranty_unit || "month",
+                            warranty_label: form.warranty_label ?? null,
+                            fulfillment_mode: form.fulfillment_mode || "manual",
+                            is_active: 1,
+                          },
+                        ]);
+                      } else if (formVariants.length === 1 && formVariants[0].sku.startsWith("DEFAULT-")) {
+                        // Edit produk single yang dinyalakan variannya: sinkronkan
+                        // edit single yang mungkin sudah dilakukan ke baris DEFAULT.
+                        onSetFormVariants((curr) => curr.map((item, i) => i === 0 ? {
+                          ...item,
+                          price: form.price != null ? Number(form.price) : item.price,
+                          comparePrice: form.comparePrice != null ? Number(form.comparePrice) : item.comparePrice,
+                          stock: form.stock != null ? Number(form.stock) : item.stock,
+                          min_qty: form.min_qty ?? item.min_qty ?? 1,
+                          warranty_type: form.warranty_type || item.warranty_type || "none",
+                          warranty_value: form.warranty_value ?? item.warranty_value ?? null,
+                          warranty_unit: form.warranty_unit || item.warranty_unit || null,
+                          warranty_label: form.warranty_label ?? item.warranty_label ?? null,
+                          fulfillment_mode: form.fulfillment_mode || item.fulfillment_mode || "manual",
+                        } : item));
+                      }
+                    } else if (formVariants.length > 0) {
+                      // ON → OFF: salin varian pertama kembali ke form single
+                      // agar nilai tidak reset ke bawaan lama.
+                      const v0 = formVariants[0];
+                      onSetForm({
+                        ...form,
+                        price: v0.price,
+                        comparePrice: v0.comparePrice ?? undefined,
+                        stock: v0.stock,
+                        min_qty: v0.min_qty ?? 1,
+                        warranty_type: v0.warranty_type || "none",
+                        warranty_value: v0.warranty_value ?? null,
+                        warranty_unit: v0.warranty_unit || null,
+                        warranty_label: v0.warranty_label ?? null,
+                        fulfillment_mode: v0.fulfillment_mode || "manual",
+                      });
                     }
                   }}
                   className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${hasMultiVariants ? "bg-[#00E5FF]" : "bg-white/20"}`}
@@ -153,6 +195,7 @@ export function ProductEditorModal({
               ) : hasMultiVariants ? (
                 <ProductVariantRows form={form} formVariants={formVariants} onSetFormVariants={onSetFormVariants} productId={editingId} />
               ) : (
+                <>
                 <div className="mt-4 grid sm:grid-cols-3 gap-3">
                   <div>
                     <span className="text-xs font-semibold text-white/60">Harga Jual *{form.wrManaged ? " (WR)" : ""}</span>
@@ -185,6 +228,17 @@ export function ProductEditorModal({
                     />
                   </div>
                 </div>
+                {/* Paritas single 2026-09-28: min. beli + garansi + cara
+                    pengiriman + template pesan — blok yang sama dengan mode
+                    varian. variantId diteruskan agar panel fulfillment bisa
+                    muat template produk yang sudah tersimpan. */}
+                <SingleVariantFields
+                  form={form}
+                  onSetForm={onSetForm}
+                  productId={editingId}
+                  variantId={typeof formVariants[0]?.id === "number" ? formVariants[0].id : undefined}
+                />
+                </>
               )}
             </div>
 

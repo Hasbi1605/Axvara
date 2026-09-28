@@ -139,15 +139,121 @@ describe("PUT /api/products/:id mode multi-varian (regresi Canva 409)", () => {
   });
 });
 
+describe("PUT /api/products/:id mode single paritas (2026-09-28)", () => {
+  // Client BARU mode single: 1 varian Default eksplisit berisi garansi +
+  // fulfillment + min_qty + cerminan legacy. Harus 200 (bukan 409) dan
+  // mengupdate row varian id=4 IN-PLACE — bukan insert baris baru — karena
+  // stok fulfillment (inventory/shared secret) keyed by variant_id.
+  const singlePayload = {
+    price: 7500,
+    stock: 20,
+    comparePrice: null,
+    isActive: true,
+    variants: [
+      {
+        id: 4,
+        sku: "DEFAULT-2",
+        label: "Default",
+        price: 7500,
+        comparePrice: null,
+        stock: 20,
+        min_qty: 1,
+        duration_value: null,
+        duration_unit: null,
+        duration_label: null,
+        warranty_type: "full",
+        warranty_value: 1,
+        warranty_unit: "month",
+        warranty_label: null,
+        fulfillment_mode: "shared",
+        is_active: 1,
+        sort_order: 0,
+      },
+    ],
+  };
+
+  function fullVariantOf(id: number) {
+    return fixture.sql.prepare(
+      `SELECT id, sku, label, price, stock, min_qty, warranty_type, warranty_value, warranty_unit, warranty_label, fulfillment_mode, is_active
+       FROM product_variants WHERE id=?`,
+    ).get(id)! as Record<string, unknown>;
+  }
+
+  it("single + garansi + shared: 200, varian id sama terupdate in-place", async () => {
+    const { PUT } = await import("@/app/api/products/[id]/route");
+    const res = await PUT(put(2, singlePayload), { params: Promise.resolve({ id: "2" }) });
+    expect(res.status).toBe(200);
+    // Tidak ada insert baru: produk 2 tetap punya tepat 1 varian.
+    const count = fixture.sql.prepare(`SELECT COUNT(*) c FROM product_variants WHERE product_id=2 AND is_active=1`).get()! as { c: number };
+    expect(count.c).toBe(1);
+    const v = fullVariantOf(4);
+    expect(v).toMatchObject({
+      sku: "DEFAULT-2",
+      label: "Default",
+      price: 7500,
+      stock: 20,
+      min_qty: 1,
+      warranty_type: "full",
+      warranty_value: 1,
+      warranty_unit: "month",
+      fulfillment_mode: "shared",
+      is_active: 1,
+    });
+    expect(masterOf(2)).toMatchObject({ price: 7500, stock: 20 });
+  });
+
+  it("single custom warranty + unique + min_qty: tersimpan semua", async () => {
+    const { PUT } = await import("@/app/api/products/[id]/route");
+    const res = await PUT(
+      put(2, {
+        ...singlePayload,
+        variants: [
+          {
+            ...singlePayload.variants[0],
+            min_qty: 5,
+            warranty_type: "custom",
+            warranty_value: null,
+            warranty_unit: null,
+            warranty_label: "Garansi 24 Jam Ganti Akun",
+            fulfillment_mode: "unique",
+          },
+        ],
+      }),
+      { params: Promise.resolve({ id: "2" }) },
+    );
+    expect(res.status).toBe(200);
+    expect(fullVariantOf(4)).toMatchObject({
+      min_qty: 5,
+      warranty_type: "custom",
+      warranty_label: "Garansi 24 Jam Ganti Akun",
+      fulfillment_mode: "unique",
+    });
+  });
+});
+
 describe("payload useProductManager mode varian", () => {
-  it("tidak menyertakan kolom legacy price/stock/comparePrice", async () => {
+  it("mode multi: tidak menyertakan kolom legacy price/stock/comparePrice", async () => {
     const src = (await import("node:fs")).readFileSync("src/components/admin/useProductManager.ts", "utf8");
     const saveAt = src.indexOf("const payload = {");
     expect(saveAt).toBeGreaterThan(0);
-    const saveBlock = src.slice(saveAt, saveAt + 2500);
+    const saveBlock = src.slice(saveAt, saveAt + 3500);
     expect(saveBlock).toContain("price: hasMultiVariants ? undefined");
     expect(saveBlock).toContain("comparePrice: hasMultiVariants ? undefined");
     expect(saveBlock).toContain("stock: hasMultiVariants ? undefined");
+  });
+
+  it("mode single: selalu kirim 1 varian Default eksplisit (paritas 2026-09-28)", async () => {
+    const src = (await import("node:fs")).readFileSync("src/components/admin/useProductManager.ts", "utf8");
+    expect(src).toContain("singleDefaultVariant");
+    // Field form single-mode tidak boleh bocor ke top-level API.
+    const saveAt = src.indexOf("const payload = {");
+    const saveBlock = src.slice(saveAt, saveAt + 3500);
+    expect(saveBlock).toContain("warranty_type: undefined");
+    expect(saveBlock).toContain("fulfillment_mode: undefined");
+    // SKU produk baru memakai prefix DEFAULT- agar tetap terdeteksi single.
+    expect(src).toContain("DEFAULT-${");
+    // Durasi varian DEFAULT existing dipertahankan (tidak di-nol-kan) saat update in-place.
+    expect(src).toContain("duration_value: existingDefault?.duration_value");
   });
 
   it("daftar admin meniru storefront: ready dulu, habis belakangan, nonaktif paling belakang (2026-09-19)", async () => {

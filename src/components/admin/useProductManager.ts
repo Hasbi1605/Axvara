@@ -151,6 +151,19 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
         fulfillment_mode: String((v as Record<string, unknown>).fulfillment_mode ?? "manual"),
         wr_auto_managed: (v as Record<string, unknown>).wr_auto_managed as number | undefined,
       }));
+      // Paritas single 2026-09-28: produk 1 varian DEFAULT dibuka sebagai mode
+      // single — salin nilai variannya ke field form agar garansi/pengiriman/
+      // min. beli tampil dan bisa diedit tanpa menyalakan toggle varian.
+      if (!isMulti && mapped.length > 0) {
+        const v0 = mapped[0];
+        nextForm.min_qty = v0.min_qty ?? 1;
+        nextForm.warranty_type = v0.warranty_type || "none";
+        nextForm.warranty_value = v0.warranty_value ?? null;
+        nextForm.warranty_unit = v0.warranty_unit || null;
+        nextForm.warranty_label = v0.warranty_label ?? null;
+        nextForm.fulfillment_mode = v0.fulfillment_mode || "manual";
+        setForm({ ...nextForm });
+      }
       setFormVariants(mapped);
       setProductInitialSignature(productFormSignature(nextForm, nextImages, isMulti, mapped));
     } catch (cause) {
@@ -169,8 +182,11 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
 
   // Toggle varian tunggal (migrasi varian generik): produk baru tanpa
   // varian mengembalikan varian bawaan DEFAULT.
+  // Paritas single 2026-09-28: field single-mode diinisialisasi eksplisit
+  // (garansi=none + manual, seperti varian DEFAULT otomatis server) agar
+  // tampilan UI dan nilai tersimpan tidak pernah divergen.
   const openNew = () => {
-    const nextForm = {
+    const nextForm: ProductForm = {
       name: "",
       slug: "",
       whatsappAlias: "",
@@ -180,6 +196,12 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
       stock: 10,
       soldCount: 0,
       isActive: true,
+      min_qty: 1,
+      warranty_type: "none",
+      warranty_value: null,
+      warranty_unit: null,
+      warranty_label: null,
+      fulfillment_mode: "manual",
     };
     setShowNew(true);
     setEditing(null);
@@ -255,12 +277,46 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
     setSaving(true);
     setFormError(null);
 
-    const activeVarPrices = hasMultiVariants && formVariants.length > 0
-      ? formVariants.filter((vr) => (vr.is_active ?? 1) !== 0).map((vr) => vr.price)
-      : [];
-    const minVarPrice = activeVarPrices.length > 0
-      ? Math.min(...activeVarPrices)
-      : Number(form.price || 0);
+    // Paritas single 2026-09-28: mode single SELALU dikirim sebagai 1 varian
+    // `Default` eksplisit. Sebelumnya `variants: undefined` sehingga server
+    // membuat varian DEFAULT hardcoded (manual/none) dan garansi/pengiriman/
+    // min.beli dari form single tidak pernah tersimpan.
+    // id/sku/label lama HANYA dipakai ulang bila barisnya memang varian
+    // DEFAULT-* (hasil openEdit produk single) agar update in-place, bukan
+    // insert baru — stok fulfillment keyed by variant_id. Bila formVariants
+    // berisi varian NON-default (mis. produk multi yang di-toggle OFF, atau
+    // produk baru), kirim sebagai Default baru tanpa id: memakai id lama di
+    // sini akan menimpa varian pertama + menonaktifkan sisanya via
+    // `id NOT IN (...)` di server.
+    const existingDefault = !hasMultiVariants && formVariants.length === 1 && formVariants[0].sku.startsWith("DEFAULT-")
+      ? formVariants[0]
+      : undefined;
+    const singleDefaultVariant = !hasMultiVariants ? {
+      id: existingDefault?.id,
+      // Produk BARU / konversi dari multi wajib memakai prefix DEFAULT-
+      // (bukan auto `${SLUG}-1` milik server) agar saat dibuka lagi
+      // terdeteksi sebagai mode single
+      // (openEdit: 1 varian + sku DEFAULT-* = single; sku lain = multi).
+      // Slug sudah tervalidasi non-kosong sebelum save, jadi selalu ada.
+      sku: existingDefault?.sku || `DEFAULT-${form.slug!.trim().toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 30)}`,
+      label: existingDefault?.label || "Default",
+      price: Number(form.price || 0),
+      comparePrice: form.comparePrice ? Number(form.comparePrice) : null,
+      stock: form.stock != null ? Number(form.stock) : -1,
+      min_qty: Math.max(1, Math.min(100, Number(form.min_qty ?? 1) || 1)),
+      // Durasi bukan field mode single (tidak ada UI-nya) — teruskan nilai
+      // varian DEFAULT existing agar tidak ter-nol-kan saat update in-place.
+      duration_value: existingDefault?.duration_value ?? null,
+      duration_unit: existingDefault?.duration_unit ?? null,
+      duration_label: existingDefault?.duration_label ?? null,
+      warranty_type: form.warranty_type || "none",
+      warranty_value: form.warranty_value ?? null,
+      warranty_unit: form.warranty_unit || null,
+      warranty_label: form.warranty_label?.trim() || null,
+      fulfillment_mode: (["manual", "shared", "unique"] as const).includes(form.fulfillment_mode as "manual" | "shared" | "unique") ? (form.fulfillment_mode as "manual" | "shared" | "unique") : "manual",
+      is_active: form.isActive !== false ? 1 : 0,
+      sort_order: 0,
+    } : null;
 
     const payload = {
       ...form,
@@ -271,11 +327,22 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
       // Field milik WR tidak pernah dikirim ulang untuk produk auto-managed:
       // server menolaknya dengan 409 dan nilainya toh ditimpa sync berikutnya.
       wrManaged: undefined,
-      // FIX Canva 409: mode varian jangan kirim kolom legacy sama sekali.
+      // Field form khusus mode single: hanya kontrak UI, sumber kebenaran
+      // adalah entries `variants` di bawah — jangan bocor ke top-level API.
+      min_qty: undefined,
+      warranty_type: undefined,
+      warranty_value: undefined,
+      warranty_unit: undefined,
+      warranty_label: undefined,
+      fulfillment_mode: undefined,
+      // FIX Canva 409: mode MULTI jangan kirim kolom legacy sama sekali.
       // Server menghitung ulang master price/stock/compare dari varian aktif,
       // sehingga nilai pendamping (min price, -1, null) tak lagi dibaca
       // sebagai "edit legacy" yang memicu guard 409.
-      price: hasMultiVariants ? undefined : minVarPrice,
+      // Mode SINGLE mengirim cerminan top-level (untuk master row saat POST;
+      // saat PUT server mengabaikannya karena variants eksplisit dikirim —
+      // guard 409 tidak terpicu karena ignoreLegacyCommerce=true).
+      price: hasMultiVariants ? undefined : Number(form.price || 0),
       comparePrice: hasMultiVariants ? undefined : (form.comparePrice ? Number(form.comparePrice) : null),
       stock: hasMultiVariants ? undefined : (form.stock != null ? Number(form.stock) : -1),
       soldCount: form.soldCount ? Number(form.soldCount) : 0,
@@ -308,7 +375,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
             is_active: vr.is_active ?? 1,
             sort_order: idx,
           }))
-        : undefined,
+        : (singleDefaultVariant ? [singleDefaultVariant] : undefined),
     };
 
     const url = editing ? `/api/products/${editing.id}` : "/api/products";
