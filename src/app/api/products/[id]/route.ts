@@ -3,6 +3,7 @@ import { z } from "zod";
 import { queryFirst, queryAll, execRun, getD1, isD1Mode } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
 import { rateLimit, rateLimitKey } from "@/lib/rateLimit";
+import { resolveCategorySlug } from "@/lib/products";
 import {
   WR_OWNED_PRODUCT_FIELDS,
   WR_OWNED_VARIANT_FIELDS,
@@ -228,7 +229,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const vals: unknown[] = [];
   const map: Record<string,string> = { name:"name", slug:"slug", description:"description", adminDescriptionOverride:"admin_description_override", whatsappAlias:"whatsapp_alias", price:"price", comparePrice:"compare_price", imageUrl:"image_url", badge:"badge", soldCount:"sold_count", stock:"stock", isActive:"is_active", sortOrder:"sort_order", requireEmail:"require_email" };
   if (data.categorySlug) {
-    const cat = await queryFirst("SELECT id FROM categories WHERE slug=?", data.categorySlug) as { id:number }|undefined;
+    const cat = await queryFirst("SELECT id FROM categories WHERE slug=?", resolveCategorySlug(data.categorySlug)) as { id:number }|undefined;
     if (cat) { fields.push("category_id=?"); vals.push(cat.id); }
     else return NextResponse.json({ error: "Kategori tidak dikenal" }, { status: 400 });
   }

@@ -24,7 +24,7 @@ export function Hero() {
             <span className="text-gradient-cyan">Semua Tools Premium.</span>
           </h1>
           <p className="mt-4 text-[15px] sm:text-[17px] leading-7 text-white/60 max-w-xl">
-            AI Gateway, Akun Premium, Tools Pro — harga jujur, aktivasi cepat, bayar via <span className="text-white font-medium">QRIS / DANA / Gopay / Shopeepay / SeaBank</span>. Tanpa ribet.
+            AI, streaming, desain & produktivitas — harga jujur, aktivasi cepat, bayar via <span className="text-white font-medium">QRIS / DANA / Gopay / Shopeepay / SeaBank</span>. Tanpa ribet.
           </p>
           <div className="mt-7 flex flex-wrap gap-3">
             <Link href="#katalog">

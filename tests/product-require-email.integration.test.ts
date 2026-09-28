@@ -39,11 +39,11 @@ const requireEmailOf = (slug: string) =>
 describe("products.require_email lewat API admin", () => {
   it("produk baru menyimpan centang email; tanpa centang tetap 0", async () => {
     const { POST } = await import("@/app/api/products/route");
-    const on = await POST(req("/api/products", "POST", { name: "Ebook Desain", slug: "ebook-desain", price: 15000, categorySlug: "tools-pro", requireEmail: true }));
+    const on = await POST(req("/api/products", "POST", { name: "Ebook Desain", slug: "ebook-desain", price: 15000, categorySlug: "produktivitas-office", requireEmail: true }));
     expect(on.status).toBe(200);
     expect(requireEmailOf("ebook-desain")).toBe(1);
 
-    const off = await POST(req("/api/products", "POST", { name: "Template Slide", slug: "template-slide", price: 15000, categorySlug: "tools-pro" }));
+    const off = await POST(req("/api/products", "POST", { name: "Template Slide", slug: "template-slide", price: 15000, categorySlug: "produktivitas-office" }));
     expect(off.status).toBe(200);
     expect(requireEmailOf("template-slide")).toBe(0);
   });

@@ -110,6 +110,7 @@ export function ProductEditorModal({
                 {cats.map((category) => <option key={category.id} value={category.slug} className="bg-[#0F1430]">{category.name}</option>)}
               </select></label>
               <label className="space-y-1.5"><span className="flex items-center gap-1.5 text-xs font-semibold text-white/60">Badge</span><input value={form.badge??""} onChange={e=>onSetForm({...form,badge:e.target.value})} placeholder="Terlaris / Baru / Hemat 92%" className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#00E5FF]/30" /></label>
+              <label className="space-y-1.5"><span className="flex items-center gap-1.5 text-xs font-semibold text-white/60">Urutan tampil <span className="font-normal text-white/35">(0–999999, kecil = atas)</span></span><input type="number" min={0} max={999999} step={1} value={form.sortOrder ?? 0} onChange={e=>{ const v = e.target.value === "" ? 0 : Math.max(0, Math.min(999999, Math.floor(Number(e.target.value) || 0))); onSetForm({...form, sortOrder: v}); }} placeholder="0" className="w-full h-11 px-3 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#00E5FF]/30" /><span className="block text-[11px] leading-4 text-white/35">Posisi produk di toko & daftar admin. Tombol ↑↓ di daftar menukar posisi dengan tetangga.</span></label>
             </div>
 
             </div>

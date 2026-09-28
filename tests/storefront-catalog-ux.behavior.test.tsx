@@ -112,8 +112,8 @@ describe("load more menggantikan nomor halaman", () => {
 
   it("ganti kategori mengembalikan tampilan ke batch pertama", async () => {
     stubCatalog([
-      ...Array.from({ length: 14 }, (_, i) => product(i + 1, { stock: 5, categorySlug: "tools-pro" })),
-      ...Array.from({ length: 3 }, (_, i) => product(100 + i, { stock: 5, categorySlug: "ai-gateway" })),
+      ...Array.from({ length: 14 }, (_, i) => product(i + 1, { stock: 5, categorySlug: "produktivitas-office" })),
+      ...Array.from({ length: 3 }, (_, i) => product(100 + i, { stock: 5, categorySlug: "ai-chatbot" })),
     ]);
     render(<HomePage />);
     await act(async () => {});
@@ -122,7 +122,7 @@ describe("load more menggantikan nomor halaman", () => {
     await act(async () => {});
     expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(17);
 
-    fireEvent.click(screen.getByRole("button", { name: /AI Gateway/i }));
+    fireEvent.click(screen.getByRole("button", { name: /AI.*Chatbot/i }));
     await act(async () => {});
     expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(3);
 

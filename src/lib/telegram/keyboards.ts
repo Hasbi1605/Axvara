@@ -162,8 +162,15 @@ export function categoriesKeyboard(
   const start = page * PER_PAGE;
   const pageItems = categories.slice(start, start + PER_PAGE);
 
-  // Category icon mapping
+  // Category icon mapping — taksonomi 6 kategori (migrasi 0046).
+  // Nama lama dipertahankan sebagai alias agar data pra-migrasi tetap berikon.
   const catIcon: Record<string, string> = {
+    "AI & Chatbot": "⚡",
+    "Streaming & Hiburan": "🎬",
+    "Produktivitas & Office": "💼",
+    "Desain & Video": "🎨",
+    "Developer & Tools": "🛠️",
+    "Bundle Hemat": "📦",
     "AI Gateway": "⚡",
     "Akun Premium": "👑",
     "Tools Pro": "🛡",

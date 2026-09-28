@@ -41,7 +41,7 @@ describe("galeri PDP memakai produk yang diklik, bukan list[0]", () => {
   it("queryAll gabungan cat + slug tetap memfilter dengan benar", async () => {
     const rows = await queryAll(
       "SELECT p.*, c.slug as cat_slug FROM products p LEFT JOIN categories c ON c.id=p.category_id WHERE 1=1 AND p.is_active=1 AND c.slug=? AND p.slug=? ORDER BY p.sort_order ASC, p.id ASC",
-      "akun-premium",
+      "streaming-hiburan",
       "youtube-premium-1-bulan",
     );
     expect(rows).toHaveLength(1);

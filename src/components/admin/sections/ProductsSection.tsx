@@ -43,6 +43,8 @@ export function ProductsSection({
   onEdit,
   onDelete,
   onToggleActive,
+  reordering,
+  onMove,
 }: {
   prods: Prod[];
   paged: Prod[];
@@ -64,7 +66,12 @@ export function ProductsSection({
   onEdit: (p: Prod) => void;
   onDelete: (p: Prod) => void;
   onToggleActive: (p: Prod) => void;
+  reordering: string | null;
+  onMove: (p: Prod, direction: -1 | 1) => void;
 }) {
+  // Posisi tampil produk di daftar penuh (tanpa potong halaman): dipakai
+  // untuk menonaktifkan tombol ↑ di puncak dan ↓ di dasar.
+  const orderIndex = new Map(filtered.map((p, i) => [p.id, i]));
   return (
     <>
       <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3 mb-2">
@@ -104,22 +111,28 @@ export function ProductsSection({
               <div className="p-10 flex flex-col items-center gap-3 text-white/60"><Spinner size={24} /><span className="text-sm">Memuat produk…</span></div>
             ) : (<>
             <div className="divide-y divide-white/[0.06] md:hidden">
-              {paged.map(p=><article key={p.id} className="p-4">
+              {paged.map(p=>{ const pos = orderIndex.get(p.id) ?? 0; const isFirst = pos <= 0; const isLast = pos >= filtered.length - 1; const busy = reordering === p.id; return (<article key={p.id} className="p-4">
                 <div className="flex items-start gap-3">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={p.image || "/brand/axvara-ribbon-mark.png"} alt="" className="h-14 w-14 shrink-0 rounded-xl bg-white/5 object-cover" />
-                  <div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-semibold text-white">{p.name}</p><p className="mt-0.5 truncate text-[11px] text-white/35">{p.categorySlug} · {p.variantCount ? `${p.variantCount} varian` : "produk"}</p><CopyReviewBadge count={p.copyReview} /></div><button type="button" aria-pressed={p.isActive} aria-label={`Toggle aktif ${p.name}`} disabled={toggling === p.id} onClick={() => onToggleActive(p)} className={`toggle-btn relative inline-flex h-6 w-[46px] shrink-0 items-center rounded-full border px-[2px] ${p.isActive ? "border-emerald-600 bg-emerald-500" : "border-white/20 bg-white/15"}`}><span className={`h-[18px] w-[18px] rounded-full bg-white transition-transform ${p.isActive ? "translate-x-[20px]" : "translate-x-0"}`} /></button></div><div className="mt-3 flex flex-wrap items-center gap-2 text-xs"><span className="font-semibold text-white">{p.minPrice != null && p.maxPrice != null && p.minPrice !== p.maxPrice ? `${formatRupiah(p.minPrice)}–${formatRupiah(p.maxPrice)}` : formatRupiah(p.price)}</span><span className="rounded-full bg-white/[0.07] px-2 py-1 text-white/50">Stok {p.stock === -1 ? "∞" : p.stock}</span><span className="text-white/35">{p.soldCount} terjual</span></div></div>
+                  <div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-semibold text-white">{p.name}</p><p className="mt-0.5 truncate text-[11px] text-white/35">{p.categorySlug} · {p.variantCount ? `${p.variantCount} varian` : "produk"} · urutan {p.sortOrder ?? 0}</p><CopyReviewBadge count={p.copyReview} /></div><button type="button" aria-pressed={p.isActive} aria-label={`Toggle aktif ${p.name}`} disabled={toggling === p.id} onClick={() => onToggleActive(p)} className={`toggle-btn relative inline-flex h-6 w-[46px] shrink-0 items-center rounded-full border px-[2px] ${p.isActive ? "border-emerald-600 bg-emerald-500" : "border-white/20 bg-white/15"}`}><span className={`h-[18px] w-[18px] rounded-full bg-white transition-transform ${p.isActive ? "translate-x-[20px]" : "translate-x-0"}`} /></button></div><div className="mt-3 flex flex-wrap items-center gap-2 text-xs"><span className="font-semibold text-white">{p.minPrice != null && p.maxPrice != null && p.minPrice !== p.maxPrice ? `${formatRupiah(p.minPrice)}–${formatRupiah(p.maxPrice)}` : formatRupiah(p.price)}</span><span className="rounded-full bg-white/[0.07] px-2 py-1 text-white/50">Stok {p.stock === -1 ? "∞" : p.stock}</span><span className="text-white/35">{p.soldCount} terjual</span></div></div>
                 </div>
-                <div className="mt-4 grid grid-cols-[1fr_auto] gap-2"><button onClick={()=>onEdit(p)} className="h-9 rounded-xl bg-white text-xs font-bold text-[#080C1E] transition hover:bg-white/90">Edit Produk & Varian</button><button onClick={()=>onDelete(p)} className="flex h-9 w-10 shrink-0 items-center justify-center rounded-xl bg-red-500/15 transition hover:bg-red-500/25" aria-label={`Arsipkan ${p.name}`} title="Arsipkan produk"><IosIcon name="trash" size={14} tint="white" /></button></div>
-              </article>)}
+                <div className="mt-4 grid grid-cols-[auto_1fr_auto] gap-2">
+                  <div className="flex items-center gap-1" role="group" aria-label={`Ubah urutan ${p.name}`}>
+                    <button type="button" onClick={()=>onMove(p, -1)} disabled={busy || isFirst} aria-label={`Naikkan ${p.name}`} title="Naik satu posisi" className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.07] text-sm font-bold text-white transition hover:bg-white/[0.14] disabled:opacity-30 disabled:pointer-events-none">↑</button>
+                    <button type="button" onClick={()=>onMove(p, 1)} disabled={busy || isLast} aria-label={`Turunkan ${p.name}`} title="Turun satu posisi" className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.07] text-sm font-bold text-white transition hover:bg-white/[0.14] disabled:opacity-30 disabled:pointer-events-none">↓</button>
+                  </div>
+                  <button onClick={()=>onEdit(p)} className="h-9 rounded-xl bg-white text-xs font-bold text-[#080C1E] transition hover:bg-white/90">Edit Produk & Varian</button><button onClick={()=>onDelete(p)} className="flex h-9 w-10 shrink-0 items-center justify-center rounded-xl bg-red-500/15 transition hover:bg-red-500/25" aria-label={`Arsipkan ${p.name}`} title="Arsipkan produk"><IosIcon name="trash" size={14} tint="white" /></button>
+                </div>
+              </article>);})}
             </div>
             <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-sm">
                 <thead className="text-[11px] tracking-[0.08em] text-white/40 uppercase border-b border-white/10">
-                  <tr><th className="text-left font-semibold px-4 py-3">Produk</th><th className="text-left font-semibold px-3 py-3">Kategori</th><th className="text-right font-semibold px-3 py-3">Harga</th><th className="text-center font-semibold px-3 py-3">Stok</th><th className="text-center font-semibold px-3 py-3">Terjual</th><th className="text-center font-semibold px-3 py-3">Aktif</th><th className="text-right font-semibold px-4 py-3">Aksi</th></tr>
+                  <tr><th className="text-left font-semibold px-4 py-3">Produk</th><th className="text-left font-semibold px-3 py-3">Kategori</th><th className="text-right font-semibold px-3 py-3">Harga</th><th className="text-center font-semibold px-3 py-3">Stok</th><th className="text-center font-semibold px-3 py-3">Terjual</th><th className="text-center font-semibold px-3 py-3">Urutan</th><th className="text-center font-semibold px-3 py-3">Aktif</th><th className="text-right font-semibold px-4 py-3">Aksi</th></tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
-                  {paged.map(p=>(
+                  {paged.map(p=>{ const pos = orderIndex.get(p.id) ?? 0; const isFirst = pos <= 0; const isLast = pos >= filtered.length - 1; const busy = reordering === p.id; return (
                     <tr key={p.id} className="hover:bg-white/[0.03] transition">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3 min-w-[220px]">
@@ -136,6 +149,13 @@ export function ProductsSection({
                       <td className="px-3 py-3 text-right"><span className="font-semibold text-white">{formatRupiah(p.price)}</span>{p.comparePrice? <span className="block text-[11px] text-white/30 line-through">{formatRupiah(p.comparePrice)}</span>:null}</td>
                       <td className="px-3 py-3 text-center"><span className={`inline-flex min-w-[40px] justify-center px-2 py-1 rounded-full text-xs font-bold ${p.stock<=5 && p.stock!==-1 ? "bg-[#FFB800]/15 text-[#FFB800]":"bg-white/10 text-white/70"}`}>{p.stock===-1?"∞":p.stock}</span></td>
                       <td className="px-3 py-3 text-center text-xs text-white/60">{p.soldCount}</td>
+                      <td className="px-3 py-3 text-center">
+                        <div className="inline-flex items-center gap-1" role="group" aria-label={`Ubah urutan ${p.name}`}>
+                          <span className="mr-1 inline-flex min-w-[36px] justify-center rounded-full bg-white/10 px-2 py-1 text-xs font-bold text-white/70" title="Nilai urutan (sort_order)">{p.sortOrder ?? 0}</span>
+                          <button type="button" onClick={()=>onMove(p, -1)} disabled={busy || isFirst} aria-label={`Naikkan ${p.name}`} title="Naik satu posisi" className="flex h-7 w-7 items-center justify-center rounded-full bg-white/[0.07] text-xs font-bold text-white transition hover:bg-white/[0.14] disabled:opacity-30 disabled:pointer-events-none">↑</button>
+                          <button type="button" onClick={()=>onMove(p, 1)} disabled={busy || isLast} aria-label={`Turunkan ${p.name}`} title="Turun satu posisi" className="flex h-7 w-7 items-center justify-center rounded-full bg-white/[0.07] text-xs font-bold text-white transition hover:bg-white/[0.14] disabled:opacity-30 disabled:pointer-events-none">↓</button>
+                        </div>
+                      </td>
                       <td className="px-3 py-3 text-center">
                         <button
                           type="button"
@@ -156,7 +176,7 @@ export function ProductsSection({
                         </div>
                       </td>
                     </tr>
-                  ))}
+                  );})}
                 </tbody>
               </table>
             </div>

@@ -68,7 +68,9 @@ describe("Warung Rebahan pricing & parsing", () => {
     expect(mapWrCategory("Productivity")).toBe(3);
     expect(mapWrCategory("Streaming")).toBe(2);
     expect(mapWrCategory("Gaming")).toBe(2);
-    expect(mapWrCategory("VPN")).toBe(3);
+    expect(mapWrCategory("VPN")).toBe(6);
+    expect(mapWrCategory("Developer Tools")).toBe(6);
+    expect(mapWrCategory("Design")).toBe(5);
     expect(mapWrCategory("Entah")).toBe(2);
   });
 

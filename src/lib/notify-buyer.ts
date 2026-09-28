@@ -293,6 +293,36 @@ export async function notifyBuyerDeliveryFailed(
 }
 
 /**
+ * Kabar saat order WR tertahan karena saldo Warung Rebahan habis
+ * (2026-09-28, zombie-order fix): order sudah lunas tetapi pembelian ke
+ * upstream tertunda — pembeli diberi tahu agar tidak menunggu buta.
+ * Idempoten per order (`wr-blocked:<kode>`); satu kabar walau beberapa
+ * link blocked. Best-effort, tidak pernah melempar.
+ */
+export async function notifyBuyerWrBlocked(
+  orderCode: string,
+  database: DatabaseAccess = createDatabaseAccess(),
+): Promise<boolean> {
+  return await sendToBuyer(orderCode, {
+    subject: `Pesanan ${orderCode} menunggu stok pemasok`,
+    body: `⏳ <b>Pesanan tertunda sementara</b>\nOrder: <code>${orderCode}</code>\n\n`
+      + "Pembayaranmu sudah kami terima, tetapi saldo ke pemasok sedang habis "
+      + "sehingga pengiriman tertunda. Pesananmu tetap antre dan diproses otomatis "
+      + "setelah saldo terisi — tidak perlu bayar ulang.",
+    email: {
+      title: "Pesanan Menunggu Pemasok",
+      subtitle: "Pembayaranmu aman dan sudah kami terima.",
+      paragraphs: [
+        `Pembayaran untuk pesanan ${orderCode} sudah kami terima, tetapi saldo ke pemasok sedang habis sehingga pengiriman tertunda.`,
+        "Pesananmu tetap antre dan diproses otomatis setelah saldo terisi — tidak perlu bayar ulang. Bila belum ada kabar, hubungi admin lewat tombol di bawah.",
+      ],
+    },
+    chatCta: "Balas pesan ini bila belum ada kabar.",
+    refKey: `wr-blocked:${orderCode}`,
+  }, database).catch(() => false);
+}
+
+/**
  * Tanda terima pembayaran untuk pembeli WEB (audit ronde 4, B-H1).
  *
  * Telegram sudah punya `notifyTelegramBuyerPaid`. Pembeli web dulu tidak

@@ -67,6 +67,13 @@ export const WR_MAX_ATTEMPTS = 3;
 export const WR_CLAIM_LEASE_SECONDS = 120;
 // Ambang stale submitted/ordering: hanya reconcile (bukan beli ulang).
 export const WR_SUBMITTED_STALE_MINUTES = 10;
+// Umur maksimum link blocked_balance yang boleh auto-revive (jam).
+// Link yang diblokir lebih lama dari ini dianggap basi (niat beli pembeli
+// sudah kedaluwarsa) dan TIDAK dibangunkan otomatis oleh
+// reconcileBlockedBalance — hanya admin yang boleh retry/void manual.
+// Kasus nyata: order lama hidup lagi saat top-up WR dan saldo terpotong
+// tanpa sengaja (zombie order, 2026-09-28).
+export const WR_BLOCKED_MAX_AGE_HOURS = 24;
 
 type Row = Record<string, unknown>;
 
@@ -621,13 +628,28 @@ async function handleInsufficientBalance(
   await notifyAdmin(
     `💰 <b>Saldo Warung Rebahan habis</b>\nOrder <code>${String(link.order_code)}</code> diblokir sementara (tidak makan retry). Top up untuk memulihkan otomatis.`,
   );
+  // Kabar pembeli (2026-09-28): order lunas tapi tertahan karena saldo WR
+  // habis — pembeli tidak boleh menunggu buta. Idempoten per order lewat
+  // kunci `wr-blocked:<kode>` (buyer_notice_log utk email/Telegram,
+  // whatsapp_outbox utk WA). Best-effort.
+  try {
+    const { notifyBuyerWrBlocked } = await import("@/lib/notify-buyer");
+    await notifyBuyerWrBlocked(String(link.order_code), db);
+  } catch { /* kabar pembeli best-effort */ }
   return "blocked";
 }
 
 /**
  * Pulihkan link blocked_balance setelah top-up: cek saldo aktual, bila cukup
- * untuk biaya link termurah → kembalikan ke pending. Dipanggil cron sebelum
- * memproses antrean. Tanpa reset manual berbahaya (CAS pada status).
+ * untuk biaya link → kembalikan ke pending. Dipanggil cron sebelum memproses
+ * antrean. Tanpa reset manual berbahaya (CAS pada status).
+ *
+ * Dua pagar anti-zombie (2026-09-28):
+ * 1. TTL — link yang diblokir lebih dari WR_BLOCKED_MAX_AGE_HOURS jam
+ *    (cek updated_at) TIDAK auto-revive; niat beli dianggap kedaluwarsa,
+ *    hanya admin yang boleh retry/void manual.
+ * 2. Order harus masih `lunas` — order yang sudah dibatalkan/direfund
+ *    tidak boleh dibangunkan diam-diam.
  */
 export async function reconcileBlockedBalance(
   database?: DatabaseAccess,
@@ -636,8 +658,10 @@ export async function reconcileBlockedBalance(
   if (!isWrEnabled()) return 0;
   const blocked = await db
     .queryAll(
-      `SELECT id, wr_cost FROM wr_order_links WHERE status='blocked_balance'
-       ORDER BY id ASC LIMIT 8`,
+      `SELECT l.id, l.wr_cost, l.order_code, l.updated_at,
+              (SELECT o.status FROM orders o WHERE o.code = l.order_code) AS order_status
+       FROM wr_order_links l WHERE l.status='blocked_balance'
+       ORDER BY l.id ASC LIMIT 8`,
     )
     .catch(() => [] as Row[]);
   if (!blocked.length) return 0;
@@ -648,9 +672,18 @@ export async function reconcileBlockedBalance(
   } catch {
     return 0;
   }
+  const cutoffMs = Date.now() - WR_BLOCKED_MAX_AGE_HOURS * 60 * 60 * 1000;
   let revived = 0;
   for (const row of blocked) {
     if (balance < Number(row.wr_cost || 0)) continue;
+    // Pagar 1: TTL — link tua tidak auto-revive.
+    const updatedRaw = String(row.updated_at || "");
+    const updatedMs = Date.parse(
+      /(Z|[+-]\d{2}:?\d{2})$/.test(updatedRaw) ? updatedRaw : `${updatedRaw.replace(" ", "T")}Z`,
+    );
+    if (Number.isFinite(updatedMs) && updatedMs < cutoffMs) continue;
+    // Pagar 2: order harus masih lunas.
+    if (String(row.order_status || "") !== "lunas") continue;
     const res = await db
       .execRun(
         `UPDATE wr_order_links SET status='pending', last_error=NULL,

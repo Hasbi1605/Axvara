@@ -124,6 +124,7 @@ export function WarungRebahanManager() {
   const [orderQuery, setOrderQuery] = useState("");
   const [orderQueryLive, setOrderQueryLive] = useState("");
   const [retrying, setRetrying] = useState<number | null>(null);
+  const [voiding, setVoiding] = useState<number | null>(null);
   const [exclusions, setExclusions] = useState<ExclusionRow[]>([]);
   const [newPattern, setNewPattern] = useState("");
   const [markups, setMarkups] = useState<MarkupRow[]>([]);
@@ -232,6 +233,24 @@ export function WarungRebahanManager() {
       toast.error(cause instanceof Error ? cause.message : "Retry gagal");
     } finally {
       setRetrying(null);
+    }
+  };
+
+  // Void: batalkan link WR tertahan (pending/retry/blocked_balance) agar
+  // tidak auto-revive diam-diam. Konfirmasi dulu — void = terminal `failed`.
+  const voidOrder = async (id: number, orderCode: string) => {
+    if (!window.confirm(`Batalkan order WR ${orderCode}? Link tidak akan diproses lagi (terminal failed).`)) return;
+    setVoiding(id);
+    try {
+      const res = await fetch(`/api/admin/warung/orders/${id}/void`, { method: "POST" });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "Void gagal");
+      toast.success("Order dibatalkan.");
+      await loadOrders();
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Void gagal");
+    } finally {
+      setVoiding(null);
     }
   };
 
@@ -403,9 +422,14 @@ export function WarungRebahanManager() {
                   {order.last_error && <p className="mt-1 font-mono text-[10px] text-red-300/70">{order.last_error}</p>}
                 </div>
                 {canRetryWrLink(order) ? (
-                  <button onClick={() => void retryOrder(order.id)} disabled={retrying === order.id} className="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl bg-[#00E5FF] px-3.5 text-xs font-bold text-[#07101f] transition hover:bg-[#00D0E8] disabled:opacity-40">
-                    {retrying === order.id ? <Spinner size={13} /> : <IosIcon name="refresh" size={13} tint="black" />} Retry
-                  </button>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <button onClick={() => void retryOrder(order.id)} disabled={retrying === order.id || voiding === order.id} className="inline-flex h-9 items-center gap-2 rounded-xl bg-[#00E5FF] px-3.5 text-xs font-bold text-[#07101f] transition hover:bg-[#00D0E8] disabled:opacity-40">
+                      {retrying === order.id ? <Spinner size={13} /> : <IosIcon name="refresh" size={13} tint="black" />} Retry
+                    </button>
+                    <button onClick={() => void voidOrder(order.id, order.order_code)} disabled={retrying === order.id || voiding === order.id} className="inline-flex h-9 items-center gap-2 rounded-xl border border-red-400/30 bg-red-500/10 px-3.5 text-xs font-bold text-red-200 transition hover:bg-red-500/20 disabled:opacity-40">
+                      {voiding === order.id ? <Spinner size={13} /> : <IosIcon name="close" size={13} tint="#FCA5A5" />} Batal
+                    </button>
+                  </div>
                 ) : RETRYABLE_WR_STATUS.includes(order.status) ? (
                   <span title="Percobaan otomatis sudah habis. Serahkan manual dari tab Pesanan, atau naikkan batas percobaan." className="inline-flex h-9 shrink-0 items-center rounded-xl border border-red-400/25 bg-red-500/10 px-3 text-[11px] font-semibold text-red-200">
                     Percobaan habis

@@ -6,6 +6,7 @@ import { CategoryPills } from "@/components/storefront/CategoryPills";
 import { ProductCard } from "@/components/storefront/ProductCard";
 import { CommunityBar } from "@/components/storefront/CommunityBar";
 import type { Product } from "@/lib/products";
+import { resolveCategorySlug } from "@/lib/products";
 import { useSearch } from "@/stores/search";
 import { StoreWhatsAppLink } from "@/components/storefront/StoreWhatsAppLink";
 
@@ -33,7 +34,8 @@ export function HomeClient({ initialProducts }: { initialProducts?: Product[] })
 
   useEffect(() => {
     const requestedCategory = new URLSearchParams(window.location.search).get("category");
-    if (requestedCategory) setActiveCat(requestedCategory);
+    // Slug lama (?category= bookmark pra-migrasi 0046) dipetakan ke slug baru.
+    if (requestedCategory) setActiveCat(resolveCategorySlug(requestedCategory));
   }, []);
 
   // D1 is authoritative. Static seeds must never resurrect inactive/deleted products.

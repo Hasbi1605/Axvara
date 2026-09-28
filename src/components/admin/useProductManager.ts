@@ -37,6 +37,39 @@ export function productFormSignature(form: Partial<Prod>, images: string[], mult
   return JSON.stringify({ form, images, multi, vars });
 }
 
+/**
+ * Batas valid nilai kolom Urutan produk (cermin zod `sortOrder` di
+ * `src/app/api/products/[id]/route.ts` + `src/app/api/products/route.ts`).
+ */
+export const SORT_ORDER_MIN = 0;
+export const SORT_ORDER_MAX = 999999;
+
+/** Normalisasi input Urutan: bulatkan, clamp ke 0-999999, NaN → null. */
+export function normalizeSortOrder(value: unknown): number | null {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) return null;
+  return Math.max(SORT_ORDER_MIN, Math.min(SORT_ORDER_MAX, Math.floor(n)));
+}
+
+/**
+ * Urutan GLOBAL produk untuk swap ↑↓: sama persis dengan `filtered` di bawah
+ * (aktif dulu, ready dulu, lalu sortOrder, lalu id) — TANPA filter q/lowStock
+ * dan TANPA potong halaman, sehingga tetangga yang ditukar adalah tetangga
+ * sebenarnya di seluruh katalog, bukan tetangga satu halaman.
+ */
+export function globalProductOrder(list: Prod[]): Prod[] {
+  const isOut = (p: Prod): boolean => p.stock != null && p.stock !== -1 && p.stock <= 0;
+  return list.slice().sort((a, b) => {
+    const byActive = Number(!a.isActive) - Number(!b.isActive);
+    if (byActive !== 0) return byActive;
+    const bySold = Number(isOut(a)) - Number(isOut(b));
+    if (bySold !== 0) return bySold;
+    const byOrder = (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+    if (byOrder !== 0) return byOrder;
+    return Number(a.id) - Number(b.id);
+  });
+}
+
 export function useProductManager(toast: AdminToast, onUnauthorized: () => void) {
   const [prods, setProds] = useState<Prod[]>([]);
   const [cats, setCats] = useState<Cat[]>([]);
@@ -192,9 +225,10 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
       whatsappAlias: "",
       description: "",
       price: 50000,
-      categorySlug: "akun-premium",
+      categorySlug: "ai-chatbot",
       stock: 10,
       soldCount: 0,
+      sortOrder: 0,
       isActive: true,
       min_qty: 1,
       warranty_type: "none",
@@ -245,6 +279,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
 
   const validateForm = (): string | null => {
     if (!form.name?.trim()) return "Nama produk wajib diisi.";
+    if (form.sortOrder !== undefined && form.sortOrder !== null && normalizeSortOrder(form.sortOrder) === null) return "Urutan harus angka 0-999999.";
     if (!form.slug?.trim()) return "Slug wajib diisi.";
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(form.slug.trim())) return "Slug hanya huruf kecil, angka, dan strip. Contoh: chatgpt-plus-1-bulan";
 
@@ -346,7 +381,13 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
       comparePrice: hasMultiVariants ? undefined : (form.comparePrice ? Number(form.comparePrice) : null),
       stock: hasMultiVariants ? undefined : (form.stock != null ? Number(form.stock) : -1),
       soldCount: form.soldCount ? Number(form.soldCount) : 0,
-      sortOrder: 0,
+      // sortOrder milik admin (bukan WR-owned): kirim nilai form bila valid,
+      // undefined bila kosong agar server tidak menimpa dengan 0.
+      sortOrder: (() => {
+        const raw = form.sortOrder as unknown;
+        if (raw === undefined || raw === null || raw === "") return undefined;
+        return normalizeSortOrder(raw) ?? undefined;
+      })(),
       images: formImages,
       imageUrl: formImages[0] ?? form.image ?? null,
       isActive: form.isActive !== false,
@@ -418,6 +459,47 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
     } catch(e){
       toast.error(e instanceof Error ? e.message : "Gagal hapus");
     } finally { setDeleting(false); }
+  };
+
+  // Pindah posisi produk satu langkah (↑ naik / ↓ turun) dengan menukar
+  // sort_order dua produk bertetangga GLOBAL (lihat globalProductOrder).
+  // Dua PUT berurutan via route eksisting — sortOrder milik admin sehingga
+  // guard WR tidak menolaknya (bukan field WR-owned).
+  const [reordering, setReordering] = useState<string | null>(null);
+  const moveProduct = async (p: Prod, direction: -1 | 1) => {
+    if (reordering || toggling) return;
+    const ordered = globalProductOrder(prods);
+    const idx = ordered.findIndex((x) => x.id === p.id);
+    const neighbor = ordered[idx + direction];
+    if (idx < 0 || !neighbor) return;
+    const aOrder = p.sortOrder ?? 0;
+    const bOrder = neighbor.sortOrder ?? 0;
+    setReordering(p.id);
+    const snapshot = prods;
+    // Optimistic: tukar nilai di state agar daftar langsung bergerak.
+    setProds((prev) => prev.map((x) =>
+      x.id === p.id ? { ...x, sortOrder: bOrder }
+      : x.id === neighbor.id ? { ...x, sortOrder: aOrder }
+      : x,
+    ));
+    try {
+      for (const [target, order] of [[p, bOrder], [neighbor, aOrder]] as const) {
+        const r = await fetch(`/api/products/${target.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sortOrder: order }),
+        });
+        const body = await r.json().catch(() => ({} as Record<string, unknown>));
+        if (!r.ok) throw new Error((body as { error?: string }).error || `HTTP ${r.status}`);
+      }
+      await load();
+      toast.success(direction < 0 ? `“${p.name}” naik satu posisi.` : `“${p.name}” turun satu posisi.`);
+    } catch (e) {
+      setProds(snapshot);
+      toast.error(e instanceof Error ? e.message : "Gagal memindah posisi produk");
+    } finally {
+      setReordering(null);
+    }
   };
 
   const toggleActive = async (p: Prod) => {
@@ -517,7 +599,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
     loadingVariants, formError, saving, confirmProductClose, productDirty,
     setForm, setFormImages, setHasMultiVariants, setFormVariants, setConfirmProductClose,
     openEdit, openNew, closeModal, handleUpload, save, requestCloseProductModal,
-    // hapus & toggle
-    deleteTarget, deleting, toggling, setDeleteTarget, confirmDelete, toggleActive,
+    // hapus & toggle & urutan
+    deleteTarget, deleting, toggling, reordering, setDeleteTarget, confirmDelete, toggleActive, moveProduct,
   };
 }

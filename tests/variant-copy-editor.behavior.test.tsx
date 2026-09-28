@@ -124,6 +124,7 @@ describe("daftar produk admin", () => {
         loadingList={false} toggling={null} activeProducts={2} lowStock={0} soldProducts={0}
         onQueryChange={vi.fn()} onPageChange={vi.fn()} onlyLowStock={false} onClearLowStock={vi.fn()}
         onNew={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} onToggleActive={vi.fn()}
+        reordering={null} onMove={vi.fn()}
       />,
     );
     // Tampil di kartu mobile dan baris tabel desktop.

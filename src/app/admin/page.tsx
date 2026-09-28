@@ -143,6 +143,8 @@ export default function AdminPage() {
           onEdit={pm.openEdit}
           onDelete={pm.setDeleteTarget}
           onToggleActive={pm.toggleActive}
+          reordering={pm.reordering}
+          onMove={pm.moveProduct}
         />
       )}
 

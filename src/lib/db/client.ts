@@ -16,7 +16,7 @@ export function getD1(): D1 | null {
 }
 
 // ---- In-memory fallback (dev without D1) ----
-import { products as seedProducts } from "@/lib/products";
+import { products as seedProducts, resolveCategorySlug } from "@/lib/products";
 import { articleSeedRows } from "@/lib/article-seeds";
 type Row = Record<string, unknown>;
 
@@ -24,8 +24,13 @@ type Row = Record<string, unknown>;
 export function getSharedMem(): Row[] {
   const g = process as unknown as { __AXVARA_MEM?: Row[] };
   if (g.__AXVARA_MEM) return g.__AXVARA_MEM;
+  // Taksonomi 6 kategori (migrasi 0046). Slug lama ikut dipetakan agar
+  // data lama tidak yatim di dev tanpa D1.
   const catMap: Record<string, number> = {
-    "ai-gateway": 1, "akun-premium": 2, "tools-pro": 3, "bundle-hemat": 4,
+    "ai-chatbot": 1, "ai-gateway": 1,
+    "streaming-hiburan": 2, "akun-premium": 2,
+    "produktivitas-office": 3, "tools-pro": 3,
+    "desain-video": 5, "developer-tools": 6, "bundle-hemat": 4,
   };
   const rows: Row[] = seedProducts.map((p, i) => ({
     id: i + 1,
@@ -84,7 +89,8 @@ export async function queryAll(sql: string, ...params: unknown[]): Promise<Recor
     let rows = [...getSharedMem()];
     if (lower.includes("is_active=1")) rows = rows.filter((r) => (r.is_active as number) !== 0);
     if (lower.includes("c.slug=?") && params.length) {
-      rows = rows.filter((r) => r.cat_slug === String(params[0]));
+      // Slug lama (?cat= bookmark) dipetakan agar tidak 404/kosong.
+      rows = rows.filter((r) => r.cat_slug === resolveCategorySlug(String(params[0])));
       params = params.slice(1);
     }
     if (lower.includes("p.slug=?") && params.length) {
@@ -161,7 +167,8 @@ function getAuditMem(): Row[] {
 }
 function getCategoryMem(): Row[] {
   const g = process as unknown as { __AXVARA_CATEGORIES?: Row[] };
-  if (!g.__AXVARA_CATEGORIES) g.__AXVARA_CATEGORIES = [{id:1,name:"AI Gateway",slug:"ai-gateway",icon:"lightning-bolt",sort_order:1},{id:2,name:"Akun Premium",slug:"akun-premium",icon:"crown",sort_order:2},{id:3,name:"Tools Pro",slug:"tools-pro",icon:"shield",sort_order:3},{id:4,name:"Bundle Kucing",slug:"bundle-hemat",icon:"packaging",sort_order:4}];
+  // Taksonomi 6 kategori (migrasi 0046). Slug bundle-hemat dipertahankan.
+  if (!g.__AXVARA_CATEGORIES) g.__AXVARA_CATEGORIES = [{id:1,name:"AI & Chatbot",slug:"ai-chatbot",icon:"lightning-bolt",sort_order:1},{id:2,name:"Streaming & Hiburan",slug:"streaming-hiburan",icon:"star",sort_order:2},{id:3,name:"Produktivitas & Office",slug:"produktivitas-office",icon:"bag",sort_order:3},{id:5,name:"Desain & Video",slug:"desain-video",icon:"box",sort_order:4},{id:6,name:"Developer & Tools",slug:"developer-tools",icon:"shield",sort_order:5},{id:4,name:"Bundle Hemat",slug:"bundle-hemat",icon:"packaging",sort_order:6}];
   return g.__AXVARA_CATEGORIES;
 }
 function getTokenMem(): Row[] {
@@ -290,7 +297,7 @@ export async function execRun(sql: string, ...params: unknown[]): Promise<{ last
       row[column] = params[valueIndex++];
     }
     if (row.category_id !== undefined) {
-      row.cat_slug = getCategoryMem().find((category) => Number(category.id) === Number(row.category_id))?.slug ?? "tools-pro";
+      row.cat_slug = getCategoryMem().find((category) => Number(category.id) === Number(row.category_id))?.slug ?? "produktivitas-office";
     }
     row.updated_at = new Date().toISOString();
     return { changes: 1 };
@@ -299,7 +306,7 @@ export async function execRun(sql: string, ...params: unknown[]): Promise<{ last
     const mem = getSharedMem();
     const newId = mem.length + 1;
     const [category_id, name, slug, description, price, compare_price, image_url, images, badge, sold_count, stock, is_active, sort_order] = params as unknown[];
-    const categorySlug = getCategoryMem().find((category) => Number(category.id) === Number(category_id))?.slug ?? "tools-pro";
+    const categorySlug = getCategoryMem().find((category) => Number(category.id) === Number(category_id))?.slug ?? "produktivitas-office";
     mem.push({ id: newId, category_id, name, slug, description, price, compare_price, image_url, images, badge, sold_count, stock, is_active, sort_order, cat_slug: categorySlug });
     return { lastInsertRowid: newId, changes: 1 };
   }

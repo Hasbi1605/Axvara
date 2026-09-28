@@ -40,15 +40,26 @@ export function resolveCategoryIconName(
   if (isCategoryIconName(storedIcon)) return storedIcon;
   if (storedIcon && LEGACY_CATEGORY_ICON_MAP[storedIcon]) {
     // Jangan paksa emoji lama — kalau slug dikenal, pakai mapping slug agar
-    // rename (bundle-hemat -> bundle-kucing) tidak ikut mengganti ikon.
+    // rename (Bundle Kucing -> Bundle Hemat) tidak ikut mengganti ikon.
     // Mapping slug di bawah tetap jadi fallback utama data lama.
   }
+  // Taksonomi 6 kategori (migrasi 0046). Slug lama dipertahankan sebagai
+  // fallback agar data pra-migrasi tidak rusak tampilannya.
   switch (slug) {
+    case "ai-chatbot":
     case "ai-gateway":
       return "lightning-bolt";
+    case "streaming-hiburan":
+      return "star";
     case "akun-premium":
-      return "crown";
+      return "star";
+    case "produktivitas-office":
+      return "bag";
     case "tools-pro":
+      return "bag";
+    case "desain-video":
+      return "box";
+    case "developer-tools":
       return "shield";
     case "bundle-hemat":
     case "bundle-kucing":

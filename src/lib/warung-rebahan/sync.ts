@@ -226,18 +226,32 @@ export function parseWrWarranty(wrWarranty: string | null | undefined): {
   return { type: "custom", value: null, unit: null, label };
 }
 
-/** Map kategori WR → category_id Axvara (Appendix C plan). */
+/** Map kategori WR → category_id Axvara (migrasi 0046: taksonomi 6 kategori).
+ *  1 AI & Chatbot · 2 Streaming & Hiburan · 3 Produktivitas & Office ·
+ *  4 Bundle Hemat · 5 Desain & Video · 6 Developer & Tools. */
 export function mapWrCategory(wrCategory: string | null | undefined): number {
   const lowered = String(wrCategory ?? "").trim().toLowerCase();
   if (lowered.includes("ai")) return 1;
   if (lowered.includes("stream")) return 2;
   if (lowered.includes("gam")) return 2;
   if (
-    lowered.includes("productiv") ||
+    lowered.includes("design") ||
+    lowered.includes("desain") ||
+    lowered.includes("video") ||
+    lowered.includes("canva") ||
+    lowered.includes("edit")
+  ) {
+    return 5;
+  }
+  if (
     lowered.includes("vpn") ||
-    lowered.includes("educ") ||
+    lowered.includes("develop") ||
+    lowered.includes("code") ||
     lowered.includes("tool")
   ) {
+    return 6;
+  }
+  if (lowered.includes("productiv") || lowered.includes("educ")) {
     return 3;
   }
   return defaultCategoryId();

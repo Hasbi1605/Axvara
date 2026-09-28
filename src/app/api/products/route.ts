@@ -6,6 +6,7 @@ import { purchasableStockSql } from "@/lib/catalog-availability";
 import { needsCopyReview, resolveVariantCopyDetailed } from "@/lib/product-copy/resolve";
 import { requireAdmin } from "@/lib/auth";
 import { rateLimit, rateLimitKey } from "@/lib/rateLimit";
+import { resolveCategorySlug } from "@/lib/products";
 
 export const runtime = "edge";
 
@@ -66,7 +67,9 @@ export async function GET(req: NextRequest) {
   // F08: public always is_active=1, admin can see all
   if (!isAdminRequest || active === "1") sql += ` AND p.is_active=1`;
   else if (active === "0") sql += ` AND p.is_active=0`;
-  if (cat && cat !== "semua") { sql += ` AND c.slug=?`; params.push(cat); }
+  // Slug kategori lama (?cat= bookmark) dipetakan ke slug baru (migrasi 0046)
+  // agar filter lama tidak 404/kosong.
+  if (cat && cat !== "semua") { sql += ` AND c.slug=?`; params.push(resolveCategorySlug(cat)); }
   // Exact slug (issue #14): PDP/checkout hanya butuh 1 produk — jangan kirim
   // seluruh katalog (rows-read + JSON + memori) untuk satu halaman.
   if (slug) { sql += ` AND p.slug=?`; params.push(slug.slice(0, 80)); }
@@ -146,7 +149,7 @@ export async function GET(req: NextRequest) {
       maxPrice: variantCatalog ? Number(r.max_price) : undefined,
       variantCount,
       comparePrice: rawCompare != null && rawCompare > price ? rawCompare : undefined,
-      categorySlug: (r.cat_slug as string) ?? "tools-pro",
+      categorySlug: (r.cat_slug as string) ?? "produktivitas-office",
       image: primary,
       images: images.slice(0,8),
       badge: (r.badge as string) ?? undefined,
@@ -201,7 +204,7 @@ const productSchema = z.object({
   whatsappAlias: z.string().trim().max(50).nullable().optional(),
   price: z.coerce.number().int().min(0).max(999_999_999).optional().default(0),
   comparePrice: z.coerce.number().int().min(0).max(999_999_999).nullable().optional(),
-  categorySlug: z.string().trim().max(40).optional().default("tools-pro"),
+  categorySlug: z.string().trim().max(40).optional().default("produktivitas-office"),
   imageUrl: z.string().trim().max(600).nullable().optional(),
   images: z.array(z.string().trim().max(600)).max(8).optional().default([]),
   badge: z.string().trim().max(32).nullable().optional(),
@@ -240,7 +243,7 @@ export async function POST(req: NextRequest) {
 
   if (comparePrice && comparePrice <= effectivePrice) return NextResponse.json({ error: "Harga coret harus lebih besar dari harga jual" }, { status: 400 });
 
-  const catRow = await queryFirst("SELECT id FROM categories WHERE slug=?", categorySlug ?? "tools-pro") as { id: number } | undefined;
+  const catRow = await queryFirst("SELECT id FROM categories WHERE slug=?", resolveCategorySlug(categorySlug ?? "produktivitas-office")) as { id: number } | undefined;
   if (!catRow) return NextResponse.json({ error: "Kategori tidak dikenal. Buat atau pilih kategori yang tersedia." }, { status: 400 });
   const category_id = catRow.id;
   const imgArr = Array.isArray(images) ? images.slice(0,8) : [];

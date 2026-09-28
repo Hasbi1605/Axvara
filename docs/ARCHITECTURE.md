@@ -368,7 +368,7 @@ CREATE TABLE store_settings (
 - Popup banner menghitung lebar dari dimensi natural gambar, membatasi ukuran ke viewport, dan memakai `object-contain` agar materi portrait/persegi/landscape tidak terpotong.
 - `PopupBanner` hanya fetch/render pada pathname homepage (`/`), sehingga promosi tidak menghalangi checkout, status pesanan, detail produk, atau workflow admin.
 - Bukti pembayaran tetap privat melalui `/api/admin/bukti/:key`; UI membedakan belum diunggah, URL tidak valid, file R2 hilang, dan preview tersedia.
-- Kategori D1 menjadi sumber tunggal kapsul katalog dan menu Jelajah footer. Nama, ikon, serta `sort_order` dapat diedit; slug tetap stabil ketika nama berubah, dan penghapusan ditolak selama kategori masih dipakai produk.
+- Kategori D1 menjadi sumber tunggal kapsul katalog dan menu Jelajah footer. Nama, ikon, serta `sort_order` dapat diedit; slug tetap stabil ketika nama berubah, dan penghapusan ditolak selama kategori masih dipakai produk. Taksonomi 2026-09-28 (migrasi 0046): AI & Chatbot, Streaming & Hiburan, Produktivitas & Office, Desain & Video, Developer & Tools, Bundle Hemat — slug lama (`ai-gateway`, `akun-premium`, `tools-pro`) dialias di kode (`LEGACY_CATEGORY_SLUG_ALIASES`) agar filter lama tidak 404. Daftar produk admin punya kolom Urutan + tombol ↑↓ per baris (swap tetangga global via PUT yang sudah ada) + field angka Urutan tampil 0–999999 di modal edit.
 - Email form footer dinormalisasi lowercase, dideduplikasi oleh unique index, dibatasi per IP, dan hanya dapat dibaca melalui panel/API admin terautentikasi.
 - Sidebar admin dikelompokkan menurut pekerjaan. `AdminOverview` menjadi action center; `OrdersManager` memegang filter/pagination/detail; `PaymentReconciliation` hanya menampilkan metadata event aman, bukan payload mentah atau secret.
 - Ikon admin memakai `IosIcon` (Icons8 iOS 11 Glyph PNG lokal di `public/icons/ios11/`, tint via CSS filter) dengan prinsip hemat: ikon hanya untuk aksi nyata (tambah, simpan, hapus, tutup, cari) dan pesan status (error/sukses), bukan dekorasi label/statistik. Badge `ChannelBadge`/`StatusBadge`/`MethodBadge` adalah teks + warna (tanpa ikon). Dialog memakai judul + tombol tutup saja (tanpa header-ikon), backdrop `bg-black/60` + blur, radius `rounded-2xl` (konfirmasi) / `rounded-3xl` (form), dan rhythm root `mt-4` + `space-y-4` agar tidak terlihat AI slop.
@@ -964,6 +964,7 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   `GET /api/admin/warung/sync-log`, `GET /api/admin/warung/orders` (ciphertext disamarkan,
   cari manual by invoice WR `?q=#RBHN-…` + tampilkan buyer Axvara untuk forward email WR),
   `POST /api/admin/warung/orders/[id]/retry` (CAS — race kalah → 409),
+  `POST /api/admin/warung/orders/[id]/void` (2026-09-28: batalkan link WR tertahan → terminal `failed` + `last_error='cancelled_by_admin'`, CAS sama seperti retry; tanpa status baru agar CHECK tidak perlu ALTER),
   `GET/POST/DELETE /api/admin/warung/exclusions`, `GET/PUT /api/admin/warung/markup`,
   `GET/POST /api/admin/warung/credentials` (retrieval + resend admin).
 - **Storefront:** `WrCredentialsPanel.tsx` di halaman pesanan (lunas): verifikasi
@@ -1064,7 +1065,7 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   rasa aman palsu saat auto-order kelas antrean dibuka.
 - **Admin UI:** tab "Warung Rebahan" (`WarungRebahanManager.tsx`, section `warung` di
   `AdminShell` + `admin/page.tsx`): saldo + estimasi, sync terakhir + force sync, antrean
-  order + retry, exclusions, markup per varian. Antrean order punya kolom cari
+  order + retry + void (tombol Batal → terminal `failed` + `last_error='cancelled_by_admin'`, CAS; 2026-09-28), exclusions, markup per varian. Auto-revive `blocked_balance` dibatasi umur 24 jam (`WR_BLOCKED_MAX_AGE_HOURS`) + hanya order lunas; buyer dikabari sekali saat masuk blocked (idempoten `wr-blocked:<kode>`). Antrean order punya kolom cari
   invoice WR (`#RBHN-…` / kode Axvara, debounce 400ms, LIKE di-escape) +
   baris buyer (nama · WA · email · channel) — jembatan manual forward email WR
   ke buyer Axvara sebelum bot email otomatis fase 2. Health WR ikut `GET /api/admin/bot/health`.
