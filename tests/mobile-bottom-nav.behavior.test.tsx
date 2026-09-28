@@ -151,6 +151,14 @@ describe("Pesanan di perangkat ini (/lacak-pesanan)", () => {
     expect(readLocalOrders().some((o) => o.code === "AXV-20260925-MANY0000")).toBe(false);
   });
 
+  it("tanpa teks Status langsung dari server di ringkasan accordion", async () => {
+    seedLocal([{ code: "AXV-20260925-PEND0001", status: "kadaluarsa", createdAt: minutesAgo(3), items: [], subtotal: 1_000 }]);
+    stubStatuses({});
+    const { container } = render(<DeviceOrders />);
+    await screen.findByRole("region", { name: "Pesanan di perangkat ini" });
+    expect(container.textContent).not.toContain("Status langsung dari server");
+  });
+
   it("accordion collapsed default: ringkas judul + badge, daftar tersembunyi sampai dibuka", async () => {
     seedLocal([{ code: "AXV-20260925-PEND0001", status: "kadaluarsa", createdAt: minutesAgo(3), items: [{ name: "Canva", qty: 1 }], subtotal: 2_000 }]);
     stubStatuses({});

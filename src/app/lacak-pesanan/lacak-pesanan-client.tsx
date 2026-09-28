@@ -363,7 +363,6 @@ export default function LacakPesananClient() {
           {loading && <span className="h-5 w-5 animate-spin rounded-full border-2 border-[#080C1E]/20 border-t-[#080C1E]" />}
           {loading ? (lookupStage >= 1 ? "Koneksi lambat, masih melacak…" : "Melacak…") : "Lacak Pesanan"}
         </button>
-        <p className="mt-3 text-center text-[11px] leading-5 text-white/30">Kode dan kontak dicocokkan di server. Kombinasi salah tidak membocorkan data.</p>
       </form>
 
       {recent.length > 0 && !order && (

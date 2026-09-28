@@ -111,9 +111,8 @@ export function DeviceOrders() {
             <span className="inline-flex items-center rounded-full border border-[#FFB800]/30 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFD66B]">{pendingCount} belum dibayar</span>
           )}
         </span>
-        <span className="flex shrink-0 items-center gap-2 text-[11px] text-white/35">
-          <span className="hidden sm:inline">Status langsung dari server</span>
-          <IosIcon name="chevron" size={14} tint="white" className="opacity-40 transition-transform group-open:rotate-180" />
+        <span className="shrink-0 text-white/40 transition-transform group-open:rotate-180">
+          <IosIcon name="chevron" size={14} tint="white" className="opacity-40" />
         </span>
       </summary>
       <div role="region" aria-label="Pesanan di perangkat ini">

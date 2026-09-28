@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-09-27 — Hapus mikrocopy `/lacak-pesanan` (permintaan owner): "Status langsung dari server" di ringkasan DeviceOrders + catatan "Kode dan kontak dicocokkan…" di bawah tombol — src/components/storefront/DeviceOrders.tsx, src/app/lacak-pesanan/lacak-pesanan-client.tsx, tests/{mobile-bottom-nav.behavior,order-tracking}.test.ts — (verifikasi: terkait hijau; tsc bersih; dev GET /lacak-pesanan 200)
+
 - 2026-09-27 — `/lacak-pesanan`: "Pesanan di perangkat ini" pindah ke bawah "Terakhir dilacak" + jadi accordion collapsed default (badge jumlah + penanda belum dibayar) — src/components/storefront/DeviceOrders.tsx, src/app/lacak-pesanan/lacak-pesanan-client.tsx, tests/mobile-bottom-nav.behavior.test.tsx, docs/{DESIGN,ARCHITECTURE}.md, README.md — (verifikasi: behavior hijau; tsc bersih; dev GET /lacak-pesanan 200; Obscura screenshot nonblank)
 
 - 2026-09-27 — Hapus 3 kartu panduan "Cara melacak" di `/lacak-pesanan` (permintaan owner; form + FAQ dipertahankan) — src/app/lacak-pesanan/lacak-pesanan-client.tsx, tests/order-tracking.test.ts — (verifikasi: order-tracking hijau; tsc bersih; dev GET /lacak-pesanan 200; Obscura screenshot nonblank)
