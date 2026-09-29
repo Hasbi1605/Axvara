@@ -161,7 +161,12 @@ export async function GET(req: NextRequest) {
       lowStockVariants: isAdminRequest && isD1Mode() ? (lowStockByProduct.get(String(r.id)) ?? 0) : undefined,
       copyReview: isAdminRequest && isD1Mode() ? (copyReviewByProduct.get(String(r.id)) ?? 0) : undefined,
       isActive: (r.is_active as number) !== 0,
-      sortOrder: r.sort_order,
+      // sort_order DB (snake_case) → sortOrder API (camelCase). WAJIB ada:
+      // tanpanya admin menerima undefined → tampil 0 semua dan tombol ↑↓
+      // menukar nilai yang sama (regresi reorder 2026-09-29: PUT tersimpan
+      // benar, tetapi daftar tak pernah menampilkannya). Normalisasi Number
+      // karena D1 mengembalikan integer, fallback dev string.
+      sortOrder: r.sort_order == null ? 0 : Number(r.sort_order),
     };
   });
   return NextResponse.json(

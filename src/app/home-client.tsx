@@ -64,6 +64,10 @@ export function HomeClient({ initialProducts }: { initialProducts?: Product[] })
     // Urutan stabil: ready dulu, lalu sort_order admin, lalu id. Tanpa kunci
     // terakhir, dua produk dengan sort_order sama dapat bertukar posisi antar
     // render dan katalog terlihat "loncat-loncat".
+    // Cermin `globalProductOrder` admin (useProductManager) + `filtered`:
+    // aktif-dulu diabaikan di sini (katalog publik hanya memuat aktif),
+    // ready → sortOrder → id. Nonaktif tidak pernah sampai ke storefront
+    // (?active=1), jadi cabang byActive admin tidak berlaku di sini.
     return matched.slice().sort((a, b) => {
       const bySold = Number(isSoldOut(a)) - Number(isSoldOut(b));
       if (bySold !== 0) return bySold;

@@ -461,10 +461,29 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
     } finally { setDeleting(false); }
   };
 
-  // Pindah posisi produk satu langkah (↑ naik / ↓ turun) dengan menukar
-  // sort_order dua produk bertetangga GLOBAL (lihat globalProductOrder).
-  // Dua PUT berurutan via route eksisting — sortOrder milik admin sehingga
-  // guard WR tidak menolaknya (bukan field WR-owned).
+  // Pindah posisi produk satu langkah (↑ naik / ↓ turun) dengan menggeser
+  // sort_order produk sejauh 1 ke arah tujuan DI ATAS baseline tetangga.
+  //
+  // KENAPA BUKAN SWAP MURNI (desain lama 2026-09-28, terbukti rusak di
+  // produksi): seluruh produk existing bernilai 0, sehingga swap 0 ↔ 0
+  // tidak mengubah urutan tampil (`ORDER BY sort_order, id` jatuh ke id).
+  // Pendekatan delta — p.sortOrder := tetangga.sortOrder ± 1 — MENJAMIN
+  // produk bergerak melewati tetangganya walau baseline kembar/tabrakan:
+  // nilai yang dikirim selalu berbeda dari SEMULA (guard WR `changed()`
+  // tidak menelannya) dan selalu menempatkan produk di sisi lain tetangga
+  // (sort stabil `sortOrder, id` tidak bisa mengembalikan posisi lama —
+  // kecuali tabrakan sisa di sisi lain, yang dinormalisasi migrasi 0047 di
+  // production dan tidak memblokir gerakan yang diminta).
+  //
+  // HANYA produk yang diklik yang ditulis (1 PUT, bukan 2): tetangga tidak
+  // perlu disentuh karena ia sudah di sisi yang benar. sortOrder milik
+  // admin sehingga guard WR tidak menolaknya (bukan field WR-owned).
+  //
+  // REALTIME TANPA REFRESH: tidak ada `await load()` di jalur sukses —
+  // state lokal (sudah di-set optimistis) dipertahankan agar daftar TIDAK
+  // me-reset halaman/scroll/focus dan tombol langsung mencerminkan posisi
+  // baru. Server tetap sumber kebenaran saat load berikutnya (pindah tab,
+  // reload) karena nilai yang ditulis sudah final.
   const [reordering, setReordering] = useState<string | null>(null);
   const moveProduct = async (p: Prod, direction: -1 | 1) => {
     if (reordering || toggling) return;
@@ -472,27 +491,27 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
     const idx = ordered.findIndex((x) => x.id === p.id);
     const neighbor = ordered[idx + direction];
     if (idx < 0 || !neighbor) return;
-    const aOrder = p.sortOrder ?? 0;
-    const bOrder = neighbor.sortOrder ?? 0;
+    // Baseline = nilai tetangga di sisi tujuan. Naik (−1): satu di ATAS
+    // tetangga; turun (+1): satu di BAWAH tetangga.
+    const nextOrder = normalizeSortOrder((neighbor.sortOrder ?? 0) + direction);
+    if (nextOrder === null) return;
+    // Gerakan no-op (sudah di posisi itu) — jangan kirim request.
+    if (nextOrder === (p.sortOrder ?? 0)) return;
     setReordering(p.id);
     const snapshot = prods;
-    // Optimistic: tukar nilai di state agar daftar langsung bergerak.
+    // Optimistic: tulis nilai final ke state agar daftar langsung bergerak.
+    // `filtered` mengurut ulang dari nilai ini — tanpa fetch ulang.
     setProds((prev) => prev.map((x) =>
-      x.id === p.id ? { ...x, sortOrder: bOrder }
-      : x.id === neighbor.id ? { ...x, sortOrder: aOrder }
-      : x,
+      x.id === p.id ? { ...x, sortOrder: nextOrder } : x,
     ));
     try {
-      for (const [target, order] of [[p, bOrder], [neighbor, aOrder]] as const) {
-        const r = await fetch(`/api/products/${target.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sortOrder: order }),
-        });
-        const body = await r.json().catch(() => ({} as Record<string, unknown>));
-        if (!r.ok) throw new Error((body as { error?: string }).error || `HTTP ${r.status}`);
-      }
-      await load();
+      const r = await fetch(`/api/products/${p.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sortOrder: nextOrder }),
+      });
+      const body = await r.json().catch(() => ({} as Record<string, unknown>));
+      if (!r.ok) throw new Error((body as { error?: string }).error || `HTTP ${r.status}`);
       toast.success(direction < 0 ? `“${p.name}” naik satu posisi.` : `“${p.name}” turun satu posisi.`);
     } catch (e) {
       setProds(snapshot);

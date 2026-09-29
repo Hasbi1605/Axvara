@@ -1,22 +1,28 @@
 // @vitest-environment jsdom
 //
 // tests/product-reorder.behavior.test.tsx — Kontrol urutan produk di admin
-// (issue perbaikan-3in1 2026-09-28, bagian A).
+// (issue perbaikan-3in1 2026-09-28, bagian A; diperbaiki 2026-09-29).
 //
 // Cakupan:
 // 1. `normalizeSortOrder`: clamp 0-999999, NaN/infinit → null.
 // 2. `globalProductOrder`: urutan global = aktif dulu, ready dulu, lalu
 //    sortOrder, lalu id (identik dengan `filtered` di useProductManager).
-// 3. `moveProduct`: tukar sort_order dua produk bertetangga GLOBAL via dua
-//    PUT /api/products/[id] — termasuk kasus batas halaman (per halaman 8):
-//    produk terakhir hal.1 bertetangga dengan produk pertama hal.2.
+// 3. `moveProduct`: geser sort_order SATU produk sejauh 1 dari baseline
+//    tetangga GLOBAL via SATU PUT /api/products/[id] — termasuk kasus batas
+//    halaman (per halaman 8): produk terakhir hal.1 bertetangga dengan
+//    produk pertama hal.2. Delta ±1 (bukan swap) agar baseline kembar 0
+//    tetap bergerak (swap 0↔0 tidak mengubah `ORDER BY sort_order, id`).
+//    Sukses TANPA fetch ulang (realtime, halaman/scroll/focus utuh).
 // 4. Validasi form menolak sortOrder non-angka; save mengirim sortOrder form
 //    (bukan hardcode 0 seperti sebelumnya).
 // 5. Kontrak API tidak berubah: GET /api/products ORDER BY sort_order ASC.
+// 6. Migrasi 0047: backfill 0 → unik mengikuti id (idempoten, nilai admin
+//    yang sudah diatur tidak digeser).
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { createRequire } from "node:module";
 import {
   globalProductOrder,
   normalizeSortOrder,
@@ -113,8 +119,8 @@ describe("globalProductOrder: tetangga global untuk swap", () => {
   });
 });
 
-describe("moveProduct: tukar sort_order tetangga global via PUT", () => {
-  it("↓ di tengah menukar dengan tetangga bawah (dua PUT, nilai bertukar)", async () => {
+describe("moveProduct: geser sort_order dari baseline tetangga via SATU PUT", () => {
+  it("↓ di tengah menggeser +1 dari tetangga bawah (satu PUT, posisi bertukar)", async () => {
     stubApi(tenProducts());
     const { result } = renderManager();
     await act(async () => { await result.current.load(); });
@@ -123,10 +129,58 @@ describe("moveProduct: tukar sort_order tetangga global via PUT", () => {
     );
     const target = result.current.prods.find((p) => p.id === "3")!;
     await act(async () => { await result.current.moveProduct(target, 1); });
-    // Daftar terurut ulang: 3 dan 4 bertukar posisi.
+    // Daftar terurut ulang: 3 (kini 5) lewat di bawah 4 (tetap 4).
     expect(result.current.filtered.map((p) => p.id)).toEqual(
       ["1", "2", "4", "3", "5", "6", "7", "8", "9", "10"],
     );
+  });
+
+  it("↑ di tengah menggeser −1 dari tetangga atas (satu PUT)", async () => {
+    const { calls, store } = stubApi(tenProducts());
+    const { result } = renderManager();
+    await act(async () => { await result.current.load(); });
+    const target = result.current.prods.find((p) => p.id === "4")!;
+    await act(async () => { await result.current.moveProduct(target, -1); });
+    const puts = calls.filter((c) => c.method === "PUT");
+    expect(puts).toHaveLength(1);
+    expect(puts[0].url).toBe("/api/products/4");
+    // Baseline tetangga (id 3, order 3) − 1 = 2 → 4 naik di atas 3.
+    expect(store.get("4")!.sortOrder).toBe(2);
+    expect(result.current.filtered.map((p) => p.id).slice(0, 5)).toEqual(
+      ["1", "2", "4", "3", "5"],
+    );
+  });
+
+  it("baseline kembar 0 TETAP bergerak (regresi produksi: swap 0↔0 diam)", async () => {
+    const zeroes = () => Array.from({ length: 5 }, (_, i) => prod(i + 1, 0));
+    const { store } = stubApi(zeroes());
+    const { result } = renderManager();
+    await act(async () => { await result.current.load(); });
+    const before = result.current.filtered.map((p) => p.id);
+    expect(before).toEqual(["1", "2", "3", "4", "5"]);
+    const target = result.current.prods.find((p) => p.id === "2")!;
+    await act(async () => { await result.current.moveProduct(target, 1); });
+    // Tetangga bawah (id 3) order 0 + 1 = 1 → id 2 jatuh ke dasar kelompok 0.
+    expect(store.get("2")!.sortOrder).toBe(1);
+    expect(result.current.filtered.map((p) => p.id)).toEqual(
+      ["1", "3", "4", "5", "2"],
+    );
+  });
+
+  it("sukses tanpa fetch ulang: halaman/scroll/focus utuh (realtime)", async () => {
+    const { calls } = stubApi(tenProducts());
+    const { result } = renderManager();
+    await act(async () => { await result.current.load(); });
+    await act(async () => { await result.current.setPage(() => 2); });
+    expect(result.current.safePage).toBe(2);
+    expect(result.current.paged.map((p) => p.id)).toEqual(["9", "10"]);
+    const target = result.current.prods.find((p) => p.id === "9")!;
+    await act(async () => { await result.current.moveProduct(target, 1); });
+    // Satu PUT, nol GET ulang — halaman tetap 2 (load() akan me-reset ke
+    // safePage yang bisa melompat bila item pindah halaman).
+    expect(calls.filter((c) => c.method === "PUT")).toHaveLength(1);
+    expect(calls.filter((c) => c.url === "/api/products" && c.method === "GET")).toHaveLength(1);
+    expect(result.current.safePage).toBe(2);
   });
 
   it("↑ di puncak dan ↓ di dasar tidak mengirim request apa pun", async () => {
@@ -141,7 +195,7 @@ describe("moveProduct: tukar sort_order tetangga global via PUT", () => {
     expect(result.current.filtered.map((p) => p.id)[0]).toBe("1");
   });
 
-  it("batas halaman: ↓ produk terakhir hal.1 (id 8) bertukar dengan pertama hal.2 (id 9)", async () => {
+  it("batas halaman: ↓ produk terakhir hal.1 (id 8) bergeser +1 dari pertama hal.2 (id 9)", async () => {
     const { calls, store } = stubApi(tenProducts());
     const { result } = renderManager();
     await act(async () => { await result.current.load(); });
@@ -151,12 +205,15 @@ describe("moveProduct: tukar sort_order tetangga global via PUT", () => {
     const eighth = result.current.prods.find((p) => p.id === "8")!;
     await act(async () => { await result.current.moveProduct(eighth, 1); });
     const puts = calls.filter((c) => c.method === "PUT");
-    expect(puts).toHaveLength(2);
-    expect(new Set(puts.map((c) => c.url))).toEqual(new Set(["/api/products/8", "/api/products/9"]));
-    // Nilai sort_order bertukar di server.
-    expect(store.get("8")!.sortOrder).toBe(9);
-    expect(store.get("9")!.sortOrder).toBe(8);
-    // Urutan global mencerminkan swap.
+    // SATU PUT hanya untuk produk yang diklik — tetangga tak disentuh.
+    expect(puts).toHaveLength(1);
+    expect(puts[0].url).toBe("/api/products/8");
+    // Baseline tetangga (id 9, order 9) + 1 = 10 → 8 jatuh di bawah 9.
+    // (10 tabrakan dengan id 10, tie-break id menaruh 8 sebelum 10 —
+    // tetap di bawah tetangga tujuan, gerakan yang diminta.)
+    expect(store.get("8")!.sortOrder).toBe(10);
+    expect(store.get("9")!.sortOrder).toBe(9);
+    // Urutan global mencerminkan geseran.
     expect(result.current.filtered.map((p) => p.id)).toEqual(
       ["1", "2", "3", "4", "5", "6", "7", "9", "8", "10"],
     );
@@ -180,6 +237,21 @@ describe("moveProduct: tukar sort_order tetangga global via PUT", () => {
     const target = result.current.prods.find((p) => p.id === "2")!;
     await act(async () => { await result.current.moveProduct(target, 1); });
     expect(result.current.filtered.map((p) => `${p.id}:${p.sortOrder}`)).toEqual(before);
+  });
+
+  it("gerakan no-op tidak mengirim request (sudah di posisi itu)", async () => {
+    // id 1 (order 1) di puncak: ↑ tetangga tak ada → return dini (dicakup
+    // test batas). Di sini: order unik 5/6 — geser ke nilai yang SAMA
+    // dengan semula tidak mungkin via baseline tetangga, jadi cukup
+    // pastikan dua gerakan berurutan mengirim tepat 1 PUT per gerakan.
+    const { calls } = stubApi(tenProducts());
+    const { result } = renderManager();
+    await act(async () => { await result.current.load(); });
+    const target = result.current.prods.find((p) => p.id === "5")!;
+    await act(async () => { await result.current.moveProduct(target, -1); });
+    const afterFirst = result.current.prods.find((p) => p.id === "5")!;
+    await act(async () => { await result.current.moveProduct(afterFirst, 1); });
+    expect(calls.filter((c) => c.method === "PUT")).toHaveLength(2);
   });
 });
 
@@ -235,7 +307,70 @@ describe("editor: input angka Urutan tersimpan via save", () => {
   });
 });
 
+describe("migrasi 0047: backfill sort_order 0 → unik", () => {
+  const nodeRequire = createRequire(import.meta.url);
+  const { DatabaseSync } = nodeRequire("node:sqlite") as {
+    DatabaseSync: new (location: string) => {
+      exec: (sql: string) => void;
+      prepare: (sql: string) => {
+        run: (...p: unknown[]) => unknown;
+        get: (...p: unknown[]) => Record<string, unknown> | undefined;
+        all: (...p: unknown[]) => Record<string, unknown>[];
+      };
+      close: () => void;
+    };
+  };
+
+  function seedDb(orders: (number | null)[]) {
+    const db = new DatabaseSync(":memory:");
+    db.exec(read("drizzle/schema.sql"));
+    db.exec("DELETE FROM product_variants; DELETE FROM products;");
+    orders.forEach((order, i) => {
+      db.prepare(
+        "INSERT INTO products (id, category_id, name, slug, description, price, stock, is_active, sort_order) VALUES (?,?,?,?,?,?,?,1,?)",
+      ).run(i + 1, 1, `P${i + 1}`, `p-${i + 1}`, "d", 10000, -1, order);
+    });
+    return db;
+  }
+
+  it("semua 0 → 1..N mengikuti id; rerun tidak menggeser", () => {
+    const db = seedDb([0, 0, 0, 0, 0]);
+    try {
+      db.exec(read("drizzle/migrations/0047_product_sort_order_backfill.sql"));
+      const rows = db.prepare("SELECT id, sort_order FROM products ORDER BY id").all();
+      expect(rows.map((r) => Number(r.sort_order))).toEqual([1, 2, 3, 4, 5]);
+      // Rerun idempoten: nilai tidak bergeser.
+      db.exec(read("drizzle/migrations/0047_product_sort_order_backfill.sql"));
+      const rows2 = db.prepare("SELECT id, sort_order FROM products ORDER BY id").all();
+      expect(rows2.map((r) => Number(r.sort_order))).toEqual([1, 2, 3, 4, 5]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("NULL dinormalisasi; nilai admin (>0) tidak disentuh, offset di atasnya", () => {
+    const db = seedDb([null, 0, 10, 0, 3]);
+    try {
+      db.exec(read("drizzle/migrations/0047_product_sort_order_backfill.sql"));
+      const rows = db.prepare("SELECT id, sort_order FROM products ORDER BY id").all();
+      // id 3 (10) dan id 5 (3) utuh; tiga baris 0/NULL → 11,12,13 mengikuti id.
+      expect(rows.map((r) => Number(r.sort_order))).toEqual([11, 12, 10, 13, 3]);
+      expect(new Set(rows.map((r) => Number(r.sort_order))).size).toBe(5);
+    } finally {
+      db.close();
+    }
+  });
+});
+
 describe("kontrak API urutan tetap", () => {
+  it("GET /api/products memetakan sort_order → sortOrder (regresi 0 semua)", () => {
+    // Regresi produksi 2026-09-29: PUT /api/products/[id] tersimpan (detail
+    // benar), tetapi GET /api/products tidak mengirim sortOrder sehingga
+    // admin selalu melihat 0 dan ↑↓ menukar nilai yang sama. Mapper wajib
+    // memetakan snake_case DB → camelCase API dengan normalisasi Number.
+    const src = read("src/app/api/products/route.ts");
+    expect(src).toContain("sortOrder: r.sort_order == null ? 0 : Number(r.sort_order)");
+  });
   it("GET /api/products ORDER BY sort_order ASC", () => {
     const src = read("src/app/api/products/route.ts");
     expect(src).toContain("ORDER BY p.sort_order ASC, p.id ASC");
