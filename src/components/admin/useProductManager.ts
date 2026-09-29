@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toWebp16x9 } from "@/components/admin/ImageDropzone";
 import type { Prod, Cat, FormVariant, ProductForm } from "@/components/admin/product-types";
+import { adjacentReorderProduct, sortProductsForDisplay } from "@/lib/product-order";
 
 // Hook ini memusatkan seluruh state + handler katalog produk (daftar, filter, pagination,
 // editor form, varian, upload, simpan, hapus, toggle aktif). Dipisah dari page.tsx BUKAN
@@ -58,16 +59,7 @@ export function normalizeSortOrder(value: unknown): number | null {
  * sebenarnya di seluruh katalog, bukan tetangga satu halaman.
  */
 export function globalProductOrder(list: Prod[]): Prod[] {
-  const isOut = (p: Prod): boolean => p.stock != null && p.stock !== -1 && p.stock <= 0;
-  return list.slice().sort((a, b) => {
-    const byActive = Number(!a.isActive) - Number(!b.isActive);
-    if (byActive !== 0) return byActive;
-    const bySold = Number(isOut(a)) - Number(isOut(b));
-    if (bySold !== 0) return bySold;
-    const byOrder = (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
-    if (byOrder !== 0) return byOrder;
-    return Number(a.id) - Number(b.id);
-  });
+  return sortProductsForDisplay(list);
 }
 
 export function useProductManager(toast: AdminToast, onUnauthorized: () => void) {
@@ -115,7 +107,15 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
   },[onUnauthorized]);
 
   const openEdit = async (p: Prod) => {
-    const nextForm: ProductForm = { ...p, categorySlug: p.categorySlug };
+    const position = globalProductOrder(prods).findIndex((item) => item.id === p.id) + 1;
+    // Modal dan tabel berbicara bahasa yang sama: posisi 1..N. Raw sort_order
+    // tidak lagi diedit dari modal karena ia hanya kunci teknis server.
+    // sortOrder produk existing sengaja dikosongkan dari form: payload edit
+    // TIDAK membawa kunci posisi sehingga Simpan tidak pernah menggesernya
+    // diam-diam (inkonsistensi modal-vs-tabel 2026-09-29).
+    const { sortOrder: _ignoredSortOrder, ...positionless } = p;
+    void _ignoredSortOrder;
+    const nextForm: ProductForm = { ...positionless, sortOrder: undefined, categorySlug: p.categorySlug, displayPosition: Math.max(1, position) };
     const nextImages = p.images?.length ? p.images : p.image ? [p.image] : [];
     setEditing(p);
     setShowNew(false);
@@ -219,6 +219,11 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
   // (garansi=none + manual, seperti varian DEFAULT otomatis server) agar
   // tampilan UI dan nilai tersimpan tidak pernah divergen.
   const openNew = () => {
+    const ordered = globalProductOrder(prods);
+    const maxSortOrder = ordered.reduce((max, product) => Math.max(max, Number(product.sortOrder ?? 0)), 0);
+    // Hitung posisi tampilan dari ordered (bukan dari asumsi): produk baru
+    // masuk paling belakang daftar tampil.
+    const nextPosition = ordered.length + 1;
     const nextForm: ProductForm = {
       name: "",
       slug: "",
@@ -228,7 +233,9 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
       categorySlug: "ai-chatbot",
       stock: 10,
       soldCount: 0,
-      sortOrder: 0,
+      // Produk baru masuk akhir bucket aktif+ready tanpa menabrak key existing.
+      sortOrder: Math.min(SORT_ORDER_MAX, maxSortOrder + 10),
+      displayPosition: nextPosition,
       isActive: true,
       min_qty: 1,
       warranty_type: "none",
@@ -279,7 +286,6 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
 
   const validateForm = (): string | null => {
     if (!form.name?.trim()) return "Nama produk wajib diisi.";
-    if (form.sortOrder !== undefined && form.sortOrder !== null && normalizeSortOrder(form.sortOrder) === null) return "Urutan harus angka 0-999999.";
     if (!form.slug?.trim()) return "Slug wajib diisi.";
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(form.slug.trim())) return "Slug hanya huruf kecil, angka, dan strip. Contoh: chatgpt-plus-1-bulan";
 
@@ -370,6 +376,8 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
       warranty_unit: undefined,
       warranty_label: undefined,
       fulfillment_mode: undefined,
+      // Hanya state presentasi modal, bukan kontrak API/kolom DB.
+      displayPosition: undefined,
       // FIX Canva 409: mode MULTI jangan kirim kolom legacy sama sekali.
       // Server menghitung ulang master price/stock/compare dari varian aktif,
       // sehingga nilai pendamping (min price, -1, null) tak lagi dibaca
@@ -381,13 +389,11 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
       comparePrice: hasMultiVariants ? undefined : (form.comparePrice ? Number(form.comparePrice) : null),
       stock: hasMultiVariants ? undefined : (form.stock != null ? Number(form.stock) : -1),
       soldCount: form.soldCount ? Number(form.soldCount) : 0,
-      // sortOrder milik admin (bukan WR-owned): kirim nilai form bila valid,
-      // undefined bila kosong agar server tidak menimpa dengan 0.
-      sortOrder: (() => {
-        const raw = form.sortOrder as unknown;
-        if (raw === undefined || raw === null || raw === "") return undefined;
-        return normalizeSortOrder(raw) ?? undefined;
-      })(),
+      // Posisi reorder kini milik endpoint /api/products/reorder — modal
+      // hanya membaca displayPosition (read-only) dan TIDAK mengirim kunci
+      // teknis. sortOrder form tetap dipakai saat Produk Baru (alokasi akhir)
+      // lalu ikut payload sebagai penanda akhir, bukan edit posisi existing.
+      sortOrder: editing ? undefined : normalizeSortOrder(form.sortOrder) ?? undefined,
       images: formImages,
       imageUrl: formImages[0] ?? form.image ?? null,
       isActive: form.isActive !== false,
@@ -461,57 +467,35 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
     } finally { setDeleting(false); }
   };
 
-  // Pindah posisi produk satu langkah (↑ naik / ↓ turun) dengan menggeser
-  // sort_order produk sejauh 1 ke arah tujuan DI ATAS baseline tetangga.
-  //
-  // KENAPA BUKAN SWAP MURNI (desain lama 2026-09-28, terbukti rusak di
-  // produksi): seluruh produk existing bernilai 0, sehingga swap 0 ↔ 0
-  // tidak mengubah urutan tampil (`ORDER BY sort_order, id` jatuh ke id).
-  // Pendekatan delta — p.sortOrder := tetangga.sortOrder ± 1 — MENJAMIN
-  // produk bergerak melewati tetangganya walau baseline kembar/tabrakan:
-  // nilai yang dikirim selalu berbeda dari SEMULA (guard WR `changed()`
-  // tidak menelannya) dan selalu menempatkan produk di sisi lain tetangga
-  // (sort stabil `sortOrder, id` tidak bisa mengembalikan posisi lama —
-  // kecuali tabrakan sisa di sisi lain, yang dinormalisasi migrasi 0047 di
-  // production dan tidak memblokir gerakan yang diminta).
-  //
-  // HANYA produk yang diklik yang ditulis (1 PUT, bukan 2): tetangga tidak
-  // perlu disentuh karena ia sudah di sisi yang benar. sortOrder milik
-  // admin sehingga guard WR tidak menolaknya (bukan field WR-owned).
-  //
-  // REALTIME TANPA REFRESH: tidak ada `await load()` di jalur sukses —
-  // state lokal (sudah di-set optimistis) dipertahankan agar daftar TIDAK
-  // me-reset halaman/scroll/focus dan tombol langsung mencerminkan posisi
-  // baru. Server tetap sumber kebenaran saat load berikutnya (pindah tab,
-  // reload) karena nilai yang ditulis sudah final.
+  // Exact-one-step reorder. Client hanya menukar target dengan satu tetangga
+  // yang benar-benar dapat dilewati; server mengulang keputusan yang sama dan
+  // menormalisasi seluruh key 10,20,30… secara atomik. Response server memuat
+  // key final sehingga state realtime identik dengan D1 tanpa fetch ulang.
   const [reordering, setReordering] = useState<string | null>(null);
   const moveProduct = async (p: Prod, direction: -1 | 1) => {
     if (reordering || toggling) return;
     const ordered = globalProductOrder(prods);
     const idx = ordered.findIndex((x) => x.id === p.id);
-    const neighbor = ordered[idx + direction];
+    const neighbor = adjacentReorderProduct(prods, p.id, direction);
     if (idx < 0 || !neighbor) return;
-    // Baseline = nilai tetangga di sisi tujuan. Naik (−1): satu di ATAS
-    // tetangga; turun (+1): satu di BAWAH tetangga.
-    const nextOrder = normalizeSortOrder((neighbor.sortOrder ?? 0) + direction);
-    if (nextOrder === null) return;
-    // Gerakan no-op (sudah di posisi itu) — jangan kirim request.
-    if (nextOrder === (p.sortOrder ?? 0)) return;
     setReordering(p.id);
     const snapshot = prods;
-    // Optimistic: tulis nilai final ke state agar daftar langsung bergerak.
-    // `filtered` mengurut ulang dari nilai ini — tanpa fetch ulang.
-    setProds((prev) => prev.map((x) =>
-      x.id === p.id ? { ...x, sortOrder: nextOrder } : x,
-    ));
+    // Optimistic exact swap (tidak memakai key delta yang dapat tabrakan).
+    const optimistic = [...ordered];
+    const neighborIndex = optimistic.findIndex((item) => item.id === neighbor.id);
+    [optimistic[idx], optimistic[neighborIndex]] = [optimistic[neighborIndex], optimistic[idx]];
+    const optimisticOrder = new Map(optimistic.map((item, index) => [item.id, (index + 1) * 10]));
+    setProds((prev) => prev.map((item) => ({ ...item, sortOrder: optimisticOrder.get(item.id) ?? item.sortOrder })));
     try {
-      const r = await fetch(`/api/products/${p.id}`, {
-        method: "PUT",
+      const r = await fetch("/api/products/reorder", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sortOrder: nextOrder }),
+        body: JSON.stringify({ productId: Number(p.id), direction }),
       });
-      const body = await r.json().catch(() => ({} as Record<string, unknown>));
-      if (!r.ok) throw new Error((body as { error?: string }).error || `HTTP ${r.status}`);
+      const body = await r.json().catch(() => ({})) as { error?: string; products?: { id: number; sortOrder: number }[] };
+      if (!r.ok) throw new Error(body.error || `HTTP ${r.status}`);
+      const finalOrder = new Map((body.products ?? []).map((item) => [String(item.id), item.sortOrder]));
+      setProds((prev) => prev.map((item) => finalOrder.has(item.id) ? { ...item, sortOrder: finalOrder.get(item.id)! } : item));
       toast.success(direction < 0 ? `“${p.name}” naik satu posisi.` : `“${p.name}” turun satu posisi.`);
     } catch (e) {
       setProds(snapshot);

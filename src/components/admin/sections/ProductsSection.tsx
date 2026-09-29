@@ -3,6 +3,7 @@ import { formatRupiah } from "@/lib/utils";
 import { Spinner } from "@/components/ui/Loading";
 import { IosIcon } from "@/components/ui/IosIcon";
 import type { Prod } from "../product-types";
+import { adjacentReorderProduct } from "@/lib/product-order";
 
 // Section "Produk" dipisah karena inilah bagian terbesar page.tsx: kartu statistik,
 // pencarian, tabel/daftar responsif, dan pagination. Semua state tetap dimiliki
@@ -77,6 +78,10 @@ export function ProductsSection({
   // memang membingungkan bila dipajang (laporan owner 2026-09-29: 2,2,3,3,
   // 7,17,18,19 padahal posisi di toko sudah benar). Raw tetap dikirim ke
   // server dan terlihat di tooltip untuk diagnosis.
+  // Tombol ↑↓ hanya aktif bila tetangga se-bucket status ada
+  // (adjacentReorderProduct): sort_order tidak dapat melewati batas
+  // ready/habis/nonaktif, jadi tombol di batas kelompok mati — menekan yang
+  // mati tidak mengirim request dan tidak mengubah apa pun.
   const orderIndex = new Map(filtered.map((p, i) => [p.id, i]));
   return (
     <>
@@ -117,7 +122,7 @@ export function ProductsSection({
               <div className="p-10 flex flex-col items-center gap-3 text-white/60"><Spinner size={24} /><span className="text-sm">Memuat produk…</span></div>
             ) : (<>
             <div className="divide-y divide-white/[0.06] md:hidden">
-              {paged.map(p=>{ const pos = orderIndex.get(p.id) ?? 0; const isFirst = pos <= 0; const isLast = pos >= filtered.length - 1; const busy = reordering === p.id; return (<article key={p.id} className="p-4">
+              {paged.map(p=>{ const canMoveUp = Boolean(adjacentReorderProduct(filtered, p.id, -1)); const canMoveDown = Boolean(adjacentReorderProduct(filtered, p.id, 1)); const busy = reordering === p.id; return (<article key={p.id} className="p-4">
                 <div className="flex items-start gap-3">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={p.image || "/brand/axvara-ribbon-mark.png"} alt="" className="h-14 w-14 shrink-0 rounded-xl bg-white/5 object-cover" />
@@ -125,8 +130,8 @@ export function ProductsSection({
                 </div>
                 <div className="mt-4 grid grid-cols-[auto_1fr_auto] gap-2">
                   <div className="flex items-center gap-1" role="group" aria-label={`Ubah urutan ${p.name}`}>
-                    <button type="button" onClick={()=>onMove(p, -1)} disabled={busy || isFirst} aria-label={`Naikkan ${p.name}`} title="Naik satu posisi" className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.07] text-sm font-bold text-white transition hover:bg-white/[0.14] disabled:opacity-30 disabled:pointer-events-none">↑</button>
-                    <button type="button" onClick={()=>onMove(p, 1)} disabled={busy || isLast} aria-label={`Turunkan ${p.name}`} title="Turun satu posisi" className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.07] text-sm font-bold text-white transition hover:bg-white/[0.14] disabled:opacity-30 disabled:pointer-events-none">↓</button>
+                    <button type="button" onClick={()=>onMove(p, -1)} disabled={busy || !canMoveUp} aria-label={`Naikkan ${p.name}`} title={canMoveUp ? "Naik satu posisi" : "Sudah di puncak kelompoknya (aktif/habis/nonaktif tidak bisa saling melewati)"} className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.07] text-sm font-bold text-white transition hover:bg-white/[0.14] disabled:opacity-30 disabled:pointer-events-none">↑</button>
+                    <button type="button" onClick={()=>onMove(p, 1)} disabled={busy || !canMoveDown} aria-label={`Turunkan ${p.name}`} title={canMoveDown ? "Turun satu posisi" : "Sudah di dasar kelompoknya (aktif/habis/nonaktif tidak bisa saling melewati)"} className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.07] text-sm font-bold text-white transition hover:bg-white/[0.14] disabled:opacity-30 disabled:pointer-events-none">↓</button>
                   </div>
                   <button onClick={()=>onEdit(p)} className="h-9 rounded-xl bg-white text-xs font-bold text-[#080C1E] transition hover:bg-white/90">Edit Produk & Varian</button><button onClick={()=>onDelete(p)} className="flex h-9 w-10 shrink-0 items-center justify-center rounded-xl bg-red-500/15 transition hover:bg-red-500/25" aria-label={`Arsipkan ${p.name}`} title="Arsipkan produk"><IosIcon name="trash" size={14} tint="white" /></button>
                 </div>
@@ -138,7 +143,7 @@ export function ProductsSection({
                   <tr><th className="text-left font-semibold px-4 py-3">Produk</th><th className="text-left font-semibold px-3 py-3">Kategori</th><th className="text-right font-semibold px-3 py-3">Harga</th><th className="text-center font-semibold px-3 py-3">Stok</th><th className="text-center font-semibold px-3 py-3">Terjual</th><th className="text-center font-semibold px-3 py-3">Urutan</th><th className="text-center font-semibold px-3 py-3">Aktif</th><th className="text-right font-semibold px-4 py-3">Aksi</th></tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
-                  {paged.map(p=>{ const pos = orderIndex.get(p.id) ?? 0; const isFirst = pos <= 0; const isLast = pos >= filtered.length - 1; const busy = reordering === p.id; return (
+                  {paged.map(p=>{ const canMoveUp = Boolean(adjacentReorderProduct(filtered, p.id, -1)); const canMoveDown = Boolean(adjacentReorderProduct(filtered, p.id, 1)); const busy = reordering === p.id; return (
                     <tr key={p.id} className="hover:bg-white/[0.03] transition">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3 min-w-[220px]">
@@ -158,8 +163,8 @@ export function ProductsSection({
                       <td className="px-3 py-3 text-center">
                         <div className="inline-flex items-center gap-1" role="group" aria-label={`Ubah urutan ${p.name}`}>
                           <span className="mr-1 inline-flex min-w-[36px] justify-center rounded-full bg-white/10 px-2 py-1 text-xs font-bold text-white/70" title={`Posisi ${((orderIndex.get(p.id) ?? 0) + 1)} dari ${filtered.length} (kunci teknis sort_order: ${p.sortOrder ?? 0})`}>{(orderIndex.get(p.id) ?? 0) + 1}</span>
-                          <button type="button" onClick={()=>onMove(p, -1)} disabled={busy || isFirst} aria-label={`Naikkan ${p.name}`} title="Naik satu posisi" className="flex h-7 w-7 items-center justify-center rounded-full bg-white/[0.07] text-xs font-bold text-white transition hover:bg-white/[0.14] disabled:opacity-30 disabled:pointer-events-none">↑</button>
-                          <button type="button" onClick={()=>onMove(p, 1)} disabled={busy || isLast} aria-label={`Turunkan ${p.name}`} title="Turun satu posisi" className="flex h-7 w-7 items-center justify-center rounded-full bg-white/[0.07] text-xs font-bold text-white transition hover:bg-white/[0.14] disabled:opacity-30 disabled:pointer-events-none">↓</button>
+                          <button type="button" onClick={()=>onMove(p, -1)} disabled={busy || !canMoveUp} aria-label={`Naikkan ${p.name}`} title={canMoveUp ? "Naik satu posisi" : "Sudah di puncak kelompoknya (aktif/habis/nonaktif tidak bisa saling melewati)"} className="flex h-7 w-7 items-center justify-center rounded-full bg-white/[0.07] text-xs font-bold text-white transition hover:bg-white/[0.14] disabled:opacity-30 disabled:pointer-events-none">↑</button>
+                          <button type="button" onClick={()=>onMove(p, 1)} disabled={busy || !canMoveDown} aria-label={`Turunkan ${p.name}`} title={canMoveDown ? "Turun satu posisi" : "Sudah di dasar kelompoknya (aktif/habis/nonaktif tidak bisa saling melewati)"} className="flex h-7 w-7 items-center justify-center rounded-full bg-white/[0.07] text-xs font-bold text-white transition hover:bg-white/[0.14] disabled:opacity-30 disabled:pointer-events-none">↓</button>
                         </div>
                       </td>
                       <td className="px-3 py-3 text-center">

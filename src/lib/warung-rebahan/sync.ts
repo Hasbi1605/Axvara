@@ -480,7 +480,9 @@ async function createAxvaraCatalogForWr(
     `INSERT INTO products
       (category_id, name, slug, description, price, stock, is_active, sort_order,
        source, wr_product_id, wr_auto_managed, created_at, updated_at)
-     VALUES (?,?,?,?,0,0,1,0,'warung_rebahan',?,1,?,?)`,
+      VALUES (?,?,?,?,0,0,1,
+        COALESCE((SELECT MIN(999989, MAX(sort_order)) + 10 FROM products),10),
+        'warung_rebahan',?,1,?,?)`,
     categoryId,
     displayName,
     slug,

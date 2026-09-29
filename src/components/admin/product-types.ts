@@ -39,6 +39,8 @@ export type FormVariant = {
 };
 
 export type ProductForm = Partial<Prod> & {
+  /** Posisi visual 1..N di admin; read-only, bukan kolom DB. */
+  displayPosition?: number;
   comparePrice?: number;
   categorySlug?: string;
   /**

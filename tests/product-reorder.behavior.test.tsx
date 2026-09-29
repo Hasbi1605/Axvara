@@ -7,11 +7,12 @@
 // 1. `normalizeSortOrder`: clamp 0-999999, NaN/infinit → null.
 // 2. `globalProductOrder`: urutan global = aktif dulu, ready dulu, lalu
 //    sortOrder, lalu id (identik dengan `filtered` di useProductManager).
-// 3. `moveProduct`: geser sort_order SATU produk sejauh 1 dari baseline
-//    tetangga GLOBAL via SATU PUT /api/products/[id] — termasuk kasus batas
-//    halaman (per halaman 8): produk terakhir hal.1 bertetangga dengan
-//    produk pertama hal.2. Delta ±1 (bukan swap) agar baseline kembar 0
-//    tetap bergerak (swap 0↔0 tidak mengubah `ORDER BY sort_order, id`).
+// 3. `moveProduct`: pindah TEPAT satu posisi via POST /api/products/reorder —
+//    server menukar dengan satu tetangga lalu menormalisasi seluruh key
+//    10,20,30… secara atomik, sehingga klik tidak pernah skip 2–3 posisi.
+//    Termasuk kasus batas halaman (per halaman 8): produk terakhir hal.1
+//    bertetangga dengan produk pertama hal.2. Batas kelompok status
+//    (ready vs habis vs nonaktif) tidak dikirim request sama sekali.
 //    Sukses TANPA fetch ulang (realtime, halaman/scroll/focus utuh).
 // 4. Validasi form menolak sortOrder non-angka; save mengirim sortOrder form
 //    (bukan hardcode 0 seperti sebelumnya).
@@ -21,12 +22,17 @@
 // 7. Display kolom Urutan = NOMOR POSISI (pos+1, selalu 1..N rapi), bukan
 //    raw sort_order (kunci teknis boleh kembar/lompat — laporan owner
 //    2026-09-29: 2,2,3,3,7,17,18,19 padahal posisi di toko sudah benar).
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, renderHook, screen } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createRequire } from "node:module";
+import { NextRequest } from "next/server";
+import { createD1Fixture } from "./helpers/d1-fixture";
 import { ProductsSection } from "@/components/admin/sections/ProductsSection";
+import { requireAdmin } from "@/lib/auth";
+
+vi.mock("@/lib/auth", () => ({ requireAdmin: vi.fn() }));
 import {
   globalProductOrder,
   normalizeSortOrder,
@@ -70,6 +76,33 @@ function stubApi(list: Prod[]) {
     }
     if (url.startsWith("/api/categories")) {
       return { ok: true, status: 200, json: async () => ({ categories: [] }) };
+    }
+    // Endpoint reorder baru: tiru server — tukar tepat satu tetangga dalam
+    // bucket status yang sama, lalu normalisasi seluruh key 10,20,30…
+    if (url === "/api/products/reorder" && method === "POST") {
+      const body = calls[calls.length - 1].body ?? {};
+      const targetId = String((body as { productId?: unknown }).productId ?? "");
+      const direction = Number((body as { direction?: unknown }).direction ?? 0) as -1 | 1;
+      const target = store.get(targetId);
+      if (!target) return { ok: false, status: 404, json: async () => ({ error: "not found" }) };
+      const inBucket = (p: Prod) => `${p.isActive ? "a" : "i"}:${p.stock !== -1 && (p.stock ?? 0) <= 0 ? "s" : "r"}`;
+      const ordered = [...store.values()].sort((a, b) =>
+        Number(!a.isActive) - Number(!b.isActive)
+        || Number(a.stock !== -1 && (a.stock ?? 0) <= 0) - Number(b.stock !== -1 && (b.stock ?? 0) <= 0)
+        || (a.sortOrder ?? 0) - (b.sortOrder ?? 0)
+        || Number(a.id) - Number(b.id));
+      const idx = ordered.findIndex((p) => p.id === targetId);
+      const neighbor = ordered[idx + direction];
+      if (idx < 0 || !neighbor || inBucket(ordered[idx]) !== inBucket(neighbor)) {
+        return { ok: false, status: 409, json: async () => ({ error: "Produk sudah berada di batas kelompoknya." }) };
+      }
+      const at = ordered.findIndex((p) => p.id === neighbor.id);
+      [ordered[idx], ordered[at]] = [ordered[at], ordered[idx]];
+      ordered.forEach((p, i) => { store.get(p.id)!.sortOrder = (i + 1) * 10; });
+      return {
+        ok: true, status: 200,
+        json: async () => ({ ok: true, products: ordered.map((p, i) => ({ id: Number(p.id), sortOrder: (i + 1) * 10 })) }),
+      };
     }
     const m = url.match(/^\/api\/products\/(\d+)$/);
     if (m && method === "PUT") {
@@ -123,8 +156,8 @@ describe("globalProductOrder: tetangga global untuk swap", () => {
   });
 });
 
-describe("moveProduct: geser sort_order dari baseline tetangga via SATU PUT", () => {
-  it("↓ di tengah menggeser +1 dari tetangga bawah (satu PUT, posisi bertukar)", async () => {
+describe("moveProduct: TEPAT satu posisi via POST /api/products/reorder", () => {
+  it("↓ di tengah bertukar dengan tetangga bawah (satu POST, posisi bertukar)", async () => {
     stubApi(tenProducts());
     const { result } = renderManager();
     await act(async () => { await result.current.load(); });
@@ -133,42 +166,75 @@ describe("moveProduct: geser sort_order dari baseline tetangga via SATU PUT", ()
     );
     const target = result.current.prods.find((p) => p.id === "3")!;
     await act(async () => { await result.current.moveProduct(target, 1); });
-    // Daftar terurut ulang: 3 (kini 5) lewat di bawah 4 (tetap 4).
+    // Daftar terurut ulang: 3 dan 4 bertukar posisi — tidak lebih.
     expect(result.current.filtered.map((p) => p.id)).toEqual(
       ["1", "2", "4", "3", "5", "6", "7", "8", "9", "10"],
     );
   });
 
-  it("↑ di tengah menggeser −1 dari tetangga atas (satu PUT)", async () => {
-    const { calls, store } = stubApi(tenProducts());
+  it("↑ di tengah bertukar dengan tetangga atas (satu POST)", async () => {
+    const { calls } = stubApi(tenProducts());
     const { result } = renderManager();
     await act(async () => { await result.current.load(); });
     const target = result.current.prods.find((p) => p.id === "4")!;
     await act(async () => { await result.current.moveProduct(target, -1); });
-    const puts = calls.filter((c) => c.method === "PUT");
-    expect(puts).toHaveLength(1);
-    expect(puts[0].url).toBe("/api/products/4");
-    // Baseline tetangga (id 3, order 3) − 1 = 2 → 4 naik di atas 3.
-    expect(store.get("4")!.sortOrder).toBe(2);
+    const posts = calls.filter((c) => c.url === "/api/products/reorder" && c.method === "POST");
+    expect(posts).toHaveLength(1);
+    expect(posts[0].body).toEqual({ productId: 4, direction: -1 });
+    expect(calls.some((c) => c.method === "PUT")).toBe(false);
     expect(result.current.filtered.map((p) => p.id).slice(0, 5)).toEqual(
       ["1", "2", "4", "3", "5"],
     );
   });
 
-  it("baseline kembar 0 TETAP bergerak (regresi produksi: swap 0↔0 diam)", async () => {
-    const zeroes = () => Array.from({ length: 5 }, (_, i) => prod(i + 1, 0));
-    const { store } = stubApi(zeroes());
+  it("klik berurutan tidak pernah skip: 3× ↓ di kelompok longgar = 3 posisi", async () => {
+    stubApi(tenProducts());
     const { result } = renderManager();
     await act(async () => { await result.current.load(); });
-    const before = result.current.filtered.map((p) => p.id);
-    expect(before).toEqual(["1", "2", "3", "4", "5"]);
+    for (let i = 0; i < 3; i++) {
+      const target = result.current.prods.find((p) => p.id === "3")!;
+      await act(async () => { await result.current.moveProduct(target, 1); });
+    }
+    expect(result.current.filtered.map((p) => p.id).slice(0, 7)).toEqual(
+      ["1", "2", "4", "5", "6", "3", "7"],
+    );
+    expect(result.current.filtered.map((p) => p.sortOrder)).toEqual(
+      [10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
+    );
+  });
+
+  it("baseline kembar 0 TETAP pindah tepat satu (regresi skip 2–3 posisi)", async () => {
+    const zeroes = () => Array.from({ length: 5 }, (_, i) => prod(i + 1, 0));
+    stubApi(zeroes());
+    const { result } = renderManager();
+    await act(async () => { await result.current.load(); });
+    expect(result.current.filtered.map((p) => p.id)).toEqual(["1", "2", "3", "4", "5"]);
     const target = result.current.prods.find((p) => p.id === "2")!;
     await act(async () => { await result.current.moveProduct(target, 1); });
-    // Tetangga bawah (id 3) order 0 + 1 = 1 → id 2 jatuh ke dasar kelompok 0.
-    expect(store.get("2")!.sortOrder).toBe(1);
+    // Tepat satu tetangga dilewati — bukan jatuh ke dasar kelompok.
     expect(result.current.filtered.map((p) => p.id)).toEqual(
-      ["1", "3", "4", "5", "2"],
+      ["1", "3", "2", "4", "5"],
     );
+    expect(result.current.filtered.map((p) => p.sortOrder)).toEqual([10, 20, 30, 40, 50]);
+  });
+
+  it("batas kelompok status tidak dikirim request (ready tidak masuk habis/nonaktif)", async () => {
+    const list = [
+      prod(1, 10, { stock: -1 }),
+      prod(2, 20, { stock: 0 }),
+      prod(3, 30, { isActive: false }),
+    ];
+    const { calls } = stubApi(list);
+    const { result } = renderManager();
+    await act(async () => { await result.current.load(); });
+    // Urutan kanonis: ready(1) → habis(2) → nonaktif(3).
+    expect(result.current.filtered.map((p) => p.id)).toEqual(["1", "2", "3"]);
+    const ready = result.current.prods.find((p) => p.id === "1")!;
+    const inactive = result.current.prods.find((p) => p.id === "3")!;
+    await act(async () => { await result.current.moveProduct(ready, 1); });
+    await act(async () => { await result.current.moveProduct(inactive, -1); });
+    expect(calls.filter((c) => c.url === "/api/products/reorder")).toHaveLength(0);
+    expect(result.current.filtered.map((p) => p.id)).toEqual(["1", "2", "3"]);
   });
 
   it("sukses tanpa fetch ulang: halaman/scroll/focus utuh (realtime)", async () => {
@@ -180,9 +246,8 @@ describe("moveProduct: geser sort_order dari baseline tetangga via SATU PUT", ()
     expect(result.current.paged.map((p) => p.id)).toEqual(["9", "10"]);
     const target = result.current.prods.find((p) => p.id === "9")!;
     await act(async () => { await result.current.moveProduct(target, 1); });
-    // Satu PUT, nol GET ulang — halaman tetap 2 (load() akan me-reset ke
-    // safePage yang bisa melompat bila item pindah halaman).
-    expect(calls.filter((c) => c.method === "PUT")).toHaveLength(1);
+    // Satu POST reorder, nol GET ulang — halaman tetap 2.
+    expect(calls.filter((c) => c.url === "/api/products/reorder")).toHaveLength(1);
     expect(calls.filter((c) => c.url === "/api/products" && c.method === "GET")).toHaveLength(1);
     expect(result.current.safePage).toBe(2);
   });
@@ -195,11 +260,11 @@ describe("moveProduct: geser sort_order dari baseline tetangga via SATU PUT", ()
     const last = result.current.prods.find((p) => p.id === "10")!;
     await act(async () => { await result.current.moveProduct(first, -1); });
     await act(async () => { await result.current.moveProduct(last, 1); });
-    expect(calls.filter((c) => c.method === "PUT")).toHaveLength(0);
+    expect(calls.filter((c) => c.url === "/api/products/reorder")).toHaveLength(0);
     expect(result.current.filtered.map((p) => p.id)[0]).toBe("1");
   });
 
-  it("batas halaman: ↓ produk terakhir hal.1 (id 8) bergeser +1 dari pertama hal.2 (id 9)", async () => {
+  it("batas halaman: ↓ produk terakhir hal.1 (id 8) bertukar dengan pertama hal.2 (id 9)", async () => {
     const { calls, store } = stubApi(tenProducts());
     const { result } = renderManager();
     await act(async () => { await result.current.load(); });
@@ -208,19 +273,16 @@ describe("moveProduct: geser sort_order dari baseline tetangga via SATU PUT", ()
     expect(result.current.totalPages).toBe(2);
     const eighth = result.current.prods.find((p) => p.id === "8")!;
     await act(async () => { await result.current.moveProduct(eighth, 1); });
-    const puts = calls.filter((c) => c.method === "PUT");
-    // SATU PUT hanya untuk produk yang diklik — tetangga tak disentuh.
-    expect(puts).toHaveLength(1);
-    expect(puts[0].url).toBe("/api/products/8");
-    // Baseline tetangga (id 9, order 9) + 1 = 10 → 8 jatuh di bawah 9.
-    // (10 tabrakan dengan id 10, tie-break id menaruh 8 sebelum 10 —
-    // tetap di bawah tetangga tujuan, gerakan yang diminta.)
-    expect(store.get("8")!.sortOrder).toBe(10);
-    expect(store.get("9")!.sortOrder).toBe(9);
-    // Urutan global mencerminkan geseran.
+    const posts = calls.filter((c) => c.url === "/api/products/reorder");
+    // SATU POST — server menukar + menormalisasi seluruh key.
+    expect(posts).toHaveLength(1);
+    expect(posts[0].body).toEqual({ productId: 8, direction: 1 });
+    // Urutan global mencerminkan pertukaran tepat satu posisi.
     expect(result.current.filtered.map((p) => p.id)).toEqual(
       ["1", "2", "3", "4", "5", "6", "7", "9", "8", "10"],
     );
+    expect(store.get("9")!.sortOrder).toBe(80);
+    expect(store.get("8")!.sortOrder).toBe(90);
   });
 
   it("PUT gagal → state dikembalikan (rollback optimistic)", async () => {
@@ -245,9 +307,8 @@ describe("moveProduct: geser sort_order dari baseline tetangga via SATU PUT", ()
 
   it("gerakan no-op tidak mengirim request (sudah di posisi itu)", async () => {
     // id 1 (order 1) di puncak: ↑ tetangga tak ada → return dini (dicakup
-    // test batas). Di sini: order unik 5/6 — geser ke nilai yang SAMA
-    // dengan semula tidak mungkin via baseline tetangga, jadi cukup
-    // pastikan dua gerakan berurutan mengirim tepat 1 PUT per gerakan.
+    // test batas). Di sini dua gerakan berurutan mengirim tepat 1 POST
+    // per gerakan (tidak ada PUT parsial / request ganda).
     const { calls } = stubApi(tenProducts());
     const { result } = renderManager();
     await act(async () => { await result.current.load(); });
@@ -255,11 +316,11 @@ describe("moveProduct: geser sort_order dari baseline tetangga via SATU PUT", ()
     await act(async () => { await result.current.moveProduct(target, -1); });
     const afterFirst = result.current.prods.find((p) => p.id === "5")!;
     await act(async () => { await result.current.moveProduct(afterFirst, 1); });
-    expect(calls.filter((c) => c.method === "PUT")).toHaveLength(2);
+    expect(calls.filter((c) => c.url === "/api/products/reorder")).toHaveLength(2);
   });
 });
 
-describe("editor: input angka Urutan tersimpan via save", () => {
+describe("editor: modal membaca posisi 1..N, tidak mengirim kunci posisi", () => {
   function stubSaveApi() {
     const calls: { url: string; method: string; body: Record<string, unknown> | null }[] = [];
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
@@ -288,30 +349,97 @@ describe("editor: input angka Urutan tersimpan via save", () => {
     return calls;
   }
 
-  it("openEdit memuat sortOrder ke form; save mengirim nilai baru (bukan hardcode 0)", async () => {
+  it("openEdit memuat posisi 1..N ke modal; save TIDAK mengirim kunci posisi", async () => {
     const calls = stubSaveApi();
     const { result } = renderManager();
     await act(async () => { await result.current.openEdit(prod(1, 3)); });
-    expect(result.current.form.sortOrder).toBe(3);
-    act(() => { result.current.setForm({ ...result.current.form, sortOrder: 42 }); });
+    // Modal berbicara posisi (1 dari 1), bukan raw key (3).
+    expect(result.current.form.displayPosition).toBe(1);
+    expect(result.current.form.sortOrder).toBeUndefined();
     await act(async () => { await result.current.save(); });
     const put = calls.find((c) => c.method === "PUT");
     expect(put).toBeDefined();
-    expect(put!.body!.sortOrder).toBe(42);
+    // Edit existing tidak boleh menggeser posisi diam-diam.
+    expect(put!.body!.sortOrder).toBeUndefined();
   });
 
-  it("sortOrder non-angka ditolak validasi sebelum request", async () => {
-    const calls = stubSaveApi();
+  it("modal produk baru menampilkan posisi akhir + mengalokasikan kunci akhir", async () => {
+    stubSaveApi();
     const { result } = renderManager();
-    await act(async () => { await result.current.openEdit(prod(1, 3)); });
-    act(() => { result.current.setForm({ ...result.current.form, sortOrder: "abc" as unknown as number }); });
-    await act(async () => { await result.current.save(); });
-    expect(result.current.formError).toMatch(/Urutan harus angka/);
-    expect(calls.some((c) => c.method === "PUT")).toBe(false);
+    await act(async () => { await result.current.load(); });
+    act(() => { result.current.openNew(); });
+    expect(result.current.form.displayPosition).toBe(2);
+    expect(result.current.form.sortOrder).toBeGreaterThan(0);
   });
 });
 
-describe("migrasi 0047: backfill sort_order 0 → unik", () => {
+describe("endpoint POST /api/products/reorder (server, D1 fixture)", () => {
+  let fixture: ReturnType<typeof createD1Fixture>;
+  const post = async (body: unknown, authed = true) => {
+    // Import ulang per panggilan: modul route meng-cache binding D1 via
+    // getD1() di level helper — tanpa reset, POST kedua membaca fixture
+    // yang sudah ditutup (D1 fixture diganti tiap beforeEach). vi.resetModules
+    // ikut me-reset vi.mock auth, jadi mock dipasang ulang SETELAH reset
+    // via doMock (bukan via vi.mocked yang menunjuk mock lama).
+    vi.resetModules();
+    vi.doMock("@/lib/auth", () => ({ requireAdmin: vi.fn(async () => authed ? { email: "admin@test" } : null) }));
+    const { POST } = await import("@/app/api/products/reorder/route");
+    return POST(new NextRequest("http://localhost/api/products/reorder", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    }) as never);
+  };
+  const orderOf = () => fixture.sql.prepare("SELECT id, sort_order FROM products ORDER BY sort_order, id").all()
+    .map((r) => `${r.id}:${r.sort_order}`).join(" ");
+  beforeEach(() => {
+    vi.resetModules();
+    fixture = createD1Fixture();
+    vi.mocked(requireAdmin).mockReset();
+    fixture.sql.prepare(
+      "INSERT INTO products (id, category_id, name, slug, description, price, stock, is_active, sort_order) VALUES (1,1,'A','a','d',1000,-1,1,0),(2,1,'B','b','d',1000,-1,1,0),(3,1,'C','c','d',1000,-1,1,0),(4,1,'D','d','d',1000,0,1,0),(5,1,'E','e','d',1000,-1,0,0)",
+    ).run();
+  });
+  afterEach(() => { fixture.close(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+  it("menukar tepat satu tetangga lalu menormalisasi 10,20,30…", async () => {
+    const res = await post({ productId: 2, direction: 1 });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { products: { id: number; sortOrder: number }[] };
+    expect(body.products.map((p) => p.id)).toEqual([1, 3, 2, 4, 5]);
+    expect(body.products.map((p) => p.sortOrder)).toEqual([10, 20, 30, 40, 50]);
+    expect(orderOf()).toBe("1:10 3:20 2:30 4:40 5:50");
+  });
+
+  it("klik berurutan tidak pernah skip: 1× ↓ lalu kandas di batas kelompok", async () => {
+    // Fixture: ready = id 1,2,3 · habis = id 4 · nonaktif = id 5. id 2 turun
+    // sekali (2→3): langkah kedua 409 karena tetangga berikutnya (id 4)
+    // beda bucket — bukan skip ke habis/nonaktif.
+    expect((await post({ productId: 2, direction: 1 })).status).toBe(200);
+    expect(orderOf()).toBe("1:10 3:20 2:30 4:40 5:50");
+    expect((await post({ productId: 2, direction: 1 })).status).toBe(409);
+    expect(orderOf()).toBe("1:10 3:20 2:30 4:40 5:50");
+  });
+
+  it("batas kelompok: ready tidak turun ke habis; nonaktif tidak naik (409)", async () => {
+    // id 3 = ready terakhir; id 4 = habis; id 5 = nonaktif.
+    expect((await post({ productId: 3, direction: 1 })).status).toBe(409);
+    expect((await post({ productId: 5, direction: -1 })).status).toBe(409);
+    // DB tidak berubah.
+    expect(orderOf()).toBe("1:0 2:0 3:0 4:0 5:0");
+  });
+
+  it("batas katalog: puncak ↑ dan dasar ↓ ditolak 409", async () => {
+    expect((await post({ productId: 1, direction: -1 })).status).toBe(409);
+    expect((await post({ productId: 5, direction: 1 })).status).toBe(409);
+  });
+
+  it("validasi + auth: body salah 400, tanpa admin 401", async () => {
+    expect((await post({ productId: 1, direction: 2 })).status).toBe(400);
+    expect((await post({ productId: -1, direction: 1 })).status).toBe(400);
+    expect((await post({ productId: 1, direction: 1 }, false)).status).toBe(401);
+  });
+});
+
+describe("migrasi 0048: normalisasi kunci kembar → 10,20,30…", () => {
   const nodeRequire = createRequire(import.meta.url);
   const { DatabaseSync } = nodeRequire("node:sqlite") as {
     DatabaseSync: new (location: string) => {
@@ -364,6 +492,32 @@ describe("migrasi 0047: backfill sort_order 0 → unik", () => {
       db.close();
     }
   });
+
+  it("0048: key kembar produksi (0,0,1,1,2,2,18,19) → unik 10,20,30… tanpa mengubah urutan tampil", () => {
+    const db = new DatabaseSync(":memory:");
+    try {
+      db.exec(read("drizzle/schema.sql"));
+      db.exec("DELETE FROM product_variants; DELETE FROM products;");
+      const raws = [0, 0, 1, 1, 2, 2, 18, 19];
+      raws.forEach((order, i) => {
+        db.prepare(
+          "INSERT INTO products (id, category_id, name, slug, description, price, stock, is_active, sort_order) VALUES (?,?,?,?,?,?,?,1,?)",
+        ).run(i + 1, 1, `P${i + 1}`, `p-${i + 1}`, "d", 10000, -1, order);
+      });
+      const before = db.prepare("SELECT id FROM products ORDER BY sort_order, id").all().map((r) => Number(r.id));
+      db.exec(read("drizzle/migrations/0048_product_sort_order_normalize.sql"));
+      const after = db.prepare("SELECT id, sort_order FROM products ORDER BY sort_order").all();
+      // Urutan tampil identik, key menjadi unik berjarak.
+      expect(after.map((r) => Number(r.id))).toEqual(before);
+      expect(after.map((r) => Number(r.sort_order))).toEqual([10, 20, 30, 40, 50, 60, 70, 80]);
+      // Rerun idempoten.
+      db.exec(read("drizzle/migrations/0048_product_sort_order_normalize.sql"));
+      const rerun = db.prepare("SELECT sort_order FROM products ORDER BY sort_order").all();
+      expect(rerun.map((r) => Number(r.sort_order))).toEqual([10, 20, 30, 40, 50, 60, 70, 80]);
+    } finally {
+      db.close();
+    }
+  });
 });
 
 describe("kontrak API urutan tetap", () => {
@@ -396,10 +550,10 @@ describe("kontrak API urutan tetap", () => {
     expect(src).toContain("(orderIndex.get(p.id) ?? 0) + 1");
     expect(src).not.toContain(">{p.sortOrder ?? 0}<");
   });
-  it("ProductEditorModal punya input Urutan 0-999999", () => {
+  it("ProductEditorModal menampilkan posisi read-only (bukan input kunci)", () => {
     const src = read("src/components/admin/ProductEditorModal.tsx");
-    expect(src).toContain("form.sortOrder");
-    expect(src).toContain("max={999999}");
+    expect(src).toContain("form.displayPosition");
+    expect(src).not.toContain("max={999999}");
   });
 });
 

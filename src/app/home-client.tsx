@@ -7,15 +7,11 @@ import { ProductCard } from "@/components/storefront/ProductCard";
 import { CommunityBar } from "@/components/storefront/CommunityBar";
 import type { Product } from "@/lib/products";
 import { resolveCategorySlug } from "@/lib/products";
+import { sortProductsForDisplay } from "@/lib/product-order";
 import { useSearch } from "@/stores/search";
 import { StoreWhatsAppLink } from "@/components/storefront/StoreWhatsAppLink";
 
 const PER_PAGE = 12;
-
-/** Produk tanpa stok tetap tampil, tetapi selalu di belakang yang masih ready. */
-function isSoldOut(p: Product): boolean {
-  return p.stock != null && p.stock !== -1 && p.stock <= 0;
-}
 
 /**
  * `initialProducts` dirender server (page.tsx) agar katalog ada di HTML awal:
@@ -68,13 +64,7 @@ export function HomeClient({ initialProducts }: { initialProducts?: Product[] })
     // aktif-dulu diabaikan di sini (katalog publik hanya memuat aktif),
     // ready → sortOrder → id. Nonaktif tidak pernah sampai ke storefront
     // (?active=1), jadi cabang byActive admin tidak berlaku di sini.
-    return matched.slice().sort((a, b) => {
-      const bySold = Number(isSoldOut(a)) - Number(isSoldOut(b));
-      if (bySold !== 0) return bySold;
-      const byOrder = (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
-      if (byOrder !== 0) return byOrder;
-      return Number(a.id) - Number(b.id);
-    });
+    return sortProductsForDisplay(matched);
   }, [activeCat, q, catalogProducts]);
 
   // Filter baru = daftar baru: kembali ke batch pertama.

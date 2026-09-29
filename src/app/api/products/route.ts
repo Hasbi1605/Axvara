@@ -216,7 +216,7 @@ const productSchema = z.object({
   soldCount: z.coerce.number().int().min(0).max(999999).optional().default(0),
   stock: z.coerce.number().int().min(-1).max(999999).optional().default(-1),
   isActive: z.boolean().optional().default(true),
-  sortOrder: z.coerce.number().int().min(0).max(999999).optional().default(0),
+  sortOrder: z.coerce.number().int().min(0).max(999999).optional(),
   // Toggle email wajib (migrasi 0033). Dulu tidak ada di skema ini, sehingga
   // produk baru selalu tersimpan require_email=0 walau dicentang.
   requireEmail: z.boolean().optional().default(false),
@@ -264,12 +264,16 @@ export async function POST(req: NextRequest) {
   if (imageUrl && !urlOk(imageUrl)) return NextResponse.json({ error: "URL gambar utama tidak diizinkan" }, { status: 400 });
   const primary = imageUrl ?? imgArr[0] ?? null;
   try {
+    // Request lama/agent yang tidak membawa urutan harus masuk akhir, bukan 0
+    // (0 membuat produk baru meloncat ke puncak dan menabrak key existing).
+    const currentMaxOrder = await queryFirst("SELECT MAX(sort_order) AS max_order FROM products") as { max_order?: number } | undefined;
+    const effectiveSortOrder = sortOrder ?? Math.min(999999, Number(currentMaxOrder?.max_order ?? 0) + 10);
     const values = [
       category_id, name, slug, description ?? "", whatsappAlias || null, Number(effectivePrice),
       comparePrice ? Number(comparePrice) : null, primary, JSON.stringify(imgArr),
       badge ?? null, soldCount ? Number(soldCount) : 0,
       stock != null ? Number(stock) : -1, isActive === false ? 0 : 1,
-      sortOrder ? Number(sortOrder) : 0,
+       Number(effectiveSortOrder),
       requireEmail ? 1 : 0,
     ];
     // require_email sengaja kolom TERAKHIR: adaptor dev in-memory membaca
