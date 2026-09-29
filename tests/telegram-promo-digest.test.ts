@@ -5,13 +5,12 @@ import type { DatabaseAccess } from "@/lib/db-access";
 vi.mock("@/lib/telegram/api", () => ({ sendMessage: vi.fn() }));
 import { sendMessage } from "@/lib/telegram/api";
 
-const products = [
-  { id: 1, name: "ChatGPT <Pro>", category: "AI", price: 10000 },
-  { id: 2, name: "Canva", category: "Kreator", price: 5000 },
-  { id: 3, name: "Netflix", category: "Hiburan", price: 26000 },
-  { id: 4, name: "Office", category: "Produktivitas", price: 15000 },
-  { id: 5, name: "Spotify", category: "Hiburan", price: 9000 },
-];
+const products = Array.from({ length: 16 }, (_, i) => ({
+  id: i + 1,
+  name: i === 0 ? "ChatGPT <Pro>" : `Produk ${i + 1}`,
+  category: ["AI & Chatbot", "Streaming & Hiburan", "Produktivitas & Office", "Desain & Video"][i % 4],
+  price: (i + 1) * 1000,
+}));
 
 function database(rows: Record<string, unknown>[] = products): DatabaseAccess {
   const databaseRows = rows.map((row) => ({ ...row, promo_price: row.price }));
@@ -64,20 +63,45 @@ describe("Telegram promo digest", () => {
     expect(promoSlotAt(new Date("2026-09-27T13:00:00Z"))).toBeNull();
   });
 
-  it("prefers fresh products and avoids the other daily slot", () => {
-    const selected = selectPromoProducts(products, new Set([1]), new Set([2]), 0);
-    expect(selected).toHaveLength(4);
-    expect(selected.map((product) => product.id)).not.toContain(1);
-    expect(selected.map((product) => product.id)).toContain(2);
+  it("pagi = 12 teratas, sore = 12 berikutnya, tanpa tumpang tindih", () => {
+    const morning = selectPromoProducts(products, new Set(), new Set(), 0);
+    const evening = selectPromoProducts(products, new Set(), new Set(), 1);
+    expect(morning.map((product) => product.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    expect(evening.map((product) => product.id)).toEqual([13, 14, 15, 16]);
+    // Tidak ada produk yang muncul di dua slot.
+    expect(morning.some((product) => evening.some((item) => item.id === product.id))).toBe(false);
   });
 
-  it("renders escaped copy with the final order CTAs", () => {
+  it("hierarki katalog dipertahankan (sort_order, bukan acak/bestseller)", () => {
+    const morning = selectPromoProducts(products, new Set(), new Set(), 0);
+    expect(morning.map((product) => product.id)).toEqual([...morning.map((product) => product.id)].sort((a, b) => a - b));
+  });
+
+  it("renders escaped grouped copy: hook owner, harga tegas, tanpa disclaimer", () => {
     const message = promoMessages("morning", products.slice(0, 3)).full;
     expect(message).toContain("ChatGPT &lt;Pro&gt;");
+    expect(message).toContain("Sedia semua kebutuhan aplikasi dan tools premium favorit anda, murah, mudah, cepat, dan bergaransi.");
+    // Harga tegas varian termurah — tanpa kata "Mulai".
+    expect(message).toContain("Rp1.000");
+    expect(message).not.toContain("Mulai Rp");
+    expect(message).not.toContain("mulai Rp");
+    // Footer disclaimer dihapus.
+    expect(message).not.toContain("mengikuti katalog");
+    expect(message).not.toContain("mengikuti ketersediaan");
+    // Kelompok kategori + CTA final.
+    expect(message).toContain("AI &amp; CHATBOT");
     expect(message).toContain("Order melalui Bot Telegram:");
     expect(message).toContain("Order melalui Website:");
     expect(message).toContain("https://axvara.tech");
     expect(message).not.toContain("Katalog lengkap");
+  });
+
+  it("short bubble ringkas siap forward tanpa disclaimer", () => {
+    const message = promoMessages("evening", products.slice(0, 3)).short;
+    expect(message).toContain("Ready sore ini");
+    expect(message).not.toContain("Mulai");
+    expect(message).not.toContain("mulai");
+    expect(message).not.toContain("mengikuti");
   });
 
   it("sends and persists both bubbles once", async () => {
@@ -102,6 +126,6 @@ describe("Telegram promo digest", () => {
     const result = await sendDueAdminPromoDigest(databaseWithFullSent(), new Date("2026-09-27T02:05:00Z"));
     expect(result).toMatchObject({ fullSent: false, shortSent: true, complete: true });
     expect(sendMessage).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(sendMessage).mock.calls[0][0].text).toContain("Produk premium ready pagi ini");
+    expect(vi.mocked(sendMessage).mock.calls[0][0].text).toContain("Ready pagi ini");
   });
 });

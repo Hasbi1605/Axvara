@@ -309,17 +309,12 @@
   ditampilkan masked pada Konfirmasi Email dengan aksi Bayar QRIS, Ubah Email,
   dan Ubah Jumlah. Invoice belum dibuat sebelum pembeli menekan Bayar QRIS.
 
-### 5.3f Daily Promo Telegram (2026-09-27, live)
-- Grup admin menerima dua slot bahan promosi: 09.00 WIB (kerja, belajar,
-  kreator) dan 17.00 WIB (hiburan/konten). Setiap slot berupa dua bubble:
-  versi lengkap dan versi ringkas agar mudah disalin lintas kanal.
-- Maksimal empat produk, minimum tiga produk ready. Satu produk memakai dua
-  baris: nama dan `Kategori • Mulai Rp…`; tanpa klaim termurah, aman permanen,
-  diskon palsu, atau urgensi stok unlimited.
-- CTA final selalu sejajar: **Order melalui Bot Telegram** dan **Order melalui
-  Website**. Jangan memakai label `Katalog lengkap` atau anchor `/#katalog`.
-- Emoji dibatasi satu per produk; link preview dimatikan agar bubble stabil dan
-  harga/stok ditutup dengan catatan mengikuti katalog terbaru.
+### 5.3f Daily Promo Telegram (2026-09-27 live, revamp 2026-09-29)
+- Grup admin menerima dua slot bahan promosi: 09.00 WIB = 12 produk teratas katalog, 17.00 WIB = 12 berikutnya, tanpa tumpang tindih (hierarki `sort_order` admin = hierarki toko; histori 2 hari hanya fallback bila katalog ready < 24). Setiap slot berupa dua bubble: versi lengkap dan versi ringkas agar mudah disalin lintas kanal.
+- Format kelompok per kategori (ikon per taksonomi, bukan per indeks) + harga tegas varian termurah purchasable — tanpa "Mulai", tanpa footer disclaimer, tanpa klaim termurah/diskon palsu/urgensi stok unlimited.
+- Hook: "Sedia semua kebutuhan aplikasi dan tools premium favorit anda, murah, mudah, cepat, dan bergaransi."
+- CTA final selalu sejajar: **Order melalui Bot Telegram** dan **Order melalui Website**. Jangan memakai label `Katalog lengkap` atau anchor `/#katalog`.
+- Link preview dimatikan agar bubble stabil.
 
 ### 5.4 Keranjang Drawer
 - Overlay: `rgba(8,12,30,0.6)` + `backdrop-blur-sm`
