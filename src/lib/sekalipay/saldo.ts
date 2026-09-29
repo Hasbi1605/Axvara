@@ -1,0 +1,81 @@
+// src/lib/sekalipay/saldo.ts — Monitor saldo Sekalipay + throttle notif admin.
+// Cermin WR saldo.ts: check + log + alert ambang (default Rp250.000).
+
+import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
+import { fetchSkBalance, isSkEnabled } from "./client";
+
+export function skSaldoAlertThreshold(): number {
+  const raw = Number(process.env.SEKALIPAY_SALDO_ALERT_THRESHOLD ?? 250000);
+  return Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : 250000;
+}
+
+export async function checkAndLogSkSaldo(database?: DatabaseAccess): Promise<{
+  balance: number;
+  isLow: boolean;
+  threshold: number;
+}> {
+  const db = database ?? createDatabaseAccess();
+  if (!isSkEnabled()) throw new Error("sekalipay_disabled");
+  const data = await fetchSkBalance();
+  const balance = Math.floor(Number(data.balance ?? 0) || 0);
+  const threshold = skSaldoAlertThreshold();
+  const isLow = balance < threshold;
+  await db
+    .execRun(`INSERT INTO sk_saldo_log (balance, source, note) VALUES (?,'api_check',NULL)`, balance)
+    .catch(() => undefined);
+  if (isLow) {
+    const lastAlert = await db
+      .queryFirst(
+        `SELECT created_at FROM sk_saldo_log WHERE source='low_alert' ORDER BY id DESC LIMIT 1`,
+      )
+      .catch(() => null);
+    const lastTs = lastAlert?.created_at ? Date.parse(String(lastAlert.created_at)) : 0;
+    if (!Number.isFinite(lastTs) || Date.now() - lastTs > 60 * 60 * 1000) {
+      await db
+        .execRun(`INSERT INTO sk_saldo_log (balance, source, note) VALUES (?,'low_alert',?)`, balance, `threshold ${threshold}`)
+        .catch(() => undefined);
+      const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
+      if (adminChatId && process.env.TELEGRAM_BOT_ENABLED === "true") {
+        try {
+          const { sendMessage } = await import("@/lib/telegram/api");
+          await sendMessage({
+            chat_id: adminChatId,
+            text: `💰 <b>Saldo Sekalipay menipis</b>\nSisa Rp${balance.toLocaleString("id-ID")} (ambang Rp${threshold.toLocaleString("id-ID")}). Top up agar auto-order SK tidak tertahan.`,
+            parse_mode: "HTML",
+          });
+        } catch {
+          /* best-effort */
+        }
+      }
+    }
+  }
+  return { balance, isLow, threshold };
+}
+
+export async function estimateSkOrderCapacity(database?: DatabaseAccess): Promise<{
+  balance: number;
+  avgOrderCost: number;
+  estimatedOrders: number;
+}> {
+  const db = database ?? createDatabaseAccess();
+  const last = await db
+    .queryFirst(`SELECT balance FROM sk_saldo_log WHERE source='api_check' ORDER BY id DESC LIMIT 1`)
+    .catch(() => null);
+  const balance = Math.floor(Number(last?.balance ?? 0) || 0);
+  const avg = await db
+    .queryFirst(`SELECT AVG(sk_cost) AS avg_cost FROM sk_order_links WHERE status='completed'`)
+    .catch(() => null);
+  const avgOrderCost = Math.max(1, Math.floor(Number(avg?.avg_cost ?? 5000) || 5000));
+  return { balance, avgOrderCost, estimatedOrders: Math.floor(balance / avgOrderCost) };
+}
+
+export async function getSkSaldoHistory(
+  limit = 10,
+  database?: DatabaseAccess,
+): Promise<{ balance: number; created_at: string }[]> {
+  const db = database ?? createDatabaseAccess();
+  const rows = await db
+    .queryAll(`SELECT balance, created_at FROM sk_saldo_log ORDER BY id DESC LIMIT ?`, Math.max(1, Math.min(limit, 50)))
+    .catch(() => []);
+  return rows.map((r) => ({ balance: Number(r.balance || 0), created_at: String(r.created_at || "") }));
+}

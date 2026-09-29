@@ -335,10 +335,35 @@ QuotaGuard Spike, IP statis `54.88.136.216, 54.84.188.199`) memegang API key WR
 dan menjadi satu-satunya egress yang di-whitelist WR — lihat
 `docs/ARCHITECTURE.md` §16. Cloudflare Pages tidak boleh memegang API
 key WR; yang disimpan di Pages hanya URL + token proxy dan
-`WARUNG_REBAHAN_WEBHOOK_SECRET` untuk verifikasi HMAC. Kredensial Cloudflare
+`WARUNG_REBAHAN_WEBHOOK_SECRET` untuk verifikasi HMAC. **Sejak 2026-09-30
+proxy yang SAMA juga meneruskan Sekalipay (`/sk/*`, key `SK_API_KEY` di dyno,
+IP whitelist SK = IP QuotaGuard yang sama, tanpa add-on baru)** — lihat
+`docs/ARCHITECTURE.md` §15b. Kredensial Cloudflare
 manual diambil dari `.cf-credentials` (git-ignored); kredensial Heroku dua akun
 di `.heroku-credentials` (git-ignored, pola sama); CI/CD memakai GitHub
 Actions Secrets.
+
+### Sekalipay Reseller API (supplier kedua paralel WR, 2026-09-30, default mati)
+
+Axvara menjadi reseller layer di atas Sekalipay (`https://sekalipay.com/api`)
+SEBAGAI SUPPLIER KEDUA yang paralel dengan WR — bukan failover otomatis.
+Produk yang tampil dipilih manual: Netflix (WR) vs Netflix (SK) = dua baris
+katalog berbeda (nama publik `(SK)` vs `(WR)`), admin mengaktifkan salah satu
+atau keduanya untuk perbandingan harga/stok. Fase 1 hanya varian
+`order_process=auto` kategori Aplikasi Premium (lisensi langsung di
+`order.completed`, tanpa field `note/zone_id`); varian manual/h2h/smm dicatat
+di registry tanpa pasangan katalog. Modul `src/lib/sekalipay/` (client header
+`X-APIKEY` + GET baca, sync delta `updated_since`, order `ref_id` idempoten,
+deliver lisensi terenkripsi ke `fulfillment_items`, saldo), webhook
+`POST /api/webhook/sekalipay` (SHA256 `ref:invoice:status:secret`, monotonik),
+fase cron `sekalipay` (`fulfillment → warung_rebahan → SEKALIPAY → notify`,
+budget + deadline yang sama), tab admin **Sekalipay** (saldo, Force Sync,
+antrean retry/void, uji sandbox tanpa potong saldo), migrasi 0049 (tabel
+`sk_*`, kolom `sk_*`, CHECK `source` + `sekalipay`). Seluruhnya di balik
+`SEKALIPAY_ENABLED=false` (lihat `.env.example`); set proxy URL + token +
+`SEKALIPAY_WEBHOOK_SECRET` di Pages Secrets, whitelist 2 IP QuotaGuard di
+dashboard SK, set callback `https://axvara.tech/api/webhook/sekalipay`, lalu
+Force Sync dari tab **Sekalipay**. Arsitektur: `docs/ARCHITECTURE.md` §15b.
 
 ---
 

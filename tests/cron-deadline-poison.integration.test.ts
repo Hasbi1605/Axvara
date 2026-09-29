@@ -353,8 +353,9 @@ describe("cron operations — poison-pill guard", () => {
   it("fase maju di AWAL run, sebelum pekerjaan berat dijalankan", async () => {
     setPhase("warung_rebahan");
     await run();
-    // nextPhase('warung_rebahan') === 'notify'
-    expect(phase()).toBe("notify");
+    // nextPhase('warung_rebahan') === 'sekalipay' (fase SK disisipkan
+    // setelah WR sebagai supplier kedua, sebelum notify — 0049).
+    expect(phase()).toBe("sekalipay");
   });
 
   it("run yang gagal di tengah jalan TIDAK mengulang fase yang sama (anti-loop)", async () => {

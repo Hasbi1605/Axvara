@@ -241,12 +241,24 @@ export async function processItem(order: Row, itemRow: Row, adminChatId?: string
   // terbuang dan lease tidak tertahan. WR menyelesaikan item ini via
   // wr_order_links; agregat order dihitung refreshOrderAggregate.
   if (itemRow.wr_link_id != null) return false;
+  // Item milik pipeline Sekalipay (0049, pola WR): diselesaikan via
+  // sk_order_links; agregat order dihitung refreshOrderAggregate yang sama.
+  if (itemRow.sk_link_id != null) return false;
   const lease = await claimItemLease(itemRow, database, parent);
   if ("skip" in lease) return lease.skip;
   const { item, leaseFence } = lease;
   // Race: item dikaitkan WR setelah baris dibaca — verifikasi ulang di bawah
   // lease; bila milik WR, lepas lease tanpa konsumsi hasil.
   if (item.wr_link_id != null) {
+    await execRun(
+      `UPDATE fulfillment_items SET status='queued', locked_until=NULL, updated_at=datetime('now')
+       WHERE id=? AND locked_until=?`,
+      itemId, leaseFence,
+    ).catch(() => undefined);
+    return false;
+  }
+  // Race SK yang sama (pola WR di atas).
+  if (item.sk_link_id != null) {
     await execRun(
       `UPDATE fulfillment_items SET status='queued', locked_until=NULL, updated_at=datetime('now')
        WHERE id=? AND locked_until=?`,

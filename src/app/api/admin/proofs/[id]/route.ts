@@ -170,6 +170,13 @@ export async function POST(
           await processWrPendingOrders().catch(() => undefined);
         }
       } catch { /* Link WR menyusul via cron. */ }
+      try {
+        const { createSkOrderLinksForOrder, processSkPendingOrders } = await import("@/lib/sekalipay/order");
+        const { isSkAutoOrderEnabled } = await import("@/lib/sekalipay/client");
+        if (isSkAutoOrderEnabled() && (await createSkOrderLinksForOrder(orderCode)) > 0) {
+          await processSkPendingOrders().catch(() => undefined);
+        }
+      } catch { /* Link SK menyusul via cron. */ }
       // Bukti manual WA yang di-approve = order WA lunas → umumkan ke grup
       // Telegram admin (best-effort; cron retry via marker bila gagal).
       try {
@@ -211,6 +218,11 @@ export async function POST(
       const { createWrOrderLinksForOrder } = await import("@/lib/warung-rebahan/order");
       const { isWrAutoOrderEnabled } = await import("@/lib/warung-rebahan/client");
       if (isWrAutoOrderEnabled()) await createWrOrderLinksForOrder(orderCode).catch(() => 0);
+    } catch { /* best effort in dev */ }
+    try {
+      const { createSkOrderLinksForOrder } = await import("@/lib/sekalipay/order");
+      const { isSkAutoOrderEnabled } = await import("@/lib/sekalipay/client");
+      if (isSkAutoOrderEnabled()) await createSkOrderLinksForOrder(orderCode).catch(() => 0);
     } catch { /* best effort in dev */ }
     await incrementSoldCountForOrder(orderCode);
     return NextResponse.json({ ok: true, action: "approved", order_code: orderCode });

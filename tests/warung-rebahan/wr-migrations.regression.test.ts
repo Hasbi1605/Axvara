@@ -23,11 +23,16 @@ const { DatabaseSync } = createRequire(import.meta.url)("node:sqlite") as {
  * Strip memakai string eksak (bukan regex) agar tidak meninggalkan koma.
  */
 const STRIP_SNIPPETS = [
-  `  -- Warung Rebahan H2H (migrasi 0027): sumber katalog + tautan produk WR.
+  // 0049 memperluas blok source (komentar + CHECK 3 nilai + kolom SK) —
+  // strip versi baru agar legacy pra-0027 kembali ke CHECK dua nilai.
+  `  -- Warung Rebahan H2H (migrasi 0027) + Sekalipay (migrasi 0049): sumber katalog.
   source TEXT NOT NULL DEFAULT 'manual'
-    CHECK (source IN ('manual', 'warung_rebahan')),
+    CHECK (source IN ('manual', 'warung_rebahan', 'sekalipay')),
   wr_product_id TEXT,
   wr_auto_managed INTEGER NOT NULL DEFAULT 0,
+  -- Sekalipay supplier kedua (migrasi 0049): tautan produk SK + auto-managed.
+  sk_product_id TEXT,
+  sk_auto_managed INTEGER NOT NULL DEFAULT 0,
 `,
   `  -- Warung Rebahan H2H (migrasi 0029): item milik pipeline WR (bukan manual
   -- palsu) — diselesaikan via wr_order_links, dilewati processItem generik.
@@ -58,12 +63,30 @@ const STRIP_SNIPPETS = [
   buyer_email TEXT DEFAULT NULL,
 `,
   `CREATE INDEX IF NOT EXISTS idx_products_source ON products(source) WHERE source = 'warung_rebahan';
+CREATE INDEX IF NOT EXISTS idx_products_source_sk ON products(source) WHERE source = 'sekalipay';
 CREATE INDEX IF NOT EXISTS idx_products_wr_id ON products(wr_product_id) WHERE wr_product_id IS NOT NULL;
 `,
   `CREATE INDEX IF NOT EXISTS idx_variants_wr_id ON product_variants(wr_variant_id) WHERE wr_variant_id IS NOT NULL;
 `,
   `CREATE INDEX IF NOT EXISTS idx_fulfillment_items_wr_link
   ON fulfillment_items(wr_link_id) WHERE wr_link_id IS NOT NULL;
+`,
+  // 0049: kolom SK sk_variant_id (varian) + sk_link_id (fulfillment_items)
+  // + index SK hidup SEBELUM cut marker — strip agar legacy valid.
+  // (sk_product_id sudah ikut strip blok source di atas.)
+  `  -- Sekalipay (migrasi 0049): item milik pipeline SK (bukan manual palsu) —
+  -- diselesaikan via sk_order_links, dilewati processItem generik (pola WR).
+  sk_link_id INTEGER REFERENCES sk_order_links(id) ON DELETE SET NULL,
+`,
+  `CREATE INDEX IF NOT EXISTS idx_fulfillment_items_sk_link
+  ON fulfillment_items(sk_link_id) WHERE sk_link_id IS NOT NULL;
+`,
+  `  -- Sekalipay (migrasi 0049): tautan varian SK + auto-managed.
+  sk_variant_id TEXT,
+  sk_auto_managed INTEGER NOT NULL DEFAULT 0,
+`,
+  `CREATE INDEX IF NOT EXISTS idx_variants_sk_id ON product_variants(sk_variant_id) WHERE sk_variant_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_products_sk_id ON products(sk_product_id) WHERE sk_product_id IS NOT NULL;
 `,
 ];
 
@@ -73,8 +96,12 @@ function createPreWrDatabase() {
   const cutAt = schema.indexOf(cutMarker);
   if (cutAt < 0) throw new Error("WR block marker not found in schema.sql");
   let legacySchema = schema.slice(0, cutAt);
+  // 0049 memperluas CHECK: strip eksak di atas sudah membuang blok source
+  // 3-nilai — tidak perlu split/join (split SEBELUM strip merusak snippet).
   for (const snippet of STRIP_SNIPPETS) {
-    if (!legacySchema.includes(snippet)) throw new Error(`strip snippet missing: ${snippet.slice(0, 60)}`);
+    if (!legacySchema.includes(snippet)) {
+      throw new Error(`strip snippet missing: ${snippet.slice(0, 60)}`);
+    }
     legacySchema = legacySchema.replace(snippet, "");
   }
   const sql = new DatabaseSync(":memory:");

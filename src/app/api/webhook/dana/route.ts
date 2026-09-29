@@ -172,6 +172,17 @@ export async function POST(request: NextRequest) {
     }
   } catch { /* Link WR menyusul via cron. */ }
 
+  // Produk Sekalipay (supplier kedua paralel, 0049): pola yang sama dengan
+  // WR di atas — link SK dibuat segera, cron fase sekalipay memprosesnya.
+  // Best-effort; tidak mengganggu jalur WR/non-WR bila SK mati.
+  try {
+    const { createSkOrderLinksForOrder, processSkPendingOrders } = await import("@/lib/sekalipay/order");
+    const { isSkAutoOrderEnabled } = await import("@/lib/sekalipay/client");
+    if (isSkAutoOrderEnabled() && (await createSkOrderLinksForOrder(orderCode)) > 0) {
+      await processSkPendingOrders().catch(() => undefined);
+    }
+  } catch { /* Link SK menyusul via cron. */ }
+
   if (String(transaction.sales_channel) === "whatsapp" && transaction.channel_conversation_id) {
     try {
       const orderDetail = await queryFirst(

@@ -72,6 +72,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
         await processWrPendingOrders().catch(() => undefined);
       }
     } catch { /* Link WR menyusul via cron. */ }
+    // Produk SK: pola yang sama (best-effort; cron fase sekalipay memprosesnya).
+    try {
+      const { createSkOrderLinksForOrder, processSkPendingOrders } = await import("@/lib/sekalipay/order");
+      const { isSkAutoOrderEnabled } = await import("@/lib/sekalipay/client");
+      if (isSkAutoOrderEnabled() && (await createSkOrderLinksForOrder(code)) > 0) {
+        await processSkPendingOrders().catch(() => undefined);
+      }
+    } catch { /* Link SK menyusul via cron. */ }
   }
 
   return NextResponse.json({ ok: true, code, status: nxt });

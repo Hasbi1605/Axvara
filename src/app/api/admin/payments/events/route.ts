@@ -125,6 +125,13 @@ export async function POST(request: NextRequest) {
       await processWrPendingOrders().catch(() => undefined);
     }
   } catch { /* Link WR menyusul via cron. */ }
+  try {
+    const { createSkOrderLinksForOrder, processSkPendingOrders } = await import("@/lib/sekalipay/order");
+    const { isSkAutoOrderEnabled } = await import("@/lib/sekalipay/client");
+    if (isSkAutoOrderEnabled() && (await createSkOrderLinksForOrder(orderCode)) > 0) {
+      await processSkPendingOrders().catch(() => undefined);
+    }
+  } catch { /* Link SK menyusul via cron. */ }
   if (String(matches[0].sales_channel) === "whatsapp" && matches[0].channel_conversation_id) {
     try {
       const orderDetail = await queryFirst(`SELECT subtotal, payment_method, variant_snapshot FROM orders WHERE code=?`, orderCode);

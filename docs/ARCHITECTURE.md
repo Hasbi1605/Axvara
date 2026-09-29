@@ -1486,6 +1486,73 @@ bot meneruskannya sebagai email branding Axvara (nol jejak "Warung Rebahan"):
   `RESEND_API_KEY`, `FORWARD_FROM_EMAIL`.
 - **Batas LIKE D1** (50 byte) berlaku untuk param `?q=` pencarian admin WR.
 
+## 15b. Sekalipay Reseller API — Supplier Kedua Paralel WR (2026-09-30, Fase 1)
+
+Axvara menjadi reseller layer di atas Sekalipay (`https://sekalipay.com/api`,
+docs `https://sekalipay.com/api-docs`) SEBAGAI SUPPLIER KEDUA yang paralel
+dengan WR — bukan failover otomatis (keputusan owner). Produk yang tampil
+dipilih manual: Netflix (WR) vs Netflix (SK) = dua baris katalog berbeda.
+
+### Kontrak upstream (beda dari WR — jangan disamakan)
+- **Auth:** header `X-APIKEY` (WR: body `api_key`). Key SK disuntik
+  server-side oleh proxy Heroku (`SK_API_KEY` dyno); Pages tidak menyimpan key.
+- **Baca = GET + query** (`GET /v1/balance`, `GET /v1/item?per_page=all`,
+  delta `?updated_since=<server_time>`, `GET /v1/trx/{ref_id}`); WR semua POST.
+- **Tulis = POST JSON** (`POST /v1/trx {ref_id, carts[]}`, `POST
+  /v1/order/sandbox {ref_id, items[]}`). `ref_id` IDEMPOTEN di sisi SK
+  (`422 REF_ID_ALREADY_EXIST` = ambil detail, bukan order ganda) — kunci
+  `sk:<order_code>:<sk_variant_id>:<qty>` (maks 191 char).
+- **Validasi 422 SEBELUM potong saldo** (`REQUIRED_FIELD_MISSING` +
+  `field: carts.0.note`). Fase 1 (auto) tidak pernah mengirim note.
+- **503 `PRODUCT_TEMPORARILY_UNAVAILABLE`** = ditolak di depan, saldo tidak
+  terpotong → retry normal, bukan failed permanen.
+- **order_process:** `auto` (lisensi langsung), `manual` (admin kirim, event
+  per-item `order.item.sent`), `h2h` (SN per-unit `units[]`), `smm`. Fase 1
+  HANYA `auto`; sisanya tercatat di registry tanpa pasangan katalog.
+- **Webhook event:** `order.paid/completed/canceled` + `order.item.sent` +
+  `webhook.test`. Signature `SHA256(ref_id:invoice:status:secret)` dengan
+  status event-dependent (`data.status` / `item.sent` / `test`), header
+  `X-Signature/X-Timestamp/X-Event`, jawab 2xx cepat + proses async + dedup
+  `sk_webhook_events` + retry exponential 5x dari SK.
+
+### Arsitektur terpasang (cermin WR, scope lebih kecil)
+- **Proxy:** route `/sk/*` di `axvara-wr-proxy` (akun Heroku #2) — pass-through
+  method+query+body di bawah prefix `/v1/`, key disuntik server-side, egress
+  QuotaGuard yang SAMA (IP whitelist SK = `54.88.136.216, 54.84.188.199`,
+  tanpa add-on baru). `GET /sk/health` tanpa bocor key.
+- **Modul `src/lib/sekalipay/`:** `client.ts` (fetch edge + klasifikasi error
+  + signature), `sync.ts` (registry per-varian + katalog hanya auto + nama
+  `(SK)` + markup 50% + cursor + zero-missing sweep-penuh), `order.ts`
+  (exactly-once claim/lease + reconcile via `GET /v1/trx` + blocked 24 jam),
+  `deliver.ts` (lisensi → `fulfillment_items.delivered_ciphertext/iv`
+  sehingga panel/email/token yang SUDAH ada langsung jalan; agregat via
+  `refreshOrderAggregate` yang sama), `saldo.ts` (check + alert Rp250rb).
+- **Kepemilikan (cermin 0030):** SK = stok/modal/label/seller_note/process;
+  Admin = foto/badge/sort/is_active/markup/tampil. Sync tidak pernah menulis
+  `sold_count`, `admin_*`, `require_email`, `min_qty`, `fulfillment_mode`.
+- **Fulfillment generik dilewati untuk item SK** (`sk_link_id NOT NULL` di
+  `send.ts` + `process.ts`, pola `wr_link_id`) — diselesaikan via
+  `sk_order_links`, agregat order dari seluruh item (mixed cart jujur).
+- **Hook lunas 4 jalur** (webhook DANA, konfirmasi admin, approve bukti,
+  retry payments/events) membuat link SK best-effort SETELAH link WR —
+  SK mati tidak mengganggu WR/non-WR.
+- **Cron fase `sekalipay`** (`fulfillment → warung_rebahan → SEKALIPAY →
+  notify`): order due + sync 30 mnt + reconcile + saldo 1 jam, budget +
+  deadline + cadangan ekor yang sama. Fase hanya masuk rotasi bila relevan
+  (SK aktif/ada kerja/deferred lama) — saat SK mati rotasi IDENTIK baseline
+  (nol query/deferred ekstra, dikunci test R12).
+- **Admin:** tab **Sekalipay** (saldo + kapasitas, Force Sync, antrean
+  retry/void CAS, uji sandbox tanpa potong saldo), API
+  `/api/admin/sekalipay/*`, rate-limit `webhook:sekalipay` 60/mnt.
+- **DB (migrasi 0049):** tabel `sk_products/sk_order_links/sk_sync_log/
+  sk_saldo_log/sk_webhook_events/sk_sync_state`, kolom `sk_*` katalog +
+  `fulfillment_items.sk_link_id`, CHECK `source` + `sekalipay` (rebuild
+  12-langkah pola 0029 + namespace negatif pola 0008 + `foreign_key_check`
+  ekor; bootstrap baru inline di `schema.sql`).
+- **Env (`secret_text`):** `SEKALIPAY_ENABLED/AUTO_ORDER_ENABLED=false`
+  default, `SEKALIPAY_PROXY_URL/TOKEN`, `SEKALIPAY_WEBHOOK_SECRET`, markup +
+  ambang + kategori default (lihat `.env.example`).
+
 ## 16. Insiden operasional 2026-09-14 + arsitektur proxy terpisah (WAJIB DIBACA agent)
 
 Hari ini prod lumpuh total (login 503, bot WA/Telegram mati, QRIS hilang, varian

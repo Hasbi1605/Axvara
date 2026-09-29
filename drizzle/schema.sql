@@ -29,11 +29,14 @@ CREATE TABLE IF NOT EXISTS products (
   shared_secret_ciphertext TEXT,
   shared_secret_iv TEXT,
   telegram_enabled INTEGER NOT NULL DEFAULT 1,
-  -- Warung Rebahan H2H (migrasi 0027): sumber katalog + tautan produk WR.
+  -- Warung Rebahan H2H (migrasi 0027) + Sekalipay (migrasi 0049): sumber katalog.
   source TEXT NOT NULL DEFAULT 'manual'
-    CHECK (source IN ('manual', 'warung_rebahan')),
+    CHECK (source IN ('manual', 'warung_rebahan', 'sekalipay')),
   wr_product_id TEXT,
   wr_auto_managed INTEGER NOT NULL DEFAULT 0,
+  -- Sekalipay supplier kedua (migrasi 0049): tautan produk SK + auto-managed.
+  sk_product_id TEXT,
+  sk_auto_managed INTEGER NOT NULL DEFAULT 0,
   -- Migrasi 0030: deskripsi milik admin. NULL = pakai `description` (milik WR).
   -- Sync WR tidak pernah menulis kolom ini.
   admin_description_override TEXT,
@@ -45,6 +48,7 @@ CREATE TABLE IF NOT EXISTS products (
   updated_at TEXT DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_products_source ON products(source) WHERE source = 'warung_rebahan';
+CREATE INDEX IF NOT EXISTS idx_products_source_sk ON products(source) WHERE source = 'sekalipay';
 CREATE INDEX IF NOT EXISTS idx_products_wr_id ON products(wr_product_id) WHERE wr_product_id IS NOT NULL;
 CREATE TABLE IF NOT EXISTS orders (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -474,6 +478,9 @@ CREATE TABLE IF NOT EXISTS fulfillment_items (
   -- Warung Rebahan H2H (migrasi 0029): item milik pipeline WR (bukan manual
   -- palsu) — diselesaikan via wr_order_links, dilewati processItem generik.
   wr_link_id INTEGER REFERENCES wr_order_links(id) ON DELETE SET NULL,
+  -- Sekalipay (migrasi 0049): item milik pipeline SK (bukan manual palsu) —
+  -- diselesaikan via sk_order_links, dilewati processItem generik (pola WR).
+  sk_link_id INTEGER REFERENCES sk_order_links(id) ON DELETE SET NULL,
   -- Migrasi 0043: salinan terenkripsi isi yang dikirim ke pembeli (dibaca
   -- halaman pesanan setelah verifikasi WA/token).
   delivered_ciphertext TEXT,
@@ -484,6 +491,8 @@ CREATE TABLE IF NOT EXISTS fulfillment_items (
 );
 CREATE INDEX IF NOT EXISTS idx_fulfillment_items_wr_link
   ON fulfillment_items(wr_link_id) WHERE wr_link_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_fulfillment_items_sk_link
+  ON fulfillment_items(sk_link_id) WHERE sk_link_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_fulfillment_items_order
   ON fulfillment_items(order_code, status);
 CREATE INDEX IF NOT EXISTS idx_fulfillment_items_next
@@ -525,6 +534,9 @@ CREATE TABLE IF NOT EXISTS product_variants (
   -- Warung Rebahan H2H (migrasi 0027): tautan varian WR + auto-managed.
   wr_variant_id TEXT,
   wr_auto_managed INTEGER NOT NULL DEFAULT 0,
+  -- Sekalipay (migrasi 0049): tautan varian SK + auto-managed.
+  sk_variant_id TEXT,
+  sk_auto_managed INTEGER NOT NULL DEFAULT 0,
 
   -- Migrasi 0041: S&K + cara aktivasi versi admin per varian (milik admin,
   -- sync WR tidak pernah menulis). Tampil selama admin_copy_fingerprint sama
@@ -544,6 +556,8 @@ CREATE TABLE IF NOT EXISTS product_variants (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_variants_wr_id ON product_variants(wr_variant_id) WHERE wr_variant_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_variants_sk_id ON product_variants(sk_variant_id) WHERE sk_variant_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_products_sk_id ON products(sk_product_id) WHERE sk_product_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_product_variants_product ON product_variants(product_id, is_active, sort_order);
 CREATE INDEX IF NOT EXISTS idx_product_variants_sku ON product_variants(sku);
@@ -889,3 +903,128 @@ CREATE INDEX IF NOT EXISTS idx_buyer_notice_order ON buyer_notice_log(order_code
 
 -- Kolom WR di katalog utama (0027) + marker kepemilikan WR (0029).
 -- Guard PRAGMA agar schema.sql tetap rerun-aman di fixture/dev.
+-- Kolom SK di katalog utama + registry mirror + exactly-once (0049).
+-- Inline di schema (bukan ALTER) agar fixture/test langsung jalan.
+-- ────────────────────────────────────────────────────────────
+-- Sekalipay supplier kedua (migrasi 0049): mirror + exactly-once.
+-- Cermin tabel WR. Fase 1 hanya varian order_process=auto yang dibuatkan
+-- pasangan katalog; sisanya tercatat di sk_products tanpa pasangan.
+-- ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS sk_products (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  sk_variant_id     TEXT NOT NULL UNIQUE,
+  sk_product_id     TEXT NOT NULL,
+  sk_product_name   TEXT NOT NULL,
+  sk_category       TEXT,
+  sk_variant_name   TEXT NOT NULL,
+  sk_price          INTEGER NOT NULL,
+  sk_stock          INTEGER NOT NULL DEFAULT 0,
+  sk_order_process  TEXT NOT NULL DEFAULT 'auto',
+  sk_seller_note    TEXT,
+  axvara_product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
+  axvara_variant_id INTEGER REFERENCES product_variants(id) ON DELETE SET NULL,
+  markup_percent    INTEGER NOT NULL DEFAULT 50,
+  markup_fixed      INTEGER NOT NULL DEFAULT 0,
+  axvara_sell_price INTEGER NOT NULL DEFAULT 0,
+  is_active         INTEGER NOT NULL DEFAULT 1,
+  last_synced_at    TEXT,
+  created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at        TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_sk_products_product ON sk_products(sk_product_id);
+CREATE TABLE IF NOT EXISTS sk_order_links (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_code      TEXT NOT NULL REFERENCES orders(code),
+  sk_invoice      TEXT,
+  sk_variant_id   TEXT NOT NULL,
+  quantity        INTEGER NOT NULL DEFAULT 1,
+  sk_cost         INTEGER NOT NULL,
+  status          TEXT NOT NULL DEFAULT 'pending'
+                  CHECK (status IN (
+                    'pending',
+                    'claimed',
+                    'submitted',
+                    'ordering',
+                    'processing',
+                    'completed',
+                    'failed',
+                    'retry',
+                    'blocked_balance'
+                  )),
+  attempt_count   INTEGER NOT NULL DEFAULT 0,
+  max_attempts    INTEGER NOT NULL DEFAULT 3,
+  next_attempt_at TEXT,
+  last_error      TEXT,
+  sk_account_details TEXT,
+  sk_account_iv   TEXT,
+  completed_at    TEXT,
+  idempotency_key TEXT,
+  lease_owner TEXT,
+  lease_expires_at TEXT,
+  request_sent_at TEXT,
+  last_claim_at TEXT,
+  last_event_id TEXT,
+  last_event_at TEXT,
+  fulfillment_item_id INTEGER REFERENCES fulfillment_items(id) ON DELETE SET NULL,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_sk_links_idempotency
+  ON sk_order_links(idempotency_key) WHERE idempotency_key IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_sk_order_links_order_code ON sk_order_links(order_code);
+CREATE INDEX IF NOT EXISTS idx_sk_order_links_invoice ON sk_order_links(sk_invoice) WHERE sk_invoice IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_sk_order_links_status ON sk_order_links(status);
+CREATE INDEX IF NOT EXISTS idx_sk_order_links_retry ON sk_order_links(status, next_attempt_at)
+  WHERE status IN ('pending', 'retry');
+CREATE INDEX IF NOT EXISTS idx_sk_links_lease
+  ON sk_order_links(status, lease_expires_at)
+  WHERE status IN ('claimed','submitted','ordering');
+CREATE INDEX IF NOT EXISTS idx_sk_links_item
+  ON sk_order_links(fulfillment_item_id) WHERE fulfillment_item_id IS NOT NULL;
+CREATE TABLE IF NOT EXISTS sk_sync_log (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  sync_type         TEXT NOT NULL CHECK (sync_type IN ('products', 'saldo', 'order_status')),
+  status            TEXT NOT NULL CHECK (status IN ('success', 'partial', 'failed')),
+  products_total    INTEGER,
+  products_synced   INTEGER,
+  products_excluded INTEGER,
+  products_new      INTEGER,
+  variants_synced   INTEGER,
+  stock_changes     INTEGER,
+  price_changes     INTEGER,
+  saldo_amount      INTEGER,
+  error_message     TEXT,
+  duration_ms       INTEGER,
+  trigger           TEXT NOT NULL DEFAULT 'manual'
+                    CHECK (trigger IN ('manual', 'cron')),
+  created_at        TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS sk_saldo_log (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  balance     INTEGER NOT NULL,
+  source      TEXT NOT NULL DEFAULT 'api_check'
+              CHECK (source IN ('api_check', 'order_deduct', 'manual_topup', 'low_alert')),
+  note        TEXT,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS sk_webhook_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  sk_invoice TEXT NOT NULL,
+  event TEXT NOT NULL,
+  event_id TEXT,
+  received_at TEXT NOT NULL DEFAULT (datetime('now')),
+  applied INTEGER NOT NULL DEFAULT 0,
+  result TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_sk_webhook_invoice ON sk_webhook_events(sk_invoice, id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_sk_webhook_event
+  ON sk_webhook_events(sk_invoice, event, event_id) WHERE event_id IS NOT NULL;
+CREATE TABLE IF NOT EXISTS sk_sync_state (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+INSERT OR IGNORE INTO sk_sync_state (key, value) VALUES
+  ('products_cursor', '0'),
+  ('products_server_time', ''),
+  ('products_snapshot_complete', '0');

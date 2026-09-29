@@ -36,6 +36,9 @@ export const RATE_LIMITS = {
   // ini → max undefined → request pertama per isolate lolos, sisanya 429
   // selamanya (self-DoS). Dikunci tests/rate-limit-scopes.test.ts.
   "webhook:warung": 60,
+  // Webhook Sekalipay: pola sama dengan WR (provider retry; scope khusus agar
+  // tidak berbagi bucket dengan lookup pembeli; verifikasi SHA256 garis depan).
+  "webhook:sekalipay": 60,
   "proof:upload": 5,
   "upload:admin": 20,
   "products:write": 20,

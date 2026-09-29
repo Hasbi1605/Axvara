@@ -43,6 +43,10 @@ const TIME_WA_BATCH = 12_000;
 const TIME_FULFILLMENT_UNIT = 10_000;
 const TIME_WR_NETWORK = 14_000;
 const TIME_WR_LIGHT = 8_000;
+// Sekalipay (0049): ambang yang sama dengan WR — unit jaringan SK ikut
+// deadline 45 dtk + cadangan ekor yang sama agar tidak dipotong platform.
+const TIME_SK_NETWORK = 14_000;
+const TIME_SK_LIGHT = 8_000;
 /**
  * Cadangan waktu yang TIDAK boleh dipakai sweep katalog: sisa langkah fase WR
  * (reconcile, saldo, delivery) + ekor handler yang menulis `wr_sync_log` dan
@@ -60,8 +64,10 @@ const COST_PER_WA_RECOVERY = 2;
 const COST_PER_STALE_RELEASE = 2;
 const COST_PER_CLEANUP = 4;
 const COST_PER_WR_WORK = 8;
+// Sekalipay: biaya admission yang sama dengan WR per unit kerja fase.
+const COST_PER_SK_WORK = 8;
 const RESERVE_TAIL = 2;
-type CronPhase = "expiry" | "fulfillment" | "warung_rebahan" | "notify" | "cleanup";
+type CronPhase = "expiry" | "fulfillment" | "warung_rebahan" | "sekalipay" | "notify" | "cleanup";
 
 // Expiry restores each distinct product/variant inside one atomic batch.
 // Charge its real size, rather than assuming every order contains one item.
@@ -91,7 +97,7 @@ async function readCronPhase(database: DatabaseAccess): Promise<{ phase: CronPha
 }
 
 function phaseName(raw: string): CronPhase | null {
-  if (raw === "expiry" || raw === "fulfillment" || raw === "warung_rebahan" || raw === "notify" || raw === "cleanup") return raw;
+  if (raw === "expiry" || raw === "fulfillment" || raw === "warung_rebahan" || raw === "sekalipay" || raw === "notify" || raw === "cleanup") return raw;
   return null;
 }
 
@@ -100,7 +106,10 @@ function nextPhase(phase: CronPhase): CronPhase {
   // WR disisipkan SETELAH fulfillment dan SEBELUM notify: order WR perlu
   // diproses sebelum notifikasi dikirim (plan §10).
   if (phase === "fulfillment") return "warung_rebahan";
-  if (phase === "warung_rebahan") return "notify";
+  // SK jalan SETELAH WR (supplier kedua): order SK diproses sebelum notify,
+  // dan sweep SK tidak berebut budget/waktu dengan sweep WR dalam satu run.
+  if (phase === "warung_rebahan") return "sekalipay";
+  if (phase === "sekalipay") return "notify";
   return "expiry"; // cleanup kembali ke awal (cleanup jalan tiap run, ringan)
 }
 
@@ -173,6 +182,14 @@ export async function POST(request: NextRequest) {
     wr_orders_succeeded: 0,
     wr_saldo_balance: null as number | null,
     wr_saldo_low: false,
+    sk_products_synced: 0,
+    // Observability SK cermin WR (0049): nilai skipped yang sama.
+    sk_sync_skipped: null as string | null,
+    sk_last_sync_at: null as string | null,
+    sk_orders_processed: 0,
+    sk_orders_succeeded: 0,
+    sk_saldo_balance: null as number | null,
+    sk_saldo_low: false,
   };
 
   try {
@@ -297,6 +314,21 @@ export async function POST(request: NextRequest) {
     const wrBlockedRow = await queryFirst(
       `SELECT COUNT(*) AS wr_blocked FROM wr_order_links WHERE status='blocked_balance'`,
     ).catch(() => null);
+    // Antrean SK (0049): SATU query gabungan dengan dua subselect murah
+    // (bukan 2 query) agar hitungan antrean tidak memakan slot budget cron
+    // (pelajaran R12: tiap query depan mengusir 1 order expiry per run).
+    // DB pre-0049: query gagal → null → pending 0 (pola wrDueRow pre-0027).
+    // Hemat: SK mati (default) = NOL query — hitungan hanya dibayar bila
+    // SEKALIPAY_ENABLED=true (test R12 tanpa SK kembali ke baseline).
+    const skQueueRow = process.env.SEKALIPAY_ENABLED === "true"
+      ? await queryFirst(
+          `SELECT
+             (SELECT COUNT(*) FROM sk_order_links
+              WHERE status IN ('pending','retry') AND attempt_count < max_attempts
+                AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime('now'))) AS sk_due,
+             (SELECT COUNT(*) FROM sk_order_links WHERE status='blocked_balance') AS sk_blocked`,
+        ).catch(() => null)
+      : null;
     // DB lama tanpa tabel WR: seluruh query gabungan gagal → queueRow null →
     // semua pending 0 (perilaku lama) dan fase WR menjadi no-op via guard tabel.
     const wrTablesReady = wrDueRow != null;
@@ -328,6 +360,11 @@ export async function POST(request: NextRequest) {
     const pendingWrDelivery = wrDeliveryReady ? Number(wrDeliveryRow?.wr_delivery_due ?? 0) : 0;
     const pendingWrBlocked = wrTablesReady ? Number((wrBlockedRow as Record<string, unknown> | null)?.wr_blocked ?? 0) : 0;
     const pendingWrAny = pendingWrDue + pendingWrDelivery + pendingWrBlocked;
+    // SK: fase aktif selama ada order due/blocked (pola WR di atas).
+    const skTablesReady = skQueueRow != null;
+    const pendingSkDue = skTablesReady ? Number(skQueueRow?.sk_due ?? 0) : 0;
+    const pendingSkBlocked = skTablesReady ? Number(skQueueRow?.sk_blocked ?? 0) : 0;
+    const pendingSkAny = pendingSkDue + pendingSkBlocked;
 
     // Urutan eksekusi: deferred tersimpan dulu (anti-starvation — expiry
     // yang terus berdatangan tidak membuat kanal lain kelaparan), lalu fase
@@ -338,7 +375,16 @@ export async function POST(request: NextRequest) {
     const ordered: CronPhase[] = [];
     for (const d of storedDeferred) if (!ordered.includes(d)) ordered.push(d);
     if (!ordered.includes(storedPhase)) ordered.push(storedPhase);
-    for (const p of ["expiry", "fulfillment", "warung_rebahan", "notify", "cleanup"] as CronPhase[]) {
+    // Fase SK hanya masuk rotasi bila relevan (SK aktif ATAU ada pekerjaan
+    // SK menunggu ATAU deferred lama menyebutnya): saat SK mati (default),
+    // rotasi IDENTIK dengan baseline (tanpa query/deferred ekstra) sehingga
+    // budget R12 + poison-guard lama tidak bergeser.
+    const skPhaseRelevant =
+      process.env.SEKALIPAY_ENABLED === "true" || pendingSkAny > 0 || ordered.includes("sekalipay");
+    const rotation: CronPhase[] = skPhaseRelevant
+      ? ["expiry", "fulfillment", "warung_rebahan", "sekalipay", "notify", "cleanup"]
+      : ["expiry", "fulfillment", "warung_rebahan", "notify", "cleanup"];
+    for (const p of rotation) {
       if (!ordered.includes(p)) ordered.push(p);
     }
     const activePhases = new Set(ordered.slice(0, 3)); // maks 3 fase/run
@@ -411,6 +457,34 @@ export async function POST(request: NextRequest) {
           if (at > 0) {
             ordered.splice(at, 1);
             ordered.unshift("warung_rebahan");
+          }
+        }
+      }
+    }
+
+    // Jaminan anti-starvation SK (0049, pola WR di atas): fase baru tidak
+    // boleh kelaparan selamanya di luar 3 slot. Syarat: SK pernah sync +
+    // sync terakhir >45 menit + ada pekerjaan SK menunggu.
+    const skEverSyncedProbe = skTablesReady ? await queryFirst(
+      `SELECT 1 AS x FROM sk_sync_log WHERE sync_type='products' LIMIT 1`,
+    ).catch(() => null) : null;
+    if (skEverSyncedProbe && pendingSkAny > 0) {
+      const skStale = await queryFirst(
+        `SELECT created_at FROM sk_sync_log WHERE sync_type='products'
+         ORDER BY id DESC LIMIT 1`,
+      ).catch(() => null);
+      const { parseExpiry: parseSkExpiry } = await import("@/lib/expiry");
+      const skLastTs = parseSkExpiry((skStale as Record<string, unknown> | null)?.created_at);
+      if (skLastTs == null || skLastTs < Date.now() - 45 * 60 * 1000) {
+        if (!activePhases.has("sekalipay")) {
+          const actives = ordered.filter((p) => activePhases.has(p));
+          const victim = [...actives].reverse().find((p) => p !== "fulfillment" && p !== "sekalipay");
+          if (victim) {
+            activePhases.delete(victim);
+            activePhases.add("sekalipay");
+            const idx = deferredOut.indexOf("sekalipay");
+            if (idx >= 0) deferredOut.splice(idx, 1);
+            if (!deferredOut.includes(victim)) deferredOut.push(victim);
           }
         }
       }
@@ -1060,7 +1134,133 @@ export async function POST(request: NextRequest) {
       }
 
     };
-    const phases = { expiry: runExpiry, notify: runNotify, fulfillment: runFulfillment, warung_rebahan: runWarungRebahan, cleanup: runCleanup };
+    const runSekalipay = async () => {
+      // === FASE SEKALIPAY: sync produk + order pending + saldo ===
+      // Cermin fase WR dengan scope lebih kecil (fase 1: katalog premium +
+      // varian auto saja). No-op total bila master switch mati atau tabel SK
+      // belum ada (DB pre-0049): jangan bakar budget, jangan deferred palsu.
+      const { isSkEnabled } = await import("@/lib/sekalipay/client");
+      if (!isSkEnabled() || !skTablesReady) {
+        if (results.sk_sync_skipped == null) results.sk_sync_skipped = "disabled";
+        return;
+      }
+      try {
+        const lastSyncRow = await queryFirst(
+          `SELECT created_at FROM sk_sync_log
+           WHERE sync_type='products' AND status IN ('success','partial')
+           ORDER BY created_at DESC LIMIT 1`,
+        ).catch(() => null);
+        if (typeof lastSyncRow?.created_at === "string") results.sk_last_sync_at = String(lastSyncRow.created_at);
+      } catch { /* last_sync_at best-effort */ }
+      if (!activePhases.has("sekalipay")) {
+        if (pendingSkAny > 0 && !deferredOut.includes("sekalipay")) deferredOut.push("sekalipay");
+        if (results.sk_sync_skipped == null) results.sk_sync_skipped = "phase_inactive";
+        return;
+      }
+      if (!budget.fits(COST_PER_SK_WORK)) {
+        if (!deferredOut.includes("sekalipay")) deferredOut.push("sekalipay");
+        return;
+      }
+      try {
+        const { syncSkProducts, SK_SYNC_PRODUCTS_PER_RUN } = await import("@/lib/sekalipay/sync");
+        const { processSkPendingOrders, retryFailedSkOrders, reconcileStuckSkOrders, reconcileBlockedSkBalance, recoverStaleSkClaims } = await import("@/lib/sekalipay/order");
+        const { checkAndLogSkSaldo } = await import("@/lib/sekalipay/saldo");
+        const syncOn = process.env.SEKALIPAY_SYNC_ENABLED !== "false";
+        const autoOrder = process.env.SEKALIPAY_AUTO_ORDER_ENABLED === "true";
+
+        // 0. Recover lease basi + pulihkan blocked_balance setelah top-up.
+        if (budget.fits(4)) {
+          try {
+            await recoverStaleSkClaims(database);
+            await reconcileBlockedSkBalance(database);
+          } catch { /* best-effort */ }
+        }
+
+        // 1. Order didahulukan sebelum sync (pola WR P0-4).
+        if (autoOrder && pendingSkDue > 0 && budget.fits(COST_PER_SK_WORK) && hasTime(TIME_SK_NETWORK)) {
+          try {
+            await retryFailedSkOrders(database);
+            const processed = await processSkPendingOrders(database);
+            results.sk_orders_processed = processed.processed;
+            results.sk_orders_succeeded = processed.succeeded;
+            if (processed.processed > processed.succeeded && !deferredOut.includes("sekalipay")) deferredOut.push("sekalipay");
+          } catch { if (!deferredOut.includes("sekalipay")) deferredOut.push("sekalipay"); }
+        }
+
+        // 2. Sync katalog — tiap 30 menit, resumable via cursor. Sweep SK
+        //    kecil (24 produk) tapi tetap pakai budget waktu DI DALAM sweep
+        //    (pelajaran WR 2026-09-20: admission depan deadlock permanen).
+        if (!syncOn) {
+          if (results.sk_sync_skipped == null) results.sk_sync_skipped = "sync_disabled";
+        } else if (budget.fits(COST_PER_SK_WORK) && hasTime(TIME_SK_NETWORK)) {
+          const lastSync = await queryFirst(
+            `SELECT created_at FROM sk_sync_log
+             WHERE sync_type='products' AND status IN ('success','partial')
+             ORDER BY created_at DESC LIMIT 1`,
+          ).catch(() => null);
+          const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+          const { parseExpiry } = await import("@/lib/expiry");
+          const lastTs = parseExpiry(lastSync?.created_at);
+          if (typeof lastSync?.created_at === "string") results.sk_last_sync_at = String(lastSync.created_at);
+          const cursorRow = await queryFirst(
+            `SELECT value FROM sk_sync_state WHERE key='products_cursor'`,
+          ).catch(() => null);
+          const resumeNow = Number(cursorRow?.value ?? 0) > 0;
+          if (resumeNow || lastTs == null || lastTs < Date.parse(thirtyMinAgo)) {
+            try {
+              const syncResult = await syncSkProducts(database, undefined, {
+                maxProducts: SK_SYNC_PRODUCTS_PER_RUN,
+                trigger: "cron",
+                timeBudgetMs: Math.max(0, timeLeftMs() - TIME_WR_SWEEP_RESERVE),
+              });
+              results.sk_products_synced = syncResult.synced;
+              if (syncResult.budgetYielded) {
+                if (!deferredOut.includes("sekalipay")) deferredOut.push("sekalipay");
+                if (results.sk_sync_skipped == null) results.sk_sync_skipped = "budget_yielded";
+              }
+              if (syncResult.errors.length) {
+                if (!deferredOut.includes("sekalipay")) deferredOut.push("sekalipay");
+                results.sk_sync_skipped = "attempted_failed";
+                results.sk_sync_errors = syncResult.errors.slice(0, 3);
+              }
+            } catch { if (!deferredOut.includes("sekalipay")) deferredOut.push("sekalipay"); }
+          } else {
+            if (results.sk_sync_skipped == null) results.sk_sync_skipped = "interval";
+          }
+        } else if (syncOn) {
+          if (!deferredOut.includes("sekalipay")) deferredOut.push("sekalipay");
+          results.sk_sync_skipped = budget.fits(COST_PER_SK_WORK) ? "deadline" : "query_budget";
+        }
+
+        // 3. Reconcile processing/ambigu menggantung >1 jam via GET /v1/trx.
+        if (autoOrder && budget.fits(3) && hasTime(TIME_SK_LIGHT)) {
+          try {
+            results.sk_orders_reconciled = await reconcileStuckSkOrders(database);
+          } catch { /* best-effort */ }
+        }
+
+        // 4. Saldo check — tiap 1 jam.
+        if (budget.fits(3) && hasTime(TIME_SK_LIGHT)) {
+          const lastCheck = await queryFirst(
+            `SELECT created_at FROM sk_saldo_log WHERE source='api_check'
+             ORDER BY created_at DESC LIMIT 1`,
+          ).catch(() => null);
+          const { parseExpiry } = await import("@/lib/expiry");
+          const lastTs = parseExpiry(lastCheck?.created_at);
+          const oneHourAgo = Date.now() - 60 * 60 * 1000;
+          if (lastTs == null || lastTs < oneHourAgo) {
+            try {
+              const saldo = await checkAndLogSkSaldo(database);
+              results.sk_saldo_balance = saldo.balance;
+              results.sk_saldo_low = saldo.isLow;
+            } catch { /* API down: sync berikutnya retry; bukan deferred */ }
+          }
+        }
+      } catch {
+        if (!deferredOut.includes("sekalipay")) deferredOut.push("sekalipay");
+      }
+    };
+    const phases = { expiry: runExpiry, notify: runNotify, fulfillment: runFulfillment, warung_rebahan: runWarungRebahan, sekalipay: runSekalipay, cleanup: runCleanup };
     // Execute in the persisted priority order, so busy expiry cannot always
     // consume the budget before a deferred delivery or notification gets a turn.
     for (const phase of ordered) {
