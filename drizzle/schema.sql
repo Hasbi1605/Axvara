@@ -921,6 +921,13 @@ CREATE TABLE IF NOT EXISTS sk_products (
   sk_stock          INTEGER NOT NULL DEFAULT 0,
   sk_order_process  TEXT NOT NULL DEFAULT 'auto',
   sk_seller_note    TEXT,
+  -- Fitur panel SK (migrasi 0050): capability live agar panel admin tidak
+  -- perlu panggil API lagi. Sync yang menulis; admin tidak menyunting.
+  sk_description    TEXT,
+  sk_min_order      INTEGER NOT NULL DEFAULT 1,
+  sk_status         TEXT,
+  sk_required_fields TEXT,
+  sk_validation     TEXT,
   axvara_product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
   axvara_variant_id INTEGER REFERENCES product_variants(id) ON DELETE SET NULL,
   markup_percent    INTEGER NOT NULL DEFAULT 50,
@@ -1028,3 +1035,11 @@ INSERT OR IGNORE INTO sk_sync_state (key, value) VALUES
   ('products_cursor', '0'),
   ('products_server_time', ''),
   ('products_snapshot_complete', '0');
+-- Exclusion rules SK (migrasi 0050, cermin wr_exclusions). Kosong di
+-- bootstrap — owner mengisi manual dari panel (pelajaran seed WR 0027/0028).
+CREATE TABLE IF NOT EXISTS sk_exclusions (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  pattern   TEXT NOT NULL UNIQUE,
+  reason    TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);

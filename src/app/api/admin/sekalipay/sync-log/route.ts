@@ -1,4 +1,6 @@
 // GET /api/admin/sekalipay/sync-log — Riwayat sync SK terakhir.
+// Menyertakan trigger (manual/cron) + error_message seperti panel WR
+// (bedakan sync tangan vs cron, dan lihat sebab partial/failed).
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
@@ -13,7 +15,8 @@ export async function GET(request: NextRequest) {
   const limit = Math.min(20, Math.max(1, Number(request.nextUrl.searchParams.get("limit") || 5)));
   const logs = await queryAll(
     `SELECT id, sync_type, status, products_total, products_synced, products_excluded,
-       products_new, variants_synced, stock_changes, price_changes, created_at
+       products_new, variants_synced, stock_changes, price_changes,
+       error_message, duration_ms, trigger, created_at
      FROM sk_sync_log ORDER BY id DESC LIMIT ?`,
     limit,
   ).catch(() => []);

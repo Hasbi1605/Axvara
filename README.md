@@ -357,9 +357,11 @@ di registry tanpa pasangan katalog. Modul `src/lib/sekalipay/` (client header
 deliver lisensi terenkripsi ke `fulfillment_items`, saldo), webhook
 `POST /api/webhook/sekalipay` (SHA256 `ref:invoice:status:secret`, monotonik),
 fase cron `sekalipay` (`fulfillment → warung_rebahan → SEKALIPAY → notify`,
-budget + deadline yang sama), tab admin **Sekalipay** (saldo, Force Sync,
-antrean retry/void, uji sandbox tanpa potong saldo), migrasi 0049 (tabel
-`sk_*`, kolom `sk_*`, CHECK `source` + `sekalipay`). Seluruhnya di balik
+budget + deadline yang sama), tab admin **Sekalipay** setara WR (saldo, Force Sync,
+antrean + umur + retry/void, exclusion rules, markup per varian) + fitur khas SK
+(mutasi saldo audit, cek akun validasi nickname, stock-lock 10 mnt, daftar
+transaksi, detail capability, sandbox), migrasi 0049 + 0050 (tabel
+`sk_*`, kolom `sk_*`, exclusions, CHECK `source` + `sekalipay`). Seluruhnya di balik
 `SEKALIPAY_ENABLED=false` (lihat `.env.example`); set proxy URL + token +
 `SEKALIPAY_WEBHOOK_SECRET` di Pages Secrets, whitelist 2 IP QuotaGuard di
 dashboard SK, set callback `https://axvara.tech/api/webhook/sekalipay`, lalu

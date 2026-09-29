@@ -3,6 +3,7 @@ import { createDatabaseAccess } from "@/lib/db-access";
 import {
   flattenSkItems,
   isSkAutoVariant,
+  isSkExcluded,
   mapSkCategory,
   calculateSkSellPrice,
   syncSkProducts,
@@ -106,6 +107,83 @@ describe("sekalipay sync helpers", () => {
       fx.close();
     }
   });
+
+  it("field khas SK tersimpan di registry (min_order, description, required, validasi)", async () => {
+    const fx = createD1Fixture();
+    try {
+      stubFulfillmentKey();
+      vi.stubEnv("SEKALIPAY_ENABLED", "true");
+      const db = createDatabaseAccess(fx.db);
+      await syncSkProducts(db, async () => ({
+        server_time: "2026-09-30T00:00:00+07:00",
+        data: [
+          {
+            id: 1, name: "Aplikasi Premium", icon: null,
+            products: [
+              {
+                id: 10, name: "Gemini AI", image: null,
+                variants: [
+                  {
+                    id: 201, sku: "GA-1", name: "Link 12 Bulan", price: 17700, stock: 3,
+                    order_process: "auto", h2h_provider: null, provider_meta: null,
+                    required_fields: [{ key: "note", label: "Catatan", required: false }],
+                    validation: { available: false, endpoint: null, requires_zone_id: false, fields: [] },
+                    updated_at: null, min_order: 2, status: "on", description: "LINK REDEEM",
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }), { trigger: "manual" });
+      const row = fx.sql.prepare(
+        "SELECT sk_min_order, sk_status, sk_description, sk_required_fields, sk_validation FROM sk_products WHERE sk_variant_id='201'",
+      ).get() as Record<string, unknown>;
+      expect(Number(row.sk_min_order)).toBe(2);
+      expect(String(row.sk_status)).toBe("on");
+      expect(String(row.sk_description)).toContain("LINK REDEEM");
+      expect(String(row.sk_required_fields)).toContain("note");
+      expect(String(row.sk_validation)).toContain("available");
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("exclusion menahan katalog tapi registry tetap tercatat", async () => {
+    const fx = createD1Fixture();
+    try {
+      stubFulfillmentKey();
+      fx.sql.prepare("INSERT INTO sk_exclusions(pattern,reason) VALUES('%netflix%','bandingkan dulu')").run();
+      vi.stubEnv("SEKALIPAY_ENABLED", "true");
+      const db = createDatabaseAccess(fx.db);
+      expect((await isSkExcluded("Netflix Premium", db)).excluded).toBe(true);
+      expect((await isSkExcluded("Spotify Premium", db)).excluded).toBe(false);
+      const result = await syncSkProducts(db, async () => ({
+        server_time: "2026-09-30T00:00:00+07:00",
+        data: [
+          {
+            id: 1, name: "Aplikasi Premium", icon: null,
+            products: [
+              {
+                id: 14, name: "Netflix", image: null,
+                variants: [
+                  { id: 301, sku: "N-1", name: "1 Bulan", price: 15000, stock: 9, order_process: "auto", h2h_provider: null, provider_meta: null, required_fields: null, validation: null, updated_at: null },
+                ],
+              },
+            ],
+          },
+        ],
+      }), { trigger: "manual" });
+      expect(result.errors).toEqual([]);
+      expect(result.newProducts).toBe(0);
+      // Registry tercatat TANPA pasangan katalog.
+      const reg = fx.sql.prepare("SELECT axvara_product_id FROM sk_products WHERE sk_variant_id='301'").get() as { axvara_product_id: number | null };
+      expect(reg.axvara_product_id).toBeNull();
+      expect(fx.sql.prepare("SELECT COUNT(*) n FROM products WHERE source='sekalipay'").get() as { n: number }).toMatchObject({ n: 0 });
+    } finally {
+      fx.close();
+    }
+  });
 });
 
 describe("sekalipay order links", () => {
@@ -141,6 +219,71 @@ describe("sekalipay order links", () => {
     } finally {
       fx.close();
     }
+  });
+});
+
+describe("sekalipay fitur khas (validasi, lock, mutasi, trx)", () => {
+  function stubSkFetch(handler: (url: string, init?: RequestInit) => unknown) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => ({
+        ok: true,
+        json: async () => handler(url, init),
+      })),
+    );
+  }
+
+  it("validate + lock + release memakai endpoint SK yang benar", async () => {
+    vi.stubEnv("SEKALIPAY_ENABLED", "true");
+    vi.stubEnv("SEKALIPAY_PROXY_URL", "https://proxy.test");
+    vi.stubEnv("SEKALIPAY_PROXY_TOKEN", "tok");
+    const calls: string[] = [];
+    stubSkFetch((url, init) => {
+      calls.push(`${init?.method || "GET"} ${String(url).split("proxy.test")[1]}`);
+      if (String(url).includes("/v1/item/validate")) {
+        return { message: "OK", data: { display_name: "Aqaa.", account_name: "Aqaa.", region: null, cached: false } };
+      }
+      if (String(url).includes("/v1/item/lock/") && (init?.method || "GET") === "DELETE") {
+        return { message: "OK" };
+      }
+      if (String(url).includes("/v1/item/lock")) {
+        return { success: true, data: { lock_token: "LCK-1", item_id: 101, quantity: 1, locked_at: "2026-09-30T00:00:00Z", expires_at: "2026-09-30T00:10:00Z" } };
+      }
+      return { message: "OK", data: [] };
+    });
+    const { validateSkAccount, lockSkStock, releaseSkStockLock, listSkStockLocks } = await import(
+      "@/lib/sekalipay/client"
+    );
+    const v = await validateSkAccount({ itemId: 101, customerId: "256632355", zoneId: "9402" });
+    expect(v.account_name).toBe("Aqaa.");
+    const lock = await lockSkStock({ itemId: 101, quantity: 1 });
+    expect(lock.lock_token).toBe("LCK-1");
+    expect(await releaseSkStockLock("LCK-1")).toBe(true);
+    await listSkStockLocks();
+    expect(calls.some((c) => c.includes("POST /sk/v1/item/validate"))).toBe(true);
+    expect(calls.some((c) => c.includes("POST /sk/v1/item/lock"))).toBe(true);
+    expect(calls.some((c) => c.includes("DELETE /sk/v1/item/lock/LCK-1"))).toBe(true);
+  });
+
+  it("mutasi + transaksi memakai query yang benar", async () => {
+    vi.stubEnv("SEKALIPAY_ENABLED", "true");
+    vi.stubEnv("SEKALIPAY_PROXY_URL", "https://proxy.test");
+    vi.stubEnv("SEKALIPAY_PROXY_TOKEN", "tok");
+    const calls: string[] = [];
+    stubSkFetch((url) => {
+      calls.push(String(url).split("proxy.test")[1]);
+      if (String(url).includes("/v1/balance/mutations")) {
+        return { message: "OK", data: [{ invoice: "INV-1", direction: "debit", type: "payment", amount: 50000, balance_before: 125000, balance_after: 75000 }], meta: {} };
+      }
+      return { message: "OK", data: { transactions: [], pagination: {} } };
+    });
+    const { getSkBalanceMutations } = await import("@/lib/sekalipay/saldo");
+    const { fetchSkTransactions } = await import("@/lib/sekalipay/client");
+    const m = await getSkBalanceMutations({ perPage: 10, direction: "debit" });
+    expect(m.mutations[0]?.invoice).toBe("INV-1");
+    await fetchSkTransactions({ page: 1, perPage: 10 });
+    expect(calls.some((c) => c.includes("/sk/v1/balance/mutations") && c.includes("direction=debit"))).toBe(true);
+    expect(calls.some((c) => c.includes("/sk/v1/trx"))).toBe(true);
   });
 });
 

@@ -1,8 +1,10 @@
 // src/lib/sekalipay/saldo.ts — Monitor saldo Sekalipay + throttle notif admin.
-// Cermin WR saldo.ts: check + log + alert ambang (default Rp250.000).
+// Cermin WR saldo.ts (check + log + alert ambang default Rp250.000) +
+// MUTASI SALDO khas SK (GET /v1/balance/mutations) yang tidak dimiliki WR:
+// audit credit/debit + balance_before/after per invoice.
 
 import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
-import { fetchSkBalance, isSkEnabled } from "./client";
+import { fetchSkBalance, fetchSkBalanceMutations, isSkEnabled, type SkBalanceMutation } from "./client";
 
 export function skSaldoAlertThreshold(): number {
   const raw = Number(process.env.SEKALIPAY_SALDO_ALERT_THRESHOLD ?? 250000);
@@ -78,4 +80,28 @@ export async function getSkSaldoHistory(
     .queryAll(`SELECT balance, created_at FROM sk_saldo_log ORDER BY id DESC LIMIT ?`, Math.max(1, Math.min(limit, 50)))
     .catch(() => []);
   return rows.map((r) => ({ balance: Number(r.balance || 0), created_at: String(r.created_at || "") }));
+}
+
+/**
+ * Mutasi saldo SK untuk audit (fitur khas SK — WR tidak punya endpoint ini).
+ * Langsung dari API (bukan DB lokal) agar jejak kredit/debit + before/after
+ * per invoice selalu segar. Gagal API = [] (panel tetap menampilkan saldo).
+ */
+export async function getSkBalanceMutations(params?: {
+  page?: number;
+  perPage?: number;
+  direction?: "credit" | "debit";
+  type?: string;
+}): Promise<{ mutations: SkBalanceMutation[]; meta: Record<string, unknown> }> {
+  try {
+    const res = await fetchSkBalanceMutations({
+      page: params?.page ?? 1,
+      perPage: Math.max(1, Math.min(params?.perPage ?? 10, 100)),
+      direction: params?.direction,
+      type: params?.type,
+    });
+    return { mutations: Array.isArray(res.data) ? res.data : [], meta: res.meta ?? {} };
+  } catch {
+    return { mutations: [], meta: {} };
+  }
 }

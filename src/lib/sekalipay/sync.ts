@@ -98,6 +98,39 @@ export function mapSkCategory(skCategory: string | null | undefined): number {
   return defaultCategoryId();
 }
 
+/**
+ * Cek exclusion via tabel sk_exclusions (cermin WR isExcluded): produk yang
+ * cocok pola tidak dibuatkan pasangan katalog (registry tetap dicatat agar
+ * keputusan terlihat di panel admin).
+ */
+export async function isSkExcluded(
+  productName: string,
+  db: DatabaseAccess,
+  cachedRules?: { pattern: string; reason: string | null }[] | null,
+): Promise<{ excluded: boolean; reason: string | null }> {
+  const rules =
+    cachedRules ??
+    ((await db
+      .queryAll(`SELECT pattern, reason FROM sk_exclusions`)
+      .catch(() => [] as Row[])) as { pattern: string; reason: string | null }[]);
+  const lowered = productName.toLowerCase();
+  for (const rule of rules) {
+    const pattern = String(rule.pattern || "").toLowerCase();
+    const stripped = pattern.replace(/^%+|%+$/g, "");
+    const startsWild = pattern.startsWith("%");
+    const endsWild = pattern.endsWith("%");
+    let matched = false;
+    if (startsWild && endsWild) matched = lowered.includes(stripped);
+    else if (startsWild) matched = lowered.endsWith(stripped);
+    else if (endsWild) matched = lowered.startsWith(stripped);
+    else matched = lowered === stripped;
+    if (matched) {
+      return { excluded: true, reason: rule.reason ? String(rule.reason) : null };
+    }
+  }
+  return { excluded: false, reason: null };
+}
+
 /** Flatten respons GET /v1/item → daftar {category, product, variant}. */
 export type SkFlatVariant = {
   categoryName: string;
@@ -290,6 +323,10 @@ export async function syncSkProducts(
   let processedInRun = 0;
   const seenVariantIds = new Set<string>();
   const now = new Date().toISOString();
+  // Cache exclusion rules sekali per run (pola WR): 1 query, bukan N.
+  const cachedExclusions = (await db
+    .queryAll(`SELECT pattern, reason FROM sk_exclusions`)
+    .catch(() => [] as Row[])) as { pattern: string; reason: string | null }[];
   for (let i = startAt; i < flat.length; i++) {
     const row = flat[i];
     const variant = row.variant;
@@ -314,6 +351,10 @@ export async function syncSkProducts(
       // Registry SELALU dicatat (semua order_process) — katalog hanya untuk auto.
       const auto = isSkAutoVariant(variant);
       if (!auto) result.skippedNonAuto++;
+      // Exclusion: produk yang cocok pola tidak dibuatkan pasangan katalog
+      // (registry tetap dicatat agar keputusan terlihat di panel admin).
+      const exclude = await isSkExcluded(row.productName, db, cachedExclusions);
+      const catalogAllowed = auto && !exclude.excluded;
       const regExisting = await db
         .queryFirst(`SELECT id, axvara_product_id, axvara_variant_id FROM sk_products WHERE sk_variant_id=?`, skVariantId)
         .catch(() => null);
@@ -321,22 +362,28 @@ export async function syncSkProducts(
       let axvaraVariantId = regExisting?.axvara_variant_id != null ? Number(regExisting.axvara_variant_id) : 0;
       if (auto && !(axvaraProductId > 0)) {
         // Guard link yatim: registry tanpa pasangan / pasangan hilang → buat baru.
-        const alive = axvaraProductId > 0
-          ? await db
-              .queryFirst(
-                `SELECT id FROM products WHERE id=? AND source='sekalipay' AND sk_product_id=?`,
-                axvaraProductId,
-                String(row.productId),
-              )
-              .catch(() => null)
-          : null;
-        if (!alive) {
-          axvaraProductId = await createAxvaraCatalogForSk(row.categoryName, row.productName, db, now, row.productId);
-          result.newProducts++;
+        // Dikecualikan exclusion: jangan buat katalog untuk produk yang difilter.
+        if (!catalogAllowed) {
+          axvaraProductId = 0;
           axvaraVariantId = 0;
+        } else {
+          const alive = axvaraProductId > 0
+            ? await db
+                .queryFirst(
+                  `SELECT id FROM products WHERE id=? AND source='sekalipay' AND sk_product_id=?`,
+                  axvaraProductId,
+                  String(row.productId),
+                )
+                .catch(() => null)
+            : null;
+          if (!alive) {
+            axvaraProductId = await createAxvaraCatalogForSk(row.categoryName, row.productName, db, now, row.productId);
+            result.newProducts++;
+            axvaraVariantId = 0;
+          }
         }
       }
-      if (auto && axvaraProductId > 0 && !(axvaraVariantId > 0)) {
+      if (catalogAllowed && axvaraProductId > 0 && !(axvaraVariantId > 0)) {
         const created = await db.execRun(
           `INSERT INTO product_variants
             (product_id, sku, label, price, stock, fulfillment_mode, is_active, sort_order,
@@ -367,19 +414,35 @@ export async function syncSkProducts(
           result.newVariants++;
         }
       }
-      // Upsert registry (idempoten, guard null-safe agar tak tulis ulang sia-sia).
+      // Upsert registry (idempoten). Field khas SK ikut tersimpan agar panel
+      // admin bisa menampilkan capability tanpa panggil API lagi: min_order,
+      // status, description, seller_note, required_fields, validation.
       const sellPrice = calculateSkSellPrice(Number(variant.price), defaultMarkupPercent(), defaultMarkupFixed());
+      const skDescription = typeof variant.description === "string" ? variant.description.slice(0, 2000) : null;
+      const skSellerNote = typeof (variant as { seller_note?: unknown }).seller_note === "string"
+        ? String((variant as { seller_note?: unknown }).seller_note).slice(0, 2000)
+        : null;
+      const skRequiredFields = Array.isArray(variant.required_fields)
+        ? JSON.stringify(variant.required_fields).slice(0, 2000)
+        : null;
+      const skValidation = variant.validation != null
+        ? JSON.stringify(variant.validation).slice(0, 2000)
+        : null;
       await db.execRun(
         `INSERT INTO sk_products
           (sk_variant_id, sk_product_id, sk_product_name, sk_category, sk_variant_name,
-           sk_price, sk_stock, sk_order_process, sk_seller_note, axvara_product_id,
+           sk_price, sk_stock, sk_order_process, sk_seller_note, sk_description,
+           sk_min_order, sk_status, sk_required_fields, sk_validation,
+           axvara_product_id,
            axvara_variant_id, markup_percent, markup_fixed, axvara_sell_price, last_synced_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
          ON CONFLICT(sk_variant_id) DO UPDATE SET
            sk_product_name=excluded.sk_product_name, sk_category=excluded.sk_category,
            sk_variant_name=excluded.sk_variant_name, sk_price=excluded.sk_price,
            sk_stock=excluded.sk_stock, sk_order_process=excluded.sk_order_process,
-           sk_seller_note=excluded.sk_seller_note,
+           sk_seller_note=excluded.sk_seller_note, sk_description=excluded.sk_description,
+           sk_min_order=excluded.sk_min_order, sk_status=excluded.sk_status,
+           sk_required_fields=excluded.sk_required_fields, sk_validation=excluded.sk_validation,
            axvara_product_id=COALESCE(sk_products.axvara_product_id, excluded.axvara_product_id),
            axvara_variant_id=COALESCE(sk_products.axvara_variant_id, excluded.axvara_variant_id),
             axvara_sell_price=excluded.axvara_sell_price,
@@ -392,7 +455,12 @@ export async function syncSkProducts(
         Number(variant.price),
         Number(variant.stock),
         String(variant.order_process || ""),
-        null,
+        skSellerNote,
+        skDescription,
+        Number(variant.min_order ?? 1) || 1,
+        typeof variant.status === "string" ? variant.status : null,
+        skRequiredFields,
+        skValidation,
         axvaraProductId > 0 ? axvaraProductId : null,
         axvaraVariantId > 0 ? axvaraVariantId : null,
         defaultMarkupPercent(),
@@ -401,7 +469,7 @@ export async function syncSkProducts(
         now,
       ).catch(() => ({ changes: 0 }));
       // Refresh harga/stok pasangan katalog (milik SK — admin pegang sisanya).
-      if (auto && axvaraVariantId > 0) {
+      if (catalogAllowed && axvaraVariantId > 0) {
         const before = await db
           .queryFirst(`SELECT price, stock FROM product_variants WHERE id=?`, axvaraVariantId)
           .catch(() => null);

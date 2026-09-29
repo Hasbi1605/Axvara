@@ -1541,14 +1541,18 @@ dipilih manual: Netflix (WR) vs Netflix (SK) = dua baris katalog berbeda.
   deadline + cadangan ekor yang sama. Fase hanya masuk rotasi bila relevan
   (SK aktif/ada kerja/deferred lama) — saat SK mati rotasi IDENTIK baseline
   (nol query/deferred ekstra, dikunci test R12).
-- **Admin:** tab **Sekalipay** (saldo + kapasitas, Force Sync, antrean
-  retry/void CAS, uji sandbox tanpa potong saldo), API
-  `/api/admin/sekalipay/*`, rate-limit `webhook:sekalipay` 60/mnt.
-- **DB (migrasi 0049):** tabel `sk_products/sk_order_links/sk_sync_log/
-  sk_saldo_log/sk_webhook_events/sk_sync_state`, kolom `sk_*` katalog +
-  `fulfillment_items.sk_link_id`, CHECK `source` + `sekalipay` (rebuild
-  12-langkah pola 0029 + namespace negatif pola 0008 + `foreign_key_check`
-  ekor; bootstrap baru inline di `schema.sql`).
+- **Admin:** tab **Sekalipay** setara WR (saldo + kapasitas, Force Sync +
+  sync manual/cron terpisah, antrean + umur + retry/void CAS, exclusion rules,
+  markup per varian) + fitur khas SK: mutasi saldo audit, cek akun validasi,
+  stock-lock 10 mnt, daftar transaksi SK, detail capability per varian,
+  sandbox order. API `/api/admin/sekalipay/*`, rate-limit
+  `webhook:sekalipay` 60/mnt.
+- **DB (migrasi 0049 + 0050):** tabel `sk_products/sk_order_links/sk_sync_log/
+  sk_saldo_log/sk_webhook_events/sk_sync_state/sk_exclusions`, kolom `sk_*`
+  katalog + registry capability (`sk_description/min_order/status/
+  required_fields/validation`) + `fulfillment_items.sk_link_id`, CHECK
+  `source` + `sekalipay` (rebuild 12-langkah pola 0029 + namespace negatif
+  pola 0008 + `foreign_key_check` ekor; bootstrap baru inline di `schema.sql`).
 - **Env (`secret_text`):** `SEKALIPAY_ENABLED/AUTO_ORDER_ENABLED=false`
   default, `SEKALIPAY_PROXY_URL/TOKEN`, `SEKALIPAY_WEBHOOK_SECRET`, markup +
   ambang + kategori default (lihat `.env.example`).

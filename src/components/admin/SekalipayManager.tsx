@@ -1,6 +1,9 @@
 // src/components/admin/SekalipayManager.tsx — Tab admin Sekalipay (supplier kedua).
-// Cermin WarungRebahanManager: saldo + kapasitas, status sync + Force Sync,
-// antrean order SK (retry/void), sandbox order test.
+// Setara WarungRebahanManager: saldo + kapasitas, status sync + Force Sync,
+// antrean order SK (retry/void + umur antrean), exclusion rules, markup per
+// varian. Fitur khas SK (tidak dimiliki WR): mutasi saldo audit, cek akun
+// (validasi nickname), stock-lock anti-overselling, daftar transaksi SK,
+// detail capability per varian, sandbox order.
 
 "use client";
 
@@ -28,6 +31,9 @@ type SyncLogRow = {
   variants_synced: number | null;
   stock_changes: number | null;
   price_changes: number | null;
+  error_message?: string | null;
+  duration_ms?: number | null;
+  trigger?: string;
   created_at: string;
 };
 
@@ -39,6 +45,7 @@ type SkOrderRow = {
   sk_cost: number;
   status: string;
   attempt_count: number;
+  max_attempts?: number;
   last_error: string | null;
   sk_account_details?: string | null;
   order_status?: string;
@@ -51,6 +58,52 @@ type SkOrderRow = {
   updated_at?: string | null;
 };
 
+type ExclusionRow = { id: number; pattern: string; reason: string | null };
+
+type MarkupRow = {
+  sk_variant_id: string;
+  sk_variant_name: string;
+  sk_price: number;
+  sk_stock: number;
+  sk_order_process: string;
+  sk_min_order: number | null;
+  sk_status: string | null;
+  markup_percent: number;
+  markup_fixed: number;
+  axvara_sell_price: number;
+  axvara_variant_id: number | null;
+  sk_product_name: string | null;
+  current_price: number | null;
+};
+
+type MutationRow = {
+  invoice: string;
+  direction: string;
+  type: string;
+  amount: number;
+  balance_before: number;
+  balance_after: number;
+};
+
+type LockRow = {
+  lock_token: string;
+  item_id: number;
+  quantity: number;
+  locked_at: string;
+  expires_at: string;
+};
+
+type SkTrxRow = {
+  invoice: string;
+  ref_id: string;
+  status: string;
+  price: number;
+  fees: number;
+  amount: number;
+  activity: string;
+  created_at: string;
+};
+
 function formatDate(raw: string | null | undefined): string {
   if (!raw) return "—";
   try {
@@ -58,6 +111,18 @@ function formatDate(raw: string | null | undefined): string {
   } catch {
     return String(raw);
   }
+}
+
+/** Umur antrean (cermin WR ageLabel): request_sent_at → created_at → updated_at. */
+function ageLabel(order: { request_sent_at?: string | null; created_at?: string | null; updated_at?: string | null }): { text: string; hours: number } | null {
+  const raw = order.request_sent_at || order.created_at || order.updated_at;
+  if (!raw) return null;
+  const iso = /(Z|[+-]\d{2}:?\d{2})$/.test(raw) ? raw : `${raw.replace(" ", "T")}Z`;
+  const started = Date.parse(iso);
+  if (!Number.isFinite(started)) return null;
+  const minutes = Math.max(0, Math.floor((Date.now() - started) / 60000));
+  const hours = minutes / 60;
+  return { text: minutes < 60 ? `${minutes} mnt` : `${Math.floor(hours)} jam ${minutes % 60} mnt`, hours };
 }
 
 const SK_STATUS_LABEL: Record<string, string> = {
@@ -68,6 +133,7 @@ const SK_STATUS_LABEL: Record<string, string> = {
   processing: "Diproses SK",
   completed: "Selesai",
   failed: "Gagal",
+  canceled: "Dibatalkan SK",
   retry: "Retry",
   blocked_balance: "Saldo SK habis",
 };
@@ -77,7 +143,7 @@ function StatusBadge({ status }: { status: string }) {
   const color =
     status === "completed"
       ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-300"
-      : status === "failed"
+      : status === "failed" || status === "canceled"
         ? "border-red-400/30 bg-red-500/10 text-red-300"
         : status === "blocked_balance"
           ? "border-amber-400/30 bg-amber-500/10 text-amber-300"
@@ -89,11 +155,30 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+/** Badge order_process SK (admin saja): AUTO/MANUAL/H2H/SMM/VIP. */
+function ProcessBadge({ process }: { process: string }) {
+  const p = String(process || "").toLowerCase();
+  if (p === "auto") {
+    return <span title="AUTO • lisensi langsung" className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300">AUTO</span>;
+  }
+  if (p === "manual") {
+    return <span title="MANUAL • diproses admin SK" className="rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFD66B]">MANUAL</span>;
+  }
+  if (p === "h2h" || p === "smm" || p === "vip") {
+    return <span title={`${p.toUpperCase()} • belum didukung fase 1`} className="rounded-full border border-white/15 bg-white/[0.05] px-2 py-0.5 text-[10px] font-bold text-white/45">{p.toUpperCase()}</span>;
+  }
+  return <span className="rounded-full border border-white/15 bg-white/[0.05] px-2 py-0.5 text-[10px] font-bold text-white/45">{process || "?"}</span>;
+}
+
 const RETRYABLE_SK_STATUS = ["pending", "retry", "failed", "blocked_balance"];
 
-function canRetrySkLink(order: { status: string; attempt_count?: number }): boolean {
+/**
+ * Retry hanya bila kuota percobaan masih ada (API menolak bila habis).
+ * Cermin canRetryWrLink — memakai max_attempts dari baris, bukan konstanta.
+ */
+function canRetrySkLink(order: { status: string; attempt_count?: number; max_attempts?: number }): boolean {
   if (!RETRYABLE_SK_STATUS.includes(order.status)) return false;
-  return Number(order.attempt_count ?? 0) < 3;
+  return Number(order.attempt_count ?? 0) < Number(order.max_attempts ?? 3);
 }
 
 export function SekalipayManager() {
@@ -112,6 +197,30 @@ export function SekalipayManager() {
   const [sandboxVariant, setSandboxVariant] = useState("");
   const [sandboxing, setSandboxing] = useState(false);
   const [sandboxResult, setSandboxResult] = useState<string | null>(null);
+  // Setara WR: exclusion rules + markup per varian.
+  const [exclusions, setExclusions] = useState<ExclusionRow[]>([]);
+  const [newPattern, setNewPattern] = useState("");
+  const [markups, setMarkups] = useState<MarkupRow[]>([]);
+  const [markupQuery, setMarkupQuery] = useState("");
+  const [editingMarkup, setEditingMarkup] = useState<Record<string, { percent: string; fixed: string }>>({});
+  // Khas SK: mutasi saldo, validasi akun, stock-lock, transaksi, detail varian.
+  const [mutations, setMutations] = useState<MutationRow[]>([]);
+  const [mutationsLoading, setMutationsLoading] = useState(false);
+  const [mutationDir, setMutationDir] = useState("all");
+  const [validateItem, setValidateItem] = useState("");
+  const [validateCustomer, setValidateCustomer] = useState("");
+  const [validateZone, setValidateZone] = useState("");
+  const [validating, setValidating] = useState(false);
+  const [validateResult, setValidateResult] = useState<string | null>(null);
+  const [locks, setLocks] = useState<LockRow[]>([]);
+  const [lockItem, setLockItem] = useState("");
+  const [lockQty, setLockQty] = useState("1");
+  const [locking, setLocking] = useState(false);
+  const [transactions, setTransactions] = useState<SkTrxRow[]>([]);
+  const [trxLoading, setTrxLoading] = useState(false);
+  const [detailId, setDetailId] = useState("");
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailResult, setDetailResult] = useState<string | null>(null);
 
   const loadSaldo = useCallback(async () => {
     setSaldoLoading(true);
@@ -146,10 +255,64 @@ export function SekalipayManager() {
     }
   }, [orderStatus, orderQueryLive, toast]);
 
+  const loadExclusions = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/sekalipay/exclusions", { cache: "no-store" });
+      const body = await res.json().catch(() => ({}));
+      if (res.ok) setExclusions(body.exclusions || []);
+    } catch { /* opsional */ }
+  }, []);
+
+  const loadMarkups = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/admin/sekalipay/markup?limit=30${markupQuery ? `&q=${encodeURIComponent(markupQuery)}` : ""}`, { cache: "no-store" });
+      const body = await res.json().catch(() => ({}));
+      if (res.ok) setMarkups(body.variants || []);
+    } catch { /* opsional */ }
+  }, [markupQuery]);
+
+  const loadMutations = useCallback(async () => {
+    setMutationsLoading(true);
+    try {
+      const res = await fetch(`/api/admin/sekalipay/mutations?per_page=10${mutationDir !== "all" ? `&direction=${mutationDir}` : ""}`, { cache: "no-store" });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "Gagal memuat mutasi");
+      setMutations(body.mutations || []);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Gagal memuat mutasi saldo");
+    } finally {
+      setMutationsLoading(false);
+    }
+  }, [mutationDir, toast]);
+
+  const loadLocks = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/sekalipay/locks", { cache: "no-store" });
+      const body = await res.json().catch(() => ({}));
+      if (res.ok) setLocks(body.locks || []);
+    } catch { /* opsional */ }
+  }, []);
+
+  const loadTransactions = useCallback(async () => {
+    setTrxLoading(true);
+    try {
+      const res = await fetch("/api/admin/sekalipay/transactions?per_page=10", { cache: "no-store" });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "Gagal memuat transaksi");
+      setTransactions(body.transactions || []);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Gagal memuat transaksi SK");
+    } finally {
+      setTrxLoading(false);
+    }
+  }, [toast]);
+
   useEffect(() => {
     void loadSaldo();
     void loadLogs();
-  }, [loadSaldo, loadLogs]);
+    void loadExclusions();
+    void loadMarkups();
+  }, [loadSaldo, loadLogs, loadExclusions, loadMarkups]);
   useEffect(() => {
     void loadOrders();
   }, [loadOrders]);
@@ -239,7 +402,165 @@ export function SekalipayManager() {
     }
   };
 
+  const addExclusion = async () => {
+    const pattern = newPattern.trim();
+    if (pattern.length < 2) {
+      toast.error("Pola minimal 2 karakter.");
+      return;
+    }
+    try {
+      const res = await fetch("/api/admin/sekalipay/exclusions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pattern }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "Gagal menambah exclusion");
+      setNewPattern("");
+      toast.success("Exclusion ditambahkan.");
+      await loadExclusions();
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Gagal menambah exclusion");
+    }
+  };
+
+  const deleteExclusion = async (id: number) => {
+    try {
+      const res = await fetch(`/api/admin/sekalipay/exclusions?id=${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Gagal menghapus");
+      toast.success("Exclusion dihapus.");
+      await loadExclusions();
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Gagal menghapus");
+    }
+  };
+
+  const saveMarkup = async (row: MarkupRow) => {
+    const edit = editingMarkup[row.sk_variant_id];
+    const percent = Number(edit?.percent ?? row.markup_percent);
+    const fixed = Number(edit?.fixed ?? row.markup_fixed);
+    if (!Number.isInteger(percent) || percent < 0 || percent > 500 || !Number.isInteger(fixed) || fixed < 0) {
+      toast.error("Markup tidak valid (0–500% + nominal).");
+      return;
+    }
+    try {
+      const res = await fetch("/api/admin/sekalipay/markup", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sk_variant_id: row.sk_variant_id, markup_percent: percent, markup_fixed: fixed }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "Gagal menyimpan markup");
+      toast.success(`Harga jual baru ${formatRupiah(body.sell_price)}.`);
+      await loadMarkups();
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Gagal menyimpan markup");
+    }
+  };
+
+  const runValidate = async () => {
+    const itemId = Number(validateItem);
+    if (!Number.isInteger(itemId) || itemId <= 0 || !validateCustomer.trim()) {
+      toast.error("Isi item_id + customer ID dulu.");
+      return;
+    }
+    setValidating(true);
+    setValidateResult(null);
+    try {
+      const res = await fetch("/api/admin/sekalipay/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ item_id: itemId, customer_id: validateCustomer.trim(), zone_id: validateZone.trim() || undefined }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "Validasi gagal");
+      const r = body.result ?? {};
+      setValidateResult(`OK · ${r.display_name ?? r.account_name ?? JSON.stringify(r).slice(0, 200)}${r.region ? ` (${r.region})` : ""}${r.cached ? " · cache" : ""}`);
+      toast.success("Akun ditemukan.");
+    } catch (cause) {
+      const msg = cause instanceof Error ? cause.message : "Validasi gagal";
+      setValidateResult(`GAGAL · ${msg}`);
+      toast.error(msg);
+    } finally {
+      setValidating(false);
+    }
+  };
+
+  const createLock = async () => {
+    const itemId = Number(lockItem);
+    const qty = Math.max(1, Math.floor(Number(lockQty) || 1));
+    if (!Number.isInteger(itemId) || itemId <= 0) {
+      toast.error("Isi item_id (variant_id SK) dulu.");
+      return;
+    }
+    setLocking(true);
+    try {
+      const res = await fetch("/api/admin/sekalipay/locks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ item_id: itemId, quantity: qty }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "Lock gagal");
+      toast.success(`Stok dikunci 10 mnt: ${body.lock?.lock_token ?? ""}`);
+      await loadLocks();
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Lock gagal");
+    } finally {
+      setLocking(false);
+    }
+  };
+
+  const releaseLock = async (token: string) => {
+    try {
+      const res = await fetch(`/api/admin/sekalipay/locks?token=${encodeURIComponent(token)}`, { method: "DELETE" });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "Release gagal");
+      toast.success("Lock dilepas.");
+      await loadLocks();
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Release gagal");
+    }
+  };
+
+  const loadDetail = async () => {
+    const vid = detailId.trim();
+    if (!vid) {
+      toast.error("Isi variant_id SK dulu.");
+      return;
+    }
+    setDetailLoading(true);
+    setDetailResult(null);
+    try {
+      const res = await fetch(`/api/admin/sekalipay/variants/${encodeURIComponent(vid)}`, { cache: "no-store" });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "Gagal memuat detail");
+      const v = body.variant ?? {};
+      const lines = [
+        `${v.sk_product_name ?? ""} — ${v.sk_variant_name ?? ""}`,
+        `Modal ${formatRupiah(Number(v.sk_price ?? 0))} · Jual ${formatRupiah(Number(v.axvara_sell_price ?? 0))} · Stok ${v.sk_stock} · Min.order ${v.sk_min_order ?? 1} · Status ${v.sk_status ?? "-"}`,
+        `Proses ${v.sk_order_process ?? "-"}${v.axvara_product_id ? ` · Katalog #${v.axvara_product_id}` : " · TANPA katalog"}`,
+      ];
+      if (v.sk_description) lines.push(`Deskripsi: ${String(v.sk_description).slice(0, 200)}`);
+      if (v.sk_seller_note) lines.push(`Seller note: ${String(v.sk_seller_note).slice(0, 200)}`);
+      if (v.sk_required_fields) lines.push(`Wajib: ${JSON.stringify(v.sk_required_fields).slice(0, 200)}`);
+      if (v.sk_validation) lines.push(`Validasi: ${JSON.stringify(v.sk_validation).slice(0, 200)}`);
+      setDetailResult(lines.join("\n"));
+    } catch (cause) {
+      const msg = cause instanceof Error ? cause.message : "Gagal memuat detail";
+      setDetailResult(`GAGAL · ${msg}`);
+      toast.error(msg);
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
   const lastLog = logs[0];
+  // Sama seperti WR: bedakan sync manual vs cron agar pemilik bisa verifikasi
+  // cron berjalan (keduanya menulis baris products).
+  const lastProductLog = lastLog && lastLog.sync_type === "products" ? lastLog : null;
+  const lastManualLog = logs.find((l) => l.sync_type === "products" && l.trigger !== "cron") ?? null;
+  const lastCronLog = logs.find((l) => l.sync_type === "products" && l.trigger === "cron") ?? null;
   const balance = saldo.current?.balance ?? saldo.capacity?.balance ?? null;
 
   return (
@@ -269,10 +590,16 @@ export function SekalipayManager() {
           </div>
           <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
             <p className="text-[11px] uppercase tracking-wide text-white/40">Sync terakhir</p>
-            <p className="mt-1 text-sm font-semibold text-white">{lastLog ? `${lastLog.status} · ${formatDate(lastLog.created_at)}` : "Belum pernah"}</p>
+            <p className="mt-1 text-sm font-semibold text-white">{lastProductLog ? `${lastProductLog.status} · ${formatDate(lastProductLog.created_at)}` : lastLog ? `${lastLog.status} · ${formatDate(lastLog.created_at)}` : "Belum pernah"}</p>
             <p className="mt-1 text-[11px] text-white/40">
-              {lastLog ? `${lastLog.products_synced ?? 0} varian · ${lastLog.products_new ?? 0} produk baru · ${lastLog.products_excluded ?? 0} non-auto` : "Tekan Force Sync untuk sync pertama."}
+              {lastProductLog ? `${lastProductLog.products_synced ?? 0} varian · ${lastProductLog.products_new ?? 0} produk baru · ${lastProductLog.products_excluded ?? 0} non-auto` : lastLog ? "sync produk" : "Tekan Force Sync untuk sync pertama."}
             </p>
+            {(lastManualLog || lastCronLog) && (
+              <div className="mt-2 space-y-1 border-t border-white/10 pt-2 text-[11px] text-white/40">
+                <p>🔵 Manual: {lastManualLog ? `${lastManualLog.status} · ${formatDate(lastManualLog.created_at)} · ${lastManualLog.products_synced ?? 0}v` : "—"}</p>
+                <p>🟢 Otomatis: {lastCronLog ? `${lastCronLog.status} · ${formatDate(lastCronLog.created_at)} · ${lastCronLog.products_synced ?? 0}v` : "—"}</p>
+              </div>
+            )}
             <button onClick={() => void forceSync()} disabled={syncing} className="mt-3 inline-flex h-9 items-center gap-2 rounded-xl bg-[#00E5FF] px-3.5 text-xs font-bold text-[#07101f] transition hover:bg-[#00D0E8] disabled:opacity-40">
               {syncing ? <Spinner size={13} /> : <IosIcon name="refresh" size={13} tint="black" />}{syncing ? "Sync…" : "Force Sync Now"}
             </button>
@@ -314,6 +641,16 @@ export function SekalipayManager() {
                     <span className="font-mono text-xs font-semibold text-[#5cefff]">{order.order_code}</span>
                     <span className="text-xs text-white/45">{formatRupiah(order.sk_cost)} modal</span>
                     {order.sk_invoice && <span className="font-mono text-[11px] text-white/35">{order.sk_invoice}</span>}
+                    {!["completed", "failed"].includes(order.status) && (() => {
+                      const age = ageLabel(order);
+                      if (!age) return null;
+                      const late = age.hours >= 13;
+                      return (
+                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${late ? "border-red-400/30 bg-red-500/10 text-red-300" : "border-white/10 bg-white/[0.04] text-white/45"}`}>
+                          {age.text}{late ? " · lewat batas" : ""}
+                        </span>
+                      );
+                    })()}
                   </div>
                   {(order.customer_name || order.customer_wa || order.customer_email) && (
                     <p className="mt-1 text-[11px] text-white/55">
@@ -332,17 +669,167 @@ export function SekalipayManager() {
                       {voiding === order.id ? <Spinner size={13} /> : null} Batal
                     </button>
                   </div>
-                ) : order.status === "completed" || order.status === "failed" ? (
-                  <StatusBadge status={order.status} />
-                ) : (
-                  <button onClick={() => void voidOrder(order.id, order.order_code)} disabled={voiding === order.id} className="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl border border-red-400/30 bg-red-500/10 px-3.5 text-xs font-bold text-red-200 transition hover:bg-red-500/20 disabled:opacity-40">
-                    {voiding === order.id ? <Spinner size={13} /> : null} Batal
-                  </button>
-                )}
+                ) : RETRYABLE_SK_STATUS.includes(order.status) ? (
+                  <span title="Percobaan otomatis sudah habis. Serahkan manual dari tab Pesanan." className="inline-flex h-9 shrink-0 items-center rounded-xl border border-red-400/25 bg-red-500/10 px-3 text-[11px] font-semibold text-red-200">
+                    Percobaan habis
+                  </span>
+                ) : null}
               </article>
             ))}
           </div>
         )}
+      </section>
+
+      <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.035]">
+        <header className="border-b border-white/10 p-4"><h3 className="text-sm font-semibold text-white">Exclusion rules</h3><p className="mt-0.5 text-[11px] text-white/40">Produk yang cocok pola tidak dibuatkan katalog (registry tetap dicatat).</p></header>
+        <div className="space-y-2 p-4">
+          {exclusions.map((rule) => (
+            <div key={rule.id} className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/15 px-3 py-2">
+              <span className="min-w-0 flex-1 font-mono text-xs text-white/75">{rule.pattern}</span>
+              {rule.reason && <span className="hidden max-w-[40%] truncate text-[11px] text-white/40 sm:inline">{rule.reason}</span>}
+              <button onClick={() => void deleteExclusion(rule.id)} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-red-500/10 text-red-300 transition hover:bg-red-500/20" aria-label={`Hapus exclusion ${rule.pattern}`}>
+                <IosIcon name="close" size={13} tint="#F87171" />
+              </button>
+            </div>
+          ))}
+          <div className="flex gap-2">
+            <input value={newPattern} onChange={(e) => setNewPattern(e.target.value)} placeholder="cth: pulsa" className="h-10 min-w-0 flex-1 rounded-xl border border-white/10 bg-white/[0.05] px-3 text-sm text-white placeholder:text-white/30 focus:border-[#00E5FF]/50 focus:outline-none" />
+            <button onClick={() => void addExclusion()} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-[#00E5FF] px-4 text-xs font-bold text-[#07101f] transition hover:bg-[#00D0E8]">
+              <IosIcon name="plus" size={13} tint="black" /> Tambah
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.035]">
+        <header className="flex flex-wrap items-center gap-3 border-b border-white/10 p-4">
+          <div className="min-w-0"><h3 className="text-sm font-semibold text-white">Markup per varian</h3><p className="mt-0.5 text-[11px] text-white/40">Ubah markup → harga jual Axvara dihitung ulang otomatis.</p></div>
+          <input value={markupQuery} onChange={(e) => setMarkupQuery(e.target.value)} placeholder="Cari varian…" className="ml-auto h-9 w-full max-w-[220px] rounded-xl border border-white/10 bg-white/[0.05] px-3 text-xs text-white placeholder:text-white/30 focus:border-[#00E5FF]/50 focus:outline-none" />
+        </header>
+        {!markups.length ? <p className="p-10 text-center text-sm text-white/40">Belum ada varian SK tersinkron.</p> : (
+          <div className="divide-y divide-white/[0.06]">
+            {markups.slice(0, 30).map((row) => {
+              const edit = editingMarkup[row.sk_variant_id] ?? { percent: String(row.markup_percent), fixed: String(row.markup_fixed) };
+              return (
+                <article key={row.sk_variant_id} className="grid gap-3 p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="truncate text-sm font-semibold text-white">{row.sk_product_name ? `${row.sk_product_name} — ` : ""}{row.sk_variant_name}</p>
+                      <ProcessBadge process={row.sk_order_process} />
+                    </div>
+                    <p className="mt-1 text-xs text-white/45">Modal {formatRupiah(row.sk_price)} · Jual {formatRupiah(row.axvara_sell_price)} · Stok {row.sk_stock}{row.sk_min_order && Number(row.sk_min_order) > 1 ? ` · Min. ${row.sk_min_order}` : ""}{row.sk_status ? ` · ${row.sk_status}` : ""}{row.axvara_variant_id ? "" : " · TANPA katalog"}</p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="flex items-center gap-1.5 text-xs text-white/55">%<input value={edit.percent} onChange={(e) => setEditingMarkup((s) => ({ ...s, [row.sk_variant_id]: { percent: e.target.value, fixed: edit.fixed } }))} inputMode="numeric" className="h-9 w-16 rounded-lg border border-white/10 bg-black/20 px-2 text-right text-xs text-white focus:border-[#00E5FF]/50 focus:outline-none" /></label>
+                    <label className="flex items-center gap-1.5 text-xs text-white/55">+Rp<input value={edit.fixed} onChange={(e) => setEditingMarkup((s) => ({ ...s, [row.sk_variant_id]: { percent: edit.percent, fixed: e.target.value } }))} inputMode="numeric" className="h-9 w-24 rounded-lg border border-white/10 bg-black/20 px-2 text-right text-xs text-white focus:border-[#00E5FF]/50 focus:outline-none" /></label>
+                    <button onClick={() => void saveMarkup(row)} className="inline-flex h-9 items-center rounded-xl bg-white px-3.5 text-xs font-bold text-[#07101f] transition hover:bg-white/90">Simpan</button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.035]">
+        <header className="flex flex-wrap items-center gap-3 border-b border-white/10 p-4">
+          <div className="min-w-0"><h3 className="text-sm font-semibold text-white">Mutasi saldo <span className="ml-1 rounded-full bg-[#00E5FF]/15 px-2 py-0.5 text-[10px] font-bold text-[#5cefff]">KHAS SK</span></h3><p className="mt-0.5 text-[11px] text-white/40">Audit credit/debit + saldo sebelum/sesudah per invoice. WR tidak punya ini.</p></div>
+          <div className="ml-auto flex flex-wrap gap-2">
+            {[["all", "Semua"], ["credit", "Masuk"], ["debit", "Keluar"]].map(([value, label]) => (
+              <button key={value} onClick={() => setMutationDir(value)} className={`h-8 whitespace-nowrap rounded-lg px-3 text-xs font-semibold transition ${mutationDir === value ? "bg-[#00E5FF] text-[#07101f]" : "bg-white/[0.06] text-white/55 hover:bg-white/10 hover:text-white"}`}>{label}</button>
+            ))}
+            <button onClick={() => void loadMutations()} disabled={mutationsLoading} className="inline-flex h-8 items-center gap-2 rounded-lg border border-white/10 px-3 text-xs font-semibold text-white/60 transition hover:bg-white/5 hover:text-white disabled:opacity-40">
+              {mutationsLoading ? <Spinner size={12} /> : <IosIcon name="refresh" size={12} tint="white" />} Muat
+            </button>
+          </div>
+        </header>
+        {!mutations.length ? <p className="p-10 text-center text-sm text-white/40">Belum ada mutasi — tekan Muat.</p> : (
+          <div className="divide-y divide-white/[0.06]">
+            {mutations.map((m, i) => (
+              <div key={`${m.invoice}-${i}`} className="flex flex-wrap items-center gap-2 p-4">
+                <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${m.direction === "credit" ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-300" : "border-red-400/25 bg-red-500/10 text-red-300"}`}>
+                  {m.direction === "credit" ? "+" : "−"}{formatRupiah(m.amount)}
+                </span>
+                <span className="font-mono text-[11px] text-white/45">{m.invoice}</span>
+                <span className="text-[11px] text-white/40">{m.type}</span>
+                <span className="ml-auto text-[11px] text-white/35 tabular-nums">{formatRupiah(m.balance_before)} → {formatRupiah(m.balance_after)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.035]">
+        <header className="border-b border-white/10 p-4"><h3 className="text-sm font-semibold text-white">Cek akun <span className="ml-1 rounded-full bg-[#00E5FF]/15 px-2 py-0.5 text-[10px] font-bold text-[#5cefff]">KHAS SK</span></h3><p className="mt-0.5 text-[11px] text-white/40">Validasi nickname/nama sebelum order (game, e-wallet). WR tidak punya ini.</p></header>
+        <div className="flex flex-wrap items-center gap-2 p-4">
+          <input value={validateItem} onChange={(e) => setValidateItem(e.target.value)} placeholder="item_id" inputMode="numeric" className="h-9 w-28 rounded-xl border border-white/10 bg-white/[0.05] px-3 text-xs text-white placeholder:text-white/30 focus:border-[#00E5FF]/50 focus:outline-none" />
+          <input value={validateCustomer} onChange={(e) => setValidateCustomer(e.target.value)} placeholder="User ID / nomor" className="h-9 min-w-[160px] flex-1 rounded-xl border border-white/10 bg-white/[0.05] px-3 text-xs text-white placeholder:text-white/30 focus:border-[#00E5FF]/50 focus:outline-none" />
+          <input value={validateZone} onChange={(e) => setValidateZone(e.target.value)} placeholder="zone/server (opsional)" className="h-9 w-40 rounded-xl border border-white/10 bg-white/[0.05] px-3 text-xs text-white placeholder:text-white/30 focus:border-[#00E5FF]/50 focus:outline-none" />
+          <button onClick={() => void runValidate()} disabled={validating} className="inline-flex h-9 items-center gap-2 rounded-xl bg-[#00E5FF] px-3.5 text-xs font-bold text-[#07101f] transition hover:bg-[#00D0E8] disabled:opacity-40">
+            {validating ? <Spinner size={13} /> : null}{validating ? "Mengecek…" : "Cek akun"}
+          </button>
+          {validateResult && <p className="w-full font-mono text-[11px] text-white/60">{validateResult}</p>}
+        </div>
+      </section>
+
+      <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.035]">
+        <header className="flex flex-wrap items-center gap-3 border-b border-white/10 p-4">
+          <div className="min-w-0"><h3 className="text-sm font-semibold text-white">Stock lock <span className="ml-1 rounded-full bg-[#00E5FF]/15 px-2 py-0.5 text-[10px] font-bold text-[#5cefff]">KHAS SK</span></h3><p className="mt-0.5 text-[11px] text-white/40">Reservasi stok 10 mnt anti-overselling. WR tidak punya ini.</p></div>
+          <button onClick={() => void loadLocks()} className="ml-auto inline-flex h-8 items-center gap-2 rounded-lg border border-white/10 px-3 text-xs font-semibold text-white/60 transition hover:bg-white/5 hover:text-white">
+            <IosIcon name="refresh" size={12} tint="white" /> Muat lock aktif
+          </button>
+        </header>
+        <div className="flex flex-wrap items-center gap-2 p-4">
+          <input value={lockItem} onChange={(e) => setLockItem(e.target.value)} placeholder="item_id" inputMode="numeric" className="h-9 w-28 rounded-xl border border-white/10 bg-white/[0.05] px-3 text-xs text-white placeholder:text-white/30 focus:border-[#00E5FF]/50 focus:outline-none" />
+          <input value={lockQty} onChange={(e) => setLockQty(e.target.value)} placeholder="qty" inputMode="numeric" className="h-9 w-20 rounded-xl border border-white/10 bg-white/[0.05] px-3 text-xs text-white placeholder:text-white/30 focus:border-[#00E5FF]/50 focus:outline-none" />
+          <button onClick={() => void createLock()} disabled={locking} className="inline-flex h-9 items-center gap-2 rounded-xl bg-[#00E5FF] px-3.5 text-xs font-bold text-[#07101f] transition hover:bg-[#00D0E8] disabled:opacity-40">
+            {locking ? <Spinner size={13} /> : null}{locking ? "Mengunci…" : "Kunci 10 mnt"}
+          </button>
+        </div>
+        {locks.length > 0 && (
+          <div className="divide-y divide-white/[0.06] border-t border-white/10">
+            {locks.map((l) => (
+              <div key={l.lock_token} className="flex flex-wrap items-center gap-2 p-4">
+                <span className="font-mono text-[11px] text-[#5cefff]">{l.lock_token}</span>
+                <span className="text-[11px] text-white/45">item {l.item_id} × {l.quantity}</span>
+                <span className="text-[11px] text-white/35">s/d {formatDate(l.expires_at)}</span>
+                <button onClick={() => void releaseLock(l.lock_token)} className="ml-auto inline-flex h-8 items-center rounded-lg border border-red-400/30 bg-red-500/10 px-3 text-[11px] font-bold text-red-200 transition hover:bg-red-500/20">Lepas</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.035]">
+        <header className="flex flex-wrap items-center gap-3 border-b border-white/10 p-4">
+          <div className="min-w-0"><h3 className="text-sm font-semibold text-white">Transaksi SK <span className="ml-1 rounded-full bg-[#00E5FF]/15 px-2 py-0.5 text-[10px] font-bold text-[#5cefff]">KHAS SK</span></h3><p className="mt-0.5 text-[11px] text-white/40">Daftar transaksi di sisi Sekalipay (audit/refund). WR tidak punya ini.</p></div>
+          <button onClick={() => void loadTransactions()} disabled={trxLoading} className="ml-auto inline-flex h-8 items-center gap-2 rounded-lg border border-white/10 px-3 text-xs font-semibold text-white/60 transition hover:bg-white/5 hover:text-white disabled:opacity-40">
+            {trxLoading ? <Spinner size={12} /> : <IosIcon name="refresh" size={12} tint="white" />} Muat
+          </button>
+        </header>
+        {!transactions.length ? <p className="p-10 text-center text-sm text-white/40">Belum ada data — tekan Muat.</p> : (
+          <div className="divide-y divide-white/[0.06]">
+            {transactions.map((t) => (
+              <div key={t.invoice} className="flex flex-wrap items-center gap-2 p-4">
+                <StatusBadge status={t.status} />
+                <span className="font-mono text-[11px] text-white/45">{t.invoice}</span>
+                <span className="font-mono text-[11px] text-white/35">{t.ref_id}</span>
+                <span className="ml-auto text-xs text-white/55 tabular-nums">{formatRupiah(t.amount)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.035]">
+        <header className="border-b border-white/10 p-4"><h3 className="text-sm font-semibold text-white">Detail varian</h3><p className="mt-0.5 text-[11px] text-white/40">Capability registry (min.order, status, deskripsi, required fields) + live API.</p></header>
+        <div className="flex flex-wrap items-center gap-2 p-4">
+          <input value={detailId} onChange={(e) => setDetailId(e.target.value)} placeholder="variant_id SK" inputMode="numeric" className="h-9 w-36 rounded-xl border border-white/10 bg-white/[0.05] px-3 text-xs text-white placeholder:text-white/30 focus:border-[#00E5FF]/50 focus:outline-none" />
+          <button onClick={() => void loadDetail()} disabled={detailLoading} className="inline-flex h-9 items-center gap-2 rounded-xl bg-white px-3.5 text-xs font-bold text-[#07101f] transition hover:bg-white/90 disabled:opacity-40">
+            {detailLoading ? <Spinner size={13} /> : null}{detailLoading ? "Memuat…" : "Lihat detail"}
+          </button>
+          {detailResult && <p className="w-full whitespace-pre-wrap font-mono text-[11px] text-white/60">{detailResult}</p>}
+        </div>
       </section>
     </div>
   );

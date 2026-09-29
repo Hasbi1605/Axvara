@@ -25,7 +25,7 @@ export type SkRequiredField = {
 
 export type SkValidation = {
   available: boolean;
-  endpoint?: string;
+  endpoint?: string | null;
   requires_zone_id?: boolean;
   fields?: { key: string; label: string; required?: boolean }[];
 };
@@ -42,6 +42,11 @@ export type SkVariant = {
   required_fields: SkRequiredField[] | null;
   validation: SkValidation | null;
   updated_at: string | null;
+  // Field live dari API (dipakai sync + panel admin):
+  min_order?: number | null;
+  status?: string | null;
+  description?: string | null;
+  product_type?: { id: number; name: string } | null;
 };
 
 export type SkProduct = {
@@ -49,6 +54,7 @@ export type SkProduct = {
   name: string;
   image: string | null;
   variants: SkVariant[];
+  [key: string]: unknown;
 };
 
 export type SkCategory = {
@@ -56,6 +62,7 @@ export type SkCategory = {
   name: string;
   icon: string | null;
   products: SkProduct[];
+  [key: string]: unknown;
 };
 
 export type SkItemsResponse = {
@@ -287,7 +294,7 @@ export function classifySkError(
 }
 
 type SkRequestOptions = {
-  method?: "GET" | "POST" | "PUT";
+  method?: "GET" | "POST" | "PUT" | "DELETE";
   /** Query string untuk GET (diteruskan ke proxy). */
   query?: Record<string, string | number>;
   body?: Record<string, unknown>;
@@ -407,6 +414,179 @@ export async function createSkSandboxOrder(params: {
     method: "POST",
     body: { ref_id: params.refId, items: params.items },
   });
+}
+
+// ── Fitur khas SK yang tidak dimiliki WR (fase panel setara WR) ──
+
+/** Detail satu varian: GET /v1/item/{id} (order_process + capability). */
+export type SkItemDetail = {
+  id: number;
+  name: string;
+  price: number;
+  stock: number;
+  order_process: SkOrderProcess;
+  h2h_provider: string | null;
+  provider_meta: Record<string, unknown> | null;
+  required_fields: SkRequiredField[] | null;
+  validation: SkValidation | null;
+  description?: string | null;
+  [key: string]: unknown;
+};
+
+export async function fetchSkItemDetail(variantId: number): Promise<SkItemDetail> {
+  const res = await skFetch<{ message: string; data: SkItemDetail }>(
+    `v1/item/${encodeURIComponent(String(variantId))}`,
+  );
+  return res.data;
+}
+
+/** Validasi akun (cek nickname/nama): POST /v1/item/validate. */
+export type SkValidationResult = {
+  display_name: string;
+  account_name: string;
+  region: string | null;
+  cached: boolean;
+  [key: string]: unknown;
+};
+
+export async function validateSkAccount(params: {
+  itemId: number;
+  customerId: string;
+  zoneId?: string;
+}): Promise<SkValidationResult> {
+  const res = await skFetch<{ message: string; data: SkValidationResult }>("v1/item/validate", {
+    method: "POST",
+    body: {
+      item_id: params.itemId,
+      customer_id: params.customerId,
+      ...(params.zoneId ? { zone_id: params.zoneId } : {}),
+    },
+  });
+  return res.data;
+}
+
+/** Daftar layanan yang punya validasi aktif: GET /v1/validation/services. */
+export type SkValidationService = {
+  product_id: number;
+  product_name: string;
+  validation: SkValidation;
+  variants: { item_id: number; name: string; sku: string; price: number; status: string }[];
+};
+
+export async function fetchSkValidationServices(search?: string): Promise<{
+  data: SkValidationService[];
+  meta: { total_products: number; total_items: number };
+}> {
+  return skFetch("v1/validation/services", {
+    query: search ? { search } : {},
+  });
+}
+
+/** Kunci stok 10 mnt anti-overselling: POST /v1/item/lock. */
+export type SkStockLock = {
+  lock_token: string;
+  item_id: number;
+  quantity: number;
+  locked_at: string;
+  expires_at: string;
+};
+
+export async function lockSkStock(params: {
+  itemId: number;
+  quantity: number;
+  lockDuration?: number;
+}): Promise<SkStockLock> {
+  const res = await skFetch<{ success: boolean; data: SkStockLock }>("v1/item/lock", {
+    method: "POST",
+    body: {
+      item_id: params.itemId,
+      quantity: params.quantity,
+      ...(params.lockDuration ? { lock_duration: params.lockDuration } : {}),
+    },
+  });
+  return res.data;
+}
+
+/** Daftar lock aktif: GET /v1/item/lock. */
+export async function listSkStockLocks(): Promise<SkStockLock[]> {
+  const res = await skFetch<{ message: string; data?: SkStockLock[] | { locks: SkStockLock[] } | null }>(
+    "v1/item/lock",
+  ).catch((error) => {
+    // Endpoint lock-list mengembalikan ITEM_NOT_FOUND saat tidak ada lock
+    // aktif (bukan error) — normalisasi ke [] agar panel tetap tenang.
+    if (error instanceof SkApiError && /ITEM_NOT_FOUND/i.test(error.message)) {
+      return { message: "ITEM_NOT_FOUND", data: [] as SkStockLock[] };
+    }
+    throw error;
+  });
+  const data = res.data;
+  if (Array.isArray(data)) return data;
+  if (data && Array.isArray((data as { locks?: unknown }).locks)) {
+    return (data as { locks: SkStockLock[] }).locks;
+  }
+  return [];
+}
+
+/** Lepas lock: DELETE /v1/item/lock/{token} (via method override proxy). */
+export async function releaseSkStockLock(lockToken: string): Promise<boolean> {
+  try {
+    await skFetch(`v1/item/lock/${encodeURIComponent(lockToken)}`, { method: "DELETE" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Histori mutasi saldo untuk audit: GET /v1/balance/mutations. */
+export type SkBalanceMutation = {
+  invoice: string;
+  direction: "credit" | "debit";
+  type: string;
+  amount: number;
+  balance_before: number;
+  balance_after: number;
+  [key: string]: unknown;
+};
+
+export async function fetchSkBalanceMutations(params?: {
+  page?: number;
+  perPage?: number;
+  direction?: "credit" | "debit";
+  type?: string;
+}): Promise<{ data: SkBalanceMutation[]; meta: Record<string, unknown> }> {
+  const query: Record<string, string | number> = {};
+  if (params?.page) query.page = params.page;
+  if (params?.perPage) query.per_page = params.perPage;
+  if (params?.direction) query.direction = params.direction;
+  if (params?.type) query.type = params.type;
+  return skFetch("v1/balance/mutations", { query });
+}
+
+/** Daftar transaksi SK: GET /v1/trx (audit/refund manual). */
+export type SkTransactionSummary = {
+  invoice: string;
+  ref_id: string;
+  status: string;
+  price: number;
+  fees: number;
+  amount: number;
+  activity: string;
+  created_at: string;
+  updated_at: string;
+  expired_at: string | null;
+  [key: string]: unknown;
+};
+
+export async function fetchSkTransactions(params?: {
+  page?: number;
+  perPage?: number;
+}): Promise<{
+  data: { transactions: SkTransactionSummary[]; pagination: Record<string, unknown> };
+}> {
+  const query: Record<string, string | number> = {};
+  if (params?.page) query.page = params.page;
+  if (params?.perPage) query.per_page = params.perPage;
+  return skFetch("v1/trx", { query });
 }
 
 /**

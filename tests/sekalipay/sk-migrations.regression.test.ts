@@ -68,12 +68,21 @@ describe("migrasi 0049 Sekalipay di DB production lama", () => {
     const sql = createPreSkDatabase();
     try {
       sql.exec(fs.readFileSync("drizzle/migrations/0049_sekalipay_supplier.sql", "utf8"));
+      sql.exec(fs.readFileSync("drizzle/migrations/0050_sekalipay_panel.sql", "utf8"));
       sql.prepare("INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status) VALUES('AXV-S','B','628','[]',100,'qris','lunas','paid')").run();
       sql.prepare("INSERT INTO sk_order_links(order_code,sk_variant_id,quantity,sk_cost,status) VALUES('AXV-S','101',1,5000,'pending')").run();
       sql.prepare("INSERT INTO sk_order_links(order_code,sk_variant_id,quantity,sk_cost,status) VALUES('AXV-S','102',1,100,'blocked_balance')").run();
       expect(() => sql.prepare("INSERT INTO sk_order_links(order_code,sk_variant_id,quantity,sk_cost,status) VALUES('AXV-S','103',1,100,'bogus')").run()).toThrow();
       sql.prepare("UPDATE sk_order_links SET idempotency_key='sk:AXV-S:101:1' WHERE sk_variant_id='101'").run();
       expect(() => sql.prepare("INSERT INTO sk_order_links(order_code,sk_variant_id,quantity,sk_cost,status,idempotency_key) VALUES('AXV-S','101',1,5000,'pending','sk:AXV-S:101:1')").run()).toThrow();
+      // 0050: exclusions kosong + kolom registry baru.
+      expect((sql.prepare("SELECT COUNT(*) n FROM sk_exclusions").get() as { n: number }).n).toBe(0);
+      sql.prepare("INSERT INTO sk_exclusions(pattern,reason) VALUES('%netflix%','bandingkan')").run();
+      expect(() => sql.prepare("INSERT INTO sk_exclusions(pattern) VALUES('%netflix%')").run()).toThrow();
+      const cols = sql.prepare("PRAGMA table_info(sk_products)").all() as { name: string }[];
+      for (const c of ["sk_description", "sk_min_order", "sk_status", "sk_required_fields", "sk_validation"]) {
+        expect(cols.map((x) => x.name)).toContain(c);
+      }
     } finally {
       sql.close();
     }
