@@ -18,11 +18,15 @@
 // 5. Kontrak API tidak berubah: GET /api/products ORDER BY sort_order ASC.
 // 6. Migrasi 0047: backfill 0 → unik mengikuti id (idempoten, nilai admin
 //    yang sudah diatur tidak digeser).
+// 7. Display kolom Urutan = NOMOR POSISI (pos+1, selalu 1..N rapi), bukan
+//    raw sort_order (kunci teknis boleh kembar/lompat — laporan owner
+//    2026-09-29: 2,2,3,3,7,17,18,19 padahal posisi di toko sudah benar).
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, renderHook } from "@testing-library/react";
+import { act, cleanup, render, renderHook, screen } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createRequire } from "node:module";
+import { ProductsSection } from "@/components/admin/sections/ProductsSection";
 import {
   globalProductOrder,
   normalizeSortOrder,
@@ -385,9 +389,62 @@ describe("kontrak API urutan tetap", () => {
     expect(src).toContain("onMove(p, -1)");
     expect(src).toContain("onMove(p, 1)");
   });
+  it("kolom Urutan menampilkan NOMOR POSISI (pos+1), bukan raw sort_order", () => {
+    // Regresi tampilan 2026-09-29: raw boleh kembar/lompat (2,2,3,3,7,…)
+    // padahal posisi di toko benar — yang dipajang harus nomor posisi 1..N.
+    const src = read("src/components/admin/sections/ProductsSection.tsx");
+    expect(src).toContain("(orderIndex.get(p.id) ?? 0) + 1");
+    expect(src).not.toContain(">{p.sortOrder ?? 0}<");
+  });
   it("ProductEditorModal punya input Urutan 0-999999", () => {
     const src = read("src/components/admin/ProductEditorModal.tsx");
     expect(src).toContain("form.sortOrder");
     expect(src).toContain("max={999999}");
+  });
+});
+
+describe("kolom Urutan = nomor posisi 1..N walau raw kembar/lompat", () => {
+  function sectionProps(list: Prod[]) {
+    const noop = vi.fn();
+    const setPage = vi.fn();
+    return {
+      prods: list, paged: list, filtered: list, q: "", safePage: 1, totalPages: 1, perPage: 20,
+      loadingList: false, toggling: null, activeProducts: list.length, lowStock: 0, soldProducts: 0,
+      onQueryChange: noop, onPageChange: setPage, onlyLowStock: false, onClearLowStock: noop,
+      onNew: noop, onEdit: noop, onDelete: noop, onToggleActive: noop,
+      reordering: null, onMove: noop,
+    };
+  }
+
+  it("raw 2,2,3,3,7,17,18,19 (kasus screenshot owner) tampil 1..8", () => {
+    // Daftar `filtered` sudah terurut tampil (posisi benar, angka raw acak).
+    const raws = [2, 2, 3, 3, 7, 17, 18, 19];
+    const list = raws.map((order, i) => prod(i + 1, order));
+    const { container } = render(<ProductsSection {...sectionProps(list)} />);
+    // Badge desktop: 8 pill bernomor 1..8 berurutan.
+    const badges = [...container.querySelectorAll('td span[title^="Posisi"]')].map((el) => el.textContent);
+    expect(badges).toEqual(["1", "2", "3", "4", "5", "6", "7", "8"]);
+    // Tooltip tetap membawa kunci teknis untuk diagnosis.
+    const titles = [...container.querySelectorAll('td span[title^="Posisi"]')].map((el) => el.getAttribute("title"));
+    expect(titles[0]).toContain("kunci teknis sort_order: 2");
+    expect(titles[5]).toContain("kunci teknis sort_order: 17");
+    // Kartu mobile: "#N dari 8".
+    expect(container.textContent).toContain("#1 dari 8");
+    expect(container.textContent).toContain("#8 dari 8");
+    // Angka raw yang membingungkan (pill "17"/"19") tidak dipajang.
+    expect(badges).not.toContain("17");
+    expect(badges).not.toContain("19");
+  });
+
+  it("setelah ↑↓, nomor posisi tetap 1..N berurutan (urutan tampil = posisi)", () => {
+    const list = [2, 2, 3].map((order, i) => prod(i + 1, order));
+    const props = sectionProps(list);
+    const { container, rerender } = render(<ProductsSection {...props} />);
+    // Simulasi hasil moveProduct: id 3 (raw 3) digeser ke 4 → tampil paling bawah.
+    const moved = list.map((p) => (p.id === "3" ? { ...p, sortOrder: 4 } : p));
+    const ordered = [...moved].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || Number(a.id) - Number(b.id));
+    rerender(<ProductsSection {...props} prods={moved} paged={ordered} filtered={ordered} />);
+    const badges = [...container.querySelectorAll('td span[title^="Posisi"]')].map((el) => el.textContent);
+    expect(badges).toEqual(["1", "2", "3"]);
   });
 });

@@ -70,7 +70,13 @@ export function ProductsSection({
   onMove: (p: Prod, direction: -1 | 1) => void;
 }) {
   // Posisi tampil produk di daftar penuh (tanpa potong halaman): dipakai
-  // untuk menonaktifkan tombol ↑ di puncak dan ↓ di dasar.
+  // untuk menonaktifkan tombol ↑ di puncak dan ↓ di dasar, SEKALIGUS
+  // sebagai angka yang TAMPIL di kolom Urutan (pos + 1, selalu 1..N rapi).
+  // Yang tampil BUKAN raw sort_order — raw adalah kunci teknis yang boleh
+  // kembar/lompat (hasil geser delta, backfill parsial, edit manual) dan
+  // memang membingungkan bila dipajang (laporan owner 2026-09-29: 2,2,3,3,
+  // 7,17,18,19 padahal posisi di toko sudah benar). Raw tetap dikirim ke
+  // server dan terlihat di tooltip untuk diagnosis.
   const orderIndex = new Map(filtered.map((p, i) => [p.id, i]));
   return (
     <>
@@ -115,7 +121,7 @@ export function ProductsSection({
                 <div className="flex items-start gap-3">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={p.image || "/brand/axvara-ribbon-mark.png"} alt="" className="h-14 w-14 shrink-0 rounded-xl bg-white/5 object-cover" />
-                  <div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-semibold text-white">{p.name}</p><p className="mt-0.5 truncate text-[11px] text-white/35">{p.categorySlug} · {p.variantCount ? `${p.variantCount} varian` : "produk"} · urutan {p.sortOrder ?? 0}</p><CopyReviewBadge count={p.copyReview} /></div><button type="button" aria-pressed={p.isActive} aria-label={`Toggle aktif ${p.name}`} disabled={toggling === p.id} onClick={() => onToggleActive(p)} className={`toggle-btn relative inline-flex h-6 w-[46px] shrink-0 items-center rounded-full border px-[2px] ${p.isActive ? "border-emerald-600 bg-emerald-500" : "border-white/20 bg-white/15"}`}><span className={`h-[18px] w-[18px] rounded-full bg-white transition-transform ${p.isActive ? "translate-x-[20px]" : "translate-x-0"}`} /></button></div><div className="mt-3 flex flex-wrap items-center gap-2 text-xs"><span className="font-semibold text-white">{p.minPrice != null && p.maxPrice != null && p.minPrice !== p.maxPrice ? `${formatRupiah(p.minPrice)}–${formatRupiah(p.maxPrice)}` : formatRupiah(p.price)}</span><span className="rounded-full bg-white/[0.07] px-2 py-1 text-white/50">Stok {p.stock === -1 ? "∞" : p.stock}</span><span className="text-white/35">{p.soldCount} terjual</span></div></div>
+                  <div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-semibold text-white">{p.name}</p><p className="mt-0.5 truncate text-[11px] text-white/35">{p.categorySlug} · {p.variantCount ? `${p.variantCount} varian` : "produk"} · #{(orderIndex.get(p.id) ?? 0) + 1} dari {filtered.length}</p><CopyReviewBadge count={p.copyReview} /></div><button type="button" aria-pressed={p.isActive} aria-label={`Toggle aktif ${p.name}`} disabled={toggling === p.id} onClick={() => onToggleActive(p)} className={`toggle-btn relative inline-flex h-6 w-[46px] shrink-0 items-center rounded-full border px-[2px] ${p.isActive ? "border-emerald-600 bg-emerald-500" : "border-white/20 bg-white/15"}`}><span className={`h-[18px] w-[18px] rounded-full bg-white transition-transform ${p.isActive ? "translate-x-[20px]" : "translate-x-0"}`} /></button></div><div className="mt-3 flex flex-wrap items-center gap-2 text-xs"><span className="font-semibold text-white">{p.minPrice != null && p.maxPrice != null && p.minPrice !== p.maxPrice ? `${formatRupiah(p.minPrice)}–${formatRupiah(p.maxPrice)}` : formatRupiah(p.price)}</span><span className="rounded-full bg-white/[0.07] px-2 py-1 text-white/50">Stok {p.stock === -1 ? "∞" : p.stock}</span><span className="text-white/35">{p.soldCount} terjual</span></div></div>
                 </div>
                 <div className="mt-4 grid grid-cols-[auto_1fr_auto] gap-2">
                   <div className="flex items-center gap-1" role="group" aria-label={`Ubah urutan ${p.name}`}>
@@ -151,7 +157,7 @@ export function ProductsSection({
                       <td className="px-3 py-3 text-center text-xs text-white/60">{p.soldCount}</td>
                       <td className="px-3 py-3 text-center">
                         <div className="inline-flex items-center gap-1" role="group" aria-label={`Ubah urutan ${p.name}`}>
-                          <span className="mr-1 inline-flex min-w-[36px] justify-center rounded-full bg-white/10 px-2 py-1 text-xs font-bold text-white/70" title="Nilai urutan (sort_order)">{p.sortOrder ?? 0}</span>
+                          <span className="mr-1 inline-flex min-w-[36px] justify-center rounded-full bg-white/10 px-2 py-1 text-xs font-bold text-white/70" title={`Posisi ${((orderIndex.get(p.id) ?? 0) + 1)} dari ${filtered.length} (kunci teknis sort_order: ${p.sortOrder ?? 0})`}>{(orderIndex.get(p.id) ?? 0) + 1}</span>
                           <button type="button" onClick={()=>onMove(p, -1)} disabled={busy || isFirst} aria-label={`Naikkan ${p.name}`} title="Naik satu posisi" className="flex h-7 w-7 items-center justify-center rounded-full bg-white/[0.07] text-xs font-bold text-white transition hover:bg-white/[0.14] disabled:opacity-30 disabled:pointer-events-none">↑</button>
                           <button type="button" onClick={()=>onMove(p, 1)} disabled={busy || isLast} aria-label={`Turunkan ${p.name}`} title="Turun satu posisi" className="flex h-7 w-7 items-center justify-center rounded-full bg-white/[0.07] text-xs font-bold text-white transition hover:bg-white/[0.14] disabled:opacity-30 disabled:pointer-events-none">↓</button>
                         </div>

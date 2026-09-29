@@ -121,7 +121,7 @@ Bottom nav mobile (2026-09-25): **Beranda · Keranjang · Pesanan · Bantuan**. 
 
 - D1 `categories` adalah satu-satunya sumber nama, ikon, dan urutan kategori untuk kapsul katalog serta menu Jelajah di footer. Taksonomi 2026-09-28 (migrasi 0046): AI & Chatbot, Streaming & Hiburan, Produktivitas & Office, Desain & Video, Developer & Tools, Bundle Hemat — slug lama dialias di kode agar filter lama tidak 404.
 - Nama kategori dapat diganti tanpa mengubah slug stabil. Produk tetap terhubung melalui `category_id`, sehingga rename tidak memutus filter atau mengganti ikon.
-- Daftar produk admin punya kolom Urutan + tombol ↑↓ per baris (swap tetangga global) + field angka Urutan tampil 0–999999 di modal edit.
+- Daftar produk admin punya kolom Urutan (nomor posisi 1..N yang selalu rapi; raw sort_order hanya di tooltip) + tombol ↑↓ per baris (geser delta tetangga global, realtime) + field angka Urutan tampil 0–999999 di modal edit.
 - Admin memilih ikon secara eksplisit dari 12 aset lokal. Kategori yang masih memiliki produk harus dikosongkan terlebih dahulu sebelum dihapus.
 - Form **Tetap update** menerima email dan menyimpannya ke `newsletter_subscribers`; hasilnya terlihat di menu **Pelanggan Email** pada panel admin.
 
