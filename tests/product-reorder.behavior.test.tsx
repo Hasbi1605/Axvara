@@ -77,6 +77,19 @@ function stubApi(list: Prod[]) {
     if (url.startsWith("/api/categories")) {
       return { ok: true, status: 200, json: async () => ({ categories: [] }) };
     }
+    // Endpoint sold-count inline: tiru server — SET absolut.
+    const soldMatch = url.match(/^\/api\/products\/(\d+)\/sold-count$/);
+    if (soldMatch && method === "PATCH") {
+      const row = store.get(soldMatch[1]);
+      if (!row) return { ok: false, status: 404, json: async () => ({ error: "not found" }) };
+      const body = calls[calls.length - 1].body ?? {};
+      const n = Number((body as { soldCount?: unknown }).soldCount);
+      if (!Number.isInteger(n) || n < 0 || n > 9999999) {
+        return { ok: false, status: 400, json: async () => ({ error: "Angka Terjual tidak valid (0–9999999)." }) };
+      }
+      row.soldCount = n;
+      return { ok: true, status: 200, json: async () => ({ ok: true, soldCount: n }) };
+    }
     // Endpoint reorder baru: tiru server — pindah tepat satu tetangga ATAU
     // lompat ke targetPosition dalam bucket yang sama, lalu normalisasi
     // seluruh key 10,20,30…
@@ -376,6 +389,152 @@ describe("moveProduct: TEPAT satu posisi via POST /api/products/reorder", () => 
   });
 });
 
+describe("Terjual editable: inline kolom + modal, increment tetap jalan", () => {
+  it("inline: ketik + Enter kirim PATCH sold-count, state realtime", async () => {
+    const { calls, store } = stubApi([prod(1, 10, { soldCount: 121 }), prod(2, 20, { soldCount: 5 })]);
+    const { result } = renderManager();
+    await act(async () => { await result.current.load(); });
+    const target = result.current.prods.find((p) => p.id === "1")!;
+    await act(async () => { await result.current.saveSoldCount(target, 200); });
+    const patches = calls.filter((c) => c.url === "/api/products/1/sold-count");
+    expect(patches).toHaveLength(1);
+    expect(patches[0].body).toEqual({ soldCount: 200 });
+    expect(store.get("1")!.soldCount).toBe(200);
+    expect(result.current.prods.find((p) => p.id === "1")!.soldCount).toBe(200);
+    // Kartu ringkasan ikut bertambah (121→200: +79).
+    expect(result.current.soldProducts).toBe(205);
+  });
+
+  it("inline: PATCH gagal → rollback ke angka semula", async () => {
+    stubApi([prod(1, 10, { soldCount: 121 })]);
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      const method = init?.method ?? "GET";
+      if (url === "/api/products" && method === "GET") {
+        return { ok: true, status: 200, json: async () => ({ products: [prod(1, 10, { soldCount: 121 })] }) };
+      }
+      if (url.startsWith("/api/categories")) {
+        return { ok: true, status: 200, json: async () => ({ categories: [] }) };
+      }
+      return { ok: false, status: 500, json: async () => ({ error: "boom" }) };
+    }));
+    const { result } = renderManager();
+    await act(async () => { await result.current.load(); });
+    const target = result.current.prods.find((p) => p.id === "1")!;
+    await act(async () => { await result.current.saveSoldCount(target, 999); });
+    expect(result.current.prods.find((p) => p.id === "1")!.soldCount).toBe(121);
+  });
+
+  it("UI tabel: ketik Terjual + blur memanggil onSoldCount", async () => {
+    const onSoldCount = vi.fn();
+    const list = [prod(1, 10, { soldCount: 121 }), prod(2, 20, { soldCount: 5 })];
+    const noop = vi.fn();
+    const { container } = render(
+      <ProductsSection
+        prods={list} paged={list} filtered={list} q="" safePage={1} totalPages={1} perPage={20}
+        loadingList={false} toggling={null} activeProducts={2} lowStock={0} soldProducts={126}
+        onQueryChange={noop} onPageChange={noop} onlyLowStock={false} onClearLowStock={noop}
+        onNew={noop} onEdit={noop} onDelete={noop} onToggleActive={noop}
+        reordering={null} onMove={noop} onJump={noop} onSoldCount={onSoldCount}
+      />,
+    );
+    const { fireEvent } = await import("@testing-library/react");
+    const input = container.querySelector('td input[aria-label="Ubah angka Terjual Produk 1"]') as HTMLInputElement;
+    expect(input.value).toBe("121");
+    fireEvent.change(input, { target: { value: "200" } });
+    fireEvent.blur(input);
+    expect(onSoldCount).toHaveBeenCalledTimes(1);
+    expect(onSoldCount.mock.calls[0][1]).toBe(200);
+  });
+
+  it("modal: angka Terjual bisa diedit + ikut payload PUT", async () => {
+    const calls = (() => {
+      const c: { url: string; method: string; body: Record<string, unknown> | null }[] = [];
+      vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+        const method = init?.method ?? "GET";
+        c.push({ url, method, body: init?.body ? JSON.parse(String(init.body)) : null });
+        if (url === "/api/products/1" && method === "GET") {
+          return {
+            ok: true, status: 200,
+            json: async () => ({
+              product: {
+                ...prod(1, 3, { soldCount: 121 }), wrDescription: "Deskripsi", adminDescriptionOverride: null,
+                wrManaged: false, requireEmail: false,
+                variants: [{ id: 1, sku: "DEFAULT-1", label: "Default", price: 10000, stock: -1, is_active: 1, fulfillment_mode: "manual" }],
+              },
+            }),
+          };
+        }
+        if (url === "/api/products" && method === "GET") {
+          return { ok: true, status: 200, json: async () => ({ products: [prod(1, 3, { soldCount: 121 })] }) };
+        }
+        if (url.startsWith("/api/categories")) {
+          return { ok: true, status: 200, json: async () => ({ categories: [] }) };
+        }
+        return { ok: true, status: 200, json: async () => ({ ok: true }) };
+      }));
+      return c;
+    })();
+    const { result } = renderManager();
+    await act(async () => { await result.current.openEdit(prod(1, 3, { soldCount: 121 })); });
+    expect(result.current.form.soldCount).toBe(121);
+    act(() => { result.current.setForm({ ...result.current.form, soldCount: 500 }); });
+    await act(async () => { await result.current.save(); });
+    const put = calls.find((c) => c.method === "PUT");
+    expect(put).toBeDefined();
+    expect(put!.body!.soldCount).toBe(500);
+  });
+});
+
+describe("endpoint PATCH /api/products/[id]/sold-count (server, D1 fixture)", () => {
+  let fixture: ReturnType<typeof createD1Fixture>;
+  const patch = async (id: number, body: unknown) => {
+    vi.resetModules();
+    vi.doMock("@/lib/auth", () => ({ requireAdmin: vi.fn(async () => ({ email: "admin@test" })) }));
+    const { PATCH } = await import("@/app/api/products/[id]/sold-count/route");
+    return PATCH(new NextRequest(`http://localhost/api/products/${id}/sold-count`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    }) as never, { params: Promise.resolve({ id: String(id) }) });
+  };
+  beforeEach(() => {
+    fixture = createD1Fixture();
+    fixture.sql.prepare(
+      "INSERT INTO products (id, category_id, name, slug, description, price, stock, sold_count, is_active, sort_order) VALUES (1,1,'A','a','d',1000,-1,121,1,10),(2,1,'B','b','d',1000,-1,5,1,20)",
+    ).run();
+  });
+  afterEach(() => { fixture.close(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+  it("SET absolut 121 → 200; nilai sama = unchanged tanpa tulis", async () => {
+    const res = await patch(1, { soldCount: 200 });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, soldCount: 200 });
+    expect((fixture.sql.prepare("SELECT sold_count FROM products WHERE id=1").get() as { sold_count: number }).sold_count).toBe(200);
+    const same = await patch(1, { soldCount: 200 });
+    expect((await same.json() as { unchanged?: boolean }).unchanged).toBe(true);
+  });
+
+  it("validasi: negatif / non-angka / >9999999 ditolak 400; DB utuh", async () => {
+    for (const body of [{ soldCount: -1 }, { soldCount: "abc" }, { soldCount: 10000000 }, {}]) {
+      expect((await patch(1, body)).status).toBe(400);
+    }
+    expect((fixture.sql.prepare("SELECT sold_count FROM products WHERE id=1").get() as { sold_count: number }).sold_count).toBe(121);
+  });
+
+  it("404 untuk produk tak dikenal", async () => {
+    expect((await patch(999, { soldCount: 10 })).status).toBe(404);
+  });
+
+  it("increment pembelian tetap += qty di atas angka manual (perilaku utuh)", async () => {
+    await patch(1, { soldCount: 200 });
+    const { incrementSoldCountForOrder } = await import("@/lib/db/orders-transition");
+    fixture.sql.prepare(
+      "INSERT INTO orders (code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel) VALUES ('AXV-T1','T','628000000000',?,1000,'qris','lunas','paid','web')",
+    ).run(JSON.stringify([{ product_id: 1, qty: 3 }]));
+    await incrementSoldCountForOrder("AXV-T1");
+    // 200 (manual) + 3 (order asli) = 203 — bukan reset ke 3.
+    expect((fixture.sql.prepare("SELECT sold_count FROM products WHERE id=1").get() as { sold_count: number }).sold_count).toBe(203);
+  });
+});
+
 describe("editor: modal membaca posisi 1..N, tidak mengirim kunci posisi", () => {
   function stubSaveApi() {
     const calls: { url: string; method: string; body: Record<string, unknown> | null }[] = [];
@@ -655,7 +814,7 @@ describe("kolom Urutan = nomor posisi 1..N walau raw kembar/lompat", () => {
       loadingList: false, toggling: null, activeProducts: list.length, lowStock: 0, soldProducts: 0,
       onQueryChange: noop, onPageChange: setPage, onlyLowStock: false, onClearLowStock: noop,
       onNew: noop, onEdit: noop, onDelete: noop, onToggleActive: noop,
-      reordering: null, onMove: noop, onJump: noop,
+      reordering: null, onMove: noop, onJump: noop, onSoldCount: noop,
     };
   }
 

@@ -146,6 +146,7 @@ export default function AdminPage() {
           reordering={pm.reordering}
           onMove={pm.moveProduct}
           onJump={pm.jumpProduct}
+          onSoldCount={pm.saveSoldCount}
         />
       )}
 

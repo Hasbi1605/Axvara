@@ -256,7 +256,18 @@ export function ProductEditorModal({
                 <span className="text-sm text-white/80">Wajib email pembeli</span>
               </label>
               <div className="text-xs text-white/40">
-                Terjual: <span className="text-white/70 font-semibold">{form.soldCount ?? 0}</span>
+                <label className="flex items-center gap-2">
+                  <span className="text-white/60">Terjual</span>
+                  <input
+                    type="number" min={0} max={9999999} step={1}
+                    value={form.soldCount ?? 0}
+                    onChange={(e) => onSetForm({ ...form, soldCount: Math.max(0, Math.min(9999999, Math.floor(Number(e.target.value) || 0))) })}
+                    aria-label="Angka Terjual"
+                    title="Angka Terjual — pembelian asli tetap menambah di atas angka ini"
+                    className="h-8 w-[90px] rounded-lg border border-white/10 bg-white/[0.06] px-2 text-center text-xs font-semibold text-white outline-none transition focus:border-[#00E5FF]/40"
+                  />
+                </label>
+                <span className="mt-1 block text-[11px] leading-4 text-white/35">Bisa diedit manual; order lunas tetap menambah otomatis.</span>
               </div>
             </div>
 

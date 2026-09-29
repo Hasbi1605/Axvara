@@ -89,6 +89,37 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
 
   const [toggling, setToggling] = useState<string | null>(null);
 
+  // Edit angka Terjual inline dari kolom tabel: SET absolut via endpoint
+  // khusus (tanpa buka modal). Optimistic + rollback, realtime tanpa reload.
+  // Pembelian asli menambah via `sold_count += qty` di jalur order — angka
+  // manual hanya jadi baseline baru, tidak merusak increment otomatis.
+  const [savingSold, setSavingSold] = useState<string | null>(null);
+  const saveSoldCount = useCallback(async (p: Prod, soldCount: number) => {
+    if (savingSold) return;
+    setSavingSold(p.id);
+    const snapshot = prods;
+    setProds((prev) => prev.map((x) => x.id === p.id ? { ...x, soldCount } : x));
+    try {
+      const r = await fetch(`/api/products/${p.id}/sold-count`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ soldCount }),
+      });
+      const body = await r.json().catch(() => ({})) as { error?: string; soldCount?: number };
+      if (r.status === 429) throw new Error("Terlalu cepat — tunggu sebentar, angka yang sudah tersimpan aman.");
+      if (!r.ok) throw new Error(body.error || `HTTP ${r.status}`);
+      if (typeof body.soldCount === "number") {
+        setProds((prev) => prev.map((x) => x.id === p.id ? { ...x, soldCount: body.soldCount! } : x));
+      }
+      toast.success(`Terjual “${p.name}” menjadi ${body.soldCount ?? soldCount}.`);
+    } catch (e) {
+      setProds(snapshot);
+      toast.error(e instanceof Error ? e.message : "Gagal menyimpan angka Terjual");
+    } finally {
+      setSavingSold(null);
+    }
+  }, [prods, savingSold, toast]);
+
   const load = useCallback(async()=>{
     setLoadingList(true);
     setListError(null);
@@ -617,7 +648,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
     loadingVariants, formError, saving, confirmProductClose, productDirty,
     setForm, setFormImages, setHasMultiVariants, setFormVariants, setConfirmProductClose,
     openEdit, openNew, closeModal, handleUpload, save, requestCloseProductModal,
-    // hapus & toggle & urutan
-    deleteTarget, deleting, toggling, reordering, setDeleteTarget, confirmDelete, toggleActive, moveProduct, jumpProduct,
+    // hapus & toggle & urutan & terjual
+    deleteTarget, deleting, toggling, reordering, savingSold, setDeleteTarget, confirmDelete, toggleActive, moveProduct, jumpProduct, saveSoldCount,
   };
 }

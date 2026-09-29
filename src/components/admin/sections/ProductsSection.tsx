@@ -48,6 +48,7 @@ export function ProductsSection({
   reordering,
   onMove,
   onJump,
+  onSoldCount,
 }: {
   prods: Prod[];
   paged: Prod[];
@@ -73,6 +74,8 @@ export function ProductsSection({
   onMove: (p: Prod, direction: -1 | 1) => void;
   /** Lompat langsung ke posisi 1..N (badge diketik) — satu request. */
   onJump: (p: Prod, targetPosition: number) => void;
+  /** Edit angka Terjual inline (ketik + Enter) — SET absolut. */
+  onSoldCount: (p: Prod, soldCount: number) => void;
 }) {
   // Posisi tampil produk di daftar penuh (tanpa potong halaman): dipakai
   // untuk menonaktifkan tombol ↑ di puncak dan ↓ di dasar, SEKALIGUS
@@ -104,6 +107,22 @@ export function ProductsSection({
     const current = (orderIndex.get(p.id) ?? 0) + 1;
     if (target === current) return;
     onJump(p, target);
+  };
+  // Angka Terjual yang bisa diketik: ketik + Enter untuk SET absolut.
+  // Pembelian asli tetap += qty di atas angka ini (tidak ditimpa).
+  const [soldDraft, setSoldDraft] = useState<Record<string, string>>({});
+  const commitSold = (p: Prod) => {
+    const raw = (soldDraft[p.id] ?? "").trim();
+    setSoldDraft((prev) => {
+      const next = { ...prev };
+      delete next[p.id];
+      return next;
+    });
+    if (!raw) return;
+    const n = Math.floor(Number(raw));
+    if (!Number.isFinite(n) || n < 0 || n > 9999999) return;
+    if (n === (p.soldCount ?? 0)) return;
+    onSoldCount(p, n);
   };
   return (
     <>
@@ -181,7 +200,18 @@ export function ProductsSection({
                       <td className="px-3 py-3 text-xs text-white/60">{p.categorySlug}</td>
                       <td className="px-3 py-3 text-right"><span className="font-semibold text-white">{formatRupiah(p.price)}</span>{p.comparePrice? <span className="block text-[11px] text-white/30 line-through">{formatRupiah(p.comparePrice)}</span>:null}</td>
                       <td className="px-3 py-3 text-center"><span className={`inline-flex min-w-[40px] justify-center px-2 py-1 rounded-full text-xs font-bold ${p.stock<=5 && p.stock!==-1 ? "bg-[#FFB800]/15 text-[#FFB800]":"bg-white/10 text-white/70"}`}>{p.stock===-1?"∞":p.stock}</span></td>
-                      <td className="px-3 py-3 text-center text-xs text-white/60">{p.soldCount}</td>
+                      <td className="px-3 py-3 text-center text-xs text-white/60">
+                        <input
+                          value={soldDraft[p.id] ?? String(p.soldCount ?? 0)}
+                          onChange={(e) => setSoldDraft((prev) => ({ ...prev, [p.id]: e.target.value.replace(/[^0-9]/g, "").slice(0, 7) }))}
+                          onBlur={() => commitSold(p)}
+                          onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setSoldDraft((prev) => { const next = { ...prev }; delete next[p.id]; return next; }); }}
+                          inputMode="numeric"
+                          aria-label={`Ubah angka Terjual ${p.name}`}
+                          title="Ketik angka Terjual lalu Enter — pembelian asli tetap menambah di atas angka ini"
+                          className="h-7 w-[64px] rounded-full border border-transparent bg-transparent px-1 text-center text-xs text-white/60 outline-none transition hover:bg-white/[0.07] focus:border-[#00E5FF]/50 focus:bg-white/[0.10] focus:text-white"
+                        />
+                      </td>
                       <td className="px-3 py-3 text-center">
                         <div className="inline-flex items-center gap-1" role="group" aria-label={`Ubah urutan ${p.name}`}>
                           <input
