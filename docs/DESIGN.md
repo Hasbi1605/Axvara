@@ -146,6 +146,7 @@
 - CTA: Primary "Jelajahi Katalog" (cyan solid, glow) + Secondary "Cara Bayar" (glass outline)
 - Search besar glass di bawah CTA (seperti Apple Store search)
 - Parallax: glow dan headline bergerak halus saat scroll (translateY + opacity)
+- **Orbit hemat mobile (2026-09-29, laporan owner HP lag):** hot path animasi WAJIB compositor-only (transform + opacity) — backdrop-blur/blur/drop-shadow per frame dilarang (satu blur kaca = repaint seluruh layer tiap frame di GPU HP). Mobile (pointer coarse / ≤640px): 8 planet dalam, trail SVG + label + shadow dinamis + star dust mati, 24fps; glow hero dihemat (cyan 44px, gold mati). Desktop utuh 12 planet 30fps + trail. Scroll sentuh selalu native (`touch-action: pan-y`, tanpa preventDefault).
 
 ### 5.3 Kartu Produk (Apple Card)
 - Rounded 24px, glass, aspect 4:3 untuk gambar, padding 20px

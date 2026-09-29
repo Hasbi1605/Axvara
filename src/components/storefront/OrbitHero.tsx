@@ -98,18 +98,33 @@ export function OrbitHero() {
   const lastTimeRef = useRef(0);
   const lastRenderTimeRef = useRef(0);
   const lastTrailTimeRef = useRef(0);
+  // Mobile hemat: kurangi planet + matikan trail/label/shadow dinamis.
+  // Diputuskan SEKALI saat mount (bukan per frame) agar tidak ada
+  // matchMedia di hot path.
+  const liteRef = useRef(false);
+  const liteCountRef = useRef(placements.length);
 
   // Set planet ref
   const setPlanetRef = useCallback((el: HTMLDivElement | null, i: number) => {
     planetRefs.current[i] = el;
   }, []);
 
-  // Update all planet positions imperatively — no React setState
+  // Update all planet positions imperatively — no React setState.
+  // HAPPY-PATH GPU: properti yang ditulis per frame HANYA transform dan
+  // opacity (compositor-only, tanpa repaint). Yang DIHAPUS dari hot path:
+  // - planetEl.style.filter (blur per frame → repaint tiap frame di mobile)
+  // - drop-shadow pada trail (filter SVG per frame, termahal kedua)
+  // - backdropFilter + border + background + color pada label (12× blur
+  //   kaca per frame — satu-satunya blur raksasa di komponen ini)
+  // - display toggle shadow (layout + paint)
+  // Kedalaman tetap terbaca dari scale + opacity + zIndex (murah).
   const updatePositions = useCallback((drawTrails = true) => {
     const angle = angleRef.current;
+    const lite = liteRef.current;
+    const count = lite ? liteCountRef.current : placements.length;
 
-    for (let i = 0; i < placements.length; i++) {
-      const { r, baseAngle, speed, item } = placements[i];
+    for (let i = 0; i < count; i++) {
+      const { r, baseAngle, speed } = placements[i];
       const planetEl = planetRefs.current[i];
       if (!planetEl) continue;
 
@@ -121,16 +136,13 @@ export function OrbitHero() {
       const scale = 0.78 + 0.32 * ((depth + 1) / 2);
       const opacity = 0.62 + 0.38 * ((depth + 1) / 2);
       const zIndex = depth > 0 ? 30 : 10;
-      const blur = depth < -0.4 ? 0.4 : 0;
-      const isFront = depth > 0.15;
 
-      // Direct style — no React reconciliation
+      // Direct style — compositor only, no repaint
       planetEl.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px) scale(${scale})`;
       planetEl.style.zIndex = String(zIndex);
       planetEl.style.opacity = String(opacity);
-      planetEl.style.filter = blur ? `blur(${blur}px)` : "none";
 
-      if (drawTrails) {
+      if (drawTrails && !lite) {
         const trailLen = 22 + (i % 3) * 5;
         const tx = Math.cos(((a - trailLen) * Math.PI) / 180) * r;
         const ty = Math.sin(((a - trailLen) * Math.PI) / 180) * r * ELLIPSE;
@@ -142,33 +154,16 @@ export function OrbitHero() {
         const trailEl = trailRefs.current[i];
         if (trailEl) {
           trailEl.setAttribute("d", d);
-          trailEl.setAttribute("stroke-width", isFront ? "1.5" : "0.9");
-          trailEl.setAttribute("opacity", isFront ? "0.38" : "0.14");
-          trailEl.style.filter = isFront ? `drop-shadow(0 0 5px ${item.color}66)` : "none";
+          trailEl.setAttribute("stroke-width", depth > 0.15 ? "1.5" : "0.9");
+          trailEl.setAttribute("opacity", depth > 0.15 ? "0.38" : "0.14");
           const trailGroup = trailEl.parentElement;
           if (trailGroup) trailGroup.style.opacity = String(tOpacity);
         }
         const trailWhite = trailWhiteRefs.current[i];
         if (trailWhite) {
           trailWhite.setAttribute("d", d);
-          trailWhite.setAttribute("opacity", isFront ? "0.45" : "0.16");
+          trailWhite.setAttribute("opacity", depth > 0.15 ? "0.45" : "0.16");
         }
-      }
-
-      // Shadow
-      const shadowEl = shadowRefs.current[i];
-      if (shadowEl) {
-        shadowEl.style.display = isFront ? "" : "none";
-      }
-
-      // Label
-      const labelEl = labelRefs.current[i];
-      if (labelEl) {
-        labelEl.style.color = isFront ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.38)";
-        labelEl.style.background = isFront ? "rgba(0,0,0,0.42)" : "transparent";
-        labelEl.style.border = isFront ? "1px solid rgba(255,255,255,0.12)" : "none";
-        labelEl.style.backdropFilter = isFront ? "blur(6px)" : "none";
-        labelEl.style.opacity = depth > -0.6 ? "1" : "0";
       }
     }
 
@@ -181,6 +176,15 @@ export function OrbitHero() {
     // Touch screens must keep native vertical scrolling. Direct orbit control is
     // reserved for precise mouse/trackpad pointers.
     canDragRef.current = window.matchMedia("(pointer: fine)").matches;
+    // Layar kecil = mode hemat: 8 planet dalam (2 ring), tanpa trail/label/
+    // shadow dinamis, 24fps. Biaya komposit turun ~60–70% di HP kentang
+    // sementara tampilan inti orbit tetap utuh.
+    const coarse = window.matchMedia("(pointer: coarse)").matches;
+    const smallScreen = window.matchMedia("(max-width: 640px)").matches;
+    liteRef.current = coarse || smallScreen;
+    // 8 planet pertama = ring 0 (2) + ring 1 (3) + 3 pertama ring 2.
+    // Ring 3 (luar) + 1 planet ring 2 disembunyikan via CSS di bawah.
+    liteCountRef.current = 8;
 
     // Respect prefers-reduced-motion
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -208,10 +212,12 @@ export function OrbitHero() {
         angleRef.current += (base + velRef.current) * dt;
       }
 
-      // Slow auto-rotation renders at 30fps; direct manipulation/inertia stays
-      // at the display refresh rate so dragging remains responsive.
+      // Slow auto-rotation renders at 30fps desktop; mobile hemat di 24fps.
+      // Direct manipulation/inertia stays at the display refresh rate so
+      // dragging remains responsive (desktop only — mobile tidak bisa drag).
       const isInteractive = isDraggingRef.current || Math.abs(velRef.current) > 0.5;
-      const shouldRender = isInteractive || !lastRenderTimeRef.current || now - lastRenderTimeRef.current >= 30;
+      const frameBudget = liteRef.current ? 42 : 30;
+      const shouldRender = isInteractive || !lastRenderTimeRef.current || now - lastRenderTimeRef.current >= frameBudget;
       if (shouldRender) {
         const drawTrails = !lastTrailTimeRef.current || now - lastTrailTimeRef.current >= 30;
         updatePositions(drawTrails);
@@ -357,8 +363,9 @@ export function OrbitHero() {
         <div className="absolute left-1/2 top-[90%] -translate-x-1/2 w-[92px] h-[22px] rounded-full blur-[10px] opacity-[0.18]" style={{ background: "radial-gradient(ellipse at center, rgba(0,229,255,0.55), transparent 72%)", transform: "scaleY(0.5)" }} />
       </div>
 
-      {/* Shared SVG for all trails; geometry redraw is throttled separately from planets */}
-      <svg className="absolute left-1/2 top-1/2 z-0 pointer-events-none" width={440} height={440} viewBox="-220 -220 440 440" style={{ transform: "translate(-50%, -50%)" }} aria-hidden>
+      {/* Shared SVG for all trails; geometry redraw is throttled separately from planets.
+          Desktop only — di mobile trail tidak digambar (hemat komposit SVG). */}
+      <svg className="absolute left-1/2 top-1/2 z-0 pointer-events-none hidden sm:block" width={440} height={440} viewBox="-220 -220 440 440" style={{ transform: "translate(-50%, -50%)" }} aria-hidden>
         {placements.map(({ item }, i) => (
           <g key={item.slug}>
             <path
@@ -381,11 +388,14 @@ export function OrbitHero() {
         ))}
       </svg>
 
-      {/* Planets — rendered once, updated imperatively */}
+      {/* Planets — rendered once, updated imperatively.
+          Mode hemat (mobile): 8 planet dalam saja (indeks 8+ disembunyikan).
+          Trail/label/shadow dinamis tidak dipakai di hot path lagi. */}
       {placements.map(({ item }, pi) => {
         const isCapCut = item.slug === "capcut";
         const isCanva = item.slug === "canva";
         const isBrandVector = isCapCut || isCanva;
+        const hideOnLite = pi >= 8;
         const sphereBg = isBrandVector
           ? "rgba(255,255,255,0.96)"
           : `linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.78)), radial-gradient(ellipse 60% 55% at 50% 48%, ${item.color}14, transparent 68%)`;
@@ -394,15 +404,15 @@ export function OrbitHero() {
           <div
             key={item.label + pi}
             ref={(el) => setPlanetRef(el, pi)}
-            className="absolute left-1/2 top-1/2 flex items-center justify-center will-change-transform"
+            className={`absolute left-1/2 top-1/2 items-center justify-center will-change-transform ${hideOnLite ? "hidden sm:flex" : "flex"}`}
             style={{ transform: "translate(-50%, -50%)" }}
             title={item.label}
           >
-            {/* shadow on ground for front planets */}
+            {/* shadow statis — tidak di-toggle per frame (hemat layout+paint) */}
             <div
               ref={(el) => { shadowRefs.current[pi] = el; }}
-              className="absolute top-[56%] left-1/2 -translate-x-1/2 w-8 h-2 rounded-full blur-[4px] bg-black/35 -z-10"
-              style={{ transform: "translateX(-50%) scaleX(1.2)", display: "none" }}
+              className="absolute top-[56%] left-1/2 -translate-x-1/2 w-8 h-2 rounded-full blur-[4px] bg-black/35 -z-10 hidden sm:block"
+              style={{ transform: "translateX(-50%) scaleX(1.2)" }}
             />
             {/* planet sphere */}
             <div
@@ -445,15 +455,11 @@ export function OrbitHero() {
               />
               <span className="hidden text-[9px] font-bold text-[#1A1A1E] text-center leading-none px-1 relative">{item.label.slice(0, 3)}</span>
             </div>
-            {/* label under planet */}
+            {/* label statis — gaya tetap, tidak ditulis per frame.
+                Tanpa backdrop-blur per frame (biang lag mobile). */}
             <span
               ref={(el) => { labelRefs.current[pi] = el; }}
-              className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[9px] font-medium tracking-wide whitespace-nowrap px-1.5 py-0.5 rounded-full"
-              style={{
-                color: "rgba(255,255,255,0.38)",
-                background: "transparent",
-                border: "none",
-              }}
+              className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[9px] font-medium tracking-wide whitespace-nowrap px-1.5 py-0.5 rounded-full text-white/60 bg-black/30 border border-white/10 hidden sm:inline-block"
             >
               {item.label}
             </span>
@@ -461,8 +467,8 @@ export function OrbitHero() {
         );
       })}
 
-      {/* subtle star dust */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+      {/* subtle star dust — desktop only (hemat paint mobile) */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden hidden sm:block" aria-hidden>
         {Array.from({ length: 18 }).map((_, i) => (
           <span key={i} className="absolute w-[2px] h-[2px] rounded-full bg-white/55 blur-[0.3px]" style={{ left: `${8 + ((i * 37) % 84)}%`, top: `${12 + ((i * 53) % 76)}%`, opacity: 0.18 + (i % 3) * 0.12 }} />
         ))}

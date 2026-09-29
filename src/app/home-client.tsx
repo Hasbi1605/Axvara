@@ -76,11 +76,13 @@ export function HomeClient({ initialProducts }: { initialProducts?: Product[] })
   return (
     <>
       <ScrollRope />
-      {/* Hero with orbit — single instance, CSS responsive layout */}
+      {/* Hero with orbit — single instance, CSS responsive layout.
+          Glow di-hemat di mobile: blur 80px pada layer 900px adalah
+          repaint termahal kedua setelah orbit (GPU HP kentang). */}
       <section className="relative overflow-hidden">
-        <div className="pointer-events-none absolute inset-0">
-          <div className="absolute -top-32 left-1/2 -translate-x-1/2 w-[900px] h-[520px] rounded-full opacity-60 blur-[80px]" style={{ background: "radial-gradient(ellipse at center, rgba(0,229,255,0.18), transparent 70%)" }} />
-          <div className="absolute top-24 right-[10%] w-[420px] h-[420px] rounded-full opacity-30 blur-[60px]" style={{ background: "radial-gradient(ellipse at center, rgba(255,184,0,0.15), transparent 70%)" }} />
+        <div className="pointer-events-none absolute inset-0" aria-hidden>
+          <div className="absolute -top-32 left-1/2 -translate-x-1/2 w-[520px] h-[300px] sm:w-[900px] sm:h-[520px] rounded-full opacity-60 blur-[44px] sm:blur-[80px]" style={{ background: "radial-gradient(ellipse at center, rgba(0,229,255,0.18), transparent 70%)" }} />
+          <div className="absolute top-24 right-[10%] w-[240px] h-[240px] sm:w-[420px] sm:h-[420px] rounded-full opacity-30 blur-[36px] sm:blur-[60px] hidden sm:block" style={{ background: "radial-gradient(ellipse at center, rgba(255,184,0,0.15), transparent 70%)" }} />
         </div>
         <div className="relative mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 pt-10 sm:pt-14 pb-4">
           {/* Grid layout — single OrbitHero, responsive via CSS */}
