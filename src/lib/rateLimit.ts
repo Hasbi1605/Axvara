@@ -39,6 +39,11 @@ export const RATE_LIMITS = {
   "proof:upload": 5,
   "upload:admin": 20,
   "products:write": 20,
+  // Reorder: aksi admin yang sah bisa bertubi-tubi saat merapikan katalog
+  // (insiden 2026-09-29: 20× ↑↓ memicu 429 lalu admin mengira kuota cron
+  // habis). Scope sendiri + batas longgar agar tidak berbagi bucket dengan
+  // simpan produk/upload; proteksi DDoS global tetap di WAF (lapis pertama).
+  "products:reorder": 120,
   "auth:login": 5,
   "newsletter:subscribe": 5,
 } as const;

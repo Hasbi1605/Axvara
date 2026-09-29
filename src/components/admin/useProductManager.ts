@@ -467,42 +467,57 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
     } finally { setDeleting(false); }
   };
 
-  // Exact-one-step reorder. Client hanya menukar target dengan satu tetangga
-  // yang benar-benar dapat dilewati; server mengulang keputusan yang sama dan
-  // menormalisasi seluruh key 10,20,30… secara atomik. Response server memuat
-  // key final sehingga state realtime identik dengan D1 tanpa fetch ulang.
+  // Exact-one-step reorder + jump-to-position. Request DIANTREKAN berurutan
+  // (bukan paralel): tiap request membaca urutan D1 hasil request sebelumnya,
+  // sehingga klik cepat tidak berpacu dan toast 429 jujur ("kebanyakan —
+  // tunggu sebentar") tanpa me-reset posisi yang sudah benar. Response
+  // server memuat key final sehingga state realtime identik dengan D1
+  // tanpa fetch ulang.
   const [reordering, setReordering] = useState<string | null>(null);
-  const moveProduct = async (p: Prod, direction: -1 | 1) => {
+  const reorderQueue = useMemo(() => ({ tail: Promise.resolve() as Promise<void> }), []);
+  const runReorder = useCallback(async (p: Prod, body: Record<string, unknown>, movedLabel: string) => {
+    if (toggling) return;
+    const run = reorderQueue.tail.then(async () => {
+      const ordered = globalProductOrder(prods);
+      const idx = ordered.findIndex((x) => x.id === p.id);
+      if (idx < 0) return;
+      setReordering(p.id);
+      const snapshot = prods;
+      try {
+        const r = await fetch("/api/products/reorder", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const payload = await r.json().catch(() => ({})) as { error?: string; clamped?: boolean; products?: { id: number; sortOrder: number }[] };
+        if (r.status === 429) throw new Error("Terlalu cepat — tunggu sebentar, posisi yang sudah tersimpan aman.");
+        if (!r.ok) throw new Error(payload.error || `HTTP ${r.status}`);
+        const finalOrder = new Map((payload.products ?? []).map((item) => [String(item.id), item.sortOrder]));
+        setProds((prev) => prev.map((item) => finalOrder.has(item.id) ? { ...item, sortOrder: finalOrder.get(item.id)! } : item));
+        toast.success(payload.clamped ? `“${p.name}” dijepit ke ujung kelompoknya.` : movedLabel);
+      } catch (e) {
+        setProds(snapshot);
+        toast.error(e instanceof Error ? e.message : "Gagal memindah posisi produk");
+      } finally {
+        setReordering(null);
+      }
+    });
+    // Antrean tidak boleh putus oleh satu kegagalan.
+    reorderQueue.tail = run.catch(() => undefined);
+    await reorderQueue.tail;
+  }, [prods, toggling, toast, reorderQueue]);
+  const moveProduct = (p: Prod, direction: -1 | 1) => {
+    // Guard lokal cepat: tombol mati tidak mengirim request sama sekali.
     if (reordering || toggling) return;
-    const ordered = globalProductOrder(prods);
-    const idx = ordered.findIndex((x) => x.id === p.id);
-    const neighbor = adjacentReorderProduct(prods, p.id, direction);
-    if (idx < 0 || !neighbor) return;
-    setReordering(p.id);
-    const snapshot = prods;
-    // Optimistic exact swap (tidak memakai key delta yang dapat tabrakan).
-    const optimistic = [...ordered];
-    const neighborIndex = optimistic.findIndex((item) => item.id === neighbor.id);
-    [optimistic[idx], optimistic[neighborIndex]] = [optimistic[neighborIndex], optimistic[idx]];
-    const optimisticOrder = new Map(optimistic.map((item, index) => [item.id, (index + 1) * 10]));
-    setProds((prev) => prev.map((item) => ({ ...item, sortOrder: optimisticOrder.get(item.id) ?? item.sortOrder })));
-    try {
-      const r = await fetch("/api/products/reorder", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productId: Number(p.id), direction }),
-      });
-      const body = await r.json().catch(() => ({})) as { error?: string; products?: { id: number; sortOrder: number }[] };
-      if (!r.ok) throw new Error(body.error || `HTTP ${r.status}`);
-      const finalOrder = new Map((body.products ?? []).map((item) => [String(item.id), item.sortOrder]));
-      setProds((prev) => prev.map((item) => finalOrder.has(item.id) ? { ...item, sortOrder: finalOrder.get(item.id)! } : item));
-      toast.success(direction < 0 ? `“${p.name}” naik satu posisi.` : `“${p.name}” turun satu posisi.`);
-    } catch (e) {
-      setProds(snapshot);
-      toast.error(e instanceof Error ? e.message : "Gagal memindah posisi produk");
-    } finally {
-      setReordering(null);
-    }
+    if (!adjacentReorderProduct(prods, p.id, direction)) return;
+    void runReorder(p, { productId: Number(p.id), direction },
+      direction < 0 ? `“${p.name}” naik satu posisi.` : `“${p.name}” turun satu posisi.`);
+  };
+  const jumpProduct = (p: Prod, targetPosition: number) => {
+    if (reordering || toggling) return;
+    const current = globalProductOrder(prods).findIndex((x) => x.id === p.id) + 1;
+    if (current < 1 || current === targetPosition) return;
+    void runReorder(p, { productId: Number(p.id), targetPosition }, `“${p.name}” pindah ke posisi ${targetPosition}.`);
   };
 
   const toggleActive = async (p: Prod) => {
@@ -603,6 +618,6 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
     setForm, setFormImages, setHasMultiVariants, setFormVariants, setConfirmProductClose,
     openEdit, openNew, closeModal, handleUpload, save, requestCloseProductModal,
     // hapus & toggle & urutan
-    deleteTarget, deleting, toggling, reordering, setDeleteTarget, confirmDelete, toggleActive, moveProduct,
+    deleteTarget, deleting, toggling, reordering, setDeleteTarget, confirmDelete, toggleActive, moveProduct, jumpProduct,
   };
 }

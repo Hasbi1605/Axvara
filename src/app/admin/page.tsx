@@ -145,6 +145,7 @@ export default function AdminPage() {
           onToggleActive={pm.toggleActive}
           reordering={pm.reordering}
           onMove={pm.moveProduct}
+          onJump={pm.jumpProduct}
         />
       )}
 

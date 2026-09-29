@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import { formatRupiah } from "@/lib/utils";
 import { Spinner } from "@/components/ui/Loading";
 import { IosIcon } from "@/components/ui/IosIcon";
@@ -46,6 +47,7 @@ export function ProductsSection({
   onToggleActive,
   reordering,
   onMove,
+  onJump,
 }: {
   prods: Prod[];
   paged: Prod[];
@@ -69,6 +71,8 @@ export function ProductsSection({
   onToggleActive: (p: Prod) => void;
   reordering: string | null;
   onMove: (p: Prod, direction: -1 | 1) => void;
+  /** Lompat langsung ke posisi 1..N (badge diketik) — satu request. */
+  onJump: (p: Prod, targetPosition: number) => void;
 }) {
   // Posisi tampil produk di daftar penuh (tanpa potong halaman): dipakai
   // untuk menonaktifkan tombol ↑ di puncak dan ↓ di dasar, SEKALIGUS
@@ -83,6 +87,24 @@ export function ProductsSection({
   // ready/habis/nonaktif, jadi tombol di batas kelompok mati — menekan yang
   // mati tidak mengirim request dan tidak mengubah apa pun.
   const orderIndex = new Map(filtered.map((p, i) => [p.id, i]));
+  // Badge posisi yang bisa diketik: ketik "1" + Enter untuk lompat ke puncak
+  // dalam SATU request (bukan 29× klik ↑). Nilai dikunci 1..N saat commit.
+  const [jumpDraft, setJumpDraft] = useState<Record<string, string>>({});
+  const commitJump = (p: Prod) => {
+    const raw = (jumpDraft[p.id] ?? "").trim();
+    setJumpDraft((prev) => {
+      const next = { ...prev };
+      delete next[p.id];
+      return next;
+    });
+    if (!raw) return;
+    const n = Math.floor(Number(raw));
+    if (!Number.isFinite(n)) return;
+    const target = Math.max(1, Math.min(filtered.length, n));
+    const current = (orderIndex.get(p.id) ?? 0) + 1;
+    if (target === current) return;
+    onJump(p, target);
+  };
   return (
     <>
       <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3 mb-2">
@@ -162,7 +184,16 @@ export function ProductsSection({
                       <td className="px-3 py-3 text-center text-xs text-white/60">{p.soldCount}</td>
                       <td className="px-3 py-3 text-center">
                         <div className="inline-flex items-center gap-1" role="group" aria-label={`Ubah urutan ${p.name}`}>
-                          <span className="mr-1 inline-flex min-w-[36px] justify-center rounded-full bg-white/10 px-2 py-1 text-xs font-bold text-white/70" title={`Posisi ${((orderIndex.get(p.id) ?? 0) + 1)} dari ${filtered.length} (kunci teknis sort_order: ${p.sortOrder ?? 0})`}>{(orderIndex.get(p.id) ?? 0) + 1}</span>
+                          <input
+                            value={jumpDraft[p.id] ?? String((orderIndex.get(p.id) ?? 0) + 1)}
+                            onChange={(e) => setJumpDraft((prev) => ({ ...prev, [p.id]: e.target.value.replace(/[^0-9]/g, "").slice(0, 4) }))}
+                            onBlur={() => commitJump(p)}
+                            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setJumpDraft((prev) => { const next = { ...prev }; delete next[p.id]; return next; }); }}
+                            inputMode="numeric"
+                            aria-label={`Pindah ${p.name} ke posisi 1 sampai ${filtered.length}`}
+                            title={`Posisi ${(orderIndex.get(p.id) ?? 0) + 1} dari ${filtered.length} — ketik angka lalu Enter untuk lompat (kunci teknis sort_order: ${p.sortOrder ?? 0})`}
+                            className="mr-1 h-7 w-[44px] rounded-full border border-transparent bg-white/10 px-1 text-center text-xs font-bold text-white/70 outline-none transition focus:border-[#00E5FF]/50 focus:bg-white/[0.14] focus:text-white"
+                          />
                           <button type="button" onClick={()=>onMove(p, -1)} disabled={busy || !canMoveUp} aria-label={`Naikkan ${p.name}`} title={canMoveUp ? "Naik satu posisi" : "Sudah di puncak kelompoknya (aktif/habis/nonaktif tidak bisa saling melewati)"} className="flex h-7 w-7 items-center justify-center rounded-full bg-white/[0.07] text-xs font-bold text-white transition hover:bg-white/[0.14] disabled:opacity-30 disabled:pointer-events-none">↑</button>
                           <button type="button" onClick={()=>onMove(p, 1)} disabled={busy || !canMoveDown} aria-label={`Turunkan ${p.name}`} title={canMoveDown ? "Turun satu posisi" : "Sudah di dasar kelompoknya (aktif/habis/nonaktif tidak bisa saling melewati)"} className="flex h-7 w-7 items-center justify-center rounded-full bg-white/[0.07] text-xs font-bold text-white transition hover:bg-white/[0.14] disabled:opacity-30 disabled:pointer-events-none">↓</button>
                         </div>
