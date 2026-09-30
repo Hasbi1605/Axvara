@@ -7,6 +7,7 @@ import {
   mapSkCategory,
   calculateSkSellPrice,
   syncSkProducts,
+  zeroMissingSkVariants,
 } from "@/lib/sekalipay/sync";
 import { createSkOrderLink, skIdempotencyKey, skRefId } from "@/lib/sekalipay/order";
 import { formatSkLicenses } from "@/lib/sekalipay/deliver";
@@ -287,8 +288,7 @@ describe("sekalipay sync helpers", () => {
     }
   });
 
-  it("full Force Sync memakai scope premium TANPA delta (jujur + zero-missing)", async () => {
-    const fx = createD1Fixture();
+  it("full Force Sync memakai scope premium TANPA delta (jujur + zero-missing)", async () => {    const fx = createD1Fixture();
     try {
       stubFulfillmentKey();
       vi.stubEnv("SEKALIPAY_ENABLED", "true");
@@ -391,6 +391,114 @@ describe("sekalipay sync helpers", () => {
     } finally {
       fx.close();
     }
+  });
+
+  it("Bug A: delta bohong TIDAK boleh zero-missing (replika insiden 195 stok 2026-09-30)", async () => {
+    // Replika run cron id 24: delta 92 varian (klaim is_delta) padahal full
+    // scope 99 — 32 varian hilang termasuk yang BERSTOK. Tanpa validasi,
+    // zero-missing me-nol-kan 195 varian berstok (204/211 registry stok 0
+    // padahal upstream 51/99 berstok).
+    const fx = createD1Fixture();
+    try {
+      stubFulfillmentKey();
+      vi.stubEnv("SEKALIPAY_ENABLED", "true");
+      const db = createDatabaseAccess(fx.db);
+      // Seed registry seolah sweep penuh sebelumnya: 4 varian berstok.
+      fx.sql.prepare(
+        `INSERT INTO sk_products
+          (sk_variant_id, sk_product_id, sk_product_name, sk_category, sk_variant_name,
+           sk_price, sk_stock, sk_order_process, axvara_sell_price, last_synced_at)
+         VALUES ('1','9','Netflix','Aplikasi Premium','1 Bulan',10000,5,'auto',15000,datetime('now')),
+                ('2','9','Netflix','Aplikasi Premium','2 Bulan',10000,9,'auto',15000,datetime('now')),
+                ('3','12','Viu','Aplikasi Premium','1 Bulan',5000,3,'auto',7500,datetime('now')),
+                ('4','13','Prime','Aplikasi Premium','1 Bulan',8000,7,'auto',12000,datetime('now'))`,
+      ).run();
+      fx.sql.prepare("INSERT INTO sk_sync_state(key,value) VALUES('products_server_time','2026-09-30T18:40:29+07:00') ON CONFLICT(key) DO UPDATE SET value=excluded.value").run();
+      vi.stubEnv("SEKALIPAY_PROXY_URL", "https://proxy.test");
+      vi.stubEnv("SEKALIPAY_PROXY_TOKEN", "tok");
+      // Delta BOHONG: hanya 2 dari 4 varian (klaim is_delta, ukuran ~setengah
+      // full — di bawah ambang 80% registry sehingga lolos sebagai delta? TIDAK:
+      // 2/4 = 50% < 80% → tetap dianggap delta. Test ini memakai 4/4 klaim
+      // delta (100% ≥ 80%) agar validasi MENOLAK zero-missing.
+      const lyingDelta = {
+        message: "OK",
+        data: [
+          {
+            id: 1, name: "Aplikasi Premium", icon: null,
+            products: [
+              {
+                id: 9, name: "Netflix", image: null,
+                variants: [
+                  { id: 1, sku: "N-1", name: "1 Bulan", price: 10000, stock: 5, order_process: "auto" as const, h2h_provider: null, provider_meta: null, required_fields: null, validation: null, updated_at: null },
+                  { id: 2, sku: "N-2", name: "2 Bulan", price: 10000, stock: 9, order_process: "auto" as const, h2h_provider: null, provider_meta: null, required_fields: null, validation: null, updated_at: null },
+                  { id: 3, sku: "V-1", name: "1 Bulan", price: 5000, stock: 3, order_process: "auto" as const, h2h_provider: null, provider_meta: null, required_fields: null, validation: null, updated_at: null },
+                  { id: 4, sku: "P-1", name: "1 Bulan", price: 8000, stock: 7, order_process: "auto" as const, h2h_provider: null, provider_meta: null, required_fields: null, validation: null, updated_at: null },
+                ],
+              },
+            ],
+          },
+        ],
+        meta: { total_items: 4, is_delta: true },
+        server_time: "2026-09-30T19:00:00+07:00",
+      };
+      vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => lyingDelta })));
+      const result = await syncSkProducts(createDatabaseAccess(fx.db), undefined, { trigger: "cron" });
+      expect(result.errors).toEqual([]);
+      // Validasi menolak: zero-missing MATI (delta sebesar full = bohong),
+      // server_time TIDAK maju (tetap cursor lama).
+      const zeroed = fx.sql.prepare("SELECT COUNT(*) n FROM sk_products WHERE sk_stock=0").get() as { n: number };
+      expect(Number(zeroed.n)).toBe(0);
+      const st = fx.sql.prepare("SELECT value FROM sk_sync_state WHERE key='products_server_time'").get() as { value: string };
+      expect(String(st.value)).toBe("2026-09-30T18:40:29+07:00");
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("Bug A2: zero-missing scope-safe — Game/TopUp tidak ikut di-nol-kan sweep premium", async () => {
+    const fx = createD1Fixture();
+    try {
+      stubFulfillmentKey();
+      fx.sql.prepare(
+        `INSERT INTO sk_products
+          (sk_variant_id, sk_product_id, sk_product_name, sk_category, sk_variant_name,
+           sk_price, sk_stock, sk_order_process, axvara_sell_price, last_synced_at)
+         VALUES ('g1','100','MLBB','Game','86 Diamonds',5000,100,'h2h',7500,datetime('now')),
+                ('p1','9','Netflix','Aplikasi Premium','1 Bulan',10000,5,'auto',15000,datetime('now'))`,
+      ).run();
+      // Sweep premium yang hanya melihat p1: g1 (Game) TIDAK BOLEH tersentuh.
+      const zeroed = await zeroMissingSkVariants(new Set(["p1"]), createDatabaseAccess(fx.db));
+      expect(zeroed).toBe(0);
+      const g = fx.sql.prepare("SELECT sk_stock FROM sk_products WHERE sk_variant_id='g1'").get() as { sk_stock: number };
+      expect(Number(g.sk_stock)).toBe(100);
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("Bug B: Sequenz menurunkan klaim delta palsu (is_delta=true tapi isi ~full scope)", async () => {
+    vi.stubEnv("SEKALIPAY_PROXY_URL", "https://proxy.test");
+    vi.stubEnv("SEKALIPAY_PROXY_TOKEN", "tok");
+    const { fetchSkItems } = await import("@/lib/sekalipay/client");
+    // Upstream mengklaim delta tapi isinya 95/99 scope penuh.
+    const variants = Array.from({ length: 95 }, (_, i) => ({
+      id: 1000 + i, sku: `S-${i}`, name: `V${i}`, price: 5000, stock: 1,
+      order_process: "auto", h2h_provider: null, provider_meta: null,
+      required_fields: null, validation: null, updated_at: null,
+    }));
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        message: "OK",
+        data: [{ id: 1, name: "Aplikasi Premium", icon: null, products: [{ id: 9, name: "Netflix", image: null, variants }] }],
+        meta: { total_items: 99, is_delta: true },
+        server_time: "2026-09-30T19:00:00+07:00",
+      }),
+    })));
+    const res = await fetchSkItems({ perPage: "all", category: "Aplikasi Premium", updatedSince: "2026-09-30T18:40:29+07:00" });
+    // Sequenz MENURUNKAN: 95 ≥ 80% × 99 → bukan delta jujur.
+    expect(res.is_delta).toBe(false);
+    expect(res.total_items).toBe(99);
   });
 });
 

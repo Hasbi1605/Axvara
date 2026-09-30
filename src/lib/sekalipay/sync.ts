@@ -510,6 +510,38 @@ export async function syncSkProducts(
       ? fetchFn()
       : fetchSkItems(scopeParams));
     fetched = res;
+    // VALIDASI DELTA SK (2026-09-30, Bug A — "delta bohong" upstream):
+    // `updated_since` SK TIDAK stabil — diukur live: delta 18:40→18:50
+    // mengembalikan 92 varian padahal full 99 (32 varian hilang — termasuk
+    // Prime Video stok 5 dan Vision+ stok 9), dan ukuran/waktu berubah antar
+    // retry (85KB/13,4 dtk → 85KB/4,7 dtk). Akibatnya zero-missing run cron
+    // id 24 me-nol-kan 195 varian berstok (204/211 registry stok 0 padahal
+    // upstream 51/99 berstok — PEMUSNAHAN STOK, bukan sync).
+    //
+    // Aturan: respons `updated_since` diterima SEBAGAI DELTA hanya bila
+    // kecil (perubahan sejak cursor memang sedikit). Respons delta yang
+    // hampir sebesar registry scope (≥80%) berarti filter upstream tidak
+    // bekerja — perlakukan sebagai SNAPSHOT PARSIAL: refresh yang terlihat,
+    // tapi JANGAN zero-missing dan JANGAN majukan server_time (tetap di
+    // cursor lama agar run berikut mencoba delta jujur lagi).
+    if (!wantFull) {
+      const registryScopeCount = await db
+        .queryFirst(
+          `SELECT COUNT(*) AS n FROM sk_products WHERE is_active=1 AND sk_category=?`,
+          SK_SYNC_CATEGORY,
+        )
+        .catch(() => null);
+      const registryN = registryScopeCount ? Number(registryScopeCount.n || 0) : 0;
+      const fetchedN = flattenSkItems(fetched.data).length;
+      // Dua lapis validasi (Sequenz di client sudah menurunkan is_delta bila
+      // respons ~sebesar full scope; lapis ini memakai registry lokal sebagai
+      // pembanding kedua). Salah satu memerah = snapshot parsial.
+      const sequenzSaysDelta = (fetched as { is_delta?: unknown }).is_delta === true;
+      if (!sequenzSaysDelta || (registryN > 0 && fetchedN >= Math.ceil(registryN * 0.8))) {
+        options.allowZeroMissing = false;
+        fetched.server_time = "";
+      }
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     result.errors.push(message.slice(0, 300));
@@ -710,6 +742,10 @@ export async function syncSkProducts(
         : null;
       // Harga jual memakai markup tersimpan bila registry sudah ada (cermin
       // WR: markup admin tidak ditimpa default tiap sweep), default bila baru.
+      // BACKFILL 195 (2026-09-30, Bug A): registry yang stoknya dibantai
+      // zero-missing liar menyimpan sk_stock=0 — jangan pakai 0 itu sebagai
+      // "sebelum" outcome (menggelembungkan stockChanges) dan jangan tulis
+      // ulang baris yang hanya beda last_synced_at (guard IS NOT menanganinya).
       const effectiveMarkupPercent = regExisting?.markup_percent != null
         ? Number(regExisting.markup_percent) : defaultMarkupPercent();
       const effectiveMarkupFixed = regExisting?.markup_fixed != null
@@ -762,8 +798,15 @@ export async function syncSkProducts(
   // sweep PENUH scope premium bila dikerjakan awal→ujung — zero-missing AMAN
   // karena scope fetch tidak berubah antar run (selalu premium-only).
   const fullSweepInThisRun = sweepComplete && startAt === 0;
+  // SERVER_TIME HANYA MAJU SAAT SWEEP TUNTAS (2026-09-30, Bug A): run
+  // parsial/budget-yield TIDAK BOLEH memajukan cursor delta — kalau tidak,
+  // perubahan yang belum terlihat run ini hilang selamanya dari delta
+  // berikutnya (lubang senyap). Cermin proteksi cursor WR (cursor=0 hanya di
+  // ujung daftar).
   await writeSyncState(db, "products_cursor", String(sweepComplete ? 0 : cursor));
-  if (fetched.server_time) await writeSyncState(db, "products_server_time", String(fetched.server_time));
+  if (fetched.server_time && sweepComplete) {
+    await writeSyncState(db, "products_server_time", String(fetched.server_time));
+  }
   if (sweepComplete) {
     await writeSyncState(db, "products_snapshot_complete", "1");
     result.snapshotComplete = true;
@@ -788,13 +831,24 @@ export async function syncSkProducts(
   return result;
 }
 
-/** Varian SK hilang dari respons: stok registry + katalog di-nol-kan (bukan delete). */
+/** Varian SK hilang dari respons: stok registry + katalog di-nol-kan (bukan delete).
+ *
+ * SCOPE-SAFE (2026-09-30, Bug A): hanya varian dalam KATEGORI SCOPE yang
+ * boleh di-nol-kan. Tanpa filter kategori, satu sweep premium-only akan
+ * memusnahkan stok Game (83) + Top Up (26) yang memang tidak ada di respons
+ * scope — padahal mereka sehat di luar scope. Cermin prinsip WR: zero hanya
+ * untuk yang SEHARUSNYA terlihat tapi tidak terlihat.
+ */
 export async function zeroMissingSkVariants(
   seenVariantIds: Set<string>,
   db: DatabaseAccess,
+  scopeCategory: string = SK_SYNC_CATEGORY,
 ): Promise<number> {
   const rows = await db
-    .queryAll(`SELECT sk_variant_id, axvara_variant_id FROM sk_products WHERE is_active=1`)
+    .queryAll(
+      `SELECT sk_variant_id, axvara_variant_id FROM sk_products WHERE is_active=1 AND sk_category=?`,
+      scopeCategory,
+    )
     .catch(() => [] as Row[]);
   let zeroed = 0;
   const now = new Date().toISOString();

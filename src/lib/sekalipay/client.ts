@@ -70,6 +70,10 @@ export type SkItemsResponse = {
   data: SkCategory[];
   meta: { total_items: number; is_delta: boolean };
   server_time: string;
+  /** Dinormalkan Sequenz (client): total varian dalam scope ini. */
+  total_items?: number;
+  /** Dinormalkan Sequenz: true HANYA bila respons benar-benar delta kecil. */
+  is_delta?: boolean;
 };
 
 export type SkBalance = {
@@ -385,7 +389,48 @@ export async function fetchSkItems(params?: {
   if (params?.updatedSince) query.updated_since = params.updatedSince;
   if (params?.category) query.category = params.category;
   if (params?.search) query.search = params.search;
-  return skFetch<SkItemsResponse>("v1/item", { query });
+  const res = await skFetch<SkItemsResponse>("v1/item", { query });
+  // NORMALISASI SEQUENZ (2026-09-30, Bug B — "tidur Heroku membangunkan
+  // LIMIT"): setelah dyno tidur, respons pertama upstream SK sering terpangkas
+  // (cetakan penuh dalam scope). `Sequenz` menormalkan ketiganya menjadi satu
+  // bentuk `data` + menandai `is_delta` HANYA bila respons benar-benar lebih
+  // kecil dari cetakan scope penuh — bukan dari klaim meta upstream semata.
+  // Prioritas: HOLD (meta sk_sync_response yang disimpan run terakhir) >
+  // PRESTAGE (respons live saat ini) > SLEEP (tidur: jangan klaim apa-apa,
+  // pakai snapshot terakhir yang baik).
+  const data = Array.isArray(res.data) ? res.data : [];
+  // total_items upstream = cetakan scope penuh (meta.total_items bila ada,
+  // fallback hitung dari data). JANGAN timpa dengan hitungan data respons
+  // saat ini — respons parsial/delta memang lebih kecil dari cetakan.
+  // Bentuk upstream nyata: {message, data, meta:{total_items,is_delta},
+  // server_time} — top-level total_items/is_delta tidak ada.
+  const meta = (res.meta ?? {}) as { total_items?: unknown; is_delta?: unknown };
+  const metaTotal = meta.total_items;
+  const metaDelta = meta.is_delta;
+  const totalItems = typeof metaTotal === "number"
+    ? metaTotal
+    : data.reduce(
+        (sum, cat) => sum + (cat.products || []).reduce(
+          (psum, prod) => psum + (prod.variants || []).length, 0),
+        0,
+      );
+  const fetchedN = data.reduce(
+    (sum, cat) => sum + (cat.products || []).reduce(
+      (psum, prod) => psum + (prod.variants || []).length, 0),
+    0,
+  );
+  // Respons penuh scope = total_items; delta jujur = jauh lebih kecil.
+  // Bila upstream mengklaim delta tapi isinya ~sebesar full scope, Sequenz
+  // MENURUNKAN ke snapshot parsial (is_delta=false) agar sync.ts mematikan
+  // zero-missing + menahan server_time — bukan menelan klaim mentah.
+  const claimedDelta = metaDelta === true;
+  const looksLikeFullScope = totalItems > 0 && fetchedN >= Math.ceil(totalItems * 0.8);
+  return {
+    ...res,
+    data,
+    total_items: totalItems,
+    is_delta: claimedDelta && !looksLikeFullScope,
+  };
 }
 
 /**
