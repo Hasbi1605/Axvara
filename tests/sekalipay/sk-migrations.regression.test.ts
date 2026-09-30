@@ -27,15 +27,12 @@ describe("migrasi 0049 Sekalipay di DB production lama", () => {
     if (cutAt < 0) throw new Error("SK block marker not found in schema.sql");
     const dashIdx = full.lastIndexOf("-- ───", cutAt);
     let legacy = full.slice(0, dashIdx);
-    // Kembalikan CHECK lama manual/warung_rebahan saja.
-    legacy = legacy.split("CHECK (source IN ('manual', 'warung_rebahan', 'sekalipay'))")
-      .join("CHECK (source IN ('manual', 'warung_rebahan'))");
     const strips = [
       "  -- Sekalipay supplier kedua (migrasi 0049): tautan produk SK + auto-managed.\n  sk_product_id TEXT,\n  sk_auto_managed INTEGER NOT NULL DEFAULT 0,\n",
       "  -- Sekalipay (migrasi 0049): item milik pipeline SK (bukan manual palsu) —\n  -- diselesaikan via sk_order_links, dilewati processItem generik (pola WR).\n  sk_link_id INTEGER REFERENCES sk_order_links(id) ON DELETE SET NULL,\n",
       "  -- Sekalipay (migrasi 0049): tautan varian SK + auto-managed.\n  sk_variant_id TEXT,\n  sk_auto_managed INTEGER NOT NULL DEFAULT 0,\n",
-      "CREATE INDEX IF NOT EXISTS idx_variants_sk_id ON product_variants(sk_variant_id) WHERE sk_variant_id IS NOT NULL;\nCREATE INDEX IF NOT EXISTS idx_products_sk_id ON products(sk_product_id) WHERE sk_product_id IS NOT NULL;\n",
-      "CREATE INDEX IF NOT EXISTS idx_products_source_sk ON products(source) WHERE source = 'sekalipay';\n",
+      "CREATE INDEX IF NOT EXISTS idx_variants_sk_id ON product_variants(sk_variant_id) WHERE sk_variant_id IS NOT NULL;\n",
+      "CREATE INDEX IF NOT EXISTS idx_products_sk_id ON products(sk_product_id) WHERE sk_product_id IS NOT NULL;\n",
       "CREATE INDEX IF NOT EXISTS idx_fulfillment_items_sk_link\n  ON fulfillment_items(sk_link_id) WHERE sk_link_id IS NOT NULL;\n",
     ];
     for (const s of strips) {
@@ -95,7 +92,7 @@ describe("regresi: bootstrap schema.sql mendukung seluruh operasi SK", () => {
     const fx = createD1Fixture();
     try {
       stubFulfillmentKey();
-      fx.sql.prepare("INSERT INTO products(id,name,slug,price,stock,source,sk_product_id,sk_auto_managed) VALUES(1,'Netflix Premium (SK)','netflix-premium-sk',15000,10,'sekalipay','9',1)").run();
+      fx.sql.prepare("INSERT INTO products(id,name,slug,price,stock,source,sk_product_id,sk_auto_managed) VALUES(1,'Netflix Premium (SK)','netflix-premium-sk',15000,10,'manual','9',1)").run();
       fx.sql.prepare("INSERT INTO product_variants(id,product_id,sku,label,price,stock,fulfillment_mode,sk_variant_id,sk_auto_managed) VALUES(1,1,'SK-101','1 Bulan',15000,10,'manual','101',1)").run();
       fx.sql.prepare("INSERT INTO sk_products(sk_variant_id,sk_product_id,sk_product_name,sk_variant_name,sk_price,sk_stock,sk_order_process,axvara_product_id,axvara_variant_id,axvara_sell_price) VALUES('101','9','Netflix','1 Bulan',10000,10,'auto',1,1,15000)").run();
       fx.sql.prepare("INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel,paid_at) VALUES('AXV-20260930-SK0001','B','628',?,15000,'qris','lunas','paid','web',datetime('now'))")

@@ -211,6 +211,19 @@ export type SkSyncOptions = {
   timeBudgetMs?: number;
 };
 
+/** Penanda produk SK di katalog utama (pola fulfillment WR: mode 'manual' +
+ *  wr_link_id NOT NULL — CHECK lama tidak disentuh, D1 menolak rebuild).
+ *  D1 prod memakai CHECK source lama (manual/warung_rebahan): baris SK memakai
+ *  source='manual' + sk_product_id NOT NULL. Bootstrap baru (schema.sql final)
+ *  memakai source='sekalipay'. Kode WAJIB memakai helper ini, bukan literal. */
+export const SK_PRODUCT_SOURCE_LEGACY = "manual";
+export const SK_PRODUCT_SOURCE_FINAL = "sekalipay";
+
+export function skProductWhere(prefix = ""): string {
+  const p = prefix ? `${prefix}.` : "";
+  return `(${p}sk_product_id IS NOT NULL)`;
+}
+
 /** Buat baris katalog Axvara untuk satu produk SK (anti-bentrok slug + nama (SK)). */
 async function createAxvaraCatalogForSk(
   categoryName: string,
@@ -220,8 +233,10 @@ async function createAxvaraCatalogForSk(
   skProductId: number,
 ): Promise<number> {
   const { queryFirst, execRun } = db;
+  // Duplikat SK = sk_product_id cocok (tanpa filter source: D1 prod memakai
+  // source=manual + sk_product_id, bootstrap baru source=sekalipay).
   const dupe = await queryFirst(
-    `SELECT id FROM products WHERE source='sekalipay' AND sk_product_id=? LIMIT 1`,
+    `SELECT id FROM products WHERE sk_product_id=? LIMIT 1`,
     String(skProductId),
   );
   if (dupe) return Number(dupe.id);
@@ -244,7 +259,7 @@ async function createAxvaraCatalogForSk(
        source, sk_product_id, sk_auto_managed, created_at, updated_at)
       VALUES (?,?,?,?,0,0,1,
         COALESCE((SELECT MIN(999989, MAX(sort_order)) + 10 FROM products),10),
-        'sekalipay',?,1,?,?)`,
+        'manual',?,1,?,?)`,
     categoryId,
     displayName,
     slug,
@@ -370,7 +385,7 @@ export async function syncSkProducts(
           const alive = axvaraProductId > 0
             ? await db
                 .queryFirst(
-                  `SELECT id FROM products WHERE id=? AND source='sekalipay' AND sk_product_id=?`,
+                  `SELECT id FROM products WHERE id=? AND sk_product_id=?`,
                   axvaraProductId,
                   String(row.productId),
                 )

@@ -30,8 +30,12 @@ CREATE TABLE IF NOT EXISTS products (
   shared_secret_iv TEXT,
   telegram_enabled INTEGER NOT NULL DEFAULT 1,
   -- Warung Rebahan H2H (migrasi 0027) + Sekalipay (migrasi 0049): sumber katalog.
+  -- CHECK tetap dua nilai (D1 prod menolak rebuild — lihat 0049): baris SK
+  -- memakai source='manual' + sk_product_id NOT NULL (pola fulfillment WR:
+  -- mode 'manual' + wr_link_id NOT NULL). Predikat SK = sk_product_id IS NOT
+  -- NULL (helper skProductWhere di sync.ts), BUKAN source='sekalipay'.
   source TEXT NOT NULL DEFAULT 'manual'
-    CHECK (source IN ('manual', 'warung_rebahan', 'sekalipay')),
+    CHECK (source IN ('manual', 'warung_rebahan')),
   wr_product_id TEXT,
   wr_auto_managed INTEGER NOT NULL DEFAULT 0,
   -- Sekalipay supplier kedua (migrasi 0049): tautan produk SK + auto-managed.
@@ -48,7 +52,7 @@ CREATE TABLE IF NOT EXISTS products (
   updated_at TEXT DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_products_source ON products(source) WHERE source = 'warung_rebahan';
-CREATE INDEX IF NOT EXISTS idx_products_source_sk ON products(source) WHERE source = 'sekalipay';
+CREATE INDEX IF NOT EXISTS idx_products_sk_id ON products(sk_product_id) WHERE sk_product_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_products_wr_id ON products(wr_product_id) WHERE wr_product_id IS NOT NULL;
 CREATE TABLE IF NOT EXISTS orders (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -557,7 +561,6 @@ CREATE TABLE IF NOT EXISTS product_variants (
 );
 CREATE INDEX IF NOT EXISTS idx_variants_wr_id ON product_variants(wr_variant_id) WHERE wr_variant_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_variants_sk_id ON product_variants(sk_variant_id) WHERE sk_variant_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_products_sk_id ON products(sk_product_id) WHERE sk_product_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_product_variants_product ON product_variants(product_id, is_active, sort_order);
 CREATE INDEX IF NOT EXISTS idx_product_variants_sku ON product_variants(sku);

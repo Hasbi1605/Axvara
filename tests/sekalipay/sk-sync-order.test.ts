@@ -23,7 +23,7 @@ afterEach(() => {
 });
 
 function seedSkCatalog(fx: ReturnType<typeof createD1Fixture>) {
-  fx.sql.prepare("INSERT INTO products(id,name,slug,price,stock,source,sk_product_id,sk_auto_managed) VALUES(1,'Netflix Premium (SK)','netflix-premium-sk',15000,10,'sekalipay','9',1)").run();
+  fx.sql.prepare("INSERT INTO products(id,name,slug,price,stock,source,sk_product_id,sk_auto_managed) VALUES(1,'Netflix Premium (SK)','netflix-premium-sk',15000,10,'manual','9',1)").run();
   fx.sql.prepare("INSERT INTO product_variants(id,product_id,sku,label,price,stock,fulfillment_mode,sk_variant_id,sk_auto_managed) VALUES(1,1,'SK-101','1 Bulan',15000,10,'manual','101',1)").run();
   fx.sql.prepare("INSERT INTO sk_products(sk_variant_id,sk_product_id,sk_product_name,sk_variant_name,sk_price,sk_stock,sk_order_process,axvara_product_id,axvara_variant_id,axvara_sell_price) VALUES('101','9','Netflix','1 Bulan',10000,10,'auto',1,1,15000)").run();
 }
@@ -93,8 +93,11 @@ describe("sekalipay sync helpers", () => {
       expect(result.newProducts).toBe(1);
       expect(result.newVariants).toBe(1);
       expect(result.skippedNonAuto).toBe(1);
-      const prod = fx.sql.prepare("SELECT name, source FROM products WHERE source='sekalipay'").get() as { name: string; source: string };
+      const prod = fx.sql.prepare("SELECT name, source, sk_product_id FROM products WHERE sk_product_id IS NOT NULL").get() as { name: string; source: string; sk_product_id: string };
       expect(prod.name).toBe("Netflix (SK)");
+      // D1 prod memakai CHECK lama: source=manual + sk_product_id penanda.
+      expect(prod.source).toBe("manual");
+      expect(prod.sk_product_id).toBe("9");
       // Registry manual tercatat TANPA pasangan katalog.
       const manual = fx.sql.prepare("SELECT axvara_product_id, sk_order_process FROM sk_products WHERE sk_variant_id='102'").get() as { axvara_product_id: number | null; sk_order_process: string };
       expect(manual.axvara_product_id).toBeNull();
@@ -179,7 +182,7 @@ describe("sekalipay sync helpers", () => {
       // Registry tercatat TANPA pasangan katalog.
       const reg = fx.sql.prepare("SELECT axvara_product_id FROM sk_products WHERE sk_variant_id='301'").get() as { axvara_product_id: number | null };
       expect(reg.axvara_product_id).toBeNull();
-      expect(fx.sql.prepare("SELECT COUNT(*) n FROM products WHERE source='sekalipay'").get() as { n: number }).toMatchObject({ n: 0 });
+      expect(fx.sql.prepare("SELECT COUNT(*) n FROM products WHERE sk_product_id IS NOT NULL").get() as { n: number }).toMatchObject({ n: 0 });
     } finally {
       fx.close();
     }

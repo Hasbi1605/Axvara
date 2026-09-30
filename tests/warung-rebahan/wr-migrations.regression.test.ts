@@ -23,11 +23,16 @@ const { DatabaseSync } = createRequire(import.meta.url)("node:sqlite") as {
  * Strip memakai string eksak (bukan regex) agar tidak meninggalkan koma.
  */
 const STRIP_SNIPPETS = [
-  // 0049 memperluas blok source (komentar + CHECK 3 nilai + kolom SK) —
-  // strip versi baru agar legacy pra-0027 kembali ke CHECK dua nilai.
+  // Blok source: komentar + CHECK dua nilai + kolom WR + kolom SK (0049
+  // tanpa-rebuild: tidak ada CHECK tiga nilai). Strip agar legacy pra-0027
+  // kembali polos untuk replay migrasi 0027.
   `  -- Warung Rebahan H2H (migrasi 0027) + Sekalipay (migrasi 0049): sumber katalog.
+  -- CHECK tetap dua nilai (D1 prod menolak rebuild — lihat 0049): baris SK
+  -- memakai source='manual' + sk_product_id NOT NULL (pola fulfillment WR:
+  -- mode 'manual' + wr_link_id NOT NULL). Predikat SK = sk_product_id IS NOT
+  -- NULL (helper skProductWhere di sync.ts), BUKAN source='sekalipay'.
   source TEXT NOT NULL DEFAULT 'manual'
-    CHECK (source IN ('manual', 'warung_rebahan', 'sekalipay')),
+    CHECK (source IN ('manual', 'warung_rebahan')),
   wr_product_id TEXT,
   wr_auto_managed INTEGER NOT NULL DEFAULT 0,
   -- Sekalipay supplier kedua (migrasi 0049): tautan produk SK + auto-managed.
@@ -63,7 +68,7 @@ const STRIP_SNIPPETS = [
   buyer_email TEXT DEFAULT NULL,
 `,
   `CREATE INDEX IF NOT EXISTS idx_products_source ON products(source) WHERE source = 'warung_rebahan';
-CREATE INDEX IF NOT EXISTS idx_products_source_sk ON products(source) WHERE source = 'sekalipay';
+CREATE INDEX IF NOT EXISTS idx_products_sk_id ON products(sk_product_id) WHERE sk_product_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_products_wr_id ON products(wr_product_id) WHERE wr_product_id IS NOT NULL;
 `,
   `CREATE INDEX IF NOT EXISTS idx_variants_wr_id ON product_variants(wr_variant_id) WHERE wr_variant_id IS NOT NULL;
@@ -73,7 +78,7 @@ CREATE INDEX IF NOT EXISTS idx_products_wr_id ON products(wr_product_id) WHERE w
 `,
   // 0049: kolom SK sk_variant_id (varian) + sk_link_id (fulfillment_items)
   // + index SK hidup SEBELUM cut marker — strip agar legacy valid.
-  // (sk_product_id sudah ikut strip blok source di atas.)
+  // (sk_product_id + idx_products_sk_id sudah ikut strip blok source/index di atas.)
   `  -- Sekalipay (migrasi 0049): item milik pipeline SK (bukan manual palsu) —
   -- diselesaikan via sk_order_links, dilewati processItem generik (pola WR).
   sk_link_id INTEGER REFERENCES sk_order_links(id) ON DELETE SET NULL,
@@ -86,7 +91,6 @@ CREATE INDEX IF NOT EXISTS idx_products_wr_id ON products(wr_product_id) WHERE w
   sk_auto_managed INTEGER NOT NULL DEFAULT 0,
 `,
   `CREATE INDEX IF NOT EXISTS idx_variants_sk_id ON product_variants(sk_variant_id) WHERE sk_variant_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_products_sk_id ON products(sk_product_id) WHERE sk_product_id IS NOT NULL;
 `,
 ];
 

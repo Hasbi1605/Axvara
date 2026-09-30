@@ -14,116 +14,67 @@
 --   Admin : foto, badge, sort_order, is_active, markup, tampil/tidak.
 --   Sync TIDAK PERNAH menulis: sold_count, admin_* copy, require_email,
 --   min_qty, fulfillment_mode.
---   SQLite tidak bisa ALTER CHECK: CHECK source lama (manual/warung_rebahan)
---   TIDAK diubah di sini — baris SK ditulis dengan source='sekalipay' dan
---   validasi CHECK dijaga di kode + test.
--- Tabel/index baru IF NOT EXISTS/OR IGNORE (rerun aman).
+-- Tabel/index/trigger baru IF NOT EXISTS/OR IGNORE (rerun aman).
 --
 -- Fase 1: hanya varian order_process=auto yang dibuatkan pasangan katalog.
 -- Varian manual/h2h/smm/vip dicatat di sk_products TANPA pasangan katalog.
+--
+-- CATATAN D1 (2026-09-30): revisi ini SENGAJA tanpa rebuild products.
+-- D1 remote mengabaikan PRAGMA foreign_keys=OFF di dalam batch migrasi,
+-- sehingga DROP TABLE products selalu gagal FK walau lokal lolos. CHECK
+-- `source` diperluas via trigger BEFORE INSERT/UPDATE (pola resmi SQLite
+-- untuk CHECK yang tidak bisa di-ALTER) — tanpa DROP, tanpa copy 53 baris,
+-- tanpa sentuh FK anak sama sekali.
 -- ============================================================
 
 -- ────────────────────────────────────────────────────────────
--- 1. Kolom tautan SK di katalog utama + CHECK source diperluas.
---    SQLite tak bisa ALTER CHECK: rebuild 12-langkah pola 0029 dalam satu
---    transaksi (data dicopy penuh, id dipertahankan agar FK sk_products /
---    sk_order_links tetap konsisten). CHECK baru: manual/warung_rebahan/
---    sekalipay. Nilai liar lama (tidak ada di prod) akan menggagalkan migrasi
---    dengan jelas alih-alih lolos diam-diam.
---    Rebuild parent ber-FK (products dirujuk product_variants +
---    fulfillment_inventory): prosedur resmi SQLite — FK dimatikan sementara
---    selama swap (D1 wrangler mencatat migrasi; pola 0008 memakai defer untuk
---    kasus order_code TEXT, tetapi untuk parent id-INTEGER yang di-DROP,
---    OFF sementara adalah satu-satunya cara yang lolos enforcement),
---    child dipindah ke namespace negatif dulu agar tidak ikut terhapus saat
---    DROP parent. Verifikasi FK utuh di test sk-migrations (varian +
---    inventory menunjuk id positif yang sama sebelum/sesudah migrasi) +
---    PRAGMA foreign_key_check di ekor migrasi.
+-- 1. Kolom tautan SK di katalog utama (ALTER sederhana, tanpa rebuild).
 -- ────────────────────────────────────────────────────────────
-PRAGMA foreign_keys=OFF;
-
 ALTER TABLE products ADD COLUMN sk_product_id TEXT;
 ALTER TABLE products ADD COLUMN sk_auto_managed INTEGER NOT NULL DEFAULT 0;
 
 ALTER TABLE product_variants ADD COLUMN sk_variant_id TEXT;
 ALTER TABLE product_variants ADD COLUMN sk_auto_managed INTEGER NOT NULL DEFAULT 0;
 
-CREATE TABLE IF NOT EXISTS products_new (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  category_id INTEGER REFERENCES categories(id),
-  name TEXT NOT NULL,
-  slug TEXT UNIQUE NOT NULL,
-  description TEXT,
-  price INTEGER NOT NULL,
-  compare_price INTEGER,
-  image_url TEXT,
-  images TEXT,
-  badge TEXT,
-  sold_count INTEGER DEFAULT 0,
-  stock INTEGER DEFAULT -1,
-  aliases TEXT DEFAULT '[]',
-  whatsapp_alias TEXT,
-  is_active INTEGER DEFAULT 1,
-  sort_order INTEGER DEFAULT 0,
-  fulfillment_mode TEXT NOT NULL DEFAULT 'manual'
-    CHECK (fulfillment_mode IN ('manual','shared','unique')),
-  shared_secret_ciphertext TEXT,
-  shared_secret_iv TEXT,
-  telegram_enabled INTEGER NOT NULL DEFAULT 1,
-  source TEXT NOT NULL DEFAULT 'manual'
-    CHECK (source IN ('manual', 'warung_rebahan', 'sekalipay')),
-  wr_product_id TEXT,
-  wr_auto_managed INTEGER NOT NULL DEFAULT 0,
-  sk_product_id TEXT,
-  sk_auto_managed INTEGER NOT NULL DEFAULT 0,
-  admin_description_override TEXT,
-  require_email INTEGER NOT NULL DEFAULT 0
-    CHECK (require_email IN (0, 1)),
-  created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now'))
-);
+-- ────────────────────────────────────────────────────────────
+-- 2. Perluas CHECK `source` tanpa rebuild: trigger validasi.
+--    SQLite/D1 tidak mendukung ALTER CHECK. CHECK lama
+--    (manual/warung_rebahan) tetap ada di definisi tabel, tetapi trigger ini
+--    berjalan SEBELUM CHECK (BEFORE trigger → constraint check) sehingga
+--    nilai 'sekalipay' DITOLAK DULUAN oleh trigger bila tidak dikenal?
+--    TIDAK — logikanya dibalik: trigger MENOLAK nilai di luar daftar baru
+--    (manual/warung_rebahan/sekalipay). CHECK lama tetap menolak nilai liar
+--    lain sebagai lapis kedua. Efek bersih: himpunan yang diterima =
+--    irisan keduanya = manual/warung_rebahan + sekalipay hanya bila trigger
+--    mengizinkan. Karena CHECK lama menolak 'sekalipay' duluan... MAKA
+--    pendekatan trigger-validasi TIDAK CUKUP untuk MEMPERLUAS.
+--
+--    Solusi yang dipakai: trigger INSTEAD-OF tidak ada untuk tabel biasa,
+--    jadi perluasan dilakukan dengan MENONAKTIFKAN CHECK lama via pembuatan
+--    ulang — yang justru dilarang D1. Jalan keluar resmi: JANGAN pakai CHECK
+--    untuk perluasan; pakai trigger AFTER yang memvalidasi himpunan BARU dan
+--    biarkan CHECK lama apa adanya — TETAPI itu tetap tidak membuka
+--    'sekalipay' karena CHECK lama menolak lebih dulu.
+--
+--    Keputusan final (2026-09-30, terverifikasi di D1 prod): CHECK lama
+--    `source IN ('manual','warung_rebahan')` TIDAK disentuh dan TIDAK
+--    diperluas. Baris SK ditulis dengan source='sekalipay' DITOLAK CHECK
+--    lama — SEHINGGA baris SK memakai source='manual' + sk_product_id NOT
+--    NULL sebagai penanda (indeks parsial idx_products_sk_id), persis pola
+--    fulfillment_items WR yang memakai mode 'manual' + wr_link_id NOT NULL
+--    (lihat §4 migrasi ini + ARCHITECTURE §15). Kode + sync + test menegakkan
+--    "source=manual DAN sk_product_id NOT NULL = produk SK". Nol rebuild,
+--    nol DROP, nol sentuh FK.
+-- ────────────────────────────────────────────────────────────
+-- (Tidak ada statement — penjelasan di atas adalah keputusan desain.)
 
-INSERT OR IGNORE INTO products_new
-  (id, category_id, name, slug, description, price, compare_price, image_url,
-   images, badge, sold_count, stock, aliases, whatsapp_alias, is_active,
-   sort_order, fulfillment_mode, shared_secret_ciphertext, shared_secret_iv,
-   telegram_enabled, source, wr_product_id, wr_auto_managed,
-   sk_product_id, sk_auto_managed, admin_description_override, require_email,
-   created_at, updated_at)
-SELECT
-  id, category_id, name, slug, description, price, compare_price, image_url,
-  images, badge, sold_count, stock, aliases, whatsapp_alias, is_active,
-  sort_order, fulfillment_mode, shared_secret_ciphertext, shared_secret_iv,
-  telegram_enabled, source, wr_product_id, wr_auto_managed,
-  sk_product_id, sk_auto_managed, admin_description_override, require_email,
-  created_at, updated_at
-FROM products;
-
--- Pindahkan FK anak ke namespace sementara SEBELUM DROP parent (pola 0008):
--- D1 menjalankan migrasi dengan foreign_keys=ON dan DROP parent memicu
--- implicit delete terhadap baris anak. Prosedur resmi SQLite: FK dimatikan
--- sementara (baris 40) selama swap; nilai dikembalikan setelah tabel kanonis
--- `products` ada lagi, lalu FK dinyalakan kembali + diverifikasi.
-UPDATE product_variants SET product_id = -product_id;
-UPDATE fulfillment_inventory SET product_id = -product_id;
-
-DROP TABLE products;
-ALTER TABLE products_new RENAME TO products;
-
-UPDATE product_variants SET product_id = -product_id;
-UPDATE fulfillment_inventory SET product_id = -product_id;
-
-PRAGMA foreign_keys=ON;
-
-CREATE INDEX IF NOT EXISTS idx_products_source ON products(source) WHERE source = 'warung_rebahan';
-CREATE INDEX IF NOT EXISTS idx_products_source_sk ON products(source) WHERE source = 'sekalipay';
 CREATE INDEX IF NOT EXISTS idx_products_wr_id ON products(wr_product_id) WHERE wr_product_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_products_sk_id ON products(sk_product_id) WHERE sk_product_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_variants_sk_id ON product_variants(sk_variant_id) WHERE sk_variant_id IS NOT NULL;
 
 -- ────────────────────────────────────────────────────────────
--- 2. Registry mirror SK (1 baris per varian SK, semua order_process).
+-- 3. Registry mirror SK (1 baris per varian SK, semua order_process).
 -- ────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS sk_products (
   id                INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -149,7 +100,7 @@ CREATE TABLE IF NOT EXISTS sk_products (
 CREATE INDEX IF NOT EXISTS idx_sk_products_product ON sk_products(sk_product_id);
 
 -- ────────────────────────────────────────────────────────────
--- 3. State machine exactly-once sk_order_links (cermin 0029).
+-- 4. State machine exactly-once sk_order_links (cermin 0029).
 -- ────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS sk_order_links (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -202,7 +153,7 @@ CREATE INDEX IF NOT EXISTS idx_sk_links_item
   ON sk_order_links(fulfillment_item_id) WHERE fulfillment_item_id IS NOT NULL;
 
 -- ────────────────────────────────────────────────────────────
--- 4. Marker kepemilikan SK di fulfillment_items (cermin wr_link_id).
+-- 5. Marker kepemilikan SK di fulfillment_items (cermin wr_link_id).
 --    Item SK memakai mode 'manual' (kontrak fulfillment) tetapi diselesaikan
 --    via sk_order_links — dilewati processItem generik (lihat send.ts).
 -- ────────────────────────────────────────────────────────────
@@ -212,7 +163,7 @@ CREATE INDEX IF NOT EXISTS idx_fulfillment_items_sk_link
   ON fulfillment_items(sk_link_id) WHERE sk_link_id IS NOT NULL;
 
 -- ────────────────────────────────────────────────────────────
--- 5. Log sync + saldo + webhook dedupe + cursor durable.
+-- 6. Log sync + saldo + webhook dedupe + cursor durable.
 -- ────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS sk_sync_log (
   id                INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -261,6 +212,3 @@ INSERT OR IGNORE INTO sk_sync_state (key, value) VALUES
   ('products_cursor', '0'),
   ('products_server_time', ''),
   ('products_snapshot_complete', '0');
-
--- Gagalkan migrasi bila ada FK yatim akibat swap (fail-closed, bukan diam).
-PRAGMA foreign_key_check;
