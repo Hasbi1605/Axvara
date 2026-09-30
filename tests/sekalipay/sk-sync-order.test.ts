@@ -35,8 +35,8 @@ function seedSkOrder(fx: ReturnType<typeof createD1Fixture>, code: string) {
 
 describe("sekalipay sync helpers", () => {
   it("hanya varian auto yang dibuatkan katalog (fase 1)", () => {
-    expect(isSkAutoVariant({ order_process: "auto" })).toBe(true);
-    expect(isSkAutoVariant({ order_process: "manual" })).toBe(false);
+    expect(isSkAutoVariant({ order_process: "auto" as const })).toBe(true);
+    expect(isSkAutoVariant({ order_process: "manual" as const })).toBe(false);
     expect(isSkAutoVariant({ order_process: "h2h" })).toBe(false);
     expect(isSkAutoVariant({ order_process: "smm" })).toBe(false);
   });
@@ -49,8 +49,8 @@ describe("sekalipay sync helpers", () => {
           {
             id: 9, name: "Netflix", image: null,
             variants: [
-              { id: 101, sku: "N-1", name: "1 Bulan", price: 10000, stock: 5, order_process: "auto", h2h_provider: null, provider_meta: null, required_fields: null, validation: null, updated_at: null },
-              { id: 102, sku: "N-2", name: "Manual", price: 9000, stock: 3, order_process: "manual", h2h_provider: null, provider_meta: null, required_fields: null, validation: null, updated_at: null },
+              { id: 101, sku: "N-1", name: "1 Bulan", price: 10000, stock: 5, order_process: "auto" as const, h2h_provider: null, provider_meta: null, required_fields: null, validation: null, updated_at: null },
+              { id: 102, sku: "N-2", name: "Manual", price: 9000, stock: 3, order_process: "manual" as const, h2h_provider: null, provider_meta: null, required_fields: null, validation: null, updated_at: null },
             ],
           },
         ],
@@ -81,8 +81,8 @@ describe("sekalipay sync helpers", () => {
               {
                 id: 9, name: "Netflix", image: null,
                 variants: [
-                  { id: 101, sku: "N-1", name: "1 Bulan", price: 10000, stock: 5, order_process: "auto", h2h_provider: null, provider_meta: null, required_fields: null, validation: null, updated_at: null },
-                  { id: 102, sku: "N-2", name: " Manual Setup", price: 9000, stock: 3, order_process: "manual", h2h_provider: null, provider_meta: null, required_fields: null, validation: null, updated_at: null },
+                  { id: 101, sku: "N-1", name: "1 Bulan", price: 10000, stock: 5, order_process: "auto" as const, h2h_provider: null, provider_meta: null, required_fields: null, validation: null, updated_at: null },
+                  { id: 102, sku: "N-2", name: " Manual Setup", price: 9000, stock: 3, order_process: "manual" as const, h2h_provider: null, provider_meta: null, required_fields: null, validation: null, updated_at: null },
                 ],
               },
             ],
@@ -125,6 +125,120 @@ describe("sekalipay sync helpers", () => {
     }
   });
 
+  it("sweep tanpa perubahan = baca-saja (cermin WR 2026-09-20: guard IS NOT hemat 97% tulis)", async () => {
+    const fx = createD1Fixture();
+    try {
+      stubFulfillmentKey();
+      vi.stubEnv("SEKALIPAY_ENABLED", "true");
+      const payload = () => ({
+        server_time: "2026-09-30T00:00:00+07:00",
+        data: [
+          {
+            id: 1, name: "Aplikasi Premium", icon: null,
+            products: [
+              {
+                id: 9, name: "Netflix", image: null,
+                variants: [
+                  { id: 101, sku: "N-1", name: "1 Bulan", price: 10000, stock: 5, order_process: "auto" as const, h2h_provider: null, provider_meta: null, required_fields: null, validation: null, updated_at: null },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+      const db = createDatabaseAccess(fx.db);
+      const first = await syncSkProducts(db, async () => payload(), { trigger: "manual" });
+      expect(first.errors).toEqual([]);
+      // Sweep kedua dengan data IDENTIK: tidak ada perubahan harga/stok.
+      const second = await syncSkProducts(createDatabaseAccess(fx.db), async () => payload(), { trigger: "cron" });
+      expect(second.errors).toEqual([]);
+      expect(second.priceChanges).toBe(0);
+      expect(second.stockChanges).toBe(0);
+      expect(second.newProducts).toBe(0);
+      expect(second.newVariants).toBe(0);
+      // Registry tetap 1 baris (upsert idempoten, bukan insert ganda).
+      const n = fx.sql.prepare("SELECT COUNT(*) n FROM sk_products").get() as { n: number };
+      expect(Number(n.n)).toBe(1);
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("perubahan nyata merambat penuh (cermin WR: ekuivalensi batch vs berurutan)", async () => {
+    const fx = createD1Fixture();
+    try {
+      stubFulfillmentKey();
+      vi.stubEnv("SEKALIPAY_ENABLED", "true");
+      const mkPayload = (price: number, stock: number) => ({
+        server_time: "2026-09-30T00:00:00+07:00",
+        data: [
+          {
+            id: 1, name: "Aplikasi Premium", icon: null,
+            products: [
+              {
+                id: 9, name: "Netflix", image: null,
+                variants: [
+                  { id: 101, sku: "N-1", name: "1 Bulan", price, stock, order_process: "auto" as const, h2h_provider: null, provider_meta: null, required_fields: null, validation: null, updated_at: null },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+      const db = createDatabaseAccess(fx.db);
+      await syncSkProducts(db, async () => mkPayload(10000, 5), { trigger: "manual" });
+      const changed = await syncSkProducts(createDatabaseAccess(fx.db), async () => mkPayload(12000, 7), { trigger: "cron" });
+      expect(changed.errors).toEqual([]);
+      expect(changed.priceChanges).toBe(1);
+      expect(changed.stockChanges).toBe(1);
+      // Harga jual katalog ikut modal baru (10000→15000, 12000→18000 @50%).
+      const pv = fx.sql.prepare("SELECT price, stock FROM product_variants WHERE sk_variant_id='101'").get() as { price: number; stock: number };
+      expect(Number(pv.price)).toBe(18000);
+      expect(Number(pv.stock)).toBe(7);
+      const reg = fx.sql.prepare("SELECT sk_price, sk_stock, axvara_sell_price FROM sk_products WHERE sk_variant_id='101'").get() as Record<string, unknown>;
+      expect(Number(reg.sk_price)).toBe(12000);
+      expect(Number(reg.axvara_sell_price)).toBe(18000);
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("markup admin tidak ditimpa default tiap sweep (cermin WR ownership)", async () => {
+    const fx = createD1Fixture();
+    try {
+      stubFulfillmentKey();
+      vi.stubEnv("SEKALIPAY_ENABLED", "true");
+      const payload = () => ({
+        server_time: "2026-09-30T00:00:00+07:00",
+        data: [
+          {
+            id: 1, name: "Aplikasi Premium", icon: null,
+            products: [
+              {
+                id: 9, name: "Netflix", image: null,
+                variants: [
+                  { id: 101, sku: "N-1", name: "1 Bulan", price: 10000, stock: 5, order_process: "auto" as const, h2h_provider: null, provider_meta: null, required_fields: null, validation: null, updated_at: null },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+      const db = createDatabaseAccess(fx.db);
+      await syncSkProducts(db, async () => payload(), { trigger: "manual" });
+      // Admin ubah markup jadi 100% via jalur panel (PUT /markup).
+      fx.sql.prepare("UPDATE sk_products SET markup_percent=100 WHERE sk_variant_id='101'").run();
+      await syncSkProducts(createDatabaseAccess(fx.db), async () => payload(), { trigger: "cron" });
+      // 10000 + 100% = 20000 (bukan 15000 default 50%).
+      const reg = fx.sql.prepare("SELECT axvara_sell_price FROM sk_products WHERE sk_variant_id='101'").get() as { axvara_sell_price: number };
+      expect(Number(reg.axvara_sell_price)).toBe(20000);
+      const pv = fx.sql.prepare("SELECT price FROM product_variants WHERE sk_variant_id='101'").get() as { price: number };
+      expect(Number(pv.price)).toBe(20000);
+    } finally {
+      fx.close();
+    }
+  });
+
   it("scope premium-only: fetch kronis memakai category + delta (hemat 4,3MB→95KB)", async () => {
     const fx = createD1Fixture();
     try {
@@ -147,7 +261,7 @@ describe("sekalipay sync helpers", () => {
                   {
                     id: 9, name: "Netflix", image: null,
                     variants: [
-                      { id: 101, sku: "N-1", name: "1 Bulan", price: 10000, stock: 5, order_process: "auto", h2h_provider: null, provider_meta: null, required_fields: null, validation: null, updated_at: null },
+                      { id: 101, sku: "N-1", name: "1 Bulan", price: 10000, stock: 5, order_process: "auto" as const, h2h_provider: null, provider_meta: null, required_fields: null, validation: null, updated_at: null },
                     ],
                   },
                 ],
@@ -219,7 +333,7 @@ describe("sekalipay sync helpers", () => {
                 variants: [
                   {
                     id: 201, sku: "GA-1", name: "Link 12 Bulan", price: 17700, stock: 3,
-                    order_process: "auto", h2h_provider: null, provider_meta: null,
+                    order_process: "auto" as const, h2h_provider: null, provider_meta: null,
                     required_fields: [{ key: "note", label: "Catatan", required: false }],
                     validation: { available: false, endpoint: null, requires_zone_id: false, fields: [] },
                     updated_at: null, min_order: 2, status: "on", description: "LINK REDEEM",
@@ -261,7 +375,7 @@ describe("sekalipay sync helpers", () => {
               {
                 id: 14, name: "Netflix", image: null,
                 variants: [
-                  { id: 301, sku: "N-1", name: "1 Bulan", price: 15000, stock: 9, order_process: "auto", h2h_provider: null, provider_meta: null, required_fields: null, validation: null, updated_at: null },
+                  { id: 301, sku: "N-1", name: "1 Bulan", price: 15000, stock: 9, order_process: "auto" as const, h2h_provider: null, provider_meta: null, required_fields: null, validation: null, updated_at: null },
                 ],
               },
             ],
@@ -408,7 +522,7 @@ describe("sekalipay license formatting", () => {
         {
           variant_id: 101, variant_name: "1 Bulan", product_name: "Netflix",
           product_license: null, seller_note: "Login memakai akun yang diberikan.",
-          price: 10000, qty: 1, note: null, order_process: "auto",
+          price: 10000, qty: 1, note: null, order_process: "auto" as const,
         },
       ],
       h2h_results: [], smm_results: [],
@@ -423,7 +537,7 @@ describe("sekalipay license formatting", () => {
         {
           variant_id: 101, variant_name: "1 Bulan", product_name: "Netflix",
           product_license: "user@mail.com|pass123", seller_note: null,
-          price: 10000, qty: 1, note: null, order_process: "auto",
+          price: 10000, qty: 1, note: null, order_process: "auto" as const,
         },
       ],
       h2h_results: [], smm_results: [],

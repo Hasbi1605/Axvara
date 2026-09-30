@@ -328,10 +328,13 @@ export function SekalipayManager() {
       const res = await fetch("/api/admin/sekalipay/sync", { method: "POST" });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || "Sync gagal");
-      const ringkas = `${body.synced} varian, ${body.newProducts} produk baru`;
+      // Angka cermin WR: produk + varian (bukan "varian" ganda seperti dulu).
+      const ringkas = `${body.synced ?? 0} produk, ${body.variantsSynced ?? 0} varian`;
       const errors: string[] = Array.isArray(body.errors) ? body.errors : [];
-      if (body.status === "failed") throw new Error(errors[0] || "Sync gagal tanpa satu pun varian tersimpan.");
+      if (body.status === "failed") throw new Error(errors[0] || "Sync gagal tanpa satu pun produk tersimpan.");
       else if (body.status === "partial") {
+        // Sukses palsu dihapus (cermin WR): partial karena budget vs error
+        // dibedakan agar "lanjut otomatis di cron" tidak menutupi error nyata.
         const sebab = errors.length ? `${errors.length} error — ${errors[0]}` : "berhenti di batas budget, lanjut otomatis di cron berikutnya";
         toast.error(`Sync sebagian: ${ringkas}. ${sebab}`);
       } else toast.success(`Sync selesai: ${ringkas}.`);

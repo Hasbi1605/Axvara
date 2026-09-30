@@ -59,9 +59,181 @@ export const SK_SYNC_CHECKPOINT_EVERY = 8;
 
 type Row = Record<string, unknown>;
 
+/**
+ * Satu statement tulis yang SUDAH terikat parameternya tapi BELUM dikirim
+ * (cermin WR 2026-09-22 — akar "sweep lambat" BUKAN kerja database, melainkan
+ * JUMLAH round-trip berurutan ke D1 primary SIN ~197 ms/query).
+ *
+ * Dengan merencanakan tulis lebih dulu, seluruh tulis satu PRODUK dikirim
+ * sebagai SATU `batch()` = 1 perjalanan jaringan, bukan 4–7 query berurutan.
+ */
+type SkSqlWrite = {
+  sql: string;
+  params: unknown[];
+  /** Tulis yang boleh gagal diam-diam (dulu `.catch()` di jalur berurutan). */
+  optional?: boolean;
+};
+
+/**
+ * Kirim sekumpulan tulis. Cakupan SENGAJA per produk, bukan per sweep:
+ * `batch()` adalah transaksi — satu produk bermasalah tidak boleh
+ * membatalkan produk lain (cermin WR runWrites).
+ */
+async function runSkWrites(writes: SkSqlWrite[], db: DatabaseAccess): Promise<void> {
+  if (!writes.length) return;
+  const d1 = db.d1;
+  if (d1 && writes.length > 1) {
+    try {
+      await d1.batch(writes.map((write) => d1.prepare(write.sql).bind(...write.params)));
+      return;
+    } catch {
+      /* turun ke jalur berurutan di bawah */
+    }
+  }
+  for (const write of writes) {
+    if (write.optional) {
+      await db.execRun(write.sql, ...write.params).catch(() => ({ changes: 0 }));
+    } else {
+      await db.execRun(write.sql, ...write.params);
+    }
+  }
+}
+
+/** `?,?,?` sebanyak n. */
+function skPlaceholders(count: number): string {
+  return new Array(count).fill("?").join(",");
+}
+
+/** D1 menolak query dengan >100 bound parameter, jadi prefetch dipotong. */
+const SK_PREFETCH_PARAM_CHUNK = 50;
+
+function skChunked<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
 /** Hanya varian auto yang dibuatkan katalog di fase 1. */
 export function isSkAutoVariant(variant: Pick<SkVariant, "order_process">): boolean {
   return String(variant?.order_process || "") === "auto";
+}
+
+/**
+ * Rencanakan tulis registry untuk satu varian SK TANPA menyentuh D1 (cermin
+ * WR planExistingVariantWrites). Baris `existing` disuplai dari prefetch
+ * massal, jadi jalur terpanas (sweep normal tanpa perubahan) nol round-trip
+ * baca sampai `runSkWrites` mengirimnya sebagai batch per produk.
+ *
+ * Guard kuota D1 (cermin WR 2026-09-20): UPDATE memakai pembanding null-safe
+ * `IS NOT` sehingga baris yang benar-benar sama TIDAK ditulis ulang —
+ * `last_synced_at` tidak dibaca kode mana pun, jadi menyegarkannya sendirian
+ * hanya membakar kuota tulis (puncak WR 28.518/hari = 28,5% kuota Free 100k).
+ */
+function planSkRegistryWrite(
+  row: SkFlatVariant,
+  existing: Row | undefined,
+  sellPrice: number,
+  skDescription: string | null,
+  skSellerNote: string | null,
+  skRequiredFields: string | null,
+  skValidation: string | null,
+  axvaraProductId: number,
+  axvaraVariantId: number,
+  now: string,
+): SkSqlWrite {
+  const variant = row.variant;
+  const skVariantId = String(variant.id);
+  const markupPercent = existing?.markup_percent != null ? Number(existing.markup_percent) : defaultMarkupPercent();
+  const markupFixed = existing?.markup_fixed != null ? Number(existing.markup_fixed) : defaultMarkupFixed();
+  const params = [
+    String(row.productId),
+    row.productName,
+    row.categoryName || null,
+    variant.name,
+    Number(variant.price),
+    Number(variant.stock),
+    String(variant.order_process || ""),
+    skSellerNote,
+    skDescription,
+    Number(variant.min_order ?? 1) || 1,
+    typeof variant.status === "string" ? variant.status : null,
+    skRequiredFields,
+    skValidation,
+    axvaraProductId > 0 ? axvaraProductId : null,
+    axvaraVariantId > 0 ? axvaraVariantId : null,
+    markupPercent,
+    markupFixed,
+    sellPrice,
+    now,
+  ];
+  if (!existing) {
+    return {
+      sql: `INSERT INTO sk_products
+        (sk_variant_id, sk_product_id, sk_product_name, sk_category, sk_variant_name,
+         sk_price, sk_stock, sk_order_process, sk_seller_note, sk_description,
+         sk_min_order, sk_status, sk_required_fields, sk_validation,
+         axvara_product_id, axvara_variant_id, markup_percent, markup_fixed,
+         axvara_sell_price, last_synced_at)
+        VALUES (?, ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      params: [skVariantId, ...params],
+    };
+  }
+  return {
+    sql: `UPDATE sk_products SET
+        sk_product_id=?, sk_product_name=?, sk_category=?, sk_variant_name=?,
+        sk_price=?, sk_stock=?, sk_order_process=?, sk_seller_note=?,
+        sk_description=?, sk_min_order=?, sk_status=?, sk_required_fields=?,
+        sk_validation=?,
+        axvara_product_id=COALESCE(sk_products.axvara_product_id, ?),
+        axvara_variant_id=COALESCE(sk_products.axvara_variant_id, ?),
+        markup_percent=?, markup_fixed=?, axvara_sell_price=?,
+        last_synced_at=?, updated_at=?
+      WHERE sk_variant_id=?
+        AND (sk_product_id IS NOT ? OR sk_product_name IS NOT ?
+             OR sk_category IS NOT ? OR sk_variant_name IS NOT ?
+             OR sk_price IS NOT ? OR sk_stock IS NOT ?
+             OR sk_order_process IS NOT ? OR sk_seller_note IS NOT ?
+             OR sk_description IS NOT ? OR sk_min_order IS NOT ?
+             OR sk_status IS NOT ? OR sk_required_fields IS NOT ?
+             OR sk_validation IS NOT ?
+             OR axvara_sell_price IS NOT ?)`,
+    params: [...params, now, skVariantId, ...params.slice(0, 13), sellPrice],
+  };
+}
+
+/**
+ * Rencanakan refresh harga/stok pasangan katalog (cermin WR: hanya milik SK;
+ * admin pegang foto/badge/sort/is_active/markup). Guard `IS NOT` agar tidak
+ * ada tulis saat harga/stok/label sama — sweep baca-saja = nol tulis katalog.
+ */
+function planSkCatalogRefreshWrite(
+  axvaraVariantId: number,
+  axvaraProductId: number,
+  sellPrice: number,
+  stock: number,
+  label: string,
+): SkSqlWrite[] {
+  return [
+    {
+      sql: `UPDATE product_variants SET price=?, stock=?, label=?, updated_at=datetime('now')
+            WHERE id=? AND (price IS NOT ? OR stock IS NOT ? OR label IS NOT ?)`,
+      params: [sellPrice, stock, label, axvaraVariantId, sellPrice, stock, label],
+      optional: true,
+    },
+    {
+      sql: `UPDATE products
+        SET price=COALESCE((SELECT MIN(price) FROM product_variants WHERE product_id=? AND is_active=1),price),
+            stock=CASE WHEN EXISTS(SELECT 1 FROM product_variants WHERE product_id=? AND is_active=1 AND stock=-1)
+              THEN -1 ELSE COALESCE((SELECT SUM(CASE WHEN stock>0 THEN stock ELSE 0 END) FROM product_variants WHERE product_id=? AND is_active=1),0) END,
+            updated_at=datetime('now')
+        WHERE id=?
+          AND (price IS NOT COALESCE((SELECT MIN(price) FROM product_variants WHERE product_id=? AND is_active=1),price)
+               OR stock IS NOT CASE WHEN EXISTS(SELECT 1 FROM product_variants WHERE product_id=? AND is_active=1 AND stock=-1)
+                 THEN -1 ELSE COALESCE((SELECT SUM(CASE WHEN stock>0 THEN stock ELSE 0 END) FROM product_variants WHERE product_id=? AND is_active=1),0) END)`,
+      params: new Array(7).fill(axvaraProductId),
+      optional: true,
+    },
+  ];
 }
 
 function defaultMarkupPercent(): number {
@@ -370,6 +542,53 @@ export async function syncSkProducts(
   const cachedExclusions = (await db
     .queryAll(`SELECT pattern, reason FROM sk_exclusions`)
     .catch(() => [] as Row[])) as { pattern: string; reason: string | null }[];
+  // Prefetch massal baris pembanding untuk potongan yang AKAN dikerjakan run
+  // ini saja (cermin WR 2026-09-22): 1 SELECT IN (...) per ~50 varian, bukan
+  // 1 SELECT per varian. Sweep parsial tidak membayar baca yang tak disentuh.
+  // Kolom PERSIS yang dipakai planner — jangan tambah kolom (cermin WR:
+  // menambah kolom = perubahan perilaku, bukan performa).
+  const plannedSlice = flat.slice(startAt, startAt + maxProducts);
+  const skRegistryRows = new Map<string, Row>();
+  for (const chunk of skChunked(
+    plannedSlice.map((r) => String(r.variant.id)).filter((id) => id.length > 0),
+    SK_PREFETCH_PARAM_CHUNK,
+  )) {
+    const rows = await db
+      .queryAll(
+        `SELECT sk_variant_id, sk_product_id, sk_product_name, sk_category,
+                sk_variant_name, sk_price, sk_stock, sk_order_process,
+                sk_seller_note, sk_description, sk_min_order, sk_status,
+                sk_required_fields, sk_validation,
+                axvara_product_id, axvara_variant_id,
+                markup_percent, markup_fixed, axvara_sell_price
+         FROM sk_products WHERE sk_variant_id IN (${skPlaceholders(chunk.length)})`,
+        ...chunk,
+      )
+      .catch(() => [] as Row[]);
+    for (const prow of rows) {
+      const id = String(prow.sk_variant_id || "");
+      if (id) skRegistryRows.set(id, prow);
+    }
+  }
+  // Verifikasi tautan katalog sekaligus (cermin WR prefetchProductRows):
+  // `catalogAlive` hanya true bila pasangan benar-benar masih hidup.
+  const skCatalogAlive = new Map<string, boolean>();
+  const linkCheckIds = [...new Set(
+    [...skRegistryRows.values()]
+      .map((r) => (r.axvara_product_id != null ? Number(r.axvara_product_id) : 0))
+      .filter((id) => id > 0),
+  )];
+  for (const chunk of skChunked(linkCheckIds.map(String), SK_PREFETCH_PARAM_CHUNK)) {
+    const rows = await db
+      .queryAll(
+        `SELECT id, sk_product_id FROM products WHERE id IN (${skPlaceholders(chunk.length)})`,
+        ...chunk,
+      )
+      .catch(() => [] as Row[]);
+    for (const crow of rows) {
+      if (crow.id != null) skCatalogAlive.set(String(crow.id), true);
+    }
+  }
   for (let i = startAt; i < flat.length; i++) {
     const row = flat[i];
     const variant = row.variant;
@@ -398,18 +617,31 @@ export async function syncSkProducts(
       // (registry tetap dicatat agar keputusan terlihat di panel admin).
       const exclude = await isSkExcluded(row.productName, db, cachedExclusions);
       const catalogAllowed = auto && !exclude.excluded;
-      const regExisting = await db
+      // Jalur terpanas: registry sudah ada (prefetch) → tulis ikut batch,
+      // NOL round-trip baca. Hanya registry BARU yang butuh 1 SELECT pastian
+      // (balapan insert ganda antar run).
+      const regExisting = skRegistryRows.get(skVariantId) ?? (await db
         .queryFirst(`SELECT id, axvara_product_id, axvara_variant_id FROM sk_products WHERE sk_variant_id=?`, skVariantId)
-        .catch(() => null);
+        .catch(() => null));
       let axvaraProductId = regExisting?.axvara_product_id != null ? Number(regExisting.axvara_product_id) : 0;
       let axvaraVariantId = regExisting?.axvara_variant_id != null ? Number(regExisting.axvara_variant_id) : 0;
+      // Guard link yatim via prefetch (tanpa SELECT per varian): pasangan
+      // yang tercatat tapi tidak hidup → buat baru di bawah.
+      if (axvaraProductId > 0 && !skCatalogAlive.get(String(axvaraProductId))) {
+        axvaraProductId = 0;
+        axvaraVariantId = 0;
+      }
       if (auto && !(axvaraProductId > 0)) {
         // Guard link yatim: registry tanpa pasangan / pasangan hilang → buat baru.
         // Dikecualikan exclusion: jangan buat katalog untuk produk yang difilter.
         if (!catalogAllowed) {
           axvaraProductId = 0;
           axvaraVariantId = 0;
-        } else {
+        } else if (!regExisting || !(regExisting as Row).sk_variant_id) {
+          // Registry BARU (tidak ada di prefetch): verifikasi hidup via 1
+          // SELECT agar tidak membuat pasangan ganda saat balapan antar run.
+          // Registry LAMA dengan link hidup/mati sudah diputuskan via
+          // prefetch di atas — tanpa query tambahan.
           const alive = axvaraProductId > 0
             ? await db
                 .queryFirst(
@@ -424,6 +656,10 @@ export async function syncSkProducts(
             result.newProducts++;
             axvaraVariantId = 0;
           }
+        } else {
+          axvaraProductId = await createAxvaraCatalogForSk(row.categoryName, row.productName, db, now, row.productId);
+          result.newProducts++;
+          axvaraVariantId = 0;
         }
       }
       if (catalogAllowed && axvaraProductId > 0 && !(axvaraVariantId > 0)) {
@@ -457,9 +693,10 @@ export async function syncSkProducts(
           result.newVariants++;
         }
       }
-      // Upsert registry (idempoten). Field khas SK ikut tersimpan agar panel
-      // admin bisa menampilkan capability tanpa panggil API lagi: min_order,
-      // status, description, seller_note, required_fields, validation.
+      // Tulis SATU varian dikumpulkan lalu dikirim sebagai satu batch per
+      // PRODUK SK (cermin WR 2026-09-22): registry + refresh katalog = 1
+      // perjalanan jaringan, bukan 4–7 query berurutan ke SIN (~197 ms/query).
+      const pendingSkWrites: SkSqlWrite[] = [];
       const sellPrice = calculateSkSellPrice(Number(variant.price), defaultMarkupPercent(), defaultMarkupFixed());
       const skDescription = typeof variant.description === "string" ? variant.description.slice(0, 2000) : null;
       const skSellerNote = typeof (variant as { seller_note?: unknown }).seller_note === "string"
@@ -471,71 +708,39 @@ export async function syncSkProducts(
       const skValidation = variant.validation != null
         ? JSON.stringify(variant.validation).slice(0, 2000)
         : null;
-      await db.execRun(
-        `INSERT INTO sk_products
-          (sk_variant_id, sk_product_id, sk_product_name, sk_category, sk_variant_name,
-           sk_price, sk_stock, sk_order_process, sk_seller_note, sk_description,
-           sk_min_order, sk_status, sk_required_fields, sk_validation,
-           axvara_product_id,
-           axvara_variant_id, markup_percent, markup_fixed, axvara_sell_price, last_synced_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-         ON CONFLICT(sk_variant_id) DO UPDATE SET
-           sk_product_name=excluded.sk_product_name, sk_category=excluded.sk_category,
-           sk_variant_name=excluded.sk_variant_name, sk_price=excluded.sk_price,
-           sk_stock=excluded.sk_stock, sk_order_process=excluded.sk_order_process,
-           sk_seller_note=excluded.sk_seller_note, sk_description=excluded.sk_description,
-           sk_min_order=excluded.sk_min_order, sk_status=excluded.sk_status,
-           sk_required_fields=excluded.sk_required_fields, sk_validation=excluded.sk_validation,
-           axvara_product_id=COALESCE(sk_products.axvara_product_id, excluded.axvara_product_id),
-           axvara_variant_id=COALESCE(sk_products.axvara_variant_id, excluded.axvara_variant_id),
-            axvara_sell_price=excluded.axvara_sell_price,
-            last_synced_at=excluded.last_synced_at`,
-        skVariantId,
-        String(row.productId),
-        row.productName,
-        row.categoryName || null,
-        variant.name,
-        Number(variant.price),
-        Number(variant.stock),
-        String(variant.order_process || ""),
-        skSellerNote,
-        skDescription,
-        Number(variant.min_order ?? 1) || 1,
-        typeof variant.status === "string" ? variant.status : null,
-        skRequiredFields,
-        skValidation,
-        axvaraProductId > 0 ? axvaraProductId : null,
-        axvaraVariantId > 0 ? axvaraVariantId : null,
-        defaultMarkupPercent(),
-        defaultMarkupFixed(),
-        sellPrice,
-        now,
-      ).catch(() => ({ changes: 0 }));
-      // Refresh harga/stok pasangan katalog (milik SK — admin pegang sisanya).
+      // Harga jual memakai markup tersimpan bila registry sudah ada (cermin
+      // WR: markup admin tidak ditimpa default tiap sweep), default bila baru.
+      const effectiveMarkupPercent = regExisting?.markup_percent != null
+        ? Number(regExisting.markup_percent) : defaultMarkupPercent();
+      const effectiveMarkupFixed = regExisting?.markup_fixed != null
+        ? Number(regExisting.markup_fixed) : defaultMarkupFixed();
+      const effectiveSellPrice = calculateSkSellPrice(Number(variant.price), effectiveMarkupPercent, effectiveMarkupFixed);
+      pendingSkWrites.push(planSkRegistryWrite(
+        row, regExisting as Row | undefined, effectiveSellPrice,
+        skDescription, skSellerNote, skRequiredFields, skValidation,
+        axvaraProductId, axvaraVariantId, now,
+      ));
+      // Refresh harga/stok pasangan katalog — HANYA bila berubah (guard IS NOT
+      // di dalam planner): sweep baca-saja = nol tulis katalog (cermin WR
+      // 2026-09-20, hemat 97% tulis D1).
       if (catalogAllowed && axvaraVariantId > 0) {
-        const before = await db
-          .queryFirst(`SELECT price, stock FROM product_variants WHERE id=?`, axvaraVariantId)
-          .catch(() => null);
-        if (before && (Number(before.price) !== sellPrice || Number(before.stock) !== Number(variant.stock))) {
-          await db.execRun(
-            `UPDATE product_variants SET price=?, stock=?, label=?, updated_at=datetime('now') WHERE id=?`,
-            sellPrice,
-            Number(variant.stock),
-            variant.name,
-            axvaraVariantId,
-          ).catch(() => ({ changes: 0 }));
-          if (Number(before.price) !== sellPrice) result.priceChanges++;
-          if (Number(before.stock) !== Number(variant.stock)) result.stockChanges++;
+        pendingSkWrites.push(...planSkCatalogRefreshWrite(
+          axvaraVariantId, axvaraProductId, effectiveSellPrice,
+          Number(variant.stock), variant.name,
+        ));
+        // Outcome dihitung dari prefetch (tanpa SELECT `before`): bandingkan
+        // harga/stok registry lama vs API saat ini.
+        if (regExisting) {
+          if (Number(regExisting.sk_price ?? -1) !== Number(variant.price) ||
+              Number(regExisting.axvara_sell_price ?? -1) !== effectiveSellPrice) result.priceChanges++;
+          if (Number(regExisting.sk_stock ?? -1) !== Number(variant.stock)) result.stockChanges++;
+        } else {
+          result.priceChanges++;
+          result.stockChanges++;
         }
-        await db.execRun(
-          `UPDATE products SET price=COALESCE((SELECT MIN(price) FROM product_variants WHERE product_id=? AND is_active=1),price),
-            stock=CASE WHEN EXISTS(SELECT 1 FROM product_variants WHERE product_id=? AND is_active=1 AND stock=-1)
-              THEN -1 ELSE COALESCE((SELECT SUM(CASE WHEN stock>0 THEN stock ELSE 0 END) FROM product_variants WHERE product_id=? AND is_active=1),0) END,
-            updated_at=datetime('now') WHERE id=?`,
-          axvaraProductId, axvaraProductId, axvaraProductId, axvaraProductId,
-        ).catch(() => ({ changes: 0 }));
         result.variantsSynced++;
       }
+      await runSkWrites(pendingSkWrites, db);
       touchedProductIds.add(String(row.productId));
       result.synced = touchedProductIds.size;
     } catch (error) {
