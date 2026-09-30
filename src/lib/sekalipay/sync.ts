@@ -590,6 +590,7 @@ async function logSkSync(
        products_new, variants_synced, stock_changes, price_changes,
        error_message, duration_ms, trigger)
      VALUES ('products',?,?,?,?,?,?,?,?,?,?,?)`,
+    result.status,
     result.total,
     result.synced,
     result.skippedNonAuto,

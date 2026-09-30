@@ -93,6 +93,17 @@ describe("sekalipay sync helpers", () => {
       expect(result.newProducts).toBe(1);
       expect(result.newVariants).toBe(1);
       expect(result.skippedNonAuto).toBe(1);
+      // Regresi bug 2026-09-30: logSkSync salah urutan kolom (status tak
+      // terkirim) sehingga sk_sync_log KOSONG di prod walau sync jalan —
+      // panel buta "Belum pernah". Baris log WAJIB ada per sweep.
+      const log = fx.sql.prepare(
+        "SELECT sync_type, status, products_total, products_synced, trigger FROM sk_sync_log ORDER BY id DESC LIMIT 1",
+      ).get() as Record<string, unknown>;
+      expect(log.sync_type).toBe("products");
+      expect(log.status).toBe("success");
+      expect(Number(log.products_total)).toBe(2);
+      expect(Number(log.products_synced)).toBe(2);
+      expect(log.trigger).toBe("manual");
       const prod = fx.sql.prepare("SELECT name, source, sk_product_id FROM products WHERE sk_product_id IS NOT NULL").get() as { name: string; source: string; sk_product_id: string };
       expect(prod.name).toBe("Netflix (SK)");
       // D1 prod memakai CHECK lama: source=manual + sk_product_id penanda.
