@@ -67,6 +67,29 @@ export async function GET(req: NextRequest) {
   // F08: public always is_active=1, admin can see all
   if (!isAdminRequest || active === "1") sql += ` AND p.is_active=1`;
   else if (active === "0") sql += ` AND p.is_active=0`;
+  // Pemenang pasangan WR vs SK (migrasi 0053, keputusan owner 2026-09-30):
+  // katalog PUBLIK menyembunyikan pecundang + produk yang semua variannya
+  // habis. BUKAN is_active (itu milik admin — sync/pairs tidak menimpanya).
+  // Admin (?tanpa active=1) tetap melihat semua + badge pemenang di UI.
+  if (isPublicCatalog && variantCatalog) {
+    // Pecundang pasangan: produk yang kalah decideWinner.
+    const loserRows = await queryAll(
+      `SELECT CASE WHEN winner='WR' THEN sk_product_id ELSE wr_product_id END AS loser
+       FROM supplier_pairs WHERE winner IS NOT NULL`,
+    ).catch(() => [] as Record<string, unknown>[]);
+    const loserIds = loserRows
+      .map((r) => Number(r.loser ?? 0))
+      .filter((id) => Number.isInteger(id) && id > 0);
+    if (loserIds.length) {
+      sql += ` AND p.id NOT IN (${loserIds.map(() => "?").join(",")})`;
+      params.push(...loserIds);
+    }
+    // Stok habis: TANPA filter SQL (kontrak katalog 2026-09-24 — produk
+    // habis TETAP tampil sebagai kartu "habis"). Urutan habis-di-belakang
+    // sudah ditangani sortProductsForDisplay (ready → sold → id) di
+    // home-client + API. Yang disembunyikan dari publik HANYA pecundang
+    // pasangan (digantikan pemenang di daftar).
+  }
   // Slug kategori lama (?cat= bookmark) dipetakan ke slug baru (migrasi 0046)
   // agar filter lama tidak 404/kosong.
   if (cat && cat !== "semua") { sql += ` AND c.slug=?`; params.push(resolveCategorySlug(cat)); }

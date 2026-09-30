@@ -17,12 +17,13 @@ import { AdminAuthChecking, AdminLoginGate } from "@/components/admin/AdminLogin
 import { ProductsSection } from "@/components/admin/sections/ProductsSection";
 import { WarungRebahanManager } from "@/components/admin/WarungRebahanManager";
 import { SekalipayManager } from "@/components/admin/SekalipayManager";
+import { SupplierPairsManager } from "@/components/admin/SupplierPairsManager";
 import { ProductEditorModal } from "@/components/admin/ProductEditorModal";
 import { useProductManager } from "@/components/admin/useProductManager";
 import { useAdminAuth } from "@/components/admin/useAdminAuth";
 import { SystemTabs, SYSTEM_TABS } from "@/components/admin/SystemTabs";
 
-const ADMIN_SECTIONS: AdminSection[] = ["summary","products","orders","categories","payments","warung","sekalipay","articles","banners","subscribers","bot","agent","settings"];
+const ADMIN_SECTIONS: AdminSection[] = ["summary","products","orders","categories","payments","warung","sekalipay","pairs","articles","banners","subscribers","bot","agent","settings"];
 
 export default function AdminPage() {
   const toast = useToast();
@@ -109,6 +110,7 @@ export default function AdminPage() {
       {tab==="payments" && <PaymentMethodsManager />}
       {tab==="warung" && <WarungRebahanManager />}
       {tab==="sekalipay" && <SekalipayManager />}
+      {tab==="pairs" && <SupplierPairsManager />}
       {tab==="bot" && <BotAutomationManager />}
       {SYSTEM_TABS.some(([id])=>id===tab) && (
         <SystemTabs section={tab} onSection={navigateAdmin}>

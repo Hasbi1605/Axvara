@@ -1256,6 +1256,19 @@ export async function POST(request: NextRequest) {
             } catch { /* API down: sync berikutnya retry; bukan deferred */ }
           }
         }
+
+        // 5. Pemenang pasangan WR vs SK (migrasi 0053, keputusan owner
+        //    2026-09-30): hitung ulang tiap fase SK aktif — murah (4 query
+        //    ringan per pasangan), best-effort, 1 gagal tidak hentikan lain.
+        //    Volatilitas stok ditangani karena dihitung dari stok+modal LIVE.
+        if (budget.fits(4) && hasTime(TIME_SK_LIGHT)) {
+          try {
+            const { decideAllWinners } = await import("@/lib/supplier-pairs");
+            const pairs = await decideAllWinners(database);
+            results.pairs_decided = pairs.decided;
+            results.pairs_changed = pairs.changed;
+          } catch { /* best-effort; sweep berikut retry */ }
+        }
       } catch {
         if (!deferredOut.includes("sekalipay")) deferredOut.push("sekalipay");
       }
