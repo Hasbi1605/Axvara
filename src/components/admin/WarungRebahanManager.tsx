@@ -129,6 +129,7 @@ export function WarungRebahanManager() {
   const [newPattern, setNewPattern] = useState("");
   const [markups, setMarkups] = useState<MarkupRow[]>([]);
   const [markupQuery, setMarkupQuery] = useState("");
+  const [markupQueryLive, setMarkupQueryLive] = useState("");
   const [editingMarkup, setEditingMarkup] = useState<Record<string, { percent: string; fixed: string }>>({});
 
   const loadSaldo = useCallback(async () => {
@@ -136,8 +137,12 @@ export function WarungRebahanManager() {
     try {
       const res = await fetch("/api/admin/warung/saldo", { cache: "no-store" });
       const body = await res.json().catch(() => ({}));
+      // Kontrak 2026-09-30: endpoint fallback cache + flag stale bila live
+      // gagal (proxy tidur/timeout) — tampilkan angka terakhir, bukan toast
+      // merah yang menutupi panel saat search/panel sibuk.
       if (!res.ok) throw new Error(body.error || "Gagal memuat saldo WR");
       setSaldo(body);
+      if (body.stale) toast.error("Saldo live gagal — menampilkan terakhir tercatat.");
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : "Gagal memuat saldo WR");
     } finally {
@@ -174,18 +179,24 @@ export function WarungRebahanManager() {
 
   const loadMarkups = useCallback(async () => {
     try {
-      const res = await fetch(`/api/admin/warung/markup?limit=30${markupQuery ? `&q=${encodeURIComponent(markupQuery)}` : ""}`, { cache: "no-store" });
+      const res = await fetch(`/api/admin/warung/markup?limit=30${markupQueryLive ? `&q=${encodeURIComponent(markupQueryLive)}` : ""}`, { cache: "no-store" });
       const body = await res.json().catch(() => ({}));
       if (res.ok) setMarkups(body.variants || []);
     } catch { /* opsional */ }
-  }, [markupQuery]);
+  }, [markupQueryLive]);
 
   useEffect(() => {
     void loadSaldo();
     void loadLogs();
     void loadExclusions();
+  }, [loadSaldo, loadLogs, loadExclusions]);
+  useEffect(() => {
+    const timer = setTimeout(() => setMarkupQueryLive(markupQuery.trim()), 400);
+    return () => clearTimeout(timer);
+  }, [markupQuery]);
+  useEffect(() => {
     void loadMarkups();
-  }, [loadSaldo, loadLogs, loadExclusions, loadMarkups]);
+  }, [loadMarkups]);
   useEffect(() => {
     void loadOrders();
   }, [loadOrders]);

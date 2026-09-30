@@ -202,6 +202,10 @@ export function SekalipayManager() {
   const [newPattern, setNewPattern] = useState("");
   const [markups, setMarkups] = useState<MarkupRow[]>([]);
   const [markupQuery, setMarkupQuery] = useState("");
+  // Markup search di-debounce 400ms (cermin orderQueryLive di bawah): tanpa
+  // ini tiap ketikan menembak /markup + me-remount daftar saat saldo live
+  // (2–4 dtk) sedang jalan — tabrakan render pemicu "gagal memuat" beruntun.
+  const [markupQueryLive, setMarkupQueryLive] = useState("");
   const [editingMarkup, setEditingMarkup] = useState<Record<string, { percent: string; fixed: string }>>({});
   // Khas SK: mutasi saldo, validasi akun, stock-lock, transaksi, detail varian.
   const [mutations, setMutations] = useState<MutationRow[]>([]);
@@ -227,8 +231,12 @@ export function SekalipayManager() {
     try {
       const res = await fetch("/api/admin/sekalipay/saldo", { cache: "no-store" });
       const body = await res.json().catch(() => ({}));
+      // Kontrak 2026-09-30: endpoint fallback cache + flag stale bila live
+      // gagal (proxy tidur/timeout) — tampilkan angka terakhir, bukan toast
+      // merah yang menutupi panel saat search/panel sibuk.
       if (!res.ok) throw new Error(body.error || "Gagal memuat saldo SK");
       setSaldo(body);
+      if (body.stale) toast.error("Saldo live gagal — menampilkan terakhir tercatat.");
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : "Gagal memuat saldo SK");
     } finally {
@@ -265,11 +273,11 @@ export function SekalipayManager() {
 
   const loadMarkups = useCallback(async () => {
     try {
-      const res = await fetch(`/api/admin/sekalipay/markup?limit=30${markupQuery ? `&q=${encodeURIComponent(markupQuery)}` : ""}`, { cache: "no-store" });
+      const res = await fetch(`/api/admin/sekalipay/markup?limit=30${markupQueryLive ? `&q=${encodeURIComponent(markupQueryLive)}` : ""}`, { cache: "no-store" });
       const body = await res.json().catch(() => ({}));
       if (res.ok) setMarkups(body.variants || []);
     } catch { /* opsional */ }
-  }, [markupQuery]);
+  }, [markupQueryLive]);
 
   const loadMutations = useCallback(async () => {
     setMutationsLoading(true);
@@ -311,8 +319,14 @@ export function SekalipayManager() {
     void loadSaldo();
     void loadLogs();
     void loadExclusions();
+  }, [loadSaldo, loadLogs, loadExclusions]);
+  useEffect(() => {
+    const timer = setTimeout(() => setMarkupQueryLive(markupQuery.trim()), 400);
+    return () => clearTimeout(timer);
+  }, [markupQuery]);
+  useEffect(() => {
     void loadMarkups();
-  }, [loadSaldo, loadLogs, loadExclusions, loadMarkups]);
+  }, [loadMarkups]);
   useEffect(() => {
     void loadOrders();
   }, [loadOrders]);
