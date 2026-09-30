@@ -42,7 +42,7 @@ describe("sekalipay sync helpers", () => {
     expect(isSkAutoVariant({ order_process: "smm" })).toBe(false);
   });
 
-  it("flatten respons item + map kategori premium", () => {
+  it("flatten respons item + map kategori dari NAMA produk (selaras WR)", () => {
     const flat = flattenSkItems([
       {
         id: 1, name: "Aplikasi Premium", icon: null,
@@ -59,7 +59,28 @@ describe("sekalipay sync helpers", () => {
     ]);
     expect(flat.map((f) => f.variant.id)).toEqual([101, 102]);
     expect(flat[0].productId).toBe(9);
-    expect(mapSkCategory("Aplikasi Premium")).toBe(1);
+    // Kategori dari NAMA (kategori upstream selalu "Aplikasi Premium" —
+    // map kategori upstream = semua jatuh default, bug owner 2026-09-30).
+    // Streaming → 2, AI murni → 1, VPN → 6, sisanya → 3 (bucket umum WR).
+    expect(mapSkCategory("Netflix")).toBe(2);
+    expect(mapSkCategory("Viu")).toBe(2);
+    expect(mapSkCategory("Spotify Premium")).toBe(2);
+    expect(mapSkCategory("Youtube")).toBe(2);
+    expect(mapSkCategory("Wattpad")).toBe(2);
+    expect(mapSkCategory("ChatGPT")).toBe(1);
+    expect(mapSkCategory("Gemini Ai")).toBe(1);
+    expect(mapSkCategory("Express VPN")).toBe(6);
+    expect(mapSkCategory("Nord VPN")).toBe(6);
+    expect(mapSkCategory("Canva")).toBe(3);
+    expect(mapSkCategory("Capcut")).toBe(3);
+    expect(mapSkCategory("Zoom Meetings Pro")).toBe(3);
+    expect(mapSkCategory("Alight Motion")).toBe(3);
+    expect(mapSkCategory("Duolingo")).toBe(3);
+    expect(mapSkCategory("Microsoft 365")).toBe(3);
+    expect(mapSkCategory("Picsart")).toBe(3);
+    expect(mapSkCategory("Remini Pro")).toBe(3);
+    expect(mapSkCategory("Scribd")).toBe(3);
+    expect(mapSkCategory("Wink")).toBe(3);
   });
 
   it("harga jual kelipatan 500 seperti WR", () => {

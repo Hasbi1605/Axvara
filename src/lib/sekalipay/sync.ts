@@ -268,15 +268,63 @@ export function generateSkProductSlug(name: string): string {
   return slug || "produk-sk";
 }
 
-/** Map kategori SK → category_id Axvara. Default: AI & Chatbot (id 1). */
-export function mapSkCategory(skCategory: string | null | undefined): number {
-  const lowered = String(skCategory ?? "").trim().toLowerCase();
-  if (lowered.includes("stream") || lowered.includes("hibur") || lowered.includes("musik") || lowered.includes("video")) return 2;
-  if (lowered.includes("productiv") || lowered.includes("office") || lowered.includes("educ") || lowered.includes("belajar")) return 3;
-  if (lowered.includes("design") || lowered.includes("desain") || lowered.includes("canva") || lowered.includes("edit")) return 5;
-  if (lowered.includes("vpn") || lowered.includes("develop") || lowered.includes("code") || lowered.includes("tool")) return 6;
-  if (lowered.includes("bundle") || lowered.includes("hemat") || lowered.includes("paket")) return 4;
-  return defaultCategoryId();
+/** Map NAMA PRODUK SK → category_id Axvara (2026-09-30, selaras WR).
+ *
+ * KENAPA NAMA, BUKAN KATEGORI UPSTREAM: kategori SK selalu "Aplikasi Premium"
+ * untuk seluruh scope fase 1 (36 produk campur streaming/desain/VPN/AI), jadi
+ * map kategori upstream selalu jatuh ke default AI & Chatbot — persis bug
+ * "semua SK di AI & Chatbot" yang dilaporkan owner. WR tidak kena ini karena
+ * kategori WR beragam (AI/Streaming/Productivity/...).
+ *
+ * Aturan diselaraskan pola WR yang terbukti di produksi (48 produk WR hanya
+ * "Domain Murah" di AI): streaming/musik/film → 2, AI/chatbot murni → 1,
+ * SELAIN ITU → 3 Produktivitas & Office (bucket umum WR: Canva/CapCut/
+ * ChatGPT/Claude/Gemini/Meitu/PicsArt/Remini/Scribd/Wink/Zoom semua di 3).
+ * VPN → 6 (bukan bagian pola WR, tapi kategori Axvara yang benar).
+ */
+export function mapSkCategory(skProductName: string | null | undefined): number {
+  const lowered = String(skProductName ?? "").trim().toLowerCase();
+  // 2 Streaming & Hiburan: musik, film, series, anime, novel, stasiun TV.
+  if (
+    lowered.includes("netflix") || lowered.includes("viu") ||
+    lowered.includes("vidio") || lowered.includes("wetv") ||
+    lowered.includes("iqiyi") || lowered.includes("disney") ||
+    lowered.includes("hotstar") || lowered.includes("hbo") ||
+    lowered.includes("prime video") || lowered.includes("bstation") ||
+    lowered.includes("loklok") || lowered.includes("youku") ||
+    lowered.includes("vision+") || lowered.includes("vision plus") ||
+    lowered.includes("youtube") || lowered.includes("spotify") ||
+    lowered.includes("apple music") || lowered.includes("wattpad") ||
+    lowered.includes("fizzo") ||
+    lowered.includes("stream") || lowered.includes("musik") ||
+    lowered.includes("film") || lowered.includes("movie") ||
+    lowered.includes("drama") || lowered.includes("anime")
+  ) return 2;
+  // 1 AI & Chatbot murni: LLM + image-gen + coding AI (bukan editor media).
+  if (
+    lowered.includes("chatgpt") || lowered.includes("chat gpt") ||
+    lowered.includes("claude") || lowered.includes("gemini") ||
+    lowered.includes("grok") || lowered.includes("deepseek") ||
+    lowered.includes("copilot") || lowered.includes("midjourney") ||
+    lowered.includes("leonardo") || lowered.includes("suno") ||
+    lowered.includes("perplexity") || lowered.includes("poe ") ||
+    lowered === "poe" || lowered.includes("blackbox") ||
+    lowered.includes("cursor") || lowered.includes("windsurf") ||
+    lowered.includes("codeium") || lowered.includes("replit")
+  ) return 1;
+  // 6 Developer & Tools: VPN + jaringan + domain + dev tools.
+  if (
+    lowered.includes("vpn") || lowered.includes("nord") ||
+    lowered.includes("express") || lowered.includes("surfshark") ||
+    lowered.includes("hidemyass") || lowered.includes("proton") ||
+    lowered.includes("tunnel") || lowered.includes("proxy") ||
+    lowered.includes("domain") || lowered.includes("hosting") ||
+    lowered.includes("github") || lowered.includes("gitbook")
+  ) return 6;
+  // 3 Produktivitas & Office (bucket umum WR): editor foto/video/desain,
+  // office, meeting, belajar, utilitas — Canva/CapCut/Meitu/PicsArt/Remini/
+  // Wink/Zoom/Duolingo/Getcontact/Ibis/Camscanner/Gsuite/Microsoft semua di 3.
+  return 3;
 }
 
 /**
@@ -437,7 +485,9 @@ async function createAxvaraCatalogForSk(
   // di admin (badge asal) + slug (-sk). Nama ditulis SEKALI saat create dan
   // tidak pernah ditulis ulang sync (kupasan nama di bawah untuk data lama).
   const displayName = productName.trim();
-  const categoryId = mapSkCategory(categoryName);
+  // Kategori dari NAMA PRODUK (bukan kategori upstream — selalu "Aplikasi
+  // Premium" di scope fase 1). Selaras pola WR yang terbukti di produksi.
+  const categoryId = mapSkCategory(productName);
   const created = await execRun(
     `INSERT INTO products
       (category_id, name, slug, description, price, stock, is_active, sort_order,
