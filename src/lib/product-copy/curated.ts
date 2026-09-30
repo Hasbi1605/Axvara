@@ -963,4 +963,279 @@ export const CURATED_VARIANT_COPY: readonly CuratedVariantCopy[] = [
       },
     ],
   },
+  // ── Kurasi Sekalipay (2026-09-30, dari API live): pola sama — angka,
+  // larangan, dan batas garansi pemasok wajib terbawa. Kunci = fingerprint
+  // (description, seller_note) SK; teks SK berubah → otomatis fallback rapi.
+  {
+    key: "tnadrfyj5t",
+    label: "Netflix · 1 Profile 2 User",
+    paket: [
+      "Akun Netflix dari admin, durasi 28-30 hari dihitung 1 bulan",
+      "1 profil dipakai 2 user, nonton sesuai profil masing-masing",
+      "Aman dari limit bila mengikuti syarat & ketentuan",
+    ],
+    aturan: [
+      "Hanya dipakai di 1 perangkat",
+      "Dilarang mengutak-atik akun dan pembayaran",
+      "Sebelum login wajib hapus data atau install ulang aplikasi Netflix, lalu ganti jaringan",
+      "Login di browser: bersihkan cookies dulu lewat www.netflix.com/clearcookies, lalu buka www.netflix.com/youraccount",
+    ],
+    garansi: ["Garansi penuh sampai masa aktif habis"],
+    grupLangkah: [
+      {
+        judul: "Ambil kode akses",
+        langkah: [
+          "Buka netflix-codes.sekalipay.com/mailbox untuk kode akses dan PIN",
+          "Panduan login lengkap: sekalipay.com/docs/tutorial-login-netflix",
+        ],
+      },
+      {
+        judul: "Login di HP",
+        langkah: ["Install ulang aplikasi atau hapus datanya", "Ganti jaringan, lalu login"],
+      },
+      {
+        judul: "Login di browser",
+        langkah: ["Buka www.netflix.com/clearcookies", "Lalu buka www.netflix.com/youraccount dan login"],
+      },
+    ],
+  },
+  {
+    key: "gzz7rpib4v",
+    label: "Netflix · 1 Profile 1 User",
+    paket: [
+      "Akun Netflix private dari admin, durasi 28-30 hari dihitung 1 bulan",
+      "Akun legal dan garansi penuh",
+      "Boleh mengubah nama profil dan PIN-nya",
+    ],
+    aturan: [
+      "Hanya dipakai di 1 perangkat",
+      "Dilarang mengutak-atik akun dan pembayaran",
+      "Sebelum login wajib hapus data atau install ulang aplikasi Netflix, lalu ganti jaringan",
+      "Login di browser: bersihkan cookies dulu lewat www.netflix.com/clearcookies, lalu buka www.netflix.com/youraccount",
+    ],
+    garansi: ["Garansi penuh sampai masa aktif habis"],
+    grupLangkah: [
+      {
+        judul: "Ambil kode akses",
+        langkah: [
+          "Buka netflix-codes.sekalipay.com/mailbox untuk kode akses dan PIN",
+          "Panduan login lengkap: sekalipay.com/docs/tutorial-login-netflix",
+        ],
+      },
+      {
+        judul: "Login di HP",
+        langkah: ["Install ulang aplikasi atau hapus datanya", "Ganti jaringan, lalu login"],
+      },
+      {
+        judul: "Login di browser",
+        langkah: ["Buka www.netflix.com/clearcookies", "Lalu buka www.netflix.com/youraccount dan login"],
+      },
+    ],
+  },
+  {
+    key: "lqpivppqmh",
+    label: "ChatGPT · 1 Bulan Sharing",
+    paket: [
+      "Akun ChatGPT Plus sharing dari admin, masa aktif 28-30 hari sejak diberikan",
+      "Aktivitas dan riwayat percakapan bisa terlihat pengguna lain",
+      "Tidak ada limit khusus dari toko; mengikuti batasan akun dan layanan ChatGPT",
+    ],
+    aturan: [
+      "Hanya dipakai di 1 perangkat; jangan logout atau pindah perangkat setelah login",
+      "Login dengan perangkat yang benar-benar dipakai",
+      "Dilarang mengganti email, password, atau info keamanan akun",
+      "Dilarang membagikan akun dan info login ke pihak lain",
+      "Dilarang mengutak-atik pengaturan pembayaran",
+      "Kode verifikasi hanya bisa dipakai 1 kali; PIN akses ada batas pemakaian dan tidak bisa ditambah",
+    ],
+    garansi: ["Bila terkendala selama masa aktif, hubungi admin untuk bantuan sesuai ketentuan garansi"],
+    grupLangkah: [
+      {
+        judul: "Login",
+        langkah: [
+          "Buka aplikasi atau website ChatGPT, login dengan email dari admin",
+          "Saat diminta kode verifikasi, pilih kirim kode ke email",
+          "Buka netflix-codes.sekalipay.com, masukkan email ChatGPT dan PIN akses dari data produk",
+          "Masukkan kode yang dihasilkan ke ChatGPT",
+        ],
+      },
+    ],
+  },
+  {
+    key: "ldn032sbn4",
+    label: "Spotify Premium · 1 Bulan Indplan",
+    paket: [
+      "Akun Spotify Individual private dari admin, durasi 28-30 hari",
+      "Akun legal dan garansi penuh, support semua perangkat",
+    ],
+    aturan: [
+      "Hapus data aplikasi sebelum login",
+      "Login wajib memakai data seluler, jangan WiFi rumah",
+      "Bila diminta OTP saat login, pilih Gunakan Password",
+      "Minta OTP ke bot Telegram autoresetpwspotify_bot setelah login memakai email",
+      "Login langsung di web atau aplikasi Spotify",
+    ],
+    garansi: [
+      "Garansi penuh untuk akun kembali ke versi gratis dan akun disable selama 28-30 hari",
+      "Estimasi klaim 1-7 hari; bila belum digaransi, chat kembali",
+    ],
+    langkah: [
+      "Hapus data aplikasi Spotify sebelum login",
+      "Login memakai email, lalu minta OTP ke bot Telegram autoresetpwspotify_bot",
+      "Pakai data seluler saat login, jangan WiFi rumah",
+    ],
+  },
+  {
+    key: "iqxrel5pre",
+    label: "Capcut · 7 Hari Private",
+    paket: [
+      "Akun CapCut private dari admin, durasi 7 hari, support semua perangkat",
+      "Bebas ganti password",
+      "Maksimal dipakai 2-3 perangkat",
+    ],
+    aturan: [
+      "Maksimal sharing 2 user agar tidak limit",
+      "Wajib update aplikasi CapCut ke versi terbaru sebelum login",
+      "Disarankan dipakai di 1 perangkat; login lebih dari itu berisiko maximum",
+      "Cek durasi akun hanya lewat website",
+    ],
+    garansi: [
+      "Garansi penuh 25 hari untuk akun kembali ke versi gratis (backfree)",
+      "Tanpa garansi bila akun terkena maximum; solusinya tunggu beberapa jam sebelum login kembali",
+    ],
+    langkah: [
+      "Update aplikasi CapCut ke versi terbaru agar email terbaca terdaftar",
+      "Login di HP memakai email dan password dari kami",
+      "Untuk PC, login lewat scan QR dari aplikasi di HP",
+      "Cek status Pro di HP: ketuk Pro di samping deretan angka panjang",
+    ],
+  },
+  {
+    key: "22guuit2j3f",
+    label: "Capcut · 7 Hari Sharing",
+    paket: [
+      "Akun CapCut sharing dari admin untuk 2 user, durasi 7 hari",
+      "Akun legal dan bergaransi",
+    ],
+    aturan: [
+      "Login memakai akun yang diberikan",
+      "Wajib install ulang aplikasi dulu sebelum login",
+      "Hanya login di 1 perangkat; ketahuan login ganda bisa terkena banned",
+    ],
+    garansi: ["Garansi berlaku sesuai ketentuan toko selama masa aktif"],
+    langkah: [
+      "Install ulang aplikasi CapCut sebelum login",
+      "Login memakai akun yang diberikan, hanya di 1 perangkat",
+    ],
+  },
+  {
+    key: "1r8czlck528",
+    label: "Viu · Lifetime",
+    paket: [
+      "Akun Viu private dari admin, durasi lifetime untuk semua perangkat",
+      "Hanya bisa login di 1 perangkat",
+    ],
+    aturan: ["Login memakai email atau nomor HP yang diberikan", "Hanya dipakai di 1 perangkat"],
+    garansi: ["Garansi 3 bulan (durasi lifetime, garansi terbatas 3 bulan)"],
+    langkah: ["Login memakai email atau nomor HP yang diberikan, hanya di 1 perangkat"],
+  },
+  {
+    key: "1bvuc4ltcp3",
+    label: "Gemini Ai · Link 12 Bulan",
+    paket: [
+      "Link redeem Gemini 12 bulan untuk akun sendiri",
+      "Pastikan akunmu sedang tidak aktif langganan apa pun",
+    ],
+    aturan: [
+      "Wajib rekam layar saat redeem agar tidak salah paham",
+      "Pakai akun sendiri",
+    ],
+    garansi: ["Garansi redeem saja; bila backfree itu ketentuan layanan"],
+    langkah: ["Rekam layar selama proses redeem", "Redeem link ke akun sendiri yang sedang tidak berlangganan"],
+  },
+  {
+    key: "26ov35dahpm",
+    label: "Youtube · 1 Bulan [ Akun Admin ]",
+    paket: [
+      "Akun YouTube dari admin (akun GSuite), private, garansi 25 hari",
+      "Akun nonaktif tidak termasuk garansi",
+    ],
+    aturan: [
+      "Masuk memakai akun yang diberikan",
+      "Dilarang mengutak-atik pembayaran dan langganan",
+      "Dilarang mengganti password; cukup tambahkan nomor HP dan email pemulihan",
+    ],
+    garansi: ["Garansi 1 bulan (25 hari); akun nonaktif tidak ditanggung"],
+    langkah: ["Masuk memakai akun GSuite yang diberikan", "Tambahkan nomor HP dan email pemulihan saja"],
+  },
+  {
+    key: "1nndgsue16b",
+    label: "Prime Video · 1 Bulan Private",
+    paket: [
+      "Akun Prime Video private dari admin, dapat 5 profil",
+      "Masa aktif 25-30 hari dihitung 1 bulan",
+      "Akun legal dan bergaransi",
+    ],
+    aturan: [
+      "Dilarang mengubah regional akun dan mengutak-atik pembayaran selama premium",
+      "Dilarang keras mengganti password dan email",
+      "Amazon sensitif: jangan coba login berkali-kali dalam waktu berdekatan; bila salah password atau gagal, tunggu 5 menit lalu refresh (hapus tab atau clear aplikasi) sebelum mencoba lagi",
+      "Kena verifikasi umur? Buat profil baru dulu; bila masih kena, isi 1999/01/01",
+      "Akses email lewat oliesmail.com",
+    ],
+    garansi: ["Garansi berlaku selama masa aktif sesuai ketentuan toko"],
+    langkah: [
+      "Login dengan akun dari admin; akses email lewat oliesmail.com",
+      "Kena verifikasi umur? Buat profil baru dulu, atau isi 1999/01/01",
+    ],
+  },
+  {
+    key: "1u5a75gqgda",
+    label: "Prime Video · 1 Bulan Sharing",
+    paket: [
+      "Akun Prime Video sharing dari admin, dapat 1 profil",
+      "Masa aktif 25-30 hari dihitung 1 bulan",
+      "Akun legal dan bergaransi",
+    ],
+    aturan: [
+      "Dilarang mengubah regional akun dan mengutak-atik pembayaran selama premium",
+      "Dilarang keras mengganti password dan email",
+      "Amazon sensitif: jangan coba login berkali-kali dalam waktu berdekatan; bila salah password atau gagal, tunggu 5 menit lalu refresh (hapus tab atau clear aplikasi) sebelum mencoba lagi",
+      "Kena verifikasi umur? Buat profil baru dulu; bila masih kena, isi 1999/01/01",
+      "Akses email lewat oliesmail.com",
+    ],
+    garansi: ["Garansi berlaku selama masa aktif sesuai ketentuan toko"],
+    langkah: [
+      "Login dengan akun dari admin; akses email lewat oliesmail.com",
+      "Kena verifikasi umur? Buat profil baru dulu, atau isi 1999/01/01",
+    ],
+  },
+  {
+    key: "yk2y6fqsje",
+    label: "Vidio · Mobile 1 Bulan",
+    paket: [
+      "Akun Vidio Platinum Mobile private dari admin, durasi 30 hari",
+      "Hanya bisa di mobile, tapi support browser, PC, dan laptop",
+      "Nonton di laptop lewat web m.vidio.com",
+      "Boleh ganti password; email nonaktif",
+    ],
+    aturan: [
+      "Login memakai email",
+      "Dilarang mengutak-atik pembayaran dan langganan",
+      "Limit screen 1 user; 2 user lebih berisiko disable",
+      "Maksimal dipakai di 2 user agar tidak limit",
+      "Wajib update aplikasi Vidio ke versi terbaru sebelum login",
+      "Disarankan dipakai di 1 perangkat",
+    ],
+    garansi: [
+      "Garansi 30 hari hanya bila akun kembali ke versi gratis (backfree)",
+      "Tanpa garansi bila akun terkunci (locked) atau diretas (hack)",
+      "Tanpa garansi bila akun terkena maximum; solusinya tunggu beberapa jam sebelum login kembali",
+    ],
+    langkah: [
+      "Update aplikasi Vidio ke versi terbaru",
+      "Login memakai email, maksimal 2 user",
+      "Untuk laptop, nonton lewat web m.vidio.com",
+    ],
+  },
 ];

@@ -209,6 +209,8 @@ export type SkSyncOptions = {
   allowZeroMissing?: boolean;
   trigger?: "manual" | "cron";
   timeBudgetMs?: number;
+  /** true = full `per_page=all` walau server_time sudah ada (Force Sync admin). */
+  full?: boolean;
 };
 
 /** Penanda produk SK di katalog utama (pola fulfillment WR: mode 'manual' +
@@ -240,12 +242,12 @@ async function createAxvaraCatalogForSk(
     String(skProductId),
   );
   if (dupe) return Number(dupe.id);
-  const baseSlug = generateSkProductSlug(productName);
+  const baseSlug = `${generateSkProductSlug(productName)}-sk`;
   let slug = baseSlug;
   for (let attempt = 0; attempt < 5; attempt++) {
     const collision = await queryFirst(`SELECT id FROM products WHERE slug=?`, slug);
     if (!collision) break;
-    slug = `${baseSlug}-sk${attempt > 0 ? `-${attempt + 1}` : ""}`.slice(0, 80);
+    slug = `${baseSlug}-${attempt + 2}`.slice(0, 80);
   }
   const slugTaken = await queryFirst(`SELECT id FROM products WHERE slug=?`, slug);
   if (slugTaken) throw new Error(`sk_slug_collision:${slug}`);
@@ -275,10 +277,7 @@ async function createAxvaraCatalogForSk(
 
 export async function syncSkProducts(
   database?: DatabaseAccess,
-  fetchFn: () => Promise<{ data: SkCategory[]; server_time: string }> = async () => {
-    const res = await fetchSkItems({ perPage: "all" });
-    return { data: res.data, server_time: res.server_time };
-  },
+  fetchFn?: () => Promise<{ data: SkCategory[]; server_time: string }>,
   options: SkSyncOptions = {},
 ): Promise<SkSyncResult> {
   const started = Date.now();
@@ -313,7 +312,17 @@ export async function syncSkProducts(
   );
   let fetched: { data: SkCategory[]; server_time: string };
   try {
-    fetched = await fetchFn();
+    // Delta sync hemat bandwidth: hanya item berubah sejak server_time terakhir.
+    // Full `per_page=all` 4,7MB/11–29 dtk vs delta kecil/detik — pelajaran sync
+    // failed 3x `sk_request_timeout` 08:00–08:20 (full selalu >12 dtk timeout
+    // Pages, kadang >30 dtk timeout proxy). Full hanya saat belum pernah sync
+    // atau dipaksa via options.full=true (tombol Force Sync = full agar jujur).
+    const since = state.serverTime.trim();
+    const wantFull = options.full === true || !since;
+    const res = await (fetchFn
+      ? fetchFn()
+      : fetchSkItems(wantFull ? { perPage: "all" } : { perPage: "all", updatedSince: since }));
+    fetched = res;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     result.errors.push(message.slice(0, 300));

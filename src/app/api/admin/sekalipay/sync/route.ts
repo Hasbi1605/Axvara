@@ -19,7 +19,9 @@ export async function POST(request: NextRequest) {
   if (!isSkEnabled()) return NextResponse.json({ error: "sekalipay_disabled" }, { status: 503 });
   try {
     const { syncSkProducts } = await import("@/lib/sekalipay/sync");
-    const result = await syncSkProducts(undefined, undefined, { trigger: "manual" });
+    // Force Sync = full agar hasilnya jujur (delta bisa menyembunyikan varian
+    // yang hilang upstream; zero-missing hanya jalan di sweep penuh).
+    const result = await syncSkProducts(undefined, undefined, { trigger: "manual", full: true });
     const status = result.errors.length === 0
       ? (result.budgetYielded ? "partial" : "success")
       : result.synced > 0 ? "partial" : "failed";

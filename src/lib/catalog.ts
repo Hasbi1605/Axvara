@@ -41,6 +41,15 @@ export type VariantSummary = {
   wr_auto_managed?: number;
   /** Tipe WR mentah (Invite/Link/Private/Sharing/...) — penentu email wajib. */
   wr_type: string | null;
+  /**
+   * Penanda varian milik sync SK (null = bukan produk SK). Cermin wr_variant_id.
+   * SK auto = lisensi langsung dari stok SK (kelas pembeli: instan).
+   * SK manual/h2h/smm (fase 2+) = antrean seperti MBO.
+   */
+  sk_variant_id?: string | null;
+  sk_auto_managed?: number;
+  /** order_process SK mentah (auto/manual/h2h/smm/vip) — dari sk_products. */
+  sk_order_process?: string | null;
   /** Toggle email wajib per produk (migrasi 0033, untuk non-WR). */
   require_email: number;
   price: number;
@@ -182,13 +191,17 @@ export async function getProductDetail(slugOrId: string | number): Promise<Produ
             pv.warranty_type, pv.warranty_value, pv.warranty_unit, pv.warranty_label,
             pv.price, pv.compare_price, pv.stock, pv.min_qty, pv.fulfillment_mode, pv.is_active, pv.sort_order,
             pv.wr_variant_id AS wr_variant_id, pv.wr_auto_managed AS wr_auto_managed,
+            pv.sk_variant_id AS sk_variant_id, pv.sk_auto_managed AS sk_auto_managed,
             pv.admin_terms, pv.admin_activation, pv.admin_copy_fingerprint,
             wv.wr_terms AS wr_terms, wv.wr_delivery_terms AS wr_delivery_terms,
             wv.wr_delivery_class AS wr_delivery_class, wv.wr_type AS wr_type,
+            sp.sk_order_process AS sk_order_process,
+            sp.sk_description AS sk_description, sp.sk_seller_note AS sk_seller_note,
             COALESCE(p.require_email, 0) AS require_email
      FROM product_variants pv
      JOIN products p ON p.id = pv.product_id
      LEFT JOIN wr_variants wv ON wv.wr_variant_id = pv.wr_variant_id
+     LEFT JOIN sk_products sp ON sp.sk_variant_id = pv.sk_variant_id
      WHERE pv.product_id=? AND pv.is_active=1
      ORDER BY pv.sort_order ASC, pv.price ASC, pv.id ASC`,
     Number(product.id)
@@ -274,10 +287,13 @@ export async function getActiveVariant(variantId: number): Promise<VariantSummar
     `SELECT pv.*, p.is_active as product_active,
             p.require_email AS require_email,
             wv.wr_terms AS wr_terms, wv.wr_delivery_terms AS wr_delivery_terms,
-            wv.wr_delivery_class AS wr_delivery_class, wv.wr_type AS wr_type
+            wv.wr_delivery_class AS wr_delivery_class, wv.wr_type AS wr_type,
+            sp.sk_order_process AS sk_order_process,
+            sp.sk_description AS sk_description, sp.sk_seller_note AS sk_seller_note
      FROM product_variants pv
      JOIN products p ON p.id = pv.product_id
      LEFT JOIN wr_variants wv ON wv.wr_variant_id = pv.wr_variant_id
+     LEFT JOIN sk_products sp ON sp.sk_variant_id = pv.sk_variant_id
      WHERE pv.id=? AND pv.is_active=1 AND p.is_active=1`,
     variantId
   );
@@ -369,19 +385,24 @@ export function formatVariantLabel(v: Pick<VariantSummary, "label"> & Partial<Pi
 }
 
 /**
- * Kelas pengiriman PEMBELI per varian (2026-09-19): WR ikut `wr_delivery_class`
- * (restock = instan, selainnya = antrean); non-WR ikut `fulfillment_mode`
- * (shared/unique = instan dari stok sendiri, manual = dikerjakan admin).
- * Satu fungsi agar PDP/modal/checkout tidak menebak per layar — dan agar
- * produk non-WR seperti Canva/Gsuite (semua `manual` hari ini) tidak
- * diklaim "instan" secara diam-diam.
+ * Kelas pengiriman PEMBELI per varian (2026-09-19, diperluas SK 2026-09-30):
+ * WR ikut `wr_delivery_class` (restock = instan, selainnya = antrean);
+ * SK ikut `sk_order_process` (auto = instan/lisensi langsung, selainnya =
+ * antrean seperti MBO — FAKTA API: 82 auto vs 6008 h2h vs 4 manual);
+ * non-WR/non-SK ikut `fulfillment_mode` (shared/unique = instan dari stok
+ * sendiri, manual = dikerjakan admin). Satu fungsi agar PDP/modal/checkout
+ * tidak menebak per layar.
  */
 export type BuyerDeliveryKind = "instant" | "queued";
 
-export function buyerDeliveryKind(v: Pick<VariantSummary, "fulfillment_mode"> & Partial<Pick<VariantSummary, "wr_delivery_class">> & { wr_variant_id?: unknown }): BuyerDeliveryKind {
+export function buyerDeliveryKind(v: Pick<VariantSummary, "fulfillment_mode"> & Partial<Pick<VariantSummary, "wr_delivery_class" | "sk_order_process">> & { wr_variant_id?: unknown; sk_variant_id?: unknown }): BuyerDeliveryKind {
   const wrId = v.wr_variant_id == null ? "" : String(v.wr_variant_id).trim();
   if (wrId) {
     return String(v.wr_delivery_class ?? "").trim() === "restock" ? "instant" : "queued";
+  }
+  const skId = (v as { sk_variant_id?: unknown }).sk_variant_id == null ? "" : String((v as { sk_variant_id?: unknown }).sk_variant_id).trim();
+  if (skId) {
+    return String((v as { sk_order_process?: unknown }).sk_order_process ?? "").trim().toLowerCase() === "auto" ? "instant" : "queued";
   }
   const mode = String(v.fulfillment_mode ?? "manual").trim().toLowerCase();
   return mode === "shared" || mode === "unique" ? "instant" : "queued";
@@ -476,8 +497,8 @@ function mapVariant(row: Record<string, unknown>): VariantSummary {
     warranty_value: row.warranty_value != null ? Number(row.warranty_value) : null,
     warranty_unit: row.warranty_unit ? String(row.warranty_unit) : null,
     warranty_label: row.warranty_label ? String(row.warranty_label) : null,
-    terms: nullableText(row.wr_terms),
-    delivery_terms: nullableText(row.wr_delivery_terms),
+    terms: nullableText(row.wr_terms) ?? nullableText(row.sk_description),
+    delivery_terms: nullableText(row.wr_delivery_terms) ?? nullableText(row.sk_seller_note),
     admin_terms: nullableText(row.admin_terms),
     admin_activation: nullableText(row.admin_activation),
     admin_copy_fingerprint: row.admin_copy_fingerprint == null ? null : String(row.admin_copy_fingerprint),
@@ -485,6 +506,9 @@ function mapVariant(row: Record<string, unknown>): VariantSummary {
     wr_variant_id: row.wr_variant_id != null ? String(row.wr_variant_id) : null,
     wr_auto_managed: row.wr_auto_managed != null ? Number(row.wr_auto_managed) : 0,
     wr_type: row.wr_type ? String(row.wr_type) : null,
+    sk_variant_id: row.sk_variant_id != null ? String(row.sk_variant_id) : null,
+    sk_auto_managed: row.sk_auto_managed != null ? Number(row.sk_auto_managed) : 0,
+    sk_order_process: row.sk_order_process ? String(row.sk_order_process) : null,
     require_email: Number(row.require_email ?? 0),
     price: Number(row.price),
     compare_price: row.compare_price != null ? Number(row.compare_price) : null,
