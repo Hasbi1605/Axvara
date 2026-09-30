@@ -109,12 +109,11 @@ describe("dengan D1", () => {
     const { GET } = await import("@/app/api/products/route");
     const { products } = await (await GET(new NextRequest("http://localhost/api/products?active=1"))).json() as { products: { slug: string; stock: number; price: number }[] };
     const bySlug = Object.fromEntries(products.map((p) => [p.slug, p]));
-    expect(bySlug["grosir-saja"].stock).toBe(0);
     expect(bySlug["campur"]).toMatchObject({ stock: 10, price: 5000 });
-    // Keputusan owner: web SENGAJA tetap menampilkan produk habis (badge
-    // "Stok Habis", diurutkan ke belakang). Hanya Telegram yang menyembunyikan.
-    expect(products.map((p) => p.slug).sort()).toEqual(["campur", "grosir-saja", "kosong"]);
-    expect(bySlug["kosong"]).toMatchObject({ stock: 0, price: 2000 });
+    // Kontrak 2026-09-30 (REVISI keputusan owner: dulu web SENGAJA tampilkan
+    // habis untuk trust; kini katalog besar sehingga habis disembunyikan
+    // dari daftar — sama seperti Telegram. Otomatis tampil lagi saat restok).
+    expect(products.map((p) => p.slug).sort()).toEqual(["campur"]);
   });
 
   it("llms.txt: profil toko + hanya produk yang bisa dibeli, dengan link & harga", async () => {

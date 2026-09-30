@@ -68,9 +68,17 @@ export async function GET(req: NextRequest) {
   if (!isAdminRequest || active === "1") sql += ` AND p.is_active=1`;
   else if (active === "0") sql += ` AND p.is_active=0`;
   // Pemenang pasangan WR vs SK (migrasi 0053, keputusan owner 2026-09-30):
-  // katalog PUBLIK menyembunyikan pecundang + produk yang semua variannya
-  // habis. BUKAN is_active (itu milik admin — sync/pairs tidak menimpanya).
-  // Admin (?tanpa active=1) tetap melihat semua + badge pemenang di UI.
+  // katalog PUBLIK menyembunyikan pecundang. BUKAN is_active (itu milik
+  // admin — sync/pairs tidak menimpanya). Admin (?tanpa active=1) tetap
+  // melihat semua + badge pemenang di UI.
+  //
+  // Produk habis (keputusan owner 2026-09-30, REVISI kontrak 2026-09-24):
+  // dulu kartu habis TETAP tampil untuk membangun trust; kini katalog besar
+  // (91 produk) sehingga habis DISEMBUNYIKAN dari daftar publik dan OTOMATIS
+  // tampil lagi saat restok (stok dihitung live tiap request — tanpa state,
+  // tanpa cron, tanpa delay). PDP langsung (?slug=) + search (?q=) tetap
+  // bisa akses produk habis (badge habis, tanpa tombol beli) agar URL lama
+  // tidak 404 + SEO/iklan tidak rusak.
   if (isPublicCatalog && variantCatalog) {
     // Pecundang pasangan: produk yang kalah decideWinner.
     const loserRows = await queryAll(
@@ -84,11 +92,15 @@ export async function GET(req: NextRequest) {
       sql += ` AND p.id NOT IN (${loserIds.map(() => "?").join(",")})`;
       params.push(...loserIds);
     }
-    // Stok habis: TANPA filter SQL (kontrak katalog 2026-09-24 — produk
-    // habis TETAP tampil sebagai kartu "habis"). Urutan habis-di-belakang
-    // sudah ditangani sortProductsForDisplay (ready → sold → id) di
-    // home-client + API. Yang disembunyikan dari publik HANYA pecundang
-    // pasangan (digantikan pemenang di daftar).
+    // Daftar publik (tanpa slug/q): hanya produk yang minimal 1 varian
+    // aktifnya bisa dibeli. -1 = tak terbatas (selalu tampil). MIN_QTY
+    // dihormati via buyable (varian stok 3 min 50 = habis).
+    if (!slug && !q) {
+      sql += ` AND EXISTS(
+        SELECT 1 FROM product_variants pvf
+        WHERE pvf.product_id=p.id AND pvf.is_active=1 AND ${purchasableStockSql("pvf")}
+      )`;
+    }
   }
   // Slug kategori lama (?cat= bookmark) dipetakan ke slug baru (migrasi 0046)
   // agar filter lama tidak 404/kosong.

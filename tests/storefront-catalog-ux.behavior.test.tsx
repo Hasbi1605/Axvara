@@ -3,9 +3,11 @@
 // tests/storefront-catalog-ux.behavior.test.tsx — UX katalog storefront.
 //
 // Dua keputusan yang dikunci:
-//  1. Produk stok habis TETAP TAMPIL tetapi selalu di belakang produk ready.
-//     Sebelumnya urutan murni sort_order, sehingga produk habis bisa menempati
-//     baris pertama katalog.
+//  1. Kontrak 2026-09-30 (REVISI keputusan owner 2026-09-24: dulu produk
+//     habis TETAP TAMPIL di belakang untuk trust; kini katalog besar
+//     sehingga API menyembunyikan habis dari daftar — otomatis tampil lagi
+//     saat restok). Klien TETAP mengurutkan ready-dulu sebagai pertahanan
+//     lapis-2 bila API mengirim kartu habis (PDP/search langsung).
 //  2. Nomor halaman diganti tombol "Tampilkan N produk lagi" (pola marketplace),
 //     batch 12 dan reset ke batch pertama saat filter berubah.
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -61,8 +63,8 @@ function stubCatalog(products: Record<string, unknown>[]) {
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
-describe("urutan katalog: ready dulu, habis di belakang", () => {
-  it("produk stok habis tetap tampil tetapi dipindah ke belakang", async () => {
+describe("urutan katalog: ready dulu, habis di belakang (pertahanan lapis-2)", () => {
+  it("kartu habis yang lolos API tetap dipindah ke belakang", async () => {
     // sort_order membuat produk HABIS berada paling depan bila tidak diurutkan.
     stubCatalog([
       product(1, { name: "Habis Duluan", stock: 0, sortOrder: 0 }),

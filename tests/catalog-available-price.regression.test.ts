@@ -5,9 +5,10 @@
 // sudah habis, lalu modal varian hanya menawarkan paket Rp5.000 — pembeli
 // merasa harga di katalog bohong. MIN(price) polos tidak memfilter stok.
 //
-// Kontrak: min price dan compare price diambil dari varian aktif yang stoknya
-// tersedia (stock > 0 atau -1 tak terbatas); bila SEMUA varian habis, kartu
-// jatuh kembali ke harga terendah keseluruhan agar tetap ada angka.
+// Kontrak 2026-09-30 (REVISI kontrak 2026-09-24, keputusan owner): produk
+// yang SEMUA variannya habis DISEMBUNYIKAN dari daftar publik (?active=1
+// tanpa slug/q) dan OTOMATIS tampil lagi saat restok. PDP langsung (?slug=)
+// + search (?q=) tetap bisa akses produk habis agar URL lama tidak 404.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { createD1Fixture } from "./helpers/d1-fixture";
@@ -55,29 +56,31 @@ describe("harga kartu berasal dari varian yang tersedia", () => {
     expect(canva.comparePrice).toBe(12000);
   });
 
-  it("bila semua varian habis, kartu jatuh ke harga terendah keseluruhan", async () => {
+  it("produk yang semua variannya habis DISEMBUNYIKAN dari daftar (tampil lagi saat restok)", async () => {
     const products = await publicCatalog();
-    const habis = products.find((p) => p.slug === "semua-habis")!;
-    expect(habis.price).toBe(3000);
-    expect(habis.stock).toBe(0);
+    expect(products.find((p) => p.slug === "semua-habis")).toBeUndefined();
+    expect(products.find((p) => p.slug === "canva-premium")).toBeDefined();
+    // Restok 1 varian → otomatis tampil lagi (tanpa cron/state/admin).
+    fixture.sql.prepare(`UPDATE product_variants SET stock=4 WHERE id=3`).run();
+    const after = await publicCatalog();
+    const kembali = after.find((p) => p.slug === "semua-habis")!;
+    expect(kembali.price).toBe(3000);
   });
 
-  it("bila semua varian habis, coret ikut jatuh ke varian termurah (kartu tetap diskon)", async () => {
-    // Regresi 2026-09-17: 26/50 kartu prod tanpa diskon walau DB sudah bercoret —
-    // subquery compare hanya membaca varian tersedia, sementara harga tampilnya
-    // fallback ke min_price. Keduanya harus jatuh ke pasangan yang sama.
-    fixture.sql.prepare(
-      `INSERT INTO products (id, category_id, name, slug, description, price, stock, is_active, sort_order)
-       VALUES (3, 2, 'Habis Bercoret', 'habis-bercoret', 'desc', 7500, 0, 1, 2)`,
-    ).run();
-    fixture.sql.prepare(
-      `INSERT INTO product_variants (id, product_id, sku, label, price, compare_price, stock, is_active, sort_order)
-       VALUES (5, 3, 'HB-1', 'Habis A', 7500, 22500, 0, 1, 0),
-              (6, 3, 'HB-2', 'Habis B', 8500, 25500, 0, 1, 1)`,
-    ).run();
-    const products = await publicCatalog();
-    const habis = products.find((p) => p.slug === "habis-bercoret")!;
-    expect(habis.price).toBe(7500);
-    expect(habis.comparePrice).toBe(22500);
+  it("produk habis tetap bisa diakses via slug langsung (URL lama tidak 404)", async () => {
+    const { GET } = await import("@/app/api/products/route");
+    const res = await GET(new NextRequest("http://localhost/api/products?active=1&slug=semua-habis"));
+    const body = await res.json();
+    const found = (body.products as Record<string, unknown>[]).find((p) => p.slug === "semua-habis");
+    expect(found).toBeDefined();
+    expect(found!.stock).toBe(0);
+  });
+
+  it("produk habis tetap bisa dicari via q (search tidak buta)", async () => {
+    const { GET } = await import("@/app/api/products/route");
+    const res = await GET(new NextRequest("http://localhost/api/products?active=1&q=habis"));
+    const body = await res.json();
+    const slugs = (body.products as Record<string, unknown>[]).map((p) => p.slug);
+    expect(slugs).toContain("semua-habis");
   });
 });
