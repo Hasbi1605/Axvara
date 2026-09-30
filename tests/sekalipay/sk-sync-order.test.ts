@@ -476,8 +476,7 @@ describe("sekalipay sync helpers", () => {
     }
   });
 
-  it("Bug A2: zero-missing scope-safe — Game/TopUp tidak ikut di-nol-kan sweep premium", async () => {
-    const fx = createD1Fixture();
+  it("Bug A2: zero-missing scope-safe — Game/TopUp tidak ikut di-nol-kan sweep premium", async () => {    const fx = createD1Fixture();
     try {
       stubFulfillmentKey();
       fx.sql.prepare(
@@ -520,6 +519,58 @@ describe("sekalipay sync helpers", () => {
     // Sequenz MENURUNKAN: 95 ≥ 80% × 99 → bukan delta jujur.
     expect(res.is_delta).toBe(false);
     expect(res.total_items).toBe(99);
+  });
+
+  it("Scope fase 1: kategori luar (Game/TopUp) dilewati total — tidak ditulis, tidak dihitung", async () => {
+    // Replika laporan owner: Arena Of Valor/CoD (Game) + MANUAL non-premium
+    // muncul di panel markup padahal scope fase 1 = Aplikasi Premium saja.
+    // Sweep yang menerima kategori asing (bocor dari fetch/scope lama) WAJIB
+    // melewatinya total: registry tidak bertambah, total hanya scope.
+    const fx = createD1Fixture();
+    try {
+      stubFulfillmentKey();
+      vi.stubEnv("SEKALIPAY_ENABLED", "true");
+      const db = createDatabaseAccess(fx.db);
+      const result = await syncSkProducts(db, async () => ({
+        server_time: "2026-09-30T00:00:00+07:00",
+        data: [
+          {
+            id: 1, name: "Aplikasi Premium", icon: null,
+            products: [
+              {
+                id: 9, name: "Netflix", image: null,
+                variants: [
+                  { id: 101, sku: "N-1", name: "1 Bulan", price: 10000, stock: 5, order_process: "auto" as const, h2h_provider: null, provider_meta: null, required_fields: null, validation: null, updated_at: null },
+                ],
+              },
+            ],
+          },
+          {
+            id: 2, name: "Game", icon: null,
+            products: [
+              {
+                id: 100, name: "Arena Of Valor", image: null,
+                variants: [
+                  { id: 9001, sku: "AOV-1", name: "40 Vouchers", price: 8166, stock: 100, order_process: "h2h" as const, h2h_provider: null, provider_meta: null, required_fields: null, validation: null, updated_at: null },
+                ],
+              },
+            ],
+          },
+        ],
+      }), { trigger: "manual" });
+      expect(result.errors).toEqual([]);
+      // Hanya premium diproses: total=1, Game dilewati.
+      expect(result.total).toBe(1);
+      expect(result.skippedOutOfScope).toBe(1);
+      expect(result.synced).toBe(1);
+      // Registry Game TIDAK TERTULIS.
+      const g = fx.sql.prepare("SELECT COUNT(*) n FROM sk_products WHERE sk_variant_id='9001'").get() as { n: number };
+      expect(Number(g.n)).toBe(0);
+      const n = fx.sql.prepare("SELECT COUNT(*) n FROM sk_products").get() as { n: number };
+      expect(Number(n.n)).toBe(1);
+    } finally {
+      fx.close();
+    }
   });
 });
 

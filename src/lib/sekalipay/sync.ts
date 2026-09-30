@@ -43,6 +43,8 @@ export type SkSyncResult = {
   variantsSynced: number;
   stockChanges: number;
   priceChanges: number;
+  /** Varian kategori luar scope yang dilewati total (tidak dibaca/ditulis). */
+  skippedOutOfScope: number;
   errors: string[];
   durationMs: number;
   budgetYielded: boolean;
@@ -529,6 +531,7 @@ export async function syncSkProducts(
     variantsSynced: 0,
     stockChanges: 0,
     priceChanges: 0,
+    skippedOutOfScope: 0,
     errors: [],
     durationMs: 0,
     budgetYielded: false,
@@ -600,6 +603,16 @@ export async function syncSkProducts(
     return result;
   }
   const flat = flattenSkItems(fetched.data);
+  // FILTER SCOPE FASE 1 (2026-09-30): hanya kategori Aplikasi Premium yang
+  // diproses — varian kategori lain (Game, Top Up, dst dari sweep unscoped
+  // lama id 21/24 sebelum scope premium dipasang) DILEWATI TOTAL: tidak
+  // dibaca, tidak ditulis, tidak dihitung. Tanpa filter ini, defensif saja
+  // tidak cukup — respons yang menyelinap kategori asing tetap mencemari
+  // registry + panel markup (kasus owner: Arena Of Valor/CoD di panel SK).
+  const inScope = flat.filter(
+    (r) => String(r.categoryName || "") === SK_SYNC_CATEGORY,
+  );
+  const skippedOutOfScope = flat.length - inScope.length;
   const validation = validateSkCatalogResponse(
     flat,
     state.snapshotComplete ? Math.max(state.cursor, 1) : 0,
@@ -610,12 +623,15 @@ export async function syncSkProducts(
     result.durationMs = Date.now() - started;
     return result;
   }
-  result.total = flat.length;
+  // total = varian DALAM SCOPE (bukan mentah fetch): angka panel jujur.
+  result.total = inScope.length;
+  result.skippedOutOfScope = skippedOutOfScope;
   // SEMANTIK products_synced SK (2026-09-30, cermin WR): jumlah PRODUK
   // (sk_product_id unik) yang disentuh run ini, bukan jumlah baris varian.
   // Panel menampilkan p/v seperti WR (48p/90v); total = varian dalam scope.
   const touchedProductIds = new Set<string>();
-  const startAt = state.cursor >= flat.length ? 0 : state.cursor;
+  const scoped = inScope;
+  const startAt = state.cursor >= scoped.length ? 0 : state.cursor;
   let cursor = startAt;
   let processedInRun = 0;
   const seenVariantIds = new Set<string>();
@@ -629,7 +645,7 @@ export async function syncSkProducts(
   // 1 SELECT per varian. Sweep parsial tidak membayar baca yang tak disentuh.
   // Kolom PERSIS yang dipakai planner — jangan tambah kolom (cermin WR:
   // menambah kolom = perubahan perilaku, bukan performa).
-  const plannedSlice = flat.slice(startAt, startAt + maxProducts);
+  const plannedSlice = scoped.slice(startAt, startAt + maxProducts);
   const skRegistryRows = new Map<string, Row>();
   for (const chunk of skChunked(
     plannedSlice.map((r) => String(r.variant.id)).filter((id) => id.length > 0),
@@ -671,8 +687,8 @@ export async function syncSkProducts(
       if (crow.id != null) skCatalogAlive.set(String(crow.id), true);
     }
   }
-  for (let i = startAt; i < flat.length; i++) {
-    const row = flat[i];
+  for (let i = startAt; i < scoped.length; i++) {
+    const row = scoped[i];
     const variant = row.variant;
     const skVariantId = String(variant.id);
     seenVariantIds.add(skVariantId);
@@ -838,11 +854,11 @@ export async function syncSkProducts(
     }
     cursor = i + 1;
     processedInRun++;
-    if (processedInRun % SK_SYNC_CHECKPOINT_EVERY === 0 && cursor < flat.length) {
+    if (processedInRun % SK_SYNC_CHECKPOINT_EVERY === 0 && cursor < scoped.length) {
       await writeSyncState(db, "products_cursor", String(cursor));
     }
   }
-  const sweepComplete = cursor >= flat.length;
+  const sweepComplete = cursor >= scoped.length;
   // fullSweep = awal→ujung daftar SCOPE INI dalam run ini (cermin WR:
   // startAt===0). BUKAN "delta vs full": delta premium 104 varian tetap
   // sweep PENUH scope premium bila dikerjakan awal→ujung — zero-missing AMAN

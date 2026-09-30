@@ -31,7 +31,8 @@ export async function GET(request: NextRequest) {
             pv.price AS current_price
      FROM sk_products sp
      LEFT JOIN product_variants pv ON pv.id=sp.axvara_variant_id
-     ${q ? "WHERE lower(sp.sk_variant_name) LIKE ? OR lower(sp.sk_product_name) LIKE ?" : ""}
+     WHERE sp.sk_category='Aplikasi Premium'
+      ${q ? "AND (lower(sp.sk_variant_name) LIKE ? OR lower(sp.sk_product_name) LIKE ?)" : ""}
      ORDER BY sp.sk_product_name ASC, sp.sk_variant_name ASC LIMIT ?`,
     ...(q ? [like, like, limit] : [limit]),
   ).catch(() => []);
