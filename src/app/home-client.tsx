@@ -11,7 +11,7 @@ import { sortProductsForDisplay } from "@/lib/product-order";
 import { useSearch } from "@/stores/search";
 import { StoreWhatsAppLink } from "@/components/storefront/StoreWhatsAppLink";
 
-const PER_PAGE = 12;
+const PER_PAGE = 16;
 
 /**
  * `initialProducts` dirender server (page.tsx) agar katalog ada di HTML awal:
@@ -22,7 +22,10 @@ const PER_PAGE = 12;
 export function HomeClient({ initialProducts }: { initialProducts?: Product[] }) {
   const hasInitial = Array.isArray(initialProducts);
   const [activeCat, setActiveCat] = useState("semua");
-  const [visible, setVisible] = useState(PER_PAGE);
+  // Pagination 2 tahap (keputusan owner 2026-10-01): 16 awal (grid pas —
+  // 4×4 desktop, 8×2 mobile), lalu SEKALIGUS semua. Tanpa batch 12+12+…
+  // berulang yang melelahkan untuk ~90 produk.
+  const [showAll, setShowAll] = useState(false);
   const q = useSearch((s) => s.q);
   const [catalogProducts, setCatalogProducts] = useState<Product[]>(initialProducts ?? []);
   const [catalogLoading, setCatalogLoading] = useState(!hasInitial);
@@ -67,11 +70,10 @@ export function HomeClient({ initialProducts }: { initialProducts?: Product[] })
     return sortProductsForDisplay(matched);
   }, [activeCat, q, catalogProducts]);
 
-  // Filter baru = daftar baru: kembali ke batch pertama.
-  useEffect(() => { setVisible(PER_PAGE); }, [q, activeCat]);
-  const paged = filtered.slice(0, visible);
+  // Filter baru = daftar baru: kembali ke 16 awal.
+  useEffect(() => { setShowAll(false); }, [q, activeCat]);
+  const paged = showAll ? filtered : filtered.slice(0, PER_PAGE);
   const remaining = Math.max(0, filtered.length - paged.length);
-  const nextBatch = Math.min(PER_PAGE, remaining);
 
   return (
     <>
@@ -127,7 +129,7 @@ export function HomeClient({ initialProducts }: { initialProducts?: Product[] })
           <span className="text-xs text-white/40">{filtered.length} produk{filtered.length ? ` • tampil ${paged.length}` : ""}</span>
         </div>
         <div className="mt-4">
-          <CategoryPills active={activeCat} onChange={(c) => { setActiveCat(c); setVisible(PER_PAGE); }} />
+          <CategoryPills active={activeCat} onChange={(c) => { setActiveCat(c); setShowAll(false); }} />
         </div>
         {catalogError && (
           <div className="mt-4 rounded-2xl bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-200 flex items-center justify-between gap-3">
@@ -154,18 +156,27 @@ export function HomeClient({ initialProducts }: { initialProducts?: Product[] })
           </div>
         )}
 
-        {/* Load more — marketplace tidak memakai nomor halaman; satu tombol
-            menambah batch berikutnya tanpa memindahkan posisi scroll. Bukan
-            infinite scroll murni agar footer tetap dapat dijangkau. */}
-        {remaining > 0 && (
+        {/* Tampilkan semua — satu ekspansi + ciutkan (bukan infinite
+            scroll agar footer tetap terjangkau). */}
+        {remaining > 0 && !showAll && (
           <div className="mt-8 flex flex-col items-center gap-2">
             <button
-              onClick={() => setVisible((v) => v + PER_PAGE)}
+              onClick={() => setShowAll(true)}
               className="h-11 px-6 rounded-full bg-white text-[#080C1E] font-semibold text-sm inline-flex items-center justify-center hover:bg-white/90 transition active:scale-[0.98]"
             >
-              Tampilkan {nextBatch} produk lagi
+              Tampilkan semua ({remaining} produk lainnya)
             </button>
-            <span className="text-xs text-white/35">{remaining} produk lainnya</span>
+            <span className="text-xs text-white/35">{filtered.length} produk total</span>
+          </div>
+        )}
+        {showAll && filtered.length > PER_PAGE && (
+          <div className="mt-8 flex flex-col items-center gap-2">
+            <button
+              onClick={() => setShowAll(false)}
+              className="h-9 px-5 rounded-full border border-white/15 bg-white/[0.06] text-white/70 font-medium text-xs inline-flex items-center justify-center hover:bg-white/10 transition active:scale-[0.98]"
+            >
+              Ciutkan ke {PER_PAGE} produk
+            </button>
           </div>
         )}
       </section>

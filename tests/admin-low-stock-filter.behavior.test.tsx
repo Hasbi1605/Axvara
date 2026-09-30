@@ -60,15 +60,16 @@ it("kartu Stok menipis membawa filternya ke daftar Produk, bukan sekadar pindah 
   expect(screen.getAllByText("Produk Aman").length).toBeGreaterThan(0);
 });
 
-it("metrik Stok menipis di Produk memakai satuan varian, sama dengan Ringkasan", async () => {
+it("metrik Hidden otomatis di Produk jujur: pecundang + habis yang tak tampil (2026-10-01)", async () => {
   stubAdminApi();
   render(<ToastProvider><AdminPage /></ToastProvider>);
   await act(async () => {});
   fireEvent.click(screen.getAllByRole("button").find((node) => node.textContent?.trim() === "boxProduk" || /^(box)?Produk$/.test(node.textContent?.trim() ?? ""))!);
   await act(async () => {});
 
-  // 0 + 3 varian tipis = 3, bukan 1 produk. Dulu layar ini menghitung produk
-  // sementara Ringkasan menghitung varian, sehingga satu label = dua angka.
-  const label = screen.getByText("Stok menipis");
-  expect(label.parentElement?.textContent).toContain("3");
+  // Kartu "Produk aktif" lama menipu (termasuk yang hidden). Kini kartu
+  // "Hidden otomatis" = yang toggle ON tapi tidak tampil di toko.
+  // Fixture: 2 produk live → Hidden otomatis = 0.
+  const label = screen.getByText("Hidden otomatis");
+  expect(label.parentElement?.textContent).toContain("0");
 });

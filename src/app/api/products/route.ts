@@ -72,13 +72,14 @@ export async function GET(req: NextRequest) {
   // admin — sync/pairs tidak menimpanya). Admin (?tanpa active=1) tetap
   // melihat semua + badge pemenang di UI.
   //
-  // Produk habis (keputusan owner 2026-09-30, REVISI kontrak 2026-09-24):
-  // dulu kartu habis TETAP tampil untuk membangun trust; kini katalog besar
-  // (91 produk) sehingga habis DISEMBUNYIKAN dari daftar publik dan OTOMATIS
-  // tampil lagi saat restok (stok dihitung live tiap request — tanpa state,
-  // tanpa cron, tanpa delay). PDP langsung (?slug=) + search (?q=) tetap
-  // bisa akses produk habis (badge habis, tanpa tombol beli) agar URL lama
-  // tidak 404 + SEO/iklan tidak rusak.
+  // Produk habis (REVISI 2026-10-01, keputusan owner — mengubah revisi
+  // 2026-09-30): kartu habis TAMPIL LAGI di daftar publik, diurutkan di
+  // bagian akhir via sortProductsForDisplay (ready → habis), dengan overlay
+  // "STOK HABIS" + foto abu-abu di ProductCard. Alasan: katalog besar tanpa
+  // kartu habis terlihat seperti produk disuntikmati (trust turun). Stok
+  // tetap dihitung live tiap request (variant_stock / available_min_price);
+  // checkout/quote tetap menolak varian habis — tampil ≠ bisa dibeli.
+  // PDP langsung (?slug=) + search (?q=) tidak berubah.
   if (isPublicCatalog && variantCatalog) {
     // Pecundang pasangan: produk yang kalah decideWinner.
     const loserRows = await queryAll(
@@ -92,15 +93,9 @@ export async function GET(req: NextRequest) {
       sql += ` AND p.id NOT IN (${loserIds.map(() => "?").join(",")})`;
       params.push(...loserIds);
     }
-    // Daftar publik (tanpa slug/q): hanya produk yang minimal 1 varian
-    // aktifnya bisa dibeli. -1 = tak terbatas (selalu tampil). MIN_QTY
-    // dihormati via buyable (varian stok 3 min 50 = habis).
-    if (!slug && !q) {
-      sql += ` AND EXISTS(
-        SELECT 1 FROM product_variants pvf
-        WHERE pvf.product_id=p.id AND pvf.is_active=1 AND ${purchasableStockSql("pvf")}
-      )`;
-    }
+    // Daftar publik tidak lagi memfilter stok-habis (2026-10-01): kartu
+    // habis tampil di akhir dengan overlay. Pecundang pasangan di atas
+    // tetap disaring — itu keputusan pemenang, bukan status stok.
   }
   // Slug kategori lama (?cat= bookmark) dipetakan ke slug baru (migrasi 0046)
   // agar filter lama tidak 404/kosong.
@@ -139,6 +134,60 @@ export async function GET(req: NextRequest) {
       if (row.sk_product_id != null) supplierByProduct.set(key, "SK");
       else if (String(row.source ?? "") === "warung_rebahan" || row.wr_product_id != null) supplierByProduct.set(key, "WR");
       else supplierByProduct.set(key, "Manual");
+    }
+  }
+  // Status toko per produk — HANYA admin (keputusan owner 2026-10-01):
+  // menjawab "mana yang live" dalam 1 detik tanpa menebak dari 3 sinyal
+  // terpisah (is_active + stok + pemenang pasangan). Cermin aturan katalog
+  // publik: nonaktif manual > kalah pasangan > habis > live.
+  // Dikirim sebagai `live_status` + `live_reason` per produk; storefront
+  // tidak menerimanya (tidak bocor ke pembeli).
+  const liveStatusByProduct = new Map<string, { status: "live" | "hidden_loser" | "hidden_soldout" | "off"; reason: string }>();
+  if (isAdminRequest) {
+    const pairRows = await queryAll(
+      `SELECT CASE WHEN winner='WR' THEN sk_product_id ELSE wr_product_id END AS loser,
+              CASE WHEN winner='WR' THEN wr_product_id ELSE sk_product_id END AS winner_id,
+              winner
+       FROM supplier_pairs WHERE winner IS NOT NULL`,
+    ).catch(() => [] as Record<string, unknown>[]);
+    const loserToWinner = new Map<number, { winnerId: number; winner: string }>();
+    for (const r of pairRows) {
+      const loser = Number(r.loser ?? 0);
+      const winnerId = Number(r.winner_id ?? 0);
+      if (Number.isInteger(loser) && loser > 0 && Number.isInteger(winnerId) && winnerId > 0) {
+        loserToWinner.set(loser, { winnerId, winner: String(r.winner ?? "") });
+      }
+    }
+    const buyableSql = purchasableStockSql("pvx");
+    const buyableRows = await queryAll(
+      `SELECT DISTINCT product_id FROM product_variants pvx WHERE pvx.is_active=1 AND ${buyableSql}`,
+    ).catch(() => [] as Record<string, unknown>[]);
+    const hasBuyable = new Set<number>();
+    for (const r of buyableRows) {
+      const pid = Number(r.product_id ?? 0);
+      if (Number.isInteger(pid) && pid > 0) hasBuyable.add(pid);
+    }
+    for (const r of rows) {
+      const pid = Number(r.id ?? 0);
+      const key = String(r.id);
+      const isActive = (r.is_active as number) !== 0;
+      if (!isActive) {
+        liveStatusByProduct.set(key, { status: "off", reason: "Nonaktif manual" });
+        continue;
+      }
+      const loseInfo = loserToWinner.get(pid);
+      if (loseInfo) {
+        liveStatusByProduct.set(key, {
+          status: "hidden_loser",
+          reason: `Kalah vs ${loseInfo.winner} #${loseInfo.winnerId}`,
+        });
+        continue;
+      }
+      if (!hasBuyable.has(pid)) {
+        liveStatusByProduct.set(key, { status: "hidden_soldout", reason: "Stok habis · restok otomatis tampil" });
+        continue;
+      }
+      liveStatusByProduct.set(key, { status: "live", reason: "Tampil di storefront" });
     }
   }
   // Varian aktif yang S&K-nya perlu ditinjau admin (teks WR belum punya versi
@@ -214,6 +263,10 @@ export async function GET(req: NextRequest) {
       // Badge asal supplier — HANYA admin (keputusan owner 2026-09-30).
       // Storefront tidak menerima field ini sehingga tidak bisa bocor ke pembeli.
       supplier: isAdminRequest ? (supplierByProduct.get(String(r.id)) ?? "Manual") : undefined,
+      // Status toko — HANYA admin (keputusan owner 2026-10-01). Storefront
+      // tidak menerima field ini.
+      liveStatus: isAdminRequest ? (liveStatusByProduct.get(String(r.id))?.status ?? "live") : undefined,
+      liveReason: isAdminRequest ? (liveStatusByProduct.get(String(r.id))?.reason ?? "") : undefined,
       isActive: (r.is_active as number) !== 0,
       // sort_order DB (snake_case) → sortOrder API (camelCase). WAJIB ada:
       // tanpanya admin menerima undefined → tampil 0 semua dan tombol ↑↓

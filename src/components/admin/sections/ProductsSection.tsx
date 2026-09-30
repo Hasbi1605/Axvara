@@ -27,6 +27,22 @@ function CopyReviewBadge({ count }: { count?: number }) {
   );
 }
 
+/** Badge status toko — HANYA admin (keputusan owner 2026-10-01). Menjawab
+ *  "mana yang live" dalam 1 detik: hijau Live, abu kalah, kuning habis,
+ *  merah Off. Pecundang + habis = toggle ON tapi tidak tampil di toko. */
+function LiveStatusBadge({ status, reason }: { status?: Prod["liveStatus"]; reason?: string }) {
+  const s = status ?? "live";
+  if (s === "live") {
+    return <span title={reason || "Tampil di storefront"} className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300">Live</span>;
+  }
+  if (s === "hidden_loser") {
+    return <span title={reason || "Kalah pasangan — disembunyikan otomatis"} className="rounded-full border border-white/15 bg-white/[0.05] px-2 py-0.5 text-[10px] font-bold text-white/45">Hidden: kalah</span>;
+  }
+  if (s === "hidden_soldout") {
+    return <span title={reason || "Stok habis — restok otomatis tampil"} className="rounded-full border border-[#FFB800]/30 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFCF55]">Hidden: habis</span>;
+  }
+  return <span title={reason || "Nonaktif manual"} className="rounded-full border border-red-400/30 bg-red-500/10 px-2 py-0.5 text-[10px] font-bold text-red-300">Off</span>;
+}
 /** Badge asal supplier — HANYA admin (keputusan owner 2026-09-30). Pembeli
  *  tidak pernah melihat ini; pembeda di storefront hanya nama bersih. */
 function SupplierBadge({ supplier, slug }: { supplier?: Prod["supplier"]; slug: string }) {
@@ -52,6 +68,13 @@ export function ProductsSection({
   activeProducts,
   lowStock,
   soldProducts,
+  liveProducts,
+  hiddenProducts,
+  offProducts,
+  liveTab,
+  onLiveTabChange,
+  perPageAdmin,
+  onPerPageChange,
   supplierFilter,
   onSupplierFilterChange,
   onQueryChange,
@@ -79,6 +102,13 @@ export function ProductsSection({
   activeProducts: number;
   lowStock: number;
   soldProducts: number;
+  liveProducts: number;
+  hiddenProducts: number;
+  offProducts: number;
+  liveTab: "live" | "hidden" | "off" | "all";
+  onLiveTabChange: (value: "live" | "hidden" | "off" | "all") => void;
+  perPageAdmin: 20 | 50 | 100;
+  onPerPageChange: (value: 20 | 50 | 100) => void;
   supplierFilter: "all" | "WR" | "SK" | "Manual";
   onSupplierFilterChange: (value: "all" | "WR" | "SK" | "Manual") => void;
   onQueryChange: (value: string) => void;
@@ -145,10 +175,13 @@ export function ProductsSection({
   };
   return (
     <>
-      <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3 mb-2">
+      <div className="mt-4 grid grid-cols-2 sm:grid-cols-5 gap-3 mb-2">
           <div className="ax-glass rounded-2xl p-4"><p className="text-[11px] tracking-wide text-white/50 uppercase">Total produk</p><p className="mt-1 text-2xl font-display font-bold text-white">{prods.length}</p></div>
-          <div className="ax-glass rounded-2xl p-4"><p className="text-[11px] tracking-wide text-white/50 uppercase">Produk aktif</p><p className="mt-1 text-2xl font-display font-bold text-[#22C55E]">{activeProducts}</p></div>
-          <div className="ax-glass rounded-2xl p-4"><p className="text-[11px] tracking-wide text-white/50 uppercase">Stok menipis</p><p className="mt-1 text-2xl font-display font-bold text-[#FFB800]">{lowStock}</p></div>
+          {/* "Produk aktif" lama menipu (termasuk pecundang + habis yang tidak
+              tampil di toko). Kini: Live = yang benar tampil di storefront. */}
+          <div className="ax-glass rounded-2xl p-4"><p className="text-[11px] tracking-wide text-white/50 uppercase">Live di toko</p><p className="mt-1 text-2xl font-display font-bold text-[#22C55E]">{liveProducts}</p></div>
+          <div className="ax-glass rounded-2xl p-4"><p className="text-[11px] tracking-wide text-white/50 uppercase">Hidden otomatis</p><p className="mt-1 text-2xl font-display font-bold text-[#FFB800]">{hiddenProducts}</p></div>
+          <div className="ax-glass rounded-2xl p-4"><p className="text-[11px] tracking-wide text-white/50 uppercase">Nonaktif</p><p className="mt-1 text-2xl font-display font-bold text-red-300">{offProducts}</p></div>
           <div className="ax-glass rounded-2xl p-4"><p className="text-[11px] tracking-wide text-white/50 uppercase">Unit terjual</p><p className="mt-1 text-2xl font-display font-bold text-white">{soldProducts}</p></div>
       </div>
 
@@ -179,6 +212,35 @@ export function ProductsSection({
             </div>
             <button onClick={onNew} className="inline-flex h-10 items-center gap-1.5 whitespace-nowrap px-5 rounded-full bg-[#00E5FF] text-[#080C1E] text-sm font-bold hover:bg-[#00D0E8] transition"><IosIcon name="plus" size={14} tint="black" /> Produk Baru</button>
           </div>
+          {/* Tab status toko (2026-10-01): 1 daftar mencampur 4 kondisi yang
+              aturannya beda kini dipisah. Tombol ↑↓ hanya bermakna di tab Live
+              (urutan antar yang tampil); di tab Hidden tombol dimatikan agar
+              jelas urutan di sana tidak berpengaruh ke storefront. */}
+          <div className="mt-4 flex flex-wrap items-center gap-2" role="tablist" aria-label="Status tampil produk">
+            {([["live", `Live (${liveProducts})`], ["hidden", `Disembunyikan otomatis (${hiddenProducts})`], ["off", `Nonaktif manual (${offProducts})`], ["all", `Semua (${prods.length})`]] as const).map(([value, label]) => (
+              <button
+                key={value}
+                role="tab"
+                aria-selected={liveTab === value}
+                onClick={() => { onLiveTabChange(value); onPageChange(() => 1); }}
+                title={value === "live" ? "Yang tampil di storefront — atur urutan di sini" : value === "hidden" ? "Kalah pasangan / stok habis — urutan di sini tidak berpengaruh" : value === "off" ? "Yang kamu matikan sendiri" : "Semua produk untuk audit"}
+                className={`h-9 whitespace-nowrap rounded-full px-4 text-xs font-bold transition ${liveTab === value ? "bg-[#00E5FF] text-[#07101f]" : "bg-white/[0.06] text-white/55 hover:bg-white/10 hover:text-white"}`}
+              >
+                {label}
+              </button>
+            ))}
+            <select
+              value={perPageAdmin}
+              onChange={(e) => { onPerPageChange(Number(e.target.value) as 20 | 50 | 100); onPageChange(() => 1); }}
+              aria-label="Jumlah per halaman"
+              title="Jumlah produk per halaman"
+              className="ml-auto h-9 shrink-0 rounded-full bg-white/[0.06] border border-white/10 px-3 text-xs font-semibold text-white/70 focus:outline-none focus:border-[#00E5FF]/40"
+            >
+              <option value={20}>20 / hal</option>
+              <option value={50}>50 / hal</option>
+              <option value={100}>100 / hal</option>
+            </select>
+          </div>
 
           {onlyLowStock && (
             <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -195,11 +257,11 @@ export function ProductsSection({
               <div className="p-10 flex flex-col items-center gap-3 text-white/60"><Spinner size={24} /><span className="text-sm">Memuat produk…</span></div>
             ) : (<>
             <div className="divide-y divide-white/[0.06] md:hidden">
-              {paged.map(p=>{ const canMoveUp = Boolean(adjacentReorderProduct(filtered, p.id, -1)); const canMoveDown = Boolean(adjacentReorderProduct(filtered, p.id, 1)); const busy = reordering === p.id; return (<article key={p.id} className="p-4">
+              {paged.map(p=>{ const inHiddenTab = liveTab === "hidden"; const canMoveUp = !inHiddenTab && Boolean(adjacentReorderProduct(filtered, p.id, -1)); const canMoveDown = !inHiddenTab && Boolean(adjacentReorderProduct(filtered, p.id, 1)); const busy = reordering === p.id; return (<article key={p.id} className="p-4">
                 <div className="flex items-start gap-3">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={p.image || "/brand/axvara-ribbon-mark.png"} alt="" className="h-14 w-14 shrink-0 rounded-xl bg-white/5 object-cover" />
-                  <div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-semibold text-white">{p.name} <SupplierBadge supplier={p.supplier} slug={p.slug} /></p><p className="mt-0.5 truncate text-[11px] text-white/35">{p.categorySlug} · {p.variantCount ? `${p.variantCount} varian` : "produk"} · #{(orderIndex.get(p.id) ?? 0) + 1} dari {filtered.length}</p><CopyReviewBadge count={p.copyReview} /></div><button type="button" aria-pressed={p.isActive} aria-label={`Toggle aktif ${p.name}`} disabled={toggling === p.id} onClick={() => onToggleActive(p)} className={`toggle-btn relative inline-flex h-6 w-[46px] shrink-0 items-center rounded-full border px-[2px] ${p.isActive ? "border-emerald-600 bg-emerald-500" : "border-white/20 bg-white/15"}`}><span className={`h-[18px] w-[18px] rounded-full bg-white transition-transform ${p.isActive ? "translate-x-[20px]" : "translate-x-0"}`} /></button></div><div className="mt-3 flex flex-wrap items-center gap-2 text-xs"><span className="font-semibold text-white">{p.minPrice != null && p.maxPrice != null && p.minPrice !== p.maxPrice ? `${formatRupiah(p.minPrice)}–${formatRupiah(p.maxPrice)}` : formatRupiah(p.price)}</span><span className="rounded-full bg-white/[0.07] px-2 py-1 text-white/50">Stok {p.stock === -1 ? "∞" : p.stock}</span><span className="text-white/35">{p.soldCount} terjual</span></div></div>
+                  <div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-semibold text-white">{p.name} <SupplierBadge supplier={p.supplier} slug={p.slug} /> <LiveStatusBadge status={p.liveStatus} reason={p.liveReason} /></p><p className="mt-0.5 truncate text-[11px] text-white/35">{p.categorySlug} · {p.variantCount ? `${p.variantCount} varian` : "produk"} · #{(orderIndex.get(p.id) ?? 0) + 1} dari {filtered.length}</p>{p.liveStatus !== "live" && p.liveReason ? <p className="mt-0.5 truncate text-[11px] text-white/40">{p.liveReason}</p> : null}<CopyReviewBadge count={p.copyReview} /></div><button type="button" aria-pressed={p.isActive} aria-label={`Toggle aktif ${p.name}`} disabled={toggling === p.id} onClick={() => onToggleActive(p)} className={`toggle-btn relative inline-flex h-6 w-[46px] shrink-0 items-center rounded-full border px-[2px] ${p.isActive ? "border-emerald-600 bg-emerald-500" : "border-white/20 bg-white/15"}`}><span className={`h-[18px] w-[18px] rounded-full bg-white transition-transform ${p.isActive ? "translate-x-[20px]" : "translate-x-0"}`} /></button></div><div className="mt-3 flex flex-wrap items-center gap-2 text-xs"><span className="font-semibold text-white">{p.minPrice != null && p.maxPrice != null && p.minPrice !== p.maxPrice ? `${formatRupiah(p.minPrice)}–${formatRupiah(p.maxPrice)}` : formatRupiah(p.price)}</span><span className="rounded-full bg-white/[0.07] px-2 py-1 text-white/50">Stok {p.stock === -1 ? "∞" : p.stock}</span><span className="text-white/35">{p.soldCount} terjual</span></div></div>
                 </div>
                 <div className="mt-4 grid grid-cols-[auto_1fr_auto] gap-2">
                   <div className="flex items-center gap-1" role="group" aria-label={`Ubah urutan ${p.name}`}>
@@ -216,15 +278,16 @@ export function ProductsSection({
                   <tr><th className="text-left font-semibold px-4 py-3">Produk</th><th className="text-left font-semibold px-3 py-3">Kategori</th><th className="text-right font-semibold px-3 py-3">Harga</th><th className="text-center font-semibold px-3 py-3">Stok</th><th className="text-center font-semibold px-3 py-3">Terjual</th><th className="text-center font-semibold px-3 py-3">Urutan</th><th className="text-center font-semibold px-3 py-3">Aktif</th><th className="text-right font-semibold px-4 py-3">Aksi</th></tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
-                  {paged.map(p=>{ const canMoveUp = Boolean(adjacentReorderProduct(filtered, p.id, -1)); const canMoveDown = Boolean(adjacentReorderProduct(filtered, p.id, 1)); const busy = reordering === p.id; return (
+                  {paged.map(p=>{ const inHiddenTab = liveTab === "hidden"; const canMoveUp = !inHiddenTab && Boolean(adjacentReorderProduct(filtered, p.id, -1)); const canMoveDown = !inHiddenTab && Boolean(adjacentReorderProduct(filtered, p.id, 1)); const busy = reordering === p.id; return (
                     <tr key={p.id} className="hover:bg-white/[0.03] transition">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3 min-w-[220px]">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={p.image || "/brand/axvara-ribbon-mark.png"} alt="" className="w-12 h-12 rounded-xl object-cover bg-white/5 shrink-0" />
                           <div className="min-w-0">
-                            <p className="font-semibold text-white leading-tight line-clamp-1">{p.name} <SupplierBadge supplier={p.supplier} slug={p.slug} /></p>
+                            <p className="font-semibold text-white leading-tight line-clamp-1">{p.name} <SupplierBadge supplier={p.supplier} slug={p.slug} /> <LiveStatusBadge status={p.liveStatus} reason={p.liveReason} /></p>
                             <p className="text-xs text-white/40 line-clamp-1">/{p.slug} {p.badge? `• ${p.badge}`:""}</p>
+                            {p.liveStatus !== "live" && p.liveReason ? <p className="text-[11px] text-white/40 line-clamp-1">{p.liveReason}</p> : null}
                             <CopyReviewBadge count={p.copyReview} />
                           </div>
                         </div>
@@ -252,8 +315,9 @@ export function ProductsSection({
                             onBlur={() => commitJump(p)}
                             onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setJumpDraft((prev) => { const next = { ...prev }; delete next[p.id]; return next; }); }}
                             inputMode="numeric"
+                            disabled={liveTab === "hidden"}
                             aria-label={`Pindah ${p.name} ke posisi 1 sampai ${filtered.length}`}
-                            title={`Posisi ${(orderIndex.get(p.id) ?? 0) + 1} dari ${filtered.length} — ketik angka lalu Enter untuk lompat (kunci teknis sort_order: ${p.sortOrder ?? 0})`}
+                            title={liveTab === "hidden" ? "Urutan di tab Hidden tidak berpengaruh ke storefront — atur di tab Live" : `Posisi ${(orderIndex.get(p.id) ?? 0) + 1} dari ${filtered.length} — ketik angka lalu Enter untuk lompat (kunci teknis sort_order: ${p.sortOrder ?? 0})`}
                             className="mr-1 h-7 w-[44px] rounded-full border border-transparent bg-white/10 px-1 text-center text-xs font-bold text-white/70 outline-none transition focus:border-[#00E5FF]/50 focus:bg-white/[0.14] focus:text-white"
                           />
                           <button type="button" onClick={()=>onMove(p, -1)} disabled={busy || !canMoveUp} aria-label={`Naikkan ${p.name}`} title={canMoveUp ? "Naik satu posisi" : "Sudah di puncak kelompoknya (aktif/habis/nonaktif tidak bisa saling melewati)"} className="flex h-7 w-7 items-center justify-center rounded-full bg-white/[0.07] text-xs font-bold text-white transition hover:bg-white/[0.14] disabled:opacity-30 disabled:pointer-events-none">↑</button>

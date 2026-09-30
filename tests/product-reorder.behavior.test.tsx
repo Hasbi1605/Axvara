@@ -255,6 +255,9 @@ describe("moveProduct: TEPAT satu posisi via POST /api/products/reorder", () => 
     const { calls } = stubApi(list);
     const { result } = renderManager();
     await act(async () => { await result.current.load(); });
+    // Tab default = live: hanya ready(1). Set all untuk uji batas kelompok.
+    expect(result.current.filtered.map((p) => p.id)).toEqual(["1"]);
+    await act(async () => { await result.current.setLiveTab("all"); });
     // Urutan kanonis: ready(1) → habis(2) → nonaktif(3).
     expect(result.current.filtered.map((p) => p.id)).toEqual(["1", "2", "3"]);
     const ready = result.current.prods.find((p) => p.id === "1")!;
@@ -266,13 +269,15 @@ describe("moveProduct: TEPAT satu posisi via POST /api/products/reorder", () => 
   });
 
   it("sukses tanpa fetch ulang: halaman/scroll/focus utuh (realtime)", async () => {
-    const { calls } = stubApi(tenProducts());
+    // Pagination default 20/halaman (2026-10-01): 25 produk = 2 halaman.
+    const many = Array.from({ length: 25 }, (_, i) => prod(i + 1, i + 1));
+    const { calls } = stubApi(many);
     const { result } = renderManager();
     await act(async () => { await result.current.load(); });
     await act(async () => { await result.current.setPage(() => 2); });
     expect(result.current.safePage).toBe(2);
-    expect(result.current.paged.map((p) => p.id)).toEqual(["9", "10"]);
-    const target = result.current.prods.find((p) => p.id === "9")!;
+    expect(result.current.paged.map((p) => p.id)).toEqual(["21", "22", "23", "24", "25"]);
+    const target = result.current.prods.find((p) => p.id === "21")!;
     await act(async () => { await result.current.moveProduct(target, 1); });
     // Satu POST reorder, nol GET ulang — halaman tetap 2.
     expect(calls.filter((c) => c.url === "/api/products/reorder")).toHaveLength(1);
@@ -292,25 +297,26 @@ describe("moveProduct: TEPAT satu posisi via POST /api/products/reorder", () => 
     expect(result.current.filtered.map((p) => p.id)[0]).toBe("1");
   });
 
-  it("batas halaman: ↓ produk terakhir hal.1 (id 8) bertukar dengan pertama hal.2 (id 9)", async () => {
-    const { calls, store } = stubApi(tenProducts());
+  it("batas halaman: ↓ produk terakhir hal.1 (id 20) bertukar dengan pertama hal.2 (id 21)", async () => {
+    const many = Array.from({ length: 25 }, (_, i) => prod(i + 1, i + 1));
+    const { calls, store } = stubApi(many);
     const { result } = renderManager();
     await act(async () => { await result.current.load(); });
-    // Sanity paginasi: 8 per halaman.
-    expect(result.current.paged).toHaveLength(8);
+    // Sanity paginasi: 20 per halaman (2026-10-01).
+    expect(result.current.paged).toHaveLength(20);
     expect(result.current.totalPages).toBe(2);
-    const eighth = result.current.prods.find((p) => p.id === "8")!;
-    await act(async () => { await result.current.moveProduct(eighth, 1); });
+    const twentieth = result.current.prods.find((p) => p.id === "20")!;
+    await act(async () => { await result.current.moveProduct(twentieth, 1); });
     const posts = calls.filter((c) => c.url === "/api/products/reorder");
     // SATU POST — server menukar + menormalisasi seluruh key.
     expect(posts).toHaveLength(1);
-    expect(posts[0].body).toEqual({ productId: 8, direction: 1 });
-    // Urutan global mencerminkan pertukaran tepat satu posisi.
-    expect(result.current.filtered.map((p) => p.id)).toEqual(
-      ["1", "2", "3", "4", "5", "6", "7", "9", "8", "10"],
-    );
-    expect(store.get("9")!.sortOrder).toBe(80);
-    expect(store.get("8")!.sortOrder).toBe(90);
+    expect(posts[0].body).toEqual({ productId: 20, direction: 1 });
+    // Urutan global mencerminkan pertukaran tepat satu posisi
+    // (tukar id 20↔21 = index 19↔20; normalisasi (i+1)*10).
+    expect(result.current.filtered.map((p) => p.id)[19]).toBe("21");
+    expect(result.current.filtered.map((p) => p.id)[20]).toBe("20");
+    expect(store.get("21")!.sortOrder).toBe(200);
+    expect(store.get("20")!.sortOrder).toBe(210);
   });
 
   it("PUT gagal → state dikembalikan (rollback optimistic)", async () => {
@@ -434,6 +440,7 @@ describe("Terjual editable: inline kolom + modal, increment tetap jalan", () => 
         loadingList={false} toggling={null} activeProducts={2} lowStock={0} soldProducts={126}
         onQueryChange={noop} onPageChange={noop} onlyLowStock={false} onClearLowStock={noop}
         supplierFilter="all" onSupplierFilterChange={noop}
+        liveProducts={list.length} hiddenProducts={0} offProducts={0} liveTab="all" onLiveTabChange={noop} perPageAdmin={20} onPerPageChange={noop}
         onNew={noop} onEdit={noop} onDelete={noop} onToggleActive={noop}
         reordering={null} onMove={noop} onJump={noop} onSoldCount={onSoldCount}
       />,
@@ -815,6 +822,7 @@ describe("kolom Urutan = nomor posisi 1..N walau raw kembar/lompat", () => {
       loadingList: false, toggling: null, activeProducts: list.length, lowStock: 0, soldProducts: 0,
       onQueryChange: noop, onPageChange: setPage, onlyLowStock: false, onClearLowStock: noop,
       supplierFilter: "all" as const, onSupplierFilterChange: noop,
+    liveProducts: list.length, hiddenProducts: 0, offProducts: 0, liveTab: "all" as const, onLiveTabChange: noop, perPageAdmin: 20 as const, onPerPageChange: noop,
       onNew: noop, onEdit: noop, onDelete: noop, onToggleActive: noop,
       reordering: null, onMove: noop, onJump: noop, onSoldCount: noop,
     };

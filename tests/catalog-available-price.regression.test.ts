@@ -5,10 +5,10 @@
 // sudah habis, lalu modal varian hanya menawarkan paket Rp5.000 — pembeli
 // merasa harga di katalog bohong. MIN(price) polos tidak memfilter stok.
 //
-// Kontrak 2026-09-30 (REVISI kontrak 2026-09-24, keputusan owner): produk
-// yang SEMUA variannya habis DISEMBUNYIKAN dari daftar publik (?active=1
-// tanpa slug/q) dan OTOMATIS tampil lagi saat restok. PDP langsung (?slug=)
-// + search (?q=) tetap bisa akses produk habis agar URL lama tidak 404.
+// Kontrak 2026-10-01 (REVISI — mengubah revisi 2026-09-30, keputusan owner):
+// kartu habis TAMPIL LAGI di daftar publik (di akhir dengan overlay STOK
+// HABIS + foto abu-abu) untuk trust. PDP langsung (?slug=) + search (?q=)
+// tetap bisa akses produk habis agar URL lama tidak 404.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { createD1Fixture } from "./helpers/d1-fixture";
@@ -56,15 +56,10 @@ describe("harga kartu berasal dari varian yang tersedia", () => {
     expect(canva.comparePrice).toBe(12000);
   });
 
-  it("produk yang semua variannya habis DISEMBUNYIKAN dari daftar (tampil lagi saat restok)", async () => {
+  it("produk yang semua variannya habis TAMPIL di daftar (di akhir, bukan hilang)", async () => {
     const products = await publicCatalog();
-    expect(products.find((p) => p.slug === "semua-habis")).toBeUndefined();
+    expect(products.find((p) => p.slug === "semua-habis")).toBeDefined();
     expect(products.find((p) => p.slug === "canva-premium")).toBeDefined();
-    // Restok 1 varian → otomatis tampil lagi (tanpa cron/state/admin).
-    fixture.sql.prepare(`UPDATE product_variants SET stock=4 WHERE id=3`).run();
-    const after = await publicCatalog();
-    const kembali = after.find((p) => p.slug === "semua-habis")!;
-    expect(kembali.price).toBe(3000);
   });
 
   it("produk habis tetap bisa diakses via slug langsung (URL lama tidak 404)", async () => {

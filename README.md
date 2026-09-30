@@ -36,7 +36,7 @@ axvara/
 ├── src/
 │   ├── app/
 │   │   ├── page.tsx        # Homepage (server): katalog D1 dirender di HTML + JSON-LD (SEO & GEO, 2026-09-24)
-│   │   ├── home-client.tsx # Homepage interaktif — Hero + Orbit + Katalog (load more 12)
+│   │   ├── home-client.tsx # Homepage interaktif — Hero + Orbit + Katalog (load more 16; habis tampil akhir kartu abu, 2026-10-01)
 │   │   ├── llms.txt/       # GEO: ringkasan toko + produk tersedia untuk mesin jawab AI
 │   │   ├── produk/[slug]/  # Detail produk
 │   │   ├── checkout/       # Checkout revamp ala Sekalipay 2026-09-23: ① Metode (QRIS auto-select) → ② Data minimal WA+Email wajib tanpa Nama → S&K → 1 CTA; rail desktop-only, mobile accordion + sticky CTA (manual maintenance 2026-09-17: disabled + badge, upload disembunyikan)
@@ -121,7 +121,7 @@ Bottom nav mobile (2026-09-25): **Beranda · Keranjang · Pesanan · Bantuan**. 
 
 - D1 `categories` adalah satu-satunya sumber nama, ikon, dan urutan kategori untuk kapsul katalog serta menu Jelajah di footer. Taksonomi 2026-09-28 (migrasi 0046): AI & Chatbot, Streaming & Hiburan, Produktivitas & Office, Desain & Video, Developer & Tools, Bundle Hemat — slug lama dialias di kode agar filter lama tidak 404.
 - Nama kategori dapat diganti tanpa mengubah slug stabil. Produk tetap terhubung melalui `category_id`, sehingga rename tidak memutus filter atau mengganti ikon.
-- Daftar produk admin punya kolom Urutan (nomor posisi 1..N yang bisa diketik — Enter untuk lompat 30→1 dalam 1 request; raw sort_order hanya di tooltip) + tombol ↑↓ per baris (exact-step atomik via POST /api/products/reorder — tepat 1 posisi, realtime, mati di batas kelompok aktif/habis/nonaktif) + kolom Terjual bisa diketik langsung (SET absolut; order lunas tetap += otomatis) + modal edit menampilkan posisi read-only + field Terjual yang ikut tersimpan. Rate-limit reorder punya scope sendiri (120/mnt) — 429 saat merapikan katalog bukan kuota cron.
+- Daftar produk admin punya kolom Urutan (nomor posisi 1..N yang bisa diketik — Enter untuk lompat 30→1 dalam 1 request; raw sort_order hanya di tooltip) + tombol ↑↓ per baris (exact-step atomik via POST /api/products/reorder — tepat 1 posisi, realtime, mati di batas kelompok aktif/habis/nonaktif; 2026-10-01: pindah halaman mengikuti produk bila melewati batas) + kolom Terjual bisa diketik langsung (SET absolut; order lunas tetap += otomatis) + modal edit menampilkan posisi read-only + field Terjual yang ikut tersimpan. Tab status toko Live/Hidden/Nonaktif/Semua (default Live = yang tampil di toko saat ini; Hidden = toggle ON tapi tak tampil + sebab jujur kalah/habis; Nonaktif = toggle OFF) + badge count + kartu "Hidden otomatis" + pagination 20/50/100 per halaman (persist, default 20). Rate-limit reorder punya scope sendiri (120/mnt) — 429 saat merapikan katalog bukan kuota cron.
 - Admin memilih ikon secara eksplisit dari 12 aset lokal. Kategori yang masih memiliki produk harus dikosongkan terlebih dahulu sebelum dihapus.
 - Form **Tetap update** menerima email dan menyimpannya ke `newsletter_subscribers`; hasilnya terlihat di menu **Pelanggan Email** pada panel admin.
 
@@ -294,8 +294,7 @@ bisa diubah sebagian dari admin: foto, badge, **harga coret (diskon)**,
 kategori, urutan, aktif/nonaktif, dan **Deskripsi khusus (override)**. Nama,
 slug, deskripsi WR, harga, stok, label varian, durasi, dan garansi dimiliki
 sync dan ditolak API dengan 409 — markup diubah di tab **Warung Rebahan**.
-Harga coret adalah PENGECUALIAN: milik admin (sync tidak pernah menulis
-`compare_price`), jadi diskon WR aman lintas sweep dan tampil di kartu
+Harga coret adalah PENGECUALIAN: milik admin (sync tidak pernah menulis `compare_price`), jadi diskon WR aman lintas sweep dan tampil di kartu
 seperti produk manual. Deskripsi override disimpan di
 `products.admin_description_override` (migrasi 0030), tidak pernah ditimpa
 sync, dan menjadi teks yang tampil di storefront saat terisi. Badge "WR" hanya
@@ -359,7 +358,7 @@ deliver lisensi terenkripsi ke `fulfillment_items`, saldo), webhook
 `POST /api/webhook/sekalipay` (SHA256 `ref:invoice:status:secret`, monotonik),
 fase cron `sekalipay` (`fulfillment → warung_rebahan → SEKALIPAY → notify`,
 budget + deadline yang sama), tab admin **Sekalipay** setara WR (saldo, Force Sync,
-antrean + umur + retry/void, exclusion rules, markup per varian) + fitur khas SK
+antrean + umur + retry/void, exclusion rules, markup per varian + bulk markup cermin) + fitur khas SK
 (mutasi saldo audit, cek akun validasi nickname, stock-lock 10 mnt, daftar
 transaksi, detail capability, sandbox), migrasi 0049 + 0050 (tabel
 `sk_*`, kolom `sk_*`, exclusions, CHECK `source` + `sekalipay`). Seluruhnya di balik
@@ -395,7 +394,7 @@ dan artikel memakai `ConfirmDialog` bertema (bukan `confirm()` bawaan browser),
 dan modal Kategori kini dialog yang sah: `role="dialog"`, `aria-modal`, tutup
 dengan Escape, dan scroll halaman terkunci.
 
-Katalog storefront menampilkan 12 produk lebih dulu dengan tombol **"Tampilkan N produk lagi"** (bukan nomor halaman), produk stok habis disembunyikan dari daftar (otomatis tampil lagi saat restok; kontrak 2026-09-30), dan harga kartu diambil dari varian termurah yang **masih tersedia**.
+Katalog storefront menampilkan 16 produk lebih dulu dengan tombol **"Tampilkan N produk lagi"** (bukan nomor halaman), produk stok habis TETAP tampil di akhir sebagai kartu abu-abu tanpa tombol beli (kontrak trust 2026-10-01 — ganti kategori/search kembali ke 16 awal; otomatis jadi ready lagi saat restok), PDP produk pecundang supplier-pair 308 ke pemenang (noindex), dan harga kartu diambil dari varian termurah yang **masih tersedia**.
 
 **Minimum pembelian per varian (migrasi 0034, generik):** `product_variants.min_qty` (default 1 = bebas, milik admin, plafon 100) mengatur batas bawah qty per baris — GSuite dikunci **min. 50** via migrasi, produk lain tinggal set angka dari admin bila butuh aturan grosir serupa. Label "Min. N" tampil di PDP/modal/keranjang/bot; server menolak qty di bawah min (quote 409 → orders 409 → guard atomik), plafon web/Telegram 100/baris, dan order WhatsApp (qty selalu 1) ditolak jelas untuk varian min>1 dengan arahan ke web/Telegram bulk.
 

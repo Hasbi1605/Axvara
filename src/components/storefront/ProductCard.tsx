@@ -74,15 +74,20 @@ export function ProductCard({ product, index = 0, compact = false }: { product: 
   };
 
   const img = responsiveImg(product.image);
+  // Kartu habis (keputusan owner 2026-10-01): tampil di akhir daftar dengan
+  // foto abu-abu + overlay "STOK HABIS". Teks nama/harga tetap normal agar
+  // tidak terlihat seperti situs error; tombol beli tetap non-klik.
+  // -1 = stok tak terbatas → tidak pernah habis.
+  const outOfStock = product.stock !== undefined && product.stock !== null && product.stock !== -1 && product.stock <= 0;
 
   if (compact) {
     return (
-      <Link href={`/produk/${product.slug}`} className="group block ax-glass-card rounded-[14px] overflow-hidden hover:-translate-y-0.5 transition-all duration-300 flex flex-col">
+      <Link href={`/produk/${product.slug}`} aria-label={outOfStock ? `${product.name} — stok habis` : product.name} className="group block ax-glass-card rounded-[14px] overflow-hidden hover:-translate-y-0.5 transition-all duration-300 flex flex-col">
         <div className="relative aspect-[4/3] overflow-hidden bg-white/[0.03] m-1 rounded-[10px]">
           {product.badge && (
             <span className="absolute top-1.5 left-1.5 z-10 rounded-full bg-[#FFB800] text-[#080C1E] text-[9px] font-bold px-1.5 py-0.5 leading-none shadow">{product.badge}</span>
           )}
-          {discount > 0 && (
+          {discount > 0 && !outOfStock && (
             <span className="absolute top-1.5 right-1.5 z-10 rounded-full bg-[#00E5FF] text-[#080C1E] text-[9px] font-bold px-1.5 py-0.5 leading-none">-{discount}%</span>
           )}
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -91,11 +96,16 @@ export function ProductCard({ product, index = 0, compact = false }: { product: 
             srcSet={img.srcSet}
             sizes={img.sizes}
             alt={product.name}
-            className="w-full h-full object-cover group-hover:scale-[1.04] transition-transform duration-500"
+            className={`w-full h-full object-cover group-hover:scale-[1.04] transition-transform duration-500${outOfStock ? " grayscale opacity-60" : ""}`}
             loading="lazy"
             decoding="async"
             onError={(e) => { const el = e.currentTarget as HTMLImageElement; el.style.display="none"; const ph=el.nextElementSibling as HTMLElement|null; if(ph) ph.style.display="flex"; }}
           />
+          {outOfStock && (
+            <span className="absolute inset-0 z-[5] flex items-center justify-center bg-black/45">
+              <span data-testid="soldout-overlay" className="rounded-full border border-white/25 bg-black/60 px-2.5 py-1 text-[9px] font-bold tracking-[0.08em] text-white">STOK HABIS</span>
+            </span>
+          )}
           <div className="hidden w-full h-full items-center justify-center bg-gradient-to-br from-[#0F1430] to-[#161D4A] text-white/30 text-[10px] text-center p-2">{product.name}</div>
         </div>
         <div className="px-2.5 pt-2 pb-2.5 flex-1 flex flex-col">
@@ -124,18 +134,18 @@ export function ProductCard({ product, index = 0, compact = false }: { product: 
       {product.badge && (
         <span className="absolute top-2 left-2 sm:top-3 sm:left-3 z-10 rounded-full bg-[#FFB800] text-[#080C1E] text-[10px] sm:text-[11px] font-bold px-2 sm:px-2.5 py-0.5 sm:py-1 shadow leading-none">{product.badge}</span>
       )}
-      {discount > 0 && (
+      {discount > 0 && !outOfStock && (
         <span className="absolute top-2 right-2 sm:top-3 sm:right-3 z-10 rounded-full bg-[#00E5FF] text-[#080C1E] text-[10px] sm:text-[11px] font-bold px-1.5 sm:px-2 py-0.5 sm:py-1 leading-none">-{discount}%</span>
       )}
-      <Link href={`/produk/${product.slug}`} className="block flex-1">
-        <div className="aspect-[4/3] overflow-hidden bg-white/[0.04] m-1 sm:m-1.5 rounded-[12px] sm:rounded-[16px]">
+      <Link href={`/produk/${product.slug}`} aria-label={outOfStock ? `${product.name} — stok habis` : undefined} className="block flex-1">
+        <div className="relative aspect-[4/3] overflow-hidden bg-white/[0.04] m-1 sm:m-1.5 rounded-[12px] sm:rounded-[16px]">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={img.src}
             srcSet={img.srcSet}
             sizes={img.sizes}
             alt={product.name}
-            className="w-full h-full object-cover group-hover:scale-[1.04] transition-transform duration-500"
+            className={`w-full h-full object-cover group-hover:scale-[1.04] transition-transform duration-500${outOfStock ? " grayscale opacity-60" : ""}`}
             loading="lazy"
             decoding="async"
             onError={(e) => {
@@ -145,6 +155,11 @@ export function ProductCard({ product, index = 0, compact = false }: { product: 
               if (ph) ph.style.display = "flex";
             }}
           />
+          {outOfStock && (
+            <span className="absolute inset-0 z-[5] flex items-center justify-center bg-black/45">
+              <span data-testid="soldout-overlay" className="rounded-full border border-white/25 bg-black/60 px-3.5 py-1.5 text-[11px] sm:text-xs font-bold tracking-[0.08em] text-white">STOK HABIS</span>
+            </span>
+          )}
           <div className="hidden w-full h-full items-center justify-center bg-gradient-to-br from-[#0F1430] to-[#161D4A] text-white/30 text-xs text-center p-4">
             {product.name}
           </div>
@@ -165,7 +180,6 @@ export function ProductCard({ product, index = 0, compact = false }: { product: 
         </div>
       </Link>
       {(() => {
-        const outOfStock = product.stock !== undefined && product.stock !== null && product.stock !== -1 && product.stock <= 0;
         return (
           <div className="px-2 sm:px-3 pb-2.5 sm:pb-3 pt-1 grid grid-cols-2 gap-1.5 sm:gap-2">
             {outOfStock ? (

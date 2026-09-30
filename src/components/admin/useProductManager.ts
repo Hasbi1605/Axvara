@@ -10,7 +10,12 @@ import { adjacentReorderProduct, sortProductsForDisplay } from "@/lib/product-or
 // tetap tipis dan orkestrasinya mudah dibaca. Kepemilikan state tetap di React (useState),
 // hanya dikelompokkan ke satu unit yang kohesif. Perilaku persis sama dengan sebelumnya.
 
-const PER_PAGE_ADMIN = 8;
+const PER_PAGE_ADMIN_DEFAULT = 20;
+export type PerPageAdmin = 20 | 50 | 100;
+/** Tab status toko (keputusan owner 2026-10-01): Live = tampil di
+ *  storefront; Hidden = disembunyikan otomatis (kalah/restok-otomatis);
+ *  Off = nonaktif manual; Semua = audit. */
+export type LiveTab = "live" | "hidden" | "off" | "all";
 
 /** Nama field WR-owned dalam bahasa yang dikenali admin di form. */
 const WR_FIELD_LABEL: Record<string, string> = {
@@ -70,6 +75,9 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
   // Filter asal supplier (WR/SK/Manual) — pola onlyLowStock: state di hook
   // agar pagination + reorder ikut benar, UI select di ProductsSection.
   const [supplierFilter, setSupplierFilter] = useState<"all" | "WR" | "SK" | "Manual">("all");
+  // Tab status toko + ukuran halaman (keputusan owner 2026-10-01).
+  const [liveTab, setLiveTab] = useState<LiveTab>("live");
+  const [perPageAdmin, setPerPageAdmin] = useState<PerPageAdmin>(PER_PAGE_ADMIN_DEFAULT);
   const [page, setPage] = useState(1);
   const [loadingList, setLoadingList] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
@@ -593,12 +601,30 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
   // Filter "hanya stok menipis" dipicu dari kartu Ringkasan (?low_stock=1).
   // Tanpa ini kartu itu cuma memindah tab: daftar tetap menampilkan semua
   // produk dan admin harus mencari sendiri varian mana yang tipis.
+  /** Status toko kanonis: server (live_status) bila ada, fallback lokal
+   *  (is_active + stok) bila API lama. Pecundang tak bisa dihitung lokal —
+   *  fallback menganggapnya live agar tidak hilang dari tab Live. */
+  const liveOf = (p: Prod): "live" | "hidden_loser" | "hidden_soldout" | "off" => {
+    if (p.liveStatus) return p.liveStatus;
+    if (!p.isActive) return "off";
+    if (isOut(p)) return "hidden_soldout";
+    return "live";
+  };
+  // Hitungan kartu atas: Total + Live + Hidden otomatis + Nonaktif manual.
+  // "Produk aktif" lama menipu karena termasuk yang hidden (pecundang/habis).
+  const liveProducts = prods.filter((p) => liveOf(p) === "live").length;
+  const hiddenProducts = prods.filter((p) => liveOf(p) === "hidden_loser" || liveOf(p) === "hidden_soldout").length;
+  const offProducts = prods.filter((p) => liveOf(p) === "off").length;
   const filtered = useMemo(
     () => prods
       .filter(p=> {
         if (q && !`${p.name} ${p.slug} ${p.badge??""}`.toLowerCase().includes(q.toLowerCase())) return false;
         if (onlyLowStock && !((p.lowStockVariants ?? (p.stock >= 0 && p.stock <= 5 ? 1 : 0)) > 0)) return false;
         if (supplierFilter !== "all" && (p.supplier ?? "Manual") !== supplierFilter) return false;
+        // Tab status toko: hidden = kalah + habis; off = nonaktif manual.
+        if (liveTab === "live" && liveOf(p) !== "live") return false;
+        if (liveTab === "hidden" && !(liveOf(p) === "hidden_loser" || liveOf(p) === "hidden_soldout")) return false;
+        if (liveTab === "off" && liveOf(p) !== "off") return false;
         return true;
       })
       .slice()
@@ -611,11 +637,11 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
         if (byOrder !== 0) return byOrder;
         return Number(a.id) - Number(b.id);
       }),
-    [prods, q, onlyLowStock, supplierFilter],
+    [prods, q, onlyLowStock, supplierFilter, liveTab],
   );
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE_ADMIN));
+  const totalPages = Math.max(1, Math.ceil(filtered.length / perPageAdmin));
   const safePage = Math.min(page, totalPages);
-  const paged = filtered.slice((safePage-1)*PER_PAGE_ADMIN, safePage*PER_PAGE_ADMIN);
+  const paged = filtered.slice((safePage-1)*perPageAdmin, safePage*perPageAdmin);
   const productModalOpen = Boolean(editing || showNew);
   const productDirty = productModalOpen && productFormSignature(form, formImages, hasMultiVariants, formVariants) !== productInitialSignature;
 
@@ -647,7 +673,8 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
     prods, cats, q, page, loadingList, listError, load,
     setQ, setPage, onlyLowStock, setOnlyLowStock,
     supplierFilter, setSupplierFilter,
-    activeProducts, lowStock, soldProducts, filtered, paged, safePage, totalPages, perPage: PER_PAGE_ADMIN,
+    liveTab, setLiveTab, perPageAdmin, setPerPageAdmin,
+    activeProducts, liveProducts, hiddenProducts, offProducts, lowStock, soldProducts, filtered, paged, safePage, totalPages, perPage: perPageAdmin,
     // editor
     editing, showNew, uploading, form, formImages, hasMultiVariants, formVariants,
     loadingVariants, formError, saving, confirmProductClose, productDirty,

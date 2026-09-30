@@ -124,6 +124,7 @@ describe("daftar produk admin", () => {
         loadingList={false} toggling={null} activeProducts={2} lowStock={0} soldProducts={0}
         onQueryChange={vi.fn()} onPageChange={vi.fn()} onlyLowStock={false} onClearLowStock={vi.fn()}
         supplierFilter="all" onSupplierFilterChange={vi.fn()}
+        liveProducts={2} hiddenProducts={0} offProducts={0} liveTab="all" onLiveTabChange={vi.fn()} perPageAdmin={20} onPerPageChange={vi.fn()}
         onNew={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} onToggleActive={vi.fn()}
         reordering={null} onMove={vi.fn()} onJump={vi.fn()} onSoldCount={vi.fn()}
       />,

@@ -1,7 +1,7 @@
 
 import type { Metadata } from "next";
 import { NextRequest } from "next/server";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { queryFirst, queryAll } from "@/lib/db";
 import { displayDescription } from "@/lib/catalog";
 import type { Product } from "@/lib/products";
@@ -122,6 +122,33 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
 export default async function ProductDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
+  // Pecundang pasangan WR vs SK (keputusan owner 2026-10-01): URL langsung
+  // pecundang dialihkan ke slug pemenang agar konsisten dengan daftar +
+  // search (keduanya tidak menampilkan pecundang). URL lama tidak 404 —
+  // pindah ke produk yang menang. Best-effort: gagal baca = lanjut normal.
+  try {
+    const me = (await queryFirst(`SELECT id FROM products WHERE slug=?`, slug)) as
+      | Record<string, unknown>
+      | undefined;
+    if (me?.id != null) {
+      const myId = Number(me.id);
+      const pair = (await queryFirst(
+        `SELECT winner, wr_product_id, sk_product_id FROM supplier_pairs
+         WHERE winner IS NOT NULL AND (wr_product_id=? OR sk_product_id=?)`,
+        myId, myId,
+      )) as Record<string, unknown> | undefined;
+      if (pair) {
+        const loserId = Number(pair.winner === "WR" ? pair.sk_product_id : pair.wr_product_id);
+        if (loserId === myId) {
+          const winnerId = Number(pair.winner === "WR" ? pair.wr_product_id : pair.sk_product_id);
+          const winner = (await queryFirst(`SELECT slug FROM products WHERE id=? AND is_active=1`, winnerId)) as
+            | Record<string, unknown>
+            | undefined;
+          if (winner?.slug) redirect(`/produk/${String(winner.slug)}`);
+        }
+      }
+    }
+  } catch { /* abaikan — lanjut render normal */ }
   const [product, initialProducts, initialCatalog] = await Promise.all([
     getSeoProduct(slug).catch(() => null),
     loadInitialProducts(slug),

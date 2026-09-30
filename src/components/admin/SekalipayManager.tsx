@@ -13,6 +13,7 @@ import { formatWibDateTime } from "@/lib/utils";
 import { Spinner } from "@/components/ui/Loading";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { useToast } from "@/components/ui/Toast";
+import { BulkMarkupToolbar } from "@/components/admin/BulkMarkupToolbar";
 
 type SaldoData = {
   current?: { balance: number; isLow: boolean; threshold: number };
@@ -207,6 +208,8 @@ export function SekalipayManager() {
   // (2–4 dtk) sedang jalan — tabrakan render pemicu "gagal memuat" beruntun.
   const [markupQueryLive, setMarkupQueryLive] = useState("");
   const [editingMarkup, setEditingMarkup] = useState<Record<string, { percent: string; fixed: string }>>({});
+  // Seleksi bulk markup (2026-10-01, cermin WR): checklist per baris + preset %.
+  const [bulkSelected, setBulkSelected] = useState<Set<string>>(new Set());
   // Khas SK: mutasi saldo, validasi akun, stock-lock, transaksi, detail varian.
   const [mutations, setMutations] = useState<MutationRow[]>([]);
   const [mutationsLoading, setMutationsLoading] = useState(false);
@@ -475,6 +478,28 @@ export function SekalipayManager() {
     }
   };
 
+
+  // Bulk markup (2026-10-01, cermin WR): 1 request untuk N varian.
+  const applyBulkMarkup = async ({ variantIds, percent, resetFixed }: { variantIds: string[]; percent: number; resetFixed: boolean }) => {
+    const res = await fetch("/api/admin/sekalipay/markup/bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        variant_ids: variantIds,
+        markup_percent: percent,
+        markup_fixed: 0,
+        update_fixed: resetFixed,
+      }),
+    });
+    const body = await res.json().catch(() => ({})) as { error?: string; updated?: number; failed?: { id: string; error: string }[] };
+    if (!res.ok) throw new Error(body.error || "Bulk markup gagal");
+    const updated = Number(body.updated ?? 0);
+    const failed = Array.isArray(body.failed) ? body.failed : [];
+    if (failed.length) toast.error(`Bulk: ${updated} berubah, ${failed.length} gagal (cth. ${failed[0].id}: ${failed[0].error}).`);
+    else toast.success(`Bulk markup ${percent}% ke ${updated} varian.`);
+    await loadMarkups();
+  };
+
   const runValidate = async () => {
     const itemId = Number(validateItem);
     if (!Number.isInteger(itemId) || itemId <= 0 || !validateCustomer.trim()) {
@@ -723,6 +748,22 @@ export function SekalipayManager() {
           <div className="min-w-0"><h3 className="text-sm font-semibold text-white">Markup per varian</h3><p className="mt-0.5 text-[11px] text-white/40">Ubah markup → harga jual Axvara dihitung ulang otomatis.</p></div>
           <input value={markupQuery} onChange={(e) => setMarkupQuery(e.target.value)} placeholder="Cari varian…" className="ml-auto h-9 w-full max-w-[220px] rounded-xl border border-white/10 bg-white/[0.05] px-3 text-xs text-white placeholder:text-white/30 focus:border-[#00E5FF]/50 focus:outline-none" />
         </header>
+        <div className="border-b border-white/10 p-3">
+          <BulkMarkupToolbar
+            visibleIds={markups.slice(0, 30).map((r) => r.sk_variant_id)}
+            totalCount={null}
+            selected={bulkSelected}
+            onToggleOne={(id) => setBulkSelected((prev) => {
+              const next = new Set(prev);
+              if (next.has(id)) next.delete(id);
+              else next.add(id);
+              return next;
+            })}
+            onToggleAllVisible={(checked) => setBulkSelected(checked ? new Set(markups.slice(0, 30).map((r) => r.sk_variant_id)) : new Set())}
+            onClear={() => setBulkSelected(new Set())}
+            onApply={applyBulkMarkup}
+          />
+        </div>
         {!markups.length ? <p className="p-10 text-center text-sm text-white/40">Belum ada varian SK tersinkron.</p> : (
           <div className="divide-y divide-white/[0.06]">
             {markups.slice(0, 30).map((row) => {
@@ -731,6 +772,18 @@ export function SekalipayManager() {
                 <article key={row.sk_variant_id} className="grid gap-3 p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={bulkSelected.has(row.sk_variant_id)}
+                        onChange={() => setBulkSelected((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(row.sk_variant_id)) next.delete(row.sk_variant_id);
+                          else next.add(row.sk_variant_id);
+                          return next;
+                        })}
+                        aria-label={`Pilih ${row.sk_variant_name} untuk bulk markup`}
+                        className="h-4 w-4 shrink-0 accent-[#00E5FF]"
+                      />
                       <p className="truncate text-sm font-semibold text-white">{row.sk_product_name ? `${row.sk_product_name} — ` : ""}{row.sk_variant_name}</p>
                       <ProcessBadge process={row.sk_order_process} />
                     </div>

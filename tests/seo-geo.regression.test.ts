@@ -110,10 +110,10 @@ describe("dengan D1", () => {
     const { products } = await (await GET(new NextRequest("http://localhost/api/products?active=1"))).json() as { products: { slug: string; stock: number; price: number }[] };
     const bySlug = Object.fromEntries(products.map((p) => [p.slug, p]));
     expect(bySlug["campur"]).toMatchObject({ stock: 10, price: 5000 });
-    // Kontrak 2026-09-30 (REVISI keputusan owner: dulu web SENGAJA tampilkan
-    // habis untuk trust; kini katalog besar sehingga habis disembunyikan
-    // dari daftar — sama seperti Telegram. Otomatis tampil lagi saat restok).
-    expect(products.map((p) => p.slug).sort()).toEqual(["campur"]);
+    // Kontrak 2026-10-01 (REVISI keputusan owner — mengubah revisi 2026-09-30:
+    // kartu habis TAMPIL LAGI di daftar untuk trust, di akhir dengan overlay;
+    // Telegram + llms.txt tetap hanya yang bisa dibeli).
+    expect(products.map((p) => p.slug).sort()).toEqual(["campur", "grosir-saja", "kosong"]);
   });
 
   it("llms.txt: profil toko + hanya produk yang bisa dibeli, dengan link & harga", async () => {

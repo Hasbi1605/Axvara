@@ -158,8 +158,13 @@
 - Tombol: "Tambah" (glass → cyan solid saat hover), icon keranjang
 - Hover: border `rgba(0,229,255,0.35)`, glow radial, lift `translateY(-4px)`, shadow cyan soft
 - Grid: 1 col mobile, 2 tablet, 3-4 desktop, gap 20px
-- Katalog: 12 produk + tombol **"Tampilkan N produk lagi"** (bukan nomor halaman);
-  produk ready di depan, stok habis tetap tampil di belakang (urutan stabil)
+- Katalog: 16 produk + tombol **"Tampilkan N produk lagi"** (bukan nomor halaman);
+  ganti kategori/search mengembalikan ke 16 awal. Produk habis TETAP tampil di
+  akhir (kontrak 2026-10-01, revisi keputusan owner — mengubah kontrak
+  2026-09-30 yang menyembunyikan): kartu abu-abu (`grayscale` + overlay gelap +
+  pill "STOK HABIS", tanpa tombol beli/keranjang, StockStatus tanpa Compas —
+  hanya badge abu) untuk trust + mengurangi komplain "kok kemarin ada, sekarang
+  hilang". Urutan: ready → habis → nonaktif (stabil via sortProductsForDisplay)
 
 ### 5.3c PDP: Syarat & Ketentuan per Varian + Label Garansi
 - Section "Syarat & Ketentuan" terikat **varian terpilih** (fallback varian
@@ -181,6 +186,12 @@
     varian" / "· N langkah"). Label panel boleh membungkus — jangan
     `truncate`/nowrap (teks nowrap melebarkan grid PDP di layar 390px); URL
     panjang dipotong dengan `[overflow-wrap:anywhere]`.
+- PDP produk pecundang supplier-pair (2026-10-01, live): bila `slug` yang
+  diminta hidden karena kalah WR vs SK (`resolveStoreProduct` → 404) TAPI
+  pasangannya tampil, PDP 308 ke slug pemenang
+  (`/produk/[slug]/page.tsx`, preserve query) + meta noindex agar mesin cari
+  tidak mengindeks URL pecundang. PDP habis (tanpa pasangan tampil) tetap 200
+  + badge habis (kontrak trust 2026-10-01).
   - Suara Axvara: sapaan "kamu", kalimat biasa (tanpa HURUF BESAR berteriak),
     tanpa emoji, tanpa tanda seru, tanpa titik di akhir poin, tanpa bahasa gaul
     pemasok; larangan tetap tegas ("Dilarang …", "Wajib …", "Tanpa toleransi …").

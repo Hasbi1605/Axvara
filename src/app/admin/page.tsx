@@ -134,6 +134,13 @@ export default function AdminPage() {
           activeProducts={pm.activeProducts}
           lowStock={pm.lowStock}
           soldProducts={pm.soldProducts}
+          liveProducts={pm.liveProducts}
+          hiddenProducts={pm.hiddenProducts}
+          offProducts={pm.offProducts}
+          liveTab={pm.liveTab}
+          onLiveTabChange={pm.setLiveTab}
+          perPageAdmin={pm.perPageAdmin}
+          onPerPageChange={pm.setPerPageAdmin}
           onQueryChange={pm.setQ}
           onPageChange={pm.setPage}
           onlyLowStock={pm.onlyLowStock}
