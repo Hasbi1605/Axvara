@@ -433,6 +433,7 @@ describe("Terjual editable: inline kolom + modal, increment tetap jalan", () => 
         prods={list} paged={list} filtered={list} q="" safePage={1} totalPages={1} perPage={20}
         loadingList={false} toggling={null} activeProducts={2} lowStock={0} soldProducts={126}
         onQueryChange={noop} onPageChange={noop} onlyLowStock={false} onClearLowStock={noop}
+        supplierFilter="all" onSupplierFilterChange={noop}
         onNew={noop} onEdit={noop} onDelete={noop} onToggleActive={noop}
         reordering={null} onMove={noop} onJump={noop} onSoldCount={onSoldCount}
       />,
@@ -813,6 +814,7 @@ describe("kolom Urutan = nomor posisi 1..N walau raw kembar/lompat", () => {
       prods: list, paged: list, filtered: list, q: "", safePage: 1, totalPages: 1, perPage: 20,
       loadingList: false, toggling: null, activeProducts: list.length, lowStock: 0, soldProducts: 0,
       onQueryChange: noop, onPageChange: setPage, onlyLowStock: false, onClearLowStock: noop,
+      supplierFilter: "all" as const, onSupplierFilterChange: noop,
       onNew: noop, onEdit: noop, onDelete: noop, onToggleActive: noop,
       reordering: null, onMove: noop, onJump: noop, onSoldCount: noop,
     };

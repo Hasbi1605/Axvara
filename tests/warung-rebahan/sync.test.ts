@@ -240,7 +240,7 @@ describe("Warung Rebahan product sync", () => {
     }
   });
 
-  it("slug collision dengan produk manual mendapat suffix -wr + nama (WR)", async () => {
+  it("slug collision dengan produk manual mendapat suffix -wr, nama bersih", async () => {
     const fx = createD1Fixture();
     try {
       fx.sql
@@ -252,7 +252,9 @@ describe("Warung Rebahan product sync", () => {
         .prepare("SELECT slug, name FROM products WHERE wr_product_id='prod-capcut'")
         .get() as { slug: string; name: string };
       expect(String(product.slug)).toBe("capcut-pro-wr");
-      expect(String(product.name)).toBe("CapCut Pro (WR)");
+      // Nama bersih tanpa suffix (keputusan owner 2026-09-30, preseden
+      // Antigravity): pembeda WR vs SK hanya badge admin + slug.
+      expect(String(product.name)).toBe("CapCut Pro");
       // Produk manual tidak tersentuh.
       const manual = fx.sql.prepare("SELECT name, price FROM products WHERE id=99").get() as {
         name: string;
@@ -265,7 +267,7 @@ describe("Warung Rebahan product sync", () => {
     }
   });
 
-  it("produk WR tanpa collision tetap dapat suffix nama (WR)", async () => {
+  it("produk WR tanpa collision: slug dasar, nama bersih", async () => {
     const fx = createD1Fixture();
     try {
       const db = createDatabaseAccess(fx.db);
@@ -274,7 +276,7 @@ describe("Warung Rebahan product sync", () => {
         .prepare("SELECT slug, name FROM products WHERE wr_product_id='prod-capcut'")
         .get() as { slug: string; name: string };
       expect(String(product.slug)).toBe("capcut-pro");
-      expect(String(product.name)).toBe("CapCut Pro (WR)");
+      expect(String(product.name)).toBe("CapCut Pro");
     } finally {
       fx.close();
     }
@@ -335,7 +337,7 @@ describe("Warung Rebahan product sync", () => {
         .get() as { slug: string; name: string; source: string };
       // Slug dasar "canva-premium" dipakai manual → WR dapat suffix.
       expect(String(wrProduct.slug)).toBe("canva-premium-wr");
-      expect(String(wrProduct.name)).toBe("Canva Premium (WR)");
+      expect(String(wrProduct.name)).toBe("Canva Premium");
       expect(String(wrProduct.source)).toBe("warung_rebahan");
       // Manual tetap persis seperti semula.
       const manual = fx.sql.prepare("SELECT name, slug, price FROM products WHERE id=1").get() as {

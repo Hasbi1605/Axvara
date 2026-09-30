@@ -592,12 +592,12 @@ export function SekalipayManager() {
             <p className="text-[11px] uppercase tracking-wide text-white/40">Sync terakhir</p>
             <p className="mt-1 text-sm font-semibold text-white">{lastProductLog ? `${lastProductLog.status} · ${formatDate(lastProductLog.created_at)}` : lastLog ? `${lastLog.status} · ${formatDate(lastLog.created_at)}` : "Belum pernah"}</p>
             <p className="mt-1 text-[11px] text-white/40">
-              {lastProductLog ? `${lastProductLog.products_synced ?? 0} varian · ${lastProductLog.products_new ?? 0} produk baru · ${lastProductLog.products_excluded ?? 0} non-auto` : lastLog ? "sync produk" : "Tekan Force Sync untuk sync pertama."}
+              {lastProductLog ? `${lastProductLog.products_synced ?? 0} produk · ${lastProductLog.variants_synced ?? 0} varian · ${lastProductLog.products_excluded ?? 0} non-auto` : lastLog ? "sync produk" : "Tekan Force Sync untuk sync pertama."}
             </p>
             {(lastManualLog || lastCronLog) && (
               <div className="mt-2 space-y-1 border-t border-white/10 pt-2 text-[11px] text-white/40">
-                <p>🔵 Manual: {lastManualLog ? `${lastManualLog.status} · ${formatDate(lastManualLog.created_at)} · ${lastManualLog.products_synced ?? 0}v` : "—"}</p>
-                <p>🟢 Otomatis: {lastCronLog ? `${lastCronLog.status} · ${formatDate(lastCronLog.created_at)} · ${lastCronLog.products_synced ?? 0}v` : "—"}</p>
+                <p>🔵 Manual: {lastManualLog ? `${lastManualLog.status} · ${formatDate(lastManualLog.created_at)} · ${lastManualLog.products_synced ?? 0}p/${lastManualLog.variants_synced ?? 0}v` : "—"}</p>
+                <p>🟢 Otomatis: {lastCronLog ? `${lastCronLog.status} · ${formatDate(lastCronLog.created_at)} · ${lastCronLog.products_synced ?? 0}p/${lastCronLog.variants_synced ?? 0}v` : "—"}</p>
               </div>
             )}
             <button onClick={() => void forceSync()} disabled={syncing} className="mt-3 inline-flex h-9 items-center gap-2 rounded-xl bg-[#00E5FF] px-3.5 text-xs font-bold text-[#07101f] transition hover:bg-[#00D0E8] disabled:opacity-40">

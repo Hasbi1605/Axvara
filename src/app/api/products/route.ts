@@ -90,6 +90,22 @@ export async function GET(req: NextRequest) {
     ).catch(() => [] as Record<string, unknown>[]);
     for (const row of lowRows) lowStockByProduct.set(String(row.product_id), Number(row.count || 0));
   }
+  // Asal supplier untuk badge admin (keputusan owner 2026-09-30: pembeli
+  // hanya melihat nama bersih; WR/SK/Manual hanya dibedakan di admin + slug).
+  // SK = sk_product_id NOT NULL (source tetap 'manual' karena CHECK D1 lama);
+  // WR = source warung_rebahan ATAU wr_product_id NOT NULL; selainnya Manual.
+  const supplierByProduct = new Map<string, "WR" | "SK" | "Manual">();
+  if (isAdminRequest) {
+    const supRows = await queryAll(
+      `SELECT id, source, wr_product_id, sk_product_id FROM products`,
+    ).catch(() => [] as Record<string, unknown>[]);
+    for (const row of supRows) {
+      const key = String(row.id);
+      if (row.sk_product_id != null) supplierByProduct.set(key, "SK");
+      else if (String(row.source ?? "") === "warung_rebahan" || row.wr_product_id != null) supplierByProduct.set(key, "WR");
+      else supplierByProduct.set(key, "Manual");
+    }
+  }
   // Varian aktif yang S&K-nya perlu ditinjau admin (teks WR belum punya versi
   // Axvara, atau suntingan admin dijeda karena WR mengubah teks). Hanya admin.
   const copyReviewByProduct = new Map<string, number>();
@@ -160,6 +176,9 @@ export async function GET(req: NextRequest) {
       // "stok menipis" selalu nol.
       lowStockVariants: isAdminRequest && isD1Mode() ? (lowStockByProduct.get(String(r.id)) ?? 0) : undefined,
       copyReview: isAdminRequest && isD1Mode() ? (copyReviewByProduct.get(String(r.id)) ?? 0) : undefined,
+      // Badge asal supplier — HANYA admin (keputusan owner 2026-09-30).
+      // Storefront tidak menerima field ini sehingga tidak bisa bocor ke pembeli.
+      supplier: isAdminRequest ? (supplierByProduct.get(String(r.id)) ?? "Manual") : undefined,
       isActive: (r.is_active as number) !== 0,
       // sort_order DB (snake_case) → sortOrder API (camelCase). WAJIB ada:
       // tanpanya admin menerima undefined → tampil 0 semua dan tombol ↑↓

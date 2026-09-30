@@ -1491,7 +1491,9 @@ bot meneruskannya sebagai email branding Axvara (nol jejak "Warung Rebahan"):
 Axvara menjadi reseller layer di atas Sekalipay (`https://sekalipay.com/api`,
 docs `https://sekalipay.com/api-docs`) SEBAGAI SUPPLIER KEDUA yang paralel
 dengan WR — bukan failover otomatis (keputusan owner). Produk yang tampil
-dipilih manual: Netflix (WR) vs Netflix (SK) = dua baris katalog berbeda.
+dipilih manual: Netflix WR vs Netflix SK = dua baris katalog berbeda (nama
+publik bersih tanpa suffix sejak 2026-09-30, preseden Antigravity 0045;
+pembedaan hanya badge admin + slug `-wr`/`-sk`).
 
 ### Kontrak upstream (beda dari WR — jangan disamakan)
 - **Auth:** header `X-APIKEY` (WR: body `api_key`). Key SK disuntik
@@ -1522,7 +1524,7 @@ dipilih manual: Netflix (WR) vs Netflix (SK) = dua baris katalog berbeda.
   tanpa add-on baru). `GET /sk/health` tanpa bocor key.
 - **Modul `src/lib/sekalipay/`:** `client.ts` (fetch edge + klasifikasi error
   + signature), `sync.ts` (registry per-varian + katalog hanya auto + nama
-  `(SK)` + markup 50% + cursor + zero-missing sweep-penuh), `order.ts`
+  bersih tanpa suffix + markup 50% + cursor + zero-missing sweep-penuh), `order.ts`
   (exactly-once claim/lease + reconcile via `GET /v1/trx` + blocked 24 jam),
   `deliver.ts` (lisensi → `fulfillment_items.delivered_ciphertext/iv`
   sehingga panel/email/token yang SUDAH ada langsung jalan; agregat via

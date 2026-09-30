@@ -123,6 +123,7 @@ describe("daftar produk admin", () => {
         prods={list} paged={list} filtered={list} q="" safePage={1} totalPages={1} perPage={20}
         loadingList={false} toggling={null} activeProducts={2} lowStock={0} soldProducts={0}
         onQueryChange={vi.fn()} onPageChange={vi.fn()} onlyLowStock={false} onClearLowStock={vi.fn()}
+        supplierFilter="all" onSupplierFilterChange={vi.fn()}
         onNew={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} onToggleActive={vi.fn()}
         reordering={null} onMove={vi.fn()} onJump={vi.fn()} onSoldCount={vi.fn()}
       />,

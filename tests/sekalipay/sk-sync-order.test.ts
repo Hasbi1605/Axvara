@@ -102,10 +102,13 @@ describe("sekalipay sync helpers", () => {
       expect(log.sync_type).toBe("products");
       expect(log.status).toBe("success");
       expect(Number(log.products_total)).toBe(2);
-      expect(Number(log.products_synced)).toBe(2);
+      // products_synced = PRODUK unik (cermin WR), bukan baris varian.
+      expect(Number(log.products_synced)).toBe(1);
       expect(log.trigger).toBe("manual");
       const prod = fx.sql.prepare("SELECT name, source, sk_product_id FROM products WHERE sk_product_id IS NOT NULL").get() as { name: string; source: string; sk_product_id: string };
-      expect(prod.name).toBe("Netflix (SK)");
+      // Nama storefront bersih tanpa suffix (keputusan owner 2026-09-30);
+      // pembeda WR vs SK hanya di admin + slug -sk.
+      expect(prod.name).toBe("Netflix");
       // D1 prod memakai CHECK lama: source=manual + sk_product_id penanda.
       expect(prod.source).toBe("manual");
       expect(prod.sk_product_id).toBe("9");
@@ -117,6 +120,83 @@ describe("sekalipay sync helpers", () => {
       const variant = fx.sql.prepare("SELECT min_qty, handover_template FROM product_variants WHERE sk_variant_id='101'").get() as { min_qty: number; handover_template: string | null };
       expect(Number(variant.min_qty)).toBe(1);
       expect(variant.handover_template).toBeNull();
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("scope premium-only: fetch kronis memakai category + delta (hemat 4,3MB→95KB)", async () => {
+    const fx = createD1Fixture();
+    try {
+      stubFulfillmentKey();
+      vi.stubEnv("SEKALIPAY_ENABLED", "true");
+      const db = createDatabaseAccess(fx.db);
+      // Seed server_time agar jalur kronis (tanpa fetchFn) memilih delta.
+      fx.sql.prepare("INSERT INTO sk_sync_state(key,value) VALUES('products_server_time','2026-09-30T17:07:08+07:00') ON CONFLICT(key) DO UPDATE SET value=excluded.value").run();
+      const calls: string[] = [];
+      vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+        calls.push(String(url));
+        return {
+          ok: true,
+          json: async () => ({
+            message: "OK",
+            data: [
+              {
+                id: 1, name: "Aplikasi Premium", icon: null,
+                products: [
+                  {
+                    id: 9, name: "Netflix", image: null,
+                    variants: [
+                      { id: 101, sku: "N-1", name: "1 Bulan", price: 10000, stock: 5, order_process: "auto", h2h_provider: null, provider_meta: null, required_fields: null, validation: null, updated_at: null },
+                    ],
+                  },
+                ],
+              },
+            ],
+            meta: { total_items: 1, is_delta: true },
+            server_time: "2026-09-30T17:36:14+07:00",
+          }),
+        };
+      }));
+      vi.stubEnv("SEKALIPAY_PROXY_URL", "https://proxy.test");
+      vi.stubEnv("SEKALIPAY_PROXY_TOKEN", "tok");
+      const result = await syncSkProducts(db, undefined, { trigger: "cron" });
+      expect(result.errors).toEqual([]);
+      expect(Number(result.synced)).toBe(1);
+      expect(Number(result.variantsSynced)).toBe(1);
+      const url = calls[0] ?? "";
+      // Scope premium WAJIB ada + delta WAJIB ada (keduanya, bukan salah satu).
+      expect(url).toContain("category=Aplikasi+Premium");
+      expect(url).toContain("updated_since=");
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("full Force Sync memakai scope premium TANPA delta (jujur + zero-missing)", async () => {
+    const fx = createD1Fixture();
+    try {
+      stubFulfillmentKey();
+      vi.stubEnv("SEKALIPAY_ENABLED", "true");
+      vi.stubEnv("SEKALIPAY_PROXY_URL", "https://proxy.test");
+      vi.stubEnv("SEKALIPAY_PROXY_TOKEN", "tok");
+      fx.sql.prepare("INSERT INTO sk_sync_state(key,value) VALUES('products_server_time','2026-09-30T17:07:08+07:00') ON CONFLICT(key) DO UPDATE SET value=excluded.value").run();
+      const calls: string[] = [];
+      vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+        calls.push(String(url));
+        return {
+          ok: true,
+          json: async () => ({
+            message: "OK", data: [], meta: { total_items: 0, is_delta: false },
+            server_time: "2026-09-30T17:36:14+07:00",
+          }),
+        };
+      }));
+      const db = createDatabaseAccess(fx.db);
+      await syncSkProducts(db, undefined, { trigger: "manual", full: true });
+      const url = calls[0] ?? "";
+      expect(url).toContain("category=Aplikasi+Premium");
+      expect(url).not.toContain("updated_since=");
     } finally {
       fx.close();
     }

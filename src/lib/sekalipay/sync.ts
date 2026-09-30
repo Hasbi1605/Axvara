@@ -14,23 +14,32 @@
 // dibuatkan pasangan katalog. Varian manual/h2h/smm/vip dicatat di registry
 // (sk_variants) tapi TANPA pasangan katalog — dibuka bertahap fase 2+.
 //
-// Budget-aware (pola WR sync.ts): maxStatements + cursor + timeBudgetMs +
-// zero-missing hanya setelah sweep penuh tervalidasi dalam run ini.
+  // Budget-aware (pola WR sync.ts): maxStatements + cursor + timeBudgetMs +
+  // zero-missing hanya setelah sweep penuh tervalidasi dalam run ini.
+  //
+  // SCOPE FETCH (2026-09-30): selalu `category=Aplikasi Premium` (+ delta
+  // `updated_since` saat cron). Full all-kategori 4,3MB/11–29 dtk = timeout
+  // BERULANG (6x sk_request_timeout + 1x Heroku 503); premium-only 99 varian /
+  // 93KB / ~3,6 dtk, premium+delta 104 varian / 95KB / ~7 dtk. Cursor +
+// zero-missing berlaku dalam scope premium (bukan all-kategori).
 
 import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 import {
   fetchSkItems,
   isSkSyncEnabled,
+  SK_SYNC_CATEGORY,
   type SkCategory,
   type SkVariant,
 } from "./client";
 
 export type SkSyncResult = {
+  /** Produk unik (sk_product_id) yang disentuh run ini — cermin WR products_synced. */
   total: number;
   synced: number;
   skippedNonAuto: number;
   newProducts: number;
   newVariants: number;
+  /** Varian yang pasangan katalognya di-refresh — cermin WR variants_synced. */
   variantsSynced: number;
   stockChanges: number;
   priceChanges: number;
@@ -251,9 +260,11 @@ async function createAxvaraCatalogForSk(
   }
   const slugTaken = await queryFirst(`SELECT id FROM products WHERE slug=?`, slug);
   if (slugTaken) throw new Error(`sk_slug_collision:${slug}`);
-  // Nama publik BEDA dari WR: suffix (SK) agar owner bisa bandingkan
-  // Netflix (WR) vs Netflix (SK) lalu memilih mana yang tampil.
-  const displayName = `${productName} (SK)`;
+  // Nama storefront BERSIH tanpa suffix supplier (keputusan owner 2026-09-30:
+  // pembeli tahu ini produk Axvara, bukan toko lain). Pembedaan WR vs SK hanya
+  // di admin (badge asal) + slug (-sk). Nama ditulis SEKALI saat create dan
+  // tidak pernah ditulis ulang sync (kupasan nama di bawah untuk data lama).
+  const displayName = productName.trim();
   const categoryId = mapSkCategory(categoryName);
   const created = await execRun(
     `INSERT INTO products
@@ -312,16 +323,20 @@ export async function syncSkProducts(
   );
   let fetched: { data: SkCategory[]; server_time: string };
   try {
-    // Delta sync hemat bandwidth: hanya item berubah sejak server_time terakhir.
-    // Full `per_page=all` 4,7MB/11–29 dtk vs delta kecil/detik — pelajaran sync
-    // failed 3x `sk_request_timeout` 08:00–08:20 (full selalu >12 dtk timeout
-    // Pages, kadang >30 dtk timeout proxy). Full hanya saat belum pernah sync
-    // atau dipaksa via options.full=true (tombol Force Sync = full agar jujur).
+    // Scope hemat fase 1 (2026-09-30): HANYA kategori Aplikasi Premium.
+    // Pelajaran 6x sk_request_timeout 09:05–10:00 + 1x Heroku 503: "delta"
+    // tanpa scope masih 2681 varian / 1,8MB / 9–29 dtk (gagal BERULANG).
+    // Premium + delta = 104 varian / 95KB / ~7 dtk — muat timeout Pages 12 dtk.
+    // Full hanya saat belum pernah sync atau Force Sync admin (jujur +
+    // zero-missing hanya jalan di sweep penuh scope premium).
     const since = state.serverTime.trim();
     const wantFull = options.full === true || !since;
+    const scopeParams = wantFull
+      ? { perPage: "all" as const, category: SK_SYNC_CATEGORY }
+      : { perPage: "all" as const, category: SK_SYNC_CATEGORY, updatedSince: since };
     const res = await (fetchFn
       ? fetchFn()
-      : fetchSkItems(wantFull ? { perPage: "all" } : { perPage: "all", updatedSince: since }));
+      : fetchSkItems(scopeParams));
     fetched = res;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -342,6 +357,10 @@ export async function syncSkProducts(
     return result;
   }
   result.total = flat.length;
+  // SEMANTIK products_synced SK (2026-09-30, cermin WR): jumlah PRODUK
+  // (sk_product_id unik) yang disentuh run ini, bukan jumlah baris varian.
+  // Panel menampilkan p/v seperti WR (48p/90v); total = varian dalam scope.
+  const touchedProductIds = new Set<string>();
   const startAt = state.cursor >= flat.length ? 0 : state.cursor;
   let cursor = startAt;
   let processedInRun = 0;
@@ -517,7 +536,8 @@ export async function syncSkProducts(
         ).catch(() => ({ changes: 0 }));
         result.variantsSynced++;
       }
-      result.synced++;
+      touchedProductIds.add(String(row.productId));
+      result.synced = touchedProductIds.size;
     } catch (error) {
       result.errors.push(
         `${String(row.productName || row.variant?.id).slice(0, 80)}: ${
@@ -532,6 +552,10 @@ export async function syncSkProducts(
     }
   }
   const sweepComplete = cursor >= flat.length;
+  // fullSweep = awal→ujung daftar SCOPE INI dalam run ini (cermin WR:
+  // startAt===0). BUKAN "delta vs full": delta premium 104 varian tetap
+  // sweep PENUH scope premium bila dikerjakan awal→ujung — zero-missing AMAN
+  // karena scope fetch tidak berubah antar run (selalu premium-only).
   const fullSweepInThisRun = sweepComplete && startAt === 0;
   await writeSyncState(db, "products_cursor", String(sweepComplete ? 0 : cursor));
   if (fetched.server_time) await writeSyncState(db, "products_server_time", String(fetched.server_time));

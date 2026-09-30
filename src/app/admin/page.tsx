@@ -135,6 +135,8 @@ export default function AdminPage() {
           onQueryChange={pm.setQ}
           onPageChange={pm.setPage}
           onlyLowStock={pm.onlyLowStock}
+          supplierFilter={pm.supplierFilter}
+          onSupplierFilterChange={pm.setSupplierFilter}
           onClearLowStock={()=>{
             pm.setOnlyLowStock(false);
             const url=new URL(window.location.href);

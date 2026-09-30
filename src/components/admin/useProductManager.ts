@@ -67,6 +67,9 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
   const [cats, setCats] = useState<Cat[]>([]);
   const [q, setQ] = useState("");
   const [onlyLowStock, setOnlyLowStock] = useState(false);
+  // Filter asal supplier (WR/SK/Manual) — pola onlyLowStock: state di hook
+  // agar pagination + reorder ikut benar, UI select di ProductsSection.
+  const [supplierFilter, setSupplierFilter] = useState<"all" | "WR" | "SK" | "Manual">("all");
   const [page, setPage] = useState(1);
   const [loadingList, setLoadingList] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
@@ -595,6 +598,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
       .filter(p=> {
         if (q && !`${p.name} ${p.slug} ${p.badge??""}`.toLowerCase().includes(q.toLowerCase())) return false;
         if (onlyLowStock && !((p.lowStockVariants ?? (p.stock >= 0 && p.stock <= 5 ? 1 : 0)) > 0)) return false;
+        if (supplierFilter !== "all" && (p.supplier ?? "Manual") !== supplierFilter) return false;
         return true;
       })
       .slice()
@@ -607,7 +611,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
         if (byOrder !== 0) return byOrder;
         return Number(a.id) - Number(b.id);
       }),
-    [prods, q, onlyLowStock],
+    [prods, q, onlyLowStock, supplierFilter],
   );
   const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE_ADMIN));
   const safePage = Math.min(page, totalPages);
@@ -642,6 +646,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
     // data & daftar
     prods, cats, q, page, loadingList, listError, load,
     setQ, setPage, onlyLowStock, setOnlyLowStock,
+    supplierFilter, setSupplierFilter,
     activeProducts, lowStock, soldProducts, filtered, paged, safePage, totalPages, perPage: PER_PAGE_ADMIN,
     // editor
     editing, showNew, uploading, form, formImages, hasMultiVariants, formVariants,

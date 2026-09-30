@@ -388,6 +388,16 @@ export async function fetchSkItems(params?: {
   return skFetch<SkItemsResponse>("v1/item", { query });
 }
 
+/**
+ * Scope hemat sync fase 1 (2026-09-30): HANYA kategori Aplikasi Premium.
+ * Terbukti live: `category=Aplikasi Premium` → 99 varian / 93KB / ~3,6 dtk
+ * vs full 6095 varian / 4,3MB / 11–29 dtk (sering gagal: 6x sk_request_timeout
+ * 09:05–10:00 + 1x Heroku Application Error). Tanpa scope = timeout BERULANG
+ * walau delta dipakai (delta all-kategori masih 2681 varian / 1,8MB / 9–29 dtk).
+ * Scope bisa dilebarkan saat fase 2 (h2h/manual) — cukup ubah konstanta ini.
+ */
+export const SK_SYNC_CATEGORY = "Aplikasi Premium";
+
 export async function createSkTransaction(params: {
   refId: string;
   carts: { item_id: number; quantity: number; note?: string }[];

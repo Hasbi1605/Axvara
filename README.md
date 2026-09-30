@@ -347,8 +347,9 @@ Actions Secrets.
 
 Axvara menjadi reseller layer di atas Sekalipay (`https://sekalipay.com/api`)
 SEBAGAI SUPPLIER KEDUA yang paralel dengan WR — bukan failover otomatis.
-Produk yang tampil dipilih manual: Netflix (WR) vs Netflix (SK) = dua baris
-katalog berbeda (nama publik `(SK)` vs `(WR)`), admin mengaktifkan salah satu
+Produk yang tampil dipilih manual: Netflix WR vs Netflix SK = dua baris
+katalog berbeda (nama publik BERSIH tanpa suffix supplier sejak 2026-09-30,
+dibedakan di admin via badge asal + slug `-wr`/`-sk`), admin mengaktifkan salah satu
 atau keduanya untuk perbandingan harga/stok. Fase 1 hanya varian
 `order_process=auto` kategori Aplikasi Premium (lisensi langsung di
 `order.completed`, tanpa field `note/zone_id`); varian manual/h2h/smm dicatat

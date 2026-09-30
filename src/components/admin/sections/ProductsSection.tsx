@@ -11,6 +11,9 @@ import { adjacentReorderProduct } from "@/lib/product-order";
 // page.tsx dan diturunkan lewat props eksplisit — komponen ini hanya merender dan
 // meneruskan event, tanpa memiliki state bisnis sendiri.
 
+/** Filter asal supplier di daftar admin (keputusan owner 2026-09-30). */
+export type SupplierFilter = "all" | "WR" | "SK" | "Manual";
+
 /** Varian aktif yang S&K-nya perlu ditinjau (teks WR belum versi Axvara / suntingan dijeda). */
 function CopyReviewBadge({ count }: { count?: number }) {
   if (!count) return null;
@@ -22,6 +25,18 @@ function CopyReviewBadge({ count }: { count?: number }) {
       S&amp;K perlu ditinjau · {count} varian
     </span>
   );
+}
+
+/** Badge asal supplier — HANYA admin (keputusan owner 2026-09-30). Pembeli
+ *  tidak pernah melihat ini; pembeda di storefront hanya nama bersih. */
+function SupplierBadge({ supplier, slug }: { supplier?: Prod["supplier"]; slug: string }) {
+  if (supplier === "WR") {
+    return <span title={`Supplier: Warung Rebahan · slug /${slug}`} className="rounded-full border border-[#FFB800]/30 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFCF55]">WR</span>;
+  }
+  if (supplier === "SK") {
+    return <span title={`Supplier: Sekalipay · slug /${slug}`} className="rounded-full border border-[#00E5FF]/30 bg-[#00E5FF]/10 px-2 py-0.5 text-[10px] font-bold text-[#5cefff]">SK</span>;
+  }
+  return <span title="Produk manual Axvara" className="rounded-full border border-white/15 bg-white/[0.05] px-2 py-0.5 text-[10px] font-bold text-white/45">Manual</span>;
 }
 
 export function ProductsSection({
@@ -37,6 +52,8 @@ export function ProductsSection({
   activeProducts,
   lowStock,
   soldProducts,
+  supplierFilter,
+  onSupplierFilterChange,
   onQueryChange,
   onPageChange,
   onlyLowStock,
@@ -62,6 +79,8 @@ export function ProductsSection({
   activeProducts: number;
   lowStock: number;
   soldProducts: number;
+  supplierFilter: "all" | "WR" | "SK" | "Manual";
+  onSupplierFilterChange: (value: "all" | "WR" | "SK" | "Manual") => void;
   onQueryChange: (value: string) => void;
   onPageChange: (updater: (prev: number) => number) => void;
   onlyLowStock: boolean;
@@ -144,6 +163,19 @@ export function ProductsSection({
                 <input value={q} onChange={e=>{ onQueryChange(e.target.value); onPageChange(()=>1); }} placeholder="Cari produk, slug, badge..." className="w-full h-10 pl-10 pr-4 rounded-full bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#00E5FF]/40" />
                 <span className="absolute left-3.5 top-1/2 -translate-y-1/2 opacity-70"><IosIcon name="search" size={16} tint="white" /></span>
               </div>
+              {/* Filter asal supplier (WR/SK/Manual) — lokal, tanpa request. */}
+              <select
+                value={supplierFilter}
+                onChange={e=>{ onSupplierFilterChange(e.target.value as "all" | "WR" | "SK" | "Manual"); onPageChange(()=>1); }}
+                aria-label="Filter asal supplier"
+                title="Filter asal supplier (WR/SK/Manual)"
+                className="h-10 shrink-0 rounded-full bg-white/[0.06] border border-white/10 px-3 text-xs font-semibold text-white/70 focus:outline-none focus:border-[#00E5FF]/40"
+              >
+                <option value="all">Semua asal</option>
+                <option value="WR">WR</option>
+                <option value="SK">SK</option>
+                <option value="Manual">Manual</option>
+              </select>
             </div>
             <button onClick={onNew} className="inline-flex h-10 items-center gap-1.5 whitespace-nowrap px-5 rounded-full bg-[#00E5FF] text-[#080C1E] text-sm font-bold hover:bg-[#00D0E8] transition"><IosIcon name="plus" size={14} tint="black" /> Produk Baru</button>
           </div>
@@ -167,7 +199,7 @@ export function ProductsSection({
                 <div className="flex items-start gap-3">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={p.image || "/brand/axvara-ribbon-mark.png"} alt="" className="h-14 w-14 shrink-0 rounded-xl bg-white/5 object-cover" />
-                  <div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-semibold text-white">{p.name}</p><p className="mt-0.5 truncate text-[11px] text-white/35">{p.categorySlug} · {p.variantCount ? `${p.variantCount} varian` : "produk"} · #{(orderIndex.get(p.id) ?? 0) + 1} dari {filtered.length}</p><CopyReviewBadge count={p.copyReview} /></div><button type="button" aria-pressed={p.isActive} aria-label={`Toggle aktif ${p.name}`} disabled={toggling === p.id} onClick={() => onToggleActive(p)} className={`toggle-btn relative inline-flex h-6 w-[46px] shrink-0 items-center rounded-full border px-[2px] ${p.isActive ? "border-emerald-600 bg-emerald-500" : "border-white/20 bg-white/15"}`}><span className={`h-[18px] w-[18px] rounded-full bg-white transition-transform ${p.isActive ? "translate-x-[20px]" : "translate-x-0"}`} /></button></div><div className="mt-3 flex flex-wrap items-center gap-2 text-xs"><span className="font-semibold text-white">{p.minPrice != null && p.maxPrice != null && p.minPrice !== p.maxPrice ? `${formatRupiah(p.minPrice)}–${formatRupiah(p.maxPrice)}` : formatRupiah(p.price)}</span><span className="rounded-full bg-white/[0.07] px-2 py-1 text-white/50">Stok {p.stock === -1 ? "∞" : p.stock}</span><span className="text-white/35">{p.soldCount} terjual</span></div></div>
+                  <div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-semibold text-white">{p.name} <SupplierBadge supplier={p.supplier} slug={p.slug} /></p><p className="mt-0.5 truncate text-[11px] text-white/35">{p.categorySlug} · {p.variantCount ? `${p.variantCount} varian` : "produk"} · #{(orderIndex.get(p.id) ?? 0) + 1} dari {filtered.length}</p><CopyReviewBadge count={p.copyReview} /></div><button type="button" aria-pressed={p.isActive} aria-label={`Toggle aktif ${p.name}`} disabled={toggling === p.id} onClick={() => onToggleActive(p)} className={`toggle-btn relative inline-flex h-6 w-[46px] shrink-0 items-center rounded-full border px-[2px] ${p.isActive ? "border-emerald-600 bg-emerald-500" : "border-white/20 bg-white/15"}`}><span className={`h-[18px] w-[18px] rounded-full bg-white transition-transform ${p.isActive ? "translate-x-[20px]" : "translate-x-0"}`} /></button></div><div className="mt-3 flex flex-wrap items-center gap-2 text-xs"><span className="font-semibold text-white">{p.minPrice != null && p.maxPrice != null && p.minPrice !== p.maxPrice ? `${formatRupiah(p.minPrice)}–${formatRupiah(p.maxPrice)}` : formatRupiah(p.price)}</span><span className="rounded-full bg-white/[0.07] px-2 py-1 text-white/50">Stok {p.stock === -1 ? "∞" : p.stock}</span><span className="text-white/35">{p.soldCount} terjual</span></div></div>
                 </div>
                 <div className="mt-4 grid grid-cols-[auto_1fr_auto] gap-2">
                   <div className="flex items-center gap-1" role="group" aria-label={`Ubah urutan ${p.name}`}>
@@ -191,7 +223,7 @@ export function ProductsSection({
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={p.image || "/brand/axvara-ribbon-mark.png"} alt="" className="w-12 h-12 rounded-xl object-cover bg-white/5 shrink-0" />
                           <div className="min-w-0">
-                            <p className="font-semibold text-white leading-tight line-clamp-1">{p.name}</p>
+                            <p className="font-semibold text-white leading-tight line-clamp-1">{p.name} <SupplierBadge supplier={p.supplier} slug={p.slug} /></p>
                             <p className="text-xs text-white/40 line-clamp-1">/{p.slug} {p.badge? `• ${p.badge}`:""}</p>
                             <CopyReviewBadge count={p.copyReview} />
                           </div>
