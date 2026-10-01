@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-10-01 — Foto Nord VPN SK: compose gunung putih di badge biru dari ikon Play Store asli com.nordvpn.android 1600x900 WebP — D1 image_url+images, R2 --jurisdiction default — (verifikasi: 0 produk kosong; R2 200; catalog terisi; Obscura /produk/nord-vpn-sk tampil sempurna; test 1797/1797)
+
 - 2026-10-01 — Judul promo digest: emoji api + "PRODUK AXVARA READY PAGI/SORE INI" tanpa hitungan (permintaan owner) — src/lib/telegram/promo-digest.ts, tests/telegram-promo-digest.test.ts (+2 assertion judul) — (verifikasi: 8/8 promo hijau; tsc bersih)
 - 2026-10-01 — Link bot promo digest jadi deep-link `?start=beli` (permintaan owner: tap link → chat pribadi langsung siap order, pola sama dengan redirect grup) — src/lib/telegram/promo-digest.ts, tests/telegram-promo-digest.test.ts (+1 assertion), docs/PRD FR-S33 — (verifikasi: 7/7 promo hijau; tsc bersih)
 - 2026-10-01 — Ringkasan checkout mobile pola struk (laporan owner + screenshot: Rp 24.000 tampil 3x dalam satu pill — header + line + footer): header total hanya saat accordion TERTUTUP/loading, saat terbuka total pindah ke footer body; subline "Qty N × unit" hanya bila qty > 1, qty 1 cukup "Qty 1"; CTA sticky tidak disentuh; DESIGN §5 + test integrity ikut dikunci — src/app/checkout/page.tsx, tests/checkout-integrity.regression.test.ts, docs/DESIGN.md — (verifikasi: checkout-integrity hijau; tsc bersih)
