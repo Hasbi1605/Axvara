@@ -59,7 +59,7 @@ describe("WhatsApp payment proof review", () => {
     expect(page).not.toContain("PaymentProofsManager");
     expect(page).toContain("OrdersManager");
     expect(manager).toContain("/api/admin/proofs/");
-    expect(manager).toContain('kind: "paid" | "approve" | "reject" | "cancel"');
+    expect(manager).toContain('kind: "paid" | "paid_qris" | "approve" | "reject"');
     expect(ordersApi).toContain("LEFT JOIN payment_proofs");
     expect(fs.existsSync(path.join(process.cwd(), "src/components/admin/PaymentProofsManager.tsx"))).toBe(false);
     expect(fs.existsSync(path.join(process.cwd(), "src/app/api/admin/proofs/route.ts"))).toBe(false);
