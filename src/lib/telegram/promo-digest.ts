@@ -100,7 +100,7 @@ export function promoMessages(slot: PromoSlot, products: PromoProduct[]): { full
   const shortLines = groups.map((group) =>
     `${group.category}: ${group.items.map((product) => `✅ ${product.name} ${formatRupiah(product.price)}`).join(", ")}`,
   );
-  const botUrl = `https://t.me/${SITE.adminTelegram}`;
+  const botUrl = `https://t.me/${SITE.adminTelegram}?start=beli`;
   const webUrl = siteOrigin();
   const cta = `🤖 <b>Order melalui Bot Telegram:</b>\n${botUrl}\n\n🌐 <b>Order melalui Website:</b>\n${webUrl}`;
   return {

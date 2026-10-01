@@ -93,6 +93,9 @@ describe("Telegram promo digest", () => {
     expect(message).toContain("Order melalui Website:");
     expect(message).toContain("https://axvara.tech");
     expect(message).not.toContain("Katalog lengkap");
+    // Deep-link langsung buka bot dengan payload beli (keputusan owner
+    // 2026-10-01): tap link → chat pribadi langsung siap order.
+    expect(message).toContain("https://t.me/Axvara_bot?start=beli");
   });
 
   it("short bubble ringkas siap forward tanpa disclaimer", () => {
