@@ -5,6 +5,10 @@ import type { DatabaseAccess } from "@/lib/db-access";
 vi.mock("@/lib/telegram/api", () => ({ sendMessage: vi.fn() }));
 import { sendMessage } from "@/lib/telegram/api";
 
+// Kontrak 2026-10-01 (keputusan owner — koreksi: contoh ceklisnya saja
+// dari WR/SEKUDIL, TANPA meniru seksi instan/MBO): format Axvara yang sudah
+// ada dipertahankan (judul + hook + kelompok kategori + CTA), hanya +
+// emoji ✅ per baris produk + SEMUA produk ready masuk pesan (bukan paruh).
 const products = Array.from({ length: 16 }, (_, i) => ({
   id: i + 1,
   name: i === 0 ? "ChatGPT <Pro>" : `Produk ${i + 1}`,
@@ -63,24 +67,19 @@ describe("Telegram promo digest", () => {
     expect(promoSlotAt(new Date("2026-09-27T13:00:00Z"))).toBeNull();
   });
 
-  it("pagi = 12 teratas, sore = 12 berikutnya, tanpa tumpang tindih", () => {
+  it("SEMUA ready masuk pesan (bukan paruh 12): pagi = sore = seluruh katalog", () => {
     const morning = selectPromoProducts(products, new Set(), new Set(), 0);
     const evening = selectPromoProducts(products, new Set(), new Set(), 1);
-    expect(morning.map((product) => product.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
-    expect(evening.map((product) => product.id)).toEqual([13, 14, 15, 16]);
-    // Tidak ada produk yang muncul di dua slot.
-    expect(morning.some((product) => evening.some((item) => item.id === product.id))).toBe(false);
+    expect(morning.map((product) => product.id)).toEqual(products.map((product) => product.id));
+    expect(evening.map((product) => product.id)).toEqual(products.map((product) => product.id));
   });
 
-  it("hierarki katalog dipertahankan (sort_order, bukan acak/bestseller)", () => {
-    const morning = selectPromoProducts(products, new Set(), new Set(), 0);
-    expect(morning.map((product) => product.id)).toEqual([...morning.map((product) => product.id)].sort((a, b) => a - b));
-  });
-
-  it("renders escaped grouped copy: hook owner, harga tegas, tanpa disclaimer", () => {
+  it("renders format Axvara + ceklis per baris + hook + CTA", () => {
     const message = promoMessages("morning", products.slice(0, 3)).full;
     expect(message).toContain("ChatGPT &lt;Pro&gt;");
     expect(message).toContain("Sedia semua kebutuhan aplikasi dan tools premium favorit anda, murah, mudah, cepat, dan bergaransi.");
+    // Emoji ceklis per baris produk ready (contoh WR/SEKUDIL).
+    expect(message).toContain("✅ Produk 2");
     // Harga tegas varian termurah — tanpa kata "Mulai".
     expect(message).toContain("Rp1.000");
     expect(message).not.toContain("Mulai Rp");
@@ -88,7 +87,7 @@ describe("Telegram promo digest", () => {
     // Footer disclaimer dihapus.
     expect(message).not.toContain("mengikuti katalog");
     expect(message).not.toContain("mengikuti ketersediaan");
-    // Kelompok kategori + CTA final.
+    // Kelompok kategori + CTA final (format Axvara dipertahankan).
     expect(message).toContain("AI &amp; CHATBOT");
     expect(message).toContain("Order melalui Bot Telegram:");
     expect(message).toContain("Order melalui Website:");
@@ -99,6 +98,7 @@ describe("Telegram promo digest", () => {
   it("short bubble ringkas siap forward tanpa disclaimer", () => {
     const message = promoMessages("evening", products.slice(0, 3)).short;
     expect(message).toContain("Ready sore ini");
+    expect(message).toContain("✅");
     expect(message).not.toContain("Mulai");
     expect(message).not.toContain("mulai");
     expect(message).not.toContain("mengikuti");

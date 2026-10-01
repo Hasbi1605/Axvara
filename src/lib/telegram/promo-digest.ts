@@ -57,24 +57,14 @@ export function selectPromoProducts(
   recentlyUsed: Set<number>,
   seed: number,
 ): PromoProduct[] {
-  // Pagi vs sore = DUA PARUH katalog yang berbeda (keputusan owner 2026-09-29):
-  // pagi = 12 teratas (sort_order terkecil), sore = 12 berikutnya, tanpa
-  // tumpang tindih. Hierarki katalog admin yang menentukan — bukan acak,
-  // bukan bestseller. Rotasi histori 2 hari hanya sebagai fallback bila
-  // katalog ready < 24 (produk dipakai ulang dari paruh lawan).
-  // Query pemanggil SUDAH mengurut sort_order ASC, id ASC — di sini tinggal
-  // potong paruh + saring histori.
-  const PROMO_PER_SLOT = 12;
-  const morning = seed % 2 === 0;
-  const fresh = (product: PromoProduct) => !usedToday.has(product.id) && !recentlyUsed.has(product.id);
-  const half = products.filter(fresh);
-  const pool = half.length >= PROMO_PER_SLOT ? half : products;
-  const start = morning ? 0 : PROMO_PER_SLOT;
-  const picked = pool.slice(start, start + PROMO_PER_SLOT);
-  if (picked.length >= 3) return picked;
-  // Fallback: katalog terlalu kecil — isi dari paruh lawan / histori.
-  const rest = products.filter((product) => !picked.some((item) => item.id === product.id));
-  return [...picked, ...rest].slice(0, Math.max(3, Math.min(PROMO_PER_SLOT, products.length)));
+  // SEMUA produk ready masuk pesan (keputusan owner 2026-10-01 — format
+  // ala WR/SEKUDIL: daftar ceklis penuh, bukan 12+12 paruh). Parameter
+  // histori/seed dipertahankan untuk kompatibilitas pemanggil + test, tapi
+  // tidak lagi memotong daftar: promosi = seluruh katalog ready saat itu.
+  void usedToday;
+  void recentlyUsed;
+  void seed;
+  return products;
 }
 
 export function promoMessages(slot: PromoSlot, products: PromoProduct[]): { full: string; short: string } {
@@ -95,7 +85,8 @@ export function promoMessages(slot: PromoSlot, products: PromoProduct[]): { full
     return "✨";
   };
   // Kelompok per kategori sesuai urutan kemunculan pertama (= hierarki
-  // katalog, karena query sudah sort_order ASC).
+  // katalog, karena query sudah sort_order ASC). Baris produk memakai ✅
+  // (keputusan owner 2026-10-01 — contoh format ceklis WR/SEKUDIL).
   const groups: { category: string; items: PromoProduct[] }[] = [];
   for (const product of products) {
     const group = groups.find((entry) => entry.category === product.category);
@@ -104,17 +95,17 @@ export function promoMessages(slot: PromoSlot, products: PromoProduct[]): { full
   }
   const lines = groups.flatMap((group) => [
     `${iconFor(group.category)} <b>${escapeHtml(group.category.toUpperCase())}</b>`,
-    ...group.items.map((product) => `• ${escapeHtml(product.name)} — ${formatRupiah(product.price)}`),
+    ...group.items.map((product) => `✅ ${escapeHtml(product.name)} — ${formatRupiah(product.price)}`),
   ]);
   const shortLines = groups.map((group) =>
-    `${group.category}: ${group.items.map((product) => `${product.name} ${formatRupiah(product.price)}`).join(", ")}`,
+    `${group.category}: ${group.items.map((product) => `✅ ${product.name} ${formatRupiah(product.price)}`).join(", ")}`,
   );
   const botUrl = `https://t.me/${SITE.adminTelegram}`;
   const webUrl = siteOrigin();
   const cta = `🤖 <b>Order melalui Bot Telegram:</b>\n${botUrl}\n\n🌐 <b>Order melalui Website:</b>\n${webUrl}`;
   return {
     full: `${title} — ${products.length} PRODUK AXVARA\n\n${intro}\n\n${lines.join("\n")}\n\n${cta}`,
-    short: `Ready ${morning ? "pagi" : "sore"} ini ✨ ${products.length} produk AXVARA\n\n${shortLines.join("\n")}\n\n🤖 ${botUrl}\n🌐 ${webUrl}`,
+    short: `Ready ${morning ? "pagi" : "sore"} ini ✅ ${products.length} produk AXVARA\n\n${shortLines.join("\n")}\n\n🤖 ${botUrl}\n🌐 ${webUrl}`,
   };
 }
 
@@ -131,13 +122,21 @@ export async function sendDueAdminPromoDigest(
     !process.env.TELEGRAM_ADMIN_CHAT_ID
   ) return { due: true, fullSent: false, shortSent: false, complete: false, skipped: "disabled" };
 
+  // Kandidat = SEMUA produk ready (ada ≥1 varian bisa dibeli). Pecundang
+  // supplier-pair + produk telegram_enabled=0 dikecualikan agar promo tidak
+  // menjual barang yang disembunyikan di katalog.
   const products = (await database.queryAll(
     `SELECT p.id, p.name, COALESCE(c.name, 'Produk Premium') AS category,
-            MIN(CASE WHEN pv.stock = -1 OR pv.stock >= pv.min_qty THEN pv.price END) AS promo_price
+            MIN(CASE WHEN pv.stock = -1 OR pv.stock >= MAX(1, COALESCE(pv.min_qty, 1)) THEN pv.price END) AS promo_price
        FROM products p
        JOIN product_variants pv ON pv.product_id=p.id AND pv.is_active=1
        LEFT JOIN categories c ON c.id=p.category_id
-      WHERE p.is_active=1 AND p.telegram_enabled=1
+      WHERE p.is_active=1 AND COALESCE(p.telegram_enabled, 1)=1
+        AND NOT EXISTS (
+          SELECT 1 FROM supplier_pairs pair
+          WHERE pair.winner IS NOT NULL
+            AND p.id = CASE WHEN pair.winner='WR' THEN pair.sk_product_id ELSE pair.wr_product_id END
+        )
       GROUP BY p.id
      HAVING promo_price IS NOT NULL
       ORDER BY p.sort_order ASC, p.id ASC`,
