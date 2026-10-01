@@ -141,9 +141,10 @@
 
 ### 5.2 Hero Section
 - Full-width, min-h 60vh, midnight gradient + radial cyan glow di atas
-- Headline: "Gerbang Semua Tools Premium" (Space Grotesk 56px, gradient text cyan→white)
-- Subheadline: "AI Gateway, Akun Premium, Tools Pro — satu tempat, harga jujur, bayar QRIS 10 detik"
-- CTA: Primary "Jelajahi Katalog" (cyan solid, glow) + Secondary "Cara Bayar" (glass outline)
+- Headline: "Satu tempat untuk semua tools premium." (font-display 700, 42–62px responsif)
+- Subheadline (2026-10-01, keputusan owner — penekanan dipindah dari "QRIS otomatis" ke "order cepat tanpa perlu login"): "Berbagai tools AI dan aplikasi premium dengan harga murah. Order cepat dan otomatis tanpa perlu login."
+- CTA: Primary "Lihat Katalog" (putih solid) + Secondary "Hubungi Admin" (glass outline, link WA)
+- Trust sebaris: "Order cepat tanpa login • Garansi replace • Support WA admin"
 - Search besar glass di bawah CTA (seperti Apple Store search)
 - Parallax: glow dan headline bergerak halus saat scroll (translateY + opacity)
 - **Orbit hemat mobile (2026-09-29, laporan owner HP lag):** hot path animasi WAJIB compositor-only (transform + opacity) — backdrop-blur/blur/drop-shadow per frame dilarang (satu blur kaca = repaint seluruh layer tiap frame di GPU HP). Mobile (pointer coarse / ≤640px): 8 planet dalam, trail SVG + label + shadow dinamis + star dust mati, 24fps; glow hero dihemat (cyan 44px, gold mati). Desktop utuh 12 planet 30fps + trail. Scroll sentuh selalu native (`touch-action: pan-y`, tanpa preventDefault).

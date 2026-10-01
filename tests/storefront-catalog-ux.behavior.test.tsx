@@ -161,3 +161,19 @@ describe("overlay stok habis di kartu", () => {
     expect(screen.getByRole("link", { name: /Habis Dua.*stok habis/i })).toBeTruthy();
   });
 });
+
+describe("copy hero: order cepat tanpa login (keputusan owner 2026-10-01)", () => {
+  it("subheadline + trust item menekankan order tanpa login, bukan QRIS", async () => {
+    stubCatalog([product(1, { name: "Ready Satu", stock: 5 })]);
+    render(<HomePage />);
+    await act(async () => {});
+
+    expect(
+      screen.getByText("Berbagai tools AI dan aplikasi premium dengan harga murah. Order cepat dan otomatis tanpa perlu login."),
+    ).toBeTruthy();
+    expect(screen.getByText("Order cepat tanpa login")).toBeTruthy();
+    // Copy lama hilang total.
+    expect(screen.queryByText(/jauh lebih murah dibanding official/)).toBeNull();
+    expect(screen.queryByText("QRIS otomatis")).toBeNull();
+  });
+});

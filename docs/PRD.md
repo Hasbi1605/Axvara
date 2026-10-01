@@ -62,7 +62,7 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 
 | ID | Requirement | Prioritas |
 |----|-------------|-----------|
-| FR-S1 | Pengunjung bisa melihat homepage hero premium + search + kategori + produk unggulan tanpa login | P0 MVP |
+| FR-S1 | Pengunjung bisa melihat homepage hero premium + search + kategori + produk unggulan tanpa login. **2026-10-01 copy hero (permintaan owner):** penekanan dipindah dari "QRIS otomatis" ke "order cepat tanpa perlu login" — subheadline + trust item pertama | P0 MVP |
 | FR-S2 | Katalog produk dengan grid Apple-style, filter kategori (AI & Chatbot, Streaming & Hiburan, Produktivitas & Office, Desain & Video, Developer & Tools, Bundle Hemat — taksonomi 6 kategori 2026-09-28, migrasi 0046; slug lama ai-gateway/akun-premium/tools-pro dialias di kode agar filter lama tidak 404), search, dan sorting. **2026-10-01 ✅ live (permintaan owner: jangan hilangkan yang habis + jangan nomor halaman):** 16 produk + "Tampilkan N produk lagi" (ganti filter kembali ke 16 awal); produk habis TETAP tampil di akhir sebagai kartu abu-abu tanpa tombol beli (trust + kurangi komplain "kok kemarin ada, sekarang hilang"); PDP produk pecundang WR-vs-SK 308 ke pemenang (noindex) | P0 MVP |
 | FR-S3 | Halaman detail produk: galeri gambar, harga (diskon/coret), stok, deskripsi, benefit, tombol Tambah ke Keranjang & Beli Langsung. **2026-10-01 ✅ live (permintaan owner):** Produk Serupa TIDAK PERNAH menampilkan stok habis (Serupa = ajakan beli; kartu habis tetap ada di katalog utama untuk trust); bila kategori sama < 4, dilengkapi dari katalog lain (hanya yang bisa dibeli) | P0 MVP |
 | FR-S4 | Keranjang slide-drawer dari kanan (tanpa pindah halaman), ubah qty, hapus item, lihat subtotal | P0 MVP |
