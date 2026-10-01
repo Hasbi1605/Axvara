@@ -90,6 +90,13 @@ describe("Checkout quote integrity", () => {
     expect(checkout).toContain("checkout-summary-mobile");
     expect(checkout).toContain("Sticky bottom CTA");
     expect(checkout).toContain("fixed bottom-0");
+    // Pola struk 2026-10-01: total tampil 1x per state — header total hanya
+    // saat accordion TERTUTUP (atau saat quote loading), agar tidak kembar
+    // 2-3x dengan footer Total saat body terbuka.
+    expect(checkout).toContain("(!summaryOpen || quoteLoading)");
+    // Subline qty: "Qty N × unit" hanya bila qty > 1; qty 1 cukup "Qty 1"
+    // karena angka kanan sudah = harga (jangan ulang yang sama).
+    expect(checkout).toContain("it.qty > 1");
     // Batasan batch: tidak ada metode/diskon/logic quote baru — hanya 1
     // blok metode (variabel dipakai ulang) + tidak ada input kode diskon.
     expect(checkout).not.toContain("kode promo");

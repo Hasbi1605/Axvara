@@ -126,7 +126,9 @@
   sticky CTA mobile) melihat tombol redup tanpa alasan. Klik kini menampilkan
   "Centang persetujuan…" dan menggulir + memfokuskan checkbox yang terlihat.
 - Mobile: accordion "Ringkasan Pesanan" collapsed-able di atas (buka default,
-  total selalu terlihat di header-nya) + CTA sticky bottom `fixed` (dengan
+  pola struk 2026-10-01: total tampil 1x per state — header total hanya saat
+  accordion TERTUTUP/loading, saat terbuka total pindah ke footer body;
+  subline "Qty N × unit" hanya bila qty > 1, qty 1 cukup "Qty 1") + CTA sticky bottom `fixed` (dengan
   `safe-area-inset-bottom`) + spacer 68px agar konten tak tertutup. Rail
   disembunyikan total di mobile agar tidak duplikat (anomali: 2x ringkasan
   + 2x CTA). Sticky

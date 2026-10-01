@@ -551,7 +551,14 @@ function CheckoutInner() {
         >
           <span className="text-sm font-semibold text-white">Ringkasan Pesanan</span>
           <span className="flex items-center gap-2">
-            <span className="font-display font-bold text-white text-sm">{formatRupiah(displaySubtotal)}</span>
+            {/* Total header hanya saat accordion TERTUTUP (pola struk:
+                total tampil 1x per state). Saat terbuka, total pindah ke
+                footer body agar tidak kembar 2x dalam satu pill.
+                Pengecualian: saat quote loading body belum punya total,
+                header tetap menampilkannya. */}
+            {(!summaryOpen || quoteLoading) && (
+              <span className="font-display font-bold text-white text-sm">{formatRupiah(displaySubtotal)}</span>
+            )}
             <svg viewBox="0 0 24 24" className={`w-4 h-4 text-white/50 transition-transform ${summaryOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M6 9l6 6 6-6" /></svg>
           </span>
         </button>
@@ -570,7 +577,10 @@ function CheckoutInner() {
                     <img src={it.image} alt={it.name} className="w-12 h-12 rounded-xl object-cover" />
                     <div className="flex-1 min-w-0">
                       <p className="text-[13px] text-white leading-4 line-clamp-2">{it.name}</p>
-                      <p className="text-[11px] text-white/50">Qty {it.qty} × {formatRupiah(it.price)}</p>
+                      {/* Subline qty: "Qty N × unit" hanya informatif bila
+                          qty > 1 (kedua angka beda). Untuk qty 1, angka kanan
+                          sudah = harga — jangan ulang lagi. */}
+                      <p className="text-[11px] text-white/50">{it.qty > 1 ? `Qty ${it.qty} × ${formatRupiah(it.price)}` : `Qty ${it.qty}`}</p>
                     </div>
                     <span className="text-[13px] font-semibold text-white">{formatRupiah(it.price * it.qty)}</span>
                   </div>
