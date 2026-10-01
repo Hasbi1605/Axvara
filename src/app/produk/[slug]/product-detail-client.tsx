@@ -3,6 +3,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import type { Product } from "@/lib/products";
+import { productIsBuyable } from "@/lib/product-order";
 import { formatRupiah } from "@/lib/utils";
 import type { VariantSummary } from "@/lib/catalog";
 import { formatWarranty } from "@/lib/catalog";
@@ -164,16 +165,34 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
   useEffect(() => {
     const current = catalogProducts.find((p) => p.slug === slug);
     if (!current) { setRelated([]); setRelatedLoading(false); return; }
-    // Related dibatasi server (issue #14): 8 produk kategori sama — bukan
-    // seluruh katalog. Abort bila slug berpindah sebelum respons tiba.
+    // Produk Serupa (kontrak 2026-10-01, keputusan owner):
+    // 1. Stok habis TIDAK PERNAH tampil — Serupa = ajakan beli, bukan arsip.
+    //    Kartu habis tetap ada di katalog utama (trust), tapi tidak di sini.
+    // 2. Kategori sama dulu; bila < 4 BARU fetch katalog penuh sebagai
+    //    filler (hemat rows-read D1 — jangan fetch penuh tiap PDP).
+    // Abort bila slug berpindah sebelum respons tiba.
     const controller = new AbortController();
     setRelatedLoading(true);
+    const buyable = (p: Product) => p.slug !== slug && productIsBuyable(p);
     fetchWithTimeout(`/api/products?active=1&cat=${encodeURIComponent(current.categorySlug)}`, { signal: controller.signal }, 25_000)
       .then(async (r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      .then((data) => {
-        const list: Product[] = Array.isArray(data.products) ? data.products : [];
-        setRelated(list.filter((p) => p.slug !== slug).slice(0, 8));
+      .then(async (data) => {
+        const same = ((Array.isArray(data.products) ? data.products : []) as Product[]).filter(buyable);
+        if (same.length >= 4 || controller.signal.aborted) {
+          return same.slice(0, 8);
+        }
+        // Fallback katalog lain (di luar kategori) bila kategori sama < 4.
+        const r2 = await fetchWithTimeout(`/api/products?active=1`, { signal: controller.signal }, 25_000);
+        if (!r2.ok) throw new Error(`HTTP ${r2.status}`);
+        const full = (await r2.json()) as { products?: Product[] };
+        const seen = new Set(same.map((p) => p.slug));
+        seen.add(slug);
+        const filler = (Array.isArray(full.products) ? full.products : []).filter(
+          (p) => !seen.has(p.slug) && productIsBuyable(p),
+        );
+        return [...same, ...filler].slice(0, 8);
       })
+      .then((list) => setRelated(list))
       .catch(() => setRelated([]))
       .finally(() => { if (!controller.signal.aborted) setRelatedLoading(false); });
     return () => controller.abort();

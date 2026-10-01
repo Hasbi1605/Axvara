@@ -632,7 +632,10 @@ R2 bucket: axvara-assets
   - N+1 dihapus: quote memakai 2 query `IN` (produk + varian) untuk berapa
     pun item; expiry cron JOIN order dalam 1 query; keranjang Telegram 1 JOIN
     varian + 1 DELETE batch; PDP memakai `?slug=` exact (1 baris) dan related
-    `?cat=` (8 baris) — tidak ada lagi fetch seluruh katalog per halaman.
+    `?cat=` kategori sama (hanya yang bisa dibeli — stok habis TIDAK PERNAH
+    tampil di Produk Serupa, kontrak 2026-10-01; filler katalog lain hanya
+    bila kategori sama < 4, hemat rows-read) — tidak ada lagi fetch seluruh
+    katalog per halaman.
   - Batas D1 yang dipatuhi kode: 100 bound parameter/query (batch IN
     dipotong), LIKE max 50 byte (pola search dipotong 40 char).
 - CSP header via Next.js middleware

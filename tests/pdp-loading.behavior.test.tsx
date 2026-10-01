@@ -33,17 +33,65 @@ beforeEach(() => { nav.push.mockClear(); localStorage.clear(); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe("PDP loading", () => {
-  it("data server dipakai langsung: tanpa fetch produk/varian di klien", () => {
-    const fetchMock = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ products: [] }) }));
+  it("data server dipakai langsung: tanpa fetch produk/varian di klien", async () => {
+    // Kategori sama mengembalikan 4 ready → fallback katalog penuh TIDAK
+    // ke-trigger (hemat D1; kontrak 2026-10-01). Tepat 1 request Serupa.
+    const four = [1, 2, 3, 4].map((i) => ({
+      id: String(10 + i), slug: `rel-${i}`, name: `Rel ${i}`, description: "",
+      price: 1000, categorySlug: "streaming", image: "", images: [],
+      soldCount: 0, stock: 5, isActive: true, sortOrder: i, variantCount: 1,
+    }));
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ products: four }) }));
     vi.stubGlobal("fetch", fetchMock);
     render(<ProductDetailClient slug="netflix-premium" initialProducts={[product]} initialCatalog={catalog as never} />);
     expect(screen.getAllByText("Netflix Premium").length).toBeGreaterThan(0);
     expect(screen.queryByText("Memuat detail produk…")).toBeNull();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     const urls = fetchMock.mock.calls.map((call) => String((call as unknown[])[0]));
     expect(urls.some((u) => u.startsWith("/api/catalog"))).toBe(false);
     expect(urls.some((u) => u.includes("slug="))).toBe(false);
-    // Hanya "Produk Serupa" yang masih diambil klien.
-    expect(urls.every((u) => u.includes("cat=streaming"))).toBe(true);
+    // Hanya "Produk Serupa" yang masih diambil klien: 1 request kategori
+    // sama, tanpa fetch katalog penuh (4 ready ≥ ambang 4).
+    expect(urls).toHaveLength(1);
+    expect(urls[0]).toContain("cat=streaming");
+  });
+
+  it("Produk Serupa: stok habis tidak tampil; fallback katalog lain bila < 4", async () => {
+    const ready = (id: number, slug: string, stock: number, cat = "streaming") => ({
+      id: String(id), slug, name: slug, description: "", price: 1000,
+      categorySlug: cat, image: "", images: [], soldCount: 0, stock,
+      isActive: true, sortOrder: id, variantCount: 1,
+    });
+    const current = { ...ready(1, "netflix-premium", 5), categorySlug: "streaming" };
+    vi.stubGlobal("fetch", vi.fn(async (input: string) => {
+      const url = String(input);
+      if (url.startsWith("/api/catalog")) return { ok: true, status: 200, json: async () => catalog };
+      if (url.includes("slug=")) return { ok: true, status: 200, json: async () => ({ products: [current] }) };
+      // Kategori sama: 1 ready + 3 habis → hanya 1 yang lolos (< 4).
+      if (url.includes("cat=")) {
+        return {
+          ok: true, status: 200,
+          json: async () => ({ products: [current, ready(2, "ready-sama", 5), ready(3, "habis-a", 0), ready(4, "habis-b", 0), ready(5, "habis-c", 0)] }),
+        };
+      }
+      // Katalog penuh: 2 ready beda kategori sebagai filler.
+      return {
+        ok: true, status: 200,
+        json: async () => ({ products: [current, ready(6, "filler-satu", 5, "ai-chatbot"), ready(7, "filler-dua", 5, "produktivitas-office"), ready(8, "habis-lain", 0, "ai-chatbot")] }),
+      };
+    }));
+    render(<ProductDetailClient slug="netflix-premium" />);
+    // Tunggu rel selesai dimuat (kartu ready-sama muncul sebagai h3).
+    await waitFor(() => expect(screen.getAllByText("ready-sama").length).toBeGreaterThan(0));
+    // Habis tidak tampil di Serupa — dari kategori mana pun. (queryAll
+    // karena nama juga ada di placeholder gambar tersembunyi.)
+    expect(screen.queryAllByText("habis-a")).toHaveLength(0);
+    expect(screen.queryAllByText("habis-b")).toHaveLength(0);
+    expect(screen.queryAllByText("habis-c")).toHaveLength(0);
+    expect(screen.queryAllByText("habis-lain")).toHaveLength(0);
+    // Fallback katalog lain menutup kekurangan (< 4 dari kategori sama).
+    expect(screen.getAllByText("filler-satu").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("filler-dua").length).toBeGreaterThan(0);
   });
 
   it("sticky bar mobile nonaktif + spinner selama varian dimuat", async () => {

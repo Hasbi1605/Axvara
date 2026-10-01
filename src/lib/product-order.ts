@@ -26,6 +26,16 @@ export function productIsSoldOut(product: OrderableProduct): boolean {
   return Number.isFinite(stock) && stock !== -1 && stock <= 0;
 }
 
+/**
+ * Produk BISA DIBELI (keputusan owner 2026-10-01): stok -1 (tak terbatas)
+ * atau > 0. Cermin `productIsSoldOut` di atas — dipakai Produk Serupa PDP
+ * yang hanya menerima ringkasan kartu (tanpa min_qty per varian).
+ * Checkout/quote/bot tetap otoritas akhir (mereka tahu min_qty).
+ */
+export function productIsBuyable(product: OrderableProduct): boolean {
+  return !productIsSoldOut(product);
+}
+
 export function productSortOrder(product: OrderableProduct): number {
   const value = product.sortOrder ?? product.sort_order ?? 0;
   return Number.isFinite(Number(value)) ? Number(value) : 0;
