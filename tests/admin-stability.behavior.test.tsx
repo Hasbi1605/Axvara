@@ -47,7 +47,19 @@ describe("identitas toast stabil: loader gagal tidak memicu fetch berulang", () 
     await act(async () => { await new Promise((r) => setTimeout(r, 300)); });
 
     expect(counts["/api/admin/warung/saldo"], "saldo tidak boleh difetch berulang").toBe(1);
-    expect(counts["/api/admin/warung/orders"], "antrean tidak boleh difetch berulang").toBe(1);
+    // Lazy-load tab (2026-10-01): mount hanya Ringkas — antrean/markup TIDAK
+    // difetch sebelum tab-nya dibuka. Buka tab Antrean = tepat 1 fetch.
+    expect(counts["/api/admin/warung/orders"] ?? 0, "antrean lazy: tidak fetch sebelum tab dibuka").toBe(0);
+    expect(counts["/api/admin/warung/markup"] ?? 0, "markup lazy: tidak fetch sebelum tab dibuka").toBe(0);
+    fireEvent.click(screen.getByRole("tab", { name: /Antrean/ }));
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    expect(counts["/api/admin/warung/orders"], "buka tab Antrean = 1 fetch").toBe(1);
+    // Ganti tab bolak-balik = cache, bukan refetch.
+    fireEvent.click(screen.getByRole("tab", { name: /Ringkas/ }));
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    fireEvent.click(screen.getByRole("tab", { name: /Antrean/ }));
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    expect(counts["/api/admin/warung/orders"], "tab cache: tidak refetch").toBe(1);
   });
 });
 

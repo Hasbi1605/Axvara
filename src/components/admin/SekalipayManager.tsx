@@ -7,13 +7,14 @@
 
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { formatRupiah } from "@/lib/utils";
 import { formatWibDateTime } from "@/lib/utils";
 import { Spinner } from "@/components/ui/Loading";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { useToast } from "@/components/ui/Toast";
 import { BulkMarkupToolbar } from "@/components/admin/BulkMarkupToolbar";
+import { SupplierTabs, VariantStatusBadge, type SupplierTabId } from "@/components/admin/SupplierTabs";
 
 type SaldoData = {
   current?: { balance: number; isLow: boolean; threshold: number };
@@ -210,6 +211,15 @@ export function SekalipayManager() {
   const [editingMarkup, setEditingMarkup] = useState<Record<string, { percent: string; fixed: string }>>({});
   // Seleksi bulk markup (2026-10-01, cermin WR): checklist per baris + preset %.
   const [bulkSelected, setBulkSelected] = useState<Set<string>>(new Set());
+  // Tab dalam-halaman (2026-10-01, cermin SystemTabs + WR): Ringkas default.
+  const [skTab, setSkTab] = useState<Extract<SupplierTabId, "ringkas" | "antrean" | "markup" | "aturan" | "audit" | "alat">>("ringkas");
+  const [loadedTabs, setLoadedTabs] = useState<Set<string>>(new Set(["ringkas"]));
+  const [orderPage, setOrderPage] = useState(1);
+  const [orderTotal, setOrderTotal] = useState(0);
+  const ORDER_PER_PAGE = 20;
+  const [markupTab, setMarkupTab] = useState<"live" | "hidden" | "off" | "all">("live");
+  const [markupPerPage, setMarkupPerPage] = useState<20 | 50 | 100>(20);
+  const [markupPage, setMarkupPage] = useState(1);
   // Khas SK: mutasi saldo, validasi akun, stock-lock, transaksi, detail varian.
   const [mutations, setMutations] = useState<MutationRow[]>([]);
   const [mutationsLoading, setMutationsLoading] = useState(false);
@@ -255,12 +265,14 @@ export function SekalipayManager() {
     } catch { /* sync log opsional */ }
   }, []);
 
-  const loadOrders = useCallback(async () => {
+  const loadOrders = useCallback(async (page = 1) => {
     try {
-      const res = await fetch(`/api/admin/sekalipay/orders?status=${encodeURIComponent(orderStatus)}&limit=20${orderQueryLive ? `&q=${encodeURIComponent(orderQueryLive)}` : ""}`, { cache: "no-store" });
+      const res = await fetch(`/api/admin/sekalipay/orders?status=${encodeURIComponent(orderStatus)}&per_page=${ORDER_PER_PAGE}&page=${page}${orderQueryLive ? `&q=${encodeURIComponent(orderQueryLive)}` : ""}`, { cache: "no-store" });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || "Gagal memuat antrean SK");
       setOrders(body.orders || []);
+      setOrderTotal(Number(body.total ?? 0));
+      setOrderPage(Number(body.page ?? page));
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : "Gagal memuat antrean SK");
     }
@@ -276,7 +288,7 @@ export function SekalipayManager() {
 
   const loadMarkups = useCallback(async () => {
     try {
-      const res = await fetch(`/api/admin/sekalipay/markup?limit=30${markupQueryLive ? `&q=${encodeURIComponent(markupQueryLive)}` : ""}`, { cache: "no-store" });
+      const res = await fetch(`/api/admin/sekalipay/markup?limit=200${markupQueryLive ? `&q=${encodeURIComponent(markupQueryLive)}` : ""}`, { cache: "no-store" });
       const body = await res.json().catch(() => ({}));
       if (res.ok) setMarkups(body.variants || []);
     } catch { /* opsional */ }
@@ -318,21 +330,60 @@ export function SekalipayManager() {
     }
   }, [toast]);
 
+  // Lazy-load per tab (cermin WR): SATU jalur fetch via effect di bawah.
+  // openTab hanya tandai loaded + reset halaman (jangan fetch di sini agar
+  // tidak dobel dengan effect).
+  const openTab = useCallback((tab: typeof skTab) => {
+    setSkTab(tab);
+    setLoadedTabs((prev) => {
+      if (prev.has(tab)) return prev;
+      const next = new Set(prev);
+      next.add(tab);
+      return next;
+    });
+    if (tab === "antrean") setOrderPage(1);
+    if (tab === "markup") setMarkupPage(1);
+  }, []);
+
   useEffect(() => {
     void loadSaldo();
     void loadLogs();
-    void loadExclusions();
-  }, [loadSaldo, loadLogs, loadExclusions]);
+  }, [loadSaldo, loadLogs]);
   useEffect(() => {
     const timer = setTimeout(() => setMarkupQueryLive(markupQuery.trim()), 400);
     return () => clearTimeout(timer);
   }, [markupQuery]);
   useEffect(() => {
-    void loadMarkups();
-  }, [loadMarkups]);
+    if (loadedTabs.has("markup")) void loadMarkups();
+  }, [loadMarkups, loadedTabs]);
   useEffect(() => {
-    void loadOrders();
-  }, [loadOrders]);
+    if (loadedTabs.has("aturan")) void loadExclusions();
+  }, [loadExclusions, loadedTabs]);
+  const skOrderFilterKey = `${orderStatus}|${orderQueryLive}`;
+  const lastSkOrderFetchKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (!loadedTabs.has("antrean")) return;
+    const key = `antrean|${skOrderFilterKey}`;
+    if (lastSkOrderFetchKey.current === key) return;
+    lastSkOrderFetchKey.current = key;
+    setOrderPage(1);
+    void loadOrders(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadedTabs, skOrderFilterKey]);
+  const auditKey = mutationDir;
+  const lastAuditFetchKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (!loadedTabs.has("audit")) return;
+    const key = `audit|${auditKey}`;
+    if (lastAuditFetchKey.current === key) return;
+    lastAuditFetchKey.current = key;
+    void loadMutations();
+    void loadTransactions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadedTabs, auditKey]);
+  useEffect(() => {
+    if (loadedTabs.has("alat")) void loadLocks();
+  }, [loadLocks, loadedTabs]);
 
   useEffect(() => {
     const timer = setTimeout(() => setOrderQueryLive(orderQuery.trim()), 400);
@@ -604,9 +655,44 @@ export function SekalipayManager() {
   const lastManualLog = logs.find((l) => l.sync_type === "products" && l.trigger !== "cron") ?? null;
   const lastCronLog = logs.find((l) => l.sync_type === "products" && l.trigger === "cron") ?? null;
   const balance = saldo.current?.balance ?? saldo.capacity?.balance ?? null;
+  const markupCounts = loadedTabs.has("markup") ? (() => {
+    let live = 0, hidden = 0, off = 0;
+    for (const m of markups as (MarkupRow & { variant_status?: string })[]) {
+      const s = m.variant_status ?? "live";
+      if (s === "live") live++;
+      else if (s === "off") off++;
+      else hidden++;
+    }
+    return { live, hidden, off, total: markups.length };
+  })() : null;
+  const activeOrderCount = orderTotal > 0 ? orderTotal : null;
+  const markupFiltered = (markups as (MarkupRow & { variant_status?: string })[]).filter((m) => {
+    const s = m.variant_status ?? "live";
+    if (markupTab === "live") return s === "live";
+    if (markupTab === "hidden") return s === "hidden_loser" || s === "hidden_nocatalog" || s === "hidden_soldout";
+    if (markupTab === "off") return s === "off";
+    return true;
+  });
+  const markupCountsLocal = markupCounts ?? { live: 0, hidden: 0, off: 0 };
+  const markupTotalPages = Math.max(1, Math.ceil(markupFiltered.length / markupPerPage));
+  const markupSafePage = Math.min(markupPage, markupTotalPages);
+  const markupPaged = markupFiltered.slice((markupSafePage - 1) * markupPerPage, markupSafePage * markupPerPage);
 
   return (
     <div className="mt-4 space-y-4">
+      <SupplierTabs
+        tabs={[
+          { id: "ringkas", label: "Ringkas" },
+          { id: "antrean", label: "Antrean", count: activeOrderCount ?? undefined },
+          { id: "markup", label: "Markup", count: markupCounts?.total ?? undefined },
+          { id: "aturan", label: "Aturan", count: exclusions.length || undefined },
+          { id: "audit", label: "Audit SK" },
+          { id: "alat", label: "Alat" },
+        ]}
+        active={skTab}
+        onChange={(tab) => openTab(tab as typeof skTab)}
+      />
+      {skTab === "ringkas" && (
       <section className="ax-glass overflow-hidden rounded-[20px]">
         <header className="flex flex-wrap items-center gap-3 border-b border-white/10 p-4 sm:p-5">
           <div className="min-w-0">
@@ -648,7 +734,9 @@ export function SekalipayManager() {
           </div>
         </div>
       </section>
-
+      )}
+      {skTab === "antrean" && (
+      <>
       <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.035]">
         <header className="flex flex-wrap items-center gap-3 border-b border-white/10 p-4">
           <div className="min-w-0"><h3 className="text-sm font-semibold text-white">Uji sandbox order</h3><p className="mt-0.5 text-[11px] text-white/40">Tanpa potong saldo. Isi product_id + variant_id SK (lihat respons sync / daftar item).</p></div>
@@ -662,14 +750,13 @@ export function SekalipayManager() {
           {sandboxResult && <p className="w-full font-mono text-[11px] text-white/60">{sandboxResult}</p>}
         </div>
       </section>
-
       <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.035]">
         <header className="flex flex-wrap items-center gap-3 border-b border-white/10 p-4">
           <div className="min-w-0"><h3 className="text-sm font-semibold text-white">Antrean order SK</h3><p className="mt-0.5 text-[11px] text-white/40">Order lunas yang diteruskan ke Sekalipay. Cari by invoice SK atau kode Axvara.</p></div>
           <input value={orderQuery} onChange={(e) => setOrderQuery(e.target.value)} placeholder="Cari invoice SK / kode Axvara…" className="h-9 w-full max-w-[240px] rounded-xl border border-white/10 bg-white/[0.05] px-3 text-xs text-white placeholder:text-white/30 focus:border-[#00E5FF]/50 focus:outline-none sm:ml-auto" />
           <div className="flex flex-wrap gap-2">
             {[["all", "Semua"], ["pending", "Pending"], ["submitted", "Terkirim"], ["processing", "Diproses"], ["retry", "Retry"], ["blocked_balance", "Saldo habis"], ["failed", "Gagal"], ["completed", "Selesai"]].map(([value, label]) => (
-              <button key={value} onClick={() => setOrderStatus(value)} className={`h-8 whitespace-nowrap rounded-lg px-3 text-xs font-semibold transition ${orderStatus === value ? "bg-[#00E5FF] text-[#07101f]" : "bg-white/[0.06] text-white/55 hover:bg-white/10 hover:text-white"}`}>{label}</button>
+              <button key={value} onClick={() => { setOrderStatus(value); setOrderPage(1); void loadOrders(1); }} className={`h-8 whitespace-nowrap rounded-lg px-3 text-xs font-semibold transition ${orderStatus === value ? "bg-[#00E5FF] text-[#07101f]" : "bg-white/[0.06] text-white/55 hover:bg-white/10 hover:text-white"}`}>{label}</button>
             ))}
           </div>
         </header>
@@ -720,8 +807,19 @@ export function SekalipayManager() {
             ))}
           </div>
         )}
+        {orderTotal > ORDER_PER_PAGE && (
+          <div className="flex items-center justify-between gap-3 border-t border-white/10 px-4 py-3">
+            <p className="text-xs text-white/40">Hal {orderPage} dari {Math.max(1, Math.ceil(orderTotal / ORDER_PER_PAGE))} • {orderTotal} order</p>
+            <div className="flex items-center gap-1.5">
+              <button disabled={orderPage <= 1} onClick={() => void loadOrders(orderPage - 1)} className="inline-flex h-8 items-center gap-1 px-3 rounded-full ax-glass text-xs font-semibold text-white/70 disabled:opacity-40 disabled:pointer-events-none"><IosIcon name="chevron-left" size={12} tint="white" /> Sebelumnya</button>
+              <button disabled={orderPage >= Math.ceil(orderTotal / ORDER_PER_PAGE)} onClick={() => void loadOrders(orderPage + 1)} className="inline-flex h-8 items-center gap-1 px-3 rounded-full ax-glass text-xs font-semibold text-white/70 disabled:opacity-40 disabled:pointer-events-none">Berikutnya <IosIcon name="chevron-right" size={12} tint="white" /></button>
+            </div>
+          </div>
+        )}
       </section>
-
+      </>
+      )}
+      {skTab === "aturan" && (
       <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.035]">
         <header className="border-b border-white/10 p-4"><h3 className="text-sm font-semibold text-white">Exclusion rules</h3><p className="mt-0.5 text-[11px] text-white/40">Produk yang cocok pola tidak dibuatkan katalog (registry tetap dicatat).</p></header>
         <div className="space-y-2 p-4">
@@ -742,16 +840,40 @@ export function SekalipayManager() {
           </div>
         </div>
       </section>
-
+      )}
+      {skTab === "markup" && (
       <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.035]">
         <header className="flex flex-wrap items-center gap-3 border-b border-white/10 p-4">
           <div className="min-w-0"><h3 className="text-sm font-semibold text-white">Markup per varian</h3><p className="mt-0.5 text-[11px] text-white/40">Ubah markup → harga jual Axvara dihitung ulang otomatis.</p></div>
-          <input value={markupQuery} onChange={(e) => setMarkupQuery(e.target.value)} placeholder="Cari varian…" className="ml-auto h-9 w-full max-w-[220px] rounded-xl border border-white/10 bg-white/[0.05] px-3 text-xs text-white placeholder:text-white/30 focus:border-[#00E5FF]/50 focus:outline-none" />
+          <input value={markupQuery} onChange={(e) => { setMarkupQuery(e.target.value); setMarkupPage(1); }} placeholder="Cari varian…" className="ml-auto h-9 w-full max-w-[220px] rounded-xl border border-white/10 bg-white/[0.05] px-3 text-xs text-white placeholder:text-white/30 focus:border-[#00E5FF]/50 focus:outline-none" />
         </header>
+        <div className="flex flex-wrap items-center gap-2 border-b border-white/10 p-3" role="tablist" aria-label="Status tampil varian">
+          {([["live", `Live (${markupCountsLocal.live})`], ["hidden", `Disembunyikan otomatis (${markupCountsLocal.hidden})`], ["off", `Nonaktif manual (${markupCountsLocal.off})`], ["all", `Semua (${markups.length})`]] as const).map(([value, label]) => (
+            <button
+              key={value}
+              role="tab"
+              aria-selected={markupTab === value}
+              onClick={() => { setMarkupTab(value); setMarkupPage(1); }}
+              className={`h-8 whitespace-nowrap rounded-full px-3.5 text-[11px] font-bold transition ${markupTab === value ? "bg-[#00E5FF] text-[#07101f]" : "bg-white/[0.06] text-white/55 hover:bg-white/10 hover:text-white"}`}
+            >
+              {label}
+            </button>
+          ))}
+          <select
+            value={markupPerPage}
+            onChange={(e) => { setMarkupPerPage(Number(e.target.value) as 20 | 50 | 100); setMarkupPage(1); }}
+            aria-label="Jumlah per halaman"
+            className="ml-auto h-8 shrink-0 rounded-full bg-white/[0.06] border border-white/10 px-2.5 text-[11px] font-semibold text-white/70 focus:outline-none focus:border-[#00E5FF]/40"
+          >
+            <option value={20}>20 / hal</option>
+            <option value={50}>50 / hal</option>
+            <option value={100}>100 / hal</option>
+          </select>
+        </div>
         <div className="border-b border-white/10 p-3">
           <BulkMarkupToolbar
-            visibleIds={markups.slice(0, 30).map((r) => r.sk_variant_id)}
-            totalCount={null}
+            visibleIds={markupPaged.map((r) => (r as MarkupRow).sk_variant_id)}
+            totalCount={markupFiltered.length}
             selected={bulkSelected}
             onToggleOne={(id) => setBulkSelected((prev) => {
               const next = new Set(prev);
@@ -759,15 +881,17 @@ export function SekalipayManager() {
               else next.add(id);
               return next;
             })}
-            onToggleAllVisible={(checked) => setBulkSelected(checked ? new Set(markups.slice(0, 30).map((r) => r.sk_variant_id)) : new Set())}
+            onToggleAllVisible={(checked) => setBulkSelected(checked ? new Set(markupPaged.map((r) => (r as MarkupRow).sk_variant_id)) : new Set())}
             onClear={() => setBulkSelected(new Set())}
             onApply={applyBulkMarkup}
           />
         </div>
-        {!markups.length ? <p className="p-10 text-center text-sm text-white/40">Belum ada varian SK tersinkron.</p> : (
+        {!markups.length ? <p className="p-10 text-center text-sm text-white/40">Belum ada varian SK tersinkron.</p> : markupFiltered.length === 0 ? <p className="p-10 text-center text-sm text-white/40">Tidak ada varian pada tab ini — coba ubah kata kunci.</p> : (
           <div className="divide-y divide-white/[0.06]">
-            {markups.slice(0, 30).map((row) => {
+            {markupPaged.map((row) => {
               const edit = editingMarkup[row.sk_variant_id] ?? { percent: String(row.markup_percent), fixed: String(row.markup_fixed) };
+              const vStatus = (row as MarkupRow & { variant_status?: string; variant_reason?: string }).variant_status ?? "live";
+              const vReason = (row as MarkupRow & { variant_status?: string; variant_reason?: string }).variant_reason ?? "";
               return (
                 <article key={row.sk_variant_id} className="grid gap-3 p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
                   <div className="min-w-0">
@@ -786,8 +910,9 @@ export function SekalipayManager() {
                       />
                       <p className="truncate text-sm font-semibold text-white">{row.sk_product_name ? `${row.sk_product_name} — ` : ""}{row.sk_variant_name}</p>
                       <ProcessBadge process={row.sk_order_process} />
+                      <VariantStatusBadge status={vStatus} reason={vReason} />
                     </div>
-                    <p className="mt-1 text-xs text-white/45">Modal {formatRupiah(row.sk_price)} · Jual {formatRupiah(row.axvara_sell_price)} · Stok {row.sk_stock}{row.sk_min_order && Number(row.sk_min_order) > 1 ? ` · Min. ${row.sk_min_order}` : ""}{row.sk_status ? ` · ${row.sk_status}` : ""}{row.axvara_variant_id ? "" : " · TANPA katalog"}</p>
+                    <p className="mt-1 text-xs text-white/45">Modal {formatRupiah(row.sk_price)} · Jual {formatRupiah(row.axvara_sell_price)} · Stok {row.sk_stock}{row.sk_min_order && Number(row.sk_min_order) > 1 ? ` · Min. ${row.sk_min_order}` : ""}{row.sk_status ? ` · ${row.sk_status}` : ""}{row.axvara_variant_id ? "" : " · TANPA katalog"}{vStatus !== "live" && vReason ? ` · ${vReason}` : ""}</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <label className="flex items-center gap-1.5 text-xs text-white/55">%<input value={edit.percent} onChange={(e) => setEditingMarkup((s) => ({ ...s, [row.sk_variant_id]: { percent: e.target.value, fixed: edit.fixed } }))} inputMode="numeric" className="h-9 w-16 rounded-lg border border-white/10 bg-black/20 px-2 text-right text-xs text-white focus:border-[#00E5FF]/50 focus:outline-none" /></label>
@@ -799,8 +924,20 @@ export function SekalipayManager() {
             })}
           </div>
         )}
+        {markupFiltered.length > markupPerPage && (
+          <div className="flex items-center justify-between gap-3 border-t border-white/10 px-4 py-3">
+            <p className="text-xs text-white/40">Hal {markupSafePage} dari {markupTotalPages} • {markupFiltered.length} varian</p>
+            <div className="flex items-center gap-1.5">
+              <button disabled={markupSafePage <= 1} onClick={() => setMarkupPage((p) => Math.max(1, p - 1))} className="inline-flex h-8 items-center gap-1 px-3 rounded-full ax-glass text-xs font-semibold text-white/70 disabled:opacity-40 disabled:pointer-events-none"><IosIcon name="chevron-left" size={12} tint="white" /> Sebelumnya</button>
+              <span className="text-xs text-white/40 px-1">{markupSafePage} / {markupTotalPages}</span>
+              <button disabled={markupSafePage >= markupTotalPages} onClick={() => setMarkupPage((p) => Math.min(markupTotalPages, p + 1))} className="inline-flex h-8 items-center gap-1 px-3 rounded-full ax-glass text-xs font-semibold text-white/70 disabled:opacity-40 disabled:pointer-events-none">Berikutnya <IosIcon name="chevron-right" size={12} tint="white" /></button>
+            </div>
+          </div>
+        )}
       </section>
-
+      )}
+      {skTab === "audit" && (
+      <>
       <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.035]">
         <header className="flex flex-wrap items-center gap-3 border-b border-white/10 p-4">
           <div className="min-w-0"><h3 className="text-sm font-semibold text-white">Mutasi saldo <span className="ml-1 rounded-full bg-[#00E5FF]/15 px-2 py-0.5 text-[10px] font-bold text-[#5cefff]">KHAS SK</span></h3><p className="mt-0.5 text-[11px] text-white/40">Audit credit/debit + saldo sebelum/sesudah per invoice. WR tidak punya ini.</p></div>
@@ -829,6 +966,30 @@ export function SekalipayManager() {
         )}
       </section>
 
+      <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.035]">
+        <header className="flex flex-wrap items-center gap-3 border-b border-white/10 p-4">
+          <div className="min-w-0"><h3 className="text-sm font-semibold text-white">Transaksi SK <span className="ml-1 rounded-full bg-[#00E5FF]/15 px-2 py-0.5 text-[10px] font-bold text-[#5cefff]">KHAS SK</span></h3><p className="mt-0.5 text-[11px] text-white/40">Daftar transaksi di sisi Sekalipay (audit/refund). WR tidak punya ini.</p></div>
+          <button onClick={() => void loadTransactions()} disabled={trxLoading} className="ml-auto inline-flex h-8 items-center gap-2 rounded-lg border border-white/10 px-3 text-xs font-semibold text-white/60 transition hover:bg-white/5 hover:text-white disabled:opacity-40">
+            {trxLoading ? <Spinner size={12} /> : <IosIcon name="refresh" size={12} tint="white" />} Muat
+          </button>
+        </header>
+        {!transactions.length ? <p className="p-10 text-center text-sm text-white/40">Belum ada data — tekan Muat.</p> : (
+          <div className="divide-y divide-white/[0.06]">
+            {transactions.map((t) => (
+              <div key={t.invoice} className="flex flex-wrap items-center gap-2 p-4">
+                <StatusBadge status={t.status} />
+                <span className="font-mono text-[11px] text-white/45">{t.invoice}</span>
+                <span className="font-mono text-[11px] text-white/35">{t.ref_id}</span>
+                <span className="ml-auto text-xs text-white/55 tabular-nums">{formatRupiah(t.amount)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+      </>
+      )}
+      {skTab === "alat" && (
+      <>
       <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.035]">
         <header className="border-b border-white/10 p-4"><h3 className="text-sm font-semibold text-white">Cek akun <span className="ml-1 rounded-full bg-[#00E5FF]/15 px-2 py-0.5 text-[10px] font-bold text-[#5cefff]">KHAS SK</span></h3><p className="mt-0.5 text-[11px] text-white/40">Validasi nickname/nama sebelum order (game, e-wallet). WR tidak punya ini.</p></header>
         <div className="flex flex-wrap items-center gap-2 p-4">
@@ -870,26 +1031,6 @@ export function SekalipayManager() {
         )}
       </section>
 
-      <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.035]">
-        <header className="flex flex-wrap items-center gap-3 border-b border-white/10 p-4">
-          <div className="min-w-0"><h3 className="text-sm font-semibold text-white">Transaksi SK <span className="ml-1 rounded-full bg-[#00E5FF]/15 px-2 py-0.5 text-[10px] font-bold text-[#5cefff]">KHAS SK</span></h3><p className="mt-0.5 text-[11px] text-white/40">Daftar transaksi di sisi Sekalipay (audit/refund). WR tidak punya ini.</p></div>
-          <button onClick={() => void loadTransactions()} disabled={trxLoading} className="ml-auto inline-flex h-8 items-center gap-2 rounded-lg border border-white/10 px-3 text-xs font-semibold text-white/60 transition hover:bg-white/5 hover:text-white disabled:opacity-40">
-            {trxLoading ? <Spinner size={12} /> : <IosIcon name="refresh" size={12} tint="white" />} Muat
-          </button>
-        </header>
-        {!transactions.length ? <p className="p-10 text-center text-sm text-white/40">Belum ada data — tekan Muat.</p> : (
-          <div className="divide-y divide-white/[0.06]">
-            {transactions.map((t) => (
-              <div key={t.invoice} className="flex flex-wrap items-center gap-2 p-4">
-                <StatusBadge status={t.status} />
-                <span className="font-mono text-[11px] text-white/45">{t.invoice}</span>
-                <span className="font-mono text-[11px] text-white/35">{t.ref_id}</span>
-                <span className="ml-auto text-xs text-white/55 tabular-nums">{formatRupiah(t.amount)}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
 
       <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.035]">
         <header className="border-b border-white/10 p-4"><h3 className="text-sm font-semibold text-white">Detail varian</h3><p className="mt-0.5 text-[11px] text-white/40">Capability registry (min.order, status, deskripsi, required fields) + live API.</p></header>
@@ -901,6 +1042,8 @@ export function SekalipayManager() {
           {detailResult && <p className="w-full whitespace-pre-wrap font-mono text-[11px] text-white/60">{detailResult}</p>}
         </div>
       </section>
+      </>
+      )}
     </div>
   );
 }

@@ -11,7 +11,8 @@ export async function GET(request: NextRequest) {
   const admin = await requireAdmin(request);
   if (!admin) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const status = request.nextUrl.searchParams.get("status")?.trim() || "all";
-  const limit = Math.min(100, Math.max(1, Number(request.nextUrl.searchParams.get("limit") || 30)));
+  // Limit lama dipertahankan sebagai fallback bila per_page tak dikirim.
+  const legacyLimit = Math.min(100, Math.max(1, Number(request.nextUrl.searchParams.get("limit") || 20)));
   // Cari manual email WR: paste invoice #RBHN-... dari Gmail langsung ketemu
   // order Axvara + buyer. Dipotong 40 char (batas LIKE D1 50 byte).
   const rawQ = request.nextUrl.searchParams.get("q")?.trim().slice(0, 40) || "";
@@ -33,17 +34,26 @@ export async function GET(request: NextRequest) {
     params.push(like, like);
   }
   const where = whereParts.length ? `WHERE ${whereParts.join(" AND ")}` : "";
-  params.push(limit);
+  // Pagination antrean (2026-10-01): filter status + search + halaman.
+  // per_page default = legacy limit agar pemanggil lama tidak berubah.
+  const page = Math.max(1, Number(request.nextUrl.searchParams.get("page") || 1));
+  const perPage = Math.min(50, Math.max(1, Number(request.nextUrl.searchParams.get("per_page") || legacyLimit)));
+  const offset = (page - 1) * perPage;
+  const totalRow = await queryAll(
+    `SELECT COUNT(*) AS total FROM wr_order_links l LEFT JOIN orders o ON o.code=l.order_code ${where}`,
+    ...params,
+  ).catch(() => []);
+  const total = Number((totalRow[0] as Record<string, unknown> | undefined)?.total ?? 0);
   const rows = await queryAll(
     `SELECT l.*, o.status AS order_status, o.sales_channel,
       o.customer_name, o.customer_wa, o.customer_email
      FROM wr_order_links l
      LEFT JOIN orders o ON o.code=l.order_code
-     ${where} ORDER BY l.id DESC LIMIT ?`,
-    ...params,
+     ${where} ORDER BY l.id DESC LIMIT ? OFFSET ?`,
+    ...params, perPage, offset,
   ).catch(() => []);
   // Jangan kirim ciphertext akun ke client admin list; detail diambil
   // eksplisit per order bila diperlukan.
   const safe = rows.map((r) => ({ ...r, wr_account_details: r.wr_account_details ? "(encrypted)" : null, wr_account_iv: undefined }));
-  return NextResponse.json({ orders: safe });
+  return NextResponse.json({ orders: safe, total, page, per_page: perPage });
 }

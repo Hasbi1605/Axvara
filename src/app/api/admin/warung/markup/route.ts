@@ -24,22 +24,69 @@ export async function GET(request: NextRequest) {
   const admin = await requireAdmin(request);
   if (!admin) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const q = request.nextUrl.searchParams.get("q")?.trim().slice(0, 60) || "";
-  const limit = Math.min(100, Math.max(1, Number(request.nextUrl.searchParams.get("limit") || 50)));
+  // Limit 200: registry WR ~92 baris muat 1 request (tab markup fetch 1x,
+  // filter + pagination murni klien cermin halaman Produk).
+  const limit = Math.min(200, Math.max(1, Number(request.nextUrl.searchParams.get("limit") || 200)));
   const like = `%${q.toLowerCase()}%`;
   const rows = await queryAll(
     `SELECT wv.wr_variant_id, wv.wr_variant_name, wv.wr_price, wv.wr_stock,
             wv.markup_percent, wv.markup_fixed, wv.axvara_sell_price,
             wv.axvara_variant_id, wv.wr_delivery_class, wv.wr_delivery_source,
-            wp.wr_product_name,
-            pv.price AS current_price
+            wv.is_active AS wr_is_active,
+            wp.wr_product_name, wp.axvara_product_id AS wp_axvara_product_id,
+            pv.price AS current_price, pv.stock AS pv_stock, pv.min_qty AS pv_min_qty,
+            pv.is_active AS pv_is_active, pv.product_id AS pv_product_id,
+            p.is_active AS p_is_active,
+            CASE WHEN pair.winner IS NOT NULL
+                   AND pair.wr_product_id = wp.axvara_product_id
+                   AND pair.winner != 'WR'
+                 THEN 1 ELSE 0 END AS parent_is_loser
      FROM wr_variants wv
      LEFT JOIN wr_products wp ON wp.wr_product_id=wv.wr_product_id
      LEFT JOIN product_variants pv ON pv.id=wv.axvara_variant_id
-     ${q ? "WHERE lower(wv.wr_variant_name) LIKE ? OR lower(wp.wr_product_name) LIKE ?" : ""}
-     ORDER BY wp.wr_product_name ASC, wv.wr_variant_name ASC LIMIT ?`,
+     LEFT JOIN products p ON p.id=pv.product_id
+     LEFT JOIN supplier_pairs pair ON pair.wr_product_id=wp.axvara_product_id
+       AND pair.winner IS NOT NULL
+      ${q ? "WHERE lower(wv.wr_variant_name) LIKE ? OR lower(wp.wr_product_name) LIKE ?" : ""}
+      ORDER BY wp.wr_product_name ASC, wv.wr_variant_name ASC LIMIT ?`,
     ...(q ? [like, like, limit] : [limit]),
   ).catch(() => []);
-  return NextResponse.json({ variants: rows });
+  // Total hasil filter (tanpa LIMIT) untuk pagination jujur.
+  const totalRow = await queryFirst(
+    `SELECT COUNT(*) AS total
+     FROM wr_variants wv
+     LEFT JOIN wr_products wp ON wp.wr_product_id=wv.wr_product_id
+      ${q ? "WHERE lower(wv.wr_variant_name) LIKE ? OR lower(wp.wr_product_name) LIKE ?" : ""}`,
+    ...(q ? [like, like] : []),
+  ).catch(() => null);
+  // Status toko per varian (cermin liveStatus produk, hierarki:
+  // off > kalah > tanpa-katalog > habis > live).
+  const withStatus = (rows as Record<string, unknown>[]).map((r) => {
+    const pvActive = r.pv_is_active == null ? 1 : Number(r.pv_is_active);
+    const pActive = r.p_is_active == null ? 1 : Number(r.p_is_active);
+    const wrActive = Number(r.wr_is_active ?? 1);
+    let status: "live" | "hidden_loser" | "hidden_nocatalog" | "hidden_soldout" | "off" = "live";
+    let reason = "Tampil di storefront";
+    if (wrActive !== 1 || pvActive !== 1 || pActive !== 1) {
+      status = "off";
+      reason = "Nonaktif manual";
+    } else if (Number(r.parent_is_loser ?? 0) === 1) {
+      status = "hidden_loser";
+      reason = "Produk kalah pasangan WR vs SK";
+    } else if (r.axvara_variant_id == null) {
+      status = "hidden_nocatalog";
+      reason = "Tanpa pasangan katalog — tidak tampil";
+    } else {
+      const stock = Number(r.pv_stock ?? r.wr_stock ?? 0);
+      const minQty = Math.max(1, Number(r.pv_min_qty ?? 1) || 1);
+      if (!(stock === -1 || stock >= minQty)) {
+        status = "hidden_soldout";
+        reason = "Stok habis · restok otomatis tampil";
+      }
+    }
+    return { ...r, variant_status: status, variant_reason: reason };
+  });
+  return NextResponse.json({ variants: withStatus, total: Number((totalRow as Record<string, unknown> | null)?.total ?? withStatus.length) });
 }
 
 export async function PUT(request: NextRequest) {
