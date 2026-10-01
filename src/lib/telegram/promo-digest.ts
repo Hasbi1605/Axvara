@@ -69,7 +69,7 @@ export function selectPromoProducts(
 
 export function promoMessages(slot: PromoSlot, products: PromoProduct[]): { full: string; short: string } {
   const morning = slot === "morning";
-  const title = morning ? "🔥 <b>READY PAGI INI</b>" : "🌙 <b>READY SORE INI</b>";
+  const title = morning ? "🔥 <b>PRODUK AXVARA READY PAGI INI</b>" : "🔥 <b>PRODUK AXVARA READY SORE INI</b>";
   // Hook owner 2026-09-29 (ganti kalimat lama yang terlalu biasa).
   const intro = "Sedia semua kebutuhan aplikasi dan tools premium favorit anda, murah, mudah, cepat, dan bergaransi.";
   // Ikon per kategori taksonomi (bukan per indeks — tidak ada lagi
@@ -104,7 +104,7 @@ export function promoMessages(slot: PromoSlot, products: PromoProduct[]): { full
   const webUrl = siteOrigin();
   const cta = `🤖 <b>Order melalui Bot Telegram:</b>\n${botUrl}\n\n🌐 <b>Order melalui Website:</b>\n${webUrl}`;
   return {
-    full: `${title} — ${products.length} PRODUK AXVARA\n\n${intro}\n\n${lines.join("\n")}\n\n${cta}`,
+    full: `${title}\n\n${intro}\n\n${lines.join("\n")}\n\n${cta}`,
     short: `Ready ${morning ? "pagi" : "sore"} ini ✅ ${products.length} produk AXVARA\n\n${shortLines.join("\n")}\n\n🤖 ${botUrl}\n🌐 ${webUrl}`,
   };
 }

@@ -76,6 +76,10 @@ describe("Telegram promo digest", () => {
 
   it("renders format Axvara + ceklis per baris + hook + CTA", () => {
     const message = promoMessages("morning", products.slice(0, 3)).full;
+    // Judul: emoji api + PRODUK AXVARA READY (tanpa hitungan — keputusan
+    // owner 2026-10-01).
+    expect(message).toContain("🔥 <b>PRODUK AXVARA READY PAGI INI</b>");
+    expect(message).not.toContain("PRODUK AXVARA\n");
     expect(message).toContain("ChatGPT &lt;Pro&gt;");
     expect(message).toContain("Sedia semua kebutuhan aplikasi dan tools premium favorit anda, murah, mudah, cepat, dan bergaransi.");
     // Emoji ceklis per baris produk ready (contoh WR/SEKUDIL).
@@ -96,6 +100,12 @@ describe("Telegram promo digest", () => {
     // Deep-link langsung buka bot dengan payload beli (keputusan owner
     // 2026-10-01): tap link → chat pribadi langsung siap order.
     expect(message).toContain("https://t.me/Axvara_bot?start=beli");
+  });
+
+  it("judul sore: api + PRODUK AXVARA READY SORE INI", () => {
+    const message = promoMessages("evening", products.slice(0, 3)).full;
+    expect(message).toContain("🔥 <b>PRODUK AXVARA READY SORE INI</b>");
+    expect(message).not.toContain("PRODUK AXVARA\n");
   });
 
   it("short bubble ringkas siap forward tanpa disclaimer", () => {
