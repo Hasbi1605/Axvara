@@ -323,14 +323,14 @@ export async function notifyTelegramPaidAdmin(orderCode: string, database: Datab
 
 /** Ringkasan status kirim order web untuk notif admin (dibaca setelah upaya kirim pertama). */
 export function summarizeWebDelivery(items: Row[]): { needsAdmin: boolean; lines: string[] } {
-  let auto = 0, manualDone = 0, needsAdmin = 0, inProgress = 0, wr = 0, sk = 0;
+  let auto = 0, manualDone = 0, needsAdmin = 0, inProgress = 0, wr = 0, skPending = 0;
   for (const item of items) {
     const status = String(item.status ?? "");
     if (item.wr_link_id != null) wr++;
     else if (item.sk_link_id != null) {
       if (status === "delivered") auto++;
       else if (status === "manual_required" || status === "failed") needsAdmin++;
-      else inProgress++;
+      else { inProgress++; skPending++; }
     }
     else if (status === "delivered") {
       if (String(item.delivered_message_id ?? "").startsWith("item:")) auto++;
@@ -345,7 +345,7 @@ export function summarizeWebDelivery(items: Row[]): { needsAdmin: boolean; lines
   if (manualDone) lines.push(`✅ ${manualDone} item sudah diserahkan admin`);
   if (inProgress) lines.push(`⏳ ${inProgress} item sedang dikirim otomatis`);
   if (wr) lines.push(`🤖 ${wr} item diproses otomatis lewat Warung Rebahan`);
-  if (sk) lines.push(`🤖 ${sk} item diproses otomatis lewat Sekalipay`);
+  if (skPending) lines.push(`🤖 ${skPending} item diproses otomatis lewat Sekalipay`);
   if (!lines.length) lines.push("⏳ Menunggu proses pengiriman");
   return { needsAdmin: needsAdmin > 0, lines };
 }

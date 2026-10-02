@@ -155,6 +155,17 @@ describe("ringkasan status kirim + origin situs", () => {
       .toEqual({ needsAdmin: false, lines: ["✅ 1 item sudah diserahkan admin"] });
   });
 
+  it("item SK pending disebut Sekalipay eksplisit di notif admin", () => {
+    const res = summarizeWebDelivery([
+      { status: "processing", delivered_message_id: null, sk_link_id: 3 },
+      { status: "delivered", delivered_message_id: "sk:7", sk_link_id: 7 },
+    ]);
+    expect(res.needsAdmin).toBe(false);
+    expect(res.lines).toContain("📧 1 item terkirim otomatis ke email pembeli");
+    expect(res.lines).toContain("⏳ 1 item sedang dikirim otomatis");
+    expect(res.lines).toContain("🤖 1 item diproses otomatis lewat Sekalipay");
+  });
+
   it("tombol WA hanya untuk nomor valid (satu URL buruk menggagalkan seluruh pesan)", () => {
     for (const customerWa of ["", "0812", "12345678901"]) {
       const kb = webPaidAdminKeyboard({ customerWa, orderCode: CODE, siteUrl: "https://axvara.tech" });
