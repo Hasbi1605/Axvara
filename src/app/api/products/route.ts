@@ -281,13 +281,19 @@ export async function GET(req: NextRequest) {
       sortOrder: r.sort_order == null ? 0 : Number(r.sort_order),
     };
   });
+  // PDP by-slug dibaca tepat setelah ada yang beli (2026-10-02): cache
+  // 30 detik terlalu basi untuk angka stok (insiden Head 18 Bulan).
+  // Daftar katalog tetap 30 detik; hanya ?slug= yang 10 detik.
+  const cacheControl = !isPublicCatalog
+    ? "private, no-store, max-age=0"
+    : slug
+      ? "public, max-age=10, s-maxage=10, stale-while-revalidate=30"
+      : "public, max-age=30, s-maxage=30, stale-while-revalidate=60";
   return NextResponse.json(
     { products: data },
     {
       headers: {
-        "Cache-Control": isPublicCatalog
-          ? "public, max-age=30, s-maxage=30, stale-while-revalidate=60"
-          : "private, no-store, max-age=0",
+        "Cache-Control": cacheControl,
       },
     }
   );

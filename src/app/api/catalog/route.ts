@@ -23,7 +23,10 @@ export async function GET(request: Request) {
       variantsEnabled: isD1Mode() && isVariantsReadEnabled(),
     }, {
       headers: {
-        "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60",
+        // Slug PDP dibaca pembeli tepat setelah ada yang beli (2026-10-02):
+        // 30 detik terlalu basi untuk angka stok (insiden Head 18 Bulan).
+        // 10 detik + SWR 30 = segar tanpa membanjiri D1 (PDP bukan daftar).
+        "Cache-Control": "public, s-maxage=10, stale-while-revalidate=30",
       },
     });
   }

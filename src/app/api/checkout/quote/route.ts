@@ -107,7 +107,16 @@ export async function POST(req: NextRequest) {
   if (variantIds.size > 0) {
     const rows = await queryAll(
       `SELECT pv.*, wv.wr_type AS wr_type, wv.wr_delivery_class AS wr_delivery_class,
-              sp.sk_order_process AS sk_order_process, p.require_email AS require_email
+              sp.sk_order_process AS sk_order_process, p.require_email AS require_email,
+              -- Unit kredensial tersisa khusus unique (2026-10-02, insiden Head
+              -- 18 Bulan): tanpa ini varian stock=2 + available=1 lolos quote
+              -- lalu gagal di guard atomik. Subquery per varian (quote ≤20
+              -- item), bukan JOIN + GROUP BY yang mengubah bentuk baris.
+              (SELECT COUNT(*) FROM fulfillment_inventory fi
+                WHERE fi.product_id = pv.product_id
+                  AND fi.variant_id = pv.id
+                  AND fi.status = 'available'
+                  AND pv.fulfillment_mode = 'unique') AS inventory_available
        FROM product_variants pv
        LEFT JOIN wr_variants wv ON wv.wr_variant_id = pv.wr_variant_id
        LEFT JOIN sk_products sp ON sp.sk_variant_id = pv.sk_variant_id
@@ -174,6 +183,17 @@ export async function POST(req: NextRequest) {
       }
       effectivePrice = Number(variantRow.price);
       effectiveStock = variantRow.stock == null ? -1 : Number(variantRow.stock);
+      // Stok efektif unique (2026-10-02): min(kolom, inventory available).
+      // effectiveVariantStock dihitung inline (bukan impor catalog.ts — route
+      // ini edge-safe dan catalog membawa query D1 yang tak perlu di sini).
+      if (String(variantRow.fulfillment_mode ?? "") === "unique" && variantRow.inventory_available != null) {
+        const inv = Number(variantRow.inventory_available);
+        if (Number.isFinite(inv)) {
+          effectiveStock = effectiveStock === -1
+            ? Math.max(0, inv)
+            : Math.min(Math.max(0, effectiveStock), Math.max(0, inv));
+        }
+      }
       // Label + durasi anti-duplikasi (audit 2026-09-19: 88/97 varian aktif
       // kehilangan durasi karena sync WR menulis label = nama verbatim;
       // web WR menggabung "Meitu VIP - 7 Hari"). formatVariantLabel hanya

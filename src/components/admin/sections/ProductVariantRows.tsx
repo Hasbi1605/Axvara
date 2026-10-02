@@ -42,6 +42,8 @@ export const FULFILLMENT_OPTIONS = [
 export function NonWrFulfillmentPanel({ productId, variantId, mode }: { productId?: number | string; variantId?: number; mode: string }) {
   const toast = useToast();
   const [counts, setCounts] = useState<{ available: number; reserved: number; delivered: number } | null>(null);
+  const [variantStock, setVariantStock] = useState<number | null>(null);
+  const [stockMismatch, setStockMismatch] = useState(false);
   const [sharedCurrent, setSharedCurrent] = useState<string | null>(null);
   const [handoverTemplate, setHandoverTemplate] = useState("");
   const [handoverSaved, setHandoverSaved] = useState("");
@@ -60,12 +62,15 @@ export function NonWrFulfillmentPanel({ productId, variantId, mode }: { productI
         shared_secret?: string | null;
         inventory?: { id: number; secret: string }[];
         handover_template?: string;
+        variant_stock?: number; stock_mismatch?: boolean;
       };
       if (!res.ok) return;
       const template = typeof data.handover_template === "string" ? data.handover_template : "";
       setHandoverTemplate(template);
       setHandoverSaved(template);
       setCounts({ available: Number(data.available || 0), reserved: Number(data.reserved || 0), delivered: Number(data.delivered || 0) });
+      setVariantStock(typeof data.variant_stock === "number" ? data.variant_stock : null);
+      setStockMismatch(data.stock_mismatch === true);
       setSharedCurrent(typeof data.shared_secret === "string" ? data.shared_secret : null);
       setInventory(Array.isArray(data.inventory) ? data.inventory : []);
     } catch { /* counts pendukung — gagal muat tidak menghalangi simpan. */ }
@@ -178,6 +183,13 @@ export function NonWrFulfillmentPanel({ productId, variantId, mode }: { productI
           <button type="button" onClick={() => void load()} className="text-[11px] font-semibold text-[#5cefff] hover:underline">Muat ulang</button>
         </div>
       </div>
+      {/* Selisih angka unique (2026-10-02, cermin FulfillmentInventoryPanel):
+          kolom stock vs kredensial tersisa. */}
+      {mode === "unique" && stockMismatch && variantStock != null && counts && (
+        <p role="alert" className="mt-3 rounded-xl border border-[#FFB800]/30 bg-[#FFB800]/[0.08] px-3 py-2 text-[11px] leading-5 text-[#FFD66B]">
+          Angka stok kolom ({variantStock}) tidak sama dengan kredensial tersisa ({counts.available}). Pembeli melihat yang terkecil. Impor ulang atau hapus 1 baris untuk menyelaraskan.
+        </p>
+      )}
       {mode === "shared" ? (
         <div className="mt-3">
           {sharedCurrent ? (

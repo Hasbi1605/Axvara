@@ -26,6 +26,29 @@ export async function GET(request: NextRequest) {
   if (!target) return NextResponse.json({ error: variantId ? "variant_not_found" : "product_not_found" }, { status: 404 });
 
   const counts = await countInventory(productId, variantId);
+  // Peringatan selisih unique (2026-10-02, insiden Head 18 Bulan): kolom
+  // stock vs unit available milik varian. Dikirim sebagai angka mentah agar
+  // panel admin bisa menampilkan banner "angka tidak sama — sinkronkan".
+  let variantStock: number | null = null;
+  let stockMismatch = false;
+  try {
+    if (variantId) {
+      const vRow = await queryFirst(
+        `SELECT stock, fulfillment_mode FROM product_variants WHERE id=? AND product_id=?`,
+        variantId, productId,
+      );
+      if (vRow && String(vRow.fulfillment_mode ?? "") === "unique") {
+        variantStock = Number(vRow.stock ?? -1);
+        const scopedAvailable = await queryFirst(
+          `SELECT COUNT(*) AS available FROM fulfillment_inventory
+           WHERE product_id=? AND variant_id=? AND status='available'`,
+          productId, variantId,
+        );
+        const scoped = Number(scopedAvailable?.available ?? 0);
+        stockMismatch = variantStock !== scoped;
+      }
+    }
+  } catch { /* warning pendukung — counts tetap dikembalikan */ }
   // Keputusan owner 2026-09-19: admin BOLEH melihat isi kredensial plaintext
   // di panel (mereka pemilik toko). Dekripsi terjadi server-side per request
   // dan TIDAK PERNAH dikirim ke storefront/pembeli — hanya route admin ini.
@@ -65,6 +88,8 @@ export async function GET(request: NextRequest) {
     handover_template: typeof target.handover_template === "string" ? target.handover_template : "",
     shared_secret: sharedSecret,
     inventory,
+    variant_stock: variantStock,
+    stock_mismatch: stockMismatch,
     ...counts,
   });
 }
@@ -173,7 +198,11 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await importInventory(productId, body.secrets, variantId);
-    return NextResponse.json({ ok: true, ...result });
+    // Selaraskan kolom stock unique → available (2026-10-02): tanpa ini
+    // angka "Sisa" PDP + agregat induk selisih permanen dari kredensial.
+    const { syncUniqueVariantStock } = await import("@/lib/fulfillment/inventory");
+    const syncedStock = await syncUniqueVariantStock(productId, variantId);
+    return NextResponse.json({ ok: true, ...result, synced_stock: syncedStock });
   }
 
   return NextResponse.json({ error: "invalid_action" }, { status: 400 });
@@ -193,6 +222,16 @@ export async function DELETE(request: NextRequest) {
   if (!revoked) {
     return NextResponse.json({ error: "cannot_revoke" }, { status: 409 });
   }
+  // Revoke mengurangi available → selaraskan kolom stock unique juga
+  // (2026-10-02, cermin import di atas). variant_id dibaca dari barisnya.
+  try {
+    const { syncUniqueVariantStock } = await import("@/lib/fulfillment/inventory");
+    const row = await queryFirst(
+      `SELECT product_id, variant_id FROM fulfillment_inventory WHERE id=?`,
+      Number(body.inventory_id),
+    );
+    if (row) await syncUniqueVariantStock(Number(row.product_id), row.variant_id != null ? Number(row.variant_id) : null);
+  } catch { /* sync best-effort — revoke sudah sukses */ }
 
   return NextResponse.json({ ok: true });
 }

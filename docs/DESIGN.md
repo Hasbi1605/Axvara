@@ -437,6 +437,11 @@
   bawah minimum (stock < min_qty, stock ≠ -1) tidak bisa dibeli dalam jumlah
   berapa pun — tampilkan sebagai tak tersedia ("STOK < MIN" di PDP,
   "Stok < min" di modal) dan tolak di keranjang, bukan dead-end di checkout.
+- **Stok efektif unique (2026-10-02, insiden Head 18 Bulan).** Varian
+  `unique` (satu secret per unit) menampilkan `Sisa` = min(kolom stock, unit
+  `available` inventory) — bukan kolom mentah. Unit habis (0) = HABIS walau
+  kolom masih > 0. Berlaku di kartu varian PDP, teks "Sisa N" stepper, plafon
+  qty, auto-pilih varian tunggal, dan quote checkout.
 
 ### 5.7a Halaman Lacak Pesanan `/lacak-pesanan` (2026-09-17, live)
 - Riset pola marketplace (Shopee/Tokopedia/Apple order tracking): satu form

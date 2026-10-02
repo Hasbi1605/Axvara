@@ -111,6 +111,45 @@ export async function countInventory(
 }
 
 /**
+ * Sinkronkan kolom `product_variants.stock` varian unique ke jumlah unit
+ * `available` miliknya (2026-10-02, insiden Head 18 Bulan).
+ *
+ * Dua angka itu selisih permanen bila admin impor/revoke tanpa menyentuh
+ * kolom stock, atau mengetik stock manual tanpa impor (stock=2 + available=1).
+ * Quote + PDP kini membaca min(keduanya), tapi angka induk + kartu katalog
+ * tetap agregat kolom stock — jadi selisih membuat tampilan "Stok: 22"
+ * padahal kredensial tersisa lebih sedikit. Fungsi ini best-effort (tidak
+ * melempar) dan hanya untuk varian unique: shared/manual/tanpa-variant
+ * tidak disentuh. Dipanggil setelah import + revoke; hitung ulang penuh
+ * (bukan +=) agar revoke/manual-edit ikut terkoreksi.
+ */
+export async function syncUniqueVariantStock(
+  productId: number,
+  variantId: number | null,
+): Promise<number | null> {
+  try {
+    if (variantId == null) return null;
+    const variant = await queryFirst(
+      `SELECT fulfillment_mode FROM product_variants WHERE id=? AND product_id=?`,
+      variantId, productId,
+    );
+    if (!variant || String(variant.fulfillment_mode ?? "") !== "unique") return null;
+    const row = await queryFirst(
+      `SELECT COUNT(*) AS available FROM fulfillment_inventory
+       WHERE product_id=? AND variant_id=? AND status='available'`,
+      productId, variantId,
+    );
+    const available = Number(row?.available ?? 0);
+    await execRun(
+      `UPDATE product_variants SET stock=?, updated_at=datetime('now') WHERE id=? AND product_id=?`,
+      Math.max(0, available), variantId, productId,
+    );
+    return Math.max(0, available);
+  } catch {
+    return null;
+  }
+}
+/**
  * Reserve one available inventory item for an order. Returns inventory ID or null.
  * Atomic in D1 via conditional UPDATE.
  */

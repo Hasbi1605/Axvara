@@ -56,6 +56,14 @@ export type VariantSummary = {
   compare_price: number | null;
   stock: number;
   /**
+   * Unit kredensial TERSISA untuk varian unique (2026-10-02): COUNT inventory
+   * `available` milik varian ini (tanpa pool legacy bersama). null = bukan
+   * varian unique / tidak dihitung (hindari query N+1 di daftar). PDP + quote
+   * memakai `effectiveVariantStock()` di bawah agar angka "Sisa" jujur —
+   * insiden Head 18 Bulan: stock=2 tapi available=1.
+   */
+  inventory_available?: number | null;
+  /**
    * Minimum pembelian per baris (migrasi 0034, milik admin, default 1).
    * GSuite dikunci 50; produk lain tinggal set angka dari admin bila butuh.
    * Sync WR tidak pernah menulis kolom ini.
@@ -197,6 +205,15 @@ export async function getProductDetail(slugOrId: string | number): Promise<Produ
             wv.wr_delivery_class AS wr_delivery_class, wv.wr_type AS wr_type,
             sp.sk_order_process AS sk_order_process,
             sp.sk_description AS sk_description, sp.sk_seller_note AS sk_seller_note,
+            -- Unit kredensial tersisa khusus unique (2026-10-02): hanya milik
+            -- varian ini (tanpa pool legacy) + reserved ikut dihitung agar
+            -- angka "Sisa" jujur selama ada order pending (reserved = sudah
+            -- diklaim order lain, bukan milik pembeli ini).
+            (SELECT COUNT(*) FROM fulfillment_inventory fi
+              WHERE fi.product_id = pv.product_id
+                AND fi.variant_id = pv.id
+                AND fi.status = 'available'
+                AND pv.fulfillment_mode = 'unique') AS inventory_available,
             COALESCE(p.require_email, 0) AS require_email
      FROM product_variants pv
      JOIN products p ON p.id = pv.product_id
@@ -289,7 +306,11 @@ export async function getActiveVariant(variantId: number): Promise<VariantSummar
             wv.wr_terms AS wr_terms, wv.wr_delivery_terms AS wr_delivery_terms,
             wv.wr_delivery_class AS wr_delivery_class, wv.wr_type AS wr_type,
             sp.sk_order_process AS sk_order_process,
-            sp.sk_description AS sk_description, sp.sk_seller_note AS sk_seller_note
+            sp.sk_description AS sk_description, sp.sk_seller_note AS sk_seller_note,
+            (SELECT COUNT(*) FROM fulfillment_inventory fi
+              WHERE fi.product_id = pv.product_id
+                AND fi.variant_id = pv.id
+                AND fi.status = 'available') AS inventory_available
      FROM product_variants pv
      JOIN products p ON p.id = pv.product_id
      LEFT JOIN wr_variants wv ON wv.wr_variant_id = pv.wr_variant_id
@@ -414,6 +435,38 @@ export function buyerDeliveryBadge(v: Parameters<typeof buyerDeliveryKind>[0]): 
 }
 
 /**
+ * Stok EFEKTIF untuk pembeli (2026-10-02, insiden Head 18 Bulan).
+ *
+ * Varian `unique` (satu secret per unit) punya DUA angka yang bisa selisih:
+ * kolom `stock` (angka admin) dan unit `available` di fulfillment_inventory
+ * (kredensial beneran). Kebenaran yang bisa dikirim = yang terkecil:
+ * stock 2 + available 1 → Sisa 1, dan stock -1 (unlimited) tetap berarti
+ * available (admin salah set unlimited tapi inventory terbatas = ikut
+ * inventory, bukan janji palsu). Non-unique / tanpa hitungan inventory =
+ * kolom stock apa adanya (perilaku lama).
+ */
+export function effectiveVariantStock(
+  v: Pick<VariantSummary, "stock" | "fulfillment_mode"> & Partial<Pick<VariantSummary, "inventory_available">>,
+): number {
+  const stock = Number(v.stock ?? -1);
+  if (String(v.fulfillment_mode ?? "manual").trim().toLowerCase() !== "unique") return stock;
+  const inv = v.inventory_available == null ? null : Number(v.inventory_available);
+  if (inv == null || !Number.isFinite(inv)) return stock;
+  if (stock === -1) return Math.max(0, inv);
+  return Math.min(Math.max(0, stock), Math.max(0, inv));
+}
+
+/** True bila varian unique kehabisan kredensial walau kolom stock > 0. */
+export function isUniqueInventoryEmpty(
+  v: Pick<VariantSummary, "stock" | "fulfillment_mode"> & Partial<Pick<VariantSummary, "inventory_available">>,
+): boolean {
+  return String(v.fulfillment_mode ?? "manual").trim().toLowerCase() === "unique"
+    && v.inventory_available != null
+    && Number(v.inventory_available) <= 0
+    && Number(v.stock ?? 0) !== 0;
+}
+
+/**
  * Kalimat ekspektasi pengiriman pembeli untuk varian NON-WR manual
  * (2026-09-19): tidak boleh meminjam estimasi supplier WR (6–12 jam) karena
  * pengerjaannya oleh admin Axvara sendiri. Kalimat jujur tanpa angka: admin
@@ -509,6 +562,7 @@ function mapVariant(row: Record<string, unknown>): VariantSummary {
     sk_variant_id: row.sk_variant_id != null ? String(row.sk_variant_id) : null,
     sk_auto_managed: row.sk_auto_managed != null ? Number(row.sk_auto_managed) : 0,
     sk_order_process: row.sk_order_process ? String(row.sk_order_process) : null,
+    inventory_available: row.inventory_available != null ? Number(row.inventory_available) : null,
     require_email: Number(row.require_email ?? 0),
     price: Number(row.price),
     compare_price: row.compare_price != null ? Number(row.compare_price) : null,

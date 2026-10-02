@@ -6,13 +6,20 @@
 // atau stok ≥ minimum beli. Varian stok 3 dengan min 50 tidak bisa dibeli
 // dalam jumlah berapa pun, jadi dianggap habis.
 //
+// Revisi 2026-10-02 (insiden Head 18 Bulan): varian `unique` memakai stok
+// EFEKTIF — min(kolom stock, inventory available). Unit habis (0) = habis
+// walau kolom stock masih > 0. `stock` di bawah boleh kolom mentah ATAU
+// angka efektif; `inventoryAvailable` null = perilaku lama (tanpa data
+// inventory, mis. query agregat kartu yang tidak JOIN inventory).
+//
 // Hanya kolom stok — status aktif varian tetap dicek pemanggil di JOIN.
 export function purchasableStockSql(alias = "pv"): string {
   return `(${alias}.stock=-1 OR ${alias}.stock >= MAX(1, COALESCE(${alias}.min_qty, 1)))`;
 }
 
 /** Padanan JS untuk data varian yang sudah dimuat. */
-export function isPurchasableStock(stock: number, minQty?: number | null): boolean {
+export function isPurchasableStock(stock: number, minQty?: number | null, inventoryAvailable?: number | null): boolean {
+  if (inventoryAvailable != null && Number(inventoryAvailable) <= 0 && stock !== 0) return false;
   if (stock === -1) return true;
   return stock >= Math.max(1, Number(minQty ?? 1) || 1);
 }

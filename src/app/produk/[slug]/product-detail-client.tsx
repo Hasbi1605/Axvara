@@ -7,7 +7,7 @@ import { productIsBuyable } from "@/lib/product-order";
 import { formatRupiah } from "@/lib/utils";
 import type { VariantSummary } from "@/lib/catalog";
 import { formatWarranty } from "@/lib/catalog";
-import { formatVariantLabel } from "@/lib/catalog";
+import { effectiveVariantStock, formatVariantLabel } from "@/lib/catalog";
 import { buyerDeliveryBadge, buyerDeliveryEtaNonWr, buyerDeliveryKind } from "@/lib/catalog";
 import { deliveryEtaForBuyer } from "@/lib/warung-rebahan/delivery-class";
 import { useCart } from "@/stores/cart";
@@ -58,9 +58,11 @@ function galleryOf(list: Product[], slug: string): string[] {
   return imgs;
 }
 
-/** Varian aktif + bisa dibeli satu-satunya dipilih otomatis. */
+/** Varian aktif + bisa dibeli satu-satunya dipilih otomatis. Memakai stok
+    efektif (unique = min kolom vs inventory) agar varian satu-satunya yang
+    kredensialnya habis tidak terpilih otomatis. */
 function soleBuyableVariantId(detail: CatalogDetail | null | undefined): number | null {
-  const activeVars = (detail?.variants || []).filter((v: VariantItem) => v.is_active && v.stock !== 0 && !(v.stock !== -1 && v.stock < Math.max(1, Number(v.min_qty ?? 1) || 1)));
+  const activeVars = (detail?.variants || []).filter((v: VariantItem) => v.is_active && effectiveVariantStock(v) !== 0 && !(effectiveVariantStock(v) !== -1 && effectiveVariantStock(v) < Math.max(1, Number(v.min_qty ?? 1) || 1)));
   return activeVars.length === 1 ? activeVars[0].id : null;
 }
 
@@ -269,10 +271,17 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
   // BISA dibeli dalam jumlah berapa pun (lihat QuickVariantModal + cart):
   // qty berapa pun pasti gagal di quote. Perlakukan sama dengan habis agar
   // tidak jadi dead-end di checkout.
+  //
+  // Stok EFEKTIF unique (2026-10-02, insiden Head 18 Bulan): min(kolom stock,
+  // inventory available). Tanpa ini PDP bilang "Sisa 2" padahal kredensial
+  // tersisa 1 — semua cek di bawah (min, purchasable, max qty) memakai ini.
+  const effectiveStockOf = (v: VariantItem): number => effectiveVariantStock(v);
   const variantMinQtyOf = (v: VariantItem): number => Math.max(1, Number(v.min_qty ?? 1) || 1);
-  const isBelowMinimum = (v: VariantItem): boolean =>
-    v.stock !== -1 && v.stock < variantMinQtyOf(v);
-  const isPurchasable = (v: VariantItem): boolean => v.stock !== 0 && !isBelowMinimum(v);
+  const isBelowMinimum = (v: VariantItem): boolean => {
+    const eff = effectiveStockOf(v);
+    return eff !== -1 && eff < variantMinQtyOf(v);
+  };
+  const isPurchasable = (v: VariantItem): boolean => effectiveStockOf(v) !== 0 && !isBelowMinimum(v);
   const selectedVariant = selectedVariantId ? activeVariants.find((v: VariantItem) => v.id === selectedVariantId) : null;
   const displayPrice = selectedVariant ? selectedVariant.price : product.price;
   const displayComparePrice = selectedVariant ? selectedVariant.compare_price : product.comparePrice;
@@ -281,7 +290,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
   // Qty terpilih ala marketplace (Shopee/Tokopedia): stepper dibuka di min,
   // tidak turun di bawah min, plafon 100. Direset ke min tiap ganti varian.
   const selectedMaxQty = selectedVariant
-    ? Math.max(selectedMinQty, selectedVariant.stock === -1 ? 100 : Math.max(selectedMinQty, Math.min(100, selectedVariant.stock)))
+    ? (() => { const eff = effectiveStockOf(selectedVariant); return Math.max(selectedMinQty, eff === -1 ? 100 : Math.max(selectedMinQty, Math.min(100, eff))); })()
     : 100;
   // Clamp render-time (bukan effect): qty selalu dalam [min, max] varian
   // aktif tanpa useEffect di bawah early-return (Rules of Hooks). Naik bila
@@ -547,13 +556,13 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                             </div>
                           )}
                           <div className="mt-0.5">
-                            {v.stock === 0 ? (
+                            {effectiveStockOf(v) === 0 ? (
                               <span className="text-[11px] font-semibold text-red-400">HABIS</span>
                             ) : isBelowMinimum(v) ? (
                               <span className="text-[11px] font-semibold text-red-400">STOK &lt; MIN</span>
                             ) : (
                               <span className="text-[11px] text-white/45">
-                                Sisa {v.stock === -1 ? "∞" : v.stock}
+                                Sisa {(() => { const eff = effectiveStockOf(v); return eff === -1 ? "∞" : eff; })()}
                               </span>
                             )}
                           </div>
@@ -652,7 +661,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                   </button>
                 </div>
                 <p className="text-xs text-white/40">
-                  {selectedVariant.stock === -1 ? "Stok tersedia" : `Sisa ${selectedVariant.stock}`}
+                  {(() => { const eff = selectedVariant ? effectiveStockOf(selectedVariant) : -1; return eff === -1 ? "Stok tersedia" : `Sisa ${eff}`; })()}
                   {selectedMinQty > 1 && <> · total {formatRupiah(displayPrice * safePdpQty)}</>}
                 </p>
               </div>
