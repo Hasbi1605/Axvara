@@ -145,9 +145,11 @@ describe("variant min_qty — bot & storefront", () => {
     expect(cart).toContain("isBelowMinimumStock");
     const checkout = read("src/app/checkout/page.tsx");
     expect(checkout).toContain("stok di bawah minimum");
-    // Unlimited (-1) jangan ikut dimatikan.
+    // Unlimited (-1) jangan ikut dimatikan. Modal kini memakai stok EFEKTIF
+    // (eff, revisi sore 2026-10-02: unique = min kolom vs inventory) — cek
+    // eff !== -1 sebagai ganti v.stock !== -1 mentah.
     expect(cart).toContain("stock === -1");
-    expect(modal).toContain("v.stock !== -1");
+    expect(modal).toContain("eff !== -1");
   });
 
   it("admin: input Min. Beli di VariantEditor + ProductVariantRows + API", () => {

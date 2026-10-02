@@ -442,6 +442,13 @@
   `available` inventory) — bukan kolom mentah. Unit habis (0) = HABIS walau
   kolom masih > 0. Berlaku di kartu varian PDP, teks "Sisa N" stepper, plafon
   qty, auto-pilih varian tunggal, dan quote checkout.
+- **Stok TOTAL + mobile paritas (2026-10-02 sore, revisi: "Stok: 21" padahal
+  Head HABIS + mobile "Sisa 1").** Angka `Stok:` PDP/kartu = jumlah stok
+  EFEKTIF varian yang bisa dibeli — varian unique tanpa unit menyumbang 0
+  (0+20=20, bukan 1+20=21). Harga kartu ikut varian yang benar-benar bisa
+  dibeli. Panel varian mobile (bottom-sheet QuickVariantModal) memakai aturan
+  efektif yang SAMA dengan picker desktop — tidak ada lagi jalur baca kolom
+  mentah.
 
 ### 5.7a Halaman Lacak Pesanan `/lacak-pesanan` (2026-09-17, live)
 - Riset pola marketplace (Shopee/Tokopedia/Apple order tracking): satu form

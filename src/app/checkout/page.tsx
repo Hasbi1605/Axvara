@@ -30,6 +30,8 @@ type CatalogVariant = {
   price: number;
   stock: number;
   min_qty?: number;
+  fulfillment_mode?: string;
+  inventory_available?: number | null;
 };
 
 function CheckoutInner() {
@@ -80,14 +82,21 @@ function CheckoutInner() {
           // Varian stok di bawah minimum (stock < min, stock !== -1) tidak
           // bisa dibeli dalam jumlah berapa pun — tolak di sini, bukan di
           // quote (paritas product-detail + QuickVariantModal + cart).
+          //
+          // Stok EFEKTIF (revisi sore 2026-10-02): unique memakai min(kolom,
+          // inventory) — inline dengan helper yang sama dengan PDP agar
+          // direct-checkout tidak lolos saat unit habis walau kolom > 0.
+          const variantEff = variant && String(variant.fulfillment_mode ?? "manual").trim().toLowerCase() === "unique" && variant.inventory_available != null
+            ? Math.min(Math.max(0, Number(variant.stock ?? 0)), Math.max(0, Number(variant.inventory_available)))
+            : Number(variant?.stock ?? 0);
           const variantMin = Math.max(1, Number(variant?.min_qty ?? 1) || 1);
-          if (!variant || variant.stock === 0 || (variant.stock !== -1 && variant.stock < variantMin)) {
+          if (!variant || variantEff === 0 || (variantEff !== -1 && variantEff < variantMin)) {
             throw new Error("Varian tidak tersedia. Pilih ulang dari halaman produk.");
           }
           setDirectProduct({
             ...found,
             price: variant.price,
-            stock: variant.stock === -1 ? undefined : variant.stock,
+            stock: variantEff === -1 ? undefined : variantEff,
             variantId: variant.id,
             variantLabel: variant.label,
             minQty: Math.max(1, Number(variant.min_qty ?? 1) || 1),

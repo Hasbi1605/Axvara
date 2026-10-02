@@ -29,6 +29,16 @@ export async function GET(req: NextRequest) {
   // Stok kartu = varian yang BISA DIBELI (lihat catalog-availability): varian
   // stok 3 min 50 dulu membuat kartu "tersedia" padahal PDP menolaknya.
   const buyable = purchasableStockSql("pv");
+  // Stok EFEKTIF per varian untuk angka total kartu (revisi sore 2026-10-02):
+  // unique memakai min(kolom, available) — varian stock=1/available=0
+  // menyumbang 0, bukan 1. Pola sama dengan /api/catalog?slug= (PDP) agar
+  // "Stok: 21" padahal Head HABIS tidak terulang (1+20=21 → 0+20=20).
+  const effectiveStockSql = (alias = "pv") => `(CASE
+    WHEN ${alias}.fulfillment_mode = 'unique' THEN MIN(${alias}.stock, (SELECT COUNT(*) FROM fulfillment_inventory fi
+      WHERE fi.product_id = ${alias}.product_id AND fi.variant_id = ${alias}.id AND fi.status = 'available'))
+    ELSE ${alias}.stock
+  END)`;
+  const effective = effectiveStockSql("pv");
   let sql = variantCatalog
     ? `SELECT p.*, c.slug as cat_slug,
               MIN(pv.price) as min_price,
@@ -36,7 +46,7 @@ export async function GET(req: NextRequest) {
               COUNT(pv.id) as variant_count,
               CASE
                 WHEN MAX(CASE WHEN pv.stock=-1 THEN 1 ELSE 0 END)=1 THEN -1
-                ELSE SUM(CASE WHEN ${buyable} THEN pv.stock ELSE 0 END)
+                ELSE SUM(CASE WHEN ${buyable} THEN ${effective} ELSE 0 END)
               END as variant_stock,
               -- Harga kartu harus milik varian yang BISA DIBELI. MIN(price)
               -- polos memakai varian termurah walau stoknya habis, sehingga

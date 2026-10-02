@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { formatRupiah } from "@/lib/utils";
 import type { VariantSummary } from "@/lib/catalog";
-import { formatWarranty, formatVariantLabel, buyerDeliveryKind } from "@/lib/catalog";
+import { formatWarranty, formatVariantLabel, buyerDeliveryKind, effectiveVariantStock } from "@/lib/catalog";
 import { IosIcon } from "@/components/ui/IosIcon";
 import type { Product } from "@/lib/products";
 import { useCart } from "@/stores/cart";
@@ -64,13 +64,20 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
     // Pilihan awal: varian halaman bila masih bisa dibeli; mode select tidak
     // memilih otomatis (pembeli yang menentukan); mode lain memilih varian
     // pertama yang bisa dibeli agar tombol aksi langsung bisa dipakai.
+    //
+    // Stok EFEKTIF (revisi sore 2026-10-02): unique memakai min(kolom,
+    // inventory) — varian stock=1/available=0 di mobile = habis, bukan
+    // "Sisa 1". Inilah jalur yang dilihat di HP (bottom-sheet), sedangkan
+    // desktop memakai picker inline PDP yang sudah efektif duluan.
     const minOf = (v: VariantOption): number => Math.max(1, Number(v.min_qty ?? 1) || 1);
-    const purchasable = (v: VariantOption): boolean => v.stock !== 0 && (v.stock === -1 || v.stock >= minOf(v));
+    const effOf = (v: VariantOption): number => effectiveVariantStock(v);
+    const purchasable = (v: VariantOption): boolean => { const eff = effOf(v); return eff !== 0 && (eff === -1 || eff >= minOf(v)); };
+    const rawBuyable = (v: VariantOption): boolean => v.stock !== 0 && (v.stock === -1 || v.stock >= minOf(v));
     const initialFor = (list: VariantOption[]): number | null => {
       const fromPage = list.find((v) => v.id === initialVariantId && purchasable(v));
       if (fromPage) return fromPage.id;
       if (mode === "select" || list.length === 0) return null;
-      return (list.find(purchasable) || list.find((v) => v.stock !== 0) || list[0]).id;
+      return (list.find(purchasable) || list.find((v) => rawBuyable(v)) || list[0]).id;
     };
     if (preloaded && attempt === 0) {
       setVariants(preloaded);
@@ -134,14 +141,20 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
   // BISA dibeli dalam jumlah berapa pun: qty berapa pun pasti gagal di quote
   // (insufficient_stock bila >= min, below_minimum bila < min). Perlakukan
   // sama dengan habis agar tidak jadi dead-end di checkout.
+  //
+  // Semua memakai stok EFEKTIF (unique = min kolom vs inventory) — paritas
+  // PDP desktop (revisi sore 2026-10-02, laporan owner mobile "Sisa 1").
   const variantMinQtyOf = (v: VariantOption): number => Math.max(1, Number(v.min_qty ?? 1) || 1);
-  const isBelowMinimum = (v: VariantOption): boolean =>
-    v.stock !== -1 && v.stock < variantMinQtyOf(v);
-  const isOutOfStock = selected ? selected.stock === 0 || isBelowMinimum(selected) : false;
+  const effOf = (v: VariantOption): number => effectiveVariantStock(v);
+  const isBelowMinimum = (v: VariantOption): boolean => {
+    const eff = effOf(v);
+    return eff !== -1 && eff < variantMinQtyOf(v);
+  };
+  const isOutOfStock = selected ? effOf(selected) === 0 || isBelowMinimum(selected) : false;
   // Minimum pembelian varian terpilih (migrasi 0034): stepper dibuka di min.
   const selectedMinQty = selected ? Math.max(1, Number(selected.min_qty ?? 1) || 1) : 1;
   const selectedMaxQty = selected
-    ? Math.max(selectedMinQty, selected.stock === -1 ? 100 : Math.max(selectedMinQty, Math.min(100, selected.stock)))
+    ? (() => { const eff = effOf(selected); return Math.max(selectedMinQty, eff === -1 ? 100 : Math.max(selectedMinQty, Math.min(100, eff))); })()
     : 100;
   const [modalQty, setModalQty] = useState(selectedMinQty);
   // Draft ketikan manual (pola marketplace): string terpisah agar mengetik
@@ -169,7 +182,9 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
         ...product,
         price: selected.price,
         comparePrice: selected.compare_price ?? undefined,
-        stock: selected.stock,
+        // Stok EFEKTIF (bukan kolom mentah): keranjang ikut menolak unique
+        // yang unitnya habis — guard cart.ts (max<=0 / below-min) jadi benar.
+        stock: effOf(selected) === -1 ? -1 : effOf(selected),
         variantId: selected.id,
         variantLabel: selected.label,
         minQty: selectedMinQty,
@@ -292,8 +307,9 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
             >
               {visibleVariants.map((v) => {
                 const active = v.id === selectedId;
-                const outStock = v.stock === 0 || isBelowMinimum(v);
-                const belowMin = !!(v.stock !== 0 && isBelowMinimum(v));
+                const eff = effOf(v);
+                const outStock = eff === 0 || isBelowMinimum(v);
+                const belowMin = !!(eff !== 0 && isBelowMinimum(v));
                 const ariaLabel = `${v.label} — ${formatRupiah(v.price)}${outStock ? (belowMin ? " — stok di bawah minimum" : " — stok habis") : ""}${Number(v.min_qty ?? 1) > 1 ? ` — minimal ${Number(v.min_qty)}` : ""}`;
                 const instant = buyerDeliveryKind(v) === "instant";
                 if (compact) {
@@ -327,7 +343,7 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
                       <span className="shrink-0 text-right">
                         <span className="block text-xs font-semibold text-[#00E5FF]">{formatRupiah(v.price)}</span>
                         <span className={`block text-[10px] ${outStock ? "font-semibold text-red-400" : "text-white/40"}`}>
-                          {outStock ? (belowMin ? "Stok < min" : "Habis") : `Sisa ${v.stock === -1 ? "∞" : v.stock}`}
+                          {outStock ? (belowMin ? "Stok < min" : "Habis") : `Sisa ${eff === -1 ? "∞" : eff}`}
                         </span>
                       </span>
                     </button>
@@ -383,7 +399,7 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
                         <span className="text-red-400 font-semibold shrink-0">{belowMin ? "Stok < min" : "Habis"}</span>
                       ) : (
                         <span className="text-white/40 shrink-0">
-                          Sisa {v.stock === -1 ? "∞" : v.stock}
+                          Sisa {eff === -1 ? "∞" : eff}
                         </span>
                       )}
                     </div>

@@ -734,7 +734,7 @@ Kolom baru di `orders`: `sales_channel`, `telegram_chat_id`, `telegram_user_id`,
 | GET | `/api/admin/bot/health` | admin | Health check tanpa secret |
 | GET | `/api/admin/overview` | admin | KPI/action queue lintas channel |
 | GET/POST | `/api/admin/payments/events` | admin | Event QRIS Hook aman + retry exact-match |
-| GET/POST/DELETE | `/api/admin/fulfillment` | admin | Inventory management + template pesan serah terima varian Made By Order (`action:"set_handover_template"`, migrasi 0043). Impor/revoke varian unique OTOMATIS menyelaraskan kolom `stock` → unit `available` (2026-10-02, insiden Head 18 Bulan); GET membawa `variant_stock` + `stock_mismatch` untuk banner selisih admin |
+| GET/POST/DELETE | `/api/admin/fulfillment` | admin | Inventory management + template pesan serah terima varian Made By Order (`action:"set_handover_template"`, migrasi 0043). Impor/revoke varian unique OTOMATIS menyelaraskan kolom `stock` → unit `available` (2026-10-02, insiden Head 18 Bulan); GET membawa `variant_stock` + `stock_mismatch` untuk banner selisih admin. Revisi sore: penjumlahan kartu `variant_stock` memakai stok EFEKTIF per varian (unique = min kolom vs available) + `purchasableStockSql` menolak unique tanpa unit — kartu/bot/`llms.txt`/SEO seragam |
 | GET/POST | `/api/admin/orders/:code/handover` | admin | Kirim ke pembeli: GET item + `label` + `template_text` terisi; POST `{item_index, note?, buyer_message?}` → isi dienkripsi, dikirim ke pembeli (email/DM), tampil di halaman pesanan |
 | GET/PUT | `/api/store-settings` | public/admin | Identitas storefront / update terautentikasi |
 | GET | `/api/catalog[?slug=]` | public | Katalog produk/varian aktif terpusat. Detail `?slug=` (sejak 2026-09-24): tiap varian membawa `copy` (S&K berkelompok + cara aktivasi versi Axvara, atau teks WR yang dirapikan) dan `terms`/`delivery_terms` mentah dikosongkan (`null`) |
@@ -819,8 +819,8 @@ badge storefront menjanjikan "Kirim otomatis". Perubahan:
   (`whatsappFallback:false`), karena outbox menyimpan teks polos dan bot WA mati: order web
   tanpa email → `buyer_notified:false`. Tanpa isi, pembeli menerima kabar "Pesanan
   Diserahkan". Template per varian disunting di panel varian Made By Order
-  (`ProductVariantRows`) dan disimpan lewat `POST /api/admin/fulfillment`
-  `action:"set_handover_template"` (≤2000; kosong = hapus).
+   (`ProductVariantRows`) dan disimpan lewat `POST /api/admin/fulfillment`
+   `action:"set_handover_template"` (≤2000; kosong = hapus).
 - **Notif admin "Lunas — Web"** (menggantikan ping serah terima terpisah, 2026-09-25): lihat
   subbagian berikut.
 - **Semua email pembeli bermerek.** `renderBrandedNotice` (shell Midnight + Cyan, logo,

@@ -85,9 +85,11 @@ describe("effectiveVariantStock (unit murni)", () => {
     expect(isUniqueInventoryEmpty({ stock: 2, fulfillment_mode: "manual", inventory_available: 0 })).toBe(false);
   });
   it("isPurchasableStock menolak unique yang unitnya habis walau kolom > 0", () => {
-    expect(isPurchasableStock(2, 1, 0)).toBe(false);
-    expect(isPurchasableStock(2, 1, 1)).toBe(true);
-    expect(isPurchasableStock(2, 1, null)).toBe(true);
+    expect(isPurchasableStock(2, 1, 0, "unique")).toBe(false);
+    expect(isPurchasableStock(2, 1, 1, "unique")).toBe(true);
+    expect(isPurchasableStock(2, 1, null, "unique")).toBe(true);
+    // Tanpa mode (pemanggil lama: SEO/bot JS) = perilaku lama.
+    expect(isPurchasableStock(2, 1, 0)).toBe(true);
   });
 });
 
@@ -156,8 +158,7 @@ describe("quote menolak unique yang unitnya habis", () => {
   });
 });
 
-describe("syncUniqueVariantStock + banner admin", () => {
-  it("import menyelaraskan kolom stock unique ke available", async () => {
+describe("syncUniqueVariantStock + banner admin", () => {  it("import menyelaraskan kolom stock unique ke available", async () => {
     await seedInventory(60, 101, ["available", "available", "available", "delivered"]);
     expect(await syncUniqueVariantStock(60, 101)).toBe(3);
     expect(fixture.sql.prepare("SELECT stock FROM product_variants WHERE id=101").get()?.stock).toBe(3);
@@ -188,5 +189,58 @@ describe("syncUniqueVariantStock + banner admin", () => {
     const body = (await res.json()) as { variant_stock: number; stock_mismatch: boolean };
     expect(body.variant_stock).toBe(1);
     expect(body.stock_mismatch).toBe(false);
+  });
+});
+
+describe("kartu katalog memakai stok efektif (revisi sore 2026-10-02)", () => {
+  it("varian unique stock=1/available=0 = tak terbeli di SQL: harga + total ikut varian manual", async () => {
+    // Head habis (0 available), Invite manual 20 → kartu harus 20, bukan 21,
+    // dan harga kartu = harga Invite (bukan harga Head yang tak bisa dibeli).
+    await seedInventory(60, 102, ["available"]);
+    const { GET } = await import("@/app/api/products/route");
+    const res = await GET(new NextRequest("http://localhost/api/products?active=1&slug=google-ai-pro-antigravity"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { products: { stock: number; price: number }[] };
+    expect(body.products).toHaveLength(1);
+    expect(body.products[0].stock).toBe(20);
+    expect(body.products[0].price).toBe(14000);
+  });
+
+  it("varian unique stock=1/available=1 tetap dihitung: total 21", async () => {
+    await seedInventory(60, 101, ["available"]);
+    await seedInventory(60, 102, ["available"]);
+    const { GET } = await import("@/app/api/products/route");
+    const res = await GET(new NextRequest("http://localhost/api/products?active=1&slug=google-ai-pro-antigravity"));
+    const body = (await res.json()) as { products: { stock: number }[] };
+    expect(body.products[0].stock).toBe(21);
+  });
+
+  it("semua varian tak terbeli: total 0 (kartu overlay STOK HABIS)", async () => {
+    fixture.sql.prepare("UPDATE product_variants SET stock=0 WHERE id=102").run();
+    const { GET } = await import("@/app/api/products/route");
+    const res = await GET(new NextRequest("http://localhost/api/products?active=1&slug=google-ai-pro-antigravity"));
+    const body = (await res.json()) as { products: { stock: number }[] };
+    // Head: stock=2 tapi available=0 → 0; Invite: stock=0 → 0.
+    expect(body.products[0].stock).toBe(0);
+  });
+
+  it("purchasableStockSql menolak unique tanpa unit walau kolom > 0", async () => {
+    const { purchasableStockSql } = await import("@/lib/catalog-availability");
+    const row = fixture.sql.prepare(
+      `SELECT COUNT(*) as n FROM product_variants pv WHERE pv.id=101 AND ${purchasableStockSql("pv")}`,
+    ).get() as { n: number };
+    expect(row.n).toBe(0);
+    await seedInventory(60, 101, ["available"]);
+    const row2 = fixture.sql.prepare(
+      `SELECT COUNT(*) as n FROM product_variants pv WHERE pv.id=101 AND ${purchasableStockSql("pv")}`,
+    ).get() as { n: number };
+    expect(row2.n).toBe(1);
+  });
+
+  it("isPurchasableStock paritas JS: manual tak tersentuh inventory (mode non-unique)", async () => {
+    // Invite manual 20 + inventory 0 = tetap terbeli (inventory bukan miliknya).
+    expect(isPurchasableStock(20, 1, 0, "manual")).toBe(true);
+    expect(isPurchasableStock(20, 1, null, "manual")).toBe(true);
+    expect(isPurchasableStock(20, 1, 0)).toBe(true);
   });
 });
