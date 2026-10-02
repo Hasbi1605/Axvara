@@ -64,7 +64,7 @@ describe("decideOneWinner: stok dulu, modal kemudian", () => {
     } finally { fx.close(); }
   });
 
-  it("dua-duanya habis → NULL (disembunyikan dua-duanya)", async () => {
+  it("dua-duanya habis → NULL, tapi SK tetap pecundang (WR = wakil 1 kartu, Opsi B 2026-10-02)", async () => {
     const fx = createD1Fixture();
     try {
       stubFulfillmentKey();
@@ -75,6 +75,13 @@ describe("decideOneWinner: stok dulu, modal kemudian", () => {
       const db = createDatabaseAccess(fx.db);
       const r = await decideOneWinner(pair(), db);
       expect(r.winner).toBeNull();
+      // Opsi B: winner None bukan berarti dua-duanya tampil — sisi SK
+      // disembunyikan, WR tampil sebagai wakil (1 barang = 1 kartu).
+      // decideOneWinner tidak menulis DB; simulasikan baris None tersimpan.
+      fx.sql.prepare("INSERT INTO supplier_pairs(id,wr_product_id,sk_product_id,winner) VALUES(50,1,2,NULL)").run();
+      const losers = await loserProductIds(db);
+      expect(losers.has(2), "SK disembunyikan saat None").toBe(true);
+      expect(losers.has(1), "WR tampil sebagai wakil saat None").toBe(false);
     } finally { fx.close(); }
   });
 

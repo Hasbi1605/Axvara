@@ -358,6 +358,14 @@ describe("BUG-15: Client pages HARUS export runtime edge (required by CF Pages)"
     expect(src).toMatch(/export\s+const\s+runtime\s*=\s*["']edge["']/);
   });
 
+  it("PDP redirect Opsi B: winner None → sisi SK dialihkan ke wakil WR", () => {
+    const src = fs.readFileSync(path.join(process.cwd(), "src/app/produk/[slug]/page.tsx"), "utf-8");
+    // Opsi B (2026-10-02): None → SK = pecundang (wakil = WR). Query TIDAK
+    // boleh filter winner IS NOT NULL (itu mengembalikan SK-None ke 404).
+    expect(src).not.toContain("WHERE winner IS NOT NULL");
+    expect(src).toMatch(/winner == null \|\| .*THEN sk_product_id|winner == null.*sk_product_id/i);
+  });
+
   it("pesanan/[code]/page.tsx export runtime edge (CF Pages requirement)", () => {
     const src = fs.readFileSync(path.join(process.cwd(), "src/app/pesanan/[code]/page.tsx"), "utf-8");
     expect(src).toContain('"use client"');

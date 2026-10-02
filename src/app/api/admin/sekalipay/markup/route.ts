@@ -33,9 +33,8 @@ export async function GET(request: NextRequest) {
             pv.price AS current_price, pv.stock AS pv_stock, pv.min_qty AS pv_min_qty,
             pv.is_active AS pv_is_active, pv.product_id AS pv_product_id,
             p.is_active AS p_is_active,
-            CASE WHEN pair.winner IS NOT NULL
-                   AND pair.sk_product_id = sp.axvara_product_id
-                   AND pair.winner != 'SK'
+            CASE WHEN pair.sk_product_id = sp.axvara_product_id
+                   AND (pair.winner IS NULL OR pair.winner != 'SK')
                  THEN 1 ELSE 0 END AS parent_is_loser
      FROM sk_products sp
      LEFT JOIN product_variants pv ON pv.id=sp.axvara_variant_id

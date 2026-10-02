@@ -189,9 +189,10 @@
     varian" / "· N langkah"). Label panel boleh membungkus — jangan
     `truncate`/nowrap (teks nowrap melebarkan grid PDP di layar 390px); URL
     panjang dipotong dengan `[overflow-wrap:anywhere]`.
-- PDP produk pecundang supplier-pair (2026-10-01, live): bila `slug` yang
-  diminta hidden karena kalah WR vs SK (`resolveStoreProduct` → 404) TAPI
-  pasangannya tampil, PDP 308 ke slug pemenang
+- PDP produk pecundang supplier-pair (2026-10-01, live; Opsi B 2026-10-02):
+  bila `slug` yang diminta hidden karena kalah WR vs SK ATAU karena pasangannya
+  winner None dan ia sisi SK (`resolveStoreProduct` → 404) TAPI pasangannya
+  tampil, PDP 308 ke slug pemenang/wakil
   (`/produk/[slug]/page.tsx`, preserve query) + meta noindex agar mesin cari
   tidak mengindeks URL pecundang. PDP habis (tanpa pasangan tampil) tetap 200
   + badge habis (kontrak trust 2026-10-01).

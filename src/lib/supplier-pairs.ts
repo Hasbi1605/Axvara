@@ -4,8 +4,10 @@
 //
 // Aturan prioritas (decideWinner):
 //   1. STOK DULU: yang stok 0 otomatis kalah. Pemenang = yang berstok.
-//      Dua-duanya habis → winner NULL (dua-duanya disembunyikan dari publik,
-//      tetap ada di admin). Dua-duanya berstok → bandingkan modal.
+//      Dua-duanya habis → winner NULL, sisi SK disembunyikan dan WR tampil
+//      sebagai wakil 1 kartu (Opsi B, keputusan owner 2026-10-02: 1 barang
+//      = 1 kartu, kontrak kartu habis untuk trust tetap utuh). Tetap ada
+//      di admin. Dua-duanya berstok → bandingkan modal.
 //   2. MODAL KEMUDIAN: modal per-varian-termurah menang (margin % tidak
 //      relevan — yang dibandingkan biaya pokok, bukan harga jual).
 //   3. PREFER ADMIN: prefer WR/SK mengalahkan selisih modal ≤ prefer_margin
@@ -147,13 +149,15 @@ export async function decideAllWinners(database?: DatabaseAccess): Promise<{ dec
   return { decided, changed };
 }
 
-/** Id pecundang (disembunyikan dari katalog publik) per semua pasangan. */
+/** Id pecundang (disembunyikan dari katalog publik) per semua pasangan.
+ *  Opsi B (2026-10-02): winner None → sisi SK disembunyikan, WR tampil
+ *  sebagai wakil 1 kartu (1 barang = 1 kartu, katalog stabil). */
 export async function loserProductIds(database?: DatabaseAccess): Promise<Set<number>> {
   const db = database ?? createDatabaseAccess();
-  const pairs = (await db.queryAll(`SELECT * FROM supplier_pairs WHERE winner IS NOT NULL`).catch(() => [] as Row[])) as unknown as PairRow[];
+  const pairs = (await db.queryAll(`SELECT * FROM supplier_pairs`).catch(() => [] as Row[])) as unknown as PairRow[];
   const losers = new Set<number>();
   for (const pair of pairs) {
-    losers.add(pair.winner === "WR" ? Number(pair.sk_product_id) : Number(pair.wr_product_id));
+    losers.add(pair.winner === "WR" || pair.winner == null ? Number(pair.sk_product_id) : Number(pair.wr_product_id));
   }
   return losers;
 }

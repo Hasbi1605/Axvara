@@ -124,7 +124,8 @@ export async function sendDueAdminPromoDigest(
 
   // Kandidat = SEMUA produk ready (ada ≥1 varian bisa dibeli). Pecundang
   // supplier-pair + produk telegram_enabled=0 dikecualikan agar promo tidak
-  // menjual barang yang disembunyikan di katalog.
+  // menjual barang yang disembunyikan di katalog. Opsi B (2026-10-02):
+  // winner None → sisi SK = pecundang (wakil = WR).
   const products = (await database.queryAll(
     `SELECT p.id, p.name, COALESCE(c.name, 'Produk Premium') AS category,
             MIN(CASE WHEN pv.stock = -1 OR pv.stock >= MAX(1, COALESCE(pv.min_qty, 1)) THEN pv.price END) AS promo_price
@@ -134,8 +135,7 @@ export async function sendDueAdminPromoDigest(
       WHERE p.is_active=1 AND COALESCE(p.telegram_enabled, 1)=1
         AND NOT EXISTS (
           SELECT 1 FROM supplier_pairs pair
-          WHERE pair.winner IS NOT NULL
-            AND p.id = CASE WHEN pair.winner='WR' THEN pair.sk_product_id ELSE pair.wr_product_id END
+          WHERE p.id = CASE WHEN pair.winner IS NULL OR pair.winner='WR' THEN pair.sk_product_id ELSE pair.wr_product_id END
         )
       GROUP BY p.id
      HAVING promo_price IS NOT NULL

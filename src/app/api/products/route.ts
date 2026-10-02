@@ -81,10 +81,13 @@ export async function GET(req: NextRequest) {
   // checkout/quote tetap menolak varian habis — tampil ≠ bisa dibeli.
   // PDP langsung (?slug=) + search (?q=) tidak berubah.
   if (isPublicCatalog && variantCatalog) {
-    // Pecundang pasangan: produk yang kalah decideWinner.
+    // Pecundang pasangan: produk yang kalah decideWinner. Opsi B (keputusan
+    // owner 2026-10-02): saat winner None (dua-duanya habis), sisi SK ikut
+    // disembunyikan dan WR tampil sebagai wakil 1 kartu — katalog stabil
+    // (1 barang = 1 kartu), kontrak kartu habis untuk trust tetap utuh.
     const loserRows = await queryAll(
-      `SELECT CASE WHEN winner='WR' THEN sk_product_id ELSE wr_product_id END AS loser
-       FROM supplier_pairs WHERE winner IS NOT NULL`,
+      `SELECT CASE WHEN winner IS NULL OR winner='WR' THEN sk_product_id ELSE wr_product_id END AS loser
+       FROM supplier_pairs`,
     ).catch(() => [] as Record<string, unknown>[]);
     const loserIds = loserRows
       .map((r) => Number(r.loser ?? 0))
@@ -144,18 +147,20 @@ export async function GET(req: NextRequest) {
   // tidak menerimanya (tidak bocor ke pembeli).
   const liveStatusByProduct = new Map<string, { status: "live" | "hidden_loser" | "hidden_soldout" | "off"; reason: string }>();
   if (isAdminRequest) {
+    // Opsi B: None → SK = pecundang (wakil = WR). winner_id = sisi WR agar
+    // alasan admin jujur ("Wakil WR — dua-duanya habis").
     const pairRows = await queryAll(
-      `SELECT CASE WHEN winner='WR' THEN sk_product_id ELSE wr_product_id END AS loser,
-              CASE WHEN winner='WR' THEN wr_product_id ELSE sk_product_id END AS winner_id,
+      `SELECT CASE WHEN winner IS NULL OR winner='WR' THEN sk_product_id ELSE wr_product_id END AS loser,
+              CASE WHEN winner IS NULL OR winner='WR' THEN wr_product_id ELSE sk_product_id END AS winner_id,
               winner
-       FROM supplier_pairs WHERE winner IS NOT NULL`,
+       FROM supplier_pairs`,
     ).catch(() => [] as Record<string, unknown>[]);
     const loserToWinner = new Map<number, { winnerId: number; winner: string }>();
     for (const r of pairRows) {
       const loser = Number(r.loser ?? 0);
       const winnerId = Number(r.winner_id ?? 0);
       if (Number.isInteger(loser) && loser > 0 && Number.isInteger(winnerId) && winnerId > 0) {
-        loserToWinner.set(loser, { winnerId, winner: String(r.winner ?? "") });
+        loserToWinner.set(loser, { winnerId, winner: r.winner == null ? "WR (wakil — dua-duanya habis)" : String(r.winner) });
       }
     }
     const buyableSql = purchasableStockSql("pvx");
