@@ -1928,8 +1928,10 @@ poller server memantau mutasi GoBiz milik sendiri.
 - **Legacy ranges hanya DANA** (`pt.provider='dana'` di predikat) — riwayat
   GoPay selalu lengkap sejak awal (tidak ada reissue penghapus).
 - **Poller:** folder `axvara-gopay-poller/` (Fastify `:3002`, systemd terpisah
-  di VPS yang sama dengan wr-proxy, session `chmod 600`, interval ≥8 detik,
-  read-only, 401 → backoff + notif, JANGAN loop login). Fase 0 = skeleton
+  di VPS yang sama dengan wr-proxy, session `chmod 600`, **interval 15 detik
+  + jitter 0–3 detik + zero poll saat idle + backoff exponential 30s→5 menit
+  (patch anti-ban 2026-10-02, konsensus komunitas gobiz-payment)**, read-only,
+  401 → backoff + notif, JANGAN loop login). Fase 0 = skeleton
   (`/health` + `/tick`); Fase 1 = login OTP 1x + polling GoBiz beneran.
 - **Env (`secret_text`):** `GOPAY_STATIC_QRIS`, `GOPAY_POLLER_SECRET`,
   `GOPAY_QRIS_ENABLED=false`, `QRIS_ACTIVE_PROVIDER=dana`.
