@@ -827,9 +827,13 @@ badge storefront menjanjikan "Kirim otomatis". Perubahan:
   tombol Lihat Pesanan, blok bantuan WA) dipakai untuk tanda terima, serah terima, bukti
   ditolak, bukti menunggu Hook, pengiriman tertunda, dan pengingat QRIS kedaluwarsa. Isi di-escape
   dan tanpa emoji.
-- **Teks pembeli.** Blok "Pengiriman Produk" di `/pesanan/[code]` menyebut email sebagai
+- **Teks pembeli.** Blok pengiriman di `/pesanan/[code]` menyebut email sebagai
   tujuan (WA hanya untuk order lama tanpa email); sejak 2026-09-25 produk kirim otomatis
-  menampilkan "Mengirim produkmu…" dan detailnya dalam hitungan detik (lihat Storefront di
+  berjudul "Pengiriman Otomatis" ("Mengirim otomatis… akan muncul di halaman ini dalam
+  beberapa detik") dan detailnya tampil dalam hitungan detik; sejak 2026-10-02 judul +
+  nada dibedakan per keadaan — "Pesanan Made By Order" (C1 manual by design, tanpa alasan
+  stok) vs "Pengiriman oleh Admin" (C2 instan-gagal: "Stok otomatis habis, jadi admin
+  menyiapkan manual"), jalur otomatis tidak pernah menyebut admin/12 jam (lihat Storefront di
   bagian Warung Rebahan). PDP menampilkan "Tergantung varian" untuk
   varian campuran sebelum pembeli memilih. Dulu ringkasannya mengikuti varian pertama, jadi
   Canva tampil "Kirim otomatis" walau 2 dari 3 variannya Made By Order.
@@ -983,14 +987,20 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   429/5xx/jaringan tidak membuang token.
   Panel HANYA dirender bila `credentials_ready === true` dari `GET /api/orders?code=`
   (flag boolean: ada `wr_order_links` `completed` + `wr_account_details` ATAU item non-WR
-  `delivered` bersalinan, dievaluasi hanya untuk order `lunas`, `.catch` → `false` pada D1
-  pra-0027). Order lunas tanpa kredensial mendapat blok **Pengiriman Produk** berisi
+   `delivered` bersalinan, dievaluasi hanya untuk order `lunas`, `.catch` → `false` pada D1
+  pra-0027). Order lunas tanpa kredensial mendapat blok pengiriman berisi
   tujuan pengiriman (email checkout tersamar; WA hanya order lama tanpa email) — bukan
-  form verifikasi yang pasti gagal `not_ready`. Teksnya, berurutan:
-  `fulfillment_status='delivered'` → "Produk sudah dikirim"; `queued_delivery` → Made By
-  Order + plafon 12 jam; `instant_delivery` + `manual_required` → "sedang disiapkan admin"
-  + plafon 12 jam; `instant_delivery` belum selesai → "Mengirim produkmu…" (spinner), lewat
-  ±30 dtk → "butuh waktu lebih lama"; selain itu (produk WR) → estimasi 5–15 menit.
+  form verifikasi yang pasti gagal `not_ready`. Judul + teksnya dinamis per cabang
+  (`delivery.title`, revisi copy A/B/C1/C2 2026-10-02):
+  `fulfillment_status='delivered'` → "Pengiriman Produk" + "Produk sudah dikirim";
+  `queued_delivery` (C1 Made By Order, manual by design) → "Pesanan Made By Order" tanpa
+  alasan stok + "Umumnya kurang dari 1 jam, maksimal 12 jam" (tanpa jam layanan spesifik);
+  `instant_delivery` + `manual_required` (C2 instan-gagal) → "Pengiriman oleh Admin" +
+  alasan "Stok otomatis habis, jadi admin menyiapkan manual" + plafon yang sama;
+  `instant_delivery` belum selesai → "Pengiriman Otomatis" + "Mengirim otomatis… akan
+  muncul di halaman ini dalam beberapa detik" (spinner, TANPA sebut admin/12 jam), lewat
+  ±30 dtk → "Masih mengirim otomatis — butuh waktu lebih lama" (tetap tanpa admin/12 jam);
+  selain itu (produk WR) → estimasi 5–15 menit.
   Selama `lunas && !credentials_ready`, halaman mem-poll `GET /api/orders?code=`: order
   `instant_delivery` yang belum `delivered`/`manual_required`/`failed` dicek rapat dulu
   2 dtk ×5 lalu 5 dtk ×4 (±30 dtk, 9 permintaan — tetap di bawah `orders:lookup` 20/mnt
@@ -1565,8 +1575,8 @@ pembedaan hanya badge admin + slug `-wr`/`-sk`).
 - **Paritas email + flag SK (2026-10-02):** flag `queued/instant_delivery` di
   `GET /api/orders?code=` membaca `sk_products.sk_order_process` (SK auto =
   instan walau `fulfillment_mode` lokal `manual`; SK non-auto = antrean;
-  varian hilang = bukan instan palsu) — halaman lunas SK auto spinner
-  "Mengirim produkmu…" + polling rapat, bukan Made By Order 12 jam.
+  varian hilang = bukan instan palsu) — halaman lunas SK auto judul "Pengiriman Otomatis" +
+  spinner "Mengirim otomatis…" + polling rapat, bukan Made By Order 12 jam.
   `handleSkOrderCompleted` bind link → item + tulis `sk_link_id` (fulfillment
   generik lewati, pola `wr_link_id`) + kirim email kredensial template
   "Pesanan Siap" Axvara yang SAMA PERSIS dengan WR/non-WR (logo + tanda

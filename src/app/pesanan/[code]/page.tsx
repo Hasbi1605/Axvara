@@ -325,46 +325,62 @@ export default function OrderSuccessPage() {
       ? { icon: "/icons/ios11/close-96.png", shell: "bg-red-500/15", filter: "brightness(0) saturate(100%) invert(57%) sepia(55%) saturate(1800%) hue-rotate(322deg)" }
       : { icon: "/icons/ios11/clock-96.png", shell: isExpired ? "bg-white/10" : "bg-[#FFB800]/15", filter: isExpired ? "brightness(0) invert(1) opacity(.55)" : "brightness(0) saturate(100%) invert(72%) sepia(92%) saturate(1800%) hue-rotate(360deg)" };
 
-  // Isi blok "Pengiriman Produk" (lunas, detail akun belum ada). Urutan penting:
+  // Isi blok pengiriman (lunas, detail akun belum ada). Urutan penting:
   // yang sudah terkirim tidak boleh lagi "diproses", dan kirim otomatis dari
   // stok sendiri tidak memakai estimasi 5–15 menit milik produk WR. Kabar web
   // lewat EMAIL (bot WA mati sejak 18 Sep 2026); nomor WA hanya disebut untuk
   // order lama tanpa email.
+  // Copy 2026-10-02 (laporan owner + screenshot AXV-20261002-201B9EFD): 4 state
+  // dengan judul + nada beda. Jalur otomatis TIDAK BOLEH menyebut admin/12 jam
+  // — teks fallback darurat ("disiapkan admin") sempat bocor ke order instan
+  // yang selesai hitungan detik dan bikin panik. MBO by design (bukan stok
+  // habis) vs instan-gagal (baru pakai alasan stok) juga dibedakan.
   const destination = order.email
     ? <>email <span className="font-medium text-white/80">{order.email}</span></>
     : <>WhatsApp <span className="font-medium text-white/80">{order.wa}</span></>;
   const toBuyer = <>Detail produk dikirim ke {destination} yang kamu masukkan saat checkout, dan tampil di halaman ini.</>;
-  let delivery: { lead: ReactNode; note: ReactNode; sending?: boolean };
+  let delivery: { title: string; lead: ReactNode; note: ReactNode; sending?: boolean };
   if (order.fulfillmentStatus === "delivered") {
     delivery = {
+      title: "Pengiriman Produk",
       lead: <>Produk sudah dikirim ke {destination} yang kamu masukkan saat checkout.</>,
       note: <>{order.email ? "Belum masuk? Cek juga folder spam atau promosi. " : ""}Kalau tetap belum ada, hubungi admin lewat tombol di bawah dengan menyebut kode pesanan.</>,
     };
   } else if (order.queuedDelivery) {
+    // C1 — Made By Order: manual BY DESIGN, bukan stok habis. Jangan pakai
+    // alasan "stok otomatis habis" (itu hanya untuk C2 di bawah).
     delivery = {
+      title: "Pesanan Made By Order",
       lead: <>Pesanan <span className="font-medium text-[#FFD66B]">Made By Order</span> — disiapkan admin setelah pembayaran masuk. {toBuyer}</>,
-      note: <>Umumnya lebih cepat, maksimal {WR_QUEUED_MAX_HOURS} jam pada jam layanan. Tidak perlu menunggu halaman ini terbuka — kami kabari lewat kontak di atas, dan detailnya juga tampil di sini saat kamu buka lagi.</>,
+      note: <>Umumnya kurang dari 1 jam, maksimal {WR_QUEUED_MAX_HOURS} jam. Detailnya juga tampil di sini saat kamu buka lagi.</>,
     };
   } else if (handedToAdmin) {
-    // Kirim otomatis tidak bisa diselesaikan sistem (mis. stok unik habis) dan
-    // admin menyerahkannya lewat "Kirim ke pembeli": plafonnya sama dengan antrean.
+    // C2 — produk instan TAPI gagal dikirim otomatis (mis. stok unik habis,
+    // secret shared belum dikonfigurasi, order web tanpa email valid) dan
+    // admin menyerahkannya lewat "Kirim ke pembeli": plafonnya sama dengan
+    // antrean. Kalimat "Stok otomatis habis, jadi..." menjelaskan KENAPA
+    // produk otomatis tiba-tiba jadi manual — tanpa ini pembeli merasa dibohongi.
     delivery = {
-      lead: <>Produkmu sedang disiapkan admin. {toBuyer}</>,
-      note: <>Umumnya lebih cepat, maksimal {WR_QUEUED_MAX_HOURS} jam pada jam layanan. Kami kabari lewat kontak di atas, dan detailnya juga tampil di sini saat kamu buka lagi.</>,
+      title: "Pengiriman oleh Admin",
+      lead: <>Stok otomatis habis, jadi admin menyiapkan manual. {toBuyer}</>,
+      note: <>Umumnya kurang dari 1 jam, maksimal {WR_QUEUED_MAX_HOURS} jam.</>,
     };
   } else if (instantSending && !instantSlow) {
     delivery = {
+      title: "Pengiriman Otomatis",
       sending: true,
-      lead: <><span className="font-medium text-white/80">Mengirim produkmu…</span> Detail produk tampil di sini dan dikirim ke {destination} yang kamu masukkan saat checkout.</>,
-      note: <>Biasanya hanya beberapa detik. Tidak perlu memuat ulang halaman.</>,
+      lead: <><span className="font-medium text-white/80">Mengirim otomatis…</span> Detail produk akan muncul di halaman ini dalam beberapa detik, dan salinannya dikirim ke {destination} yang kamu masukkan saat checkout.</>,
+      note: <>Tetap di halaman ini — tidak perlu refresh, tidak perlu hubungi admin.</>,
     };
   } else if (instantSending) {
     delivery = {
-      lead: <>Pengiriman butuh waktu lebih lama dari biasanya. {toBuyer}</>,
-      note: <>Halaman ini terus memeriksa sendiri. Kalau belum ada kabar dalam beberapa menit, hubungi admin lewat tombol di bawah dengan menyebut kode pesanan.</>,
+      title: "Pengiriman Otomatis",
+      lead: <>Masih mengirim otomatis — butuh waktu lebih lama dari biasanya. Detail tetap akan muncul di halaman ini dan dikirim ke {destination} yang sama.</>,
+      note: <>Halaman ini memeriksa sendiri. Kalau beberapa menit belum ada, hubungi admin lewat tombol di bawah dengan menyebut kode pesanan.</>,
     };
   } else {
     delivery = {
+      title: "Pengiriman Produk",
       lead: <>Pesanan sedang diproses. {toBuyer}</>,
       note: <>Estimasi 5–15 menit pada jam layanan. Halaman ini memeriksa sendiri, jadi detail akan tampil otomatis di sini kalau produknya terkirim instan.</>,
     };
@@ -499,8 +515,8 @@ export default function OrderSuccessPage() {
           // yang pasti gagal. Beri kepastian ke mana produk dikirim, dan JANGAN
           // janji menit untuk baris antrean — plafonnya 12 jam (keputusan owner
           // 2026-09-18). Teksnya dipilih di `delivery` di atas.
-          <section className="ax-glass-card mt-6 rounded-2xl p-4 text-left" aria-label="Pengiriman produk" aria-live="polite">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">Pengiriman Produk</p>
+          <section className="ax-glass-card mt-6 rounded-2xl p-4 text-left" aria-label={delivery.title} aria-live="polite">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">{delivery.title}</p>
             <p className="mt-2 text-xs leading-5 text-white/55">
               {delivery.sending && <InlineSpinner className="mr-1.5 h-3 w-3 align-[-2px]" />}
               {delivery.lead}

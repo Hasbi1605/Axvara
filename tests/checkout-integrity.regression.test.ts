@@ -287,10 +287,18 @@ describe("Authoritative UI and admin state", () => {
     // Kabar web lewat email (bot WA mati); WA hanya untuk order tanpa email.
     expect(statusPage).toContain("const destination = order.email");
     expect(statusPage).toContain("Detail produk dikirim ke {destination}");
-    // Kelas antrean TIDAK boleh dijanjikan 5–15 menit (plafon 12 jam).
+    // Kelas antrean TIDAK boleh dijanjikan 5–15 menit (C1: <1 jam + plafon 12 jam,
+    // tanpa jam layanan spesifik — revisi copy 2026-10-02).
     expect(statusPage).toContain("order.queuedDelivery");
-    expect(statusPage).toContain("Made By Order");
-    expect(statusPage).toContain("WR_QUEUED_MAX_HOURS} jam pada jam layanan");
+    expect(statusPage).toContain("Pesanan Made By Order");
+    expect(statusPage).toContain("kurang dari 1 jam");
+    expect(statusPage).toContain("WR_QUEUED_MAX_HOURS} jam.");
+    expect(statusPage).not.toContain("WR_QUEUED_MAX_HOURS} jam pada jam layanan");
+    // C2 instan-gagal menjelaskan kenapa (alasan stok), C1 MBO tidak pakai alasan itu.
+    expect(statusPage).toContain("Stok otomatis habis, jadi admin menyiapkan manual");
+    // Jalur otomatis berjudul sendiri dan tidak bocorkan admin/12 jam.
+    expect(statusPage).toContain("Pengiriman Otomatis");
+    expect(statusPage).toContain("Mengirim otomatis…");
     // Polling terbatas agar panel muncul sendiri tanpa reload manual, dan
     // lebih pendek untuk antrean (polling tak mungkin menutup 12 jam).
     expect(statusPage).toContain('orderStatus !== "lunas" || credentialsReady');

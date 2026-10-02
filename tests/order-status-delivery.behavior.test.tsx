@@ -104,12 +104,17 @@ describe("/pesanan/[code] — blok pasca-pembayaran", () => {
     expect(screen.queryByText("Detail Akun Digital")).toBeNull();
   });
 
-  it("credentials_ready=false + queued → teks Made By Order dengan plafon 12 jam, TANPA janji 5–15 menit", async () => {
+  it("credentials_ready=false + queued (C1 Made By Order) → judul sendiri, <1 jam + plafon 12 jam, TANPA alasan stok & TANPA jam layanan", async () => {
     mockFetch(orderPayload({ queued_delivery: true }));
     render(<OrderStatusPage />);
-    await waitFor(() => expect(screen.getByText("Pengiriman Produk")).toBeTruthy());
-    expect(screen.getByText(/Made By Order/)).toBeTruthy();
-    expect(screen.getByText(/maksimal 12 jam pada jam layanan/)).toBeTruthy();
+    await waitFor(() => expect(screen.getByText("Pesanan Made By Order")).toBeTruthy());
+    expect(screen.getByText(/disiapkan admin setelah pembayaran masuk/)).toBeTruthy();
+    expect(screen.getByText(/kurang dari 1 jam/)).toBeTruthy();
+    expect(screen.getByText(/maksimal 12 jam/)).toBeTruthy();
+    // C1 manual by design: tidak boleh pakai alasan stok habis (itu milik C2)
+    // dan tidak boleh janji jam layanan / 5–15 menit WR.
+    expect(screen.queryByText(/Stok otomatis habis/)).toBeNull();
+    expect(screen.queryByText(/pada jam layanan/)).toBeNull();
     expect(screen.queryByText(/5–15 menit/)).toBeNull();
   });
 
@@ -161,15 +166,20 @@ describe("/pesanan/[code] — kirim otomatis dari stok sendiri", () => {
     vi.useRealTimers();
   });
 
-  it("belum terkirim → 'Mengirim produkmu…' tanpa 5–15 menit; poll 2 dtk memunculkan detail tanpa muat ulang", async () => {
+  it("belum terkirim (A: Pengiriman Otomatis) → janji halaman-ini + email dalam detik, TANPA sebut admin/12 jam", async () => {
     sessionStorage.setItem(`axvara-checkout-contact:${CODE}`, "081234567890");
     const state = { order: { instant_delivery: true, fulfillment_status: "not_required", customer_email: "r***@gmail.com" } as Record<string, unknown> };
     const gets = stubLiveOrder(state);
     render(<OrderStatusPage />);
     await advance(50);
-    expect(screen.getByText("Mengirim produkmu…")).toBeTruthy();
-    expect(screen.getByText(/Tidak perlu memuat ulang halaman/)).toBeTruthy();
-    expect(screen.getByText(/Detail produk tampil di sini/).textContent).toContain("r***@gmail.com");
+    expect(screen.getByText("Pengiriman Otomatis")).toBeTruthy();
+    expect(screen.getByText("Mengirim otomatis…")).toBeTruthy();
+    expect(screen.getByText(/akan muncul di halaman ini dalam beberapa detik/).textContent).toContain("r***@gmail.com");
+    expect(screen.getByText(/Tetap di halaman ini/)).toBeTruthy();
+    // Jalur otomatis tidak boleh bocorkan teks fallback darurat.
+    expect(screen.queryByText(/disiapkan admin/)).toBeNull();
+    expect(screen.queryByText(/Stok otomatis habis/)).toBeNull();
+    expect(screen.queryByText(/maksimal 12 jam/)).toBeNull();
     expect(screen.queryByText(/5–15 menit/)).toBeNull();
     // Produk selesai terkirim sesaat setelah halaman melihat "lunas".
     state.order = { ...state.order, credentials_ready: true, fulfillment_status: "delivered" };
@@ -180,18 +190,21 @@ describe("/pesanan/[code] — kirim otomatis dari stok sendiri", () => {
     expect(gets).toHaveLength(2);
   });
 
-  it("jendela cepat habis tanpa hasil → 2 dtk ×5, 5 dtk ×4, lalu 20 dtk; teks berganti jujur", async () => {
+  it("jendela cepat habis tanpa hasil (B) → 2 dtk ×5, 5 dtk ×4, lalu 20 dtk; teks berganti jujur, tetap tanpa admin/12 jam", async () => {
     const gets = stubLiveOrder({ order: { instant_delivery: true, fulfillment_status: "not_required" } });
     render(<OrderStatusPage />);
     await advance(50);
     expect(gets).toHaveLength(1);
     await advance(10_100);
     expect(gets).toHaveLength(6);
-    expect(screen.getByText("Mengirim produkmu…")).toBeTruthy();
+    expect(screen.getByText("Mengirim otomatis…")).toBeTruthy();
     await advance(20_000);
     expect(gets).toHaveLength(10);
-    expect(screen.queryByText("Mengirim produkmu…")).toBeNull();
-    expect(screen.getByText(/Pengiriman butuh waktu lebih lama dari biasanya/)).toBeTruthy();
+    expect(screen.queryByText("Mengirim otomatis…")).toBeNull();
+    expect(screen.getByText("Pengiriman Otomatis")).toBeTruthy();
+    expect(screen.getByText(/butuh waktu lebih lama dari biasanya/)).toBeTruthy();
+    expect(screen.queryByText(/disiapkan admin/)).toBeNull();
+    expect(screen.queryByText(/maksimal 12 jam/)).toBeNull();
     expect(screen.queryByText(/5–15 menit/)).toBeNull();
     await advance(15_000);
     expect(gets).toHaveLength(10);
@@ -199,13 +212,18 @@ describe("/pesanan/[code] — kirim otomatis dari stok sendiri", () => {
     expect(gets).toHaveLength(11);
   });
 
-  it("kirim otomatis diserahkan ke admin (manual_required) → teks admin + plafon 12 jam, tanpa poll cepat", async () => {
+  it("kirim otomatis diserahkan ke admin (C2 manual_required) → judul sendiri + alasan stok + <1 jam/12 jam, tanpa poll cepat & tanpa janji jam layanan", async () => {
     const gets = stubLiveOrder({ order: { instant_delivery: true, fulfillment_status: "manual_required", customer_email: "r***@gmail.com" } });
     render(<OrderStatusPage />);
     await advance(50);
-    expect(screen.getByText(/Produkmu sedang disiapkan admin/)).toBeTruthy();
-    expect(screen.getByText(/maksimal 12 jam pada jam layanan/)).toBeTruthy();
-    expect(screen.queryByText("Mengirim produkmu…")).toBeNull();
+    expect(screen.getByText("Pengiriman oleh Admin")).toBeTruthy();
+    expect(screen.getByText(/Stok otomatis habis, jadi admin menyiapkan manual/).textContent).toContain("r***@gmail.com");
+    expect(screen.getByText(/kurang dari 1 jam/)).toBeTruthy();
+    expect(screen.getByText(/maksimal 12 jam/)).toBeTruthy();
+    expect(screen.queryByText(/pada jam layanan/)).toBeNull();
+    expect(screen.queryByText(/Tidak perlu menunggu halaman ini terbuka/)).toBeNull();
+    expect(screen.queryByText("Mengirim otomatis…")).toBeNull();
+    expect(screen.queryByText(/Made By Order/)).toBeNull();
     expect(screen.queryByText(/5–15 menit/)).toBeNull();
     await advance(15_000);
     expect(gets).toHaveLength(1);
