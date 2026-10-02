@@ -1108,9 +1108,12 @@ CREATE INDEX IF NOT EXISTS idx_supplier_pairs_sk ON supplier_pairs(sk_product_id
 -- Pasangan yatim dibersihkan best-effort oleh decideWinner (cermin guard
 -- link yatim WR 2026-09-11).
 
--- Seed 28 pasangan (keputusan owner 2026-09-30, via id produk prod).
+-- Seed 28 pasangan (keputusan owner 2026-09-30, via id produk prod) + 5
+-- susulan 2026-10-01 (cermin 0055, agar bootstrap = migrasi = 33).
 -- Gemini dipasang (produk sama), MS365 vs Office365 TIDAK (beda: langganan
 -- vs lifetime). Prefer default auto semua — admin tuning belakangan.
+-- Susulan 2026-10-01 (5 pasangan, SK baru pasca-pemetaan awal): CamScanner,
+-- Crunchyroll, Getcontact, Grok AI, Leonardo AI. iQiyi SUDAH ada (pair 11).
 INSERT OR IGNORE INTO supplier_pairs (wr_product_id, sk_product_id) VALUES
   (33, 67),   -- Alight Motion
   (11, 63),   -- Apple Music
@@ -1139,5 +1142,10 @@ INSERT OR IGNORE INTO supplier_pairs (wr_product_id, sk_product_id) VALUES
   (31, 92),   -- Youku Premium vs Youku
   (7, 66),    -- Youtube Premium vs Youtube
   (15, 62),   -- Zoom Premium vs Zoom Meetings Pro
-  (58, 96);   -- Gemini AI Antigravity vs Gemini Ai (produk sama per owner)
+  (58, 96),   -- Gemini AI Antigravity vs Gemini Ai (produk sama per owner)
+  (42, 104),  -- CamScanner (susulan 2026-10-01: SK baru pasca-pemetaan awal)
+  (30, 106),  -- Crunchyroll (susulan 2026-10-01)
+  (10, 109),  -- Getcontact Premium vs Getcontact (susulan 2026-10-01)
+  (35, 101),  -- Grok AI vs Grok Ai (susulan 2026-10-01)
+  (8, 108);   -- Leonardo AI vs Leonardo Ai (susulan 2026-10-01)
 

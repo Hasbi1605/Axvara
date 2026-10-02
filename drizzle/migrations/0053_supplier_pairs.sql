@@ -35,6 +35,7 @@ CREATE INDEX IF NOT EXISTS idx_supplier_pairs_sk ON supplier_pairs(sk_product_id
 -- link yatim WR 2026-09-11).
 
 -- Seed 28 pasangan (keputusan owner 2026-09-30, via id produk prod).
+-- Susulan 2026-10-01 di 0055 (5 pasangan SK baru pasca-pemetaan awal).
 -- Gemini dipasang (produk sama), MS365 vs Office365 TIDAK (beda: langganan
 -- vs lifetime). Prefer default auto semua — admin tuning belakangan.
 INSERT OR IGNORE INTO supplier_pairs (wr_product_id, sk_product_id) VALUES

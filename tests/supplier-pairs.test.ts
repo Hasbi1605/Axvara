@@ -96,7 +96,7 @@ describe("decideAllWinners + loserProductIds", () => {
     try {
       stubFulfillmentKey();
       seedPairProducts(fx);
-      // Fixture schema.sql sudah seed 28 pasangan (id 1..28): pakai id 99 baru.
+      // Fixture schema.sql sudah seed 33 pasangan (id 1..33): pakai id 99 baru.
       fx.sql.prepare("INSERT INTO supplier_pairs(id,wr_product_id,sk_product_id) VALUES(99,1,2)").run();
       const db = createDatabaseAccess(fx.db);
       const out = await decideAllWinners(db);
