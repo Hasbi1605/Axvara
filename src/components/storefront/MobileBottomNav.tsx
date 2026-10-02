@@ -1,14 +1,19 @@
 "use client";
 
-// Bottom nav mobile (revisi 2026-09-25, keputusan owner): Beranda · Keranjang ·
-// Pesanan · Bantuan. Dulu Beranda dan "Katalog" (/#katalog, halaman yang
-// sama) memakan dua slot, Artikel satu slot, dan Cara Order satu slot.
+// Bottom nav mobile (revisi 2026-10-03, keputusan owner): Beranda · Kategori ·
+// Pesanan · Bantuan. Tab Keranjang DIHAPUS karena redundan: drawer yang sama
+// sudah dibuka dari tombol Keranjang navbar (selalu sticky) + tombol Keranjang
+// tiap kartu produk — dan nav bawah justru disembunyikan di PDP/checkout
+// tempat keranjang paling dibutuhkan. Pengganti = Kategori (dialog filter
+// katalog; beda dari "Katalog" lama /#katalog yang cuma anchor halaman sama).
+// Riwayat: 2026-09-25 Beranda · Keranjang · Pesanan · Bantuan (buang Katalog +
+// Artikel + Cara Order yang memakan slot).
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { IosIcon, type IosIconName } from "@/components/ui/IosIcon";
+import { CategorySheet } from "@/components/storefront/CategorySheet";
 import { HelpSheet } from "@/components/storefront/HelpSheet";
-import { useCart } from "@/stores/cart";
 import { LOCAL_ORDERS_EVENT, LOCAL_ORDERS_KEY, freshPendingCodes } from "@/lib/local-orders";
 
 const HELP_ROUTES = ["/cara-order", "/garansi-replace", "/artikel"];
@@ -27,13 +32,11 @@ type NavItem = {
 
 export function MobileBottomNav() {
   const pathname = usePathname() ?? "/";
-  const cartLines = useCart((s) => s.items.length);
-  const drawerOpen = useCart((s) => s.drawerOpen);
-  const setDrawer = useCart((s) => s.setDrawer);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [categoryOpen, setCategoryOpen] = useState(false);
   const [hasPending, setHasPending] = useState(false);
-  // Keranjang & pesanan lokal baru dibaca setelah mount: HTML server tidak
-  // tahu isi localStorage, jadi badge/titik tidak boleh ikut render pertama.
+  // Titik pesanan lokal baru dibaca setelah mount: HTML server tidak
+  // tahu isi localStorage, jadi titik tidak boleh ikut render pertama.
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => { setMounted(true); }, []);
@@ -52,7 +55,7 @@ export function MobileBottomNav() {
     };
   }, [pathname]);
 
-  useEffect(() => { setHelpOpen(false); }, [pathname]);
+  useEffect(() => { setHelpOpen(false); setCategoryOpen(false); }, [pathname]);
 
   // Admin & checkout tanpa nav; PDP punya bar beli sendiri.
   // Halaman link-in-bio (/link) tampil tanpa chrome global agar fokus ala Linktree.
@@ -60,17 +63,15 @@ export function MobileBottomNav() {
     return null;
   }
 
-  const cartCount = mounted ? cartLines : 0;
   const pendingDot = mounted && hasPending;
   const navItems: NavItem[] = [
     { label: "Beranda", href: "/", icon: "home", active: pathname === "/" },
     {
-      label: "Keranjang",
-      icon: "shopping-bag",
-      active: drawerOpen,
-      onClick: () => setDrawer(true),
-      badge: cartCount,
-      ariaLabel: cartCount > 0 ? `Keranjang, ${cartCount} barang` : "Keranjang",
+      label: "Kategori",
+      icon: "category",
+      active: categoryOpen,
+      onClick: () => setCategoryOpen(true),
+      dialog: true,
     },
     {
       label: "Pesanan",
@@ -97,6 +98,7 @@ export function MobileBottomNav() {
       >
         <div className="flex items-center justify-around">
           {navItems.map((item) => {
+            const dialogOpen = item.label === "Kategori" ? categoryOpen : item.label === "Bantuan" ? helpOpen : undefined;
             const content = (
               <span
                 className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition-all duration-200 ${
@@ -142,7 +144,7 @@ export function MobileBottomNav() {
                 onClick={item.onClick}
                 aria-label={item.ariaLabel}
                 aria-haspopup={item.dialog ? "dialog" : undefined}
-                aria-expanded={item.dialog ? helpOpen : undefined}
+                aria-expanded={item.dialog ? dialogOpen : undefined}
                 className="flex-1 flex justify-center"
               >
                 {content}
@@ -152,6 +154,7 @@ export function MobileBottomNav() {
         </div>
       </nav>
       {helpOpen && <HelpSheet onClose={() => setHelpOpen(false)} />}
+      {categoryOpen && <CategorySheet onClose={() => setCategoryOpen(false)} />}
     </>
   );
 }

@@ -438,15 +438,34 @@
   email kredensial (`user@mail.com`) SENGAJA bukan link; skema
   `javascript:`/`data:` ditolak. Dikunci
   `tests/product-autolink.behavior.test.tsx` (10).
+- **Bottom nav mobile: Kategori gantikan Keranjang (2026-10-03, keputusan
+  owner).** Tab Keranjang redundan (drawer yang sama dibuka dari tombol
+  Keranjang navbar yang selalu sticky + tiap kartu produk; nav bawah justru
+  hidden di PDP/checkout). Susunan: Beranda · Kategori · Pesanan · Bantuan.
+  Tab Kategori = `CategorySheet.tsx` (cermin HelpSheet: solid `#0B1025`,
+  focus trap + Escape + scroll lock) berisi Semua + 6 taksonomi (fallback
+  lokal, lalu `/api/categories`); pilih → event `axvara:category` →
+  home-client filter + scroll `#katalog` (dari rute lain via `/?category=`).
+  Keranjang tetap milik navbar (badge Gold tidak berubah).
 - **Link di artikel bisa diklik (2026-10-03, laporan owner + screenshot).**
   URL di artikel Netflix tampil sebagai `<code>` biru tapi tidak bisa diklik
   (penulis menulis `` `https://…` `` backtick). Render `artikel/[slug]`
   kini: (a) teks polos diautolink via `linkifySegments()` yang sama dengan
   PDP (`ArticleRichText`, aturan konsisten); (b) codespan yang isinya URL
-  polos ikut jadi `<a _blank noreferrer break-all>`; codespan non-URL
+  polos ikut jadi `<a _blank noreferrer break-all>`; codespan   non-URL
   (perintah, kode) tetap `<code>`. Isi artikel Netflix id 23 juga diperbaiki
   langsung di D1 prod (backtick → link markdown + link internal
-  Lacak Pesanan). Dikunci `tests/article-autolink.behavior.test.tsx` (3).
+  Lacak Pesanan). Dikunci `tests/article-autolink.behavior.test.tsx` (4:
+  codespan-URL, mailbox+bot, markdown existing, anti-impor-client).
+- **Pelajaran 2026-10-03 (artikel 500): server component DILARANG impor modul
+  client.** `artikel/[slug]` mengimpor `linkifySegments` dari
+  `ProductCopy.tsx` (`"use client"` + `lucide-react`) → `next build` hijau
+  tapi edge Pages 500 untuk SEMUA artikel. Solusi: logika murni tinggal di
+  `lib/product-copy/text.ts` (tanpa React/lucide), komponen client impor
+  dari sana. Test regresi membaca file sumber (bukan snapshot) agar pelanggaran
+  ketahuan sebelum deploy. Konten D1 id 23 juga rusak terpisah (52 `\n`
+  literal dari UPDATE via shell quoting → 1 heading raksasa): diperbaiki via
+  `--file=` (bukan `--command=`).
 
 ### 5.x Format Tanggal & Jam (audit 2026-09-20, live)
 - Semua tanggal/jam ditulis dalam **WIB** dan dirender lewat satu helper
@@ -526,13 +545,18 @@
   `/link` (fokus ala Linktree), masuk sitemap + skeleton `content`.
   Tap target ≥44px (tombol `min-h-[64px]`, share `h-12`).
 
-### 5.7e Bottom Nav Mobile (revisi 2026-09-25)
-- Empat tab: **Beranda · Keranjang · Pesanan · Bantuan** (dulu Beranda,
-  Artikel, Cara Order, Lacak, Katalog; Katalog hanya menggulir Beranda dan
-  tidak pernah menyala). Bar, tinggi, dan gaya aktif (cyan + titik glow)
-  tidak berubah. Tersembunyi di `/admin`, `/checkout`, `/produk/*`.
-- Keranjang membuka drawer (aktif selama drawer terbuka) dengan badge jumlah
-  baris Gold `#FFB800` seperti navbar. Pesanan → `/lacak-pesanan` (aktif juga
+### 5.7e Bottom Nav Mobile (revisi 2026-10-03; sebelumnya 2026-09-25)
+- Empat tab: **Beranda · Kategori · Pesanan · Bantuan** (2026-10-03: Keranjang
+  DIHAPUS — drawer yang sama dibuka dari tombol Keranjang navbar yang selalu
+  sticky + tiap kartu produk; nav bawah justru hidden di PDP/checkout.
+  Riwayat: 2026-09-25 Beranda · Keranjang · Pesanan · Bantuan; sebelumnya
+  Beranda, Artikel, Cara Order, Lacak, Katalog). Bar, tinggi, dan gaya aktif
+  (cyan + titik glow) tidak berubah. Tersembunyi di `/admin`, `/checkout`,
+  `/produk/*`.
+- Kategori membuka bottom-sheet solid `#0B1025` (cermin Bantuan): Semua +
+  6 taksonomi (fallback lokal → `/api/categories`); pilih → filter katalog
+  + scroll `#katalog`. Keranjang tetap milik navbar (badge Gold).
+- Pesanan → `/lacak-pesanan` (aktif juga
   di `/pesanan/*`), titik Gold bila ada pesanan perangkat ini yang belum
   dibayar (maks 75 menit). Badge/titik baru muncul setelah mount (isi
   localStorage tidak dikenal server).

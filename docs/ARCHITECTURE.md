@@ -121,7 +121,7 @@ axvara/
 │   ├── ui/                      # Button, Input, Badge, Modal, Drawer, Toast,
 │   │                            # NavigationProgress (bar + skeleton rute + pil koneksi lambat)
 │   ├── storefront/              # Navbar, Hero, ProductCard, CartDrawer, CheckoutForm, QrisDisplay,
-│   │                            # MobileBottomNav (Beranda · Keranjang · Pesanan · Bantuan) + HelpSheet,
+│   │                            # MobileBottomNav (Beranda · Kategori · Pesanan · Bantuan) + HelpSheet + CategorySheet,
 │   │                            # DeviceOrders ("Pesanan di perangkat ini" di /lacak-pesanan),
 │   │                            # QuickVariantModal (beli cepat + mode select untuk PDP mobile),
 │   │                            # ProductCopy (deskripsi + S&K + cara aktivasi PDP, panel lipat mobile),

@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { marked } from "marked";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
-import { linkifySegments } from "@/components/storefront/ProductCopy";
+import { linkifySegments } from "@/lib/product-copy/text";
 import { normalizeArticle } from "@/lib/articles";
 import { queryFirst } from "@/lib/db";
 import { absoluteUrl } from "@/lib/site-seo";

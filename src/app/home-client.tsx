@@ -35,6 +35,24 @@ export function HomeClient({ initialProducts }: { initialProducts?: Product[] })
     const requestedCategory = new URLSearchParams(window.location.search).get("category");
     // Slug lama (?category= bookmark pra-migrasi 0046) dipetakan ke slug baru.
     if (requestedCategory) setActiveCat(resolveCategorySlug(requestedCategory));
+    // Sheet Kategori bottom nav (2026-10-03): pilih kategori dari rute mana
+    // pun → filter katalog + gulir ke #katalog. Dari home: langsung terapkan;
+    // dari rute lain: pindah ke / dulu, lalu terapkan setelah navigasi.
+    const onCategory = (event: Event) => {
+      const slug = resolveCategorySlug(String((event as CustomEvent<string>).detail ?? "semua"));
+      setActiveCat(slug);
+      setShowAll(false);
+      if (window.location.pathname !== "/") {
+        window.location.href = `/?category=${encodeURIComponent(slug)}`;
+        return;
+      }
+      // Katalog sudah di halaman ini: cukup gulir ke daftarnya.
+      window.setTimeout(() => {
+        document.getElementById("katalog")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 60);
+    };
+    window.addEventListener("axvara:category", onCategory);
+    return () => window.removeEventListener("axvara:category", onCategory);
   }, []);
 
   // D1 is authoritative. Static seeds must never resurrect inactive/deleted products.

@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 //
 // tests/mobile-bottom-nav.behavior.test.tsx — Bottom nav mobile Beranda ·
-// Keranjang · Pesanan · Bantuan (keputusan owner 2026-09-25) + daftar
+// Kategori · Pesanan · Bantuan (keputusan owner 2026-10-03: tab Keranjang
+// DIHAPUS — drawer yang sama sudah dibuka dari tombol Keranjang navbar yang
+// selalu sticky + tombol Keranjang tiap kartu produk) + daftar
 // "Pesanan di perangkat ini" yang menjadi tujuan tab Pesanan.
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useCart } from "@/stores/cart";
 import { LOCAL_ORDERS_KEY, freshPendingCodes, readLocalOrders, settleLocalOrder } from "@/lib/local-orders";
 
 const nav = vi.hoisted(() => ({ pathname: "/" }));
@@ -27,7 +28,6 @@ beforeEach(() => {
   nav.pathname = "/";
   localStorage.clear();
   sessionStorage.clear();
-  useCart.setState({ items: [], drawerOpen: false });
   vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, json: async () => ({}) })));
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
@@ -35,21 +35,45 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const bar = () => screen.getByRole("navigation", { name: "Navigasi Bawah" });
 
 describe("bottom nav mobile", () => {
-  it("empat tab: Beranda, Keranjang, Pesanan, Bantuan (tanpa Cara Order/Katalog/Artikel)", () => {
+  it("empat tab: Beranda, Kategori, Pesanan, Bantuan (tanpa Keranjang/Cara Order/Katalog/Artikel)", () => {
     render(<MobileBottomNav />);
     const labels = [...bar().querySelectorAll("a, button")].map((el) => el.textContent?.trim());
-    expect(labels).toEqual(["Beranda", "Keranjang", "Pesanan", "Bantuan"]);
+    expect(labels).toEqual(["Beranda", "Kategori", "Pesanan", "Bantuan"]);
     expect(within(bar()).getByRole("link", { name: "Beranda" }).getAttribute("href")).toBe("/");
     expect(within(bar()).getByRole("link", { name: "Pesanan" }).getAttribute("href")).toBe("/lacak-pesanan");
+    // Keranjang HANYA milik navbar (selalu sticky) — tidak ada badge di nav bawah.
+    expect(within(bar()).queryByRole("button", { name: /Keranjang/ })).toBeNull();
   });
 
-  it("Keranjang membuka drawer dan menampilkan jumlah baris", () => {
-    useCart.setState({ items: [{ id: "1", slug: "a", name: "A", price: 1, qty: 3 } as never, { id: "2", slug: "b", name: "B", price: 1, qty: 1 } as never] });
+  it("Kategori membuka sheet berisi daftar kategori + Semua; pilih memicu event filter lalu menutup", async () => {
+    const seen: string[] = [];
+    const onCategory = (event: Event) => seen.push(String((event as CustomEvent<string>).detail));
+    window.addEventListener("axvara:category", onCategory);
+    try {
+      render(<MobileBottomNav />);
+      const tab = within(bar()).getByRole("button", { name: "Kategori" });
+      expect(tab.getAttribute("aria-expanded")).toBe("false");
+      fireEvent.click(tab);
+      const dialog = await screen.findByRole("dialog", { name: "Kategori" });
+      expect(tab.getAttribute("aria-expanded")).toBe("true");
+      // Fallback lokal langsung tampil (tanpa menunggu API): Semua + 6 taksonomi.
+      const names = within(dialog).getAllByRole("listitem").map((li) => li.textContent);
+      expect(names[0]).toBe("Semua Produk");
+      expect(names.length).toBeGreaterThanOrEqual(7);
+      fireEvent.click(within(dialog).getByRole("button", { name: /Streaming & Hiburan/ }));
+      expect(seen).toEqual(["streaming-hiburan"]);
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Kategori" })).toBeNull());
+    } finally {
+      window.removeEventListener("axvara:category", onCategory);
+    }
+  });
+
+  it("Kategori: Escape menutup sheet", async () => {
     render(<MobileBottomNav />);
-    const cart = within(bar()).getByRole("button", { name: "Keranjang, 2 barang" });
-    expect(cart.textContent).toContain("2");
-    fireEvent.click(cart);
-    expect(useCart.getState().drawerOpen).toBe(true);
+    fireEvent.click(within(bar()).getByRole("button", { name: "Kategori" }));
+    await screen.findByRole("dialog", { name: "Kategori" });
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Kategori" })).toBeNull();
   });
 
   it("titik Pesanan hanya untuk pesanan pending yang masih hidup, hilang setelah status tercatat", async () => {

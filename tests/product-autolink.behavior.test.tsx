@@ -10,10 +10,10 @@ import { afterEach } from "vitest";
 import {
   ActivationBody,
   DescriptionBody,
-  linkifySegments,
   RichText,
   TermsBody,
 } from "@/components/storefront/ProductCopy";
+import { linkifySegments } from "@/lib/product-copy/text";
 import { parseProductDescription } from "@/lib/product-copy/format";
 
 afterEach(() => cleanup());

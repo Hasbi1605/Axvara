@@ -55,7 +55,7 @@ axvara/
 │   │   └── globals.css     # Tokens Liquid Glass iOS 26
 │   ├── components/storefront/  # Navbar, OrbitHero, ProductCard, CartDrawer, PopupBanner, Footer, ScrollRope,
 │   │                           # ProductCopy (deskripsi + S&K + cara aktivasi PDP, terlipat di mobile),
-│   │                           # MobileBottomNav + HelpSheet + DeviceOrders (bottom nav mobile 4 tab)
+│   │                           # MobileBottomNav + HelpSheet + CategorySheet + DeviceOrders (bottom nav mobile 4 tab)
 │   ├── components/admin/       # Shell + login gate + hooks + sections/ (satu per menu admin)
 │   ├── hooks/useModalA11y.ts   # Escape + focus trap + scroll lock, satu sumber untuk semua modal
 │   ├── lib/db.ts               # BARREL ke src/lib/db/* — impor dari sini, bukan file internalnya
@@ -115,7 +115,7 @@ AXVARA adalah third-party independen (bukan official store). Garansi bervariasi 
 
 Nomor dukungan default adalah `089519388264`, terpisah dari nomor tujuan pembayaran e-wallet. `src/lib/site.ts` menyediakan fallback, sedangkan override operasional disimpan lewat menu **Pengaturan Toko**.
 
-Bottom nav mobile (2026-09-25): **Beranda · Keranjang · Pesanan · Bantuan**. Tab Pesanan membuka `/lacak-pesanan` yang langsung menampilkan pesanan dari perangkat ini (status dari server, tombol Bayar/Lihat); tab Bantuan membuka panel WA Admin, Telegram, Cara Order, Garansi, dan Artikel. Pembeli memantau pesanan mandiri di `/lacak-pesanan`: cukup kode pesanan + No. WA atau email checkout (tanpa login), diverifikasi server via `POST /api/orders/lookup`, timeline Dibuat → Pembayaran → Diproses, auto-refresh saat Pending.
+Bottom nav mobile (2026-10-03; sebelumnya 2026-09-25): **Beranda · Kategori · Pesanan · Bantuan** (Keranjang hanya di navbar sticky; Kategori = sheet filter katalog). Tab Pesanan membuka `/lacak-pesanan` yang langsung menampilkan pesanan dari perangkat ini (status dari server, tombol Bayar/Lihat); tab Bantuan membuka panel WA Admin, Telegram, Cara Order, Garansi, dan Artikel. Pembeli memantau pesanan mandiri di `/lacak-pesanan`: cukup kode pesanan + No. WA atau email checkout (tanpa login), diverifikasi server via `POST /api/orders/lookup`, timeline Dibuat → Pembayaran → Diproses, auto-refresh saat Pending.
 
 ### Kategori dan footer
 

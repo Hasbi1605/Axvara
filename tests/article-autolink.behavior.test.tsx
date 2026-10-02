@@ -5,8 +5,14 @@
 // sebagai <code> hiasan tapi tidak bisa diklik). Render artikel kini autolink
 // teks polos (URL/bare-domain/handle bot) + codespan berisi URL — pakai ulang
 // linkifySegments milik PDP agar aturannya konsisten.
+//
+// Regresi 2026-10-03 (artikel 500): halaman artikel (server component) TIDAK
+// BOLEH mengimpor modul client ("use client" / lucide-react) — linkifySegments
+// tinggal di lib/product-copy/text.ts yang murni. next build hijau tidak
+// menangkap ini; test di bawah menguncinya.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
+import { readFileSync } from "node:fs";
 import { createD1Fixture } from "./helpers/d1-fixture";
 
 vi.mock("next/link", () => ({
@@ -78,5 +84,21 @@ describe("artikel: link bisa diklik, bukan hiasan", () => {
     } finally {
       fx.close();
     }
+  });
+});
+
+describe("artikel: server component aman untuk edge", () => {
+  it("page artikel tidak mengimpor modul client (penyebab 500 prod 2026-10-03)", () => {
+    const page = readFileSync("src/app/artikel/[slug]/page.tsx", "utf8");
+    // linkifySegments WAJIB dari modul murni — bukan dari ProductCopy.tsx
+    // ("use client" + lucide-react) yang membuat edge Pages 500.
+    expect(page).toContain('from "@/lib/product-copy/text"');
+    expect(page).not.toContain("components/storefront/ProductCopy");
+    const text = readFileSync("src/lib/product-copy/text.ts", "utf8");
+    const codeLines = text.split("\n").filter((line) => !line.trim().startsWith("//"));
+    const code = codeLines.join("\n");
+    expect(code).not.toContain("use client");
+    expect(code).not.toContain("lucide-react");
+    expect(code).not.toMatch(/from ["']react["']/);
   });
 });

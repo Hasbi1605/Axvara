@@ -1,7 +1,12 @@
-// src/lib/product-copy/text.ts — Pembersih teks pemasok + sidik jari S&K.
+// src/lib/product-copy/text.ts — Pembersih teks pemasok + sidik jari S&K +
+// autolink.
 //
-// Modul murni tanpa import: dipakai server (resolver salinan Axvara) DAN
-// browser (parser deskripsi PDP), jadi tidak boleh menarik data kurasi.
+// Modul murni tanpa import: dipakai server (resolver salinan Axvara, render
+// artikel) DAN browser (parser deskripsi PDP, RichText), jadi tidak boleh
+// menarik data kurasi, komponen React, atau lucide-react. Pelajaran
+// 2026-10-03: halaman artikel (server component) mengimpor linkifySegments
+// dari ProductCopy.tsx ("use client" + lucide-react) → 500 di edge Pages
+// walau `next build` hijau. Sejak itu autolink tinggal di sini.
 
 // Zero-width, penanda arah (mis. U+200E di "klaim trial ‎Upcloud"), BOM,
 // variation selector, dan keycap.
@@ -116,4 +121,97 @@ export function supplierFingerprint(terms: string | null | undefined, deliveryTe
   const b = fingerprintLines(deliveryTerms);
   if (!a && !b) return "";
   return cyrb53(`${a}\n\u0001\n${b}`).toString(36);
+}
+
+// ---- Autolink (2026-10-03, permintaan owner) ----
+
+/** Satu segmen teks: string polos atau link yang aman diklik. */
+export type RichSegment = { text: string; href: null } | { text: string; href: string };
+
+const URL_RE = /https?:\/\/[^\s<>"')\]]+/gi;
+// Bare domain tanpa skema (netflix-codes.sekalipay.com/mailbox,
+// www.netflix.com/clearcookies, oliesmail.com) + handle bot Telegram
+// (@sekalipayviu_bot). Email (user@mail.com) SENGAJA bukan link — itu kredensial.
+const BARE_RE = /(?:www\.[a-z0-9-]+(?:\.[a-z0-9-]+)+[^\s<>"')\]]*|[a-z0-9-]+(?:\.[a-z0-9-]+)+\.[a-z]{2,}(?:\/[^\s<>"')\]]*)?|@[a-z0-9_]{4,}_?bot)\b/gi;
+
+function normalizeHref(raw: string): string | null {
+  let text = raw.trim().replace(/[.,;:!?)\]]+$/, "");
+  if (!text) return null;
+  if (text.startsWith("@")) return `https://t.me/${text.slice(1)}`;
+  if (!/^https?:\/\//i.test(text)) text = `https://${text}`;
+  let parsed: URL;
+  try {
+    parsed = new URL(text);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+  if (!parsed.hostname.includes(".")) return null;
+  return parsed.toString();
+}
+
+/**
+ * Pecah teks menjadi segmen polos + link. Murni (tanpa DOM/React): aman dipakai
+ * server (render artikel edge) maupun client (RichText PDP), dan hasilnya
+ * dirender sebagai React node oleh pemanggil — tidak ada HTML mentah dari
+ * teks supplier yang lolos ke halaman.
+ */
+export function linkifySegments(text: string): RichSegment[] {
+  const out: RichSegment[] = [];
+  const pushText = (chunk: string) => {
+    if (chunk) out.push({ text: chunk, href: null });
+  };
+  let rest = text;
+  while (rest) {
+    URL_RE.lastIndex = 0;
+    BARE_RE.lastIndex = 0;
+    const urlMatch = URL_RE.exec(rest);
+    const bareMatch = BARE_RE.exec(rest);
+    // Bare-domain tidak boleh makan ekor URL berskema ("https://youtu.be/x"
+    // mengandung "youtu.be/x" sebagai kandidat bare — pilih yang berskema).
+    let match: RegExpExecArray | null = null;
+    let isUrl = false;
+    if (urlMatch && bareMatch) {
+      if (bareMatch.index >= urlMatch.index && bareMatch.index < urlMatch.index + urlMatch[0].length) {
+        match = urlMatch;
+        isUrl = true;
+      } else if (urlMatch.index <= bareMatch.index) {
+        match = urlMatch;
+        isUrl = true;
+      } else {
+        match = bareMatch;
+      }
+    } else if (urlMatch) {
+      match = urlMatch;
+      isUrl = true;
+    } else if (bareMatch) {
+      match = bareMatch;
+    }
+    if (!match) {
+      pushText(rest);
+      break;
+    }
+    // Kandidat bare yang menempel di tengah kata/email (user@mail.com,
+    // "masukkanemail") bukan link.
+    if (!isUrl) {
+      const before = rest[match.index - 1];
+      if (before && /[a-z0-9_@]/i.test(before)) {
+        pushText(rest.slice(0, match.index + match[0].length));
+        rest = rest.slice(match.index + match[0].length);
+        continue;
+      }
+    }
+    const href = normalizeHref(match[0]);
+    if (!href) {
+      pushText(rest.slice(0, match.index + match[0].length));
+      rest = rest.slice(match.index + match[0].length);
+      continue;
+    }
+    pushText(rest.slice(0, match.index));
+    // Teks tampil = tulisan supplier apa adanya (tanpa tanda baca ekor).
+    const display = match[0].trim().replace(/[.,;:!?)\]]+$/, "");
+    out.push({ text: display, href });
+    rest = rest.slice(match.index + match[0].length);
+  }
+  return out;
 }
