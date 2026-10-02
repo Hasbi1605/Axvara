@@ -49,6 +49,8 @@ export type SkSyncResult = {
   durationMs: number;
   budgetYielded: boolean;
   snapshotComplete: boolean;
+  /** Jumlah produk yang diselipkan kembali (restok habis→ready, 2026-10-02). */
+  restokReinserted?: number;
 };
 
 export const COST_PER_SK_PRODUCT_SYNC = 3;
@@ -825,24 +827,49 @@ export async function syncSkProducts(
       // Refresh harga/stok pasangan katalog — HANYA bila berubah (guard IS NOT
       // di dalam planner): sweep baca-saja = nol tulis katalog (cermin WR
       // 2026-09-20, hemat 97% tulis D1).
+      // Outcome dihitung dari prefetch (tanpa SELECT `before`): bandingkan
+      // harga/stok registry lama vs API saat ini. Level loop (bukan dalam
+      // if katalog) agar terbaca hook selip di bawah.
+      let variantStockChanged = false;
+      let parentStockBefore = -2;
       if (catalogAllowed && axvaraVariantId > 0) {
         pendingSkWrites.push(...planSkCatalogRefreshWrite(
           axvaraVariantId, axvaraProductId, effectiveSellPrice,
           Number(variant.stock), variant.name,
         ));
-        // Outcome dihitung dari prefetch (tanpa SELECT `before`): bandingkan
-        // harga/stok registry lama vs API saat ini.
         if (regExisting) {
           if (Number(regExisting.sk_price ?? -1) !== Number(variant.price) ||
               Number(regExisting.axvara_sell_price ?? -1) !== effectiveSellPrice) result.priceChanges++;
-          if (Number(regExisting.sk_stock ?? -1) !== Number(variant.stock)) result.stockChanges++;
+          if (Number(regExisting.sk_stock ?? -1) !== Number(variant.stock)) {
+            result.stockChanges++;
+            variantStockChanged = true;
+          }
         } else {
           result.priceChanges++;
           result.stockChanges++;
+          variantStockChanged = true;
+        }
+        // Snapshot stok parent SEBELUM batch (hanya bila stok varian berubah
+        // — 1 SELECT; untuk deteksi transisi habis→ready, selip restok
+        // 2026-10-02).
+        if (catalogAllowed && axvaraProductId > 0 && variantStockChanged && db.canSpend(4)) {
+          const beforeRow = await db
+            .queryFirst(`SELECT stock FROM products WHERE id=?`, axvaraProductId)
+            .catch(() => null);
+          parentStockBefore = beforeRow ? Number(beforeRow.stock ?? 0) : -2;
         }
         result.variantsSynced++;
       }
       await runSkWrites(pendingSkWrites, db);
+      // Selip restok: parent 0→ready → kembali ke sekitar posisi semula.
+      // 2 query + 1 write hanya saat transisi; best-effort.
+      if (catalogAllowed && axvaraProductId > 0 && parentStockBefore === 0 && db.canSpend(3)) {
+        try {
+          const { maybeReinsertRestockedProduct } = await import("@/lib/restock-reinsert");
+          const r = await maybeReinsertRestockedProduct(db, axvaraProductId, true);
+          if (r.reinserted) result.restokReinserted = (result.restokReinserted ?? 0) + 1;
+        } catch { /* best-effort: posisi tidak boleh menggagalkan sync */ }
+      }
       touchedProductIds.add(String(row.productId));
       result.synced = touchedProductIds.size;
     } catch (error) {

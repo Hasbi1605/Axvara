@@ -72,3 +72,46 @@ export function adjacentReorderProduct<T extends OrderableProduct>(
   if (productOrderBucket(current) !== productOrderBucket(neighbor)) return null;
   return neighbor;
 }
+
+/**
+ * Kunci selipan saat produk kembali ready setelah habis (2026-10-02,
+ * keputusan owner: restok kembali ke sekitar posisi semula, bukan ekor).
+ *
+ * `restockerKey` = sort_order lama yang TIDAK PERNAH diubah siapa pun
+ * (sync/cron tidak menulis kolom itu — hanya reorder + edit produk).
+ * `takenKeys` = sort_order produk lain yang menempati kunci (aktif saja;
+ * ready maupun habis — yang habis tidak tampil tapi key-nya tetap ditempati,
+ * jadi slot tidak boleh menimpanya).
+ *
+ * Aturan: selipkan TEPAT DI BELAKANG jangkar = kunci terbesar yang <= kunci
+ * lama. Bila tidak ada jangkar di bawah (kunci lama paling kecil) → depan
+ * (kunci terkecil - 10, min 0). Tanpa kunci sama sekali → kunci lama
+ * dipertahankan.
+ *
+ * Ini fungsi MURNI (tanpa I/O) — pemanggil (sync) yang membaca kunci lama +
+ * daftar kunci, lalu menulis 1 UPDATE hanya bila hasilnya berbeda.
+ */
+export function reinsertionKey(restockerKey: number, takenKeys: number[]): number {
+  const oldKey = Number.isFinite(Number(restockerKey)) ? Number(restockerKey) : 0;
+  const keys = takenKeys
+    .map(Number)
+    .filter((key) => Number.isFinite(key));
+  if (keys.length === 0) return oldKey;
+  const below = keys.filter((key) => key <= oldKey);
+  if (below.length === 0) {
+    const min = Math.min(...keys);
+    return Math.max(0, min - 10);
+  }
+  const anchor = Math.max(...below);
+  // Bila tidak ada tetangga di antara jangkar dan key lama (slot lama masih
+  // kosong — tidak ada produk baru yang menyerobot), pertahankan key lama:
+  // pemanggil tidak perlu write sama sekali.
+  const intruder = keys.some((key) => key > anchor && key < oldKey) || keys.includes(oldKey);
+  if (!intruder && anchor < oldKey) return oldKey;
+  // Ada penyerobot (atau slot lama ditempati): maju dari jangkar sampai slot
+  // longgar — tidak pernah menimpa key tetangga yang sudah ada.
+  const taken = new Set(keys);
+  let slot = anchor + 1;
+  while (taken.has(slot)) slot += 1;
+  return slot;
+}
