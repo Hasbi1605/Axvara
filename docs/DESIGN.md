@@ -426,8 +426,18 @@
 - Panel admin "Kirim ke pembeli": satu textarea mono per item ("Detail untuk
   pembeli · {nama baris}") yang terisi dari template varian, kalimat tujuan
   (email/DM Telegram), dan input "Catatan internal" yang tidak dikirim ke pembeli.
-- PDP varian campuran sebelum dipilih: badge netral `border-white/15
+  - PDP varian campuran sebelum dipilih: badge netral `border-white/15
   bg-white/[0.06]` "Tergantung varian", bukan hijau "Kirim otomatis".
+- **Link bisa diklik di deskripsi/S&K/cara aktivasi (2026-10-03, permintaan
+  owner).** Semua URL (`https://…`), bare domain (`netflix-codes…/mailbox`,
+  `www.netflix.com/clearcookies`, `oliesmail.com`), dan handle bot Telegram
+  (`@…_bot`) di ketiga badan teks dirender sebagai `<a target="_blank"
+  rel="noreferrer">` cyan-underline — pembeli tidak perlu copy-paste manual.
+  Helper murni `linkifySegments()` di `ProductCopy.tsx` (tanpa
+  `dangerouslySetInnerHTML`, jadi teks supplier tidak bisa menyuntik HTML);
+  email kredensial (`user@mail.com`) SENGAJA bukan link; skema
+  `javascript:`/`data:` ditolak. Dikunci
+  `tests/product-autolink.behavior.test.tsx` (10).
 
 ### 5.x Format Tanggal & Jam (audit 2026-09-20, live)
 - Semua tanggal/jam ditulis dalam **WIB** dan dirender lewat satu helper

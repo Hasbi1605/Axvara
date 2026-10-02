@@ -3,6 +3,10 @@
 // Satu gaya untuk produk WR maupun non-WR (lihat src/lib/product-copy).
 // [overflow-wrap:anywhere]: URL panjang (tutorial YouTube) tidak boleh
 // melebarkan halaman mobile.
+// Link di teks (2026-10-03, permintaan owner): SEMUA URL/bare-domain/handle
+// bot di deskripsi, S&K, dan cara aktivasi dirender sebagai <a> yang bisa
+// diklik langsung (target _blank + rel noreferrer) — tanpa
+// dangerouslySetInnerHTML, tanpa copy-paste manual oleh pembeli.
 import { useId, useState, type ReactNode } from "react";
 import { Check, ChevronDown, Info } from "lucide-react";
 import {
@@ -14,6 +18,121 @@ import {
 } from "@/lib/product-copy/format";
 
 type Size = "sm" | "xs";
+
+/** Satu segmen teks: string polos atau link yang aman diklik. */
+export type RichSegment = { text: string; href: null } | { text: string; href: string };
+
+const URL_RE = /https?:\/\/[^\s<>"')\]]+/gi;
+// Bare domain tanpa skema (netflix-codes.sekalipay.com/mailbox,
+// www.netflix.com/clearcookies, oliesmail.com) + handle bot Telegram
+// (@sekalipayviu_bot). Email (user@mail.com) SENGAJA bukan link — itu kredensial.
+const BARE_RE = /(?:www\.[a-z0-9-]+(?:\.[a-z0-9-]+)+[^\s<>"')\]]*|[a-z0-9-]+(?:\.[a-z0-9-]+)+\.[a-z]{2,}(?:\/[^\s<>"')\]]*)?|@[a-z0-9_]{4,}_?bot)\b/gi;
+
+function normalizeHref(raw: string): string | null {
+  let text = raw.trim().replace(/[.,;:!?)\]]+$/, "");
+  if (!text) return null;
+  if (text.startsWith("@")) return `https://t.me/${text.slice(1)}`;
+  if (!/^https?:\/\//i.test(text)) text = `https://${text}`;
+  let parsed: URL;
+  try {
+    parsed = new URL(text);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+  if (!parsed.hostname.includes(".")) return null;
+  return parsed.toString();
+}
+
+/**
+ * Pecah teks menjadi segmen polos + link. Murni (tanpa DOM): aman dipakai
+ * server maupun client, dan hasilnya dirender sebagai React node — tidak ada
+ * HTML mentah dari teks supplier yang lolos ke halaman.
+ */
+export function linkifySegments(text: string): RichSegment[] {
+  const out: RichSegment[] = [];
+  const pushText = (chunk: string) => {
+    if (chunk) out.push({ text: chunk, href: null });
+  };
+  let rest = text;
+  while (rest) {
+    URL_RE.lastIndex = 0;
+    BARE_RE.lastIndex = 0;
+    const urlMatch = URL_RE.exec(rest);
+    const bareMatch = BARE_RE.exec(rest);
+    // Bare-domain tidak boleh makan ekor URL berskema ("https://youtu.be/x"
+    // mengandung "youtu.be/x" sebagai kandidat bare — pilih yang berskema).
+    let match: RegExpExecArray | null = null;
+    let isUrl = false;
+    if (urlMatch && bareMatch) {
+      if (bareMatch.index >= urlMatch.index && bareMatch.index < urlMatch.index + urlMatch[0].length) {
+        match = urlMatch;
+        isUrl = true;
+      } else if (urlMatch.index <= bareMatch.index) {
+        match = urlMatch;
+        isUrl = true;
+      } else {
+        match = bareMatch;
+      }
+    } else if (urlMatch) {
+      match = urlMatch;
+      isUrl = true;
+    } else if (bareMatch) {
+      match = bareMatch;
+    }
+    if (!match) {
+      pushText(rest);
+      break;
+    }
+    // Kandidat bare yang menempel di tengah kata/email (user@mail.com,
+    // "masukkanemail") bukan link.
+    if (!isUrl) {
+      const before = rest[match.index - 1];
+      if (before && /[a-z0-9_@]/i.test(before)) {
+        pushText(rest.slice(0, match.index + match[0].length));
+        rest = rest.slice(match.index + match[0].length);
+        continue;
+      }
+    }
+    const href = normalizeHref(match[0]);
+    if (!href) {
+      pushText(rest.slice(0, match.index + match[0].length));
+      rest = rest.slice(match.index + match[0].length);
+      continue;
+    }
+    pushText(rest.slice(0, match.index));
+    // Teks tampil = tulisan supplier apa adanya (tanpa tanda baca ekor).
+    const display = match[0].trim().replace(/[.,;:!?)\]]+$/, "");
+    out.push({ text: display, href });
+    rest = rest.slice(match.index + match[0].length);
+  }
+  return out;
+}
+
+/** Render teks dengan link yang bisa diklik (satu gaya link di semua badan). */
+export function RichText({ text }: { text: string }) {
+  const segments = linkifySegments(text);
+  if (segments.length === 1 && segments[0].href === null) return <>{text}</>;
+  return (
+    <>
+      {segments.map((segment, i) =>
+        segment.href === null ? (
+          <span key={i}>{segment.text}</span>
+        ) : (
+          <a
+            key={i}
+            href={segment.href}
+            target="_blank"
+            rel="noreferrer"
+            className="text-[#00E5FF] underline decoration-[#00E5FF]/40 underline-offset-2 hover:text-white"
+          >
+            {segment.text}
+          </a>
+        ),
+      )}
+    </>
+  );
+}
 
 const DOT: Record<CopySectionKind, string> = {
   paket: "bg-[#00E5FF]",
@@ -28,13 +147,13 @@ export function DescriptionBody({ parsed, size = "sm" }: { parsed: ParsedDescrip
     <div className={`${gap} [overflow-wrap:anywhere]`} data-testid="product-description-body">
       {parsed.blocks.map((block, i) =>
         block.type === "p" ? (
-          <p key={i}>{block.text}</p>
+          <p key={i}><RichText text={block.text} /></p>
         ) : (
           <ul key={i} className="space-y-2">
             {block.items.map((item, j) => (
               <li key={j} className="flex items-start gap-2.5">
                 <Check aria-hidden className={`${size === "sm" ? "mt-0.5 h-4 w-4" : "mt-px h-3.5 w-3.5"} shrink-0 text-[#00E5FF]`} strokeWidth={2.5} />
-                <span>{item}</span>
+                <span><RichText text={item} /></span>
               </li>
             ))}
           </ul>
@@ -45,7 +164,7 @@ export function DescriptionBody({ parsed, size = "sm" }: { parsed: ParsedDescrip
           <h3 className="text-[11px] font-bold uppercase tracking-wide text-white/55">{section.title}</h3>
           <ul className="mt-2 space-y-1.5">
             {section.items.map((item, j) => (
-              <li key={j}>{item}</li>
+              <li key={j}><RichText text={item} /></li>
             ))}
           </ul>
         </div>
@@ -64,7 +183,7 @@ export function TermsBody({ sections, size = "sm" }: { sections: CopySection[]; 
             {section.items.map((item, i) => (
               <li key={i} className="flex items-start gap-2.5">
                 <span aria-hidden className={`mt-[0.55em] h-1.5 w-1.5 shrink-0 rounded-full ${DOT[section.kind]}`} />
-                <span>{item}</span>
+                <span><RichText text={item} /></span>
               </li>
             ))}
           </ul>
@@ -89,7 +208,7 @@ export function ActivationBody({ groups, notes, size = "sm" }: { groups: Activat
                 >
                   {i + 1}
                 </span>
-                <span>{step}</span>
+                <span><RichText text={step} /></span>
               </li>
             ))}
           </ol>
@@ -100,7 +219,7 @@ export function ActivationBody({ groups, notes, size = "sm" }: { groups: Activat
           {notes.map((note, i) => (
             <li key={i} className="flex items-start gap-2">
               <Info aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0 text-white/40" />
-              <span>{note}</span>
+              <span><RichText text={note} /></span>
             </li>
           ))}
         </ul>
