@@ -37,7 +37,20 @@ const maxPakai = (n: number) => `Maksimal dipakai di ${n} perangkat`;
 const cepatPakai = (massal: boolean) =>
   `Langsung pakai setelah beli, karena tidak ada yang tahu kapan banned${massal ? " massal" : ""} terjadi`;
 
+// URL tutorial login Netflix versi AXVARA (2026-10-03, keputusan owner):
+// teks supplier menunjuk ke sekalipay.com/docs/tutorial-login-netflix dan
+// itu SATU-SATUNYA link supplier yang wajib hilang dari PDP — customer yang
+// klik akan melihat nav "Belanja Sekarang" dan order langsung di sana.
+// Mailbox (netflix-codes.sekalipay.com) + bot Viu DIPERTAHANKAN: mailbox murni
+// alat OTP tanpa brand/nav belanja, bot Viu dibungkus artikel terpisah.
 const NETFLIX_UNINSTALL = "Wajib uninstall aplikasi Netflix dulu, lalu install ulang";
+// URL tutorial login Netflix versi AXVARA (2026-10-03, keputusan owner):
+// teks supplier menunjuk ke sekalipay.com/docs/tutorial-login-netflix dan
+// itu SATU-SATUNYA link supplier yang wajib hilang dari PDP — customer yang
+// klik akan melihat nav "Belanja Sekarang" dan order langsung di sana.
+// Mailbox (netflix-codes.sekalipay.com) + bot Viu DIPERTAHANKAN: mailbox murni
+// alat OTP tanpa brand/nav belanja, bot Viu dibungkus artikel terpisah.
+const NETFLIX_AXVARA_GUIDE = "Panduan login lengkap: /artikel/cara-login-netflix-setelah-order-di-axvara";
 const CAPCUT_UPDATE = "Wajib update aplikasi CapCut ke versi terbaru agar email tidak terbaca belum terdaftar";
 const YT_FAMILY_ATURAN = [
   "Pastikan email tidak sedang tergabung di family lain",
@@ -986,7 +999,7 @@ export const CURATED_VARIANT_COPY: readonly CuratedVariantCopy[] = [
         judul: "Ambil kode akses",
         langkah: [
           "Buka netflix-codes.sekalipay.com/mailbox untuk kode akses dan PIN",
-          "Panduan login lengkap: sekalipay.com/docs/tutorial-login-netflix",
+          NETFLIX_AXVARA_GUIDE,
         ],
       },
       {
@@ -1019,7 +1032,7 @@ export const CURATED_VARIANT_COPY: readonly CuratedVariantCopy[] = [
         judul: "Ambil kode akses",
         langkah: [
           "Buka netflix-codes.sekalipay.com/mailbox untuk kode akses dan PIN",
-          "Panduan login lengkap: sekalipay.com/docs/tutorial-login-netflix",
+          NETFLIX_AXVARA_GUIDE,
         ],
       },
       {

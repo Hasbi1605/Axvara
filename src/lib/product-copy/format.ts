@@ -96,14 +96,51 @@ function splitDelivery(lines: CleanLine[], seen: Set<string>): { groups: Activat
 }
 
 /**
+ * Rewrite link toko supplier → panduan AXVARA (2026-10-03, keputusan owner).
+ *
+ * SATU-SATUNYA yang di-rewrite: halaman docs/tutorial Sekalipay
+ * (sekalipay.com/docs/*) — customer yang klik melihat nav "Belanja Sekarang"
+ * dan bisa order langsung di sana. Pengganti: artikel AXVARA per topik
+ * (saat ini hanya tutorial login Netflix; topik lain = pesan netral tanpa
+ * link keluar).
+ *
+ * Yang DIPERTAHANKAN (bukan toko kompetitor):
+ * - mailbox OTP (netflix-codes.sekalipay.com, genjos, sengare, oliesmail,
+ *   generator.email, 2fa.live) — alat fungsional tanpa nav belanja;
+ * - domain resmi produk (netflix.com, microsoft.com, ...);
+ * - tutorial umum (youtube, youtu.be) + bot Telegram operasional.
+ *
+ * Dipakai di DUA jalur: fallback PDP (supplierVariantCopy, pre-bayar) dan
+ * email/panel pasca-bayar (sanitizeSkSellerNote di sekalipay/deliver.ts)
+ * agar kedua sisi konsisten.
+ */
+export const AXVARA_NETFLIX_GUIDE_PATH = "/artikel/cara-login-netflix-setelah-order-di-axvara";
+
+const SUPPLIER_DOCS_RE = /https?:\/\/(?:www\.)?sekalipay\.com\/docs\/[^\s),]*/gi;
+const BARE_SUPPLIER_DOCS_RE = /(?<!\/)sekalipay\.com\/docs\/[^\s),]*/gi;
+
+export function rewriteSupplierDocsLinks(raw: string | null | undefined): string | null {
+  if (!raw) return raw ?? null;
+  let out = String(raw);
+  // Varian Netflix → artikel AXVARA (satu-satunya panduan kloningan saat ini).
+  out = out.replace(SUPPLIER_DOCS_RE, (match) =>
+    /tutorial-login-netflix|panduan-login-netflix/i.test(match) ? `https://axvara.tech${AXVARA_NETFLIX_GUIDE_PATH}` : match,
+  );
+  out = out.replace(BARE_SUPPLIER_DOCS_RE, (match) =>
+    /tutorial-login-netflix|panduan-login-netflix/i.test(match) ? `axvara.tech${AXVARA_NETFLIX_GUIDE_PATH}` : match,
+  );
+  return out;
+}
+
+/**
  * Fallback untuk S&K + cara aktivasi WR yang belum punya salinan Axvara:
  * isi pemasok dipertahankan utuh, hanya dirapikan (tanpa emoji/huruf besar
  * berteriak/baris ganda) dan dikelompokkan. Baris aturan di teks aktivasi
  * dipindah ke S&K agar tidak tampil dua kali.
  */
 export function supplierVariantCopy(terms: string | null | undefined, deliveryTerms: string | null | undefined): VariantCopy | null {
-  const termLines = cleanSupplierLines(terms);
-  const deliveryLines = cleanSupplierLines(deliveryTerms);
+  const termLines = cleanSupplierLines(rewriteSupplierDocsLinks(terms));
+  const deliveryLines = cleanSupplierLines(rewriteSupplierDocsLinks(deliveryTerms));
   if (!termLines.length && !deliveryLines.length) return null;
   const seen = new Set(termLines.map((line) => lineKey(line.text)));
   const { groups, rules } = splitDelivery(deliveryLines, seen);

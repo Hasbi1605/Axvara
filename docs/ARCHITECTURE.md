@@ -1429,7 +1429,11 @@ Penjaga: `tests/product-copy-content.test.ts` membandingkan setiap salinan
 dengan snapshot teks WR produksi (`tests/fixtures/product-copy-snapshot.json`)
 — semua angka, URL, dan keluarga aturan (larangan, kewajiban, tanpa garansi,
 refund, batas perangkat, sanksi, platform, dst.) wajib terbawa; gaya seragam
-(tanpa emoji/huruf besar berteriak/bahasa gaul/titik di akhir poin). Catatan
+(tanpa emoji/huruf besar berteriak/bahasa gaul/titik di akhir poin).
+**Pengecualian 2026-10-03 (keputusan owner):** halaman docs/tutorial supplier
+(`sekalipay.com/docs/*`) BOLEH diganti artikel AXVARA (syarat: URL
+`axvara.tech/artikel/` wajib ada di salinan) — customer yang klik link itu
+melihat nav belanja supplier. Catatan
 harga internal pemasok untuk reseller ("harga naik karena VCC susah")
 sengaja tidak ditampilkan ke pembeli. **Saat WR mengubah teks** (badge "S&K
 perlu ditinjau"): cara tercepat, tulis ulang versi Axvara di editor varian
@@ -1587,8 +1591,26 @@ pembedaan hanya badge admin + slug `-wr`/`-sk`).
   `webOrderAutoDelivered` hitung `sk:%` sebagai auto (tanpa email tanda terima
   ganda); event `order.paid/item.sent` → email "Pesanan Diproses"
   (`notifyBuyerSkProcessing`, idempoten per invoice); saldo habis → email
-  pembeli `sk-blocked` (cermin WR). TANPA ingest Gmail SK — webhook adalah
-  source of truth (lisensi sudah di payload `order.completed`).
+   pembeli `sk-blocked` (cermin WR). TANPA ingest Gmail SK — webhook adalah
+   source of truth (lisensi sudah di payload `order.completed`).
+ - **White-label link docs supplier (2026-10-03, keputusan owner):** teks SK
+   untuk Netflix menunjuk `sekalipay.com/docs/tutorial-login-netflix` — customer
+   yang klik melihat nav "Belanja Sekarang" dan bisa order langsung di supplier.
+   Kini PDP + email/panel rewrite link itu ke artikel AXVARA
+   `/artikel/cara-login-netflix-setelah-order-di-axvara` (ditulis ulang +
+   foto white-label, id draft 23): kurasi `curated.ts` 2 entri Netflix +
+   `rewriteSupplierDocsLinks()` di `format.ts` (dipakai fallback PDP
+   `supplierVariantCopy()` + email/panel `formatSkLicenses()` di `deliver.ts`)
+   sehingga tahan sync (teks supplier ditimpa tiap sweep). Mailbox OTP
+   (`netflix-codes.sekalipay.com`, tanpa brand/nav belanja) + bot Viu
+   DIPERTAHANKAN — bukan toko kompetitor. Test: `product-copy-content`
+   (pengecualian docs→artikel) + `sk-saldo-branding` (9).
+ - **Anti-spam notif saldo SK 1:1 WR (2026-10-03, sesi ses_f029e):** throttle SK
+   cuma 1 jam + state di `sk_saldo_log` (CHECK source rapuh) = spam 24x/hari
+   (bukti screenshot: Rp41.900 × 5 dalam 4 jam). Kini `saldo.ts` pakai
+   `sk_sync_state key='low_saldo_notified'` (`amount|timestamp_ms`): kirim ulang
+   hanya bila 6 jam berlalu ATAU saldo turun melewati kelipatan Rp5.000
+   (maks 4x/hari, stagnan = 1x). Threshold + gate cek 1x/jam cron tidak berubah.
 
 ## 16. Insiden operasional 2026-09-14 + arsitektur proxy terpisah (WAJIB DIBACA agent)
 

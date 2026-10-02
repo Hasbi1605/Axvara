@@ -26,15 +26,35 @@ export async function checkAndLogSkSaldo(database?: DatabaseAccess): Promise<{
     .execRun(`INSERT INTO sk_saldo_log (balance, source, note) VALUES (?,'api_check',NULL)`, balance)
     .catch(() => undefined);
   if (isLow) {
-    const lastAlert = await db
-      .queryFirst(
-        `SELECT created_at FROM sk_saldo_log WHERE source='low_alert' ORDER BY id DESC LIMIT 1`,
-      )
-      .catch(() => null);
-    const lastTs = lastAlert?.created_at ? Date.parse(String(lastAlert.created_at)) : 0;
-    if (!Number.isFinite(lastTs) || Date.now() - lastTs > 60 * 60 * 1000) {
+    // Throttle anti-spam 1:1 WR (2026-10-03, sesi ses_f029e — SK spam 24x/hari
+    // vs WR 4x/hari karena throttle SK cuma 1 jam + state di sk_saldo_log yang
+    // CHECK-constraint source-nya rapuh). State di sk_sync_state
+    // (key='low_saldo_notified', format 'amount|timestamp_ms', tabel sudah ada
+    // dari migrasi 0049) agar survive restart/isolate. Kirim ulang hanya bila
+    // (a) belum pernah kirim dalam 6 jam terakhir, atau (b) saldo TURUN
+    // melewati kelipatan Rp5.000. Threshold + gate cek 1x/jam di cron TIDAK
+    // berubah — yang diubah hanya gate NOTIF-nya.
+    const shouldNotify = await db.queryFirst(
+      `SELECT value FROM sk_sync_state WHERE key='low_saldo_notified'`,
+    ).then((row) => {
+      const value = (row as { value?: unknown } | null)?.value;
+      if (value == null || String(value) === "") return true;
+      const [lastBalanceStr, lastTsStr] = String(value).split("|");
+      const lastBalance = Number(lastBalanceStr);
+      const lastTs = Number(lastTsStr);
+      if (!Number.isFinite(lastBalance) || !Number.isFinite(lastTs)) return true;
+      if (lastTs < Date.now() - 6 * 60 * 60 * 1000) return true;
+      return balance <= Math.floor(lastBalance / 5000) * 5000 - 5000;
+    }).catch(() => true);
+    if (shouldNotify) {
       await db
         .execRun(`INSERT INTO sk_saldo_log (balance, source, note) VALUES (?,'low_alert',?)`, balance, `threshold ${threshold}`)
+        .catch(() => undefined);
+      await db
+        .execRun(`INSERT INTO sk_sync_state (key, value) VALUES ('low_saldo_notified',?)
+         ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')`,
+        `${balance}|${Date.now()}`,
+        )
         .catch(() => undefined);
       const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
       if (adminChatId && process.env.TELEGRAM_BOT_ENABLED === "true") {

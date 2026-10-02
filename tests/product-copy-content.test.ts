@@ -130,7 +130,15 @@ describe.each(snapshot.pairs.map((p) => [p.variants.join(" | "), p] as const))("
 
   it("semua URL pemasok terbawa", () => {
     const lower = joined.toLowerCase();
-    expect(supplierUrls(supplier).filter((url) => !lower.includes(url))).toEqual([]);
+    // Pengecualian 2026-10-03 (keputusan owner): halaman docs/tutorial
+    // supplier (sekalipay.com/docs/*) BOLEH diganti artikel AXVARA — customer
+    // yang klik link itu melihat nav "Belanja Sekarang" dan order langsung
+    // di supplier. Syarat pengganti: URL artikel axvara.tech WAJIB ada.
+    // URL lain (mailbox OTP, resmi produk, tutorial umum) tetap wajib terbawa.
+    const missing = supplierUrls(supplier).filter((url) => !lower.includes(url));
+    const excused = missing.filter((url) => /sekalipay\.com\/docs\//.test(url) && /axvara\.tech\/artikel\/|\/artikel\//.test(lower));
+    expect(missing.filter((url) => !excused.includes(url))).toEqual([]);
+    if (missing.length) expect(excused).toEqual(missing);
   });
 
   it("tidak ada keluarga aturan pemasok yang hilang", () => {

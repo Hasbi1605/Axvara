@@ -17,6 +17,7 @@
 
 import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 import { encryptSecret } from "@/lib/fulfillment/crypto";
+import { rewriteSupplierDocsLinks } from "@/lib/product-copy/format";
 import { normalizeAccountDetailsForDisplay } from "@/lib/warung-rebahan/deliver";
 import type { SkTrxDetail, SkWebhookEvent } from "./client";
 
@@ -177,7 +178,9 @@ export function formatSkLicenses(detail: SkTrxDetail | SkWebhookEvent["data"]): 
     if (label && body) parts.push(`${label}:\n${body}`);
     else if (body) parts.push(body);
     if (typeof sellerNote === "string" && sellerNote.trim()) {
-      parts.push(`Catatan: ${sellerNote.trim()}`);
+      // Link docs supplier (sekalipay.com/docs/*) JANGAN ikut ke email/panel
+      // pembeli (2026-10-03): rewrite ke artikel AXVARA, selaras PDP.
+      parts.push(`Catatan: ${(rewriteSupplierDocsLinks(sellerNote.trim()) ?? sellerNote.trim()).trim()}`);
     }
   }
   const raw = parts.join("\n\n").slice(0, 2000);
