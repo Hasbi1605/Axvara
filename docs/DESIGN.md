@@ -438,6 +438,15 @@
   email kredensial (`user@mail.com`) SENGAJA bukan link; skema
   `javascript:`/`data:` ditolak. Dikunci
   `tests/product-autolink.behavior.test.tsx` (10).
+- **Link di artikel bisa diklik (2026-10-03, laporan owner + screenshot).**
+  URL di artikel Netflix tampil sebagai `<code>` biru tapi tidak bisa diklik
+  (penulis menulis `` `https://…` `` backtick). Render `artikel/[slug]`
+  kini: (a) teks polos diautolink via `linkifySegments()` yang sama dengan
+  PDP (`ArticleRichText`, aturan konsisten); (b) codespan yang isinya URL
+  polos ikut jadi `<a _blank noreferrer break-all>`; codespan non-URL
+  (perintah, kode) tetap `<code>`. Isi artikel Netflix id 23 juga diperbaiki
+  langsung di D1 prod (backtick → link markdown + link internal
+  Lacak Pesanan). Dikunci `tests/article-autolink.behavior.test.tsx` (3).
 
 ### 5.x Format Tanggal & Jam (audit 2026-09-20, live)
 - Semua tanggal/jam ditulis dalam **WIB** dan dirender lewat satu helper

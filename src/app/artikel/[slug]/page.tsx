@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { marked } from "marked";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
+import { linkifySegments } from "@/components/storefront/ProductCopy";
 import { normalizeArticle } from "@/lib/articles";
 import { queryFirst } from "@/lib/db";
 import { absoluteUrl } from "@/lib/site-seo";
@@ -88,6 +89,32 @@ function safeImageSource(source?: string) {
   return Boolean(source?.startsWith("/r2/articles/content/"));
 }
 
+const ARTICLE_LINK_CLASS = "text-[#00E5FF] underline decoration-[#00E5FF]/40 underline-offset-2 hover:text-white";
+
+/**
+ * Teks artikel dengan link yang bisa diklik (2026-10-03, permintaan owner):
+ * URL/bare-domain/handle bot di teks polos jadi <a> — tanpa
+ * dangerouslySetInnerHTML. Dipakai ulang linkifySegments milik PDP agar
+ * aturannya konsisten (email kredensial bukan link, javascript: ditolak).
+ */
+function ArticleRichText({ text }: { text: string }) {
+  const segments = linkifySegments(text);
+  if (segments.length === 1 && segments[0].href === null) return <>{text}</>;
+  return (
+    <>
+      {segments.map((segment, i) =>
+        segment.href === null ? (
+          <span key={i}>{segment.text}</span>
+        ) : (
+          <a key={i} href={segment.href} target="_blank" rel="noreferrer" className={ARTICLE_LINK_CLASS}>
+            {segment.text}
+          </a>
+        ),
+      )}
+    </>
+  );
+}
+
 function renderLegacyJson(value: string): ReactNode | null {
   let document: JsonNode;
   try {
@@ -100,13 +127,13 @@ function renderLegacyJson(value: string): ReactNode | null {
   const render = (node: JsonNode, key: string): ReactNode => {
     const children = node.content?.map((child, index) => render(child, `${key}-${index}`));
     if (node.type === "text") {
-      let output: ReactNode = node.text ?? "";
+      let output: ReactNode = <ArticleRichText key={`${key}-t`} text={node.text ?? ""} />;
       for (const [index, mark] of (node.marks ?? []).entries()) {
         if (mark.type === "bold") output = <strong key={`${key}-b${index}`} className="font-semibold text-white">{output}</strong>;
         if (mark.type === "italic") output = <em key={`${key}-i${index}`}>{output}</em>;
         if (mark.type === "strike") output = <del key={`${key}-s${index}`}>{output}</del>;
         if (mark.type === "link" && mark.attrs?.href?.startsWith("https://")) {
-          output = <a key={`${key}-a${index}`} href={mark.attrs.href} target="_blank" rel="noreferrer" className="text-[#00E5FF] underline">{output}</a>;
+          output = <a key={`${key}-a${index}`} href={mark.attrs.href} target="_blank" rel="noreferrer" className={ARTICLE_LINK_CLASS}>{output}</a>;
         }
       }
       return output;
@@ -142,14 +169,30 @@ function ArticleBody({ content }: { content: string }) {
       const key = `${prefix}-${index}`;
       const children = renderTokens(token.tokens, `${key}-c`);
       if (token.type === "space" || token.type === "html") return null;
-      if (token.type === "text" || token.type === "escape") return token.tokens ? <span key={key}>{children}</span> : token.text ?? "";
+      if (token.type === "text" || token.type === "escape") {
+        if (!token.tokens) return <ArticleRichText key={key} text={token.text ?? ""} />;
+        return <span key={key}>{children}</span>;
+      }
       if (token.type === "strong") return <strong key={key} className="font-semibold text-white">{children}</strong>;
       if (token.type === "em") return <em key={key}>{children}</em>;
       if (token.type === "del") return <del key={key}>{children}</del>;
-      if (token.type === "codespan") return <code key={key} className="rounded bg-white/10 px-1.5 py-0.5 text-[13px] text-[#00E5FF]">{token.text}</code>;
+      // Codespan berisi URL polos (mis. `https://...` hasil tulisan manual)
+      // ikut jadi link klik — bukan hiasan biru (laporan owner 2026-10-03).
+      if (token.type === "codespan") {
+        const raw = token.text ?? "";
+        const segments = linkifySegments(raw);
+        const linked = segments.filter((segment) => segment.href !== null);
+        if (linked.length === 1 && segments.every((segment) => segment.href !== null || !segment.text.trim())) {
+          const segment = linked[0];
+          if (segment.href !== null) {
+            return <a key={key} href={segment.href} target="_blank" rel="noreferrer" className={`${ARTICLE_LINK_CLASS} break-all`}>{segment.text}</a>;
+          }
+        }
+        return <code key={key} className="rounded bg-white/10 px-1.5 py-0.5 text-[13px] text-[#00E5FF]">{token.text}</code>;
+      }
       if (token.type === "br") return <br key={key} />;
       if (token.type === "link") return token.href?.startsWith("https://")
-        ? <a key={key} href={token.href} target="_blank" rel="noreferrer" className="text-[#00E5FF] underline decoration-[#00E5FF]/40 underline-offset-2">{children}</a>
+        ? <a key={key} href={token.href} target="_blank" rel="noreferrer" className={ARTICLE_LINK_CLASS}>{children}</a>
         : <span key={key}>{children}</span>;
       if (token.type === "image") return safeImageSource(token.href)
         ? (
