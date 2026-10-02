@@ -96,7 +96,9 @@ describe("non-WR kanal web: kirim otomatis lewat email", () => {
     expect(emails).toHaveLength(1);
     const [mail] = emails;
     expect(mail.to).toEqual(["pembeli@contoh.test"]);
-    expect(mail.subject).toBe("Pembayaran diterima, Canva Pro — Varian 1 sudah siap — AXVARA AXV-20260925-AAAAAAA1");
+    expect(mail.subject).toBe("Pesanan siap, Canva Pro — Varian 1 — AXVARA AXV-20260925-AAAAAAA1");
+    expect(mail.html).toContain("Halo Rani, pesananmu sudah siap.");
+    expect(mail.html).toContain("Produkmu sudah siap dipakai.");
     expect(mail.html).toContain("UNDANGAN-123");
     expect(mail.html).toContain("PEMBAYARAN DITERIMA");
     expect(mail.html).toContain("/brand/axvara-email-mark.png");
@@ -140,6 +142,8 @@ describe("non-WR kanal web: kirim otomatis lewat email", () => {
     expect(row.delivered_ciphertext).toBeNull();
     expect(emails.map((m) => m.subject)).toEqual(["Pembayaran pesanan AXV-20260925-AAAAAAA3 diterima"]);
     expect(emails[0].html).toContain("Pembayaran Diterima");
+    expect(emails[0].html).toContain("Terima kasih Rani telah berbelanja di Axvara.");
+    expect(emails[0].text).toContain("Terima kasih Rani telah berbelanja di Axvara.");
     const pings = await adminPings();
     expect(pings).toHaveLength(1);
     expect(pings[0].text).toContain("AXV-20260925-AAAAAAA3");
@@ -159,7 +163,7 @@ describe("non-WR kanal web: kirim otomatis lewat email", () => {
     await ensureFulfillmentForPaidOrder("AXV-20260925-AAAAAAA4");
     expect(itemRow("AXV-20260925-AAAAAAA4").map((r) => r.status)).toEqual(["delivered", "manual_required"]);
     expect(emails.map((m) => m.subject).sort()).toEqual([
-      "Pembayaran diterima, Canva Pro — Varian 1 sudah siap — AXVARA AXV-20260925-AAAAAAA4",
+      "Pesanan siap, Canva Pro — Varian 1 — AXVARA AXV-20260925-AAAAAAA4",
       "Pembayaran pesanan AXV-20260925-AAAAAAA4 diterima",
     ].sort());
     expect(await adminPings()).toHaveLength(1);
@@ -193,7 +197,7 @@ describe("non-WR kanal web: kirim otomatis lewat email", () => {
     await ensureFulfillmentForPaidOrder("AXV-20260925-AAAAAAA6");
     [row] = itemRow("AXV-20260925-AAAAAAA6");
     expect(row.status).toBe("delivered");
-    expect(emails.map((m) => m.subject)).toEqual(["Pembayaran diterima, Canva Pro — Varian 1 sudah siap — AXVARA AXV-20260925-AAAAAAA6"]);
+    expect(emails.map((m) => m.subject)).toEqual(["Pesanan siap, Canva Pro — Varian 1 — AXVARA AXV-20260925-AAAAAAA6"]);
   });
 
   it("email item yang sudah tercatat terkirim tidak dikirim ulang saat retry", async () => {
@@ -210,6 +214,6 @@ describe("non-WR kanal web: kirim otomatis lewat email", () => {
     vi.stubEnv("AUTO_FULFILLMENT_ENABLED", "true");
     await ensureFulfillmentForPaidOrder("AXV-20260925-AAAAAAA7");
     expect(itemRow("AXV-20260925-AAAAAAA7")[0].status).toBe("delivered");
-    expect(emails.filter((m) => m.subject.startsWith("Pembayaran diterima, Canva Pro"))).toHaveLength(0);
+    expect(emails.filter((m) => m.subject.startsWith("Pesanan siap, Canva Pro"))).toHaveLength(0);
   });
 });

@@ -37,13 +37,18 @@ describe("email Pesanan Siap", () => {
     expect(t.html).toContain("https://canva.com/join?a=1&amp;b=2");
     expect(t.html).toContain("https://axvara.tech/brand/axvara-email-mark.png");
     expect(t.html).toContain("Lihat Pesanan");
+    expect(t.html).toContain("Halo Rani, pesananmu sudah siap.");
+    expect(t.html).toContain("Produkmu sudah siap dipakai.");
     expect(EMOJI.test(t.subject + t.text)).toBe(false);
     expect(t.subject).toBe("Canva Pro — Invite 1 Bulan sudah siap — AXVARA AXV-20260925-AAAAAAA1");
   });
 
   it("versi gabungan memuat tanda terima pembayaran", () => {
     const t = buildOrderReadyTemplate({ ...ctx, receipt: { total: 2053, method: "QRIS", lines: ["Canva Pro — Invite 1 Bulan"] } });
-    expect(t.subject.startsWith("Pembayaran diterima, ")).toBe(true);
+    expect(t.subject).toBe("Pesanan siap, Canva Pro — Invite 1 Bulan — AXVARA AXV-20260925-AAAAAAA1");
+    expect(t.subject.startsWith("Pembayaran diterima, ")).toBe(false);
+    expect(t.html).toContain("Halo Rani, pesananmu sudah siap.");
+    expect(t.html).toContain("Produkmu sudah siap dipakai.");
     expect(t.html).toContain("PEMBAYARAN DITERIMA");
     expect(t.html).toContain("Total Rp2.053");
     expect(t.text).toContain("Total Rp2.053 · QRIS");

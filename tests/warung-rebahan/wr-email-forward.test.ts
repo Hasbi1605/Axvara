@@ -88,6 +88,10 @@ describe("parser email WR", () => {
     });
     expect(tpl.html).not.toMatch(/warung.?rebahan/i);
     expect(tpl.html).toContain("Pesanan Diproses");
+    expect(tpl.html).toContain("Detail produk akan segera tersedia di email ini dan juga di halaman pesanan.");
+    expect(tpl.html).toContain("Tidak perlu menunggu — begitu siap, kami kabari lewat email ini.");
+    expect(tpl.html).not.toContain("Tidak perlu menunggu halaman ini terbuka");
+    expect(tpl.text).toContain("Detail produk akan segera tersedia di email ini dan juga di halaman pesanan:");
     expect(tpl.html).toContain("https://axvara.tech/brand/axvara-email-mark.png");
     expect(tpl.html).toContain("https://wa.me/6289519388264");
   });

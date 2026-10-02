@@ -202,7 +202,8 @@ function buildOrderUpdateTemplate(
   const subject = `Pesanan ${product} sedang diproses — AXVARA ${ctx.axvaraOrderCode}`;
   const text =
     `Halo ${firstName}, pesanan ${product} kamu sedang diproses.\n` +
-    `Detail akun akan segera tersedia di invoice: ${ctx.invoiceUrl}\nButuh bantuan? WA ${ctx.supportWa}`;
+    `Detail produk akan segera tersedia di email ini dan juga di halaman pesanan: ${ctx.invoiceUrl}\n` +
+    `Tidak perlu menunggu — begitu siap, kami kabari lewat email ini.\nButuh bantuan? WA ${ctx.supportWa}`;
   const detailRows = [
     parsed.product ? `<p style="margin:0 0 4px"><span style="color:#94a3b8;font-size:11px;letter-spacing:1px">PRODUK</span><br><b style="color:#0f1430">${esc(parsed.product)}</b></p>` : "",
     parsed.variant ? `<p style="margin:8px 0 0"><span style="color:#94a3b8;font-size:11px;letter-spacing:1px">VARIAN</span><br><b style="color:#0f1430">${esc(parsed.variant)}</b></p>` : "",
@@ -212,7 +213,8 @@ function buildOrderUpdateTemplate(
     "Ada pembaruan status untuk pesananmu.",
     invoiceBadge(ctx.axvaraOrderCode)
     + `<p style="text-align:center;margin:0 0 12px"><span style="display:inline-block;background:rgba(0,229,255,.14);border:1px solid rgba(0,229,255,.4);color:#0e7490;font-size:11px;font-weight:700;letter-spacing:1px;border-radius:999px;padding:6px 14px">STATUS: DIPROSES</span></p>`
-    + `<p style="color:#334155;font-size:14px;line-height:1.7;margin:0 0 12px">Halo ${esc(firstName)}, pesanan <b>${esc(product)}</b> kamu sedang diproses. Detail akun akan segera tersedia di halaman invoice.</p>`
+    + `<p style="color:#334155;font-size:14px;line-height:1.7;margin:0 0 12px">Halo ${esc(firstName)}, pesanan <b>${esc(product)}</b> kamu sedang diproses. Detail produk akan segera tersedia di email ini dan juga di halaman pesanan.</p>`
+    + `<p style="color:#334155;font-size:14px;line-height:1.7;margin:0 0 12px">Tidak perlu menunggu — begitu siap, kami kabari lewat email ini. Kamu juga bisa membuka lagi halaman pesanan kapan saja lewat tombol di bawah.</p>`
     + (detailRows ? `<div style="background:#f8fafc;border-left:3px solid #00E5FF;border-radius:0 12px 12px 0;padding:12px 16px;font-size:13px;color:#475569">${detailRows}</div>` : "")
     + cta(ctx.invoiceUrl, "Lihat Invoice →")
     + supportBlock,
@@ -326,11 +328,9 @@ export function buildOrderReadyTemplate(ctx: OrderReadyEmailContext): AxvaraForw
   const firstName = firstNameOf(ctx.buyerName);
   const product = ctx.items.map((item) => item.label).filter(Boolean).join(", ") || "Pesanan kamu";
   const subject = ctx.receipt
-    ? `Pembayaran diterima, ${product} sudah siap — AXVARA ${ctx.axvaraOrderCode}`
+    ? `Pesanan siap, ${product} — AXVARA ${ctx.axvaraOrderCode}`
     : `${product} sudah siap — AXVARA ${ctx.axvaraOrderCode}`;
-  const intro = ctx.receipt
-    ? `Halo ${firstName}, pembayaranmu sudah kami terima dan pesananmu sudah siap.`
-    : `Halo ${firstName}, pesananmu sudah siap.`;
+  const intro = `Halo ${firstName}, pesananmu sudah siap.`;
   const receiptHtml = ctx.receipt
     ? `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:12px 16px;margin:0 0 12px;font-size:13px;color:#475569">`
       + `<p style="margin:0 0 6px;color:#94a3b8;font-size:11px;letter-spacing:1px">PEMBAYARAN DITERIMA</p>`
@@ -345,7 +345,7 @@ export function buildOrderReadyTemplate(ctx: OrderReadyEmailContext): AxvaraForw
     .join("");
   const html = shell(
     "Pesanan Siap",
-    ctx.receipt ? "Pembayaran diterima dan produkmu sudah siap." : "Produkmu sudah siap dipakai.",
+    "Produkmu sudah siap dipakai.",
     invoiceBadge(ctx.axvaraOrderCode)
     + `<p style="color:#334155;font-size:14px;line-height:1.7;margin:0 0 12px">${esc(intro)}</p>`
     + receiptHtml

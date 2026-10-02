@@ -374,8 +374,8 @@ export async function notifyBuyerSkProcessing(
       title: "Pesanan Diproses",
       subtitle: "Ada pembaruan status untuk pesananmu.",
       paragraphs: [
-        `Pesanan ${orderCode} kamu sedang diproses. Detail produk akan segera tersedia di halaman pesanan.`,
-        "Tidak perlu menunggu halaman ini terbuka — kami kabari lewat email ini, dan detailnya juga tampil di halaman pesanan saat kamu buka lagi.",
+        `Pesanan ${orderCode} kamu sedang diproses. Detail produk akan segera tersedia di email ini dan juga di halaman pesanan.`,
+        "Tidak perlu menunggu — begitu siap, kami kabari lewat email ini. Kamu juga bisa membuka lagi halaman pesanan kapan saja lewat tombol di bawah.",
       ],
     },
     refKey: `sk-processing:${orderCode}:${invoice}`,
@@ -394,15 +394,22 @@ export async function notifyBuyerPaymentReceived(
   orderCode: string,
   database: DatabaseAccess = createDatabaseAccess(),
 ): Promise<boolean> {
+  const order = await database.queryFirst(
+    `SELECT customer_name FROM orders WHERE code=?`,
+    orderCode,
+  ).catch(() => null);
+  const firstName = String(order?.customer_name ?? "").trim().split(/\s+/)[0] || "Kak";
   return await sendToBuyer(orderCode, {
     subject: `Pembayaran pesanan ${orderCode} diterima`,
     body: `✅ <b>Pembayaran diterima</b>\nOrder: <code>${orderCode}</code>\n\n`
+      + `Terima kasih ${escapeHtml(firstName)} telah berbelanja di Axvara. `
       + "Pembayaranmu sudah tercatat dan pesanan sedang diproses. Detail produk dikirim "
       + "ke email ini dan juga tampil di halaman pesanan.",
     email: {
       title: "Pembayaran Diterima",
       subtitle: "Pesananmu sedang diproses.",
       paragraphs: [
+        `Terima kasih ${firstName} telah berbelanja di Axvara.`,
         `Pembayaran untuk pesanan ${orderCode} sudah tercatat dan pesanan sedang diproses.`,
         "Detail produk dikirim ke email ini dan juga tampil di halaman pesanan.",
       ],

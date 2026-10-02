@@ -147,9 +147,11 @@ describe("SK completed → email kredensial Axvara (template Pesanan Siap)", () 
     expect(sent).toHaveLength(1);
     expect(sent[0].to).toEqual(["rani@example.test"]);
     expect(sent[0].subject).toContain(code);
+    expect(sent[0].subject.startsWith("Pesanan siap, ")).toBe(true);
     expect(sent[0].html).toContain("AXVARA");
     expect(sent[0].html).toContain("Lihat Pesanan");
     expect(sent[0].html).toContain("user@mail.com");
+    expect(sent[0].html).toContain("pesananmu sudah siap.");
     expect(sent[0].html).toContain("PEMBAYARAN DITERIMA");
   });
 
@@ -232,12 +234,17 @@ describe("notif buyer SK: diproses + saldo habis", () => {
     expect(sent[0].html.toLowerCase()).not.toContain("sekalipay");
   });
 
-  it("notifyBuyerSkProcessing idempoten per invoice", async () => {
+  it("notifyBuyerSkProcessing idempoten per invoice + copy tanpa ambiguitas", async () => {
     const code = "AXV-20261002-SKPROC01";
     insertOrder(code, [line(10)]);
+    const bodies: string[] = [];
     let calls = 0;
-    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
-      if (String(url).includes("api.resend.com")) { calls++; return { ok: true, json: async () => ({ id: "re_p" }) }; }
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (String(url).includes("api.resend.com")) {
+        calls++;
+        bodies.push(String(init?.body ?? ""));
+        return { ok: true, json: async () => ({ id: "re_p" }) };
+      }
       throw new Error(`unexpected fetch ${url}`);
     }));
     vi.stubEnv("RESEND_API_KEY", "re_test");
@@ -247,6 +254,11 @@ describe("notif buyer SK: diproses + saldo habis", () => {
     expect(await notifyBuyerSkProcessing(code, "SPY-INV-1", db)).toBe(true);
     expect(await notifyBuyerSkProcessing(code, "SPY-INV-1", db)).toBe(true);
     expect(calls).toBe(1);
+    expect(bodies).toHaveLength(1);
+    const payload = JSON.parse(bodies[0]) as { html: string; text: string };
+    expect(payload.html).toContain("Detail produk akan segera tersedia di email ini dan juga di halaman pesanan.");
+    expect(payload.html).toContain("Tidak perlu menunggu — begitu siap, kami kabari lewat email ini.");
+    expect(payload.html).not.toContain("Tidak perlu menunggu halaman ini terbuka");
   });
 });
 
