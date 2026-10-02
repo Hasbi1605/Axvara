@@ -333,7 +333,7 @@ akun #1 (`axvara-wa-gateway`) = WhatsApp SAJA; **sejak 2026-10-02 proxy pindah
 ke VPS AWS** `t4g.nano` Singapore (`https://wr-proxy.axvara.tech`, IP statis
 `13.228.147.90`, Caddy + Let's Encrypt) dan menjadi satu-satunya egress yang
 di-whitelist WR — lihat `docs/ARCHITECTURE.md` §16.8 (Heroku akun #2 +
-QuotaGuard Spike pensiun setelah masa pantau). Cloudflare Pages tidak boleh memegang API
+QuotaGuard Spike DIHAPUS TOTAL 2026-10-02). Cloudflare Pages tidak boleh memegang API
 key WR; yang disimpan di Pages hanya URL + token proxy dan
 `WARUNG_REBAHAN_WEBHOOK_SECRET` untuk verifikasi HMAC. **Sejak 2026-09-30
 proxy yang SAMA juga meneruskan Sekalipay (`/sk/*`, key `SK_API_KEY` di server

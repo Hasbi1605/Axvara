@@ -1577,8 +1577,10 @@ kerasnya agar tidak terulang:
   URL `https://wr-proxy.axvara.tech` (Caddy + Let's Encrypt). Source tetap
   `/Users/macbookair/axvara-wr-proxy/` (deploy via rsync + systemd, bukan
   `git push heroku`). Akun Heroku #2 (`sailinnadia1@gmail.com`) + add-on
-  QuotaGuard Spike pensiun setelah masa pantau (IP lama
-  `54.88.136.216, 54.84.188.199` dihapus dari whitelist WR/SK).
+  QuotaGuard Spike DIHAPUS TOTAL 2026-10-02 (verifikasi: `heroku apps` =
+  kosong, `heroku addons --all` = No add-ons; tagihan $5/mo ke kartu
+  berhenti). IP lama `54.88.136.216, 54.84.188.199` hapus dari whitelist
+  WR/SK setelah verifikasi VPS hijau (WR Rp47.820, SK Rp44.250).
 - Jangan satukan lagi: restart gateway WA tidak boleh memutus sync WR.
 
 ### 16.2 Env Pages WAJIB `secret_text` (bukan `plain_text`)
@@ -1804,8 +1806,9 @@ Penggantinya: VPS `t4g.nano` Singapore (`i-022790eb6bb0b1be3`, 0.5GB +
   `dnf update` OOM di nano — install bertahap + `max_parallel_downloads=1`.
 - **Whitelist:** `13.228.147.90` DITAMBAHKAN di dashboard WR + SK
   (screenshot owner 2026-10-02, keduanya hijau via proxy baru: WR balance
-  Rp47.820, SK Rp50.000). IP QuotaGuard lama + add-on dihapus SETELAH
-  masa pantau 3–7 hari.
+  Rp47.820, SK Rp50.000). IP QuotaGuard lama + add-on + app Heroku
+  DIHAPUS TOTAL 2026-10-02 (bukan "setelah pantau" — verifikasi langsung
+  hijau hari yang sama).
 - **Pages Secrets dialihkan:** `WARUNG_REBAHAN_PROXY_URL` +
   `SEKALIPAY_PROXY_URL` → `https://wr-proxy.axvara.tech` (token sama).
   Secret baru terbaca deployment berikutnya — commit ini pemicunya.
