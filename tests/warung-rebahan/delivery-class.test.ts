@@ -3,6 +3,7 @@ import {
   deliveryLabelForAdmin,
   deliveryLabelForBuyer,
   guessDeliveryClass,
+  isQueuedFulfillment,
 } from "@/lib/warung-rebahan/delivery-class";
 import {
   buyerDeliveryBadge,
@@ -76,5 +77,28 @@ describe("kelas pengiriman pembeli non-WR (2026-09-19)", () => {
     expect(eta).toContain("admin");
     expect(eta).not.toContain("6–12");
     expect(eta).not.toContain("12 jam");
+  });
+});
+
+describe("isQueuedFulfillment — SK auto tidak pernah antre (regresi 2026-10-02)", () => {
+  it("SK auto → instan walau fulfillment_mode lokal manual", () => {
+    // Prime Video SK: PDP "Kirim otomatis" benar tapi checkout bilang MBO 12
+    // jam — quote hanya melihat fulfillment_mode lokal ('manual' untuk semua SK).
+    expect(isQueuedFulfillment({ skVariantId: "101", skOrderProcess: "auto", fulfillmentMode: "manual" })).toBe(false);
+    expect(isQueuedFulfillment({ skVariantId: "101", skOrderProcess: "AUTO", fulfillmentMode: "manual" })).toBe(false);
+  });
+
+  it("SK non-auto → antrean", () => {
+    expect(isQueuedFulfillment({ skVariantId: "102", skOrderProcess: "manual", fulfillmentMode: "manual" })).toBe(true);
+    expect(isQueuedFulfillment({ skVariantId: "103", skOrderProcess: "h2h", fulfillmentMode: "shared" })).toBe(true);
+    // Registry belum tulis process (NULL) = default aman antrean.
+    expect(isQueuedFulfillment({ skVariantId: "104", skOrderProcess: null, fulfillmentMode: "shared" })).toBe(true);
+  });
+
+  it("WR + non-supplier tidak berubah", () => {
+    expect(isQueuedFulfillment({ wrVariantId: "x", wrClass: "restock", fulfillmentMode: "manual" })).toBe(false);
+    expect(isQueuedFulfillment({ wrVariantId: "x", wrClass: "made_by_order", fulfillmentMode: "unique" })).toBe(true);
+    expect(isQueuedFulfillment({ fulfillmentMode: "shared" })).toBe(false);
+    expect(isQueuedFulfillment({ fulfillmentMode: "manual" })).toBe(true);
   });
 });

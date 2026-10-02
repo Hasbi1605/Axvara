@@ -106,9 +106,11 @@ export async function POST(req: NextRequest) {
   const variantById = new Map<number, Record<string, unknown>>();
   if (variantIds.size > 0) {
     const rows = await queryAll(
-      `SELECT pv.*, wv.wr_type AS wr_type, wv.wr_delivery_class AS wr_delivery_class, p.require_email AS require_email
+      `SELECT pv.*, wv.wr_type AS wr_type, wv.wr_delivery_class AS wr_delivery_class,
+              sp.sk_order_process AS sk_order_process, p.require_email AS require_email
        FROM product_variants pv
        LEFT JOIN wr_variants wv ON wv.wr_variant_id = pv.wr_variant_id
+       LEFT JOIN sk_products sp ON sp.sk_variant_id = pv.sk_variant_id
        LEFT JOIN products p ON p.id = pv.product_id
        WHERE pv.id IN (${[...variantIds].map(() => "?").join(",")})`,
       ...[...variantIds],
@@ -249,10 +251,13 @@ export async function POST(req: NextRequest) {
       image: String(row.image_url ?? ""),
       // Kelas pengiriman per baris: checkout WAJIB memberi tahu pembeli
       // sebelum bayar kalau ada varian antrean (bukan kirim otomatis).
+      // SK auto ikut instan walau fulfillment_mode lokalnya 'manual'.
       queued_delivery: item.variant_id
         ? isQueuedFulfillment({
             wrVariantId: variantById.get(item.variant_id)?.wr_variant_id,
             wrClass: variantById.get(item.variant_id)?.wr_delivery_class,
+            skVariantId: variantById.get(item.variant_id)?.sk_variant_id,
+            skOrderProcess: variantById.get(item.variant_id)?.sk_order_process,
             fulfillmentMode: variantById.get(item.variant_id)?.fulfillment_mode,
           })
         : false,

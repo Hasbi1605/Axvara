@@ -50,7 +50,10 @@ export function isQueuedDelivery(wrClass: string | null | undefined): boolean {
 /**
  * Apakah baris ini butuh antrean (manusia) alih-alih kirim instan?
  * - Varian WR: hanya kelas `restock` yang instan.
- * - Varian non-WR: `shared`/`unique` instan dari stok sendiri; `manual`
+ * - Varian SK: hanya `sk_order_process=auto` yang instan (lisensi langsung);
+ *   SK non-auto (manual/h2h/smm) ikut kelas antrean walau fulfillment_mode
+ *   lokalnya 'manual' (kontrak fulfillment hanya manual/shared/unique).
+ * - Varian non-WR/non-SK: `shared`/`unique` instan dari stok sendiri; `manual`
  *   berarti diserahkan admin, jadi ikut kelas antrean.
  * Dipakai quote checkout + halaman pesanan supaya ekspektasi waktu yang
  * ditampilkan berasal dari satu aturan, bukan tebakan per layar.
@@ -58,12 +61,24 @@ export function isQueuedDelivery(wrClass: string | null | undefined): boolean {
 export function isQueuedFulfillment(input: {
   wrVariantId?: unknown;
   wrClass?: unknown;
+  skVariantId?: unknown;
+  skOrderProcess?: unknown;
   fulfillmentMode?: unknown;
 }): boolean {
   const wrId = input.wrVariantId == null ? "" : String(input.wrVariantId).trim();
   if (wrId) {
     const raw = input.wrClass == null ? "" : String(input.wrClass).trim();
     return isQueuedDelivery(raw || null);
+  }
+  // SK auto tidak pernah antre — regresi 2026-10-02: Prime Video SK auto badge
+  // PDP "Kirim otomatis" benar tapi checkout bilang Made By Order 12 jam,
+  // karena quote hanya melihat fulfillment_mode lokal ('manual' untuk semua SK).
+  const skId = input.skVariantId == null ? "" : String(input.skVariantId).trim();
+  if (skId) {
+    const raw = input.skOrderProcess == null || String(input.skOrderProcess).trim() === ""
+      ? "manual"
+      : String(input.skOrderProcess).trim().toLowerCase();
+    return raw !== "auto";
   }
   return String(input.fulfillmentMode ?? "").trim().toLowerCase() === "manual";
 }

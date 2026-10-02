@@ -1,7 +1,7 @@
 // src/lib/whatsapp/messages.ts — WhatsApp message templates (plain text + *bold*)
 // Uses WhatsApp formatting: *bold*, _italic_, ~strikethrough~, ```monospace```
 
-import { type VariantSummary, formatWarranty, formatRupiah } from "@/lib/catalog";
+import { type VariantSummary, buyerDeliveryKind, formatWarranty, formatRupiah } from "@/lib/catalog";
 import { SITE, adminTelegramLink } from "@/lib/site";
 import { formatWarrantyWhatsApp } from "@/lib/warranty-policy";
 
@@ -90,9 +90,10 @@ export function productDetailMessage(productName: string, _description: string |
   variants.forEach((v, i) => {
     const num = i + 1;
     const war = formatWarranty(v);
-    // Label pengiriman WR singkat (migrasi 0032, parity Telegram).
+    // Label pengiriman singkat (migrasi 0032, parity Telegram; SK auto ikut
+    // instan 2026-10-02 — regresi checkout MBO palsu Prime Video SK).
     // Tanpa emoji — teks polos agar tidak terlihat seperti AI slop.
-    const deliv = (v as { wr_delivery_class?: string | null }).wr_delivery_class === "restock" ? "Kirim otomatis" : "Dikirim admin";
+    const deliv = buyerDeliveryKind(v) === "instant" ? "Kirim otomatis" : "Dikirim admin";
     lines.push(`${num}. *${v.label}*`);
     lines.push(`   ${deliv}`);
     lines.push(`   🛡 ${war || "Tanpa Garansi"}`);
