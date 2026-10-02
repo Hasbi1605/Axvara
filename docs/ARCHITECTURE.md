@@ -1933,5 +1933,8 @@ poller server memantau mutasi GoBiz milik sendiri.
   (`/health` + `/tick`); Fase 1 = login OTP 1x + polling GoBiz beneran.
 - **Env (`secret_text`):** `GOPAY_STATIC_QRIS`, `GOPAY_POLLER_SECRET`,
   `GOPAY_QRIS_ENABLED=false`, `QRIS_ACTIVE_PROVIDER=dana`.
+  **Sejak 2026-10-02 sore (uji Rp5.137 hijau end-to-end):**
+  `QRIS_ACTIVE_PROVIDER=gopay` — order baru via GoPay, DANA fallback.
+  Rollback = 1 env kembali ke `dana` + deploy.
 - **Migrasi 0054:** index gopay + trigger `IN ('dana','gopay')` + kolom
   `provider` di events. Issue: `issue/qris-gopay-ganti-hp-hook-2026-10-02.md`.
