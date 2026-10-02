@@ -329,14 +329,15 @@ versi Axvara. S&K Canva (undangan lewat email, email wajib aktif) diisi migrasi
 0042.
 
 **Handoff operasional Heroku + Cloudflare.** Sejak 2026-09-14 proxy WR terpisah:
-akun #1 (`axvara-wa-gateway`) = WhatsApp SAJA; akun #2 (`axvara-wr-proxy` +
-QuotaGuard Spike, IP statis `54.88.136.216, 54.84.188.199`) memegang API key WR
-dan menjadi satu-satunya egress yang di-whitelist WR — lihat
-`docs/ARCHITECTURE.md` §16. Cloudflare Pages tidak boleh memegang API
+akun #1 (`axvara-wa-gateway`) = WhatsApp SAJA; **sejak 2026-10-02 proxy pindah
+ke VPS AWS** `t4g.nano` Singapore (`https://wr-proxy.axvara.tech`, IP statis
+`13.228.147.90`, Caddy + Let's Encrypt) dan menjadi satu-satunya egress yang
+di-whitelist WR — lihat `docs/ARCHITECTURE.md` §16.8 (Heroku akun #2 +
+QuotaGuard Spike pensiun setelah masa pantau). Cloudflare Pages tidak boleh memegang API
 key WR; yang disimpan di Pages hanya URL + token proxy dan
 `WARUNG_REBAHAN_WEBHOOK_SECRET` untuk verifikasi HMAC. **Sejak 2026-09-30
-proxy yang SAMA juga meneruskan Sekalipay (`/sk/*`, key `SK_API_KEY` di dyno,
-IP whitelist SK = IP QuotaGuard yang sama, tanpa add-on baru)** — lihat
+proxy yang SAMA juga meneruskan Sekalipay (`/sk/*`, key `SK_API_KEY` di server
+proxy, IP whitelist SK = IP VPS yang sama, tanpa add-on baru)** — lihat
 `docs/ARCHITECTURE.md` §15b. Kredensial Cloudflare
 manual diambil dari `.cf-credentials` (git-ignored); kredensial Heroku dua akun
 di `.heroku-credentials` (git-ignored, pola sama); CI/CD memakai GitHub
@@ -363,7 +364,7 @@ antrean + umur + retry/void, exclusion rules, markup per varian + bulk markup ce
 transaksi, detail capability, sandbox), migrasi 0049 + 0050 (tabel
 `sk_*`, kolom `sk_*`, exclusions, CHECK `source` + `sekalipay`). Seluruhnya di balik
 `SEKALIPAY_ENABLED=false` (lihat `.env.example`); set proxy URL + token +
-`SEKALIPAY_WEBHOOK_SECRET` di Pages Secrets, whitelist 2 IP QuotaGuard di
+`SEKALIPAY_WEBHOOK_SECRET` di Pages Secrets, whitelist IP VPS (`13.228.147.90`) di
 dashboard SK, set callback `https://axvara.tech/api/webhook/sekalipay`, lalu
 Force Sync dari tab **Sekalipay**. Arsitektur: `docs/ARCHITECTURE.md` §15b.
 

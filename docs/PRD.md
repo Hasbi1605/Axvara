@@ -50,7 +50,7 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 - **Varian Terpusat:** Setiap produk punya ≥1 varian (harga/stok/durasi/garansi per varian); harga kartu = varian termurah yang masih tersedia
 - **Warung Rebahan (WR):** Supplier H2H (`warungrebahan.com/api/v1`); produk WR disync ke katalog (source=`warung_rebahan`), order lunas diteruskan otomatis (exactly-once), sync satu sweep penuh per run (Opsi A). Nama publik Gemini AI Antigravity sengaja tanpa suffix `(WR)`; kepemilikan supplier tetap dibedakan lewat `source`/`wr_product_id`.
 - **Sekalipay (SK):** Supplier kedua paralel WR (`sekalipay.com/api`, 2026-09-30); produk SK disync ke katalog (nama publik bersih tanpa suffix supplier sejak 2026-09-30 — dibedakan di admin via badge asal + slug; preseden Antigravity 0045), order lunas diteruskan otomatis (exactly-once, `ref_id` idempoten sisi SK). Fase 1 hanya varian `auto` Aplikasi Premium; produk yang tampil dipilih manual oleh owner. Tanpa failover otomatis WR↔SK.
-- **Proxy WR:** App Heroku akun #2 (`axvara-wr-proxy` + QuotaGuard Spike, IP statis) — satu-satunya egress yang di-whitelist WR; Pages hanya pegang URL + token proxy
+- **Proxy WR/SK:** VPS AWS `t4g.nano` Singapore (`https://wr-proxy.axvara.tech`, IP `13.228.147.90`, sejak 2026-10-02 — sebelumnya Heroku akun #2 + QuotaGuard) — satu-satunya egress yang di-whitelist WR/SK; Pages hanya pegang URL + token proxy
 - **Gateway WA:** App Heroku akun #1 (`axvara-wa-gateway`, Baileys) — bot grup WhatsApp; route `/wr/*` lama sudah dimatikan (410)
 - **Bot Telegram:** `@Axvara_bot` — katalog/keranjang/checkout/QRIS/garansi via Bot API webhook; foto welcome WebP ringan di `public/banners/tg-welcome.webp`
 

@@ -1522,10 +1522,10 @@ pembedaan hanya badge admin + slug `-wr`/`-sk`).
   `sk_webhook_events` + retry exponential 5x dari SK.
 
 ### Arsitektur terpasang (cermin WR, scope lebih kecil)
-- **Proxy:** route `/sk/*` di `axvara-wr-proxy` (akun Heroku #2) — pass-through
+- **Proxy:** route `/sk/*` di proxy WR/SK — pass-through
   method+query+body di bawah prefix `/v1/`, key disuntik server-side, egress
-  QuotaGuard yang SAMA (IP whitelist SK = `54.88.136.216, 54.84.188.199`,
-  tanpa add-on baru). `GET /sk/health` tanpa bocor key.
+  IP VPS yang SAMA (`13.228.147.90`, tanpa add-on baru sejak migrasi
+  AWS 2026-10-02 — lihat §16.8). `GET /sk/health` tanpa bocor key.
 - **Modul `src/lib/sekalipay/`:** `client.ts` (fetch edge + klasifikasi error
   + signature), `sync.ts` (registry per-varian + katalog hanya auto + nama
   bersih tanpa suffix + markup 50% + cursor + zero-missing sweep-penuh), `order.ts`
@@ -1572,9 +1572,13 @@ kerasnya agar tidak terulang:
 ### 16.1 Arsitektur proxy WR terpisah (hasil permanen hari ini)
 - Akun Heroku #1 (`terry.delvon0805@gmail.com`): `axvara-wa-gateway` = WhatsApp SAJA
   (route `/wr/*` mengembalikan 410 `wr_proxy_moved`).
-- Akun Heroku #2 (`sailinnadia1@gmail.com`): `axvara-wr-proxy` (source:
-  `/Users/macbookair/axvara-wr-proxy/`) = proxy stateless WR → QuotaGuard Spike
-  (~$5/mo, 5.000 req, IP `54.88.136.216, 54.84.188.199` di-whitelist WR).
+- **Sejak 2026-10-02 proxy pindah ke AWS** (lihat §16.8): VPS `t4g.nano`
+  Singapore `i-022790eb6bb0b1be3`, EIP `13.228.147.90`,
+  URL `https://wr-proxy.axvara.tech` (Caddy + Let's Encrypt). Source tetap
+  `/Users/macbookair/axvara-wr-proxy/` (deploy via rsync + systemd, bukan
+  `git push heroku`). Akun Heroku #2 (`sailinnadia1@gmail.com`) + add-on
+  QuotaGuard Spike pensiun setelah masa pantau (IP lama
+  `54.88.136.216, 54.84.188.199` dihapus dari whitelist WR/SK).
 - Jangan satukan lagi: restart gateway WA tidak boleh memutus sync WR.
 
 ### 16.2 Env Pages WAJIB `secret_text` (bukan `plain_text`)
@@ -1616,8 +1620,9 @@ membuat URL absolut di server wajib memakainya.
 
 ### 16.5 Ekosistem 5 folder (detail di masing-masing AGENTS.md)
 `axvara` (toko) · `axvara-wa-gateway` (WA, akun #1) · `axvara-qris-gateway`
-(riset QRIS, `.env` = sumber nilai Pages) · `axvara-wr-proxy` (proxy WR, akun
-#2) · `axvara-tg-bot` (kredensial Telegram). Kredensial Heroku dua akun di
+(riset QRIS, `.env` = sumber nilai Pages) · `axvara-wr-proxy` (source proxy
+WR/SK — live di VPS AWS sejak 2026-10-02, lihat §16.8) · `axvara-tg-bot`
+(kredensial Telegram). Kredensial Heroku dua akun di
 `.heroku-credentials` (git-ignored, pola sama dengan `.cf-credentials`).
 Perintah akun #2 wajib prefix `HEROKU_API_KEY=<kunci-akun-2>`; jangan
 `heroku login` ulang (merusak sesi akun #1).
@@ -1703,9 +1708,9 @@ Perintah akun #2 wajib prefix `HEROKU_API_KEY=<kunci-akun-2>`; jangan
    sweep terakhir >90 menit + belum pernah alert untuk kebasian ini → tandai
    `wr_sync_state(sync_stale_alerted_at)` DULU lalu ping Telegram admin berisi
    umur basi + waktu sweep terakhir + `wr_sync_skipped` run ini + arahan
-   (cek respons cron / Force Sync). Idempoten per episode (maks 1 ping;
-   sweep sukses me-reset via pengosongan state), best-effort ≤4 query di
-   dalam `budget.fits(4)`, hasil di `results.wr_sync_stale_alerted`. Ritme
+  (cek respons cron / Force Sync). Idempoten per episode (maks 1 ping;
+  sweep sukses me-reset via pengosongan state), best-effort ≤4 query di
+  dalam `budget.fits(4)`, hasil di `results.wr_sync_stale_alerted`. Ritme
    normal tak pernah menyentuh 90 menit → tanpa alert palsu.
    Sweep resumable + admission proporsional (2026-09-20, akar ketiga gap
    misterius): sweep cron terbukti 50–116 detik (`duration_ms`) sementara
@@ -1779,6 +1784,35 @@ Perintah akun #2 wajib prefix `HEROKU_API_KEY=<kunci-akun-2>`; jangan
   jam kosong: 48 produk + 87 varian `success` tiap run) + `cron_phase.value`
   yang berpindah + `updated_at` segar. Jangan vonis "cron mati" dari satu
   snapshot `cron_phase` tanpa cek distribusi `wr_sync_log` per jam.
+
+### 16.8 Migrasi proxy WR/SK ke AWS (2026-10-02, live)
+
+Motivasi: add-on QuotaGuard Spike (~$5/mo) adalah third-party sehingga
+TIDAK tercover student credit Heroku dan selalu lari ke kartu kredit.
+Penggantinya: VPS `t4g.nano` Singapore (`i-022790eb6bb0b1be3`, 0.5GB +
+1GB swap, 8GB gp3, ~$5/mo dibayar kredit AWS $143.60 — tahan ~28 bulan).
+
+- **URL baru:** `https://wr-proxy.axvara.tech` (EIP `13.228.147.90`, DNS A
+  unproxied, Caddy + Let's Encrypt auto-renew). Kontrak TIDAK berubah
+  (`POST /wr/:endpoint` + `/sk/*` + `x-proxy-token`, key server-side).
+- **Deploy:** rsync `package.json` + `dist/` (build lokal, bukan di nano)
+  ke `/opt/axvara/wr-proxy/`, env `/opt/axvara/wr-proxy/.env` (`chmod 600`,
+  TANPA `QUOTAGUARDSTATIC_URL` = direct via IP VPS), systemd `wr-proxy` +
+  `caddy` (`Restart=always`, MemoryMax 350M/100M). SSH `ec2-user@` terbatas
+  IP rumah; keypair `axvara-sg-proxy` (`~/.ssh/axvara-sg-proxy.pem`).
+- **Node 20 wajib** (`nodejs20` AL2023, bukan paket `nodejs` default v18);
+  `dnf update` OOM di nano — install bertahap + `max_parallel_downloads=1`.
+- **Whitelist:** `13.228.147.90` DITAMBAHKAN di dashboard WR + SK
+  (screenshot owner 2026-10-02, keduanya hijau via proxy baru: WR balance
+  Rp47.820, SK Rp50.000). IP QuotaGuard lama + add-on dihapus SETELAH
+  masa pantau 3–7 hari.
+- **Pages Secrets dialihkan:** `WARUNG_REBAHAN_PROXY_URL` +
+  `SEKALIPAY_PROXY_URL` → `https://wr-proxy.axvara.tech` (token sama).
+  Secret baru terbaca deployment berikutnya — commit ini pemicunya.
+- Catatan OpenClaw: instance lama `t4g.medium` us-east-1 + EIP-nya sudah
+  di-terminate/release (backup parsial 540MB di
+  `/Users/macbookair/aws-backup-openclaw-20261002/`, tanpa node_modules/
+  cache/biner).
 
 ### 16.7 Health anti-false-alarm + kelas pengiriman WR (2026-09-16)
 - Query health `tgQueue`/`fulfillmentQueue`/`oldestDue` JOIN orders dan hanya
