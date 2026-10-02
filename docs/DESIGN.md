@@ -385,12 +385,13 @@
   informasi "Pengiriman Produk": kalimat tujuan pengiriman dengan email
   checkout tersamar di-highlight `text-white/80` (WA hanya untuk order lama tanpa
   email, 2026-09-25), lalu catatan `text-[11px] text-white/40` sesuai keadaan
-  (2026-09-25, revisi copy A/B/C1/C2 2026-10-02): kirim otomatis stok sendiri
-  yang sedang berjalan → judul "Pengiriman Otomatis" + `InlineSpinner`
-  cyan `h-3 w-3` + "Mengirim otomatis… Detail produk akan muncul di halaman ini
-  dalam beberapa detik, dan salinannya dikirim ke email checkout", catatan
-  "Tetap di halaman ini — tidak perlu refresh, tidak perlu hubungi admin."
-  (TANPA sebut admin/12 jam); lewat ±30 dtk → judul sama + "Masih mengirim
+  (2026-09-25, revisi copy A/B/C1/C2 2026-10-02, skeleton fase menyiapkan sore
+  2026-10-02): kirim otomatis stok sendiri yang sedang berjalan (±30 dtk pertama)
+  → skeleton TANPA teks pengiriman (tulang `ax-skeleton`: judul + 2 baris + kotak,
+  bentuk mirip panel "Detail Akun Digital" supaya peralihan tidak melompat, +
+  baris mikro `text-[11px] text-white/40` "Menyiapkan detail produkmu…" dengan
+  `InlineSpinner h-3 w-3`, `aria-busy="true"` + `sr-only` "Menyiapkan detail
+  produk…"); lewat ±30 dtk → judul "Pengiriman Otomatis" + "Masih mengirim
   otomatis — butuh waktu lebih lama dari biasanya" (tetap tanpa admin/12 jam);
   Made By Order (C1, manual by design) → judul "Pesanan Made By Order" tanpa
   alasan stok + "Umumnya kurang dari 1 jam, maksimal 12 jam" (tanpa jam layanan

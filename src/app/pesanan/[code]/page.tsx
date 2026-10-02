@@ -335,11 +335,16 @@ export default function OrderSuccessPage() {
   // — teks fallback darurat ("disiapkan admin") sempat bocor ke order instan
   // yang selesai hitungan detik dan bikin panik. MBO by design (bukan stok
   // habis) vs instan-gagal (baru pakai alasan stok) juga dibedakan.
+  // Revisi sore 2026-10-02 (keputusan owner): fase instan-cepat (±30 dtk
+  // pertama) TIDAK menampilkan teks sama sekali — hanya skeleton
+  // `instantPreparing` di bawah — supaya tidak ada bacaan yang hilang
+  // sepersekian detik kemudian saat panel kredensial muncul. Teks hanya keluar
+  // bila memang ada yang perlu dibaca (B lambat / C1 / C2 / WR / delivered).
   const destination = order.email
     ? <>email <span className="font-medium text-white/80">{order.email}</span></>
     : <>WhatsApp <span className="font-medium text-white/80">{order.wa}</span></>;
   const toBuyer = <>Detail produk dikirim ke {destination} yang kamu masukkan saat checkout, dan tampil di halaman ini.</>;
-  let delivery: { title: string; lead: ReactNode; note: ReactNode; sending?: boolean };
+  let delivery: { title: string; lead: ReactNode; note: ReactNode; skeleton?: boolean };
   if (order.fulfillmentStatus === "delivered") {
     delivery = {
       title: "Pengiriman Produk",
@@ -366,11 +371,14 @@ export default function OrderSuccessPage() {
       note: <>Umumnya kurang dari 1 jam, maksimal {WR_QUEUED_MAX_HOURS} jam.</>,
     };
   } else if (instantSending && !instantSlow) {
+    // Fase menyiapkan (±30 dtk pertama): skeleton saja, tanpa teks pengiriman.
+    // Bentuknya menyerupai panel "Detail Akun Digital" supaya peralihan
+    // skeleton → panel tidak melompat dan tombol di bawahnya tidak naik-turun.
     delivery = {
-      title: "Pengiriman Otomatis",
-      sending: true,
-      lead: <><span className="font-medium text-white/80">Mengirim otomatis…</span> Detail produk akan muncul di halaman ini dalam beberapa detik, dan salinannya dikirim ke {destination} yang kamu masukkan saat checkout.</>,
-      note: <>Tetap di halaman ini — tidak perlu refresh, tidak perlu hubungi admin.</>,
+      title: "Menyiapkan detail produk",
+      lead: null,
+      note: null,
+      skeleton: true,
     };
   } else if (instantSending) {
     delivery = {
@@ -515,13 +523,25 @@ export default function OrderSuccessPage() {
           // yang pasti gagal. Beri kepastian ke mana produk dikirim, dan JANGAN
           // janji menit untuk baris antrean — plafonnya 12 jam (keputusan owner
           // 2026-09-18). Teksnya dipilih di `delivery` di atas.
-          <section className="ax-glass-card mt-6 rounded-2xl p-4 text-left" aria-label={delivery.title} aria-live="polite">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">{delivery.title}</p>
-            <p className="mt-2 text-xs leading-5 text-white/55">
-              {delivery.sending && <InlineSpinner className="mr-1.5 h-3 w-3 align-[-2px]" />}
-              {delivery.lead}
-            </p>
-            <p className="mt-2 text-[11px] leading-5 text-white/40">{delivery.note}</p>
+          <section className="ax-glass-card mt-6 rounded-2xl p-4 text-left" aria-label={delivery.title} aria-live="polite" aria-busy={delivery.skeleton === true}>
+            {delivery.skeleton ? (
+              <>
+                <span role="status" className="sr-only">{delivery.title}…</span>
+                <div aria-hidden className="ax-skeleton h-3 w-40 rounded-full" />
+                <div aria-hidden className="mt-3 space-y-2">
+                  <div className="ax-skeleton h-4 w-full rounded-full" />
+                  <div className="ax-skeleton h-4 w-[85%] rounded-full" />
+                  <div className="ax-skeleton h-10 w-full rounded-xl" />
+                </div>
+                <p className="mt-3 flex items-center gap-2 text-[11px] text-white/40"><InlineSpinner className="h-3 w-3" />Menyiapkan detail produkmu…</p>
+              </>
+            ) : (
+              <>
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">{delivery.title}</p>
+                <p className="mt-2 text-xs leading-5 text-white/55">{delivery.lead}</p>
+                <p className="mt-2 text-[11px] leading-5 text-white/40">{delivery.note}</p>
+              </>
+            )}
           </section>
         ))}
 

@@ -829,8 +829,9 @@ badge storefront menjanjikan "Kirim otomatis". Perubahan:
   dan tanpa emoji.
 - **Teks pembeli.** Blok pengiriman di `/pesanan/[code]` menyebut email sebagai
   tujuan (WA hanya untuk order lama tanpa email); sejak 2026-09-25 produk kirim otomatis
-  berjudul "Pengiriman Otomatis" ("Mengirim otomatis… akan muncul di halaman ini dalam
-  beberapa detik") dan detailnya tampil dalam hitungan detik; sejak 2026-10-02 judul +
+  dan detailnya tampil dalam hitungan detik; sejak sore 2026-10-02 fase menyiapkan
+  ±30 dtk pertama = skeleton tanpa teks pengiriman (tanpa bacaan yang bisa hilang
+  saat panel muncul); sejak 2026-10-02 judul +
   nada dibedakan per keadaan — "Pesanan Made By Order" (C1 manual by design, tanpa alasan
   stok) vs "Pengiriman oleh Admin" (C2 instan-gagal: "Stok otomatis habis, jadi admin
   menyiapkan manual"), jalur otomatis tidak pernah menyebut admin/12 jam (lihat Storefront di
@@ -997,9 +998,10 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   alasan stok + "Umumnya kurang dari 1 jam, maksimal 12 jam" (tanpa jam layanan spesifik);
   `instant_delivery` + `manual_required` (C2 instan-gagal) → "Pengiriman oleh Admin" +
   alasan "Stok otomatis habis, jadi admin menyiapkan manual" + plafon yang sama;
-  `instant_delivery` belum selesai → "Pengiriman Otomatis" + "Mengirim otomatis… akan
-  muncul di halaman ini dalam beberapa detik" (spinner, TANPA sebut admin/12 jam), lewat
-  ±30 dtk → "Masih mengirim otomatis — butuh waktu lebih lama" (tetap tanpa admin/12 jam);
+  `instant_delivery` belum selesai → skeleton "Menyiapkan detail produkmu…" TANPA teks
+  pengiriman selama ±30 dtk pertama (sore 2026-10-02: tanpa bacaan yang bisa hilang
+  saat panel muncul), lewat ±30 dtk → "Pengiriman Otomatis" + "Masih mengirim otomatis
+  — butuh waktu lebih lama" (tetap tanpa admin/12 jam);
   selain itu (produk WR) → estimasi 5–15 menit.
   Selama `lunas && !credentials_ready`, halaman mem-poll `GET /api/orders?code=`: order
   `instant_delivery` yang belum `delivered`/`manual_required`/`failed` dicek rapat dulu
@@ -1575,8 +1577,8 @@ pembedaan hanya badge admin + slug `-wr`/`-sk`).
 - **Paritas email + flag SK (2026-10-02):** flag `queued/instant_delivery` di
   `GET /api/orders?code=` membaca `sk_products.sk_order_process` (SK auto =
   instan walau `fulfillment_mode` lokal `manual`; SK non-auto = antrean;
-  varian hilang = bukan instan palsu) — halaman lunas SK auto judul "Pengiriman Otomatis" +
-  spinner "Mengirim otomatis…" + polling rapat, bukan Made By Order 12 jam.
+   varian hilang = bukan instan palsu) — halaman lunas SK auto skeleton "Menyiapkan
+   detail produkmu…" + polling rapat, bukan Made By Order 12 jam.
   `handleSkOrderCompleted` bind link → item + tulis `sk_link_id` (fulfillment
   generik lewati, pola `wr_link_id`) + kirim email kredensial template
   "Pesanan Siap" Axvara yang SAMA PERSIS dengan WR/non-WR (logo + tanda

@@ -166,17 +166,18 @@ describe("/pesanan/[code] — kirim otomatis dari stok sendiri", () => {
     vi.useRealTimers();
   });
 
-  it("belum terkirim (A: Pengiriman Otomatis) → janji halaman-ini + email dalam detik, TANPA sebut admin/12 jam", async () => {
+  it("belum terkirim (A: fase menyiapkan) → skeleton tanpa teks pengiriman; poll 2 dtk memunculkan detail tanpa muat ulang", async () => {
     sessionStorage.setItem(`axvara-checkout-contact:${CODE}`, "081234567890");
     const state = { order: { instant_delivery: true, fulfillment_status: "not_required", customer_email: "r***@gmail.com" } as Record<string, unknown> };
     const gets = stubLiveOrder(state);
     render(<OrderStatusPage />);
     await advance(50);
-    expect(screen.getByText("Pengiriman Otomatis")).toBeTruthy();
-    expect(screen.getByText("Mengirim otomatis…")).toBeTruthy();
-    expect(screen.getByText(/akan muncul di halaman ini dalam beberapa detik/).textContent).toContain("r***@gmail.com");
-    expect(screen.getByText(/Tetap di halaman ini/)).toBeTruthy();
-    // Jalur otomatis tidak boleh bocorkan teks fallback darurat.
+    // Tidak ada teks pengiriman yang bisa hilang sepersekian detik kemudian —
+    // hanya skeleton + satu baris mikro yang tidak mengklaim apa-apa.
+    expect(screen.getByText("Menyiapkan detail produkmu…")).toBeTruthy();
+    expect(screen.queryByText("Pengiriman Otomatis")).toBeNull();
+    expect(screen.queryByText("Mengirim otomatis…")).toBeNull();
+    expect(screen.queryByText(/Detail produk/)).toBeNull();
     expect(screen.queryByText(/disiapkan admin/)).toBeNull();
     expect(screen.queryByText(/Stok otomatis habis/)).toBeNull();
     expect(screen.queryByText(/maksimal 12 jam/)).toBeNull();
@@ -197,10 +198,10 @@ describe("/pesanan/[code] — kirim otomatis dari stok sendiri", () => {
     expect(gets).toHaveLength(1);
     await advance(10_100);
     expect(gets).toHaveLength(6);
-    expect(screen.getByText("Mengirim otomatis…")).toBeTruthy();
+    expect(screen.getByText("Menyiapkan detail produkmu…")).toBeTruthy();
     await advance(20_000);
     expect(gets).toHaveLength(10);
-    expect(screen.queryByText("Mengirim otomatis…")).toBeNull();
+    expect(screen.queryByText("Menyiapkan detail produkmu…")).toBeNull();
     expect(screen.getByText("Pengiriman Otomatis")).toBeTruthy();
     expect(screen.getByText(/butuh waktu lebih lama dari biasanya/)).toBeTruthy();
     expect(screen.queryByText(/disiapkan admin/)).toBeNull();
@@ -222,6 +223,7 @@ describe("/pesanan/[code] — kirim otomatis dari stok sendiri", () => {
     expect(screen.getByText(/maksimal 12 jam/)).toBeTruthy();
     expect(screen.queryByText(/pada jam layanan/)).toBeNull();
     expect(screen.queryByText(/Tidak perlu menunggu halaman ini terbuka/)).toBeNull();
+    expect(screen.queryByText("Menyiapkan detail produkmu…")).toBeNull();
     expect(screen.queryByText("Mengirim otomatis…")).toBeNull();
     expect(screen.queryByText(/Made By Order/)).toBeNull();
     expect(screen.queryByText(/5–15 menit/)).toBeNull();

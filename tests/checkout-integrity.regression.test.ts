@@ -297,8 +297,9 @@ describe("Authoritative UI and admin state", () => {
     // C2 instan-gagal menjelaskan kenapa (alasan stok), C1 MBO tidak pakai alasan itu.
     expect(statusPage).toContain("Stok otomatis habis, jadi admin menyiapkan manual");
     // Jalur otomatis berjudul sendiri dan tidak bocorkan admin/12 jam.
-    expect(statusPage).toContain("Pengiriman Otomatis");
-    expect(statusPage).toContain("Mengirim otomatis…");
+    // Fase menyiapkan (±30 dtk pertama) = skeleton tanpa teks pengiriman.
+    expect(statusPage).toContain("Menyiapkan detail produkmu…");
+    expect(statusPage).toContain("skeleton: true");
     // Polling terbatas agar panel muncul sendiri tanpa reload manual, dan
     // lebih pendek untuk antrean (polling tak mungkin menutup 12 jam).
     expect(statusPage).toContain('orderStatus !== "lunas" || credentialsReady');

@@ -242,9 +242,9 @@ Telegram/WhatsApp/Web. Pembeli web mengambil kredensial di halaman pesanan via v
 No. WA atau email checkout + capability token (terbuka otomatis di tab checkout yang sama, termasuk setelah dimuat ulang) — panel itu hanya muncul saat detail akun benar-benar sudah ada
 (`credentials_ready`); order lunas yang detailnya belum ada menampilkan blok "Pengiriman
 Produk" (tujuan email checkout + teks per keadaan), bukan form yang pasti gagal. Produk kirim
-otomatis dari stok sendiri (`instant_delivery`, mis. Canva Invite) tampil judul "Pengiriman
-Otomatis" + "Mengirim otomatis… akan muncul di halaman ini dalam beberapa detik" (tanpa
-sebut admin/12 jam)
+otomatis dari stok sendiri (`instant_delivery`, mis. Canva Invite) tampil skeleton
+"Menyiapkan detail produkmu…" tanpa teks pengiriman selama ±30 dtk pertama (tanpa
+bacaan yang bisa hilang saat panel muncul)
 dan halaman memeriksa rapat (2 dtk ×5, 5 dtk ×4) sehingga detail muncul beberapa detik setelah
 terkirim tanpa reload; estimasi 5–15 menit hanya untuk produk WR.
 Sejak 18 Sep 2026 produk kelas **antrean** (`made_by_order`, dibuatkan setelah order) juga
