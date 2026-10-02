@@ -150,6 +150,11 @@ export default function OrderSuccessPage() {
   const [reissuing, setReissuing] = useState(false);
   const [reissueError, setReissueError] = useState<string | null>(null);
   const [instantSlow, setInstantSlow] = useState(false);
+  // Status cek pembayaran manual: kapan terakhir server ditanya + apakah
+  // pengecekan manual sedang berjalan. Tanpa ini pembeli QRIS pending hanya
+  // melihat laman diam + countdown, tanpa tahu polling otomatis jalan.
+  const [lastCheckedAt, setLastCheckedAt] = useState<number | null>(null);
+  const [checkingNow, setCheckingNow] = useState(false);
   const polling = useRef(false);
 
   const fetchOrder = useCallback(async () => {
@@ -174,8 +179,27 @@ export default function OrderSuccessPage() {
   const pollOrder = useCallback(async () => {
     if (polling.current) return;
     polling.current = true;
-    try { await fetchOrder(); } finally { polling.current = false; }
+    try {
+      await fetchOrder();
+      setLastCheckedAt(Date.now());
+    } finally { polling.current = false; }
   }, [fetchOrder]);
+
+  /** Cek status pembayaran SEKARANG (tombol manual di QRIS pending). */
+  const checkStatusNow = useCallback(async () => {
+    if (checkingNow || polling.current) return;
+    setCheckingNow(true);
+    setFetchError(null);
+    try {
+      await fetchOrder();
+      setLastCheckedAt(Date.now());
+      setNow(Date.now());
+    } catch (error) {
+      setFetchError(error instanceof Error ? error.message : "Status terbaru gagal dimuat");
+    } finally {
+      setCheckingNow(false);
+    }
+  }, [checkingNow, fetchOrder]);
 
   /** Minta QRIS baru untuk order yang masih hidup tetapi QR-nya sudah mati. */
   const requestNewQris = useCallback(async () => {
@@ -280,6 +304,12 @@ export default function OrderSuccessPage() {
 
   const isExpired = order.status === "kadaluarsa" || (order.status === "pending" && Boolean(order.expiresAt) && Date.parse(order.expiresAt!) <= now);
   const isPaid = order.status === "lunas";
+  // QR bisa mati sementara ORDER masih hidup — dua masa berlaku yang berbeda.
+  const qrisExpired = Boolean(order.qris) && Date.parse(String(order.qris?.expires_at)) <= now;
+  // QRIS pending yang masih hidup = satu-satunya status yang ikon jamnya
+  // berputar + tombol cek manual tampil (di bawah). Kedaluwarsa/dibatalkan
+  // tetap statis agar tidak menjanjikan polling yang tidak ada.
+  const isPendingQris = Boolean(order.qris) && order.status === "pending" && !isExpired && !qrisExpired;
   // Lunas TAPI gagal kirim (audit ronde 4, W-H1). Halaman ini dibuka paling
   // sering pasca-bayar (redirect checkout), tetapi dulu tetap merayakan
   // "Pembayaran Dikonfirmasi 🎉 … diproses 5–15 menit" selamanya. Salinan
@@ -287,8 +317,6 @@ export default function OrderSuccessPage() {
   const isDeliveryFailed = isPaid && order.fulfillmentStatus === "failed";
   const isCancelled = order.status === "dibatalkan";
   const payableAmount = Number(order.qris?.payable_amount || order.subtotal);
-  // QR bisa mati sementara ORDER masih hidup — dua masa berlaku yang berbeda.
-  const qrisExpired = Boolean(order.qris) && Date.parse(String(order.qris?.expires_at)) <= now;
   const statusVisual = isDeliveryFailed
     ? { icon: "/icons/ios11/close-96.png", shell: "bg-red-500/15", filter: "brightness(0) saturate(100%) invert(57%) sepia(55%) saturate(1800%) hue-rotate(322deg)" }
     : isPaid
@@ -346,7 +374,13 @@ export default function OrderSuccessPage() {
     <div className="mx-auto max-w-[640px] px-4 py-10 sm:px-6">
       <div className="ax-glass-card rounded-[28px] p-6 text-center sm:p-8">
         <div className={`mx-auto flex h-16 w-16 items-center justify-center rounded-full ${statusVisual.shell}`}>
-          <img src={statusVisual.icon} alt="" width={32} height={32} className="h-8 w-8 object-contain" style={{ filter: statusVisual.filter }} draggable={false} />
+          {isPendingQris ? (
+            <span className="animate-[spin_3s_linear_infinite]" role="status" aria-label="Menunggu pembayaran — memeriksa otomatis">
+              <img src={statusVisual.icon} alt="" width={32} height={32} className="h-8 w-8 object-contain" style={{ filter: statusVisual.filter }} draggable={false} />
+            </span>
+          ) : (
+            <img src={statusVisual.icon} alt="" width={32} height={32} className="h-8 w-8 object-contain" style={{ filter: statusVisual.filter }} draggable={false} />
+          )}
         </div>
         <h1 className="mt-4 font-display text-2xl font-bold text-white">{isDeliveryFailed ? "Pengiriman Produk Bermasalah" : isPaid ? "Pembayaran Dikonfirmasi! 🎉" : isCancelled ? "Pesanan Dibatalkan" : isExpired ? "Pesanan Kedaluwarsa" : order.qris ? "Selesaikan Pembayaran QRIS" : "Pesanan Diterima!"}</h1>
         <p className="mt-2 font-mono text-sm font-bold tracking-[0.08em] text-[#00E5FF]">{order.code}</p>
@@ -415,6 +449,26 @@ export default function OrderSuccessPage() {
                 <p className="mt-1 font-display text-3xl font-bold text-white">{formatRupiah(payableAmount)}</p>
                 <p className="mt-1 text-xs text-white/45">Termasuk kode unik <span className="font-mono text-[#00E5FF]">+{order.qris.unique_code}</span></p>
                 <div className="mt-3 flex items-center justify-center gap-2 text-xs text-[#FFB800]"><span className="h-2 w-2 animate-pulse rounded-full bg-[#FFB800]" />Berlaku {countdown(order.qris.expires_at, now)}</div>
+                {/* Status polling otomatis + cek manual: QRIS pending dulu hanya
+                    menampilkan laman diam + countdown — pembeli tidak tahu
+                    halaman memeriksa sendiri tiap 5 dtk, dan tidak ada jalan
+                    saat ingin memastikan sekarang. */}
+                <div className="mt-3 flex flex-col items-center gap-2" aria-live="polite">
+                  <p className="flex items-center gap-1.5 text-[11px] text-white/50">
+                    <InlineSpinner className="h-3 w-3" />
+                    Mengecek pembayaran otomatis tiap 5 detik
+                    {lastCheckedAt ? ` • terakhir dicek ${new Date(lastCheckedAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : ""}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={checkStatusNow}
+                    disabled={checkingNow}
+                    className="inline-flex h-9 items-center gap-2 rounded-xl border border-[#00E5FF]/30 bg-[#00E5FF]/10 px-4 text-xs font-bold text-[#00E5FF] transition hover:bg-[#00E5FF]/20 disabled:opacity-50"
+                  >
+                    {checkingNow && <InlineSpinner />}
+                    {checkingNow ? "Mengecek…" : "Cek Status Sekarang"}
+                  </button>
+                </div>
                 <a href={order.qris.image_url} download={`AXVARA-${order.code}-QRIS.png`} className="mt-4 inline-flex h-9 items-center rounded-xl border border-white/15 px-4 text-xs font-semibold text-white/70 hover:bg-white/10">Download QRIS</a>
               </>
             )}

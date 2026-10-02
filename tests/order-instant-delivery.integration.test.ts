@@ -47,6 +47,15 @@ beforeEach(() => {
   // Mode lokal varian WR sengaja `shared`: baris WR tidak pernah instan apa pun modenya.
   variant.run(4, "SKU-4", "Netflix 1 Bulan", "shared", "wr-restock");
   variant.run(5, "SKU-5", "Netflix Private", "shared", "wr-mbo");
+  // Varian SK: fulfillment_mode lokal selalu 'manual' (kontrak fulfillment);
+  // pembeda auto vs antrean ada di sk_products.sk_order_process.
+  const skVariant = fixture.sql.prepare(`INSERT INTO product_variants(id,product_id,sku,label,price,stock,fulfillment_mode,sk_variant_id)
+    VALUES(?,1,?,?,2000,100,'manual',?)`);
+  skVariant.run(10, "SKU-SK-AUTO", "Remini 7 Hari", "101");
+  skVariant.run(11, "SKU-SK-MANUAL", "Remini Private", "102");
+  fixture.sql.exec(`INSERT INTO sk_products(sk_variant_id,sk_product_id,sk_product_name,sk_variant_name,sk_price,sk_stock,sk_order_process,axvara_sell_price)
+    VALUES('101','9','Remini Pro','7 Hari Sharing',2225,10,'auto',3500),
+          ('102','9','Remini Pro','Private Manual',2000,5,'manual',3000)`);
 });
 afterEach(() => { fixture.close(); clearRateLimitBucketsForTest(); });
 
@@ -71,6 +80,17 @@ describe("GET /api/orders?code= — flag instant_delivery", () => {
     expect(await flags("AXV-20260925-WRMBO001")).toMatchObject({ instant: false, queued: true });
     expect(await flags("AXV-20260925-NOVARIAN")).toMatchObject({ instant: false, queued: false });
     expect(await flags("AXV-20260925-GONEVAR1")).toMatchObject({ instant: false, queued: false });
+  });
+
+  it("varian SK auto → instan (bukan Made By Order); SK non-auto → antrean", async () => {
+    // Regresi 2026-10-02: SK auto sempat queued=true + instant=false karena
+    // query flag WR-only (fulfillment_mode lokal SK selalu 'manual').
+    insertOrder("AXV-20260925-SKAUTO01", [line(10)]);
+    insertOrder("AXV-20260925-SKMANU01", [line(11)]);
+    insertOrder("AXV-20260925-SKMIX001", [line(10), line(11)]);
+    expect(await flags("AXV-20260925-SKAUTO01")).toEqual({ instant: true, queued: false, creds: false });
+    expect(await flags("AXV-20260925-SKMANU01")).toMatchObject({ instant: false, queued: true });
+    expect(await flags("AXV-20260925-SKMIX001")).toMatchObject({ instant: false, queued: true });
   });
 
   it("items kosong dan order belum lunas → false, bukan instan palsu", async () => {

@@ -197,6 +197,7 @@ export async function handleSkOrderCompleted(
     () => null,
   );
   if (!link) return false;
+  const orderCode = String(link.order_code || "");
   const plaintext = formatSkLicenses(detail);
   const { encryptSecret: enc } = await import("@/lib/fulfillment/crypto");
   const { ciphertext, iv } = await enc(plaintext || "(lisensi kosong dari Sekalipay)");
@@ -211,11 +212,29 @@ export async function handleSkOrderCompleted(
     skInvoice,
   );
   await advanceSkLinkMonotonic(skInvoice, "completed", { completed_at: now, last_error: null }, db);
+  // Kaitkan link ke baris itemnya (pola WR) supaya agregat + panel akurat.
+  // Best-effort: reconcile/suite lama bisa mengisi fulfillment_item_id lebih
+  // dulu; bindSk.. idempoten bila sudah terisi.
+  let fulfillmentItemId = Number(link.fulfillment_item_id || 0);
+  try {
+    fulfillmentItemId = await bindSkLinkToFulfillmentItem(Number(link.id), db);
+  } catch { /* link TETAP completed; agregat memakai fallback SK */ }
+  if (!fulfillmentItemId) fulfillmentItemId = Number(link.fulfillment_item_id || 0);
   // Tulis lisensi ke fulfillment_items.delivered_ciphertext agar panel web +
   // email "Pesanan Siap" + retrieval token yang SUDAH ada langsung jalan.
-  await settleSkFulfillmentItem(String(link.order_code), Number(link.fulfillment_item_id || 0), ciphertext, iv, db);
+  await settleSkFulfillmentItem(orderCode, fulfillmentItemId, ciphertext, iv, db);
   const { refreshOrderAggregate } = await import("@/lib/warung-rebahan/deliver");
-  await refreshOrderAggregate(String(link.order_code), db);
+  await refreshOrderAggregate(orderCode, db);
+  // Kirim email kredensial versi Axvara yang SAMA PERSIS dengan WR/non-WR
+  // (template "Pesanan Siap" buildOrderReadyTemplate + tanda terima — keputusan
+  // owner: SK tanpa ingest Gmail, webhook adalah source of truth). Panggil
+  // SEKARANG (bukan menunggu cron): SK auto selesai hitungan detik setelah
+  // lunas, jadi halaman "Mengirim produkmu…" harus berubah jadi detail dalam
+  // poll berikutnya. Idempoten per item via buyer_notice_log — retry webhook
+  // tidak mengirim email kedua.
+  try {
+    await sendSkCredentialEmail(orderCode, fulfillmentItemId, db);
+  } catch { /* email menyusul via reconcile berikutnya; panel tetap jalan */ }
   return true;
 }
 
@@ -320,6 +339,16 @@ async function settleSkFulfillmentItem(
         orderCode,
       )
       .catch(() => undefined);
+    // Tandai kepemilikan SK supaya fulfillment generik melewatinya (pola
+    // wr_link_id): tanpa ini processItem mengklaimnya sebagai manual palsu.
+    const linked = await db
+      .queryFirst(`SELECT id FROM sk_order_links WHERE order_code=? AND fulfillment_item_id=?`, orderCode, fulfillmentItemId)
+      .catch(() => null);
+    if (linked) {
+      await db.execRun(`UPDATE fulfillment_items SET sk_link_id=? WHERE id=?`, Number(linked.id), fulfillmentItemId).catch(
+        () => undefined,
+      );
+    }
     return;
   }
   await db
@@ -343,6 +372,166 @@ async function settleSkFulfillmentItem(
 export async function decryptSkDetails(ciphertext: string, iv: string): Promise<string> {
   const { decryptSecret } = await import("@/lib/fulfillment/crypto");
   return decryptSecret(ciphertext, iv);
+}
+
+// ---------------------------------------------------------------------------
+// Email kredensial SK — template Axvara yang SAMA PERSIS dengan WR/non-WR.
+// ---------------------------------------------------------------------------
+
+const SK_DELIVERY_EMAIL_TIMEOUT_MS = 8_000;
+
+function skPaymentMethodLabel(method: unknown): string {
+  const value = String(method ?? "").trim().toLowerCase();
+  if (value === "qris") return "QRIS";
+  if (!value) return "";
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+/**
+ * Kirim email kredensial SK via template "Pesanan Siap" Axvara yang SAMA
+ * PERSIS dengan jalur WR (`deliverWebCredentialViaEmail`) dan non-WR
+ * (`sendWebDeliveryEmail`): shell Midnight + logo + block detail monospace +
+ * kotak peringatan kuning + CTA "Lihat Pesanan →" + blok WA support.
+ *
+ * Bedanya hanya isi: lisensi SK (formatSkLicenses, sudah didekripsi di
+ * pemanggil) + tanda terima pembayaran (satu email, keputusan owner
+ * 2026-09-25 — pembeli produk instan menerima SATU email berisi tanda terima
+ * + isi produk, bukan dua email terpisah).
+ *
+ * Idempoten: kunci `email:sk-credential:<order>:<item>` di buyer_notice_log —
+ * retry webhook/cron tidak mengirim email kedua. Buyer tanpa email = skip
+ * diam (panel + token capability tetap mencakupnya). Gagal kirim = throw agar
+ * pemanggil tahu (tapi handleSkOrderCompleted menangkapnya: panel tetap jalan,
+ * email menyusul via reconcile).
+ */
+export async function sendSkCredentialEmail(
+  orderCode: string,
+  fulfillmentItemId: number,
+  database?: DatabaseAccess,
+): Promise<boolean> {
+  const db = database ?? createDatabaseAccess();
+  const code = String(orderCode || "").trim();
+  if (!code) throw new Error("sk_credential_order_missing");
+  const itemId = Number(fulfillmentItemId || 0);
+
+  const item = itemId > 0
+    ? await db
+        .queryFirst(
+          `SELECT id, item_index, delivered_ciphertext, delivered_iv, status
+           FROM fulfillment_items WHERE id=? AND order_code=?`,
+          itemId, code,
+        )
+        .catch(() => null)
+    : null;
+  if (!item || String(item.status || "") !== "delivered") throw new Error("sk_credential_item_not_delivered");
+  const ciphertext = String(item.delivered_ciphertext || "");
+  const iv = String(item.delivered_iv || "");
+  if (!ciphertext || !iv) throw new Error("sk_credential_empty");
+
+  const key = itemId > 0 ? `email:sk-credential:${code}:${itemId}` : `email:sk-credential:${code}:legacy`;
+  const ledger = await db
+    .queryFirst(`SELECT status FROM buyer_notice_log WHERE idempotency_key=?`, key)
+    .catch(() => null);
+  if (String(ledger?.status ?? "") === "sent") return true;
+
+  const { decryptSecret } = await import("@/lib/fulfillment/crypto");
+  const plaintext = await decryptSecret(ciphertext, iv);
+  if (!plaintext.trim()) throw new Error("sk_credential_empty");
+
+  const order = await db
+    .queryFirst(
+      `SELECT o.customer_name, o.customer_email, o.items, o.subtotal, o.payment_method,
+              (SELECT pt.payable_amount FROM payment_transactions pt WHERE pt.order_code=o.code
+                ORDER BY pt.id DESC LIMIT 1) AS payable_amount,
+              (SELECT fi.item_index FROM fulfillment_items fi WHERE fi.id=?) AS item_index
+       FROM orders o WHERE o.code=?`,
+      itemId > 0 ? itemId : -1, code,
+    )
+    .catch(() => null);
+  if (!order) throw new Error("order_not_found");
+  const to = String(order.customer_email ?? "").trim();
+  if (!to || !to.includes("@")) return false;
+
+  const { isForwardEmailConfigured, sendForwardEmail } = await import("@/lib/warung-rebahan/forward-sender");
+  if (!isForwardEmailConfigured()) throw new Error("forward_email_not_configured");
+  const { buildOrderReadyTemplate } = await import("@/lib/warung-rebahan/email-forward");
+  const { orderLineLabel } = await import("@/lib/fulfillment/delivery/buyer-email");
+  const { SITE } = await import("@/lib/site");
+  const siteUrl = (process.env.SITE_URL || SITE.webUrl).replace(/\/$/, "");
+  let items: { line: string }[] = [];
+  try {
+    const parsed = JSON.parse(String(order.items ?? "[]"));
+    if (Array.isArray(parsed)) items = parsed as { line: string }[];
+  } catch { /* label fallback di bawah */ }
+  const label = orderLineLabel(order.items, Number((order as Record<string, unknown>).item_index ?? 0));
+  void items;
+  const template = buildOrderReadyTemplate({
+    axvaraOrderCode: code,
+    buyerName: String(order.customer_name ?? ""),
+    invoiceUrl: `${siteUrl}/pesanan/${encodeURIComponent(code)}`,
+    supportWa: SITE.adminWaLocal,
+    items: [{ label, details: plaintext }],
+    receipt: {
+      total: Number(order.payable_amount ?? order.subtotal ?? 0),
+      method: skPaymentMethodLabel(order.payment_method),
+      lines: (() => {
+        try {
+          const parsed = JSON.parse(String(order.items ?? "[]"));
+          if (!Array.isArray(parsed)) return [label];
+          return (parsed as unknown[]).map((_, index) => orderLineLabel(order.items, index));
+        } catch {
+          return [label];
+        }
+      })(),
+    },
+  });
+  const sent = await sendForwardEmail({
+    to, subject: template.subject, html: template.html, text: template.text, timeoutMs: SK_DELIVERY_EMAIL_TIMEOUT_MS,
+  }).catch((error: unknown) => ({ ok: false as const, providerId: undefined, error: error instanceof Error ? error.message : "resend_failed" }));
+  await db.execRun(
+    `INSERT INTO buyer_notice_log (idempotency_key, order_code, channel, status, provider_id, error)
+     VALUES (?, ?, 'email', ?, ?, ?)
+     ON CONFLICT(idempotency_key) DO UPDATE SET status=excluded.status, provider_id=excluded.provider_id,
+       error=excluded.error, updated_at=datetime('now')`,
+    key, code, sent.ok ? "sent" : "failed", sent.providerId ?? null,
+    sent.ok ? null : String(sent.error || "send_failed").slice(0, 300),
+  ).catch(() => undefined);
+  if (!sent.ok) throw new Error(`sk_credential_email_failed:${String(sent.error || "send_failed").slice(0, 200)}`);
+  return true;
+}
+
+/** Reconciler email kredensial SK yang tertunda (mis. Resend sempat mati). */
+export async function reconcilePendingSkCredentialEmails(
+  database?: DatabaseAccess,
+  limit = 4,
+): Promise<number> {
+  const db = database ?? createDatabaseAccess();
+  const rows = await db
+    .queryAll(
+      `SELECT fi.order_code AS order_code, fi.id AS item_id
+       FROM fulfillment_items fi
+       JOIN orders o ON o.code = fi.order_code
+       WHERE fi.delivered_message_id LIKE 'sk:%'
+         AND fi.status='delivered'
+         AND fi.delivered_ciphertext IS NOT NULL
+         AND o.status='lunas' AND o.payment_status='paid'
+         AND datetime(COALESCE(o.paid_at, o.created_at)) > datetime('now','-7 days')
+         AND NOT EXISTS(
+           SELECT 1 FROM buyer_notice_log b
+           WHERE b.idempotency_key IN ('email:sk-credential:' || fi.order_code || ':' || fi.id,
+                                       'email:fulfillment-item:' || fi.id)
+             AND b.status='sent')
+       ORDER BY fi.id ASC LIMIT ?`,
+      Math.max(1, Math.min(limit, 8)),
+    )
+    .catch(() => [] as Record<string, unknown>[]);
+  let sent = 0;
+  for (const row of rows) {
+    try {
+      if (await sendSkCredentialEmail(String(row.order_code || ""), Number(row.item_id || 0), db)) sent++;
+    } catch { /* run berikutnya mencoba lagi */ }
+  }
+  return sent;
 }
 
 export { encryptSecret };

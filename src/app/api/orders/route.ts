@@ -320,12 +320,18 @@ export async function GET(req: NextRequest) {
     let instantDelivery = false;
     if (String(row.status) === "lunas") {
       // Satu query untuk tiga flag halaman pesanan (hemat statement):
-      // - creds: detail akun sudah siap diambil pembeli.
-      // - queued: ada baris yang dikerjakan sesuai antrean (varian WR non-restock
-      //   atau varian manual) → teks estimasi TIDAK boleh bilang 5–15 menit.
-      // - instant: SEMUA baris dikirim dari stok sendiri (varian non-WR
-      //   shared/unique) → selesai hitungan detik, halaman memeriksa rapat.
-      // .catch: D1 lama tanpa tabel WR (pra-0027) → semua flag false, bukan 500.
+      // - creds: detail akun sudah siap diambil pembeli (WR completed ATAU
+      //   item terkirim dengan ciphertext — termasuk lisensi SK yang ditulis
+      //   handleSkOrderCompleted ke fulfillment_items).
+      // - queued: ada baris yang dikerjakan sesuai antrean (varian WR
+      //   non-restock, varian SK non-auto, atau varian manual non-supplier) →
+      //   teks estimasi TIDAK boleh bilang 5–15 menit.
+      // - instant: SEMUA baris dikirim otomatis (varian WR restock, varian SK
+      //   auto, atau shared/unique non-supplier) → selesai hitungan detik,
+      //   halaman memeriksa rapat. SK auto ikut instan walau fulfillment_mode
+      //   lokalnya 'manual' (diselesaikan via sk_order_links, pola wr_link_id).
+      // .catch: D1 lama tanpa tabel WR/SK (pra-0027/0049) → semua flag false,
+      // bukan 500.
       const flags = await queryFirst(
         `WITH lines AS (
            SELECT CAST(json_extract(je.value,'$.variant_id') AS INTEGER) AS variant_id
@@ -339,14 +345,21 @@ export async function GET(req: NextRequest) {
           EXISTS(SELECT 1 FROM lines l
                  JOIN product_variants pv ON pv.id = l.variant_id
                  LEFT JOIN wr_variants wv ON wv.wr_variant_id = pv.wr_variant_id
+                 LEFT JOIN sk_products sp ON sp.sk_variant_id = pv.sk_variant_id
                  WHERE CASE WHEN pv.wr_variant_id IS NOT NULL
                             THEN COALESCE(wv.wr_delivery_class,'made_by_order') <> 'restock'
+                            WHEN pv.sk_variant_id IS NOT NULL
+                            THEN COALESCE(sp.sk_order_process,'manual') <> 'auto'
                             ELSE pv.fulfillment_mode = 'manual' END) AS queued,
           (EXISTS(SELECT 1 FROM lines)
            AND NOT EXISTS(SELECT 1 FROM lines l
                           LEFT JOIN product_variants pv ON pv.id = l.variant_id
-                          WHERE pv.wr_variant_id IS NOT NULL
-                             OR COALESCE(pv.fulfillment_mode,'manual') NOT IN ('shared','unique'))) AS instant`,
+                          LEFT JOIN sk_products sp ON sp.sk_variant_id = pv.sk_variant_id
+                          WHERE pv.id IS NULL
+                             OR pv.wr_variant_id IS NOT NULL
+                             OR (pv.sk_variant_id IS NOT NULL AND COALESCE(sp.sk_order_process,'manual') <> 'auto')
+                             OR (pv.wr_variant_id IS NULL AND pv.sk_variant_id IS NULL
+                                 AND COALESCE(pv.fulfillment_mode,'manual') NOT IN ('shared','unique')))) AS instant`,
         String(row.items ?? "[]"),
         String(row.items ?? "[]"),
         code,

@@ -153,12 +153,15 @@ export async function readDeliveredSnapshots(
  * true bila SEMUA baris pesanan sudah terkirim otomatis (email "Pesanan
  * Siap" yang memuat tanda terima). Dipakai untuk menahan email tanda terima
  * terpisah; serah terima admin (`delivered_message_id='manual'`) tidak
- * dihitung karena emailnya tidak memuat tanda terima.
+ * dihitung karena emailnya tidak memuat tanda terima. Item SK
+ * (`delivered_message_id LIKE 'sk:%'`) ikut dihitung: lisensi SK ditulis via
+ * sk_order_links + email kredensial SK memakai template "Pesanan Siap" yang
+ * sama (satu email berisi tanda terima + isi produk).
  */
 export async function webOrderAutoDelivered(orderCode: string, database: DatabaseAccess): Promise<boolean> {
   const row = await database.queryFirst(
     `SELECT COUNT(*) AS total,
-            SUM(CASE WHEN status='delivered' AND delivered_message_id LIKE 'item:%' THEN 1 ELSE 0 END) AS auto
+            SUM(CASE WHEN status='delivered' AND (delivered_message_id LIKE 'item:%' OR delivered_message_id LIKE 'sk:%') THEN 1 ELSE 0 END) AS auto
      FROM fulfillment_items WHERE order_code=?`,
     orderCode,
   ).catch(() => null);

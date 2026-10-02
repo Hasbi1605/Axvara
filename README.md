@@ -362,7 +362,13 @@ budget + deadline yang sama), tab admin **Sekalipay** setara WR (saldo, Force Sy
 antrean + umur + retry/void, exclusion rules, markup per varian + bulk markup cermin) + fitur khas SK
 (mutasi saldo audit, cek akun validasi nickname, stock-lock 10 mnt, daftar
 transaksi, detail capability, sandbox), migrasi 0049 + 0050 (tabel
-`sk_*`, kolom `sk_*`, exclusions, CHECK `source` + `sekalipay`). Seluruhnya di balik
+`sk_*`, kolom `sk_*`, exclusions, CHECK `source` + `sekalipay`). Paritas
+2026-10-02: SK auto ikut instan (flag halaman baca `sk_order_process`),
+webhook `order.completed` langsung kirim email kredensial template "Pesanan
+Siap" Axvara yang SAMA PERSIS dengan WR/non-WR (tanpa ingest Gmail — webhook
+adalah source of truth), event `paid/item.sent` → email "Pesanan Diproses",
+saldo habis → email pembeli, QRIS pending ada spinner jam + tombol cek manual.
+Seluruhnya di balik
 `SEKALIPAY_ENABLED=false` (lihat `.env.example`); set proxy URL + token +
 `SEKALIPAY_WEBHOOK_SECRET` di Pages Secrets, whitelist IP VPS (`13.228.147.90`) di
 dashboard SK, set callback `https://axvara.tech/api/webhook/sekalipay`, lalu

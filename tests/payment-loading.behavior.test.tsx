@@ -136,4 +136,21 @@ describe("/pesanan/[code] saat memuat", () => {
     fireEvent.load(screen.getByAltText(`QRIS dinamis pesanan ${CODE}`));
     expect(screen.queryByText("Memuat QRIS…")).toBeNull();
   });
+
+  it("QRIS pending hidup: ikon jam berputar + indikator polling + tombol cek manual", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: true, status: 200,
+      json: async () => ({ order: { code: CODE, customer_name: "Budi", customer_wa: "62812****7890", items: [], subtotal: 10_000, payment_method: "qris", status: "pending", qris: { ...qris, status: "pending" } } }),
+    })));
+    render(<OrderSuccessPage />);
+    await screen.findByAltText(`QRIS dinamis pesanan ${CODE}`);
+    // Ikon jam berputar: pembeli tahu halaman hidup, bukan laman kosong.
+    expect(screen.getByRole("status", { name: /Menunggu pembayaran/ })).toBeTruthy();
+    expect(screen.getByText(/Mengecek pembayaran otomatis tiap 5 detik/)).toBeTruthy();
+    const check = screen.getByRole("button", { name: "Cek Status Sekarang" });
+    expect(check).toBeTruthy();
+    // Cek manual memicu GET ulang (tanpa menunggu interval 5 dtk).
+    fireEvent.click(check);
+    await waitFor(() => expect(screen.getByText(/terakhir dicek/)).toBeTruthy());
+  });
 });

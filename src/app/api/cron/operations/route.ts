@@ -1239,6 +1239,16 @@ export async function POST(request: NextRequest) {
           } catch { /* best-effort */ }
         }
 
+        // 3b. Email kredensial SK yang tertunda (mis. Resend sempat mati saat
+        // webhook completed): kirim ulang yang due, bounded. Tanpa ini order
+        // SK lunas-terkirim-panel tapi buyer tidak pernah dapat email kredensial.
+        if (budget.fits(4) && hasTime(TIME_SK_LIGHT)) {
+          try {
+            const { reconcilePendingSkCredentialEmails } = await import("@/lib/sekalipay/deliver");
+            results.sk_credential_emails_sent = await reconcilePendingSkCredentialEmails(database);
+          } catch { /* run berikutnya mencoba lagi */ }
+        }
+
         // 4. Saldo check — tiap 1 jam.
         if (budget.fits(3) && hasTime(TIME_SK_LIGHT)) {
           const lastCheck = await queryFirst(

@@ -323,6 +323,66 @@ export async function notifyBuyerWrBlocked(
 }
 
 /**
+ * Kabar saat order SK tertahan karena saldo Sekalipay habis (cermin
+ * notifyBuyerWrBlocked): order sudah lunas tetapi pembelian ke upstream
+ * tertunda — pembeli diberi tahu agar tidak menunggu buta.
+ * Idempoten per order (`sk-blocked:<kode>`); satu kabar walau beberapa
+ * link blocked. Best-effort, tidak pernah melempar.
+ */
+export async function notifyBuyerSkBlocked(
+  orderCode: string,
+  database: DatabaseAccess = createDatabaseAccess(),
+): Promise<boolean> {
+  return await sendToBuyer(orderCode, {
+    subject: `Pesanan ${orderCode} menunggu stok pemasok`,
+    body: `⏳ <b>Pesanan tertunda sementara</b>\nOrder: <code>${orderCode}</code>\n\n`
+      + "Pembayaranmu sudah kami terima, tetapi saldo ke pemasok sedang habis "
+      + "sehingga pengiriman tertunda. Pesananmu tetap antre dan diproses otomatis "
+      + "setelah saldo terisi — tidak perlu bayar ulang.",
+    email: {
+      title: "Pesanan Menunggu Pemasok",
+      subtitle: "Pembayaranmu aman dan sudah kami terima.",
+      paragraphs: [
+        `Pembayaran untuk pesanan ${orderCode} sudah kami terima, tetapi saldo ke pemasok sedang habis sehingga pengiriman tertunda.`,
+        "Pesananmu tetap antre dan diproses otomatis setelah saldo terisi — tidak perlu bayar ulang. Bila belum ada kabar, hubungi admin lewat tombol di bawah.",
+      ],
+    },
+    chatCta: "Balas pesan ini bila belum ada kabar.",
+    refKey: `sk-blocked:${orderCode}`,
+  }, database).catch(() => false);
+}
+
+/**
+ * Kabar saat lisensi SK sedang diproses upstream (cermin template WR
+ * "Pesanan Diproses"): SK mengirim event order.paid / order.item.sent
+ * SEBELUM order.completed — celah menit ini dulu sunyi total, pembeli hanya
+ * melihat spinner halaman. Idempoten per invoice (`sk-processing:<kode>:<inv>`)
+ * agar retry webhook tidak mengirim kabar kedua.
+ */
+export async function notifyBuyerSkProcessing(
+  orderCode: string,
+  skInvoice: string,
+  database: DatabaseAccess = createDatabaseAccess(),
+): Promise<boolean> {
+  const invoice = String(skInvoice || "").slice(0, 40);
+  return await sendToBuyer(orderCode, {
+    subject: `Pesanan ${orderCode} sedang diproses — AXVARA`,
+    body: `🤖 <b>Pesanan sedang diproses</b>\nOrder: <code>${orderCode}</code>\n\n`
+      + "Pemasok sedang menyiapkan lisensi produkmu. Detail produk dikirim "
+      + "ke email ini dan juga tampil di halaman pesanan begitu siap.",
+    email: {
+      title: "Pesanan Diproses",
+      subtitle: "Ada pembaruan status untuk pesananmu.",
+      paragraphs: [
+        `Pesanan ${orderCode} kamu sedang diproses. Detail produk akan segera tersedia di halaman pesanan.`,
+        "Tidak perlu menunggu halaman ini terbuka — kami kabari lewat email ini, dan detailnya juga tampil di halaman pesanan saat kamu buka lagi.",
+      ],
+    },
+    refKey: `sk-processing:${orderCode}:${invoice}`,
+  }, database, { whatsappFallback: false }).catch(() => false);
+}
+
+/**
  * Tanda terima pembayaran untuk pembeli WEB (audit ronde 4, B-H1).
  *
  * Telegram sudah punya `notifyTelegramBuyerPaid`. Pembeli web dulu tidak

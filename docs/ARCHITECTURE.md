@@ -1562,6 +1562,21 @@ pembedaan hanya badge admin + slug `-wr`/`-sk`).
 - **Env (`secret_text`):** `SEKALIPAY_ENABLED/AUTO_ORDER_ENABLED=false`
   default, `SEKALIPAY_PROXY_URL/TOKEN`, `SEKALIPAY_WEBHOOK_SECRET`, markup +
   ambang + kategori default (lihat `.env.example`).
+- **Paritas email + flag SK (2026-10-02):** flag `queued/instant_delivery` di
+  `GET /api/orders?code=` membaca `sk_products.sk_order_process` (SK auto =
+  instan walau `fulfillment_mode` lokal `manual`; SK non-auto = antrean;
+  varian hilang = bukan instan palsu) — halaman lunas SK auto spinner
+  "Mengirim produkmu…" + polling rapat, bukan Made By Order 12 jam.
+  `handleSkOrderCompleted` bind link → item + tulis `sk_link_id` (fulfillment
+  generik lewati, pola `wr_link_id`) + kirim email kredensial template
+  "Pesanan Siap" Axvara yang SAMA PERSIS dengan WR/non-WR (logo + tanda
+  terima + blok kredensial + CTA, idempoten `email:sk-credential:<order>:<item>`
+  di `buyer_notice_log`) + reconcile cron `reconcilePendingSkCredentialEmails`;
+  `webOrderAutoDelivered` hitung `sk:%` sebagai auto (tanpa email tanda terima
+  ganda); event `order.paid/item.sent` → email "Pesanan Diproses"
+  (`notifyBuyerSkProcessing`, idempoten per invoice); saldo habis → email
+  pembeli `sk-blocked` (cermin WR). TANPA ingest Gmail SK — webhook adalah
+  source of truth (lisensi sudah di payload `order.completed`).
 
 ## 16. Insiden operasional 2026-09-14 + arsitektur proxy terpisah (WAJIB DIBACA agent)
 

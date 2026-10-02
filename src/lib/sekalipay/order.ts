@@ -485,6 +485,23 @@ async function handleSkOrderError(
     } catch { /* kabar pembeli best-effort */ }
     return "failed";
   }
+  return handleSkOrderErrorTail(id, message, attempt, execRun);
+}
+
+/** Kabar best-effort ke PEMBELI saat link SK tertahan saldo (cermin WR). */
+export async function notifySkBlockedBuyer(orderCode: string, database?: DatabaseAccess): Promise<void> {
+  try {
+    const { notifyBuyerSkBlocked } = await import("@/lib/notify-buyer");
+    await notifyBuyerSkBlocked(orderCode, database ?? createDatabaseAccess());
+  } catch { /* kabar pembeli best-effort; link tetap blocked_balance */ }
+}
+
+async function handleSkOrderErrorTail(
+  id: number,
+  message: string,
+  attempt: number,
+  execRun: (query: string, ...params: unknown[]) => Promise<{ changes?: number }>,
+): Promise<"retried"> {
   await execRun(
     `UPDATE sk_order_links SET status='retry', last_error=?, request_sent_at=NULL,
        lease_owner=NULL, lease_expires_at=NULL,
@@ -515,6 +532,10 @@ async function handleSkInsufficientBalance(
   await notifyAdmin(
     `💰 <b>Saldo Sekalipay habis</b>\nOrder <code>${String(link.order_code)}</code> diblokir sementara (tidak makan retry). Top up untuk memulihkan otomatis.`,
   );
+  // Kabari PEMBELI juga (cermin notifyBuyerWrBlocked 2026-09-28): order sudah
+  // lunas tetapi pembelian ke upstream tertunda — tanpa kabar ini pembeli
+  // menunggu buta mengira tokonya menipu.
+  await notifySkBlockedBuyer(String(link.order_code), db);
   return "blocked";
 }
 

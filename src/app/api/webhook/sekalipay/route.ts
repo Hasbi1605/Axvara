@@ -68,6 +68,7 @@ export async function POST(request: NextRequest) {
     switch (payload.event) {
       case "order.paid":
         await handleSkOrderPaid(invoice, undefined, eventId);
+        await notifySkProcessingBestEffort(invoice);
         break;
       case "order.completed":
         await handleSkOrderCompleted(invoice, payload.data);
@@ -79,6 +80,7 @@ export async function POST(request: NextRequest) {
         // Fase 1 hanya auto (lisensi langsung di completed) — event per-item
         // produk manual dicatat sebagai paid agar observable, tanpa settle.
         await handleSkOrderPaid(invoice, undefined, eventId);
+        await notifySkProcessingBestEffort(invoice);
         break;
       case "webhook.test":
         break;
@@ -93,4 +95,24 @@ export async function POST(request: NextRequest) {
     }
   }
   return NextResponse.json({ status: "ok" });
+}
+
+/**
+ * Kabar "Pesanan Diproses" ke pembeli saat SK mulai memproses (order.paid /
+ * order.item.sent). Best-effort: webhook harus jawab 2xx cepat, email tidak
+ * boleh menahannya. Join invoice → order_code via sk_order_links; tanpa link
+ * = bukan order Axvara (mis. sandbox) → diam.
+ */
+async function notifySkProcessingBestEffort(skInvoice: string): Promise<void> {
+  try {
+    const { createDatabaseAccess } = await import("@/lib/db-access");
+    const db = createDatabaseAccess();
+    const link = await db
+      .queryFirst(`SELECT order_code FROM sk_order_links WHERE sk_invoice=?`, skInvoice)
+      .catch(() => null);
+    const orderCode = String(link?.order_code || "").trim();
+    if (!orderCode) return;
+    const { notifyBuyerSkProcessing } = await import("@/lib/notify-buyer");
+    await notifyBuyerSkProcessing(orderCode, skInvoice, db);
+  } catch { /* kabar best-effort; webhook tetap ok */ }
 }

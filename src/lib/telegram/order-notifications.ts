@@ -323,10 +323,15 @@ export async function notifyTelegramPaidAdmin(orderCode: string, database: Datab
 
 /** Ringkasan status kirim order web untuk notif admin (dibaca setelah upaya kirim pertama). */
 export function summarizeWebDelivery(items: Row[]): { needsAdmin: boolean; lines: string[] } {
-  let auto = 0, manualDone = 0, needsAdmin = 0, inProgress = 0, wr = 0;
+  let auto = 0, manualDone = 0, needsAdmin = 0, inProgress = 0, wr = 0, sk = 0;
   for (const item of items) {
     const status = String(item.status ?? "");
     if (item.wr_link_id != null) wr++;
+    else if (item.sk_link_id != null) {
+      if (status === "delivered") auto++;
+      else if (status === "manual_required" || status === "failed") needsAdmin++;
+      else inProgress++;
+    }
     else if (status === "delivered") {
       if (String(item.delivered_message_id ?? "").startsWith("item:")) auto++;
       else manualDone++;
@@ -340,6 +345,7 @@ export function summarizeWebDelivery(items: Row[]): { needsAdmin: boolean; lines
   if (manualDone) lines.push(`✅ ${manualDone} item sudah diserahkan admin`);
   if (inProgress) lines.push(`⏳ ${inProgress} item sedang dikirim otomatis`);
   if (wr) lines.push(`🤖 ${wr} item diproses otomatis lewat Warung Rebahan`);
+  if (sk) lines.push(`🤖 ${sk} item diproses otomatis lewat Sekalipay`);
   if (!lines.length) lines.push("⏳ Menunggu proses pengiriman");
   return { needsAdmin: needsAdmin > 0, lines };
 }
@@ -368,7 +374,7 @@ export async function notifyWebPaidAdmin(orderCode: string, database: DatabaseAc
   ).catch(() => null);
   if (!order) return true;
   const items = await queryAll(
-    `SELECT status, delivered_message_id, wr_link_id FROM fulfillment_items WHERE order_code=?`,
+    `SELECT status, delivered_message_id, wr_link_id, sk_link_id FROM fulfillment_items WHERE order_code=?`,
     orderCode,
   ).catch(() => [] as Row[]);
   const { claimNotice, settleNotice } = await import("@/lib/notify-buyer");
