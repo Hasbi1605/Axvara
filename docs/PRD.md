@@ -39,7 +39,7 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 
 ### 1.4 Glossary
 
-- **QRIS Dinamis:** QRIS DANA Business yang dibuat per order dengan nominal unik dan masa berlaku 15 menit
+- **QRIS Dinamis:** QRIS DANA Business yang dibuat per order dengan nominal unik dan masa berlaku 15 menit. **Sejak 2026-10-02 (Fase 0, default mati):** ledger + matcher + reissue multi-rail (`dana` | `gopay`); rail order baru mengikuti `QRIS_ACTIVE_PROVIDER` (default `dana` = perilaku lama). Rail GoPay (payload GoPay Merchant + poller mutasi GoBiz di VPS + `POST /api/webhook/gopay`) aktif bila `GOPAY_QRIS_ENABLED=true` + secret terisi — Fase 1
 - **QRIS Hook:** Aplikasi Android yang meneruskan notifikasi pembayaran DANA ke webhook AXVARA dengan secret header
 - **Transfer Manual:** Pembeli transfer ke e-wallet 082135277434 (DANA/Gopay/Shopeepay) atau SeaBank 901812349386 a.n. pemilik
 - **Bukti Transfer:** Foto/screenshot yang di-upload pembeli setelah bayar
@@ -222,7 +222,7 @@ MVP seed: 8–12 produk dummy dengan foto placeholder premium + harga realistis 
 - **E-Wallet:** DANA / Gopay / Shopeepay → **082135277434** (1 nomor untuk semua)
 - **Bank:** SeaBank → **901812349386**
 - **Bank lain menyusul:** field dinamis di admin, bisa tambah BCA/Mandiri/BRI tanpa deploy
-- **QRIS:** payload merchant DANA Business tersimpan sebagai Pages Secret dan diubah menjadi QRIS dinamis per order
+- **QRIS:** payload merchant DANA Business tersimpan sebagai Pages Secret dan diubah menjadi QRIS dinamis per order. **Rail GoPay (2026-10-02 Fase 0, default mati):** payload `GOPAY_STATIC_QRIS` + poller server + webhook `/api/webhook/gopay` ber-secret `GOPAY_POLLER_SECRET`; alih rail via `QRIS_ACTIVE_PROVIDER=gopay`
 
 ### 5.2 Aturan
 - QRIS otomatis diverifikasi dari QRIS Hook ber-secret; SeaBank/e-wallet tetap manual

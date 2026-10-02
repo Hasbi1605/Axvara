@@ -178,12 +178,12 @@ export async function transitionPendingPaymentOrder(input: {
          SELECT ?, CASE WHEN
            EXISTS(SELECT 1 FROM orders WHERE code=? AND status='pending' AND payment_status IN ('unpaid','pending'))
            AND EXISTS(SELECT 1 FROM payment_transactions WHERE order_code=? AND status=?)
-           AND (?=0 OR EXISTS (
-             SELECT 1 FROM payment_transactions pt JOIN orders o ON o.code=pt.order_code
-             WHERE pt.order_code=? AND julianday(COALESCE(
-               CASE WHEN pt.provider='dana' THEN o.expires_at END,pt.expires_at
-             ))<=julianday('now')
-           ))
+            AND (?=0 OR EXISTS (
+              SELECT 1 FROM payment_transactions pt JOIN orders o ON o.code=pt.order_code
+              WHERE pt.order_code=? AND julianday(COALESCE(
+                CASE WHEN pt.provider IN ('dana','gopay') THEN o.expires_at END,pt.expires_at
+              ))<=julianday('now')
+            ))
          THEN 1 ELSE 0 END`,
       ).bind(guardId, input.orderCode, input.orderCode, input.expectedTransactionStatus,
         input.expiredOnly ? 1 : 0, input.orderCode),

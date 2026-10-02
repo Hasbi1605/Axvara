@@ -56,9 +56,12 @@ export async function POST(request: NextRequest) {
     || typeof body.review_note !== "string" || body.review_note.trim().length < 10 || body.review_note.length > 500)) {
     return NextResponse.json({ error: "manual_verification_required" }, { status: 400 });
   }
-  const event = await queryFirst("SELECT id,amount,status,order_code,created_at FROM dana_webhook_events WHERE id=?", eventId);
+  const event = await queryFirst("SELECT id,amount,status,order_code,created_at,provider FROM dana_webhook_events WHERE id=?", eventId);
   if (!event) return NextResponse.json({ error: "event_not_found" }, { status: 404 });
   if (String(event.status) === "matched") return NextResponse.json({ ok: true, status: "already_matched", order_code: event.order_code });
+  // Retry mengikuti provider event (dana vs gopay) agar nominal silang
+  // provider tidak saling klaim. Event lama tanpa provider = dana.
+  const eventProvider = String(event.provider || "dana") === "gopay" ? "gopay" : "dana";
 
   // Same canonical JS expiry check as the webhook: an admin retry must
   // never resurrect an already-expired invoice. Same causal guard: an event
@@ -68,9 +71,9 @@ export async function POST(request: NextRequest) {
     `SELECT pt.order_code,pt.expires_at,COALESCE(pt.invoice_issued_at,pt.created_at) AS invoice_created_at,o.expires_at AS order_expires_at,o.sales_channel,o.channel_conversation_id,
        ${DANA_AMOUNT_REUSED_SQL} AS amount_history
      FROM payment_transactions pt JOIN orders o ON o.code=pt.order_code
-     WHERE pt.provider='dana' AND pt.payable_amount=? AND pt.status='pending'
+     WHERE pt.provider=? AND pt.payable_amount=? AND pt.status='pending'
        AND o.status='pending' LIMIT 3`,
-    Number(event.amount),
+    eventProvider, Number(event.amount),
   );
   const live = candidates.filter((row) => isFutureIso(row.expires_at) && isFutureIso(row.order_expires_at));
   const matches = live.filter((row) =>

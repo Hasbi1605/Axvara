@@ -15,7 +15,7 @@ import {
   cartMessage, cartAddedMessage, cartCheckoutSummaryMessage,
 } from "@/lib/telegram/messages";
 import { isCriticalSendResult } from "@/lib/telegram/webhook-errors";
-import { isDanaQrisConfigured } from "@/lib/payments/dana-qris";
+import { isDanaQrisConfigured, isGopayQrisConfigured } from "@/lib/payments/dana-qris";
 import { addToCart, setCartLineQty, removeFromCart, getCartSummary } from "@/lib/telegram/cart";
 import { clearPendingAction } from "./shared";
 
@@ -136,7 +136,7 @@ export async function handleCartCheckout(
   await sendChatAction(chatId, "typing");
   await clearPendingAction(from);
 
-  if (!isDanaQrisConfigured()) {
+  if (!isDanaQrisConfigured() && !isGopayQrisConfigured()) {
     await sendMessage({
       chat_id: chatId,
       text: "⚠️ QRIS dinamis sedang tidak tersedia. Coba lagi sebentar atau hubungi admin.",

@@ -108,7 +108,7 @@ export async function retryTelegramInvoiceDelivery(orderCode: string, database: 
   if (order.telegram_invoice_attempts >= 5) return false; // budget retry habis
   const ledger = await queryFirst(
     `SELECT payable_amount, expires_at, qris_url FROM payment_transactions
-     WHERE order_code=? AND provider='dana' AND status='pending'`,
+     WHERE order_code=? AND provider IN ('dana','gopay') AND status='pending'`,
     orderCode,
   );
   if (!ledger || !isFutureIso(ledger.expires_at)) return false;
@@ -148,7 +148,7 @@ export async function retryInvoicePendingTelegramInvoices(limit = 4, database: D
 
   const pending = await queryAll(
     `SELECT o.code FROM orders o
-     JOIN payment_transactions pt ON pt.order_code=o.code AND pt.provider='dana' AND pt.status='pending'
+     JOIN payment_transactions pt ON pt.order_code=o.code AND pt.provider IN ('dana','gopay') AND pt.status='pending'
      WHERE o.sales_channel='telegram' AND o.status='pending'
        AND o.telegram_invoice_sent_at IS NULL AND o.telegram_invoice_attempts < 5
        AND julianday(pt.expires_at)>julianday('now')

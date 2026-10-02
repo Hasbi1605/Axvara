@@ -235,10 +235,12 @@ let systemsDetails: Record<string, ServiceStatus> = {};
 
 /** Kompatibilitas boolean lama untuk UI yang belum membaca system_details. */
 function legacySystems() {
+  const danaOk = process.env.DANA_QRIS_ENABLED === "true" && Boolean(process.env.DANA_STATIC_QRIS) && Boolean(process.env.DANA_WEBHOOK_SECRET);
+  const gopayOk = process.env.GOPAY_QRIS_ENABLED === "true" && Boolean(process.env.GOPAY_STATIC_QRIS) && Boolean(process.env.GOPAY_POLLER_SECRET);
   return {
     telegram: Boolean(process.env.TELEGRAM_BOT_TOKEN) && process.env.TELEGRAM_BOT_ENABLED === "true",
     whatsapp: Boolean(process.env.WHATSAPP_GATEWAY_URL) && process.env.WHATSAPP_ENABLED === "true",
-    qris: process.env.DANA_QRIS_ENABLED === "true" && Boolean(process.env.DANA_STATIC_QRIS) && Boolean(process.env.DANA_WEBHOOK_SECRET),
+    qris: danaOk || gopayOk,
     fulfillment: process.env.AUTO_FULFILLMENT_ENABLED === "true" && Boolean(process.env.FULFILLMENT_ENCRYPTION_KEY),
   };
 }
@@ -274,8 +276,9 @@ function buildSystems(input: SystemsInput): Record<string, boolean> {
     queue: summarizeQueue(waQueueRows, input.oldestWaDue),
   });
   const qris = evaluateQris({
-    configured: Boolean(process.env.DANA_STATIC_QRIS) && Boolean(process.env.DANA_WEBHOOK_SECRET),
-    enabled: process.env.DANA_QRIS_ENABLED === "true",
+    configured: (Boolean(process.env.DANA_STATIC_QRIS) && Boolean(process.env.DANA_WEBHOOK_SECRET))
+      || (Boolean(process.env.GOPAY_STATIC_QRIS) && Boolean(process.env.GOPAY_POLLER_SECRET)),
+    enabled: process.env.DANA_QRIS_ENABLED === "true" || process.env.GOPAY_QRIS_ENABLED === "true",
     unmatched7d: Number(input.qrisEvents.unmatched || 0),
     failed7d: Number(input.qrisEvents.failed || 0),
     lastMatchAt: input.qrisEvents.last_match ? String(input.qrisEvents.last_match) : null,

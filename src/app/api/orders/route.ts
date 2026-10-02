@@ -4,7 +4,7 @@ import { z } from "zod";
 import { createOrderWithStock, queryAll, queryFirst, StockReservationError, transitionPendingOrder } from "@/lib/db";
 import { generateOrderCode as generateCode, aggregateQty } from "@/lib/security";
 import { verifyCheckoutQuoteToken } from "@/lib/auth";
-import { createDanaQrisInvoice, MAX_QRIS_REISSUES } from "@/lib/payments/dana-qris";
+import { createDanaQrisInvoice, createActiveQrisInvoice, MAX_QRIS_REISSUES } from "@/lib/payments/dana-qris";
 import { checkRateLimit } from "@/lib/rateLimit";
 
 export const runtime = "edge";
@@ -262,7 +262,8 @@ export async function POST(req: NextRequest) {
   let qrisInvoice: Awaited<ReturnType<typeof createDanaQrisInvoice>> | null = null;
   if (pm === "qris") {
     try {
-      qrisInvoice = await createDanaQrisInvoice(code, quote.subtotal);
+      // Rail mengikuti QRIS_ACTIVE_PROVIDER (default dana = perilaku lama).
+      qrisInvoice = await createActiveQrisInvoice(code, quote.subtotal);
     } catch (error) {
       console.error("DANA QRIS invoice setup failed:", error instanceof Error ? error.message : "unknown");
       try {

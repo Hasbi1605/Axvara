@@ -102,7 +102,9 @@ describe("legacy QRIS rails removed", () => {
       // Refactor: jalur DANA QRIS WhatsApp dipindah dari route.ts ke handler pembayaran.
       "src/lib/whatsapp/handlers/payment.ts",
     ]) {
-      expect(read(file)).toContain("createDanaQrisInvoice");
+      // Multi-rail 2026-10-02: penerbitan mengikuti QRIS_ACTIVE_PROVIDER
+      // (default dana = perilaku lama); wrapper DANA tetap ada untuk fallback.
+      expect(read(file)).toMatch(/create(Dana|Active)QrisInvoice/);
       expect(read(file)).not.toMatch(/getPaymentProvider|KLIKQRIS/);
     }
     expect(fs.existsSync(path.join(process.cwd(), "src/lib/payments/klikqris.ts"))).toBe(false);

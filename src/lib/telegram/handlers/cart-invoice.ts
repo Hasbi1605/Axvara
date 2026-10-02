@@ -15,7 +15,7 @@ import { qrisInvoiceKeyboard } from "@/lib/telegram/keyboards";
 import { outOfStockMessage, errorMessage, invoiceMessage } from "@/lib/telegram/messages";
 import { isCriticalSendResult } from "@/lib/telegram/webhook-errors";
 import { generateOrderCode } from "@/lib/security";
-import { createDanaQrisInvoice } from "@/lib/payments/dana-qris";
+import { createActiveQrisInvoice } from "@/lib/payments/dana-qris";
 import { releaseInventoryForOrder } from "@/lib/fulfillment/inventory";
 import { createFulfillmentJob } from "@/lib/fulfillment/deliver";
 import { notifyTelegramOrderCreated } from "@/lib/telegram/order-notifications";
@@ -135,7 +135,7 @@ export async function createAndSendCartInvoice(
       decremented.push({ variantId: line.variantId, qty: line.qty });
     }
 
-    const invoiceResult = await createDanaQrisInvoice(orderCode, subtotal);
+    const invoiceResult = await createActiveQrisInvoice(orderCode, subtotal);
 
     // Satu fulfillment job per order (UNIQUE order_code): mode = unique jika
     // ada baris unique (cuma 1 baris, dijaga addToCart), shared jika semua

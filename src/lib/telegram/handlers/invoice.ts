@@ -19,7 +19,7 @@ import {
 import { getActiveVariant, formatDuration, formatWarranty, type VariantSummary } from "@/lib/catalog";
 import { isCriticalSendResult } from "@/lib/telegram/webhook-errors";
 import { generateOrderCode } from "@/lib/security";
-import { createDanaQrisInvoice, isDanaQrisConfigured } from "@/lib/payments/dana-qris";
+import { createActiveQrisInvoice, isDanaQrisConfigured, isGopayQrisConfigured } from "@/lib/payments/dana-qris";
 import { releaseInventoryForOrder } from "@/lib/fulfillment/inventory";
 import { createFulfillmentJob } from "@/lib/fulfillment/deliver";
 import { notifyTelegramOrderCreated } from "@/lib/telegram/order-notifications";
@@ -40,7 +40,8 @@ export async function handlePayWithQris(
   await sendChatAction(chatId, "typing");
   await clearPendingAction(from);
 
-  if (!isDanaQrisConfigured()) {
+  // Gate rail aktif: DANA atau GoPay, mana pun yang terkonfigurasi.
+  if (!isDanaQrisConfigured() && !isGopayQrisConfigured()) {
     await sendMessage({
       chat_id: chatId,
       text: "⚠️ QRIS dinamis sedang tidak tersedia. Coba lagi sebentar atau hubungi admin.",
@@ -271,7 +272,7 @@ export async function createAndSendVariantInvoice(
       inventoryId = reservedUnit ? Number(reservedUnit.id) : null;
     }
 
-    const invoiceResult = await createDanaQrisInvoice(orderCode, subtotal);
+    const invoiceResult = await createActiveQrisInvoice(orderCode, subtotal);
 
     // Payment remains usable if the fulfillment outbox insert is temporarily
     // unavailable; ensureFulfillmentForPaidOrder recreates it after payment.

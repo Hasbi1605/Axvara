@@ -338,6 +338,11 @@ CREATE INDEX IF NOT EXISTS idx_payment_transactions_order ON payment_transaction
 CREATE UNIQUE INDEX IF NOT EXISTS payment_transactions_active_dana_amount
   ON payment_transactions(payable_amount)
   WHERE provider='dana' AND status IN ('initializing','pending');
+-- Rail GoPay (migrasi 0054): nominal aktif unik per provider — GoPay boleh
+-- sama dengan DANA karena matcher selalu filter provider.
+CREATE UNIQUE INDEX IF NOT EXISTS payment_transactions_active_gopay_amount
+  ON payment_transactions(payable_amount)
+  WHERE provider='gopay' AND status IN ('initializing','pending');
 CREATE TABLE IF NOT EXISTS dana_webhook_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   event_key TEXT NOT NULL UNIQUE,
@@ -345,6 +350,9 @@ CREATE TABLE IF NOT EXISTS dana_webhook_events (
   amount INTEGER NOT NULL,
   sender_name TEXT,
   raw_text TEXT,
+  -- Rail asal event (migrasi 0054): 'dana' (Hook HP) atau 'gopay' (poller
+  -- server). Default dana agar writer lama tetap valid.
+  provider TEXT NOT NULL DEFAULT 'dana',
   status TEXT NOT NULL DEFAULT 'received'
     CHECK (status IN ('received','matched','ignored','failed')),
   order_code TEXT REFERENCES orders(code),
@@ -355,6 +363,9 @@ CREATE TABLE IF NOT EXISTS dana_webhook_events (
   review_note TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_dana_webhook_events_status ON dana_webhook_events(status, created_at);
+-- Migrasi 0054: event webhook ber-provider (dana vs gopay).
+CREATE INDEX IF NOT EXISTS idx_dana_webhook_events_provider
+  ON dana_webhook_events(provider, status, created_at);
 CREATE INDEX IF NOT EXISTS idx_payment_amount_history ON payment_transactions(provider,payable_amount);
 -- QRIS issuance history (0025): retained independently of the mutable ledger.
 CREATE TABLE IF NOT EXISTS payment_invoice_history (
@@ -379,7 +390,7 @@ CREATE TABLE IF NOT EXISTS dana_qris_legacy_ranges (
 
 CREATE TRIGGER IF NOT EXISTS payment_invoice_history_insert
 AFTER INSERT ON payment_transactions
-WHEN NEW.provider='dana' AND NEW.payable_amount IS NOT NULL
+WHEN NEW.provider IN ('dana','gopay') AND NEW.payable_amount IS NOT NULL
 BEGIN
   INSERT OR IGNORE INTO payment_invoice_history
     (provider,order_code,payable_amount,issued_at,expires_at)
@@ -389,7 +400,7 @@ END;
 
 CREATE TRIGGER IF NOT EXISTS payment_invoice_history_update
 AFTER UPDATE OF payable_amount ON payment_transactions
-WHEN NEW.provider='dana' AND NEW.payable_amount IS NOT NULL
+WHEN NEW.provider IN ('dana','gopay') AND NEW.payable_amount IS NOT NULL
   AND NEW.payable_amount IS NOT OLD.payable_amount
 BEGIN
   -- CI applies migrations before deploying code. An old writer can still

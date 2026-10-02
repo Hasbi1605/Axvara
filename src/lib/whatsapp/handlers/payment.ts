@@ -24,7 +24,7 @@ import {
   parsePaymentDisplaySnapshot,
 } from "@/lib/commerce";
 import { isExpiredIso } from "@/lib/expiry";
-import { createDanaQrisInvoice } from "@/lib/payments/dana-qris";
+import { createActiveQrisInvoice } from "@/lib/payments/dana-qris";
 import * as msg from "@/lib/whatsapp/messages";
 import {
   PaymentMethodChoice,
@@ -225,7 +225,7 @@ async function createAndSendDanaQrisPayment(
   inboxId: string,
 ) {
   const existingTransaction = await queryFirst(
-    `SELECT payable_amount, qris_url, expires_at, status FROM payment_transactions WHERE order_code=? AND provider='dana'`,
+    `SELECT payable_amount, qris_url, expires_at, status FROM payment_transactions WHERE order_code=? AND provider IN ('dana','gopay')`,
     orderCode,
   );
   if (existingTransaction) {
@@ -251,7 +251,7 @@ async function createAndSendDanaQrisPayment(
   }
 
   try {
-    const invoice = await createDanaQrisInvoice(orderCode, total);
+    const invoice = await createActiveQrisInvoice(orderCode, total);
     await sendPaymentInfo(groupId, memberId, session, orderCode, invoice.payableAmount, "QRIS", inboxId, invoice.qrisUrl);
   } catch (error) {
     const order = await queryFirst(`SELECT items FROM orders WHERE code=?`, orderCode);
@@ -259,7 +259,7 @@ async function createAndSendDanaQrisPayment(
     if (order && !transaction) {
       try {
         const items = JSON.parse(String(order.items || "[]")) as { product_id: number; variant_id?: number; qty: number }[];
-        await transitionPendingOrder(orderCode, "dibatalkan", "dana_qris_setup_failed", items);
+        await transitionPendingOrder(orderCode, "dibatalkan", "qris_setup_failed", items);
       } catch { /* Another request may have completed the invoice. */ }
     }
     throw error;

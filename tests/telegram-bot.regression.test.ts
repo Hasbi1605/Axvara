@@ -505,7 +505,7 @@ describe("Telegram messages premium UX", () => {
 describe("Telegram order and payment flow wiring", () => {
   it("offers only dynamic QRIS and never creates Telegram bank/e-wallet orders", () => {
     const route = readWebhook();
-    expect(route).toContain("createDanaQrisInvoice");
+    expect(route).toMatch(/create(Dana|Active)QrisInvoice/);
     expect(route).not.toContain("createManualTransferOrder");
     expect(route).not.toContain("getActivePaymentMethods");
     expect(route).not.toContain("paymentMethodKeyboard");
@@ -785,7 +785,7 @@ describe("Telegram Fase 2: cart + reminder (tanpa review/promo)", () => {
     // Order dibuat lewat jalur atomik bersama (satu batch: guard stok +
     // reservasi inventory + INSERT order), bukan INSERT manual di route.
     expect(route).toContain("createChannelOrderAtomic({");
-    expect(route).toContain("createDanaQrisInvoice(orderCode, subtotal)");
+    expect(route).toMatch(/create(Dana|Active)QrisInvoice\(orderCode, subtotal\)/);
     expect(route).toContain("clearCart(String(from.id))");
     expect(route).toContain("variantSnapshot");
     // Satu job per order (UNIQUE order_code): mode dominan, bukan per item.

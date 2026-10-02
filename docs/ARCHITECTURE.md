@@ -1906,3 +1906,32 @@ Aturan turunan:
 3. Satuan metrik harus sama antar-layar. "Stok menipis" = **varian aktif
    berstok 0–5** di Ringkasan (`/api/admin/overview`) maupun Produk
    (`lowStockVariants` dari `/api/products`).
+
+### 16.9 Rail QRIS GoPay (2026-10-02 Fase 0 — ledger multi-provider, default mati)
+
+Motivasi: lepas dari HP Android (QRIS Hook DANA) untuk order pribadi —
+poller server memantau mutasi GoBiz milik sendiri.
+
+- **Ledger generik:** `payment_transactions.provider` = `dana` | `gopay`;
+  allocator + causal guard + history + reissue berlaku per provider.
+  Unique index terpisah (`..._active_dana_amount` / `..._active_gopay_amount`)
+  sehingga nominal GoPay BOLEH sama dengan nominal DANA — matcher WAJIB
+  filter provider di semua query kandidat.
+- **Rail aktif order baru:** `QRIS_ACTIVE_PROVIDER` (`dana` default =
+  perilaku lama; `gopay` bila `GOPAY_QRIS_ENABLED=true` + secret).
+  `createDanaQrisInvoice()` = wrapper tipis (signature tetap); Telegram/WA/
+  web memakai `createActiveQrisInvoice()`. Rollback = 1 env.
+- **Webhook GoPay:** `POST /api/webhook/gopay` (HMAC `x-poller-secret` =
+  `GOPAY_POLLER_SECRET`, BUKAN publik) — cermin webhook DANA + `order_code`
+  langsung bila poller menyertakan. Event tercatat `provider='gopay'` di
+  tabel `dana_webhook_events` (nama tabel dipertahankan).
+- **Legacy ranges hanya DANA** (`pt.provider='dana'` di predikat) — riwayat
+  GoPay selalu lengkap sejak awal (tidak ada reissue penghapus).
+- **Poller:** folder `axvara-gopay-poller/` (Fastify `:3002`, systemd terpisah
+  di VPS yang sama dengan wr-proxy, session `chmod 600`, interval ≥8 detik,
+  read-only, 401 → backoff + notif, JANGAN loop login). Fase 0 = skeleton
+  (`/health` + `/tick`); Fase 1 = login OTP 1x + polling GoBiz beneran.
+- **Env (`secret_text`):** `GOPAY_STATIC_QRIS`, `GOPAY_POLLER_SECRET`,
+  `GOPAY_QRIS_ENABLED=false`, `QRIS_ACTIVE_PROVIDER=dana`.
+- **Migrasi 0054:** index gopay + trigger `IN ('dana','gopay')` + kolom
+  `provider` di events. Issue: `issue/qris-gopay-ganti-hp-hook-2026-10-02.md`.

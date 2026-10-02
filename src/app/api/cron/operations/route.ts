@@ -519,13 +519,13 @@ export async function POST(request: NextRequest) {
         );
         expiredCandidates = await queryAll(
           `SELECT pt.order_code, pt.provider, pt.provider_order_id, pt.merchant_id,
-                  COALESCE(CASE WHEN pt.provider='dana' THEN o.expires_at END,pt.expires_at) AS expires_at,
+                  COALESCE(CASE WHEN pt.provider IN ('dana','gopay') THEN o.expires_at END,pt.expires_at) AS expires_at,
                   pt.status, o.items, o.telegram_chat_id
            FROM payment_transactions pt
            JOIN orders o ON o.code=pt.order_code
            WHERE pt.status='pending'
-             AND julianday(COALESCE(CASE WHEN pt.provider='dana' THEN o.expires_at END,pt.expires_at))<=julianday('now')
-           ORDER BY julianday(COALESCE(CASE WHEN pt.provider='dana' THEN o.expires_at END,pt.expires_at)) ASC
+             AND julianday(COALESCE(CASE WHEN pt.provider IN ('dana','gopay') THEN o.expires_at END,pt.expires_at))<=julianday('now')
+           ORDER BY julianday(COALESCE(CASE WHEN pt.provider IN ('dana','gopay') THEN o.expires_at END,pt.expires_at)) ASC
            LIMIT ?`,
           EXPIRY_PER_RUN * 2,
         );

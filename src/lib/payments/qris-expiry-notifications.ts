@@ -22,7 +22,7 @@ import { qrisExpiredMessage as waExpiredMessage } from "@/lib/whatsapp/messages"
 // Cabang terminal dibatasi order yang kedaluwarsa <24 jam: migrasi 0026 hanya
 // menandai riwayat saat kolom dibuat, jadi tanpa batas ini seluruh riwayat
 // web sesudahnya ikut antre, dan kabar yang telat berhari-hari hanyalah spam.
-export const QRIS_EXPIRY_NOTICE_WHERE = `pt.provider='dana'
+export const QRIS_EXPIRY_NOTICE_WHERE = `pt.provider IN ('dana','gopay')
   AND o.sales_channel IN ('telegram','whatsapp','web')
   AND CASE o.sales_channel
         WHEN 'web' THEN TRIM(COALESCE(o.customer_email,''))!=''

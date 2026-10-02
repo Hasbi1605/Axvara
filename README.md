@@ -100,7 +100,7 @@ axvara/
 |--------|------------|-----|
 | E-Wallet | `082135277434` | DANA/Gopay/Shopeepay |
 | SeaBank | `901812349386` | Brotherstore06 |
-| QRIS | DANA Business | Dinamis per order, nominal unik, QR 15 menit; WA tanpa pembaruan, Telegram/Web maksimal 1 pembaruan |
+| QRIS | DANA Business (default) / GoPay Merchant (Fase 1, flag) | Dinamis per order, nominal unik, QR 15 menit; WA tanpa pembaruan, Telegram/Web maksimal 1 pembaruan |
 | Bank lain | dinamis via admin | tambah/aktifkan tanpa deploy |
 
 Flow: server memvalidasi harga/stok dan menerbitkan quote bertanda tangan 60 menit → order dibuat idempotent dan stok direservasi atomik. Untuk QRIS, server membuat payload EMVCo dan nominal unik per order, menampilkan QR selama 15 menit, lalu QRIS Hook Android mengirim pembayaran ke `/api/webhook/dana`; nominal yang cocok tepat mengubah ledger+order menjadi lunas secara atomik. Transfer SeaBank/e-wallet tetap memakai bukti JPG/PNG/WebP dan review admin. Order yang kedaluwarsa mengembalikan stok atomik.

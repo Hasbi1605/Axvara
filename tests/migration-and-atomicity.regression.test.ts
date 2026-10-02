@@ -473,7 +473,9 @@ describe("Variant stock expiry lifecycle", () => {
 
   it("reuses an existing DANA ledger before allocating another unique amount", () => {
     const qris = read("src/lib/payments/dana-qris.ts");
-    const lookup = qris.indexOf("FROM payment_transactions WHERE order_code=? AND provider='dana'");
+    // Multi-rail 2026-10-02: lookup generik per provider (bind param),
+    // alokasi 40x tetap setelah lookup.
+    const lookup = qris.indexOf("FROM payment_transactions WHERE order_code=? AND provider=?");
     const create = qris.indexOf("for (let attempt = 0; attempt < 40; attempt++)", lookup);
     expect(lookup).toBeGreaterThan(0);
     expect(create).toBeGreaterThan(lookup);

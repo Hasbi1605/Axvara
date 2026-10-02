@@ -17,7 +17,7 @@ export async function GET(
   const transaction = await queryFirst(
     `SELECT qris_payload, status, expires_at
      FROM payment_transactions
-     WHERE order_code=? AND provider='dana'`,
+     WHERE order_code=? AND provider IN ('dana','gopay')`,
     orderCode,
   );
   if (!transaction?.qris_payload) return new NextResponse("Not found", { status: 404 });
