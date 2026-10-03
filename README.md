@@ -172,9 +172,11 @@ Order web hanya dinotif saat lunas (2026-09-25): `Lunas — Web` memuat status k
 dengan retry cron 6 jam; notif `Order Baru — Web` dihapus.
 Penanda D1 + cron mencegah duplikat sekaligus me-retry kegagalan kirim.
 Daily Promo Digest mengirim bahan promosi internal ke tujuan yang sama pukul
-09.00 dan 17.00 WIB: versi lengkap + ringkas, masing-masing berisi 3–4 produk
-ready dengan harga mulai aktual serta CTA **Order melalui Bot Telegram** dan
-**Order melalui Website**. Ledger `telegram_promo_digests` (migrasi 0044)
+09.00 dan 17.00 WIB: pesan utama + versi WA siap copy-paste (2026-10-03: isi
+sama persis, bold `*` literal — bubble ringkas lama diganti agar tinggal copy
+dari Telegram lalu paste ke WA), masing-masing berisi SEMUA produk
+ready dengan harga tegas aktual serta CTA **website dulu baru bot** (**Order
+melalui Website** lalu **Order melalui Bot Telegram**). Ledger `telegram_promo_digests` (migrasi 0044)
 mencegah duplikat per tanggal/slot dan mengulang hanya bubble yang gagal.
 Aktifkan eksplisit `TELEGRAM_PROMO_DIGEST_ENABLED=true`; default tetap mati.
 Dokumen `docs/TELEGRAM-BOT-KLIKQRIS-PLAN.md` hanya arsip provider lama dan telah digantikan

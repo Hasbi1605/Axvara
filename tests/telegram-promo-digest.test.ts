@@ -80,8 +80,10 @@ describe("Telegram promo digest", () => {
     // owner 2026-10-01).
     expect(message).toContain("🔥 <b>PRODUK AXVARA READY PAGI INI</b>");
     expect(message).not.toContain("PRODUK AXVARA\n");
+    // Garis pemisah + intro dua baris (contoh manual owner 2026-10-03).
+    expect(message).toContain("------------------------------------------------------------------");
+    expect(message).toContain("Sedia semua kebutuhan aplikasi dan tools premium favorit anda.\nMurah, mudah, cepat, dan bergaransi.");
     expect(message).toContain("ChatGPT &lt;Pro&gt;");
-    expect(message).toContain("Sedia semua kebutuhan aplikasi dan tools premium favorit anda, murah, mudah, cepat, dan bergaransi.");
     // Emoji ceklis per baris produk ready (contoh WR/SEKUDIL).
     expect(message).toContain("✅ Produk 2");
     // Harga tegas varian termurah — tanpa kata "Mulai".
@@ -97,9 +99,18 @@ describe("Telegram promo digest", () => {
     expect(message).toContain("Order melalui Website:");
     expect(message).toContain("https://axvara.tech");
     expect(message).not.toContain("Katalog lengkap");
+    // CTA: website dulu, baru bot (contoh manual owner 2026-10-03).
+    expect(message.indexOf("Order melalui Website:")).toBeLessThan(message.indexOf("Order melalui Bot Telegram:"));
     // Deep-link langsung buka bot dengan payload beli (keputusan owner
     // 2026-10-01): tap link → chat pribadi langsung siap order.
     expect(message).toContain("https://t.me/Axvara_bot?start=beli");
+  });
+
+  it("ikon Desain & Video = palet, bukan robot (insiden owner 2026-10-03: 'desain' mengandung 'ai')", () => {
+    const message = promoMessages("morning", products.slice(0, 4)).full;
+    expect(message).toContain("🎨 <b>DESAIN &amp; VIDEO</b>");
+    expect(message).not.toContain("🤖 <b>DESAIN");
+    expect(message).toContain("🤖 <b>AI &amp; CHATBOT</b>");
   });
 
   it("judul sore: api + PRODUK AXVARA READY SORE INI", () => {
@@ -108,13 +119,38 @@ describe("Telegram promo digest", () => {
     expect(message).not.toContain("PRODUK AXVARA\n");
   });
 
-  it("short bubble ringkas siap forward tanpa disclaimer", () => {
-    const message = promoMessages("evening", products.slice(0, 3)).short;
-    expect(message).toContain("Ready sore ini");
-    expect(message).toContain("✅");
-    expect(message).not.toContain("Mulai");
-    expect(message).not.toContain("mulai");
-    expect(message).not.toContain("mengikuti");
+  it("short = versi WA siap copy-paste: sama persis dengan full, bold pakai *", () => {
+    const { full, short } = promoMessages("evening", products.slice(0, 4));
+    // Judul + header kategori + CTA memakai * literal ala WA, bukan <b>.
+    expect(short).toContain("🔥 *PRODUK AXVARA READY SORE INI*");
+    expect(short).not.toContain("<b>");
+    expect(short).not.toContain("</b>");
+    expect(short).toContain("*DESAIN & VIDEO*");
+    expect(short).toContain("🎨 *DESAIN & VIDEO*");
+    expect(short).toContain("*Order melalui Website:*");
+    expect(short).toContain("*Order melalui Bot Telegram:*");
+    // Garis pemisah + intro dua baris persis seperti full.
+    expect(short).toContain("------------------------------------------------------------------");
+    expect(short).toContain("Sedia semua kebutuhan aplikasi dan tools premium favorit anda.\nMurah, mudah, cepat, dan bergaransi.");
+    // Header kategori tanpa escape HTML (teks polos untuk WA).
+    expect(short).toContain("AI & CHATBOT");
+    // Nama produk mentah (tanpa &lt;) — dikirim tanpa parse_mode HTML.
+    expect(short).toContain("ChatGPT <Pro>");
+    expect(short).toContain("✅ Produk 2");
+    expect(short).toContain("https://t.me/Axvara_bot?start=beli");
+    expect(short).toContain("https://axvara.tech");
+    expect(short).not.toContain("Mulai");
+    expect(short).not.toContain("mulai");
+    expect(short).not.toContain("mengikuti");
+    // Body sama persis selain markup bold (full=<b>, short=*) agar owner
+    // bisa copy dari Telegram lalu paste ke WA tanpa edit manual.
+    // Full di-escape HTML (&amp;/&lt;), short teks polos — samakan dulu.
+    const unescape = (text: string) => text
+      .replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&quot;", '"')
+      .replaceAll("&amp;", "&");
+    const normalize = (text: string) => unescape(text).replaceAll(/<\/?b>/g, "*");
+    const stripUrls = (text: string) => text.replaceAll("https://t.me/Axvara_bot?start=beli", "BOT").replaceAll("https://axvara.tech", "WEB");
+    expect(stripUrls(short)).toBe(stripUrls(normalize(full)));
   });
 
   it("sends and persists both bubbles once", async () => {
@@ -139,6 +175,18 @@ describe("Telegram promo digest", () => {
     const result = await sendDueAdminPromoDigest(databaseWithFullSent(), new Date("2026-09-27T02:05:00Z"));
     expect(result).toMatchObject({ fullSent: false, shortSent: true, complete: true });
     expect(sendMessage).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(sendMessage).mock.calls[0][0].text).toContain("Ready pagi ini");
+    // Bubble kedua = versi WA siap copy-paste (bold * literal).
+    expect(vi.mocked(sendMessage).mock.calls[0][0].text).toContain("🔥 *PRODUK AXVARA READY PAGI INI*");
+  });
+
+  it("short bubble dikirim tanpa parse_mode HTML (copy *-WA aman)", async () => {
+    vi.mocked(sendMessage)
+      .mockResolvedValueOnce({ ok: true, result: { message_id: 10 } as never })
+      .mockResolvedValueOnce({ ok: true, result: { message_id: 11 } as never });
+    const db = database();
+    await sendDueAdminPromoDigest(db, new Date("2026-09-27T02:00:00Z"));
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(sendMessage).mock.calls[0][0].parse_mode).toBe("HTML");
+    expect(vi.mocked(sendMessage).mock.calls[1][0].parse_mode).toBeUndefined();
   });
 });

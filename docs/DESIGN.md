@@ -324,10 +324,10 @@
   ditampilkan masked pada Konfirmasi Email dengan aksi Bayar QRIS, Ubah Email,
   dan Ubah Jumlah. Invoice belum dibuat sebelum pembeli menekan Bayar QRIS.
 
-### 5.3f Daily Promo Telegram (2026-09-27 live, revamp 2026-09-29)
-- Grup admin menerima dua slot bahan promosi: 09.00 WIB = 12 produk teratas katalog, 17.00 WIB = 12 berikutnya, tanpa tumpang tindih (hierarki `sort_order` admin = hierarki toko; histori 2 hari hanya fallback bila katalog ready < 24). Setiap slot berupa dua bubble: versi lengkap dan versi ringkas agar mudah disalin lintas kanal.
-- Format kelompok per kategori (ikon per taksonomi, bukan per indeks) + harga tegas varian termurah purchasable — tanpa "Mulai", tanpa footer disclaimer, tanpa klaim termurah/diskon palsu/urgensi stok unlimited.
-- Hook: "Sedia semua kebutuhan aplikasi dan tools premium favorit anda, murah, mudah, cepat, dan bergaransi."
+### 5.3f Daily Promo Telegram (2026-09-27 live, revamp 2026-09-29, format final 2026-10-03)
+- Grup admin menerima dua slot bahan promosi: 09.00 WIB = 12 produk teratas katalog, 17.00 WIB = 12 berikutnya, tanpa tumpang tindih (hierarki `sort_order` admin = hierarki toko; histori 2 hari hanya fallback bila katalog ready < 24). Setiap slot berupa dua bubble: pesan utama (bold HTML Telegram) + versi WA siap copy-paste (ISI SAMA PERSIS, bold pakai `*` literal, teks polos tanpa parse_mode — 2026-10-03, permintaan owner: bubble ringkas lama "jelek", ganti versi WA agar tinggal copy dari Telegram lalu paste ke WA tanpa edit).
+- Format (contoh manual owner): judul `🔥 PRODUK AXVARA READY PAGI/SORE INI` + garis `---` + intro dua baris ("Sedia semua kebutuhan aplikasi dan tools premium favorit anda. / Murah, mudah, cepat, dan bergaransi.") + garis `---` + kelompok per kategori (`{ikon} NAMA`, baris `✅ nama — RpX`, blank line antar kategori) + CTA **website dulu baru bot** (Order melalui Website, lalu Order melalui Bot Telegram). Harga tegas varian termurah purchasable — tanpa "Mulai", tanpa footer disclaimer, tanpa klaim termurah/diskon palsu/urgensi stok unlimited.
+- Ikon kategori (2026-10-03 fix: Desain & Video sempat 🤖 karena "desain" mengandung substring "ai" — kini cek kategori spesifik dulu, AI pakai batas kata): AI & Chatbot 🤖, Desain & Video 🎨, Streaming & Hiburan 🎬, Produktivitas & Office 🛠️, Developer & Tools 💻, Bundle Hemat 📦.
 - CTA final selalu sejajar: **Order melalui Bot Telegram** dan **Order melalui Website**. Jangan memakai label `Katalog lengkap` atau anchor `/#katalog`.
 - Link preview dimatikan agar bubble stabil.
 

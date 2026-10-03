@@ -769,7 +769,12 @@ cron operations, sesudah notifikasi transaksional. `Intl.DateTimeFormat` dengan
 Produk dipilih dari varian aktif yang stoknya unlimited atau memenuhi `min_qty`;
 minimum tiga, target empat. `PRIMARY KEY (business_date, slot)` mengunci snapshot
 pilihan. `full_message_id` dan `short_message_id` ditulis segera setelah masing-masing
-send sukses, sehingga kegagalan bubble kedua hanya mengulang bubble kedua. Flag
+send sukses, sehingga kegagalan bubble kedua hanya mengulang bubble kedua. Bubble
+kedua = versi WA siap copy-paste (2026-10-03): isi sama persis dengan pesan utama,
+bold pakai `*` literal, dikirim tanpa `parse_mode` HTML (nama produk ber-`&`/`<`
+tidak bikin Telegram tolak pesan). Ikon kategori: cek spesifik dulu (Desain/Video,
+Stream, Produktivitas, Developer, Bundle) baru AI pakai batas kata — "desain"
+mengandung substring "ai". Flag
 `TELEGRAM_PROMO_DIGEST_ENABLED` default mati mencegah outbound saat setup belum siap.
 
 ### Feature Flags

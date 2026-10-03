@@ -69,43 +69,56 @@ export function selectPromoProducts(
 
 export function promoMessages(slot: PromoSlot, products: PromoProduct[]): { full: string; short: string } {
   const morning = slot === "morning";
-  const title = morning ? "🔥 <b>PRODUK AXVARA READY PAGI INI</b>" : "🔥 <b>PRODUK AXVARA READY SORE INI</b>";
-  // Hook owner 2026-09-29 (ganti kalimat lama yang terlalu biasa).
-  const intro = "Sedia semua kebutuhan aplikasi dan tools premium favorit anda, murah, mudah, cepat, dan bergaransi.";
+  const slotLabel = morning ? "PRODUK AXVARA READY PAGI INI" : "PRODUK AXVARA READY SORE INI";
+  const titleFull = `🔥 <b>${slotLabel}</b>`;
+  // Varian WA: sama persis, bold pakai * agar tinggal copy-paste ke WA.
+  const titleWa = `🔥 *${slotLabel}*`;
+  // Garis pemisah + intro dua baris sesuai contoh manual owner (2026-10-03).
+  const separator = "------------------------------------------------------------------";
+  const introFull = "Sedia semua kebutuhan aplikasi dan tools premium favorit anda.\nMurah, mudah, cepat, dan bergaransi.";
+  const introWa = introFull;
   // Ikon per kategori taksonomi (bukan per indeks — tidak ada lagi
   // "Akun Premium × 4" yang membosankan).
+  // PENTING: "desain" mengandung substring "ai", jadi cek AI pakai batas kata
+  // (\bai\b) + cek kategori spesifik dulu — kalau tidak, DESAIN & VIDEO
+  // jatuh ke 🤖 (insiden laporan owner 2026-10-03).
   const iconFor = (category: string): string => {
     const lowered = category.toLowerCase();
-    if (lowered.includes("ai") || lowered.includes("chatbot")) return "🤖";
+    if (lowered.includes("desain") || lowered.includes("video")) return "🎨";
     if (lowered.includes("stream") || lowered.includes("hiburan")) return "🎬";
     if (lowered.includes("produktivitas") || lowered.includes("office")) return "🛠️";
-    if (lowered.includes("desain") || lowered.includes("video")) return "🎨";
     if (lowered.includes("develop") || lowered.includes("tool")) return "💻";
     if (lowered.includes("hemat") || lowered.includes("bundle")) return "📦";
+    if (/(^|[^a-z])ai([^a-z]|$)/.test(lowered) || lowered.includes("chatbot")) return "🤖";
     return "✨";
   };
   // Kelompok per kategori sesuai urutan kemunculan pertama (= hierarki
   // katalog, karena query sudah sort_order ASC). Baris produk memakai ✅
   // (keputusan owner 2026-10-01 — contoh format ceklis WR/SEKUDIL).
+  // Format 2026-10-03 (contoh manual owner, berlaku untuk full Telegram DAN
+  // short WA): garis pemisah + intro dua baris + header kategori
+  // `{ikon} *NAMA*` + baris `✅ nama — RpX` + CTA website-lalu-bot.
   const groups: { category: string; items: PromoProduct[] }[] = [];
   for (const product of products) {
     const group = groups.find((entry) => entry.category === product.category);
     if (group) group.items.push(product);
     else groups.push({ category: product.category, items: [product] });
   }
-  const lines = groups.flatMap((group) => [
-    `${iconFor(group.category)} <b>${escapeHtml(group.category.toUpperCase())}</b>`,
-    ...group.items.map((product) => `✅ ${escapeHtml(product.name)} — ${formatRupiah(product.price)}`),
-  ]);
-  const shortLines = groups.map((group) =>
-    `${group.category}: ${group.items.map((product) => `✅ ${product.name} ${formatRupiah(product.price)}`).join(", ")}`,
+  const linesFull = groups.map((group) =>
+    [`${iconFor(group.category)} <b>${escapeHtml(group.category.toUpperCase())}</b>`,
+      ...group.items.map((product) => `✅ ${escapeHtml(product.name)} — ${formatRupiah(product.price)}`)].join("\n"),
+  );
+  const linesWa = groups.map((group) =>
+    [`${iconFor(group.category)} *${group.category.toUpperCase()}*`,
+      ...group.items.map((product) => `✅ ${product.name} — ${formatRupiah(product.price)}`)].join("\n"),
   );
   const botUrl = `https://t.me/${SITE.adminTelegram}?start=beli`;
   const webUrl = siteOrigin();
-  const cta = `🤖 <b>Order melalui Bot Telegram:</b>\n${botUrl}\n\n🌐 <b>Order melalui Website:</b>\n${webUrl}`;
+  const ctaFull = `🌐 <b>Order melalui Website:</b> ${webUrl}\n\n🤖 <b>Order melalui Bot Telegram:</b> ${botUrl}`;
+  const ctaWa = `🌐 *Order melalui Website:* ${webUrl}\n\n🤖 *Order melalui Bot Telegram:* ${botUrl}`;
   return {
-    full: `${title}\n\n${intro}\n\n${lines.join("\n")}\n\n${cta}`,
-    short: `Ready ${morning ? "pagi" : "sore"} ini ✅ ${products.length} produk AXVARA\n\n${shortLines.join("\n")}\n\n🤖 ${botUrl}\n🌐 ${webUrl}`,
+    full: `${titleFull}\n${separator}\n${introFull}\n${separator}\n${linesFull.join("\n\n")}\n\n${ctaFull}`,
+    short: `${titleWa}\n${separator}\n${introWa}\n${separator}\n${linesWa.join("\n\n")}\n\n${ctaWa}`,
   };
 }
 
@@ -199,7 +212,10 @@ export async function sendDueAdminPromoDigest(
   }
 
   if (!row.short_message_id) {
-    const sent = await sendMessage({ chat_id: chatId, text: messages.short, parse_mode: "HTML", disable_web_page_preview: true });
+    // Bubble kedua = versi WA siap copy-paste: bold pakai * literal, jadi
+    // dikirim TANPA parse_mode HTML (kalau pakai HTML, & mentah + < > di
+    // nama produk bisa bikin Telegram tolak seluruh pesan).
+    const sent = await sendMessage({ chat_id: chatId, text: messages.short, disable_web_page_preview: true });
     if (!sent.ok || !sent.result?.message_id) {
       await database.execRun(
         `UPDATE telegram_promo_digests SET short_attempts=short_attempts+1, short_error=?, updated_at=datetime('now') WHERE business_date=? AND slot=?`,
