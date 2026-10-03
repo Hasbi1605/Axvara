@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { checkAndLogSkSaldo } from "@/lib/sekalipay/saldo";
 import { formatSkLicenses } from "@/lib/sekalipay/deliver";
-import { AXVARA_NETFLIX_GUIDE_PATH, rewriteSupplierDocsLinks, supplierVariantCopy } from "@/lib/product-copy/format";
+import { AXVARA_ALIGHT_GUIDE_PATH, AXVARA_NETFLIX_GUIDE_PATH, rewriteSupplierDocsLinks, supplierVariantCopy } from "@/lib/product-copy/format";
 import { CURATED_VARIANT_COPY } from "@/lib/product-copy/curated";
 import { createD1Fixture } from "../helpers/d1-fixture";
 
@@ -164,5 +164,58 @@ describe("rewrite link docs supplier → artikel AXVARA", () => {
   it("link non-docs (resmi/OTP/tutorial umum) tidak ikut di-rewrite", () => {
     const raw = "Buka https://www.netflix.com/clearcookies lalu https://oliesmail.com/ dan https://youtu.be/abc123";
     expect(rewriteSupplierDocsLinks(raw)).toBe(raw);
+  });
+
+  it("video login Alight Motion supplier (semua bentuk URL + bare) jadi artikel AXVARA", () => {
+    // Bentuk persis di D1 prod varian SK-8/SK-49 (screenshot owner): youtu.be + query si=.
+    const raw = "SILAHKAN IKUTI TUTORIAL LOGIN DIBAWAH INI :\n\nhttps://youtu.be/8emqddsjPsE?si=Jntt_X5oKtWkoJ_Q";
+    const out = rewriteSupplierDocsLinks(raw)!;
+    expect(out).toContain(`https://axvara.tech${AXVARA_ALIGHT_GUIDE_PATH}`);
+    expect(out).not.toContain("youtu.be/8emqddsjPsE");
+    // Bentuk lain ID yang sama ikut di-rewrite.
+    for (const variant of [
+      "https://www.youtube.com/watch?v=8emqddsjPsE",
+      "https://www.youtube.com/watch?v=8emqddsjPsE&si=XuKWvD2e5fohaciR",
+      "https://www.youtube.com/embed/8emqddsjPsE",
+      "https://www.youtube.com/shorts/8emqddsjPsE",
+      "youtu.be/8emqddsjPsE?si=XuKWvD2e5fohaciR",
+      "www.youtube.com/watch?v=8emqddsjPsE",
+    ]) {
+      const rewritten = rewriteSupplierDocsLinks(`Lihat ${variant} ya`)!;
+      expect(rewritten, variant).toContain(AXVARA_ALIGHT_GUIDE_PATH);
+      expect(rewritten, variant).not.toContain("8emqddsjPsE");
+    }
+  });
+
+  it("video YouTube ID LAIN tidak ikut di-rewrite", () => {
+    // Tutorial umum (mis. Office fBOfOmj9Uj8 di snapshot) bukan milik supplier ini.
+    const raw = "Tutorial https://www.youtube.com/watch?v=fBOfOmj9Uj8 dan https://youtu.be/abc123";
+    expect(rewriteSupplierDocsLinks(raw)).toBe(raw);
+  });
+
+  it("fallback PDP + email Alight Motion ikut bersih dari youtu.be supplier", () => {
+    const sellerNote = "SILAHKAN IKUTI TUTORIAL LOGIN DIBAWAH INI :\n\nhttps://youtu.be/8emqddsjPsE?si=Jntt_X5oKtWkoJ_Q";
+    const copy = supplierVariantCopy(null, sellerNote)!;
+    const all = [
+      ...copy.sections.flatMap((s) => s.items),
+      ...copy.activation.flatMap((g) => g.steps),
+    ].join("\n");
+    expect(all).not.toContain("youtu.be");
+    expect(all).toContain("axvara.tech/artikel/cara-login-alight-motion");
+    const text = formatSkLicenses({
+      id: 1, ref_id: "R1", invoice: "INV-1", payment_method: "saldo", status: "completed",
+      price: 1000, fees: 0, amount: 1000,
+      items: [
+        {
+          variant_id: 112, variant_name: "1 Tahun [ Android ]", product_name: "Alight Motion",
+          product_license: "user@mail.com|pass123",
+          seller_note: sellerNote,
+          price: 1000, qty: 1, note: null, order_process: "auto" as const,
+        },
+      ],
+      h2h_results: [], smm_results: [],
+    });
+    expect(text).not.toContain("youtu.be");
+    expect(text).toContain("axvara.tech/artikel/cara-login-alight-motion");
   });
 });

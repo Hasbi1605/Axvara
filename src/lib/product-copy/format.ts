@@ -96,39 +96,57 @@ function splitDelivery(lines: CleanLine[], seen: Set<string>): { groups: Activat
 }
 
 /**
- * Rewrite link toko supplier → panduan AXVARA (2026-10-03, keputusan owner).
+ * Rewrite link supplier → panduan AXVARA (2026-10-03, keputusan owner;
+ * diperluas Alight Motion 2026-10-03, permintaan owner).
  *
- * SATU-SATUNYA yang di-rewrite: halaman docs/tutorial Sekalipay
- * (sekalipay.com/docs/*) — customer yang klik melihat nav "Belanja Sekarang"
- * dan bisa order langsung di sana. Pengganti: artikel AXVARA per topik
- * (saat ini hanya tutorial login Netflix; topik lain = pesan netral tanpa
- * link keluar).
+ * Yang di-rewrite (white-label, tahan sync — teks supplier ditimpa tiap sweep):
+ * 1. Halaman docs/tutorial Sekalipay (sekalipay.com/docs/*tutorial-login-netflix*)
+ *    → artikel AXVARA login Netflix. Customer yang klik link docs melihat nav
+ *    "Belanja Sekarang" dan bisa order langsung di supplier.
+ * 2. Video tutorial login Alight Motion supplier (youtu.be/8emqddsjPsE +
+ *    varian youtube.com/watch?v=.../embed/.../shorts/... dengan ID yang sama,
+ *    berikut query `?si=...`) → artikel AXVARA login Alight Motion
+ *    (sudah ada, published id 24, berisi player + teks dari deskripsi asli).
+ *    Screenshot owner: blok "CARA AKTIVASI" PDP masih menampilkan link
+ *    youtu.be mentah ke channel supplier.
  *
  * Yang DIPERTAHANKAN (bukan toko kompetitor):
  * - mailbox OTP (netflix-codes.sekalipay.com, genjos, sengare, oliesmail,
  *   generator.email, 2fa.live) — alat fungsional tanpa nav belanja;
  * - domain resmi produk (netflix.com, microsoft.com, ...);
- * - tutorial umum (youtube, youtu.be) + bot Telegram operasional.
+ * - tutorial umum LAIN (youtube / youtu.be dengan ID berbeda) + bot Telegram
+ *   operasional.
  *
  * Dipakai di DUA jalur: fallback PDP (supplierVariantCopy, pre-bayar) dan
- * email/panel pasca-bayar (sanitizeSkSellerNote di sekalipay/deliver.ts)
+ * email/panel pasca-bayar (formatSkLicenses di sekalipay/deliver.ts)
  * agar kedua sisi konsisten.
  */
 export const AXVARA_NETFLIX_GUIDE_PATH = "/artikel/cara-login-netflix-setelah-order-di-axvara";
+export const AXVARA_ALIGHT_GUIDE_PATH = "/artikel/cara-login-alight-motion-setelah-order-di-axvara";
 
 const SUPPLIER_DOCS_RE = /https?:\/\/(?:www\.)?sekalipay\.com\/docs\/[^\s),]*/gi;
 const BARE_SUPPLIER_DOCS_RE = /(?<!\/)sekalipay\.com\/docs\/[^\s),]*/gi;
 
+// Video login Alight Motion milik supplier (ID 8emqddsjPsE): semua bentuk URL
+// YouTube untuk ID ini di-rewrite, ID lain tidak tersentuh.
+const ALIGHT_YOUTUBE_RE =
+  /https?:\/\/(?:www\.)?(?:youtu\.be\/8emqddsjPsE[^\s),\"']*|youtube\.com\/(?:watch\?[^\s),\"']*v=8emqddsjPsE[^\s),\"']*|embed\/8emqddsjPsE[^\s),\"']*|shorts\/8emqddsjPsE[^\s),\"']*))/gi;
+const BARE_ALIGHT_YOUTUBE_RE =
+  /(?<!\/)(?:youtu\.be\/8emqddsjPsE[^\s),\"']*|(?:www\.)?youtube\.com\/(?:watch\?[^\s),\"']*v=8emqddsjPsE[^\s),\"']*|embed\/8emqddsjPsE[^\s),\"']*|shorts\/8emqddsjPsE[^\s),\"']*))/gi;
+
 export function rewriteSupplierDocsLinks(raw: string | null | undefined): string | null {
   if (!raw) return raw ?? null;
   let out = String(raw);
-  // Varian Netflix → artikel AXVARA (satu-satunya panduan kloningan saat ini).
+  // Varian Netflix → artikel AXVARA.
   out = out.replace(SUPPLIER_DOCS_RE, (match) =>
     /tutorial-login-netflix|panduan-login-netflix/i.test(match) ? `https://axvara.tech${AXVARA_NETFLIX_GUIDE_PATH}` : match,
   );
   out = out.replace(BARE_SUPPLIER_DOCS_RE, (match) =>
     /tutorial-login-netflix|panduan-login-netflix/i.test(match) ? `axvara.tech${AXVARA_NETFLIX_GUIDE_PATH}` : match,
   );
+  // Video Alight Motion supplier → artikel AXVARA (ID spesifik, query ?si= ikut).
+  out = out.replace(ALIGHT_YOUTUBE_RE, `https://axvara.tech${AXVARA_ALIGHT_GUIDE_PATH}`);
+  out = out.replace(BARE_ALIGHT_YOUTUBE_RE, `axvara.tech${AXVARA_ALIGHT_GUIDE_PATH}`);
   return out;
 }
 
