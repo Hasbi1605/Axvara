@@ -134,9 +134,51 @@ describe.each(snapshot.pairs.map((p) => [p.variants.join(" | "), p] as const))("
     // supplier (sekalipay.com/docs/*) BOLEH diganti artikel AXVARA — customer
     // yang klik link itu melihat nav "Belanja Sekarang" dan order langsung
     // di supplier. Syarat pengganti: URL artikel axvara.tech WAJIB ada.
-    // URL lain (mailbox OTP, resmi produk, tutorial umum) tetap wajib terbawa.
+    // Diperluas shortlink 2026-10-03: mailbox OTP + tutorial supplier BOLEH
+    // diganti shortlink axvara.tech/go/* (tujuan sama, tercatat di
+    // supplier_links). Syarat pengganti: slug go/* WAJIB ada.
+    // netflix clearcookies/youraccount dikecualikan owner (biarkan mentah) —
+    // keduanya WAJIB tetap terbawa apa adanya.
+    const GO_BY_HOST: [RegExp, RegExp][] = [
+      [/sekalipay\.com\/docs\//i, /go\/netflix-login/i],
+      [/netflix-codes\.sekalipay\.com\/mailbox/i, /go\/otp/i],
+      [/bototp\.site/i, /go\/otp-bot/i],
+      [/sengare\.art\/check-inbox/i, /go\/otp-sengare/i],
+      [/oliesmail\.com/i, /go\/mail-olies/i],
+      [/fnstore\.my\.id/i, /go\/mail-fnstore/i],
+      [/losantoz\.com/i, /go\/mail-losantoz/i],
+      [/youtu\.be\/8emqddsjPsE|youtube\.com\/(watch\?[^,]*v=8emqddsjPsE|embed\/8emqddsjPsE|shorts\/8emqddsjPsE)/i, /go\/alight-login/i],
+      [/portal\.office\.com/i, /go\/office-login/i],
+      [/youtube\.com\/watch\?v=fBOfOmj9Uj8/i, /go\/office-install/i],
+      [/(?<!education\.)\bname\.com/i, /go\/cek-domain/i],
+      [/education\.github\.com\/pack/i, /go\/github-pack/i],
+      [/tradingview\.com\/pricing/i, /go\/tv-harga/i],
+      [/\bm\.vidio\.com/i, /go\/vidio-web/i],
+      [/genjos\.xoftware\.my\.id\/mailbox/i, /go\/otp-genjos/i],
+      [/tmail\.sekalichat\.com/i, /go\/otp-sekalichat/i],
+      [/waroengmail\.com/i, /go\/otp-waroeng/i],
+      [/tmail\.runcubesapps\.com/i, /go\/otp-runcubes/i],
+      [/generator\.email/i, /go\/otp-generator/i],
+      [/2fa\.live/i, /go\/otp-2fa/i],
+      [/docdownloader\.com/i, /go\/doc-scribd/i],
+      [/pastebin\.com/i, /go\/netflix-solusi/i],
+      [/drive\.google\.com/i, /go\/grok-error/i],
+      [/support\.microsoft\.com/i, /go\/ms-family/i],
+      [/app\.remini\.ai/i, /go\/remini-web/i],
+      [/leonardo\.ai/i, /go\/leonardo-web/i],
+      [/blackbox\.ai/i, /go\/blackbox-web/i],
+      [/grok\.com/i, /go\/grok-web/i],
+      [/rctiplus\.com\/login/i, /go\/rcti-login/i],
+      [/ibispaint\.com/i, /go\/ibis-tutor/i],
+      [/film\.wetv\.vip/i, /go\/wetv-redeem/i],
+      [/dramaku\.world/i, /go\/dramaku/i],
+    ];
     const missing = supplierUrls(supplier).filter((url) => !lower.includes(url));
-    const excused = missing.filter((url) => /sekalipay\.com\/docs\//.test(url) && /axvara\.tech\/artikel\/|\/artikel\//.test(lower));
+    const excused = missing.filter((url) =>
+      /sekalipay\.com\/docs\//i.test(url)
+        ? /axvara\.tech\/artikel\/|\/artikel\/|go\/netflix-login/i.test(lower)
+        : GO_BY_HOST.some(([host, go]) => host.test(url) && go.test(lower)),
+    );
     expect(missing.filter((url) => !excused.includes(url))).toEqual([]);
     if (missing.length) expect(excused).toEqual(missing);
   });

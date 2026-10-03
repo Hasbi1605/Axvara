@@ -332,6 +332,8 @@ admin menyimpan ulang. Badge yang sama muncul untuk teks WR yang belum punya
 versi Axvara. S&K Canva (undangan lewat email, email wajib aktif) diisi migrasi
 0042.
 
+**Link supplier tampil pendek via shortlink internal `axvara.tech/go/*` (2026-10-03, migrasi 0056).** 43 link supplier (mailbox OTP, bot Telegram, tutorial YouTube, domain resmi app, panduan artikel) dibungkus jadi `go/otp`, `go/netflix-login`, dst. — tampil pendek di PDP/email/panel, redirect 307 + hitung klik, noindex. Kelola di tab admin **Link Supplier** (tambah/ubah/tujuan/aktif-nonaktif); supplier ganti URL → update 1 baris, tanpa edit kurasi. Detail: `docs/ARCHITECTURE.md` (tabel `supplier_links` + route `/go/:slug`) dan `docs/PRD.md` FR-S17c.
+
 **Handoff operasional Heroku + Cloudflare.** Sejak 2026-09-14 proxy WR terpisah:
 akun #1 (`axvara-wa-gateway`) = WhatsApp SAJA; **sejak 2026-10-02 proxy pindah
 ke VPS AWS** `t4g.nano` Singapore (`https://wr-proxy.axvara.tech`, IP statis

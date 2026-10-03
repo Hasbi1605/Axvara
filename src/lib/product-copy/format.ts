@@ -96,26 +96,30 @@ function splitDelivery(lines: CleanLine[], seen: Set<string>): { groups: Activat
 }
 
 /**
- * Rewrite link supplier → panduan AXVARA (2026-10-03, keputusan owner;
- * diperluas Alight Motion 2026-10-03, permintaan owner).
+ * Rewrite link supplier → shortlink axvara.tech/go/* (2026-10-03, keputusan
+ * owner; shortlink 2026-10-03 — sebelumnya artikel AXVARA full path).
  *
  * Yang di-rewrite (white-label, tahan sync — teks supplier ditimpa tiap sweep):
  * 1. Halaman docs/tutorial Sekalipay (sekalipay.com/docs/*tutorial-login-netflix*)
- *    → artikel AXVARA login Netflix. Customer yang klik link docs melihat nav
+ *    → go/netflix-login. Customer yang klik link docs melihat nav
  *    "Belanja Sekarang" dan bisa order langsung di supplier.
  * 2. Video tutorial login Alight Motion supplier (youtu.be/8emqddsjPsE +
  *    varian youtube.com/watch?v=.../embed/.../shorts/... dengan ID yang sama,
- *    berikut query `?si=...`) → artikel AXVARA login Alight Motion
- *    (sudah ada, published id 24, berisi player + teks dari deskripsi asli).
+ *    berikut query `?si=...`) → go/alight-login.
  *    Screenshot owner: blok "CARA AKTIVASI" PDP masih menampilkan link
  *    youtu.be mentah ke channel supplier.
+ * 3. Mailbox OTP supplier (screenshot owner 2026-10-03: sengare.art Zoom,
+ *    fnstore.my.id + losantoz.com iQiyi — tidak ada di kurasi/snapshot,
+ *    hanya muncul dari teks supplier live) → go/otp-sengare, go/mail-fnstore,
+ *    go/mail-losantoz. Mailbox Netflix + bototp ikut: go/otp, go/otp-bot.
+ * 4. Mailbox Prime Video (oliesmail.com) → go/mail-olies.
  *
- * Yang DIPERTAHANKAN (bukan toko kompetitor):
- * - mailbox OTP (netflix-codes.sekalipay.com, genjos, sengare, oliesmail,
- *   generator.email, 2fa.live) — alat fungsional tanpa nav belanja;
- * - domain resmi produk (netflix.com, microsoft.com, ...);
- * - tutorial umum LAIN (youtube / youtu.be dengan ID berbeda) + bot Telegram
- *   operasional.
+ * Yang DIPERTAHANKAN mentah (keputusan owner):
+ * - netflix.com/clearcookies + /youraccount — biarkan apa adanya;
+ * - domain resmi produk lain (microsoft.com, ...) + tutorial umum LAIN
+ *   (youtube / youtu.be ID berbeda) + bot Telegram operasional;
+ * - genjos / generator.email / 2fa.live — belum muncul di teks tampil,
+ *   dibungkus belakangan bila muncul.
  *
  * Dipakai di DUA jalur: fallback PDP (supplierVariantCopy, pre-bayar) dan
  * email/panel pasca-bayar (formatSkLicenses di sekalipay/deliver.ts)
@@ -123,6 +127,32 @@ function splitDelivery(lines: CleanLine[], seen: Set<string>): { groups: Activat
  */
 export const AXVARA_NETFLIX_GUIDE_PATH = "/artikel/cara-login-netflix-setelah-order-di-axvara";
 export const AXVARA_ALIGHT_GUIDE_PATH = "/artikel/cara-login-alight-motion-setelah-order-di-axvara";
+// Canonical SEO tetap path /artikel (sitemap + metadata tidak berubah); yang
+// tampil ke pembeli = shortlink /go (alias 307). Konstanta GO_* = teks tampil.
+export const GO_NETFLIX_LOGIN = "axvara.tech/go/netflix-login";
+export const GO_ALIGHT_LOGIN = "axvara.tech/go/alight-login";
+export const GO_OTP = "axvara.tech/go/otp";
+export const GO_OTP_BOT = "axvara.tech/go/otp-bot";
+export const GO_OTP_SENGARE = "axvara.tech/go/otp-sengare";
+export const GO_OTP_GENJOS = "axvara.tech/go/otp-genjos";
+export const GO_OTP_SEKALICHAT = "axvara.tech/go/otp-sekalichat";
+export const GO_OTP_WAROENG = "axvara.tech/go/otp-waroeng";
+export const GO_OTP_RUNCUBES = "axvara.tech/go/otp-runcubes";
+export const GO_OTP_GENERATOR = "axvara.tech/go/otp-generator";
+export const GO_OTP_2FA = "axvara.tech/go/otp-2fa";
+export const GO_MAIL_OLIES = "axvara.tech/go/mail-olies";
+export const GO_MAIL_FNSTORE = "axvara.tech/go/mail-fnstore";
+export const GO_MAIL_LOSANTOZ = "axvara.tech/go/mail-losantoz";
+export const GO_OTP_SPOTIFY = "axvara.tech/go/otp-spotify";
+export const GO_BOT_VIU = "axvara.tech/go/bot-viu";
+export const GO_BOT_ALIGHT = "axvara.tech/go/bot-alight";
+export const GO_BOT_SCRIBD = "axvara.tech/go/bot-scribd";
+export const GO_TUTOR_CANVA = "axvara.tech/go/tutor-canva";
+export const GO_TUTOR_REMINI = "axvara.tech/go/tutor-remini";
+export const GO_TUTOR_SCRIBD = "axvara.tech/go/tutor-scribd";
+export const GO_TUTOR_ARCADE = "axvara.tech/go/tutor-arcade";
+export const GO_TUTOR_VISION_TV = "axvara.tech/go/tutor-vision-tv";
+export const GO_TUTOR_VISION_TV2 = "axvara.tech/go/tutor-vision-tv2";
 
 const SUPPLIER_DOCS_RE = /https?:\/\/(?:www\.)?sekalipay\.com\/docs\/[^\s),]*/gi;
 const BARE_SUPPLIER_DOCS_RE = /(?<!\/)sekalipay\.com\/docs\/[^\s),]*/gi;
@@ -134,19 +164,139 @@ const ALIGHT_YOUTUBE_RE =
 const BARE_ALIGHT_YOUTUBE_RE =
   /(?<!\/)(?:youtu\.be\/8emqddsjPsE[^\s),\"']*|(?:www\.)?youtube\.com\/(?:watch\?[^\s),\"']*v=8emqddsjPsE[^\s),\"']*|embed\/8emqddsjPsE[^\s),\"']*|shorts\/8emqddsjPsE[^\s),\"']*))/gi;
 
+// Mailbox OTP supplier: full URL + bare domain (tanpa skema). Pola bare
+// memakai lookbehind agar tidak makan ekor URL berskema. Cakupan = AUDIT D1
+// PROD LIVE 2026-10-03 (seluruh wr_terms/wr_delivery_terms/sk_seller_note/
+// sk_description ber-link, termasuk produk off/restok).
+const MAILBOX_HOSTS = [
+  "netflix-codes\\.sekalipay\\.com\\/mailbox",
+  "bototp\\.site",
+  "sengare\\.art\\/check-inbox",
+  "genjos\\.xoftware\\.my\\.id\\/mailbox",
+  "tmail\\.sekalichat\\.com",
+  "waroengmail\\.com",
+  "tmail\\.runcubesapps\\.com(?:\\/mailbox)?",
+  "generator\\.email",
+  "2fa\\.live",
+  "oliesmail\\.com",
+  "fnstore\\.my\\.id",
+  "losantoz\\.com",
+  "docdownloader\\.com",
+  "pastebin\\.com",
+  "drive\\.google\\.com",
+  "support\\.microsoft\\.com",
+  "app\\.remini\\.ai",
+  "leonardo\\.ai",
+  "blackbox\\.ai",
+  "grok\\.com",
+  "rctiplus\\.com\\/login",
+  "ibispaint\\.com",
+  "film\\.wetv\\.vip",
+  "dramaku\\.world",
+];
+const MAILBOX_RE = new RegExp(`https?:\\/\\/(?:www\\.)?(?:${MAILBOX_HOSTS.join("|")})[^\\s),\"']*`, "gi");
+const BARE_MAILBOX_RE = new RegExp(
+  `(?<!\\/)(?:${MAILBOX_HOSTS.map((h) => `(?<![a-z0-9_@])${h}`).join("|")})[^\\s),\"']*`,
+  "gi",
+);
+
+// Bot Telegram supplier (handle @... + t.me/...): full + bare.
+const BOT_HANDLES = [
+  "autoresetpwspotify_bot",
+  "sekalipayviu_bot",
+  "alightmotion321_bot",
+  "Scribd_Downloaderbot",
+];
+const BOT_RE = new RegExp(
+  `(?:https?:\\/\\/t\\.me\\/(?:${BOT_HANDLES.join("|")})[^\\s),\"']*|(?<![a-z0-9_@])@(?:${BOT_HANDLES.join("|")})\\b)`,
+  "gi",
+);
+
+// Tutorial YouTube supplier (ID spesifik dari audit live; ID lain tak tersentuh).
+const TUTOR_IDS: [RegExp, string][] = [
+  [/p_xpw5M1zaU/, GO_TUTOR_CANVA],
+  [/J07zn3FAJyY/, GO_TUTOR_REMINI],
+  [/8nMzvoauNVk/, GO_TUTOR_SCRIBD],
+  [/IbSEx5_pUr8/, GO_TUTOR_ARCADE],
+  [/XzMXIty8kr4/, GO_TUTOR_VISION_TV],
+  [/Ylrroy1fJAE/, GO_TUTOR_VISION_TV2],
+];
+const TUTOR_RE =
+  /https?:\/\/(?:www\.)?(?:youtu\.be\/[A-Za-z0-9_-]{6,}[^\s),\"']*|youtube\.com\/(?:watch\?[^\s),\"']*|embed\/[A-Za-z0-9_-]{6,}[^\s),\"']*|shorts\/[A-Za-z0-9_-]{6,}[^\s),\"']*))/gi;
+const BARE_TUTOR_RE =
+  /(?<!\/)(?:youtu\.be\/[A-Za-z0-9_-]{6,}[^\s),\"']*|(?:www\.)?youtube\.com\/(?:watch\?[^\s),\"']*|embed\/[A-Za-z0-9_-]{6,}[^\s),\"']*|shorts\/[A-Za-z0-9_-]{6,}[^\s),\"']*))/gi;
+
+function tutorGoSlug(match: string): string | null {
+  // Alight Motion ditangani pola ID-spesifik existing (jangan dobel).
+  if (/8emqddsjPsE/.test(match)) return null;
+  // Office fBOfOmj9Uj8 sudah kurasi manual (go/office-install) — lewati agar
+  // tidak menimpa teks kurasi yang sudah pendek.
+  if (/fBOfOmj9Uj8/.test(match)) return null;
+  for (const [id, go] of TUTOR_IDS) if (id.test(match)) return go;
+  return null;
+}
+
+function mailboxGoSlug(match: string): string {
+  const lower = match.toLowerCase();
+  if (lower.includes("netflix-codes.sekalipay.com/mailbox")) return GO_OTP;
+  if (lower.includes("bototp.site")) return GO_OTP_BOT;
+  if (lower.includes("sengare.art/check-inbox")) return GO_OTP_SENGARE;
+  if (lower.includes("genjos.xoftware.my.id/mailbox")) return GO_OTP_GENJOS;
+  if (lower.includes("tmail.sekalichat.com")) return GO_OTP_SEKALICHAT;
+  if (lower.includes("waroengmail.com")) return GO_OTP_WAROENG;
+  if (lower.includes("tmail.runcubesapps.com")) return GO_OTP_RUNCUBES;
+  if (lower.includes("generator.email")) return GO_OTP_GENERATOR;
+  if (lower.includes("2fa.live")) return GO_OTP_2FA;
+  if (lower.includes("oliesmail.com")) return GO_MAIL_OLIES;
+  if (lower.includes("fnstore.my.id")) return GO_MAIL_FNSTORE;
+  if (lower.includes("losantoz.com")) return GO_MAIL_LOSANTOZ;
+  // Domain resmi/tutorial umum (bukan mailbox, tapi ikut dipendekkan agar
+  // PDP rapi — slug deskriptif, bukan go generik).
+  if (lower.includes("docdownloader.com")) return "axvara.tech/go/doc-scribd";
+  if (lower.includes("pastebin.com")) return "axvara.tech/go/netflix-solusi";
+  if (lower.includes("drive.google.com")) return "axvara.tech/go/grok-error";
+  if (lower.includes("support.microsoft.com")) return "axvara.tech/go/ms-family";
+  if (lower.includes("app.remini.ai")) return "axvara.tech/go/remini-web";
+  if (lower.includes("leonardo.ai")) return "axvara.tech/go/leonardo-web";
+  if (lower.includes("blackbox.ai")) return "axvara.tech/go/blackbox-web";
+  if (lower.includes("grok.com")) return "axvara.tech/go/grok-web";
+  if (lower.includes("rctiplus.com/login")) return "axvara.tech/go/rcti-login";
+  if (lower.includes("ibispaint.com")) return "axvara.tech/go/ibis-tutor";
+  if (lower.includes("film.wetv.vip")) return "axvara.tech/go/wetv-redeem";
+  if (lower.includes("dramaku.world")) return "axvara.tech/go/dramaku";
+  return match;
+}
+
+function botGoSlug(match: string): string {
+  const lower = match.toLowerCase();
+  if (lower.includes("autoresetpwspotify_bot")) return GO_OTP_SPOTIFY;
+  if (lower.includes("sekalipayviu_bot")) return GO_BOT_VIU;
+  if (lower.includes("alightmotion321_bot")) return GO_BOT_ALIGHT;
+  if (lower.includes("scribd_downloaderbot")) return GO_BOT_SCRIBD;
+  return match;
+}
+
 export function rewriteSupplierDocsLinks(raw: string | null | undefined): string | null {
   if (!raw) return raw ?? null;
   let out = String(raw);
-  // Varian Netflix → artikel AXVARA.
+  // Varian Netflix → shortlink.
   out = out.replace(SUPPLIER_DOCS_RE, (match) =>
-    /tutorial-login-netflix|panduan-login-netflix/i.test(match) ? `https://axvara.tech${AXVARA_NETFLIX_GUIDE_PATH}` : match,
+    /tutorial-login-netflix|panduan-login-netflix/i.test(match) ? GO_NETFLIX_LOGIN : match,
   );
   out = out.replace(BARE_SUPPLIER_DOCS_RE, (match) =>
-    /tutorial-login-netflix|panduan-login-netflix/i.test(match) ? `axvara.tech${AXVARA_NETFLIX_GUIDE_PATH}` : match,
+    /tutorial-login-netflix|panduan-login-netflix/i.test(match) ? GO_NETFLIX_LOGIN : match,
   );
-  // Video Alight Motion supplier → artikel AXVARA (ID spesifik, query ?si= ikut).
-  out = out.replace(ALIGHT_YOUTUBE_RE, `https://axvara.tech${AXVARA_ALIGHT_GUIDE_PATH}`);
-  out = out.replace(BARE_ALIGHT_YOUTUBE_RE, `axvara.tech${AXVARA_ALIGHT_GUIDE_PATH}`);
+  // Video Alight Motion supplier → shortlink (ID spesifik, query ?si= ikut).
+  out = out.replace(ALIGHT_YOUTUBE_RE, GO_ALIGHT_LOGIN);
+  out = out.replace(BARE_ALIGHT_YOUTUBE_RE, GO_ALIGHT_LOGIN);
+  // Mailbox + domain resmi/tutorial supplier → shortlink (full + bare).
+  out = out.replace(MAILBOX_RE, (match) => mailboxGoSlug(match));
+  out = out.replace(BARE_MAILBOX_RE, (match) => mailboxGoSlug(match));
+  // Bot Telegram supplier → shortlink.
+  out = out.replace(BOT_RE, (match) => botGoSlug(match));
+  // Tutorial YouTube supplier (ID audit live) → shortlink.
+  out = out.replace(TUTOR_RE, (match) => tutorGoSlug(match) ?? match);
+  out = out.replace(BARE_TUTOR_RE, (match) => tutorGoSlug(match) ?? match);
   return out;
 }
 

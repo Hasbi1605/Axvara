@@ -85,34 +85,47 @@ describe("linkifySegments — pecah teks jadi polos + link", () => {
     expect(linkifySegments("Login 1/2 perangkat ya")).toEqual([{ text: "Login 1/2 perangkat ya", href: null }]);
     expect(linkifySegments("Pilih 1 / 2 / 3")).toEqual([{ text: "Pilih 1 / 2 / 3", href: null }]);
   });
+
+  it("shortlink go/* (bare + /go + full URL) jadi link internal", () => {
+    expect(linkifySegments("Buka axvara.tech/go/otp untuk kode")).toEqual([
+      { text: "Buka ", href: null },
+      { text: "axvara.tech/go/otp", href: "/go/otp" },
+      { text: " untuk kode", href: null },
+    ]);
+    const slash = linkifySegments("Panduan: /go/netflix-login ya");
+    expect(slash[1]).toEqual({ text: "/go/netflix-login", href: "/go/netflix-login" });
+    const full = linkifySegments("Buka https://axvara.tech/go/mail-olies ya");
+    expect(full[1]).toEqual({ text: "https://axvara.tech/go/mail-olies", href: "/go/mail-olies" });
+  });
 });
 
 describe("RichText + 3 badan PDP — link bisa diklik", () => {
-  it("langkah aktivasi berisi mailbox + tutorial: dua-duanya <a> _blank noreferrer", () => {
+  it("langkah aktivasi shortlink go/*: internal tanpa _blank; eksternal tetap _blank", () => {
     render(
       <ActivationBody
         groups={[
           {
             title: "Ambil kode akses",
             steps: [
-              "Buka netflix-codes.sekalipay.com/mailbox untuk kode akses dan PIN",
-              "Panduan login lengkap: /artikel/cara-login-netflix-setelah-order-di-axvara",
+              "Buka axvara.tech/go/otp untuk kode akses dan PIN",
+              "Panduan login lengkap: axvara.tech/go/netflix-login",
             ],
           },
         ]}
         notes={["Tutorial https://www.youtube.com/watch?v=fBOfOmj9Uj8"]}
       />,
     );
-    const mailbox = screen.getByRole("link", { name: "netflix-codes.sekalipay.com/mailbox" });
-    expect(mailbox.getAttribute("href")).toBe("https://netflix-codes.sekalipay.com/mailbox");
-    expect(mailbox.getAttribute("target")).toBe("_blank");
-    expect(mailbox.getAttribute("rel")).toBe("noreferrer");
+    // Shortlink internal = navigasi dalam toko: TANPA _blank (tanpa tab baru).
+    const mailbox = screen.getByRole("link", { name: "axvara.tech/go/otp" });
+    expect(mailbox.getAttribute("href")).toBe("/go/otp");
+    expect(mailbox.getAttribute("target")).toBeNull();
+    const guide = screen.getByRole("link", { name: "axvara.tech/go/netflix-login" });
+    expect(guide.getAttribute("href")).toBe("/go/netflix-login");
+    expect(guide.getAttribute("target")).toBeNull();
     const tutorial = screen.getByRole("link", { name: "https://www.youtube.com/watch?v=fBOfOmj9Uj8" });
     expect(tutorial.getAttribute("href")).toBe("https://www.youtube.com/watch?v=fBOfOmj9Uj8");
-    // Panduan internal = navigasi dalam toko: TANPA _blank (tanpa tab baru).
-    const guide = screen.getByRole("link", { name: "/artikel/cara-login-netflix-setelah-order-di-axvara" });
-    expect(guide.getAttribute("href")).toBe("/artikel/cara-login-netflix-setelah-order-di-axvara");
-    expect(guide.getAttribute("target")).toBeNull();
+    expect(tutorial.getAttribute("target")).toBe("_blank");
+    expect(tutorial.getAttribute("rel")).toBe("noreferrer");
   });
 
   it("item S&K berisi bot + URL resmi bisa diklik", () => {

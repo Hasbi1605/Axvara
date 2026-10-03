@@ -8,7 +8,9 @@ export default function robots(): MetadataRoute.Robots {
   // (aturan terpanjang menang). Halaman transaksi pribadi ditutup.
   const rule = {
     allow: ["/", "/api/products", "/api/categories", "/api/store-settings"],
-    disallow: ["/admin", "/api/", "/checkout", "/pesanan/"],
+    // /go/ = shortlink operasional internal (redirect 307 + noindex di page):
+    // bukan konten, jangan di-crawl.
+    disallow: ["/admin", "/api/", "/checkout", "/pesanan/", "/go/"],
   };
   return {
     rules: [

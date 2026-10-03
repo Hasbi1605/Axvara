@@ -717,6 +717,7 @@ Implementasi native TypeScript di codebase AXVARA. Repo `mocasus/telegram-auto-o
 | `whatsapp_outbox.worker_id/locked_until` + status `sending` | Lease klaim worker anti-kirim-ganda (migrasi 0018, rebuild CHECK prod 0019, review R10 lanjutan: recovery lease basi oleh runtime + claimErrors terpisah) |
 | `admin_session_revocations` | Pencabutan sesi admin lintas instance/restart (migrasi 0020, review R8 lanjutan: logout menolak cookie basi di worker baru; TTL 90 hari dibersihkan cron) |
 | `store_settings` | Override nama, tagline, WhatsApp, jam dukungan, footer, dan logo storefront |
+| `supplier_links` | Shortlink internal `axvara.tech/go/*` (migrasi 0056, 2026-10-03): pembungkus link supplier + artikel AXVARA panjang agar tampil pendek di PDP/email/panel; `slug` unik + `destination` (URL/absolut atau path internal) + `title` + `is_active` + `click_count`/`last_clicked_at`; CRUD hanya admin, pembeli hanya redirect (bukan SaaS publik) |
 | `telegram_promo_digests` | Ledger Daily Promo dua slot (`business_date + slot` unik), snapshot product IDs, marker/attempt/error terpisah untuk bubble lengkap dan ringkas (migrasi 0044) |
 
 Kolom baru di `products`: `fulfillment_mode`, `shared_secret_ciphertext`, `shared_secret_iv`, `telegram_enabled`.
@@ -742,6 +743,8 @@ Kolom baru di `orders`: `sales_channel`, `telegram_chat_id`, `telegram_user_id`,
 | GET/POST/PUT/DELETE | `/api/admin/variants` | admin | Kelola SKU, durasi, garansi, harga, stok, dan mode fulfillment varian |
 | POST | `/api/whatsapp/webhook` | Shared Baileys webhook token | Command grup, order, pembayaran, dan intake bukti |
 | POST | `/api/admin/proofs/:id` | admin | CAS approve/reject bukti dari baris Pesanan dan otorisasi pembayaran manual |
+| GET | `/go/:slug` | publik | Shortlink internal `axvara.tech/go/*` (2026-10-03, migrasi 0056): redirect 307 ke destination + `click_count`/`last_clicked_at`; 404 bila slug tak ada/nonaktif/format salah; `X-Robots-Tag: noindex` (tak masuk sitemap) |
+| GET/POST/PUT/DELETE | `/api/admin/supplier-links` | admin | CRUD tabel `supplier_links` (tab admin "Link Supplier"): slug lowercase-dash (min 2, reserved: admin/api/go/produk/artikel/…), destination URL/path internal, toggle `is_active`; POST duplikat → 409 |
 
 ### Environment Baru
 

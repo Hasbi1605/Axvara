@@ -135,8 +135,8 @@ describe("kredensial pasca-bayar: link bisa diklik (CredentialText)", () => {
   const CRED_SAMPLE = [
     "Netflix — 1 Profile 2 User",
     "Email: krutehkhan@gmail.com | PASSWORD : Nengflix222@@ | PROFILE : UCIHA |",
-    "CARA LOGIN = https://axvara.tech/artikel/cara-login-netflix-setelah-order-di-axvara",
-    "AKSES BOT / KODE = https://netflix-codes.sekalipay.com/mailbox",
+    "CARA LOGIN = axvara.tech/go/netflix-login",
+    "AKSES BOT / KODE = axvara.tech/go/otp",
     "- https://www.netflix.com/clearcookies",
     "- lalu https://www.netflix.com/youraccount",
   ].join("\n");
@@ -145,14 +145,14 @@ describe("kredensial pasca-bayar: link bisa diklik (CredentialText)", () => {
     const { CredentialText } = await import("@/components/storefront/ProductCopy");
     const { default: React } = await import("react");
     render(React.createElement(CredentialText, { text: CRED_SAMPLE }));
-    // Path internal axvara.tech → href relatif tanpa _blank.
-    const guide = screen.getByRole("link", { name: "https://axvara.tech/artikel/cara-login-netflix-setelah-order-di-axvara" });
-    expect(guide.getAttribute("href")).toBe("/artikel/cara-login-netflix-setelah-order-di-axvara");
+    // Shortlink go/* → href /go relatif tanpa _blank.
+    const guide = screen.getByRole("link", { name: "axvara.tech/go/netflix-login" });
+    expect(guide.getAttribute("href")).toBe("/go/netflix-login");
     expect(guide.getAttribute("target")).toBeNull();
-    // Mailbox + clearcookies → tab baru.
-    const mailbox = screen.getByRole("link", { name: "https://netflix-codes.sekalipay.com/mailbox" });
-    expect(mailbox.getAttribute("href")).toBe("https://netflix-codes.sekalipay.com/mailbox");
-    expect(mailbox.getAttribute("target")).toBe("_blank");
+    // Mailbox shortlink ikut internal; clearcookies → tab baru.
+    const mailbox = screen.getByRole("link", { name: "axvara.tech/go/otp" });
+    expect(mailbox.getAttribute("href")).toBe("/go/otp");
+    expect(mailbox.getAttribute("target")).toBeNull();
     expect(screen.getByRole("link", { name: "https://www.netflix.com/clearcookies" })).not.toBeNull();
     // Email kredensial BUKAN link (tidak boleh ada mailto).
     expect(document.querySelector('a[href^="mailto:"]')).toBeNull();

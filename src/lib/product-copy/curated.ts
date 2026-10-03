@@ -37,12 +37,10 @@ const maxPakai = (n: number) => `Maksimal dipakai di ${n} perangkat`;
 const cepatPakai = (massal: boolean) =>
   `Langsung pakai setelah beli, karena tidak ada yang tahu kapan banned${massal ? " massal" : ""} terjadi`;
 
-// URL tutorial login Netflix versi AXVARA (2026-10-03, keputusan owner):
-// teks supplier menunjuk ke sekalipay.com/docs/tutorial-login-netflix dan
-// itu SATU-SATUNYA link supplier yang wajib hilang dari PDP — customer yang
-// klik akan melihat nav "Belanja Sekarang" dan order langsung di sana.
-// Mailbox (netflix-codes.sekalipay.com) + bot Viu DIPERTAHANKAN: mailbox murni
-// alat OTP tanpa brand/nav belanja, bot Viu dibungkus artikel terpisah.
+// Shortlink internal axvara.tech/go/* (2026-10-03, gantikan URL panjang):
+// teks tampil memakai slug pendek; tujuan asli tinggal di tabel D1
+// supplier_links (edit via admin Link Supplier, tanpa redeploy).
+// netflix clearcookies/youraccount SENGAJA tidak dibungkus (keputusan owner).
 const NETFLIX_UNINSTALL = "Wajib uninstall aplikasi Netflix dulu, lalu install ulang";
 // URL tutorial login Netflix versi AXVARA (2026-10-03, keputusan owner):
 // teks supplier menunjuk ke sekalipay.com/docs/tutorial-login-netflix dan
@@ -50,7 +48,8 @@ const NETFLIX_UNINSTALL = "Wajib uninstall aplikasi Netflix dulu, lalu install u
 // klik akan melihat nav "Belanja Sekarang" dan order langsung di sana.
 // Mailbox (netflix-codes.sekalipay.com) + bot Viu DIPERTAHANKAN: mailbox murni
 // alat OTP tanpa brand/nav belanja, bot Viu dibungkus artikel terpisah.
-const NETFLIX_AXVARA_GUIDE = "Panduan login lengkap: /artikel/cara-login-netflix-setelah-order-di-axvara";
+const NETFLIX_AXVARA_GUIDE = "Panduan login lengkap: axvara.tech/go/netflix-login";
+const NETFLIX_MAILBOX = "Buka axvara.tech/go/otp untuk kode akses dan PIN";
 const CAPCUT_UPDATE = "Wajib update aplikasi CapCut ke versi terbaru agar email tidak terbaca belum terdaftar";
 const YT_FAMILY_ATURAN = [
   "Pastikan email tidak sedang tergabung di family lain",
@@ -78,7 +77,7 @@ const ZOOM_LANGKAH = [
   "Bila diminta verifikasi akun, klik Lewati (Skip)",
 ];
 const ZOOM_CATATAN = "Rekaman cloud bisa dibuka di zoom.us/recording; rekaman ke file tersimpan di folder Documents perangkatmu";
-const TV_PAKET = "Detail fitur lengkap: tradingview.com/pricing";
+const TV_PAKET = "Detail fitur lengkap: axvara.tech/go/tv-harga";
 const VCC_ATURAN = [
   "1x order hanya untuk 1x pemakaian; VCC cuma bisa dipakai 1x",
   "Beli hanya bila sudah paham cara pakainya",
@@ -96,7 +95,7 @@ const OFFICE_APPS = [
   "Office sudah terinstal? Langsung login di Word",
   "Di tablet atau HP, unduh Microsoft 365 dari App Store atau Play Store",
 ];
-const OFFICE_TUTORIAL = "Tutorial unduh dan instal Office 365 di komputer: https://www.youtube.com/watch?v=fBOfOmj9Uj8";
+const OFFICE_TUTORIAL = "Tutorial unduh dan instal Office 365 di komputer: axvara.tech/go/office-install";
 const APP_BARU_PROSES = [MBO];
 const WETV_ATURAN_UMUM = [
   "Dilarang mengubah password, mengutak-atik akun, atau mengutak-atik pembayaran",
@@ -321,7 +320,7 @@ export const CURATED_VARIANT_COPY: readonly CuratedVariantCopy[] = [
     langkah: [
       "Buka website Leonardo AI",
       "Pilih login lewat Canva, lalu pilih login dengan email",
-      "Ambil kode OTP di https://bototp.site/",
+      "Ambil kode OTP di axvara.tech/go/otp-bot",
       "Password hanya cadangan; utamakan login memakai OTP",
     ],
   },
@@ -566,7 +565,7 @@ export const CURATED_VARIANT_COPY: readonly CuratedVariantCopy[] = [
     aturan: [maxPakai(5)],
     garansi: [OFFICE_GARANSI],
     langkah: [
-      "Buka https://portal.office.com/",
+      "Buka axvara.tech/go/office-login",
       "Masukkan email dan password yang kami kirim",
       "Saat login pertama, kamu diminta mengganti password: buat password baru dan jangan sampai lupa",
       "Bila diminta menambahkan nomor HP atau email, cukup isi salah satu (hanya untuk keamanan tambahan)",
@@ -859,7 +858,7 @@ export const CURATED_VARIANT_COPY: readonly CuratedVariantCopy[] = [
       "Tidak bisa diperpanjang",
       "Pilihan ekstensi: .rocks, .ninja, .games, .codes, .systems, .studio, .email, .works, .software, .engineer, .live, .app, .dev, .page, .foo",
     ],
-    langkah: ["Cek ketersediaan nama domain di https://name.com", "Kirim nama domain pilihanmu ke admin via WhatsApp"],
+    langkah: ["Cek ketersediaan nama domain di axvara.tech/go/cek-domain", "Kirim nama domain pilihanmu ke admin via WhatsApp"],
   },
   {
     key: "1my1m0jqwjj",
@@ -896,7 +895,7 @@ export const CURATED_VARIANT_COPY: readonly CuratedVariantCopy[] = [
       "DigitalOcean: saldo $200 untuk hosting atau VPS selama 1 tahun",
       "Microsoft Azure: saldo $100 plus akses ke 25+ layanan cloud tanpa kartu kredit",
       "Lisensi JetBrains: IDE profesional seperti IntelliJ IDEA dan PyCharm",
-      "Daftar benefit lengkap: https://education.github.com/pack",
+      "Daftar benefit lengkap: axvara.tech/go/github-pack",
     ],
     aturan: ["Beli hanya bila sudah paham cara pakainya; tidak termasuk tutorial", "Langsung klaim semua benefit karena akun rawan suspend"],
   },
@@ -998,7 +997,7 @@ export const CURATED_VARIANT_COPY: readonly CuratedVariantCopy[] = [
       {
         judul: "Ambil kode akses",
         langkah: [
-          "Buka netflix-codes.sekalipay.com/mailbox untuk kode akses dan PIN",
+          NETFLIX_MAILBOX,
           NETFLIX_AXVARA_GUIDE,
         ],
       },
@@ -1031,7 +1030,7 @@ export const CURATED_VARIANT_COPY: readonly CuratedVariantCopy[] = [
       {
         judul: "Ambil kode akses",
         langkah: [
-          "Buka netflix-codes.sekalipay.com/mailbox untuk kode akses dan PIN",
+          NETFLIX_MAILBOX,
           NETFLIX_AXVARA_GUIDE,
         ],
       },
@@ -1085,7 +1084,7 @@ export const CURATED_VARIANT_COPY: readonly CuratedVariantCopy[] = [
       "Hapus data aplikasi sebelum login",
       "Login wajib memakai data seluler, jangan WiFi rumah",
       "Bila diminta OTP saat login, pilih Gunakan Password",
-      "Minta OTP ke bot Telegram autoresetpwspotify_bot setelah login memakai email",
+      "Minta OTP di axvara.tech/go/otp-spotify setelah login memakai email",
       "Login langsung di web atau aplikasi Spotify",
     ],
     garansi: [
@@ -1094,7 +1093,7 @@ export const CURATED_VARIANT_COPY: readonly CuratedVariantCopy[] = [
     ],
     langkah: [
       "Hapus data aplikasi Spotify sebelum login",
-      "Login memakai email, lalu minta OTP ke bot Telegram autoresetpwspotify_bot",
+      "Login memakai email, lalu minta OTP di axvara.tech/go/otp-spotify",
       "Pakai data seluler saat login, jangan WiFi rumah",
     ],
   },
@@ -1194,11 +1193,11 @@ export const CURATED_VARIANT_COPY: readonly CuratedVariantCopy[] = [
       "Dilarang keras mengganti password dan email",
       "Amazon sensitif: jangan coba login berkali-kali dalam waktu berdekatan; bila salah password atau gagal, tunggu 5 menit lalu refresh (hapus tab atau clear aplikasi) sebelum mencoba lagi",
       "Kena verifikasi umur? Buat profil baru dulu; bila masih kena, isi 1999/01/01",
-      "Akses email lewat oliesmail.com",
+      "Akses email lewat axvara.tech/go/mail-olies",
     ],
     garansi: ["Garansi berlaku selama masa aktif sesuai ketentuan toko"],
     langkah: [
-      "Login dengan akun dari admin; akses email lewat oliesmail.com",
+      "Login dengan akun dari admin; akses email lewat axvara.tech/go/mail-olies",
       "Kena verifikasi umur? Buat profil baru dulu, atau isi 1999/01/01",
     ],
   },
@@ -1215,11 +1214,11 @@ export const CURATED_VARIANT_COPY: readonly CuratedVariantCopy[] = [
       "Dilarang keras mengganti password dan email",
       "Amazon sensitif: jangan coba login berkali-kali dalam waktu berdekatan; bila salah password atau gagal, tunggu 5 menit lalu refresh (hapus tab atau clear aplikasi) sebelum mencoba lagi",
       "Kena verifikasi umur? Buat profil baru dulu; bila masih kena, isi 1999/01/01",
-      "Akses email lewat oliesmail.com",
+      "Akses email lewat axvara.tech/go/mail-olies",
     ],
     garansi: ["Garansi berlaku selama masa aktif sesuai ketentuan toko"],
     langkah: [
-      "Login dengan akun dari admin; akses email lewat oliesmail.com",
+      "Login dengan akun dari admin; akses email lewat axvara.tech/go/mail-olies",
       "Kena verifikasi umur? Buat profil baru dulu, atau isi 1999/01/01",
     ],
   },
@@ -1229,7 +1228,7 @@ export const CURATED_VARIANT_COPY: readonly CuratedVariantCopy[] = [
     paket: [
       "Akun Vidio Platinum Mobile private dari admin, durasi 30 hari",
       "Hanya bisa di mobile, tapi support browser, PC, dan laptop",
-      "Nonton di laptop lewat web m.vidio.com",
+      "Nonton di laptop lewat web axvara.tech/go/vidio-web",
       "Boleh ganti password; email nonaktif",
     ],
     aturan: [
@@ -1248,7 +1247,7 @@ export const CURATED_VARIANT_COPY: readonly CuratedVariantCopy[] = [
     langkah: [
       "Update aplikasi Vidio ke versi terbaru",
       "Login memakai email, maksimal 2 user",
-      "Untuk laptop, nonton lewat web m.vidio.com",
+      "Untuk laptop, nonton lewat web axvara.tech/go/vidio-web",
     ],
   },
 ];

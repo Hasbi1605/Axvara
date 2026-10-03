@@ -131,6 +131,12 @@ export async function queryAll(sql: string, ...params: unknown[]): Promise<Recor
   if (lower.includes("from store_settings")) return [...getStoreSettingsMem()];
   if (lower.includes("from agent_tokens")) return [...getTokenMem()].sort((a,b)=>String(b.created_at??"").localeCompare(String(a.created_at??"")));
   if (lower.includes("from article_audit_log")) return [...getAuditMem()].sort((a,b)=>String(b.created_at??"").localeCompare(String(a.created_at??""))).slice(0,100);
+  if (lower.includes("from supplier_links")) {
+    let rows = [...getSupplierLinkMem()];
+    if (lower.includes("is_active=1")) rows = rows.filter((row) => Number(row.is_active) === 1);
+    if (lower.includes("slug=?") && params.length) rows = rows.filter((row) => String(row.slug) === String(params[0]));
+    return rows.sort((a, b) => String(a.slug ?? "").localeCompare(String(b.slug ?? "")));
+  }
   return [];
 }
 
@@ -175,6 +181,64 @@ function getTokenMem(): Row[] {
   const g = process as unknown as { __AXVARA_AGENT_TOKENS?: Row[] };
   if (!g.__AXVARA_AGENT_TOKENS) g.__AXVARA_AGENT_TOKENS = [];
   return g.__AXVARA_AGENT_TOKENS;
+}
+// Shortlink internal axvara.tech/go/* (2026-10-03): seed dev = 43 slug prod
+// (migrasi 0056) agar /go/* bisa diverifikasi tanpa D1.
+function getSupplierLinkMem(): Row[] {
+  const g = process as unknown as { __AXVARA_SUPPLIER_LINKS?: Row[] };
+  if (!g.__AXVARA_SUPPLIER_LINKS) {
+    const seed: [string, string, string][] = [
+      ["netflix-login", "/artikel/cara-login-netflix-setelah-order-di-axvara", "Panduan login Netflix AXVARA"],
+      ["alight-login", "/artikel/cara-login-alight-motion-setelah-order-di-axvara", "Panduan login Alight Motion AXVARA"],
+      ["gemini-redeem", "/artikel/cara-redeem-google-ai-pro-setelah-order-di-axvara", "Panduan redeem Google AI Pro AXVARA"],
+      ["otp", "https://netflix-codes.sekalipay.com/mailbox", "Mailbox OTP Netflix"],
+      ["otp-bot", "https://bototp.site/", "Mailbox OTP BotOTP"],
+      ["otp-sengare", "https://sengare.art/check-inbox", "Mailbox OTP Sengare (Zoom)"],
+      ["otp-genjos", "https://genjos.xoftware.my.id/mailbox", "Mailbox OTP Genjos (Zoom/Scribd)"],
+      ["otp-sekalichat", "https://tmail.sekalichat.com/", "Mailbox OTP Sekalichat (Canva/Capcut)"],
+      ["otp-waroeng", "https://waroengmail.com/", "Mailbox OTP Waroengmail (Wink/Meitu)"],
+      ["otp-runcubes", "https://tmail.runcubesapps.com/mailbox", "Mailbox OTP Runcubes (Scribd)"],
+      ["otp-generator", "https://generator.email/", "Mailbox Generator.email (Perplexity)"],
+      ["otp-2fa", "https://2fa.live/", "Alat kode 2FA (Gemini)"],
+      ["mail-olies", "https://oliesmail.com/", "Mailbox Oliesmail (Prime Video)"],
+      ["mail-fnstore", "https://fnstore.my.id/", "Mailbox Fnstore (iQiyi)"],
+      ["mail-losantoz", "https://losantoz.com/", "Mailbox Losantoz (iQiyi)"],
+      ["otp-spotify", "https://t.me/autoresetpwspotify_bot", "Bot OTP Spotify"],
+      ["bot-viu", "https://t.me/sekalipayviu_bot", "Bot Viu Sekalipay"],
+      ["bot-alight", "https://t.me/alightmotion321_bot", "Bot redeem Alight Motion"],
+      ["bot-scribd", "https://t.me/Scribd_Downloaderbot", "Bot downloader Scribd"],
+      ["tutor-canva", "https://youtu.be/p_xpw5M1zaU", "Tutorial Canva Pro"],
+      ["tutor-remini", "https://youtu.be/J07zn3FAJyY", "Tutorial Remini web"],
+      ["tutor-scribd", "https://youtu.be/8nMzvoauNVk", "Tutorial Scribd web"],
+      ["tutor-arcade", "https://youtu.be/IbSEx5_pUr8", "Tutorial redeem Apple Arcade"],
+      ["tutor-vision-tv", "https://www.youtube.com/watch?v=XzMXIty8kr4", "Cara konek Vision+ ke TV"],
+      ["tutor-vision-tv2", "https://www.youtube.com/watch?v=Ylrroy1fJAE", "Cara konek Vision+ ke Smart TV"],
+      ["doc-scribd", "https://docdownloader.com/", "Downloader Scribd web"],
+      ["netflix-solusi", "https://pastebin.com/CPYvC5Ku", "Solusi masalah Netflix"],
+      ["grok-error", "https://drive.google.com/file/d/11Jk3aPT4Jgfw4eWsNiD_BeCN8Xl5_cr0/view?usp=drivesdk", "Panduan error login Grok"],
+      ["ms-family", "https://support.microsoft.com/id-id/office/berbagi-langganan-microsoft-365-family-b389b9ce-3ae3-4a82-9017-39d79972fcba", "Berbagi Microsoft 365 Family"],
+      ["remini-web", "https://app.remini.ai/", "Remini web"],
+      ["leonardo-web", "https://leonardo.ai/", "Leonardo AI web"],
+      ["blackbox-web", "https://www.blackbox.ai/", "Blackbox AI web"],
+      ["grok-web", "https://grok.com/", "Grok web"],
+      ["rcti-login", "https://rctiplus.com/login", "Login RCTI+ (Vision+)"],
+      ["ibis-tutor", "https://ibispaint.com/lecture/index.jsp?lang=in&no=26", "Tutorial Ibis Paint"],
+      ["wetv-redeem", "https://film.wetv.vip/wetv/cdkey.html", "Redeem voucher WeTV"],
+      ["dramaku", "https://dramaku.world/", "Website Dramaku"],
+      ["office-login", "https://portal.office.com/", "Login Office 365"],
+      ["office-install", "https://www.youtube.com/watch?v=fBOfOmj9Uj8", "Tutorial install Office 365"],
+      ["cek-domain", "https://name.com/", "Cek domain Name.com"],
+      ["github-pack", "https://education.github.com/pack", "GitHub Student Pack"],
+      ["tv-harga", "https://tradingview.com/pricing", "Harga TradingView Premium"],
+      ["vidio-web", "https://m.vidio.com/", "Nonton Vidio di laptop"],
+    ];
+    const now = new Date().toISOString();
+    g.__AXVARA_SUPPLIER_LINKS = seed.map(([slug, destination, title], i) => ({
+      id: i + 1, slug, destination, title, is_active: 1, click_count: 0,
+      last_clicked_at: null, created_at: now, updated_at: now,
+    }));
+  }
+  return g.__AXVARA_SUPPLIER_LINKS;
 }
 function getSubscriberMem(): Row[] {
   const g = process as unknown as { __AXVARA_NEWSLETTER_SUBSCRIBERS?: Row[] };
@@ -249,6 +313,13 @@ export async function queryFirst(sql: string, ...params: unknown[]): Promise<Row
   }
   if (lower.includes("from agent_tokens")) return getTokenMem().find((r) => String(r.token_hash) === String(params[0]) && r.is_active === 1);
   if (lower.includes("from newsletter_subscribers") && lower.includes("email=?")) return getSubscriberMem().find((r) => String(r.email) === String(params[0]));
+  if (lower.includes("from supplier_links")) {
+    let rows = [...getSupplierLinkMem()];
+    if (lower.includes("is_active=1")) rows = rows.filter((r) => Number(r.is_active) === 1);
+    if (lower.includes("slug=?") && params.length) rows = rows.filter((r) => String(r.slug) === String(params[0]));
+    if (lower.includes("where id=?") && params.length) return rows.find((r) => String(r.id) === String(params[0]));
+    return rows.sort((a, b) => String(a.slug ?? "").localeCompare(String(b.slug ?? "")))[0];
+  }
   return undefined;
 }
 
@@ -398,5 +469,23 @@ export async function execRun(sql: string, ...params: unknown[]): Promise<{ last
   }
   if (lower.startsWith("update agent_tokens set")) { const row=getTokenMem().find((r)=>String(r.id)===String(params[params.length-1])); if(!row)return {changes:0}; if(lower.includes("is_active=?"))row.is_active=params[0]; if(lower.includes("last_used_at=?"))row.last_used_at=params[0]; return {changes:1}; }
   if (lower.startsWith("insert into article_audit_log")) {const mem=getAuditMem(),id=Math.max(0,...mem.map((row)=>Number(row.id)||0))+1,columns=(sql.match(/article_audit_log\s*\(([^)]+)\)/i)?.[1]??"").split(",").map((column)=>column.trim()),row:Row={id};columns.forEach((column,index)=>{row[column]=params[index]});mem.push(row);return {lastInsertRowid:id,changes:1};}
+  if (lower.startsWith("insert into supplier_links")) {
+    const mem=getSupplierLinkMem(),columns=(sql.match(/supplier_links\s*\(([^)]+)\)/i)?.[1]??"").split(",").map((c)=>c.trim()),row:Row={id:Math.max(0,...mem.map((r)=>Number(r.id)||0))+1,click_count:0,last_clicked_at:null,created_at:new Date().toISOString(),updated_at:new Date().toISOString()};
+    columns.forEach((c,i)=>{row[c]=params[i]});
+    if(mem.some((r)=>r.slug===row.slug))throw new Error("UNIQUE constraint failed: supplier_links.slug");
+    mem.push(row);return{lastInsertRowid:Number(row.id),changes:1};
+  }
+  if (lower.startsWith("update supplier_links set")) {
+    const id=String(params[params.length-1]);
+    if(lower.includes("click_count=click_count+1")) {
+      const target=lower.includes("where slug=?")?getSupplierLinkMem().find((r)=>String(r.slug)===id):getSupplierLinkMem().find((r)=>String(r.id)===id);
+      if(!target)return{changes:0};
+      target.click_count=Number(target.click_count??0)+1;target.last_clicked_at=new Date().toISOString().slice(0,19).replace("T"," ");target.updated_at=new Date().toISOString();return{changes:1};
+    }
+    const row=getSupplierLinkMem().find((r)=>String(r.id)===id);if(!row)return{changes:0};
+    const fields=sql.match(/set\s+(.+)\s+where/i)?.[1].split(",")??[];let index=0;
+    fields.forEach((field)=>{if(field.includes("?"))row[field.trim().split("=")[0].trim()]=params[index++]});row.updated_at=new Date().toISOString();return{changes:1};
+  }
+  if (lower.startsWith("delete from supplier_links")) {const mem=getSupplierLinkMem(),i=mem.findIndex((r)=>String(r.id)===String(params[0]));if(i>=0){mem.splice(i,1);return{changes:1}}return{changes:0};}
   return { changes: 0 };
 }

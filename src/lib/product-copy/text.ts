@@ -129,12 +129,12 @@ export function supplierFingerprint(terms: string | null | undefined, deliveryTe
 export type RichSegment = { text: string; href: null } | { text: string; href: string };
 
 const URL_RE = /https?:\/\/[^\s<>"')\]]+/gi;
-// Path internal AXVARA (/artikel/slug, /produk/slug, /lacak-pesanan, ...):
-// ditulis kurasi sebagai "/artikel/..." tanpa domain — WAJIB ikut bisa diklik
-// (laporan owner 2026-10-03 + screenshot PDP Netflix: tampil teks polos).
+// Path internal AXVARA (/artikel/slug, /produk/slug, /go/slug, ...):
+// ditulis kurasi sebagai "/artikel/..." atau "axvara.tech/go/..." tanpa skema —
+// WAJIB ikut bisa diklik (laporan owner 2026-10-03 + screenshot PDP Netflix).
 // Daftar putih route internal agar "/" biasa atau potongan kalimat tidak jadi
 // link palsu. Query/hash diizinkan (?category=, #katalog).
-const INTERNAL_RE = /\/(?:artikel|produk|lacak-pesanan|cara-order|garansi-replace|link|checkout|pesanan)(?:\/[^\s<>"')\]]*)?/gi;
+const INTERNAL_RE = /\/(?:artikel|produk|lacak-pesanan|cara-order|garansi-replace|link|checkout|pesanan|go)(?:\/[^\s<>"')\]]*)?/gi;
 // Bare domain tanpa skema (netflix-codes.sekalipay.com/mailbox,
 // www.netflix.com/clearcookies, oliesmail.com, axvara.tech/...) + handle bot
 // Telegram (@sekalipayviu_bot). Email (user@mail.com) SENGAJA bukan link —
