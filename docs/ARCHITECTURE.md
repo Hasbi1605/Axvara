@@ -816,7 +816,12 @@ badge storefront menjanjikan "Kirim otomatis". Perubahan:
   (POST verifikasi 6 digit WA atau email checkout, GET capability token yang diverifikasi dulu) mengembalikan
   detail WR + salinan ini dengan `label` baris pesanan. `credentials_ready`
   (`GET /api/orders?code=`, `/api/orders/lookup`) dan `issueCredentialToken` kini juga
-  menghitung salinan ini.
+  menghitung salinan ini. **Paritas WR-SK (2026-10-03, kasus F111FD64):** `handleWrOrderCompleted`
+  kini bind link→item otomatis (`bindWrLinkToFulfillmentItem`, idempoten) + menulis
+  ciphertext ke baris item (pola `settleSkFulfillmentItem`) sehingga panel membaca kredensial
+  WR — sebelumnya WR hanya flip status dan panel tidak pernah melihat kredensial meski link
+  completed. `readDeliveredSnapshots` mengecualikan item `wr:%` (anti-duplikat: link WR sudah
+  dibaca dari `wr_order_links`); item `sk:%` tetap dibaca (SK tanpa jalur link di credentials).
 - **Kirim ke pembeli** (dulu "Serahkan manual"). `GET /api/admin/orders/[code]/handover`
   mengembalikan `label`, `has_content`, dan `template_text`, yaitu
   `product_variants.handover_template` yang placeholder `{email}`, `{nama}`, `{kode}`,
@@ -982,6 +987,7 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   cari manual by invoice WR `?q=#RBHN-…` + tampilkan buyer Axvara untuk forward email WR),
   `POST /api/admin/warung/orders/[id]/retry` (CAS — race kalah → 409),
   `POST /api/admin/warung/orders/[id]/void` (2026-09-28: batalkan link WR tertahan → terminal `failed` + `last_error='cancelled_by_admin'`, CAS sama seperti retry; tanpa status baru agar CHECK tidak perlu ALTER),
+  `POST /api/admin/warung/orders/[id]/sync-now` (2026-10-03, kasus F111FD64: tarik status SATU link processing langsung dari /transactions — webhook completed WR sering tidak sampai sehingga buyer menunggu 1 jam sia-sia; read-only upstream + idempoten, 409 bila status bukan processing/submitted/ordering),
   `GET/POST/DELETE /api/admin/warung/exclusions`, `GET/PUT /api/admin/warung/markup`,
   `GET/POST /api/admin/warung/credentials` (retrieval + resend admin).
 - **Storefront:** `WrCredentialsPanel.tsx` di halaman pesanan (lunas): verifikasi
@@ -1094,7 +1100,10 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   ke buyer Axvara sebelum bot email otomatis fase 2. Health WR ikut `GET /api/admin/bot/health`.
 - **Cron:** fase baru `warung_rebahan` disisipkan `fulfillment → warung_rebahan → notify`
   (`src/app/api/cron/operations/route.ts`): sync produk tiap 30 mnt, proses order due (maks 4),
-  reconcile processing >1 jam via `/transactions`, cek saldo tiap 1 jam. COUNT WR dihitung
+  reconcile processing >1 jam via `/transactions` + reconcile FRESH processing >3 mnt
+  (2026-10-03, kasus F111FD64: webhook completed WR sering tidak sampai padahal
+  dashboard WR sudah COMPLETED hitungan menit setelah lunas — maks 4 link/run,
+  read-only + idempoten), cek saldo tiap 1 jam. COUNT WR dihitung
   query terpisah agar DB pre-migrasi tidak meruntuhkan query gabungan; fase no-op bila
   master switch mati atau tabel WR belum ada.
 - **Budget WAKTU sweep katalog (akar "sync tersendat", diperbaiki 2026-09-20):** sweep penuh

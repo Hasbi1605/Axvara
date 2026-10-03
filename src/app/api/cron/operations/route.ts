@@ -1045,6 +1045,39 @@ export async function POST(request: NextRequest) {
           } catch { /* best-effort; run berikutnya retry */ }
         }
 
+        // 3a. Reconcile FRESH processing links (2026-10-03, kasus F111FD64):
+        //     webhook order.completed WR sering TIDAK SAMPAI (event terakhir
+        //     28 Sep untuk order 3 Okt), padahal dashboard WR sudah COMPLETED
+        //     hitungan menit setelah lunas. Tanpa ini buyer menunggu 1 jam
+        //     (ambang reconcile lama) untuk kredensial yang sudah ada.
+        //     Dibatasi: hanya link processing umur >3 menit (beri webhook
+        //     kesempatan datang dulu — hemat 1 panggilan /transactions bila
+        //     webhook sehat) + maks 4 link/run + budget/waktu sama. Read-only
+        //     upstream + idempoten; SK tidak tersentuh (fase terpisah).
+        if (autoOrder && budget.fits(4) && hasTime(TIME_WR_LIGHT)) {
+          try {
+            const { reconcileFreshWrLinks } = await import("@/lib/warung-rebahan/order");
+            const fresh = await database.queryAll(
+              `SELECT id, wr_order_id, order_code FROM wr_order_links
+               WHERE status='processing'
+                 AND datetime(COALESCE(request_sent_at, updated_at)) <= datetime('now','-3 minutes')
+               ORDER BY request_sent_at ASC, id ASC LIMIT 4`,
+            ).catch(() => [] as { id: unknown; wr_order_id: unknown; order_code: unknown }[]);
+            if (fresh.length) {
+              const reconciled = await reconcileFreshWrLinks(
+                fresh.map((row) => ({
+                  id: Number(row.id),
+                  wr_order_id: String(row.wr_order_id || ""),
+                  order_code: String(row.order_code || ""),
+                })),
+                database,
+              );
+              results.wr_orders_reconciled = Number(results.wr_orders_reconciled ?? 0) + reconciled;
+              results.wr_orders_reconciled_fresh = reconciled;
+            }
+          } catch { /* best-effort; run berikutnya retry */ }
+        }
+
         // 3b. Peringatan umur antrean: link yang masih diproses melewati
         //     ambang internal (di atas plafon janji pembeli). Murni D1 +
         //     Telegram, idempoten via aging_alerted_at.

@@ -385,8 +385,17 @@ export async function handleWrOrderCompleted(
     last_error: null,
   }, db);
   void advanced;
+  // Kaitkan link ke baris itemnya (paritas SK 2026-10-03 — sebelum ini WR
+  // TIDAK PERNAH bind: fulfillment_item_id selalu NULL sehingga panel
+  // /pesanan (baca fulfillment_items.delivered_ciphertext) tidak pernah
+  // melihat kredensial WR meski link completed. Idempoten bila sudah terisi.
+  let fulfillmentItemId = Number(link.fulfillment_item_id || 0);
+  try {
+    fulfillmentItemId = await bindWrLinkToFulfillmentItem(Number(link.id), db);
+  } catch { /* link TETAP completed; settle memakai fallback WR */ }
+  if (!fulfillmentItemId) fulfillmentItemId = Number(link.fulfillment_item_id || 0);
   // Selesaikan item WR terkait + agregat ulang dari seluruh item.
-  await settleWrFulfillmentItem(String(link.order_code), Number(link.fulfillment_item_id || 0), db);
+  await settleWrFulfillmentItem(String(link.order_code), fulfillmentItemId, ciphertext, iv, db);
   await refreshOrderAggregate(String(link.order_code), db);
   // Delivery durable: queue (atau lanjutkan bila sudah queued/gagal).
   await queueCredentialDelivery(Number(link.id), db);
@@ -492,34 +501,61 @@ export async function bindWrLinkToFulfillmentItem(
 /**
  * Selesaikan HANYA item WR terkait (P0-5). Item manual/shared/unique lain
  * tidak disentuh — mixed cart tidak delivered prematur.
+ *
+ * Paritas SK 2026-10-03: ciphertext + iv ikut ditulis ke baris item
+ * (delivered_ciphertext/delivered_iv) — panel /pesanan + /lacak-pesanan
+ * membaca DARI SINI, bukan dari wr_order_links. Sebelum ini WR hanya
+ * flip status sehingga panel tidak pernah melihat kredensial meski link
+ * completed (order F111FD64 2026-10-03).
  */
 async function settleWrFulfillmentItem(
   orderCode: string,
   fulfillmentItemId: number,
-  db: DatabaseAccess,
+  ciphertext?: string,
+  iv?: string,
+  db?: DatabaseAccess,
 ): Promise<void> {
+  const database = db ?? createDatabaseAccess();
   if (fulfillmentItemId > 0) {
-    await db
+    await database
       .execRun(
         `UPDATE fulfillment_items SET status='delivered', delivered_message_id=?,
+           delivered_ciphertext=COALESCE(?, delivered_ciphertext),
+           delivered_iv=COALESCE(?, delivered_iv),
            locked_until=NULL, updated_at=datetime('now') WHERE id=? AND order_code=?`,
         `wr:${fulfillmentItemId}`,
+        ciphertext ?? null,
+        iv ?? null,
         fulfillmentItemId,
         orderCode,
       )
       .catch(() => undefined);
+    // Tandai kepemilikan WR supaya fulfillment generik melewatinya (pola
+    // sk_link_id): tanpa ini processItem mengklaimnya sebagai manual palsu.
+    const linked = await database
+      .queryFirst(`SELECT id FROM wr_order_links WHERE order_code=? AND fulfillment_item_id=?`, orderCode, fulfillmentItemId)
+      .catch(() => null);
+    if (linked) {
+      await database.execRun(`UPDATE fulfillment_items SET wr_link_id=? WHERE id=?`, Number(linked.id), fulfillmentItemId).catch(
+        () => undefined,
+      );
+    }
     return;
   }
   // Link lama (fulfillment_item_id NULL): fallback ke item WR order ini.
-  await db
+  await database
     .execRun(
       `UPDATE fulfillment_items SET status='delivered', delivered_message_id='wr:legacy',
+         delivered_ciphertext=COALESCE(?, delivered_ciphertext),
+         delivered_iv=COALESCE(?, delivered_iv),
          locked_until=NULL, updated_at=datetime('now')
        WHERE order_code=? AND id IN (
          SELECT fi.id FROM fulfillment_items fi
          JOIN product_variants pv ON pv.id = fi.variant_id
          WHERE fi.order_code=? AND pv.wr_variant_id IS NOT NULL
        )`,
+      ciphertext ?? null,
+      iv ?? null,
       orderCode,
       orderCode,
     )

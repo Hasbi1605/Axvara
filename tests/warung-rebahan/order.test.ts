@@ -303,6 +303,100 @@ describe("Warung Rebahan webhook completion", () => {
     }
   });
 
+  it("completed TANPA bind awal (kasus F111FD64): bind otomatis + ciphertext ke item paritas SK", async () => {
+    // Regresi 2026-10-03: link completed tetapi fulfillment_item_id NULL +
+    // wr_link_id NULL (bindWrLinkToFulfillmentItem tidak pernah dipanggil) dan
+    // settleWrFulfillmentItem hanya flip status — panel /pesanan yang membaca
+    // fulfillment_items.delivered_ciphertext tidak pernah melihat kredensial WR.
+    const fx = await setup();
+    try {
+      seedCatalog(fx);
+      seedOrder(fx, "AXV-20261003-F111AA11");
+      seedFulfillmentItem(fx, "AXV-20261003-F111AA11");
+      // Link processing TANPA bind (persis kondisi prod link id 12).
+      const info = fx.sql.prepare(
+        "INSERT INTO wr_order_links(order_code,wr_order_id,wr_variant_id,quantity,wr_cost,status) VALUES('AXV-20261003-F111AA11','ORD-FRESH','var-1',1,5000,'processing') RETURNING id",
+      ).get() as { id: number };
+      vi.stubEnv("TELEGRAM_BOT_ENABLED", "false");
+      vi.stubEnv("TELEGRAM_BOT_TOKEN", "test-token");
+      vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ ok: true, result: { message_id: 1 } }) })));
+      const db = createDatabaseAccess(fx.db);
+      expect(
+        await handleWrOrderCompleted("ORD-FRESH", { account_details: [{ email: "wr@example.com", password: "wr-pass" }] }, db),
+      ).toBe(true);
+      // Link ter-bind otomatis.
+      const link = fx.sql.prepare("SELECT status, fulfillment_item_id FROM wr_order_links WHERE id=?").get(info.id) as { status: string; fulfillment_item_id: number };
+      expect(link.status).toBe("completed");
+      expect(Number(link.fulfillment_item_id)).toBeGreaterThan(0);
+      // Item: delivered + ciphertext terisi + wr_link_id terisi (paritas SK).
+      const item = fx.sql.prepare(
+        "SELECT status, wr_link_id, delivered_message_id, delivered_ciphertext IS NOT NULL AS has_cred FROM fulfillment_items WHERE order_code='AXV-20261003-F111AA11'",
+      ).get() as { status: string; wr_link_id: number; delivered_message_id: string; has_cred: number };
+      expect(item.status).toBe("delivered");
+      expect(Number(item.wr_link_id)).toBe(info.id);
+      expect(String(item.delivered_message_id)).toMatch(/^wr:/);
+      expect(Number(item.has_cred)).toBe(1);
+      // Panel bisa dekripsi (admin) — kredensial WR sampai ke pembeli.
+      const decrypted = await getDecryptedAccountDetails("AXV-20261003-F111AA11", db, { admin: true });
+      expect(decrypted.length).toBe(1);
+      expect(decrypted[0].details).toContain("wr@example.com");
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("reconcileFreshWrLinks: link processing fresh yang upstream-nya completed langsung settle (tanpa tunggu 1 jam)", async () => {
+    const fx = await setup();
+    try {
+      seedCatalog(fx);
+      seedOrder(fx, "AXV-20261003-F111BB22");
+      seedFulfillmentItem(fx, "AXV-20261003-F111BB22");
+      const info = fx.sql.prepare(
+        "INSERT INTO wr_order_links(order_code,wr_order_id,wr_variant_id,quantity,wr_cost,status,request_sent_at) VALUES('AXV-20261003-F111BB22','ORD-FRESH2','var-1',1,5000,'processing',datetime('now','-5 minutes')) RETURNING id",
+      ).get() as { id: number };
+      vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
+      vi.stubEnv("WARUNG_REBAHAN_PROXY_URL", "https://proxy.example");
+      vi.stubEnv("WARUNG_REBAHAN_PROXY_TOKEN", "proxy-secret");
+      vi.stubEnv("TELEGRAM_BOT_ENABLED", "false");
+      vi.stubEnv("TELEGRAM_BOT_TOKEN", "test-token");
+      // Upstream: order sudah completed + kredensial — webhook tidak sampai.
+      vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+        if (String(url).includes("/wr/transactions") || String(url).includes("/transactions")) {
+          return {
+            ok: true,
+            json: async () => ({
+              success: true, message: "ok",
+              data: [{
+                order_id: "ORD-FRESH2", status: "completed", total_amount: 5000,
+                payment_status: "paid", products: [], created_at: new Date().toISOString(),
+                account_details: [{ email: "fresh@example.com", password: "fresh-pass" }],
+              }],
+            }),
+          };
+        }
+        return { ok: true, json: async () => ({ ok: true, result: { message_id: 1 } }) };
+      }));
+      const { reconcileFreshWrLinks } = await import("@/lib/warung-rebahan/order");
+      const db = createDatabaseAccess(fx.db);
+      const n = await reconcileFreshWrLinks(
+        [{ id: info.id, wr_order_id: "ORD-FRESH2", order_code: "AXV-20261003-F111BB22" }],
+        db,
+      );
+      expect(n).toBe(1);
+      const link = fx.sql.prepare("SELECT status, wr_account_details IS NOT NULL AS has_cred FROM wr_order_links WHERE id=?").get(info.id) as { status: string; has_cred: number };
+      expect(link.status).toBe("completed");
+      expect(Number(link.has_cred)).toBe(1);
+      const item = fx.sql.prepare("SELECT status, delivered_ciphertext IS NOT NULL AS has_cred FROM fulfillment_items WHERE order_code='AXV-20261003-F111BB22'").get() as { status: string; has_cred: number };
+      expect(item.status).toBe("delivered");
+      expect(Number(item.has_cred)).toBe(1);
+      // SK tidak tersentuh: tidak ada baris SK untuk order ini.
+      const sk = fx.sql.prepare("SELECT * FROM sk_order_links").all();
+      expect(sk.length).toBe(0);
+    } finally {
+      fx.close();
+    }
+  });
+
   it("failed: monotonik + item WR failed + agregat jujur tanpa auto-refund", async () => {
     const fx = await setup();
     try {

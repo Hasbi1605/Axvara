@@ -118,6 +118,14 @@ export type DeliveredSnapshot = { itemIndex: number; label: string; details: str
 /**
  * Isi terkirim yang tersimpan terenkripsi per item (migrasi 0043). HANYA
  * untuk pemanggil yang sudah memverifikasi pembeli (WA/token) atau admin.
+ *
+ * Item WR (`delivered_message_id LIKE 'wr:%'`) DIKECUALIKAN (2026-10-03):
+ * sejak paritas WR-SK, ciphertext WR ikut ditulis ke baris item agar
+ * agregat/panel konsisten — tetapi panel credentials SUDAH membaca kredensial
+ * WR dari wr_order_links (readVerifiedDetails/getDecryptedAccountDetails).
+ * Tanpa pengecualian ini kredensial WR muncul GANDA (sekali dari link,
+ * sekali dari snapshot). Item SK (`sk:%`) TETAP dibaca di sini karena SK
+ * tidak punya jalur link di endpoint credentials — SK tidak tersentuh.
  */
 export async function readDeliveredSnapshots(
   orderCode: string,
@@ -129,6 +137,7 @@ export async function readDeliveredSnapshots(
     `SELECT item_index, delivered_ciphertext, delivered_iv, delivered_message_id, updated_at
      FROM fulfillment_items
      WHERE order_code=? AND status='delivered' AND delivered_ciphertext IS NOT NULL AND delivered_iv IS NOT NULL
+       AND COALESCE(delivered_message_id, '') NOT LIKE 'wr:%'
        ${options.manualOnly ? "AND delivered_message_id='manual'" : ""}
      ORDER BY item_index ASC`,
     orderCode,

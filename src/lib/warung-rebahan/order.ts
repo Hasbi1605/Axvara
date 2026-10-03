@@ -749,6 +749,44 @@ export async function reconcileStuckWrOrders(database?: DatabaseAccess): Promise
     )
     .catch(() => [] as Row[]);
   if (!stuck.length) return 0;
+  return reconcileWrLinksByTransactions(
+    stuck.map((row) => ({
+      id: Number(row.id),
+      wr_order_id: String(row.wr_order_id || ""),
+      order_code: String(row.order_code || ""),
+    })),
+    db,
+  );
+}
+
+/**
+ * Reconcile link WR via /transactions TANPA ambang 1 jam (2026-10-03).
+ *
+ * Kasus order F111FD64: dashboard WR sudah COMPLETED + kredensial terbit
+ * hitungan menit setelah lunas, tetapi webhook order.completed TIDAK PERNAH
+ * sampai ke Axvara (wr_webhook_events terakhir 28 Sep — 5 hari sebelum order).
+ * Reconcile lama baru menyentuh link >1 jam, sehingga buyer menunggu 1 jam
+ * untuk kredensial yang sebenarnya sudah ada.
+ *
+ * Dipanggil untuk link processing FRESH (umur menit, bukan jam) — aman karena
+ * READ-ONLY terhadap upstream: hanya membaca /transactions lalu memanggil
+ * handleWrOrderCompleted yang idempoten + monotonik. TIDAK pernah beli ulang.
+ * SK tidak tersentuh (modul + tabel terpisah).
+ */
+export async function reconcileFreshWrLinks(
+  links: { id: number; wr_order_id: string; order_code: string }[],
+  database?: DatabaseAccess,
+): Promise<number> {
+  const db = database ?? createDatabaseAccess();
+  if (!isWrEnabled() || !links.length) return 0;
+  return reconcileWrLinksByTransactions(links, db);
+}
+
+async function reconcileWrLinksByTransactions(
+  links: { id: number; wr_order_id: string; order_code: string }[],
+  db: DatabaseAccess,
+): Promise<number> {
+  if (!links.length) return 0;
   let transactions: WrTransaction[];
   try {
     transactions = await fetchTransactions();
@@ -759,7 +797,7 @@ export async function reconcileStuckWrOrders(database?: DatabaseAccess): Promise
   let reconciled = 0;
   // Diimpor lazy dari deliver.ts (hindari siklus: deliver tidak impor order).
   const { handleWrOrderCompleted, handleWrOrderFailed } = await import("./deliver");
-  for (const row of stuck) {
+  for (const row of links) {
     const tx = byId.get(String(row.wr_order_id || ""));
     if (!tx) continue;
     const status = String(tx.status || "").toLowerCase();
