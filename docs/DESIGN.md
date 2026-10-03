@@ -447,6 +447,17 @@
   lokal, lalu `/api/categories`); pilih → event `axvara:category` →
   home-client filter + scroll `#katalog` (dari rute lain via `/?category=`).
   Keranjang tetap milik navbar (badge Gold tidak berubah).
+- **Banner promo grup WA/Telegram (2026-10-03, permintaan owner + referensi
+  Sekalipay).** File: `public/banners/axvara-promo-banner.{png,jpg,webp}`
+  (2048×1024, JPG 310KB untuk share, WebP 147KB). Layout meniru referensi
+  (pill logo kiri-atas, headline 3 baris, pill logo besar, pill sosmed
+  kiri-bawah, HP + ikon kanan) tapi full Axvara style: Midnight `#080C1E` +
+  cyan glow `#00E5FF` + gold `#FFB800`. Headline: "Semua Tools & Akun /
+  Premium, Jadi / Lebih Mudah" (baris 3 gold). Pill sosmed: WEB / IG /
+  TikTok / Threads — semua `axvara.tech` (label teks, bukan emoji, agar
+  tidak tofu di font sistem). Dibuat 2 tahap: artwork Muse (tanpa teks) +
+   overlay teks via PIL (Helvetica Bold) agar tulisan dijamin tanpa typo AI.
+   Script overlay tersimpan di `/tmp/promo_banner_v2.py` (di luar repo).
 - **Link di artikel bisa diklik (2026-10-03, laporan owner + screenshot).**
   URL di artikel Netflix tampil sebagai `<code>` biru tapi tidak bisa diklik
   (penulis menulis `` `https://…` `` backtick). Render `artikel/[slug]`
