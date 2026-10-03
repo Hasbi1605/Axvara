@@ -67,6 +67,18 @@ const COST_PER_WR_WORK = 8;
 // Sekalipay: biaya admission yang sama dengan WR per unit kerja fase.
 const COST_PER_SK_WORK = 8;
 const RESERVE_TAIL = 2;
+// Interval sync katalog WR/SK (2026-10-04: 30 → 15 menit). Sweep dipotong
+// kecil per request di mode `?phase=` sehingga satu putaran penuh selesai
+// dalam satu tick Worker; gerbang ini menentukan seberapa sering putaran baru
+// dimulai = kesegaran katalog maksimum.
+const CATALOG_SYNC_INTERVAL_MS = 15 * 60 * 1000;
+// Potongan sweep per request di mode `?phase=` (Workers Free: ~10 ms CPU per
+// request). Insiden 3 Okt 20:25–23:50 WIB: 41 run beruntun dibunuh runtime
+// (`exceededResources` → 503) karena SATU request memikul expiry + fulfillment
+// + sync WR 49 produk + sync SK 157 varian. Worker kini memanggil fase satu
+// per satu dan mengulang fase sync selama respons `more: true`.
+const WR_CRON_CHUNK = 10;
+const SK_CRON_CHUNK = 25;
 type CronPhase = "expiry" | "fulfillment" | "warung_rebahan" | "sekalipay" | "notify" | "cleanup";
 
 // Expiry restores each distinct product/variant inside one atomic batch.
@@ -139,6 +151,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
+  // Mode satu-fase (2026-10-04): `?phase=<nama>` menjalankan TEPAT satu fase
+  // tanpa rotasi/deferred/anti-starvation — penjadwal (Worker) yang memegang
+  // urutan. Tanpa parameter: perilaku lama (rotasi 3 fase/run) tetap utuh
+  // untuk pemanggilan manual dan kompatibilitas.
+  const phaseParam = request.nextUrl.searchParams.get("phase");
+  const forcedPhase: CronPhase | null = phaseParam == null ? null : phaseName(phaseParam);
+  // `continue=1`: potongan lanjutan sweep katalog dalam tick yang sama —
+  // hanya sync; order/reconcile/delivery/saldo sudah dikerjakan potongan
+  // pertama sehingga tidak diulang (hemat CPU + panggilan upstream).
+  const syncOnly = forcedPhase != null && request.nextUrl.searchParams.get("continue") === "1";
+  if (phaseParam != null && forcedPhase == null) {
+    return NextResponse.json({ error: "invalid_phase" }, { status: 400 });
+  }
+
   const runStartedAt = Date.now();
   /** Sisa waktu invocation (ms) sebelum deadline lunak. */
   const timeLeftMs = () => RUN_DEADLINE_MS - (Date.now() - runStartedAt);
@@ -202,7 +228,10 @@ export async function POST(request: NextRequest) {
     const transitionPendingPaymentOrder = (input: Parameters<typeof rawTransitionPendingPaymentOrder>[0]) => rawTransitionPendingPaymentOrder(input, database.d1);
     const transitionPendingOrder = (code: string, status: "kadaluarsa", note: null, items: { product_id: number; variant_id?: number; qty: number }[]) => rawTransitionPendingOrder(code, status, note, items, database.d1);
     const deferredOut: CronPhase[] = [];
-    const { phase: storedPhase, deferred: storedDeferred } = await readCronPhase(database);
+    const { phase: storedPhase, deferred: storedDeferred } = forcedPhase
+      ? { phase: forcedPhase, deferred: [] as CronPhase[] }
+      : await readCronPhase(database);
+    if (forcedPhase) results.phase = forcedPhase;
 
     // POISON-PILL GUARD (2026-09-18). `writeCronPhase` hanya dipanggil di ekor
     // handler, jadi run yang dibunuh platform di tengah jalan meninggalkan
@@ -214,7 +243,7 @@ export async function POST(request: NextRequest) {
     // SEKARANG; ekor menimpa dengan nilai final bila run selesai normal.
     // Konsekuensi yang disengaja: run yang mati kehilangan hint deferred-nya,
     // tetapi rotasi tetap bergerak sehingga tidak ada fase yang mengunci cron.
-    await writeCronPhase(nextPhase(storedPhase), [], database);
+    if (!forcedPhase) await writeCronPhase(nextPhase(storedPhase), [], database);
 
     // HEARTBEAT (issue wr-sync-observability, 2026-09-19): bukti "pemicu
     // memanggil + handler hidup sampai sini". 1 statement ringan, best-effort.
@@ -246,7 +275,9 @@ export async function POST(request: NextRequest) {
     // di bawah (perhitungan antrean), jadi JANGAN referensikannya — pakai
     // probe tabel langsung dengan `.catch(() => null)` (DB pra-0027 → null
     // → skip, sama seperti guard tabel di runWarungRebahan).
-    try {
+    // Mode satu-fase: watchdog cukup dievaluasi di fase WR (sekali per tick),
+    // bukan di setiap request fase lain.
+    if (!forcedPhase || forcedPhase === "warung_rebahan") try {
       const { isWrEnabled } = await import("@/lib/warung-rebahan/client");
       if (isWrEnabled()) {
         const staleRow = await queryFirst(
@@ -375,6 +406,7 @@ export async function POST(request: NextRequest) {
     const ordered: CronPhase[] = [];
     for (const d of storedDeferred) if (!ordered.includes(d)) ordered.push(d);
     if (!ordered.includes(storedPhase)) ordered.push(storedPhase);
+    // Mode satu-fase: hanya fase yang diminta — tanpa rotasi pelengkap.
     // Fase SK hanya masuk rotasi bila relevan (SK aktif ATAU ada pekerjaan
     // SK menunggu ATAU deferred lama menyebutnya): saat SK mati (default),
     // rotasi IDENTIK dengan baseline (tanpa query/deferred ekstra) sehingga
@@ -384,12 +416,12 @@ export async function POST(request: NextRequest) {
     const rotation: CronPhase[] = skPhaseRelevant
       ? ["expiry", "fulfillment", "warung_rebahan", "sekalipay", "notify", "cleanup"]
       : ["expiry", "fulfillment", "warung_rebahan", "notify", "cleanup"];
-    for (const p of rotation) {
+    if (!forcedPhase) for (const p of rotation) {
       if (!ordered.includes(p)) ordered.push(p);
     }
-    const activePhases = new Set(ordered.slice(0, 3)); // maks 3 fase/run
+    const activePhases = new Set<CronPhase>(forcedPhase ? [forcedPhase] : ordered.slice(0, 3)); // maks 3 fase/run
     for (const p of ordered.slice(3)) deferredOut.push(p);
-    if (pendingJobs > 0 && !activePhases.has("fulfillment")) {
+    if (!forcedPhase && pendingJobs > 0 && !activePhases.has("fulfillment")) {
       // Jamin satu slot fulfillment: geser fase non-fulfillment terakhir
       // (prioritas terendah) keluar menjadi deferred jujur.
       const actives = ordered.filter((p) => activePhases.has(p));
@@ -402,7 +434,7 @@ export async function POST(request: NextRequest) {
         if (!deferredOut.includes(victim)) deferredOut.push(victim);
       }
     }
-    if (promoDue && !activePhases.has("notify")) {
+    if (!forcedPhase && promoDue && !activePhases.has("notify")) {
       const actives = ordered.filter((p) => activePhases.has(p));
       const victim = [...actives].reverse().find((p) => p !== "fulfillment" && p !== "notify");
       if (victim) {
@@ -429,7 +461,7 @@ export async function POST(request: NextRequest) {
     // gerbang admission sync memakai budget baseline (40 statement) dan
     // deadline 45 detik, jadi bila ia baru dijalankan setelah expiry/notify,
     // sisa budget/waktunya sering tidak cukup dan sweep di-skip diam-diam.
-    const wrEverSyncedProbe = wrTablesReady ? await queryFirst(
+    const wrEverSyncedProbe = !forcedPhase && wrTablesReady ? await queryFirst(
       `SELECT 1 AS x FROM wr_sync_log WHERE sync_type='products' LIMIT 1`,
     ).catch(() => null) : null;
     if (wrEverSyncedProbe) {
@@ -465,7 +497,7 @@ export async function POST(request: NextRequest) {
     // Jaminan anti-starvation SK (0049, pola WR di atas): fase baru tidak
     // boleh kelaparan selamanya di luar 3 slot. Syarat: SK pernah sync +
     // sync terakhir >45 menit + ada pekerjaan SK menunggu.
-    const skEverSyncedProbe = skTablesReady ? await queryFirst(
+    const skEverSyncedProbe = !forcedPhase && skTablesReady ? await queryFirst(
       `SELECT 1 AS x FROM sk_sync_log WHERE sync_type='products' LIMIT 1`,
     ).catch(() => null) : null;
     if (skEverSyncedProbe && pendingSkAny > 0) {
@@ -903,7 +935,7 @@ export async function POST(request: NextRequest) {
 
         // 0. Recover lease basi (worker crash) + pulihkan blocked_balance
         //    setelah top-up — murah, selalu jalan bila fase aktif.
-        if (budget.fits(4)) {
+        if (!syncOnly && budget.fits(4)) {
           try {
             await recoverStaleClaims(database);
             await reconcileBlockedBalance(database);
@@ -912,7 +944,7 @@ export async function POST(request: NextRequest) {
 
         // 1. Kapasitas ORDER diprioritaskan SEBELUM sync produk (P0-4):
         //    sync katalog besar tidak boleh membuat WR order starvation.
-        if (autoOrder && pendingWrDue > 0 && budget.fits(COST_PER_WR_WORK) && hasTime(TIME_WR_NETWORK)) {
+        if (!syncOnly && autoOrder && pendingWrDue > 0 && budget.fits(COST_PER_WR_WORK) && hasTime(TIME_WR_NETWORK)) {
           try {
             await retryFailedWrOrders(database);
             const processed = await processWrPendingOrders(database);
@@ -939,7 +971,7 @@ export async function POST(request: NextRequest) {
              WHERE sync_type='products' AND status IN ('success','partial')
              ORDER BY created_at DESC LIMIT 1`,
           ).catch(() => null);
-          const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+          const thirtyMinAgo = new Date(Date.now() - CATALOG_SYNC_INTERVAL_MS).toISOString();
           // Bandingkan sebagai UTC via parseExpiry (baris lama format spasi).
           const { parseExpiry } = await import("@/lib/expiry");
           const lastTs = parseExpiry(lastSync?.created_at);
@@ -990,7 +1022,7 @@ export async function POST(request: NextRequest) {
               // berminggu-minggu\": beban identik terukur 12 dtk saat D1 sehat
               // vs 115-122 dtk saat D1 lambat.
               const syncResult = await syncProducts(database, undefined, {
-                maxProducts: WR_SYNC_PRODUCTS_PER_RUN,
+                maxProducts: forcedPhase ? WR_CRON_CHUNK : WR_SYNC_PRODUCTS_PER_RUN,
                 trigger: "cron",
                 timeBudgetMs: Math.max(0, timeLeftMs() - TIME_WR_SWEEP_RESERVE),
               });
@@ -1009,6 +1041,9 @@ export async function POST(request: NextRequest) {
                 ).catch(() => undefined);
               }
               if (syncResult.budgetYielded) {
+                // Mode satu-fase: sinyal ke Worker untuk memanggil potongan
+                // berikutnya dalam tick yang sama.
+                results.more = true;
                 if (!deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan");
                 // Respons jujur penuh: budget-yield HANYA mendorong deferred
                 // tanpa mengisi skipped — masih ambigu di JSON. attempted
@@ -1037,6 +1072,10 @@ export async function POST(request: NextRequest) {
           if (!deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan");
           results.wr_sync_skipped = budget.fits(COST_PER_WR_WORK) ? "deadline" : "query_budget";
         }
+
+        // Potongan lanjutan (`continue=1`): cukup sync — langkah sisanya sudah
+        // dijalankan potongan pertama tick ini.
+        if (syncOnly) return;
 
         // 3. Reconcile processing/ambigu menggantung >1 jam via /transactions.
         if (autoOrder && budget.fits(3) && hasTime(TIME_WR_LIGHT)) {
@@ -1202,7 +1241,7 @@ export async function POST(request: NextRequest) {
         const autoOrder = process.env.SEKALIPAY_AUTO_ORDER_ENABLED === "true";
 
         // 0. Recover lease basi + pulihkan blocked_balance setelah top-up.
-        if (budget.fits(4)) {
+        if (!syncOnly && budget.fits(4)) {
           try {
             await recoverStaleSkClaims(database);
             await reconcileBlockedSkBalance(database);
@@ -1210,7 +1249,7 @@ export async function POST(request: NextRequest) {
         }
 
         // 1. Order didahulukan sebelum sync (pola WR P0-4).
-        if (autoOrder && pendingSkDue > 0 && budget.fits(COST_PER_SK_WORK) && hasTime(TIME_SK_NETWORK)) {
+        if (!syncOnly && autoOrder && pendingSkDue > 0 && budget.fits(COST_PER_SK_WORK) && hasTime(TIME_SK_NETWORK)) {
           try {
             await retryFailedSkOrders(database);
             const processed = await processSkPendingOrders(database);
@@ -1231,7 +1270,7 @@ export async function POST(request: NextRequest) {
              WHERE sync_type='products' AND status IN ('success','partial')
              ORDER BY created_at DESC LIMIT 1`,
           ).catch(() => null);
-          const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+          const thirtyMinAgo = new Date(Date.now() - CATALOG_SYNC_INTERVAL_MS).toISOString();
           const { parseExpiry } = await import("@/lib/expiry");
           const lastTs = parseExpiry(lastSync?.created_at);
           if (typeof lastSync?.created_at === "string") results.sk_last_sync_at = String(lastSync.created_at);
@@ -1242,12 +1281,13 @@ export async function POST(request: NextRequest) {
           if (resumeNow || lastTs == null || lastTs < Date.parse(thirtyMinAgo)) {
             try {
               const syncResult = await syncSkProducts(database, undefined, {
-                maxProducts: SK_SYNC_PRODUCTS_PER_RUN,
+                maxProducts: forcedPhase ? SK_CRON_CHUNK : SK_SYNC_PRODUCTS_PER_RUN,
                 trigger: "cron",
                 timeBudgetMs: Math.max(0, timeLeftMs() - TIME_WR_SWEEP_RESERVE),
               });
               results.sk_products_synced = syncResult.synced;
               if (syncResult.budgetYielded) {
+                results.more = true;
                 if (!deferredOut.includes("sekalipay")) deferredOut.push("sekalipay");
                 if (results.sk_sync_skipped == null) results.sk_sync_skipped = "budget_yielded";
               }
@@ -1264,6 +1304,8 @@ export async function POST(request: NextRequest) {
           if (!deferredOut.includes("sekalipay")) deferredOut.push("sekalipay");
           results.sk_sync_skipped = budget.fits(COST_PER_SK_WORK) ? "deadline" : "query_budget";
         }
+
+        if (syncOnly) return;
 
         // 3. Reconcile processing/ambigu menggantung >1 jam via GET /v1/trx.
         if (autoOrder && budget.fits(3) && hasTime(TIME_SK_LIGHT)) {
@@ -1336,7 +1378,17 @@ export async function POST(request: NextRequest) {
     // Tail cannot be consumed by helpers: two final statements are reserved.
     budget.beginTail();
     const deferred = [...new Set(deferredOut)];
-    await writeCronPhase(nextPhase(storedPhase), deferred, database);
+    if (forcedPhase) {
+      // Penanda RUN SELESAI (2026-10-04), terpisah dari heartbeat di depan:
+      // heartbeat segar + `cron_last_ok_at` basi = run dibunuh di tengah
+      // (mis. `exceededResources`), bukan pemicu mati.
+      await execRun(
+        `INSERT INTO store_settings (key, value, updated_at) VALUES ('cron_last_ok_at', datetime('now'), datetime('now'))
+         ON CONFLICT(key) DO UPDATE SET value=datetime('now'), updated_at=datetime('now')`,
+      ).catch(() => undefined);
+    } else {
+      await writeCronPhase(nextPhase(storedPhase), deferred, database);
+    }
     results.query_budget_used = budget.used;
     results.query_budget_limit = QUERY_BUDGET;
     results.query_budget_note = "submitted_statements_including_batch_members";

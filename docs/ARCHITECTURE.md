@@ -686,6 +686,16 @@ Konfigurasi client menggunakan header `Authorization: Bearer ${AXVARA_AGENT_TOKE
 
 Trigger `*/5 * * * *` pada MCP Worker memanggil `/api/cron/publish-scheduled`. Set nilai acak yang sama sebagai secret Pages `CRON_SECRET` dan Worker `AXVARA_CRON_SECRET`; jangan simpan nilainya di Git.
 
+**Cron operations dipecah satu fase per request (live 2026-10-04, Workers Free plan).** Insiden 3 Okt 2026 13:25–16:50 UTC (20:25–23:50 WIB): 41 run beruntun `/api/cron/operations` dibunuh runtime Pages dengan `exceededResources` → HTTP 503 (CPU 10–20 ms, durasi ~0,3 dtk) karena satu request memikul expiry + fulfillment + sync WR 49 produk + sync SK ~160 varian + notify + cleanup. Heartbeat `cron_last_hit_at` tetap segar (ditulis di depan handler) sementara `wr_sync_log`/`cron_deferred` di ekor tak pernah tertulis, dan Worker membuang status respons sehingga tak ada alarm. Kontrak baru:
+
+- `mcp-worker/src/cron.ts` `runOperationsTick()` memanggil `POST /api/cron/operations?phase=<fase>` **berurutan** untuk `expiry → fulfillment → warung_rebahan → sekalipay → notify → cleanup` (satu request = jatah CPU sendiri). Fase gagal tidak menghentikan fase berikut.
+- `?phase=` menjalankan TEPAT satu fase: tanpa rotasi/deferred/anti-starvation, tidak menulis `cron_phase`/`cron_deferred`, dan menulis penanda run selesai `store_settings.cron_last_ok_at` di ekor. Nama fase tak dikenal → 400 `invalid_phase`. Tanpa `?phase=` perilaku rotasi lama tetap (pemanggilan manual/kompatibilitas).
+- Sync katalog dipotong kecil: WR 10 produk, SK 25 varian per request. Respons `more: true` bila potongan berhenti di plafon (cursor tersimpan); Worker mengulang `?phase=…&continue=1` (hanya sync — order/reconcile/delivery/saldo tidak diulang) maks 10 potongan/fase/tick, sehingga satu putaran penuh selesai dalam satu tick.
+- Interval putaran katalog WR/SK **15 menit** (`CATALOG_SYNC_INTERVAL_MS`, dulu 30). Cursor > 0 tetap melanjutkan tanpa menunggu interval.
+- Alarm: bila ada fase gagal (non-2xx / fetch gagal), Worker mengirim pesan ke `TELEGRAM_ADMIN_CHAT_ID` hanya pada tick menit kelipatan 30 (stateless, maks 2 pesan/jam selama insiden). Butuh secret Worker `TELEGRAM_BOT_TOKEN` + `TELEGRAM_ADMIN_CHAT_ID` (nilai sama dengan Pages); tanpa keduanya alarm dilewati diam.
+- Cara baca: `cron_last_hit_at` segar + `cron_last_ok_at` basi = request dibunuh di tengah (CPU/`exceededResources`); keduanya basi = pemicu Worker mati. Bukti platform: Cloudflare GraphQL `pagesFunctionsInvocationsAdaptiveGroups` status `exceededResources`.
+- Tradeoff: ±10–15 request Pages per tick (bukan 1) — tetap jauh di bawah kuota 100k/hari; batas CPU per fase belum diukur per fase, jadi bila `exceededResources` masih muncul langkah berikutnya adalah memindah diff katalog ke VPS proxy.
+
 ## 13. Bot Telegram + DANA Dynamic QRIS + Fulfillment
 
 Implementasi native TypeScript di codebase AXVARA. Repo `mocasus/telegram-auto-order-bot` hanya referensi UX; tidak ada dependency, subtree, atau source copy.

@@ -1,6 +1,11 @@
+import { runOperationsTick } from "./cron";
+
 export interface Env {
   AXVARA_API_ORIGIN: string;
   AXVARA_CRON_SECRET?: string;
+  /** Alarm cron gagal (2026-10-04) — secret Worker, nilai sama dengan Pages. */
+  TELEGRAM_BOT_TOKEN?: string;
+  TELEGRAM_ADMIN_CHAT_ID?: string;
 }
 
 type JsonRpcRequest = {
@@ -313,16 +318,17 @@ export default {
       });
     }
   },
-  async scheduled(_controller: WorkerScheduledController, env: Env, context: WorkerExecutionContext) {
+  async scheduled(controller: WorkerScheduledController, env: Env, context: WorkerExecutionContext) {
     if (!env.AXVARA_CRON_SECRET) return;
     const headers = { authorization: `Bearer ${env.AXVARA_CRON_SECRET}` };
     // Publish scheduled articles + expire stale orders
     context.waitUntil(fetch(`${env.AXVARA_API_ORIGIN}/api/cron/publish-scheduled`, {
       method: "POST", headers,
     }));
-    // Reconcile payments, fulfill deliveries, release stale locks
-    context.waitUntil(fetch(`${env.AXVARA_API_ORIGIN}/api/cron/operations`, {
-      method: "POST", headers,
+    // Operations dipecah satu fase per request (Free plan ~10 ms CPU/request)
+    // + alarm Telegram bila ada fase gagal — lihat ./cron.ts.
+    context.waitUntil(runOperationsTick(env, controller.scheduledTime).then((report) => {
+      if (report.failures.length) console.error("cron failures", JSON.stringify(report.failures));
     }));
   },
 };

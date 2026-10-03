@@ -229,7 +229,7 @@ kirim `/chatid`, lalu simpan ID numerik negatif yang dibalas bot sebagai secret 
 
 Axvara dapat menjadi reseller layer di atas Warung Rebahan: produk tersinkronisasi otomatis
 (Canva & Gemini ikut — exclusion default kosong), stok/harga diperbarui cron tiap
-30 menit, order lunas diteruskan otomatis ke WR (exactly-once: klaim atomik + lease +
+15 menit (sejak 2026-10-04; sebelumnya 30), order lunas diteruskan otomatis ke WR (exactly-once: klaim atomik + lease +
 idempotency), dan detail akun dikirim ke customer via
 Telegram/WhatsApp/Web. Sejak 22 Sep 2026 sweep katalog mengirim tulisnya sebagai
 satu `d1.batch()` per produk; nama publik Gemini AI Antigravity sengaja tanpa
@@ -522,6 +522,7 @@ QRIS & Rekonsiliasi**.
 - Untuk file lokal, path tidak dapat dibaca oleh remote MCP. Agent yang memiliki akses terminal dapat melewati JSON/base64 dan mengunggah multipart langsung: `curl -H "Authorization: Bearer $AXVARA_AGENT_TOKEN" -F "file=@./cover.webp;type=image/webp" -F "kind=cover" https://axvara.tech/api/agent/media`. Token memerlukan scope `media:write` dan tidak boleh ditulis langsung ke prompt/log.
 - Worker cron aktif di `https://axvara-mcp.sailinnadia1.workers.dev/mcp` dan memakai `https://axvara.tech` sebagai origin API. Setelah memuat `.cf-credentials`, `npm run deploy:mcp` memakai Global API Key lokal untuk deployment Worker.
 - Jadwal artikel disimpan sebagai status `scheduled`. Cron Worker berjalan tiap 5 menit dan memanggil publisher terproteksi; `CRON_SECRET` pada Pages harus sama dengan secret Worker `AXVARA_CRON_SECRET`.
+- **Cron operations satu fase per request (2026-10-04, Free plan):** Worker memanggil `/api/cron/operations?phase=…` berurutan (expiry → fulfillment → WR → SK → notify → cleanup); sync WR (10 produk) / SK (25 varian) dipotong dan diulang selama respons `more: true`, sehingga katalog segar ≤15 menit. Fase gagal → alarm Telegram admin tiap :00/:30 (secret Worker `TELEGRAM_BOT_TOKEN` + `TELEGRAM_ADMIN_CHAT_ID`). Penanda run selesai `store_settings.cron_last_ok_at`. Latar: insiden 3 Okt 20:25–23:50 WIB, 41 run dibunuh `exceededResources` (batas CPU ~10 ms Free plan). Detail: `docs/ARCHITECTURE.md` §12.
 
 Untuk database D1 yang sudah ada, jalankan migrasi berurutan sekali sebelum deploy setelah memuat `.cf-credentials`: `0002_editorial_agent.sql`, `0003_checkout_integrity.sql`, lalu `0004_categories_newsletter.sql`. Migrasi terakhir menormalkan ikon kategori dan menambahkan tabel pelanggan email.
 
