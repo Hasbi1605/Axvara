@@ -71,7 +71,12 @@ const RESERVE_TAIL = 2;
 // kecil per request di mode `?phase=` sehingga satu putaran penuh selesai
 // dalam satu tick Worker; gerbang ini menentukan seberapa sering putaran baru
 // dimulai = kesegaran katalog maksimum.
-const CATALOG_SYNC_INTERVAL_MS = 15 * 60 * 1000;
+// Ambang 14 menit (bukan 15) agar putaran benar-benar tiap 15 menit: tick
+// Worker datang tepat tiap 5 menit dan `wr_sync_log.created_at` ditulis
+// beberapa detik SETELAH tick dimulai, sehingga pada tick menit ke-15 sync
+// terakhir baru berumur ±14:58 → ambang 15 menit menunda putaran ke tick
+// menit ke-20 (terukur prod 4 Okt: 05:20 → 05:40 WIB).
+const CATALOG_SYNC_INTERVAL_MS = 14 * 60 * 1000;
 // Potongan sweep per request di mode `?phase=` (Workers Free: ~10 ms CPU per
 // request). Insiden 3 Okt 20:25–23:50 WIB: 41 run beruntun dibunuh runtime
 // (`exceededResources` → 503) karena SATU request memikul expiry + fulfillment

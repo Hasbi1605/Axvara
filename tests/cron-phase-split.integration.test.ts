@@ -144,6 +144,17 @@ describe("route ?phase= (satu fase per request)", () => {
     expect(syncProductsMock).toHaveBeenCalledTimes(1);
   });
 
+  it("ambang 14 menit: sweep 14 mnt 58 dtk lalu (tick menit ke-15) TIDAK ditunda ke tick berikut", async () => {
+    vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
+    vi.stubEnv("WARUNG_REBAHAN_API_KEY", "k");
+    fixture.sql.prepare(
+      `INSERT INTO wr_sync_log(sync_type,status,products_synced,trigger,created_at)
+       VALUES('products','success',49,'cron',datetime('now','-898 seconds'))`,
+    ).run();
+    await run("?phase=warung_rebahan&part=sync");
+    expect(syncProductsMock).toHaveBeenCalledTimes(1);
+  });
+
   it("interval sync katalog 15 menit: sweep 10 menit lalu (cursor 0) ditahan", async () => {
     vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
     vi.stubEnv("WARUNG_REBAHAN_API_KEY", "k");
