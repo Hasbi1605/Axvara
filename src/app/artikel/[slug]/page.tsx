@@ -243,7 +243,6 @@ function ArticleBody({ content }: { content: string }) {
       }
       if (token.type === "link") return token.href?.startsWith("https://")
         ? <a key={key} href={token.href} target="_blank" rel="noreferrer" className={ARTICLE_LINK_CLASS}>{children}</a>
-        : <span key={key}>{children}</span>;        ? <a key={key} href={token.href} target="_blank" rel="noreferrer" className={ARTICLE_LINK_CLASS}>{children}</a>
         : <span key={key}>{children}</span>;
       if (token.type === "image") return safeImageSource(token.href)
         ? (
@@ -254,7 +253,6 @@ function ArticleBody({ content }: { content: string }) {
       if (token.type === "heading") return token.depth === 3
         ? <h3 key={key} className="mt-7 text-lg font-bold text-white">{children}</h3>
         : <h2 key={key} className="mt-8 font-display text-xl font-bold text-white">{children}</h2>;
-      if (token.type === "paragraph") return <p key={key} className="my-3 text-[15px] leading-[1.8] text-white/75">{children}</p>;
       if (token.type === "blockquote") return <blockquote key={key} className="my-5 border-l-2 border-[#00E5FF] pl-4 text-white/65">{children}</blockquote>;
       if (token.type === "hr") return <hr key={key} className="my-8 border-white/10" />;
       if (token.type === "code") return <pre key={key} className="my-5 overflow-x-auto rounded-xl bg-black/30 p-4 text-sm text-white/80"><code>{token.text}</code></pre>;

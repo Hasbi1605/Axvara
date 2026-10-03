@@ -8,10 +8,13 @@ export function middleware(req: NextRequest) {
   const devScriptEval = process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : "";
   // F-04 fix: CSRF Origin validation for mutating requests
   // F-11 fix: removed blob: from admin img-src
+  // 2026-10-03: frame-src youtube-nocookie untuk embed tutorial di /artikel
+  // (player dirender server-only via <iframe>, bukan HTML mentah Markdown).
+  const YOUTUBE_FRAME = "frame-src https://www.youtube-nocookie.com;";
   const isAdmin = req.nextUrl.pathname.startsWith("/admin") || req.nextUrl.pathname.startsWith("/api/admin");
   const csp = isAdmin
-    ? `default-src 'self'; script-src 'self' 'unsafe-inline'${devScriptEval}; style-src 'self' 'unsafe-inline'; img-src 'self' https://images.unsplash.com data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`
-    : `default-src 'self'; script-src 'self' 'unsafe-inline'${devScriptEval}; style-src 'self' 'unsafe-inline'; img-src 'self' https://images.unsplash.com https://picsum.photos data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`;
+    ? `default-src 'self'; script-src 'self' 'unsafe-inline'${devScriptEval}; style-src 'self' 'unsafe-inline'; img-src 'self' https://images.unsplash.com data:; font-src 'self' data:; connect-src 'self'; ${YOUTUBE_FRAME} frame-ancestors 'none'; base-uri 'self'; form-action 'self'`
+    : `default-src 'self'; script-src 'self' 'unsafe-inline'${devScriptEval}; style-src 'self' 'unsafe-inline'; img-src 'self' https://images.unsplash.com https://picsum.photos data: blob:; font-src 'self' data:; connect-src 'self'; ${YOUTUBE_FRAME} frame-ancestors 'none'; base-uri 'self'; form-action 'self'`;
 
   res.headers.set("Content-Security-Policy", csp);
   res.headers.set("X-Frame-Options", "DENY");

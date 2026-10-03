@@ -87,6 +87,47 @@ describe("artikel: link bisa diklik, bukan hiasan", () => {
   });
 });
 
+describe("artikel: embed YouTube server-only", () => {
+  const YT_CONTENT = [
+    "## Tonton dulu videonya",
+    "",
+    "Video tutorial login Alight Motion untuk Android dan iOS:",
+    "",
+    "@youtube:8emqddsjPsE",
+    "",
+    "## Langkah 1",
+    "",
+    "Lanjut teks setelah video.",
+  ].join("\n");
+
+  it("tag @youtube:ID valid jadi iframe youtube-nocookie 16:9", async () => {
+    const fx = await renderArticle(YT_CONTENT);
+    try {
+      const frame = document.querySelector("article iframe");
+      expect(frame).not.toBeNull();
+      expect(frame?.getAttribute("src")).toBe("https://www.youtube-nocookie.com/embed/8emqddsjPsE?rel=0");
+      expect(frame?.getAttribute("title")).toBe("Video tutorial YouTube");
+      expect(frame?.getAttribute("loading")).toBe("lazy");
+      // Teks di sekitar embed tetap tampil.
+      expect(document.body.textContent).toContain("Lanjut teks setelah video.");
+      // Tag mentah tidak bocor sebagai teks.
+      expect(document.body.textContent).not.toContain("@youtube:");
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("ID tidak valid = teks polos, bukan iframe", async () => {
+    const fx = await renderArticle("Lihat videonya:\n\n@youtube:xxx\n\nSelesai.");
+    try {
+      expect(document.querySelector("article iframe")).toBeNull();
+      expect(document.body.textContent).toContain("Selesai.");
+    } finally {
+      fx.close();
+    }
+  });
+});
+
 describe("artikel: server component aman untuk edge", () => {
   it("page artikel tidak mengimpor modul client (penyebab 500 prod 2026-10-03)", () => {
     const page = readFileSync("src/app/artikel/[slug]/page.tsx", "utf8");

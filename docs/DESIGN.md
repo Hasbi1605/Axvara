@@ -462,6 +462,16 @@
   langsung di D1 prod (backtick → link markdown + link internal
   Lacak Pesanan). Dikunci `tests/article-autolink.behavior.test.tsx` (4:
   codespan-URL, mailbox+bot, markdown existing, anti-impor-client).
+- **Embed YouTube di artikel (2026-10-03, permintaan owner: tutorial
+  supplier wajib ada player di antara teks).** Baris tersendiri
+  `@youtube:VIDEO_ID` (11 char) di konten Markdown → `YouTubeEmbed` 16:9
+  `youtube-nocookie` lazy (`rel=0`, allow fullscreen, strict-origin).
+  Dirender sebagai JSX server-only — bukan dari string HTML Markdown (yang
+  ditolak `isSafeMarkdown`), jadi konten D1 tidak bisa menyuntik iframe;
+  ID tidak valid = paragraf teks polos. CSP `frame-src
+  https://www.youtube-nocookie.com` dibuka di `middleware.ts` (satu-satunya
+  frame-src baru). Dikunci `tests/article-autolink.behavior.test.tsx` (+2:
+  embed valid + ID invalid).
 - **Pelajaran 2026-10-03 (artikel 500): server component DILARANG impor modul
   client.** `artikel/[slug]` mengimpor `linkifySegments` dari
   `ProductCopy.tsx` (`"use client"` + `lucide-react`) → `next build` hijau
