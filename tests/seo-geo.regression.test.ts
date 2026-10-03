@@ -86,6 +86,18 @@ describe("JSON-LD beranda", () => {
     expect(items.map((item) => item.name)).toEqual(["Ready", "Habis"]);
     expect(items[0].url).toBe("https://axvara.tech/produk/ready");
   });
+
+  it("Organization sameAs memuat 4 sosmed AXVARA + Telegram", async () => {
+    const { SITE } = await import("@/lib/site");
+    const graph = homeJsonLd([])["@graph"] as Record<string, unknown>[];
+    expect(graph[0].sameAs).toEqual([
+      SITE.social.instagram,
+      SITE.social.threads,
+      SITE.social.tiktok,
+      SITE.social.facebook,
+      `https://t.me/${SITE.adminTelegram}`,
+    ]);
+  });
 });
 
 describe("dengan D1", () => {

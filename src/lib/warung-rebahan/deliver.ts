@@ -19,7 +19,7 @@
 import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 import { decryptSecret, encryptSecret } from "@/lib/fulfillment/crypto";
 import { isEnabled } from "@/lib/feature-flags";
-
+import { rewriteSupplierDocsLinks } from "@/lib/product-copy/format";
 export type WrOrderLinkRow = {
   id: number;
   order_code: string;
@@ -252,6 +252,12 @@ function splitDetailLine(line: string): [string, string] | null {
 export function normalizeAccountDetailsForDisplay(raw: unknown): string {
   const cleaned = decodeCredentialEnvelope(raw);
   if (cleaned == null) return "";
+  // Shortlink go/* retroaktif (2026-10-03): kredensial yang TERSIMPAN sebelum
+  // shortlink ada (order lama, ciphertext berisi link supplier panjang)
+  // dibungkus SAAT TAMPIL — tanpa migrasi data, tanpa re-enkripsi. Berlaku di
+  // SEMUA kanal WR yang lewat sini: panel /pesanan + /lacak-pesanan, WA,
+  // email, Telegram. SK tidak perlu (formatSkLicenses sudah rewrite di hulu).
+  // (format.ts hanya impor ./text yang murni — tidak ada import cycle.)
   if (typeof cleaned === "string") {
     const lines = cleaned
       .replace(/\r\n?/g, "\n")
@@ -264,10 +270,11 @@ export function normalizeAccountDetailsForDisplay(raw: unknown): string {
         return `${labelDetailKey(kv[0])}: ${kv[1]}`;
       });
     // Label ganda ("Email: Email: x") = nilai sudah berlabel dari hulu.
-    return lines
+    const text = lines
       .map((l) => l.replace(/^([A-Za-z ]+):\s*\1\s*:\s*/u, "$1: "))
       .join("\n")
       .slice(0, 2000);
+    return rewriteSupplierDocsLinks(text) ?? text;
   }
   return formatWrAccountDetails(cleaned);
 }

@@ -22,7 +22,13 @@ export function organizationJsonLd(): Record<string, unknown> {
     url: SITE_BASE,
     logo: absoluteUrl("/brand/axvara-email-mark.png"),
     description: "Toko digital independen (third-party) untuk akun premium, AI gateway, dan tools pro. Bayar QRIS terverifikasi otomatis.",
-    sameAs: [`https://t.me/${SITE.adminTelegram}`],
+    sameAs: [
+      SITE.social.instagram,
+      SITE.social.threads,
+      SITE.social.tiktok,
+      SITE.social.facebook,
+      `https://t.me/${SITE.adminTelegram}`,
+    ],
     contactPoint: {
       "@type": "ContactPoint",
       contactType: "customer service",

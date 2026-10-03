@@ -8,6 +8,12 @@ export const SITE = {
   supportTelegram: "axvara_support",
   webUrl: "https://axvara.tech",
   supportHours: "09.00–23.00 WIB",
+  social: {
+    instagram: "https://www.instagram.com/axvara.tech/",
+    threads: "https://www.threads.com/@axvara.tech",
+    tiktok: "https://www.tiktok.com/@axvara.tech",
+    facebook: "https://www.facebook.com/Axvara.tech/",
+  },
 } as const;
 
 export type StoreSettings = {

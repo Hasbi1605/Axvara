@@ -765,6 +765,18 @@ dimatikan.
 - **Logo QRIS resmi:** `public/brand/qris.svg` (mono putih, sumber resmi BI via Wikimedia Commons; JANGAN ketik ulang dengan font / comot JPG)
 - **Logo:** Wordmark "AXVARA" Space Grotesk Bold, X stylized sebagai vault gate (gap di tengah X dengan glow cyan). Versi light di dark bg. SVG.
 - **Ikon:** Lucide React (outline, 20px, stroke 1.75)
+- **Tombol ikon sosmed footer (2026-10-03, permintaan owner):** 4 tombol
+  ikon-only TANPA label teks — Instagram, Threads, TikTok, Facebook —
+  di kolom brand footer (di bawah pill Bergaransi/Aktivasi/Support WA).
+  Path SVG dari Simple Icons versi terbaru (`fill="currentColor"`,
+  viewBox 24×24 seragam, satu tone `text-white/60` + hover cyan —
+  TANPA warna brand asli): Instagram + TikTok + Facebook glyph terkini,
+  Threads = mark redesain Meta 2026 (PR simple-icons #14879, sumber
+  `meta.com/brand/resources/instagram/threads`). Tombol `h-10 w-10`
+  (tap target ≥44px) `rounded-full` glass, `aria-label` + `title`,
+  `_blank noreferrer` ke URL `SITE.social`. `sameAs` JSON-LD ikut
+  memuat 4 sosmed + Telegram. Dikunci
+  `tests/footer-social.behavior.test.tsx`.
 - **Foto produk (standar 2026-09-15, revisi compose):** Muse Image `compose`
   dengan 2 referensi asli pemilik (`canva.webp` + `gsuite.webp`, 1600×900)
   sebagai kunci gaya — BUKAN prompt-only. Hasil: tight close-up tile huge

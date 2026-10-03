@@ -361,4 +361,31 @@ describe("Warung Rebahan webhook completion", () => {
     expect(normalizeAccountDetailsForDisplay("Email: Email: a@b.c")).toBe("Email: a@b.c");
     expect(normalizeAccountDetailsForDisplay(null)).toBe("");
   });
+
+  it("order LAMA tampil shortlink go/* retroaktif tanpa migrasi data (screenshot owner AXV-20261003-BD58F7ED)", async () => {
+    // Order 3 Okt 2026 15.19 menyimpan ciphertext berisi link supplier
+    // PANJANG (era pra-shortlink). Panel menampilkan mentah — kini
+    // normalizeAccountDetailsForDisplay membungkus SAAT TAMPIL.
+    const { normalizeAccountDetailsForDisplay } = await import("@/lib/warung-rebahan/deliver");
+    const storedLama = [
+      "Netflix — 1 Profile 2 User:",
+      "Email: krutehkhan@gmail.com | PASSWORD : Nengflix222@@ | PROFILE : UCIHA |",
+      "CARA LOGIN = https://sekalipay.com/docs/tutorial-login-netflix",
+      "AKSES BOT / KODE = https://netflix-codes.sekalipay.com/mailbox",
+      "- https://www.netflix.com/clearcookies",
+      "- lalu https://www.netflix.com/youraccount",
+    ].join("\n");
+    const out = normalizeAccountDetailsForDisplay(storedLama);
+    // Link supplier → go/* (tanpa ubah ciphertext tersimpan).
+    expect(out).toContain("axvara.tech/go/netflix-login");
+    expect(out).toContain("axvara.tech/go/otp");
+    expect(out).not.toContain("sekalipay.com/docs/");
+    expect(out).not.toContain("netflix-codes.sekalipay.com/mailbox");
+    // Yang dikecualikan owner tetap mentah.
+    expect(out).toContain("https://www.netflix.com/clearcookies");
+    expect(out).toContain("https://www.netflix.com/youraccount");
+    // Kredensial utuh tidak rusak.
+    expect(out).toContain("krutehkhan@gmail.com");
+    expect(out).toContain("Nengflix222@@");
+  });
 });
