@@ -26,10 +26,23 @@ export function RichText({ text }: { text: string }) {
   if (segments.length === 1 && segments[0].href === null) return <>{text}</>;
   return (
     <>
-      {segments.map((segment, i) =>
-        segment.href === null ? (
-          <span key={i}>{segment.text}</span>
-        ) : (
+      {segments.map((segment, i) => {
+        if (segment.href === null) return <span key={i}>{segment.text}</span>;
+        // Link internal (/artikel/..., /produk/...) = navigasi dalam toko:
+        // tanpa _blank, tanpa tab baru (laporan owner 2026-10-03: panduan
+        // Netflix tampil teks polos, tidak bisa diklik).
+        if (segment.href.startsWith("/")) {
+          return (
+            <a
+              key={i}
+              href={segment.href}
+              className="text-[#00E5FF] underline decoration-[#00E5FF]/40 underline-offset-2 hover:text-white"
+            >
+              {segment.text}
+            </a>
+          );
+        }
+        return (
           <a
             key={i}
             href={segment.href}
@@ -39,8 +52,8 @@ export function RichText({ text }: { text: string }) {
           >
             {segment.text}
           </a>
-        ),
-      )}
+        );
+      })}
     </>
   );
 }

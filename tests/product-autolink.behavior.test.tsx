@@ -59,6 +59,32 @@ describe("linkifySegments — pecah teks jadi polos + link", () => {
   it("skema berbahaya tidak jadi link (javascript:/data: ditolak)", () => {
     expect(linkifySegments("Klik javascript:alert(1) dong")).toEqual([{ text: "Klik javascript:alert(1) dong", href: null }]);
   });
+
+  it("path internal /artikel jadi link relatif (kasus screenshot PDP Netflix)", () => {
+    const segments = linkifySegments("Panduan login lengkap: /artikel/cara-login-netflix-setelah-order-di-axvara");
+    expect(segments).toEqual([
+      { text: "Panduan login lengkap: ", href: null },
+      {
+        text: "/artikel/cara-login-netflix-setelah-order-di-axvara",
+        href: "/artikel/cara-login-netflix-setelah-order-di-axvara",
+      },
+    ]);
+  });
+
+  it("URL axvara.tech/full jadi path internal (navigasi dalam toko)", () => {
+    const segments = linkifySegments("Buka https://axvara.tech/artikel/cara-login-netflix-setelah-order-di-axvara ya");
+    expect(segments[1]).toEqual({
+      text: "https://axvara.tech/artikel/cara-login-netflix-setelah-order-di-axvara",
+      href: "/artikel/cara-login-netflix-setelah-order-di-axvara",
+    });
+    const bare = linkifySegments("Buka axvara.tech/lacak-pesanan ya");
+    expect(bare[1]?.href).toBe("/lacak-pesanan");
+  });
+
+  it("slash biasa bukan link (tidak ada link palsu)", () => {
+    expect(linkifySegments("Login 1/2 perangkat ya")).toEqual([{ text: "Login 1/2 perangkat ya", href: null }]);
+    expect(linkifySegments("Pilih 1 / 2 / 3")).toEqual([{ text: "Pilih 1 / 2 / 3", href: null }]);
+  });
 });
 
 describe("RichText + 3 badan PDP — link bisa diklik", () => {
@@ -83,6 +109,10 @@ describe("RichText + 3 badan PDP — link bisa diklik", () => {
     expect(mailbox.getAttribute("rel")).toBe("noreferrer");
     const tutorial = screen.getByRole("link", { name: "https://www.youtube.com/watch?v=fBOfOmj9Uj8" });
     expect(tutorial.getAttribute("href")).toBe("https://www.youtube.com/watch?v=fBOfOmj9Uj8");
+    // Panduan internal = navigasi dalam toko: TANPA _blank (tanpa tab baru).
+    const guide = screen.getByRole("link", { name: "/artikel/cara-login-netflix-setelah-order-di-axvara" });
+    expect(guide.getAttribute("href")).toBe("/artikel/cara-login-netflix-setelah-order-di-axvara");
+    expect(guide.getAttribute("target")).toBeNull();
   });
 
   it("item S&K berisi bot + URL resmi bisa diklik", () => {

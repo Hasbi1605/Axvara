@@ -429,15 +429,20 @@
   - PDP varian campuran sebelum dipilih: badge netral `border-white/15
   bg-white/[0.06]` "Tergantung varian", bukan hijau "Kirim otomatis".
 - **Link bisa diklik di deskripsi/S&K/cara aktivasi (2026-10-03, permintaan
-  owner).** Semua URL (`https://…`), bare domain (`netflix-codes…/mailbox`,
-  `www.netflix.com/clearcookies`, `oliesmail.com`), dan handle bot Telegram
-  (`@…_bot`) di ketiga badan teks dirender sebagai `<a target="_blank"
-  rel="noreferrer">` cyan-underline — pembeli tidak perlu copy-paste manual.
-  Helper murni `linkifySegments()` di `ProductCopy.tsx` (tanpa
+  owner; revisi internal-link hari yang sama, laporan owner + screenshot PDP
+  Netflix).** Semua URL (`https://…`), bare domain (`netflix-codes…/mailbox`,
+  `www.netflix.com/clearcookies`, `oliesmail.com`), handle bot Telegram
+  (`@…_bot`), DAN path internal (`/artikel/…`, `/produk/…`, `/lacak-pesanan`,
+  …) di ketiga badan teks dirender sebagai `<a>` cyan-underline — pembeli
+  tidak perlu copy-paste manual. Eksternal pakai `target="_blank"
+  rel="noreferrer"`; internal navigasi dalam toko (tanpa `_blank`, tanpa tab
+  baru). URL/bare `axvara.tech/…` dinormalisasi jadi path internal.
+  Helper murni `linkifySegments()` di `lib/product-copy/text.ts` (tanpa
   `dangerouslySetInnerHTML`, jadi teks supplier tidak bisa menyuntik HTML);
   email kredensial (`user@mail.com`) SENGAJA bukan link; skema
   `javascript:`/`data:` ditolak. Dikunci
-  `tests/product-autolink.behavior.test.tsx` (10).
+  `tests/product-autolink.behavior.test.tsx` (13 + render internal tanpa
+  `_blank`).
 - **Bottom nav mobile: Kategori gantikan Keranjang (2026-10-03, keputusan
   owner).** Tab Keranjang redundan (drawer yang sama dibuka dari tombol
   Keranjang navbar yang selalu sticky + tiap kartu produk; nav bawah justru

@@ -129,15 +129,33 @@ export function supplierFingerprint(terms: string | null | undefined, deliveryTe
 export type RichSegment = { text: string; href: null } | { text: string; href: string };
 
 const URL_RE = /https?:\/\/[^\s<>"')\]]+/gi;
+// Path internal AXVARA (/artikel/slug, /produk/slug, /lacak-pesanan, ...):
+// ditulis kurasi sebagai "/artikel/..." tanpa domain — WAJIB ikut bisa diklik
+// (laporan owner 2026-10-03 + screenshot PDP Netflix: tampil teks polos).
+// Daftar putih route internal agar "/" biasa atau potongan kalimat tidak jadi
+// link palsu. Query/hash diizinkan (?category=, #katalog).
+const INTERNAL_RE = /\/(?:artikel|produk|lacak-pesanan|cara-order|garansi-replace|link|checkout|pesanan)(?:\/[^\s<>"')\]]*)?/gi;
 // Bare domain tanpa skema (netflix-codes.sekalipay.com/mailbox,
-// www.netflix.com/clearcookies, oliesmail.com) + handle bot Telegram
-// (@sekalipayviu_bot). Email (user@mail.com) SENGAJA bukan link — itu kredensial.
-const BARE_RE = /(?:www\.[a-z0-9-]+(?:\.[a-z0-9-]+)+[^\s<>"')\]]*|[a-z0-9-]+(?:\.[a-z0-9-]+)+\.[a-z]{2,}(?:\/[^\s<>"')\]]*)?|@[a-z0-9_]{4,}_?bot)\b/gi;
+// www.netflix.com/clearcookies, oliesmail.com, axvara.tech/...) + handle bot
+// Telegram (@sekalipayviu_bot). Email (user@mail.com) SENGAJA bukan link —
+// itu kredensial. Pola domain: label(.label)*.TLD agar domain 2-label
+// (axvara.tech, oliesmail.com) ikut kena, bukan cuma 3-label.
+const BARE_RE = /(?:www\.[a-z0-9-]+(?:\.[a-z0-9-]+)+[^\s<>"')\]]*|(?<![a-z0-9_@])(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/[^\s<>"')\]]*)?|@[a-z0-9_]{4,}_?bot)\b/gi;
 
 function normalizeHref(raw: string): string | null {
   let text = raw.trim().replace(/[.,;:!?)\]]+$/, "");
   if (!text) return null;
   if (text.startsWith("@")) return `https://t.me/${text.slice(1)}`;
+  // URL axvara.tech/full (tulis tangan kurasi/admin/email) → path internal
+  // agar dibuka sebagai navigasi dalam toko, bukan tab eksternal. Host lain
+  // (youtu.be, sekalipay, ...) tetap URL eksternal penuh.
+  const axv = /^https?:\/\/(?:www\.)?axvara\.tech(\/[a-z0-9\-_./?#&=%]*)$/i.exec(text);
+  if (axv) return axv[1] || "/";
+  // Path internal ("/artikel/slug") langsung href relatif — tanpa domain,
+  // tanpa target _blank. Validasi bentuk: hanya huruf/angka/-/_/./?#&=%.
+  if (text.startsWith("/")) {
+    return /^\/[a-z0-9\-_./?#&=%]*$/i.test(text) ? text : null;
+  }
   if (!/^https?:\/\//i.test(text)) text = `https://${text}`;
   let parsed: URL;
   try {
@@ -147,6 +165,13 @@ function normalizeHref(raw: string): string | null {
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
   if (!parsed.hostname.includes(".")) return null;
+  // Host milik sendiri (bare "axvara.tech/lacak-pesanan" hasil rewrite docs
+  // maupun full URL) → path internal (navigasi dalam toko, tanpa _blank).
+  if (/^(?:www\.)?axvara\.tech$/i.test(parsed.hostname)) {
+    const path = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    if (/^[a-z0-9\-_./?#&=%]*$/i.test(path)) return path === "" ? "/" : path;
+    return null;
+  }
   return parsed.toString();
 }
 
@@ -165,37 +190,46 @@ export function linkifySegments(text: string): RichSegment[] {
   while (rest) {
     URL_RE.lastIndex = 0;
     BARE_RE.lastIndex = 0;
+    INTERNAL_RE.lastIndex = 0;
     const urlMatch = URL_RE.exec(rest);
     const bareMatch = BARE_RE.exec(rest);
-    // Bare-domain tidak boleh makan ekor URL berskema ("https://youtu.be/x"
-    // mengandung "youtu.be/x" sebagai kandidat bare — pilih yang berskema).
-    let match: RegExpExecArray | null = null;
-    let isUrl = false;
-    if (urlMatch && bareMatch) {
-      if (bareMatch.index >= urlMatch.index && bareMatch.index < urlMatch.index + urlMatch[0].length) {
-        match = urlMatch;
-        isUrl = true;
-      } else if (urlMatch.index <= bareMatch.index) {
-        match = urlMatch;
-        isUrl = true;
-      } else {
-        match = bareMatch;
+    const internalMatch = INTERNAL_RE.exec(rest);
+    // Bare-domain / path internal tidak boleh makan ekor URL berskema
+    // ("https://youtu.be/x" mengandung "youtu.be/x" sebagai kandidat bare dan
+    // "/x" BUKAN kandidat internal karena whitelist route — tapi
+    // "https://axvara.tech/artikel/x" mengandung "/artikel/x": pilih yang
+    // berskema, normalisasi nanti yang mengubahnya jadi path internal).
+    type Cand = { m: RegExpExecArray; kind: "url" | "bare" | "internal" };
+    const cands: Cand[] = [];
+    if (urlMatch) cands.push({ m: urlMatch, kind: "url" });
+    if (bareMatch) cands.push({ m: bareMatch, kind: "bare" });
+    if (internalMatch) cands.push({ m: internalMatch, kind: "internal" });
+    if (urlMatch) {
+      const us = urlMatch.index;
+      const ue = us + urlMatch[0].length;
+      for (let i = cands.length - 1; i >= 0; i--) {
+        const c = cands[i];
+        if (c.kind !== "url" && c.m.index >= us && c.m.index < ue) cands.splice(i, 1);
       }
-    } else if (urlMatch) {
-      match = urlMatch;
-      isUrl = true;
-    } else if (bareMatch) {
-      match = bareMatch;
     }
+    // Pemenang = indeks paling awal; seri = url > internal > bare.
+    const rank = { url: 0, internal: 1, bare: 2 } as const;
+    cands.sort((a, b) => a.m.index - b.m.index || rank[a.kind] - rank[b.kind]);
+    const winner = cands[0] ?? null;
+    const match: RegExpExecArray | null = winner?.m ?? null;
+    const isUrl = winner?.kind === "url";
     if (!match) {
       pushText(rest);
       break;
     }
     // Kandidat bare yang menempel di tengah kata/email (user@mail.com,
-    // "masukkanemail") bukan link.
+    // "masukkanemail") bukan link. Cek mundur melewati huruf/angka/-/.
+    // ("mail.com" lolos lookbehind satu karakter karena didahului "@" —
+    // di sini ditolak karena ada pola user@ di depannya.)
     if (!isUrl) {
-      const before = rest[match.index - 1];
-      if (before && /[a-z0-9_@]/i.test(before)) {
+      const before = rest.slice(0, match.index);
+      const tail = /[a-z0-9_@-]*$/i.exec(before)?.[0] ?? "";
+      if (/[a-z0-9_@]/i.test(rest[match.index - 1] ?? "") || /@/.test(tail)) {
         pushText(rest.slice(0, match.index + match[0].length));
         rest = rest.slice(match.index + match[0].length);
         continue;

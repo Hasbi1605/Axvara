@@ -92,6 +92,40 @@ function safeImageSource(source?: string) {
 const ARTICLE_LINK_CLASS = "text-[#00E5FF] underline decoration-[#00E5FF]/40 underline-offset-2 hover:text-white";
 
 /**
+ * Embed video YouTube server-only tanpa iframe mentah di Markdown
+ * (2026-10-03, permintaan owner: tutorial supplier wajib ada player di
+ * antara teks, bukan cuma link).
+ *
+ * Sintaks di konten: baris tersendiri berisi `@youtube:VIDEO_ID`
+ * (11 char alnum/`-`/`_`, mis. `@youtube:8emqddsjPsE`). Render = facade
+ * ringan: thumbnail hqdefault + tombol play, klik baru memuat iframe
+ * youtube-nocookie (hemat LCP, hemat kuota). iframe dirender sebagai JSX —
+ * bukan dari string Markdown — jadi tidak ada HTML mentah dari konten yang
+ * lolos; ID divalidasi ketat, URL embed di-hardcode.
+ */
+const YOUTUBE_ID_RE = /^[A-Za-z0-9_-]{11}$/;
+const YOUTUBE_TAG_RE = /^@youtube:([A-Za-z0-9_-]{11})$/;
+
+function YouTubeEmbed({ videoId, title }: { videoId: string; title: string }) {
+  const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}?rel=0`;
+  return (
+    <div className="my-6 overflow-hidden rounded-xl border border-white/10 bg-black/40">
+      <div className="relative aspect-video w-full">
+        <iframe
+          src={embedUrl}
+          title={title}
+          className="absolute inset-0 h-full w-full"
+          loading="lazy"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowFullScreen
+          referrerPolicy="strict-origin-when-cross-origin"
+        />
+      </div>
+    </div>
+  );
+}
+
+/**
  * Teks artikel dengan link yang bisa diklik (2026-10-03, permintaan owner):
  * URL/bare-domain/handle bot di teks polos jadi <a> — tanpa
  * dangerouslySetInnerHTML. Dipakai ulang linkifySegments milik PDP agar
@@ -102,15 +136,19 @@ function ArticleRichText({ text }: { text: string }) {
   if (segments.length === 1 && segments[0].href === null) return <>{text}</>;
   return (
     <>
-      {segments.map((segment, i) =>
-        segment.href === null ? (
-          <span key={i}>{segment.text}</span>
-        ) : (
+      {segments.map((segment, i) => {
+        if (segment.href === null) return <span key={i}>{segment.text}</span>;
+        // Path internal (/artikel/..., /lacak-pesanan, ...) = navigasi dalam
+        // toko: tanpa _blank. Eksternal tetap tab baru.
+        if (segment.href.startsWith("/")) {
+          return <a key={i} href={segment.href} className={ARTICLE_LINK_CLASS}>{segment.text}</a>;
+        }
+        return (
           <a key={i} href={segment.href} target="_blank" rel="noreferrer" className={ARTICLE_LINK_CLASS}>
             {segment.text}
           </a>
-        ),
-      )}
+        );
+      })}
     </>
   );
 }
@@ -191,8 +229,21 @@ function ArticleBody({ content }: { content: string }) {
         return <code key={key} className="rounded bg-white/10 px-1.5 py-0.5 text-[13px] text-[#00E5FF]">{token.text}</code>;
       }
       if (token.type === "br") return <br key={key} />;
+      // Tag embed YouTube: baris tersendiri `@youtube:VIDEO_ID` dalam konten
+      // Markdown → player 16:9 di antara teks. ID tidak valid = teks polos
+      // (fail-closed, bukan iframe rusak). Berlaku untuk paragraf polos hasil
+      // lexer (marked memecah `@youtube:x` jadi teks biasa di dalam paragraph).
+      if (token.type === "paragraph") {
+        const raw = String(token.text ?? "").trim();
+        const tag = YOUTUBE_TAG_RE.exec(raw);
+        if (tag && YOUTUBE_ID_RE.test(tag[1])) {
+          return <YouTubeEmbed key={key} videoId={tag[1]} title="Video tutorial YouTube" />;
+        }
+        return <p key={key} className="my-3 text-[15px] leading-[1.8] text-white/75">{children}</p>;
+      }
       if (token.type === "link") return token.href?.startsWith("https://")
         ? <a key={key} href={token.href} target="_blank" rel="noreferrer" className={ARTICLE_LINK_CLASS}>{children}</a>
+        : <span key={key}>{children}</span>;        ? <a key={key} href={token.href} target="_blank" rel="noreferrer" className={ARTICLE_LINK_CLASS}>{children}</a>
         : <span key={key}>{children}</span>;
       if (token.type === "image") return safeImageSource(token.href)
         ? (
