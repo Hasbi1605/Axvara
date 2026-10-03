@@ -128,6 +128,38 @@ describe("artikel: embed YouTube server-only", () => {
   });
 });
 
+describe("kredensial pasca-bayar: link bisa diklik (CredentialText)", () => {
+  // Laporan owner 2026-10-03 + screenshot /pesanan: blok DETAIL AKUN DIGITAL
+  // menampilkan URL mentah (panduan artikel, mailbox, clearcookies) sebagai
+  // teks mono yang tidak bisa diklik.
+  const CRED_SAMPLE = [
+    "Netflix — 1 Profile 2 User",
+    "Email: krutehkhan@gmail.com | PASSWORD : Nengflix222@@ | PROFILE : UCIHA |",
+    "CARA LOGIN = https://axvara.tech/artikel/cara-login-netflix-setelah-order-di-axvara",
+    "AKSES BOT / KODE = https://netflix-codes.sekalipay.com/mailbox",
+    "- https://www.netflix.com/clearcookies",
+    "- lalu https://www.netflix.com/youraccount",
+  ].join("\n");
+
+  it("URL/bare-domain/path internal jadi <a>, email kredensial tetap teks", async () => {
+    const { CredentialText } = await import("@/components/storefront/ProductCopy");
+    const { default: React } = await import("react");
+    render(React.createElement(CredentialText, { text: CRED_SAMPLE }));
+    // Path internal axvara.tech → href relatif tanpa _blank.
+    const guide = screen.getByRole("link", { name: "https://axvara.tech/artikel/cara-login-netflix-setelah-order-di-axvara" });
+    expect(guide.getAttribute("href")).toBe("/artikel/cara-login-netflix-setelah-order-di-axvara");
+    expect(guide.getAttribute("target")).toBeNull();
+    // Mailbox + clearcookies → tab baru.
+    const mailbox = screen.getByRole("link", { name: "https://netflix-codes.sekalipay.com/mailbox" });
+    expect(mailbox.getAttribute("href")).toBe("https://netflix-codes.sekalipay.com/mailbox");
+    expect(mailbox.getAttribute("target")).toBe("_blank");
+    expect(screen.getByRole("link", { name: "https://www.netflix.com/clearcookies" })).not.toBeNull();
+    // Email kredensial BUKAN link (tidak boleh ada mailto).
+    expect(document.querySelector('a[href^="mailto:"]')).toBeNull();
+    expect(document.body.textContent).toContain("krutehkhan@gmail.com");
+  });
+});
+
 describe("artikel: server component aman untuk edge", () => {
   it("page artikel tidak mengimpor modul client (penyebab 500 prod 2026-10-03)", () => {
     const page = readFileSync("src/app/artikel/[slug]/page.tsx", "utf8");

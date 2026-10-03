@@ -47,7 +47,7 @@ describe("panel Detail Akun Digital", () => {
     sessionStorage.setItem(checkoutContactKey(CODE), "081234567890");
     const calls = stubCredentials();
     render(<WrCredentialsPanel code={CODE} />);
-    await waitFor(() => expect(screen.getByText("Link undangan: https://canva.com/join/ABC")).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("link", { name: "https://canva.com/join/ABC" })).toBeTruthy());
     expect(calls[0]).toEqual({ url: `/api/orders/${CODE}/credentials`, body: { contact: "081234567890" } });
     expect(sessionStorage.getItem(checkoutContactKey(CODE))).toBe("081234567890");
     expect(sessionStorage.getItem(`wr-cred-token:${CODE}`)).toBe("a".repeat(64));
@@ -64,7 +64,7 @@ describe("panel Detail Akun Digital", () => {
     cleanup();
     const calls = stubCredentials(true, null);
     render(<WrCredentialsPanel code={CODE} />);
-    await waitFor(() => expect(screen.getByText("Link undangan: https://canva.com/join/ABC")).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("link", { name: "https://canva.com/join/ABC" })).toBeTruthy());
     expect(calls).toEqual([{ url: `/api/orders/${CODE}/credentials`, body: { contact: "081234567890" } }]);
     expect(sessionStorage.getItem(checkoutContactKey(CODE))).toBe("081234567890");
   });
@@ -74,7 +74,7 @@ describe("panel Detail Akun Digital", () => {
     sessionStorage.setItem(checkoutContactKey(CODE), "081234567890");
     const calls = stubTokenThenContact(403);
     render(<WrCredentialsPanel code={CODE} />);
-    await waitFor(() => expect(screen.getByText("Link undangan: https://canva.com/join/ABC")).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("link", { name: "https://canva.com/join/ABC" })).toBeTruthy());
     expect(calls).toEqual([`GET /api/orders/${CODE}/credentials?token=${"b".repeat(64)}`, `POST /api/orders/${CODE}/credentials`]);
     expect(sessionStorage.getItem(`wr-cred-token:${CODE}`)).toBeNull();
   });
@@ -84,7 +84,7 @@ describe("panel Detail Akun Digital", () => {
     sessionStorage.setItem(checkoutContactKey(CODE), "081234567890");
     const calls = stubTokenThenContact(429);
     render(<WrCredentialsPanel code={CODE} />);
-    await waitFor(() => expect(screen.getByText("Link undangan: https://canva.com/join/ABC")).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("link", { name: "https://canva.com/join/ABC" })).toBeTruthy());
     expect(calls).toHaveLength(2);
     expect(sessionStorage.getItem(`wr-cred-token:${CODE}`)).toBe("b".repeat(64));
   });

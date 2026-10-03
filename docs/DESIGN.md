@@ -410,6 +410,16 @@
   `key:: value`, memberi label Indonesia (Akses OTP, Tautan), dan membuang
   label ganda — tidak pernah JSON mentah (bukti prod: link 95FC8669 tampil
   `{"product":...,"details":"email:...\r\npassword:..."}` sebelum ini).
+- **Link di hasil Detail Akun Digital bisa diklik (2026-10-03, laporan
+  owner + screenshot /pesanan).** Isi kredensial (`CredentialText` di
+  `ProductCopy.tsx`, dipakai `WrCredentialsPanel`) memakai `linkifySegments`
+  yang sama dengan PDP/artikel: URL, bare domain, handle bot, dan path
+  internal jadi `<a>` cyan-underline + `break-all` (gaya mono dipertahankan);
+  internal tanpa `_blank`, eksternal `_blank noreferrer`. Email kredensial
+  (`user@mail.com`) SENGAJA tetap teks — bukan link. Berlaku di /pesanan +
+  /lacak-pesanan (panel yang sama). Dikunci
+  `tests/article-autolink.behavior.test.tsx` (+1: panduan internal tanpa
+  `_blank`, mailbox + clearcookies `_blank`, tanpa `mailto:`).
 
 ### 5.x Email pembeli bermerek (2026-09-25)
 - SEMUA email ke pembeli memakai satu shell (`email-forward.ts`): body terang

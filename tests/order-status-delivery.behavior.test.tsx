@@ -185,9 +185,9 @@ describe("/pesanan/[code] — kirim otomatis dari stok sendiri", () => {
     // Produk selesai terkirim sesaat setelah halaman melihat "lunas".
     state.order = { ...state.order, credentials_ready: true, fulfillment_status: "delivered" };
     await advance(1_000);
-    expect(screen.queryByText(CREDENTIAL)).toBeNull();
+    expect(screen.queryByRole("link", { name: "https://canva.com/join/ABC" })).toBeNull();
     await advance(1_200);
-    expect(screen.getByText(CREDENTIAL)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "https://canva.com/join/ABC" })).toBeTruthy();
     expect(gets).toHaveLength(2);
   });
 

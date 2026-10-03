@@ -58,6 +58,43 @@ export function RichText({ text }: { text: string }) {
   );
 }
 
+const CRED_LINK_CLASS = "text-[#00E5FF] underline decoration-[#00E5FF]/40 underline-offset-2 hover:text-white break-all";
+
+/**
+ * Teks kredensial pasca-bayar dengan link yang bisa diklik (2026-10-03,
+ * laporan owner + screenshot /pesanan: blok DETAIL AKUN DIGITAL menampilkan
+ * URL mentah — panduan artikel, mailbox, clearcookies — sebagai teks mono
+ * yang tidak bisa diklik).
+ *
+ * Memakai linkifySegments yang sama dengan PDP/artikel: URL/bare-domain/
+ * handle bot/path internal jadi <a>; email kredensial (user@mail.com)
+ * SENGAJA tetap teks (bukan link); javascript:/data: ditolak. Gaya mono +
+ * break-all dipertahankan agar cocok dengan panel kredensial.
+ */
+export function CredentialText({ text }: { text: string }) {
+  const segments = linkifySegments(text);
+  if (segments.length === 1 && segments[0].href === null) return <>{text}</>;
+  return (
+    <>
+      {segments.map((segment, i) => {
+        if (segment.href === null) return <span key={i}>{segment.text}</span>;
+        if (segment.href.startsWith("/")) {
+          return (
+            <a key={i} href={segment.href} className={CRED_LINK_CLASS}>
+              {segment.text}
+            </a>
+          );
+        }
+        return (
+          <a key={i} href={segment.href} target="_blank" rel="noreferrer" className={CRED_LINK_CLASS}>
+            {segment.text}
+          </a>
+        );
+      })}
+    </>
+  );
+}
+
 const DOT: Record<CopySectionKind, string> = {
   paket: "bg-[#00E5FF]",
   proses: "bg-[#00E5FF]/60",
