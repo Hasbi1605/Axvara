@@ -13,6 +13,7 @@
 import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 import {
   fetchProducts,
+  fetchProductsSlice,
   isWrSyncEnabled,
   type WrProduct,
   type WrVariant,
@@ -1002,6 +1003,13 @@ export type SyncOptions = {
    * run berikutnya.
    */
   timeBudgetMs?: number;
+  /**
+   * Ambil HANYA potongan yang dikerjakan run ini dari proxy VPS
+   * (`/wr/products-slice`, 2026-10-04) — bukan seluruh katalog. Dipakai cron
+   * berpotongan (Workers Free ~10 ms CPU). Proxy lama / mode langsung →
+   * otomatis kembali ke `fetchFn()` penuh. Diabaikan bila `fetchFn` kustom.
+   */
+  useProxySlices?: boolean;
 };
 
 export async function syncProducts(
@@ -1045,8 +1053,16 @@ export async function syncProducts(
   (db as unknown as { raiseCeilingForCatalogSync?: (n: number) => void })
     .raiseCeilingForCatalogSync?.(WR_SYNC_CATALOG_BUDGET_EXTRA);
   let products: WrProduct[];
+  // Mode potongan proxy: `ordered` dibangun dari potongan (posisi lain kosong)
+  // + total/id generasi dari meta; `sliceAllIds` = seluruh id varian upstream
+  // (hanya potongan terakhir) untuk zero-missing lintas potongan.
+  let slice: Awaited<ReturnType<typeof fetchProductsSlice>> = null;
   try {
-    products = await fetchFn();
+    if (options.useProxySlices && fetchFn === fetchProducts) {
+      slice = await fetchProductsSlice(state.cursor, maxProducts);
+    }
+    products = slice ? new Array<WrProduct>(slice.total) : await fetchFn();
+    if (slice) slice.products.forEach((p, k) => { products[slice!.offset + k] = p; });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     result.errors.push(message.slice(0, 300));
@@ -1066,15 +1082,18 @@ export async function syncProducts(
   // Generasi berubah (jumlah produk upstream berubah drastis) → catat, tapi
   // tetap proses (bukan tolak): penambahan/penghapusan massal yang sah
   // tetap harus tersync; yang dilarang hanya ZERO buta (di bawah).
-  const generation = `${products.length}:${products[0] ? String((products[0] as WrProduct).id || "").slice(0, 8) : ""}`;
+  const generation = slice
+    ? `${slice.total}:${slice.firstId.slice(0, 8)}`
+    : `${products.length}:${products[0] ? String((products[0] as WrProduct).id || "").slice(0, 8) : ""}`;
   // Cache exclusion rules sekali per run (P0-4): 1 query, bukan N.
   const cachedRules = (await db
     .queryAll(`SELECT pattern, reason FROM wr_exclusions`)
     .catch(() => [] as Row[])) as { pattern: string; reason: string | null }[];
   const seenVariantIds = new Set<string>();
   // Urutan stabil agar cursor bermakna lintas run.
-  const ordered = [...products].sort((a, b) => String(a.id || "").localeCompare(String(b.id || "")));
-  const startAt = state.cursor >= ordered.length ? 0 : state.cursor;
+  // Mode potongan: proxy sudah mengurutkan dengan aturan yang sama.
+  const ordered = slice ? products : [...products].sort((a, b) => String(a.id || "").localeCompare(String(b.id || "")));
+  const startAt = slice ? slice.offset : state.cursor >= ordered.length ? 0 : state.cursor;
   // Prefetch baris varian untuk potongan yang AKAN dikerjakan run ini saja
   // (`maxProducts` dari cursor), bukan seluruh katalog: sweep parsial tidak
   // boleh membayar pembacaan produk yang tidak disentuhnya.
@@ -1093,6 +1112,11 @@ export async function syncProducts(
   let processedInRun = 0;
   for (let i = startAt; i < ordered.length; i++) {
     const product = ordered[i];
+    // Mode potongan: di luar potongan yang diambil = belum diunduh → yield.
+    if (!product) {
+      result.budgetYielded = true;
+      break;
+    }
     // Admission biaya aktual (P0-4): berhenti SEBELUM budget habis.
     // Biaya konservatif per produk = upsert produk + varian-variannya +
     // agregat induk + margin tulis log.
@@ -1240,9 +1264,13 @@ export async function syncProducts(
     // DESTRUCTIVE GUARD (P0-4): zero-missing HANYA setelah sweep penuh
     // tervalidasi dalam run ini. Sweep parsial/budget-yield/lanjutan-cursor
     // TIDAK BOLEH me-zero varian yang belum terlihat.
-    if (options.allowZeroMissing !== false && fullSweepInThisRun) {
+    // Mode potongan: sweep tuntas lintas request + potongan terakhir membawa
+    // SELURUH id varian upstream saat ini → zero-missing aman memakai daftar
+    // otoritatif itu (bukan seenVariantIds run ini yang hanya 1 potongan).
+    const sliceAllIds = slice?.allVariantIds ?? null;
+    if (options.allowZeroMissing !== false && (fullSweepInThisRun || sliceAllIds)) {
       try {
-        result.stockChanges += await zeroMissingVariants(seenVariantIds, db);
+        result.stockChanges += await zeroMissingVariants(sliceAllIds ? new Set(sliceAllIds) : seenVariantIds, db);
       } catch (error) {
         result.errors.push(error instanceof Error ? error.message : String(error));
       }

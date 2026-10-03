@@ -11,5 +11,10 @@ workers_dev = true
 [triggers]
 crons = ["*/5 * * * *"]
 
+# State alarm cron (mulai/pengingat 6 jam/pulih) — 2026-10-04, KV gratis.
+[[kv_namespaces]]
+binding = "CRON_STATE"
+id = "039698197aba4020b2f5af46b0fffc31"
+
 [vars]
 AXVARA_API_ORIGIN = "https://axvara.tech"

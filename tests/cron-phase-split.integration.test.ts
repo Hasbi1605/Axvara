@@ -14,12 +14,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createD1Fixture, insertTestProduct } from "./helpers/d1-fixture";
 import {
+  ALARM_KV_KEY,
+  ALARM_REMINDER_MS,
   ALERT_EVERY_MINUTES,
-  CRON_PHASES,
+  CRON_STEPS,
   MAX_CHUNKS_PER_PHASE,
   formatAlert,
+  nextAlarmState,
   runOperationsTick,
   shouldAlert,
+  stepLabel,
+  type AlarmState,
+  type PhaseOutcome,
 } from "../mcp-worker/src/cron";
 
 vi.mock("@/lib/telegram/api", () => ({
@@ -150,6 +156,27 @@ describe("route ?phase= (satu fase per request)", () => {
     expect(res.body.wr_sync_skipped).toBe("interval");
     expect(res.body.more).toBeUndefined();
   });
+
+  it("part=orders melewati sync katalog; part=sync melewati order", async () => {
+    vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
+    vi.stubEnv("WARUNG_REBAHAN_API_KEY", "k");
+    const orders = await run("?phase=warung_rebahan&part=orders");
+    expect(orders.status).toBe(200);
+    expect(orders.body.part).toBe("orders");
+    expect(orders.body.wr_sync_skipped).toBe("part_orders");
+    expect(syncProductsMock).not.toHaveBeenCalled();
+
+    const sync = await run("?phase=warung_rebahan&part=sync");
+    expect(sync.status).toBe(200);
+    expect(syncProductsMock).toHaveBeenCalledTimes(1);
+    expect((syncProductsMock.mock.calls[0][2] as { useProxySlices: boolean }).useProxySlices).toBe(true);
+    expect(sync.body.wr_deliveries_processed).toBeUndefined();
+  });
+
+  it("part hanya untuk fase WR/SK dan nilai valid", async () => {
+    expect((await run("?phase=expiry&part=orders")).status).toBe(400);
+    expect((await run("?phase=warung_rebahan&part=semua")).body.error).toBe("invalid_part");
+  });
 });
 
 describe("Worker runOperationsTick", () => {
@@ -160,6 +187,10 @@ describe("Worker runOperationsTick", () => {
     TELEGRAM_ADMIN_CHAT_ID: "-100",
   };
   const at = (minute: number) => Date.UTC(2026, 9, 3, 13, minute);
+  const label = (u: string) => {
+    const q = new URL(u).searchParams;
+    return q.get("part") ? `${q.get("phase")}:${q.get("part")}` : String(q.get("phase"));
+  };
 
   function mockFetch(handler: (url: string) => { status: number; body?: unknown }) {
     const calls: string[] = [];
@@ -169,73 +200,137 @@ describe("Worker runOperationsTick", () => {
       const r = handler(url);
       return new Response(JSON.stringify(r.body ?? { ok: true }), { status: r.status });
     });
-    return { fn, calls };
+    const telegram = () => fn.mock.calls
+      .filter((c) => String(c[0]).startsWith("https://api.telegram.org/"))
+      .map((c) => JSON.parse(String(c[1]?.body)).text as string);
+    return { fn, calls, telegram };
   }
 
-  it("memanggil semua fase berurutan, satu fase per request", async () => {
+  function memoryKv() {
+    const store = new Map<string, string>();
+    let puts = 0;
+    return {
+      kv: { get: async (k: string) => store.get(k) ?? null, put: async (k: string, v: string) => { puts++; store.set(k, v); } },
+      store,
+      puts: () => puts,
+    };
+  }
+
+  it("urutan: order WR/SK sebelum notify, sync katalog di belakang", async () => {
     const { fn, calls } = mockFetch(() => ({ status: 200 }));
     const report = await runOperationsTick(env, at(5), fn as never);
     expect(report.failures).toEqual([]);
-    expect(calls.map((u) => new URL(u).searchParams.get("phase"))).toEqual([...CRON_PHASES]);
+    expect(calls.map(label)).toEqual([
+      "expiry", "fulfillment", "warung_rebahan:orders", "sekalipay:orders",
+      "notify", "warung_rebahan:sync", "sekalipay:sync", "cleanup",
+    ]);
+    expect(CRON_STEPS.map(stepLabel)).toEqual(calls.map(label));
     expect(fn.mock.calls[0][1]).toMatchObject({ method: "POST", headers: { authorization: "Bearer s" } });
   });
 
   it("mengulang potongan sync selama more:true lalu berhenti", async () => {
     let wrCalls = 0;
-    const { fn, calls: seen } = mockFetch((url) => {
-      if (url.includes("phase=warung_rebahan")) {
+    const { fn, calls } = mockFetch((url) => {
+      if (url.includes("phase=warung_rebahan&part=sync")) {
         wrCalls++;
         return { status: 200, body: { ok: true, more: wrCalls < 3 } };
       }
       return { status: 200 };
     });
     await runOperationsTick(env, at(5), fn as never);
-    const wr = seen.filter((u) => u.includes("phase=warung_rebahan"));
+    const wr = calls.filter((u) => u.includes("phase=warung_rebahan&part=sync"));
     expect(wr).toHaveLength(3);
     expect(wr[0]).not.toContain("continue=1");
     expect(wr[1]).toContain("continue=1");
+    // Langkah orders tidak diulang walau membalas more:true.
+    expect(calls.filter((u) => u.includes("part=orders") && u.includes("warung_rebahan"))).toHaveLength(1);
   });
 
-  it("plafon potongan per fase mencegah loop tanpa akhir", async () => {
+  it("plafon potongan per langkah mencegah loop tanpa akhir", async () => {
     const { fn, calls } = mockFetch((url) =>
-      url.includes("phase=sekalipay") ? { status: 200, body: { more: true } } : { status: 200 });
+      url.includes("phase=sekalipay&part=sync") ? { status: 200, body: { more: true } } : { status: 200 });
     await runOperationsTick(env, at(5), fn as never);
-    expect(calls.filter((u) => u.includes("phase=sekalipay"))).toHaveLength(MAX_CHUNKS_PER_PHASE);
+    expect(calls.filter((u) => u.includes("phase=sekalipay&part=sync"))).toHaveLength(MAX_CHUNKS_PER_PHASE);
   });
 
-  it("fase gagal tidak menghentikan fase berikut; alarm hanya di tick kelipatan 30 menit", async () => {
-    const failing = (url: string) => (url.includes("phase=warung_rebahan") ? { status: 503 } : { status: 200 });
+  it("tanpa KV: fallback stateless — alarm hanya di tick :00/:30", async () => {
+    const failing = (url: string) => (url.includes("part=sync") ? { status: 503 } : { status: 200 });
     const quiet = mockFetch(failing);
     const r1 = await runOperationsTick(env, at(25), quiet.fn as never);
-    expect(r1.failures.map((f) => [f.phase, f.status])).toEqual([["warung_rebahan", 503]]);
+    expect(r1.failures.map((f) => [f.step, f.status])).toEqual([["warung_rebahan:sync", 503], ["sekalipay:sync", 503]]);
     expect(r1.alerted).toBe(false);
     expect(quiet.calls.some((u) => u.includes("phase=cleanup"))).toBe(true);
-    expect(quiet.calls.some((u) => u.startsWith("https://api.telegram.org/"))).toBe(false);
 
     const loud = mockFetch(failing);
     const r2 = await runOperationsTick(env, at(30), loud.fn as never);
     expect(r2.alerted).toBe(true);
-    const tg = loud.fn.mock.calls.find((c) => String(c[0]).startsWith("https://api.telegram.org/"));
-    const payload = JSON.parse(String(tg?.[1]?.body));
-    expect(payload.chat_id).toBe("-100");
-    expect(payload.text).toContain("warung_rebahan: HTTP 503");
+    expect(loud.telegram()[0]).toContain("warung_rebahan:sync: HTTP 503");
   });
 
-  it("tanpa secret Telegram tidak mengirim alarm, tanpa melempar", async () => {
-    const { fn } = mockFetch(() => ({ status: 503 }));
-    const report = await runOperationsTick(
-      { AXVARA_API_ORIGIN: env.AXVARA_API_ORIGIN, AXVARA_CRON_SECRET: "s" }, at(0), fn as never);
-    expect(report.failures).toHaveLength(CRON_PHASES.length);
-    expect(report.alerted).toBe(false);
+  it("dengan KV: 1 pesan mulai (2 tick gagal), diam di tengah, 1 pesan pulih (3 tick sukses)", async () => {
+    const mem = memoryKv();
+    const kvEnv = { ...env, CRON_STATE: mem.kv };
+    const fail = mockFetch((url) => (url.includes("part=sync") ? { status: 503 } : { status: 200 }));
+    const ok = mockFetch(() => ({ status: 200 }));
+    const tick = (m: number, f: typeof fail) => runOperationsTick(kvEnv, at(0) + m * 60_000, f.fn as never);
+
+    expect((await tick(0, fail)).action).toBe("none");      // gagal ke-1: diam
+    expect((await tick(5, fail)).action).toBe("start");     // gagal ke-2: alarm
+    for (let m = 10; m <= 120; m += 5) expect((await tick(m, fail)).action).toBe("none");
+    expect(fail.telegram()).toHaveLength(1);
+    expect(fail.telegram()[0]).toContain("Pesan berikutnya");
+    const putsDuringOutage = mem.puts();
+    expect(putsDuringOutage).toBeLessThanOrEqual(3); // tidak menulis KV tiap tick
+
+    expect((await tick(125, ok)).action).toBe("none");
+    expect((await tick(130, ok)).action).toBe("none");
+    expect((await tick(135, ok)).action).toBe("recovered");
+    expect(ok.telegram()).toHaveLength(1);
+    expect(ok.telegram()[0]).toContain("✅ Cron AXVARA pulih");
+    expect(ok.telegram()[0]).toContain("Gangguan sejak 20:00 WIB");
+    expect(JSON.parse(String(mem.store.get(ALARM_KV_KEY))).since).toBeNull();
+  });
+
+  it("gangguan sesaat (1 tick gagal lalu pulih) tidak mengirim apa pun", async () => {
+    const mem = memoryKv();
+    const kvEnv = { ...env, CRON_STATE: mem.kv };
+    const fail = mockFetch(() => ({ status: 503 }));
+    const ok = mockFetch(() => ({ status: 200 }));
+    await runOperationsTick(kvEnv, at(0), fail.fn as never);
+    const r = await runOperationsTick(kvEnv, at(5), ok.fn as never);
+    expect(r.action).toBe("none");
+    expect(fail.telegram().length + ok.telegram().length).toBe(0);
+  });
+
+  it("nextAlarmState: pengingat setelah 6 jam; pulih butuh 3 tick sukses beruntun", () => {
+    const f: PhaseOutcome[] = [{ step: "sekalipay:sync", calls: 1, ok: false, status: 503 }];
+    const t0 = at(0);
+    const alerted: AlarmState = { since: t0, failedTicks: 2, okTicks: 0, alertedAt: t0, lastFailures: [] };
+    expect(nextAlarmState(alerted, f, t0 + ALARM_REMINDER_MS - 1).action).toBe("none");
+    expect(nextAlarmState(alerted, f, t0 + ALARM_REMINDER_MS).action).toBe("reminder");
+    const ok1 = nextAlarmState(alerted, [], t0 + 1).state;
+    const backToFail = nextAlarmState(ok1, f, t0 + 2);
+    expect(backToFail.action).toBe("none"); // masih episode yang sama, tanpa alarm ulang
+    expect(backToFail.state.okTicks).toBe(0);
+  });
+
+  it("Telegram gagal saat alarm mulai → dicoba lagi tick berikut", async () => {
+    const mem = memoryKv();
+    const kvEnv = { ...env, CRON_STATE: mem.kv, TELEGRAM_BOT_TOKEN: undefined };
+    const fail = mockFetch(() => ({ status: 503 }));
+    await runOperationsTick(kvEnv, at(0), fail.fn as never);
+    const r = await runOperationsTick(kvEnv, at(5), fail.fn as never);
+    expect(r.action).toBe("start");
+    expect(r.alerted).toBe(false);
+    expect(JSON.parse(String(mem.store.get(ALARM_KV_KEY))).alertedAt).toBeNull();
   });
 
   it("shouldAlert + formatAlert", () => {
     expect(ALERT_EVERY_MINUTES).toBe(30);
     expect(shouldAlert(at(0))).toBe(true);
-    expect(shouldAlert(at(30))).toBe(true);
     expect(shouldAlert(at(35))).toBe(false);
-    const text = formatAlert([{ phase: "sekalipay", calls: 1, ok: false, status: 0, error: "timeout" }], at(30));
+    const text = formatAlert([{ step: "sekalipay:sync", calls: 1, ok: false, status: 0, error: "timeout" }], at(30));
     expect(text).toContain("20:30 WIB");
-    expect(text).toContain("sekalipay: timeout");
+    expect(text).toContain("sekalipay:sync: timeout");
   });
 });

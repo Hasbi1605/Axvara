@@ -160,12 +160,33 @@ export async function POST(request: NextRequest) {
   // `continue=1`: potongan lanjutan sweep katalog dalam tick yang sama —
   // hanya sync; order/reconcile/delivery/saldo sudah dikerjakan potongan
   // pertama sehingga tidak diulang (hemat CPU + panggilan upstream).
-  const syncOnly = forcedPhase != null && request.nextUrl.searchParams.get("continue") === "1";
+  // `part` (2026-10-04, hanya fase WR/SK): `orders` = order/reconcile/
+  // delivery/saldo TANPA sync katalog; `sync` = sync katalog saja (+ watchdog
+  // + pemenang pasangan). Insiden 4 Okt 02:00–05:20 WIB: request fase WR/SK
+  // gabungan tetap dibunuh `exceededResources`; memisahkan order dari sync
+  // menjamin order lunas tetap diteruskan ke supplier walau sync kena limit.
+  const partParam = request.nextUrl.searchParams.get("part");
+  const part: "orders" | "sync" | null = partParam === "orders" || partParam === "sync" ? partParam : null;
+  const isContinue = request.nextUrl.searchParams.get("continue") === "1";
+  const syncOnly = forcedPhase != null && (isContinue || part === "sync");
+  const ordersOnly = forcedPhase != null && part === "orders";
   if (phaseParam != null && forcedPhase == null) {
     return NextResponse.json({ error: "invalid_phase" }, { status: 400 });
   }
+  if (partParam != null && (part == null || (forcedPhase !== "warung_rebahan" && forcedPhase !== "sekalipay"))) {
+    return NextResponse.json({ error: "invalid_part" }, { status: 400 });
+  }
 
   const runStartedAt = Date.now();
+  // PENANDA LANGKAH (2026-10-04): satu baris log per langkah, tanpa D1. Saat
+  // runtime membunuh request (`exceededResources`), `wrangler pages deployment
+  // tail` memperlihatkan langkah TERAKHIR yang sempat jalan → bagian mana yang
+  // boros CPU. Hanya di mode `?phase=` (pemanggilan cron Worker).
+  const stepTag = forcedPhase ? `${forcedPhase}${part ? `:${part}` : ""}${isContinue ? ":cont" : ""}` : "rotation";
+  const step = (name: string) => {
+    if (forcedPhase) console.log(`[cron] ${stepTag} step=${name} t=${Date.now() - runStartedAt}ms`);
+  };
+  step("auth_ok");
   /** Sisa waktu invocation (ms) sebelum deadline lunak. */
   const timeLeftMs = () => RUN_DEADLINE_MS - (Date.now() - runStartedAt);
   /** true bila masih ada waktu untuk satu unit kerja seukuran `needMs`. */
@@ -232,6 +253,7 @@ export async function POST(request: NextRequest) {
       ? { phase: forcedPhase, deferred: [] as CronPhase[] }
       : await readCronPhase(database);
     if (forcedPhase) results.phase = forcedPhase;
+    if (part) results.part = part;
 
     // POISON-PILL GUARD (2026-09-18). `writeCronPhase` hanya dipanggil di ekor
     // handler, jadi run yang dibunuh platform di tengah jalan meninggalkan
@@ -277,7 +299,8 @@ export async function POST(request: NextRequest) {
     // → skip, sama seperti guard tabel di runWarungRebahan).
     // Mode satu-fase: watchdog cukup dievaluasi di fase WR (sekali per tick),
     // bukan di setiap request fase lain.
-    if (!forcedPhase || forcedPhase === "warung_rebahan") try {
+    step("phase_state");
+    if (!forcedPhase || (forcedPhase === "warung_rebahan" && !ordersOnly && !isContinue)) try {
       const { isWrEnabled } = await import("@/lib/warung-rebahan/client");
       if (isWrEnabled()) {
         const staleRow = await queryFirst(
@@ -308,6 +331,7 @@ export async function POST(request: NextRequest) {
     // WR: satu COUNT murah untuk link due — query TERPISAH agar DB lama
     // tanpa tabel WR (pre-migrasi 0027) tidak meruntuhkan seluruh query
     // gabungan di atas (satu subselect gagal = semua COUNT null).
+    step("watchdog_done");
     const queueRow = await queryFirst(
       `SELECT
         (SELECT COUNT(*) FROM payment_transactions WHERE status='pending') AS expiry,
@@ -522,6 +546,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    step("queues_counted");
     let waWorkPending = pendingWa + pendingStaleWa;
     const runExpiry = async () => {
       // === FASE EXPIRY: stale-init + expired + stranded + manual-WA ===
@@ -926,10 +951,12 @@ export async function POST(request: NextRequest) {
         return;
       }
       try {
+        step("wr_import_start");
         const { syncProducts, WR_SYNC_PRODUCTS_PER_RUN } = await import("@/lib/warung-rebahan/sync");
         const { processWrPendingOrders, retryFailedWrOrders, reconcileStuckWrOrders, reconcileBlockedBalance, recoverStaleClaims, alertAgingWrOrders } = await import("@/lib/warung-rebahan/order");
         const { processDueCredentialDeliveries } = await import("@/lib/warung-rebahan/deliver");
         const { checkAndLogSaldo } = await import("@/lib/warung-rebahan/saldo");
+        step("wr_import_done");
         const syncOn = process.env.WARUNG_REBAHAN_SYNC_ENABLED !== "false";
         const autoOrder = process.env.WARUNG_REBAHAN_AUTO_ORDER_ENABLED === "true";
 
@@ -944,6 +971,7 @@ export async function POST(request: NextRequest) {
 
         // 1. Kapasitas ORDER diprioritaskan SEBELUM sync produk (P0-4):
         //    sync katalog besar tidak boleh membuat WR order starvation.
+        step("wr_recover_done");
         if (!syncOnly && autoOrder && pendingWrDue > 0 && budget.fits(COST_PER_WR_WORK) && hasTime(TIME_WR_NETWORK)) {
           try {
             await retryFailedWrOrders(database);
@@ -961,7 +989,11 @@ export async function POST(request: NextRequest) {
         //    Sweep penuh 48 produk memakan ~10 s (lihat wr_sync_log
         //    duration_ms): wajib punya sisa waktu, kalau tidak run dipotong
         //    platform sebelum log/penanda tertulis.
-        if (!syncOn) {
+        step("wr_orders_done");
+        if (ordersOnly) {
+          // part=orders: sync katalog dikerjakan request `part=sync` terpisah.
+          if (results.wr_sync_skipped == null) results.wr_sync_skipped = "part_orders";
+        } else if (!syncOn) {
           // Saklar sync dimatikan eksplisit — bedakan dari "disabled" (master
           // switch / tabel belum siap) agar diagnosa env tepat sasaran.
           if (results.wr_sync_skipped == null) results.wr_sync_skipped = "sync_disabled";
@@ -1024,6 +1056,8 @@ export async function POST(request: NextRequest) {
               const syncResult = await syncProducts(database, undefined, {
                 maxProducts: forcedPhase ? WR_CRON_CHUNK : WR_SYNC_PRODUCTS_PER_RUN,
                 trigger: "cron",
+                // Potongan dari proxy VPS: Pages tidak mem-parse katalog penuh.
+                useProxySlices: forcedPhase != null,
                 timeBudgetMs: Math.max(0, timeLeftMs() - TIME_WR_SWEEP_RESERVE),
               });
               results.wr_products_synced = syncResult.synced;
@@ -1073,8 +1107,9 @@ export async function POST(request: NextRequest) {
           results.wr_sync_skipped = budget.fits(COST_PER_WR_WORK) ? "deadline" : "query_budget";
         }
 
-        // Potongan lanjutan (`continue=1`): cukup sync — langkah sisanya sudah
-        // dijalankan potongan pertama tick ini.
+        step("wr_sync_done");
+        // part=sync / potongan lanjutan: cukup sync — langkah order dikerjakan
+        // request `part=orders` (atau potongan pertama mode lama).
         if (syncOnly) return;
 
         // 3. Reconcile processing/ambigu menggantung >1 jam via /transactions.
@@ -1134,7 +1169,7 @@ export async function POST(request: NextRequest) {
         //     aktif dan `wr_sync_skipped` run ini terisi, segarkan konteks
         //     alert bila episode masih terbuka (state = last_sync yang sama).
         //     Ritme normal 30 mnt ≪ 90 mnt → tak ada alert palsu.
-        if (budget.fits(4) && typeof results.wr_last_sync_at === "string") {
+        if (!ordersOnly && budget.fits(4) && typeof results.wr_last_sync_at === "string") {
           try {
             const { refreshStaleWrSyncContext } = await import("@/lib/warung-rebahan/order");
             await refreshStaleWrSyncContext(
@@ -1174,6 +1209,7 @@ export async function POST(request: NextRequest) {
             } catch { /* API down: sync berikutnya retry; bukan deferred */ }
           }
         }
+        step("wr_tail_done");
       } catch {
         if (!deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan");
       }
@@ -1234,9 +1270,11 @@ export async function POST(request: NextRequest) {
         return;
       }
       try {
+        step("sk_import_start");
         const { syncSkProducts, SK_SYNC_PRODUCTS_PER_RUN } = await import("@/lib/sekalipay/sync");
         const { processSkPendingOrders, retryFailedSkOrders, reconcileStuckSkOrders, reconcileBlockedSkBalance, recoverStaleSkClaims } = await import("@/lib/sekalipay/order");
         const { checkAndLogSkSaldo } = await import("@/lib/sekalipay/saldo");
+        step("sk_import_done");
         const syncOn = process.env.SEKALIPAY_SYNC_ENABLED !== "false";
         const autoOrder = process.env.SEKALIPAY_AUTO_ORDER_ENABLED === "true";
 
@@ -1259,10 +1297,13 @@ export async function POST(request: NextRequest) {
           } catch { if (!deferredOut.includes("sekalipay")) deferredOut.push("sekalipay"); }
         }
 
-        // 2. Sync katalog — tiap 30 menit, resumable via cursor. Sweep SK
+        step("sk_orders_done");
+        // 2. Sync katalog — tiap 15 menit, resumable via cursor. Sweep SK
         //    kecil (24 produk) tapi tetap pakai budget waktu DI DALAM sweep
         //    (pelajaran WR 2026-09-20: admission depan deadlock permanen).
-        if (!syncOn) {
+        if (ordersOnly) {
+          if (results.sk_sync_skipped == null) results.sk_sync_skipped = "part_orders";
+        } else if (!syncOn) {
           if (results.sk_sync_skipped == null) results.sk_sync_skipped = "sync_disabled";
         } else if (budget.fits(COST_PER_SK_WORK) && hasTime(TIME_SK_NETWORK)) {
           const lastSync = await queryFirst(
@@ -1283,6 +1324,7 @@ export async function POST(request: NextRequest) {
               const syncResult = await syncSkProducts(database, undefined, {
                 maxProducts: forcedPhase ? SK_CRON_CHUNK : SK_SYNC_PRODUCTS_PER_RUN,
                 trigger: "cron",
+                useProxySlices: forcedPhase != null,
                 timeBudgetMs: Math.max(0, timeLeftMs() - TIME_WR_SWEEP_RESERVE),
               });
               results.sk_products_synced = syncResult.synced;
@@ -1305,7 +1347,21 @@ export async function POST(request: NextRequest) {
           results.sk_sync_skipped = budget.fits(COST_PER_SK_WORK) ? "deadline" : "query_budget";
         }
 
-        if (syncOnly) return;
+        step("sk_sync_done");
+        if (syncOnly) {
+          // Pemenang pasangan WR vs SK = urusan katalog: hitung sekali saat
+          // sweep SK tuntas (bukan tiap potongan).
+          if (part === "sync" && results.more !== true && budget.fits(4) && hasTime(TIME_SK_LIGHT)) {
+            try {
+              const { decideAllWinners } = await import("@/lib/supplier-pairs");
+              const pairs = await decideAllWinners(database);
+              results.pairs_decided = pairs.decided;
+              results.pairs_changed = pairs.changed;
+            } catch { /* best-effort; sweep berikut retry */ }
+            step("sk_pairs_done");
+          }
+          return;
+        }
 
         // 3. Reconcile processing/ambigu menggantung >1 jam via GET /v1/trx.
         if (autoOrder && budget.fits(3) && hasTime(TIME_SK_LIGHT)) {
@@ -1346,7 +1402,8 @@ export async function POST(request: NextRequest) {
         //    2026-09-30): hitung ulang tiap fase SK aktif — murah (4 query
         //    ringan per pasangan), best-effort, 1 gagal tidak hentikan lain.
         //    Volatilitas stok ditangani karena dihitung dari stok+modal LIVE.
-        if (budget.fits(4) && hasTime(TIME_SK_LIGHT)) {
+        step("sk_tail_done");
+        if (!ordersOnly && budget.fits(4) && hasTime(TIME_SK_LIGHT)) {
           try {
             const { decideAllWinners } = await import("@/lib/supplier-pairs");
             const pairs = await decideAllWinners(database);
@@ -1375,6 +1432,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    step("phases_done");
     // Tail cannot be consumed by helpers: two final statements are reserved.
     budget.beginTail();
     const deferred = [...new Set(deferredOut)];

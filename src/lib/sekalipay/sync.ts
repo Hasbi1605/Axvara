@@ -26,6 +26,8 @@
 import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 import {
   fetchSkItems,
+  fetchSkCatalogSlice,
+  type SkCatalogSlice,
   isSkSyncEnabled,
   SK_SYNC_CATEGORY,
   type SkCategory,
@@ -444,6 +446,13 @@ export type SkSyncOptions = {
   timeBudgetMs?: number;
   /** true = full `per_page=all` walau server_time sudah ada (Force Sync admin). */
   full?: boolean;
+  /**
+   * Ambil HANYA potongan run ini dari proxy VPS (`/sk/catalog-slice`,
+   * 2026-10-04): scope penuh kategori (tanpa delta) yang sudah di-flatten +
+   * diurutkan + difilter proxy. Proxy lama / mode langsung → kembali ke jalur
+   * fetch penuh. Diabaikan bila `fetchFn` kustom.
+   */
+  useProxySlices?: boolean;
 };
 
 /** Penanda produk SK di katalog utama (pola fulfillment WR: mode 'manual' +
@@ -548,8 +557,21 @@ export async function syncSkProducts(
   (db as unknown as { raiseCeilingForCatalogSync?: (n: number) => void }).raiseCeilingForCatalogSync?.(
     SK_SYNC_CATALOG_BUDGET_EXTRA,
   );
-  let fetched: { data: SkCategory[]; server_time: string };
-  try {
+  // Mode potongan proxy (lihat SkSyncOptions.useProxySlices).
+  let slice: SkCatalogSlice | null = null;
+  if (options.useProxySlices && !fetchFn) {
+    try {
+      slice = await fetchSkCatalogSlice({ category: SK_SYNC_CATEGORY, offset: state.cursor, limit: maxProducts });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      result.errors.push(message.slice(0, 300));
+      await logSkSync({ ...result, status: "failed" }, db, trigger).catch(() => undefined);
+      result.durationMs = Date.now() - started;
+      return result;
+    }
+  }
+  let fetched: { data: SkCategory[]; server_time: string } = { data: [], server_time: slice?.serverTime ?? "" };
+  if (!slice) try {
     // Scope hemat fase 1 (2026-09-30): HANYA kategori Aplikasi Premium.
     // Pelajaran 6x sk_request_timeout 09:05–10:00 + 1x Heroku 503: "delta"
     // tanpa scope masih 2681 varian / 1,8MB / 9–29 dtk (gagal BERULANG).
@@ -604,17 +626,20 @@ export async function syncSkProducts(
     result.durationMs = Date.now() - started;
     return result;
   }
-  const flat = flattenSkItems(fetched.data);
+  // Mode potongan: baris di luar potongan kosong (belum diunduh); panjang
+  // array = jumlah varian dalam scope agar cursor/validasi tetap bermakna.
+  const flat: SkFlatVariant[] = slice ? new Array<SkFlatVariant>(slice.inScopeN) : flattenSkItems(fetched.data);
+  if (slice) slice.rows.forEach((r, k) => { flat[slice!.offset + k] = r as SkFlatVariant; });
   // FILTER SCOPE FASE 1 (2026-09-30): hanya kategori Aplikasi Premium yang
   // diproses — varian kategori lain (Game, Top Up, dst dari sweep unscoped
   // lama id 21/24 sebelum scope premium dipasang) DILEWATI TOTAL: tidak
   // dibaca, tidak ditulis, tidak dihitung. Tanpa filter ini, defensif saja
   // tidak cukup — respons yang menyelinap kategori asing tetap mencemari
   // registry + panel markup (kasus owner: Arena Of Valor/CoD di panel SK).
-  const inScope = flat.filter(
-    (r) => String(r.categoryName || "") === SK_SYNC_CATEGORY,
-  );
-  const skippedOutOfScope = flat.length - inScope.length;
+  const inScope = slice
+    ? flat // proxy sudah memfilter scope (array berlubang — jangan .filter)
+    : flat.filter((r) => String(r.categoryName || "") === SK_SYNC_CATEGORY);
+  const skippedOutOfScope = slice ? Math.max(0, slice.fetchedN - slice.inScopeN) : flat.length - inScope.length;
   const validation = validateSkCatalogResponse(
     flat,
     state.snapshotComplete ? Math.max(state.cursor, 1) : 0,
@@ -633,7 +658,7 @@ export async function syncSkProducts(
   // Panel menampilkan p/v seperti WR (48p/90v); total = varian dalam scope.
   const touchedProductIds = new Set<string>();
   const scoped = inScope;
-  const startAt = state.cursor >= scoped.length ? 0 : state.cursor;
+  const startAt = slice ? slice.offset : state.cursor >= scoped.length ? 0 : state.cursor;
   let cursor = startAt;
   let processedInRun = 0;
   const seenVariantIds = new Set<string>();
@@ -691,6 +716,11 @@ export async function syncSkProducts(
   }
   for (let i = startAt; i < scoped.length; i++) {
     const row = scoped[i];
+    if (!row) {
+      // Mode potongan: di luar potongan yang diunduh → lanjut request berikut.
+      result.budgetYielded = true;
+      break;
+    }
     const variant = row.variant;
     const skVariantId = String(variant.id);
     seenVariantIds.add(skVariantId);
@@ -908,9 +938,11 @@ export async function syncSkProducts(
     result.snapshotComplete = false;
   }
   if (sweepComplete) {
-    if (options.allowZeroMissing !== false && fullSweepInThisRun) {
+    // Mode potongan: daftar id scope otoritatif dari potongan terakhir.
+    const sliceAllIds = slice?.allVariantIds ?? null;
+    if (options.allowZeroMissing !== false && (fullSweepInThisRun || sliceAllIds)) {
       try {
-        result.stockChanges += await zeroMissingSkVariants(seenVariantIds, db);
+        result.stockChanges += await zeroMissingSkVariants(sliceAllIds ? new Set(sliceAllIds) : seenVariantIds, db);
       } catch (error) {
         result.errors.push(error instanceof Error ? error.message : String(error));
       }

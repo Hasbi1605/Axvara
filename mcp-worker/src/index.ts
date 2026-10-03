@@ -6,6 +6,8 @@ export interface Env {
   /** Alarm cron gagal (2026-10-04) — secret Worker, nilai sama dengan Pages. */
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_ADMIN_CHAT_ID?: string;
+  /** Workers KV: state alarm cron (mulai/pengingat/pulih), 2026-10-04. */
+  CRON_STATE?: { get(key: string): Promise<string | null>; put(key: string, value: string): Promise<void> };
 }
 
 type JsonRpcRequest = {

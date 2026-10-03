@@ -433,6 +433,58 @@ export async function fetchSkItems(params?: {
   };
 }
 
+/** Baris datar varian SK (bentuk sama dengan `flattenSkItems`). */
+export type SkSliceRow = {
+  categoryName: string;
+  productId: number;
+  productName: string;
+  productImage: string | null;
+  variant: SkVariant;
+};
+
+/** Potongan katalog SK dari proxy VPS (2026-10-04, `GET /sk/catalog-slice`). */
+export type SkCatalogSlice = {
+  rows: SkSliceRow[];
+  serverTime: string;
+  fetchedN: number;
+  inScopeN: number;
+  offset: number;
+  /** Hanya pada potongan terakhir: seluruh id varian dalam scope. */
+  allVariantIds: string[] | null;
+};
+
+/**
+ * Satu potongan katalog SK SCOPE PENUH (tanpa delta) yang sudah di-flatten +
+ * diurutkan + difilter kategori oleh proxy. Mode langsung / proxy lama (404)
+ * → null (pemanggil kembali ke `fetchSkItems`).
+ */
+export async function fetchSkCatalogSlice(params: {
+  category: string;
+  offset: number;
+  limit: number;
+}): Promise<SkCatalogSlice | null> {
+  if (!getSkProxyUrl()) return null;
+  try {
+    const res = await skFetch<{ rows?: unknown; server_time?: unknown; meta?: Record<string, unknown> }>(
+      "catalog-slice",
+      { query: { category: params.category, offset: params.offset, limit: params.limit } },
+    );
+    const meta = res.meta ?? {};
+    if (!Array.isArray(res.rows) || typeof meta.in_scope_n !== "number") return null;
+    return {
+      rows: res.rows as SkSliceRow[],
+      serverTime: String(res.server_time ?? ""),
+      fetchedN: Number(meta.fetched_n ?? 0),
+      inScopeN: meta.in_scope_n,
+      offset: Number(meta.offset ?? params.offset),
+      allVariantIds: Array.isArray(meta.all_variant_ids) ? meta.all_variant_ids.map(String) : null,
+    };
+  } catch (error) {
+    if (error instanceof SkApiError && (error.status === 404 || error.status === 405)) return null;
+    throw error;
+  }
+}
+
 /**
  * Scope hemat sync fase 1 (2026-09-30): HANYA kategori Aplikasi Premium.
  * Terbukti live: `category=Aplikasi Premium` → 99 varian / 93KB / ~3,6 dtk

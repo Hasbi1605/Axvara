@@ -283,6 +283,42 @@ export async function fetchProducts(): Promise<WrProduct[]> {
   return Array.isArray(res.data) ? res.data : [];
 }
 
+/** Potongan katalog dari proxy VPS (2026-10-04, `POST /wr/products-slice`). */
+export type WrProductsSlice = {
+  products: WrProduct[];
+  total: number;
+  firstId: string;
+  offset: number;
+  /** Hanya pada potongan terakhir: seluruh id varian upstream saat ini. */
+  allVariantIds: string[] | null;
+};
+
+/**
+ * Ambil satu potongan katalog WR yang SUDAH diurutkan proxy (id string
+ * localeCompare — sama dengan `syncProducts`). Hanya tersedia mode proxy;
+ * mode langsung / proxy lama (404) → null agar pemanggil kembali ke
+ * `fetchProducts()` penuh. Tujuan: cron Free plan (~10 ms CPU) tidak mem-parse
+ * seluruh katalog di setiap potongan.
+ */
+export async function fetchProductsSlice(offset: number, limit: number): Promise<WrProductsSlice | null> {
+  if (!getWrProxyUrl()) return null;
+  try {
+    const res = await wrFetch<WrProduct[]>("/products-slice", { offset, limit });
+    const meta = ((res as unknown as { meta?: Record<string, unknown> }).meta ?? {}) as Record<string, unknown>;
+    if (!Array.isArray(res.data) || typeof meta.total !== "number") return null;
+    return {
+      products: res.data,
+      total: meta.total,
+      firstId: String(meta.first_id ?? ""),
+      offset: Number(meta.offset ?? offset),
+      allVariantIds: Array.isArray(meta.all_variant_ids) ? meta.all_variant_ids.map(String) : null,
+    };
+  } catch (error) {
+    if (error instanceof WrApiError && (error.status === 404 || error.status === 405)) return null;
+    throw error;
+  }
+}
+
 export async function createOrder(params: {
   variant_id: string;
   quantity?: number;
