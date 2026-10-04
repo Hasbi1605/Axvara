@@ -346,8 +346,9 @@ proxy yang SAMA juga meneruskan Sekalipay (`/sk/*`, key `SK_API_KEY` di server
 proxy, IP whitelist SK = IP VPS yang sama, tanpa add-on baru)** — lihat
 `docs/ARCHITECTURE.md` §15b. Kredensial Cloudflare
 manual diambil dari `.cf-credentials` (git-ignored); kredensial Heroku dua akun
-di `.heroku-credentials` (git-ignored, pola sama); CI/CD memakai GitHub
-Actions Secrets.
+di `.heroku-credentials` (git-ignored, pola sama); AWS (VPS proxy) lewat
+profile `axvara-monitor` di `~/.aws/credentials` (read-only + reboot VPS,
+lihat AGENTS.md); CI/CD memakai GitHub Actions Secrets.
 
 ### Sekalipay Reseller API (supplier kedua paralel WR, 2026-09-30, default mati)
 

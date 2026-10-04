@@ -1712,6 +1712,14 @@ WR/SK — live di VPS AWS sejak 2026-10-02, lihat §16.8) · `axvara-tg-bot`
 Perintah akun #2 wajib prefix `HEROKU_API_KEY=<kunci-akun-2>`; jangan
 `heroku login` ulang (merusak sesi akun #1).
 
+Kredensial AWS (VPS proxy, 2026-10-04): BUKAN file di repo — profile
+`axvara-monitor` di `~/.aws/credentials` (chmod 600, di luar repo), IAM user
+`kiro-monitor`: `ReadOnlyAccess` + baca billing/kredit + start/stop/reboot
+khusus `i-022790eb6bb0b1be3`. Pakai `aws ... --profile axvara-monitor`.
+Akses isi VPS lewat SSH `ec2-user@13.228.147.90` + `~/.ssh/axvara-sg-proxy.pem`.
+Root hanya via `aws login` (sesi berumur pendek); key admin permanen
+`nasikuning` DINONAKTIFKAN 2026-10-04.
+
 ### 16.6 Perilaku sync WR satu sweep (Opsi A, 2026-09-14)
 - `WR_SYNC_PRODUCTS_PER_RUN = 48` + plafon khusus katalog +800 query
   (`raiseCeilingForCatalogSync`, hanya jalur sync produk; budget cron umum +
