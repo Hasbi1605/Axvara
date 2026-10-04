@@ -135,6 +135,18 @@ export async function sendDueAdminPromoDigest(
     !process.env.TELEGRAM_ADMIN_CHAT_ID
   ) return { due: true, fullSent: false, shortSent: false, complete: false, skipped: "disabled" };
 
+  // Cek murah DULU (2026-10-04, darurat kuota D1): jendela slot 3 jam × tick
+  // 5 mnt = ±36 run; tanpa ini query katalog berat (±3.100 rows_read)
+  // dijalankan tiap tick walau digest slot ini sudah terkirim lengkap.
+  const sent = await database.queryFirst(
+    `SELECT full_message_id, short_message_id FROM telegram_promo_digests
+      WHERE business_date=? AND slot=?`,
+    due.businessDate, due.slot,
+  ).catch(() => null);
+  if (sent?.full_message_id && sent?.short_message_id) {
+    return { due: true, fullSent: false, shortSent: false, complete: true, skipped: "already_sent" };
+  }
+
   // Kandidat = SEMUA produk ready (ada ≥1 varian bisa dibeli). Pecundang
   // supplier-pair + produk telegram_enabled=0 dikecualikan agar promo tidak
   // menjual barang yang disembunyikan di katalog. Opsi B (2026-10-02):
