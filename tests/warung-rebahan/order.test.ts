@@ -452,6 +452,26 @@ describe("Warung Rebahan webhook completion", () => {
     expect(formatWrAccountDetails({ email: "x@y.z", password: "q" })).toContain("x@y.z");
     // envelope account_details + label ganda tidak bocor (jalur display).
     expect(normalizeAccountDetailsForDisplay({ account_details: [{ email: "e@x.id" }] })).toContain("Email: e@x.id");
+    // Regresi 2026-10-04 (kasus F111FD64): /transactions mengirim
+    // {product, details: [{...}×4]} (details = ARRAY OBJEK, bukan string) —
+    // String(v) menghasilkan "[object Object]" ×4 di panel.
+    const arrPayload = {
+      product: "Spotify Premium - Premium",
+      details: [
+        { email: "qavzeli583@gmail.com" },
+        { password: "Revacantik1" },
+        { penting: "Nogar, jangan komplain kalo kena razia/banned" },
+        { info: "Jangan login lebih dari 1 device" },
+      ],
+    };
+    const arrOut = normalizeAccountDetailsForDisplay(arrPayload);
+    expect(arrOut).not.toContain("[object Object]");
+    expect(arrOut).toContain("qavzeli583@gmail.com");
+    expect(arrOut).toContain("Revacantik1");
+    // formatWrAccountDetails (jalur simpan) ikut rapi untuk bentuk yang sama.
+    const saved = formatWrAccountDetails(arrPayload);
+    expect(saved).not.toContain("[object Object]");
+    expect(saved).toContain("qavzeli583@gmail.com");
     expect(normalizeAccountDetailsForDisplay("Email: Email: a@b.c")).toBe("Email: a@b.c");
     expect(normalizeAccountDetailsForDisplay(null)).toBe("");
   });

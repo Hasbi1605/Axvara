@@ -198,7 +198,12 @@ function labelDetailKey(raw: string): string {
  *  tidak dipotong per-field (batas 2000 char ditegakkan di tingkat hasil).
  *  Objek PEMBUNGKUS hulu (`{product, details}` — bukti prod 95FC8669) tidak
  *  dirender sebagai field: hanya `details`-nya yang dipakai (rekursif),
- *  `product` dibuang (nama produk sudah ada di konteks order/pesan). */
+ *  `product` dibuang (nama produk sudah ada di konteks order/pesan).
+ *  Nilai ARRAY/OBJEK direkursi (2026-10-04, kasus F111FD64): payload
+ *  /transactions untuk varian Private mengirim
+ *  `{product, details: [{...},{...},{...},{...}]}` (details = ARRAY OBJEK,
+ *  bukan string) — `String(v)` menghasilkan "[object Object]" ×4 persis
+ *  seperti screenshot owner. Sekarang tiap elemen diformat rekursif. */
 function formatDetailObject(o: Record<string, unknown>): string {
   const keys = Object.keys(o);
   if ("details" in o && typeof o.details === "string" && keys.every((k) => ["product", "details", "data", "account_details"].includes(normDetailKey(k)))) {
@@ -207,6 +212,30 @@ function formatDetailObject(o: Record<string, unknown>): string {
   const parts: string[] = [];
   for (const [k, v] of Object.entries(o)) {
     if (v == null) continue;
+    // Nilai array (mis. details = [{...},{...}]) → format tiap elemen rekursif.
+    if (Array.isArray(v)) {
+      const nested = v
+        .map((el) => {
+          if (el == null) return "";
+          if (typeof el === "string") return el.trim();
+          if (typeof el === "object") return formatDetailObject(el as Record<string, unknown>);
+          return String(el);
+        })
+        .filter(Boolean)
+        .join("\n");
+      if (nested) {
+        // details ber-array = isi utama (tanpa label "Details:"), key lain = field.
+        if (["details", "detail", "data", "accountdetails"].includes(normDetailKey(k))) parts.push(nested);
+        else parts.push(`${labelDetailKey(k)}:\n${nested}`);
+      }
+      continue;
+    }
+    // Nilai objek (mis. details = {email, password}) → rekursi sebagai field.
+    if (typeof v === "object") {
+      const nested = formatDetailObject(v as Record<string, unknown>);
+      if (nested) parts.push(nested);
+      continue;
+    }
     const text = String(v).trim().replace(/\r\n?/g, "\n");
     if (!text) continue;
     // Lewati metadata non-kredensial bila ada.
