@@ -161,3 +161,38 @@ export async function loserProductIds(database?: DatabaseAccess): Promise<Set<nu
   }
   return losers;
 }
+
+/**
+ * Fragmen SQL "produk ini BUKAN pecundang pasangan" untuk kanal bot
+ * (Telegram, 2026-10-04 — paritas Web). Aturan sama dengan
+ * `loserProductIds` + filter `/api/products` + promo digest (Opsi B: winner
+ * NULL → SK disembunyikan). Tanpa parameter bind, aman disisipkan ke WHERE.
+ */
+export function notLoserProductSql(productAlias = "p"): string {
+  return `NOT EXISTS (
+    SELECT 1 FROM supplier_pairs pair
+    WHERE ${productAlias}.id = CASE WHEN pair.winner IS NULL OR pair.winner='WR'
+      THEN pair.sk_product_id ELSE pair.wr_product_id END
+  )`;
+}
+
+/**
+ * Bila `productId` adalah pecundang pasangan, kembalikan id pemenangnya
+ * (wakil yang tampil). Dipakai detail produk bot agar tombol lama yang
+ * menunjuk pecundang tidak menampilkan produk dobel — cermin redirect 308
+ * PDP web. null = bukan pecundang.
+ */
+export async function winnerForLoserProduct(productId: number, database?: DatabaseAccess): Promise<number | null> {
+  const db = database ?? createDatabaseAccess();
+  const row = await db
+    .queryFirst(
+      `SELECT CASE WHEN winner IS NULL OR winner='WR' THEN wr_product_id ELSE sk_product_id END AS shown
+       FROM supplier_pairs
+       WHERE ? = CASE WHEN winner IS NULL OR winner='WR' THEN sk_product_id ELSE wr_product_id END
+       LIMIT 1`,
+      productId,
+    )
+    .catch(() => null);
+  const shown = Number(row?.shown ?? 0);
+  return Number.isInteger(shown) && shown > 0 && shown !== productId ? shown : null;
+}

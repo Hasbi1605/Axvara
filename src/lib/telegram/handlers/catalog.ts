@@ -17,9 +17,10 @@ import {
   productDetailMessage, outOfStockMessage, errorMessage,
   chooseVariantMessage, chooseQtyMessage,
 } from "@/lib/telegram/messages";
-import { getProductDetail, getActiveVariant, formatDuration, formatWarranty } from "@/lib/catalog";
+import { getProductDetail, getActiveVariant, formatDuration, buyerWarrantyLabel } from "@/lib/catalog";
 import { needsEmailForVariant } from "@/lib/warung-rebahan/delivery-class";
 import { purchasableStockSql } from "@/lib/catalog-availability";
+import { notLoserProductSql, winnerForLoserProduct } from "@/lib/supplier-pairs";
 import { clampQty } from "./shared";
 import { handleBuyConfirm } from "./discovery";
 
@@ -37,7 +38,7 @@ export async function listTelegramProducts(categoryId?: number): Promise<Catalog
     `SELECT p.id, p.name, MIN(pv.price) AS price
      FROM products p
      JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1 AND ${purchasableStockSql("pv")}
-     WHERE p.is_active=1 AND p.telegram_enabled=1${categoryId ? " AND p.category_id=?" : ""}
+     WHERE p.is_active=1 AND p.telegram_enabled=1 AND ${notLoserProductSql("p")}${categoryId ? " AND p.category_id=?" : ""}
      GROUP BY p.id
      ORDER BY p.sort_order ASC, p.name ASC`,
     ...(categoryId ? [categoryId] : []),
@@ -92,8 +93,12 @@ export async function handleShowProducts(chatId: number, messageId: number, cate
   });
 }
 
-export async function handleShowProduct(chatId: number, messageId: number, productId: number) {
+export async function handleShowProduct(chatId: number, messageId: number, requestedProductId: number) {
   await showLoadingBar(chatId, "📦 Memuat produk");
+
+  // Pecundang pasangan WR/SK (tombol lama, hasil cari lama) → tampilkan
+  // pemenangnya, cermin redirect 308 PDP web: 1 barang = 1 kartu.
+  const productId = (await winnerForLoserProduct(requestedProductId).catch(() => null)) ?? requestedProductId;
 
   // Use catalog.ts for variant-level stock (synced with web/WA)
   const detail = await getProductDetail(productId);
@@ -125,7 +130,7 @@ export async function handleShowProduct(chatId: number, messageId: number, produ
   const variantLines = activeVariants.map((v) => ({
     label: v.label,
     price: v.price,
-    warranty: formatWarranty(v) || null,
+    warranty: buyerWarrantyLabel(v) || null,
     duration: formatDuration(v) || null,
     stock: v.stock,
     wr_delivery_class: v.wr_delivery_class ?? null,
@@ -186,7 +191,7 @@ export async function handleShowVariants(chatId: number, messageId: number, prod
     price: v.price,
     stock: v.stock,
     duration_label: formatDuration(v) || null,
-    warranty_label: formatWarranty(v) || null,
+    warranty_label: buyerWarrantyLabel(v) || null,
   }));
 
   await safeEditOrSend({

@@ -87,6 +87,21 @@ export async function ensurePrivateRecipient(
        )`,
     privateChatId, privateChatId, telegramUserId,
   ).catch(() => {});
+  // Kredensial WR yang gagal dikirim karena pembeli belum punya chat pribadi
+  // (order dari grup) dikembalikan ke antrean dengan jatah percobaan baru —
+  // tanpa ini, pembeli yang baru START setelah 5 percobaan (~81 menit) tidak
+  // pernah menerima produknya. SK ditangani reconcile (buyer_notice_log).
+  await execRun(
+    `UPDATE wr_order_links SET delivery_status='queued', delivery_attempt_count=0,
+       delivery_next_attempt_at=datetime('now'), updated_at=datetime('now')
+     WHERE delivery_status='failed' AND delivery_channel='telegram'
+       AND COALESCE(delivery_last_error,'') LIKE '%no_private_telegram_chat%'
+       AND order_code IN (
+         SELECT code FROM orders WHERE sales_channel='telegram' AND telegram_user_id=?
+           AND status='lunas' AND payment_status='paid'
+       )`,
+    telegramUserId,
+  ).catch(() => {});
 }
 
 /** Parse order.items into a normalized per-item list. */

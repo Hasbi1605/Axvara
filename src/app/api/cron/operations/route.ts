@@ -1176,7 +1176,9 @@ export async function POST(request: NextRequest) {
         //     (ambang reconcile lama) untuk kredensial yang sudah ada.
         //     Dibatasi: hanya link processing umur >3 menit (beri webhook
         //     kesempatan datang dulu — hemat 1 panggilan /transactions bila
-        //     webhook sehat) + maks 4 link/run + budget/waktu sama. Read-only
+        //     webhook sehat) + umur <1 jam (MBO lama ditangani langkah 3,
+        //     urutan acak, agar tidak menyumbat slot link baru — 2026-10-04)
+        //     + maks 6 link/run + budget/waktu sama. Read-only
         //     upstream + idempoten; SK tidak tersentuh (fase terpisah).
         if (autoOrder && budget.fits(4) && hasTime(TIME_WR_LIGHT)) {
           try {
@@ -1185,7 +1187,8 @@ export async function POST(request: NextRequest) {
               `SELECT id, wr_order_id, order_code FROM wr_order_links
                WHERE status='processing'
                  AND datetime(COALESCE(request_sent_at, updated_at)) <= datetime('now','-3 minutes')
-               ORDER BY request_sent_at ASC, id ASC LIMIT 4`,
+                 AND datetime(COALESCE(request_sent_at, updated_at)) > datetime('now','-1 hour')
+               ORDER BY request_sent_at ASC, id ASC LIMIT 6`,
             ).catch(() => [] as { id: unknown; wr_order_id: unknown; order_code: unknown }[]);
             if (fresh.length) {
               const reconciled = await reconcileFreshWrLinks(
@@ -1418,6 +1421,16 @@ export async function POST(request: NextRequest) {
         if (autoOrder && budget.fits(3) && hasTime(TIME_SK_LIGHT)) {
           try {
             results.sk_orders_reconciled = await reconcileStuckSkOrders(database);
+          } catch { /* best-effort */ }
+        }
+
+        // 3a. Reconcile FRESH (2 mnt–1 jam): SK auto selesai hitungan detik,
+        //     jadi webhook completed yang hilang tidak boleh membuat pembeli
+        //     (terutama Telegram) menunggu ambang 1 jam di langkah 3.
+        if (autoOrder && budget.fits(4) && hasTime(TIME_SK_LIGHT)) {
+          try {
+            const { reconcileFreshSkOrders } = await import("@/lib/sekalipay/order");
+            results.sk_orders_reconciled_fresh = await reconcileFreshSkOrders(database);
           } catch { /* best-effort */ }
         }
 

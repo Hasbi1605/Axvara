@@ -236,8 +236,91 @@ export async function handleSkOrderCompleted(
   // poll berikutnya. Idempoten per item via buyer_notice_log — retry webhook
   // tidak mengirim email kedua.
   try {
-    await sendSkCredentialEmail(orderCode, fulfillmentItemId, db);
-  } catch { /* email menyusul via reconcile berikutnya; panel tetap jalan */ }
+    await deliverSkCredentialToBuyer(orderCode, fulfillmentItemId, db);
+  } catch { /* menyusul via reconcile berikutnya; panel tetap jalan */ }
+  return true;
+}
+
+/**
+ * Kirim lisensi SK lewat kanal asal order (paritas WR 2026-10-04):
+ * - telegram → DM chat pribadi pembeli (tempat ia order). Dulu SK HANYA
+ *   mengirim email, dan order Telegram tidak punya email → pembeli SK
+ *   Telegram tidak pernah menerima apa pun walau order sudah `delivered`.
+ * - lainnya → email "Pesanan Siap" (perilaku lama).
+ */
+export async function deliverSkCredentialToBuyer(
+  orderCode: string,
+  fulfillmentItemId: number,
+  database?: DatabaseAccess,
+): Promise<boolean> {
+  const db = database ?? createDatabaseAccess();
+  const order = await db
+    .queryFirst(`SELECT sales_channel FROM orders WHERE code=?`, orderCode)
+    .catch(() => null);
+  if (String(order?.sales_channel || "") === "telegram") {
+    return sendSkCredentialTelegram(orderCode, fulfillmentItemId, db);
+  }
+  return sendSkCredentialEmail(orderCode, fulfillmentItemId, db);
+}
+
+/**
+ * DM lisensi SK ke chat PRIBADI pembeli Telegram (tidak pernah ke id grup —
+ * issue #5). Idempoten per item via buyer_notice_log
+ * `telegram:sk-credential:<order>:<item>`; webhook + reconcile ganda tidak
+ * mengirim dua kali. Tanpa chat pribadi (order dari grup, belum START) =
+ * false → reconcile mencoba lagi setelah pembeli START bot.
+ */
+export async function sendSkCredentialTelegram(
+  orderCode: string,
+  fulfillmentItemId: number,
+  database?: DatabaseAccess,
+): Promise<boolean> {
+  const db = database ?? createDatabaseAccess();
+  const code = String(orderCode || "").trim();
+  const itemId = Number(fulfillmentItemId || 0);
+  if (!code || itemId <= 0) throw new Error("sk_credential_item_missing");
+  if (process.env.TELEGRAM_BOT_ENABLED !== "true") return false;
+  const item = await db
+    .queryFirst(
+      `SELECT id, item_index, delivered_ciphertext, delivered_iv, status
+       FROM fulfillment_items WHERE id=? AND order_code=?`,
+      itemId, code,
+    )
+    .catch(() => null);
+  if (!item || String(item.status || "") !== "delivered") throw new Error("sk_credential_item_not_delivered");
+  const ciphertext = String(item.delivered_ciphertext || "");
+  const iv = String(item.delivered_iv || "");
+  if (!ciphertext || !iv) throw new Error("sk_credential_empty");
+
+  const order = await db
+    .queryFirst(`SELECT items, telegram_user_id, telegram_chat_id FROM orders WHERE code=?`, code)
+    .catch(() => null);
+  if (!order) throw new Error("order_not_found");
+  const buyerId = String(order.telegram_user_id || "");
+  const privateChat = buyerId
+    ? String((await db.queryFirst(`SELECT chat_id FROM telegram_users WHERE user_id=?`, buyerId).catch(() => null))?.chat_id || "")
+    : "";
+  const chatId = privateChat && Number(privateChat) > 0
+    ? privateChat
+    : Number(order.telegram_chat_id || 0) > 0 ? String(order.telegram_chat_id) : "";
+  if (!chatId) return false;
+
+  const { claimNotice, settleNotice } = await import("@/lib/notify-buyer");
+  const key = `telegram:sk-credential:${code}:${itemId}`;
+  if (!(await claimNotice(db, key, code, "telegram"))) return true;
+  const { decryptSecret } = await import("@/lib/fulfillment/crypto");
+  const plaintext = await decryptSecret(ciphertext, iv);
+  const { orderLineLabel } = await import("@/lib/fulfillment/delivery/buyer-email");
+  const { supplierCredentialMessage } = await import("@/lib/telegram/messages");
+  const { sendMessage } = await import("@/lib/telegram/api");
+  const label = orderLineLabel(order.items, Number(item.item_index ?? 0));
+  const sent = await sendMessage({
+    chat_id: chatId,
+    text: supplierCredentialMessage(code, label, plaintext || "(detail kosong — hubungi admin)"),
+    parse_mode: "HTML",
+  }).catch(() => ({ ok: false, description: "telegram_send_failed" }));
+  await settleNotice(db, key, Boolean(sent?.ok), undefined, (sent as { description?: string })?.description);
+  if (!sent?.ok) throw new Error("sk_credential_telegram_failed");
   return true;
 }
 
@@ -503,7 +586,10 @@ export async function sendSkCredentialEmail(
   return true;
 }
 
-/** Reconciler email kredensial SK yang tertunda (mis. Resend sempat mati). */
+/** Reconciler kredensial SK yang tertunda (email Resend mati / DM Telegram
+ *  gagal / pembeli Telegram baru START bot). Baris yang PASTI tidak bisa
+ *  dikirim (web tanpa email, Telegram tanpa chat pribadi) tidak dipungut agar
+ *  tidak menyumbat slot LIMIT untuk baris lain. */
 export async function reconcilePendingSkCredentialEmails(
   database?: DatabaseAccess,
   limit = 4,
@@ -519,10 +605,17 @@ export async function reconcilePendingSkCredentialEmails(
          AND fi.delivered_ciphertext IS NOT NULL
          AND o.status='lunas' AND o.payment_status='paid'
          AND datetime(COALESCE(o.paid_at, o.created_at)) > datetime('now','-7 days')
+         AND (
+           (o.sales_channel='telegram' AND (
+              EXISTS(SELECT 1 FROM telegram_users tu WHERE tu.user_id=o.telegram_user_id AND CAST(tu.chat_id AS INTEGER) > 0)
+              OR CAST(COALESCE(o.telegram_chat_id,'0') AS INTEGER) > 0))
+           OR (COALESCE(o.sales_channel,'web')!='telegram' AND COALESCE(o.customer_email,'') LIKE '%@%')
+         )
          AND NOT EXISTS(
            SELECT 1 FROM buyer_notice_log b
            WHERE b.idempotency_key IN ('email:sk-credential:' || fi.order_code || ':' || fi.id,
-                                       'email:fulfillment-item:' || fi.id)
+                                       'email:fulfillment-item:' || fi.id,
+                                       'telegram:sk-credential:' || fi.order_code || ':' || fi.id)
              AND b.status='sent')
        ORDER BY fi.id ASC LIMIT ?`,
       Math.max(1, Math.min(limit, 8)),
@@ -531,7 +624,7 @@ export async function reconcilePendingSkCredentialEmails(
   let sent = 0;
   for (const row of rows) {
     try {
-      if (await sendSkCredentialEmail(String(row.order_code || ""), Number(row.item_id || 0), db)) sent++;
+      if (await deliverSkCredentialToBuyer(String(row.order_code || ""), Number(row.item_id || 0), db)) sent++;
     } catch { /* run berikutnya mencoba lagi */ }
   }
   return sent;

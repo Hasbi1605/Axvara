@@ -630,7 +630,7 @@ export async function reconcileStuckSkOrders(database?: DatabaseAccess): Promise
       `SELECT sk_invoice, order_code, id FROM sk_order_links
        WHERE status IN ('processing','submitted','ordering')
          AND datetime(COALESCE(request_sent_at, updated_at)) <= datetime('now','-1 hour')
-       LIMIT 8`,
+       ORDER BY RANDOM() LIMIT 8`,
     )
     .catch(() => [] as Row[]);
   if (!stuck.length) return 0;
@@ -639,6 +639,49 @@ export async function reconcileStuckSkOrders(database?: DatabaseAccess): Promise
   for (const row of stuck) {
     const invoice = String(row.sk_invoice || "");
     if (!invoice) continue;
+    let detail: SkTrxDetail;
+    try {
+      detail = await fetchSkTransaction(invoice);
+    } catch {
+      continue;
+    }
+    const status = String(detail.status || "").toLowerCase();
+    if (status.includes("complet") || status.includes("success") || status.includes("done")) {
+      await handleSkOrderCompleted(invoice, detail, db);
+      reconciled++;
+    } else if (status.includes("fail") || status.includes("cancel") || status.includes("refund")) {
+      await handleSkOrderFailed(invoice, status, db);
+      reconciled++;
+    }
+  }
+  return reconciled;
+}
+
+/**
+ * Reconcile link SK FRESH (umur 2 menit–1 jam) via GET /v1/trx — cermin
+ * `reconcileFreshWrLinks` (2026-10-04). SK auto selesai hitungan detik; bila
+ * webhook `order.completed` tidak sampai, dulu pembeli menunggu ambang 1 jam
+ * `reconcileStuckSkOrders`. Read-only upstream + idempoten (tidak beli ulang).
+ * Dibatasi `limit` per run; yang tertua lebih dulu.
+ */
+export async function reconcileFreshSkOrders(database?: DatabaseAccess, limit = 3): Promise<number> {
+  const db = database ?? createDatabaseAccess();
+  if (!isSkEnabled()) return 0;
+  const fresh = await db
+    .queryAll(
+      `SELECT sk_invoice FROM sk_order_links
+       WHERE status='processing' AND COALESCE(sk_invoice,'')!=''
+         AND datetime(COALESCE(request_sent_at, updated_at)) <= datetime('now','-2 minutes')
+         AND datetime(COALESCE(request_sent_at, updated_at)) > datetime('now','-1 hour')
+       ORDER BY COALESCE(request_sent_at, updated_at) ASC, id ASC LIMIT ?`,
+      Math.max(1, Math.min(limit, 6)),
+    )
+    .catch(() => [] as Row[]);
+  if (!fresh.length) return 0;
+  const { handleSkOrderCompleted, handleSkOrderFailed } = await import("./deliver");
+  let reconciled = 0;
+  for (const row of fresh) {
+    const invoice = String(row.sk_invoice || "");
     let detail: SkTrxDetail;
     try {
       detail = await fetchSkTransaction(invoice);

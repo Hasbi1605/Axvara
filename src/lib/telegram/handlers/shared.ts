@@ -7,6 +7,7 @@
 
 import { queryAll, execRun, isD1Mode } from "@/lib/db";
 import { purchasableStockSql } from "@/lib/catalog-availability";
+import { notLoserProductSql } from "@/lib/supplier-pairs";
 import { TELEGRAM_MAX_QTY } from "@/lib/telegram/keyboards";
 import type { TelegramBestseller } from "@/lib/telegram/messages";
 import type { CartLine } from "@/lib/telegram/cart";
@@ -39,7 +40,7 @@ export async function getBestsellers(limit = 3): Promise<TelegramBestseller[]> {
       `SELECT p.id, p.name, MIN(pv.price) AS price, p.sold_count
        FROM products p
        JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1 AND ${purchasableStockSql("pv")}
-       WHERE p.is_active=1 AND p.telegram_enabled=1
+       WHERE p.is_active=1 AND p.telegram_enabled=1 AND ${notLoserProductSql("p")}
        GROUP BY p.id
        ORDER BY p.sold_count DESC, p.sort_order ASC
        LIMIT ?`,

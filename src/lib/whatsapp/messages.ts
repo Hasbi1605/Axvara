@@ -1,7 +1,7 @@
 // src/lib/whatsapp/messages.ts — WhatsApp message templates (plain text + *bold*)
 // Uses WhatsApp formatting: *bold*, _italic_, ~strikethrough~, ```monospace```
 
-import { type VariantSummary, buyerDeliveryKind, formatWarranty, formatRupiah } from "@/lib/catalog";
+import { type VariantSummary, buyerDeliveryKind, buyerWarrantyLabel, formatRupiah } from "@/lib/catalog";
 import { SITE, adminTelegramLink } from "@/lib/site";
 import { formatWarrantyWhatsApp } from "@/lib/warranty-policy";
 
@@ -89,14 +89,14 @@ export function productDetailMessage(productName: string, _description: string |
 
   variants.forEach((v, i) => {
     const num = i + 1;
-    const war = formatWarranty(v);
+    const war = buyerWarrantyLabel(v);
     // Label pengiriman singkat (migrasi 0032, parity Telegram; SK auto ikut
     // instan 2026-10-02 — regresi checkout MBO palsu Prime Video SK).
     // Tanpa emoji — teks polos agar tidak terlihat seperti AI slop.
     const deliv = buyerDeliveryKind(v) === "instant" ? "Kirim otomatis" : "Dikirim admin";
     lines.push(`${num}. *${v.label}*`);
     lines.push(`   ${deliv}`);
-    lines.push(`   🛡 ${war || "Tanpa Garansi"}`);
+    if (war) lines.push(`   🛡 ${war}`);
     lines.push(`   「 *${formatRupiah(v.price)}* 」`);
     if (v.stock === 0) lines.push("   ❌ *HABIS*");
     lines.push("");
@@ -114,7 +114,7 @@ export function productDetailMessage(productName: string, _description: string |
 }
 
 export function variantSelectedMessage(productName: string, variant: VariantSummary, minQty = 1): string {
-  const war = formatWarranty(variant);
+  const war = buyerWarrantyLabel(variant);
   const need = Math.max(1, Number(minQty) || 1);
   const lines = [
     "━━━━━━━━━━━━━━━━━━━━",
@@ -122,7 +122,7 @@ export function variantSelectedMessage(productName: string, variant: VariantSumm
     "━━━━━━━━━━━━━━━━━━━━",
     `${productName.toUpperCase()} — *${variant.label}*`,
   ];
-  lines.push(`🛡 ${war || "Tanpa Garansi"}`);
+  if (war) lines.push(`🛡 ${war}`);
   lines.push(`「 *${formatRupiah(variant.price)}* 」`);
   // Minimum pembelian (migrasi 0034): WA order selalu qty 1, jadi varian
   // min>1 (mis. GSuite 50) tidak bisa dibeli dari WA — arahkan ke web/Telegram.

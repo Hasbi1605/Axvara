@@ -21,6 +21,7 @@ import {
 } from "@/lib/telegram/messages";
 import { getProductDetail } from "@/lib/catalog";
 import { purchasableStockSql } from "@/lib/catalog-availability";
+import { notLoserProductSql } from "@/lib/supplier-pairs";
 import { countInventory } from "@/lib/fulfillment/inventory";
 import { clampQty } from "./shared";
 import { handleShowCatalog, handleShowQty, handleShowVariants } from "./catalog";
@@ -230,7 +231,7 @@ export async function handlePendingSearchInput(
 
 export async function handleSearchResults(chatId: number, keyword: string) {
   const like = `%${keyword.trim().toLowerCase()}%`;
-  const match = `p.is_active=1 AND p.telegram_enabled=1
+  const match = `p.is_active=1 AND p.telegram_enabled=1 AND ${notLoserProductSql("p")}
        AND (LOWER(p.name) LIKE ? OR LOWER(COALESCE(p.whatsapp_alias,'')) LIKE ? OR LOWER(COALESCE(p.aliases,'[]')) LIKE ?)`;
   // Sama dengan katalog: hanya produk yang bisa dibeli.
   const rows = await queryAll(

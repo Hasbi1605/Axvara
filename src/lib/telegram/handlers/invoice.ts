@@ -16,7 +16,7 @@ import { orderStatusKeyboard, qrisInvoiceKeyboard } from "@/lib/telegram/keyboar
 import {
   outOfStockMessage, alreadyPendingMessage, errorMessage, invoiceMessage,
 } from "@/lib/telegram/messages";
-import { getActiveVariant, formatDuration, formatWarranty, type VariantSummary } from "@/lib/catalog";
+import { getActiveVariant, formatDuration, buyerWarrantyLabel, type VariantSummary } from "@/lib/catalog";
 import { isCriticalSendResult } from "@/lib/telegram/webhook-errors";
 import { generateOrderCode } from "@/lib/security";
 import { createActiveQrisInvoice, isDanaQrisConfigured, isGopayQrisConfigured } from "@/lib/payments/dana-qris";
@@ -189,7 +189,7 @@ export async function createAndSendVariantInvoice(
     warranty_type: variant.warranty_type,
     warranty_value: variant.warranty_value,
     warranty_unit: variant.warranty_unit,
-    warranty_label: formatWarranty(variant),
+    warranty_label: buyerWarrantyLabel(variant),
     price,
     qty,
     fulfillment_mode: fulfillmentMode,

@@ -499,6 +499,18 @@ export function formatWarranty(v: VariantSummary): string {
   return "";
 }
 
+/**
+ * Label garansi untuk PEMBELI di bot (Telegram/WA, 2026-10-04 — paritas PDP
+ * web yang sudah menyembunyikan tipe `none`). Varian tanpa data garansi
+ * terstruktur — terutama SK yang menulis garansinya di deskripsi/S&K, bukan
+ * kolom — TIDAK boleh tampil "Tanpa Garansi": itu vonis palsu. String kosong
+ * = jangan render baris/segmen garansi sama sekali.
+ */
+export function buyerWarrantyLabel(v: VariantSummary): string {
+  if (!v.warranty_type || v.warranty_type === "none") return "";
+  return formatWarranty(v);
+}
+
 function unitMap(unit: string): string {
   const map: Record<string, string> = { day: "Hari", month: "Bulan", year: "Tahun", lifetime: "Selamanya" };
   return map[unit] || unit;

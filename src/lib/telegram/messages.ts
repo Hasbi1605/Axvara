@@ -39,7 +39,7 @@ export {
 } from "./messages/purchase";
 
 export {
-  orderPaidMessage, deliveryMessage, whatsAppInputPromptMessage, orderExpiredMessage,
+  orderPaidMessage, deliveryMessage, supplierCredentialMessage, type TelegramPaidDelivery, whatsAppInputPromptMessage, orderExpiredMessage,
   orderCancelledMessage, orderStatusMessage, qrisRenewRejectedMessage, outOfStockMessage,
   alreadyPendingMessage, errorMessage, waSavedAfterPaymentMessage, invalidWhatsAppMessage,
 } from "./messages/status";

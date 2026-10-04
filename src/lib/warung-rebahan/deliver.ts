@@ -894,14 +894,11 @@ async function deliverTelegramCredential(orderCode: string, plaintext: string, d
   // HANYA private chat (id > 0). Grup/kanal (negatif) = tolak, jangan bocorkan.
   if (!chatId || Number(chatId) <= 0) throw new Error("no_private_telegram_chat");
   const { sendMessage } = await import("@/lib/telegram/api");
+  const { supplierCredentialMessage } = await import("@/lib/telegram/messages");
   const productNames = parseProductNames(order.items);
   const sent = await sendMessage({
     chat_id: chatId,
-    text:
-      `✅ <b>Pesanan ${orderCode} sudah siap!</b>\n` +
-      `📦 ${escapeHtml(productNames)}\n\n` +
-      `<pre>${escapeHtml(plaintext)}</pre>\n\n` +
-      `Simpan baik-baik.`,
+    text: supplierCredentialMessage(orderCode, productNames, plaintext),
     parse_mode: "HTML",
   });
   if (!sent.ok) throw new Error("telegram_delivery_failed");
@@ -1253,8 +1250,4 @@ function parseProductNames(raw: unknown): string {
   } catch {
     return "Produk";
   }
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }

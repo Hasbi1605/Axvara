@@ -219,6 +219,15 @@ tetap menjadi authority dan event yang tidak cocok ditangani pada **Metode & Rek
 Penghapusan produk/varian mengarsipkannya agar order historis tetap utuh. Konfigurasi
 fulfillment shared/unique dipusatkan pada masing-masing varian, bukan digandakan di menu bot.
 
+**Paritas pengiriman Telegram = Web (2026-10-04):** setelah lunas, pembeli Telegram
+menerima pesan sesuai kelas kirim — instan (stok sendiri, WR restock, SK auto) =
+"dikirim otomatis ke chat ini"; Made By Order (WR MBO / SK non-auto) = pesan tunggu
+maks 12 jam lalu kredensial dikirim OTOMATIS ke chat yang sama begitu selesai di
+supplier; manual = dikirim admin (WA cadangan hanya untuk baris manual). Kredensial
+WR & SK masuk DM chat pribadi (tidak pernah ke id grup; order dari grup menyusul
+setelah pembeli START bot). Katalog/cari/bestseller bot memfilter pecundang pasangan
+WR/SK, dan varian tanpa data garansi tidak lagi ditulis "Tanpa Garansi".
+
 Setelah pembayaran diterima, tombol support bot membuka akun manusia `@axvara_support`;
 username bot tetap `@Axvara_bot`. Seluruh notifikasi admin dari order web, Telegram,
 maupun WhatsApp memakai satu tujuan `TELEGRAM_ADMIN_CHAT_ID`. Untuk grup privat, tambahkan bot ke grup,

@@ -737,6 +737,11 @@ export async function handleWrOrderProcessing(
 }
 
 /** Sinkronisasi status order processing/ambigu yang menggantung via /transactions. */
+// Urutan ACAK (2026-10-04): antrean Made By Order bisa berisi belasan link
+// yang dikerjakan berjam-jam. Tanpa ORDER, SQLite selalu mengembalikan 8 baris
+// yang sama sehingga link MBO lain yang sudah selesai di upstream (webhook
+// hilang) tidak pernah tersentuh. /transactions dibaca SEKALI per run, jadi
+// menambah kandidat tidak menambah panggilan upstream.
 export async function reconcileStuckWrOrders(database?: DatabaseAccess): Promise<number> {
   const db = database ?? createDatabaseAccess();
   if (!isWrEnabled()) return 0;
@@ -745,7 +750,7 @@ export async function reconcileStuckWrOrders(database?: DatabaseAccess): Promise
       `SELECT wr_order_id, order_code, id FROM wr_order_links
        WHERE status IN ('processing','submitted','ordering')
          AND datetime(COALESCE(request_sent_at, updated_at)) <= datetime('now','-1 hour')
-       LIMIT 8`,
+       ORDER BY RANDOM() LIMIT 12`,
     )
     .catch(() => [] as Row[]);
   if (!stuck.length) return 0;

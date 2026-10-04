@@ -11,7 +11,7 @@ import {
   StockReservationError,
   D1Statement,
 } from "@/lib/db";
-import { getActiveVariant, type VariantSummary, formatDuration, formatWarranty } from "@/lib/catalog";
+import { getActiveVariant, type VariantSummary, formatDuration, buyerWarrantyLabel } from "@/lib/catalog";
 import { generateOrderCode } from "@/lib/security";
 import { QRIS_ORDER_WINDOW_MINUTES } from "@/lib/payments/dana-qris";
 
@@ -422,7 +422,7 @@ export async function createPendingChannelOrder(input: ChannelOrderInput): Promi
     warranty_type: variant.warranty_type,
     warranty_value: variant.warranty_value,
     warranty_unit: variant.warranty_unit,
-    warranty_label: formatWarranty(variant),
+    warranty_label: buyerWarrantyLabel(variant),
     price: variant.price,
     fulfillment_mode: variant.fulfillment_mode,
   });

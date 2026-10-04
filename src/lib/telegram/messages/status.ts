@@ -8,8 +8,34 @@
 import { escapeHtml, formatRupiah, truncate } from "./format";
 import { SITE } from "@/lib/site";
 
-export function orderPaidMessage(orderCode: string, productName: string, needsWhatsApp = false): string {
+/**
+ * Cara produk sampai ke pembeli Telegram, per order (2026-10-04, paritas Web):
+ * - `instant`: semua baris kirim otomatis (stok sendiri shared/unique, WR
+ *   restock, SK auto) → detail dikirim otomatis ke chat ini dalam hitungan
+ *   detik–menit.
+ * - `queued`: ada baris Made By Order otomatis (WR MBO / SK non-auto) →
+ *   pembeli diminta menunggu; detail tetap dikirim OTOMATIS ke chat ini
+ *   begitu selesai.
+ * - `manual`: ada baris yang diserahkan admin (fulfillment manual lokal).
+ * Tidak pernah menyebut pemasok/pihak ketiga (keputusan owner 2026-09-18).
+ */
+export type TelegramPaidDelivery = "instant" | "queued" | "manual";
+
+export function orderPaidMessage(
+  orderCode: string,
+  productName: string,
+  needsWhatsApp = false,
+  delivery: TelegramPaidDelivery = "manual",
+): string {
   const name = escapeHtml(truncate(productName, 100));
+  const deliveryLines = delivery === "instant"
+    ? ["⚡ Produk dikirim otomatis ke chat ini dalam beberapa saat — tidak perlu balas apa pun."]
+    : delivery === "queued"
+      ? [
+          "⏳ <b>Made By Order</b> — pesananmu sedang dikerjakan sesuai antrean, umumnya lebih cepat, maksimal 12 jam pada jam layanan.",
+          "📩 Detail produk dikirim <b>otomatis ke chat ini</b> begitu siap. Tidak perlu membuka chat terus — kamu akan dapat notifikasi.",
+        ]
+      : ["📩 Produk akan dikirim admin melalui DM Telegram pribadi ini."];
   const lines = [
     "🎉 <b>Pembayaran Berhasil!</b>",
     "━━━━━━━━━━━━━━━━━━━━━",
@@ -18,7 +44,7 @@ export function orderPaidMessage(orderCode: string, productName: string, needsWh
     `🔢 <code>${escapeHtml(orderCode)}</code>`,
     "",
     "✅ Dana sudah diterima dan terverifikasi otomatis.",
-    "📩 Produk akan dikirim admin melalui DM Telegram pribadi ini.",
+    ...deliveryLines,
   ];
   if (needsWhatsApp) {
     lines.push(
@@ -50,6 +76,30 @@ export function deliveryMessage(secret: string): string {
     "━━━━━━━━━━━━━━━━━━━━━",
     "🔒 Simpan baik-baik, jangan dibagikan",
     "🛡 Garansi aktif sesuai deskripsi produk. Simpan invoice untuk klaim. Refund tidak berlaku, hanya penggantian. /garansi",
+    "❓ Ada kendala? Ketik /bantuan",
+  ].join("\n");
+}
+
+/**
+ * Detail produk hasil auto-order (WR/SK) ke chat pribadi pembeli Telegram.
+ * Satu template untuk dua sumber agar pembeli melihat format yang sama
+ * dengan produk stok sendiri (`deliveryMessage`) + nama produk + kode order.
+ */
+export function supplierCredentialMessage(orderCode: string, productName: string, plaintext: string): string {
+  return [
+    "🎁 <b>Produk Siap!</b>",
+    "━━━━━━━━━━━━━━━━━━━━━",
+    "",
+    `📦 ${escapeHtml(truncate(productName, 120))}`,
+    `🔢 <code>${escapeHtml(orderCode)}</code>`,
+    "",
+    "Detail akses/lisensi kamu:",
+    "",
+    `<pre>${escapeHtml(plaintext)}</pre>`,
+    "",
+    "━━━━━━━━━━━━━━━━━━━━━",
+    "🔒 Simpan baik-baik, jangan dibagikan",
+    "🛡 Garansi mengikuti ketentuan produk. Simpan invoice untuk klaim. /garansi",
     "❓ Ada kendala? Ketik /bantuan",
   ].join("\n");
 }

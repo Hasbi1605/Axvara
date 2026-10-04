@@ -304,17 +304,17 @@ export async function notifyBuyerWrBlocked(
   database: DatabaseAccess = createDatabaseAccess(),
 ): Promise<boolean> {
   return await sendToBuyer(orderCode, {
-    subject: `Pesanan ${orderCode} menunggu stok pemasok`,
+    subject: `Pesanan ${orderCode} tertunda sementara`,
     body: `⏳ <b>Pesanan tertunda sementara</b>\nOrder: <code>${orderCode}</code>\n\n`
-      + "Pembayaranmu sudah kami terima, tetapi saldo ke pemasok sedang habis "
+      + "Pembayaranmu sudah kami terima, tetapi stok produk sedang disiapkan ulang "
       + "sehingga pengiriman tertunda. Pesananmu tetap antre dan diproses otomatis "
-      + "setelah saldo terisi — tidak perlu bayar ulang.",
+      + "begitu stok siap — tidak perlu bayar ulang.",
     email: {
-      title: "Pesanan Menunggu Pemasok",
+      title: "Pesanan Tertunda Sementara",
       subtitle: "Pembayaranmu aman dan sudah kami terima.",
       paragraphs: [
-        `Pembayaran untuk pesanan ${orderCode} sudah kami terima, tetapi saldo ke pemasok sedang habis sehingga pengiriman tertunda.`,
-        "Pesananmu tetap antre dan diproses otomatis setelah saldo terisi — tidak perlu bayar ulang. Bila belum ada kabar, hubungi admin lewat tombol di bawah.",
+        `Pembayaran untuk pesanan ${orderCode} sudah kami terima, tetapi stok produk sedang disiapkan ulang sehingga pengiriman tertunda.`,
+        "Pesananmu tetap antre dan diproses otomatis begitu stok siap — tidak perlu bayar ulang. Bila belum ada kabar, hubungi admin lewat tombol di bawah.",
       ],
     },
     chatCta: "Balas pesan ini bila belum ada kabar.",
@@ -334,17 +334,17 @@ export async function notifyBuyerSkBlocked(
   database: DatabaseAccess = createDatabaseAccess(),
 ): Promise<boolean> {
   return await sendToBuyer(orderCode, {
-    subject: `Pesanan ${orderCode} menunggu stok pemasok`,
+    subject: `Pesanan ${orderCode} tertunda sementara`,
     body: `⏳ <b>Pesanan tertunda sementara</b>\nOrder: <code>${orderCode}</code>\n\n`
-      + "Pembayaranmu sudah kami terima, tetapi saldo ke pemasok sedang habis "
+      + "Pembayaranmu sudah kami terima, tetapi stok produk sedang disiapkan ulang "
       + "sehingga pengiriman tertunda. Pesananmu tetap antre dan diproses otomatis "
-      + "setelah saldo terisi — tidak perlu bayar ulang.",
+      + "begitu stok siap — tidak perlu bayar ulang.",
     email: {
-      title: "Pesanan Menunggu Pemasok",
+      title: "Pesanan Tertunda Sementara",
       subtitle: "Pembayaranmu aman dan sudah kami terima.",
       paragraphs: [
-        `Pembayaran untuk pesanan ${orderCode} sudah kami terima, tetapi saldo ke pemasok sedang habis sehingga pengiriman tertunda.`,
-        "Pesananmu tetap antre dan diproses otomatis setelah saldo terisi — tidak perlu bayar ulang. Bila belum ada kabar, hubungi admin lewat tombol di bawah.",
+        `Pembayaran untuk pesanan ${orderCode} sudah kami terima, tetapi stok produk sedang disiapkan ulang sehingga pengiriman tertunda.`,
+        "Pesananmu tetap antre dan diproses otomatis begitu stok siap — tidak perlu bayar ulang. Bila belum ada kabar, hubungi admin lewat tombol di bawah.",
       ],
     },
     chatCta: "Balas pesan ini bila belum ada kabar.",
@@ -365,11 +365,26 @@ export async function notifyBuyerSkProcessing(
   database: DatabaseAccess = createDatabaseAccess(),
 ): Promise<boolean> {
   const invoice = String(skInvoice || "").slice(0, 40);
+  // Telegram: TIDAK dikirim (2026-10-04). Pesan lunas Telegram sudah memberi
+  // ekspektasi (kirim otomatis / Made By Order) dan lisensi menyusul langsung
+  // ke chat yang sama. Kabar ini dulu membocorkan kata "Pemasok" dan
+  // menjanjikan "email ini" kepada pembeli Telegram yang tidak punya email.
+  // Juga dilewati bila item SK order ini sudah terkirim (webhook paid/
+  // completed balapan) agar pembeli tidak menerima "diproses" setelah "siap".
+  const meta = await database.queryFirst(
+    `SELECT o.sales_channel,
+            (SELECT COUNT(*) FROM fulfillment_items fi WHERE fi.order_code=o.code
+               AND fi.status='delivered' AND fi.delivered_message_id LIKE 'sk:%') AS sk_delivered
+     FROM orders o WHERE o.code=?`,
+    orderCode,
+  ).catch(() => null);
+  if (String(meta?.sales_channel || "") === "telegram") return false;
+  if (Number(meta?.sk_delivered ?? 0) > 0) return false;
   return await sendToBuyer(orderCode, {
     subject: `Pesanan ${orderCode} sedang diproses — AXVARA`,
-    body: `🤖 <b>Pesanan sedang diproses</b>\nOrder: <code>${orderCode}</code>\n\n`
-      + "Pemasok sedang menyiapkan lisensi produkmu. Detail produk dikirim "
-      + "ke email ini dan juga tampil di halaman pesanan begitu siap.",
+    body: `⏳ <b>Pesanan sedang diproses</b>\nOrder: <code>${orderCode}</code>\n\n`
+      + "Tim Axvara sedang menyiapkan produkmu. Detail produk dikirim otomatis "
+      + "dan juga tampil di halaman pesanan begitu siap.",
     email: {
       title: "Pesanan Diproses",
       subtitle: "Ada pembaruan status untuk pesananmu.",

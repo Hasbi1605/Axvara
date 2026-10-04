@@ -12,7 +12,7 @@ import {
   getProductDetail,
   getActiveVariant,
   formatDuration,
-  formatWarranty,
+  buyerWarrantyLabel,
   formatRupiah,
 } from "@/lib/catalog";
 import { getSession, upsertSession } from "@/lib/whatsapp/session";
@@ -292,7 +292,7 @@ async function sendPaymentInfo(
   const paymentMethods = await getActivePaymentMethods();
 
   const dur = snapshot?.duration || (variant ? formatDuration(variant) : "");
-  const war = snapshot?.warranty || (variant ? formatWarranty(variant) : "");
+  const war = snapshot?.warranty || (variant ? buyerWarrantyLabel(variant) : "");
   const qrisUrl = method === "QRIS" ? dynamicQrisUrl : undefined;
 
   const result = await sendTextMessage({

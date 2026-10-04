@@ -11,7 +11,9 @@ import {
   adminWhatsAppOrderPaidMessage,
   orderPaidMessage,
   orderReminderMessage,
+  type TelegramPaidDelivery,
 } from "@/lib/telegram/messages";
+import { buyerDeliveryKind } from "@/lib/catalog";
 import {
   orderPaidKeyboard,
   telegramOrderAdminKeyboard,
@@ -54,6 +56,56 @@ function fulfillmentMode(raw: unknown): string {
 
 function telegramNotificationsConfigured(): boolean {
   return process.env.TELEGRAM_BOT_ENABLED === "true" && Boolean(process.env.TELEGRAM_BOT_TOKEN);
+}
+
+/**
+ * Profil pengiriman order Telegram dari varian tiap baris (bukan snapshot
+ * `fulfillment_mode`: varian WR/SK selalu 'manual' lokal karena kontrak
+ * CHECK, sehingga dulu SEMUA order WR/SK dijanjikan "dikirim admin" + diminta
+ * nomor WA). Kelas mengikuti `buyerDeliveryKind` yang sama dengan PDP web.
+ */
+export async function telegramPaidDeliveryProfile(
+  order: Row,
+  database: DatabaseAccess,
+): Promise<{ delivery: TelegramPaidDelivery; hasLocalManual: boolean }> {
+  const ids = parseItems(order.items)
+    .map((item) => Number((item as { variant_id?: unknown }).variant_id || 0))
+    .filter((id) => Number.isInteger(id) && id > 0);
+  const fallbackMode = fulfillmentMode(order.variant_snapshot);
+  if (!ids.length) {
+    const manual = fallbackMode === "manual";
+    return { delivery: manual ? "manual" : "instant", hasLocalManual: manual };
+  }
+  const rows = await database.queryAll(
+    `SELECT pv.id, pv.fulfillment_mode, pv.wr_variant_id, pv.sk_variant_id,
+            wv.wr_delivery_class, sp.sk_order_process
+     FROM product_variants pv
+     LEFT JOIN wr_variants wv ON wv.wr_variant_id = pv.wr_variant_id
+     LEFT JOIN sk_products sp ON sp.sk_variant_id = pv.sk_variant_id
+     WHERE pv.id IN (${ids.map(() => "?").join(",")})`,
+    ...ids,
+  ).catch(() => [] as Row[]);
+  if (!rows.length) {
+    const manual = fallbackMode === "manual";
+    return { delivery: manual ? "manual" : "instant", hasLocalManual: manual };
+  }
+  let hasLocalManual = false;
+  let hasQueued = false;
+  for (const row of rows) {
+    const supplier = Boolean(String(row.wr_variant_id ?? "").trim() || String(row.sk_variant_id ?? "").trim());
+    const kind = buyerDeliveryKind({
+      fulfillment_mode: String(row.fulfillment_mode || "manual"),
+      wr_variant_id: row.wr_variant_id ?? null,
+      sk_variant_id: row.sk_variant_id ?? null,
+      wr_delivery_class: row.wr_delivery_class != null ? String(row.wr_delivery_class) : null,
+      sk_order_process: row.sk_order_process != null ? String(row.sk_order_process) : null,
+    } as Parameters<typeof buyerDeliveryKind>[0]);
+    if (kind === "queued") {
+      if (supplier) hasQueued = true;
+      else hasLocalManual = true;
+    }
+  }
+  return { delivery: hasLocalManual ? "manual" : hasQueued ? "queued" : "instant", hasLocalManual };
 }
 
 /** Notify Axvara_Notif as soon as a Telegram order and its QRIS ledger exist. */
@@ -139,11 +191,15 @@ export async function notifyTelegramBuyerPaid(orderCode: string, database: Datab
     }
     return false;
   }
-  const needsWhatsApp = fulfillmentMode(order.variant_snapshot) === "manual"
+  const profile = await telegramPaidDeliveryProfile(order, database);
+  // Nomor WA cadangan HANYA untuk baris yang diserahkan admin (manual lokal).
+  // Produk WR/SK dikirim otomatis ke chat ini — meminta WA di sana membuat
+  // pembeli mengira produknya dikirim manual (laporan owner 2026-10-04).
+  const needsWhatsApp = profile.hasLocalManual
     && !String(order.customer_wa || "").trim();
   const sent = await sendMessage({
     chat_id: chatId,
-    text: orderPaidMessage(String(order.code), productNames(order.items), needsWhatsApp),
+    text: orderPaidMessage(String(order.code), productNames(order.items), needsWhatsApp, profile.delivery),
     parse_mode: "HTML",
     reply_markup: orderPaidKeyboard(String(order.code)),
   });
