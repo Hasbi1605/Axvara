@@ -748,6 +748,7 @@ Implementasi native TypeScript di codebase AXVARA. Repo `mocasus/telegram-auto-o
 | `admin_session_revocations` | Pencabutan sesi admin lintas instance/restart (migrasi 0020, review R8 lanjutan: logout menolak cookie basi di worker baru; TTL 90 hari dibersihkan cron) |
 | `store_settings` | Override nama, tagline, WhatsApp, jam dukungan, footer, dan logo storefront |
 | `supplier_links` | Shortlink internal `axvara.tech/go/*` (migrasi 0056, 2026-10-03): pembungkus link supplier + artikel AXVARA panjang agar tampil pendek di PDP/email/panel; `slug` unik + `destination` (URL/absolut atau path internal) + `title` + `is_active` + `click_count`/`last_clicked_at`; CRUD hanya admin, pembeli hanya redirect (bukan SaaS publik) |
+| (indeks log) | Migrasi 0057 (2026-10-04, darurat kuota D1 Free 5 jt rows_read/hari): `wr_sync_log`/`sk_sync_log(sync_type, created_at)` + `wr_saldo_log`/`sk_saldo_log(source, created_at)`. Tanpa indeks, setiap query "baris terbaru" cron/watchdog membaca + mengurutkan seluruh tabel (±800–2.900 baris) dan menyumbang >50% rows_read setelah cron dipecah per fase. Aturan: query "terbaru" baru di tabel log wajib punya indeks pendukung |
 | `telegram_promo_digests` | Ledger Daily Promo dua slot (`business_date + slot` unik), snapshot product IDs, marker/attempt/error terpisah untuk bubble lengkap dan ringkas (migrasi 0044) |
 
 Kolom baru di `products`: `fulfillment_mode`, `shared_secret_ciphertext`, `shared_secret_iv`, `telegram_enabled`.

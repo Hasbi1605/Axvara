@@ -831,6 +831,8 @@ CREATE TABLE IF NOT EXISTS wr_sync_log (
                     CHECK (trigger IN ('manual', 'cron')),
   created_at        TEXT NOT NULL DEFAULT (datetime('now'))
 );
+-- 0057: "baris terbaru" tanpa scan penuh (darurat kuota rows_read 4 Okt).
+CREATE INDEX IF NOT EXISTS idx_wr_sync_log_type_created ON wr_sync_log(sync_type, created_at);
 CREATE TABLE IF NOT EXISTS wr_saldo_log (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   balance     INTEGER NOT NULL,
@@ -839,6 +841,7 @@ CREATE TABLE IF NOT EXISTS wr_saldo_log (
   note        TEXT,
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE INDEX IF NOT EXISTS idx_wr_saldo_log_source_created ON wr_saldo_log(source, created_at);
 -- Kosong di bootstrap baru (0028): Canva/Gemini ikut disync.
 CREATE TABLE IF NOT EXISTS wr_exclusions (
   id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1020,6 +1023,7 @@ CREATE TABLE IF NOT EXISTS sk_sync_log (
                     CHECK (trigger IN ('manual', 'cron')),
   created_at        TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE INDEX IF NOT EXISTS idx_sk_sync_log_type_created ON sk_sync_log(sync_type, created_at);
 CREATE TABLE IF NOT EXISTS sk_saldo_log (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   balance     INTEGER NOT NULL,
@@ -1028,6 +1032,7 @@ CREATE TABLE IF NOT EXISTS sk_saldo_log (
   note        TEXT,
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE INDEX IF NOT EXISTS idx_sk_saldo_log_source_created ON sk_saldo_log(source, created_at);
 CREATE TABLE IF NOT EXISTS sk_webhook_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   sk_invoice TEXT NOT NULL,
