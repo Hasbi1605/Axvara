@@ -115,6 +115,11 @@ Setiap kali ubah kode/docs di `axvara/`, **WAJIB catat di `axvara/CHANGELOG.md`*
 - Script Apps Script final (dengan secret terisi) HANYA di `/tmp/axvara-wr-forwarder-paste.js` (di luar repo, `*forwarder-paste*` di-ignore) — JANGAN tulis secret ke `docs/WR-EMAIL-FORWARDER.gs.js` (masuk git).
 - Rotasi: generate baru → update file ini → update 3 Pages Secrets (`secret_text`) → redeploy → update Apps Script.
 
+## Kredensial AWS (VPS proxy WR/SK) (WAJIB)
+- Agent memakai profile `axvara-monitor` (IAM user `kiro-monitor`, key statis di `~/.aws/credentials`, region `ap-southeast-1`): `ReadOnlyAccess` + baca billing/kredit (Cost Explorer, freetier, budgets) + `ec2:Start/Stop/RebootInstances` HANYA untuk `i-022790eb6bb0b1be3` (`axvara-proxy-sg`). Selalu `--profile axvara-monitor`; jangan pakai `default`/root atau profile admin lain.
+- Ubah isi VPS (deploy proxy, restart service, log) lewat SSH `ec2-user@13.228.147.90` + `~/.ssh/axvara-sg-proxy.pem`, bukan IAM.
+- Aksi di luar izin (security group, resize, snapshot, resource baru) → minta owner. Jangan echo/commit nilai key. Cabut akses: IAM → Users → `kiro-monitor` → hapus access key.
+
 ## Sebelum menyelesaikan percakapan (checklist)
 Agent **wajib** pastikan sebelum jawab "selesai":
 - [ ] Test pass: `npx vitest run --run` — seluruh test hijau (jumlah terbaru ada di entri teratas `CHANGELOG.md`), tidak ada test gagal
