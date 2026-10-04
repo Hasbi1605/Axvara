@@ -397,6 +397,49 @@ describe("Warung Rebahan webhook completion", () => {
     }
   });
 
+  it("repairUnboundCompletedWrLinks: link completed lama (teks rusak, belum terikat) ditulis ulang tanpa kirim ulang", async () => {
+    const fx = await setup();
+    try {
+      seedCatalog(fx);
+      seedOrder(fx, "AXV-20261003-F111CC33");
+      seedFulfillmentItem(fx, "AXV-20261003-F111CC33");
+      const { encryptSecret } = await import("@/lib/fulfillment/crypto");
+      const bad = await encryptSecret("Product: Spotify · Details: [object Object]");
+      const info = fx.sql.prepare(
+        "INSERT INTO wr_order_links(order_code,wr_order_id,wr_variant_id,quantity,wr_cost,status,wr_account_details,wr_account_iv,completed_at,delivery_status) VALUES('AXV-20261003-F111CC33','ORD-OLD','var-1',1,5000,'completed',?,?,datetime('now','-1 day'),'delivered') RETURNING id",
+      ).get(bad.ciphertext, bad.iv) as { id: number };
+      vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
+      vi.stubEnv("WARUNG_REBAHAN_PROXY_URL", "https://proxy.example");
+      vi.stubEnv("WARUNG_REBAHAN_PROXY_TOKEN", "proxy-secret");
+      vi.stubEnv("TELEGRAM_BOT_ENABLED", "false");
+      const sends: string[] = [];
+      vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+        if (String(url).includes("/transactions")) {
+          return { ok: true, json: async () => ({ success: true, message: "ok", data: [{
+            order_id: "ORD-OLD", status: "completed", total_amount: 5000, payment_status: "paid", products: [],
+            account_details: { product: "Spotify Premium", details: [{ email: "old@example.com" }, { password: "pw1" }] },
+          }] }) };
+        }
+        sends.push(String(url));
+        return { ok: true, json: async () => ({ ok: true, result: { message_id: 1 } }) };
+      }));
+      const { repairUnboundCompletedWrLinks } = await import("@/lib/warung-rebahan/order");
+      const db = createDatabaseAccess(fx.db);
+      expect(await repairUnboundCompletedWrLinks(db)).toBe(1);
+      const decrypted = await getDecryptedAccountDetails("AXV-20261003-F111CC33", db, { admin: true });
+      expect(decrypted[0].details).toContain("old@example.com");
+      expect(decrypted[0].details).not.toContain("[object Object]");
+      const link = fx.sql.prepare("SELECT fulfillment_item_id, delivery_status FROM wr_order_links WHERE id=?").get(info.id) as { fulfillment_item_id: number; delivery_status: string };
+      expect(Number(link.fulfillment_item_id)).toBeGreaterThan(0);
+      expect(link.delivery_status).toBe("delivered");
+      expect(sends).toHaveLength(0); // tidak ada pengiriman ulang ke pembeli
+      // Sudah terikat → tidak dipungut lagi.
+      expect(await repairUnboundCompletedWrLinks(db)).toBe(0);
+    } finally {
+      fx.close();
+    }
+  });
+
   it("failed: monotonik + item WR failed + agregat jujur tanpa auto-refund", async () => {
     const fx = await setup();
     try {

@@ -1205,6 +1205,16 @@ export async function POST(request: NextRequest) {
           } catch { /* best-effort; run berikutnya retry */ }
         }
 
+        // 3a'. Self-heal link completed yang belum terikat item (kredensial
+        //      formatter lama / panel kosong, kasus F111FD64). Read-only
+        //      upstream, tanpa kirim ulang; berhenti sendiri setelah terikat.
+        if (autoOrder && budget.fits(4) && hasTime(TIME_WR_LIGHT)) {
+          try {
+            const { repairUnboundCompletedWrLinks } = await import("@/lib/warung-rebahan/order");
+            results.wr_links_repaired = await repairUnboundCompletedWrLinks(database);
+          } catch { /* best-effort */ }
+        }
+
         // 3b. Peringatan umur antrean: link yang masih diproses melewati
         //     ambang internal (di atas plafon janji pembeli). Murni D1 +
         //     Telegram, idempoten via aging_alerted_at.

@@ -787,6 +787,56 @@ export async function reconcileFreshWrLinks(
   return reconcileWrLinksByTransactions(links, db);
 }
 
+/**
+ * Self-heal link WR `completed` yang BELUM terikat ke baris item (2026-10-04,
+ * kasus F111FD64). Link yang selesai sebelum fix bind/formatter menyimpan
+ * kredensial yang diformat formatter lama ("[object Object]" untuk payload
+ * `details` berbentuk array objek) dan item-nya tanpa ciphertext — panel
+ * pembeli + tombol Ambil Detail Produk menampilkan teks rusak/kosong.
+ * Ditarik ulang dari /transactions (read-only, TIDAK beli ulang) lalu
+ * `handleWrOrderCompleted` menulis ulang dengan formatter baru + bind + settle.
+ * Pengiriman tidak diulang: delivery_status `delivered` dilewati queue/process.
+ * Hanya link yang PUNYA item cocok (bind pasti berhasil → tidak dipungut lagi),
+ * umur ≤14 hari, maks `limit` per run.
+ */
+export async function repairUnboundCompletedWrLinks(database?: DatabaseAccess, limit = 2): Promise<number> {
+  const db = database ?? createDatabaseAccess();
+  if (!isWrEnabled()) return 0;
+  const rows = await db
+    .queryAll(
+      `SELECT l.id, l.wr_order_id, l.order_code FROM wr_order_links l
+       WHERE l.status='completed' AND l.fulfillment_item_id IS NULL
+         AND COALESCE(l.wr_order_id,'')!=''
+         AND COALESCE(l.last_error,'')!='repair_tx_missing'
+         AND datetime(COALESCE(l.completed_at, l.updated_at)) > datetime('now','-14 days')
+         AND EXISTS(
+           SELECT 1 FROM fulfillment_items fi JOIN product_variants pv ON pv.id=fi.variant_id
+           WHERE fi.order_code=l.order_code AND pv.wr_variant_id=l.wr_variant_id)
+       ORDER BY l.id ASC LIMIT ?`,
+      Math.max(1, Math.min(limit, 4)),
+    )
+    .catch(() => [] as Row[]);
+  if (!rows.length) return 0;
+  const repaired = await reconcileWrLinksByTransactions(
+    rows.map((row) => ({
+      id: Number(row.id),
+      wr_order_id: String(row.wr_order_id || ""),
+      order_code: String(row.order_code || ""),
+    })),
+    db,
+  );
+  // Transaksi yang tidak ada lagi di /transactions upstream ditandai agar
+  // tidak dipungut tiap run (slot LIMIT tidak tersumbat selamanya).
+  for (const row of rows) {
+    await db.execRun(
+      `UPDATE wr_order_links SET last_error='repair_tx_missing', updated_at=datetime('now')
+       WHERE id=? AND fulfillment_item_id IS NULL AND status='completed'`,
+      Number(row.id),
+    ).catch(() => undefined);
+  }
+  return repaired;
+}
+
 async function reconcileWrLinksByTransactions(
   links: { id: number; wr_order_id: string; order_code: string }[],
   db: DatabaseAccess,
