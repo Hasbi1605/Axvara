@@ -892,7 +892,11 @@ export async function zeroMissingVariants(
 ): Promise<number> {
   const { queryAll, execRun } = db;
   const rows = await queryAll(
-    `SELECT wr_variant_id, axvara_variant_id FROM wr_variants WHERE is_active=1`,
+    // Hanya baris yang masih punya stok (registry atau katalog) — yang sudah
+    // 0 tidak ditulis ulang tiap sweep (hemat tulis D1 + durasi potongan).
+    `SELECT w.wr_variant_id, w.axvara_variant_id FROM wr_variants w
+     LEFT JOIN product_variants pv ON pv.id = w.axvara_variant_id
+     WHERE w.is_active=1 AND (w.wr_stock > 0 OR COALESCE(pv.stock, 0) > 0)`,
   ).catch(() => [] as Row[]);
   let zeroed = 0;
   for (const row of rows) {

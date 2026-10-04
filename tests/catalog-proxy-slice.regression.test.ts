@@ -189,6 +189,12 @@ describe("SK syncSkProducts — potongan proxy", () => {
       expect(last.budgetYielded).toBe(false);
       expect(last.snapshotComplete).toBe(true);
       expect(stockOf()).toBe(0);
+      expect(last.stockChanges).toBe(1);
+      // Putaran berikut: varian yang sudah 0 TIDAK dihitung/ditulis ulang.
+      await run(); await run();
+      const again = await run();
+      expect(again.snapshotComplete).toBe(true);
+      expect(again.stockChanges).toBe(0);
       expect(String((fx.sql.prepare("SELECT value FROM sk_sync_state WHERE key='products_cursor'").get() as { value: string }).value)).toBe("0");
       expect(calls.slice(-3).every((u) => u.includes("/sk/catalog-slice") && u.includes("category=Aplikasi"))).toBe(true);
     } finally {

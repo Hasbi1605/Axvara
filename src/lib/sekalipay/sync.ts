@@ -971,7 +971,12 @@ export async function zeroMissingSkVariants(
 ): Promise<number> {
   const rows = await db
     .queryAll(
-      `SELECT sk_variant_id, axvara_variant_id FROM sk_products WHERE is_active=1 AND sk_category=?`,
+      // Hanya baris yang MASIH punya stok (registry atau katalog): baris yang
+      // sudah 0 tidak ditulis ulang tiap sweep (4 Okt: 60 tulisan sia-sia per
+      // putaran berpotongan + potongan terakhir 27 dtk).
+      `SELECT s.sk_variant_id, s.axvara_variant_id FROM sk_products s
+       LEFT JOIN product_variants pv ON pv.id = s.axvara_variant_id
+       WHERE s.is_active=1 AND s.sk_category=? AND (s.sk_stock > 0 OR COALESCE(pv.stock, 0) > 0)`,
       scopeCategory,
     )
     .catch(() => [] as Row[]);
