@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { queryAll } from "@/lib/db";
+import { readDiffStatus } from "@/lib/supplier/diff-status";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -24,7 +25,7 @@ export async function GET(request: NextRequest) {
       `SELECT *, COALESCE(trigger,'manual') AS trigger FROM wr_sync_log ORDER BY id DESC LIMIT ?`,
       limit,
     ).catch(() => []);
-    return NextResponse.json({ logs: any });
+    return NextResponse.json({ logs: any, diff: await readDiffStatus(queryAll, "wr_sync_state") });
   }
-  return NextResponse.json({ logs: rows });
+  return NextResponse.json({ logs: rows, diff: await readDiffStatus(queryAll, "wr_sync_state") });
 }

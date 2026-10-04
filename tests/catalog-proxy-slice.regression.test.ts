@@ -250,11 +250,13 @@ describe("diff VPS — /api/supplier-sync", () => {
       const state = (k: string) => (fx.sql.prepare("SELECT value FROM wr_sync_state WHERE key=?").get(k) as { value: string } | undefined)?.value;
       expect(state("products_cursor")).toBe("3");
       expect(state("diff_last_at")).toBeTruthy();
-      // Heartbeat kosong tetap 200 + mencatat log sukses (watchdog/kartu admin segar).
+      expect(JSON.parse(state("diff_last_change") ?? "{}")).toMatchObject({ products: 1, removed: 1 });
+      // Heartbeat kosong tetap 200; sejak 4 Okt diff TIDAK menulis wr_sync_log
+      // (log khusus sweep penuh/manual — kartu admin membaca state diff).
       const hb = await post({ supplier: "wr", products: [], removed_variant_ids: [] });
       expect(hb.status).toBe(200);
-      const logs = Number((fx.sql.prepare("SELECT COUNT(*) n FROM wr_sync_log WHERE sync_type='products' AND status='success' AND trigger='cron'").get() as { n: number }).n);
-      expect(logs).toBe(2);
+      const logs = Number((fx.sql.prepare("SELECT COUNT(*) n FROM wr_sync_log WHERE sync_type='products' AND trigger='cron'").get() as { n: number }).n);
+      expect(logs).toBe(0);
     } finally {
       fx.close();
     }

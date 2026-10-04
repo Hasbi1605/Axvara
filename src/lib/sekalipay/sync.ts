@@ -947,10 +947,25 @@ export async function syncSkProducts(
     result.snapshotComplete = true;
     // Penanda diff VPS sehat: cron memakai ini untuk menjarangkan sweep
     // pengaman berpotongan (60 mnt) selama diff berjalan.
-    await writeSyncState(db, "diff_last_at", new Date().toISOString());
+    const nowIso = new Date().toISOString();
+    await writeSyncState(db, "diff_last_at", nowIso);
     result.durationMs = Date.now() - started;
     const status = result.errors.length === 0 ? "success" : result.synced > 0 ? "partial" : "failed";
-    await logSkSync({ ...result, status }, db, trigger).catch(() => undefined);
+    // Kiriman diff TIDAK ditulis ke *_sync_log (2026-10-04): heartbeat 0/0 dan
+    // delta 1–4 varian sempat menutupi kartu "Sync terakhir" admin (dibaca
+    // sebagai sync penuh). Log kini khusus sweep penuh/manual; diff tercatat
+    // di state `diff_last_at` / `diff_last_change*` / `diff_last_error`.
+    const removedCount = applyOnly.removedVariantIds.length;
+    if (result.synced > 0 || result.stockChanges > 0 || result.priceChanges > 0 || removedCount > 0) {
+      await writeSyncState(db, "diff_last_change_at", nowIso);
+      await writeSyncState(db, "diff_last_change", JSON.stringify({
+        products: result.synced, variants: result.variantsSynced,
+        stock: result.stockChanges, price: result.priceChanges, removed: removedCount, status,
+      }));
+    }
+    if (result.errors.length) {
+      await writeSyncState(db, "diff_last_error", JSON.stringify({ at: nowIso, error: result.errors[0].slice(0, 200) }));
+    }
     return result;
   }
   const sweepComplete = cursor >= scoped.length;

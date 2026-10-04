@@ -3,9 +3,10 @@
 // Mengikuti pola PaymentReconciliation (fetch per section, toast error, gaya ax-glass).
 
 "use client";
+import { SupplierSyncStatus, type SupplierDiffStatus, type SupplierSyncLogRow } from "@/components/admin/SupplierSyncStatus";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { formatRupiah, formatWibDateTime } from "@/lib/utils";
+import { formatRupiah } from "@/lib/utils";
 import { Spinner } from "@/components/ui/Loading";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { useToast } from "@/components/ui/Toast";
@@ -120,6 +121,7 @@ export function WarungRebahanManager() {
   const [saldo, setSaldo] = useState<SaldoData>({});
   const [saldoLoading, setSaldoLoading] = useState(true);
   const [logs, setLogs] = useState<SyncLogRow[]>([]);
+  const [diffStatus, setDiffStatus] = useState<SupplierDiffStatus>(null);
   const [syncing, setSyncing] = useState(false);
   const [orders, setOrders] = useState<WrOrderRow[]>([]);
   const [orderStatus, setOrderStatus] = useState("all");
@@ -172,7 +174,7 @@ export function WarungRebahanManager() {
     try {
       const res = await fetch("/api/admin/warung/sync-log?limit=5", { cache: "no-store" });
       const body = await res.json().catch(() => ({}));
-      if (res.ok) setLogs(body.logs || []);
+      if (res.ok) { setLogs(body.logs || []); setDiffStatus(body.diff ?? null); }
     } catch { /* sync log opsional */ }
   }, []);
 
@@ -414,15 +416,7 @@ export function WarungRebahanManager() {
     await loadMarkups();
   };
 
-  const lastLog = logs[0];
-  // logs[0] adalah sync PRODUK terakhir (endpoint memfilter baris saldo).
-  // Bila endpoint lama masih mengembalikan baris saldo (products_synced
-  // NULL), jangan tampilkan 0/0/0 — tampilkan strip agar tidak menipu.
-  const lastProductLog = lastLog && lastLog.sync_type === "products" ? lastLog : null;
-  // Sync manual menutupi jejak cron (keduanya menulis baris products):
-  // tampilkan keduanya agar pemilik bisa verifikasi cron berjalan.
-  const lastManualLog = logs.find((l) => l.sync_type === "products" && (l as SyncLogRow & { trigger?: string }).trigger !== "cron") ?? null;
-  const lastCronLog = logs.find((l) => l.sync_type === "products" && (l as SyncLogRow & { trigger?: string }).trigger === "cron") ?? null;
+  // Kartu "Sync terakhir" dirender SupplierSyncStatus (diff VPS + sweep penuh + manual).
   const balance = saldo.current?.balance ?? saldo.capacity?.balance ?? null;
   // Hitungan tab Markup: dari data yang sudah di-fetch (bila belum load,
   // badge tanpa angka — bukan 0 yang menipu).
@@ -490,16 +484,7 @@ export function WarungRebahanManager() {
           </div>
           <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
             <p className="text-[11px] uppercase tracking-wide text-white/40">Sync terakhir</p>
-            <p className="mt-1 text-sm font-semibold text-white">{lastProductLog ? `${lastProductLog.status} · ${formatDate(lastProductLog.created_at)}` : lastLog ? `${lastLog.status} · ${formatDate(lastLog.created_at)}` : "Belum pernah"}</p>
-            <p className="mt-1 text-[11px] text-white/40">
-              {lastProductLog ? `${lastProductLog.products_synced ?? 0} produk · ${lastProductLog.variants_synced ?? 0} varian · ${lastProductLog.products_excluded ?? 0} excluded` : lastLog ? "sync produk" : "Tekan Force Sync untuk sync pertama."}
-            </p>
-            {(lastManualLog || lastCronLog) && (
-              <div className="mt-2 space-y-1 border-t border-white/10 pt-2 text-[11px] text-white/40">
-                <p>🔵 Manual: {lastManualLog ? `${lastManualLog.status} · ${formatDate(lastManualLog.created_at)} · ${lastManualLog.products_synced ?? 0}p/${lastManualLog.variants_synced ?? 0}v` : "—"}</p>
-                <p>🟢 Otomatis: {lastCronLog ? `${lastCronLog.status} · ${formatDate(lastCronLog.created_at)} · ${lastCronLog.products_synced ?? 0}p/${lastCronLog.variants_synced ?? 0}v` : "—"}</p>
-              </div>
-            )}
+            <SupplierSyncStatus logs={logs as SupplierSyncLogRow[]} diff={diffStatus} excludedLabel="excluded" />
             <button onClick={() => void forceSync()} disabled={syncing} className="mt-3 inline-flex h-9 items-center gap-2 rounded-xl bg-[#00E5FF] px-3.5 text-xs font-bold text-[#07101f] transition hover:bg-[#00D0E8] disabled:opacity-40">
               {syncing ? <Spinner size={13} /> : <IosIcon name="refresh" size={13} tint="black" />}{syncing ? "Sync…" : "Force Sync Now"}
             </button>
@@ -724,9 +709,3 @@ function DeliveryBadge({ wrClass, source }: { wrClass: string | null; source: st
   return <span title="Belum dikunci — label pembeli = Dikirim admin" className="rounded-full border border-white/15 bg-white/[0.05] px-2 py-0.5 text-[10px] font-bold text-white/45">? belum dikunci</span>;
 }
 
-function formatDate(value: string): string {
-  // Parsing di sini sudah benar sejak awal; dipindah ke helper kanonis agar
-  // zona tampilan ikut dikunci ke WIB (admin dari perangkat non-WIB pun
-  // melihat jam operasional toko yang sama).
-  return formatWibDateTime(value, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) ?? String(value);
-}

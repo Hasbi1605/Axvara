@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { queryAll } from "@/lib/db";
+import { readDiffStatus } from "@/lib/supplier/diff-status";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -20,5 +21,5 @@ export async function GET(request: NextRequest) {
      FROM sk_sync_log ORDER BY id DESC LIMIT ?`,
     limit,
   ).catch(() => []);
-  return NextResponse.json({ logs });
+  return NextResponse.json({ logs, diff: await readDiffStatus(queryAll, "sk_sync_state") });
 }

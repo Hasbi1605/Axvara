@@ -72,7 +72,8 @@ describe("WIB-SKEW — timestamp D1 tidak boleh dibaca sebagai waktu lokal", () 
     const surfaces = [
       "src/components/admin/OrdersManager.tsx",
       "src/components/admin/PaymentReconciliation.tsx",
-      "src/components/admin/WarungRebahanManager.tsx",
+      // 2026-10-04: kartu "Sync terakhir" WR/SK pindah ke SupplierSyncStatus.
+      "src/components/admin/SupplierSyncStatus.tsx",
       "src/components/admin/NewsletterSubscribers.tsx",
       "src/components/admin/AgentIntegration.tsx",
       "src/components/storefront/WrCredentialsPanel.tsx",

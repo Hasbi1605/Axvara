@@ -6,6 +6,7 @@
 // detail capability per varian, sandbox order.
 
 "use client";
+import { SupplierSyncStatus, type SupplierDiffStatus, type SupplierSyncLogRow } from "@/components/admin/SupplierSyncStatus";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatRupiah } from "@/lib/utils";
@@ -188,6 +189,7 @@ export function SekalipayManager() {
   const [saldo, setSaldo] = useState<SaldoData>({});
   const [saldoLoading, setSaldoLoading] = useState(true);
   const [logs, setLogs] = useState<SyncLogRow[]>([]);
+  const [diffStatus, setDiffStatus] = useState<SupplierDiffStatus>(null);
   const [syncing, setSyncing] = useState(false);
   const [orders, setOrders] = useState<SkOrderRow[]>([]);
   const [orderStatus, setOrderStatus] = useState("all");
@@ -261,7 +263,7 @@ export function SekalipayManager() {
     try {
       const res = await fetch("/api/admin/sekalipay/sync-log?limit=5", { cache: "no-store" });
       const body = await res.json().catch(() => ({}));
-      if (res.ok) setLogs(body.logs || []);
+      if (res.ok) { setLogs(body.logs || []); setDiffStatus(body.diff ?? null); }
     } catch { /* sync log opsional */ }
   }, []);
 
@@ -648,12 +650,7 @@ export function SekalipayManager() {
     }
   };
 
-  const lastLog = logs[0];
-  // Sama seperti WR: bedakan sync manual vs cron agar pemilik bisa verifikasi
-  // cron berjalan (keduanya menulis baris products).
-  const lastProductLog = lastLog && lastLog.sync_type === "products" ? lastLog : null;
-  const lastManualLog = logs.find((l) => l.sync_type === "products" && l.trigger !== "cron") ?? null;
-  const lastCronLog = logs.find((l) => l.sync_type === "products" && l.trigger === "cron") ?? null;
+  // Kartu "Sync terakhir" dirender SupplierSyncStatus (diff VPS + sweep penuh + manual).
   const balance = saldo.current?.balance ?? saldo.capacity?.balance ?? null;
   const markupCounts = loadedTabs.has("markup") ? (() => {
     let live = 0, hidden = 0, off = 0;
@@ -718,16 +715,7 @@ export function SekalipayManager() {
           </div>
           <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
             <p className="text-[11px] uppercase tracking-wide text-white/40">Sync terakhir</p>
-            <p className="mt-1 text-sm font-semibold text-white">{lastProductLog ? `${lastProductLog.status} · ${formatDate(lastProductLog.created_at)}` : lastLog ? `${lastLog.status} · ${formatDate(lastLog.created_at)}` : "Belum pernah"}</p>
-            <p className="mt-1 text-[11px] text-white/40">
-              {lastProductLog ? `${lastProductLog.products_synced ?? 0} produk · ${lastProductLog.variants_synced ?? 0} varian · ${lastProductLog.products_excluded ?? 0} non-auto` : lastLog ? "sync produk" : "Tekan Force Sync untuk sync pertama."}
-            </p>
-            {(lastManualLog || lastCronLog) && (
-              <div className="mt-2 space-y-1 border-t border-white/10 pt-2 text-[11px] text-white/40">
-                <p>🔵 Manual: {lastManualLog ? `${lastManualLog.status} · ${formatDate(lastManualLog.created_at)} · ${lastManualLog.products_synced ?? 0}p/${lastManualLog.variants_synced ?? 0}v` : "—"}</p>
-                <p>🟢 Otomatis: {lastCronLog ? `${lastCronLog.status} · ${formatDate(lastCronLog.created_at)} · ${lastCronLog.products_synced ?? 0}p/${lastCronLog.variants_synced ?? 0}v` : "—"}</p>
-              </div>
-            )}
+            <SupplierSyncStatus logs={logs as SupplierSyncLogRow[]} diff={diffStatus} excludedLabel="non-auto" />
             <button onClick={() => void forceSync()} disabled={syncing} className="mt-3 inline-flex h-9 items-center gap-2 rounded-xl bg-[#00E5FF] px-3.5 text-xs font-bold text-[#07101f] transition hover:bg-[#00D0E8] disabled:opacity-40">
               {syncing ? <Spinner size={13} /> : <IosIcon name="refresh" size={13} tint="black" />}{syncing ? "Sync…" : "Force Sync Now"}
             </button>

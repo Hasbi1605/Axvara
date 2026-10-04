@@ -80,8 +80,8 @@ const CATALOG_SYNC_INTERVAL_MS = 14 * 60 * 1000;
 // Diff VPS (2026-10-04, `/api/supplier-sync`) menjaga kesegaran tiap ~3 menit.
 // Selama diff sehat (penanda `diff_last_at` < 10 mnt), sweep berpotongan di
 // cron turun menjadi PENGAMAN berkala: putaran penuh tiap 60 mnt diukur dari
-// `products_full_sweep_at` (log diff ikut menyegarkan *_sync_log, jadi log
-// tidak bisa dipakai sebagai gerbang). Diff mati → kembali 14 mnt otomatis.
+// `products_full_sweep_at` (sejak 4 Okt siang diff tidak menulis *_sync_log;
+// gerbang tetap memakai penanda state). Diff mati → kembali 14 mnt otomatis.
 const DIFF_FRESH_MS = 10 * 60 * 1000;
 const BACKUP_SWEEP_INTERVAL_MS = 60 * 60 * 1000;
 
@@ -348,9 +348,20 @@ export async function POST(request: NextRequest) {
         ).catch(() => null);
         if (typeof staleRow?.created_at === "string") {
           results.wr_last_sync_at = String(staleRow.created_at);
-          const { alertStaleWrSync } = await import("@/lib/warung-rebahan/order");
+          const { alertStaleWrSync, WR_SYNC_STALE_ALERT_MINUTES } = await import("@/lib/warung-rebahan/order");
+          // Kiriman diff VPS tidak menulis wr_sync_log (2026-10-04). Bila log
+          // sweep tampak basi tapi diff masih sehat, katalog TIDAK basi —
+          // pakai penanda diff agar watchdog tidak alarm palsu.
+          let freshness = String(staleRow.created_at);
+          const { parseExpiry: parseWatch } = await import("@/lib/expiry");
+          const logTs = parseWatch(freshness);
+          if (logTs != null && logTs < Date.now() - WR_SYNC_STALE_ALERT_MINUTES * 60 * 1000) {
+            const { readDiffStatus } = await import("@/lib/supplier/diff-status");
+            const diff = await readDiffStatus(queryAll, "wr_sync_state");
+            if (diff.healthy && diff.last_at) freshness = diff.last_at;
+          }
           results.wr_sync_stale_alerted = await alertStaleWrSync(
-            String(staleRow.created_at),
+            freshness,
             typeof results.wr_sync_skipped === "string" ? String(results.wr_sync_skipped) : "pre_phase",
             database,
           );
