@@ -7,7 +7,7 @@
 
 import { queryFirst, execRun } from "@/lib/db";
 import { sendMessage, safeEditOrSend, sendPhoto } from "@/lib/telegram/api";
-import { orderStatusKeyboard, qrisInvoiceKeyboard } from "@/lib/telegram/keyboards";
+import { orderStatusKeyboard, paidOrderStatusKeyboard, qrisInvoiceKeyboard } from "@/lib/telegram/keyboards";
 import {
   errorMessage, orderStatusMessage, invoiceMessage,
   orderCancelledMessage, qrisRenewRejectedMessage,
@@ -52,7 +52,9 @@ export async function handleOrderStatus(chatId: number, orderCode: string) {
     parse_mode: "HTML",
     reply_markup: String(order.payment_status) === "pending"
       ? orderStatusKeyboard(String(order.code))
-      : undefined,
+      : String(order.payment_status) === "paid"
+        ? paidOrderStatusKeyboard(String(order.code))
+        : undefined,
   });
 }
 

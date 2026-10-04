@@ -87,15 +87,26 @@ export async function ensurePrivateRecipient(
        )`,
     privateChatId, privateChatId, telegramUserId,
   ).catch(() => {});
-  // Kredensial WR yang gagal dikirim karena pembeli belum punya chat pribadi
-  // (order dari grup) dikembalikan ke antrean dengan jatah percobaan baru —
-  // tanpa ini, pembeli yang baru START setelah 5 percobaan (~81 menit) tidak
-  // pernah menerima produknya. SK ditangani reconcile (buyer_notice_log).
+  // Kredensial WR Telegram yang GAGAL dikirim (pembeli belum punya chat
+  // pribadi / bot belum di-START / chat basi) dikembalikan ke antrean dengan
+  // jatah percobaan baru begitu pembeli berinteraksi di chat pribadi — tanpa
+  // ini, pembeli yang baru START setelah 5 percobaan (~81 menit) tidak pernah
+  // menerima produknya. SK ditangani reconcile (buyer_notice_log).
   await execRun(
     `UPDATE wr_order_links SET delivery_status='queued', delivery_attempt_count=0,
        delivery_next_attempt_at=datetime('now'), updated_at=datetime('now')
      WHERE delivery_status='failed' AND delivery_channel='telegram'
-       AND COALESCE(delivery_last_error,'') LIKE '%no_private_telegram_chat%'
+       AND order_code IN (
+         SELECT code FROM orders WHERE sales_channel='telegram' AND telegram_user_id=?
+           AND status='lunas' AND payment_status='paid'
+       )`,
+    telegramUserId,
+  ).catch(() => {});
+  // Lisensi SK Telegram yang gagal: lepas backoff 10 menit reconcile agar
+  // terkirim pada run cron berikutnya, bukan menunggu jendela backoff.
+  await execRun(
+    `UPDATE buyer_notice_log SET updated_at=datetime('now','-1 hour')
+     WHERE status='failed' AND idempotency_key LIKE 'telegram:sk-credential:%'
        AND order_code IN (
          SELECT code FROM orders WHERE sales_channel='telegram' AND telegram_user_id=?
            AND status='lunas' AND payment_status='paid'

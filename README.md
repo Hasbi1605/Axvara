@@ -226,7 +226,9 @@ maks 12 jam lalu kredensial dikirim OTOMATIS ke chat yang sama begitu selesai di
 supplier; manual = dikirim admin (WA cadangan hanya untuk baris manual). Kredensial
 WR & SK masuk DM chat pribadi (tidak pernah ke id grup; order dari grup menyusul
 setelah pembeli START bot). Katalog/cari/bestseller bot memfilter pecundang pasangan
-WR/SK, dan varian tanpa data garansi tidak lagi ditulis "Tanpa Garansi".
+WR/SK, dan varian tanpa data garansi tidak lagi ditulis "Tanpa Garansi". Fallback: kredensial
+dicoba ke beberapa target chat pribadi berurutan, dan pesan lunas punya tombol
+**📦 Ambil Detail Produk** untuk mengambil ulang detail di chat bot.
 
 Setelah pembayaran diterima, tombol support bot membuka akun manusia `@axvara_support`;
 username bot tetap `@Axvara_bot`. Seluruh notifikasi admin dari order web, Telegram,

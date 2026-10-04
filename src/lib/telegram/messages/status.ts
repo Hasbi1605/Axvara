@@ -29,11 +29,15 @@ export function orderPaidMessage(
 ): string {
   const name = escapeHtml(truncate(productName, 100));
   const deliveryLines = delivery === "instant"
-    ? ["⚡ Produk dikirim otomatis ke chat ini dalam beberapa saat — tidak perlu balas apa pun."]
+    ? [
+        "⚡ Produk dikirim otomatis ke chat ini dalam beberapa saat — tidak perlu balas apa pun.",
+        "📦 Belum masuk? Tekan <b>Ambil Detail Produk</b> di bawah.",
+      ]
     : delivery === "queued"
       ? [
           "⏳ <b>Made By Order</b> — pesananmu sedang dikerjakan sesuai antrean, umumnya lebih cepat, maksimal 12 jam pada jam layanan.",
           "📩 Detail produk dikirim <b>otomatis ke chat ini</b> begitu siap. Tidak perlu membuka chat terus — kamu akan dapat notifikasi.",
+          "📦 Bisa juga cek kapan saja lewat tombol <b>Ambil Detail Produk</b>.",
         ]
       : ["📩 Produk akan dikirim admin melalui DM Telegram pribadi ini."];
   const lines = [

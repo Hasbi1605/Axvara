@@ -58,6 +58,7 @@ export const cb = {
   emailPay: (productId: number, variantId: number, qty: number) => `epay:${productId}:${variantId}:${qty}`,
   emailEdit: (productId: number, variantId: number, qty: number) => `eedit:${productId}:${variantId}:${qty}`,
   order: (orderCode: string) => `order:${orderCode}`,
+  credentials: (orderCode: string) => `cred:${orderCode}`,
   cancel: (orderCode: string) => `cancel:${orderCode}`,
   refresh: (orderCode: string) => `refresh:${orderCode}`,
   reorder: (productId: number) => `reorder:${productId}`,
@@ -465,6 +466,9 @@ export function orderPaidKeyboard(orderCode: string): InlineKeyboardMarkup {
     { text: "💬 WhatsApp Admin", url: adminWaLink(`Halo AXVARA, saya ingin menanyakan pesanan ${orderCode}`) },
     { text: `✈️ @${SITE.supportTelegram}`, url: supportTelegramLink() },
   ]);
+  // Fallback pengiriman (2026-10-04): pembeli bisa meminta bot mengirim ulang
+  // detail produk ke chat ini kapan saja setelah siap.
+  rows.push([{ text: "📦 Ambil Detail Produk", callback_data: cb.credentials(orderCode) }]);
   rows.push([{ text: "📋 Lihat Pesanan", callback_data: cb.order(orderCode) }]);
   rows.push([
     { text: "🛍 Katalog", callback_data: cb.catalog() },
@@ -472,6 +476,19 @@ export function orderPaidKeyboard(orderCode: string): InlineKeyboardMarkup {
   ]);
   return {
     inline_keyboard: rows,
+  };
+}
+
+/** Status pesanan yang sudah lunas: tombol ambil ulang detail produk. */
+export function paidOrderStatusKeyboard(orderCode: string): InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "📦 Ambil Detail Produk", callback_data: cb.credentials(orderCode) }],
+      [
+        { text: "🛍 Katalog", callback_data: cb.catalog() },
+        { text: "🏠 Menu", callback_data: cb.home() },
+      ],
+    ],
   };
 }
 

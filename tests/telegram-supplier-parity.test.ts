@@ -12,6 +12,7 @@ import { createDatabaseAccess } from "@/lib/db-access";
 let fixture: ReturnType<typeof createD1Fixture>;
 type TgCall = { chat_id: string; text: string; reply_markup?: { inline_keyboard?: { callback_data?: string }[][] } };
 let tgCalls: TgCall[];
+let failingChats: Set<string>;
 
 const PRIVATE_CHAT = "555001";
 const BUYER = "777001";
@@ -48,6 +49,7 @@ beforeEach(() => {
   stubFulfillmentKey();
   seedCatalog();
   tgCalls = [];
+  failingChats = new Set();
   vi.stubEnv("TELEGRAM_BOT_ENABLED", "true");
   vi.stubEnv("TELEGRAM_BOT_TOKEN", "123:abc");
   vi.stubEnv("PRODUCT_VARIANTS_READ", "true");
@@ -55,6 +57,9 @@ beforeEach(() => {
     if (String(url).includes("api.telegram.org")) {
       const body = JSON.parse(String(init?.body ?? "{}")) as TgCall;
       tgCalls.push({ chat_id: String(body.chat_id), text: String(body.text ?? ""), reply_markup: body.reply_markup });
+      if (failingChats.has(String(body.chat_id))) {
+        return new Response(JSON.stringify({ ok: false, error_code: 400, description: "Bad Request: chat not found" }), { status: 400 });
+      }
       return new Response(JSON.stringify({ ok: true, result: { message_id: tgCalls.length } }), { status: 200 });
     }
     throw new Error(`unexpected fetch ${url}`);
@@ -99,16 +104,21 @@ describe("SK completed → lisensi langsung ke chat Telegram pembeli", () => {
     expect(tgCalls.filter((c) => c.text.includes("pv@mail.com"))).toHaveLength(1);
   });
 
-  it("order dari grup tanpa chat pribadi: tidak bocor ke grup, menyusul setelah START", async () => {
+  it("order dari grup, pembeli belum START: tidak bocor ke grup, menyusul setelah START", async () => {
     const code = "AXV-20261004-SKTG0002";
     fixture.sql.exec(`DELETE FROM telegram_users`);
+    failingChats.add(BUYER); // bot belum pernah di-START → Telegram "chat not found"
     insertTelegramOrder(code, 10, 1, "-100200300");
     expect(await completeSk(code)).toBe(true);
     expect(tgCalls.some((c) => c.chat_id.startsWith("-"))).toBe(false);
-    expect(tgCalls.some((c) => c.text.includes("pv@mail.com"))).toBe(false);
+    expect(tgCalls.filter((c) => c.text.includes("pv@mail.com")).every((c) => c.chat_id === BUYER)).toBe(true);
 
-    // Pembeli START bot di chat pribadi → reconcile mengirim.
+    // Pembeli START bot di chat pribadi → backoff dilepas → reconcile mengirim.
+    failingChats.clear();
     fixture.sql.exec(`INSERT INTO telegram_users(user_id,chat_id,first_name) VALUES('${BUYER}','${PRIVATE_CHAT}','Budi')`);
+    const { ensurePrivateRecipient } = await import("@/lib/fulfillment/deliver");
+    await ensurePrivateRecipient(BUYER, PRIVATE_CHAT);
+    tgCalls = [];
     const { reconcilePendingSkCredentialEmails } = await import("@/lib/sekalipay/deliver");
     expect(await reconcilePendingSkCredentialEmails(createDatabaseAccess(fixture.db))).toBe(1);
     const dm = tgCalls.find((c) => c.text.includes("pv@mail.com"));
@@ -165,7 +175,7 @@ describe("Pesan lunas Telegram mengikuti kelas kirim (instan / MBO / manual)", (
 });
 
 describe("WR delivery Telegram: format seragam + requeue setelah START", () => {
-  it("ensurePrivateRecipient mengantrekan ulang delivery gagal no_private_telegram_chat", async () => {
+  it("ensurePrivateRecipient mengantrekan ulang delivery Telegram yang gagal", async () => {
     const code = "AXV-20261004-WRTG0001";
     insertTelegramOrder(code, 20, 2, "-100200300");
     fixture.sql.prepare(`INSERT INTO wr_order_links
@@ -256,5 +266,61 @@ describe("Garansi: varian tanpa data garansi tidak ditulis 'Tanpa Garansi'", () 
     const detail = await getProductDetail(1);
     const msg = productDetailMessage("Prime Video", null, detail!.variants);
     expect(msg).not.toContain("Tanpa Garansi");
+  });
+});
+
+describe("Fallback pengiriman kredensial Telegram", () => {
+  it("chat_id tersimpan gagal → dicoba ulang ke telegram_user_id (jalur stok sendiri)", async () => {
+    fixture.sql.exec(`UPDATE telegram_users SET chat_id='999999' WHERE user_id='${BUYER}'`);
+    failingChats.add("999999");
+    const { sendTelegramCredential } = await import("@/lib/telegram/credential-delivery");
+    const res = await sendTelegramCredential(
+      { telegram_user_id: BUYER, telegram_chat_id: "-100200300" }, "isi", createDatabaseAccess(fixture.db),
+    );
+    expect(res.chatId).toBe(BUYER);
+    expect(tgCalls.map((c) => c.chat_id)).toEqual(["999999", BUYER]);
+  });
+
+  it("tidak pernah mencoba id grup; semua gagal → throw agar retry", async () => {
+    fixture.sql.exec(`DELETE FROM telegram_users`);
+    failingChats.add(BUYER);
+    const { sendTelegramCredential } = await import("@/lib/telegram/credential-delivery");
+    await expect(sendTelegramCredential(
+      { telegram_user_id: BUYER, telegram_chat_id: "-100200300" }, "isi", createDatabaseAccess(fixture.db),
+    )).rejects.toThrow(/telegram_delivery_failed/);
+    expect(tgCalls.some((c) => c.chat_id.startsWith("-"))).toBe(false);
+  });
+
+  it("tombol Ambil Detail Produk mengirim ulang detail yang sudah siap (pemilik saja)", async () => {
+    const code = "AXV-20261004-CRED0001";
+    insertTelegramOrder(code, 30, 3);
+    const { encryptSecret } = await import("@/lib/fulfillment/crypto");
+    const { ciphertext, iv } = await encryptSecret("canva-invite-link");
+    fixture.sql.prepare(`INSERT INTO fulfillment_items
+      (order_code,item_index,product_id,variant_id,qty,fulfillment_mode,recipient_channel,recipient_target,status,delivered_message_id,delivered_ciphertext,delivered_iv)
+      VALUES(?,0,3,30,1,'shared','telegram',?,'delivered','m1',?,?)`).run(code, BUYER, ciphertext, iv);
+    const { handleCallback } = await import("@/lib/telegram/handlers/callback");
+    await handleCallback(`cred:${code}`, Number(PRIVATE_CHAT), 1, { id: Number(BUYER), first_name: "Budi" });
+    expect(tgCalls.some((c) => c.chat_id === PRIVATE_CHAT && c.text.includes("canva-invite-link"))).toBe(true);
+
+    // Orang lain menekan tombol yang diteruskan → ditolak, tidak bocor.
+    tgCalls = [];
+    await handleCallback(`cred:${code}`, 444, 1, { id: 444, first_name: "Asing" });
+    expect(tgCalls.some((c) => c.text.includes("canva-invite-link"))).toBe(false);
+    expect(tgCalls[0]?.text).toContain("bukan milikmu");
+  });
+
+  it("belum siap → pesan tunggu, bukan diam", async () => {
+    const code = "AXV-20261004-CRED0002";
+    insertTelegramOrder(code, 20, 2);
+    const { resendTelegramCredentials } = await import("@/lib/telegram/credential-delivery");
+    expect(await resendTelegramCredentials(code, Number(PRIVATE_CHAT), createDatabaseAccess(fixture.db))).toBe(0);
+    expect(tgCalls.at(-1)?.text).toContain("belum siap");
+  });
+
+  it("pesan lunas memuat tombol Ambil Detail Produk", async () => {
+    const { orderPaidKeyboard } = await import("@/lib/telegram/keyboards");
+    const cbs = orderPaidKeyboard("AXV-1").inline_keyboard.flat().map((b) => (b as { callback_data?: string }).callback_data);
+    expect(cbs).toContain("cred:AXV-1");
   });
 });

@@ -296,14 +296,8 @@ export async function sendSkCredentialTelegram(
     .queryFirst(`SELECT items, telegram_user_id, telegram_chat_id FROM orders WHERE code=?`, code)
     .catch(() => null);
   if (!order) throw new Error("order_not_found");
-  const buyerId = String(order.telegram_user_id || "");
-  const privateChat = buyerId
-    ? String((await db.queryFirst(`SELECT chat_id FROM telegram_users WHERE user_id=?`, buyerId).catch(() => null))?.chat_id || "")
-    : "";
-  const chatId = privateChat && Number(privateChat) > 0
-    ? privateChat
-    : Number(order.telegram_chat_id || 0) > 0 ? String(order.telegram_chat_id) : "";
-  if (!chatId) return false;
+  const { telegramPrivateTargets, sendTelegramCredential } = await import("@/lib/telegram/credential-delivery");
+  if (!(await telegramPrivateTargets(order, db)).length) return false;
 
   const { claimNotice, settleNotice } = await import("@/lib/notify-buyer");
   const key = `telegram:sk-credential:${code}:${itemId}`;
@@ -312,15 +306,19 @@ export async function sendSkCredentialTelegram(
   const plaintext = await decryptSecret(ciphertext, iv);
   const { orderLineLabel } = await import("@/lib/fulfillment/delivery/buyer-email");
   const { supplierCredentialMessage } = await import("@/lib/telegram/messages");
-  const { sendMessage } = await import("@/lib/telegram/api");
   const label = orderLineLabel(order.items, Number(item.item_index ?? 0));
-  const sent = await sendMessage({
-    chat_id: chatId,
-    text: supplierCredentialMessage(code, label, plaintext || "(detail kosong — hubungi admin)"),
-    parse_mode: "HTML",
-  }).catch(() => ({ ok: false, description: "telegram_send_failed" }));
-  await settleNotice(db, key, Boolean(sent?.ok), undefined, (sent as { description?: string })?.description);
-  if (!sent?.ok) throw new Error("sk_credential_telegram_failed");
+  try {
+    // Target berurutan + fallback (lihat credential-delivery.ts).
+    const sent = await sendTelegramCredential(
+      order,
+      supplierCredentialMessage(code, label, plaintext || "(detail kosong — hubungi admin)"),
+      db,
+    );
+    await settleNotice(db, key, true, sent.messageId || undefined);
+  } catch (error) {
+    await settleNotice(db, key, false, undefined, error instanceof Error ? error.message : "telegram_send_failed");
+    throw new Error("sk_credential_telegram_failed");
+  }
   return true;
 }
 
@@ -611,6 +609,13 @@ export async function reconcilePendingSkCredentialEmails(
               OR CAST(COALESCE(o.telegram_chat_id,'0') AS INTEGER) > 0))
            OR (COALESCE(o.sales_channel,'web')!='telegram' AND COALESCE(o.customer_email,'') LIKE '%@%')
          )
+         -- Backoff 10 menit untuk percobaan yang baru gagal (mis. pembeli
+         -- belum pernah START bot): jangan menyumbat slot LIMIT tiap run.
+         AND NOT EXISTS(
+           SELECT 1 FROM buyer_notice_log bf
+           WHERE bf.idempotency_key IN ('email:sk-credential:' || fi.order_code || ':' || fi.id,
+                                        'telegram:sk-credential:' || fi.order_code || ':' || fi.id)
+             AND bf.status='failed' AND julianday(bf.updated_at) > julianday('now','-10 minutes'))
          AND NOT EXISTS(
            SELECT 1 FROM buyer_notice_log b
            WHERE b.idempotency_key IN ('email:sk-credential:' || fi.order_code || ':' || fi.id,

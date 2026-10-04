@@ -883,25 +883,11 @@ async function deliverTelegramCredential(orderCode: string, plaintext: string, d
     )
     .catch(() => null);
   if (!order) throw new Error("order_not_found");
-  const buyerId = String(order.telegram_user_id || "");
-  const privateChat = buyerId
-    ? String(
-        (await db.queryFirst(`SELECT chat_id FROM telegram_users WHERE user_id=?`, buyerId).catch(() => null))
-          ?.chat_id || "",
-      )
-    : "";
-  const chatId = privateChat && Number(privateChat) > 0 ? privateChat : String(order.telegram_chat_id || "");
-  // HANYA private chat (id > 0). Grup/kanal (negatif) = tolak, jangan bocorkan.
-  if (!chatId || Number(chatId) <= 0) throw new Error("no_private_telegram_chat");
-  const { sendMessage } = await import("@/lib/telegram/api");
+  // Target berurutan chat_id tersimpan → telegram_user_id (jalur stok sendiri)
+  // → chat order (bila pribadi); id grup tidak pernah dipakai (2026-10-04).
+  const { sendTelegramCredential } = await import("@/lib/telegram/credential-delivery");
   const { supplierCredentialMessage } = await import("@/lib/telegram/messages");
-  const productNames = parseProductNames(order.items);
-  const sent = await sendMessage({
-    chat_id: chatId,
-    text: supplierCredentialMessage(orderCode, productNames, plaintext),
-    parse_mode: "HTML",
-  });
-  if (!sent.ok) throw new Error("telegram_delivery_failed");
+  await sendTelegramCredential(order, supplierCredentialMessage(orderCode, parseProductNames(order.items), plaintext), db);
 }
 
 /**

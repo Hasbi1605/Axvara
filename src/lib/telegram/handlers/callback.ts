@@ -44,9 +44,9 @@ export async function handleCallback(data: string, chatId: number, messageId: nu
   // batal, refresh, status, wainput) hanya boleh dieksekusi pemilik order.
   // from.id adalah identitas penekan tombol terverifikasi Telegram — chat_id
   // grup tidak boleh dipakai untuk mengambil alih order orang lain.
-  const ownerBound = new Set(["pay", "pm", "qinput", "epay", "eedit", "cadd", "cinc", "cdec", "crm", "ccheckout", "cancel", "refresh", "order", "wainput", "qrenew"]);
+  const ownerBound = new Set(["pay", "pm", "qinput", "epay", "eedit", "cadd", "cinc", "cdec", "crm", "ccheckout", "cancel", "refresh", "order", "cred", "wainput", "qrenew"]);
   if (ownerBound.has(action)) {
-    const targetCode = action === "cancel" || action === "refresh" || action === "order" || action === "wainput" || action === "qrenew"
+    const targetCode = action === "cancel" || action === "refresh" || action === "order" || action === "cred" || action === "wainput" || action === "qrenew"
       ? String(params[0] || "").toUpperCase()
       : null;
     if (targetCode) {
@@ -167,6 +167,13 @@ export async function handleCallback(data: string, chatId: number, messageId: nu
     case "order":
       await handleOrderStatus(chatId, params[0]);
       break;
+
+    case "cred": {
+      // Guard ownerBound di atas sudah memastikan pemilik + chat pribadi.
+      const { resendTelegramCredentials } = await import("@/lib/telegram/credential-delivery");
+      await resendTelegramCredentials(String(params[0] || ""), chatId);
+      break;
+    }
 
     case "refresh":
       await handleOrderRefresh(chatId, messageId, params[0]);
