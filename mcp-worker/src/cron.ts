@@ -49,6 +49,13 @@ export const ALARM_START_AFTER_FAILED_TICKS = 2;
 export const ALARM_RECOVER_AFTER_OK_TICKS = 3;
 export const ALARM_REMINDER_MS = 6 * 60 * 60 * 1000;
 export const ALARM_KV_KEY = "cron_alarm_v1";
+/**
+ * Langkah `:sync` = pengaman berkala sejak diff VPS (2026-10-04) menjaga
+ * kesegaran. Kegagalannya baru dialarmkan bila beruntun ≥ 6 tick (30 mnt);
+ * kegagalan langkah lain (order, notify, …) tetap 2 tick.
+ */
+export const SOFT_ALARM_AFTER_TICKS = 6;
+const isSoft = (f: PhaseOutcome) => f.step.endsWith(":sync");
 
 export type PhaseOutcome = { step: string; calls: number; ok: boolean; status: number; error?: string };
 export type AlarmState = {
@@ -57,6 +64,8 @@ export type AlarmState = {
   okTicks: number;
   alertedAt: number | null;
   lastFailures: string[];
+  /** Tick beruntun yang HANYA gagal di langkah `:sync`. */
+  softTicks?: number;
 };
 export type AlarmAction = "none" | "start" | "reminder" | "recovered";
 export type TickReport = { outcomes: PhaseOutcome[]; failures: PhaseOutcome[]; alerted: boolean; action: AlarmAction };
@@ -134,6 +143,24 @@ const EMPTY_STATE: AlarmState = { since: null, failedTicks: 0, okTicks: 0, alert
  */
 export function nextAlarmState(
   prev: AlarmState,
+  allFailures: PhaseOutcome[],
+  now: number,
+): { state: AlarmState; action: AlarmAction; changed: boolean } {
+  const prevSoft = prev.softTicks ?? 0;
+  const hard = allFailures.filter((f) => !isSoft(f));
+  const soft = allFailures.filter(isSoft);
+  const softTicks = soft.length && !hard.length ? Math.min(prevSoft + 1, SOFT_ALARM_AFTER_TICKS) : 0;
+  const failures = hard.length ? allFailures : softTicks >= SOFT_ALARM_AFTER_TICKS ? soft : [];
+  // Ambang soft tercapai = sudah "cukup lama gagal": langsung memenuhi syarat mulai.
+  const failedTicks = !hard.length && softTicks >= SOFT_ALARM_AFTER_TICKS
+    ? Math.max(prev.failedTicks, ALARM_START_AFTER_FAILED_TICKS - 1)
+    : prev.failedTicks;
+  const inner = innerAlarmState({ ...prev, softTicks, failedTicks }, failures, now);
+  return { ...inner, changed: inner.changed || softTicks !== prevSoft };
+}
+
+function innerAlarmState(
+  prev: AlarmState,
   failures: PhaseOutcome[],
   now: number,
 ): { state: AlarmState; action: AlarmAction; changed: boolean } {
@@ -144,6 +171,7 @@ export function nextAlarmState(
       okTicks: 0,
       alertedAt: prev.alertedAt,
       lastFailures: failures.map(describe).slice(0, 8),
+      softTicks: prev.softTicks ?? 0,
     };
     if (state.alertedAt == null && state.failedTicks >= ALARM_START_AFTER_FAILED_TICKS) {
       return { state: { ...state, alertedAt: now }, action: "start", changed: true };
@@ -158,11 +186,11 @@ export function nextAlarmState(
   if (prev.alertedAt == null) {
     // Belum pernah dialarmkan: gangguan sesaat dilupakan diam-diam.
     const changed = prev.since != null || prev.failedTicks !== 0;
-    return { state: EMPTY_STATE, action: "none", changed };
+    return { state: { ...EMPTY_STATE, softTicks: prev.softTicks ?? 0 }, action: "none", changed };
   }
   const okTicks = prev.okTicks + 1;
   if (okTicks >= ALARM_RECOVER_AFTER_OK_TICKS) {
-    return { state: EMPTY_STATE, action: "recovered", changed: true };
+    return { state: { ...EMPTY_STATE, softTicks: prev.softTicks ?? 0 }, action: "recovered", changed: true };
   }
   return { state: { ...prev, failedTicks: 0, okTicks }, action: "none", changed: true };
 }
@@ -178,6 +206,7 @@ async function readState(kv: KvLike): Promise<AlarmState> {
       okTicks: Number(parsed.okTicks ?? 0) || 0,
       alertedAt: typeof parsed.alertedAt === "number" ? parsed.alertedAt : null,
       lastFailures: Array.isArray(parsed.lastFailures) ? parsed.lastFailures.map(String) : [],
+      softTicks: Number(parsed.softTicks ?? 0) || 0,
     };
   } catch {
     return EMPTY_STATE;
@@ -211,8 +240,9 @@ export async function runOperationsTick(
 
   if (!env.CRON_STATE) {
     let alerted = false;
-    if (failures.length > 0 && shouldAlert(scheduledTime)) {
-      alerted = await sendAlert(env, formatAlert(failures, scheduledTime), fetchFn);
+    const hardOnly = failures.filter((f) => !isSoft(f));
+    if (hardOnly.length > 0 && shouldAlert(scheduledTime)) {
+      alerted = await sendAlert(env, formatAlert(hardOnly, scheduledTime), fetchFn);
     }
     return { outcomes, failures, alerted, action: alerted ? "start" : "none" };
   }

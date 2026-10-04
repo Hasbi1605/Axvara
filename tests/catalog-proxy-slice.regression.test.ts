@@ -202,3 +202,100 @@ describe("SK syncSkProducts — potongan proxy", () => {
     }
   });
 });
+
+describe("diff VPS — /api/supplier-sync", () => {
+  async function post(body: unknown, token = "tok") {
+    const { POST } = await import("@/app/api/supplier-sync/route");
+    const { NextRequest } = await import("next/server");
+    const res = await POST(new NextRequest("http://localhost/api/supplier-sync", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-supplier-sync-token": token },
+      body: JSON.stringify(body),
+    }));
+    return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+  }
+
+  it("auth: 503 tanpa secret, 401 token salah", async () => {
+    const fx = createD1Fixture();
+    try {
+      expect((await post({ supplier: "wr", products: [] })).status).toBe(503);
+      vi.stubEnv("SUPPLIER_SYNC_TOKEN", "tok");
+      expect((await post({ supplier: "wr", products: [] }, "salah")).status).toBe(401);
+      expect((await post({ supplier: "zz" })).status).toBe(400);
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("WR: terapkan produk berubah + nol-kan varian dihapus, cursor sweep TIDAK tersentuh", async () => {
+    const fx = createD1Fixture();
+    try {
+      vi.stubEnv("SUPPLIER_SYNC_TOKEN", "tok");
+      vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
+      vi.stubEnv("WARUNG_REBAHAN_SYNC_ENABLED", "true");
+      vi.stubEnv("WARUNG_REBAHAN_API_KEY", "k");
+      vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ success: true, data: wrCatalog(5) }), { status: 200 })));
+      await syncProducts(createDatabaseAccess(fx.db), undefined, { trigger: "manual" });
+      fx.sql.prepare("UPDATE wr_sync_state SET value='3' WHERE key='products_cursor'").run();
+
+      const changed = wrCatalog(5)[1];
+      changed.variants[0].stock = 2;
+      const res = await post({ supplier: "wr", products: [changed], removed_variant_ids: ["var-4"] });
+      expect(res.status).toBe(200);
+      expect(res.body.synced).toBe(1);
+      const stock = (id: string) => Number((fx.sql.prepare("SELECT wr_stock FROM wr_variants WHERE wr_variant_id=?").get(id) as { wr_stock: number }).wr_stock);
+      expect(stock("var-1")).toBe(2);
+      expect(stock("var-4")).toBe(0);
+      expect(stock("var-0")).toBe(10);
+      const state = (k: string) => (fx.sql.prepare("SELECT value FROM wr_sync_state WHERE key=?").get(k) as { value: string } | undefined)?.value;
+      expect(state("products_cursor")).toBe("3");
+      expect(state("diff_last_at")).toBeTruthy();
+      // Heartbeat kosong tetap 200 + mencatat log sukses (watchdog/kartu admin segar).
+      const hb = await post({ supplier: "wr", products: [], removed_variant_ids: [] });
+      expect(hb.status).toBe(200);
+      const logs = Number((fx.sql.prepare("SELECT COUNT(*) n FROM wr_sync_log WHERE sync_type='products' AND status='success' AND trigger='cron'").get() as { n: number }).n);
+      expect(logs).toBe(2);
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("batas ukuran: >10 produk WR ditolak 413", async () => {
+    const fx = createD1Fixture();
+    try {
+      vi.stubEnv("SUPPLIER_SYNC_TOKEN", "tok");
+      vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
+      vi.stubEnv("WARUNG_REBAHAN_API_KEY", "k");
+      expect((await post({ supplier: "wr", products: wrCatalog(11) })).status).toBe(413);
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("SK: terapkan baris berubah + nol-kan varian dihapus tanpa menyentuh cursor", async () => {
+    const fx = createD1Fixture();
+    try {
+      stubFulfillmentKey();
+      vi.stubEnv("SUPPLIER_SYNC_TOKEN", "tok");
+      vi.stubEnv("SEKALIPAY_ENABLED", "true");
+      vi.stubEnv("SEKALIPAY_PROXY_URL", "https://wr-proxy.axvara.test");
+      vi.stubEnv("SEKALIPAY_PROXY_TOKEN", "t");
+      const calls: string[] = [];
+      vi.stubGlobal("fetch", skProxyFetch(() => [101, 102, 103], calls));
+      await syncSkProducts(createDatabaseAccess(fx.db), undefined, { trigger: "manual", full: true, maxProducts: 48 });
+      fx.sql.prepare("INSERT INTO sk_sync_state(key,value) VALUES('products_cursor','7') ON CONFLICT(key) DO UPDATE SET value='7'").run();
+      const row = skRows([102])[0];
+      row.variant.stock = 9;
+      const res = await post({ supplier: "sk", rows: [row], removed_variant_ids: ["103"] });
+      expect(res.status).toBe(200);
+      const stock = (id: string) => Number((fx.sql.prepare("SELECT sk_stock FROM sk_products WHERE sk_variant_id=?").get(id) as { sk_stock: number }).sk_stock);
+      expect(stock("102")).toBe(9);
+      expect(stock("103")).toBe(0);
+      expect(stock("101")).toBe(5);
+      expect((fx.sql.prepare("SELECT value FROM sk_sync_state WHERE key='products_cursor'").get() as { value: string }).value).toBe("7");
+      expect((await post({ supplier: "sk", action: "pairs" })).status).toBe(200);
+    } finally {
+      fx.close();
+    }
+  });
+});

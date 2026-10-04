@@ -77,6 +77,39 @@ const RESERVE_TAIL = 2;
 // terakhir baru berumur ±14:58 → ambang 15 menit menunda putaran ke tick
 // menit ke-20 (terukur prod 4 Okt: 05:20 → 05:40 WIB).
 const CATALOG_SYNC_INTERVAL_MS = 14 * 60 * 1000;
+// Diff VPS (2026-10-04, `/api/supplier-sync`) menjaga kesegaran tiap ~3 menit.
+// Selama diff sehat (penanda `diff_last_at` < 10 mnt), sweep berpotongan di
+// cron turun menjadi PENGAMAN berkala: putaran penuh tiap 60 mnt diukur dari
+// `products_full_sweep_at` (log diff ikut menyegarkan *_sync_log, jadi log
+// tidak bisa dipakai sebagai gerbang). Diff mati → kembali 14 mnt otomatis.
+const DIFF_FRESH_MS = 10 * 60 * 1000;
+const BACKUP_SWEEP_INTERVAL_MS = 60 * 60 * 1000;
+
+/**
+ * Gerbang mulai putaran sweep katalog. Mengembalikan true bila putaran baru
+ * boleh dimulai (lanjutan cursor ditangani pemanggil).
+ */
+async function catalogSweepDue(
+  table: "wr_sync_state" | "sk_sync_state",
+  lastLogTs: number | null,
+  queryAll: DatabaseAccess["queryAll"],
+): Promise<boolean> {
+  const now = Date.now();
+  const rows = await queryAll(
+    `SELECT key, value FROM ${table} WHERE key IN ('diff_last_at','products_full_sweep_at')`,
+  ).catch(() => [] as Record<string, unknown>[]);
+  const read = (k: string) => {
+    const v = rows.find((r) => r.key === k)?.value;
+    const t = v ? Date.parse(String(v)) : NaN;
+    return Number.isFinite(t) ? t : null;
+  };
+  const diffAt = read("diff_last_at");
+  if (diffAt != null && now - diffAt < DIFF_FRESH_MS) {
+    const fullAt = read("products_full_sweep_at");
+    return fullAt == null || now - fullAt >= BACKUP_SWEEP_INTERVAL_MS;
+  }
+  return lastLogTs == null || lastLogTs < now - CATALOG_SYNC_INTERVAL_MS;
+}
 // Potongan sweep per request di mode `?phase=` (Workers Free: ~10 ms CPU per
 // request). Insiden 3 Okt 20:25–23:50 WIB: 41 run beruntun dibunuh runtime
 // (`exceededResources` → 503) karena SATU request memikul expiry + fulfillment
@@ -1033,7 +1066,8 @@ export async function POST(request: NextRequest) {
           ).catch(() => null);
           const resumeNow = Number(cursorRow?.value ?? 0) > 0;
           if (resumeNow) results.wr_sync_resume = true;
-          if (resumeNow || lastTs == null || lastTs < Date.parse(thirtyMinAgo)) {
+          void thirtyMinAgo;
+          if (resumeNow || await catalogSweepDue("wr_sync_state", lastTs, queryAll)) {
             // CATATAN (2026-09-20): admission proporsional berbasis
             // `duration_ms × 1,5` DIBUANG — ia mematikan sync secara PERMANEN.
             // `hasTime()` diukur terhadap RUN_DEADLINE_MS = 45 dtk, jadi
@@ -1324,7 +1358,8 @@ export async function POST(request: NextRequest) {
             `SELECT value FROM sk_sync_state WHERE key='products_cursor'`,
           ).catch(() => null);
           const resumeNow = Number(cursorRow?.value ?? 0) > 0;
-          if (resumeNow || lastTs == null || lastTs < Date.parse(thirtyMinAgo)) {
+          void thirtyMinAgo;
+          if (resumeNow || await catalogSweepDue("sk_sync_state", lastTs, queryAll)) {
             try {
               const syncResult = await syncSkProducts(database, undefined, {
                 maxProducts: forcedPhase ? SK_CRON_CHUNK : SK_SYNC_PRODUCTS_PER_RUN,

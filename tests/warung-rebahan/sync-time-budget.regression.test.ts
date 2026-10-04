@@ -181,7 +181,7 @@ describe("WR sync — sweep wajib berhenti sebelum invocation dibunuh platform",
     // Sinyalnya products_cursor (tidak ambigu), bukan snapshot_complete
     // yang di-seed '0' oleh migrasi 0029 untuk DB yang belum pernah sync.
     expect(cron).toContain("products_cursor");
-    expect(cron).toMatch(/resumeNow\s*\|\|\s*lastTs == null/);
+    expect(cron).toMatch(/resumeNow\s*\|\|\s*await catalogSweepDue\(/);
     expect(cron).toMatch(/Number\(cursorRow\?\.value \?\? 0\) > 0/);
   });
 

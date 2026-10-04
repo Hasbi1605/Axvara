@@ -1014,6 +1014,13 @@ export type SyncOptions = {
    * otomatis kembali ke `fetchFn()` penuh. Diabaikan bila `fetchFn` kustom.
    */
   useProxySlices?: boolean;
+  /**
+   * Mode DIFF dari VPS (2026-10-04, `/api/supplier-sync`): terapkan HANYA
+   * produk yang berubah + nol-kan varian yang dihapus upstream. Tanpa fetch,
+   * tanpa cursor/generasi/zero-missing katalog penuh. Sweep berpotongan
+   * tetap menjadi pengaman berkala (lihat cron).
+   */
+  applyOnly?: { products: WrProduct[]; removedVariantIds: string[] };
 };
 
 export async function syncProducts(
@@ -1024,7 +1031,10 @@ export async function syncProducts(
   const started = Date.now();
   const db = database ?? createDatabaseAccess();
   const trigger = options.trigger ?? "manual";
-  const maxProducts = Math.max(1, Math.min(options.maxProducts ?? WR_SYNC_PRODUCTS_PER_RUN, 48));
+  const applyOnly = options.applyOnly ?? null;
+  const maxProducts = applyOnly
+    ? Math.max(1, applyOnly.products.length)
+    : Math.max(1, Math.min(options.maxProducts ?? WR_SYNC_PRODUCTS_PER_RUN, 48));
   // Deadline sweep: 0/undefined = tanpa batas (Force Sync admin lewat route
   // sendiri, bukan invocation cron yang dibunuh platform).
   const timeBudgetMs = Number(options.timeBudgetMs ?? 0);
@@ -1050,7 +1060,9 @@ export async function syncProducts(
     return result;
   }
   // Cursor durable: lanjutkan dari posisi run sebelumnya (P0-4).
-  const state = await readSyncState(db);
+  const state = applyOnly
+    ? { cursor: 0, generation: "", snapshotComplete: false }
+    : await readSyncState(db);
   // Opsi A: longgarkan plafon KHUSUS sync katalog agar 48 produk tuntas
   // satu sweep. Hanya bila db menyediakan hook-nya (BudgetedDatabase cron);
   // DatabaseAccess polos (admin/test) canSpend-nya selalu true.
@@ -1062,10 +1074,12 @@ export async function syncProducts(
   // (hanya potongan terakhir) untuk zero-missing lintas potongan.
   let slice: Awaited<ReturnType<typeof fetchProductsSlice>> = null;
   try {
-    if (options.useProxySlices && fetchFn === fetchProducts) {
+    if (!applyOnly && options.useProxySlices && fetchFn === fetchProducts) {
       slice = await fetchProductsSlice(state.cursor, maxProducts);
     }
-    products = slice ? new Array<WrProduct>(slice.total) : await fetchFn();
+    products = applyOnly
+      ? applyOnly.products
+      : slice ? new Array<WrProduct>(slice.total) : await fetchFn();
     if (slice) slice.products.forEach((p, k) => { products[slice!.offset + k] = p; });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -1075,7 +1089,9 @@ export async function syncProducts(
     return result;
   }
   // Guard data mencurigakan SEBELUM menyentuh stok (P0-4).
-  const validation = validateCatalogResponse(products, state.generation, state.snapshotComplete ? Math.max(state.cursor, 1) : 0);
+  const validation = applyOnly
+    ? { ok: Array.isArray(products), reason: Array.isArray(products) ? null : "catalog_malformed_not_array" }
+    : validateCatalogResponse(products, state.generation, state.snapshotComplete ? Math.max(state.cursor, 1) : 0);
   if (!validation.ok) {
     result.errors.push(validation.reason || "catalog_rejected");
     await logSync({ ...result, status: "failed" }, db, trigger).catch(() => undefined);
@@ -1235,10 +1251,27 @@ export async function syncProducts(
     // run yang dibunuh platform/deploy menyisakan jejak dan run berikut
     // melanjutkan (bukan mengulang 48 dari awal). writeSyncState best-effort
     // (try/catch di dalam) — checkpoint gagal tak menghentikan sweep.
-    if (processedInRun % WR_SYNC_CHECKPOINT_EVERY === 0 && cursor < ordered.length) {
+    if (!applyOnly && processedInRun % WR_SYNC_CHECKPOINT_EVERY === 0 && cursor < ordered.length) {
       await writeSyncState(db, "products_cursor", String(cursor));
       await writeSyncState(db, "products_progress_at", new Date().toISOString());
     }
+  }
+  if (applyOnly) {
+    // Mode diff: tanpa cursor/generasi/snapshot. Varian yang dihapus upstream
+    // (dilaporkan VPS) di-nol-kan + agregat induknya disegarkan.
+    try {
+      result.stockChanges += await zeroVariantsByIds(applyOnly.removedVariantIds, db);
+    } catch (error) {
+      result.errors.push(error instanceof Error ? error.message : String(error));
+    }
+    result.snapshotComplete = true;
+    // Penanda diff VPS sehat: cron memakai ini untuk menjarangkan sweep
+    // pengaman berpotongan (60 mnt) selama diff berjalan.
+    await writeSyncState(db, "diff_last_at", new Date().toISOString());
+    result.durationMs = Date.now() - started;
+    const status = result.errors.length === 0 ? "success" : result.synced > 0 ? "partial" : "failed";
+    await logSync({ ...result, status }, db, trigger).catch(() => undefined);
+    return result;
   }
   const sweepComplete = cursor >= ordered.length;
   // Sweep dianggap PENUH hanya bila run ini memulai dari awal daftar. Tanpa
@@ -1253,6 +1286,9 @@ export async function syncProducts(
   await writeSyncState(db, "products_generation", generation);
   if (sweepComplete) {
     await writeSyncState(db, "products_snapshot_complete", "1");
+    // Penanda sweep PENUH terakhir: gerbang pengaman berkala cron saat diff
+    // VPS sehat (log diff ikut menyegarkan wr_sync_log, jadi tak bisa dipakai).
+    await writeSyncState(db, "products_full_sweep_at", new Date().toISOString());
     result.snapshotComplete = true;
   } else {
     // Sweep berhenti di tengah (budget query/waktu habis). Penanda WAJIB
@@ -1293,6 +1329,42 @@ export async function syncProducts(
   const status = result.errors.length === 0 ? "success" : result.synced > 0 ? "partial" : "failed";
   await logSync({ ...result, status }, db, trigger).catch(() => undefined);
   return result;
+}
+
+/**
+ * Nol-kan varian WR tertentu (mode diff: dihapus upstream). Hanya baris yang
+ * masih berstok; agregat induk produk terdampak disegarkan.
+ */
+export async function zeroVariantsByIds(ids: string[], db: DatabaseAccess): Promise<number> {
+  const unique = [...new Set(ids.map(String).filter((id) => id.length > 0))].slice(0, 200);
+  if (!unique.length) return 0;
+  const rows = await db
+    .queryAll(
+      `SELECT w.wr_variant_id, w.axvara_variant_id, pv.product_id FROM wr_variants w
+       LEFT JOIN product_variants pv ON pv.id = w.axvara_variant_id
+       WHERE w.is_active=1 AND w.wr_variant_id IN (${unique.map(() => "?").join(",")})
+         AND (w.wr_stock > 0 OR COALESCE(pv.stock, 0) > 0)`,
+      ...unique,
+    )
+    .catch(() => [] as Row[]);
+  const now = new Date().toISOString();
+  const parents = new Set<number>();
+  for (const row of rows) {
+    await db.execRun(
+      `UPDATE wr_variants SET wr_stock=0, last_synced_at=?, updated_at=? WHERE wr_variant_id=?`,
+      now, now, String(row.wr_variant_id),
+    );
+    const vid = row.axvara_variant_id != null ? Number(row.axvara_variant_id) : 0;
+    if (vid > 0) {
+      await db.execRun(`UPDATE product_variants SET stock=0, updated_at=datetime('now') WHERE id=?`, vid)
+        .catch(() => ({ changes: 0 }));
+    }
+    if (row.product_id != null) parents.add(Number(row.product_id));
+  }
+  for (const productId of parents) {
+    if (productId > 0) await refreshParentAggregates(productId, db).catch(() => undefined);
+  }
+  return rows.length;
 }
 
 /** Refresh agregat semua produk WR (dipanggil setelah zero-missing). */

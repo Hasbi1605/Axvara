@@ -453,6 +453,12 @@ export type SkSyncOptions = {
    * fetch penuh. Diabaikan bila `fetchFn` kustom.
    */
   useProxySlices?: boolean;
+  /**
+   * Mode DIFF dari VPS (2026-10-04, `/api/supplier-sync`): terapkan HANYA
+   * baris varian (bentuk `flattenSkItems`, scope kategori) yang berubah +
+   * nol-kan varian yang dihapus upstream. Tanpa fetch/cursor/server_time.
+   */
+  applyOnly?: { rows: SkFlatVariant[]; removedVariantIds: string[] };
 };
 
 /** Penanda produk SK di katalog utama (pola fulfillment WR: mode 'manual' +
@@ -529,7 +535,10 @@ export async function syncSkProducts(
   const started = Date.now();
   const db = database ?? createDatabaseAccess();
   const trigger = options.trigger ?? "manual";
-  const maxProducts = Math.max(1, Math.min(options.maxProducts ?? SK_SYNC_PRODUCTS_PER_RUN, 48));
+  const applyOnly = options.applyOnly ?? null;
+  const maxProducts = applyOnly
+    ? Math.max(1, applyOnly.rows.length)
+    : Math.max(1, Math.min(options.maxProducts ?? SK_SYNC_PRODUCTS_PER_RUN, 48));
   const timeBudgetMs = Number(options.timeBudgetMs ?? 0);
   const hasTimeBudget = Number.isFinite(timeBudgetMs) && timeBudgetMs > 0;
   const timeLeftMs = () => timeBudgetMs - (Date.now() - started);
@@ -553,13 +562,25 @@ export async function syncSkProducts(
     result.durationMs = Date.now() - started;
     return result;
   }
-  const state = await readSkSyncState(db);
+  const state = applyOnly
+    ? { cursor: 0, serverTime: "", snapshotComplete: false }
+    : await readSkSyncState(db);
   (db as unknown as { raiseCeilingForCatalogSync?: (n: number) => void }).raiseCeilingForCatalogSync?.(
     SK_SYNC_CATALOG_BUDGET_EXTRA,
   );
   // Mode potongan proxy (lihat SkSyncOptions.useProxySlices).
-  let slice: SkCatalogSlice | null = null;
-  if (options.useProxySlices && !fetchFn) {
+  // Mode diff = "potongan" sintetis berisi baris berubah saja (offset 0).
+  let slice: SkCatalogSlice | null = applyOnly
+    ? {
+        rows: applyOnly.rows,
+        serverTime: "",
+        fetchedN: applyOnly.rows.length,
+        inScopeN: applyOnly.rows.length,
+        offset: 0,
+        allVariantIds: null,
+      }
+    : null;
+  if (!applyOnly && options.useProxySlices && !fetchFn) {
     try {
       slice = await fetchSkCatalogSlice({ category: SK_SYNC_CATEGORY, offset: state.cursor, limit: maxProducts });
     } catch (error) {
@@ -911,9 +932,26 @@ export async function syncSkProducts(
     }
     cursor = i + 1;
     processedInRun++;
-    if (processedInRun % SK_SYNC_CHECKPOINT_EVERY === 0 && cursor < scoped.length) {
+    if (!applyOnly && processedInRun % SK_SYNC_CHECKPOINT_EVERY === 0 && cursor < scoped.length) {
       await writeSyncState(db, "products_cursor", String(cursor));
     }
+  }
+  if (applyOnly) {
+    // Mode diff: jangan sentuh cursor/server_time/snapshot (sweep pengaman
+    // berpotongan mungkin sedang berjalan).
+    try {
+      result.stockChanges += await zeroSkVariantsByIds(applyOnly.removedVariantIds, db);
+    } catch (error) {
+      result.errors.push(error instanceof Error ? error.message : String(error));
+    }
+    result.snapshotComplete = true;
+    // Penanda diff VPS sehat: cron memakai ini untuk menjarangkan sweep
+    // pengaman berpotongan (60 mnt) selama diff berjalan.
+    await writeSyncState(db, "diff_last_at", new Date().toISOString());
+    result.durationMs = Date.now() - started;
+    const status = result.errors.length === 0 ? "success" : result.synced > 0 ? "partial" : "failed";
+    await logSkSync({ ...result, status }, db, trigger).catch(() => undefined);
+    return result;
   }
   const sweepComplete = cursor >= scoped.length;
   // fullSweep = awal→ujung daftar SCOPE INI dalam run ini (cermin WR:
@@ -932,6 +970,7 @@ export async function syncSkProducts(
   }
   if (sweepComplete) {
     await writeSyncState(db, "products_snapshot_complete", "1");
+    await writeSyncState(db, "products_full_sweep_at", new Date().toISOString());
     result.snapshotComplete = true;
   } else {
     await writeSyncState(db, "products_snapshot_complete", "0");
@@ -999,6 +1038,35 @@ export async function zeroMissingSkVariants(
     zeroed++;
   }
   return zeroed;
+}
+
+/** Nol-kan varian SK tertentu (mode diff: dihapus upstream), hanya yang masih berstok. */
+export async function zeroSkVariantsByIds(ids: string[], db: DatabaseAccess): Promise<number> {
+  const unique = [...new Set(ids.map(String).filter((id) => id.length > 0))].slice(0, 200);
+  if (!unique.length) return 0;
+  const rows = await db
+    .queryAll(
+      `SELECT s.sk_variant_id, s.axvara_variant_id FROM sk_products s
+       LEFT JOIN product_variants pv ON pv.id = s.axvara_variant_id
+       WHERE s.is_active=1 AND s.sk_category=? AND s.sk_variant_id IN (${unique.map(() => "?").join(",")})
+         AND (s.sk_stock > 0 OR COALESCE(pv.stock, 0) > 0)`,
+      SK_SYNC_CATEGORY,
+      ...unique,
+    )
+    .catch(() => [] as Row[]);
+  const now = new Date().toISOString();
+  for (const row of rows) {
+    await db.execRun(
+      `UPDATE sk_products SET sk_stock=0, last_synced_at=?, updated_at=? WHERE sk_variant_id=?`,
+      now, now, String(row.sk_variant_id),
+    );
+    const vid = row.axvara_variant_id != null ? Number(row.axvara_variant_id) : 0;
+    if (vid > 0) {
+      await db.execRun(`UPDATE product_variants SET stock=0, updated_at=datetime('now') WHERE id=?`, vid)
+        .catch(() => ({ changes: 0 }));
+    }
+  }
+  return rows.length;
 }
 
 async function logSkSync(
