@@ -338,7 +338,7 @@ export async function notifyTelegramPaidAdmin(orderCode: string, database: Datab
 
   const order = await queryFirst(
     `SELECT o.code, o.items, o.customer_name, o.customer_wa, o.telegram_user_id,
-            o.telegram_paid_admin_notified_at, pt.payable_amount, o.subtotal, tu.username
+            o.variant_snapshot, o.telegram_paid_admin_notified_at, pt.payable_amount, o.subtotal, tu.username
      FROM orders o
      LEFT JOIN payment_transactions pt ON pt.order_code=o.code
      LEFT JOIN telegram_users tu ON tu.user_id=o.telegram_user_id
@@ -359,6 +359,7 @@ export async function notifyTelegramPaidAdmin(orderCode: string, database: Datab
       customerName: String(order.customer_name || "Pengguna Telegram"),
       telegramUser: username || String(order.telegram_user_id || ""),
       customerWa: String(order.customer_wa || ""),
+      delivery: (await telegramPaidDeliveryProfile(order, database).catch(() => null))?.delivery ?? "manual",
     }),
     parse_mode: "HTML",
     reply_markup: telegramOrderAdminKeyboard({

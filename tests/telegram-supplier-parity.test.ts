@@ -324,3 +324,15 @@ describe("Fallback pengiriman kredensial Telegram", () => {
     expect(cbs).toContain("cred:AXV-1");
   });
 });
+
+describe("Notif admin Lunas — Telegram", () => {
+  it("SK auto tidak menulis 'WA belum diisi', manual tetap", async () => {
+    const { adminTelegramOrderPaidMessage } = await import("@/lib/telegram/messages");
+    const base = { orderCode: "AXV-1", productNames: "Capcut", amount: 4612, customerName: "Icksan", telegramUser: "icksann", customerWa: "" };
+    const auto = adminTelegramOrderPaidMessage({ ...base, delivery: "instant" });
+    expect(auto).not.toContain("belum diisi");
+    expect(auto).toContain("Kirim otomatis ke chat buyer");
+    expect(adminTelegramOrderPaidMessage({ ...base, delivery: "queued" })).toContain("Made By Order");
+    expect(adminTelegramOrderPaidMessage(base)).toContain("belum diisi");
+  });
+});

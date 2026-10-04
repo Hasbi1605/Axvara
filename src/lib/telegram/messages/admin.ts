@@ -44,8 +44,12 @@ export function adminTelegramOrderPaidMessage(params: {
   customerName: string;
   telegramUser: string;
   customerWa: string;
+  /** Kelas kirim order (2026-10-04). Selain `manual`, nomor WA tidak dibutuhkan:
+   *  produk dikirim otomatis ke chat buyer, jadi baris "WA belum diisi" menyesatkan. */
+  delivery?: "instant" | "queued" | "manual";
 }): string {
   const { orderCode, productNames, amount, customerName, telegramUser, customerWa } = params;
+  const delivery = params.delivery ?? "manual";
   const normalizedUser = telegramUser.replace(/^@/, "");
   const telegramLabel = !normalizedUser
     ? "—"
@@ -62,7 +66,11 @@ export function adminTelegramOrderPaidMessage(params: {
     `💰 ${formatRupiah(amount)}`,
     `👤 ${escapeHtml(truncate(customerName, 50))}`,
     `✈️ ${escapeHtml(telegramLabel)}`,
-    `📱 ${escapeHtml(truncate(wa, 30))}`,
+    delivery === "instant"
+      ? "⚡ Kirim otomatis ke chat buyer"
+      : delivery === "queued"
+        ? "⏳ Made By Order — otomatis ke chat buyer saat selesai"
+        : `📱 ${escapeHtml(truncate(wa, 30))}`,
     `💳 QRIS dinamis`,
     "",
     "✅ Pembayaran otomatis terverifikasi",
