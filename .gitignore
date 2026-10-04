@@ -66,3 +66,6 @@ cache/**
 /whatsapp-logo-512.png
 /whatsapp-logo.svg
 pdp-mobile-375.png
+
+# Kredensial AWS agent (2026-10-04)
+.aws-credentials*

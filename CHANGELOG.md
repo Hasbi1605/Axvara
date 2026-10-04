@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-10-04 — Kredensial AWS agent pindah ke file repo `.aws-credentials` (permintaan owner: pola sama dengan `.cf-credentials`/`.heroku-credentials`): env `AWS_ACCESS_KEY_ID/SECRET/DEFAULT_REGION` user `kiro-monitor`, git-ignored `.aws-credentials*`, chmod 600; profile `axvara-monitor` dihapus dari `~/.aws` (satu sumber) — .gitignore, AGENTS.md, README.md, docs/ARCHITECTURE.md — (verifikasi: git check-ignore OK; `source .aws-credentials` → sts user/kiro-monitor + describe-instances running)
+
 - 2026-10-04 — Keamanan kredensial (permintaan owner): access key admin permanen IAM `nasikuning` DINONAKTIFKAN (Inactive, bisa diaktifkan lagi di IAM); izin file `.cf-credentials` + `.heroku-credentials` diperketat ke 600; dokumentasi akses AWS via profile `axvara-monitor` dilengkapi di ARCHITECTURE §16.5 + README — AGENTS.md, README.md, docs/ARCHITECTURE.md — (verifikasi: list-access-keys = Inactive; sts --profile nasikuning = InvalidClientTokenId; git check-ignore 3 file kredensial OK)
 
 - 2026-10-04 — Akses AWS permanen untuk agent (permintaan owner: tanpa `aws login` ulang, opsi B): IAM user `kiro-monitor` + profile `axvara-monitor` (`ReadOnlyAccess` + baca billing/kredit + start/stop/reboot khusus instance `axvara-proxy-sg`); aturan pakai di AGENTS.md — AGENTS.md (infra AWS, tanpa perubahan kode) — (verifikasi: sts = user/kiro-monitor; describe-instances + CloudWatch + kredit $141,91 + Cost Explorer OK; reboot dry-run diizinkan; run-instances + iam:CreateUser ditolak)

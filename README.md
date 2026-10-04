@@ -347,7 +347,7 @@ proxy, IP whitelist SK = IP VPS yang sama, tanpa add-on baru)** — lihat
 `docs/ARCHITECTURE.md` §15b. Kredensial Cloudflare
 manual diambil dari `.cf-credentials` (git-ignored); kredensial Heroku dua akun
 di `.heroku-credentials` (git-ignored, pola sama); AWS (VPS proxy) lewat
-profile `axvara-monitor` di `~/.aws/credentials` (read-only + reboot VPS,
+`.aws-credentials` (git-ignored, pola sama; read-only + reboot VPS,
 lihat AGENTS.md); CI/CD memakai GitHub Actions Secrets.
 
 ### Sekalipay Reseller API (supplier kedua paralel WR, 2026-09-30, default mati)

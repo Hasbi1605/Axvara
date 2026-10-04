@@ -116,9 +116,10 @@ Setiap kali ubah kode/docs di `axvara/`, **WAJIB catat di `axvara/CHANGELOG.md`*
 - Rotasi: generate baru → update file ini → update 3 Pages Secrets (`secret_text`) → redeploy → update Apps Script.
 
 ## Kredensial AWS (VPS proxy WR/SK) (WAJIB)
-- Agent memakai profile `axvara-monitor` (IAM user `kiro-monitor`, key statis di `~/.aws/credentials`, region `ap-southeast-1`): `ReadOnlyAccess` + baca billing/kredit (Cost Explorer, freetier, budgets) + `ec2:Start/Stop/RebootInstances` HANYA untuk `i-022790eb6bb0b1be3` (`axvara-proxy-sg`). Selalu `--profile axvara-monitor`; jangan pakai `default`/root atau profile admin lain.
+- File sumber tunggal: `axvara/.aws-credentials` (git-ignored `.aws-credentials*`, chmod 600) — berisi `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` + `AWS_DEFAULT_REGION=ap-southeast-1` milik IAM user `kiro-monitor`. Pakai: `set -a; source .aws-credentials; set +a` lalu `aws ...` (env var mengalahkan profile `default`/root). JANGAN commit/echo nilainya.
+- Izin `kiro-monitor`: `ReadOnlyAccess` + baca billing/kredit (Cost Explorer, freetier, budgets) + `ec2:Start/Stop/RebootInstances` HANYA untuk `i-022790eb6bb0b1be3` (`axvara-proxy-sg`). Aksi di luar izin (security group, resize, snapshot, resource baru) → minta owner.
 - Ubah isi VPS (deploy proxy, restart service, log) lewat SSH `ec2-user@13.228.147.90` + `~/.ssh/axvara-sg-proxy.pem`, bukan IAM.
-- Aksi di luar izin (security group, resize, snapshot, resource baru) → minta owner. Jangan echo/commit nilai key. Cabut akses: IAM → Users → `kiro-monitor` → hapus access key. Profile `nasikuning` (key admin permanen) sudah DINONAKTIFKAN 2026-10-04 — jangan dipakai/diaktifkan lagi tanpa izin owner.
+- Cabut akses: IAM → Users → `kiro-monitor` → hapus access key (lalu hapus file ini). Key admin permanen `nasikuning` DINONAKTIFKAN 2026-10-04 — jangan dipakai/diaktifkan lagi tanpa izin owner.
 
 ## Sebelum menyelesaikan percakapan (checklist)
 Agent **wajib** pastikan sebelum jawab "selesai":
