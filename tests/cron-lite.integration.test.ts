@@ -69,6 +69,30 @@ describe("/api/cron/lite", () => {
     }
   });
 
+  // 2026-10-05: digest promo ikut lite agar slot 09.00/17.00 tidak bergantung
+  // pada route besar yang sering dibunuh limit CPU. Ledger dipakai bersama
+  // fase notify → tidak pernah terkirim ganda.
+  it("promo: slot sudah terkirim lengkap → skip tanpa kirim ulang", async () => {
+    const fx = createD1Fixture();
+    try {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-10-05T02:10:00Z")); // 09.10 WIB, slot pagi
+      for (const [k, v] of [["CRON_SECRET", "s"], ["TELEGRAM_PROMO_DIGEST_ENABLED", "true"], ["TELEGRAM_BOT_ENABLED", "true"], ["TELEGRAM_BOT_TOKEN", "t"], ["TELEGRAM_ADMIN_CHAT_ID", "-1"]]) vi.stubEnv(k, v);
+      fx.sql.prepare(
+        `INSERT INTO telegram_promo_digests (business_date, slot, product_ids, full_message_id, short_message_id)
+         VALUES ('2026-10-05','morning','[]','330','331')`,
+      ).run();
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+      const { body } = await call("promo");
+      expect(body).toMatchObject({ ok: true, job: "promo", promo_due: true, promo_skipped: "already_sent" });
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+      fx.close();
+    }
+  });
+
   it("tidak ada impor statis modul berat di tingkat atas", () => {
     const src = readFileSync("src/app/api/cron/lite/route.ts", "utf8");
     const staticImports = src.split("\n").filter((l) => /^import /.test(l)).join("\n");
