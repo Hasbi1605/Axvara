@@ -28,18 +28,37 @@ export type CronEnv = {
   CRON_STATE?: KvLike;
 };
 
-export type CronStep = { phase: string; part?: "orders" | "sync"; chunked?: boolean };
+/**
+ * Tingkat alarm per langkah (2026-10-05):
+ * - `hard`: dialarmkan setelah 2 tick gagal beruntun (menyentuh pembeli);
+ * - `soft`: baru dialarmkan setelah 6 tick (30 mnt) beruntun;
+ * - `none`: tidak pernah dialarmkan (pelengkap/cadangan — inti sudah
+ *   dikerjakan langkah lite, kesegaran katalog dijaga diff VPS).
+ */
+export type AlarmTier = "hard" | "soft" | "none";
+export type CronStep = { phase: string; part?: "orders" | "sync"; chunked?: boolean; lite?: string; alarm: AlarmTier };
 
-/** Urutan satu tick: order WR/SK sebelum notify, sync katalog di belakang. */
+/**
+ * Urutan satu tick. Langkah INTI lewat `/api/cron/lite` (route ramping,
+ * jarang kena limit CPU Free plan) didahulukan; route besar
+ * `/api/cron/operations` tetap dipanggil sebagai pelengkap (stranded ledger,
+ * manual-WA, reconcile tambahan, saldo, notify, sync cadangan, cleanup) —
+ * aman ganda karena klaim/transisi idempoten.
+ */
 export const CRON_STEPS: CronStep[] = [
-  { phase: "expiry" },
-  { phase: "fulfillment" },
-  { phase: "warung_rebahan", part: "orders" },
-  { phase: "sekalipay", part: "orders" },
-  { phase: "notify" },
-  { phase: "warung_rebahan", part: "sync", chunked: true },
-  { phase: "sekalipay", part: "sync", chunked: true },
-  { phase: "cleanup" },
+  { phase: "lite", lite: "expiry", alarm: "hard" },
+  { phase: "lite", lite: "fulfillment", alarm: "hard" },
+  { phase: "lite", lite: "wr_orders", alarm: "hard" },
+  { phase: "lite", lite: "sk_orders", alarm: "hard" },
+  { phase: "lite", lite: "promo", alarm: "soft" },
+  { phase: "expiry", alarm: "none" },
+  { phase: "fulfillment", alarm: "none" },
+  { phase: "warung_rebahan", part: "orders", alarm: "none" },
+  { phase: "sekalipay", part: "orders", alarm: "none" },
+  { phase: "notify", alarm: "soft" },
+  { phase: "warung_rebahan", part: "sync", chunked: true, alarm: "none" },
+  { phase: "sekalipay", part: "sync", chunked: true, alarm: "none" },
+  { phase: "cleanup", alarm: "none" },
 ];
 /** Plafon potongan per langkah sync per tick (WR 49/10 = 5; SK ~100/25 = 4). */
 export const MAX_CHUNKS_PER_PHASE = 10;
@@ -55,9 +74,9 @@ export const ALARM_KV_KEY = "cron_alarm_v1";
  * kegagalan langkah lain (order, notify, …) tetap 2 tick.
  */
 export const SOFT_ALARM_AFTER_TICKS = 6;
-const isSoft = (f: PhaseOutcome) => f.step.endsWith(":sync");
+const isSoft = (f: PhaseOutcome) => f.alarm === "soft" || (f.alarm === undefined && f.step.endsWith(":sync"));
 
-export type PhaseOutcome = { step: string; calls: number; ok: boolean; status: number; error?: string };
+export type PhaseOutcome = { step: string; calls: number; ok: boolean; status: number; error?: string; alarm?: AlarmTier };
 export type AlarmState = {
   since: number | null;
   failedTicks: number;
@@ -72,14 +91,16 @@ export type TickReport = { outcomes: PhaseOutcome[]; failures: PhaseOutcome[]; a
 
 type FetchFn = (input: string, init?: RequestInit) => Promise<Response>;
 
-export function stepLabel(step: CronStep): string {
+export function stepLabel(step: Pick<CronStep, "phase" | "part" | "lite">): string {
+  if (step.lite) return `lite:${step.lite}`;
   return step.part ? `${step.phase}:${step.part}` : step.phase;
 }
 
 async function callStep(env: CronEnv, step: CronStep, fetchFn: FetchFn): Promise<PhaseOutcome> {
   const headers = { authorization: `Bearer ${env.AXVARA_CRON_SECRET}` };
   const label = stepLabel(step);
-  const base = `phase=${step.phase}${step.part ? `&part=${step.part}` : ""}`;
+  const path = step.lite ? "/api/cron/lite" : "/api/cron/operations";
+  const base = step.lite ? `job=${step.lite}` : `phase=${step.phase}${step.part ? `&part=${step.part}` : ""}`;
   const maxCalls = step.chunked ? MAX_CHUNKS_PER_PHASE : 1;
   let calls = 0;
   for (let i = 0; i < maxCalls; i++) {
@@ -87,7 +108,7 @@ async function callStep(env: CronEnv, step: CronStep, fetchFn: FetchFn): Promise
     calls++;
     let response: Response;
     try {
-      response = await fetchFn(`${env.AXVARA_API_ORIGIN}/api/cron/operations?${query}`, { method: "POST", headers });
+      response = await fetchFn(`${env.AXVARA_API_ORIGIN}${path}?${query}`, { method: "POST", headers });
     } catch (error) {
       return { step: label, calls, ok: false, status: 0, error: error instanceof Error ? error.message.slice(0, 120) : "fetch_failed" };
     }
@@ -235,8 +256,9 @@ export async function runOperationsTick(
 ): Promise<TickReport> {
   const outcomes: PhaseOutcome[] = [];
   // Langkah gagal tidak menghentikan langkah berikut: tiap langkah berdiri sendiri.
-  for (const step of CRON_STEPS) outcomes.push(await callStep(env, step, fetchFn));
-  const failures = outcomes.filter((o) => !o.ok);
+  for (const step of CRON_STEPS) outcomes.push({ ...(await callStep(env, step, fetchFn)), alarm: step.alarm });
+  // Langkah `none` tetap tercatat di outcomes (diagnosa) tapi bukan kegagalan alarm.
+  const failures = outcomes.filter((o) => !o.ok && o.alarm !== "none");
 
   if (!env.CRON_STATE) {
     let alerted = false;

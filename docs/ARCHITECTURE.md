@@ -774,6 +774,7 @@ Kolom baru di `orders`: `sales_channel`, `telegram_chat_id`, `telegram_user_id`,
 | GET/POST/PUT/DELETE | `/api/admin/variants` | admin | Kelola SKU, durasi, garansi, harga, stok, dan mode fulfillment varian |
 | POST | `/api/whatsapp/webhook` | Shared Baileys webhook token | Command grup, order, pembayaran, dan intake bukti |
 | POST | `/api/admin/proofs/:id` | admin | CAS approve/reject bukti dari baris Pesanan dan otorisasi pembayaran manual |
+| POST | `/api/cron/lite?job=expiry\|fulfillment\|wr_orders\|sk_orders` | Bearer `CRON_SECRET` | Langkah cron INTI ramping (2026-10-05, Workers Free ~10 ms CPU): impor minimal + modul dinamis per job, budget 40 statement, penanda `store_settings.cron_lite_<job>_ok_at`. Dipanggil Worker SEBELUM route besar `/api/cron/operations` (yang tetap jalan sebagai pelengkap; idempoten). Alarm Telegram: langkah lite = hard (2 tick), `notify` = soft (6 tick), langkah route besar lain tidak dialarmkan |
 | GET | `/go/:slug` | publik | Shortlink internal `axvara.tech/go/*` (2026-10-03, migrasi 0056): redirect 307 ke destination + `click_count`/`last_clicked_at`; 404 bila slug tak ada/nonaktif/format salah; `X-Robots-Tag: noindex` (tak masuk sitemap) |
 | GET/POST/PUT/DELETE | `/api/admin/supplier-links` | admin | CRUD tabel `supplier_links` (tab admin "Link Supplier"): slug lowercase-dash (min 2, reserved: admin/api/go/produk/artikel/…), destination URL/path internal, toggle `is_active`; POST duplikat → 409 |
 

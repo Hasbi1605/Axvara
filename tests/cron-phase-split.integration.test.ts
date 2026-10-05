@@ -221,6 +221,7 @@ describe("Worker runOperationsTick", () => {
   const at = (minute: number) => Date.UTC(2026, 9, 3, 13, minute);
   const label = (u: string) => {
     const q = new URL(u).searchParams;
+    if (q.get("job")) return `lite:${q.get("job")}`;
     return q.get("part") ? `${q.get("phase")}:${q.get("part")}` : String(q.get("phase"));
   };
 
@@ -248,16 +249,18 @@ describe("Worker runOperationsTick", () => {
     };
   }
 
-  it("urutan: order WR/SK sebelum notify, sync katalog di belakang", async () => {
+  it("urutan: langkah lite inti dulu, lalu route besar (order sebelum notify, sync di belakang)", async () => {
     const { fn, calls } = mockFetch(() => ({ status: 200 }));
     const report = await runOperationsTick(env, at(5), fn as never);
     expect(report.failures).toEqual([]);
     expect(calls.map(label)).toEqual([
+      "lite:expiry", "lite:fulfillment", "lite:wr_orders", "lite:sk_orders", "lite:promo",
       "expiry", "fulfillment", "warung_rebahan:orders", "sekalipay:orders",
       "notify", "warung_rebahan:sync", "sekalipay:sync", "cleanup",
     ]);
     expect(CRON_STEPS.map(stepLabel)).toEqual(calls.map(label));
     expect(fn.mock.calls[0][1]).toMatchObject({ method: "POST", headers: { authorization: "Bearer s" } });
+    expect(calls[0]).toBe("https://axvara.test/api/cron/lite?job=expiry");
   });
 
   it("mengulang potongan sync selama more:true lalu berhenti", async () => {
@@ -285,25 +288,27 @@ describe("Worker runOperationsTick", () => {
     expect(calls.filter((u) => u.includes("phase=sekalipay&part=sync"))).toHaveLength(MAX_CHUNKS_PER_PHASE);
   });
 
-  it("tanpa KV: fallback stateless — alarm hanya di tick :00/:30 (non-:sync)", async () => {
-    const failing = (url: string) => (url.includes("part=") ? { status: 503 } : { status: 200 });
+  it("tanpa KV: fallback stateless — alarm hanya di tick :00/:30, hanya langkah lite (hard)", async () => {
+    const failing = (url: string) => (url.includes("job=wr_orders") || url.includes("phase=") ? { status: 503 } : { status: 200 });
     const quiet = mockFetch(failing);
     const r1 = await runOperationsTick(env, at(25), quiet.fn as never);
-    expect(r1.failures.map((f) => f.step)).toEqual(["warung_rebahan:orders", "sekalipay:orders", "warung_rebahan:sync", "sekalipay:sync"]);
+    // Langkah route besar `none` tidak dihitung kegagalan; notify (soft) dihitung.
+    expect(r1.failures.map((f) => f.step)).toEqual(["lite:wr_orders", "notify"]);
     expect(r1.alerted).toBe(false);
     expect(quiet.calls.some((u) => u.includes("phase=cleanup"))).toBe(true);
 
     const loud = mockFetch(failing);
     const r2 = await runOperationsTick(env, at(30), loud.fn as never);
     expect(r2.alerted).toBe(true);
-    expect(loud.telegram()[0]).toContain("warung_rebahan:orders: HTTP 503");
+    expect(loud.telegram()[0]).toContain("lite:wr_orders: HTTP 503");
     expect(loud.telegram()[0]).not.toContain(":sync");
+    expect(loud.telegram()[0]).not.toContain("notify");
   });
 
   it("dengan KV: 1 pesan mulai (2 tick gagal), diam di tengah, 1 pesan pulih (3 tick sukses)", async () => {
     const mem = memoryKv();
     const kvEnv = { ...env, CRON_STATE: mem.kv };
-    const fail = mockFetch((url) => (url.includes("part=orders") ? { status: 503 } : { status: 200 }));
+    const fail = mockFetch((url) => (url.includes("job=sk_orders") ? { status: 503 } : { status: 200 }));
     const ok = mockFetch(() => ({ status: 200 }));
     const tick = (m: number, f: typeof fail) => runOperationsTick(kvEnv, at(0) + m * 60_000, f.fn as never);
 
@@ -324,17 +329,24 @@ describe("Worker runOperationsTick", () => {
     expect(JSON.parse(String(mem.store.get(ALARM_KV_KEY))).since).toBeNull();
   });
 
-  it("kegagalan HANYA :sync baru dialarmkan setelah 6 tick beruntun", async () => {
+  it("route besar gagal total tak pernah alarm; notify (soft) baru setelah 6 tick; lite 2 tick", async () => {
+    const memNone = memoryKv();
+    const heavyDown = mockFetch((url) => (url.includes("/api/cron/operations") && !url.includes("phase=notify") ? { status: 503 } : { status: 200 }));
+    for (let i = 0; i < 8; i++) {
+      expect((await runOperationsTick({ ...env, CRON_STATE: memNone.kv }, at(0) + i * 300_000, heavyDown.fn as never)).action).toBe("none");
+    }
+    expect(heavyDown.telegram()).toHaveLength(0);
+
     const mem = memoryKv();
     const kvEnv = { ...env, CRON_STATE: mem.kv };
-    const softFail = mockFetch((url) => (url.includes("part=sync") ? { status: 503 } : { status: 200 }));
+    const softFail = mockFetch((url) => (url.includes("phase=notify") ? { status: 503 } : { status: 200 }));
     const actions: string[] = [];
     for (let i = 0; i < 6; i++) actions.push((await runOperationsTick(kvEnv, at(0) + i * 300_000, softFail.fn as never)).action);
     expect(actions).toEqual(["none", "none", "none", "none", "none", "start"]);
     expect(softFail.telegram()).toHaveLength(1);
     // Kegagalan order tetap 2 tick.
     const mem2 = memoryKv();
-    const hard = mockFetch((url) => (url.includes("part=orders") ? { status: 503 } : { status: 200 }));
+    const hard = mockFetch((url) => (url.includes("job=expiry") ? { status: 503 } : { status: 200 }));
     const env2 = { ...env, CRON_STATE: mem2.kv };
     expect((await runOperationsTick(env2, at(0), hard.fn as never)).action).toBe("none");
     expect((await runOperationsTick(env2, at(5), hard.fn as never)).action).toBe("start");
