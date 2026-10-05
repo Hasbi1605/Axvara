@@ -27,7 +27,7 @@ import { createBudgetedDatabase, QueryBudgetExceeded, type DatabaseAccess } from
 
 export const runtime = "edge";
 
-const LITE_JOBS = ["expiry", "fulfillment", "wr_orders", "sk_orders", "promo"] as const;
+const LITE_JOBS = ["expiry", "fulfillment", "wr_orders", "sk_orders", "promo", "notify", "cleanup"] as const;
 type LiteJob = (typeof LITE_JOBS)[number];
 const EXPIRY_PER_RUN = 4;
 const FULFILLMENT_PER_RUN = 4;
@@ -58,6 +58,8 @@ export async function POST(request: NextRequest) {
     else if (job === "fulfillment") Object.assign(result, await runFulfillment(db));
     else if (job === "wr_orders") Object.assign(result, await runWrOrders(db));
     else if (job === "sk_orders") Object.assign(result, await runSkOrders(db));
+    else if (job === "notify") Object.assign(result, await runNotify(db));
+    else if (job === "cleanup") Object.assign(result, await runCleanup(db));
     else Object.assign(result, await runPromo(db));
   } catch (error) {
     // Budget habis = sisa kerja dilanjutkan tick berikut, bukan kegagalan.
@@ -195,4 +197,52 @@ async function runPromo(db: Db) {
   const { sendDueAdminPromoDigest } = await import("@/lib/telegram/promo-digest");
   const promo = await sendDueAdminPromoDigest(db);
   return { promo_due: promo.due, promo_full_sent: promo.fullSent, promo_short_sent: promo.shortSent, promo_skipped: promo.skipped ?? null };
+}
+
+// notify (2026-10-05 malam): retry kabar order Telegram, invoice tertunda,
+// kabar QRIS kedaluwarsa, pengingat order pending, outbox WhatsApp. Tiap
+// pekerjaan berdiri sendiri (satu gagal tidak menghentikan yang lain) dan
+// masing-masing memilih kandidatnya sendiri dengan klaim idempoten.
+async function runNotify(db: Db) {
+  const out: Record<string, unknown> = {};
+  const guard = async (key: string, fn: () => Promise<unknown>) => {
+    try { out[key] = await fn(); } catch (error) {
+      if (error instanceof QueryBudgetExceeded) throw error;
+      out[`${key}_error`] = error instanceof Error ? error.message.slice(0, 80) : "failed";
+    }
+  };
+  await guard("telegram_retry", async () => {
+    const { retryPendingTelegramNotifications } = await import("@/lib/telegram/order-notifications");
+    return retryPendingTelegramNotifications(4, undefined, db);
+  });
+  await guard("invoice_retry", async () => {
+    const { retryInvoicePendingTelegramInvoices } = await import("@/lib/telegram/invoice-retry");
+    return retryInvoicePendingTelegramInvoices(2, db);
+  });
+  await guard("qris_expiry_notices", async () => {
+    const { sendQrisExpiryNotifications } = await import("@/lib/payments/qris-expiry-notifications");
+    return sendQrisExpiryNotifications(2, db);
+  });
+  await guard("pending_reminders", async () => {
+    const { sendPendingOrderReminders } = await import("@/lib/telegram/order-notifications");
+    return sendPendingOrderReminders(4, db);
+  });
+  await guard("whatsapp_outbox", async () => {
+    const { processDueWhatsAppOutbox } = await import("@/lib/whatsapp/outbox");
+    return processDueWhatsAppOutbox(4, db);
+  });
+  return out;
+}
+
+// cleanup: baris kedaluwarsa (sesi WA, inbox WA 7 hari, event DANA 30 hari,
+// revokasi sesi admin). Murah dan idempoten.
+async function runCleanup(db: Db) {
+  const del = async (sql: string) => Number((await db.execRun(sql).catch(() => ({ changes: 0 }))).changes || 0);
+  return {
+    rows_cleaned:
+      await del(`DELETE FROM whatsapp_sessions WHERE datetime(expires_at)<datetime('now','-1 day')`)
+      + await del(`DELETE FROM whatsapp_inbox_events WHERE created_at<datetime('now','-7 days')`)
+      + await del(`DELETE FROM dana_webhook_events WHERE created_at<datetime('now','-30 days')`)
+      + await del(`DELETE FROM admin_session_revocations WHERE datetime(expires_at)<datetime('now')`),
+  };
 }

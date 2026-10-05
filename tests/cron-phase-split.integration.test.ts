@@ -249,12 +249,22 @@ describe("Worker runOperationsTick", () => {
     };
   }
 
-  it("urutan: langkah lite inti dulu, lalu route besar (order sebelum notify, sync di belakang)", async () => {
+  it("tick biasa (:05) hanya langkah lite; route besar tidak dipanggil", async () => {
     const { fn, calls } = mockFetch(() => ({ status: 200 }));
     const report = await runOperationsTick(env, at(5), fn as never);
     expect(report.failures).toEqual([]);
     expect(calls.map(label)).toEqual([
-      "lite:expiry", "lite:fulfillment", "lite:wr_orders", "lite:sk_orders", "lite:promo",
+      "lite:expiry", "lite:fulfillment", "lite:wr_orders", "lite:sk_orders", "lite:notify", "lite:promo", "lite:cleanup",
+    ]);
+    expect(calls.some((u) => u.includes("/api/cron/operations"))).toBe(false);
+  });
+
+  it("tick :00 UTC: lite dulu, lalu route besar sebagai pelengkap per jam", async () => {
+    const { fn, calls } = mockFetch(() => ({ status: 200 }));
+    const report = await runOperationsTick(env, Date.UTC(2026, 9, 3, 14, 0), fn as never);
+    expect(report.failures).toEqual([]);
+    expect(calls.map(label)).toEqual([
+      "lite:expiry", "lite:fulfillment", "lite:wr_orders", "lite:sk_orders", "lite:notify", "lite:promo", "lite:cleanup",
       "expiry", "fulfillment", "warung_rebahan:orders", "sekalipay:orders",
       "notify", "warung_rebahan:sync", "sekalipay:sync", "cleanup",
     ]);
@@ -272,7 +282,7 @@ describe("Worker runOperationsTick", () => {
       }
       return { status: 200 };
     });
-    await runOperationsTick(env, at(5), fn as never);
+    await runOperationsTick(env, at(0), fn as never);
     const wr = calls.filter((u) => u.includes("phase=warung_rebahan&part=sync"));
     expect(wr).toHaveLength(3);
     expect(wr[0]).not.toContain("continue=1");
@@ -284,7 +294,7 @@ describe("Worker runOperationsTick", () => {
   it("plafon potongan per langkah mencegah loop tanpa akhir", async () => {
     const { fn, calls } = mockFetch((url) =>
       url.includes("phase=sekalipay&part=sync") ? { status: 200, body: { more: true } } : { status: 200 });
-    await runOperationsTick(env, at(5), fn as never);
+    await runOperationsTick(env, at(0), fn as never);
     expect(calls.filter((u) => u.includes("phase=sekalipay&part=sync"))).toHaveLength(MAX_CHUNKS_PER_PHASE);
   });
 
@@ -292,10 +302,13 @@ describe("Worker runOperationsTick", () => {
     const failing = (url: string) => (url.includes("job=wr_orders") || url.includes("phase=") ? { status: 503 } : { status: 200 });
     const quiet = mockFetch(failing);
     const r1 = await runOperationsTick(env, at(25), quiet.fn as never);
-    // Langkah route besar `none` tidak dihitung kegagalan; notify (soft) dihitung.
-    expect(r1.failures.map((f) => f.step)).toEqual(["lite:wr_orders", "notify"]);
+    expect(r1.failures.map((f) => f.step)).toEqual(["lite:wr_orders"]);
     expect(r1.alerted).toBe(false);
-    expect(quiet.calls.some((u) => u.includes("phase=cleanup"))).toBe(true);
+    // Tick :00 UTC: route besar ikut dipanggil, tetapi kegagalannya tidak dihitung.
+    const heavy = mockFetch(failing);
+    const r0 = await runOperationsTick(env, at(0) + 60 * 60_000, heavy.fn as never);
+    expect(heavy.calls.some((u) => u.includes("phase=cleanup"))).toBe(true);
+    expect(r0.failures.map((f) => f.step)).toEqual(["lite:wr_orders"]);
 
     const loud = mockFetch(failing);
     const r2 = await runOperationsTick(env, at(30), loud.fn as never);
@@ -329,9 +342,9 @@ describe("Worker runOperationsTick", () => {
     expect(JSON.parse(String(mem.store.get(ALARM_KV_KEY))).since).toBeNull();
   });
 
-  it("route besar gagal total tak pernah alarm; notify (soft) baru setelah 6 tick; lite 2 tick", async () => {
+  it("route besar gagal total tak pernah alarm; promo (soft) baru setelah 6 tick; lite 2 tick", async () => {
     const memNone = memoryKv();
-    const heavyDown = mockFetch((url) => (url.includes("/api/cron/operations") && !url.includes("phase=notify") ? { status: 503 } : { status: 200 }));
+    const heavyDown = mockFetch((url) => (url.includes("/api/cron/operations") ? { status: 503 } : { status: 200 }));
     for (let i = 0; i < 8; i++) {
       expect((await runOperationsTick({ ...env, CRON_STATE: memNone.kv }, at(0) + i * 300_000, heavyDown.fn as never)).action).toBe("none");
     }
@@ -339,7 +352,7 @@ describe("Worker runOperationsTick", () => {
 
     const mem = memoryKv();
     const kvEnv = { ...env, CRON_STATE: mem.kv };
-    const softFail = mockFetch((url) => (url.includes("phase=notify") ? { status: 503 } : { status: 200 }));
+    const softFail = mockFetch((url) => (url.includes("job=promo") ? { status: 503 } : { status: 200 }));
     const actions: string[] = [];
     for (let i = 0; i < 6; i++) actions.push((await runOperationsTick(kvEnv, at(0) + i * 300_000, softFail.fn as never)).action);
     expect(actions).toEqual(["none", "none", "none", "none", "none", "start"]);

@@ -93,6 +93,22 @@ describe("/api/cron/lite", () => {
     }
   });
 
+  it("notify & cleanup: aman dijalankan tanpa antrean; cleanup menghapus event DANA >30 hari", async () => {
+    const fx = createD1Fixture();
+    try {
+      vi.stubEnv("CRON_SECRET", "s");
+      const n = await call("notify");
+      expect(n.status).toBe(200);
+      expect(n.body).toMatchObject({ ok: true, job: "notify" });
+      fx.sql.exec("INSERT INTO dana_webhook_events (id, event_key, payload_hash, amount, status, created_at) VALUES (1,'old','h',1000,'matched',datetime('now','-40 days'))");
+      const c = await call("cleanup");
+      expect(c.status).toBe(200);
+      expect(Number(c.body.rows_cleaned)).toBeGreaterThanOrEqual(1);
+    } finally {
+      fx.close();
+    }
+  });
+
   it("tidak ada impor statis modul berat di tingkat atas", () => {
     const src = readFileSync("src/app/api/cron/lite/route.ts", "utf8");
     const staticImports = src.split("\n").filter((l) => /^import /.test(l)).join("\n");

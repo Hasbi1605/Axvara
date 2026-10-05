@@ -36,7 +36,18 @@ export type CronEnv = {
  *   dikerjakan langkah lite, kesegaran katalog dijaga diff VPS).
  */
 export type AlarmTier = "hard" | "soft" | "none";
-export type CronStep = { phase: string; part?: "orders" | "sync"; chunked?: boolean; lite?: string; alarm: AlarmTier };
+export type CronStep = { phase: string; part?: "orders" | "sync"; chunked?: boolean; lite?: string; alarm: AlarmTier; heavy?: boolean };
+/**
+ * Route besar `/api/cron/operations` hanya dipanggil di tick menit :00 UTC
+ * (sekali per jam) sejak 5 Okt malam: email Cloudflare "Workers CPU limit
+ * exceeded 100+ times/24 jam" — 583 dari 589 request yang dibunuh adalah
+ * route besar yang dipanggil tiap 5 mnt. Pekerjaan rutinnya kini di lite.
+ */
+export const HEAVY_EVERY_MINUTES = 60;
+export function isHeavyTick(scheduledTime: number): boolean {
+  const d = new Date(scheduledTime);
+  return (d.getUTCHours() * 60 + d.getUTCMinutes()) % HEAVY_EVERY_MINUTES < 5;
+}
 
 /**
  * Urutan satu tick. Langkah INTI lewat `/api/cron/lite` (route ramping,
@@ -50,15 +61,19 @@ export const CRON_STEPS: CronStep[] = [
   { phase: "lite", lite: "fulfillment", alarm: "hard" },
   { phase: "lite", lite: "wr_orders", alarm: "hard" },
   { phase: "lite", lite: "sk_orders", alarm: "hard" },
+  { phase: "lite", lite: "notify", alarm: "soft" },
   { phase: "lite", lite: "promo", alarm: "soft" },
-  { phase: "expiry", alarm: "none" },
-  { phase: "fulfillment", alarm: "none" },
-  { phase: "warung_rebahan", part: "orders", alarm: "none" },
-  { phase: "sekalipay", part: "orders", alarm: "none" },
-  { phase: "notify", alarm: "soft" },
-  { phase: "warung_rebahan", part: "sync", chunked: true, alarm: "none" },
-  { phase: "sekalipay", part: "sync", chunked: true, alarm: "none" },
-  { phase: "cleanup", alarm: "none" },
+  { phase: "lite", lite: "cleanup", alarm: "none" },
+  // Pelengkap per jam (stranded ledger, manual-WA, reconcile tambahan, saldo,
+  // watchdog, sync cadangan). Tidak dialarmkan: inti sudah di lite.
+  { phase: "expiry", alarm: "none", heavy: true },
+  { phase: "fulfillment", alarm: "none", heavy: true },
+  { phase: "warung_rebahan", part: "orders", alarm: "none", heavy: true },
+  { phase: "sekalipay", part: "orders", alarm: "none", heavy: true },
+  { phase: "notify", alarm: "none", heavy: true },
+  { phase: "warung_rebahan", part: "sync", chunked: true, alarm: "none", heavy: true },
+  { phase: "sekalipay", part: "sync", chunked: true, alarm: "none", heavy: true },
+  { phase: "cleanup", alarm: "none", heavy: true },
 ];
 /** Plafon potongan per langkah sync per tick (WR 49/10 = 5; SK ~100/25 = 4). */
 export const MAX_CHUNKS_PER_PHASE = 10;
@@ -256,7 +271,11 @@ export async function runOperationsTick(
 ): Promise<TickReport> {
   const outcomes: PhaseOutcome[] = [];
   // Langkah gagal tidak menghentikan langkah berikut: tiap langkah berdiri sendiri.
-  for (const step of CRON_STEPS) outcomes.push({ ...(await callStep(env, step, fetchFn)), alarm: step.alarm });
+  const heavyTick = isHeavyTick(scheduledTime);
+  for (const step of CRON_STEPS) {
+    if (step.heavy && !heavyTick) continue;
+    outcomes.push({ ...(await callStep(env, step, fetchFn)), alarm: step.alarm });
+  }
   // Langkah `none` tetap tercatat di outcomes (diagnosa) tapi bukan kegagalan alarm.
   const failures = outcomes.filter((o) => !o.ok && o.alarm !== "none");
 
