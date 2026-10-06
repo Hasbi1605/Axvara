@@ -34,6 +34,10 @@ const jetbrainsMono = JetBrains_Mono({
   weight: ["500", "700"],
   variable: "--font-ax-mono",
   display: "swap",
+  // Font mono hanya dipakai sesekali (kode pesanan, timer QRIS) — jangan
+  // jadi render-blocking di critical path mobile. Browser memakai fallback
+  // sistem (Consolas/monospace) bila unduhan belum selesai.
+  preload: false,
 });
 
 // Default seluruh situs. JANGAN taruh `alternates.canonical`/`openGraph.url`

@@ -74,6 +74,10 @@ export function ProductCard({ product, index = 0, compact = false }: { product: 
   };
 
   const img = responsiveImg(product.image);
+  // Kartu di atas lipatan (hero-adjacent) dilukis lebih awal: 4 pertama
+  // eager + fetchPriority high agar LCP mobile tidak menunggu lazy queue.
+  // Selebihnya tetap lazy agar Speed Index tidak kebanjiran unduhan.
+  const eager = index < 4;
   // Kartu habis (keputusan owner 2026-10-01): tampil di akhir daftar dengan
   // foto abu-abu + overlay "STOK HABIS". Teks nama/harga tetap normal agar
   // tidak terlihat seperti situs error; tombol beli tetap non-klik.
@@ -97,7 +101,8 @@ export function ProductCard({ product, index = 0, compact = false }: { product: 
             sizes={img.sizes}
             alt={product.name}
             className={`w-full h-full object-cover group-hover:scale-[1.04] transition-transform duration-500${outOfStock ? " grayscale opacity-60" : ""}`}
-            loading="lazy"
+            loading={eager ? "eager" : "lazy"}
+            fetchPriority={eager ? "high" : "auto"}
             decoding="async"
             onError={(e) => { const el = e.currentTarget as HTMLImageElement; el.style.display="none"; const ph=el.nextElementSibling as HTMLElement|null; if(ph) ph.style.display="flex"; }}
           />
@@ -146,7 +151,8 @@ export function ProductCard({ product, index = 0, compact = false }: { product: 
             sizes={img.sizes}
             alt={product.name}
             className={`w-full h-full object-cover group-hover:scale-[1.04] transition-transform duration-500${outOfStock ? " grayscale opacity-60" : ""}`}
-            loading="lazy"
+            loading={eager ? "eager" : "lazy"}
+            fetchPriority={eager ? "high" : "auto"}
             decoding="async"
             onError={(e) => {
               const el = e.currentTarget as HTMLImageElement;

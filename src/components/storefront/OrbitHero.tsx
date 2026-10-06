@@ -188,6 +188,10 @@ export function OrbitHero() {
 
     // Respect prefers-reduced-motion
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // LCP mobile: animasi orbit ditunda sampai paint pertama selesai agar
+    // thread utama fokus ke teks + gambar kartu (LCP/Speed Index 2026-10-06:
+    // mobile 85 vs desktop 99). Desktop langsung jalan seperti sebelumnya.
+    const deferForLcp = liteRef.current && !reduceMotion;
     if (reduceMotion) {
       // Set static positions and exit
       updatePositions();
@@ -242,7 +246,20 @@ export function OrbitHero() {
     };
 
     updatePositions();
-    startAnimation();
+    if (deferForLcp) {
+      // requestIdleCallback = jalan saat browser senggang (maks 2,5 dtk);
+      // fallback timeout agar orbit tetap hidup di browser lama.
+      const idle = window as unknown as {
+        requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      };
+      if (typeof idle.requestIdleCallback === "function") {
+        idle.requestIdleCallback(startAnimation, { timeout: 2500 });
+      } else {
+        window.setTimeout(startAnimation, 1200);
+      }
+    } else {
+      startAnimation();
+    }
 
     // IntersectionObserver — pause when off-screen
     const observer = new IntersectionObserver(

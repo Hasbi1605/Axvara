@@ -139,6 +139,41 @@ describe("tampilkan semua menggantikan batch berulang", () => {
   });
 });
 
+describe("LCP mobile: 4 kartu pertama eager + prioritas tinggi, sisanya lazy", () => {
+  it("kartu 1–4 eager/high, kartu 5+ lazy (hemat bandwidth awal)", async () => {
+    stubCatalog(Array.from({ length: 10 }, (_, i) => product(i + 1, { stock: 5, image: "/r2/products/fixture.webp" })));
+    const { container } = render(<HomePage />);
+    await act(async () => {});
+
+    const imgs = Array.from(container.querySelectorAll('img[alt^="Produk "]'));
+    expect(imgs).toHaveLength(10);
+    imgs.slice(0, 4).forEach((img) => {
+      expect(img.getAttribute("loading")).toBe("eager");
+      expect(img.getAttribute("fetchpriority")).toBe("high");
+    });
+    imgs.slice(4).forEach((img) => {
+      expect(img.getAttribute("loading")).toBe("lazy");
+    });
+  });
+
+  it("kartu ke-9+ memakai content-visibility agar browser melewatkan paint jauh", async () => {
+    stubCatalog(Array.from({ length: 10 }, (_, i) => product(i + 1, { stock: 5 })));
+    const { container } = render(<HomePage />);
+    await act(async () => {});
+
+    // Pembungkus content-visibility = parent grid > a kartu produk.
+    const grid = container.querySelector(".mt-6.grid") as HTMLElement;
+    const wrappers = Array.from(grid.children) as HTMLElement[];
+    expect(wrappers).toHaveLength(10);
+    wrappers.slice(0, 8).forEach((card) => {
+      expect(card.style.contentVisibility).toBe("");
+    });
+    wrappers.slice(8, 10).forEach((card) => {
+      expect(card.style.contentVisibility).toBe("auto");
+    });
+  });
+});
+
 describe("overlay stok habis di kartu", () => {
   it("kartu habis punya overlay + foto abu-abu + aria habis", async () => {
     stubCatalog([

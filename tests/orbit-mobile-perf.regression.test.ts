@@ -47,4 +47,13 @@ describe("orbit mobile hemat: hot path GPU-only", () => {
     expect(src).toContain("blur-[44px] sm:blur-[80px]");
     expect(src).toContain("hidden sm:block");
   });
+
+  it("LCP mobile: animasi orbit ditunda sampai browser senggang (bukan saat paint pertama)", () => {
+    const src = read("src/components/storefront/OrbitHero.tsx");
+    // Mobile (lite) menunda startAnimation via requestIdleCallback + fallback
+    // timeout; desktop + reduced-motion tidak berubah.
+    expect(src).toContain("deferForLcp");
+    expect(src).toContain("requestIdleCallback");
+    expect(src).toContain("updatePositions()");
+  });
 });

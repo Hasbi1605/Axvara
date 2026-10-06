@@ -715,6 +715,19 @@
 | Toast | `slideUp + fade` 300ms, auto dismiss 3s |
 | Page transition | Bar cyan 3px di atas: merayap `scaleX 0.08→0.9` (14 dtk, ease-out) selama menunggu server, penuh + fade 220ms saat rute tampil; skeleton rute tujuan fade-in 150ms (lihat 6.1) |
 
+### 6.2 Performa Mobile Beranda (2026-10-06, PageSpeed mobile 85 vs desktop 99)
+
+LCP 3,9 dtk + Speed Index 4,5 dtk di Moto G Power 4G-throttle. Aturan yang
+kini berlaku (tanpa mengubah tampilan):
+
+- 4 kartu pertama `eager + fetchPriority high` (LCP di atas lipatan),
+  kartu 5+ `lazy`; kartu ke-9+ `content-visibility: auto` (paint jauh
+  dilewati browser).
+- Animasi orbit mobile ditunda sampai browser senggang
+  (`requestIdleCallback`, fallback 1,2 dtk); desktop langsung jalan.
+- JetBrains Mono tidak di-preload (bukan critical path); Inter + Space
+  Grotesk tetap preload.
+
 ### 6.1 Loading & Jaringan Lambat (2026-09-24, PR loading storefront)
 
 Prinsip: **tidak ada klik yang bisu.** Pembeli di jaringan lambat harus melihat

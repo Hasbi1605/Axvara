@@ -26,8 +26,20 @@ afterEach(() => { cleanup(); fx.close(); vi.unstubAllEnvs(); vi.unstubAllGlobals
 it("server memuat katalog D1 dan menyerahkannya ke klien", async () => {
   const { default: HomePage } = await import("@/app/page");
   const tree = (await HomePage()) as ReactElement<{ children: ReactElement<{ initialProducts?: Product[] }>[] }>;
-  const client = tree.props.children[1];
-  expect(client.props.initialProducts?.map((p) => p.slug)).toEqual(["netflix-premium"]);
+  const children = Array.isArray(tree.props.children) ? tree.props.children : [tree.props.children];
+  const client = children.find((child) => (child?.props as { initialProducts?: Product[] } | undefined)?.initialProducts !== undefined);
+  expect(client?.props.initialProducts?.map((p) => p.slug)).toEqual(["netflix-premium"]);
+});
+
+it("server tidak menambah preload manual (Next mengelolanya dari fetchpriority high kartu)", async () => {
+  const { default: HomePage } = await import("@/app/page");
+  const tree = (await HomePage()) as ReactElement<{ children: ReactElement<{ initialProducts?: Product[] }>[] }>;
+  const children = Array.isArray(tree.props.children) ? tree.props.children : [tree.props.children];
+  // page.tsx hanya: JSON-LD + HomeClient. Preload gambar LCP diurus Next
+  // otomatis dari <img fetchPriority="high"> di ProductCard (terbukti di
+  // HTML dev: 4 link preload imageSrcSet + fetchPriority high).
+  const preload = children.find((child) => child?.type === "link");
+  expect(preload).toBeUndefined();
 });
 
 it("klien dengan data awal langsung merender kartu + link produk tanpa fetch", async () => {
