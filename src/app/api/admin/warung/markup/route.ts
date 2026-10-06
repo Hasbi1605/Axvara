@@ -129,8 +129,15 @@ export async function PUT(request: NextRequest) {
     wr_variant_id,
   );
   if (row.axvara_variant_id != null) {
+    // Harga coret milik admin (ownership.ts): bila harga jual baru menyamai/
+    // melampaui coret lama, CHECK product_variants (compare_price > price)
+    // menolak UPDATE dan storefront macet di harga lama (insiden Alight/Viu
+    // 2026-10-06: registry 6500 tersimpan, katalog tetap 2500/1000/500).
+    // Jujur: coret yang tak lagi membentuk diskon valid di-NULL-kan, bukan
+    // gagal diam-diam (.catch di bawah menelan error D1).
     await execRun(
-      `UPDATE product_variants SET price=?, updated_at=datetime('now') WHERE id=?`,
+      `UPDATE product_variants SET price=?, compare_price=CASE WHEN compare_price IS NOT NULL AND compare_price <= ? THEN NULL ELSE compare_price END, updated_at=datetime('now') WHERE id=?`,
+      sellPrice,
       sellPrice,
       Number(row.axvara_variant_id),
     ).catch(() => undefined);

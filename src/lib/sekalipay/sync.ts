@@ -221,9 +221,14 @@ function planSkCatalogRefreshWrite(
 ): SkSqlWrite[] {
   return [
     {
-      sql: `UPDATE product_variants SET price=?, stock=?, label=?, updated_at=datetime('now')
-            WHERE id=? AND (price IS NOT ? OR stock IS NOT ? OR label IS NOT ?)`,
-      params: [sellPrice, stock, label, axvaraVariantId, sellPrice, stock, label],
+      // compare_price milik admin (ownership WR/SK): jangan tulis — tapi harga
+      // jual baru yang menyamai/melampaui coret lama DITOLAK CHECK
+      // (compare_price > price) sehingga rollback SELURUH batch produk
+      // (insiden Alight/Viu 2026-10-06). NULL-kan coret basi agar harga jual
+      // otoritatif selalu tembus — katalog menimpa sync yang menimpa admin.
+      sql: `UPDATE product_variants SET price=?, stock=?, label=?, compare_price=CASE WHEN compare_price IS NOT NULL AND compare_price <= ? THEN NULL ELSE compare_price END, updated_at=datetime('now')
+            WHERE id=? AND (price IS NOT ? OR stock IS NOT ? OR label IS NOT ? OR (compare_price IS NOT NULL AND compare_price <= ?))`,
+      params: [sellPrice, stock, label, sellPrice, axvaraVariantId, sellPrice, stock, label, sellPrice],
       optional: true,
     },
     {

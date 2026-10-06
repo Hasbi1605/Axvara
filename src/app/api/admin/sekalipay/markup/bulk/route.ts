@@ -55,8 +55,12 @@ export async function POST(request: NextRequest) {
       );
       const axvaraVariantId = row.axvara_variant_id != null ? Number(row.axvara_variant_id) : 0;
       if (axvaraVariantId > 0) {
+        // Harga coret milik admin: NULL-kan bila tak lagi membentuk diskon
+        // valid agar CHECK compare_price > price tidak menolak UPDATE harga
+        // (insiden Alight/Viu 2026-10-06).
         await execRun(
-          `UPDATE product_variants SET price=?, updated_at=datetime('now') WHERE id=?`,
+          `UPDATE product_variants SET price=?, compare_price=CASE WHEN compare_price IS NOT NULL AND compare_price <= ? THEN NULL ELSE compare_price END, updated_at=datetime('now') WHERE id=?`,
+          sellPrice,
           sellPrice,
           axvaraVariantId,
         ).catch(() => undefined);

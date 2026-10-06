@@ -583,13 +583,20 @@ function planExistingVariantWrites(
     if (axvaraVariantId > 0) {
       const duration = parseWrDuration(wrVariant.duration);
       const warranty = parseWrWarranty(wrVariant.warranty);
+      // compare_price milik admin (ownership.ts): jangan tulis — tapi harga
+      // jual baru yang menyamai/melampaui coret lama DITOLAK CHECK
+      // (compare_price > price) sehingga rollback SELURUH batch produk
+      // (insiden Alight/Viu 2026-10-06, terbukti di jalur SK). NULL-kan coret
+      // basi agar harga jual otoritatif selalu tembus.
       writes.push({
         sql: `UPDATE product_variants SET label=?, price=?, stock=?,
+          compare_price=CASE WHEN compare_price IS NOT NULL AND compare_price <= ? THEN NULL ELSE compare_price END,
           duration_value=?, duration_unit=?, duration_label=?,
           warranty_type=?, warranty_value=?, warranty_unit=?, warranty_label=?,
           updated_at=datetime('now')
          WHERE id=?
            AND (label IS NOT ? OR price IS NOT ? OR stock IS NOT ?
+                OR (compare_price IS NOT NULL AND compare_price <= ?)
                 OR duration_value IS NOT ? OR duration_unit IS NOT ?
                 OR duration_label IS NOT ? OR warranty_type IS NOT ?
                 OR warranty_value IS NOT ? OR warranty_unit IS NOT ?
@@ -598,6 +605,7 @@ function planExistingVariantWrites(
           wrVariant.name,
           sellPrice,
           Number(wrVariant.stock),
+          sellPrice,
           duration.value,
           duration.unit,
           duration.label || null,
@@ -609,6 +617,7 @@ function planExistingVariantWrites(
           wrVariant.name,
           sellPrice,
           Number(wrVariant.stock),
+          sellPrice,
           duration.value,
           duration.unit,
           duration.label || null,

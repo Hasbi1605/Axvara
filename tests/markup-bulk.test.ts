@@ -88,6 +88,75 @@ describe("kontrak bulk markup (skema + hitung harga)", () => {
     expect(res.status).toBe(401);
   });
 
+  it("harga katalog ikut markup walau coret lama lebih kecil (insiden Alight/Viu 2026-10-06)", async () => {
+    // Prod Alight SK-8: katalog price=2500 + coret 3000 (valid saat ditulis
+    // era harga lama), registry markup 200%+4000 → jual 6500. UPDATE
+    // price=6500 DITOLAK CHECK (compare_price > price) → harga macet di 2500.
+    // Kini coret basi di-NULL-kan agar harga otoritatif selalu tembus.
+    fixture.sql.prepare(`UPDATE product_variants SET price=2500, compare_price=3000 WHERE id=21`).run();
+    const { calculateSkSellPrice } = await import("@/lib/sekalipay/sync");
+    const sellPrice = calculateSkSellPrice(740, 200, 4000);
+    expect(sellPrice).toBe(6500);
+    // Simulasi SQL baru route markup SK: price tembus + coret basi NULL.
+    fixture.sql.prepare(
+      `UPDATE product_variants SET price=?, compare_price=CASE WHEN compare_price IS NOT NULL AND compare_price <= ? THEN NULL ELSE compare_price END, updated_at=datetime('now') WHERE id=?`,
+    ).run(sellPrice, sellPrice, 21);
+    const row = fixture.sql.prepare(`SELECT price, compare_price FROM product_variants WHERE id=21`).get() as { price: number; compare_price: number | null };
+    expect(Number(row.price)).toBe(6500);
+    expect(row.compare_price).toBeNull();
+    // Coret valid tetap dipertahankan (CapCut: 4500 vs coret 10000).
+    fixture.sql.prepare(`UPDATE product_variants SET price=4500, compare_price=10000 WHERE id=22`).run();
+    fixture.sql.prepare(
+      `UPDATE product_variants SET price=?, compare_price=CASE WHEN compare_price IS NOT NULL AND compare_price <= ? THEN NULL ELSE compare_price END, updated_at=datetime('now') WHERE id=?`,
+    ).run(4500, 4500, 22);
+    const kept = fixture.sql.prepare(`SELECT price, compare_price FROM product_variants WHERE id=22`).get() as { price: number; compare_price: number | null };
+    expect(Number(kept.price)).toBe(4500);
+    expect(Number(kept.compare_price)).toBe(10000);
+  });
+
+  it("sync SK menembus coret basi tanpa rollback batch (insiden Alight/Viu 2026-10-06)", async () => {
+    // Registry markup 200%+4000 (jual 6500) + katalog price=2500 + coret 3000:
+    // sweep cron WAJIB menaikkan price ke 6500 + NULL-kan coret basi — bukan
+    // gagal CHECK lalu rollback batch (harga macet di 2500 seperti prod).
+    const fx = createD1Fixture();
+    try {
+      const { stubFulfillmentKey } = await import("./helpers/d1-fixture");
+      stubFulfillmentKey();
+      vi.stubEnv("SEKALIPAY_ENABLED", "true");
+      const { createDatabaseAccess } = await import("@/lib/db-access");
+      const { syncSkProducts } = await import("@/lib/sekalipay/sync");
+      const payload = () => ({
+        server_time: "2026-10-06T00:00:00+07:00",
+        data: [
+          {
+            id: 1, name: "Aplikasi Premium", icon: null,
+            products: [
+              {
+                id: 7, name: "Alight Motion", image: null,
+                variants: [
+                  { id: 8, sku: "A-8", name: "1 Tahun [ Android ]", price: 740, stock: 25, order_process: "auto" as const, h2h_provider: null, provider_meta: null, required_fields: null, validation: null, updated_at: null },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+      const db = createDatabaseAccess(fx.db);
+      await syncSkProducts(db, async () => payload(), { trigger: "manual" });
+      // Simulasi kondisi prod: markup admin 200%+4000 (jual 6500), katalog
+      // masih price=2500 + coret basi 3000 dari era harga lama.
+      fx.sql.prepare("UPDATE sk_products SET markup_percent=200, markup_fixed=4000, axvara_sell_price=6500 WHERE sk_variant_id='8'").run();
+      fx.sql.prepare("UPDATE product_variants SET price=2500, compare_price=3000 WHERE sk_variant_id='8'").run();
+      const res = await syncSkProducts(createDatabaseAccess(fx.db), async () => payload(), { trigger: "cron" });
+      expect(res.errors.join(" ")).not.toContain("CHECK");
+      const pv = fx.sql.prepare("SELECT price, compare_price FROM product_variants WHERE sk_variant_id='8'").get() as { price: number; compare_price: number | null };
+      expect(Number(pv.price)).toBe(6500);
+      expect(pv.compare_price).toBeNull();
+    } finally {
+      fx.close();
+    }
+  });
+
   it("toolbar bulk terpasang di kedua manager (preset + checkbox + konfirmasi)", async () => {
     const { readFileSync } = await import("node:fs");
     const toolbar = readFileSync("src/components/admin/BulkMarkupToolbar.tsx", "utf8");

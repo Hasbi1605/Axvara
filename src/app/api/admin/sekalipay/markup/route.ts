@@ -106,10 +106,15 @@ export async function PUT(request: NextRequest) {
     sk_variant_id,
   );
   // Harga katalog ikut markup baru (milik SK — admin pegang sisanya).
+  // Harga coret milik admin: NULL-kan bila tak lagi membentuk diskon valid
+  // agar CHECK compare_price > price tidak menolak UPDATE harga (insiden
+  // Alight/Viu 2026-10-06: PUT markup 200 OK, registry berubah, katalog macet
+  // di harga lama karena .catch menelan error D1).
   const axvaraVariantId = row.axvara_variant_id != null ? Number(row.axvara_variant_id) : 0;
   if (axvaraVariantId > 0) {
     await execRun(
-      `UPDATE product_variants SET price=?, updated_at=datetime('now') WHERE id=?`,
+      `UPDATE product_variants SET price=?, compare_price=CASE WHEN compare_price IS NOT NULL AND compare_price <= ? THEN NULL ELSE compare_price END, updated_at=datetime('now') WHERE id=?`,
+      sellPrice,
       sellPrice,
       axvaraVariantId,
     ).catch(() => undefined);

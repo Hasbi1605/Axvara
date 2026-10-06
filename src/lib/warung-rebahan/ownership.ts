@@ -22,9 +22,14 @@
 //                 teks WR belum berubah sejak disimpan),
 //                 HARGA CORET (compare_price/comparePrice) — milik admin agar
 //                 katalog bisa pasang diskon/badge seperti produk manual.
-//                 Sync TIDAK PERNAH menulis compare_price (lihat sync.ts:
+//                 Sync TIDAK PERNAH menulis coret BARU (lihat sync.ts:
 //                 UPDATE/INSERT varian hanya menyentuh label/price/stock/
 //                 durasi/garansi), jadi nilai admin aman lintas sweep.
+//                 PENGECUALIAN 2026-10-06 (insiden Alight/Viu): harga jual baru
+//                 yang menyamai/melampaui coret lama DITOLAK CHECK
+//                 (compare_price > price) — tulis harga markup/sync sekaligus
+//                 me-NULL-kan coret yang tak lagi valid agar harga otoritatif
+//                 selalu tembus (coret valid dipertahankan).
 //                 MINIMUM BELI (min_qty, migrasi 0034) — milik admin, generik
 //                 per varian (GSuite = 50). Sync tidak pernah menyentuh kolom
 //                 ini, jadi sengaja TIDAK masuk WR_OWNED_VARIANT_FIELDS.
