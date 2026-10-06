@@ -1,7 +1,7 @@
 "use client";
 
 export function CommunityBar() {
-  const waHref = "https://chat.whatsapp.com/D0GGXwVjJkL3qjxvacDRAP?s=cl&p=a&mlu=4&ilr=4";
+  const waHref = "https://chat.whatsapp.com/C1MYA1a4Nh67nGVtVojAIQ?mode=gi_t";
   const tgHref = "https://t.me/Axvara_bot?start=beli";
   return (
     <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 -mt-1 mb-2">
