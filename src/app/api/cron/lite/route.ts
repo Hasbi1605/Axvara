@@ -1,4 +1,4 @@
-// POST /api/cron/lite?job=expiry|fulfillment|wr_orders|sk_orders — langkah
+// POST /api/cron/lite?job=expiry|fulfillment|wr_orders|sk_orders|pedia_orders — langkah
 // cron INTI yang dipisah dari route raksasa `/api/cron/operations` (2026-10-05).
 //
 // Latar: Workers Free ~10 ms CPU per request. Malam 4→5 Okt 10–20% request
@@ -16,6 +16,8 @@
 //   wr_orders   — pulihkan klaim/saldo, retry, teruskan order lunas, reconcile
 //                 macet, kirim kredensial
 //   sk_orders   — pola yang sama untuk Sekalipay
+//   pedia_orders — dispatch + poll order Pedia ke ProviderSMM (PD-30–33);
+//                 saldo dicek maks 1×/30 mnt (hemat statement)
 //   promo       — Daily Promo Digest 09.00/17.00 WIB (guard murah; ledger
 //                 `telegram_promo_digests` mencegah kirim ganda dengan notify)
 // Kontrak: header `authorization: Bearer <CRON_SECRET>`; 200 {ok,job,...};
@@ -27,7 +29,7 @@ import { createBudgetedDatabase, QueryBudgetExceeded, type DatabaseAccess } from
 
 export const runtime = "edge";
 
-const LITE_JOBS = ["expiry", "fulfillment", "wr_orders", "sk_orders", "promo", "notify", "cleanup"] as const;
+const LITE_JOBS = ["expiry", "fulfillment", "wr_orders", "sk_orders", "pedia_orders", "promo", "notify", "cleanup"] as const;
 type LiteJob = (typeof LITE_JOBS)[number];
 const EXPIRY_PER_RUN = 4;
 const FULFILLMENT_PER_RUN = 4;
@@ -58,6 +60,7 @@ export async function POST(request: NextRequest) {
     else if (job === "fulfillment") Object.assign(result, await runFulfillment(db));
     else if (job === "wr_orders") Object.assign(result, await runWrOrders(db));
     else if (job === "sk_orders") Object.assign(result, await runSkOrders(db));
+    else if (job === "pedia_orders") Object.assign(result, await runPediaOrders(db));
     else if (job === "notify") Object.assign(result, await runNotify(db));
     else if (job === "cleanup") Object.assign(result, await runCleanup(db));
     else Object.assign(result, await runPromo(db));
@@ -189,6 +192,66 @@ async function runSkOrders(db: Db) {
       out.succeeded = processed.succeeded;
     }
     out.reconciled = await order.reconcileStuckSkOrders(db).catch(() => 0);
+  }
+  return out;
+}
+
+// pedia_orders (PEDIA M4, PD-30–33): dispatch + poll + alert saldo.
+// Budget: klaim atomik + ≤20 item + poll ≤20 + saldo 1×/30mnt + penanda.
+// Saldo dicek via proxy /psmm/balance; bila < ambang → ping admin 1×/jam
+// (kunci store_settings pedia_balance_alert_at).
+async function runPediaOrders(db: Db) {
+  const { processPediaPaidOrders } = await import("@/lib/pedia/dispatch");
+  const out: Record<string, unknown> = {};
+  try {
+    const r = await processPediaPaidOrders();
+    Object.assign(out, r);
+  } catch (error) {
+    if (error instanceof QueryBudgetExceeded) throw error;
+    out.dispatch_error = error instanceof Error ? error.message.slice(0, 80) : "failed";
+  }
+  // Alert saldo: maks 1×/30 mnt (baca penanda dulu — 1 query murah).
+  try {
+    const last = await db.queryFirst(
+      `SELECT value FROM store_settings WHERE key='pedia_balance_checked_at'`,
+    ).catch(() => null);
+    const lastMs = last ? Date.parse(String(last.value)) : 0;
+    if (!Number.isFinite(lastMs) || Date.now() - lastMs > 30 * 60 * 1000) {
+      await db.execRun(
+        `INSERT INTO store_settings (key, value, updated_at) VALUES ('pedia_balance_checked_at', datetime('now'), datetime('now'))
+         ON CONFLICT(key) DO UPDATE SET value=datetime('now'), updated_at=datetime('now')`,
+      ).catch(() => null);
+      const { callPsmmProxy } = await import("@/lib/pedia/proxy");
+      const res = await callPsmmProxy<{ balance?: string | number }>("balance", {}, 15_000);
+      if (res.ok) {
+        const v = Number((res.data as { balance?: unknown })?.balance);
+        if (Number.isFinite(v)) {
+          out.balance = v;
+          await db.execRun(
+            `INSERT INTO pedia_supplier_balance_log (supplier, balance) VALUES ('providersmm', ?)`,
+            v,
+          ).catch(() => null);
+          const alertRp = Number(process.env.PEDIA_BALANCE_ALERT_RP || 100000) || 100000;
+          if (v < alertRp) {
+            const alerted = await db.queryFirst(
+              `SELECT value FROM store_settings WHERE key='pedia_balance_alert_at'`,
+            ).catch(() => null);
+            const alertedMs = alerted ? Date.parse(String(alerted.value)) : 0;
+            if (!Number.isFinite(alertedMs) || Date.now() - alertedMs > 60 * 60 * 1000) {
+              await db.execRun(
+                `INSERT INTO store_settings (key, value, updated_at) VALUES ('pedia_balance_alert_at', datetime('now'), datetime('now'))
+                 ON CONFLICT(key) DO UPDATE SET value=datetime('now'), updated_at=datetime('now')`,
+              ).catch(() => null);
+              const { notifyPediaLowBalance } = await import("@/lib/pedia/notify");
+              await notifyPediaLowBalance(v).catch(() => null);
+              out.balance_alerted = true;
+            }
+          }
+        }
+      }
+    }
+  } catch {
+    if ((out as { budget_exhausted?: boolean }).budget_exhausted) throw new QueryBudgetExceeded();
   }
   return out;
 }

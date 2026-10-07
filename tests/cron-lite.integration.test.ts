@@ -69,6 +69,19 @@ describe("/api/cron/lite", () => {
     }
   });
 
+  it("pedia_orders: tanpa item → no-op + penanda tertulis", async () => {
+    const fx = createD1Fixture();
+    try {
+      vi.stubEnv("CRON_SECRET", "s");
+      const { body } = await call("pedia_orders");
+      expect(body).toMatchObject({ ok: true, job: "pedia_orders" });
+      const mark = fx.sql.prepare("SELECT value FROM store_settings WHERE key='cron_lite_pedia_orders_ok_at'").get();
+      expect(mark).toBeTruthy();
+    } finally {
+      fx.close();
+    }
+  });
+
   // 2026-10-05: digest promo ikut lite agar slot 09.00/17.00 tidak bergantung
   // pada route besar yang sering dibunuh limit CPU. Ledger dipakai bersama
   // fase notify → tidak pernah terkirim ganda.

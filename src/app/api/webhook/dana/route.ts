@@ -183,6 +183,14 @@ export async function POST(request: NextRequest) {
     }
   } catch { /* Link SK menyusul via cron. */ }
 
+  // Order Pedia (order_kind='pedia'): antrikan dispatch supplier + drain
+  // segera satu siklus (pola WR/SK di atas). Best-effort; cron fase pedia
+  // tetap menjadi penjamin (PD-30–33 + M4 dispatch+poll).
+  try {
+    const { processPediaPaidOrders } = await import("@/lib/pedia/dispatch");
+    await processPediaPaidOrders().catch(() => undefined);
+  } catch { /* Job Pedia menyusul via cron. */ }
+
   if (String(transaction.sales_channel) === "whatsapp" && transaction.channel_conversation_id) {
     try {
       const orderDetail = await queryFirst(

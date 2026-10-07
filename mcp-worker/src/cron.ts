@@ -61,6 +61,7 @@ export const CRON_STEPS: CronStep[] = [
   { phase: "lite", lite: "fulfillment", alarm: "hard" },
   { phase: "lite", lite: "wr_orders", alarm: "hard" },
   { phase: "lite", lite: "sk_orders", alarm: "hard" },
+  { phase: "lite", lite: "pedia_orders", alarm: "hard" },
   { phase: "lite", lite: "notify", alarm: "soft" },
   { phase: "lite", lite: "promo", alarm: "soft" },
   { phase: "lite", lite: "cleanup", alarm: "none" },
