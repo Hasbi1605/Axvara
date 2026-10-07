@@ -604,7 +604,7 @@ Copy marketing DILARANG mengklaim "100% aman", "pasti FYP", "anti banned", atau 
 | M0 | Proxy VPS | Modul `/psmm/*` + diff 10 mnt di `axvara-wr-proxy`, `.env` VPS `PROVIDERSMM_API_KEY`, deploy sesuai `axvara-wr-proxy/AGENTS.md`, uji `balance` & `services` | — |
 | M1 | Skema & sync | Migrasi 0059, cabang `providersmm` di `/api/supplier-sync`, test regresi diff + guard margin + indeks | M0 |
 | M2 | Admin Pedia | Sub-tab Layanan Supplier & Produk (kurasi + pratinjau margin), seed kurasi §7.3 (nonaktif) | M1 |
-| M3 | Storefront | Routing host, layout & komponen `src/components/pedia/*`, beranda, platform, halaman order, parser link (+test tabel §9.6) | M2 |
+| M3 | Storefront | Logo final Pedia via Muse image generator/compose sesuai `PEDIA-DESIGN.md` §2.2 (konsep A dipilih owner), routing host, layout & komponen `src/components/pedia/*`, beranda, platform, halaman order, parser link (+test tabel §9.6) | M2 |
 | M4 | Checkout & dispatch | Quote, orders, QRIS, finalisasi lunas per `order_kind`, job `pedia_orders` (dispatch + poll), alert | M3 |
 | M5 | Pasca-bayar | Halaman status, refill, kredit (terbit/pakai/cek), email, notif Telegram, lacak | M4 |
 | M6 | Integrasi pusat | LaunchCards, App Switcher, `/link`, footer, digest (flag) | M3 |

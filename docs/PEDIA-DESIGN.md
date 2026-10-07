@@ -21,12 +21,40 @@
 
 ## 2. Identitas
 
+### 2.1 Konsep logo terpilih — A "Growth Bars" (dipilih owner 2026-10-07)
+
+- **Referensi konsep (BUKAN aset final):** `docs/pedia/logo-concept-a.svg`; perbandingan 3 konsep di `docs/pedia/logo-concepts-preview.png` (A dipilih, B Trend Arrow & C Prism Rise ditolak).
+- **Kerangka:** segitiga Prism luar logo induk (`/brand/axvara-mark-prism.svg`, path `M60 4 L6.5 104 L113.5 104 Z`, viewBox 120×110, stroke 3.6, round join/cap) — proporsi WAJIB identik dengan induk agar terasa satu keluarga.
+- **Isi:** spine + segitiga dalam induk DIHAPUS, diganti **3 batang vertikal naik kiri→kanan** (rasio tinggi ±1 : 2,2 : 3,4), rata bawah, ujung membulat, jarak antar-batang sama, seluruhnya di dalam segitiga dengan ruang napas dari garis luar.
+- **Warna:** gradien signature Pedia cyan `#00E5FF` → violet `#8B5CF6` (arah kiri-atas → kanan-bawah, `gradientUnits="userSpaceOnUse"` — gradien objectBoundingBox GAGAL di garis vertikal, sudah terbukti di konsep).
+- **Makna:** "bikin naik" — langsung terbaca orang awam; pola isi-segitiga bisa diturunkan ke AXVARA AI nanti (segitiga sama, isi node/spark).
+
+### 2.2 Perintah untuk agent eksekusi — buat versi final
+
+Agent eksekusi WAJIB membuat logo final sendiri dari konsep 2.1 menggunakan **Muse image generator / Muse image compose**:
+
+1. Pakai Muse untuk eksplorasi & penyempurnaan konsep A (ketebalan batang, proporsi, keseimbangan optik, kilau gradien) — beri Muse konsep 2.1 + `docs/pedia/logo-concept-a.svg` + logo induk sebagai acuan. Hasilkan ≥ 3 variasi, pilih yang paling dekat dengan aturan di 2.1, dokumentasikan pilihan di CHANGELOG.
+2. Jangan mengubah konsep (tetap segitiga Prism + 3 batang naik + gradien cyan→violet). Tidak boleh menambah elemen lain (bintang, teks di dalam mark, efek 3D berat).
+3. Aset final yang di-commit ke repo HARUS vektor bersih buatan ulang (bukan raster hasil generator yang ditempel): rekonstruksi hasil Muse terpilih menjadi SVG geometris (path rapi, tanpa embed bitmap, < 3 KB).
+4. Paket aset wajib di `public/brand/`:
+   | File | Isi |
+   |---|---|
+   | `pedia-mark.svg` | Mark gradien (navbar, UI) |
+   | `pedia-mark-mono.svg` | Mark `currentColor` (putih/hitam polos) |
+   | `pedia-mark-favicon.svg` | Versi favicon: stroke & batang DIPERTEBAL agar terbaca di 16–24 px (konsep asli terlalu tipis di ukuran itu) |
+   | `pedia-logo.svg` | Lockup horizontal: mark + `AXVARA` (font 300, tracking 0.22em) + pemisah 1 px + `PEDIA` (font 700, tracking 0.18em, gradien) — teks dikonversi ke path |
+   | `pedia-icon-512.png`, `pedia-icon-192.png`, `pedia-apple-touch-180.png` | Ikon app/PWA, latar `#080C1E`, mark terpusat |
+   | `public/og/pedia.png` | OG 1200×630 (komposisi via Muse image compose): midnight + glow cyan→violet + lockup + headline "Tempel link, sisanya beres." |
+5. Verifikasi Obscura: render mark di 16/24/32/64/160 px di latar gelap & terang + lockup di navbar 360 px & 1440 px; screenshot diperiksa sebelum commit.
+
+### 2.3 Ringkasan identitas
+
 | Elemen | Spesifikasi |
 |---|---|
-| Lockup | Mark Prism (`/brand/axvara-mark-prism.svg`) + wordmark `AXVARA` (font 300, tracking `0.22em`) + pemisah tipis + `PEDIA` (font 600, tracking `0.18em`, gradien signature Pedia) |
+| Lockup | `pedia-logo.svg` (lihat 2.2) |
 | Ukuran navbar | Mark 32×28 px, wordmark 13 px (mobile) / 14 px (desktop) |
-| Favicon Pedia | Mark Prism dengan isian gradien Pedia (`public/brand/pedia-mark.svg`, file baru) |
-| OG image | `public/og/pedia.png` 1200×630: midnight, glow cyan→violet, headline "Tempel link, sisanya beres." + lockup |
+| Favicon Pedia | `pedia-mark-favicon.svg` |
+| OG image | `public/og/pedia.png` |
 | Tagline | "Naikkan sosmedmu, tanpa ribet." |
 
 ---
