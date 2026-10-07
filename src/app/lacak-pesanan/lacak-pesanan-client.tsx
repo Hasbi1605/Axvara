@@ -107,7 +107,7 @@ function fromApi(value: Record<string, unknown>): TrackedOrder {
 const STEPS = [
   { id: "created", title: "Pesanan dibuat", hint: "Kode diterbitkan, stok direservasi." },
   { id: "paid", title: "Pembayaran", hint: "QRIS otomatis / verifikasi admin untuk transfer." },
-  { id: "done", title: "Pesanan diproses", hint: "Detail akses dikirim via WA / Telegram." },
+  { id: "done", title: "Pesanan diproses", hint: "Detail pesanan akan otomatis dikirimkan di email saat order dan akan tampil di halaman ini." },
 ] as const;
 
 export default function LacakPesananClient() {
@@ -464,8 +464,7 @@ export default function LacakPesananClient() {
 
           {isPaid && (
             <p className="mt-5 rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.06] p-4 text-left text-xs leading-6 text-emerald-200">
-              Pembayaran <span className="font-semibold text-white">{order.name}</span> sudah diterima. Detail akses dikirim
-              via WA / Telegram. Simpan kode pesanan untuk klaim garansi.
+              Pembayaran <span className="font-semibold text-white">{order.name}</span> sudah diterima. Detail pesanan akan otomatis dikirimkan di email saat order dan akan tampil di halaman ini. Simpan kode pesanan untuk klaim garansi.
             </p>
           )}
           {/* Detail akun WR di hasil lacak (Fase B): WA sudah diverifikasi

@@ -285,7 +285,10 @@ describe("Authoritative UI and admin state", () => {
     // Fallback: info pengiriman ke kontak checkout, bukan form verifikasi WA.
     expect(statusPage).toContain("Pengiriman Produk");
     // Kabar web lewat email (bot WA mati); WA hanya untuk order tanpa email.
+    // Copy 2026-10-07 (permintaan owner): order ber-email = kalimat email +
+    // halaman ini; order lama tanpa email = fallback "Detail produk dikirim".
     expect(statusPage).toContain("const destination = order.email");
+    expect(statusPage).toContain("Detail pesanan akan otomatis dikirimkan di email saat order dan akan tampil di halaman ini.");
     expect(statusPage).toContain("Detail produk dikirim ke {destination}");
     // Kelas antrean TIDAK boleh dijanjikan 5–15 menit (C1: <1 jam + plafon 12 jam,
     // tanpa jam layanan spesifik — revisi copy 2026-10-02).

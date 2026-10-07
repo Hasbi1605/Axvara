@@ -386,19 +386,22 @@
   checkout tersamar di-highlight `text-white/80` (WA hanya untuk order lama tanpa
   email, 2026-09-25), lalu catatan `text-[11px] text-white/40` sesuai keadaan
   (2026-09-25, revisi copy A/B/C1/C2 2026-10-02, skeleton fase menyiapkan sore
-  2026-10-02): kirim otomatis stok sendiri yang sedang berjalan (±30 dtk pertama)
+  2026-10-02, copy email 2026-10-07): kirim otomatis stok sendiri yang sedang berjalan (±30 dtk pertama)
   → skeleton TANPA teks pengiriman (tulang `ax-skeleton`: judul + 2 baris + kotak,
   bentuk mirip panel "Detail Akun Digital" supaya peralihan tidak melompat, +
   baris mikro `text-[11px] text-white/40` "Menyiapkan detail produkmu…" dengan
   `InlineSpinner h-3 w-3`, `aria-busy="true"` + `sr-only` "Menyiapkan detail
-  produk…"); lewat ±30 dtk → judul "Pengiriman Otomatis" + "Masih mengirim
-  otomatis — butuh waktu lebih lama dari biasanya" (tetap tanpa admin/12 jam);
+  produk…");   lewat ±30 dtk → judul "Pengiriman Otomatis" + "Masih mengirim
+  otomatis — butuh waktu lebih lama dari biasanya" (tetap tanpa admin/12 jam;
+  order ber-email ditambah kalimat email + halaman ini);
   Made By Order (C1, manual by design) → judul "Pesanan Made By Order" tanpa
   alasan stok + "Umumnya kurang dari 1 jam, maksimal 12 jam" (tanpa jam layanan
   spesifik); instan yang diserahkan ke admin / `manual_required` (C2) → judul
   "Pengiriman oleh Admin" + alasan "Stok otomatis habis, jadi admin menyiapkan
   manual" + plafon yang sama; sudah terkirim tanpa detail →
-  "Produk sudah dikirim ke …" + cek folder spam; estimasi 5–15 menit hanya untuk
+  order ber-email: "Detail pesanan akan otomatis dikirimkan di email saat order
+  dan akan tampil di halaman ini." + cek folder spam/promosi; order lama tanpa
+  email: "Produk sudah dikirim ke WhatsApp …" (tanpa cek spam); estimasi 5–15 menit hanya untuk
   produk WR. Judul seksi + `aria-label` mengikuti cabang (`delivery.title`). Kartu memakai `aria-live="polite"`. Isi produk non-WR ikut tampil di panel
   "Detail Akun Digital" dengan label baris pesanan `text-[11px] text-emerald-200/80`
   di atas kartu mono. Prinsipnya: JANGAN pernah tampilkan

@@ -130,10 +130,13 @@ describe("/pesanan/[code] — blok pasca-pembayaran", () => {
     mockFetch(orderPayload({ customer_email: "h***@gmail.com" }));
     render(<OrderStatusPage />);
     await waitFor(() => expect(screen.getByText("Pengiriman Produk")).toBeTruthy());
-    expect(screen.getByText("h***@gmail.com")).toBeTruthy();
-    const line = screen.getByText(/Detail produk dikirim ke/).textContent ?? "";
-    expect(line).toContain("email");
+    // Copy 2026-10-07 (permintaan owner): order ber-email memakai kalimat email
+    // + halaman ini — tanpa menampilkan lagi alamat emailnya di blok ini.
+    const line = screen.getByText(/Detail pesanan akan otomatis dikirimkan/).textContent ?? "";
+    expect(line).toContain("email saat order");
+    expect(line).toContain("tampil di halaman ini");
     expect(line).not.toContain("WhatsApp");
+    expect(screen.queryByText("h***@gmail.com")).toBeNull();
     expect(screen.queryByText("08213****7434")).toBeNull();
   });
 });
@@ -218,7 +221,9 @@ describe("/pesanan/[code] — kirim otomatis dari stok sendiri", () => {
     render(<OrderStatusPage />);
     await advance(50);
     expect(screen.getByText("Pengiriman oleh Admin")).toBeTruthy();
-    expect(screen.getByText(/Stok otomatis habis, jadi admin menyiapkan manual/).textContent).toContain("r***@gmail.com");
+    // Copy 2026-10-07: C2 ber-email memakai kalimat email + halaman ini
+    // (bukan lagi alamat emailnya di dalam lead).
+    expect(screen.getByText(/Stok otomatis habis, jadi admin menyiapkan manual/).textContent).toContain("email saat order");
     expect(screen.getByText(/kurang dari 1 jam/)).toBeTruthy();
     expect(screen.getByText(/maksimal 12 jam/)).toBeTruthy();
     expect(screen.queryByText(/pada jam layanan/)).toBeNull();
@@ -233,14 +238,23 @@ describe("/pesanan/[code] — kirim otomatis dari stok sendiri", () => {
     expect(gets).toHaveLength(4);
   });
 
-  it("sudah terkirim tanpa detail di halaman → 'Produk sudah dikirim', bukan 'sedang diproses'", async () => {
+  it("order ber-email sudah terkirim tanpa detail di halaman → copy email + halaman ini, bukan 'sedang diproses'", async () => {
     stubLiveOrder({ order: { fulfillment_status: "delivered", customer_email: "r***@gmail.com" } });
     render(<OrderStatusPage />);
     await advance(50);
-    expect(screen.getByText(/Produk sudah dikirim ke/).textContent).toContain("r***@gmail.com");
+    expect(screen.getByText(/Detail pesanan akan otomatis dikirimkan/).textContent).toContain("tampil di halaman ini");
     expect(screen.getByText(/Cek juga folder spam/)).toBeTruthy();
     expect(screen.queryByText(/sedang diproses/)).toBeNull();
     expect(screen.queryByText(/5–15 menit/)).toBeNull();
+  });
+
+  it("order lama tanpa email yang sudah terkirim → 'Produk sudah dikirim ke WhatsApp', bukan copy email", async () => {
+    stubLiveOrder({ order: { fulfillment_status: "delivered", customer_email: null } });
+    render(<OrderStatusPage />);
+    await advance(50);
+    expect(screen.getByText(/Produk sudah dikirim ke/).textContent).toContain("08213");
+    expect(screen.queryByText(/Cek juga folder spam/)).toBeNull();
+    expect(screen.queryByText(/sedang diproses/)).toBeNull();
   });
 
   it("WR kirim otomatis tetap memakai jadwal lama: tidak ada poll cepat", async () => {

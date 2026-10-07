@@ -343,12 +343,19 @@ export default function OrderSuccessPage() {
   const destination = order.email
     ? <>email <span className="font-medium text-white/80">{order.email}</span></>
     : <>WhatsApp <span className="font-medium text-white/80">{order.wa}</span></>;
-  const toBuyer = <>Detail produk dikirim ke {destination} yang kamu masukkan saat checkout, dan tampil di halaman ini.</>;
+  // Copy 2026-10-07 (permintaan owner): pesanan otomatis tidak lagi dijanjikan
+  // via WhatsApp/Telegram — detail dikirim ke email saat order + tampil di
+  // halaman ini. Order lama tanpa email tetap fallback ke nomor WA tersamar.
+  const toBuyer = order.email
+    ? <>Detail pesanan akan otomatis dikirimkan di email saat order dan akan tampil di halaman ini.</>
+    : <>Detail produk dikirim ke {destination} yang kamu masukkan saat checkout, dan tampil di halaman ini.</>;
   let delivery: { title: string; lead: ReactNode; note: ReactNode; skeleton?: boolean };
   if (order.fulfillmentStatus === "delivered") {
     delivery = {
       title: "Pengiriman Produk",
-      lead: <>Produk sudah dikirim ke {destination} yang kamu masukkan saat checkout.</>,
+      lead: order.email
+        ? <>Detail pesanan akan otomatis dikirimkan di email saat order dan akan tampil di halaman ini.</>
+        : <>Produk sudah dikirim ke {destination} yang kamu masukkan saat checkout.</>,
       note: <>{order.email ? "Belum masuk? Cek juga folder spam atau promosi. " : ""}Kalau tetap belum ada, hubungi admin lewat tombol di bawah dengan menyebut kode pesanan.</>,
     };
   } else if (order.queuedDelivery) {
@@ -383,7 +390,9 @@ export default function OrderSuccessPage() {
   } else if (instantSending) {
     delivery = {
       title: "Pengiriman Otomatis",
-      lead: <>Masih mengirim otomatis — butuh waktu lebih lama dari biasanya. Detail tetap akan muncul di halaman ini dan dikirim ke {destination} yang sama.</>,
+      lead: order.email
+        ? <>Masih mengirim otomatis — butuh waktu lebih lama dari biasanya. Detail pesanan akan otomatis dikirimkan di email saat order dan akan tampil di halaman ini.</>
+        : <>Masih mengirim otomatis — butuh waktu lebih lama dari biasanya. Detail tetap akan muncul di halaman ini dan dikirim ke {destination} yang sama.</>,
       note: <>Halaman ini memeriksa sendiri. Kalau beberapa menit belum ada, hubungi admin lewat tombol di bawah dengan menyebut kode pesanan.</>,
     };
   } else {

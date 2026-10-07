@@ -1039,8 +1039,11 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   pra-0027). Order lunas tanpa kredensial mendapat blok pengiriman berisi
   tujuan pengiriman (email checkout tersamar; WA hanya order lama tanpa email) — bukan
   form verifikasi yang pasti gagal `not_ready`. Judul + teksnya dinamis per cabang
-  (`delivery.title`, revisi copy A/B/C1/C2 2026-10-02):
-  `fulfillment_status='delivered'` → "Pengiriman Produk" + "Produk sudah dikirim";
+  (`delivery.title`, revisi copy A/B/C1/C2 2026-10-02, copy email 2026-10-07):
+  `fulfillment_status='delivered'` → "Pengiriman Produk" + order ber-email:
+  "Detail pesanan akan otomatis dikirimkan di email saat order dan akan tampil
+  di halaman ini." + cek spam/promosi; order lama tanpa email: "Produk sudah
+  dikirim ke WhatsApp …" (tanpa cek spam);
   `queued_delivery` (C1 Made By Order, manual by design) → "Pesanan Made By Order" tanpa
   alasan stok + "Umumnya kurang dari 1 jam, maksimal 12 jam" (tanpa jam layanan spesifik);
   `instant_delivery` + `manual_required` (C2 instan-gagal) → "Pengiriman oleh Admin" +
@@ -1048,7 +1051,8 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   `instant_delivery` belum selesai → skeleton "Menyiapkan detail produkmu…" TANPA teks
   pengiriman selama ±30 dtk pertama (sore 2026-10-02: tanpa bacaan yang bisa hilang
   saat panel muncul), lewat ±30 dtk → "Pengiriman Otomatis" + "Masih mengirim otomatis
-  — butuh waktu lebih lama" (tetap tanpa admin/12 jam);
+  — butuh waktu lebih lama" (tetap tanpa admin/12 jam; order ber-email ditambah
+  kalimat email + halaman ini);
   selain itu (produk WR) → estimasi 5–15 menit.
   Selama `lunas && !credentials_ready`, halaman mem-poll `GET /api/orders?code=`: order
   `instant_delivery` yang belum `delivered`/`manual_required`/`failed` dicek rapat dulu
