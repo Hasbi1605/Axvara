@@ -7,14 +7,16 @@
 // membandingkan katalog WR/SK tiap 3 menit dan mengirim HANYA produk/varian
 // yang berubah ke route RAMPING ini (impor minimal, tanpa budget/fase cron).
 //
-// Kontrak (sinkron dengan `axvara-wr-proxy/src/diff-sync.ts`):
+// Kontrak (sinkron dengan `axvara-wr-proxy/src/diff-sync.ts` + `src/psmm-diff.ts`):
 //   Header  x-supplier-sync-token: <SUPPLIER_SYNC_TOKEN>  (konstan-waktu)
 //   Body    { supplier: "wr", products: WrProduct[], removed_variant_ids: string[] }
 //         | { supplier: "sk", rows: SkFlatVariant[], removed_variant_ids: string[] }
 //         | { supplier: "sk", action: "pairs" }   (hitung ulang pemenang WR vs SK)
+//         | { source: "providersmm", services: PsmmService[], removed_service_ids: number[], heartbeat?: true }
 //   2xx = TERSIMPAN (VPS baru memajukan snapshot-nya); selain itu VPS
 //   mengirim ulang (penerapan idempoten).
-// Batas per request: 10 produk WR / 30 baris SK / 200 id dihapus.
+// Batas per request: 10 produk WR / 30 baris SK / 200 id dihapus /
+// 100 layanan ProviderSMM.
 
 import { NextRequest, NextResponse } from "next/server";
 import { constantTimeEqual } from "@/lib/security";
@@ -33,6 +35,40 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+  // Cabang ProviderSMM (PEDIA, 2026-10-07): diff VPS memakai `source` agar
+  // tidak bentrok dengan `supplier` WR/SK yang existing.
+  if (body && body.source === "providersmm") {
+    const services = Array.isArray(body.services) ? body.services : null;
+    if (!services) return NextResponse.json({ error: "invalid_services" }, { status: 400 });
+    if (services.length > 100) return NextResponse.json({ error: "too_many_services" }, { status: 413 });
+    const removed = Array.isArray(body.removed_service_ids)
+      ? body.removed_service_ids.map(Number).filter(Number.isFinite)
+      : [];
+    if (removed.length > 100) return NextResponse.json({ error: "too_many_removed" }, { status: 413 });
+    const db = createDatabaseAccess();
+    const { applyProvidersmmDiff } = await import("@/lib/pedia/sync");
+    const result = await applyProvidersmmDiff(db, services as never, removed);
+    try {
+      await db.execRun(
+        `INSERT INTO store_settings (key, value, updated_at) VALUES ('pedia_diff_last_at', datetime('now'), datetime('now'))
+         ON CONFLICT(key) DO UPDATE SET value=datetime('now'), updated_at=datetime('now')`,
+      );
+      if (result.upserted > 0 || result.markedMissing > 0) {
+        await db.execRun(
+          `INSERT INTO store_settings (key, value, updated_at) VALUES ('pedia_diff_last_change_at', datetime('now'), datetime('now'))
+           ON CONFLICT(key) DO UPDATE SET value=datetime('now'), updated_at=datetime('now')`,
+        );
+      }
+    } catch { /* penanda best-effort */ }
+    if (result.errors.length && result.upserted === 0 && result.markedMissing === 0) {
+      return NextResponse.json({ ok: false, errors: result.errors.slice(0, 3) }, { status: 500 });
+    }
+    return NextResponse.json({
+      ok: true, upserted: result.upserted, missing: result.markedMissing,
+      repriced: result.tiersRepriced, auto_disabled: result.tiersAutoDisabled,
+      errors: result.errors.slice(0, 3),
+    });
+  }
   if (!body || (body.supplier !== "wr" && body.supplier !== "sk")) {
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }

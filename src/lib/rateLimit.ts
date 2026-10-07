@@ -49,6 +49,11 @@ export const RATE_LIMITS = {
   "products:reorder": 120,
   "auth:login": 5,
   "newsletter:subscribe": 5,
+  // PEDIA (2026-10-07, PEDIA-PRD §9.7): scope publik Pedia.
+  "pedia:quote": 30,
+  "pedia:orders": 10,
+  "pedia:credit_check": 10,
+  "pedia:refill": 10,
 } as const;
 
 export type RateLimitScope = keyof typeof RATE_LIMITS;
