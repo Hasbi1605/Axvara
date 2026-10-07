@@ -28,7 +28,7 @@ Posisi harga: **setara panel, kemudahan setara ritel.**
 |---|---|---|
 | D1 | Domain | `pedia.axvara.tech` (project Pages yang SAMA, dipetakan middleware ke route `/pedia/*`) |
 | D2 | Aksen sub-brand | Violet `#8B5CF6`, gradien signature cyan → violet (detail `PEDIA-DESIGN.md`) |
-| D3 | Login | **Fase 2.** Fase 1 = order tanpa login (tamu) |
+| D3 | Login | **Fase 2** (dikunci owner 2026-10-07). Fase 1 = order tanpa login (tamu). Setelah Fase 2, tamu TETAP bisa order; member mendapat benefit §4 Fase 2 |
 | D4 | Refund partial/cancel fase 1 | **Kode Kredit Pedia** otomatis (dikirim email + tampil di halaman pesanan), bisa dipakai di checkout Pedia berikutnya |
 | D5 | Margin | Per kelompok produk (§7), bukan rata |
 | D6 | Supplier | providersmm.id saja; skema siap multi-supplier |
@@ -88,7 +88,9 @@ Implikasi desain: mobile-first, tanpa jargon, maksimal 3 keputusan sebelum bayar
 ### Fase 2
 - Login Google (OIDC) + OTP email + Cloudflare Turnstile.
 - Saldo akun + deposit QRIS, refund otomatis ke saldo, kode kredit lama bisa diklaim ke saldo.
-- Riwayat & link favorit, order ulang 1 klik, harga member.
+- Riwayat & link favorit, order ulang 1 klik, refill 1 klik dari riwayat.
+- Benefit harga member (dikunci owner 2026-10-07, keduanya): **bonus deposit** (default +5% untuk deposit ≥ Rp100.000, diatur admin) **dan diskon member khusus kelompok G1/G2** (default 5%, TIDAK berlaku G3 karena margin tipis). Guard margin §7.2 dihitung SETELAH diskon member.
+- Ajakan daftar halus di halaman sukses & email kredit ("Daftar supaya sisa dana langsung masuk saldo"); tamu tidak pernah dipaksa login.
 
 ### Fase 3
 - Top-up game (Digiflazz, fallback Sekalipay) di dalam Pedia dengan saldo yang sama.
