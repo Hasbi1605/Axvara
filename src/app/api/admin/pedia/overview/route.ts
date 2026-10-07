@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
   for (const r of settingsRows) settings[String(r.key)] = String(r.value ?? "");
 
   // Saldo supplier live via proxy (best-effort; fallback riwayat D1).
-  let balance: { value: number | null; stale: boolean; history: { balance: number; created_at: string }[] } = {
+  const balance: { value: number | null; stale: boolean; history: { balance: number; created_at: string }[] } = {
     value: null, stale: true, history: [],
   };
   try {
