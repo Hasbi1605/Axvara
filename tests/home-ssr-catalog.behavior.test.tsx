@@ -24,7 +24,7 @@ beforeEach(() => {
 afterEach(() => { cleanup(); fx.close(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
 it("server memuat katalog D1 dan menyerahkannya ke klien", async () => {
-  const { default: HomePage } = await import("@/app/page");
+  const { default: HomePage } = await import("@/app/(shop)/page");
   const tree = (await HomePage()) as ReactElement<{ children: ReactElement<{ initialProducts?: Product[] }>[] }>;
   const children = Array.isArray(tree.props.children) ? tree.props.children : [tree.props.children];
   const client = children.find((child) => (child?.props as { initialProducts?: Product[] } | undefined)?.initialProducts !== undefined);
@@ -32,7 +32,7 @@ it("server memuat katalog D1 dan menyerahkannya ke klien", async () => {
 });
 
 it("server tidak menambah preload manual (Next mengelolanya dari fetchpriority high kartu)", async () => {
-  const { default: HomePage } = await import("@/app/page");
+  const { default: HomePage } = await import("@/app/(shop)/page");
   const tree = (await HomePage()) as ReactElement<{ children: ReactElement<{ initialProducts?: Product[] }>[] }>;
   const children = Array.isArray(tree.props.children) ? tree.props.children : [tree.props.children];
   // page.tsx hanya: JSON-LD + HomeClient. Preload gambar LCP diurus Next
@@ -55,7 +55,7 @@ it("klien dengan data awal langsung merender kartu + link produk tanpa fetch", a
   });
   const fetchSpy = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({}) }));
   vi.stubGlobal("fetch", fetchSpy);
-  const { HomeClient } = await import("@/app/home-client");
+  const { HomeClient } = await import("@/app/(shop)/home-client");
   render(<HomeClient initialProducts={[{ id: "1", slug: "netflix-premium", name: "Netflix Premium", description: "", price: 26000, categorySlug: "akun-premium", image: "", images: [], soldCount: 0, stock: 5 } as unknown as Product]} />);
   expect(screen.getAllByText("Netflix Premium").length).toBeGreaterThan(0);
   expect(document.querySelector('a[href="/produk/netflix-premium"]')).not.toBeNull();

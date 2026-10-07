@@ -70,7 +70,7 @@ describe("aturan kelas pengiriman (satu sumber)", () => {
 
 describe("copy pembeli", () => {
   it("checkout memperingatkan waktu antrean SEBELUM bayar", () => {
-    const checkout = read("src/app/checkout/page.tsx");
+    const checkout = read("src/app/(shop)/checkout/page.tsx");
     expect(checkout).toContain("queuedNames");
     expect(checkout).toContain("Made By Order");
     // Copy 2026-09-19 (framing positif): tanpa kata antre/ramai/sabar,
@@ -87,7 +87,7 @@ describe("copy pembeli", () => {
 
   it("PDP + modal varian memakai badge Made By Order polos (tanpa angka jam)", () => {
     for (const file of [
-      "src/app/produk/[slug]/product-detail-client.tsx",
+      "src/app/(shop)/produk/[slug]/product-detail-client.tsx",
       "src/components/storefront/QuickVariantModal.tsx",
     ]) {
       const src = read(file);
@@ -102,7 +102,7 @@ describe("copy pembeli", () => {
   });
 
   it("halaman ketentuan MEMPERTAHANKAN status third-party + garansi mulai saat diserahkan", () => {
-    const page = read("src/app/garansi-replace/page.tsx");
+    const page = read("src/app/(shop)/garansi-replace/page.tsx");
     expect(page).toContain("third-party");
     expect(page).toContain("antrean");
     expect(page).toContain("bukan");
@@ -120,9 +120,9 @@ describe("copy pembeli", () => {
         .filter((line) => !line.trim().startsWith("//"))
         .join("\n");
     for (const file of [
-      "src/app/checkout/page.tsx",
-      "src/app/pesanan/[code]/page.tsx",
-      "src/app/produk/[slug]/product-detail-client.tsx",
+      "src/app/(shop)/checkout/page.tsx",
+      "src/app/(shop)/pesanan/[code]/page.tsx",
+      "src/app/(shop)/produk/[slug]/product-detail-client.tsx",
       "src/components/storefront/QuickVariantModal.tsx",
       "src/lib/warung-rebahan/email-forward.ts",
     ]) {
@@ -306,7 +306,7 @@ describe("Fase B — kredensial 3 jalur (keputusan owner 2026-09-18)", () => {
   });
 
   it("hasil lacak order lunas + kredensial siap me-render panel (tanpa input WA ulang di server)", async () => {
-    const page = read("src/app/lacak-pesanan/lacak-pesanan-client.tsx");
+    const page = read("src/app/(shop)/lacak-pesanan/lacak-pesanan-client.tsx");
     expect(page).toContain("WrCredentialsPanel");
     expect(page).toContain("prefillContact");
     expect(page).toContain("order.credentialsReady");

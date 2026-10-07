@@ -26,7 +26,7 @@ describe("GET /go/[slug] — redirect 307 + klik", () => {
     const fx = createD1Fixture();
     try {
       seedLinks(fx);
-      const { default: GoRedirect } = await import("@/app/go/[slug]/page");
+      const { default: GoRedirect } = await import("@/app/(shop)/go/[slug]/page");
       const before = fx.sql.prepare(`SELECT click_count FROM supplier_links WHERE slug='otp'`).get() as { click_count: number };
       // next/navigation redirect() melempar NEXT_REDIRECT — tangkap digest-nya.
       let digest = "";
@@ -54,7 +54,7 @@ describe("GET /go/[slug] — redirect 307 + klik", () => {
       seedLinks(fx);
       const { notFound } = await import("next/navigation");
       expect(notFound).toBeDefined();
-      const { default: GoRedirect } = await import("@/app/go/[slug]/page");
+      const { default: GoRedirect } = await import("@/app/(shop)/go/[slug]/page");
       // Format salah (../..) → notFound melempar NEXT_HTTP_ERROR_FALLBACK;404.
       let code = "";
       try {

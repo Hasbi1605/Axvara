@@ -69,7 +69,7 @@ describe("sitemap memakai produk aktif D1, bukan seed statis", () => {
 
 describe("PDP server-rendered dengan metadata per produk", () => {
   it("page.tsx server component: generateMetadata + notFound + JSON-LD + h1 sr-only (tanpa blok visual ganda)", () => {
-    const src = read("src/app/produk/[slug]/page.tsx");
+    const src = read("src/app/(shop)/produk/[slug]/page.tsx");
     expect(src).not.toContain('"use client"');
     expect(src).toContain("generateMetadata");
     expect(src).toContain("notFound()");
@@ -89,14 +89,14 @@ describe("PDP server-rendered dengan metadata per produk", () => {
   });
 
   it("query SEO hanya produk aktif dengan varian aktif; tanpa varian → 404", () => {
-    const src = read("src/app/produk/[slug]/page.tsx");
+    const src = read("src/app/(shop)/produk/[slug]/page.tsx");
     expect(src).toContain("p.is_active=1");
     expect(src).toContain("pv.is_active=1");
     expect(src).toContain("if (variants.length === 0) return null");
   });
 
   it("interaktivitas tetap: client memakai endpoint katalog yang sama", () => {
-    const client = read("src/app/produk/[slug]/product-detail-client.tsx");
+    const client = read("src/app/(shop)/produk/[slug]/product-detail-client.tsx");
     expect(client).toContain('"use client"');
     expect(client).toContain("/api/products?active=1");
     expect(client).toContain("/api/catalog?slug=");
@@ -149,6 +149,6 @@ describe("helper SEO produk", () => {
     const safe = JSON.stringify(seoProductJsonLd(evil, "https://axvara.tech/produk/x")).replace(/</g, "\\u003c");
     expect(safe).not.toContain("</script>");
     // Pola yang sama dipakai page.tsx (pola artikel).
-    expect(read("src/app/produk/[slug]/page.tsx")).toContain('.replace(/</g, "\\\\u003c")');
+    expect(read("src/app/(shop)/produk/[slug]/page.tsx")).toContain('.replace(/</g, "\\\\u003c")');
   });
 });

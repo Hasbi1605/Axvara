@@ -1,6 +1,34 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+const PEDIA_HOST = (process.env.PEDIA_HOST || "pedia.axvara.tech").toLowerCase();
+
 export function middleware(req: NextRequest) {
+  const host = (req.headers.get("host") || "").toLowerCase().split(":")[0] || "";
+  const path = req.nextUrl.pathname;
+  const isAsset = path.startsWith("/api/") || path.startsWith("/_next/")
+    || path.startsWith("/brand/") || path.startsWith("/icons/")
+    || path.startsWith("/og/") || path === "/favicon.svg" || path === "/favicon.ico"
+    || /\.(svg|png|jpg|jpeg|webp|ico|css|js|woff2?)$/.test(path);
+
+  // PEDIA (2026-10-07, PEDIA-PRD §9.2): pedia.axvara.tech → rewrite /pedia/*.
+  // axvara.tech/pedia/* → 308 ke subdomain (satu URL kanonis).
+  if (host === PEDIA_HOST && process.env.PEDIA_ENABLED === "true" && !isAsset && !path.startsWith("/pedia")) {
+    const url = req.nextUrl.clone();
+    url.pathname = path === "/" ? "/pedia" : `/pedia${path}`;
+    return NextResponse.rewrite(url);
+  }
+  if (host !== PEDIA_HOST && (path === "/pedia" || path.startsWith("/pedia/"))) {
+    // Dev lokal (127.0.0.1/localhost): buka langsung tanpa redirect.
+    if (host.startsWith("127.") || host === "localhost") {
+      return NextResponse.next();
+    }
+    const url = req.nextUrl.clone();
+    url.protocol = "https:";
+    url.host = PEDIA_HOST;
+    url.pathname = path.replace(/^\/pedia(\/|$)/, "/$1").replace(/\/$/, "") || "/";
+    return NextResponse.redirect(url, 308);
+  }
+
   const res = NextResponse.next();
 
   // Production stays strict. Next.js dev needs eval for webpack/React Refresh;

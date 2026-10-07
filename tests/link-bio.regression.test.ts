@@ -14,7 +14,7 @@ function read(p: string): string {
 
 describe("Halaman /link — tombol link-in-bio", () => {
   it("memuat 6 tujuan: web, bot Telegram, grup WA, lacak, WA admin, Telegram bantuan", () => {
-    const src = read("src/app/link/link-bio-client.tsx");
+    const src = read("src/app/(shop)/link/link-bio-client.tsx");
     expect(src).toContain('{ href: "/", label: "Katalog Web"');
     expect(src).not.toContain("/#katalog");
     expect(src).toContain("TG_BOT_HREF");
@@ -27,7 +27,7 @@ describe("Halaman /link — tombol link-in-bio", () => {
   });
 
   it("badge trust: Order Tanpa Login, Bergaransi, Fast Respon", () => {
-    const src = read("src/app/link/link-bio-client.tsx");
+    const src = read("src/app/(shop)/link/link-bio-client.tsx");
     expect(src).toContain("Order Tanpa Login");
     expect(src).toContain("Bergaransi");
     expect(src).toContain("Fast Respon");
@@ -35,7 +35,7 @@ describe("Halaman /link — tombol link-in-bio", () => {
   });
 
   it("hierarki tagline dua baris tanpa strip + footer tanpa embel-embel", () => {
-    const src = read("src/app/link/link-bio-client.tsx");
+    const src = read("src/app/(shop)/link/link-bio-client.tsx");
     expect(src).toContain("Satu gerbang, semua tools premium</p>");
     expect(src).toContain("AI, streaming, desain, dan musik.</p>");
     expect(src).not.toContain("semua tools premium — AI");
@@ -44,7 +44,7 @@ describe("Halaman /link — tombol link-in-bio", () => {
   });
 
   it("semua 6 pill outline biru glossy tipis seragam (rollback: revert commit ini)", () => {
-    const src = read("src/app/link/link-bio-client.tsx");
+    const src = read("src/app/(shop)/link/link-bio-client.tsx");
     expect(src).toContain("border-[#00E5FF]/25");
     expect(src).toContain("bg-[#00E5FF]/[0.08]");
     expect(src).toContain("hover:border-[#00E5FF]/50");
@@ -53,7 +53,7 @@ describe("Halaman /link — tombol link-in-bio", () => {
   });
 
   it("label support: Support WhatsApp + Support Telegram (bukan WA Admin)", () => {
-    const src = read("src/app/link/link-bio-client.tsx");
+    const src = read("src/app/(shop)/link/link-bio-client.tsx");
     expect(src).toContain('label: "Support WhatsApp"');
     expect(src).toContain('label: "Support Telegram"');
     expect(src).not.toContain('label: "WA Admin"');
@@ -61,7 +61,7 @@ describe("Halaman /link — tombol link-in-bio", () => {
   });
 
   it("anti geser kanan mobile: wrapper overflow-x-clip + glow overflow-hidden (tanpa main ganda)", () => {
-    const src = read("src/app/link/link-bio-client.tsx");
+    const src = read("src/app/(shop)/link/link-bio-client.tsx");
     expect(src).toContain("overflow-x-clip");
     expect(src).toContain("ax-meteors");
     expect(src).toContain("overflow-hidden");
@@ -69,7 +69,7 @@ describe("Halaman /link — tombol link-in-bio", () => {
   });
 
   it("meteor jatuh tipis: 3 garis GPU-only + mati saat reduced-motion", () => {
-    const src = read("src/app/link/link-bio-client.tsx");
+    const src = read("src/app/(shop)/link/link-bio-client.tsx");
     expect(src.match(/ax-meteor"/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
     const css = read("src/app/globals.css");
     expect(css).toContain("@keyframes axMeteor");
@@ -78,12 +78,12 @@ describe("Halaman /link — tombol link-in-bio", () => {
   });
 
   it("tanpa emoji di label/hint tombol", () => {
-    const src = read("src/app/link/link-bio-client.tsx");
+    const src = read("src/app/(shop)/link/link-bio-client.tsx");
     expect(src).not.toMatch(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}]/u);
   });
 
   it("ikon memakai aset solid-circle seragam 6 tombol (bukan emoji/glyph)", () => {
-    const src = read("src/app/link/link-bio-client.tsx");
+    const src = read("src/app/(shop)/link/link-bio-client.tsx");
     expect(src).toContain("/brand/telegram.svg");
     expect(src).toContain("/brand/whatsapp-circle.svg");
     expect(src).toContain("/brand/support-wa-question.png");
@@ -103,7 +103,7 @@ describe("Halaman /link — tombol link-in-bio", () => {
   });
 
   it("punya tombol share: native navigator.share + fallback salin tautan", () => {
-    const src = read("src/app/link/link-bio-client.tsx");
+    const src = read("src/app/(shop)/link/link-bio-client.tsx");
     expect(src).toContain("navigator");
     expect(src).toContain("share");
     expect(src).toContain("clipboard.writeText");
@@ -112,7 +112,7 @@ describe("Halaman /link — tombol link-in-bio", () => {
   });
 
   it("metadata: judul Link Bio + canonical /link", () => {
-    const src = read("src/app/link/page.tsx");
+    const src = read("src/app/(shop)/link/page.tsx");
     expect(src).toContain("AXVARA • Link Bio");
     expect(src).toContain('canonical: "/link"');
   });

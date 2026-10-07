@@ -268,7 +268,7 @@ describe("override konsisten di SEMUA kanal (web, Telegram, WhatsApp)", () => {
     expect(displayDescription(row)).toBe("Teks AXVARA");
 
     const source = await import("node:fs").then((fs) =>
-      fs.readFileSync("src/app/produk/[slug]/page.tsx", "utf8"),
+      fs.readFileSync("src/app/(shop)/produk/[slug]/page.tsx", "utf8"),
     );
     expect(source, "PDP harus ikut mengambil kolom override").toContain("admin_description_override");
     expect(source, "PDP harus memakai resolver bersama").toContain("displayDescription(product)");

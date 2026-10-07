@@ -14,8 +14,8 @@ describe("CMS schema and public media contracts", () => {
   });
 
   it("uses a catch-all public R2 route for nested product/article/banner keys", () => {
-    expect(fs.existsSync(path.join(root, "src/app/r2/[...key]/route.ts"))).toBe(true);
-    expect(fs.existsSync(path.join(root, "src/app/r2/[key]/route.ts"))).toBe(false);
+    expect(fs.existsSync(path.join(root, "src/app/(shop)/r2/[...key]/route.ts"))).toBe(true);
+    expect(fs.existsSync(path.join(root, "src/app/(shop)/r2/[key]/route.ts"))).toBe(false);
   });
 });
 
@@ -46,7 +46,7 @@ describe("Article contracts", () => {
   });
 
   it("renders Markdown without raw HTML and escapes JSON-LD script text", () => {
-    const source = read("src/app/artikel/[slug]/page.tsx");
+    const source = read("src/app/(shop)/artikel/[slug]/page.tsx");
     expect(source).toContain('token.type === "html"');
     expect(source).toContain('.replace(/</g, "\\\\u003c")');
     expect(source).not.toContain("ReactMarkdown");
@@ -72,7 +72,7 @@ describe("Article contracts", () => {
   });
 
   it("keeps the empty article state informational without a chat CTA", () => {
-    const source = read("src/app/artikel/page.tsx");
+    const source = read("src/app/(shop)/artikel/page.tsx");
     expect(source).toContain("Daftarkan email di footer");
     expect(source).not.toContain(">Chat WA</a>");
   });
@@ -149,7 +149,7 @@ describe("Agent and MCP contracts", () => {
 
   it("exposes base64 and URL media upload in MCP and configures the custom domain", () => {
     const worker = read("mcp-worker/src/index.ts");
-    const pagesRoute = read("src/app/mcp/route.ts");
+    const pagesRoute = read("src/app/(shop)/mcp/route.ts");
     const config = read("mcp-worker/wrangler.toml");
     const importRoute = read("src/app/api/agent/media/import/route.ts");
     expect(worker).toContain("upload_article_image");

@@ -254,7 +254,7 @@ describe("Worker runOperationsTick", () => {
     const report = await runOperationsTick(env, at(5), fn as never);
     expect(report.failures).toEqual([]);
     expect(calls.map(label)).toEqual([
-      "lite:expiry", "lite:fulfillment", "lite:wr_orders", "lite:sk_orders", "lite:notify", "lite:promo", "lite:cleanup",
+      "lite:expiry", "lite:fulfillment", "lite:wr_orders", "lite:sk_orders", "lite:pedia_orders", "lite:notify", "lite:promo", "lite:cleanup",
     ]);
     expect(calls.some((u) => u.includes("/api/cron/operations"))).toBe(false);
   });
@@ -264,7 +264,7 @@ describe("Worker runOperationsTick", () => {
     const report = await runOperationsTick(env, Date.UTC(2026, 9, 3, 14, 0), fn as never);
     expect(report.failures).toEqual([]);
     expect(calls.map(label)).toEqual([
-      "lite:expiry", "lite:fulfillment", "lite:wr_orders", "lite:sk_orders", "lite:notify", "lite:promo", "lite:cleanup",
+      "lite:expiry", "lite:fulfillment", "lite:wr_orders", "lite:sk_orders", "lite:pedia_orders", "lite:notify", "lite:promo", "lite:cleanup",
       "expiry", "fulfillment", "warung_rebahan:orders", "sekalipay:orders",
       "notify", "warung_rebahan:sync", "sekalipay:sync", "cleanup",
     ]);

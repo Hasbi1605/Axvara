@@ -1,6 +1,6 @@
 # PEDIA-PRD.md — AXVARA PEDIA (Toko SMM Kurasi)
 
-> **Status:** 📝 Spesifikasi siap eksekusi (2026-10-07). Belum ada kode.
+> **Status:** ✅ M1–M5 + UI publik live dev 2026-10-08 (migrasi 0061, 7 API publik, 15 API admin, 58 test, verifikasi Obscura). Sisa: kredensial VPS PSMM + kontrak penuh §9 + go-live DNS Pages (ikuti §13 daftar PEM).
 > **Pasangan dokumen:** `docs/PEDIA-DESIGN.md` (panduan desain & style — WAJIB dibaca bersama).
 > **Pemilik produk:** owner AXVARA. **Eksekutor:** agent implementasi.
 > **Aturan repo tetap berlaku:** `AGENTS.md` (test hijau, CHANGELOG, docs hidup, verifikasi Obscura, deploy hanya via push `main`).

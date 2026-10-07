@@ -17,7 +17,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: nav.push, replace: vi.fn(), back: vi.fn() }),
 }));
 
-import ProductDetailClient from "@/app/produk/[slug]/product-detail-client";
+import ProductDetailClient from "@/app/(shop)/produk/[slug]/product-detail-client";
 
 const product = {
   id: "1", slug: "netflix-premium", name: "Netflix Premium", description: "Streaming premium.", price: 25_000,

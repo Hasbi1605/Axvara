@@ -88,7 +88,7 @@ it("tombol tutup menyembunyikan pengingat untuk pesanan itu selama sesi", async 
 });
 
 it("salinan lokal checkout tidak lagi menyimpan WA/email pembeli", () => {
-  const src = require("node:fs").readFileSync("src/app/checkout/page.tsx", "utf8") as string;
+  const src = require("node:fs").readFileSync("src/app/(shop)/checkout/page.tsx", "utf8") as string;
   const local = src.match(/const localOrder = \{[^}]*\}/)?.[0] ?? "";
   expect(local).toContain("code");
   expect(local).not.toMatch(/\bwa\b|\bemail\b/);

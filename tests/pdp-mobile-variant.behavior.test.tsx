@@ -17,7 +17,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: nav.push, replace: vi.fn(), back: vi.fn() }),
 }));
 
-import ProductDetailClient from "@/app/produk/[slug]/product-detail-client";
+import ProductDetailClient from "@/app/(shop)/produk/[slug]/product-detail-client";
 
 const product = {
   id: "1", slug: "claude-pro", name: "Claude Pro", description: "Claude Pro untuk penalaran kompleks.", price: 24_000,

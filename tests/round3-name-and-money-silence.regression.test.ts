@@ -36,9 +36,9 @@ describe("R1-R3: nama pembeli web tidak lagi prefix email mentah", () => {
 
   it("kedua jalur (API dan form checkout) memakai sanitizer yang sama", () => {
     expect(read("src/app/api/orders/route.ts")).toContain("deriveNameFromEmail");
-    expect(read("src/app/checkout/page.tsx")).toContain("deriveNameFromEmail");
+    expect(read("src/app/(shop)/checkout/page.tsx")).toContain("deriveNameFromEmail");
     // Tidak boleh ada lagi pemakaian prefix email mentah sebagai nama.
-    for (const path of ["src/app/api/orders/route.ts", "src/app/checkout/page.tsx"]) {
+    for (const path of ["src/app/api/orders/route.ts", "src/app/(shop)/checkout/page.tsx"]) {
       expect(read(path), path).not.toMatch(/split\("@"\)\[0\][\s\S]{0,40}slice\(0, 80\)/);
     }
   });
@@ -70,7 +70,7 @@ describe("F5 + F9: pembeli tahu saat pengiriman gagal", () => {
   });
 
   it("halaman lacak pesanan membedakan lunas-terkirim dari lunas-gagal", () => {
-    const page = read("src/app/lacak-pesanan/lacak-pesanan-client.tsx");
+    const page = read("src/app/(shop)/lacak-pesanan/lacak-pesanan-client.tsx");
     // `/api/orders/lookup` sudah mengembalikan fulfillment_status; dulu
     // halaman ini hanya membaca status pembayaran sehingga order yang gagal
     // kirim tampil hijau "Lunas" selamanya.

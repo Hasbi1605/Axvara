@@ -43,7 +43,7 @@ describe("orbit mobile hemat: hot path GPU-only", () => {
   });
 
   it("glow hero di-hemat di mobile (blur raksasa = repaint termahal kedua)", () => {
-    const src = read("src/app/home-client.tsx");
+    const src = read("src/app/(shop)/home-client.tsx");
     expect(src).toContain("blur-[44px] sm:blur-[80px]");
     expect(src).toContain("hidden sm:block");
   });

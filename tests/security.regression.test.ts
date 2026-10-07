@@ -172,7 +172,7 @@ describe("F-Medium: Payment proof — upload strict", () => {
   });
 
   it("checkout page QRIS-only selama maintenance (upload bukti disembunyikan)", () => {
-    const src = fs.readFileSync(path.join(process.cwd(), "src/app/checkout/page.tsx"), "utf-8");
+    const src = fs.readFileSync(path.join(process.cwd(), "src/app/(shop)/checkout/page.tsx"), "utf-8");
     // Maintenance 2026-09-17: E-Wallet/Bank disabled + badge Maintenance,
     // panel upload tidak dirender, submit hanya QRIS.
     expect(src).toContain("MANUAL_PAYMENTS_MAINTENANCE");
@@ -212,7 +212,7 @@ describe("BUG-01: Stock restore saat admin batalkan pesanan", () => {
 
 describe("BUG-02: Pesanan page selalu fetch server (bukan early return localStorage)", () => {
   it("pesanan page tidak early-return setelah localStorage find", () => {
-    const src = fs.readFileSync(path.join(process.cwd(), "src/app/pesanan/[code]/page.tsx"), "utf-8");
+    const src = fs.readFileSync(path.join(process.cwd(), "src/app/(shop)/pesanan/[code]/page.tsx"), "utf-8");
     // TIDAK boleh ada pattern: if (found) { setOrder(found); return; }
     expect(src).not.toMatch(/if\s*\(found\)\s*\{\s*setOrder\(found\);\s*return;?\s*\}/);
     // HARUS ada fetch ke /api/orders setelah localStorage
@@ -259,7 +259,7 @@ describe("BUG-05: Tidak ada duplicate generateOrderCode lemah di utils.ts", () =
 
 describe("BUG-06: Checkout block bank placeholder belum aktif", () => {
   it("checkout QRIS-only selama maintenance (quote guard server)", () => {
-    const checkout = fs.readFileSync(path.join(process.cwd(), "src/app/checkout/page.tsx"), "utf-8");
+    const checkout = fs.readFileSync(path.join(process.cwd(), "src/app/(shop)/checkout/page.tsx"), "utf-8");
     const orders = fs.readFileSync(path.join(process.cwd(), "src/app/api/orders/route.ts"), "utf-8");
     // Maintenance 2026-09-17: client hanya submit QRIS; server menolak
     // non-QRIS 503 + menolak quote tanpa QRIS. Revert: kembalikan validasi
@@ -308,7 +308,7 @@ describe("BUG-10: Sitemap domain configurable dengan fallback custom domain", ()
 describe("BUG-11: Product detail sold/stock conditional null-safe", () => {
   it("produk page menggunakan null-safe check untuk soldCount dan stock", () => {
     // PDP interaktif kini di product-detail-client.tsx (page.tsx server-only, #11).
-    const src = fs.readFileSync(path.join(process.cwd(), "src/app/produk/[slug]/product-detail-client.tsx"), "utf-8");
+    const src = fs.readFileSync(path.join(process.cwd(), "src/app/(shop)/produk/[slug]/product-detail-client.tsx"), "utf-8");
     // Harus pakai explicit null check, bukan truthiness
     expect(src).toMatch(/product\.soldCount\s*!=\s*null\s*&&\s*product\.soldCount\s*>\s*0/);
     // TIDAK boleh pakai pattern lama: (product.soldCount || product.stock)
@@ -351,15 +351,15 @@ describe("BUG-14: Login response mengembalikan email", () => {
 
 describe("BUG-15: Client pages HARUS export runtime edge (required by CF Pages)", () => {
   it("produk/[slug]/page.tsx export runtime edge (CF Pages requirement)", () => {
-    const src = fs.readFileSync(path.join(process.cwd(), "src/app/produk/[slug]/page.tsx"), "utf-8");
+    const src = fs.readFileSync(path.join(process.cwd(), "src/app/(shop)/produk/[slug]/page.tsx"), "utf-8");
     // PDP kini server component + client interaktif terpisah (#11): keduanya edge.
-    const client = fs.readFileSync(path.join(process.cwd(), "src/app/produk/[slug]/product-detail-client.tsx"), "utf-8");
+    const client = fs.readFileSync(path.join(process.cwd(), "src/app/(shop)/produk/[slug]/product-detail-client.tsx"), "utf-8");
     expect(client).toContain('"use client"');
     expect(src).toMatch(/export\s+const\s+runtime\s*=\s*["']edge["']/);
   });
 
   it("PDP redirect Opsi B: winner None → sisi SK dialihkan ke wakil WR", () => {
-    const src = fs.readFileSync(path.join(process.cwd(), "src/app/produk/[slug]/page.tsx"), "utf-8");
+    const src = fs.readFileSync(path.join(process.cwd(), "src/app/(shop)/produk/[slug]/page.tsx"), "utf-8");
     // Opsi B (2026-10-02): None → SK = pecundang (wakil = WR). Query TIDAK
     // boleh filter winner IS NOT NULL (itu mengembalikan SK-None ke 404).
     expect(src).not.toContain("WHERE winner IS NOT NULL");
@@ -367,7 +367,7 @@ describe("BUG-15: Client pages HARUS export runtime edge (required by CF Pages)"
   });
 
   it("pesanan/[code]/page.tsx export runtime edge (CF Pages requirement)", () => {
-    const src = fs.readFileSync(path.join(process.cwd(), "src/app/pesanan/[code]/page.tsx"), "utf-8");
+    const src = fs.readFileSync(path.join(process.cwd(), "src/app/(shop)/pesanan/[code]/page.tsx"), "utf-8");
     expect(src).toContain('"use client"');
     expect(src).toMatch(/export\s+const\s+runtime\s*=\s*["']edge["']/);
   });

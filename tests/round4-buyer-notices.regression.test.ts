@@ -210,7 +210,7 @@ describe("W-H1: API halaman pesanan mengenal gagal kirim", () => {
 
 describe("W-M3: checkout tidak lagi mematikan tombol bayar tanpa penjelasan", () => {
   it("S&K belum dicentang tidak menonaktifkan CTA; klik menjelaskan dan membawa ke checkbox", () => {
-    const page = readFileSync("src/app/checkout/page.tsx", "utf8");
+    const page = readFileSync("src/app/(shop)/checkout/page.tsx", "utf8");
     const cta = page.match(/const ctaDisabled = ([^;]+);/)?.[1] ?? "";
     expect(cta).toContain("quoteLoading");
     expect(cta).not.toContain("agreed");

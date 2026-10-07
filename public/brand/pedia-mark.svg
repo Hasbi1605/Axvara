@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 110" fill="none" aria-label="Axvara Pedia">
+<defs><linearGradient id="pxg" gradientUnits="userSpaceOnUse" x1="10" y1="4" x2="110" y2="104"><stop offset="0" stop-color="#00E5FF"/><stop offset="1" stop-color="#8B5CF6"/></linearGradient></defs>
+<path d="M60 4 L6.5 104 L113.5 104 Z" stroke="url(#pxg)" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+<g fill="url(#pxg)">
+<rect x="38.5" y="72" width="7" height="18" rx="3.5"/>
+<rect x="56.5" y="58" width="7" height="32" rx="3.5"/>
+<rect x="74.5" y="44" width="7" height="46" rx="3.5"/>
+</g>
+</svg>

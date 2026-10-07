@@ -22,8 +22,8 @@ axvara/
 │   ├── ARCHITECTURE.md     # Stack D1+R2, schema, API contract
 │   ├── TELEGRAM-BOT-KLIKQRIS-PLAN.md # Arsip rencana provider lama (superseded)
 │   ├── WHATSAPP-GROUP-BOT-PLAN.md # Rencana varian terpusat + bot grup WA (terimplementasi)
-│   ├── PEDIA-PRD.md        # 📝 Spesifikasi AXVARA PEDIA (toko SMM kurasi, pedia.axvara.tech) — belum dieksekusi
-│   ├── PEDIA-DESIGN.md     # 📝 Panduan desain & style Pedia (turunan DESIGN.md)
+│   ├── PEDIA-PRD.md        # ✅ Spesifikasi AXVARA PEDIA (toko SMM kurasi, pedia.axvara.tech) — M1–M5 + UI publik live 2026-10-08
+│   ├── PEDIA-DESIGN.md     # ✅ Panduan desain & style Pedia (turunan DESIGN.md) — diimplementasikan 2026-10-08
 │   └── VPS-RESEARCH.md     # Riset VPS gratis — kenapa Pages juara
 ├── public/
 │   ├── brand/
@@ -37,17 +37,9 @@ axvara/
 ├── mcp-worker/             # Remote MCP stateless + cron publisher
 ├── src/
 │   ├── app/
-│   │   ├── page.tsx        # Homepage (server): katalog D1 dirender di HTML + JSON-LD (SEO & GEO, 2026-09-24)
-│   │   ├── home-client.tsx # Homepage interaktif — Hero + Orbit + Katalog (load more 16; habis tampil akhir kartu abu, 2026-10-01)
-│   │   ├── llms.txt/       # GEO: ringkasan toko + produk tersedia untuk mesin jawab AI
-│   │   ├── produk/[slug]/  # Detail produk
-│   │   ├── checkout/       # Checkout revamp ala Sekalipay 2026-09-23: ① Metode (QRIS auto-select) → ② Data minimal WA+Email wajib tanpa Nama → S&K → 1 CTA; rail desktop-only, mobile accordion + sticky CTA (manual maintenance 2026-09-17: disabled + badge, upload disembunyikan)
-│   │   ├── pesanan/[code]/ # Status + QRIS dinamis + polling lunas (noindex)
-│   │   ├── lacak-pesanan/  # Lacak mandiri kode + No. WA/email (tanpa login) + timeline status
-│   │   ├── link/           # Link-in-bio pengganti Linktree (bio IG): 6 tombol + share, tanpa chrome global
-│   │   ├── admin/          # Workspace operasional, katalog, pembayaran, konten, otomasi, settings
-│   │   ├── artikel/        # Indeks dan detail artikel publik
-│   │   ├── cara-order/     # Panduan order dari footer
+│   │   ├── layout.tsx      # Root MINIMAL: font + metadata global SAJA (2026-10-08 — chrome toko/Pedia di layout masing-masing)
+│   │   ├── (shop)/         # Toko pusat axvara.tech — route group, URL tidak berubah (page/home-client/produk/checkout/pesanan/lacak-pesanan/link/admin/artikel/dll)
+│   │   ├── pedia/          # ✅ Axvara Pedia pedia.axvara.tech (2026-10-08) — layout sendiri TANPA navbar/footer toko: beranda Tempel-link, p/[platform], o/[slug], pesanan/[code], lacak, bantuan, ketentuan, layanan
 │   │   ├── garansi-replace/ # Ketentuan layanan & garansi third-party dari footer (acuan klaim)
 │   │   ├── api/checkout/   # Quote harga/stok/rekening bertanda tangan
 │   │   ├── api/payment-methods/ # Konfigurasi pembayaran publik/admin

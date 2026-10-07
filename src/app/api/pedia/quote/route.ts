@@ -13,12 +13,13 @@ export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
 const schema = z.object({
-  product_id: z.coerce.number().int().min(1),
+  product_slug: z.string().trim().min(1).max(80).optional(),
+  product_id: z.coerce.number().int().min(1).optional(),
   tier_id: z.coerce.number().int().min(1),
   quantity: z.coerce.number().int().min(1).max(100_000_000),
   target: z.string().trim().min(1).max(600),
   credit_code: z.string().trim().max(20).optional().default(""),
-});
+}).refine((v) => v.product_slug || v.product_id, "Produk tidak valid");
 
 export async function POST(req: NextRequest) {
   if (!checkRateLimit(req, "pedia:quote")) {
@@ -31,13 +32,18 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
   }
-  const { product_id, tier_id, quantity, target, credit_code } = parsed.data;
+  const { tier_id, quantity, target, credit_code } = parsed.data;
   const db = createDatabaseAccess();
 
-  const product = await db.queryFirst(
-    `SELECT * FROM pedia_products WHERE id=? AND is_active=1`, product_id,
-  ).catch(() => null);
+  const product = parsed.data.product_slug
+    ? await db.queryFirst(
+      `SELECT * FROM pedia_products WHERE slug=? AND is_active=1`, parsed.data.product_slug,
+    ).catch(() => null)
+    : await db.queryFirst(
+      `SELECT * FROM pedia_products WHERE id=? AND is_active=1`, parsed.data.product_id,
+    ).catch(() => null);
   if (!product) return NextResponse.json({ error: "Produk tidak tersedia." }, { status: 404 });
+  const product_id = Number(product.id);
   const tier = await db.queryFirst(
     `SELECT * FROM pedia_tiers WHERE id=? AND product_id=? AND is_active=1`,
     tier_id, product_id,

@@ -113,7 +113,7 @@ describe("variant min_qty — bot & storefront", () => {
   });
 
   it("web: stepper PDP/modal + Beli Langsung bawa qty, dialog konsisten solid", () => {
-    const pdp = read("src/app/produk/[slug]/product-detail-client.tsx");
+    const pdp = read("src/app/(shop)/produk/[slug]/product-detail-client.tsx");
     // Badge TIDAK di tiap kartu varian (menumpuk) — info min hanya di stepper.
     expect(pdp).not.toContain("Min. {Number");
     expect(pdp).toContain("Jumlah");
@@ -125,7 +125,7 @@ describe("variant min_qty — bot & storefront", () => {
     expect(modal).not.toContain("ax-glass-strong");
     expect(modal).toContain("Min. pembelian");
     expect(modal).toContain("qty=${safeModalQty}");
-    const checkout = read("src/app/checkout/page.tsx");
+    const checkout = read("src/app/(shop)/checkout/page.tsx");
     expect(checkout).toContain("Sesuaikan ke minimum");
     expect(checkout).toContain("bg-[#0B1025]");
     expect(checkout).not.toContain("isBelowMinimumIssue");
@@ -135,7 +135,7 @@ describe("variant min_qty — bot & storefront", () => {
     // Temuan review: varian stok 3/min 50 bisa dipilih lalu pasti gagal di
     // quote (qty>=min → insufficient_stock, qty<min → below_minimum).
     // Definisi "tak bisa dibeli": stock !== -1 && stock < min.
-    const pdp = read("src/app/produk/[slug]/product-detail-client.tsx");
+    const pdp = read("src/app/(shop)/produk/[slug]/product-detail-client.tsx");
     expect(pdp).toContain("isBelowMinimum");
     expect(pdp).toContain("STOK &lt; MIN");
     const modal = read("src/components/storefront/QuickVariantModal.tsx");
@@ -143,7 +143,7 @@ describe("variant min_qty — bot & storefront", () => {
     expect(modal).toContain("Stok < min");
     const cart = read("src/stores/cart.ts");
     expect(cart).toContain("isBelowMinimumStock");
-    const checkout = read("src/app/checkout/page.tsx");
+    const checkout = read("src/app/(shop)/checkout/page.tsx");
     expect(checkout).toContain("stok di bawah minimum");
     // Unlimited (-1) jangan ikut dimatikan. Modal kini memakai stok EFEKTIF
     // (eff, revisi sore 2026-10-02: unique = min kolom vs inventory) — cek

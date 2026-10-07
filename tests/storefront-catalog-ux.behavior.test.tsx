@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 // Beranda interaktif kini di home-client.tsx (page.tsx = server, SSR katalog).
 // Tanpa `initialProducts` klien memuat /api/products seperti sebelumnya.
-import { HomeClient as HomePage } from "@/app/home-client";
+import { HomeClient as HomePage } from "@/app/(shop)/home-client";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/",

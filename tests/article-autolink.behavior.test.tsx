@@ -40,7 +40,7 @@ async function renderArticle(content: string) {
   const fx = createD1Fixture();
   fx.sql.prepare(`INSERT INTO articles(slug,title,excerpt,cover_url,content,status,is_published,published_at)
     VALUES('cara-login-netflix-setelah-order-di-axvara','Cara Login Netflix','Excerpt',NULL,?,'published',1,'2026-10-03 00:00:00')`).run(content);
-  const { default: ArtikelDetail } = await import("@/app/artikel/[slug]/page");
+  const { default: ArtikelDetail } = await import("@/app/(shop)/artikel/[slug]/page");
   render(await ArtikelDetail({ params: Promise.resolve({ slug: "cara-login-netflix-setelah-order-di-axvara" }) }));
   return fx;
 }
@@ -162,7 +162,7 @@ describe("kredensial pasca-bayar: link bisa diklik (CredentialText)", () => {
 
 describe("artikel: server component aman untuk edge", () => {
   it("page artikel tidak mengimpor modul client (penyebab 500 prod 2026-10-03)", () => {
-    const page = readFileSync("src/app/artikel/[slug]/page.tsx", "utf8");
+    const page = readFileSync("src/app/(shop)/artikel/[slug]/page.tsx", "utf8");
     // linkifySegments WAJIB dari modul murni — bukan dari ProductCopy.tsx
     // ("use client" + lucide-react) yang membuat edge Pages 500.
     expect(page).toContain('from "@/lib/product-copy/text"');

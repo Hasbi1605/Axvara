@@ -32,6 +32,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Kode pesanan dan No. WA atau email wajib diisi." }, { status: 400 });
   }
   const code = parsed.data.code.trim().toUpperCase();
+  // Kode Pedia (AXP-…) — pola sama, tabel item berbeda (PD-13).
+  if (/^AXP-\d{8}-[A-Z0-9]{8}$/.test(code)) {
+    const { lookupPediaOrder } = await import("@/lib/pedia/lookup");
+    return lookupPediaOrder(code, contactRaw);
+  }
   if (!/^AXV-\d{8}-[A-Z0-9]{8}$/.test(code)) {
     return NextResponse.json({ error: "Format kode tidak valid. Contoh: AXV-20260917-AB12CD34." }, { status: 400 });
   }

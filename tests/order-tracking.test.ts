@@ -101,7 +101,7 @@ describe("POST /api/orders/lookup — lacak dengan kode + WA", () => {
 
 describe("Halaman /lacak-pesanan — wiring UX", () => {
   it("form kode + WA memanggil lookup dan memakai pola desain AXVARA", () => {
-    const client = read("src/app/lacak-pesanan/lacak-pesanan-client.tsx");
+    const client = read("src/app/(shop)/lacak-pesanan/lacak-pesanan-client.tsx");
     expect(client).toContain('"/api/orders/lookup"');
     expect(client).toContain("ax-glass-card");
     expect(client).toContain("Lacak Pesanan");
@@ -117,7 +117,7 @@ describe("Halaman /lacak-pesanan — wiring UX", () => {
     expect(read("src/components/storefront/Navbar.tsx")).toContain('href="/lacak-pesanan"');
     expect(read("src/components/storefront/Footer.tsx")).toContain('href="/lacak-pesanan"');
     expect(read("src/components/storefront/MobileBottomNav.tsx")).toContain('href: "/lacak-pesanan"');
-    expect(read("src/app/cara-order/page.tsx")).toContain('href="/lacak-pesanan"');
-    expect(read("src/app/pesanan/[code]/page.tsx")).toContain('href="/lacak-pesanan"');
+    expect(read("src/app/(shop)/cara-order/page.tsx")).toContain('href="/lacak-pesanan"');
+    expect(read("src/app/(shop)/pesanan/[code]/page.tsx")).toContain('href="/lacak-pesanan"');
   });
 });

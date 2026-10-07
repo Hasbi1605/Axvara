@@ -60,7 +60,7 @@ describe("butir 3 — Integrasi Agent & Subscriber Email jadi tab Pengaturan", (
 
   it("section lama tetap sah agar tautan/bookmark tidak mati", () => {
     const shell = read("src/components/admin/AdminShell.tsx");
-    const page = read("src/app/admin/page.tsx");
+    const page = read("src/app/(shop)/admin/page.tsx");
     expect(shell).toContain('"subscribers"');
     expect(shell).toContain('"agent"');
     // ADMIN_SECTIONS masih menerima keduanya sebagai ?section= yang valid.

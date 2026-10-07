@@ -12,7 +12,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }));
 
-import OrderSuccessPage from "@/app/pesanan/[code]/page";
+import OrderSuccessPage from "@/app/(shop)/pesanan/[code]/page";
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); localStorage.clear(); });
 

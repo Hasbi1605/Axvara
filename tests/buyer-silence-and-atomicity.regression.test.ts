@@ -85,7 +85,7 @@ describe("C-H1: harga divalidasi ulang antara quote dan pembuatan order", () => 
   });
 
   it("checkout memuat harga terbaru, bukan sekadar melempar error mentah", () => {
-    const page = read("src/app/checkout/page.tsx");
+    const page = read("src/app/(shop)/checkout/page.tsx");
     // POST order kini lewat fetchWithTimeout (batas 60 dtk untuk jaringan lambat).
     const start = page.indexOf('fetchWithTimeout("/api/orders"');
     expect(start).toBeGreaterThan(-1);

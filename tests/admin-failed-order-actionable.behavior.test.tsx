@@ -7,7 +7,7 @@
 // bayar, pengiriman gagal permanen, dan admin tidak punya satu pun tombol.
 import { afterEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import AdminPage from "@/app/admin/page";
+import AdminPage from "@/app/(shop)/admin/page";
 import { ToastProvider } from "@/components/ui/Toast";
 
 vi.mock("next/navigation", () => ({

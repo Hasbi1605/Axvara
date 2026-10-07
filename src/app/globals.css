@@ -181,3 +181,28 @@ body {
   -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
 }
 .glow-cyan { box-shadow: 0 0 32px rgba(0,229,255,0.22); }
+
+/* ===== AXVARA PEDIA — token sub-brand (PEDIA-DESIGN.md §3.1) ===== */
+.pedia-root {
+  --px-violet: #8B5CF6;
+  --px-violet-soft: rgba(139,92,246,0.16);
+  --px-violet-strong: #A78BFA;
+  --px-gradient: linear-gradient(135deg, #00E5FF 0%, #8B5CF6 100%);
+  --px-hero-glow: radial-gradient(640px 420px at 30% 0%, rgba(0,229,255,0.16), transparent 70%), radial-gradient(560px 380px at 75% 10%, rgba(139,92,246,0.18), transparent 70%);
+  scroll-padding-bottom: 96px;
+}
+.pedia-gradient-text {
+  background: var(--px-gradient);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.pedia-tier-selected {
+  position: relative;
+  border: 1.5px solid transparent;
+  background:
+    linear-gradient(rgba(139,92,246,0.16), rgba(139,92,246,0.16)) padding-box,
+    var(--px-gradient) border-box;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pedia-root * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}

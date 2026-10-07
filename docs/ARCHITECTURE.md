@@ -87,20 +87,33 @@ axvara/
 │   └── logo/
 │       └── axvara-wordmark.svg
 ├── src/app/                     # Next.js App Router
-│   ├── page.tsx                 # Homepage (server, edge): muat katalog D1 via handler GET /api/products → HomeClient + JSON-LD Organization/WebSite/ItemList (2026-09-24)
-│   ├── home-client.tsx          # Homepage interaktif (kategori, cari, load more); `initialProducts` dari server, fallback fetch
+│   ├── layout.tsx               # ROOT MINIMAL (2026-10-08, PEDIA §9.2): font + metadata global SAJA. TANPA chrome toko/Pedia — keduanya di layout masing-masing di bawah agar tidak saling mewarisi.
+│   ├── (shop)/                  # Toko pusat axvara.tech (route group — URL tidak berubah)
+│   │   ├── layout.tsx           # Chrome toko (Navbar/Footer/CartDrawer/MobileBottomNav/dll) + metadata OG toko
+│   │   ├── page.tsx             # Homepage (server, edge): muat katalog D1 via handler GET /api/products → HomeClient + JSON-LD Organization/WebSite/ItemList (2026-09-24)
+│   │   ├── home-client.tsx      # Homepage interaktif (kategori, cari, load more); `initialProducts` dari server, fallback fetch
+│   │   ├── artikel/[slug]/      # Artikel publik Markdown/legacy JSON
+│   │   ├── cara-order/          # Panduan order
+│   │   ├── garansi-replace/     # Ketentuan layanan & garansi third-party (acuan klaim, garansi ikut deskripsi produk)
+│   │   ├── produk/[slug]/       # PDP: server component SEO (metadata/JSON-LD/h1 D1) + client interaktif
+│   │   │   ├── checkout/        # Checkout revamp ala Sekalipay 2026-09-23 — ① Metode (QRIS auto-select) → ② Data minimal WA+Email wajib tanpa Nama (fallback prefix email) → S&K → 1 CTA; rail kanan DESKTOP ONLY (hidden lg:block, ringkasan+S&K+CTA), mobile accordion ringkasan + S&K kiri + sticky CTA; 1 handler submit
+│   │   ├── pesanan/[code]/      # Status + QRIS dinamis + polling lunas (dari checkout); pesanan/layout.tsx = noindex
+│   │   ├── lacak-pesanan/       # Lacak mandiri kode + No. WA/email via POST /api/orders/lookup + timeline + auto-refresh
+│   │   ├── link/                # Link-in-bio pengganti Linktree (bio IG): 6 tombol + share, tanpa chrome global
+│   │   ├── admin/
+│   │   │   └── page.tsx         # Shell + modul admin berbasis query section
+│   │   ├── mcp/route.ts         # MCP HTTP katalog toko
+│   │   └── r2/[...key]/route.ts # R2 publik catch-all
+│   ├── pedia/                   # Axvara Pedia pedia.axvara.tech (2026-10-08, PEDIA-PRD; spesifikasi: docs/PEDIA-PRD.md, docs/PEDIA-DESIGN.md)
+│   │   ├── layout.tsx           # Layout Pedia: .pedia-root + PediaNavbar + PediaBottomNav + footer mini (TANPA chrome toko)
+│   │   ├── page.tsx + home-client.tsx  # Beranda: hero "Tempel link", LinkPasteHero (deteksi 150ms), trust strip, PlatformGrid, laris, ticker (≥5/24jam), FAQ+JSON-LD
+│   │   ├── p/[platform]/        # Layanan per platform (8): filter jenis + grid ProductCard
+│   │   ├── o/[slug]/            # Order 5 langkah (target→jumlah→kualitas→cek→kontak) + sticky bar mobile + quote→order→QRIS
+│   │   ├── pesanan/[code]/      # Status: QRIS lunas / ring+timeline/refill/kartu kredit/needs_check + auto-refresh
+│   │   ├── lacak/               # Lacak kode + kontak (lookupPediaOrder) + axp-orders perangkat
+│   │   └── bantuan/ + ketentuan/ + layanan/  # Bantuan (3 grup), S&K 7 poin, semua layanan
 │   ├── llms.txt/route.ts        # GEO: profil toko + produk yang bisa dibeli (markdown, cache 10 mnt)
 │   ├── robots.ts / sitemap.ts   # robots: tutup /admin, /api/ (kecuali 3 endpoint baca publik), /checkout, /pesanan/; crawler AI eksplisit
-│   ├── artikel/[slug]/          # Artikel publik Markdown/legacy JSON
-│   ├── cara-order/               # Panduan order
-│   ├── garansi-replace/          # Ketentuan layanan & garansi third-party (acuan klaim, garansi ikut deskripsi produk)
-│   ├── produk/[slug]/          # PDP: server component SEO (metadata/JSON-LD/h1 D1) + client interaktif
-│   │   ├── checkout/       # Checkout revamp ala Sekalipay 2026-09-23 — ① Metode (QRIS auto-select) → ② Data minimal WA+Email wajib tanpa Nama (fallback prefix email) → S&K → 1 CTA; rail kanan DESKTOP ONLY (hidden lg:block, ringkasan+S&K+CTA), mobile accordion ringkasan + S&K kiri + sticky CTA; 1 handler submit
-│   ├── pesanan/[code]/         # Status + QRIS dinamis + polling lunas (dari checkout); pesanan/layout.tsx = noindex
-│   ├── lacak-pesanan/          # Lacak mandiri kode + No. WA/email via POST /api/orders/lookup + timeline + auto-refresh
-│   ├── link/                   # Link-in-bio pengganti Linktree (bio IG): 6 tombol + share, tanpa chrome global
-│   ├── admin/
-│   │   └── page.tsx             # Shell + modul admin berbasis query section
 │   ├── api/
 │   │   ├── products/
 │   │   ├── categories/
@@ -114,8 +127,8 @@ axvara/
 │   │   ├── upload/              # Media admin ke R2
 │   │   ├── agent/               # Content API scoped Bearer token
 │   │   ├── cron/                # Publish artikel + expire order terjadwal
-│   │   └── auth/
-│   ├── layout.tsx
+│   │   │   └── auth/
+│   │   ├── pedia/               # API Pedia (docs/PEDIA-PRD.md §9.7): catalog/ticker/quote/orders/[code]+refill/credits/check, lookup di orders/lookup, admin pedia/*
 │   └── globals.css
 ├── src/components/
 │   ├── ui/                      # Button, Input, Badge, Modal, Drawer, Toast,
@@ -128,6 +141,8 @@ axvara/
 │   │                            # Skeletons (satu bentuk skeleton per halaman: overlay navigasi + loading halaman)
 │   └── admin/                   # Shell, login gate, hooks (useAdminAuth/useProductManager),
 │       └── sections/            # satu komponen per section admin (page.tsx tinggal shell + routing)
+│       └── pedia/               # PediaAdmin (Overview+Produk+Jasa+Tingkat+Pesanan+Kredit+Pengaturan+PEM-11) + PediaInboxTable (aksi tiap item)
+│   ├── pedia/                   # Komponen Pedia: PediaNavbar, PediaBottomNav, LinkPasteHero, PlatformGrid, OrderTicker, StatusWidgets (ring/pil/timeline)
 ├── src/hooks/
 │   ├── useModalA11y.ts          # Escape + focus trap + scroll lock + restore fokus — SATU
 │                                # implementasi untuk CartDrawer, PopupBanner, QuickVariantModal.
@@ -164,7 +179,9 @@ axvara/
 │   │                            # (dipakai /api/catalog; jangan impor dari catalog.ts/komponen)
 │   ├── config.ts                # payment methods, site config
 │   ├── fetch-timeout.ts         # fetchWithTimeout + FetchTimeoutError (fetch browser tak punya batas waktu)
-│   └── utils.ts                 # formatRupiah, generateOrderCode
+│   ├── utils.ts                 # formatRupiah, generateOrderCode
+│   ├── pedia/                   # Lib Katalog Pedia (docs/PEDIA-PRD.md §9.8): quote/pricing, link (deteksi+mask), proxy (PSMM via VPS + inisial),
+│   │                            # dispatch (job+poll), credits (PDK-), notify/email (Email B), seed (9 produk/27 jasa/39 tingkat), lookup (PD-13)
 ├── stores/
 │   ├── cart.ts                  # Zustand cart store (localStorage) — badge/judul pakai lineCount() = jumlah baris varian (2026-09-19); count() sum-qty hanya untuk subtotal
 │   └── navigation.ts            # status navigasi sejak klik sampai pathname berubah (dibaca NavigationProgress)

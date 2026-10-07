@@ -19,7 +19,7 @@ const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), "
 
 describe("galeri PDP memakai produk yang diklik, bukan list[0]", () => {
   it("client mencari produk by slug sebelum membangun galeri", () => {
-    const src = read("src/app/produk/[slug]/product-detail-client.tsx");
+    const src = read("src/app/(shop)/produk/[slug]/product-detail-client.tsx");
     expect(src).not.toMatch(/const found = list\[0\];/);
     expect(src).toContain("list.find((p) => p.slug === slug)");
   });

@@ -22,7 +22,7 @@ describe("Checkout quote integrity", () => {
   });
 
   it("client mengirim slug+snapshot harga dan order memakai quote token", () => {
-    const checkout = read("src/app/checkout/page.tsx");
+    const checkout = read("src/app/(shop)/checkout/page.tsx");
     const orders = read("src/app/api/orders/route.ts");
     expect(checkout).toContain("expected_price");
     expect(checkout).toContain("quote_token: quoteToken");
@@ -35,7 +35,7 @@ describe("Checkout quote integrity", () => {
 
   it("stok tidak tersedia menghasilkan issue terstruktur yang dipahami UI", () => {
     const quote = read("src/app/api/checkout/quote/route.ts");
-    const checkout = read("src/app/checkout/page.tsx");
+    const checkout = read("src/app/(shop)/checkout/page.tsx");
     expect(quote).toContain("type: \"out_of_stock\"");
     expect(quote).toContain("status: 409");
     expect(checkout).toContain("r.status === 409");
@@ -48,12 +48,12 @@ describe("Checkout quote integrity", () => {
     // + blok Made By Order menampilkan "Meitu VIP - 7 Hari".
     expect(quote).toContain("formatVariantLabel");
     // PDP + modal memakai helper yang sama (satu pola, bukan tambal per layar).
-    expect(read("src/app/produk/[slug]/product-detail-client.tsx")).toContain("formatVariantLabel(v)");
+    expect(read("src/app/(shop)/produk/[slug]/product-detail-client.tsx")).toContain("formatVariantLabel(v)");
     expect(read("src/components/storefront/QuickVariantModal.tsx")).toContain("formatVariantLabel(v)");
   });
 
   it("layout revamp ala Sekalipay (2026-09-23): metode dulu, ringkasan 1x, CTA 1x per viewport", () => {
-    const checkout = read("src/app/checkout/page.tsx");
+    const checkout = read("src/app/(shop)/checkout/page.tsx");
     // Rail kanan DESKTOP ONLY: aside sticky berisi ringkasan + S&K + CTA
     // (metode pindah ke kolom kiri; mobile rail disembunyikan total).
     expect(checkout).toContain("Action rail kanan");
@@ -109,7 +109,7 @@ describe("Checkout quote integrity", () => {
     const products = read("src/app/api/products/route.ts");
     const card = read("src/components/storefront/ProductCard.tsx");
     // PDP interaktif kini di product-detail-client.tsx (page.tsx server-only, #11).
-    const detail = read("src/app/produk/[slug]/product-detail-client.tsx");
+    const detail = read("src/app/(shop)/produk/[slug]/product-detail-client.tsx");
     expect(quote).toContain('type: "variant_required"');
     expect(products).toContain("variant_count");
     expect(card).toContain("hasVariants");
@@ -117,7 +117,7 @@ describe("Checkout quote integrity", () => {
   });
 
   it("panel upload bukti disembunyikan selama maintenance jalur manual", () => {
-    const checkout = read("src/app/checkout/page.tsx");
+    const checkout = read("src/app/(shop)/checkout/page.tsx");
     // Maintenance 2026-09-17: tidak ada input file bukti di checkout (QRIS
     // saja). Revert: kembalikan blok upload + setProofUrl(null) reset.
     expect(checkout).toContain("MANUAL_PAYMENTS_MAINTENANCE");
@@ -201,17 +201,17 @@ describe("Authoritative UI and admin state", () => {
   it("homepage/detail/direct checkout tidak menghidupkan seed produk", () => {
     // Beranda: state awal = produk D1 dari server (page.tsx memanggil handler
     // /api/products) atau kosong — tidak pernah seed statis.
-    const home = read("src/app/home-client.tsx");
+    const home = read("src/app/(shop)/home-client.tsx");
     expect(home).toContain("useState<Product[]>(initialProducts ?? [])");
     expect(home).not.toMatch(/import \{[^}]*\bproducts\b[^}]*\} from "@\/lib\/products"/);
-    expect(read("src/app/page.tsx")).toContain("@/app/api/products/route");
+    expect(read("src/app/(shop)/page.tsx")).toContain("@/app/api/products/route");
     // PDP interaktif kini di product-detail-client.tsx (page.tsx server-only, #11).
-    expect(read("src/app/produk/[slug]/product-detail-client.tsx")).toContain("useState<Product[]>([])");
-    expect(read("src/app/checkout/page.tsx")).not.toContain("products.find");
+    expect(read("src/app/(shop)/produk/[slug]/product-detail-client.tsx")).toContain("useState<Product[]>([])");
+    expect(read("src/app/(shop)/checkout/page.tsx")).not.toContain("products.find");
   });
 
   it("admin tidak memakai order localStorage dan payment methods dapat diedit", () => {
-    const admin = read("src/app/admin/page.tsx");
+    const admin = read("src/app/(shop)/admin/page.tsx");
     expect(admin).not.toContain('localStorage.getItem("axvara-orders")');
     expect(admin).not.toContain('localStorage.setItem("axvara-orders")');
     expect(admin).toContain("PaymentMethodsManager");
@@ -221,7 +221,7 @@ describe("Authoritative UI and admin state", () => {
     expect(paymentApi).toContain("INSERT INTO payment_methods");
     expect(paymentApi).toContain("export async function POST");
     expect(paymentApi).toContain("QRIS statis tidak lagi digunakan");
-    expect(read("src/app/checkout/page.tsx")).not.toContain('pmQris.qris_url || "/qris/axvara-qris.jpg"');
+    expect(read("src/app/(shop)/checkout/page.tsx")).not.toContain('pmQris.qris_url || "/qris/axvara-qris.jpg"');
   });
 
   it("semua modal storefront memakai satu hook a11y kanonis", () => {
@@ -249,14 +249,14 @@ describe("Authoritative UI and admin state", () => {
   });
 
   it("halaman status memakai visual per status dan menampilkan kegagalan polling", () => {
-    const statusPage = read("src/app/pesanan/[code]/page.tsx");
+    const statusPage = read("src/app/(shop)/pesanan/[code]/page.tsx");
     expect(statusPage).toContain("statusVisual");
     expect(statusPage).toContain("/icons/ios11/close-96.png");
     expect(statusPage).toContain("Status terbaru gagal dimuat");
   });
 
   it("framing QRIS menempel di QR: label Scan QRIS + lockup resmi + kontrak gambar utuh", () => {
-    const statusPage = read("src/app/pesanan/[code]/page.tsx");
+    const statusPage = read("src/app/(shop)/pesanan/[code]/page.tsx");
     // Label instruksi persis di atas QR, di cabang QR aktif saja.
     expect(statusPage).toContain("Scan QRIS");
     // Lockup resmi di bawah QR: logo resmi + teks lengkap (tidak terpotong "...").
@@ -270,7 +270,7 @@ describe("Authoritative UI and admin state", () => {
   });
 
   it("tombol Telegram Admin mengarah ke akun support manusia, bukan bot", () => {
-    const statusPage = read("src/app/pesanan/[code]/page.tsx");
+    const statusPage = read("src/app/(shop)/pesanan/[code]/page.tsx");
     expect(statusPage).toContain("supportTelegramLink()");
     expect(statusPage).not.toContain("adminTelegramLink()");
     const site = read("src/lib/site.ts");
@@ -278,7 +278,7 @@ describe("Authoritative UI and admin state", () => {
   });
 
   it("panel detail akun hanya tampil bila kredensial siap; estimasi dibedakan per kelas pengiriman", () => {
-    const statusPage = read("src/app/pesanan/[code]/page.tsx");
+    const statusPage = read("src/app/(shop)/pesanan/[code]/page.tsx");
     // Render kondisional — bukan lagi `isPaid` saja (form mati untuk produk manual).
     expect(statusPage).toContain("order.credentialsReady");
     expect(statusPage).toMatch(/isPaid && \(order\.credentialsReady \?/);
@@ -315,7 +315,7 @@ describe("Authoritative UI and admin state", () => {
   });
 
   it("blok tombol bantuan 2-tier: navigasi di atas, WA/Telegram pill ringan di bawah (anti wrap/gepeng)", () => {
-    for (const file of ["src/app/pesanan/[code]/page.tsx", "src/app/lacak-pesanan/lacak-pesanan-client.tsx"]) {
+    for (const file of ["src/app/(shop)/pesanan/[code]/page.tsx", "src/app/(shop)/lacak-pesanan/lacak-pesanan-client.tsx"]) {
       const src = read(file);
       // Tier 1 navigasi: grid 2 kolom + nowrap + text-sm (proporsional, tidak wrap).
       expect(src, file).toContain("grid grid-cols-2 gap-2.5");

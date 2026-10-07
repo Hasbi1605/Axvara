@@ -22,8 +22,8 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/checkout",
 }));
 
-import CheckoutPage from "@/app/checkout/page";
-import OrderSuccessPage from "@/app/pesanan/[code]/page";
+import CheckoutPage from "@/app/(shop)/checkout/page";
+import OrderSuccessPage from "@/app/(shop)/pesanan/[code]/page";
 
 const cartProduct = {
   id: "7", name: "Canva Pro", slug: "canva-pro", price: 10_000, categorySlug: "design", description: "",

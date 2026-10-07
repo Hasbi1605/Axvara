@@ -16,7 +16,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
 }));
 
-import ProductDetailClient from "@/app/produk/[slug]/product-detail-client";
+import ProductDetailClient from "@/app/(shop)/produk/[slug]/product-detail-client";
 
 const pair = (prefix: string) => snapshot.pairs.find((p) => p.variants.some((v) => v.startsWith(prefix)))!;
 

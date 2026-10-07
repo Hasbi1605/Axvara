@@ -127,10 +127,10 @@ describe("Issue #14 — efisiensi query sesuai batas D1 aktual", () => {
   });
 
   it("PDP/checkout tidak lagi fetch seluruh katalog untuk 1 produk", () => {
-    const pdp = read("src/app/produk/[slug]/product-detail-client.tsx");
+    const pdp = read("src/app/(shop)/produk/[slug]/product-detail-client.tsx");
     expect(pdp).not.toContain('fetch("/api/products?active=1")');
     expect(pdp).toContain("slug=${encodeURIComponent(slug)}");
-    const checkout = read("src/app/checkout/page.tsx");
+    const checkout = read("src/app/(shop)/checkout/page.tsx");
     expect(checkout).toContain("active=1&slug=");
     const api = read("src/app/api/products/route.ts");
     expect(api).toContain("p.slug=?");

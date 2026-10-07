@@ -55,14 +55,14 @@ describe("robots.txt", () => {
 
 describe("metadata halaman", () => {
   it("checkout & status pesanan noindex", async () => {
-    const checkout = await import("@/app/checkout/layout");
-    const pesanan = await import("@/app/pesanan/layout");
+    const checkout = await import("@/app/(shop)/checkout/layout");
+    const pesanan = await import("@/app/(shop)/pesanan/layout");
     expect(checkout.metadata.robots).toMatchObject({ index: false });
     expect(pesanan.metadata.robots).toMatchObject({ index: false });
   });
 
   it("layout root: gambar OG ada, tanpa canonical/og:url yang akan diwarisi semua halaman", () => {
-    const layout = readFileSync("src/app/layout.tsx", "utf8");
+    const layout = readFileSync("src/app/(shop)/layout.tsx", "utf8");
     const metadataBlock = layout.slice(layout.indexOf("export const metadata"), layout.indexOf("export default"));
     expect(metadataBlock).toContain("OG_IMAGE");
     expect(metadataBlock).not.toContain("canonical");
@@ -144,7 +144,7 @@ describe("dengan D1", () => {
   it("artikel punya judul, canonical, dan gambar preview sendiri", async () => {
     fx.sql.prepare(`INSERT INTO articles(slug,title,excerpt,cover_url,content,status,published_at)
       VALUES('tips-ai','Tips Memilih Tools AI','Panduan singkat memilih tools AI.','/r2/articles/cover.webp','Isi','published','2026-09-20 03:00:00')`).run();
-    const { generateMetadata } = await import("@/app/artikel/[slug]/page");
+    const { generateMetadata } = await import("@/app/(shop)/artikel/[slug]/page");
     const meta = await generateMetadata({ params: Promise.resolve({ slug: "tips-ai" }) });
     expect(meta.title).toBe("Tips Memilih Tools AI | AXVARA");
     expect(meta.description).toBe("Panduan singkat memilih tools AI.");

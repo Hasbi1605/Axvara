@@ -16,7 +16,7 @@
 //     login walau sesinya masih sah.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import AdminPage from "@/app/admin/page";
+import AdminPage from "@/app/(shop)/admin/page";
 import { WarungRebahanManager } from "@/components/admin/WarungRebahanManager";
 import { useAdminAuth } from "@/components/admin/useAdminAuth";
 import { ToastProvider } from "@/components/ui/Toast";

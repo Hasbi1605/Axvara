@@ -14,7 +14,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }));
 
-import LacakPesananClient from "@/app/lacak-pesanan/lacak-pesanan-client";
+import LacakPesananClient from "@/app/(shop)/lacak-pesanan/lacak-pesanan-client";
 
 const CODE = "AXV-20260925-CONTACT1";
 beforeEach(() => { sessionStorage.clear(); localStorage.clear(); nav.params = new URLSearchParams(); });
@@ -90,7 +90,7 @@ describe("panel Detail Akun Digital", () => {
   });
 
   it("checkout menyimpan kontak dengan kunci yang sama, di sessionStorage (bukan localStorage)", () => {
-    const checkout = fs.readFileSync("src/app/checkout/page.tsx", "utf8");
+    const checkout = fs.readFileSync("src/app/(shop)/checkout/page.tsx", "utf8");
     expect(checkout).toContain("sessionStorage.setItem(checkoutContactKey(code), wa.trim())");
     expect(checkout).not.toMatch(/localStorage\.setItem\([^)]*checkoutContactKey/);
   });

@@ -9,7 +9,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act, render, screen, cleanup, waitFor } from "@testing-library/react";
-import OrderStatusPage from "@/app/pesanan/[code]/page";
+import OrderStatusPage from "@/app/(shop)/pesanan/[code]/page";
 
 const CODE = "AXV-20260918-AB12CD34";
 

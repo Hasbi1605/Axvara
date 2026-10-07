@@ -12,7 +12,7 @@
 // checkAuth dipanggil ulang; sesi baru (login sukses) membuka lagi guard.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
-import AdminPage from "@/app/admin/page";
+import AdminPage from "@/app/(shop)/admin/page";
 import { ToastProvider } from "@/components/ui/Toast";
 
 vi.mock("next/navigation", () => ({

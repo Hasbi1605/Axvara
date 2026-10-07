@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 110" fill="none" aria-label="Axvara Pedia">
+
+<path d="M60 4 L6.5 104 L113.5 104 Z" stroke="currentColor" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+<g fill="currentColor">
+<rect x="38.5" y="72" width="7" height="18" rx="3.5"/>
+<rect x="56.5" y="58" width="7" height="32" rx="3.5"/>
+<rect x="74.5" y="44" width="7" height="46" rx="3.5"/>
+</g>
+</svg>

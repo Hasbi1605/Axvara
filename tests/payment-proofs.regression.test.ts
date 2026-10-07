@@ -52,7 +52,7 @@ describe("WhatsApp payment proof review", () => {
 
   it("merges WhatsApp proof review into Orders and removes the duplicate page", () => {
     const shell = read("src/components/admin/AdminShell.tsx");
-    const page = read("src/app/admin/page.tsx");
+    const page = read("src/app/(shop)/admin/page.tsx");
     const manager = read("src/components/admin/OrdersManager.tsx");
     const ordersApi = read("src/app/api/admin/orders/route.ts");
     expect(shell).not.toContain('"proofs"');
