@@ -306,6 +306,11 @@ MVP seed: 8–12 produk dummy dengan foto placeholder premium + harga realistis 
 
 ---
 
+## 9. Lini Produk Berikutnya (rencana)
+
+- **AXVARA PEDIA** — toko SMM kurasi di `pedia.axvara.tech`, supplier providersmm.id. Status 📝 spesifikasi siap eksekusi (2026-10-07), belum live. Detail: `docs/PEDIA-PRD.md` + `docs/PEDIA-DESIGN.md`.
+- **AXVARA AI** (AI Gateway new-api di VPS Tencent) — menyusul setelah Pedia, belum ada PRD.
+
 ## Appendix — Referensi
 
 - Inspirasi fungsional: https://marketku.id/

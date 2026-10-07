@@ -22,6 +22,8 @@ axvara/
 │   ├── ARCHITECTURE.md     # Stack D1+R2, schema, API contract
 │   ├── TELEGRAM-BOT-KLIKQRIS-PLAN.md # Arsip rencana provider lama (superseded)
 │   ├── WHATSAPP-GROUP-BOT-PLAN.md # Rencana varian terpusat + bot grup WA (terimplementasi)
+│   ├── PEDIA-PRD.md        # 📝 Spesifikasi AXVARA PEDIA (toko SMM kurasi, pedia.axvara.tech) — belum dieksekusi
+│   ├── PEDIA-DESIGN.md     # 📝 Panduan desain & style Pedia (turunan DESIGN.md)
 │   └── VPS-RESEARCH.md     # Riset VPS gratis — kenapa Pages juara
 ├── public/
 │   ├── brand/
