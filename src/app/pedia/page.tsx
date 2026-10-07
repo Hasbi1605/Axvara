@@ -35,6 +35,20 @@ async function getTicker(): Promise<{ text: string }[]> {
 }
 
 export default async function PediaHome() {
+  // AC-23: flag mati → halaman "Segera hadir", tanpa error.
+  if (process.env.PEDIA_ENABLED !== "true") {
+    return (
+      <div className="mx-auto max-w-xl pt-16 text-center">
+        <h1 className="font-display text-[28px] font-bold text-white">Axvara Pedia segera hadir</h1>
+        <p className="mt-2 text-sm text-white/60">
+          Toko followers, likes & views — tempel link, sisanya beres. Kami sedang menyiapkan semuanya.
+        </p>
+        <a href="https://axvara.tech?utm_source=pedia&utm_medium=coming_soon" className="mt-6 inline-flex h-12 items-center rounded-[14px] bg-[#00E5FF] px-6 text-sm font-bold text-[#070a1e]">
+          Kembali ke axvara.tech
+        </a>
+      </div>
+    );
+  }
   const [products, ticker] = await Promise.all([getCatalog(), getTicker()]);
   const featured = products.filter((p) => p.is_featured).slice(0, 8);
   const list = (featured.length > 0 ? featured : products).slice(0, 8);

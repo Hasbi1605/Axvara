@@ -88,11 +88,17 @@ const zero = {
  *   bila link masih pending — lihat profit_estimated_orders).
  */
 function orderProfitSelects(): { supplierCost: string; manualCost: string } {
+  // AC-22 / PD-45: modal Pedia = supplier_charge riil (fallback snapshot
+  // rate × qty bila charge belum ada — item masih queued).
   const supplierCost = `COALESCE(
     (SELECT SUM(wl.wr_cost) FROM wr_order_links wl WHERE wl.order_code=o.code),
     0
   ) + COALESCE(
     (SELECT SUM(sl.sk_cost) FROM sk_order_links sl WHERE sl.order_code=o.code),
+    0
+  ) + COALESCE(
+    (SELECT SUM(COALESCE(pi.supplier_charge, pi.supplier_rate_snapshot * pi.quantity / 1000, 0))
+       FROM pedia_order_items pi WHERE pi.order_code=o.code),
     0
   )`;
   // manual_cost hanya untuk varian yang TIDAK punya link supplier pada order

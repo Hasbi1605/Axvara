@@ -16,6 +16,8 @@ export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
   const status = params.get("status")?.trim().toLowerCase() || "";
   const channel = params.get("channel")?.trim().toLowerCase() || "";
+  // AC-22 / PD-44: filter Jenis — 'pedia' (order_kind='pedia') vs 'apps'.
+  const kind = params.get("kind")?.trim().toLowerCase() || "";
   const method = params.get("method")?.trim().toLowerCase() || "";
   const proof = params.get("proof")?.trim().toLowerCase() || "";
   const query = params.get("q")?.trim().slice(0, 120) || "";
@@ -29,6 +31,8 @@ export async function GET(req: NextRequest) {
   const bindings: unknown[] = [];
   if (VALID_STATUS.has(status)) { conditions.push("o.status=?"); bindings.push(status); }
   if (VALID_CHANNEL.has(channel)) { conditions.push("COALESCE(o.sales_channel,'web')=?"); bindings.push(channel); }
+  if (kind === "pedia") conditions.push("COALESCE(o.order_kind,'apps')='pedia'");
+  else if (kind === "apps") conditions.push("COALESCE(o.order_kind,'apps')='apps'");
   if (method === "manual") conditions.push("LOWER(o.payment_method)!='qris'");
   else if (/^[a-z0-9_-]{1,32}$/.test(method)) { conditions.push("LOWER(o.payment_method)=?"); bindings.push(method); }
   if (proof === "submitted") conditions.push("EXISTS(SELECT 1 FROM payment_proofs pf WHERE pf.order_code=o.code AND pf.status='submitted')");

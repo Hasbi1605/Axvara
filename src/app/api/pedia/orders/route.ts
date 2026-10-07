@@ -124,8 +124,27 @@ export async function POST(req: NextRequest) {
     }
   }
   const payable = freshTotal - creditUsed;
+
+  // AC-06 / PD-09: guard link ganda — tolak order baru untuk
+  // (target_normalized, product_id) yang masih aktif (queued…in_progress).
+  const dup = await db.queryFirst(
+    `SELECT order_code FROM pedia_order_items
+      WHERE target_normalized=? AND product_id=?
+        AND status IN ('queued','submitting','submitted','in_progress')
+      ORDER BY id DESC LIMIT 1`,
+    quote.target_normalized, quote.product_id,
+  ).catch(() => null);
+  if (dup) {
+    return NextResponse.json({
+      error: "duplicate_active_order",
+      message: `Link ini masih diproses di pesanan ${String(dup.order_code)}. Tunggu selesai dulu, ya.`,
+      order_code: String(dup.order_code),
+    }, { status: 409 });
+  }
+
   const wa = normalizeWa(customer_wa);
-  const code = generateOrderCode();
+  // Kode order prefiks AXP- (dibedakan dari AXV-, PRD §8).
+  const code = generateOrderCode().replace(/^AXV-/, "AXP-");
   const quoteIdRow = `pedia:${quote.jti}`;
 
   try {

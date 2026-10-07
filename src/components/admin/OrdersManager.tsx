@@ -42,6 +42,8 @@ export function OrdersManager({ onChanged }: { onChanged?: () => void }) {
   const [pages, setPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [channel, setChannel] = useState(initial.get("channel") || "all");
+  // AC-22 / PD-44: filter Jenis — Semua / Aplikasi / Pedia.
+  const [kind, setKind] = useState(initial.get("kind") || "all");
   const [status, setStatus] = useState(initial.get("status") || "all");
   const [method, setMethod] = useState(initial.get("method") || "all");
   const [proof, setProof] = useState(initial.get("proof") || "");
@@ -62,6 +64,7 @@ export function OrdersManager({ onChanged }: { onChanged?: () => void }) {
   const requestParams = useMemo(() => {
     const params = new URLSearchParams({ page: String(page), limit: String(PER_PAGE) });
     if (channel !== "all") params.set("channel", channel);
+    if (kind !== "all") params.set("kind", kind);
     if (status !== "all") params.set("status", status);
     if (method !== "all") params.set("method", method);
     if (proof) params.set("proof", proof);
@@ -69,7 +72,7 @@ export function OrdersManager({ onChanged }: { onChanged?: () => void }) {
     if (dateFrom) params.set("date_from", dateFrom);
     if (dateTo) params.set("date_to", dateTo);
     return params;
-  }, [channel, status, method, proof, query, dateFrom, dateTo, page]);
+  }, [channel, kind, status, method, proof, query, dateFrom, dateTo, page]);
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -91,13 +94,13 @@ export function OrdersManager({ onChanged }: { onChanged?: () => void }) {
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
     const url = new URL(window.location.href);
-    for (const key of ["channel", "status", "method", "proof", "q", "date_from", "date_to", "page"]) url.searchParams.delete(key);
+    for (const key of ["channel", "kind", "status", "method", "proof", "q", "date_from", "date_to", "page"]) url.searchParams.delete(key);
     requestParams.forEach((value, key) => { if (key !== "limit") url.searchParams.set(key, value); });
     history.replaceState(null, "", `${url.pathname}?${url.searchParams}`);
   }, [requestParams]);
 
   const changeFilter = (setter: (value: string) => void, value: string) => { setter(value); setPage(1); };
-  const clearFilters = () => { setChannel("all"); setStatus("all"); setMethod("all"); setProof(""); setDraftQuery(""); setQuery(""); setDateFrom(""); setDateTo(""); setPage(1); };
+  const clearFilters = () => { setChannel("all"); setKind("all"); setStatus("all"); setMethod("all"); setProof(""); setDraftQuery(""); setQuery(""); setDateFrom(""); setDateTo(""); setPage(1); };
   // Filter yang tidak punya kontrol sendiri di layar (terutama `proof`, yang
   // datang dari kartu "Bukti manual" di Ringkasan) sebelumnya menyaring daftar
   // secara diam-diam: semua dropdown menampilkan "Semua" sementara hasilnya
@@ -106,6 +109,7 @@ export function OrdersManager({ onChanged }: { onChanged?: () => void }) {
   const activeFilters: { label: string; clear: () => void }[] = [];
   if (proof === "submitted") activeFilters.push({ label: "Bukti manual menunggu", clear: () => changeFilter(setProof, "") });
   if (channel !== "all") activeFilters.push({ label: `Kanal: ${channel}`, clear: () => changeFilter(setChannel, "all") });
+  if (kind !== "all") activeFilters.push({ label: `Jenis: ${kind === "pedia" ? "Pedia" : "Aplikasi"}`, clear: () => changeFilter(setKind, "all") });
   if (status !== "all") activeFilters.push({ label: `Status: ${status}`, clear: () => changeFilter(setStatus, "all") });
   if (method !== "all") activeFilters.push({ label: `Pembayaran: ${method}`, clear: () => changeFilter(setMethod, "all") });
   if (query) activeFilters.push({ label: `Cari: ${query}`, clear: () => { setDraftQuery(""); setQuery(""); setPage(1); } });
@@ -215,6 +219,7 @@ export function OrdersManager({ onChanged }: { onChanged?: () => void }) {
         <div className="mt-3 grid items-end gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(220px,1.3fr)_repeat(4,minmax(130px,.7fr))_auto]">
           <form onSubmit={(event) => { event.preventDefault(); setQuery(draftQuery.trim()); setPage(1); }}><label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-white/35" htmlFor="order-search">Pencarian</label><div className="relative"><IosIcon name="search" size={15} tint="white" className="absolute left-3 top-3 opacity-45" /><input id="order-search" value={draftQuery} onChange={(event) => setDraftQuery(event.target.value)} className={`${inputClass} pl-9`} placeholder="Kode, nama, WA, produk…" /></div></form>
           <label className="block"><span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-white/35">Status</span><select value={status} onChange={(event) => changeFilter(setStatus, event.target.value)} className={inputClass}><option value="all">Semua status</option><option value="pending">Pending</option><option value="lunas">Lunas</option><option value="dibatalkan">Dibatalkan</option><option value="kadaluarsa">Kedaluwarsa</option></select></label>
+          <label className="block"><span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-white/35">Jenis</span><select value={kind} onChange={(event) => changeFilter(setKind, event.target.value)} className={inputClass} aria-label="Filter jenis pesanan"><option value="all">Semua jenis</option><option value="apps">Aplikasi</option><option value="pedia">Pedia</option></select></label>
           <label className="block"><span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-white/35">Pembayaran</span><select value={method} onChange={(event) => changeFilter(setMethod, event.target.value)} className={inputClass}><option value="all">Semua pembayaran</option><option value="qris">QRIS</option><option value="manual">Transfer manual</option>{methods.filter((item) => !["qris"].includes(item)).map((item) => <option key={item} value={item}>{item.toUpperCase()}</option>)}</select></label>
           <label className="block"><span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-white/35">Dari tanggal</span><input type="date" value={dateFrom} onChange={(event) => { setDateFrom(event.target.value); setPage(1); }} className={inputClass} /></label>
           <label className="block"><span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-white/35">Sampai tanggal</span><input type="date" value={dateTo} onChange={(event) => { setDateTo(event.target.value); setPage(1); }} className={inputClass} /></label>

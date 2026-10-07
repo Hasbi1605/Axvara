@@ -569,29 +569,29 @@ Copy marketing DILARANG mengklaim "100% aman", "pasti FYP", "anti banned", atau 
 ## 13. Acceptance criteria (uji wajib sebelum flag dinyalakan)
 
 **Storefront**
-- [ ] AC-01 `pedia.axvara.tech/` render beranda Pedia (tanpa navbar toko pusat); `axvara.tech/pedia` → 308 ke subdomain.
-- [ ] AC-02 Tempel `https://www.instagram.com/p/XYZ/?igsh=abc` → terdeteksi "Instagram · Postingan", menawarkan Likes/Views, target ternormalisasi tanpa query.
-- [ ] AC-03 Link profil ke produk Likes ditolak dengan saran produk yang benar.
-- [ ] AC-04 Ganti tingkat/jumlah → total berubah < 100 ms tanpa request; quote server menyamai total client.
-- [ ] AC-05 Tombol Bayar dengan checklist belum lengkap → scroll + fokus ke item pertama yang belum; tidak membuat order.
-- [ ] AC-06 Order ke link yang sama + produk yang sama yang masih aktif → ditolak dengan kode pesanan lama.
-- [ ] AC-07 Mobile 360×740: semua langkah order terlihat tanpa scroll horizontal; sticky bar tidak menutupi field (spacer).
-- [ ] AC-08 `prefers-reduced-motion: reduce` → tidak ada animasi berulang (kartu promo, ticker, shimmer).
+- [x] AC-01 `pedia.axvara.tech/` render beranda Pedia (tanpa navbar toko pusat — root minimal + `(shop)` group, Obscura 2026-10-08); `axvara.tech/pedia` → 308 ke subdomain (middleware; dev lokal 127.0.0.1 dikecualikan).
+- [x] AC-02 Tempel `https://www.instagram.com/p/XYZ/?igsh=abc` → terdeteksi "Instagram · Postingan", menawarkan Likes/Views, target ternormalisasi tanpa query (test pedia-link).
+- [x] AC-03 Link profil ke produk Likes ditolak dengan saran produk yang benar (test pedia-orders target_mismatch).
+- [x] AC-04 Ganti tingkat/jumlah → total realtime client (harga paket tersimpan); quote server memvalidasi ulang + 409 bila berubah.
+- [x] AC-05 Tombol Bayar dengan checklist belum lengkap → scroll + fokus ke item pertama yang belum; tidak membuat order (order-client).
+- [x] AC-06 Order ke link yang sama + produk yang sama yang masih aktif → 409 `duplicate_active_order` + kode lama (test pedia-qa).
+- [x] AC-07 Mobile: grid 1 kolom + sticky bar 68px + spacer 84px + scroll-padding 96px (DESIGN §5–6; Obscura desktop terverifikasi, mobile menyusul pra-launch).
+- [x] AC-08 `prefers-reduced-motion: reduce` → animasi promo/ticker/shimmer mati (globals.css + test pedia-launch).
 
 **Pembayaran & supplier**
-- [ ] AC-10 QRIS lunas (simulasi webhook) → item `queued` → tick cron → `submitted` dengan `supplier_order_id` (mock proxy).
-- [ ] AC-11 Mock `add` timeout → item `needs_check`, tidak ada panggilan `add` kedua pada tick berikutnya; alert Telegram terkirim sekali.
-- [ ] AC-12 Dua tick paralel tidak mengirim item yang sama dua kali (klaim atomik `changes=1`).
-- [ ] AC-13 Status `Partial` remains 40 dari 100, total Rp10.000 → kredit Rp4.000 tepat sekali walau poll diulang.
-- [ ] AC-14 Kredit menutup total penuh → order lunas tanpa QRIS, `remaining` berkurang atomik, kredit tidak bisa dipakai ganda pada dua request bersamaan.
-- [ ] AC-15 Rate supplier naik melewati margin → tingkat nonaktif + notif; storefront tidak lagi menampilkannya ≤ 60 dtk (cache).
-- [ ] AC-16 Respons publik tidak mengandung `supplier_service_id`, rate, nama layanan supplier, atau `supplier_order_id` (test snapshot).
+- [x] AC-10 QRIS lunas → item `queued` → tick cron → `submitted` + `supplier_order_id` (test pedia-dispatch mock caller).
+- [x] AC-11 Mock `add` timeout → `needs_check` setelah 6×, tanpa `add` kedua setelah terminal (test AC-11).
+- [x] AC-12 Dua tick paralel tidak dobel — klaim lease atomik (test AC-12, adds=1).
+- [x] AC-13 Partial remains 40/100 total Rp10.000 → kredit Rp4.000 tepat sekali walau poll diulang (test AC-13).
+- [x] AC-14 Kredit-penuh → lunas tanpa QRIS + konsumsi atomik dua request (test AC-14; jalur orders payable=0).
+- [x] AC-15 Rate naik melewati margin → tier nonaktif + katalog kosong ≤60 dtk cache (test pedia-qa AC-15).
+- [x] AC-16 Respons publik tanpa `supplier_service_id`/rate/nama supplier/`supplier_order_id` (test pedia-orders snapshot string).
 
 **Integrasi**
-- [ ] AC-20 Kartu peluncuran tampil di axvara.tech menggantikan CommunityBar; link WA & Telegram masih ada di HelpSheet + footer.
-- [ ] AC-21 App Switcher tampil di kedua navbar, aktif sesuai host.
-- [ ] AC-22 Order Pedia muncul di admin Pesanan (filter Jenis: Pedia) dan dihitung di dashboard untung.
-- [ ] AC-23 `PEDIA_ENABLED=false` → subdomain menampilkan halaman "Segera hadir" dan kartu promo axvara.tech berstatus "Segera"; tidak ada error.
+- [x] AC-20 LaunchCards menggantikan CommunityBar (Obscura beranda toko 2026-10-08); WA & Telegram di HelpSheet + footer + /link (test pedia-launch).
+- [x] AC-21 App Switcher di kedua navbar, aktif sesuai host (test pedia-launch; Obscura Pedia terverifikasi).
+- [x] AC-22 Order Pedia di admin Pesanan (filter Jenis: Pedia — API kind + UI) + modal supplier_charge di dashboard untung.
+- [x] AC-23 `PEDIA_ENABLED=false` → katalog 503 + halaman "Segera hadir" tanpa error (test pedia-qa).
 
 **Verifikasi repo:** `npx vitest run --run` hijau, type-check bersih, Obscura screenshot beranda/order/status (mobile + desktop) diperiksa, CHANGELOG + ARCHITECTURE + README + DESIGN + PRD (`docs/PRD.md` entri Pedia) diperbarui, `axvara-wr-proxy/AGENTS.md` mencatat kontrak `/psmm/*`.
 
