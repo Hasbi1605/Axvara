@@ -14,7 +14,7 @@ type BioLink = {
   external?: boolean;
   label: string;
   hint: string;
-  icon: "globe" | "telegram" | "whatsapp" | "track" | "support-wa" | "support-tg";
+  icon: "globe" | "telegram" | "whatsapp" | "track" | "support-wa" | "support-tg" | "pedia";
 };
 
 function iconSrc(icon: BioLink["icon"]): string {
@@ -24,6 +24,7 @@ function iconSrc(icon: BioLink["icon"]): string {
   if (icon === "support-tg") return "/brand/support-telegram-question.png";
   if (icon === "globe") return "/brand/website-circle.png";
   if (icon === "track") return "/brand/track-circle.png";
+  if (icon === "pedia") return "/brand/pedia-mark.svg";
   return "";
 }
 
@@ -66,6 +67,8 @@ export function LinkBioClient() {
 
   const links: BioLink[] = [
     { href: "/", label: "Katalog Web", hint: "Semua tools premium", icon: "globe" },
+    // Pedia kedua dari atas (§9.3): border gradien diam via class di renderer.
+    { href: "/pedia?utm_source=axvara&utm_medium=link_bio", label: "Axvara Pedia — naikkan sosmedmu", hint: "Followers, likes & views · QRIS", icon: "pedia" },
     { href: TG_BOT_HREF, external: true, label: "Bot Telegram", hint: "Auto order 24 jam", icon: "telegram" },
     { href: WA_GROUP_HREF, external: true, label: "Grup WhatsApp", hint: "Info promo & restock", icon: "whatsapp" },
     { href: "/lacak-pesanan", label: "Lacak Pesanan", hint: "Cek status dengan kode + WA/email", icon: "track" },

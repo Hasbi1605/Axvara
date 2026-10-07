@@ -114,8 +114,12 @@ export function promoMessages(slot: PromoSlot, products: PromoProduct[]): { full
   );
   const botUrl = `https://t.me/${SITE.adminTelegram}?start=beli`;
   const webUrl = siteOrigin();
-  const ctaFull = `🌐 <b>Order melalui Website:</b> ${webUrl}\n\n🤖 <b>Order melalui Bot Telegram:</b> ${botUrl}`;
-  const ctaWa = `🌐 *Order melalui Website:* ${webUrl}\n\n🤖 *Order melalui Bot Telegram:* ${botUrl}`;
+  // Baris Pedia (PD-62, flag terpisah — default mati): 1 baris + link.
+  const pediaLine = process.env.PEDIA_PROMO_DIGEST_ENABLED === "true";
+  const pediaFull = pediaLine ? `\n\n🚀 <b>Axvara Pedia</b> — naikkan followers, likes & views: https://pedia.axvara.tech?utm_source=digest&utm_medium=telegram` : "";
+  const pediaWa = pediaLine ? `\n\n🚀 *Axvara Pedia* — naikkan followers, likes & views: https://pedia.axvara.tech?utm_source=digest&utm_medium=telegram` : "";
+  const ctaFull = `🌐 <b>Order melalui Website:</b> ${webUrl}\n\n🤖 <b>Order melalui Bot Telegram:</b> ${botUrl}${pediaFull}`;
+  const ctaWa = `🌐 *Order melalui Website:* ${webUrl}\n\n🤖 *Order melalui Bot Telegram:* ${botUrl}${pediaWa}`;
   return {
     full: `${titleFull}\n${separator}\n${introFull}\n${separator}\n${linesFull.join("\n\n")}\n\n${ctaFull}`,
     short: `${titleWa}\n${separator}\n${introWa}\n${separator}\n${linesWa.join("\n\n")}\n\n${ctaWa}`,

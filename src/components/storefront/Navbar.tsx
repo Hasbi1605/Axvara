@@ -7,6 +7,7 @@ import { useState, useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { useStoreSettings } from "@/hooks/useStoreSettings";
+import { AppSwitcher } from "@/components/pedia/AppSwitcher";
 
 export function Navbar() {
   const pathname = usePathname();
@@ -85,6 +86,7 @@ export function Navbar() {
             <Link href="/#katalog" className="px-3 py-2 rounded-full hover:text-white hover:bg-white/10 transition">Katalog</Link>
             <Link href="/lacak-pesanan" className="px-3 py-2 rounded-full hover:text-white hover:bg-white/10 transition">Lacak Pesanan</Link>
             <Link href="/artikel" className="px-3 py-2 rounded-full hover:text-white hover:bg-white/10 transition">Artikel</Link>
+            <span className="mx-1 hidden lg:inline-flex"><AppSwitcher active="apps" /></span>
           </nav>
           <button
             onClick={() => setDrawer(true)}

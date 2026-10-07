@@ -7,9 +7,9 @@ import Link from "next/link";
 export type AppSwitchOption = "apps" | "pedia" | "ai";
 
 const OPTIONS: { id: AppSwitchOption; label: string; href: string; badge?: string }[] = [
-  { id: "apps", label: "Apps", href: "https://axvara.tech?utm_source=pedia&utm_medium=switcher" },
+  { id: "apps", label: "Apps", href: "/" },
   { id: "pedia", label: "Pedia", href: "/pedia" },
-  { id: "ai", label: "AI", href: "https://axvara.tech/ai?utm_source=pedia&utm_medium=switcher", badge: "Segera" },
+  { id: "ai", label: "AI", href: "/ai", badge: "Segera" },
 ];
 
 export function AppSwitcher({ active, compact = false }: { active: AppSwitchOption; compact?: boolean }) {

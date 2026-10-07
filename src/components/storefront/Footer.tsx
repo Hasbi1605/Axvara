@@ -122,6 +122,12 @@ export function Footer() {
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/40">Jelajah</p>
             <ul className="mt-3.5 space-y-2.5 text-[13px]">
               <li><Link href="/#katalog" className="text-white/60 transition hover:text-white">Semua produk</Link></li>
+              <li>
+                <Link href="/pedia?utm_source=axvara&utm_medium=footer" className="text-white/60 transition hover:text-white">
+                  Axvara Pedia
+                  <span className="ml-1.5 rounded-full bg-[#FFB800]/15 px-1.5 py-px text-[10px] font-bold text-[#FFCF55]">Baru</span>
+                </Link>
+              </li>
               <li><Link href="/artikel" className="text-white/60 transition hover:text-white">AI & teknologi</Link></li>
               {categories.map((category) => (
                 <li key={category.id}><a href={`/?category=${encodeURIComponent(category.slug)}#katalog`} className="text-white/60 transition hover:text-white">{category.name}</a></li>

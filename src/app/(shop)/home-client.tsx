@@ -4,7 +4,7 @@ import { OrbitHero } from "@/components/storefront/OrbitHero";
 import { ScrollRope } from "@/components/storefront/ScrollRope";
 import { CategoryPills } from "@/components/storefront/CategoryPills";
 import { ProductCard } from "@/components/storefront/ProductCard";
-import { CommunityBar } from "@/components/storefront/CommunityBar";
+import { LaunchCards } from "@/components/storefront/LaunchCards";
 import type { Product } from "@/lib/products";
 import { resolveCategorySlug } from "@/lib/products";
 import { sortProductsForDisplay } from "@/lib/product-order";
@@ -138,7 +138,7 @@ export function HomeClient({ initialProducts }: { initialProducts?: Product[] })
         </div>
       </section>
 
-      <CommunityBar />
+      <LaunchCards />
 
       {/* Katalog with pagination — authoritative D1 data */}
       <section id="katalog" className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 pt-2 pb-10">

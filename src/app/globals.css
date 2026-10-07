@@ -206,3 +206,22 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .pedia-root * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
+
+/* ===== LaunchCards Pedia (PEDIA-DESIGN §9.2) ===== */
+.ax-launch { position: relative; isolation: isolate; border-radius: 20px; }
+.ax-launch::before {
+  content: ""; position: absolute; inset: 0; padding: 1.5px; border-radius: inherit;
+  background: conic-gradient(from var(--ax-angle), #00E5FF, #8B5CF6, #FFB800, #00E5FF);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  animation: ax-spin 6s linear infinite; z-index: -1;
+}
+@property --ax-angle { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+@keyframes ax-spin { to { --ax-angle: 360deg; } }
+.ax-launch::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(100deg, transparent 40%, rgba(255,255,255,0.10) 50%, transparent 60%);
+  transform: translateX(-120%); animation: ax-sheen 6s var(--ease-out) infinite 1.2s;
+}
+@keyframes ax-sheen { 0%, 70% { transform: translateX(-120%); } 85%, 100% { transform: translateX(120%); } }
+@media (prefers-reduced-motion: reduce) { .ax-launch::before, .ax-launch::after { animation: none; } }
