@@ -32,7 +32,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
   const variants = await queryAll(
     `SELECT id, product_id, sku, label, duration_value, duration_unit, duration_label,
             warranty_type, warranty_value, warranty_unit, warranty_label,
-            price, compare_price, stock, min_qty, fulfillment_mode, is_active, sort_order, wr_auto_managed
+            price, compare_price, stock, min_qty, manual_cost, fulfillment_mode, is_active, sort_order, wr_auto_managed
      FROM product_variants
      WHERE product_id=?
      ORDER BY sort_order ASC, price ASC, id ASC`,
@@ -76,6 +76,8 @@ const variantInputSchema = z.object({
   stock: z.coerce.number().int().min(-1).max(999999).default(-1),
   // Minimum pembelian (migrasi 0034, generik — GSuite = 50, plafon 100).
   min_qty: z.coerce.number().int().min(1).max(100).optional(),
+  // Modal manual per unit (migrasi 0058, milik admin — sync tak menyentuh).
+  manual_cost: z.coerce.number().int().min(0).max(999_999_999).optional(),
   duration_value: z.coerce.number().int().nonnegative().nullable().optional(),
   duration_unit: z.enum(["day", "month", "year", "lifetime", "custom"]).nullable().optional(),
   duration_label: z.string().trim().max(100).nullable().optional(),
@@ -289,7 +291,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
                   `UPDATE product_variants SET
                      sku=?, label=?, duration_value=?, duration_unit=?, duration_label=?,
                      warranty_type=?, warranty_value=?, warranty_unit=?, warranty_label=?,
-                     price=?, compare_price=?, stock=?, min_qty=?, fulfillment_mode=?, is_active=?,
+                     price=?, compare_price=?, stock=?, min_qty=?, manual_cost=?, fulfillment_mode=?, is_active=?,
                      sort_order=?, updated_at=datetime('now')
                    WHERE id=? AND product_id=?`
                 ).bind(
@@ -306,6 +308,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
                   v.comparePrice ? Number(v.comparePrice) : null,
                   v.stock != null ? Number(v.stock) : -1,
                   minQty,
+                  Math.max(0, Math.floor(Number(v.manual_cost ?? 0) || 0)),
                   v.fulfillment_mode || "manual",
                   v.is_active ?? 1,
                   v.sort_order ?? idx,
@@ -319,8 +322,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
                   `INSERT INTO product_variants (
                      product_id, sku, label, duration_value, duration_unit, duration_label,
                      warranty_type, warranty_value, warranty_unit, warranty_label,
-                     price, compare_price, stock, min_qty, fulfillment_mode, is_active, sort_order
-                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+                     price, compare_price, stock, min_qty, manual_cost, fulfillment_mode, is_active, sort_order
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
                 ).bind(
                   id,
                   autoSku,
@@ -336,6 +339,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
                   v.comparePrice ? Number(v.comparePrice) : null,
                   v.stock != null ? Number(v.stock) : -1,
                   minQty,
+                  Math.max(0, Math.floor(Number(v.manual_cost ?? 0) || 0)),
                   v.fulfillment_mode || "manual",
                   v.is_active ?? 1,
                   v.sort_order ?? idx
@@ -399,6 +403,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
             if (v.comparePrice !== undefined) { vFields.push("compare_price=?"); vVals.push(v.comparePrice ? Number(v.comparePrice) : null); }
             if (v.stock !== undefined) { vFields.push("stock=?"); vVals.push(Number(v.stock)); }
             if (v.is_active !== undefined) { vFields.push("is_active=?"); vVals.push(Number(v.is_active)); }
+            if (v.manual_cost !== undefined) { vFields.push("manual_cost=?"); vVals.push(Math.max(0, Math.floor(Number(v.manual_cost) || 0))); }
             // Paritas single 2026-09-28: mode single kini mengirim variants
             // eksplisit juga di dev — field milik admin ini harus ikut
             // tertulis, seperti cabang D1 di atas.

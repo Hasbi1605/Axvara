@@ -14,6 +14,7 @@
 // hanya harga coret yang tetap bisa diedit — sama seperti baris varian WR.
 
 import type { ProductForm } from "../product-types";
+import { MoneyInput } from "@/components/ui/MoneyInput";
 import { WarrantyFields } from "./VariantWarrantyFields";
 import { FULFILLMENT_OPTIONS, NonWrFulfillmentPanel } from "./ProductVariantRows";
 
@@ -50,6 +51,18 @@ export function SingleVariantFields({
             }}
             className={openInput}
           />
+        </div>
+        <div>
+          <span className="block text-[10px] uppercase font-semibold text-white/40 mb-1">
+            Modal (Rp) <span className="normal-case tracking-normal text-white/25">(0 = tanpa modal)</span>
+          </span>
+          <MoneyInput
+            value={form.manual_cost ?? 0}
+            onChange={(val) => onSetForm({ ...form, manual_cost: Math.max(0, val ?? 0) })}
+            placeholder="0"
+            className={openInput}
+          />
+          <span className="mt-1 block text-[11px] leading-4 text-white/35">Modal per unit produk manual/stok sendiri (milik admin, ikut hitung untung).</span>
         </div>
       </div>
 

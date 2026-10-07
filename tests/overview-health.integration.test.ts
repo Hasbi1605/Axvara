@@ -127,3 +127,52 @@ describe("R11 overview reflects the real database state", () => {
     expect(body.system_details.telegram.level).not.toBe("degraded");
   });
 });
+
+describe("Fase 1 dashboard: week + untung produk (2026-10-07)", () => {
+  it("order WR lunas: omzet - modal supplier = untung, masuk bucket minggu", async () => {
+    fixture.sql.prepare(`INSERT INTO products(id,name,slug,price,stock) VALUES(1,'Netflix','netflix',15000,10)`).run();
+    fixture.sql.prepare(`INSERT INTO product_variants(id,product_id,sku,label,price,stock,fulfillment_mode) VALUES(1,1,'NF-1','1 Bulan',15000,10,'manual')`).run();
+    fixture.sql.prepare(`INSERT INTO wr_products(wr_product_id,wr_product_name,axvara_product_id) VALUES('p1','Netflix',1)`).run();
+    fixture.sql.prepare(`INSERT INTO wr_variants(wr_variant_id,wr_product_id,wr_variant_name,wr_price,axvara_variant_id,axvara_sell_price) VALUES('w1','p1','1 Bulan',10000,1,15000)`).run();
+    fixture.sql.prepare(`INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel,paid_at,fulfillment_status)
+      VALUES('PROFIT-WR','X','6280',?,15000,'qris','lunas','paid','web',datetime('now'),'delivered')`)
+      .run(JSON.stringify([{ product_id: 1, variant_id: 1, name: "Netflix", price: 15000, qty: 1 }]));
+    fixture.sql.prepare(`INSERT INTO fulfillment_items(order_code,item_index,product_id,variant_id,qty,fulfillment_mode,status) VALUES('PROFIT-WR',0,1,1,1,'manual','delivered')`).run();
+    fixture.sql.prepare(`INSERT INTO wr_order_links(order_code,wr_variant_id,quantity,wr_cost,status) VALUES('PROFIT-WR','w1',1,10000,'completed')`).run();
+    const body = await overview();
+    // Omzet 15rb, modal 10rb → untung 5rb di SEMUA bucket periode (order baru).
+    expect(body.revenue_today).toBe(15000);
+    expect(body.revenue_week).toBe(15000);
+    expect(body.cost_today).toBe(10000);
+    expect(body.profit_today).toBe(5000);
+    expect(body.profit_week).toBe(5000);
+    expect(body.profit_total).toBe(5000);
+    expect(body.profit_by_supplier.wr).toMatchObject({ orders: 1, revenue: 15000, cost: 10000, profit: 5000 });
+    expect(body.profit_by_channel.web.profit).toBe(5000);
+    expect(body.top_profit_products[0]).toMatchObject({ name: "Netflix", profit: 5000 });
+    expect(body.daily_series.length).toBe(30);
+    expect(body.daily_series[29].profit).toBe(5000);
+  });
+
+  it("produk manual + modal manual: untung = omzet - manual_cost x qty", async () => {
+    fixture.sql.prepare(`INSERT INTO products(id,name,slug,price,stock) VALUES(2,'Canva','canva',45000,10)`).run();
+    fixture.sql.prepare(`INSERT INTO product_variants(id,product_id,sku,label,price,stock,fulfillment_mode,manual_cost) VALUES(2,2,'CV-1','Invite',45000,-1,'shared',15000)`).run();
+    fixture.sql.prepare(`INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel,paid_at,fulfillment_status)
+      VALUES('PROFIT-MAN','X','6280',?,90000,'qris','lunas','paid','telegram',datetime('now'),'delivered')`)
+      .run(JSON.stringify([{ product_id: 2, variant_id: 2, name: "Canva", price: 45000, qty: 2 }]));
+    fixture.sql.prepare(`INSERT INTO fulfillment_items(order_code,item_index,product_id,variant_id,qty,fulfillment_mode,status) VALUES('PROFIT-MAN',0,2,2,2,'shared','delivered')`).run();
+    const body = await overview();
+    expect(body.profit_by_supplier.manual).toMatchObject({ orders: 1, revenue: 90000, cost: 30000, profit: 60000 });
+    expect(body.profit_today).toBe(60000);
+  });
+
+  it("link pending = order estimasi, bukan untung pasti", async () => {
+    fixture.sql.prepare(`INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel,paid_at)
+      VALUES('PROFIT-PEND','X','6280','[]',20000,'qris','lunas','paid','web',datetime('now'))`).run();
+    fixture.sql.prepare(`INSERT INTO wr_order_links(order_code,wr_variant_id,quantity,wr_cost,status) VALUES('PROFIT-PEND','w9',1,12000,'processing')`).run();
+    const body = await overview();
+    expect(body.profit_estimated_orders).toBe(1);
+    // Modal tetap dihitung dari snapshot link (12rb) — 8rb, tapi berflag.
+    expect(body.profit_total).toBe(8000);
+  });
+});

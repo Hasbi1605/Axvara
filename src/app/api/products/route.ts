@@ -318,6 +318,8 @@ const variantInputSchema = z.object({
   stock: z.coerce.number().int().min(-1).max(999999).default(-1),
   // Minimum pembelian (migrasi 0034, generik — GSuite = 50, plafon 100).
   min_qty: z.coerce.number().int().min(1).max(100).optional(),
+  // Modal manual per unit (migrasi 0058, milik admin — sync tak menyentuh).
+  manual_cost: z.coerce.number().int().min(0).max(999_999_999).optional(),
   duration_value: z.coerce.number().int().nonnegative().nullable().optional(),
   duration_unit: z.enum(["day", "month", "year", "lifetime", "custom"]).nullable().optional(),
   duration_label: z.string().trim().max(100).nullable().optional(),
@@ -420,15 +422,17 @@ export async function POST(req: NextRequest) {
         variants.forEach((v, idx) => {
           const autoSku = (v.sku?.trim() || `${slug.toUpperCase()}-${idx + 1}`).replace(/[^A-Z0-9-]/g, "");
           // min_qty milik admin (bukan WR-owned) — default 1 bila tak dikirim.
+          // manual_cost milik admin (migrasi 0058) — default 0.
           const vMinQty = Math.max(1, Math.min(100, Number(v.min_qty ?? 1) || 1));
+          const vManualCost = Math.max(0, Math.floor(Number(v.manual_cost ?? 0) || 0));
           statements.push(
             d1.prepare(
               `INSERT INTO product_variants (
                  product_id, sku, label, duration_value, duration_unit, duration_label,
                  warranty_type, warranty_value, warranty_unit, warranty_label,
-                 price, compare_price, stock, min_qty, fulfillment_mode, is_active, sort_order
+                 price, compare_price, stock, min_qty, manual_cost, fulfillment_mode, is_active, sort_order
                )
-               SELECT p.id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+               SELECT p.id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                FROM products p WHERE p.slug=?`
             ).bind(
               autoSku,
@@ -444,6 +448,7 @@ export async function POST(req: NextRequest) {
               v.comparePrice ? Number(v.comparePrice) : null,
               v.stock != null ? Number(v.stock) : -1,
               vMinQty,
+              vManualCost,
               v.fulfillment_mode || "manual",
               v.is_active ?? 1,
               v.sort_order ?? idx,
@@ -476,12 +481,13 @@ export async function POST(req: NextRequest) {
         const v = variants[idx];
         const autoSku = (v.sku?.trim() || `${slug.toUpperCase()}-${idx + 1}`).replace(/[^A-Z0-9-]/g, "");
         const vMinQty = Math.max(1, Math.min(100, Number(v.min_qty ?? 1) || 1));
+        const vManualCost = Math.max(0, Math.floor(Number(v.manual_cost ?? 0) || 0));
         await execRun(
           `INSERT INTO product_variants (
              product_id, sku, label, duration_value, duration_unit, duration_label,
              warranty_type, warranty_value, warranty_unit, warranty_label,
-             price, compare_price, stock, min_qty, fulfillment_mode, is_active, sort_order
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             price, compare_price, stock, min_qty, manual_cost, fulfillment_mode, is_active, sort_order
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           newId,
           autoSku,
           v.label.trim(),
@@ -496,6 +502,7 @@ export async function POST(req: NextRequest) {
           v.comparePrice ? Number(v.comparePrice) : null,
           v.stock != null ? Number(v.stock) : -1,
           vMinQty,
+          vManualCost,
           v.fulfillment_mode || "manual",
           v.is_active ?? 1,
           v.sort_order ?? idx

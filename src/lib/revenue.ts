@@ -19,6 +19,9 @@
 // - Data lama tanpa `paid_at`: backfill sekali dari `reviewed_at`/`updated_at`
 //   via migrasi 0016; baris yang tetap NULL memakai fallback saat baca agar
 //   tidak ada pendapatan yang hilang dari laporan.
+// - Minggu bisnis = Senin 00:00 – Minggu 23:59 WIB (keputusan owner 2026-10-07,
+//   dashboard Fase 1). Bucket minggu di SQL memakai `date(..., 'weekday 0',
+//   '-6 days')` = Senin minggu itu; di JS via `weekWibStartDateString`.
 export const REVENUE_TZ_OFFSET = "+7 hours";
 
 /** Ekspresi SQL: timestamp pembayaran dalam WIB dari kolom yang tersedia. */
@@ -36,6 +39,18 @@ export function revenueMonthWibSql(alias = "o"): string {
   return `strftime('%Y-%m', ${revenuePaidAtWibSql(alias)})`;
 }
 
+/**
+ * Ekspresi SQL: tanggal Senin (YYYY-MM-DD) minggu WIB kapan pendapatan
+ * diakui. Senin-start: mundur ((weekday+6)%7) hari dari tanggal WIB.
+ * strftime('%w') = 0 (Minggu)..6 (Sabtu); Senin → mundur 0 hari.
+ * Diverifikasi SQLite: Min 2026-10-04 (UTC) = Sen 5 Okt WIB → '2026-10-05';
+ * Sab 10 Okt → '2026-10-05'; Min 11 Okt 23:59 WIB → '2026-10-05'.
+ */
+export function revenueWeekWibSql(alias = "o"): string {
+  const paid = revenuePaidAtWibSql(alias);
+  return `date(${paid}, '-' || ((CAST(strftime('%w', ${paid}) AS INTEGER) + 6) % 7) || ' days')`;
+}
+
 /** Hari WIB ini dalam UTC — untuk perbandingan `date(...) = '...'`. */
 export function todayWibDateString(now = new Date()): string {
   return new Date(now.getTime() + 7 * 3_600_000).toISOString().slice(0, 10);
@@ -46,6 +61,17 @@ export function currentWibMonthString(now = new Date()): string {
   return todayWibDateString(now).slice(0, 7);
 }
 
+/** Tanggal Senin (YYYY-MM-DD) minggu WIB yang memuat `now`. */
+export function weekWibStartDateString(now = new Date()): string {
+  const wib = new Date(now.getTime() + 7 * 3_600_000);
+  // getUTCDay: 0=Minggu..6=Sabtu (atas waktu WIB yang digeser). Senin-start:
+  // mundur (day+6)%7 hari.
+  const back = (wib.getUTCDay() + 6) % 7;
+  return new Date(Date.UTC(wib.getUTCFullYear(), wib.getUTCMonth(), wib.getUTCDate() - back))
+    .toISOString()
+    .slice(0, 10);
+}
+
 /** True bila timestamp UTC jatuh pada hari WIB yang sama dengan `now`. */
 export function isSameWibDay(ts: number, now: number): boolean {
   return todayWibDateString(new Date(ts)) === todayWibDateString(new Date(now));
@@ -54,4 +80,9 @@ export function isSameWibDay(ts: number, now: number): boolean {
 /** True bila timestamp UTC jatuh pada bulan WIB yang sama dengan `now`. */
 export function isSameWibMonth(ts: number, now: number): boolean {
   return currentWibMonthString(new Date(ts)) === currentWibMonthString(new Date(now));
+}
+
+/** True bila timestamp UTC jatuh pada minggu WIB yang sama (Senin-start). */
+export function isSameWibWeek(ts: number, now: number): boolean {
+  return weekWibStartDateString(new Date(ts)) === weekWibStartDateString(new Date(now));
 }

@@ -259,6 +259,7 @@ export function ProductVariantRows({
                   comparePrice: null,
                   stock: -1,
                   min_qty: 1,
+                  manual_cost: 0,
                   warranty_type: "none",
                   fulfillment_mode: "manual",
                   is_active: 1,
@@ -327,8 +328,8 @@ export function ProductVariantRows({
               </div>
             </div>
 
-            {/* Baris 2: Harga, Harga Coret, Stok, Min. Beli */}
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 py-3 border-b border-white/5">
+            {/* Baris 2: Harga, Harga Coret, Stok, Min. Beli, Modal */}
+            <div className="grid grid-cols-1 sm:grid-cols-5 gap-3 py-3 border-b border-white/5">
               <div>
                 <span className="block text-[10px] uppercase font-semibold text-white/40 mb-1">Harga Jual (Rp) *{wrLocked ? " (WR)" : ""}</span>
                 <MoneyInput
@@ -380,6 +381,20 @@ export function ProductVariantRows({
                     const val = Math.max(1, Math.min(100, Number(e.target.value) || 1));
                     onSetFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, min_qty: val } : item));
                   }}
+                  className={openInput}
+                />
+              </div>
+              {/* Modal manual per unit (migrasi 0058, milik admin): untuk
+                  produk manual/stok sendiri yang modalnya tak tercatat di
+                  link supplier. 0 = murni tanpa modal. */}
+              <div>
+                <span className="block text-[10px] uppercase font-semibold text-white/40 mb-1">Modal (Rp) <span className="normal-case tracking-normal text-white/25">(0 = tanpa modal)</span></span>
+                <MoneyInput
+                  value={v.manual_cost ?? 0}
+                  onChange={(val) => {
+                    onSetFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, manual_cost: Math.max(0, val ?? 0) } : item));
+                  }}
+                  placeholder="0"
                   className={openInput}
                 />
               </div>

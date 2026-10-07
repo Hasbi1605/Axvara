@@ -69,6 +69,12 @@ export type VariantSummary = {
    * Sync WR tidak pernah menulis kolom ini.
    */
   min_qty: number;
+  /**
+   * Modal manual per unit dalam rupiah (migrasi 0058, milik admin, default 0).
+   * Untuk produk manual/stok sendiri. Sync WR/SK tidak pernah menulis.
+   * Opsional agar fixture/test lama tanpa field ini tetap valid.
+   */
+  manual_cost?: number;
   fulfillment_mode: string;
   is_active: number;
   sort_order: number;
@@ -197,7 +203,7 @@ export async function getProductDetail(slugOrId: string | number): Promise<Produ
   const variants = await queryAll(
     `SELECT pv.id, pv.product_id, pv.sku, pv.label, pv.duration_value, pv.duration_unit, pv.duration_label,
             pv.warranty_type, pv.warranty_value, pv.warranty_unit, pv.warranty_label,
-            pv.price, pv.compare_price, pv.stock, pv.min_qty, pv.fulfillment_mode, pv.is_active, pv.sort_order,
+            pv.price, pv.compare_price, pv.stock, pv.min_qty, pv.manual_cost, pv.fulfillment_mode, pv.is_active, pv.sort_order,
             pv.wr_variant_id AS wr_variant_id, pv.wr_auto_managed AS wr_auto_managed,
             pv.sk_variant_id AS sk_variant_id, pv.sk_auto_managed AS sk_auto_managed,
             pv.admin_terms, pv.admin_activation, pv.admin_copy_fingerprint,
@@ -270,6 +276,7 @@ async function getProductDetailLegacy(slugOrId: string | number): Promise<Produc
     wr_type: null,
     require_email: Number((product as Record<string, unknown>).require_email ?? 0),
     min_qty: 1,
+    manual_cost: 0,
     price: Number(product.price),
     compare_price: product.compare_price ? Number(product.compare_price) : null,
     stock: Number(product.stock ?? -1),
@@ -580,6 +587,7 @@ function mapVariant(row: Record<string, unknown>): VariantSummary {
     compare_price: row.compare_price != null ? Number(row.compare_price) : null,
     stock: Number(row.stock ?? -1),
     min_qty: Math.max(1, Number(row.min_qty ?? 1) || 1),
+    manual_cost: Math.max(0, Math.floor(Number(row.manual_cost ?? 0) || 0)),
     fulfillment_mode: String(row.fulfillment_mode || "manual"),
     is_active: Number(row.is_active ?? 1),
     sort_order: Number(row.sort_order ?? 0),

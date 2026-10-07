@@ -16,6 +16,12 @@ export type FormVariant = {
   stock: number;
   /** Minimum pembelian per baris (migrasi 0034, generik — GSuite = 50). */
   min_qty?: number;
+  /**
+   * Modal manual per unit dalam rupiah (migrasi 0058, milik admin).
+   * Untuk produk manual/stok sendiri yang modalnya tak tercatat di link
+   * supplier. Default 0 = murni tanpa modal. Sync WR/SK tak pernah menulis.
+   */
+  manual_cost?: number;
   duration_value?: number | null;
   duration_unit?: string | null;
   duration_label?: string | null;
@@ -54,4 +60,6 @@ export type ProductForm = Partial<Prod> & {
   warranty_unit?: string | null;
   warranty_label?: string | null;
   fulfillment_mode?: string;
+  /** Modal manual per unit (migrasi 0058) — mode single, paritas multi. */
+  manual_cost?: number;
 };

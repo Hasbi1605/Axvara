@@ -422,6 +422,8 @@ Katalog storefront menampilkan 16 produk lebih dulu dengan tombol **"Tampilkan N
 
 **Minimum pembelian per varian (migrasi 0034, generik):** `product_variants.min_qty` (default 1 = bebas, milik admin, plafon 100) mengatur batas bawah qty per baris — GSuite dikunci **min. 50** via migrasi, produk lain tinggal set angka dari admin bila butuh aturan grosir serupa. Label "Min. N" tampil di PDP/modal/keranjang/bot; server menolak qty di bawah min (quote 409 → orders 409 → guard atomik), plafon web/Telegram 100/baris, dan order WhatsApp (qty selalu 1) ditolak jelas untuk varian min>1 dengan arahan ke web/Telegram bulk.
 
+**Dashboard untung Fase 1 (2026-10-07).** Ringkasan admin kini switcher periode Hari/Minggu (Senin–Minggu WIB)/Bulan (default Minggu) + 6 kartu (Pesanan lunas, Omzet, Modal, **Untung Produk**, Margin, Rata2/order) + grafik 30 hari omzet vs untung + untung per supplier (WR/SK/stok sendiri) + top 5 penyumbang untung + untung per channel. Untung = omzet − modal supplier (link WR/SK saat lunas) − modal manual varian (`product_variants.manual_cost`, migrasi 0058, milik admin — diisi dari editor varian, 0 = tanpa modal); label jujur belum termasuk biaya operasional.
+
 ## ▶️ Jalankan Local (dev-only, tanpa build tiap ubahan)
 
 ```bash

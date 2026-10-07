@@ -542,6 +542,13 @@ CREATE TABLE IF NOT EXISTS product_variants (
   min_qty INTEGER NOT NULL DEFAULT 1
     CHECK (min_qty >= 1),
 
+  -- Migrasi 0058: modal manual per varian (rupiah, milik admin, default 0).
+  -- Untuk produk manual/stok sendiri yang modalnya tidak tercatat di link
+  -- supplier (akun invite berbayar, stok beli putus). Untuk varian WR/SK
+  -- sebagai biaya tambahan di luar modal supplier. Sync tidak pernah menulis.
+  manual_cost INTEGER NOT NULL DEFAULT 0
+    CHECK (manual_cost >= 0),
+
   fulfillment_mode TEXT NOT NULL DEFAULT 'manual' CHECK (fulfillment_mode IN ('manual','shared','unique')),
   shared_secret_ciphertext TEXT,
   shared_secret_iv TEXT,
