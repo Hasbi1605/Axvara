@@ -1947,11 +1947,15 @@ Penggantinya: VPS `t4g.nano` Singapore (`i-022790eb6bb0b1be3`, 0.5GB +
 - Gate auto-order per kelas: `processWrPendingOrders` hanya memproses link
   `restock`; MBO/NULL tetap pending (antre manual). Jangan bypass gate tanpa
   persetujuan owner — MBO = antrean manusia di sisi WR (slow).
-- `email_invite` (uji live 2026-09-16): produk WR tipe Invite/Link WAJIB
-  kirim `email_invite` — `processOneLink` meneruskan `customer_email` order
-  Axvara. Tanpa email, WR 422 "Email Invite is required" dan retry tidak
-  sembuh (saldo aman, tidak terpotong). Checkout produk Invite/Link wajib
-  meminta email pembeli.
+- `email_invite` (uji live 2026-09-16, dipersempit 2026-10-07 temuan admin WR
+  kasus RBHN-20261005-0127B5): HANYA varian bertipe Invite/Link yang dikirimi
+  `email_invite` (`wrTypeUsesEmailInvite`; Link dipertahankan karena tipe nyata
+  di API WR — fixture sync memakai `type:"Link"` UUID Canva asli). Private/
+  Sharing/dll di-omit total (bukan string kosong) — `processOneLink` cek
+  `wv.wr_type` per link sebelum meneruskan `customer_email`. Tanpa email,
+  WR 422 "Email Invite is required" dan retry tidak sembuh (saldo aman,
+  tidak terpotong). Checkout produk Invite/Link wajib meminta email pembeli.
+  UX tetap 1-field (tanpa copy/field baru, keputusan owner 2026-10-07).
 - Email wajib SEBELUM bayar (migrasi 0033, 2026-09-16): `products.require_email`
   (toggle admin, untuk non-WR) + `telegram_users.buyer_email` (sekali isi,
   dipakai ulang). Aturan: varian WR Invite/Link OTOMATIS butuh (dari

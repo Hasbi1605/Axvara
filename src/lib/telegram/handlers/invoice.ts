@@ -221,7 +221,8 @@ export async function createAndSendVariantInvoice(
     // memulihkannya. Jalur Web dan WhatsApp sudah atomik sejak awal.
     try {
       // Email tersimpan (alur email_for:) — untuk Invite/Link WR, ini yang
-      // diteruskan ke WR sebagai email_invite saat lunas.
+      // diteruskan ke WR sebagai email_invite saat lunas (Invite/Link-only
+      // sejak 2026-10-07; Private/Sharing tidak dikirimi email_invite).
       const buyerEmailRow = await queryFirst(
         `SELECT buyer_email FROM telegram_users WHERE user_id=?`,
         String(from.id),

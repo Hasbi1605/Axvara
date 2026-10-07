@@ -164,10 +164,14 @@ describe("Warung Rebahan process pending orders", () => {
       vi.stubEnv("TELEGRAM_BOT_ENABLED", "false");
       // 2026-09-16: email_invite diteruskan dari customer_email order
       // (uji live: WR 422 untuk produk Invite tanpa email).
+      // 2026-10-07: fixture seed var-1 tanpa wr_type (= non-invite),
+      // jadi email TIDAK dikirim — lihat test invite-only di bawah.
       fx.sql.prepare(`UPDATE orders SET customer_email='buyer@contoh.id' WHERE code='AXV-20260911-AAAADDDD'`).run();
       let seenInvite: unknown = null;
+      let seenKeys: string[] = [];
       stubWrApi((_url, body) => {
         seenInvite = (body as Record<string, unknown>).email_invite ?? null;
+        seenKeys = Object.keys(body as Record<string, unknown>);
         return {
           success: true,
           message: "ok",
@@ -178,13 +182,107 @@ describe("Warung Rebahan process pending orders", () => {
       await createWrOrderLink("AXV-20260911-AAAADDDD", [{ product_id: 1, variant_id: 1, qty: 1 }], db);
       const result = await processWrPendingOrders(db);
       expect(result).toMatchObject({ processed: 1, succeeded: 1 });
-      expect(seenInvite).toBe("buyer@contoh.id");
+      // Non-invite: key email_invite di-omit total (temuan admin WR
+      // RBHN-20261005-0127B5 — Private/Sharing tidak boleh muncul
+      // TARGET ACCOUNT INVITATION di dashboard WR).
+      expect(seenInvite).toBeNull();
+      expect(seenKeys).not.toContain("email_invite");
       const link = fx.sql.prepare("SELECT status, wr_order_id FROM wr_order_links").get() as { status: string; wr_order_id: string };
       expect(link.status).toBe("processing");
       expect(link.wr_order_id).toBe("ORD-1");
       const saldo = fx.sql.prepare("SELECT balance, source FROM wr_saldo_log ORDER BY id DESC LIMIT 1").get() as { balance: number; source: string };
       expect(Number(saldo.balance)).toBe(240000);
       expect(saldo.source).toBe("order_deduct");
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("2026-10-07: varian Invite tetap meneruskan customer_email sebagai email_invite", async () => {
+    const fx = await setup();
+    try {
+      seedCatalog(fx);
+      fx.sql.prepare(`UPDATE wr_variants SET wr_type='Invite' WHERE wr_variant_id='var-1'`).run();
+      seedOrder(fx, "AXV-20260911-AAAINV01");
+      vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
+      vi.stubEnv("WARUNG_REBAHAN_AUTO_ORDER_ENABLED", "true");
+      vi.stubEnv("WARUNG_REBAHAN_API_KEY", "k");
+      vi.stubEnv("TELEGRAM_BOT_ENABLED", "false");
+      fx.sql.prepare(`UPDATE orders SET customer_email='buyer@contoh.id' WHERE code='AXV-20260911-AAAINV01'`).run();
+      let seenInvite: unknown = null;
+      stubWrApi((_url, body) => {
+        seenInvite = (body as Record<string, unknown>).email_invite ?? null;
+        return {
+          success: true,
+          message: "ok",
+          data: { order_id: "ORD-INV-1", status: "processing", payment_status: "paid", total_amount: 5000, current_balance: 240000 },
+        };
+      });
+      const db = createDatabaseAccess(fx.db);
+      await createWrOrderLink("AXV-20260911-AAAINV01", [{ product_id: 1, variant_id: 1, qty: 1 }], db);
+      const result = await processWrPendingOrders(db);
+      expect(result).toMatchObject({ processed: 1, succeeded: 1 });
+      expect(seenInvite).toBe("buyer@contoh.id");
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("2026-10-07: varian Link (tipe nyata WR) tetap meneruskan email_invite", async () => {
+    const fx = await setup();
+    try {
+      seedCatalog(fx);
+      fx.sql.prepare(`UPDATE wr_variants SET wr_type='Link' WHERE wr_variant_id='var-1'`).run();
+      seedOrder(fx, "AXV-20260911-AAALNK01");
+      vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
+      vi.stubEnv("WARUNG_REBAHAN_AUTO_ORDER_ENABLED", "true");
+      vi.stubEnv("WARUNG_REBAHAN_API_KEY", "k");
+      vi.stubEnv("TELEGRAM_BOT_ENABLED", "false");
+      fx.sql.prepare(`UPDATE orders SET customer_email='buyer@contoh.id' WHERE code='AXV-20260911-AAALNK01'`).run();
+      let seenInvite: unknown = null;
+      stubWrApi((_url, body) => {
+        seenInvite = (body as Record<string, unknown>).email_invite ?? null;
+        return {
+          success: true,
+          message: "ok",
+          data: { order_id: "ORD-LNK-1", status: "processing", payment_status: "paid", total_amount: 5000, current_balance: 240000 },
+        };
+      });
+      const db = createDatabaseAccess(fx.db);
+      await createWrOrderLink("AXV-20260911-AAALNK01", [{ product_id: 1, variant_id: 1, qty: 1 }], db);
+      const result = await processWrPendingOrders(db);
+      expect(result).toMatchObject({ processed: 1, succeeded: 1 });
+      expect(seenInvite).toBe("buyer@contoh.id");
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("2026-10-07: varian Private ber-email TIDAK mengirim email_invite", async () => {
+    const fx = await setup();
+    try {
+      seedCatalog(fx);
+      fx.sql.prepare(`UPDATE wr_variants SET wr_type='Private' WHERE wr_variant_id='var-1'`).run();
+      seedOrder(fx, "AXV-20260911-AAAPRV01");
+      vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
+      vi.stubEnv("WARUNG_REBAHAN_AUTO_ORDER_ENABLED", "true");
+      vi.stubEnv("WARUNG_REBAHAN_API_KEY", "k");
+      vi.stubEnv("TELEGRAM_BOT_ENABLED", "false");
+      fx.sql.prepare(`UPDATE orders SET customer_email='buyer@contoh.id' WHERE code='AXV-20260911-AAAPRV01'`).run();
+      let seenKeys: string[] = [];
+      stubWrApi((_url, body) => {
+        seenKeys = Object.keys(body as Record<string, unknown>);
+        return {
+          success: true,
+          message: "ok",
+          data: { order_id: "ORD-PRV-1", status: "processing", payment_status: "paid", total_amount: 5000, current_balance: 240000 },
+        };
+      });
+      const db = createDatabaseAccess(fx.db);
+      await createWrOrderLink("AXV-20260911-AAAPRV01", [{ product_id: 1, variant_id: 1, qty: 1 }], db);
+      const result = await processWrPendingOrders(db);
+      expect(result).toMatchObject({ processed: 1, succeeded: 1 });
+      expect(seenKeys).not.toContain("email_invite");
     } finally {
       fx.close();
     }

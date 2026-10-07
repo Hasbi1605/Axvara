@@ -84,10 +84,45 @@ export function isQueuedFulfillment(input: {
 }
 
 /**
- * Apakah varian ini WAJIB email pembeli SEBELUM bayar (2026-09-16)?
- * Aturan gabungan (keputusan owner):
+ * Apakah wr_type ini bertipe Invite strict (satu-satunya tipe yang menurut
+ * api-docs live + admin WR wajib email_invite — POST /order: "Wajib untuk
+ * produk bertipe invite")?
+ * Perbandingan case-insensitive + trim.
+ */
+export function isInviteWrType(wrType: string | null | undefined): boolean {
+  return String(wrType || "").trim().toLowerCase() === "invite";
+}
+
+/**
+ * Apakah wr_type ini memakai email_invite saat order ke WR (gate konservatif)?
+ * Invite ATAU Link. Alasan Link ikut (audit implementasi 2026-10-07):
+ * tipe "Link" itu NYATA di API WR — fixture sync.test.ts memakai
+ * `type: "Link"` dengan UUID Canva asli (bukan tebakan). Api-docs + admin
+ * hanya menyebut Invite sebagai wajib, tapi MENGHILANGKAN Link dari gate
+ * berisiko order Link 422 (retry tak sembuh, pembeli sudah bayar) bila
+ * ternyata WR masih membutuhkannya — jauh lebih buruk daripada kotak
+ * TARGET ACCOUNT INVITATION kosmetik di dashboard WR. Jadi Link tetap
+ * dikirimi email_invite (perilaku lama, tidak pernah merusak order);
+ * yang DIPERBAIKI hanya Private/Sharing/dll yang kini di-omit total.
+ * Bila admin WR konfirmasi tertulis Link tak butuh email, hapus
+ * `|| ... === "link"` di bawah (satu baris) + sesuaikan test.
+ */
+export function wrTypeUsesEmailInvite(wrType: string | null | undefined): boolean {
+  if (isInviteWrType(wrType)) return true;
+  return String(wrType || "").trim().toLowerCase() === "link";
+}
+
+/**
+ * Apakah baris ini WAJIB email pembeli SEBELUM bayar (2026-09-16,
+ * dipersempit 2026-10-07)?
+ * Aturan gabungan (keputusan owner + koreksi admin WR 2026-10-07):
  * - Varian WR tipe Invite/Link OTOMATIS butuh (tanpa setting): WR 422
- *   "Email Invite is required" bila tanpa email_invite (uji live #1).
+ *   "Email Invite is required" bila tanpa email_invite (uji live #1;
+ *   Link dipertahankan karena tipe nyata di API WR — lihat
+ *   wrTypeUsesEmailInvite).
+ *   Private/Sharing TIDAK butuh dan TIDAK boleh dikirimi email_invite
+ *   (temuan admin: produk non-invite ikut muncul TARGET ACCOUNT INVITATION
+ *   di dashboard WR karena Axvara selalu meneruskan customer_email).
  * - Produk non-WR: ikut toggle products.require_email (untuk e-book,
  *   lisensi, akun masa depan).
  * Email selalu diminta sebelum bayar — order lunas tanpa email = macet WR.
@@ -97,8 +132,8 @@ export function needsEmailForVariant(input: {
   requireEmail?: number | boolean | null;
 }): boolean {
   if (input.requireEmail === 1 || input.requireEmail === true) return true;
-  const type = String(input.wrType || "").trim().toLowerCase();
-  return type === "invite" || type === "link";
+  if (isInviteWrType(input.wrType)) return true;
+  return String(input.wrType || "").trim().toLowerCase() === "link";
 }
 
 /** Pesan penjelasan saat email wajib tapi kosong/tidak valid. */
@@ -173,7 +208,7 @@ export function guessDeliveryClass(input: {
   //    Tanpa email, WR 422 dan retry tidak sembuh (uji live 2026-09-16).
   //    Kelasnya tetap bisa restock bila daftar screenshot, tapi checkout
   //    WAJIB minta email untuk tipe ini.
-  if (type === "invite" || type === "link") return "made_by_order";
+  if (isInviteWrType(type) || type === "link") return "made_by_order";
   // 3. Kata slow/proses/antri = antrean manusia di sisi WR.
   if (/(slow|antri|queue|manual|proses \d|sesuai antrian)/.test(blob)) return "made_by_order";
   // 4. Stok ready + kata langsung/otomatis = restock.

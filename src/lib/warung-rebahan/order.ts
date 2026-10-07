@@ -441,14 +441,33 @@ async function processOneLink(link: Row, db: DatabaseAccess): Promise<"succeeded
     // order Axvara; bila ada, teruskan sebagai email_invite. Bila kosong
     // untuk produk Invite, WR tetap 422 — retry tidak akan sembuh, admin
     // harus minta email pembeli (lihat last_error).
+    //
+    // 2026-10-07 (temuan admin WR, 1-field smart): email_invite HANYA
+    // dikirim untuk varian bertipe Invite/Link (lihat wrTypeUsesEmailInvite:
+    // Link dipertahankan karena tipe nyata di API WR — menghilangkan-nya
+    // berisiko order 422 tak sembuh). Produk Private/Sharing/dll yang
+    // dikirimi email_invite ikut muncul TARGET ACCOUNT INVITATION di
+    // dashboard WR (kasus RBHN-20261005-0127B5). Untuk non-invite, key
+    // email_invite di-omit total (bukan string kosong) — customer_email
+    // tetap dipakai Axvara untuk notif/kredensial seperti biasa.
     let emailInvite: string | undefined;
     try {
-      const orderRow = await db.queryFirst(
-        `SELECT customer_email FROM orders WHERE code=?`,
-        String(link.order_code),
-      ).catch(() => null) as { customer_email?: unknown } | null;
-      const rawEmail = String(orderRow?.customer_email || "").trim();
-      if (rawEmail && rawEmail.includes("@")) emailInvite = rawEmail;
+      const linkRow = await db.queryFirst(
+        `SELECT l.order_code AS order_code, wv.wr_type AS wr_type
+         FROM wr_order_links l
+         LEFT JOIN wr_variants wv ON wv.wr_variant_id = l.wr_variant_id
+         WHERE l.id=?`,
+        id,
+      ).catch(() => null) as { order_code?: unknown; wr_type?: unknown } | null;
+      const { wrTypeUsesEmailInvite } = await import("./delivery-class");
+      if (wrTypeUsesEmailInvite(linkRow?.wr_type != null ? String(linkRow.wr_type) : null)) {
+        const orderRow = await db.queryFirst(
+          `SELECT customer_email FROM orders WHERE code=?`,
+          String(link.order_code ?? linkRow?.order_code ?? ""),
+        ).catch(() => null) as { customer_email?: unknown } | null;
+        const rawEmail = String(orderRow?.customer_email || "").trim();
+        if (rawEmail && rawEmail.includes("@")) emailInvite = rawEmail;
+      }
     } catch {
       /* email opsional — lanjut tanpa invite */
     }
