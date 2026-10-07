@@ -105,7 +105,7 @@ export default function AdminPage() {
 
       {pm.listError && <div className="mt-4 rounded-2xl bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-200 flex items-center justify-between gap-3"><span>{pm.listError}</span><button onClick={pm.load} className="h-8 px-3 rounded-full bg-white text-[#070a1e] text-xs font-bold shrink-0 transition hover:bg-white/90">Coba lagi</button></div>}
 
-      {tab==="summary" && <AdminOverview data={overview} loading={overviewLoading} onNavigate={navigateAdmin} />}
+      {tab==="summary" && <AdminOverview data={overview} loading={overviewLoading} onLowStock={() => navigateAdmin("products", { low_stock: "1" })} />}
       {tab==="orders" && <OrdersManager onChanged={loadOverview} />}
       {tab==="categories" && <CategoryManager />}
       {tab==="payments" && <PaymentMethodsManager />}

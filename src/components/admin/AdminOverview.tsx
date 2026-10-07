@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { formatRupiah } from "@/lib/utils";
-import type { AdminSection } from "@/components/admin/AdminShell";
 
 export type ProfitBucket = { orders: number; revenue: number; cost: number; profit: number };
 export type SupplierBucket = ProfitBucket;
@@ -90,41 +89,110 @@ function periodBucket(data: AdminOverviewData, period: Period): ProfitBucket & {
 }
 
 /**
- * Grafik garis 30 hari: omzet vs untung (SVG murni, tanpa library).
- * Skala = nilai maksimum dari kedua garis agar perbandingan jujur.
+ * Grafik 30 hari: omzet vs untung (SVG murni, tanpa library).
+ * Interaktif: hover/tap titik mana pun menampilkan tooltip angka harian
+ * (tanggal, order, omzet, modal, untung); toggle chip Omzet/Untung/Order
+ * menyalakan-matikan tiap garis; sumbu kiri = skala rupiah ringkas.
  */
 export function ProfitChart({ series, loading }: { series: AdminOverviewData["daily_series"]; loading: boolean }) {
   const points = useMemo(() => series.slice(-30), [series]);
-  const max = Math.max(1, ...points.map((d) => Math.max(d.revenue, d.profit)));
-  const W = 600; const H = 160; const PAD = 8;
-  const x = (i: number) => (points.length <= 1 ? W / 2 : PAD + (i * (W - PAD * 2)) / (points.length - 1));
-  const y = (v: number) => H - PAD - (v / max) * (H - PAD * 2);
-  const line = (pick: (d: (typeof points)[number]) => number) =>
-    points.map((d, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(pick(d)).toFixed(1)}`).join(" ");
-  const last = points[points.length - 1];
+  const [active, setActive] = useState<number | null>(null);
+  const [show, setShow] = useState({ revenue: true, profit: true, orders: false });
+  const maxMoney = Math.max(1, ...points.map((d) => Math.max(d.revenue, d.profit)));
+  const maxOrders = Math.max(1, ...points.map((d) => d.orders));
+  const W = 640; const H = 200; const PAD_L = 44; const PAD_R = 12; const PAD_T = 12; const PAD_B = 26;
+  const x = (i: number) => (points.length <= 1 ? W / 2 : PAD_L + (i * (W - PAD_L - PAD_R)) / (points.length - 1));
+  const yMoney = (v: number) => H - PAD_B - (v / maxMoney) * (H - PAD_T - PAD_B);
+  const yOrders = (v: number) => H - PAD_B - (v / maxOrders) * (H - PAD_T - PAD_B);
+  const line = (pick: (d: (typeof points)[number]) => number, yFn: (v: number) => number) =>
+    points.map((d, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${yFn(pick(d)).toFixed(1)}`).join(" ");
+  const area = (pick: (d: (typeof points)[number]) => number, yFn: (v: number) => number) =>
+    `${line(pick, yFn)} L${x(points.length - 1).toFixed(1)},${(H - PAD_B).toFixed(1)} L${x(0).toFixed(1)},${(H - PAD_B).toFixed(1)} Z`;
+  const shortRp = (v: number) =>
+    v >= 1_000_000 ? `${(v / 1_000_000).toFixed(v % 1_000_000 === 0 ? 0 : 1)}jt`
+    : v >= 1000 ? `${Math.round(v / 1000)}rb` : String(Math.round(v));
+  const gridVals = [0.25, 0.5, 0.75, 1].map((f) => Math.round(maxMoney * f));
+  const sel = active != null ? points[active] : null;
+  const toggle = (key: keyof typeof show) => setShow((s) => ({ ...s, [key]: !s[key] }));
+  const chip = (key: keyof typeof show, label: string, dot: string) => (
+    <button key={key} type="button" onClick={() => toggle(key)} aria-pressed={show[key]}
+      className={`inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-semibold transition ${show[key] ? "border-white/15 bg-white/[0.07] text-white" : "border-white/10 text-white/35 hover:text-white/60"}`}>
+      <span className={`inline-block h-1.5 w-1.5 rounded-full ${dot} ${show[key] ? "" : "opacity-30"}`} />{label}
+    </button>
+  );
   return (
     <section className="ax-glass rounded-[20px] p-5" aria-label="Grafik omzet dan untung 30 hari">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div><h2 className="text-sm font-semibold text-white">Omzet vs Untung — 30 hari</h2>
-        <p className="mt-0.5 text-xs text-white/40">Kalender WIB · {loading ? "memuat…" : last ? `terakhir ${last.date} · untung ${formatRupiah(last.profit)}` : "belum ada data"}</p></div>
-        <div className="flex items-center gap-3 text-[11px] text-white/50">
-          <span className="inline-flex items-center gap-1.5"><span className="inline-block h-0.5 w-5 rounded bg-[#00E5FF]" /> Omzet</span>
-          <span className="inline-flex items-center gap-1.5"><span className="inline-block h-0.5 w-5 rounded bg-emerald-400" /> Untung</span>
+        <p className="mt-0.5 text-xs text-white/40">Kalender WIB · {loading ? "memuat…" : "arahkan kursor / ketuk titik untuk detail harian"}</p></div>
+        <div className="flex flex-wrap items-center gap-2">
+          {chip("revenue", "Omzet", "bg-[#00E5FF]")}
+          {chip("profit", "Untung", "bg-emerald-400")}
+          {chip("orders", "Order", "bg-[#FFB800]")}
         </div>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="mt-4 h-40 w-full" role="img" aria-label="Grafik garis omzet dan untung 30 hari terakhir">
-        {[0.25, 0.5, 0.75].map((f) => <line key={f} x1={PAD} x2={W - PAD} y1={H * f} y2={H * f} stroke="rgba(255,255,255,0.07)" strokeWidth="1" />)}
-        {points.length > 1 && <>
-          <path d={line((d) => d.revenue)} fill="none" stroke="#00E5FF" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" opacity="0.85" />
-          <path d={line((d) => d.profit)} fill="none" stroke="#34D399" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-        </>}
-        {points.length <= 1 && <text x={W / 2} y={H / 2} textAnchor="middle" fill="rgba(255,255,255,0.35)" fontSize="12">Belum cukup data harian</text>}
-      </svg>
+      <div className="relative mt-4">
+        <svg viewBox={`0 0 ${W} ${H}`} className="h-52 w-full sm:h-56" role="img" aria-label="Grafik garis omzet, untung, dan order 30 hari terakhir"
+          onMouseLeave={() => setActive(null)}>
+          <defs>
+            <linearGradient id="ax-rev-fill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#00E5FF" stopOpacity="0.22" />
+              <stop offset="100%" stopColor="#00E5FF" stopOpacity="0" />
+            </linearGradient>
+            <linearGradient id="ax-prof-fill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#34D399" stopOpacity="0.25" />
+              <stop offset="100%" stopColor="#34D399" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          {gridVals.map((v) => (
+            <g key={v}>
+              <line x1={PAD_L} x2={W - PAD_R} y1={yMoney(v)} y2={yMoney(v)} stroke="rgba(255,255,255,0.07)" strokeWidth="1" />
+              <text x={PAD_L - 6} y={yMoney(v) + 3.5} textAnchor="end" fill="rgba(255,255,255,0.35)" fontSize="9" className="tabular-nums">{shortRp(v)}</text>
+            </g>
+          ))}
+          {points.length > 1 && <>
+            {show.revenue && <path d={area((d) => d.revenue, yMoney)} fill="url(#ax-rev-fill)" />}
+            {show.profit && <path d={area((d) => d.profit, yMoney)} fill="url(#ax-prof-fill)" />}
+            {show.revenue && <path d={line((d) => d.revenue, yMoney)} fill="none" stroke="#00E5FF" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" opacity="0.9" />}
+            {show.profit && <path d={line((d) => d.profit, yMoney)} fill="none" stroke="#34D399" strokeWidth="2.25" strokeLinejoin="round" strokeLinecap="round" />}
+            {show.orders && <path d={line((d) => d.orders, yOrders)} fill="none" stroke="#FFB800" strokeWidth="1.5" strokeDasharray="5 4" strokeLinejoin="round" strokeLinecap="round" opacity="0.9" />}
+            {/* Label tanggal: 5 titik merata agar tak berdesakan di mobile. */}
+            {points.map((d, i) => (i % Math.ceil(points.length / 5) === 0 || i === points.length - 1) && (
+              <text key={d.date} x={x(i)} y={H - 8} textAnchor="middle" fill="rgba(255,255,255,0.35)" fontSize="9" className="tabular-nums">{d.date.slice(8)}/{d.date.slice(5, 7)}</text>
+            ))}
+            {active != null && sel && (
+              <g>
+                <line x1={x(active)} x2={x(active)} y1={PAD_T} y2={H - PAD_B} stroke="rgba(255,255,255,0.25)" strokeWidth="1" strokeDasharray="3 3" />
+                {show.revenue && <circle cx={x(active)} cy={yMoney(sel.revenue)} r="4" fill="#00E5FF" stroke="#07101f" strokeWidth="2" />}
+                {show.profit && <circle cx={x(active)} cy={yMoney(sel.profit)} r="4" fill="#34D399" stroke="#07101f" strokeWidth="2" />}
+                {show.orders && <circle cx={x(active)} cy={yOrders(sel.orders)} r="3.5" fill="#FFB800" stroke="#07101f" strokeWidth="2" />}
+              </g>
+            )}
+            {/* Zona hover/tap lebar per titik — ramah jempol di HP. */}
+            {points.map((d, i) => (
+              <rect key={d.date} x={i === 0 ? 0 : (x(i - 1) + x(i)) / 2} y={0}
+                width={i === 0 ? (x(1) - x(0)) / 2 + x(0) : i === points.length - 1 ? W - (x(i - 1) + x(i)) / 2 : (x(i + 1) - x(i - 1)) / 2}
+                height={H} fill="transparent"
+                onMouseEnter={() => setActive(i)} onClick={() => setActive(i)}>
+                <title>{`${d.date} · ${d.orders} order · omzet ${formatRupiah(d.revenue)} · untung ${formatRupiah(d.profit)}`}</title>
+              </rect>
+            ))}
+          </>}
+          {points.length <= 1 && <text x={W / 2} y={H / 2} textAnchor="middle" fill="rgba(255,255,255,0.35)" fontSize="12">Belum cukup data harian</text>}
+        </svg>
+        {sel && active != null && points.length > 1 && (
+          <div className="pointer-events-none absolute left-1/2 top-0 w-max max-w-[92%] -translate-x-1/2 rounded-2xl border border-white/15 bg-[#0B1025]/95 px-4 py-3 shadow-xl backdrop-blur sm:left-auto sm:right-2 sm:translate-x-0" role="status">
+            <p className="text-[11px] font-bold tabular-nums text-white/60">{sel.date}</p>
+            <p className="mt-1 font-display text-lg font-bold tabular-nums text-emerald-300">{formatRupiah(sel.profit)}</p>
+            <p className="mt-0.5 text-[11px] tabular-nums text-white/50">{sel.orders} order · omzet {formatRupiah(sel.revenue)} · modal {formatRupiah(sel.revenue - sel.profit)}</p>
+          </div>
+        )}
+      </div>
     </section>
   );
 }
 
-export function AdminOverview({ data, loading, onNavigate }: { data: AdminOverviewData; loading: boolean; onNavigate: (section: AdminSection, params?: Record<string, string>) => void }) {
+export function AdminOverview({ data, loading, onLowStock }: { data: AdminOverviewData; loading: boolean; onLowStock?: () => void }) {
   const [period, setPeriod] = useState<Period>("week");
   const bucket = periodBucket(data, period);
   const metrics = [
@@ -135,13 +203,6 @@ export function AdminOverview({ data, loading, onNavigate }: { data: AdminOvervi
     ["Margin", marginOf(bucket.revenue, bucket.profit), "text-[#5cefff]"],
     ["Rata2 / order", bucket.orders ? formatRupiah(Math.round(bucket.revenue / bucket.orders)) : "—", "text-white"],
   ] as const;
-  const actions: { title: string; count: number; detail: string; section: AdminSection; params: Record<string, string>; tone: "amber" | "red" }[] = [
-    { title: "Pesanan pending", count: data.pending_orders, detail: "Perlu diproses", section: "orders", params: { status: "pending" }, tone: "amber" },
-    { title: "Bukti manual", count: data.pending_proofs, detail: "Menunggu pemeriksaan", section: "orders", params: { proof: "submitted", method: "manual" }, tone: "amber" },
-    { title: "QRIS perlu dicek", count: data.payment_attention, detail: "Unmatched atau gagal 7 hari", section: "payments", params: { payment_tab: "qris", event_status: "attention" }, tone: "red" },
-    { title: "Fulfillment", count: data.fulfillment_attention, detail: "Manual, retry, atau gagal", section: "bot", params: {}, tone: "red" },
-    { title: "Stok menipis", count: data.low_stock, detail: "Varian tersisa ≤ 5", section: "products", params: { low_stock: "1" }, tone: "amber" },
-  ];
 
   return <div className="mt-4 space-y-4">
     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -153,7 +214,21 @@ export function AdminOverview({ data, loading, onNavigate }: { data: AdminOvervi
           </button>
         ))}
       </div>
-      <p className="text-[11px] text-white/35">Minggu = Senin–Minggu WIB · Total pesanan {data.total_orders} · Pending {data.pending_orders}</p>
+      <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/35">
+        <span>Minggu = Senin–Minggu WIB · Total {data.total_orders} · Pending {data.pending_orders}</span>
+        {data.low_stock > 0 && (
+          onLowStock ? (
+            <button type="button" onClick={onLowStock} title="Buka daftar Produk dengan filter stok menipis"
+              className="inline-flex items-center gap-1.5 rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2.5 py-1 text-[11px] font-semibold text-[#FFCF55] transition hover:bg-[#FFB800]/20">
+              Stok menipis · {data.low_stock} varian
+            </button>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2.5 py-1 text-[11px] font-semibold text-[#FFCF55]" title="Varian aktif tersisa ≤ 5 — atur dari daftar Produk">
+              Stok menipis · {data.low_stock} varian
+            </span>
+          )
+        )}
+      </div>
     </div>
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
       {metrics.map(([label, value, tone]) => <div key={label} className="ax-glass rounded-2xl p-4">
@@ -161,7 +236,6 @@ export function AdminOverview({ data, loading, onNavigate }: { data: AdminOvervi
         <p className={`mt-1 font-display text-xl font-bold tabular-nums sm:text-2xl ${tone}`}>{loading ? "—" : value}</p>
       </div>)}
     </div>
-    <p className="text-[11px] text-white/35">Untung Produk = omzet − modal supplier (WR/SK saat order lunas) − modal manual varian. Produk stok sendiri tanpa modal dihitung untung penuh. Belum termasuk biaya operasional (domain, VPS, Resend).{data.profit_estimated_orders > 0 ? ` ${data.profit_estimated_orders} order lunas masih menunggu supplier (estimasi, modal belum kepotong).` : ""}</p>
 
     <ProfitChart series={data.daily_series} loading={loading} />
 
@@ -212,27 +286,5 @@ export function AdminOverview({ data, loading, onNavigate }: { data: AdminOvervi
       </section>
     </div>
 
-    <section className="ax-glass overflow-hidden rounded-[20px]">
-      <div className="border-b border-white/10 p-4 sm:p-5">
-        <h2 className="text-sm font-semibold text-white">Perlu tindakan</h2>
-        <p className="mt-0.5 text-xs text-white/40">Antrean operasional yang sebaiknya diselesaikan lebih dulu.</p>
-      </div>      <div className="grid gap-3 p-4 sm:grid-cols-2 sm:p-5 xl:grid-cols-5">
-        {actions.map((action) => <button key={action.title} onClick={() => onNavigate(action.section, action.params)} className="rounded-2xl border border-white/10 bg-white/[0.035] p-4 text-left transition hover:border-[#00E5FF]/25 hover:bg-white/[0.06]">
-          <div className="flex items-start justify-between gap-3"><p className="text-xs font-semibold text-white/65">{action.title}</p><span className={`min-w-7 shrink-0 rounded-full px-2 py-1 text-center text-xs font-bold tabular-nums ${action.count > 0 ? action.tone === "red" ? "bg-red-500/15 text-red-300" : "bg-[#FFB800]/15 text-[#FFCF55]" : "bg-emerald-500/10 text-emerald-300"}`}>{loading ? "—" : action.count}</span></div>
-          <p className="mt-3 text-[11px] leading-5 text-white/35">{action.count > 0 ? action.detail : "Tidak ada antrean"}</p>
-        </button>)}
-      </div>
-    </section>
-
-    <div className="grid gap-4 lg:grid-cols-2">
-      <section className="ax-glass rounded-[20px] p-5"><h2 className="text-sm font-semibold text-white">Kinerja toko</h2><div className="mt-4 grid grid-cols-2 gap-3 text-sm"><div className="rounded-xl bg-white/[0.04] p-3"><p className="text-[11px] text-white/40">Total lunas</p><p className="mt-1 font-bold tabular-nums text-emerald-300">{data.paid_orders}</p></div><div className="rounded-xl bg-white/[0.04] p-3"><p className="text-[11px] text-white/40">Omzet seluruhnya</p><p className="mt-1 font-bold text-white">{formatRupiah(data.revenue_total)}</p></div><div className="col-span-2 rounded-xl bg-white/[0.04] p-3"><p className="text-[11px] text-white/40">Produk terlaris</p><p className="mt-1 font-semibold text-white">{data.top_product ? `${data.top_product.name} · ${data.top_product.sold_count} terjual` : "Belum ada data"}</p></div></div></section>
-      <section className="ax-glass rounded-[20px] p-5"><h2 className="text-sm font-semibold text-white">Kesehatan sistem</h2><div className="mt-4 grid grid-cols-2 gap-3">{Object.entries({ Telegram: data.systems.telegram, WhatsApp: data.systems.whatsapp, "QRIS Hook": data.systems.qris, Fulfillment: data.systems.fulfillment }).map(([label, ok]) => {
-        const key = label === "Telegram" ? "telegram" : label === "WhatsApp" ? "whatsapp" : label === "QRIS Hook" ? "qris" : "fulfillment";
-        const detail = data.system_details?.[key as keyof NonNullable<typeof data.system_details>];
-        const tone = detail?.level === "degraded" ? "red" : detail?.level === "unknown" ? "amber" : ok ? "emerald" : "red";
-        const dot = tone === "emerald" ? "bg-emerald-400" : tone === "amber" ? "bg-[#FFB800]" : "bg-red-400";
-        return <div key={label} title={detail?.detail || detail?.level || (ok ? "sehat" : "perlu perhatian")} className={`rounded-xl border px-3 py-3 text-xs font-semibold ${tone === "emerald" ? "border-emerald-400/15 bg-emerald-400/[0.07] text-emerald-300" : tone === "amber" ? "border-[#FFB800]/20 bg-[#FFB800]/[0.07] text-[#FFCF55]" : "border-red-400/15 bg-red-500/[0.07] text-red-300"}`}><span className={`mr-2 inline-block h-1.5 w-1.5 rounded-full ${dot}`} />{label}{detail && detail.level !== "healthy" ? <span className="ml-1 opacity-70">· {detail.level}</span> : null}</div>;
-      })}</div>{data.system_details && <p className="mt-3 text-[11px] leading-5 text-white/35" title="Detail status tiap layanan">configured = siap tapi belum ada pengukuran · unknown = belum bisa dinilai · degraded = perlu tindakan.</p>}</section>
-    </div>
   </div>;
 }

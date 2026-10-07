@@ -29,7 +29,7 @@ function stubAdminApi() {
   }));
 }
 
-it("kartu Stok menipis membawa filternya ke daftar Produk, bukan sekadar pindah tab", async () => {
+it("badge Stok menipis di Ringkasan membawa filternya ke daftar Produk", async () => {
   stubAdminApi();
   render(<ToastProvider><AdminPage /></ToastProvider>);
   await act(async () => {});
@@ -40,11 +40,11 @@ it("kartu Stok menipis membawa filternya ke daftar Produk, bukan sekadar pindah 
   expect(screen.getAllByText("Produk Aman").length).toBeGreaterThan(0);
   expect(screen.getAllByText("Produk Tipis").length).toBeGreaterThan(0);
 
-  // Kembali ke Ringkasan, lalu klik kartu "Stok menipis".
+  // Kembali ke Ringkasan, lalu klik badge "Stok menipis".
   fireEvent.click(screen.getAllByRole("button").find((node) => (node.textContent ?? "").includes("Ringkasan"))!);
   await act(async () => {});
   const card = screen.getAllByRole("button").find((node) => node.textContent?.includes("Stok menipis"));
-  expect(card, "kartu Stok menipis harus ada di Ringkasan").toBeTruthy();
+  expect(card, "badge Stok menipis harus ada di Ringkasan").toBeTruthy();
   fireEvent.click(card!);
   await act(async () => {});
 

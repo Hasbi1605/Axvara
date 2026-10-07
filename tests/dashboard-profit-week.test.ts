@@ -154,7 +154,9 @@ describe("kontrak respons overview Fase 1", () => {
     for (const label of ["Untung Produk", "Minggu ini", "Untung per supplier", "Top 5 penyumbang untung", "Untung per channel", "Omzet vs Untung"]) {
       expect(ui).toContain(label);
     }
-    // Label jujur: bukan "bersih" penuh, biaya operasional disebut.
-    expect(ui).toContain("Belum termasuk biaya operasional");
+    // 3 card legacy + teks rumus terhapus dari Ringkasan (2026-10-07).
+    for (const gone of ["Perlu tindakan", "Kinerja toko", "Kesehatan sistem", "Belum termasuk biaya operasional"]) {
+      expect(ui).not.toContain(gone);
+    }
   });
 });
