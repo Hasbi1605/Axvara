@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
 import { ProductCard } from "@/components/pedia/PlatformGrid";
 
+export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
 export default async function PediaServicesPage() {

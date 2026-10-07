@@ -1,3 +1,5 @@
+export const runtime = "edge";
+
 // src/app/pedia/ketentuan/page.tsx — S&K Pedia (PRD §11, 7 poin + larangan klaim).
 export default function PediaTermsPage() {
   const points = [

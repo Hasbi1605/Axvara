@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { OrderClient } from "./order-client";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
 
+export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
 export default async function PediaOrderPage({

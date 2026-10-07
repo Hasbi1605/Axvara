@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { PediaHomeClient } from "./home-client";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
 
+export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
 async function getCatalog(): Promise<PediaCatalogProduct[]> {

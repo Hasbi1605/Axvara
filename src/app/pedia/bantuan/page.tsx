@@ -1,3 +1,5 @@
+export const runtime = "edge";
+
 // src/app/pedia/bantuan/page.tsx + ketentuan (PD-14).
 export default function PediaHelpPage() {
   const groups = [

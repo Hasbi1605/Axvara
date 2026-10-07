@@ -6,6 +6,7 @@ import { ProductCard } from "@/components/pedia/PlatformGrid";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
 import { PlatformPageClient } from "./platform-client";
 
+export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
 const NAMES: Record<string, string> = {
