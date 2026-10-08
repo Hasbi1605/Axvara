@@ -56,6 +56,19 @@ describe("integrasi pusat M6 (PD-60–64)", () => {
     expect(shopNav).toContain("max-w-[1280px]");
   });
 
+  it("Mark Pedia = SVG trace Muse (kanvas padat, bukan PNG berpadding)", () => {
+    const pediaNav = read("src/components/pedia/PediaNavbar.tsx");
+    // SVG kanvas padat (tanpa padding transparan 30px PNG) → tampil penuh.
+    expect(pediaNav).toContain("/brand/pedia-mark.svg");
+    expect(pediaNav).not.toContain("pedia-mark-white.png");
+    const link = read("src/app/(shop)/link/link-bio-client.tsx");
+    expect(link).toContain("/brand/pedia-circle.svg");
+    expect(link).not.toContain("pedia-mark-white.png");
+    const svg = read("public/brand/pedia-mark.svg");
+    expect(svg).toContain('viewBox="0 0 144 128"');
+    expect(svg).toContain('fill="currentColor"');
+  });
+
   it("Footer Pedia = footer market (konsisten) + header platform ikon asli", () => {
     const layout = read("src/app/pedia/layout.tsx");
     expect(layout).toContain('Footer shopBase="https://axvara.tech"');

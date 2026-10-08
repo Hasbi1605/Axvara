@@ -36,11 +36,13 @@ Agent eksekusi WAJIB membuat logo final sendiri dari konsep 2.1 menggunakan **Mu
 1. Pakai Muse untuk eksplorasi & penyempurnaan konsep A (ketebalan batang, proporsi, keseimbangan optik, kilau gradien) — beri Muse konsep 2.1 + `docs/pedia/logo-concept-a.svg` + logo induk sebagai acuan. Hasilkan ≥ 3 variasi, pilih yang paling dekat dengan aturan di 2.1, dokumentasikan pilihan di CHANGELOG.
 2. Jangan mengubah konsep (tetap segitiga Prism + 3 batang naik + gradien cyan→violet). Tidak boleh menambah elemen lain (bintang, teks di dalam mark, efek 3D berat).
 3. Aset final yang di-commit ke repo HARUS vektor bersih buatan ulang (bukan raster hasil generator yang ditempel): rekonstruksi hasil Muse terpilih menjadi SVG geometris (path rapi, tanpa embed bitmap, < 3 KB).
-4. Paket aset di `public/brand/` (direvisi 2026-10-08 oleh owner — PNG dari logo Muse, default putih):
+4. Paket aset di `public/brand/` (direvisi 2026-10-08 oleh owner — SVG trace geometris dari logo Muse):
    | File | Isi |
    |---|---|
-   | `pedia-mark-muse.png` | Mark gradien cyan→violet (crop dari `.opencode/muse-images/muse-image-1791400094014.png`) |
-   | `pedia-mark-white.png` | Mark putih (mask dari muse, default navbar — 2026-10-08) |
+   | `pedia-mark.svg` | Mark vektor (trace 5 path dari `pedia-mark-white.png`, IoU 91% — segitiga + 3 batang, kanvas padat 144×128 TANPA padding transparan; `currentColor` → putih via `text-white`, < 1 KB) — default navbar + favicon/icon |
+   | `pedia-circle.svg` | Badge lingkaran navy + mark putih (1000×1000, untuk /link — seragam WA/TG circle) |
+   | `pedia-mark-muse.png` | Arsip: mark gradien cyan→violet (crop dari `.opencode/muse-images/muse-image-1791400094014.png`) |
+   | `pedia-mark-white.png` | Arsip: mark putih (mask dari muse — digantikan `pedia-mark.svg`) |
    | `pedia-mark-favicon.png` | Favicon 64px: putih di atas navy |
    | `pedia-icon-512.png`, `pedia-icon-192.png`, `pedia-apple-touch-180.png` | Ikon app/PWA, latar `#080C1E`, mark putih terpusat |
    | `public/og/pedia.png` | OG 1200×630 (komposisi via Muse image compose): midnight + glow cyan→violet + lockup + headline "Tempel link, sisanya beres." |

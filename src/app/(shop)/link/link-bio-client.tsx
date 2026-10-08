@@ -24,7 +24,7 @@ function iconSrc(icon: BioLink["icon"]): string {
   if (icon === "support-tg") return "/brand/support-telegram-question.png";
   if (icon === "globe") return "/brand/website-circle.png";
   if (icon === "track") return "/brand/track-circle.png";
-  if (icon === "pedia") return "/brand/pedia-mark-white.png";
+  if (icon === "pedia") return "/brand/pedia-circle.svg";
   return "";
 }
 
