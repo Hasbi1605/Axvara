@@ -1,9 +1,11 @@
 // src/components/pedia/PlatformGrid.tsx — Grid platform + ProductCard (PD-01/03).
+// Ikon = logo asli tiap platform (Simple Icons, CC0 — 2026-10-08, permintaan
+// owner), fill currentColor + warna brand per platform.
 import Link from "next/link";
 
 export const PEDIA_PLATFORMS = [
   { id: "instagram", label: "Instagram", color: "#D62976" },
-  { id: "tiktok", label: "TikTok", color: "#25F4EE" },
+  { id: "tiktok", label: "TikTok", color: "#FE2C55" },
   { id: "youtube", label: "YouTube", color: "#FF0000" },
   { id: "facebook", label: "Facebook", color: "#1877F2" },
   { id: "threads", label: "Threads", color: "#FFFFFF" },
@@ -11,6 +13,13 @@ export const PEDIA_PLATFORMS = [
   { id: "shopee", label: "Shopee", color: "#EE4D2D" },
   { id: "x", label: "X", color: "#FFFFFF" },
 ] as const;
+
+export function PlatformIcon({ id, size = 28 }: { id: string; size?: number }) {
+  // Ikon = file SVG per platform (fill warna brand ditulis langsung di file —
+  // <img> eksternal tidak mewarisi currentColor parent).
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={`/icons/platforms/${id}.svg`} alt="" width={size} height={size} style={{ width: size, height: size }} draggable={false} />;
+}
 
 export function PlatformGrid() {
   return (
@@ -24,8 +33,8 @@ export function PlatformGrid() {
             className="group flex h-[84px] w-full flex-col items-center justify-center gap-1.5 rounded-2xl border border-transparent transition hover:-translate-y-0.5"
             aria-label={`Layanan ${p.label}`}
           >
-            <span className="flex h-[52px] w-[52px] items-center justify-center rounded-full bg-white/5 text-lg font-bold" style={{ color: p.color }} aria-hidden="true">
-              {p.label.slice(0, 2).toUpperCase()}
+            <span className="flex h-[52px] w-[52px] items-center justify-center rounded-full bg-white/5" aria-hidden="true">
+              <PlatformIcon id={p.id} size={28} />
             </span>
             <span className="text-[12.5px] font-medium text-white/70 group-hover:text-white">{p.label}</span>
             <span className="h-0.5 w-0 rounded-full transition-all group-hover:w-6" style={{ background: p.color }} />
@@ -46,15 +55,14 @@ export type ProductCardData = {
 };
 
 export function ProductCard({ p }: { p: ProductCardData }) {
-  const plat = PEDIA_PLATFORMS.find((x) => x.id === p.platform);
   return (
     <Link
       href={`/pedia/o/${p.slug}`}
       className="ax-glass-card flex items-center gap-3 rounded-[20px] p-4 transition hover:border-white/20"
       aria-label={`${p.name} — ${p.tagline ?? ""}`}
     >
-      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/5 text-sm font-bold" style={{ color: plat?.color ?? "#fff" }} aria-hidden="true">
-        {p.platform.slice(0, 2).toUpperCase()}
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/5" aria-hidden="true">
+        <PlatformIcon id={p.platform} size={24} />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[16px] font-semibold text-white">{p.name}</span>

@@ -7,7 +7,9 @@ import { useState, useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { useStoreSettings } from "@/hooks/useStoreSettings";
-import { AppSwitcher } from "@/components/pedia/AppSwitcher";
+// AppSwitcher DISIMPAN (tidak dihapus) — 3 pill (Apps/Pedia/AI) disembunyikan
+// dari navbar toko 2026-10-08 sampai owner memutuskan. Impor dikembalikan
+// saat pill dimunculkan (lihat komentar di nav).
 
 export function Navbar() {
   const pathname = usePathname();
@@ -86,7 +88,7 @@ export function Navbar() {
             <Link href="/#katalog" className="px-3 py-2 rounded-full hover:text-white hover:bg-white/10 transition">Katalog</Link>
             <Link href="/lacak-pesanan" className="px-3 py-2 rounded-full hover:text-white hover:bg-white/10 transition">Lacak Pesanan</Link>
             <Link href="/artikel" className="px-3 py-2 rounded-full hover:text-white hover:bg-white/10 transition">Artikel</Link>
-            <span className="mx-1 hidden lg:inline-flex"><AppSwitcher active="apps" /></span>
+            {/* 2026-10-08 (owner): 3 pill Apps/Pedia/AI disembunyikan sampai owner memutuskan. AppSwitcher TETAP ADA (tidak dihapus). */}
           </nav>
           <button
             onClick={() => setDrawer(true)}

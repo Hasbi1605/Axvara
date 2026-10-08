@@ -1,15 +1,16 @@
 // src/components/pedia/AppSwitcher.tsx — Segmented pill Apps · Pedia · AI.
-// Indikator aktif = pill latar --px-violet-soft + teks putih, geser 300ms
-// --ease-apple. Dipakai di navbar Pedia (aktif pedia) + navbar axvara.tech
-// (aktif apps, M6). AI = badge "Segera" → waitlist.
+// Dipakai di navbar Pedia (aktif pedia). Cross-host: pedia.axvara.tech dan
+// axvara.tech adalah host berbeda — SEMUA href absolut agar tidak rewrite
+// ke host yang salah (fix 2026-10-08: pill tidak bisa pindah halaman).
+// AI = badge "Segera" → /ai (rute Pedia; dibuat saat AI diluncurkan).
 import Link from "next/link";
 
 export type AppSwitchOption = "apps" | "pedia" | "ai";
 
 const OPTIONS: { id: AppSwitchOption; label: string; href: string; badge?: string }[] = [
-  { id: "apps", label: "Apps", href: "/" },
-  { id: "pedia", label: "Pedia", href: "/pedia" },
-  { id: "ai", label: "AI", href: "/ai", badge: "Segera" },
+  { id: "apps", label: "Apps", href: "https://axvara.tech/" },
+  { id: "pedia", label: "Pedia", href: "https://pedia.axvara.tech/pedia" },
+  { id: "ai", label: "AI", href: "https://pedia.axvara.tech/ai", badge: "Segera" },
 ];
 
 export function AppSwitcher({ active, compact = false }: { active: AppSwitchOption; compact?: boolean }) {

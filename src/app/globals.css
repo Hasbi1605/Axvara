@@ -188,7 +188,8 @@ body {
   --px-violet-soft: rgba(139,92,246,0.16);
   --px-violet-strong: #A78BFA;
   --px-gradient: linear-gradient(135deg, #00E5FF 0%, #8B5CF6 100%);
-  --px-hero-glow: radial-gradient(640px 420px at 30% 0%, rgba(0,229,255,0.16), transparent 70%), radial-gradient(560px 380px at 75% 10%, rgba(139,92,246,0.18), transparent 70%);
+  /* 2026-10-08 (owner): hero glow dihapus — dua radial menumpuk membuat
+     garis potong terlihat di layar (screenshot). Hero kini midnight polos. */
   scroll-padding-bottom: 96px;
 }
 .pedia-gradient-text {

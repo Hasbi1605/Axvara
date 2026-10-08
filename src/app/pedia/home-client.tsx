@@ -40,8 +40,8 @@ export function PediaHomeClient({ products, ticker }: { products: PediaCatalogPr
 
   return (
     <div>
-      {/* Hero */}
-      <section className="relative overflow-hidden pt-10 sm:pt-16" style={{ background: "var(--px-hero-glow)" }}>
+      {/* Hero — tanpa glow (2026-10-08 owner: gradien potong tidak smooth) */}
+      <section className="relative overflow-hidden pt-10 sm:pt-16">
         <h1 className="animate-[fadeInUp_420ms_var(--ease-out)] font-display text-[34px] font-bold leading-[1.08] tracking-[-0.02em] text-white sm:text-[56px]">
           Tempel link,<br />sisanya beres.
         </h1>

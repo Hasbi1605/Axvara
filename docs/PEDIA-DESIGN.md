@@ -36,14 +36,13 @@ Agent eksekusi WAJIB membuat logo final sendiri dari konsep 2.1 menggunakan **Mu
 1. Pakai Muse untuk eksplorasi & penyempurnaan konsep A (ketebalan batang, proporsi, keseimbangan optik, kilau gradien) — beri Muse konsep 2.1 + `docs/pedia/logo-concept-a.svg` + logo induk sebagai acuan. Hasilkan ≥ 3 variasi, pilih yang paling dekat dengan aturan di 2.1, dokumentasikan pilihan di CHANGELOG.
 2. Jangan mengubah konsep (tetap segitiga Prism + 3 batang naik + gradien cyan→violet). Tidak boleh menambah elemen lain (bintang, teks di dalam mark, efek 3D berat).
 3. Aset final yang di-commit ke repo HARUS vektor bersih buatan ulang (bukan raster hasil generator yang ditempel): rekonstruksi hasil Muse terpilih menjadi SVG geometris (path rapi, tanpa embed bitmap, < 3 KB).
-4. Paket aset wajib di `public/brand/`:
+4. Paket aset di `public/brand/` (direvisi 2026-10-08 oleh owner — PNG dari logo Muse, default putih):
    | File | Isi |
    |---|---|
-   | `pedia-mark.svg` | Mark gradien (navbar, UI) |
-   | `pedia-mark-mono.svg` | Mark `currentColor` (putih/hitam polos) |
-   | `pedia-mark-favicon.svg` | Versi favicon: stroke & batang DIPERTEBAL agar terbaca di 16–24 px (konsep asli terlalu tipis di ukuran itu) |
-   | `pedia-logo.svg` | Lockup horizontal: mark + `AXVARA` (font 300, tracking 0.22em) + pemisah 1 px + `PEDIA` (font 700, tracking 0.18em, gradien) — teks dikonversi ke path |
-   | `pedia-icon-512.png`, `pedia-icon-192.png`, `pedia-apple-touch-180.png` | Ikon app/PWA, latar `#080C1E`, mark terpusat |
+   | `pedia-mark-muse.png` | Mark gradien cyan→violet (crop dari `.opencode/muse-images/muse-image-1791400094014.png`) |
+   | `pedia-mark-white.png` | Mark putih (mask dari muse, default navbar — 2026-10-08) |
+   | `pedia-mark-favicon.png` | Favicon 64px: putih di atas navy |
+   | `pedia-icon-512.png`, `pedia-icon-192.png`, `pedia-apple-touch-180.png` | Ikon app/PWA, latar `#080C1E`, mark putih terpusat |
    | `public/og/pedia.png` | OG 1200×630 (komposisi via Muse image compose): midnight + glow cyan→violet + lockup + headline "Tempel link, sisanya beres." |
 5. Verifikasi Obscura: render mark di 16/24/32/64/160 px di latar gelap & terang + lockup di navbar 360 px & 1440 px; screenshot diperiksa sebelum commit.
 
@@ -51,9 +50,9 @@ Agent eksekusi WAJIB membuat logo final sendiri dari konsep 2.1 menggunakan **Mu
 
 | Elemen | Spesifikasi |
 |---|---|
-| Lockup | `pedia-logo.svg` (lihat 2.2) |
-| Ukuran navbar | Mark 32×28 px, wordmark 13 px (mobile) / 14 px (desktop) |
-| Favicon Pedia | `pedia-mark-favicon.svg` |
+| Lockup | Navbar: mark putih + `AXVARA | PEDIA` putih (2026-10-08 — tanpa gradien) |
+| Ukuran navbar | Mark 32×30 px, wordmark 13 px (mobile) / 14 px (desktop) |
+| Favicon Pedia | `pedia-mark-favicon.png` |
 | OG image | `public/og/pedia.png` |
 | Tagline | "Naikkan sosmedmu, tanpa ribet." |
 

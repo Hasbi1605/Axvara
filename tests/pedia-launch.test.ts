@@ -18,13 +18,18 @@ describe("integrasi pusat M6 (PD-60–64)", () => {
     expect(cards).toContain("aria-hidden");
   });
 
-  it("PD-61: AppSwitcher di navbar toko (Apps aktif) + navbar Pedia", () => {
+  it("PD-61: 3 pill DISIMPAN 2026-10-08 — navbar toko tanpa AppSwitcher; navbar Pedia tetap ada", () => {
     const nav = read("src/components/storefront/Navbar.tsx");
-    expect(nav).toContain("AppSwitcher");
-    expect(nav).toContain('active="apps"');
+    // Pill disembunyikan tapi komponen TIDAK dihapus (impor dikembalikan
+    // saat owner memutuskan memunculkan).
+    expect(nav).not.toContain("<AppSwitcher");
+    expect(nav).toContain("AppSwitcher DISIMPAN");
     const pediaNav = read("src/components/pedia/PediaNavbar.tsx");
     expect(pediaNav).toContain('active="pedia"');
     const switcher = read("src/components/pedia/AppSwitcher.tsx");
+    // Cross-host absolut (fix pill tidak bisa pindah halaman).
+    expect(switcher).toContain("https://axvara.tech/");
+    expect(switcher).toContain("https://pedia.axvara.tech/pedia");
     expect(switcher).toContain("Segera");
     expect(switcher).toContain("aria-current");
   });

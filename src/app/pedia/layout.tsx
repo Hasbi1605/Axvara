@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://pedia.axvara.tech"),
   title: { default: "Axvara Pedia — Naikkan sosmedmu, tanpa ribet", template: "%s · Axvara Pedia" },
   description: "Followers, likes, dan views untuk Instagram, TikTok, YouTube, dan lainnya. Bayar QRIS, mulai dalam hitungan menit.",
-  icons: { icon: "/brand/pedia-mark-favicon.svg", apple: "/brand/pedia-apple-touch-180.png" },
+  icons: { icon: "/brand/pedia-mark-favicon.png", apple: "/brand/pedia-apple-touch-180.png" },
   openGraph: {
     type: "website", siteName: "Axvara Pedia", locale: "id_ID",
     images: [{ url: "/og/pedia.png", width: 1200, height: 630, alt: "Axvara Pedia — Tempel link, sisanya beres." }],
