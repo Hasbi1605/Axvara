@@ -45,10 +45,18 @@ describe("integrasi pusat M6 (PD-60–64)", () => {
     expect(plat).not.toContain("name.slice(0, 2)");
   });
 
-  it("Focus ring Pedia violet halus (tanpa kotak biru global)", () => {
+  it("Focus ring Pedia biru Axvara satu outline luar (tanpa outline ganda)", () => {
     const hero = read("src/components/pedia/LinkPasteHero.tsx");
-    expect(hero).toContain("pedia-link-input:focus-visible");
-    expect(hero).toContain("rgba(139,92,246,.35)");
+    // Ring dikunci via state fokus React + fallback :focus-within
+    // (dua-duanya di CONTAINER yang sama = tetap satu garis): container
+    // SATU ring biru, input TANPA ring.
+    expect(hero).toContain("onFocus");
+    expect(hero).toContain("onBlur");
+    expect(hero).toContain("pedia-link-box:focus-within");
+    expect(hero).toContain('borderColor: "#00E5FF"');
+    expect(hero).toContain("rgba(0,229,255,.35)");
+    expect(hero).toContain("focus:outline-none");
+    expect(hero).not.toContain("139,92,246");
   });
 
   it("PD-62: tombol Pedia kedua di /link + footer Jelajah + digest flag", () => {

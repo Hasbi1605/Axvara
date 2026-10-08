@@ -10,6 +10,7 @@ type Suggestion = { slug: string; name: string; minPrice: number | null; target:
 
 export function LinkPasteHero({ suggestionsFor }: { suggestionsFor?: (d: PediaLinkDetect) => Suggestion[] }) {
   const [value, setValue] = useState("");
+  const [focused, setFocused] = useState(false);
   const [detected, setDetected] = useState<PediaLinkDetect | null>(null);
   const [unknown, setUnknown] = useState(false);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -37,21 +38,27 @@ export function LinkPasteHero({ suggestionsFor }: { suggestionsFor?: (d: PediaLi
 
   return (
     <div>
-      {/* 2026-10-08 (owner): focus ring violet halus mengikuti rounded.
-          Akar bug: *:focus-visible global (box-shadow cyan mengotak 3px)
-          menimpa input (focus:outline-none mematikan outline TAPI tidak
-          mematikan box-shadow global) → kotak biru di luar rounded. */}
-      <style>{`.pedia-link-input:focus-visible{box-shadow:0 0 0 3px rgba(139,92,246,.35)!important;border-radius:14px}`}</style>
-      <div className="ax-glass-card flex h-14 items-center gap-2 rounded-2xl border border-white/10 px-3 focus-within:border-[var(--px-violet)]" style={{ boxShadow: "0 0 0 0 transparent" }}>
+      {/* 2026-10-08 (owner, revisi 2): SATU outline luar saja, biru Axvara
+          (#00E5FF seperti tombol Tempel). Ring dikunci via state fokus React
+          + fallback CSS `:focus-within` (dua-duanya di CONTAINER yang sama,
+          jadi tetap satu garis). Inline style dipakai karena class border
+          Tailwind kalah cascade dari `.ax-glass-card`. Input sendiri TANPA
+          ring (`outline-none` + shadow none menimpa `*:focus-visible`
+          global). */}
+      <style>{`.pedia-link-box:focus-within{border-color:#00E5FF!important;box-shadow:0 0 0 3px rgba(0,229,255,.35)!important}.pedia-link-box input:focus,.pedia-link-box input:focus-visible{outline:none!important;box-shadow:none!important}`}</style>
+      <div className="pedia-link-box ax-glass-card flex h-14 items-center gap-2 rounded-2xl border border-white/10 px-3 transition" style={focused ? { borderColor: "#00E5FF", boxShadow: "0 0 0 3px rgba(0,229,255,.35)" } : undefined}>
         <span aria-hidden="true" className="text-lg">🔗</span>
         <input
           id="pedia-link-input"
           value={value}
           onChange={(e) => setValue(e.target.value)}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
           placeholder="Tempel link profil atau postingan…"
           inputMode="url"
           autoComplete="off"
-          className="pedia-link-input h-full flex-1 bg-transparent text-[16px] text-white placeholder:text-white/35 focus:outline-none"
+          className="h-full flex-1 bg-transparent text-[16px] text-white placeholder:text-white/35 focus:outline-none"
+          style={{ boxShadow: "none" }}
         />
         <button
           onClick={paste}
