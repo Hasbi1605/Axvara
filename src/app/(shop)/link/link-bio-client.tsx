@@ -5,7 +5,7 @@ import { SITE, adminWaLink, supportTelegramLink } from "@/lib/site";
 import { useStoreSettings } from "@/hooks/useStoreSettings";
 import { useToast } from "@/components/ui/Toast";
 
-const WA_GROUP_HREF = "https://chat.whatsapp.com/C1MYA1a4Nh67nGVtVojAIQ?mode=gi_t";
+const WA_GROUP_HREF = "https://chat.whatsapp.com/CzONe7Mx9Q7Eyt3k94C9ze?mode=gi_t";
 const TG_BOT_HREF = `https://t.me/${SITE.adminTelegram}?start=beli`;
 const LINK_URL = `${SITE.webUrl}/link`;
 

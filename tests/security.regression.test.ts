@@ -319,7 +319,7 @@ describe("BUG-11: Product detail sold/stock conditional null-safe", () => {
 describe("BUG-12: CommunityBar WA link live (bukan dead href=#)", () => {
   it("CommunityBar WA group link mengarah ke community, bukan href=#", () => {
     const src = fs.readFileSync(path.join(process.cwd(), "src/components/storefront/CommunityBar.tsx"), "utf-8");
-    expect(src).toContain("chat.whatsapp.com/C1MYA1a4Nh67nGVtVojAIQ");
+    expect(src).toContain("chat.whatsapp.com/CzONe7Mx9Q7Eyt3k94C9ze");
     // WA link TIDAK boleh pakai onClick={comingSoon}
     expect(src).not.toMatch(/href=\{waHref\}[^>]*onClick=\{comingSoon\}/);
   });
