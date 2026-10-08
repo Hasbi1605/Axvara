@@ -5,11 +5,12 @@ import { readFileSync } from "node:fs";
 const read = (f: string) => readFileSync(f, "utf8");
 
 describe("integrasi pusat M6 (PD-60–64)", () => {
-  it("PD-60: LaunchCards menggantikan CommunityBar di home-client", () => {
+  it("PD-60: DISIMPAN 2026-10-08 — beranda kembali ke CommunityBar (Telegram + Grup WA); LaunchCards.saved.tsx menunggu owner", () => {
     const home = read("src/app/(shop)/home-client.tsx");
-    expect(home).toContain("LaunchCards");
-    expect(home).not.toContain("CommunityBar");
-    const cards = read("src/components/storefront/LaunchCards.tsx");
+    expect(home).toContain("CommunityBar");
+    expect(home).not.toContain("LaunchCards");
+    // Komponen tersimpan utuh, tidak diimpor siapa pun.
+    const cards = read("src/components/storefront/LaunchCards.saved.tsx");
     expect(cards).toContain("Axvara Pedia");
     expect(cards).toContain("Axvara AI");
     expect(cards).toContain("utm_source=axvara");

@@ -1,6 +1,7 @@
-// src/components/storefront/LaunchCards.tsx — Kartu peluncuran Pedia + AI (M6).
-// Menggantikan CommunityBar di posisi yang sama (di bawah hero).
-// Link WA grup & Bot Telegram pindah eksklusif ke HelpSheet + footer (PD-64).
+// DISIMPAN 2026-10-08 (permintaan owner): kartu peluncuran Pedia + AI.
+// Beranda kembali ke CommunityBar (Telegram + Grup WA). File ini tidak
+// diimpor siapa pun — aktifkan lagi dengan rename ke LaunchCards.tsx +
+// pasang <LaunchCards /> di home-client. Sebelumnya: src/components/storefront/LaunchCards.tsx (M6).
 "use client";
 
 import { useEffect, useRef, useState } from "react";

@@ -588,7 +588,7 @@ Copy marketing DILARANG mengklaim "100% aman", "pasti FYP", "anti banned", atau 
 - [x] AC-16 Respons publik tanpa `supplier_service_id`/rate/nama supplier/`supplier_order_id` (test pedia-orders snapshot string).
 
 **Integrasi**
-- [x] AC-20 LaunchCards menggantikan CommunityBar (Obscura beranda toko 2026-10-08); WA & Telegram di HelpSheet + footer + /link (test pedia-launch).
+- [x] AC-20 DISIMPAN 2026-10-08 (permintaan owner): beranda kembali ke CommunityBar (Telegram + Grup WA); LaunchCards tersimpan di `LaunchCards.saved.tsx`, Pedia diakses via endpoint langsung. Sebelumnya terverifikasi Obscura 2026-10-08 (test pedia-launch).
 - [x] AC-21 App Switcher di kedua navbar, aktif sesuai host (test pedia-launch; Obscura Pedia terverifikasi).
 - [x] AC-22 Order Pedia di admin Pesanan (filter Jenis: Pedia — API kind + UI) + modal supplier_charge di dashboard untung.
 - [x] AC-23 `PEDIA_ENABLED=false` → katalog 503 + halaman "Segera hadir" tanpa error (test pedia-qa).
