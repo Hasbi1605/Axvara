@@ -125,9 +125,12 @@ describe("integrasi pusat M6 (PD-60–64)", () => {
     expect(hero).not.toContain("139,92,246");
   });
 
-  it("PD-62: tombol Pedia kedua di /link + footer Jelajah + digest flag", () => {
+  it("PD-62: kartu Pedia DISEMBUNYIKAN dari /link (2026-10-08 owner) + footer Jelajah + digest flag", () => {
     const link = read("src/app/(shop)/link/link-bio-client.tsx");
-    expect(link).toContain("Axvara Pedia");
+    // Kartu disembunyikan tapi kode DISIMPAN (1 baris comment siap kembalikan).
+    // Comment diawali "// " sehingga tak ikut render — asersi kode aktif:
+    expect(link).not.toMatch(/^\s*\{ href: "\/pedia/m);
+    expect(link).toContain("kartu Pedia DISEMBUNYIKAN");
     expect(link).toContain("utm_medium=link_bio");
     const footer = read("src/components/storefront/Footer.tsx");
     expect(footer).toContain("Axvara Pedia");

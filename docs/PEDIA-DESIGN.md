@@ -365,7 +365,7 @@ Mobile (2 kartu bertumpuk, tinggi ±96 px)          Desktop (2 kolom, tinggi 120
 | Lokasi | Bentuk |
 |---|---|
 | Navbar axvara.tech | `AppSwitcher` (Apps aktif); di mobile versi ringkas di samping logo |
-| `/link` (bio IG) | Tombol kedua dari atas: "Axvara Pedia — naikkan sosmedmu" dengan border gradien Pedia diam |
+| `/link` (bio IG) | DISEMBUNYIKAN 2026-10-08 (owner) — kode 1 baris disimpan di `link-bio-client.tsx`, kembalikan saat owner memutuskan |
 | Footer "Jelajah" | Link "Axvara Pedia" + badge "Baru" (30 hari) |
 | PopupBanner | Banner peluncuran (aset admin) 7 hari pertama, hanya beranda |
 | Daily Promo Digest | 1 baris + link (flag) |
