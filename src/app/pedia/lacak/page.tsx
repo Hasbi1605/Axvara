@@ -2,6 +2,8 @@
 // Kode + WA/email (lookup existing diperluas M5) + daftar perangkat axp-orders.
 "use client";
 
+export const runtime = "edge";
+
 import { useEffect, useState } from "react";
 
 export default function PediaTrackPage() {

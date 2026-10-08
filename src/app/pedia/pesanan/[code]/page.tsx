@@ -2,6 +2,8 @@
 // QRIS (sebelum lunas) / ring + timeline + refill + kartu kredit + needs_check.
 "use client";
 
+export const runtime = "edge";
+
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { ProgressRing, StatusPill, OrderTimeline } from "@/components/pedia/StatusWidgets";
