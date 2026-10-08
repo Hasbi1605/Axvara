@@ -14,6 +14,9 @@ const TABS = [
 
 export function PediaBottomNav() {
   const path = usePathname() ?? "";
+  // 2026-10-08: halaman order punya sticky bar sendiri (total + Bayar) —
+  // bottom nav disembunyikan agar tidak menumpuk (dua fixed = jelek mobile).
+  if (path.startsWith("/pedia/o/")) return null;
   return (
     <nav aria-label="Navigasi Pedia" className="ax-glass-strong fixed inset-x-0 bottom-0 z-40 md:hidden" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
       <div className="grid grid-cols-4">

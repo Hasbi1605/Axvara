@@ -37,6 +37,11 @@ export function LinkPasteHero({ suggestionsFor }: { suggestionsFor?: (d: PediaLi
 
   return (
     <div>
+      {/* 2026-10-08 (owner): focus ring violet halus mengikuti rounded.
+          Akar bug: *:focus-visible global (box-shadow cyan mengotak 3px)
+          menimpa input (focus:outline-none mematikan outline TAPI tidak
+          mematikan box-shadow global) → kotak biru di luar rounded. */}
+      <style>{`.pedia-link-input:focus-visible{box-shadow:0 0 0 3px rgba(139,92,246,.35)!important;border-radius:14px}`}</style>
       <div className="ax-glass-card flex h-14 items-center gap-2 rounded-2xl border border-white/10 px-3 focus-within:border-[var(--px-violet)]" style={{ boxShadow: "0 0 0 0 transparent" }}>
         <span aria-hidden="true" className="text-lg">🔗</span>
         <input
@@ -46,7 +51,7 @@ export function LinkPasteHero({ suggestionsFor }: { suggestionsFor?: (d: PediaLi
           placeholder="Tempel link profil atau postingan…"
           inputMode="url"
           autoComplete="off"
-          className="h-full flex-1 bg-transparent text-[15px] text-white placeholder:text-white/35 focus:outline-none"
+          className="pedia-link-input h-full flex-1 bg-transparent text-[16px] text-white placeholder:text-white/35 focus:outline-none"
         />
         <button
           onClick={paste}

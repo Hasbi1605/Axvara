@@ -2,7 +2,7 @@
 "use client";
 
 import { useState } from "react";
-import { ProductCard } from "@/components/pedia/PlatformGrid";
+import { ProductCard, PlatformIcon } from "@/components/pedia/PlatformGrid";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
 
 const KINDS = ["Semua", "Followers", "Likes", "Views", "Lainnya"] as const;
@@ -25,8 +25,8 @@ export function PlatformPageClient({ platform, name, products }: { platform: str
   return (
     <div className="pt-8">
       <div className="flex items-center gap-3">
-        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/5 text-sm font-bold text-white" aria-hidden="true">
-          {name.slice(0, 2).toUpperCase()}
+        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/5" aria-hidden="true">
+          <PlatformIcon id={platform} size={24} />
         </span>
         <div>
           <h1 className="font-display text-[22px] font-bold text-white sm:text-[32px]">{name}</h1>

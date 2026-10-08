@@ -100,27 +100,27 @@ export function OrderClient({ product, initialTarget, ordersEnabled }: { product
   };
 
   return (
-    <div className="pt-6 lg:grid lg:grid-cols-12 lg:gap-8">
+    <div className="px-1 pt-5 sm:px-0 sm:pt-6 lg:grid lg:grid-cols-12 lg:gap-8">
       <div className="lg:col-span-7">
         <a href="/pedia" className="text-sm text-white/55 hover:text-white">← {product.name}</a>
-        <h1 className="mt-1 font-display text-[22px] font-bold text-white sm:text-[32px]">{product.name}</h1>
+        <h1 className="mt-1 font-display text-[20px] font-bold leading-tight text-white sm:text-[32px]">{product.name}</h1>
         {product.tagline && <p className="text-sm text-white/55">{product.tagline}</p>}
 
         {/* 1 Target */}
-        <section aria-label="Langkah 1 target" className="mt-6">
+        <section aria-label="Langkah 1 target" className="mt-5 sm:mt-6">
           <StepTitle n={1} title="Target" done={!!detected} />
           <input
             value={target}
             onChange={(e) => setTarget(e.target.value)}
             placeholder="instagram.com/namakamu"
             inputMode="url"
-            className="mt-2 h-14 w-full rounded-[14px] border border-white/10 bg-white/5 px-4 text-[15px] text-white placeholder:text-white/30 focus:border-[var(--px-violet)] focus:outline-none"
+            className="pedia-field mt-2 h-13 min-h-[52px] w-full rounded-[14px] border border-white/10 bg-white/5 px-4 text-[16px] text-white placeholder:text-white/30 focus:border-[var(--px-violet)] focus:outline-none"
           />
           {detected?.displayUser && <p className="mt-1 text-[13px] text-emerald-300">{detected.displayUser} · Profil {product.platform} ✓</p>}
         </section>
 
         {/* 2 Jumlah */}
-        <section aria-label="Langkah 2 jumlah" className="mt-6">
+        <section aria-label="Langkah 2 jumlah" className="mt-5 sm:mt-6">
           <StepTitle n={2} title="Jumlah" done={qty > 0} />
           <div role="radiogroup" aria-label="Pilih jumlah" className="mt-2 flex flex-wrap gap-2">
             {product.packages.map((p) => (
@@ -146,7 +146,7 @@ export function OrderClient({ product, initialTarget, ordersEnabled }: { product
             <input
               type="number" value={qty} min={1}
               onChange={(e) => setQty(Math.max(1, Number(e.target.value) || 1))}
-              className="mt-2 h-12 w-40 rounded-[14px] border border-white/10 bg-white/5 px-4 text-white"
+              className="pedia-field mt-2 h-12 min-h-[48px] w-40 rounded-[14px] border border-white/10 bg-white/5 px-4 text-[16px] text-white"
               aria-label="Jumlah bebas"
             />
           )}
@@ -157,7 +157,7 @@ export function OrderClient({ product, initialTarget, ordersEnabled }: { product
 
         {/* 3 Kualitas */}
         {product.tiers.length > 1 && (
-          <section aria-label="Langkah 3 kualitas" className="mt-6">
+          <section aria-label="Langkah 3 kualitas" className="mt-5 sm:mt-6">
             <StepTitle n={3} title="Kualitas" done={!!tier} />
             <div role="radiogroup" aria-label="Pilih kualitas" className="mt-2 flex gap-2 overflow-x-auto pb-1">
               {product.tiers.map((t) => (
@@ -186,7 +186,7 @@ export function OrderClient({ product, initialTarget, ordersEnabled }: { product
 
         {/* 4 Cek */}
         {checklist.length > 0 && (
-          <section aria-label="Langkah 4 cek" className="mt-6">
+          <section aria-label="Langkah 4 cek" className="mt-5 sm:mt-6">
             <StepTitle n={4} title="Cek sebelum bayar" done={checksDone} />
             <div className="mt-2 space-y-2">
               {checklist.map((c) => (
@@ -209,15 +209,15 @@ export function OrderClient({ product, initialTarget, ordersEnabled }: { product
         )}
 
         {/* 5 Kontak */}
-        <section aria-label="Langkah 5 kontak" className="mt-6">
+        <section aria-label="Langkah 5 kontak" className="mt-5 sm:mt-6">
           <StepTitle n={5} title="Kontak" done={!!(wa && email)} />
           <div className="mt-2 space-y-2">
-            <input value={wa} onChange={(e) => setWa(e.target.value)} placeholder="No. WhatsApp 08…" inputMode="tel" className="h-12 w-full rounded-[14px] border border-white/10 bg-white/5 px-4 text-white placeholder:text-white/30" aria-label="Nomor WhatsApp" />
-            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email nama@email.com" inputMode="email" className="h-12 w-full rounded-[14px] border border-white/10 bg-white/5 px-4 text-white placeholder:text-white/30" aria-label="Email" />
+            <input value={wa} onChange={(e) => setWa(e.target.value)} placeholder="No. WhatsApp 08…" inputMode="tel" className="pedia-field h-12 min-h-[48px] w-full rounded-[14px] border border-white/10 bg-white/5 px-4 text-[16px] text-white placeholder:text-white/30" aria-label="Nomor WhatsApp" />
+            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email nama@email.com" inputMode="email" className="pedia-field h-12 min-h-[48px] w-full rounded-[14px] border border-white/10 bg-white/5 px-4 text-[16px] text-white placeholder:text-white/30" aria-label="Email" />
             <p className="text-[12.5px] text-white/50">Status & bukti pesanan dikirim ke email.</p>
             <details className="rounded-[14px] border border-white/10 p-3">
               <summary className="cursor-pointer text-sm text-white/70">Punya kode kredit?</summary>
-              <input value={credit} onChange={(e) => setCredit(e.target.value.toUpperCase())} placeholder="PDK-XXXX-XXXX" className="mt-2 h-12 w-full rounded-[14px] border border-white/10 bg-white/5 px-4 font-mono text-white placeholder:text-white/30" aria-label="Kode kredit" />
+              <input value={credit} onChange={(e) => setCredit(e.target.value.toUpperCase())} placeholder="PDK-XXXX-XXXX" className="pedia-field mt-2 h-12 min-h-[48px] w-full rounded-[14px] border border-white/10 bg-white/5 px-4 font-mono text-[16px] text-white placeholder:text-white/30" aria-label="Kode kredit" />
             </details>
             <label className="flex items-start gap-3 text-sm text-white/80">
               <input id="pedia-agree" type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-0.5 h-[22px] w-[22px] accent-[#8B5CF6]" />

@@ -41,8 +41,8 @@ export function PediaHomeClient({ products, ticker }: { products: PediaCatalogPr
   return (
     <div>
       {/* Hero — tanpa glow (2026-10-08 owner: gradien potong tidak smooth) */}
-      <section className="relative overflow-hidden pt-10 sm:pt-16">
-        <h1 className="animate-[fadeInUp_420ms_var(--ease-out)] font-display text-[34px] font-bold leading-[1.08] tracking-[-0.02em] text-white sm:text-[56px]">
+      <section className="relative overflow-hidden px-1 pt-8 sm:px-0 sm:pt-16">
+        <h1 className="animate-[fadeInUp_420ms_var(--ease-out)] font-display text-[30px] font-bold leading-[1.1] tracking-[-0.02em] text-white sm:text-[56px] sm:leading-[1.08]">
           Tempel link,<br />sisanya beres.
         </h1>
         <p className="mt-3 max-w-xl text-[15px] text-white/60 sm:text-[18px]">
@@ -56,29 +56,27 @@ export function PediaHomeClient({ products, ticker }: { products: PediaCatalogPr
         </p>
       </section>
 
-      {/* Platform */}
-      <section className="mt-14 sm:mt-24">
+      {/* Platform — mobile 4 kolom rapat ala market, desktop 8 */}
+      <section className="mt-10 sm:mt-24">
         <PlatformGrid />
       </section>
 
       {/* Paling laris */}
       {cards.length > 0 && (
-        <section className="mt-14 sm:mt-24">
-          <h2 className="font-display text-[22px] font-bold text-white sm:text-[32px]">Paling laris</h2>
-          <div className="mt-4 flex gap-3 overflow-x-auto pb-2 sm:grid sm:grid-cols-2 sm:overflow-visible lg:grid-cols-3">
+        <section className="mt-10 sm:mt-24">
+          <h2 className="font-display text-[20px] font-bold text-white sm:text-[32px]">Paling laris</h2>
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:mt-4 sm:grid-cols-2 lg:grid-cols-3">
             {cards.map((p) => (
-              <div key={p.slug} className="w-[280px] shrink-0 sm:w-auto">
-                <ProductCard p={p} />
-              </div>
+              <ProductCard key={p.slug} p={p} />
             ))}
           </div>
         </section>
       )}
 
       {/* Cara kerja */}
-      <section className="mt-14 sm:mt-24">
-        <h2 className="font-display text-[22px] font-bold text-white sm:text-[32px]">Cara kerja</h2>
-        <ol className="mt-4 grid gap-3 sm:grid-cols-3">
+      <section className="mt-10 sm:mt-24">
+        <h2 className="font-display text-[20px] font-bold text-white sm:text-[32px]">Cara kerja</h2>
+        <ol className="mt-3 grid gap-2.5 sm:mt-4 sm:grid-cols-3 sm:gap-3">
           {["Tempel link profil atau postingan", "Pilih layanan & jumlah", "Bayar QRIS, pantau progres"].map((s, i) => (
             <li key={s} className="ax-glass-card rounded-[20px] p-4 text-sm text-white/75">
               <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--px-violet-soft)] text-xs font-bold text-white">{i + 1}</span>
@@ -94,8 +92,8 @@ export function PediaHomeClient({ products, ticker }: { products: PediaCatalogPr
       </section>
 
       {/* FAQ */}
-      <section className="mt-14 sm:mt-24">
-        <h2 className="font-display text-[22px] font-bold text-white sm:text-[32px]">Pertanyaan umum</h2>
+      <section className="mt-10 sm:mt-24">
+        <h2 className="font-display text-[20px] font-bold text-white sm:text-[32px]">Pertanyaan umum</h2>
         <div className="mt-4 space-y-2">
           {FAQ.map((f) => (
             <details key={f.q} className="ax-glass-card group rounded-[20px] p-4">

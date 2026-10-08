@@ -31,7 +31,24 @@ describe("integrasi pusat M6 (PD-60–64)", () => {
     expect(switcher).toContain("https://axvara.tech/");
     expect(switcher).toContain("https://pedia.axvara.tech/pedia");
     expect(switcher).toContain("Segera");
-    expect(switcher).toContain("aria-current");
+    // 2026-10-08: tanpa highlight — tab aktif teks putih biasa, tanpa pill.
+    expect(switcher).not.toContain("bg-[var(--px-violet-soft)]");
+    expect(switcher).not.toContain('aria-current={on');
+  });
+
+  it("Footer Pedia = footer market (konsisten) + header platform ikon asli", () => {
+    const layout = read("src/app/pedia/layout.tsx");
+    expect(layout).toContain('Footer shopBase="https://axvara.tech"');
+    expect(layout).not.toContain("Axvara Pedia</span> · Naikkan");
+    const plat = read("src/app/pedia/p/[platform]/platform-client.tsx");
+    expect(plat).toContain("PlatformIcon");
+    expect(plat).not.toContain("name.slice(0, 2)");
+  });
+
+  it("Focus ring Pedia violet halus (tanpa kotak biru global)", () => {
+    const hero = read("src/components/pedia/LinkPasteHero.tsx");
+    expect(hero).toContain("pedia-link-input:focus-visible");
+    expect(hero).toContain("rgba(139,92,246,.35)");
   });
 
   it("PD-62: tombol Pedia kedua di /link + footer Jelajah + digest flag", () => {

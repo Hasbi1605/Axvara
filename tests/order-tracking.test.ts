@@ -115,7 +115,10 @@ describe("Halaman /lacak-pesanan — wiring UX", () => {
 
   it("ditautkan dari navigasi utama, footer, bottom-nav, cara-order, dan halaman pesanan", () => {
     expect(read("src/components/storefront/Navbar.tsx")).toContain('href="/lacak-pesanan"');
-    expect(read("src/components/storefront/Footer.tsx")).toContain('href="/lacak-pesanan"');
+    // 2026-10-08: footer punya DUA tautan lacak (Pedia + market) karena
+    // footer dipakai bersama di host Pedia.
+    expect(read("src/components/storefront/Footer.tsx")).toContain('href="/pedia/lacak"');
+    expect(read("src/components/storefront/Footer.tsx")).toContain('href={shop("/lacak-pesanan")}');
     expect(read("src/components/storefront/MobileBottomNav.tsx")).toContain('href: "/lacak-pesanan"');
     expect(read("src/app/(shop)/cara-order/page.tsx")).toContain('href="/lacak-pesanan"');
     expect(read("src/app/(shop)/pesanan/[code]/page.tsx")).toContain('href="/lacak-pesanan"');

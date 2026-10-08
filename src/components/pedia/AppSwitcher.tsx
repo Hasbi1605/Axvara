@@ -14,6 +14,8 @@ const OPTIONS: { id: AppSwitchOption; label: string; href: string; badge?: strin
 ];
 
 export function AppSwitcher({ active, compact = false }: { active: AppSwitchOption; compact?: boolean }) {
+  // 2026-10-08 (owner): tanpa highlight menyala — tab aktif = teks putih
+  // biasa, tab lain redup. Tanpa pill ungu, tanpa aria-current menonjol.
   return (
     <nav aria-label="Pindah aplikasi Axvara" className="flex h-9 items-center gap-0.5 rounded-full border border-white/10 bg-white/5 p-1">
       {OPTIONS.map((o) => {
@@ -22,11 +24,9 @@ export function AppSwitcher({ active, compact = false }: { active: AppSwitchOpti
           <Link
             key={o.id}
             href={o.href}
-            aria-current={on ? "page" : undefined}
-            className={`flex min-h-[44px] items-center gap-1 rounded-full px-3 text-[13px] font-semibold transition-all duration-300 ${
-              on ? "bg-[var(--px-violet-soft)] text-white" : "text-white/55 hover:text-white"
+            className={`flex min-h-[44px] items-center gap-1 rounded-full px-3 text-[13px] font-semibold transition-colors ${
+              on ? "text-white" : "text-white/55 hover:text-white"
             }`}
-            style={on ? { transitionTimingFunction: "var(--ease-apple)" } : undefined}
           >
             {compact ? o.label.slice(0, 2) : o.label}
             {o.badge && !compact && (
