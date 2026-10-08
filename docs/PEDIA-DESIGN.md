@@ -50,8 +50,8 @@ Agent eksekusi WAJIB membuat logo final sendiri dari konsep 2.1 menggunakan **Mu
 
 | Elemen | Spesifikasi |
 |---|---|
-| Lockup | Navbar: mark putih + `AXVARA | PEDIA` putih (2026-10-08 — tanpa gradien) |
-| Ukuran navbar | Mark 32×30 px, wordmark 13 px (mobile) / 14 px (desktop) |
+| Lockup | Navbar: mark putih + `AXVARA PEDIA` putih tanpa pemisah (2026-10-08 — tanpa gradien, tanpa `|`), disamakan dengan navbar pusat (`font-display` 22px, tracking 0.16em, mark 36×32px, navbar 64px) |
+| Ukuran navbar | 64px + `border-b border-white/10`, container `max-w-[1280px]` — sama persis dengan navbar pusat |
 | Favicon Pedia | `pedia-mark-favicon.png` |
 | OG image | `public/og/pedia.png` |
 | Tagline | "Naikkan sosmedmu, tanpa ribet." |
@@ -140,7 +140,8 @@ Angka dinamis (total, progres, ticker) memakai `font-variant-numeric: tabular-nu
 
 ```
 ┌─────────────────────────────────────┐
-│ [Prism] AXVARA│PEDIA   [Apps|Pedia|AI•]  │  ← navbar glass-strong sticky
+│ [mark] AXVARA PEDIA   [Apps|Pedia|AI•]  │  ← navbar glass-strong sticky
+│   (lockup tanpa |, sama dengan navbar pusat: 64px, font-display 22px) │
 ├─────────────────────────────────────┤
 │        ✦ glow cyan + violet ✦         │
 │   Tempel link,                        │
@@ -266,7 +267,7 @@ Mobile
 
 | Komponen | Spesifikasi kunci |
 |---|---|
-| `PediaNavbar` | `ax-glass-strong`, tinggi 60 px, lockup kiri, `AppSwitcher` tengah (desktop) / kanan (mobile, versi ringkas ikon), tombol "Lacak" kanan |
+| `PediaNavbar` | `ax-glass-strong` + `border-b border-white/10`, tinggi 64 px, container `max-w-[1280px]` — SAMA dengan navbar pusat; lockup kiri: mark 36×32 + `AXVARA PEDIA` (`font-display` 22px, tracking 0.16em, tanpa `|`), `AppSwitcher` tengah (desktop) / kanan (mobile, versi ringkas ikon), tombol "Lacak" kanan |
 | `AppSwitcher` | Segmented pill 3 opsi: **Apps** (→ axvara.tech) · **Pedia** · **AI** (badge "Segera", menuju waitlist). Indikator aktif = pill latar `--px-violet-soft` + teks putih, geser 300 ms `--ease-apple`. Tinggi 36 px, target sentuh tetap ≥ 44 px lewat padding. Dipakai juga di navbar axvara.tech (opsi Apps aktif) |
 | `LinkPasteHero` | Input 56 px, radius 16, `ax-glass-card` + border 1 px `--ax-border`; fokus → border gradien Pedia + glow `0 0 0 4px rgba(139,92,246,0.18)`; ikon link kiri, tombol "Tempel" kanan (cyan) |
 | `DetectChip` | Pill 32 px: ikon platform 18 px + "Instagram · Postingan" + username tersamar + ✓ |

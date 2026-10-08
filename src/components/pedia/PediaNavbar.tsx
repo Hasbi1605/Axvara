@@ -6,17 +6,18 @@ import { AppSwitcher } from "./AppSwitcher";
 
 export function PediaNavbar() {
   return (
-    <header className="ax-glass-strong sticky top-0 z-40 h-[60px]">
-      <div className="mx-auto flex h-full max-w-[1120px] items-center gap-3 px-4">
-        <Link href="/pedia" className="flex items-center gap-2" aria-label="Axvara Pedia — beranda">
+    <header className="ax-glass-strong sticky top-0 z-40 border-b border-white/10">
+      <div className="mx-auto flex h-[64px] max-w-[1280px] items-center gap-4 px-4 sm:px-6 lg:px-8">
+        <Link href="/pedia" className="flex shrink-0 items-center gap-3" aria-label="Axvara Pedia — beranda">
           {/* 2026-10-08 (owner): mark dari logo Muse (PNG) + versi putih default.
              File: public/brand/pedia-mark-white.png (crop + mask dari
              .opencode/muse-images/muse-image-1791400094014.png). */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/brand/pedia-mark-white.png" alt="" width={32} height={30} className="h-[30px] w-8" />
-          <span className="text-[13px] font-bold tracking-[0.22em] text-white sm:text-sm">
-            AXVARA<span className="mx-1.5 inline-block h-4 w-px bg-white/40 align-middle" />
-            PEDIA
+          <img src="/brand/pedia-mark-white.png" alt="" width={36} height={32} className="h-[32px] w-[36px] object-contain" />
+          {/* 2026-10-08 (owner): lockup "AXVARA PEDIA" tanpa pemisah, disamakan
+             dengan navbar pusat: font-display 22px tracking 0.16em. */}
+          <span className="whitespace-nowrap font-display text-[22px] font-[300] leading-none tracking-[0.16em] text-white">
+            AXVARA PEDIA
           </span>
         </Link>
         <div className="hidden flex-1 justify-center md:flex">

@@ -36,6 +36,26 @@ describe("integrasi pusat M6 (PD-60–64)", () => {
     expect(switcher).not.toContain('aria-current={on');
   });
 
+  it("Lockup Pedia konsisten dengan navbar pusat (tanpa |, ukuran sama)", () => {
+    const pediaNav = read("src/components/pedia/PediaNavbar.tsx");
+    const shopNav = read("src/components/storefront/Navbar.tsx");
+    // Lockup gabung tanpa pemisah.
+    expect(pediaNav).toContain("AXVARA PEDIA");
+    expect(pediaNav).not.toContain("bg-white/40");
+    expect(pediaNav).not.toMatch(/AXVARA\s*<span/);
+    // Ukuran disamakan dengan navbar pusat: 64px, container 1280, mark 36x32,
+    // font-display 22px tracking 0.16em.
+    expect(pediaNav).toContain("h-[64px]");
+    expect(pediaNav).toContain("max-w-[1280px]");
+    expect(pediaNav).toContain("border-b border-white/10");
+    expect(pediaNav).toContain("w-[36px]");
+    expect(pediaNav).toContain("font-display");
+    expect(pediaNav).toContain("text-[22px]");
+    expect(pediaNav).toContain("tracking-[0.16em]");
+    expect(shopNav).toContain("h-[64px]");
+    expect(shopNav).toContain("max-w-[1280px]");
+  });
+
   it("Footer Pedia = footer market (konsisten) + header platform ikon asli", () => {
     const layout = read("src/app/pedia/layout.tsx");
     expect(layout).toContain('Footer shopBase="https://axvara.tech"');
