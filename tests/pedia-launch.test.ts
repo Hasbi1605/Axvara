@@ -56,6 +56,39 @@ describe("integrasi pusat M6 (PD-60–64)", () => {
     expect(shopNav).toContain("max-w-[1280px]");
   });
 
+  it("Navbar mobile Pedia: lockup PEDIA saja + anti-geser + tanpa pill Lacak", () => {
+    const nav = read("src/components/pedia/PediaNavbar.tsx");
+    // Mobile: "PEDIA" saja (tanpa AXVARA); desktop tetap "AXVARA PEDIA".
+    expect(nav).toContain("md:hidden");
+    expect(nav).toContain("PEDIA");
+    expect(nav).toContain("AXVARA PEDIA");
+    // Anti-geser horizontal: header overflow-hidden + min-w-0.
+    expect(nav).toContain("overflow-hidden");
+    expect(nav).toContain("min-w-0");
+    // Pill Lacak dihapus (lacak = tab Pesanan bottom bar).
+    expect(nav).not.toContain("/pedia/lacak");
+    expect(nav).not.toContain('"Lacak"');
+    expect(nav).not.toContain(">Lacak<");
+  });
+
+  it("Bottom bar Pedia konsisten dengan pusat (ikon + cyan + titik aktif)", () => {
+    const bottom = read("src/components/pedia/PediaBottomNav.tsx");
+    // Ikon sama dengan pusat: home/category/purchase-order/chat.
+    expect(bottom).toContain("IosIcon");
+    expect(bottom).toContain('"home"');
+    expect(bottom).toContain('"category"');
+    expect(bottom).toContain('"purchase-order"');
+    expect(bottom).toContain('"chat"');
+    // Aktif = cyan + titik, shell sama (backdrop-blur + border-t + shadow).
+    expect(bottom).toContain("text-[#00E5FF]");
+    expect(bottom).toContain("bg-[#00E5FF]");
+    expect(bottom).toContain("backdrop-blur-xl");
+    expect(bottom).toContain("active:scale-95");
+    expect(bottom).toContain("shadow-[0_-8px_24px_rgba(0,0,0,0.6)]");
+    // Tanpa indikator violet lama.
+    expect(bottom).not.toContain("px-violet");
+  });
+
   it("Mark Pedia = SVG trace Muse (kanvas padat, bukan PNG berpadding)", () => {
     const pediaNav = read("src/components/pedia/PediaNavbar.tsx");
     // SVG kanvas padat (tanpa padding transparan 30px PNG) → tampil penuh.
