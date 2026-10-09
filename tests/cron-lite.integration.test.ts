@@ -145,4 +145,72 @@ describe("/api/cron/lite", () => {
     const staticImports = src.split("\n").filter((l) => /^import /.test(l)).join("\n");
     expect(staticImports).not.toMatch(/telegram|whatsapp|fulfillment|warung-rebahan|sekalipay|payments/);
   });
+
+  // 2026-10-09 (kasus AXV-20261009-DA1ACF56): order lunas yang link WR/SK-nya
+  // gagal dibuat webhook + COUNT due = 0 → yatim selamanya karena gate due>0
+  // menutup reconciler. Probe yatim WAJIB jalan tanpa gate due (lite selalu
+  // jadi penjamin; route besar ikut pola yang sama via kunci respons).
+  it("wr_orders: order lunas yatim tanpa link disembuhkan walau COUNT due = 0", async () => {
+    const fx = createD1Fixture();
+    try {
+      stubWrYatim(fx);
+      vi.stubEnv("CRON_SECRET", "s");
+      vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
+      vi.stubEnv("WARUNG_REBAHAN_AUTO_ORDER_ENABLED", "true");
+      vi.stubEnv("WARUNG_REBAHAN_API_KEY", "k");
+      // POST /order diblokir: tick ini hanya boleh MENYEMBUHKAN (buat link
+      // pending), bukan memproses — link due dibuat jam ini juga tetap
+      // diproses karena next_attempt_at=now.
+      vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("network down"); }));
+      const { body } = await call("wr_orders");
+      expect(body).toMatchObject({ ok: true, job: "wr_orders", orphan_links_healed: 1 });
+      // Link yatim dibuat pending lalu langsung diproses tick yang sama
+      // (retryFailedWrOrders hanya menyentuh status retry; processWrPending
+      // mencoba POST → network down = timeout ambigu → submitted). Yang
+      // dikunci: link ADA (tidak yatim lagi) — status akhir tergantung hasil
+      // POST, bukan link yang hilang.
+      const link = fx.sql.prepare("SELECT status FROM wr_order_links WHERE order_code='AXV-YATIM-WR'").get() as { status: string };
+      expect(["pending", "retry", "submitted"]).toContain(link.status);
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("sk_orders: order lunas yatim tanpa link disembuhkan walau COUNT due = 0", async () => {
+    const fx = createD1Fixture();
+    try {
+      stubSkYatim(fx);
+      vi.stubEnv("CRON_SECRET", "s");
+      vi.stubEnv("SEKALIPAY_ENABLED", "true");
+      vi.stubEnv("SEKALIPAY_AUTO_ORDER_ENABLED", "true");
+      vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("network down"); }));
+      const { body } = await call("sk_orders");
+      expect(body).toMatchObject({ ok: true, job: "sk_orders", orphan_links_healed: 1 });
+      // Cermin WR: link dibuat lalu langsung diproses tick yang sama
+      // (network down → retry). Yang dikunci: link ADA, tidak yatim lagi.
+      const link = fx.sql.prepare("SELECT status FROM sk_order_links WHERE order_code='AXV-YATIM-SK'").get() as { status: string };
+      expect(["pending", "retry"]).toContain(link.status);
+    } finally {
+      fx.close();
+    }
+  });
 });
+
+/** Order lunas + katalog WR, TANPA baris wr_order_links (simulasi webhook yang gagal di langkah create-link). */
+function stubWrYatim(fx: ReturnType<typeof createD1Fixture>) {
+  fx.sql.prepare("INSERT INTO products(id,name,slug,price,stock,source,wr_product_id,wr_auto_managed) VALUES(1,'Drama','drama',12000,1,'warung_rebahan','prod-drama',1)").run();
+  fx.sql.prepare("INSERT INTO product_variants(id,product_id,sku,label,price,stock,fulfillment_mode,wr_variant_id,wr_auto_managed) VALUES(1,1,'WR-D','3 Hari',12000,1,'manual','var-drama',1)").run();
+  fx.sql.prepare("INSERT INTO wr_products(wr_product_id,wr_product_name,axvara_product_id) VALUES('prod-drama','Drama',1)").run();
+  fx.sql.prepare("INSERT INTO wr_variants(wr_variant_id,wr_product_id,wr_variant_name,wr_price,wr_stock,axvara_variant_id,axvara_sell_price,wr_delivery_class,wr_delivery_source) VALUES('var-drama','prod-drama','3 Hari',10000,2,1,12000,'made_by_order','system')").run();
+  fx.sql.prepare(`INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel,paid_at) VALUES('AXV-YATIM-WR','B','628',?,12000,'qris','lunas','paid','telegram',datetime('now'))`)
+    .run(JSON.stringify([{ product_id: 1, variant_id: 1, name: "Drama — 3 Hari", price: 12000, qty: 1 }]));
+}
+
+/** Order lunas + katalog SK auto, TANPA baris sk_order_links. */
+function stubSkYatim(fx: ReturnType<typeof createD1Fixture>) {
+  fx.sql.prepare("INSERT INTO products(id,name,slug,price,stock,source,sk_product_id,sk_auto_managed) VALUES(1,'Zoom','zoom',4500,10,'manual','9',1)").run();
+  fx.sql.prepare("INSERT INTO product_variants(id,product_id,sku,label,price,stock,fulfillment_mode,sk_variant_id,sk_auto_managed) VALUES(1,1,'SK-2','2 Minggu',4500,10,'manual','2',1)").run();
+  fx.sql.prepare("INSERT INTO sk_products(sk_variant_id,sk_product_id,sk_product_name,sk_variant_name,sk_price,sk_stock,sk_order_process,axvara_product_id,axvara_variant_id,axvara_sell_price) VALUES('2','9','Zoom','2 Minggu',3000,10,'auto',1,1,4500)").run();
+  fx.sql.prepare(`INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel,paid_at) VALUES('AXV-YATIM-SK','B','628',?,4500,'qris','lunas','paid','web',datetime('now'))`)
+    .run(JSON.stringify([{ product_id: 1, variant_id: 1, name: "Zoom — 2 Minggu", price: 4500, qty: 1 }]));
+}

@@ -21,9 +21,10 @@
 // lease/transisi bersyarat mencegah kerja ganda):
 //   expiry      — initializing basi + invoice DANA/GoPay lewat deadline order
 //   fulfillment — lepas lock basi + proses job kirim yang jatuh tempo
-//   wr_orders   — pulihkan klaim/saldo, retry, teruskan order lunas, reconcile
-//                 macet, kirim kredensial
-//   sk_orders   — pola yang sama untuk Sekalipay
+//   wr_orders   — pulihkan klaim/saldo, SEMBUHKAN link yatim lunas-tanpa-link
+//                 TANPA gate due (2026-10-09), retry, teruskan order lunas,
+//                 reconcile macet, kirim kredensial
+//   sk_orders   — pola yang sama untuk Sekalipay (termasuk probe yatim)
 //   pedia_orders — dispatch + poll order Pedia ke ProviderSMM (PD-30–33);
 //                 saldo dicek maks 1×/30 mnt (hemat statement)
 //   promo       — Daily Promo Digest 09.00/17.00 WIB (guard murah; ledger
@@ -166,12 +167,23 @@ async function runWrOrders(db: Db) {
   await order.recoverStaleClaims(db).catch(() => 0);
   await order.reconcileBlockedBalance(db).catch(() => 0);
   if (process.env.WARUNG_REBAHAN_AUTO_ORDER_ENABLED === "true") {
+    // 2026-10-09 (kasus AXV-20261009-DA1ACF56): link WR tidak pernah dibuat
+    // webhook + COUNT due = 0 → `processWrPendingOrders` tidak dipanggil →
+    // `reconcileMissingWrLinks` di dalamnya tidak pernah jalan → yatim
+    // selamanya. Probe yatim WAJIB jalan duluan tanpa gate due (murah: 1
+    // SELECT indeks lunas + INSERT OR IGNORE idempoten), hasilnya ikut
+    // menentukan gate proses di bawah.
+    const orphanHealed = await order.reconcileMissingWrLinks(db).catch(() => ({ orders: 0, links: 0 }));
+    if (orphanHealed.links > 0) out.orphan_links_healed = orphanHealed.links;
     const due = await db.queryFirst(
       `SELECT COUNT(*) AS n FROM wr_order_links
         WHERE status IN ('pending','retry') AND attempt_count < max_attempts
           AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime('now'))`,
     ).catch(() => null);
-    if (Number(due?.n ?? 0) > 0) {
+    // Link yatim yang baru dibuat SELALU due (next_attempt_at=now), tapi gate
+    // ikut dibuka eksplisit agar tak bergantung pada asumsi itu + hemat 1
+    // COUNT berikutnya bila tick ini hanya menyembuhkan.
+    if (Number(due?.n ?? 0) > 0 || orphanHealed.links > 0) {
       out.retried = await order.retryFailedWrOrders(db);
       const processed = await order.processWrPendingOrders(db);
       out.processed = processed.processed;
@@ -193,12 +205,17 @@ async function runSkOrders(db: Db) {
   await order.recoverStaleSkClaims(db).catch(() => 0);
   await order.reconcileBlockedSkBalance(db).catch(() => 0);
   if (process.env.SEKALIPAY_AUTO_ORDER_ENABLED === "true") {
+    // Cermin WR di atas (2026-10-09): probe yatim SK tanpa gate due — order
+    // SK lunas yang link-nya gagal dibuat webhook tidak boleh yatim selamanya
+    // hanya karena COUNT due = 0.
+    const orphanHealed = await order.reconcileMissingSkLinks(db).catch(() => ({ orders: 0, links: 0 }));
+    if (orphanHealed.links > 0) out.orphan_links_healed = orphanHealed.links;
     const due = await db.queryFirst(
       `SELECT COUNT(*) AS n FROM sk_order_links
         WHERE status IN ('pending','retry') AND attempt_count < max_attempts
           AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime('now'))`,
     ).catch(() => null);
-    if (Number(due?.n ?? 0) > 0) {
+    if (Number(due?.n ?? 0) > 0 || orphanHealed.links > 0) {
       out.retried = await order.retryFailedSkOrders(db);
       const processed = await order.processSkPendingOrders(db);
       out.processed = processed.processed;

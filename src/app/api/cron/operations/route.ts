@@ -1002,7 +1002,7 @@ export async function POST(request: NextRequest) {
       try {
         step("wr_import_start");
         const { syncProducts, WR_SYNC_PRODUCTS_PER_RUN } = await import("@/lib/warung-rebahan/sync");
-        const { processWrPendingOrders, retryFailedWrOrders, reconcileStuckWrOrders, reconcileBlockedBalance, recoverStaleClaims, alertAgingWrOrders } = await import("@/lib/warung-rebahan/order");
+        const { processWrPendingOrders, retryFailedWrOrders, reconcileStuckWrOrders, reconcileBlockedBalance, recoverStaleClaims, reconcileMissingWrLinks, alertAgingWrOrders } = await import("@/lib/warung-rebahan/order");
         const { processDueCredentialDeliveries } = await import("@/lib/warung-rebahan/deliver");
         const { checkAndLogSaldo } = await import("@/lib/warung-rebahan/saldo");
         step("wr_import_done");
@@ -1020,8 +1020,19 @@ export async function POST(request: NextRequest) {
 
         // 1. Kapasitas ORDER diprioritaskan SEBELUM sync produk (P0-4):
         //    sync katalog besar tidak boleh membuat WR order starvation.
+        //    Probe yatim lunas-tanpa-link jalan DULUAN tanpa gate pendingWrDue
+        //    (2026-10-09, kasus AXV-20261009-DA1ACF56): link yang gagal dibuat
+        //    webhook + COUNT due = 0 membuat gate di bawah tidak pernah
+        //    menyala bila probe ikut di dalamnya. Murah (1 SELECT indeks
+        //    lunas + INSERT OR IGNORE idempoten); hasilnya ikut membuka gate.
         step("wr_recover_done");
-        if (!syncOnly && autoOrder && pendingWrDue > 0 && budget.fits(COST_PER_WR_WORK) && hasTime(TIME_WR_NETWORK)) {
+        if (!syncOnly && autoOrder && budget.fits(COST_PER_WR_WORK) && hasTime(TIME_WR_NETWORK)) {
+          try {
+            const healed = await reconcileMissingWrLinks(database);
+            if (healed.links > 0) results.wr_orphan_links_healed = healed.links;
+          } catch { /* best-effort; gate due di bawah tetap jalan */ }
+        }
+        if (!syncOnly && autoOrder && (pendingWrDue > 0 || Number(results.wr_orphan_links_healed ?? 0) > 0) && budget.fits(COST_PER_WR_WORK) && hasTime(TIME_WR_NETWORK)) {
           try {
             await retryFailedWrOrders(database);
             const processed = await processWrPendingOrders(database);
@@ -1335,7 +1346,7 @@ export async function POST(request: NextRequest) {
       try {
         step("sk_import_start");
         const { syncSkProducts, SK_SYNC_PRODUCTS_PER_RUN } = await import("@/lib/sekalipay/sync");
-        const { processSkPendingOrders, retryFailedSkOrders, reconcileStuckSkOrders, reconcileBlockedSkBalance, recoverStaleSkClaims } = await import("@/lib/sekalipay/order");
+        const { processSkPendingOrders, retryFailedSkOrders, reconcileStuckSkOrders, reconcileBlockedSkBalance, recoverStaleSkClaims, reconcileMissingSkLinks } = await import("@/lib/sekalipay/order");
         const { checkAndLogSkSaldo } = await import("@/lib/sekalipay/saldo");
         step("sk_import_done");
         const syncOn = process.env.SEKALIPAY_SYNC_ENABLED !== "false";
@@ -1349,8 +1360,15 @@ export async function POST(request: NextRequest) {
           } catch { /* best-effort */ }
         }
 
-        // 1. Order didahulukan sebelum sync (pola WR P0-4).
-        if (!syncOnly && autoOrder && pendingSkDue > 0 && budget.fits(COST_PER_SK_WORK) && hasTime(TIME_SK_NETWORK)) {
+        // 1. Order didahulukan sebelum sync (pola WR P0-4). Probe yatim
+        //    lunas-tanpa-link tanpa gate pendingSkDue (cermin WR 2026-10-09).
+        if (!syncOnly && autoOrder && budget.fits(COST_PER_SK_WORK) && hasTime(TIME_SK_NETWORK)) {
+          try {
+            const healed = await reconcileMissingSkLinks(database);
+            if (healed.links > 0) results.sk_orphan_links_healed = healed.links;
+          } catch { /* best-effort; gate due di bawah tetap jalan */ }
+        }
+        if (!syncOnly && autoOrder && (pendingSkDue > 0 || Number(results.sk_orphan_links_healed ?? 0) > 0) && budget.fits(COST_PER_SK_WORK) && hasTime(TIME_SK_NETWORK)) {
           try {
             await retryFailedSkOrders(database);
             const processed = await processSkPendingOrders(database);

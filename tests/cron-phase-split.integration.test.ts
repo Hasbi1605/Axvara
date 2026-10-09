@@ -206,6 +206,31 @@ describe("route ?phase= (satu fase per request)", () => {
     expect(sync.body.wr_deliveries_processed).toBeUndefined();
   });
 
+  // 2026-10-09 (kasus AXV-20261009-DA1ACF56): probe yatim lunas-tanpa-link
+  // jalan TANPA gate due di fase route besar juga — cermin lite. Fixture:
+  // order lunas + katalog WR, TANPA baris wr_order_links (COUNT due = 0).
+  it("fase WR part=orders menyembuhkan order lunas yatim walau COUNT due = 0", async () => {
+    vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
+    vi.stubEnv("WARUNG_REBAHAN_API_KEY", "k");
+    vi.stubEnv("WARUNG_REBAHAN_AUTO_ORDER_ENABLED", "true");
+    vi.stubEnv("WARUNG_REBAHAN_SYNC_ENABLED", "false");
+    // Fixture beforeEach sudah mengisi products/product_variants id=1, jadi
+    // seed yatim memakai id 90/91 agar tidak tabrakan UNIQUE.
+    fixture.sql.prepare("INSERT INTO products(id,name,slug,price,stock,source,wr_product_id,wr_auto_managed) VALUES(90,'Drama','drama-yatim',12000,1,'warung_rebahan','prod-drama',1)").run();
+    fixture.sql.prepare("INSERT INTO product_variants(id,product_id,sku,label,price,stock,fulfillment_mode,wr_variant_id,wr_auto_managed) VALUES(91,90,'WR-D','3 Hari',12000,1,'manual','var-drama',1)").run();
+    fixture.sql.prepare("INSERT INTO wr_products(wr_product_id,wr_product_name,axvara_product_id) VALUES('prod-drama','Drama',90)").run();
+    fixture.sql.prepare("INSERT INTO wr_variants(wr_variant_id,wr_product_id,wr_variant_name,wr_price,wr_stock,axvara_variant_id,axvara_sell_price,wr_delivery_class,wr_delivery_source) VALUES('var-drama','prod-drama','3 Hari',10000,2,91,12000,'made_by_order','system')").run();
+    fixture.sql.prepare(`INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel,paid_at) VALUES('AXV-YATIM-BIG','B','628',?,12000,'qris','lunas','paid','telegram',datetime('now'))`)
+      .run(JSON.stringify([{ product_id: 90, variant_id: 91, name: "Drama — 3 Hari", price: 12000, qty: 1 }]));
+    // POST /order diblokir: hanya kunci penyembuhan (link dibuat), bukan sukses kirim.
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("network down"); }));
+    const res = await run("?phase=warung_rebahan&part=orders");
+    expect(res.status).toBe(200);
+    expect(Number(res.body.wr_orphan_links_healed ?? 0)).toBe(1);
+    const link = fixture.sql.prepare("SELECT id FROM wr_order_links WHERE order_code='AXV-YATIM-BIG'").get();
+    expect(link).toBeTruthy();
+  });
+
   it("part hanya untuk fase WR/SK dan nilai valid", async () => {
     expect((await run("?phase=expiry&part=orders")).status).toBe(400);
     expect((await run("?phase=warung_rebahan&part=semua")).body.error).toBe("invalid_part");
