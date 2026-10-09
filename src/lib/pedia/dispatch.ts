@@ -38,10 +38,17 @@ type TierInfo = {
 };
 
 /** Satu siklus: ambil item queued yang lease-nya kedaluwarsa, dispatch + poll.
- * `caller` diinjeksi test (default callPsmmProxy asli). */
-export async function processPediaPaidOrders(caller?: ProxyCaller): Promise<{ dispatched: number; polled: number; needsCheck: number }> {
-  const { createDatabaseAccess } = await import("@/lib/db-access");
-  const db = createDatabaseAccess();
+ * `caller` diinjeksi test (default callPsmmProxy asli). `sharedDb` opsional:
+ * cron lite meneruskan budgeted access-nya agar statement ikut budget 40;
+ * bila absen (webhook/admin/test), buat koneksi sendiri seperti dulu. */
+export async function processPediaPaidOrders(caller?: ProxyCaller, sharedDb?: Db): Promise<{ dispatched: number; polled: number; needsCheck: number }> {
+  let db: Db;
+  if (sharedDb) {
+    db = sharedDb;
+  } else {
+    const { createDatabaseAccess } = await import("@/lib/db-access");
+    db = createDatabaseAccess();
+  }
   const { callPsmmProxy } = await import("@/lib/pedia/proxy");
   const call = caller ?? callPsmmProxy;
   const out = { dispatched: 0, polled: 0, needsCheck: 0 };

@@ -6,8 +6,13 @@
 // 02:00–05:20 WIB: setelah pemecahan per fase, request fase WR/SK gabungan
 // (order + sync) masih dibunuh — order lunas ikut tertahan.
 //
-// Kini:
-// - setiap langkah = request terpisah (`?phase=`), dipanggil BERURUTAN;
+// Kini (2026-10-09):
+// - setiap langkah = request terpisah (`?phase=`), dipanggil BERURUTAN dengan
+//   jeda STEP_DELAY_MS agar tidak 8+ request menghantam Pages dalam detik yang
+//   sama saat cold (pemicu 4× 503 bareng 9 Okt 09:50 WIB);
+// - `notify` dipecah `notify_a` (retry Telegram + invoice) dan `notify_b`
+//   (QRIS + reminder + WA outbox): satu-satunya lite job yang mengipas 5
+//   sub-kerjaan dalam 1 request;
 // - fase WR/SK dibelah `part=orders` (order/reconcile/kirim/saldo) dan
 //   `part=sync` (katalog, diulang `&continue=1` selama `more: true`);
 //   order didahulukan agar tetap jalan walau sync kena limit;
@@ -62,7 +67,10 @@ export const CRON_STEPS: CronStep[] = [
   { phase: "lite", lite: "wr_orders", alarm: "hard" },
   { phase: "lite", lite: "sk_orders", alarm: "hard" },
   { phase: "lite", lite: "pedia_orders", alarm: "hard" },
-  { phase: "lite", lite: "notify", alarm: "soft" },
+  // notify dipecah dua (2026-10-09): tiap request hanya memikul 2–3
+  // sub-kerjaan + dynamic import, bukan 5 sekaligus.
+  { phase: "lite", lite: "notify_a", alarm: "soft" },
+  { phase: "lite", lite: "notify_b", alarm: "soft" },
   { phase: "lite", lite: "promo", alarm: "soft" },
   { phase: "lite", lite: "cleanup", alarm: "none" },
   // Pelengkap per jam (stranded ledger, manual-WA, reconcile tambahan, saldo,
@@ -78,6 +86,12 @@ export const CRON_STEPS: CronStep[] = [
 ];
 /** Plafon potongan per langkah sync per tick (WR 49/10 = 5; SK ~100/25 = 4). */
 export const MAX_CHUNKS_PER_PHASE = 10;
+/** Jeda antar langkah lite per tick (2026-10-09): 8+ request berurutan tanpa
+ * jeda menghantam Pages dalam detik yang sama — saat cold start, semuanya
+ * berebut CPU isolate yang sama dan mati bareng (4× 503, 9 Okt 09:50 WIB).
+ * 2 dtk × ~9 langkah ≈ 18 dtk, jauh di bawah plafon tick 5 mnt. Hanya dipakai
+ * di tick runtime sungguhan; fungsi murni/test tidak tidur. */
+export const STEP_DELAY_MS = 2000;
 /** Fallback tanpa KV: alarm hanya di tick menit kelipatan 30. */
 export const ALERT_EVERY_MINUTES = 30;
 export const ALARM_START_AFTER_FAILED_TICKS = 2;
@@ -269,12 +283,19 @@ export async function runOperationsTick(
   env: CronEnv,
   scheduledTime: number,
   fetchFn: FetchFn = fetch,
+  /** Diinjeksi test agar tidak tidur sungguhan; runtime memakai setTimeout. */
+  sleepFn: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
 ): Promise<TickReport> {
   const outcomes: PhaseOutcome[] = [];
   // Langkah gagal tidak menghentikan langkah berikut: tiap langkah berdiri sendiri.
   const heavyTick = isHeavyTick(scheduledTime);
+  let stepped = false;
   for (const step of CRON_STEPS) {
     if (step.heavy && !heavyTick) continue;
+    // Jeda antar langkah lite (bukan sebelum langkah pertama, bukan untuk
+    // langkah heavy pelengkap per jam yang memang jarang + sudah ringan).
+    if (stepped && step.lite) await sleepFn(STEP_DELAY_MS).catch(() => undefined);
+    stepped = true;
     outcomes.push({ ...(await callStep(env, step, fetchFn)), alarm: step.alarm });
   }
   // Langkah `none` tetap tercatat di outcomes (diagnosa) tapi bukan kegagalan alarm.

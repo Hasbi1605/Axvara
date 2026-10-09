@@ -313,6 +313,9 @@ export async function queryFirst(sql: string, ...params: unknown[]): Promise<Row
   }
   if (lower.includes("from agent_tokens")) return getTokenMem().find((r) => String(r.token_hash) === String(params[0]) && r.is_active === 1);
   if (lower.includes("from newsletter_subscribers") && lower.includes("email=?")) return getSubscriberMem().find((r) => String(r.email) === String(params[0]));
+  if (lower.includes("from store_settings") && lower.includes("key=?")) {
+    return getStoreSettingsMem().find((r) => String(r.key) === String(params[0]));
+  }
   if (lower.includes("from supplier_links")) {
     let rows = [...getSupplierLinkMem()];
     if (lower.includes("is_active=1")) rows = rows.filter((r) => Number(r.is_active) === 1);
@@ -465,6 +468,16 @@ export async function execRun(sql: string, ...params: unknown[]): Promise<{ last
     const existing = mem.find((row) => row.key === key);
     if (existing) existing.value = value;
     else mem.push({ key, value });
+    return { changes: 1 };
+  }
+  if (lower.startsWith("update store_settings set")) {
+    // Fallback dev untuk throttle notif (mis. pedia_balance_alert_at):
+    // dukung pola `SET value=?, updated_at=… WHERE key=?`.
+    const mem = getStoreSettingsMem();
+    const key = String(params[params.length - 1]);
+    const row = mem.find((r) => String(r.key) === key);
+    if (!row) return { changes: 0 };
+    if (lower.includes("value=?") || lower.includes("value=excluded.value")) row.value = String(params[0]);
     return { changes: 1 };
   }
   if (lower.startsWith("update agent_tokens set")) { const row=getTokenMem().find((r)=>String(r.id)===String(params[params.length-1])); if(!row)return {changes:0}; if(lower.includes("is_active=?"))row.is_active=params[0]; if(lower.includes("last_used_at=?"))row.last_used_at=params[0]; return {changes:1}; }

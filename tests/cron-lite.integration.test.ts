@@ -113,6 +113,24 @@ describe("/api/cron/lite", () => {
       const n = await call("notify");
       expect(n.status).toBe(200);
       expect(n.body).toMatchObject({ ok: true, job: "notify" });
+      // 2026-10-09: notify dipecah a/b — gabungan tetap 200 dengan kunci yang
+      // sama, sub-job mandiri 200 + penanda masing-masing.
+      const a = await call("notify_a");
+      expect(a.status).toBe(200);
+      expect(a.body).toMatchObject({ ok: true, job: "notify_a" });
+      expect(a.body).toHaveProperty("telegram_retry");
+      expect(a.body).toHaveProperty("invoice_retry");
+      const b = await call("notify_b");
+      expect(b.status).toBe(200);
+      expect(b.body).toMatchObject({ ok: true, job: "notify_b" });
+      expect(b.body).toHaveProperty("qris_expiry_notices");
+      expect(b.body).toHaveProperty("pending_reminders");
+      expect(b.body).toHaveProperty("whatsapp_outbox");
+      expect(n.body).toHaveProperty("telegram_retry");
+      expect(n.body).toHaveProperty("whatsapp_outbox");
+      for (const key of ["cron_lite_notify_ok_at", "cron_lite_notify_a_ok_at", "cron_lite_notify_b_ok_at"]) {
+        expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key=?").get(key)).toBeTruthy();
+      }
       fx.sql.exec("INSERT INTO dana_webhook_events (id, event_key, payload_hash, amount, status, created_at) VALUES (1,'old','h',1000,'matched',datetime('now','-40 days'))");
       const c = await call("cleanup");
       expect(c.status).toBe(200);

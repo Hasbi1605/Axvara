@@ -1,4 +1,4 @@
-// POST /api/cron/lite?job=expiry|fulfillment|wr_orders|sk_orders|pedia_orders — langkah
+// POST /api/cron/lite?job=expiry|fulfillment|wr_orders|sk_orders|pedia_orders|promo|notify_a|notify_b|notify|cleanup — langkah
 // cron INTI yang dipisah dari route raksasa `/api/cron/operations` (2026-10-05).
 //
 // Latar: Workers Free ~10 ms CPU per request. Malam 4→5 Okt 10–20% request
@@ -7,6 +7,14 @@
 // WhatsApp, QRIS, fulfillment, …) sudah ±7–10 ms. `/api/supplier-sync` yang
 // ramping tidak pernah kena. Route ini meniru polanya: impor minimal, satu
 // pekerjaan per request, modul dimuat dinamis HANYA untuk job yang diminta.
+//
+// 2026-10-09: `notify` dipecah jadi `notify_a` (retry kabar order Telegram +
+// invoice tertunda) dan `notify_b` (kabar QRIS kedaluwarsa + pengingat order
+// pending + outbox WhatsApp). Latar: 09:50 WIB 4 langkah lite 503 bareng;
+// `notify` satu-satunya job yang mengipas 5 sub-kerjaan (5 dynamic import)
+// dalam 1 request (~1,9 dtk antrean kosong). `job=notify` LAMA tetap hidup
+// sebagai alias gabungan A→B (kompat pemanggil lama + heavy tick) — Worker
+// memanggil a/b terpisah agar tiap request lebih ringan.
 //
 // Cakupan sengaja inti (yang menyentuh pembeli); sisanya tetap di route besar
 // yang masih dipanggil Worker sebagai pelengkap (idempoten — klaim atomik/
@@ -20,6 +28,9 @@
 //                 saldo dicek maks 1×/30 mnt (hemat statement)
 //   promo       — Daily Promo Digest 09.00/17.00 WIB (guard murah; ledger
 //                 `telegram_promo_digests` mencegah kirim ganda dengan notify)
+//   notify_a    — retry kabar order Telegram + invoice tertunda (separuh notify)
+//   notify_b    — kabar QRIS kedaluwarsa + pengingat pending + outbox WA
+//   notify      — alias gabungan notify_a lalu notify_b (kompat lama)
 // Kontrak: header `authorization: Bearer <CRON_SECRET>`; 200 {ok,job,...};
 // 400 job tak dikenal; 401 secret salah. Worker: `mcp-worker/src/cron.ts`.
 
@@ -29,7 +40,7 @@ import { createBudgetedDatabase, QueryBudgetExceeded, type DatabaseAccess } from
 
 export const runtime = "edge";
 
-const LITE_JOBS = ["expiry", "fulfillment", "wr_orders", "sk_orders", "pedia_orders", "promo", "notify", "cleanup"] as const;
+const LITE_JOBS = ["expiry", "fulfillment", "wr_orders", "sk_orders", "pedia_orders", "promo", "notify", "notify_a", "notify_b", "cleanup"] as const;
 type LiteJob = (typeof LITE_JOBS)[number];
 const EXPIRY_PER_RUN = 4;
 const FULFILLMENT_PER_RUN = 4;
@@ -61,6 +72,8 @@ export async function POST(request: NextRequest) {
     else if (job === "wr_orders") Object.assign(result, await runWrOrders(db));
     else if (job === "sk_orders") Object.assign(result, await runSkOrders(db));
     else if (job === "pedia_orders") Object.assign(result, await runPediaOrders(db));
+    else if (job === "notify_a") Object.assign(result, await runNotifyA(db));
+    else if (job === "notify_b") Object.assign(result, await runNotifyB(db));
     else if (job === "notify") Object.assign(result, await runNotify(db));
     else if (job === "cleanup") Object.assign(result, await runCleanup(db));
     else Object.assign(result, await runPromo(db));
@@ -198,24 +211,30 @@ async function runSkOrders(db: Db) {
 
 // pedia_orders (PEDIA M4, PD-30–33): dispatch + poll + alert saldo.
 // Budget: klaim atomik + ≤20 item + poll ≤20 + saldo 1×/30mnt + penanda.
-// Saldo dicek via proxy /psmm/balance; bila < ambang → ping admin 1×/jam
-// (kunci store_settings pedia_balance_alert_at).
+// Saldo dicek via proxy /psmm/balance; bila < ambang → ping admin dengan
+// throttle 1:1 WR/SK (6 jam ATAU turun Rp5.000 — `notifyPediaLowBalance`,
+// kunci store_settings pedia_balance_alert_at format `amount|ms`).
 async function runPediaOrders(db: Db) {
   const { processPediaPaidOrders } = await import("@/lib/pedia/dispatch");
   const out: Record<string, unknown> = {};
   try {
-    const r = await processPediaPaidOrders();
+    // Teruskan budgeted access: statement dispatch+poll ikut budget 40
+    // (dulu koneksi sendiri → tak terhitung, rawan jebol diam-diam).
+    const r = await processPediaPaidOrders(undefined, db);
     Object.assign(out, r);
   } catch (error) {
     if (error instanceof QueryBudgetExceeded) throw error;
     out.dispatch_error = error instanceof Error ? error.message.slice(0, 80) : "failed";
   }
   // Alert saldo: maks 1×/30 mnt (baca penanda dulu — 1 query murah).
+  // Penanda datetime SQLite = UTC (parseExpiry kanonis, bukan Date.parse
+  // mentah yang mengira waktu lokal → selisih 7 jam → cek tiap tick).
   try {
     const last = await db.queryFirst(
       `SELECT value FROM store_settings WHERE key='pedia_balance_checked_at'`,
     ).catch(() => null);
-    const lastMs = last ? Date.parse(String(last.value)) : 0;
+    const { parseExpiry: parseChecked } = await import("@/lib/expiry");
+    const lastMs = last ? (parseChecked(String(last.value)) ?? NaN) : NaN;
     if (!Number.isFinite(lastMs) || Date.now() - lastMs > 30 * 60 * 1000) {
       await db.execRun(
         `INSERT INTO store_settings (key, value, updated_at) VALUES ('pedia_balance_checked_at', datetime('now'), datetime('now'))
@@ -233,19 +252,12 @@ async function runPediaOrders(db: Db) {
           ).catch(() => null);
           const alertRp = Number(process.env.PEDIA_BALANCE_ALERT_RP || 100000) || 100000;
           if (v < alertRp) {
-            const alerted = await db.queryFirst(
-              `SELECT value FROM store_settings WHERE key='pedia_balance_alert_at'`,
-            ).catch(() => null);
-            const alertedMs = alerted ? Date.parse(String(alerted.value)) : 0;
-            if (!Number.isFinite(alertedMs) || Date.now() - alertedMs > 60 * 60 * 1000) {
-              await db.execRun(
-                `INSERT INTO store_settings (key, value, updated_at) VALUES ('pedia_balance_alert_at', datetime('now'), datetime('now'))
-                 ON CONFLICT(key) DO UPDATE SET value=datetime('now'), updated_at=datetime('now')`,
-              ).catch(() => null);
-              const { notifyPediaLowBalance } = await import("@/lib/pedia/notify");
-              await notifyPediaLowBalance(v).catch(() => null);
-              out.balance_alerted = true;
-            }
+            // Throttle 6 jam + turun Rp5.000 ada DI DALAM notify (cermin
+            // WR/SK) — di sini cukup panggil; tanpa gate ganda 1 jam yang
+            // dulu bikin spam tiap jam saat saldo stagnan Rp 0.
+            const { notifyPediaLowBalance } = await import("@/lib/pedia/notify");
+            const alerted = await notifyPediaLowBalance(v, db).catch(() => false);
+            if (alerted) out.balance_alerted = true;
           }
         }
       }
@@ -262,11 +274,17 @@ async function runPromo(db: Db) {
   return { promo_due: promo.due, promo_full_sent: promo.fullSent, promo_short_sent: promo.shortSent, promo_skipped: promo.skipped ?? null };
 }
 
-// notify (2026-10-05 malam): retry kabar order Telegram, invoice tertunda,
-// kabar QRIS kedaluwarsa, pengingat order pending, outbox WhatsApp. Tiap
-// pekerjaan berdiri sendiri (satu gagal tidak menghentikan yang lain) dan
-// masing-masing memilih kandidatnya sendiri dengan klaim idempoten.
-async function runNotify(db: Db) {
+// notify (2026-10-05 malam, dipecah 2026-10-09): retry kabar order Telegram,
+// invoice tertunda, kabar QRIS kedaluwarsa, pengingat order pending, outbox
+// WhatsApp. Tiap pekerjaan berdiri sendiri (satu gagal tidak menghentikan
+// yang lain) dan masing-masing memilih kandidatnya sendiri dengan klaim
+// idempoten.
+//
+// Pecahan (2026-10-09): `notify_a` = telegram_retry + invoice_retry (2 import);
+// `notify_b` = qris_expiry + reminders + whatsapp_outbox (3 import). `notify`
+// = alias gabungan A lalu B. Hasil digabung dengan kunci yang sama sehingga
+// pemantau lama (alarm Worker, dashboard) tidak berubah bentuk respons.
+async function runNotifyA(db: Db) {
   const out: Record<string, unknown> = {};
   const guard = async (key: string, fn: () => Promise<unknown>) => {
     try { out[key] = await fn(); } catch (error) {
@@ -282,6 +300,17 @@ async function runNotify(db: Db) {
     const { retryInvoicePendingTelegramInvoices } = await import("@/lib/telegram/invoice-retry");
     return retryInvoicePendingTelegramInvoices(2, db);
   });
+  return out;
+}
+
+async function runNotifyB(db: Db) {
+  const out: Record<string, unknown> = {};
+  const guard = async (key: string, fn: () => Promise<unknown>) => {
+    try { out[key] = await fn(); } catch (error) {
+      if (error instanceof QueryBudgetExceeded) throw error;
+      out[`${key}_error`] = error instanceof Error ? error.message.slice(0, 80) : "failed";
+    }
+  };
   await guard("qris_expiry_notices", async () => {
     const { sendQrisExpiryNotifications } = await import("@/lib/payments/qris-expiry-notifications");
     return sendQrisExpiryNotifications(2, db);
@@ -294,6 +323,22 @@ async function runNotify(db: Db) {
     const { processDueWhatsAppOutbox } = await import("@/lib/whatsapp/outbox");
     return processDueWhatsAppOutbox(4, db);
   });
+  return out;
+}
+
+async function runNotify(db: Db) {
+  const out: Record<string, unknown> = {};
+  try {
+    Object.assign(out, await runNotifyA(db));
+  } catch (error) {
+    // Budget habis di paruh A = sisa kerja dilanjutkan tick berikut.
+    if (error instanceof QueryBudgetExceeded) throw error;
+  }
+  try {
+    Object.assign(out, await runNotifyB(db));
+  } catch (error) {
+    if (error instanceof QueryBudgetExceeded) throw error;
+  }
   return out;
 }
 

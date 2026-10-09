@@ -419,7 +419,7 @@ CREATE TABLE IF NOT EXISTS pedia_supplier_balance_log (
 CREATE INDEX IF NOT EXISTS idx_pedia_balance_log ON pedia_supplier_balance_log(supplier, created_at);
 ```
 
-Penanda di `store_settings`: `pedia_diff_last_at`, `pedia_diff_last_change_at`, `pedia_balance_alert_at`, `cron_lite_pedia_orders_ok_at`.
+Penanda di `store_settings`: `pedia_diff_last_at`, `pedia_diff_last_change_at`, `pedia_balance_alert_at` (format `amount|ms`, throttle 1:1 WR/SK — 2026-10-09: kirim ulang hanya bila >6 jam ATAU saldo turun melewati kelipatan Rp5.000; format datetime lama tetap dibaca), `cron_lite_pedia_orders_ok_at`.
 
 **Kode order:** prefiks `AXP-` (dibedakan dari `AXV-`), generator existing dengan prefiks parameter.
 
@@ -499,7 +499,7 @@ Job `pedia_orders` di `/api/cron/lite` (pola `wr_orders`), budget statement & de
 | GET | `/api/pedia/ticker` | publik, cache 60 dtk | 10 order lunas terbaru tersamarkan |
 | * | `/api/admin/pedia/*` | sesi admin | CRUD produk/tingkat, layanan supplier, antrean, kredit, saldo, tarik ulang |
 | POST | `/api/supplier-sync` (cabang baru) | `SUPPLIER_SYNC_TOKEN` existing | diff providersmm |
-| POST | `/api/cron/lite?job=pedia_orders` | `CRON_SECRET` existing | dispatch + poll + alert saldo (saldo dicek maks 1×/30 mnt) |
+| POST | `/api/cron/lite?job=pedia_orders` | `CRON_SECRET` existing | dispatch + poll + alert saldo (saldo dicek maks 1×/30 mnt; alert throttle 6 jam ATAU turun Rp5.000, cermin WR/SK) |
 
 Respons publik TIDAK pernah memuat `supplier_service_id`, nama layanan supplier, rate, atau `supplier_order_id`.
 
