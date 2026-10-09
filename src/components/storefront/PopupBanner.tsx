@@ -15,20 +15,67 @@ type Banner = {
   max_show_per_session?: number | null;
 };
 
+export const BANNER_HIDE_DURATION_MS = 24 * 60 * 60 * 1000;
+
+export function bannerHideKey(id: number) {
+  return `axvara-banner-${id}-hide-until`;
+}
+
+export function isBannerHidden(id: number, now = Date.now()): boolean {
+  try {
+    const until = Number(localStorage.getItem(bannerHideKey(id)) ?? 0);
+    return Number.isFinite(until) && until > 0 && now < until;
+  } catch {
+    return false;
+  }
+}
+
+export function hideBannerFor24h(id: number, now = Date.now()): void {
+  try {
+    localStorage.setItem(bannerHideKey(id), String(now + BANNER_HIDE_DURATION_MS));
+  } catch {}
+}
+
+export function unhideBanner(id: number): void {
+  try {
+    localStorage.removeItem(bannerHideKey(id));
+  } catch {}
+}
+
 export function PopupBanner() {
   const pathname = usePathname();
   const isAdmin = pathname?.startsWith("/admin");
   const isHome = pathname === "/";
   const [banner, setBanner] = useState<Banner | null>(null);
   const [open, setOpen] = useState(false);
+  const [dontShow, setDontShow] = useState(false);
   const [imageRatio, setImageRatio] = useState<number | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
-  const close = useCallback(() => setOpen(false), []);
+  const bannerRef = useRef<Banner | null>(null);
+  const dontShowRef = useRef(false);
+  bannerRef.current = banner;
+  const setDontShowBoth = useCallback((value: boolean) => {
+    dontShowRef.current = value;
+    setDontShow(value);
+    const current = bannerRef.current;
+    if (!current) return;
+    if (value) hideBannerFor24h(current.id);
+    else unhideBanner(current.id);
+  }, []);
+  const close = useCallback(() => {
+    const current = bannerRef.current;
+    if (current && dontShowRef.current) hideBannerFor24h(current.id);
+    dontShowRef.current = false;
+    setDontShow(false);
+    setOpen(false);
+  }, []);
 
   useEffect(() => {
     setOpen(false);
     setBanner(null);
+    dontShowRef.current = false;
+    setDontShow(false);
     setImageRatio(null);
     if (isAdmin || !isHome) return;
 
@@ -46,6 +93,7 @@ export function PopupBanner() {
           if (disposed) return;
           const b = (j.banners as Banner[])?.[0];
           if (!b) return;
+          if (isBannerHidden(b.id)) return;
           const storageKey = `axvara-banner-${b.id}-shows`;
           const shown = Number(sessionStorage.getItem(storageKey) ?? 0);
           const maximum = Math.min(10, Math.max(1, b.max_show_per_session ?? 1));
@@ -128,6 +176,15 @@ export function PopupBanner() {
               {banner.cta_label}
             </a>
           )}
+          <label className="mt-4 flex cursor-pointer items-center gap-2 text-xs text-white/45 hover:text-white/70">
+            <input
+              type="checkbox"
+              checked={dontShow}
+              onChange={(event) => setDontShowBoth(event.target.checked)}
+              className="h-3.5 w-3.5 rounded accent-[#00E5FF]"
+            />
+            Jangan tampilkan lagi
+          </label>
         </div>
       </div>
     </div>
