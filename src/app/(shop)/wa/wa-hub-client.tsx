@@ -26,7 +26,7 @@ export function WaHubClient() {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/brand/whatsapp-circle.svg" alt="WhatsApp" width={64} height={64} className="h-16 w-16 rounded-full object-cover shadow-[0_12px_40px_rgba(37,211,102,0.25)]" draggable={false} />
         <h1 className="mt-4 font-display text-[22px] font-bold tracking-[-0.01em] text-white">Chat WhatsApp Admin</h1>
-        <p className="mt-1.5 text-[13px] leading-6 text-white/55">Pilih nomor yang aktif — pesanmu sudah disiapkan, tinggal tekan Chat.</p>
+        <p className="mt-1.5 text-[13px] leading-6 text-white/55">Pilih nomor yang aktif.</p>
         <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
           <span className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[11px] text-white/60">{settings.supportHours}</span>
         </div>

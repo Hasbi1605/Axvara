@@ -67,6 +67,9 @@ describe("Hub WA /wa — satu pintu semua tombol admin", () => {
     expect(src).toContain("supportTelegramLink()");
     expect(src).toContain('params.get("pesan")');
     expect(src).toContain("whatsappLink(n.intl, pesan)");
+    // 2026-10-10 (owner + screenshot): subtitle ringkas, tanpa frasa lama.
+    expect(src).toContain("Pilih nomor yang aktif.");
+    expect(src).not.toContain("pesanmu sudah disiapkan");
     const page = read("src/app/(shop)/wa/page.tsx");
     expect(page).toContain('canonical: "/wa"');
     expect(page).toContain("index: false");
