@@ -17,7 +17,7 @@ import {
   productDetailMessage, outOfStockMessage, errorMessage,
   chooseVariantMessage, chooseQtyMessage,
 } from "@/lib/telegram/messages";
-import { getProductDetail, getActiveVariant, formatDuration, buyerWarrantyLabel } from "@/lib/catalog";
+import { getProductDetail, getActiveVariant, formatDuration, buyerWarrantyLabel, buyerDeliveryKind } from "@/lib/catalog";
 import { needsEmailForVariant } from "@/lib/warung-rebahan/delivery-class";
 import { purchasableStockSql } from "@/lib/catalog-availability";
 import { notLoserProductSql, winnerForLoserProduct } from "@/lib/supplier-pairs";
@@ -127,14 +127,21 @@ export async function handleShowProduct(chatId: number, messageId: number, reque
   const badge = priceRow?.badge ? String(priceRow.badge) : null;
   const soldCount = priceRow?.sold_count ? Number(priceRow.sold_count) : 0;
 
-  const variantLines = activeVariants.map((v) => ({
-    label: v.label,
-    price: v.price,
-    warranty: buyerWarrantyLabel(v) || null,
-    duration: formatDuration(v) || null,
-    stock: v.stock,
-    wr_delivery_class: v.wr_delivery_class ?? null,
-  }));
+  const variantLines = activeVariants.map((v) => {
+    const kind = buyerDeliveryKind(v);
+    return {
+      label: v.label,
+      price: v.price,
+      warranty: buyerWarrantyLabel(v) || null,
+      duration: formatDuration(v) || null,
+      stock: v.stock,
+      wr_delivery_class: v.wr_delivery_class ?? null,
+      // Badge pengiriman siap tampil (satu sumber dengan PDP web via
+      // buyerDeliveryKind): instan = "⚡ Kirim otomatis", antrean =
+      // "⏳ Made By Order". Lihat productDetailMessage.
+      delivery_badge: kind === "instant" ? "⚡ Kirim otomatis" : "⏳ Made By Order",
+    };
+  });
 
   // No description rendered on Telegram (WA parity). Warranty per variant above
   // uses the same product_variants source as web/WA.

@@ -250,7 +250,6 @@ export function invoiceMessage(params: {
     `⏰ Batas: ${expiryText}`,
     "",
     "━━━━━━━━━━━━━━━━━━━━━",
-    "🤖 Tidak perlu cek status manual.",
-    "Bot otomatis mengabari setelah pembayaran terkonfirmasi.",
+    "Sudah bayar? Tekan 🔄 Periksa Pembayaran di bawah — bot juga otomatis mengabari setelah pembayaran terkonfirmasi.",
   ].join("\n");
 }

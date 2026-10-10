@@ -412,6 +412,12 @@ export function cartKeyboard(params: {
 export function qrisInvoiceKeyboard(orderCode: string): InlineKeyboardMarkup {
   return {
     inline_keyboard: [
+      // 2026-10-10 (permintaan owner): pembeli bisa cek manual — callback
+      // refresh:* SUDAH ada + ownerBound (hanya pemilik order) + handler
+      // handleOrderRefresh idempoten. Tanpa ini pembeli menunggu buta bila
+      // hook telat; copy "tidak perlu cek manual" di invoiceMessage ikut
+      // direvisi agar tidak berbohong.
+      [{ text: "🔄 Periksa Pembayaran", callback_data: cb.refresh(orderCode) }],
       [{ text: "❌ Batalkan Pesanan", callback_data: cb.cancel(orderCode) }],
       [{ text: "🏠 Menu Utama", callback_data: cb.home() }],
     ],

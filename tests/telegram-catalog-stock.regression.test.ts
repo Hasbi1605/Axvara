@@ -124,4 +124,19 @@ describe("tombol dari pesan katalog lama", () => {
     await handleShowProduct(42, 7, 5 + 1000);
     expect(String(vi.mocked(sendMessage).mock.calls.at(-1)?.[0].text)).toContain("tidak tersedia");
   });
+
+  it("detail produk menampilkan kelas pengiriman per varian (owner 2026-10-10)", async () => {
+    // Varian manual non-WR/non-SK = Made By Order (tanpa badge palsu instan).
+    // Produk 1 tanpa image_url → terkirim via safeEditOrSend (mock terpisah
+    // dari sendMessage), jadi baca dari mock mana pun yang membawa teks.
+    await handleShowProduct(42, 7, 1);
+    const { safeEditOrSend } = await import("@/lib/telegram/api");
+    const texts = [
+      ...vi.mocked(sendMessage).mock.calls.map((c) => String((c[0] as { text?: unknown; caption?: unknown }).text ?? (c[0] as { text?: unknown; caption?: unknown }).caption ?? "")),
+      ...vi.mocked(safeEditOrSend).mock.calls.map((c) => String((c[0] as { text?: unknown; caption?: unknown }).text ?? (c[0] as { text?: unknown; caption?: unknown }).caption ?? "")),
+    ];
+    const text = texts.at(-1) ?? "";
+    expect(text).toContain("🚚");
+    expect(text).toContain("Made By Order");
+  });
 });

@@ -94,6 +94,8 @@ export type TelegramVariantLine = {
   stock?: number | null;
   /** Kelas pengiriman WR (migrasi 0032): restock = otomatis, selainnya = via admin. */
   wr_delivery_class?: string | null;
+  /** Badge pengiriman siap tampil per varian ("⚡ Kirim otomatis" / "⏳ Made By Order"). Kosong = jangan render. */
+  delivery_badge?: string | null;
 };
 
 export function productDetailMessage(product: {
@@ -154,6 +156,18 @@ export function productDetailMessage(product: {
   }
 
   lines.push("");
+  // Kelas pengiriman per varian (2026-10-10, permintaan owner): pembeli wajib
+  // tahu SEBELUM bayar apakah variannya instan atau Made By Order — info yang
+  // sama dengan badge PDP web. Hanya varian yang membawa delivery_badge yang
+  // dirender; tanpa badge = tanpa baris (bukan tebakan).
+  const deliveryLines = (product.variants ?? []).filter((v) => (v.delivery_badge ?? "").trim() !== "");
+  if (deliveryLines.length > 0) {
+    lines.push("🚚 <b>Pengiriman:</b>");
+    for (const v of deliveryLines.slice(0, 10)) {
+      lines.push(`• ${escapeHtml(truncate(v.label, 40))}: ${escapeHtml(String(v.delivery_badge))}`);
+    }
+    lines.push("");
+  }
   lines.push(product.variants && product.variants.length > 1
     ? `${product.variants.length} pilihan tersedia. Pilih varian untuk melihat harga dan garansi.`
     : "Pilih lanjut untuk melihat detail varian dan jumlah.");

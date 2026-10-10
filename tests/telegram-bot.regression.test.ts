@@ -266,11 +266,14 @@ describe("Telegram keyboards", () => {
     expect(callbacks).toContain("qty:1:2");
   });
 
-  it("QRIS invoice keyboard has no manual status-check requirement", () => {
+  it("QRIS invoice keyboard exposes manual Periksa Pembayaran (owner 2026-10-10)", () => {
     const kb = qrisInvoiceKeyboard("AXV-20260906-TEST1234");
     const buttons = kb.inline_keyboard.flat();
     const datas = buttons.map(b => b.callback_data ?? "");
-    expect(datas.some(d => d.startsWith("refresh:"))).toBe(false);
+    // Tombol cek manual memakai callback refresh:* yang sudah ada (ownerBound
+    // + handleOrderRefresh idempoten) — pembeli tidak menunggu buta bila hook telat.
+    expect(datas.some(d => d === "refresh:AXV-20260906-TEST1234")).toBe(true);
+    expect(buttons.some(b => b.text.includes("Periksa Pembayaran"))).toBe(true);
     expect(datas.some(d => d.startsWith("cancel:"))).toBe(true);
   });
 
@@ -319,7 +322,9 @@ describe("Telegram messages premium UX", () => {
     expect(msg).toContain("⏰");
     expect(msg).toContain("━━━");
     expect(msg).toContain("otomatis mengabari");
-    expect(msg).not.toContain("Tekan 🔄");
+    // 2026-10-10: copy jujur — tombol Periksa Pembayaran ada di keyboard,
+    // jadi pesan mengarahkan ke sana (bukan "tidak perlu cek manual").
+    expect(msg).toContain("Periksa Pembayaran");
   });
 
   it("help message lists all commands with structure", () => {
@@ -666,6 +671,25 @@ describe("Telegram Fase 1: navigasi & marketing", () => {
     expect(msg).toContain("Terjual 412+");
     const clean = productDetailMessage({ name: "Canva Pro", price: 45000, stock: 60 });
     expect(clean).not.toContain("Terjual");
+  });
+
+  it("product detail shows delivery class per variant (owner 2026-10-10)", () => {
+    const msg = productDetailMessage({
+      name: "Express VPN",
+      price: 5500,
+      stock: 85,
+      variants: [
+        { label: "Premium", price: 5500, delivery_badge: "⏳ Made By Order" },
+        { label: "Pro", price: 9000, delivery_badge: "⚡ Kirim otomatis" },
+      ],
+    });
+    expect(msg).toContain("🚚");
+    expect(msg).toContain("Premium");
+    expect(msg).toContain("Made By Order");
+    expect(msg).toContain("Kirim otomatis");
+    // Tanpa badge = tanpa blok pengiriman (bukan tebakan).
+    const clean = productDetailMessage({ name: "Canva Pro", price: 45000, stock: 60 });
+    expect(clean).not.toContain("🚚");
   });
 
   it("purchase flow shows breadcrumb Langkah X/4", () => {
