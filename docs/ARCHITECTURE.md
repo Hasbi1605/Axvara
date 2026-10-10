@@ -2108,6 +2108,13 @@ poller server memantau mutasi GoBiz milik sendiri.
   Pembayaran" (`handleOrderRefresh`). Poller tetap satu-satunya pemanggil
   GoBiz (tanpa poll paralel) dengan jarak minimum `WAKE_MIN_GAP_MS` 10 dtk.
   Env opsional Pages: `GOPAY_POLLER_WAKE_URL` (default URL di atas).
+- **Sesi GoBiz (insiden 2026-10-10):** refresh token BERROTASI tiap auto-refresh
+  library (~25 mnt). Poller WAJIB menulis sesi lewat `onTokenRefreshed`
+  (atomik tmp+rename, chmod 600) — tanpa itu restart memuat token basi dan
+  poller mati. Refresh token mati = status `session_dead_login_required` +
+  notif Telegram. Login ulang di VPS: `cd /opt/axvara/gopay/app && set -a && . ./.env && set +a`
+  lalu `node dist/login.js request <nomor tanpa 0>` → `node dist/login.js verify <otp>`
+  → `sudo systemctl restart gopay-poller` (deviceId lama dipertahankan).
 - **Env (`secret_text`):** `GOPAY_STATIC_QRIS`, `GOPAY_POLLER_SECRET`,
   `GOPAY_QRIS_ENABLED=false`, `QRIS_ACTIVE_PROVIDER=dana`.
   **Sejak 2026-10-02 sore (uji Rp5.137 hijau end-to-end):**
