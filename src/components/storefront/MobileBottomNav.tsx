@@ -58,8 +58,8 @@ export function MobileBottomNav() {
   useEffect(() => { setHelpOpen(false); setCategoryOpen(false); }, [pathname]);
 
   // Admin & checkout tanpa nav; PDP punya bar beli sendiri.
-  // Halaman link-in-bio (/link) tampil tanpa chrome global agar fokus ala Linktree.
-  if (pathname.startsWith("/admin") || pathname.startsWith("/checkout") || pathname.startsWith("/produk/") || pathname === "/link") {
+  // Halaman link-in-bio (/link) + hub WA (/wa) tampil tanpa chrome global agar fokus.
+  if (pathname.startsWith("/admin") || pathname.startsWith("/checkout") || pathname.startsWith("/produk/") || pathname === "/link" || pathname === "/wa") {
     return null;
   }
 

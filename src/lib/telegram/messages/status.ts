@@ -60,7 +60,8 @@ export function orderPaidMessage(
   lines.push(
     "",
     "Butuh bantuan?",
-    `📞 WhatsApp Admin: wa.me/${SITE.adminWaIntl}`,
+    // 2026-10-10: WA via hub /wa (pilih nomor aktif) — bukan wa.me langsung.
+    `📞 WhatsApp Admin: ${SITE.webUrl}/wa`,
     `✈️ Telegram Support: @${SITE.supportTelegram}`,
   );
   return lines.join("\n");
@@ -119,7 +120,8 @@ export function whatsAppInputPromptMessage(orderCode: string): string {
     "",
     "Contoh: <code>08123456789</code>",
     "",
-    `📞 WhatsApp Admin: wa.me/${SITE.adminWaIntl}`,
+    // 2026-10-10: WA via hub /wa (pilih nomor aktif) — bukan wa.me langsung.
+    `📞 WhatsApp Admin: ${SITE.webUrl}/wa`,
     `✈️ Telegram Support: @${SITE.supportTelegram}`,
   ].join("\n");
 }

@@ -142,7 +142,8 @@ describe("integrasi pusat M6 (PD-60–64)", () => {
 
   it("PD-64: link WA & Telegram tetap ada (HelpSheet + footer, tidak hilang)", () => {
     const footer = read("src/components/storefront/Footer.tsx");
-    expect(footer).toContain("whatsapp");
+    // 2026-10-10: footer WA lewat hub /wa (waHubLink), bukan string "whatsapp".
+    expect(footer).toContain("waHubLink(");
     const link = read("src/app/(shop)/link/link-bio-client.tsx");
     expect(link).toContain("Bot Telegram");
     expect(link).toContain("Grup WhatsApp");

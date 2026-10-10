@@ -1,4 +1,10 @@
 // Single source of truth untuk kontak & brand — jangan hardcode wa.me di komponen.
+//
+// HUB WA (2026-10-10, keputusan owner): SEMUA tombol "Chat WA admin" mengarah
+// ke halaman perantara /wa (bukan wa.me langsung) agar suspend satu nomor
+// tidak mematikan seluruh traffic WA — user memilih nomor aktif di sana.
+// Satu-satunya pengecualian: chat-balik admin → buyer (nomor buyer, langsung
+// wa.me) dan tombol Share artikel (wa.me/?text=, bukan chat admin).
 export const SITE = {
   name: "AXVARA",
   tagline: "Toko akun premium, AI gateway, dan tools pro.",
@@ -15,6 +21,15 @@ export const SITE = {
     facebook: "https://www.facebook.com/Axvara.tech/",
   },
 } as const;
+
+/** Daftar nomor WA admin di hub /wa. `suspended` = tampil dengan badge jujur
+ *  (tetap bisa diklik — user yang sudah chat di sana perlu tahu kenapa sepi),
+ *  bukan disembunyikan. Urutan = urutan tampil. */
+export const SUPPORT_WA_NUMBERS = [
+  { label: "AXVARA 1", local: "083177738496", intl: "6283177738496", status: "active" as const, hint: "Fast respon" },
+  { label: "AXVARA 2", local: "089519388264", intl: "6289519388264", status: "suspended" as const, hint: "Suspend sementara" },
+  { label: "AXVARA 3", local: "083826039171", intl: "6283826039171", status: "active" as const, hint: "Fast respon" },
+] as const;
 
 export type StoreSettings = {
   name: string;
@@ -63,8 +78,18 @@ export function whatsappLink(number: string, text = "Halo AXVARA"): string {
   return `https://wa.me/${normalizeWhatsAppNumber(number)}?text=${encodeURIComponent(text)}`;
 }
 
+/** Hub pemilih nomor WA admin (/wa). Pesan bawaan diteruskan via ?pesan=
+ *  agar konteks ("tanya pesanan AXV-…") tetap kebawa ke nomor yang dipilih. */
+export function waHubLink(text?: string): string {
+  const msg = (text ?? "Halo AXVARA").trim() || "Halo AXVARA";
+  return `/wa?pesan=${encodeURIComponent(msg)}`;
+}
+
 export function adminWaLink(text?: string): string {
-  return whatsappLink(SITE.adminWaIntl, text ?? "Halo AXVARA");
+  // 2026-10-10: lewat hub /wa (bukan wa.me langsung) — suspend satu nomor
+  // tidak mematikan tombol. Berlaku untuk web + keyboard Telegram (URL
+  // absolut https://axvara.tech/wa?... dibentuk pemanggil bila perlu).
+  return waHubLink(text ?? "Halo AXVARA");
 }
 
 export function adminTelegramLink(): string {

@@ -4,7 +4,7 @@
 // All callback_data ≤ 64 bytes.
 
 import type { InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup } from "./types";
-import { adminWaLink, supportTelegramLink, SITE } from "@/lib/site";
+import { supportTelegramLink, SITE } from "@/lib/site";
 
 const PER_PAGE = 6;
 
@@ -468,8 +468,10 @@ export function orderPaidKeyboard(orderCode: string): InlineKeyboardMarkup {
   const rows: InlineKeyboardButton[][] = [];
   // WA input is reply-only (typed number). No "Masukkan Nomor WhatsApp" button:
   // the old wainput:* callback only re-sent the same prompt (loop/confusion).
+  // 2026-10-10: tombol WA lewat hub /wa (URL absolut — keyboard Telegram butuh
+  // URL penuh, bukan path relatif). User pilih nomor aktif di sana.
   rows.push([
-    { text: "💬 WhatsApp Admin", url: adminWaLink(`Halo AXVARA, saya ingin menanyakan pesanan ${orderCode}`) },
+    { text: "💬 WhatsApp Admin", url: `${SITE.webUrl}/wa?pesan=${encodeURIComponent(`Halo AXVARA, saya ingin menanyakan pesanan ${orderCode}`)}` },
     { text: `✈️ @${SITE.supportTelegram}`, url: supportTelegramLink() },
   ]);
   // Fallback pengiriman (2026-10-04): pembeli bisa meminta bot mengirim ulang

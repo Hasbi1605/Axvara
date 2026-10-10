@@ -33,7 +33,8 @@ export function helpMessage(): string {
     "🛡 <b>AXVARA third-party, bukan official.</b> Garansi 1×24 jam–30 hari ikut varian tiap produk. Ketik /garansi.",
     "",
     "━━━━━━━━━━━━━━━━━━━━━",
-    `📞 <b>Admin:</b> wa.me/${SITE.adminWaIntl}`,
+    // 2026-10-10: WA via hub /wa (pilih nomor aktif) — bukan wa.me langsung.
+    `📞 <b>Admin:</b> ${SITE.webUrl}/wa`,
     `✈️ <b>Telegram Support:</b> @${SITE.supportTelegram}`,
     "🌐 <b>Web:</b> axvara.tech",
   ].join("\n");

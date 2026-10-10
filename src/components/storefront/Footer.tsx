@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { SITE, whatsappLink } from "@/lib/site";
+import { SITE } from "@/lib/site";
 import { useStoreSettings } from "@/hooks/useStoreSettings";
+import { waHubLink } from "@/lib/site";
 
 type FooterCategory = { id: number; name: string; slug: string };
 
@@ -55,8 +56,8 @@ export function Footer({ shopBase = "" }: { shopBase?: string }) {
   }, [pathname]);
 
   if (pathname?.startsWith("/admin")) return null;
-  // Halaman link-in-bio (/link) tampil tanpa chrome global agar fokus ala Linktree.
-  if (pathname === "/link") return null;
+  // Halaman link-in-bio (/link) + hub WA (/wa) tampil tanpa chrome global agar fokus.
+  if (pathname === "/link" || pathname === "/wa") return null;
 
   const subscribe = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -147,7 +148,7 @@ export function Footer({ shopBase = "" }: { shopBase?: string }) {
               <li><Link href={shop("/lacak-pesanan")} className="text-white/60 transition hover:text-white">Lacak pesanan market</Link></li>
               <li><Link href="/pedia/bantuan" className="text-white/60 transition hover:text-white">Bantuan Pedia</Link></li>
               <li><Link href={shop("/garansi-replace")} className="text-white/60 transition hover:text-white">Garansi & replace</Link></li>
-              <li><a href={whatsappLink(storeSettings.whatsappNumber, `Halo ${storeSettings.name}`)} target="_blank" rel="noreferrer" className="text-[#00E5FF]/90 transition hover:text-white">Chat WA — {storeSettings.supportHours}</a></li>
+              <li><a href={waHubLink(`Halo ${storeSettings.name}`)} target="_blank" rel="noreferrer" className="text-[#00E5FF]/90 transition hover:text-white">Chat WA — {storeSettings.supportHours}</a></li>
             </ul>
           </div>
 

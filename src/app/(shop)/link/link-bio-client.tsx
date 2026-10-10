@@ -73,7 +73,8 @@ export function LinkBioClient() {
     { href: TG_BOT_HREF, external: true, label: "Bot Telegram", hint: "Auto order 24 jam", icon: "telegram" },
     { href: WA_GROUP_HREF, external: true, label: "Grup WhatsApp", hint: "Info promo & restock", icon: "whatsapp" },
     { href: "/lacak-pesanan", label: "Lacak Pesanan", hint: "Cek status dengan kode + WA/email", icon: "track" },
-    { href: adminWaLink("Halo AXVARA, saya butuh bantuan."), external: true, label: "Support WhatsApp", hint: settings.supportHours, icon: "support-wa" },
+    // 2026-10-10: Support WA lewat hub /wa (pilih nomor aktif) — internal, tanpa external.
+    { href: adminWaLink("Halo AXVARA, saya butuh bantuan."), label: "Support WhatsApp", hint: "Pilih nomor aktif", icon: "support-wa" },
     { href: supportTelegramLink(), external: true, label: "Support Telegram", hint: `@${SITE.supportTelegram}`, icon: "support-tg" },
   ];
 

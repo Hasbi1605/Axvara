@@ -99,7 +99,7 @@ describe("bottom nav mobile", () => {
     fireEvent.click(help);
     const dialog = screen.getByRole("dialog", { name: "Bantuan" });
     expect(help.getAttribute("aria-expanded")).toBe("true");
-    expect(within(dialog).getByRole("link", { name: /WA Admin/ }).getAttribute("href")).toMatch(/^https:\/\/wa\.me\//);
+    expect(within(dialog).getByRole("link", { name: /WA Admin/ }).getAttribute("href")).toMatch(/^\/wa\?pesan=/);
     expect(within(dialog).getByRole("link", { name: "Telegram @axvara_support" }).getAttribute("href")).toBe("https://t.me/axvara_support");
     expect(within(dialog).getByRole("link", { name: /^Cara Order/ }).getAttribute("href")).toBe("/cara-order");
     expect(within(dialog).getByRole("link", { name: /^Garansi & Replace/ }).getAttribute("href")).toBe("/garansi-replace");

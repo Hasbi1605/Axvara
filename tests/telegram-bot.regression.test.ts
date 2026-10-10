@@ -283,7 +283,9 @@ describe("Telegram keyboards", () => {
     const datas = buttons.map((button) => button.callback_data ?? "");
     expect(datas.some((d) => d.startsWith("wainput:"))).toBe(false);
     expect(buttons.some((button) => button.text.includes("Masukkan Nomor WhatsApp"))).toBe(false);
-    expect(buttons.some((button) => button.url?.startsWith("https://wa.me/6289519388264"))).toBe(true);
+    // 2026-10-10: tombol WA lewat hub /wa (pilih nomor aktif) — bukan wa.me langsung.
+    expect(buttons.some((button) => button.url?.includes("/wa?pesan="))).toBe(true);
+    expect(buttons.some((button) => button.url?.startsWith("https://wa.me/"))).toBe(false);
     expect(buttons.some((button) => button.text.includes("@axvara_support"))).toBe(true);
     expect(buttons.some((button) => button.url === "https://t.me/axvara_support")).toBe(true);
   });
@@ -339,6 +341,9 @@ describe("Telegram messages premium UX", () => {
     expect(msg).toContain("QRIS dinamis");
     expect(msg).not.toContain("SeaBank");
     expect(msg).not.toContain("E-Wallet");
+    // 2026-10-10: kontak WA teks lewat hub /wa — bukan wa.me nomor langsung.
+    expect(msg).toContain("axvara.tech/wa");
+    expect(msg).not.toContain("wa.me/6289519388264");
   });
 
   it("product detail never renders description (WA parity)", () => {
@@ -486,7 +491,8 @@ describe("Telegram messages premium UX", () => {
     expect(msg).toContain("nomor WhatsApp aktif");
     expect(msg).not.toContain("Tetap standby");
     expect(msg).toContain("@axvara_support");
-    expect(msg).toContain("wa.me/6289519388264");
+    // 2026-10-10: kontak WA teks lewat hub /wa — bukan wa.me nomor langsung.
+    expect(msg).toContain("axvara.tech/wa");
     const auto = orderPaidMessage("AXV-20260904-AB12CD34", "Produk", false);
     expect(auto).toContain("Produk akan dikirim admin melalui DM Telegram pribadi ini");
     expect(auto).not.toContain("nomor WhatsApp aktif");
