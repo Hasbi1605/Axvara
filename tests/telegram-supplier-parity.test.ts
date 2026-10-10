@@ -328,11 +328,19 @@ describe("Fallback pengiriman kredensial Telegram", () => {
 describe("Notif admin Lunas — Telegram", () => {
   it("SK auto tidak menulis 'WA belum diisi', manual tetap", async () => {
     const { adminTelegramOrderPaidMessage } = await import("@/lib/telegram/messages");
-    const base = { orderCode: "AXV-1", productNames: "Capcut", amount: 4612, customerName: "Icksan", telegramUser: "icksann", customerWa: "" };
+    const base = { orderCode: "AXV-1", productNames: "Capcut", amount: 4612, customerName: "Icksan", telegramUser: "icksann", customerWa: "", customerEmail: "icksan@email.com" };
     const auto = adminTelegramOrderPaidMessage({ ...base, delivery: "instant" });
     expect(auto).not.toContain("belum diisi");
     expect(auto).toContain("Kirim otomatis ke chat buyer");
+    expect(auto).toContain("icksan@email.com");
     expect(adminTelegramOrderPaidMessage({ ...base, delivery: "queued" })).toContain("Made By Order");
     expect(adminTelegramOrderPaidMessage(base)).toContain("belum diisi");
+  });
+
+  it("email buyer tampil; kosong = fallback jujur (owner 2026-10-10)", async () => {
+    const { adminTelegramOrderPaidMessage } = await import("@/lib/telegram/messages");
+    const base = { orderCode: "AXV-1", productNames: "Google AI Pro Invite", amount: 12050, customerName: "Hasan", telegramUser: "hasanrosidi", customerWa: "", delivery: "instant" as const };
+    expect(adminTelegramOrderPaidMessage({ ...base, customerEmail: "bobysnow@gmail.com" })).toContain("bobysnow@gmail.com");
+    expect(adminTelegramOrderPaidMessage({ ...base, customerEmail: "" })).toContain("— tanpa email");
   });
 });

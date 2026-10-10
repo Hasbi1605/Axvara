@@ -115,7 +115,7 @@ export async function notifyTelegramOrderCreated(orderCode: string, database: Da
   if (!adminChatId || !telegramNotificationsConfigured()) return false;
 
   const order = await queryFirst(
-    `SELECT o.code, o.items, o.customer_name, o.telegram_user_id, o.payment_method,
+    `SELECT o.code, o.items, o.customer_name, o.customer_email, o.telegram_user_id, o.payment_method,
             o.telegram_order_notified_at, pt.payable_amount, o.subtotal, tu.username
      FROM orders o
      LEFT JOIN payment_transactions pt ON pt.order_code=o.code
@@ -136,6 +136,7 @@ export async function notifyTelegramOrderCreated(orderCode: string, database: Da
       amount: Number(order.payable_amount ?? order.subtotal ?? 0),
       customerName: String(order.customer_name || "Pengguna Telegram"),
       telegramUser: username || String(order.telegram_user_id || ""),
+      customerEmail: String(order.customer_email || ""),
       paymentMethod: String(order.payment_method || "qris"),
     }),
     parse_mode: "HTML",
@@ -337,7 +338,7 @@ export async function notifyTelegramPaidAdmin(orderCode: string, database: Datab
   if (!adminChatId || !telegramNotificationsConfigured()) return false;
 
   const order = await queryFirst(
-    `SELECT o.code, o.items, o.customer_name, o.customer_wa, o.telegram_user_id,
+    `SELECT o.code, o.items, o.customer_name, o.customer_email, o.customer_wa, o.telegram_user_id,
             o.variant_snapshot, o.telegram_paid_admin_notified_at, pt.payable_amount, o.subtotal, tu.username
      FROM orders o
      LEFT JOIN payment_transactions pt ON pt.order_code=o.code
@@ -358,6 +359,7 @@ export async function notifyTelegramPaidAdmin(orderCode: string, database: Datab
       amount: Number(order.payable_amount ?? order.subtotal ?? 0),
       customerName: String(order.customer_name || "Pengguna Telegram"),
       telegramUser: username || String(order.telegram_user_id || ""),
+      customerEmail: String(order.customer_email || ""),
       customerWa: String(order.customer_wa || ""),
       delivery: (await telegramPaidDeliveryProfile(order, database).catch(() => null))?.delivery ?? "manual",
     }),

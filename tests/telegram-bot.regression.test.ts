@@ -499,11 +499,28 @@ describe("Telegram messages premium UX", () => {
       amount: 10200,
       customerName: "Nadia",
       telegramUser: "nadia",
+      customerEmail: "nadia@email.com",
       paymentMethod: "qris",
     });
     expect(msg).toContain("Order Baru — Telegram");
     expect(msg).toContain("Canva Pro ×2");
     expect(msg).toContain("QRIS");
+    // 2026-10-10 (permintaan owner): email buyer wajib tampil di notif admin.
+    expect(msg).toContain("nadia@email.com");
+  });
+
+  it("admin group notification shows buyer email or honest fallback (owner 2026-10-10)", () => {
+    const withEmail = adminTelegramOrderCreatedMessage({
+      orderCode: "AXV-1", productNames: "Invite", amount: 12000,
+      customerName: "Hasan", telegramUser: "hasanrosidi",
+      customerEmail: "bobysnow@gmail.com", paymentMethod: "qris",
+    });
+    expect(withEmail).toContain("bobysnow@gmail.com");
+    const withoutEmail = adminTelegramOrderCreatedMessage({
+      orderCode: "AXV-1", productNames: "Invite", amount: 12000,
+      customerName: "Anon", telegramUser: "123", paymentMethod: "qris",
+    });
+    expect(withoutEmail).toContain("— tanpa email");
   });
 });
 

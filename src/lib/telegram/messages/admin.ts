@@ -14,6 +14,8 @@ export function adminTelegramOrderCreatedMessage(params: {
   customerName: string;
   telegramUser: string;
   paymentMethod: string;
+  /** Email pembeli (2026-10-10, permintaan owner): wajib tampil agar admin bisa verifikasi order require-email. Kosong = "— tanpa email". */
+  customerEmail?: string;
 }): string {
   const { orderCode, productNames, amount, customerName, telegramUser, paymentMethod } = params;
   const normalizedUser = telegramUser.replace(/^@/, "");
@@ -22,6 +24,7 @@ export function adminTelegramOrderCreatedMessage(params: {
     : /^\d+$/.test(normalizedUser)
       ? `ID ${normalizedUser}`
       : `@${normalizedUser}`;
+  const email = (params.customerEmail ?? "").trim() || "— tanpa email";
   return [
     "🔔 <b>Order Baru — Telegram</b>",
     "━━━━━━━━━━━━━━━━━━━━━",
@@ -31,6 +34,7 @@ export function adminTelegramOrderCreatedMessage(params: {
     `💰 ${formatRupiah(amount)}`,
     `👤 ${escapeHtml(truncate(customerName, 50))}`,
     `✈️ ${escapeHtml(telegramLabel)}`,
+    `📧 ${escapeHtml(truncate(email, 80))}`,
     `💳 ${escapeHtml(paymentMethod.toUpperCase())} dinamis`,
     "",
     "⏳ Menunggu pembayaran otomatis",
@@ -47,6 +51,8 @@ export function adminTelegramOrderPaidMessage(params: {
   /** Kelas kirim order (2026-10-04). Selain `manual`, nomor WA tidak dibutuhkan:
    *  produk dikirim otomatis ke chat buyer, jadi baris "WA belum diisi" menyesatkan. */
   delivery?: "instant" | "queued" | "manual";
+  /** Email pembeli (2026-10-10, permintaan owner): wajib tampil agar admin bisa verifikasi order require-email. Kosong = "— tanpa email". */
+  customerEmail?: string;
 }): string {
   const { orderCode, productNames, amount, customerName, telegramUser, customerWa } = params;
   const delivery = params.delivery ?? "manual";
@@ -57,6 +63,7 @@ export function adminTelegramOrderPaidMessage(params: {
       ? `ID ${normalizedUser}`
       : `@${normalizedUser}`;
   const wa = customerWa.trim() || "— belum diisi (buyer balas nomor di chat bot)";
+  const email = (params.customerEmail ?? "").trim() || "— tanpa email";
   return [
     "✅ <b>Lunas — Telegram</b>",
     "━━━━━━━━━━━━━━━━━━━━━",
@@ -66,6 +73,7 @@ export function adminTelegramOrderPaidMessage(params: {
     `💰 ${formatRupiah(amount)}`,
     `👤 ${escapeHtml(truncate(customerName, 50))}`,
     `✈️ ${escapeHtml(telegramLabel)}`,
+    `📧 ${escapeHtml(truncate(email, 80))}`,
     delivery === "instant"
       ? "⚡ Kirim otomatis ke chat buyer"
       : delivery === "queued"
