@@ -505,23 +505,14 @@ export async function retryPendingTelegramNotifications(limit = 8, only?: {
   let created = 0;
   let paid = 0;
   let paidAdmin = 0;
-  if (want.created && database.canSpend(1)) {
-    const pendingCreated = await queryAll(
-      `SELECT code, sales_channel FROM orders
-       WHERE sales_channel IN ('telegram','whatsapp') AND telegram_order_notified_at IS NULL
-       ORDER BY created_at ASC LIMIT ?`,
-      limit,
-    ).catch(() => [] as Row[]);
-    for (const order of pendingCreated) {
-      if (!database.canSpend(7)) break;
-      try {
-        const ok = String(order.sales_channel || "telegram") === "whatsapp"
-          ? await notifyWhatsAppOrderCreated(String(order.code), database)
-          : await notifyTelegramOrderCreated(String(order.code), database);
-        if (ok) created++;
-      } catch { /* Retry the same durable marker on the next cron run. */ }
-    }
-  }
+  // 2026-10-10 (keputusan owner, paritas Web 2026-09-25): "Order Baru" ke grup
+  // admin DIMATIKAN untuk KEDUA kanal — grup hanya menerima "Lunas" (Telegram:
+  // notifyTelegramPaidAdmin; WhatsApp: notifyWhatsAppPaidAdmin). Blok created
+  // dipertahankan sebagai no-op (return 0, tanpa query/kirim) agar pemanggil
+  // lama (cron lite notify_a, route besar, test) tidak perlu diubah; marker
+  // telegram_order_notified_at tetap ditulis migrasi 0012/0023 (kolom dibiarkan,
+  // pemanggil langsung notify*OrderCreated tetap berfungsi bila dipanggil).
+  void want.created;
 
   if (want.paid && database.canSpend(1)) {
     const pendingPaid = await queryAll(

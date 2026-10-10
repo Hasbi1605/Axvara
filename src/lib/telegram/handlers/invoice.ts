@@ -22,7 +22,10 @@ import { generateOrderCode } from "@/lib/security";
 import { createActiveQrisInvoice, isDanaQrisConfigured, isGopayQrisConfigured } from "@/lib/payments/dana-qris";
 import { releaseInventoryForOrder } from "@/lib/fulfillment/inventory";
 import { createFulfillmentJob } from "@/lib/fulfillment/deliver";
-import { notifyTelegramOrderCreated } from "@/lib/telegram/order-notifications";
+// Tanpa notif "Order Baru" ke admin (keputusan owner 2026-10-10, paritas Web
+// 2026-09-25): grup Axvara_Notif hanya menerima "Lunas — Telegram" saat order
+// lunas (notifyTelegramPaidAdmin via jalur paid). Order yang tidak jadi bayar
+// tidak membunyikan grup.
 import { markInvoicePending, markInvoiceSent } from "@/lib/telegram/invoice-retry";
 import { createChannelOrderAtomic } from "@/lib/commerce";
 import { clampQty, clearPendingAction } from "./shared";
@@ -277,8 +280,8 @@ export async function createAndSendVariantInvoice(
 
     // Payment remains usable if the fulfillment outbox insert is temporarily
     // unavailable; ensureFulfillmentForPaidOrder recreates it after payment.
+    // (Tanpa notifyTelegramOrderCreated — hanya notif Lunas, lihat impor.)
     await createFulfillmentJob(orderCode, inventoryId, fulfillmentMode, variant.id, "telegram").catch(() => null);
-    await notifyTelegramOrderCreated(orderCode).catch(() => false);
 
     // RR3-05: sama seperti jalur cart — foto invoice transaksional, periksa
     // {ok:false}, tandai pending/sent, lempar agar retry nyata + cron retry.

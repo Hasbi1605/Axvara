@@ -18,7 +18,8 @@ import { generateOrderCode } from "@/lib/security";
 import { createActiveQrisInvoice } from "@/lib/payments/dana-qris";
 import { releaseInventoryForOrder } from "@/lib/fulfillment/inventory";
 import { createFulfillmentJob } from "@/lib/fulfillment/deliver";
-import { notifyTelegramOrderCreated } from "@/lib/telegram/order-notifications";
+// Tanpa notif "Order Baru" ke admin (keputusan owner 2026-10-10, paritas Web
+// 2026-09-25): hanya "Lunas — Telegram" yang masuk grup.
 import { markInvoicePending, markInvoiceSent } from "@/lib/telegram/invoice-retry";
 import { createChannelOrderAtomic } from "@/lib/commerce";
 import { clearCart, type CartLine } from "@/lib/telegram/cart";
@@ -157,7 +158,7 @@ export async function createAndSendCartInvoice(
       primaryLine.variantId,
       "telegram",
     ).catch(() => null);
-    await notifyTelegramOrderCreated(orderCode).catch(() => false);
+    // (Tanpa notifyTelegramOrderCreated — hanya notif Lunas, lihat impor.)
     await clearCart(String(from.id));
 
     // RR3-05: foto invoice adalah pengiriman transaksional — hasilnya WAJIB

@@ -541,9 +541,23 @@ describe("Telegram order and payment flow wiring", () => {
     expect(route).toContain("1–${TELEGRAM_MAX_QTY}");
   });
 
-  it("notifies the admin group when a Telegram order is created", () => {
-    const route = readWebhook();
-    expect(route).toContain("notifyTelegramOrderCreated(orderCode)");
+  it("hanya notif Lunas yang masuk grup admin — Order Baru Telegram dimatikan (owner 2026-10-10, paritas Web)", () => {
+    const invoice = read("src/lib/telegram/handlers/invoice.ts");
+    // Komentar penanda "tanpa notify" boleh menyebut nama fungsi; yang
+    // dilarang = PEMANGGILAN aktual (await ...(...) / import ... from).
+    expect(invoice).not.toMatch(/await notifyTelegramOrderCreated\(/);
+    expect(invoice).not.toMatch(/import \{[^}]*notifyTelegramOrderCreated/);
+    const cartInvoice = read("src/lib/telegram/handlers/cart-invoice.ts");
+    expect(cartInvoice).not.toMatch(/await notifyTelegramOrderCreated\(/);
+    expect(cartInvoice).not.toMatch(/import \{[^}]*notifyTelegramOrderCreated/);
+    // Blok created di retryPendingTelegramNotifications = no-op: tidak ada
+    // SELECT antrean "pending created" tanpa filter lunas. Query
+    // notifyTelegramOrderCreated / notifyWhatsAppOrderCreated yang tersisa
+    // hanya pemanggil langsung (fungsi tetap ada, cron tidak memakainya).
+    const notifications = read("src/lib/telegram/order-notifications.ts");
+    const retryFn = notifications.slice(notifications.indexOf("export async function retryPendingTelegramNotifications"));
+    expect(retryFn).not.toMatch(/notifyTelegramOrderCreated\(String\(order\.code\)/);
+    expect(retryFn).not.toMatch(/notifyWhatsAppOrderCreated\(String\(order\.code\)/);
   });
 
   it("pushes paid notification before checking the auto-fulfillment flag", () => {

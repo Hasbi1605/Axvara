@@ -90,21 +90,18 @@ describe("WhatsApp orders notify the Telegram admin group", () => {
     expect(vi.mocked(sendMessage)).not.toHaveBeenCalled();
   });
 
-  it("cron retries a missed WhatsApp order-created via the durable marker", async () => {
+  it("cron TIDAK mengirim Order Baru — hanya Lunas yang masuk grup (owner 2026-10-10, paritas Web)", async () => {
     seedWhatsAppOrder("WA-CRON", "pending");
     const { sendMessage } = await import("@/lib/telegram/api");
     vi.mocked(sendMessage).mockClear();
     const BOUND = 8;
-    let marked = false;
     for (let i = 0; i < BOUND; i++) {
       const r = await cronRun();
       expect(r.status).toBe(200);
-      if (fixture.sql.prepare("SELECT telegram_order_notified_at FROM orders WHERE code='WA-CRON'").get()
-        ?.telegram_order_notified_at != null) { marked = true; break; }
     }
-    expect(marked).toBe(true);
+    // Order pending TANPA lunas = tidak ada pesan Order Baru ke grup.
     const texts = vi.mocked(sendMessage).mock.calls.map((c) => String(((c[0] as unknown) as Record<string, unknown>)?.text || ""));
-    expect(texts.some((t) => t.includes("Order Baru — WhatsApp") && t.includes("WA-CRON"))).toBe(true);
+    expect(texts.some((t) => t.includes("Order Baru — WhatsApp") && t.includes("WA-CRON"))).toBe(false);
   });
 
   it("announces a paid WhatsApp order to the admin group via cron, then stays quiet", async () => {
@@ -129,7 +126,7 @@ describe("WhatsApp orders notify the Telegram admin group", () => {
     expect(vi.mocked(sendMessage)).not.toHaveBeenCalled();
   });
 
-  it("routes sends to the WhatsApp notifier for whatsapp rows and the Telegram one for telegram rows", async () => {
+  it("hanya Lunas yang masuk grup — pending Telegram/WA tidak membunyikan admin (owner 2026-10-10)", async () => {
     seedWhatsAppOrder("WA-ROUTE", "pending");
     const items = [{ product_id: 1, variant_id: 1, name: "Fixture", price: 10000, qty: 1 }];
     fixture.sql.prepare(`INSERT INTO orders
@@ -143,17 +140,15 @@ describe("WhatsApp orders notify the Telegram admin group", () => {
     for (let i = 0; i < BOUND; i++) {
       const r = await cronRun();
       expect(r.status).toBe(200);
-      const left = Number(fixture.sql.prepare(
-        "SELECT COUNT(*) n FROM orders WHERE telegram_order_notified_at IS NULL").get()?.n ?? 0);
-      if (left === 0) break;
     }
     const texts = vi.mocked(sendMessage).mock.calls.map((c) => String(((c[0] as unknown) as Record<string, unknown>)?.text || ""));
-    expect(texts.some((t) => t.includes("Order Baru — WhatsApp") && t.includes("WA-ROUTE"))).toBe(true);
-    expect(texts.some((t) => t.includes("Order Baru — Telegram") && t.includes("TG-ROUTE"))).toBe(true);
+    expect(texts.some((t) => t.includes("Order Baru — WhatsApp") && t.includes("WA-ROUTE"))).toBe(false);
+    expect(texts.some((t) => t.includes("Order Baru — Telegram") && t.includes("TG-ROUTE"))).toBe(false);
   });
 
-  it("wires the WhatsApp webhook, DANA webhook, and proof approval to the admin group", async () => {
+  it("wires the WhatsApp lunas path to the admin group (Order Baru dimatikan 2026-10-10)", async () => {
     // Refactor PURE MOVE: notif order-baru WA dipindah ke handler pembayaran WhatsApp.
+    // 2026-10-10: "Order Baru" (Telegram + WA) dimatikan — grup hanya terima Lunas.
     const wa = await import("node:fs").then((fs) => fs.readFileSync("src/lib/whatsapp/handlers/payment.ts", "utf8"));
     expect(wa).toContain("notifyWhatsAppOrderCreated");
     const dana = await import("node:fs").then((fs) => fs.readFileSync("src/app/api/webhook/dana/route.ts", "utf8"));
