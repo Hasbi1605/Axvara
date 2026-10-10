@@ -9,7 +9,7 @@ export function PediaNavbar() {
   return (
     <header className="ax-glass-strong sticky top-0 z-40 overflow-hidden border-b border-white/10" style={{ overflowX: "clip" }}>
       <div className="mx-auto flex h-[64px] max-w-[1280px] items-center gap-2 px-4 sm:gap-4 sm:px-6 lg:px-8">
-        <Link href="/pedia" className="flex min-w-0 shrink-0 items-center gap-3" aria-label="Axvara Pedia — beranda">
+        <Link prefetch={false} href="/pedia" className="flex min-w-0 shrink-0 items-center gap-3" aria-label="Axvara Pedia — beranda">
           {/* 2026-10-08 (owner): mark SVG trace dari logo Muse (mirip 91% IoU
              vs PNG, kanvas padat tanpa padding transparan → tampil penuh
              sebesar mark pusat). File: public/brand/pedia-mark.svg.

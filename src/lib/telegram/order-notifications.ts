@@ -502,7 +502,7 @@ export async function retryPendingTelegramNotifications(limit = 8, only?: {
     // antrean web (menjaga anggaran query cron, RR3-01).
     paidAdminWeb: only ? only.paidAdminWeb === true : true,
   };
-  let created = 0;
+  const created = 0;
   let paid = 0;
   let paidAdmin = 0;
   // 2026-10-10 (keputusan owner, paritas Web 2026-09-25): "Order Baru" ke grup

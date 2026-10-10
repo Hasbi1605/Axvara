@@ -100,7 +100,7 @@ export function CartDrawer() {
               <span>Subtotal</span>
               <span className="font-display font-bold text-white text-base">{formatRupiah(total)}</span>
             </div>
-            <Link
+            <Link prefetch={false}
               href="/checkout"
               onClick={() => setDrawer(false)}
               className="mt-3 w-full h-[52px] rounded-xl bg-[#00E5FF] text-[#080C1E] font-bold flex items-center justify-center gap-2 hover:bg-[#00D0E8] transition"

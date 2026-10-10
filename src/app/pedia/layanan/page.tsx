@@ -30,7 +30,7 @@ export default async function PediaServicesPage() {
         <section key={plat} className="mt-8">
           <div className="flex items-center justify-between">
             <h2 className="text-base font-bold capitalize text-white">{plat}</h2>
-            <Link href={`/pedia/p/${plat}`} className="text-sm text-[#00E5FF]">Lihat semua →</Link>
+            <Link prefetch={false} href={`/pedia/p/${plat}`} className="text-sm text-[#00E5FF]">Lihat semua →</Link>
           </div>
           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {list.map((p) => (

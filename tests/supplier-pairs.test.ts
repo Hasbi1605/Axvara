@@ -117,4 +117,36 @@ describe("decideAllWinners + loserProductIds", () => {
       expect(losers.has(2)).toBe(false);
     } finally { fx.close(); }
   });
+
+  it("1 SELECT agregat untuk semua pasangan + UPDATE hanya baris berubah (insiden 1102 2026-10-10)", async () => {
+    const fx = createD1Fixture();
+    try {
+      stubFulfillmentKey();
+      seedPairProducts(fx);
+      fx.sql.prepare("INSERT INTO supplier_pairs(id,wr_product_id,sk_product_id) VALUES(99,1,2)").run();
+      const base = createDatabaseAccess(fx.db);
+      await decideAllWinners(base); // putaran pertama menulis keputusan
+      const calls = { read: 0, write: 0 };
+      const counted = {
+        ...base,
+        queryAll: (q: string, ...p: unknown[]) => { calls.read++; return base.queryAll(q, ...p); },
+        queryFirst: (q: string, ...p: unknown[]) => { calls.read++; return base.queryFirst(q, ...p); },
+        execRun: (q: string, ...p: unknown[]) => { calls.write++; return base.execRun(q, ...p); },
+      };
+      const out = await decideAllWinners(counted);
+      expect(out.decided).toBeGreaterThanOrEqual(34);
+      expect(calls.read, "satu SELECT, bukan ±9 query per pasangan").toBe(1);
+      expect(calls.write, "tanpa perubahan = tanpa UPDATE").toBe(0);
+      // Stok SK habis → hanya pasangan 99 yang berubah → tepat 1 UPDATE.
+      fx.sql.prepare("UPDATE product_variants SET stock=0 WHERE id=3").run();
+      fx.sql.prepare("UPDATE sk_products SET sk_stock=0 WHERE sk_variant_id='31'").run();
+      calls.write = 0;
+      const out2 = await decideAllWinners(counted);
+      expect(out2.changed).toBeGreaterThanOrEqual(1);
+      const row = fx.sql.prepare("SELECT winner FROM supplier_pairs WHERE id=99").get() as Record<string, unknown>;
+      expect(row.winner).toBe("WR");
+      expect(calls.write).toBeGreaterThanOrEqual(1);
+      expect(calls.write).toBeLessThan(5);
+    } finally { fx.close(); }
+  });
 });

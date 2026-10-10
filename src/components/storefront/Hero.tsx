@@ -27,12 +27,12 @@ export function Hero() {
             AI, streaming, desain & produktivitas — harga jujur, aktivasi cepat, bayar via <span className="text-white font-medium">QRIS / DANA / Gopay / Shopeepay / SeaBank</span>. Tanpa ribet.
           </p>
           <div className="mt-7 flex flex-wrap gap-3">
-            <Link href="#katalog">
+            <Link prefetch={false} href="#katalog">
               <Button size="lg" className="gap-2">
                 Jelajahi Katalog <ArrowRight className="w-4 h-4" />
               </Button>
             </Link>
-            <Link href="#cara-bayar">
+            <Link prefetch={false} href="#cara-bayar">
               <Button variant="glass" size="lg">
                 Cara Bayar
               </Button>

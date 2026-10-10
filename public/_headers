@@ -12,6 +12,26 @@
 /_next/static/*
   Cache-Control: public, max-age=31536000, immutable
 
+# Aset publik tanpa hash (2026-10-10): dilayani CDN langsung, TIDAK lewat
+# worker/middleware (lihat scripts/patch-pages-routes.js) — header keamanan
+# dasar dipasang di sini. Cache 1 hari + SWR: nama file tidak ber-hash.
+/icons/*
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+  X-Content-Type-Options: nosniff
+/brand/*
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+  X-Content-Type-Options: nosniff
+/og/*
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+  X-Content-Type-Options: nosniff
+/banners/*
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+  X-Content-Type-Options: nosniff
+/favicon.svg
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+  X-Content-Type-Options: nosniff
+  Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'
+
 # Safe fallback. Dynamic Edge handlers set their own Cache-Control headers;
 # public caching must not be applied here because /api/products also serves admin.
 /api/*

@@ -292,7 +292,7 @@ export default async function ArtikelDetail({ params }: { params: Promise<{ slug
 
   return (
     <div className="mx-auto max-w-[720px] px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
-      <Link href="/artikel" className="text-sm text-white/50 hover:text-white">← Semua artikel</Link>
+      <Link prefetch={false} href="/artikel" className="text-sm text-white/50 hover:text-white">← Semua artikel</Link>
       <p className="mt-6 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#00E5FF]/70">Artikel</p>
       <h1 className="mt-2 font-display text-[28px] font-bold leading-[1.05] tracking-[-0.02em] text-white sm:text-[36px]">{article.title}</h1>
       {article.excerpt && <p className="mt-3 text-[15px] leading-6 text-white/60">{article.excerpt}</p>}

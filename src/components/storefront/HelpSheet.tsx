@@ -76,7 +76,7 @@ export function HelpSheet({ onClose }: { onClose: () => void }) {
         <ul className="mt-4 divide-y divide-white/[0.06] overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]">
           {HELP_PAGES.map((page) => (
             <li key={page.href}>
-              <Link href={page.href} onClick={onClose} className="flex min-h-[56px] items-center gap-3 px-4 py-3 transition hover:bg-white/[0.05]">
+              <Link prefetch={false} href={page.href} onClick={onClose} className="flex min-h-[56px] items-center gap-3 px-4 py-3 transition hover:bg-white/[0.05]">
                 <span aria-hidden className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#00E5FF]/10">
                   <IosIcon name={page.icon} size={18} tint="#00E5FF" />
                 </span>

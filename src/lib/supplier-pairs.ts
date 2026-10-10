@@ -36,61 +36,67 @@ export type PairRow = {
 
 type Row = Record<string, unknown>;
 
-/** Stok agregat produk = SUM varian aktif berstok (cermin agregat sync). */
-async function productStock(productId: number, db: DatabaseAccess): Promise<number> {
-  const row = await db
-    .queryFirst(
-      `SELECT COALESCE(SUM(CASE WHEN stock>0 THEN stock ELSE 0 END),0) AS s,
-              MAX(CASE WHEN stock=-1 THEN 1 ELSE 0 END) AS unl
-       FROM product_variants WHERE product_id=? AND is_active=1`,
-      productId,
-    )
-    .catch(() => null);
-  if (!row) return 0;
-  if (Number(row.unl ?? 0) === 1) return Number.MAX_SAFE_INTEGER;
-  return Number(row.s ?? 0);
+/** Angka mentah satu pasangan — hasil SATU query agregat (lihat PAIR_STATS_SQL). */
+export type PairStats = {
+  wrExists: boolean;
+  skExists: boolean;
+  wrStock: number;
+  skStock: number;
+  wrModal: number | null;
+  skModal: number | null;
+};
+
+// 2026-10-10 (insiden 1102): versi lama menjalankan ±9 query D1 per pasangan
+// (eksistensi ×2, stok ×2, modal sampai ×4, UPDATE) → 33 pasangan ≈ 300
+// round-trip dalam satu request `/api/supplier-sync {action:"pairs"}`, dan
+// request itu rutin dibunuh `exceededCpu` (batas ~10 ms Workers Free).
+// Sekarang SEMUA angka diambil lewat subquery berkorelasi dalam satu SELECT;
+// keputusan dihitung murni di JS (`decideFromStats`) dan UPDATE hanya untuk
+// baris yang winner/reason-nya benar-benar berubah.
+//
+// Stok agregat = SUM varian aktif berstok; -1 (unlimited) = tak terbatas.
+// Modal termurah = MIN harga pokok varian aktif berstok di registry SK,
+// fallback WR (produk selalu salah satu, cermin cheapestModal lama).
+const stockSql = (col: string) => `(SELECT COALESCE(SUM(CASE WHEN v.stock>0 THEN v.stock ELSE 0 END),0)
+    FROM product_variants v WHERE v.product_id=sp.${col} AND v.is_active=1)`;
+const unlimitedSql = (col: string) => `(SELECT MAX(CASE WHEN v.stock=-1 THEN 1 ELSE 0 END)
+    FROM product_variants v WHERE v.product_id=sp.${col} AND v.is_active=1)`;
+const modalSql = (col: string) => `COALESCE(
+    (SELECT MIN(s.sk_price) FROM sk_products s JOIN product_variants v ON v.sk_variant_id=s.sk_variant_id
+      WHERE v.product_id=sp.${col} AND v.is_active=1 AND s.sk_stock>0),
+    (SELECT MIN(w.wr_price) FROM wr_variants w JOIN product_variants v ON v.wr_variant_id=w.wr_variant_id
+      WHERE v.product_id=sp.${col} AND v.is_active=1 AND w.wr_stock>0))`;
+
+const PAIR_STATS_SQL = `SELECT sp.*,
+    EXISTS(SELECT 1 FROM products p WHERE p.id=sp.wr_product_id) AS st_wr_exists,
+    EXISTS(SELECT 1 FROM products p WHERE p.id=sp.sk_product_id) AS st_sk_exists,
+    ${stockSql("wr_product_id")} AS st_wr_stock,
+    ${unlimitedSql("wr_product_id")} AS st_wr_unl,
+    ${stockSql("sk_product_id")} AS st_sk_stock,
+    ${unlimitedSql("sk_product_id")} AS st_sk_unl,
+    ${modalSql("wr_product_id")} AS st_wr_modal,
+    ${modalSql("sk_product_id")} AS st_sk_modal
+  FROM supplier_pairs sp`;
+
+function statsFromRow(row: Row): PairStats {
+  const stock = (s: unknown, unl: unknown) => (Number(unl ?? 0) === 1 ? Number.MAX_SAFE_INTEGER : Number(s ?? 0));
+  const modal = (m: unknown) => (m == null ? null : Number(m));
+  return {
+    wrExists: Number(row.st_wr_exists ?? 0) === 1,
+    skExists: Number(row.st_sk_exists ?? 0) === 1,
+    wrStock: stock(row.st_wr_stock, row.st_wr_unl),
+    skStock: stock(row.st_sk_stock, row.st_sk_unl),
+    wrModal: modal(row.st_wr_modal),
+    skModal: modal(row.st_sk_modal),
+  };
 }
 
-/** Modal termurah = MIN harga pokok varian aktif (registry supplier). */
-async function cheapestModal(productId: number, db: DatabaseAccess): Promise<number | null> {
-  // SK: sk_price. WR: wr_price. Produk selalu salah satu (bukan keduanya).
-  const sk = await db
-    .queryFirst(
-      `SELECT MIN(s.sk_price) AS m FROM sk_products s
-       JOIN product_variants v ON v.sk_variant_id=s.sk_variant_id
-       WHERE v.product_id=? AND v.is_active=1 AND s.sk_stock>0`,
-      productId,
-    )
-    .catch(() => null);
-  if (sk?.m != null) return Number(sk.m);
-  const wr = await db
-    .queryFirst(
-      `SELECT MIN(w.wr_price) AS m FROM wr_variants w
-       JOIN product_variants v ON v.wr_variant_id=w.wr_variant_id
-       WHERE v.product_id=? AND v.is_active=1 AND w.wr_stock>0`,
-      productId,
-    )
-    .catch(() => null);
-  if (wr?.m != null) return Number(wr.m);
-  return null;
-}
-
-/**
- * Tentukan pemenang satu pasangan. Murni fungsi baca + tulis baris pairs —
- * murah (4 query ringan), aman dipanggil tiap sweep untuk semua pasangan.
- */
-export async function decideOneWinner(pair: PairRow, db: DatabaseAccess): Promise<{ winner: PairWinner; reason: string }> {
+/** Keputusan murni (tanpa DB) — aturan prioritas di header file. */
+export function decideFromStats(pair: Pick<PairRow, "prefer" | "prefer_margin">, stats: PairStats): { winner: PairWinner; reason: string } {
   // Guard pasangan yatim (cermin WR 2026-09-11): produk dihapus manual →
   // pasangan tidak diputuskan (winner NULL), dibersihkan admin belakangan.
-  const wrExists = await db.queryFirst(`SELECT id FROM products WHERE id=?`, pair.wr_product_id).catch(() => null);
-  const skExists = await db.queryFirst(`SELECT id FROM products WHERE id=?`, pair.sk_product_id).catch(() => null);
-  if (!wrExists || !skExists) {
-    return { winner: null, reason: "pasangan_yatim" };
-  }
-  const [wrStock, skStock] = await Promise.all([
-    productStock(pair.wr_product_id, db),
-    productStock(pair.sk_product_id, db),
-  ]);
+  if (!stats.wrExists || !stats.skExists) return { winner: null, reason: "pasangan_yatim" };
+  const { wrStock, skStock, wrModal, skModal } = stats;
   const wrHas = wrStock > 0;
   const skHas = skStock > 0;
   // 1. STOK DULU.
@@ -98,10 +104,6 @@ export async function decideOneWinner(pair: PairRow, db: DatabaseAccess): Promis
   if (skHas && !wrHas) return { winner: "SK", reason: `stok WR habis (SK ${skStock})` };
   if (!wrHas && !skHas) return { winner: null, reason: "dua-duanya habis" };
   // 2. MODAL KEMUDIAN (dua-duanya berstok).
-  const [wrModal, skModal] = await Promise.all([
-    cheapestModal(pair.wr_product_id, db),
-    cheapestModal(pair.sk_product_id, db),
-  ]);
   if (wrModal == null && skModal == null) return { winner: null, reason: "modal tak terbaca" };
   if (wrModal == null) return { winner: "SK", reason: "modal WR tak terbaca" };
   if (skModal == null) return { winner: "WR", reason: "modal SK tak terbaca" };
@@ -121,30 +123,45 @@ export async function decideOneWinner(pair: PairRow, db: DatabaseAccess): Promis
 }
 
 /**
- * Hitung ulang semua pasangan. Best-effort: 1 pasangan gagal tidak
- * menghentikan yang lain (cermin batch per-produk WR 22 Sep).
+ * Tentukan pemenang satu pasangan (endpoint admin). Satu query statistik
+ * untuk pasangan produk ini, tanpa menulis DB.
+ */
+export async function decideOneWinner(pair: PairRow, db: DatabaseAccess): Promise<{ winner: PairWinner; reason: string }> {
+  const row = await db
+    .queryFirst(
+      `SELECT * FROM (${PAIR_STATS_SQL.replace("FROM supplier_pairs sp", "FROM (SELECT ? AS wr_product_id, ? AS sk_product_id) sp")})`,
+      pair.wr_product_id,
+      pair.sk_product_id,
+    )
+    .catch(() => null);
+  if (!row) return { winner: null, reason: "pasangan_yatim" };
+  return decideFromStats(pair, statsFromRow(row));
+}
+
+/**
+ * Hitung ulang semua pasangan: 1 SELECT agregat + UPDATE hanya untuk baris
+ * yang berubah. Best-effort: 1 UPDATE gagal tidak menghentikan yang lain.
  */
 export async function decideAllWinners(database?: DatabaseAccess): Promise<{ decided: number; changed: number }> {
   const db = database ?? createDatabaseAccess();
-  const pairs = (await db.queryAll(`SELECT * FROM supplier_pairs`).catch(() => [] as Row[])) as unknown as PairRow[];
+  const rows = await db.queryAll(PAIR_STATS_SQL).catch(() => [] as Row[]);
   let decided = 0;
   let changed = 0;
   const now = new Date().toISOString();
-  for (const pair of pairs) {
-    try {
-      const { winner, reason } = await decideOneWinner(pair, db);
-      decided++;
-      if (winner !== pair.winner) changed++;
-      await db
-        .execRun(
-          `UPDATE supplier_pairs SET winner=?, decided_at=?, reason=?, updated_at=?
-           WHERE id=? AND (winner IS NOT ? OR reason IS NOT ?)`,
-          winner, now, reason.slice(0, 300), now, pair.id, winner, reason.slice(0, 300),
-        )
-        .catch(() => ({ changes: 0 }));
-    } catch {
-      /* pasangan gagal = lewati, sweep berikut retry */
-    }
+  for (const row of rows) {
+    const pair = row as unknown as PairRow;
+    const { winner, reason } = decideFromStats(pair, statsFromRow(row));
+    const shortReason = reason.slice(0, 300);
+    decided++;
+    if (winner !== (pair.winner ?? null)) changed++;
+    if (winner === (pair.winner ?? null) && shortReason === (pair.reason ?? null)) continue;
+    await db
+      .execRun(
+        `UPDATE supplier_pairs SET winner=?, decided_at=?, reason=?, updated_at=?
+         WHERE id=? AND (winner IS NOT ? OR reason IS NOT ?)`,
+        winner, now, shortReason, now, pair.id, winner, shortReason,
+      )
+      .catch(() => ({ changes: 0 }));
   }
   return { decided, changed };
 }

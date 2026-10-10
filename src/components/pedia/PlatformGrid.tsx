@@ -27,7 +27,7 @@ export function PlatformGrid() {
       <p className="text-sm font-semibold text-white/70">atau pilih platform</p>
       <div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-8">
         {PEDIA_PLATFORMS.map((p) => (
-          <Link
+          <Link prefetch={false}
             key={p.id}
             href={`/pedia/p/${p.id}`}
             className="group flex h-[84px] w-full flex-col items-center justify-center gap-1.5 rounded-2xl border border-transparent transition hover:-translate-y-0.5"
@@ -56,7 +56,7 @@ export type ProductCardData = {
 
 export function ProductCard({ p }: { p: ProductCardData }) {
   return (
-    <Link
+    <Link prefetch={false}
       href={`/pedia/o/${p.slug}`}
       className="ax-glass-card flex items-center gap-3 rounded-[20px] p-4 transition hover:border-white/20"
       aria-label={`${p.name} — ${p.tagline ?? ""}`}

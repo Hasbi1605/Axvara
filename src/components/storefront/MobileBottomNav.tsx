@@ -128,7 +128,7 @@ export function MobileBottomNav() {
               </span>
             );
             return item.href ? (
-              <Link
+              <Link prefetch={false}
                 key={item.label}
                 href={item.href}
                 aria-label={item.ariaLabel}

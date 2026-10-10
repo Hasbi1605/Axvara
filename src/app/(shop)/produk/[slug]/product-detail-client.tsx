@@ -239,7 +239,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
         <p className="text-red-300 text-sm bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 inline-block">Gagal memuat: {detailError}</p>
         <div className="mt-4 flex justify-center gap-3">
           <button onClick={()=> location.reload()} className="h-9 px-4 rounded-full bg-white text-[#070a1e] text-sm font-bold">Muat ulang</button>
-          <Link href="/" className="h-9 px-4 rounded-full ax-glass-card text-sm inline-flex items-center">Kembali</Link>
+          <Link prefetch={false} href="/" className="h-9 px-4 rounded-full ax-glass-card text-sm inline-flex items-center">Kembali</Link>
         </div>
       </div>
     );
@@ -249,7 +249,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
     return (
       <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 py-16 text-center">
         <p className="text-white/60">Produk tidak ditemukan</p>
-        <Link href="/" className="text-[#00E5FF] text-sm mt-3 inline-block">
+        <Link prefetch={false} href="/" className="text-[#00E5FF] text-sm mt-3 inline-block">
           ← Kembali ke katalog
         </Link>
       </div>
@@ -896,7 +896,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
           <h2 className="font-display font-bold text-[18px] sm:text-[20px] text-white tracking-[-0.02em]">
             Produk Serupa
           </h2>
-          <Link href="/#katalog" className="text-xs text-[#00E5FF] hover:text-white transition shrink-0">
+          <Link prefetch={false} href="/#katalog" className="text-xs text-[#00E5FF] hover:text-white transition shrink-0">
             Lihat semua →
           </Link>
         </div>

@@ -476,6 +476,23 @@ R2 bucket: axvara-assets
 7. Custom domain `axvara.tech` dan `www.axvara.tech` aktif melalui CNAME proxied; `www` memiliki redirect 308 ke apex. DNSSEC Cloudflare aktif dan memerlukan publikasi DS di registrar
 8. Secrets Pages: `ADMIN_EMAIL`, `ADMIN_PASSWORD_SHA256`, `ADMIN_JWT_SECRET`, `CRON_SECRET`, dan `WHATSAPP_WEBHOOK_TOKEN`; URL service Baileys disimpan sebagai `WHATSAPP_GATEWAY_URL`. Nilai `ADMIN_PASSWORD_SHA256` memakai format PBKDF2/SHA-256; satu pasang quote pembungkus dari paste shell/JSON dinormalisasi sebelum verifikasi. Pada hash PBKDF2, browser membentuk proof HMAC atas challenge JWT berlaku 5 menit; Pages memverifikasi proof secara ringan tanpa menjalankan derivasi PBKDF2 berat.
 
+### Aset statis di luar worker (2026-10-10)
+
+`npm run build:pages` = `next-on-pages` lalu `scripts/patch-pages-routes.js`,
+yang menambah `/icons/*`, `/brand/*`, `/og/*`, `/banners/*`, `/favicon.svg`,
+dan file verifikasi Google ke `exclude` di `.vercel/output/static/_routes.json`
+(bawaan hanya `/_next/static/*`). File itu disajikan CDN langsung tanpa
+menyalakan Pages Functions + middleware (dulu ±4.800 request/hari ikut
+menghabiskan jatah CPU Workers Free ~10 ms dan bisa kena 1102). Cache +
+`nosniff` untuk path tersebut diatur di `public/_headers`. Aturan: hanya file
+statis `public/` boleh masuk daftar — jangan path yang punya route dinamis.
+
+Hemat CPU lain (Workers Free, 2026-10-10): `<Link prefetch={false}>` di semua
+link storefront/Pedia (prefetch otomatis kartu produk dulu memicu belasan
+render RSC per kunjungan beranda); `decideAllWinners` (aksi `pairs` di
+`/api/supplier-sync`) kini 1 SELECT agregat + UPDATE hanya baris berubah
+(dulu ±9 query × 33 pasangan ≈ 300 round-trip → rutin `exceededCpu`).
+
 ### Build Adapter
 
 - Opsi A: `@cloudflare/next-on-pages` (Next.js di Pages Functions)
@@ -2077,6 +2094,20 @@ poller server memantau mutasi GoBiz milik sendiri.
   (patch anti-ban 2026-10-02, konsensus komunitas gobiz-payment)**, read-only,
   401 → backoff + notif, JANGAN loop login). Fase 0 = skeleton
   (`/health` + `/tick`); Fase 1 = login OTP 1x + polling GoBiz beneran.
+- **Idle 60 dtk + wake (2026-10-10, insiden 1102 Workers Free):** tanpa invoice
+  pending poller tidur `IDLE_POLL_INTERVAL_MS` (default 60 dtk; dulu ~16 dtk =
+  ±5.100 request/hari ke `/pending`). Ada pending/error = 15 dtk + jitter seperti
+  biasa. Pages membangunkan poller via `POST https://wr-proxy.axvara.tech/gopay/wake`
+  (Caddy `handle /gopay/wake` → `127.0.0.1:3002/wake`, header `x-poller-secret`
+  sama, 401 tanpa secret) dari `src/lib/payments/gopay-wake.ts`
+  (`scheduleGopayWake`, `waitUntil`, timeout 1,5 dtk, dedupe isolate 3 dtk,
+  best-effort) saat: QR GoPay terbit (`createQrisInvoice`) / diterbitkan ulang
+  (`reissueDanaQrisInvoice`), tombol web "Cek Status Sekarang"
+  (`GET /api/orders?code=…&wake=1`, hanya invoice GoPay pending; polling
+  otomatis halaman TIDAK mengirim `wake`), dan tombol Telegram "Periksa
+  Pembayaran" (`handleOrderRefresh`). Poller tetap satu-satunya pemanggil
+  GoBiz (tanpa poll paralel) dengan jarak minimum `WAKE_MIN_GAP_MS` 10 dtk.
+  Env opsional Pages: `GOPAY_POLLER_WAKE_URL` (default URL di atas).
 - **Env (`secret_text`):** `GOPAY_STATIC_QRIS`, `GOPAY_POLLER_SECRET`,
   `GOPAY_QRIS_ENABLED=false`, `QRIS_ACTIVE_PROVIDER=dana`.
   **Sejak 2026-10-02 sore (uji Rp5.137 hijau end-to-end):**

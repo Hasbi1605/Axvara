@@ -157,9 +157,10 @@ export default function OrderSuccessPage() {
   const [checkingNow, setCheckingNow] = useState(false);
   const polling = useRef(false);
 
-  const fetchOrder = useCallback(async () => {
+  const fetchOrder = useCallback(async (wake = false) => {
     if (!code || typeof code !== "string") return;
-    const response = await fetchWithTimeout(`/api/orders?code=${encodeURIComponent(code)}`, { cache: "no-store" }, 20_000);
+    // `wake=1` HANYA dari tombol manual: server membangunkan poller GoPay.
+    const response = await fetchWithTimeout(`/api/orders?code=${encodeURIComponent(code)}${wake ? "&wake=1" : ""}`, { cache: "no-store" }, 20_000);
     const body = await response.json().catch(() => ({}));
     if (response.status === 404) {
       setOrder(null);
@@ -191,7 +192,7 @@ export default function OrderSuccessPage() {
     setCheckingNow(true);
     setFetchError(null);
     try {
-      await fetchOrder();
+      await fetchOrder(true);
       setLastCheckedAt(Date.now());
       setNow(Date.now());
     } catch (error) {
@@ -299,7 +300,7 @@ export default function OrderSuccessPage() {
     return <div className="mx-auto max-w-[640px] px-4 py-16 text-center"><p className="text-sm text-red-300">{fetchError}</p><button onClick={() => location.reload()} className="mt-3 text-sm text-[#00E5FF]">Coba lagi</button></div>;
   }
   if (!order) {
-    return <div className="mx-auto max-w-[640px] px-4 py-16 text-center"><p className="text-white/60">Pesanan tidak ditemukan</p><Link href="/" className="mt-3 inline-block text-sm text-[#00E5FF]">Kembali ke beranda</Link></div>;
+    return <div className="mx-auto max-w-[640px] px-4 py-16 text-center"><p className="text-white/60">Pesanan tidak ditemukan</p><Link prefetch={false} href="/" className="mt-3 inline-block text-sm text-[#00E5FF]">Kembali ke beranda</Link></div>;
   }
 
   const isExpired = order.status === "kadaluarsa" || (order.status === "pending" && Boolean(order.expiresAt) && Date.parse(order.expiresAt!) <= now);
@@ -555,8 +556,8 @@ export default function OrderSuccessPage() {
         ))}
 
         <div className="mt-6 grid grid-cols-2 gap-2.5">
-          <Link href="/lacak-pesanan" className="ax-glass-card flex h-11 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-white hover:bg-white/10">Lacak Status</Link>
-          <Link href="/" className="ax-glass-card flex h-11 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-white hover:bg-white/10">Lanjut Belanja</Link>
+          <Link prefetch={false} href="/lacak-pesanan" className="ax-glass-card flex h-11 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-white hover:bg-white/10">Lacak Status</Link>
+          <Link prefetch={false} href="/" className="ax-glass-card flex h-11 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-white hover:bg-white/10">Lanjut Belanja</Link>
         </div>
         <div className="mt-3">
           <p className="text-center text-[11px] text-white/35">Butuh bantuan?</p>
@@ -566,7 +567,7 @@ export default function OrderSuccessPage() {
           </div>
         </div>
 
-        <p className="mt-4 text-center text-[11px] leading-5 text-white/35">Produk third-party AXVARA — simpan kode pesanan untuk klaim. Garansi berupa penggantian sesuai <Link href="/garansi-replace" className="text-white/50 underline decoration-white/20 underline-offset-2 hover:text-white">ketentuan garansi</Link>.</p>
+        <p className="mt-4 text-center text-[11px] leading-5 text-white/35">Produk third-party AXVARA — simpan kode pesanan untuk klaim. Garansi berupa penggantian sesuai <Link prefetch={false} href="/garansi-replace" className="text-white/50 underline decoration-white/20 underline-offset-2 hover:text-white">ketentuan garansi</Link>.</p>
       </div>
     </div>
   );

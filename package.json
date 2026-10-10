@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "build:pages": "npx @cloudflare/next-on-pages",
+    "build:pages": "npx @cloudflare/next-on-pages && node scripts/patch-pages-routes.js",
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run",

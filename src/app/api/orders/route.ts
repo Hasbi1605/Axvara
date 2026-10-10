@@ -297,12 +297,21 @@ export async function GET(req: NextRequest) {
     if (!/^AXV-\d{8}-[A-Z0-9]{8}$/.test(code)) return NextResponse.json({ error: "Kode tidak valid" }, { status: 400 });
     const row = (await queryFirst(
       `SELECT o.*, pt.payable_amount, pt.unique_code, pt.qris_url AS dynamic_qris_url,
-              pt.expires_at AS payment_expires_at, pt.status AS transaction_status
+              pt.expires_at AS payment_expires_at, pt.status AS transaction_status,
+              pt.provider AS payment_provider
        FROM orders o LEFT JOIN payment_transactions pt ON pt.order_code=o.code
        WHERE o.code=?`,
       code,
     )) as Record<string, unknown> | undefined;
     if (!row) return NextResponse.json({ error: "Pesanan tidak ditemukan" }, { status: 404 });
+    // 2026-10-10: tombol "Cek Status Sekarang" mengirim `wake=1` (polling
+    // otomatis TIDAK) → bangunkan poller GoPay di VPS agar mutasi langsung
+    // dicek. Hanya untuk invoice GoPay yang masih pending; best-effort.
+    if (searchParams.get("wake") === "1" && String(row.status) === "pending"
+      && String(row.payment_provider ?? "") === "gopay" && String(row.transaction_status ?? "") === "pending") {
+      const { scheduleGopayWake } = await import("@/lib/payments/gopay-wake");
+      await scheduleGopayWake("web_check").catch(() => false);
+    }
     // PII minimal on public endpoint: mask WA + email
     const waFull = String(row.customer_wa ?? "");
     const waMasked = waFull.length >= 7 ? waFull.slice(0, 5) + "****" + waFull.slice(-4) : waFull ? waFull.slice(0, 3) + "****" : "";

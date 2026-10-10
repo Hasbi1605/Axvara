@@ -77,6 +77,7 @@ axvara/
 
 ### Catatan performa storefront
 
+- **Hemat CPU Workers Free (2026-10-10, insiden 1102):** semua link storefront/Pedia `prefetch={false}`; ikon/logo/OG/banner/favicon dilayani CDN di luar worker (`scripts/patch-pages-routes.js` + `public/_headers`); hitung pemenang WR vs SK jadi 1 query agregat; poller GoPay VPS idle 60 dtk dan dibangunkan Pages saat QR terbit + tombol "Cek Status Sekarang"/"Periksa Pembayaran" (`src/lib/payments/gopay-wake.ts`, Caddy `/gopay/wake`). Detail: `docs/ARCHITECTURE.md` §8 + bagian GoPay.
 - Homepage dan detail menampilkan skeleton lalu hanya merender katalog aktif dari D1; seed hanya dipakai fallback database development, bukan fallback UI produksi.
 - Jaringan lambat tidak lagi "bisu" (2026-09-24): klik link/CTA langsung memunculkan bar cyan + skeleton halaman tujuan (`src/components/ui/NavigationProgress.tsx`, `src/components/storefront/Skeletons.tsx`), 8 dtk → pil "Koneksi lambat", 20 dtk → "Coba lagi". Tombol Checkout/Beli Sekarang/modal varian berputar sampai checkout tampil (`usePendingNavigation`); Bayar menampilkan label bertahap lalu layar "Pesanan dibuat · Membuka halaman pembayaran"; `/pesanan/[code]` langsung menampilkan QR dari respons create dengan placeholder + "Muat ulang QRIS". PDP dirender server lengkap (`initialProducts`/`initialCatalog`). Fetch storefront dibatasi waktu (`src/lib/fetch-timeout.ts`). Tanpa `loading.tsx` agar status 404 dan HTML SSR tidak berubah.
 - Logo orbit disajikan sebagai SVG lokal; tidak ada request runtime ke Iconify.

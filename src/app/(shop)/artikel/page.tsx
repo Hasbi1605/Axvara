@@ -53,7 +53,7 @@ export default async function ArtikelListPage() {
       ) : (
         <div className="mt-8 grid sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
           {articles.map((a) => (
-            <Link key={a.id} href={`/artikel/${a.slug}`} className="group ax-glass-card rounded-[20px] overflow-hidden hover:border-white/15 transition">
+            <Link prefetch={false} key={a.id} href={`/artikel/${a.slug}`} className="group ax-glass-card rounded-[20px] overflow-hidden hover:border-white/15 transition">
               <div className="aspect-[16/10] bg-white/5 overflow-hidden">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 {a.cover_url ? <img src={a.cover_url} alt={a.title} className="w-full h-full object-cover group-hover:scale-[1.02] transition duration-500" /> : <div className="w-full h-full bg-gradient-to-br from-white/10 to-white/[0.04]" />}

@@ -47,7 +47,7 @@ export function Navbar() {
   return (
     <header className="sticky top-0 z-50 ax-glass-strong border-b border-white/10">
       <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 h-[64px] flex items-center gap-4">
-        <Link href="/" className="flex items-center gap-3 shrink-0 group" aria-label={storeSettings.name}>
+        <Link prefetch={false} href="/" className="flex items-center gap-3 shrink-0 group" aria-label={storeSettings.name}>
           {/* Prism mark — wireframe, precise from chosen reference */}
           {storeSettings.logoUrl ? <span className="flex h-[32px] w-[36px] items-center justify-center">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -85,9 +85,9 @@ export function Navbar() {
             {mobileSearch ? <X className="w-4 h-4" /> : <IosIcon name="search" size={16} tint="white" />}
           </button>
           <nav className="hidden sm:flex items-center gap-1 text-sm text-white/70">
-            <Link href="/#katalog" className="px-3 py-2 rounded-full hover:text-white hover:bg-white/10 transition">Katalog</Link>
-            <Link href="/lacak-pesanan" className="px-3 py-2 rounded-full hover:text-white hover:bg-white/10 transition">Lacak Pesanan</Link>
-            <Link href="/artikel" className="px-3 py-2 rounded-full hover:text-white hover:bg-white/10 transition">Artikel</Link>
+            <Link prefetch={false} href="/#katalog" className="px-3 py-2 rounded-full hover:text-white hover:bg-white/10 transition">Katalog</Link>
+            <Link prefetch={false} href="/lacak-pesanan" className="px-3 py-2 rounded-full hover:text-white hover:bg-white/10 transition">Lacak Pesanan</Link>
+            <Link prefetch={false} href="/artikel" className="px-3 py-2 rounded-full hover:text-white hover:bg-white/10 transition">Artikel</Link>
             {/* 2026-10-08 (owner): 3 pill Apps/Pedia/AI disembunyikan sampai owner memutuskan. AppSwitcher TETAP ADA (tidak dihapus). */}
           </nav>
           <button

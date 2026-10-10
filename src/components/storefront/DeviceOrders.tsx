@@ -141,7 +141,7 @@ export function DeviceOrders() {
               </div>
               <div className="mt-2.5 flex items-center justify-between gap-2">
                 <span className={`rounded-full border px-2.5 py-1 text-[11px] font-bold ${TONE[view.tone]}`}>{view.label}</span>
-                <Link
+                <Link prefetch={false}
                   href={`/pesanan/${encodeURIComponent(local.code)}`}
                   className={view.pay
                     ? "inline-flex h-9 items-center rounded-full bg-[#00E5FF] px-4 text-xs font-bold text-[#080C1E] transition hover:bg-[#00D0E8]"

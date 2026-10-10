@@ -30,7 +30,7 @@ export function PediaBottomNav() {
         {TABS.map((t) => {
           const on = t.match(path);
           return (
-            <Link
+            <Link prefetch={false}
               key={t.href}
               href={t.href}
               aria-current={on ? "page" : undefined}

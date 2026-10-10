@@ -126,14 +126,14 @@ export function Footer({ shopBase = "" }: { shopBase?: string }) {
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/40">Jelajah</p>
             <ul className="mt-3.5 space-y-2.5 text-[13px]">
-              <li><Link href={shop("/#katalog")} className="text-white/60 transition hover:text-white">Semua produk</Link></li>
+              <li><Link prefetch={false} href={shop("/#katalog")} className="text-white/60 transition hover:text-white">Semua produk</Link></li>
               <li>
-                <Link href="/pedia?utm_source=axvara&utm_medium=footer" className="text-white/60 transition hover:text-white">
+                <Link prefetch={false} href="/pedia?utm_source=axvara&utm_medium=footer" className="text-white/60 transition hover:text-white">
                   Axvara Pedia
                   <span className="ml-1.5 rounded-full bg-[#FFB800]/15 px-1.5 py-px text-[10px] font-bold text-[#FFCF55]">Baru</span>
                 </Link>
               </li>
-              <li><Link href={shop("/artikel")} className="text-white/60 transition hover:text-white">AI & teknologi</Link></li>
+              <li><Link prefetch={false} href={shop("/artikel")} className="text-white/60 transition hover:text-white">AI & teknologi</Link></li>
               {categories.map((category) => (
                 <li key={category.id}><a href={shop(`/?category=${encodeURIComponent(category.slug)}#katalog`)} className="text-white/60 transition hover:text-white">{category.name}</a></li>
               ))}
@@ -143,11 +143,11 @@ export function Footer({ shopBase = "" }: { shopBase?: string }) {
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/40">Bantuan</p>
             <ul className="mt-3.5 space-y-2.5 text-[13px]">
-              <li><Link href={shop("/cara-order")} className="text-white/60 transition hover:text-white">Cara order</Link></li>
-              <li><Link href="/pedia/lacak" className="text-white/60 transition hover:text-white">Lacak pesanan Pedia</Link></li>
-              <li><Link href={shop("/lacak-pesanan")} className="text-white/60 transition hover:text-white">Lacak pesanan market</Link></li>
-              <li><Link href="/pedia/bantuan" className="text-white/60 transition hover:text-white">Bantuan Pedia</Link></li>
-              <li><Link href={shop("/garansi-replace")} className="text-white/60 transition hover:text-white">Garansi & replace</Link></li>
+              <li><Link prefetch={false} href={shop("/cara-order")} className="text-white/60 transition hover:text-white">Cara order</Link></li>
+              <li><Link prefetch={false} href="/pedia/lacak" className="text-white/60 transition hover:text-white">Lacak pesanan Pedia</Link></li>
+              <li><Link prefetch={false} href={shop("/lacak-pesanan")} className="text-white/60 transition hover:text-white">Lacak pesanan market</Link></li>
+              <li><Link prefetch={false} href="/pedia/bantuan" className="text-white/60 transition hover:text-white">Bantuan Pedia</Link></li>
+              <li><Link prefetch={false} href={shop("/garansi-replace")} className="text-white/60 transition hover:text-white">Garansi & replace</Link></li>
               <li><a href={waHubLink(`Halo ${storeSettings.name}`)} target="_blank" rel="noreferrer" className="text-[#00E5FF]/90 transition hover:text-white">Chat WA — {storeSettings.supportHours}</a></li>
             </ul>
           </div>

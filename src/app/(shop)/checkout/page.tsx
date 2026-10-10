@@ -302,7 +302,7 @@ function CheckoutInner() {
     return (
       <div className="mx-auto max-w-[640px] px-4 py-16 text-center">
         <p className="text-red-300">{directError}</p>
-        <Link href="/#katalog" className="mt-3 inline-block text-sm text-[#00E5FF]">Kembali ke katalog</Link>
+        <Link prefetch={false} href="/#katalog" className="mt-3 inline-block text-sm text-[#00E5FF]">Kembali ke katalog</Link>
       </div>
     );
   }
@@ -311,7 +311,7 @@ function CheckoutInner() {
     return (
       <div className="mx-auto max-w-[640px] px-4 py-16 text-center">
         <p className="text-white/60">Keranjang kosong</p>
-        <Link href="/#katalog" className="text-[#00E5FF] text-sm mt-3 inline-block">← Kembali belanja</Link>
+        <Link prefetch={false} href="/#katalog" className="text-[#00E5FF] text-sm mt-3 inline-block">← Kembali belanja</Link>
       </div>
     );
   }
@@ -535,7 +535,7 @@ function CheckoutInner() {
       />
       <span className="text-xs leading-5 text-white/60">
         Saya paham AXVARA adalah <span className="font-semibold text-white">third-party independen, bukan official store</span>, dan saya setuju dengan{" "}
-        <Link href="/garansi-replace" target="_blank" rel="noreferrer" className="font-semibold text-[#00E5FF] hover:underline">ketentuan layanan & garansi</Link>{" "}
+        <Link prefetch={false} href="/garansi-replace" target="_blank" rel="noreferrer" className="font-semibold text-[#00E5FF] hover:underline">ketentuan layanan & garansi</Link>{" "}
         serta ketentuan di deskripsi tiap produk.
       </span>
     </label>

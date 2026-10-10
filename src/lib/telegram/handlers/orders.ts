@@ -62,12 +62,18 @@ export async function handleOrderRefresh(chatId: number, messageId: number, orde
   // Same as status but edit existing message
   const order = await queryFirst(
     `SELECT o.code, o.items, o.subtotal, o.payment_status, o.fulfillment_status,
-            pt.payable_amount
+            pt.payable_amount, pt.provider AS payment_provider, pt.status AS transaction_status
      FROM orders o LEFT JOIN payment_transactions pt ON pt.order_code=o.code
      WHERE o.code=?`,
     orderCode,
   );
   if (!order) return;
+  // 2026-10-10: "Periksa Pembayaran" membangunkan poller GoPay di VPS (idle
+  // 60 dtk) — pembayaran terbaca beberapa detik kemudian & bot mengabari.
+  if (String(order.payment_provider ?? "") === "gopay" && String(order.transaction_status ?? "") === "pending") {
+    const { scheduleGopayWake } = await import("@/lib/payments/gopay-wake");
+    await scheduleGopayWake("telegram_check").catch(() => false);
+  }
 
   let productName = "Produk";
   try {

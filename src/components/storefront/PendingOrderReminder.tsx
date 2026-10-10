@@ -125,7 +125,7 @@ export function PendingOrderReminder() {
     >
       {/* Panel hampir solid: kaca 45% membuat ikon hero di belakang menembus teks. */}
       <div className="flex items-center gap-2 rounded-2xl border border-[#FFB800]/30 bg-[#0B1025]/95 p-2.5 shadow-[0_12px_32px_rgba(0,0,0,0.55)] backdrop-blur-xl">
-        <Link href={`/pesanan/${encodeURIComponent(pending.code)}`} className="flex min-w-0 flex-1 items-center gap-3">
+        <Link prefetch={false} href={`/pesanan/${encodeURIComponent(pending.code)}`} className="flex min-w-0 flex-1 items-center gap-3">
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#FFB800]/15">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/icons/ios11/clock-96.png" alt="" width={20} height={20} className="h-5 w-5 object-contain" style={{ filter: "brightness(0) saturate(100%) invert(72%) sepia(92%) saturate(1800%) hue-rotate(360deg)" }} draggable={false} />

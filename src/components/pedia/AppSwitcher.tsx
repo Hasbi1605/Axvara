@@ -21,7 +21,7 @@ export function AppSwitcher({ active, compact = false }: { active: AppSwitchOpti
       {OPTIONS.map((o) => {
         const on = o.id === active;
         return (
-          <Link
+          <Link prefetch={false}
             key={o.id}
             href={o.href}
             className={`flex min-h-[44px] items-center gap-1 rounded-full px-3 text-[13px] font-semibold transition-colors ${

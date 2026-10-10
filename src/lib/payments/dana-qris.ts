@@ -184,6 +184,14 @@ export function isDanaQrisConfigured(): boolean {
     && Boolean(process.env.DANA_WEBHOOK_SECRET?.trim());
 }
 
+/** Wake poller GoPay (dynamic import: hindari siklus modul). Tidak pernah throw. */
+async function wakeGopayPollerSafe(reason: string): Promise<void> {
+  try {
+    const { scheduleGopayWake } = await import("@/lib/payments/gopay-wake");
+    await scheduleGopayWake(reason);
+  } catch { /* best-effort */ }
+}
+
 export function isGopayQrisEnabled(): boolean {
   return process.env.GOPAY_QRIS_ENABLED === "true";
 }
@@ -315,6 +323,9 @@ async function createQrisInvoice(provider: QrisProvider, orderCode: string, requ
         ).bind(expiresAt, orderExpiresAt, orderCode),
         d1.prepare(`DELETE FROM operation_guards WHERE operation_id=?`).bind(guardId),
       ]);
+      // 2026-10-10: QR GoPay baru → bangunkan poller VPS (idle 60 dtk) agar
+      // pembeli yang bayar cepat tetap terdeteksi ±15 dtk. Best-effort.
+      if (provider === GOPAY_QRIS_PROVIDER) await wakeGopayPollerSafe("invoice");
       return { orderCode, requestedAmount, payableAmount, uniqueCode, qrisPayload, qrisUrl, expiresAt, isExisting: false };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -472,6 +483,7 @@ export async function reissueDanaQrisInvoice(orderCode: string): Promise<QrisRei
         ).bind(expiresAt, orderCode),
         d1.prepare(`DELETE FROM operation_guards WHERE operation_id=?`).bind(guardId),
       ]);
+      if (detectedProvider === GOPAY_QRIS_PROVIDER) await wakeGopayPollerSafe("reissue");
       return {
         ok: true,
         remaining: MAX_QRIS_REISSUES - (usedReissues + 1),
