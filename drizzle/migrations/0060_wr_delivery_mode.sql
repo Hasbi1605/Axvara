@@ -1,0 +1,15 @@
+-- 0060_wr_delivery_mode.sql — Mode kirim resmi dari API WR (2026-10-10).
+--
+-- Masalah (insiden owner 10 Okt): API WR sekarang mengirim `delivery_mode`
+-- per varian ("auto" = dikirim otomatis begitu lunas, "manual" = dikirim
+-- admin WR, "mixed" = tergantung ketersediaan — api-docs WR). Axvara masih
+-- memakai seed screenshot 16 Sep + tebakan sistem: 62 dari 92 varian salah
+-- kelas (mis. Vidio Platinum Mobile tampil "Kirim otomatis" padahal manual).
+--
+-- Desain: simpan nilai mentah API di kolom baru tanpa CHECK (nilai baru WR
+-- tidak boleh meruntuhkan batch sync). Bila terisi, kelas efektif
+-- `wr_delivery_class` SELALU diturunkan darinya oleh sync (auto → restock,
+-- manual/mixed → made_by_order) dan mengalahkan screenshot/tebakan/kunci
+-- admin. Kunci admin hanya berlaku untuk varian tanpa delivery_mode.
+-- Tidak menyentuh CHECK wr_delivery_source (rebuild tabel tidak perlu).
+ALTER TABLE wr_variants ADD COLUMN wr_delivery_mode TEXT;

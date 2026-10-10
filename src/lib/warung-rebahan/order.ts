@@ -28,7 +28,7 @@
 //    body diteruskan {variant_id, quantity, ...api_key} tanpa field
 //    idempotency) — jadi fencing dilakukan SEPENUHNYA di sisi Axvara.
 
-import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
+import { createDatabaseAccess, QueryBudgetExceeded, type DatabaseAccess } from "@/lib/db-access";
 import {
   createOrder,
   fetchTransactions,
@@ -267,22 +267,35 @@ export async function reconcileMissingWrLinks(
   const db = database ?? createDatabaseAccess();
   const out = { orders: 0, links: 0 };
   if (!isWrEnabled()) return out;
-  // Order lunas yang punya varian WR di items tetapi link-nya belum lengkap.
-  // Deteksi murah: order lunas + ada product_variants.wr_variant_id yang
-  // cocok dengan variant_id di items, MINUS yang sudah punya link.
-  // SQLite tidak bisa JOIN atas JSON secara murah — jadi ambil kandidat
-  // lunas terbaru, periksa di JS (bounded), buat link yang hilang.
+  // INSIDEN 2026-10-10: versi lama mengambil 12 order lunas terbaru lalu
+  // menjalankan 1 SELECT per item + 1 SELECT link per order DI JS — di hari
+  // ramai ±25 statement, dipanggil DUA KALI per tick, sehingga budget 40
+  // habis sebelum SELECT antrean due. Link yang sudah pulih dari saldo habis
+  // diam berjam-jam tanpa request ke WR dan tanpa last_error.
+  // Sekarang deteksi yatim = SATU statement (json_each + NOT EXISTS),
+  // biayanya tetap berapa pun jumlah order lunas.
   const candidates = await db
     .queryAll(
-      `SELECT code, items FROM orders
-       WHERE status='lunas' AND payment_status='paid'
-         AND datetime(COALESCE(paid_at, created_at)) > datetime('now','-7 days')
-       ORDER BY id DESC LIMIT ?`,
-      Math.max(1, Math.min(limit * 3, 24)),
+      `SELECT o.code, o.items FROM orders o
+       WHERE o.status='lunas' AND o.payment_status='paid'
+         AND datetime(COALESCE(o.paid_at, o.created_at)) > datetime('now','-7 days')
+         AND json_valid(o.items)
+         AND EXISTS (
+           SELECT 1 FROM json_each(o.items) je
+           JOIN product_variants pv
+             ON pv.id = CAST(json_extract(je.value, '$.variant_id') AS INTEGER)
+           WHERE pv.wr_variant_id IS NOT NULL
+             AND NOT EXISTS (
+               SELECT 1 FROM wr_order_links l
+               WHERE l.order_code = o.code AND l.wr_variant_id = pv.wr_variant_id))
+       ORDER BY o.id DESC LIMIT ?`,
+      Math.max(1, Math.min(limit, 8)),
     )
-    .catch(() => [] as Row[]);
+    .catch((error) => {
+      if (error instanceof QueryBudgetExceeded) throw error;
+      return [] as Row[];
+    });
   for (const candidate of candidates) {
-    if (out.orders >= limit) break;
     if (!db.canSpend(4)) break;
     const code = String(candidate.code || "");
     if (!code) continue;
@@ -293,20 +306,6 @@ export async function reconcileMissingWrLinks(
     } catch {
       continue;
     }
-    const wrVariantIds = new Set<string>();
-    for (const item of items) {
-      const variantId = Number(item.variant_id || 0);
-      if (!variantId) continue;
-      const resolved = await resolveWrVariantId(variantId, db).catch(() => null);
-      if (resolved) wrVariantIds.add(resolved.wrVariantId);
-    }
-    if (!wrVariantIds.size) continue;
-    const existing = await db
-      .queryAll(`SELECT wr_variant_id FROM wr_order_links WHERE order_code=?`, code)
-      .catch(() => [] as Row[]);
-    const have = new Set(existing.map((r) => String(r.wr_variant_id || "")));
-    const missing = [...wrVariantIds].filter((v) => !have.has(v));
-    if (!missing.length) continue;
     out.orders++;
     const made = await createWrOrderLink(code, items, db).catch(() => 0);
     out.links += made;
@@ -316,16 +315,22 @@ export async function reconcileMissingWrLinks(
 
 export async function processWrPendingOrders(
   database?: DatabaseAccess,
+  options: { skipOrphanProbe?: boolean } = {},
 ): Promise<ProcessResult> {
   const db = database ?? createDatabaseAccess();
   const result: ProcessResult = { processed: 0, succeeded: 0, retried: 0, failed: 0, blocked: 0, reconciled: 0 };
   if (!isWrEnabled() || !isWrAutoOrderEnabled()) return result;
   // P0-3: tutup jendela crash payment-tanpa-link SEBELUM memproses antrean.
-  try {
-    const missing = await reconcileMissingWrLinks(db);
-    result.reconciled = missing.links;
-  } catch {
-    /* reconciler best-effort; antrean tetap diproses */
+  // Cron yang sudah menjalankan probe yatim sendiri melewatinya di sini
+  // (2026-10-10: probe ganda ikut menghabiskan budget statement).
+  if (!options.skipOrphanProbe) {
+    try {
+      const missing = await reconcileMissingWrLinks(db);
+      result.reconciled = missing.links;
+    } catch (error) {
+      if (error instanceof QueryBudgetExceeded) throw error;
+      /* reconciler best-effort; antrean tetap diproses */
+    }
   }
   const due = await db
     .queryAll(
@@ -345,7 +350,13 @@ export async function processWrPendingOrders(
          ${isWrAutoOrderQueuedEnabled() ? "" : "AND COALESCE(wv.wr_delivery_class, 'made_by_order') = 'restock'"}
        ORDER BY l.next_attempt_at ASC, l.id ASC LIMIT 4`,
     )
-    .catch(() => [] as Row[]);
+    // Budget habis WAJIB naik ke pemanggil (insiden 2026-10-10): dulu
+    // `.catch(() => [])` membuatnya terbaca "antrean kosong" — link due diam
+    // tanpa jejak. Error lain (DB pra-migrasi) tetap aman sebagai kosong.
+    .catch((error) => {
+      if (error instanceof QueryBudgetExceeded) throw error;
+      return [] as Row[];
+    });
   for (const link of due) {
     if (!db.canSpend(6)) break;
     result.processed++;
@@ -761,14 +772,21 @@ export async function handleWrOrderProcessing(
 // yang sama sehingga link MBO lain yang sudah selesai di upstream (webhook
 // hilang) tidak pernah tersentuh. /transactions dibaca SEKALI per run, jadi
 // menambah kandidat tidak menambah panggilan upstream.
-export async function reconcileStuckWrOrders(database?: DatabaseAccess): Promise<number> {
+export async function reconcileStuckWrOrders(
+  database?: DatabaseAccess,
+  options: { minAgeMinutes?: number } = {},
+): Promise<number> {
   const db = database ?? createDatabaseAccess();
   if (!isWrEnabled()) return 0;
+  // minAgeMinutes (2026-10-10): cron lite memakai 2 menit — webhook WR yang
+  // hilang/terputus tidak lagi membuat pembeli varian instan menunggu 1 jam.
+  // /transactions tetap dibaca SEKALI per run (read-only, tidak beli ulang).
+  const minAge = Math.max(1, Math.floor(Number(options.minAgeMinutes ?? 60)));
   const stuck = await db
     .queryAll(
       `SELECT wr_order_id, order_code, id FROM wr_order_links
        WHERE status IN ('processing','submitted','ordering')
-         AND datetime(COALESCE(request_sent_at, updated_at)) <= datetime('now','-1 hour')
+         AND datetime(COALESCE(request_sent_at, updated_at)) <= datetime('now','-${minAge} minutes')
        ORDER BY RANDOM() LIMIT 12`,
     )
     .catch(() => [] as Row[]);

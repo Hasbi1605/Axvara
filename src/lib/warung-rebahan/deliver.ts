@@ -386,6 +386,7 @@ export async function handleWrOrderCompleted(
   wrOrderId: string,
   accountPayload: unknown,
   database?: DatabaseAccess,
+  options: { accountUpdated?: boolean } = {},
 ): Promise<boolean> {
   const db = database ?? createDatabaseAccess();
   const { queryFirst, execRun } = db;
@@ -393,9 +394,10 @@ export async function handleWrOrderCompleted(
     () => null,
   );
   if (!link) return false;
-  const plaintext = formatWrAccountDetails(
-    (accountPayload as { account_details?: unknown })?.account_details ?? accountPayload,
-  );
+  // Webhook resmi WR membawa akun di `data.accounts` (api-docs 2026-10);
+  // /transactions memakai `account_details`. Keduanya diterima.
+  const envelope = accountPayload as { account_details?: unknown; accounts?: unknown } | null;
+  const plaintext = formatWrAccountDetails(envelope?.account_details ?? envelope?.accounts ?? accountPayload);
   const { ciphertext, iv } = await encryptSecret(plaintext || "(detail akun kosong dari WR)");
   const now = new Date().toISOString();
   // Simpan kredensial dulu (durable) — sebelum status, agar crash di tengah
@@ -414,6 +416,25 @@ export async function handleWrOrderCompleted(
     last_error: null,
   }, db);
   void advanced;
+  // INSIDEN 2026-10-10 (AXV-20261010-90402478): kredensial tersimpan + link
+  // completed, tetapi request webhook berhenti sebelum queueCredentialDelivery
+  // → delivery_status `not_required` selamanya, pembeli tidak menerima apa pun.
+  // Antrekan SEGERA setelah kredensial durable; langkah berikut (bind,
+  // settle, agregat) diulang sendiri oleh processCredentialDelivery bila
+  // request ini terputus di tengah. `order.account_updated` (akun diganti WR)
+  // membuka ulang pengiriman yang sudah delivered dengan penanda khusus.
+  if (options.accountUpdated) {
+    await execRun(
+      `UPDATE wr_order_links SET delivery_status='queued', delivery_attempt_count=0,
+         delivery_last_error='account_updated', delivery_next_attempt_at=datetime('now'),
+         delivery_channel=COALESCE(delivery_channel, (SELECT sales_channel FROM orders WHERE code=wr_order_links.order_code), 'web'),
+         updated_at=datetime('now')
+       WHERE id=? AND wr_account_details IS NOT NULL`,
+      Number(link.id),
+    ).catch(() => undefined);
+  } else {
+    await queueCredentialDelivery(Number(link.id), db);
+  }
   // Kaitkan link ke baris itemnya (paritas SK 2026-10-03 — sebelum ini WR
   // TIDAK PERNAH bind: fulfillment_item_id selalu NULL sehingga panel
   // /pesanan (baca fulfillment_items.delivered_ciphertext) tidak pernah
@@ -426,8 +447,6 @@ export async function handleWrOrderCompleted(
   // Selesaikan item WR terkait + agregat ulang dari seluruh item.
   await settleWrFulfillmentItem(String(link.order_code), fulfillmentItemId, ciphertext, iv, db);
   await refreshOrderAggregate(String(link.order_code), db);
-  // Delivery durable: queue (atau lanjutkan bila sudah queued/gagal).
-  await queueCredentialDelivery(Number(link.id), db);
   // Coba kirim segera; bila gagal, delivery_status tetap queued/failed dan
   // cron delivery + webhook duplikat akan retry (P0-6).
   await processCredentialDelivery(Number(link.id), db).catch(() => undefined);
@@ -551,7 +570,8 @@ async function settleWrFulfillmentItem(
         `UPDATE fulfillment_items SET status='delivered', delivered_message_id=?,
            delivered_ciphertext=COALESCE(?, delivered_ciphertext),
            delivered_iv=COALESCE(?, delivered_iv),
-           locked_until=NULL, updated_at=datetime('now') WHERE id=? AND order_code=?`,
+           locked_until=NULL, updated_at=datetime('now') WHERE id=? AND order_code=?
+           AND COALESCE(last_error,'') NOT LIKE 'manual_handover:%'`,
         `wr:${fulfillmentItemId}`,
         ciphertext ?? null,
         iv ?? null,
@@ -578,7 +598,7 @@ async function settleWrFulfillmentItem(
          delivered_ciphertext=COALESCE(?, delivered_ciphertext),
          delivered_iv=COALESCE(?, delivered_iv),
          locked_until=NULL, updated_at=datetime('now')
-       WHERE order_code=? AND id IN (
+       WHERE order_code=? AND COALESCE(last_error,'') NOT LIKE 'manual_handover:%' AND id IN (
          SELECT fi.id FROM fulfillment_items fi
          JOIN product_variants pv ON pv.id = fi.variant_id
          WHERE fi.order_code=? AND pv.wr_variant_id IS NOT NULL
@@ -729,6 +749,34 @@ export async function processCredentialDelivery(
     return false;
   }
   const attempts = Number(link.delivery_attempt_count || 0);
+  const accountUpdated = String(link.delivery_last_error || "").includes("account_updated");
+  // Admin sudah menyerahkan item ini manual (tombol "Kirim ke pembeli") →
+  // JANGAN kirim kredensial WR lagi (pembeli dobel pesan, isi bisa beda).
+  // Pengecualian: akun DIGANTI WR (account_updated) memang harus dikirim.
+  if (!accountUpdated && (await wrItemHandedOverManually(link, db))) {
+    await execRun(
+      `UPDATE wr_order_links SET delivery_status='delivered', delivered_at=?,
+         delivery_last_error='skipped_manual_handover', delivery_next_attempt_at=NULL,
+         updated_at=datetime('now') WHERE id=?`,
+      new Date().toISOString(),
+      linkId,
+    ).catch(() => undefined);
+    return true;
+  }
+  // Lengkapi langkah completion yang mungkin terputus (bind → settle →
+  // agregat) SEBELUM mengirim: panel /pesanan + tombol Ambil Detail Produk
+  // membaca fulfillment_items, bukan wr_order_links. Idempoten.
+  try {
+    let itemId = Number(link.fulfillment_item_id || 0);
+    if (!itemId) itemId = await bindWrLinkToFulfillmentItem(linkId, db).catch(() => 0);
+    const item = itemId
+      ? await queryFirst(`SELECT status, delivered_ciphertext FROM fulfillment_items WHERE id=?`, itemId).catch(() => null)
+      : null;
+    if (!item || String(item.status) !== "delivered" || !item.delivered_ciphertext || accountUpdated) {
+      await settleWrFulfillmentItem(String(link.order_code), itemId, String(link.wr_account_details), String(link.wr_account_iv), db);
+      await refreshOrderAggregate(String(link.order_code), db);
+    }
+  } catch { /* panel boleh menyusul; kirim ke pembeli tetap jalan */ }
   try {
     const stored = await decryptSecret(String(link.wr_account_details), String(link.wr_account_iv));
     // Normalisasi display di USE-time (2026-09-18 sore): data lama yang
@@ -767,7 +815,7 @@ export async function processCredentialDelivery(
         await deliverWebCredentialViaWhatsApp(String(link.order_code), plaintext, db);
       } catch (e) { webPushErrors.push(`wa:${e instanceof Error ? e.message : String(e)}`); }
       try {
-        await deliverWebCredentialViaEmail(String(link.order_code), plaintext, db);
+        await deliverWebCredentialViaEmail(String(link.order_code), plaintext, db, { resend: accountUpdated });
       } catch (e) { webPushErrors.push(`email:${e instanceof Error ? e.message : String(e)}`); }
       if (webPushErrors.length === 2) {
         // Dua-duanya gagal = tidak ada jalur push yang sampai; tandai agar
@@ -842,6 +890,73 @@ export async function recoverStaleCredentialDeliveries(
   return Number(res.changes ?? 0);
 }
 
+/** Item WR order ini sudah diserahkan admin manual (audit manual_handover)? */
+async function wrItemHandedOverManually(link: Record<string, unknown>, db: DatabaseAccess): Promise<boolean> {
+  const itemId = Number(link.fulfillment_item_id || 0);
+  const row = itemId
+    ? await db.queryFirst(
+        `SELECT 1 AS hit FROM fulfillment_items WHERE id=? AND status='delivered'
+           AND (COALESCE(last_error,'') LIKE 'manual_handover:%' OR delivered_message_id='manual')`,
+        itemId,
+      ).catch(() => null)
+    : await db.queryFirst(
+        `SELECT 1 AS hit FROM fulfillment_items fi JOIN product_variants pv ON pv.id=fi.variant_id
+         WHERE fi.order_code=? AND pv.wr_variant_id=? AND fi.status='delivered'
+           AND (COALESCE(fi.last_error,'') LIKE 'manual_handover:%' OR fi.delivered_message_id='manual')
+         LIMIT 1`,
+        String(link.order_code || ""),
+        String(link.wr_variant_id || ""),
+      ).catch(() => null);
+  return Boolean(row);
+}
+
+/**
+ * Penyapu kredensial yatim (insiden 2026-10-10): link `completed` dengan
+ * kredensial tersimpan tetapi `delivery_status` masih `not_required` (request
+ * completion terputus sebelum queue) → antrekan agar cron mengirimnya.
+ * Jendela 3 hari: link lama pra-0029 yang sudah dikirim jalur lama tidak
+ * disentuh.
+ *
+ * PAGAR ANTI-KIRIM-ULANG (2026-10-11, permintaan owner: semua order kemarin
+ * sudah handover manual): link yang itemnya SUDAH `delivered` (manual ATAU
+ * WR — delivered_message_id terisi) TIDAK PERNAH di-queue ulang. Yang
+ * di-queue ulang HANYA link yang itemnya belum delivered (completion terputus
+ * sebelum settle) — itulah satu-satunya kasus "pembeli belum menerima apa
+ * pun". Item handover manual juga dilewati lapis kedua oleh
+ * processCredentialDelivery (ditandai skipped_manual_handover).
+ */
+export async function requeueOrphanCredentialDeliveries(
+  database?: DatabaseAccess,
+  limit = 4,
+): Promise<number> {
+  const db = database ?? createDatabaseAccess();
+  if (!db.canSpend(2)) return 0;
+  const rows = await db
+    .queryAll(
+      `SELECT l.id FROM wr_order_links l
+       WHERE l.status='completed' AND l.delivery_status='not_required'
+         AND l.wr_account_details IS NOT NULL
+         AND datetime(COALESCE(l.completed_at, l.updated_at)) > datetime('now','-3 days')
+         AND NOT EXISTS (
+           SELECT 1 FROM fulfillment_items fi
+           WHERE (fi.id = l.fulfillment_item_id OR
+                  (fi.order_code = l.order_code AND fi.id IN (
+                    SELECT fi2.id FROM fulfillment_items fi2
+                    JOIN product_variants pv ON pv.id = fi2.variant_id
+                    WHERE fi2.order_code = l.order_code AND pv.wr_variant_id = l.wr_variant_id)))
+             AND fi.status='delivered' AND fi.delivered_message_id IS NOT NULL)
+       ORDER BY l.id ASC LIMIT ?`,
+      Math.max(1, Math.min(limit, 8)),
+    )
+    .catch(() => [] as Record<string, unknown>[]);
+  let queued = 0;
+  for (const row of rows) {
+    if (!db.canSpend(3)) break;
+    if (await queueCredentialDelivery(Number(row.id), db).catch(() => false)) queued++;
+  }
+  return queued;
+}
+
 /** Cron delivery: proses antrean kredensial due (bounded). */
 export async function processDueCredentialDeliveries(
   database?: DatabaseAccess,
@@ -863,7 +978,9 @@ export async function processDueCredentialDeliveries(
     )
     .catch(() => [] as Record<string, unknown>[]);
   for (const row of due) {
-    if (!db.canSpend(6)) break;
+    // ±10 statement per baris: klaim, baca, cek handover manual, bind/settle/
+    // agregat (bila completion terputus), kirim, tandai delivered.
+    if (!db.canSpend(10)) break;
     out.processed++;
     try {
       if (await processCredentialDelivery(Number(row.id), db)) out.delivered++;
@@ -1025,6 +1142,7 @@ export async function deliverWebCredentialViaEmail(
   orderCode: string,
   plaintext: string,
   db: DatabaseAccess,
+  options: { resend?: boolean } = {},
 ): Promise<void> {
   const { queryFirst, execRun } = db;
   const order = await db
@@ -1036,7 +1154,12 @@ export async function deliverWebCredentialViaEmail(
   if (!order) throw new Error("order_not_found");
   const buyerEmail = String(order.customer_email || "").trim();
   if (!buyerEmail || !buyerEmail.includes("@")) return; // tanpa email: WA + panel cukup.
-  const idempotencyKey = `wr-cred-email:${orderCode}`;
+  // Akun diganti WR (order.account_updated) = email BARU dengan kunci per isi
+  // (hash), supaya tidak tertahan kunci email pertama; replay isi sama tetap
+  // tertahan kunci hash yang sama.
+  const idempotencyKey = options.resend
+    ? `wr-cred-email:${orderCode}:${(await sha256Hex(plaintext)).slice(0, 12)}`
+    : `wr-cred-email:${orderCode}`;
   const already = await queryFirst(
     `SELECT id FROM wr_email_forward_log WHERE gmail_message_id=? AND buyer_notified_at IS NOT NULL`,
     idempotencyKey,

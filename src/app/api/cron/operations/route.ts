@@ -1035,7 +1035,7 @@ export async function POST(request: NextRequest) {
         if (!syncOnly && autoOrder && (pendingWrDue > 0 || Number(results.wr_orphan_links_healed ?? 0) > 0) && budget.fits(COST_PER_WR_WORK) && hasTime(TIME_WR_NETWORK)) {
           try {
             await retryFailedWrOrders(database);
-            const processed = await processWrPendingOrders(database);
+            const processed = await processWrPendingOrders(database, { skipOrphanProbe: true });
             results.wr_orders_processed = processed.processed;
             results.wr_orders_succeeded = processed.succeeded;
             results.wr_orders_blocked = processed.blocked;
@@ -1258,6 +1258,9 @@ export async function POST(request: NextRequest) {
         //    pemulihan lease 'sending' yang basi (run sebelumnya dibunuh).
         if (budget.fits(4) && hasTime(TIME_WR_LIGHT)) {
           try {
+            const { requeueOrphanCredentialDeliveries } = await import("@/lib/warung-rebahan/deliver");
+            const requeued = await requeueOrphanCredentialDeliveries(database);
+            if (requeued > 0) results.wr_credentials_requeued = requeued;
             const delivery = await processDueCredentialDeliveries(database);
             results.wr_deliveries_processed = delivery.processed;
             results.wr_deliveries_delivered = delivery.delivered;

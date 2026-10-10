@@ -110,9 +110,17 @@ const WR_STATUS_LABEL: Record<string, string> = {
  */
 const RETRYABLE_WR_STATUS = ["pending", "retry", "failed", "blocked_balance"];
 
-/** Retry hanya berguna bila kuota percobaan masih ada (API menolak bila habis). */
-function canRetryWrLink(order: { status: string; attempt_count?: number; max_attempts?: number }): boolean {
+/**
+ * Retry berguna bila kuota percobaan masih ada, ATAU (2026-10-10) link
+ * `failed` karena kegagalan pra-kirim (WR belum pernah menerima order: tanpa
+ * wr_order_id/request_sent_at, bukan dibatalkan admin) — API memberi kuota
+ * baru untuk kasus ini. Cermin aturan di route retry.
+ */
+export function canRetryWrLink(order: { status: string; attempt_count?: number; max_attempts?: number; wr_order_id?: string | null; request_sent_at?: string | null; last_error?: string | null }): boolean {
   if (!RETRYABLE_WR_STATUS.includes(order.status)) return false;
+  if (order.status === "failed") {
+    return !order.wr_order_id && !order.request_sent_at && !String(order.last_error ?? "").startsWith("cancelled_by_admin");
+  }
   return Number(order.attempt_count ?? 0) < Number(order.max_attempts ?? 3);
 }
 
@@ -387,7 +395,9 @@ export function WarungRebahanManager() {
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || "Gagal mengunci kelas");
-      toast.success(deliveryClass === "restock" ? "Dikunci: RESTOK • auto." : "Dikunci: MBO • manual.");
+      toast.success(deliveryClass === "restock"
+        ? "Dikunci: RESTOK • auto (dicatat 'kunci admin'; sync berikutnya tetap mengikuti delivery_mode API WR bila varian ini memilikinya)."
+        : "Dikunci: MBO • manual (dicatat 'kunci admin'; sync berikutnya tetap mengikuti delivery_mode API WR bila varian ini memilikinya).");
       await loadMarkups();
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : "Gagal mengunci kelas");
@@ -543,8 +553,10 @@ export function WarungRebahanManager() {
                     </button>
                   </div>
                 ) : RETRYABLE_WR_STATUS.includes(order.status) ? (
-                  <span title="Percobaan otomatis sudah habis. Serahkan manual dari tab Pesanan, atau naikkan batas percobaan." className="inline-flex h-9 shrink-0 items-center rounded-xl border border-red-400/25 bg-red-500/10 px-3 text-[11px] font-semibold text-red-200">
-                    Percobaan habis
+                  // Non-preSend `failed` (sudah terkirim ke WR / dibatalkan
+                  // admin) memang tidak bisa retry — beli ulang = dobel bayar.
+                  <span title={order.status === "failed" ? "Order ini sudah pernah terkirim ke WR atau dibatalkan admin — retry = beli ulang (dobel bayar). Serahkan manual dari tab Pesanan." : "Percobaan otomatis sudah habis. Serahkan manual dari tab Pesanan, atau naikkan batas percobaan."} className="inline-flex h-9 shrink-0 items-center rounded-xl border border-red-400/25 bg-red-500/10 px-3 text-[11px] font-semibold text-red-200">
+                    {order.status === "failed" ? "Tak bisa retry" : "Percobaan habis"}
                   </span>
                 ) : null}
               </article>
@@ -663,8 +675,8 @@ export function WarungRebahanManager() {
                     <label className="flex items-center gap-1.5 text-xs text-white/55">%<input value={edit.percent} onChange={(e) => setEditingMarkup((s) => ({ ...s, [row.wr_variant_id]: { percent: e.target.value, fixed: edit.fixed } }))} inputMode="numeric" className="h-9 w-16 rounded-lg border border-white/10 bg-black/20 px-2 text-right text-xs text-white focus:border-[#00E5FF]/50 focus:outline-none" /></label>
                     <label className="flex items-center gap-1.5 text-xs text-white/55">+Rp<input value={edit.fixed} onChange={(e) => setEditingMarkup((s) => ({ ...s, [row.wr_variant_id]: { percent: edit.percent, fixed: e.target.value } }))} inputMode="numeric" className="h-9 w-24 rounded-lg border border-white/10 bg-black/20 px-2 text-right text-xs text-white focus:border-[#00E5FF]/50 focus:outline-none" /></label>
                     <button onClick={() => void saveMarkup(row)} className="inline-flex h-9 items-center rounded-xl bg-white px-3.5 text-xs font-bold text-[#07101f] transition hover:bg-white/90">Simpan</button>
-                    <button onClick={() => void setDeliveryClass(row, "restock")} title="Kunci sebagai RESTOK (auto)" className="inline-flex h-9 items-center rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-2.5 text-[11px] font-bold text-emerald-300 transition hover:bg-emerald-500/20">AUTO</button>
-                    <button onClick={() => void setDeliveryClass(row, "made_by_order")} title="Kunci sebagai MBO (manual)" className="inline-flex h-9 items-center rounded-xl border border-[#FFB800]/25 bg-[#FFB800]/10 px-2.5 text-[11px] font-bold text-[#FFD66B] transition hover:bg-[#FFB800]/20">MANUAL</button>
+                    <button onClick={() => void setDeliveryClass(row, "restock")} title="Kunci sebagai RESTOK (auto) — sync berikutnya ikut delivery_mode API WR bila ada" className="inline-flex h-9 items-center rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-2.5 text-[11px] font-bold text-emerald-300 transition hover:bg-emerald-500/20">AUTO</button>
+                    <button onClick={() => void setDeliveryClass(row, "made_by_order")} title="Kunci sebagai MBO (manual) — sync berikutnya ikut delivery_mode API WR bila ada" className="inline-flex h-9 items-center rounded-xl border border-[#FFB800]/25 bg-[#FFB800]/10 px-2.5 text-[11px] font-bold text-[#FFD66B] transition hover:bg-[#FFB800]/20">MANUAL</button>
                   </div>
                 </article>
               );

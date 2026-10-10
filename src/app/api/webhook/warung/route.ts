@@ -41,7 +41,10 @@ export async function POST(request: NextRequest) {
   if (new TextEncoder().encode(rawBody).byteLength > MAX_BODY_SIZE) {
     return NextResponse.json({ error: "payload_too_large" }, { status: 413 });
   }
+  // api-docs WR (2026-10): header baru `X-Digitals-Signature`; header lama
+  // (X-Rebahan/X-Premify) masih dikirim dengan nilai sama.
   const signature =
+    request.headers.get("x-digitals-signature") ||
     request.headers.get("x-rebahan-signature") ||
     request.headers.get("x-warung-signature") ||
     "";
@@ -60,9 +63,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
   }
   // Event ID provider untuk dedupe (bila WR mengirimnya di data/header).
+  // id pengiriman resmi = `payload.id` / header X-Digitals-Delivery (WR
+  // mengulang dengan id yang sama) — dipakai dedupe monotonik.
   const eventId =
     String(
-      (payload.data as Record<string, unknown>)?.event_id ||
+      (payload as { id?: unknown }).id ||
+        request.headers.get("x-digitals-delivery") ||
+        (payload.data as Record<string, unknown>)?.event_id ||
         request.headers.get("x-rebahan-event-id") ||
         "",
     ).slice(0, 120) || undefined;
@@ -74,22 +81,30 @@ export async function POST(request: NextRequest) {
       case "order.completed":
         await handleWrOrderCompleted(orderId, payload.data);
         break;
-      case "order.failed":
-        await handleWrOrderFailed(orderId, String(payload.data?.status || "failed"), undefined, eventId);
+      // Akun diganti WR (garansi/replace): simpan akun terbaru + kirim ulang.
+      case "order.account_updated":
+        await handleWrOrderCompleted(orderId, payload.data, undefined, { accountUpdated: true });
         break;
+      // `order.refunded` = event resmi api-docs WR; `order.failed` = nama lama.
+      case "order.refunded":
+      case "order.failed": {
+        const note = String((payload.data as Record<string, unknown>)?.note ?? "").slice(0, 160);
+        const reason = payload.event === "order.refunded"
+          ? `refunded${note ? `: ${note}` : ""}`
+          : String(payload.data?.status || "failed");
+        await handleWrOrderFailed(orderId, reason, undefined, eventId);
+        break;
+      }
       default:
         console.warn(`Unknown WR webhook event: ${String((payload as { event?: unknown }).event)}`);
     }
   } catch (error) {
+    // Semua handler idempoten + monotonik → aman diulang WR (1m/5m/30m/2j).
+    // Dulu error selain link_not_found dibalas 200 sehingga WR berhenti
+    // mengulang dan completion setengah jalan tertinggal (insiden 2026-10-10).
+    // Penyapu cron (requeueOrphanCredentialDeliveries) tetap jadi jaring kedua.
     console.error("WR webhook processing failed:", error instanceof Error ? error.message : "unknown");
-    // 500 HANYA bila link tidak ditemukan (tidak ada recovery yang bisa
-    // berjalan — cron reconcile dan retry admin butuh baris link). Bila link
-    // ada, state sudah durable (monotonik + delivery queue) sehingga 200
-    // aman: retry WR hanya mengulang dedupe yang idempoten.
-    const message = error instanceof Error ? error.message : "";
-    if (/wr_link_not_found|warung_rebahan_disabled/i.test(message)) {
-      return NextResponse.json({ error: "retryable" }, { status: 500 });
-    }
+    return NextResponse.json({ error: "retryable" }, { status: 500 });
   }
   return NextResponse.json({ status: "ok" });
 }

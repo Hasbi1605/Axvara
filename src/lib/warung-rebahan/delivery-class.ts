@@ -1,13 +1,21 @@
 // src/lib/warung-rebahan/delivery-class.ts — Kelas pengiriman WR per varian.
 //
-// Masalah: API WR tidak memberi penanda auto/manual (hanya id, name, price,
-// duration, type, warranty, stock, terms, delivery_terms). Satu-satunya
-// kebenaran adalah daftar admin WR (RESTOK vs MADE BY ORDER) yang volatil.
+// Masalah awal (2026-09-16): API WR tidak memberi penanda auto/manual (hanya
+// id, name, price, duration, type, warranty, stock, terms, delivery_terms).
+// Satu-satunya kebenaran saat itu adalah daftar admin WR (RESTOK vs MADE BY
+// ORDER) yang volatil.
 //
-// Desain hibrida (keputusan owner 2026-09-16):
+// Sejak 2026-10-10 API WR mengirim `delivery_mode` per varian ("auto" =
+// dikirim otomatis begitu lunas, "manual" = dikerjakan admin WR, "mixed" =
+// tergantung ketersediaan). Itu SUMBER KEBENARAN kelas instan/antrean —
+// sync menurunkannya via deliveryClassFromApiMode di bawah (mengalahkan seed
+// screenshot/tebakan/kunci admin). guessDeliveryClass tersisa sebagai
+// fallback untuk varian yang API-nya tidak mengirim delivery_mode.
+//
+// Desain hibrida (keputusan owner 2026-09-16, diperbarui 2026-10-10):
+// - delivery_mode API = sumber kebenaran (bila ada).
 // - Seed screenshot = modal awal (17 nama, sumber 'screenshot').
 // - guessDeliveryClass = tebakan sistem untuk sisanya + varian baru.
-// - Yang sudah dikunci (screenshot/admin/system) TIDAK PERNAH ditimpa sync.
 // - Default aman = 'made_by_order' (under-promise: mending bilang manual
 //   ternyata cepat, daripada bilang otomatis ternyata slow).
 
@@ -176,6 +184,21 @@ const MBO_NAMES = [
 function containsAny(haystack: string, needles: string[]): boolean {
   const lower = haystack.toLowerCase();
   return needles.some((n) => lower.includes(n));
+}
+
+/**
+ * Kelas pengiriman dari `delivery_mode` resmi API WR (2026-10-10).
+ * api-docs: "auto" = dikirim otomatis begitu lunas, "manual" = dikirim admin
+ * (perlu waktu), "mixed" = bisa otomatis atau manual tergantung ketersediaan.
+ * `mixed` sengaja antrean (under-promise: janji instan yang meleset lebih
+ * buruk daripada antrean yang ternyata cepat). Kosong/tak dikenal → null
+ * (pemanggil memakai kelas tersimpan/tebakan lama).
+ */
+export function deliveryClassFromApiMode(mode: string | null | undefined): WrDeliveryClass | null {
+  const m = String(mode ?? "").trim().toLowerCase();
+  if (m === "auto") return "restock";
+  if (m === "manual" || m === "mixed") return "made_by_order";
+  return null;
 }
 
 /**

@@ -258,7 +258,11 @@ Sejak 18 Sep 2026 produk kelas **antrean** (`made_by_order`, dibuatkan setelah o
 diteruskan otomatis ke WR begitu lunas — sebelumnya link-nya diam `pending` sampai admin
 sadar. Ekspektasi waktunya jujur per kelas dan disebut SEBELUM bayar (PDP, modal varian,
 checkout): instan = 5–15 menit, antrean = "umumnya lebih cepat, maksimal 12 jam pada jam
-layanan" (estimasi supplier 6–12 jam). Saklar mundur: `WARUNG_REBAHAN_AUTO_ORDER_MBO=false`.
+layanan" (estimasi supplier 6–12 jam). Sejak 11 Okt 2026 kelas instan/antrean
+diturunkan dari `delivery_mode` resmi API WR per varian (auto = instan,
+manual/mixed = antrean; migrasi 0060) — mengalahkan tebakan/screenshot lama;
+audit 62/92 varian salah kelas diperbaiki (mis. Vidio Mobile kini jujur
+Made By Order, bukan "Kirim otomatis"). Saklar mundur: `WARUNG_REBAHAN_AUTO_ORDER_MBO=false`.
 Pembeli web menerima ISI kredensial langsung via email
 Resend "Detail Akun Siap" (idempoten; tanpa email dilewati diam; dibuat Axvara
 sendiri dari detail completed walau WR tidak mengirim email) + panel Detail Akun

@@ -762,6 +762,9 @@ CREATE TABLE IF NOT EXISTS wr_variants (
   -- Sync TIDAK PERNAH menimpa yang sudah terisi (pola override admin 0030).
   wr_delivery_class     TEXT CHECK (wr_delivery_class IN ('restock', 'made_by_order')),
   wr_delivery_source    TEXT CHECK (wr_delivery_source IN ('screenshot', 'system', 'admin')),
+  -- Mode kirim resmi API WR (migrasi 0060): auto/manual/mixed. Bila terisi,
+  -- sync menurunkan wr_delivery_class darinya (mengalahkan seed/tebakan/admin).
+  wr_delivery_mode      TEXT,
   created_at            TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at            TEXT NOT NULL DEFAULT (datetime('now'))
 );

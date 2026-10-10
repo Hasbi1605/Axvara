@@ -83,9 +83,14 @@ export async function GET(req: NextRequest) {
     queryAll("SELECT LOWER(payment_method) AS value,COUNT(*) AS count FROM orders GROUP BY LOWER(payment_method) ORDER BY count DESC"),
   ]);
   const total = Number(totalRow?.count ?? rows.length);
+  // Status supplier per order (insiden 2026-10-10): order WR/SK yang tertahan
+  // dulu hanya tampil "Perlu handover" di Pesanan — tanpa sebab (saldo habis,
+  // antre, diproses) dan tanpa tombol Retry/Batal, yang hanya ada di tab
+  // Warung Rebahan/Sekalipay. Dua SELECT berindeks order_code, ≤ limit baris.
+  const supplierByOrder = await loadSupplierLinks(rows.map((row) => String(row.code || "")).filter(Boolean));
 
   return NextResponse.json({
-    orders: rows.map(normalizeOrder),
+    orders: rows.map((row) => ({ ...normalizeOrder(row), supplier_links: supplierByOrder.get(String(row.code || "")) ?? [] })),
     pagination: { page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) },
     stats: {
       total: Number(statsRow?.total || 0),
@@ -96,6 +101,39 @@ export async function GET(req: NextRequest) {
     counts: { channels: rowCounts(channelRows), statuses: rowCounts(statusRows) },
     methods: methodRows.map((row) => String(row.value || "")).filter(Boolean),
   });
+}
+
+type SupplierLink = {
+  supplier: "wr" | "sk"; id: number; status: string; attempt_count: number;
+  max_attempts: number; last_error: string | null; supplier_order_id: string | null;
+  delivery_status: string | null;
+};
+
+async function loadSupplierLinks(codes: string[]): Promise<Map<string, SupplierLink[]>> {
+  const out = new Map<string, SupplierLink[]>();
+  if (!codes.length) return out;
+  const marks = codes.map(() => "?").join(",");
+  const [wr, sk] = await Promise.all([
+    queryAll(`SELECT id, order_code, status, attempt_count, max_attempts, last_error, wr_order_id AS supplier_order_id, delivery_status
+      FROM wr_order_links WHERE order_code IN (${marks}) ORDER BY id`, ...codes).catch(() => [] as Record<string, unknown>[]),
+    queryAll(`SELECT id, order_code, status, attempt_count, max_attempts, last_error, sk_invoice AS supplier_order_id, NULL AS delivery_status
+      FROM sk_order_links WHERE order_code IN (${marks}) ORDER BY id`, ...codes).catch(() => [] as Record<string, unknown>[]),
+  ]);
+  for (const [supplier, rows] of [["wr", wr], ["sk", sk]] as const) {
+    for (const row of rows) {
+      const code = String(row.order_code || "");
+      const list = out.get(code) ?? [];
+      list.push({
+        supplier, id: Number(row.id), status: String(row.status || ""),
+        attempt_count: Number(row.attempt_count || 0), max_attempts: Number(row.max_attempts || 3),
+        last_error: row.last_error ? String(row.last_error).slice(0, 160) : null,
+        supplier_order_id: row.supplier_order_id ? String(row.supplier_order_id) : null,
+        delivery_status: row.delivery_status ? String(row.delivery_status) : null,
+      });
+      out.set(code, list);
+    }
+  }
+  return out;
 }
 
 function normalizeOrder(row: Record<string, unknown>) {

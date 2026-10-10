@@ -22,6 +22,8 @@ export type WrVariant = {
   stock: number;
   terms: string | null;
   delivery_terms: string | null;
+  /** api-docs WR: "auto" | "manual" | "mixed" (opsional — respons lama tanpa field). */
+  delivery_mode?: string | null;
 };
 
 export type WrBalance = {
@@ -48,7 +50,7 @@ export type WrTransaction = {
 };
 
 export type WrWebhookEvent = {
-  event: "order.processing" | "order.completed" | "order.failed";
+  event: "order.processing" | "order.completed" | "order.account_updated" | "order.refunded" | "order.failed";
   data: {
     order_id: string;
     status: string;

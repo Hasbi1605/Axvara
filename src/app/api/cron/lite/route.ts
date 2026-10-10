@@ -185,13 +185,24 @@ async function runWrOrders(db: Db) {
     // COUNT berikutnya bila tick ini hanya menyembuhkan.
     if (Number(due?.n ?? 0) > 0 || orphanHealed.links > 0) {
       out.retried = await order.retryFailedWrOrders(db);
-      const processed = await order.processWrPendingOrders(db);
+      // skipOrphanProbe: probe di atas sudah jalan — probe ganda ikut
+      // menghabiskan budget sebelum SELECT antrean (insiden 2026-10-10).
+      const processed = await order.processWrPendingOrders(db, { skipOrphanProbe: true });
       out.processed = processed.processed;
       out.succeeded = processed.succeeded;
+      if (processed.blocked) out.blocked = processed.blocked;
     }
-    out.reconciled = await order.reconcileStuckWrOrders(db).catch(() => 0);
+    // 2 menit, bukan 1 jam (2026-10-10): webhook WR yang hilang/terputus
+    // tidak lagi menahan kredensial varian instan sampai route besar jalan.
+    out.reconciled = await order.reconcileStuckWrOrders(db, { minAgeMinutes: 2 }).catch((error) => {
+      if (error instanceof QueryBudgetExceeded) throw error;
+      return 0;
+    });
   }
-  const { processDueCredentialDeliveries } = await import("@/lib/warung-rebahan/deliver");
+  const { processDueCredentialDeliveries, requeueOrphanCredentialDeliveries } = await import("@/lib/warung-rebahan/deliver");
+  // Kredensial completed yang tidak pernah diantrekan (completion terputus).
+  const requeued = await requeueOrphanCredentialDeliveries(db);
+  if (requeued > 0) out.credentials_requeued = requeued;
   const delivery = await processDueCredentialDeliveries(db);
   out.credentials_delivered = delivery.delivered;
   return out;

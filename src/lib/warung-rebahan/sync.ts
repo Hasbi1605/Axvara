@@ -18,7 +18,7 @@ import {
   type WrProduct,
   type WrVariant,
 } from "./client";
-import { guessDeliveryClass } from "./delivery-class";
+import { deliveryClassFromApiMode, guessDeliveryClass } from "./delivery-class";
 
 export type SyncResult = {
   total: number;
@@ -86,6 +86,12 @@ type SqlWrite = {
   params: unknown[];
   /** Tulis yang boleh gagal diam-diam (dulu `.catch()` di jalur berurutan). */
   optional?: boolean;
+  /**
+   * Versi pra-migrasi bila kolom `wr_delivery_mode` (0060) BELUM ada di D1
+   * prod: statement yang sama TANPA kolom baru. Dipakai fallback per
+   * statement — tanpa ini sync gagal total sampai migrasi 0060 diterapkan.
+   */
+  preMigrationFallback?: { sql: string; params: unknown[] };
 };
 
 /**
@@ -114,8 +120,19 @@ async function runWrites(writes: SqlWrite[], db: DatabaseAccess): Promise<void> 
     }
   }
   for (const write of writes) {
+    // Pra-migrasi 0060 (kolom wr_delivery_mode BELUM ada di D1 prod) TIDAK
+    // BOLEH meruntuhkan seluruh produk: statement yang menyentuh kolom baru
+    // memakai fallback tanpa kolom itu. Statement lain tanpa fallback tetap
+    // naik bila gagal agar sync tercatat failed, bukan hilang diam-diam.
     if (write.optional) {
       await db.execRun(write.sql, ...write.params).catch(() => ({ changes: 0 }));
+    } else if (write.preMigrationFallback) {
+      try {
+        await db.execRun(write.sql, ...write.params);
+      } catch {
+        const fb = write.preMigrationFallback;
+        await db.execRun(fb.sql, ...fb.params);
+      }
     } else {
       await db.execRun(write.sql, ...write.params);
     }
@@ -558,9 +575,33 @@ function planExistingVariantWrites(
         sellPrice,
       ],
     });
-    // 2026-09-16: kelas pengiriman yang SUDAH dikunci (screenshot/admin/
-    // system) tidak pernah ditimpa sync — pola admin_description_override.
-    // HANYA yang masih NULL ditebak sistem dari sinyal API saat ini.
+    // 2026-10-10: `delivery_mode` resmi API WR = sumber kebenaran kelas
+    // instan/antrean. Bila ada, ditulis + kelas diturunkan darinya (menimpa
+    // seed screenshot/tebakan/kunci admin — 62/92 varian salah kelas saat
+    // diaudit). Guard IS NOT: baris yang sudah sama tidak ditulis ulang.
+    // `preMigrationFallback`: pra-0060 (kolom BELUM ada di D1 prod) statement
+    // ini turun ke kelas saja tanpa kolom baru — sync tetap jalan + tetap
+    // membetulkan 62 varian salah kelas walau migrasi belum diterapkan.
+    const apiClass = deliveryClassFromApiMode(wrVariant.delivery_mode);
+    if (apiClass) {
+      const apiMode = String(wrVariant.delivery_mode).trim().toLowerCase();
+      writes.push({
+        sql: `UPDATE wr_variants SET wr_delivery_mode=?, wr_delivery_class=?, wr_delivery_source='system',
+          updated_at=? WHERE wr_variant_id=?
+            AND (wr_delivery_mode IS NOT ? OR wr_delivery_class IS NOT ?)`,
+        params: [apiMode, apiClass, now, wrVariant.id, apiMode, apiClass],
+        preMigrationFallback: {
+          sql: `UPDATE wr_variants SET wr_delivery_class=?, wr_delivery_source='system',
+            updated_at=? WHERE wr_variant_id=? AND wr_delivery_class IS NOT ?`,
+          params: [apiClass, now, wrVariant.id, apiClass],
+        },
+      });
+    }
+    // 2026-09-16: kelas pengiriman dari API bila ADA (delivery_mode), atau
+    // yang masih NULL ditebak sistem dari sinyal API saat ini. Sejak 2026-10
+    // delivery_mode = sumber kebenaran dan MENIMPA kelas lama (screenshot/
+    // admin/system) lewat statement preMigrationFallback di atas; statement
+    // ini hanya mengisi yang masih NULL (varian tanpa delivery_mode).
     writes.push({
       sql: `UPDATE wr_variants SET wr_delivery_class=?, wr_delivery_source='system',
         updated_at=? WHERE wr_variant_id=? AND wr_delivery_class IS NULL`,
@@ -720,7 +761,7 @@ async function insertNewVariant(
   // 2026-09-16: varian baru langsung ditebak kelasnya (sumber 'system');
   // seed screenshot 0032 + kunci admin menimpa via UPDATE terpisah. Sync
   // tidak pernah menimpa yang sudah terisi (kolom baru = NULL → ditebak).
-  const guessedClass = guessDeliveryClass({
+  const guessedClass = deliveryClassFromApiMode(wrVariant.delivery_mode) ?? guessDeliveryClass({
     productName: "",
     variantName: wrVariant.name,
     type: wrVariant.type,
@@ -728,31 +769,63 @@ async function insertNewVariant(
     terms: wrVariant.terms,
     deliveryTerms: wrVariant.delivery_terms,
   });
-  await execRun(
-    `INSERT OR IGNORE INTO wr_variants
-      (wr_variant_id, wr_product_id, wr_variant_name, wr_price, wr_duration,
-       wr_type, wr_warranty, wr_stock, wr_terms, wr_delivery_terms,
-       axvara_variant_id, markup_percent, markup_fixed, axvara_sell_price,
-       is_active, last_synced_at, wr_delivery_class, wr_delivery_source)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)`,
-    wrVariant.id,
-    wrProductId,
-    wrVariant.name,
-    Number(wrVariant.price),
-    wrVariant.duration || null,
-    wrVariant.type || null,
-    wrVariant.warranty || null,
-    Number(wrVariant.stock),
-    wrVariant.terms ?? null,
-    wrVariant.delivery_terms ?? null,
-    axvaraVariantId || null,
-    markupPercent,
-    markupFixed,
-    sellPrice,
-    now,
-    guessedClass,
-    "system",
-  );
+  const apiModeValue = wrVariant.delivery_mode ? String(wrVariant.delivery_mode).trim().toLowerCase() : null;
+  try {
+    await execRun(
+      `INSERT OR IGNORE INTO wr_variants
+        (wr_variant_id, wr_product_id, wr_variant_name, wr_price, wr_duration,
+         wr_type, wr_warranty, wr_stock, wr_terms, wr_delivery_terms,
+         axvara_variant_id, markup_percent, markup_fixed, axvara_sell_price,
+         is_active, last_synced_at, wr_delivery_class, wr_delivery_source, wr_delivery_mode)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?,?)`,
+      wrVariant.id,
+      wrProductId,
+      wrVariant.name,
+      Number(wrVariant.price),
+      wrVariant.duration || null,
+      wrVariant.type || null,
+      wrVariant.warranty || null,
+      Number(wrVariant.stock),
+      wrVariant.terms ?? null,
+      wrVariant.delivery_terms ?? null,
+      axvaraVariantId || null,
+      markupPercent,
+      markupFixed,
+      sellPrice,
+      now,
+      guessedClass,
+      "system",
+      apiModeValue,
+    );
+  } catch {
+    // Pra-migrasi 0060 (kolom wr_delivery_mode BELUM ada): INSERT yang sama
+    // tanpa kolom baru. Kelas dari API tetap tertulis (bukan tebakan lama).
+    await execRun(
+      `INSERT OR IGNORE INTO wr_variants
+        (wr_variant_id, wr_product_id, wr_variant_name, wr_price, wr_duration,
+         wr_type, wr_warranty, wr_stock, wr_terms, wr_delivery_terms,
+         axvara_variant_id, markup_percent, markup_fixed, axvara_sell_price,
+         is_active, last_synced_at, wr_delivery_class, wr_delivery_source)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)`,
+      wrVariant.id,
+      wrProductId,
+      wrVariant.name,
+      Number(wrVariant.price),
+      wrVariant.duration || null,
+      wrVariant.type || null,
+      wrVariant.warranty || null,
+      Number(wrVariant.stock),
+      wrVariant.terms ?? null,
+      wrVariant.delivery_terms ?? null,
+      axvaraVariantId || null,
+      markupPercent,
+      markupFixed,
+      sellPrice,
+      now,
+      guessedClass,
+      "system",
+    );
+  }
   if (axvaraVariantId > 0) {
     await execRun(
       `UPDATE product_variants SET wr_variant_id=?, wr_auto_managed=1,

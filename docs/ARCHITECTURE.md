@@ -1104,9 +1104,13 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   (maks 3 lapis), `\r\n` dinormalisasi SEBELUM split, pembungkus
   `{product,details}` hanya memakai `details`-nya, label ganda dibuang.
   Ciphertext TIDAK diubah (format simpan tetap).
-- **Kelas pengiriman + auto-order antrean (18 Sep 2026, live).** `wr_delivery_class`
+- **Kelas pengiriman + auto-order antrean (18 Sep 2026, live; sumber kebenaran
+  delivery_mode API sejak 2026-10-11).** `wr_delivery_class`
   membedakan `restock` (instan) dari `made_by_order` (dikerjakan manusia di sisi
-  supplier; estimasi supplier 6–12 jam, "<1 jam bila lancar"). Gate lama hanya
+  supplier; estimasi supplier 6–12 jam, "<1 jam bila lancar"). Sejak 2026-10-11
+  kelas diturunkan dari `delivery_mode` resmi API WR (`wr_delivery_mode`:
+  auto→restock, manual/mixed→made_by_order; migrasi 0060) dan mengalahkan
+  seed/tebakan/kunci admin — bukan lagi tebakan semata. Gate lama hanya
   meneruskan `restock`, sehingga link kelas antrean diam di `pending` selamanya:
   tidak ada request keluar dan pembeli menunggu sampai admin sadar. Sejak
   2026-09-18 SELURUH kelas diteruskan otomatis; `WARUNG_REBAHAN_AUTO_ORDER_MBO=false`
@@ -1976,10 +1980,26 @@ Penggantinya: VPS `t4g.nano` Singapore (`i-022790eb6bb0b1be3`, 0.5GB +
   menghitung order lunas+paid. Sebelumnya 7 `failed` order final menyeret
   Telegram ke `degraded` padahal bot sehat (webhook 0 pending, no error).
 - Migrasi 0032: `wr_variants(wr_delivery_class, wr_delivery_source)`.
-  API WR tidak memberi penanda auto/manual — desain hibrida: seed 17 nama
+  API WR DULU tidak memberi penanda auto/manual — desain hibrida: seed 17 nama
   screenshot admin (`screenshot`) + `guessDeliveryClass()` untuk sisanya dan
   varian baru (`system`) + kunci manual owner (`admin`). Sync TIDAK PERNAH
   menimpa yang sudah terisi (pola override 0030). Default ragu = manual.
+- Migrasi 0060 (2026-10-11, live): `wr_variants.wr_delivery_mode` (tanpa
+  CHECK) — API WR KINI mengirim `delivery_mode` per varian ("auto" = dikirim
+  otomatis begitu lunas, "manual" = dikerjakan admin WR, "mixed" = tergantung
+  ketersediaan, diperlakukan antrean/under-promise). Itu SUMBER KEBENARAN
+  kelas: sync menurunkannya via `deliveryClassFromApiMode()` (auto→restock,
+  manual/mixed→made_by_order) dan MENIMPA seed/tebakan/kunci admin bila ada;
+  kunci admin hanya bertahan untuk varian tanpa delivery_mode. Pra-0060
+  (kolom belum ada di D1) sync memakai fallback per statement tanpa kolom
+  baru — sync tetap jalan + tetap membetulkan kelas. Audit 2026-10-10:
+  62/92 varian salah kelas (mis. Vidio Mobile tampil "Kirim otomatis" padahal
+  manual) — penyebab keluhan "katanya instan tapi harus nunggu". Email wajib:
+  web SELALU minta email (revamp 2026-09-23); Telegram/WA + API orders memakai
+  `needsEmailForVariant()` (tipe Invite/Link WR atau produk `require_email`).
+  `email_invite` hanya dikirim ke WR untuk tipe Invite/Link
+  (`wrTypeUsesEmailInvite()`); Private/Sharing di-omit total (temuan admin
+  2026-10-07: TARGET ACCOUNT INVITATION nyasar di dashboard WR).
 - Badge pengiriman per varian TANPA emoji (2026-09-17, anti AI slop):
   restock = "Kirim otomatis" (pill emerald), selainnya = "Dikirim admin"
   (pill gold). Web: badge di kartu varian PDP + QuickVariantModal. Telegram/WA:

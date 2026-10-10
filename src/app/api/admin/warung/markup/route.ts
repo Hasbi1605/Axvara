@@ -100,8 +100,11 @@ export async function PUT(request: NextRequest) {
   const row = await queryFirst(`SELECT wr_price, axvara_variant_id FROM wr_variants WHERE wr_variant_id=?`, wr_variant_id);
   if (!row) return NextResponse.json({ error: "variant_not_found" }, { status: 404 });
   const now = new Date().toISOString();
-  // Kunci kelas manual: sumber 'admin', sync tidak menimpa (WHERE di sync
-  // hanya mengisi yang NULL; UPDATE admin langsung menimpa apa pun).
+  // Kunci kelas manual: sumber 'admin'. CATATAN 2026-10-10: sync berikutnya
+  // tetap menurunkan kelas dari `delivery_mode` resmi API WR bila varian ini
+  // memilikinya (sumber kembali 'system') — kunci admin hanya bertahan untuk
+  // varian tanpa delivery_mode. UI wajib menjelaskan ini (bukan "sync tak
+  // menimpa").
   if (delivery_class) {
     await execRun(
       `UPDATE wr_variants SET wr_delivery_class=?, wr_delivery_source='admin',
