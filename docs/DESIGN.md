@@ -586,7 +586,7 @@
   + scroll `#katalog`. Keranjang tetap milik navbar (badge Gold).
 - Pesanan → `/lacak-pesanan` (aktif juga
   di `/pesanan/*`), titik Gold bila ada pesanan perangkat ini yang belum
-  dibayar (maks 75 menit). Badge/titik baru muncul setelah mount (isi
+  dibayar (maks 30 menit — order QRIS mati 15 menit sejak 2026-10-11). Badge/titik baru muncul setelah mount (isi
   localStorage tidak dikenal server).
 - Bantuan membuka bottom-sheet solid `#0B1025` (pola QuickVariantModal):
   dua tombol kontak WA Admin + Telegram (ikon brand), lalu daftar Cara Order,

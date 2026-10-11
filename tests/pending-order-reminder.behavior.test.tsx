@@ -71,8 +71,8 @@ it("tidak tampil (dan tidak memanggil server) di halaman pesanan/checkout itu se
   expect(fetchSpy).not.toHaveBeenCalled();
 });
 
-it("pesanan lokal yang sudah pasti mati (>75 menit) tidak dicek ke server", async () => {
-  localOrder("pending", 90);
+it("pesanan lokal yang sudah pasti mati (>30 menit) tidak dicek ke server", async () => {
+  localOrder("pending", 45);
   const fetchSpy = serverOrder({ status: "pending" });
   await mount();
   expect(fetchSpy).not.toHaveBeenCalled();

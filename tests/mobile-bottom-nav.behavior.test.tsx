@@ -206,11 +206,11 @@ describe("Pesanan di perangkat ini (/lacak-pesanan)", () => {
 });
 
 describe("local-orders", () => {
-  it("freshPendingCodes: pending < 75 menit, terbaru dulu, bisa dikecualikan", () => {
+  it("freshPendingCodes: pending < 30 menit, terbaru dulu, bisa dikecualikan", () => {
     seedLocal([
       { code: "A", status: "pending", createdAt: minutesAgo(10) },
       { code: "B", status: "pending", createdAt: minutesAgo(2) },
-      { code: "C", status: "pending", createdAt: minutesAgo(80) },
+      { code: "C", status: "pending", createdAt: minutesAgo(40) },
       { code: "D", status: "lunas", createdAt: minutesAgo(1) },
     ]);
     expect(freshPendingCodes(Date.now())).toEqual(["B", "A"]);

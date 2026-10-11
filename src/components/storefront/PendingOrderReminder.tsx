@@ -3,7 +3,7 @@
 // Pengingat melayang "pesanan belum dibayar" (2026-09-24, permintaan owner).
 //
 // Pembeli yang tak sengaja menekan kembali / menutup halaman QRIS dulu harus
-// checkout ulang, padahal ordernya masih hidup (QR 15 menit, order 60 menit,
+// checkout ulang, padahal ordernya masih hidup (QR + order 15 menit,
 // 1x perpanjang). Kartu ini muncul di seluruh storefront dengan hitung
 // mundur, dan satu ketukan membawa kembali ke /pesanan/[code].
 //

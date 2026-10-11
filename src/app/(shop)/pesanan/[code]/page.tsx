@@ -155,6 +155,13 @@ export default function OrderSuccessPage() {
   // melihat laman diam + countdown, tanpa tahu polling otomatis jalan.
   const [lastCheckedAt, setLastCheckedAt] = useState<number | null>(null);
   const [checkingNow, setCheckingNow] = useState(false);
+  // Batal mandiri (2026-10-11, keputusan owner): pembeli web yang berubah
+  // pikiran / salah varian bisa melepas stoknya sendiri tanpa menunggu expiry
+  // atau admin. Verifikasi kontak (WA/email checkout) — bukan sekadar kode.
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const [cancelContact, setCancelContact] = useState("");
   const polling = useRef(false);
 
   const fetchOrder = useCallback(async (wake = false) => {
@@ -224,6 +231,35 @@ export default function OrderSuccessPage() {
       setReissuing(false);
     }
   }, [code, fetchOrder]);
+
+  /** Batalkan pesanan sendiri: lepas stok detik itu juga, tanpa menunggu expiry. */
+  const cancelOrder = useCallback(async () => {
+    if (!code || typeof code !== "string" || cancelling) return;
+    if (!cancelContact.trim()) {
+      setCancelError("Isi No. WA atau email yang dipakai saat checkout.");
+      return;
+    }
+    setCancelling(true);
+    setCancelError(null);
+    try {
+      const response = await fetch(`/api/orders/${encodeURIComponent(code)}/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contact: cancelContact.trim() }),
+        cache: "no-store",
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || "Pembatalan gagal.");
+      setConfirmingCancel(false);
+      setCancelContact("");
+      await fetchOrder();
+      setNow(Date.now());
+    } catch (error) {
+      setCancelError(error instanceof Error ? error.message : "Pembatalan gagal.");
+    } finally {
+      setCancelling(false);
+    }
+  }, [code, cancelling, cancelContact, fetchOrder]);
 
   useEffect(() => {
     setLoading(true);
@@ -559,6 +595,59 @@ export default function OrderSuccessPage() {
           <Link prefetch={false} href="/lacak-pesanan" className="ax-glass-card flex h-11 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-white hover:bg-white/10">Lacak Status</Link>
           <Link prefetch={false} href="/" className="ax-glass-card flex h-11 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-white hover:bg-white/10">Lanjut Belanja</Link>
         </div>
+        {/* Batal mandiri: hanya saat masih pending. Lunas/kadaluarsa/dibatalkan
+            tidak punya tombol ini. Konfirmasi + verifikasi kontak agar penebak
+            kode tidak bisa mengunci/membatalkan pesanan orang lain. */}
+        {order.status === "pending" && !isExpired && (
+          <div className="mt-3">
+            {!confirmingCancel ? (
+              <button
+                type="button"
+                onClick={() => { setConfirmingCancel(true); setCancelError(null); }}
+                className="flex h-11 w-full items-center justify-center whitespace-nowrap rounded-xl border border-red-400/20 bg-red-500/[0.06] px-3 text-sm font-semibold text-red-200 transition hover:bg-red-500/[0.12]"
+              >
+                Batalkan Pesanan Ini
+              </button>
+            ) : (
+              <div className="rounded-2xl border border-red-400/20 bg-red-500/[0.06] p-4 text-left" role="dialog" aria-label="Konfirmasi pembatalan pesanan">
+                <p className="text-sm font-semibold text-red-200">Batalkan pesanan {order.code}?</p>
+                <p className="mt-1 text-xs leading-5 text-white/55">Stok langsung kembali dan bisa dipesan orang lain. Pastikan kamu belum membayar — bila dana sudah masuk, hubungi admin dengan kode pesanan.</p>
+                <label htmlFor="cancel-contact" className="mt-3 block text-xs font-medium text-white/60">No. WA atau email checkout *</label>
+                <input
+                  id="cancel-contact"
+                  value={cancelContact}
+                  onChange={(event) => setCancelContact(event.target.value)}
+                  placeholder="0812… atau nama@email.com"
+                  inputMode="email"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  className="mt-1 h-11 w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 text-sm text-white placeholder:text-white/30 focus:border-red-400/40 focus:outline-none"
+                />
+                {cancelError && <p role="alert" className="mt-2 text-xs text-red-300">{cancelError}</p>}
+                <div className="mt-3 grid grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => { setConfirmingCancel(false); setCancelError(null); }}
+                    disabled={cancelling}
+                    className="flex h-10 items-center justify-center rounded-xl border border-white/10 px-3 text-sm font-semibold text-white/60 transition hover:bg-white/5 disabled:opacity-50"
+                  >
+                    Kembali
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void cancelOrder()}
+                    disabled={cancelling}
+                    className="flex h-10 items-center justify-center gap-2 rounded-xl bg-red-500 px-3 text-sm font-bold text-white transition hover:bg-red-400 disabled:opacity-50"
+                  >
+                    {cancelling && <InlineSpinner />}
+                    {cancelling ? "Membatalkan…" : "Ya, Batalkan"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
         <div className="mt-3">
           <p className="text-center text-[11px] text-white/35">Butuh bantuan?</p>
           <div className="mt-2 grid grid-cols-2 gap-2.5">

@@ -125,6 +125,11 @@ export default function LacakPesananClient() {
   const [recent, setRecent] = useState<RecentEntry[]>([]);
   const [copied, setCopied] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  // Batal mandiri (2026-10-11, keputusan owner): cermin tombol di
+  // /pesanan/[code] — kontak sudah terverifikasi oleh lookup itu sendiri.
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
   const autoSubmitted = useRef(false);
   const lastQuery = useRef<{ code: string; wa: string } | null>(null);
   const resultRef = useRef<HTMLDivElement | null>(null);
@@ -267,6 +272,30 @@ export default function LacakPesananClient() {
       setTimeout(() => setCopied(null), 1500);
     } catch {
       /* clipboard diblokir — pengguna tetap bisa salin manual */
+    }
+  };
+
+  /** Batalkan pesanan sendiri: kontak = yang dipakai lookup barusan. */
+  const cancelOrder = async () => {
+    const query = lastQuery.current;
+    if (!order || !query || cancelling) return;
+    setCancelling(true);
+    setCancelError(null);
+    try {
+      const response = await fetchWithTimeout(`/api/orders/${encodeURIComponent(order.code)}/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contact: query.wa }),
+        cache: "no-store",
+      }, 20_000);
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || "Pembatalan gagal.");
+      setConfirmingCancel(false);
+      await lookup(query.code, query.wa, true);
+    } catch (cancelError) {
+      setCancelError(cancelError instanceof Error ? cancelError.message : "Pembatalan gagal.");
+    } finally {
+      setCancelling(false);
     }
   };
 
@@ -522,6 +551,45 @@ export default function LacakPesananClient() {
               <Link prefetch={false} href="/" className="ax-glass-card col-span-2 flex h-11 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-white hover:bg-white/10">Lanjut Belanja</Link>
             )}
           </div>
+          {/* Batal mandiri: lookup sudah memverifikasi kontak, jadi tidak minta
+              ulang — konfirmasi langsung. Stok kembali detik itu juga. */}
+          {isPending && !isExpired && (
+            <div className="mt-3">
+              {!confirmingCancel ? (
+                <button
+                  type="button"
+                  onClick={() => { setConfirmingCancel(true); setCancelError(null); }}
+                  className="flex h-11 w-full items-center justify-center whitespace-nowrap rounded-xl border border-red-400/20 bg-red-500/[0.06] px-3 text-sm font-semibold text-red-200 transition hover:bg-red-500/[0.12]"
+                >
+                  Batalkan Pesanan Ini
+                </button>
+              ) : (
+                <div className="rounded-2xl border border-red-400/20 bg-red-500/[0.06] p-4 text-left" role="dialog" aria-label="Konfirmasi pembatalan pesanan">
+                  <p className="text-sm font-semibold text-red-200">Batalkan pesanan {order.code}?</p>
+                  <p className="mt-1 text-xs leading-5 text-white/55">Stok langsung kembali dan bisa dipesan orang lain. Pastikan kamu belum membayar — bila dana sudah masuk, hubungi admin dengan kode pesanan.</p>
+                  {cancelError && <p role="alert" className="mt-2 text-xs text-red-300">{cancelError}</p>}
+                  <div className="mt-3 grid grid-cols-2 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => { setConfirmingCancel(false); setCancelError(null); }}
+                      disabled={cancelling}
+                      className="flex h-10 items-center justify-center rounded-xl border border-white/10 px-3 text-sm font-semibold text-white/60 transition hover:bg-white/5 disabled:opacity-50"
+                    >
+                      Kembali
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void cancelOrder()}
+                      disabled={cancelling}
+                      className="flex h-10 items-center justify-center rounded-xl bg-red-500 px-3 text-sm font-bold text-white transition hover:bg-red-400 disabled:opacity-50"
+                    >
+                      {cancelling ? "Membatalkan…" : "Ya, Batalkan"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           <div className="mt-3">
             <p className="text-center text-[11px] text-white/35">Butuh bantuan?</p>
             <div className="mt-2 grid grid-cols-2 gap-2.5">

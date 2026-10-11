@@ -39,8 +39,9 @@ export type PendingOrder = {
 };
 
 /**
- * Masa hidup ORDER untuk pembayaran QRIS, dipisah dari masa hidup INVOICE
- * QRIS. Definisi kanonisnya ada di modul pembayaran bersama batas reissue.
+ * Masa hidup ORDER QRIS = masa hidup QR (15 menit, keputusan owner
+ * 2026-10-11). Definisi kanonisnya ada di modul pembayaran bersama batas
+ * reissue.
  */
 export { QRIS_ORDER_WINDOW_MINUTES, MAX_QRIS_REISSUES } from "@/lib/payments/dana-qris";
 

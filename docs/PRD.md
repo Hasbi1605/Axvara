@@ -175,7 +175,7 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 ### 3.2 Flow Pembeli — Batal / Error
 
 - Jika upload bukti transfer manual gagal (file >5MB / bukan gambar) → error inline, tetap di halaman checkout
-- QRIS berlaku 15 menit. Telegram/Web boleh meminta QR pengganti **maksimal 1 kali**, hanya setelah QR pertama kedaluwarsa dan sebelum batas tunggu order 60 menit. Setelah diterbitkan, deadline order dipendekkan ke deadline QR pengganti (maksimal 15 menit, tidak melewati deadline order sebelumnya); jika tetap belum dibayar, order kedaluwarsa dan stok dilepas. WhatsApp hanya mendapat **1 QRIS tanpa pembaruan**: order dan QR hangus setelah 15 menit, lalu pembeli harus order ulang.
+- QRIS berlaku 15 menit untuk SEMUA kanal (keputusan owner 2026-10-11; sebelumnya Web/Telegram 60 menit dengan 1x perpanjangan QR). QR mati = order kedaluwarsa = stok kembali otomatis via cron ±5 menit. Pembeli yang berubah pikiran / salah varian membatalkan sendiri dari halaman pesanan atau lacak pesanan (`POST /api/orders/[code]/cancel`, verifikasi kode + WA/email checkout, stok kembali detik itu juga) tanpa menunggu expiry atau admin.
 - Jika pembeli tutup tab sebelum upload → pesanan tetap tercipta status Pending tanpa bukti, admin bisa follow-up WA
 - Jika admin tolak (bukti palsu) → status Dibatalkan + WA "Bukti tidak valid, silakan hubungi admin"
 

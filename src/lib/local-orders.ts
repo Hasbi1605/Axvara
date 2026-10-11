@@ -9,8 +9,8 @@
 export const LOCAL_ORDERS_KEY = "axvara-orders";
 /** Event di tab yang sama; event `storage` hanya menyala di tab lain. */
 export const LOCAL_ORDERS_EVENT = "axvara-orders-changed";
-/** Order QRIS mati paling lambat 60 menit setelah dibuat; sisanya cadangan jam perangkat. */
-export const PENDING_MAX_AGE_MS = 75 * 60_000;
+/** Order QRIS mati 15 menit setelah dibuat; 30 menit = cadangan jam perangkat. */
+export const PENDING_MAX_AGE_MS = 30 * 60_000;
 
 export type LocalOrder = {
   code?: string;

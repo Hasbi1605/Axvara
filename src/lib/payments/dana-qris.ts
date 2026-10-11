@@ -13,8 +13,12 @@ export function isQrisProvider(value: unknown): value is QrisProvider {
   return value === DANA_QRIS_PROVIDER || value === GOPAY_QRIS_PROVIDER;
 }
 export const DANA_QRIS_EXPIRY_MINUTES = 15;
-/** Batas menunggu permintaan QR pengganti untuk Web/Telegram. WA hanya 15 menit. */
-export const QRIS_ORDER_WINDOW_MINUTES = 60;
+/** Masa hidup order QRIS disamakan dengan QR (15 menit, keputusan owner 2026-10-11):
+ * stok tidak lagi dikunci 60 menit oleh order yang tidak dibayar. Tidak ada
+ * perpanjangan QR — QR mati = order kadaluarsa = stok kembali; pembeli yang
+ * berubah pikiran membatalkan sendiri dari halaman pesanan. WA sudah 15 menit
+ * sejak awal, kini Web/Telegram sama. */
+export const QRIS_ORDER_WINDOW_MINUTES = 15;
 /** Satu invoice asli dan maksimal satu QR pengganti. */
 export const MAX_QRIS_REISSUES = 1;
 export const DANA_QRIS_MAX_UNIQUE_CODE = 299;
@@ -274,8 +278,8 @@ async function createQrisInvoice(provider: QrisProvider, orderCode: string, requ
   const staticPayload = qrisStaticPayload(provider);
   if (!staticPayload) throw new Error("dana_qris_not_configured");
   const expiresAt = new Date(Date.now() + DANA_QRIS_EXPIRY_MINUTES * 60_000).toISOString();
-  // Masa hidup ORDER sengaja lebih panjang dari masa hidup INVOICE supaya QR
-  // yang mati tidak ikut mematikan order dan melepas stok (lihat konstanta).
+  // Order ikut mati bersama QR (15 menit, keputusan owner 2026-10-11): tidak
+  // ada lagi jendela 60 menit tempat stok dikunci order yang tidak dibayar.
   const orderExpiresAt = new Date(Date.now() + QRIS_ORDER_WINDOW_MINUTES * 60_000).toISOString();
   const qrisUrl = publicQrisUrl(orderCode);
   // Prefer unused amounts. Once the finite range is exhausted, reused
@@ -361,14 +365,14 @@ export type QrisReissueResult =  | { ok: true; invoice: DanaQrisInvoice; remaini
 /**
  * Terbitkan QRIS BARU untuk order yang masih hidup.
  *
- * Kenapa perlu: `createDanaQrisInvoice` mengembalikan baris lama begitu
- * `payment_transactions` ada (`isExisting: true`), dan `invoice-retry.ts` hanya
- * mengirim ulang FOTO invoice yang sama. Jadi sebelum ini tidak ada satu pun
- * jalur di mana pembeli bisa memperoleh QR yang masih berlaku setelah 15 menit.
+  * Kenapa perlu: `createDanaQrisInvoice` mengembalikan baris lama begitu
+  * `payment_transactions` ada (`isExisting: true`), dan `invoice-retry.ts` hanya
+  * mengirim ulang FOTO invoice yang sama. Reissue memberi QR baru tanpa
+  * mengulang checkout — order tetap mati 15 menit dari awal bila tidak dibayar.
  *
  * Aturan yang ditegakkan:
- * 1. Order wajib masih `pending`, belum `paid`, dan belum melewati
- *    `orders.expires_at` (jendela order 60 menit).
+  * 1. Order wajib masih `pending`, belum `paid`, dan belum melewati
+  *    `orders.expires_at` (15 menit, sama dengan umur QR).
  * 2. Invoice lama wajib SUDAH kedaluwarsa. Ini bukan sekadar kerapian: karena
  *    endpoint reissue tidak butuh login (pembeli hanya memegang kode order),
  *    syarat ini membuat pihak lain yang menebak kode TIDAK bisa membatalkan QR

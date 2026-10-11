@@ -95,9 +95,9 @@ CREATE TABLE IF NOT EXISTS orders (
   telegram_invoice_sent_at TEXT,
   telegram_invoice_attempts INTEGER NOT NULL DEFAULT 0,
   -- Berapa kali pembeli meminta QRIS baru untuk order ini (migrasi 0024).
-  -- Masa hidup order (expires_at, 60 menit) DIPISAH dari masa hidup invoice
-  -- QRIS (payment_transactions.expires_at, 15 menit) supaya QR yang mati tidak
-  -- otomatis mematikan order dan melepas stok.
+  -- Sejak 2026-10-11 (keputusan owner): masa hidup order DISAMAKAN dengan QR
+  -- (15 menit) — QR mati = order kadaluarsa = stok kembali; tidak ada lagi
+  -- jendela 60 menit tempat stok dikunci order yang tidak dibayar.
   qris_reissue_count INTEGER NOT NULL DEFAULT 0,
   -- Waktu pembayaran tetap untuk laporan pendapatan (issue #12): ditulis
   -- sekali saat transisi lunas, tidak pernah diubah oleh pengiriman/catatan/

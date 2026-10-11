@@ -62,8 +62,8 @@ function txRow() {
   return fixture.sql.prepare(`SELECT payable_amount, unique_code, qris_payload, expires_at, status FROM payment_transactions WHERE order_code=?`).get(CODE) as Record<string, unknown>;
 }
 
-describe("expiry order dipisah dari expiry invoice QRIS", () => {
-  it("pembuatan invoice memberi order jendela 60 menit, bukan 15 menit milik QR", async () => {
+describe("expiry order disamakan dengan expiry invoice QRIS (15 menit)", () => {
+  it("pembuatan invoice memberi order jendela 15 menit yang sama dengan QR", async () => {
     await insertTestProduct(fixture.sql, "manual", 1);
     fixture.sql.prepare(
       `INSERT INTO orders (code, customer_name, customer_wa, items, subtotal, payment_method, payment_account,
@@ -77,10 +77,10 @@ describe("expiry order dipisah dari expiry invoice QRIS", () => {
 
     const invoiceMs = Date.parse(invoice.expiresAt) - Date.now();
     const orderMs = Date.parse(String(orderRow().expires_at)) - Date.now();
-    // Dua nilai yang BERBEDA — inilah inti perbaikannya.
+    // Disamakan (keputusan owner 2026-10-11): stok tidak dikunci 60 menit.
     expect(Math.round(invoiceMs / 60_000)).toBe(DANA_QRIS_EXPIRY_MINUTES);
     expect(Math.round(orderMs / 60_000)).toBe(QRIS_ORDER_WINDOW_MINUTES);
-    expect(orderMs).toBeGreaterThan(invoiceMs);
+    expect(QRIS_ORDER_WINDOW_MINUTES).toBe(DANA_QRIS_EXPIRY_MINUTES);
   });
 
   it("expires_at ditulis ISO UTC agar pembacaan JS tidak bergeser zona waktu", async () => {
@@ -176,7 +176,7 @@ describe("reissue menolak kondisi yang tidak boleh", () => {
     expect(await reissueDanaQrisInvoice(CODE)).toEqual({ ok: false, reason: "order_not_reissuable" });
   });
 
-  it("order yang jendela 60 menitnya habis tidak bisa diperpanjang", async () => {
+  it("order yang jendela 15 menitnya habis tidak bisa diperpanjang", async () => {
     await seedPendingQrisOrder({
       invoiceExpiresAt: new Date(Date.now() - 60_000).toISOString(),
       orderExpiresAt: new Date(Date.now() - 30_000).toISOString(),
