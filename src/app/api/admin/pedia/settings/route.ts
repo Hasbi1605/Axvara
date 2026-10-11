@@ -44,8 +44,8 @@ export async function GET(request: NextRequest) {
     return Number.isFinite(v) && v >= 0 ? v : fallback;
   };
   const history = await db.queryAll(
-    `SELECT balance, created_at FROM pedia_supplier_balance_log
-      WHERE supplier='providersmm' AND datetime(created_at) > datetime('now', '-7 days')
+    `SELECT supplier, balance, created_at FROM pedia_supplier_balance_log
+      WHERE supplier IN ('providersmm','indosmm') AND datetime(created_at) > datetime('now', '-7 days')
       ORDER BY id DESC LIMIT 100`,
   );
   return NextResponse.json({
@@ -73,6 +73,7 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "invalid" }, { status: 400 });
   }
   const db = createDatabaseAccess();
+  const saved: string[] = [];
   try {
   for (const [key, value] of Object.entries(parsed.data)) {
     if (value === undefined) continue;
@@ -81,7 +82,8 @@ export async function PUT(request: NextRequest) {
        ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')`,
       key, String(value),
     );
+    saved.push(key);
   }
   return NextResponse.json({ ok: true });
-  } catch { return NextResponse.json({ error: "save_failed" }, { status: 500 }); }
+  } catch { return NextResponse.json({ error: saved.length ? "save_partial" : "save_failed", saved_fields: saved }, { status: 500 }); }
 }

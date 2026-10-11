@@ -4,6 +4,7 @@
 // atau supplier_order_id (AC-16 — dikunci test snapshot).
 import { NextResponse } from "next/server";
 import { createDatabaseAccess } from "@/lib/db-access";
+import { isPediaProvider } from "@/lib/pedia/proxy";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -27,6 +28,7 @@ export type PediaCatalogProduct = {
   target_kind: string;
   name: string;
   tagline: string | null;
+  description_md?: string | null;
   packages: number[];
   step: number;
   checklist: { id: string; label: string; help?: string }[];
@@ -55,26 +57,27 @@ export async function GET() {
   }
   const db = createDatabaseAccess();
   const products = await db.queryAll(
-    `SELECT id, slug, platform, metric, target_kind, name, tagline,
+    `SELECT id, slug, platform, metric, target_kind, name, tagline, description_md,
             packages_json, step, checklist_json, is_featured
        FROM pedia_products WHERE is_active=1 ORDER BY sort_order, id`,
   ).catch(() => []);
   const tiers = await db.queryAll(
     `SELECT id, product_id, tier, label_note, refill_days, eta_start, eta_finish,
-            package_prices_json, supplier_service_id
+            package_prices_json, supplier, supplier_service_id
        FROM pedia_tiers WHERE is_active=1 ORDER BY id`,
   ).catch(() => []);
   // Batas layanan supplier (min–max) untuk menyembunyikan paket di luar rentang.
   const bounds = await db.queryAll(
-    `SELECT service_id, min_qty, max_qty FROM pedia_supplier_services WHERE supplier='providersmm' AND present=1 AND type='Default'`,
+    `SELECT supplier, service_id, min_qty, max_qty FROM pedia_supplier_services WHERE supplier IN ('providersmm','indosmm') AND present=1 AND type='Default' AND rate_idr_per_1k>0`,
   ).catch(() => []);
-  const boundByService = new Map<number, { min: number; max: number }>();
+  const boundByService = new Map<string, { min: number; max: number }>();
   for (const b of bounds) {
-    boundByService.set(Number(b.service_id), { min: Number(b.min_qty), max: Number(b.max_qty) });
+    boundByService.set(`${b.supplier}:${b.service_id}`, { min: Number(b.min_qty), max: Number(b.max_qty) });
   }
   const tiersByProduct = new Map<number, PediaCatalogTier[]>();
   for (const t of tiers) {
-    const bound = boundByService.get(Number(t.supplier_service_id));
+    if (!isPediaProvider(t.supplier)) continue;
+    const bound = boundByService.get(`${t.supplier}:${t.supplier_service_id}`);
     if (!bound || !Number.isSafeInteger(bound.min) || !Number.isSafeInteger(bound.max) || bound.min <= 0 || bound.max < bound.min) continue;
     const prices = parseJson(t.package_prices_json, {});
     if (!prices || typeof prices !== "object" || Array.isArray(prices)) continue;
@@ -113,6 +116,7 @@ export async function GET() {
       slug: String(p.slug), platform: String(p.platform), metric: String(p.metric),
       target_kind: String(p.target_kind), name: String(p.name),
       tagline: p.tagline != null ? String(p.tagline) : null,
+      description_md: p.description_md != null ? String(p.description_md) : null,
       packages, step: Number(p.step) || 1,
       checklist: (parseJson(p.checklist_json, []) as { id: string; label: string; help?: string }[]),
       is_featured: Number(p.is_featured) || 0,

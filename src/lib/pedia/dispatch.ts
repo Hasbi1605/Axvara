@@ -6,10 +6,12 @@
 // order_code (VPS 24 jam) → submitted; poll via /psmm/order/status →
 // in_progress / completed (capture start_count+remains) / partial+canceled→
 // kredit; api_error → needs_check (MANUAL, bukan auto-refund).
-// Lease 5 menit + submit_attempts < 6 (PD-33): crash → cron berikutnya
-// mengambil alih; submit idempoten via Idempotency-Key.
+// Durable submitting + lease: interrupted submissions require reconciliation;
+// neither a retry nor another provider is selected automatically.
 
 import type { createDatabaseAccess } from "@/lib/db-access";
+import { callPediaProvider, isPediaProvider, type ProxyCaller } from "@/lib/pedia/proxy";
+export type { ProxyCaller } from "@/lib/pedia/proxy";
 
 type Db = ReturnType<typeof createDatabaseAccess>;
 
@@ -29,6 +31,7 @@ type Item = {
   supplier_service_id: number;
   submit_attempts: number;
   status: string;
+  snapshot_json: string;
 };
 
 type TierInfo = {
@@ -38,7 +41,7 @@ type TierInfo = {
 };
 
 /** Satu siklus: ambil item queued yang lease-nya kedaluwarsa, dispatch + poll.
- * `caller` diinjeksi test (default callPsmmProxy asli). `sharedDb` opsional:
+ * `caller` diinjeksi test (default provider router). `sharedDb` opsional:
  * cron lite meneruskan budgeted access-nya agar statement ikut budget 40;
  * bila absen (webhook/admin/test), buat koneksi sendiri seperti dulu. */
 export async function processPediaPaidOrders(caller?: ProxyCaller, sharedDb?: Db): Promise<{ dispatched: number; polled: number; needsCheck: number }> {
@@ -49,26 +52,24 @@ export async function processPediaPaidOrders(caller?: ProxyCaller, sharedDb?: Db
     const { createDatabaseAccess } = await import("@/lib/db-access");
     db = createDatabaseAccess();
   }
-  const { callPsmmProxy } = await import("@/lib/pedia/proxy");
-  const call = caller ?? callPsmmProxy;
+  const call = caller ?? callPediaProvider;
   const out = { dispatched: 0, polled: 0, needsCheck: 0 };
   // Klaim lease atomik untuk item queued (wegen race webhook + cron
   // bersamaan). Bila tidak ada yang terklaim, lanjut ke poll — JANGAN
   // return awal (poll submitted/in_progress tetap harus jalan).
-  const claimed = await db.execRun(
-    `UPDATE pedia_order_items
-        SET lease_until=datetime('now', '+${LEASE_SECONDS} seconds'),
-            updated_at=datetime('now')
-      WHERE status='queued'
-        AND (lease_until IS NULL OR datetime(lease_until) <= datetime('now'))
-        AND submit_attempts < ${MAX_ATTEMPTS}`,
-  ).catch(() => null);
-  const queuedClaimed = Number((claimed as { changes?: number })?.changes ?? 0) > 0;
-  const items = queuedClaimed ? await db.queryAll(
+  // A crashed add is ambiguous, even after the proxy dedupe window expires.
+  const recovered = await db.execRun(
+    `UPDATE pedia_order_items SET status='needs_check', last_error='submit interrupted; reconcile before retry', lease_until=NULL
+      WHERE status='submitting' AND (lease_until IS NULL OR datetime(lease_until)<=datetime('now'))`,
+  );
+  out.needsCheck += Number(recovered.changes) || 0;
+  const items = await db.queryAll(
     `SELECT * FROM pedia_order_items
-      WHERE status='queued' AND datetime(lease_until) > datetime('now', '+${LEASE_SECONDS - 60} seconds')
+      WHERE status='queued' AND (lease_until IS NULL OR datetime(lease_until)<=datetime('now'))
+        AND submit_attempts < ${MAX_ATTEMPTS}
+        AND EXISTS (SELECT 1 FROM orders o WHERE o.code=pedia_order_items.order_code AND o.status='lunas')
       LIMIT 20`,
-  ).catch(() => []) as unknown as Item[] : [];
+  ).catch(() => []) as unknown as Item[];
   for (const item of items) {
     try {
       const r = await dispatchOne(db, item, call);
@@ -89,12 +90,27 @@ export async function processPediaPaidOrders(caller?: ProxyCaller, sharedDb?: Db
       if ((await pollOne(db, item, call)) === "polled") out.polled++;
     } catch { /* lanjut */ }
   }
+  if (db.canSpend(2)) {
+    const refills = await db.queryAll(
+      `SELECT order_code,supplier,refill_supplier_id FROM pedia_order_items
+        WHERE refill_status='submitted' AND refill_supplier_id IS NOT NULL LIMIT 5`,
+    );
+    for (const refill of refills) {
+      if (!db.canSpend(1)) break;
+      if (!isPediaProvider(refill.supplier)) continue;
+      const res = await call("refill_status", { refill: String(refill.refill_supplier_id) }, 20_000, undefined, refill.supplier);
+      const status = res.ok ? String((res.data as Record<string, unknown>)?.status ?? "").toLowerCase() : "";
+      if (["completed", "rejected", "canceled", "cancelled"].includes(status)) {
+        await db.execRun(`UPDATE pedia_order_items SET refill_status=? WHERE order_code=? AND refill_status='submitted'`, status, refill.order_code);
+      }
+    }
+  }
   return out;
 }
 
 async function serviceRate(db: Db, supplier: string, serviceId: number): Promise<number | null> {
   const row = await db.queryFirst(
-    `SELECT rate_idr_per_1k FROM pedia_supplier_services WHERE supplier=? AND service_id=? AND present=1`,
+    `SELECT rate_idr_per_1k FROM pedia_supplier_services WHERE supplier=? AND service_id=? AND present=1 AND type='Default' AND rate_idr_per_1k>0`,
     supplier, serviceId,
   ).catch(() => null);
   return row ? Number(row.rate_idr_per_1k) : null;
@@ -113,13 +129,15 @@ async function tierInfo(db: Db, tierId: number): Promise<TierInfo | null> {
   };
 }
 
-type ProxyCaller = typeof import("@/lib/pedia/proxy").callPsmmProxy;
-
 /** Dispatch satu item: guard margin → submit → lease poll 5 menit. */
 async function dispatchOne(
   db: Db, item: Item, call: ProxyCaller,
 ): Promise<"dispatched" | "polled" | "needs_check" | "skipped"> {
-  const rate = await serviceRate(db, item.supplier || "providersmm", item.supplier_service_id);
+  if (!isPediaProvider(item.supplier)) {
+    await toNeedsCheck(db, item.order_code, "invalid_provider");
+    return "needs_check";
+  }
+  const rate = await serviceRate(db, item.supplier, item.supplier_service_id);
   const info = await tierInfo(db, item.tier_id);
   if (rate === null || !info) {
     await toNeedsCheck(db, item.order_code, "layanan supplier tidak tersedia");
@@ -129,7 +147,10 @@ async function dispatchOne(
   // vs charge baru — bila < min, kunci tier + needs_check manual.
   const charge = rate * item.quantity / 1000;
   const marginLive = item.unit_price * item.quantity - charge;
-  if (marginLive < info.min_profit_rp) {
+  let snapshot: Record<string, unknown> = {};
+  try { snapshot = JSON.parse(item.snapshot_json); } catch { /* legacy snapshot */ }
+  const minProfit = Number(snapshot?.min_profit_rp ?? info.min_profit_rp);
+  if (!Number.isFinite(rate) || !Number.isFinite(marginLive) || !Number.isFinite(minProfit) || marginLive < minProfit) {
     await db.execRun(
       `UPDATE pedia_tiers SET is_active=0, auto_disabled_reason='margin', updated_at=datetime('now')
         WHERE id=?`,
@@ -138,35 +159,30 @@ async function dispatchOne(
     await toNeedsCheck(db, item.order_code, "margin di bawah minimum (rate naik)");
     return "needs_check";
   }
+  // Persist before network I/O. A competing tick cannot submit this item.
+  const claimed = await db.execRun(
+    `UPDATE pedia_order_items SET status='submitting', submit_attempts=submit_attempts+1,
+       lease_until=datetime('now', '+${LEASE_SECONDS} seconds'), updated_at=datetime('now')
+      WHERE order_code=? AND status='queued' AND (lease_until IS NULL OR datetime(lease_until)<=datetime('now'))`,
+    item.order_code,
+  );
+  if (Number(claimed.changes) !== 1) return "skipped";
   // Submit (idempoten via Idempotency-Key = order_code; VPS dedupe 24 jam).
   const res = await call("add", {
     service: item.supplier_service_id,
     link: item.target_normalized,
     quantity: item.quantity,
-  }, 30_000, item.order_code);
-  await db.execRun(
-    `UPDATE pedia_order_items SET submit_attempts=submit_attempts+1, updated_at=datetime('now')
-      WHERE order_code=?`,
-    item.order_code,
-  ).catch(() => null);
+  }, 30_000, item.order_code, item.supplier);
   if (!res.ok) {
     const kind = res.kind;
     // api_error (saldo kurang, quantity invalid dari supplier, dsb) →
-    // MANUSIA yang menangani. Retry otomatis hanya untuk error jaringan.
+    // MANUSIA yang menangani; ambiguous transport failures also stop here.
     if (kind === "api_error") {
       await toNeedsCheck(db, item.order_code, String(res.supplierMessage || "supplier menolak order").slice(0, 200));
       return "needs_check";
     }
-    // Transport/proxy/timeout: biarkan cron retry (lease kedaluwarsa).
-    if (Number(item.submit_attempts) + 1 >= MAX_ATTEMPTS) {
-      await toNeedsCheck(db, item.order_code, "gagal submit 6× (jaringan)");
-      return "needs_check";
-    }
-    await db.execRun(
-      `UPDATE pedia_order_items SET lease_until=NULL WHERE order_code=?`,
-      item.order_code,
-    ).catch(() => null);
-    return "skipped";
+    await toNeedsCheck(db, item.order_code, `submit ${kind}; reconcile before retry`);
+    return "needs_check";
   }
   const supplierOrderId = String((res.data as Record<string, unknown>)?.order ?? "");
   if (!supplierOrderId) {
@@ -180,7 +196,7 @@ async function dispatchOne(
             last_error=NULL, updated_at=datetime('now')
       WHERE order_code=?`,
     supplierOrderId, charge, item.order_code,
-  ).catch(() => null);
+  );
   return "dispatched";
 }
 
@@ -189,10 +205,14 @@ async function pollOne(
   db: Db, item: Item, call: ProxyCaller,
 ): Promise<"polled" | "skipped"> {
   if (!item || !(item as unknown as Record<string, unknown>).supplier_order_id) return "skipped";
+  if (!isPediaProvider(item.supplier)) {
+    await toNeedsCheck(db, item.order_code, "invalid_provider");
+    return "skipped";
+  }
   const row = item as unknown as Record<string, unknown>;
   const res = await call("status", {
     order: String(row.supplier_order_id),
-  }, 20_000);
+  }, 20_000, undefined, item.supplier);
   if (!res.ok) {
     // Poll gagal (transport): jadwalkan ulang, bukan needs_check.
     await db.execRun(
@@ -203,7 +223,7 @@ async function pollOne(
     return "skipped";
   }
   const d = (res.data || {}) as Record<string, unknown>;
-  const status = String(d.status ?? "").toLowerCase();
+  const status = String(d.status ?? "").toLowerCase().replace(/\s+/g, "_").replace(/^cancelled$/, "canceled");
   const startCount = d.start_count != null ? Number(d.start_count) : null;
   const remains = d.remains != null ? Number(d.remains) : null;
   // Snapshot start_count sekali (untuk refund exact PD-24).

@@ -316,17 +316,20 @@ describe("BUG-11: Product detail sold/stock conditional null-safe", () => {
   });
 });
 
-describe("BUG-12: CommunityBar WA link live (bukan dead href=#)", () => {
-  it("CommunityBar WA group link mengarah ke community, bukan href=#", () => {
-    const src = fs.readFileSync(path.join(process.cwd(), "src/components/storefront/CommunityBar.tsx"), "utf-8");
-    expect(src).toContain("chat.whatsapp.com/CzONe7Mx9Q7Eyt3k94C9ze");
-    // WA link TIDAK boleh pakai onClick={comingSoon}
-    expect(src).not.toMatch(/href=\{waHref\}[^>]*onClick=\{comingSoon\}/);
+describe("BUG-12: community destinations remain live and centralized", () => {
+  it("WA group moves to the footer with a central live URL", () => {
+    const src = fs.readFileSync(path.join(process.cwd(), "src/components/storefront/Footer.tsx"), "utf-8");
+    const site = fs.readFileSync(path.join(process.cwd(), "src/lib/site.ts"), "utf-8");
+    expect(site).toContain("chat.whatsapp.com/CzONe7Mx9Q7Eyt3k94C9ze");
+    expect(src).toContain("href={WA_GROUP_HREF}");
+    expect(src).not.toContain('href="#"');
   });
 
   it("CommunityBar Telegram pill memakai deep-link ?start=beli", () => {
     const src = fs.readFileSync(path.join(process.cwd(), "src/components/storefront/CommunityBar.tsx"), "utf-8");
-    expect(src).toContain("https://t.me/Axvara_bot?start=beli");
+    expect(src).toContain("href={TG_BOT_HREF}");
+    const site = fs.readFileSync(path.join(process.cwd(), "src/lib/site.ts"), "utf-8");
+    expect(site).toContain('`https://t.me/${SITE.adminTelegram}?start=beli`');
   });
 });
 

@@ -269,10 +269,10 @@ async function runPediaOrders(db: Db) {
          ON CONFLICT(key) DO UPDATE SET value=datetime('now'), updated_at=datetime('now')`,
       ).catch(() => null);
       const { callPsmmProxy } = await import("@/lib/pedia/proxy");
-      const res = await callPsmmProxy<{ balance?: string | number }>("balance", {}, 15_000);
+      const res = await callPsmmProxy<{ balance?: string | number; currency?: string }>("balance", {}, 15_000);
       if (res.ok) {
         const v = Number((res.data as { balance?: unknown })?.balance);
-        if (Number.isFinite(v)) {
+        if (Number.isFinite(v) && v >= 0 && (!res.data.currency || res.data.currency.toUpperCase() === "IDR")) {
           out.balance = v;
           await db.execRun(
             `INSERT INTO pedia_supplier_balance_log (supplier, balance) VALUES ('providersmm', ?)`,
@@ -287,11 +287,42 @@ async function runPediaOrders(db: Db) {
             const alerted = await notifyPediaLowBalance(v, db).catch(() => false);
             if (alerted) out.balance_alerted = true;
           }
-        }
+        } else out.providersmm_balance_error = "unsupported_currency_or_balance";
+      } else {
+        out.providersmm_balance_error = res.kind;
       }
     }
   } catch {
     if ((out as { budget_exhausted?: boolean }).budget_exhausted) throw new QueryBudgetExceeded();
+  }
+  // Independent checkpoint and currency gate: one supplier's failure cannot
+  // suppress the other. Do not convert undocumented USD account balances.
+  if (db.canSpend(5)) {
+    try {
+      const key = "pedia_indosmm_balance_checked_at";
+      const last = await db.queryFirst(`SELECT value FROM store_settings WHERE key=?`, key);
+      const { parseExpiry } = await import("@/lib/expiry");
+      const ms = parseExpiry(String(last?.value ?? ""));
+      if (ms === null || Date.now() - ms > 30 * 60 * 1000) {
+        await db.execRun(`INSERT INTO store_settings (key,value,updated_at) VALUES (?,datetime('now'),datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`, key);
+        const { callPediaProxy } = await import("@/lib/pedia/proxy");
+        const res = await callPediaProxy<{ balance?: string | number; currency?: string }>("indosmm", "balance", {}, 15_000);
+        const v = res.ok ? Number(res.data.balance) : NaN;
+        if (res.ok && res.data.currency?.toUpperCase() === "IDR" && Number.isFinite(v) && v >= 0) {
+          out.indosmm_balance = v;
+          await db.execRun(`INSERT INTO pedia_supplier_balance_log (supplier,balance) VALUES ('indosmm',?)`, v);
+          if (v < (Number(process.env.PEDIA_BALANCE_ALERT_RP || 100000) || 100000)) {
+            const { notifyPediaLowBalance } = await import("@/lib/pedia/notify");
+            out.indosmm_balance_alerted = await notifyPediaLowBalance(v, db, "indosmm");
+          }
+        } else {
+          out.indosmm_balance_error = res.ok ? "unsupported_currency_or_balance" : res.kind;
+        }
+      }
+    } catch (error) {
+      if (error instanceof QueryBudgetExceeded) throw error;
+      out.indosmm_balance_error = "balance_failed";
+    }
   }
   return out;
 }

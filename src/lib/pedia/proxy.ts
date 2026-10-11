@@ -7,6 +7,12 @@
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
 
 export const PEDIA_PROXY_TIMEOUT_MS = 20_000;
+export const PEDIA_PROVIDERS = ["providersmm", "indosmm"] as const;
+export type PediaProvider = typeof PEDIA_PROVIDERS[number];
+export type PediaAction = "services" | "add" | "status" | "refill" | "refill_status" | "cancel" | "balance";
+export function isPediaProvider(value: unknown): value is PediaProvider {
+  return value === "providersmm" || value === "indosmm";
+}
 
 function proxyBase(): string {
   return (process.env.WARUNG_REBAHAN_PROXY_URL || "").replace(/\/+$/, "");
@@ -22,7 +28,7 @@ export function isPediaProxyConfigured(): boolean {
 
 export type PsmmResult<T> =
   | { ok: true; data: T; status: number; duplicate?: boolean }
-  | { ok: false; kind: "timeout" | "http" | "unreadable" | "not_configured" | "api_error"; status?: number; body?: unknown; supplierMessage?: string };
+  | { ok: false; kind: "timeout" | "http" | "unreadable" | "not_configured" | "api_error" | "invalid_provider" | "invalid_action"; status?: number; body?: unknown; supplierMessage?: string };
 
 /** POST {proxy}/psmm/:action. Body diteruskan; key disuntik di VPS.
  * `idempotencyKey` (order_code) dikirim sebagai header Idempotency-Key —
@@ -33,6 +39,24 @@ export async function callPsmmProxy<T = unknown>(
   timeoutMs = PEDIA_PROXY_TIMEOUT_MS,
   idempotencyKey?: string,
 ): Promise<PsmmResult<T>> {
+  return callPediaProxy<T>("providersmm", action as PediaAction, body, timeoutMs, idempotencyKey);
+}
+
+/** The optional fifth argument preserves existing injected callers' argument order. */
+export type ProxyCaller = <T = unknown>(action: string, body?: Record<string, unknown>, timeoutMs?: number, idempotencyKey?: string, provider?: PediaProvider) => Promise<PsmmResult<T>>;
+
+export const callPediaProvider: ProxyCaller = (action, body, timeoutMs, idempotencyKey, provider = "providersmm") =>
+  callPediaProxy(provider, action as PediaAction, body, timeoutMs, idempotencyKey);
+
+export async function callPediaProxy<T = unknown>(
+  provider: PediaProvider,
+  action: PediaAction,
+  body: Record<string, unknown> = {},
+  timeoutMs = PEDIA_PROXY_TIMEOUT_MS,
+  idempotencyKey?: string,
+): Promise<PsmmResult<T>> {
+  if (!isPediaProvider(provider)) return { ok: false, kind: "invalid_provider" };
+  if (!["services", "add", "status", "refill", "refill_status", "cancel", "balance"].includes(action)) return { ok: false, kind: "invalid_action" };
   if (!isPediaProxyConfigured()) return { ok: false, kind: "not_configured" };
   const headers: Record<string, string> = {
     "content-type": "application/json", "x-proxy-token": proxyToken(),
@@ -40,7 +64,7 @@ export async function callPsmmProxy<T = unknown>(
   if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
   let res: Response;
   try {
-    res = await fetchWithTimeout(`${proxyBase()}/psmm/${action}`, {
+    res = await fetchWithTimeout(`${proxyBase()}/${provider === "providersmm" ? "psmm" : "indosmm"}/${action}`, {
       method: "POST",
       headers,
       body: JSON.stringify(body),
@@ -55,7 +79,7 @@ export async function callPsmmProxy<T = unknown>(
   } catch {
     return { ok: false, kind: "unreadable", status: res.status, body: text.slice(0, 200) };
   }
-  if (res.status < 200 || res.status >= 300 || json === null || typeof json !== "object") {
+  if (res.status < 200 || res.status >= 300 || json === null || typeof json !== "object" || "error" in json) {
     // Respons API ProviderSMM (via VPS): {error: "..."} = penolakan bisnis
     // (saldo kurang, quantity invalid) → api_error = MANUAL, bukan retry.
     const msg = (json as Record<string, unknown>)?.error;

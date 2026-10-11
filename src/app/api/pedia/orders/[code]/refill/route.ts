@@ -7,6 +7,8 @@ import { checkRateLimit } from "@/lib/rateLimit";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { parseBuyerContact } from "@/lib/order-contact";
 import { constantTimeEqual } from "@/lib/security";
+import { isPediaProvider, callPediaProxy } from "@/lib/pedia/proxy";
+import { parseExpiry } from "@/lib/expiry";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -40,25 +42,33 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     clean,
   ).catch(() => null);
   if (!item) return NextResponse.json({ error: "Pesanan tidak ditemukan." }, { status: 404 });
-  const refillDays = Number(item.refill_days) || 0;
+  let snapshot: Record<string, unknown> = {};
+  try { snapshot = JSON.parse(String(item.snapshot_json)); } catch { /* legacy */ }
+  const refillDays = Number(snapshot?.refill_days ?? item.refill_days) || 0;
+  if (!isPediaProvider(item.supplier) || !item.supplier_order_id) return NextResponse.json({ error: "Refill tidak tersedia." }, { status: 409 });
+  const created = parseExpiry(String(item.created_at));
+  if (created === null || Date.now() > created + refillDays * 86400000) return NextResponse.json({ error: "Masa refill berakhir." }, { status: 409 });
   if (refillDays <= 0 || (item.status !== "completed" && item.status !== "partial")) {
     return NextResponse.json({ error: "Produk ini tidak bergaransi refill." }, { status: 409 });
   }
-  // Klaim atomik: hanya bila refill terakhir ≥ 24 jam lalu (atau belum pernah).
+  // Only conclusive terminal refills may be replaced. In particular a
+  // timed-out/requested refill must retain its ID and original dedupe key.
   const claimed = await db.execRun(
     `UPDATE pedia_order_items SET refill_last_at=datetime('now'), refill_status='requested',
        updated_at=datetime('now')
-     WHERE order_code=? AND (refill_last_at IS NULL OR datetime(refill_last_at) <= datetime('now', '-24 hours'))`,
+      WHERE order_code=?
+        AND ((refill_status IS NULL AND refill_supplier_id IS NULL AND refill_last_at IS NULL)
+          OR refill_status IN ('completed','rejected','canceled','cancelled','supplier_rejected'))
+        AND (refill_last_at IS NULL OR datetime(refill_last_at) <= datetime('now', '-24 hours'))`,
     clean,
   ).catch(() => null);
   if (Number((claimed as { changes?: number })?.changes ?? 0) !== 1) {
-    return NextResponse.json({ error: "Refill sudah diajukan dalam 24 jam terakhir." }, { status: 409 });
+    return NextResponse.json({ error: "Refill sebelumnya belum selesai atau sudah diajukan dalam 24 jam terakhir." }, { status: 409 });
   }
   // Panggil supplier via proxy (idempoten: refill per order 1×/24 jam sudah diklaim).
   try {
-    const { callPsmmProxy } = await import("@/lib/pedia/proxy");
-    const res = await callPsmmProxy("refill", { order: String(item.supplier_order_id ?? "") }, 20_000, `${clean}:refill`);
-    if (res.ok) {
+    const res = await callPediaProxy(item.supplier, "refill", { order: String(item.supplier_order_id) }, 20_000, `${clean}:refill:${Math.floor(Date.now() / 86400000)}`);
+    if (res.ok && (res.data as Record<string, unknown>)?.refill) {
       const refillId = String((res.data as Record<string, unknown>)?.refill ?? "");
       await db.execRun(
         `UPDATE pedia_order_items SET refill_supplier_id=?, refill_status='submitted' WHERE order_code=?`,
@@ -66,8 +76,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       ).catch(() => null);
     } else {
       await db.execRun(
-        `UPDATE pedia_order_items SET refill_status='supplier_rejected' WHERE order_code=?`,
-        clean,
+        `UPDATE pedia_order_items SET refill_status=? WHERE order_code=?`,
+        !res.ok && res.kind === "api_error" ? "supplier_rejected" : "needs_check", clean,
       ).catch(() => null);
     }
   } catch { /* status tetap requested; cron/admin menyusul */ }

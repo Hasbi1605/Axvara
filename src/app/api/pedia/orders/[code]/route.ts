@@ -36,7 +36,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     clean,
   ).catch(() => null);
 
-  const snap = JSON.parse(String(item.snapshot_json ?? "{}"));
+  let snap: Record<string, unknown> = {};
+  try { snap = JSON.parse(String(item.snapshot_json ?? "{}")) ?? {}; } catch { /* legacy */ }
   const qty = Number(item.quantity) || 0;
   const remains = item.remains != null ? Number(item.remains) : null;
   const done = remains != null ? Math.max(0, qty - remains) : 0;
@@ -45,10 +46,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   // Refill eligibility (PD-25): refill_days>0, completed|partial, dalam masa
   // garansi (dari updated_at terminal — pendekatan; admin melihat detail),
   // refill terakhir ≥ 24 jam lalu.
-  const refillDays = Number(item.refill_days) || 0;
-  const refillLast = item.refill_last_at ? Date.parse(String(item.refill_last_at)) : 0;
+  const refillDays = Number(snap?.refill_days ?? item.refill_days) || 0;
+  const { parseExpiry } = await import("@/lib/expiry");
+  const refillLast = parseExpiry(String(item.refill_last_at ?? "")) ?? 0;
+  const created = parseExpiry(String(item.created_at));
   const refillEligible =
     refillDays > 0 &&
+    ((item.refill_status == null && item.refill_supplier_id == null && item.refill_last_at == null)
+      || ["completed", "rejected", "canceled", "cancelled", "supplier_rejected"].includes(String(item.refill_status))) &&
+    created !== null && Date.now() <= created + refillDays * 86400000 &&
     (item.status === "completed" || item.status === "partial") &&
     (!Number.isFinite(refillLast) || Date.now() - refillLast >= 24 * 3600 * 1000);
 

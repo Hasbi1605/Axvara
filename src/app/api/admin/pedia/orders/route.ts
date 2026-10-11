@@ -4,6 +4,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { createDatabaseAccess } from "@/lib/db-access";
+import { isPediaProvider } from "@/lib/pedia/proxy";
+import { canResubmit } from "../_shared";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -13,10 +15,14 @@ export async function GET(request: NextRequest) {
   if (!admin) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const q = request.nextUrl.searchParams;
   const status = q.get("status")?.slice(0, 30) ?? "";
+  const supplier = q.get("supplier") || "";
+  if (supplier && !isPediaProvider(supplier)) return NextResponse.json({ error: "invalid_provider" }, { status: 400 });
   const db = createDatabaseAccess();
   try {
-  const where = status ? `WHERE i.status=?` : "";
+  const conditions = [status ? "i.status=?" : "", supplier ? "i.supplier=?" : ""].filter(Boolean);
+  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
   const params: unknown[] = status ? [status] : [];
+  if (supplier) params.push(supplier);
   const rows = await db.queryAll(
     `SELECT i.*, p.name AS product_name, p.slug AS product_slug,
             o.customer_wa, o.customer_email, o.payment_status, o.paid_at
@@ -29,6 +35,6 @@ export async function GET(request: NextRequest) {
       LIMIT 100`,
     ...params,
   );
-  return NextResponse.json({ ok: true, rows });
+  return NextResponse.json({ ok: true, rows: rows.map((row) => ({ ...row, can_resubmit: canResubmit(row) })) });
   } catch { return NextResponse.json({ error: "load_failed" }, { status: 500 }); }
 }

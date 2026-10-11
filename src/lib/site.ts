@@ -13,6 +13,7 @@ export const SITE = {
   adminTelegram: "Axvara_bot",
   supportTelegram: "axvara_support",
   webUrl: "https://axvara.tech",
+  pediaUrl: "https://pedia.axvara.tech",
   supportHours: "09.00–23.00 WIB",
   social: {
     instagram: "https://www.instagram.com/axvara.tech/",
@@ -21,6 +22,16 @@ export const SITE = {
     facebook: "https://www.facebook.com/Axvara.tech/",
   },
 } as const;
+
+export const WA_GROUP_HREF = "https://chat.whatsapp.com/CzONe7Mx9Q7Eyt3k94C9ze?mode=gi_t";
+export const TG_BOT_HREF = `https://t.me/${SITE.adminTelegram}?start=beli`;
+
+export const AXVARA_SERVICES = [
+  { id: "market", name: "AXVARA Market", description: "Aplikasi dan tools premium", href: `${SITE.webUrl}/`, icon: "/brand/axvara-mark.svg" },
+  { id: "pedia", name: "AXVARA Pedia", description: "Followers, likes, dan views", href: `${SITE.pediaUrl}/pedia`, icon: "/brand/pedia-mark.svg" },
+] as const;
+
+export type AxvaraService = typeof AXVARA_SERVICES[number]["id"];
 
 /** Daftar nomor WA admin di hub /wa. `suspended` = tampil dengan badge jujur
  *  (tetap bisa diklik — user yang sudah chat di sana perlu tahu kenapa sepi),

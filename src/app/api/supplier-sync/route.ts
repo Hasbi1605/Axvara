@@ -21,6 +21,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { constantTimeEqual } from "@/lib/security";
 import { createDatabaseAccess } from "@/lib/db-access";
+import { isPediaProvider } from "@/lib/pedia/proxy";
 
 export const runtime = "edge";
 
@@ -37,32 +38,39 @@ export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   // Cabang ProviderSMM (PEDIA, 2026-10-07): diff VPS memakai `source` agar
   // tidak bentrok dengan `supplier` WR/SK yang existing.
-  if (body && body.source === "providersmm") {
+  if (body && isPediaProvider(body.source)) {
     const services = Array.isArray(body.services) ? body.services : null;
     if (!services) return NextResponse.json({ error: "invalid_services" }, { status: 400 });
     if (services.length > 100) return NextResponse.json({ error: "too_many_services" }, { status: 413 });
     const removed = Array.isArray(body.removed_service_ids)
-      ? body.removed_service_ids.map(Number).filter(Number.isFinite)
+      ? body.removed_service_ids
       : [];
     if (removed.length > 100) return NextResponse.json({ error: "too_many_removed" }, { status: 413 });
     const db = createDatabaseAccess();
-    const { applyProvidersmmDiff } = await import("@/lib/pedia/sync");
-    const result = await applyProvidersmmDiff(db, services as never, removed);
+    const { applyPediaDiff } = await import("@/lib/pedia/sync");
+    let result;
+    try {
+      result = await applyPediaDiff(db, body.source, services as never, removed as number[], typeof body.currency === "string" ? body.currency : undefined);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "sync_failed";
+      return NextResponse.json({ error: message }, { status: /^(invalid_|unsupported_currency)/.test(message) ? 400 : 500 });
+    }
+    if (result.errors.length) return NextResponse.json({ ok: false, errors: result.errors.slice(0, 3) }, { status: 500 });
+    const prefix = body.source === "providersmm" ? "pedia_diff" : "pedia_indosmm_diff";
     try {
       await db.execRun(
-        `INSERT INTO store_settings (key, value, updated_at) VALUES ('pedia_diff_last_at', datetime('now'), datetime('now'))
-         ON CONFLICT(key) DO UPDATE SET value=datetime('now'), updated_at=datetime('now')`,
+        `INSERT INTO store_settings (key, value, updated_at) VALUES (?, datetime('now'), datetime('now'))
+          ON CONFLICT(key) DO UPDATE SET value=datetime('now'), updated_at=datetime('now')`,
+        `${prefix}_last_at`,
       );
       if (result.upserted > 0 || result.markedMissing > 0) {
         await db.execRun(
-          `INSERT INTO store_settings (key, value, updated_at) VALUES ('pedia_diff_last_change_at', datetime('now'), datetime('now'))
-           ON CONFLICT(key) DO UPDATE SET value=datetime('now'), updated_at=datetime('now')`,
+          `INSERT INTO store_settings (key, value, updated_at) VALUES (?, datetime('now'), datetime('now'))
+            ON CONFLICT(key) DO UPDATE SET value=datetime('now'), updated_at=datetime('now')`,
+          `${prefix}_last_change_at`,
         );
       }
     } catch { /* penanda best-effort */ }
-    if (result.errors.length && result.upserted === 0 && result.markedMissing === 0) {
-      return NextResponse.json({ ok: false, errors: result.errors.slice(0, 3) }, { status: 500 });
-    }
     return NextResponse.json({
       ok: true, upserted: result.upserted, missing: result.markedMissing,
       repriced: result.tiersRepriced, auto_disabled: result.tiersAutoDisabled,

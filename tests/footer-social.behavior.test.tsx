@@ -3,7 +3,7 @@
 // Kunci: 4 tombol ikon saja (tanpa label teks) — Instagram, Threads, TikTok,
 // Facebook — mengarah ke URL sosmed AXVARA dari SITE.social; ikon satu tone
 // (fill=currentColor, Simple Icons terbaru — Threads = redesain Meta 2026);
-// tap target ≥44px (h-10 w-10), ada aria-label, buka tab baru (_blank +
+// tap target >=44px (h-11 w-11), ada aria-label, buka tab baru (_blank +
 // noreferrer); sameAs SEO ikut memuat 4 sosmed.
 import { describe, expect, it } from "vitest";
 import fs from "fs";
@@ -53,7 +53,7 @@ describe("Footer — tombol ikon sosmed AXVARA", () => {
 
   it("tap target ≥44px dan gaya satu tone selaras tema Midnight", () => {
     const src = read("src/components/storefront/Footer.tsx");
-    expect(src).toContain("h-10 w-10");
+    expect(src).toContain("h-11 w-11");
     expect(src).toContain("rounded-full");
     expect(src).toContain("text-white/60");
     expect(src).toContain("hover:border-[#00E5FF]/40");

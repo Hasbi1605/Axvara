@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { SITE } from "@/lib/site";
+import { SITE, TG_BOT_HREF, WA_GROUP_HREF } from "@/lib/site";
 import { useStoreSettings } from "@/hooks/useStoreSettings";
 import { waHubLink } from "@/lib/site";
 
@@ -33,11 +33,9 @@ const SOCIAL_LINKS: { key: SocialKey; label: string; href: string }[] = [
   { key: "facebook", label: "Facebook AXVARA", href: SITE.social.facebook },
 ];
 
-export function Footer({ shopBase = "" }: { shopBase?: string }) {
-  // shopBase: prefix host toko saat footer dipakai di host lain.
-  // Pedia (pedia.axvara.tech) → shopBase="https://axvara.tech" agar link
-  // market tidak jatuh ke host Pedia (2026-10-08 owner: footer konsisten).
-  const shop = (path: string) => `${shopBase}${path}`;
+export function Footer() {
+  const shop = (path: string) => `${SITE.webUrl}${path}`;
+  const pedia = (path: string) => `${SITE.pediaUrl}/pedia${path}`;
   const pathname = usePathname();
   const [categories, setCategories] = useState<FooterCategory[]>([]);
   const storeSettings = useStoreSettings();
@@ -61,6 +59,7 @@ export function Footer({ shopBase = "" }: { shopBase?: string }) {
 
   const subscribe = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (submitting) return;
     setSubmitting(true);
     setFeedback(null);
     try {
@@ -81,7 +80,7 @@ export function Footer({ shopBase = "" }: { shopBase?: string }) {
   };
 
   return (
-    <footer className="relative mt-16 overflow-hidden border-t border-white/10 pb-16 md:pb-0">
+    <footer className="relative mt-16 overflow-hidden border-t border-white/10 pb-[calc(7rem+env(safe-area-inset-bottom))] md:pb-0">
       <div className="pointer-events-none absolute -top-28 left-1/2 h-[260px] w-[860px] -translate-x-1/2 rounded-full opacity-[0.06] blur-[40px]" style={{ background: "radial-gradient(ellipse at center, #00E5FF, transparent 70%)" }} />
 
       <div className="relative mx-auto max-w-[1280px] px-4 py-12 sm:px-6 sm:py-14 lg:px-8">
@@ -98,12 +97,7 @@ export function Footer({ shopBase = "" }: { shopBase?: string }) {
               </span>}
               <p className="font-display font-[300] tracking-[0.20em] text-white">{storeSettings.name}</p>
             </div>
-            <p className="mt-3 max-w-[34ch] text-[13px] leading-[1.65] text-white/55">{storeSettings.tagline}</p>
-            <div className="mt-4 flex flex-wrap gap-1.5">
-              <span className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[11px] text-white/60">Bergaransi</span>
-              <span className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[11px] text-white/60">Aktivasi 5–15 menit</span>
-              <span className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[11px] text-white/60">Support WA</span>
-            </div>
+            <p className="mt-3 max-w-[34ch] text-[13px] leading-[1.65] text-white/55">Satu ekosistem untuk aplikasi premium, tools, dan layanan media sosial. Pilih layanan sesuai kebutuhanmu.</p>
             <div className="mt-4 flex items-center gap-2">
               {SOCIAL_LINKS.map((social) => (
                 <a
@@ -113,7 +107,7 @@ export function Footer({ shopBase = "" }: { shopBase?: string }) {
                   rel="noreferrer"
                   aria-label={social.label}
                   title={social.label}
-                  className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] text-white/60 transition hover:border-[#00E5FF]/40 hover:text-white"
+                  className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] text-white/60 transition hover:border-[#00E5FF]/40 hover:text-white"
                 >
                   <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="currentColor" aria-hidden="true">
                     <path d={SOCIAL_ICON_PATHS[social.key]} />
@@ -124,13 +118,13 @@ export function Footer({ shopBase = "" }: { shopBase?: string }) {
           </div>
 
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/40">Jelajah</p>
-            <ul className="mt-3.5 space-y-2.5 text-[13px]">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/40">Layanan &amp; jelajah</p>
+            <ul className="mt-3.5 text-[13px] [&_a]:flex [&_a]:min-h-[44px] [&_a]:items-center">
+              <li><Link prefetch={false} href={shop("/")} className="text-white/60 transition hover:text-white">AXVARA Market</Link></li>
               <li><Link prefetch={false} href={shop("/#katalog")} className="text-white/60 transition hover:text-white">Semua produk</Link></li>
               <li>
-                <Link prefetch={false} href="/pedia?utm_source=axvara&utm_medium=footer" className="text-white/60 transition hover:text-white">
-                  Axvara Pedia
-                  <span className="ml-1.5 rounded-full bg-[#FFB800]/15 px-1.5 py-px text-[10px] font-bold text-[#FFCF55]">Baru</span>
+                <Link prefetch={false} href={pedia("?utm_source=axvara&utm_medium=footer")} className="text-white/60 transition hover:text-white">
+                  AXVARA Pedia
                 </Link>
               </li>
               <li><Link prefetch={false} href={shop("/artikel")} className="text-white/60 transition hover:text-white">AI & teknologi</Link></li>
@@ -142,13 +136,16 @@ export function Footer({ shopBase = "" }: { shopBase?: string }) {
 
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/40">Bantuan</p>
-            <ul className="mt-3.5 space-y-2.5 text-[13px]">
+            <ul className="mt-3.5 text-[13px] [&_a]:flex [&_a]:min-h-[44px] [&_a]:items-center">
               <li><Link prefetch={false} href={shop("/cara-order")} className="text-white/60 transition hover:text-white">Cara order</Link></li>
-              <li><Link prefetch={false} href="/pedia/lacak" className="text-white/60 transition hover:text-white">Lacak pesanan Pedia</Link></li>
+              <li><Link prefetch={false} href={pedia("/lacak")} className="text-white/60 transition hover:text-white">Lacak pesanan Pedia</Link></li>
               <li><Link prefetch={false} href={shop("/lacak-pesanan")} className="text-white/60 transition hover:text-white">Lacak pesanan market</Link></li>
-              <li><Link prefetch={false} href="/pedia/bantuan" className="text-white/60 transition hover:text-white">Bantuan Pedia</Link></li>
-              <li><Link prefetch={false} href={shop("/garansi-replace")} className="text-white/60 transition hover:text-white">Garansi & replace</Link></li>
-              <li><a href={waHubLink(`Halo ${storeSettings.name}`)} target="_blank" rel="noreferrer" className="text-[#00E5FF]/90 transition hover:text-white">Chat WA — {storeSettings.supportHours}</a></li>
+              <li><Link prefetch={false} href={pedia("/bantuan")} className="text-white/60 transition hover:text-white">Bantuan Pedia</Link></li>
+              <li><Link prefetch={false} href={pedia("/ketentuan")} className="text-white/60 transition hover:text-white">Ketentuan Pedia</Link></li>
+              <li><Link prefetch={false} href={shop("/garansi-replace")} className="text-white/60 transition hover:text-white">Ketentuan Market</Link></li>
+              <li><a href={shop(waHubLink(`Halo ${storeSettings.name}`))} target="_blank" rel="noreferrer" className="text-[#00E5FF]/90 transition hover:text-white">Chat WA - {storeSettings.supportHours}</a></li>
+              <li><a href={WA_GROUP_HREF} target="_blank" rel="noreferrer" className="text-white/60 transition hover:text-white">Grup WhatsApp</a></li>
+              <li><a href={TG_BOT_HREF} target="_blank" rel="noreferrer" className="text-white/60 transition hover:text-white">Bot Telegram Market</a></li>
             </ul>
           </div>
 
@@ -156,8 +153,8 @@ export function Footer({ shopBase = "" }: { shopBase?: string }) {
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">Tetap update</p>
             <p className="mt-2 text-[13px] leading-5 text-white/55">Info produk, promo, dan artikel terbaru lewat email.</p>
             <form onSubmit={subscribe} className="mt-4 flex gap-2">
-              <input type="email" name="email" value={email} onChange={(event) => setEmail(event.target.value)} required maxLength={254} autoComplete="email" placeholder="Email kamu" className="min-w-0 flex-1 h-9 rounded-full border border-white/10 bg-white/[0.06] px-3.5 text-sm text-white placeholder:text-white/30 focus:border-[#00E5FF]/40 focus:outline-none" />
-              <button type="submit" disabled={submitting} className="h-9 shrink-0 rounded-full bg-white px-4 text-sm font-bold text-[#080C1E] transition hover:bg-white/90 disabled:opacity-60">{submitting ? "Menyimpan…" : "Langganan"}</button>
+              <input aria-label="Email untuk update AXVARA" type="email" name="email" value={email} onChange={(event) => setEmail(event.target.value)} required maxLength={254} autoComplete="email" placeholder="Email kamu" className="min-w-0 flex-1 h-11 rounded-full border border-white/10 bg-white/[0.06] px-3.5 text-base text-white placeholder:text-white/30 focus:border-[#00E5FF]/40 focus:outline-none" />
+              <button type="submit" disabled={submitting} className="h-11 shrink-0 rounded-full bg-white px-4 text-sm font-bold text-[#080C1E] transition hover:bg-white/90 disabled:opacity-60">{submitting ? "Menyimpan…" : "Langganan"}</button>
             </form>
             <div aria-live="polite" className={`mt-3 min-h-4 text-[11px] ${feedback?.type === "error" ? "text-red-300" : "text-white/40"}`}>{feedback?.message ?? "Email tersimpan di panel admin. Tanpa spam."}</div>
           </div>

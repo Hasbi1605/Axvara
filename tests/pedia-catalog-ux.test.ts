@@ -21,6 +21,19 @@ async function seed() {
   return db;
 }
 describe("public catalog safe tier packages", () => {
+  it("exposes only the saved public tagline and description, without supplier fields", async () => {
+    const db = await seed();
+    const description = "Followers untuk profil Instagram publik.\nRefill mengikuti paket yang dipilih.\n<script>alert('test')</script>";
+    await db.execRun("UPDATE pedia_products SET tagline=?, description_md=?", "Pilihan untuk profil publik", description);
+    const data = await (await GET()).json();
+    expect(data.products[0]).toMatchObject({ tagline: "Pilihan untuk profil publik", description_md: description });
+    expect(JSON.stringify(data)).not.toMatch(/supplier|rate_idr|private-name|markup/);
+  });
+
+  it("returns a nullable description for products without saved copy", async () => {
+    await seed();
+    expect((await (await GET()).json()).products[0].description_md).toBeNull();
+  });
   it("filters each tier by its own bounds, positive prices and configured steps; sorts deterministically", async () => {
     await seed();
     const data = await (await GET()).json();

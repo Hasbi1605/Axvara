@@ -7,9 +7,7 @@ import { useState, useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { useStoreSettings } from "@/hooks/useStoreSettings";
-// AppSwitcher DISIMPAN (tidak dihapus) — 3 pill (Apps/Pedia/AI) disembunyikan
-// dari navbar toko 2026-10-08 sampai owner memutuskan. Impor dikembalikan
-// saat pill dimunculkan (lihat komentar di nav).
+import { ServicesMenu } from "@/components/shared/ServicesMenu";
 
 export function Navbar() {
   const pathname = usePathname();
@@ -46,8 +44,8 @@ export function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 ax-glass-strong border-b border-white/10">
-      <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 h-[64px] flex items-center gap-4">
-        <Link prefetch={false} href="/" className="flex items-center gap-3 shrink-0 group" aria-label={storeSettings.name}>
+      <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 h-[64px] flex items-center gap-2 sm:gap-4">
+        <Link prefetch={false} href="/" className="flex min-w-0 items-center gap-2 sm:gap-3 shrink-0 group" aria-label={storeSettings.name}>
           {/* Prism mark — wireframe, precise from chosen reference */}
           {storeSettings.logoUrl ? <span className="flex h-[32px] w-[36px] items-center justify-center">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -62,16 +60,16 @@ export function Navbar() {
               <path d="M84.2 78.5 L113.5 104" />
             </svg>
           </span>}
-          <span className="max-w-[180px] truncate font-display font-[300] text-[22px] tracking-[0.16em] text-white leading-none">{storeSettings.name}</span>
+          <span className="max-[359px]:hidden max-w-[88px] sm:max-w-[180px] truncate font-display font-[300] text-[18px] sm:text-[22px] tracking-[0.1em] sm:tracking-[0.16em] text-white leading-none">{storeSettings.name}</span>
           {/* VAULT badge removed */}
         </Link>
 
-        <div className="hidden md:flex flex-1 max-w-[520px] mx-6">
+        <div className="hidden lg:flex min-w-0 flex-1 max-w-[520px] mx-2">
           <div className="relative w-full">
             <span className="absolute left-3.5 top-1/2 -translate-y-1/2 opacity-60">
               <IosIcon name="search" size={16} tint="white" />
             </span>
-            <input value={q} onChange={(e) => onSearch(e.target.value)} placeholder="Cari AI Gateway, ChatGPT Plus, Canva Pro..." className="w-full h-10 pl-10 pr-10 rounded-full bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-[#00E5FF]/40 focus:bg-white/[0.08] transition" />
+            <input aria-label="Cari produk Market" value={q} onChange={(e) => onSearch(e.target.value)} placeholder="Cari AI Gateway, ChatGPT Plus, Canva Pro..." className="w-full h-10 pl-10 pr-10 rounded-full bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-[#00E5FF]/40 focus:bg-white/[0.08] transition" />
             {q && (
               <button onClick={() => setQ("")} className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/15 transition" aria-label="Clear">
                 <X className="w-3.5 h-3.5 text-white/70" />
@@ -81,18 +79,18 @@ export function Navbar() {
         </div>
 
         <div className="ml-auto flex items-center gap-1 sm:gap-2">
-          <button onClick={() => setMobileSearch((v) => !v)} className="md:hidden w-9 h-9 rounded-full ax-glass flex items-center justify-center text-white/70" aria-label="Search">
+          <ServicesMenu active="market" />
+          <button onClick={() => setMobileSearch((v) => !v)} className="lg:hidden w-11 h-11 rounded-full ax-glass flex items-center justify-center text-white/70" aria-label="Cari produk" aria-expanded={mobileSearch}>
             {mobileSearch ? <X className="w-4 h-4" /> : <IosIcon name="search" size={16} tint="white" />}
           </button>
-          <nav className="hidden sm:flex items-center gap-1 text-sm text-white/70">
+          <nav className="hidden xl:flex items-center gap-1 text-sm text-white/70">
             <Link prefetch={false} href="/#katalog" className="px-3 py-2 rounded-full hover:text-white hover:bg-white/10 transition">Katalog</Link>
             <Link prefetch={false} href="/lacak-pesanan" className="px-3 py-2 rounded-full hover:text-white hover:bg-white/10 transition">Lacak Pesanan</Link>
             <Link prefetch={false} href="/artikel" className="px-3 py-2 rounded-full hover:text-white hover:bg-white/10 transition">Artikel</Link>
-            {/* 2026-10-08 (owner): 3 pill Apps/Pedia/AI disembunyikan sampai owner memutuskan. AppSwitcher TETAP ADA (tidak dihapus). */}
           </nav>
           <button
             onClick={() => setDrawer(true)}
-            className={`relative w-10 h-10 sm:w-auto sm:h-10 sm:px-4 rounded-full bg-[#00E5FF] text-[#080C1E] flex items-center justify-center gap-2 font-semibold text-sm shadow-[0_0_16px_rgba(0,229,255,0.35)] hover:shadow-[0_0_24px_rgba(0,229,255,0.45)] transition ${shake ? "animate-[cartShake_0.55s_cubic-bezier(0.34,1.56,0.64,1)]" : ""}`}
+            className={`relative w-11 h-11 sm:w-auto sm:h-11 sm:px-4 rounded-full bg-[#00E5FF] text-[#080C1E] flex items-center justify-center gap-2 font-semibold text-sm shadow-[0_0_16px_rgba(0,229,255,0.35)] hover:shadow-[0_0_24px_rgba(0,229,255,0.45)] transition ${shake ? "animate-[cartShake_0.55s_cubic-bezier(0.34,1.56,0.64,1)]" : ""}`}
             aria-label="Keranjang"
           >
             <IosIcon name="shopping-bag" size={14} tint="black" />
@@ -104,12 +102,12 @@ export function Navbar() {
         </div>
       </div>
       {mobileSearch && (
-        <div className="md:hidden px-4 pb-3">
+        <div className="lg:hidden px-4 pb-3">
           <div className="relative">
             <span className="absolute left-3.5 top-1/2 -translate-y-1/2 opacity-60">
               <IosIcon name="search" size={16} tint="white" />
             </span>
-            <input autoFocus value={q} onChange={(e) => onSearch(e.target.value)} placeholder="Cari produk..." className="w-full h-10 pl-10 pr-10 rounded-full bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-[#00E5FF]/40" />
+            <input aria-label="Cari produk Market" autoFocus value={q} onChange={(e) => onSearch(e.target.value)} placeholder="Cari produk..." className="w-full h-11 pl-10 pr-10 rounded-full bg-white/[0.06] border border-white/10 text-base text-white placeholder:text-white/40 focus:outline-none focus:border-[#00E5FF]/40" />
             {q && (
               <button onClick={() => setQ("")} className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/15 transition" aria-label="Clear">
                 <X className="w-3.5 h-3.5 text-white/70" />

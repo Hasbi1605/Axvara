@@ -6,27 +6,41 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
 import { createDatabaseAccess } from "@/lib/db-access";
+import { callPediaProxy, isPediaProvider, PEDIA_PROVIDERS } from "@/lib/pedia/proxy";
+import { applyPediaDiff } from "@/lib/pedia/sync";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
-const resyncSchema = z.object({ action: z.literal("resync") });
+const resyncSchema = z.object({ action: z.literal("resync"), supplier: z.enum(PEDIA_PROVIDERS) });
+const serviceSchema = z.object({
+  service: z.coerce.number().int().positive().safe(), name: z.string().min(1).max(300),
+  type: z.string().min(1).max(60), category: z.string().max(200),
+  rate: z.coerce.number().positive(), min: z.coerce.number().int().positive().safe(), max: z.coerce.number().int().positive().safe(),
+  refill: z.boolean().optional(), cancel: z.boolean().optional(), dripfeed: z.boolean().optional(),
+}).refine((r) => r.max >= r.min);
 
 export async function GET(request: NextRequest) {
   const admin = await requireAdmin(request);
   if (!admin) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const q = request.nextUrl.searchParams;
+  const supplier = q.get("supplier") || "";
+  if (supplier && !isPediaProvider(supplier)) return NextResponse.json({ error: "invalid_provider" }, { status: 400 });
   const search = q.get("q")?.slice(0, 80) ?? "";
   const platform = q.get("platform")?.slice(0, 30) ?? "";
   const indonesia = q.get("indonesia") === "1";
   const garansi = q.get("garansi") === "1";
   const type = q.get("type")?.slice(0, 30) ?? "";
-  const page = Math.max(1, Number(q.get("page") || 1));
+  const page = Number(q.get("page") || 1);
+  if (!Number.isSafeInteger(page) || page < 1 || page > 100000) return NextResponse.json({ error: "invalid_page" }, { status: 400 });
   const perPage = 50;
   const db = createDatabaseAccess();
   try {
   const where: string[] = [];
   const params: unknown[] = [];
+  if (supplier) { where.push(`s.supplier=?`); params.push(supplier); }
+  if (q.get("compatible") === "1") where.push(`s.type='Default' AND s.present=1 AND s.rate_idr_per_1k>0 AND s.min_qty>0 AND s.max_qty>=s.min_qty`);
+  if (["mapped", "unmapped"].includes(q.get("mapping") || "")) where.push(`${q.get("mapping") === "unmapped" ? "NOT " : ""}EXISTS (SELECT 1 FROM pedia_tiers t WHERE t.supplier=s.supplier AND t.supplier_service_id=s.service_id)`);
   if (search) {
     where.push(`(s.name LIKE ? ESCAPE '\\' OR CAST(s.service_id AS TEXT) LIKE ?)`);
     const like = `%${search.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
@@ -48,11 +62,11 @@ export async function GET(request: NextRequest) {
           FROM pedia_tiers t JOIN pedia_products p ON p.id=t.product_id
          WHERE t.supplier=s.supplier AND t.supplier_service_id=s.service_id) AS used_in
      FROM pedia_supplier_services s ${whereSql}
-     ORDER BY s.service_id LIMIT ? OFFSET ?`,
+      ORDER BY s.supplier, s.service_id LIMIT ? OFFSET ?`,
     ...params, perPage, (page - 1) * perPage,
   );
   const diff = await db.queryAll(
-    `SELECT key, value FROM store_settings WHERE key IN ('pedia_diff_last_at','pedia_diff_last_change_at')`,
+    `SELECT key, value FROM store_settings WHERE key IN ('pedia_diff_last_at','pedia_diff_last_change_at','pedia_indosmm_diff_last_at','pedia_indosmm_diff_last_change_at')`,
   );
   const diffStatus: Record<string, string> = {};
   for (const r of diff) diffStatus[String(r.key)] = String(r.value ?? "");
@@ -65,13 +79,23 @@ export async function POST(request: NextRequest) {
   if (!admin) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const parsed = resyncSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "invalid_action" }, { status: 400 });
-  const { callPsmmProxy } = await import("@/lib/pedia/proxy");
-  const res = await callPsmmProxy<Record<string, unknown>[]>("services", {}, 30_000);
-  if (!res.ok) {
-    return NextResponse.json({ error: "proxy_failed", kind: res.kind }, { status: 502 });
+  const supplier = parsed.data.supplier;
+  try {
+  let currency = "IDR";
+  if (supplier === "indosmm") {
+    const balance = await callPediaProxy<{ currency?: unknown; balance?: unknown }>(supplier, "balance", {}, 15_000);
+    if (!balance.ok) return NextResponse.json({ error: "proxy_failed", supplier, kind: balance.kind }, { status: 502 });
+    if (balance.data.currency !== "IDR" || balance.data.balance == null || !Number.isFinite(Number(balance.data.balance)) || Number(balance.data.balance) < 0) return NextResponse.json({ error: "unsupported_currency", supplier }, { status: 400 });
+    currency = balance.data.currency;
   }
-  const rows = (Array.isArray(res.data) ? res.data : []).map((r) => {
-    const o = r as Record<string, unknown>;
+  // VPS services refuses IndoSMM until rate-per-1,000 verification is configured.
+  const res = await callPediaProxy<unknown>(supplier, "services", {}, 30_000);
+  if (!res.ok) {
+    return NextResponse.json({ error: "proxy_failed", supplier, kind: res.kind }, { status: 502 });
+  }
+  const validated = z.array(serviceSchema).min(1).safeParse(res.data);
+  if (!validated.success) return NextResponse.json({ error: "invalid_catalog", supplier }, { status: 502 });
+  const rows = validated.data.map((o) => {
     return {
       service_id: Number(o.service),
       name: String(o.name ?? "").slice(0, 300),
@@ -84,18 +108,25 @@ export async function POST(request: NextRequest) {
       api_cancel: o.cancel === true ? 1 : 0,
       api_dripfeed: o.dripfeed === true ? 1 : 0,
     };
-  }).filter((r) => Number.isFinite(r.service_id));
+  });
+  if (new Set(rows.map((r) => r.service_id)).size !== rows.length) return NextResponse.json({ error: "invalid_catalog", supplier }, { status: 502 });
   // Proses dalam potongan 100 (janji PRD §9.3) agar hemat statement.
   const db = createDatabaseAccess();
-  const { applyProvidersmmDiff } = await import("@/lib/pedia/sync");
   let upserted = 0;
   const autoDisabled: { tierId: number; reason: string }[] = [];
   const errors: string[] = [];
   for (let i = 0; i < rows.length; i += 100) {
-    const r = await applyProvidersmmDiff(db, rows.slice(i, i + 100), []);
+    const r = await applyPediaDiff(db, supplier, rows.slice(i, i + 100), [], currency);
     upserted += r.upserted;
     autoDisabled.push(...r.tiersAutoDisabled);
     errors.push(...r.errors);
   }
-  return NextResponse.json({ ok: true, total: rows.length, upserted, auto_disabled: autoDisabled, errors: errors.slice(0, 3) });
+  if (!errors.length) {
+    const prefix = supplier === "providersmm" ? "pedia_diff" : "pedia_indosmm_diff";
+    for (const suffix of ["last_at", "last_change_at"]) await db.execRun(
+      `INSERT INTO store_settings (key,value,updated_at) VALUES (?,datetime('now'),datetime('now'))
+       ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`, `${prefix}_${suffix}`);
+  }
+  return NextResponse.json({ ok: !errors.length, supplier, total: rows.length, upserted, auto_disabled: autoDisabled, errors: errors.length ? ["sync_partial"] : [] }, { status: errors.length ? 500 : 200 });
+  } catch { return NextResponse.json({ error: "sync_failed", supplier }, { status: 500 }); }
 }

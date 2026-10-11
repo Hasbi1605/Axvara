@@ -23,7 +23,7 @@ export function LinkPasteHero({ suggestionsFor }: { suggestionsFor?: (d: PediaLi
       const d = detectPediaLink(value);
       setDetected(d);
       setUnknown(value.trim().length > 3 && !d);
-      setSuggestions(d && suggestionsFor ? suggestionsFor(d).slice(0, 4) : []);
+       setSuggestions(d && suggestionsFor ? suggestionsFor(d) : []);
     }, 150);
     return () => { if (timer.current) clearTimeout(timer.current); };
   }, [value, suggestionsFor]);
@@ -46,7 +46,7 @@ export function LinkPasteHero({ suggestionsFor }: { suggestionsFor?: (d: PediaLi
           ring (`outline-none` + shadow none menimpa `*:focus-visible`
           global). */}
       <style>{`.pedia-link-box:focus-within{border-color:#00E5FF!important;box-shadow:0 0 0 3px rgba(0,229,255,.35)!important}.pedia-link-box input:focus,.pedia-link-box input:focus-visible{outline:none!important;box-shadow:none!important}`}</style>
-      <div className="pedia-link-box ax-glass-card flex h-14 items-center gap-2 rounded-2xl border border-white/10 px-3 transition" style={focused ? { borderColor: "#00E5FF", boxShadow: "0 0 0 3px rgba(0,229,255,.35)" } : undefined}>
+       <div className="pedia-link-box flex min-h-14 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 transition" style={focused ? { borderColor: "#00E5FF", boxShadow: "0 0 0 3px rgba(0,229,255,.35)" } : undefined}>
          <label htmlFor="pedia-link-input" className="sr-only">Tautan profil atau konten</label>
         <input
           id="pedia-link-input"
@@ -59,20 +59,22 @@ export function LinkPasteHero({ suggestionsFor }: { suggestionsFor?: (d: PediaLi
            type="text"
            autoCapitalize="none"
            spellCheck={false}
-          autoComplete="off"
-          className="h-full flex-1 bg-transparent text-[16px] text-white placeholder:text-white/35 focus:outline-none"
+           autoComplete="off"
+           maxLength={600}
+           className="h-14 min-w-0 flex-1 bg-transparent text-[16px] text-white placeholder:text-white/35 focus:outline-none"
           style={{ boxShadow: "none" }}
         />
         <button
           onClick={paste}
-          className="h-10 shrink-0 rounded-xl bg-[#00E5FF] px-4 text-sm font-bold text-[#070a1e] transition active:scale-[0.98]"
+           type="button"
+           className="h-11 shrink-0 rounded-xl bg-[#00E5FF] px-3 text-sm font-bold text-[#070a1e] transition active:scale-[0.98]"
         >
           Tempel
         </button>
       </div>
       <div aria-live="polite" className="mt-2">
         {detected && (
-          <div className="animate-[fadeInUp_200ms_var(--ease-out)]">
+           <div>
              <span className="inline-flex flex-wrap items-center gap-1.5 text-[13px] font-medium text-white/80">
               {PEDIA_PLATFORM_LABEL[detected.platform]} · {PEDIA_TARGET_KIND_LABEL[detected.targetKind]}
               {detected.displayUser && <span className="text-white/60">{detected.displayUser}</span>}
@@ -83,11 +85,11 @@ export function LinkPasteHero({ suggestionsFor }: { suggestionsFor?: (d: PediaLi
                 {suggestions.map((s) => (
                   <a
                     key={s.slug}
-                    href={`/pedia/o/${s.slug}?t=${encodeURIComponent(detected.normalized)}`}
-                    className="ax-glass-card flex items-center justify-between rounded-2xl p-3 text-left transition hover:border-[var(--px-violet)]"
+                     href={`/pedia/o/${s.slug}?t=${encodeURIComponent(s.target)}`}
+                     className="flex min-h-11 items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-3 text-left transition hover:border-[#00E5FF]/40"
                   >
-                    <span>
-                      <span className="block text-sm font-semibold text-white">{s.name}</span>
+                     <span className="min-w-0">
+                       <span className="block break-words text-sm font-semibold text-white">{s.name}</span>
                       <span className="block text-xs text-white/55">
                         {s.minPrice != null ? `mulai ${formatRp(s.minPrice)}` : "Lihat harga"}
                       </span>
@@ -97,10 +99,11 @@ export function LinkPasteHero({ suggestionsFor }: { suggestionsFor?: (d: PediaLi
                 ))}
               </div>
             )}
+            {suggestionsFor && suggestions.length === 0 && <p className="mt-2 text-xs text-white/70">Belum ada layanan untuk jenis link ini. Coba cari nama layanan atau platform melalui katalog.</p>}
           </div>
         )}
         {unknown && (
-           <p className="mt-2 text-[13px] text-white/70">Format tautan belum dikenali. Pilih layanan melalui katalog di atas.</p>
+            <p className="mt-2 text-[13px] text-white/70">Format tautan belum dikenali. Gunakan link lengkap profil atau konten, atau cari layanan melalui katalog.</p>
         )}
       </div>
     </div>

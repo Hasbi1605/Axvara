@@ -1,13 +1,9 @@
-// src/components/pedia/PediaNavbar.tsx — Navbar Pedia + AppSwitcher (PD-16).
-// ax-glass-strong sticky 64px (sama pusat), lockup kiri (mobile: PEDIA saja),
-// AppSwitcher tengah (desktop) / kanan ringkas (mobile). Tanpa pill kanan —
-// pesanan sudah ada di bottom bar (2026-10-08 owner).
 import Link from "next/link";
-import { AppSwitcher } from "./AppSwitcher";
+import { ServicesMenu } from "@/components/shared/ServicesMenu";
 
 export function PediaNavbar() {
   return (
-    <header className="ax-glass-strong sticky top-0 z-40 overflow-hidden border-b border-white/10" style={{ overflowX: "clip" }}>
+    <header className="ax-glass-strong sticky top-0 z-40 border-b border-white/10">
       <div className="mx-auto flex h-[64px] max-w-[1280px] items-center gap-2 px-4 sm:gap-4 sm:px-6 lg:px-8">
         <Link prefetch={false} href="/pedia" className="flex min-w-0 shrink-0 items-center gap-3" aria-label="Axvara Pedia — beranda">
           {/* 2026-10-08 (owner): mark SVG trace dari logo Muse (mirip 91% IoU
@@ -27,15 +23,13 @@ export function PediaNavbar() {
             PEDIA
           </span>
         </Link>
-        <div className="hidden flex-1 justify-center md:flex">
-          <AppSwitcher active="pedia" />
-        </div>
-        {/* 2026-10-08 (owner): tanpa pill kanan — pesanan sudah ada di
-           bottom bar (tab Pesanan). Mobile: AppSwitcher ringkas. */}
-        <div className="ml-auto flex min-w-0 items-center gap-2 md:ml-0">
-          <div className="min-w-0 md:hidden">
-            <AppSwitcher active="pedia" compact />
-          </div>
+        <nav aria-label="Navigasi Pedia" className="ml-auto hidden items-center gap-5 text-sm text-white/70 lg:flex">
+          <Link prefetch={false} href="/pedia/layanan" className="hover:text-white">Katalog</Link>
+          <Link prefetch={false} href="/pedia/lacak" className="hover:text-white">Lacak pesanan</Link>
+          <Link prefetch={false} href="/pedia/bantuan" className="hover:text-white">Bantuan</Link>
+        </nav>
+        <div className="ml-auto min-w-0 lg:ml-0">
+          <ServicesMenu active="pedia" />
         </div>
       </div>
     </header>

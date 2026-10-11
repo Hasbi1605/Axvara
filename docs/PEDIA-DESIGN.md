@@ -1,6 +1,6 @@
 # PEDIA-DESIGN.md — Panduan Desain & Style AXVARA PEDIA
 
-> **Status:** diimplementasikan 2026-10-11, diverifikasi lokal, **pending deployment**. Pasangan `docs/PEDIA-PRD.md`. Overhaul mengikuti working-tree, bukan klaim UI baru sudah live.
+> **Status working-tree 2026-10-12:** implementasi lokal, **BELUM deployed** di Pages/proxy, tidak ada flag diubah. Audit source/diff bukan klaim QA diff terkini lulus. Readiness supplier, currency/rate-unit dan kurasi data awal produksi masih pending. Pasangan `docs/PEDIA-PRD.md` + `issue/planning.md`.
 > **Induk:** `docs/DESIGN.md` (design system AXVARA). Dokumen ini HANYA mencatat
 > tambahan & pengecualian untuk Pedia. Semua yang tidak disebut di sini mengikuti
 > `DESIGN.md` (token warna, glass, font Inter + Space Grotesk via `next/font`,
@@ -12,10 +12,10 @@
 ## 1. Prinsip desain Pedia
 
 1. **Satu keluarga, beda kamar.** Pembeli harus langsung merasa "ini Axvara" (midnight, kaca, Prism, cyan), tapi tahu ini ruangan lain (aksen violet, wordmark PEDIA).
-2. **Katalog dahulu.** Layanan → Paket & jumlah → Tujuan & persyaratan → Kontak & konfirmasi. Harga server diperiksa eksplisit sebelum lanjut pembayaran.
+2. **Kurasi dahulu, katalog tetap lengkap.** Pilihan AXVARA → semua/cari/platform → paket/jumlah kosong → tujuan/persyaratan → kontak/konfirmasi. Satu CTA memeriksa quote otomatis; nominal berubah/kredit meminta persetujuan sebelum order.
 3. **Bahasa manusia, bukan bahasa panel.** Tidak ada HQ/LQ/R30/drip-feed/ID supplier; refill dijelaskan bersyarat, bukan diganti klaim garansi menyeluruh.
 4. **Kejujuran terlihat.** Catatan kualitas, refill bersyarat dan kedua ETA memakai data tingkat; kosong dijelaskan, bukan diisi janji generik. Kredit bukan refund tunai, deteksi format bukan verifikasi akun.
-5. **Ringan di HP murah.** Kartu berulang outline tanpa backdrop blur; tidak menambahkan animasi berat dari wireframe awal.
+5. **Ringan di HP murah.** Kartu compact dengan gradien permukaan tipis tanpa backdrop blur; glow hero statis dan typewriter reduced-motion/tab-hidden aware. Target performa tetap perlu diukur, bukan diasumsikan lulus.
 
 ---
 
@@ -64,7 +64,7 @@ Agent eksekusi WAJIB membuat logo final sendiri dari konsep 2.1 menggunakan **Mu
 
 ### 3.1 Token Identitas Awal (Referensi, Bukan Semua Aktif)
 
-UI overhaul memakai midnight polos, border/aksi/fokus cyan dan permukaan netral. Token violet/gradien yang masih ada tidak berarti harus dipasang ke tiap pilihan. Hero glow sudah dihapus 2026-10-08; wordmark putih, bukan gradien.
+Working-tree memakai midnight, border/aksi/fokus cyan dan gold untuk tanpa refill. Token violet/gradien lama tetap referensi aset/status, bukan wajib untuk pilihan. Riwayat hero glow dihapus 2026-10-08 dipertahankan; **superseded lokal 2026-10-12** oleh glow cyan statis di hero saja. Wordmark tetap putih.
 
 | Token | Nilai | Penggunaan |
 |---|---|---|
@@ -95,7 +95,7 @@ Token toko pusat tetap berlaku: latar `--ax-bg #080C1E`, teks, border, status (`
 
 ### 3.3 Pilihan Tingkat Saat Ini
 
-Hemat/Standar/Premium memakai gaya netral yang sama; pilihan aktif border cyan `#00E5FF/60` + `bg-white/[0.06]`, input radio `accent-[#00E5FF]`. Tidak ada border gradien atau badge "Termurah", "Paling dipilih", "Akun Indonesia aktif" yang diturunkan otomatis dari nama tingkat. Catatan kualitas berasal dari `label_note`, refill dari `refill_days`, kedua ETA dari field tingkat; field kosong ditulis "Detail kualitas belum tersedia" / "Belum ditentukan". Standar tetap default bila tersedia, bukan bukti popularitas.
+Hemat/Standar/Premium memakai permukaan gradien putih tipis yang sama, radius 16px; pilihan aktif border cyan `#00E5FF/60` + glow ringan, radio native accent cyan. Tier/quantity awal **null**, tidak ada default Standar. Refill cyan, Tanpa refill gold dengan teks; bukan garansi menyeluruh. Catatan label_note, masa refill_days, ETA mulai/selesai dari field tingkat; kosong Detail kualitas belum tersedia/Belum ditentukan. Harga awal tiap tier disertai quantity cocok sebelum pilihan, bukan total pesanan otomatis. Tidak ada badge Termurah/Paling dipilih/asumsi kualitas dari nama tier.
 
 ---
 
@@ -122,11 +122,11 @@ Angka dinamis (total, progres, ticker) memakai `font-variant-numeric: tabular-nu
 
 | Breakpoint | Lebar konten | Grid platform | Grid produk | Halaman order |
 |---|---|---|---|---|
-| < 640 | 100% − 32 px | Filter tombol wrap | 1 kolom | Form + ringkasan inline + CTA fixed bawah |
+| < 640 | 100% − 32 px | Filter tombol wrap berikon | 1 kolom <360px, 2 mulai 360px | Form + ringkasan inline + CTA fixed bawah |
 | 640–1024 | 100% − 32 px | Filter tombol wrap | 2 kolom | Form + ringkasan inline + CTA fixed bawah |
 | ≥ 1024 | max 1120 px, padding 16 px | Filter tombol wrap | 3 kolom | Form fleksibel + rail 320 px sticky `top: 80px` |
 
-- Radius kartu/input/CTA saat ini 12 px; filter/jumlah 8 px, bukan pill kualitas.
+- Radius kartu/tier 16px, hero 24px, input/CTA 12px; filter/jumlah 8px, bukan pill kualitas.
 - Beranda: padding atas 32/48 px, jarak section 40 px; form order gap 32/40 px, kelompok dipisah garis tipis.
 - Safe area: sticky bar & bottom nav memakai `env(safe-area-inset-bottom)`.
 
@@ -134,23 +134,29 @@ Angka dinamis (total, progres, ticker) memakai `font-variant-numeric: tabular-nu
 
 ## 6. Halaman
 
-### 6.0 Implementasi Saat Ini (2026-10-11, Lokal Terverifikasi, Pending Deployment)
+### 6.0 Implementasi Saat Ini (Working-Tree 2026-10-12, Belum Deployed)
 
-**Beranda:** judul "Layanan media sosial" (30/36 px, semibold), penjelasan bandingkan paket/jumlah/ketentuan. Katalog lebih dahulu: cari nama, tombol Semua/platform yang punya produk (`aria-pressed`), jumlah hasil, grid seluruh produk publik (tidak dibatasi featured/delapan). Tidak cocok → Reset pencarian; katalog kosong → pesan layanan belum tersedia. Berikutnya "Sudah punya tautan?", Cara pemesanan dan FAQ lima item. Tanpa trust strip, laris, badge hardcoded atau ticker. `/layanan` mengelompokkan semua produk per platform; `/p/[platform]` filter jenis wrap dengan `aria-pressed`.
+**Beranda:** hero glass/glow cyan statis, judul Layanan media sosial (clamp 1.5rem/5vw/3.25rem) + `Typewriter` suffix Harga terjangkau / Mudah dipesan / Pilihan terkurasi; deskripsi Followers, likes, dan views. Pilih paket, masukkan link, lalu bayar dengan QRIS. Promo Market sebelum katalog. Pencarian + Cari lewat link terlipat + filter berikon (`aria-pressed`). Awal maks 8 featured Pilihan AXVARA; tanpa featured fallback 6 Jelajahi layanan dengan catatan bukan peringkat penjualan. Tampilkan semua/cari/filter menjangkau seluruh produk AXVARA terbit, bukan supplier mentah. Reset/empty state tetap; cara pesan + FAQ lima item. Tanpa trust strip/laris/ticker. `/layanan` semua produk/platform; `/p/[platform]` filter jenis dan grid compact sama. Kurasi data produksi belum disetujui hanya karena featured telah diimplementasikan.
 
-**Kartu bersama:** `catalogCard()` di `PlatformGrid.tsx` memasangkan harga terendah dengan jumlah dan tingkat dari entri harga yang sama (seri harga → jumlah terkecil). Kartu outline `border-white/15 bg-white/[0.02]`, radius 12 px, padding 20 px, ikon platform lokal 24 px dalam lingkaran 44 px, nama membungkus, harga tabular, "Untuk N · paket Tingkat", "Lihat paket →" cyan. Tanpa badge asal akun/garansi gabungan antar-tier, tagline atau deskripsi. `tagline` masih di payload; `description_md` hanya editor admin, tidak dikirim katalog atau dirender ke pembeli.
+**Kartu bersama:** catalogCard memasangkan harga terendah/jumlah/tier/**refill** dari entri yang sama, quantity wajib paket produk; seri harga → jumlah terkecil. Radius 16px, padding 12/16px, gradien putih 6%→1.5%, ikon 20px di kotak 32px, nama membungkus, tagline opsional maksimal 2 baris, harga tabular dan Untuk N · paket Tingkat. Refill cyan/Tanpa refill gold, Lihat paket pada baris min-height 44px. Hover border/glow ringan dan lift motion-safe, tanpa backdrop blur berulang. Tidak ada badge asal akun/laris/refill tier lain. Tagline juga tampil di detail/order; description_md adalah field katalog publik opsional, tampil di detail/order sebagai teks literal escaped dengan newline dipertahankan (`whitespace-pre-line`), bukan Markdown/HTML. Tidak ditambahi link-helper teknis.
 
 **Tempel tautan:** input 56 px berlabel aksesibel, teks 16 px, autocapitalize/spellcheck mati; satu ring luar cyan, tidak ada ring input ganda. Deteksi 150ms, teks platform/jenis/username tanpa centang verifikasi; "Format tautan dikenali; akun atau konten belum diverifikasi." Saran memakai produk cocok dari seluruh katalog dengan target ternormalisasi. Clipboard API dengan fallback fokus/hint tetap ada.
 
-**Order:** tiga kelompok, bukan lima langkah. 1. Paket & jumlah: baris tingkat vertikal dengan radio native, catatan kualitas, refill bersyarat, harga untuk jumlah terpilih, ETA mulai dan selesai. Jumlah radio native wrap, paket tidak valid untuk tier disabled. Hanya paket konfigurasi; tidak ada Lainnya/stepper/jumlah bebas (orders API menolak non-paket). Ganti tier yang tidak mendukung jumlah → paket valid pertama + notice penyesuaian, bukan max bebas. 2. Tujuan & persyaratan: label link sesuai platform/jenis, format saja yang diperiksa, checklist + bantuan teks; tutorial gambar lama belum dirender. 3. Kontak & konfirmasi: WA/email berlabel, kredit terlipat, S&K, **Periksa harga**.
+**Order:** tiga kelompok. Paket & jumlah memakai radio native, tier/quantity null, summary Belum dipilih; harga awal tiap tier disertai quantity, ETA mulai/selesai dan refill faktual. Jumlah disabled sampai tier dipilih; ganti tier dengan quantity tak tersedia → null, bukan pilih otomatis. Paket-only, tanpa stepper/Lainnya. Tujuan & persyaratan: label/hint kontekstual, format saja diperiksa, checklist/help teks (tutorial gambar belum dirender). Kontak & konfirmasi: WA/email wajib, kredit terlipat, S&K; tidak ada tombol Periksa harga.
 
-**Quote & pembayaran:** Harga paket adalah preview tanpa kredit; tombol Periksa harga memvalidasi semua field/checklist dan meminta quote, bukan membuat order. Total terkonfirmasi/kredit dari server tampil sebelum CTA **Lanjut ke pembayaran** aktif. Perubahan input membuang quote; quote usang diabaikan. Sebelum percobaan pertama quote client >29 menit meminta pemeriksaan ulang. Percobaan order mengunci field dan Periksa harga; ref mencegah klik ganda desktop/mobile. Respons ambigu/network/5xx mempertahankan data + token untuk retry yang sama; 4xx membuka kunci, quote dibuang. Ini tidak menyatakan seluruh efek samping orders API atomik.
+**Quote & pembayaran:** satu CTA per viewport Lanjut ke pembayaran memvalidasi lalu meminta quote otomatis. Total sama/ tanpa kredit → langsung order; total berubah atau input kredit → berhenti sebelum order, tampilkan nominal/payable server + **Setujui & lanjut ke pembayaran**. Perubahan input membuang quote/respons usang; >29 menit refresh sebelum order pertama. In-flight mencegah klik ganda; setelah order dicoba field terkunci. Ambigu/network/5xx/408/429 mempertahankan token/kontak; 4xx lain membuka kunci/quote dibuang. Pagar client bukan jaminan atomisitas seluruh efek samping orders.
 
-**Ringkasan & state:** rail desktop 320 px sticky `top-20`, mobile ringkasan inline dan CTA fixed midnight solid + safe area (bukan total kedua). Error inline `role=alert`, fokus ke kontrol pertama invalid; feedback quote/penyesuaian `role=status`. Order ditutup: notice "Pemesanan belum tersedia" sebelum judul order dan pada beranda, paket/harga tetap terlihat, kelompok kontak termasuk kredit/S&K/Periksa harga tidak dirender, lanjut pembayaran disabled. Bottom nav tersembunyi pada order. Refill dan ETA bersyarat per tier, tidak menjanjikan "Mulai ±5 menit"/garansi seluruh katalog; kredit partial/cancel bukan pengembalian tunai.
+**Ringkasan & state:** rail desktop 320px sticky top-20, mobile ringkasan inline + fixed CTA/safe area; consent memberi padding konten lebih besar. Error role=alert/fokus pertama invalid, consent role=status. Order tutup pesan dekat CTA disabled saja, bukan banner beranda/sebelum judul; kontak/kredit/S&K tidak dirender, paket/harga tetap dilihat. Bottom nav tersembunyi di order. ETA/refill per tier, tanpa janji instan/garansi universal; partial/cancel = Kode Kredit bukan tunai.
 
-**Chrome:** navbar Pedia existing (mark putih, desktop AXVARA PEDIA/mobile PEDIA, AppSwitcher, tanpa pill Lacak); bottom nav 4 tab gaya pusat, aktif cyan. Footer ringkas Pedia dengan Lacak pesanan/Bantuan/Ketentuan/tautan keluar Toko aplikasi AXVARA. Footer market, kategori Apps dan newsletter tidak dirender.
+**Chrome:** PediaNavbar mark putih/AXVARA PEDIA desktop/PEDIA mobile; navigasi desktop Katalog/Lacak/Bantuan + **ServicesMenu** Layanan AXVARA di kedua navbar, hanya Market/Pedia. AppSwitcher dihapus; menu disclosure native Tab/Enter + panah/Home/End, Escape focus-return, outside click/blur dismiss; mobile panel fixed, desktop absolute. Bottom nav 4 tab aktif cyan. Satu **Footer** storefront di kedua layout: brand ekosistem tanpa garansi/aktivasi universal, sosial/layanan/kategori Market, bantuan/ketentuan/pelacakan kedua host, grup WA/Bot Market/newsletter; lintas host absolut dari site.ts. Market CommunityBar = CrossServicePromo Pedia + Bot Telegram Market; promo sebaliknya di Pedia, UTM cross_promo. URL grup WA/Bot terpusat, /link grup tetap tersedia dan kartu Pedia tetap tersembunyi. Bukan checkout lintas layanan.
 
-**Admin:** `PediaManager.tsx` lima panel dengan tab wrap. Produk berupa daftar ringkas dengan cari/platform/kesiapan Siap dijual/Belum siap/Nonaktif, bukan editor seluruh produk sekaligus. Edit membuka satu produk; form produk/tingkat disimpan terpisah, tier terlipat dan pratinjau harga/margin tersimpan sesudah save, aksi Simpan produk sticky. Assignment supplier memilih produk dan tier existing, tidak otomatis mengaktifkan tier. Recovery status Indonesia + detail error, konfirmasi kirim ulang dua checkbox; kredit manual/pengaturan/resync memakai ConfirmDialog. Feedback loading/saving/error/sukses + Muat ulang; resync parsial dan `reprice_failed` dijelaskan jujur: edit mungkin sudah tersimpan, tidak ada rollback atomik. Pengaturan default bukan bulk update tier; riwayat saldo, bukan saldo live header. Field tagline/deskripsi editable tidak berarti tampil pembeli. Kontrak lengkap/readiness/batas settings: `PEDIA-PRD.md` §10.
+**Admin:** `PediaManager.tsx` lima panel dengan tab wrap. Produk berupa daftar ringkas dengan cari/platform/kesiapan Siap dijual/Belum siap/Nonaktif, bukan editor seluruh produk sekaligus. Edit membuka satu produk; form produk/tingkat disimpan terpisah, tier terlipat dan pratinjau harga/margin tersimpan sesudah save, aksi Simpan produk sticky. Preview storefront tersimpan terpenuhi memakai `ProductCard` aktual + detail/pesanan `OrderClient` embedded dalam mode preview aman. Assignment supplier memilih produk dan tier existing, tidak otomatis mengaktifkan tier. Recovery status Indonesia + detail error, konfirmasi kirim ulang dua checkbox; kredit manual/pengaturan/resync memakai ConfirmDialog. Feedback loading/saving/error/sukses + Muat ulang; resync parsial dan `reprice_failed` dijelaskan jujur: edit mungkin sudah tersimpan, tidak ada rollback atomik. Pengaturan default bukan bulk update tier; riwayat saldo, bukan saldo live header. Tagline/deskripsi editable adalah copy publik sesuai kontrak kartu/detail di atas. Kontrak lengkap/readiness/batas settings: `PEDIA-PRD.md` §10.
+
+Tambahan lokal dua-provider: buat produk/tingkat nonaktif, filter supplier/kompatibel/mapped, mapping pasangan provider+service (cadangan dibersihkan saat pindah provider), API refill vs masa kurasi terpisah, status Terbit/Unggulan/Siap diproses terpisah. Preview menggunakan **data tersimpan**, termasuk draf privat dan tingkat nonaktif dengan paket layak. Kartu aktual diikuti disclosure detail/pesanan aktual; navigasi/pemesanan disabled, interaksi preview tidak memanggil API dan kontak/kredit/S&K pemesanan tidak diminta. CTA mobile **inline, bukan fixed**, tautan kembali tidak dirender; ini reuse komponen, bukan klaim seluruh shell admin piksel-identik halaman publik. Save/reload memperbarui preview; input belum disimpan tidak ikut, unsaved live preview di luar scope. Pengaturan memiliki saldo live/cache/error/pricing/sync tiap provider (bukan header global); bukti gate aktual supplier masih pending. Recovery sesudah add ambigu hanya rekonsiliasi ID/provider asal; Kirim ulang/Batalkan+kredit disabled setelah submit pernah dicoba/ID ada. Kalimat lama tanpa create/saldo live di atas superseded oleh tambahan ini.
+
+**Typewriter:** suffix block min-height 1.2em; typing 85ms/delete 45ms, jeda baca 2.2s, teks visual aria-hidden dan seluruh frasa sr-only. Reduced-motion statis Harga terjangkau, caret motion-safe; timer pause tab-hidden, resume visibilitychange. Ini perilaku source, bukan bukti CLS/LCP/motion mobile terukur.
+
+**Superseded:** spesifikasi overhaul 2026-10-11 (semua produk langsung, default Standar/jumlah kedua, Periksa harga terpisah, footer mini, AppSwitcher, kartu outline lama) diganti §6.0 ini. Riwayat QA/aset/wireframe tetap disimpan, bukan bukti release diff terkini.
 
 ### Wireframe Awal (Historis 2026-10-07, Tidak Berlaku untuk Overhaul)
 
@@ -285,7 +291,7 @@ Mobile
 
 ## 7. Katalog Komponen Awal (Historis 2026-10-07)
 
-Tabel ini rancangan awal, bukan daftar komponen yang seluruhnya aktif. UI overhaul mengikuti §6.0; QuantityChips/TierSelector/TierCompareSheet bukan komponen terpisah yang dirender order-client saat ini. OrderTicker tidak dirender beranda; ProductCard sekarang tanpa tagline/badge; AppSwitcher pusat/LaunchCards disimpan.
+Tabel ini rancangan awal, bukan seluruh komponen aktif. §6.0 mengalahkan tabel: QuantityChips/TierSelector/TierCompareSheet tidak terpisah, ticker tidak dirender, ProductCard menampilkan tagline opsional dan hanya badge refill paket yang sesuai, AppSwitcher **dihapus**, LaunchCards.saved tetap arsip. Komponen baru aktual ServicesMenu/CrossServicePromo/Typewriter.
 
 | Komponen | Spesifikasi kunci |
 |---|---|
@@ -315,7 +321,7 @@ Ikon platform: SVG lokal di `public/icons/platforms/*.svg` (sumber Simple Icons,
 
 ## 8. Motion Awal (Historis)
 
-Animasi hero/angka/indikator/step/ticker di tabel awal bukan kontrak overhaul. Implementasi saat ini mempertahankan transisi warna kartu/kontrol dan fade hasil deteksi; jangan menambah motion dari wireframe arsip. Reduced-motion global tetap berlaku.
+Tabel motion awal bukan kontrak current. Lokal sekarang typewriter §6.0, glow hero statis, transisi warna/border/glow kartu dan lift hover motion-safe; fade hasil deteksi lama sudah dihapus. Tidak ada animasi angka/step/ticker atau border conic berulang. Reduced-motion global tetap.
 
 Token dari `DESIGN.md` §6 (`--ease-apple`, `--ease-out`, durasi 180/300/420 ms).
 
@@ -337,7 +343,7 @@ Token dari `DESIGN.md` §6 (`--ease-apple`, `--ease-out`, durasi 180/300/420 ms)
 
 ## 9. Promosi di axvara.tech — Arsip `LaunchCards`
 
-**Historis/disimpan sejak 2026-10-08:** beranda pusat memakai `CommunityBar` (Grup WA + Bot Telegram); `LaunchCards.saved.tsx` tidak diimpor. AppSwitcher navbar pusat dan kartu Pedia `/link` disembunyikan. §9.1–9.2 di bawah adalah desain tersimpan, bukan tampilan saat ini atau permintaan untuk mengaktifkannya. Footer Pedia sendiri tidak memakai footer market.
+**Historis/disimpan sejak 2026-10-08:** CommunityBar Grup WA+Bot, AppSwitcher tersembunyi pusat/footer Pedia sendiri adalah riwayat **superseded lokal** oleh promo Pedia+Bot, ServicesMenu dan Footer bersama §6.0. LaunchCards.saved tidak diimpor, kartu Pedia /link tetap tersembunyi. §9.1–9.2 arsip, bukan permintaan mengaktifkan AI atau border conic.
 
 ### 9.1 Struktur
 ```
@@ -386,9 +392,9 @@ Mobile (2 kartu bertumpuk, tinggi ±96 px)          Desktop (2 kolom, tinggi 120
 ### 9.3 Titik promosi lain
 | Lokasi | Bentuk |
 |---|---|
-| Navbar axvara.tech | `AppSwitcher` disimpan/tidak dirender sejak 2026-10-08 |
+| Navbar axvara.tech | ServicesMenu lokal; keputusan AppSwitcher disimpan 2026-10-08 superseded (file dihapus) |
 | `/link` (bio IG) | DISEMBUNYIKAN 2026-10-08 (owner) — kode 1 baris disimpan di `link-bio-client.tsx`, kembalikan saat owner memutuskan |
-| Footer "Jelajah" | Link "Axvara Pedia" + badge "Baru" (30 hari) |
+| Footer bersama | Market/Pedia + kedua bantuan/ketentuan/lacak, tanpa badge Baru/garansi universal |
 | PopupBanner | Banner peluncuran (aset admin) 7 hari pertama, hanya beranda |
 | Daily Promo Digest | 1 baris + link (flag) |
 
@@ -412,12 +418,12 @@ Mobile (2 kartu bertumpuk, tinggi ±96 px)          Desktop (2 kolom, tinggi 120
 ### 10.2 Teks kunci
 | Lokasi | Teks |
 |---|---|
-| Hero | "Layanan media sosial" / "Pilih followers, likes, atau views berdasarkan platform. Bandingkan paket, jumlah, dan ketentuannya sebelum memesan." |
+| Hero | Layanan media sosial + Harga terjangkau / Mudah dipesan / Pilihan terkurasi; Followers, likes, dan views. Pilih paket, masukkan link, lalu bayar dengan QRIS. |
 | Placeholder input | "Tempel link profil atau postingan…" |
 | Trust strip | Tidak dirender; estimasi/refill mengikuti tingkat, kredit bukan refund tunai |
-| Quote | "Periksa harga" → "Harga terkonfirmasi: RpX. Periksa ringkasan, lalu lanjutkan ke pembayaran." |
+| Quote/consent | CTA memeriksa harga otomatis; Harga paket berubah dari RpX menjadi RpY / Total pembayaran RpZ. Tekan Setujui untuk menyetujui nominal ini. |
 | Bayar | "Lanjut ke pembayaran"; saat request "Membuka pembayaran..." |
-| Order tutup | "Pemesanan belum tersedia"; "Paket dan harga dapat dilihat. Data kontak tidak diperlukan selama pemesanan ditutup." |
+| Order tutup | Dekat CTA: Pemesanan belum tersedia. Paket dapat dilihat; kontak tidak diperlukan. |
 | Format tautan | "Format tautan dikenali; akun atau konten belum diverifikasi." |
 | Checklist belum lengkap | "Centang dulu poin ini supaya pesanan bisa diproses." |
 | Link ganda | "Link ini masih diproses di pesanan AXP-7K2QD. Tunggu selesai dulu, ya." |
@@ -440,7 +446,7 @@ Gaya: kalimat pendek, "kamu", tanpa tanda seru beruntun, tanpa huruf kapital sem
 | Jaringan lambat | Komponen `NavigationProgress` existing (bar cyan + pil "Koneksi lambat") |
 | Produk/tingkat/paket tidak valid | Tier tanpa harga valid dan produk tanpa paket tersedia tidak dikirim katalog; paket tidak valid pada tingkat terpilih disabled, bukan harga Rp0 |
 | Order belum dibuka (`PEDIA_ORDERS_ENABLED=false`) | Notice katalog-only, kontak/kredit/S&K tidak dirender, CTA lanjut disabled |
-| Error quote/order 4xx | Pesan inline, quote dibuang; Periksa harga ulang sebelum lanjut, bukan menerima harga baru diam-diam |
+| Error quote/order 4xx | Pesan inline, quote dibuang/kunci dibuka kecuali 408/429; CTA quote ulang, consent nominal berubah/kredit, bukan membayar diam-diam |
 | Respons order ambigu | Data terkunci, pesan lanjutkan dengan data/token sama; CTA dapat retry setelah request selesai |
 | Error admin | Feedback inline + Muat ulang; reprice_failed = perubahan tersimpan tetapi harga gagal diperbarui, bukan rollback |
 
@@ -459,12 +465,12 @@ Gaya: kalimat pendek, "kamu", tanpa tanda seru beruntun, tanpa huruf kapital sem
 
 ## 13. Checklist QA visual (Obscura, sebelum flag dinyalakan)
 
-Status overhaul 2026-10-11: lokal terverifikasi, pending deployment; daftar ini tidak menyatakan QA produksi atau Lighthouse sudah lulus. Hasil rinci dicatat pelaksana overhaul di CHANGELOG.
+Status 2026-10-12: source/diff lokal telah diaudit, BELUM deployed, secret/flag tidak diubah atau diverifikasi, tanpa order supplier nyata. Preview storefront tersimpan terpenuhi; unsaved live preview di luar scope. Hasil final aktual MAIN setelah preview: `npx vitest run --run` 2288 test pada 184 file pass, `tsc` pass, `build:pages` selesai exit 0 (log temp `pedia-final-build.log`); lint sebelumnya pass dengan warning existing. Obscura route nyata home/Pedia/admin dan CSS 200; screenshot fixture hydrated desktop/mobile diperiksa, termasuk preview tersimpan dengan komponen aktual. Batas renderer radio/SVG/fixed tetap dicatat; ini bukan bukti produksi penuh atau kelulusan seluruh daftar/gate live berikut. QA overhaul 2026-10-11 tetap historis. Tidak ada klaim Lighthouse/gate supplier/live-data; bukti currency/rate-unit live dan kurasi awal produksi/approval owner pending.
 
-1. Beranda Pedia mobile/desktop: katalog-first, seluruh layanan, cari/platform/reset, pasangan harga-jumlah-tier, footer Pedia; tanpa laris/trust strip/ticker.
+1. Beranda compact/featured/fallback/all/cari/platform/reset, harga-jumlah-tier-refill sepadan, typewriter/reduced-motion/tab-hidden, Footer bersama; tanpa laris/trust strip/ticker.
 2. Tempel link IG post → chip deteksi + saran tampil.
-3. Halaman order: tiga kelompok/radio native, ganti jumlah/tingkat + notice, validasi/fokus, Periksa harga lalu Lanjut, quote invalidation/expiry dan retry token sama; order ditutup tanpa kontak. Tidak ada compare sheet/jumlah bebas.
+3. Order tiga kelompok/radio native/null selection, invalid tier quantity reset null, fokus/validasi, satu CTA/nominal-change+kredit consent, expiry/invalidation/408/429/ambigu retry token sama; tutup hanya pesan CTA tanpa kontak. Tanpa compare sheet/jumlah bebas.
 4. Status pesanan (mock): menunggu bayar, berjalan 62%, selesai sebagian + kartu kredit, needs_check.
 5. Admin: daftar/readiness/filter, edit terpisah, assignment supplier, recovery/konfirmasi, kredit/settings, loading/error/empty/partial failure jujur.
-6. Navbar Pedia/AppSwitcher/bottom nav dan footer contextual; pusat tetap CommunityBar, bukan LaunchCards.
+6. ServicesMenu kedua host keyboard/Escape/focus/overflow, promo dua arah/UTM, Footer newsletter/kategori/bantuan/pelacakan absolut dan spacing nav/CTA; Market regression. AppSwitcher dihapus, LaunchCards arsip.
 7. Target performa/aksesibilitas tetap mengikuti PRD; jangan menyatakan skor Lighthouse baru tanpa pengukuran.

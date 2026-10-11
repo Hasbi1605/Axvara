@@ -114,6 +114,8 @@ describe("admin Pedia M2", () => {
     const { createDatabaseAccess } = await import("@/lib/db-access");
     const db = createDatabaseAccess();
     const tier = await db.queryFirst(`SELECT id FROM pedia_tiers LIMIT 1`);
+    await db.execRun(`INSERT INTO pedia_supplier_services (supplier,service_id,name,category,type,rate_idr_per_1k,min_qty,max_qty,present)
+      SELECT supplier,supplier_service_id,'Fixture','Instagram','Default',1000,1,100000,1 FROM pedia_tiers WHERE id=?`, Number(tier?.id));
     await db.execRun(`UPDATE pedia_tiers SET auto_disabled_reason='margin' WHERE id=?`, Number(tier?.id));
     const r = await PUT(await authedRequest("http://x/", {
       method: "PUT", headers: { "content-type": "application/json" },

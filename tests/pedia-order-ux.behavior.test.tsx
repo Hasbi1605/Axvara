@@ -2,11 +2,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { OrderClient } from "@/app/pedia/o/[slug]/order-client";
+import { renderToStaticMarkup } from "react-dom/server";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
 
 const product: PediaCatalogProduct = {
   slug: "followers-instagram", name: "Followers Instagram", platform: "instagram", metric: "followers", target_kind: "profile",
-  tagline: "HYPE", packages: [100, 250, 500], step: 10, is_featured: 1, min_price: 2000,
+  tagline: "Followers untuk profil publik", packages: [100, 250, 500], step: 10, is_featured: 1, min_price: 2000,
   checklist: [{ id: "public", label: "Akun publik", help: "Jangan ubah username selama proses." }],
   tiers: [
     { id: 1, tier: "hemat", label_note: "Campuran", refill_days: 0, eta_start: "5 menit", eta_finish: "1 hari", prices: { "100": 2000 }, min_qty: 100, max_qty: 100 },
@@ -24,164 +25,236 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 function mount(enabled = true, target = "https://instagram.com/customer") {
   return render(<OrderClient product={product} initialTarget={target} ordersEnabled={enabled} />);
 }
+function select() {
+  fireEvent.click(screen.getByRole("radio", { name: /^standar/i }));
+  fireEvent.click(screen.getByRole("radio", { name: "250" }));
+}
 function complete() {
+  select();
   fireEvent.change(screen.getByLabelText("Nomor WhatsApp"), { target: { value: "081234567890" } });
   fireEvent.change(screen.getByLabelText("Email"), { target: { value: "buyer@example.com" } });
   fireEvent.click(screen.getByRole("checkbox", { name: /Akun publik/ }));
   fireEvent.click(screen.getByRole("checkbox", { name: /Saya setuju/ }));
 }
+function proceed() { fireEvent.click(screen.getAllByRole("button", { name: "Lanjut ke pembayaran" })[0]); }
+function consent() { fireEvent.click(screen.getAllByRole("button", { name: "Setujui & lanjut ke pembayaran" })[0]); }
 async function getQuote() {
-  fireEvent.click(screen.getByRole("button", { name: "Periksa harga" }));
-  await screen.findByText(/Harga terkonfirmasi:/);
+  proceed();
+  await screen.findAllByText(/Total pembayaran/);
 }
 
 describe("Pedia order UX", () => {
-  it("groups the form into three sections with native radios and no hype or blanket guarantee", () => {
-    mount();
-    expect(screen.getAllByRole("region").map((r) => r.getAttribute("aria-labelledby"))).toEqual(["pedia-package-heading", "pedia-target-heading", "pedia-contact-heading"]);
-    expect(screen.getByRole("heading", { name: "1. Paket & jumlah" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "2. Tujuan & persyaratan" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "3. Kontak & konfirmasi" })).toBeTruthy();
-    expect(screen.getAllByRole("radio").every((r) => r.tagName === "INPUT")).toBe(true);
-    expect(document.body.textContent).not.toMatch(/HYPE|Paling dipilih|Garansi/i);
-    expect(document.body.textContent).toContain("Refill 30 hari, sesuai ketentuan");
-    expect(document.body.textContent).toContain("Jumlah bebas belum tersedia");
-    expect(screen.getAllByRole("button", { name: "Lanjut ke pembayaran" }).every((b) => (b as HTMLButtonElement).disabled)).toBe(true);
+  it("renders saved product copy as escaped text with preserved lines, including SSR", () => {
+    const description = 'Followers untuk profil Instagram publik.\nRefill sesuai paket.\n<script>alert("test")</script>';
+    const described = { ...product, description_md: description };
+    const { container } = render(<OrderClient product={described} initialTarget="https://instagram.com/customer" ordersEnabled={false} />);
+    expect(screen.getByText(product.tagline!)).toBeTruthy();
+    const copy = screen.getByText(/Followers untuk profil Instagram publik\./);
+    expect(copy.textContent).toBe(description);
+    expect(copy.className).toContain("whitespace-pre-line");
+    expect(container.querySelector("script")).toBeNull();
+    const html = renderToStaticMarkup(<OrderClient product={described} initialTarget="" ordersEnabled={false} />);
+    expect(html).toContain(product.tagline);
+    expect(html).toContain('&lt;script&gt;alert(&quot;test&quot;)&lt;/script&gt;');
+    expect(html).not.toContain("<script>");
+    expect(document.getElementById("pedia-target-help")?.textContent).toBe("Masukkan link profil Instagram. Pastikan akun tidak privat.");
+    expect(screen.getByText("Format link sesuai: Instagram, profil.")).toBeTruthy();
   });
 
-  it("announces unavailable orders before the title, keeps package preview, omits all contact collection", () => {
+  it("omits empty product copy and supports older fixtures without a description", () => {
+    const { container } = render(<OrderClient product={{ ...product, tagline: "  ", description_md: "\n  " }} initialTarget="" ordersEnabled={false} />);
+    expect(container.querySelector("h1")?.nextElementSibling?.tagName).toBe("DIV");
+    expect(document.body.textContent).not.toContain("Pilih paket dan jumlah, masukkan link tujuan");
+  });
+  it("starts without selected tier, quantity or total, with honest per-tier initial prices", () => {
+    mount();
+    expect(screen.getAllByRole("region").map((r) => r.getAttribute("aria-labelledby"))).toEqual(["pedia-package-heading", "pedia-target-heading", "pedia-contact-heading"]);
+    expect(screen.getAllByRole("radio").every((r) => r.tagName === "INPUT" && !(r as HTMLInputElement).checked)).toBe(true);
+    expect(screen.getByText("Mulai Rp2.000")).toBeTruthy();
+    expect(screen.getByText("Mulai Rp3.000")).toBeTruthy();
+    expect(screen.getAllByText("Untuk 100")).toHaveLength(2);
+    expect(document.body.textContent).not.toMatch(/HYPE|Paling dipilih|Garansi|Rp0|Paket tidak tersedia/i);
+    expect(document.body.textContent).toContain("Belum dipilih");
+    expect(screen.getByText("Refill 30 hari, sesuai ketentuan").className).toContain("text-[#00E5FF]");
+    expect(screen.getByText("Tanpa refill").className).toContain("text-[#FFB800]");
+    expect(screen.queryByRole("button", { name: "Periksa harga" })).toBeNull();
+    proceed();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(screen.getByRole("radio", { name: /^hemat/i }));
+  });
+
+  it("keeps closed status near disabled CTA, package preview and no contact collection", () => {
     mount(false);
-    const notice = screen.getByRole("status");
-    expect(notice.textContent).toContain("Pemesanan belum tersedia");
-    expect(notice.compareDocumentPosition(screen.getByRole("heading", { level: 1 })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(document.body.textContent).toContain("Pemesanan belum tersedia");
     expect(screen.queryByLabelText("Nomor WhatsApp")).toBeNull();
     expect(screen.queryByLabelText("Email")).toBeNull();
     expect(screen.queryByLabelText("Kode kredit")).toBeNull();
-    fireEvent.click(screen.getByRole("radio", { name: "500" }));
-    expect((screen.getByRole("radio", { name: "500" }) as HTMLInputElement).checked).toBe(true);
+    select();
+    expect((screen.getByRole("radio", { name: "250" }) as HTMLInputElement).checked).toBe(true);
+    const buttons = screen.getAllByRole("button", { name: "Lanjut ke pembayaran" });
+    expect(buttons.every((b) => (b as HTMLButtonElement).disabled && b.previousElementSibling?.textContent?.includes("Pemesanan belum tersedia"))).toBe(true);
+    proceed();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("adjusts quantity to an available package on tier change and reports it", () => {
-    mount();
-    expect((screen.getByRole("radio", { name: "250" }) as HTMLInputElement).checked).toBe(true);
+  it("clears an incompatible quantity on tier change instead of silently choosing another", () => {
+    mount(); select();
     fireEvent.click(screen.getByRole("radio", { name: /^hemat/i }));
-    expect((screen.getByRole("radio", { name: "100" }) as HTMLInputElement).checked).toBe(true);
+    expect(screen.getAllByRole("radio").filter((r) => r.getAttribute("name") === "pedia-quantity").every((r) => !(r as HTMLInputElement).checked)).toBe(true);
     expect((screen.getByRole("radio", { name: "250" }) as HTMLInputElement).disabled).toBe(true);
-    expect(screen.getByRole("status").textContent).toContain("Jumlah disesuaikan ke 100");
-    expect(document.body.textContent).not.toContain("Rp0");
+    expect(document.body.textContent).toContain("Belum dipilih");
   });
 
   it.each(["https://tiktok.com/@buyer", "https://instagram.com/p/ABC", "not-a-link"])("rejects wrong platform/kind or unrecognized target %s before quote", (target) => {
-    mount(true, target); complete();
-    fireEvent.click(screen.getByRole("button", { name: "Periksa harga" }));
+    mount(true, target); complete(); proceed();
     expect(screen.getByRole("alert").textContent).toContain("link profil Instagram");
     expect(fetchMock).not.toHaveBeenCalled();
     expect(document.activeElement?.id).toBe("pedia-target");
     expect(document.body.textContent).not.toContain("Format link sesuai:");
   });
 
-  it("requires valid contact and requirements before quote with visible labels and inline errors", () => {
-    mount();
+  it("requires valid contact and all requirements before quote", () => {
+    mount(); select();
     fireEvent.change(screen.getByLabelText("Nomor WhatsApp"), { target: { value: "invalid" } });
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "bad-email" } });
-    fireEvent.click(screen.getByRole("button", { name: "Periksa harga" }));
+    proceed();
     expect(screen.getAllByRole("alert")).toHaveLength(4);
     expect(screen.getByLabelText("Nomor WhatsApp").getAttribute("aria-invalid")).toBe("true");
-    expect(screen.getByLabelText("Email").getAttribute("aria-invalid")).toBe("true");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("uses server price and credit, never submits an order while checking price", async () => {
+  it("quotes then creates the order in one action when price is unchanged", async () => {
     mount(); complete();
-    fetchMock.mockResolvedValue(reply({ quote_token: "signed", total: 7300, payable: 6300 }));
-    await getQuote();
-    expect(screen.getByRole("status").textContent).toContain("Rp6.300");
-    expect(document.body.textContent).toContain("Kredit digunakan");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0][0]).toBe("/api/pedia/quote");
+    fetchMock.mockResolvedValueOnce(reply({ quote_token: "same", total: 7000, payable: 7000 }));
+    fetchMock.mockRejectedValueOnce(new Error("fixture stops navigation"));
+    proceed();
+    await screen.findByRole("alert");
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(["/api/pedia/quote", "/api/pedia/orders"]);
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ customer_wa: "081234567890", customer_email: "buyer@example.com", quote_token: "same" });
   });
 
-  it("ignores an obsolete delayed quote and prevents payment after quantity changes", async () => {
+  it("requires explicit changed-price consent and displays server credit before creating an order", async () => {
+    mount(); complete();
+    fetchMock.mockResolvedValueOnce(reply({ quote_token: "signed", total: 7300, payable: 6300 }));
+    await getQuote();
+    expect(screen.getAllByRole("status").every((s) => s.textContent?.includes("Harga paket berubah dari Rp7.000 menjadi Rp7.300"))).toBe(true);
+    expect(document.body.textContent).toContain("Rp6.300");
+    expect(document.body.textContent).toContain("Kredit digunakan");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    fetchMock.mockRejectedValueOnce(new Error("fixture"));
+    consent();
+    await screen.findByRole("alert");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("asks to confirm optional credit even if gross price has not changed", async () => {
+    mount(); complete();
+    fireEvent.change(screen.getByLabelText("Kode kredit"), { target: { value: "PDK-TEST" } });
+    fetchMock.mockResolvedValueOnce(reply({ quote_token: "credit", total: 7000, payable: 0 }));
+    await getQuote();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(screen.getAllByRole("status")[0].textContent).toContain("Total pembayaran Rp0");
+  });
+
+  it("ignores an obsolete delayed quote and prevents duplicate quote requests", async () => {
     let resolve!: (value: unknown) => void;
     fetchMock.mockImplementation(() => new Promise((r) => { resolve = r; }));
     mount(); complete();
-    fireEvent.click(screen.getByRole("button", { name: "Periksa harga" }));
-    expect(screen.getAllByRole("button", { name: "Lanjut ke pembayaran" }).every((b) => (b as HTMLButtonElement).disabled)).toBe(true);
+    const buttons = screen.getAllByRole("button", { name: "Lanjut ke pembayaran" });
+    fireEvent.click(buttons[0]); fireEvent.click(buttons[1]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole("radio", { name: "500" }));
     await act(async () => { resolve(reply({ quote_token: "old", total: 1, payable: 1 })); });
-    expect(screen.queryByText(/Harga terkonfirmasi:/)).toBeNull();
-    expect(screen.queryByText("Rp1")).toBeNull();
-    expect(screen.getAllByRole("button", { name: "Lanjut ke pembayaran" }).every((b) => (b as HTMLButtonElement).disabled)).toBe(true);
+    expect(screen.queryByText(/Total pembayaran/)).toBeNull();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it.each(["Link profil Instagram", "Email", "Nomor WhatsApp", "Kode kredit"])("invalidates a ready quote when %s changes", async (label) => {
+  it.each(["Link profil Instagram", "Email", "Nomor WhatsApp", "Kode kredit"])("invalidates consent when %s changes", async (label) => {
     mount(); complete(); await getQuote();
     fireEvent.change(screen.getByLabelText(label), { target: { value: label === "Email" ? "other@example.com" : "changed" } });
-    expect(screen.queryByText(/Harga terkonfirmasi:/)).toBeNull();
-    expect(screen.getAllByRole("button", { name: "Lanjut ke pembayaran" }).every((b) => (b as HTMLButtonElement).disabled)).toBe(true);
+    expect(screen.queryByText(/Total pembayaran/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Setujui & lanjut ke pembayaran" })).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("shows quote errors inline without an order request and allows retry", async () => {
+  it("shows quote errors inline without creating an order and allows retry", async () => {
     mount(); complete();
     fetchMock.mockResolvedValueOnce(reply({ message: "Layanan sedang tidak tersedia." }, 409));
-    fireEvent.click(screen.getByRole("button", { name: "Periksa harga" }));
+    proceed();
     expect((await screen.findByRole("alert")).textContent).toContain("Layanan sedang tidak tersedia");
     await getQuote();
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("invalidates the confirmed quote on tier or requirements changes", async () => {
+  it("invalidates consent on tier, requirements or agreement changes", async () => {
     mount(); complete(); await getQuote();
     fireEvent.click(screen.getByRole("radio", { name: /^hemat/i }));
-    expect(screen.queryByText(/Harga terkonfirmasi:/)).toBeNull();
+    expect(screen.queryByText(/Total pembayaran/)).toBeNull();
+    fireEvent.click(screen.getByRole("radio", { name: "100" }));
     await getQuote();
     fireEvent.click(screen.getByRole("checkbox", { name: /Akun publik/ }));
-    expect(screen.queryByText(/Harga terkonfirmasi:/)).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Periksa harga" }));
+    expect(screen.queryByText(/Total pembayaran/)).toBeNull();
+    proceed();
     expect(document.activeElement).toBe(screen.getByRole("checkbox", { name: /Akun publik/ }));
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    fireEvent.click(screen.getByRole("checkbox", { name: /Akun publik/ }));
+    await getQuote();
+    fireEvent.click(screen.getByRole("checkbox", { name: /Saya setuju/ }));
+    expect(screen.queryByText(/Total pembayaran/)).toBeNull();
   });
 
   it("requires a fresh quote after a definitive order rejection", async () => {
     mount(); complete(); await getQuote();
     fetchMock.mockResolvedValueOnce(reply({ message: "Harga berubah. Periksa ulang." }, 409));
-    fireEvent.click(screen.getAllByRole("button", { name: "Lanjut ke pembayaran" })[0]);
+    consent();
     expect((await screen.findByRole("alert")).textContent).toContain("Harga berubah");
-    expect(screen.queryByText(/Harga terkonfirmasi:/)).toBeNull();
+    expect(screen.queryByText(/Total pembayaran/)).toBeNull();
     expect((screen.getByLabelText("Email").closest("fieldset") as HTMLFieldSetElement).disabled).toBe(false);
-    expect(screen.getAllByRole("button", { name: "Lanjut ke pembayaran" }).every((b) => (b as HTMLButtonElement).disabled)).toBe(true);
+    await getQuote();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
-  it("rejects malformed quote prices", async () => {
-    mount(); complete(); fetchMock.mockResolvedValue(reply({ quote_token: "bad", total: 0, payable: -1 }));
-    fireEvent.click(screen.getByRole("button", { name: "Periksa harga" }));
+  it.each([{ quote_token: "bad", total: 0, payable: -1 }, { quote_token: "", total: 7000, payable: 7000 }])("rejects malformed quote %j", async (data) => {
+    mount(); complete(); fetchMock.mockResolvedValue(reply(data)); proceed();
     expect((await screen.findByRole("alert")).textContent).toContain("Respons harga tidak valid");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("locks order inputs and blocks duplicate clicks, then retries an uncertain response with the same token", async () => {
+  it.each([503, 408, 429])("locks inputs and retries uncertain %s with the same token and contacts, even past expiry", async (status) => {
     mount(); complete(); await getQuote();
     let reject!: (reason: Error) => void;
     fetchMock.mockImplementationOnce(() => new Promise((_, r) => { reject = r; }));
-    const buttons = screen.getAllByRole("button", { name: "Lanjut ke pembayaran" });
+    const buttons = screen.getAllByRole("button", { name: "Setujui & lanjut ke pembayaran" });
     fireEvent.click(buttons[0]); fireEvent.click(buttons[1]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect((screen.getByLabelText("Email").closest("fieldset") as HTMLFieldSetElement).disabled).toBe(true);
     await act(async () => { reject(new Error("network lost")); });
     expect((await screen.findByRole("alert")).textContent).toContain("data yang sama");
-    fetchMock.mockResolvedValueOnce(reply({ error: "Unavailable" }, 503));
-    fireEvent.click(screen.getAllByRole("button", { name: "Lanjut ke pembayaran" })[0]);
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 30 * 60_000);
+    fetchMock.mockResolvedValueOnce(reply({ error: "Unavailable" }, status));
+    proceed();
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Unavailable"));
     expect(fetchMock.mock.calls[1][1].body).toBe(fetchMock.mock.calls[2][1].body);
-    expect(fetchMock.mock.calls[2][0]).toBe("/api/pedia/orders");
+    expect((screen.getByLabelText("Email").closest("fieldset") as HTMLFieldSetElement).disabled).toBe(true);
   });
 
-  it("does not submit an expired quote", async () => {
+  it("preserves same token when order JSON is malformed or success code is missing", async () => {
+    mount(); complete(); await getQuote();
+    fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => { throw new Error("truncated JSON"); } });
+    consent(); await screen.findByRole("alert");
+    fetchMock.mockResolvedValueOnce(reply({ code: "bad" }));
+    proceed();
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Respons pesanan belum lengkap"));
+    expect(fetchMock.mock.calls[1][1].body).toBe(fetchMock.mock.calls[2][1].body);
+  });
+
+  it("requotes expired consent and asks again before creating the order", async () => {
     mount(); complete(); await getQuote();
     vi.spyOn(Date, "now").mockReturnValue(Date.now() + 30 * 60_000);
-    fireEvent.click(screen.getAllByRole("button", { name: "Lanjut ke pembayaran" })[0]);
-    expect(screen.getByRole("alert").textContent).toContain("kedaluwarsa");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    fetchMock.mockResolvedValueOnce(reply({ quote_token: "fresh", total: 7400, payable: 7400 }));
+    consent();
+    await screen.findAllByText(/Rp7.400/);
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(["/api/pedia/quote", "/api/pedia/quote"]);
+    expect(screen.getAllByRole("button", { name: "Setujui & lanjut ke pembayaran" })).toHaveLength(2);
   });
 });

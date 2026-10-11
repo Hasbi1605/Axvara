@@ -8,6 +8,7 @@ import { createDatabaseAccess } from "@/lib/db-access";
 import { detectPediaLink } from "@/lib/pedia/link";
 import { computePediaPrice } from "@/lib/pedia/pricing";
 import { createPediaQuoteToken } from "@/lib/pedia/quote";
+import { isPediaProvider } from "@/lib/pedia/proxy";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -49,9 +50,10 @@ export async function POST(req: NextRequest) {
     tier_id, product_id,
   ).catch(() => null);
   if (!tier) return NextResponse.json({ error: "Tingkat kualitas tidak tersedia." }, { status: 404 });
+  if (!isPediaProvider(tier.supplier)) return NextResponse.json({ error: "Layanan sedang tidak tersedia." }, { status: 409 });
   const live = await db.queryFirst(
-    `SELECT * FROM pedia_supplier_services WHERE supplier='providersmm' AND service_id=? AND present=1`,
-    Number(tier.supplier_service_id),
+    `SELECT * FROM pedia_supplier_services WHERE supplier=? AND service_id=? AND present=1 AND type='Default' AND rate_idr_per_1k>0`,
+    tier.supplier, Number(tier.supplier_service_id),
   ).catch(() => null);
   if (!live) return NextResponse.json({ error: "Layanan sedang tidak tersedia." }, { status: 409 });
 
@@ -78,7 +80,7 @@ export async function POST(req: NextRequest) {
   const minQty = Number(live.min_qty) || 1;
   const maxQty = Number(live.max_qty) || quantity;
   const step = Number(product.step) || 1;
-  if (quantity < minQty || quantity > maxQty) {
+  if (!Number.isSafeInteger(minQty) || !Number.isSafeInteger(maxQty) || minQty <= 0 || maxQty < minQty || quantity < minQty || quantity > maxQty) {
     return NextResponse.json({
       error: "quantity_out_of_range",
       message: `Minimal ${minQty}, maksimal ${maxQty} untuk kualitas ini.`,
@@ -100,6 +102,7 @@ export async function POST(req: NextRequest) {
     minOrderRp,
   });
   const unitPrice = total / quantity;
+  if (!Number.isFinite(total) || total <= 0) return NextResponse.json({ error: "Layanan sedang tidak tersedia." }, { status: 409 });
 
   // Kredit (terlipat "Punya kode kredit?" — PD-11). Sisa kredit yang tidak
   // habis tetap tersimpan (hanya dipakai sebesar total).
@@ -123,9 +126,11 @@ export async function POST(req: NextRequest) {
     target_normalized: detected.normalized,
     unit_price: unitPrice, total,
     credit_code_hash: creditHash, credit_used: creditUsed,
-    supplier: "providersmm",
+    supplier: tier.supplier,
     supplier_service_id: Number(tier.supplier_service_id),
     supplier_rate_snapshot: Number(live.rate_idr_per_1k),
+    refill_days: Number(tier.refill_days) || 0,
+    min_profit_rp: Number(tier.min_profit_rp) || 0,
   });
   return NextResponse.json({
     ok: true, quote_token: token, quote_id: quoteId,

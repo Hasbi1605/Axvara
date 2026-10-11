@@ -1,6 +1,6 @@
 # PEDIA-PRD.md — AXVARA PEDIA (Toko SMM Kurasi)
 
-> **Status overhaul UX:** diimplementasikan 2026-10-11, diverifikasi lokal, **pending deployment**. Dokumen mengikuti working-tree saat ini, bukan klaim UI baru sudah live di produksi.
+> **Status working-tree 2026-10-12:** implementasi lokal dua provider + ekosistem/UX, **BELUM deployed** di Pages/proxy; tidak ada flag yang diubah. Audit docs membaca diff/source, bukan bukti seluruh QA terkini sudah lulus. Kredensial/readiness supplier, currency/rate-unit dan kurasi awal data produksi masih pending.
 > **Riwayat rollout:** katalog awal dibuka 2026-10-08 di `pedia.axvara.tech`, dengan `PEDIA_ENABLED=true`, order/dispatch ditutup. Overhaul ini tidak mengubah flag atau membuktikan ulang kondisi produksi. AC lama §13 adalah bukti historis, bukan verifikasi deployment baru.
 > **Pasangan dokumen:** `docs/PEDIA-DESIGN.md` (panduan desain & style — WAJIB dibaca bersama).
 > **Pemilik produk:** owner AXVARA. **Eksekutor:** agent implementasi.
@@ -13,12 +13,15 @@
 AXVARA PEDIA adalah toko layanan media sosial (followers, likes, views, dsb.)
 untuk **orang awam**, tampil di **`pedia.axvara.tech`**, memakai mesin Axvara
 yang sudah ada (QRIS DANA, D1, admin, notif Telegram, email Resend). Supplier
-tunggal fase 1: **providersmm.id** (API PerfectPanel v2). Dari 576 layanan
-supplier, admin **mengkurasi ±20 produk** dengan nama ramah, 3 tingkat kualitas
-(Hemat / Standar / Premium), dan paket jumlah tetap.
+internal: **ProviderSMM + IndoSMM** (API PerfectPanel v2), dengan identitas
+gabungan provider/service. Rencana awal supplier tunggal dan snapshot 576 layanan
+2026-10-07 adalah historis, bukan jumlah katalog current atau bukti IndoSMM siap.
+Admin mengkurasi produk AXVARA dengan tingkat Hemat/Standar/Premium bila relevan
+dan paket jumlah tetap; tidak otomatis menerbitkan katalog supplier mentah.
 
-UI saat ini **katalog-first**: hero "Layanan media sosial", semua produk katalog
-publik, cari nama dan filter platform. Tempel tautan menjadi bantuan sekunder;
+UI lokal saat ini **compact dan kurasi-first**: hero "Layanan media sosial" +
+suffix faktual typewriter, hingga 8 featured editorial (fallback 6 Jelajahi layanan),
+Tampilkan semua/cari/filter menjangkau seluruh produk terbit. Cari lewat link terlipat;
 sistem hanya mengenali format, platform & jenis target, bukan keberadaan akun.
 Slogan "Tempel link, sisanya beres." adalah konsep awal/arsip aset, bukan hero saat ini.
 Posisi harga: **setara panel, kemudahan setara ritel.**
@@ -30,11 +33,11 @@ Posisi harga: **setara panel, kemudahan setara ritel.**
 | # | Keputusan | Nilai |
 |---|---|---|
 | D1 | Domain | `pedia.axvara.tech` (project Pages yang SAMA, dipetakan middleware ke route `/pedia/*`) |
-| D2 | Aksen sub-brand | Violet `#8B5CF6`, gradien signature cyan → violet (detail `PEDIA-DESIGN.md`) |
+| D2 | Aksen sub-brand | Midnight/cyan/gold mengikuti Market; violet/gradien awal tetap referensi aset/status, bukan warna pilihan tingkat saat ini |
 | D3 | Login | **Fase 2** (dikunci owner 2026-10-07). Fase 1 = order tanpa login (tamu). Setelah Fase 2, tamu TETAP bisa order; member mendapat benefit §4 Fase 2 |
 | D4 | Refund partial/cancel fase 1 | **Kode Kredit Pedia** otomatis (dikirim email + tampil di halaman pesanan), bisa dipakai di checkout Pedia berikutnya |
 | D5 | Margin | Per kelompok produk (§7), bukan rata |
-| D6 | Supplier | providersmm.id saja; skema siap multi-supplier |
+| D6 | Supplier | ProviderSMM + IndoSMM lokal; tanpa failover otomatis. Keputusan supplier tunggal 2026-10-07 superseded; gate IDR/unit/credentials tetap pending |
 | D7 | API key supplier | HANYA di VPS proxy (`wr-proxy.axvara.tech`), tidak pernah di Pages |
 | D8 | Pembayaran | QRIS dinamis DANA (engine existing). Metode manual tidak ditawarkan |
 | D9 | Bahasa | Indonesia, sapaan "kamu" |
@@ -76,13 +79,13 @@ Implikasi desain: mobile-first, tanpa jargon, maksimal 3 keputusan sebelum bayar
 - Tempel link → deteksi platform & jenis target → rekomendasi layanan.
 - Produk kurasi dengan tingkat Hemat/Standar/Premium sesuai ketersediaan dan **paket jumlah terkonfigurasi saja**. Jumlah bebas ditunda: quote bisa menghitungnya, tetapi orders API menolak jumlah tanpa harga paket tersimpan.
 - Checkout tamu: No. WA + email (wajib) + centang S&K → QRIS DANA.
-- Kirim order ke supplier otomatis setelah lunas (exactly-once, §9.4).
+- Dispatch setelah lunas dengan CAS submitting + dedupe durable proxy (§9.4), bukan jaminan exactly-once end-to-end.
 - Status & progres live, tombol Refill bila garansi berlaku.
 - Partial/cancel → Kode Kredit Pedia otomatis + email.
 - Sinkron harga & status layanan supplier (diff VPS), nonaktif otomatis bila margin habis.
 - Admin tab **Pedia**: kurasi, harga, antrean, kredit, saldo supplier.
 - Notif Telegram admin: `Lunas — Pedia`, saldo supplier menipis, order perlu dicek.
-- Promosi pusat tidak otomatis dibuka: `LaunchCards.saved.tsx` disimpan, `CommunityBar` tetap aktif; AppSwitcher navbar pusat dan kartu `/link` disembunyikan sejak 2026-10-08. AppSwitcher Pedia tetap ada.
+- Integrasi lokal: CommunityBar Market = CrossServicePromo Pedia + Bot Telegram Market, promo Market di Pedia, ServicesMenu di kedua navbar, satu Footer bersama. AppSwitcher dihapus; LaunchCards.saved tetap arsip dan kartu Pedia `/link` tetap tersembunyi. Ini bukan pembukaan flag/deployment.
 
 ### Fase 1b (setelah 2 minggu stabil)
 - Komentar custom (tipe `Custom Comments`, textarea 1 komentar per baris).
@@ -108,7 +111,7 @@ Implikasi desain: mobile-first, tanpa jargon, maksimal 3 keputusan sebelum bayar
 axvara.tech  ──klik kartu "Axvara Pedia"──▶  pedia.axvara.tech
    │
    ▼
-[Beranda] Semua layanan ──▶ cari nama / filter platform (atau tempel tautan di bawah katalog)
+[Beranda] Pilihan AXVARA / Jelajahi layanan ──▶ semua / cari / platform (Cari lewat link opsional)
    │
    ▼
 [Pilih layanan] kartu: Likes / Views / Komentar*  (*fase 1b)
@@ -117,7 +120,8 @@ axvara.tech  ──klik kartu "Axvara Pedia"──▶  pedia.axvara.tech
 [Halaman order]
    1 Paket & jumlah (radio native) → 2 Tujuan & persyaratan (link + checklist)
    3 Kontak & konfirmasi (WA + email + kredit opsional + S&K)
-   [Periksa harga] → total server terkonfirmasi → [Lanjut ke pembayaran]
+   Tier & jumlah awal kosong → [Lanjut ke pembayaran] → quote server otomatis
+   Nominal berubah / kode kredit → [Setujui & lanjut ke pembayaran] → order
    │
    ▼
 [/pesanan/AXP-…]  QRIS 15 menit  ──lunas (QRIS Hook)──▶  "Diproses" ──▶ progres live ──▶ "Selesai"
@@ -127,15 +131,15 @@ axvara.tech  ──klik kartu "Axvara Pedia"──▶  pedia.axvara.tech
 ### 5.2 Aturan alur
 - Link boleh ditempel di beranda ATAU di halaman order; keduanya memakai parser yang sama (§9.6).
 - Jika link tidak dikenali → tetap boleh lanjut via pilihan platform manual; field target menampilkan contoh format layanan terpilih.
-- Jumlah default = paket valid kedua pada tingkat awal, fallback paket valid pertama. Tingkat awal = Standar bila tersedia, fallback tingkat pertama; tidak ada badge "Paling dipilih" atau klaim konversi terukur.
-- Tingkat tanpa harga untuk jumlah terpilih menampilkan "Jumlah tidak tersedia"; beralih ke tingkat itu memilih paket valid pertamanya dan mengumumkan penyesuaian, bukan clamp ke max bebas.
-- **Periksa harga** memvalidasi paket, format/platform/jenis target, semua checklist, WA, email dan S&K; error inline + fokus ke kontrol pertama yang gagal. Deteksi target tidak memverifikasi akun atau konten.
-- **Lanjut ke pembayaran** nonaktif sebelum quote valid. Total paket lokal belum memperhitungkan kredit; ringkasan quote menampilkan total terkonfirmasi dan kredit digunakan. Nominal QRIS baru tampil pada halaman pembayaran.
+- Tier dan jumlah awal **null**, tanpa radio terpilih atau total order. Ringkasan Belum dipilih; tiap tier tetap punya harga awal + jumlah yang sepadan. Tidak ada default Standar atau badge Paling dipilih.
+- Paket quantity belum dapat dipilih sampai tier dipilih. Beralih tier mempertahankan quantity hanya jika tersedia, selain itu reset null; tidak memilih paket atau clamp diam-diam.
+- Satu CTA per viewport **Lanjut ke pembayaran** memvalidasi paket, format/platform/jenis target, checklist, WA/email/S&K, lalu meminta quote otomatis. Error inline + fokus pertama invalid; deteksi format bukan verifikasi akun/konten.
+- Total paket lokal preview tanpa kredit. Quote yang sama dengan preview tanpa kredit dapat langsung membuat order; **nominal berubah atau input kredit** menghentikan proses sebelum order, menampilkan total/payable server dan CTA **Setujui & lanjut ke pembayaran**. Nominal QRIS termasuk kode unik baru tampil pada halaman pembayaran. Tidak ada tombol Periksa harga terpisah.
 - Perubahan tingkat/jumlah/target/kredit/kontak/checklist/S&K membatalkan quote; request quote dibatalkan dan respons usang diabaikan. Client meminta quote baru setelah 29 menit sebelum percobaan order pertama (token server 30 menit).
-- Klik order pertama mengunci data dan mencegah klik ganda dari CTA desktop/mobile. Timeout/network/5xx atau respons sukses tidak lengkap mempertahankan token + kontak untuk retry pesanan yang sama; 4xx membuang quote dan membuka kunci. Ini pagar client, bukan perubahan atomisitas backend orders.
-- `PEDIA_ORDERS_ENABLED=false`: notice pada beranda dan sebelum judul order; paket/harga tetap bisa dilihat, kontak/email/kredit/S&K dan Periksa harga tidak dirender, CTA lanjut disabled.
+- Klik order pertama mengunci data dan mencegah klik ganda dari CTA desktop/mobile. Timeout/network/5xx/408/429 atau respons sukses tidak lengkap mempertahankan token + kontak untuk retry pesanan yang sama; 4xx lain membuang quote dan membuka kunci. Ini pagar client, bukan atomisitas penuh backend order/kredit/invoice.
+- `PEDIA_ORDERS_ENABLED=false`: pesan singkat dekat CTA disabled; paket/harga bisa dilihat, kontak/email/kredit/S&K tidak dirender. Tidak ada banner order tutup pada beranda atau sebelum judul order.
 - Kode Kredit dapat dimasukkan di halaman order (field terlipat "Punya kode kredit?").
-- Total = 0 setelah kredit → order lunas tanpa QRIS (`payment_method = 'pedia_credit'`).
+- Payable = 0 setelah kredit → order lunas tanpa invoice QRIS; kolom payment_method pada INSERT saat ini tetap qris, bukan pedia_credit.
 
 ### 5.3 Status pesanan (bahasa pembeli)
 
@@ -158,12 +162,12 @@ axvara.tech  ──klik kartu "Axvara Pedia"──▶  pedia.axvara.tech
 Kode `PD-xx`. Semua wajib fase 1 kecuali ditandai.
 
 ### Storefront
-- **PD-01** Beranda "Layanan media sosial": semua produk katalog publik (bukan delapan unggulan), cari nama + filter platform tersedia, jumlah hasil/reset pencarian, kemudian tempel tautan, cara pemesanan dan FAQ. Tidak ada laris, trust strip atau ticker.
+- **PD-01** Beranda compact: hero/typewriter faktual → promo Market → cari/Cari lewat link terlipat/platform → hingga 8 featured Pilihan AXVARA (tanpa featured fallback 6 Jelajahi layanan) → Tampilkan semua → cara pesan/FAQ. Cari/filter seluruh produk publik. Tidak ada laris/trust strip/ticker; featured editorial bukan bukti kurasi data produksi sudah disetujui.
 - **PD-02** Parser link client+server (§9.6) → platform, jenis target (`profile|post|video|reel|live|channel|playlist`), target ternormalisasi, username tampilan.
 - **PD-03** Halaman per platform `/p/[platform]`: produk dikelompokkan per jenis (Followers, Likes, Views…).
 - **PD-04** Halaman order `/o/[slug]` satu halaman + sticky bar total (spesifikasi `PEDIA-DESIGN.md` §6).
 - **PD-05** Tingkat yang lolos katalog tampil sebagai baris radio native, termasuk bila hanya satu. Catatan kualitas, refill bersyarat, estimasi mulai/selesai dan harga untuk jumlah yang sama; tanpa badge kualitas hardcoded.
-- **PD-06** Jumlah: radio native paket admin, hanya paket berharga valid untuk tingkat terpilih bisa dipilih. Tidak ada input bebas; harga paket lokal adalah preview, dikonfirmasi terpisah oleh quote server.
+- **PD-06** Tier/jumlah awal null; radio native paket admin, hanya paket valid untuk tier terpilih. Tidak ada input bebas; quote server melalui satu CTA, persetujuan eksplisit jika nominal berubah/kredit.
 - **PD-07** Estimasi waktu mulai & selesai per tingkat (field admin, opsional diisi dari Monitor providersmm).
 - **PD-08** Checklist pra-bayar per produk + teks bantuan di kelompok Tujuan & persyaratan. Field gambar lama dipertahankan admin, tetapi tutorial bergambar belum dirender di order-client saat ini.
 - **PD-09** Guard link ganda: tolak order baru untuk (`target_normalized`, `product_id`) yang masih aktif (`queued…in_progress`) → pesan "Link ini masih diproses pesanan AXP-…, tunggu selesai dulu ya."
@@ -173,30 +177,30 @@ Kode `PD-xx`. Semua wajib fase 1 kecuali ditandai.
 - **PD-13** Lacak `/lacak`: kode + No. WA/email (pakai verifikasi `POST /api/orders/lookup` existing, diperluas untuk order Pedia).
 - **PD-14** Bantuan & Ketentuan Pedia (`/bantuan`, `/ketentuan`): S&K khusus SMM (§11).
 - **PD-15 (tidak dirender)** Endpoint/komponen ticker lama tetap ada, tetapi beranda tidak meminta atau menampilkannya pada overhaul 2026-10-11. Klaim laris tidak digunakan.
-- **PD-16** Navbar Pedia dengan App Switcher (Apps · Pedia · AI "Segera") + bottom nav mobile (Beranda · Layanan · Pesanan · Bantuan).
+- **PD-16** Navbar dengan menu Layanan AXVARA bersama (Market/Pedia saja), navigasi desktop Katalog/Lacak/Bantuan + bottom nav mobile Beranda/Layanan/Pesanan/Bantuan. AppSwitcher lama dihapus, tidak ada placeholder AI.
 - **PD-17** SEO: metadata per halaman, `sitemap.xml` & `robots.txt` khusus host pedia, JSON-LD `Service` + `FAQPage`; `/pesanan/*` noindex.
 
 ### Order & supplier
-- **PD-20** Quote bertanda tangan (pola `api/checkout` existing) memuat `product_id`, `tier_id`, `quantity`, `target_normalized`, `unit_price`, `total`, `supplier_service_id`, `supplier_rate_snapshot`; berlaku 30 menit.
-- **PD-21** Order dibuat idempoten (kunci = hash quote + kontak) di tabel `orders` existing (`order_kind='pedia'`) + baris `pedia_order_items`.
+- **PD-20** Quote baru JWE `dir/A256GCM`, key SHA-256 `ADMIN_JWT_SECRET`, 30 menit, mengikat provider/service/rate, `refill_days/min_profit_rp` dan field pembelian. Snapshot order mempertahankan ketentuan quote; legacy tanpa field fallback tier. HS256 legacy belum kedaluwarsa tetap diterima, supplier kosong legacy = ProviderSMM; payload legacy masih terbaca sampai expiry.
+- **PD-21** Order idempoten memakai `orders.quote_id = pedia:<jti>` (bukan hash kontak), `order_kind='pedia'` + pedia_order_items. Tolak provider/service remapped sejak quote; persist snapshot asal. Konsumsi kredit/order/invoice tidak atomik penuh.
 - **PD-22** Setelah lunas: item → `queued`; dispatch ke supplier oleh cron lite job `pedia_orders` (§9.4).
-- **PD-23** Poll status batch (≤100 order/panggilan) tiap tick cron lite untuk item aktif; simpan `start_count`, `remains`, `charge`, status.
-- **PD-24** Partial/Canceled → hitung refund `floor(total × remains / quantity)` (canceled = total penuh) → terbitkan Kode Kredit (idempoten per item).
-- **PD-25** Refill: tombol tampil jika produk `refill_days > 0`, status `completed|partial`, dalam masa garansi, dan refill terakhir ≥ 24 jam lalu. Server memanggil `refill` supplier; status refill dilacak.
+- **PD-23** Poll individual hingga 20 item due/cycle pada provider asal, lease 5 menit; hingga 5 refill_status berbatas budget. Simpan start_count/remains/status; charge saat add adalah estimasi rate terkini × quantity, bukan selalu charge riil dari poll.
+- **PD-24** Partial/Canceled → delivered dari quantity−remains (clamp), kredit `round((quantity−delivered) × unit_price)`; tanpa remains fallback delivered=0. Hasil partial jika delivered>0, selainnya canceled; kredit idempoten per asal/kind, bukan transaksi terminal+kredit penuh atomik.
+- **PD-25** Refill: memakai `refill_days` snapshot order (fallback tier untuk legacy), status `completed|partial`, masa refill sejak order dibuat, dan refill terakhir ≥ 24 jam lalu. `requested|submitted|needs_check` diblokir berapa pun usianya; hanya belum pernah refill atau hasil terminal konklusif dapat diklaim. Server memanggil `refill` provider asal; ID/key ambigu dipertahankan, status refill dilacak.
 - **PD-26** Timeout/ambigu saat `add` → `needs_check`, TIDAK diulang otomatis (§9.4).
 
 ### Katalog & harga
 - **PD-30** Sinkron layanan supplier via diff VPS (§9.3) ke `pedia_supplier_services`.
 - **PD-31** Harga jual dihitung dari rate terkini × markup kelompok, dibulatkan (§7.2). Disimpan di produk (bukan dihitung tiap request).
-- **PD-32** Guard margin: bila `harga_jual − modal < min_profit` setelah rate naik → tingkat dinonaktifkan otomatis + notif Telegram admin. Pulih otomatis hanya jika admin mengaktifkan ulang.
+- **PD-32** Guard margin: bila `harga_jual − modal < min_profit` setelah rate naik → tingkat dinonaktifkan otomatis + notif Telegram admin. Penonaktifan disimpan sebelum harga baru agar replay setelah kegagalan tetap menguji harga lama. Pulih hanya jika admin mengaktifkan ulang.
 - **PD-33** Layanan supplier hilang dari daftar → tingkat terkait nonaktif + notif.
 - **PD-34** Tiap tingkat boleh punya `backup_service_id` (dipakai admin manual, bukan failover otomatis fase 1).
 
 ### Admin
 - **PD-40** Tab admin **Pedia** dengan sub-tab: Produk · Layanan Supplier · Pesanan · Kredit · Pengaturan (detail §10).
-- **PD-41** Penjelajah layanan supplier (576): cari, filter platform/Indonesia/garansi, tombol "Pakai di produk".
+- **PD-41** Penjelajah kedua provider, jumlah dinamis (576 snapshot lama), cari/platform/Indonesia/garansi-di-nama/tipe/kompatibilitas/mapped; pilih provider+service bersama dan hubungkan tier existing. Create produk/tier nonaktif di tab Produk.
 - **PD-42** Antrean `needs_check` dengan aksi: *Cek saldo supplier*, *Tandai sudah dibuat (isi ID supplier)*, *Kirim ulang (konfirmasi ganda)*, *Batalkan + terbitkan kredit*.
-- **PD-43** Alert Telegram saldo < ambang env (default Rp100.000). UI saat ini menampilkan riwayat 7 hari di Pengaturan dan Cek saldo pada recovery needs_check, bukan saldo live di header.
+- **PD-43** Saldo/error/pricing/sync per provider di Pengaturan, live atau fallback cache ditandai, riwayat 7 hari dan Cek saldo recovery. Alert per provider < ambang env default Rp100.000, check/alert throttle terpisah; bukan saldo live global header.
 - **PD-44** Pesanan Pedia muncul di panel **Pesanan** global dengan filter "Jenis: Pedia".
 - **PD-45** Dashboard untung (existing) menghitung Pedia: modal = `supplier_charge` riil (fallback snapshot rate × qty).
 
@@ -205,10 +209,10 @@ Kode `PD-xx`. Semua wajib fase 1 kecuali ditandai.
 - **PD-51** Telegram admin (`TELEGRAM_ADMIN_CHAT_ID`): `Lunas — Pedia` (sekali per order), `Pedia perlu dicek`, `Saldo providersmm menipis`, `Produk Pedia dinonaktifkan otomatis`.
 
 ### Integrasi axvara.tech
-- **PD-60 (historis/disimpan)** `CommunityBar` tetap dipakai; promo `LaunchCards.saved.tsx` tidak dirender sejak keputusan owner 2026-10-08.
-- **PD-61** AppSwitcher tampil di navbar Pedia; versi navbar pusat disimpan/tidak dirender sejak 2026-10-08.
+- **PD-60** CommunityBar memakai CrossServicePromo Pedia + Bot Telegram Market; Pedia menampilkan promo Market sebelum katalog. LaunchCards.saved tetap arsip; keputusan promo tersembunyi 2026-10-08 superseded untuk titik ini saja.
+- **PD-61** ServicesMenu di Market/Pedia, dengan keyboard/Escape/focus return; AppSwitcher dihapus dari working-tree.
 - **PD-62** Tombol `/link` disembunyikan sejak 2026-10-08. Titik promosi lain tetap mengikuti kode/flag existing, bukan otomatis diaktifkan oleh overhaul.
-- **PD-63** Tracking UTM mengikuti link promosi existing; tautan keluar toko aplikasi di footer Pedia saat ini menuju `https://axvara.tech` tanpa UTM, bukan kontrak semua link lintas-situs.
+- **PD-63** CrossServicePromo memakai `utm_source=axvara|pedia&utm_medium=cross_promo`, footer Pedia memakai UTM existing; semua menu/footer lintas host absolut dari site.ts, bukan semua tautan diberi UTM.
 - **PD-64** Link WA grup & Bot Telegram tetap ada di HelpSheet + footer (tidak hilang).
 
 ---
@@ -222,10 +226,10 @@ Produk (contoh: "Followers Instagram")
   ├─ paket: [100, 250, 500, 1000]
   └─ Tingkat
        ├─ Hemat    → service #948  (akun global, tanpa garansi)
-       ├─ Standar  → service #86   (akun Indonesia, garansi 30 hari)   ← default
-       └─ Premium  → service #24   (akun Indonesia aktif)
+        ├─ Standar  → service #86   (akun Indonesia, garansi 30 hari; default historis, kini null)
+        └─ Premium  → service #24   (akun Indonesia aktif)
 ```
-Satu produk = satu kebutuhan pembeli. Tingkat = pilihan kualitas. Nama layanan supplier TIDAK pernah tampil ke pembeli.
+Contoh mapping di atas adalah snapshot ProviderSMM historis, bukan rekomendasi siap produksi/default pilihan. Tier boleh berbeda provider, tidak wajib tiga tier. Satu produk = satu kebutuhan pembeli; nama supplier tidak tampil publik. Kurasi ulang initial live data, margin/ETA/refill dan approval owner masih pending.
 
 ### 7.2 Aturan harga
 ```
@@ -247,7 +251,7 @@ Plafon adalah panduan kurasi manual (admin mengecek), bukan logika kode.
 
 ### 7.3 Kurasi awal (data API providersmm 2026-10-07, rate IDR per 1K)
 
-> Eksekutor mengisi via admin/seed **migrasi data terpisah** dengan `supplier_service_id` di bawah. Harga final mengikuti rumus §7.2; WAJIB dicek ulang setelah uji order (lihat §14 tugas pra-launch).
+> **Historis 2026-10-07, bukan kurasi awal dua-provider yang telah disetujui/live.** Seed masih ProviderSMM dan nonaktif. Service/rate di bawah tidak membuktikan katalog, currency/unit atau ketentuan terkini; cek ulang supplier dan approval owner sebelum publish. Harga mengikuti §7.2, tanpa konversi kurs; IndoSMM terblokir sampai gate IDR/unit lolos.
 
 | Produk | Tingkat | Service # | Rate | Garansi (kurasi) | Kelompok |
 |---|---|---|---|---|---|
@@ -322,7 +326,7 @@ CREATE TABLE IF NOT EXISTS pedia_products (
   name TEXT NOT NULL,                        -- "Followers Instagram"
   tagline TEXT,                              -- "Bikin profil terlihat ramai"
   description_md TEXT,
-  checklist_json TEXT NOT NULL DEFAULT '[]', -- item checklist pra-bayar (id, label, help_md, image)
+  checklist_json TEXT NOT NULL DEFAULT '[]', -- id unik setelah trim, label, help string opsional; image lama belum dirender
   packages_json TEXT NOT NULL DEFAULT '[]',  -- [100,250,500,1000]
   step INTEGER NOT NULL DEFAULT 1,
   sort_order INTEGER NOT NULL DEFAULT 0,
@@ -444,38 +448,42 @@ Pembeli ─▶ pedia.axvara.tech ─┐                      ┌─▶ providers
                               │  (Next 15, D1, R2)    │       │ key=PROVIDERSMM_API_KEY
 QRIS Hook ─▶ /api/webhook/dana┘     ▲      │          │  VPS AWS proxy (wr-proxy.axvara.tech)
                                     │      └─ /psmm/* ┘   ├─ diff layanan tiap 10 mnt ─▶ POST /api/supplier-sync (source=providersmm)
-Worker cron 5 mnt ─▶ /api/cron/lite?job=pedia_orders ─────┘   └─ (stateless untuk order)
+Worker cron 5 mnt ─▶ /api/cron/lite?job=pedia_orders ─────┘   └─ (reservasi order durable, bukan stateless)
 ```
+
+Topologi awal ProviderSMM di atas dipertahankan sebagai riwayat; working-tree menambah `/indosmm/*` → `indosmm.id/api/v2`, diff `source=indosmm` terpisah. Key kedua supplier hanya VPS; kontrak handoff §16.10 ARCHITECTURE adalah acuan terkini.
 
 ### 9.2 Routing host
 - `src/middleware.ts`: bila `host` = `pedia.axvara.tech` (atau env `PEDIA_HOST`) dan path bukan `/api/*`, `/_next/*`, aset → `NextResponse.rewrite` ke `/pedia${path}`. CSP & header keamanan existing tetap diterapkan.
 - Akses `axvara.tech/pedia/*` → redirect 308 ke `pedia.axvara.tech/*` (satu URL kanonis).
 - Dev lokal: buka `http://127.0.0.1:3000/pedia` langsung (tanpa rewrite).
 - DNS: CNAME `pedia` → `axvara.pages.dev` (proxied) + custom domain Pages. Dikerjakan eksekutor lewat `.cf-credentials`.
-- Layout `src/app/pedia/layout.tsx` TIDAK memakai Navbar/Footer/MobileBottomNav toko pusat; pakai komponen `src/components/pedia/*`.
+- Layout Pedia memakai PediaNavbar/PediaBottomNav sendiri dan **Footer bersama** dari storefront; tidak mewarisi Navbar/CartDrawer/MobileBottomNav Market. Root minimal + `(shop)` group tetap.
 - Cookie & localStorage Pedia memakai prefiks `axp-` (host-only). Keranjang toko pusat tidak dipakai.
 
-### 9.3 Sinkron katalog (diff VPS)
-- Repo `axvara-wr-proxy`: modul baru `psmm` — `POST /psmm/:action` (`services|add|status|refill|refill_status|cancel|balance`) dengan header `x-proxy-token`, API key dari `.env` VPS (`PROVIDERSMM_API_KEY`). Body diteruskan apa adanya, key disuntik server-side, tidak pernah di-log.
-- Diff tiap 10 menit: ambil `services`, bandingkan dengan state lokal (`diff-state.json` bagian `psmm`), kirim HANYA yang berubah (rate/min/max/hilang/baru) ke `POST /api/supplier-sync` dengan `source: "providersmm"`; heartbeat kosong tiap ≤ 9 menit (pola WR/SK).
-- `/api/supplier-sync` cabang `providersmm`: upsert `pedia_supplier_services`, lalu untuk tingkat yang terhubung: hitung ulang `package_prices_json` + jalankan guard margin (PD-32/33). Batas statement per request mengikuti budget existing; penulisan per layanan dalam `d1.batch()`.
-- Tidak ada sync penuh dari Pages (tidak ada cron berat). Admin punya tombol **Tarik ulang semua** yang memanggil proxy `services` sekali dan memproses dalam potongan 100.
+### 9.3 Sinkron Dua Provider (Lokal, Belum Deployed)
+- Proxy `POST /psmm/:action` untuk providersmm dan `/indosmm/:action` untuk indosmm; allowlist services/add/status/refill/refill_status/cancel/balance. Pages memakai WARUNG_REBAHAN_PROXY_URL/TOKEN existing, `x-proxy-token` ↔ VPS WR_PROXY_TOKEN. Key supplier server-side VPS `PROVIDERSMM_API_KEY` / `INDOSMM_API_KEY`; JSON diubah form, key/action pemanggil ditimpa, tidak dilog.
+- IndoSMM services/add memerlukan **`INDOSMM_RATE_PER_1000_VERIFIED=true` dan balance terbaru currency IDR**; default gate tertutup, 503 pricing_unverified bila gagal, tanpa konversi kurs. Flag harus berdasar bukti unit akun yang disetujui, bukan asumsi contoh USD. Balance/status/refill/refill_status/cancel recovery tidak diblokir gate ini; `/health` hanya key configured.
+- Diff tiap 10 menit kedua provider membawa `{source,currency,services,removed_service_ids,heartbeat?}`. Snapshot terpisah `state/psmm-diff-state.json` / `state/indosmm-diff-state.json`, maju hanya potongan batch ber-ack 2xx; heartbeat threshold 9 menit pada cycle. Katalog kosong/>50% hilang tetap ditahan. Array dibatasi independen: layanan `chunkMax` 1..100 (default 50), removals 100 per batch; sisa termasuk >100 removals dilanjutkan pada batch berikutnya, bukan batas pending.
+- Receiver key `(supplier,service_id)`, IDR wajib (legacy providersmm tanpa currency = IDR), max 100 services/100 removed; validasi input seluruh batch sebelum write. Upsert/removed/reprice **per statement**, bukan satu batch atomik; partial failure non-2xx agar snapshot VPS tidak maju. Prefix penanda `pedia_diff` / `pedia_indosmm_diff`, check/saldo/alert terpisah.
+- Resync admin eksplisit supplier, validasi katalog nonkosong + IndoSMM balance/gate, potongan 100. Manual resync tidak menandai missing; diff yang melakukannya. Tidak ada sweep katalog penuh terjadwal dari Pages.
 
-### 9.4 Dispatch order exactly-once
+### 9.4 Dispatch Durable, Bukan Exactly-Once End-to-End
 Job `pedia_orders` di `/api/cron/lite` (pola `wr_orders`), budget statement & deadline existing:
-1. **Klaim:** `UPDATE pedia_order_items SET status='submitting', lease_until=+3 menit, submit_attempts=submit_attempts+1 WHERE id=? AND status='queued'` (cek `changes=1`). Maks 10 item per tick.
-2. **Kirim:** `POST /psmm/add {service, link, quantity}` timeout 20 dtk.
+1. **Klaim:** CAS queued → submitting + increment attempts + lease **5 menit sebelum jaringan**, changes=1. Maks 20 item queued/cycle, hanya order lunas, budget DB lite diteruskan.
+2. **Kirim:** `POST /psmm/add` atau `/indosmm/add` menurut provider/service tersimpan pada item, timeout Pages 30 dtk/proxy upstream 20 dtk; Idempotency-Key stabil = order_code.
 3. **Respons `{order: N}`** → `submitted`, simpan `supplier_order_id`.
-4. **Respons error eksplisit** (`{error: …}`, mis. saldo kurang/link salah) → `queued` kembali bila saldo kurang (+ alert, maks 6 percobaan) ATAU `canceled` + kredit penuh bila error validasi target.
+4. **Respons error eksplisit**, saldo kurang, gate/proxy error, respons tanpa ID → needs_check untuk penanganan manusia; tidak queued kembali atau refund otomatis berdasarkan string error.
 5. **Timeout / 5xx / respons tak terbaca** → `needs_check` (JANGAN kirim ulang). Alert Telegram admin.
 6. Lease kedaluwarsa pada status `submitting` → `needs_check` (bukan `queued`).
-7. Order lunas memindahkan item `awaiting_payment` → `queued` di titik finalisasi lunas yang sama dengan pembayaran QRIS existing (webhook DANA, retry admin, pelunasan kredit). Cari titik tersebut, tambahkan dispatch per `order_kind`; fulfillment toko pusat tidak tersentuh (`fulfillment_status='not_required'` untuk order Pedia).
+7. Create orders saat ini memasukkan item queued sebelum invoice; dispatch memeriksa `orders.status='lunas'`, bukan menganggap queued berarti sudah dibayar. Quote mengikat `refill_days/min_profit_rp`; snapshot order mengambil ketentuan dari quote, selain provider/service/rate, bukan edit tier sesudah quote. Remapping tier tidak mengganti asal dispatch/poll/refill order lama. Quote/order legacy tanpa field refill/min-profit fallback tier. Supplier ID tersimpan kolom setelah add; mark_submitted recovery juga menulis snapshot JSON.
+
+Proxy memakai reservation durable `SMM_IDEMPOTENCY_DIR` (default `state/smm-idempotency`, folder psmm/indosmm), hash action+key + fingerprint payload, exclusive create/fsync sebelum upstream, cache sukses atomik tanpa TTL/eviction. Add wajib key 1..120 karakter (tidak dipotong); refill/cancel dedupe hanya bila key disertakan. Pending/corrupt/ambigu = 409 needs_check, payload beda untuk key sama = conflict, storage gagal pra-submit = 503. Rejection eksplisit 2xx error string tanpa order/refill saja melepas reservation; Pages tetap needs_check. Jangan hapus pending atau mengganti key/provider; backup state satu VPS, bukan dedupe multi-host; in-memory lama tidak dapat dipulihkan. Ini tidak menjadikan konsumsi kredit/order/invoice atau terminal/kredit/notif satu transaksi atomik.
 
 ### 9.5 Polling status
-- Di job yang sama, setelah dispatch: ambil ≤100 item `submitted|in_progress` dengan `last_polled_at` tertua (≥ 4 menit lalu), panggil `status` multi-order sekali.
-- Pemetaan status supplier: `Pending|Processing` → `submitted`; `In progress` → `in_progress`; `Completed` → `completed`; `Partial` → `partial`; `Canceled` → `canceled`.
-- Transisi terminal (`completed|partial|canceled`) dalam satu `d1.batch()`: update item + terbitkan kredit (bila ada) + `orders.status` + penanda notifikasi.
-- Item `in_progress` > 72 jam tanpa perubahan `remains` → flag "lambat" di admin (bukan aksi otomatis).
+- Maks 20 item submitted/in_progress dengan lease due, status individual pada provider asal; bukan batch 100 atau urutan last_polled_at. Kegagalan poll memperpanjang lease 5 menit.
+- Normalisasi whitespace dan Cancelled → canceled; Pending/Processing/In progress → in_progress, Completed → completed. Partial/canceled memakai remains untuk menentukan hasil dan kredit; tanpa remains fallback kredit penuh. Tidak ada transisi terminal/kredit/notifikasi atomik penuh atau auto-flag 72 jam pada implementasi ini.
+- Poll refill_status hingga 5 item submitted berbatas budget, memakai provider asal; completed/rejected/canceled disimpan terminal.
 
 ### 9.6 Parser link (shared `src/lib/pedia/link.ts`, dipakai client & server)
 | Platform | Pola dikenali | target_kind | Normalisasi |
@@ -499,23 +507,23 @@ Job `pedia_orders` di `/api/cron/lite` (pola `wr_orders`), budget statement & de
 | Method | Path | Auth | Fungsi |
 |---|---|---|---|
 | GET | `/api/pedia/catalog` | publik, cache CDN 60 dtk | produk/tier aktif + paket valid terhadap supplier present/min-max/step/harga positif; tanpa ID/rate/nama supplier |
-| POST | `/api/pedia/quote` | publik + rate-limit scope `pedia_quote` 30/mnt/IP | validasi target, qty, kredit → quote bertanda tangan |
+| POST | `/api/pedia/quote` | publik + rate-limit scope `pedia_quote` 30/mnt/IP | validasi target, qty, kredit → quote terenkripsi |
 | POST | `/api/pedia/orders` | publik + rate-limit 10/mnt/IP | buat order idempoten + invoice QRIS (atau lunas via kredit) |
 | GET | `/api/pedia/orders/[code]` | capability token (pola existing) | status, progres, refill eligibility (tanpa data supplier mentah) |
 | POST | `/api/pedia/orders/[code]/refill` | capability token + rate-limit | ajukan refill |
 | POST | `/api/pedia/credits/check` | publik + rate-limit 10/mnt/IP | cek kode → sisa (tanpa membocorkan email) |
 | GET | `/api/pedia/ticker` | publik, cache 60 dtk | 10 order lunas terbaru tersamarkan |
 | * | `/api/admin/pedia/*` | sesi admin | CRUD produk/tingkat, layanan supplier, antrean, kredit, saldo, tarik ulang |
-| POST | `/api/supplier-sync` (cabang baru) | `SUPPLIER_SYNC_TOKEN` existing | diff providersmm |
+| POST | `/api/supplier-sync` (cabang SMM) | `SUPPLIER_SYNC_TOKEN` existing | diff providersmm/indosmm, currency IDR, identity gabungan, partial non-2xx |
 | POST | `/api/cron/lite?job=pedia_orders` | `CRON_SECRET` existing | dispatch + poll + alert saldo (saldo dicek maks 1×/30 mnt; alert throttle 6 jam ATAU turun Rp5.000, cermin WR/SK) |
 
 Respons publik TIDAK pernah memuat `supplier_service_id`, nama layanan supplier, rate, atau `supplier_order_id`.
 
-**Katalog overhaul 2026-10-11:** layanan `providersmm` wajib `present=1`, tipe `Default`, dan min/max berupa integer positif yang valid. Harga finite positif, key jumlah integer dalam batas, ada di paket produk dan sesuai `step`; tier tanpa harga valid dan produk tanpa paket tersedia dihilangkan. Tingkat diurutkan Hemat/Standar/Premium; paket disortir numerik. Min/max publik boleh dikirim, bukan data identitas supplier. Kartu memilih harga terendah lalu jumlah terkecil saat seri, dengan jumlah dan tingkat dari entri yang sama. `tagline` tetap di payload tetapi tidak dirender; `description_md` tidak dikirim katalog dan tidak tampil ke pembeli. `is_featured` tersimpan tetapi tidak memangkas beranda. Filter tipe `Default` sama dengan readiness admin.
+**Katalog working-tree 2026-10-12:** layanan dari kedua provider wajib present/Default/rate positif/min-max integer valid; bounds key gabungan. Harga finite positif, quantity dalam batas/paket/step; tier tanpa paket valid dan produk tanpa paket hilang. Hemat/Standar/Premium urut, paket numerik. Min/max boleh publik, bukan identity. `catalogCard` memasangkan harga terendah/jumlah terkecil/tier/refill sama; tagline tampil pada kartu dan detail/order. `description_md` adalah field publik opsional (`string|null`) yang tampil pada detail/order sebagai teks literal escaped dengan newline dipertahankan, bukan Markdown/HTML; tidak ditambahi link-helper teknis. Featured membatasi tampilan awal hingga 8, bukan payload katalog/cari/filter/semua. Katalog tidak melakukan live pricing probe; bukti gate masuk data dan readiness supplier tetap tugas rollout.
 
 ### 9.8 Anggaran Cloudflare Free
 - Beranda/platform Pedia: SSR membaca katalog (≤ 60 baris) via query berindeks; respons di-cache CDN 60 dtk.
-- Job `pedia_orders`: ≤ 2 subrequest proxy + ≤ 25 statement per tick; tanpa parse katalog besar.
+- Job `pedia_orders`: akses DB berbudget lite existing; loop dispatch/poll berbatas masing-masing 20, refill_status hingga 5. Bukan jaminan ≤2 subrequest/25 statement; tanpa parse katalog penuh pada hot path orders.
 - Target total Pedia ≤ 300 ribu rows_read/hari. Semua query baru WAJIB memakai indeks (cek `EXPLAIN QUERY PLAN` di test regresi, pola migrasi 0057).
 
 ### 9.9 Env & flag
@@ -530,7 +538,11 @@ Respons publik TIDAK pernah memuat `supplier_service_id`, nama layanan supplier,
 | `PEDIA_BALANCE_ALERT_RP` | Pages | `100000` | Ambang alert saldo supplier |
 | `PEDIA_MIN_ORDER_RP` | Pages | `1000` | Total minimum |
 | `PROVIDERSMM_API_KEY` | `.env` VPS proxy SAJA | — | Kunci supplier |
-| (existing) `WARUNG_REBAHAN_PROXY_URL` / `_TOKEN` | Pages | — | Dipakai ulang untuk `/psmm/*` (host & token proxy sama) |
+| `INDOSMM_API_KEY` | `.env` VPS proxy SAJA | — | Kunci IndoSMM, readiness/credentials pending |
+| `INDOSMM_RATE_PER_1000_VERIFIED` | VPS proxy | tertutup kecuali literal `true` | Bukti rate per 1.000 disetujui; balance IDR tetap wajib untuk services/add/diff |
+| `SMM_IDEMPOTENCY_DIR` | VPS proxy | `state/smm-idempotency` | Reservasi durable; backup, jangan reset untuk retry |
+| `PSMM_DIFF_STATE_FILE` / `INDOSMM_DIFF_STATE_FILE` | VPS proxy | `state/psmm-diff-state.json` / `state/indosmm-diff-state.json` | Snapshot terpisah, tidak boleh satu path |
+| (existing) `WARUNG_REBAHAN_PROXY_URL` / `_TOKEN` | Pages secret_text | — | Dipakai ulang `/psmm/*` dan `/indosmm/*`, token ↔ VPS WR_PROXY_TOKEN |
 
 Sumber kunci lokal: `axvara/.providersmm-credentials` (git-ignored, chmod 600). JANGAN commit/echo nilainya. Kunci sudah pernah tertempel di chat → **rotasi** di dashboard providersmm setelah VPS terpasang, lalu perbarui file lokal + `.env` VPS.
 
@@ -542,15 +554,19 @@ Grup sidebar **Katalog**, menu **Pedia**, deep-link `?section=pedia&tab=…`. Ga
 
 | Sub-tab | Isi |
 |---|---|
-| **Produk** | Daftar ringkas, cari nama/slug/platform/metric/ID layanan, filter platform dan Siap dijual/Belum siap/Nonaktif + Hapus filter. Edit membuka satu produk; form produk dan tingkat disimpan terpisah. Produk: nama, slug, platform, metric, target_kind, tagline, deskripsi, paket, step, urutan numerik, aktif/unggulan, checklist teks/bantuan. Tingkat terlipat: service utama/cadangan, catatan, kelompok, markup, min profit, refill hari, kedua ETA, aktif; harga/margin/status paket tersimpan diperbarui setelah simpan. Tagline/deskripsi belum tampil ke pembeli; unggulan tidak berarti laris atau membatasi katalog. Tidak ada tombol reorder ↑↓. |
-| **Layanan Supplier** | Tabel jumlah dinamis (576 hanya snapshot awal): cari nama/ID (debounce 300ms), filter platform/Indonesia/garansi-di-nama/tipe, 50 per halaman, biaya/min/max/dipakai di/present. **Pakai** hanya untuk layanan present bertipe Default; pilih produk dan tingkat existing, **Hubungkan layanan** mengganti service utama + reprice lalu kembali ke editor, tidak otomatis mengaktifkan tingkat. **Tarik ulang semua** dengan konfirmasi; cek/perubahan diff tampil sebagai waktu WIB. |
+| **Produk** | Daftar ringkas cari/platform/supplier/kesiapan; buat produk/tingkat nonaktif + edit terpisah. Nama/slug/platform/metric/target/metadata/checklist/paket/step/urutan/terbit/unggulan; mapping provider+service utama/cadangan, harga/margin/refill API vs masa kurasi/ETA. Preview storefront tersimpan terpenuhi: `ProductCard` aktual + `OrderClient` embedded aman, termasuk draf privat; unsaved live preview di luar scope. Tagline/deskripsi adalah copy publik; featured editorial membatasi awal beranda tetapi full katalog tetap lengkap. Tanpa reorder ↑↓. |
+| **Layanan Supplier** | Jumlah dinamis (576 snapshot lama), cari nama/ID debounce 300ms, supplier/platform/Indonesia/garansi-di-nama/tipe/kompatibel/mapped, 50/halaman. Pakai present/Default, provider+service bersama → tier existing + reprice, cadangan lama dibersihkan, tidak auto-aktif. Resync eksplisit supplier dan konfirmasi; status diff WIB/per provider. |
 | **Pesanan** | Filter status dengan label Indonesia; needs_check di atas, detail target/jumlah/start/remains/charge/ID supplier/error/waktu. Aksi Cek saldo, Tandai sudah dibuat (ID supplier), Kirim ulang, Batalkan + kredit. Konfirmasi recovery berupa form; kirim ulang wajib cek dashboard supplier + menerima risiko tagihan ganda. |
 | **Kredit** | Daftar kode (hint 4 karakter, email tersamar, sisa, asal, kedaluwarsa); terbitkan kredit manual (`source_kind='admin'`) dengan alasan wajib. |
-| **Pengaturan** | Default markup/min profit per kelompok, min order dan ambang saldo tersimpan + riwayat saldo 7 hari (maks 100), konfirmasi simpan. Tidak ada saldo live di header; Cek saldo ada pada recovery order. Default tidak bulk-update tingkat. |
+| **Pengaturan** | Default markup/min profit/min order/ambang tersimpan + konfirmasi; overview saldo live/cache/error/pricing/sync per provider, riwayat 7 hari (maks 100). Health key saja bukan pricing. Default tidak bulk-update tier atau menggantikan env operasional. |
 
-**Readiness bukan flag order:** Nonaktif = produk OFF; Siap dijual = produk ON + minimal satu tier ON dengan supplier present, tipe Default, rate finite, batas jumlah/paket/step/harga valid; selainnya Belum siap. Produk siap belum tentu dapat dipesan bila flag order mati. Seed nonaktif ditawarkan saat daftar produk kosong; UI mengedit produk/tingkat existing, tidak menyediakan form pembuatan baru meskipun POST API tersedia.
+**Readiness bukan flag order:** Nonaktif = produk OFF; Siap dijual = ON + tier ON provider dikenal, present/Default/rate/batas/paket/step/harga/margin valid; selainnya Belum siap. Itu kesiapan data tersimpan, bukan bukti supplier live atau flag order/dispatch ON. Seed nonaktif saat kosong tetap ProviderSMM. UI sekarang membuat produk dan tier **nonaktif**, kemudian mapping/reprice/kurasi/publish melalui editor; tidak perlu SQL manual untuk membuatnya.
 
-**Persistensi dan feedback:** PUT parsial memvalidasi field yang dikirim dan tidak mereset field lain; checklist wajib array `id/label`, paket bilangan positif sesuai step. Semua edit tier serta perubahan paket/step langsung reprice tier terdampak, bukan menunggu sync berikutnya. Harga derived tidak dapat diedit lewat PUT. Aktivasi manual membersihkan kunci auto-disabled, tetapi service `present=0` tetap hilang: reprice mengosongkan harga dan menonaktifkan tier; service belum tersinkron juga menghasilkan harga kosong.
+**Dua-provider admin lokal:** filter supplier pada Produk/Layanan/Pesanan; layanan memakai filter kompatibilitas/mapped dan pilihan `{supplier,service_id}`. Mapping utama harus dikirim berpasangan; pindah supplier membersihkan cadangan lama, validasi Default/present/rate dan pricing gate IndoSMM. API refill ditampilkan terpisah dari masa refill kurasi. Preview storefront tersimpan **terpenuhi**: `ProductCard` aktual + `OrderClient` embedded dalam mode preview aman menampilkan copy/checklist/paket/harga/refill/ETA dari data tersimpan, termasuk draf privat dan tingkat nonaktif dengan paket layak. Navigasi/pemesanan disabled, interaksi preview tidak memanggil API, kontak/kredit/S&K pemesanan tidak diminta; CTA mobile inline, bukan fixed. Preview tidak menerbitkan draf atau membuka route publik. Paket tidak layak disaring, harga tidak diada-adakan ketika paket kosong. Preview diperbarui setelah save/reload; input belum disimpan tidak ikut dan unsaved live preview di luar scope. Terbit, Pilihan AXVARA dan Siap dijual terpisah. Tagline/deskripsi diedit admin dan tampil publik sesuai §9.7.
+
+**Recovery aktual:** mark_submitted memerlukan konfirmasi, ID desimal positif kanonik (`^[1-9][0-9]*$`)/status pada provider asal, cek konflik ID/provider/order dan CAS. Resubmit serta cancel+kredit hanya needs_check lunas yang **belum pernah submit** (`submit_attempts=0`, tanpa ID); timeout setelah add tidak boleh retry/ganti provider/key. Pengaturan menampilkan saldo live atau cache berlabel/error/pricing_verified/sync tiap provider, riwayat 7 hari; bukan header global. Resync eksplisit supplier dan non-2xx jika parsial. Isi tabel lama yang menyatakan tanpa create/tanpa saldo live atau retry setelah submit superseded oleh paragraf ini.
+
+**Persistensi dan feedback:** ID produk/tier admin wajib desimal positif kanonik, tanpa nol awal/notasi eksponen/pecahan. PUT parsial memvalidasi field yang dikirim dan tidak mereset field lain; checklist wajib array `id/label` dengan ID unik setelah trim dan field bantuan opsional bertipe string, paket bilangan positif sesuai step. Semua edit tier serta perubahan paket/step langsung reprice tier terdampak, bukan menunggu sync berikutnya. Harga derived tidak dapat diedit lewat PUT. Aktivasi manual membersihkan kunci auto-disabled, tetapi service `present=0` tetap hilang: reprice mengosongkan harga dan menonaktifkan tier; service belum tersinkron juga menghasilkan harga kosong.
 
 **Tidak atomik:** update produk/tier dilakukan sebelum reprice; `500 reprice_failed` berarti perubahan sudah tersimpan, harga mungkin belum seluruhnya diperbarui. Muat ulang dan tarik ulang layanan untuk recovery; jangan mengklaim rollback penuh. GET admin gagal memberi `500 load_failed`, bukan kosong sukses; kegagalan write/recovery memberi `save_failed`. UI menampilkan loading/busy/error/sukses + Muat ulang, membatasi write ganda dan mengabaikan hasil pencarian usang. Resync dengan `errors` dilaporkan berhasil sebagian. Update mark_submitted/resubmit yang kalah race status mengembalikan 409.
 
@@ -586,7 +602,7 @@ Copy marketing DILARANG mengklaim "100% aman", "pasti FYP", "anti banned", atau 
 
 ## 13. Acceptance criteria
 
-### 13.1 Overhaul 2026-10-11 (lokal terverifikasi, pending deployment)
+### 13.1 Riwayat QA Overhaul 2026-10-11 (Superseded untuk Diff Terkini)
 
 - Beranda seluruh katalog, cari/platform/reset/empty state; kartu harga-jumlah-tier sepadan; tanpa hype/badge hardcoded/ticker; deteksi tautan tidak menjanjikan verifikasi akun (`tests/pedia-home-ux.behavior.test.tsx`).
 - Katalog supplier-present/min-max/paket/step/harga positif, tier tanpa paket valid hilang (`tests/pedia-catalog-ux.test.ts`).
@@ -597,7 +613,7 @@ Copy marketing DILARANG mengklaim "100% aman", "pasti FYP", "anti banned", atau 
 
 ### 13.2 Bukti historis 2026-10-08 (bukan spesifikasi UX saat ini)
 
-Checkbox di bawah mencatat implementasi awal. Butir lima langkah, label Bayar, ukuran sticky lama dan promosi yang disimpan tidak mengalahkan §5/§6/§10 saat ini.
+Checkbox di bawah mencatat laporan implementasi awal, bukan bukti gate live dua-provider. Butir default pilihan/lima langkah/dua CTA/footer mini/AppSwitcher/promosi disimpan superseded oleh §5/§6/§10; AC-11 enam retry superseded oleh needs_check setelah satu percobaan ambigu. AC-14 tidak membuktikan konsumsi kredit/order atomik penuh; batas aktual §9.4. Angka test/failure di §13.1 dipertahankan sebagai riwayat, bukan hasil run terkini.
 
 **Storefront**
 - [x] AC-01 `pedia.axvara.tech/` render beranda Pedia (tanpa navbar toko pusat — root minimal + `(shop)` group, Obscura 2026-10-08); `axvara.tech/pedia` → 308 ke subdomain (middleware; dev lokal 127.0.0.1 dikecualikan).
@@ -624,7 +640,11 @@ Checkbox di bawah mencatat implementasi awal. Butir lima langkah, label Bayar, u
 - [x] AC-22 Order Pedia di admin Pesanan (filter Jenis: Pedia — API kind + UI) + modal supplier_charge di dashboard untung.
 - [x] AC-23 `PEDIA_ENABLED=false` → katalog 503 + halaman "Segera hadir" tanpa error (test pedia-qa).
 
-**Verifikasi repo:** `npx vitest run --run` hijau, type-check bersih, Obscura screenshot beranda/order/status (mobile + desktop) diperiksa, CHANGELOG + ARCHITECTURE + README + DESIGN + PRD (`docs/PRD.md` entri Pedia) diperbarui, `axvara-wr-proxy/AGENTS.md` mencatat kontrak `/psmm/*`.
+**Verifikasi repo historis 2026-10-08:** laporan test/type-check/Obscura dan dokumentasi awal di atas dipertahankan, bukan QA working-tree saat ini.
+
+### 13.3 Status Aktual 2026-10-12
+
+Audit source/diff dan followup: dua-provider routing/diff/IDR gate, batch layanan/removals independen dengan ack, encrypted quote yang mengikat refill/min-profit + legacy, snapshot order, refill ambigu tetap terkunci, disable margin sebelum reprice, validasi admin, CAS submitting, durable proxy reservation, copy publik, menu/promo/footer bersama, compact featured/all/link/typewriter, null selection/satu CTA/consent dan admin create/preview/provider/recovery tersedia lokal. Preview storefront tersimpan sudah terpenuhi sesuai §10; unsaved live preview di luar scope. **Hasil final aktual MAIN setelah preview: `npx vitest run --run` 2288 test pada 184 file pass, `tsc` pass, `build:pages` selesai exit 0 (log temp `pedia-final-build.log`); lint sebelumnya pass dengan warning existing.** Obscura route nyata home/Pedia/admin dan CSS 200; screenshot fixture hydrated desktop/mobile diperiksa, termasuk preview tersimpan dengan komponen aktual. Batas renderer radio/SVG/fixed tetap dicatat; ini bukan bukti produksi penuh atau seluruh gate live lulus. Run docs terdahulu 128 pass dan laporan 63/64 §13.1 tetap historis, bukan hasil terbaru. Checklist/gap: issue/planning.md. Tetap lokal, BELUM deployed; secret/flag tidak diubah atau diverifikasi, tanpa order supplier nyata. Tidak ada live supplier probe, deploy/commit/push dalam tugas docs ini. Pending: readiness credentials, bukti IDR/unit/min-max/refill/cancel/error/batas API, kurasi awal data produksi/approval owner, handoff/rollout serta QA produksi sesuai gate terpisah.
 
 ---
 
@@ -655,7 +675,7 @@ Setiap milestone = commit terpisah dengan test + CHANGELOG, push ke `main` (flag
 |---|---|
 | Order dobel di supplier (tanpa idempotency) | §9.4: klaim atomik, timeout → `needs_check`, tidak ada retry otomatis |
 | Harga supplier naik diam-diam | Diff 10 mnt + guard margin + notif |
-| Saldo supplier habis saat ramai | Alert ambang + item tetap `queued` (dicoba ulang ≤ 6×) + email "sedikit tertunda" bila > 30 mnt |
+| Saldo supplier habis saat ramai | Alert per provider + error add menjadi needs_check; bukan retry saldo otomatis. Rekonsiliasi sebelum tindakan admin |
 | Drop tinggi → komplain | Kurasi berbasis uji order + Monitor, garansi jelas, tombol refill self-service |
 | Kuota/CPU Cloudflare Free | Kerja berat di VPS, cache CDN katalog, indeks wajib, budget statement |
 | Persepsi merek ("jual followers palsu") | Subdomain terpisah, copy jujur, S&K tegas, tanpa klaim berlebihan |

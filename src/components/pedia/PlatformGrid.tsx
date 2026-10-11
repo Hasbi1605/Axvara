@@ -55,32 +55,33 @@ export type ProductCardData = {
   minPrice: number | null;
   minQuantity?: number;
   minTier?: string;
+  refillDays?: number;
 };
 
 export function catalogCard(p: PediaCatalogProduct): ProductCardData {
-  const lowest = p.tiers.flatMap((t) => Object.entries(t.prices).filter(([, price]) => price > 0).map(([qty, price]) => ({ qty: Number(qty), price, tier: t.tier })))
+  const lowest = p.tiers.flatMap((t) => Object.entries(t.prices).filter(([qty, price]) => p.packages.includes(Number(qty)) && price > 0).map(([qty, price]) => ({ qty: Number(qty), price, tier: t.tier, refillDays: t.refill_days })))
     .sort((a, b) => a.price - b.price || a.qty - b.qty)[0];
-  return { slug: p.slug, name: p.name, platform: p.platform, tagline: null, badges: [], minPrice: lowest?.price ?? null, minQuantity: lowest?.qty, minTier: lowest?.tier };
+  return { slug: p.slug, name: p.name, platform: p.platform, tagline: p.tagline?.trim() || null, badges: [], minPrice: lowest?.price ?? null, minQuantity: lowest?.qty, minTier: lowest?.tier, refillDays: lowest?.refillDays };
 }
 
 export function ProductCard({ p }: { p: ProductCardData }) {
   return (
     <Link prefetch={false}
       href={`/pedia/o/${p.slug}`}
-      className="flex h-full items-start gap-3 rounded-xl border border-white/15 bg-white/[0.02] p-5 transition-colors hover:border-white/30 hover:bg-white/[0.04]"
+      className="group flex h-full min-w-0 flex-col rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.06] to-white/[0.015] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition duration-200 hover:border-[#00E5FF]/30 hover:shadow-[0_8px_24px_rgba(0,229,255,0.06)] motion-safe:hover:-translate-y-0.5 active:bg-white/[0.08] sm:p-4"
       aria-label={`${p.name} — lihat paket`}
     >
-      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/5" aria-hidden="true">
-        <PlatformIcon id={p.platform} size={24} />
-      </span>
+      <span className="mb-3 flex items-center justify-between gap-2"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/5" aria-hidden="true"><PlatformIcon id={p.platform} size={20} /></span><span aria-hidden="true" className="text-white/40 group-hover:text-[#00E5FF]">↗</span></span>
       <span className="min-w-0 flex-1">
-        <span className="block text-base font-semibold leading-snug text-white">{p.name}</span>
-        <span className="mt-3 block text-lg font-semibold tabular-nums text-white">
+        <span className="block break-words text-sm font-semibold leading-snug text-white sm:text-base">{p.name}</span>
+        {p.tagline && <span className="mt-1 line-clamp-2 break-words text-xs leading-relaxed text-white/60" title={p.tagline}>{p.tagline}</span>}
+        <span className="mt-3 block text-base font-semibold tabular-nums text-white sm:text-lg">
           {p.minPrice != null ? `Mulai Rp${p.minPrice.toLocaleString("id-ID")}` : "Lihat harga"}
         </span>
         {p.minQuantity != null && <span className="mt-1 block text-xs text-white/65">Untuk {p.minQuantity.toLocaleString("id-ID")} · paket <span className="capitalize">{p.minTier}</span></span>}
-        <span className="mt-4 block text-sm font-medium text-[#00E5FF]">Lihat paket →</span>
+        {p.refillDays != null && <span className={`mt-3 inline-block rounded-md px-2 py-1 text-[11px] ${p.refillDays > 0 ? "bg-[#00E5FF]/10 text-[#00E5FF]" : "bg-[#FFB800]/10 text-[#FFB800]"}`}>{p.refillDays > 0 ? `Refill ${p.refillDays} hari` : "Tanpa refill"}</span>}
       </span>
+      <span className="mt-3 flex min-h-11 items-center border-t border-white/10 text-xs font-medium text-[#00E5FF]">Lihat paket →</span>
     </Link>
   );
 }

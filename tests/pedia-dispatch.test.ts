@@ -84,11 +84,11 @@ describe("dispatch exactly-once AC-10/11/12", () => {
       });
     }
     const item = await db.queryFirst(`SELECT status, submit_attempts FROM pedia_order_items WHERE order_code='AXP-T1'`);
-    // 6× transport gagal → needs_check (bukan retry selamanya).
+    // Ambiguous submit never retries automatically, regardless of provider.
     expect(item?.status).toBe("needs_check");
-    expect(Number(item?.submit_attempts)).toBe(6);
+    expect(Number(item?.submit_attempts)).toBe(1);
     // Tick ke-7 (sudah needs_check) TIDAK memanggil add lagi.
-    expect(adds).toBe(6);
+    expect(adds).toBe(1);
   });
 
   it("AC-12: dua tick paralel tidak mengirim dobel (klaim lease atomik)", async () => {

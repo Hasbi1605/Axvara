@@ -5,10 +5,14 @@ import { readFileSync } from "node:fs";
 const read = (f: string) => readFileSync(f, "utf8");
 
 describe("integrasi pusat M6 (PD-60–64)", () => {
-  it("PD-60: DISIMPAN 2026-10-08 — beranda kembali ke CommunityBar (Telegram + Grup WA); LaunchCards.saved.tsx menunggu owner", () => {
+  it("PD-60: Market promotes Pedia alongside its Telegram order channel", () => {
     const home = read("src/app/(shop)/home-client.tsx");
     expect(home).toContain("CommunityBar");
     expect(home).not.toContain("LaunchCards");
+    const community = read("src/components/storefront/CommunityBar.tsx");
+    expect(community).toContain('<CrossServicePromo current="market"');
+    expect(community).toContain("Kanal order Market");
+    expect(community).not.toContain("Grup WhatsApp");
     // Komponen tersimpan utuh, tidak diimpor siapa pun.
     const cards = read("src/components/storefront/LaunchCards.saved.tsx");
     expect(cards).toContain("Axvara Pedia");
@@ -18,22 +22,18 @@ describe("integrasi pusat M6 (PD-60–64)", () => {
     expect(cards).toContain("aria-hidden");
   });
 
-  it("PD-61: 3 pill DISIMPAN 2026-10-08 — navbar toko tanpa AppSwitcher; navbar Pedia tetap ada", () => {
+  it("PD-61: both navbars use the same live-services menu, without AI pills", () => {
     const nav = read("src/components/storefront/Navbar.tsx");
-    // Pill disembunyikan tapi komponen TIDAK dihapus (impor dikembalikan
-    // saat owner memutuskan memunculkan).
     expect(nav).not.toContain("<AppSwitcher");
-    expect(nav).toContain("AppSwitcher DISIMPAN");
+    expect(nav).toContain('<ServicesMenu active="market"');
     const pediaNav = read("src/components/pedia/PediaNavbar.tsx");
     expect(pediaNav).toContain('active="pedia"');
-    const switcher = read("src/components/pedia/AppSwitcher.tsx");
-    // Cross-host absolut (fix pill tidak bisa pindah halaman).
-    expect(switcher).toContain("https://axvara.tech/");
-    expect(switcher).toContain("https://pedia.axvara.tech/pedia");
-    expect(switcher).toContain("Segera");
-    // 2026-10-08: tanpa highlight — tab aktif teks putih biasa, tanpa pill.
-    expect(switcher).not.toContain("bg-[var(--px-violet-soft)]");
-    expect(switcher).not.toContain('aria-current={on');
+    expect(pediaNav).toContain("ServicesMenu");
+    expect(pediaNav).not.toContain("AppSwitcher");
+    const menu = read("src/components/shared/ServicesMenu.tsx");
+    expect(menu).toContain("AXVARA_SERVICES");
+    expect(menu).not.toContain("Segera");
+    expect(menu).not.toContain("slice(0, 2)");
   });
 
   it("Lockup Pedia konsisten dengan navbar pusat (tanpa |, ukuran sama)", () => {
@@ -56,19 +56,17 @@ describe("integrasi pusat M6 (PD-60–64)", () => {
     expect(shopNav).toContain("max-w-[1280px]");
   });
 
-  it("Navbar mobile Pedia: lockup PEDIA saja + anti-geser + tanpa pill Lacak", () => {
+  it("Navbar Pedia: compact mobile brand, unclipped menu and desktop tracking", () => {
     const nav = read("src/components/pedia/PediaNavbar.tsx");
     // Mobile: "PEDIA" saja (tanpa AXVARA); desktop tetap "AXVARA PEDIA".
     expect(nav).toContain("md:hidden");
     expect(nav).toContain("PEDIA");
     expect(nav).toContain("AXVARA PEDIA");
-    // Anti-geser horizontal: header overflow-hidden + min-w-0.
-    expect(nav).toContain("overflow-hidden");
+    expect(nav).not.toContain("overflow-hidden");
+    expect(nav).not.toContain("overflowX");
     expect(nav).toContain("min-w-0");
-    // Pill Lacak dihapus (lacak = tab Pesanan bottom bar).
-    expect(nav).not.toContain("/pedia/lacak");
-    expect(nav).not.toContain('"Lacak"');
-    expect(nav).not.toContain(">Lacak<");
+    expect(nav).toContain("/pedia/lacak");
+    expect(nav).toContain("hidden items-center");
   });
 
   it("Bottom bar Pedia konsisten dengan pusat (ikon + cyan + titik aktif)", () => {
@@ -102,12 +100,10 @@ describe("integrasi pusat M6 (PD-60–64)", () => {
     expect(svg).toContain('fill="currentColor"');
   });
 
-  it("Footer Pedia kontekstual tanpa newsletter market + header platform ikon asli", () => {
+  it("Pedia uses the shared footer once + platform headers retain native icons", () => {
     const layout = read("src/app/pedia/layout.tsx");
-    expect(layout).toContain('aria-label="Bantuan Pedia"');
-    expect(layout).toContain('href="/pedia/lacak"');
-    expect(layout).toContain('href="/pedia/ketentuan"');
-    expect(layout).not.toContain("<Footer");
+    expect(layout).toContain('<Footer />');
+    expect(layout).not.toContain("<footer");
     expect(layout).not.toContain("Axvara Pedia</span> · Naikkan");
     const plat = read("src/app/pedia/p/[platform]/platform-client.tsx");
     expect(plat).toContain("PlatformIcon");
@@ -136,7 +132,7 @@ describe("integrasi pusat M6 (PD-60–64)", () => {
     expect(link).toContain("kartu Pedia DISEMBUNYIKAN");
     expect(link).toContain("utm_medium=link_bio");
     const footer = read("src/components/storefront/Footer.tsx");
-    expect(footer).toContain("Axvara Pedia");
+    expect(footer).toContain("AXVARA Pedia");
     expect(footer).toContain("utm_medium=footer");
     const digest = read("src/lib/telegram/promo-digest.ts");
     expect(digest).toContain("PEDIA_PROMO_DIGEST_ENABLED");

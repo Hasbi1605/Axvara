@@ -14,6 +14,7 @@ import { createDatabaseAccess } from "@/lib/db-access";
 import { verifyPediaQuoteToken } from "@/lib/pedia/quote";
 import { computePediaPrice, pediaMargin } from "@/lib/pedia/pricing";
 import { generateOrderCode } from "@/lib/security";
+import { isPediaProvider } from "@/lib/pedia/proxy";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -49,6 +50,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Quote checkout tidak valid atau sudah kedaluwarsa. Muat ulang checkout." }, { status: 409 });
   }
   const db = createDatabaseAccess();
+  const reused = await db.queryFirst(`SELECT code, subtotal, status FROM orders WHERE quote_id=?`, `pedia:${quote.jti}`);
+  if (reused) return NextResponse.json({ code: reused.code, subtotal: reused.subtotal, status: reused.status, reused: true });
   const minOrderRp = Number(process.env.PEDIA_MIN_ORDER_RP || 1000) || 1000;
 
   // Hitung ulang dari DB (JANGAN percaya angka client/quote — pola orders):
@@ -57,9 +60,12 @@ export async function POST(req: NextRequest) {
   if (!product || !tier) {
     return NextResponse.json({ error: "Produk atau tingkat sudah tidak tersedia. Muat ulang katalog." }, { status: 404 });
   }
+  if (!isPediaProvider(tier.supplier) || tier.supplier !== quote.supplier || Number(tier.supplier_service_id) !== quote.supplier_service_id) {
+    return NextResponse.json({ error: "service_changed", message: "Layanan berubah. Muat ulang checkout." }, { status: 409 });
+  }
   const live = await db.queryFirst(
-    `SELECT * FROM pedia_supplier_services WHERE supplier='providersmm' AND service_id=? AND present=1`,
-    Number(tier.supplier_service_id),
+    `SELECT * FROM pedia_supplier_services WHERE supplier=? AND service_id=? AND present=1 AND type='Default' AND rate_idr_per_1k>0`,
+    tier.supplier, Number(tier.supplier_service_id),
   ).catch(() => null);
   if (!live) {
     return NextResponse.json({ error: "Layanan sedang tidak tersedia. Coba lagi nanti." }, { status: 409 });
@@ -68,7 +74,7 @@ export async function POST(req: NextRequest) {
   const minQty = Number(live.min_qty) || 1;
   const maxQty = Number(live.max_qty) || qty;
   const step = Number(product.step) || 1;
-  if (qty < minQty || qty > maxQty || qty % step !== 0) {
+  if (!Number.isSafeInteger(minQty) || !Number.isSafeInteger(maxQty) || minQty <= 0 || maxQty < minQty || qty < minQty || qty > maxQty || qty % step !== 0) {
     return NextResponse.json({ error: "Jumlah tidak lagi valid untuk layanan ini. Muat ulang checkout." }, { status: 409 });
   }
   // Paket dihapus supplier sejak quote dibuat → 404 (bukan diam-diam).
@@ -83,6 +89,7 @@ export async function POST(req: NextRequest) {
     minProfitRp: Number(tier.min_profit_rp) || 0,
     minOrderRp,
   });
+  if (!Number.isFinite(freshTotal) || freshTotal <= 0) return NextResponse.json({ error: "Layanan sedang tidak tersedia." }, { status: 409 });
   // Guard margin di jalur uang (PD-33): bila margin tersisa < min sejak quote,
   // TOLAK dengan 410 (bukan kirim rugi) — kunci tier untuk admin.
   const margin = pediaMargin({
@@ -182,10 +189,10 @@ export async function POST(req: NextRequest) {
        (order_code, product_id, tier_id, snapshot_json, target_raw, target_normalized, quantity,
         unit_price, total, credit_used, supplier, supplier_service_id, supplier_rate_snapshot,
         status, submit_attempts)
-     VALUES (?, ?, ?, '{}', ?, ?, ?, ?, ?, ?, 'providersmm', ?, ?, 'queued', 0)`,
-    code, quote.product_id, quote.tier_id, quote.target_raw, quote.target_normalized,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', 0)`,
+    code, quote.product_id, quote.tier_id, JSON.stringify({ supplier: quote.supplier, supplier_service_id: quote.supplier_service_id, refill_days: quote.refill_days ?? (Number(tier.refill_days) || 0), min_profit_rp: quote.min_profit_rp ?? (Number(tier.min_profit_rp) || 0) }), quote.target_raw, quote.target_normalized,
     qty, quote.unit_price, freshTotal, creditUsed,
-    Number(quote.supplier_service_id), Number(quote.supplier_rate_snapshot),
+    quote.supplier, Number(quote.supplier_service_id), Number(quote.supplier_rate_snapshot),
   ).catch(() => null);
 
   // Invoice QRIS via rail aktif (pola /api/orders). Kredit-penuh (payable=0)
