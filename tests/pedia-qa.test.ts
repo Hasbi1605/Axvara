@@ -30,7 +30,7 @@ async function seedActive() {
     Number(p?.id),
   );
   await applyProvidersmmDiff(db, [{
-    service_id: 86, name: "IG", type: "D", category: "IG",
+    service_id: 86, name: "IG", type: "Default", category: "IG",
     rate: 38750, min_qty: 100, max_qty: 1000,
     api_refill: 0, api_cancel: 0, api_dripfeed: 1,
   }], []);
@@ -88,7 +88,7 @@ describe("M7 QA triple-check", () => {
     expect(before.products.length).toBe(1);
     // Rate naik besar → guard margin menonaktifkan.
     await applyProvidersmmDiff(db, [{
-      service_id: 86, name: "IG", type: "D", category: "IG",
+      service_id: 86, name: "IG", type: "Default", category: "IG",
       rate: 200000, min_qty: 100, max_qty: 1000,
       api_refill: 0, api_cancel: 0, api_dripfeed: 1,
     }], []);

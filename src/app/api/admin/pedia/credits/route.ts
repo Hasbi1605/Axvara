@@ -26,15 +26,17 @@ export async function GET(request: NextRequest) {
   const admin = await requireAdmin(request);
   if (!admin) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const db = createDatabaseAccess();
+  try {
   const rows = await db.queryAll(
     `SELECT id, code_hint, email, amount, remaining, source_order_code,
             source_kind, expires_at, created_at
        FROM pedia_credits ORDER BY id DESC LIMIT 100`,
-  ).catch(() => []);
+  );
   return NextResponse.json({
     ok: true,
     rows: rows.map((r) => ({ ...r, email: maskEmail(String(r.email ?? "")) })),
   });
+  } catch { return NextResponse.json({ error: "load_failed" }, { status: 500 }); }
 }
 
 export async function POST(request: NextRequest) {

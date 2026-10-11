@@ -22,8 +22,8 @@ axvara/
 │   ├── ARCHITECTURE.md     # Stack D1+R2, schema, API contract
 │   ├── TELEGRAM-BOT-KLIKQRIS-PLAN.md # Arsip rencana provider lama (superseded)
 │   ├── WHATSAPP-GROUP-BOT-PLAN.md # Rencana varian terpusat + bot grup WA (terimplementasi)
-│   ├── PEDIA-PRD.md        # ✅ Spesifikasi AXVARA PEDIA (toko SMM kurasi, pedia.axvara.tech) — M1–M5 + UI publik live 2026-10-08
-│   ├── PEDIA-DESIGN.md     # ✅ Panduan desain & style Pedia (turunan DESIGN.md) — diimplementasikan 2026-10-08
+│   ├── PEDIA-PRD.md        # Pedia: spesifikasi saat ini; overhaul 2026-10-11 lokal terverifikasi, pending deployment
+│   ├── PEDIA-DESIGN.md     # UI katalog-first + checkout 3 kelompok + admin; menggantikan wireframe awal
 │   └── VPS-RESEARCH.md     # Riset VPS gratis — kenapa Pages juara
 ├── public/
 │   ├── brand/
@@ -39,7 +39,7 @@ axvara/
 │   ├── app/
 │   │   ├── layout.tsx      # Root MINIMAL: font + metadata global SAJA (2026-10-08 — chrome toko/Pedia di layout masing-masing)
 │   │   ├── (shop)/         # Toko pusat axvara.tech — route group, URL tidak berubah (page/home-client/produk/checkout/pesanan/lacak-pesanan/link/admin/artikel/dll)
-│   │   ├── pedia/          # ✅ Axvara Pedia pedia.axvara.tech (2026-10-08) — layout sendiri TANPA navbar/footer toko: beranda Tempel-link, p/[platform], o/[slug], pesanan/[code], lacak, bantuan, ketentuan, layanan
+│   │   ├── pedia/          # Layout/footer sendiri: katalog-first + cari/platform, p/[platform], o/[slug] 3 kelompok, pesanan/[code], lacak, bantuan, ketentuan, layanan
 │   │   ├── garansi-replace/ # Ketentuan layanan & garansi third-party dari footer (acuan klaim)
 │   │   ├── api/checkout/   # Quote harga/stok/rekening bertanda tangan
 │   │   ├── api/payment-methods/ # Konfigurasi pembayaran publik/admin
@@ -75,7 +75,16 @@ axvara/
 - **Efek:** `ax-glass` blur 20px untuk navbar/modal, `ax-glass-strong` blur 24px, dan `ax-glass-card` tanpa backdrop blur untuk kartu berulang agar GPU lebih ringan.
 - **Motion:** Apple spring `cubic-bezier(0.32,0.72,0,1)`; orbit tanpa render React per frame memakai 30 fps saat auto-rotate dan interaksi drag hanya untuk pointer presisi. Pada layar sentuh orbit memakai `touch-action: pan-y`, sehingga swipe di atas ilustrasi tetap menggulir halaman. Spotlight/ScrollRope berjalan hanya saat ada interaksi.
 
-### Catatan performa storefront
+### Pedia UX (2026-10-11)
+
+**Diimplementasikan dan diverifikasi lokal, pending deployment.** Katalog awal dibuka 2026-10-08; status itu tidak berarti overhaul working-tree ini sudah live. Tidak ada pembukaan flag order/dispatch oleh perubahan UI.
+
+- Beranda menampilkan semua produk katalog publik, pencarian nama dan filter platform. Kartu beranda/platform/layanan memasangkan harga awal dengan jumlah dan tingkat yang sama; tanpa laris/badge hardcoded, tagline/deskripsi pembeli, trust strip atau ticker. Tempel tautan di bawah katalog hanya mengenali format, bukan memverifikasi akun. Footer berisi Lacak/Bantuan/Ketentuan Pedia dan tautan ke toko aplikasi.
+- Checkout tiga kelompok dengan radio native: Paket & jumlah → Tujuan & persyaratan → Kontak & konfirmasi. Hanya paket terkonfigurasi karena API orders belum menerima jumlah non-paket. **Periksa harga** server wajib sebelum **Lanjut ke pembayaran**; perubahan input membuang quote, respons lama diabaikan, respons order ambigu mengunci data dan retry memakai token yang sama, 4xx meminta quote baru. Saat order ditutup: notice jelas, paket tetap dapat dilihat, kontak/kredit/persetujuan tidak dirender. Refill/ETA mengikuti tingkat; kredit partial/cancel bukan refund tunai.
+- Admin `PediaManager.tsx`: daftar ringkas, cari/platform/status Siap dijual/Belum siap/Nonaktif; editor produk dan tingkat disimpan terpisah, assignment supplier ke tingkat existing, recovery needs_check berbahasa Indonesia, kredit manual dan pengaturan dengan feedback + Muat ulang. Tagline/deskripsi tersimpan dan dapat diedit, tetapi belum dirender di UI pembeli.
+- Katalog memfilter supplier `present=1`, min/max, paket, step dan harga positif; tier tanpa paket valid serta produk tanpa paket tersedia dihilangkan. Edit tier/paket/step langsung reprice; **tidak atomik**, `reprice_failed` dapat terjadi sesudah edit tersimpan. Readiness admin juga memeriksa tipe `Default` (filter katalog belum); Pengaturan tersimpan tidak bulk-update tingkat dan belum menggantikan env minimum order/ambang saldo pada jalur operasional. Detail: `docs/PEDIA-PRD.md` §9.7/§10 dan `docs/ARCHITECTURE.md` §3.0.
+
+### Catatan Performa
 
 - **Hemat CPU Workers Free (2026-10-10, insiden 1102):** semua link storefront/Pedia `prefetch={false}`; ikon/logo/OG/banner/favicon dilayani CDN di luar worker (`scripts/patch-pages-routes.js` + `public/_headers`); hitung pemenang WR vs SK jadi 1 query agregat; poller GoPay VPS idle 60 dtk dan dibangunkan Pages saat QR terbit + tombol "Cek Status Sekarang"/"Periksa Pembayaran" (`src/lib/payments/gopay-wake.ts`, Caddy `/gopay/wake`). Detail: `docs/ARCHITECTURE.md` §8 + bagian GoPay.
 - Homepage dan detail menampilkan skeleton lalu hanya merender katalog aktif dari D1; seed hanya dipakai fallback database development, bukan fallback UI produksi.

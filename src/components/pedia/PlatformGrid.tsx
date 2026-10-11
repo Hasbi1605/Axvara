@@ -2,6 +2,7 @@
 // Ikon = logo asli tiap platform (Simple Icons, CC0 — 2026-10-08, permintaan
 // owner), fill currentColor + warna brand per platform.
 import Link from "next/link";
+import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
 
 export const PEDIA_PLATFORMS = [
   { id: "instagram", label: "Instagram", color: "#D62976" },
@@ -52,33 +53,34 @@ export type ProductCardData = {
   platform: string;
   badges: string[];
   minPrice: number | null;
+  minQuantity?: number;
+  minTier?: string;
 };
+
+export function catalogCard(p: PediaCatalogProduct): ProductCardData {
+  const lowest = p.tiers.flatMap((t) => Object.entries(t.prices).filter(([, price]) => price > 0).map(([qty, price]) => ({ qty: Number(qty), price, tier: t.tier })))
+    .sort((a, b) => a.price - b.price || a.qty - b.qty)[0];
+  return { slug: p.slug, name: p.name, platform: p.platform, tagline: null, badges: [], minPrice: lowest?.price ?? null, minQuantity: lowest?.qty, minTier: lowest?.tier };
+}
 
 export function ProductCard({ p }: { p: ProductCardData }) {
   return (
     <Link prefetch={false}
       href={`/pedia/o/${p.slug}`}
-      className="ax-glass-card flex items-center gap-3 rounded-[20px] p-4 transition hover:border-white/20"
-      aria-label={`${p.name} — ${p.tagline ?? ""}`}
+      className="flex h-full items-start gap-3 rounded-xl border border-white/15 bg-white/[0.02] p-5 transition-colors hover:border-white/30 hover:bg-white/[0.04]"
+      aria-label={`${p.name} — lihat paket`}
     >
       <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/5" aria-hidden="true">
         <PlatformIcon id={p.platform} size={24} />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[16px] font-semibold text-white">{p.name}</span>
-        {p.tagline && <span className="block truncate text-[13px] text-white/55">{p.tagline}</span>}
-        {p.badges.length > 0 && (
-          <span className="mt-1 flex flex-wrap gap-1">
-            {p.badges.slice(0, 2).map((b) => (
-              <span key={b} className="rounded-full bg-[var(--px-violet-soft)] px-2 py-0.5 text-[11px] font-semibold text-white">{b}</span>
-            ))}
-          </span>
-        )}
-        <span className="mt-1 block font-display text-[18px] font-bold text-white">
-          {p.minPrice != null ? `mulai Rp${p.minPrice.toLocaleString("id-ID")}` : "Lihat harga"}
+        <span className="block text-base font-semibold leading-snug text-white">{p.name}</span>
+        <span className="mt-3 block text-lg font-semibold tabular-nums text-white">
+          {p.minPrice != null ? `Mulai Rp${p.minPrice.toLocaleString("id-ID")}` : "Lihat harga"}
         </span>
+        {p.minQuantity != null && <span className="mt-1 block text-xs text-white/65">Untuk {p.minQuantity.toLocaleString("id-ID")} · paket <span className="capitalize">{p.minTier}</span></span>}
+        <span className="mt-4 block text-sm font-medium text-[#00E5FF]">Lihat paket →</span>
       </span>
-      <span aria-hidden="true" className="shrink-0 text-white/30">→</span>
     </Link>
   );
 }

@@ -2,7 +2,7 @@
 "use client";
 
 import { useState } from "react";
-import { ProductCard, PlatformIcon } from "@/components/pedia/PlatformGrid";
+import { ProductCard, PlatformIcon, catalogCard } from "@/components/pedia/PlatformGrid";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
 
 const KINDS = ["Semua", "Followers", "Likes", "Views", "Lainnya"] as const;
@@ -33,11 +33,11 @@ export function PlatformPageClient({ platform, name, products }: { platform: str
           <p className="text-sm text-white/55">Pilih layanan untuk {name}.</p>
         </div>
       </div>
-      <div className="mt-4 flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Filter jenis">
+      <div className="mt-4 flex flex-wrap gap-2" aria-label="Filter jenis">
         {KINDS.map((k) => (
           <button
-            key={k} role="tab" aria-selected={kind === k} onClick={() => setKind(k)}
-            className={`h-9 shrink-0 rounded-full px-4 text-sm font-semibold ${kind === k ? "bg-[var(--px-violet-soft)] text-white" : "bg-white/5 text-white/60"}`}
+            key={k} aria-pressed={kind === k} onClick={() => setKind(k)}
+            className={`min-h-11 rounded-lg border px-4 text-sm font-medium ${kind === k ? "border-[#00E5FF]/60 bg-[#00E5FF]/10 text-white" : "border-white/15 text-white/70"}`}
           >
             {k}
           </button>
@@ -50,11 +50,7 @@ export function PlatformPageClient({ platform, name, products }: { platform: str
           {filtered.map((p) => (
             <ProductCard
               key={p.slug}
-              p={{
-                slug: p.slug, name: p.name, tagline: p.tagline, platform: p.platform,
-                badges: p.tiers.flatMap((t) => t.label_note ? [t.label_note] : []).slice(0, 2),
-                minPrice: p.min_price,
-              }}
+              p={catalogCard(p)}
             />
           ))}
         </div>

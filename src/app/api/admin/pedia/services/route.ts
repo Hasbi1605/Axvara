@@ -24,6 +24,7 @@ export async function GET(request: NextRequest) {
   const page = Math.max(1, Number(q.get("page") || 1));
   const perPage = 50;
   const db = createDatabaseAccess();
+  try {
   const where: string[] = [];
   const params: unknown[] = [];
   if (search) {
@@ -40,7 +41,7 @@ export async function GET(request: NextRequest) {
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const total = Number((await db.queryFirst(
     `SELECT COUNT(*) AS n FROM pedia_supplier_services s ${whereSql}`, ...params,
-  ).catch(() => ({ n: 0 })))?.n ?? 0);
+  ))?.n ?? 0);
   const rows = await db.queryAll(
     `SELECT s.*,
        (SELECT GROUP_CONCAT(p.slug || ':' || t.tier, ', ')
@@ -49,13 +50,14 @@ export async function GET(request: NextRequest) {
      FROM pedia_supplier_services s ${whereSql}
      ORDER BY s.service_id LIMIT ? OFFSET ?`,
     ...params, perPage, (page - 1) * perPage,
-  ).catch(() => []);
+  );
   const diff = await db.queryAll(
     `SELECT key, value FROM store_settings WHERE key IN ('pedia_diff_last_at','pedia_diff_last_change_at')`,
-  ).catch(() => []);
+  );
   const diffStatus: Record<string, string> = {};
   for (const r of diff) diffStatus[String(r.key)] = String(r.value ?? "");
   return NextResponse.json({ ok: true, total, page, perPage, rows, diff: diffStatus });
+  } catch { return NextResponse.json({ error: "load_failed" }, { status: 500 }); }
 }
 
 export async function POST(request: NextRequest) {

@@ -2,7 +2,7 @@
 import { headers } from "next/headers";
 import Link from "next/link";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
-import { ProductCard } from "@/components/pedia/PlatformGrid";
+import { ProductCard, catalogCard } from "@/components/pedia/PlatformGrid";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -34,7 +34,7 @@ export default async function PediaServicesPage() {
           </div>
           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {list.map((p) => (
-              <ProductCard key={p.slug} p={{ slug: p.slug, name: p.name, tagline: p.tagline, platform: p.platform, badges: [], minPrice: p.min_price }} />
+              <ProductCard key={p.slug} p={catalogCard(p)} />
             ))}
           </div>
         </section>

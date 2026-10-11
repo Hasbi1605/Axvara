@@ -21,20 +21,6 @@ async function getCatalog(): Promise<PediaCatalogProduct[]> {
   }
 }
 
-async function getTicker(): Promise<{ text: string }[]> {
-  try {
-    const h = await headers();
-    const host = h.get("x-forwarded-host") ?? h.get("host") ?? "127.0.0.1:3000";
-    const proto = h.get("x-forwarded-proto") ?? "http";
-    const res = await fetch(`${proto}://${host}/api/pedia/ticker`, { next: { revalidate: 60 } });
-    if (!res.ok) return [];
-    const d = await res.json();
-    return d.items ?? [];
-  } catch {
-    return [];
-  }
-}
-
 export default async function PediaHome() {
   // AC-23: flag mati → halaman "Segera hadir", tanpa error.
   if (process.env.PEDIA_ENABLED !== "true") {
@@ -42,7 +28,7 @@ export default async function PediaHome() {
       <div className="mx-auto max-w-xl pt-16 text-center">
         <h1 className="font-display text-[28px] font-bold text-white">Axvara Pedia segera hadir</h1>
         <p className="mt-2 text-sm text-white/60">
-          Toko followers, likes & views — tempel link, sisanya beres. Kami sedang menyiapkan semuanya.
+          Katalog layanan followers, likes, dan views belum tersedia.
         </p>
         <a href="https://axvara.tech?utm_source=pedia&utm_medium=coming_soon" className="mt-6 inline-flex h-12 items-center rounded-[14px] bg-[#00E5FF] px-6 text-sm font-bold text-[#070a1e]">
           Kembali ke axvara.tech
@@ -50,8 +36,6 @@ export default async function PediaHome() {
       </div>
     );
   }
-  const [products, ticker] = await Promise.all([getCatalog(), getTicker()]);
-  const featured = products.filter((p) => p.is_featured).slice(0, 8);
-  const list = (featured.length > 0 ? featured : products).slice(0, 8);
-  return <PediaHomeClient products={list} ticker={ticker} />;
+  const products = await getCatalog();
+  return <PediaHomeClient products={products} ordersEnabled={process.env.PEDIA_ORDERS_ENABLED === "true"} />;
 }

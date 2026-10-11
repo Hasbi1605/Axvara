@@ -31,13 +31,15 @@ export async function GET(request: NextRequest) {
   const admin = await requireAdmin(request);
   if (!admin) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const db = createDatabaseAccess();
+  try {
   const rows = await db.queryAll(
     `SELECT key, value FROM store_settings WHERE key IN (${KEYS.map(() => "?").join(",")})`,
     ...KEYS,
-  ).catch(() => []);
+  );
   const saved: Record<string, string> = {};
   for (const r of rows) saved[String(r.key)] = String(r.value ?? "");
   const num = (key: string, fallback: number) => {
+    if (saved[key] == null || saved[key] === "") return fallback;
     const v = Number(saved[key]);
     return Number.isFinite(v) && v >= 0 ? v : fallback;
   };
@@ -45,7 +47,7 @@ export async function GET(request: NextRequest) {
     `SELECT balance, created_at FROM pedia_supplier_balance_log
       WHERE supplier='providersmm' AND datetime(created_at) > datetime('now', '-7 days')
       ORDER BY id DESC LIMIT 100`,
-  ).catch(() => []);
+  );
   return NextResponse.json({
     ok: true,
     settings: {
@@ -60,6 +62,7 @@ export async function GET(request: NextRequest) {
     },
     balance_history: history,
   });
+  } catch { return NextResponse.json({ error: "load_failed" }, { status: 500 }); }
 }
 
 export async function PUT(request: NextRequest) {
@@ -70,13 +73,15 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "invalid" }, { status: 400 });
   }
   const db = createDatabaseAccess();
+  try {
   for (const [key, value] of Object.entries(parsed.data)) {
     if (value === undefined) continue;
     await db.execRun(
       `INSERT INTO store_settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
        ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')`,
       key, String(value),
-    ).catch(() => null);
+    );
   }
   return NextResponse.json({ ok: true });
+  } catch { return NextResponse.json({ error: "save_failed" }, { status: 500 }); }
 }

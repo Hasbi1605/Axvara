@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
 import { createDatabaseAccess } from "@/lib/db-access";
-import { PRICE_GROUP_DEFAULTS, type PriceGroup } from "@/lib/pedia/pricing";
+import { computePediaPrice, PRICE_GROUP_DEFAULTS, type PriceGroup } from "@/lib/pedia/pricing";
 import { PEDIA_SEED_PRODUCTS } from "@/lib/pedia/seed";
 
 export const runtime = "edge";
@@ -21,8 +21,12 @@ const productSchema = z.object({
   name: z.string().trim().min(1).max(120),
   tagline: z.string().trim().max(200).optional().default(""),
   description_md: z.string().max(5000).optional().default(""),
-  checklist_json: z.string().max(5000).optional().default("[]"),
-  packages_json: z.string().max(500).optional().default("[100,250,500,1000]"),
+  checklist_json: z.string().max(5000).refine((raw) => {
+    try { const v = JSON.parse(raw); return Array.isArray(v) && v.every((c) => c && typeof c.id === "string" && typeof c.label === "string"); } catch { return false; }
+  }, "Checklist harus berupa array JSON dengan id dan label").optional().default("[]"),
+  packages_json: z.string().max(500).refine((raw) => {
+    try { const v = JSON.parse(raw); return Array.isArray(v) && v.length > 0 && v.every((n) => Number.isInteger(n) && n > 0); } catch { return false; }
+  }, "Paket harus berupa array bilangan positif").optional().default("[100,250,500,1000]"),
   step: z.coerce.number().int().min(1).max(100000).default(1),
   sort_order: z.coerce.number().int().min(0).max(100000).default(0),
   is_active: z.coerce.number().int().min(0).max(1).default(0),
@@ -48,16 +52,18 @@ export async function GET(request: NextRequest) {
   const admin = await requireAdmin(request);
   if (!admin) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const db = createDatabaseAccess();
-  const products = await db.queryAll(`SELECT * FROM pedia_products ORDER BY sort_order, id`).catch(() => []);
+  try {
+  const products = await db.queryAll(`SELECT * FROM pedia_products ORDER BY sort_order, id`);
   const tiers = await db.queryAll(
-    `SELECT t.*, s.rate_idr_per_1k AS live_rate, s.name AS live_name,
+    `SELECT t.*, s.rate_idr_per_1k AS live_rate, s.name AS live_name, s.type AS live_type,
             s.min_qty AS live_min, s.max_qty AS live_max, s.present AS live_present
        FROM pedia_tiers t
        LEFT JOIN pedia_supplier_services s
          ON s.supplier=t.supplier AND s.service_id=t.supplier_service_id
       ORDER BY t.product_id, t.tier`,
-  ).catch(() => []);
+   );
   return NextResponse.json({ ok: true, products, tiers });
+  } catch { return NextResponse.json({ error: "load_failed" }, { status: 500 }); }
 }
 
 export async function POST(request: NextRequest) {
@@ -69,6 +75,7 @@ export async function POST(request: NextRequest) {
 
   // Seed kurasi awal §7.3 (nonaktif semua). Idempoten via INSERT OR IGNORE.
   if (body.action === "seed") {
+    try {
     let products = 0;
     let tiers = 0;
     for (const [index, p] of PEDIA_SEED_PRODUCTS.entries()) {
@@ -79,9 +86,9 @@ export async function POST(request: NextRequest) {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)`,
         p.slug, p.platform, p.metric, p.targetKind, p.name, p.tagline,
         JSON.stringify(p.checklist), JSON.stringify(p.packages), p.step, index,
-      ).catch(() => null);
+      );
       if (Number(r?.changes || 0) > 0) products++;
-      const row = await db.queryFirst(`SELECT id FROM pedia_products WHERE slug=?`, p.slug).catch(() => null);
+      const row = await db.queryFirst(`SELECT id FROM pedia_products WHERE slug=?`, p.slug);
       const pid = Number(row?.id);
       if (!pid) continue;
       for (const t of p.tiers) {
@@ -95,11 +102,12 @@ export async function POST(request: NextRequest) {
           pid, t.tier, t.labelNote ?? "", t.serviceId, t.group,
           def.markup_pct, def.min_profit_rp, t.refillDays,
           t.etaStart ?? "", t.etaFinish ?? "",
-        ).catch(() => null);
+        );
         if (Number(tr?.changes || 0) > 0) tiers++;
       }
     }
     return NextResponse.json({ ok: true, seeded_products: products, seeded_tiers: tiers });
+    } catch { return NextResponse.json({ error: "save_failed" }, { status: 500 }); }
   }
 
   if (body.kind === "tier") {
@@ -146,50 +154,61 @@ export async function PUT(request: NextRequest) {
   if (!body) return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   const db = createDatabaseAccess();
 
-  // PUT tingkat: kunci manual — bila admin mengaktifkan ulang tingkat yang
-  // nonaktif otomatis, kunci margin dibuka (auto_disabled_reason=NULL).
-  if (body.kind === "tier") {
-    const id = Number(body.id);
-    if (!Number.isFinite(id)) return NextResponse.json({ error: "invalid_id" }, { status: 400 });
-    const fields: string[] = [];
-    const params: unknown[] = [];
-    const allow = ["label_note", "supplier_service_id", "backup_service_id", "price_group",
-      "markup_pct", "min_profit_rp", "refill_days", "eta_start", "eta_finish", "is_active"] as const;
-    for (const k of allow) {
-      if (body[k] !== undefined) { fields.push(`${k}=?`); params.push(body[k]); }
+  const id = z.coerce.number().int().positive().safeParse(body.id);
+  if (!id.success) return NextResponse.json({ error: "invalid_id" }, { status: 400 });
+  const isTier = body.kind === "tier";
+  const parsed = (isTier ? tierSchema.partial() : productSchema.partial()).safeParse(body);
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "invalid_body" }, { status: 400 });
+  // Partial schemas still contain defaults; only write fields actually submitted.
+  const values = Object.fromEntries(Object.entries(parsed.data).filter(([key]) => body[key] !== undefined));
+  const table = isTier ? "pedia_tiers" : "pedia_products";
+  try {
+    const current = await db.queryFirst(`SELECT * FROM ${table} WHERE id=?`, id.data);
+    if (!current) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    if (!isTier) {
+      const merged = { ...current, ...values };
+      const packages = JSON.parse(String(merged.packages_json)) as number[];
+      if (packages.some((qty) => qty % Number(merged.step) !== 0)) return NextResponse.json({ error: "Paket harus sesuai kelipatan jumlah" }, { status: 400 });
     }
-    if (!fields.length) return NextResponse.json({ error: "no_changes" }, { status: 400 });
-    // Aktivasi manual = buka kunci auto-disabled (PD-32/33: pulih hanya manual).
-    if (Number(body.is_active) === 1) fields.push(`auto_disabled_reason=NULL`);
-    fields.push(`updated_at=datetime('now')`);
-    await db.execRun(`UPDATE pedia_tiers SET ${fields.join(", ")} WHERE id=?`, ...params, id).catch(() => null);
-    // Hitung ulang harga paket tingkat ini setelah perubahan markup/layanan.
-    const { applyProvidersmmDiff } = await import("@/lib/pedia/sync");
-    const tier = await db.queryFirst(`SELECT supplier_service_id FROM pedia_tiers WHERE id=?`, id).catch(() => null);
-    if (tier) {
-      const live = await db.queryFirst(
-        `SELECT service_id, name, type, category, rate_idr_per_1k AS rate,
-                min_qty, max_qty, api_refill, api_cancel, api_dripfeed
-           FROM pedia_supplier_services WHERE supplier='providersmm' AND service_id=?`,
-        Number(tier.supplier_service_id),
-      ).catch(() => null);
-      if (live) await applyProvidersmmDiff(db, [live as never], []).catch(() => null);
-    }
-    return NextResponse.json({ ok: true });
-  }
+    const allow = isTier
+      ? ["label_note", "supplier_service_id", "backup_service_id", "price_group", "markup_pct", "min_profit_rp", "refill_days", "eta_start", "eta_finish", "is_active"]
+      : ["slug", "platform", "metric", "target_kind", "name", "tagline", "description_md", "checklist_json", "packages_json", "step", "sort_order", "is_active", "is_featured"];
+    const keys = allow.filter((key) => values[key] !== undefined);
+    if (!keys.length) return NextResponse.json({ error: "no_changes" }, { status: 400 });
+    const fields = keys.map((key) => `${key}=?`);
+    if (isTier && values.is_active === 1) fields.push("auto_disabled_reason=NULL");
+    fields.push("updated_at=datetime('now')");
+    const result = await db.execRun(`UPDATE ${table} SET ${fields.join(", ")} WHERE id=?`, ...keys.map((key) => values[key]), id.data);
+    if (!result.changes) return NextResponse.json({ error: "save_failed" }, { status: 500 });
+  } catch { return NextResponse.json({ error: "save_failed" }, { status: 500 }); }
 
-  const id = Number(body.id);
-  if (!Number.isFinite(id)) return NextResponse.json({ error: "invalid_id" }, { status: 400 });
-  const fields: string[] = [];
-  const params: unknown[] = [];
-  const allow = ["slug", "platform", "metric", "target_kind", "name", "tagline",
-    "description_md", "checklist_json", "packages_json", "step", "sort_order",
-    "is_active", "is_featured"] as const;
-  for (const k of allow) {
-    if (body[k] !== undefined) { fields.push(`${k}=?`); params.push(body[k]); }
+  // Reprice only this product/tier; never upsert a missing supplier back to present.
+  // Prices are derived, not an editable PUT field. Report partial persistence honestly.
+  if (isTier || values.packages_json !== undefined || values.step !== undefined) {
+    try {
+      const affected = await db.queryAll(
+        `SELECT t.*, p.packages_json, s.rate_idr_per_1k AS live_rate, s.present AS live_present
+           FROM pedia_tiers t JOIN pedia_products p ON p.id=t.product_id
+           LEFT JOIN pedia_supplier_services s ON s.supplier=t.supplier AND s.service_id=t.supplier_service_id
+          WHERE ${isTier ? "t.id" : "t.product_id"}=?`, id.data,
+      );
+      for (const tier of affected) {
+        if (tier.live_present == null || tier.live_rate == null) {
+          await db.execRun(`UPDATE pedia_tiers SET package_prices_json='{}', updated_at=datetime('now') WHERE id=?`, tier.id);
+          continue;
+        }
+        if (Number(tier.live_present) !== 1) {
+          await db.execRun(`UPDATE pedia_tiers SET package_prices_json='{}', is_active=0,
+            auto_disabled_reason='service_missing', updated_at=datetime('now') WHERE id=?`, tier.id);
+          continue;
+        }
+        const prices = Object.fromEntries((JSON.parse(String(tier.packages_json)) as number[]).map((quantity) => [quantity, computePediaPrice({
+          quantity, supplierRatePer1k: Number(tier.live_rate), markupPct: Number(tier.markup_pct),
+          minProfitRp: Number(tier.min_profit_rp), minOrderRp: Number(process.env.PEDIA_MIN_ORDER_RP || 1000),
+        })]));
+        await db.execRun(`UPDATE pedia_tiers SET package_prices_json=?, rate_snapshot=?, updated_at=datetime('now') WHERE id=?`, JSON.stringify(prices), Number(tier.live_rate), tier.id);
+      }
+    } catch { return NextResponse.json({ error: "reprice_failed" }, { status: 500 }); }
   }
-  if (!fields.length) return NextResponse.json({ error: "no_changes" }, { status: 400 });
-  fields.push(`updated_at=datetime('now')`);
-  await db.execRun(`UPDATE pedia_products SET ${fields.join(", ")} WHERE id=?`, ...params, id).catch(() => null);
   return NextResponse.json({ ok: true });
 }

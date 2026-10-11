@@ -25,7 +25,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "invalid_action" }, { status: 400 });
   const db = createDatabaseAccess();
-  const item = await db.queryFirst(`SELECT * FROM pedia_order_items WHERE order_code=?`, code).catch(() => null);
+  try {
+  const item = await db.queryFirst(`SELECT * FROM pedia_order_items WHERE order_code=?`, code);
   if (!item) return NextResponse.json({ error: "not_found" }, { status: 404 });
   const { action } = parsed.data;
 
@@ -43,12 +44,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (action === "mark_submitted") {
     const sid = parsed.data.supplier_order_id?.trim();
     if (!sid) return NextResponse.json({ error: "supplier_order_id_required" }, { status: 400 });
-    await db.execRun(
+    const changed = await db.execRun(
       `UPDATE pedia_order_items SET status='submitted', supplier_order_id=?,
          lease_until=NULL, last_error=NULL, updated_at=datetime('now')
        WHERE order_code=? AND status='needs_check'`,
       sid, code,
     );
+    if (!changed.changes) return NextResponse.json({ error: "not_needs_check" }, { status: 409 });
     return NextResponse.json({ ok: true });
   }
 
@@ -60,17 +62,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (Number(item.submit_attempts) >= 6) {
       return NextResponse.json({ error: "max_attempts" }, { status: 409 });
     }
-    await db.execRun(
+    const changed = await db.execRun(
       `UPDATE pedia_order_items SET status='queued', lease_until=NULL, last_error=NULL,
          updated_at=datetime('now') WHERE order_code=? AND status='needs_check'`,
       code,
     );
+    if (!changed.changes) return NextResponse.json({ error: "not_needs_check" }, { status: 409 });
     return NextResponse.json({ ok: true });
   }
 
   // cancel_credit: batalkan + kredit penuh (idempoten per item via UNIQUE).
   const { issuePediaCredit } = await import("@/lib/pedia/credits");
-  const order = await db.queryFirst(`SELECT customer_email FROM orders WHERE code=?`, code).catch(() => null);
+  if (parsed.data.confirm !== true) return NextResponse.json({ error: "confirm_required" }, { status: 400 });
+  const order = await db.queryFirst(`SELECT customer_email FROM orders WHERE code=?`, code);
   const credit = await issuePediaCredit(db, {
     email: String(order?.customer_email ?? ""),
     amount: Number(item.total),
@@ -83,4 +87,5 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     credit.code, code,
   );
   return NextResponse.json({ ok: true, credit_code: credit.code });
+  } catch { return NextResponse.json({ error: "save_failed" }, { status: 500 }); }
 }

@@ -686,6 +686,16 @@
 
 ---
 
+### 5.9 Pedia: Katalog-First (2026-10-11)
+
+**Status:** diimplementasikan dan diverifikasi lokal, pending deployment. Spesifikasi UI Pedia saat ini ada di `PEDIA-DESIGN.md`; wireframe 2026-10-07 bukan acuan implementasi baru.
+
+- Hero ringkas "Layanan media sosial", midnight polos; semua produk katalog publik dengan cari nama dan filter platform yang tersedia. Tempel tautan menjadi bantuan sekunder setelah katalog; deteksi hanya format, bukan verifikasi akun/konten.
+- Kartu outline radius 12px, ikon lokal, nama dapat membungkus, harga awal disertai jumlah dan tingkat dari paket yang sama, CTA "Lihat paket". Tanpa tagline/deskripsi, badge laris/asal akun hardcoded, trust strip atau ticker beranda.
+- Form tiga kelompok: Paket & jumlah, Tujuan & persyaratan, Kontak & konfirmasi. Tingkat berupa baris vertikal radio native dengan catatan, refill bersyarat, harga pada jumlah terpilih dan kedua ETA; jumlah radio native hanya paket terkonfigurasi. Pilihan memakai border cyan dan permukaan netral, bukan gradien tingkat.
+- "Periksa harga" mengonfirmasi total server sebelum "Lanjut ke pembayaran"; ringkasan membedakan Harga paket/Total terkonfirmasi/kredit. Desktop rail 320px sticky, mobile ringkasan inline + CTA bawah dengan safe area; bottom nav tersembunyi pada order. Error inline dan fokus ke input tidak valid. Saat order ditutup: notice sebelum judul order, preview paket tetap ada, seluruh kelompok kontak tidak dirender.
+- Footer khusus Pedia: Lacak pesanan, Bantuan, Ketentuan, tautan keluar Toko aplikasi AXVARA; bukan footer market/newsletter. Admin memakai daftar ringkas, filter kesiapan, editor terpisah dan feedback loading/error/sukses dengan Muat ulang, bukan semua form terbuka sekaligus.
+
 ## 6. Animasi — Apple Motion
 
 ### Prinsip

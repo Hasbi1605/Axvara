@@ -1,304 +1,228 @@
-// src/app/pedia/o/[slug]/order-client.tsx — Order 5 langkah + sticky bar.
-// 1 Target · 2 Jumlah · 3 Kualitas · 4 Cek · 5 Kontak. Total realtime client
-// (rumus sama dengan server — AC-04), quote server memvalidasi ulang.
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { detectPediaLink } from "@/lib/pedia/link";
+import { useEffect, useRef, useState } from "react";
+import { z } from "zod";
+import { detectPediaLink, PEDIA_PLATFORM_LABEL, PEDIA_TARGET_KIND_LABEL, type PediaPlatform, type PediaTargetKind } from "@/lib/pedia/link";
+import { fetchWithTimeout } from "@/lib/fetch-timeout";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
 
-const TIER_BADGE: Record<string, string> = { hemat: "Termurah", standar: "Paling dipilih", premium: "Akun Indonesia aktif" };
+const rupiah = (value: number) => `Rp${value.toLocaleString("id-ID")}`;
+const fieldClass = "mt-2 min-h-[48px] w-full rounded-xl border border-white/20 bg-white/5 px-3 text-base text-white placeholder:text-white/40 focus:border-[#00E5FF] focus:outline-none";
 
 export function OrderClient({ product, initialTarget, ordersEnabled }: { product: PediaCatalogProduct; initialTarget: string; ordersEnabled: boolean }) {
+  const initialTier = product.tiers.find((t) => t.tier === "standar") ?? product.tiers[0];
+  const [tierId, setTierId] = useState(initialTier?.id ?? 0);
+  const [qty, setQty] = useState(() => product.packages.filter((p) => initialTier?.prices[String(p)] > 0)[1] ?? product.packages.find((p) => initialTier?.prices[String(p)] > 0) ?? 0);
   const [target, setTarget] = useState(initialTarget);
-  const [qty, setQty] = useState(() => product.packages[1] ?? product.packages[0] ?? 100);
-  const [customQty, setCustomQty] = useState(false);
-  const [tierId, setTierId] = useState(() => {
-    const std = product.tiers.find((t) => t.tier === "standar");
-    return (std ?? product.tiers[0])?.id ?? 0;
-  });
   const [checks, setChecks] = useState<Record<string, boolean>>({});
   const [wa, setWa] = useState("");
   const [email, setEmail] = useState("");
   const [credit, setCredit] = useState("");
   const [agree, setAgree] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [quote, setQuote] = useState<{ quote_token: string; payable: number } | null>(null);
-  const firstMissing = useRef<string | null>(null);
-
-  const tier = product.tiers.find((t) => t.id === tierId) ?? product.tiers[0]!;
-  const detected = useMemo(() => detectPediaLink(target), [target]);
-  const unitTotal = useMemo(() => {
-    const price = tier?.prices[String(qty)];
-    if (price) return price;
-    // Jumlah bebas: estimasi client via rasio (server yang memutuskan).
-    const known = Object.entries(tier?.prices ?? {}).map(([k, v]) => [Number(k), Number(v)] as const).filter(([k]) => k > 0);
-    if (!known.length) return 0;
-    const [, refPrice] = known.reduce((a, b) => (Math.abs(a[0] - qty) <= Math.abs(b[0] - qty) ? a : b));
-    const [, refQty] = known.reduce((a, b) => (Math.abs(a[0] - qty) <= Math.abs(b[0] - qty) ? a : b));
-    void refPrice;
-    return Math.round((refPrice / refQty) * qty);
-  }, [tier, qty]);
-
-  // Ganti tingkat dengan max lebih kecil → jumlah turun otomatis + toast (DESIGN §6.3).
-  useEffect(() => {
-    const maxPkg = Math.max(...product.packages);
-    if (qty > maxPkg) setQty(maxPkg);
-  }, [tierId, product.packages, qty]);
-
+  const [attempted, setAttempted] = useState(false);
+  const [quote, setQuote] = useState<{ key: string; quote_token: string; total: number; payable: number; expires: number } | null>(null);
+  const tier = product.tiers.find((t) => t.id === tierId);
   const checklist = product.checklist ?? [];
-  const checksDone = checklist.every((c) => checks[c.id]);
+  const platform = PEDIA_PLATFORM_LABEL[product.platform as PediaPlatform] ?? product.platform;
+  const kind = PEDIA_TARGET_KIND_LABEL[product.target_kind as PediaTargetKind] ?? product.target_kind;
+  const detected = detectPediaLink(target);
+  const kindOk = detected && (product.target_kind === detected.targetKind ||
+    (product.target_kind === "profile" && detected.targetKind === "channel") ||
+    (product.target_kind === "post" && ["video", "reel"].includes(detected.targetKind)) ||
+    (product.target_kind === "video" && ["post", "reel"].includes(detected.targetKind)));
+  const targetOk = !!detected && detected.platform === product.platform && !!kindOk && target.trim().length <= 600;
+  const waOk = /^(\+62|62|0)8\d{8,13}$/.test(wa.trim().replace(/\s|-/g, ""));
+  const emailOk = z.string().email().max(160).safeParse(email.trim()).success;
+  const key = JSON.stringify([product.slug, tierId, qty, target.trim(), credit.trim(), wa.trim(), email.trim(), checks, agree, ordersEnabled]);
+  const latestKey = useRef(key);
+  latestKey.current = key;
+  const inFlight = useRef(false);
+  const quoteController = useRef<AbortController | null>(null);
+  const currentQuote = quote?.key === key ? quote : null;
+  const packageTotal = tier?.prices[String(qty)] ?? 0;
 
-  const pay = async () => {
-    setError(null);
-    // Checklist belum lengkap → scroll + fokus item pertama (AC-05).
-    const missing = checklist.find((c) => !checks[c.id]);
-    if (missing) {
-      setError("Centang dulu poin ini supaya pesanan bisa diproses.");
-      document.getElementById(`check-${missing.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
-      document.getElementById(`check-${missing.id}`)?.focus();
-      return;
+  useEffect(() => {
+    quoteController.current?.abort();
+    setQuote(null);
+    setError("");
+    setErrors({});
+    return () => { quoteController.current?.abort(); };
+  }, [key]);
+
+  const validate = () => {
+    const next: Record<string, string> = {};
+    if (!tier || !(packageTotal > 0)) next.quantity = "Pilih paket yang tersedia.";
+    if (!targetOk) next.target = `Masukkan link ${kind.toLowerCase()} ${platform} yang sesuai layanan ini.`;
+    if (!checklist.every((c) => checks[c.id])) next.requirements = "Konfirmasi semua persyaratan tujuan sebelum melanjutkan.";
+    if (!waOk) next.wa = "Masukkan nomor WhatsApp 08... atau +62... yang benar.";
+    if (!emailOk) next.email = "Masukkan alamat email yang benar (maksimal 160 karakter).";
+    if (credit.trim().length > 20) next.credit = "Kode kredit maksimal 20 karakter.";
+    if (!agree) next.agree = "Setujui Ketentuan Pedia sebelum melanjutkan.";
+    setErrors(next);
+    const first = Object.keys(next)[0];
+    if (first) {
+      const field = document.getElementById(`pedia-${first}`);
+      ((field?.querySelector("input:not(:disabled)") as HTMLElement | null) ?? field)?.focus();
     }
-    if (!agree) {
-      setError("Centang persetujuan Ketentuan Pedia dulu.");
-      document.getElementById("pedia-agree")?.scrollIntoView({ behavior: "smooth", block: "center" });
-      document.getElementById("pedia-agree")?.focus();
-      return;
-    }
-    setBusy("Membuat pesanan…");
+    return !first;
+  };
+
+  const checkPrice = async () => {
+    if (!ordersEnabled || inFlight.current || attempted || !validate()) return;
+    inFlight.current = true;
+    const requestKey = key;
+    const controller = new AbortController();
+    quoteController.current = controller;
+    setBusy("Memeriksa harga...");
+    setError("");
+    setQuote(null);
     try {
-      // 1. Quote server (pakai slug — id numerik milik server).
-      const qr = await fetch("/api/pedia/quote", {
-        method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ product_slug: product.slug, tier_id: tier.id, quantity: qty, target, credit_code: credit || undefined }),
-      });
-      const qd = await qr.json();
-      if (!qr.ok) throw new Error(qd.message ?? qd.error ?? "Quote gagal");
-      setBusy("Menyiapkan QRIS…");
-      // 2. Buat order.
-      const or = await fetch("/api/pedia/orders", {
-        method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ customer_wa: wa, customer_email: email, quote_token: qd.quote_token }),
-      });
-      const od = await or.json();
-      if (!or.ok) throw new Error(od.message ?? od.error ?? "Order gagal");
-      setQuote({ quote_token: qd.quote_token, payable: od.payable });
-      // Simpan ke localStorage axp-orders (lacak perangkat).
-      try {
-        const raw = localStorage.getItem("axp-orders");
-        const list = raw ? JSON.parse(raw) : [];
-        list.unshift({ code: od.code, name: product.name });
-        localStorage.setItem("axp-orders", JSON.stringify(list.slice(0, 20)));
-      } catch { /* abaikan */ }
-      location.assign(`/pedia/pesanan/${od.code}`);
+      const response = await fetchWithTimeout("/api/pedia/quote", {
+        method: "POST", headers: { "content-type": "application/json" }, signal: controller.signal,
+        body: JSON.stringify({ product_slug: product.slug, tier_id: tierId, quantity: qty, target: target.trim(), credit_code: credit.trim() || undefined }),
+      }, 25_000);
+      const data = await response.json();
+      if (controller.signal.aborted || latestKey.current !== requestKey) return;
+      if (!response.ok) throw new Error(data.message ?? data.error ?? "Harga belum dapat diperiksa. Coba lagi.");
+      if (typeof data.quote_token !== "string" || !Number.isFinite(data.total) || data.total <= 0 || !Number.isFinite(data.payable) || data.payable < 0 || data.payable > data.total) throw new Error("Respons harga tidak valid. Coba lagi.");
+      setQuote({ key: requestKey, quote_token: data.quote_token, total: data.total, payable: data.payable, expires: Date.now() + 29 * 60_000 });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Gagal. Coba lagi.");
+      if (!controller.signal.aborted && latestKey.current === requestKey) setError(e instanceof Error ? e.message : "Harga belum dapat diperiksa. Coba lagi.");
     } finally {
+      inFlight.current = false;
       setBusy("");
     }
   };
 
+  const pay = async () => {
+    if (!ordersEnabled || inFlight.current || !validate() || !currentQuote) return;
+    if (!attempted && currentQuote.expires <= Date.now()) {
+      setQuote(null);
+      setError("Harga telah kedaluwarsa. Periksa harga kembali sebelum melanjutkan.");
+      return;
+    }
+    // Preserve the same quote and contact on retries after an uncertain order response.
+    inFlight.current = true;
+    setAttempted(true);
+    setBusy("Membuka pembayaran...");
+    setError("");
+    try {
+      const response = await fetchWithTimeout("/api/pedia/orders", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ customer_wa: wa.trim(), customer_email: email.trim(), quote_token: currentQuote.quote_token }),
+      }, 60_000);
+      const data = await response.json();
+      if (!response.ok) {
+        if (response.status >= 400 && response.status < 500) {
+          setAttempted(false);
+          setQuote(null);
+        }
+        throw new Error(data.message ?? data.error ?? "Pesanan belum dapat dilanjutkan.");
+      }
+      if (typeof data.code !== "string" || !/^AXP-[A-Z0-9-]+$/.test(data.code)) throw new Error("Respons pesanan belum lengkap. Coba lanjutkan lagi dengan data yang sama.");
+      try {
+        const stored = JSON.parse(localStorage.getItem("axp-orders") ?? "[]");
+        const list = Array.isArray(stored) ? stored : [];
+        localStorage.setItem("axp-orders", JSON.stringify([{ code: data.code, name: product.name }, ...list.filter((o) => o.code !== data.code)].slice(0, 20)));
+      } catch { /* Device history is optional. */ }
+      location.assign(`/pedia/pesanan/${data.code}`);
+      // Keep the lock until navigation, including a second click from the mobile CTA.
+      return;
+    } catch (e) {
+      setError(`${e instanceof Error ? e.message : "Koneksi terputus."} Jika respons terputus, lanjutkan lagi dengan data yang sama; jangan membuat pesanan baru.`);
+      inFlight.current = false;
+      setBusy("");
+    }
+  };
+
+  const inlineError = (id: string) => errors[id] ? <p id={`pedia-${id}-error`} role="alert" className="mt-2 text-sm text-red-300">{errors[id]}</p> : null;
+  const priceText = currentQuote ? rupiah(currentQuote.payable) : busy === "Memeriksa harga..." ? "Memeriksa harga..." : packageTotal > 0 ? rupiah(packageTotal) : "Paket tidak tersedia";
+  const summary = <>
+    <h2 className="text-base font-semibold text-white">Ringkasan pesanan</h2>
+    <dl className="mt-4 space-y-3 text-sm text-white/70">
+      <div className="flex justify-between gap-4"><dt>Layanan</dt><dd className="text-right text-white">{product.name}</dd></div>
+      <div className="flex justify-between gap-4"><dt>Kualitas</dt><dd className="capitalize text-white">{tier?.tier ?? "Tidak tersedia"}</dd></div>
+      <div className="flex justify-between gap-4"><dt>Jumlah</dt><dd className="tabular-nums text-white">{qty.toLocaleString("id-ID")}</dd></div>
+      <div className="flex justify-between gap-4"><dt>Refill</dt><dd>{tier?.refill_days ? `${tier.refill_days} hari, sesuai ketentuan` : "Tidak tersedia"}</dd></div>
+      {targetOk && <div><dt>Tujuan</dt><dd className="mt-1 break-all text-white">{target.trim()}</dd></div>}
+      {currentQuote && currentQuote.total > currentQuote.payable && <div className="flex justify-between"><dt>Kredit digunakan</dt><dd>{rupiah(currentQuote.total - currentQuote.payable)}</dd></div>}
+      <div className="flex justify-between gap-3 border-t border-white/15 pt-4"><dt>{currentQuote ? "Total terkonfirmasi" : "Harga paket"}</dt><dd className="font-semibold tabular-nums text-white">{priceText}</dd></div>
+    </dl>
+    <p className="mt-3 text-xs leading-relaxed text-white/60">{currentQuote ? "Harga dari server. Nominal QRIS ditampilkan di halaman pembayaran." : "Periksa harga sebelum melanjutkan. Kredit belum diperhitungkan."}</p>
+  </>;
+  const cta = <button type="button" onClick={pay} disabled={!ordersEnabled || !currentQuote || !!busy} className="min-h-[48px] w-full rounded-xl bg-[#00E5FF] px-4 py-3 text-sm font-semibold text-[#070a1e] disabled:bg-white/10 disabled:text-white/50">{busy === "Membuka pembayaran..." ? busy : "Lanjut ke pembayaran"}</button>;
+
   return (
-    <div className="px-1 pt-5 sm:px-0 sm:pt-6 lg:grid lg:grid-cols-12 lg:gap-8">
-      <div className="lg:col-span-7">
-        <a href="/pedia" className="text-sm text-white/55 hover:text-white">← {product.name}</a>
-        <h1 className="mt-1 font-display text-[20px] font-bold leading-tight text-white sm:text-[32px]">{product.name}</h1>
-        {product.tagline && <p className="text-sm text-white/55">{product.tagline}</p>}
-
-        {/* 1 Target */}
-        <section aria-label="Langkah 1 target" className="mt-5 sm:mt-6">
-          <StepTitle n={1} title="Target" done={!!detected} />
-          <input
-            value={target}
-            onChange={(e) => setTarget(e.target.value)}
-            placeholder="instagram.com/namakamu"
-            inputMode="url"
-            className="pedia-field mt-2 h-13 min-h-[52px] w-full rounded-[14px] border border-white/10 bg-white/5 px-4 text-[16px] text-white placeholder:text-white/30 focus:border-[var(--px-violet)] focus:outline-none"
-          />
-          {detected?.displayUser && <p className="mt-1 text-[13px] text-emerald-300">{detected.displayUser} · Profil {product.platform} ✓</p>}
-        </section>
-
-        {/* 2 Jumlah */}
-        <section aria-label="Langkah 2 jumlah" className="mt-5 sm:mt-6">
-          <StepTitle n={2} title="Jumlah" done={qty > 0} />
-          <div role="radiogroup" aria-label="Pilih jumlah" className="mt-2 flex flex-wrap gap-2">
-            {product.packages.map((p) => (
-              <button
-                key={p}
-                role="radio"
-                aria-checked={qty === p && !customQty}
-                onClick={() => { setQty(p); setCustomQty(false); }}
-                className={`h-11 min-w-[72px] rounded-[14px] px-3 text-sm font-bold ${qty === p && !customQty ? "bg-[var(--px-violet-soft)] text-white ring-1 ring-[var(--px-violet)]" : "bg-white/5 text-white/65"}`}
-              >
-                {p.toLocaleString("id-ID")}
-              </button>
-            ))}
-            <button
-              role="radio" aria-checked={customQty}
-              onClick={() => setCustomQty(true)}
-              className={`h-11 rounded-[14px] px-3 text-sm font-bold ${customQty ? "bg-[var(--px-violet-soft)] text-white ring-1 ring-[var(--px-violet)]" : "bg-white/5 text-white/65"}`}
-            >
-              Lainnya
-            </button>
-          </div>
-          {customQty && (
-            <input
-              type="number" value={qty} min={1}
-              onChange={(e) => setQty(Math.max(1, Number(e.target.value) || 1))}
-              className="pedia-field mt-2 h-12 min-h-[48px] w-40 rounded-[14px] border border-white/10 bg-white/5 px-4 text-[16px] text-white"
-              aria-label="Jumlah bebas"
-            />
-          )}
-          <p className="mt-1 text-[13px] text-white/55" style={{ fontVariantNumeric: "tabular-nums" }}>
-            Rp{unitTotal.toLocaleString("id-ID")}
-          </p>
-        </section>
-
-        {/* 3 Kualitas */}
-        {product.tiers.length > 1 && (
-          <section aria-label="Langkah 3 kualitas" className="mt-5 sm:mt-6">
-            <StepTitle n={3} title="Kualitas" done={!!tier} />
-            <div role="radiogroup" aria-label="Pilih kualitas" className="mt-2 flex gap-2 overflow-x-auto pb-1">
-              {product.tiers.map((t) => (
-                <button
-                  key={t.id}
-                  role="radio"
-                  aria-checked={t.id === tierId}
-                  aria-label={`${t.tier}, Rp${(t.prices[String(qty)] ?? 0).toLocaleString("id-ID")}, ${t.label_note ?? ""}, garansi ${t.refill_days} hari`}
-                  onClick={() => setTierId(t.id)}
-                  className={`w-[148px] shrink-0 rounded-[20px] border p-3 text-left ${t.id === tierId ? "pedia-tier-selected" : "border-white/10 bg-white/[0.03]"}`}
-                >
-                  <span className="text-xs font-bold capitalize text-white">{t.tier}</span>
-                  {TIER_BADGE[t.tier] && <span className="ml-1 rounded-full bg-[var(--px-violet-soft)] px-1.5 py-px text-[10px] font-bold text-white">{TIER_BADGE[t.tier]}</span>}
-                  <span className="mt-1 block font-display text-lg font-bold text-white" style={{ fontVariantNumeric: "tabular-nums" }}>
-                    Rp{(t.prices[String(qty)] ?? 0).toLocaleString("id-ID")}
-                  </span>
-                  <span className="mt-1 block text-[12px] text-white/60">{t.label_note ?? ""}</span>
-                  <span className="block text-[12px] text-white/60">
-                    {t.refill_days > 0 ? `Garansi ${t.refill_days} hari` : "Tanpa garansi"} · {t.eta_start ?? ""}
-                  </span>
-                </button>
-              ))}
-            </div>
+    <div className="pb-28 pt-6 lg:pb-12">
+      {!ordersEnabled && <div role="status" className="mb-6 rounded-xl border border-white/20 bg-white/5 p-4 text-sm leading-relaxed text-white/80"><strong className="block text-white">Pemesanan belum tersedia</strong>Paket dan harga dapat dilihat. Data kontak tidak diperlukan selama pemesanan ditutup.</div>}
+      <a href="/pedia" className="text-sm text-white/60 hover:text-white">Kembali ke layanan</a>
+      <h1 className="mt-3 text-2xl font-semibold tracking-tight text-white sm:text-3xl">{product.name}</h1>
+      <p className="mt-2 text-sm text-white/60">Pilih paket, periksa tujuan, lalu konfirmasi harga sebelum pembayaran.</p>
+      <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-10">
+        <div className="min-w-0 space-y-8">
+          <section aria-labelledby="pedia-package-heading">
+            <h2 id="pedia-package-heading" className="text-lg font-semibold text-white">1. Paket &amp; jumlah</h2>
+            <fieldset disabled={attempted} className="mt-4">
+              <legend className="mb-3 text-sm text-white/70">Kualitas layanan</legend>
+              <div className="space-y-2">
+                {product.tiers.map((t) => <label key={t.id} className={`grid cursor-pointer grid-cols-[20px_minmax(0,1fr)] items-start gap-3 rounded-xl border p-4 sm:grid-cols-[20px_minmax(0,1fr)_140px] ${t.id === tierId ? "border-[#00E5FF]/60 bg-white/[0.06]" : "border-white/15 bg-white/[0.02]"}`}>
+                  <input type="radio" name="pedia-tier" value={t.id} checked={t.id === tierId} className="mt-1 h-4 w-4 accent-[#00E5FF]" onChange={() => {
+                    setTierId(t.id);
+                    if (!(t.prices[String(qty)] > 0)) {
+                      const next = product.packages.find((p) => t.prices[String(p)] > 0) ?? 0;
+                      setQty(next);
+                      setNotice(`Jumlah disesuaikan ke ${next.toLocaleString("id-ID")} untuk kualitas ${t.tier}.`);
+                    } else setNotice("");
+                  }} />
+                  <span><span className="font-semibold capitalize text-white">{t.tier}</span><span className="mt-1 block text-sm text-white/65">{t.label_note || "Detail kualitas belum tersedia"}</span><span className="mt-2 block text-xs text-white/60">{t.refill_days > 0 ? `Refill ${t.refill_days} hari, sesuai ketentuan` : "Tanpa refill"}</span></span>
+                  <span className="col-start-2 text-sm text-white/75 sm:col-start-3 sm:text-right"><span className="block font-semibold tabular-nums text-white">{t.prices[String(qty)] > 0 ? rupiah(t.prices[String(qty)]) : "Jumlah tidak tersedia"}</span><span className="mt-1 block text-xs">Mulai: {t.eta_start || "Belum ditentukan"}</span><span className="mt-1 block text-xs">Selesai: {t.eta_finish || "Belum ditentukan"}</span></span>
+                </label>)}
+              </div>
+            </fieldset>
+            <fieldset id="pedia-quantity" tabIndex={-1} disabled={attempted} aria-describedby="pedia-quantity-help" className="mt-5">
+              <legend className="mb-3 text-sm text-white/70">Jumlah</legend>
+              <div className="flex flex-wrap gap-2">{product.packages.map((p) => <label key={p} className={`flex min-h-[44px] items-center gap-2 rounded-lg border px-3 text-sm ${!((tier?.prices[String(p)] ?? 0) > 0) ? "cursor-not-allowed border-white/10 text-white/35" : qty === p ? "border-[#00E5FF]/60 bg-white/5 text-white" : "cursor-pointer border-white/20 text-white/75"}`}><input type="radio" name="pedia-quantity" value={p} checked={qty === p} disabled={!((tier?.prices[String(p)] ?? 0) > 0)} onChange={() => { setQty(p); setNotice(""); }} className="h-4 w-4 accent-[#00E5FF]" />{p.toLocaleString("id-ID")}</label>)}</div>
+            </fieldset>
+            {/* ponytail: configured packages only; enable custom quantities when the orders API accepts non-package quotes. */}
+            <p id="pedia-quantity-help" className="mt-3 text-xs leading-relaxed text-white/60">Saat ini pemesanan hanya tersedia untuk paket jumlah yang tercantum. Jumlah bebas belum tersedia.</p>
+            {notice && <p role="status" className="mt-2 text-sm text-white/75">{notice}</p>}{inlineError("quantity")}
           </section>
-        )}
 
-        {/* 4 Cek */}
-        {checklist.length > 0 && (
-          <section aria-label="Langkah 4 cek" className="mt-5 sm:mt-6">
-            <StepTitle n={4} title="Cek sebelum bayar" done={checksDone} />
-            <div className="mt-2 space-y-2">
-              {checklist.map((c) => (
-                <label key={c.id} className="flex items-start gap-3 rounded-[14px] border border-white/10 bg-white/[0.03] p-3 text-sm text-white/80">
-                  <input
-                    id={`check-${c.id}`}
-                    type="checkbox"
-                    checked={!!checks[c.id]}
-                    onChange={(e) => setChecks({ ...checks, [c.id]: e.target.checked })}
-                    className="mt-0.5 h-[22px] w-[22px] accent-[#8B5CF6]"
-                  />
-                  <span>
-                    {c.label}
-                    {c.help && <span className="block text-[12.5px] text-white/50">{c.help}</span>}
-                  </span>
-                </label>
-              ))}
-            </div>
+          <section aria-labelledby="pedia-target-heading" className="border-t border-white/15 pt-7">
+            <h2 id="pedia-target-heading" className="text-lg font-semibold text-white">2. Tujuan &amp; persyaratan</h2>
+            <fieldset disabled={attempted} className="mt-4">
+              <label htmlFor="pedia-target" className="text-sm text-white/80">Link {kind.toLowerCase()} {platform}</label>
+              <input id="pedia-target" value={target} onChange={(e) => setTarget(e.target.value)} inputMode="url" autoCapitalize="none" spellCheck={false} maxLength={600} className={fieldClass} aria-invalid={!!errors.target || (!!target.trim() && !targetOk)} aria-describedby="pedia-target-help pedia-target-error" />
+              <p id="pedia-target-help" className="mt-2 text-xs leading-relaxed text-white/60">Hanya format link, platform, dan jenis tujuan yang diperiksa. Keberadaan akun tidak diverifikasi.</p>
+              {targetOk && <p className="mt-2 text-sm text-white/75">Format link sesuai: {platform}, {kind.toLowerCase()}.</p>}
+              {errors.target ? inlineError("target") : target.trim() && !targetOk && <p id="pedia-target-error" className="mt-2 text-sm text-red-300">Gunakan link {kind.toLowerCase()} {platform}, bukan link platform atau jenis tujuan lain.</p>}
+              {checklist.length > 0 && <div id="pedia-requirements" tabIndex={-1} className="mt-5 space-y-3" aria-describedby={errors.requirements ? "pedia-requirements-error" : undefined}>{checklist.map((c) => <label key={c.id} className="flex gap-3 text-sm leading-relaxed text-white/80"><input type="checkbox" checked={!!checks[c.id]} onChange={(e) => setChecks({ ...checks, [c.id]: e.target.checked })} className="mt-1 h-4 w-4 shrink-0 accent-[#00E5FF]" /><span>{c.label}{c.help && <span className="mt-1 block text-xs text-white/60">{c.help}</span>}</span></label>)}</div>}
+              {inlineError("requirements")}
+            </fieldset>
           </section>
-        )}
 
-        {/* 5 Kontak */}
-        <section aria-label="Langkah 5 kontak" className="mt-5 sm:mt-6">
-          <StepTitle n={5} title="Kontak" done={!!(wa && email)} />
-          <div className="mt-2 space-y-2">
-            <input value={wa} onChange={(e) => setWa(e.target.value)} placeholder="No. WhatsApp 08…" inputMode="tel" className="pedia-field h-12 min-h-[48px] w-full rounded-[14px] border border-white/10 bg-white/5 px-4 text-[16px] text-white placeholder:text-white/30" aria-label="Nomor WhatsApp" />
-            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email nama@email.com" inputMode="email" className="pedia-field h-12 min-h-[48px] w-full rounded-[14px] border border-white/10 bg-white/5 px-4 text-[16px] text-white placeholder:text-white/30" aria-label="Email" />
-            <p className="text-[12.5px] text-white/50">Status & bukti pesanan dikirim ke email.</p>
-            <details className="rounded-[14px] border border-white/10 p-3">
-              <summary className="cursor-pointer text-sm text-white/70">Punya kode kredit?</summary>
-              <input value={credit} onChange={(e) => setCredit(e.target.value.toUpperCase())} placeholder="PDK-XXXX-XXXX" className="pedia-field mt-2 h-12 min-h-[48px] w-full rounded-[14px] border border-white/10 bg-white/5 px-4 font-mono text-[16px] text-white placeholder:text-white/30" aria-label="Kode kredit" />
-            </details>
-            <label className="flex items-start gap-3 text-sm text-white/80">
-              <input id="pedia-agree" type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-0.5 h-[22px] w-[22px] accent-[#8B5CF6]" />
-              <span>Saya setuju <a href="/pedia/ketentuan" className="underline">Ketentuan Pedia</a></span>
-            </label>
-          </div>
-        </section>
-
-        <div className="h-[84px]" aria-hidden="true" />
+          {ordersEnabled && <section aria-labelledby="pedia-contact-heading" className="border-t border-white/15 pt-7">
+            <h2 id="pedia-contact-heading" className="text-lg font-semibold text-white">3. Kontak &amp; konfirmasi</h2>
+            <fieldset disabled={attempted} className="mt-4 space-y-4">
+              <div><label htmlFor="pedia-wa" className="text-sm text-white/80">Nomor WhatsApp</label><input id="pedia-wa" type="tel" autoComplete="tel" value={wa} onChange={(e) => setWa(e.target.value)} placeholder="08... atau +62..." className={fieldClass} aria-invalid={!!errors.wa} aria-describedby={errors.wa ? "pedia-wa-error" : undefined} />{inlineError("wa")}</div>
+              <div><label htmlFor="pedia-email" className="text-sm text-white/80">Email</label><input id="pedia-email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={160} className={fieldClass} aria-invalid={!!errors.email} aria-describedby="pedia-email-help pedia-email-error" /><p id="pedia-email-help" className="mt-2 text-xs text-white/60">Status dan bukti pesanan dikirim ke email ini.</p>{inlineError("email")}</div>
+              <details className="border-y border-white/15 py-3"><summary className="cursor-pointer text-sm text-white/75">Punya kode kredit?</summary><label htmlFor="pedia-credit" className="mt-3 block text-sm text-white/80">Kode kredit</label><input id="pedia-credit" value={credit} onChange={(e) => setCredit(e.target.value.toUpperCase())} maxLength={20} placeholder="PDK-XXXX-XXXX" className={fieldClass} aria-invalid={!!errors.credit} />{inlineError("credit")}</details>
+              <label className="flex gap-3 text-sm text-white/80"><input id="pedia-agree" type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-[#00E5FF]" aria-invalid={!!errors.agree} aria-describedby={errors.agree ? "pedia-agree-error" : undefined} /><span>Saya setuju <a href="/pedia/ketentuan" className="underline underline-offset-4">Ketentuan Pedia</a>.</span></label>{inlineError("agree")}
+            </fieldset>
+            <button type="button" disabled={!!busy || attempted} onClick={checkPrice} className="mt-5 min-h-[48px] rounded-xl border border-white/25 px-4 text-sm font-semibold text-white disabled:opacity-50">{busy === "Memeriksa harga..." ? busy : "Periksa harga"}</button>
+            {currentQuote && <p role="status" className="mt-3 text-sm text-white/80">Harga terkonfirmasi: {rupiah(currentQuote.payable)}. Periksa ringkasan, lalu lanjutkan ke pembayaran.</p>}
+            {attempted && <p className="mt-3 text-sm text-white/70">Data dikunci untuk melanjutkan pesanan yang sama jika koneksi terputus.</p>}
+            {error && <p role="alert" className="mt-3 rounded-xl border border-red-300/30 p-3 text-sm leading-relaxed text-red-200">{error}</p>}
+          </section>}
+          <div className="rounded-xl border border-white/15 p-4 lg:hidden">{summary}</div>
+        </div>
+        <aside className="hidden lg:block"><div className="sticky top-20 rounded-xl border border-white/15 bg-white/[0.03] p-5">{summary}<div className="mt-5">{cta}</div></div></aside>
       </div>
-
-      {/* Ringkasan desktop */}
-      <aside className="hidden lg:col-span-5 lg:block">
-        <div className="ax-glass-card sticky top-20 rounded-[20px] p-5">
-          <OrderSummaryBody product={product} tierName={tier?.tier ?? ""} qty={qty} total={unitTotal} />
-          <PayButton ordersEnabled={ordersEnabled} total={unitTotal} busy={busy} onPay={pay} />
-        </div>
-      </aside>
-
-      {/* Sticky bar mobile */}
-      <div className="ax-glass-strong fixed inset-x-0 bottom-0 z-40 lg:hidden" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
-        <div className="flex h-[68px] items-center justify-between px-4">
-          <div>
-            <p className="text-[11px] text-white/55">Total</p>
-            <p className="font-display text-[20px] font-bold text-white" style={{ fontVariantNumeric: "tabular-nums" }}>
-              Rp{unitTotal.toLocaleString("id-ID")}
-            </p>
-          </div>
-          <PayButton ordersEnabled={ordersEnabled} total={unitTotal} busy={busy} onPay={pay} />
-        </div>
-      </div>
-
-      {error && (
-        <div role="alert" className="fixed left-1/2 top-20 z-50 w-[calc(100%-32px)] max-w-md -translate-x-1/2 rounded-2xl border border-amber-400/40 bg-[#1a1408]/95 p-4 text-sm text-amber-200">
-          {error}
-          <button onClick={() => setError(null)} className="ml-3 underline" aria-label="Tutup pesan">Tutup</button>
-        </div>
-      )}
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/15 bg-[#080C1E] p-4 lg:hidden" style={{ paddingBottom: "max(16px, env(safe-area-inset-bottom))" }}>{cta}</div>
     </div>
-  );
-}
-
-function StepTitle({ n, title, done }: { n: number; title: string; done: boolean }) {
-  return (
-    <h2 className="flex items-center gap-2 text-[15px] font-bold text-white">
-      <span className={`flex h-[22px] w-[22px] items-center justify-center rounded-full text-[11px] ${done ? "bg-[var(--px-violet)] text-white" : "bg-white/10 text-white/60"}`}>
-        {done ? "✓" : n}
-      </span>
-      {title}
-    </h2>
-  );
-}
-
-function OrderSummaryBody({ product, tierName, qty, total }: { product: PediaCatalogProduct; tierName: string; qty: number; total: number }) {
-  return (
-    <div className="space-y-1.5 text-sm">
-      <p className="font-bold text-white">{product.name}</p>
-      <p className="text-white/60">Jumlah: {qty.toLocaleString("id-ID")}</p>
-      <p className="text-white/60">Kualitas: <span className="capitalize">{tierName}</span></p>
-      <p className="border-t border-white/10 pt-2 font-display text-[22px] font-bold text-white" style={{ fontVariantNumeric: "tabular-nums" }}>
-        Rp{total.toLocaleString("id-ID")}
-      </p>
-    </div>
-  );
-}
-
-function PayButton({ ordersEnabled, total, busy, onPay }: { ordersEnabled: boolean; total: number; busy: string; onPay: () => void }) {
-  if (!ordersEnabled) {
-    return (
-      <button disabled className="h-12 rounded-[14px] bg-white/10 px-6 text-sm font-bold text-white/50" title="Pedia belum dibuka untuk order">
-        Segera dibuka
-      </button>
-    );
-  }
-  return (
-    <button
-      onClick={onPay}
-      disabled={!!busy}
-      className="h-12 min-h-[48px] rounded-[14px] bg-[#00E5FF] px-6 text-sm font-bold text-[#070a1e] transition active:scale-[0.98] disabled:opacity-60"
-    >
-      {busy || `Bayar QRIS · Rp${total.toLocaleString("id-ID")}`}
-    </button>
   );
 }

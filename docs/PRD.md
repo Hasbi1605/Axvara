@@ -306,9 +306,9 @@ MVP seed: 8–12 produk dummy dengan foto placeholder premium + harga realistis 
 
 ---
 
-## 9. Lini Produk Berikutnya (rencana)
+## 9. Lini Produk Tambahan
 
-- **AXVARA PEDIA** — toko SMM kurasi di `pedia.axvara.tech`, supplier providersmm.id. Status 📝 spesifikasi siap eksekusi (2026-10-07), belum live. Detail: `docs/PEDIA-PRD.md` + `docs/PEDIA-DESIGN.md`.
+- **AXVARA PEDIA** — toko SMM kurasi di `pedia.axvara.tech`, supplier providersmm.id. Katalog awal dibuka 2026-10-08; **overhaul UX 2026-10-11 diimplementasikan dan diverifikasi lokal, pending deployment**, bukan klaim sudah live di produksi. Beranda menampilkan semua produk katalog publik, cari nama dan filter platform, kartu harga dengan jumlah dan tingkat dari paket yang sama, lalu opsi tempel tautan. Checkout: Paket & jumlah → Tujuan & persyaratan → Kontak & konfirmasi; radio native, hanya paket terkonfigurasi (API orders belum menerima jumlah bebas), **Periksa harga** server sebelum **Lanjut ke pembayaran**. Perubahan input membatalkan quote; retry respons order ambigu mengunci data dan memakai token yang sama. Saat order ditutup, notice tampil dan kontak/kredit/persetujuan tidak dirender. Refill/estimasi mengikuti tingkat, kredit partial/cancel bukan refund tunai; tidak ada klaim laris/badge kualitas hardcoded. Admin: daftar ringkas dengan status kesiapan, editor produk/tingkat terpisah, assignment supplier, recovery order, kredit, pengaturan dan feedback error; reprice langsung setelah edit dapat gagal setelah perubahan tersimpan (tidak atomik). Tagline/deskripsi dapat disunting tetapi belum tampil ke pembeli. Detail dan batas implementasi: `docs/PEDIA-PRD.md` + `docs/PEDIA-DESIGN.md`.
 - **AXVARA AI** (AI Gateway new-api di VPS Tencent) — menyusul setelah Pedia, belum ada PRD.
 
 ## Appendix — Referensi

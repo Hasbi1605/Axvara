@@ -102,9 +102,12 @@ describe("integrasi pusat M6 (PD-60–64)", () => {
     expect(svg).toContain('fill="currentColor"');
   });
 
-  it("Footer Pedia = footer market (konsisten) + header platform ikon asli", () => {
+  it("Footer Pedia kontekstual tanpa newsletter market + header platform ikon asli", () => {
     const layout = read("src/app/pedia/layout.tsx");
-    expect(layout).toContain('Footer shopBase="https://axvara.tech"');
+    expect(layout).toContain('aria-label="Bantuan Pedia"');
+    expect(layout).toContain('href="/pedia/lacak"');
+    expect(layout).toContain('href="/pedia/ketentuan"');
+    expect(layout).not.toContain("<Footer");
     expect(layout).not.toContain("Axvara Pedia</span> · Naikkan");
     const plat = read("src/app/pedia/p/[platform]/platform-client.tsx");
     expect(plat).toContain("PlatformIcon");

@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
   const q = request.nextUrl.searchParams;
   const status = q.get("status")?.slice(0, 30) ?? "";
   const db = createDatabaseAccess();
+  try {
   const where = status ? `WHERE i.status=?` : "";
   const params: unknown[] = status ? [status] : [];
   const rows = await db.queryAll(
@@ -27,6 +28,7 @@ export async function GET(request: NextRequest) {
                WHEN 'submitting' THEN 2 ELSE 3 END, i.created_at DESC
       LIMIT 100`,
     ...params,
-  ).catch(() => []);
+  );
   return NextResponse.json({ ok: true, rows });
+  } catch { return NextResponse.json({ error: "load_failed" }, { status: 500 }); }
 }

@@ -47,7 +47,7 @@ export function LinkPasteHero({ suggestionsFor }: { suggestionsFor?: (d: PediaLi
           global). */}
       <style>{`.pedia-link-box:focus-within{border-color:#00E5FF!important;box-shadow:0 0 0 3px rgba(0,229,255,.35)!important}.pedia-link-box input:focus,.pedia-link-box input:focus-visible{outline:none!important;box-shadow:none!important}`}</style>
       <div className="pedia-link-box ax-glass-card flex h-14 items-center gap-2 rounded-2xl border border-white/10 px-3 transition" style={focused ? { borderColor: "#00E5FF", boxShadow: "0 0 0 3px rgba(0,229,255,.35)" } : undefined}>
-        <span aria-hidden="true" className="text-lg">🔗</span>
+         <label htmlFor="pedia-link-input" className="sr-only">Tautan profil atau konten</label>
         <input
           id="pedia-link-input"
           value={value}
@@ -55,7 +55,10 @@ export function LinkPasteHero({ suggestionsFor }: { suggestionsFor?: (d: PediaLi
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           placeholder="Tempel link profil atau postingan…"
-          inputMode="url"
+           inputMode="url"
+           type="text"
+           autoCapitalize="none"
+           spellCheck={false}
           autoComplete="off"
           className="h-full flex-1 bg-transparent text-[16px] text-white placeholder:text-white/35 focus:outline-none"
           style={{ boxShadow: "none" }}
@@ -70,11 +73,11 @@ export function LinkPasteHero({ suggestionsFor }: { suggestionsFor?: (d: PediaLi
       <div aria-live="polite" className="mt-2">
         {detected && (
           <div className="animate-[fadeInUp_200ms_var(--ease-out)]">
-            <span className="inline-flex h-8 items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 text-[13px] font-semibold text-white">
+             <span className="inline-flex flex-wrap items-center gap-1.5 text-[13px] font-medium text-white/80">
               {PEDIA_PLATFORM_LABEL[detected.platform]} · {PEDIA_TARGET_KIND_LABEL[detected.targetKind]}
               {detected.displayUser && <span className="text-white/60">{detected.displayUser}</span>}
-              <span aria-hidden="true" className="text-emerald-300">✓</span>
-            </span>
+             </span>
+             <p className="mt-1 text-xs text-white/60">Format tautan dikenali; akun atau konten belum diverifikasi.</p>
             {suggestions.length > 0 && (
               <div className="mt-2 grid gap-2">
                 {suggestions.map((s) => (
@@ -97,7 +100,7 @@ export function LinkPasteHero({ suggestionsFor }: { suggestionsFor?: (d: PediaLi
           </div>
         )}
         {unknown && (
-          <p className="mt-2 text-[13px] text-white/60">Kami belum mengenali link ini. Pilih platformnya di bawah.</p>
+           <p className="mt-2 text-[13px] text-white/70">Format tautan belum dikenali. Pilih layanan melalui katalog di atas.</p>
         )}
       </div>
     </div>

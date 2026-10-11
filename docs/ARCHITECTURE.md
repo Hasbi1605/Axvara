@@ -106,9 +106,9 @@ axvara/
 │   │   └── r2/[...key]/route.ts # R2 publik catch-all
 │   ├── pedia/                   # Axvara Pedia pedia.axvara.tech (2026-10-08, PEDIA-PRD; spesifikasi: docs/PEDIA-PRD.md, docs/PEDIA-DESIGN.md)
 │   │   ├── layout.tsx           # Layout Pedia: .pedia-root + PediaNavbar + PediaBottomNav + footer mini (TANPA chrome toko)
-│   │   ├── page.tsx + home-client.tsx  # Beranda: hero "Tempel link", LinkPasteHero (deteksi 150ms), trust strip, PlatformGrid, laris, ticker (≥5/24jam), FAQ+JSON-LD
+│   │   ├── page.tsx + home-client.tsx  # Overhaul 2026-10-11 lokal, pending deployment: semua produk, cari/platform, kartu paket; LinkPasteHero sekunder + FAQ/JSON-LD, tanpa ticker
 │   │   ├── p/[platform]/        # Layanan per platform (8): filter jenis + grid ProductCard
-│   │   ├── o/[slug]/            # Order 5 langkah (target→jumlah→kualitas→cek→kontak) + sticky bar mobile + quote→order→QRIS
+│   │   ├── o/[slug]/            # 3 kelompok (paket/jumlah→tujuan/persyaratan→kontak/konfirmasi); Periksa harga → Lanjut pembayaran, hanya paket, retry token sama
 │   │   ├── pesanan/[code]/      # Status: QRIS lunas / ring+timeline/refill/kartu kredit/needs_check + auto-refresh
 │   │   ├── lacak/               # Lacak kode + kontak (lookupPediaOrder) + axp-orders perangkat
 │   │   └── bantuan/ + ketentuan/ + layanan/  # Bantuan (3 grup), S&K 7 poin, semua layanan
@@ -141,7 +141,7 @@ axvara/
 │   │                            # Skeletons (satu bentuk skeleton per halaman: overlay navigasi + loading halaman)
 │   └── admin/                   # Shell, login gate, hooks (useAdminAuth/useProductManager),
 │       └── sections/            # satu komponen per section admin (page.tsx tinggal shell + routing)
-│       └── pedia/               # PediaAdmin (Overview+Produk+Jasa+Tingkat+Pesanan+Kredit+Pengaturan+PEM-11) + PediaInboxTable (aksi tiap item)
+│       └── PediaManager.tsx     # 5 panel: Produk/Layanan Supplier/Pesanan/Kredit/Pengaturan; daftar ringkas + editor produk/tingkat terpisah
 │   ├── pedia/                   # Komponen Pedia: PediaNavbar, PediaBottomNav, LinkPasteHero, PlatformGrid, OrderTicker, StatusWidgets (ring/pil/timeline)
 ├── src/hooks/
 │   ├── useModalA11y.ts          # Escape + focus trap + scroll lock + restore fokus — SATU
@@ -190,6 +190,16 @@ axvara/
 ```
 
 ### 3.0 Aturan modul (pasca refactor)
+
+**Pedia UX 2026-10-11: diimplementasikan dan diverifikasi lokal, pending deployment.** Perubahan ini tidak mengubah schema atau membuka flag order/dispatch produksi. Detail UI: `docs/PEDIA-DESIGN.md`; kontrak dan batas: `docs/PEDIA-PRD.md`.
+
+- `GET /api/pedia/catalog` mempertahankan cache 60 detik dan payload publik tanpa ID/rate/nama supplier. Tier aktif wajib punya layanan `providersmm` yang `present=1`, tipe `Default`, dengan min/max valid; harga harus finite positif, jumlah dalam batas, ada di paket produk dan sesuai `step`. Tier tanpa harga valid dan produk tanpa paket tersedia dihilangkan. `min_qty`/`max_qty` boleh publik. Filter tipe sama dengan readiness admin.
+- `page.tsx` meneruskan seluruh katalog, bukan delapan unggulan; kartu beranda/platform/layanan berbagi `catalogCard()` yang memasangkan harga terendah dengan jumlah dan tingkat yang sama. `tagline` masih di payload tetapi tidak dirender; `description_md` hanya admin, tidak dikirim katalog. Layout memakai footer Pedia sendiri, bukan `Footer` toko pusat.
+- `OrderClient` memakai radio native dan paket terkonfigurasi saja: quote API dapat menghitung jumlah non-paket, tetapi orders API mensyaratkan key jumlah di `package_prices_json`. **Periksa harga** memvalidasi form dan meminta quote (timeout 25 detik); perubahan input/kontak/checklist/persetujuan membatalkan quote dan respons lama diabaikan. Quote server berlaku 30 menit; client meminta pemeriksaan ulang setelah 29 menit sebelum percobaan order pertama.
+- **Lanjut ke pembayaran** mengirim token quote + WA/email (timeout 60 detik). Ref in-flight mencegah klik ganda desktop/mobile; setelah percobaan pertama data terkunci. Respons ambigu/network/5xx mempertahankan token dan kontak untuk retry, bukan membuat quote baru; 4xx membuka kunci dan membuang quote. Ini perilaku client, bukan jaminan baru bahwa seluruh efek samping API orders atomik. Saat order ditutup, notice terlihat dan kontak/kredit/persetujuan/Periksa harga tidak dirender; CTA tetap disabled.
+- Admin GET produk menyertakan `live_type/rate/min/max/present` untuk readiness. PUT parsial memvalidasi hanya field yang dikirim tanpa mereset field lain; paket wajib bilangan positif sesuai `step`, checklist berupa array objek `id/label`. Edit tier atau paket/step produk langsung menghitung ulang harga tersimpan pada tier terdampak; harga derived tidak dapat diedit lewat PUT. Supplier hilang tidak dihidupkan ulang: harga dikosongkan dan tier `present=0` dinonaktifkan. **Simpan dan reprice berurutan, tidak atomik:** `500 reprice_failed` berarti edit sudah tersimpan tetapi harga mungkin belum seluruhnya diperbarui.
+- GET admin gagal mengembalikan `500 load_failed`, bukan daftar kosong sukses; PUT/recovery gagal memberi `save_failed`, UI menampilkan feedback + Muat ulang, dan resync dengan `errors` dianggap berhasil sebagian. `mark_submitted/resubmit` memeriksa hasil update berpagar status (race → 409); resubmit dan cancel+kredit mewajibkan `confirm=true`. Konfirmasi UI recovery berupa form; ConfirmDialog dipakai untuk resync, kredit manual, pengaturan, bukan semua edit.
+- Pengaturan disimpan ke `store_settings` dan menampilkan default valid + riwayat saldo 7 hari; bukan bulk override tingkat atau saldo live header. Jalur reprice/quote/order masih membaca `PEDIA_MIN_ORDER_RP` dari env, sehingga field minimum tersimpan belum menggantikannya; ambang cron juga masih mengikuti env. Tidak ada kontrak baru konsumsi default oleh seluruh jalur harga.
 
 Route API dan modul besar dipecah per domain, tetapi **path publik lama dipertahankan sebagai
 barrel** (`src/lib/db.ts`, `src/lib/fulfillment/deliver.ts`, `src/lib/telegram/messages.ts`).
