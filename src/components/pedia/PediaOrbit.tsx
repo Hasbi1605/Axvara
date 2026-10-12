@@ -9,40 +9,46 @@ type OrbitItem = {
   dark?: boolean; // logo putih (Threads/X) → sphere gelap agar terlihat
 };
 
-// Planet = 8 platform sosmed Pedia (logo asli Simple Icons di
-// public/icons/platforms/). Tidak memakai slug → tidak ada fallback
-// /icons/<slug>.svg yang 404 seperti OrbitHero bila ikon tak ada.
+// Planet = 8 platform sosmed Pedia (7 ikon unik + Instagram ganda agar
+// ring 0 & 3 terisi seimbang). Logo asli tiap brand diambil dari paket yang
+// SAMA dengan Market (/icons/*.svg — badge resmi tiap brand, bukan glyph
+// Simple Icons generik /icons/platforms/ yang untuk filter). Pengecualian
+// (tak ada di /icons/): instagram/tiktok/facebook/threads/shopee/x tetap
+// memakai glyph /icons/platforms/ (logo asli brand, bukan generik).
 const ITEMS: OrbitItem[] = [
-  // ring 0 - inner
-  { label: "Instagram", icon: "/icons/platforms/instagram.svg", color: "#D62976", ring: 0 },
+  // ring 0 - inner (1 planet agar inti tidak sesak)
   { label: "TikTok", icon: "/icons/platforms/tiktok.svg", color: "#FE2C55", ring: 0 },
   // ring 1
-  { label: "YouTube", icon: "/icons/platforms/youtube.svg", color: "#FF0000", ring: 1 },
+  { label: "YouTube", icon: "/icons/youtube.svg", color: "#FF0000", ring: 1 },
   { label: "Facebook", icon: "/icons/platforms/facebook.svg", color: "#1877F2", ring: 1 },
   { label: "Threads", icon: "/icons/platforms/threads.svg", color: "#FFFFFF", ring: 1, dark: true },
   // ring 2
-  { label: "Spotify", icon: "/icons/platforms/spotify.svg", color: "#1DB954", ring: 2 },
+  { label: "Spotify", icon: "/icons/spotify.svg", color: "#1DB954", ring: 2 },
   { label: "Shopee", icon: "/icons/platforms/shopee.svg", color: "#EE4D2D", ring: 2 },
-  // ring 3 - outer (diisi 1 planet agar ring luar tidak kosong)
+  // ring 3 - outer (2 planet agar ring luar tidak kosong)
   { label: "X", icon: "/icons/platforms/x.svg", color: "#FFFFFF", ring: 3, dark: true },
+  { label: "Instagram", icon: "/icons/platforms/instagram.svg", color: "#D62976", ring: 3 },
 ];
 
 const RINGS = [
-  { r: 68, speed: 1.15, count: 2 },
+  { r: 68, speed: 1.15, count: 1 },
   { r: 104, speed: 0.85, count: 3 },
   { r: 142, speed: 0.62, count: 2 },
-  { r: 182, speed: 0.42, count: 1 },
+  { r: 182, speed: 0.42, count: 2 },
 ];
 
 const ELLIPSE = 0.38; // flatten factor for 62deg tilt
 
-// Pre-compute placements (static — no React state needed)
+// Pre-compute placements (static — no React state needed).
+// Offset tiap ring di-stagger (bukan ringIdx*18 yang menumpuk 3 planet di
+// satu sisi) agar planet tersebar merata sejak frame pertama.
+const RING_PHASE = [200, 20, 140, 320];
 const placements = (() => {
   const out: { item: OrbitItem; r: number; baseAngle: number; speed: number }[] = [];
   RINGS.forEach((ring, ringIdx) => {
     const ringItems = ITEMS.filter((it) => it.ring === ringIdx);
     ringItems.forEach((item, i) => {
-      const base = (360 / ring.count) * i + ringIdx * 18;
+      const base = (360 / ring.count) * i + (RING_PHASE[ringIdx] ?? ringIdx * 18);
       out.push({ item, r: ring.r, baseAngle: base, speed: ring.speed });
     });
   });
@@ -59,8 +65,10 @@ const placements = (() => {
  *   shadow dinamis/star-dust, 24fps, start ditunda requestIdleCallback.
  * - Drag + wheel impulse hanya (pointer: fine); sentuh = native pan-y.
  *
- * Yang beda: 8 planet sosmed Pedia (bukan 12 produk Market) + inti prism
- * AXVARA Market (bukan label Pedia) sesuai permintaan owner 2026-10-12.
+ * Yang beda: 8 planet sosmed Pedia (bukan 12 produk Market) + inti mark
+ * AXVARA Pedia (bukan prism Market) sesuai permintaan owner 2026-10-12.
+ * Planet disamakan persis resep Market: sphere 38/42px + ikon asli 22/24px
+ * + gloss/tint/border/shadow sama agar rapih sama rata.
  */
 export function PediaOrbit() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -161,9 +169,9 @@ export function PediaOrbit() {
     const coarse = window.matchMedia("(pointer: coarse)").matches;
     const smallScreen = window.matchMedia("(max-width: 640px)").matches;
     liteRef.current = coarse || smallScreen;
-    // 5 planet pertama = ring 0 (2) + ring 1 (3). Ring 2 disembunyikan
-    // via CSS di bawah (indeks 5+).
-    liteCountRef.current = 5;
+    // 4 planet pertama = ring 0 (1) + ring 1 (3). Ring 2+ disembunyikan
+    // via CSS di bawah (indeks 4+).
+    liteCountRef.current = 4;
 
     // Respect prefers-reduced-motion
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -336,24 +344,25 @@ export function PediaOrbit() {
         </div>
       </div>
 
-      {/* AXVARA prism Market — centered core (logo Market, bukan Pedia) */}
-      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none" aria-label="AXVARA">
+      {/* Mark AXVARA Pedia — centered core (logo Pedia, bukan prism Market).
+          Mark SVG trace putih via filter (pola PediaNavbar): brightness-0
+          invert di atas sphere gelap kaca agar putihnya menyala. */}
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none" aria-label="AXVARA Pedia">
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[142px] h-[142px] sm:w-[158px] sm:h-[158px] rounded-full blur-[22px] opacity-50" style={{ background: "radial-gradient(circle at center, rgba(0,229,255,0.26), rgba(0,229,255,0.09) 36%, transparent 70%)" }} />
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[96px] h-[96px] sm:w-[108px] sm:h-[108px] rounded-full blur-[10px] opacity-70" style={{ background: "radial-gradient(circle at 32% 28%, rgba(255,255,255,0.16), transparent 62%)" }} />
         <div className="relative w-[90px] h-[90px] sm:w-[102px] sm:h-[102px] rounded-full flex flex-col items-center justify-center overflow-hidden border border-white/[0.14]" style={{ background: "radial-gradient(ellipse 92% 88% at 30% 22%, rgba(255,255,255,0.13), rgba(255,255,255,0.04) 32%, rgba(10,14,38,0.97) 68%), linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.015))", boxShadow: "0 10px 36px rgba(0,0,0,0.46), 0 0 28px rgba(0,229,255,0.20), inset 0 1px 0 rgba(255,255,255,0.16), inset 0 -1px 10px rgba(0,0,0,0.38)", backdropFilter: "blur(18px) saturate(160%)", WebkitBackdropFilter: "blur(18px) saturate(160%)" }}>
           <div className="absolute inset-[1px] rounded-full pointer-events-none" style={{ border: "1px solid rgba(0,229,255,0.11)" }} />
           <div className="absolute left-[16%] top-[12%] w-[42%] h-[28%] rounded-full blur-[8px] bg-white/[0.10] pointer-events-none" />
-          <span className="relative w-[46px] h-[40px] sm:w-[50px] sm:h-[44px] text-white flex items-center justify-center drop-shadow-[0_1px_8px_rgba(0,229,255,0.22)]">
-            <svg viewBox="0 0 120 110" className="w-full h-full" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" shapeRendering="geometricPrecision" aria-hidden>
-              <path d="M60 4 L6.5 104 L113.5 104 Z" />
-              <path d="M60 4 L60 49.5" />
-              <path d="M60 49.5 L35.8 78.5 L84.2 78.5 Z" />
-              <path d="M35.8 78.5 L84.2 78.5" />
-              <path d="M35.8 78.5 L6.5 104" />
-              <path d="M84.2 78.5 L113.5 104" />
-            </svg>
-          </span>
-          <span className="relative font-display font-[300] text-[9.5px] sm:text-[10px] tracking-[0.24em] text-white/95 mt-1 leading-none">AXVARA</span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/brand/pedia-mark.svg"
+            alt=""
+            width={36}
+            height={32}
+            className="relative h-[32px] w-[36px] sm:h-[36px] sm:w-[40px] brightness-0 invert drop-shadow-[0_1px_8px_rgba(0,229,255,0.22)]"
+            draggable={false}
+          />
+          <span className="relative font-display font-[300] text-[9.5px] sm:text-[10px] tracking-[0.24em] text-white/95 mt-1 leading-none">PEDIA</span>
         </div>
         <div className="absolute left-1/2 top-[90%] -translate-x-1/2 w-[92px] h-[22px] rounded-full blur-[10px] opacity-[0.18]" style={{ background: "radial-gradient(ellipse at center, rgba(0,229,255,0.55), transparent 72%)", transform: "scaleY(0.5)" }} />
       </div>
@@ -384,16 +393,18 @@ export function PediaOrbit() {
       </svg>
 
       {/* Planets — rendered once, updated imperatively.
-          Mode hemat (mobile): 5 planet dalam saja (indeks 5+ disembunyikan).
+          Mode hemat (mobile): 4 planet dalam saja (indeks 4+ disembunyikan).
           Trail/label/shadow dinamis tidak dipakai di hot path lagi.
-          Ikon sosmed berwarna penuh (fill brand di file SVG). Logo putih
-          (Threads/X) memakai sphere gelap; sisanya sphere putih polos agar
-          logo asli tetap akurat. */}
+          Resep DISAMAKAN PERSIS dengan OrbitHero Market agar rapih sama rata:
+          sphere 38/42px + ikon asli 22/24px object-contain + tint brand tipis
+          + gloss + highlight + border/shadow sama. Logo putih (Threads/X)
+          memakai bg gelap + ikon putih via filter (pola brand resmi: Threads
+          & X memang monokrom putih) — bukan sphere gelap terpisah. */}
       {placements.map(({ item }, pi) => {
-        const hideOnLite = pi >= 5;
+        const hideOnLite = pi >= 4;
         const sphereBg = item.dark
-          ? "linear-gradient(180deg, #232842, #12162e)"
-          : "rgba(255,255,255,0.96)";
+          ? `linear-gradient(180deg, rgba(35,40,66,0.96), rgba(18,22,46,0.96)), radial-gradient(ellipse 60% 55% at 50% 48%, ${item.color}14, transparent 68%)`
+          : `linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.78)), radial-gradient(ellipse 60% 55% at 50% 48%, ${item.color}14, transparent 68%)`;
 
         return (
           <div
@@ -409,22 +420,30 @@ export function PediaOrbit() {
               className="absolute top-[56%] left-1/2 -translate-x-1/2 w-8 h-2 rounded-full blur-[4px] bg-black/35 -z-10 hidden sm:block"
               style={{ transform: "translateX(-50%) scaleX(1.2)" }}
             />
-            {/* planet sphere */}
+            {/* planet sphere — ukuran + border + shadow sama persis Market */}
             <div
-              className="relative overflow-hidden flex items-center justify-center border w-[42px] h-[42px] sm:w-[46px] sm:h-[46px] rounded-full p-[3px]"
+              className="relative overflow-hidden flex items-center justify-center border w-[38px] h-[38px] sm:w-[42px] sm:h-[42px] rounded-full"
               style={{
                 background: sphereBg,
                 borderColor: item.dark ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.65)",
                 boxShadow: `0 6px 16px rgba(0,0,0,0.18), 0 0 10px ${item.color}20, inset 0 1px 1px rgba(255,255,255,0.85)`,
               }}
             >
+              {!item.dark && (
+                <>
+                  <div className="absolute inset-0 rounded-full pointer-events-none opacity-60" style={{ background: `radial-gradient(ellipse 70% 60% at 50% 55%, ${item.color}18, transparent 68%)` }} />
+                  <div className="absolute left-[14%] top-[10%] w-[46%] h-[28%] rounded-full blur-[4px] pointer-events-none" style={{ background: "radial-gradient(ellipse at center, rgba(255,255,255,0.85), transparent 70%)" }} />
+                  <div className="absolute left-[20%] top-[15%] w-[16%] h-[10%] rounded-full bg-white blur-[1px] pointer-events-none opacity-90" />
+                </>
+              )}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={item.icon}
                 alt={item.label}
-                width={36}
-                height={36}
-                className="relative w-[34px] h-[34px] sm:w-[38px] sm:h-[38px] object-contain"
+                width={24}
+                height={24}
+                className="relative w-[22px] h-[22px] sm:w-[24px] sm:h-[24px] object-contain"
+                style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.22))" }}
                 loading="lazy"
                 onError={(e) => {
                   const img = e.currentTarget as HTMLImageElement;
