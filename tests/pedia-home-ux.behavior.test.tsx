@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { PediaHomeClient } from "@/app/pedia/home-client";
 import { PediaNavbar } from "@/components/pedia/PediaNavbar";
+import { LinkPasteHero } from "@/components/pedia/LinkPasteHero";
 import { usePediaSearch } from "@/stores/pedia-search";
 import { catalogCard } from "@/components/pedia/PlatformGrid";
 import { PlatformPageClient } from "@/app/pedia/p/[platform]/platform-client";
@@ -71,7 +72,7 @@ describe("Pedia catalog-first storefront", () => {
     expect(screen.getByRole("link", { name: /Followers Instagram —/ })).toBeTruthy();
   });
 
-  it("puts twin service cards after hero without eyebrow, and link shortcut near search", async () => {
+  it("puts twin service cards after hero without eyebrow, plus Market-style CTA and trust strip", async () => {
     renderPediaHome([product], true);
     const catalog = screen.getByRole("region", { name: "Pilihan AXVARA" });
     const promo = screen.getByRole("link", { name: /AXVARA Market/ });
@@ -82,12 +83,12 @@ describe("Pedia catalog-first storefront", () => {
     // 2026-10-12: navbar kini lockup "AXVARA PEDIA" penuh (desktop+mobile) —
     // hero tetap tanpa eyebrow.
     expect(screen.getByRole("banner").textContent).toContain("AXVARA PEDIA");
-    const shortcut = screen.getByText("Cari lewat link").closest("details")!;
-    expect(shortcut.open).toBe(false);
-    fireEvent.click(screen.getByText("Cari lewat link"));
-    fireEvent.change(screen.getByLabelText("Tautan profil atau konten"), { target: { value: "https://instagram.com/customer" } });
-    const suggestion = await screen.findByRole("link", { name: /Followers Instagram mulai/ });
-    expect(suggestion.getAttribute("href")).toContain("?t=https%3A%2F%2Fwww.instagram.com%2Fcustomer");
+    // 2026-10-12: CTA 1:1 Market + trust strip; kartu Cari lewat link dihapus.
+    expect(screen.getByRole("link", { name: "Lihat Layanan" }).getAttribute("href")).toBe("#pedia-catalog");
+    expect(screen.getByRole("link", { name: /Hubungi Admin/ }).getAttribute("href")).toContain("/wa?pesan=");
+    expect(document.body.textContent).toContain("Garansi reffil");
+    expect(screen.queryByText("Cari lewat link")).toBeNull();
+    expect(screen.queryByLabelText("Tautan profil atau konten")).toBeNull();
     expect(document.body.textContent).toContain("bukan pengembalian tunai");
     expect(document.body.textContent).not.toMatch(/Paling laris|sisanya beres|Sisa dana kembali otomatis|Mulai ±5 menit/);
   });
@@ -124,8 +125,10 @@ describe("Pedia catalog-first storefront", () => {
     expect(screen.getAllByRole("link", { name: /lihat paket/ })).toHaveLength(9);
   });
 
+  // 2026-10-12: kartu Cari lewat link DIHAPUS dari beranda (owner) —
+  // LinkPasteHero tetap hidup sebagai komponen; perilakunya dikunci di sini.
   it("handles unmatched and invalid links without suggesting verification", async () => {
-    render(<PediaHomeClient products={[product]} />);
+    render(<LinkPasteHero suggestionsFor={() => []} />);
     fireEvent.change(screen.getByLabelText("Tautan profil atau konten"), { target: { value: "https://tiktok.com/@customer/video/123456" } });
     expect(await screen.findByText(/Belum ada layanan untuk jenis link ini/)).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Tautan profil atau konten"), { target: { value: "invalid-link" } });
@@ -133,7 +136,7 @@ describe("Pedia catalog-first storefront", () => {
   });
 
   it("does not suggest reel-only services for post links rejected by the quote contract", async () => {
-    render(<PediaHomeClient products={[{ ...product, target_kind: "reel" }]} />);
+    render(<LinkPasteHero suggestionsFor={() => []} />);
     fireEvent.change(screen.getByLabelText("Tautan profil atau konten"), { target: { value: "https://instagram.com/p/ABC/" } });
     expect(await screen.findByText(/Belum ada layanan untuk jenis link ini/)).toBeTruthy();
     expect(screen.queryByRole("link", { name: /Followers Instagram mulai/ })).toBeNull();

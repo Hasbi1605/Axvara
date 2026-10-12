@@ -107,7 +107,7 @@ axvara/
 │   │   └── r2/[...key]/route.ts # R2 publik catch-all
 │   ├── pedia/                   # Axvara Pedia pedia.axvara.tech (2026-10-08, PEDIA-PRD; spesifikasi: docs/PEDIA-PRD.md, docs/PEDIA-DESIGN.md)
 │   │   ├── layout.tsx           # .pedia-root + PediaNavbar + PediaBottomNav + Footer bersama; bukan Navbar/keranjang Market
-│   │   ├── page.tsx + home-client.tsx  # Working-tree lokal 2026-10-12, belum deployed: featured/fallback, semua/cari/platform, Typewriter + promo Market + Cari lewat link + FAQ, tanpa ticker
+│   │   ├── page.tsx + home-client.tsx  # Working-tree lokal 2026-10-12, belum deployed: featured/fallback, semua/cari/platform, Typewriter + CTA Lihat Layanan/Hubungi Admin + trust strip + promo Market (kartu Cari lewat link dihapus dari beranda), + FAQ, tanpa ticker
 │   │   ├── p/[platform]/        # Layanan per platform (8): filter jenis + grid ProductCard
 │   │   ├── o/[slug]/            # 3 kelompok; tier/qty null, satu CTA quote+order + persetujuan nominal berubah/kredit; paket-only, retry token sama
 │   │   ├── pesanan/[code]/      # Status: QRIS lunas / ring+timeline/refill/kartu kredit/needs_check + auto-refresh
@@ -144,7 +144,7 @@ axvara/
 │       └── sections/            # satu komponen per section admin (page.tsx tinggal shell + routing)
 │       └── PediaManager.tsx     # 5 panel: Produk/Layanan Supplier/Pesanan/Kredit/Pengaturan; daftar ringkas + editor produk/tingkat terpisah
 │   ├── shared/                  # ServicesMenu + CrossServicePromo (Market/Pedia; URL src/lib/site.ts)
-│   ├── pedia/                   # PediaNavbar (client + field cari pill ala Market via usePediaSearch), PediaBottomNav, Typewriter, LinkPasteHero, PlatformGrid, PediaOrbit (kembar OrbitHero: 8 sosmed + inti mark Pedia), PediaServiceCards (Market + Bot Telegram), OrderTicker (tidak dirender), StatusWidgets
+│   ├── pedia/                   # PediaNavbar (client + field cari pill ala Market via usePediaSearch), PediaBottomNav, Typewriter, LinkPasteHero (komponen hidup, tak dipakai beranda sejak 2026-10-12), PlatformGrid, PediaOrbit (kembar OrbitHero: 8 sosmed + inti mark Pedia), PediaServiceCards (Market + Bot Telegram), PediaWhatsAppLink (CTA Hubungi Admin → hub /wa), OrderTicker (tidak dirender), StatusWidgets
 ├── src/hooks/
 │   ├── useModalA11y.ts          # Escape + focus trap + scroll lock + restore fokus — SATU
 │                                # implementasi untuk CartDrawer, PopupBanner, QuickVariantModal.
