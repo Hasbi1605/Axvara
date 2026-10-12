@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { LinkPasteHero } from "@/components/pedia/LinkPasteHero";
-import { CrossServicePromo } from "@/components/shared/CrossServicePromo";
+import { PediaServiceCards } from "@/components/pedia/PediaServiceCards";
 import { Typewriter } from "@/components/pedia/Typewriter";
 import { PEDIA_PLATFORMS, PlatformIcon, ProductCard, catalogCard } from "@/components/pedia/PlatformGrid";
 import type { PediaLinkDetect } from "@/lib/pedia/link";
@@ -31,17 +31,29 @@ export function PediaHomeClient({ products }: { products: PediaCatalogProduct[];
       (p.target_kind === "profile" && d.targetKind === "channel")))
     .map((p) => ({ slug: p.slug, name: p.name, minPrice: p.min_price, target: d.normalized }));
 
-  return <div className="py-6 sm:py-10">
-    <header className="relative isolate overflow-hidden rounded-3xl border border-white/10 bg-white/[0.025] px-5 py-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] sm:px-9 sm:py-12" style={{ backgroundImage: "radial-gradient(ellipse at 85% 0%, rgba(0,229,255,.12), transparent 65%)" }}>
-      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#00E5FF]">AXVARA PEDIA</p>
-      <h1 className="mt-3 text-[clamp(1.5rem,5vw,3.25rem)] font-semibold leading-[1.2] tracking-tight text-white">Layanan media sosial<Typewriter /></h1>
-      <p className="mt-4 max-w-lg text-sm leading-relaxed text-white/70 sm:text-base">Followers, likes, dan views. Pilih paket, masukkan link, lalu bayar dengan QRIS.</p>
-    </header>
-    <div className="mt-4"><CrossServicePromo current="pedia" /></div>
+  return <div className="pt-10 sm:pt-14 pb-4">
+    {/* Hero ala Market: glow section-level (bukan di dalam card), h1 font-display
+        42/56px tight, sub 15px/white-60, tanpa eyebrow AXVARA PEDIA. */}
+    <section className="relative overflow-hidden">
+      <div className="pointer-events-none absolute inset-0" aria-hidden>
+        <div className="absolute -top-32 left-1/2 -translate-x-1/2 w-[520px] h-[300px] sm:w-[900px] sm:h-[520px] rounded-full opacity-60 blur-[44px] sm:blur-[80px]" style={{ background: "radial-gradient(ellipse at center, rgba(0,229,255,0.18), transparent 70%)" }} />
+        <div className="absolute top-24 right-[10%] w-[240px] h-[240px] sm:w-[420px] sm:h-[420px] rounded-full opacity-30 blur-[36px] sm:blur-[60px] hidden sm:block" style={{ background: "radial-gradient(ellipse at center, rgba(255,184,0,0.15), transparent 70%)" }} />
+      </div>
+      <div className="relative max-w-3xl w-full">
+        <h1 className="font-display font-[700] tracking-[-0.02em] leading-[0.98] text-[42px] sm:text-[56px] text-white">
+          Layanan media sosial
+          <Typewriter />
+        </h1>
+        <p className="mt-4 text-[15px] leading-6 text-white/60 max-w-[46ch]">
+          Followers, likes, dan views. Pilih paket, masukkan link, lalu bayar dengan QRIS.
+        </p>
+      </div>
+    </section>
+    <div className="mt-6"><PediaServiceCards /></div>
 
     <section aria-labelledby="pedia-catalog-heading" className="mt-8">
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <div><h2 id="pedia-catalog-heading" className="text-xl font-semibold text-white">{browsingAll ? "Semua layanan" : featured.length ? "Pilihan AXVARA" : "Jelajahi layanan"}</h2><p className="mt-1 text-sm text-white/60">{!browsingAll && !featured.length ? "Beberapa layanan untuk mulai menjelajah. Bukan peringkat penjualan." : "Harga awal sesuai jumlah dan paket yang ditampilkan."}</p></div>
+        <div><h2 id="pedia-catalog-heading" className="font-display font-bold text-[20px] sm:text-[24px] text-white tracking-[-0.02em]">{browsingAll ? "Semua layanan" : featured.length ? "Pilihan AXVARA" : "Jelajahi layanan"}</h2>{(browsingAll || featured.length > 0) && <p className="mt-1 text-sm text-white/60">Harga awal sesuai jumlah dan paket yang ditampilkan.</p>}</div>
         <label className="w-full text-sm text-white/70 sm:w-64">Cari layanan<input value={query} onChange={(e) => setQuery(e.target.value)} type="search" placeholder="Nama layanan" className="mt-2 h-11 w-full rounded-xl border border-white/15 bg-white/[0.03] px-3 text-base text-white placeholder:text-white/40" /></label>
       </div>
       <details className="mt-3 max-w-2xl rounded-xl border border-white/10 bg-white/[0.025] px-3">

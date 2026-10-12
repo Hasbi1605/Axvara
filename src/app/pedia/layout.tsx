@@ -19,7 +19,7 @@ export default function PediaLayout({ children }: { children: React.ReactNode })
   return (
     <div className="pedia-root min-h-screen bg-[#080C1E] text-[#F1F5FF]">
       <PediaNavbar />
-      <main className="mx-auto w-full max-w-[1120px] px-4 pb-10">{children}</main>
+      <main className="mx-auto w-full max-w-[1280px] px-4 sm:px-6 lg:px-8 pb-10">{children}</main>
       <Footer />
       <PediaBottomNav />
     </div>

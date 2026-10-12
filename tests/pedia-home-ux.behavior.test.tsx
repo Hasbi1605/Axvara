@@ -53,11 +53,15 @@ describe("Pedia catalog-first storefront", () => {
     expect(screen.getByRole("link", { name: /Followers Instagram —/ })).toBeTruthy();
   });
 
-  it("puts promotion after hero and optional link shortcut near search, preserving target", async () => {
+  it("puts twin service cards after hero without eyebrow, and link shortcut near search", async () => {
     render(<PediaHomeClient products={[product]} ordersEnabled />);
     const catalog = screen.getByRole("region", { name: "Pilihan AXVARA" });
     const promo = screen.getByRole("link", { name: /AXVARA Market/ });
     expect(promo.compareDocumentPosition(catalog) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // 2026-10-12: kartu ganda ala Market — Market + Bot Telegram berdampingan.
+    const bot = screen.getByRole("link", { name: /Bot Telegram/ });
+    expect(bot.getAttribute("href")).toContain("t.me/Axvara_bot");
+    expect(document.body.textContent).not.toContain("AXVARA PEDIA");
     const shortcut = screen.getByText("Cari lewat link").closest("details")!;
     expect(shortcut.open).toBe(false);
     fireEvent.click(screen.getByText("Cari lewat link"));
@@ -82,6 +86,8 @@ describe("Pedia catalog-first storefront", () => {
     const products = Array.from({ length: 9 }, (_, i) => ({ ...product, slug: `service-${i}`, name: `Layanan ${i}`, is_featured: 0 }));
     render(<PediaHomeClient products={products} />);
     expect(screen.getByRole("heading", { name: "Jelajahi layanan" })).toBeTruthy();
+    // 2026-10-12: sub-teks fallback dihapus — hanya judul yang tampil.
+    expect(document.body.textContent).not.toContain("Beberapa layanan untuk mulai menjelajah");
     expect(screen.getAllByRole("link", { name: /lihat paket/ })).toHaveLength(6);
     expect(document.body.textContent).not.toMatch(/Terlaris|Direkomendasikan|Pilihan AXVARA/);
     fireEvent.click(screen.getByRole("button", { name: /Tampilkan semua layanan/ }));
@@ -127,7 +133,8 @@ describe("Pedia catalog-first storefront", () => {
     render(<Typewriter />);
     act(() => vi.advanceTimersByTime(2200));
     expect(screen.getByText("Harga terjangka")).toBeTruthy();
-    expect(screen.getByText("Harga terjangka").parentElement?.className).toContain("min-h-[1.2em]");
+    // 2026-10-12: typewriter putih menyatu h1 Market (tanpa min-h/cyan pembungkus).
+    expect(screen.getByText("Harga terjangka").parentElement?.className).toContain("text-white");
     const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(true);
     act(() => { document.dispatchEvent(new Event("visibilitychange")); vi.advanceTimersByTime(10000); });
     expect(screen.getByText("Harga terjangka")).toBeTruthy();

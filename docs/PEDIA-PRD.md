@@ -85,7 +85,7 @@ Implikasi desain: mobile-first, tanpa jargon, maksimal 3 keputusan sebelum bayar
 - Sinkron harga & status layanan supplier (diff VPS), nonaktif otomatis bila margin habis.
 - Admin tab **Pedia**: kurasi, harga, antrean, kredit, saldo supplier.
 - Notif Telegram admin: `Lunas — Pedia`, saldo supplier menipis, order perlu dicek.
-- Integrasi lokal: CommunityBar Market = CrossServicePromo Pedia + Bot Telegram Market, promo Market di Pedia, ServicesMenu di kedua navbar, satu Footer bersama. AppSwitcher dihapus; LaunchCards.saved tetap arsip dan kartu Pedia `/link` tetap tersembunyi. Ini bukan pembukaan flag/deployment.
+- Integrasi lokal: CommunityBar Market = CrossServicePromo Pedia + Bot Telegram Market, kartu ganda Pedia = CrossServicePromo Market + Bot Telegram Market (`PediaServiceCards`), ServicesMenu di kedua navbar, satu Footer bersama, layout Pedia 1280 + hero 1:1 Market. AppSwitcher dihapus; LaunchCards.saved tetap arsip dan kartu Pedia `/link` tetap tersembunyi. Ini bukan pembukaan flag/deployment.
 
 ### Fase 1b (setelah 2 minggu stabil)
 - Komentar custom (tipe `Custom Comments`, textarea 1 komentar per baris).
@@ -162,7 +162,7 @@ axvara.tech  ──klik kartu "Axvara Pedia"──▶  pedia.axvara.tech
 Kode `PD-xx`. Semua wajib fase 1 kecuali ditandai.
 
 ### Storefront
-- **PD-01** Beranda compact: hero/typewriter faktual → promo Market → cari/Cari lewat link terlipat/platform → hingga 8 featured Pilihan AXVARA (tanpa featured fallback 6 Jelajahi layanan) → Tampilkan semua → cara pesan/FAQ. Cari/filter seluruh produk publik. Tidak ada laris/trust strip/ticker; featured editorial bukan bukti kurasi data produksi sudah disetujui.
+- **PD-01** Beranda compact 1:1 Market (2026-10-12): hero tanpa card (h1 `font-display` 42/56px + typewriter putih, sub 15px, glow section-level, tanpa eyebrow) → kartu ganda Market + Bot Telegram (`PediaServiceCards`, kembar compact) → cari/Cari lewat link terlipat/platform → hingga 8 featured Pilihan AXVARA (tanpa featured fallback 6 Jelajahi layanan tanpa sub-teks) → Tampilkan semua → cara pesan/FAQ. Cari/filter seluruh produk publik. Tidak ada laris/trust strip/ticker; featured editorial bukan bukti kurasi data produksi sudah disetujui. Layout `max-w-[1280px]` 1:1 Market.
 - **PD-02** Parser link client+server (§9.6) → platform, jenis target (`profile|post|video|reel|live|channel|playlist`), target ternormalisasi, username tampilan.
 - **PD-03** Halaman per platform `/p/[platform]`: produk dikelompokkan per jenis (Followers, Likes, Views…).
 - **PD-04** Halaman order `/o/[slug]` satu halaman + sticky bar total (spesifikasi `PEDIA-DESIGN.md` §6).

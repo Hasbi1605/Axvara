@@ -31,7 +31,7 @@ export function Typewriter() {
     motion.addEventListener("change", resume);
     return () => { clearTimeout(timer); document.removeEventListener("visibilitychange", resume); motion.removeEventListener("change", resume); };
   }, []);
-  return <span className="relative block min-h-[1.2em] text-[#00E5FF]">
+  return <span className="block text-white">
     <span className="sr-only">Harga terjangkau. Mudah dipesan. Pilihan terkurasi.</span>
     <span aria-hidden="true">{text}<span className="ml-1 inline-block h-[0.85em] w-[2px] bg-[#00E5FF]/60 align-baseline motion-safe:animate-pulse" /></span>
   </span>;
