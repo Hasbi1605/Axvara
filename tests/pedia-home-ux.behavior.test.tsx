@@ -89,7 +89,11 @@ describe("Pedia catalog-first storefront", () => {
     expect(document.body.textContent).toContain("Garansi reffil");
     expect(screen.queryByText("Cari lewat link")).toBeNull();
     expect(screen.queryByLabelText("Tautan profil atau konten")).toBeNull();
-    expect(document.body.textContent).toContain("bukan pengembalian tunai");
+    // 2026-10-12: section Cara pemesanan + Sebelum memesan (FAQ) dihapus —
+    // setelah layanan langsung footer.
+    expect(screen.queryByText("Cara pemesanan")).toBeNull();
+    expect(screen.queryByText("Sebelum memesan")).toBeNull();
+    expect(screen.queryByText("Bagaimana cara memesan?")).toBeNull();
     expect(document.body.textContent).not.toMatch(/Paling laris|sisanya beres|Sisa dana kembali otomatis|Mulai ±5 menit/);
   });
 

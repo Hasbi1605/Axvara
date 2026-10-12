@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { PediaOrbit } from "@/components/pedia/PediaOrbit";
 import { PediaServiceCards } from "@/components/pedia/PediaServiceCards";
 import { PediaWhatsAppLink } from "@/components/pedia/PediaWhatsAppLink";
@@ -9,14 +8,6 @@ import { Typewriter } from "@/components/pedia/Typewriter";
 import { usePediaSearch } from "@/stores/pedia-search";
 import { PEDIA_PLATFORMS, PlatformIcon, ProductCard, catalogCard } from "@/components/pedia/PlatformGrid";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
-
-const FAQ = [
-  { q: "Bagaimana cara memesan?", a: "Pilih layanan, paket, dan jumlah. Masukkan tautan tujuan serta kontak, lalu lanjutkan ke pembayaran QRIS. Jika harga berubah, persetujuan Anda diminta terlebih dahulu." },
-  { q: "Kapan pesanan mulai diproses?", a: "Estimasi mulai dan selesai mengikuti paket yang dipilih. Keduanya ditampilkan sebelum pembayaran; estimasi bukan jaminan waktu selesai." },
-  { q: "Apa yang dimaksud refill?", a: "Refill adalah pengisian ulang jumlah yang turun, sesuai syarat dan masa berlaku paket. Tidak semua paket menyediakan refill. Baca Ketentuan Pedia sebelum memesan." },
-  { q: "Bagaimana jika pesanan hanya selesai sebagian atau dibatalkan?", a: "Nilai bagian yang tidak diproses menjadi Kode Kredit Pedia, bukan pengembalian tunai. Kode berlaku 180 hari untuk pemesanan Pedia berikutnya dan dikirim melalui email serta halaman pesanan." },
-  { q: "Apakah perlu memberikan password akun?", a: "Tidak. Pesanan menggunakan tautan profil atau konten. Akun atau konten harus dapat diakses publik dan memenuhi persyaratan layanan yang dipilih." },
-];
 
 export function PediaHomeClient({ products }: { products: PediaCatalogProduct[]; ordersEnabled?: boolean }) {
   const [platform, setPlatform] = useState("");
@@ -106,22 +97,9 @@ export function PediaHomeClient({ products }: { products: PediaCatalogProduct[];
       {filtered.length ? <div className="mt-6 grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 lg:grid-cols-3">{filtered.map((p) => <ProductCard key={p.slug} p={catalogCard(p)} />)}</div> : <div className="mt-6 rounded-xl border border-white/15 p-6 text-sm text-white/70"><p>{products.length ? "Tidak ada layanan yang sesuai pencarian." : "Layanan belum tersedia. Coba kembali nanti atau hubungi bantuan."}</p>{products.length > 0 && <button type="button" onClick={() => { setQuery(""); setPlatform(""); setShowAll(true); }} className="mt-3 min-h-11 text-[#00E5FF]">Reset pencarian</button>}</div>}
       {!browsingAll && products.length > filtered.length && <button type="button" onClick={() => setShowAll(true)} className="mt-5 min-h-11 w-full rounded-xl border border-[#00E5FF]/25 bg-[#00E5FF]/5 px-4 text-sm font-medium text-[#00E5FF] transition-colors hover:bg-[#00E5FF]/10">Tampilkan semua layanan <span className="ml-2 text-white/60">({products.length})</span></button>}
     </section>
-
-    <section aria-labelledby="pedia-how-heading" className="mt-10 border-t border-white/15 pt-8">
-      <h2 id="pedia-how-heading" className="text-xl font-semibold text-white">Cara pemesanan</h2>
-      <ol className="mt-4 grid gap-5 text-sm sm:grid-cols-3">{[
-        ["Pilih paket", "Bandingkan karakteristik, jumlah, harga, dan ketentuan refill."],
-        ["Periksa tujuan", "Masukkan tautan dan pastikan persyaratan layanan terpenuhi."],
-        ["Bayar dan lacak", "Lanjutkan ke QRIS, lalu pantau status di halaman pesanan."],
-      ].map(([title, text], i) => <li key={title}><p className="font-semibold text-white"><span className="mr-2 text-white/45">0{i + 1}</span>{title}</p><p className="mt-2 leading-relaxed text-white/65">{text}</p></li>)}</ol>
-    </section>
-
-    <section aria-labelledby="pedia-faq-heading" className="mt-10 border-t border-white/15 pt-8">
-      <h2 id="pedia-faq-heading" className="text-xl font-semibold text-white">Sebelum memesan</h2>
-      <div className="mt-4 divide-y divide-white/15">{FAQ.map((f) => <details key={f.q} className="py-4"><summary className="cursor-pointer text-sm font-medium text-white">{f.q}</summary><p className="mt-3 max-w-3xl text-sm leading-relaxed text-white/70">{f.a}</p></details>)}</div>
-      <div className="mt-5 flex flex-wrap gap-5 text-sm"><Link prefetch={false} href="/pedia/ketentuan" className="text-[#00E5FF]">Ketentuan Pedia</Link><Link prefetch={false} href="/pedia/bantuan" className="text-[#00E5FF]">Hubungi bantuan</Link></div>
-    </section>
-    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({ "@context": "https://schema.org", "@type": "FAQPage", mainEntity: FAQ.map((f) => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.a } })) }) }} />
+    {/* 2026-10-12 (owner): section Cara pemesanan + Sebelum memesan (FAQ)
+        DIHAPUS dari beranda — setelah layanan langsung footer 1:1 Market.
+        Info bantuan tetap ada di /pedia/bantuan + footer. */}
     </div>
   </>;
 }
