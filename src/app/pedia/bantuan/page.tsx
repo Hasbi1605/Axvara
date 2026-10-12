@@ -17,7 +17,8 @@ export default function PediaHelpPage() {
     ]},
   ];
   return (
-    <div className="mx-auto max-w-xl pt-8">
+    <div className="mx-auto w-full max-w-[1280px] px-4 sm:px-6 lg:px-8 pt-8">
+    <div className="mx-auto max-w-xl">
       <h1 className="font-display text-[22px] font-bold text-white sm:text-[32px]">Bantuan</h1>
       {groups.map((g) => (
         <section key={g.title} className="mt-6">
@@ -35,6 +36,7 @@ export default function PediaHelpPage() {
       <a href="https://wa.me/6282135277434?utm_source=pedia&utm_medium=help" className="mt-6 flex h-12 items-center justify-center rounded-[14px] bg-[#00E5FF] text-sm font-bold text-[#070a1e]">
         WA Admin
       </a>
+    </div>
     </div>
   );
 }

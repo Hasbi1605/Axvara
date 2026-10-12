@@ -12,11 +12,13 @@ export default function PediaTermsPage() {
     "Dilarang untuk konten melanggar hukum, judi, penipuan, politik praktis/kampanye, atau pelecehan. Pesanan semacam itu dibatalkan tanpa kredit.",
   ];
   return (
-    <div className="mx-auto max-w-xl pt-8">
+    <div className="mx-auto w-full max-w-[1280px] px-4 sm:px-6 lg:px-8 pt-8">
+    <div className="mx-auto max-w-xl">
       <h1 className="font-display text-[22px] font-bold text-white sm:text-[32px]">Ketentuan Pedia</h1>
       <ol className="mt-4 list-decimal space-y-3 pl-5 text-sm leading-relaxed text-white/75">
         {points.map((p) => <li key={p.slice(0, 24)}>{p}</li>)}
       </ol>
+    </div>
     </div>
   );
 }

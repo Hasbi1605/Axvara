@@ -51,7 +51,7 @@ export function PediaHomeClient({ products }: { products: PediaCatalogProduct[];
         {/* Grid 1:1 Market — teks kiri, orbit kanan (mobile: orbit center di bawah teks) */}
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-6 lg:gap-8 items-center">
           <div className="max-w-3xl w-full">
-            <h1 className="font-display font-[700] tracking-[-0.02em] leading-[0.98] text-[42px] sm:text-[56px] text-white">
+            <h1 className="font-display font-[700] tracking-[-0.02em] leading-[0.98] text-[42px] sm:text-[56px] lg:text-[62px] text-white">
               <span className="block">Satu tempat untuk</span>
               <span className="block">Layanan sosial media</span>
               <Typewriter />

@@ -23,7 +23,7 @@ export default async function PediaServicesPage() {
     byPlatform.set(p.platform, list);
   }
   return (
-    <div className="pt-8">
+    <div className="mx-auto w-full max-w-[1280px] px-4 sm:px-6 lg:px-8 pt-8">
       <h1 className="font-display text-[22px] font-bold text-white sm:text-[32px]">Semua layanan</h1>
       {products.length === 0 && <p className="mt-4 text-sm text-white/55">Katalog segera hadir.</p>}
       {[...byPlatform].map(([plat, list]) => (

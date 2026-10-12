@@ -54,6 +54,7 @@ Agent eksekusi WAJIB membuat logo final sendiri dari konsep 2.1 menggunakan **Mu
 |---|---|
 | Lockup | Mark putih + `AXVARA PEDIA` desktop + mobile penuh 1:1 Market (2026-10-12: mobile 15px + truncate, dulu "PEDIA" saja), tanpa pemisah/gradien; desktop `font-display` 22px weight 300, tracking 0.16em, mark 36×32px, navbar 64px; tanpa pill Lacak |
 | Ukuran navbar | 64px + `border-b border-white/10`, container `max-w-[1280px]` — sama persis dengan navbar pusat |
+| Lebar konten | 1:1 Market 1280px (2026-10-12): `<main>` Pedia POLOS `pb-10` tanpa max-width/padding (dulu padding ganda 64px → konten 1216px); tiap section/halaman mengatur container `max-w-[1280px] px-4 sm:px-6 lg:px-8` sendiri seperti Market; h1 + `lg:text-[62px]` |
 | Urutan tombol mobile | 1:1 Market (2026-10-12): ServicesMenu dulu, tombol search sesudahnya (sebelumnya kebalik) |
 | Field cari navbar | 1:1 navbar Market (2026-10-12): pill `rounded-full` + ikon search kiri + tombol clear, `max-w-[520px]`, placeholder Pedia, store `usePediaSearch`, auto-scroll ke `#pedia-catalog`; panel mobile via tombol search; field kotak lama di area katalog dihapus |
 | Favicon Pedia | `pedia-mark-favicon.png` |

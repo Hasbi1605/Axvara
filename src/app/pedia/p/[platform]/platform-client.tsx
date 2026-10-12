@@ -25,7 +25,7 @@ export function PlatformPageClient({ platform, name, products }: { platform: str
     return (KIND_MATCH[kind] ?? []).includes(p.metric);
   });
   return (
-    <div className="pt-6">
+    <div className="mx-auto w-full max-w-[1280px] px-4 sm:px-6 lg:px-8 pt-6">
       <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-gradient-to-br from-[#00E5FF]/10 to-white/[0.025] p-5">
         <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/5" aria-hidden="true">
           <PlatformIcon id={platform} size={24} />

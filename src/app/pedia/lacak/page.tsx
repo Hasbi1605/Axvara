@@ -33,7 +33,8 @@ export default function PediaTrackPage() {
   };
 
   return (
-    <div className="mx-auto max-w-xl pt-8">
+    <div className="mx-auto w-full max-w-[1280px] px-4 sm:px-6 lg:px-8 pt-8">
+    <div className="mx-auto max-w-xl">
       <h1 className="font-display text-[22px] font-bold text-white">Lacak pesanan</h1>
       <div className="mt-4 space-y-2">
         <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="Kode AXP-…" className="h-12 w-full rounded-[14px] border border-white/10 bg-white/5 px-4 font-mono text-white placeholder:text-white/30" aria-label="Kode pesanan" />
@@ -54,6 +55,7 @@ export default function PediaTrackPage() {
           </div>
         </div>
       )}
+    </div>
     </div>
   );
 }

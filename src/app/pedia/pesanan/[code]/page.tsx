@@ -68,7 +68,8 @@ export default function PediaOrderStatusPage() {
   };
 
   return (
-    <div className="mx-auto max-w-xl pt-6">
+    <div className="mx-auto w-full max-w-[1280px] px-4 sm:px-6 lg:px-8 pt-6">
+    <div className="mx-auto max-w-xl">
       <div className="flex items-center justify-between gap-2">
         <p className="font-mono text-sm font-bold text-white">{data.code}</p>
         <button onClick={() => copy(data.code)} className="h-8 rounded-full bg-white/5 px-3 text-xs font-bold text-white/70">Salin</button>
@@ -132,6 +133,7 @@ export default function PediaOrderStatusPage() {
         <a href="https://wa.me/6282135277434?utm_source=pedia&utm_medium=status" className="text-[#00E5FF]">WA Admin</a>
         <a href="/pedia/lacak" className="text-[#00E5FF]">Lacak lain</a>
       </div>
+    </div>
     </div>
   );
 }

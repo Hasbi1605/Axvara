@@ -106,7 +106,7 @@ axvara/
 │   │   ├── mcp/route.ts         # MCP HTTP katalog toko
 │   │   └── r2/[...key]/route.ts # R2 publik catch-all
 │   ├── pedia/                   # Axvara Pedia pedia.axvara.tech (2026-10-08, PEDIA-PRD; spesifikasi: docs/PEDIA-PRD.md, docs/PEDIA-DESIGN.md)
-│   │   ├── layout.tsx           # .pedia-root + PediaNavbar + PediaBottomNav + Footer bersama; bukan Navbar/keranjang Market
+│   │   ├── layout.tsx           # .pedia-root + PediaNavbar + PediaBottomNav + Footer bersama; bukan Navbar/keranjang Market; <main> polos 1:1 Market (2026-10-12, tanpa max-width/padding — tiap halaman mengatur container 1280 sendiri)
 │   │   ├── page.tsx + home-client.tsx  # Working-tree lokal 2026-10-12, belum deployed: featured/fallback, semua/cari/platform, Typewriter + CTA Lihat Layanan/Hubungi Admin + trust strip + promo Market (kartu Cari lewat link dihapus dari beranda), + FAQ, tanpa ticker
 │   │   ├── p/[platform]/        # Layanan per platform (8): filter jenis + grid ProductCard
 │   │   ├── o/[slug]/            # 3 kelompok; tier/qty null, satu CTA quote+order + persetujuan nominal berubah/kredit; paket-only, retry token sama

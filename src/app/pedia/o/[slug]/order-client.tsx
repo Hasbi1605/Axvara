@@ -150,7 +150,7 @@ export function OrderClient({ product, initialTarget, ordersEnabled, embedded = 
   const cta = <>{!ordersEnabled && <p className="mb-3 text-xs leading-relaxed text-white/70">Pemesanan belum tersedia. Paket dapat dilihat; kontak tidak diperlukan.</p>}{currentQuote && !attempted && <p role="status" className="mb-3 text-sm leading-relaxed text-white/80">{currentQuote.total !== packageTotal ? `Harga paket berubah dari ${rupiah(packageTotal)} menjadi ${rupiah(currentQuote.total)}. ` : ""}Total pembayaran {rupiah(currentQuote.payable)}. Tekan Setujui untuk menyetujui nominal ini.</p>}<button type="button" onClick={pay} disabled={!ordersEnabled || !!busy} className="min-h-[48px] w-full rounded-xl bg-[#00E5FF] px-4 py-3 text-sm font-semibold text-[#070a1e] shadow-[0_0_24px_rgba(0,229,255,0.12)] transition hover:bg-[#70f2ff] disabled:bg-white/10 disabled:text-white/50 disabled:shadow-none">{busy || (currentQuote && !attempted ? "Setujui & lanjut ke pembayaran" : "Lanjut ke pembayaran")}</button></>;
 
   return (
-    <div className={embedded ? "py-6" : `${currentQuote && !attempted ? "pb-56" : "pb-36"} pt-6 lg:pb-12`}>
+    <div className={embedded ? "py-6" : `mx-auto w-full max-w-[1280px] px-4 sm:px-6 lg:px-8 ${currentQuote && !attempted ? "pb-56" : "pb-36"} pt-6 lg:pb-12`}>
       {!embedded && <a href="/pedia" className="text-sm text-white/60 hover:text-white">Kembali ke layanan</a>}
       <h1 className="mt-3 text-2xl font-semibold tracking-tight text-white sm:text-3xl">{product.name}</h1>
       {product.tagline?.trim() && <p className="mt-2 max-w-3xl break-words text-sm leading-relaxed text-white/75">{product.tagline.trim()}</p>}
