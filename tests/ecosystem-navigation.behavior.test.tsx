@@ -61,21 +61,26 @@ describe("shared service navigation", () => {
     expect(screen.queryByRole("navigation")).toBeNull();
   });
 
-  it.each(["market", "pedia"] as const)("promotes only the other live service (%s)", (current) => {
+  it.each(["market", "pedia"] as const)("promotes only the other live service compact without eyebrow (%s)", (current) => {
     render(<CrossServicePromo current={current} />);
     const service = AXVARA_SERVICES.find((item) => item.id !== current)!;
     const link = screen.getByRole("link");
     expect(link.textContent).toContain(service.name);
+    // 2026-10-12: eyebrow "Layanan AXVARA" dihapus agar kartu ramping.
+    expect(link.textContent).not.toContain("Layanan AXVARA");
     const url = new URL(link.getAttribute("href")!);
     expect(`${url.origin}${url.pathname}`).toBe(service.href);
     expect(url.searchParams.get("utm_medium")).toBe("cross_promo");
     expect(url.searchParams.get("utm_source")).toBe(current === "market" ? "axvara" : "pedia");
   });
 
-  it("Market retains Telegram and identifies it as a Market order channel", () => {
+  it("Market retains Telegram compact twin card without eyebrows", () => {
     render(<CommunityBar />);
     expect(screen.getByRole("link", { name: /Bot Telegram/ }).getAttribute("href")).toBe(TG_BOT_HREF);
-    expect(screen.getByText("Kanal order Market")).toBeTruthy();
+    // 2026-10-12: eyebrow dihapus dari kedua kartu (compact) — tidak ada lagi
+    // "LAYANAN AXVARA" / "Kanal order Market" di beranda Market.
+    expect(screen.queryByText("Kanal order Market")).toBeNull();
+    expect(screen.queryByText("Layanan AXVARA")).toBeNull();
     expect(screen.queryByText("Grup WhatsApp")).toBeNull();
     expect(screen.getByRole("link", { name: /AXVARA Pedia/ })).toBeTruthy();
   });

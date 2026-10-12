@@ -11,7 +11,10 @@ describe("integrasi pusat M6 (PD-60–64)", () => {
     expect(home).not.toContain("LaunchCards");
     const community = read("src/components/storefront/CommunityBar.tsx");
     expect(community).toContain('<CrossServicePromo current="market"');
-    expect(community).toContain("Kanal order Market");
+    // 2026-10-12: eyebrow compact — tanpa "LAYANAN AXVARA"/"Kanal order Market".
+    expect(community).not.toContain("Kanal order Market");
+    expect(community).toContain("ArrowUpRight");
+    expect(community).toContain("flex-row");
     expect(community).not.toContain("Grup WhatsApp");
     // Komponen tersimpan utuh, tidak diimpor siapa pun.
     const cards = read("src/components/storefront/LaunchCards.saved.tsx");
