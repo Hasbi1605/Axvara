@@ -6,12 +6,12 @@ import { Footer } from "@/components/storefront/Footer";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://pedia.axvara.tech"),
-  title: { default: "Axvara Pedia — Layanan media sosial", template: "%s · Axvara Pedia" },
+  title: { default: "Axvara Pedia — Layanan sosial media termurah", template: "%s · Axvara Pedia" },
   description: "Katalog followers, likes, dan views. Bandingkan jumlah, harga, estimasi proses, dan ketentuan setiap paket sebelum memesan.",
   icons: { icon: "/brand/pedia-mark-favicon.png", apple: "/brand/pedia-apple-touch-180.png" },
   openGraph: {
     type: "website", siteName: "Axvara Pedia", locale: "id_ID",
-    images: [{ url: "/brand/pedia-icon-512.png", width: 512, height: 512, alt: "Axvara Pedia — Layanan media sosial" }],
+    images: [{ url: "/brand/pedia-icon-512.png", width: 512, height: 512, alt: "Axvara Pedia — Layanan sosial media" }],
   },
 };
 

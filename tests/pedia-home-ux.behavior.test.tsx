@@ -122,8 +122,8 @@ describe("Pedia catalog-first storefront", () => {
     vi.useFakeTimers();
     render(<Typewriter />);
     act(() => vi.advanceTimersByTime(10000));
-    expect(screen.getByText("Harga terjangkau").closest("[aria-hidden=true]")).toBeTruthy();
-    expect(screen.getByText("Harga terjangkau. Mudah dipesan. Pilihan terkurasi.").className).toBe("sr-only");
+    expect(screen.getByText("Termurah").closest("[aria-hidden=true]")).toBeTruthy();
+    expect(screen.getByText("Termurah. Termudah. Terpercaya.").className).toBe("sr-only");
     expect(document.querySelector("[aria-live]")).toBeNull();
   });
 
@@ -132,15 +132,15 @@ describe("Pedia catalog-first storefront", () => {
     vi.useFakeTimers();
     render(<Typewriter />);
     act(() => vi.advanceTimersByTime(2200));
-    expect(screen.getByText("Harga terjangka")).toBeTruthy();
-    // 2026-10-12: typewriter putih menyatu h1 Market (tanpa min-h/cyan pembungkus).
-    expect(screen.getByText("Harga terjangka").parentElement?.className).toContain("text-white");
+    expect(screen.getByText("Termura")).toBeTruthy();
+    // 2026-10-12: typewriter cyan ("Satu tempat untuk / Layanan sosial media" putih).
+    expect(screen.getByText("Termura").parentElement?.className).toContain("text-[#00E5FF]");
     const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(true);
     act(() => { document.dispatchEvent(new Event("visibilitychange")); vi.advanceTimersByTime(10000); });
-    expect(screen.getByText("Harga terjangka")).toBeTruthy();
+    expect(screen.getByText("Termura")).toBeTruthy();
     hidden.mockRestore();
     act(() => { document.dispatchEvent(new Event("visibilitychange")); vi.advanceTimersByTime(2200); });
-    expect(screen.getByText("Harga terjangk")).toBeTruthy();
+    expect(screen.getByText("Termur")).toBeTruthy();
   });
 
   it("provides honest empty-catalog feedback and no fake platform availability", () => {

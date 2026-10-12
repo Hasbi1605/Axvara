@@ -49,7 +49,8 @@ export function PediaHomeClient({ products }: { products: PediaCatalogProduct[];
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-6 lg:gap-8 items-center">
           <div className="max-w-3xl w-full">
             <h1 className="font-display font-[700] tracking-[-0.02em] leading-[0.98] text-[42px] sm:text-[56px] text-white">
-              Layanan media sosial
+              <span className="block">Satu tempat untuk</span>
+              <span className="block">Layanan sosial media</span>
               <Typewriter />
             </h1>
             <p className="mt-4 text-[15px] leading-6 text-white/60 max-w-[46ch]">

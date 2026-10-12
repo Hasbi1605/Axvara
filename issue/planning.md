@@ -118,9 +118,8 @@ Checkbox `[x]` di bawah hanya berarti implementasi/tugas yang dibuktikan source/
 
 ### 6. Hero Typewriter
 
-- [x] Layanan media sosial tetap, suffix saja berubah.
-- [x] Source Typewriter memakai Harga terjangkau / Mudah dipesan / Pilihan terkurasi.
-- [x] Permintaan awal Termurah/Termudah/Terpercaya/#1 tetap dicatat sebagai historis tanpa bukti; **tidak dipakai**, bukan klaim yang sudah terverifikasi.
+- [x] "Satu tempat untuk / Layanan sosial media" putih + typewriter cyan Termurah / Termudah / Terpercaya (2026-10-12 atas permintaan owner; menggantikan "Layanan media sosial" + Harga terjangkau / Mudah dipesan / Pilihan terkurasi).
+- [x] Permintaan owner Termurah/Termudah/Terpercaya kini dipakai eksplisit per instruksi owner, bukan klaim terverifikasi pihak ketiga.
 - [x] Typing 85ms/delete 45ms/jeda 2.2s/caret dan min-height suffix ada; CLS/mobile aktual belum diukur.
 - [x] Reduced-motion statis, visual aria-hidden + sr-only seluruh frasa, timer pause/resume visibilitychange.
 - [x] Deskripsi hero sesuai copy faktual yang diminta.

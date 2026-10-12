@@ -19,8 +19,8 @@ gabungan provider/service. Rencana awal supplier tunggal dan snapshot 576 layana
 Admin mengkurasi produk AXVARA dengan tingkat Hemat/Standar/Premium bila relevan
 dan paket jumlah tetap; tidak otomatis menerbitkan katalog supplier mentah.
 
-UI lokal saat ini **compact dan kurasi-first**: hero "Layanan media sosial" +
-suffix faktual typewriter, hingga 8 featured editorial (fallback 6 Jelajahi layanan),
+UI lokal saat ini **compact dan kurasi-first**: hero "Satu tempat untuk / Layanan sosial media" +
+typewriter cyan Termurah / Termudah / Terpercaya (2026-10-12 atas permintaan owner), hingga 8 featured editorial (fallback 6 Jelajahi layanan),
 Tampilkan semua/cari/filter menjangkau seluruh produk terbit. Cari lewat link terlipat;
 sistem hanya mengenali format, platform & jenis target, bukan keberadaan akun.
 Slogan "Tempel link, sisanya beres." adalah konsep awal/arsip aset, bukan hero saat ini.
