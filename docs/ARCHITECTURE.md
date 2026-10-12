@@ -83,6 +83,7 @@ axvara/
 │   ├── ARCHITECTURE.md
 │   └── VPS-RESEARCH.md
 ├── public/
+│   ├── fonts/                   # Variable fonts self-hosted (2026-10-12): inter/space-grotesk/jetbrains-mono latin .woff2 via next/font/local — tanpa fetch Google saat build
 │   ├── qris/README.md           # tidak ada QRIS statis publik
 │   └── logo/
 │       └── axvara-wordmark.svg

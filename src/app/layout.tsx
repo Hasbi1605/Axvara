@@ -1,10 +1,14 @@
 import type { Metadata } from "next";
-import { Inter, Space_Grotesk, JetBrains_Mono } from "next/font/google";
+// 2026-10-12: self-hosted variable fonts (public/fonts) via next/font/local.
+// next/font/google fetch CSS Google saat build — gagal di CI bila runner tak
+// bisa akses fonts.googleapis.com (TypeError null reading '1' di loader.js).
+// File = variable font resmi Google (latin), weight direntang penuh.
+import localFont from "next/font/local";
 import "./globals.css";
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-ax-sans", display: "swap" });
-const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], weight: ["500", "600", "700"], variable: "--font-ax-display", display: "swap" });
-const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"], weight: ["500", "700"], variable: "--font-ax-mono", display: "swap", preload: false });
+const inter = localFont({ src: "../../public/fonts/inter-var-latin.woff2", variable: "--font-ax-sans", display: "swap" });
+const spaceGrotesk = localFont({ src: "../../public/fonts/space-grotesk-var-latin.woff2", variable: "--font-ax-display", display: "swap" });
+const jetbrainsMono = localFont({ src: "../../public/fonts/jetbrains-mono-var-latin.woff2", variable: "--font-ax-mono", display: "swap", preload: false });
 
 // Root layout MINIMAL (2026-10-08, PEDIA §9.2): font + metadata global saja.
 // Navbar/Footer toko ada di (shop)/layout; Pedia punya pedia/layout sendiri.

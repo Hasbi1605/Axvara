@@ -51,7 +51,10 @@
 
 > Status 2026-09-14 (commit `cc8eaa1`): font cross-platform via `next/font`
 > self-hosted — Inter (body) + Space Grotesk (display/harga) + JetBrains Mono
-> (kode pesanan). Di Chrome Windows tidak lagi jatuh ke Arial tipis;
+> (kode pesanan). 2026-10-12: beralih dari `next/font/google` ke
+> `next/font/local` dengan variable font di `public/fonts/` — Google fetch
+> saat build gagal di CI bila runner tak bisa akses fonts.googleapis.com.
+> Di Chrome Windows tidak lagi jatuh ke Arial tipis;
 > `-webkit-font-smoothing: antialiased` hanya untuk WebKit Apple agar teks
 > kecil Windows tidak pudar. Tabel di bawah adalah fondasi (dilengkapi webfont
 > di `src/app/layout.tsx` + `tailwind.config.ts`).
