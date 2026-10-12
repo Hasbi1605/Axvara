@@ -72,14 +72,16 @@ describe("Pedia catalog-first storefront", () => {
   });
 
   it("puts twin service cards after hero without eyebrow, and link shortcut near search", async () => {
-    render(<PediaHomeClient products={[product]} ordersEnabled />);
+    renderPediaHome([product], true);
     const catalog = screen.getByRole("region", { name: "Pilihan AXVARA" });
     const promo = screen.getByRole("link", { name: /AXVARA Market/ });
     expect(promo.compareDocumentPosition(catalog) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     // 2026-10-12: kartu ganda ala Market — Market + Bot Telegram berdampingan.
     const bot = screen.getByRole("link", { name: /Bot Telegram/ });
     expect(bot.getAttribute("href")).toContain("t.me/Axvara_bot");
-    expect(document.body.textContent).not.toContain("AXVARA PEDIA");
+    // 2026-10-12: navbar kini lockup "AXVARA PEDIA" penuh (desktop+mobile) —
+    // hero tetap tanpa eyebrow.
+    expect(screen.getByRole("banner").textContent).toContain("AXVARA PEDIA");
     const shortcut = screen.getByText("Cari lewat link").closest("details")!;
     expect(shortcut.open).toBe(false);
     fireEvent.click(screen.getByText("Cari lewat link"));

@@ -61,8 +61,9 @@ const placements = (() => {
  * Mesin animasi disalin 1:1 dari src/components/storefront/OrbitHero.tsx:
  * - Zero React re-render (refs + rAF imperatif, transform + opacity saja).
  * - IntersectionObserver + visibilitychange pause, reduced-motion statis.
- * - Mode hemat mobile (coarse/≤640px): planet dalam, tanpa trail/label/
- *   shadow dinamis/star-dust, 24fps, start ditunda requestIdleCallback.
+ * - Mode hemat mobile (coarse/≤640px): semua 8 planet tetap tampil
+ *   seperti Market, tanpa trail/label/shadow dinamis/star-dust, 24fps,
+ *   start ditunda requestIdleCallback.
  * - Drag + wheel impulse hanya (pointer: fine); sentuh = native pan-y.
  *
  * Yang beda: 8 planet sosmed Pedia (bukan 12 produk Market) + inti mark
@@ -90,7 +91,8 @@ export function PediaOrbit() {
   const lastTimeRef = useRef(0);
   const lastRenderTimeRef = useRef(0);
   const lastTrailTimeRef = useRef(0);
-  // Mobile hemat: kurangi planet + matikan trail/label/shadow dinamis.
+  // Mobile hemat: semua 8 planet tetap tampil seperti Market; yang
+  // dimatikan hanya trail/label/shadow dinamis/star-dust + 24fps.
   // Diputuskan SEKALI saat mount (bukan per frame) agar tidak ada
   // matchMedia di hot path.
   const liteRef = useRef(false);
@@ -169,9 +171,10 @@ export function PediaOrbit() {
     const coarse = window.matchMedia("(pointer: coarse)").matches;
     const smallScreen = window.matchMedia("(max-width: 640px)").matches;
     liteRef.current = coarse || smallScreen;
-    // 4 planet pertama = ring 0 (1) + ring 1 (3). Ring 2+ disembunyikan
-    // via CSS di bawah (indeks 4+).
-    liteCountRef.current = 4;
+    // 2026-10-12 (owner): mobile tampil SEMUA 8 planet seperti Market
+    // (dulu 4 — terlalu sepi). Seluruh planet sosmed memang dipakai di
+    // mode mobile, biaya komposit tetap aman (compositor-only + 24fps).
+    liteCountRef.current = placements.length;
 
     // Respect prefers-reduced-motion
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -393,15 +396,15 @@ export function PediaOrbit() {
       </svg>
 
       {/* Planets — rendered once, updated imperatively.
-          Mode hemat (mobile): 4 planet dalam saja (indeks 4+ disembunyikan).
-          Trail/label/shadow dinamis tidak dipakai di hot path lagi.
+          2026-10-12 (owner): SEMUA planet tampil di mobile seperti Market
+          (dulu hanya 4 planet dalam, terlalu sepi).
+          Trail/label/shadow dinamis tetap desktop-only (hemat komposit).
           Resep DISAMAKAN PERSIS dengan OrbitHero Market agar rapih sama rata:
           sphere 38/42px + ikon asli 22/24px object-contain + tint brand tipis
           + gloss + highlight + border/shadow sama. Logo putih (Threads/X)
           memakai bg gelap + ikon putih via filter (pola brand resmi: Threads
           & X memang monokrom putih) — bukan sphere gelap terpisah. */}
       {placements.map(({ item }, pi) => {
-        const hideOnLite = pi >= 4;
         const sphereBg = item.dark
           ? `linear-gradient(180deg, rgba(35,40,66,0.96), rgba(18,22,46,0.96)), radial-gradient(ellipse 60% 55% at 50% 48%, ${item.color}14, transparent 68%)`
           : `linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.78)), radial-gradient(ellipse 60% 55% at 50% 48%, ${item.color}14, transparent 68%)`;
@@ -410,7 +413,7 @@ export function PediaOrbit() {
           <div
             key={item.label + pi}
             ref={(el) => setPlanetRef(el, pi)}
-            className={`absolute left-1/2 top-1/2 items-center justify-center will-change-transform ${hideOnLite ? "hidden sm:flex" : "flex"}`}
+            className="absolute left-1/2 top-1/2 items-center justify-center will-change-transform flex"
             style={{ transform: "translate(-50%, -50%)" }}
             title={item.label}
           >

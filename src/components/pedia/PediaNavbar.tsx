@@ -31,12 +31,13 @@ export function PediaNavbar() {
           <img src="/brand/pedia-mark.svg" alt="" width={36} height={32} className="h-[32px] w-[36px] shrink-0 brightness-0 invert" />
           {/* 2026-10-08 (owner): lockup "AXVARA PEDIA" tanpa pemisah, disamakan
              dengan navbar pusat: font-display 22px tracking 0.16em.
-             Mobile: "PEDIA" saja (tanpa AXVARA) agar muat. */}
+             2026-10-12 (owner): mobile juga "AXVARA PEDIA" penuh 1:1 Market
+             (kecil 15px + truncate agar muat di layar sempit). */}
           <span className="hidden whitespace-nowrap font-display text-[22px] font-[300] leading-none tracking-[0.16em] text-white md:inline">
             AXVARA PEDIA
           </span>
-          <span className="whitespace-nowrap font-display text-[22px] font-[300] leading-none tracking-[0.16em] text-white md:hidden">
-            PEDIA
+          <span className="max-w-[130px] truncate whitespace-nowrap font-display text-[15px] font-[300] leading-none tracking-[0.12em] text-white md:hidden">
+            AXVARA PEDIA
           </span>
         </Link>
         {/* Field cari ala navbar Market 1:1 — pill rounded-full + ikon kiri + tombol clear. */}
@@ -59,10 +60,11 @@ export function PediaNavbar() {
           <Link prefetch={false} href="/pedia/bantuan" className="hover:text-white">Bantuan</Link>
         </nav>
         <div className="ml-auto min-w-0 lg:ml-0 flex items-center gap-1 sm:gap-2">
+          {/* Urutan 1:1 Market: ServicesMenu dulu, tombol search sesudahnya. */}
+          <ServicesMenu active="pedia" />
           <button onClick={() => setMobileSearch((v) => !v)} className="lg:hidden w-11 h-11 rounded-full ax-glass flex items-center justify-center text-white/70" aria-label="Cari layanan" aria-expanded={mobileSearch}>
             {mobileSearch ? <X className="w-4 h-4" /> : <IosIcon name="search" size={16} tint="white" />}
           </button>
-          <ServicesMenu active="pedia" />
         </div>
       </div>
       {mobileSearch && (

@@ -75,7 +75,10 @@ describe("PediaOrbit: kembar OrbitHero untuk sosmed", () => {
   it("mode hemat mobile + LCP + reduced-motion + scroll native seperti Market", () => {
     const src = read("src/components/pedia/PediaOrbit.tsx");
     expect(src).toContain("liteRef");
-    expect(src).toContain("liteCountRef.current = 4");
+    // 2026-10-12 (owner): mobile tampil SEMUA planet seperti Market
+    // (8 planet Pedia, bukan 4 — pembatas indeks mobile dihapus).
+    expect(src).toContain("liteCountRef.current = placements.length");
+    expect(src).not.toContain("pi >= 4");
     expect(src).toContain("frameBudget");
     expect(src).toContain("deferForLcp");
     expect(src).toContain("requestIdleCallback");

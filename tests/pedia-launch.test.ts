@@ -59,17 +59,25 @@ describe("integrasi pusat M6 (PD-60–64)", () => {
     expect(shopNav).toContain("max-w-[1280px]");
   });
 
-  it("Navbar Pedia: compact mobile brand, unclipped menu and desktop tracking", () => {
+  it("Navbar Pedia: mobile AXVARA PEDIA penuh + urutan tombol 1:1 Market", () => {
     const nav = read("src/components/pedia/PediaNavbar.tsx");
-    // Mobile: "PEDIA" saja (tanpa AXVARA); desktop tetap "AXVARA PEDIA".
+    // 2026-10-12 (owner): mobile juga "AXVARA PEDIA" penuh seperti Market
+    // (bukan "PEDIA" saja) — kecil + truncate agar muat.
     expect(nav).toContain("md:hidden");
-    expect(nav).toContain("PEDIA");
     expect(nav).toContain("AXVARA PEDIA");
+    expect(nav).not.toMatch(/>\s*PEDIA\s*</);
     expect(nav).not.toContain("overflow-hidden");
     expect(nav).not.toContain("overflowX");
     expect(nav).toContain("min-w-0");
     expect(nav).toContain("/pedia/lacak");
     expect(nav).toContain("hidden items-center");
+    // Urutan 1:1 Market: ServicesMenu DULU, tombol search sesudahnya
+    // (sebelumnya kebalik di Pedia mobile).
+    const menuIdx = nav.indexOf('<ServicesMenu active="pedia"');
+    const searchIdx = nav.indexOf('aria-label="Cari layanan"');
+    expect(menuIdx).toBeGreaterThan(-1);
+    expect(searchIdx).toBeGreaterThan(-1);
+    expect(menuIdx).toBeLessThan(searchIdx);
   });
 
   it("Bottom bar Pedia konsisten dengan pusat (ikon + cyan + titik aktif)", () => {
