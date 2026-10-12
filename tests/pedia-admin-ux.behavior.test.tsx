@@ -227,7 +227,10 @@ it("previews saved drafts with actual storefront components without navigation o
   fireEvent.change(screen.getByLabelText("Tagline (nonpublik)"), { target: { value: "Unsaved tagline" } });
   fireEvent.change(screen.getByLabelText("Deskripsi (nonpublik)"), { target: { value: "Unsaved description" } });
   expect(preview.textContent).not.toContain("Unsaved");
-  expect(within(preview).getAllByText("Ramai")).toHaveLength(2);
+  // 2026-10-12 (owner): tagline tidak dirender di storefront — preview
+  // menampilkan deskripsi kurasi, bukan tagline.
+  expect(within(preview).queryByText("Ramai")).toBeNull();
+  expect(within(preview).getByText("Deskripsi")).toBeTruthy();
   const calls = vi.mocked(fetch).mock.calls.length;
   expect(fireEvent.click(within(preview).getByRole("link", { name: /lihat paket/ }))).toBe(false);
   expect(window.location.pathname).toBe("/admin");

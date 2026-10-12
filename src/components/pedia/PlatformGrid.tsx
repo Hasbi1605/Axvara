@@ -74,7 +74,9 @@ export function ProductCard({ p }: { p: ProductCardData }) {
       <span className="mb-3 flex items-center justify-between gap-2"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/5" aria-hidden="true"><PlatformIcon id={p.platform} size={20} /></span><span aria-hidden="true" className="text-white/40 group-hover:text-[#00E5FF]">↗</span></span>
       <span className="min-w-0 flex-1">
         <span className="block break-words text-sm font-semibold leading-snug text-white sm:text-base">{p.name}</span>
-        {p.tagline && <span className="mt-1 line-clamp-2 break-words text-xs leading-relaxed text-white/60" title={p.tagline}>{p.tagline}</span>}
+        {/* 2026-10-12 (owner): tagline AI slop ("Bikin profil terlihat
+            ramai", "Postingan terlihat disukai", …) DIHAPUS dari kartu —
+            judul langsung ke harga. Field tagline tetap ada di data/admin. */}
         <span className="mt-3 block text-base font-semibold tabular-nums text-white sm:text-lg">
           {p.minPrice != null ? `Mulai Rp${p.minPrice.toLocaleString("id-ID")}` : "Lihat harga"}
         </span>

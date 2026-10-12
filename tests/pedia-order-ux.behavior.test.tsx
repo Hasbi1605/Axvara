@@ -48,13 +48,15 @@ describe("Pedia order UX", () => {
     const description = 'Followers untuk profil Instagram publik.\nRefill sesuai paket.\n<script>alert("test")</script>';
     const described = { ...product, description_md: description };
     const { container } = render(<OrderClient product={described} initialTarget="https://instagram.com/customer" ordersEnabled={false} />);
-    expect(screen.getByText(product.tagline!)).toBeTruthy();
+    // 2026-10-12 (owner): tagline tidak dirender di detail — judul langsung
+    // ke deskripsi kurasi admin.
+    expect(screen.queryByText(product.tagline!)).toBeNull();
     const copy = screen.getByText(/Followers untuk profil Instagram publik\./);
     expect(copy.textContent).toBe(description);
     expect(copy.className).toContain("whitespace-pre-line");
     expect(container.querySelector("script")).toBeNull();
     const html = renderToStaticMarkup(<OrderClient product={described} initialTarget="" ordersEnabled={false} />);
-    expect(html).toContain(product.tagline);
+    expect(html).not.toContain(product.tagline);
     expect(html).toContain('&lt;script&gt;alert(&quot;test&quot;)&lt;/script&gt;');
     expect(html).not.toContain("<script>");
     expect(document.getElementById("pedia-target-help")?.textContent).toBe("Masukkan link profil Instagram. Pastikan akun tidak privat.");

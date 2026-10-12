@@ -153,7 +153,8 @@ export function OrderClient({ product, initialTarget, ordersEnabled, embedded = 
     <div className={embedded ? "py-6" : `mx-auto w-full max-w-[1280px] px-4 sm:px-6 lg:px-8 ${currentQuote && !attempted ? "pb-56" : "pb-36"} pt-6 lg:pb-12`}>
       {!embedded && <a href="/pedia" className="text-sm text-white/60 hover:text-white">Kembali ke layanan</a>}
       <h1 className="mt-3 text-2xl font-semibold tracking-tight text-white sm:text-3xl">{product.name}</h1>
-      {product.tagline?.trim() && <p className="mt-2 max-w-3xl break-words text-sm leading-relaxed text-white/75">{product.tagline.trim()}</p>}
+      {/* 2026-10-12 (owner): tagline AI slop DIHAPUS dari halaman detail —
+          judul langsung ke deskripsi kurasi admin (bila ada). */}
       {product.description_md?.trim() && <p className="mt-4 max-w-3xl whitespace-pre-line break-words text-sm leading-relaxed text-white/65">{product.description_md.trim()}</p>}
       <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-10">
         <div className="min-w-0 space-y-8">

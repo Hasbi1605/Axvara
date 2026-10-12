@@ -47,7 +47,7 @@ export const PEDIA_CHECKLIST_IG_FLAG = {
 export const PEDIA_SEED_PRODUCTS: PediaSeedProduct[] = [
   {
     slug: "followers-instagram", platform: "instagram", metric: "followers", targetKind: "profile",
-    name: "Followers Instagram", tagline: "Bikin profil terlihat ramai",
+    name: "Followers Instagram", tagline: "",
     packages: [100, 250, 500, 1000], step: 10,
     checklist: [PEDIA_CHECKLIST_PUBLIC, PEDIA_CHECKLIST_NO_RENAME, PEDIA_CHECKLIST_IG_FLAG],
     tiers: [
@@ -58,7 +58,7 @@ export const PEDIA_SEED_PRODUCTS: PediaSeedProduct[] = [
   },
   {
     slug: "likes-instagram", platform: "instagram", metric: "likes", targetKind: "post",
-    name: "Likes Instagram", tagline: "Postingan terlihat disukai",
+    name: "Likes Instagram", tagline: "",
     // #701 min 10 → paket mulai 20 agar Hemat & Standar (#541 min 20) sama.
     packages: [20, 50, 100, 250], step: 10,
     checklist: [PEDIA_CHECKLIST_PUBLIC],
@@ -69,7 +69,7 @@ export const PEDIA_SEED_PRODUCTS: PediaSeedProduct[] = [
   },
   {
     slug: "views-reels-instagram", platform: "instagram", metric: "views", targetKind: "reel",
-    name: "Views Reels Instagram", tagline: "Reels terlihat ditonton",
+    name: "Views Reels Instagram", tagline: "",
     // #802 min 100 (API) → paket mulai 100.
     packages: [100, 500, 1000, 5000], step: 100,
     checklist: [PEDIA_CHECKLIST_PUBLIC],
@@ -79,7 +79,7 @@ export const PEDIA_SEED_PRODUCTS: PediaSeedProduct[] = [
   },
   {
     slug: "views-tiktok", platform: "tiktok", metric: "views", targetKind: "video",
-    name: "Views TikTok", tagline: "Video terlihat ramai ditonton",
+    name: "Views TikTok", tagline: "",
     // Hemat #651 max 10.000 (API) → paket dibatasi 10.000.
     packages: [500, 1000, 5000, 10000], step: 100,
     checklist: [PEDIA_CHECKLIST_PUBLIC],
@@ -90,7 +90,7 @@ export const PEDIA_SEED_PRODUCTS: PediaSeedProduct[] = [
   },
   {
     slug: "likes-tiktok", platform: "tiktok", metric: "likes", targetKind: "video",
-    name: "Likes TikTok", tagline: "Video terlihat disukai",
+    name: "Likes TikTok", tagline: "",
     // Premium #17 max 200 (API) → paket dibatasi 200 (paket di luar rentang
     // otomatis disembunyikan saat render; seed jujur sejak awal).
     packages: [50, 100, 150, 200], step: 10,
@@ -103,7 +103,7 @@ export const PEDIA_SEED_PRODUCTS: PediaSeedProduct[] = [
   },
   {
     slug: "followers-tiktok", platform: "tiktok", metric: "followers", targetKind: "profile",
-    name: "Followers TikTok", tagline: "Profil TikTok terlihat ramai",
+    name: "Followers TikTok", tagline: "",
     // Premium #18 max 300 (API) → paket dibatasi 300.
     packages: [50, 100, 200, 300], step: 10,
     checklist: [PEDIA_CHECKLIST_PUBLIC, PEDIA_CHECKLIST_NO_RENAME],
@@ -115,7 +115,7 @@ export const PEDIA_SEED_PRODUCTS: PediaSeedProduct[] = [
   },
   {
     slug: "views-youtube", platform: "youtube", metric: "views", targetKind: "video",
-    name: "Views YouTube", tagline: "Video terlihat ditonton",
+    name: "Views YouTube", tagline: "",
     packages: [500, 1000, 5000, 10000], step: 100,
     checklist: [PEDIA_CHECKLIST_PUBLIC],
     tiers: [
@@ -124,7 +124,7 @@ export const PEDIA_SEED_PRODUCTS: PediaSeedProduct[] = [
   },
   {
     slug: "likes-youtube", platform: "youtube", metric: "likes", targetKind: "video",
-    name: "Likes YouTube", tagline: "Video terlihat disukai",
+    name: "Likes YouTube", tagline: "",
     packages: [100, 250, 500, 1000], step: 10,
     checklist: [PEDIA_CHECKLIST_PUBLIC],
     tiers: [
@@ -133,7 +133,7 @@ export const PEDIA_SEED_PRODUCTS: PediaSeedProduct[] = [
   },
   {
     slug: "subscriber-youtube", platform: "youtube", metric: "subscribers", targetKind: "channel",
-    name: "Subscriber YouTube", tagline: "Channel terlihat ramai",
+    name: "Subscriber YouTube", tagline: "",
     packages: [100, 250, 500, 1000], step: 10,
     checklist: [PEDIA_CHECKLIST_PUBLIC, PEDIA_CHECKLIST_NO_RENAME],
     tiers: [
@@ -142,7 +142,7 @@ export const PEDIA_SEED_PRODUCTS: PediaSeedProduct[] = [
   },
   {
     slug: "followers-facebook", platform: "facebook", metric: "followers", targetKind: "profile",
-    name: "Followers Facebook", tagline: "Halaman terlihat ramai",
+    name: "Followers Facebook", tagline: "",
     packages: [500, 1000, 5000, 10000], step: 100,
     checklist: [PEDIA_CHECKLIST_PUBLIC],
     tiers: [
@@ -152,7 +152,7 @@ export const PEDIA_SEED_PRODUCTS: PediaSeedProduct[] = [
   },
   {
     slug: "views-facebook", platform: "facebook", metric: "views", targetKind: "video",
-    name: "Views Video Facebook", tagline: "Video terlihat ditonton",
+    name: "Views Video Facebook", tagline: "",
     // #235 min 500 (API) → paket mulai 500.
     packages: [500, 1000, 5000, 10000], step: 100,
     checklist: [PEDIA_CHECKLIST_PUBLIC],
@@ -162,7 +162,7 @@ export const PEDIA_SEED_PRODUCTS: PediaSeedProduct[] = [
   },
   {
     slug: "followers-threads", platform: "threads", metric: "followers", targetKind: "profile",
-    name: "Followers Threads", tagline: "Profil Threads terlihat ramai",
+    name: "Followers Threads", tagline: "",
     // Premium #93 max 300 (API) → paket dibatasi 300.
     packages: [50, 100, 200, 300], step: 10,
     checklist: [PEDIA_CHECKLIST_PUBLIC, PEDIA_CHECKLIST_NO_RENAME],
@@ -173,7 +173,7 @@ export const PEDIA_SEED_PRODUCTS: PediaSeedProduct[] = [
   },
   {
     slug: "followers-shopee", platform: "shopee", metric: "followers", targetKind: "shop",
-    name: "Followers Toko Shopee", tagline: "Toko terlihat dipercaya",
+    name: "Followers Toko Shopee", tagline: "",
     packages: [100, 250, 500, 1000], step: 10,
     checklist: [],
     tiers: [
@@ -182,7 +182,7 @@ export const PEDIA_SEED_PRODUCTS: PediaSeedProduct[] = [
   },
   {
     slug: "plays-spotify", platform: "spotify", metric: "plays", targetKind: "track",
-    name: "Plays Spotify Indonesia", tagline: "Lagu terlihat didengar",
+    name: "Plays Spotify Indonesia", tagline: "",
     // #282 min 500 (API) → paket mulai 500.
     packages: [500, 1000, 5000, 10000], step: 100,
     checklist: [],

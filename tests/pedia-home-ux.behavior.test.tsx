@@ -46,8 +46,9 @@ describe("Pedia catalog-first storefront", () => {
     expect(card.textContent).toContain("Mulai Rp3.300");
     expect(card.textContent).toContain("Untuk 100 · paket hemat");
     expect(card.textContent).not.toMatch(/Indonesia aktif|Garansi/);
-    expect(card.textContent).toContain(product.tagline);
-    expect(screen.getByText(product.tagline!).className).toContain("line-clamp-2");
+    // 2026-10-12 (owner): tagline AI slop tidak dirender di kartu —
+    // judul langsung ke harga.
+    expect(card.textContent).not.toContain("Bikin profil terlihat ramai");
     expect(card.textContent).toContain("Tanpa refill");
     expect(card.textContent).not.toContain("Refill 30 hari");
     expect(document.body.textContent).not.toContain("Pemesanan belum tersedia");
@@ -55,9 +56,11 @@ describe("Pedia catalog-first storefront", () => {
 
   it("keeps absent taglines empty and escapes curated card text", () => {
     expect(catalogCard({ ...product, tagline: "   " }).tagline).toBeNull();
-    const tagline = '<img src=x onerror="alert(1)">';
-    render(<PediaHomeClient products={[{ ...product, tagline }]} />);
-    expect(screen.getByText(tagline)).toBeTruthy();
+    // 2026-10-12 (owner): tagline tidak dirender di kartu — payload jahat
+    // di tagline tidak punya permukaan tampil; deskripsi tetap di-escape
+    // di halaman detail.
+    render(<PediaHomeClient products={[{ ...product, tagline: '<img src=x onerror="alert(1)">' }]} />);
+    expect(document.body.textContent).not.toContain('<img src=x onerror="alert(1)">');
     expect(document.querySelector('img[src="x"]')).toBeNull();
   });
 
