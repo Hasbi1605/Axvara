@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { LinkPasteHero } from "@/components/pedia/LinkPasteHero";
+import { PediaOrbit } from "@/components/pedia/PediaOrbit";
 import { PediaServiceCards } from "@/components/pedia/PediaServiceCards";
 import { Typewriter } from "@/components/pedia/Typewriter";
 import { PEDIA_PLATFORMS, PlatformIcon, ProductCard, catalogCard } from "@/components/pedia/PlatformGrid";
@@ -35,22 +36,29 @@ export function PediaHomeClient({ products }: { products: PediaCatalogProduct[];
     {/* Hero 1:1 Market: section full-bleed selebar viewport (w-screen +
         center-translate menembus <main> 1280). TANPA overflow-hidden agar blur
         glow tidak kepotong di batas bawah — glow memudar natural (transparent
-        70%) DI BELAKANG kartu ganda yang ikut di dalam section. Teks + kartu
-        tetap sejajar container via inner div. */}
+        70%) DI BELAKANG kartu ganda yang ikut di dalam section. Teks + orbit +
+        kartu tetap sejajar container via inner div; grid teks-orbit disalin
+        dari (shop)/home-client.tsx. */}
     <section className="relative w-screen left-1/2 -translate-x-1/2">
       <div className="pointer-events-none absolute inset-0" aria-hidden>
         <div className="absolute -top-32 left-1/2 -translate-x-1/2 w-[520px] h-[300px] sm:w-[900px] sm:h-[520px] rounded-full opacity-60 blur-[44px] sm:blur-[80px]" style={{ background: "radial-gradient(ellipse at center, rgba(0,229,255,0.18), transparent 70%)" }} />
         <div className="absolute top-24 right-[10%] w-[240px] h-[240px] sm:w-[420px] sm:h-[420px] rounded-full opacity-30 blur-[36px] sm:blur-[60px] hidden sm:block" style={{ background: "radial-gradient(ellipse at center, rgba(255,184,0,0.15), transparent 70%)" }} />
       </div>
       <div className="relative mx-auto w-full max-w-[1280px] px-4 sm:px-6 lg:px-8 pt-10 sm:pt-14 pb-6">
-        <div className="max-w-3xl w-full">
-          <h1 className="font-display font-[700] tracking-[-0.02em] leading-[0.98] text-[42px] sm:text-[56px] text-white">
-            Layanan media sosial
-            <Typewriter />
-          </h1>
-          <p className="mt-4 text-[15px] leading-6 text-white/60 max-w-[46ch]">
-            Followers, likes, dan views. Pilih paket, masukkan link, lalu bayar dengan QRIS.
-          </p>
+        {/* Grid 1:1 Market — teks kiri, orbit kanan (mobile: orbit center di bawah teks) */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-6 lg:gap-8 items-center">
+          <div className="max-w-3xl w-full">
+            <h1 className="font-display font-[700] tracking-[-0.02em] leading-[0.98] text-[42px] sm:text-[56px] text-white">
+              Layanan media sosial
+              <Typewriter />
+            </h1>
+            <p className="mt-4 text-[15px] leading-6 text-white/60 max-w-[46ch]">
+              Followers, likes, dan views. Pilih paket, masukkan link, lalu bayar dengan QRIS.
+            </p>
+          </div>
+          <div className="flex justify-center lg:justify-end shrink-0 mt-6 lg:mt-0">
+            <PediaOrbit />
+          </div>
         </div>
         <div className="mt-6"><PediaServiceCards /></div>
       </div>

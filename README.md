@@ -51,6 +51,7 @@ axvara/
 │   │                           # ProductCopy (deskripsi + S&K + cara aktivasi PDP, terlipat di mobile),
 │   │                           # MobileBottomNav + HelpSheet + CategorySheet + DeviceOrders (bottom nav mobile 4 tab)
 │   ├── components/shared/      # ServicesMenu + CrossServicePromo, URL dari lib/site.ts
+│   ├── components/pedia/       # PediaOrbit (kembar OrbitHero: 8 sosmed + inti prism AXVARA), PediaServiceCards, Typewriter, PlatformGrid, LinkPasteHero
 │   ├── components/admin/       # Shell + login gate + hooks + sections/ (satu per menu admin)
 │   ├── hooks/useModalA11y.ts   # Escape + focus trap + scroll lock, satu sumber untuk semua modal
 │   ├── lib/db.ts               # BARREL ke src/lib/db/* — impor dari sini, bukan file internalnya

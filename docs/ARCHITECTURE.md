@@ -144,7 +144,7 @@ axvara/
 │       └── sections/            # satu komponen per section admin (page.tsx tinggal shell + routing)
 │       └── PediaManager.tsx     # 5 panel: Produk/Layanan Supplier/Pesanan/Kredit/Pengaturan; daftar ringkas + editor produk/tingkat terpisah
 │   ├── shared/                  # ServicesMenu + CrossServicePromo (Market/Pedia; URL src/lib/site.ts)
-│   ├── pedia/                   # PediaNavbar, PediaBottomNav, Typewriter, LinkPasteHero, PlatformGrid, OrderTicker (tidak dirender), StatusWidgets
+│   ├── pedia/                   # PediaNavbar, PediaBottomNav, Typewriter, LinkPasteHero, PlatformGrid, PediaOrbit (kembar OrbitHero: 8 sosmed + inti prism AXVARA), PediaServiceCards (Market + Bot Telegram), OrderTicker (tidak dirender), StatusWidgets
 ├── src/hooks/
 │   ├── useModalA11y.ts          # Escape + focus trap + scroll lock + restore fokus — SATU
 │                                # implementasi untuk CartDrawer, PopupBanner, QuickVariantModal.
