@@ -83,25 +83,27 @@ export function PediaHomeClient({ products }: { products: PediaCatalogProduct[];
       </div>
     </section>
 
-    {/* Kartu ganda di LUAR section hero seperti CommunityBar Market —
-        agar jarak hero→kartu→katalog 1:1 Market. */}
-    <div className="mx-auto w-full max-w-[1280px] px-4 sm:px-6 lg:px-8">
+    {/* Kartu ganda di LUAR section hero — class container DISALIN PERSIS
+        dari CommunityBar Market (-mt-1 mb-2) agar gap kartu→judul 1:1. */}
+    <div className="mx-auto w-full max-w-[1280px] px-4 sm:px-6 lg:px-8 -mt-1 mb-2">
       <PediaServiceCards />
     </div>
 
     <div className="pb-4">
 
-    {/* Katalog dempet kartu seperti Market (pt-2, bukan mt-8). */}
+    {/* Katalog: struktur header DISALIN PERSIS dari Market — judul kiri +
+        counter kanan ("N layanan"), agar balance atas-bawah 1:1. */}
     <section aria-labelledby="pedia-catalog-heading" id="pedia-catalog" className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 pt-2 scroll-mt-20">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div><h2 id="pedia-catalog-heading" className="font-display font-bold text-[20px] sm:text-[24px] text-white tracking-[-0.02em]">{browsingAll ? "Semua layanan" : featured.length ? "Pilihan AXVARA" : "Jelajahi layanan"}</h2>{(browsingAll || featured.length > 0) && <p className="mt-1 text-sm text-white/60">Harga awal sesuai jumlah dan paket yang ditampilkan.</p>}</div>
+      <div className="flex items-center justify-between gap-4">
+        <h2 id="pedia-catalog-heading" className="font-display font-bold text-[20px] sm:text-[24px] text-white tracking-[-0.02em]">{browsingAll ? "Semua layanan" : featured.length ? "Pilihan AXVARA" : "Jelajahi layanan"}</h2>
+        <span className="text-xs text-white/40">{filtered.length} layanan</span>
       </div>
       <div className="mt-4 flex flex-wrap gap-2" aria-label="Filter platform">
         <button type="button" aria-pressed={!platform} onClick={() => setPlatform("")} className={`min-h-11 rounded-lg border px-3 text-sm ${!platform ? "border-[#00E5FF]/60 bg-[#00E5FF]/10 text-white" : "border-white/15 text-white/70"}`}>Semua</button>
         {PEDIA_PLATFORMS.filter((p) => products.some((product) => product.platform === p.id)).map((p) => <button key={p.id} type="button" aria-pressed={platform === p.id} onClick={() => setPlatform(p.id)} className={`flex min-h-11 items-center gap-2 rounded-lg border px-3 text-sm ${platform === p.id ? "border-[#00E5FF]/60 bg-[#00E5FF]/10 text-white" : "border-white/15 text-white/70"}`}><PlatformIcon id={p.id} size={18} />{p.label}</button>)}
       </div>
-      <p role="status" className="mt-4 text-xs text-white/60">{filtered.length} layanan</p>
-      {filtered.length ? <div className="mt-3 grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 lg:grid-cols-3">{filtered.map((p) => <ProductCard key={p.slug} p={catalogCard(p)} />)}</div> : <div className="mt-3 rounded-xl border border-white/15 p-6 text-sm text-white/70"><p>{products.length ? "Tidak ada layanan yang sesuai pencarian." : "Layanan belum tersedia. Coba kembali nanti atau hubungi bantuan."}</p>{products.length > 0 && <button type="button" onClick={() => { setQuery(""); setPlatform(""); setShowAll(true); }} className="mt-3 min-h-11 text-[#00E5FF]">Reset pencarian</button>}</div>}
+      <p role="status" className="sr-only">{filtered.length} layanan</p>
+      {filtered.length ? <div className="mt-6 grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 lg:grid-cols-3">{filtered.map((p) => <ProductCard key={p.slug} p={catalogCard(p)} />)}</div> : <div className="mt-6 rounded-xl border border-white/15 p-6 text-sm text-white/70"><p>{products.length ? "Tidak ada layanan yang sesuai pencarian." : "Layanan belum tersedia. Coba kembali nanti atau hubungi bantuan."}</p>{products.length > 0 && <button type="button" onClick={() => { setQuery(""); setPlatform(""); setShowAll(true); }} className="mt-3 min-h-11 text-[#00E5FF]">Reset pencarian</button>}</div>}
       {!browsingAll && products.length > filtered.length && <button type="button" onClick={() => setShowAll(true)} className="mt-5 min-h-11 w-full rounded-xl border border-[#00E5FF]/25 bg-[#00E5FF]/5 px-4 text-sm font-medium text-[#00E5FF] transition-colors hover:bg-[#00E5FF]/10">Tampilkan semua layanan <span className="ml-2 text-white/60">({products.length})</span></button>}
     </section>
 
