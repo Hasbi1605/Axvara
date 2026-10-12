@@ -54,7 +54,7 @@ export function PediaHomeClient({ products }: { products: PediaCatalogProduct[];
               <Typewriter />
             </h1>
             <p className="mt-4 text-[15px] leading-6 text-white/60 max-w-[46ch]">
-              Followers, likes, dan views. Pilih paket, masukkan link, lalu bayar dengan QRIS.
+              Followers, likes, dan views semua platform dengan harga murah. Order cepat dan otomatis tanpa perlu login.
             </p>
           </div>
           <div className="flex justify-center lg:justify-end shrink-0 mt-6 lg:mt-0">
