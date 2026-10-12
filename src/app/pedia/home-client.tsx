@@ -31,25 +31,30 @@ export function PediaHomeClient({ products }: { products: PediaCatalogProduct[];
       (p.target_kind === "profile" && d.targetKind === "channel")))
     .map((p) => ({ slug: p.slug, name: p.name, minPrice: p.min_price, target: d.normalized }));
 
-  return <div className="pt-10 sm:pt-14 pb-4">
-    {/* Hero ala Market: glow section-level (bukan di dalam card), h1 font-display
-        42/56px tight, sub 15px/white-60, tanpa eyebrow AXVARA PEDIA. */}
-    <section className="relative overflow-hidden">
+  return <>
+    {/* Hero 1:1 Market: section full-bleed selebar viewport (w-screen +
+        center-translate menembus <main> 1280 agar glow tidak kejepit dan
+        kepotong kotak), glow cyan atas + gold kanan disalin persis dari
+        (shop)/home-client.tsx; teks tetap sejajar container via inner div. */}
+    <section className="relative w-screen left-1/2 -translate-x-1/2 overflow-hidden">
       <div className="pointer-events-none absolute inset-0" aria-hidden>
         <div className="absolute -top-32 left-1/2 -translate-x-1/2 w-[520px] h-[300px] sm:w-[900px] sm:h-[520px] rounded-full opacity-60 blur-[44px] sm:blur-[80px]" style={{ background: "radial-gradient(ellipse at center, rgba(0,229,255,0.18), transparent 70%)" }} />
         <div className="absolute top-24 right-[10%] w-[240px] h-[240px] sm:w-[420px] sm:h-[420px] rounded-full opacity-30 blur-[36px] sm:blur-[60px] hidden sm:block" style={{ background: "radial-gradient(ellipse at center, rgba(255,184,0,0.15), transparent 70%)" }} />
       </div>
-      <div className="relative max-w-3xl w-full">
-        <h1 className="font-display font-[700] tracking-[-0.02em] leading-[0.98] text-[42px] sm:text-[56px] text-white">
-          Layanan media sosial
-          <Typewriter />
-        </h1>
-        <p className="mt-4 text-[15px] leading-6 text-white/60 max-w-[46ch]">
-          Followers, likes, dan views. Pilih paket, masukkan link, lalu bayar dengan QRIS.
-        </p>
+      <div className="relative mx-auto w-full max-w-[1280px] px-4 sm:px-6 lg:px-8 pt-10 sm:pt-14 pb-4">
+        <div className="max-w-3xl w-full">
+          <h1 className="font-display font-[700] tracking-[-0.02em] leading-[0.98] text-[42px] sm:text-[56px] text-white">
+            Layanan media sosial
+            <Typewriter />
+          </h1>
+          <p className="mt-4 text-[15px] leading-6 text-white/60 max-w-[46ch]">
+            Followers, likes, dan views. Pilih paket, masukkan link, lalu bayar dengan QRIS.
+          </p>
+        </div>
       </div>
     </section>
-    <div className="mt-6"><PediaServiceCards /></div>
+    <div className="pb-4">
+    <div className="mt-2"><PediaServiceCards /></div>
 
     <section aria-labelledby="pedia-catalog-heading" className="mt-8">
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -84,5 +89,6 @@ export function PediaHomeClient({ products }: { products: PediaCatalogProduct[];
       <div className="mt-5 flex flex-wrap gap-5 text-sm"><Link prefetch={false} href="/pedia/ketentuan" className="text-[#00E5FF]">Ketentuan Pedia</Link><Link prefetch={false} href="/pedia/bantuan" className="text-[#00E5FF]">Hubungi bantuan</Link></div>
     </section>
     <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({ "@context": "https://schema.org", "@type": "FAQPage", mainEntity: FAQ.map((f) => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.a } })) }) }} />
-  </div>;
+    </div>
+  </>;
 }
