@@ -1,6 +1,6 @@
 # CHANGELOG — AXVARA
 
-- 2026-10-12 — Perbaiki glow hero Pedia kepotong kotak (owner: efek hijau aneh, minta 1:1 Market): section hero jadi full-bleed `w-screen left-1/2 -translate-x-1/2` menembus `<main>` 1280 (glow 900px tidak kejepit container) + `overflow-x-clip` di root Pedia anti h-scroll; glow cyan+gold disalin persis dari Market — src/app/pedia/{layout,home-client}.tsx — (verifikasi: vitest 2288 hijau/184 file, tsc bersih; Obscura /pedia: glow 900px/viewport 1280, scrollW=innerW tanpa h-scroll, PNG nonblank)
+- 2026-10-12 — Glow hero Pedia lewat di belakang kartu ganda (owner: garis potong di atas kartu): hapus `overflow-hidden` section + pindahkan `PediaServiceCards` ke DALAM section hero agar glow memudar natural di belakang kartu — src/app/pedia/home-client.tsx — (verifikasi: vitest 2288 hijau/184 file, tsc bersih; Obscura /pedia: garis potong hilang, glow di belakang kartu, scrollW=innerW, PNG nonblank)
 
 - 2026-10-12 — Perbaiki CI build `next/font` gagal fetch Google (2x gagal berturut, bukan flaky): ganti `next/font/google` → `next/font/local` dengan 3 variable font latin self-hosted di `public/fonts/` (~111KB); build lokal lolos tanpa referensi fonts.googleapis/gstatic di source — src/app/layout.tsx, public/fonts/, docs/{DESIGN.md,ARCHITECTURE.md} — (verifikasi: `npm run build` Compiled successfully + Generating static pages 7/7 lokal, vitest 2288 hijau/184 file, tsc bersih; push menyusul, CI akan verifikasi)
 
