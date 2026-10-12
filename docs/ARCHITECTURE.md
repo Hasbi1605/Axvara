@@ -144,7 +144,7 @@ axvara/
 │       └── sections/            # satu komponen per section admin (page.tsx tinggal shell + routing)
 │       └── PediaManager.tsx     # 5 panel: Produk/Layanan Supplier/Pesanan/Kredit/Pengaturan; daftar ringkas + editor produk/tingkat terpisah
 │   ├── shared/                  # ServicesMenu + CrossServicePromo (Market/Pedia; URL src/lib/site.ts)
-│   ├── pedia/                   # PediaNavbar, PediaBottomNav, Typewriter, LinkPasteHero, PlatformGrid, PediaOrbit (kembar OrbitHero: 8 sosmed + inti mark Pedia), PediaServiceCards (Market + Bot Telegram), OrderTicker (tidak dirender), StatusWidgets
+│   ├── pedia/                   # PediaNavbar (client + field cari pill ala Market via usePediaSearch), PediaBottomNav, Typewriter, LinkPasteHero, PlatformGrid, PediaOrbit (kembar OrbitHero: 8 sosmed + inti mark Pedia), PediaServiceCards (Market + Bot Telegram), OrderTicker (tidak dirender), StatusWidgets
 ├── src/hooks/
 │   ├── useModalA11y.ts          # Escape + focus trap + scroll lock + restore fokus — SATU
 │                                # implementasi untuk CartDrawer, PopupBanner, QuickVariantModal.
@@ -186,7 +186,9 @@ axvara/
 │   │                            # dispatch (job+poll), credits (PDK-), notify/email (Email B), seed (9 produk/27 jasa/39 tingkat), lookup (PD-13)
 ├── stores/
 │   ├── cart.ts                  # Zustand cart store (localStorage) — badge/judul pakai lineCount() = jumlah baris varian (2026-09-19); count() sum-qty hanya untuk subtotal
-│   └── navigation.ts            # status navigasi sejak klik sampai pathname berubah (dibaca NavigationProgress)
+│   ├── navigation.ts            # status navigasi sejak klik sampai pathname berubah (dibaca NavigationProgress)
+│   ├── search.ts                # Zustand query search navbar Market (dibaca katalog Market)
+│   └── pedia-search.ts          # Zustand query search navbar Pedia 1:1 Market (2026-10-12; dibaca home-client + scroll ke #pedia-catalog)
 ├── drizzle/                     # atau raw SQL — schema D1
 └── wrangler.json                # Cloudflare bindings + Pages output
 ```

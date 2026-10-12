@@ -6,6 +6,7 @@ import { LinkPasteHero } from "@/components/pedia/LinkPasteHero";
 import { PediaOrbit } from "@/components/pedia/PediaOrbit";
 import { PediaServiceCards } from "@/components/pedia/PediaServiceCards";
 import { Typewriter } from "@/components/pedia/Typewriter";
+import { usePediaSearch } from "@/stores/pedia-search";
 import { PEDIA_PLATFORMS, PlatformIcon, ProductCard, catalogCard } from "@/components/pedia/PlatformGrid";
 import type { PediaLinkDetect } from "@/lib/pedia/link";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
@@ -20,7 +21,8 @@ const FAQ = [
 
 export function PediaHomeClient({ products }: { products: PediaCatalogProduct[]; ordersEnabled?: boolean }) {
   const [platform, setPlatform] = useState("");
-  const [query, setQuery] = useState("");
+  const query = usePediaSearch((s) => s.q);
+  const setQuery = usePediaSearch((s) => s.setQ);
   const [showAll, setShowAll] = useState(false);
   const featured = products.filter((p) => p.is_featured === 1);
   const browsingAll = showAll || !!platform || !!query.trim();
@@ -66,10 +68,9 @@ export function PediaHomeClient({ products }: { products: PediaCatalogProduct[];
     </section>
     <div className="pb-4">
 
-    <section aria-labelledby="pedia-catalog-heading" className="mt-8">
+    <section aria-labelledby="pedia-catalog-heading" id="pedia-catalog" className="mt-8 scroll-mt-20">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div><h2 id="pedia-catalog-heading" className="font-display font-bold text-[20px] sm:text-[24px] text-white tracking-[-0.02em]">{browsingAll ? "Semua layanan" : featured.length ? "Pilihan AXVARA" : "Jelajahi layanan"}</h2>{(browsingAll || featured.length > 0) && <p className="mt-1 text-sm text-white/60">Harga awal sesuai jumlah dan paket yang ditampilkan.</p>}</div>
-        <label className="w-full text-sm text-white/70 sm:w-64">Cari layanan<input value={query} onChange={(e) => setQuery(e.target.value)} type="search" placeholder="Nama layanan" className="mt-2 h-11 w-full rounded-xl border border-white/15 bg-white/[0.03] px-3 text-base text-white placeholder:text-white/40" /></label>
       </div>
       <details className="mt-3 max-w-2xl rounded-xl border border-white/10 bg-white/[0.025] px-3">
         <summary className="flex min-h-11 cursor-pointer items-center text-sm text-[#00E5FF]">Cari lewat link <span className="ml-2 text-xs text-white/50">Opsional</span></summary>

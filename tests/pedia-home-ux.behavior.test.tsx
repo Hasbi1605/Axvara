@@ -2,6 +2,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { PediaHomeClient } from "@/app/pedia/home-client";
+import { PediaNavbar } from "@/components/pedia/PediaNavbar";
+import { usePediaSearch } from "@/stores/pedia-search";
 import { catalogCard } from "@/components/pedia/PlatformGrid";
 import { PlatformPageClient } from "@/app/pedia/p/[platform]/platform-client";
 import { Typewriter } from "@/components/pedia/Typewriter";
@@ -16,8 +18,24 @@ const product: PediaCatalogProduct = {
   ],
 };
 const tiktok = { ...product, slug: "views-tiktok", name: "Views TikTok", platform: "tiktok", metric: "views", target_kind: "video", is_featured: 0 };
-beforeEach(() => vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }))));
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
+beforeEach(() => {
+  vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+  // jsdom tak punya scrollIntoView (dipakai navbar search ala Market) — stub no-op.
+  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = vi.fn() as unknown as typeof Element.prototype.scrollIntoView;
+});
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); usePediaSearch.getState().setQ(""); });
+// Search Pedia kini di navbar (ala Market) via store — render navbar + home agar terhubung.
+// Field desktop selalu di DOM (jsdom abaikan breakpoint); panel mobile dibuka via tombol.
+function renderPediaHome(products: PediaCatalogProduct[], ordersEnabled?: boolean) {
+  const ui = render(<><PediaNavbar /><PediaHomeClient products={products} ordersEnabled={ordersEnabled} /></>);
+  return ui;
+}
+const NAV_SEARCH = "Cari layanan Pedia";
+function navSearchbox() {
+  // Desktop + mobile kembar — ambil yang di dalam panel mobile bila terbuka, jika tidak desktop.
+  const all = screen.getAllByRole("searchbox", { name: NAV_SEARCH });
+  return all[all.length - 1];
+}
 
 describe("Pedia catalog-first storefront", () => {
   it("pairs cheapest price with its actual quantity and tier, never other tiers' guarantees", () => {
@@ -43,11 +61,11 @@ describe("Pedia catalog-first storefront", () => {
   });
 
   it("filters by platform and search, and resets an empty result", () => {
-    render(<PediaHomeClient products={[product, tiktok]} ordersEnabled />);
+    renderPediaHome([product, tiktok], true);
     fireEvent.click(screen.getByRole("button", { name: "TikTok" }));
     expect(screen.queryByRole("link", { name: /Followers Instagram —/ })).toBeNull();
     expect(screen.getByRole("link", { name: /Views TikTok —/ })).toBeTruthy();
-    fireEvent.change(screen.getByRole("searchbox", { name: "Cari layanan" }), { target: { value: "nothing" } });
+    fireEvent.change(navSearchbox(), { target: { value: "nothing" } });
     expect(screen.getByText("Tidak ada layanan yang sesuai pencarian.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Reset pencarian" }));
     expect(screen.getByRole("link", { name: /Followers Instagram —/ })).toBeTruthy();
@@ -73,13 +91,23 @@ describe("Pedia catalog-first storefront", () => {
   });
 
   it("starts with featured products, reveals all published services and searches hidden products", () => {
-    render(<PediaHomeClient products={[product, tiktok]} />);
+    renderPediaHome([product, tiktok]);
     expect(screen.queryByRole("link", { name: /Views TikTok —/ })).toBeNull();
-    fireEvent.change(screen.getByRole("searchbox", { name: "Cari layanan" }), { target: { value: "tiktok" } });
+    fireEvent.change(navSearchbox(), { target: { value: "tiktok" } });
     expect(screen.getByRole("link", { name: /Views TikTok —/ })).toBeTruthy();
-    fireEvent.change(screen.getByRole("searchbox", { name: "Cari layanan" }), { target: { value: "" } });
+    fireEvent.change(navSearchbox(), { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: /Tampilkan semua layanan/ }));
     expect(screen.getByRole("link", { name: /Views TikTok —/ })).toBeTruthy();
+  });
+
+  it("keeps navbar search pill styled like Market and wired to the catalog", () => {
+    renderPediaHome([product, tiktok]);
+    const input = navSearchbox();
+    expect(input.getAttribute("placeholder")).toContain("Cari Followers Instagram");
+    expect(input.className).toContain("rounded-full");
+    fireEvent.change(input, { target: { value: "tiktok" } });
+    expect(screen.getByRole("link", { name: /Views TikTok —/ })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /Followers Instagram —/ })).toBeNull();
   });
 
   it("uses a small honest fallback without inventing featured or sales claims", () => {
