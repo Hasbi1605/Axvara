@@ -411,11 +411,15 @@ async function settleSkFulfillmentItem(
   db: DatabaseAccess,
 ): Promise<void> {
   if (fulfillmentItemId > 0) {
+    // Pagar handover manual (paritas WR): item yang sudah diserahkan admin
+    // lewat "Kirim ke pembeli" (manual_handover) TIDAK ditimpa penyelesaian
+    // supplier — pembeli tidak boleh menerima dua isi berbeda.
     await db
       .execRun(
         `UPDATE fulfillment_items SET status='delivered', delivered_message_id=?,
-           delivered_ciphertext=?, delivered_iv=?,
-           locked_until=NULL, updated_at=datetime('now') WHERE id=? AND order_code=?`,
+            delivered_ciphertext=?, delivered_iv=?,
+            locked_until=NULL, updated_at=datetime('now') WHERE id=? AND order_code=?
+            AND COALESCE(last_error,'') NOT LIKE 'manual_handover:%'`,
         `sk:${fulfillmentItemId}`,
         ciphertext,
         iv,
@@ -438,13 +442,13 @@ async function settleSkFulfillmentItem(
   await db
     .execRun(
       `UPDATE fulfillment_items SET status='delivered', delivered_message_id='sk:legacy',
-         delivered_ciphertext=?, delivered_iv=?,
-         locked_until=NULL, updated_at=datetime('now')
-       WHERE order_code=? AND id IN (
-         SELECT fi.id FROM fulfillment_items fi
-         JOIN product_variants pv ON pv.id = fi.variant_id
-         WHERE fi.order_code=? AND pv.sk_variant_id IS NOT NULL
-       )`,
+          delivered_ciphertext=?, delivered_iv=?,
+          locked_until=NULL, updated_at=datetime('now')
+        WHERE order_code=? AND COALESCE(last_error,'') NOT LIKE 'manual_handover:%' AND id IN (
+          SELECT fi.id FROM fulfillment_items fi
+          JOIN product_variants pv ON pv.id = fi.variant_id
+          WHERE fi.order_code=? AND pv.sk_variant_id IS NOT NULL
+        )`,
       ciphertext,
       iv,
       orderCode,

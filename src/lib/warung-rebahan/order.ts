@@ -164,6 +164,7 @@ export async function createWrOrderLink(
     }
   }
   let created = 0;
+  const createdLinkIds: number[] = [];
   for (const [wrVariantId, { qty, wrCost }] of need) {
     const key = wrIdempotencyKey(orderCode, wrVariantId, qty);
     try {
@@ -171,7 +172,7 @@ export async function createWrOrderLink(
         `INSERT OR IGNORE INTO wr_order_links
           (order_code, wr_variant_id, quantity, wr_cost, status, attempt_count,
            max_attempts, next_attempt_at, idempotency_key)
-         VALUES (?,?,?,?, 'pending', 0, ?, datetime('now'), ?)`,
+          VALUES (?,?,?,?, 'pending', 0, ?, datetime('now'), ?)`,
         orderCode,
         wrVariantId,
         qty,
@@ -179,7 +180,11 @@ export async function createWrOrderLink(
         WR_MAX_ATTEMPTS,
         key,
       );
-      if (Number(res.changes ?? 0) > 0) created++;
+      if (Number(res.changes ?? 0) > 0) {
+        created++;
+        const newId = Number((res as { lastInsertRowid?: number }).lastInsertRowid ?? 0);
+        if (newId > 0) createdLinkIds.push(newId);
+      }
     } catch {
       // DB pre-0029 (tanpa kolom idempotency_key): fallback ke perilaku lama
       // sekali — SELECT lalu INSERT — agar tidak meruntuhkan payment hook.
@@ -193,11 +198,11 @@ export async function createWrOrderLink(
         .catch(() => null);
       if (existing) continue;
       try {
-        await db.execRun(
+        const res = await db.execRun(
           `INSERT INTO wr_order_links
             (order_code, wr_variant_id, quantity, wr_cost, status, attempt_count,
              max_attempts, next_attempt_at)
-           VALUES (?,?,?,?, 'pending', 0, ?, datetime('now'))`,
+            VALUES (?,?,?,?, 'pending', 0, ?, datetime('now'))`,
           orderCode,
           wrVariantId,
           qty,
@@ -205,10 +210,26 @@ export async function createWrOrderLink(
           WR_MAX_ATTEMPTS,
         );
         created++;
+        const newId = Number((res as { lastInsertRowid?: number }).lastInsertRowid ?? 0);
+        if (newId > 0) createdLinkIds.push(newId);
       } catch {
         /* concurrent loser: baris sudah ada */
       }
     }
+  }
+  // Bind SAAT link dibuat (bukan saat completed): fulfillment_items yang
+  // sudah termaterialisasi langsung ditandai wr_link_id sehingga pipeline
+  // fulfillment generik melewatinya sejak detik pertama (pola kepemilikan
+  // P0-5) — item supplier tidak pernah divonis pekerjaan manual palsu.
+  // Item yang belum termaterialisasi di-bind oleh penyelesaian berikutnya
+  // (handleWrOrderCompleted / processCredentialDelivery), tetap idempoten.
+  if (createdLinkIds.length) {
+    try {
+      const { bindWrLinkToFulfillmentItem } = await import("./deliver");
+      for (const linkId of createdLinkIds) {
+        await bindWrLinkToFulfillmentItem(linkId, db).catch(() => 0);
+      }
+    } catch { /* bind menyusul di penyelesaian; link tetap sah */ }
   }
   return created;
 }

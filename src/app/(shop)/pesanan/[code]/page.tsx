@@ -40,6 +40,10 @@ type Order = {
   queuedDelivery: boolean;
   /** true bila SEMUA baris dikirim otomatis dari stok sendiri (selesai hitungan detik). */
   instantDelivery: boolean;
+  /** true bila order ini milik pipeline supplier (WR/SK): kalimat manual/stok admin tidak berlaku. */
+  supplierOwned: boolean;
+  /** true bila link supplier masih berjalan (status vendor belum terminal). */
+  supplierRunning: boolean;
   /** `failed` = lunas tetapi produk gagal dikirim otomatis. */
   fulfillmentStatus?: string | null;
 };
@@ -59,6 +63,8 @@ function fromApi(value: Record<string, unknown>): Order {
     credentialsReady: value.credentials_ready === true,
     queuedDelivery: value.queued_delivery === true,
     instantDelivery: value.instant_delivery === true,
+    supplierOwned: value.supplier_owned === true,
+    supplierRunning: value.supplier_running === true,
     fulfillmentStatus: value.fulfillment_status ? String(value.fulfillment_status) : null,
     qris: value.qris as QrisInvoice | null | undefined,
   };
@@ -110,6 +116,8 @@ function fromFreshLocal(value: Record<string, unknown> | undefined, now: number)
     credentialsReady: false,
     queuedDelivery: false,
     instantDelivery: false,
+    supplierOwned: false,
+    supplierRunning: false,
     fulfillmentStatus: null,
   };
 }
@@ -287,18 +295,29 @@ export default function OrderSuccessPage() {
 
   // Order lunas tetapi detail akun belum ada: periksa berkala supaya panel
   // muncul sendiri begitu fulfillment otomatis selesai — pembeli tidak perlu
-  // reload manual. Kirim otomatis dari stok sendiri dicek rapat dulu
-  // (INSTANT_POLL_DELAYS_MS); sesudahnya tiap 20 dtk maksimal 30 kali (±10 mnt)
-  // agar tab yang ditinggal terbuka tidak memukul endpoint selamanya.
-  // Baris antrean / yang diserahkan ke admin (maks 12 jam) hanya dipoll
-  // sebentar: polling tidak mungkin menutup rentang belasan jam, jadi kabarnya
-  // lewat email — 3 percobaan cukup untuk kasus "ternyata cepat".
+  // reload manual. Kirim otomatis (stok sendiri ATAU supplier yang linknya
+  // masih berjalan) dicek rapat dulu (INSTANT_POLL_DELAYS_MS); sesudahnya
+  // tiap 20 dtk maksimal 30 kali (±10 mnt) agar tab yang ditinggal terbuka
+  // tidak memukul endpoint selamanya. Setiap poll juga memicu tarikan
+  // status vendor di server (gerbang 20 dtk), jadi WR muncul dalam hitungan
+  // detik seperti SK — bukan menunggu cron.
+  // Baris antrean non-supplier / yang diserahkan ke admin (maks 12 jam)
+  // hanya dipoll sebentar: polling tidak mungkin menutup rentang belasan
+  // jam, jadi kabarnya lewat email — 3 percobaan cukup.
   const credentialsReady = order?.credentialsReady === true;
   const queuedDelivery = order?.queuedDelivery === true;
   const fulfillmentStatus = order?.fulfillmentStatus ?? null;
   const instantDelivery = order?.instantDelivery === true;
-  const handedToAdmin = queuedDelivery || (instantDelivery && fulfillmentStatus === "manual_required");
-  const instantSending = instantDelivery && !["delivered", "manual_required", "failed"].includes(String(fulfillmentStatus));
+  const supplierOwned = order?.supplierOwned === true;
+  // Milik supplier TIDAK PERNAH "diserahkan ke admin" selama belum ada
+  // keputusan terminal yang terlihat: vonis manual_required dari pipeline
+  // generik adalah keadaan sesaat balapan bind, bukan keputusan handover.
+  // Tanpa pagar ini order supplier sehat sempat tampil "Stok otomatis
+  // habis" (SK) atau menunggu admin (WR) padahal vendor sudah COMPLETED.
+  const supplierSending = supplierOwned && fulfillmentStatus !== "delivered" && fulfillmentStatus !== "failed";
+  const handedToAdmin = !supplierSending && (queuedDelivery || (instantDelivery && fulfillmentStatus === "manual_required"));
+  const instantSending = supplierSending
+    || (instantDelivery && !supplierOwned && !["delivered", "manual_required", "failed"].includes(String(fulfillmentStatus)));
   useEffect(() => {
     if (orderStatus !== "lunas" || credentialsReady) return;
     const fast = instantSending ? INSTANT_POLL_DELAYS_MS : [];
@@ -387,7 +406,27 @@ export default function OrderSuccessPage() {
     ? <>Detail pesanan akan otomatis dikirimkan di email saat order dan akan tampil di halaman ini.</>
     : <>Detail produk dikirim ke {destination} yang kamu masukkan saat checkout, dan tampil di halaman ini.</>;
   let delivery: { title: string; lead: ReactNode; note: ReactNode; skeleton?: boolean };
-  if (order.fulfillmentStatus === "delivered") {
+  if (supplierSending && !instantSlow) {
+    // Supplier masih memproses (link berjalan): skeleton menyiapkan yang
+    // sama dengan stok sendiri — TIDAK ADA kalimat stok/admin/diproses,
+    // karena status vendor bisa berubah detik berikutnya dan teks apa pun
+    // akan terbaca sesat (insiden 2026-10-13: "Stok otomatis habis" pada
+    // order SK sehat + "Diproses" pada WR yang sudah COMPLETED).
+    delivery = {
+      title: "Menyiapkan detail produk",
+      lead: null,
+      note: null,
+      skeleton: true,
+    };
+  } else if (supplierSending) {
+    delivery = {
+      title: "Pengiriman Otomatis",
+      lead: order.email
+        ? <>Masih mengirim otomatis — butuh waktu lebih lama dari biasanya. Detail pesanan akan otomatis dikirimkan di email saat order dan akan tampil di halaman ini.</>
+        : <>Masih mengirim otomatis — butuh waktu lebih lama dari biasanya. Detail tetap akan muncul di halaman ini dan dikirim ke {destination} yang sama.</>,
+      note: <>Halaman ini memeriksa sendiri. Kalau beberapa menit belum ada, hubungi admin lewat tombol di bawah dengan menyebut kode pesanan.</>,
+    };
+  } else if (order.fulfillmentStatus === "delivered") {
     delivery = {
       title: "Pengiriman Produk",
       lead: order.email
@@ -395,20 +434,21 @@ export default function OrderSuccessPage() {
         : <>Produk sudah dikirim ke {destination} yang kamu masukkan saat checkout.</>,
       note: <>{order.email ? "Belum masuk? Cek juga folder spam atau promosi. " : ""}Kalau tetap belum ada, hubungi admin lewat tombol di bawah dengan menyebut kode pesanan.</>,
     };
-  } else if (order.queuedDelivery) {
-    // C1 — Made By Order: manual BY DESIGN, bukan stok habis. Jangan pakai
-    // alasan "stok otomatis habis" (itu hanya untuk C2 di bawah).
+  } else if (order.queuedDelivery && !supplierOwned && fulfillmentStatus !== "delivered") {
+    // C1 — Made By Order NON-SUPPLIER yang sudah divonis antrean manual:
+    // manual BY DESIGN, bukan stok habis. Order supplier tidak masuk sini:
+    // kelasnya ditentukan status vendor, bukan tebakan kelas lokal.
     delivery = {
       title: "Pesanan Made By Order",
       lead: <>Pesanan <span className="font-medium text-[#FFD66B]">Made By Order</span> — disiapkan admin setelah pembayaran masuk. {toBuyer}</>,
       note: <>Umumnya kurang dari 1 jam, maksimal {WR_QUEUED_MAX_HOURS} jam. Detailnya juga tampil di sini saat kamu buka lagi.</>,
     };
-  } else if (handedToAdmin) {
-    // C2 — produk instan TAPI gagal dikirim otomatis (mis. stok unik habis,
-    // secret shared belum dikonfigurasi, order web tanpa email valid) dan
-    // admin menyerahkannya lewat "Kirim ke pembeli": plafonnya sama dengan
-    // antrean. Kalimat "Stok otomatis habis, jadi..." menjelaskan KENAPA
-    // produk otomatis tiba-tiba jadi manual — tanpa ini pembeli merasa dibohongi.
+  } else if (handedToAdmin && !supplierOwned) {
+    // C2 — produk instan NON-SUPPLIER yang gagal dikirim otomatis (mis.
+    // stok unik habis, secret shared belum dikonfigurasi, order web tanpa
+    // email valid) dan admin menyerahkannya lewat "Kirim ke pembeli".
+    // Kalimat "Stok otomatis habis, jadi..." HANYA benar di sini; untuk
+    // order supplier kalimat itu sesat dan dilarang tampil.
     delivery = {
       title: "Pengiriman oleh Admin",
       lead: <>Stok otomatis habis, jadi admin menyiapkan manual. {toBuyer}</>,
@@ -431,6 +471,23 @@ export default function OrderSuccessPage() {
         ? <>Masih mengirim otomatis — butuh waktu lebih lama dari biasanya. Detail pesanan akan otomatis dikirimkan di email saat order dan akan tampil di halaman ini.</>
         : <>Masih mengirim otomatis — butuh waktu lebih lama dari biasanya. Detail tetap akan muncul di halaman ini dan dikirim ke {destination} yang sama.</>,
       note: <>Halaman ini memeriksa sendiri. Kalau beberapa menit belum ada, hubungi admin lewat tombol di bawah dengan menyebut kode pesanan.</>,
+    };
+  } else if (supplierOwned) {
+    // Supplier-owned tanpa link berjalan dan belum terkirim (mis. link
+    // terminal gagal/dibatalkan vendor): jujur sedang disiapkan, tanpa
+    // mengarang alasan stok maupun janji menit.
+    delivery = {
+      title: "Pengiriman Produk",
+      lead: <>Pesananmu sedang disiapkan. {toBuyer}</>,
+      note: <>Halaman ini memeriksa sendiri. Kalau beberapa menit belum ada, hubungi admin lewat tombol di bawah dengan menyebut kode pesanan.</>,
+    };
+  } else if (order.queuedDelivery) {
+    // Antrean non-supplier yang belum divonis manual_required (C1 varian
+    // manual murni): tetap Made By Order seperti sebelumnya.
+    delivery = {
+      title: "Pesanan Made By Order",
+      lead: <>Pesanan <span className="font-medium text-[#FFD66B]">Made By Order</span> — disiapkan admin setelah pembayaran masuk. {toBuyer}</>,
+      note: <>Umumnya kurang dari 1 jam, maksimal {WR_QUEUED_MAX_HOURS} jam. Detailnya juga tampil di sini saat kamu buka lagi.</>,
     };
   } else {
     delivery = {

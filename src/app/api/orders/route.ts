@@ -327,6 +327,8 @@ export async function GET(req: NextRequest) {
     let credentialsReady = false;
     let queuedDelivery = false;
     let instantDelivery = false;
+    let supplierOwned = false;
+    let supplierRunning = false;
     if (String(row.status) === "lunas") {
       // Satu query untuk tiga flag halaman pesanan (hemat statement):
       // - creds: detail akun sudah siap diambil pembeli (WR completed ATAU
@@ -346,11 +348,15 @@ export async function GET(req: NextRequest) {
            SELECT CAST(json_extract(je.value,'$.variant_id') AS INTEGER) AS variant_id
            FROM json_each(CASE WHEN json_valid(?) THEN ? ELSE '[]' END) je
          )
-         SELECT
-          (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND status='completed'
+          SELECT
+           (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND status='completed'
                     AND wr_account_details IS NOT NULL)
            OR EXISTS(SELECT 1 FROM fulfillment_items WHERE order_code=? AND status='delivered'
                     AND delivered_ciphertext IS NOT NULL)) AS creds,
+           (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=?)
+            OR EXISTS(SELECT 1 FROM sk_order_links WHERE order_code=?)) AS supplier_owned,
+           (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND status IN ('processing','submitted','ordering') AND COALESCE(wr_order_id,'')!='')
+            OR EXISTS(SELECT 1 FROM sk_order_links WHERE order_code=? AND status IN ('processing','submitted','ordering') AND COALESCE(sk_invoice,'')!='')) AS supplier_running,
           EXISTS(SELECT 1 FROM lines l
                  JOIN product_variants pv ON pv.id = l.variant_id
                  LEFT JOIN wr_variants wv ON wv.wr_variant_id = pv.wr_variant_id
@@ -373,10 +379,50 @@ export async function GET(req: NextRequest) {
         String(row.items ?? "[]"),
         code,
         code,
+        code,
+        code,
+        code,
+        code,
       ).catch(() => null);
       credentialsReady = Number(flags?.creds ?? 0) === 1;
       queuedDelivery = Number(flags?.queued ?? 0) === 1;
       instantDelivery = Number(flags?.instant ?? 0) === 1;
+      supplierOwned = Number((flags as Record<string, unknown> | null)?.supplier_owned ?? 0) === 1;
+      supplierRunning = Number((flags as Record<string, unknown> | null)?.supplier_running ?? 0) === 1;
+    }
+    // Pembeli yang sedang menunggu adalah pemicu termurah untuk status
+    // supplier terbaru (meniru SK yang sinkron via webhook): tarik status
+    // vendor SEKARANG lewat gerbang throttle (20 dtk/order), lalu hitung
+    // ulang flag agar respons ini tidak basi satu siklus. Bila refresh
+    // barusan menyelesaikan kredensial, halaman langsung menampilkannya
+    // detik ini juga. Kegagalan = diam (cron lite tetap penjamin).
+    if (String(row.status) === "lunas" && supplierRunning && !credentialsReady) {
+      try {
+        const { createDatabaseAccess } = await import("@/lib/db-access");
+        const { maybeRefreshSupplierOrder } = await import("@/lib/orders/supplier-refresh");
+        const refreshDb = createDatabaseAccess();
+        const { refreshed } = await maybeRefreshSupplierOrder(code, refreshDb);
+        if (refreshed) {
+          const after = await refreshDb
+            .queryFirst(
+              `SELECT fulfillment_status,
+                      (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND status='completed' AND wr_account_details IS NOT NULL)
+                       OR EXISTS(SELECT 1 FROM fulfillment_items WHERE order_code=? AND status='delivered' AND delivered_ciphertext IS NOT NULL)) AS creds,
+                      (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND status IN ('processing','submitted','ordering') AND COALESCE(wr_order_id,'')!='')
+                       OR EXISTS(SELECT 1 FROM sk_order_links WHERE order_code=? AND status IN ('processing','submitted','ordering') AND COALESCE(sk_invoice,'')!='')) AS running
+               FROM orders WHERE code=?`,
+              code, code, code, code, code,
+            )
+            .catch(() => null);
+          if (after) {
+            credentialsReady = Number(after.creds ?? 0) === 1;
+            supplierRunning = Number(after.running ?? 0) === 1;
+            if (after.fulfillment_status != null) {
+              (row as Record<string, unknown>).fulfillment_status = after.fulfillment_status;
+            }
+          }
+        }
+      } catch { /* penyegaran best-effort; status lama tetap sah */ }
     }
     return NextResponse.json({
       order: {
@@ -395,6 +441,8 @@ export async function GET(req: NextRequest) {
         credentials_ready: credentialsReady,
         queued_delivery: queuedDelivery,
         instant_delivery: instantDelivery,
+        supplier_owned: supplierOwned,
+        supplier_running: supplierRunning,
         // /pesanan/[code] membutuhkan ini untuk membedakan lunas-terkirim dari
         // lunas-gagal-kirim (audit ronde 4, W-H1); /api/orders/lookup sudah punya.
         fulfillment_status: row.fulfillment_status ?? null,

@@ -364,7 +364,7 @@ CREATE TABLE store_settings (
 | GET/PUT | /api/store-settings | Baca identitas storefront / perbarui nama, kontak, footer, logo | public/admin |
 | POST | /api/orders | Verifikasi signed quote, buat pesanan idempotent, reservasi stok atomik | - |
 | POST | /api/orders/lookup | Lacak mandiri: verifikasi pasangan kode + WA (normalisasi 08/+62/62, constant-time) atau email checkout (cocok penuh, huruf kecil; sejak 2026-09-25, field `contact`, field `wa` lama tetap diterima, helper `src/lib/order-contact.ts`), 404 generik anti-enumerasi, WA/email mask, rate-limit `orders:lookup` | - |
-| GET | /api/orders?code= | Cek status pesanan via code. WA/email dimask; flag boolean dari satu query gabungan (hanya order `lunas`): `credentials_ready` = detail akun (WR atau isi produk non-WR) sudah siap diambil sehingga storefront tahu kapan panel retrieval boleh tampil, `queued_delivery` = ada baris antrean (Made By Order), `instant_delivery` (2026-09-25) = SEMUA baris dikirim dari stok sendiri (varian non-WR `shared`/`unique`) sehingga halaman memeriksa rapat; plus `fulfillment_status` | - |
+| GET | /api/orders?code= | Cek status pesanan via code. WA/email dimask; flag boolean dari satu query gabungan (hanya order `lunas`): `credentials_ready` = detail akun (WR atau isi produk non-WR) sudah siap diambil sehingga storefront tahu kapan panel retrieval boleh tampil, `queued_delivery` = ada baris antrean (Made By Order), `instant_delivery` (2026-09-25) = SEMUA baris dikirim dari stok sendiri (varian non-WR `shared`/`unique`) sehingga halaman memeriksa rapat; `supplier_owned`/`supplier_running` (2026-10-13) = order milik pipeline WR/SK dan linknya masih berjalan — halaman menampilkan skeleton menyiapkan + poll rapat yang memicu tarikan status vendor (gerbang 20 dtk/order di `store_settings`), tanpa pernah menampilkan kalimat stok/admin untuk order supplier; plus `fulfillment_status` | - |
 | GET | /api/orders/:code | Kembaran segmen dari `?code=` untuk halaman pesanan yang sama. **Invarian (audit 2026-09-20): isinya WAJIB sepadan — `proof_url` TIDAK pernah ikut di kedua endpoint.** Nilai itu adalah kunci objek R2 privat yang hanya boleh dibaca admin lewat `/api/admin/bukti/*`; membocorkannya memberi penebak kode order nama berkas bukti bayar milik orang lain. Dikunci `tests/audit-2026-09-20.regression.test.ts` | - |
 | GET | /api/payments/qris/:code/image | Render PNG QRIS dinamis untuk invoice aktif | code order |
 | POST | /api/payments/qris/:code/reissue | Terbitkan QRIS baru untuk order yang masih hidup tetapi QR-nya sudah kedaluwarsa (<15 menit). Hanya boleh saat invoice lama SUDAH mati — syarat itulah yang mencegah pemegang kode order lain membatalkan QR yang sedang dipakai. Maks 1x/order, rate limit 5/menit/IP | code order |
@@ -1100,6 +1100,14 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   alasan stok + "Umumnya kurang dari 1 jam, maksimal 12 jam" (tanpa jam layanan spesifik);
   `instant_delivery` + `manual_required` (C2 instan-gagal) → "Pengiriman oleh Admin" +
   alasan "Stok otomatis habis, jadi admin menyiapkan manual" + plafon yang sama;
+  **Pagar supplier (2026-10-13): kedua cabang C1/C2 di atas HANYA untuk order
+  non-supplier.** Order supplier (`supplier_owned` dari flag API) tidak pernah
+  menampilkan kalimat stok/admin/Made By Order — selama link supplier masih
+  berjalan (`supplier_running`) tampilannya skeleton menyiapkan yang sama
+  dengan stok sendiri, lalu "Pengiriman Otomatis" versi lambat. Akar insiden:
+  pipeline fulfillment generik sempat memvonis item SK `manual_required`
+  dalam jendela balapan sebelum link ter-bind, dan halaman salah
+  menerjemahkannya sebagai stok habis;
   `instant_delivery` belum selesai → skeleton "Menyiapkan detail produkmu…" TANPA teks
   pengiriman selama ±30 dtk pertama (sore 2026-10-02: tanpa bacaan yang bisa hilang
   saat panel muncul), lewat ±30 dtk → "Pengiriman Otomatis" + "Masih mengirim otomatis
@@ -1111,8 +1119,11 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   2 dtk ×5 lalu 5 dtk ×4 (±30 dtk, 9 permintaan — tetap di bawah `orders:lookup` 20/mnt
   walau bertemu sisa polling pending 5 dtk; di produksi item terkirim 0–4 dtk setelah
   lunas), lalu tiap 20 dtk maksimal 30 kali (±10 mnt); antrean dan kirim otomatis yang
-  diserahkan ke admin hanya 3 percobaan. Retrieval tetap wajib verifikasi WA/email atau
-  capability token.
+  diserahkan ke admin hanya 3 percobaan. **Sejak 2026-10-13 order supplier yang
+  linknya berjalan ikut jadwal rapat yang sama**, dan setiap poll memicu tarikan
+  status vendor di server (lihat "Penyegar status supplier" di bawah), sehingga
+  panel muncul hitungan detik setelah vendor `COMPLETED` — paritas SK untuk WR.
+  Retrieval tetap wajib verifikasi WA/email atau capability token.
   Display dinormalisasi di USE-time via `normalizeAccountDetailsForDisplay`
   (2026-09-18 sore, live): data lama tersimpan sebagai JSON mentah
   `{"product":..,"details":"email:..\r\npassword:.."}` diformat rapi di SEMUA
@@ -1710,6 +1721,39 @@ pembedaan hanya badge admin + slug `-wr`/`-sk`).
   (`notifyBuyerSkProcessing`, idempoten per invoice); saldo habis → email
    pembeli `sk-blocked` (cermin WR). TANPA ingest Gmail SK — webhook adalah
    source of truth (lisensi sudah di payload `order.completed`).
+- **Paritas instan penuh WR≈SK (2026-10-13, insiden Prime Video SK + Bstation WR):**
+  (1) **Bind saat link dibuat** — `createWrOrderLink`/`createSkOrderLink` langsung
+  mengaitkan link ke `fulfillment_items` (`wr_link_id`/`sk_link_id` +
+  `fulfillment_item_id`, idempoten) begitu link lahir, bukan menunggu completed.
+  Pipeline fulfillment generik karena itu melewati item supplier sejak detik
+  pertama; vonis `manual_required` palsu dari jendela balapan (yang tampil
+  sebagai "Stok otomatis habis" di halaman SK) tidak pernah lahir.
+  (2) **Penyegar status supplier bersama** (`src/lib/orders/supplier-refresh.ts`):
+  `maybeRefreshSupplierOrder` menarik status vendor SEKARANG (WR `/transactions`,
+  SK `/v1/trx`, read-only + monotonik) di balik gerbang throttle per-order 20 dtk
+  yang disimpan di `store_settings` (`supplier_refresh_at:<kode>`, klaim CAS
+  satu pernyataan — pola klaim fulfillment). Pemicunya: poll pembeli di
+  `GET /api/orders?code=`, `/api/orders/[code]`, `/api/orders/lookup` (respons
+  dihitung ulang setelah refresh agar tidak basi), penjamin massal
+  `refreshDueSupplierOrders` (limit 4, kandidat dibaca 1 query per supplier,
+  gerbang dibaca batch) di cron lite `wr_orders`+`sk_orders`, dan webhook tetap
+  jalur tercepat bila sampai. `refreshSupplierOrderNow` ikut memproses antrean
+  pengiriman kredensial WR agar email/panel menyusul di invocation yang sama.
+  Tanpa timer server; biaya tetap berapa pun jumlah poll (gerbang menahan).
+  (3) **Formatter WR bentuk `{label, value}`** dikenali `labeledFieldOf`:
+  dirender "Label: nilai" per baris (pemisah antar-field kini newline, bukan
+  " · "), key `product` pembungkus dibuang — nol teks "Product:/Label:/Value:"
+  mentah di panel/email/WA/Telegram, termasuk order lama (normalisasi USE-time).
+  (4) **S&K pasca-bayar**: endpoint kredensial melampirkan `terms` per item dari
+  `resolveCredentialTermsByItem` (`src/lib/orders/credential-terms.ts`) — resolver
+  yang sama dengan PDP (admin → kurasi → teks supplier, pagar sidik jari) atas
+  `wr_terms/wr_delivery_terms` atau `sk_description/sk_seller_note`; panel
+  merender blok terlipat "Syarat & Ketentuan" + "Cara Aktivasi" DI BAWAH
+  kredensial (kredensial tetap bersih, S&K tidak disimpan ke ciphertext).
+  (5) `settleSkFulfillmentItem` berpagar `manual_handover:%` seperti WR (supplier
+  tidak menimpa serah terima admin), dan admin SK mendapat route
+  `POST /api/admin/sekalipay/orders/[id]/sync-now` sehingga tombol "Cek status"
+  tampil untuk kedua supplier.
  - **White-label link docs supplier (2026-10-03, keputusan owner):** teks SK
    untuk Netflix menunjuk `sekalipay.com/docs/tutorial-login-netflix` — customer
    yang klik melihat nav "Belanja Sekarang" dan bisa order langsung di supplier.

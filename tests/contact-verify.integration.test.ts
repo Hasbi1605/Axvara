@@ -84,6 +84,23 @@ describe("POST /api/orders/[code]/credentials — detail akun dengan WA atau ema
     expect(body.capability_token).toMatch(/^[a-f0-9]{64}$/);
   });
 
+  it("S&K pasca-bayar ikut terkirim sebagai blok terpisah (resolver PDP yang sama)", async () => {
+    // S&K varian supplier (wr_terms) disuntik; snapshot kredensial tanpa
+    // terms: endpoint memetasinya per item_index lewat resolveCredentialTermsByItem.
+    fixture.sql.exec(`INSERT INTO wr_products(wr_product_id,wr_product_name,axvara_product_id) VALUES('prod-t1','Bstation',1)`);
+    fixture.sql.exec(`INSERT INTO wr_variants(wr_variant_id,wr_product_id,wr_variant_name,wr_price,wr_stock,axvara_variant_id,axvara_sell_price,wr_terms,wr_delivery_terms) VALUES('var-t1','prod-t1','Premium 1B',3500,10,1,4500,'Garansi 1 bulan. Dilarang otak-atik billing pembayaran. Hanya login di 1 device saja.','Login dengan email, bukan Google.')`);
+    fixture.sql.prepare("UPDATE product_variants SET wr_variant_id='var-t1' WHERE id=1").run();
+    const { POST } = await import("@/app/api/orders/[code]/credentials/route");
+    const ok = await POST(post(`/api/orders/${PAID}/credentials`, { contact: "RANI.PUTRI@gmail.com" }), ctx(PAID));
+    expect(ok.status).toBe(200);
+    const body = await ok.json() as { credentials: { details: string; terms?: { sections: { kind: string; items: string[] }[] } | null }[] };
+    const termsText = JSON.stringify(body.credentials[0].terms ?? null);
+    expect(termsText).toContain("Dilarang otak-atik billing");
+    expect(termsText).toContain("Hanya login di 1 device");
+    // Kredensial sendiri TIDAK tercampur S&K (tetap bersih untuk disalin).
+    expect(body.credentials[0].details).not.toContain("Dilarang");
+  });
+
   it("order tanpa email tidak bisa dibuka dengan email; WA (6 digit terakhir) tetap jalan", async () => {
     const { POST } = await import("@/app/api/orders/[code]/credentials/route");
     expect((await POST(post(`/api/orders/${NO_EMAIL}/credentials`, { contact: "budi@gmail.com" }), ctx(NO_EMAIL))).status).toBe(403);

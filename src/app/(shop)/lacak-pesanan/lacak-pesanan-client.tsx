@@ -36,6 +36,10 @@ type TrackedOrder = {
   qrisReissueAllowed: boolean;
   /** true bila detail akun WR sudah siap (dari /api/orders/lookup). */
   credentialsReady: boolean;
+  /** true bila order milik pipeline supplier (WR/SK). */
+  supplierOwned: boolean;
+  /** true bila link supplier masih berjalan (belum terminal). */
+  supplierRunning: boolean;
   /** Status pengiriman produk. `failed` = lunas tetapi produk belum sampai. */
   fulfillmentStatus?: string;
 };
@@ -99,6 +103,8 @@ function fromApi(value: Record<string, unknown>): TrackedOrder {
     expiresAt: value.expires_at ? String(value.expires_at) : undefined,
     qrisReissueAllowed: value.qris_reissue_allowed === true,
     credentialsReady: value.credentials_ready === true,
+    supplierOwned: value.supplier_owned === true,
+    supplierRunning: value.supplier_running === true,
     fulfillmentStatus: value.fulfillment_status ? String(value.fulfillment_status) : undefined,
     qris: value.qris as QrisInvoice | null | undefined,
   };
@@ -234,14 +240,19 @@ export default function LacakPesananClient() {
   }, [searchParams, lookup]);
 
   const isPending = order?.status === "pending";
+  // Lunas tetapi kredensial supplier belum tampil: poll rapat (2 dtk) agar
+  // panel muncul detik yang sama seperti SK — server menarik status vendor
+  // di balik poll ini (gerbang 20 dtk). Berhenti sendiri begitu siap.
+  const awaitingSupplier = Boolean(order && order.status === "lunas" && !order.credentialsReady && order.supplierRunning);
   useEffect(() => {
-    if (!isPending || !lastQuery.current) return;
+    if (!lastQuery.current) return;
+    if (!isPending && !awaitingSupplier) return;
     const interval = setInterval(() => {
       const query = lastQuery.current;
       if (query) void lookup(query.code, query.wa, true);
-    }, 10_000);
+    }, awaitingSupplier ? 2_000 : 10_000);
     return () => clearInterval(interval);
-  }, [isPending, lookup]);
+  }, [isPending, awaitingSupplier, lookup]);
 
   useEffect(() => {
     if (!isPending) return;
@@ -510,6 +521,12 @@ export default function LacakPesananClient() {
           )}
           {isPaid && order.credentialsReady && (
             <WrCredentialsPanel code={order.code} prefillContact={wa} />
+          )}
+          {isPaid && !order.credentialsReady && order.supplierRunning && (
+            <p className="mt-5 flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-left text-xs leading-6 text-white/60" role="status">
+              <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-white/20 border-t-[#00E5FF]" aria-hidden />
+              Menyiapkan detail produkmu… Halaman ini memeriksa sendiri, detail akan tampil otomatis di sini.
+            </p>
           )}
           {isCancelled && (
             <p className="mt-5 rounded-2xl border border-red-500/20 bg-red-500/[0.06] p-4 text-left text-xs leading-6 text-red-200">

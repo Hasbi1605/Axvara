@@ -126,6 +126,54 @@ describe("/pesanan/[code] — blok pasca-pembayaran", () => {
     expect(screen.queryByText(/maksimal 12 jam/)).toBeNull();
   });
 
+  it("supplier SK manual_required sesaat (balapan bind) → skeleton menyiapkan, TANPA kalimat stok/admin (insiden 2026-10-13)", async () => {
+    mockFetch(orderPayload({
+      instant_delivery: true,
+      supplier_owned: true,
+      supplier_running: true,
+      fulfillment_status: "manual_required",
+      customer_email: "r***@gmail.com",
+    }));
+    render(<OrderStatusPage />);
+    await waitFor(() => expect(screen.getByText("Menyiapkan detail produkmu…")).toBeTruthy());
+    expect(screen.queryByText(/Stok otomatis habis/)).toBeNull();
+    expect(screen.queryByText(/Pengiriman oleh Admin/)).toBeNull();
+    expect(screen.queryByText(/Made By Order/)).toBeNull();
+    expect(screen.queryByText(/maksimal 12 jam/)).toBeNull();
+  });
+
+  it("supplier WR masih berjalan → skeleton menyiapkan (bukan 'Pesanan sedang diproses'), lalu panel muncul via poll rapat", async () => {
+    vi.useFakeTimers();
+    try {
+      sessionStorage.setItem(`axvara-checkout-contact:${CODE}`, "081234567890");
+      const state = {
+        order: {
+          supplier_owned: true, supplier_running: true,
+          fulfillment_status: "queued", customer_email: "r***@gmail.com",
+        } as Record<string, unknown>,
+      };
+      const gets: number[] = [];
+      vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+        if (String(url).includes("/credentials")) {
+          return { ok: true, status: 200, json: async () => ({ ok: true, credentials: [{ details: "Email: a@b.c\nPassword: p", completed_at: null }], capability_token: "b".repeat(64) }) };
+        }
+        gets.push(Date.now());
+        return { ok: true, status: 200, json: async () => orderPayload(state.order) };
+      }));
+      render(<OrderStatusPage />);
+      await act(async () => { await vi.advanceTimersByTimeAsync(50); });
+      expect(screen.getByText("Menyiapkan detail produkmu…")).toBeTruthy();
+      expect(screen.queryByText(/Pesanan sedang diproses/)).toBeNull();
+      // Vendor selesai → poll 2 dtk berikutnya langsung menampilkan panel.
+      state.order = { ...state.order, credentials_ready: true, supplier_running: false, fulfillment_status: "delivered" };
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_200); });
+      expect(screen.getByText(/Email: a@b.c/)).toBeTruthy();
+      expect(gets.length).toBeGreaterThanOrEqual(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("email checkout menjadi tujuan kabar; WhatsApp tidak lagi dijanjikan (bot WA mati)", async () => {
     mockFetch(orderPayload({ customer_email: "h***@gmail.com" }));
     render(<OrderStatusPage />);

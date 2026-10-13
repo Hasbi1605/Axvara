@@ -136,6 +136,7 @@ export async function createSkOrderLink(
     }
   }
   let created = 0;
+  const createdLinkIds: number[] = [];
   for (const [skVariantId, { qty, skCost }] of need) {
     const key = skIdempotencyKey(orderCode, String(skVariantId), qty);
     try {
@@ -143,7 +144,7 @@ export async function createSkOrderLink(
         `INSERT OR IGNORE INTO sk_order_links
           (order_code, sk_variant_id, quantity, sk_cost, status, attempt_count,
            max_attempts, next_attempt_at, idempotency_key)
-         VALUES (?,?,?,?, 'pending', 0, ?, datetime('now'), ?)`,
+          VALUES (?,?,?,?, 'pending', 0, ?, datetime('now'), ?)`,
         orderCode,
         String(skVariantId),
         qty,
@@ -151,7 +152,11 @@ export async function createSkOrderLink(
         SK_MAX_ATTEMPTS,
         key,
       );
-      if (Number(res.changes ?? 0) > 0) created++;
+      if (Number(res.changes ?? 0) > 0) {
+        created++;
+        const newId = Number((res as { lastInsertRowid?: number }).lastInsertRowid ?? 0);
+        if (newId > 0) createdLinkIds.push(newId);
+      }
     } catch {
       const existing = await db
         .queryFirst(
@@ -162,11 +167,11 @@ export async function createSkOrderLink(
         .catch(() => null);
       if (existing) continue;
       try {
-        await db.execRun(
+        const res = await db.execRun(
           `INSERT INTO sk_order_links
             (order_code, sk_variant_id, quantity, sk_cost, status, attempt_count,
              max_attempts, next_attempt_at)
-           VALUES (?,?,?,?, 'pending', 0, ?, datetime('now'))`,
+            VALUES (?,?,?,?, 'pending', 0, ?, datetime('now'))`,
           orderCode,
           String(skVariantId),
           qty,
@@ -174,10 +179,24 @@ export async function createSkOrderLink(
           SK_MAX_ATTEMPTS,
         );
         created++;
+        const newId = Number((res as { lastInsertRowid?: number }).lastInsertRowid ?? 0);
+        if (newId > 0) createdLinkIds.push(newId);
       } catch {
         /* concurrent loser */
       }
     }
+  }
+  // Bind SAAT link dibuat (cermin WR): item fulfillment yang sudah
+  // termaterialisasi langsung ditandai sk_link_id agar pipeline generik
+  // melewatinya sejak detik pertama — akar balapan "manual_required" palsu
+  // yang sempat tampil sebagai "Stok otomatis habis" di halaman pembeli.
+  if (createdLinkIds.length) {
+    try {
+      const { bindSkLinkToFulfillmentItem } = await import("./deliver");
+      for (const linkId of createdLinkIds) {
+        await bindSkLinkToFulfillmentItem(linkId, db).catch(() => 0);
+      }
+    } catch { /* bind menyusul di penyelesaian; link tetap sah */ }
   }
   return created;
 }
@@ -619,6 +638,40 @@ export async function handleSkOrderPaid(
 ): Promise<boolean> {
   const { advanceSkLinkMonotonic } = await import("./deliver");
   return advanceSkLinkMonotonic(skInvoice, "processing", null, database, eventId);
+}
+
+/**
+ * Tarik status SATU invoice SK sekarang via GET /v1/trx (read-only,
+ * idempoten). Dipakai penyegar bersama (`supplier-refresh`) agar perilaku SK
+ * dan WR sama: siapa pun yang bertanya (poll pembeli, cron, admin) mendapat
+ * status vendor saat ini, bukan menunggu webhook. Mengembalikan true bila
+ * invoice mencapai status terminal pada panggilan ini.
+ */
+export async function reconcileSkInvoiceNow(
+  skInvoice: string,
+  database?: DatabaseAccess,
+): Promise<boolean> {
+  const db = database ?? createDatabaseAccess();
+  if (!isSkEnabled()) return false;
+  const invoice = String(skInvoice || "").trim();
+  if (!invoice) return false;
+  let detail: SkTrxDetail;
+  try {
+    detail = await fetchSkTransaction(invoice);
+  } catch {
+    return false;
+  }
+  const status = String(detail.status || "").toLowerCase();
+  const { handleSkOrderCompleted, handleSkOrderFailed } = await import("./deliver");
+  if (status.includes("complet") || status.includes("success") || status.includes("done")) {
+    await handleSkOrderCompleted(invoice, detail, db);
+    return true;
+  }
+  if (status.includes("fail") || status.includes("cancel") || status.includes("refund")) {
+    await handleSkOrderFailed(invoice, status, db);
+    return true;
+  }
+  return false;
 }
 
 /** Sinkronisasi status processing/ambigu menggantung via GET /v1/trx. */

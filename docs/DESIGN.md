@@ -401,7 +401,10 @@
   alasan stok + "Umumnya kurang dari 1 jam, maksimal 12 jam" (tanpa jam layanan
   spesifik); instan yang diserahkan ke admin / `manual_required` (C2) → judul
   "Pengiriman oleh Admin" + alasan "Stok otomatis habis, jadi admin menyiapkan
-  manual" + plafon yang sama; sudah terkirim tanpa detail →
+  manual" + plafon yang sama — **kedua cabang ini khusus non-supplier sejak
+  2026-10-13**: order supplier (WR/SK) yang linknya masih berjalan selalu
+  tampil sebagai skeleton menyiapkan / "Pengiriman Otomatis", tidak pernah
+  kalimat stok/admin; sudah terkirim tanpa detail →
   order ber-email: "Detail pesanan akan otomatis dikirimkan di email saat order
   dan akan tampil di halaman ini." + cek folder spam/promosi; order lama tanpa
   email: "Produk sudah dikirim ke WhatsApp …" (tanpa cek spam); estimasi 5–15 menit hanya untuk
@@ -416,6 +419,12 @@
   `key:: value`, memberi label Indonesia (Akses OTP, Tautan), dan membuang
   label ganda — tidak pernah JSON mentah (bukti prod: link 95FC8669 tampil
   `{"product":...,"details":"email:...\r\npassword:..."}` sebelum ini).
+  Bentuk field supplier `{label, value}` (WR, 2026-10-13) dirender
+  "Label: nilai" per baris dengan kata kunci mentah dibuang — bukan lagi
+  satu baris "Product: … · Label: … · Value: …". Di bawah tiap kartu
+  kredensial kini ada panel terlipat `MobileCollapsible` "Syarat &
+  Ketentuan" (+ "Cara Aktivasi" bila ada) berisi salinan ter-resolusi yang
+  sama dengan PDP — kredensial tetap bersih di kartunya sendiri.
 - **Link di hasil Detail Akun Digital bisa diklik (2026-10-03, laporan
   owner + screenshot /pesanan).** Isi kredensial (`CredentialText` di
   `ProductCopy.tsx`, dipakai `WrCredentialsPanel`) memakai `linkifySegments`

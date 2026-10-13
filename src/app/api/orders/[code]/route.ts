@@ -28,6 +28,49 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ code
   const waMasked = waFull.length >= 7 ? waFull.slice(0, 5) + "****" + waFull.slice(-4) : waFull ? waFull.slice(0, 3) + "****" : "";
   const emailFull = String(row.customer_email ?? "");
   const emailMasked = emailFull.includes("@") ? emailFull.replace(/(^.).+(@.*)/, (_, a, b) => `${a}***${b}`) : emailFull ? "***" : null;
+  let credentialsReady = false;
+  let supplierOwned = false;
+  let supplierRunning = false;
+  let fulfillmentStatus = row.fulfillment_status ?? null;
+  if (String(row.status) === "lunas") {
+    const flags = (await queryFirst(
+      `SELECT
+        (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND status='completed' AND wr_account_details IS NOT NULL)
+         OR EXISTS(SELECT 1 FROM fulfillment_items WHERE order_code=? AND status='delivered' AND delivered_ciphertext IS NOT NULL)) AS creds,
+        (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=?)
+         OR EXISTS(SELECT 1 FROM sk_order_links WHERE order_code=?)) AS supplier_owned,
+        (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND status IN ('processing','submitted','ordering') AND COALESCE(wr_order_id,'')!='')
+         OR EXISTS(SELECT 1 FROM sk_order_links WHERE order_code=? AND status IN ('processing','submitted','ordering') AND COALESCE(sk_invoice,'')!='')) AS supplier_running`,
+      code, code, code, code, code, code,
+    ).catch(() => null)) as Record<string, unknown> | null;
+    credentialsReady = Number(flags?.creds ?? 0) === 1;
+    supplierOwned = Number(flags?.supplier_owned ?? 0) === 1;
+    supplierRunning = Number(flags?.supplier_running ?? 0) === 1;
+    if (supplierRunning && !credentialsReady) {
+      try {
+        const { createDatabaseAccess } = await import("@/lib/db-access");
+        const { maybeRefreshSupplierOrder } = await import("@/lib/orders/supplier-refresh");
+        const refreshDb = createDatabaseAccess();
+        const { refreshed } = await maybeRefreshSupplierOrder(code, refreshDb);
+        if (refreshed) {
+          const after = (await refreshDb.queryFirst(
+            `SELECT o.fulfillment_status,
+                    (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND status='completed' AND wr_account_details IS NOT NULL)
+                     OR EXISTS(SELECT 1 FROM fulfillment_items WHERE order_code=? AND status='delivered' AND delivered_ciphertext IS NOT NULL)) AS creds,
+                    (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND status IN ('processing','submitted','ordering') AND COALESCE(wr_order_id,'')!='')
+                     OR EXISTS(SELECT 1 FROM sk_order_links WHERE order_code=? AND status IN ('processing','submitted','ordering') AND COALESCE(sk_invoice,'')!='')) AS running
+             FROM orders o WHERE o.code=?`,
+            code, code, code, code, code,
+          ).catch(() => null)) as Record<string, unknown> | null;
+          if (after) {
+            credentialsReady = Number(after.creds ?? 0) === 1;
+            supplierRunning = Number(after.running ?? 0) === 1;
+            if (after.fulfillment_status != null) fulfillmentStatus = after.fulfillment_status;
+          }
+        }
+      } catch { /* penjamin cron tetap berlaku */ }
+    }
+  }
   return NextResponse.json({
     order: {
       code: row.code,
@@ -41,7 +84,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ code
       status: row.status,
       created_at: row.created_at,
       expires_at: row.expires_at,
-      fulfillment_status: row.fulfillment_status ?? null,
+      credentials_ready: credentialsReady,
+      supplier_owned: supplierOwned,
+      supplier_running: supplierRunning,
+      fulfillment_status: fulfillmentStatus,
       qris_reissue_allowed: row.status === "pending" && row.sales_channel !== "whatsapp" && Number(row.qris_reissue_count || 0) < MAX_QRIS_REISSUES,
       qris: row.dynamic_qris_url ? {
         payable_amount: row.payable_amount,

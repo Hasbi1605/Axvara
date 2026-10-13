@@ -23,7 +23,8 @@
 //   fulfillment — lepas lock basi + proses job kirim yang jatuh tempo
 //   wr_orders   — pulihkan klaim/saldo, SEMBUHKAN link yatim lunas-tanpa-link
 //                 TANPA gate due (2026-10-09), retry, teruskan order lunas,
-//                 reconcile macet, kirim kredensial
+//                 segarkan status supplier berjalan (2026-10-13), reconcile
+//                 macet, kirim kredensial
 //   sk_orders   — pola yang sama untuk Sekalipay (termasuk probe yatim)
 //   pedia_orders — dispatch + poll order Pedia ke ProviderSMM (PD-30–33);
 //                 saldo dicek maks 1×/30 mnt (hemat statement)
@@ -192,6 +193,18 @@ async function runWrOrders(db: Db) {
       out.succeeded = processed.succeeded;
       if (processed.blocked) out.blocked = processed.blocked;
     }
+    // Penjamin status segar bersama (2026-10-13): tarik status vendor untuk
+    // link yang masih berjalan (berbagi jatah dengan job sk_orders) agar WR
+    // secepat SK terasa tanpa menunggu route besar per jam. Gerbang
+    // 20 dtk/order di store_settings menjaga biaya tetap; vendor dibaca
+    // sekali per tarikan.
+    try {
+      const { refreshDueSupplierOrders } = await import("@/lib/orders/supplier-refresh");
+      const fresh = await refreshDueSupplierOrders(db, { limit: 4 });
+      if (fresh.refreshed > 0) out.supplier_refreshed = fresh.refreshed;
+    } catch (error) {
+      if (error instanceof QueryBudgetExceeded) throw error;
+    }
     // 2 menit, bukan 1 jam (2026-10-10): webhook WR yang hilang/terputus
     // tidak lagi menahan kredensial varian instan sampai route besar jalan.
     out.reconciled = await order.reconcileStuckWrOrders(db, { minAgeMinutes: 2 }).catch((error) => {
@@ -231,6 +244,15 @@ async function runSkOrders(db: Db) {
       const processed = await order.processSkPendingOrders(db);
       out.processed = processed.processed;
       out.succeeded = processed.succeeded;
+    }
+    // Penjamin status segar bersama (cermin WR di atas): SK yang webhook-nya
+    // terlambat ikut tertarik di sini, bukan hanya di route besar.
+    try {
+      const { refreshDueSupplierOrders } = await import("@/lib/orders/supplier-refresh");
+      const fresh = await refreshDueSupplierOrders(db, { limit: 4 });
+      if (fresh.refreshed > 0) out.supplier_refreshed = fresh.refreshed;
+    } catch (error) {
+      if (error instanceof QueryBudgetExceeded) throw error;
     }
     out.reconciled = await order.reconcileStuckSkOrders(db).catch(() => 0);
   }

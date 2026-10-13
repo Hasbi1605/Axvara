@@ -58,9 +58,10 @@ function canVoid(link: SupplierLink): boolean {
 }
 
 function canCheck(link: SupplierLink): boolean {
-  // WR: sync-now = tanya status order yang SUDAH terkirim ke WR.
-  // SK tidak punya route sync-now — tombol hanya untuk WR agar tidak 404.
-  return link.supplier === "wr" && ["processing", "submitted", "ordering"].includes(link.status) && Boolean(link.supplier_order_id);
+  // sync-now = tanya status order yang SUDAH terkirim ke supplier sekarang
+  // (WR /transactions, SK /v1/trx). Kedua supplier punya route-nya sejak
+  // paritas 2026-10-13 — tombol tampil untuk keduanya.
+  return ["processing", "submitted", "ordering"].includes(link.status) && Boolean(link.supplier_order_id);
 }
 
 export function SupplierLinkActions({ links, onChanged, compact = false }: { links: SupplierLink[]; onChanged: () => void; compact?: boolean }) {

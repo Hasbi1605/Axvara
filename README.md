@@ -271,7 +271,15 @@ otomatis dari stok sendiri (`instant_delivery`, mis. Canva Invite) tampil skelet
 "Menyiapkan detail produkmu…" tanpa teks pengiriman selama ±30 dtk pertama (tanpa
 bacaan yang bisa hilang saat panel muncul)
 dan halaman memeriksa rapat (2 dtk ×5, 5 dtk ×4) sehingga detail muncul beberapa detik setelah
-terkirim tanpa reload; estimasi 5–15 menit hanya untuk produk WR.
+terkirim tanpa reload; estimasi 5–15 menit hanya untuk produk WR. Sejak 13 Okt 2026
+order supplier (WR/SK) diperlakukan sama instannya: selama link supplier berjalan,
+halaman menampilkan skeleton yang sama + poll rapat, dan setiap poll memicu tarikan
+status vendor di server (gerbang throttle 20 detik per order) — detail tampil hitungan
+detik setelah supplier COMPLETED, tanpa menunggu cron dan tanpa klik admin; kalimat
+"Stok otomatis habis"/"disiapkan admin" tidak pernah tampil untuk order supplier.
+Panel kredensial kini diikuti blok Syarat & Ketentuan + Cara Aktivasi per item
+(resolver yang sama dengan halaman produk); detail akun WR berbentuk
+`{label, value}` dari supplier ditampilkan rapi "Label: nilai" per baris.
 Sejak 18 Sep 2026 produk kelas **antrean** (`made_by_order`, dibuatkan setelah order) juga
 diteruskan otomatis ke WR begitu lunas — sebelumnya link-nya diam `pending` sampai admin
 sadar. Ekspektasi waktunya jujur per kelas dan disebut SEBELUM bayar (PDP, modal varian,

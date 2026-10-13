@@ -22,6 +22,8 @@ import {
 } from "@/lib/warung-rebahan/deliver";
 import { readDeliveredSnapshots } from "@/lib/fulfillment/delivery/buyer-email";
 import { emailMatches } from "@/lib/order-contact";
+import { resolveCredentialTermsByItem } from "@/lib/orders/credential-terms";
+import type { VariantCopy } from "@/lib/product-copy/format";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -52,6 +54,30 @@ async function orderReady(code: string) {
   return { order, db };
 }
 
+type CredentialOut = {
+  label?: string;
+  details: string;
+  completed_at: string | null;
+  terms?: VariantCopy | null;
+};
+
+/**
+ * S&K pasca-bayar per kredensial (2026-10-13): dipetakan dari item_index
+ * order lewat resolver yang sama dengan PDP. Item WR tunggal memakai
+ * item_index 0 (satu link dominan per order pada praktiknya); snapshot
+ * generik memakai itemIndex-nya sendiri. Gagal resolusi = tanpa S&K,
+ * kredensial tetap tampil.
+ */
+async function attachTerms(code: string, db: DatabaseAccess, creds: CredentialOut[]): Promise<CredentialOut[]> {
+  if (!creds.length) return creds;
+  const byIndex = await resolveCredentialTermsByItem(code, db).catch(() => new Map<number, VariantCopy>());
+  if (!byIndex.size) return creds;
+  return creds.map((cred, position) => ({
+    ...cred,
+    terms: cred.terms ?? byIndex.get((cred as { itemIndex?: number }).itemIndex ?? position) ?? null,
+  }));
+}
+
 /** Baca kredensial order lunas — hanya dipanggil SETELAH verifikasi WA/token. */
 async function readVerifiedDetails(code: string, db: DatabaseAccess) {
   const rows = await db
@@ -64,7 +90,7 @@ async function readVerifiedDetails(code: string, db: DatabaseAccess) {
       code,
     )
     .catch(() => []);
-  const out: { label?: string; details: string; completed_at: string | null }[] = [];
+  const out: CredentialOut[] = [];
   for (const row of rows) {
     try {
       const stored = await decryptAccountDetails(String(row.wr_account_details), String(row.wr_account_iv));
@@ -75,9 +101,16 @@ async function readVerifiedDetails(code: string, db: DatabaseAccess) {
     }
   }
   for (const snapshot of await readDeliveredSnapshots(code, db)) {
-    out.push({ label: snapshot.label, details: snapshot.details, completed_at: snapshot.completed_at });
+    const entry: CredentialOut & { itemIndex: number } = {
+      label: snapshot.label,
+      details: snapshot.details,
+      completed_at: snapshot.completed_at,
+      terms: null,
+      itemIndex: snapshot.itemIndex,
+    };
+    out.push(entry);
   }
-  return out;
+  return attachTerms(code, db, out);
 }
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ code: string }> }) {
@@ -124,10 +157,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (!(await verifyCredentialToken(code, token, ready.db))) return NextResponse.json({ error: "invalid_token" }, { status: 403 });
   const wr = await getDecryptedAccountDetails(code, ready.db, { token });
   const generic = await readDeliveredSnapshots(code, ready.db);
-  const credentials = [
+  const credentials: (CredentialOut & { itemIndex?: number })[] = [
     ...wr.map((d) => ({ details: d.details, completed_at: d.completed_at })),
-    ...generic.map((d) => ({ label: d.label, details: d.details, completed_at: d.completed_at })),
+    ...generic.map((d) => ({ label: d.label, details: d.details, completed_at: d.completed_at, itemIndex: d.itemIndex })),
   ];
   if (!credentials.length) return NextResponse.json({ error: "invalid_token" }, { status: 403 });
-  return NextResponse.json({ ok: true, credentials });
+  return NextResponse.json({ ok: true, credentials: await attachTerms(code, ready.db, credentials) });
 }

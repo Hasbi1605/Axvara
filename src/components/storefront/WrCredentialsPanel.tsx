@@ -8,10 +8,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { formatWibDateTime } from "@/lib/utils";
-import { CredentialText } from "@/components/storefront/ProductCopy";
+import { CredentialText, ActivationBody, MobileCollapsible, TermsBody } from "@/components/storefront/ProductCopy";
+import type { VariantCopy } from "@/lib/product-copy/format";
 
 // `label` hanya ada untuk isi produk non-WR (nama baris pesanan).
-type Credential = { label?: string; details: string; completed_at: string | null };
+// `terms` = S&K + cara aktivasi ter-resolusi (resolver PDP yang sama),
+// dirender sebagai blok terpisah DI BAWAH kredensial — bukan dicampur ke
+// teks kredensial, agar isi akun tetap bersih untuk disalin (2026-10-13).
+type Credential = { label?: string; details: string; completed_at: string | null; terms?: VariantCopy | null };
 
 /** Diisi checkout; bertahan selama tab itu terbuka (sessionStorage), jadi muat ulang tetap membuka otomatis. */
 export const checkoutContactKey = (code: string) => `axvara-checkout-contact:${code}`;
@@ -110,10 +114,26 @@ export function WrCredentialsPanel({ code, prefillContact = "", contactHint = ""
         <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">Detail Akun Digital</p>
         <div className="mt-3 space-y-3">
           {creds.map((c, i) => (
-            <div key={i} className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.07] p-3">
-              {c.label && <p className="mb-1.5 text-[11px] font-semibold text-emerald-200/80">{c.label}</p>}
-              <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5 text-emerald-100"><CredentialText text={c.details} /></pre>
-              {c.completed_at && <p className="mt-2 text-[11px] text-white/40">Diterima {formatWibDateTime(c.completed_at) ?? "—"}</p>}
+            <div key={i} className="space-y-3">
+              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.07] p-3">
+                {c.label && <p className="mb-1.5 text-[11px] font-semibold text-emerald-200/80">{c.label}</p>}
+                <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5 text-emerald-100"><CredentialText text={c.details} /></pre>
+                {c.completed_at && <p className="mt-2 text-[11px] text-white/40">Diterima {formatWibDateTime(c.completed_at) ?? "—"}</p>}
+              </div>
+              {c.terms && (c.terms.sections.length > 0 || c.terms.activation.length > 0) && (
+                <>
+                  {c.terms.sections.length > 0 && (
+                    <MobileCollapsible title="Syarat & Ketentuan">
+                      <TermsBody sections={c.terms.sections} size="xs" />
+                    </MobileCollapsible>
+                  )}
+                  {c.terms.activation.length > 0 && (
+                    <MobileCollapsible title="Cara Aktivasi">
+                      <ActivationBody groups={c.terms.activation} notes={c.terms.notes} size="xs" />
+                    </MobileCollapsible>
+                  )}
+                </>
+              )}
             </div>
           ))}
         </div>

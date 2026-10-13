@@ -194,8 +194,30 @@ function labelDetailKey(raw: string): string {
   return DETAIL_KEY_LABELS[normDetailKey(raw)] ?? raw.trim().replace(/[_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-/** Satu objek detail → "Label: nilai · Label: nilai". Nilai URL/OTP panjang
- *  tidak dipotong per-field (batas 2000 char ditegakkan di tingkat hasil).
+/**
+ * Objek field berlabel dari hulu WR: `{label, value}` / `{name, value}` /
+ * `{key, value}` (payload /transactions 2026-10-13, order Bstation: tiap
+ * field akun datang sebagai objek seperti ini). Kembalikan [label, nilai]
+ * ternormalisasi, atau null bila objek ini BUKAN bentuk berlabel — kunci
+ * selain label/value (mis. `{email, password}` datar) tidak boleh tertelan.
+ */
+function labeledFieldOf(o: Record<string, unknown>): [string, string] | null {
+  const keys = Object.keys(o);
+  const labelKey = keys.find((k) => ["label", "name", "key", "field"].includes(normDetailKey(k)));
+  const valueKey = keys.find((k) => ["value", "val", "isi", "content"].includes(normDetailKey(k)));
+  if (!labelKey || !valueKey) return null;
+  if (!keys.every((k) => k === labelKey || k === valueKey || ["product", "type"].includes(normDetailKey(k)))) return null;
+  const label = String(o[labelKey] ?? "").trim();
+  const value = String(o[valueKey] ?? "").trim().replace(/\r\n?/g, "\n");
+  if (!label || !value) return null;
+  return [labelDetailKey(label), value];
+}
+
+/** Satu objek detail → baris-baris "Label: nilai" (newline, BUKAN " · ":
+ *  panel/email/WA membacanya sebagai daftar kredensial, dan pemisah titik
+ *  tengah dulu melebur label+value mentah jadi satu baris tak terbaca —
+ *  screenshot owner 2026-10-13). Nilai URL/OTP panjang tidak dipotong
+ *  per-field (batas 2000 char ditegakkan di tingkat hasil).
  *  Objek PEMBUNGKUS hulu (`{product, details}` — bukti prod 95FC8669) tidak
  *  dirender sebagai field: hanya `details`-nya yang dipakai (rekursif),
  *  `product` dibuang (nama produk sudah ada di konteks order/pesan).
@@ -203,8 +225,11 @@ function labelDetailKey(raw: string): string {
  *  /transactions untuk varian Private mengirim
  *  `{product, details: [{...},{...},{...},{...}]}` (details = ARRAY OBJEK,
  *  bukan string) — `String(v)` menghasilkan "[object Object]" ×4 persis
- *  seperti screenshot owner. Sekarang tiap elemen diformat rekursif. */
+ *  seperti screenshot owner. Sekarang tiap elemen diformat rekursif.
+ *  Bentuk `{label, value}` per field (2026-10-13) dirender "Label: nilai". */
 function formatDetailObject(o: Record<string, unknown>): string {
+  const labeled = labeledFieldOf(o);
+  if (labeled) return `${labeled[0]}: ${labeled[1]}`;
   const keys = Object.keys(o);
   if ("details" in o && typeof o.details === "string" && keys.every((k) => ["product", "details", "data", "account_details"].includes(normDetailKey(k)))) {
     return normalizeAccountDetailsForDisplay(o.details);
@@ -238,8 +263,10 @@ function formatDetailObject(o: Record<string, unknown>): string {
     }
     const text = String(v).trim().replace(/\r\n?/g, "\n");
     if (!text) continue;
-    // Lewati metadata non-kredensial bila ada.
-    if (["id", "order_id", "status", "created_at"].includes(normDetailKey(k))) continue;
+    // Metadata non-kredensial + nama produk pembungkus: nama produk sudah
+    // ada di konteks order/pesan — jangan cetak ulang sebagai field
+    // "Product: ..." (screenshot owner 2026-10-13).
+    if (["id", "order_id", "status", "created_at", "product", "product_name", "variant", "variant_name"].includes(normDetailKey(k))) continue;
     // Nilai multiline (details berisi \n) dirender sebagai blok lanjutan,
     // bukan satu field "Details: a\nb".
     if (text.includes("\n") && ["details", "detail", "data", "accountdetails"].includes(normDetailKey(k))) {
@@ -249,7 +276,7 @@ function formatDetailObject(o: Record<string, unknown>): string {
     }
     parts.push(`${labelDetailKey(k)}: ${text}`);
   }
-  return parts.join(" · ");
+  return parts.join("\n");
 }
 
 /**
