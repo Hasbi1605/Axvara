@@ -201,7 +201,7 @@ function stubWrYatim(fx: ReturnType<typeof createD1Fixture>) {
   fx.sql.prepare("INSERT INTO products(id,name,slug,price,stock,source,wr_product_id,wr_auto_managed) VALUES(1,'Drama','drama',12000,1,'warung_rebahan','prod-drama',1)").run();
   fx.sql.prepare("INSERT INTO product_variants(id,product_id,sku,label,price,stock,fulfillment_mode,wr_variant_id,wr_auto_managed) VALUES(1,1,'WR-D','3 Hari',12000,1,'manual','var-drama',1)").run();
   fx.sql.prepare("INSERT INTO wr_products(wr_product_id,wr_product_name,axvara_product_id) VALUES('prod-drama','Drama',1)").run();
-  fx.sql.prepare("INSERT INTO wr_variants(wr_variant_id,wr_product_id,wr_variant_name,wr_price,wr_stock,axvara_variant_id,axvara_sell_price,wr_delivery_class,wr_delivery_source) VALUES('var-drama','prod-drama','3 Hari',10000,2,1,12000,'made_by_order','system')").run();
+  fx.sql.prepare("INSERT INTO wr_variants(wr_variant_id,wr_product_id,wr_variant_name,wr_price,wr_stock,axvara_variant_id,axvara_sell_price,wr_delivery_class,wr_delivery_source) VALUES('var-drama','prod-drama','3 Hari',10000,2,1,12000,'made_by_order','api')").run();
   fx.sql.prepare(`INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel,paid_at) VALUES('AXV-YATIM-WR','B','628',?,12000,'qris','lunas','paid','telegram',datetime('now'))`)
     .run(JSON.stringify([{ product_id: 1, variant_id: 1, name: "Drama — 3 Hari", price: 12000, qty: 1 }]));
 }

@@ -757,13 +757,12 @@ CREATE TABLE IF NOT EXISTS wr_variants (
   axvara_sell_price     INTEGER NOT NULL DEFAULT 0,
   is_active             INTEGER NOT NULL DEFAULT 1,
   last_synced_at        TEXT,
-  -- Kelas pengiriman WR (migrasi 0032): 'restock' (auto) vs 'made_by_order'
-  -- (manual slow). NULL = belum dikunci (tebakan sistem / default manual).
-  -- Sync TIDAK PERNAH menimpa yang sudah terisi (pola override admin 0030).
+  -- Kelas pengiriman WR: 'restock' (AUTO) vs 'made_by_order' (MANUAL),
+  -- diturunkan sync dari wr_delivery_mode resmi API WR (sumber tunggal
+  -- 'api' sejak migrasi 0061; mesin tebakan + kunci admin dihapus).
   wr_delivery_class     TEXT CHECK (wr_delivery_class IN ('restock', 'made_by_order')),
-  wr_delivery_source    TEXT CHECK (wr_delivery_source IN ('screenshot', 'system', 'admin')),
-  -- Mode kirim resmi API WR (migrasi 0060): auto/manual/mixed. Bila terisi,
-  -- sync menurunkan wr_delivery_class darinya (mengalahkan seed/tebakan/admin).
+  wr_delivery_source    TEXT CHECK (wr_delivery_source IN ('api')),
+  -- Mode kirim resmi API WR (migrasi 0060): auto/manual/mixed (mentah).
   wr_delivery_mode      TEXT,
   created_at            TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at            TEXT NOT NULL DEFAULT (datetime('now'))

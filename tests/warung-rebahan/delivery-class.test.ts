@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  deliveryClassFromApiMode,
   deliveryLabelForAdmin,
   deliveryLabelForBuyer,
-  guessDeliveryClass,
   isQueuedFulfillment,
+  WR_DEFAULT_DELIVERY_CLASS,
 } from "@/lib/warung-rebahan/delivery-class";
 import {
   buyerDeliveryBadge,
@@ -11,37 +12,26 @@ import {
   buyerDeliveryKind,
 } from "@/lib/catalog";
 
-// 2026-09-16: kelas pengiriman WR (restock vs made_by_order). API WR tidak
-// memberi penanda auto/manual — tebakan sistem + seed screenshot + kunci
-// admin. Default aman = manual (under-promise).
-describe("wr delivery class", () => {
-  it("seed screenshot: nama RESTOK ditebak restock", () => {
-    expect(guessDeliveryClass({ productName: "Netflix Premium", variantName: "Premium Anti Limit" })).toBe("restock");
-    expect(guessDeliveryClass({ productName: "Canva Premium", variantName: "Head Pro" })).toBe("restock");
-    expect(guessDeliveryClass({ productName: "Loklok", variantName: "Sharing" })).toBe("restock");
+// 2026-10-13: kelas pengiriman WR murni dari `delivery_mode` resmi API WR
+// (paten ala SK) — mesin tebakan nama/stok/terms + seed screenshot + kunci
+// admin DIHAPUS. Pemetaan biner: auto → AUTO (restock), manual/mixed →
+// MANUAL (made_by_order), tanpa mode → default aman deterministik.
+describe("wr delivery class — hanya dari API (2026-10-13)", () => {
+  it("delivery_mode resmi dipetakan paten dua nilai", () => {
+    expect(deliveryClassFromApiMode("auto")).toBe("restock");
+    expect(deliveryClassFromApiMode(" AUTO ")).toBe("restock");
+    expect(deliveryClassFromApiMode("manual")).toBe("made_by_order");
+    // mixed dilipat ke MANUAL (bisa manual tergantung ketersediaan).
+    expect(deliveryClassFromApiMode("mixed")).toBe("made_by_order");
+    expect(deliveryClassFromApiMode("Mixed")).toBe("made_by_order");
   });
 
-  it("seed screenshot: nama MBO ditebak made_by_order", () => {
-    expect(guessDeliveryClass({ productName: "Wink Premium", variantName: "7d" })).toBe("made_by_order");
-    expect(guessDeliveryClass({ productName: "Zoom Pro", variantName: "28D" })).toBe("made_by_order");
-    expect(guessDeliveryClass({ productName: "VPN Express", variantName: "3d" })).toBe("made_by_order");
-  });
-
-  it("tipe Invite/Link butuh data pembeli → manual", () => {
-    expect(guessDeliveryClass({ productName: "Youtube Premium", variantName: "Premium Invite", type: "Invite" })).toBe("made_by_order");
-    expect(guessDeliveryClass({ productName: "Youtube Premium", variantName: "Premium Link", type: "Link" })).toBe("made_by_order");
-  });
-
-  it("kata slow/antri → manual walau stok ada", () => {
-    expect(guessDeliveryClass({ productName: "Getcontact", variantName: "Premium", stock: 5, terms: "proses slow sesuai antrian" })).toBe("made_by_order");
-  });
-
-  it("stok ready + kata langsung → restock", () => {
-    expect(guessDeliveryClass({ productName: "Kiro AI", variantName: "Pro", stock: 3, terms: "dikirim langsung otomatis" })).toBe("restock");
-  });
-
-  it("ragu-ragu → manual (default aman)", () => {
-    expect(guessDeliveryClass({ productName: "Produk Misterius", variantName: "Varian X" })).toBe("made_by_order");
+  it("tanpa mode dikenal → null; default deterministik MANUAL (bukan tebakan)", () => {
+    expect(deliveryClassFromApiMode(null)).toBeNull();
+    expect(deliveryClassFromApiMode(undefined)).toBeNull();
+    expect(deliveryClassFromApiMode("")).toBeNull();
+    expect(deliveryClassFromApiMode("sesuatu-baru")).toBeNull();
+    expect(WR_DEFAULT_DELIVERY_CLASS).toBe("made_by_order");
   });
 
   it("label pembeli singkat (tanpa emoji — styling diurus UI)", () => {
@@ -50,10 +40,10 @@ describe("wr delivery class", () => {
     expect(deliveryLabelForBuyer(null)).toBe("Made By Order");
   });
 
-  it("label admin menyebut sumber", () => {
-    expect(deliveryLabelForAdmin("restock", "screenshot")).toContain("daftar WR");
-    expect(deliveryLabelForAdmin("made_by_order", "admin")).toContain("kunci admin");
-    expect(deliveryLabelForAdmin(null, null)).toContain("belum dikunci");
+  it("label admin hanya AUTO/MANUAL (tanpa embel-embel sumber)", () => {
+    expect(deliveryLabelForAdmin("restock")).toBe("AUTO");
+    expect(deliveryLabelForAdmin("made_by_order")).toBe("MANUAL");
+    expect(deliveryLabelForAdmin(null)).toBe("?");
   });
 });
 

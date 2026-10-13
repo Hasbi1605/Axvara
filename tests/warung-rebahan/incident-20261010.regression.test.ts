@@ -245,7 +245,7 @@ describe("delivery_mode API WR = sumber kebenaran kelas instan/antrean", () => {
 });
 
 describe("sync menulis delivery_mode API WR", () => {
-  it("varian lama berkelas screenshot 'restock' tapi API 'manual' → made_by_order; varian baru langsung ikut API", async () => {
+  it("varian lama berkelas warisan 'restock' tapi API 'manual' → made_by_order; varian baru langsung ikut API", async () => {
     vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
     vi.stubEnv("WARUNG_REBAHAN_SYNC_ENABLED", "true");
     const fx = await setupWrFixture();
@@ -261,8 +261,8 @@ describe("sync menulis delivery_mode API WR", () => {
         ],
       });
       await syncProducts(db, async () => [product("auto")]);
-      // Simulasi seed screenshot lama yang salah.
-      fx.sql.prepare("UPDATE wr_variants SET wr_delivery_class='restock', wr_delivery_source='screenshot', wr_delivery_mode=NULL WHERE wr_variant_id='var-mobile'").run();
+      // Simulasi kelas warisan lama yang salah (mode belum tercatat).
+      fx.sql.prepare("UPDATE wr_variants SET wr_delivery_class='restock', wr_delivery_mode=NULL WHERE wr_variant_id='var-mobile'").run();
       await syncProducts(db, async () => [product("manual", "mixed")]);
       const rows = fx.sql.prepare("SELECT wr_variant_id, wr_delivery_class, wr_delivery_mode FROM wr_variants ORDER BY wr_variant_id").all();
       expect(rows).toEqual([

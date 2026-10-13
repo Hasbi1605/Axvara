@@ -18,7 +18,7 @@ import {
   type WrProduct,
   type WrVariant,
 } from "./client";
-import { deliveryClassFromApiMode, guessDeliveryClass } from "./delivery-class";
+import { deliveryClassFromApiMode, WR_DEFAULT_DELIVERY_CLASS } from "./delivery-class";
 
 export type SyncResult = {
   total: number;
@@ -575,50 +575,39 @@ function planExistingVariantWrites(
         sellPrice,
       ],
     });
-    // 2026-10-10: `delivery_mode` resmi API WR = sumber kebenaran kelas
-    // instan/antrean. Bila ada, ditulis + kelas diturunkan darinya (menimpa
-    // seed screenshot/tebakan/kunci admin — 62/92 varian salah kelas saat
-    // diaudit). Guard IS NOT: baris yang sudah sama tidak ditulis ulang.
+    // 2026-10-13: `delivery_mode` resmi API WR = SATU-SATUNYA penentu kelas
+    // (paten ala SK, tanpa tebakan): "auto" → restock (AUTO), selainnya →
+    // made_by_order (MANUAL; "mixed" dilipat karena bisa manual). Bila mode
+    // ada, mode mentah + kelas biner ditulis bersama (sumber ditandai 'api').
+    // Guard IS NOT: baris yang sudah sama tidak ditulis ulang.
     // `preMigrationFallback`: pra-0060 (kolom BELUM ada di D1 prod) statement
-    // ini turun ke kelas saja tanpa kolom baru — sync tetap jalan + tetap
-    // membetulkan 62 varian salah kelas walau migrasi belum diterapkan.
+    // ini turun ke kelas saja tanpa kolom baru — sync tetap jalan walau
+    // migrasi belum diterapkan.
     const apiClass = deliveryClassFromApiMode(wrVariant.delivery_mode);
     if (apiClass) {
       const apiMode = String(wrVariant.delivery_mode).trim().toLowerCase();
       writes.push({
-        sql: `UPDATE wr_variants SET wr_delivery_mode=?, wr_delivery_class=?, wr_delivery_source='system',
+        sql: `UPDATE wr_variants SET wr_delivery_mode=?, wr_delivery_class=?, wr_delivery_source='api',
           updated_at=? WHERE wr_variant_id=?
-            AND (wr_delivery_mode IS NOT ? OR wr_delivery_class IS NOT ?)`,
+            AND (wr_delivery_mode IS NOT ? OR wr_delivery_class IS NOT ? OR wr_delivery_source IS NOT 'api')`,
         params: [apiMode, apiClass, now, wrVariant.id, apiMode, apiClass],
         preMigrationFallback: {
-          sql: `UPDATE wr_variants SET wr_delivery_class=?, wr_delivery_source='system',
+          sql: `UPDATE wr_variants SET wr_delivery_class=?, wr_delivery_source='api',
             updated_at=? WHERE wr_variant_id=? AND wr_delivery_class IS NOT ?`,
           params: [apiClass, now, wrVariant.id, apiClass],
         },
       });
+    } else {
+      // Tanpa delivery_mode dari API: kelas diisi default aman deterministik
+      // (BUKAN tebakan konten) hanya bila masih NULL — begitu mode resmi
+      // datang, cabang di atas menimpanya.
+      writes.push({
+        sql: `UPDATE wr_variants SET wr_delivery_class=?, wr_delivery_source='api',
+          updated_at=? WHERE wr_variant_id=? AND wr_delivery_class IS NULL`,
+        params: [WR_DEFAULT_DELIVERY_CLASS, now, wrVariant.id],
+        optional: true,
+      });
     }
-    // 2026-09-16: kelas pengiriman dari API bila ADA (delivery_mode), atau
-    // yang masih NULL ditebak sistem dari sinyal API saat ini. Sejak 2026-10
-    // delivery_mode = sumber kebenaran dan MENIMPA kelas lama (screenshot/
-    // admin/system) lewat statement preMigrationFallback di atas; statement
-    // ini hanya mengisi yang masih NULL (varian tanpa delivery_mode).
-    writes.push({
-      sql: `UPDATE wr_variants SET wr_delivery_class=?, wr_delivery_source='system',
-        updated_at=? WHERE wr_variant_id=? AND wr_delivery_class IS NULL`,
-      params: [
-        guessDeliveryClass({
-          productName: String((existing as { wr_product_name?: unknown }).wr_product_name || ""),
-          variantName: wrVariant.name,
-          type: wrVariant.type,
-          stock: Number(wrVariant.stock),
-          terms: wrVariant.terms,
-          deliveryTerms: wrVariant.delivery_terms,
-        }),
-        now,
-        wrVariant.id,
-      ],
-      optional: true,
-    });
     const axvaraVariantId =
       existing.axvara_variant_id != null ? Number(existing.axvara_variant_id) : 0;
     if (axvaraVariantId > 0) {
@@ -758,17 +747,10 @@ async function insertNewVariant(
     );
     axvaraVariantId = conflict ? Number(conflict.id) : 0;
   }
-  // 2026-09-16: varian baru langsung ditebak kelasnya (sumber 'system');
-  // seed screenshot 0032 + kunci admin menimpa via UPDATE terpisah. Sync
-  // tidak pernah menimpa yang sudah terisi (kolom baru = NULL → ditebak).
-  const guessedClass = deliveryClassFromApiMode(wrVariant.delivery_mode) ?? guessDeliveryClass({
-    productName: "",
-    variantName: wrVariant.name,
-    type: wrVariant.type,
-    stock: Number(wrVariant.stock),
-    terms: wrVariant.terms,
-    deliveryTerms: wrVariant.delivery_terms,
-  });
+  // 2026-10-13: varian baru langsung berkelas dari delivery_mode API
+  // (sumber 'api'); tanpa mode → default aman deterministik. Tidak ada
+  // lagi tebakan nama/stok/terms (mesin lama dihapus).
+  const variantClass = deliveryClassFromApiMode(wrVariant.delivery_mode) ?? WR_DEFAULT_DELIVERY_CLASS;
   const apiModeValue = wrVariant.delivery_mode ? String(wrVariant.delivery_mode).trim().toLowerCase() : null;
   try {
     await execRun(
@@ -793,8 +775,8 @@ async function insertNewVariant(
       markupFixed,
       sellPrice,
       now,
-      guessedClass,
-      "system",
+      variantClass,
+      "api",
       apiModeValue,
     );
   } catch {
@@ -822,8 +804,8 @@ async function insertNewVariant(
       markupFixed,
       sellPrice,
       now,
-      guessedClass,
-      "system",
+      variantClass,
+      "api",
     );
   }
   if (axvaraVariantId > 0) {
@@ -906,10 +888,8 @@ async function prefetchVariantRows(
     const rows = await db
       .queryAll(
         // Kolom PERSIS sama dengan SELECT per-varian yang digantikan — jangan
-        // tambah kolom. `wr_product_name` sengaja TIDAK diambil: SELECT lama
-        // juga tidak mengambilnya, sehingga guessDeliveryClass selalu
-        // menerima productName "" dan menambahkannya akan mengubah kelas
-        // pengiriman yang ditebak (perubahan perilaku, bukan performa).
+        // tambah kolom. `wr_product_name` sengaja TIDAK diambil (tidak ada
+        // pemakai di planner; kelas kini murni dari delivery_mode API).
         `SELECT id, wr_variant_id, wr_price, wr_stock, markup_percent,
                 markup_fixed, axvara_variant_id, axvara_sell_price
          FROM wr_variants WHERE wr_variant_id IN (${placeholders(chunk.length)})`,

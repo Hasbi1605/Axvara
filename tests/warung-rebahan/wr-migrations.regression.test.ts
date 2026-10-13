@@ -290,6 +290,32 @@ describe("migrasi WR berurutan di DB production lama", () => {
   });
 });
 
+describe("migrasi 0061: sumber kelas WR hanya 'api'", () => {
+  it("rebuild mempertahankan data/kelas/mode; sumber lama dinormalkan; sumber liar ditolak", async () => {
+    const sql = createPreWrDatabase();
+    try {
+      sql.exec(fs.readFileSync("drizzle/migrations/0027_warung_rebahan.sql", "utf8"));
+      sql.exec(fs.readFileSync("drizzle/migrations/0032_wr_delivery_class.sql", "utf8"));
+      sql.exec(fs.readFileSync("drizzle/migrations/0060_wr_delivery_mode.sql", "utf8"));
+      sql.prepare(`INSERT INTO wr_products(wr_product_id,wr_product_name) VALUES('p-a','Netflix Premium'),('p-b','Bstation')`).run();
+      sql.prepare(`INSERT INTO wr_variants(wr_variant_id,wr_product_id,wr_variant_name,wr_price,wr_delivery_class,wr_delivery_source,wr_delivery_mode)
+        VALUES('v-a','p-a','Premium Anti Limit',8000,'restock','screenshot','auto'),
+              ('v-b','p-b','Premium 1B',3500,'made_by_order','system','manual')`).run();
+      sql.exec(fs.readFileSync("drizzle/migrations/0061_wr_delivery_source_api.sql", "utf8"));
+      const rows = sql.prepare(`SELECT wr_variant_id, wr_delivery_class c, wr_delivery_source s, wr_delivery_mode m FROM wr_variants ORDER BY wr_variant_id`).all() as unknown as { wr_variant_id: string; c: string; s: string; m: string }[];
+      expect(rows).toEqual([
+        { wr_variant_id: "v-a", c: "restock", s: "api", m: "auto" },
+        { wr_variant_id: "v-b", c: "made_by_order", s: "api", m: "manual" },
+      ]);
+      // Sumber warisan tidak bisa lagi ditulis; 'api' bisa.
+      expect(() => sql.prepare(`UPDATE wr_variants SET wr_delivery_source='system' WHERE wr_variant_id='v-a'`).run()).toThrow();
+      sql.prepare(`UPDATE wr_variants SET wr_delivery_source='api' WHERE wr_variant_id='v-a'`).run();
+    } finally {
+      sql.close();
+    }
+  });
+});
+
 describe("regresi #14: bootstrap schema.sql mendukung seluruh operasi WR", () => {
   it("tanpa migrasi manual: link + sync-state + token + webhook log jalan", async () => {
     const { createD1Fixture, stubFulfillmentKey } = await import("../helpers/d1-fixture");

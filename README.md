@@ -288,7 +288,10 @@ layanan" (estimasi supplier 6–12 jam). Sejak 11 Okt 2026 kelas instan/antrean
 diturunkan dari `delivery_mode` resmi API WR per varian (auto = instan,
 manual/mixed = antrean; migrasi 0060) — mengalahkan tebakan/screenshot lama;
 audit 62/92 varian salah kelas diperbaiki (mis. Vidio Mobile kini jujur
-Made By Order, bukan "Kirim otomatis"). Saklar mundur: `WARUNG_REBAHAN_AUTO_ORDER_MBO=false`.
+Made By Order, bukan "Kirim otomatis"). Sejak 13 Okt 2026 penandanya
+disederhanakan paten ala SK: panel admin hanya menampilkan badge **AUTO /
+MANUAL** dari API (tanpa embel-embel sumber/tebakan, tanpa tombol kunci
+kelas — mesin tebakan dihapus, migrasi 0061). Saklar mundur: `WARUNG_REBAHAN_AUTO_ORDER_MBO=false`.
 Pembeli web menerima ISI kredensial langsung via email
 Resend "Detail Akun Siap" (idempoten; tanpa email dilewati diam; dibuat Axvara
 sendiri dari detail completed walau WR tidak mengirim email) + panel Detail Akun

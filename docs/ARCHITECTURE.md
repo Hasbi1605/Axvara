@@ -2054,7 +2054,16 @@ Penggantinya: VPS `t4g.nano` Singapore (`i-022790eb6bb0b1be3`, 0.5GB +
   (kolom belum ada di D1) sync memakai fallback per statement tanpa kolom
   baru — sync tetap jalan + tetap membetulkan kelas. Audit 2026-10-10:
   62/92 varian salah kelas (mis. Vidio Mobile tampil "Kirim otomatis" padahal
-  manual) — penyebab keluhan "katanya instan tapi harus nunggu". Email wajib:
+  manual) — penyebab keluhan "katanya instan tapi harus nunggu".
+- Penyederhanaan paten ala SK (2026-10-13, migrasi 0061): mesin tebakan
+  (`guessDeliveryClass` + daftar nama screenshot) + tombol kunci kelas admin
+  + badge sumber ("tebakan/daftar WR/kunci admin") DIHAPUS. Kelas kini murni
+  turunan `delivery_mode` (auto→AUTO/`restock`; manual/mixed→MANUAL/
+  `made_by_order`; tanpa mode → default deterministik MANUAL), badge panel
+  hanya **AUTO / MANUAL** persis `ProcessBadge` SK, route markup tidak lagi
+  menerima `delivery_class`. `wr_delivery_source` di-rebuild CHECK hanya
+  `('api')` (0061 menormalkan nilai warisan; kelas/mode/data dipertahankan).
+  Koreksi kelas selanjutnya = koreksi di dashboard WR. Email wajib:
   web SELALU minta email (revamp 2026-09-23); Telegram/WA + API orders memakai
   `needsEmailForVariant()` (tipe Invite/Link WR atau produk `require_email`).
   `email_invite` hanya dikirim ke WR untuk tipe Invite/Link

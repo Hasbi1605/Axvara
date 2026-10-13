@@ -1,23 +1,26 @@
 // src/lib/warung-rebahan/delivery-class.ts — Kelas pengiriman WR per varian.
 //
-// Masalah awal (2026-09-16): API WR tidak memberi penanda auto/manual (hanya
-// id, name, price, duration, type, warranty, stock, terms, delivery_terms).
-// Satu-satunya kebenaran saat itu adalah daftar admin WR (RESTOK vs MADE BY
-// ORDER) yang volatil.
+// SATU sumber kebenaran (sejak 2026-10-13, penyederhanaan ala SK atas
+// permintaan owner): `delivery_mode` resmi API WR per varian. Pemetaan
+// paten dua nilai — sama seperti `sk_order_process` SK:
+//   "auto"   → restock       (badge admin: AUTO)
+//   "manual" → made_by_order (badge admin: MANUAL)
+//   "mixed"  → made_by_order (dilipat ke MANUAL: bisa manual tergantung
+//               ketersediaan — menjanjikan AUTO untuknya berarti berbohong
+//               separuh waktu; nilai 'mixed' sendiri tetap tersimpan mentah
+//               di kolom wr_delivery_mode untuk audit, hanya kelasnya yang
+//               biner)
+//   kosong/tak dikenal → made_by_order (default aman deterministik, BUKAN
+//               tebakan: mending bilang manual ternyata cepat, daripada
+//               bilang otomatis ternyata slow)
 //
-// Sejak 2026-10-10 API WR mengirim `delivery_mode` per varian ("auto" =
-// dikirim otomatis begitu lunas, "manual" = dikerjakan admin WR, "mixed" =
-// tergantung ketersediaan). Itu SUMBER KEBENARAN kelas instan/antrean —
-// sync menurunkannya via deliveryClassFromApiMode di bawah (mengalahkan seed
-// screenshot/tebakan/kunci admin). guessDeliveryClass tersisa sebagai
-// fallback untuk varian yang API-nya tidak mengirim delivery_mode.
-//
-// Desain hibrida (keputusan owner 2026-09-16, diperbarui 2026-10-10):
-// - delivery_mode API = sumber kebenaran (bila ada).
-// - Seed screenshot = modal awal (17 nama, sumber 'screenshot').
-// - guessDeliveryClass = tebakan sistem untuk sisanya + varian baru.
-// - Default aman = 'made_by_order' (under-promise: mending bilang manual
-//   ternyata cepat, daripada bilang otomatis ternyata slow).
+// Mesin tebakan lama (guessDeliveryClass + daftar nama screenshot 16 Sep
+// 2026 + cap sumber 'system/screenshot/admin') DIHAPUS 2026-10-13: audit
+// D1 prod hari yang sama membuktikan 92/94 varian aktif sudah membawa
+// delivery_mode resmi (2 sisa = varian Canva nonaktif stok 0), sementara
+// label "• tebakan"/"• daftar WR"/"• kunci admin" + tombol kunci kelas
+// admin hanya mengaburkan halaman. Kelas kini murni turunan API — admin
+// tidak lagi mengunci manual; koreksi kelas = koreksi di dashboard WR.
 
 export type WrDeliveryClass = "restock" | "made_by_order";
 
@@ -148,51 +151,19 @@ export function needsEmailForVariant(input: {
 export const EMAIL_REQUIRED_MESSAGE =
   "Produk ini dikirim via email invite — tulis email aktif yang benar sebelum bayar.";
 
-/** Label admin lengkap (panel saja, bukan storefront). */
-export function deliveryLabelForAdmin(
-  wrClass: string | null | undefined,
-  source: string | null | undefined,
-): string {
-  if (wrClass === "restock") {
-    return source === "admin" ? "RESTOK • auto • kunci admin"
-      : source === "screenshot" ? "RESTOK • auto • daftar WR"
-        : source === "system" ? "RESTOK • auto • tebakan"
-          : "RESTOK • auto";
-  }
-  if (wrClass === "made_by_order") {
-    return source === "admin" ? "MBO • manual • kunci admin"
-      : source === "screenshot" ? "MBO • manual • daftar WR"
-        : source === "system" ? "MBO • manual • tebakan"
-          : "MBO • manual";
-  }
-  return "? • belum dikunci";
-}
-
-// Nama produk daftar admin WR 2026-09-16 (cocok substring, case-insensitive).
-// RESTOK = stok siap, auto. MBO = dibuat saat order, slow.
-const RESTOCK_NAMES = [
-  "netflix", "capcut", "gemini", "apple music",
-  "canva", "loklok", "ilovepdf", "vidio",
-  "office", "microsoft",
-];
-
-const MBO_NAMES = [
-  "wink", "meitu", "zoom", "picsart",
-  "scribd", "vpn", "hidemyass", "hma",
-];
-
-function containsAny(haystack: string, needles: string[]): boolean {
-  const lower = haystack.toLowerCase();
-  return needles.some((n) => lower.includes(n));
+/** Label admin lengkap (panel saja, bukan storefront): hanya AUTO/MANUAL. */
+export function deliveryLabelForAdmin(wrClass: string | null | undefined): string {
+  if (wrClass === "restock") return "AUTO";
+  if (wrClass === "made_by_order") return "MANUAL";
+  return "?";
 }
 
 /**
- * Kelas pengiriman dari `delivery_mode` resmi API WR (2026-10-10).
- * api-docs: "auto" = dikirim otomatis begitu lunas, "manual" = dikirim admin
- * (perlu waktu), "mixed" = bisa otomatis atau manual tergantung ketersediaan.
- * `mixed` sengaja antrean (under-promise: janji instan yang meleset lebih
- * buruk daripada antrean yang ternyata cepat). Kosong/tak dikenal → null
- * (pemanggil memakai kelas tersimpan/tebakan lama).
+ * Kelas pengiriman dari `delivery_mode` resmi API WR — SATU-SATUNYA penentu
+ * kelas (2026-10-13). Pemetaan paten biner ala SK:
+ * "auto" → restock; "manual"/"mixed" → made_by_order. Kosong/tak dikenal →
+ * null (pemanggil memakai default aman deterministik `made_by_order`,
+ * bukan tebakan konten).
  */
 export function deliveryClassFromApiMode(mode: string | null | undefined): WrDeliveryClass | null {
   const m = String(mode ?? "").trim().toLowerCase();
@@ -202,40 +173,9 @@ export function deliveryClassFromApiMode(mode: string | null | undefined): WrDel
 }
 
 /**
- * Tebakan sistem untuk varian yang belum dikunci. Sinyal dari data API WR
- * aktual (diukur 2026-09-16, 48 produk / 87 varian):
- * - Stok > 0 + kata langsung/otomatis → restock.
- * - Tipe Invite/Link (butuh email_invite pembeli) → made_by_order.
- * - Kata slow/proses/antri → made_by_order.
- * - Selain itu → made_by_order (default aman).
+ * Default kelas untuk varian yang API-nya (belum) mengirim `delivery_mode`:
+ * deterministik `made_by_order` — BUKAN tebakan. Under-promise secara sadar
+ * (lihat header file): begitu sync berikutnya membawa mode resmi, kelas
+ * langsung mengikuti API.
  */
-export function guessDeliveryClass(input: {
-  productName: string;
-  variantName: string;
-  type?: string | null;
-  stock?: number | null;
-  terms?: string | null;
-  deliveryTerms?: string | null;
-}): WrDeliveryClass {
-  const productName = input.productName || "";
-  const variantName = input.variantName || "";
-  const combined = `${productName} ${variantName}`;
-  // 1. Daftar screenshot menang atas heuristik (modal awal).
-  if (containsAny(combined, RESTOCK_NAMES)) return "restock";
-  if (containsAny(combined, MBO_NAMES)) return "made_by_order";
-  const type = String(input.type || "").toLowerCase();
-  const blob = `${input.terms || ""} ${input.deliveryTerms || ""}`.toLowerCase();
-  const stock = Number(input.stock || 0);
-  // 2. Tipe Invite/Link butuh email_invite pembeli dulu: order Axvara HARUS
-  //    membawa customer_email (diteruskan processOneLink → createOrder).
-  //    Tanpa email, WR 422 dan retry tidak sembuh (uji live 2026-09-16).
-  //    Kelasnya tetap bisa restock bila daftar screenshot, tapi checkout
-  //    WAJIB minta email untuk tipe ini.
-  if (isInviteWrType(type) || type === "link") return "made_by_order";
-  // 3. Kata slow/proses/antri = antrean manusia di sisi WR.
-  if (/(slow|antri|queue|manual|proses \d|sesuai antrian)/.test(blob)) return "made_by_order";
-  // 4. Stok ready + kata langsung/otomatis = restock.
-  if (stock > 0 && /(langsung|otomatis|otomatis|real-?time|instant)/.test(blob)) return "restock";
-  // 5. Default aman: manual.
-  return "made_by_order";
-}
+export const WR_DEFAULT_DELIVERY_CLASS: WrDeliveryClass = "made_by_order";

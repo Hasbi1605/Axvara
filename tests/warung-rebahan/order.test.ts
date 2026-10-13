@@ -83,7 +83,7 @@ describe("Warung Rebahan process pending orders", () => {
     const fx = await setup();
     try {
       seedCatalog(fx);
-      fx.sql.prepare(`UPDATE wr_variants SET wr_delivery_class='made_by_order', wr_delivery_source='screenshot' WHERE wr_variant_id='var-1'`).run();
+      fx.sql.prepare(`UPDATE wr_variants SET wr_delivery_class='made_by_order', wr_delivery_source='api' WHERE wr_variant_id='var-1'`).run();
       seedOrder(fx, "AXV-20260911-AAAMBO01");
       vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
       vi.stubEnv("WARUNG_REBAHAN_AUTO_ORDER_ENABLED", "true");
@@ -110,7 +110,7 @@ describe("Warung Rebahan process pending orders", () => {
     const fx = await setup();
     try {
       seedCatalog(fx);
-      fx.sql.prepare(`UPDATE wr_variants SET wr_delivery_class='made_by_order', wr_delivery_source='screenshot' WHERE wr_variant_id='var-1'`).run();
+      fx.sql.prepare(`UPDATE wr_variants SET wr_delivery_class='made_by_order', wr_delivery_source='api' WHERE wr_variant_id='var-1'`).run();
       seedOrder(fx, "AXV-20260911-AAAMBO02");
       vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
       vi.stubEnv("WARUNG_REBAHAN_AUTO_ORDER_ENABLED", "true");

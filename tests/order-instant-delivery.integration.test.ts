@@ -38,7 +38,7 @@ beforeEach(() => {
   fixture.sql.exec(`INSERT INTO products(id,name,slug,price,stock) VALUES(1,'Canva Pro','canva-pro',2000,100)`);
   fixture.sql.exec(`INSERT INTO wr_products(wr_product_id,wr_product_name) VALUES('wr-p','Netflix Premium')`);
   fixture.sql.exec(`INSERT INTO wr_variants(wr_variant_id,wr_product_id,wr_variant_name,wr_price,wr_delivery_class,wr_delivery_source)
-    VALUES('wr-restock','wr-p','Netflix 1 Bulan',8000,'restock','admin'),('wr-mbo','wr-p','Netflix Private',9000,'made_by_order','admin')`);
+    VALUES('wr-restock','wr-p','Netflix 1 Bulan',8000,'restock','api'),('wr-mbo','wr-p','Netflix Private',9000,'made_by_order','api')`);
   const variant = fixture.sql.prepare(`INSERT INTO product_variants(id,product_id,sku,label,price,stock,fulfillment_mode,wr_variant_id)
     VALUES(?,1,?,?,2000,100,?,?)`);
   variant.run(1, "SKU-1", "Invite 1 Bulan", "shared", null);

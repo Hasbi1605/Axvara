@@ -65,7 +65,6 @@ type MarkupRow = {
   axvara_sell_price: number;
   wr_product_name: string | null;
   wr_delivery_class: string | null;
-  wr_delivery_source: string | null;
 };
 
 /** Umur antrean, dihitung dari saat request dikirim ke upstream (fallback
@@ -386,24 +385,6 @@ export function WarungRebahanManager() {
     }
   };
 
-    const setDeliveryClass = async (row: MarkupRow, deliveryClass: "restock" | "made_by_order") => {
-    try {
-      const res = await fetch("/api/admin/warung/markup", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wr_variant_id: row.wr_variant_id, delivery_class: deliveryClass }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "Gagal mengunci kelas");
-      toast.success(deliveryClass === "restock"
-        ? "Dikunci: RESTOK • auto (dicatat 'kunci admin'; sync berikutnya tetap mengikuti delivery_mode API WR bila varian ini memilikinya)."
-        : "Dikunci: MBO • manual (dicatat 'kunci admin'; sync berikutnya tetap mengikuti delivery_mode API WR bila varian ini memilikinya).");
-      await loadMarkups();
-    } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : "Gagal mengunci kelas");
-    }
-  };
-
   // Bulk markup (2026-10-01): 1 request untuk N varian via endpoint bulk.
   // Hasil jujur: updated + daftar gagal (bukan all-or-nothing diam).
   const applyBulkMarkup = async ({ variantIds, percent, resetFixed }: { variantIds: string[]; percent: number; resetFixed: boolean }) => {
@@ -666,7 +647,7 @@ export function WarungRebahanManager() {
                         className="h-4 w-4 shrink-0 accent-[#00E5FF]"
                       />
                       <p className="truncate text-sm font-semibold text-white">{row.wr_product_name ? `${row.wr_product_name} — ` : ""}{row.wr_variant_name}</p>
-                      <DeliveryBadge wrClass={row.wr_delivery_class} source={row.wr_delivery_source} />
+                      <DeliveryBadge wrClass={row.wr_delivery_class} />
                       <VariantStatusBadge status={vStatus} reason={vReason} />
                     </div>
                     <p className="mt-1 text-xs text-white/45">Modal {formatRupiah(row.wr_price)} · Jual {formatRupiah(row.axvara_sell_price)} · Stok {row.wr_stock}{vStatus !== "live" && vReason ? ` · ${vReason}` : ""}</p>
@@ -675,8 +656,6 @@ export function WarungRebahanManager() {
                     <label className="flex items-center gap-1.5 text-xs text-white/55">%<input value={edit.percent} onChange={(e) => setEditingMarkup((s) => ({ ...s, [row.wr_variant_id]: { percent: e.target.value, fixed: edit.fixed } }))} inputMode="numeric" className="h-9 w-16 rounded-lg border border-white/10 bg-black/20 px-2 text-right text-xs text-white focus:border-[#00E5FF]/50 focus:outline-none" /></label>
                     <label className="flex items-center gap-1.5 text-xs text-white/55">+Rp<input value={edit.fixed} onChange={(e) => setEditingMarkup((s) => ({ ...s, [row.wr_variant_id]: { percent: edit.percent, fixed: e.target.value } }))} inputMode="numeric" className="h-9 w-24 rounded-lg border border-white/10 bg-black/20 px-2 text-right text-xs text-white focus:border-[#00E5FF]/50 focus:outline-none" /></label>
                     <button onClick={() => void saveMarkup(row)} className="inline-flex h-9 items-center rounded-xl bg-white px-3.5 text-xs font-bold text-[#07101f] transition hover:bg-white/90">Simpan</button>
-                    <button onClick={() => void setDeliveryClass(row, "restock")} title="Kunci sebagai RESTOK (auto) — sync berikutnya ikut delivery_mode API WR bila ada" className="inline-flex h-9 items-center rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-2.5 text-[11px] font-bold text-emerald-300 transition hover:bg-emerald-500/20">AUTO</button>
-                    <button onClick={() => void setDeliveryClass(row, "made_by_order")} title="Kunci sebagai MBO (manual) — sync berikutnya ikut delivery_mode API WR bila ada" className="inline-flex h-9 items-center rounded-xl border border-[#FFB800]/25 bg-[#FFB800]/10 px-2.5 text-[11px] font-bold text-[#FFD66B] transition hover:bg-[#FFB800]/20">MANUAL</button>
                   </div>
                 </article>
               );
@@ -708,16 +687,14 @@ function StatusBadge({ status }: { status: string }) {
   return <span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold ${tone}`}>{WR_STATUS_LABEL[status] ?? status}</span>;
 }
 
-/** Badge kelas pengiriman WR (admin saja): RESTOK/MBO + sumber kunci. */
-function DeliveryBadge({ wrClass, source }: { wrClass: string | null; source: string | null }) {
+/** Badge kelas pengiriman WR (admin saja): hanya AUTO/MANUAL, dari API WR. */
+function DeliveryBadge({ wrClass }: { wrClass: string | null }) {
   if (wrClass === "restock") {
-    const src = source === "admin" ? "kunci admin" : source === "screenshot" ? "daftar WR" : source === "system" ? "tebakan" : "";
-    return <span title={src ? `RESTOK • auto • ${src}` : "RESTOK • auto"} className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300">RESTOK{src ? ` • ${src}` : ""}</span>;
+    return <span title="AUTO • kirim otomatis" className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300">AUTO</span>;
   }
   if (wrClass === "made_by_order") {
-    const src = source === "admin" ? "kunci admin" : source === "screenshot" ? "daftar WR" : source === "system" ? "tebakan" : "";
-    return <span title={src ? `MBO • manual • ${src}` : "MBO • manual"} className="rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFD66B]">MBO{src ? ` • ${src}` : ""}</span>;
+    return <span title="MANUAL • diproses sesuai antrean" className="rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFD66B]">MANUAL</span>;
   }
-  return <span title="Belum dikunci — label pembeli = Dikirim admin" className="rounded-full border border-white/15 bg-white/[0.05] px-2 py-0.5 text-[10px] font-bold text-white/45">? belum dikunci</span>;
+  return <span className="rounded-full border border-white/15 bg-white/[0.05] px-2 py-0.5 text-[10px] font-bold text-white/45">?</span>;
 }
 
