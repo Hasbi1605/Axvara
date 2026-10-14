@@ -56,7 +56,7 @@ INSERT INTO pedia_tiers_new (
   id, product_id, tier, label_note, supplier, supplier_service_id,
   backup_service_id, price_group, markup_pct, min_profit_rp, refill_days,
   eta_start, eta_finish, package_prices_json, rate_snapshot, is_active,
-  auto_disabled_reason, updated_at, public_name, region, quality,
+  auto_disabled_reason, updated_at, public_name, description_md, region, quality,
   speed_note, drop_risk, is_recommended, sort_order
 )
 SELECT
@@ -64,6 +64,12 @@ SELECT
   t.backup_service_id, t.price_group, t.markup_pct, t.min_profit_rp, t.refill_days,
   t.eta_start, t.eta_finish, t.package_prices_json, t.rate_snapshot, t.is_active,
   t.auto_disabled_reason, t.updated_at,
+  -- Backfill dari label/nama supplier. CATATAN rerun: di prod, migrasi ini
+  -- sudah diterapkan manual SEBELUM file ini sampai ke CI, jadi saat CI
+  -- menjalankannya tabel sumber SUDAH skema baru; backfill akan menghitung
+  -- ulang atribut dari label yang sama, dan nama/deskripsi publik diisi
+  -- ulang oleh langkah kurasi data terpisah (idempoten, nilai sama).
+  NULL,
   NULL,
   CASE
     WHEN lower(COALESCE(t.label_note, '')) LIKE '%indonesia%' THEN 'indonesia'
@@ -90,6 +96,10 @@ LEFT JOIN pedia_supplier_services s
 -- membuat DROP gagal di D1 (terbukti saat penerapan prod 2026-10-14; D1
 -- me-rollback batch --file). Pola aman: rename lama -> rename baru -> lama
 -- dibiarkan sebagai arsip (drop menyusul setelah tidak dirujuk).
+-- IDEMPOTEN: migrasi ini lebih dulu diterapkan manual ke prod 2026-10-14,
+-- jadi arsip lama dibuang dulu agar langkah migrasi CI aman dijalankan
+-- ulang (di DB yang belum bermigrasi, DROP IF EXISTS ini no-op).
+DROP TABLE IF EXISTS pedia_tiers_old0062;
 ALTER TABLE pedia_tiers RENAME TO pedia_tiers_old0062;
 ALTER TABLE pedia_tiers_new RENAME TO pedia_tiers;
 
