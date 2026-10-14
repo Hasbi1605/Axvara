@@ -14,6 +14,8 @@ export const SITE = {
   supportTelegram: "axvara_support",
   webUrl: "https://axvara.tech",
   pediaUrl: "https://pedia.axvara.tech",
+  marketMark: "/brand/axvara-mark.svg",
+  pediaMark: "/brand/pedia-mark.svg",
   supportHours: "09.00–23.00 WIB",
   social: {
     instagram: "https://www.instagram.com/axvara.tech/",

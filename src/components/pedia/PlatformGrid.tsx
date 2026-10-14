@@ -51,6 +51,7 @@ export type ProductCardData = {
   name: string;
   tagline: string | null;
   platform: string;
+  metric: string;
   badges: string[];
   minPrice: number | null;
   minQuantity?: number;
@@ -61,29 +62,75 @@ export type ProductCardData = {
 export function catalogCard(p: PediaCatalogProduct): ProductCardData {
   const lowest = p.tiers.flatMap((t) => Object.entries(t.prices).filter(([qty, price]) => p.packages.includes(Number(qty)) && price > 0).map(([qty, price]) => ({ qty: Number(qty), price, tier: t.tier, refillDays: t.refill_days })))
     .sort((a, b) => a.price - b.price || a.qty - b.qty)[0];
-  return { slug: p.slug, name: p.name, platform: p.platform, tagline: p.tagline?.trim() || null, badges: [], minPrice: lowest?.price ?? null, minQuantity: lowest?.qty, minTier: lowest?.tier, refillDays: lowest?.refillDays };
+  return { slug: p.slug, name: p.name, platform: p.platform, metric: p.metric, tagline: p.tagline?.trim() || null, badges: [], minPrice: lowest?.price ?? null, minQuantity: lowest?.qty, minTier: lowest?.tier, refillDays: lowest?.refillDays };
 }
 
+/** Warna brand per platform untuk panel visual kartu (satu sumber dengan orbit). */
+export const PLATFORM_VISUAL: Record<string, { color: string; label: string }> = {
+  instagram: { color: "#D62976", label: "Instagram" },
+  tiktok: { color: "#FE2C55", label: "TikTok" },
+  youtube: { color: "#FF0000", label: "YouTube" },
+  facebook: { color: "#1877F2", label: "Facebook" },
+  threads: { color: "#FFFFFF", label: "Threads" },
+  spotify: { color: "#1DB954", label: "Spotify" },
+  shopee: { color: "#EE4D2D", label: "Shopee" },
+  x: { color: "#FFFFFF", label: "X" },
+};
+
+/** Kata metrik ramah untuk panel visual (bukan jargon internal). */
+const METRIC_WORD: Record<string, string> = {
+  followers: "Followers", likes: "Likes", views: "Views", subscribers: "Subscriber", plays: "Plays",
+};
+
 export function ProductCard({ p }: { p: ProductCardData }) {
+  const visual = PLATFORM_VISUAL[p.platform] ?? { color: "#00E5FF", label: p.platform };
+  const metricWord = METRIC_WORD[p.metric] ?? p.metric;
   return (
     <Link prefetch={false}
       href={`/pedia/o/${p.slug}`}
-      className="group flex h-full min-w-0 flex-col rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.06] to-white/[0.015] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition duration-200 hover:border-[#00E5FF]/30 hover:shadow-[0_8px_24px_rgba(0,229,255,0.06)] motion-safe:hover:-translate-y-0.5 active:bg-white/[0.08] sm:p-4"
+      className="group ax-glass-card flex h-full min-w-0 flex-col overflow-hidden rounded-[16px] transition-all duration-300 hover:-translate-y-1 hover:border-[#00E5FF]/30 hover:shadow-[0_12px_32px_rgba(0,229,255,0.08)] sm:rounded-[22px]"
       aria-label={`${p.name} — lihat paket`}
     >
-      <span className="mb-3 flex items-center justify-between gap-2"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/5" aria-hidden="true"><PlatformIcon id={p.platform} size={20} /></span><span aria-hidden="true" className="text-white/40 group-hover:text-[#00E5FF]">↗</span></span>
-      <span className="min-w-0 flex-1">
+      {/* Panel visual ala kartu Market (gambar 4:3): gradasi brand platform +
+          ikon besar + kata metrik — mata membaca gambar dulu, bukan daftar harga. */}
+      <span className="relative m-1 block aspect-[16/10] overflow-hidden rounded-[12px] sm:m-1.5 sm:rounded-[16px]" aria-hidden="true"
+        style={{ background: `linear-gradient(135deg, ${visual.color}2E 0%, rgba(15,20,48,0.9) 58%, rgba(22,29,74,0.95) 100%)` }}>
+        <span className="absolute -right-6 -top-8 h-32 w-32 rounded-full opacity-25 blur-2xl transition duration-500 group-hover:opacity-40" style={{ background: visual.color }} />
+        <span className="absolute left-4 top-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-white/15 bg-black/30 shadow-lg backdrop-blur-sm transition duration-500 group-hover:scale-105">
+          <PlatformIcon id={p.platform} size={26} />
+        </span>
+        <span className="absolute bottom-3 left-4 text-[11px] font-bold uppercase tracking-[0.14em] text-white/55">{visual.label}</span>
+        <span className="absolute bottom-3 right-4 font-display text-lg font-bold text-white/85">{metricWord}</span>
+        <span className="absolute right-3 top-3 text-white/40 transition group-hover:text-[#00E5FF]">↗</span>
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col px-3 pb-3 pt-1 sm:px-4 sm:pb-4">
         <span className="block break-words text-sm font-semibold leading-snug text-white sm:text-base">{p.name}</span>
-        {/* 2026-10-12 (owner): tagline AI slop ("Bikin profil terlihat
-            ramai", "Postingan terlihat disukai", …) DIHAPUS dari kartu —
-            judul langsung ke harga. Field tagline tetap ada di data/admin. */}
-        <span className="mt-3 block text-base font-semibold tabular-nums text-white sm:text-lg">
+        {/* 2026-10-12 (owner): tagline AI slop DIHAPUS dari kartu — judul langsung ke harga. */}
+        <span className="mt-2 block text-base font-bold tabular-nums tracking-[-0.01em] text-white sm:text-lg">
           {p.minPrice != null ? `Mulai Rp${p.minPrice.toLocaleString("id-ID")}` : "Lihat harga"}
         </span>
-        {p.minQuantity != null && <span className="mt-1 block text-xs text-white/65">Untuk {p.minQuantity.toLocaleString("id-ID")} · paket <span className="capitalize">{p.minTier}</span></span>}
-        {p.refillDays != null && <span className={`mt-3 inline-block rounded-md px-2 py-1 text-[11px] ${p.refillDays > 0 ? "bg-[#00E5FF]/10 text-[#00E5FF]" : "bg-[#FFB800]/10 text-[#FFB800]"}`}>{p.refillDays > 0 ? `Refill ${p.refillDays} hari` : "Tanpa refill"}</span>}
+        {p.minQuantity != null && <span className="mt-1 block text-xs text-white/60">Untuk {p.minQuantity.toLocaleString("id-ID")} · paket <span className="capitalize">{p.minTier}</span></span>}
+        <span className="mt-auto flex items-end justify-between gap-2 pt-3">
+          {p.refillDays != null
+            ? <span className={`inline-block rounded-md px-2 py-1 text-[11px] ${p.refillDays > 0 ? "bg-[#00E5FF]/10 text-[#00E5FF]" : "bg-[#FFB800]/10 text-[#FFB800]"}`}>{p.refillDays > 0 ? `Refill ${p.refillDays} hari` : "Tanpa refill"}</span>
+            : <span />}
+          <span className="text-xs font-semibold text-[#00E5FF]/80 transition group-hover:text-[#00E5FF]">Lihat paket →</span>
+        </span>
       </span>
-      <span className="mt-3 flex min-h-11 items-center border-t border-white/10 text-xs font-medium text-[#00E5FF]">Lihat paket →</span>
     </Link>
+  );
+}
+
+/** Skeleton kartu katalog (primitif ax-skeleton yang sama dengan Market). */
+export function ProductCardSkeleton() {
+  return (
+    <div className="ax-glass-card overflow-hidden rounded-[16px] sm:rounded-[22px]" role="status" aria-label="Memuat layanan">
+      <div className="ax-skeleton m-1 aspect-[16/10] rounded-[12px] sm:m-1.5 sm:rounded-[16px]" />
+      <div className="space-y-2 px-3 pb-4 pt-1 sm:px-4">
+        <div className="ax-skeleton h-4 w-2/3 rounded-full" />
+        <div className="ax-skeleton h-5 w-1/2 rounded-full" />
+        <div className="ax-skeleton h-3 w-1/3 rounded-full" />
+      </div>
+    </div>
   );
 }

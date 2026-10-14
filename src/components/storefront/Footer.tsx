@@ -84,7 +84,7 @@ export function Footer() {
       <div className="pointer-events-none absolute -top-28 left-1/2 h-[260px] w-[860px] -translate-x-1/2 rounded-full opacity-[0.06] blur-[40px]" style={{ background: "radial-gradient(ellipse at center, #00E5FF, transparent 70%)" }} />
 
       <div className="relative mx-auto max-w-[1280px] px-4 py-12 sm:px-6 sm:py-14 lg:px-8">
-        <div className="grid grid-cols-1 gap-10 lg:grid-cols-[1.35fr_0.8fr_0.8fr_1.05fr] lg:gap-12">
+        <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-[1.3fr_0.85fr_0.85fr_1.1fr] lg:gap-10">
           <div>
             <div className="flex items-center gap-2.5">
               {storeSettings.logoUrl ? <span className="flex h-[22px] w-[24px] items-center justify-center">
@@ -119,7 +119,7 @@ export function Footer() {
 
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/40">Layanan &amp; jelajah</p>
-            <ul className="mt-3.5 text-[13px] [&_a]:flex [&_a]:min-h-[44px] [&_a]:items-center">
+            <ul className="mt-3.5 text-[13px] [&_a]:flex [&_a]:min-h-9 md:[&_a]:min-h-7 [&_a]:items-center">
               <li><Link prefetch={false} href={shop("/")} className="text-white/60 transition hover:text-white">AXVARA Market</Link></li>
               <li><Link prefetch={false} href={shop("/#katalog")} className="text-white/60 transition hover:text-white">Semua produk</Link></li>
               <li>
@@ -136,7 +136,7 @@ export function Footer() {
 
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/40">Bantuan</p>
-            <ul className="mt-3.5 text-[13px] [&_a]:flex [&_a]:min-h-[44px] [&_a]:items-center">
+            <ul className="mt-3.5 text-[13px] [&_a]:flex [&_a]:min-h-9 md:[&_a]:min-h-7 [&_a]:items-center">
               <li><Link prefetch={false} href={shop("/cara-order")} className="text-white/60 transition hover:text-white">Cara order</Link></li>
               <li><Link prefetch={false} href={pedia("/lacak")} className="text-white/60 transition hover:text-white">Lacak pesanan Pedia</Link></li>
               <li><Link prefetch={false} href={shop("/lacak-pesanan")} className="text-white/60 transition hover:text-white">Lacak pesanan market</Link></li>
@@ -149,7 +149,7 @@ export function Footer() {
             </ul>
           </div>
 
-          <div className="rounded-[20px] border border-white/10 bg-white/[0.04] p-4 sm:p-5">
+          <div className="rounded-[20px] border border-white/10 bg-white/[0.04] p-4 sm:p-5 lg:self-start">
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">Tetap update</p>
             <p className="mt-2 text-[13px] leading-5 text-white/55">Info produk, promo, dan artikel terbaru lewat email.</p>
             <form onSubmit={subscribe} className="mt-4 flex gap-2">

@@ -5,6 +5,7 @@ import { MobileBottomNav } from "@/components/storefront/MobileBottomNav";
 import { Spotlight } from "@/components/ui/Spotlight";
 import { ToastProvider } from "@/components/ui/Toast";
 import { NavigationProgress } from "@/components/ui/NavigationProgress";
+import { CrossAppTransition } from "@/components/ui/CrossAppTransition";
 import { PopupBanner } from "@/components/storefront/PopupBanner";
 import { PendingOrderReminder } from "@/components/storefront/PendingOrderReminder";
 import { Suspense } from "react";
@@ -49,6 +50,7 @@ export default function ShopLayout({ children }: { children: React.ReactNode }) 
       <Suspense fallback={null}>
         <NavigationProgress />
       </Suspense>
+      <CrossAppTransition />
       <PopupBanner />
       <main className="flex-1 min-h-[50vh]">{children}</main>
       <Footer />

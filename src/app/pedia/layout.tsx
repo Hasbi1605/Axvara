@@ -3,6 +3,8 @@ import type { Metadata } from "next";
 import { PediaNavbar } from "@/components/pedia/PediaNavbar";
 import { PediaBottomNav } from "@/components/pedia/PediaBottomNav";
 import { Footer } from "@/components/storefront/Footer";
+import { NavigationProgress } from "@/components/ui/NavigationProgress";
+import { CrossAppTransition } from "@/components/ui/CrossAppTransition";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://pedia.axvara.tech"),
@@ -23,6 +25,8 @@ export default function PediaLayout({ children }: { children: React.ReactNode })
           max-w-1280 + px-4/sm:px-6/lg:px-8 di sini → padding GANDA 64px
           dengan tiap section di dalamnya, konten 1216px vs Market 1280px).
           Tiap section mengatur containernya sendiri seperti Market. */}
+      <NavigationProgress />
+      <CrossAppTransition />
       <main className="pb-10">{children}</main>
       <Footer />
       <PediaBottomNav />

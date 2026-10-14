@@ -7,6 +7,8 @@ export const runtime = "edge";
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { ProgressRing, StatusPill, OrderTimeline } from "@/components/pedia/StatusWidgets";
+import { PediaOrderSkeleton } from "@/components/storefront/Skeletons";
+import { SITE } from "@/lib/site";
 
 type Status = {
   code: string; product_name: string; tier_name: string; tier_note: string | null;
@@ -48,20 +50,28 @@ export default function PediaOrderStatusPage() {
     return () => clearInterval(t);
   }, [load, data?.status]);
 
+  const [refillOpen, setRefillOpen] = useState(false);
+  const [refillContact, setRefillContact] = useState("");
+  const [refillBusy, setRefillBusy] = useState(false);
   const refill = async () => {
-    const contact = window.prompt("No. WA atau email saat checkout (verifikasi):");
-    if (!contact) return;
-    const res = await fetch(`/api/pedia/orders/${encodeURIComponent(code ?? "")}/refill`, {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ contact }),
-    });
-    const d = await res.json();
-    setRefillMsg(d.message ?? d.error ?? "");
-    if (res.ok) void load();
+    const contact = refillContact.trim();
+    if (!contact || refillBusy) return;
+    setRefillBusy(true);
+    try {
+      const res = await fetch(`/api/pedia/orders/${encodeURIComponent(code ?? "")}/refill`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ contact }),
+      });
+      const d = await res.json();
+      setRefillMsg(d.message ?? d.error ?? "");
+      if (res.ok) { setRefillOpen(false); void load(); }
+    } finally {
+      setRefillBusy(false);
+    }
   };
 
   if (error) return <p className="pt-10 text-center text-sm text-red-300">{error}</p>;
-  if (!data) return <p className="pt-10 text-center text-sm text-white/50">Memuat…</p>;
+  if (!data) return <PediaOrderSkeleton />;
 
   const copy = async (text: string) => {
     try { await navigator.clipboard.writeText(text); } catch { /* abaikan */ }
@@ -120,17 +130,34 @@ export default function PediaOrderStatusPage() {
               { label: "Selesai", done: ["completed", "partial"].includes(data.status), active: data.status === "in_progress" },
             ]} />
           </div>
-          {data.refill_eligible && (
-            <button onClick={refill} className="mt-4 h-12 w-full rounded-[14px] border border-[var(--px-violet)] bg-[var(--px-violet-soft)] text-sm font-bold text-white">
+          {data.refill_eligible && !refillOpen && (
+            <button onClick={() => setRefillOpen(true)} className="mt-4 h-12 w-full rounded-[14px] border border-[var(--px-violet)] bg-[var(--px-violet-soft)] text-sm font-bold text-white">
               Ajukan Refill
             </button>
+          )}
+          {data.refill_eligible && refillOpen && (
+            <div className="mt-4 rounded-[14px] border border-white/12 bg-white/[0.04] p-4" role="dialog" aria-label="Verifikasi refill">
+              <label htmlFor="refill-contact" className="text-xs font-medium text-white/60">No. WA atau email saat checkout (verifikasi)</label>
+              <input
+                id="refill-contact"
+                value={refillContact}
+                onChange={(e) => setRefillContact(e.target.value)}
+                placeholder="08… atau nama@email.com"
+                autoCapitalize="none" autoCorrect="off" spellCheck={false}
+                className="mt-2 h-11 w-full rounded-xl border border-white/12 bg-white/[0.06] px-3.5 text-sm text-white placeholder:text-white/30 focus:border-[#00E5FF]/50 focus:outline-none"
+              />
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => setRefillOpen(false)} disabled={refillBusy} className="h-10 rounded-xl border border-white/12 text-sm font-semibold text-white/70 disabled:opacity-50">Batal</button>
+                <button type="button" onClick={() => void refill()} disabled={refillBusy || refillContact.trim().length < 6} className="h-10 rounded-xl bg-[#00E5FF] text-sm font-bold text-[#070a1e] disabled:opacity-50">{refillBusy ? "Mengirim…" : "Kirim Refill"}</button>
+              </div>
+            </div>
           )}
           {refillMsg && <p className="mt-2 text-center text-[13px] text-white/70">{refillMsg}</p>}
         </div>
       )}
 
       <div className="mt-6 flex justify-center gap-4 text-sm">
-        <a href="https://wa.me/6282135277434?utm_source=pedia&utm_medium=status" className="text-[#00E5FF]">WA Admin</a>
+        <a href={`${SITE.webUrl}/wa?pesan=${encodeURIComponent(`Halo, saya ingin menanyakan pesanan Pedia ${data.code}`)}`} className="text-[#00E5FF]">WA Admin</a>
         <a href="/pedia/lacak" className="text-[#00E5FF]">Lacak lain</a>
       </div>
     </div>

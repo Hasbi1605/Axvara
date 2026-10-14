@@ -151,8 +151,61 @@ export function ContentPageSkeleton({ slowHint = true }: { slowHint?: boolean })
 
 const CONTENT_ROUTES = ["/artikel", "/lacak-pesanan", "/cara-order", "/garansi-replace", "/link"];
 
+/** Skeleton katalog Pedia: grid kartu bergambar 16:10 (bentuk ProductCard baru). */
+export function PediaCatalogSkeleton({ count = 6 }: { count?: number }) {
+  return (
+    <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 pt-10 sm:pt-14 pb-10" aria-busy="true">
+      <Status label="Memuat AXVARA Pedia…" />
+      <div className="max-w-3xl space-y-3">
+        <Bone className="h-10 sm:h-14 w-[80%] rounded-2xl" />
+        <Bone className="h-10 sm:h-14 w-[55%] rounded-2xl" />
+        <Bone className="mt-2 h-4 w-[50%] rounded-full" />
+      </div>
+      <div className="mt-10 flex items-center justify-between"><Bone className="h-6 w-44 rounded-xl" /><Bone className="h-3 w-24 rounded-full" /></div>
+      <div className="mt-4 flex gap-2 overflow-hidden">{Array.from({ length: 5 }, (_, i) => <Bone key={i} className="h-9 w-24 shrink-0 rounded-full" />)}</div>
+      <div className="mt-6 grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: count }, (_, i) => (
+          <div key={i} className="ax-glass-card overflow-hidden rounded-[16px] sm:rounded-[22px]">
+            <Bone className="m-1 aspect-[16/10] rounded-[12px] sm:m-1.5 sm:rounded-[16px]" />
+            <div className="space-y-2 px-3 pb-4 pt-1 sm:px-4">
+              <Bone className="h-4 w-2/3 rounded-full" />
+              <Bone className="h-5 w-1/2 rounded-full" />
+              <Bone className="h-3 w-1/3 rounded-full" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Skeleton halaman order/pesanan Pedia (kerangka kartu status Market). */
+export function PediaOrderSkeleton({ label = "Memuat pesanan…" }: { label?: string }) {
+  return (
+    <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 pt-6" aria-busy="true">
+      <div className="mx-auto max-w-xl">
+        <div className="ax-glass-card rounded-[28px] p-6 sm:p-8 flex flex-col items-center">
+          <Bone className="h-16 w-16 rounded-full" />
+          <Bone className="mt-4 h-7 w-64 max-w-full rounded-xl" />
+          <Bone className="mt-3 h-4 w-44 rounded-full" />
+          <Bone className="mt-6 aspect-square w-full max-w-[300px] rounded-2xl" />
+          <p role="status" className="mt-5 flex items-center gap-2 text-sm text-white/55"><InlineSpinner />{label}</p>
+        </div>
+        <div className="ax-glass-card mt-4 rounded-[24px] p-5 space-y-3">
+          <Bone className="h-4 w-32 rounded-full" />
+          <Bone className="h-11 rounded-xl" />
+          <Bone className="h-11 rounded-xl" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Jenis skeleton rute tujuan; null = cukup bar (mis. /admin punya loader sendiri). */
-export function routeSkeletonKind(pathname: string): "home" | "product" | "checkout" | "order" | "content" | null {
+export function routeSkeletonKind(pathname: string): "home" | "product" | "checkout" | "order" | "content" | "pedia" | "pedia-order" | null {
+  if (pathname === "/pedia" || pathname === "/pedia/") return "pedia";
+  if (/^\/pedia\/(o|pesanan)\//.test(pathname)) return "pedia-order";
+  if (/^\/pedia\//.test(pathname)) return "content";
   if (pathname === "/") return "home";
   if (/^\/produk\/[^/]+/.test(pathname)) return "product";
   if (pathname === "/checkout") return "checkout";
@@ -169,6 +222,8 @@ export function RouteSkeleton({ pathname }: { pathname: string }) {
     case "checkout": return <CheckoutSkeleton slowHint={false} />;
     case "order": return <OrderStatusSkeleton slowHint={false} />;
     case "content": return <ContentPageSkeleton slowHint={false} />;
+    case "pedia": return <PediaCatalogSkeleton />;
+    case "pedia-order": return <PediaOrderSkeleton />;
     default: return null;
   }
 }
