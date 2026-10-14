@@ -848,3 +848,11 @@ dimatikan.
 ## Ringkasan admin — revisi 2026-10-15
 
 Identitas Midnight/Cyan/Gold dipertahankan. Enam metrik di atas; baris berikutnya grid desktop 2:1 berisi grafik omzet/untung responsif dan donat kontribusi omzet. Di bawahnya dua panel batang untung supplier/channel, lalu Top 5 dengan nama membungkus dan rincian modal/margin. Mobile satu kolom. Semua visual mengikuti periode terpilih; grafik mengukur container agar tidak meninggalkan ruang kosong besar, garis nol dan merah menandai rugi, jumlah order memiliki sumbu emas tersendiri. Donat memakai omzet agar persentase tidak ambigu ketika untung negatif. Placeholder/tooltip dan akses titik lewat keyboard tersedia. Panduan pasca-bayar stok sendiri menggunakan komponen accordion ProductCopy yang sama dengan supplier, judul Syarat & Ketentuan serta Cara Penggunaan / Aktivasi, terpisah dari kotak kredensial.
+
+### Admin dan transisi — 2026-10-15
+
+- Ringkasan: grid grafik memakai satu kolom minmax(0,1fr) pada mobile agar lebar intrinsik SVG tidak memicu scroll horizontal. Preset periode diikuti bulan/rentang dengan tombol Terapkan; label rentang/WIB dan waktu laporan selalu terlihat. Saat fetch loading/error, angka dan unduhan lama disembunyikan. PDF/Excel berada di baris metadata, memakai styling glass yang sama dan state menyiapkan/gagal yang jelas.
+- PDF: A4 putih, header Midnight + aksen cyan, tabel berpaginasi dengan header diulang; periode, WIB, modal estimasi dan batas definisi untung dicantumkan. XLSX berisi Ringkasan/Harian/Supplier/Channel/Top Produk, header Midnight, kolom angka numerik dan label membungkus.
+- Pill banner memakai role switch/aria-checked, target sentuh minimal 44px, indikator pending dan error di baris; Edit tetap untuk konten.
+- Rekonsiliasi menampilkan konfigurasi provider efektif dan label event-owned; judul netral Rekonsiliasi QRIS, panduan GoBiz untuk GoPay dan QRIS Hook untuk DANA legacy.
+- Logo overlay CrossAppTransition memakai brightness-0 invert agar SVG eksternal terlihat putih; filter X menyembunyikan label visual yang mengulang ikon, tetap aria-label X dan target 44px.

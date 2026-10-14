@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ImageDropzone } from "@/components/admin/ImageDropzone";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -40,6 +40,9 @@ export function BannerManager() {
   const [deleteTarget, setDeleteTarget] = useState<Banner | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [toggling, setToggling] = useState<number | null>(null);
+  const [toggleError, setToggleError] = useState<{ id: number; message: string } | null>(null);
+  const writingRef = useRef(false);
 
   const load = useCallback(async () => {
     const response = await fetch("/api/banners?all=1", { cache: "no-store" });
@@ -63,6 +66,8 @@ export function BannerManager() {
   );
 
   async function save() {
+    if (writingRef.current) return;
+    writingRef.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -76,15 +81,42 @@ export function BannerManager() {
       setForm(blankBanner);
       setEditing(null);
       await load();
-      toast.success(editing ? "Perubahan banner disimpan." : "Banner dibuat.");
+      toast.success(`${editing ? "Perubahan banner disimpan." : "Banner dibuat."} Urutan ${body.sort_order}.`);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Banner gagal disimpan");
     } finally {
+      writingRef.current = false;
       setSaving(false);
     }
   }
 
+  async function toggle(banner: Banner) {
+    if (!banner.id || writingRef.current) return;
+    writingRef.current = true;
+    setToggling(banner.id);
+    setToggleError(null);
+    try {
+      const response = await fetch(`/api/banners/${banner.id}`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ is_active: !banner.is_active }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || !body.banner) throw new Error(body.error ?? "Status banner gagal disimpan");
+      setBanners((current) => current.map((item) => item.id === banner.id ? body.banner : item));
+      // Keep unsaved content, but never let a later full save undo the status switch.
+      setForm((current) => current.id === banner.id ? { ...current, is_active: Boolean(body.banner.is_active) } : current);
+    } catch (error) {
+      setToggleError({ id: banner.id, message: error instanceof Error ? error.message : "Status banner gagal disimpan" });
+    } finally {
+      writingRef.current = false;
+      setToggling(null);
+    }
+  }
+
   async function remove(banner: Banner) {
+    if (writingRef.current) return;
+    writingRef.current = true;
     setDeleting(true);
     try {
       const response = await fetch(`/api/banners?id=${banner.id}`, { method: "DELETE" });
@@ -98,6 +130,7 @@ export function BannerManager() {
       await load();
       toast.success("Banner dihapus.");
     } finally {
+      writingRef.current = false;
       setDeleting(false);
     }
   }
@@ -212,6 +245,7 @@ export function BannerManager() {
             <label className="flex items-center gap-2 text-sm text-white/70">
               <input
                 type="checkbox"
+                disabled={saving || toggling !== null}
                 checked={Boolean(form.is_active)}
                 onChange={(event) => setForm({ ...form, is_active: event.target.checked })}
                 className="h-4 w-4 rounded accent-[#00E5FF]"
@@ -220,7 +254,7 @@ export function BannerManager() {
             </label>
             <button
               onClick={() => void save()}
-              disabled={saving}
+              disabled={saving || deleting || toggling !== null}
               className="mt-1 inline-flex h-10 w-fit items-center gap-2 rounded-full bg-[#00E5FF] px-5 text-sm font-bold text-[#070a1e] hover:bg-[#00D0E8] transition disabled:opacity-50"
             >
               {saving ? "Menyimpan…" : <><IosIcon name="checked" size={14} tint="black" /> {editing ? "Simpan perubahan" : "Buat banner"}</>}
@@ -259,12 +293,25 @@ export function BannerManager() {
                       {banner.delay_ms} ms
                       {banner.cta_label ? ` · CTA: ${banner.cta_label}` : ""}
                     </p>
-                    <span className={`mt-1.5 inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${banner.is_active ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-300" : "border-white/10 bg-white/[0.05] text-white/45"}`}>
-                      {banner.is_active ? "Aktif" : "Nonaktif"}
-                    </span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={Boolean(banner.is_active)}
+                      aria-label={`Aktifkan banner ${banner.title}`}
+                      aria-busy={toggling === banner.id}
+                      aria-describedby={toggleError?.id === banner.id ? `banner-status-error-${banner.id}` : undefined}
+                      disabled={saving || deleting || toggling !== null}
+                      onClick={() => void toggle(banner)}
+                      className={`mt-1.5 inline-flex min-h-11 items-center gap-2 rounded-full border px-3 text-xs font-bold transition disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF] ${banner.is_active ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-300" : "border-white/10 bg-white/[0.05] text-white/60"}`}
+                    >
+                      <span aria-hidden="true" className={`h-2 w-2 rounded-full ${banner.is_active ? "bg-emerald-400" : "bg-white/30"}`} />
+                      {toggling === banner.id ? "Menyimpan..." : banner.is_active ? "Aktif" : "Nonaktif"}
+                    </button>
+                    {toggleError && toggleError.id === banner.id && <p id={`banner-status-error-${banner.id}`} role="alert" className="mt-1 text-xs text-red-300">{toggleError.message}</p>}
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <button
+                      disabled={saving || deleting || toggling !== null}
                       onClick={() => {
                         setForm({ ...banner, is_active: Boolean(banner.is_active) });
                         setEditing(banner.id ?? null);
@@ -274,6 +321,7 @@ export function BannerManager() {
                       <IosIcon name="edit" size={12} tint="black" /> Edit
                     </button>
                     <button
+                      disabled={saving || deleting || toggling !== null}
                       onClick={() => setDeleteTarget(banner)}
                       className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600 shadow-[0_2px_10px_rgba(239,68,68,0.35)] transition"
                       aria-label={`Hapus ${banner.title}`}

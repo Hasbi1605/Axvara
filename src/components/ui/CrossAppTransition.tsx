@@ -81,7 +81,7 @@ export function CrossAppTransition() {
       className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-4 bg-[#080C1E]/95 backdrop-blur-md animate-[axFadeIn_0.18s_ease-out]"
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={info.mark} alt="" width={52} height={52} className="h-[52px] w-[52px] object-contain" draggable={false} />
+      <img src={info.mark} alt="" width={52} height={52} className="h-[52px] w-[52px] object-contain brightness-0 invert" draggable={false} />
       <span aria-hidden className="inline-block h-6 w-6 rounded-full border-2 border-white/20 border-t-[#00E5FF] animate-spin" />
       <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/60">{info.label}</p>
     </div>

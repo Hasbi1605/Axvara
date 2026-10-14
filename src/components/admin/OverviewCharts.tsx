@@ -28,7 +28,7 @@ export function ProfitChart({ series, loading, label = "30 hari" }: { series: Re
   const yo = (v: number) => H-B-v/maxOrders*(H-T-B);
   const path = (field: "revenue" | "profit" | "orders") => series.map((p,i)=>`${i?'L':'M'}${x(i).toFixed(1)},${(field==='orders'?yo(p[field]):y(p[field])).toFixed(1)}`).join(' ');
   const selected = active == null ? null : series[active];
-  return <section className="ax-glass rounded-[20px] p-4 sm:p-5" aria-label={`Grafik omzet dan untung ${label}`}>
+  return <section className="ax-glass min-w-0 rounded-[20px] p-4 sm:p-5" aria-label={`Grafik omzet dan untung ${label}`}>
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div><h2 className="text-sm font-semibold text-white">Omzet vs Untung — {label}</h2><p className="mt-1 text-xs text-white/40">WIB · {loading ? 'Memuat…' : 'Ketuk atau arahkan kursor untuk detail'}{show.orders ? ' · Sumbu kanan: jumlah order' : ''}</p></div>
       <div className="flex gap-1.5">{([['revenue','Omzet','#00E5FF'],['profit','Untung','#34D399'],['orders','Order','#FFB800']] as const).map(([key,text,color])=><button key={key} type="button" aria-pressed={show[key]} onClick={()=>setShow(s=>({...s,[key]:!s[key]}))} className={`inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-semibold ${show[key]?'border-white/15 bg-white/[0.07] text-white':'border-white/10 text-white/35'}`}><span className="h-1.5 w-1.5 rounded-full" style={{background:color}} />{text}</button>)}</div>

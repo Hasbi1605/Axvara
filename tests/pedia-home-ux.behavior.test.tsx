@@ -19,6 +19,14 @@ const product: PediaCatalogProduct = {
   ],
 };
 const tiktok = { ...product, slug: "views-tiktok", name: "Views TikTok", platform: "tiktok", metric: "views", target_kind: "video", is_featured: 0 };
+it("X filter is icon-only but retains its accessible name and filtering", () => {
+  render(<PediaHomeClient products={[product, { ...tiktok, platform: "x", slug: "views-x", name: "Views X" }]} />);
+  const filter = screen.getByRole("button", { name: "X" });
+  expect(filter.textContent).toBe("");
+  fireEvent.click(filter);
+  expect(filter.getAttribute("aria-pressed")).toBe("true");
+  expect(screen.getByRole("link", { name: /Views X/ })).toBeTruthy();
+});
 beforeEach(() => {
   vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
   // jsdom tak punya scrollIntoView (dipakai navbar search ala Market) — stub no-op.

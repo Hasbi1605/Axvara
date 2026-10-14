@@ -24,7 +24,7 @@ it("D1 executes all six report kinds in one query for empty and mixed carts", as
       "CREATE TABLE sk_products(sk_variant_id TEXT,axvara_variant_id INTEGER,sk_price INTEGER)",
       "CREATE TABLE wr_order_links(id INTEGER,order_code TEXT,fulfillment_item_id INTEGER,wr_variant_id TEXT,wr_cost INTEGER,status TEXT)",
       "CREATE TABLE sk_order_links(id INTEGER,order_code TEXT,fulfillment_item_id INTEGER,sk_variant_id TEXT,sk_cost INTEGER,status TEXT)",
-      "CREATE TABLE pedia_order_items(order_code TEXT,supplier_charge REAL,supplier_rate_snapshot REAL,quantity INTEGER)",
+      "CREATE TABLE pedia_order_items(order_code TEXT,credit_used INTEGER,supplier_charge REAL,supplier_rate_snapshot REAL,quantity INTEGER)",
     ];
     await db.batch(schema.map(sql => db.prepare(sql)));
     const sql = financialReportSql(new Date("2026-10-15T10:00:00Z"));
@@ -51,6 +51,11 @@ it("D1 executes all six report kinds in one query for empty and mixed carts", as
     }
     expect(results.find(row => row.kind === "hourly")).toMatchObject({ label: "14:00", revenue: 50001, cost: 30000 });
     expect(results.find(row => row.kind === "daily")).toMatchObject({ label: "2026-10-15", revenue: 50001, cost: 30000 });
+    const selectedSql = financialReportSql(new Date("2026-10-15T10:00:00Z"), { date_from: "2026-10-15", date_to: "2026-10-15" });
+    const selected: Record<string, unknown>[] = (await db.prepare(selectedSql).all()).results;
+    expect(selected.find(row => row.kind === "summary")).toMatchObject({ period: "selected", orders: 1, revenue: 50001, cost: 30000 });
+    const historicalSql = financialReportSql(new Date("2026-10-15T10:00:00Z"), { date_from: "2024-02-01", date_to: "2024-02-29" });
+    expect((await db.prepare(historicalSql).all()).results).toEqual([]);
   } finally {
     await runtime.dispose();
   }

@@ -111,12 +111,18 @@ describe("legacy QRIS rails removed", () => {
     expect(fs.existsSync(path.join(process.cwd(), "src/app/api/payments/klikqris/callback/route.ts"))).toBe(false);
   });
 
-  it("keeps the Android QRIS Hook setup visible in the admin panel", async () => {
+  it("keeps Android setup relevant only to DANA and exposes GoPay server guidance", async () => {
     const fs = await import("node:fs");
     const panel = fs.readFileSync("src/components/admin/PaymentReconciliation.tsx", "utf8");
     const health = fs.readFileSync("src/app/api/admin/payments/events/route.ts", "utf8");
     expect(panel).toContain("Setup aplikasi QRIS Hook");
     expect(panel).toContain("itu hanya nama variabel, bukan nilainya");
+    expect(panel).toContain('provider === "dana"');
+    expect(panel).toContain("Poller GoBiz server (GoPay)");
+    expect(panel).toContain("Rekonsiliasi QRIS</h3>");
+    const orders = fs.readFileSync("src/components/admin/OrdersManager.tsx", "utf8");
+    expect(orders).not.toContain("mutasi DANA");
+    expect(orders).toContain("mutasi merchant sesuai invoice");
     expect(health).toContain("/api/webhook/dana");
     expect(health).toContain("X-Webhook-Secret");
   });

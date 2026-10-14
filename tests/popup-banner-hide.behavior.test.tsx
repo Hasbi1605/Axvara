@@ -5,7 +5,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-vi.mock("next/navigation", () => ({ usePathname: () => "/" }));
+const navigation = vi.hoisted(() => ({ pathname: "/" }));
+vi.mock("next/navigation", () => ({ usePathname: () => navigation.pathname }));
 
 import {
   BANNER_HIDE_DURATION_MS,
@@ -42,6 +43,7 @@ function stubFetch(banners: unknown[] = [BANNER]) {
 }
 
 beforeEach(() => {
+  navigation.pathname = "/";
   localStorage.clear();
   sessionStorage.clear();
 });
@@ -80,6 +82,41 @@ describe("helper sembunyi 24 jam", () => {
 });
 
 describe("PopupBanner — checkbox Jangan tampilkan lagi", () => {
+  it("skips hidden and session-capped banners to select the first eligible one", async () => {
+    hideBannerFor24h(7);
+    sessionStorage.setItem("axvara-banner-8-shows", "1");
+    stubFetch([BANNER, { ...BANNER, id: 8, max_show_per_session: 1 }, { ...BANNER, id: 9, title: "Eligible" }, { ...BANNER, id: 10, title: "Later" }]);
+    render(<PopupBanner />);
+    expect(await screen.findByRole("dialog", { name: "Eligible" })).toBeTruthy();
+    expect(sessionStorage.getItem("axvara-banner-9-shows")).toBe("1");
+    fireEvent.click(screen.getByRole("button", { name: "Tutup banner" }));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(sessionStorage.getItem("axvara-banner-10-shows")).toBeNull();
+  });
+
+  it("does not open another popup when returning home in the same visit", async () => {
+    stubFetch([BANNER, { ...BANNER, id: 8 }]);
+    const view = render(<PopupBanner />);
+    await screen.findByRole("dialog");
+    fireEvent.click(screen.getByRole("button", { name: "Tutup banner" }));
+    navigation.pathname = "/produk/demo";
+    view.rerender(<PopupBanner />);
+    navigation.pathname = "/";
+    view.rerender(<PopupBanner />);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("still displays a banner when session storage is blocked", async () => {
+    stubFetch();
+    const get = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("blocked"); });
+    render(<PopupBanner />);
+    expect(await screen.findByRole("dialog")).toBeTruthy();
+    get.mockRestore();
+  });
+
   it("menampilkan checkbox kecil tanpa menyebut durasi", async () => {
     stubFetch();
     await act(async () => {

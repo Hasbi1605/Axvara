@@ -19,14 +19,14 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 
 **Bedanya dengan Marketku.id:**
 - Desain: Apple Store minimalis + glassmorphism, bukan template marketplace kaku
-- Pembayaran: Tanpa payment gateway pihak ketiga. **Transfer manual & QRIS dinamis DANA Business** dengan verifikasi QRIS Hook
+- Pembayaran: Tanpa payment gateway pihak ketiga. **QRIS dinamis merchant** dengan provider efektif GoPay/DANA; transfer manual tetap mode maintenance
 - Hosting: **Gratis selamanya** di Cloudflare Pages — unlimited bandwidth, CDN Indonesia super cepat, tanpa ngurus VPS
 - Fokus niche: Digital goods (lisensi/key/akun), bukan fisik
 
 ### 1.2 Tujuan Produk
 - Menjadi toko digital premium yang terlihat **mahal & terpercaya** sehingga konversi lebih tinggi untuk produk digital 50rb–1jt
 - Checkout **paling simpel** untuk pembeli awam: pilih produk → pilih Transfer/QRIS → scan QR dinamis atau upload bukti transfer manual → selesai
-- Admin bisa kelola pesanan **dari HP**; pembayaran QRIS dilunasi otomatis oleh QRIS Hook, sedangkan transfer manual tetap ditinjau admin
+- Admin bisa kelola pesanan **dari HP**; pembayaran QRIS dilunasi otomatis oleh event merchant sesuai invoice, sedangkan transfer manual tetap ditinjau admin
 - Biaya operasional **Rp 0/bulan** (diluar domain ~Rp 230rb/tahun)
 
 ### 1.3 Target User
@@ -40,7 +40,7 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 ### 1.4 Glossary
 
 - **QRIS Dinamis:** QRIS DANA Business yang dibuat per order dengan nominal unik dan masa berlaku 15 menit. **Sejak 2026-10-02 (Fase 0, default mati):** ledger + matcher + reissue multi-rail (`dana` | `gopay`); rail order baru mengikuti `QRIS_ACTIVE_PROVIDER` (default `dana` = perilaku lama). Rail GoPay (payload GoPay Merchant + poller mutasi GoBiz di VPS + `POST /api/webhook/gopay`) aktif bila `GOPAY_QRIS_ENABLED=true` + secret terisi — Fase 1
-- **QRIS Hook:** Aplikasi Android yang meneruskan notifikasi pembayaran DANA ke webhook AXVARA dengan secret header
+- **QRIS Hook (legacy DANA):** Aplikasi Android yang meneruskan notifikasi DANA. GoPay Merchant memakai poller mutasi GoBiz di server; provider efektif mengikuti konfigurasi server.
 - **Transfer Manual:** Pembeli transfer ke e-wallet 082135277434 (DANA/Gopay/Shopeepay) atau SeaBank 901812349386 a.n. pemilik
 - **Bukti Transfer:** Foto/screenshot yang di-upload pembeli setelah bayar
 - **Pesanan Pending:** Pesanan menunggu verifikasi admin
@@ -105,7 +105,7 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 | ID | Requirement |
 |----|-------------|
 | FR-A1 | Admin login terpisah di `/admin` (email + password, rate-limited) |
-| FR-A2 | Dashboard admin: total/pending/lunas dan stok menipis; periode Hari/Minggu/Bulan WIB mengendalikan SELURUH kartu, grafik, kontribusi omzet, untung supplier/channel dan Top 5. **2026-10-15 ✅ implementasi (publikasi CI):** omzet dikurangi modal per item (WR/SK/stok sendiri/Pedia), keranjang campuran tidak menghilangkan modal stok sendiri. Modal transaksi baru disnapshot atomik saat lunas (0063), riwayat tanpa snapshot diberi penanda estimasi. Hari ini memakai grafik per jam, minggu/bulan harian; mendukung rugi, sumbu jumlah order terpisah, donat kontribusi omzet dan batang untung. Top 5 memakai seluruh transaksi dalam periode, tanpa batas 500 order. |
+| FR-A2 | Dashboard admin: total/pending/lunas dan stok menipis; periode Hari/Minggu/Bulan WIB mengendalikan SELURUH kartu, grafik, kontribusi omzet, untung supplier/channel dan Top 5. **2026-10-15 ✅ implementasi (publikasi CI):** omzet dikurangi modal per item (WR/SK/stok sendiri/Pedia), keranjang campuran tidak menghilangkan modal stok sendiri. Modal transaksi baru disnapshot atomik saat lunas (0063), riwayat tanpa snapshot diberi penanda estimasi. Hari ini memakai grafik per jam, minggu/bulan harian; mendukung rugi, sumbu jumlah order terpisah, donat kontribusi omzet dan batang untung. Top 5 memakai seluruh transaksi dalam periode, tanpa batas 500 order. **2026-10-15 pembaruan:** pilih bulan historis atau rentang inklusif WIB hingga 366 hari, tolak tanggal invalid/masa depan; loading/gagal tidak melabeli ulang angka lama. PDF dan Excel .xlsx diunduh langsung dari respons yang sama (Ringkasan/Harian/Supplier/Channel/Top Produk); kredit Pedia dibedakan dari pembayaran merchant, omzet mencakup keduanya dan pembulatan invoice, untung belum dikurangi MDR/operasional. |
 | FR-A3 | CRUD Produk: tambah/edit/hapus, upload foto (ke R2), set harga, diskon, kategori, stok, deskripsi, status aktif/nonaktif. **2026-09-24 ✅ live:** S&K + cara aktivasi per varian bisa disunting admin (WR & non-WR, migrasi 0041); suntingan varian WR dijeda otomatis bila WR mengubah teksnya (pembeli melihat teks WR terbaru, admin mendapat badge "S&K perlu ditinjau"). **2026-09-28:** produk single/non-varian (toggle varian OFF) paritas dengan multi-varian — Min. Beli + Masa Garansi + Cara Pengiriman + Template pesan tampil di tab Varian dan disimpan sebagai 1 varian `Default` eksplisit (update in-place, bukan insert baru). **2026-09-28 ✅ live:** atur posisi produk dari admin — kolom Urutan + tombol ↑↓ per baris (swap tetangga global, bukan tetangga satu halaman) + field angka Urutan tampil 0–999999 di modal edit; tidak ada endpoint baru (pakai PUT /api/products/[id] yang sudah terima sortOrder). **2026-09-29 fix display + exact-step + anti-429/lompat (laporan owner beruntun):** kolom Urutan = nomor posisi 1..N (raw key hanya di tooltip); reorder atomik POST /api/products/reorder (tepat 1 posisi, realtime, modal read-only); scope `products:reorder` 120/mnt + tulis hanya baris berubah (bukan kuota cron); badge bisa diketik untuk lompat 30→1 dalam 1 request. **2026-09-29 Terjual editable (permintaan owner):** angka Terjual bisa diubah admin dari kolom tabel (ketik + Enter, PATCH sold-count) maupun field Terjual di modal edit (ikut PUT); SET absolut sebagai baseline baru — order lunas tetap `sold_count += qty` di atasnya (perilaku increment tidak berubah). **2026-10-01 tab status toko ✅ live (permintaan owner: "tidak tahu kenapa produk tidak tampil"):** daftar Produk punya tab Live/Hidden/Nonaktif/Semua (default Live = yang tampil di toko SAAT INI; Hidden = toggle ON tapi tak tampil + sebab jujur "Kalah dari X" / "stok habis" / "nonaktif tapi stok tersedia"; Nonaktif = toggle OFF) + badge count + kartu "Hidden otomatis" + pagination 20/50/100 (persist, default 20); ↑↓ yang melewati batas halaman pindah halaman mengikuti produk. **2026-10-02 selip restok ✅ live (laporan owner: posisi 6/8 habis → restok terdampar 20+):** sync yang mendeteksi transisi stok parent 0→ready menyelipkan `sort_order` kembali ke sekitar posisi semula (±1–2 bila slot terisi; tanpa write bila slot kosong); reorder manual tetap otoritas tertinggi. **2026-10-01 tab panel WR/SK ✅ live (permintaan owner: "scroll jauh + acak"):** tab dalam-halaman Ringkas/Antrean/Markup/Aturan (WR) + Audit/Alat (SK: mutasi + transaksi / cek akun + lock + detail; sandbox di Antrean) — lazy-load per tab + cache, antrean pagination 20 + total, markup sub-tab Live/Hidden/Off + badge + pagination 20/50/100  **2026-10-15 ✅ implementasi:** tab Varian berupa accordion dengan ringkasan nama/harga/status/stok; harga-modal dan stok-minimum tersusun 2–3 kolom desktop/1 kolom mobile. Stok unique mengikuti inventory. Produk stok sendiri memiliki S&K bersama dan cara penggunaan/aktivasi per varian, disimpan atomik bersama Simpan Produk (termasuk varian baru); link/akun/key tetap terpisah di inventory. Teks supplier tetap memakai endpoint tinjauan khusus. |
 | FR-A4 | Kategori management: AI & Chatbot, Streaming & Hiburan, Produktivitas & Office, Desain & Video, Developer & Tools, Bundle Hemat (taksonomi 6 kategori 2026-09-28, migrasi 0046; rename Bundle Kucing → Bundle Hemat dengan slug bundle-hemat dipertahankan; slug lama dialias di kode; DELETE ditolak 409 selama masih dipakai produk) |
 | FR-A5 | Manajemen Pesanan: list semua pesanan (filter Pending/Lunas/Dibatalkan), detail pesanan + foto bukti transfer, tombol Konfirmasi Lunas / Batalkan. **2026-10-01 ACC manual QRIS ✅ live (laporan owner: hook DANA gagal padahal dana benar masuk):** order QRIS pending punya tombol **ACC pembayaran** (hijau) + **Tolak** (merah) di baris pesanan — ACC memakai `transitionPendingPaymentToPaid` yang SAMA dengan webhook (ledger ikut lunas + fulfillment + email kredensial + notif buyer seperti hook normal), catatan verifikasi mutasi wajib min. 10 karakter + tercatat `[ACC-QRIS manual email]` di admin_note, guard ketat (hanya QRIS pending, kalah race vs hook = 409 jujur) |
@@ -168,7 +168,7 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 8. Total dasar Rp 89.000 → Klik "Buat Pesanan"
 9. → Halaman pesanan menampilkan QRIS + total unik (mis. Rp89.137) + countdown 15 menit
 10. Pembeli scan dan membayar tepat sesuai total
-11. QRIS Hook mengirim notifikasi DANA; AXVARA mencocokkan nominal aktif dan menandai order lunas atomik
+11. Poller GoBiz (GoPay) atau QRIS Hook (legacy DANA) mengirim event sesuai provider invoice; AXVARA mencocokkan nominal aktif dan menandai order lunas atomik
 12. Halaman, Telegram, atau WhatsApp menerima status terbaru; fulfillment dijalankan idempotent
 ```
 
@@ -226,7 +226,7 @@ MVP seed: 8–12 produk dummy dengan foto placeholder premium + harga realistis 
 - **QRIS:** payload merchant DANA Business tersimpan sebagai Pages Secret dan diubah menjadi QRIS dinamis per order. **Rail GoPay (2026-10-02 Fase 0, default mati):** payload `GOPAY_STATIC_QRIS` + poller server + webhook `/api/webhook/gopay` ber-secret `GOPAY_POLLER_SECRET`; alih rail via `QRIS_ACTIVE_PROVIDER=gopay`
 
 ### 5.2 Aturan
-- QRIS otomatis diverifikasi dari QRIS Hook ber-secret; SeaBank/e-wallet tetap manual
+- QRIS diverifikasi dari event merchant ber-secret sesuai provider invoice; SeaBank/e-wallet tetap maintenance
 - Upload bukti hanya wajib untuk metode transfer manual
 - Satu pesanan bisa pakai 1 metode saja
 - Harga, stok, dan rekening dikunci dalam quote server bertanda tangan selama 60 menit; retry quote yang sama tidak membuat order ganda
@@ -319,3 +319,9 @@ MVP seed: 8–12 produk dummy dengan foto placeholder premium + harga realistis 
 - Inspirasi desain: Apple Store (apple.com/store), Linear.app, Vercel.com
 - Hosting: Cloudflare Pages + D1 + R2 — gratis selamanya, unlimited bandwidth
 - Kontak pembayaran: E-Wallet 082135277434, SeaBank 901812349386, QRIS dinamis DANA Business
+
+### Pembaruan panel admin 2026-10-15 (implementasi, publikasi via CI)
+
+- Banner: pill Aktif/Nonaktif langsung di daftar; posisi global unik 0–999 untuk banner aktif maupun nonaktif. Benturan mendapat posisi kosong berikutnya; posisi server ditampilkan. Popup homepage memilih banner pertama yang belum disembunyikan/belum mencapai batas sesi, satu popup per kunjungan dokumen, tanpa antrean popup setelah ditutup.
+- Rekonsiliasi QRIS menampilkan provider efektif invoice baru dan provider milik setiap event (riwayat DANA dipertahankan). Konfigurasi lengkap dibedakan dari kesehatan poller/sesi; ACC mengharuskan pemeriksaan merchant sesuai invoice.
+- Transisi Market/Pedia menampilkan logo putih. Filter X hanya ikon dengan nama aksesibel X; nama layanan seperti Followers X tetap utuh.

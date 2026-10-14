@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { queryFirst, execRun } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
+import { BannerOrderConflict, writeBannerOrder } from "@/lib/banner-order";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -36,11 +37,25 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const map: Record<string, string> = { title: "title", body: "body", image_url: "image_url", cta_label: "cta_label", cta_href: "cta_href", delay_ms: "delay_ms", max_show_per_session: "max_show_per_session", sort_order: "sort_order" };
   for (const [k, col] of Object.entries(map)) if (data[k] !== undefined) { fields.push(`${col}=?`); vals.push(data[k]); }
   if (data.is_active !== undefined) { fields.push("is_active=?"); vals.push(data.is_active ? 1 : 0); }
-  if (!fields.length) return NextResponse.json({ ok: true });
+  if (!fields.length) return NextResponse.json({ ok: true, banner: await queryFirst("SELECT * FROM banners WHERE id=?", id) });
   fields.push("updated_at=datetime('now')");
   vals.push(id);
-  await execRun(`UPDATE banners SET ${fields.join(",")} WHERE id=?`, ...vals);
-  return NextResponse.json({ ok: true });
+  try {
+    const write = (order?: number) => {
+      const values = [...vals];
+      if (order !== undefined) values[fields.indexOf("sort_order=?")] = order;
+      return execRun(`UPDATE banners SET ${fields.join(",")} WHERE id=?`, ...values);
+    };
+    const result = data.sort_order !== undefined
+      ? (await writeBannerOrder(Number(data.sort_order), id, write)).result
+      : await write();
+    if (!result.changes) return NextResponse.json({ error: "not found" }, { status: 404 });
+    const banner = await queryFirst("SELECT * FROM banners WHERE id=?", id);
+    return NextResponse.json({ ok: true, sort_order: banner?.sort_order, banner });
+  } catch (error) {
+    if (error instanceof BannerOrderConflict) return NextResponse.json({ error: error.message }, { status: 409 });
+    throw error;
+  }
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import type { ReportSelection } from "@/lib/revenue";
 import { AdminShell, type AdminSection } from "@/components/admin/AdminShell";
 import { AgentIntegration } from "@/components/admin/AgentIntegration";
 import { useToast } from "@/components/ui/Toast";
@@ -33,18 +34,31 @@ export default function AdminPage() {
   const [overview, setOverview] = useState<AdminOverviewData>(EMPTY_ADMIN_OVERVIEW);
   const [overviewLoading, setOverviewLoading] = useState(true);
   const [overviewError, setOverviewError] = useState<string | null>(null);
+  const [reportSelection, setReportSelection] = useState<ReportSelection>("week");
+  const overviewRequest = useRef(0);
 
   const loadOverview = useCallback(async()=>{
+    const request = ++overviewRequest.current;
     setOverviewLoading(true);
     setOverviewError(null);
     try {
-      const response = await fetch("/api/admin/overview", { cache: "no-store" });
+      const params = new URLSearchParams(typeof reportSelection === "string" ? { period: reportSelection } : reportSelection);
+      const response = await fetch(reportSelection === "week" ? "/api/admin/overview" : `/api/admin/overview?${params}`, { cache: "no-store" });
       const data = await response.json().catch(()=>({})) as Partial<AdminOverviewData> & { error?: string };
       if (!response.ok) throw new Error(data.error || "Gagal memuat ringkasan");
+      if (request !== overviewRequest.current) return;
       setOverview({ ...EMPTY_ADMIN_OVERVIEW, ...data, channels: { ...EMPTY_ADMIN_OVERVIEW.channels, ...data.channels }, systems: { ...EMPTY_ADMIN_OVERVIEW.systems, ...data.systems } });
-    } catch { setOverviewError("Ringkasan belum berhasil dimuat. Coba muat ulang."); }
-    finally { setOverviewLoading(false); }
-  }, []);
+    } catch { if (request === overviewRequest.current) setOverviewError("Ringkasan belum berhasil dimuat. Coba muat ulang."); }
+    finally { if (request === overviewRequest.current) setOverviewLoading(false); }
+  }, [reportSelection]);
+
+  const changeReportSelection = (selection: ReportSelection) => {
+    if (JSON.stringify(selection) === JSON.stringify(reportSelection)) return;
+    ++overviewRequest.current;
+    setOverviewLoading(true);
+    setOverviewError(null);
+    setReportSelection(selection);
+  };
 
   // Katalog produk (state + handler) di hook tersendiri; onUnauthorized memaksa sesi
   // kembali ke gerbang login bila fetch kategori membalas 401.
@@ -84,7 +98,12 @@ export default function AdminPage() {
     return()=>window.removeEventListener("popstate",syncFromUrl);
   },[setOnlyLowStock, setProductPage]);
 
-  useEffect(()=>{ if(auth.authed) { void load(); void loadOverview(); } },[auth.authed, load, loadOverview]);
+  useEffect(()=>{ if(auth.authed) void load(); },[auth.authed, load]);
+  useEffect(()=>{
+    const requests = overviewRequest;
+    if(auth.authed) void loadOverview();
+    return () => { ++requests.current; };
+  },[auth.authed, loadOverview]);
 
   if(auth.checkingAuth) return <AdminAuthChecking />;
 
@@ -108,7 +127,7 @@ export default function AdminPage() {
 
       {pm.listError && <div className="mt-4 rounded-2xl bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-200 flex items-center justify-between gap-3"><span>{pm.listError}</span><button onClick={pm.load} className="h-8 px-3 rounded-full bg-white text-[#070a1e] text-xs font-bold shrink-0 transition hover:bg-white/90">Coba lagi</button></div>}
 
-      {tab==="summary" && <AdminOverview data={overview} loading={overviewLoading} error={overviewError} onRetry={loadOverview} onLowStock={() => navigateAdmin("products", { low_stock: "1" })} />}
+      {tab==="summary" && <AdminOverview data={overview} loading={overviewLoading} error={overviewError} onRetry={loadOverview} selection={reportSelection} onSelectionChange={changeReportSelection} onLowStock={() => navigateAdmin("products", { low_stock: "1" })} />}
       {tab==="orders" && <OrdersManager onChanged={loadOverview} />}
       {tab==="categories" && <CategoryManager />}
       {tab==="payments" && <PaymentMethodsManager />}

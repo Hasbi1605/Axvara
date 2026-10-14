@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { execRun, isD1Mode, queryAll, queryFirst, transitionPendingPaymentToPaid } from "@/lib/db";
 import { isFutureIso } from "@/lib/expiry";
-import { isCausallyPlausiblePayment } from "@/lib/payments/dana-qris";
+import { activeQrisProvider, isCausallyPlausiblePayment } from "@/lib/payments/dana-qris";
 import { ensureFulfillmentForPaidOrder } from "@/lib/fulfillment/deliver";
 import { sendTextMessage } from "@/lib/whatsapp/gateway";
 import { paymentDetectedMessage } from "@/lib/whatsapp/messages";
@@ -27,19 +27,23 @@ export async function GET(request: NextRequest) {
   const bindings: unknown[] = status !== "attention" && ["received", "matched", "ignored", "failed"].includes(status) ? [status] : [];
   const where = conditions.length ? ` WHERE ${conditions.join(" AND ")}` : "";
   const offset = (page - 1) * limit;
-  const [events, totalRow, countRows, lastRow] = await Promise.all([
-    queryAll(`SELECT id,amount,sender_name,status,order_code,last_error,created_at,processed_at
+  const [events, totalRow, countRows, lastRows] = await Promise.all([
+    queryAll(`SELECT id,amount,sender_name,status,order_code,last_error,created_at,processed_at,COALESCE(provider,'dana') AS provider
       FROM dana_webhook_events${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`, ...bindings, limit, offset),
     queryFirst(`SELECT COUNT(*) AS count FROM dana_webhook_events${where}`, ...bindings),
     queryAll("SELECT status AS value,COUNT(*) AS count FROM dana_webhook_events GROUP BY status"),
-    queryFirst("SELECT created_at FROM dana_webhook_events ORDER BY created_at DESC LIMIT 1"),
+    queryAll("SELECT COALESCE(provider,'dana') AS provider,MAX(created_at) AS created_at FROM dana_webhook_events GROUP BY COALESCE(provider,'dana')"),
   ]);
+  for (const row of lastRows) {
+    if (row.provider === "dana" || row.provider === "gopay") health.providers[row.provider].last_event_at = String(row.created_at);
+  }
+  health.last_event_at = health.providers[health.provider].last_event_at;
   const total = Number(totalRow?.count || 0);
   return NextResponse.json({
     events,
     counts: Object.fromEntries(countRows.map((row) => [String(row.value), Number(row.count || 0)])),
     pagination: { page, pages: Math.max(1, Math.ceil(total / limit)), total },
-    last_event_at: lastRow?.created_at || null,
+    last_event_at: lastRows.map(row => String(row.created_at)).sort().at(-1) || null,
     health,
   });
 }
@@ -160,12 +164,29 @@ export async function POST(request: NextRequest) {
 
 function paymentHealth() {
   const siteUrl = (process.env.SITE_URL || "https://axvara.tech").replace(/\/$/, "");
+  const provider = activeQrisProvider();
+  const providers = {
+    dana: {
+      enabled: process.env.DANA_QRIS_ENABLED === "true",
+      payload_configured: Boolean(process.env.DANA_STATIC_QRIS?.trim()),
+      webhook_configured: Boolean(process.env.DANA_WEBHOOK_SECRET?.trim()),
+      webhook_url: `${siteUrl}/api/webhook/dana`,
+      secret_header: "X-Webhook-Secret",
+      last_event_at: null as string | null,
+    },
+    gopay: {
+      enabled: process.env.GOPAY_QRIS_ENABLED === "true",
+      payload_configured: Boolean(process.env.GOPAY_STATIC_QRIS?.trim()),
+      webhook_configured: Boolean(process.env.GOPAY_POLLER_SECRET?.trim()),
+      webhook_url: `${siteUrl}/api/webhook/gopay`,
+      secret_header: "X-Poller-Secret",
+      last_event_at: null as string | null,
+    },
+  };
   return {
-    enabled: process.env.DANA_QRIS_ENABLED === "true",
-    payload_configured: Boolean(process.env.DANA_STATIC_QRIS),
-    webhook_configured: Boolean(process.env.DANA_WEBHOOK_SECRET),
-    webhook_url: `${siteUrl}/api/webhook/dana`,
-    secret_header: "X-Webhook-Secret",
+    ...providers[provider],
+    provider,
+    providers,
     mode: "dynamic-qris",
   };
 }

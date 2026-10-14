@@ -118,7 +118,7 @@ export async function queryAll(sql: string, ...params: unknown[]): Promise<Recor
   if (lower.includes("from banners")) {
     let rows = [...getBannerMem()];
     if (lower.includes("is_active=1")) rows = rows.filter((row) => Number(row.is_active) === 1);
-    return rows.sort((a,b)=>Number(a.sort_order??0)-Number(b.sort_order??0));
+    return rows.sort((a,b)=>Number(a.sort_order??0)-Number(b.sort_order??0) || Number(b.id)-Number(a.id));
   }
   if (lower.includes("from payment_methods")) {
     let rows = [...getPaymentMethodMem()];
@@ -428,12 +428,17 @@ export async function execRun(sql: string, ...params: unknown[]): Promise<{ last
   if (lower.startsWith("insert into banners")) {
     const mem=getBannerMem(),id=Math.max(0,...mem.map((row)=>Number(row.id)||0))+1;
     const columns=(sql.match(/banners\s*\(([^)]+)\)/i)?.[1]??"").split(",").map((column)=>column.trim());
-    const row:Row={id};columns.forEach((column,index)=>{row[column]=params[index]});mem.push(row);return{lastInsertRowid:id,changes:1};
+    const row:Row={id,sort_order:0};columns.forEach((column,index)=>{row[column]=params[index]});
+    if (mem.some((item) => Number(item.sort_order) === Number(row.sort_order))) throw new Error("UNIQUE constraint failed: banners.sort_order");
+    mem.push(row);return{lastInsertRowid:id,changes:1};
   }
   if (lower.startsWith("update banners set")) {
     const row=getBannerMem().find((item)=>String(item.id)===String(params[params.length-1]));if(!row)return{changes:0};
     const fields=sql.match(/set\s+(.+)\s+where/i)?.[1].split(",")??[];let index=0;
-    fields.forEach((field)=>{if(field.includes("?"))row[field.trim().split("=")[0].trim()]=params[index++]});row.updated_at=new Date().toISOString();return{changes:1};
+    const updated = { ...row };
+    fields.forEach((field)=>{if(field.includes("?"))updated[field.trim().split("=")[0].trim()]=params[index++]});
+    if (getBannerMem().some((item) => item !== row && Number(item.sort_order) === Number(updated.sort_order))) throw new Error("UNIQUE constraint failed: banners.sort_order");
+    Object.assign(row, updated, { updated_at: new Date().toISOString() });return{changes:1};
   }
   if (lower.startsWith("delete from banners")) {const mem=getBannerMem(),index=mem.findIndex((row)=>String(row.id)===String(params[0]));if(index>=0){mem.splice(index,1);return{changes:1}}return{changes:0};}
   if (lower.startsWith("insert into categories")) { const mem=getCategoryMem(),id=Math.max(0,...mem.map((row)=>Number(row.id)||0))+1;if(mem.some((row)=>row.slug===params[1]))throw new Error("UNIQUE constraint failed: categories.slug");mem.push({id,name:params[0],slug:params[1],icon:params[2],sort_order:params[3]}); return {lastInsertRowid:id,changes:1}; }

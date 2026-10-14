@@ -185,7 +185,7 @@ export function PaymentMethodsManager() {
                 {method.id === "qris" ? (
                   <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/[0.08] px-3 py-3">
                     <div><p className="text-xs font-semibold text-emerald-300">QRIS dinamis otomatis</p>
-                    <p className="mt-1 text-[11px] leading-5 text-white/45">Nominal unik dan gambar QR dibuat per pesanan dari DANA Business. Tidak ada gambar QRIS statis yang perlu diunggah.</p></div>
+                    <p className="mt-1 text-[11px] leading-5 text-white/45">Nominal unik dan gambar QR dibuat per pesanan dari merchant QRIS yang aktif. Lihat provider dan konfigurasi di tab QRIS &amp; Rekonsiliasi. Tidak ada gambar QRIS statis yang perlu diunggah.</p></div>
                   </div>
                 ) : (
                   <label className="grid gap-1">
@@ -205,7 +205,7 @@ export function PaymentMethodsManager() {
           ))}
         </div>
       </div>
-      <p className="mt-3 text-xs text-white/35">Checkout mempertahankan harga/rekening selama 60 menit. Invoice QRIS dinamis berlaku 15 menit dan lunas otomatis melalui QRIS Hook.</p>
+      <p className="mt-3 text-xs text-white/35">Checkout mempertahankan harga/rekening selama 60 menit. Invoice QRIS dinamis berlaku 15 menit dan lunas setelah event pembayaran merchant cocok dengan invoice.</p>
       </> : <PaymentReconciliation />}
     </section>
   );

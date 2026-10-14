@@ -56,6 +56,40 @@ export function todayWibDateString(now = new Date()): string {
   return new Date(now.getTime() + 7 * 3_600_000).toISOString().slice(0, 10);
 }
 
+export type ReportRange = { from: string; to: string };
+export type ReportSelection = "today" | "week" | "month" | { date_from: string; date_to: string };
+
+/** Calendar dates, inclusive in WIB. Custom future dates are rejected, not silently changed. */
+export function resolveReportRange(selection: ReportSelection, now = new Date()): ReportRange {
+  const today = todayWibDateString(now);
+  if (typeof selection === "string") {
+    if (!["today", "week", "month"].includes(selection)) throw new Error("Periode laporan tidak valid.");
+    return { from: selection === "today" ? today : selection === "week" ? weekWibStartDateString(now) : `${today.slice(0, 7)}-01`, to: today };
+  }
+  const { date_from: from, date_to: to } = selection;
+  const valid = (date: string) => typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date)
+    && date >= "0001-01-01" && Number.isFinite(Date.parse(`${date}T00:00:00Z`))
+    && new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) === date;
+  if (!valid(from) || !valid(to)) throw new Error("Tanggal awal dan akhir wajib berupa tanggal kalender YYYY-MM-DD.");
+  if (from > to) throw new Error("Tanggal awal tidak boleh setelah tanggal akhir.");
+  if (to > today) throw new Error("Tanggal laporan tidak boleh di masa depan (WIB).");
+  if ((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000 + 1 > 366)
+    throw new Error("Rentang laporan maksimal 366 hari termasuk tanggal awal dan akhir.");
+  return { from, to };
+}
+
+/** Historical months use the same custom range; the current month ends today WIB. */
+export function reportMonthSelection(month: string, now = new Date()): ReportSelection {
+  if (!/^\d{4}-\d{2}$/.test(month)) throw new Error("Bulan laporan tidak valid.");
+  const from = `${month}-01`, start = new Date(`${from}T00:00:00Z`);
+  if (!Number.isFinite(start.getTime()) || start.toISOString().slice(0, 10) !== from) throw new Error("Bulan laporan tidak valid.");
+  start.setUTCMonth(start.getUTCMonth() + 1, 0);
+  const to = start.toISOString().slice(0, 10), today = todayWibDateString(now);
+  const selection = { date_from: from, date_to: to > today ? today : to };
+  resolveReportRange(selection, now);
+  return selection;
+}
+
 /** Bulan WIB ini (YYYY-MM) — untuk perbandingan `strftime(...) = '...'`. */
 export function currentWibMonthString(now = new Date()): string {
   return todayWibDateString(now).slice(0, 7);

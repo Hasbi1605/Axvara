@@ -4,7 +4,7 @@ import { createD1Fixture, insertTestOrder, insertTestProduct, stubFulfillmentKey
 import { calculateCrc16, createDanaQrisInvoice } from "@/lib/payments/dana-qris";
 import { createAdminToken, createIdleToken } from "@/lib/auth";
 import { POST as webhook } from "@/app/api/webhook/dana/route";
-import { POST as retry } from "@/app/api/admin/payments/events/route";
+import { GET as events, POST as retry } from "@/app/api/admin/payments/events/route";
 
 vi.mock("@/lib/telegram/api", () => ({ sendMessage: vi.fn(async () => ({ ok: true })) }));
 vi.mock("@/lib/whatsapp/gateway", () => ({ sendTextMessage: vi.fn(async () => ({ ok: true })) }));
@@ -44,6 +44,59 @@ async function retryEvent(id: number, extra: Record<string, unknown> = {}) {
   }));
 }
 const state = (code: string) => fixture.sql.prepare("SELECT status FROM orders WHERE code=?").get(code)?.status;
+
+async function listEvents(query = "") {
+  const session = await createAdminToken("admin@axvara.tech");
+  const idle = await createIdleToken(session.sid);
+  return events(new NextRequest(`http://localhost/api/admin/payments/events${query}`, {
+    headers: { cookie: `axvara_admin_token=${session.token}; axvara_idle=${idle}` },
+  }));
+}
+
+describe("provider-aware reconciliation health", () => {
+  it("requires admin authentication", async () => {
+    expect((await events(new NextRequest("http://localhost/api/admin/payments/events"))).status).toBe(401);
+  });
+
+  it("exposes effective GoPay configuration and per-provider event times without secrets", async () => {
+    vi.stubEnv("QRIS_ACTIVE_PROVIDER", "gopay");
+    vi.stubEnv("GOPAY_QRIS_ENABLED", "true");
+    vi.stubEnv("GOPAY_STATIC_QRIS", "private-gopay-payload");
+    vi.stubEnv("GOPAY_POLLER_SECRET", "private-poller-secret");
+    fixture.sql.exec(`INSERT INTO dana_webhook_events(event_key,payload_hash,amount,provider,created_at,status) VALUES
+      ('dana-old','private-hash',10000,'dana','2026-10-14 10:00:00','matched'),
+      ('gopay-new','private-hash',10100,'gopay','2026-10-15 10:00:00','ignored')`);
+    const response = await listEvents("?status=attention");
+    const body = await response.json();
+    expect(body.events).toHaveLength(1);
+    expect(body.events[0]).toMatchObject({ provider: "gopay", amount: 10100 });
+    expect(body.health).toMatchObject({ provider: "gopay", enabled: true, payload_configured: true, webhook_configured: true, secret_header: "X-Poller-Secret", webhook_url: "https://axvara.tech/api/webhook/gopay" });
+    expect(body.health.providers.dana.last_event_at).toBe("2026-10-14 10:00:00");
+    expect(body.health.providers.gopay.last_event_at).toBe("2026-10-15 10:00:00");
+    expect(body.last_event_at).toBe("2026-10-15 10:00:00");
+    expect(body.counts).toMatchObject({ matched: 1, ignored: 1 });
+    expect(JSON.stringify(body)).not.toMatch(/private-|fixture-secret/);
+  });
+
+  it("uses the helper's DANA fallback when requested GoPay is incomplete", async () => {
+    vi.stubEnv("QRIS_ACTIVE_PROVIDER", "gopay");
+    vi.stubEnv("GOPAY_QRIS_ENABLED", "true");
+    vi.stubEnv("GOPAY_STATIC_QRIS", "payload");
+    vi.stubEnv("GOPAY_POLLER_SECRET", " ");
+    fixture.sql.exec("INSERT INTO dana_webhook_events(event_key,payload_hash,amount) VALUES('legacy','hash',10000)");
+    const body = await (await listEvents()).json();
+    expect(body.health).toMatchObject({ provider: "dana", enabled: true, payload_configured: true, webhook_configured: true, secret_header: "X-Webhook-Secret" });
+    expect(body.health.providers.gopay.webhook_configured).toBe(false);
+    expect(body.events[0].provider).toBe("dana");
+  });
+
+  it("keeps retry bound to the event provider, not the active rail", async () => {
+    const inv = await invoice("DANA-ONLY");
+    fixture.sql.prepare("INSERT INTO dana_webhook_events(event_key,payload_hash,amount,provider,status) VALUES('gopay','hash',?,'gopay','ignored')").run(inv.payableAmount);
+    expect((await retryEvent(1)).status).toBe(409);
+    expect(state("DANA-ONLY")).toBe("pending");
+  });
+});
 
 describe("R1 payment handlers preserve invoice/event identity", () => {
   it("does not accept an event observed 30 seconds before the invoice", async () => {

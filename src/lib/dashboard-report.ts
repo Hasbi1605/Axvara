@@ -1,5 +1,5 @@
 import { queryAll } from "@/lib/db";
-import { revenuePaidAtWibSql, todayWibDateString, weekWibStartDateString } from "@/lib/revenue";
+import { resolveReportRange, revenuePaidAtWibSql, todayWibDateString, weekWibStartDateString, type ReportSelection } from "@/lib/revenue";
 import { fillDailySeries } from "@/lib/dashboard-profit";
 
 export type ReportPeriod = "today" | "week" | "month";
@@ -7,15 +7,30 @@ export type ReportBucket = { orders: number; revenue: number; cost: number; prof
 export type ReportPoint = ReportBucket & { date: string };
 export type PeriodReport = ReportBucket & {
   estimated_orders: number;
+  merchant_paid?: number;
+  credit_used?: number;
   series: ReportPoint[];
   suppliers: Record<"wr" | "sk" | "manual" | "pedia", ReportBucket>;
   channels: Record<"web" | "telegram" | "whatsapp", ReportBucket>;
   top_products: { name: string; qty: number; revenue: number; cost: number; profit: number }[];
 };
 const bucket = (): ReportBucket => ({ orders: 0, revenue: 0, cost: 0, profit: 0 });
-const emptyReport = (): PeriodReport => ({ ...bucket(), estimated_orders: 0, series: [],
+export type SelectedReport = PeriodReport & { from: string; to: string; timezone: "Asia/Jakarta"; generated_at: string };
+const emptyReport = (): PeriodReport => ({ ...bucket(), estimated_orders: 0, merchant_paid: 0, credit_used: 0, series: [],
   suppliers: { wr: bucket(), sk: bucket(), manual: bucket(), pedia: bucket() },
   channels: { web: bucket(), telegram: bucket(), whatsapp: bucket() }, top_products: [] });
+
+export function emptySelectedReport(selection: ReportSelection, now = new Date()): SelectedReport {
+  const range = resolveReportRange(selection, now);
+  const report: SelectedReport = { ...emptyReport(), ...range, timezone: "Asia/Jakarta", generated_at: now.toISOString() };
+  if (selection === "today") {
+    report.series = Array.from({ length: new Date(now.getTime() + 7 * 3600000).getUTCHours() + 1 }, (_, i) => ({ date: `${String(i).padStart(2, "0")}:00`, ...bucket() }));
+  } else {
+    for (let d = new Date(`${range.from}T00:00:00Z`); d.toISOString().slice(0, 10) <= range.to; d = new Date(d.getTime() + 86400000))
+      report.series.push({ date: d.toISOString().slice(0, 10), ...bucket() });
+  }
+  return report;
+}
 
 /** One bounded aggregate response. All panels derive from the same paid item facts.
  * Supplier totals and QRIS rounding remainders are allocated exactly once.
@@ -23,11 +38,15 @@ const emptyReport = (): PeriodReport => ({ ...bucket(), estimated_orders: 0, ser
  * D1 limits each compound SELECT to five terms. Keep totals in their own
  * CTE so all six output kinds still share one query/materialized fact set.
  */
-export function financialReportSql(now = new Date()): string {
+export function financialReportSql(now = new Date(), selection?: ReportSelection): string {
   const today = todayWibDateString(now), week = weekWibStartDateString(now), month = `${today.slice(0, 7)}-01`;
+  const range = selection === undefined ? undefined : resolveReportRange(selection, now);
   return `WITH
   paid AS MATERIALIZED (
-    SELECT o.*, CAST(ROUND(COALESCE(pt.payable_amount,o.subtotal)) AS INTEGER) amount,
+    SELECT o.*, CAST(ROUND(COALESCE(pt.payable_amount,o.subtotal) +
+        CASE WHEN o.order_kind='pedia' AND pt.payable_amount IS NOT NULL THEN COALESCE(pi.credit_used,0) ELSE 0 END) AS INTEGER) amount,
+      CAST(ROUND(COALESCE(pt.payable_amount,MAX(0,o.subtotal-CASE WHEN o.order_kind='pedia' THEN COALESCE(pi.credit_used,0) ELSE 0 END))) AS INTEGER) merchant_amount,
+      CASE WHEN o.order_kind='pedia' THEN COALESCE(pi.credit_used,0) ELSE 0 END order_credit,
       ${revenuePaidAtWibSql("o")} paid_wib,
       CASE WHEN COALESCE(o.order_kind,'market')='pedia' OR NOT json_valid(o.items)
           OR json_array_length(o.items)=0
@@ -35,10 +54,12 @@ export function financialReportSql(now = new Date()): string {
           'product_id',NULL,'variant_id',o.variant_id,'qty',1,'price',o.subtotal))
         ELSE o.items END report_items
     FROM orders o LEFT JOIN payment_transactions pt ON pt.order_code=o.code
+    LEFT JOIN pedia_order_items pi ON pi.order_code=o.code
     LEFT JOIN (SELECT order_code,MAX(reviewed_at) reviewed_at FROM payment_proofs
       WHERE status='approved' GROUP BY order_code) pp ON pp.order_code=o.code WHERE o.status='lunas'
+      ${range ? `AND date(${revenuePaidAtWibSql("o")}) BETWEEN '${range.from}' AND '${range.to}'` : ""}
   ), lines AS (
-    SELECT o.code, o.amount, o.order_kind, o.paid_wib, o.sales_channel,
+    SELECT o.code, o.amount, o.merchant_amount, o.order_credit, o.order_kind, o.paid_wib, o.sales_channel,
       CAST(j.key AS INTEGER) item_index, json_extract(j.value,'$.name') name,
       COALESCE(json_extract(j.value,'$.product_id'),fi.product_id) product_id,
       COALESCE(json_extract(j.value,'$.variant_id'),fi.variant_id,o.variant_id) variant_id,
@@ -96,25 +117,45 @@ export function financialReportSql(now = new Date()): string {
       CASE WHEN last_revenue=1 THEN amount-SUM(revenue_share) OVER(PARTITION BY code)+revenue_share ELSE revenue_share END revenue,
       CASE WHEN cost_pool IS NOT NULL AND last_cost=1 THEN cost_pool-SUM(cost_share) OVER(PARTITION BY code,source,pool_key)+cost_share ELSE cost_share END cost
     FROM shares
-  ), periods(period,start) AS (VALUES ('today','${today}'),('week','${week}'),('month','${month}'),('total','0000-01-01')),
-  scoped AS MATERIALIZED (SELECT f.*,p.period FROM facts f JOIN periods p ON p.period='total' OR (date(f.paid_wib)>=p.start
-    AND date(f.paid_wib)<='${today}')),
+   ), periods(period,start) AS (VALUES ${range ? `('selected','${range.from}')` : `('today','${today}'),('week','${week}'),('month','${month}'),('total','0000-01-01')`}),
+   scoped AS MATERIALIZED (SELECT f.*,p.period FROM facts f JOIN periods p ON p.period='total' OR (date(f.paid_wib)>=p.start
+     AND date(f.paid_wib)<='${range?.to ?? today}')),
   top AS (SELECT period,COALESCE(name,'Produk') label,SUM(qty) qty,SUM(revenue) revenue,SUM(cost) cost,
     ROW_NUMBER() OVER(PARTITION BY period ORDER BY SUM(revenue-cost) DESC,MIN(item_index),COALESCE(name,'Produk')) rank
     FROM scoped GROUP BY period,product_id,variant_id,COALESCE(name,'Produk')),
   totals AS (
   SELECT 'summary' kind,period,'' label,COUNT(DISTINCT code) orders,SUM(revenue) revenue,SUM(cost) cost,
-    COUNT(DISTINCT CASE WHEN estimated THEN code END) estimated,0 qty FROM scoped GROUP BY period
-  UNION ALL SELECT 'supplier',period,source,COUNT(DISTINCT code),SUM(revenue),SUM(cost),0,0 FROM scoped GROUP BY period,source
+    COUNT(DISTINCT CASE WHEN estimated THEN code END) estimated,0 qty,
+    SUM(CASE WHEN last_revenue=1 THEN merchant_amount ELSE 0 END) merchant_paid,
+    SUM(CASE WHEN last_revenue=1 THEN order_credit ELSE 0 END) credit_used FROM scoped GROUP BY period
+  UNION ALL SELECT 'supplier',period,source,COUNT(DISTINCT code),SUM(revenue),SUM(cost),0,0,0,0 FROM scoped GROUP BY period,source
   UNION ALL SELECT 'channel',period,CASE WHEN sales_channel IN ('telegram','whatsapp') THEN sales_channel ELSE 'web' END,
-    COUNT(DISTINCT code),SUM(revenue),SUM(cost),0,0 FROM scoped GROUP BY period,CASE WHEN sales_channel IN ('telegram','whatsapp') THEN sales_channel ELSE 'web' END
+    COUNT(DISTINCT code),SUM(revenue),SUM(cost),0,0,0,0 FROM scoped GROUP BY period,CASE WHEN sales_channel IN ('telegram','whatsapp') THEN sales_channel ELSE 'web' END
   )
   SELECT * FROM totals
-  UNION ALL SELECT 'top',period,label,0,revenue,cost,0,qty FROM top WHERE rank<=5
-  UNION ALL SELECT 'daily','',date(paid_wib),COUNT(DISTINCT code),SUM(revenue),SUM(cost),0,0 FROM facts
-    WHERE date(paid_wib)>=MIN('${month}',date('${today}','-29 days')) GROUP BY date(paid_wib)
-  UNION ALL SELECT 'hourly','today',strftime('%H:00',paid_wib),COUNT(DISTINCT code),SUM(revenue),SUM(cost),0,0 FROM facts
+  UNION ALL SELECT 'top',period,label,0,revenue,cost,0,qty,0,0 FROM top WHERE rank<=5
+  UNION ALL SELECT 'daily','',date(paid_wib),COUNT(DISTINCT code),SUM(revenue),SUM(cost),0,0,0,0 FROM facts
+     WHERE ${range ? `date(paid_wib) BETWEEN '${range.from}' AND '${range.to}'` : `date(paid_wib)>=MIN('${month}',date('${today}','-29 days'))`} GROUP BY date(paid_wib)
+  UNION ALL SELECT 'hourly','today',strftime('%H:00',paid_wib),COUNT(DISTINCT code),SUM(revenue),SUM(cost),0,0,0,0 FROM facts
     WHERE date(paid_wib)='${today}' GROUP BY strftime('%H:00',paid_wib)`;
+}
+
+export async function readSelectedFinancialReport(selection: ReportSelection, now = new Date()): Promise<SelectedReport> {
+  const report = emptySelectedReport(selection, now);
+  const rows = await queryAll(financialReportSql(now, selection));
+  const points = new Map<string, ReportPoint>();
+  for (const row of rows) {
+    const value = { orders: Number(row.orders || 0), revenue: Number(row.revenue || 0), cost: Number(row.cost || 0), profit: Number(row.revenue || 0) - Number(row.cost || 0) };
+    const key = String(row.label);
+    if (row.kind === (selection === "today" ? "hourly" : "daily")) points.set(key, { date: key, ...value });
+    else if (row.kind === "summary") Object.assign(report, value, { estimated_orders: Number(row.estimated || 0), merchant_paid: Number(row.merchant_paid || 0), credit_used: Number(row.credit_used || 0) });
+    else if (row.kind === "supplier" && key in report.suppliers) report.suppliers[key as keyof typeof report.suppliers] = value;
+    else if (row.kind === "channel" && key in report.channels) report.channels[key as keyof typeof report.channels] = value;
+    else if (row.kind === "top") report.top_products.push({ name: key, qty: Number(row.qty || 0), ...value });
+  }
+  report.series = report.series.map(point => points.get(point.date) ?? point);
+  report.top_products.sort((a, b) => b.profit - a.profit);
+  return report;
 }
 
 export async function readFinancialReport(now = new Date()) {
@@ -126,7 +167,7 @@ export async function readFinancialReport(now = new Date()) {
     const key = String(row.label), report = reports[row.period as keyof typeof reports];
     if (row.kind === "daily") daily.set(key, { date: key, ...value });
     else if (row.kind === "hourly") hourly.set(key, { date: key, ...value });
-    else if (report && row.kind === "summary") Object.assign(report, value, { estimated_orders: Number(row.estimated || 0) });
+    else if (report && row.kind === "summary") Object.assign(report, value, { estimated_orders: Number(row.estimated || 0), merchant_paid: Number(row.merchant_paid || 0), credit_used: Number(row.credit_used || 0) });
     else if (report && row.kind === "supplier" && key in report.suppliers) report.suppliers[key as keyof typeof report.suppliers] = value;
     else if (report && row.kind === "channel" && key in report.channels) report.channels[key as keyof typeof report.channels] = value;
     else if (report && row.kind === "top") report.top_products.push({ name: key, qty: Number(row.qty || 0), ...value });

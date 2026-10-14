@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { formatRupiah } from "@/lib/utils";
-import type { PeriodReport, ReportPeriod } from "@/lib/dashboard-report";
+import { useState, type ReactNode } from "react";
+import { formatRupiah, formatWibDateTime } from "@/lib/utils";
+import type { PeriodReport, ReportPeriod, SelectedReport } from "@/lib/dashboard-report";
+import { reportMonthSelection, resolveReportRange, todayWibDateString, type ReportSelection } from "@/lib/revenue";
 import { ProfitChart, ProfitBars, RevenueDonut, type NamedBucket } from "./OverviewCharts";
+import { ReportExportActions } from "./ReportExportActions";
 export { ProfitChart } from "./OverviewCharts";
 
 export type ProfitBucket = { orders: number; revenue: number; cost: number; profit: number };
@@ -11,6 +13,7 @@ export type SupplierBucket = ProfitBucket;
 export type ChannelBucket = { orders: number; revenue: number; profit: number };
 
 export type AdminOverviewData = {
+  selected_report?: SelectedReport;
   period_reports?: Record<ReportPeriod, PeriodReport>;
   total_orders: number;
   pending_orders: number;
@@ -92,10 +95,34 @@ function periodBucket(data: AdminOverviewData, period: Period): ProfitBucket & {
   return { orders: data.orders_month, revenue: data.revenue_month, cost: data.cost_month, profit: data.profit_month };
 }
 
-export function AdminOverview({ data, loading, onLowStock, error, onRetry }: { data: AdminOverviewData; loading: boolean; onLowStock?: () => void; error?: string | null; onRetry?: () => void }) {
+export type ReportExportProps = { report: SelectedReport; disabled: boolean };
+export type AdminOverviewProps = {
+  data: AdminOverviewData; loading: boolean; onLowStock?: () => void; error?: string | null; onRetry?: () => void;
+  selection?: ReportSelection; onSelectionChange?: (selection: ReportSelection) => void;
+  renderReportActions?: (props: ReportExportProps) => ReactNode;
+};
+
+export function AdminOverview({ data, loading, onLowStock, error, onRetry, selection, onSelectionChange, renderReportActions }: AdminOverviewProps) {
   const [period, setPeriod] = useState<Period>("week");
-  if (error) return <div role="alert" className="mt-4 rounded-2xl border border-red-400/20 bg-red-500/[0.06] p-5"><p className="text-sm text-red-200">{error}</p><button type="button" onClick={onRetry} disabled={loading} className="mt-3 rounded-xl bg-[#00E5FF] px-4 py-2 text-xs font-bold text-[#080C1E]">Muat ulang ringkasan</button></div>;
-  const report = data.period_reports?.[period];
+  const [month, setMonth] = useState(todayWibDateString().slice(0, 7));
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [rangeError, setRangeError] = useState<string | null>(null);
+  const active = selection ?? period;
+  const report = selection ? data.selected_report : data.period_reports?.[period];
+  const label = typeof active === "string" ? PERIOD_LABEL[active] : `${active.date_from} – ${active.date_to} WIB`;
+  const choose = (value: ReportSelection) => {
+    setRangeError(null);
+    if (onSelectionChange) onSelectionChange(value);
+    else if (typeof value === "string") setPeriod(value);
+  };
+  const apply = (kind: "month" | "custom") => {
+    try {
+      const value = kind === "month" ? reportMonthSelection(month) : { date_from: from, date_to: to };
+      resolveReportRange(value);
+      choose(value);
+    } catch (error) { setRangeError(error instanceof Error ? error.message : "Rentang tidak valid."); }
+  };
   const bucket = report ?? periodBucket(data, period);
   const suppliers = report?.suppliers ?? data.profit_by_supplier;
   const channels = report?.channels ?? data.profit_by_channel;
@@ -121,8 +148,8 @@ export function AdminOverview({ data, loading, onLowStock, error, onRetry }: { d
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div className="inline-flex rounded-xl border border-white/10 bg-white/[0.04] p-1" role="tablist" aria-label="Periode laporan">
         {(Object.keys(PERIOD_LABEL) as Period[]).map((key) => (
-          <button key={key} type="button" role="tab" aria-selected={period === key} onClick={() => setPeriod(key)}
-            className={`h-8 rounded-lg px-3 text-xs font-semibold transition ${period === key ? "bg-[#00E5FF] text-[#07101f]" : "text-white/55 hover:text-white"}`}>
+          <button key={key} type="button" role="tab" aria-selected={active === key} onClick={() => choose(key)}
+            className={`h-8 whitespace-nowrap rounded-lg px-3 text-xs font-semibold transition ${active === key ? "bg-[#00E5FF] text-[#07101f]" : "text-white/55 hover:text-white"}`}>
             {PERIOD_LABEL[key]}
           </button>
         ))}
@@ -143,18 +170,35 @@ export function AdminOverview({ data, loading, onLowStock, error, onRetry }: { d
         )}
       </div>
     </div>
+    {onSelectionChange && <div className="flex flex-wrap items-end gap-3 rounded-xl border border-white/10 p-3 text-xs text-white/60">
+      <label className="min-w-0">Bulan historis<input type="month" aria-label="Bulan historis" max={todayWibDateString().slice(0, 7)} value={month} onChange={e => setMonth(e.target.value)} className="mt-1 block h-10 max-w-full rounded-lg border border-white/10 bg-[#080C1E] px-2 text-white [color-scheme:dark]" /></label>
+      <button type="button" onClick={() => apply("month")} className="h-10 whitespace-nowrap rounded-lg bg-white/10 px-3 text-white">Terapkan bulan</button>
+      <label className="min-w-0">Tanggal awal<input type="date" aria-label="Tanggal awal" max={todayWibDateString()} value={from} onChange={e => setFrom(e.target.value)} className="mt-1 block h-10 max-w-full rounded-lg border border-white/10 bg-[#080C1E] px-2 text-white [color-scheme:dark]" /></label>
+      <label className="min-w-0">Tanggal akhir<input type="date" aria-label="Tanggal akhir" max={todayWibDateString()} value={to} onChange={e => setTo(e.target.value)} className="mt-1 block h-10 max-w-full rounded-lg border border-white/10 bg-[#080C1E] px-2 text-white [color-scheme:dark]" /></label>
+      <button type="button" onClick={() => apply("custom")} className="h-10 whitespace-nowrap rounded-lg bg-[#00E5FF] px-3 font-semibold text-[#080C1E]">Terapkan rentang</button>
+      <p className="w-full text-white/40">Maksimal 366 hari, inklusif WIB. Tanggal masa depan ditolak; bulan berjalan sampai hari ini.</p>
+    </div>}
+    {rangeError && <p role="alert" className="text-sm text-red-200">{rangeError}</p>}
+    {error ? <div role="alert" className="rounded-2xl border border-red-400/20 bg-red-500/[0.06] p-5"><p className="text-sm text-red-200">{error}</p><button type="button" onClick={onRetry} disabled={loading} className="mt-3 rounded-xl bg-[#00E5FF] px-4 py-2 text-xs font-bold text-[#080C1E]">Muat ulang ringkasan</button></div>
+      : loading ? <p role="status" className="py-8 text-sm text-white/50">Memuat laporan {label}…</p>
+      : <>
+    {data.selected_report && selection && <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-white/40">
+      <p>{data.selected_report.from} – {data.selected_report.to} · {data.selected_report.timezone} · Dibuat {formatWibDateTime(data.selected_report.generated_at)} WIB</p>
+      {renderReportActions ? renderReportActions({ report: data.selected_report, disabled: false }) : <ReportExportActions report={data.selected_report} disabled={false} />}
+    </div>}
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
       {metrics.map(([label, value, tone]) => <div key={label} className="ax-glass rounded-2xl p-4">
         <p className="text-[11px] uppercase tracking-wide text-white/50">{label}</p>
         <p className={`mt-1 font-display text-xl font-bold tabular-nums sm:text-2xl ${tone}`}>{loading ? "—" : value}</p>
       </div>)}
     </div>
+    {report && <p className="text-xs leading-5 text-white/45">Pembayaran merchant {formatRupiah(report.merchant_paid ?? report.revenue)} · Kredit digunakan {formatRupiah(report.credit_used ?? 0)}. Untung produk belum dikurangi MDR dan biaya operasional.</p>}
 
     {report && report.estimated_orders > 0 && <p className="rounded-xl border border-[#FFB800]/20 bg-[#FFB800]/[0.05] px-3 py-2 text-xs leading-5 text-white/55" role="status">
       {report.estimated_orders} pesanan memakai estimasi modal: riwayat tanpa snapshot atau proses supplier belum selesai.
     </p>}
-    <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)]">
-      <ProfitChart series={report?.series ?? data.daily_series} loading={loading} label={PERIOD_LABEL[period]} />
+    <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)]">
+      <ProfitChart series={report?.series ?? data.daily_series} loading={loading} label={label} />
       <RevenueDonut rows={supplierRows} loading={loading} />
     </div>
     <div className="grid gap-4 lg:grid-cols-2">
@@ -163,7 +207,7 @@ export function AdminOverview({ data, loading, onLowStock, error, onRetry }: { d
     </div>
     <section className="ax-glass rounded-[20px] p-4 sm:p-5">
       <h2 className="text-sm font-semibold text-white">Top 5 penyumbang untung</h2>
-      <p className="mt-1 text-xs text-white/40">{PERIOD_LABEL[period]} · modal dihitung per item sesuai asal produk</p>
+      <p className="mt-1 text-xs text-white/40">{label} · modal dihitung per item sesuai asal produk</p>
       <div className="mt-4 space-y-2.5">
         {!top.length && <p className="text-xs text-white/40">{loading ? "Memuat…" : "Belum ada transaksi pada periode ini"}</p>}
         {top.map((row,i)=><div key={`${row.name}:${i}`} className="rounded-xl bg-white/[0.04] p-3">
@@ -175,5 +219,6 @@ export function AdminOverview({ data, loading, onLowStock, error, onRetry }: { d
         </div>)}
       </div>
     </section>
+    </>}
   </div>;
 }

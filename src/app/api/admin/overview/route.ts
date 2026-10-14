@@ -12,8 +12,12 @@ import {
   revenueWeekWibSql,
   todayWibDateString,
   weekWibStartDateString,
+  resolveReportRange,
+  type ReportSelection,
 } from "@/lib/revenue";
-import { readFinancialReport } from "@/lib/dashboard-report";
+import { emptySelectedReport, readFinancialReport, readSelectedFinancialReport } from "@/lib/dashboard-report";
+import { parseExpiry } from "@/lib/expiry";
+import { topProfitByItems } from "@/lib/dashboard-profit";
 import {
   evaluateQris,
   evaluateQueue,
@@ -72,7 +76,7 @@ const zero = {
 function orderPaidTime(order: Record<string, unknown>): number | null {
   const raw = order.paid_at ?? order.updated_at ?? order.created_at;
   if (raw == null) return null;
-  const parsed = Date.parse(String(raw));
+  const parsed = parseExpiry(String(raw));
   return Number.isFinite(parsed) ? parsed : null;
 }
 
@@ -80,24 +84,59 @@ export async function GET(request: NextRequest) {
   const admin = await requireAdmin(request);
   if (!admin) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
+  const now = new Date();
+  const params = request.nextUrl.searchParams;
+  let selection: ReportSelection;
+  try {
+    for (const key of ["date_from", "date_to", "period"]) if (params.getAll(key).length > 1) throw new Error("Filter laporan tidak boleh berulang.");
+    const hasRange = params.has("date_from") || params.has("date_to");
+    if (hasRange && params.has("period")) throw new Error("Pilih periode atau rentang tanggal, bukan keduanya.");
+    selection = hasRange ? { date_from: params.get("date_from") ?? "", date_to: params.get("date_to") ?? "" }
+      : (params.get("period") ?? "week") as ReportSelection;
+    resolveReportRange(selection, now);
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Rentang laporan tidak valid." }, { status: 400 });
+  }
+
   if (!isD1Mode()) {
     const [orders, products] = await Promise.all([
       queryAll("SELECT * FROM orders ORDER BY created_at DESC"),
       queryAll("SELECT * FROM products ORDER BY sort_order ASC"),
     ]);
     const paid = orders.filter((order) => String(order.status) === "lunas");
-    const now = Date.now();
+    const nowMs = now.getTime();
     const amountOf = (order: Record<string, unknown>) => Number(order.subtotal || 0);
     const revenueTotal = paid.reduce((sum, order) => sum + amountOf(order), 0);
-    const inDay = (order: Record<string, unknown>) => { const ts = orderPaidTime(order); return ts != null && isSameWibDay(ts, now); };
-    const inWeek = (order: Record<string, unknown>) => { const ts = orderPaidTime(order); return ts != null && isSameWibWeek(ts, now); };
-    const inMonth = (order: Record<string, unknown>) => { const ts = orderPaidTime(order); return ts != null && isSameWibMonth(ts, now); };
+    const inDay = (order: Record<string, unknown>) => { const ts = orderPaidTime(order); return ts != null && isSameWibDay(ts, nowMs); };
+    const inWeek = (order: Record<string, unknown>) => { const ts = orderPaidTime(order); return ts != null && isSameWibWeek(ts, nowMs); };
+    const inMonth = (order: Record<string, unknown>) => { const ts = orderPaidTime(order); return ts != null && isSameWibMonth(ts, nowMs); };
     const revenueToday = paid.filter(inDay).reduce((sum, order) => sum + amountOf(order), 0);
     const revenueWeek = paid.filter(inWeek).reduce((sum, order) => sum + amountOf(order), 0);
     const revenueMonth = paid.filter(inMonth).reduce((sum, order) => sum + amountOf(order), 0);
     const top = [...products].sort((a, b) => Number(b.sold_count || 0) - Number(a.sold_count || 0))[0];
+    const selected = emptySelectedReport(selection, now);
+    const selectedOrders: Record<string, unknown>[] = [];
+    for (const order of paid) {
+      const ts = orderPaidTime(order);
+      if (ts == null) continue;
+      const date = todayWibDateString(new Date(ts));
+      if (date < selected.from || date > selected.to) continue;
+      const amount = amountOf(order);
+      selectedOrders.push({ ...order, revenue: amount, supplier_cost: 0 });
+      selected.orders++; selected.revenue += amount; selected.profit += amount; selected.estimated_orders++;
+      selected.merchant_paid = (selected.merchant_paid ?? 0) + amount;
+      const channel = order.sales_channel === "telegram" || order.sales_channel === "whatsapp" ? order.sales_channel : "web";
+      for (const value of [selected.suppliers.manual, selected.channels[channel]]) {
+        value.orders++; value.revenue += amount; value.profit += amount;
+      }
+      const label = selection === "today" ? `${new Date(ts + 7 * 3600000).toISOString().slice(11, 13)}:00` : date;
+      const point = selected.series.find(p => p.date === label);
+      if (point) { point.orders++; point.revenue += amount; point.profit += amount; }
+    }
+    selected.top_products = topProfitByItems(selectedOrders);
     return NextResponse.json({
       ...zero,
+      selected_report: selected,
       total_orders: orders.length,
       pending_orders: orders.filter((order) => String(order.status) === "pending").length,
       paid_orders: paid.length,
@@ -158,7 +197,7 @@ export async function GET(request: NextRequest) {
   const inToday = `${paidDateWib}='${todayWib}'`;
   const inWeek = `${paidWeekWib}='${weekWib}'`;
   const inMonth = `${paidMonthWib}='${monthWib}'`;
-  const [orders, proofs, qris, fulfillmentJobsRaw, fulfillmentOrdersNeedingAction, itemAttention, stock, topProduct, channelRows, financial, tgQueue, waQueue, oldestJobDue, oldestItemDue, oldestWaDue, tgSends, waSends, qrisEvents] = await Promise.all([
+  const [orders, proofs, qris, fulfillmentJobsRaw, fulfillmentOrdersNeedingAction, itemAttention, stock, topProduct, channelRows, financial, selected, tgQueue, waQueue, oldestJobDue, oldestItemDue, oldestWaDue, tgSends, waSends, qrisEvents] = await Promise.all([
     safeFirst(`SELECT
       COUNT(*) AS total_orders,
       SUM(CASE WHEN o.status='pending' THEN 1 ELSE 0 END) AS pending_orders,
@@ -195,7 +234,8 @@ export async function GET(request: NextRequest) {
     safeFirst(`SELECT COUNT(*) AS count FROM product_variants WHERE is_active=1 AND stock BETWEEN 0 AND 5`),
     safeFirst(`SELECT name,sold_count FROM products WHERE is_active=1 ORDER BY sold_count DESC, sort_order ASC LIMIT 1`),
     safeAll(`SELECT sales_channel,COUNT(*) AS count FROM orders WHERE status='pending' GROUP BY sales_channel`),
-    readFinancialReport(),
+    readFinancialReport(now),
+    readSelectedFinancialReport(selection, now),
     // Sinyal kesehatan berbasis pengukuran (issue #13), bukan sekadar env:
     // antrean fulfillment + usia kirim Telegram terakhir.
     // 2026-09-16: tgQueue/fulfillment HANYA dari order yang masih butuh
@@ -248,6 +288,7 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     ...zero,
+    selected_report: selected,
     total_orders: Number(orders?.total_orders || 0),
     pending_orders: Number(orders?.pending_orders || 0),
     paid_orders: Number(orders?.paid_orders || 0),

@@ -54,6 +54,7 @@ export function PopupBanner() {
   const closeRef = useRef<HTMLButtonElement>(null);
   const bannerRef = useRef<Banner | null>(null);
   const dontShowRef = useRef(false);
+  const shownThisVisitRef = useRef(false);
   bannerRef.current = banner;
   const setDontShowBoth = useCallback((value: boolean) => {
     dontShowRef.current = value;
@@ -78,6 +79,7 @@ export function PopupBanner() {
     setDontShow(false);
     setImageRatio(null);
     if (isAdmin || !isHome) return;
+    if (shownThisVisitRef.current) return;
 
     const controller = new AbortController();
     let disposed = false;
@@ -91,19 +93,25 @@ export function PopupBanner() {
         .then((r) => (r.ok ? r.json() : Promise.reject()))
         .then((j) => {
           if (disposed) return;
-          const b = (j.banners as Banner[])?.[0];
+          const b = (j.banners as Banner[])?.find((candidate) => {
+            if (!candidate.is_active || isBannerHidden(candidate.id)) return false;
+            let shown = 0;
+            try { shown = Number(sessionStorage.getItem(`axvara-banner-${candidate.id}-shows`) ?? 0); } catch {}
+            const maximum = Math.min(10, Math.max(1, candidate.max_show_per_session ?? 1));
+            return !Number.isFinite(shown) || shown < maximum;
+          });
           if (!b) return;
-          if (isBannerHidden(b.id)) return;
           const storageKey = `axvara-banner-${b.id}-shows`;
-          const shown = Number(sessionStorage.getItem(storageKey) ?? 0);
-          const maximum = Math.min(10, Math.max(1, b.max_show_per_session ?? 1));
-          if (shown >= maximum) return;
           setBanner(b);
           const delay = Math.min(10000, Math.max(0, b.delay_ms ?? 1500));
           openTimer = setTimeout(() => {
-            if (!disposed) {
+            if (!disposed && !shownThisVisitRef.current && !isBannerHidden(b.id)) {
+              shownThisVisitRef.current = true;
               setOpen(true);
-              try { sessionStorage.setItem(storageKey, String(shown + 1)); } catch {}
+              try {
+                const shown = Number(sessionStorage.getItem(storageKey) ?? 0);
+                sessionStorage.setItem(storageKey, String((Number.isFinite(shown) ? shown : 0) + 1));
+              } catch {}
             }
           }, delay);
         })

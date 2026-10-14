@@ -6,6 +6,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen, fireEvent } from "@testing-library/react";
 import { AdminOverview, EMPTY_ADMIN_OVERVIEW, ProfitChart } from "@/components/admin/AdminOverview";
 import type { PeriodReport } from "@/lib/dashboard-report";
+import { emptySelectedReport } from "@/lib/dashboard-report";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/admin",
@@ -133,4 +134,40 @@ it("failed finance load shows a retry action rather than zero profit metrics", (
   expect(screen.queryByText('Untung Produk')).toBeNull();
   fireEvent.click(screen.getByRole('button',{name:'Muat ulang ringkasan'}));
   expect(retry).toHaveBeenCalledTimes(1);
+});
+
+it("month and custom Apply validate dates and request the same range contract", () => {
+  const change = vi.fn();
+  render(<AdminOverview data={data} loading={false} selection="week" onSelectionChange={change} />);
+  fireEvent.change(screen.getByLabelText("Bulan historis"), { target: { value: "2024-02" } });
+  fireEvent.click(screen.getByRole("button", { name: "Terapkan bulan" }));
+  expect(change).toHaveBeenLastCalledWith({ date_from: "2024-02-01", date_to: "2024-02-29" });
+  fireEvent.change(screen.getByLabelText("Tanggal awal"), { target: { value: "2024-03-01" } });
+  fireEvent.change(screen.getByLabelText("Tanggal akhir"), { target: { value: "2024-02-29" } });
+  fireEvent.click(screen.getByRole("button", { name: "Terapkan rentang" }));
+  expect(screen.getByRole("alert").textContent).toContain("Tanggal awal");
+  expect(change).toHaveBeenCalledTimes(1);
+  fireEvent.change(screen.getByLabelText("Tanggal awal"), { target: { value: "2024-02-20" } });
+  fireEvent.click(screen.getByRole("button", { name: "Terapkan rentang" }));
+  expect(change).toHaveBeenLastCalledWith({ date_from: "2024-02-20", date_to: "2024-02-29" });
+});
+
+it("selected historical report scopes all financial content and exposes export metadata only when ready", () => {
+  const selection = { date_from: "2024-02-01", date_to: "2024-02-29" };
+  const report = emptySelectedReport(selection, new Date("2026-10-15T10:00:00Z"));
+  const actions = vi.fn(() => <button>Export fixture</button>);
+  const view = render(<AdminOverview data={{ ...data, selected_report: report }} selection={selection} onSelectionChange={vi.fn()} loading={false} renderReportActions={actions} />);
+  expect(screen.queryByText("Netflix")).toBeNull();
+  expect(screen.getByText("Belum ada transaksi pada periode ini")).toBeTruthy();
+  expect(screen.getByText(/Asia\/Jakarta/)).toBeTruthy();
+  expect(actions).toHaveBeenLastCalledWith({ report, disabled: false });
+  view.rerender(<AdminOverview data={data} selection={selection} onSelectionChange={vi.fn()} loading={true} renderReportActions={actions} />);
+  expect(screen.queryByText("Untung Produk")).toBeNull();
+  expect(screen.queryByText("Netflix")).toBeNull();
+  expect(screen.queryByText("Export fixture")).toBeNull();
+  view.rerender(<AdminOverview data={data} selection={selection} onSelectionChange={vi.fn()} loading={false} error="Gagal memuat periode baru" />);
+  expect(screen.queryByText("Untung Produk")).toBeNull();
+  expect(screen.queryByText("Netflix")).toBeNull();
+  expect(screen.getByRole("alert").textContent).toContain("Gagal memuat periode baru");
+  expect(screen.getByLabelText("Tanggal awal")).toBeTruthy();
 });

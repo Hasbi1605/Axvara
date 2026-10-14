@@ -273,6 +273,7 @@ CREATE TABLE IF NOT EXISTS banners (
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
+CREATE UNIQUE INDEX IF NOT EXISTS banners_sort_order_unique ON banners(sort_order);
 
 -- Telegram, payment, and fulfillment tables
 CREATE TABLE IF NOT EXISTS telegram_users (

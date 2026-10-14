@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { queryAll, queryFirst, execRun } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
+import { BannerOrderConflict, writeBannerOrder } from "@/lib/banner-order";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -54,9 +55,32 @@ export async function POST(req: NextRequest) {
   if (d.image_url && !d.image_url.startsWith("/r2/banners/")) return NextResponse.json({ error: "Gambar harus berasal dari uploader banner AXVARA" }, { status: 400 });
   if (d.cta_href && !/^(\/[^/]|https:\/\/)/.test(d.cta_href)) return NextResponse.json({ error: "CTA href harus /... atau https:// (// tidak diizinkan)" }, { status: 400 });
   const now = new Date().toISOString();
-  const res = await execRun("INSERT INTO banners (title,body,image_url,cta_label,cta_href,is_active,delay_ms,max_show_per_session,sort_order,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)", d.title, d.body ?? null, d.image_url ?? null, d.cta_label ?? null, d.cta_href ?? null, d.is_active ? 1 : 0, d.delay_ms ?? 1500, d.max_show_per_session ?? 1, d.sort_order ?? 0, now, now);
-  return NextResponse.json({ id: res.lastInsertRowid }, { status: 201 });
+  try {
+    const saved = await writeBannerOrder(d.sort_order, null, (order) => execRun("INSERT INTO banners (title,body,image_url,cta_label,cta_href,is_active,delay_ms,max_show_per_session,sort_order,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)", d.title, d.body ?? null, d.image_url ?? null, d.cta_label ?? null, d.cta_href ?? null, d.is_active ? 1 : 0, d.delay_ms, d.max_show_per_session, order, now, now));
+    return NextResponse.json({ id: saved.result.lastInsertRowid, sort_order: saved.sort_order }, { status: 201 });
+  } catch (error) {
+    if (error instanceof BannerOrderConflict) return NextResponse.json({ error: error.message }, { status: 409 });
+    throw error;
+  }
 }
 
-export async function PUT(req:NextRequest){const admin=await requireAdmin(req);if(!admin)return NextResponse.json({error:"Unauthorized"},{status:401});const id=new URL(req.url).searchParams.get("id");if(!id)return NextResponse.json({error:"id diperlukan"},{status:400});if(!await queryFirst("SELECT id FROM banners WHERE id=?",id))return NextResponse.json({error:"not found"},{status:404});const parsed=schema.safeParse(await req.json().catch(()=>null));if(!parsed.success)return NextResponse.json({error:parsed.error.issues[0]?.message??"Validasi gagal"},{status:400});const d=parsed.data;if(d.image_url&&!d.image_url.startsWith("/r2/banners/"))return NextResponse.json({error:"Gambar harus berasal dari uploader banner AXVARA"},{status:400});if(d.cta_href&&!/^(\/[^/]|https:\/\/)/.test(d.cta_href))return NextResponse.json({error:"CTA href harus /... atau https://"},{status:400});await execRun("UPDATE banners SET title=?,body=?,image_url=?,cta_label=?,cta_href=?,is_active=?,delay_ms=?,max_show_per_session=?,sort_order=?,updated_at=datetime('now') WHERE id=?",d.title,d.body??null,d.image_url??null,d.cta_label??null,d.cta_href??null,d.is_active?1:0,d.delay_ms,d.max_show_per_session,d.sort_order,id);return NextResponse.json({ok:true});}
+export async function PUT(req: NextRequest) {
+  if (!await requireAdmin(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const id = new URL(req.url).searchParams.get("id");
+  if (!id) return NextResponse.json({ error: "id diperlukan" }, { status: 400 });
+  if (!await queryFirst("SELECT id FROM banners WHERE id=?", id)) return NextResponse.json({ error: "not found" }, { status: 404 });
+  const parsed = schema.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
+  const d = parsed.data;
+  if (d.image_url && !d.image_url.startsWith("/r2/banners/")) return NextResponse.json({ error: "Gambar harus berasal dari uploader banner AXVARA" }, { status: 400 });
+  if (d.cta_href && !/^(\/[^/]|https:\/\/)/.test(d.cta_href)) return NextResponse.json({ error: "CTA href harus /... atau https://" }, { status: 400 });
+  try {
+    const saved = await writeBannerOrder(d.sort_order, id, (order) => execRun("UPDATE banners SET title=?,body=?,image_url=?,cta_label=?,cta_href=?,is_active=?,delay_ms=?,max_show_per_session=?,sort_order=?,updated_at=datetime('now') WHERE id=?", d.title, d.body ?? null, d.image_url ?? null, d.cta_label ?? null, d.cta_href ?? null, d.is_active ? 1 : 0, d.delay_ms, d.max_show_per_session, order, id));
+    if (!saved.result.changes) return NextResponse.json({ error: "not found" }, { status: 404 });
+    return NextResponse.json({ ok: true, sort_order: saved.sort_order });
+  } catch (error) {
+    if (error instanceof BannerOrderConflict) return NextResponse.json({ error: error.message }, { status: 409 });
+    throw error;
+  }
+}
 export async function DELETE(req:NextRequest){if(!await requireAdmin(req))return NextResponse.json({error:"Unauthorized"},{status:401});const id=new URL(req.url).searchParams.get("id");if(!id)return NextResponse.json({error:"id diperlukan"},{status:400});const result=await execRun("DELETE FROM banners WHERE id=?",id);return result.changes?NextResponse.json({ok:true}):NextResponse.json({error:"not found"},{status:404});}

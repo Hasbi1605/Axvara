@@ -2,7 +2,7 @@
 
 > **Satu Gerbang, Semua Tools Premium** — Toko digital premium Apple Store + Glassmorphism
 
-AXVARA adalah toko digital untuk akun, aplikasi, dan tools premium dengan kategori yang dikelola dari panel admin — checkout memakai **QRIS dinamis DANA Business** tanpa payment gateway pihak ketiga, dan hosting Cloudflare Pages. Jalur manual (E-Wallet/Bank + upload bukti) ⏸️ **maintenance sejak 2026-09-17**: field tampil disabled + badge Maintenance di WEB, dihilangkan di WA/TELE, upload disembunyikan, backend menolak non-QRIS 503.
+AXVARA adalah toko digital untuk akun, aplikasi, dan tools premium dengan kategori yang dikelola dari panel admin — checkout memakai **QRIS dinamis merchant GoPay/DANA sesuai provider aktif** tanpa payment gateway pihak ketiga, dan hosting Cloudflare Pages. Jalur manual (E-Wallet/Bank + upload bukti) ⏸️ **maintenance sejak 2026-09-17**: field tampil disabled + badge Maintenance di WEB, dihilangkan di WA/TELE, upload disembunyikan, backend menolak non-QRIS 503.
 
 **Live dev:** `http://localhost:3000` — Next 15.5.24
 
@@ -566,3 +566,11 @@ Next dev otomatis memakai 20 fixture Draft dari `src/lib/article-seeds.ts` saat 
 ---
 
 Private — AXVARA © 2026
+
+### Panel admin — pembaruan 2026-10-15
+
+Ringkasan mendukung bulan historis dan rentang inklusif WIB maksimal 366 hari. Tombol Unduh PDF dan Unduh Excel (.xlsx) memakai respons laporan yang sama dengan layar; angka Excel tetap numerik, PDF berpaginasi. Pembayaran merchant dan kredit Pedia ditampilkan terpisah, untung produk belum dikurangi MDR/biaya operasional. Ekspor tidak tersedia selama laporan dimuat/gagal.
+
+Banner dapat diaktifkan/dimatikan dari pill daftar. Urutan 0–999 unik, benturan memakai posisi kosong berikutnya; migrasi 0064 menormalkan urutan lama tanpa mengubah ID/konten, lalu menambahkan unique index. Popup tetap satu per kunjungan dokumen, memilih banner berikutnya yang layak bila banner sebelumnya sudah disembunyikan atau mencapai cap sesi.
+
+Metode & Rekonsiliasi membaca provider efektif dari server; GoPay memakai panduan poller GoBiz, DANA legacy tetap tertera pada event lama. Status terkonfigurasi tidak menyatakan poller/sesi sehat. Logo overlay Market/Pedia dipaksa putih; filter X hanya ikon dan tetap aksesibel.
