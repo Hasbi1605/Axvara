@@ -444,6 +444,8 @@ Katalog storefront menampilkan 16 produk lebih dulu dengan tombol **"Tampilkan N
 
 **Dashboard untung (2026-10-15, implementasi; publikasi CI).** Periode Hari/Minggu/Bulan WIB berlaku untuk kartu, grafik, donat kontribusi omzet, batang untung supplier/channel dan Top 5. Modal dihitung per item WR/SK/stok sendiri/Pedia, termasuk keranjang campuran; transaksi baru mendapat snapshot modal atomik saat lunas (migrasi 0063), riwayat tanpa snapshot dilabeli estimasi. Grafik hari ini per jam, minggu/bulan harian; rugi tetap terlihat dan jumlah order memakai sumbu tersendiri. Top 5 mencakup seluruh transaksi periode tanpa cap 500. Respons `period_reports` dimuat bersama ringkasan, tanpa polling atau cron baru.
 
+Recovery ringkasan 2026-10-15: agregat SQL dibagi ke CTE agar kompatibel dengan batas compound SELECT D1, tetap satu query. Regresi dijalankan juga di D1 workerd (Miniflare), selain SQLite, agar batas SQL produksi ikut diverifikasi.
+
 ## ▶️ Jalankan Local (dev-only, tanpa build tiap ubahan)
 
 ```bash

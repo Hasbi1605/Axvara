@@ -20,6 +20,8 @@ const emptyReport = (): PeriodReport => ({ ...bucket(), estimated_orders: 0, ser
 /** One bounded aggregate response. All panels derive from the same paid item facts.
  * Supplier totals and QRIS rounding remainders are allocated exactly once.
  * Missing historical cost snapshots use the catalog and remain estimates.
+ * D1 limits each compound SELECT to five terms. Keep totals in their own
+ * CTE so all six output kinds still share one query/materialized fact set.
  */
 export function financialReportSql(now = new Date()): string {
   const today = todayWibDateString(now), week = weekWibStartDateString(now), month = `${today.slice(0, 7)}-01`;
@@ -99,12 +101,15 @@ export function financialReportSql(now = new Date()): string {
     AND date(f.paid_wib)<='${today}')),
   top AS (SELECT period,COALESCE(name,'Produk') label,SUM(qty) qty,SUM(revenue) revenue,SUM(cost) cost,
     ROW_NUMBER() OVER(PARTITION BY period ORDER BY SUM(revenue-cost) DESC,MIN(item_index),COALESCE(name,'Produk')) rank
-    FROM scoped GROUP BY period,product_id,variant_id,COALESCE(name,'Produk'))
+    FROM scoped GROUP BY period,product_id,variant_id,COALESCE(name,'Produk')),
+  totals AS (
   SELECT 'summary' kind,period,'' label,COUNT(DISTINCT code) orders,SUM(revenue) revenue,SUM(cost) cost,
     COUNT(DISTINCT CASE WHEN estimated THEN code END) estimated,0 qty FROM scoped GROUP BY period
   UNION ALL SELECT 'supplier',period,source,COUNT(DISTINCT code),SUM(revenue),SUM(cost),0,0 FROM scoped GROUP BY period,source
   UNION ALL SELECT 'channel',period,CASE WHEN sales_channel IN ('telegram','whatsapp') THEN sales_channel ELSE 'web' END,
     COUNT(DISTINCT code),SUM(revenue),SUM(cost),0,0 FROM scoped GROUP BY period,CASE WHEN sales_channel IN ('telegram','whatsapp') THEN sales_channel ELSE 'web' END
+  )
+  SELECT * FROM totals
   UNION ALL SELECT 'top',period,label,0,revenue,cost,0,qty FROM top WHERE rank<=5
   UNION ALL SELECT 'daily','',date(paid_wib),COUNT(DISTINCT code),SUM(revenue),SUM(cost),0,0 FROM facts
     WHERE date(paid_wib)>=MIN('${month}',date('${today}','-29 days')) GROUP BY date(paid_wib)
