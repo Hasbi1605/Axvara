@@ -19,7 +19,22 @@
 --   pertama. Admin dapat mengoreksi lewat panel sesudahnya.
 PRAGMA defer_foreign_keys=ON;
 
-DROP TABLE IF EXISTS pedia_tiers_new;
+-- IDEMPOTEN (perbaikan CI 2026-10-14): migrasi ini sudah diterapkan manual
+-- ke prod, jadi saat CI menjalankannya ulang, `pedia_tiers_new` yang dibuat
+-- di bawah bisa bertabrakan dengan sisa penerapan manual. Pindahkan sisa
+-- itu (bila ada) ke nama sekali-pakai lalu buang — tidak dirujuk FK.
+-- Di DB yang belum bermigrasi, rename ini gagal "no such table" dan D1
+-- menghentikan seluruh batch, jadi keberadaannya dijaga lewat tabel
+-- penanda: buat tabel kosong bernama sama lebih dulu (IF NOT EXISTS),
+-- baru rename selalu sah.
+CREATE TABLE IF NOT EXISTS pedia_tiers_new (id INTEGER);
+ALTER TABLE pedia_tiers_new RENAME TO pedia_tiers_tmp0062;
+DROP TABLE IF EXISTS pedia_tiers_tmp0062;
+-- Arsip lama hasil penerapan manual memakai nama tujuan rename di ekor;
+-- bebaskan namanya dengan pola yang sama (buat penanda bila belum ada).
+CREATE TABLE IF NOT EXISTS pedia_tiers_old0062 (id INTEGER);
+ALTER TABLE pedia_tiers_old0062 RENAME TO pedia_tiers_archive0062;
+DROP TABLE IF EXISTS pedia_tiers_archive0062;
 
 CREATE TABLE pedia_tiers_new (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -99,7 +114,9 @@ LEFT JOIN pedia_supplier_services s
 -- IDEMPOTEN: migrasi ini lebih dulu diterapkan manual ke prod 2026-10-14,
 -- jadi arsip lama dibuang dulu agar langkah migrasi CI aman dijalankan
 -- ulang (di DB yang belum bermigrasi, DROP IF EXISTS ini no-op).
-DROP TABLE IF EXISTS pedia_tiers_old0062;
+-- Urutan rename di ekor: tabel LAMA (yang dirujuk FK order_items) menjadi
+-- arsip `pedia_tiers_old0062`, tabel baru hasil rebuild mengambil nama
+-- resmi. Nama arsip ditimpa tanpa DROP agar tidak menabrak rujukan FK.
 ALTER TABLE pedia_tiers RENAME TO pedia_tiers_old0062;
 ALTER TABLE pedia_tiers_new RENAME TO pedia_tiers;
 
