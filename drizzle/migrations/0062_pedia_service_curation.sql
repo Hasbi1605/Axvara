@@ -30,11 +30,17 @@ PRAGMA defer_foreign_keys=ON;
 CREATE TABLE IF NOT EXISTS pedia_tiers_new (id INTEGER);
 ALTER TABLE pedia_tiers_new RENAME TO pedia_tiers_tmp0062;
 DROP TABLE IF EXISTS pedia_tiers_tmp0062;
--- Arsip lama hasil penerapan manual memakai nama tujuan rename di ekor;
--- bebaskan namanya dengan pola yang sama (buat penanda bila belum ada).
+-- Arsip hasil penerapan manual: namanya ditimpa rename (TIDAK dibuang) —
+-- SQLite di D1 menulis ulang referensi FK order_items mengikuti rename,
+-- jadi membuangnya merusak rujukan. Bebaskan nama lewat rename berantai
+-- ke nama anonim yang dibiarkan ada; sisa anonim dari upaya sebelumnya
+-- digeser sekali lagi (tetap tanpa DROP).
+CREATE TABLE IF NOT EXISTS pedia_tiers_archive0062_prev (id INTEGER);
+ALTER TABLE pedia_tiers_archive0062_prev RENAME TO pedia_tiers_archive0062_prev2;
+CREATE TABLE IF NOT EXISTS pedia_tiers_archive0062 (id INTEGER);
+ALTER TABLE pedia_tiers_archive0062 RENAME TO pedia_tiers_archive0062_prev;
 CREATE TABLE IF NOT EXISTS pedia_tiers_old0062 (id INTEGER);
 ALTER TABLE pedia_tiers_old0062 RENAME TO pedia_tiers_archive0062;
-DROP TABLE IF EXISTS pedia_tiers_archive0062;
 
 CREATE TABLE pedia_tiers_new (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -114,9 +120,9 @@ LEFT JOIN pedia_supplier_services s
 -- IDEMPOTEN: migrasi ini lebih dulu diterapkan manual ke prod 2026-10-14,
 -- jadi arsip lama dibuang dulu agar langkah migrasi CI aman dijalankan
 -- ulang (di DB yang belum bermigrasi, DROP IF EXISTS ini no-op).
--- Urutan rename di ekor: tabel LAMA (yang dirujuk FK order_items) menjadi
--- arsip `pedia_tiers_old0062`, tabel baru hasil rebuild mengambil nama
--- resmi. Nama arsip ditimpa tanpa DROP agar tidak menabrak rujukan FK.
+-- Urutan rename di ekor: tabel LAMA menjadi arsip `pedia_tiers_old0062`
+-- (referensi FK order_items ikut tertulis ulang ke nama arsip oleh
+-- SQLite), lalu tabel baru hasil rebuild mengambil nama resmi.
 ALTER TABLE pedia_tiers RENAME TO pedia_tiers_old0062;
 ALTER TABLE pedia_tiers_new RENAME TO pedia_tiers;
 
