@@ -10,8 +10,8 @@ const product: PediaCatalogProduct = {
   tagline: "Followers untuk profil publik", packages: [100, 250, 500], step: 10, is_featured: 1, min_price: 2000,
   checklist: [{ id: "public", label: "Akun publik", help: "Jangan ubah username selama proses." }],
   tiers: [
-    { id: 1, tier: "hemat", label_note: "Campuran", refill_days: 0, eta_start: "5 menit", eta_finish: "1 hari", prices: { "100": 2000 }, min_qty: 100, max_qty: 100 },
-    { id: 2, tier: "standar", label_note: "Global", refill_days: 30, eta_start: "10 menit", eta_finish: "2 hari", prices: { "100": 3000, "250": 7000, "500": 12000 }, min_qty: 100, max_qty: 1000 },
+    { id: 1, tier: "hemat", label_note: "Campuran", public_name: "Followers Global Ekonomis", region: "global", quality: "ekonomis", drop_risk: "sedang", refill_days: 0, eta_start: "5 menit", eta_finish: "1 hari", prices: { "100": 2000 }, price_per_1k: 20000, quick_quantities: [100], min_qty: 100, max_qty: 100 },
+    { id: 2, tier: "standar", label_note: "Global", public_name: "Followers Indonesia Stabil", region: "indonesia", quality: "standar", drop_risk: "rendah", recommended: true, refill_days: 30, eta_start: "10 menit", eta_finish: "2 hari", prices: { "100": 3000, "250": 7000, "500": 12000 }, price_per_1k: 28000, quick_quantities: [100, 250, 500], min_qty: 100, max_qty: 1000 },
   ],
 };
 const reply = (data: unknown, status = 200) => ({ ok: status < 400, status, json: async () => data });
@@ -26,8 +26,8 @@ function mount(enabled = true, target = "https://instagram.com/customer") {
   return render(<OrderClient product={product} initialTarget={target} ordersEnabled={enabled} />);
 }
 function select() {
-  fireEvent.click(screen.getByRole("radio", { name: /^standar/i }));
-  fireEvent.click(screen.getByRole("radio", { name: "250" }));
+  fireEvent.click(screen.getByRole("radio", { name: /Followers Indonesia Stabil/i }));
+  fireEvent.change(screen.getByLabelText("Jumlah yang dipesan"), { target: { value: "250" } });
 }
 function complete() {
   select();
@@ -72,17 +72,18 @@ describe("Pedia order UX", () => {
     mount();
     expect(screen.getAllByRole("region").map((r) => r.getAttribute("aria-labelledby"))).toEqual(["pedia-package-heading", "pedia-target-heading", "pedia-contact-heading"]);
     expect(screen.getAllByRole("radio").every((r) => r.tagName === "INPUT" && !(r as HTMLInputElement).checked)).toBe(true);
-    expect(screen.getByText("Mulai Rp2.000")).toBeTruthy();
-    expect(screen.getByText("Mulai Rp3.000")).toBeTruthy();
-    expect(screen.getAllByText("Untuk 100")).toHaveLength(2);
-    expect(document.body.textContent).not.toMatch(/HYPE|Paling dipilih|Garansi|Rp0|Paket tidak tersedia/i);
+    // Harga transparan per 1.000 (teks terbagi elemen .textContent gabungan).
+    expect(document.body.textContent).toContain("Rp20.000");
+    expect(document.body.textContent).toContain("Rp28.000");
+    expect(document.body.textContent).toContain("/1.000");
+    expect(document.body.textContent).not.toMatch(/HYPE|Paling dipilih|Rp0|Paket tidak tersedia/i);
     expect(document.body.textContent).toContain("Belum dipilih");
-    expect(screen.getByText("Refill 30 hari, sesuai ketentuan").className).toContain("text-[#00E5FF]");
-    expect(screen.getByText("Tanpa refill").className).toContain("text-[#FFB800]");
+    expect(screen.getByText("Refill 30 hari").className).toContain("text-[#00E5FF]");
+    expect(screen.getByText("Tanpa refill", { selector: "span" }).className).toContain("text-[#FFB800]");
     expect(screen.queryByRole("button", { name: "Periksa harga" })).toBeNull();
     proceed();
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(document.activeElement).toBe(screen.getByRole("radio", { name: /^hemat/i }));
+    expect(document.activeElement).toBe(screen.getByRole("radio", { name: /Followers Global Ekonomis/i }));
   });
 
   it("keeps closed status near disabled CTA, package preview and no contact collection", () => {
@@ -92,19 +93,21 @@ describe("Pedia order UX", () => {
     expect(screen.queryByLabelText("Email")).toBeNull();
     expect(screen.queryByLabelText("Kode kredit")).toBeNull();
     select();
-    expect((screen.getByRole("radio", { name: "250" }) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByLabelText("Jumlah yang dipesan") as HTMLInputElement).value).toBe("250");
     const buttons = screen.getAllByRole("button", { name: "Lanjut ke pembayaran" });
     expect(buttons.every((b) => (b as HTMLButtonElement).disabled && b.previousElementSibling?.textContent?.includes("Pemesanan belum tersedia"))).toBe(true);
     proceed();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("clears an incompatible quantity on tier change instead of silently choosing another", () => {
+  it("jumlah bebas divalidasi terhadap min–max layanan terpilih (bukan paket mati)", () => {
     mount(); select();
-    fireEvent.click(screen.getByRole("radio", { name: /^hemat/i }));
-    expect(screen.getAllByRole("radio").filter((r) => r.getAttribute("name") === "pedia-quantity").every((r) => !(r as HTMLInputElement).checked)).toBe(true);
-    expect((screen.getByRole("radio", { name: "250" }) as HTMLInputElement).disabled).toBe(true);
-    expect(document.body.textContent).toContain("Belum dipilih");
+    // 250 valid untuk layanan standar (min 100 maks 1000); pindah ke hemat
+    // (maks 100) membuat 250 di luar rentang -> validasi menolak sebelum quote.
+    fireEvent.click(screen.getByRole("radio", { name: /Followers Global Ekonomis/i }));
+    proceed();
+    expect(screen.getAllByRole("alert").some((a) => a.textContent?.includes("maksimal 100"))).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it.each(["https://tiktok.com/@buyer", "https://instagram.com/p/ABC", "not-a-link"])("rejects wrong platform/kind or unrecognized target %s before quote", (target) => {
@@ -165,7 +168,7 @@ describe("Pedia order UX", () => {
     const buttons = screen.getAllByRole("button", { name: "Lanjut ke pembayaran" });
     fireEvent.click(buttons[0]); fireEvent.click(buttons[1]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByRole("radio", { name: "500" }));
+    fireEvent.change(screen.getByLabelText("Jumlah yang dipesan"), { target: { value: "500" } });
     await act(async () => { resolve(reply({ quote_token: "old", total: 1, payable: 1 })); });
     expect(screen.queryByText(/Total pembayaran/)).toBeNull();
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -190,9 +193,9 @@ describe("Pedia order UX", () => {
 
   it("invalidates consent on tier, requirements or agreement changes", async () => {
     mount(); complete(); await getQuote();
-    fireEvent.click(screen.getByRole("radio", { name: /^hemat/i }));
+    fireEvent.click(screen.getByRole("radio", { name: /Followers Global Ekonomis/i }));
     expect(screen.queryByText(/Total pembayaran/)).toBeNull();
-    fireEvent.click(screen.getByRole("radio", { name: "100" }));
+    fireEvent.change(screen.getByLabelText("Jumlah yang dipesan"), { target: { value: "100" } });
     await getQuote();
     fireEvent.click(screen.getByRole("checkbox", { name: /Akun publik/ }));
     expect(screen.queryByText(/Total pembayaran/)).toBeNull();

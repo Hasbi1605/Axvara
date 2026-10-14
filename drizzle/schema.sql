@@ -1277,7 +1277,7 @@ CREATE INDEX IF NOT EXISTS idx_pedia_products_platform ON pedia_products(platfor
 CREATE TABLE IF NOT EXISTS pedia_tiers (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   product_id INTEGER NOT NULL REFERENCES pedia_products(id),
-  tier TEXT NOT NULL CHECK (tier IN ('hemat','standar','premium')),
+  tier TEXT NOT NULL DEFAULT 'standar',
   label_note TEXT,
   supplier TEXT NOT NULL DEFAULT 'providersmm',
   supplier_service_id INTEGER NOT NULL,
@@ -1293,8 +1293,20 @@ CREATE TABLE IF NOT EXISTS pedia_tiers (
   is_active INTEGER NOT NULL DEFAULT 0,
   auto_disabled_reason TEXT,
   updated_at TEXT DEFAULT (datetime('now')),
-  UNIQUE(product_id, tier)
+  -- Kurasi publik (migrasi 0062): banyak layanan per produk (bukan maks 3
+  -- peringkat); nama/deskripsi bahasa manusia + atribut terstruktur.
+  public_name TEXT,
+  description_md TEXT,
+  region TEXT NOT NULL DEFAULT 'global' CHECK (region IN ('indonesia','global','mixed')),
+  quality TEXT NOT NULL DEFAULT 'standar' CHECK (quality IN ('ekonomis','standar','hq','real')),
+  speed_note TEXT,
+  drop_risk TEXT NOT NULL DEFAULT 'sedang' CHECK (drop_risk IN ('rendah','sedang','tinggi')),
+  is_recommended INTEGER NOT NULL DEFAULT 0,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  UNIQUE(product_id, supplier, supplier_service_id)
 );
+CREATE INDEX IF NOT EXISTS idx_pedia_tiers_product_active
+  ON pedia_tiers(product_id, is_active, is_recommended, sort_order);
 
 -- Item order Pedia (1 order = 1 item di fase 1).
 CREATE TABLE IF NOT EXISTS pedia_order_items (

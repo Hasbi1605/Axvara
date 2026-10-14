@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { detectPediaLink, PEDIA_PLATFORM_LABEL, PEDIA_TARGET_KIND_LABEL, type PediaPlatform, type PediaTargetKind } from "@/lib/pedia/link";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
+import { ServicePicker } from "@/components/pedia/ServicePicker";
+import { PediaGlossary } from "@/components/pedia/Glossary";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
 
 const rupiah = (value: number) => `Rp${value.toLocaleString("id-ID")}`;
@@ -41,7 +43,12 @@ export function OrderClient({ product, initialTarget, ordersEnabled, embedded = 
   const inFlight = useRef(false);
   const quoteController = useRef<AbortController | null>(null);
   const currentQuote = quote?.key === key ? quote : null;
-  const packageTotal = tier?.prices[String(qty)] ?? 0;
+  // Harga acuan persetujuan: harga paket tersimpan bila jumlah persis paket,
+  // selainnya estimasi dari harga per 1.000 live. Quote server tetap penentu
+  // akhir (token JWE mengikat total persis); selisih apa pun memicu consent.
+  const packageTotal = tier && qty
+    ? (tier.prices[String(qty)] ?? (tier.price_per_1k ? Math.max(1000, Math.round((tier.price_per_1k * qty) / 1000)) : 0))
+    : 0;
   const targetHelp = `Masukkan link ${kind.toLowerCase()} ${platform}${["views", "plays"].includes(product.metric) ? " yang ingin ditambah tayangan" : ""}. ${product.target_kind === "profile" ? "Pastikan akun tidak privat." : "Pastikan konten dapat diakses publik."}`;
 
   useEffect(() => {
@@ -54,8 +61,12 @@ export function OrderClient({ product, initialTarget, ordersEnabled, embedded = 
 
   const validate = () => {
     const next: Record<string, string> = {};
-    if (!tier) next.tier = "Pilih kualitas layanan terlebih dahulu.";
-    if (!qty || !(packageTotal > 0)) next.quantity = "Pilih jumlah yang tersedia untuk paket Anda.";
+    if (!tier) next.tier = "Pilih layanan terlebih dahulu.";
+    if (!qty || !tier || qty < (tier.min_qty ?? 1) || qty > (tier.max_qty ?? qty)) {
+      next.quantity = tier
+        ? `Jumlah untuk layanan ini: minimal ${(tier.min_qty ?? 1).toLocaleString("id-ID")}, maksimal ${(tier.max_qty ?? 0).toLocaleString("id-ID")}.`
+        : "Isi jumlah yang ingin dipesan.";
+    }
     if (!targetOk) next.target = `Masukkan link ${kind.toLowerCase()} ${platform} yang sesuai layanan ini.`;
     if (!checklist.every((c) => checks[c.id])) next.requirements = "Konfirmasi semua persyaratan tujuan sebelum melanjutkan.";
     if (!waOk) next.wa = "Masukkan nomor WhatsApp 08... atau +62... yang benar.";
@@ -138,7 +149,8 @@ export function OrderClient({ product, initialTarget, ordersEnabled, embedded = 
     <h2 className="text-base font-semibold text-white">Ringkasan pesanan</h2>
     <dl className="mt-4 space-y-3 text-sm text-white/70">
       <div className="flex justify-between gap-4"><dt>Layanan</dt><dd className="text-right text-white">{product.name}</dd></div>
-      <div className="flex justify-between gap-4"><dt>Kualitas</dt><dd className="capitalize text-white">{tier?.tier ?? "Belum dipilih"}</dd></div>
+      <div className="flex justify-between gap-4"><dt>Pilihan</dt><dd className="text-right text-white">{tier ? (tier.public_name ?? tier.label_note ?? "Terpilih") : "Belum dipilih"}</dd></div>
+      {tier?.price_per_1k ? <div className="flex justify-between gap-4"><dt>Harga per 1.000</dt><dd className="tabular-nums text-white">{rupiah(tier.price_per_1k)}</dd></div> : null}
       <div className="flex justify-between gap-4"><dt>Jumlah</dt><dd className="tabular-nums text-white">{qty?.toLocaleString("id-ID") ?? "Belum dipilih"}</dd></div>
       <div className="flex justify-between gap-4"><dt>Refill</dt><dd className={tier ? tier.refill_days > 0 ? "text-[#00E5FF]" : "text-[#FFB800]" : ""}>{tier ? tier.refill_days > 0 ? `${tier.refill_days} hari, sesuai ketentuan` : "Tanpa refill" : "Belum dipilih"}</dd></div>
       {targetOk && <div><dt>Tujuan</dt><dd className="mt-1 break-all text-white">{target.trim()}</dd></div>}
@@ -159,31 +171,43 @@ export function OrderClient({ product, initialTarget, ordersEnabled, embedded = 
       <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-10">
         <div className="min-w-0 space-y-8">
           <section aria-labelledby="pedia-package-heading">
-            <h2 id="pedia-package-heading" className="text-lg font-semibold text-white">1. Paket &amp; jumlah</h2>
-            <fieldset id="pedia-tier" tabIndex={-1} disabled={attempted} aria-describedby={errors.tier ? "pedia-tier-error" : undefined} className="mt-4">
-              <legend className="mb-3 text-sm text-white/70">Kualitas layanan</legend>
-              <div className="space-y-2">
-                {product.tiers.map((t) => {
-                  const firstQty = product.packages.filter((p) => t.prices[String(p)] > 0).sort((a, b) => t.prices[String(a)] - t.prices[String(b)] || a - b)[0];
-                  const displayQty = qty && t.prices[String(qty)] > 0 ? qty : firstQty;
-                  return <label key={t.id} className={`grid cursor-pointer grid-cols-[20px_minmax(0,1fr)] items-start gap-3 rounded-2xl border bg-gradient-to-br from-white/[0.05] to-white/[0.01] p-4 transition-colors sm:grid-cols-[20px_minmax(0,1fr)_140px] ${t.id === tierId ? "border-[#00E5FF]/60 shadow-[0_0_20px_rgba(0,229,255,0.05)]" : "border-white/15 hover:border-white/30"}`}>
-                  <input type="radio" name="pedia-tier" value={t.id} checked={t.id === tierId} className="mt-1 h-4 w-4 accent-[#00E5FF]" onChange={() => {
-                    setTierId(t.id);
-                    if (!qty || !(t.prices[String(qty)] > 0)) setQty(null);
-                  }} />
-                  <span><span className="font-semibold capitalize text-white">{t.tier}</span><span className="mt-1 block text-sm text-white/65">{t.label_note || "Detail kualitas belum tersedia"}</span><span className={`mt-2 inline-block rounded-md px-2 py-1 text-xs ${t.refill_days > 0 ? "bg-[#00E5FF]/10 text-[#00E5FF]" : "bg-[#FFB800]/10 text-[#FFB800]"}`}>{t.refill_days > 0 ? `Refill ${t.refill_days} hari, sesuai ketentuan` : "Tanpa refill"}</span></span>
-                  <span className="col-start-2 text-sm text-white/75 sm:col-start-3 sm:text-right"><span className="block font-semibold tabular-nums text-white">{displayQty ? `${displayQty === qty ? "" : "Mulai "}${rupiah(t.prices[String(displayQty)])}` : "Belum tersedia"}</span>{displayQty && <span className="mt-1 block text-xs">Untuk {displayQty.toLocaleString("id-ID")}</span>}<span className="mt-2 block text-xs">Mulai: {t.eta_start || "Belum ditentukan"}</span><span className="mt-1 block text-xs">Selesai: {t.eta_finish || "Belum ditentukan"}</span></span>
-                </label>; })}
-              </div>
-              {inlineError("tier")}
-            </fieldset>
+            <h2 id="pedia-package-heading" className="text-lg font-semibold text-white">1. Pilih layanan &amp; jumlah</h2>
+            <ServicePicker product={product} tierId={tierId} onSelect={(id) => { setTierId(id); }} qty={qty} />
+            {inlineError("tier")}
             <fieldset id="pedia-quantity" tabIndex={-1} disabled={attempted} aria-describedby="pedia-quantity-help" className="mt-5">
-              <legend className="mb-3 text-sm text-white/70">Jumlah</legend>
-              <div className="flex flex-wrap gap-2">{product.packages.map((p) => <label key={p} className={`flex min-h-[44px] items-center gap-2 rounded-lg border px-3 text-sm ${!((tier?.prices[String(p)] ?? 0) > 0) ? "cursor-not-allowed border-white/10 text-white/35" : qty === p ? "border-[#00E5FF]/60 bg-white/5 text-white" : "cursor-pointer border-white/20 text-white/75"}`}><input type="radio" name="pedia-quantity" value={p} checked={qty === p} disabled={!((tier?.prices[String(p)] ?? 0) > 0)} onChange={() => setQty(p)} className="h-4 w-4 accent-[#00E5FF]" />{p.toLocaleString("id-ID")}</label>)}</div>
+              <legend className="mb-3 text-sm text-white/70">Jumlah (bebas)</legend>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  id="pedia-qty-input"
+                  type="number" inputMode="numeric" min={tier?.min_qty ?? 1} max={tier?.max_qty ?? undefined}
+                  value={qty ?? ""} placeholder={tier ? `Min. ${(tier.min_qty ?? 1).toLocaleString("id-ID")}` : "Pilih layanan dulu"}
+                  disabled={!tier}
+                  onChange={(e) => { const v = e.target.value.replace(/[^0-9]/g, ""); setQty(v ? Number(v) : null); }}
+                  className="min-h-[48px] w-44 rounded-xl border border-white/20 bg-white/5 px-3 text-base tabular-nums text-white placeholder:text-white/35 focus:border-[#00E5FF] focus:outline-none disabled:opacity-40"
+                  aria-label="Jumlah yang dipesan"
+                />
+                {(tier?.quick_quantities?.length ? tier.quick_quantities : product.packages).slice(0, 5).map((p) => (
+                  <button key={p} type="button" disabled={!tier || p < (tier.min_qty ?? 1) || p > (tier.max_qty ?? p)}
+                    onClick={() => setQty(p)}
+                    className={`min-h-[44px] rounded-lg border px-3 text-sm disabled:cursor-not-allowed disabled:opacity-35 ${qty === p ? "border-[#00E5FF]/60 bg-[#00E5FF]/10 text-white" : "border-white/20 text-white/75 hover:border-white/35"}`}>
+                    {p.toLocaleString("id-ID")}
+                  </button>
+                ))}
+              </div>
+              <p id="pedia-quantity-help" className="mt-3 text-xs leading-relaxed text-white/60">
+                {tier
+                  ? <>Minimal {(tier.min_qty ?? 1).toLocaleString("id-ID")}, maksimal {(tier.max_qty ?? 0).toLocaleString("id-ID")} untuk layanan ini. Harga dihitung per jumlah dari tarif per 1.000 dan dikonfirmasi server sebelum bayar.</>
+                  : "Pilih layanan untuk melihat batas jumlahnya."}
+              </p>
+              {inlineError("quantity")}
             </fieldset>
-            {/* ponytail: configured packages only; enable custom quantities when the orders API accepts non-package quotes. */}
-            <p id="pedia-quantity-help" className="mt-3 text-xs leading-relaxed text-white/60">Saat ini pemesanan hanya tersedia untuk paket jumlah yang tercantum. Jumlah bebas belum tersedia.</p>
-            {!tier && <p className="mt-2 text-xs text-white/70">Pilih kualitas layanan untuk membuka pilihan jumlah.</p>}{inlineError("quantity")}
+            {tier?.description && (
+              <div className="mt-5 rounded-2xl border border-white/12 bg-white/[0.03] p-4" aria-label="Keterangan layanan">
+                <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-white/45">Keterangan layanan</p>
+                <p className="mt-2 whitespace-pre-line text-[13px] leading-6 text-white/70">{tier.description}</p>
+              </div>
+            )}
+            <div className="mt-5"><PediaGlossary /></div>
           </section>
 
           <section aria-labelledby="pedia-target-heading" className="border-t border-white/15 pt-7">

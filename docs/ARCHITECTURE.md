@@ -2214,6 +2214,8 @@ poller server memantau mutasi GoBiz milik sendiri.
 
 ### 16.10 Pedia Dua Provider dan Handoff (Working-Tree 2026-10-12)
 
+- **Rebuild kurasi 2026-10-14 (keputusan owner):** plafon Hemat/Standar/Premium dibuang. Migrasi **0062** rebuild `pedia_tiers`: CHECK 3-nama hilang, `UNIQUE(product_id, supplier, supplier_service_id)`, kolom kurasi `public_name/description_md/region/quality/speed_note/drop_risk/is_recommended/sort_order` (diterapkan ke prod via API per-statement + pola rename — `DROP TABLE` induk gagal FK dari `pedia_order_items`; tabel lama tersimpan sebagai `pedia_tiers_old0062`, id tier yang dirujuk order lama PERTAHANKAN persis). Katalog publik kini mengirim daftar layanan per produk (nama publik + deskripsi bahasa manusia + atribut + `price_per_1k` dari rate live + `quick_quantities`), rekomendasi lebih dulu; UI order = `ServicePicker` (rekomendasi utama, tombol lihat-semua, filter wilayah/refill/kualitas, urut) + jumlah bebas (chip cepat + input angka; validasi min–max layanan; produk `step=1`). Harga acuan client = harga paket tersimpan bila jumlah persis paket, selainnya estimasi per-1.000 — selisih tetap memicu consent quote. 34 layanan aktif terkurasi nama/atribut/deskripsi publik; glosarium istilah di halaman order. Mesin uang (quote JWE/dispatch/kredit) tidak berubah kontraknya.
+
 **Deployed 2026-10-14** (proxy dua-provider live di VPS; flag order/dispatch Pages DIBUKA; lihat butir rilis di bawah). Yang masih pending: API key IndoSMM valid (key lama ditolak upstream) + bukti IDR/rate per 1.000, serta top-up saldo ProviderSMM untuk order nyata pertama.
 
 | Boundary | Kontrak aktual |

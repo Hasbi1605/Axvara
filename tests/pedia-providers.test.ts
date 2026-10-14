@@ -18,16 +18,20 @@ async function seed() {
   vi.stubEnv("PEDIA_ORDERS_ENABLED", "true");
   await db.execRun(`INSERT INTO pedia_products (slug,platform,metric,target_kind,name,packages_json,step,is_active) VALUES ('ig','instagram','followers','profile','IG','[100,250]',10,1)`);
   for (const [provider, tier] of [["providersmm", "hemat"], ["indosmm", "standar"]]) {
-    await db.execRun(`INSERT INTO pedia_tiers (product_id,tier,supplier,supplier_service_id,price_group,markup_pct,min_profit_rp,refill_days,is_active) VALUES (1,?,?,86,'G3',20,1000,30,1)`, tier, provider);
+    // Beda service_id per provider: sejak 0062 satu layanan supplier hanya
+    // boleh terhubung sekali per produk (dulu service 86 dipakai berdua
+    // hanya untuk menguji batas — kini dilayani baris terpisah).
+    const serviceId = provider === "indosmm" ? 87 : 86;
+    await db.execRun(`INSERT INTO pedia_tiers (product_id,tier,supplier,supplier_service_id,price_group,markup_pct,min_profit_rp,refill_days,is_active) VALUES (1,?,?,${serviceId},'G3',20,1000,30,1)`, tier, provider);
   }
   await applyProvidersmmDiff(db, [service()], []);
-  await applyPediaDiff(db, "indosmm", [service(5000, 250)], [], "IDR");
+  await applyPediaDiff(db, "indosmm", [{ ...service(5000, 250), service_id: 87 }], [], "IDR");
   return { db, fx };
 }
 
 async function paid(db: ReturnType<typeof createDatabaseAccess>, provider: PediaProvider, status = "queued", code = "AXP-P") {
   await db.execRun(`INSERT INTO orders (code,customer_name,customer_wa,customer_email,items,subtotal,payment_method,status,order_kind) VALUES (?,'','6281234567890','test@example.com','[]',10000,'qris','lunas','pedia')`, code);
-  await db.execRun(`INSERT INTO pedia_order_items (order_code,product_id,tier_id,snapshot_json,target_raw,target_normalized,quantity,unit_price,total,supplier,supplier_service_id,supplier_rate_snapshot,status,supplier_order_id) VALUES (?,1,1,'{}','x','x',250,40,10000,?,86,1000,?,'SAME-ORDER-ID')`, code, provider, status);
+  await db.execRun(`INSERT INTO pedia_order_items (order_code,product_id,tier_id,snapshot_json,target_raw,target_normalized,quantity,unit_price,total,supplier,supplier_service_id,supplier_rate_snapshot,status,supplier_order_id) VALUES (?,1,1,'{}','x','x',250,40,10000,?,CASE WHEN ?='indosmm' THEN 87 ELSE 86 END,1000,?,'SAME-ORDER-ID')`, code, provider, provider, status);
 }
 
 describe("provider boundary and normalized diff", () => {
@@ -37,12 +41,12 @@ describe("provider boundary and normalized diff", () => {
     fx.control.fail = (q) => failure === "disable"
       ? q.includes("auto_disabled_reason='margin'")
       : q.includes("SET package_prices_json=?");
-    await expect(applyPediaDiff(db, "indosmm", [service(100000, 250)], [], "IDR")).rejects.toThrow("Injected database interruption");
+    await expect(applyPediaDiff(db, "indosmm", [{ ...service(100000, 250), service_id: 87 }], [], "IDR")).rejects.toThrow("Injected database interruption");
     const interrupted = await db.queryFirst(`SELECT is_active,package_prices_json FROM pedia_tiers WHERE supplier='indosmm'`);
     expect(interrupted?.package_prices_json).toBe(before?.package_prices_json);
     expect(interrupted?.is_active).toBe(failure === "disable" ? 1 : 0);
     fx.control.fail = null;
-    await applyPediaDiff(db, "indosmm", [service(100000, 250)], [], "IDR");
+    await applyPediaDiff(db, "indosmm", [{ ...service(100000, 250), service_id: 87 }], [], "IDR");
     const replayed = await db.queryFirst(`SELECT is_active,auto_disabled_reason,package_prices_json FROM pedia_tiers WHERE supplier='indosmm'`);
     expect(replayed).toMatchObject({ is_active: 0, auto_disabled_reason: "margin" });
     expect(replayed?.package_prices_json).not.toBe(before?.package_prices_json);
@@ -67,12 +71,16 @@ describe("provider boundary and normalized diff", () => {
   });
   it("same service IDs retain independent rates, bounds, repricing and removal", async () => {
     const { db } = await seed();
+    // Sejak 0062 ID layanan yang sama TIDAK bisa dipakai dua provider pada
+    // produk yang sama (UNIQUE per produk+supplier+layanan): kemandirian kini
+    // dibuktikan pada katalog cermin — baris (providersmm,86) vs (indosmm,87)
+    // dengan rate/batas berbeda, penghapusan satu tidak menyentuh yang lain.
     const { GET } = await import("@/app/api/pedia/catalog/route");
     const catalog = await (await GET()).json();
     expect(catalog.products[0].tiers.map((t: { min_qty: number }) => t.min_qty)).toEqual([100, 250]);
     expect(catalog.products[0].tiers[1].prices).toEqual({ "250": 2300 });
     expect(JSON.stringify(catalog)).not.toMatch(/supplier|providersmm|indosmm|rate|Private/);
-    await applyPediaDiff(db, "indosmm", [], [86], "IDR");
+    await applyPediaDiff(db, "indosmm", [], [87], "IDR");
     const rows = await db.queryAll(`SELECT supplier,present FROM pedia_supplier_services ORDER BY supplier`);
     expect(rows).toEqual([{ supplier: "indosmm", present: 0 }, { supplier: "providersmm", present: 1 }]);
     expect((await db.queryFirst(`SELECT is_active FROM pedia_tiers WHERE supplier='providersmm'`))?.is_active).toBe(1);
@@ -80,13 +88,13 @@ describe("provider boundary and normalized diff", () => {
   it.each([undefined, "USD", "EUR"])("rejects unverified/non-IDR currency %s before changing the catalog", async (currency) => {
     const { db } = await seed();
     await expect(applyPediaDiff(db, "indosmm", [service(1)], [86], currency)).rejects.toThrow("unsupported_currency");
-    expect((await db.queryFirst(`SELECT rate_idr_per_1k,present FROM pedia_supplier_services WHERE supplier='indosmm'`))).toMatchObject({ rate_idr_per_1k: 5000, present: 1 });
+    expect((await db.queryFirst(`SELECT rate_idr_per_1k,present FROM pedia_supplier_services WHERE supplier='indosmm' AND service_id=87`))).toMatchObject({ rate_idr_per_1k: 5000, present: 1 });
   });
   it("rejects invalid rows atomically at the input boundary", async () => {
     const { db } = await seed();
     await expect(applyPediaDiff(db, "indosmm", [service(9000), { ...service(), service_id: 0 }], [], "IDR")).rejects.toThrow("invalid_service");
     await expect(applyPediaDiff(db, "unknown" as never, [], [], "IDR")).rejects.toThrow("invalid_provider");
-    expect((await db.queryFirst(`SELECT rate_idr_per_1k FROM pedia_supplier_services WHERE supplier='indosmm'`))?.rate_idr_per_1k).toBe(5000);
+    expect((await db.queryFirst(`SELECT rate_idr_per_1k FROM pedia_supplier_services WHERE supplier='indosmm' AND service_id=87`))?.rate_idr_per_1k).toBe(5000);
   });
   it("supplier-sync requires IDR for IndoSMM and does not acknowledge partial storage", async () => {
     const { fx } = await seed();
@@ -119,7 +127,7 @@ describe("quote and order provider snapshots", () => {
   });
   it("legacy encrypted quotes without terms retain current-tier fallback", async () => {
     const { db } = await seed();
-    const { token } = await createPediaQuoteToken({ product_id: 1, tier_id: 2, quantity: 250, target_raw: "https://instagram.com/buyer", target_normalized: "https://www.instagram.com/buyer/", unit_price: 9.2, total: 2300, credit_code_hash: null, credit_used: 0, supplier: "indosmm", supplier_service_id: 86, supplier_rate_snapshot: 5000 });
+    const { token } = await createPediaQuoteToken({ product_id: 1, tier_id: 2, quantity: 250, target_raw: "https://instagram.com/buyer", target_normalized: "https://www.instagram.com/buyer/", unit_price: 9.2, total: 2300, credit_code_hash: null, credit_used: 0, supplier: "indosmm", supplier_service_id: 87, supplier_rate_snapshot: 5000 });
     await db.execRun(`UPDATE pedia_tiers SET refill_days=15,min_profit_rp=1050 WHERE id=2`);
     vi.stubEnv("DANA_QRIS_ENABLED", "false");
     const { POST } = await import("@/app/api/pedia/orders/route");
@@ -141,7 +149,7 @@ describe("quote and order provider snapshots", () => {
     const q = await res.json();
     expect(q.quote_token.split(".")).toHaveLength(5);
     expect(JSON.stringify(q)).not.toMatch(/supplier|rate_snapshot|indosmm|providersmm/);
-    expect(await verifyPediaQuoteToken(q.quote_token)).toMatchObject({ supplier: "indosmm", supplier_service_id: 86, supplier_rate_snapshot: 5000 });
+    expect(await verifyPediaQuoteToken(q.quote_token)).toMatchObject({ supplier: "indosmm", supplier_service_id: 87, supplier_rate_snapshot: 5000 });
     await db.execRun(`UPDATE pedia_tiers SET supplier='providersmm' WHERE id=2`);
     const { POST: orders } = await import("@/app/api/pedia/orders/route");
     const order = await orders(request({ quote_token: q.quote_token, customer_wa: "081234567890", customer_email: "test@example.com" }));
@@ -157,7 +165,7 @@ describe("quote and order provider snapshots", () => {
     const { POST: orders } = await import("@/app/api/pedia/orders/route");
     await orders(request({ quote_token: q.quote_token, customer_wa: "081234567890", customer_email: "test@example.com" }));
     const item = await db.queryFirst(`SELECT * FROM pedia_order_items`);
-    expect(item).toMatchObject({ supplier: "indosmm", supplier_service_id: 86, supplier_rate_snapshot: 5000 });
+    expect(item).toMatchObject({ supplier: "indosmm", supplier_service_id: 87, supplier_rate_snapshot: 5000 });
     expect(JSON.parse(String(item?.snapshot_json))).toMatchObject({ refill_days: 30, supplier: "indosmm" });
   });
 });
@@ -242,7 +250,7 @@ describe("durable provider-specific dispatch", () => {
     await db.execRun(`UPDATE pedia_tiers SET supplier='providersmm',supplier_service_id=999 WHERE id=1`);
     const calls: unknown[][] = [];
     await processPediaPaidOrders(async (...args) => { calls.push(args); return { ok: true, data: { order: "NEW" }, status: 200 } as never; }, db);
-    expect(calls[0]).toEqual(["add", { service: 86, link: "x", quantity: 250 }, 30000, "AXP-P", "indosmm"]);
+    expect(calls[0]).toEqual(["add", { service: 87, link: "x", quantity: 250 }, 30000, "AXP-P", "indosmm"]);
   });
   it("timeout never retries or crosses providers, including later cron ticks", async () => {
     const { db } = await seed();

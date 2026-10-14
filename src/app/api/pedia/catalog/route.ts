@@ -19,6 +19,19 @@ export type PediaCatalogTier = {
   prices: Record<string, number>;
   min_qty?: number;
   max_qty?: number;
+  /** Kurasi publik (0062): nama + deskripsi bahasa manusia per layanan.
+   *  Opsional di tipe agar fixture/preview lama tetap valid; route selalu mengisi. */
+  public_name?: string | null;
+  description?: string | null;
+  region?: "indonesia" | "global" | "mixed";
+  quality?: "ekonomis" | "standar" | "hq" | "real";
+  speed_note?: string | null;
+  drop_risk?: "rendah" | "sedang" | "tinggi";
+  recommended?: boolean;
+  /** Harga jual per 1.000 unit dari rate live (markup tier ini). */
+  price_per_1k?: number | null;
+  /** Jumlah contoh untuk chip cepat UI (tetap tunduk min–max + step). */
+  quick_quantities?: number[];
 };
 
 export type PediaCatalogProduct = {
@@ -63,17 +76,21 @@ export async function GET() {
   ).catch(() => []);
   const tiers = await db.queryAll(
     `SELECT id, product_id, tier, label_note, refill_days, eta_start, eta_finish,
-            package_prices_json, supplier, supplier_service_id
-       FROM pedia_tiers WHERE is_active=1 ORDER BY id`,
+            package_prices_json, supplier, supplier_service_id,
+            public_name, description_md, region, quality, speed_note, drop_risk,
+            is_recommended, sort_order, markup_pct, min_profit_rp
+       FROM pedia_tiers WHERE is_active=1 ORDER BY is_recommended DESC, sort_order, id`,
   ).catch(() => []);
-  // Batas layanan supplier (min–max) untuk menyembunyikan paket di luar rentang.
+  // Batas + rate live layanan supplier (min–max + harga per 1.000 terkini).
   const bounds = await db.queryAll(
-    `SELECT supplier, service_id, min_qty, max_qty FROM pedia_supplier_services WHERE supplier IN ('providersmm','indosmm') AND present=1 AND type='Default' AND rate_idr_per_1k>0`,
+    `SELECT supplier, service_id, min_qty, max_qty, rate_idr_per_1k FROM pedia_supplier_services WHERE supplier IN ('providersmm','indosmm') AND present=1 AND type='Default' AND rate_idr_per_1k>0`,
   ).catch(() => []);
-  const boundByService = new Map<string, { min: number; max: number }>();
+  const boundByService = new Map<string, { min: number; max: number; rate: number }>();
   for (const b of bounds) {
-    boundByService.set(`${b.supplier}:${b.service_id}`, { min: Number(b.min_qty), max: Number(b.max_qty) });
+    boundByService.set(`${b.supplier}:${b.service_id}`, { min: Number(b.min_qty), max: Number(b.max_qty), rate: Number(b.rate_idr_per_1k) });
   }
+  const { computePediaPrice } = await import("@/lib/pedia/pricing");
+  const minOrderRp = Number(process.env.PEDIA_MIN_ORDER_RP || 1000) || 1000;
   const tiersByProduct = new Map<number, PediaCatalogTier[]>();
   for (const t of tiers) {
     if (!isPediaProvider(t.supplier)) continue;
@@ -82,6 +99,9 @@ export async function GET() {
     const prices = parseJson(t.package_prices_json, {});
     if (!prices || typeof prices !== "object" || Array.isArray(prices)) continue;
     const list = tiersByProduct.get(Number(t.product_id)) ?? [];
+    const region = ["indonesia", "global", "mixed"].includes(String(t.region)) ? String(t.region) as PediaCatalogTier["region"] : "global";
+    const quality = ["ekonomis", "standar", "hq", "real"].includes(String(t.quality)) ? String(t.quality) as PediaCatalogTier["quality"] : "standar";
+    const dropRisk = ["rendah", "sedang", "tinggi"].includes(String(t.drop_risk)) ? String(t.drop_risk) as PediaCatalogTier["drop_risk"] : "sedang";
     list.push({
       id: Number(t.id), tier: String(t.tier),
       label_note: t.label_note != null ? String(t.label_note) : null,
@@ -92,6 +112,17 @@ export async function GET() {
       prices: Object.fromEntries(
         Object.entries(prices).filter(([k, v]) => Number.isSafeInteger(Number(k)) && Number(k) >= bound.min && Number(k) <= bound.max && typeof v === "number" && Number.isFinite(v) && v > 0),
       ),
+      public_name: t.public_name != null && String(t.public_name).trim() ? String(t.public_name) : null,
+      description: t.description_md != null && String(t.description_md).trim() ? String(t.description_md) : null,
+      region, quality,
+      speed_note: t.speed_note != null && String(t.speed_note).trim() ? String(t.speed_note) : null,
+      drop_risk: dropRisk,
+      recommended: Number(t.is_recommended) === 1,
+      price_per_1k: bound.rate > 0 ? computePediaPrice({
+        supplierRatePer1k: bound.rate, quantity: 1000,
+        markupPct: Number(t.markup_pct) || 0, minProfitRp: Number(t.min_profit_rp) || 0, minOrderRp,
+      }) : null,
+      quick_quantities: [],
     });
     tiersByProduct.set(Number(t.product_id), list);
   }
@@ -100,15 +131,22 @@ export async function GET() {
     const allPackages = parseJsonArray(p.packages_json);
     const step = Number(p.step) || 1;
     const pt = tiersByProduct.get(Number(p.id)) ?? [];
+    // Saring harga tersimpan ke paket produk + kelipatan step (kontrak lama
+    // untuk pratinjau paket); DITAMBAH harga live per 1.000 untuk jumlah bebas.
     for (const t of pt) {
       for (const k of Object.keys(t.prices)) {
         if (!allPackages.includes(Number(k)) || Number(k) % step !== 0) delete t.prices[k];
       }
+      t.quick_quantities = allPackages.filter((qty) => qty >= (t.min_qty ?? 1) && qty <= (t.max_qty ?? qty) && qty % step === 0);
     }
-    const availableTiers = pt.filter((t) => Object.keys(t.prices).length > 0).sort((a, b) => {
-      const order = ["hemat", "standar", "premium"];
-      return (order.indexOf(a.tier) < 0 ? 3 : order.indexOf(a.tier)) - (order.indexOf(b.tier) < 0 ? 3 : order.indexOf(b.tier)) || a.id - b.id;
-    });
+    // Layanan tanpa harga tersimpan valid TIDAK ditawarkan (keamanan harga);
+    // rekomendasi kurasi lebih dulu, lalu peringkat lama, lalu id.
+    const availableTiers = pt
+      .filter((t) => Object.keys(t.prices).length > 0)
+      .sort((a, b) => Number(b.recommended) - Number(a.recommended)
+        || (["hemat", "standar", "premium"].indexOf(a.tier) < 0 ? 3 : ["hemat", "standar", "premium"].indexOf(a.tier))
+          - (["hemat", "standar", "premium"].indexOf(b.tier) < 0 ? 3 : ["hemat", "standar", "premium"].indexOf(b.tier))
+        || a.id - b.id);
     const packages = allPackages.filter((qty) => availableTiers.some((t) => t.prices[String(qty)] > 0));
     if (!packages.length) continue;
     const minPrice = Math.min(...availableTiers.flatMap((t) => Object.values(t.prices)));

@@ -235,7 +235,7 @@ it("previews saved drafts with actual storefront components without navigation o
   expect(fireEvent.click(within(preview).getByRole("link", { name: /lihat paket/ }))).toBe(false);
   expect(window.location.pathname).toBe("/admin");
   fireEvent.click(within(preview).getByRole("radio", { name: /Indonesia/ }));
-  fireEvent.click(within(preview).getByRole("radio", { name: "100" }));
+  fireEvent.change(within(preview).getByLabelText("Jumlah yang dipesan"), { target: { value: "100" } });
   fireEvent.change(within(preview).getByLabelText("Link profil Instagram"), { target: { value: "https://instagram.com/test" } });
   for (const button of within(preview).getAllByRole("button", { name: "Lanjut ke pembayaran" })) {
     expect((button as HTMLButtonElement).disabled).toBe(true);
@@ -253,8 +253,10 @@ it("filters unusable saved packages and refreshes the preview only after saving"
   fireEvent.click(await screen.findByRole("button", { name: "Edit Followers Instagram" }));
   const preview = screen.getByRole("region", { name: "Pratinjau produk" });
   fireEvent.click(within(preview).getByText("Pratinjau detail & pesanan tersimpan"));
-  expect(within(preview).getAllByText("Mulai Rp5.000")).toHaveLength(2);
-  expect(within(preview).queryByRole("radio", { name: "250" })).toBeNull();
+  // 2026-10-14: harga tampil per 1.000 dari tarif tersimpan, chip jumlah
+  // difilter batas live (250 di luar live_max=100 tidak ditawarkan).
+  expect(preview.textContent).toContain("5.000");
+  expect(within(preview).queryByRole("button", { name: "250" })).toBeNull();
   fireEvent.change(screen.getByLabelText("Nama produk"), { target: { value: "Saved new name" } });
   expect(preview.textContent).not.toContain("Saved new name");
   fireEvent.submit(screen.getByRole("form", { name: "Edit produk" }));

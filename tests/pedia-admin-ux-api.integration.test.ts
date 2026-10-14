@@ -184,11 +184,20 @@ it("creation validates packages, parent, provider and compatible service then pr
 });
 
 it("creation reprice failure identifies the already saved tier so retries cannot create duplicates silently", async () => {
+  // Sejak 0062 duplikat dicegah UNIQUE(product, supplier, service): retry
+  // pembuatan layanan yang sama ditolak bersih, bukan duplikat diam-diam.
   await createDatabaseAccess().execRun(`DELETE FROM pedia_tiers WHERE product_id=? AND tier='hemat'`, productId);
   fixture.control.fail = (sql) => sql.includes("SET package_prices_json=?");
-  const result = await POST(req({ kind: "tier", product_id: productId, tier: "hemat", supplier: "providersmm", supplier_service_id: 86, price_group: "G3", markup_pct: 20, min_profit_rp: 1000 }));
+  await createDatabaseAccess().execRun(`INSERT INTO pedia_supplier_services (supplier, service_id, name, category, type, rate_idr_per_1k, min_qty, max_qty, present)
+    VALUES ('providersmm',777001,'Baru','Followers','Default',30000,100,1000,1)`);
+  const body = { kind: "tier", product_id: productId, tier: "hemat", supplier: "providersmm", supplier_service_id: 777001, price_group: "G3", markup_pct: 20, min_profit_rp: 1000 };
+  const result = await POST(req(body));
   expect(result.status).toBe(500);
   expect(await result.json()).toMatchObject({ error: "reprice_failed", saved: true, id: expect.any(Number) });
+  fixture.control.fail = null;
+  const dupe = await POST(req(body));
+  expect(dupe.status).toBe(500);
+  expect((await dupe.json()).error).toBe("save_failed");
 });
 
 it("incompatible supplier types cannot be mapped", async () => {

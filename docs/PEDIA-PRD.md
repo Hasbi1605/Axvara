@@ -16,7 +16,7 @@ yang sudah ada (QRIS DANA, D1, admin, notif Telegram, email Resend). Supplier
 internal: **ProviderSMM + IndoSMM** (API PerfectPanel v2), dengan identitas
 gabungan provider/service. Rencana awal supplier tunggal dan snapshot 576 layanan
 2026-10-07 adalah historis, bukan jumlah katalog current atau bukti IndoSMM siap.
-Admin mengkurasi produk AXVARA dengan tingkat Hemat/Standar/Premium bila relevan
+Admin mengkurasi produk AXVARA; sejak rebuild 2026-10-14 setiap produk (platform x metrik) memuat BANYAK layanan terkurasi (bukan maks 3 tingkat): rekomendasi tampil utama, sisanya dapat dibuka + difilter (wilayah/garansi/kualitas), masing-masing bernama publik + deskripsi bahasa manusia dengan atribut terstruktur (region/quality/refill/speed/drop_risk). Jumlah order BEBAS dalam min–max layanan; harga transparan per 1.000 dari rate live (quote server tetap penentu akhir). Lihat catatan rilis 2026-10-14
 dan paket jumlah tetap; tidak otomatis menerbitkan katalog supplier mentah.
 
 UI lokal saat ini **compact dan kurasi-first**: hero "Satu tempat untuk / Layanan sosial media" +
@@ -77,7 +77,7 @@ Implikasi desain: mobile-first, tanpa jargon, maksimal 3 keputusan sebelum bayar
 ### Fase 1 — MVP (target eksekusi pertama)
 - Situs Pedia di `pedia.axvara.tech`: beranda, per-platform, halaman order, status pesanan, lacak, bantuan & ketentuan.
 - Tempel link → deteksi platform & jenis target → rekomendasi layanan.
-- Produk kurasi dengan tingkat Hemat/Standar/Premium sesuai ketersediaan dan **paket jumlah terkonfigurasi saja**. Jumlah bebas ditunda: quote bisa menghitungnya, tetapi orders API menolak jumlah tanpa harga paket tersimpan.
+- Produk kurasi berisi banyak layanan terkurasi per (platform, metrik) dengan **jumlah bebas** dalam min–max layanan (sejak 2026-10-14; paket tersimpan hanya chip cepat — quote menghitung harga dari rate live dan orders menerimanya; validasi min–max + guard margin tetap di server).
 - Checkout tamu: No. WA + email (wajib) + centang S&K → QRIS DANA.
 - Dispatch setelah lunas dengan CAS submitting + dedupe durable proxy (§9.4), bukan jaminan exactly-once end-to-end.
 - Status & progres live, tombol Refill bila garansi berlaku.

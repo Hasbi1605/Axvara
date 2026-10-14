@@ -44,7 +44,10 @@ describe("Pedia catalog-first storefront", () => {
     render(<PediaHomeClient products={[product, tiktok]} />);
     const card = screen.getByRole("link", { name: "Followers Instagram — lihat paket" });
     expect(card.textContent).toContain("Mulai Rp3.300");
-    expect(card.textContent).toContain("Untuk 100 · paket hemat");
+    // 2026-10-14 rebuild: kartu menjual jumlah layanan + mulai kuantitas,
+    // bukan lagi frasa "paket hemat" model peringkat lama.
+    expect(card.textContent).toContain("pilihan terkurasi");
+    expect(card.textContent).toContain("mulai 100");
     expect(card.textContent).not.toMatch(/Indonesia aktif|Garansi/);
     // 2026-10-12 (owner): tagline AI slop tidak dirender di kartu —
     // judul langsung ke harga.

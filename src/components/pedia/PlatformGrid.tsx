@@ -57,12 +57,21 @@ export type ProductCardData = {
   minQuantity?: number;
   minTier?: string;
   refillDays?: number;
+  /** Jumlah layanan terkurasi di dalam produk + harga per 1.000 termurah. */
+  serviceCount?: number;
+  pricePer1k?: number | null;
 };
 
 export function catalogCard(p: PediaCatalogProduct): ProductCardData {
   const lowest = p.tiers.flatMap((t) => Object.entries(t.prices).filter(([qty, price]) => p.packages.includes(Number(qty)) && price > 0).map(([qty, price]) => ({ qty: Number(qty), price, tier: t.tier, refillDays: t.refill_days })))
     .sort((a, b) => a.price - b.price || a.qty - b.qty)[0];
-  return { slug: p.slug, name: p.name, platform: p.platform, metric: p.metric, tagline: p.tagline?.trim() || null, badges: [], minPrice: lowest?.price ?? null, minQuantity: lowest?.qty, minTier: lowest?.tier, refillDays: lowest?.refillDays };
+  const per1k = p.tiers.map((t) => t.price_per_1k ?? Infinity).filter((v) => Number.isFinite(v));
+  return {
+    slug: p.slug, name: p.name, platform: p.platform, metric: p.metric, tagline: p.tagline?.trim() || null, badges: [],
+    minPrice: lowest?.price ?? null, minQuantity: lowest?.qty, minTier: lowest?.tier, refillDays: lowest?.refillDays,
+    serviceCount: p.tiers.length,
+    pricePer1k: per1k.length ? Math.min(...per1k) : null,
+  };
 }
 
 /** Warna brand per platform untuk panel visual kartu (satu sumber dengan orbit). */
@@ -107,14 +116,17 @@ export function ProductCard({ p }: { p: ProductCardData }) {
         <span className="block break-words text-sm font-semibold leading-snug text-white sm:text-base">{p.name}</span>
         {/* 2026-10-12 (owner): tagline AI slop DIHAPUS dari kartu — judul langsung ke harga. */}
         <span className="mt-2 block text-base font-bold tabular-nums tracking-[-0.01em] text-white sm:text-lg">
-          {p.minPrice != null ? `Mulai Rp${p.minPrice.toLocaleString("id-ID")}` : "Lihat harga"}
+          {p.pricePer1k != null ? `Mulai Rp${p.pricePer1k.toLocaleString("id-ID")} /1.000` : p.minPrice != null ? `Mulai Rp${p.minPrice.toLocaleString("id-ID")}` : "Lihat harga"}
         </span>
-        {p.minQuantity != null && <span className="mt-1 block text-xs text-white/60">Untuk {p.minQuantity.toLocaleString("id-ID")} · paket <span className="capitalize">{p.minTier}</span></span>}
+        <span className="mt-1 block text-xs text-white/60">
+          {p.serviceCount ? `${p.serviceCount} pilihan terkurasi` : "Pilihan terkurasi"}
+          {p.minQuantity != null && <> · mulai {p.minQuantity.toLocaleString("id-ID")}</>}
+        </span>
         <span className="mt-auto flex items-end justify-between gap-2 pt-3">
           {p.refillDays != null
             ? <span className={`inline-block rounded-md px-2 py-1 text-[11px] ${p.refillDays > 0 ? "bg-[#00E5FF]/10 text-[#00E5FF]" : "bg-[#FFB800]/10 text-[#FFB800]"}`}>{p.refillDays > 0 ? `Refill ${p.refillDays} hari` : "Tanpa refill"}</span>
             : <span />}
-          <span className="text-xs font-semibold text-[#00E5FF]/80 transition group-hover:text-[#00E5FF]">Lihat paket →</span>
+          <span className="text-xs font-semibold text-[#00E5FF]/80 transition group-hover:text-[#00E5FF]">Lihat layanan →</span>
         </span>
       </span>
     </Link>
