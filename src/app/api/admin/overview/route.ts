@@ -13,10 +13,7 @@ import {
   todayWibDateString,
   weekWibStartDateString,
 } from "@/lib/revenue";
-import {
-  fillDailySeries,
-  topProfitByItems,
-} from "@/lib/dashboard-profit";
+import { readFinancialReport } from "@/lib/dashboard-report";
 import {
   evaluateQris,
   evaluateQueue,
@@ -70,52 +67,6 @@ const zero = {
   },
   daily_series: [] as { date: string; orders: number; revenue: number; cost: number; profit: number }[],
 };
-
-/**
- * Untung Produk = omzet - modal supplier - modal manual (semua periode, WIB).
- *
- * - Omzet per order: COALESCE(pt.payable_amount, o.subtotal) — sama dengan
- *   angka revenue_* yang sudah ada.
- * - Modal supplier per order: SUM(wr_cost) link WR + SUM(sk_cost) link SK
- *   milik order itu. Ditulis saat link dibuat setelah lunas (snapshot harga
- *   modal saat itu), bukan harga katalog saat ini.
- * - Modal manual per order: SUM(manual_cost varian x qty) untuk item yang
- *   TIDAK punya link supplier (produk manual/stok sendiri). Link = supplier
- *   yang menanggung; manual_cost varian ber-link tetap dihitung 0 agar tidak
- *   dobel — biaya tambahan WR/SK di luar modal (mis. fee top-up) dicatat
- *   lewat kenaikan wr_cost/sk_cost, bukan kolom ini.
- * - Order lunas tanpa link dan tanpa manual_cost = untung penuh (estimasi
- *   bila link masih pending — lihat profit_estimated_orders).
- */
-function orderProfitSelects(): { supplierCost: string; manualCost: string } {
-  // AC-22 / PD-45: modal Pedia = supplier_charge riil (fallback snapshot
-  // rate × qty bila charge belum ada — item masih queued).
-  const supplierCost = `COALESCE(
-    (SELECT SUM(wl.wr_cost) FROM wr_order_links wl WHERE wl.order_code=o.code),
-    0
-  ) + COALESCE(
-    (SELECT SUM(sl.sk_cost) FROM sk_order_links sl WHERE sl.order_code=o.code),
-    0
-  ) + COALESCE(
-    (SELECT SUM(COALESCE(pi.supplier_charge, pi.supplier_rate_snapshot * pi.quantity / 1000, 0))
-       FROM pedia_order_items pi WHERE pi.order_code=o.code),
-    0
-  )`;
-  // manual_cost hanya untuk varian yang TIDAK punya link supplier pada order
-  // ini (NOT EXISTS ke kedua tabel link via variant_id). items JSON tidak bisa
-  // di-JOIN murah di SQLite — dibaca dari fulfillment_items yang sudah
-  // termaterialisasi per (order, item) dengan variant_id + qty.
-  const manualCost = `COALESCE(
-    (SELECT SUM(COALESCE(pv.manual_cost, 0) * fi.qty)
-     FROM fulfillment_items fi
-     JOIN product_variants pv ON pv.id = fi.variant_id
-     WHERE fi.order_code = o.code
-       AND NOT EXISTS (SELECT 1 FROM wr_order_links wl WHERE wl.order_code = o.code)
-       AND NOT EXISTS (SELECT 1 FROM sk_order_links sl WHERE sl.order_code = o.code)),
-    0
-  )`;
-  return { supplierCost, manualCost };
-}
 
 /** Waktu pembayaran order untuk laporan: paid_at tetap, fallback updated_at. */
 function orderPaidTime(order: Record<string, unknown>): number | null {
@@ -202,17 +153,12 @@ export async function GET(request: NextRequest) {
       LEFT JOIN (SELECT order_code, MAX(reviewed_at) AS reviewed_at
                  FROM payment_proofs WHERE status='approved' GROUP BY order_code) pp
         ON pp.order_code=o.code`;
-  // Modal per order (subquery ke tabel link — by order_code, sudah ter-index;
-  // fulfillment_items by order_code juga ter-index; 1 query agregat, bukan N+1).
-  const { supplierCost, manualCost } = orderProfitSelects();
-  const orderCostSql = `(${supplierCost} + ${manualCost})`;
   const paidOnly = `o.status='lunas'`;
   const revenueOf = `COALESCE(pt.payable_amount,o.subtotal)`;
-  const profitOf = `(${revenueOf} - ${orderCostSql})`;
   const inToday = `${paidDateWib}='${todayWib}'`;
   const inWeek = `${paidWeekWib}='${weekWib}'`;
   const inMonth = `${paidMonthWib}='${monthWib}'`;
-  const [orders, proofs, qris, fulfillmentJobsRaw, fulfillmentOrdersNeedingAction, itemAttention, stock, topProduct, channelRows, channelProfitRows, supplierRows, topProfitRows, dailyRows, estimatedRows, tgQueue, waQueue, oldestJobDue, oldestItemDue, oldestWaDue, tgSends, waSends, qrisEvents] = await Promise.all([
+  const [orders, proofs, qris, fulfillmentJobsRaw, fulfillmentOrdersNeedingAction, itemAttention, stock, topProduct, channelRows, financial, tgQueue, waQueue, oldestJobDue, oldestItemDue, oldestWaDue, tgSends, waSends, qrisEvents] = await Promise.all([
     safeFirst(`SELECT
       COUNT(*) AS total_orders,
       SUM(CASE WHEN o.status='pending' THEN 1 ELSE 0 END) AS pending_orders,
@@ -224,14 +170,6 @@ export async function GET(request: NextRequest) {
       SUM(CASE WHEN ${paidOnly} AND ${inToday} THEN 1 ELSE 0 END) AS orders_today,
       SUM(CASE WHEN ${paidOnly} AND ${inWeek} THEN 1 ELSE 0 END) AS orders_week,
       SUM(CASE WHEN ${paidOnly} AND ${inMonth} THEN 1 ELSE 0 END) AS orders_month,
-      SUM(CASE WHEN ${paidOnly} THEN ${orderCostSql} ELSE 0 END) AS cost_total,
-      SUM(CASE WHEN ${paidOnly} AND ${inToday} THEN ${orderCostSql} ELSE 0 END) AS cost_today,
-      SUM(CASE WHEN ${paidOnly} AND ${inWeek} THEN ${orderCostSql} ELSE 0 END) AS cost_week,
-      SUM(CASE WHEN ${paidOnly} AND ${inMonth} THEN ${orderCostSql} ELSE 0 END) AS cost_month,
-      SUM(CASE WHEN ${paidOnly} THEN ${profitOf} ELSE 0 END) AS profit_total,
-      SUM(CASE WHEN ${paidOnly} AND ${inToday} THEN ${profitOf} ELSE 0 END) AS profit_today,
-      SUM(CASE WHEN ${paidOnly} AND ${inWeek} THEN ${profitOf} ELSE 0 END) AS profit_week,
-      SUM(CASE WHEN ${paidOnly} AND ${inMonth} THEN ${profitOf} ELSE 0 END) AS profit_month,
       MIN(CASE WHEN ${paidOnly} THEN ${paidAtWib} ELSE NULL END) AS revenue_from,
       MAX(CASE WHEN ${paidOnly} THEN ${paidAtWib} ELSE NULL END) AS revenue_to
       ${paidJoin}`),
@@ -257,41 +195,7 @@ export async function GET(request: NextRequest) {
     safeFirst(`SELECT COUNT(*) AS count FROM product_variants WHERE is_active=1 AND stock BETWEEN 0 AND 5`),
     safeFirst(`SELECT name,sold_count FROM products WHERE is_active=1 ORDER BY sold_count DESC, sort_order ASC LIMIT 1`),
     safeAll(`SELECT sales_channel,COUNT(*) AS count FROM orders WHERE status='pending' GROUP BY sales_channel`),
-    // Untung per channel (order lunas): omzet + untung; modal tak dibuka per
-    // channel agar respons tetap ramping.
-    safeAll(`SELECT COALESCE(o.sales_channel,'web') AS sales_channel,
-        COUNT(*) AS orders, SUM(${revenueOf}) AS revenue, SUM(${profitOf}) AS profit
-      ${paidJoin} WHERE ${paidOnly} GROUP BY COALESCE(o.sales_channel,'web')`),
-    // Untung per supplier (order lunas): WR vs SK vs Manual.
-    // Baris dengan link WR → WR; link SK → SK; tanpa keduanya → Manual.
-    safeAll(`SELECT
-        CASE WHEN EXISTS(SELECT 1 FROM wr_order_links wl WHERE wl.order_code=o.code) THEN 'wr'
-             WHEN EXISTS(SELECT 1 FROM sk_order_links sl WHERE sl.order_code=o.code) THEN 'sk'
-             ELSE 'manual' END AS supplier,
-        COUNT(*) AS orders, SUM(${revenueOf}) AS revenue, SUM(${orderCostSql}) AS cost, SUM(${profitOf}) AS profit
-      ${paidJoin} WHERE ${paidOnly} GROUP BY supplier`),
-    // Top 5 produk penyumbang untung (order lunas): parse items[] JSON di JS
-    // — SQLite tak bisa JOIN JSON murah; dibatasi 500 order lunas terbaru agar
-    // rows_read bounded (bukan seluruh riwayat).
-    safeAll(`SELECT o.code AS code, o.items AS items, ${revenueOf} AS revenue,
-        (${supplierCost}) AS supplier_cost
-      ${paidJoin} WHERE ${paidOnly} ORDER BY o.id DESC LIMIT 500`),
-    // Grafik 30 hari (WIB): 1 query agregat harian, bukan 30 query.
-    safeAll(`SELECT ${paidDateWib} AS date, COUNT(*) AS orders,
-        SUM(${revenueOf}) AS revenue, SUM(${orderCostSql}) AS cost, SUM(${profitOf}) AS profit
-      ${paidJoin} WHERE ${paidOnly}
-        AND ${paidDateWib} >= date('now','+7 hours','-29 days')
-      GROUP BY ${paidDateWib} ORDER BY date ASC`),
-    // Order estimasi: lunas tapi punya link supplier BELUM terminal
-    // (pending/retry/blocked/claimed/submitted/ordering/processing) — modal
-    // belum kepotong, untungnya masih bisa berubah.
-    safeFirst(`SELECT COUNT(DISTINCT o.code) AS count FROM orders o
-      WHERE o.status='lunas' AND o.payment_status='paid' AND (
-        EXISTS(SELECT 1 FROM wr_order_links wl WHERE wl.order_code=o.code
-          AND wl.status NOT IN ('completed','failed'))
-        OR EXISTS(SELECT 1 FROM sk_order_links sl WHERE sl.order_code=o.code
-          AND sl.status NOT IN ('completed','failed'))
-      )`),
+    readFinancialReport(),
     // Sinyal kesehatan berbasis pengukuran (issue #13), bukan sekadar env:
     // antrean fulfillment + usia kirim Telegram terakhir.
     // 2026-09-16: tgQueue/fulfillment HANYA dari order yang masih butuh
@@ -326,51 +230,10 @@ export async function GET(request: NextRequest) {
     const channel = String(row.sales_channel || "web") as keyof typeof channels;
     if (channel in channels) channels[channel] = Number(row.count || 0);
   }
-  // Untung per channel (lunas): channel tak dikenal (legacy) digabung ke web.
-  const profitByChannel = {
-    web: { orders: 0, revenue: 0, profit: 0 },
-    telegram: { orders: 0, revenue: 0, profit: 0 },
-    whatsapp: { orders: 0, revenue: 0, profit: 0 },
-  };
-  for (const row of (Array.isArray(channelProfitRows) ? channelProfitRows : [])) {
-    const rec = row as Record<string, unknown>;
-    const key = (["web", "telegram", "whatsapp"] as const).includes(String(rec.sales_channel) as "web")
-      ? String(rec.sales_channel) as keyof typeof profitByChannel
-      : "web";
-    profitByChannel[key] = {
-      orders: Number(rec.orders || 0),
-      revenue: Number(rec.revenue || 0),
-      profit: Number(rec.profit || 0),
-    };
-  }
-  // Untung per supplier (lunas): baris tanpa kelompok (tak ada order) = 0.
-  const profitBySupplier = {
-    wr: { orders: 0, revenue: 0, cost: 0, profit: 0 },
-    sk: { orders: 0, revenue: 0, cost: 0, profit: 0 },
-    manual: { orders: 0, revenue: 0, cost: 0, profit: 0 },
-  };
-  for (const row of (Array.isArray(supplierRows) ? supplierRows : [])) {
-    const rec = row as Record<string, unknown>;
-    const key = String(rec.supplier || "manual") as keyof typeof profitBySupplier;
-    if (!(key in profitBySupplier)) continue;
-    profitBySupplier[key] = {
-      orders: Number(rec.orders || 0),
-      revenue: Number(rec.revenue || 0),
-      cost: Number(rec.cost || 0),
-      profit: Number(rec.profit || 0),
-    };
-  }
-  // Top 5 produk penyumbang untung: alokasikan modal supplier order ke
-  // item-nya proporsional terhadap harga (qty x price), lalu agregat per nama.
-  // Modal manual per item tak bisa dipisah dari angka order — ikut proporsi
-  // yang sama (selisih pembulatan < Rp qty baris, dapat diabaikan).
-  const topProfitProducts = topProfitByItems(
-    Array.isArray(topProfitRows) ? (topProfitRows as Record<string, unknown>[]) : [],
-  );
-  // Grafik 30 hari: isi tanggal kosong dengan 0 agar garis kontinu.
-  const dailySeries = fillDailySeries(
-    Array.isArray(dailyRows) ? (dailyRows as Record<string, unknown>[]) : [],
-  );
+  const total = financial.reports.total;
+  const today = financial.reports.today, week = financial.reports.week, month = financial.reports.month;
+  const profitByChannel = total.channels, profitBySupplier = total.suppliers;
+  const topProfitProducts = total.top_products, dailySeries = financial.daily;
   const systems = buildSystems({
     tgQueue: (Array.isArray(tgQueue) ? tgQueue : []) as Record<string, unknown>[],
     itemQueue: (Array.isArray(itemAttention) ? itemAttention : []) as Record<string, unknown>[],
@@ -391,26 +254,27 @@ export async function GET(request: NextRequest) {
     orders_today: Number(orders?.orders_today || 0),
     orders_week: Number(orders?.orders_week || 0),
     orders_month: Number(orders?.orders_month || 0),
-    revenue_total: Number(orders?.revenue_total || 0),
-    revenue_today: Number(orders?.revenue_today || 0),
-    revenue_week: Number(orders?.revenue_week || 0),
-    revenue_month: Number(orders?.revenue_month || 0),
+    revenue_total: total.revenue,
+    revenue_today: today.revenue,
+    revenue_week: week.revenue,
+    revenue_month: month.revenue,
     revenue_from: orders?.revenue_from ? String(orders.revenue_from) : null,
     revenue_to: orders?.revenue_to ? String(orders.revenue_to) : null,
     revenue_timezone: "Asia/Jakarta",
-    cost_total: Number(orders?.cost_total || 0),
-    cost_today: Number(orders?.cost_today || 0),
-    cost_week: Number(orders?.cost_week || 0),
-    cost_month: Number(orders?.cost_month || 0),
-    profit_total: Number(orders?.profit_total || 0),
-    profit_today: Number(orders?.profit_today || 0),
-    profit_week: Number(orders?.profit_week || 0),
-    profit_month: Number(orders?.profit_month || 0),
-    profit_estimated_orders: Number(estimatedRows?.count || 0),
+    cost_total: total.cost,
+    cost_today: today.cost,
+    cost_week: week.cost,
+    cost_month: month.cost,
+    profit_total: total.profit,
+    profit_today: today.profit,
+    profit_week: week.profit,
+    profit_month: month.profit,
+    profit_estimated_orders: total.estimated_orders,
     profit_by_supplier: profitBySupplier,
     top_profit_products: topProfitProducts,
     profit_by_channel: profitByChannel,
     daily_series: dailySeries,
+    period_reports: { today, week, month },
     pending_proofs: Number(proofs?.count || 0),
     payment_attention: Number(qris?.count || 0),
     // fulfillment_attention = order-butuh-tindakan (tanpa hitung ganda;

@@ -474,6 +474,20 @@ CREATE INDEX IF NOT EXISTS idx_fulfillment_jobs_locked_dt ON fulfillment_jobs(st
 -- Fulfillment per item (migration 0015, issue #4): satu baris per
 -- (order, item) agar setiap item punya status sendiri; order selesai hanya
 -- setelah seluruh baris terminal sukses. Job lama tetap kompatibel.
+-- Immutable financial facts written atomically with payment (migration 0063).
+-- Product/variant IDs intentionally have no FK: deleting a catalog entry must
+-- not delete its historical cost. Absent snapshots remain estimates.
+CREATE TABLE IF NOT EXISTS order_item_costs (
+  order_code TEXT NOT NULL REFERENCES orders(code),
+  item_index INTEGER NOT NULL,
+  product_id INTEGER,
+  variant_id INTEGER,
+  source TEXT NOT NULL CHECK (source IN ('manual','wr','sk')),
+  supplier_variant_id TEXT,
+  unit_cost INTEGER CHECK (unit_cost IS NULL OR unit_cost >= 0),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (order_code, item_index)
+);
 CREATE TABLE IF NOT EXISTS fulfillment_items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   order_code TEXT NOT NULL REFERENCES orders(code),

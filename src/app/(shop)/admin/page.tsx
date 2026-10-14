@@ -32,15 +32,17 @@ export default function AdminPage() {
   const [tab, setTab] = useState<AdminSection>("summary");
   const [overview, setOverview] = useState<AdminOverviewData>(EMPTY_ADMIN_OVERVIEW);
   const [overviewLoading, setOverviewLoading] = useState(true);
+  const [overviewError, setOverviewError] = useState<string | null>(null);
 
   const loadOverview = useCallback(async()=>{
     setOverviewLoading(true);
+    setOverviewError(null);
     try {
       const response = await fetch("/api/admin/overview", { cache: "no-store" });
       const data = await response.json().catch(()=>({})) as Partial<AdminOverviewData> & { error?: string };
       if (!response.ok) throw new Error(data.error || "Gagal memuat ringkasan");
       setOverview({ ...EMPTY_ADMIN_OVERVIEW, ...data, channels: { ...EMPTY_ADMIN_OVERVIEW.channels, ...data.channels }, systems: { ...EMPTY_ADMIN_OVERVIEW.systems, ...data.systems } });
-    } catch { /* Ringkasan gagal tidak memblokir menu operasional lain. */ }
+    } catch { setOverviewError("Ringkasan belum berhasil dimuat. Coba muat ulang."); }
     finally { setOverviewLoading(false); }
   }, []);
 
@@ -106,7 +108,7 @@ export default function AdminPage() {
 
       {pm.listError && <div className="mt-4 rounded-2xl bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-200 flex items-center justify-between gap-3"><span>{pm.listError}</span><button onClick={pm.load} className="h-8 px-3 rounded-full bg-white text-[#070a1e] text-xs font-bold shrink-0 transition hover:bg-white/90">Coba lagi</button></div>}
 
-      {tab==="summary" && <AdminOverview data={overview} loading={overviewLoading} onLowStock={() => navigateAdmin("products", { low_stock: "1" })} />}
+      {tab==="summary" && <AdminOverview data={overview} loading={overviewLoading} error={overviewError} onRetry={loadOverview} onLowStock={() => navigateAdmin("products", { low_stock: "1" })} />}
       {tab==="orders" && <OrdersManager onChanged={loadOverview} />}
       {tab==="categories" && <CategoryManager />}
       {tab==="payments" && <PaymentMethodsManager />}

@@ -70,6 +70,37 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe("Checkout → pembayaran", () => {
+  it("empty buyer fields scroll and focus WhatsApp before any order request", async () => {
+    const scroll = vi.fn();
+    Object.defineProperty(HTMLElement.prototype,'scrollIntoView',{configurable:true,value:scroll});
+    stubCheckoutApi(async()=>{throw new Error('Order must not be created');});
+    render(<CheckoutPage/>);
+    const button = (await screen.findAllByRole('button',{name:/Bayar Rp/}))[0];
+    await waitFor(()=>expect((button as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(button);
+    await waitFor(()=>expect(document.activeElement?.id).toBe('checkout-wa'));
+    expect(scroll).toHaveBeenCalledWith({behavior:'smooth',block:'center'});
+    expect((scroll.mock.instances[0] as HTMLElement).querySelector('#checkout-wa')).toBeTruthy();
+    expect(vi.mocked(fetch).mock.calls.some(([url])=>String(url)==='/api/orders')).toBe(false);
+    expect(document.getElementById('checkout-wa')?.getAttribute('aria-describedby')).toContain('checkout-wa-error');
+  });
+
+  it("valid WhatsApp and invalid email target email, respecting reduced motion", async () => {
+    const scroll = vi.fn();
+    Object.defineProperty(HTMLElement.prototype,'scrollIntoView',{configurable:true,value:scroll});
+    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:true})));
+    stubCheckoutApi(async()=>{throw new Error('Order must not be created');});
+    render(<CheckoutPage/>);
+    const button = (await screen.findAllByRole('button',{name:/Bayar Rp/}))[0];
+    await waitFor(()=>expect((button as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.change(screen.getByLabelText(/No WA aktif/),{target:{value:'081234567890'}});
+    fireEvent.change(screen.getByLabelText('Email *'),{target:{value:'wrong-email'}});
+    fireEvent.click(button);
+    await waitFor(()=>expect(document.activeElement?.id).toBe('checkout-email'));
+    expect(scroll).toHaveBeenCalledWith({behavior:'auto',block:'center'});
+    expect((scroll.mock.instances[0] as HTMLElement).querySelector('#checkout-email')).toBeTruthy();
+    expect(document.getElementById('checkout-wa')?.getAttribute('aria-invalid')).toBe('false');
+  });
   it("setelah pesanan dibuat: layar membuka pembayaran, bukan form aktif lagi / keranjang kosong", async () => {
     stubCheckoutApi(async () => ({ ok: true, status: 201, json: async () => ({ code: CODE, subtotal: 10_000, status: "pending", qris }) }));
     await fillAndPay();

@@ -326,7 +326,18 @@ function CheckoutInner() {
     // Axvara digital — order lunas tanpa email = macet. Minta SEBELUM bayar.
     if (!email.trim()) fe.email = "Tulis email aktif — detail pesanan & produk dikirim ke email ini.";
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) fe.email = "Format email tidak valid.";
-    if (Object.keys(fe).length) { setFieldErrors(fe); setError("Periksa field yang ditandai."); return; }
+    if (Object.keys(fe).length) {
+      setFieldErrors(fe); setError("Lengkapi data pembeli untuk melanjutkan.");
+      const firstInvalid = fe.wa ? "wa" : "email";
+      requestAnimationFrame(() => {
+        const input = document.getElementById(`checkout-${firstInvalid}`);
+        input?.focus({ preventScroll: true });
+        const field = input?.closest("[data-checkout-field]") ?? input;
+        const reducedMotion = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        field?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "center" });
+      });
+      return;
+    }
     if (!method) {
       setError("Pilih metode pembayaran terlebih dahulu");
       return;
@@ -620,17 +631,17 @@ function CheckoutInner() {
           <div>
             <h2 className="text-sm font-semibold text-white">② Data Pembeli</h2>
             <div className="mt-3 grid gap-3">
-              <div>
+              <div data-checkout-field className="scroll-mt-28 scroll-mb-32">
                 <label htmlFor="checkout-wa" className="block text-xs font-medium text-white/60 mb-1">No WA aktif *</label>
-                <input id="checkout-wa" value={wa} onChange={(e) => { setWa(e.target.value); setFieldErrors(f=> ({...f, wa: ""})); }} placeholder="08..." aria-invalid={!!fieldErrors.wa} aria-describedby="checkout-wa-hint" className={`w-full h-11 px-4 rounded-xl bg-white/[0.06] border text-sm text-white placeholder:text-white/30 focus:outline-none ${fieldErrors.wa ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`} />
+                <input id="checkout-wa" type="tel" inputMode="tel" autoComplete="tel" value={wa} onChange={(e) => { setWa(e.target.value); setFieldErrors(f=> ({...f, wa: ""})); }} placeholder="08..." aria-invalid={!!fieldErrors.wa} aria-describedby={fieldErrors.wa ? "checkout-wa-hint checkout-wa-error" : "checkout-wa-hint"} className={`w-full h-11 px-4 rounded-xl bg-white/[0.06] border text-sm text-white placeholder:text-white/30 focus:outline-none ${fieldErrors.wa ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`} />
                 <p id="checkout-wa-hint" className="mt-1.5 text-[11px] leading-4 text-white/40">Nomor aktif untuk terima produk, info pesanan, dan bantuan via WhatsApp bila ada kendala.</p>
-                {fieldErrors.wa && <p className="mt-1.5 text-xs text-red-300">{fieldErrors.wa}</p>}
+                {fieldErrors.wa && <p id="checkout-wa-error" className="mt-1.5 text-xs text-red-300">{fieldErrors.wa}</p>}
               </div>
-              <div>
+              <div data-checkout-field className="scroll-mt-28 scroll-mb-32">
                 <label htmlFor="checkout-email" className="block text-xs font-medium text-white/60 mb-1">Email *</label>
-                <input id="checkout-email" value={email} onChange={(e) => { setEmail(e.target.value); setFieldErrors(f=> ({...f, email: ""})); }} placeholder="email@contoh.com" aria-invalid={!!fieldErrors.email} aria-describedby="checkout-email-hint" className={`w-full h-11 px-4 rounded-xl bg-white/[0.06] border text-sm text-white placeholder:text-white/30 focus:outline-none ${fieldErrors.email ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`} />
+                <input id="checkout-email" type="email" autoComplete="email" value={email} onChange={(e) => { setEmail(e.target.value); setFieldErrors(f=> ({...f, email: ""})); }} placeholder="email@contoh.com" aria-invalid={!!fieldErrors.email} aria-describedby={fieldErrors.email ? "checkout-email-hint checkout-email-error" : "checkout-email-hint"} className={`w-full h-11 px-4 rounded-xl bg-white/[0.06] border text-sm text-white placeholder:text-white/30 focus:outline-none ${fieldErrors.email ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`} />
                 <p id="checkout-email-hint" className="mt-1.5 text-[11px] leading-4 text-white/40">Detail pesanan & produk dikirim ke email ini. Gunakan email aktif yang bisa menerima pesan.</p>
-                {fieldErrors.email && <p className="mt-1.5 text-xs text-red-300">{fieldErrors.email}</p>}
+                {fieldErrors.email && <p id="checkout-email-error" className="mt-1.5 text-xs text-red-300">{fieldErrors.email}</p>}
               </div>
             </div>
           </div>
@@ -668,6 +679,7 @@ function CheckoutInner() {
               Memakai handler + state disabled yang sama (tidak ada logika
               ganda). */}
           <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#080C1E]/90 backdrop-blur-xl border-t border-white/10 px-4 py-2.5 pb-[max(10px,env(safe-area-inset-bottom))]">
+            {Object.values(fieldErrors).some(Boolean) && <p role="alert" className="mb-2 text-center text-xs text-red-200">Lengkapi data pembeli untuk melanjutkan.</p>}
             <button onClick={submit} disabled={ctaDisabled} className="w-full h-12 rounded-xl bg-[#00E5FF] text-[#080C1E] font-bold text-sm hover:bg-[#00D0E8] disabled:opacity-60 transition inline-flex items-center justify-center gap-2">
               {loading && <span className="w-4 h-4 rounded-full border-2 border-[#080C1E]/20 border-t-[#080C1E] animate-spin" />}
               {ctaLabel}

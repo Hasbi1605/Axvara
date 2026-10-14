@@ -120,15 +120,15 @@ export function WrCredentialsPanel({ code, prefillContact = "", contactHint = ""
                 <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5 text-emerald-100"><CredentialText text={c.details} /></pre>
                 {c.completed_at && <p className="mt-2 text-[11px] text-white/40">Diterima {formatWibDateTime(c.completed_at) ?? "—"}</p>}
               </div>
-              {c.terms && (c.terms.sections.length > 0 || c.terms.activation.length > 0) && (
+              {c.terms && (c.terms.sections.length > 0 || c.terms.activation.length > 0 || c.terms.notes.length > 0) && (
                 <>
                   {c.terms.sections.length > 0 && (
                     <MobileCollapsible title="Syarat & Ketentuan">
                       <TermsBody sections={c.terms.sections} size="xs" />
                     </MobileCollapsible>
                   )}
-                  {c.terms.activation.length > 0 && (
-                    <MobileCollapsible title="Cara Aktivasi">
+                  {(c.terms.activation.length > 0 || c.terms.notes.length > 0) && (
+                    <MobileCollapsible title="Cara Penggunaan / Aktivasi">
                       <ActivationBody groups={c.terms.activation} notes={c.terms.notes} size="xs" />
                     </MobileCollapsible>
                   )}

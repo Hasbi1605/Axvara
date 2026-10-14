@@ -6,6 +6,7 @@
 // tunggal agar tidak ada dua salinan store yang desinkron.
 
 import { DANA_AMOUNT_REUSED_SQL } from "@/lib/payments/dana-history";
+import { PAID_ORDER_COST_SNAPSHOT_SQL } from "@/lib/orders/cost-snapshot";
 import { getD1, getOrderMem, getSharedMem, execRun } from "./client";
 import { OrderTransitionError } from "./errors";
 import type { D1, D1Statement } from "./types";
@@ -109,6 +110,7 @@ export async function transitionPendingOrder(
                 o.sales_channel, 'queued', 0, datetime('now')
          FROM orders o WHERE o.code=? AND o.status='lunas' AND o.payment_status='paid'`,
       ).bind(code),
+      d1.prepare(PAID_ORDER_COST_SNAPSHOT_SQL).bind(code),
       d1.prepare("DELETE FROM operation_guards WHERE operation_id=?").bind(transitionGuardId),
     ];
     const lunasResult = await d1.batch(lunasBatch);
@@ -327,6 +329,7 @@ export async function transitionPendingPaymentToPaid(
       );
     }
     statements.push(
+      d1.prepare(PAID_ORDER_COST_SNAPSHOT_SQL).bind(orderCode),
       d1.prepare("DELETE FROM operation_guards WHERE operation_id=?").bind(guardId),
     );
 

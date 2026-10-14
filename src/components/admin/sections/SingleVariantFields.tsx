@@ -13,8 +13,10 @@
 // Produk WR-managed: seluruh field milik sync terkunci (harga/stok/garansi),
 // hanya harga coret yang tetap bisa diedit — sama seperti baris varian WR.
 
+import { useRef } from "react";
 import type { ProductForm } from "../product-types";
 import { MoneyInput } from "@/components/ui/MoneyInput";
+import { SharedVariantCopyFields } from "./SharedVariantCopyFields";
 import { WarrantyFields } from "./VariantWarrantyFields";
 import { FULFILLMENT_OPTIONS, NonWrFulfillmentPanel } from "./ProductVariantRows";
 
@@ -29,6 +31,8 @@ export function SingleVariantFields({
   productId?: number | string;
   variantId?: number;
 }) {
+  const latestForm = useRef(form);
+  latestForm.current = form;
   const wrLocked = Boolean(form.wrManaged);
   const openInput =
     "h-9 w-full rounded-xl bg-white/[0.06] border border-white/10 px-3 text-xs text-white focus:border-[#00E5FF]/50 focus:outline-none";
@@ -96,7 +100,8 @@ export function SingleVariantFields({
               ? "Badge pembeli: Made By Order (disiapkan admin)."
               : "Badge pembeli: Kirim otomatis (dikirim sistem dari stok di bawah)."}
           </p>
-          <NonWrFulfillmentPanel productId={productId} variantId={variantId} mode={form.fulfillment_mode || "manual"} />
+          <NonWrFulfillmentPanel productId={productId} variantId={variantId} mode={form.fulfillment_mode || "manual"} onStockChange={stock=>{if(latestForm.current.stock!==stock)onSetForm({...latestForm.current,stock});}} />
+          {form.supplier !== "SK" && <SharedVariantCopyFields value={form} onChange={patch=>onSetForm({...form,...patch})} />}
         </div>
       ) : (
         <NonWrFulfillmentPanel productId={productId} variantId={variantId} mode="__wr__" />

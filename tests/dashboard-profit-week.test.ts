@@ -68,7 +68,7 @@ describe("minggu WIB Senin-start", () => {
   });
 
   it("overview memakai bucket minggu + menandai zona", () => {
-    const src = read("src/app/api/admin/overview/route.ts");
+    const src = read("src/app/api/admin/overview/route.ts") + read("src/lib/dashboard-report.ts");
     expect(src).toContain("revenueWeekWibSql");
     expect(src).toContain("weekWibStartDateString");
     expect(src).toContain("revenue_week");
@@ -150,7 +150,7 @@ describe("kontrak respons overview Fase 1", () => {
     for (const key of ["profit_today", "profit_week", "profit_month", "profit_total", "cost_today", "cost_total", "profit_by_supplier", "top_profit_products", "profit_by_channel", "daily_series", "profit_estimated_orders", "orders_today"]) {
       expect(route).toContain(key);
     }
-    const ui = read("src/components/admin/AdminOverview.tsx");
+    const ui = read("src/components/admin/AdminOverview.tsx") + read("src/components/admin/OverviewCharts.tsx");
     for (const label of ["Untung Produk", "Minggu ini", "Untung per supplier", "Top 5 penyumbang untung", "Untung per channel", "Omzet vs Untung"]) {
       expect(ui).toContain(label);
     }

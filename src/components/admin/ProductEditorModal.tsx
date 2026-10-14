@@ -70,7 +70,7 @@ export function ProductEditorModal({
     : (form.copyReview ?? 0);
   return (
     <div className="fixed inset-0 z-[80] isolate flex items-end justify-center overflow-hidden bg-black/60 p-0 backdrop-blur-sm sm:items-start sm:overflow-y-auto sm:p-6 sm:pt-10" onMouseDown={(event)=>{if(event.target===event.currentTarget&&!saving){onRequestClose();}}}>
-          <section role="dialog" aria-modal="true" aria-labelledby="product-editor-title" className="relative z-10 isolate flex max-h-[92dvh] w-full max-w-[720px] flex-col overflow-hidden rounded-t-3xl border border-white/10 bg-[#0B1025] shadow-[0_24px_64px_rgba(0,0,0,0.6)] sm:rounded-3xl">
+          <section role="dialog" aria-modal="true" aria-labelledby="product-editor-title" className="relative z-10 isolate flex max-h-[92dvh] w-full max-w-[880px] flex-col overflow-hidden rounded-t-3xl border border-white/10 bg-[#0B1025] shadow-[0_24px_64px_rgba(0,0,0,0.6)] sm:rounded-3xl">
             <div className="shrink-0 px-6 pt-6">
             <div className="flex items-center justify-between gap-3">
               <div><p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#00E5FF]">Katalog</p><h3 id="product-editor-title" className="mt-0.5 font-display text-lg font-bold text-white">{editing? "Edit Produk":"Produk Baru"}</h3></div>
@@ -226,7 +226,7 @@ export function ProductEditorModal({
                     <input
                       type="number"
                       value={form.stock ?? -1}
-                      readOnly={form.wrManaged}
+                      readOnly={form.wrManaged || form.fulfillment_mode === "unique"}
                       onChange={(e) => onSetForm({ ...form, stock: Number(e.target.value) })}
                       className={`mt-1 h-10 w-full px-3 rounded-xl border text-sm focus:outline-none ${form.wrManaged ? "bg-white/[0.03] border-white/5 text-white/50 cursor-not-allowed" : "bg-white/[0.06] border-white/10 text-white focus:border-[#00E5FF]/30"}`}
                     />

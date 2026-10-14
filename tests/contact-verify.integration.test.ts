@@ -107,6 +107,25 @@ describe("POST /api/orders/[code]/credentials — detail akun dengan WA atau ema
     expect((await POST(post(`/api/orders/${NO_EMAIL}/credentials`, { contact: "0812 9876 5432" }), ctx(NO_EMAIL))).status).toBe(200);
     expect((await POST(post(`/api/orders/${NO_EMAIL}/credentials`, { wa: "081298765432" }), ctx(NO_EMAIL))).status).toBe(200);
   });
+
+  it("shared product-description instructions also survive after payment through contact and token access", async () => {
+    fixture.sql.prepare('UPDATE products SET description=? WHERE id=1').run('Akses produk.\nSyarat & Ketentuan:\n- Jangan bagikan link.\nCara Aktivasi:\n1. Buka link yang diterima.');
+    const { POST, GET } = await import("@/app/api/orders/[code]/credentials/route");
+    const body = await (await POST(post(`/api/orders/${PAID}/credentials`,{contact:'rani.putri@gmail.com'}),ctx(PAID))).json();
+    expect(body.credentials[0].details).toBe('Link undangan: https://canva.com/join/ABC');
+    expect(JSON.stringify(body.credentials[0].terms.sections)).toContain('Jangan bagikan link');
+    expect(body.credentials[0].terms.activation[0].steps).toContain('Buka link yang diterima.');
+    const again = await (await GET(new NextRequest(`http://localhost/api/orders/${PAID}/credentials?token=${body.capability_token}`),ctx(PAID))).json();
+    expect(again.credentials[0].terms).toEqual(body.credentials[0].terms);
+  });
+
+  it("legacy orders without a variant in items can still read shared instructions using fulfillment identity", async () => {
+    fixture.sql.prepare('UPDATE orders SET items=? WHERE code=?').run('[{"product_id":1,"name":"Legacy"}]',PAID);
+    fixture.sql.exec("UPDATE product_variants SET admin_terms='- Jangan bagikan link',admin_copy_fingerprint='' WHERE id=1");
+    const { POST } = await import("@/app/api/orders/[code]/credentials/route");
+    const b=await (await POST(post(`/api/orders/${PAID}/credentials`,{contact:'rani.putri@gmail.com'}),ctx(PAID))).json();
+    expect(JSON.stringify(b.credentials[0].terms.sections)).toContain('Jangan bagikan link');
+  });
 });
 
 describe("parseBuyerContact", () => {

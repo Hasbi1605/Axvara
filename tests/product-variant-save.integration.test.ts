@@ -80,6 +80,41 @@ const editedVariants = [
 ];
 
 describe("PUT /api/products/:id mode multi-varian (regresi Canva 409)", () => {
+  it("new own-stock product can save its shared instructions on the first save", async () => {
+    const { POST } = await import("@/app/api/products/route");
+    const response = await POST(new NextRequest('http://localhost/api/products',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:'New own stock',slug:'new-own-stock',price:14000,stock:0,variants:[{sku:'NEW-1',label:'Head',price:14000,stock:0,manual_cost:10000,fulfillment_mode:'unique',admin_terms:'- Satu link per pembeli',admin_activation:'1. Buka link'}]})}));
+    expect(response.status).toBe(200);
+    expect(fixture.sql.prepare("SELECT admin_terms,admin_activation FROM product_variants WHERE sku='NEW-1'").get()).toMatchObject({admin_terms:'- Satu link per pembeli',admin_activation:'1. Buka link'});
+  });
+
+  it("public product detail does not expose the admin editor fields", async () => {
+    fixture.sql.exec("UPDATE product_variants SET admin_terms='- Private draft' WHERE id=1");
+    const { requireAdmin } = await import('@/lib/auth');
+    vi.mocked(requireAdmin).mockResolvedValueOnce(null);
+    const { GET } = await import("@/app/api/products/[id]/route");
+    const data = await (await GET(new NextRequest('http://localhost/api/products/1'),{params:Promise.resolve({id:'1'})})).json();
+    expect(data.product.variants[0]).not.toHaveProperty('admin_terms');
+  });
+  it("shared terms and activation save with the product batch; omitted fields preserve them", async () => {
+    const { PUT, GET } = await import("@/app/api/products/[id]/route");
+    const variants = editedVariants.map((v,i)=>i===0 ? {...v,admin_terms:'- Jangan membagikan link',admin_activation:'1. Buka link yang dikirim'} : v);
+    expect((await PUT(put(1,{variants}),{params:Promise.resolve({id:'1'})})).status).toBe(200);
+    expect(fixture.sql.prepare('SELECT admin_terms,admin_activation,admin_copy_fingerprint FROM product_variants WHERE id=1').get()).toMatchObject({admin_terms:'- Jangan membagikan link',admin_activation:'1. Buka link yang dikirim',admin_copy_fingerprint:''});
+    expect((await PUT(put(1,{variants:editedVariants}),{params:Promise.resolve({id:'1'})})).status).toBe(200);
+    const data = await (await GET(new NextRequest('http://localhost/api/products/1'),{params:Promise.resolve({id:'1'})})).json();
+    expect(data.product.variants[0].admin_terms).toBe('- Jangan membagikan link');
+    const cleared = editedVariants.map((v,i)=>i===0?{...v,admin_terms:'',admin_activation:''}:v);
+    expect((await PUT(put(1,{variants:cleared}),{params:Promise.resolve({id:'1'})})).status).toBe(200);
+    expect(fixture.sql.prepare('SELECT admin_terms,admin_activation FROM product_variants WHERE id=1').get()).toMatchObject({admin_terms:null,admin_activation:null});
+  });
+
+  it("instruction write failure rolls back commerce changes in the same save", async () => {
+    const { PUT } = await import("@/app/api/products/[id]/route");
+    fixture.control.fail = q=>q.includes('admin_copy_fingerprint=');
+    const res = await PUT(put(1,{variants:editedVariants.map((v,i)=>i===0?{...v,price:9000,admin_terms:'- Private'}:v)}),{params:Promise.resolve({id:'1'})});
+    expect(res.status).toBe(500);
+    expect(fixture.sql.prepare('SELECT price,admin_terms FROM product_variants WHERE id=1').get()).toMatchObject({price:2000,admin_terms:null});
+  });
   it("client baru (hanya variants): 200, varian tersimpan, master dihitung ulang", async () => {
     const { PUT } = await import("@/app/api/products/[id]/route");
     const res = await PUT(

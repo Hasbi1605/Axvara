@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { manualCopyUpdate } from "@/lib/product-copy/manual-write";
+import { VARIANT_COPY_MAX_CHARS } from "@/lib/product-copy/format";
 import { queryAll, queryFirst, execRun, getD1, isD1Mode } from "@/lib/db";
 import { isVariantsReadEnabled } from "@/lib/catalog";
 import { purchasableStockSql } from "@/lib/catalog-availability";
@@ -310,6 +312,8 @@ export async function GET(req: NextRequest) {
 }
 
 const variantInputSchema = z.object({
+  admin_terms: z.string().max(VARIANT_COPY_MAX_CHARS).optional(),
+  admin_activation: z.string().max(VARIANT_COPY_MAX_CHARS).optional(),
   id: z.coerce.number().int().positive().optional(),
   sku: z.string().trim().min(1).max(50).optional(),
   label: z.string().trim().min(1).max(100),
@@ -455,6 +459,8 @@ export async function POST(req: NextRequest) {
               slug
             )
           );
+          const copyWrite = manualCopyUpdate(slug, autoSku, v, true);
+          if (copyWrite) statements.push(d1.prepare(copyWrite.sql).bind(...copyWrite.params));
         });
       } else {
         statements.push(

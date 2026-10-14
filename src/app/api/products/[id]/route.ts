@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { manualCopyUpdate } from "@/lib/product-copy/manual-write";
+import { VARIANT_COPY_MAX_CHARS } from "@/lib/product-copy/format";
 import { queryFirst, queryAll, execRun, getD1, isD1Mode } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
 import { checkRateLimit } from "@/lib/rateLimit";
@@ -32,7 +34,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
   const variants = await queryAll(
     `SELECT id, product_id, sku, label, duration_value, duration_unit, duration_label,
             warranty_type, warranty_value, warranty_unit, warranty_label,
-            price, compare_price, stock, min_qty, manual_cost, fulfillment_mode, is_active, sort_order, wr_auto_managed
+            price, compare_price, stock, min_qty, manual_cost, fulfillment_mode, is_active, sort_order, wr_auto_managed${await requireAdmin(_) ? ", admin_terms, admin_activation" : ""}
      FROM product_variants
      WHERE product_id=?
      ORDER BY sort_order ASC, price ASC, id ASC`,
@@ -68,6 +70,8 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
 }
 
 const variantInputSchema = z.object({
+  admin_terms: z.string().max(VARIANT_COPY_MAX_CHARS).optional(),
+  admin_activation: z.string().max(VARIANT_COPY_MAX_CHARS).optional(),
   id: z.coerce.number().int().positive().optional(),
   sku: z.string().trim().min(1).max(50).optional(),
   label: z.string().trim().min(1).max(100),
@@ -346,6 +350,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
                 )
               );
             }
+            const copyWrite = manualCopyUpdate(id, autoSku, v);
+            if (copyWrite) statements.push(d1.prepare(copyWrite.sql).bind(...copyWrite.params));
           });
 
           // Sync product master price & stock from active variants

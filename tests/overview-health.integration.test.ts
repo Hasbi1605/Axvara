@@ -164,6 +164,102 @@ describe("Fase 1 dashboard: week + untung produk (2026-10-07)", () => {
     const body = await overview();
     expect(body.profit_by_supplier.manual).toMatchObject({ orders: 1, revenue: 90000, cost: 30000, profit: 60000 });
     expect(body.profit_today).toBe(60000);
+    expect(body.top_profit_products[0]).toMatchObject({ name: "Canva", cost: 30000, profit: 60000 });
+    expect(body.period_reports.today.top_products[0]).toMatchObject({ cost: 30000, profit: 60000 });
+  });
+
+  it("legacy items without variant IDs retain the cost of their materialized fulfillment line", async () => {
+    fixture.sql.exec(`INSERT INTO products(id,name,slug,price,stock) VALUES(1,'Legacy','legacy',14000,10);
+      INSERT INTO product_variants(id,product_id,sku,label,price,stock,manual_cost) VALUES(1,1,'LEGACY','Legacy',14000,10,10000);
+      INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,paid_at)
+      VALUES('LEGACY','X','6280','[{"product_id":1,"name":"Legacy","price":14000,"qty":1}]',14000,'qris','lunas','paid',datetime('now'));
+      INSERT INTO fulfillment_items(order_code,item_index,product_id,variant_id,qty,fulfillment_mode,status) VALUES('LEGACY',0,1,1,1,'unique','delivered');`);
+    const b=await overview();
+    expect(b.cost_total).toBe(10000);expect(b.profit_total).toBe(4000);
+    expect(b.top_profit_products[0]).toMatchObject({cost:10000,profit:4000});
+  });
+
+  it("mixed cart allocates supplier and own-stock costs to their actual items", async () => {
+    fixture.sql.exec(`INSERT INTO products(id,name,slug,price,stock) VALUES(1,'Head','head',14000,10),(2,'WR','wr',16000,10);
+      INSERT INTO product_variants(id,product_id,sku,label,price,stock,manual_cost,wr_variant_id) VALUES(1,1,'HEAD','Head',14000,10,10000,NULL),(2,2,'WR','WR',16000,10,99999,'w2');
+      INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,paid_at)
+      VALUES('MIXED','X','6280','[{"product_id":1,"variant_id":1,"name":"Head","price":14000,"qty":1},{"product_id":2,"variant_id":2,"name":"WR","price":16000,"qty":1}]',30000,'qris','lunas','paid',datetime('now'));
+      INSERT INTO wr_order_links(order_code,wr_variant_id,quantity,wr_cost,status) VALUES('MIXED','w2',1,8000,'completed');`);
+    const b = await overview();
+    expect(b.cost_total).toBe(18000); expect(b.profit_total).toBe(12000);
+    expect(b.profit_by_supplier.manual).toMatchObject({ revenue: 14000, cost: 10000, profit: 4000 });
+    expect(b.profit_by_supplier.wr).toMatchObject({ revenue: 16000, cost: 8000, profit: 8000 });
+    expect(b.top_profit_products.find((r: {name:string}) => r.name === "Head")).toMatchObject({ cost: 10000, profit: 4000 });
+    const report = b.period_reports.today;
+    expect(Object.values(report.suppliers).reduce((sum:number,r:any)=>sum+r.profit,0)).toBe(report.profit);
+    expect(report.series.reduce((sum:number,r:any)=>sum+r.profit,0)).toBe(report.profit);
+  });
+
+  it("payment snapshots own-stock cost atomically and later catalog edits cannot change it", async () => {
+    fixture.sql.exec(`INSERT INTO products(id,name,slug,price,stock) VALUES(1,'Head','head',14000,10);
+      INSERT INTO product_variants(id,product_id,sku,label,price,stock,manual_cost) VALUES(1,1,'HEAD','Head',14000,10,10000);
+      INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel)
+      VALUES('SNAP','X','6280','[{"product_id":1,"variant_id":1,"name":"Head","price":14000,"qty":1}]',14000,'qris','pending','pending','web');`);
+    const { transitionPendingOrder } = await import("@/lib/db/orders-transition");
+    await transitionPendingOrder('SNAP','lunas',null,[{product_id:1,variant_id:1,qty:1}]);
+    expect(fixture.sql.prepare("SELECT unit_cost FROM order_item_costs WHERE order_code='SNAP'").get()?.unit_cost).toBe(10000);
+    fixture.sql.exec("UPDATE product_variants SET manual_cost=13000 WHERE id=1");
+    const b = await overview();
+    expect(b.cost_total).toBe(10000); expect(b.profit_total).toBe(4000);
+    expect(b.period_reports.today.estimated_orders).toBe(0);
+  });
+
+  it("cost snapshot failure rolls back payment and outbox together", async () => {
+    fixture.sql.exec(`INSERT INTO products(id,name,slug,price,stock) VALUES(1,'Head','head',14000,10);
+      INSERT INTO product_variants(id,product_id,sku,label,price,stock,manual_cost) VALUES(1,1,'HEAD','Head',14000,10,10000);
+      INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status)
+      VALUES('ROLLBACK','X','6280','[{"product_id":1,"variant_id":1,"qty":1}]',14000,'qris','pending','pending');`);
+    fixture.control.fail = q => q.includes('INSERT OR IGNORE INTO order_item_costs');
+    const { transitionPendingOrder } = await import("@/lib/db/orders-transition");
+    await expect(transitionPendingOrder('ROLLBACK','lunas',null,[{product_id:1,variant_id:1,qty:1}])).rejects.toThrow();
+    expect(fixture.sql.prepare("SELECT status FROM orders WHERE code='ROLLBACK'").get()?.status).toBe('pending');
+    expect(fixture.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs").get()?.n).toBe(0);
+  });
+
+  it("supplier cost and payable rounding remainders conserve every rupiah across split lines", async () => {
+    fixture.sql.exec(`INSERT INTO products(id,name,slug,price,stock) VALUES(1,'WR','wr',10000,10);
+      INSERT INTO product_variants(id,product_id,sku,label,price,stock,wr_variant_id) VALUES(1,1,'WR','WR',10000,10,'w1');
+      INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,paid_at)
+      VALUES('ROUND','X','6280','[{"product_id":1,"variant_id":1,"name":"A","price":10000,"qty":1},{"product_id":1,"variant_id":1,"name":"B","price":10000,"qty":1},{"product_id":1,"variant_id":1,"name":"C","price":10000,"qty":1}]',30001,'qris','lunas','paid',datetime('now'));
+      INSERT INTO wr_order_links(order_code,wr_variant_id,quantity,wr_cost,status) VALUES('ROUND','w1',3,10001,'completed');`);
+    const b = await overview();
+    expect(b.cost_total).toBe(10001); expect(b.profit_total).toBe(20000);
+    expect(b.top_profit_products.reduce((sum:number,r:any)=>sum+r.cost,0)).toBe(10001);
+    expect(b.top_profit_products.reduce((sum:number,r:any)=>sum+r.revenue,0)).toBe(30001);
+  });
+
+  it("WIB midnight switches every period consistently; fulfillment updates do not move revenue", async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-14T17:01:00Z'));
+    try {
+      fixture.sql.exec(`INSERT INTO products(id,name,slug,price,stock) VALUES(1,'Own','own',10000,10);
+        INSERT INTO product_variants(id,product_id,sku,label,price,stock,manual_cost) VALUES(1,1,'OWN','Own',10000,10,4000);
+        INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,paid_at,updated_at)
+        VALUES('YESTERDAY','X','6280','[{"product_id":1,"variant_id":1,"name":"Before midnight","price":10000,"qty":1}]',10000,'qris','lunas','paid','2026-10-14T16:59:00Z','2026-10-15T05:00:00Z'),
+        ('TODAY','X','6280','[{"product_id":1,"variant_id":1,"name":"After midnight","price":20000,"qty":1}]',20000,'qris','lunas','paid','2026-10-14T17:00:00Z','2026-10-15T05:00:00Z');`);
+      const b = await overview();
+      expect(b.period_reports.today).toMatchObject({orders:1,revenue:20000,cost:4000,profit:16000});
+      expect(b.period_reports.today.series[0]).toMatchObject({date:'00:00',revenue:20000});
+      expect(b.period_reports.today.top_products.map((r:any)=>r.name)).toEqual(['After midnight']);
+      expect(b.period_reports.month).toMatchObject({orders:2,revenue:30000,cost:8000,profit:22000});
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("Pedia supplier charge has its own contribution and is never labeled own stock", async () => {
+    fixture.sql.exec(`INSERT INTO pedia_products(id,slug,platform,metric,target_kind,name,packages_json,step) VALUES(1,'ig','instagram','followers','profile','IG Followers','[100]',1);
+      INSERT INTO pedia_tiers(id,product_id,tier,supplier,supplier_service_id,price_group,markup_pct,min_profit_rp) VALUES(1,1,'test','indosmm',1,'G1',20,1000);
+      INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,order_kind,paid_at)
+      VALUES('PEDIA','X','6280','[]',10000,'qris','lunas','paid','pedia',datetime('now'));
+      INSERT INTO pedia_order_items(order_code,product_id,tier_id,snapshot_json,target_raw,target_normalized,quantity,unit_price,total,supplier,supplier_service_id,supplier_rate_snapshot,supplier_charge,status)
+      VALUES('PEDIA',1,1,'{}','x','x',100,100,10000,'indosmm',1,15000,1800.6,'completed');`);
+    const b = await overview();
+    expect(b.period_reports.today.suppliers.pedia).toMatchObject({revenue:10000,cost:1801,profit:8199});
+    expect(b.period_reports.today.suppliers.manual.revenue).toBe(0);
+    expect(b.cost_total).toBe(1801);
   });
 
   it("link pending = order estimasi, bukan untung pasti", async () => {

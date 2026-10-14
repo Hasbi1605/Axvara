@@ -214,6 +214,8 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
         stock: v.stock ?? -1,
         min_qty: Number((v as Record<string, unknown>).min_qty ?? 1) || 1,
         manual_cost: Math.max(0, Math.floor(Number((v as Record<string, unknown>).manual_cost ?? 0) || 0)),
+        admin_terms: v.admin_terms ?? undefined,
+        admin_activation: v.admin_activation ?? undefined,
         duration_value: v.duration_value,
         duration_unit: v.duration_unit,
         duration_label: v.duration_label,
@@ -234,6 +236,8 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
         const v0 = mapped[0];
         nextForm.min_qty = v0.min_qty ?? 1;
         nextForm.manual_cost = v0.manual_cost ?? 0;
+        nextForm.admin_terms = v0.admin_terms;
+        nextForm.admin_activation = v0.admin_activation;
         nextForm.warranty_type = v0.warranty_type || "none";
         nextForm.warranty_value = v0.warranty_value ?? null;
         nextForm.warranty_unit = v0.warranty_unit || null;
@@ -391,6 +395,8 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
       stock: form.stock != null ? Number(form.stock) : -1,
       min_qty: Math.max(1, Math.min(100, Number(form.min_qty ?? 1) || 1)),
       manual_cost: Math.max(0, Math.floor(Number(form.manual_cost ?? 0) || 0)),
+      admin_terms: !form.wrManaged && form.supplier !== "SK" ? form.admin_terms : undefined,
+      admin_activation: !form.wrManaged && form.supplier !== "SK" ? form.admin_activation : undefined,
       // Durasi bukan field mode single (tidak ada UI-nya) — teruskan nilai
       // varian DEFAULT existing agar tidak ter-nol-kan saat update in-place.
       duration_value: existingDefault?.duration_value ?? null,
@@ -423,6 +429,8 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
       warranty_label: undefined,
       fulfillment_mode: undefined,
       manual_cost: undefined,
+      admin_terms: undefined,
+      admin_activation: undefined,
       // Hanya state presentasi modal, bukan kontrak API/kolom DB.
       displayPosition: undefined,
       // FIX Canva 409: mode MULTI jangan kirim kolom legacy sama sekali.
@@ -457,6 +465,8 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
             stock: vr.stock != null ? Number(vr.stock) : -1,
             min_qty: Math.max(1, Math.min(100, Number(vr.min_qty ?? 1) || 1)),
             manual_cost: Math.max(0, Math.floor(Number(vr.manual_cost ?? 0) || 0)),
+            admin_terms: !form.wrManaged && form.supplier !== "SK" ? vr.admin_terms : undefined,
+            admin_activation: !form.wrManaged && form.supplier !== "SK" ? vr.admin_activation : undefined,
             duration_value: vr.duration_value,
             duration_unit: vr.duration_unit,
             duration_label: vr.duration_label,

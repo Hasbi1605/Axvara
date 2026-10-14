@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
     `SELECT id, product_id, sku, label,
             duration_value, duration_unit, duration_label,
             warranty_type, warranty_value, warranty_unit, warranty_label,
-            price, compare_price, stock, min_qty, manual_cost, fulfillment_mode,
+            price, compare_price, stock, min_qty, manual_cost, fulfillment_mode, admin_terms, admin_activation,
             CASE WHEN shared_secret_ciphertext IS NOT NULL AND shared_secret_iv IS NOT NULL THEN 1 ELSE 0 END
               AS shared_secret_configured,
             is_active, sort_order, created_at, updated_at

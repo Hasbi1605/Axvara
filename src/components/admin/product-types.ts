@@ -8,6 +8,8 @@ export type Prod = { id:string; slug:string; name:string; whatsappAlias?:string;
 export type Cat = { id:number; slug:string; name:string };
 
 export type FormVariant = {
+  admin_terms?: string;
+  admin_activation?: string;
   id?: number;
   sku: string;
   label: string;
@@ -45,6 +47,8 @@ export type FormVariant = {
 };
 
 export type ProductForm = Partial<Prod> & {
+  admin_terms?: string;
+  admin_activation?: string;
   /** Posisi visual 1..N di admin; read-only, bukan kolom DB. */
   displayPosition?: number;
   comparePrice?: number;

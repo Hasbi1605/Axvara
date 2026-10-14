@@ -32,9 +32,9 @@ describe("R6 manual confirmation commits order + job atomically", () => {
     expect(fixture.sql.prepare("SELECT status,payment_status FROM orders WHERE code='ATOMIC'").get())
       .toMatchObject({ status: "lunas", payment_status: "paid" });
     expect(fixture.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs WHERE order_code='ATOMIC'").get()?.n).toBe(1);
-    // One batch for the confirm (guard + UPDATE + conditional INSERT) —
+    // One batch for confirm, outbox and immutable cost snapshot —
     // never two commits.
-    expect(fixture.control.queries - before).toBeLessThanOrEqual(6);
+    expect(fixture.control.queries - before).toBeLessThanOrEqual(7);
   });
 
   it("double confirm stays idempotent (one job, still lunas)", async () => {

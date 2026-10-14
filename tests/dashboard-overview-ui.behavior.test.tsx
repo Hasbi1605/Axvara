@@ -4,7 +4,8 @@
 // grafik + tabel supplier/channel tampil tanpa crash.
 import { afterEach, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen, fireEvent } from "@testing-library/react";
-import { AdminOverview, EMPTY_ADMIN_OVERVIEW } from "@/components/admin/AdminOverview";
+import { AdminOverview, EMPTY_ADMIN_OVERVIEW, ProfitChart } from "@/components/admin/AdminOverview";
+import type { PeriodReport } from "@/lib/dashboard-report";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/admin",
@@ -52,7 +53,7 @@ it("default periode Minggu: Untung Produk + margin + supplier + grafik tampil", 
   // Tabel supplier + top produk + grafik.
   expect(screen.getByText("Untung per supplier")).toBeTruthy();
   expect(screen.getByText("Netflix")).toBeTruthy();
-  expect(screen.getByText("Omzet vs Untung — 30 hari")).toBeTruthy();
+  expect(screen.getByText("Omzet vs Untung — Minggu ini")).toBeTruthy();
   expect(document.querySelector("svg")).toBeTruthy();
   // 3 card legacy terhapus dari Ringkasan.
   expect(screen.queryByText("Perlu tindakan")).toBeNull();
@@ -95,4 +96,41 @@ it("badge Stok menipis memanggil onLowStock (filter ikut ke Produk)", async () =
   const badge = screen.getByRole("button", { name: /Stok menipis/ });
   fireEvent.click(badge);
   expect(onLowStock).toHaveBeenCalledTimes(1);
+});
+
+it("switching period updates the chart, top products, supplier amounts and composition together", () => {
+  const report = (name:string,amount:number,date:string):PeriodReport => ({
+    orders:1,revenue:amount,cost:10000,profit:amount-10000,estimated_orders:0,
+    series:[{date,orders:1,revenue:amount,cost:10000,profit:amount-10000}],
+    suppliers:{wr:{orders:0,revenue:0,cost:0,profit:0},sk:{orders:0,revenue:0,cost:0,profit:0},manual:{orders:1,revenue:amount,cost:10000,profit:amount-10000},pedia:{orders:0,revenue:0,cost:0,profit:0}},
+    channels:{web:{orders:1,revenue:amount,cost:10000,profit:amount-10000},telegram:{orders:0,revenue:0,cost:0,profit:0},whatsapp:{orders:0,revenue:0,cost:0,profit:0}},
+    top_products:[{name,qty:1,revenue:amount,cost:10000,profit:amount-10000}],
+  });
+  render(<AdminOverview data={{...data,period_reports:{today:report('Today service',15000,'09:00'),week:report('Week service',20000,'2026-10-13'),month:report('Month service',30000,'2026-10-01')}}} loading={false}/>);
+  expect(screen.getByText('Week service')).toBeTruthy();
+  fireEvent.click(screen.getByRole('tab',{name:'Bulan ini'}));
+  expect(screen.queryByText('Week service')).toBeNull(); expect(screen.getByText('Month service')).toBeTruthy();
+  expect(screen.getByText('Omzet vs Untung — Bulan ini')).toBeTruthy();
+  expect(screen.getByRole('img',{name:/Stok sendiri 100.0%/})).toBeTruthy();
+  fireEvent.click(screen.getByRole('tab',{name:'Hari ini'}));
+  expect(screen.getByText('Today service')).toBeTruthy(); expect(screen.getByText('09:00')).toBeTruthy();
+});
+
+it("losses remain inside the plot and orders have an explicit separate scale", () => {
+  render(<ProfitChart series={[{date:'2026-10-13',orders:1,revenue:10000,cost:15000,profit:-5000},{date:'2026-10-14',orders:2,revenue:10000,cost:15000,profit:-5000}]} loading={false}/>);
+  const coords = [...document.querySelector('[data-series="profit"]')!.getAttribute('d')!.matchAll(/[ML]([\d.]+),([\d.]+)/g)];
+  expect(coords).toHaveLength(2);
+  for(const coord of coords) { expect(Number(coord[2])).toBeGreaterThanOrEqual(18);expect(Number(coord[2])).toBeLessThanOrEqual(220); }
+  expect(screen.getByTestId('profit-zero-line')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button',{name:'Order'}));
+  expect(screen.getByText(/Sumbu kanan: jumlah order/)).toBeTruthy();
+});
+
+it("failed finance load shows a retry action rather than zero profit metrics", () => {
+  const retry=vi.fn();
+  render(<AdminOverview data={EMPTY_ADMIN_OVERVIEW} loading={false} error='Ringkasan belum berhasil dimuat.' onRetry={retry}/>);
+  expect(screen.getByRole('alert').textContent).toContain('belum berhasil dimuat');
+  expect(screen.queryByText('Untung Produk')).toBeNull();
+  fireEvent.click(screen.getByRole('button',{name:'Muat ulang ringkasan'}));
+  expect(retry).toHaveBeenCalledTimes(1);
 });

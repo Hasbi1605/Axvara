@@ -10,6 +10,9 @@ import { ProductsSection } from "@/components/admin/sections/ProductsSection";
 import { ProductEditorModal } from "@/components/admin/ProductEditorModal";
 import type { VariantCopyEntry } from "@/lib/product-copy/format";
 import type { FormVariant, Prod, ProductForm } from "@/components/admin/product-types";
+import { useState } from "react";
+import { act } from "@testing-library/react";
+import { ProductVariantRows, NonWrFulfillmentPanel } from "@/components/admin/sections/ProductVariantRows";
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
@@ -51,6 +54,33 @@ function stubSave(returned: Partial<VariantCopyEntry>) {
 }
 
 describe("VariantCopyEditor", () => {
+  it("own-stock common instructions survive switching the variant accordion", () => {
+    vi.stubGlobal('fetch',vi.fn(async()=>({ok:true,json:async()=>({})})));
+    function Form() {
+      const [values,setValues]=useState<FormVariant[]>([{id:1,sku:'HEAD',label:'Head',price:14000,stock:1,is_active:1,fulfillment_mode:'unique'},{id:2,sku:'INVITE',label:'Invite',price:12000,stock:-1,is_active:1,fulfillment_mode:'shared'}]);
+      return <ProductVariantRows form={{name:'Own',supplier:'Manual'}} formVariants={values} onSetFormVariants={setValues} productId={1}/>;
+    }
+    render(<ToastProvider><Form/></ToastProvider>);
+    fireEvent.change(within(screen.getByRole('region',{name:/Pengaturan varian Head/})).getByLabelText('S&K bersama'),{target:{value:'- Jangan bagikan link'}});
+    fireEvent.click(screen.getByRole('button',{name:/^Invite/}));
+    expect((within(screen.getByRole('region',{name:/Pengaturan varian Invite/})).getByLabelText('S&K bersama') as HTMLTextAreaElement).value).toBe('');
+    fireEvent.change(within(screen.getByRole('region',{name:/Pengaturan varian Invite/})).getByLabelText('Cara penggunaan / aktivasi bersama'),{target:{value:'1. Terima undangan'}});
+    fireEvent.click(screen.getByRole('button',{name:/^Head/}));
+    expect((within(screen.getByRole('region',{name:/Pengaturan varian Head/})).getByLabelText('S&K bersama') as HTMLTextAreaElement).value).toBe('- Jangan bagikan link');
+    fireEvent.click(screen.getByRole('button',{name:/^Invite/}));
+    expect((within(screen.getByRole('region',{name:/Pengaturan varian Invite/})).getByLabelText('Cara penggunaan / aktivasi bersama') as HTMLTextAreaElement).value).toBe('1. Terima undangan');
+  });
+
+  it("late inventory load cannot overwrite stock after its variant panel has unmounted", async () => {
+    let resolve!: (value:unknown)=>void;
+    const response=new Promise(r=>{resolve=r;});
+    vi.stubGlobal('fetch',vi.fn(()=>response));
+    const onStockChange=vi.fn();
+    const rendered=render(<ToastProvider><NonWrFulfillmentPanel productId={1} variantId={101} mode='unique' onStockChange={onStockChange}/></ToastProvider>);
+    rendered.unmount();
+    await act(async()=>resolve({ok:true,json:async()=>({available:99})}));
+    expect(onStockChange).not.toHaveBeenCalled();
+  });
   it("terlipat dengan status; dibuka berisi salinan yang sedang tampil + teks asli WR sebagai pembanding", () => {
     renderEditor(base);
     expect(screen.getByText("Versi Axvara (otomatis)")).toBeTruthy();
@@ -180,7 +210,7 @@ describe("editor produk: tab Deskripsi & S&K (terpisah dari tab Varian)", () => 
     expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
     const variantPanel = screen.getByRole("tabpanel", { name: /^Varian/ });
     expect(within(variantPanel).queryByText("Syarat & Ketentuan · Cara Aktivasi")).toBeNull();
-    expect(within(variantPanel).queryByRole("button", { name: /Sunting/ })).toBeNull();
+    expect(within(variantPanel).getByRole("button", { name: /Premium Legal/ }).getAttribute("aria-expanded")).toBe("false");
 
     fireEvent.click(screen.getByRole("tab", { name: /^Deskripsi & S&K/ }));
     expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
@@ -210,14 +240,16 @@ describe("editor produk: tab Deskripsi & S&K (terpisah dari tab Varian)", () => 
     expect(within(panel).queryByRole("textbox", { name: "Deskripsi khusus (override)" })).toBeNull();
     fireEvent.change(within(panel).getByRole("textbox", { name: "Deskripsi" }), { target: { value: "Baru" } });
     expect(onSetForm).toHaveBeenCalledWith(expect.objectContaining({ description: "Baru" }));
-    expect(within(panel).getByRole("button", { name: /Head 1 Bulan.*Nonaktif/ })).toBeTruthy();
+    expect(within(panel).getByText(/S&K dan cara penggunaan bersama diatur pada tab Varian/)).toBeTruthy();
   });
 
   it("produk baru: tanpa permintaan S&K ke server, varian diminta disimpan dulu", () => {
     renderModal({ name: "Baru", slug: "baru" }, [{ sku: "BARU-1", label: "Paket 1", price: 50000, stock: -1, is_active: 1 }], vi.fn(), false);
     fireEvent.click(screen.getByRole("tab", { name: /^Deskripsi & S&K/ }));
     const panel = screen.getByRole("tabpanel", { name: /^Deskripsi & S&K/ });
-    expect(within(panel).getByText(/Simpan produk terlebih dahulu/).textContent).toContain("Paket 1");
+    expect(within(panel).getByText(/Panduan tersimpan bersama Simpan Produk/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: /^Varian/ }));
+    expect(screen.getByLabelText("S&K bersama")).toBeTruthy();
     expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).startsWith("/api/admin/variant-copy"))).toBe(false);
   });
 });

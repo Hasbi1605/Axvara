@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { formatRupiah } from "@/lib/utils";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { MoneyInput } from "@/components/ui/MoneyInput";
@@ -7,6 +7,7 @@ import { useToast } from "@/components/ui/Toast";
 import { Spinner } from "@/components/ui/Loading";
 import type { FormVariant, ProductForm } from "../product-types";
 import { WarrantyFields } from "./VariantWarrantyFields";
+import { SharedVariantCopyFields } from "./SharedVariantCopyFields";
 
 // Blok daftar varian dipisah dari ProductEditorModal karena inilah sub-form paling padat
 // (harga, harga coret, stok, dan matriks garansi per baris). Memisahkannya menjaga file
@@ -39,7 +40,7 @@ export const FULFILLMENT_OPTIONS = [
  * Mode "unique" → daftar stok tersedia saat ini + impor/hapus per baris.
  * Mode "__wr__" → varian WR: baca counts saja, tanpa form tulis.
  */
-export function NonWrFulfillmentPanel({ productId, variantId, mode }: { productId?: number | string; variantId?: number; mode: string }) {
+export function NonWrFulfillmentPanel({ productId, variantId, mode, onStockChange }: { productId?: number | string; variantId?: number; mode: string; onStockChange?: (stock: number) => void }) {
   const toast = useToast();
   const [counts, setCounts] = useState<{ available: number; reserved: number; delivered: number } | null>(null);
   const [variantStock, setVariantStock] = useState<number | null>(null);
@@ -52,9 +53,12 @@ export function NonWrFulfillmentPanel({ productId, variantId, mode }: { productI
   const [inventoryText, setInventoryText] = useState("");
   const [loading, setLoading] = useState(false);
   const pid = Number(productId);
+  const loadGeneration = useRef(0);
+  const invalidateLoad = useCallback(() => { loadGeneration.current++; }, []);
 
   const load = async () => {
     if (!pid || !variantId) return;
+    const generation = ++loadGeneration.current;
     try {
       const res = await fetch(`/api/admin/fulfillment?product_id=${pid}&variant_id=${variantId}`, { cache: "no-store" });
       const data = await res.json().catch(() => ({})) as {
@@ -64,7 +68,7 @@ export function NonWrFulfillmentPanel({ productId, variantId, mode }: { productI
         handover_template?: string;
         variant_stock?: number; stock_mismatch?: boolean;
       };
-      if (!res.ok) return;
+      if (!res.ok || generation !== loadGeneration.current) return;
       const template = typeof data.handover_template === "string" ? data.handover_template : "";
       setHandoverTemplate(template);
       setHandoverSaved(template);
@@ -73,12 +77,13 @@ export function NonWrFulfillmentPanel({ productId, variantId, mode }: { productI
       setStockMismatch(data.stock_mismatch === true);
       setSharedCurrent(typeof data.shared_secret === "string" ? data.shared_secret : null);
       setInventory(Array.isArray(data.inventory) ? data.inventory : []);
+      if (mode === "unique" && typeof data.available === "number") onStockChange?.(data.available);
     } catch { /* counts pendukung — gagal muat tidak menghalangi simpan. */ }
   };
 
   // Auto-load saat panel dibuka / mode berubah — tanpa ini counts selalu
   // null ("Tersedia 0") sampai admin menekan tombol manual.
-  useEffect(() => { void load(); }, [pid, variantId, mode]);
+  useEffect(() => { void load(); return invalidateLoad; }, [pid, variantId, mode, invalidateLoad]);
 
   const post = async (payload: Record<string, unknown>) => {
     const res = await fetch("/api/admin/fulfillment", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ product_id: pid, variant_id: variantId, ...payload }) });
@@ -167,7 +172,7 @@ export function NonWrFulfillmentPanel({ productId, variantId, mode }: { productI
     <div className="mt-3 rounded-2xl border border-[#00E5FF]/15 bg-[#00E5FF]/[0.035] p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <p className="text-xs font-semibold text-white">Konten fulfillment</p>
+          <p className="text-xs font-semibold text-white">Detail akses produk</p>
           <p className="mt-0.5 text-[11px] text-white/35">Tersimpan terenkripsi di database; terlihat di panel admin ini.</p>
         </div>
         <div className="flex items-center gap-2">
@@ -217,9 +222,9 @@ export function NonWrFulfillmentPanel({ productId, variantId, mode }: { productI
           ) : (
             <p className="rounded-xl border border-white/10 bg-white/[0.025] px-3 py-2.5 text-xs text-white/40">Belum ada stok unik — impor di bawah.</p>
           )}
-          <textarea value={inventoryText} onChange={(e) => setInventoryText(e.target.value)} rows={4} placeholder={"Satu akun/key per baris\nemail:password\nLICENSE-KEY"} className="mt-3 w-full resize-none rounded-xl border border-white/10 bg-[#080C1E]/65 p-3 font-mono text-xs text-white outline-none placeholder:text-white/25 focus:border-[#00E5FF]/40" />
+          <textarea value={inventoryText} onChange={(e) => setInventoryText(e.target.value)} rows={4} placeholder={"Satu link, akun, atau key per baris\nhttps://contoh.com/aktivasi/...\nemail:password\nLICENSE-KEY"} className="mt-3 w-full resize-none rounded-xl border border-white/10 bg-[#080C1E]/65 p-3 font-mono text-xs text-white outline-none placeholder:text-white/25 focus:border-[#00E5FF]/40" />
           <div className="mt-2 flex items-center justify-between gap-3">
-            <p className="text-[10px] text-white/35">Maksimal 100 entri per impor.</p>
+            <p className="text-[10px] text-white/35">Maksimal 100 entri. Impor langsung tersimpan.</p>
             <button type="button" onClick={() => void importInventory()} disabled={loading || !inventoryText.trim()} className="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl bg-[#00E5FF] px-4 text-xs font-bold text-[#07101f] transition hover:bg-[#00D0E8] disabled:opacity-40">{loading && <Spinner size={13} />} Impor stok unik</button>
           </div>
         </div>
@@ -239,6 +244,9 @@ export function ProductVariantRows({
   onSetFormVariants: (updater: (prev: FormVariant[]) => FormVariant[]) => void;
   productId?: number | string;
 }) {
+  const [openVariant, setOpenVariant] = useState<number | null>(0);
+  const activePrices = formVariants.filter(v => (v.is_active ?? 1) !== 0).map(v => v.price);
+  const minPrice = activePrices.length ? Math.min(...activePrices) : 0;
   return (
     <div className="mt-4 space-y-3">
       <div className="flex items-center justify-between">
@@ -285,7 +293,12 @@ export function ProductVariantRows({
           const lockedInput = "h-9 w-full rounded-xl bg-white/[0.03] border border-white/5 px-3 text-xs text-white/50 cursor-not-allowed";
           const openInput = "h-9 w-full rounded-xl bg-white/[0.06] border border-white/10 px-3 text-xs text-white placeholder:text-white/25 focus:border-[#00E5FF]/50 focus:outline-none";
           return (
-          <div key={v.id || idx} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 transition hover:border-white/20">
+          <div key={v.id || idx} className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] transition hover:border-white/20">
+            <button type="button" aria-expanded={openVariant === idx} aria-controls={`variant-fields-${v.id ?? idx}`} onClick={()=>setOpenVariant(openVariant === idx ? null : idx)} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left">
+              <span className="min-w-0"><span className="block text-sm font-semibold text-white">{v.label || `Varian ${idx+1}`}</span><span className="mt-1 block text-[11px] text-white/45">{formatRupiah(v.price)} · {v.is_active ? "Aktif" : "Nonaktif"} · {v.stock === -1 ? "Stok tanpa batas" : `Stok ${v.stock}`}</span></span>
+              <span className="shrink-0 text-xs font-semibold text-[#5cefff]">{openVariant === idx ? "Tutup" : "Sunting"}</span>
+            </button>
+            <div role="region" aria-label={`Pengaturan varian ${v.label || idx+1}`} id={`variant-fields-${v.id ?? idx}`} hidden={openVariant !== idx} className="border-t border-white/10 p-4">
             {/* Baris 1: Nama Varian & Aksi */}
             <div className="flex items-center justify-between gap-3 pb-3 border-b border-white/5">
               <div className="flex-1 min-w-0">
@@ -329,9 +342,9 @@ export function ProductVariantRows({
             </div>
 
             {/* Baris 2: Harga, Harga Coret, Stok, Min. Beli, Modal */}
-            <div className="grid grid-cols-1 sm:grid-cols-5 gap-3 py-3 border-b border-white/5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 py-4 border-b border-white/5">
               <div>
-                <span className="block text-[10px] uppercase font-semibold text-white/40 mb-1">Harga Jual (Rp) *{wrLocked ? " (WR)" : ""}</span>
+                <span className="block text-[10px] uppercase font-semibold text-white/40 mb-1 sm:min-h-[28px]">Harga Jual (Rp) *{wrLocked ? " (WR)" : ""}</span>
                 <MoneyInput
                   value={v.price}
                   readOnly={wrLocked}
@@ -342,7 +355,7 @@ export function ProductVariantRows({
                 />
               </div>
               <div>
-                <span className="block text-[10px] uppercase font-semibold text-white/40 mb-1">Harga Coret (Rp) <span className="normal-case tracking-normal text-emerald-300/70">✎ bisa diedit</span></span>
+                <span className="block text-[10px] uppercase font-semibold text-white/40 mb-1 sm:min-h-[28px]">Harga Coret (Rp) <span className="normal-case tracking-normal text-emerald-300/70">✎ bisa diedit</span></span>
                 <MoneyInput
                   value={v.comparePrice}
                   allowEmpty
@@ -355,23 +368,24 @@ export function ProductVariantRows({
                 />
               </div>
               <div>
-                <span className="block text-[10px] uppercase font-semibold text-white/40 mb-1">Stok (-1 = ∞){wrLocked ? " (WR)" : ""}</span>
+                <span className="block text-[10px] uppercase font-semibold text-white/40 mb-1 sm:min-h-[28px]">Stok{wrLocked ? " (WR)" : ""}</span>
                 <input
                   type="number"
                   min={-1}
                   value={v.stock}
-                  readOnly={wrLocked}
+                  readOnly={wrLocked || v.fulfillment_mode === "unique"}
                   onChange={(e) => {
                     const val = Number(e.target.value);
                     onSetFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, stock: val } : item));
                   }}
-                  className={wrLocked ? lockedInput : openInput}
+                  className={wrLocked || v.fulfillment_mode === "unique" ? lockedInput : openInput}
                 />
+                <p className="mt-1 text-[11px] text-white/35">{v.fulfillment_mode === "unique" ? "Mengikuti stok kredensial tersedia" : "-1 untuk stok tanpa batas"}</p>
               </div>
               {/* Minimum pembelian (migrasi 0034, milik admin — bukan WR):
                   GSuite = 50; produk lain tinggal set angka bila butuh. */}
               <div>
-                <span className="block text-[10px] uppercase font-semibold text-white/40 mb-1">Min. Beli <span className="normal-case tracking-normal text-white/25">(1 = bebas)</span></span>
+                <span className="block text-[10px] uppercase font-semibold text-white/40 mb-1 sm:min-h-[28px]">Min. Beli <span className="normal-case tracking-normal text-white/25">(minimal 1)</span></span>
                 <input
                   type="number"
                   min={1}
@@ -388,7 +402,7 @@ export function ProductVariantRows({
                   produk manual/stok sendiri yang modalnya tak tercatat di
                   link supplier. 0 = murni tanpa modal. */}
               <div>
-                <span className="block text-[10px] uppercase font-semibold text-white/40 mb-1">Modal (Rp) <span className="normal-case tracking-normal text-white/25">(0 = tanpa modal)</span></span>
+                <span className="block text-[10px] uppercase font-semibold text-white/40 mb-1 sm:min-h-[28px]">Modal (Rp) <span className="normal-case tracking-normal text-white/25">(0 = tanpa modal)</span></span>
                 <MoneyInput
                   value={v.manual_cost ?? 0}
                   onChange={(val) => {
@@ -438,11 +452,13 @@ export function ProductVariantRows({
                     ? "Badge pembeli: Made By Order (disiapkan admin)."
                     : "Badge pembeli: Kirim otomatis (dikirim sistem dari stok di bawah)."}
                 </p>
-                <NonWrFulfillmentPanel productId={productId} variantId={typeof v.id === "number" ? v.id : undefined} mode={v.fulfillment_mode || "manual"} />
+                <NonWrFulfillmentPanel productId={productId} variantId={typeof v.id === "number" ? v.id : undefined} mode={v.fulfillment_mode || "manual"} onStockChange={stock=>onSetFormVariants(curr=>curr.some(item=>item.id===v.id && item.stock!==stock)?curr.map(item=>item.id===v.id?{...item,stock}:item):curr)} />
+                {form.supplier !== "SK" && <SharedVariantCopyFields value={v} onChange={patch=>onSetFormVariants(curr=>curr.map((item,i)=>i===idx?{...item,...patch}:item))} />}
               </div>
             ) : (
               <NonWrFulfillmentPanel productId={productId} variantId={typeof v.id === "number" ? v.id : undefined} mode="__wr__" />
             )}
+            </div>
           </div>
           );
         })}
@@ -452,7 +468,7 @@ export function ProductVariantRows({
         <div className="mt-3 rounded-xl bg-[#00E5FF]/5 border border-[#00E5FF]/20 px-3 py-2 flex items-center justify-between text-xs">
           <span className="text-white/60">Tampilan Harga di Katalog:</span>
           <span className="font-bold text-[#00E5FF]">
-            Mulai {formatRupiah(Math.min(...formVariants.filter((vr) => (vr.is_active ?? 1) !== 0).map((vr) => vr.price) || [0]))}
+            {activePrices.length ? `Mulai ${formatRupiah(minPrice)}` : "Belum ada varian aktif"}
           </span>
         </div>
       )}

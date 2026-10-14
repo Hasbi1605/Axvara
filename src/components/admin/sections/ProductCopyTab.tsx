@@ -76,7 +76,7 @@ export function ProductCopyTab({
         )}
       </section>
 
-      <section aria-labelledby={`${id}-terms-title`}>
+      {!form.wrManaged && form.supplier !== "SK" ? <p className="rounded-xl border border-[#00E5FF]/20 bg-[#00E5FF]/[0.04] p-4 text-xs leading-5 text-white/60">S&K dan cara penggunaan bersama diatur pada tab Varian, di bagian pengiriman masing-masing varian. Panduan tersimpan bersama Simpan Produk.</p> : <section aria-labelledby={`${id}-terms-title`}>
         <h4 id={`${id}-terms-title`} className="text-sm font-semibold text-white">Syarat &amp; Ketentuan · Cara Aktivasi</h4>
         <p className="mt-1 text-[11px] leading-4 text-white/40">
           Per varian. Panel terbuka berisi teks yang sedang tampil di halaman produk. Simpan dengan tombol di dalam panel, terpisah dari Simpan Produk.
@@ -105,7 +105,7 @@ export function ProductCopyTab({
             })}
           </ul>
         )}
-      </section>
+      </section>}
     </div>
   );
 }

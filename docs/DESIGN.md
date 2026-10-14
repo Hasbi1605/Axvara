@@ -128,6 +128,7 @@
   W-M3): tombol disabled tidak memanggil `submit()`, jadi pembeli (terutama
   sticky CTA mobile) melihat tombol redup tanpa alasan. Klik kini menampilkan
   "Centang persetujuan…" dan menggulir + memfokuskan checkbox yang terlihat.
+- Validasi kontak checkout (2026-10-15): submit invalid menggulir label/input/error pertama ke tengah viewport dan memfokuskan input; scroll-margin atas 7rem/bawah 8rem menghindari navbar/CTA, reduced motion memakai scroll langsung. Sticky CTA menampilkan pesan ringkas "Lengkapi data pembeli untuk melanjutkan." Error terkait input lewat aria-describedby.
 - Mobile: accordion "Ringkasan Pesanan" collapsed-able di atas (buka default,
   pola struk 2026-10-01: total tampil 1x per state — header total hanya saat
   accordion TERTUTUP/loading, saat terbuka total pindah ke footer body;
@@ -203,6 +204,7 @@
     tanpa emoji, tanpa tanda seru, tanpa titik di akhir poin, tanpa bahasa gaul
     pemasok; larangan tetap tegas ("Dilarang …", "Wajib …", "Tanpa toleransi …").
     Semua angka, batas, dan larangan pemasok wajib terbawa (dijaga test).
+  - Revisi editor produk 2026-10-15: modal desktop maksimal 880px; varian berbentuk accordion dengan nama, harga, status, dan stok pada header. Satu varian terbuka, state input varian lain tetap dipertahankan. Field harga/modal/stok/minimum memakai 2–3 kolom desktop dan 1 kolom mobile dengan tinggi label seragam. Stok unique mengikuti inventory. Bagian pengiriman stok sendiri memisahkan Detail akses produk (link/akun/key) dari textarea S&K bersama dan Cara penggunaan / aktivasi bersama; panduan disimpan bersama Simpan Produk. Impor stok punya aksi dan status tersimpan sendiri. Supplier tetap memakai tinjauan teks khusus di tab Deskripsi & S&K.
   - Panel admin (2026-09-24, live): editor produk punya 4 tab — Produk,
     Varian, **Deskripsi & S&K**, Foto (tablist `max-w-full overflow-x-auto`,
     tab `shrink-0 whitespace-nowrap px-2.5 sm:px-4` agar muat di layar 390px;
@@ -842,3 +844,7 @@ dimatikan.
 - Linear.app — glass + dark premium + motion
 - Vercel.com — grid + tipografi
 - Marketku.id — flow fungsional (bukan visual)
+
+## Ringkasan admin — revisi 2026-10-15
+
+Identitas Midnight/Cyan/Gold dipertahankan. Enam metrik di atas; baris berikutnya grid desktop 2:1 berisi grafik omzet/untung responsif dan donat kontribusi omzet. Di bawahnya dua panel batang untung supplier/channel, lalu Top 5 dengan nama membungkus dan rincian modal/margin. Mobile satu kolom. Semua visual mengikuti periode terpilih; grafik mengukur container agar tidak meninggalkan ruang kosong besar, garis nol dan merah menandai rugi, jumlah order memiliki sumbu emas tersendiri. Donat memakai omzet agar persentase tidak ambigu ketika untung negatif. Placeholder/tooltip dan akses titik lewat keyboard tersedia. Panduan pasca-bayar stok sendiri menggunakan komponen accordion ProductCopy yang sama dengan supplier, judul Syarat & Ketentuan serta Cara Penggunaan / Aktivasi, terpisah dari kotak kredensial.

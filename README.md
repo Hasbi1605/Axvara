@@ -118,6 +118,8 @@ Spesifikasi overhaul 2026-10-11 (semua produk di awal, Periksa harga terpisah, f
 
 Flow: server memvalidasi harga/stok dan menerbitkan quote bertanda tangan 60 menit → order dibuat idempotent dan stok direservasi atomik. Untuk QRIS, server membuat payload EMVCo dan nominal unik per order, menampilkan QR selama 15 menit, lalu QRIS Hook Android mengirim pembayaran ke `/api/webhook/dana`; nominal yang cocok tepat mengubah ledger+order menjadi lunas secara atomik. Transfer SeaBank/e-wallet tetap memakai bukti JPG/PNG/WebP dan review admin. Order yang kedaluwarsa mengembalikan stok atomik.
 
+Checkout mobile (2026-10-15): klik Bayar ketika WA/email belum valid mengarahkan scroll dan fokus ke field pertama yang salah. Label/error tidak tersembunyi di balik navbar atau tombol tetap; mode reduced motion dihormati. Order baru dibuat setelah seluruh validasi lolos.
+
 QRIS berlaku 15 menit untuk SEMUA kanal (keputusan owner 2026-10-11; sebelumnya Web/Telegram 60 menit dengan 1x perpanjangan QR). QR mati = order kedaluwarsa = stok kembali otomatis via cron ±5 menit. Pembeli yang berubah pikiran / salah varian membatalkan sendiri dari halaman pesanan atau lacak pesanan (`POST /api/orders/[code]/cancel`, verifikasi kode + WA/email checkout, stok kembali detik itu juga) tanpa menunggu expiry atau admin.
 
 Telegram: pilih varian langsung ke jumlah, tanpa layar konfirmasi pembelian tambahan. Tombol **🔄 QRIS Baru** hanya ada pada pesan QRIS pertama kedaluwarsa, bukan pada invoice aktif. Migrasi `0026_qris_channel_policy.sql` menyesuaikan deadline order lama yang masih pending dan menyimpan marker notifikasi per invoice. Cron operations mengirim pesan kedaluwarsa Telegram dengan retry marker, serta mengantrekan pemberitahuan WA idempoten ke `whatsapp_outbox`. Batas pembayaran berlaku pada deadline; pengiriman pemberitahuan mengikuti cron 5 menit dan dapat tertunda oleh antrean atau kegagalan gateway. Halaman `/pesanan/[code]` menghormati batas waktu dan izin pembaruan dari API, termasuk untuk kode order WA.
@@ -358,17 +360,7 @@ baris `- ` untuk keunggulan, lalu baris `Syarat & Ketentuan:` / `Cara
 Aktivasi:` untuk bagian yang pindah ke kartu S&K. Detail: `docs/ARCHITECTURE.md`
 §15 "Salinan produk versi Axvara".
 
-**S&K + cara aktivasi bisa disunting admin per varian (migrasi 0041).** Editor
-produk punya tab **Deskripsi & S&K** (terpisah dari tab Varian): deskripsi
-produk / deskripsi khusus, lalu daftar varian (WR maupun non-WR) dengan panel
-S&K + cara aktivasi yang terbuka berisi salinan yang sedang tampil, plus teks
-asli WR sebagai pembanding. Tab menampilkan jumlah varian yang perlu ditinjau. Simpan dengan tombol di panel itu
-(`PUT /api/admin/variant-copy`), bukan tombol Simpan Produk. Suntingan tampil
-selama teks WR belum berubah; bila WR mengubahnya, pembeli kembali melihat teks
-WR terbaru dan daftar produk admin memberi badge "S&K perlu ditinjau" sampai
-admin menyimpan ulang. Badge yang sama muncul untuk teks WR yang belum punya
-versi Axvara. S&K Canva (undangan lewat email, email wajib aktif) diisi migrasi
-0042.
+**S&K dan panduan bersama per varian (2026-10-15).** Untuk stok sendiri, buka tab Varian: S&K bersama serta Cara penggunaan / aktivasi bersama berlaku untuk setiap pembeli varian itu dan tersimpan lewat **Simpan Produk**, termasuk saat membuat varian baru. Stok unik cukup berisi link/akun/key/detail khusus pembeli; impor/hapus stok tetap aksi terpisah yang langsung tersimpan. Modal varian memakai accordion dan stok unique mengikuti inventory. Produk supplier tetap memakai tab Deskripsi & S&K dan tombol tinjauan khusus, agar save produk tidak menyetujui otomatis teks WR yang berubah. Setelah bayar, panel kredensial menggabungkan panduan varian dan S&K/aktivasi deskripsi produk seperti PDP, lalu menampilkan accordion terpisah di bawah detail akses.
 
 **Link supplier tampil pendek via shortlink internal `axvara.tech/go/*` (2026-10-03, migrasi 0056).** 43 link supplier (mailbox OTP, bot Telegram, tutorial YouTube, domain resmi app, panduan artikel) dibungkus jadi `go/otp`, `go/netflix-login`, dst. — tampil pendek di PDP/email/panel, redirect 307 + hitung klik, noindex. Kelola di tab admin **Link Supplier** (tambah/ubah/tujuan/aktif-nonaktif); supplier ganti URL → update 1 baris, tanpa edit kurasi. Detail: `docs/ARCHITECTURE.md` (tabel `supplier_links` + route `/go/:slug`) dan `docs/PRD.md` FR-S17c.
 
@@ -450,7 +442,7 @@ Katalog storefront menampilkan 16 produk lebih dulu dengan tombol **"Tampilkan N
 
 **Minimum pembelian per varian (migrasi 0034, generik):** `product_variants.min_qty` (default 1 = bebas, milik admin, plafon 100) mengatur batas bawah qty per baris — GSuite dikunci **min. 50** via migrasi, produk lain tinggal set angka dari admin bila butuh aturan grosir serupa. Label "Min. N" tampil di PDP/modal/keranjang/bot; server menolak qty di bawah min (quote 409 → orders 409 → guard atomik), plafon web/Telegram 100/baris, dan order WhatsApp (qty selalu 1) ditolak jelas untuk varian min>1 dengan arahan ke web/Telegram bulk.
 
-**Dashboard untung Fase 1 (2026-10-07).** Ringkasan admin kini switcher periode Hari/Minggu (Senin–Minggu WIB)/Bulan (default Minggu) + 6 kartu (Pesanan lunas, Omzet, Modal, **Untung Produk**, Margin, Rata2/order) + grafik 30 hari interaktif (tooltip harian hover/tap, toggle garis Omzet/Untung/Order, sumbu rupiah) + untung per supplier (WR/SK/stok sendiri) + top 5 penyumbang untung + untung per channel. Untung = omzet − modal supplier (link WR/SK saat lunas) − modal manual varian (`product_variants.manual_cost`, migrasi 0058, milik admin — diisi dari editor varian, 0 = tanpa modal). 3 card legacy (Perlu tindakan, Kinerja toko, Kesehatan sistem) dihapus dari Ringkasan; badge Stok menipis ringkas di header periode (klik → daftar Produk terfilter).
+**Dashboard untung (2026-10-15, implementasi; publikasi CI).** Periode Hari/Minggu/Bulan WIB berlaku untuk kartu, grafik, donat kontribusi omzet, batang untung supplier/channel dan Top 5. Modal dihitung per item WR/SK/stok sendiri/Pedia, termasuk keranjang campuran; transaksi baru mendapat snapshot modal atomik saat lunas (migrasi 0063), riwayat tanpa snapshot dilabeli estimasi. Grafik hari ini per jam, minggu/bulan harian; rugi tetap terlihat dan jumlah order memakai sumbu tersendiri. Top 5 mencakup seluruh transaksi periode tanpa cap 500. Respons `period_reports` dimuat bersama ringkasan, tanpa polling atau cron baru.
 
 ## ▶️ Jalankan Local (dev-only, tanpa build tiap ubahan)
 
