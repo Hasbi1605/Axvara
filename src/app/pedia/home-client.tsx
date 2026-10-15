@@ -21,7 +21,7 @@ export function PediaHomeClient({ products }: { products: PediaCatalogProduct[];
         <div className="hidden justify-end lg:flex"><PediaOrbit /></div>
       </div>
     </section>
+    <div className="mx-auto max-w-[1280px] px-4 pt-4 sm:px-6 lg:px-8"><PediaServiceCards /></div>
     <PlatformCatalog products={products} />
-    <div className="mx-auto max-w-[1280px] px-4 pb-4 sm:px-6 lg:px-8"><PediaServiceCards /></div>
   </>;
 }

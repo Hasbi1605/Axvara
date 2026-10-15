@@ -70,11 +70,15 @@ describe("Pedia platform-first storefront", () => {
     fireEvent.click(screen.getByRole("button", { name: "Semua" }));
     expect(screen.getByRole("link", { name: "Layanan Instagram" })).toBeTruthy();
   });
-  it("puts the catalog before cross-service promotions and retains compact hero actions", () => {
+  it("puts both cross-service promotions between the hero and catalog and retains compact hero actions", () => {
     renderPediaHome([product]);
+    const hero = screen.getByRole("heading", { level: 1 }).closest("section")!;
     const catalog = screen.getByRole("region", { name: "Pilih platform" });
-    const promo = screen.getByRole("link", { name: /AXVARA Market/ });
-    expect(catalog.compareDocumentPosition(promo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    for (const name of [/AXVARA Market/, /Bot Telegram/]) {
+      const promo = screen.getByRole("link", { name });
+      expect(hero.compareDocumentPosition(promo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(promo.compareDocumentPosition(catalog) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
     expect(screen.getByRole("link", { name: "Lihat layanan" }).getAttribute("href")).toBe("#pedia-catalog");
     expect(screen.getByRole("link", { name: /Hubungi admin/ }).getAttribute("href")).toContain("/wa?pesan=");
     expect(document.body.textContent).toContain("Refill mengikuti layanan");
