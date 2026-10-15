@@ -3,6 +3,7 @@
 // Tanpa data supplier mentah. Refill eligibility dihitung server.
 import { NextRequest, NextResponse } from "next/server";
 import { createDatabaseAccess } from "@/lib/db-access";
+import { readPediaServiceCopy } from "@/lib/pedia/service-copy";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -49,7 +50,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const refillDays = Number(snap?.refill_days ?? item.refill_days) || 0;
   const { parseExpiry } = await import("@/lib/expiry");
   const refillLast = parseExpiry(String(item.refill_last_at ?? "")) ?? 0;
-  const created = parseExpiry(String(item.created_at));
+  const created = parseExpiry(String(snap.refill_anchor === "completed" ? item.completed_at ?? "" : item.created_at));
   const refillEligible =
     refillDays > 0 &&
     ((item.refill_status == null && item.refill_supplier_id == null && item.refill_last_at == null)
@@ -68,10 +69,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       tier_note: item.label_note != null ? String(item.label_note) : null,
       quantity: qty,
       target: String(item.target_normalized),
-      status: String(item.status),
+      status: order.status === "pending" ? "awaiting_payment" : ["expired", "batal", "kadaluarsa", "dibatalkan"].includes(String(order.status)) ? "expired" : String(item.status),
       done, percent,
       eta_start: item.eta_start != null ? String(item.eta_start) : null,
       eta_finish: item.eta_finish != null ? String(item.eta_finish) : null,
+      service_copy: readPediaServiceCopy(snap.service_copy),
       refill_days: refillDays,
       refill_eligible: refillEligible,
       refund_credit_code: item.refund_credit_code != null ? String(item.refund_credit_code) : null,

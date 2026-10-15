@@ -1,3 +1,4 @@
+import { pediaBounds } from "./bounds";
 // src/lib/pedia/sync.ts — Terapkan diff ProviderSMM → D1 (PEDIA-PRD §9.3, PD-30–33).
 //
 // Kontrak dengan `axvara-wr-proxy/src/psmm-diff.ts`:
@@ -190,7 +191,7 @@ export async function applyPediaDiff(
     // Mengecek SESUDAH tulis ulang tidak ada gunanya: rumus max() selalu
     // menutup min_profit dari harga yang baru dihitung.
     const prod = await db.queryFirst(
-      `SELECT packages_json FROM pedia_products WHERE id=?`, Number(t.product_id),
+      `SELECT packages_json, step FROM pedia_products WHERE id=?`, Number(t.product_id),
     );
     const packages = parsePackages(prod?.packages_json);
     let prevPrices: Record<string, number> = {};
@@ -198,9 +199,10 @@ export async function applyPediaDiff(
       const v = JSON.parse(String(t.package_prices_json ?? "{}"));
       if (v && typeof v === "object") prevPrices = v as Record<string, number>;
     } catch { prevPrices = {}; }
+    const limits = pediaBounds({ min_qty: t.live_min, max_qty: t.live_max }, t, Number(prod?.step));
     const prices: Record<string, number> = {};
     for (const qty of packages) {
-      if (!Number.isSafeInteger(qty) || qty < Number(t.live_min) || qty > Number(t.live_max)) continue;
+      if (!Number.isSafeInteger(qty) || !limits || qty < limits.min || qty > limits.max || qty % limits.step !== 0) continue;
       prices[String(qty)] = computePediaPrice({
         supplierRatePer1k: liveRate,
         quantity: qty,

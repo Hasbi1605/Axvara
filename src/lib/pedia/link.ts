@@ -6,11 +6,12 @@
 
 export type PediaPlatform =
   | "instagram" | "tiktok" | "youtube" | "facebook"
-  | "threads" | "shopee" | "spotify" | "x" | "telegram";
+  | "threads" | "shopee" | "spotify" | "x" | "telegram"
+  | "github" | "website" | "linkedin" | "pinterest" | "discord" | "twitch" | "soundcloud";
 
 export type PediaTargetKind =
   | "profile" | "post" | "video" | "reel" | "live" | "channel" | "playlist"
-  | "shop" | "track";
+  | "shop" | "track" | "repository" | "website" | "company" | "board" | "invite";
 
 export type PediaLinkDetect = {
   platform: PediaPlatform;
@@ -50,16 +51,57 @@ function prep(raw: string): { host: string; path: string; raw: string } | null {
   } catch {
     return null;
   }
+  if (!["https:", "http:"].includes(url.protocol) || url.username || url.password) return null;
   const host = url.hostname.toLowerCase().replace(/^www\./, "").replace(/^m\./, "");
   return { host, path: url.pathname || "/", raw: text };
 }
 
 /** Deteksi link. null = tidak dikenali (UI netral, bukan merah). */
-export function detectPediaLink(raw: string): PediaLinkDetect | null {
+export function detectPediaLink(raw: string, expectedPlatform?: string): PediaLinkDetect | null {
   const p = prep(raw);
   if (!p) return null;
   const { host, path } = p;
   const seg = path.split("/").filter(Boolean);
+
+  // Website traffic dipilih secara eksplisit. Query URL adalah bagian target
+  // (mis. campaign); tidak disapu seperti query tracking link media sosial.
+  if (expectedPlatform === "website") {
+    if (!/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}$/.test(host)
+      || /\.(?:localhost|local|internal|test|invalid)$/.test(host)) return null;
+    const url = new URL(p.raw);
+    if (url.port && !["80", "443"].includes(url.port)) return null;
+    url.hash = "";
+    return { platform: "website", targetKind: "website", normalized: url.href, displayUser: null };
+  }
+
+  const result = (platform: PediaPlatform, targetKind: PediaTargetKind, normalized: string): PediaLinkDetect => ({ platform, targetKind, normalized, displayUser: null });
+  if (host === "github.com") {
+    if (!seg.length || seg.length > 2 || !/^[a-z\d](?:[a-z\d-]{0,37}[a-z\d])?$/i.test(seg[0])
+      || ["login", "signup", "settings", "features", "explore", "marketplace", "topics", "orgs", "users", "search"].includes(seg[0].toLowerCase())) return null;
+    if (seg[1] && !/^[\w.-]+$/.test(seg[1])) return null;
+    return result("github", seg[1] ? "repository" : "profile", `https://github.com/${seg.join("/")}`);
+  }
+  if (host === "t.me" || host === "telegram.me") {
+    if (!seg[0] || !/^[a-z\d_]{4,}$/i.test(seg[0]) || ["share", "joinchat", "addstickers", "proxy", "login", "c"].includes(seg[0])) return null;
+    if (seg.length > 2 || (seg[1] && !/^\d+$/.test(seg[1]))) return null;
+    return result("telegram", seg[1] ? "post" : "channel", `https://t.me/${seg.join("/")}`);
+  }
+  if (host === "discord.gg" || host === "discord.com") {
+    const code = host === "discord.gg" ? (seg.length === 1 ? seg[0] : null) : seg[0] === "invite" && seg.length === 2 ? seg[1] : null;
+    return code && /^[a-z\d-]{2,100}$/i.test(code) ? result("discord", "invite", `https://discord.gg/${code}`) : null;
+  }
+  if (host === "linkedin.com" || host.endsWith(".linkedin.com")) {
+    if (["in", "company"].includes(seg[0]) && seg[1] && seg.length === 2) return result("linkedin", seg[0] === "company" ? "company" : "profile", `https://www.linkedin.com/${seg.join("/")}/`);
+    if ((seg[0] === "posts" && seg[1]) || (seg[0] === "feed" && seg[1] === "update" && seg[2])) return result("linkedin", "post", `https://www.linkedin.com/${seg.join("/")}/`);
+    return null;
+  }
+  if (host === "pinterest.com" || host === "pinterest.co.uk") {
+    if (seg[0] === "pin" && /^\d+$/.test(seg[1] ?? "") && seg.length === 2) return result("pinterest", "post", `https://www.pinterest.com/pin/${seg[1]}/`);
+    if (seg[0] && !["pin", "search", "ideas", "settings", "login"].includes(seg[0]) && seg.length <= 2) return result("pinterest", seg[1] ? "board" : "profile", `https://www.pinterest.com/${seg.join("/")}/`);
+    return null;
+  }
+  if (host === "twitch.tv" && seg.length === 1 && /^[a-z\d_]{3,25}$/i.test(seg[0]) && !["directory", "downloads", "settings", "videos", "login"].includes(seg[0])) return result("twitch", "profile", `https://www.twitch.tv/${seg[0].toLowerCase()}`);
+  if (host === "soundcloud.com" && seg[0] && seg.length <= 2 && !["discover", "search", "stream", "you", "settings", "upload"].includes(seg[0])) return result("soundcloud", seg[1] ? "track" : "profile", `https://soundcloud.com/${seg.join("/")}`);
 
   // ── Instagram ──
   if (host === "instagram.com" || host === "instagr.am") {
@@ -130,6 +172,14 @@ export function detectPediaLink(raw: string): PediaLinkDetect | null {
     if ((seg[0] === "reel" || seg[0] === "reels" || seg[0] === "videos" || seg[0] === "watch") && seg[1]) {
       return { platform: "facebook", targetKind: "video", normalized: `https://www.facebook.com/${seg[0]}/${seg[1]}`, displayUser: null };
     }
+    if (seg.length >= 3 && ["videos", "posts"].includes(seg[1]) && seg[2]) {
+      return result("facebook", seg[1] === "videos" ? "video" : "post", `https://www.facebook.com/${seg[0]}/${seg[1]}/${seg[2]}/`);
+    }
+    if (seg[0] === "permalink.php") {
+      const url = new URL(p.raw);
+      if (url.searchParams.get("story_fbid") && url.searchParams.get("id")) return result("facebook", "post", `https://www.facebook.com/permalink.php?story_fbid=${encodeURIComponent(url.searchParams.get("story_fbid")!)}&id=${encodeURIComponent(url.searchParams.get("id")!)}`);
+      return null;
+    }
     if (seg[0] === "profile.php") {
       const id = p.raw.match(/[?&]id=(\d+)/)?.[1];
       if (id) return { platform: "facebook", targetKind: "profile", normalized: `https://www.facebook.com/profile.php?id=${id}`, displayUser: null };
@@ -154,7 +204,7 @@ export function detectPediaLink(raw: string): PediaLinkDetect | null {
   }
 
   // ── Shopee ──
-  if (host.endsWith("shopee.co.id") || host.endsWith("shopee.com") || host === "shope.ee") {
+  if (host === "shopee.co.id" || host === "shopee.com") {
     if (seg[0]) {
       const shop = seg[0].toLowerCase();
       return { platform: "shopee", targetKind: "shop", normalized: `https://shopee.co.id/${shop}`, displayUser: maskUser(shop) };
@@ -165,7 +215,7 @@ export function detectPediaLink(raw: string): PediaLinkDetect | null {
   // ── Spotify ──
   if (host === "open.spotify.com") {
     const kind = seg[0];
-    if ((kind === "track" || kind === "album" || kind === "playlist" || kind === "artist") && seg[1]) {
+    if (kind === "track" && seg[1] && seg.length === 2) {
       return { platform: "spotify", targetKind: "track", normalized: `https://open.spotify.com/${kind}/${seg[1].split("?")[0]}`, displayUser: null };
     }
     return null;
@@ -189,10 +239,18 @@ export function detectPediaLink(raw: string): PediaLinkDetect | null {
 export const PEDIA_PLATFORM_LABEL: Record<PediaPlatform, string> = {
   instagram: "Instagram", tiktok: "TikTok", youtube: "YouTube", facebook: "Facebook",
   threads: "Threads", shopee: "Shopee", spotify: "Spotify", x: "X", telegram: "Telegram",
+  github: "GitHub", website: "Website", linkedin: "LinkedIn", pinterest: "Pinterest", discord: "Discord", twitch: "Twitch", soundcloud: "SoundCloud",
 };
 
 /** Label jenis target bahasa pembeli. */
 export const PEDIA_TARGET_KIND_LABEL: Record<PediaTargetKind, string> = {
   profile: "Profil", post: "Postingan", video: "Video", reel: "Reel",
   live: "Live", channel: "Channel", playlist: "Playlist", shop: "Toko", track: "Lagu",
+  repository: "Repository", website: "Website", company: "Perusahaan", board: "Board", invite: "Undangan server",
 };
+
+export function pediaTargetMatches(need: string, detected: PediaTargetKind) {
+  return need === detected || (need === "profile" && detected === "channel")
+    || (need === "post" && ["video", "reel"].includes(detected))
+    || (need === "video" && ["post", "reel"].includes(detected));
+}

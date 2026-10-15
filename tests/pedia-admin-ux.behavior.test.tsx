@@ -229,8 +229,8 @@ it("previews saved drafts with actual storefront components without navigation o
   expect(within(preview).getByText("Deskripsi")).toBeTruthy();
   expect(within(preview).getByLabelText("PublikBantuan")).toBeTruthy();
   fireEvent.change(screen.getByLabelText("Nama produk"), { target: { value: "Unsaved name" } });
-  fireEvent.change(screen.getByLabelText("Tagline (nonpublik)"), { target: { value: "Unsaved tagline" } });
-  fireEvent.change(screen.getByLabelText("Deskripsi (nonpublik)"), { target: { value: "Unsaved description" } });
+  fireEvent.change(screen.getByLabelText("Tagline produk publik"), { target: { value: "Unsaved tagline" } });
+  fireEvent.change(screen.getByLabelText("Deskripsi produk publik"), { target: { value: "Unsaved description" } });
   expect(preview.textContent).not.toContain("Unsaved");
   // 2026-10-12 (owner): tagline tidak dirender di storefront — preview
   // menampilkan deskripsi kurasi, bukan tagline.
@@ -242,7 +242,7 @@ it("previews saved drafts with actual storefront components without navigation o
   fireEvent.click(within(preview).getByRole("radio", { name: /Indonesia/ }));
   fireEvent.change(within(preview).getByLabelText("Jumlah yang dipesan"), { target: { value: "100" } });
   fireEvent.change(within(preview).getByLabelText("Link profil Instagram"), { target: { value: "https://instagram.com/test" } });
-  for (const button of within(preview).getAllByRole("button", { name: "Lanjut ke pembayaran" })) {
+  for (const button of within(preview).getAllByRole("button", { name: "Lanjut isi kontak" })) {
     expect((button as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(button);
   }

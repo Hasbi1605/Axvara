@@ -1,8 +1,6 @@
-// src/app/pedia/layanan/page.tsx — Daftar semua layanan (tab Layanan bottom nav).
 import { headers } from "next/headers";
-import Link from "next/link";
+import { PlatformCatalog } from "@/components/pedia/PlatformCatalog";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
-import { ProductCard, catalogCard } from "@/components/pedia/PlatformGrid";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -15,30 +13,6 @@ export default async function PediaServicesPage() {
   try {
     const res = await fetch(`${proto}://${host}/api/pedia/catalog`, { next: { revalidate: 60 } });
     if (res.ok) products = (await res.json()).products ?? [];
-  } catch { /* kosong */ }
-  const byPlatform = new Map<string, PediaCatalogProduct[]>();
-  for (const p of products) {
-    const list = byPlatform.get(p.platform) ?? [];
-    list.push(p);
-    byPlatform.set(p.platform, list);
-  }
-  return (
-    <div className="mx-auto w-full max-w-[1280px] px-4 sm:px-6 lg:px-8 pt-8">
-      <h1 className="font-display text-[22px] font-bold text-white sm:text-[32px]">Semua layanan</h1>
-      {products.length === 0 && <p className="mt-4 text-sm text-white/55">Katalog segera hadir.</p>}
-      {[...byPlatform].map(([plat, list]) => (
-        <section key={plat} className="mt-8">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-bold capitalize text-white">{plat}</h2>
-            <Link prefetch={false} href={`/pedia/p/${plat}`} className="text-sm text-[#00E5FF]">Lihat semua →</Link>
-          </div>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {list.map((p) => (
-              <ProductCard key={p.slug} p={catalogCard(p)} />
-            ))}
-          </div>
-        </section>
-      ))}
-    </div>
-  );
+  } catch { /* empty state */ }
+  return <div className="pt-3"><PlatformCatalog products={products} /></div>;
 }

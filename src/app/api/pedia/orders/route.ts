@@ -3,15 +3,16 @@
 // (1) quote JWT valid; (2) harga terkini: bila paket dihapus supplier→404,
 // harga berubah→409 price_changed (banding, bukan diam-diam — pola orders),
 // margin tersisa < min→410 pedia_guard_margin; (3) email+WA wajib;
-// (4) konsumsi kredit atomik (UPDATE ... WHERE remaining>=).
+// (4) order/job/kredit/ledger disimpan dalam satu batch D1 atomik.
 // Order memakai tabel `orders` existing (order_kind='pedia') agar webhook
 // DANA/GoPay + fulfillment existing langsung bekerja. Job Pedia dibuat di
-// webhook pelunasan (lihat patch webhook dana/gopay M4).
+// transaksi checkout; dispatch menunggu order lunas.
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { checkRateLimit } from "@/lib/rateLimit";
-import { createDatabaseAccess } from "@/lib/db-access";
+import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 import { verifyPediaQuoteToken } from "@/lib/pedia/quote";
+import { pediaBounds } from "@/lib/pedia/bounds";
 import { computePediaPrice, pediaMargin } from "@/lib/pedia/pricing";
 import { generateOrderCode } from "@/lib/security";
 import { isPediaProvider } from "@/lib/pedia/proxy";
@@ -23,7 +24,7 @@ const schema = z.object({
   customer_wa: z.string().trim().transform((s) => s.replace(/\s|-/g, ""))
     .refine((s) => /^(\+62|62|0)8\d{8,13}$/.test(s), "No WA harus 08... atau +62... (10-15 digit)"),
   customer_email: z.string().trim().email("Tulis email aktif yang benar sebelum bayar.").max(160),
-  quote_token: z.string().trim().min(20, "Quote checkout wajib disertakan").max(8000),
+  quote_token: z.string().trim().min(20, "Quote checkout wajib disertakan").max(20000),
 });
 
 function normalizeWa(raw: string): string {
@@ -31,6 +32,24 @@ function normalizeWa(raw: string): string {
   if (wa.startsWith("+62")) wa = wa.slice(1);
   else if (wa.startsWith("0")) wa = "62" + wa.slice(1);
   return wa;
+}
+
+/** Durable checkout already exists: retry only its invoice, never debit again. */
+async function checkoutResponse(db: DatabaseAccess, order: Record<string, unknown>, reused: boolean) {
+  const job = await db.queryFirst(`SELECT credit_used FROM pedia_order_items WHERE order_code=?`, order.code);
+  if (!job) return NextResponse.json({ error: "Pesanan perlu diperiksa admin.", code: order.code }, { status: 503 });
+  const creditUsed = Number(job.credit_used), payable = Number(order.subtotal) - creditUsed;
+  let qris = null;
+  if (payable > 0 && order.status === "pending") {
+    try {
+      const { createActiveQrisInvoice } = await import("@/lib/payments/dana-qris");
+      const inv = await createActiveQrisInvoice(String(order.code), payable);
+      qris = { payable_amount: inv.payableAmount, unique_code: inv.uniqueCode, image_url: inv.qrisUrl, expires_at: inv.expiresAt };
+    } catch {
+      return NextResponse.json({ error: "Pesanan tersimpan. QRIS belum tersedia; coba lanjutkan lagi dengan data yang sama.", code: order.code }, { status: 503 });
+    }
+  }
+  return NextResponse.json({ code: order.code, subtotal: order.subtotal, credit_used: creditUsed, payable, status: order.status, qris, reused }, { status: reused ? 200 : 201 });
 }
 
 export async function POST(req: NextRequest) {
@@ -51,7 +70,7 @@ export async function POST(req: NextRequest) {
   }
   const db = createDatabaseAccess();
   const reused = await db.queryFirst(`SELECT code, subtotal, status FROM orders WHERE quote_id=?`, `pedia:${quote.jti}`);
-  if (reused) return NextResponse.json({ code: reused.code, subtotal: reused.subtotal, status: reused.status, reused: true });
+  if (reused) return checkoutResponse(db, reused, true);
   const minOrderRp = Number(process.env.PEDIA_MIN_ORDER_RP || 1000) || 1000;
 
   // Hitung ulang dari DB (JANGAN percaya angka client/quote — pola orders):
@@ -71,17 +90,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Layanan sedang tidak tersedia. Coba lagi nanti." }, { status: 409 });
   }
   const qty = quote.quantity;
-  const minQty = Number(live.min_qty) || 1;
-  const maxQty = Number(live.max_qty) || qty;
-  const step = Number(product.step) || 1;
-  if (!Number.isSafeInteger(minQty) || !Number.isSafeInteger(maxQty) || minQty <= 0 || maxQty < minQty || qty < minQty || qty > maxQty || qty % step !== 0) {
+  const limits = pediaBounds(live, tier, Number(product.step));
+  if (!limits || qty < limits.min || qty > limits.max || qty % limits.step !== 0) {
     return NextResponse.json({ error: "Jumlah tidak lagi valid untuk layanan ini. Muat ulang checkout." }, { status: 409 });
   }
-  // Paket dihapus supplier sejak quote dibuat → 404 (bukan diam-diam).
-  const prices = JSON.parse(String(tier.package_prices_json ?? "{}")) as Record<string, number>;
-  if (!(String(qty) in prices)) {
-    return NextResponse.json({ error: "Paket ini sudah tidak tersedia. Pilih paket lain." }, { status: 404 });
-  }
+  // Chip paket hanyalah contoh jumlah. Jumlah bebas yang ditandatangani quote
+  // tetap sah sepanjang min–max/step layanan live dan margin diperiksa di sini.
   const freshTotal = computePediaPrice({
     supplierRatePer1k: Number(live.rate_idr_per_1k),
     quantity: qty,
@@ -111,128 +125,51 @@ export async function POST(req: NextRequest) {
     }, { status: 409 });
   }
 
-  // Kredit: konsumsi atomik (race dua tab → satu menang; sisa dikembalikan).
-  let creditUsed = 0;
-  if (quote.credit_code_hash) {
-    const credit = await db.queryFirst(
-      `SELECT id, remaining FROM pedia_credits
-        WHERE code_hash=? AND datetime(expires_at) > datetime('now')`,
-      quote.credit_code_hash,
-    ).catch(() => null);
-    const want = Math.min(Number(credit?.remaining ?? 0), quote.credit_used, freshTotal);
-    if (want > 0 && credit) {
-      const r = await db.execRun(
-        `UPDATE pedia_credits SET remaining=remaining-? WHERE id=? AND remaining>=?`,
-        want, Number(credit.id), want,
-      ).catch(() => ({ changes: 0 }));
-      if (Number((r as { changes?: number })?.changes ?? 0) === 1) {
-        creditUsed = want;
-      }
-    }
+  // Claim order, job, debit and ledger in ONE D1 transaction. A rejected
+  // duplicate target or a concurrently spent credit cannot leave a debit behind.
+  if (!db.d1) return NextResponse.json({ error: "Checkout sementara tidak tersedia." }, { status: 503 });
+  const creditUsed = quote.credit_used;
+  if (!Number.isSafeInteger(creditUsed) || creditUsed < 0 || creditUsed > freshTotal || (creditUsed > 0 && !quote.credit_code_hash)) {
+    return NextResponse.json({ error: "Kredit tidak valid. Periksa ulang pesanan." }, { status: 409 });
   }
   const payable = freshTotal - creditUsed;
-
-  // AC-06 / PD-09: guard link ganda — tolak order baru untuk
-  // (target_normalized, product_id) yang masih aktif (queued…in_progress).
-  const dup = await db.queryFirst(
-    `SELECT order_code FROM pedia_order_items
-      WHERE target_normalized=? AND product_id=?
-        AND status IN ('queued','submitting','submitted','in_progress')
-      ORDER BY id DESC LIMIT 1`,
-    quote.target_normalized, quote.product_id,
-  ).catch(() => null);
-  if (dup) {
-    return NextResponse.json({
-      error: "duplicate_active_order",
-      message: `Link ini masih diproses di pesanan ${String(dup.order_code)}. Tunggu selesai dulu, ya.`,
-      order_code: String(dup.order_code),
-    }, { status: 409 });
-  }
-
-  const wa = normalizeWa(customer_wa);
-  // Kode order prefiks AXP- (dibedakan dari AXV-, PRD §8).
   const code = generateOrderCode().replace(/^AXV-/, "AXP-");
   const quoteIdRow = `pedia:${quote.jti}`;
-
+  const items = JSON.stringify([{
+    product_id: quote.product_id, variant_id: null, qty: 1, price: freshTotal, name: String(product.name),
+    pedia: { tier_id: quote.tier_id, quantity: qty, target: quote.target_normalized, unit_price: quote.unit_price, credit_used: creditUsed },
+  }]);
+  const snapshot = JSON.stringify({ supplier_target: quote.supplier_target ?? quote.target_normalized, refill_anchor: quote.refill_anchor ?? "created", supplier: quote.supplier, supplier_service_id: quote.supplier_service_id,
+    refill_days: quote.refill_days ?? (Number(tier.refill_days) || 0), min_profit_rp: quote.min_profit_rp ?? (Number(tier.min_profit_rp) || 0), service_copy: quote.service_copy });
+  const owned = `EXISTS(SELECT 1 FROM orders WHERE code=? AND quote_id=?)`;
+  const statement = (sql: string, ...params: unknown[]) => db.d1!.prepare(sql).bind(...params);
+  let claimed = false;
   try {
-    // sales_channel='web' (CHECK existing) + order_kind='pedia' (migrasi
-    // 0059) sebagai pembeda. Kode order prefiks AXP- (generator di bawah).
-    await db.execRun(
-      `INSERT INTO orders
-         (code, quote_id, customer_name, customer_wa, customer_email, items,
-          subtotal, payment_method, payment_account, status, sales_channel, order_kind)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'qris', 'qris', 'pending', 'web', 'pedia')`,
-      code, quoteIdRow, "", wa, customer_email.trim(),
-      JSON.stringify([{
-        product_id: quote.product_id, variant_id: null, qty: 1,
-        price: freshTotal, name: String(product.name),
-        pedia: {
-          tier_id: quote.tier_id, quantity: qty,
-          target: quote.target_normalized,
-          unit_price: quote.unit_price, credit_used: creditUsed,
-        },
-      }]),
-      freshTotal,
-    );
+    const result = await db.d1.batch([
+      statement(`INSERT INTO orders(code,quote_id,customer_name,customer_wa,customer_email,items,subtotal,payment_method,payment_account,status,sales_channel,order_kind,payment_status,paid_at,expires_at)
+        SELECT ?,?,'',?,?,?,?, 'qris','qris',?,'web','pedia',?,CASE WHEN ?=0 THEN datetime('now') ELSE NULL END,datetime('now','+15 minutes')
+        WHERE NOT EXISTS(SELECT 1 FROM pedia_order_items WHERE target_normalized=? AND product_id=? AND status IN ('awaiting_payment','queued','submitting','submitted','in_progress','needs_check'))
+        AND (?=0 OR EXISTS(SELECT 1 FROM pedia_credits WHERE code_hash=? AND datetime(expires_at)>datetime('now') AND remaining>=?))`,
+        code,quoteIdRow,normalizeWa(customer_wa),customer_email,items,freshTotal,payable ? "pending" : "lunas",payable ? "pending" : "paid",payable,
+        quote.target_normalized,quote.product_id,creditUsed,quote.credit_code_hash,creditUsed),
+      statement(`INSERT INTO pedia_order_items(order_code,product_id,tier_id,snapshot_json,target_raw,target_normalized,quantity,unit_price,total,credit_used,supplier,supplier_service_id,supplier_rate_snapshot,status,submit_attempts)
+        SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,'queued',0 WHERE ${owned}`,
+        code,quote.product_id,quote.tier_id,snapshot,quote.target_raw,quote.target_normalized,qty,quote.unit_price,freshTotal,creditUsed,quote.supplier,quote.supplier_service_id,quote.supplier_rate_snapshot,code,quoteIdRow),
+      statement(`UPDATE pedia_credits SET remaining=remaining-? WHERE code_hash=? AND remaining>=? AND ?>0 AND ${owned}`,
+        creditUsed,quote.credit_code_hash,creditUsed,creditUsed,code,quoteIdRow),
+      statement(`INSERT INTO pedia_credit_ledger(credit_id,order_code,delta) SELECT id,?,? FROM pedia_credits WHERE code_hash=? AND ?>0 AND ${owned}`,
+        code,-creditUsed,quote.credit_code_hash,creditUsed,code,quoteIdRow),
+    ]);
+    claimed = Number(result[0]?.meta?.changes) === 1;
   } catch {
-    const existing = await db.queryFirst(`SELECT code, subtotal, status FROM orders WHERE quote_id=?`, quoteIdRow).catch(() => null);
-    if (existing) {
-      return NextResponse.json({ code: existing.code, subtotal: existing.subtotal, status: existing.status, reused: true }, { status: 200 });
-    }
-    return NextResponse.json({ error: "Kode pesanan bentrok, coba lagi." }, { status: 409 });
+    const existing = await db.queryFirst(`SELECT code,subtotal,status FROM orders WHERE quote_id=?`,quoteIdRow).catch(() => null);
+    if (existing) return checkoutResponse(db,existing,true);
+    return NextResponse.json({ error: "Pesanan belum tersimpan. Coba lagi dengan data yang sama." }, { status: 503 });
   }
-
-  // Baris job Pedia (dibuat kini sebagai 'queued' agar idempoten
-  // INSERT OR IGNORE; kolom mengikuti skema 0059 persis).
-  await db.execRun(
-    `INSERT OR IGNORE INTO pedia_order_items
-       (order_code, product_id, tier_id, snapshot_json, target_raw, target_normalized, quantity,
-        unit_price, total, credit_used, supplier, supplier_service_id, supplier_rate_snapshot,
-        status, submit_attempts)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', 0)`,
-    code, quote.product_id, quote.tier_id, JSON.stringify({ supplier: quote.supplier, supplier_service_id: quote.supplier_service_id, refill_days: quote.refill_days ?? (Number(tier.refill_days) || 0), min_profit_rp: quote.min_profit_rp ?? (Number(tier.min_profit_rp) || 0) }), quote.target_raw, quote.target_normalized,
-    qty, quote.unit_price, freshTotal, creditUsed,
-    quote.supplier, Number(quote.supplier_service_id), Number(quote.supplier_rate_snapshot),
-  ).catch(() => null);
-
-  // Invoice QRIS via rail aktif (pola /api/orders). Kredit-penuh (payable=0)
-  // tidak butuh invoice — pelunasan internal langsung (lihat M4 settle).
-  let qris: { payable_amount: number; unique_code: number; image_url: string; expires_at: string } | null = null;
-  if (payable > 0) {
-    try {
-      const { createActiveQrisInvoice } = await import("@/lib/payments/dana-qris");
-      const inv = await createActiveQrisInvoice(code, payable);
-      qris = {
-        payable_amount: inv.payableAmount, unique_code: inv.uniqueCode,
-        image_url: inv.qrisUrl, expires_at: inv.expiresAt,
-      };
-    } catch {
-      return NextResponse.json({ error: "QRIS dinamis sedang tidak tersedia. Coba lagi sebentar." }, { status: 503 });
-    }
-  } else {
-    // Lunas oleh kredit penuh: catat ledger + transisi paid (internal, tanpa webhook).
-    const creditRow = await db.queryFirst(
-      `SELECT id FROM pedia_credits WHERE code_hash=?`, quote.credit_code_hash,
-    ).catch(() => null);
-    if (creditRow) {
-      await db.execRun(
-        `INSERT INTO pedia_credit_ledger (credit_id, order_code, delta) VALUES (?, ?, ?)`,
-        Number(creditRow.id), code, -creditUsed,
-      ).catch(() => null);
-    }
-    await db.execRun(
-      `UPDATE orders SET status='lunas', paid_at=datetime('now') WHERE code=? AND status='pending'`,
-      code,
-    ).catch(() => null);
-    await db.execRun(
-      `UPDATE pedia_order_items SET status='queued' WHERE order_code=? AND status='queued'`,
-      code,
-    ).catch(() => null);
+  if (!claimed) {
+    const dup = await db.queryFirst(`SELECT order_code FROM pedia_order_items WHERE target_normalized=? AND product_id=? AND status IN ('awaiting_payment','queued','submitting','submitted','in_progress','needs_check') ORDER BY id DESC LIMIT 1`,quote.target_normalized,quote.product_id);
+    if (dup) return NextResponse.json({ error: "duplicate_active_order", message: `Link ini masih diproses di pesanan ${String(dup.order_code)}. Tunggu selesai dulu, ya.`, order_code: dup.order_code }, { status: 409 });
+    return NextResponse.json({ error: "credit_changed", message: "Saldo kredit berubah. Periksa ulang total sebelum melanjutkan." }, { status: 409 });
   }
-
-  return NextResponse.json({
-    code, subtotal: freshTotal, credit_used: creditUsed, payable,
-    status: payable > 0 ? "pending" : "lunas",
-    qris,
-  }, { status: 201 });
+  return checkoutResponse(db,{ code,subtotal:freshTotal,status:payable ? "pending" : "lunas" },false);
 }

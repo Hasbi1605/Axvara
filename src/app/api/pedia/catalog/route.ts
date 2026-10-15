@@ -5,6 +5,7 @@
 import { NextResponse } from "next/server";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { isPediaProvider } from "@/lib/pedia/proxy";
+import { pediaBounds } from "@/lib/pedia/bounds";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -19,10 +20,14 @@ export type PediaCatalogTier = {
   prices: Record<string, number>;
   min_qty?: number;
   max_qty?: number;
+  quantity_step?: number;
   /** Kurasi publik (0062): nama + deskripsi bahasa manusia per layanan.
    *  Opsional di tipe agar fixture/preview lama tetap valid; route selalu mengisi. */
   public_name?: string | null;
   description?: string | null;
+  terms?: string | null;
+  instructions?: string | null;
+  recommendation_note?: string | null;
   region?: "indonesia" | "global" | "mixed";
   quality?: "ekonomis" | "standar" | "hq" | "real";
   speed_note?: string | null;
@@ -100,7 +105,7 @@ export async function GET() {
   const tiers = await db.queryAll(
     `SELECT id, product_id, tier, label_note, refill_days, eta_start, eta_finish,
             package_prices_json, supplier, supplier_service_id,
-            public_name, description_md, region, quality, speed_note, drop_risk,
+            public_name, description_md, terms_md, instructions_md, recommendation_note, min_qty_override, max_qty_override, quantity_step, region, quality, speed_note, drop_risk,
             is_recommended, sort_order, markup_pct, min_profit_rp
        FROM pedia_tiers WHERE is_active=1 ORDER BY is_recommended DESC, sort_order, id`,
   ).catch(() => []);
@@ -119,6 +124,8 @@ export async function GET() {
     if (!isPediaProvider(t.supplier)) continue;
     const bound = boundByService.get(`${t.supplier}:${t.supplier_service_id}`);
     if (!bound || !Number.isSafeInteger(bound.min) || !Number.isSafeInteger(bound.max) || bound.min <= 0 || bound.max < bound.min) continue;
+    const limits = pediaBounds({ min_qty: bound.min, max_qty: bound.max }, t);
+    if (!limits) continue;
     const prices = parseJson(t.package_prices_json, {});
     if (!prices || typeof prices !== "object" || Array.isArray(prices)) continue;
     const list = tiersByProduct.get(Number(t.product_id)) ?? [];
@@ -131,12 +138,15 @@ export async function GET() {
       refill_days: Number(t.refill_days) || 0,
       eta_start: t.eta_start != null ? String(t.eta_start) : null,
       eta_finish: t.eta_finish != null ? String(t.eta_finish) : null,
-      min_qty: bound.min, max_qty: bound.max,
+      min_qty: limits.min, max_qty: limits.max, quantity_step: limits.step,
       prices: Object.fromEntries(
-        Object.entries(prices).filter(([k, v]) => Number.isSafeInteger(Number(k)) && Number(k) >= bound.min && Number(k) <= bound.max && typeof v === "number" && Number.isFinite(v) && v > 0),
+        Object.entries(prices).filter(([k, v]) => Number.isSafeInteger(Number(k)) && Number(k) >= limits.min && Number(k) <= limits.max && Number(k) % limits.step === 0 && typeof v === "number" && Number.isFinite(v) && v > 0),
       ),
       public_name: t.public_name != null && String(t.public_name).trim() ? String(t.public_name) : null,
       description: t.description_md != null && String(t.description_md).trim() ? String(t.description_md) : null,
+      terms: t.terms_md != null ? String(t.terms_md) : null,
+      instructions: t.instructions_md != null ? String(t.instructions_md) : null,
+      recommendation_note: t.recommendation_note != null ? String(t.recommendation_note) : null,
       region, quality,
       speed_note: t.speed_note != null && String(t.speed_note).trim() ? String(t.speed_note) : null,
       drop_risk: dropRisk,
@@ -157,10 +167,12 @@ export async function GET() {
     // Saring harga tersimpan ke paket produk + kelipatan step (kontrak lama
     // untuk pratinjau paket); DITAMBAH harga live per 1.000 untuk jumlah bebas.
     for (const t of pt) {
+      const limits = pediaBounds({ min_qty: t.min_qty, max_qty: t.max_qty }, { quantity_step: t.quantity_step }, step);
+      t.quantity_step = limits?.step ?? step;
       for (const k of Object.keys(t.prices)) {
         if (!allPackages.includes(Number(k)) || Number(k) % step !== 0) delete t.prices[k];
       }
-      t.quick_quantities = allPackages.filter((qty) => qty >= (t.min_qty ?? 1) && qty <= (t.max_qty ?? qty) && qty % step === 0);
+      t.quick_quantities = allPackages.filter((qty) => qty >= (t.min_qty ?? 1) && qty <= (t.max_qty ?? qty) && qty % step === 0 && qty % (t.quantity_step ?? 1) === 0);
     }
     // Layanan tanpa harga tersimpan valid TIDAK ditawarkan (keamanan harga);
     // rekomendasi kurasi lebih dulu, lalu peringkat lama, lalu id.

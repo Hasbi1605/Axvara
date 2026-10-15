@@ -10,6 +10,7 @@ import { createDatabaseAccess } from "@/lib/db-access";
 import { computePediaPrice, PRICE_GROUP_DEFAULTS, type PriceGroup } from "@/lib/pedia/pricing";
 import { PEDIA_SEED_PRODUCTS } from "@/lib/pedia/seed";
 import { isPediaProvider, PEDIA_PROVIDERS } from "@/lib/pedia/proxy";
+import { pediaBounds } from "@/lib/pedia/bounds";
 import { providerPricingGate } from "../_shared";
 import type { DatabaseAccess } from "@/lib/db-access";
 
@@ -46,6 +47,22 @@ const tierSchema = z.object({
   product_id: z.coerce.number().int().min(1),
   tier: z.enum(["hemat", "standar", "premium"]),
   label_note: z.string().trim().max(120).optional().default(""),
+  public_name: z.string().trim().max(200).optional(),
+  description_md: z.string().max(3000).optional(),
+  terms_md: z.string().max(3000).optional(),
+  instructions_md: z.string().max(3000).optional(),
+  recommendation_note: z.string().max(200).optional(),
+  min_qty_override: z.coerce.number().int().positive().max(100_000_000).nullable().optional(),
+  max_qty_override: z.coerce.number().int().positive().max(100_000_000).nullable().optional(),
+  target_format: z.enum(["url", "username"]).optional(),
+  refill_anchor: z.enum(["created", "completed"]).optional(),
+  quantity_step: z.coerce.number().int().positive().max(100000).optional(),
+  region: z.enum(["indonesia", "global", "mixed"]).optional(),
+  quality: z.enum(["ekonomis", "standar", "hq", "real"]).optional(),
+  drop_risk: z.enum(["rendah", "sedang", "tinggi"]).optional(),
+  speed_note: z.string().max(120).optional(),
+  is_recommended: z.coerce.number().int().min(0).max(1).optional(),
+  sort_order: z.coerce.number().int().min(0).max(100000).optional(),
   supplier: z.enum(PEDIA_PROVIDERS).default("providersmm"),
   supplier_service_id: z.coerce.number().int().min(1),
   backup_service_id: z.coerce.number().int().min(1).optional().nullable(),
@@ -72,8 +89,9 @@ async function reprice(db: DatabaseAccess, id: number, isTier: boolean) {
         auto_disabled_reason='service_missing', updated_at=datetime('now') WHERE id=?`, tier.id);
       continue;
     }
+    const limits = pediaBounds({ min_qty: tier.live_min, max_qty: tier.live_max }, tier, Number(tier.step));
     const prices = Object.fromEntries((JSON.parse(String(tier.packages_json)) as number[])
-      .filter((qty) => qty % Number(tier.step) === 0 && qty >= Number(tier.live_min) && qty <= Number(tier.live_max))
+      .filter((qty) => limits && qty % limits.step === 0 && qty >= limits.min && qty <= limits.max)
       .map((quantity) => [quantity, computePediaPrice({
         quantity, supplierRatePer1k: Number(tier.live_rate), markupPct: Number(tier.markup_pct),
         minProfitRp: Number(tier.min_profit_rp), minOrderRp: Number(process.env.PEDIA_MIN_ORDER_RP || 1000),
@@ -238,7 +256,7 @@ export async function PUT(request: NextRequest) {
       if (packages.some((qty) => qty % Number(merged.step) !== 0)) return NextResponse.json({ error: "Paket harus sesuai kelipatan jumlah" }, { status: 400 });
     }
     const allow = isTier
-      ? ["label_note", "supplier", "supplier_service_id", "backup_service_id", "price_group", "markup_pct", "min_profit_rp", "refill_days", "eta_start", "eta_finish", "is_active"]
+      ? ["label_note", "public_name", "description_md", "terms_md", "instructions_md", "recommendation_note", "target_format", "refill_anchor", "min_qty_override", "max_qty_override", "quantity_step", "region", "quality", "drop_risk", "speed_note", "is_recommended", "sort_order", "supplier", "supplier_service_id", "backup_service_id", "price_group", "markup_pct", "min_profit_rp", "refill_days", "eta_start", "eta_finish", "is_active"]
       : ["slug", "platform", "metric", "target_kind", "name", "tagline", "description_md", "checklist_json", "packages_json", "step", "sort_order", "is_active", "is_featured"];
     const keys = allow.filter((key) => values[key] !== undefined);
     if (!keys.length) return NextResponse.json({ error: "no_changes" }, { status: 400 });

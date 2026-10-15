@@ -2,6 +2,8 @@
 
 import { Fragment, useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { formatRupiah, formatWibDateTime } from "@/lib/utils";
+import { pediaBounds } from "@/lib/pedia/bounds";
+import { PEDIA_PLATFORM_CONFIG } from "@/lib/pedia/platforms";
 import { pediaMargin } from "@/lib/pedia/pricing";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { PEDIA_PROVIDERS, type PediaProvider } from "@/lib/pedia/proxy";
@@ -26,13 +28,16 @@ type Tier = {
   package_prices_json: string; is_active: number; auto_disabled_reason: string | null;
   live_rate?: number | null; live_min?: number | null; live_max?: number | null;
   live_present?: number | null; live_name?: string | null; live_type?: string | null;
+  min_qty_override?: number | null; max_qty_override?: number | null; quantity_step?: number;
+  region?: "indonesia" | "global" | "mixed"; quality?: "ekonomis" | "standar" | "hq" | "real"; is_recommended?: number; sort_order?: number; speed_note?: string | null; drop_risk?: "rendah" | "sedang" | "tinggi"; target_format?: string; refill_anchor?: string;
   live_api_refill?: number | null;
+  public_name?: string | null; description_md?: string | null; terms_md?: string | null; instructions_md?: string | null; recommendation_note?: string | null;
 };
 type Row = Record<string, unknown>;
 type Catalog = { products: Product[]; tiers: Tier[] };
 const TABS: [SubTab, string][] = [["products", "Produk"], ["services", "Layanan Supplier"], ["orders", "Pesanan"], ["credits", "Kredit"], ["settings", "Pengaturan"]];
 const TIER_ORDER = ["hemat", "standar", "premium"];
-const PLATFORMS = ["instagram", "tiktok", "youtube", "facebook", "threads", "shopee", "spotify", "x", "telegram"];
+const PLATFORMS = PEDIA_PLATFORM_CONFIG.map((p) => p.id);
 const STATUS: Record<string, string> = {
   awaiting_payment: "Menunggu pembayaran", queued: "Antrean", submitting: "Sedang dikirim",
   submitted: "Diproses", in_progress: "Berjalan", completed: "Selesai", partial: "Selesai sebagian",
@@ -55,7 +60,8 @@ function packagesOf(p: Product): number[] {
 }
 function usablePackages(p: Product, t: Tier): number[] {
   const prices = parse<Record<string, number>>(t.package_prices_json, {});
-  return packagesOf(p).filter((qty) => PEDIA_PROVIDERS.includes(t.supplier) && qty % p.step === 0 && t.live_present === 1 && t.live_type === "Default" &&
+  const bounds = pediaBounds({ min_qty:t.live_min, max_qty:t.live_max }, t, p.step);
+  return packagesOf(p).filter((qty) => bounds && qty >= bounds.min && qty <= bounds.max && PEDIA_PROVIDERS.includes(t.supplier) && qty % bounds.step === 0 && t.live_present === 1 && t.live_type === "Default" &&
     t.live_rate != null && Number.isFinite(Number(t.live_rate)) && Number(t.live_rate) > 0 &&
     t.live_min != null && t.live_max != null && qty >= t.live_min && qty <= t.live_max &&
     Number.isFinite(Number(prices[qty])) && Number(prices[qty]) > 0 && pediaMargin({ supplierRatePer1k: Number(t.live_rate), quantity: qty, sellPrice: Number(prices[qty]) }) >= t.min_profit_rp);
@@ -268,7 +274,9 @@ function ProductEditor({ product: p, tiers, busy, onSave, onCreateTier, onError,
   const text = (key: keyof Product, label: string, max: number, required = false) => <Field label={label}><input name={key} defaultValue={String(p[key] ?? "")} maxLength={max} required={required} className={INPUT} /></Field>;
   const previewTiers = tiers.map((t) => {
     const prices = parse<Record<string, number>>(t.package_prices_json, {});
-    return { id: t.id, tier: t.tier, label_note: t.label_note, refill_days: t.refill_days, eta_start: t.eta_start, eta_finish: t.eta_finish,
+    const bounds = pediaBounds({ min_qty:t.live_min, max_qty:t.live_max },t,p.step);
+    return { public_name:t.public_name, description:t.description_md, terms:t.terms_md, instructions:t.instructions_md, recommendation_note:t.recommendation_note, region:t.region, quality:t.quality, speed_note:t.speed_note, drop_risk:t.drop_risk, recommended:!!t.is_recommended,
+      min_qty:bounds?.min,max_qty:bounds?.max,quantity_step:bounds?.step, id: t.id, tier: t.tier, label_note: t.label_note, refill_days: t.refill_days, eta_start: t.eta_start, eta_finish: t.eta_finish,
       prices: Object.fromEntries(usablePackages(p, t).map((qty) => [qty, Number(prices[qty])])) };
   }).filter((t) => Object.keys(t.prices).length > 0);
   const previewProduct: PediaCatalogProduct = {
@@ -284,12 +292,12 @@ function ProductEditor({ product: p, tiers, busy, onSave, onCreateTier, onError,
       <fieldset disabled={busy} className="grid gap-4 sm:grid-cols-2">
         <legend className="mb-3 text-sm font-semibold text-white">Informasi produk</legend>
         {text("name", "Nama produk", 120, true)}{text("slug", "Slug", 80, true)}
-        {text("platform", "Platform produk", 30, true)}{text("metric", "Jenis layanan (metric)", 30, true)}{text("target_kind", "Jenis target", 30, true)}{text("tagline", "Tagline (nonpublik)", 200)}
+        {text("platform", "Platform produk", 30, true)}{text("metric", "Jenis layanan (metric)", 30, true)}{text("target_kind", "Jenis target", 30, true)}{text("tagline", "Tagline produk publik", 200)}
         <Field label="Paket jumlah (pisahkan dengan koma)"><input name="packages" required defaultValue={packagesOf(p).join(", ")} className={INPUT} /></Field>
         <Field label="Kelipatan jumlah"><input name="step" type="number" required min={1} max={100000} defaultValue={p.step} className={INPUT} /></Field>
         <Field label="Urutan produk"><input name="sort_order" type="number" required min={0} max={100000} defaultValue={p.sort_order} className={INPUT} /></Field>
         <div className="flex flex-wrap items-center gap-4 text-sm text-white/80"><label className="flex min-h-11 items-center gap-2"><input name="is_active" type="checkbox" disabled={!p.id} defaultChecked={!!p.is_active} />Terbit</label><label className="flex min-h-11 items-center gap-2"><input name="is_featured" type="checkbox" disabled={!p.id} defaultChecked={!!p.is_featured} />Produk unggulan</label></div>
-        <Field label="Deskripsi (nonpublik)"><textarea name="description_md" defaultValue={p.description_md ?? ""} maxLength={5000} rows={4} className={INPUT} /></Field>
+        <Field label="Deskripsi produk publik"><textarea name="description_md" defaultValue={p.description_md ?? ""} maxLength={5000} rows={4} className={INPUT} /></Field>
         <div className="space-y-3 sm:col-span-2"><h4 className="text-sm font-semibold text-white">Checklist sebelum bayar</h4>{checklist.map((item, i) => <div key={String(item.id)} className="grid items-end gap-3 border-t border-white/10 pt-3 sm:grid-cols-[1fr_1fr_auto]"><Field label={`Poin checklist ${i + 1}`}><input name={`check_label_${i}`} required maxLength={500} defaultValue={String(item.label ?? "")} className={INPUT} /></Field><Field label={`Bantuan checklist ${i + 1}`}><textarea name={`check_help_${i}`} maxLength={2000} rows={2} defaultValue={String(item.help ?? "")} className={INPUT} /></Field><button type="button" className={BUTTON} onClick={() => setChecklist(checklist.filter((_, index) => index !== i))} aria-label={`Hapus poin checklist ${i + 1}`}>Hapus</button></div>)}<button type="button" className={BUTTON} onClick={() => setChecklist([...checklist, { id: `check_${Date.now()}`, label: "" }])}>Tambah poin checklist</button><p className="text-xs text-white/65">ID, gambar, dan field tambahan dari checklist lama tetap dipertahankan.</p></div>
       </fieldset>
       <div className="sticky bottom-0 z-10 border-t border-white/10 bg-[#080C1E] py-3"><button className={PRIMARY} disabled={busy}>{busy ? "Menyimpan..." : "Simpan produk"}</button></div>
@@ -327,12 +335,21 @@ function ProductEditor({ product: p, tiers, busy, onSave, onCreateTier, onError,
         e.preventDefault(); const f = new FormData(e.currentTarget);
         const body: Row = { kind: "tier", id: t.id, is_active: f.has("is_active") ? 1 : 0 };
         body.supplier = String(f.get("supplier"));
-        for (const k of ["label_note", "price_group", "eta_start", "eta_finish"]) body[k] = String(f.get(k) ?? "");
+        for (const k of ["label_note", "price_group", "eta_start", "eta_finish", "public_name", "description_md", "terms_md", "instructions_md", "recommendation_note"]) body[k] = String(f.get(k) ?? "");
         for (const k of ["supplier_service_id", "markup_pct", "min_profit_rp", "refill_days"]) body[k] = Number(f.get(k));
+        for (const k of ["min_qty_override", "max_qty_override"]) body[k] = f.get(k) ? Number(f.get(k)) : null;
+        body.target_format = String(f.get("target_format"));
+        body.refill_anchor = String(f.get("refill_anchor"));
+        body.quantity_step = Number(f.get("quantity_step")) || 1;
         body.backup_service_id = f.get("backup_service_id") ? Number(f.get("backup_service_id")) : null;
         void onSave(body, `Tingkat ${t.tier} tersimpan. Periksa status dan harga hasil pembaruan.`);
       }} className="space-y-4">
         <fieldset disabled={busy} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <Field label="Nama layanan publik"><input name="public_name" maxLength={200} defaultValue={t.public_name ?? ""} className={INPUT} /></Field>
+          <Field label="Deskripsi layanan"><textarea name="description_md" maxLength={3000} defaultValue={t.description_md ?? ""} className={INPUT} rows={4} /></Field>
+          <Field label="Syarat & ketentuan layanan"><textarea name="terms_md" maxLength={3000} defaultValue={t.terms_md ?? ""} className={INPUT} rows={4} /></Field>
+          <Field label="Cara membeli"><textarea name="instructions_md" maxLength={3000} defaultValue={t.instructions_md ?? ""} className={INPUT} rows={4} /></Field>
+          <Field label="Alasan rekomendasi"><input name="recommendation_note" maxLength={200} defaultValue={t.recommendation_note ?? ""} className={INPUT} /></Field>
           <Field label="Catatan kualitas"><input name="label_note" maxLength={120} defaultValue={t.label_note ?? ""} className={INPUT} /></Field>
           <Field label="Supplier utama"><select name="supplier" defaultValue={t.supplier} className={INPUT} onChange={(e) => {
             const form = e.currentTarget.form;
@@ -344,6 +361,11 @@ function ProductEditor({ product: p, tiers, busy, onSave, onCreateTier, onError,
           <Field label="Markup (%)"><input name="markup_pct" type="number" step="any" min={0} max={1000} required defaultValue={t.markup_pct} className={INPUT} /></Field>
           <Field label="Minimum untung (Rp)"><input name="min_profit_rp" type="number" min={0} max={10000000} required defaultValue={t.min_profit_rp} className={INPUT} /></Field>
           <Field label="Masa refill kurasi (hari)"><input name="refill_days" type="number" min={0} max={365} required defaultValue={t.refill_days} className={INPUT} /></Field>
+          <Field label="Minimum dari ketentuan layanan"><input name="min_qty_override" type="number" min={1} max={100000000} defaultValue={t.min_qty_override ?? ""} className={INPUT} /></Field>
+          <Field label="Maksimum dari ketentuan layanan"><input name="max_qty_override" type="number" min={1} max={100000000} defaultValue={t.max_qty_override ?? ""} className={INPUT} /></Field>
+          <Field label="Format target untuk supplier"><select name="target_format" defaultValue={t.target_format ?? "url"} className={INPUT}><option value="url">Link lengkap</option><option value="username">Username dari link profil</option></select></Field>
+          <Field label="Awal masa refill"><select name="refill_anchor" defaultValue={t.refill_anchor ?? "created"} className={INPUT}><option value="created">Pesanan dibuat</option><option value="completed">Pesanan selesai</option></select></Field>
+          <Field label="Kelipatan layanan"><input name="quantity_step" type="number" min={1} max={100000} defaultValue={t.quantity_step ?? 1} className={INPUT} /></Field>
           <Field label="Estimasi mulai"><input name="eta_start" maxLength={40} defaultValue={t.eta_start ?? ""} className={INPUT} /></Field>
           <Field label="Estimasi selesai"><input name="eta_finish" maxLength={40} defaultValue={t.eta_finish ?? ""} className={INPUT} /></Field>
           <label className="flex min-h-11 items-center gap-2 text-sm text-white/80"><input name="is_active" type="checkbox" defaultChecked={!!t.is_active} />Tingkat aktif</label>

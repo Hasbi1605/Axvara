@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import { useState } from "react";
 import { usePediaSearch } from "@/stores/pedia-search";
@@ -7,6 +8,8 @@ import { IosIcon } from "@/components/ui/IosIcon";
 import { ServicesMenu } from "@/components/shared/ServicesMenu";
 
 export function PediaNavbar() {
+  const path = usePathname();
+  const router = useRouter();
   const q = usePediaSearch((s) => s.q);
   const setQ = usePediaSearch((s) => s.setQ);
   const [mobileSearch, setMobileSearch] = useState(false);
@@ -14,6 +17,7 @@ export function PediaNavbar() {
   const onSearch = (v: string) => {
     setQ(v);
     if (v.trim()) {
+      if (path && path !== "/pedia" && path !== "/pedia/layanan") router.push("/pedia/layanan");
       document.getElementById("pedia-catalog")?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   };
@@ -21,7 +25,7 @@ export function PediaNavbar() {
   return (
     <header className="ax-glass-strong sticky top-0 z-40 border-b border-white/10">
       <div className="mx-auto flex h-[64px] max-w-[1280px] items-center gap-2 px-4 sm:gap-4 sm:px-6 lg:px-8">
-        <Link prefetch={false} href="/pedia" className="flex min-w-0 shrink-0 items-center gap-3" aria-label="Axvara Pedia — beranda">
+        <Link prefetch={false} href="/pedia" className="flex min-w-0 shrink items-center gap-2 sm:gap-3" aria-label="Axvara Pedia — beranda">
           {/* 2026-10-08 (owner): mark SVG trace dari logo Muse (mirip 91% IoU
              vs PNG, kanvas padat tanpa padding transparan → tampil penuh
              sebesar mark pusat). File: public/brand/pedia-mark.svg.
@@ -62,7 +66,7 @@ export function PediaNavbar() {
         <div className="ml-auto min-w-0 lg:ml-0 flex items-center gap-1 sm:gap-2">
           {/* Urutan 1:1 Market: ServicesMenu dulu, tombol search sesudahnya. */}
           <ServicesMenu active="pedia" />
-          <button onClick={() => setMobileSearch((v) => !v)} className="lg:hidden w-11 h-11 rounded-full ax-glass flex items-center justify-center text-white/70" aria-label="Cari layanan" aria-expanded={mobileSearch}>
+          <button onClick={() => setMobileSearch((v) => !v)} className="lg:hidden shrink-0 w-11 h-11 rounded-full ax-glass flex items-center justify-center text-white/70" aria-label="Cari layanan" aria-expanded={mobileSearch}>
             {mobileSearch ? <X className="w-4 h-4" /> : <IosIcon name="search" size={16} tint="white" />}
           </button>
         </div>

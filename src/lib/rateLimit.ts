@@ -51,6 +51,7 @@ export const RATE_LIMITS = {
   "newsletter:subscribe": 5,
   // PEDIA (2026-10-07, PEDIA-PRD §9.7): scope publik Pedia.
   "pedia:quote": 30,
+  "pedia:prices": 60,
   "pedia:orders": 10,
   "pedia:credit_check": 10,
   "pedia:refill": 10,

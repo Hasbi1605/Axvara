@@ -1,5 +1,11 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Pembaruan Pedia 2026-10-15 — spesifikasi terkini
+
+✅ Implementasi katalog per platform, perluasan dua supplier dan checkout dua tahap tersedia di kode; publikasi melalui push/CI. Spesifikasi serta dasar kurasi lengkap: [Katalog dan checkout Pedia](docs/pedia/catalog-checkout-2026-10-15.md). Bagian berlabel Working-Tree 2026-10-12 di bawah adalah snapshot historis; aturan UI/katalog/checkout terkini mengikuti dokumen rilis ini.
+
+Katalog terkurasi berisi 38 jenis/131 mapping pada 16 platform, dengan 3 pilihan awal mobile dan 5 desktop, drop/refill tetap. Di mobile, pilihan yang sudah dipilih dirangkum dan dapat diganti. Target GitHub/website/platform baru didukung parser client/server. Harga jumlah bebas dihitung server; order/job/kredit/ledger atomik D1, retry QR sama, kredit pending kedaluwarsa dikembalikan. Copy ketentuan disimpan ke quote/order. Tidak ada order supplier berbayar atau klaim hasil kualitas/drop teruji dalam verifikasi ini.
+
 > **Satu Gerbang, Semua Tools Premium** — Toko digital premium Apple Store + Glassmorphism
 
 AXVARA adalah toko digital untuk akun, aplikasi, dan tools premium dengan kategori yang dikelola dari panel admin — checkout memakai **QRIS dinamis merchant GoPay/DANA sesuai provider aktif** tanpa payment gateway pihak ketiga, dan hosting Cloudflare Pages. Jalur manual (E-Wallet/Bank + upload bukti) ⏸️ **maintenance sejak 2026-09-17**: field tampil disabled + badge Maintenance di WEB, dihilangkan di WA/TELE, upload disembunyikan, backend menolak non-QRIS 503.
@@ -39,7 +45,7 @@ axvara/
 │   ├── app/
 │   │   ├── layout.tsx      # Root MINIMAL: font + metadata global SAJA (2026-10-08 — chrome toko/Pedia di layout masing-masing)
 │   │   ├── (shop)/         # Toko pusat axvara.tech — route group, URL tidak berubah (page/home-client/produk/checkout/pesanan/lacak-pesanan/link/admin/artikel/dll)
-│   │   ├── pedia/          # Navbar/bottom-nav sendiri + Footer bersama; kurasi/cari/platform, o/[slug] 3 kelompok/satu CTA, pesanan/lacak/bantuan/ketentuan/layanan
+│   │   ├── pedia/          # Katalog per platform; p/[platform] + deep link o/[slug], checkout 2 tahap, pesanan/lacak/bantuan/ketentuan
 │   │   ├── garansi-replace/ # Ketentuan layanan & garansi third-party dari footer (acuan klaim)
 │   │   ├── api/checkout/   # Quote harga/stok/rekening bertanda tangan
 │   │   ├── api/payment-methods/ # Konfigurasi pembayaran publik/admin
@@ -51,7 +57,7 @@ axvara/
 │   │                           # ProductCopy (deskripsi + S&K + cara aktivasi PDP, terlipat di mobile),
 │   │                           # MobileBottomNav + HelpSheet + CategorySheet + DeviceOrders (bottom nav mobile 4 tab)
 │   ├── components/shared/      # ServicesMenu + CrossServicePromo, URL dari lib/site.ts
-│   ├── components/pedia/       # PediaOrbit (kembar OrbitHero: 8 sosmed + inti mark Pedia), PediaServiceCards, Typewriter, PlatformGrid, LinkPasteHero
+│   ├── components/pedia/       # PediaOrbit (kembar OrbitHero: 8 sosmed + inti mark Pedia), PediaServiceCards, Typewriter, PlatformCatalog, ServicePicker, usePediaPrices; PlatformGrid/LinkPasteHero kompatibel
 │   ├── components/admin/       # Shell + login gate + hooks + sections/ (satu per menu admin)
 │   ├── hooks/useModalA11y.ts   # Escape + focus trap + scroll lock, satu sumber untuk semua modal
 │   ├── lib/db.ts               # BARREL ke src/lib/db/* — impor dari sini, bukan file internalnya

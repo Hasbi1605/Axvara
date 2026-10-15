@@ -52,6 +52,8 @@ export async function processPediaPaidOrders(caller?: ProxyCaller, sharedDb?: Db
     const { createDatabaseAccess } = await import("@/lib/db-access");
     db = createDatabaseAccess();
   }
+  const { expirePediaCheckouts } = await import("./expire");
+  await expirePediaCheckouts(db);
   const call = caller ?? callPediaProvider;
   const out = { dispatched: 0, polled: 0, needsCheck: 0 };
   // Klaim lease atomik untuk item queued (wegen race webhook + cron
@@ -146,7 +148,7 @@ async function dispatchOne(
   // Guard margin di jalur cron (PD-32): hitung dari harga tersimpan (unit)
   // vs charge baru — bila < min, kunci tier + needs_check manual.
   const charge = rate * item.quantity / 1000;
-  const marginLive = item.unit_price * item.quantity - charge;
+  const marginLive = item.total - charge;
   let snapshot: Record<string, unknown> = {};
   try { snapshot = JSON.parse(item.snapshot_json); } catch { /* legacy snapshot */ }
   const minProfit = Number(snapshot?.min_profit_rp ?? info.min_profit_rp);
@@ -170,7 +172,7 @@ async function dispatchOne(
   // Submit (idempoten via Idempotency-Key = order_code; VPS dedupe 24 jam).
   const res = await call("add", {
     service: item.supplier_service_id,
-    link: item.target_normalized,
+    link: typeof snapshot.supplier_target === "string" && snapshot.supplier_target ? snapshot.supplier_target : item.target_normalized,
     quantity: item.quantity,
   }, 30_000, item.order_code, item.supplier);
   if (!res.ok) {
@@ -243,7 +245,7 @@ async function pollOne(
 
   if (status === "completed") {
     await db.execRun(
-      `UPDATE pedia_order_items SET status='completed', lease_until=NULL, updated_at=datetime('now')
+      `UPDATE pedia_order_items SET status='completed', completed_at=COALESCE(completed_at,datetime('now')), lease_until=NULL, updated_at=datetime('now')
         WHERE order_code=?`,
       item.order_code,
     ).catch(() => null);
@@ -287,7 +289,7 @@ async function handleShortfall(db: Db, item: Item, startCount: number | null, re
   const refund = Math.max(0, (item.quantity - delivered) * item.unit_price);
   const newStatus = delivered > 0 ? "partial" : "canceled";
   await db.execRun(
-    `UPDATE pedia_order_items SET status=?, lease_until=NULL, updated_at=datetime('now')
+    `UPDATE pedia_order_items SET status=?, completed_at=COALESCE(completed_at,datetime('now')), lease_until=NULL, updated_at=datetime('now')
       WHERE order_code=?`,
     newStatus, item.order_code,
   ).catch(() => null);

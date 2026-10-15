@@ -3,17 +3,9 @@
 // owner), fill currentColor + warna brand per platform.
 import Link from "next/link";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
+import { PEDIA_PLATFORM_CONFIG } from "@/lib/pedia/platforms";
 
-export const PEDIA_PLATFORMS = [
-  { id: "instagram", label: "Instagram", color: "#D62976" },
-  { id: "tiktok", label: "TikTok", color: "#FE2C55" },
-  { id: "youtube", label: "YouTube", color: "#FF0000" },
-  { id: "facebook", label: "Facebook", color: "#1877F2" },
-  { id: "threads", label: "Threads", color: "#FFFFFF" },
-  { id: "spotify", label: "Spotify", color: "#1DB954" },
-  { id: "shopee", label: "Shopee", color: "#EE4D2D" },
-  { id: "x", label: "X", color: "#FFFFFF" },
-] as const;
+export const PEDIA_PLATFORMS = PEDIA_PLATFORM_CONFIG;
 
 export function PlatformIcon({ id, size = 28 }: { id: string; size?: number }) {
   // Ikon = file SVG per platform (fill warna brand ditulis langsung di file —

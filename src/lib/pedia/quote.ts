@@ -6,6 +6,7 @@
 // total, supplier_service_id, supplier_rate_snapshot. Berlaku 30 menit.
 import * as jose from "jose";
 import { isPediaProvider, type PediaProvider } from "@/lib/pedia/proxy";
+import { readPediaServiceCopy, type PediaServiceCopy } from "./service-copy";
 
 export type PediaQuotePayload = {
   purpose: "pedia_quote";
@@ -22,7 +23,10 @@ export type PediaQuotePayload = {
   supplier_service_id: number;
   supplier_rate_snapshot: number;
   refill_days?: number;
+  supplier_target?: string;
+  refill_anchor?: "created" | "completed";
   min_profit_rp?: number;
+  service_copy?: PediaServiceCopy;
   jti: string;
 };
 
@@ -74,6 +78,10 @@ export async function verifyPediaQuoteToken(token: string): Promise<PediaQuotePa
     // Missing terms are legacy quotes; supplied terms must be valid, not
     // silently replaced with mutable tier values.
     if ([p.refill_days, p.min_profit_rp].some((v) => v !== undefined && (typeof v !== "number" || !Number.isSafeInteger(v) || v < 0))) return null;
+    if (p.supplier_target !== undefined && (typeof p.supplier_target !== "string" || !p.supplier_target || p.supplier_target.length > 600)) return null;
+    if (p.refill_anchor !== undefined && !["created", "completed"].includes(String(p.refill_anchor))) return null;
+    const serviceCopy = p.service_copy === undefined ? undefined : readPediaServiceCopy(p.service_copy);
+    if (serviceCopy === null) return null;
     return {
       purpose: "pedia_quote",
       product_id: num(p.product_id), tier_id: num(p.tier_id),
@@ -86,7 +94,10 @@ export async function verifyPediaQuoteToken(token: string): Promise<PediaQuotePa
       supplier_service_id: num(p.supplier_service_id),
       supplier_rate_snapshot: num(p.supplier_rate_snapshot),
       refill_days: p.refill_days as number | undefined,
+      supplier_target: p.supplier_target as string | undefined,
+      refill_anchor: p.refill_anchor as "created" | "completed" | undefined,
       min_profit_rp: p.min_profit_rp as number | undefined,
+      service_copy: serviceCopy,
       jti: String(payload.jti),
     };
   } catch {

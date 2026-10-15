@@ -5,10 +5,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { createDatabaseAccess } from "@/lib/db-access";
-import { detectPediaLink } from "@/lib/pedia/link";
+import { detectPediaLink, pediaTargetMatches } from "@/lib/pedia/link";
 import { computePediaPrice } from "@/lib/pedia/pricing";
 import { createPediaQuoteToken } from "@/lib/pedia/quote";
 import { isPediaProvider } from "@/lib/pedia/proxy";
+import { capturePediaServiceCopy } from "@/lib/pedia/service-copy";
+import { pediaBounds } from "@/lib/pedia/bounds";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -58,16 +60,12 @@ export async function POST(req: NextRequest) {
   if (!live) return NextResponse.json({ error: "Layanan sedang tidak tersedia." }, { status: 409 });
 
   // Validasi target: parser server + kecocokan target_kind (PD-02/AC-03).
-  const detected = detectPediaLink(target);
+  const detected = detectPediaLink(target, String(product.platform));
   if (!detected) {
     return NextResponse.json({ error: "unrecognized_link", message: "Kami belum mengenali link ini. Pilih platformnya di bawah." }, { status: 422 });
   }
   const needKind = String(product.target_kind);
-  const kindOk =
-    needKind === detected.targetKind ||
-    (needKind === "profile" && detected.targetKind === "channel") ||
-    (needKind === "post" && (detected.targetKind === "video" || detected.targetKind === "reel")) ||
-    (needKind === "video" && (detected.targetKind === "post" || detected.targetKind === "reel"));
+  const kindOk = pediaTargetMatches(needKind, detected.targetKind);
   if (detected.platform !== String(product.platform) || !kindOk) {
     return NextResponse.json({
       error: "target_mismatch",
@@ -77,10 +75,11 @@ export async function POST(req: NextRequest) {
   }
 
   // Qty: min–max layanan + kelipatan step produk (PD-06).
-  const minQty = Number(live.min_qty) || 1;
-  const maxQty = Number(live.max_qty) || quantity;
-  const step = Number(product.step) || 1;
-  if (!Number.isSafeInteger(minQty) || !Number.isSafeInteger(maxQty) || minQty <= 0 || maxQty < minQty || quantity < minQty || quantity > maxQty) {
+  const limits = pediaBounds(live, tier, Number(product.step));
+  const minQty = limits?.min ?? 1;
+  const maxQty = limits?.max ?? 0;
+  const step = limits?.step ?? 1;
+  if (!limits || quantity < minQty || quantity > maxQty) {
     return NextResponse.json({
       error: "quantity_out_of_range",
       message: `Minimal ${minQty}, maksimal ${maxQty} untuk kualitas ini.`,
@@ -131,6 +130,9 @@ export async function POST(req: NextRequest) {
     supplier_rate_snapshot: Number(live.rate_idr_per_1k),
     refill_days: Number(tier.refill_days) || 0,
     min_profit_rp: Number(tier.min_profit_rp) || 0,
+    supplier_target: tier.target_format === "username" ? new URL(detected.normalized).pathname.split("/").filter(Boolean)[0]?.replace(/^@/, "") : detected.normalized,
+    refill_anchor: tier.refill_anchor === "completed" ? "completed" : "created",
+    service_copy: capturePediaServiceCopy(product, tier),
   });
   return NextResponse.json({
     ok: true, quote_token: token, quote_id: quoteId,

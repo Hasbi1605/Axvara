@@ -8,9 +8,12 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { ProgressRing, StatusPill, OrderTimeline } from "@/components/pedia/StatusWidgets";
 import { PediaOrderSkeleton } from "@/components/storefront/Skeletons";
+import { parseExpiry } from "@/lib/expiry";
 import { SITE } from "@/lib/site";
+import type { PediaServiceCopy } from "@/lib/pedia/service-copy";
 
 type Status = {
+  service_copy?: PediaServiceCopy | null;
   code: string; product_name: string; tier_name: string; tier_note: string | null;
   quantity: number; target: string; status: string; done: number; percent: number;
   eta_start: string | null; eta_finish: string | null; refill_days: number;
@@ -30,13 +33,14 @@ export default function PediaOrderStatusPage() {
       const d = await res.json();
       if (!res.ok) throw new Error(d.error ?? "Gagal memuat");
       setData(d.order);
+      setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Gagal memuat");
     }
   }, [code]);
 
+  useEffect(() => { void load(); }, [load]);
   useEffect(() => {
-    void load();
     // Auto-refresh: 10 dtk menunggu bayar, 60 dtk berjalan, berhenti saat
     // terminal atau tab tersembunyi.
     const tick = () => {
@@ -73,6 +77,7 @@ export default function PediaOrderStatusPage() {
   if (error) return <p className="pt-10 text-center text-sm text-red-300">{error}</p>;
   if (!data) return <PediaOrderSkeleton />;
 
+  const qrExpired = data.qris && (["expired", "failed"].includes(data.qris.status) || (parseExpiry(data.qris.expires_at) ?? 0) <= Date.now());
   const copy = async (text: string) => {
     try { await navigator.clipboard.writeText(text); } catch { /* abaikan */ }
   };
@@ -81,21 +86,33 @@ export default function PediaOrderStatusPage() {
     <div className="mx-auto w-full max-w-[1280px] px-4 sm:px-6 lg:px-8 pt-6">
     <div className="mx-auto max-w-xl">
       <div className="flex items-center justify-between gap-2">
-        <p className="font-mono text-sm font-bold text-white">{data.code}</p>
+        <p className="min-w-0 flex-1 break-all font-mono text-xs font-bold text-white">{data.code}</p>
         <button onClick={() => copy(data.code)} className="h-8 rounded-full bg-white/5 px-3 text-xs font-bold text-white/70">Salin</button>
-        <span className="ml-auto"><StatusPill status={data.status} /></span>
+
       </div>
-      <p className="mt-1 text-sm text-white/65">
-        {data.product_name} · <span className="capitalize">{data.tier_name}</span> · {data.quantity.toLocaleString("id-ID")}
+      <div className="mt-3"><StatusPill status={data.status} /></div>
+      <p className="mt-2 text-sm text-white/65">
+        {data.service_copy?.product_name ?? data.product_name} · <span>{data.service_copy?.service_name ?? data.tier_note ?? data.tier_name}</span> · {data.quantity.toLocaleString("id-ID")}
       </p>
       <p className="truncate text-[13px] text-white/45">{data.target}</p>
+      {data.service_copy && <div className="mt-4 space-y-2">{([
+        ["Deskripsi layanan", data.service_copy.description],
+        ["Syarat & ketentuan layanan", data.service_copy.terms],
+        ["Panduan layanan", data.service_copy.instructions],
+      ] as const).filter(([, text]) => text).map(([label, text]) => <details key={label} className="rounded-xl border border-white/10 bg-white/[0.025] p-3"><summary className="cursor-pointer text-sm text-white/75">{label}</summary><p className="mt-3 whitespace-pre-line break-words text-sm leading-6 text-white/60">{text}</p></details>)}</div>}
 
-      {data.status === "awaiting_payment" && data.qris ? (
+
+      {data.status === "expired" ? <div className="mt-6 rounded-2xl border border-white/10 p-5 text-center"><h1 className="text-lg font-semibold">Pesanan kedaluwarsa</h1><p className="mt-2 text-sm text-white/60">Pembayaran tidak diterima sebelum batas waktu. Kredit yang terpakai dikembalikan ke kode asal setelah pemeriksaan otomatis.</p><a href="/pedia" className="mt-4 inline-flex min-h-11 items-center text-[#00E5FF]">Kembali ke katalog</a></div> : data.status === "awaiting_payment" && !data.qris ? <div className="mt-6 rounded-2xl border border-white/10 p-5 text-sm text-white/70">Menunggu pembayaran. QRIS belum tersedia. Lanjutkan kembali dari halaman checkout dengan data yang sama, atau hubungi admin dengan kode pesanan ini.</div> : data.status === "awaiting_payment" && data.qris ? (
         <div className="ax-glass-card mt-6 rounded-[20px] p-5 text-center">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={data.qris.image_url} alt="QRIS pembayaran" className="mx-auto h-56 w-56 rounded-xl bg-white p-2" />
-          <p className="mt-3 font-display text-xl font-bold text-white">Rp{Number(data.qris.payable_amount).toLocaleString("id-ID")}</p>
-          <p className="text-xs text-white/55">QRIS berlaku 15 menit. Halaman ini refresh otomatis.</p>
+          {qrExpired ? <><h1 className="text-lg font-semibold text-white">QRIS kedaluwarsa</h1><p className="mt-2 text-sm text-white/65">Batas pembayaran telah lewat. Jangan membayar QRIS ini. Status pesanan akan diperbarui otomatis.</p></> : <>
+            <h1 className="text-sm font-semibold text-white/75">Pembayaran QRIS</h1>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={data.qris.image_url} alt="QRIS pembayaran" className="mx-auto mt-3 h-56 w-56 rounded-xl bg-white p-2" />
+            <p className="mt-3 font-display text-xl font-bold text-white">Rp{Number(data.qris.payable_amount).toLocaleString("id-ID")}</p>
+            <p className="mt-1 text-xs text-white/55">Bayar sesuai nominal yang tertera. QRIS berlaku 15 menit.</p>
+            <div className="mt-4 grid grid-cols-2 gap-2"><a href={data.qris.image_url} download={`AXVARA-${data.code}-QRIS.png`} className="flex min-h-11 items-center justify-center rounded-xl border border-white/15 px-2 text-sm text-white/80">Simpan QRIS</a><button type="button" onClick={() => void load()} className="min-h-11 rounded-xl bg-[#00E5FF] px-2 text-sm font-semibold text-[#080C1E]">Cek pembayaran</button></div>
+            <p className="mt-3 text-xs text-white/50">Status pembayaran diperiksa otomatis.</p>
+          </>}
         </div>
       ) : (
         <div className="mt-6">

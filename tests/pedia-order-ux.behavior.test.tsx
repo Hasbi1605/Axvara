@@ -5,6 +5,8 @@ import { OrderClient } from "@/app/pedia/o/[slug]/order-client";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
 
+vi.mock("@/components/pedia/usePediaPrices", () => ({ usePediaPrices: () => null }));
+
 const product: PediaCatalogProduct = {
   slug: "followers-instagram", name: "Followers Instagram", platform: "instagram", metric: "followers", target_kind: "profile",
   tagline: "Followers untuk profil publik", packages: [100, 250, 500], step: 10, is_featured: 1, min_price: 2000,
@@ -30,14 +32,18 @@ function select() {
   fireEvent.click(screen.getByRole("radio", { name: /Followers Indonesia Stabil/i }));
   fireEvent.change(screen.getByLabelText("Jumlah yang dipesan"), { target: { value: "250" } });
 }
+function next() { fireEvent.click(screen.getAllByRole("button", { name: "Lanjut isi kontak" })[0]); }
+function back() { fireEvent.click(screen.getByRole("button", { name: "Ubah pesanan" })); }
 function complete() {
   select();
+  fireEvent.click(screen.getByRole("checkbox", { name: /Akun publik/ }));
+  next();
+  if (!screen.queryByLabelText("Nomor WhatsApp")) return;
   fireEvent.change(screen.getByLabelText("Nomor WhatsApp"), { target: { value: "081234567890" } });
   fireEvent.change(screen.getByLabelText("Email"), { target: { value: "buyer@example.com" } });
-  fireEvent.click(screen.getByRole("checkbox", { name: /Akun publik/ }));
   fireEvent.click(screen.getByRole("checkbox", { name: /Saya setuju/ }));
 }
-function proceed() { fireEvent.click(screen.getAllByRole("button", { name: "Lanjut ke pembayaran" })[0]); }
+function proceed() { fireEvent.click(screen.getAllByRole("button", { name: /^(Lanjut ke pembayaran|Lanjut isi kontak)$/ })[0]); }
 function consent() { fireEvent.click(screen.getAllByRole("button", { name: "Setujui & lanjut ke pembayaran" })[0]); }
 async function getQuote() {
   proceed();
@@ -61,7 +67,7 @@ describe("Pedia order UX", () => {
     expect(html).toContain('&lt;script&gt;alert(&quot;test&quot;)&lt;/script&gt;');
     expect(html).not.toContain("<script>");
     expect(document.getElementById("pedia-target-help")?.textContent).toBe("Masukkan link profil Instagram. Pastikan akun tidak privat.");
-    expect(screen.getByText("Format link sesuai: Instagram, profil.")).toBeTruthy();
+    expect(screen.getByText("Format link sesuai. Akun atau konten belum diverifikasi.")).toBeTruthy();
   });
 
   it("omits empty product copy and supports older fixtures without a description", () => {
@@ -71,16 +77,16 @@ describe("Pedia order UX", () => {
   });
   it("starts without selected tier, quantity or total, with honest per-tier initial prices", () => {
     mount();
-    expect(screen.getAllByRole("region").map((r) => r.getAttribute("aria-labelledby"))).toEqual(["pedia-package-heading", "pedia-target-heading", "pedia-contact-heading"]);
+    expect(screen.getAllByRole("region").map((r) => r.getAttribute("aria-labelledby"))).toEqual(["pedia-package-heading", "pedia-target-heading"]);
     expect(screen.getAllByRole("radio").every((r) => r.tagName === "INPUT" && !(r as HTMLInputElement).checked)).toBe(true);
     // Harga transparan per 1.000 (teks terbagi elemen .textContent gabungan).
-    expect(document.body.textContent).toContain("Rp20.000");
-    expect(document.body.textContent).toContain("Rp28.000");
-    expect(document.body.textContent).toContain("/1.000");
+    expect(document.body.textContent).toContain("Rp2.000");
+    expect(document.body.textContent).toContain("Rp3.000");
+    expect(document.body.textContent).toContain("untuk 100");
     expect(document.body.textContent).not.toMatch(/HYPE|Paling dipilih|Rp0|Paket tidak tersedia/i);
     expect(document.body.textContent).toContain("Belum dipilih");
     expect(screen.getByText("Refill 30 hari").className).toContain("text-[#00E5FF]");
-    expect(screen.getByText("Tanpa refill", { selector: "span" }).className).toContain("text-[#FFB800]");
+    expect(screen.getByText("Tanpa refill", { selector: "span" }).className).toContain("text-white/60");
     expect(screen.queryByRole("button", { name: "Periksa harga" })).toBeNull();
     proceed();
     expect(fetchMock).not.toHaveBeenCalled();
@@ -95,8 +101,8 @@ describe("Pedia order UX", () => {
     expect(screen.queryByLabelText("Kode kredit")).toBeNull();
     select();
     expect((screen.getByLabelText("Jumlah yang dipesan") as HTMLInputElement).value).toBe("250");
-    const buttons = screen.getAllByRole("button", { name: "Lanjut ke pembayaran" });
-    expect(buttons.every((b) => (b as HTMLButtonElement).disabled && b.previousElementSibling?.textContent?.includes("Pemesanan belum tersedia"))).toBe(true);
+    const buttons = screen.getAllByRole("button", { name: "Lanjut isi kontak" });
+    expect(buttons.every((b) => (b as HTMLButtonElement).disabled)).toBe(true);
     proceed();
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -121,10 +127,11 @@ describe("Pedia order UX", () => {
 
   it("requires valid contact and all requirements before quote", () => {
     mount(); select();
+    fireEvent.click(screen.getByRole("checkbox", { name: /Akun publik/ })); next();
     fireEvent.change(screen.getByLabelText("Nomor WhatsApp"), { target: { value: "invalid" } });
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "bad-email" } });
     proceed();
-    expect(screen.getAllByRole("alert")).toHaveLength(4);
+    expect(screen.getAllByRole("alert")).toHaveLength(3);
     expect(screen.getByLabelText("Nomor WhatsApp").getAttribute("aria-invalid")).toBe("true");
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -143,7 +150,7 @@ describe("Pedia order UX", () => {
     mount(); complete();
     fetchMock.mockResolvedValueOnce(reply({ quote_token: "signed", total: 7300, payable: 6300 }));
     await getQuote();
-    expect(screen.getAllByRole("status").every((s) => s.textContent?.includes("Harga paket berubah dari Rp7.000 menjadi Rp7.300"))).toBe(true);
+    expect(screen.getAllByRole("status").some((s) => s.textContent?.includes("Harga berubah dari Rp7.000 menjadi Rp7.300"))).toBe(true);
     expect(document.body.textContent).toContain("Rp6.300");
     expect(document.body.textContent).toContain("Kredit digunakan");
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -169,6 +176,7 @@ describe("Pedia order UX", () => {
     const buttons = screen.getAllByRole("button", { name: "Lanjut ke pembayaran" });
     fireEvent.click(buttons[0]); fireEvent.click(buttons[1]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    back();
     fireEvent.change(screen.getByLabelText("Jumlah yang dipesan"), { target: { value: "500" } });
     await act(async () => { resolve(reply({ quote_token: "old", total: 1, payable: 1 })); });
     expect(screen.queryByText(/Total pembayaran/)).toBeNull();
@@ -177,6 +185,7 @@ describe("Pedia order UX", () => {
 
   it.each(["Link profil Instagram", "Email", "Nomor WhatsApp", "Kode kredit"])("invalidates consent when %s changes", async (label) => {
     mount(); complete(); await getQuote();
+    if (label === "Link profil Instagram") back();
     fireEvent.change(screen.getByLabelText(label), { target: { value: label === "Email" ? "other@example.com" : "changed" } });
     expect(screen.queryByText(/Total pembayaran/)).toBeNull();
     expect(screen.queryByRole("button", { name: "Setujui & lanjut ke pembayaran" })).toBeNull();
@@ -193,17 +202,17 @@ describe("Pedia order UX", () => {
   });
 
   it("invalidates consent on tier, requirements or agreement changes", async () => {
-    mount(); complete(); await getQuote();
+    mount(); complete(); await getQuote(); back();
     fireEvent.click(screen.getByRole("radio", { name: /Followers Global Ekonomis/i }));
     expect(screen.queryByText(/Total pembayaran/)).toBeNull();
     fireEvent.change(screen.getByLabelText("Jumlah yang dipesan"), { target: { value: "100" } });
-    await getQuote();
+    next(); await getQuote(); back();
     fireEvent.click(screen.getByRole("checkbox", { name: /Akun publik/ }));
     expect(screen.queryByText(/Total pembayaran/)).toBeNull();
     proceed();
     expect(document.activeElement).toBe(screen.getByRole("checkbox", { name: /Akun publik/ }));
     fireEvent.click(screen.getByRole("checkbox", { name: /Akun publik/ }));
-    await getQuote();
+    next(); await getQuote();
     fireEvent.click(screen.getByRole("checkbox", { name: /Saya setuju/ }));
     expect(screen.queryByText(/Total pembayaran/)).toBeNull();
   });

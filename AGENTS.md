@@ -145,6 +145,12 @@ Repo ini tidak berdiri sendiri. Tiga folder lokal lain saling berkaitan:
 
 Aturan lintas-repo: (1) Env Pages bertipe `secret_text` SELALU (plain_text tidak terbawa deploy); (2) Jangan `wrangler pages deployment create` tanpa direktori (me-redeploy artefak lama = rollback prod); (3) Deploy hanya via CI (`git push origin main`); (4) Perintah Heroku akun #2 wajib prefix `HEROKU_API_KEY=<kunci-akun-2>`.
 
+### Pedia katalog/checkout 2026-10-15
+- Spesifikasi terkini: `docs/pedia/catalog-checkout-2026-10-15.md`; menggantikan snapshot UI/katalog 12 Oktober di bawah. 38 jenis/131 mapping awal/16 platform; migrasi 0065/0066, hanya mirror layak diaktifkan. UI 3 pilihan awal mobile/5 desktop; drop/refill tetap.
+- Harga jumlah bebas dari `/api/pedia/prices`; order/job/debit/ledger atomik D1. QR gagal diulang memakai quote sama. Cron Pedia mengembalikan kredit checkout kedaluwarsa sekali ke kode asal. Tidak ada flag dispatch baru; proses lewat cron existing.
+- Quote/snapshot memuat copy publik, supplier_target dan refill_anchor; perubahan mapping hanya untuk order baru. completed_at mencatat terminal pertama. Preview admin memakai copy dan batas tersimpan, tanpa API pesanan. Secret supplier tetap hanya di VPS; tidak ada perubahan kontrak proxy atau deployment VPS untuk rilis ini.
+- Status publikasi/verifikasi akhir ada di CHANGELOG dan `issue/pedia-ready-2026-10-15.md`; pengujian tanpa order supplier berbayar. Deskripsi supplier bukan bukti empiris kualitas/drop.
+
 ### Integrasi Pedia Dua Provider (Working-Tree 2026-10-12)
 - Status implementasi **lokal, BELUM deployed** di Pages maupun proxy untuk perubahan ini. Tidak ada flag yang diubah; kredensial/readiness supplier, bukti currency/rate-unit dan kurasi awal data produksi masih pending. Riwayat katalog 2026-10-08 tidak membuktikan diff baru live. Baca `docs/PEDIA-PRD.md`, `docs/PEDIA-DESIGN.md`, `docs/ARCHITECTURE.md` §16.10 dan `issue/planning.md`.
 - Kontrak proxy: `POST /psmm/:action` (`providersmm`) + `POST /indosmm/:action` (`indosmm`), auth `x-proxy-token` dari Pages `WARUNG_REBAHAN_PROXY_TOKEN` ↔ VPS `WR_PROXY_TOKEN`; allowlist services/add/status/refill/refill_status/cancel/balance. `PROVIDERSMM_API_KEY` dan `INDOSMM_API_KEY` HANYA server-side VPS, tidak ada key supplier di Pages/git/log. Jangan membuka file secret untuk audit docs.

@@ -46,7 +46,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try { snapshot = JSON.parse(String(item.snapshot_json)); } catch { /* legacy */ }
   const refillDays = Number(snapshot?.refill_days ?? item.refill_days) || 0;
   if (!isPediaProvider(item.supplier) || !item.supplier_order_id) return NextResponse.json({ error: "Refill tidak tersedia." }, { status: 409 });
-  const created = parseExpiry(String(item.created_at));
+  const created = parseExpiry(String(snapshot.refill_anchor === "completed" ? item.completed_at ?? "" : item.created_at));
   if (created === null || Date.now() > created + refillDays * 86400000) return NextResponse.json({ error: "Masa refill berakhir." }, { status: 409 });
   if (refillDays <= 0 || (item.status !== "completed" && item.status !== "partial")) {
     return NextResponse.json({ error: "Produk ini tidak bergaransi refill." }, { status: 409 });

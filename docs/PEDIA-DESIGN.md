@@ -1,5 +1,11 @@
 # PEDIA-DESIGN.md — Panduan Desain & Style AXVARA PEDIA
 
+## Pembaruan Pedia 2026-10-15 — spesifikasi terkini
+
+✅ Implementasi katalog per platform, perluasan dua supplier dan checkout dua tahap tersedia di kode; publikasi melalui push/CI. Spesifikasi serta dasar kurasi lengkap: [Katalog dan checkout Pedia](pedia/catalog-checkout-2026-10-15.md). Bagian berlabel Working-Tree 2026-10-12 di bawah adalah snapshot historis; aturan UI/katalog/checkout terkini mengikuti dokumen rilis ini.
+
+Katalog terkurasi berisi 38 jenis/131 mapping pada 16 platform, dengan 3 pilihan awal mobile dan 5 desktop, drop/refill tetap. Di mobile, pilihan yang sudah dipilih dirangkum dan dapat diganti. Target GitHub/website/platform baru didukung parser client/server. Harga jumlah bebas dihitung server; order/job/kredit/ledger atomik D1, retry QR sama, kredit pending kedaluwarsa dikembalikan. Copy ketentuan disimpan ke quote/order. Tidak ada order supplier berbayar atau klaim hasil kualitas/drop teruji dalam verifikasi ini.
+
 > **Status working-tree 2026-10-12:** implementasi lokal, **BELUM deployed** di Pages/proxy, tidak ada flag diubah. Audit source/diff bukan klaim QA diff terkini lulus. Readiness supplier, currency/rate-unit dan kurasi data awal produksi masih pending. Pasangan `docs/PEDIA-PRD.md` + `issue/planning.md`.
 > **Induk:** `docs/DESIGN.md` (design system AXVARA). Dokumen ini HANYA mencatat
 > tambahan & pengecualian untuk Pedia. Semua yang tidak disebut di sini mengikuti

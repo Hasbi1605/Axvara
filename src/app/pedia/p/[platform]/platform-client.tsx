@@ -1,63 +1,23 @@
-// Filter jenis client untuk halaman platform.
 "use client";
 
 import { useState } from "react";
-import { ProductCard, PlatformIcon, catalogCard } from "@/components/pedia/PlatformGrid";
+import { PlatformIcon } from "@/components/pedia/PlatformGrid";
+import { OrderClient } from "@/app/pedia/o/[slug]/order-client";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
+import { PEDIA_METRIC_LABEL } from "@/lib/pedia/platforms";
 
-const KINDS = ["Semua", "Followers", "Likes", "Views", "Lainnya"] as const;
-
-const KIND_MATCH: Record<string, string[]> = {
-  Followers: ["followers", "subscribers", "members"],
-  Likes: ["likes"],
-  Views: ["views", "plays"],
-};
-
-export function PlatformPageClient({ platform, name, products }: { platform: string; name: string; products: PediaCatalogProduct[] }) {
-  const [kind, setKind] = useState<(typeof KINDS)[number]>("Semua");
-  const [query, setQuery] = useState("");
-  const filtered = products.filter((p) => {
-    if (!`${p.name} ${p.platform} ${p.metric}`.toLowerCase().includes(query.trim().toLowerCase())) return false;
-    if (kind === "Semua") return true;
-    if (kind === "Lainnya") {
-      return !Object.values(KIND_MATCH).flat().includes(p.metric);
-    }
-    return (KIND_MATCH[kind] ?? []).includes(p.metric);
-  });
-  return (
-    <div className="mx-auto w-full max-w-[1280px] px-4 sm:px-6 lg:px-8 pt-6">
-      <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-gradient-to-br from-[#00E5FF]/10 to-white/[0.025] p-5">
-        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/5" aria-hidden="true">
-          <PlatformIcon id={platform} size={24} />
-        </span>
-        <div>
-          <h1 className="font-display text-[22px] font-bold text-white sm:text-[32px]">{name}</h1>
-          <p className="text-sm text-white/55">Pilih layanan untuk {name}.</p>
-        </div>
-      </div>
-      <label className="mt-5 block text-sm text-white/70">Cari layanan {name}<input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Nama layanan" className="mt-2 h-11 w-full rounded-xl border border-white/15 bg-white/[0.03] px-3 text-base text-white" /></label>
-      <div className="mt-4 flex flex-wrap gap-2" aria-label="Filter jenis">
-        {KINDS.map((k) => (
-          <button
-            key={k} aria-pressed={kind === k} onClick={() => setKind(k)}
-            className={`min-h-11 rounded-lg border px-4 text-sm font-medium ${kind === k ? "border-[#00E5FF]/60 bg-[#00E5FF]/10 text-white" : "border-white/15 text-white/70"}`}
-          >
-            {k}
-          </button>
-        ))}
-      </div>
-      {filtered.length === 0 ? (
-        <div className="mt-6 text-sm text-white/65"><p>Tidak ada layanan yang sesuai pencarian.</p><button type="button" onClick={() => { setKind("Semua"); setQuery(""); }} className="min-h-11 text-[#00E5FF]">Reset pencarian</button><a href="/pedia" className="ml-4 inline-flex min-h-11 items-center text-[#00E5FF]">Lihat platform lain</a></div>
-      ) : (
-        <div className="mt-4 grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((p) => (
-            <ProductCard
-              key={p.slug}
-              p={catalogCard(p)}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
+export function PlatformPageClient({ platform, name, products, initialSlug = "", initialTarget = "", ordersEnabled = false }: {
+  platform: string; name: string; products: PediaCatalogProduct[]; initialSlug?: string; initialTarget?: string; ordersEnabled?: boolean;
+}) {
+  const [slug, setSlug] = useState(initialSlug);
+  const [locked, setLocked] = useState(false);
+  const product = products.find((p) => p.slug === slug);
+  return <div className="mx-auto max-w-[1280px] px-4 pt-5 sm:px-6 lg:px-8">
+    <a href="/pedia#pedia-catalog" className="inline-flex min-h-10 items-center text-sm text-white/55 hover:text-white">← Pilih platform</a>
+    <div className="mt-2 flex items-center gap-3"><span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/5"><PlatformIcon id={platform} size={28} /></span><div><h1 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">{name}</h1><p className="mt-1 text-xs text-white/50">Pilih kebutuhanmu, lalu bandingkan layanan dan harganya.</p></div></div>
+    {products.length ? <>
+      <div className="mt-6"><h2 className="text-sm font-semibold text-white/85">Mau tambah apa?</h2><div className="mt-3 flex gap-2 overflow-x-auto pb-1" aria-label={`Jenis layanan ${name}`}>{products.map((p) => <button key={p.slug} type="button" aria-pressed={slug === p.slug} disabled={locked} onClick={() => setSlug(p.slug)} className={`min-h-11 shrink-0 whitespace-nowrap rounded-xl border px-4 text-sm transition disabled:opacity-40 ${slug === p.slug ? "border-[#00E5FF]/50 bg-[#00E5FF]/10 text-[#00E5FF]" : "border-white/12 bg-white/[0.03] text-white/70 hover:border-white/30"}`}>{p.name.replace(new RegExp(`\\s*${name}\\s*`, "ig"), " ").trim() || PEDIA_METRIC_LABEL[p.metric] || p.name}<span className="ml-2 text-[10px] opacity-50">{p.tiers.length}</span></button>)}</div></div>
+      {product ? <OrderClient key={product.slug} product={product} initialTarget={initialTarget} ordersEnabled={ordersEnabled} withinPlatform onLockedChange={setLocked} /> : <div className="mb-8 mt-5 rounded-2xl border border-dashed border-white/15 px-5 py-8 text-sm leading-6 text-white/55">Pilih jenis layanan di atas untuk melihat pilihan, harga, dan cara pemesanannya.</div>}
+    </> : <p className="my-8 rounded-2xl border border-white/10 p-5 text-sm text-white/60">Belum ada layanan tersedia untuk platform ini. <a href="/pedia" className="text-[#00E5FF]">Lihat platform lain</a></p>}
+  </div>;
 }

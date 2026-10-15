@@ -369,7 +369,7 @@ export async function incrementSoldCountForOrder(orderCode: string): Promise<voi
   const d1 = getD1();
   if (d1) {
     try {
-      const order = await d1.prepare("SELECT items FROM orders WHERE code=?").bind(orderCode).first() as { items: string } | null;
+      const order = await d1.prepare("SELECT items FROM orders WHERE code=? AND COALESCE(order_kind,'apps')!='pedia'").bind(orderCode).first() as { items: string } | null;
       if (!order?.items) return;
       const items = JSON.parse(order.items) as { product_id: number; qty: number }[];
       if (!items.length) return;

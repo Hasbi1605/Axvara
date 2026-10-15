@@ -20,7 +20,7 @@ export function PediaBottomNav() {
   const path = usePathname() ?? "";
   // 2026-10-08: halaman order punya sticky bar sendiri (total + Bayar) —
   // bottom nav disembunyikan agar tidak menumpuk (dua fixed = jelek mobile).
-  if (path.startsWith("/pedia/o/")) return null;
+  if (path.startsWith("/pedia/o/") || path.startsWith("/pedia/p/")) return null;
   return (
     <nav
       aria-label="Navigasi Pedia"
