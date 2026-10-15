@@ -415,6 +415,13 @@
   di atas kartu mono. Prinsipnya: JANGAN pernah tampilkan
   kontrol yang pasti gagal ke pembeli yang baru membayar — form mati lebih
   bikin panik daripada tidak ada form.
+  **Auto-scroll 2026-10-15:** saat isi akun terverifikasi muncul, panel
+  menggulir sekali setelah commit DOM (frame berikutnya), ke posisi panel
+  dikurangi jarak navbar 96px lewat `window.scrollTo`. Gerak halus
+  secara default; reduced motion memakai `instant` karena `auto` masih
+  mengikuti CSS global smooth. Form verifikasi/respons kosong/gagal tidak
+  memicu scroll akun. Rerender/polling/accordion tidak menarik posisi baca
+  kembali; frame dibatalkan saat panel dilepas. Berlaku di pesanan dan lacak.
   Hasil "Detail Akun Digital" SELALU multi-baris rapi per field (2026-09-18
   sore, live): `normalizeAccountDetailsForDisplay` mengupas envelope JSON
   (`{product,details}`), menormalisasi `\r\n`, memisah `key: value` /

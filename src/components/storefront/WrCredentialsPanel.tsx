@@ -26,6 +26,25 @@ export function WrCredentialsPanel({ code, prefillContact = "", contactHint = ""
   const [error, setError] = useState<string | null>(null);
   const [creds, setCreds] = useState<Credential[] | null>(null);
   const [token, setToken] = useState<string | null>(null);
+  const accountRef = useRef<HTMLElement | null>(null);
+  const scrolledForCode = useRef<string | null>(null);
+  const hasCredentials = Boolean(creds?.length);
+
+  useEffect(() => {
+    if (!hasCredentials || scrolledForCode.current === code) return;
+    // Tunggu isi akun terpasang di DOM; polling/rerender tidak menarik
+    // pembeli kembali saat sedang membaca panduan atau membuka accordion.
+    const frame = requestAnimationFrame(() => {
+      const account = accountRef.current;
+      if (!account) return;
+      const reducedMotion = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      // `auto` masih mengikuti html { scroll-behavior: smooth }.
+      const top = Math.max(0, window.scrollY + account.getBoundingClientRect().top - 96);
+      window.scrollTo({ top, behavior: reducedMotion ? "instant" : "smooth" });
+      scrolledForCode.current = code;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [code, hasCredentials]);
 
   // Akses ulang otomatis bila capability token tersimpan di perangkat ini.
   // prefillContact (hasil lacak yang kontaknya sudah diverifikasi server) atau
@@ -110,7 +129,7 @@ export function WrCredentialsPanel({ code, prefillContact = "", contactHint = ""
 
   if (creds?.length) {
     return (
-      <section className="ax-glass-card mt-6 rounded-2xl p-4 text-left" aria-label="Detail akun digital">
+      <section ref={accountRef} className="ax-glass-card mt-6 rounded-2xl p-4 text-left" aria-label="Detail akun digital">
         <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">Detail Akun Digital</p>
         <div className="mt-3 space-y-3">
           {creds.map((c, i) => (

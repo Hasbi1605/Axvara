@@ -207,7 +207,14 @@ export default function LacakPesananClient() {
         setError(null);
         lastQuery.current = { code: cleanCode, wa: cleanWa };
         saveRecent({ code: cleanCode, wa: cleanWa });
-        requestAnimationFrame(() => resultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+        requestAnimationFrame(() => {
+          const result = resultRef.current;
+          // Isi akun yang sudah tampil punya auto-scroll sendiri: jangan
+          // ditarik kembali ke ringkasan oleh callback hasil lacak yang telat.
+          if (!result || result.querySelector('[aria-label="Detail akun digital"]')) return;
+          const reducedMotion = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+          result.scrollIntoView({ behavior: reducedMotion ? "instant" : "smooth", block: "start" });
+        });
       }
     } catch (lookupError) {
       const message = lookupError instanceof Error ? lookupError.message : "Gagal melacak pesanan.";
@@ -521,7 +528,7 @@ export default function LacakPesananClient() {
             </div>
           )}
           {isPaid && order.credentialsReady && (
-            <WrCredentialsPanel code={order.code} prefillContact={wa} />
+            <WrCredentialsPanel key={order.code} code={order.code} prefillContact={wa} />
           )}
           {isPaid && !order.credentialsReady && order.supplierRunning && (
             <p className="mt-5 flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-left text-xs leading-6 text-white/60" role="status">

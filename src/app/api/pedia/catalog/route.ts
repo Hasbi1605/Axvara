@@ -77,10 +77,14 @@ const PEDIA_PLATFORM_CARD_SLUGS = new Set([
   "instagram", "tiktok", "youtube", "facebook", "threads", "spotify", "shopee", "x",
 ]);
 
+/** Shopee/Spotify memakai path -v2 (cache-busting 2026-10-15 — sinkron
+ *  dengan PLATFORM_CARD_IMAGE di PlatformGrid). */
+const PEDIA_PLATFORM_CARD_V2 = new Set(["spotify", "shopee"]);
+
 function platformCardImage(platform: string): string | null {
-  return PEDIA_PLATFORM_CARD_SLUGS.has(platform)
-    ? `/r2/products/pedia-platform-${platform}.webp`
-    : null;
+  if (!PEDIA_PLATFORM_CARD_SLUGS.has(platform)) return null;
+  const suffix = PEDIA_PLATFORM_CARD_V2.has(platform) ? "-v2" : "";
+  return `/r2/products/pedia-platform-${platform}${suffix}.webp`;
 }
 
 export async function GET() {

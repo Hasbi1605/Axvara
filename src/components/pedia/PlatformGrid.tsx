@@ -67,15 +67,17 @@ export type ProductCardData = {
 };
 
 /** Path gambar kartu per platform — satu sumber dengan `platformCardImage`
- *  di catalog API (keduanya path R2 statis, bukan kolom DB). */
+ *  di catalog API (keduanya path R2 statis, bukan kolom DB).
+ *  Shopee/Spotify memakai suffix -v2 (cache-busting 2026-10-15: route /r2
+ *  immutable 1 thn, timpa path yang sama tidak menembus cache browser). */
 export const PLATFORM_CARD_IMAGE: Record<string, string> = {
   instagram: "/r2/products/pedia-platform-instagram.webp",
   tiktok: "/r2/products/pedia-platform-tiktok.webp",
   youtube: "/r2/products/pedia-platform-youtube.webp",
   facebook: "/r2/products/pedia-platform-facebook.webp",
   threads: "/r2/products/pedia-platform-threads.webp",
-  spotify: "/r2/products/pedia-platform-spotify.webp",
-  shopee: "/r2/products/pedia-platform-shopee.webp",
+  spotify: "/r2/products/pedia-platform-spotify-v2.webp",
+  shopee: "/r2/products/pedia-platform-shopee-v2.webp",
   x: "/r2/products/pedia-platform-x.webp",
 };
 

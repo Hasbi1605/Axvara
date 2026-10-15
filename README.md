@@ -279,6 +279,8 @@ halaman menampilkan skeleton yang sama + poll rapat, dan setiap poll memicu tari
 status vendor di server (gerbang throttle 20 detik per order) — detail tampil hitungan
 detik setelah supplier COMPLETED, tanpa menunggu cron dan tanpa klik admin; kalimat
 "Stok otomatis habis"/"disiapkan admin" tidak pernah tampil untuk order supplier.
+Auto-scroll detail akun (2026-10-15, implementasi; publikasi CI): halaman pesanan dan hasil lacak bergulir sekali ke **Detail Akun Digital** setelah isi akun berhasil ditampilkan, termasuk sesudah polling pembayaran/pengiriman. Form verifikasi belum memicu scroll akun. Jarak 96px menjaga judul dari navbar; reduced motion berpindah langsung. Rerender/accordion tidak mengulang scroll, dan kode pesanan baru memakai panel baru agar tidak memakai detail sebelumnya.
+
 Panel kredensial kini diikuti blok Syarat & Ketentuan + Cara Aktivasi per item
 (resolver yang sama dengan halaman produk); detail akun WR berbentuk
 `{label, value}` dari supplier ditampilkan rapi "Label: nilai" per baris.
