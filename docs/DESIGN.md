@@ -705,7 +705,7 @@
 **Status:** implementasi lokal, BELUM deployed; tidak ada perubahan flag. Bagian ini menggantikan spesifikasi overhaul 2026-10-11 (semua produk di awal, dua tombol quote/order, footer khusus Pedia). Bukti QA overhaul lama tidak otomatis membuktikan diff terkini; spesifikasi detail ada di `PEDIA-DESIGN.md`.
 
 - Menu `ServicesMenu` di kedua navbar berisi Market/Pedia, ikon/nama/fungsi lengkap, tanpa placeholder AI. Disclosure memakai keyboard native + panah/Home/End, Escape mengembalikan fokus; panel mobile fixed dan desktop absolute. `CrossServicePromo` saling menautkan beranda dengan UTM; CommunityBar Market menjadi Pedia + Bot Telegram Market (2026-10-12: dua kartu kembar compact `min-h-[64px]`, tanpa eyebrow "LAYANAN AXVARA"/"KANAL ORDER MARKET", satu gaya `ax-glass-card` yang sama, panah `ArrowUpRight` yang sama di kedua kartu, `flex-row` berdampingan di mobile; deskripsi `line-clamp-2` agar tinggi sejajar 64px), grup WA tetap footer dan `/link`.
-- Satu `Footer` untuk kedua layout: brand ekosistem, sosial, layanan/kategori Market, bantuan/ketentuan/pelacakan kedua layanan, newsletter dan komunitas. Tautan lintas host absolut; tidak ada janji global Bergaransi/Aktivasi 5–15 menit. Padding mobile memperhitungkan bottom nav/sticky CTA dan safe area.
+- Satu `Footer` untuk kedua layout: brand ekosistem, sosial + WhatsApp, Layanan AXVARA (Market/Pedia saja), bantuan/ketentuan/pelacakan kedua layanan, newsletter dan pill komunitas. Revisi 2026-10-15: kategori, Semua produk, AI & teknologi serta teks chat/jam layanan dihapus dari footer; detail ikon/pill di §9. Tautan lintas host absolut; tidak ada janji global Bergaransi/Aktivasi 5–15 menit. Padding mobile memperhitungkan bottom nav/sticky CTA dan safe area.
 - Hero glass terukur dengan glow cyan statis, judul "Satu tempat untuk / Layanan sosial media" (putih) + typewriter cyan Termurah / Termudah / Terpercaya (2026-10-12 atas permintaan owner). Area suffix stabil, visual aria-hidden dan teks lengkap sr-only; reduced motion statis, timer berhenti saat tab tersembunyi.
 - Beranda Pedia 1:1 Market (2026-10-12): container `max-w-[1280px] px-4 sm:px-6 lg:px-8` (layout Pedia, dulu 1120/px-4); hero TANPA card — glow section-level cyan+gold ala Market, h1 `font-display` 700 42/56px tight "Satu tempat untuk / Layanan sosial media" putih + Typewriter cyan Termurah / Termudah / Terpercaya (atas permintaan owner), sub 15px/white-60, tanpa eyebrow AXVARA PEDIA; kartu ganda `PediaServiceCards` (Market + Bot Telegram, kembar compact `min-h-[64px]` `ax-glass-card` + panah sama, `flex-row` mobile); judul katalog `font-display` 20/24px; fallback Jelajahi layanan TANPA sub-teks.
 - Form tetap tiga kelompok/radio native/paket-only, tier/jumlah awal null. Harga awal tiap tier menyebut jumlah; ringkasan Belum dipilih sampai memilih. Ganti tier yang tidak mendukung jumlah mengosongkan jumlah, bukan memilih diam-diam. ETA mulai/selesai dan refill bersyarat tetap faktual.
@@ -807,18 +807,20 @@ dimatikan.
 - **Logo QRIS resmi:** `public/brand/qris.svg` (mono putih, sumber resmi BI via Wikimedia Commons; JANGAN ketik ulang dengan font / comot JPG)
 - **Logo:** Wordmark "AXVARA" Space Grotesk Bold, X stylized sebagai vault gate (gap di tengah X dengan glow cyan). Versi light di dark bg. SVG.
 - **Ikon:** Lucide React (outline, 20px, stroke 1.75)
-- **Tombol ikon sosmed footer (2026-10-03, permintaan owner):** 4 tombol
-  ikon-only TANPA label teks — Instagram, Threads, TikTok, Facebook —
-  di kolom brand footer (di bawah pill Bergaransi/Aktivasi/Support WA).
-  Path SVG dari Simple Icons versi terbaru (`fill="currentColor"`,
-  viewBox 24×24 seragam, satu tone `text-white/60` + hover cyan —
-  TANPA warna brand asli): Instagram + TikTok + Facebook glyph terkini,
-  Threads = mark redesain Meta 2026 (PR simple-icons #14879, sumber
-  `meta.com/brand/resources/instagram/threads`). Tombol `h-10 w-10`
-  (tap target ≥44px) `rounded-full` glass, `aria-label` + `title`,
-  `_blank noreferrer` ke URL `SITE.social`. `sameAs` JSON-LD ikut
-  memuat 4 sosmed + Telegram. Dikunci
-  `tests/footer-social.behavior.test.tsx`.
+- **Ikon dan pill footer bersama (2026-10-15, implementasi; publikasi CI):**
+  baris ikon berurutan Instagram, Threads, TikTok, Facebook, WhatsApp.
+  Empat sosial memakai SVG Simple Icons satu tone `text-white/60`;
+  WhatsApp memakai `/brand/whatsapp.svg` dengan warna brand asli.
+  Tombol bulat glass `h-11 w-11` (44px), `aria-label` + `title`,
+  `_blank noreferrer`; WhatsApp menuju `https://axvara.tech/wa?pesan=Halo%20AXVARA`.
+  Di bawahnya pill **Grup WA** hijau `#25D366` dan **Bot Order Telegram**
+  biru `#2AABEE`, background transparan 10%, border 25%, teks 11px,
+  tinggi minimum 36px, ikon brand WA 18px/Telegram 16px dari aset lokal.
+  Pill membungkus bila ruang sempit; label aksesibel bot menyebut Market.
+  Navigasi Layanan AXVARA/Bantuan berdampingan di mobile, brand/newsletter
+  selebar dua kolom; desktop empat kolom. Tanpa kategori maupun teks jam
+  chat. `sameAs` JSON-LD tetap empat sosial + Telegram.
+  Dikunci `tests/{footer-social,ecosystem-navigation}.behavior.test.tsx`.
 - **Foto produk (standar 2026-09-15, revisi compose):** Muse Image `compose`
   dengan 2 referensi asli pemilik (`canva.webp` + `gsuite.webp`, 1600×900)
   sebagai kunci gaya — BUKAN prompt-only. Hasil: tight close-up tile huge

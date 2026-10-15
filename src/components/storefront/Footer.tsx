@@ -2,12 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
-import { SITE, TG_BOT_HREF, WA_GROUP_HREF } from "@/lib/site";
+import { useState } from "react";
+import { AXVARA_SERVICES, SITE, TG_BOT_HREF, WA_GROUP_HREF, waHubLink } from "@/lib/site";
 import { useStoreSettings } from "@/hooks/useStoreSettings";
-import { waHubLink } from "@/lib/site";
-
-type FooterCategory = { id: number; name: string; slug: string };
 
 // Ikon brand satu tone (fill=currentColor) dari Simple Icons versi terbaru
 // (2026-10-03, diverifikasi via cdn.jsdelivr.net/npm/simple-icons@latest):
@@ -37,21 +34,10 @@ export function Footer() {
   const shop = (path: string) => `${SITE.webUrl}${path}`;
   const pedia = (path: string) => `${SITE.pediaUrl}/pedia${path}`;
   const pathname = usePathname();
-  const [categories, setCategories] = useState<FooterCategory[]>([]);
   const storeSettings = useStoreSettings();
   const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
-
-  useEffect(() => {
-    if (pathname?.startsWith("/admin")) return;
-    const controller = new AbortController();
-    fetch("/api/categories", { signal: controller.signal })
-      .then(async (response) => response.ok ? response.json() : Promise.reject(new Error("Kategori gagal dimuat")))
-      .then((categoryBody) => setCategories(Array.isArray(categoryBody.categories) ? categoryBody.categories : []))
-      .catch((error) => { if (!(error instanceof DOMException && error.name === "AbortError")) setCategories([]); });
-    return () => controller.abort();
-  }, [pathname]);
 
   if (pathname?.startsWith("/admin")) return null;
   // Halaman link-in-bio (/link) + hub WA (/wa) tampil tanpa chrome global agar fokus.
@@ -84,8 +70,8 @@ export function Footer() {
       <div className="pointer-events-none absolute -top-28 left-1/2 h-[260px] w-[860px] -translate-x-1/2 rounded-full opacity-[0.06] blur-[40px]" style={{ background: "radial-gradient(ellipse at center, #00E5FF, transparent 70%)" }} />
 
       <div className="relative mx-auto max-w-[1280px] px-4 py-12 sm:px-6 sm:py-14 lg:px-8">
-        <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-[1.3fr_0.85fr_0.85fr_1.1fr] lg:gap-10">
-          <div>
+        <div className="grid grid-cols-2 gap-8 lg:grid-cols-[1.3fr_0.85fr_0.85fr_1.1fr] lg:gap-10">
+          <div className="col-span-2 sm:col-span-1">
             <div className="flex items-center gap-2.5">
               {storeSettings.logoUrl ? <span className="flex h-[22px] w-[24px] items-center justify-center">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -114,27 +100,42 @@ export function Footer() {
                   </svg>
                 </a>
               ))}
+              <a
+                href={shop(waHubLink())}
+                target="_blank"
+                rel="noreferrer"
+                aria-label="WhatsApp AXVARA"
+                title="WhatsApp AXVARA"
+                className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] transition hover:border-[#25D366]/40 hover:bg-[#25D366]/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#25D366]"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/brand/whatsapp.svg" alt="" width={24} height={24} className="h-6 w-6" />
+              </a>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <a href={WA_GROUP_HREF} target="_blank" rel="noreferrer" className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-[#25D366]/25 bg-[#25D366]/10 px-2.5 text-[11px] font-medium text-green-200 transition hover:bg-[#25D366]/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#25D366]">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/brand/whatsapp.svg" alt="" width={18} height={18} className="h-[18px] w-[18px] shrink-0" />
+                Grup WA
+              </a>
+              <a href={TG_BOT_HREF} target="_blank" rel="noreferrer" aria-label="Bot Order Telegram Market" title="Order aplikasi dan tools premium di AXVARA Market" className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-[#2AABEE]/25 bg-[#2AABEE]/10 px-2.5 text-[11px] font-medium text-sky-200 transition hover:bg-[#2AABEE]/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#2AABEE]">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/brand/telegram.svg" alt="" width={16} height={16} className="h-4 w-4 shrink-0" />
+                Bot Order Telegram
+              </a>
             </div>
           </div>
 
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/40">Layanan &amp; jelajah</p>
+          <nav aria-label="Layanan AXVARA">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/40">Layanan AXVARA</p>
             <ul className="mt-3.5 text-[13px] [&_a]:flex [&_a]:min-h-9 md:[&_a]:min-h-7 [&_a]:items-center">
-              <li><Link prefetch={false} href={shop("/")} className="text-white/60 transition hover:text-white">AXVARA Market</Link></li>
-              <li><Link prefetch={false} href={shop("/#katalog")} className="text-white/60 transition hover:text-white">Semua produk</Link></li>
-              <li>
-                <Link prefetch={false} href={pedia("?utm_source=axvara&utm_medium=footer")} className="text-white/60 transition hover:text-white">
-                  AXVARA Pedia
-                </Link>
-              </li>
-              <li><Link prefetch={false} href={shop("/artikel")} className="text-white/60 transition hover:text-white">AI & teknologi</Link></li>
-              {categories.map((category) => (
-                <li key={category.id}><a href={shop(`/?category=${encodeURIComponent(category.slug)}#katalog`)} className="text-white/60 transition hover:text-white">{category.name}</a></li>
+              {AXVARA_SERVICES.map((service) => (
+                <li key={service.id}><Link prefetch={false} href={service.id === "pedia" ? `${service.href}?utm_source=axvara&utm_medium=footer` : service.href} className="text-white/60 transition hover:text-white">{service.name}</Link></li>
               ))}
             </ul>
-          </div>
+          </nav>
 
-          <div>
+          <nav aria-label="Bantuan AXVARA">
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/40">Bantuan</p>
             <ul className="mt-3.5 text-[13px] [&_a]:flex [&_a]:min-h-9 md:[&_a]:min-h-7 [&_a]:items-center">
               <li><Link prefetch={false} href={shop("/cara-order")} className="text-white/60 transition hover:text-white">Cara order</Link></li>
@@ -143,13 +144,10 @@ export function Footer() {
               <li><Link prefetch={false} href={pedia("/bantuan")} className="text-white/60 transition hover:text-white">Bantuan Pedia</Link></li>
               <li><Link prefetch={false} href={pedia("/ketentuan")} className="text-white/60 transition hover:text-white">Ketentuan Pedia</Link></li>
               <li><Link prefetch={false} href={shop("/garansi-replace")} className="text-white/60 transition hover:text-white">Ketentuan Market</Link></li>
-              <li><a href={shop(waHubLink(`Halo ${storeSettings.name}`))} target="_blank" rel="noreferrer" className="text-[#00E5FF]/90 transition hover:text-white">Chat WA - {storeSettings.supportHours}</a></li>
-              <li><a href={WA_GROUP_HREF} target="_blank" rel="noreferrer" className="text-white/60 transition hover:text-white">Grup WhatsApp</a></li>
-              <li><a href={TG_BOT_HREF} target="_blank" rel="noreferrer" className="text-white/60 transition hover:text-white">Bot Telegram Market</a></li>
             </ul>
-          </div>
+          </nav>
 
-          <div className="rounded-[20px] border border-white/10 bg-white/[0.04] p-4 sm:p-5 lg:self-start">
+          <div className="col-span-2 rounded-[20px] border border-white/10 bg-white/[0.04] p-4 sm:col-span-1 sm:p-5 lg:self-start">
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">Tetap update</p>
             <p className="mt-2 text-[13px] leading-5 text-white/55">Info produk, promo, dan artikel terbaru lewat email.</p>
             <form onSubmit={subscribe} className="mt-4 flex gap-2">

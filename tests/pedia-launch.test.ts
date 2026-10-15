@@ -143,7 +143,8 @@ describe("integrasi pusat M6 (PD-60–64)", () => {
     expect(link).toContain("kartu Pedia DISEMBUNYIKAN");
     expect(link).toContain("utm_medium=link_bio");
     const footer = read("src/components/storefront/Footer.tsx");
-    expect(footer).toContain("AXVARA Pedia");
+    expect(footer).toContain("AXVARA_SERVICES.map");
+    expect(read("src/lib/site.ts")).toContain('name: "AXVARA Pedia"');
     expect(footer).toContain("utm_medium=footer");
     const digest = read("src/lib/telegram/promo-digest.ts");
     expect(digest).toContain("PEDIA_PROMO_DIGEST_ENABLED");

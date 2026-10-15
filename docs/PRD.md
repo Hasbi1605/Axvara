@@ -58,6 +58,8 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 
 ## 2. Requirements
 
+**Footer bersama — 2026-10-15 ✅ implementasi, publikasi melalui CI:** Market dan Pedia menampilkan ikon WhatsApp tepat setelah Facebook, tanpa teks, menuju `https://axvara.tech/wa?pesan=Halo%20AXVARA`. Teks chat/jam layanan di footer dihapus. Di bawah ikon sosial terdapat pill kecil **Grup WA** (hijau) dan **Bot Order Telegram** (biru), menggunakan logo brand asli; bot tetap kanal order Market. Navigasi footer hanya **Layanan AXVARA** (Market/Pedia dari daftar layanan terpusat; layanan berikutnya ditambahkan saat tersedia) dan **Bantuan** (cara order, pelacakan, bantuan/ketentuan kedua layanan). Daftar kategori, Semua produk, dan AI & teknologi dihapus dari footer; newsletter tetap tersedia.
+
 ### 2.1 Functional — Pembeli (Storefront)
 
 | ID | Requirement | Prioritas |

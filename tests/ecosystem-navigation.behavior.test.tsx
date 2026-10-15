@@ -87,14 +87,12 @@ describe("shared service navigation", () => {
 });
 
 describe("shared footer", () => {
-  it("has identical content and host-correct destinations on Market and Pedia", async () => {
+  it("has identical content and host-correct destinations on Market and Pedia", () => {
     const market = render(<Footer />);
-    await screen.findByRole("link", { name: "Tools" });
     const content = screen.getByRole("contentinfo").innerHTML;
     market.unmount();
     route.pathname = "/pedia";
     render(<Footer />);
-    await screen.findByRole("link", { name: "Tools" });
     expect(screen.getByRole("contentinfo").innerHTML).toBe(content);
     const expected = {
       "AXVARA Market": `${SITE.webUrl}/`,
@@ -104,13 +102,52 @@ describe("shared footer", () => {
       "Bantuan Pedia": `${SITE.pediaUrl}/pedia/bantuan`,
       "Ketentuan Pedia": `${SITE.pediaUrl}/pedia/ketentuan`,
       "Ketentuan Market": `${SITE.webUrl}/garansi-replace`,
-      "Grup WhatsApp": WA_GROUP_HREF,
-      "Bot Telegram Market": TG_BOT_HREF,
-      "Tools": `${SITE.webUrl}/?category=tools#katalog`,
+      "WhatsApp AXVARA": "https://axvara.tech/wa?pesan=Halo%20AXVARA",
+      "Grup WA": WA_GROUP_HREF,
+      "Bot Order Telegram Market": TG_BOT_HREF,
     };
     for (const [name, href] of Object.entries(expected)) expect(screen.getByRole("link", { name }).getAttribute("href")).toBe(href);
-    expect(screen.getByRole("link", { name: /Chat WA/ }).getAttribute("href")).toMatch(/^https:\/\/axvara.tech\/wa\?pesan=/);
     expect(content).not.toMatch(/Bergaransi|Aktivasi 5/);
+  });
+
+  it.each(["/", "/pedia"])("shows only ecosystem services and help without fetching categories (%s)", (pathname) => {
+    route.pathname = pathname;
+    render(<Footer />);
+    const services = screen.getByRole("navigation", { name: "Layanan AXVARA" });
+    expect(within(services).getAllByRole("link").map((link) => link.textContent)).toEqual(AXVARA_SERVICES.map((service) => service.name));
+    expect(within(screen.getByRole("navigation", { name: "Bantuan AXVARA" })).getAllByRole("link")).toHaveLength(6);
+    expect(screen.queryByText("Tools")).toBeNull();
+    expect(screen.queryByRole("link", { name: "Semua produk" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "AI & teknologi" })).toBeNull();
+    expect(screen.queryByText(/Chat WA|09.00/)).toBeNull();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("places icon-only WhatsApp after Facebook and community pills below the icons", () => {
+    render(<Footer />);
+    const facebook = screen.getByRole("link", { name: "Facebook AXVARA" });
+    const whatsapp = screen.getByRole("link", { name: "WhatsApp AXVARA" });
+    expect(facebook.nextElementSibling).toBe(whatsapp);
+    expect(whatsapp.textContent?.trim()).toBe("");
+    expect(whatsapp.querySelector("img")?.getAttribute("src")).toBe("/brand/whatsapp.svg");
+    const group = screen.getByRole("link", { name: "Grup WA" });
+    const bot = screen.getByRole("link", { name: "Bot Order Telegram Market" });
+    expect(whatsapp.parentElement?.nextElementSibling).toBe(group.parentElement);
+    expect(group.parentElement).toBe(bot.parentElement);
+    expect(group.querySelector("img")?.getAttribute("src")).toBe("/brand/whatsapp.svg");
+    expect(bot.querySelector("img")?.getAttribute("src")).toBe("/brand/telegram.svg");
+    for (const link of [whatsapp, group, bot]) {
+      expect(link.getAttribute("target")).toBe("_blank");
+      expect(link.getAttribute("rel")).toBe("noreferrer");
+      expect(link.querySelector("img")?.getAttribute("alt")).toBe("");
+    }
+  });
+
+  it.each(["/admin", "/link", "/wa"])("stays hidden without category requests on focused routes (%s)", (pathname) => {
+    route.pathname = pathname;
+    render(<Footer />);
+    expect(screen.queryByRole("contentinfo")).toBeNull();
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it.each(["/", "/pedia"])("submits newsletter same-origin and shows success (%s)", async (pathname) => {
