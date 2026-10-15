@@ -550,7 +550,7 @@ Sumber kunci lokal: `axvara/.providersmm-credentials` (git-ignored, chmod 600). 
 
 ## 10. Admin — tab "Pedia"
 
-Grup sidebar **Katalog**, menu **Pedia**, deep-link `?section=pedia&tab=…`. Gaya Admin UI existing (bukan glass berat).
+Grup sidebar **Katalog**, menu **Pedia**, deep-link `?section=pedia&tab=…`. Gaya Admin UI mengikuti Produk Market. Revisi 2026-10-15: tabel kaca berheader untuk Produk/Layanan/Pesanan/Kredit, harga tingkat dan riwayat saldo; toolbar filter kompak, CTA cyan, tombol Edit putih dan sakelar publikasi sejajar. Kesiapan tetap terpisah dari status publikasi; wrapper tabel membatasi scroll horizontal di layar kecil. Endpoint dan guard pemulihan tidak berubah.
 
 | Sub-tab | Isi |
 |---|---|

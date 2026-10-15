@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, useCallback, useRef } from "react";
 import type { ReportSelection } from "@/lib/revenue";
+import { formatWibDateTime } from "@/lib/utils";
 import { AdminShell, type AdminSection } from "@/components/admin/AdminShell";
 import { AgentIntegration } from "@/components/admin/AgentIntegration";
 import { useToast } from "@/components/ui/Toast";
@@ -121,13 +122,18 @@ export default function AdminPage() {
 
   return (
     <AdminShell section={tab} onSection={(section)=>navigateAdmin(section)} badges={{ orders: overview.pending_orders, payments: overview.payment_attention, bot: overview.fulfillment_attention }}>
-      <div className="mt-4 flex items-center gap-2 text-[11px] text-white/35">
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-[11px] text-white/35" data-testid="admin-session-header">
+        <div className="flex flex-wrap items-center gap-2">
         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Masuk sebagai <span className="text-white/60">{auth.authEmail || "admin"}</span> <span className="opacity-40">·</span> maks. 8 jam <span className="opacity-40">·</span> idle 2 jam
+        </div>
+        {tab === "summary" && !overviewLoading && !overviewError && overview.selected_report && <p>
+          {overview.selected_report.from} – {overview.selected_report.to} · {overview.selected_report.timezone} · Dibuat {formatWibDateTime(overview.selected_report.generated_at)} WIB
+        </p>}
       </div>
 
       {pm.listError && <div className="mt-4 rounded-2xl bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-200 flex items-center justify-between gap-3"><span>{pm.listError}</span><button onClick={pm.load} className="h-8 px-3 rounded-full bg-white text-[#070a1e] text-xs font-bold shrink-0 transition hover:bg-white/90">Coba lagi</button></div>}
 
-      {tab==="summary" && <AdminOverview data={overview} loading={overviewLoading} error={overviewError} onRetry={loadOverview} selection={reportSelection} onSelectionChange={changeReportSelection} onLowStock={() => navigateAdmin("products", { low_stock: "1" })} />}
+      {tab==="summary" && <AdminOverview data={overview} loading={overviewLoading} error={overviewError} onRetry={loadOverview} selection={reportSelection} onSelectionChange={changeReportSelection} />}
       {tab==="orders" && <OrdersManager onChanged={loadOverview} />}
       {tab==="categories" && <CategoryManager />}
       {tab==="payments" && <PaymentMethodsManager />}

@@ -29,31 +29,17 @@ function stubAdminApi() {
   }));
 }
 
-it("badge Stok menipis di Ringkasan membawa filternya ke daftar Produk", async () => {
+it("legacy low-stock links still apply a visible removable filter after the summary pill is removed", async () => {
   stubAdminApi();
   render(<ToastProvider><AdminPage /></ToastProvider>);
   await act(async () => {});
+  expect(screen.queryByRole("button", { name: /Stok menipis/ })).toBeNull();
 
-  // Tanpa filter: kedua produk terlihat.
-  fireEvent.click(screen.getAllByRole("button").find((node) => node.textContent?.trim() === "boxProduk" || /^(box)?Produk$/.test(node.textContent?.trim() ?? ""))!);
+  window.history.pushState(null, "", "/admin?section=products&low_stock=1");
+  fireEvent.popState(window);
   await act(async () => {});
-  expect(screen.getAllByText("Produk Aman").length).toBeGreaterThan(0);
-  expect(screen.getAllByText("Produk Tipis").length).toBeGreaterThan(0);
-
-  // Kembali ke Ringkasan, lalu klik badge "Stok menipis".
-  fireEvent.click(screen.getAllByRole("button").find((node) => (node.textContent ?? "").includes("Ringkasan"))!);
-  await act(async () => {});
-  const card = screen.getAllByRole("button").find((node) => node.textContent?.includes("Stok menipis"));
-  expect(card, "badge Stok menipis harus ada di Ringkasan").toBeTruthy();
-  fireEvent.click(card!);
-  await act(async () => {});
-
-  // Filter benar-benar diterapkan: hanya produk dengan varian tipis yang tersisa.
-  expect(window.location.search).toContain("low_stock=1");
   expect(screen.queryByText("Produk Aman")).toBeNull();
   expect(screen.getAllByText("Produk Tipis").length).toBeGreaterThan(0);
-
-  // Chip filter terlihat dan bisa dilepas — tanpa ini penyaringan tidak kasat mata.
   const chip = screen.getByRole("button", { name: /Stok menipis · varian ≤ 5/ });
   fireEvent.click(chip);
   await act(async () => {});

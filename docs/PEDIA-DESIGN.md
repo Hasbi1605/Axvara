@@ -478,3 +478,7 @@ Status 2026-10-12: source/diff lokal telah diaudit, BELUM deployed, secret/flag 
 5. Admin: daftar/readiness/filter, edit terpisah, assignment supplier, recovery/konfirmasi, kredit/settings, loading/error/empty/partial failure jujur.
 6. ServicesMenu kedua host keyboard/Escape/focus/overflow, promo dua arah/UTM, Footer newsletter/kategori/bantuan/pelacakan absolut dan spacing nav/CTA; Market regression. AppSwitcher dihapus, LaunchCards arsip.
 7. Target performa/aksesibilitas tetap mengikuti PRD; jangan menyatakan skor Lighthouse baru tanpa pengukuran.
+
+### Konsistensi panel admin — 2026-10-15
+
+Produk, Layanan Supplier, Pesanan, Kredit, harga tingkat dan riwayat saldo memakai tabel kaca seperti Produk Market: `ax-glass`, radius 20px, header uppercase 11px, sel px-4/py-3, divider tipis dan hover ringan. Wrapper berlabel dapat difokuskan dan digulir horizontal di mobile; tidak memperlebar halaman. Panel luar tanpa card tambahan, filter ringkas dan tombol utama cyan/pil. Edit putih dan sakelar hijau/abu dengan knob putih sejajar. Status publikasi, kesiapan, feedback gagal/parsial, preview dan recovery tetap memiliki arti yang sama.

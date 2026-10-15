@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { formatRupiah, formatWibDateTime } from "@/lib/utils";
+import { formatRupiah } from "@/lib/utils";
 import type { PeriodReport, ReportPeriod, SelectedReport } from "@/lib/dashboard-report";
 import { reportMonthSelection, resolveReportRange, todayWibDateString, type ReportSelection } from "@/lib/revenue";
 import { ProfitChart, ProfitBars, RevenueDonut, type NamedBucket } from "./OverviewCharts";
@@ -97,12 +97,12 @@ function periodBucket(data: AdminOverviewData, period: Period): ProfitBucket & {
 
 export type ReportExportProps = { report: SelectedReport; disabled: boolean };
 export type AdminOverviewProps = {
-  data: AdminOverviewData; loading: boolean; onLowStock?: () => void; error?: string | null; onRetry?: () => void;
+  data: AdminOverviewData; loading: boolean; error?: string | null; onRetry?: () => void;
   selection?: ReportSelection; onSelectionChange?: (selection: ReportSelection) => void;
   renderReportActions?: (props: ReportExportProps) => ReactNode;
 };
 
-export function AdminOverview({ data, loading, onLowStock, error, onRetry, selection, onSelectionChange, renderReportActions }: AdminOverviewProps) {
+export function AdminOverview({ data, loading, error, onRetry, selection, onSelectionChange, renderReportActions }: AdminOverviewProps) {
   const [period, setPeriod] = useState<Period>("week");
   const [month, setMonth] = useState(todayWibDateString().slice(0, 7));
   const [from, setFrom] = useState("");
@@ -116,12 +116,25 @@ export function AdminOverview({ data, loading, onLowStock, error, onRetry, selec
     if (onSelectionChange) onSelectionChange(value);
     else if (typeof value === "string") setPeriod(value);
   };
-  const apply = (kind: "month" | "custom") => {
+  const apply = (value: ReportSelection) => {
     try {
-      const value = kind === "month" ? reportMonthSelection(month) : { date_from: from, date_to: to };
       resolveReportRange(value);
       choose(value);
     } catch (error) { setRangeError(error instanceof Error ? error.message : "Rentang tidak valid."); }
+  };
+  const changeMonth = (value: string) => {
+    setMonth(value);
+    setRangeError(null);
+    if (!value) return;
+    try { apply(reportMonthSelection(value)); }
+    catch (error) { setRangeError(error instanceof Error ? error.message : "Bulan tidak valid."); }
+  };
+  const changeDates = (nextFrom: string, nextTo: string) => {
+    setFrom(nextFrom);
+    setTo(nextTo);
+    setRangeError(null);
+    // Wait for both dates; incomplete edits keep the last applied report.
+    if (nextFrom && nextTo) apply({ date_from: nextFrom, date_to: nextTo });
   };
   const bucket = report ?? periodBucket(data, period);
   const suppliers = report?.suppliers ?? data.profit_by_supplier;
@@ -154,36 +167,23 @@ export function AdminOverview({ data, loading, onLowStock, error, onRetry, selec
           </button>
         ))}
       </div>
-      <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/35">
-        <span>Minggu = Senin–Minggu WIB · Total {data.total_orders} · Pending {data.pending_orders}</span>
-        {data.low_stock > 0 && (
-          onLowStock ? (
-            <button type="button" onClick={onLowStock} title="Buka daftar Produk dengan filter stok menipis"
-              className="inline-flex items-center gap-1.5 rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2.5 py-1 text-[11px] font-semibold text-[#FFCF55] transition hover:bg-[#FFB800]/20">
-              Stok menipis · {data.low_stock} varian
-            </button>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2.5 py-1 text-[11px] font-semibold text-[#FFCF55]" title="Varian aktif tersisa ≤ 5 — atur dari daftar Produk">
-              Stok menipis · {data.low_stock} varian
-            </span>
-          )
-        )}
-      </div>
+      {onSelectionChange && <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-white/60">
+        <label className="sr-only" htmlFor="report-month">Bulan historis</label>
+        <input id="report-month" type="month" max={todayWibDateString().slice(0, 7)} value={month} onChange={e => changeMonth(e.target.value)} className="h-9 min-w-0 rounded-lg border border-white/10 bg-white/[0.04] px-2 text-white [color-scheme:dark]" />
+        <div className="flex min-w-0 items-center gap-2">
+          <label className="sr-only" htmlFor="report-from">Tanggal awal</label>
+          <input id="report-from" type="date" max={todayWibDateString()} value={from} onChange={e => changeDates(e.target.value, to)} className="h-9 min-w-0 w-[136px] rounded-lg border border-white/10 bg-white/[0.04] px-2 text-white [color-scheme:dark]" />
+          <span aria-hidden="true">–</span>
+          <label className="sr-only" htmlFor="report-to">Tanggal akhir</label>
+          <input id="report-to" type="date" max={todayWibDateString()} value={to} onChange={e => changeDates(from, e.target.value)} className="h-9 min-w-0 w-[136px] rounded-lg border border-white/10 bg-white/[0.04] px-2 text-white [color-scheme:dark]" />
+        </div>
+      </div>}
     </div>
-    {onSelectionChange && <div className="flex flex-wrap items-end gap-3 rounded-xl border border-white/10 p-3 text-xs text-white/60">
-      <label className="min-w-0">Bulan historis<input type="month" aria-label="Bulan historis" max={todayWibDateString().slice(0, 7)} value={month} onChange={e => setMonth(e.target.value)} className="mt-1 block h-10 max-w-full rounded-lg border border-white/10 bg-[#080C1E] px-2 text-white [color-scheme:dark]" /></label>
-      <button type="button" onClick={() => apply("month")} className="h-10 whitespace-nowrap rounded-lg bg-white/10 px-3 text-white">Terapkan bulan</button>
-      <label className="min-w-0">Tanggal awal<input type="date" aria-label="Tanggal awal" max={todayWibDateString()} value={from} onChange={e => setFrom(e.target.value)} className="mt-1 block h-10 max-w-full rounded-lg border border-white/10 bg-[#080C1E] px-2 text-white [color-scheme:dark]" /></label>
-      <label className="min-w-0">Tanggal akhir<input type="date" aria-label="Tanggal akhir" max={todayWibDateString()} value={to} onChange={e => setTo(e.target.value)} className="mt-1 block h-10 max-w-full rounded-lg border border-white/10 bg-[#080C1E] px-2 text-white [color-scheme:dark]" /></label>
-      <button type="button" onClick={() => apply("custom")} className="h-10 whitespace-nowrap rounded-lg bg-[#00E5FF] px-3 font-semibold text-[#080C1E]">Terapkan rentang</button>
-      <p className="w-full text-white/40">Maksimal 366 hari, inklusif WIB. Tanggal masa depan ditolak; bulan berjalan sampai hari ini.</p>
-    </div>}
     {rangeError && <p role="alert" className="text-sm text-red-200">{rangeError}</p>}
     {error ? <div role="alert" className="rounded-2xl border border-red-400/20 bg-red-500/[0.06] p-5"><p className="text-sm text-red-200">{error}</p><button type="button" onClick={onRetry} disabled={loading} className="mt-3 rounded-xl bg-[#00E5FF] px-4 py-2 text-xs font-bold text-[#080C1E]">Muat ulang ringkasan</button></div>
       : loading ? <p role="status" className="py-8 text-sm text-white/50">Memuat laporan {label}…</p>
       : <>
-    {data.selected_report && selection && <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-white/40">
-      <p>{data.selected_report.from} – {data.selected_report.to} · {data.selected_report.timezone} · Dibuat {formatWibDateTime(data.selected_report.generated_at)} WIB</p>
+    {data.selected_report && selection && <div className="flex flex-wrap items-center justify-end gap-2">
       {renderReportActions ? renderReportActions({ report: data.selected_report, disabled: false }) : <ReportExportActions report={data.selected_report} disabled={false} />}
     </div>}
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
@@ -194,9 +194,6 @@ export function AdminOverview({ data, loading, onLowStock, error, onRetry, selec
     </div>
     {report && <p className="text-xs leading-5 text-white/45">Pembayaran merchant {formatRupiah(report.merchant_paid ?? report.revenue)} · Kredit digunakan {formatRupiah(report.credit_used ?? 0)}. Untung produk belum dikurangi MDR dan biaya operasional.</p>}
 
-    {report && report.estimated_orders > 0 && <p className="rounded-xl border border-[#FFB800]/20 bg-[#FFB800]/[0.05] px-3 py-2 text-xs leading-5 text-white/55" role="status">
-      {report.estimated_orders} pesanan memakai estimasi modal: riwayat tanpa snapshot atau proses supplier belum selesai.
-    </p>}
     <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)]">
       <ProfitChart series={report?.series ?? data.daily_series} loading={loading} label={label} />
       <RevenueDonut rows={supplierRows} loading={loading} />

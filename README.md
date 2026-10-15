@@ -425,9 +425,7 @@ di **Pengaturan Toko** (sidebar 12 → 10 menu); `?section=agent` dan
 "hasil filter" — sebelumnya memfilter ke Pending tetap menampilkan total
 seluruh toko. Tab kanal sengaja tetap global karena ia pemilih.
 
-**Filter yang kasat mata (2026-09-19).** Kartu **Stok menipis** di Ringkasan kini
-membawa filternya ke daftar Produk lewat `?section=products&low_stock=1` — dulu
-kartu itu hanya berpindah tab dan daftarnya tetap menampilkan semua produk.
+**Filter yang kasat mata (revisi 2026-10-15).** Pill **Stok menipis** di Ringkasan dihapus untuk menyederhanakan toolbar. Deep-link `?section=products&low_stock=1` tetap menyaring Produk dan menampilkan chip yang bisa dilepas.
 Satuannya juga disamakan: Ringkasan dan Produk sama-sama menghitung **varian
 aktif berstok 0–5** (sebelumnya Ringkasan menghitung varian dan Produk
 menghitung produk, sehingga satu label menampilkan dua angka berbeda).
@@ -442,7 +440,7 @@ Katalog storefront menampilkan 16 produk lebih dulu dengan tombol **"Tampilkan N
 
 **Minimum pembelian per varian (migrasi 0034, generik):** `product_variants.min_qty` (default 1 = bebas, milik admin, plafon 100) mengatur batas bawah qty per baris — GSuite dikunci **min. 50** via migrasi, produk lain tinggal set angka dari admin bila butuh aturan grosir serupa. Label "Min. N" tampil di PDP/modal/keranjang/bot; server menolak qty di bawah min (quote 409 → orders 409 → guard atomik), plafon web/Telegram 100/baris, dan order WhatsApp (qty selalu 1) ditolak jelas untuk varian min>1 dengan arahan ke web/Telegram bulk.
 
-**Dashboard untung (2026-10-15, implementasi; publikasi CI).** Periode Hari/Minggu/Bulan WIB berlaku untuk kartu, grafik, donat kontribusi omzet, batang untung supplier/channel dan Top 5. Modal dihitung per item WR/SK/stok sendiri/Pedia, termasuk keranjang campuran; transaksi baru mendapat snapshot modal atomik saat lunas (migrasi 0063), riwayat tanpa snapshot dilabeli estimasi. Grafik hari ini per jam, minggu/bulan harian; rugi tetap terlihat dan jumlah order memakai sumbu tersendiri. Top 5 mencakup seluruh transaksi periode tanpa cap 500. Respons `period_reports` dimuat bersama ringkasan, tanpa polling atau cron baru.
+**Dashboard untung (2026-10-15, implementasi; publikasi CI).** Periode Hari/Minggu/Bulan WIB berlaku untuk kartu, grafik, donat kontribusi omzet, batang untung supplier/channel dan Top 5. Modal dihitung per item WR/SK/stok sendiri/Pedia, termasuk keranjang campuran; transaksi baru mendapat snapshot modal atomik saat lunas (migrasi 0063), riwayat tanpa snapshot ditandai estimasi dalam data/ekspor, tanpa card peringatan di Ringkasan. Grafik hari ini per jam, minggu/bulan harian; rugi tetap terlihat dan jumlah order memakai sumbu tersendiri. Top 5 mencakup seluruh transaksi periode tanpa cap 500. Respons `period_reports` dimuat bersama ringkasan, tanpa polling atau cron baru.
 
 Recovery ringkasan 2026-10-15: agregat SQL dibagi ke CTE agar kompatibel dengan batas compound SELECT D1, tetap satu query. Regresi dijalankan juga di D1 workerd (Miniflare), selain SQLite, agar batas SQL produksi ikut diverifikasi.
 
@@ -569,8 +567,10 @@ Private — AXVARA © 2026
 
 ### Panel admin — pembaruan 2026-10-15
 
-Ringkasan mendukung bulan historis dan rentang inklusif WIB maksimal 366 hari. Tombol Unduh PDF dan Unduh Excel (.xlsx) memakai respons laporan yang sama dengan layar; angka Excel tetap numerik, PDF berpaginasi. Pembayaran merchant dan kredit Pedia ditampilkan terpisah, untung produk belum dikurangi MDR/biaya operasional. Ekspor tidak tersedia selama laporan dimuat/gagal.
+Ringkasan mendukung bulan historis dan rentang inklusif WIB maksimal 366 hari. Toolbar periode/pemilih bulan/tanggal tanpa card dan tombol Terapkan; bulan atau pasangan tanggal lengkap/valid otomatis memuat laporan. Metadata tanggal/WIB/waktu pembuatan sejajar sesi admin, tersembunyi saat loading/gagal. Teks total/pending/pill stok menipis serta card estimasi dihilangkan; perhitungan dan penanda estimasi ekspor tetap tersedia. Tombol Unduh PDF dan Unduh Excel (.xlsx) memakai respons laporan yang sama dengan layar; angka Excel tetap numerik, PDF berpaginasi. Pembayaran merchant dan kredit Pedia ditampilkan terpisah, untung produk belum dikurangi MDR/biaya operasional. Ekspor tidak tersedia selama laporan dimuat/gagal.
 
-Banner dapat diaktifkan/dimatikan dari pill daftar. Urutan 0–999 unik, benturan memakai posisi kosong berikutnya; migrasi 0064 menormalkan urutan lama tanpa mengubah ID/konten, lalu menambahkan unique index. Popup tetap satu per kunjungan dokumen, memilih banner berikutnya yang layak bila banner sebelumnya sudah disembunyikan atau mencapai cap sesi.
+Banner dapat diaktifkan/dimatikan dari sakelar di sebelah Edit, sama seperti Produk (track hijau dan knob putih, `AdminStatusSwitch`). Urutan 0–999 unik, benturan memakai posisi kosong berikutnya; migrasi 0064 menormalkan urutan lama tanpa mengubah ID/konten, lalu menambahkan unique index. Popup tetap satu per kunjungan dokumen, memilih banner berikutnya yang layak bila banner sebelumnya sudah disembunyikan atau mencapai cap sesi.
 
 Metode & Rekonsiliasi membaca provider efektif dari server; GoPay memakai panduan poller GoBiz, DANA legacy tetap tertera pada event lama. Status terkonfigurasi tidak menyatakan poller/sesi sehat. Logo overlay Market/Pedia dipaksa putih; filter X hanya ikon dan tetap aksesibel.
+
+Pedia admin memakai tabel kaca dan toolbar/aksi yang sama dengan Produk: daftar Produk, Layanan Supplier, Pesanan, Kredit, harga tingkat dan riwayat saldo. Tabel memiliki header kolom dan wrapper scroll horizontal yang bisa difokuskan di mobile. Edit putih serta sakelar publikasi sejajar; filter, preview dan guard recovery tidak berubah.

@@ -445,7 +445,7 @@ CREATE TABLE store_settings (
 
 **Kompatibilitas D1 (recovery 2026-10-15):** D1 menolak enam SELECT dalam satu compound UNION (`too many terms in compound SELECT`), meski node:sqlite menerima. Tiga agregat ringkasan/supplier/channel kini berada di CTE `totals`, lalu digabung dengan Top 5/harian/per jam dalam empat cabang hasil; setiap compound tetap di bawah batas lima. Tetap satu query dan fakta yang sama, tanpa mengubah kontrak API atau menambah cron. `tests/dashboard-report.d1-runtime.test.ts` menjalankan SQL aktual pada D1 workerd melalui Miniflare (devDependency eksplisit yang versinya sudah tersedia di lock adapter), menguji katalog kosong dan keranjang campuran WR/SK/stok sendiri beserta konservasi nominal di seluruh periode. Test SQLite tetap berjalan untuk cakupan kasus bisnis lain.
 
-**Laporan historis dan unduhan (2026-10-15, publikasi CI):** overview menerima `period=today|week|month` (default week) ATAU pasangan `date_from/date_to` kalender YYYY-MM-DD, inklusif WIB, maksimal 366 hari; parameter ganda/kombinasi periode-rentang/tanggal invalid/masa depan ditolak 400 sebelum query. `selected_report` menambahkan `from/to/timezone/generated_at` pada PeriodReport, dengan series per jam untuk today dan harian untuk rentang lain. Field kompatibilitas `period_reports` tetap tersedia. Query pilihan memfilter tanggal pembayaran sebelum ekspansi item; operasi stok/antrean tetap kondisi kini. Request generation mencegah respons lambat menimpa pilihan terbaru; panel finansial/ekspor disembunyikan saat loading/gagal.
+**Laporan historis dan unduhan (2026-10-15, publikasi CI):** overview menerima `period=today|week|month` (default week) ATAU pasangan `date_from/date_to` kalender YYYY-MM-DD, inklusif WIB, maksimal 366 hari; parameter ganda/kombinasi periode-rentang/tanggal invalid/masa depan ditolak 400 sebelum query. `selected_report` menambahkan `from/to/timezone/generated_at` pada PeriodReport, dengan series per jam untuk today dan harian untuk rentang lain. Field kompatibilitas `period_reports` tetap tersedia. Query pilihan memfilter tanggal pembayaran sebelum ekspansi item; operasi stok/antrean tetap kondisi kini. Request generation mencegah respons lambat menimpa pilihan terbaru; panel finansial/ekspor disembunyikan saat loading/gagal. Toolbar `AdminOverview` menerapkan bulan saat berubah, atau pasangan tanggal lengkap setelah validasi client; isian parsial/invalid mempertahankan laporan terakhir tanpa request. Tidak ada tombol Terapkan/card filter. `AdminPage` merender metadata `selected_report` sejajar sesi admin hanya setelah laporan siap; loading/gagal menyembunyikan metadata lama. Teks total/pending/pill low_stock dan kartu estimasi dihapus dari UI; field API dan catatan estimasi ekspor tetap tersedia.
 
 Pedia memakai nilai penjualan = pembayaran merchant + kredit digunakan (atau subtotal bila kredit penuh tanpa ledger); pembulatan invoice ikut omzet seperti Market. `merchant_paid/credit_used` pada ringkasan memisahkan penyelesaian pembayaran dari nilai jual, dihitung sekali per order agar keranjang campuran tidak menggandakan nominal. Snapshot biaya tetap berlaku. `ReportExportActions` memuat `src/lib/reports/export.ts` saat klik; pdf-lib dan write-excel-file/universal dimuat dinamis di browser, tanpa endpoint/cron/kredensial tambahan. PDF A4 berpaginasi dan XLSX lima sheet memakai satu model tabel dari respons layar, bukan CSV 5000 order. XLSX memakai sel numerik dan label String (bukan Formula); Unicode dipertahankan. PDF Helvetica mempertahankan teks Latin dan mengabaikan glyph dekoratif yang tidak didukung agar emoji tidak menggagalkan dokumen. Nama file mencantumkan tanggal awal/akhir; waktu pembuatan dan modal estimasi ada pada Ringkasan.
 
@@ -2144,7 +2144,7 @@ WAJIB punya pembaca di section tujuan.
 | Kartu "Pesanan pending" | `?section=orders&status=pending` | `OrdersManager.tsx` (`initial.get("status")`) |
 | Kartu "Bukti manual" | `?section=orders&proof=submitted&method=manual` | `OrdersManager.tsx` (`proof`, `method`) |
 | Kartu "QRIS perlu dicek" | `?section=payments&payment_tab=qris&event_status=attention` | `PaymentMethodsManager.tsx` + `PaymentReconciliation.tsx` |
-| Kartu "Stok menipis" | `?section=products&low_stock=1` | `page.tsx` → `useProductManager.onlyLowStock` |
+| Deep-link stok menipis (pill Ringkasan dihapus 2026-10-15) | `?section=products&low_stock=1` | `page.tsx` → `useProductManager.onlyLowStock` |
 | Kartu "Fulfillment" | `?section=bot` | belum ada filter (lihat `issue/audit-admin-panel-2026-09-19.md` A5) |
 
 Section `agent` dan `subscribers` (2026-09-20) tidak lagi punya entri sidebar —
@@ -2167,7 +2167,7 @@ Aturan turunan:
    Filter tanpa kontrol di layar (dulu: `proof`) menyaring daftar secara
    diam-diam sehingga pesanan tampak hilang.
 3. Satuan metrik harus sama antar-layar. "Stok menipis" = **varian aktif
-   berstok 0–5** di Ringkasan (`/api/admin/overview`) maupun Produk
+   berstok 0–5** pada field API Ringkasan (`/api/admin/overview`, tanpa pill UI sejak 2026-10-15) maupun Produk
    (`lowStockVariants` dari `/api/products`).
 
 ### 16.9 Rail QRIS GoPay (2026-10-02 Fase 0 — ledger multi-provider, default mati)
@@ -2255,5 +2255,7 @@ poller server memantau mutasi GoBiz milik sendiri.
 
 - Migrasi aditif 0064 mempertahankan ID/konten dan urutan tayang lama (`sort_order ASC,id DESC`), menormalkan posisi ke 0..N-1 lalu memasang unique index `banners_sort_order_unique`. Katalog >1000 banner ditolak agar posisi 0..999 tetap valid. Tidak ada rebuild/FK rename.
 - `writeBannerOrder` dipakai seluruh POST/PUT banner: cari posisi kosong di/atas permintaan, kecualikan ID sendiri, termasuk banner nonaktif, retry maksimal lima hanya untuk benturan unique. API membalas posisi tersimpan; toggle `PUT /api/banners/:id` hanya menulis is_active. Fallback dev menegakkan unique sebelum mutasi.
+- `AdminStatusSwitch` menyediakan track/knob yang sama dengan Produk, role switch, checked/busy/disabled dan relasi error; digunakan Banner di sebelah Edit dan publikasi produk Pedia. Mutasi banner tetap parsial is_active, konten editor yang belum disimpan tetap dipertahankan.
+- Pedia admin memakai helper lokal `DataTable` untuk Produk/Layanan/Pesanan/Kredit/harga tingkat/riwayat saldo: glass wrapper, header/cell/divider seragam dan overflow-x terlokalisasi. Filter/aksi dirapikan; endpoint, lifecycle request, preview tersimpan dan guard recovery tetap sama.
 - Popup mengambil banner layak pertama, melewati hide 24 jam dan cap sesi; ref membatasi satu popup per dokumen, penutupan tidak memicu modal berikutnya.
 - Events QRIS mengekspos `provider` (null legacy menjadi dana), health berisi provider efektif dari `activeQrisProvider()`, boolean konfigurasi dan waktu event per provider. Tidak ada secret/payload mentah di respons, konfigurasi bukan bukti kesehatan poller GoBiz. Panduan dan ACC mengikuti merchant invoice; engine pembayaran dan guard retry tidak diubah.

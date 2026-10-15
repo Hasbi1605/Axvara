@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AdminStatusSwitch } from "./AdminStatusSwitch";
 import { ImageDropzone } from "@/components/admin/ImageDropzone";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -276,7 +277,7 @@ export function BannerManager() {
               {banners.map((banner) => (
                 <div
                   key={banner.id}
-                  className="flex items-center gap-3 px-4 py-3 hover:bg-white/[0.03] transition"
+                  className="flex flex-wrap items-center gap-3 px-4 py-3 hover:bg-white/[0.03] transition"
                 >
                   {banner.image_url ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -293,23 +294,13 @@ export function BannerManager() {
                       {banner.delay_ms} ms
                       {banner.cta_label ? ` · CTA: ${banner.cta_label}` : ""}
                     </p>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={Boolean(banner.is_active)}
-                      aria-label={`Aktifkan banner ${banner.title}`}
-                      aria-busy={toggling === banner.id}
-                      aria-describedby={toggleError?.id === banner.id ? `banner-status-error-${banner.id}` : undefined}
-                      disabled={saving || deleting || toggling !== null}
-                      onClick={() => void toggle(banner)}
-                      className={`mt-1.5 inline-flex min-h-11 items-center gap-2 rounded-full border px-3 text-xs font-bold transition disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF] ${banner.is_active ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-300" : "border-white/10 bg-white/[0.05] text-white/60"}`}
-                    >
-                      <span aria-hidden="true" className={`h-2 w-2 rounded-full ${banner.is_active ? "bg-emerald-400" : "bg-white/30"}`} />
-                      {toggling === banner.id ? "Menyimpan..." : banner.is_active ? "Aktif" : "Nonaktif"}
-                    </button>
                     {toggleError && toggleError.id === banner.id && <p id={`banner-status-error-${banner.id}`} role="alert" className="mt-1 text-xs text-red-300">{toggleError.message}</p>}
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
+                  <div className="flex w-full shrink-0 items-center justify-end gap-2 sm:w-auto">
+                    <AdminStatusSwitch checked={Boolean(banner.is_active)} label={`Aktifkan banner ${banner.title}`}
+                      busy={toggling === banner.id} disabled={saving || deleting || toggling !== null}
+                      describedBy={toggleError?.id === banner.id ? `banner-status-error-${banner.id}` : undefined}
+                      onChange={() => void toggle(banner)} />
                     <button
                       disabled={saving || deleting || toggling !== null}
                       onClick={() => {

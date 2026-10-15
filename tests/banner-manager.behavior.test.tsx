@@ -21,6 +21,8 @@ it("uses a partial switch request, locks pending writes and synchronizes the uns
   vi.stubGlobal("fetch", fetchMock);
   render(<BannerManager />);
   const toggle = await screen.findByRole("switch", { name: "Aktifkan banner Promo banner" });
+  expect(toggle.nextElementSibling).toBe(screen.getByRole("button", { name: /Edit$/ }));
+  expect(toggle.textContent).toBe(""); // Same compact track as the product control.
   fireEvent.click(screen.getByRole("button", { name: /Edit$/ }));
   fireEvent.change(screen.getByPlaceholderText("Deskripsi singkat"), { target: { value: "Unsaved content" } });
   fireEvent.click(toggle);

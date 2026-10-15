@@ -43,9 +43,13 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 it("compact listing has honest readiness, search, filters and explicit actions", async () => {
   render(<PediaManager />);
   await screen.findByRole("button", { name: "Edit Followers Instagram" });
-  expect(within(screen.getByRole("list")).getByText("Siap dijual")).toBeTruthy();
-  expect(within(screen.getByRole("list")).getByText("Belum siap")).toBeTruthy();
+  expect(within(screen.getByRole("table", { name: "Produk Pedia" })).getByText("Siap dijual")).toBeTruthy();
+  expect(within(screen.getByRole("table", { name: "Produk Pedia" })).getByText("Belum siap")).toBeTruthy();
   expect(screen.queryByRole("form", { name: "Edit produk" })).toBeNull();
+  const table = screen.getByRole("table", { name: "Produk Pedia" });
+  expect(within(table).getAllByRole("columnheader").map(e => e.textContent)).toEqual(["Produk", "Platform", "Layanan supplier", "Harga mulai", "Kesiapan", "Aktif / Aksi"]);
+  const actions = screen.getByRole("group", { name: "Aksi Followers Instagram" });
+  expect(within(actions).getByRole("switch").nextElementSibling).toBe(within(actions).getByRole("button", { name: "Edit Followers Instagram" }));
   fireEvent.change(screen.getByLabelText("Cari produk"), { target: { value: "86" } });
   expect(screen.queryByRole("button", { name: "Edit Views TikTok" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Hapus filter" }));
@@ -61,7 +65,7 @@ it.each([
   catalog.tiers = [{ ...tier, ...patch } as typeof tier];
   render(<PediaManager />);
   await screen.findByRole("button", { name: "Edit Followers Instagram" });
-  expect(within(screen.getByRole("list")).queryByText("Siap dijual")).toBeNull();
+  expect(within(screen.getByRole("table", { name: "Produk Pedia" })).queryByText("Siap dijual")).toBeNull();
 });
 
 it("focused editor saves all existing product fields and rejects invalid packages", async () => {
@@ -107,10 +111,11 @@ it("checklist points can be added and removed without editing JSON or losing exi
 
 it("failed toggle is visible and does not pretend status changed", async () => {
   failWrite = true; render(<PediaManager />);
-  fireEvent.click(await screen.findByRole("button", { name: "Nonaktifkan Followers Instagram" }));
+  fireEvent.click(await screen.findByRole("switch", { name: "Nonaktifkan Followers Instagram" }));
   expect((await screen.findByRole("alert")).textContent).toContain("Perubahan gagal disimpan");
-  expect(screen.getByRole("button", { name: "Nonaktifkan Followers Instagram" })).toBeTruthy();
+  expect(screen.getByRole("switch", { name: "Nonaktifkan Followers Instagram" })).toBeTruthy();
   expect(screen.queryByText(/dinonaktifkan\./)).toBeNull();
+  expect(screen.getByRole("switch", { name: "Nonaktifkan Followers Instagram" }).getAttribute("aria-checked")).toBe("true");
 });
 
 it("tab navigation preserves other query parameters and responds to back and new props", async () => {
@@ -313,4 +318,25 @@ it("ambiguous orders expose original snapshot and disable blind retry/credit", a
   expect(screen.getByText(/Snapshot asal: IndoSMM/)).toBeTruthy();
   expect(screen.getByText(/retry\/kredit diblokir/)).toBeTruthy();
   fireEvent.click(retry); expect(writes).toHaveLength(0);
+});
+
+it("inline product status switch saves only status and reflects the refreshed publication", async () => {
+  render(<PediaManager />);
+  const toggle = await screen.findByRole("switch", { name: "Nonaktifkan Followers Instagram" });
+  fireEvent.click(toggle);
+  expect((toggle as HTMLButtonElement).disabled).toBe(true);
+  const inactive = await screen.findByRole("switch", { name: "Aktifkan Followers Instagram" });
+  expect(inactive.getAttribute("aria-checked")).toBe("false");
+  expect(writes).toEqual([{ url: "/api/admin/pedia/products", body: { id: 1, is_active: 0 } }]);
+});
+
+it.each([
+  ["services", "Layanan supplier", "Biaya per 1.000"],
+  ["orders", "Pesanan Pedia", "Status"],
+  ["credits", "Daftar kredit Pedia", "Sisa kredit"],
+])("%s presents its data in a labeled table with column headers", async (tab, title, column) => {
+  render(<PediaManager initialTab={tab} />);
+  const table = await screen.findByRole("table", { name: title });
+  expect(within(table).getByRole("columnheader", { name: column })).toBeTruthy();
+  expect(screen.getByRole("region", { name: title }).getAttribute("tabindex")).toBe("0");
 });

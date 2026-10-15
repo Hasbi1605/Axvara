@@ -90,13 +90,14 @@ it("ganti ke Hari ini mengubah angka kartu", async () => {
   expect(screen.getByText((_, el) => el?.textContent?.replace(/\s/g, "") === "Rp15.000")).toBeTruthy();
 });
 
-it("badge Stok menipis memanggil onLowStock (filter ikut ke Produk)", async () => {
-  const onLowStock = vi.fn();
-  render(<AdminOverview data={data} loading={false} onLowStock={onLowStock} />);
-  await act(async () => {});
-  const badge = screen.getByRole("button", { name: /Stok menipis/ });
-  fireEvent.click(badge);
-  expect(onLowStock).toHaveBeenCalledTimes(1);
+it("summary omits operational pills and cost-estimate notices without losing report figures", () => {
+  const report = emptySelectedReport("week");
+  report.estimated_orders = 151;
+  report.orders = 202; report.revenue = 2563172; report.cost = 1546775; report.profit = 1016397;
+  render(<AdminOverview data={{ ...data, selected_report: report }} selection="week" loading={false} />);
+  expect(screen.queryByText(/Stok menipis|Senin–Minggu|Pending|memakai estimasi modal/)).toBeNull();
+  expect(screen.getByText("202")).toBeTruthy();
+  expect(screen.getByText("Untung Produk")).toBeTruthy();
 });
 
 it("switching period updates the chart, top products, supplier amounts and composition together", () => {
@@ -136,30 +137,38 @@ it("failed finance load shows a retry action rather than zero profit metrics", (
   expect(retry).toHaveBeenCalledTimes(1);
 });
 
-it("month and custom Apply validate dates and request the same range contract", () => {
+it("month and complete date edits apply automatically while invalid ranges preserve the report", () => {
   const change = vi.fn();
   render(<AdminOverview data={data} loading={false} selection="week" onSelectionChange={change} />);
   fireEvent.change(screen.getByLabelText("Bulan historis"), { target: { value: "2024-02" } });
-  fireEvent.click(screen.getByRole("button", { name: "Terapkan bulan" }));
   expect(change).toHaveBeenLastCalledWith({ date_from: "2024-02-01", date_to: "2024-02-29" });
   fireEvent.change(screen.getByLabelText("Tanggal awal"), { target: { value: "2024-03-01" } });
+  expect(change).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole("alert")).toBeNull();
   fireEvent.change(screen.getByLabelText("Tanggal akhir"), { target: { value: "2024-02-29" } });
-  fireEvent.click(screen.getByRole("button", { name: "Terapkan rentang" }));
   expect(screen.getByRole("alert").textContent).toContain("Tanggal awal");
   expect(change).toHaveBeenCalledTimes(1);
   fireEvent.change(screen.getByLabelText("Tanggal awal"), { target: { value: "2024-02-20" } });
-  fireEvent.click(screen.getByRole("button", { name: "Terapkan rentang" }));
   expect(change).toHaveBeenLastCalledWith({ date_from: "2024-02-20", date_to: "2024-02-29" });
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.queryByRole("button", { name: /Terapkan/ })).toBeNull();
+  expect(screen.queryByText(/Maksimal 366 hari/)).toBeNull();
+  fireEvent.change(screen.getByLabelText("Bulan historis"), { target: { value: "2099-01" } });
+  expect(screen.getByRole("alert")).toBeTruthy();
+  expect(change).toHaveBeenCalledTimes(2);
+  fireEvent.change(screen.getByLabelText("Tanggal awal"), { target: { value: "2022-01-01" } });
+  expect(screen.getByRole("alert").textContent).toContain("366");
+  expect(change).toHaveBeenCalledTimes(2);
 });
 
-it("selected historical report scopes all financial content and exposes export metadata only when ready", () => {
+it("selected historical report scopes all financial content and exposes exports only when ready", () => {
   const selection = { date_from: "2024-02-01", date_to: "2024-02-29" };
   const report = emptySelectedReport(selection, new Date("2026-10-15T10:00:00Z"));
   const actions = vi.fn(() => <button>Export fixture</button>);
   const view = render(<AdminOverview data={{ ...data, selected_report: report }} selection={selection} onSelectionChange={vi.fn()} loading={false} renderReportActions={actions} />);
   expect(screen.queryByText("Netflix")).toBeNull();
   expect(screen.getByText("Belum ada transaksi pada periode ini")).toBeTruthy();
-  expect(screen.getByText(/Asia\/Jakarta/)).toBeTruthy();
+  expect(screen.queryByText(/Dibuat/)).toBeNull(); // Metadata belongs to the session header.
   expect(actions).toHaveBeenLastCalledWith({ report, disabled: false });
   view.rerender(<AdminOverview data={data} selection={selection} onSelectionChange={vi.fn()} loading={true} renderReportActions={actions} />);
   expect(screen.queryByText("Untung Produk")).toBeNull();
