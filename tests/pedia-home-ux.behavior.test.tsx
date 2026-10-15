@@ -13,6 +13,7 @@ import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
 const product: PediaCatalogProduct = {
   slug: "followers-instagram", name: "Followers Instagram", platform: "instagram", metric: "followers", target_kind: "profile",
   tagline: "Bikin profil terlihat ramai", packages: [100, 250], step: 10, is_featured: 1, min_price: 3300, checklist: [],
+  image: "/r2/products/pedia-platform-instagram.webp",
   tiers: [
     { id: 1, tier: "hemat", label_note: "Global", refill_days: 0, eta_start: "10 menit", eta_finish: null, prices: { "100": 3300, "250": 6900 } },
     { id: 2, tier: "premium", label_note: "Indonesia aktif", refill_days: 30, eta_start: "30 menit", eta_finish: null, prices: { "100": 16000 } },
@@ -63,6 +64,17 @@ describe("Pedia catalog-first storefront", () => {
     expect(card.textContent).toContain("Tanpa refill");
     expect(card.textContent).not.toContain("Refill 30 hari");
     expect(document.body.textContent).not.toContain("Pemesanan belum tersedia");
+  });
+
+  it("renders the Axvara-style platform image on the card with metric label intact", () => {
+    render(<PediaHomeClient products={[product]} />);
+    const card = screen.getByRole("link", { name: "Followers Instagram — lihat paket" });
+    const img = card.querySelector("img");
+    expect(img?.getAttribute("src")).toBe("/r2/products/pedia-platform-instagram.webp");
+    // Label platform + metrik tetap tampil di atas gambar (kontrak visual kartu).
+    expect(card.textContent).toContain("Instagram");
+    expect(card.textContent).toContain("Followers");
+    expect(card.textContent).toContain("Mulai Rp3.300");
   });
 
   it("keeps absent taglines empty and escapes curated card text", () => {

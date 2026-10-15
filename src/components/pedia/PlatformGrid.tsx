@@ -60,6 +60,23 @@ export type ProductCardData = {
   /** Jumlah layanan terkurasi di dalam produk + harga per 1.000 termurah. */
   serviceCount?: number;
   pricePer1k?: number | null;
+  /** Gambar kartu Axvara-style per platform (2026-10-15, permintaan owner):
+   *  tile 1600x900 R2 `/r2/products/pedia-platform-<platform>.webp`.
+   *  null → fallback panel gradasi brand lama. */
+  image?: string | null;
+};
+
+/** Path gambar kartu per platform — satu sumber dengan `platformCardImage`
+ *  di catalog API (keduanya path R2 statis, bukan kolom DB). */
+export const PLATFORM_CARD_IMAGE: Record<string, string> = {
+  instagram: "/r2/products/pedia-platform-instagram.webp",
+  tiktok: "/r2/products/pedia-platform-tiktok.webp",
+  youtube: "/r2/products/pedia-platform-youtube.webp",
+  facebook: "/r2/products/pedia-platform-facebook.webp",
+  threads: "/r2/products/pedia-platform-threads.webp",
+  spotify: "/r2/products/pedia-platform-spotify.webp",
+  shopee: "/r2/products/pedia-platform-shopee.webp",
+  x: "/r2/products/pedia-platform-x.webp",
 };
 
 export function catalogCard(p: PediaCatalogProduct): ProductCardData {
@@ -71,6 +88,7 @@ export function catalogCard(p: PediaCatalogProduct): ProductCardData {
     minPrice: lowest?.price ?? null, minQuantity: lowest?.qty, minTier: lowest?.tier, refillDays: lowest?.refillDays,
     serviceCount: p.tiers.length,
     pricePer1k: per1k.length ? Math.min(...per1k) : null,
+    image: p.image ?? PLATFORM_CARD_IMAGE[p.platform] ?? null,
   };
 }
 
@@ -91,25 +109,47 @@ const METRIC_WORD: Record<string, string> = {
   followers: "Followers", likes: "Likes", views: "Views", subscribers: "Subscriber", plays: "Plays",
 };
 
-export function ProductCard({ p }: { p: ProductCardData }) {
+export function ProductCard({ p, index = 0 }: { p: ProductCardData; index?: number }) {
   const visual = PLATFORM_VISUAL[p.platform] ?? { color: "#00E5FF", label: p.platform };
   const metricWord = METRIC_WORD[p.metric] ?? p.metric;
+  // 4 kartu pertama eager + fetchPriority high ala Market (LCP di atas lipatan).
+  const eager = index < 4;
   return (
     <Link prefetch={false}
       href={`/pedia/o/${p.slug}`}
       className="group ax-glass-card flex h-full min-w-0 flex-col overflow-hidden rounded-[16px] transition-all duration-300 hover:-translate-y-1 hover:border-[#00E5FF]/30 hover:shadow-[0_12px_32px_rgba(0,229,255,0.08)] sm:rounded-[22px]"
       aria-label={`${p.name} — lihat paket`}
     >
-      {/* Panel visual ala kartu Market (gambar 4:3): gradasi brand platform +
-          ikon besar + kata metrik — mata membaca gambar dulu, bukan daftar harga. */}
-      <span className="relative m-1 block aspect-[16/10] overflow-hidden rounded-[12px] sm:m-1.5 sm:rounded-[16px]" aria-hidden="true"
-        style={{ background: `linear-gradient(135deg, ${visual.color}2E 0%, rgba(15,20,48,0.9) 58%, rgba(22,29,74,0.95) 100%)` }}>
-        <span className="absolute -right-6 -top-8 h-32 w-32 rounded-full opacity-25 blur-2xl transition duration-500 group-hover:opacity-40" style={{ background: visual.color }} />
-        <span className="absolute left-4 top-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-white/15 bg-black/30 shadow-lg backdrop-blur-sm transition duration-500 group-hover:scale-105">
-          <PlatformIcon id={p.platform} size={26} />
-        </span>
-        <span className="absolute bottom-3 left-4 text-[11px] font-bold uppercase tracking-[0.14em] text-white/55">{visual.label}</span>
-        <span className="absolute bottom-3 right-4 font-display text-lg font-bold text-white/85">{metricWord}</span>
+      {/* Panel visual ala kartu Market (gambar 16:10): tile Axvara-style per
+          platform (2026-10-15, permintaan owner) + label platform & metrik —
+          mata membaca gambar dulu, bukan daftar harga. null → gradasi lama. */}
+      <span className="relative m-1 block aspect-[16/10] overflow-hidden rounded-[12px] bg-white/[0.03] sm:m-1.5 sm:rounded-[16px]" aria-hidden="true">
+        {p.image ? (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={p.image}
+              alt=""
+              className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
+              loading={eager ? "eager" : "lazy"}
+              // React 18 tak kenal fetchPriority (baru React 19) — pola yang
+              // sama dipakai Market (ProductCard.tsx); warning jsdom-only.
+              fetchPriority={eager ? "high" : "auto"}
+              decoding="async"
+            />
+            <span className="absolute bottom-3 left-4 text-[11px] font-bold uppercase tracking-[0.14em] text-white/85 drop-shadow-[0_1px_4px_rgba(0,0,0,0.7)]">{visual.label}</span>
+            <span className="absolute bottom-3 right-4 font-display text-lg font-bold text-white/90 drop-shadow-[0_1px_4px_rgba(0,0,0,0.7)]">{metricWord}</span>
+          </>
+        ) : (
+          <span className="block h-full w-full" style={{ background: `linear-gradient(135deg, ${visual.color}2E 0%, rgba(15,20,48,0.9) 58%, rgba(22,29,74,0.95) 100%)` }}>
+            <span className="absolute -right-6 -top-8 h-32 w-32 rounded-full opacity-25 blur-2xl transition duration-500 group-hover:opacity-40" style={{ background: visual.color }} />
+            <span className="absolute left-4 top-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-white/15 bg-black/30 shadow-lg backdrop-blur-sm transition duration-500 group-hover:scale-105">
+              <PlatformIcon id={p.platform} size={26} />
+            </span>
+            <span className="absolute bottom-3 left-4 text-[11px] font-bold uppercase tracking-[0.14em] text-white/55">{visual.label}</span>
+            <span className="absolute bottom-3 right-4 font-display text-lg font-bold text-white/85">{metricWord}</span>
+          </span>
+        )}
         <span className="absolute right-3 top-3 text-white/40 transition group-hover:text-[#00E5FF]">↗</span>
       </span>
       <span className="flex min-w-0 flex-1 flex-col px-3 pb-3 pt-1 sm:px-4 sm:pb-4">

@@ -48,6 +48,11 @@ export type PediaCatalogProduct = {
   is_featured: number;
   tiers: PediaCatalogTier[];
   min_price: number | null;
+  /** Gambar kartu Axvara-style per platform (2026-10-15, permintaan owner):
+   *  path R2 statis `/r2/products/pedia-platform-<platform>.webp`, bukan kolom
+   *  DB — 8 platform berbagi 1 gambar yang sama (17 produk, 1 gambar per
+   *  platform), jadi konstanta kode lebih tepat daripada kolom per baris. */
+  image: string | null;
 };
 
 function parseJsonArray(raw: unknown): number[] {
@@ -62,6 +67,20 @@ function parseJson(raw: unknown, fallback: unknown): unknown {
     const v = JSON.parse(String(raw ?? ""));
     return v ?? fallback;
   } catch { return fallback; }
+}
+
+/** Gambar kartu Axvara-style per platform (2026-10-15, permintaan owner).
+ *  Satu sumber dengan `PLATFORM_CARD_IMAGE` di PlatformGrid — path R2 statis,
+ *  bukan kolom DB (8 platform berbagi 1 gambar yang sama). Platform tak dikenal
+ *  → null (kartu fallback ke panel gradasi lama). */
+const PEDIA_PLATFORM_CARD_SLUGS = new Set([
+  "instagram", "tiktok", "youtube", "facebook", "threads", "spotify", "shopee", "x",
+]);
+
+function platformCardImage(platform: string): string | null {
+  return PEDIA_PLATFORM_CARD_SLUGS.has(platform)
+    ? `/r2/products/pedia-platform-${platform}.webp`
+    : null;
 }
 
 export async function GET() {
@@ -160,6 +179,7 @@ export async function GET() {
       is_featured: Number(p.is_featured) || 0,
       tiers: availableTiers,
       min_price: Number.isFinite(minPrice) ? minPrice : null,
+      image: platformCardImage(String(p.platform)),
     });
   }
   return NextResponse.json({ ok: true, products: out }, {

@@ -24,6 +24,13 @@ describe("rilis Pedia 2026-10-14 — UX setara Market", () => {
     expect(card).toContain("ProductCardSkeleton");
     // Kata metrik ramah tampil di panel visual.
     expect(card).toContain("METRIC_WORD");
+    // 2026-10-15 (owner): tile Axvara-style per platform ala Market —
+    // path R2 statis, label platform + metrik tetap di atas gambar.
+    expect(card).toContain("PLATFORM_CARD_IMAGE");
+    expect(card).toContain("pedia-platform-");
+    const api = read("src/app/api/pedia/catalog/route.ts");
+    expect(api).toContain("platformCardImage");
+    expect(api).toContain("pedia-platform-");
   });
 
   it("routeSkeletonKind mengenal rute Pedia (katalog + order + konten)", async () => {

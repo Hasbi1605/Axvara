@@ -83,4 +83,11 @@ describe("public catalog safe tier packages", () => {
     expect(data.products[0].packages).toEqual([100]);
     expect(data.products[0].tiers.map((t: { prices: unknown }) => t.prices)).toEqual([{ "100": 3000 }, { "100": 3000 }]);
   });
+  it("includes the Axvara-style platform card image (R2 statis, bukan rahasia supplier)", async () => {
+    await seed();
+    const data = await (await GET()).json();
+    expect(data.products[0]).toMatchObject({ platform: "instagram", image: "/r2/products/pedia-platform-instagram.webp" });
+    // AC-16 tetap: image path publik, bukan identitas supplier/rate mentah.
+    expect(JSON.stringify(data)).not.toMatch(/supplier|rate_idr|private-name|markup/);
+  });
 });

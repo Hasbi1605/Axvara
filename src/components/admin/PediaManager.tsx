@@ -256,6 +256,7 @@ function ProductEditor({ product: p, tiers, busy, onSave, onCreateTier, onError,
     checklist: parse<PediaCatalogProduct["checklist"]>(p.checklist_json, []), tiers: previewTiers,
     packages: packagesOf(p).filter((qty) => previewTiers.some((t) => t.prices[qty] > 0)),
     min_price: previewTiers.length ? Math.min(...previewTiers.flatMap((t) => Object.values(t.prices))) : null,
+    image: null,
   };
   return <div className="space-y-5">
     <form key={JSON.stringify(p)} onSubmit={saveProduct} aria-label="Edit produk" className="space-y-4">

@@ -8,6 +8,7 @@ import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
 const product: PediaCatalogProduct = {
   slug: "followers-instagram", name: "Followers Instagram", platform: "instagram", metric: "followers", target_kind: "profile",
   tagline: "Followers untuk profil publik", packages: [100, 250, 500], step: 10, is_featured: 1, min_price: 2000,
+  image: "/r2/products/pedia-platform-instagram.webp",
   checklist: [{ id: "public", label: "Akun publik", help: "Jangan ubah username selama proses." }],
   tiers: [
     { id: 1, tier: "hemat", label_note: "Campuran", public_name: "Followers Global Ekonomis", region: "global", quality: "ekonomis", drop_risk: "sedang", refill_days: 0, eta_start: "5 menit", eta_finish: "1 hari", prices: { "100": 2000 }, price_per_1k: 20000, quick_quantities: [100], min_qty: 100, max_qty: 100 },
