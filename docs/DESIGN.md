@@ -372,10 +372,29 @@
 - Tombol submit: cyan solid, full-width, h-52px, rounded-xl, disabled jika form invalid atau metode bukan QRIS; 2 tombol (rail desktop + sticky mobile) 1 handler
 - Ringkasan 1x per viewport: mobile accordion collapsed di atas (`lg:hidden`), desktop rail sticky (`hidden lg:block`); rail disembunyikan total di mobile agar tidak duplikat ringkasan/CTA
 
-### 5.7 Halaman Sukses
-- Icon centang besar cyan glow, headline "Pesanan Diterima!", kode `AXV-20260831-0012` mono, status badge Pending warning
-- Instruksi: "Admin verifikasi 5-15 menit, cek WA kamu"
-- Blok tombol 2-tier (revisi proporsi 2026-09-18, live — fix wrap 2 baris +
+### 5.7 Halaman Pembayaran & Status
+- **QRIS pending ringkas (2026-10-15, implementasi; publikasi CI):** container
+  maksimum 760px, padding halaman 16px mobile/24px desktop; kartu p-4/p-5,
+  header ikon 40px + judul 18px + badge kecil dan kode mono 11px. Panel bayar
+  desktop dua kolom (QR 240px + info), mobile satu kolom dengan QR 224px;
+  bingkai putih 10px, QR utuh `object-contain` tanpa crop, placeholder tetap.
+  Kolom QR desktop memiliki ruang 290px untuk judul, QR, dan lockup resmi.
+  Nominal 24px, kode unik/countdown 11px, instruksi pendek. Tombol Simpan QRIS
+  dan Cek Pembayaran sejajar, tinggi 44px; polling satu baris 10px dan timestamp
+  terakhir di `sr-only` agar tidak menambah tinggi. Ringkasan memakai
+  `MobileCollapsible` tertutup awal (judul + jumlah produk). Lanjut Belanja/
+  Batalkan Pesanan dua tombol ghost selebar sama dalam satu baris sekunder,
+  tinggi 44px dengan padding horizontal, label ringkas agar aman di 320px;
+  jeda 16px sebelum garis bawah dan padding 12px setelah garis; teks
+  “Butuh bantuan?” terlihat di atas tombol WA/Telegram (jarak 8px);
+  tanpa Lacak Status saat pending. Identitas QRIS tetap logo resmi + National
+  Payment Standard.
+- Judul/status mengikuti data server: pending, lunas, dibatalkan, kedaluwarsa
+  atau gagal kirim. Setelah lunas, kartu status/detail akun/garansi dan
+  auto-scroll tetap memakai alur yang sama. Ketentuan penerbitan ulang serta
+  konfirmasi/verifikasi pembatalan tidak berubah.
+- Status selain QRIS pending memakai blok tombol 2-tier (revisi proporsi
+  2026-09-18, live — fix wrap 2 baris +
   menara 4 tombol di mobile): Tier 1 navigasi ("Lacak Status" + "Lanjut
   Belanja") grid 2 kolom `h-11 text-sm whitespace-nowrap` style glass/ghost;
   Tier 2 bantuan di bawah konteks mikro "Butuh bantuan?" — 2 pill outline

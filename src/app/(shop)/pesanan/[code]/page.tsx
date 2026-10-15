@@ -12,6 +12,7 @@ import { StoreWhatsAppLink } from "@/components/storefront/StoreWhatsAppLink";
 import { settleLocalOrder } from "@/lib/local-orders";
 import { WrCredentialsPanel } from "@/components/storefront/WrCredentialsPanel";
 import { WarrantyClaimAccordion } from "@/components/storefront/WarrantyClaim";
+import { MobileCollapsible } from "@/components/storefront/ProductCopy";
 import { InlineSpinner, OrderStatusSkeleton } from "@/components/storefront/Skeletons";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
 
@@ -129,7 +130,7 @@ function QrisImage({ src, alt }: { src: string; alt: string }) {
   const [attempt, setAttempt] = useState(0);
   const url = attempt > 0 ? `${src}${src.includes("?") ? "&" : "?"}retry=${attempt}` : src;
   return (
-    <div className="mx-auto mt-3 max-w-[330px] rounded-2xl bg-white p-3">
+    <div className="mx-auto mt-2 min-h-[224px] w-[224px] max-w-full rounded-xl bg-white p-2.5 sm:min-h-[240px] sm:w-[240px]">
       <div className="relative aspect-square w-full">
         {state !== "ready" && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-xl bg-[#080C1E]/[0.04] text-[#080C1E]/60" role="status">
@@ -367,6 +368,7 @@ export default function OrderSuccessPage() {
   // berputar + tombol cek manual tampil (di bawah). Kedaluwarsa/dibatalkan
   // tetap statis agar tidak menjanjikan polling yang tidak ada.
   const isPendingQris = Boolean(order.qris) && order.status === "pending" && !isExpired && !qrisExpired;
+  const compactPayment = Boolean(order.qris) && order.status === "pending" && !isExpired;
   // Lunas TAPI gagal kirim (audit ronde 4, W-H1). Halaman ini dibuka paling
   // sering pasca-bayar (redirect checkout), tetapi dulu tetap merayakan
   // "Pembayaran Dikonfirmasi 🎉 … diproses 5–15 menit" selamanya. Salinan
@@ -498,9 +500,31 @@ export default function OrderSuccessPage() {
     };
   }
 
+  const summaryContent = <>
+    <div className="space-y-2">{order.items.map((item, index) => <div key={index} className="flex justify-between gap-3 text-[13px] leading-5"><span className="min-w-0 break-words text-white/70">{item.name} × {item.qty}</span><span className="shrink-0 whitespace-nowrap font-medium text-white">{formatRupiah(item.price * item.qty)}</span></div>)}</div>
+    <div className="mt-3 flex justify-between gap-3 border-t border-white/10 pt-3"><span className="text-sm text-white/60">Total • {order.method.toUpperCase()}</span><span className="shrink-0 font-bold text-white">{formatRupiah(payableAmount)}</span></div>
+  </>;
+
   return (
-    <div className="mx-auto max-w-[640px] px-4 py-10 sm:px-6">
-      <div className="ax-glass-card rounded-[28px] p-6 text-center sm:p-8">
+    <div className={`mx-auto px-4 sm:px-6 ${compactPayment ? "max-w-[760px] py-4 sm:py-6" : "max-w-[640px] py-10"}`}>
+      <div className={`ax-glass-card text-center ${compactPayment ? "rounded-2xl p-4 sm:p-5" : "rounded-[28px] p-6 sm:p-8"}`}>
+        {compactPayment ? (
+          <div className="flex items-center gap-3 text-left">
+            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${statusVisual.shell}`}>
+              <span className={isPendingQris ? "animate-[spin_3s_linear_infinite]" : undefined} role={isPendingQris ? "status" : undefined} aria-label={isPendingQris ? "Menunggu pembayaran — memeriksa otomatis" : undefined}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={statusVisual.icon} alt="" width={22} height={22} className="h-[22px] w-[22px] object-contain" style={{ filter: statusVisual.filter }} draggable={false} />
+              </span>
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <h1 className="font-display text-lg font-bold leading-6 text-white">Pembayaran QRIS</h1>
+                <span className="rounded-full border border-[#FFB800]/20 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-semibold text-[#FFB800]">{qrisExpired ? "QRIS hangus" : "Menunggu bayar"}</span>
+              </div>
+              <p className="mt-1 break-all font-mono text-[11px] font-semibold tracking-[0.04em] text-[#00E5FF]">{order.code}</p>
+            </div>
+          </div>
+        ) : <>
         <div className={`mx-auto flex h-16 w-16 items-center justify-center rounded-full ${statusVisual.shell}`}>
           {isPendingQris ? (
             <span className="animate-[spin_3s_linear_infinite]" role="status" aria-label="Menunggu pembayaran — memeriksa otomatis">
@@ -539,9 +563,10 @@ export default function OrderSuccessPage() {
                   ? <>Scan QRIS di bawah dan bayar <span className="font-semibold text-white">tepat sesuai total</span>. Status akan diperbarui otomatis.</>
                   : <>Terima kasih, <span className="font-medium text-white">{order.name}</span>! Admin akan memverifikasi bukti pembayaran dan menghubungi kamu.</>}
         </p>
+        </>}
 
         {order.qris && order.status === "pending" && !isExpired && (
-          <section className="mt-6 rounded-2xl border border-[#00E5FF]/20 bg-[#00E5FF]/[0.05] p-4" aria-label="QRIS dinamis">
+          <section className="mt-3 rounded-xl border border-[#00E5FF]/20 bg-[#00E5FF]/[0.05] p-3 sm:p-4" aria-label="QRIS dinamis">
             {qrisExpired ? (
               // QR mati tetapi ORDER masih hidup: pembeli bisa minta QR baru
               // tanpa mengulang alur. Sebelumnya order ikut mati bersama QR
@@ -565,51 +590,56 @@ export default function OrderSuccessPage() {
                 )}
               </div>
             ) : (
-              <>
-                <p className="font-display text-xl font-bold text-white">Scan QRIS</p>
+              <div className="grid items-center gap-3 sm:grid-cols-[240px_minmax(0,1fr)] sm:gap-5">
+                <div className="min-w-0 sm:h-[290px]">
+                <p className="text-xs font-semibold text-white/80">Scan QRIS</p>
                 {/* key: QR terbitan ulang memakai URL yang sama, jadi status muat direset lewat expires_at. */}
                 <QrisImage key={`${order.qris.image_url}|${order.qris.expires_at}`} src={order.qris.image_url} alt={`QRIS dinamis pesanan ${order.code}`} />
-                <div className="mt-3 flex items-center justify-center gap-2" aria-label="QRIS National Payment Standard">
-                  <img src="/brand/qris.svg" alt="Logo QRIS resmi" width={72} height={28} className="h-7 w-auto object-contain" draggable={false} />
-                  <span className="text-sm text-white/70">National Payment Standard</span>
+                <div className="mt-2 flex items-center justify-center gap-1.5" aria-label="QRIS National Payment Standard">
+                  <img src="/brand/qris.svg" alt="Logo QRIS resmi" width={48} height={18} className="h-[18px] w-auto object-contain" draggable={false} />
+                  <span className="text-[9px] text-white/55">National Payment Standard</span>
                 </div>
-                <p className="mt-4 text-xs uppercase tracking-[0.12em] text-white/45">Total bayar</p>
-                <p className="mt-1 font-display text-3xl font-bold text-white">{formatRupiah(payableAmount)}</p>
-                <p className="mt-1 text-xs text-white/45">Termasuk kode unik <span className="font-mono text-[#00E5FF]">+{order.qris.unique_code}</span></p>
-                <div className="mt-3 flex items-center justify-center gap-2 text-xs text-[#FFB800]"><span className="h-2 w-2 animate-pulse rounded-full bg-[#FFB800]" />Berlaku {countdown(order.qris.expires_at, now)}</div>
+                </div>
+                <div className="min-w-0">
+                <p className="text-[10px] uppercase tracking-[0.12em] text-white/45">Total bayar</p>
+                <p className="font-display text-2xl font-bold leading-8 text-white">{formatRupiah(payableAmount)}</p>
+                <p className="text-[11px] text-white/50">Termasuk kode unik <span className="font-mono text-[#00E5FF]">+{order.qris.unique_code}</span></p>
+                <div className="mt-1 flex items-center justify-center gap-1.5 text-[11px] text-[#FFB800]"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#FFB800]" />Berlaku {countdown(order.qris.expires_at, now)}</div>
+                <p className="mt-1 text-[11px] text-white/50">Bayar tepat sesuai total.</p>
                 {/* Status polling otomatis + cek manual: QRIS pending dulu hanya
                     menampilkan laman diam + countdown — pembeli tidak tahu
                     halaman memeriksa sendiri tiap 5 dtk, dan tidak ada jalan
                     saat ingin memastikan sekarang. */}
-                <div className="mt-3 flex flex-col items-center gap-2" aria-live="polite">
-                  <p className="flex items-center gap-1.5 text-[11px] text-white/50">
-                    <InlineSpinner className="h-3 w-3" />
-                    Mengecek pembayaran otomatis tiap 5 detik
-                    {lastCheckedAt ? ` • terakhir dicek ${new Date(lastCheckedAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : ""}
-                  </p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <a href={order.qris.image_url} download={`AXVARA-${order.code}-QRIS.png`} className="inline-flex h-11 min-w-0 items-center justify-center whitespace-nowrap rounded-xl border border-white/15 px-2 text-xs font-semibold text-white/75 hover:bg-white/10">Simpan QRIS</a>
                   <button
                     type="button"
                     onClick={checkStatusNow}
                     disabled={checkingNow}
-                    className="inline-flex h-9 items-center gap-2 rounded-xl border border-[#00E5FF]/30 bg-[#00E5FF]/10 px-4 text-xs font-bold text-[#00E5FF] transition hover:bg-[#00E5FF]/20 disabled:opacity-50"
+                    className="inline-flex h-11 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-[#00E5FF]/30 bg-[#00E5FF]/10 px-2 text-xs font-bold text-[#00E5FF] transition hover:bg-[#00E5FF]/20 disabled:opacity-50"
                   >
                     {checkingNow && <InlineSpinner />}
-                    {checkingNow ? "Mengecek…" : "Cek Status Sekarang"}
+                    {checkingNow ? "Mengecek…" : "Cek Pembayaran"}
                   </button>
                 </div>
-                <a href={order.qris.image_url} download={`AXVARA-${order.code}-QRIS.png`} className="mt-4 inline-flex h-9 items-center rounded-xl border border-white/15 px-4 text-xs font-semibold text-white/70 hover:bg-white/10">Download QRIS</a>
-              </>
+                <p className="mt-2 flex items-center justify-center gap-1.5 text-[10px] leading-4 text-white/50" aria-live="polite">
+                  <InlineSpinner className="h-3 w-3 shrink-0" />
+                  <span>Mengecek pembayaran otomatis tiap 5 detik{lastCheckedAt && <span className="sr-only">{` • terakhir dicek ${new Date(lastCheckedAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`}</span>}</span>
+                </p>
+                </div>
+              </div>
             )}
           </section>
         )}
 
         {fetchError && <div className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-left text-xs text-amber-200">Status terbaru belum dapat diperiksa: {fetchError}</div>}
 
-        <div className="ax-glass-card mt-6 rounded-2xl p-4 text-left">
+        {compactPayment ? (
+          <div className="mt-3 text-left"><MobileCollapsible title="Ringkasan" meta={`${order.items.length} produk`}>{summaryContent}</MobileCollapsible></div>
+        ) : <div className="ax-glass-card mt-6 rounded-2xl p-4 text-left">
           <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">Ringkasan</p>
-          <div className="mt-3 space-y-2">{order.items.map((item, index) => <div key={index} className="flex justify-between gap-4 text-sm"><span className="text-white/70">{item.name} × {item.qty}</span><span className="font-medium text-white">{formatRupiah(item.price * item.qty)}</span></div>)}</div>
-          <div className="mt-3 flex justify-between border-t border-white/10 pt-3"><span className="text-sm text-white/60">Total • {order.method.toUpperCase()}</span><span className="font-bold text-white">{formatRupiah(payableAmount)}</span></div>
-        </div>
+          <div className="mt-3">{summaryContent}</div>
+        </div>}
 
         {isDeliveryFailed && (
           <section className="mt-6 rounded-2xl border border-red-500/25 bg-red-500/[0.07] p-4 text-left" aria-label="Pengiriman bermasalah">
@@ -651,23 +681,26 @@ export default function OrderSuccessPage() {
 
         {isPaid && <WarrantyClaimAccordion />}
 
-        <div className="mt-6 grid grid-cols-2 gap-2.5">
+        {!compactPayment && <div className="mt-6 grid grid-cols-2 gap-2.5">
           <Link prefetch={false} href="/lacak-pesanan" className="ax-glass-card flex h-11 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-white hover:bg-white/10">Lacak Status</Link>
           <Link prefetch={false} href="/" className="ax-glass-card flex h-11 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-white hover:bg-white/10">Lanjut Belanja</Link>
-        </div>
+        </div>}
         {/* Batal mandiri: hanya saat masih pending. Lunas/kadaluarsa/dibatalkan
             tidak punya tombol ini. Konfirmasi + verifikasi kontak agar penebak
             kode tidak bisa mengunci/membatalkan pesanan orang lain. */}
         {order.status === "pending" && !isExpired && (
           <div className="mt-3">
             {!confirmingCancel ? (
+              <div className={compactPayment ? "grid grid-cols-2 gap-2.5" : undefined}>
+              {compactPayment && <Link prefetch={false} href="/" className="flex h-11 min-w-0 items-center justify-center whitespace-nowrap rounded-xl border border-white/10 bg-white/[0.03] px-2 text-[11px] font-medium text-white/60 transition hover:bg-white/[0.06] sm:text-xs">Lanjut Belanja</Link>}
               <button
                 type="button"
                 onClick={() => { setConfirmingCancel(true); setCancelError(null); }}
-                className="flex h-11 w-full items-center justify-center whitespace-nowrap rounded-xl border border-red-400/20 bg-red-500/[0.06] px-3 text-sm font-semibold text-red-200 transition hover:bg-red-500/[0.12]"
+                className={compactPayment ? "flex h-11 min-w-0 items-center justify-center whitespace-nowrap rounded-xl border border-red-400/15 bg-red-500/[0.04] px-2 text-[11px] font-medium text-red-200/80 transition hover:bg-red-500/[0.08] sm:text-xs" : "flex h-11 w-full items-center justify-center whitespace-nowrap rounded-xl border border-red-400/20 bg-red-500/[0.06] px-3 text-sm font-semibold text-red-200 transition hover:bg-red-500/[0.12]"}
               >
-                Batalkan Pesanan Ini
+                {compactPayment ? "Batalkan Pesanan" : "Batalkan Pesanan Ini"}
               </button>
+              </div>
             ) : (
               <div className="rounded-2xl border border-red-400/20 bg-red-500/[0.06] p-4 text-left" role="dialog" aria-label="Konfirmasi pembatalan pesanan">
                 <p className="text-sm font-semibold text-red-200">Batalkan pesanan {order.code}?</p>
@@ -708,15 +741,15 @@ export default function OrderSuccessPage() {
             )}
           </div>
         )}
-        <div className="mt-3">
+        <div className={compactPayment ? "mt-4 border-t border-white/10 pt-3" : "mt-3"}>
           <p className="text-center text-[11px] text-white/35">Butuh bantuan?</p>
-          <div className="mt-2 grid grid-cols-2 gap-2.5">
+          <div className={compactPayment ? "mt-2 flex items-center justify-center gap-3" : "mt-2 grid grid-cols-2 gap-2.5"}>
             <StoreWhatsAppLink message={`saya ingin menanyakan pesanan ${order.code} sebesar ${formatRupiah(payableAmount)}`} className="flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-white/10 px-3 text-[13px] font-medium text-white/80 transition hover:border-[#25D366]/40 hover:bg-white/[0.06]"><img src="/brand/whatsapp-circle.svg" alt="" width={20} height={20} className="h-5 w-5 shrink-0 rounded-full object-cover" draggable={false} /><span>WA Admin</span></StoreWhatsAppLink>
             <a href={supportTelegramLink()} target="_blank" rel="noreferrer" className="flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-white/10 px-3 text-[13px] font-medium text-white/80 transition hover:border-[#2AABEE]/40 hover:bg-white/[0.06]"><img src="/brand/telegram.svg" alt="" width={20} height={20} className="h-5 w-5 shrink-0 rounded-full object-cover" draggable={false} /><span>Telegram</span></a>
           </div>
         </div>
 
-        <p className="mt-4 text-center text-[11px] leading-5 text-white/35">Produk third-party AXVARA — simpan kode pesanan untuk klaim. Garansi berupa penggantian sesuai <Link prefetch={false} href="/garansi-replace" className="text-white/50 underline decoration-white/20 underline-offset-2 hover:text-white">ketentuan garansi</Link>.</p>
+        <p className={`${compactPayment ? "mt-1 text-[10px] leading-4" : "mt-4 text-[11px] leading-5"} text-center text-white/35`}>Produk third-party AXVARA — simpan kode pesanan untuk klaim. Garansi berupa penggantian sesuai <Link prefetch={false} href="/garansi-replace" className="text-white/50 underline decoration-white/20 underline-offset-2 hover:text-white">ketentuan garansi</Link>.</p>
       </div>
     </div>
   );

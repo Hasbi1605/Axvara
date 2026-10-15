@@ -140,7 +140,7 @@ describe("/pesanan/[code] saat memuat", () => {
     localStorage.setItem("axvara-orders", JSON.stringify([{ code: CODE, name: "Budi", method: "qris", items: [{ name: "Canva Pro", price: 10_000, qty: 1 }], subtotal: 10_000, status: "pending", createdAt: new Date().toISOString(), qris }]));
     vi.stubGlobal("fetch", vi.fn(() => new Promise(() => undefined)));
     render(<OrderSuccessPage />);
-    expect(screen.getByText("Selesaikan Pembayaran QRIS")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Pembayaran QRIS" })).toBeTruthy();
     expect(screen.getByAltText(`QRIS dinamis pesanan ${CODE}`)).toBeTruthy();
     expect(screen.getByText("Memuat QRIS…")).toBeTruthy();
     expect(screen.queryByText(/Admin akan memverifikasi bukti/)).toBeNull();
@@ -178,7 +178,7 @@ describe("/pesanan/[code] saat memuat", () => {
     // Ikon jam berputar: pembeli tahu halaman hidup, bukan laman kosong.
     expect(screen.getByRole("status", { name: /Menunggu pembayaran/ })).toBeTruthy();
     expect(screen.getByText(/Mengecek pembayaran otomatis tiap 5 detik/)).toBeTruthy();
-    const check = screen.getByRole("button", { name: "Cek Status Sekarang" });
+    const check = screen.getByRole("button", { name: "Cek Pembayaran" });
     expect(check).toBeTruthy();
     // Cek manual memicu GET ulang (tanpa menunggu interval 5 dtk).
     fireEvent.click(check);
