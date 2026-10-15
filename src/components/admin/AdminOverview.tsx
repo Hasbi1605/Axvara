@@ -167,6 +167,7 @@ export function AdminOverview({ data, loading, error, onRetry, selection, onSele
           </button>
         ))}
       </div>
+      <div className="flex min-w-0 flex-wrap items-center gap-2" role="group" aria-label="Filter dan unduhan laporan">
       {onSelectionChange && <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-white/60">
         <label className="sr-only" htmlFor="report-month">Bulan historis</label>
         <input id="report-month" type="month" max={todayWibDateString().slice(0, 7)} value={month} onChange={e => changeMonth(e.target.value)} className="h-9 min-w-0 rounded-lg border border-white/10 bg-white/[0.04] px-2 text-white [color-scheme:dark]" />
@@ -178,14 +179,15 @@ export function AdminOverview({ data, loading, error, onRetry, selection, onSele
           <input id="report-to" type="date" max={todayWibDateString()} value={to} onChange={e => changeDates(from, e.target.value)} className="h-9 min-w-0 w-[136px] rounded-lg border border-white/10 bg-white/[0.04] px-2 text-white [color-scheme:dark]" />
         </div>
       </div>}
+      {!loading && !error && data.selected_report && selection && (
+        renderReportActions ? renderReportActions({ report: data.selected_report, disabled: false }) : <ReportExportActions report={data.selected_report} disabled={false} />
+      )}
+      </div>
     </div>
     {rangeError && <p role="alert" className="text-sm text-red-200">{rangeError}</p>}
     {error ? <div role="alert" className="rounded-2xl border border-red-400/20 bg-red-500/[0.06] p-5"><p className="text-sm text-red-200">{error}</p><button type="button" onClick={onRetry} disabled={loading} className="mt-3 rounded-xl bg-[#00E5FF] px-4 py-2 text-xs font-bold text-[#080C1E]">Muat ulang ringkasan</button></div>
       : loading ? <p role="status" className="py-8 text-sm text-white/50">Memuat laporan {label}…</p>
       : <>
-    {data.selected_report && selection && <div className="flex flex-wrap items-center justify-end gap-2">
-      {renderReportActions ? renderReportActions({ report: data.selected_report, disabled: false }) : <ReportExportActions report={data.selected_report} disabled={false} />}
-    </div>}
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
       {metrics.map(([label, value, tone]) => <div key={label} className="ax-glass rounded-2xl p-4">
         <p className="text-[11px] uppercase tracking-wide text-white/50">{label}</p>

@@ -3,7 +3,7 @@
 // Dashboard Fase 1 render: kartu periode default Minggu + Untung Produk +
 // grafik + tabel supplier/channel tampil tanpa crash.
 import { afterEach, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen, fireEvent } from "@testing-library/react";
+import { act, cleanup, render, screen, fireEvent, within } from "@testing-library/react";
 import { AdminOverview, EMPTY_ADMIN_OVERVIEW, ProfitChart } from "@/components/admin/AdminOverview";
 import type { PeriodReport } from "@/lib/dashboard-report";
 import { emptySelectedReport } from "@/lib/dashboard-report";
@@ -170,13 +170,18 @@ it("selected historical report scopes all financial content and exposes exports 
   expect(screen.getByText("Belum ada transaksi pada periode ini")).toBeTruthy();
   expect(screen.queryByText(/Dibuat/)).toBeNull(); // Metadata belongs to the session header.
   expect(actions).toHaveBeenLastCalledWith({ report, disabled: false });
-  view.rerender(<AdminOverview data={data} selection={selection} onSelectionChange={vi.fn()} loading={true} renderReportActions={actions} />);
+  const toolbar = screen.getByRole("group", { name: "Filter dan unduhan laporan" });
+  expect(within(toolbar).getByLabelText("Bulan historis")).toBeTruthy();
+  expect(within(toolbar).getByLabelText("Tanggal akhir")).toBeTruthy();
+  expect(within(toolbar).getByRole("button", { name: "Export fixture" })).toBeTruthy();
+  view.rerender(<AdminOverview data={{ ...data, selected_report: report }} selection={selection} onSelectionChange={vi.fn()} loading={true} renderReportActions={actions} />);
   expect(screen.queryByText("Untung Produk")).toBeNull();
   expect(screen.queryByText("Netflix")).toBeNull();
   expect(screen.queryByText("Export fixture")).toBeNull();
-  view.rerender(<AdminOverview data={data} selection={selection} onSelectionChange={vi.fn()} loading={false} error="Gagal memuat periode baru" />);
+  view.rerender(<AdminOverview data={{ ...data, selected_report: report }} selection={selection} onSelectionChange={vi.fn()} loading={false} error="Gagal memuat periode baru" renderReportActions={actions} />);
   expect(screen.queryByText("Untung Produk")).toBeNull();
   expect(screen.queryByText("Netflix")).toBeNull();
+  expect(screen.queryByText("Export fixture")).toBeNull();
   expect(screen.getByRole("alert").textContent).toContain("Gagal memuat periode baru");
   expect(screen.getByLabelText("Tanggal awal")).toBeTruthy();
 });
