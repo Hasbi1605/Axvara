@@ -40,6 +40,7 @@ describe("compact pending QRIS payment", () => {
     await screen.findByRole("heading", { name: "Pembayaran QRIS" });
     const payment = screen.getByRole("region", { name: "QRIS dinamis" });
     const paymentStatus = within(payment).getByText("Menunggu bayar");
+    expect(screen.getAllByText("Menunggu bayar")).toHaveLength(1);
     expect(paymentStatus.compareDocumentPosition(within(payment).getByText("Total bayar")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(payment).getByText(formatRupiah(12445).replace(/\s/g, " "))).toBeTruthy();
     expect(within(payment).getByText("+145")).toBeTruthy();

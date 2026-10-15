@@ -509,17 +509,17 @@ export default function OrderSuccessPage() {
     <div className={`mx-auto px-4 sm:px-6 ${compactPayment ? "max-w-[760px] py-4 sm:py-6" : "max-w-[640px] py-10"}`}>
       <div className={`ax-glass-card text-center ${compactPayment ? "rounded-2xl p-4 sm:p-5" : "rounded-[28px] p-6 sm:p-8"}`}>
         {compactPayment ? (
-          <div className="flex items-center gap-3 text-left sm:grid sm:grid-cols-[40px_auto_40px] sm:justify-center sm:text-center">
-            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${statusVisual.shell}`}>
+          <div className="grid grid-cols-[32px_minmax(0,1fr)_32px] items-center gap-2 text-center sm:grid-cols-[40px_auto_40px] sm:justify-center sm:gap-3">
+            <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl sm:h-10 sm:w-10 ${statusVisual.shell}`}>
               <span className={isPendingQris ? "animate-[spin_3s_linear_infinite]" : undefined} role={isPendingQris ? "status" : undefined} aria-label={isPendingQris ? "Menunggu pembayaran — memeriksa otomatis" : undefined}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={statusVisual.icon} alt="" width={22} height={22} className="h-[22px] w-[22px] object-contain" style={{ filter: statusVisual.filter }} draggable={false} />
               </span>
             </div>
             <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 sm:justify-center">
-                <h1 className="font-display text-lg font-bold leading-6 text-white">Pembayaran QRIS</h1>
-                <span className={`rounded-full border border-[#FFB800]/20 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-semibold text-[#FFB800] ${qrisExpired ? "" : "sm:hidden"}`}>{qrisExpired ? "QRIS hangus" : "Menunggu bayar"}</span>
+              <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
+                <h1 className="font-display text-base font-bold leading-6 text-white sm:text-lg">Pembayaran QRIS</h1>
+                {qrisExpired && <span className="rounded-full border border-[#FFB800]/20 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-semibold text-[#FFB800]">QRIS hangus</span>}
               </div>
               <p className="mt-1 break-all font-mono text-[11px] font-semibold tracking-[0.04em] text-[#00E5FF]">{order.code}</p>
             </div>
@@ -601,7 +601,7 @@ export default function OrderSuccessPage() {
                 </div>
                 </div>
                 <div className="min-w-0">
-                <span className="mb-2 hidden rounded-full border border-[#FFB800]/20 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-semibold text-[#FFB800] sm:inline-flex">Menunggu bayar</span>
+                <span className="mb-2 inline-flex rounded-full border border-[#FFB800]/20 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-semibold text-[#FFB800]">Menunggu bayar</span>
                 <p className="text-[10px] uppercase tracking-[0.12em] text-white/45">Total bayar</p>
                 <p className="font-display text-2xl font-bold leading-8 text-white">{formatRupiah(payableAmount)}</p>
                 <p className="text-[11px] text-white/50">Termasuk kode unik <span className="font-mono text-[#00E5FF]">+{order.qris.unique_code}</span></p>
