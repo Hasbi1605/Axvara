@@ -375,7 +375,10 @@
 ### 5.7 Halaman Pembayaran & Status
 - **QRIS pending ringkas (2026-10-15, implementasi; publikasi CI):** container
   maksimum 760px, padding halaman 16px mobile/24px desktop; kartu p-4/p-5,
-  header ikon 40px + judul 18px + badge kecil dan kode mono 11px. Panel bayar
+  header ikon 40px + judul 18px dan kode mono 11px. Mulai breakpoint `sm`,
+  judul/kode tepat di tengah kartu (kolom 40px penyeimbang ikon), pill
+  “Menunggu bayar” di atas Total bayar; mobile tetap menempatkan pill di
+  header. QR hangus tetap memiliki status di header pada semua ukuran. Panel bayar
   desktop dua kolom (QR 240px + info), mobile satu kolom dengan QR 224px;
   bingkai putih 10px, QR utuh `object-contain` tanpa crop, placeholder tetap.
   Kolom QR desktop memiliki ruang 290px untuk judul, QR, dan lockup resmi.

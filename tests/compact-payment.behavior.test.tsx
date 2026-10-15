@@ -39,6 +39,8 @@ describe("compact pending QRIS payment", () => {
     const user = userEvent.setup(); api(); render(<OrderSuccessPage />);
     await screen.findByRole("heading", { name: "Pembayaran QRIS" });
     const payment = screen.getByRole("region", { name: "QRIS dinamis" });
+    const paymentStatus = within(payment).getByText("Menunggu bayar");
+    expect(paymentStatus.compareDocumentPosition(within(payment).getByText("Total bayar")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(payment).getByText(formatRupiah(12445).replace(/\s/g, " "))).toBeTruthy();
     expect(within(payment).getByText("+145")).toBeTruthy();
     expect(within(payment).getByText(/Berlaku \d\d:\d\d/)).toBeTruthy();
@@ -87,6 +89,8 @@ describe("compact pending QRIS payment", () => {
     const order = fixture(); order.qris.expires_at = new Date(Date.now() - 1000).toISOString(); order.qris_reissue_allowed = allowed;
     const { fetch } = api(order); render(<OrderSuccessPage />);
     await screen.findByText("QRIS sudah kedaluwarsa");
+    expect(screen.getByText("QRIS hangus")).toBeTruthy();
+    expect(screen.queryByText("Menunggu bayar")).toBeNull();
     expect(screen.queryByAltText(`QRIS dinamis pesanan ${CODE}`)).toBeNull();
     expect(screen.queryByRole("link", { name: "Simpan QRIS" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Cek Pembayaran" })).toBeNull();
