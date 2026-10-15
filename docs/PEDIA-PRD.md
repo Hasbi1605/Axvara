@@ -213,7 +213,7 @@ Kode `PD-xx`. Semua wajib fase 1 kecuali ditandai.
 - **PD-61** ServicesMenu di Market/Pedia, dengan keyboard/Escape/focus return; AppSwitcher dihapus dari working-tree.
 - **PD-62** Tombol `/link` disembunyikan sejak 2026-10-08. Titik promosi lain tetap mengikuti kode/flag existing, bukan otomatis diaktifkan oleh overhaul.
 - **PD-63** CrossServicePromo memakai `utm_source=axvara|pedia&utm_medium=cross_promo`, footer Pedia memakai UTM existing; semua menu/footer lintas host absolut dari site.ts, bukan semua tautan diberi UTM.
-- **PD-64** Link WA grup & Bot Telegram tetap ada di HelpSheet + footer. Revisi footer bersama 2026-10-15 ✅ implementasi (publikasi CI): ikon WA setelah Facebook menuju `https://axvara.tech/wa?pesan=Halo%20AXVARA`, pill Grup WA hijau/Bot Order Telegram biru berlogo asli di bawah ikon (bot kanal Market). Teks chat/jam dan kategori dihapus; navigasi hanya Layanan AXVARA + Bantuan, newsletter tetap ada.
+- **PD-64** Link WA grup & Bot Telegram tetap ada di HelpSheet + footer. Revisi footer bersama 2026-10-15 ✅ implementasi (publikasi CI): ikon WA satu tone dengan sosial lainnya setelah Facebook menuju `https://axvara.tech/wa?pesan=Halo%20AXVARA`, pill Grup WA hijau/Bot Order Telegram biru berlogo asli di bawah ikon (bot kanal Market). Teks chat/jam dan kategori dihapus; navigasi hanya Layanan AXVARA + Bantuan, newsletter tetap ada.
 
 ---
 

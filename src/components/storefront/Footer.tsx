@@ -106,10 +106,11 @@ export function Footer() {
                 rel="noreferrer"
                 aria-label="WhatsApp AXVARA"
                 title="WhatsApp AXVARA"
-                className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] transition hover:border-[#25D366]/40 hover:bg-[#25D366]/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#25D366]"
+                className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] text-white/60 transition hover:border-[#00E5FF]/40 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF]"
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/brand/whatsapp.svg" alt="" width={24} height={24} className="h-6 w-6" />
+                <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="currentColor" aria-hidden="true">
+                  <path d="M20.52 3.449A11.859 11.859 0 0 0 12.008 0C5.462 0 .135 5.326.132 11.872c0 2.092.547 4.134 1.588 5.934L.032 24l6.31-1.654a11.882 11.882 0 0 0 5.66 1.442h.005c6.545 0 11.873-5.326 11.876-11.873a11.862 11.862 0 0 0-3.363-8.466ZM12.007 21.785h-.004a9.865 9.865 0 0 1-5.027-1.378l-.36-.214-3.744.982.999-3.649-.235-.374a9.863 9.863 0 0 1-1.51-5.28c.002-5.441 4.43-9.868 9.876-9.868a9.809 9.809 0 0 1 6.983 2.895 9.808 9.808 0 0 1 2.89 6.988c-.003 5.442-4.43 9.898-9.868 9.898Zm5.416-7.4c-.297-.149-1.758-.868-2.03-.967-.273-.1-.471-.149-.67.149-.198.297-.767.967-.94 1.165-.174.199-.347.224-.645.075-.297-.149-1.255-.463-2.39-1.475-.884-.788-1.481-1.761-1.655-2.059-.173-.298-.018-.459.131-.607.134-.133.298-.347.446-.521.15-.173.198-.297.298-.496.099-.198.05-.372-.025-.521-.074-.149-.67-1.612-.917-2.207-.242-.58-.487-.502-.67-.511l-.57-.01c-.198 0-.52.075-.793.372-.272.298-1.04 1.017-1.04 2.48s1.065 2.877 1.213 3.075c.149.198 2.095 3.2 5.076 4.487.709.306 1.262.489 1.693.626.711.226 1.359.194 1.87.118.57-.085 1.758-.719 2.006-1.414.247-.695.247-1.29.173-1.414-.074-.124-.272-.198-.57-.347Z" />
+                </svg>
               </a>
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-2">

@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { StoreWhatsAppLink } from "@/components/storefront/StoreWhatsAppLink";
+import { WarrantyClaimBody } from "@/components/storefront/WarrantyClaim";
+import { marketWarrantyClaim } from "@/lib/warranty-policy";
 
 export const metadata = { title: "Ketentuan Layanan & Garansi | AXVARA", description: "AXVARA adalah third-party independen. Pahami ketentuan garansi 1x24 jam–30 hari sebelum membeli.", alternates: { canonical: "/garansi-replace" } };
 
@@ -34,19 +36,19 @@ export default function GaransiReplacePage() {
     </section>
 
     <div className="mt-4 grid gap-4 lg:grid-cols-3">
-      <section className="rounded-[22px] ax-glass-card p-5"><h2 className="font-semibold text-white">Yang perlu disiapkan</h2><ul className="mt-3 space-y-2 text-sm leading-6 text-white/55"><li>Kode pesanan AXV</li><li>Nama produk yang bermasalah</li><li>Video / screenshot error yang jelas</li></ul></section>
-      <section className="rounded-[22px] ax-glass-card p-5"><h2 className="font-semibold text-white">Proses pemeriksaan</h2><p className="mt-3 text-sm leading-6 text-white/55">Admin memverifikasi pesanan dan penyebab kendala. Jika memenuhi Syarat &amp; Ketentuan produk, akses akan diperbaiki atau diganti dalam 1x24 jam kerja.</p></section>
+      <section className="rounded-[22px] ax-glass-card p-5"><h2 className="font-semibold text-white">Yang perlu disiapkan</h2><ul className="mt-3 space-y-2 text-sm leading-6 text-white/55"><li>Invoice atau bukti pemesanan (kode pesanan AXV)</li><li>Nama produk yang bermasalah</li><li>Screenshot kendala yang terjadi</li></ul></section>
+      <section className="rounded-[22px] ax-glass-card p-5"><h2 className="font-semibold text-white">Proses pemeriksaan</h2><p className="mt-3 text-sm leading-6 text-white/55">Admin memverifikasi pesanan dan penyebab kendala. Jika memenuhi Syarat &amp; Ketentuan produk, akses akan diperbaiki atau diganti. {marketWarrantyClaim.notes[0]}</p></section>
       <section className="rounded-[22px] ax-glass-card p-5"><h2 className="font-semibold text-white">Masa garansi</h2><p className="mt-3 text-sm leading-6 text-white/55">Masa dan cakupan garansi mengikuti Syarat &amp; Ketentuan masing-masing produk. Terhitung sejak produk dikirim. Lewat masa aktif = hangus.</p><p className="mt-2 text-sm leading-6 text-white/55">Untuk produk <span className="text-white font-medium">Made By Order</span> (ditandai di halaman produk), masa garansi mulai berjalan saat detail akun diserahkan ke kamu — <span className="text-white font-medium">bukan</span> saat pembayaran. Waktu tunggu antrean tidak memotong masa garansi.</p></section>
     </div>
 
     <section className="mt-4 rounded-[22px] border border-white/10 bg-white/[0.03] p-5 sm:p-6">
       <h2 className="font-semibold text-white">Syarat klaim garansi</h2>
+      <div className="mt-3"><WarrantyClaimBody /></div>
+      <h3 className="mt-5 text-sm font-semibold text-white">Ketentuan tambahan</h3>
       <ol className="mt-3 list-decimal space-y-2.5 pl-5 text-sm leading-6 text-white/60">
-        <li>Garansi berupa <span className="text-white font-medium">penggantian produk / perbaikan, BUKAN refund dana</span>. Refund hanya jika stok pengganti kosong dan disetujui admin.</li>
-        <li>Wajib sertakan <span className="text-white font-medium">bukti video / screenshot error + kode pesanan / invoice</span>. Tanpa bukti = klaim ditolak.</li>
+        <li>Garansi berupa penggantian produk / perbaikan, dengan solusi refund bila gangguan masih terjadi setelah maksimal 3 hari sesuai catatan di atas.</li>
         <li>Klaim hanya selama <span className="text-white font-medium">masa garansi aktif</span> sesuai Syarat &amp; Ketentuan produk, terhitung sejak produk dikirim.</li>
         <li>Garansi <span className="text-white font-medium">HANGUS</span> jika: password / email diganti tanpa izin, login di banyak device / IP bersamaan, melanggar aturan pakai di Syarat &amp; Ketentuan produk, akun kena suspend karena pelanggaran user, atau order sudah dikonfirmasi selesai.</li>
-        <li>Durasi proses penggantian <span className="text-white font-medium">1x24 jam kerja</span>, bukan instan. Harap antre.</li>
         <li>Satu order = satu kali klaim penggantian, kecuali produk bergaransi 30 hari (maksimal 2–3x ganti, lihat Syarat &amp; Ketentuan produk).</li>
       </ol>
     </section>

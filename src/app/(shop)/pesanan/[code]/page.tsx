@@ -11,6 +11,7 @@ import { WR_QUEUED_MAX_HOURS } from "@/lib/warung-rebahan/delivery-class";
 import { StoreWhatsAppLink } from "@/components/storefront/StoreWhatsAppLink";
 import { settleLocalOrder } from "@/lib/local-orders";
 import { WrCredentialsPanel } from "@/components/storefront/WrCredentialsPanel";
+import { WarrantyClaimAccordion } from "@/components/storefront/WarrantyClaim";
 import { InlineSpinner, OrderStatusSkeleton } from "@/components/storefront/Skeletons";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
 
@@ -647,6 +648,8 @@ export default function OrderSuccessPage() {
             )}
           </section>
         ))}
+
+        {isPaid && <WarrantyClaimAccordion />}
 
         <div className="mt-6 grid grid-cols-2 gap-2.5">
           <Link prefetch={false} href="/lacak-pesanan" className="ax-glass-card flex h-11 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-white hover:bg-white/10">Lacak Status</Link>

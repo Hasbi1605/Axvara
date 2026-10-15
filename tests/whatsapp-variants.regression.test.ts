@@ -43,7 +43,8 @@ describe("Canonical Warranty Policy", () => {
     const html = formatWarrantyTelegram();
     expect(html).toContain("<b>KETENTUAN AXVARA");
     expect(html).toContain("<b>SYARAT KLAIM GARANSI</b>");
-    expect(html).toContain("BUKAN refund dana");
+    expect(html).toContain("solusi refund uang");
+    expect(html).not.toContain("BUKAN refund dana");
     expect(html).toContain("1️⃣");
     expect(html).toContain("6️⃣");
   });
@@ -52,7 +53,9 @@ describe("Canonical Warranty Policy", () => {
     const text = formatWarrantyWhatsApp();
     expect(text).toContain("*KETENTUAN AXVARA");
     expect(text).toContain("*SYARAT KLAIM GARANSI*");
-    expect(text).toContain("*Garansi berupa penggantian / perbaikan, BUKAN refund dana.*");
+    expect(text).toContain("Garansi berupa penggantian / perbaikan.");
+    expect(text).toContain("solusi refund uang");
+    expect(text).not.toContain("BUKAN refund dana");
     expect(text).not.toContain("<b>");
     expect(text).not.toContain("</b>");
     expect(text).not.toContain("&amp;");
@@ -66,8 +69,10 @@ describe("Canonical Warranty Policy", () => {
     expect(wa).toContain("third-party store");
     expect(tg).toContain("DYOR, DWYOR");
     expect(wa).toContain("DYOR, DWYOR");
-    expect(tg).toContain("1×24 jam kerja");
-    expect(wa).toContain("1×24 jam kerja");
+    expect(tg).toContain("Proses garansi 1–3 hari");
+    expect(wa).toContain("Proses garansi 1–3 hari");
+    expect(tg).toContain("setelah maksimal 3 hari gangguan masih terjadi");
+    expect(wa).toContain("setelah maksimal 3 hari gangguan masih terjadi");
     expect(tg).toContain("penggantian / perbaikan");
     expect(wa).toContain("penggantian / perbaikan");
   });

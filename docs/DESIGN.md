@@ -427,6 +427,15 @@
   kredensial kini ada panel terlipat `MobileCollapsible` "Syarat &
   Ketentuan" (+ "Cara Aktivasi" bila ada) berisi salinan ter-resolusi yang
   sama dengan PDP — kredensial tetap bersih di kartunya sendiri.
+  **Revisi 2026-10-15:** sesudah seluruh detail akun/S&K/aktivasi (atau
+  informasi pengiriman bila detail belum tersedia), satu accordion tambahan
+  **Syarat klaim garansi** tampil pada order Market lunas dan hasil lacak.
+  Memakai `MobileCollapsible`, tertutup awal di semua viewport, tombol native
+  dengan `aria-expanded/controls` dan region berlabel; style glass mengikuti
+  panel lain. Isi dua syarat bernomor, Catatan dengan dua bullet (proses
+  1–3 hari + solusi refund setelah maksimal 3 hari), dan ucapan terima kasih.
+  Halaman ketentuan menampilkan isi yang sama tanpa lipatan; tidak ada
+  perubahan masa garansi per produk atau mekanisme refund otomatis.
 - **Link di hasil Detail Akun Digital bisa diklik (2026-10-03, laporan
   owner + screenshot /pesanan).** Isi kredensial (`CredentialText` di
   `ProductCopy.tsx`, dipakai `WrCredentialsPanel`) memakai `linkifySegments`
@@ -810,7 +819,8 @@ dimatikan.
 - **Ikon dan pill footer bersama (2026-10-15, implementasi; publikasi CI):**
   baris ikon berurutan Instagram, Threads, TikTok, Facebook, WhatsApp.
   Empat sosial memakai SVG Simple Icons satu tone `text-white/60`;
-  WhatsApp memakai `/brand/whatsapp.svg` dengan warna brand asli.
+  WhatsApp memakai SVG `currentColor` satu tone `text-white/60`, ukuran
+  18px dan hover yang sama dengan sosial lain (revisi 2026-10-15).
   Tombol bulat glass `h-11 w-11` (44px), `aria-label` + `title`,
   `_blank noreferrer`; WhatsApp menuju `https://axvara.tech/wa?pesan=Halo%20AXVARA`.
   Di bawahnya pill **Grup WA** hijau `#25D366` dan **Bot Order Telegram**

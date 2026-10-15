@@ -639,12 +639,13 @@ describe("Telegram warranty anti-refund copy", () => {
     expect(msg).toContain("SETUJU");
   });
 
-  it("warranty claims are replacement not refund + per-product terms", () => {
+  it("warranty claims include processing time and conditional refund + per-product terms", () => {
     const msg = warrantyClaimMessage();
-    expect(msg).toContain("BUKAN refund");
+    expect(msg).toContain("solusi refund uang");
+    expect(msg).not.toContain("BUKAN refund");
     expect(msg).toContain("sesuai deskripsi produk");
     expect(msg).toContain("HANGUS");
-    expect(msg).toContain("1×24 jam kerja");
+    expect(msg).toContain("Proses garansi 1–3 hari");
   });
 
   it("full warranty combines terms + claims", () => {

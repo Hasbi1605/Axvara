@@ -10,13 +10,25 @@ export const warrantyTerms = {
   consent: "Lanjut membeli = kamu PAHAM & SETUJU ketentuan ini. Terima kasih 🙏",
 };
 
+export const marketWarrantyClaim = {
+  requirements: [
+    "Mengirimkan invoice atau bukti pemesanan.",
+    "Mengirimkan screenshot kendala yang terjadi.",
+  ],
+  notes: [
+    "Proses garansi 1–3 hari tergantung antrean, stok akun pengganti, atau gangguan dari pihak terkait.",
+    "Jika setelah maksimal 3 hari gangguan masih terjadi, kami akan memberikan solusi refund uang.",
+  ],
+  closing: "Terima kasih atas kesabarannya!",
+} as const;
+
 export const warrantyClaimRules = [
   {
-    title: "Garansi berupa penggantian / perbaikan, BUKAN refund dana.",
-    detail: "Refund hanya jika stok pengganti kosong dan disetujui admin.",
+    title: "Garansi berupa penggantian / perbaikan.",
+    detail: marketWarrantyClaim.notes[1],
   },
   {
-    title: "Wajib sertakan video/screenshot error + kode pesanan/invoice.",
+    title: "Wajib sertakan invoice atau bukti pemesanan dan screenshot kendala.",
     detail: "Tanpa bukti = klaim ditolak.",
   },
   {
@@ -28,8 +40,8 @@ export const warrantyClaimRules = [
     detail: "password/email diganti tanpa izin, login banyak device/IP bersamaan, melanggar aturan pakai di deskripsi, akun suspend karena pelanggaran user, atau order sudah confirm selesai.",
   },
   {
-    title: "Proses penggantian 1×24 jam kerja,",
-    detail: "bukan instan. Harap antre.",
+    title: marketWarrantyClaim.notes[0],
+    detail: "Harap antre.",
   },
   {
     title: "Satu order = satu kali klaim,",

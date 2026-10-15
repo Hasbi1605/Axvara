@@ -129,7 +129,11 @@ describe("shared footer", () => {
     const whatsapp = screen.getByRole("link", { name: "WhatsApp AXVARA" });
     expect(facebook.nextElementSibling).toBe(whatsapp);
     expect(whatsapp.textContent?.trim()).toBe("");
-    expect(whatsapp.querySelector("img")?.getAttribute("src")).toBe("/brand/whatsapp.svg");
+    expect(whatsapp.querySelector("img")).toBeNull();
+    expect(whatsapp.querySelector("svg")?.getAttribute("fill")).toBe("currentColor");
+    expect(whatsapp.querySelector("svg")?.getAttribute("class")).toBe(facebook.querySelector("svg")?.getAttribute("class"));
+    expect(whatsapp.className).toContain("text-white/60");
+    expect(whatsapp.className).toContain("hover:border-[#00E5FF]/40");
     const group = screen.getByRole("link", { name: "Grup WA" });
     const bot = screen.getByRole("link", { name: "Bot Order Telegram Market" });
     expect(whatsapp.parentElement?.nextElementSibling).toBe(group.parentElement);
@@ -139,8 +143,9 @@ describe("shared footer", () => {
     for (const link of [whatsapp, group, bot]) {
       expect(link.getAttribute("target")).toBe("_blank");
       expect(link.getAttribute("rel")).toBe("noreferrer");
-      expect(link.querySelector("img")?.getAttribute("alt")).toBe("");
     }
+    for (const link of [group, bot]) expect(link.querySelector("img")?.getAttribute("alt")).toBe("");
+    expect(whatsapp.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
   });
 
   it.each(["/admin", "/link", "/wa"])("stays hidden without category requests on focused routes (%s)", (pathname) => {

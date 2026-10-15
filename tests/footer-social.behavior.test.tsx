@@ -3,7 +3,7 @@
 // Kunci: 4 tombol ikon saja (tanpa label teks) — Instagram, Threads, TikTok,
 // Facebook — mengarah ke URL sosmed AXVARA dari SITE.social; ikon satu tone
 // (fill=currentColor, Simple Icons terbaru — Threads = redesain Meta 2026);
-// WhatsApp di samping Facebook memakai aset brand dan hub /wa; perilaku
+// WhatsApp di samping Facebook memakai SVG currentColor dan hub /wa; perilaku
 // ikon + pill komunitas dikunci ecosystem-navigation.behavior.test.tsx.
 // tap target >=44px (h-11 w-11), ada aria-label, buka tab baru (_blank +
 // noreferrer); sameAs SEO ikut memuat 4 sosmed.
