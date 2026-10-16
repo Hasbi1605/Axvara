@@ -9,6 +9,7 @@ import { catalogCard, ProductCard } from "@/components/pedia/PlatformGrid";
 import { PlatformPageClient } from "@/app/pedia/p/[platform]/platform-client";
 import { Typewriter } from "@/components/pedia/Typewriter";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
+import { PEDIA_PLATFORM_CONFIG } from "@/lib/pedia/platforms";
 
 const product: PediaCatalogProduct = {
   slug: "followers-instagram", name: "Followers Instagram", platform: "instagram", metric: "followers", target_kind: "profile",
@@ -50,8 +51,40 @@ describe("Pedia platform-first storefront", () => {
     render(<PediaHomeClient products={[product, { ...product, slug: "likes-instagram", name: "Likes Instagram", metric: "likes" }]} />);
     const card = screen.getByRole("link", { name: "Layanan Instagram" });
     expect(screen.getAllByRole("link", { name: "Layanan Instagram" })).toHaveLength(1);
-    expect(card.querySelector("img")?.getAttribute("src")).toBe("/r2/products/pedia-platform-instagram.webp");
+    expect(card.querySelector("img")?.getAttribute("src")).toBe("/icons/platforms/instagram.svg");
     expect(card.textContent).not.toContain("Rp");
+  });
+  it("uses centered platform logos on matching gradients for the whole catalog", () => {
+    render(<PediaHomeClient products={PEDIA_PLATFORM_CONFIG.map((p) => ({ ...product, platform: p.id, slug: `service-${p.id}` }))} />);
+    for (const platform of PEDIA_PLATFORM_CONFIG) {
+      const card = screen.getByRole("link", { name: `Layanan ${platform.label}` });
+      const artwork = card.querySelector("img")!;
+      expect(artwork.getAttribute("src")).toBe(`/icons/platforms/${platform.id}.svg`);
+      expect(artwork.getAttribute("width")).toBe("48");
+      expect(artwork.getAttribute("height")).toBe("48");
+      expect(artwork.parentElement?.style.background).toContain("linear-gradient");
+    }
+    expect(screen.queryByText("Buka platform, lalu pilih layanan yang kamu butuhkan.")).toBeNull();
+  });
+  it("puts Shopee in Marketplace and keeps category icons decorative", () => {
+    render(<PediaHomeClient products={[product, { ...product, platform: "shopee", slug: "followers-shopee" }]} />);
+    const marketplace = screen.getByRole("button", { name: "Marketplace" });
+    const icon = marketplace.querySelector("img")!;
+    expect(icon.getAttribute("src")).toBe("/icons/ios11/shopping-bag-32.png");
+    expect(icon.closest('[aria-hidden="true"]')).toBeTruthy();
+    fireEvent.click(marketplace);
+    expect(marketplace.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("link", { name: "Layanan Shopee" }).getAttribute("href")).toBe("/pedia/p/shopee");
+    expect(screen.queryByRole("link", { name: "Layanan Instagram" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Media sosial" }));
+    expect(screen.getByRole("link", { name: "Layanan Instagram" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Layanan Shopee" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Semua" }));
+    expect(screen.getByRole("link", { name: "Layanan Shopee" })).toBeTruthy();
+  });
+  it("does not offer Marketplace when no marketplace platform is available", () => {
+    render(<PediaHomeClient products={[product]} />);
+    expect(screen.queryByRole("button", { name: "Marketplace" })).toBeNull();
   });
   it("does not render unsafe or unsaved promotional tagline markup", () => {
     expect(catalogCard({ ...product, tagline: " " }).tagline).toBeNull();

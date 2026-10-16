@@ -10,7 +10,7 @@ export const PEDIA_PLATFORM_CONFIG = [
   { id: "linkedin", label: "LinkedIn", color: "#0A66C2", group: "social", summary: "Followers dan interaksi LinkedIn" },
   { id: "pinterest", label: "Pinterest", color: "#E60023", group: "social", summary: "Followers dan interaksi pin" },
   { id: "discord", label: "Discord", color: "#5865F2", group: "social", summary: "Members untuk server komunitas" },
-  { id: "shopee", label: "Shopee", color: "#EE4D2D", group: "social", summary: "Followers toko Shopee" },
+  { id: "shopee", label: "Shopee", color: "#EE4D2D", group: "marketplace", summary: "Followers toko Shopee" },
   { id: "spotify", label: "Spotify", color: "#1DB954", group: "streaming", summary: "Plays lagu Spotify" },
   { id: "soundcloud", label: "SoundCloud", color: "#FF5500", group: "streaming", summary: "Plays dan likes lagu" },
   { id: "twitch", label: "Twitch", color: "#9146FF", group: "streaming", summary: "Followers channel Twitch" },
@@ -19,8 +19,11 @@ export const PEDIA_PLATFORM_CONFIG = [
 ] as const;
 
 export const PEDIA_GROUPS = [
-  { id: "", label: "Semua" }, { id: "social", label: "Media sosial" },
-  { id: "streaming", label: "Musik & streaming" }, { id: "web", label: "Website & developer" },
+  { id: "", label: "Semua", icon: "star" },
+  { id: "social", label: "Media sosial", icon: "chat" },
+  { id: "streaming", label: "Musik & streaming", icon: "star" },
+  { id: "web", label: "Website & developer", icon: "globe" },
+  { id: "marketplace", label: "Marketplace", icon: "shopping-bag" },
 ] as const;
 
 export const PEDIA_METRIC_LABEL: Record<string, string> = {

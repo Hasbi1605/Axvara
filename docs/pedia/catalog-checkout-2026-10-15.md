@@ -4,6 +4,13 @@ Status: implementasi di working tree, diverifikasi lokal sebelum publikasi lewat
 
 ## Katalog publik
 
+Revisi visual 2026-10-16 (implementasi; publikasi via CI):
+
+- Judul “Pilih platform” langsung diikuti pill; teks “Buka platform, lalu pilih layanan yang kamu butuhkan.” dihapus. Pencarian tetap menampilkan keterangan query.
+- Pill memakai ukuran dan gaya Market: tinggi 24px/teks 10px/ikon 10px di mobile, 36px/teks 14px/ikon 14px mulai `sm`. Aktif putih dengan teks/ikon gelap; nonaktif glass dengan teks/ikon putih. Ikon `IosIcon`: Semua/star, Media sosial/chat, Musik & streaming/star, Website & developer/globe, Marketplace/shopping-bag. Baris dapat digeser mendatar.
+- Shopee masuk Marketplace. Kategori hanya terlihat jika platformnya tersedia; Semua tetap mencakup seluruh platform aktif.
+- `PlatformCatalog` di beranda dan `/pedia/layanan` memakai logo SVG lokal 48px, terpusat di panel 16:9 bergradasi `linear-gradient(135deg, <warna-brand>20, #0F1430)`, untuk seluruh 16 platform. Instagram/TikTok/YouTube/Facebook/Threads/X/Shopee/Spotify mengikuti GitHub/Website Traffic tanpa tile 3D Market. Tidak membutuhkan gambar baru atau unggahan R2. Field `image` legacy API dan `ProductCard` kompatibel tetap tersedia; katalog platform tidak menggunakannya.
+
 - Satu kartu per platform: 16 platform tersedia jika memiliki produk aktif dengan layanan layak. Beranda dan `/pedia/layanan` memakai `PlatformCatalog`. Revisi 2026-10-16: urutan beranda adalah hero → kartu AXVARA Market dan Bot Telegram → katalog platform, pada mobile maupun desktop. Hero mobile ringkas, orbit hanya desktop. Pencarian memahami pengikut/followers, tayangan/views, kunjungan/traffic, Indo/Indonesia, Twitter/X.
 - `/pedia/p/[platform]` menyatukan pilihan jenis layanan dan checkout. `/pedia/o/[slug]` tetap membuka jenis tersebut. Pergantian jenis mengosongkan pilihan sebelumnya; setelah submit dimulai data dikunci agar retry melanjutkan quote/order yang sama.
 - 38 jenis layanan dan 131 mapping publik terkurasi (130 pasangan supplier/ID unik; satu layanan LinkedIn mendukung profil/perusahaan). Manifest server-only `src/lib/pedia/curation-20261015.json`; tidak diimpor komponen client. Migrasi 0066 hanya mengaktifkan mapping dengan mirror live Default, tarif positif dan batas layak. Jumlah aktual dapat berkurang bila supplier berubah.

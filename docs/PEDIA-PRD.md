@@ -6,6 +6,8 @@
 
 Revisi 2026-10-16: beranda Pedia menampilkan kartu AXVARA Market dan Bot Telegram tepat setelah hero, sebelum katalog platform, pada mobile dan desktop.
 
+Revisi katalog 2026-10-16: teks pengantar di bawah “Pilih platform” dihapus. Pill kategori mengikuti Market (24px mobile/36px mulai `sm`, ikon iOS monokrom, aktif putih/nonaktif glass). Marketplace menampung Shopee, terpisah dari Media sosial. Semua kartu platform memakai logo SVG 48px di tengah panel gradasi gelap warna brand seperti GitHub/Website Traffic, membedakan visual Pedia dari tile 3D Market. Berlaku di beranda dan `/pedia/layanan`; gambar legacy R2 di kontrak produk tidak dipakai oleh `PlatformCatalog`.
+
 Katalog terkurasi berisi 38 jenis/131 mapping pada 16 platform, dengan 3 pilihan awal mobile dan 5 desktop, drop/refill tetap. Di mobile, pilihan yang sudah dipilih dirangkum dan dapat diganti. Target GitHub/website/platform baru didukung parser client/server. Harga jumlah bebas dihitung server; order/job/kredit/ledger atomik D1, retry QR sama, kredit pending kedaluwarsa dikembalikan. Copy ketentuan disimpan ke quote/order. Tidak ada order supplier berbayar atau klaim hasil kualitas/drop teruji dalam verifikasi ini.
 
 > **Status working-tree 2026-10-12:** implementasi lokal dua provider + ekosistem/UX, **BELUM deployed** di Pages/proxy; tidak ada flag yang diubah. Audit docs membaca diff/source, bukan bukti seluruh QA terkini sudah lulus. Kredensial/readiness supplier, currency/rate-unit dan kurasi awal data produksi masih pending.
