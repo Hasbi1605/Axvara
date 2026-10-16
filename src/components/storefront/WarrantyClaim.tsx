@@ -5,6 +5,7 @@ import { MobileCollapsible } from "@/components/storefront/ProductCopy";
 export function WarrantyClaimBody() {
   return (
     <div className="space-y-3 text-sm leading-6 text-white/60">
+      <p>{marketWarrantyClaim.eligibility}</p>
       <ol className="list-decimal space-y-1.5 pl-5">
         {marketWarrantyClaim.requirements.map((requirement) => <li key={requirement}>{requirement}</li>)}
       </ol>
@@ -17,9 +18,9 @@ export function WarrantyClaimBody() {
   );
 }
 
-export function WarrantyClaimAccordion() {
+export function WarrantyClaimAccordion({ className = "mt-6 text-left" }: { className?: string }) {
   return (
-    <div className="mt-6 text-left">
+    <div className={className}>
       <MobileCollapsible title="Syarat klaim garansi">
         <WarrantyClaimBody />
       </MobileCollapsible>

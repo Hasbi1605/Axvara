@@ -464,12 +464,18 @@ Katalog terkurasi berisi 38 jenis/131 mapping pada 16 platform, dengan 3 pilihan
   kredensial kini ada panel terlipat `MobileCollapsible` "Syarat &
   Ketentuan" (+ "Cara Aktivasi" bila ada) berisi salinan ter-resolusi yang
   sama dengan PDP — kredensial tetap bersih di kartunya sendiri.
-  **Revisi 2026-10-15:** sesudah seluruh detail akun/S&K/aktivasi (atau
-  informasi pengiriman bila detail belum tersedia), satu accordion tambahan
-  **Syarat klaim garansi** tampil pada order Market lunas dan hasil lacak.
+  **Revisi 2026-10-16 ✅ implementasi, publikasi CI:** satu accordion
+  **Syarat klaim garansi** berada di dalam kartu **Detail Akun Digital**,
+  sesudah seluruh accordion **Cara Penggunaan / Aktivasi** dan sebelum
+  catatan simpan detail, pada halaman setelah order dan hasil lacak.
+  Jarak 12px, border, latar, radius, judul dan chevron mengikuti accordion
+  S&K/aktivasi yang sama. Tetap satu untuk beberapa akun; pada form verifikasi
+  accordion tetap di dalam kartu. Bila detail akun belum tersedia, accordion
+  tetap tampil setelah informasi pengiriman pada order lunas.
   Memakai `MobileCollapsible`, tertutup awal di semua viewport, tombol native
   dengan `aria-expanded/controls` dan region berlabel; style glass mengikuti
-  panel lain. Isi dua syarat bernomor, Catatan dengan dua bullet (proses
+  panel lain. Isi diawali **pengajuan garansi hanya untuk produk bergaransi**,
+  lalu dua syarat bernomor, Catatan dengan dua bullet (proses
   1–3 hari + solusi refund setelah maksimal 3 hari), dan ucapan terima kasih.
   Halaman ketentuan menampilkan isi yang sama tanpa lipatan; tidak ada
   perubahan masa garansi per produk atau mekanisme refund otomatis.

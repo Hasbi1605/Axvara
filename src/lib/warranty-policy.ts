@@ -11,6 +11,7 @@ export const warrantyTerms = {
 };
 
 export const marketWarrantyClaim = {
+  eligibility: "pengajuan garansi hanya untuk produk bergaransi",
   requirements: [
     "Mengirimkan invoice atau bukti pemesanan.",
     "Mengirimkan screenshot kendala yang terjadi.",

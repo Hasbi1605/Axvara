@@ -536,7 +536,7 @@ export default function LacakPesananClient() {
               Menyiapkan detail produkmu… Halaman ini memeriksa sendiri, detail akan tampil otomatis di sini.
             </p>
           )}
-          {isPaid && <WarrantyClaimAccordion />}
+          {isPaid && !order.credentialsReady && <WarrantyClaimAccordion />}
           {isCancelled && (
             <p className="mt-5 rounded-2xl border border-red-500/20 bg-red-500/[0.06] p-4 text-left text-xs leading-6 text-red-200">
               Pesanan ini dibatalkan. Jika kamu sudah transfer, hubungi admin dengan menyertakan kode pesanan.

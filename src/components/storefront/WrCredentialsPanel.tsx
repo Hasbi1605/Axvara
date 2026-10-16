@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState } from "react";
 import { formatWibDateTime } from "@/lib/utils";
 import { CredentialText, ActivationBody, MobileCollapsible, TermsBody } from "@/components/storefront/ProductCopy";
+import { WarrantyClaimAccordion } from "@/components/storefront/WarrantyClaim";
 import type { VariantCopy } from "@/lib/product-copy/format";
 
 // `label` hanya ada untuk isi produk non-WR (nama baris pesanan).
@@ -156,6 +157,7 @@ export function WrCredentialsPanel({ code, prefillContact = "", contactHint = ""
             </div>
           ))}
         </div>
+        <WarrantyClaimAccordion className="mt-3" />
         <p className="mt-3 text-[11px] leading-5 text-white/40">Simpan detail ini. {token ? "Perangkat ini mengingat kode akses untuk kunjungan ulang." : "Jangan bagikan ke siapa pun."}</p>
       </section>
     );
@@ -189,6 +191,7 @@ export function WrCredentialsPanel({ code, prefillContact = "", contactHint = ""
         </button>
       </div>
       {error && <p role="alert" className="mt-2 text-xs text-amber-200">{error}</p>}
+      <WarrantyClaimAccordion className="mt-3" />
     </section>
   );
 }
