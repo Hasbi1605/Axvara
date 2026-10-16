@@ -21,8 +21,14 @@ Revisi visual 2026-10-16 (implementasi; publikasi via CI):
 - Satu kartu per platform: 16 platform tersedia jika memiliki produk aktif dengan layanan layak. Beranda dan `/pedia/layanan` memakai `PlatformCatalog`. Revisi 2026-10-16: urutan beranda adalah hero → kartu AXVARA Market dan Bot Telegram → katalog platform, pada mobile maupun desktop. Hero mobile ringkas, orbit hanya desktop. Pencarian memahami pengikut/followers, tayangan/views, kunjungan/traffic, Indo/Indonesia, Twitter/X.
 - `/pedia/p/[platform]` menyatukan pilihan jenis layanan dan checkout. `/pedia/o/[slug]` tetap membuka jenis tersebut. Pergantian jenis mengosongkan pilihan sebelumnya; setelah submit dimulai data dikunci agar retry melanjutkan quote/order yang sama.
 - 38 jenis layanan dan 131 mapping publik terkurasi (130 pasangan supplier/ID unik; satu layanan LinkedIn mendukung profil/perusahaan). Manifest server-only `src/lib/pedia/curation-20261015.json`; tidak diimpor komponen client. Migrasi 0066 hanya mengaktifkan mapping dengan mirror live Default, tarif positif dan batas layak. Jumlah aktual dapat berkurang bila supplier berubah.
-- 3 pilihan awal mobile / 5 desktop, tambahan lewat tombol; pilihan mobile yang dipilih dirangkum dengan tombol Ganti layanan; kategori ramai followers sekitar 9 pilihan. Filter wilayah, jenis akun, refill dan urutan harga. Platform kecil boleh memiliki 1–2 pilihan bila alternatif tidak cocok; tidak menambah duplikasi hanya untuk mencapai kuota.
+- 3 pilihan awal mobile / desktop dalam daftar satu kolom, tambahan lewat tombol Lihat semua; pilihan aktif dirangkum pada semua ukuran dengan tombol Ganti layanan; kategori ramai followers sekitar 9 pilihan. Filter wilayah, jenis akun, refill dan urutan harga. Platform kecil boleh memiliki 1–2 pilihan bila alternatif tidak cocok; tidak menambah duplikasi hanya untuk mencapai kuota.
 - Platform: Instagram, TikTok, YouTube, Facebook, Threads, X, Telegram, LinkedIn, Pinterest, Discord, Shopee, Spotify, SoundCloud, Twitch, GitHub, Website Traffic. GitHub menyediakan followers profil/fork repository, tanpa mengarang stars. Website membedakan traffic umum dan referrer; bukan janji trafik organik, SEO atau konversi.
+
+### Verifikasi konfigurator — 16 Oktober 2026
+
+2.503 test pada 211 file lulus, termasuk shortlist/perbandingan, harga jumlah sama, batas/step, pilihan aktif, review isian, consent dan retry; type-check serta lint area perubahan bersih, build Pages exit 0 (warning existing). Dev home/CSS dan route platform/order 200 tanpa error kompilasi. Obscura memakai route Next aktual dengan katalog publik read-only serta fixture harga/quote/order pada 320/390/768/1024/1440px; kartu kebutuhan, tiga layanan awal, pilihan ringkas, sembilan alternatif, kontak, kembali dengan isian tersimpan, consent dan retry token sama diperiksa tanpa overflow/exception aplikasi. Screenshot desktop/mobile diperiksa; setelah penyesuaian terakhir tombol/harga, alur diulang pada 390/1440px.
+
+Batas renderer existing: default aktivasi radio/checkbox dilengkapi setter native `checked` dan event klik pada fixture; handler React tetap dijalankan, semantik kontrol juga diuji di behavior test. Paint nilai input/centang, tint SVG serta posisi fixed/sticky belum menjadi bukti pixel-identik browser penuh. Tidak ada secret/flag produksi diubah, deploy manual, atau transaksi supplier berbayar.
 
 ## Animasi desktop — revisi 16 Oktober 2026
 
@@ -36,9 +42,20 @@ Dikeluarkan dari rilis: layanan non-Default/custom comments/subscriptions/live, 
 
 Perbedaan yang dipertahankan meliputi asal akun, bot/campuran, profil dengan foto/postingan (sesuai sumber), refill, minimum jumlah dan kecepatan. Followers perempuan Asia Timur/AS dan laki-laki Indonesia diberi nama khusus. YouTube menampilkan pilihan tayangan global mulai 100, Indonesia, dan sumber video yang disarankan. Iklan dengan minimum satu juta tayangan dikeluarkan agar tidak mengaburkan pilihan umum. Discord memerlukan bot/persiapan server sesuai panduan terpilih sebelum checkout. Ini bukan pengukuran kualitas/drop aktual; hasil supplier tetap perlu dipantau setelah pendanaan.
 
+## Konfigurator halaman dalam — revisi 16 Oktober 2026
+
+✅ Implementasi, publikasi melalui CI. Beranda dan data kurasi tetap; perubahan meliputi `PlatformPageClient`, `ServicePicker`, dan `OrderClient` yang juga dipakai deep link serta preview admin.
+
+- Header bergradasi warna platform dari registri publik, logo 36/44px, kartu kebutuhan awal dengan ikon dan jumlah layanan. Setelah memilih jenis, kartu menjadi tab pill; jenis/layanan/jumlah tidak dipilih otomatis.
+- Tiga layanan awal dalam daftar satu kolom pada semua ukuran; rekomendasi berasal dari data tersimpan. Pilihan aktif diringkas dan dapat dibuka kembali lewat Ganti layanan. Semua alternatif tetap tersedia, termasuk platform dengan hanya satu layanan; tidak memaksakan paket Ekonomis/Standar/Premium.
+- Filter wilayah/jenis akun/refill/urutan berada dalam disclosure. Jumlah yang sudah diisi menjadi acuan harga seluruh alternatif: total tepat dari endpoint existing atau harga paket tersimpan untuk jumlah persis. Layanan di luar min/max/step diberi status; harga yang masih dimuat/gagal tidak digantikan harga minimum untuk jumlah lain.
+- Satu panel utama radius 24px/padding 20–28px menyatukan layanan → jumlah → link → checklist. Keterangan/S&K/panduan literal escaped berada dalam satu disclosure sesudah input. Informasi drop/refill dan checklist tetap terlihat. Input mobile 16px dan kontrol utama minimal 44px.
+- Ringkasan awal berisi petunjuk singkat. Setelah memilih, rail desktop 320px sticky top-24 memuat rincian dan total; mobile tetap satu CTA pada bar total fixed dengan safe-area serta ruang tambahan saat consent. Kontak & konfirmasi menjadi tahap kedua; kembali mempertahankan isian yang masih berlaku.
+- Quote, perubahan nominal yang memerlukan consent, lock/retry token dan kode pesanan, preview embedded tanpa API, kontrak pembayaran/supplier serta env produksi tetap memakai aturan existing. Verifikasi menggunakan API fixture untuk harga/quote/order, tanpa transaksi supplier berbayar.
+
 ## Checkout dan harga
 
-1. Pilih layanan dan jumlah, baca keterangan/S&K/cara membeli, isi link sesuai jenis target dan konfirmasi prasyarat. Target dinormalisasi oleh parser bersama client/server. Tidak ada pengambilan data akun dari platform.
+1. Pilih jenis kebutuhan dari kartu awal (tanpa pilihan otomatis), lalu layanan dan jumlah. Isi link sesuai jenis target dan konfirmasi prasyarat; keterangan/S&K/cara membeli tersedia dalam satu disclosure setelah input, sementara informasi drop/refill tetap terlihat. Target dinormalisasi oleh parser bersama client/server. Tidak ada pengambilan data akun dari platform.
 2. Isi WA/email, Kode Kredit Pedia opsional, lalu konfirmasi ketentuan. Kembali mempertahankan input. Satu CTA yang terlihat: rail desktop atau bar total+CTA mobile; bottom-nav Pedia disembunyikan pada platform/order agar tidak bertabrakan.
 
 `GET /api/pedia/prices?product_slug=...&quantity=...` memberikan total per layanan untuk jumlah persis memakai `computePediaPrice`, rate-limit 60/menit/isolate, no-store, tanpa modal/identitas supplier. Request dibatalkan saat input berubah. Harga tidak dihitung dengan perkalian tarif 1.000. Chip hanyalah contoh; jumlah bebas sah selama min/max/step gabungan terpenuhi. Layanan baru memakai default G3 20% dan minimum untung Rp1.000; pengaturan mapping existing dipertahankan. Minimum order default Rp1.000 dan pembulatan existing tetap berlaku.

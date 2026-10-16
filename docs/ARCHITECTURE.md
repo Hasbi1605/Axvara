@@ -2,6 +2,8 @@
 
 ## Pembaruan Pedia 2026-10-15 — spesifikasi terkini
 
+Revisi konfigurator Pedia 2026-10-16 ✅ implementasi, publikasi melalui CI: `PlatformPageClient` memakai `pediaPlatform` untuk header/kartu kebutuhan tanpa pilihan otomatis; route platform dan deep link order tetap berbagi `OrderClient`. `ServicePicker` menampilkan tiga layanan awal, filter terlipat, perbandingan penuh, serta pilihan aktif ringkas pada semua viewport. `OrderClient` mendekatkan jumlah/target/checklist dalam satu panel, menaruh copy literal escaped di disclosure setelah input, dan menyediakan ringkasan brand dengan rail desktop sticky. `usePediaPrices` existing memasok total jumlah yang sama; harga paket tersimpan hanya fallback untuk jumlah persis yang valid, min/max/step tidak cocok diberi status, harga lain menunggu respons. State quote/consent/lock/retry dan preview embedded tanpa API tetap dipertahankan; tanpa route, schema, env produksi, atau kontrak antar-repo baru.
+
 ✅ Implementasi katalog per platform, perluasan dua supplier dan checkout dua tahap tersedia di kode; publikasi melalui push/CI. Spesifikasi serta dasar kurasi lengkap: [Katalog dan checkout Pedia](pedia/catalog-checkout-2026-10-15.md). Bagian berlabel Working-Tree 2026-10-12 di bawah adalah snapshot historis; aturan UI/katalog/checkout terkini mengikuti dokumen rilis ini.
 
 Revisi 2026-10-16: beranda Pedia menampilkan kartu AXVARA Market dan Bot Telegram tepat setelah hero, sebelum katalog platform, pada mobile dan desktop.
@@ -16,7 +18,7 @@ Revisi copy hero 2026-10-16 ✅ implementasi, publikasi melalui CI: headline ber
 
 Revisi navbar dan lacak 2026-10-16 ✅ implementasi, publikasi melalui CI: hierarki navbar Pedia mengikuti Market: logo → pencarian → Layanan AXVARA → Katalog → Lacak Pesanan → Artikel. Navigasi teks tampil mulai `xl`, dengan pill hover/focus membulat; Artikel menuju URL absolut Market dari `SITE.webUrl`, menggantikan Bantuan di navbar atas. Bantuan tetap tersedia di bottom nav dan footer. `/pedia/lacak` memakai header, kartu form glass, label/hint, tombol loading dan FAQ dengan gaya Market; verifikasi kode AXP + WA/email tetap melalui `POST /api/orders/lookup`, lalu membuka halaman status Pedia setelah berhasil. Riwayat sukses maksimal lima tersimpan lokal di `axp-track-recent` dengan kontak tersamarkan pada UI dan tombol hapus; daftar `axp-orders` maksimal 20 terlipat awal, menyaring entri rusak dan dapat disembunyikan per pesanan. Penyimpanan browser opsional; validasi, timeout jaringan dan penjagaan klik ganda tidak mengubah kontrak server atau supplier. Revisi lanjutan 2026-10-16: pill “WA Admin” dan “Panduan pemesanan” di bawah FAQ lacak dihapus; halaman berakhir pada FAQ sebelum footer bersama.
 
-Katalog terkurasi berisi 38 jenis/131 mapping pada 16 platform, dengan 3 pilihan awal mobile dan 5 desktop, drop/refill tetap. Di mobile, pilihan yang sudah dipilih dirangkum dan dapat diganti. Target GitHub/website/platform baru didukung parser client/server. Harga jumlah bebas dihitung server; order/job/kredit/ledger atomik D1, retry QR sama, kredit pending kedaluwarsa dikembalikan. Copy ketentuan disimpan ke quote/order. Tidak ada order supplier berbayar atau klaim hasil kualitas/drop teruji dalam verifikasi ini.
+Katalog terkurasi berisi 38 jenis/131 mapping pada 16 platform, dengan 3 pilihan awal pada mobile/desktop, drop/refill tetap. Pilihan yang sudah dipilih dirangkum dan dapat diganti pada semua ukuran. Target GitHub/website/platform baru didukung parser client/server. Harga jumlah bebas dihitung server; order/job/kredit/ledger atomik D1, retry QR sama, kredit pending kedaluwarsa dikembalikan. Copy ketentuan disimpan ke quote/order. Tidak ada order supplier berbayar atau klaim hasil kualitas/drop teruji dalam verifikasi ini.
 
 **Stack:** Next.js 15 (App Router) + Cloudflare Pages + D1 + R2
 **Tanggal:** 5 September 2026
@@ -127,7 +129,7 @@ axvara/
 │   │   ├── layout.tsx           # .pedia-root + Spotlight bersama + PediaNavbar + PediaBottomNav + Footer bersama; bukan Navbar/keranjang Market; <main> polos 1:1 Market (2026-10-12, tanpa max-width/padding — tiap halaman mengatur container sendiri: katalog 1280px, lacak 720px)
 │   │   ├── page.tsx + home-client.tsx  # Working-tree lokal 2026-10-12, belum deployed: featured/fallback, semua/cari/platform, Typewriter + CTA Lihat Layanan/Hubungi Admin + trust strip + promo Market (kartu Cari lewat link dihapus dari beranda), + FAQ, tanpa ticker
 │   │   ├── p/[platform]/        # Layanan per platform (8): filter jenis + grid ProductCard
-│   │   ├── o/[slug]/            # 3 kelompok; tier/qty null, satu CTA quote+order + persetujuan nominal berubah/kredit; paket-only, retry token sama
+│   │   ├── o/[slug]/            # Deep link konfigurator bersama platform; layanan/qty null, dua tahap, quote+consent, retry token sama
 │   │   ├── pesanan/[code]/      # Status: QRIS lunas / ring+timeline/refill/kartu kredit/needs_check + auto-refresh
 │   │   ├── lacak/               # Form glass kode AXP + kontak (lookupPediaOrder) → status; axp-track-recent (5), axp-orders (20) terlipat, FAQ
 │   │   └── bantuan/ + ketentuan/ + layanan/  # Bantuan (3 grup), S&K 7 poin, semua layanan
