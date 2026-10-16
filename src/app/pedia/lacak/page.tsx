@@ -8,7 +8,6 @@ import { useEffect, useRef, useState } from "react";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { SLOW_MS, useLoadingStage } from "@/hooks/useLoadingStage";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
-import { SITE, waHubLink } from "@/lib/site";
 
 type SavedOrder = { code: string; name: string };
 type RecentEntry = { code: string; contact: string };
@@ -175,10 +174,6 @@ export default function PediaTrackPage() {
           <p className="mt-3 text-xs leading-6 text-white/55">{answer}</p>
         </details>
       ))}</section>
-      <div className="mt-6 flex flex-wrap gap-3 text-xs">
-        <a href={SITE.webUrl + waHubLink("Halo AXVARA Pedia, saya butuh bantuan melacak pesanan" + (codeValid ? " " + normalizeCode(code) : "") + ".")} className="rounded-full border border-white/10 px-4 py-2.5 text-white/70 transition hover:bg-white/10">WA Admin</a>
-        <Link prefetch={false} href="/pedia/bantuan" className="rounded-full border border-white/10 px-4 py-2.5 text-white/70 transition hover:bg-white/10">Panduan pemesanan</Link>
-      </div>
     </div>
   );
 }

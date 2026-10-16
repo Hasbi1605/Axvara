@@ -38,9 +38,11 @@ function stubOrder(overrides: Record<string, unknown> = {}) {
   })));
 }
 
-function expectPolicy(container: HTMLElement) {
+function expectPolicy(container: HTMLElement, size: "sm" | "xs" = "xs") {
   const ui = within(container);
-  expect(ui.getByText("pengajuan garansi hanya untuk produk bergaransi")).toBeTruthy();
+  const eligibility = ui.getByText("pengajuan garansi hanya untuk produk bergaransi");
+  expect(eligibility.parentElement!.classList.contains(size === "xs" ? "text-xs" : "text-sm")).toBe(true);
+  expect(eligibility.parentElement!.classList.contains(size === "xs" ? "leading-relaxed" : "leading-6")).toBe(true);
   for (const text of [...marketWarrantyClaim.requirements, ...marketWarrantyClaim.notes, marketWarrantyClaim.closing]) {
     expect(ui.getByText(text)).toBeTruthy();
   }
@@ -132,7 +134,7 @@ describe("Market warranty claim guidance", () => {
   it("publishes the same requirements, 1–3 day process and conditional refund on the terms page", () => {
     render(<GaransiReplacePage />);
     const heading = screen.getByRole("heading", { name: "Syarat klaim garansi" });
-    expectPolicy(heading.parentElement!);
+    expectPolicy(heading.parentElement!, "sm");
     expect(document.body.textContent).not.toMatch(/1[x×]24 jam kerja|BUKAN refund dana|Refund hanya jika stok/);
   });
 });

@@ -2,9 +2,9 @@ import { marketWarrantyClaim } from "@/lib/warranty-policy";
 import { MobileCollapsible } from "@/components/storefront/ProductCopy";
 
 /** Salinan yang sama untuk pesanan Market dan halaman ketentuan publik. */
-export function WarrantyClaimBody() {
+export function WarrantyClaimBody({ size = "sm" }: { size?: "sm" | "xs" }) {
   return (
-    <div className="space-y-3 text-sm leading-6 text-white/60">
+    <div className={`space-y-3 text-white/60 ${size === "xs" ? "text-xs leading-relaxed" : "text-sm leading-6"}`}>
       <p>{marketWarrantyClaim.eligibility}</p>
       <ol className="list-decimal space-y-1.5 pl-5">
         {marketWarrantyClaim.requirements.map((requirement) => <li key={requirement}>{requirement}</li>)}
@@ -22,7 +22,7 @@ export function WarrantyClaimAccordion({ className = "mt-6 text-left" }: { class
   return (
     <div className={className}>
       <MobileCollapsible title="Syarat klaim garansi">
-        <WarrantyClaimBody />
+        <WarrantyClaimBody size="xs" />
       </MobileCollapsible>
     </div>
   );

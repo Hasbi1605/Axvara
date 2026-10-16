@@ -2,7 +2,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import PediaTrackPage from "@/app/pedia/lacak/page";
-import { SITE } from "@/lib/site";
 
 const navigation = vi.hoisted(() => ({ push: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: navigation.push }) }));
@@ -32,7 +31,8 @@ describe("Pedia tracking", () => {
     expect((screen.getByRole("button", { name: "Lacak Pesanan" }) as HTMLButtonElement).disabled).toBe(true);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Cek status pesananmu");
-    expect(screen.getByRole("link", { name: "WA Admin" }).getAttribute("href")).toContain(SITE.webUrl + "/wa?");
+    expect(screen.queryByRole("link", { name: "WA Admin" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Panduan pemesanan" })).toBeNull();
     expect(screen.getByRole("region", { name: "Bantuan lacak pesanan" }).querySelectorAll("details")).toHaveLength(4);
   });
 
