@@ -631,3 +631,27 @@ seluruh metode. Kuota 5 juta baris/hari reset 07.00 WIB; target 2–2,5 juta/har
 pada trafik audit perlu diukur setelah rilis. Tidak ada env/secret/kontrak proxy
 atau jadwal Worker baru. Detail dan batas bukti: `docs/ARCHITECTURE.md` §17 dan
 `issue/d1-read-budget-2026-10-16.md`.
+
+
+### Maintenance otomatis saat kuota D1 habis — 2026-10-17
+
+✅ Implementasi, publikasi melalui CI. Halaman Market/Pedia berubah menjadi
+maintenance sementara ketika probe D1 mendeteksi error kuota harian baca/tulis.
+Layar mandiri tidak bergantung pada katalog, settings, JavaScript atau D1: ada
+estimasi **07.00–08.00 WIB beserta tanggal**, tombol order manual melalui hub
+WhatsApp dengan pilihan nomor aktif, support Telegram, dan coba buka toko lagi.
+Jam layanan admin tetap 09.00–23.00 WIB; estimasi bukan jaminan. Preview lokal:
+`http://127.0.0.1:3000/maintenance` (503 yang disengaja, GET/HEAD, no-store/noindex).
+
+Probe paling banyak satu baris, cache status maksimal 60 detik per lokasi/origin
+dan proses serta gabung miss paralel; cold start/cache gagal dapat menambah
+pemeriksaan. Tidak ada polling browser atau write D1. Setelah reset UTC (07.00
+WIB), probe berikutnya yang berhasil membuka toko lagi; tidak ditahan sampai
+08.00. API pembayaran/webhook/cron/bot tetap memakai kontrak existing. Tab yang
+sudah terbuka perlu navigasi/reload untuk melihat layar ini. Tidak ada env,
+secret, migrasi atau perubahan kontrak proxy baru; bukan penanganan limit CPU/
+request Worker. Detail: `docs/ARCHITECTURE.md` §18.
+
+Saat kuota D1 habis, tahap migrasi CI juga dapat tertahan. Pemeriksaan migrasi
+tetap wajib; bila run gagal karena kuota, workflow perlu dijalankan ulang
+sesudah reset. Keberhasilan push belum berarti halaman sudah tayang.

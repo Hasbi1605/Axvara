@@ -2375,3 +2375,60 @@ Tidak ada env/binding/secret/flag/cron Worker/kontrak antar-repo baru. Verifikas
 biaya baca menggunakan D1/workerd dengan ribuan layanan tak terpakai, riwayat
 GoPay terminal dan order lunas lama; cache diuji pada Cache API workerd asli.
 Penurunan harian dan CPU produksi sesudah rilis belum diukur.
+
+
+## 18. Halaman maintenance kuota D1 — 2026-10-17
+
+✅ Implementasi dan verifikasi lokal; publikasi melalui CI. `src/middleware.ts`
+memeriksa ketersediaan D1 sebelum render halaman GET/HEAD dan rewrite Pedia.
+`src/lib/d1-maintenance.ts` memakai binding DB seperti client existing, tanpa
+mengimpor seed/helper order. Probe `SELECT key FROM store_settings LIMIT 1`
+membaca paling banyak satu baris (teruji D1/workerd), tanpa COUNT atau write.
+Hasil ditahan maksimal 60 detik per binding/proses, miss paralel digabung; Cache
+API per origin/lokasi mengurangi probe lintas proses. Batas ini bukan satu
+probe global: cold start/lokasi baru atau kegagalan cache dapat menambah probe.
+Tidak ada polling browser. Deteksi/pemulihan dapat tertunda hingga 60 detik pada
+request berikutnya. Cache dibatasi reset berikutnya dan key memakai hari UTC.
+
+Hanya error resmi Cloudflare `exceeded D1's free tier daily row read limit`
+atau `row write limit` (termasuk nested cause) mengaktifkan maintenance. Error
+SQL, CPU, storage atau jaringan lain tetap memakai penanganan existing; probe
+error lain ditahan 10 detik. Dev tanpa binding mempertahankan seed existing.
+Tidak ada flag/env/secret, binding, migrasi atau jadwal cron baru. Ini menangani
+kuota D1; kehabisan request/CPU Worker yang mencegah middleware berjalan tidak
+dapat ditangani oleh halaman ini.
+
+`src/lib/maintenance-page.ts` menghasilkan HTML+CSS mandiri, status 503,
+Retry-After 60, private/no-store dan noindex. Tidak ada layout React, script,
+fetch katalog/settings atau penulisan pesanan. Estimasi 07.00–08.00 WIB
+menggunakan tanggal reset UTC berikutnya; situs pulih berdasarkan hasil probe,
+bukan menunggu paksa sampai 08.00. Metadata error database tidak ditampilkan.
+`/maintenance` (`src/app/maintenance/route.ts`, GET/HEAD edge) adalah dokumen
+preview/fallback yang selalu menampilkan layar ini, bukan endpoint health;
+middleware melewatkannya sebelum rewrite di kedua host agar tidak berulang.
+Navigasi RSC saat kuota habis diarahkan 307 ke `/maintenance`, sedangkan
+navigasi dokumen mempertahankan URL dengan HTML 503.
+
+Tombol manual menuju hub absolut `https://axvara.tech/wa` dari `lib/site.ts`, sehingga
+host Pedia tidak salah rewrite. `/wa` dan `/pedia/wa` saat maintenance menampilkan
+hub mandiri tanpa D1: nomor berstatus active dari SUPPORT_WA_NUMBERS, pesan
+`pesan` terbatas 300 karakter/URL-encoded, support Telegram (bukan bot order),
+dan jam layanan. Ini mempertahankan pilihan nomor di hub dan tidak menyatakan
+admin online 24 jam. API, webhook, supplier-sync, cron, MCP, R2, aset dan metode
+mutasi tidak diganti HTML atau mendapat probe baru. CSRF serta routing normal
+tetap. Tab yang sudah terbuka tetap memakai perilaku API existing sampai
+navigasi/reload; ini bukan penghentian otomatis seluruh request atau bot.
+
+Dokumentasi error resmi: https://developers.cloudflare.com/d1/observability/debug-d1/
+dan https://developers.cloudflare.com/changelog/post/2026-09-01-d1-free-tier-limit-enforcement/.
+Pengujian meliputi dua jenis quota error/cause, pengecualian error lain, TTL/UTC
+rollover/pemulihan/coalescing/cache failure, protocol bypass/CSRF/Pedia, link WA
+aktif/escaping dan D1/Cache API workerd. Obscura memeriksa route preview nyata
+dan middleware aktual yang dibundel dengan fixture DB kuota lokal di
+320/390/1280px; fixture bukan secret/flag produksi.
+
+Batas publikasi saat insiden: CI wajib menerapkan migrasi sebelum Pages. Kuota
+D1 habis juga dapat menggagalkan tahap migrasi, termasuk membaca daftar migrasi.
+Patch ini tidak melewati pemeriksaan tersebut. Jika run gagal karena kuota,
+jalankan ulang workflow sesudah reset/pemulihan. Push bukan bukti halaman
+maintenance sudah aktif; jangan mengklaim produksi live tanpa hasil deployment.

@@ -9,19 +9,19 @@ afterEach(() => {
 });
 
 describe("Performance regression guards", () => {
-  it("mengizinkan webpack eval hanya saat development agar hydration lokal berjalan", () => {
+  it("mengizinkan webpack eval hanya saat development agar hydration lokal berjalan", async () => {
     vi.stubEnv("NODE_ENV", "development");
-    const devResponse = middleware(new NextRequest("http://127.0.0.1:3000/"));
+    const devResponse = await middleware(new NextRequest("http://127.0.0.1:3000/"));
     expect(devResponse.headers.get("content-security-policy")).toContain("'unsafe-eval'");
 
     vi.stubEnv("NODE_ENV", "production");
-    const prodResponse = middleware(new NextRequest("https://axvara.pages.dev/"));
+    const prodResponse = await middleware(new NextRequest("https://axvara.pages.dev/"));
     expect(prodResponse.headers.get("content-security-policy")).not.toContain("'unsafe-eval'");
   });
 
-  it("tidak lagi mengizinkan koneksi runtime ke Iconify", () => {
+  it("tidak lagi mengizinkan koneksi runtime ke Iconify", async () => {
     vi.stubEnv("NODE_ENV", "production");
-    const response = middleware(new NextRequest("https://axvara.pages.dev/"));
+    const response = await middleware(new NextRequest("https://axvara.pages.dev/"));
     expect(response.headers.get("content-security-policy")).not.toContain("api.iconify.design");
   });
 });

@@ -1,14 +1,34 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { isD1InMaintenance, maintenanceDatabase } from "@/lib/d1-maintenance";
+import { maintenanceResponse } from "@/lib/maintenance-page";
 
 const PEDIA_HOST = (process.env.PEDIA_HOST || "pedia.axvara.tech").toLowerCase();
 
-export function middleware(req: NextRequest) {
+export async function middleware(req: NextRequest) {
   const host = (req.headers.get("host") || "").toLowerCase().split(":")[0] || "";
   const path = req.nextUrl.pathname;
   const isAsset = path.startsWith("/api/") || path.startsWith("/_next/")
     || path.startsWith("/brand/") || path.startsWith("/icons/")
     || path.startsWith("/og/") || path === "/favicon.svg" || path === "/favicon.ico"
     || /\.(svg|png|jpg|jpeg|webp|ico|css|js|woff2?)$/.test(path);
+
+  // Never replace API/webhook/cron/R2/MCP responses with HTML. Check before the
+  // Pedia rewrite, so its host gets the same database-independent fallback.
+  const isPage = ["GET", "HEAD"].includes(req.method) && !isAsset
+    && !["/api", "/mcp", "/r2"].some(prefix => path === prefix || path.startsWith(`${prefix}/`))
+    && !/\.[a-z0-9]+$/i.test(path);
+  if (path === "/maintenance") return NextResponse.next();
+  if (isPage && await isD1InMaintenance(maintenanceDatabase(), req.nextUrl.origin)) {
+    // A React flight response cannot contain an HTML document. Navigate to the
+    // standalone route instead; normal document requests keep their URL + 503.
+    if (req.headers.get("rsc") === "1") {
+      const response = NextResponse.redirect(new URL("/maintenance", req.url), 307);
+      response.headers.set("Cache-Control", "private, no-store");
+      return response;
+    }
+    const contacts = path === "/wa" || path === "/pedia/wa";
+    return maintenanceResponse(Date.now(), contacts, req.nextUrl.searchParams.get("pesan") ?? undefined, req.method === "HEAD");
+  }
 
   // PEDIA (2026-10-07, PEDIA-PRD §9.2): pedia.axvara.tech → rewrite /pedia/*.
   // axvara.tech/pedia/* → 308 ke subdomain (satu URL kanonis).
