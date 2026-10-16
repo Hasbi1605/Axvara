@@ -118,7 +118,8 @@ describe("Pedia platform-first storefront", () => {
     }
     expect(screen.getByRole("link", { name: "Lihat layanan" }).getAttribute("href")).toBe("#pedia-catalog");
     expect(screen.getByRole("link", { name: /Hubungi admin/ }).getAttribute("href")).toContain("/wa?pesan=");
-    expect(document.body.textContent).toContain("Refill mengikuti layanan");
+    expect(screen.getByText("optimasi media sosial")).toBeTruthy();
+    expect(document.body.textContent).toContain("Order cepat tanpa login • Garansi refill • Support WA admin");
   });
   it("makes non-featured published platforms discoverable immediately and searches all services", () => {
     renderPediaHome([product, tiktok]);
@@ -181,7 +182,7 @@ describe("Pedia platform-first storefront", () => {
     render(<Typewriter />);
     act(() => vi.advanceTimersByTime(2200));
     expect(screen.getByText("Termura")).toBeTruthy();
-    // 2026-10-12: typewriter cyan ("Satu tempat untuk / Layanan sosial media" putih).
+    // Typewriter cyan; headline "Satu tempat untuk / optimasi media sosial" putih.
     expect(screen.getByText("Termura").parentElement?.className).toContain("text-[#00E5FF]");
     const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(true);
     act(() => { document.dispatchEvent(new Event("visibilitychange")); vi.advanceTimersByTime(10000); });

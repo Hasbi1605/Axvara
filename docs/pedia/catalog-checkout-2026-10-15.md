@@ -4,6 +4,8 @@ Status: implementasi di working tree, diverifikasi lokal sebelum publikasi lewat
 
 ## Katalog publik
 
+Revisi copy hero 2026-10-16 ✅ implementasi, publikasi melalui CI: headline beranda Pedia menjadi “Satu tempat untuk / optimasi media sosial”, dengan typewriter cyan Termurah / Termudah / Terpercaya tetap. Baris pendukung di bawah CTA persis “Order cepat tanpa login • Garansi refill • Support WA admin”. Ini perubahan copy atas permintaan owner; kelayakan, masa dan ketentuan refill tetap mengikuti layanan/paket yang dipilih, tanpa perubahan kontrak checkout atau supplier.
+
 Revisi visual 2026-10-16 (implementasi; publikasi via CI):
 
 - Judul “Pilih platform” langsung diikuti pill; teks “Buka platform, lalu pilih layanan yang kamu butuhkan.” dihapus. Pencarian tetap menampilkan keterangan query.

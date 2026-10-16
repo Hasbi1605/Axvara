@@ -12,6 +12,8 @@ Revisi skala 2026-10-16 ✅ implementasi, publikasi melalui CI: hero Pedia mengi
 
 Revisi animasi desktop 2026-10-16 ✅ implementasi, publikasi melalui CI: layout Pedia memakai `Spotlight` yang sama dengan Market (glow putih/cyan mengikuti cursor), dan beranda Pedia memakai `ScrollRope` yang sama (panjang mengikuti progres scroll, ayunan saat hover/klik). Hook bersama `useDesktopMotion` mengaktifkan keduanya hanya pada lebar ≥768px, `pointer: fine`, `hover: hover` dan tanpa reduced motion. Perubahan media query saat halaman terbuka langsung memperbarui efek; saat nonaktif, kedua dekorasi disembunyikan, listener interaksi/frame dibersihkan dan klik/hover tali tidak dapat menjalankan animasi. Tali tetap khusus beranda; efek menggunakan pembaruan berbasis interaksi dan berhenti setelah ayunan mereda. Perbaikan guard komponen bersama juga berlaku di Market, tanpa env/aset/kontrak API baru.
 
+Revisi copy hero 2026-10-16 ✅ implementasi, publikasi melalui CI: headline beranda Pedia menjadi “Satu tempat untuk / optimasi media sosial”, dengan typewriter cyan Termurah / Termudah / Terpercaya tetap. Baris pendukung di bawah CTA persis “Order cepat tanpa login • Garansi refill • Support WA admin”. Ini perubahan copy atas permintaan owner; kelayakan, masa dan ketentuan refill tetap mengikuti layanan/paket yang dipilih, tanpa perubahan kontrak checkout atau supplier.
+
 Katalog terkurasi berisi 38 jenis/131 mapping pada 16 platform, dengan 3 pilihan awal mobile dan 5 desktop, drop/refill tetap. Di mobile, pilihan yang sudah dipilih dirangkum dan dapat diganti. Target GitHub/website/platform baru didukung parser client/server. Harga jumlah bebas dihitung server; order/job/kredit/ledger atomik D1, retry QR sama, kredit pending kedaluwarsa dikembalikan. Copy ketentuan disimpan ke quote/order. Tidak ada order supplier berbayar atau klaim hasil kualitas/drop teruji dalam verifikasi ini.
 
 > **Status working-tree 2026-10-12:** implementasi lokal, **BELUM deployed** di Pages/proxy, tidak ada flag diubah. Audit source/diff bukan klaim QA diff terkini lulus. Readiness supplier, currency/rate-unit dan kurasi data awal produksi masih pending. Pasangan `docs/PEDIA-PRD.md` + `issue/planning.md`.
@@ -73,7 +75,7 @@ Agent eksekusi WAJIB membuat logo final sendiri dari konsep 2.1 menggunakan **Mu
 | Field cari navbar | 1:1 navbar Market (2026-10-12): pill `rounded-full` + ikon search kiri + tombol clear, `max-w-[520px]`, placeholder Pedia, store `usePediaSearch`, auto-scroll ke `#pedia-catalog`; panel mobile via tombol search; field kotak lama di area katalog dihapus |
 | Favicon Pedia | `pedia-mark-favicon.png` |
 | OG image | `public/og/pedia.png` |
-| Judul UI saat ini | "Satu tempat untuk / Layanan sosial media" + typewriter cyan Termurah / Termudah / Terpercaya (2026-10-12 atas permintaan owner); slogan/tagline marketing awal hanya arsip, bukan hero atau tagline produk pembeli |
+| Judul UI saat ini | "Satu tempat untuk / optimasi media sosial" + typewriter cyan Termurah / Termudah / Terpercaya (revisi 2026-10-16); baris pendukung "Order cepat tanpa login • Garansi refill • Support WA admin". Ketentuan refill mengikuti layanan terpilih. |
 
 ---
 
