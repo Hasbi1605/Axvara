@@ -7,7 +7,7 @@
 // kelipatan Rp5.000. State `amount|ms` di store_settings.pedia_balance_alert_at.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createD1Fixture } from "./helpers/d1-fixture";
-import { createDatabaseAccess } from "@/lib/db-access";
+import { createDatabaseAccess, QueryBudgetExceeded } from "@/lib/db-access";
 import { notifyPediaLowBalance } from "@/lib/pedia/notify";
 
 afterEach(() => {
@@ -129,5 +129,78 @@ describe("throttle notif saldo SMM (cermin WR/SK 1:1)", () => {
     } finally {
       fx.close();
     }
+  });
+
+  it.each(["providersmm", "indosmm"] as const)("D1 read/write failure or missing DB never sends an unthrottled %s message", async supplier => {
+    const fx = createD1Fixture();
+    try {
+      env();
+      const sent: unknown[] = [];
+      telegramStub(sent);
+      const db = createDatabaseAccess(fx.db);
+      const quota = new Error("D1_ERROR: Your account has exceeded D1's free tier daily row read limit.");
+      for (const error of [quota, new QueryBudgetExceeded()]) {
+        const readFailure = { ...db, queryFirst: vi.fn().mockRejectedValue(error), execRun: vi.fn() };
+        expect(await notifyPediaLowBalance(0, readFailure, supplier)).toBe(false);
+        expect(readFailure.execRun).not.toHaveBeenCalled();
+        const writeFailure = { ...db, execRun: vi.fn().mockRejectedValue(error) };
+        expect(await notifyPediaLowBalance(0, writeFailure, supplier)).toBe(false);
+      }
+      expect(await notifyPediaLowBalance(0, undefined, supplier)).toBe(false);
+      expect(sent).toHaveLength(0);
+      // Recovery: a later successful durable claim can notify normally.
+      expect(await notifyPediaLowBalance(0, db, supplier)).toBe(true);
+      expect(sent).toHaveLength(1);
+    } finally { fx.close(); }
+  });
+
+  it("twelve five-minute quota failures send nothing, then recovery allows one reminder", async () => {
+    const fx = createD1Fixture();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      env(); const sent: unknown[] = []; telegramStub(sent);
+      const db = createDatabaseAccess(fx.db);
+      const blocked = { ...db, queryFirst: vi.fn().mockRejectedValue(new Error("D1 quota")) };
+      for (let tick = 0; tick < 12; tick++) {
+        vi.setSystemTime(new Date(Date.UTC(2026, 9, 16, 22, tick * 5)));
+        expect(await notifyPediaLowBalance(0, blocked)).toBe(false);
+      }
+      expect(sent).toHaveLength(0);
+      expect(await notifyPediaLowBalance(0, db)).toBe(true);
+      expect(await notifyPediaLowBalance(0, db)).toBe(false);
+      expect(sent).toHaveLength(1);
+    } finally { vi.useRealTimers(); fx.close(); }
+  });
+
+  it("two cron invocations race on a new or expired marker: only the atomic claim winner sends", async () => {
+    const fx = createD1Fixture();
+    try {
+      env(); const sent: unknown[] = []; telegramStub(sent);
+      const db = createDatabaseAccess(fx.db);
+      const results = await Promise.all(Array.from({ length: 5 }, () => notifyPediaLowBalance(0, db)));
+      expect(results.filter(Boolean)).toHaveLength(1);
+      expect(sent).toHaveLength(1);
+      fx.sql.prepare("UPDATE store_settings SET value=? WHERE key='pedia_balance_alert_at'").run(`0|${Date.now() - 7 * 60 * 60 * 1000}`);
+      const next = await Promise.all(Array.from({ length: 5 }, () => notifyPediaLowBalance(0, db)));
+      expect(next.filter(Boolean)).toHaveLength(1);
+      expect(sent).toHaveLength(2);
+    } finally { fx.close(); }
+  });
+
+  it("providers have independent markers and Telegram rejection is not reported as delivered", async () => {
+    const fx = createD1Fixture();
+    try {
+      env(); const sent: unknown[] = []; telegramStub(sent);
+      const db = createDatabaseAccess(fx.db);
+      expect(await notifyPediaLowBalance(0, db, "providersmm")).toBe(true);
+      expect(await notifyPediaLowBalance(0, db, "indosmm")).toBe(true);
+      expect(sent).toHaveLength(2);
+      fx.sql.prepare("UPDATE store_settings SET value=? WHERE key='pedia_balance_alert_at'").run(`0|${Date.now() - 7 * 60 * 60 * 1000}`);
+      const fetch = vi.fn(async () => ({ ok: false, json: async () => ({ ok: false, error_code: 429, description: "retry later" }) }));
+      vi.stubGlobal("fetch", fetch);
+      expect(await notifyPediaLowBalance(0, db)).toBe(false);
+      expect(await notifyPediaLowBalance(0, db)).toBe(false);
+      expect(fetch).toHaveBeenCalledTimes(1);
+    } finally { fx.close(); }
   });
 });

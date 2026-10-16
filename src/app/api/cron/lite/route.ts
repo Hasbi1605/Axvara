@@ -282,14 +282,14 @@ async function runPediaOrders(db: Db) {
   try {
     const last = await db.queryFirst(
       `SELECT value FROM store_settings WHERE key='pedia_balance_checked_at'`,
-    ).catch(() => null);
+    );
     const { parseExpiry: parseChecked } = await import("@/lib/expiry");
     const lastMs = last ? (parseChecked(String(last.value)) ?? NaN) : NaN;
     if (!Number.isFinite(lastMs) || Date.now() - lastMs > 30 * 60 * 1000) {
       await db.execRun(
         `INSERT INTO store_settings (key, value, updated_at) VALUES ('pedia_balance_checked_at', datetime('now'), datetime('now'))
          ON CONFLICT(key) DO UPDATE SET value=datetime('now'), updated_at=datetime('now')`,
-      ).catch(() => null);
+      );
       const { callPsmmProxy } = await import("@/lib/pedia/proxy");
       const res = await callPsmmProxy<{ balance?: string | number; currency?: string }>("balance", {}, 15_000);
       if (res.ok) {

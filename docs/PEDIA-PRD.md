@@ -455,6 +455,8 @@ Penanda di `store_settings`: `pedia_diff_last_at`, `pedia_diff_last_change_at`, 
 
 **Kode order:** prefiks `AXP-` (dibedakan dari `AXV-`), generator existing dengan prefiks parameter.
 
+**Revisi alert saldo 2026-10-17 ✅ implementasi, publikasi CI:** kegagalan baca/tulis D1 atau query budget menunda alert saldo admin. Reservasi conditional per provider wajib berhasil sebelum kirim agar cron paralel tidak mengirim ganda. Pengingat tetap enam jam atau saldo turun melewati batas Rp5.000; Telegram ok diperlukan untuk laporan terkirim. Respons gagal/ambigu tetap menyimpan reservasi sehingga pengingat bisa tertunda sampai throttle berikutnya. Checkpoint ProviderSMM gagal membatalkan pengecekan saldo eksternal pada tick itu; IndoSMM tetap independen. Tidak memengaruhi notifikasi pembeli, dispatch/order/kredit.
+
 **Retensi:** item terminal > 180 hari boleh diarsip; log saldo > 30 hari dihapus di job `cleanup`.
 
 ---

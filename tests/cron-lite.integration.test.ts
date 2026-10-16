@@ -82,6 +82,25 @@ describe("/api/cron/lite", () => {
     }
   });
 
+  it.each(["read", "write"])("pedia_orders: gagal %s checkpoint saldo ProviderSMM tidak memanggil proxy/notifikasi", async failure => {
+    const fx = createD1Fixture();
+    try {
+      vi.stubEnv("CRON_SECRET", "s");
+      vi.stubEnv("WARUNG_REBAHAN_PROXY_URL", "https://proxy.example");
+      vi.stubEnv("WARUNG_REBAHAN_PROXY_TOKEN", "test");
+      // The other provider has a healthy independent checkpoint, so no external
+      // request is due. Only the ProviderSMM checkpoint operation is interrupted.
+      fx.sql.prepare("INSERT INTO store_settings(key,value) VALUES('pedia_indosmm_balance_checked_at',datetime('now'))").run();
+      fx.control.fail = query => query.includes("pedia_balance_checked_at")
+        && (failure === "read" ? query.trim().startsWith("SELECT") : query.trim().startsWith("INSERT"));
+      const fetch = vi.fn();
+      vi.stubGlobal("fetch", fetch);
+      expect((await call("pedia_orders")).status).toBe(200);
+      expect(fetch).not.toHaveBeenCalled();
+      expect(fx.sql.prepare("SELECT COUNT(*) AS n FROM pedia_supplier_balance_log").get()?.n).toBe(0);
+    } finally { vi.unstubAllGlobals(); fx.close(); }
+  });
+
   // 2026-10-05: digest promo ikut lite agar slot 09.00/17.00 tidak bergantung
   // pada route besar yang sering dibunuh limit CPU. Ledger dipakai bersama
   // fase notify → tidak pernah terkirim ganda.

@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: axvara-${{ github.ref }}
@@ -20,6 +21,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -56,8 +59,9 @@ jobs:
 
       - name: Apply pending D1 migrations
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: npx --yes wrangler@4.128.0 d1 migrations apply axvara-db --remote
+        run: node scripts/ci-d1-migrations.cjs
         env:
+          GH_TOKEN: ${{ github.token }}
           CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
           CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

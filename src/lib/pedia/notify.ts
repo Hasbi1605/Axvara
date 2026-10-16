@@ -71,19 +71,30 @@ export async function notifyPediaNeedsCheck(db: Db, orderCode: string, reason: s
  * tanpa migrasi skema; format datetime lama tetap dibaca: timestamp tak
  * diketahui → tulis format baru, tanpa spam ganda).
  *
- * Mengembalikan true bila pesan benar-benar dikirim (untuk test + penanda). */
+ * State wajib tersedia dan diklaim atomik SEBELUM jaringan. Saat D1/budget
+ * gagal, alert saldo ditunda; jangan menganggap error baca sebagai belum ada
+ * state atau tetap mengirim sesudah error tulis. Reservasi dipertahankan bila
+ * Telegram gagal/ambigu untuk menghindari pengiriman ulang tiap tick.
+ * Mengembalikan true hanya bila Telegram mengakui pesan. */
 export async function notifyPediaLowBalance(balance: number, db?: Db, supplier: PediaProvider = "providersmm"): Promise<boolean> {
-  if (!isPediaProvider(supplier) || !Number.isFinite(balance) || balance < 0) return false;
+  if (!db || !isPediaProvider(supplier) || !Number.isFinite(balance) || balance < 0) return false;
   const key = supplier === "providersmm" ? "pedia_balance_alert_at" : "pedia_indosmm_balance_alert_at";
   const chatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
   if (!chatId) return false;
   const now = Date.now();
   const amount = Math.floor(Number(balance) || 0);
-  if (db) {
+  try {
     const row = await db.queryFirst(
       `SELECT value FROM store_settings WHERE key=?`, key,
-    ).catch(() => null);
+    );
     const raw = row ? String(row.value ?? "") : "";
+    // Compare-and-set also handles two first-ever alerts racing on an absent row.
+    const claim = (value: string) => db.execRun(
+      `INSERT INTO store_settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
+       ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')
+       WHERE COALESCE(store_settings.value,'')=?`,
+      key, value, raw,
+    );
     // Format baru `amount|ms`; format lama datetime `datetime('now')`.
     // Pakai parseExpiry kanonis (SQLite `YYYY-MM-DD HH:MM:SS` = UTC):
     // `Date.parse` mentah menganggapnya waktu LOKAL (WIB = UTC+7) sehingga
@@ -103,27 +114,20 @@ export async function notifyPediaLowBalance(balance: number, db?: Db, supplier: 
         // Format lama (amount tak diketahui) → bungkam + migrasi state di
         // bawah, JANGAN kirim (return sebelum tulis agar tidak spam ganda).
         if (!Number.isFinite(lastBalance)) {
-          await db.execRun(
-            `INSERT INTO store_settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
-             ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')`,
-            key, `${amount}|${lastMs}`,
-          ).catch(() => null);
+          await claim(`${amount}|${lastMs}`);
           return false;
         }
         if (!(amount <= Math.floor(lastBalance / 5000) * 5000 - 5000)) return false;
       }
     }
-    await db.execRun(
-      `INSERT INTO store_settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
-       ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')`,
-      key, `${amount}|${now}`,
-    ).catch(() => null);
-  }
+    const reserved = await claim(`${amount}|${now}`);
+    if (reserved.changes !== 1) return false;
+  } catch { return false; }
   const { sendMessage } = await import("@/lib/telegram/api");
-  await sendMessage({
+  const result = await sendMessage({
     chat_id: chatId,
     text: `🔴 <b>Saldo ${supplier === "providersmm" ? "ProviderSMM" : "IndoSMM"} menipis</b>\nSisa Rp ${Math.round(amount).toLocaleString("id-ID")}. Top up di panel provider sebelum order macet.`,
     parse_mode: "HTML",
   }).catch(() => null);
-  return true;
+  return result?.ok === true;
 }

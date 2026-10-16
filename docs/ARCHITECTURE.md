@@ -2427,8 +2427,45 @@ aktif/escaping dan D1/Cache API workerd. Obscura memeriksa route preview nyata
 dan middleware aktual yang dibundel dengan fixture DB kuota lokal di
 320/390/1280px; fixture bukan secret/flag produksi.
 
-Batas publikasi saat insiden: CI wajib menerapkan migrasi sebelum Pages. Kuota
-D1 habis juga dapat menggagalkan tahap migrasi, termasuk membaca daftar migrasi.
-Patch ini tidak melewati pemeriksaan tersebut. Jika run gagal karena kuota,
-jalankan ulang workflow sesudah reset/pemulihan. Push bukan bukti halaman
-maintenance sudah aktif; jangan mengklaim produksi live tanpa hasil deployment.
+Perbaikan publikasi 2026-10-17: tahap migrasi tetap berada sebelum Pages.
+`scripts/ci-d1-migrations.cjs` mendapat bukti melalui GitHub CLI read-only:
+rilis `ci.yml` terbaru yang sukses, event push/main, job verify-and-deploy sukses,
+dan tahap migrasi serta deploy Pages sukses. Commit baseline wajib ancestor
+HEAD; fingerprint git dari `drizzle/migrations`, `drizzle/schema.sql` dan
+`wrangler.json` harus identik dan lengkap. Hanya kondisi tersebut menghindari
+query D1 yang tidak diperlukan pada rilis kode saja. Jika bukti/API/history
+tidak tersedia atau DB files berbeda, Wrangler `d1 migrations apply --remote`
+tetap dijalankan dan exit gagal tetap menggagalkan deploy. Tidak ada
+continue-on-error, penundaan migrasi baru atau deploy manual. Checkout history
+penuh; permission Actions read dan GH_TOKEN dari token otomatis workflow
+bukan Pages env/secret baru. `--check-only` menampilkan keputusan tanpa
+menjalankan Wrangler. Bukti ini mengasumsikan database produksi tidak di-restore/
+recreate di luar CI; setelah operasi tersebut pemeriksaan remote wajib dilakukan.
+Push bukan bukti halaman maintenance sudah aktif.
+
+Bukti insiden: run 38941622661 (830a573) gagal 17 Okt 00.44 WIB di query D1
+[code 7500], deploy Pages/MCP skipped; pemeriksaan publik 17 Okt 05.49 WIB:
+home 200, /maintenance 404, API katalog 500. Baseline run 38936424025 (ed2c41c)
+migrasi+Pages sukses dan fingerprint DB identik; dry-run helper aktual memutuskan
+tidak perlu remote query. Ini membuktikan penghalang rilis, bukan cache browser
+atau hasil produksi patch terbaru.
+
+### Notifikasi saldo Pedia tanpa spam saat D1 gagal — 2026-10-17
+
+`lib/pedia/notify.ts` tidak lagi menganggap error baca sebagai state kosong atau
+menelan error tulis lalu tetap mengirim. Alert admin nonkritis ditunda bila DB
+tidak diberikan, baca gagal atau reservasi gagal (termasuk kuota/query budget).
+State `amount|ms` memakai upsert compare-and-set terhadap value yang dibaca;
+`changes === 1` wajib sebelum Telegram, sehingga dua tick yang membaca value
+lama sama tidak sama-sama mengirim. Kunci per provider, parsing UTC legacy,
+ambang env serta throttle enam jam/penurunan Rp5.000 dipertahankan. Migrasi
+format legacy juga conditional dan tidak mengirim ulang. `true` hanya bila
+respons Telegram ok; penolakan/timeout tetap menahan reservasi untuk menghindari
+retry ambigu tiap tick. Ini dapat menunda alert sampai jadwal pengingat berikut,
+bukan jaminan exactly-once atau mekanisme retry notifikasi pembeli.
+
+`api/cron/lite` tidak memanggil proxy ProviderSMM jika baca/tulis checkpoint
+30 menit gagal. Kegagalan supplier itu tidak menghentikan checkpoint IndoSMM.
+Tidak ada tabel, env Pages, kontrak proxy, jadwal cron, dispatch atau jalur uang
+baru. Tes menginjeksi error read/write/budget, dua cron paralel, dua provider,
+12 tick lima-menit saat DB terblokir lalu pulih, serta Telegram menolak.

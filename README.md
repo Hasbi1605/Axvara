@@ -503,7 +503,7 @@ npx wrangler r2 bucket create axvara-assets
 git push origin main
 ```
 
-`.github/workflows/ci.yml` adalah satu-satunya jalur deploy otomatis. Setiap push `main` menjalankan test, type-check, build adapter Pages, menerapkan migrasi D1 yang belum tercatat, deploy Pages, lalu deploy MCP Worker. Cloudflare Pages Git build dinonaktifkan agar tidak terjadi deploy ganda. Setelah push berhasil, agent berhenti dan tidak memantau workflow.
+`.github/workflows/ci.yml` adalah satu-satunya jalur deploy otomatis. Setiap push `main` menjalankan test, type-check, build adapter Pages, memeriksa/menerapkan migrasi D1 (bukti rilis identik atau Wrangler remote), deploy Pages, lalu deploy MCP Worker. Cloudflare Pages Git build dinonaktifkan agar tidak terjadi deploy ganda. Setelah push berhasil, agent berhenti dan tidak memantau workflow.
 
 Migrasi rebuild `0008_orders_multichannel.sql` aman untuk database produksi yang sudah memiliki transaksi dan fulfillment job: foreign key `order_code` pada seluruh tabel anak dipindahkan sementara, parent `orders` diganti, lalu key dipulihkan dan divalidasi sebelum commit. Tes regresi mengeksekusi skenario berisi child rows agar kegagalan constraint tidak baru ditemukan saat deploy.
 
@@ -652,6 +652,26 @@ sudah terbuka perlu navigasi/reload untuk melihat layar ini. Tidak ada env,
 secret, migrasi atau perubahan kontrak proxy baru; bukan penanganan limit CPU/
 request Worker. Detail: `docs/ARCHITECTURE.md` §18.
 
-Saat kuota D1 habis, tahap migrasi CI juga dapat tertahan. Pemeriksaan migrasi
-tetap wajib; bila run gagal karena kuota, workflow perlu dijalankan ulang
-sesudah reset. Keberhasilan push belum berarti halaman sudah tayang.
+Perbaikan CI 2026-10-17: `scripts/ci-d1-migrations.cjs` membandingkan berkas
+`drizzle/migrations`, `drizzle/schema.sql` dan `wrangler.json` dengan ancestor
+rilis sukses terakhir dari `ci.yml` (push main), termasuk bukti tahap migrasi
+dan deploy Pages sukses. Bila identik, tidak ada perubahan migrasi yang perlu
+ditanyakan ke D1, sehingga rilis kode maintenance tetap bisa terbit saat kuota
+habis. Berkas berubah, bukti hilang, atau GitHub API gagal → pemeriksaan
+Wrangler remote tetap wajib lulus sebelum deploy. Checkout mengambil history
+penuh; izin `actions: read` dan `GH_TOKEN` otomatis dari `github.token` hanya
+untuk membaca riwayat CI, tanpa secret/env Pages baru. Ini bukan pemeriksaan
+drift DB setelah restore/recreate; operasi itu wajib memeriksa migrasi remote.
+Keberhasilan push tetap belum berarti halaman sudah tayang.
+
+### Notifikasi saldo Pedia saat D1 terganggu — 2026-10-17
+
+Pengingat saldo ProviderSMM/IndoSMM tetap setiap enam jam atau bila turun
+melewati batas Rp5.000. Pembacaan state dan reservasi atomik harus berhasil
+sebelum kirim; D1/budget gagal menunda alert saldo, bukan mengirim tanpa throttle.
+Dua cron bersamaan hanya memberi hak kirim pada satu reservasi. Checkpoint
+ProviderSMM gagal juga menghentikan pengecekan proxy untuk saldo pada tick itu;
+provider lain tetap independen. `true` berarti Telegram mengakui pesan. Jika
+Telegram menolak/timeout, reservasi dipertahankan agar tidak dikirim lagi tiap
+tick; pengingat berikutnya mengikuti throttle, sehingga alert bisa tertunda.
+Tidak mengubah dispatch, pembayaran, harga, supplier atau notifikasi pembeli.
