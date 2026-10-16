@@ -14,6 +14,8 @@ Revisi animasi desktop 2026-10-16 ✅ implementasi, publikasi melalui CI: layout
 
 Revisi copy hero 2026-10-16 ✅ implementasi, publikasi melalui CI: headline beranda Pedia menjadi “Satu tempat untuk / optimasi media sosial”, dengan typewriter cyan Termurah / Termudah / Terpercaya tetap. Baris pendukung di bawah CTA persis “Order cepat tanpa login • Garansi refill • Support WA admin”. Ini perubahan copy atas permintaan owner; kelayakan, masa dan ketentuan refill tetap mengikuti layanan/paket yang dipilih, tanpa perubahan kontrak checkout atau supplier.
 
+Revisi navbar dan lacak 2026-10-16 ✅ implementasi, publikasi melalui CI: hierarki navbar Pedia mengikuti Market: logo → pencarian → Layanan AXVARA → Katalog → Lacak Pesanan → Artikel. Navigasi teks tampil mulai `xl`, dengan pill hover/focus membulat; Artikel menuju URL absolut Market dari `SITE.webUrl`, menggantikan Bantuan di navbar atas. Bantuan tetap tersedia di bottom nav dan footer. `/pedia/lacak` memakai header, kartu form glass, label/hint, tombol loading dan FAQ dengan gaya Market; verifikasi kode AXP + WA/email tetap melalui `POST /api/orders/lookup`, lalu membuka halaman status Pedia setelah berhasil. Riwayat sukses maksimal lima tersimpan lokal di `axp-track-recent` dengan kontak tersamarkan pada UI dan tombol hapus; daftar `axp-orders` maksimal 20 terlipat awal, menyaring entri rusak dan dapat disembunyikan per pesanan. Penyimpanan browser opsional; validasi, timeout jaringan dan penjagaan klik ganda tidak mengubah kontrak server atau supplier.
+
 Katalog terkurasi berisi 38 jenis/131 mapping pada 16 platform, dengan 3 pilihan awal mobile dan 5 desktop, drop/refill tetap. Di mobile, pilihan yang sudah dipilih dirangkum dan dapat diganti. Target GitHub/website/platform baru didukung parser client/server. Harga jumlah bebas dihitung server; order/job/kredit/ledger atomik D1, retry QR sama, kredit pending kedaluwarsa dikembalikan. Copy ketentuan disimpan ke quote/order. Tidak ada order supplier berbayar atau klaim hasil kualitas/drop teruji dalam verifikasi ini.
 
 **Stack:** Next.js 15 (App Router) + Cloudflare Pages + D1 + R2
@@ -122,12 +124,12 @@ axvara/
 │   │   ├── mcp/route.ts         # MCP HTTP katalog toko
 │   │   └── r2/[...key]/route.ts # R2 publik catch-all
 │   ├── pedia/                   # Axvara Pedia pedia.axvara.tech (2026-10-08, PEDIA-PRD; spesifikasi: docs/PEDIA-PRD.md, docs/PEDIA-DESIGN.md)
-│   │   ├── layout.tsx           # .pedia-root + Spotlight bersama + PediaNavbar + PediaBottomNav + Footer bersama; bukan Navbar/keranjang Market; <main> polos 1:1 Market (2026-10-12, tanpa max-width/padding — tiap halaman mengatur container 1280 sendiri)
+│   │   ├── layout.tsx           # .pedia-root + Spotlight bersama + PediaNavbar + PediaBottomNav + Footer bersama; bukan Navbar/keranjang Market; <main> polos 1:1 Market (2026-10-12, tanpa max-width/padding — tiap halaman mengatur container sendiri: katalog 1280px, lacak 720px)
 │   │   ├── page.tsx + home-client.tsx  # Working-tree lokal 2026-10-12, belum deployed: featured/fallback, semua/cari/platform, Typewriter + CTA Lihat Layanan/Hubungi Admin + trust strip + promo Market (kartu Cari lewat link dihapus dari beranda), + FAQ, tanpa ticker
 │   │   ├── p/[platform]/        # Layanan per platform (8): filter jenis + grid ProductCard
 │   │   ├── o/[slug]/            # 3 kelompok; tier/qty null, satu CTA quote+order + persetujuan nominal berubah/kredit; paket-only, retry token sama
 │   │   ├── pesanan/[code]/      # Status: QRIS lunas / ring+timeline/refill/kartu kredit/needs_check + auto-refresh
-│   │   ├── lacak/               # Lacak kode + kontak (lookupPediaOrder) + axp-orders perangkat
+│   │   ├── lacak/               # Form glass kode AXP + kontak (lookupPediaOrder) → status; axp-track-recent (5), axp-orders (20) terlipat, FAQ
 │   │   └── bantuan/ + ketentuan/ + layanan/  # Bantuan (3 grup), S&K 7 poin, semua layanan
 │   ├── llms.txt/route.ts        # GEO: profil toko + produk yang bisa dibeli (markdown, cache 10 mnt)
 │   ├── robots.ts / sitemap.ts   # robots: tutup /admin, /api/ (kecuali 3 endpoint baca publik), /checkout, /pesanan/; crawler AI eksplisit

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { PediaHomeClient } from "@/app/pedia/home-client";
 import { PediaNavbar } from "@/components/pedia/PediaNavbar";
 import { LinkPasteHero } from "@/components/pedia/LinkPasteHero";
@@ -10,6 +10,7 @@ import { PlatformPageClient } from "@/app/pedia/p/[platform]/platform-client";
 import { Typewriter } from "@/components/pedia/Typewriter";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
 import { PEDIA_PLATFORM_CONFIG } from "@/lib/pedia/platforms";
+import { SITE } from "@/lib/site";
 
 const product: PediaCatalogProduct = {
   slug: "followers-instagram", name: "Followers Instagram", platform: "instagram", metric: "followers", target_kind: "profile",
@@ -35,6 +36,17 @@ function renderPediaHome(products: PediaCatalogProduct[], ordersEnabled?: boolea
 function search(value: string) { fireEvent.change(screen.getByRole("searchbox", { name: "Cari layanan Pedia" }), { target: { value } }); }
 
 describe("Pedia platform-first storefront", () => {
+  it("orders top navigation like Market and links to the shared articles", () => {
+    navigation.path = "/pedia/lacak";
+    render(<PediaNavbar />);
+    const nav = screen.getByRole("navigation", { name: "Navigasi Pedia" });
+    const links = within(nav).getAllByRole("link");
+    expect(links.map((link) => link.textContent)).toEqual(["Katalog", "Lacak Pesanan", "Artikel"]);
+    expect(links[2].getAttribute("href")).toBe(SITE.webUrl + "/artikel");
+    expect(links[1].getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("button", { name: /Layanan AXVARA/ }).compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(nav).queryByRole("link", { name: "Bantuan" })).toBeNull();
+  });
   it("keeps the X platform accessible without inventing availability", () => {
     render(<PediaHomeClient products={[product, { ...tiktok, platform: "x", slug: "views-x", name: "Views X" }]} />);
     expect(screen.getByRole("link", { name: "Layanan X" }).getAttribute("href")).toBe("/pedia/p/x");

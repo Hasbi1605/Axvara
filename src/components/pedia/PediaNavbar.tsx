@@ -6,6 +6,7 @@ import { useState } from "react";
 import { usePediaSearch } from "@/stores/pedia-search";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { ServicesMenu } from "@/components/shared/ServicesMenu";
+import { SITE } from "@/lib/site";
 
 export function PediaNavbar() {
   const path = usePathname();
@@ -23,7 +24,7 @@ export function PediaNavbar() {
   };
 
   return (
-    <header className="ax-glass-strong sticky top-0 z-40 border-b border-white/10">
+    <header className="ax-glass-strong sticky top-0 z-50 border-b border-white/10">
       <div className="mx-auto flex h-[64px] max-w-[1280px] items-center gap-2 px-4 sm:gap-4 sm:px-6 lg:px-8">
         <Link prefetch={false} href="/pedia" className="flex min-w-0 shrink items-center gap-2 sm:gap-3" aria-label="Axvara Pedia — beranda">
           {/* 2026-10-08 (owner): mark SVG trace dari logo Muse (mirip 91% IoU
@@ -58,17 +59,17 @@ export function PediaNavbar() {
             )}
           </div>
         </div>
-        <nav aria-label="Navigasi Pedia" className="ml-auto hidden items-center gap-5 text-sm text-white/70 lg:flex">
-          <Link prefetch={false} href="/pedia/layanan" className="hover:text-white">Katalog</Link>
-          <Link prefetch={false} href="/pedia/lacak" className="hover:text-white">Lacak pesanan</Link>
-          <Link prefetch={false} href="/pedia/bantuan" className="hover:text-white">Bantuan</Link>
-        </nav>
-        <div className="ml-auto min-w-0 lg:ml-0 flex items-center gap-1 sm:gap-2">
+        <div className="ml-auto flex min-w-0 items-center gap-1 sm:gap-2">
           {/* Urutan 1:1 Market: ServicesMenu dulu, tombol search sesudahnya. */}
           <ServicesMenu active="pedia" />
           <button onClick={() => setMobileSearch((v) => !v)} className="lg:hidden shrink-0 w-11 h-11 rounded-full ax-glass flex items-center justify-center text-white/70" aria-label="Cari layanan" aria-expanded={mobileSearch}>
             {mobileSearch ? <X className="w-4 h-4" /> : <IosIcon name="search" size={16} tint="white" />}
           </button>
+          <nav aria-label="Navigasi Pedia" className="hidden items-center gap-1 text-sm text-white/70 xl:flex">
+            <Link prefetch={false} href="/pedia/layanan" className="rounded-full px-3 py-2 transition hover:bg-white/10 hover:text-white">Katalog</Link>
+            <Link prefetch={false} href="/pedia/lacak" aria-current={path === "/pedia/lacak" ? "page" : undefined} className="rounded-full px-3 py-2 transition hover:bg-white/10 hover:text-white">Lacak Pesanan</Link>
+            <a href={SITE.webUrl + "/artikel"} className="rounded-full px-3 py-2 transition hover:bg-white/10 hover:text-white">Artikel</a>
+          </nav>
         </div>
       </div>
       {mobileSearch && (

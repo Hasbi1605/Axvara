@@ -14,6 +14,8 @@ Revisi animasi desktop 2026-10-16 ✅ implementasi, publikasi melalui CI: layout
 
 Revisi copy hero 2026-10-16 ✅ implementasi, publikasi melalui CI: headline beranda Pedia menjadi “Satu tempat untuk / optimasi media sosial”, dengan typewriter cyan Termurah / Termudah / Terpercaya tetap. Baris pendukung di bawah CTA persis “Order cepat tanpa login • Garansi refill • Support WA admin”. Ini perubahan copy atas permintaan owner; kelayakan, masa dan ketentuan refill tetap mengikuti layanan/paket yang dipilih, tanpa perubahan kontrak checkout atau supplier.
 
+Revisi navbar dan lacak 2026-10-16 ✅ implementasi, publikasi melalui CI: hierarki navbar Pedia mengikuti Market: logo → pencarian → Layanan AXVARA → Katalog → Lacak Pesanan → Artikel. Navigasi teks tampil mulai `xl`, dengan pill hover/focus membulat; Artikel menuju URL absolut Market dari `SITE.webUrl`, menggantikan Bantuan di navbar atas. Bantuan tetap tersedia di bottom nav dan footer. `/pedia/lacak` memakai header, kartu form glass, label/hint, tombol loading dan FAQ dengan gaya Market; verifikasi kode AXP + WA/email tetap melalui `POST /api/orders/lookup`, lalu membuka halaman status Pedia setelah berhasil. Riwayat sukses maksimal lima tersimpan lokal di `axp-track-recent` dengan kontak tersamarkan pada UI dan tombol hapus; daftar `axp-orders` maksimal 20 terlipat awal, menyaring entri rusak dan dapat disembunyikan per pesanan. Penyimpanan browser opsional; validasi, timeout jaringan dan penjagaan klik ganda tidak mengubah kontrak server atau supplier.
+
 Katalog terkurasi berisi 38 jenis/131 mapping pada 16 platform, dengan 3 pilihan awal mobile dan 5 desktop, drop/refill tetap. Di mobile, pilihan yang sudah dipilih dirangkum dan dapat diganti. Target GitHub/website/platform baru didukung parser client/server. Harga jumlah bebas dihitung server; order/job/kredit/ledger atomik D1, retry QR sama, kredit pending kedaluwarsa dikembalikan. Copy ketentuan disimpan ke quote/order. Tidak ada order supplier berbayar atau klaim hasil kualitas/drop teruji dalam verifikasi ini.
 
 > **Status working-tree 2026-10-12:** implementasi lokal, **BELUM deployed** di Pages/proxy, tidak ada flag diubah. Audit source/diff bukan klaim QA diff terkini lulus. Readiness supplier, currency/rate-unit dan kurasi data awal produksi masih pending. Pasangan `docs/PEDIA-PRD.md` + `issue/planning.md`.
@@ -156,6 +158,12 @@ Angka dinamis (total, progres, ticker) memakai `font-variant-numeric: tabular-nu
 ---
 
 ## 6. Halaman
+
+### Revisi lacak dan navbar 2026-10-16 — implementasi terkini
+
+Navbar 64px/container 1280px/z-50 mengikuti Market: ServicesMenu sebelum Katalog/Lacak Pesanan/Artikel, link teks mulai `xl`, pill `px-3 py-2 rounded-full` dengan hover glass. Pencarian desktop mulai `lg`, toggle pencarian tetap di mobile. Artikel memakai host Market absolut dari `SITE.webUrl`.
+
+Lacak memakai container 720px `px-4 py-10 sm:px-6`, eyebrow cyan 11px, h1 30/36px dan pengantar 14px. Kartu form glass radius 24px/padding 20/24px berisi ikon pencarian, dua label/hint, input 48px dan tombol cyan 52px. Validasi AXP/WA/email, error `role=alert`, status memuat/slow 8 detik, timeout 20 detik dan disabled mencegah submit ganda. Riwayat sukses glass radius 20px, kode cyan, kontak tersamarkan, hapus 44px; pesanan perangkat dan empat FAQ memakai disclosure native. FAQ membahas kode, kontak, QRIS dan syarat refill Pedia. Kontak tersimpan lokal seperti Market agar entri riwayat dapat dilacak ulang; bukan data yang dimuat dari URL. Daftar perangkat tidak mengarang status sebelum halaman pesanan dibuka.
 
 ### 6.0 Implementasi Saat Ini (Working-Tree 2026-10-12, Belum Deployed)
 

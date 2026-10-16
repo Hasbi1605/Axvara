@@ -14,6 +14,8 @@ Revisi animasi desktop 2026-10-16 ✅ implementasi, publikasi melalui CI: layout
 
 Revisi copy hero 2026-10-16 ✅ implementasi, publikasi melalui CI: headline beranda Pedia menjadi “Satu tempat untuk / optimasi media sosial”, dengan typewriter cyan Termurah / Termudah / Terpercaya tetap. Baris pendukung di bawah CTA persis “Order cepat tanpa login • Garansi refill • Support WA admin”. Ini perubahan copy atas permintaan owner; kelayakan, masa dan ketentuan refill tetap mengikuti layanan/paket yang dipilih, tanpa perubahan kontrak checkout atau supplier.
 
+Revisi navbar dan lacak 2026-10-16 ✅ implementasi, publikasi melalui CI: hierarki navbar Pedia mengikuti Market: logo → pencarian → Layanan AXVARA → Katalog → Lacak Pesanan → Artikel. Navigasi teks tampil mulai `xl`, dengan pill hover/focus membulat; Artikel menuju URL absolut Market dari `SITE.webUrl`, menggantikan Bantuan di navbar atas. Bantuan tetap tersedia di bottom nav dan footer. `/pedia/lacak` memakai header, kartu form glass, label/hint, tombol loading dan FAQ dengan gaya Market; verifikasi kode AXP + WA/email tetap melalui `POST /api/orders/lookup`, lalu membuka halaman status Pedia setelah berhasil. Riwayat sukses maksimal lima tersimpan lokal di `axp-track-recent` dengan kontak tersamarkan pada UI dan tombol hapus; daftar `axp-orders` maksimal 20 terlipat awal, menyaring entri rusak dan dapat disembunyikan per pesanan. Penyimpanan browser opsional; validasi, timeout jaringan dan penjagaan klik ganda tidak mengubah kontrak server atau supplier.
+
 Katalog terkurasi berisi 38 jenis/131 mapping pada 16 platform, dengan 3 pilihan awal mobile dan 5 desktop, drop/refill tetap. Di mobile, pilihan yang sudah dipilih dirangkum dan dapat diganti. Target GitHub/website/platform baru didukung parser client/server. Harga jumlah bebas dihitung server; order/job/kredit/ledger atomik D1, retry QR sama, kredit pending kedaluwarsa dikembalikan. Copy ketentuan disimpan ke quote/order. Tidak ada order supplier berbayar atau klaim hasil kualitas/drop teruji dalam verifikasi ini.
 
 > **Status working-tree 2026-10-12:** implementasi lokal dua provider + ekosistem/UX, **BELUM deployed** di Pages/proxy; tidak ada flag yang diubah. Audit docs membaca diff/source, bukan bukti seluruh QA terkini sudah lulus. Kredensial/readiness supplier, currency/rate-unit dan kurasi awal data produksi masih pending.
@@ -190,10 +192,10 @@ Kode `PD-xx`. Semua wajib fase 1 kecuali ditandai.
 - **PD-10** Kontak: No. WA (format ID) + email wajib, centang S&K Pedia.
 - **PD-11** Field Kode Kredit (terlipat), validasi server, sisa kredit tetap tersimpan bila tidak habis.
 - **PD-12** Halaman status `/pesanan/[code]` versi Pedia: QRIS (komponen existing), timeline, cincin progres, tombol Refill, blok Kode Kredit.
-- **PD-13** Lacak `/lacak`: kode + No. WA/email (pakai verifikasi `POST /api/orders/lookup` existing, diperluas untuk order Pedia).
+- **PD-13** Lacak `/lacak`: kode AXP + No. WA/email melalui `POST /api/orders/lookup`, kemudian buka status pesanan Pedia. Revisi 2026-10-16: form glass bergaya Market dengan label/hint/validasi/loading/error, riwayat lacak lokal maksimal lima, pesanan perangkat terlipat dan FAQ pembayaran/refill Pedia.
 - **PD-14** Bantuan & Ketentuan Pedia (`/bantuan`, `/ketentuan`): S&K khusus SMM (§11).
 - **PD-15 (tidak dirender)** Endpoint/komponen ticker lama tetap ada, tetapi beranda tidak meminta atau menampilkannya pada overhaul 2026-10-11. Klaim laris tidak digunakan.
-- **PD-16** Navbar dengan menu Layanan AXVARA bersama (Market/Pedia saja), navigasi desktop Katalog/Lacak/Bantuan + bottom nav mobile Beranda/Layanan/Pesanan/Bantuan. AppSwitcher lama dihapus, tidak ada placeholder AI.
+- **PD-16** Navbar dengan menu Layanan AXVARA bersama (Market/Pedia saja), urutan desktop Layanan AXVARA/Katalog/Lacak Pesanan/Artikel (Artikel absolut ke Market, mulai `xl`) + bottom nav mobile Beranda/Layanan/Pesanan/Bantuan (revisi 2026-10-16). AppSwitcher lama dihapus, tidak ada placeholder AI.
 - **PD-17** SEO: metadata per halaman, `sitemap.xml` & `robots.txt` khusus host pedia, JSON-LD `Service` + `FAQPage`; `/pesanan/*` noindex.
 
 ### Order & supplier
