@@ -41,7 +41,7 @@ describe("PediaOrbit: kembar OrbitHero untuk sosmed", () => {
     // Hero Pedia memasang orbit di grid kanan ala Market.
     const home = read("src/app/pedia/home-client.tsx");
     expect(home).toContain("<PediaOrbit />");
-    expect(home).toContain("lg:grid-cols-[1fr_auto]");
+    expect(home).toContain("lg:grid-cols-[minmax(0,1fr)_auto]");
   });
 
   it("planet sama persis resep Market (sphere 38/42 + ikon 22/24 + gloss + tint)", () => {

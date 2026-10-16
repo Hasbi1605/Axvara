@@ -6,7 +6,9 @@
 
 Revisi 2026-10-16: beranda Pedia menampilkan kartu AXVARA Market dan Bot Telegram tepat setelah hero, sebelum katalog platform, pada mobile dan desktop.
 
-Revisi katalog 2026-10-16: teks pengantar di bawah “Pilih platform” dihapus. Pill kategori mengikuti Market (24px mobile/36px mulai `sm`, ikon iOS monokrom, aktif putih/nonaktif glass). Marketplace menampung Shopee, terpisah dari Media sosial. Semua kartu platform memakai logo SVG 48px di tengah panel gradasi gelap warna brand seperti GitHub/Website Traffic, membedakan visual Pedia dari tile 3D Market. Berlaku di beranda dan `/pedia/layanan`; gambar legacy R2 di kontrak produk tidak dipakai oleh `PlatformCatalog`.
+Revisi katalog 2026-10-16: teks pengantar di bawah “Pilih platform” dihapus. Pill kategori mengikuti Market (24px mobile/36px mulai `sm`, ikon iOS monokrom, aktif putih/nonaktif glass). Marketplace menampung Shopee, terpisah dari Media sosial. Semua kartu platform memakai logo SVG responsif 48px di mobile/80px mulai `sm` di tengah panel gradasi gelap warna brand seperti GitHub/Website Traffic, membedakan visual Pedia dari tile 3D Market. Berlaku di beranda dan `/pedia/layanan`; gambar legacy R2 di kontrak produk tidak dipakai oleh `PlatformCatalog`.
+
+Revisi skala 2026-10-16 ✅ implementasi, publikasi melalui CI: hero Pedia mengikuti skala Market dengan headline mobile `clamp(32px,9.3vw,40px)` (sekitar 36px pada 390px), tablet 56px dan laptop/desktop `clamp(48px,4.85vw,62px)` agar kolom orbit tetap muat. Container tetap 1280px; padding hero 40/56px atas dan 16px bawah, CTA berjarak 24px dari subjudul, promo tepat sesudah hero dan katalog ber-padding atas 8px. Katalog platform beranda serta `/pedia/layanan` memakai panel 4:3, grid dua kolom sampai tablet/empat mulai 1024px, gap 12px mobile/20px mulai `sm`, radius kartu 16/22px, judul 16/18px dan deskripsi/CTA 12/14px. Orbit tetap hanya desktop; ukuran SVG memakai `PlatformIcon.className` opsional, tanpa perubahan kontrak API, aset atau env produksi.
 
 Katalog terkurasi berisi 38 jenis/131 mapping pada 16 platform, dengan 3 pilihan awal mobile dan 5 desktop, drop/refill tetap. Di mobile, pilihan yang sudah dipilih dirangkum dan dapat diganti. Target GitHub/website/platform baru didukung parser client/server. Harga jumlah bebas dihitung server; order/job/kredit/ledger atomik D1, retry QR sama, kredit pending kedaluwarsa dikembalikan. Copy ketentuan disimpan ke quote/order. Tidak ada order supplier berbayar atau klaim hasil kualitas/drop teruji dalam verifikasi ini.
 
@@ -118,9 +120,11 @@ Mengikuti `DESIGN.md` §3 (Space Grotesk untuk display/harga, Inter untuk body, 
 
 | Elemen Pedia | Ukuran mobile / desktop | Weight |
 |---|---|---|
-| Hero headline | 42 / 56 px, tracking `-0.02em`, lh 0.98, `font-display` 700 (1:1 Market) | 700 |
+| Hero headline | Mobile 32–40px fluid, tablet 56px, laptop/desktop 48–62px fluid; tracking `-0.02em`, `font-display` | 700 |
 | Subjudul hero | 15 px, `text-white/60`, `max-w-[46ch]` (1:1 Market) | 400 |
-| Judul section | 22 / 32 px | 700 |
+| Judul katalog | 20 / 24 px | 700 |
+| Nama platform di kartu | 16 / 18 px | 600 |
+| Deskripsi / CTA platform | 12 / 14 px | 400 / 500 |
 | Nama produk di kartu | 16 / 17 px | 600 |
 | Harga "mulai" | 18 / 20 px Space Grotesk | 700 |
 | Total di sticky bar | 20 / 22 px Space Grotesk | 700 |
@@ -133,14 +137,16 @@ Angka dinamis (total, progres, ticker) memakai `font-variant-numeric: tabular-nu
 
 ## 5. Layout & grid
 
-| Breakpoint | Lebar konten | Grid platform | Grid produk | Halaman order |
-|---|---|---|---|---|
-| < 640 | 100% − 32 px | Filter tombol wrap berikon | 1 kolom <360px, 2 mulai 360px | Form + ringkasan inline + CTA fixed bawah |
-| 640–1024 | 100% − 32 px | Filter tombol wrap | 2 kolom | Form + ringkasan inline + CTA fixed bawah |
-| ≥ 1024 | max 1280 px, padding 16/24/32 px (1:1 Market) | Filter tombol wrap | 3 kolom | Form fleksibel + rail 320 px sticky `top: 80px` |
+| Breakpoint | Lebar konten termasuk padding | Grid katalog platform | Halaman order |
+|---|---|---|---|
+| < 640 | 100%, padding 16px per sisi | 2 kolom, gap 12px | Form + ringkasan inline + CTA fixed bawah |
+| 640–1023 | 100%, padding 24px per sisi | 2 kolom, gap 20px | Form + ringkasan inline + CTA fixed bawah |
+| ≥ 1024 | max 1280px, padding 32px per sisi | 4 kolom, gap 20px | Form fleksibel + rail 320px sticky |
 
-- Radius kartu/tier 16px, input/CTA 12px; filter/jumlah 8px, bukan pill kualitas. Hero TANPA card (1:1 Market, 2026-10-12): tanpa `rounded-3xl`/border/glow di dalam card dan tanpa eyebrow AXVARA PEDIA; section full-bleed `w-screen left-1/2 -translate-x-1/2` menembus `<main>` 1280 + `overflow-x-clip` root (glow 900px tidak kejepit/kepotong kotak), TANPA `overflow-hidden` section + kartu ganda di DALAM section agar glow memudar natural di belakang kartu; glow cyan+gold disalin persis dari Market; h1 `font-display` 42/56px tight "Satu tempat untuk / Layanan sosial media" (putih) + Typewriter cyan Termurah / Termudah / Terpercaya (2026-10-12 atas permintaan owner); sub 15px/white-60. Kartu ganda `PediaServiceCards` (Market + Bot Telegram, kembar compact `min-h-[64px]` `ax-glass-card` + panah sama, `flex-row` di mobile).
-- Beranda: padding atas 32/48 px, jarak section 40 px; form order gap 32/40 px, kelompok dipisah garis tipis.
+- Kartu platform: radius 16px mobile/22px mulai `sm`, panel gradasi brand 4:3, SVG 48/80px terpusat oleh lapisan absolute di dalam panel agar rasio tidak bergantung pada intrinsic size ikon. Judul 16/18px; deskripsi dan CTA 12/14px. Tinggi kartu mengikuti isi, tanpa harga atau tombol keranjang platform.
+- Hero tanpa card, glow cyan statis, headline fluid 32–40px mobile/56px tablet/48–62px laptop-desktop, subjudul 15px. Orbit hanya mulai `lg`, di kanan teks dengan gap 32px; `minmax(0,1fr)` menjaga kolom teks pada laptop. Padding atas 40/56px, bawah 16px; subjudul `mt-4`, CTA `mt-6`, trust strip `mt-5`. Promo Market/Bot Telegram berada di luar hero, diikuti katalog `pt-2`; filter pill tetap mengikuti Market.
+- Riwayat tampilan 12 Oktober dan kartu produk legacy di §6 adalah snapshot historis; katalog aktif mengikuti revisi ini dan dokumen `pedia/catalog-checkout-2026-10-15.md`.
+
 - Safe area: sticky bar & bottom nav memakai `env(safe-area-inset-bottom)`.
 
 ---

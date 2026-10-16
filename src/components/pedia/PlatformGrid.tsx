@@ -7,11 +7,11 @@ import { PEDIA_PLATFORM_CONFIG } from "@/lib/pedia/platforms";
 
 export const PEDIA_PLATFORMS = PEDIA_PLATFORM_CONFIG;
 
-export function PlatformIcon({ id, size = 28 }: { id: string; size?: number }) {
+export function PlatformIcon({ id, size = 28, className }: { id: string; size?: number; className?: string }) {
   // Ikon = file SVG per platform (fill warna brand ditulis langsung di file —
   // <img> eksternal tidak mewarisi currentColor parent).
   // eslint-disable-next-line @next/next/no-img-element
-  return <img src={`/icons/platforms/${id}.svg`} alt="" width={size} height={size} style={{ width: size, height: size }} draggable={false} />;
+  return <img src={`/icons/platforms/${id}.svg`} alt="" width={size} height={size} className={className} style={{ width: size, height: size }} draggable={false} />;
 }
 
 export function PlatformGrid() {

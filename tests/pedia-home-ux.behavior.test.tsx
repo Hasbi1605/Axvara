@@ -62,7 +62,8 @@ describe("Pedia platform-first storefront", () => {
       expect(artwork.getAttribute("src")).toBe(`/icons/platforms/${platform.id}.svg`);
       expect(artwork.getAttribute("width")).toBe("48");
       expect(artwork.getAttribute("height")).toBe("48");
-      expect(artwork.parentElement?.style.background).toContain("linear-gradient");
+      expect(artwork.getAttribute("alt")).toBe("");
+      expect((card.firstElementChild as HTMLElement).style.background).toContain("linear-gradient");
     }
     expect(screen.queryByText("Buka platform, lalu pilih layanan yang kamu butuhkan.")).toBeNull();
   });
