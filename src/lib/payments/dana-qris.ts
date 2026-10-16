@@ -141,6 +141,25 @@ function encodeTlv(field: Tlv): string {
   return `${field.tag}${String(field.value.length).padStart(2, "0")}${field.value}`;
 }
 
+/** Merchant asal invoice GoPay, bukan merchant dari konfigurasi saat ini. */
+export function getGopayInvoiceMerchantId(payload: unknown): string | null {
+  if (typeof payload !== "string") return null;
+  try {
+    const normalized = payload.trim();
+    const fields = parseTlv(normalized);
+    const crc = fields.at(-1);
+    if (crc?.tag !== "63" || crc.value !== calculateCrc16(normalized.slice(0, -4))) return null;
+    for (const field of fields) {
+      if (Number(field.tag) < 26 || Number(field.tag) > 45) continue;
+      const account = parseTlv(field.value);
+      if (!account.some(value => value.tag === "00" && value.value === "COM.GO-JEK.WWW")) continue;
+      const merchantId = account.find(value => value.tag === "02")?.value;
+      return merchantId && /^G\d{9}$/.test(merchantId) ? merchantId : null;
+    }
+  } catch { /* Invoice rusak/tidak dikenali tidak boleh beralih merchant. */ }
+  return null;
+}
+
 /** Convert the private DANA Business merchant payload into a one-time amount QRIS. */
 export function makeDynamicQris(staticPayload: string, amount: number): string {
   if (!Number.isSafeInteger(amount) || amount < MIN_AMOUNT || amount > MAX_AMOUNT) {

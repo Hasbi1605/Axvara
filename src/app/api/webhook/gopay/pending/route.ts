@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { queryAll } from "@/lib/db";
-import { constantTimeEqual, isGopayQrisConfigured } from "@/lib/payments/dana-qris";
+import { constantTimeEqual, getGopayInvoiceMerchantId, isGopayQrisConfigured } from "@/lib/payments/dana-qris";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const rows = await queryAll(
-    `SELECT pt.order_code, pt.payable_amount, pt.expires_at,
+    `SELECT pt.order_code, pt.payable_amount, pt.expires_at, pt.qris_payload,
             COALESCE(pt.invoice_issued_at,pt.created_at) AS issued_at,
             o.expires_at AS order_expires_at
      FROM payment_transactions pt
@@ -38,6 +38,7 @@ export async function GET(request: NextRequest) {
       payable_amount: Number(r.payable_amount),
       expires_at: String(r.expires_at),
       issued_at: String(r.issued_at ?? ""),
+      merchant_id: getGopayInvoiceMerchantId(r.qris_payload),
     })),
   }, { headers: { "Cache-Control": "no-store" } });
 }

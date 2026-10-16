@@ -2245,6 +2245,26 @@ poller server memantau mutasi GoBiz milik sendiri.
   **Sejak 2026-10-02 sore (uji Rp5.137 hijau end-to-end):**
   `QRIS_ACTIVE_PROVIDER=gopay` — order baru via GoPay, DANA fallback.
   Rollback = 1 env kembali ke `dana` + deploy.
+- **Ganti merchant GoPay 2026-10-16 ✅ live:** QRIS GoPay aktif kini merchant
+  **axvara.tech** (`G284624569`, NMID `ID1026616934059`); secret Pages
+  `GOPAY_STATIC_QRIS` diganti ke payload merchant baru (nilai hanya di secret,
+  tidak di repo). Poller mendukung **dua akun bersamaan** agar invoice lama
+  tidak yatim: Pages `GET /api/webhook/gopay/pending` kini menyertakan
+  `merchant_id` yang dibaca dari `qris_payload` tersimpan tiap invoice
+  (`getGopayInvoiceMerchantId`, CRC wajib valid; payload rusak/tidak dikenal →
+  `null`, tidak pernah fallback ke merchant konfigurasi saat ini). Poller
+  (`axvara-gopay-poller/src/merchant-routing.ts`) mengelompokkan invoice per
+  merchant; respon Pages lama tanpa field tetap dirutekan ke merchant utama
+  legacy. Tiap merchant punya file sesi + state backoff/401 sendiri:
+  utama `GOPAY_MERCHANT_ID`+`SESSION_PATH` (`/opt/axvara/gopay/.session`),
+  kedua `GOPAY_SECONDARY_MERCHANT_ID`+`GOPAY_SECONDARY_SESSION_PATH`
+  (`/opt/axvara/gopay/.session-axvara-tech`); sesi kedua wajib merchant dan
+  path berbeda, token hasil refresh hanya menulis file akunnya sendiri.
+  `merchant_id` null/tidak dikenal tidak mengkueri akun mana pun dan tidak
+  meneruskan pembayaran. Health poller menampilkan `merchantSessions[]`.
+  Rollback QR: kembalikan secret `GOPAY_STATIC_QRIS` ke payload lama +
+  redeploy; invoice yang sudah terbit tetap dirutekan sesuai merchant
+  tersimpannya selama sesi akun itu masih dikonfigurasi di poller.
 - **Migrasi 0054:** index gopay + trigger `IN ('dana','gopay')` + kolom
   `provider` di events. Issue: `issue/qris-gopay-ganti-hp-hook-2026-10-02.md`.
 

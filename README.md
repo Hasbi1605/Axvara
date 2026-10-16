@@ -533,6 +533,13 @@ PNG per kode order melalui `/api/payments/qris/[code]/image`. Aplikasi QRIS Hook
 mengirim `X-Webhook-Secret` ke `https://axvara.tech/api/webhook/dana`. Setiap event disimpan
 idempotent dan hanya nominal persis dari invoice aktif yang dapat melunasi order.
 
+Rail GoPay: payload merchant disimpan sebagai secret `GOPAY_STATIC_QRIS`. Sejak
+2026-10-16 merchant aktif adalah **axvara.tech** (`G284624569`, NMID
+`ID1026616934059`). Poller GoBiz memeriksa invoice berdasarkan merchant yang
+tersimpan di payload tiap invoice, sehingga invoice dari merchant lama tetap
+terverifikasi ke akun asalnya sementara invoice baru memakai axvara.tech;
+kedua sesi GoBiz disimpan terpisah di VPS (lihat `docs/ARCHITECTURE.md` §16.9).
+
 Setup aplikasi QRIS Hook: aktifkan Notification Access dan **QRIS Hook Active**, pilih merchant
 **DANA**, pastikan **Debug Mode mati**, isi Webhook URL `https://axvara.tech/api/webhook/dana`,
 lalu isi Secret dengan nilai rahasia yang tersimpan sebagai Pages Secret `DANA_WEBHOOK_SECRET`.

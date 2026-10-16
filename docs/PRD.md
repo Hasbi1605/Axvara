@@ -251,7 +251,7 @@ MVP seed: 8–12 produk dummy dengan foto placeholder premium + harga realistis 
 - **E-Wallet:** DANA / Gopay / Shopeepay → **082135277434** (1 nomor untuk semua)
 - **Bank:** SeaBank → **901812349386**
 - **Bank lain menyusul:** field dinamis di admin, bisa tambah BCA/Mandiri/BRI tanpa deploy
-- **QRIS:** payload merchant DANA Business tersimpan sebagai Pages Secret dan diubah menjadi QRIS dinamis per order. **Rail GoPay (2026-10-02 Fase 0, default mati):** payload `GOPAY_STATIC_QRIS` + poller server + webhook `/api/webhook/gopay` ber-secret `GOPAY_POLLER_SECRET`; alih rail via `QRIS_ACTIVE_PROVIDER=gopay`
+- **QRIS:** payload merchant DANA Business tersimpan sebagai Pages Secret dan diubah menjadi QRIS dinamis per order. **Rail GoPay (2026-10-02 Fase 0, default mati):** payload `GOPAY_STATIC_QRIS` + poller server + webhook `/api/webhook/gopay` ber-secret `GOPAY_POLLER_SECRET`; alih rail via `QRIS_ACTIVE_PROVIDER=gopay`. **✅ 2026-10-16:** merchant GoPay aktif diganti menjadi **axvara.tech** (`G284624569`, NMID `ID1026616934059`); invoice lama tetap diverifikasi ke merchant asal yang tersimpan di payload invoice, invoice baru memakai merchant axvara.tech — poller memeriksa kedua akun GoBiz secara terpisah.
 
 ### 5.2 Aturan
 - QRIS diverifikasi dari event merchant ber-secret sesuai provider invoice; SeaBank/e-wallet tetap maintenance
