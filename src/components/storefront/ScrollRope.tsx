@@ -125,7 +125,8 @@ export function ScrollRope() {
       onMouseEnter={onEnter}
       onMouseMove={onMove}
       onClick={onClick}
-      className="fixed top-0 right-3 sm:right-6 z-40 hidden md:block cursor-pointer select-none"
+      // Keep this decoration below both sticky navbars (z-50) and navigation overlays (z-40).
+      className="fixed top-0 right-3 sm:right-6 z-30 hidden md:block cursor-pointer select-none"
       style={{ height: 60, width: 60, display: enabled ? undefined : "none" }}
       aria-hidden
       title="Tarik talinya!"

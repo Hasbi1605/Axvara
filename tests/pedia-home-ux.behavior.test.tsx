@@ -36,6 +36,16 @@ function renderPediaHome(products: PediaCatalogProduct[], ordersEnabled?: boolea
 function search(value: string) { fireEvent.change(screen.getByRole("searchbox", { name: "Cari layanan Pedia" }), { target: { value } }); }
 
 describe("Pedia platform-first storefront", () => {
+  it("keeps the sticky navbar above the shared fixed scroll rope", () => {
+    renderPediaHome([product]);
+    const navbar = screen.getByRole("banner");
+    const rope = screen.getByTitle("Tarik talinya!");
+    const layer = (element: HTMLElement) => Number(element.className.match(/\bz-(\d+)\b/)?.[1]);
+    expect(navbar.classList.contains("sticky")).toBe(true);
+    expect(rope.classList.contains("fixed")).toBe(true);
+    expect(layer(navbar)).toBeGreaterThan(layer(rope));
+    expect(layer(rope)).toBeLessThan(40); // Navigation overlays stay above the decoration too.
+  });
   it("orders top navigation like Market and links to the shared articles", () => {
     navigation.path = "/pedia/lacak";
     render(<PediaNavbar />);
