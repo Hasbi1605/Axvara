@@ -155,7 +155,8 @@ describe("WhatsApp orders notify the Telegram admin group", () => {
     expect(dana).toContain("notifyWhatsAppPaidAdmin");
     const proofs = await import("node:fs").then((fs) => fs.readFileSync("src/app/api/admin/proofs/[id]/route.ts", "utf8"));
     expect(proofs).toContain("notifyWhatsAppPaidAdmin");
-    const cron = await import("node:fs").then((fs) => fs.readFileSync("src/app/api/cron/operations/route.ts", "utf8"));
+    const cron = await import("node:fs").then((fs) => fs.readFileSync("src/app/api/cron/operations/route.ts", "utf8")
+      + fs.readFileSync("src/lib/cron-queues.ts", "utf8"));
     expect(cron).toContain("sales_channel IN ('telegram','whatsapp')");
   });
 

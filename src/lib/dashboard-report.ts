@@ -1,4 +1,4 @@
-import { queryAll } from "@/lib/db";
+import { getD1, queryAll, type D1 } from "@/lib/db";
 import { resolveReportRange, revenuePaidAtWibSql, todayWibDateString, weekWibStartDateString, type ReportSelection } from "@/lib/revenue";
 import { fillDailySeries } from "@/lib/dashboard-profit";
 
@@ -186,4 +186,29 @@ export async function readFinancialReport(now = new Date()) {
     const date = `${String(i).padStart(2,'0')}:00`; return hourly.get(date) ?? { date, ...bucket() };
   });
   return { reports, daily: fillDailySeries([...daily.values()],now) };
+}
+
+type FinancialSnapshot = Awaited<ReturnType<typeof readFinancialReport>> & { generatedAt: string };
+const overviewSnapshots = new WeakMap<D1, { key: string; expiresAt: number; value: Promise<FinancialSnapshot> }>();
+
+/** Private process cache, read only after requireAdmin. Never stored in the
+ * public Cache API. Other report callers retain their fresh-read contract. */
+export async function readOverviewFinancialReport(now = new Date()): Promise<FinancialSnapshot> {
+  const db = getD1();
+  const key = `${todayWibDateString(now)}:${now.getUTCHours()}`;
+  const cached = db && process.env.NODE_ENV === "production" ? overviewSnapshots.get(db) : undefined;
+  if (cached && cached.key === key && cached.expiresAt > Date.now()) return cached.value;
+  const value = readFinancialReport(now).then(report => ({ ...report, generatedAt: now.toISOString() }));
+  if (db && process.env.NODE_ENV === "production") {
+    overviewSnapshots.set(db, { key, expiresAt: Date.now() + 60_000, value });
+    void value.catch(() => { if (overviewSnapshots.get(db)?.value === value) overviewSnapshots.delete(db); });
+  }
+  return value;
+}
+
+/** Standard periods already exist in the shared fact set; do not run the
+ * entire joins/window/aggregation pipeline twice for the same overview. */
+export function selectedReportFromFinancial(selection: ReportPeriod, financial: FinancialSnapshot, now = new Date()): SelectedReport {
+  return { ...financial.reports[selection], ...resolveReportRange(selection, now),
+    timezone: "Asia/Jakarta", generated_at: financial.generatedAt };
 }

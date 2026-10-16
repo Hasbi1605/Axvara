@@ -426,12 +426,6 @@ async function runNotify(db: Db) {
 // cleanup: baris kedaluwarsa (sesi WA, inbox WA 7 hari, event DANA 30 hari,
 // revokasi sesi admin). Murah dan idempoten.
 async function runCleanup(db: Db) {
-  const del = async (sql: string) => Number((await db.execRun(sql).catch(() => ({ changes: 0 }))).changes || 0);
-  return {
-    rows_cleaned:
-      await del(`DELETE FROM whatsapp_sessions WHERE datetime(expires_at)<datetime('now','-1 day')`)
-      + await del(`DELETE FROM whatsapp_inbox_events WHERE created_at<datetime('now','-7 days')`)
-      + await del(`DELETE FROM dana_webhook_events WHERE created_at<datetime('now','-30 days')`)
-      + await del(`DELETE FROM admin_session_revocations WHERE datetime(expires_at)<datetime('now')`),
-  };
+  const { runMaintenanceCleanup } = await import("@/lib/maintenance-cleanup");
+  return runMaintenanceCleanup(db);
 }

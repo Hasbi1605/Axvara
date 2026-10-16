@@ -606,3 +606,28 @@ Banner dapat diaktifkan/dimatikan dari sakelar di sebelah Edit, sama seperti Pro
 Metode & Rekonsiliasi membaca provider efektif dari server; GoPay memakai panduan poller GoBiz, DANA legacy tetap tertera pada event lama. Status terkonfigurasi tidak menyatakan poller/sesi sehat. Logo overlay Market/Pedia dipaksa putih; filter X hanya ikon dan tetap aksesibel.
 
 Pedia admin memakai tabel kaca dan toolbar/aksi yang sama dengan Produk: daftar Produk, Layanan Supplier, Pesanan, Kredit, harga tingkat dan riwayat saldo. Tabel memiliki header kolom dan wrapper scroll horizontal yang bisa difokuskan di mobile. Edit putih serta sakelar publikasi sejajar; filter, preview dan guard recovery tidak berubah.
+
+
+### Penghematan kuota D1 — 2026-10-16
+
+✅ Implementasi, publikasi melalui CI: Pedia hanya membaca layanan supplier yang
+dirujuk katalog aktif; GoPay pending memakai indeks invoice aktif existing.
+Cache API eksplisit di dalam handler mencakup API dan render server: katalog
+Market 30 detik/produk tunggal 10 detik, Pedia dan kategori 60 detik. Header
+`X-Axvara-Cache` menunjukkan HIT/MISS/BYPASS; dev tanpa Cache API membaca langsung.
+Admin, quote, checkout dan status pembayaran tidak memakai cache publik.
+
+Ringkasan admin dimuat saat section dibuka, periode standar berbagi satu agregasi
+dan hasil privat maksimal 60 detik memakai waktu pembuatan snapshot aktual.
+Rentang historis, ekspor, autentikasi dan field legacy respons tetap tersedia.
+Cron forced phase hanya membaca antrean relevan; expiry/fulfillment/pemulihan
+order tetap per tick. Cleanup lite/heavy berbagi marker sukses per jam. Agregat
+stok pairs tidak membaca stok/unlimited dua kali. Migrasi 0067 memperbaiki indeks
+Pedia yang tersangkut di arsip dan menambah indeks query rutin tanpa rebuild/drop.
+
+Log `[d1-read]` mencatat queryAll ≥1.000 baris melalui metadata saja (tanpa SQL,
+parameter/hasil/secret atau write D1). Gunakan Query Insights untuk atribusi
+seluruh metode. Kuota 5 juta baris/hari reset 07.00 WIB; target 2–2,5 juta/hari
+pada trafik audit perlu diukur setelah rilis. Tidak ada env/secret/kontrak proxy
+atau jadwal Worker baru. Detail dan batas bukti: `docs/ARCHITECTURE.md` §17 dan
+`issue/d1-read-budget-2026-10-16.md`.

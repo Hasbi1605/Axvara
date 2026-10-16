@@ -926,3 +926,14 @@ Identitas Midnight/Cyan/Gold dipertahankan. Enam metrik di atas; baris berikutny
 - Pedia admin memakai tabel `ax-glass rounded-[20px]` seperti Produk: header uppercase 11px/white-40, sel px-4/py-3, divider white/5 dan hover white/3. Daftar produk/layanan/pesanan/kredit serta harga tingkat/riwayat saldo berbagi `DataTable`, scroll horizontal terbatas pada wrapper berlabel yang bisa difokuskan. Toolbar filter ringkas, CTA cyan berbentuk pil, Edit putih dan sakelar aktif sejajar; panel luar tidak lagi card bertumpuk.
 - Rekonsiliasi menampilkan konfigurasi provider efektif dan label event-owned; judul netral Rekonsiliasi QRIS, panduan GoBiz untuk GoPay dan QRIS Hook untuk DANA legacy.
 - Logo overlay CrossAppTransition memakai brightness-0 invert agar SVG eksternal terlihat putih; filter X menyembunyikan label visual yang mengulang ikon, tetap aria-label X dan target 44px.
+
+
+## Pengambilan data Ringkasan — 2026-10-16
+
+✅ Implementasi, publikasi melalui CI: section admin selain Ringkasan tidak memuat
+laporan keuangan di latar. Masuk Ringkasan atau mengubah periode tetap memakai
+skeleton/loading/error existing dan melindungi hasil dari respons terlambat.
+Laporan standar berasal dari agregasi bersama; cache privat maksimal 60 detik
+menampilkan waktu pembuatan snapshot aktual. Nilai layar dan ekspor memakai
+laporan yang sama; layout, token, animasi dan kontrol periode tetap. Katalog
+publik memakai cache singkat sesuai PRD; harga/stok divalidasi ulang saat checkout.

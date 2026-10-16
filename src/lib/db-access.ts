@@ -1,4 +1,5 @@
 import { getD1, queryAll, queryFirst, execRun, type D1, type D1Statement, type D1Result } from "@/lib/db";
+import { logD1ReadCost } from "@/lib/db/read-metrics";
 
 type Row = Record<string, unknown>;
 export type DatabaseAccess = {
@@ -16,7 +17,11 @@ export function createDatabaseAccess(d1: D1 | null = getD1()): DatabaseAccess {
   const statement = (query: string, params: unknown[]) => d1!.prepare(query).bind(...params);
   return {
     d1, getD1: () => d1, isD1Mode: () => Boolean(d1), canSpend: () => true,
-    queryAll: d1 ? async (q, ...p) => (await statement(q, p).all()).results as Row[] : queryAll,
+    queryAll: d1 ? async (q, ...p) => {
+      const result = await statement(q, p).all();
+      logD1ReadCost(q, result.meta);
+      return result.results as Row[];
+    } : queryAll,
     queryFirst: d1 ? async (q, ...p) => await statement(q, p).first() as Row | null : async (q, ...p) => (await queryFirst(q, ...p)) ?? null,
     execRun: d1 ? async (q, ...p) => {
       const result = await statement(q, p).run();

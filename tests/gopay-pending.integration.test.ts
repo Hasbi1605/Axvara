@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { Miniflare } from "miniflare";
 import { createD1Fixture, insertTestOrder, insertTestProduct, stubFulfillmentKey } from "./helpers/d1-fixture";
 import { calculateCrc16, createGopayQrisInvoice } from "@/lib/payments/dana-qris";
 import { GET } from "@/app/api/webhook/gopay/pending/route";
@@ -48,4 +49,41 @@ it("keeps the pending endpoint secret-protected and excludes expired and termina
   expect((await (await request()).json()).pending).toEqual([]);
   fixture.sql.prepare("UPDATE payment_transactions SET expires_at=datetime('now','+15 minutes'),status='expired' WHERE order_code=?").run(old.orderCode);
   expect((await (await request()).json()).pending).toEqual([]);
+});
+
+it("uses the active invoice index despite a large paid GoPay history", async () => {
+  const active = await invoice("AXV-20261016-LIVE0001");
+  for (let i = 0; i < 300; i++) {
+    const code = `AXV-20261016-HIST${String(i).padStart(4, "0")}`;
+    insertTestOrder(fixture.sql, code);
+    fixture.sql.prepare(`INSERT INTO payment_transactions(order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,payable_amount,status,expires_at)
+      VALUES(?,'gopay','dynamic',?,'m',10000,10000,'paid',datetime('now','-1 day'))`).run(code, `history-${i}`);
+  }
+  let captured = "";
+  fixture.control.fail = (sql) => { if (sql.includes("AS issued_at")) captured = sql; return false; };
+  expect((await (await request()).json()).pending).toEqual([expect.objectContaining({ order_code: active.orderCode })]);
+  const plan = fixture.sql.prepare(`EXPLAIN QUERY PLAN ${captured}`).all();
+  expect(plan.some(row => String(row.detail).includes("payment_transactions_active_gopay_amount"))).toBe(true);
+  expect(plan.some(row => String(row.detail).includes("idx_payment_amount_history"))).toBe(false);
+  const runtime = new Miniflare({ modules: true, script: 'export default { fetch() { return new Response("ok"); } }', compatibilityDate: "2024-11-01", d1Databases: ["DB"] });
+  try {
+    const db = await runtime.getD1Database("DB");
+    await db.batch([
+      db.prepare("CREATE TABLE orders(code TEXT PRIMARY KEY,status TEXT,expires_at TEXT)"),
+      db.prepare("CREATE TABLE payment_transactions(order_code TEXT,provider TEXT,status TEXT,payable_amount INTEGER,expires_at TEXT,qris_payload TEXT,invoice_issued_at TEXT,created_at TEXT)"),
+      db.prepare("CREATE UNIQUE INDEX payment_transactions_active_gopay_amount ON payment_transactions(payable_amount) WHERE provider='gopay' AND status IN ('initializing','pending')"),
+      db.prepare("WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<1000) INSERT INTO orders SELECT 'H'||x,'lunas',datetime('now','-1 day') FROM n"),
+      db.prepare("INSERT INTO payment_transactions SELECT code,'gopay','paid',10000,expires_at,NULL,NULL,datetime('now','-1 day') FROM orders"),
+    ]);
+    const empty = await db.prepare(captured).all();
+    expect(empty.results).toEqual([]);
+    expect(empty.meta.rows_read).toBeLessThan(8);
+    await db.batch([
+      db.prepare("INSERT INTO orders VALUES('LIVE','pending',datetime('now','+15 minutes'))"),
+      db.prepare("INSERT INTO payment_transactions VALUES('LIVE','gopay','pending',10001,datetime('now','+15 minutes'),'stored-qr',NULL,datetime('now'))"),
+    ]);
+    const live = await db.prepare(captured).all();
+    expect(live.results).toEqual([expect.objectContaining({ order_code: "LIVE", qris_payload: "stored-qr" })]);
+    expect(live.meta.rows_read).toBeLessThan(12);
+  } finally { await runtime.dispose(); }
 });

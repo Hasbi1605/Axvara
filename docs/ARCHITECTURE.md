@@ -2304,3 +2304,74 @@ poller server memantau mutasi GoBiz milik sendiri.
 - Pedia admin memakai helper lokal `DataTable` untuk Produk/Layanan/Pesanan/Kredit/harga tingkat/riwayat saldo: glass wrapper, header/cell/divider seragam dan overflow-x terlokalisasi. Filter/aksi dirapikan; endpoint, lifecycle request, preview tersimpan dan guard recovery tetap sama.
 - Popup mengambil banner layak pertama, melewati hide 24 jam dan cap sesi; ref membatasi satu popup per dokumen, penutupan tidak memicu modal berikutnya.
 - Events QRIS mengekspos `provider` (null legacy menjadi dana), health berisi provider efektif dari `activeQrisProvider()`, boolean konfigurasi dan waktu event per provider. Tidak ada secret/payload mentah di respons, konfigurasi bukan bukti kesehatan poller GoBiz. Panduan dan ACC mengikuti merchant invoice; engine pembayaran dan guard retry tidak diubah.
+
+
+## 17. Penghematan rows_read D1 Free — 2026-10-16
+
+✅ Implementasi dan verifikasi lokal; publikasi melalui CI. Laporan pekerjaan:
+`issue/d1-read-budget-2026-10-16.md`. Audit produksi membedakan kuota rows_read
+(5 juta/hari, reset 07.00 WIB) dari jumlah statement, CPU Workers, dan rows_written.
+Perbaikan log 0057 tetap terpasang; snapshot audit terakhir 4.582.928 rows_read.
+
+- **Pedia:** `src/lib/pedia/catalog-queries.ts` mengawali query batas/rate dari
+  tier dan produk aktif, lalu mencari mirror dengan pasangan `(supplier,service_id)`.
+  Layanan supplier tak terpakai tidak dibaca untuk katalog. DTO, harga, bounds,
+  guard present/Default/rate, dan pemisahan provider tetap. Percobaan baca produksi
+  sebelum patch: 414 rows_read untuk 129 layanan rujukan vs rata-rata lama 5.024.
+- **GoPay pending:** `/api/webhook/gopay/pending` menggunakan indeks unik existing
+  `payment_transactions_active_gopay_amount` dengan predikat partial index eksplisit
+  `provider='gopay' AND status IN ('initializing','pending')` dan filter pending.
+  Invoice initializing tetap tidak dikirim; auth, expiry order/invoice, merchant
+  dari QR tersimpan dan batas 50 tidak berubah. Tidak ada perubahan kontrak poller.
+- **Cache katalog:** `src/lib/catalog-cache.ts` memakai Cache API `caches.default`
+  secara eksplisit di dalam handler, sehingga panggilan SSR langsung ke handler
+  Market ikut terlindungi. TTL Market 30 detik, by-slug 10, Pedia/kategori 60.
+  Hanya katalog publik (`active=1` pada Market, kategori tanpa `all=1`); admin
+  melewati cache dan autentikasi tetap dilakukan. Key Market mengikat search,
+  kategori, slug dan flag varian; prefix kontrak `d1-v1` perlu direvisi bila DTO
+  berubah. Cache per lokasi Cloudflare; bukan penyimpanan global atau jaminan hit
+  lintas lokasi/deployment. Miss paralel digabung per proses (maks 128 key pending).
+  Respons gagal/degraded/private/berkuki tidak disimpan; kegagalan Cache API
+  memakai pembacaan langsung. `X-Axvara-Cache` HIT/MISS/BYPASS untuk diagnosis,
+  Age mempertahankan umur respons. Cache tidak dipakai untuk quote, checkout,
+  status pembayaran, capability atau kredensial. Dev tanpa binding/Cache API
+  tetap membaca langsung; `CF-Cache-Status: DYNAMIC` tidak berarti cache internal
+  ini miss. Harga/stok checkout tetap divalidasi melalui query aktual.
+- **Admin:** section selain Ringkasan tidak memanggil overview. Periode standar
+  memakai `selectedReportFromFinancial` dari fact set yang sama, bukan CTE kedua.
+  Rentang historis tetap memakai perhitungan terpilih dan kontrak legacy respons
+  tetap lengkap. `readOverviewFinancialReport` menahan hasil privat maksimal 60
+  detik per binding D1 di proses produksi (bukan Cache API publik), dengan key
+  hari WIB/jam dan generated_at snapshot aktual. Auth/revocation diperiksa setiap
+  request; cache gagal dihapus agar retry dapat pulih. Pemanggil laporan lain
+  tetap memiliki kontrak pembacaan baru.
+- **Cron:** `src/lib/cron-queues.ts` memilih probe sesuai forced phase; mode rotasi
+  lama tetap membaca seluruh sinyal admission/anti-starvation. Probe WR/SK tidak
+  dibayar oleh fase lain. Watchdog, expiry, order, delivery, retry dan pemulihan
+  yatim tetap berjalan; gerbang due tidak dipasang kembali pada probe yatim.
+  `src/lib/maintenance-cleanup.ts` dipakai lite dan heavy, memakai marker sukses
+  UTC `store_settings.maintenance_cleanup_at`; empat DELETE housekeeping maksimal
+  sekali per jam pada run berurutan, termasuk data DANA >30 hari. Tick di antaranya
+  hanya membaca marker. Kegagalan tidak memajukan marker; run paralel dapat
+  melakukan cleanup idempoten bersamaan. Anggaran heavy cleanup menjadi 6 statement
+  (marker + empat DELETE + marker selesai). Tidak ada throttle baru pada jalur uang.
+- **Pairs:** agregat stok terbatas dan unlimited digabung satu pass per sisi
+  pasangan, tetap satu SELECT dan UPDATE hanya bila berubah. Semua pasangan
+  tetap dihitung pada trigger existing; tidak ada dirty queue/kontrak proxy baru
+  yang berpotensi melewatkan perubahan stok/modal.
+- **Migrasi 0067:** indeks Pedia bernama baru pada tabel aktif memperbaiki kasus
+  indeks lama masih milik arsip 0062; indeks mapping supplier+service, created_at
+  event DANA, recent-paid recovery (status/payment_status + ekspresi tanggal),
+  serta registry WR/SK by axvara_variant_id. Tidak DROP/rebuild tabel atau mengubah
+  FK, state, harga, kredit, reservasi, maupun indeks unik nominal QRIS. CI menerapkan
+  migrasi sebelum kode Pages; migration test memastikan idempotensi dan FK.
+- **Observability:** `db/read-metrics.ts` mencatat metadata queryAll ≥1.000 rows_read
+  di kedua akses database melalui log `[d1-read]` (scope tetap + jumlah baca/tulis).
+  Tidak mencatat SQL, parameter, hasil, secret atau menulis telemetri ke D1;
+  kegagalan log tidak menggagalkan query. first/batch tetap dianalisis via Cloudflare
+  Query Insights. Ini pelengkap budget statement, bukan hard stop kuota baris.
+
+Tidak ada env/binding/secret/flag/cron Worker/kontrak antar-repo baru. Verifikasi
+biaya baca menggunakan D1/workerd dengan ribuan layanan tak terpakai, riwayat
+GoPay terminal dan order lunas lama; cache diuji pada Cache API workerd asli.
+Penurunan harian dan CPU produksi sesudah rilis belum diukur.

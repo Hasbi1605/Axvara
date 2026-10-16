@@ -21,13 +21,17 @@ export async function GET(request: NextRequest) {
   if (!constantTimeEqual(suppliedSecret, expectedSecret)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+  // The existing unique index contains only active GoPay invoices. Include
+  // its exact predicate so SQLite can prove it covers this pending subset;
+  // reading old paid/expired invoices is unnecessary on every poller tick.
   const rows = await queryAll(
     `SELECT pt.order_code, pt.payable_amount, pt.expires_at, pt.qris_payload,
             COALESCE(pt.invoice_issued_at,pt.created_at) AS issued_at,
             o.expires_at AS order_expires_at
-     FROM payment_transactions pt
+     FROM payment_transactions pt INDEXED BY payment_transactions_active_gopay_amount
      JOIN orders o ON o.code=pt.order_code
      WHERE pt.provider='gopay' AND pt.status='pending' AND o.status='pending'
+       AND pt.status IN ('initializing','pending')
        AND julianday(pt.expires_at)>julianday('now')
        AND julianday(o.expires_at)>julianday('now')
      ORDER BY pt.expires_at ASC LIMIT 50`,

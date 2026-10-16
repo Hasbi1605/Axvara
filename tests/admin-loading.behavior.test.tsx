@@ -9,7 +9,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   useSearchParams: () => new URLSearchParams(),
 }));
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); window.history.replaceState(null, "", "/admin"); });
 
 it("loads authenticated admin data once and does not refetch on ordinary renders", async () => {
   const counts: Record<string, number> = {};
@@ -34,4 +34,21 @@ it("loads authenticated admin data once and does not refetch on ordinary renders
   view.rerender(<ToastProvider><AdminPage /></ToastProvider>);
   await act(async () => {});
   for (const url of dataUrls) expect(counts[url], url).toBe(1);
+});
+
+it("opens a direct products section without loading financial reports, then loads them on entering summary", async () => {
+  window.history.replaceState(null, "", "/admin?section=products");
+  const counts: Record<string, number> = {};
+  vi.stubGlobal("fetch", vi.fn(async (input: unknown) => {
+    const url = String(input); counts[url] = (counts[url] ?? 0) + 1;
+    const body = url === "/api/auth/me" ? { authed: true, email: "fixture@example.test" }
+      : url === "/api/products" ? { products: [] } : { categories: [] };
+    return { ok: true, status: 200, json: async () => body };
+  }));
+  render(<ToastProvider><AdminPage /></ToastProvider>);
+  await act(async () => {});
+  expect(counts["/api/admin/overview"] ?? 0).toBe(0);
+  fireEvent.click(screen.getByRole("button", { name: /Ringkasan/ }));
+  await act(async () => {});
+  expect(counts["/api/admin/overview"]).toBe(1);
 });

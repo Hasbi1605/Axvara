@@ -6,6 +6,7 @@ import { NextResponse } from "next/server";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { isPediaProvider } from "@/lib/pedia/proxy";
 import { pediaBounds } from "@/lib/pedia/bounds";
+import { PEDIA_CATALOG_BOUNDS_SQL } from "@/lib/pedia/catalog-queries";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -96,23 +97,30 @@ export async function GET() {
   if (process.env.PEDIA_ENABLED !== "true") {
     return NextResponse.json({ error: "pedia_disabled" }, { status: 503 });
   }
+  const { cachePublicCatalog } = await import("@/lib/catalog-cache");
+  return cachePublicCatalog("pedia", 60, readCatalog);
+}
+
+async function readCatalog() {
   const db = createDatabaseAccess();
+  let failed = false;
+  const unavailable = () => { failed = true; return []; };
   const products = await db.queryAll(
     `SELECT id, slug, platform, metric, target_kind, name, tagline, description_md,
             packages_json, step, checklist_json, is_featured
        FROM pedia_products WHERE is_active=1 ORDER BY sort_order, id`,
-  ).catch(() => []);
+  ).catch(unavailable);
   const tiers = await db.queryAll(
     `SELECT id, product_id, tier, label_note, refill_days, eta_start, eta_finish,
             package_prices_json, supplier, supplier_service_id,
             public_name, description_md, terms_md, instructions_md, recommendation_note, min_qty_override, max_qty_override, quantity_step, region, quality, speed_note, drop_risk,
             is_recommended, sort_order, markup_pct, min_profit_rp
        FROM pedia_tiers WHERE is_active=1 ORDER BY is_recommended DESC, sort_order, id`,
-  ).catch(() => []);
+  ).catch(unavailable);
   // Batas + rate live layanan supplier (min–max + harga per 1.000 terkini).
   const bounds = await db.queryAll(
-    `SELECT supplier, service_id, min_qty, max_qty, rate_idr_per_1k FROM pedia_supplier_services WHERE supplier IN ('providersmm','indosmm') AND present=1 AND type='Default' AND rate_idr_per_1k>0`,
-  ).catch(() => []);
+    PEDIA_CATALOG_BOUNDS_SQL,
+  ).catch(unavailable);
   const boundByService = new Map<string, { min: number; max: number; rate: number }>();
   for (const b of bounds) {
     boundByService.set(`${b.supplier}:${b.service_id}`, { min: Number(b.min_qty), max: Number(b.max_qty), rate: Number(b.rate_idr_per_1k) });
@@ -199,6 +207,8 @@ export async function GET() {
     });
   }
   return NextResponse.json({ ok: true, products: out }, {
-    headers: { "CDN-Cache-Control": "max-age=60", "Cache-Control": "public, max-age=60" },
+    headers: failed
+      ? { "Cache-Control": "no-store" }
+      : { "CDN-Cache-Control": "max-age=60", "Cache-Control": "public, max-age=60" },
   });
 }

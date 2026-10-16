@@ -1,3 +1,4 @@
+import { operationQueueProbeSql } from "@/lib/cron-queues";
 // POST /api/cron/operations — Reconciliation cron for payments and fulfillment
 // Called by MCP Worker cron every 5 minutes. Handles:
 // 1. Stale initializing payments
@@ -62,7 +63,7 @@ const COST_PER_NOTIFICATION = 4;
 const COST_PER_WA_ROW = 5;
 const COST_PER_WA_RECOVERY = 2;
 const COST_PER_STALE_RELEASE = 2;
-const COST_PER_CLEANUP = 4;
+const COST_PER_CLEANUP = 6;
 const COST_PER_WR_WORK = 8;
 // Sekalipay: biaya admission yang sama dengan WR per unit kerja fase.
 const COST_PER_SK_WORK = 8;
@@ -369,62 +370,40 @@ export async function POST(request: NextRequest) {
       }
     } catch { /* watchdog tak boleh menggagalkan run */ }
 
-    // Hitung antrean dalam SATU query gabungan (1 query, bukan 8 — RR3-01/
-    // RR3-03): tiap COUNT adalah subselect murah atas indeks status. Tanpa
-    // ini, 10 query baca di depan + heater + 3 scan = 14 query sebelum satu
-    // pun item terkirim, sehingga order 4 item (23 query kirim) tak muat.
-    // RR3-06: kandidat sending basi dihitung SENDIRI (bukan dari pending/
-    // failed) agar recovery tidak bergantung pada hadirnya pesan baru.
-    // RR3-09: antrean notifikasi dihitung per JENIS (created / paid buyer /
-    // paid admin), bukan hanya marker order-created.
-    // WR: satu COUNT murah untuk link due — query TERPISAH agar DB lama
-    // tanpa tabel WR (pre-migrasi 0027) tidak meruntuhkan seluruh query
-    // gabungan di atas (satu subselect gagal = semua COUNT null).
+    // Forced requests probe only their own phase. Legacy rotation retains all
+    // queue signals for admission, deferred work and anti-starvation.
     step("watchdog_done");
-    const queueRow = await queryFirst(
-      `SELECT
-        (SELECT COUNT(*) FROM payment_transactions WHERE status='pending') AS expiry,
-        (SELECT COUNT(*) FROM payment_transactions pt JOIN orders o ON o.code=pt.order_code WHERE ${QRIS_EXPIRY_NOTICE_WHERE}) AS qris_notice,
-        (SELECT COUNT(*) FROM payment_transactions WHERE status='initializing' AND created_at < datetime('now', '-5 minutes')) AS expiry_init,
-        (SELECT COUNT(*) FROM orders WHERE sales_channel='whatsapp' AND status='pending' AND expires_at IS NOT NULL
-          AND datetime(expires_at) <= datetime('now')
-          AND NOT EXISTS(SELECT 1 FROM payment_transactions pt WHERE pt.order_code=orders.code)) AS expiry_manual_wa,
-        (SELECT COUNT(*) FROM whatsapp_outbox WHERE status IN ('pending','failed') AND attempt_count < 5 AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime('now'))) AS wa,
-        (SELECT COUNT(*) FROM whatsapp_outbox WHERE status='sending' AND (locked_until IS NULL OR datetime(locked_until) <= datetime('now'))) AS wa_stale,
-        (SELECT COUNT(*) FROM fulfillment_jobs fj JOIN orders o ON o.code=fj.order_code WHERE fj.status IN ('queued','retry') AND o.status='lunas' AND o.payment_status='paid') AS jobs,
-        (SELECT COUNT(*) FROM orders WHERE sales_channel IN ('telegram','whatsapp') AND telegram_order_notified_at IS NULL) AS created,
-        (SELECT COUNT(*) FROM orders WHERE sales_channel='telegram' AND status='lunas' AND payment_status='paid' AND telegram_paid_notified_at IS NULL) AS paid,
-        (SELECT COUNT(*) FROM orders WHERE sales_channel IN ('telegram','whatsapp') AND status='lunas' AND payment_status='paid' AND telegram_paid_admin_notified_at IS NULL) AS paid_admin,
-        (SELECT COUNT(*) FROM orders o WHERE ${WEB_PAID_ADMIN_PENDING_WHERE}) AS paid_admin_web,
-        (SELECT COUNT(*) FROM fulfillment_jobs WHERE status='sending') AS stale`,
-    ).catch(() => null);
+    const queueSql = operationQueueProbeSql(forcedPhase, QRIS_EXPIRY_NOTICE_WHERE, WEB_PAID_ADMIN_PENDING_WHERE);
+    const queueRow = queueSql ? await queryFirst(queueSql).catch(() => null) : null;
+    const probeWr = forcedPhase == null || forcedPhase === "warung_rebahan";
+    const probeSk = forcedPhase == null || forcedPhase === "sekalipay";
     // DB lama tanpa tabel WR: query terpisah gagal → 0 (bukan null-kan semua).
-    const wrDueRow = await queryFirst(
+    const wrDueRow = probeWr ? await queryFirst(
       `SELECT COUNT(*) AS wr_due FROM wr_order_links
        WHERE status IN ('pending','retry') AND attempt_count < max_attempts
          AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime('now'))`,
-    ).catch(() => null);
+    ).catch(() => null) : null;
     // Antrean delivery kredensial + blocked_balance (P0-6/P1-8): fase WR
     // tetap aktif selama ada pekerjaan ini walau order kosong. Baris 'sending'
     // dengan lease kedaluwarsa IKUT dihitung (2026-09-18): tanpa itu, delivery
     // yang ditinggalkan run yang dibunuh tidak pernah mengaktifkan fase WR.
-    const wrDeliveryRow = await queryFirst(
+    const wrDeliveryRow = probeWr && !syncOnly ? await queryFirst(
       `SELECT COUNT(*) AS wr_delivery_due FROM wr_order_links
        WHERE (delivery_status IN ('queued','failed')
               OR delivery_status='sending')
          AND (delivery_next_attempt_at IS NULL
               OR datetime(delivery_next_attempt_at) <= datetime('now'))`,
-    ).catch(() => null);
-    const wrBlockedRow = await queryFirst(
+    ).catch(() => null) : null;
+    const wrBlockedRow = probeWr && !syncOnly ? await queryFirst(
       `SELECT COUNT(*) AS wr_blocked FROM wr_order_links WHERE status='blocked_balance'`,
-    ).catch(() => null);
+    ).catch(() => null) : null;
     // Antrean SK (0049): SATU query gabungan dengan dua subselect murah
     // (bukan 2 query) agar hitungan antrean tidak memakan slot budget cron
     // (pelajaran R12: tiap query depan mengusir 1 order expiry per run).
     // DB pre-0049: query gagal → null → pending 0 (pola wrDueRow pre-0027).
     // Hemat: SK mati (default) = NOL query — hitungan hanya dibayar bila
     // SEKALIPAY_ENABLED=true (test R12 tanpa SK kembali ke baseline).
-    const skQueueRow = process.env.SEKALIPAY_ENABLED === "true"
+    const skQueueRow = probeSk && process.env.SEKALIPAY_ENABLED === "true"
       ? await queryFirst(
           `SELECT
              (SELECT COUNT(*) FROM sk_order_links
@@ -1300,20 +1279,10 @@ export async function POST(request: NextRequest) {
       // bukan kegagalan.
       const fulfilOrNotifyWaiting = pendingJobs > 0 || pendingNotify > 0 || waWorkPending > 0 || pendingExpiryAny > 0;
       if (!fulfilOrNotifyWaiting && budget.fits(COST_PER_CLEANUP)) {
-        const expiredSessions = await execRun(
-          `DELETE FROM whatsapp_sessions WHERE datetime(expires_at)<datetime('now','-1 day')`,
-        );
-        const oldInboxEvents = await execRun(
-          `DELETE FROM whatsapp_inbox_events WHERE created_at<datetime('now','-7 days')`,
-        );
-        await execRun(`DELETE FROM dana_webhook_events WHERE created_at<datetime('now','-30 days')`);
-
-        // Cleanup revokasi sesi kedaluwarsa (R8): anggaran cron yang sama.
-        await execRun(`DELETE FROM admin_session_revocations WHERE datetime(expires_at)<datetime('now')`)
-          .catch(() => ({ changes: 0 as number | undefined }));
-
-        results.whatsapp_rows_cleaned = Number(expiredSessions.changes || 0)
-          + Number(oldInboxEvents.changes || 0);
+        const { runMaintenanceCleanup } = await import("@/lib/maintenance-cleanup");
+        const cleaned = await runMaintenanceCleanup(database);
+        results.whatsapp_rows_cleaned = cleaned.whatsapp_rows_cleaned;
+        if ("cleanup_skipped" in cleaned) results.cleanup_skipped = cleaned.cleanup_skipped;
       } else if (!deferredOut.includes("cleanup")) {
         deferredOut.push("cleanup");
       }

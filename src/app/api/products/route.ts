@@ -15,6 +15,20 @@ export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+  const params = new URL(req.url).searchParams;
+  if (params.get("active") !== "1") return readProducts(req);
+  const key = new URLSearchParams({
+    variants: String(isVariantsReadEnabled()),
+    q: (params.get("q") ?? "").toLowerCase().trim().slice(0, 40),
+    cat: params.get("cat") ?? "",
+    slug: (params.get("slug") ?? "").trim().slice(0, 80),
+  });
+  const { cachePublicCatalog } = await import("@/lib/catalog-cache");
+  return cachePublicCatalog(`market?${key}`, params.get("slug")?.trim() ? 10 : 30, () => readProducts(req));
+}
+
+async function readProducts(req: NextRequest) {
+  let catalogDegraded = false;
   const { searchParams } = new URL(req.url);
   const q = searchParams.get("q")?.toLowerCase().trim() ?? "";
   const cat = searchParams.get("cat") ?? "";
@@ -100,7 +114,7 @@ export async function GET(req: NextRequest) {
     const loserRows = await queryAll(
       `SELECT CASE WHEN winner IS NULL OR winner='WR' THEN sk_product_id ELSE wr_product_id END AS loser
        FROM supplier_pairs`,
-    ).catch(() => [] as Record<string, unknown>[]);
+    ).catch(() => { catalogDegraded = true; return [] as Record<string, unknown>[]; });
     const loserIds = loserRows
       .map((r) => Number(r.loser ?? 0))
       .filter((id) => Number.isInteger(id) && id > 0);
@@ -296,7 +310,9 @@ export async function GET(req: NextRequest) {
   // PDP by-slug dibaca tepat setelah ada yang beli (2026-10-02): cache
   // 30 detik terlalu basi untuk angka stok (insiden Head 18 Bulan).
   // Daftar katalog tetap 30 detik; hanya ?slug= yang 10 detik.
-  const cacheControl = !isPublicCatalog
+  const cacheControl = catalogDegraded
+    ? "no-store"
+    : !isPublicCatalog
     ? "private, no-store, max-age=0"
     : slug
       ? "public, max-age=10, s-maxage=10, stale-while-revalidate=30"

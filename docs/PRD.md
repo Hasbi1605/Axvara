@@ -177,6 +177,7 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 | NFR-6 | Biaya | Rp 0/bulan infra (Pages + D1 + R2 free tier), hanya domain |
 | NFR-7 | Aksesibilitas | Warna kontras WCAG AA, keyboard navigable, alt text |
 | NFR-8 | Bahasa | UI Bahasa Indonesia (formal santai), harga Rupiah |
+| NFR-9 | Kuota D1 | ✅ Implementasi 2026-10-16, publikasi melalui CI: katalog publik memakai cache server eksplisit (Market 30 dtk/produk tunggal 10 dtk, Pedia dan kategori 60 dtk). Pedia hanya membaca layanan rujukan aktif. Quote/order/status tetap memeriksa data aktual. Ringkasan admin dimuat saat section Ringkasan dibuka; laporan standar memakai satu agregasi bersama, cache privat proses maksimal 60 dtk dan waktu pembuatan aktual. Cleanup data kedaluwarsa per jam; expiry pembayaran, fulfillment dan recovery order tetap setiap tick. Target ≤2–2,5 juta rows_read/hari pada trafik audit perlu diukur setelah rilis, bukan jaminan kapasitas. |
 
 ---
 

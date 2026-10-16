@@ -8,6 +8,11 @@ import { isCategoryIconName } from "@/lib/category-icons";
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
+  if (new URL(req.url).searchParams.get("all") === "1") return readCategories(req);
+  const { cachePublicCatalog } = await import("@/lib/catalog-cache");
+  return cachePublicCatalog("categories", 60, () => readCategories(req));
+}
+async function readCategories(req: NextRequest) {
   const wantAll = new URL(req.url).searchParams.get("all") === "1";
   if (wantAll && !(await requireAdmin(req))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

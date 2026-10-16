@@ -25,7 +25,7 @@ export type DbProduct = {
 export type D1Result = { results?: unknown[]; meta: { last_row_id?: number; changes?: number } };
 export type D1Statement = {
   bind: (...p: unknown[]) => D1Statement;
-  all: () => Promise<{ results: unknown[] }>;
+  all: () => Promise<{ results: unknown[]; meta?: { rows_read?: number; rows_written?: number } }>;
   first: () => Promise<unknown>;
   run: () => Promise<D1Result>;
 };

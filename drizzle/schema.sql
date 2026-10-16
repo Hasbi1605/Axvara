@@ -118,6 +118,9 @@ CREATE INDEX IF NOT EXISTS idx_orders_channel
   ON orders(sales_channel, channel_conversation_id);
 CREATE INDEX IF NOT EXISTS idx_orders_status
   ON orders(status, payment_status);
+CREATE INDEX IF NOT EXISTS idx_orders_paid_recovery
+  ON orders(status, payment_status, datetime(COALESCE(paid_at, created_at)), id)
+  WHERE status='lunas' AND payment_status='paid';
 CREATE INDEX IF NOT EXISTS idx_orders_telegram_notifications
   ON orders(sales_channel, telegram_order_notified_at, telegram_paid_notified_at);
 CREATE INDEX IF NOT EXISTS idx_orders_telegram_paid_admin
@@ -371,6 +374,7 @@ CREATE INDEX IF NOT EXISTS idx_dana_webhook_events_status ON dana_webhook_events
 -- Migrasi 0054: event webhook ber-provider (dana vs gopay).
 CREATE INDEX IF NOT EXISTS idx_dana_webhook_events_provider
   ON dana_webhook_events(provider, status, created_at);
+CREATE INDEX IF NOT EXISTS idx_dana_events_created ON dana_webhook_events(created_at);
 CREATE INDEX IF NOT EXISTS idx_payment_amount_history ON payment_transactions(provider,payable_amount);
 -- QRIS issuance history (0025): retained independently of the mutable ledger.
 CREATE TABLE IF NOT EXISTS payment_invoice_history (
@@ -782,6 +786,7 @@ CREATE TABLE IF NOT EXISTS wr_variants (
   created_at            TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at            TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE INDEX IF NOT EXISTS idx_wr_variants_axvara_variant ON wr_variants(axvara_variant_id);
 -- State machine exactly-once (0029): pending/claimed/submitted/ordering/
 -- processing/completed/failed/retry/blocked_balance.
 CREATE TABLE IF NOT EXISTS wr_order_links (
@@ -984,6 +989,7 @@ CREATE TABLE IF NOT EXISTS sk_products (
   updated_at        TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_sk_products_product ON sk_products(sk_product_id);
+CREATE INDEX IF NOT EXISTS idx_sk_products_axvara_variant ON sk_products(axvara_variant_id);
 CREATE TABLE IF NOT EXISTS sk_order_links (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
   order_code      TEXT NOT NULL REFERENCES orders(code),
@@ -1330,6 +1336,10 @@ CREATE TABLE IF NOT EXISTS pedia_tiers (
 );
 CREATE INDEX IF NOT EXISTS idx_pedia_tiers_product_active
   ON pedia_tiers(product_id, is_active, is_recommended, sort_order);
+CREATE INDEX IF NOT EXISTS idx_pedia_tiers_active_product_v2
+  ON pedia_tiers(is_active, product_id, is_recommended, sort_order);
+CREATE INDEX IF NOT EXISTS idx_pedia_tiers_supplier_service
+  ON pedia_tiers(supplier, supplier_service_id);
 
 -- Item order Pedia (1 order = 1 item di fase 1).
 CREATE TABLE IF NOT EXISTS pedia_order_items (

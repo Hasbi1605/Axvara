@@ -102,9 +102,9 @@ export default function AdminPage() {
   useEffect(()=>{ if(auth.authed) void load(); },[auth.authed, load]);
   useEffect(()=>{
     const requests = overviewRequest;
-    if(auth.authed) void loadOverview();
+    if(auth.authed && tab === "summary") void loadOverview();
     return () => { ++requests.current; };
-  },[auth.authed, loadOverview]);
+  },[auth.authed, tab, loadOverview]);
 
   if(auth.checkingAuth) return <AdminAuthChecking />;
 

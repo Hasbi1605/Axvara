@@ -57,9 +57,9 @@ export type PairStats = {
 // Stok agregat = SUM varian aktif berstok; -1 (unlimited) = tak terbatas.
 // Modal termurah = MIN harga pokok varian aktif berstok di registry SK,
 // fallback WR (produk selalu salah satu, cermin cheapestModal lama).
-const stockSql = (col: string) => `(SELECT COALESCE(SUM(CASE WHEN v.stock>0 THEN v.stock ELSE 0 END),0)
-    FROM product_variants v WHERE v.product_id=sp.${col} AND v.is_active=1)`;
-const unlimitedSql = (col: string) => `(SELECT MAX(CASE WHEN v.stock=-1 THEN 1 ELSE 0 END)
+// Compute finite stock and unlimited in the same pass over each product.
+const stockSql = (col: string) => `(SELECT CASE WHEN MAX(CASE WHEN v.stock=-1 THEN 1 ELSE 0 END)=1
+    THEN -1 ELSE COALESCE(SUM(CASE WHEN v.stock>0 THEN v.stock ELSE 0 END),0) END
     FROM product_variants v WHERE v.product_id=sp.${col} AND v.is_active=1)`;
 const modalSql = (col: string) => `COALESCE(
     (SELECT MIN(s.sk_price) FROM sk_products s JOIN product_variants v ON v.sk_variant_id=s.sk_variant_id
@@ -71,21 +71,19 @@ const PAIR_STATS_SQL = `SELECT sp.*,
     EXISTS(SELECT 1 FROM products p WHERE p.id=sp.wr_product_id) AS st_wr_exists,
     EXISTS(SELECT 1 FROM products p WHERE p.id=sp.sk_product_id) AS st_sk_exists,
     ${stockSql("wr_product_id")} AS st_wr_stock,
-    ${unlimitedSql("wr_product_id")} AS st_wr_unl,
     ${stockSql("sk_product_id")} AS st_sk_stock,
-    ${unlimitedSql("sk_product_id")} AS st_sk_unl,
     ${modalSql("wr_product_id")} AS st_wr_modal,
     ${modalSql("sk_product_id")} AS st_sk_modal
   FROM supplier_pairs sp`;
 
 function statsFromRow(row: Row): PairStats {
-  const stock = (s: unknown, unl: unknown) => (Number(unl ?? 0) === 1 ? Number.MAX_SAFE_INTEGER : Number(s ?? 0));
+  const stock = (s: unknown) => (Number(s) === -1 ? Number.MAX_SAFE_INTEGER : Number(s ?? 0));
   const modal = (m: unknown) => (m == null ? null : Number(m));
   return {
     wrExists: Number(row.st_wr_exists ?? 0) === 1,
     skExists: Number(row.st_sk_exists ?? 0) === 1,
-    wrStock: stock(row.st_wr_stock, row.st_wr_unl),
-    skStock: stock(row.st_sk_stock, row.st_sk_unl),
+    wrStock: stock(row.st_wr_stock),
+    skStock: stock(row.st_sk_stock),
     wrModal: modal(row.st_wr_modal),
     skModal: modal(row.st_sk_modal),
   };

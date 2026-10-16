@@ -8,6 +8,7 @@
 // PURE MOVE: seluruh logika query fallback identik dengan src/lib/db.ts lama.
 
 import type { D1 } from "./types";
+import { logD1ReadCost } from "./read-metrics";
 
 export function getD1(): D1 | null {
   const g = globalThis as unknown as Record<string, unknown>;
@@ -65,8 +66,9 @@ export function isD1Mode(): boolean { return !!getD1(); }
 export async function queryAll(sql: string, ...params: unknown[]): Promise<Record<string, unknown>[]> {
   const d1 = getD1();
   if (d1) {
-    if (params.length) return ((await d1.prepare(sql).bind(...params).all()).results as Row[]) ?? [];
-    return ((await d1.prepare(sql).all()).results as Row[]) ?? [];
+    const result = params.length ? await d1.prepare(sql).bind(...params).all() : await d1.prepare(sql).all();
+    logD1ReadCost(sql, result.meta);
+    return (result.results as Row[]) ?? [];
   }
   // Dev fallback: in-memory
   const lower = sql.toLowerCase();

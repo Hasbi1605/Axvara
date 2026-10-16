@@ -15,7 +15,7 @@ import {
   resolveReportRange,
   type ReportSelection,
 } from "@/lib/revenue";
-import { emptySelectedReport, readFinancialReport, readSelectedFinancialReport } from "@/lib/dashboard-report";
+import { emptySelectedReport, readOverviewFinancialReport, readSelectedFinancialReport, selectedReportFromFinancial } from "@/lib/dashboard-report";
 import { parseExpiry } from "@/lib/expiry";
 import { topProfitByItems } from "@/lib/dashboard-profit";
 import {
@@ -197,6 +197,7 @@ export async function GET(request: NextRequest) {
   const inToday = `${paidDateWib}='${todayWib}'`;
   const inWeek = `${paidWeekWib}='${weekWib}'`;
   const inMonth = `${paidMonthWib}='${monthWib}'`;
+  const financialPromise = readOverviewFinancialReport(now);
   const [orders, proofs, qris, fulfillmentJobsRaw, fulfillmentOrdersNeedingAction, itemAttention, stock, topProduct, channelRows, financial, selected, tgQueue, waQueue, oldestJobDue, oldestItemDue, oldestWaDue, tgSends, waSends, qrisEvents] = await Promise.all([
     safeFirst(`SELECT
       COUNT(*) AS total_orders,
@@ -234,8 +235,10 @@ export async function GET(request: NextRequest) {
     safeFirst(`SELECT COUNT(*) AS count FROM product_variants WHERE is_active=1 AND stock BETWEEN 0 AND 5`),
     safeFirst(`SELECT name,sold_count FROM products WHERE is_active=1 ORDER BY sold_count DESC, sort_order ASC LIMIT 1`),
     safeAll(`SELECT sales_channel,COUNT(*) AS count FROM orders WHERE status='pending' GROUP BY sales_channel`),
-    readFinancialReport(now),
-    readSelectedFinancialReport(selection, now),
+    financialPromise,
+    typeof selection === "string"
+      ? financialPromise.then(report => selectedReportFromFinancial(selection, report, now))
+      : readSelectedFinancialReport(selection, now),
     // Sinyal kesehatan berbasis pengukuran (issue #13), bukan sekadar env:
     // antrean fulfillment + usia kirim Telegram terakhir.
     // 2026-09-16: tgQueue/fulfillment HANYA dari order yang masih butuh

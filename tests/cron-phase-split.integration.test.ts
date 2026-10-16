@@ -80,6 +80,32 @@ const setting = (key: string) =>
   fixture.sql.prepare("SELECT value FROM store_settings WHERE key=?").get(key)?.value as string | undefined;
 
 describe("route ?phase= (satu fase per request)", () => {
+  it.each(["expiry", "fulfillment", "notify", "cleanup"])("%s does not read other phases' queues", async phase => {
+    const reads: string[] = [];
+    fixture.control.fail = sql => { reads.push(sql); return false; };
+    const res = await run(`?phase=${phase}`);
+    expect(res.status).toBe(200);
+    expect(reads.some(sql => /FROM (wr_order_links|sk_order_links)/.test(sql))).toBe(false);
+    const probe = reads.find(sql => sql.includes(" AS expiry") || sql.includes(" AS jobs") || sql.includes(" AS qris_notice"));
+    if (phase === "cleanup") expect(probe).toBeUndefined();
+    if (phase === "expiry") {
+      expect(probe).toContain(" AS expiry");
+      expect(probe).not.toContain("whatsapp_outbox");
+      expect(probe).not.toContain("fulfillment_jobs");
+      expect(probe).not.toContain("qris_notice");
+    }
+    if (phase === "fulfillment") {
+      expect(probe).toContain(" AS jobs");
+      expect(probe).not.toContain("payment_transactions");
+      expect(probe).not.toContain("telegram_paid");
+    }
+    if (phase === "notify") {
+      expect(probe).toContain(" AS qris_notice");
+      expect(probe).not.toContain("fulfillment_jobs");
+      expect(probe).not.toContain(" AS expiry");
+    }
+  });
+
   it("menolak nama fase tak dikenal dengan 400", async () => {
     const res = await run("?phase=semua");
     expect(res.status).toBe(400);

@@ -20,6 +20,17 @@ function pair(over: Partial<PairRow> = {}): PairRow {
 }
 
 describe("decideOneWinner: stok dulu, modal kemudian", () => {
+  it("keeps unlimited stock purchasable in the combined stock aggregate", async () => {
+    const fx = createD1Fixture();
+    try {
+      seedPairProducts(fx);
+      fx.sql.exec("UPDATE product_variants SET stock=-1 WHERE id=1; UPDATE product_variants SET stock=0 WHERE id=3");
+      const result = await decideOneWinner(pair(), createDatabaseAccess(fx.db));
+      expect(result.winner).toBe("WR");
+      expect(result.reason).toContain(String(Number.MAX_SAFE_INTEGER));
+    } finally { fx.close(); }
+  });
+
   it("yang berstok menang walau modal lebih mahal", async () => {
     const fx = createD1Fixture();
     try {
