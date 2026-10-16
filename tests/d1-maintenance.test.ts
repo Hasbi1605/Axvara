@@ -100,6 +100,8 @@ describe("maintenance documents and middleware", () => {
     const html = await response.text();
     expect(html).toContain("07.00–08.00 WIB");
     expect(html).toContain("17 Oktober 2026");
+    expect(html.split("<body>")[1]).not.toContain("Maintenance sementara");
+    expect(html).not.toContain('class="badge"');
     expect(html).toContain(`${SITE.webUrl}/wa?pesan=`);
     expect(html).not.toMatch(/<script|\/api\/|D1_ERROR|paid plan/);
     expect(await HEAD().text()).toBe("");
@@ -118,6 +120,7 @@ describe("maintenance documents and middleware", () => {
     expect(html).not.toContain(`https://t.me/${SITE.adminTelegram}`);
     expect(html).not.toContain("<script>");
     expect(html).toContain("Pesan dibalas pada jam layanan");
+    expect(html.split("<body>")[1]).not.toContain("Maintenance sementara");
   });
 
   it.each(["/", "/produk/chatgpt", "/checkout", "/pesanan/AXV-123", "/admin", "/pedia", "/pedia/o/instagram"])("protects page %s before it renders", async path => {

@@ -944,13 +944,13 @@ publik memakai cache singkat sesuai PRD; harga/stok divalidasi ulang saat checko
 ✅ Implementasi, publikasi melalui CI. Dokumen mandiri tanpa navbar, keranjang,
 JavaScript atau permintaan API. Latar Midnight #080C1E dengan glow cyan statis,
 kartu maksimal 560px/radius 28px, logo prism putih dari geometri mark existing,
-badge emas “Maintenance sementara”, judul “Kami sedang maintenance”. Kartu
-estimasi cyan menampilkan 07.00–08.00 WIB dan tanggal kalender WIB berikutnya
+judul “Kami sedang maintenance” langsung setelah brand tanpa pill status atau
+titik kuning (revisi 2026-10-17). Kartu estimasi cyan menampilkan 07.00–08.00 WIB dan tanggal kalender WIB berikutnya
 sesuai reset UTC. Teks “pagi nanti” menghindari ambiguitas hari setelah tengah
 malam. Tombol utama putih “Order manual via WhatsApp” menuju hub /wa; tombol
 kedua “Coba buka toko lagi” memuat beranda. Catatan menyebut estimasi dan bantuan
 bagi yang sudah membayar. Hub saat maintenance menampilkan hanya nomor aktif
 dari registri kontak existing, support Telegram dan jam layanan; konteks pesan
 tetap terbawa. Padding 18px luar/20–32px kartu, kontrol minimal 48px dan outline
-fokus cyan; layout mengalir dan dapat digulir pada layar kecil, tanpa animasi
-atau aset/font jaringan yang dibutuhkan untuk membaca dan memakai tombol.
+fokus cyan; jarak brand ke judul 32px. Layout mengalir dan dapat digulir pada
+layar kecil, tanpa animasi atau aset/font jaringan yang dibutuhkan untuk membaca dan memakai tombol.
