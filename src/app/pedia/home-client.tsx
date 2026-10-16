@@ -5,10 +5,12 @@ import { PediaServiceCards } from "@/components/pedia/PediaServiceCards";
 import { PediaWhatsAppLink } from "@/components/pedia/PediaWhatsAppLink";
 import { Typewriter } from "@/components/pedia/Typewriter";
 import { PlatformCatalog } from "@/components/pedia/PlatformCatalog";
+import { ScrollRope } from "@/components/storefront/ScrollRope";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
 
 export function PediaHomeClient({ products }: { products: PediaCatalogProduct[]; ordersEnabled?: boolean }) {
   return <>
+    <ScrollRope />
     <section className="relative mx-auto max-w-[1280px] px-4 pb-4 pt-10 sm:px-6 sm:pt-14 lg:px-8">
       <div aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(0,229,255,0.08),transparent_65%)]" />
       <div className="relative grid items-center gap-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:gap-8">

@@ -5,6 +5,7 @@ import { PediaBottomNav } from "@/components/pedia/PediaBottomNav";
 import { Footer } from "@/components/storefront/Footer";
 import { NavigationProgress } from "@/components/ui/NavigationProgress";
 import { CrossAppTransition } from "@/components/ui/CrossAppTransition";
+import { Spotlight } from "@/components/ui/Spotlight";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://pedia.axvara.tech"),
@@ -20,6 +21,7 @@ export const metadata: Metadata = {
 export default function PediaLayout({ children }: { children: React.ReactNode }) {
   return (
       <div className="pedia-root min-h-screen overflow-x-clip bg-[#080C1E] text-[#F1F5FF]">
+      <Spotlight />
       <PediaNavbar />
       {/* 2026-10-12: <main> TANPA max-width/padding 1:1 Market (dulu
           max-w-1280 + px-4/sm:px-6/lg:px-8 di sini → padding GANDA 64px

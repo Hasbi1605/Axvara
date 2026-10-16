@@ -107,6 +107,9 @@ describe("Pedia platform-first storefront", () => {
   it("puts both cross-service promotions between the hero and catalog and retains compact hero actions", () => {
     renderPediaHome([product]);
     const hero = screen.getByRole("heading", { level: 1 }).closest("section")!;
+    const ropes = screen.getAllByTitle("Tarik talinya!");
+    expect(ropes).toHaveLength(1);
+    expect(ropes[0].compareDocumentPosition(hero) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const catalog = screen.getByRole("region", { name: "Pilih platform" });
     for (const name of [/AXVARA Market/, /Bot Telegram/]) {
       const promo = screen.getByRole("link", { name });

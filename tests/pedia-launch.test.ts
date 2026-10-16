@@ -111,9 +111,10 @@ describe("integrasi pusat M6 (PD-60–64)", () => {
     expect(svg).toContain('fill="currentColor"');
   });
 
-  it("Pedia uses the shared footer once + platform headers retain native icons", () => {
+  it("Pedia uses the shared footer and cursor effect once + platform headers retain native icons", () => {
     const layout = read("src/app/pedia/layout.tsx");
     expect(layout).toContain('<Footer />');
+    expect(layout.match(/<Spotlight \/>/g)).toHaveLength(1);
     expect(layout).not.toContain("<footer");
     expect(layout).not.toContain("Axvara Pedia</span> · Naikkan");
     const plat = read("src/app/pedia/p/[platform]/platform-client.tsx");

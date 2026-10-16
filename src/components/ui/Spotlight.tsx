@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef } from "react";
+import { useDesktopMotion } from "@/hooks/useDesktopMotion";
 
 /**
  * Spotlight v2 — Event-driven, zero idle CPU.
@@ -10,13 +11,12 @@ import { useEffect, useRef } from "react";
  * - Only on pointer: fine (desktop), auto-disabled on touch / reduced-motion.
  */
 export function Spotlight() {
+  const enabled = useDesktopMotion();
   const ref = useRef<HTMLDivElement>(null);
   const pendingRaf = useRef<number | null>(null);
 
   useEffect(() => {
-    const isFine = window.matchMedia("(pointer: fine)").matches;
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (!isFine || reduce) return;
+    if (!enabled) return;
 
     const el = ref.current;
     if (!el) return;
@@ -45,12 +45,12 @@ export function Spotlight() {
     document.addEventListener("mouseleave", onLeave);
 
     return () => {
-      if (pendingRaf.current) cancelAnimationFrame(pendingRaf.current);
+      onLeave();
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerleave", onLeave);
       document.removeEventListener("mouseleave", onLeave);
     };
-  }, []);
+  }, [enabled]);
 
   return (
     <div
@@ -60,6 +60,7 @@ export function Spotlight() {
       style={{
         width: 420,
         height: 420,
+        display: enabled ? undefined : "none",
         opacity: 0,
         transition: "opacity 0.45s ease",
         transform: "translate3d(-9999px, -9999px, 0) translate(-50%, -50%)",

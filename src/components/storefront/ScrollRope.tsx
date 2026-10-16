@@ -1,15 +1,18 @@
 "use client";
 import { useEffect, useRef, useCallback } from "react";
+import { useDesktopMotion } from "@/hooks/useDesktopMotion";
 
 /**
  * ScrollRope v2 — Event-driven animation.
  * - RAF only runs while velocity is significant (> 0.01).
  * - Stops completely when sway settles — zero idle CPU.
  * - No useState for sway/progress — all imperative via refs.
- * - No listeners or animation loop on mobile.
+ * - No scroll listeners or animation loop on touch/mobile; media queries stay observed.
  * - prefers-reduced-motion respected.
  */
 export function ScrollRope() {
+  const enabled = useDesktopMotion();
+  const enabledRef = useRef(false);
   const pathShadowRef = useRef<SVGPathElement>(null);
   const pathMainRef = useRef<SVGPathElement>(null);
   const pathCyanRef = useRef<SVGPathElement>(null);
@@ -67,17 +70,14 @@ export function ScrollRope() {
   }, [updateDOM]);
 
   const startLoop = useCallback(() => {
-    if (isRunningRef.current) return;
+    if (!enabledRef.current || isRunningRef.current) return;
     isRunningRef.current = true;
     rafRef.current = requestAnimationFrame(tick);
   }, [tick]);
 
   useEffect(() => {
-    // Respect prefers-reduced-motion
-    if (
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches ||
-      !window.matchMedia("(min-width: 768px)").matches
-    ) return;
+    enabledRef.current = enabled;
+    if (!enabled) return;
 
     const onScroll = () => {
       const max = document.documentElement.scrollHeight - window.innerHeight;
@@ -97,17 +97,21 @@ export function ScrollRope() {
     updateDOM();
 
     return () => {
+      enabledRef.current = false;
       window.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", onResize);
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
       isRunningRef.current = false;
+      swayRef.current = 0;
+      velRef.current = 0;
     };
-  }, [updateDOM, startLoop]);
+  }, [enabled, updateDOM, startLoop]);
 
-  const onEnter = () => { velRef.current += 6; startLoop(); };
-  const onClick = () => { velRef.current += (Math.random() > 0.5 ? 10 : -10); startLoop(); };
+  const onEnter = () => { if (!enabledRef.current) return; velRef.current += 6; startLoop(); };
+  const onClick = () => { if (!enabledRef.current) return; velRef.current += (Math.random() > 0.5 ? 10 : -10); startLoop(); };
   const onMove = (e: React.MouseEvent) => {
+    if (!enabledRef.current) return;
     const r = wrapRef.current?.getBoundingClientRect();
     if (!r) return;
     const x = e.clientX - (r.left + r.width / 2);
@@ -122,7 +126,7 @@ export function ScrollRope() {
       onMouseMove={onMove}
       onClick={onClick}
       className="fixed top-0 right-3 sm:right-6 z-40 hidden md:block cursor-pointer select-none"
-      style={{ height: 60, width: 60 }}
+      style={{ height: 60, width: 60, display: enabled ? undefined : "none" }}
       aria-hidden
       title="Tarik talinya!"
     >

@@ -20,6 +20,10 @@ Revisi visual 2026-10-16 (implementasi; publikasi via CI):
 - 3 pilihan awal mobile / 5 desktop, tambahan lewat tombol; pilihan mobile yang dipilih dirangkum dengan tombol Ganti layanan; kategori ramai followers sekitar 9 pilihan. Filter wilayah, jenis akun, refill dan urutan harga. Platform kecil boleh memiliki 1–2 pilihan bila alternatif tidak cocok; tidak menambah duplikasi hanya untuk mencapai kuota.
 - Platform: Instagram, TikTok, YouTube, Facebook, Threads, X, Telegram, LinkedIn, Pinterest, Discord, Shopee, Spotify, SoundCloud, Twitch, GitHub, Website Traffic. GitHub menyediakan followers profil/fork repository, tanpa mengarang stars. Website membedakan traffic umum dan referrer; bukan janji trafik organik, SEO atau konversi.
 
+## Animasi desktop — revisi 16 Oktober 2026
+
+Revisi animasi desktop 2026-10-16 ✅ implementasi, publikasi melalui CI: layout Pedia memakai `Spotlight` yang sama dengan Market (glow putih/cyan mengikuti cursor), dan beranda Pedia memakai `ScrollRope` yang sama (panjang mengikuti progres scroll, ayunan saat hover/klik). Hook bersama `useDesktopMotion` mengaktifkan keduanya hanya pada lebar ≥768px, `pointer: fine`, `hover: hover` dan tanpa reduced motion. Perubahan media query saat halaman terbuka langsung memperbarui efek; saat nonaktif, kedua dekorasi disembunyikan, listener interaksi/frame dibersihkan dan klik/hover tali tidak dapat menjalankan animasi. Tali tetap khusus beranda; efek menggunakan pembaruan berbasis interaksi dan berhenti setelah ayunan mereda. Perbaikan guard komponen bersama juga berlaku di Market, tanpa env/aset/kontrak API baru.
+
 ## Dasar kurasi dan batas bukti
 
 Katalog kedua API dibaca 15 Oktober: ProviderSMM 587 layanan dan IndoSMM 4.405 (snapshot berubah oleh diff), balance currency keduanya IDR. Deskripsi publik supplier ditinjau bersama nama, kategori, API refill dan batas jumlah. Harga dibandingkan pada jumlah yang sama; batas yang lebih ketat dari API/nama/deskripsi diterapkan. Grade akun adalah keterangan supplier, bukan hasil uji empiris AXVARA. Label drop/refill dipertahankan.
