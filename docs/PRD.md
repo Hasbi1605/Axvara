@@ -179,8 +179,22 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 | NFR-6 | Biaya | Rp 0/bulan infra (Pages + D1 + R2 free tier), hanya domain |
 | NFR-7 | Aksesibilitas | Warna kontras WCAG AA, keyboard navigable, alt text |
 | NFR-8 | Bahasa | UI Bahasa Indonesia (formal santai), harga Rupiah |
-| NFR-9 | Kuota D1 | ✅ Implementasi 2026-10-16, publikasi melalui CI: katalog publik memakai cache server eksplisit (Market 30 dtk/produk tunggal 10 dtk, Pedia dan kategori 60 dtk). Pedia hanya membaca layanan rujukan aktif. Quote/order/status tetap memeriksa data aktual. Ringkasan admin dimuat saat section Ringkasan dibuka; laporan standar memakai satu agregasi bersama, cache privat proses maksimal 60 dtk dan waktu pembuatan aktual. Cleanup data kedaluwarsa per jam; expiry pembayaran, fulfillment dan recovery order tetap setiap tick. Target ≤2–2,5 juta rows_read/hari pada trafik audit perlu diukur setelah rilis, bukan jaminan kapasitas. |
+| NFR-9 | Kuota D1 | ✅ Implementasi 2026-10-16, publikasi melalui CI: katalog publik memakai cache server eksplisit (Market 30 dtk/produk tunggal 10 dtk, Pedia dan kategori 60 dtk). Pedia hanya membaca layanan rujukan aktif. Quote/order/status tetap memeriksa data aktual. Ringkasan admin dimuat saat section Ringkasan dibuka; laporan standar memakai satu agregasi bersama, cache privat proses maksimal 60 dtk dan waktu pembuatan aktual. Cleanup data kedaluwarsa per jam; expiry pembayaran, fulfillment dan recovery order tetap setiap tick. Target terbaru 2026-10-17 ≤3 juta rows_read/hari perlu diukur satu siklus reset setelah rilis, bukan jaminan kapasitas. |
 | NFR-10 | Maintenance kuota | ✅ Implementasi 2026-10-17, publikasi melalui CI: saat D1 mengembalikan error kuota baca/tulis harian, halaman Market/Pedia menampilkan maintenance sementara dengan estimasi 07.00–08.00 WIB dan tanggal reset berikutnya, tombol order manual serta coba buka toko. Hub WhatsApp menyediakan pilihan nomor aktif dan support Telegram tanpa database; jam layanan admin tetap ditampilkan. Pesanan yang sudah dibayar diarahkan ke admin dengan kode dan bukti. Toko kembali tersedia setelah pemeriksaan D1 berhasil; estimasi bukan janji penyelesaian. API/webhook/cron tidak diganti halaman HTML. |
+
+
+Revisi kuota lanjutan 2026-10-17 ✅ implementasi/verifikasi lokal, publikasi CI:
+seluruh Ringkasan memakai snapshot privat maksimal 60 detik setelah pemeriksaan
+sesi/parameter, dengan umur keuangan asal tetap dibatasi. Katalog, kategori,
+pencarian dan bestseller Telegram berbagi snapshot publik 30 detik; detail/
+checkout memvalidasi harga/stok aktual. Antrean pasangan berubah diproses
+bertahap lewat diff dan cron cleanup existing; kegagalan/perubahan bersamaan
+menyisakan pekerjaan untuk retry, sweep penuh tetap cadangan. Monitor analytics
+akun tiap jam memuat baca/tulis, proyeksi dan anggaran tersisa; risiko melampaui
+5 juta reads/100 ribu writes, ≥90% penggunaan atau data tak tersedia menghasilkan
+warning/job gagal GitHub Actions. Jadwal/analytics dapat terlambat, notifikasi
+mengikuti pengaturan GitHub owner. Target terbaru ≤3 juta reads/hari perlu
+satu siklus reset produksi 07.00–07.00; hasil fixture bukan jaminan bebas limit.
 
 Revisi operasional 2026-10-17 ✅ implementasi, publikasi CI: rilis kode tanpa perubahan database dapat memakai bukti migrasi dari rilis main sukses dengan berkas DB identik; berkas berubah/bukti tidak lengkap tetap memerlukan Wrangler remote sukses sebelum deploy. Pengingat saldo ProviderSMM/IndoSMM wajib berhasil membaca dan mereservasi penanda sebelum kirim; gangguan D1 menunda alert saldo, tanpa spam tiap tick. Throttle enam jam/penurunan Rp5.000 dan notifikasi pembeli tetap.
 

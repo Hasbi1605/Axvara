@@ -5,9 +5,7 @@
 // invoice). Menaruhnya di satu tempat mencegah impor melingkar antar-handler
 // dan menjaga perilaku IDENTIK dengan route.ts lama (pemindahan murni).
 
-import { queryAll, execRun, isD1Mode } from "@/lib/db";
-import { purchasableStockSql } from "@/lib/catalog-availability";
-import { notLoserProductSql } from "@/lib/supplier-pairs";
+import { execRun, isD1Mode } from "@/lib/db";
 import { TELEGRAM_MAX_QTY } from "@/lib/telegram/keyboards";
 import type { TelegramBestseller } from "@/lib/telegram/messages";
 import type { CartLine } from "@/lib/telegram/cart";
@@ -36,24 +34,11 @@ export async function clearPendingAction(from?: { id: number }) {
 export async function getBestsellers(limit = 3): Promise<TelegramBestseller[]> {
   try {
     // Sapaan /start tidak boleh mempromosikan produk yang habis.
-    const rows = await queryAll(
-      `SELECT p.id, p.name, MIN(pv.price) AS price, p.sold_count
-       FROM products p
-       JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1 AND ${purchasableStockSql("pv")}
-       WHERE p.is_active=1 AND p.telegram_enabled=1 AND ${notLoserProductSql("p")}
-       GROUP BY p.id
-       ORDER BY p.sold_count DESC, p.sort_order ASC
-       LIMIT ?`,
-      limit,
-    );
-    return (rows as { id: number; name: string; price: number; sold_count: number }[])
-      .filter((row) => Number(row.sold_count) > 0)
-      .map((row) => ({
-        productId: Number(row.id),
-        name: String(row.name),
-        price: Number(row.price),
-        soldCount: Number(row.sold_count),
-      }));
+    const { readTelegramCatalog } = await import("@/lib/telegram/catalog-snapshot");
+    return (await readTelegramCatalog()).filter(row => row.price !== null && row.sold_count > 0)
+      .sort((a,b) => b.sold_count-a.sold_count || a.sort_order-b.sort_order)
+      .slice(0, Math.max(0, limit))
+      .map(row => ({ productId: row.id, name: row.name, price: row.price!, soldCount: row.sold_count }));
   } catch {
     return [];
   }

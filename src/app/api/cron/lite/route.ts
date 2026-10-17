@@ -427,5 +427,11 @@ async function runNotify(db: Db) {
 // revokasi sesi admin). Murah dan idempoten.
 async function runCleanup(db: Db) {
   const { runMaintenanceCleanup } = await import("@/lib/maintenance-cleanup");
-  return runMaintenanceCleanup(db);
+  const cleanup = await runMaintenanceCleanup(db);
+  if (!db.canSpend(3)) return cleanup;
+  // Drain WR-only changes and failed VPS pair requests on the existing cron.
+  // Critical order work has its own jobs; this drain is bounded and resumable.
+  const { decideDirtyWinners } = await import("@/lib/supplier-pairs");
+  const pairs = await decideDirtyWinners(db);
+  return { ...cleanup, pairs_decided: pairs.decided, pairs_changed: pairs.changed };
 }

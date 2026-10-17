@@ -21,18 +21,24 @@ function result(response: Response, status: "HIT" | "MISS" | "BYPASS"): Response
  * share the same cache as HTTP. Checkout, auth and order state never use this.
  * No in-memory data fallback: absent/failing Cache API always reads fresh data. */
 export async function cachePublicCatalog(key: string, ttl: number, load: () => Promise<Response> | Response): Promise<Response> {
+  const scope = key.startsWith("telegram") ? "telegram_catalog" : key.startsWith("market") ? "market_catalog"
+    : key.startsWith("pedia") ? "pedia_catalog" : "categories";
+  const report = (response: Response, status: "HIT" | "MISS" | "BYPASS") => {
+    try { console.info("[catalog-cache]", JSON.stringify({ scope, status })); } catch { /* telemetry is best-effort */ }
+    return result(response, status);
+  };
   const cache = (globalThis as unknown as { caches?: { default?: EdgeCache } }).caches?.default;
-  if (!cache || !getD1()) return load();
+  if (!cache || !getD1()) return report(await load(), "BYPASS");
   const request = new Request(`https://axvara.tech/__catalog-cache/d1-v1/${key}`);
   try {
     const hit = await cache.match(request);
-    if (hit) return result(hit, "HIT");
-  } catch { return result(await load(), "BYPASS"); }
+    if (hit) return report(hit, "HIT");
+  } catch { return report(await load(), "BYPASS"); }
 
   let flights = pending.get(cache);
   if (!flights) { flights = new Map(); pending.set(cache, flights); }
   const existing = flights.get(request.url);
-  if (existing) return result(await existing, "MISS");
+  if (existing) return report(await existing, "MISS");
   const fill = (async () => {
     const response = await load();
     // Never preserve a failed/degraded load, a cookie or a private response.
@@ -49,6 +55,6 @@ export async function cachePublicCatalog(key: string, ttl: number, load: () => P
   })();
   // Bound pending keys during bursts with many distinct searches.
   if (flights.size < 128) flights.set(request.url, fill);
-  try { return result(await fill, "MISS"); }
+  try { return report(await fill, "MISS"); }
   finally { if (flights.get(request.url) === fill) flights.delete(request.url); }
 }

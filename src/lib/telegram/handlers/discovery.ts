@@ -20,8 +20,6 @@ import {
   emailConfirmationMessage,
 } from "@/lib/telegram/messages";
 import { getProductDetail } from "@/lib/catalog";
-import { purchasableStockSql } from "@/lib/catalog-availability";
-import { notLoserProductSql } from "@/lib/supplier-pairs";
 import { countInventory } from "@/lib/fulfillment/inventory";
 import { clampQty } from "./shared";
 import { handleShowCatalog, handleShowQty, handleShowVariants } from "./catalog";
@@ -230,31 +228,13 @@ export async function handlePendingSearchInput(
 }
 
 export async function handleSearchResults(chatId: number, keyword: string) {
-  const like = `%${keyword.trim().toLowerCase()}%`;
-  const match = `p.is_active=1 AND p.telegram_enabled=1 AND ${notLoserProductSql("p")}
-       AND (LOWER(p.name) LIKE ? OR LOWER(COALESCE(p.whatsapp_alias,'')) LIKE ? OR LOWER(COALESCE(p.aliases,'[]')) LIKE ?)`;
-  // Sama dengan katalog: hanya produk yang bisa dibeli.
-  const rows = await queryAll(
-    `SELECT p.id, p.name, MIN(pv.price) AS price
-     FROM products p
-     JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1 AND ${purchasableStockSql("pv")}
-     WHERE ${match}
-     GROUP BY p.id
-     ORDER BY p.sold_count DESC, p.sort_order ASC
-     LIMIT 10`,
-    like, like, like,
-  );
-  const products = (rows as { id: number; name: string; price: number }[]).map((row) => ({
-    id: Number(row.id),
-    name: String(row.name),
-    price: Number(row.price),
-  }));
-  // Kata kunci cocok tapi semuanya habis: katakan habis, bukan "tidak ada".
-  let soldOut = 0;
-  if (products.length === 0) {
-    const row = await queryFirst(`SELECT COUNT(*) AS n FROM products p WHERE ${match}`, like, like, like).catch(() => null);
-    soldOut = Number(row?.n ?? 0);
-  }
+  const { readTelegramCatalog, telegramSearchMatch } = await import("@/lib/telegram/catalog-snapshot");
+  const matching = (await readTelegramCatalog()).filter(row =>
+    [row.name,row.whatsapp_alias,row.aliases ?? "[]"].some(value => telegramSearchMatch(value, keyword)));
+  const products = matching.filter(row => row.price !== null)
+    .sort((a,b) => b.sold_count-a.sold_count || a.sort_order-b.sort_order).slice(0,10)
+    .map(row => ({ id: row.id, name: row.name, price: row.price! }));
+  const soldOut = products.length ? 0 : matching.length;
   await sendMessage({
     chat_id: chatId,
     text: searchResultsMessage(keyword, products.length, soldOut),

@@ -1,0 +1,38 @@
+name: D1 Free usage monitor
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: axvara-d1-usage
+  cancel-in-progress: false
+
+# Read-only account analytics. Deployment remains exclusively in ci.yml.
+jobs:
+  usage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check daily usage and remaining budget
+        run: node scripts/d1-usage-check.cjs --report /tmp/d1-usage.json --check
+        env:
+          CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+          CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Save aggregate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: d1-usage-${{ github.run_id }}
+          path: /tmp/d1-usage.json
+          retention-days: 7
+          if-no-files-found: ignore

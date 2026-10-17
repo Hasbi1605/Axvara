@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createDatabaseAccess } from "@/lib/db-access";
-import { decideOneWinner, decideAllWinners, loserProductIds, type PairRow } from "@/lib/supplier-pairs";
+import { decideOneWinner, decideAllWinners, decideDirtyWinners, loserProductIds, type PairRow } from "@/lib/supplier-pairs";
 import { createD1Fixture, stubFulfillmentKey } from "./helpers/d1-fixture";
 
 function seedPairProducts(fx: ReturnType<typeof createD1Fixture>) {
@@ -18,6 +18,114 @@ function seedPairProducts(fx: ReturnType<typeof createD1Fixture>) {
 function pair(over: Partial<PairRow> = {}): PairRow {
   return { id: 1, wr_product_id: 1, sk_product_id: 2, winner: null, prefer: "auto", prefer_margin: 2000, decided_at: null, reason: null, ...over };
 }
+
+describe("durable dirty pair queue", () => {
+  function setup() {
+    const fx=createD1Fixture(); seedPairProducts(fx);
+    fx.sql.exec("INSERT INTO supplier_pairs(id,wr_product_id,sk_product_id) VALUES(99,1,2); DELETE FROM supplier_pair_dirty WHERE pair_id<>99");
+    return fx;
+  }
+  it("processes only dirty pairs and clean ticks do not compute pair statistics", async () => {
+    const fx=setup();
+    try {
+      const db=createDatabaseAccess(fx.db);
+      expect(await decideDirtyWinners(db)).toEqual({decided:1,changed:1});
+      expect(fx.sql.prepare("SELECT winner FROM supplier_pairs WHERE id=99").get()?.winner).toBe("SK");
+      expect(await decideDirtyWinners(db)).toEqual({decided:0,changed:0});
+      fx.sql.exec("UPDATE product_variants SET stock=stock WHERE id=3");
+      expect(await decideDirtyWinners(db)).toEqual({decided:0,changed:0});
+      fx.sql.exec("UPDATE sk_products SET sk_price=9000 WHERE sk_variant_id='31'");
+      expect(await decideDirtyWinners(db)).toEqual({decided:1,changed:1});
+      expect(fx.sql.prepare("SELECT winner FROM supplier_pairs WHERE id=99").get()?.winner).toBe("WR");
+    } finally {fx.close();}
+  });
+  it("bounds a drain to ten pairs and leaves the remaining work pending", async () => {
+    const fx=setup();
+    try {
+      for(let i=0;i<12;i++) fx.sql.prepare("INSERT INTO supplier_pairs(id,wr_product_id,sk_product_id) VALUES(?,?,?)").run(100+i,1000+i,2000+i);
+      const db=createDatabaseAccess(fx.db);
+      expect((await decideDirtyWinners(db)).decided).toBe(10);
+      expect(fx.sql.prepare("SELECT COUNT(*) AS n FROM supplier_pair_dirty WHERE pending=1").get()?.n).toBe(3);
+      expect((await decideDirtyWinners(db)).decided).toBe(3);
+      expect((await decideDirtyWinners(db)).decided).toBe(0);
+    } finally {fx.close();}
+  });
+  it("a failed write is retained for the next invocation", async () => {
+    const fx=setup();
+    try {
+      fx.control.fail=q=>q.startsWith("UPDATE supplier_pairs");
+      await expect(decideDirtyWinners(createDatabaseAccess(fx.db))).rejects.toThrow();
+      expect(fx.sql.prepare("SELECT pair_id FROM supplier_pair_dirty WHERE pair_id=99").get()).toBeTruthy();
+      fx.control.fail=null;
+      expect(await decideDirtyWinners(createDatabaseAccess(fx.db))).toEqual({decided:1,changed:1});
+    } finally {fx.close();}
+  });
+  it("a concurrent source change prevents stale winner writes and stale acks", async () => {
+    const fx=setup();
+    try {
+      const base=createDatabaseAccess(fx.db);
+      await decideDirtyWinners(base);
+      fx.sql.exec("UPDATE wr_variants SET wr_price=1000 WHERE wr_variant_id='wr-a'");
+      const racing={...base,queryAll:async(q:string,...params:unknown[])=>{
+        const rows=await base.queryAll(q,...params);
+        fx.sql.exec("UPDATE wr_variants SET wr_price=8000 WHERE wr_variant_id='wr-a'");
+        return rows;
+      }};
+      await decideDirtyWinners(racing);
+      expect(fx.sql.prepare("SELECT winner FROM supplier_pairs WHERE id=99").get()?.winner).toBe("SK");
+      expect(fx.sql.prepare("SELECT pair_id FROM supplier_pair_dirty WHERE pair_id=99").get()).toBeTruthy();
+      await decideDirtyWinners(base);
+      expect(fx.sql.prepare("SELECT pending FROM supplier_pair_dirty WHERE pair_id=99").get()?.pending).toBe(0);
+    } finally {fx.close();}
+  });
+  it("variant deletes and admin preferences are durable invalidations", async () => {
+    const fx=setup();
+    try {
+      const db=createDatabaseAccess(fx.db); await decideDirtyWinners(db);
+      fx.sql.exec("UPDATE supplier_pairs SET prefer='WR',prefer_margin=2000 WHERE id=99");
+      await decideDirtyWinners(db);
+      expect(fx.sql.prepare("SELECT winner FROM supplier_pairs WHERE id=99").get()?.winner).toBe("WR");
+      fx.sql.exec("DELETE FROM product_variants WHERE product_id=1");
+      await decideDirtyWinners(db);
+      expect(fx.sql.prepare("SELECT winner FROM supplier_pairs WHERE id=99").get()?.winner).toBe("SK");
+    } finally {fx.close();}
+  });
+  it("retains versions after ack so an old worker cannot consume a later change", async () => {
+    const fx=setup();
+    try {
+      const base=createDatabaseAccess(fx.db);
+      await decideDirtyWinners(base);
+      fx.sql.exec("UPDATE wr_variants SET wr_price=1000 WHERE wr_variant_id='wr-a'");
+      const racing={...base,queryAll:async(q:string,...params:unknown[])=>{
+        const rows=await base.queryAll(q,...params);
+        await decideDirtyWinners(base); // Another worker writes WR and acks.
+        fx.sql.exec("UPDATE wr_variants SET wr_price=8000 WHERE wr_variant_id='wr-a'");
+        return rows;
+      }};
+      await decideDirtyWinners(racing);
+      expect(fx.sql.prepare("SELECT pending FROM supplier_pair_dirty WHERE pair_id=99").get()?.pending).toBe(1);
+      await decideDirtyWinners(base);
+      expect(fx.sql.prepare("SELECT winner FROM supplier_pairs WHERE id=99").get()?.winner).toBe("SK");
+    } finally {fx.close();}
+  });
+  it("a full sweep cannot overwrite a newer source change already processed by a diff", async () => {
+    const fx=setup();
+    try {
+      const base=createDatabaseAccess(fx.db);
+      await decideDirtyWinners(base);
+      fx.sql.exec("UPDATE wr_variants SET wr_price=1000 WHERE wr_variant_id='wr-a'");
+      const racing={...base,queryAll:async(q:string,...params:unknown[])=>{
+        const rows=await base.queryAll(q,...params);
+        fx.sql.exec("UPDATE wr_variants SET wr_price=8000 WHERE wr_variant_id='wr-a'");
+        await decideDirtyWinners(base);
+        return rows;
+      }};
+      await decideAllWinners(racing);
+      expect(fx.sql.prepare("SELECT winner FROM supplier_pairs WHERE id=99").get()?.winner).toBe("SK");
+      expect(fx.sql.prepare("SELECT pending FROM supplier_pair_dirty WHERE pair_id=99").get()?.pending).toBe(0);
+    } finally {fx.close();}
+  });
+});
 
 describe("decideOneWinner: stok dulu, modal kemudian", () => {
   it("keeps unlimited stock purchasable in the combined stock aggregate", async () => {

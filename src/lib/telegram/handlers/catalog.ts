@@ -19,8 +19,7 @@ import {
 } from "@/lib/telegram/messages";
 import { getProductDetail, getActiveVariant, formatDuration, buyerWarrantyLabel, buyerDeliveryKind } from "@/lib/catalog";
 import { needsEmailForVariant } from "@/lib/warung-rebahan/delivery-class";
-import { purchasableStockSql } from "@/lib/catalog-availability";
-import { notLoserProductSql, winnerForLoserProduct } from "@/lib/supplier-pairs";
+import { winnerForLoserProduct } from "@/lib/supplier-pairs";
 import { clampQty } from "./shared";
 import { handleBuyConfirm } from "./discovery";
 
@@ -34,16 +33,10 @@ type CatalogProduct = { id: number; name: string; price: number };
  * sini. Harga = varian tersedia termurah, sama dengan kartu web.
  */
 export async function listTelegramProducts(categoryId?: number): Promise<CatalogProduct[]> {
-  const rows = await queryAll(
-    `SELECT p.id, p.name, MIN(pv.price) AS price
-     FROM products p
-     JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1 AND ${purchasableStockSql("pv")}
-     WHERE p.is_active=1 AND p.telegram_enabled=1 AND ${notLoserProductSql("p")}${categoryId ? " AND p.category_id=?" : ""}
-     GROUP BY p.id
-     ORDER BY p.sort_order ASC, p.name ASC`,
-    ...(categoryId ? [categoryId] : []),
-  );
-  return rows.map((row) => ({ id: Number(row.id), name: String(row.name), price: Number(row.price) }));
+  const { readTelegramCatalog } = await import("@/lib/telegram/catalog-snapshot");
+  return (await readTelegramCatalog())
+    .filter(row => row.price !== null && (!categoryId || row.category_id === categoryId))
+    .map(row => ({ id: row.id, name: row.name, price: row.price! }));
 }
 
 // Flat catalog (WA parity): product names only, no mandatory categories.

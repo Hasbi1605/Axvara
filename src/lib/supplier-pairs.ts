@@ -142,7 +142,9 @@ export async function decideOneWinner(pair: PairRow, db: DatabaseAccess): Promis
  */
 export async function decideAllWinners(database?: DatabaseAccess): Promise<{ decided: number; changed: number }> {
   const db = database ?? createDatabaseAccess();
-  const rows = await db.queryAll(PAIR_STATS_SQL).catch(() => [] as Row[]);
+  const sql = PAIR_STATS_SQL.replace("SELECT sp.*,", `SELECT sp.*,
+    (SELECT version FROM supplier_pair_dirty WHERE pair_id=sp.id) AS dirty_version,`);
+  const rows = await db.queryAll(sql).catch(() => [] as Row[]);
   let decided = 0;
   let changed = 0;
   const now = new Date().toISOString();
@@ -151,15 +153,47 @@ export async function decideAllWinners(database?: DatabaseAccess): Promise<{ dec
     const { winner, reason } = decideFromStats(pair, statsFromRow(row));
     const shortReason = reason.slice(0, 300);
     decided++;
-    if (winner !== (pair.winner ?? null)) changed++;
     if (winner === (pair.winner ?? null) && shortReason === (pair.reason ?? null)) continue;
-    await db
+    const result = await db
       .execRun(
         `UPDATE supplier_pairs SET winner=?, decided_at=?, reason=?, updated_at=?
-         WHERE id=? AND (winner IS NOT ? OR reason IS NOT ?)`,
-        winner, now, shortReason, now, pair.id, winner, shortReason,
+         WHERE id=? AND (winner IS NOT ? OR reason IS NOT ?)
+           AND (SELECT version FROM supplier_pair_dirty WHERE pair_id=supplier_pairs.id) IS ?`,
+        winner, now, shortReason, now, pair.id, winner, shortReason, row.dirty_version ?? null,
       )
       .catch(() => ({ changes: 0 }));
+    if (result.changes && winner !== (pair.winner ?? null)) changed++;
+  }
+  return { decided, changed };
+}
+
+/** Normal VPS diff tick: inspect only products invalidated by SQL triggers.
+ * Ack the observed version only. A concurrent sync stays queued; failures are
+ * propagated so a retry cannot report a successful but unapplied decision.
+ * The existing full cron/admin sweep remains the recovery path.
+ */
+export async function decideDirtyWinners(database?: DatabaseAccess): Promise<{ decided: number; changed: number }> {
+  const db = database ?? createDatabaseAccess();
+  const sql = PAIR_STATS_SQL.replace("SELECT sp.*,", "SELECT sp.*, dirty.version AS dirty_version,")
+    .replace("FROM supplier_pairs sp", `FROM supplier_pair_dirty dirty
+      CROSS JOIN supplier_pairs sp ON sp.id=dirty.pair_id WHERE dirty.pending=1
+      ORDER BY dirty.pair_id LIMIT 10`);
+  const rows = await db.queryAll(sql);
+  let decided = 0, changed = 0;
+  for (const row of rows) {
+    if (!db.canSpend(2)) break;
+    const pair = row as unknown as PairRow;
+    const { winner, reason } = decideFromStats(pair, statsFromRow(row));
+    const shortReason = reason.slice(0, 300);
+    if (winner !== (pair.winner ?? null) || shortReason !== (pair.reason ?? null)) {
+      const result = await db.execRun(`UPDATE supplier_pairs SET winner=?,decided_at=?,reason=?,updated_at=?
+        WHERE id=? AND (winner IS NOT ? OR reason IS NOT ?)
+          AND EXISTS(SELECT 1 FROM supplier_pair_dirty WHERE pair_id=? AND version=?)`,
+        winner, new Date().toISOString(), shortReason, new Date().toISOString(), pair.id, winner, shortReason, pair.id, String(row.dirty_version));
+      if (result.changes && winner !== (pair.winner ?? null)) changed++;
+    }
+    await db.execRun("UPDATE supplier_pair_dirty SET pending=0 WHERE pair_id=? AND version=? AND pending=1", pair.id, String(row.dirty_version));
+    decided++;
   }
   return { decided, changed };
 }
@@ -184,10 +218,10 @@ export async function loserProductIds(database?: DatabaseAccess): Promise<Set<nu
  * NULL → SK disembunyikan). Tanpa parameter bind, aman disisipkan ke WHERE.
  */
 export function notLoserProductSql(productAlias = "p"): string {
-  return `NOT EXISTS (
-    SELECT 1 FROM supplier_pairs pair
-    WHERE ${productAlias}.id = CASE WHEN pair.winner IS NULL OR pair.winner='WR'
-      THEN pair.sk_product_id ELSE pair.wr_product_id END
+  return `${productAlias}.id NOT IN (
+    SELECT pair.sk_product_id FROM supplier_pairs pair WHERE pair.winner IS NULL OR pair.winner='WR'
+    UNION ALL
+    SELECT pair.wr_product_id FROM supplier_pairs pair WHERE pair.winner='SK'
   )`;
 }
 
@@ -203,9 +237,9 @@ export async function winnerForLoserProduct(productId: number, database?: Databa
     .queryFirst(
       `SELECT CASE WHEN winner IS NULL OR winner='WR' THEN wr_product_id ELSE sk_product_id END AS shown
        FROM supplier_pairs
-       WHERE ? = CASE WHEN winner IS NULL OR winner='WR' THEN sk_product_id ELSE wr_product_id END
+       WHERE (sk_product_id=? AND (winner IS NULL OR winner='WR')) OR (wr_product_id=? AND winner='SK')
        LIMIT 1`,
-      productId,
+      productId, productId,
     )
     .catch(() => null);
   const shown = Number(row?.shown ?? 0);

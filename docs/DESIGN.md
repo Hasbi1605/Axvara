@@ -956,3 +956,15 @@ dari registri kontak existing, support Telegram dan jam layanan; konteks pesan
 tetap terbawa. Padding 18px luar/20–32px kartu, kontrol minimal 48px dan outline
 fokus cyan; jarak brand ke judul 32px. Layout mengalir dan dapat digulir pada
 layar kecil, tanpa animasi atau aset/font jaringan yang dibutuhkan untuk membaca dan memakai tombol.
+
+
+### Kesegaran katalog dan Ringkasan — 2026-10-17
+
+✅ Implementasi, publikasi CI. Katalog/filter/cari/bestseller Telegram berbagi
+snapshot publik 30 detik dengan format pesan dan tombol existing; detail serta
+checkout tetap memvalidasi data aktual. Seluruh respons Ringkasan memakai cache
+privat maksimal 60 detik setelah auth, dengan TTL dibatasi snapshot keuangan
+asal agar perpindahan periode tidak memperpanjang umur data. Waktu pembuatan
+laporan tetap waktu sebenarnya; skeleton/loading/error dan layout/token tetap.
+Laporan kuota berkala berada di GitHub Actions summary/artifact, tanpa kontrol
+atau polling baru pada layar pelanggan/admin.

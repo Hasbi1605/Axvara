@@ -13,9 +13,8 @@
 //  - variant_stock kartu ikut menjumlah stok phantom (1+20=21),
 //  - available_min_price memakai harga varian yang tak bisa dibeli,
 //  - bot Telegram + llms.txt + SEO ikut menganggapnya tersedia.
-// Subquery COUNT per baris pv (bukan JOIN + GROUP BY yang mengubah bentuk
-// baris): murah untuk daftar katalog (~90 varian) dan konsisten dengan pola
-// /api/catalog?slug= yang sudah dipakai PDP.
+// Subquery EXISTS per baris pv berhenti pada unit tersedia pertama. Indeks
+// (product_id,variant_id,status) menghindari scan seluruh inventory produk.
 //
 // `stock` di bawah boleh kolom mentah ATAU angka efektif;
 // `inventoryAvailable` null = perilaku lama (tanpa data inventory, mis.
@@ -29,10 +28,10 @@ export function purchasableStockSql(alias = "pv"): string {
       ${alias}.stock >= MAX(1, COALESCE(${alias}.min_qty, 1))
       AND (
         ${alias}.fulfillment_mode <> 'unique'
-        OR (SELECT COUNT(*) FROM fulfillment_inventory fi
+        OR EXISTS (SELECT 1 FROM fulfillment_inventory fi
             WHERE fi.product_id = ${alias}.product_id
               AND fi.variant_id = ${alias}.id
-              AND fi.status = 'available') > 0
+              AND fi.status = 'available')
       )
     )
   )`;

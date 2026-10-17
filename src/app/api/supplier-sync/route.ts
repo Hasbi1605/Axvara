@@ -109,9 +109,13 @@ export async function POST(request: NextRequest) {
   if (!isSkEnabled()) return NextResponse.json({ error: "sekalipay_disabled" }, { status: 503 });
   if (body.action === "pairs") {
     // Request terpisah agar biaya CPU-nya tidak menumpuk dengan penerapan diff.
-    const { decideAllWinners } = await import("@/lib/supplier-pairs");
-    const pairs = await decideAllWinners(db);
-    return NextResponse.json({ ok: true, pairs_decided: pairs.decided, pairs_changed: pairs.changed });
+    const { decideDirtyWinners } = await import("@/lib/supplier-pairs");
+    try {
+      const pairs = await decideDirtyWinners(db);
+      return NextResponse.json({ ok: true, pairs_decided: pairs.decided, pairs_changed: pairs.changed });
+    } catch {
+      return NextResponse.json({ ok: false, error: "pair_update_failed" }, { status: 503 });
+    }
   }
   const rows = Array.isArray(body.rows) ? body.rows : null;
   if (!rows) return NextResponse.json({ error: "invalid_rows" }, { status: 400 });

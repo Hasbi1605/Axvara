@@ -1036,7 +1036,7 @@ Sistem varian produk terpusat dan bot WhatsApp telah diimplementasikan sesuai `d
 - **Daily Promo Digest (2026-09-27, revamp 2026-09-29, revamp 2026-10-01):** fase notify cron membuat dua materi siap
   salin pada 09.00/17.00 WIB. Sejak 2026-10-01 (permintaan owner, contoh ceklis WR/SEKUDIL): SEMUA produk ready masuk pesan (bukan 12+12 paruh; `selectPromoProducts` = seluruh kandidat; histori/seed dipertahankan tapi tidak memotong); format Axvara dipertahankan (judul + hook 2026-09-29 + kelompok per kategori + harga tegas varian purchasable termurah tanpa "Mulai"/disclaimer + CTA bot + web) — hanya baris produk + ✅. Kandidat = produk ready non-pecundang (`telegram_enabled=1`, pecundang supplier-pair dikecualikan). Dua bubble memakai ledger migrasi 0044;
   retry parsial tidak mengirim ulang bubble yang sudah memiliki `message_id`.
-- **Flow order Telegram (WA parity, payment khusus QRIS):** `/katalog` menampilkan daftar datar nama produk + harga (tanpa kategori wajib; kategori hanya filter opsional). **Sejak 2026-09-24 katalog, filter kategori, pencarian, dan bestseller `/start` hanya memuat produk yang BISA DIBELI** (`listTelegramProducts` + `purchasableStockSql` di `src/lib/catalog-availability.ts`: varian aktif dengan stok -1 atau ≥ `min_qty`),   dibaca ulang dari D1 setiap dibuka, dengan harga = varian tersedia termurah. Definisi "tersedia" ini web + Telegram SAMA (2026-10-01, revisi keputusan owner yang mengubah revisi 2026-09-30): daftar web (`GET /api/products?active=1`) MENAMPILKAN produk habis di akhir dengan `soldOut: true` (badge habis, tanpa tombol beli; urutan ready → habis → nonaktif via `sortProductsForDisplay`) untuk trust + mengurangi komplain "kok kemarin ada, sekarang hilang"; Telegram + `llms.txt` tetap hanya produk yang bisa dibeli (chatbot tidak bisa menjelaskan barang yang tidak bisa dibeli; tanpa `soldOut`). PDP langsung (`/produk/[slug]`) + search (`?q=`) tetap bisa akses produk habis. Kartu habis otomatis tampil lagi sebagai ready saat restok (tanpa cron/state). Dikunci oleh `tests/seo-geo.regression.test.ts` + `tests/catalog-available-price.regression.test.ts`. Halaman dari tombol lama dibatasi ke halaman terakhir yang ada. Detail produk tanpa deskripsi, menampilkan foto produk web + list garansi per varian dari `product_variants` yang sama dengan web/WA. Alur beli: `Produk → Varian → Qty stepper (➖ / jumlah / ➕, angka manual 1–100) → QRIS DANA dinamis`; tidak ada SeaBank/e-wallet di Telegram. CTA jumlah langsung menerbitkan satu pesan QRIS tanpa layar pemilihan metode dan tanpa kewajiban menekan cek status. QRIS Hook melunasi order atomik, menambah `sold_count`, lalu mengirim pesan sukses otomatis. Untuk fulfillment manual, pending input WA baru dipasang setelah `paid`; buyer juga mendapat tombol WhatsApp admin dan `@axvara_support` — input WA reply-only tanpa tombol loop. Order-created ke grup admin dan paid ke buyer memakai marker D1 idempoten serta retry cron; paid juga dikirim sebagai pesan `Lunas — Telegram` tersendiri ke grup admin via `telegram_paid_admin_notified_at` (migrasi 0013) agar status grup tidak tertinggal menunggu bayar. Guard anti-double-tap memakai ulang order pending chat+varian yang sama; varian stok unik dibatasi qty 1. Sapaan WIB dinamis (Pagi/Siang/Sore/Malam + tanggal/jam) hanya di welcome/bantuan — katalog tampil bersih tanpa pengulangan sapaan/tanggal/jam.
+- **Flow order Telegram (WA parity, payment khusus QRIS):** `/katalog` menampilkan daftar datar nama produk + harga (tanpa kategori wajib; kategori hanya filter opsional). **Sejak 2026-09-24 katalog, filter kategori, pencarian, dan bestseller `/start` hanya memuat produk yang BISA DIBELI** (`listTelegramProducts` + `purchasableStockSql` di `src/lib/catalog-availability.ts`: varian aktif dengan stok -1 atau ≥ `min_qty`),   memakai snapshot katalog publik 30 detik sejak 2026-10-17 (Cache API per lokasi; tanpa Cache API baca D1 langsung), dengan harga = varian tersedia termurah. Detail/checkout tetap membaca dan memvalidasi stok/harga aktual. Definisi "tersedia" ini web + Telegram SAMA (2026-10-01, revisi keputusan owner yang mengubah revisi 2026-09-30): daftar web (`GET /api/products?active=1`) MENAMPILKAN produk habis di akhir dengan `soldOut: true` (badge habis, tanpa tombol beli; urutan ready → habis → nonaktif via `sortProductsForDisplay`) untuk trust + mengurangi komplain "kok kemarin ada, sekarang hilang"; Telegram + `llms.txt` tetap hanya produk yang bisa dibeli (chatbot tidak bisa menjelaskan barang yang tidak bisa dibeli; tanpa `soldOut`). PDP langsung (`/produk/[slug]`) + search (`?q=`) tetap bisa akses produk habis. Kartu habis otomatis tampil lagi sebagai ready saat restok (tanpa cron/state). Dikunci oleh `tests/seo-geo.regression.test.ts` + `tests/catalog-available-price.regression.test.ts`. Halaman dari tombol lama dibatasi ke halaman terakhir yang ada. Detail produk tanpa deskripsi, menampilkan foto produk web + list garansi per varian dari `product_variants` yang sama dengan web/WA. Alur beli: `Produk → Varian → Qty stepper (➖ / jumlah / ➕, angka manual 1–100) → QRIS DANA dinamis`; tidak ada SeaBank/e-wallet di Telegram. CTA jumlah langsung menerbitkan satu pesan QRIS tanpa layar pemilihan metode dan tanpa kewajiban menekan cek status. QRIS Hook melunasi order atomik, menambah `sold_count`, lalu mengirim pesan sukses otomatis. Untuk fulfillment manual, pending input WA baru dipasang setelah `paid`; buyer juga mendapat tombol WhatsApp admin dan `@axvara_support` — input WA reply-only tanpa tombol loop. Order-created ke grup admin dan paid ke buyer memakai marker D1 idempoten serta retry cron; paid juga dikirim sebagai pesan `Lunas — Telegram` tersendiri ke grup admin via `telegram_paid_admin_notified_at` (migrasi 0013) agar status grup tidak tertinggal menunggu bayar. Guard anti-double-tap memakai ulang order pending chat+varian yang sama; varian stok unik dibatasi qty 1. Sapaan WIB dinamis (Pagi/Siang/Sore/Malam + tanggal/jam) hanya di welcome/bantuan — katalog tampil bersih tanpa pengulangan sapaan/tanggal/jam.
 - **WhatsApp Bot:** Webhook di `POST /api/whatsapp/webhook` via Baileys gateway Heroku. Mendukung:
   - `list` (header `LIST MENU AXVARA`, nama alias/fallback produk aktif tanpa kategori/harga, lalu footer promosi Telegram dan website resmi)
   - Pencarian nama produk/alias → detail bergaya garis dengan header alias dan varian bernomor
@@ -2362,8 +2362,8 @@ Perbaikan log 0057 tetap terpasang; snapshot audit terakhir 4.582.928 rows_read.
   (marker + empat DELETE + marker selesai). Tidak ada throttle baru pada jalur uang.
 - **Pairs:** agregat stok terbatas dan unlimited digabung satu pass per sisi
   pasangan, tetap satu SELECT dan UPDATE hanya bila berubah. Semua pasangan
-  tetap dihitung pada trigger existing; tidak ada dirty queue/kontrak proxy baru
-  yang berpotensi melewatkan perubahan stok/modal.
+  tetap dihitung pada versi 16 Oktober; revisi 17 Oktober memakai antrean
+  invalidasi di bawah untuk diff dan mempertahankan sweep penuh sebagai cadangan.
 - **Migrasi 0067:** indeks Pedia bernama baru pada tabel aktif memperbaiki kasus
   indeks lama masih milik arsip 0062; indeks mapping supplier+service, created_at
   event DANA, recent-paid recovery (status/payment_status + ekspresi tanggal),
@@ -2380,6 +2380,81 @@ Tidak ada env/binding/secret/flag/cron Worker/kontrak antar-repo baru. Verifikas
 biaya baca menggunakan D1/workerd dengan ribuan layanan tak terpakai, riwayat
 GoPay terminal dan order lunas lama; cache diuji pada Cache API workerd asli.
 Penurunan harian dan CPU produksi sesudah rilis belum diukur.
+
+
+### 17.1 Penghematan lanjutan — 2026-10-17
+
+✅ Implementasi dan verifikasi lokal; publikasi melalui CI. Baseline audit pukul
+11.04 WIB: 1.030.021 reads / 3.977 writes sejak reset; jam 10–11 menyumbang
+511.960 reads. Pengukuran ini mendahului rilis lanjutan, bukan bukti penurunan
+harian pascarilis. Laporan: `issue/d1-read-budget-phase2-2026-10-17.md`.
+
+- **Ringkasan lengkap:** `admin-overview-cache.ts` menahan seluruh respons D1
+  maksimal 60 detik di memori privat per binding/proses; key mencakup email admin,
+  periode/rentang kanonik, hari dan jam. Auth, revocation dan validasi parameter
+  selalu berjalan sebelum lookup. Miss paralel digabung, maksimal 16 key; error
+  atau hasil query parsial tidak disimpan. TTL juga dibatasi expiry snapshot
+  keuangan asal agar pergantian periode tidak memperpanjang umur data menjadi
+  120 detik. Periode tetap berbagi agregat keuangan; ekspor tetap kontrak existing.
+- **SQL Ringkasan:** `admin-overview-queries.ts` memulai attention dari status
+  bermasalah di jobs/items, lalu lookup order paid dan COUNT DISTINCT kode order.
+  Ringkasan status jobs hanya membaca status aktif; delivered tetap diabaikan
+  oleh evaluator antrean dan sinyal kirim sukses tetap diukur terpisah. SUM omzet
+  lama yang tidak dipakai respons dihapus; angka finansial tetap fact set existing.
+- **Telegram:** `telegram/catalog-snapshot.ts` memakai satu key publik
+  `telegram-catalog-v1`, TTL 30 detik, untuk daftar, filter kategori, pencarian dan
+  bestseller. Snapshot minimal menyertakan ID/nama/kategori/urutan/terjual/alias
+  dan harga varian tersedia termurah; baris habis disimpan dengan harga null
+  untuk jawaban pencarian “habis”. Tidak menyertakan data pelanggan/pesanan/
+  kredensial. Kegagalan Cache API membaca D1 langsung; checkout/detail/state
+  percakapan tidak memakai snapshot. Cache per lokasi Cloudflare, bukan global.
+- **SQL katalog/recipient:** filter pecundang mematerialisasi ID SK bila winner
+  NULL/WR dan ID WR bila winner SK, lalu NOT IN; ID pasangan wajib NOT NULL.
+  Aturan Opsi B dan redirect tombol lama tetap. Inventory unique memakai EXISTS
+  dan indeks `(product_id,variant_id,status)`; indeks orders
+  `(sales_channel,telegram_user_id,status,payment_status)` mendukung pencarian
+  order paid pembeli saat recipient privat dipastikan. Tidak mengubah penerima.
+- **Pasangan berubah:** migrasi `0068_d1_read_budget_phase2.sql` menambah tabel
+  `supplier_pair_dirty(pair_id,version,pending)` dan indeks pending. Trigger SQL
+  atomik menandai perubahan produk/varian, stok/modal registry WR/SK dan preferensi
+  pasangan. UPDATE nilai identik tidak menandai ulang. Token versi acak diganti
+  pada invalidasi; hasil ack menyetel pending=0 sambil mempertahankan token,
+  mencegah proses lama mengakui generasi baru. Seed migrasi menandai semua pasangan.
+  Request VPS `action:pairs` membaca maksimal 10 pasangan pending; UPDATE keputusan
+  dan ack disyaratkan versi teramati. Error dipropagasikan sebagai non-2xx (503),
+  tanpa membuang pending. Sisa/budget habis diproses berikutnya. Cron lite cleanup
+  existing tiap lima menit juga menguras maksimal 10 selama budget cukup, setelah
+  housekeeping: perubahan WR saja dan kegagalan request pasangan tidak bergantung
+  pada diff SK baru. Saat bersih, satu SELECT indeks membaca nol baris statistik.
+  Sweep penuh cron existing tetap ada dan tulisnya dijaga versi agar tidak menimpa
+  keputusan dari data lebih baru. Tidak mengubah pemilihan stok/modal, flag,
+  jadwal Worker atau request/response sukses VPS; tidak perlu deploy proxy.
+- **Pengukuran:** `[catalog-cache]` scope/status dan `[overview-cache]` status
+  melengkapi `[d1-read]`; tanpa key, SQL, parameter, isi hasil atau write telemetry.
+  Query first/batch tetap memakai Query Insights untuk atribusi biaya.
+- **Monitor akun:** `.github/workflows/d1-usage.yml` berjalan jam `:17` UTC
+  (`:17` WIB juga), serta workflow_dispatch. Node 22 menjalankan
+  `scripts/d1-usage-check.cjs --report /tmp/d1-usage.json --check` dengan Secrets CI
+  existing `CLOUDFLARE_API_KEY`, `CLOUDFLARE_EMAIL`, `CLOUDFLARE_ACCOUNT_ID`;
+  alternatif CLI menerima API_TOKEN. Hanya Cloudflare GraphQL Analytics, tanpa SQL
+  aplikasi/deploy/env Pages baru. Menjumlahkan seluruh database akun sejak 00.00
+  UTC (07.00 WIB), laju satu jam terakhir dari bucket tertutup (jeda ingest lima
+  menit), proyeksi rata-rata/terkini, sisa anggaran/jam dan estimasi habis bersyarat.
+  Limit Free: 5 juta reads dan 100 ribu writes/hari. Setelah jam pertama, proyeksi
+  melampaui salah satu limit atau penggunaan ≥90% membuat status risk; limit
+  tercapai exhausted. Analytics kosong unknown, respons invalid/gagal membuat job
+  gagal, tanpa klaim kuota aman. Status risk/exhausted/unknown menghasilkan warning
+  dan exit 1; error exit 2. Laporan agregat tampil di Actions summary dan artifact
+  tujuh hari. Notifikasi mengikuti pengaturan GitHub owner; jadwal dapat terlambat,
+  analytics dapat delayed/sampled. Ini alarm berkala, bukan alarm Telegram atau
+  jaminan realtime, dan tidak menambah polling browser/tulis D1.
+
+Uji D1/workerd dengan fixture besar: filter katalog 40.220→2.040 rows_read,
+inventory 250.050→100, attention 24.997→10, tick pasangan bersih 0; hasil bisnis
+sebelum/sesudah setara. EXPLAIN memakai indeks recipient baru, dan trigger migrasi
+benar-benar dijalankan di workerd. Angka fixture tidak mewakili total produksi.
+Target operasional ≤3 juta reads/hari (rata-rata 125 ribu/jam) membutuhkan satu
+siklus produksi 07.00–07.00; risiko limit tetap bergantung trafik dan cache hit.
 
 
 ## 18. Halaman maintenance kuota D1 — 2026-10-17

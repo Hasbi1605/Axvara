@@ -29,6 +29,22 @@ Jika perubahan mengubah struktur folder, route `src/app/*`, komponen `src/compon
 - Jangan menjalankan `npm run deploy`, `npm run deploy:mcp`, atau deploy Wrangler manual setelah push. Deploy manual hanya untuk recovery jika diminta eksplisit oleh user.
 - Cloudflare Git integration dinonaktifkan untuk deployment otomatis; GitHub Actions adalah satu-satunya CI/CD agar satu push tidak memicu deploy ganda.
 
+
+### Operasional D1 lanjutan — 2026-10-17
+- Migrasi 0068 menambah indeks inventory/recipient dan `supplier_pair_dirty`.
+  Trigger invalidasi atomik mengganti token versi; ack hanya menyetel pending=0,
+  jangan menghapus/reset token (pelindung race terhadap proses/sweep lama).
+- Request VPS `action:pairs` tetap bentuk existing, kini menguras maksimal 10
+  pasangan pending; error 503 menyisakan antrean. Cron lite cleanup existing
+  juga menguras antrean tiap tick selama budget cukup, termasuk perubahan WR
+  saja/retry; sweep penuh hourly tetap cadangan, tulisnya dijaga versi.
+- `.github/workflows/d1-usage.yml` HANYA baca GraphQL Analytics akun per jam
+  pada menit 17/manual; tidak query SQL/deploy. Memakai Secrets CI existing,
+  laporan agregat dan warning/job gagal untuk risk/exhausted/unknown. Notifikasi
+  mengikuti pengaturan GitHub owner; tidak ada pesan Telegram monitoring baru.
+- Target ≤3 juta reads/hari harus diukur satu siklus 07.00–07.00 produksi,
+  jangan menyamakan hasil benchmark fixture atau push dengan bukti tercapai.
+
 ## Aturan Test (WAJIB)
 Setiap kali mengubah kode di `axvara/`, **WAJIB update test yang terpengaruh** sebelum commit/push:
 

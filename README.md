@@ -642,10 +642,47 @@ Pedia yang tersangkut di arsip dan menambah indeks query rutin tanpa rebuild/dro
 
 Log `[d1-read]` mencatat queryAll ≥1.000 baris melalui metadata saja (tanpa SQL,
 parameter/hasil/secret atau write D1). Gunakan Query Insights untuk atribusi
-seluruh metode. Kuota 5 juta baris/hari reset 07.00 WIB; target 2–2,5 juta/hari
-pada trafik audit perlu diukur setelah rilis. Tidak ada env/secret/kontrak proxy
+seluruh metode. Kuota 5 juta baris/hari reset 07.00 WIB; target terbaru
+≤3 juta/hari perlu diukur satu siklus reset setelah rilis. Tidak ada env/secret/kontrak proxy
 atau jadwal Worker baru. Detail dan batas bukti: `docs/ARCHITECTURE.md` §17 dan
 `issue/d1-read-budget-2026-10-16.md`.
+
+
+### Penghematan lanjutan D1 — 2026-10-17
+
+✅ Implementasi/verifikasi lokal, publikasi melalui CI. Seluruh Ringkasan admin
+memakai snapshot privat maksimal 60 detik setelah auth/revocation/validasi;
+berganti periode tidak memperpanjang TTL data keuangan asal. Daftar, kategori,
+pencarian dan bestseller Telegram berbagi katalog publik 30 detik. Detail,
+checkout, pembayaran dan kredensial tetap memeriksa data aktual.
+
+Query attention dimulai dari antrean bermasalah; filter pecundang dihitung
+sekali, inventory memakai EXISTS. Migrasi 0068 menambah indeks inventory/recipient
+serta antrean `supplier_pair_dirty` dengan token versi/pending. Trigger menandai
+perubahan stok/modal/preferensi secara atomik. Request `action:pairs` VPS dan
+cron lite cleanup existing menguras maksimal sepuluh pasangan per pemanggilan;
+error/perubahan bersamaan menyisakan pending untuk retry. Sweep penuh per jam
+existing tetap cadangan dan tulisnya juga dijaga versi. Token dipertahankan
+setelah ack agar proses lama tidak menimpa keputusan baru. Kontrak sukses VPS,
+secret/flag dan jadwal Worker tetap; tidak perlu deploy VPS.
+
+Monitor baca-saja `.github/workflows/d1-usage.yml` berjalan tiap jam pada menit
+17 atau manual melalui Actions. Memakai tiga Secrets Cloudflare CI existing,
+GraphQL Analytics akun, tanpa query SQL D1 atau deploy. Summary/artifact tujuh
+hari memuat reads/writes, reset 07.00 WIB, laju terbaru, proyeksi dan anggaran
+tersisa per jam. Proyeksi melampaui limit atau penggunaan ≥90% setelah jam
+pertama menghasilkan job gagal/warning; analytics kosong/gagal juga tidak
+mengklaim aman. Notifikasi mengikuti pengaturan GitHub, bukan pesan Telegram;
+jadwal/analytics dapat terlambat atau sampled. Untuk baca manual, muat
+`.cf-credentials` sesuai AGENTS lalu jalankan `node scripts/d1-usage-check.cjs`
+dengan `CLOUDFLARE_ACCOUNT_ID` akun terkait. Jangan menampilkan isi kredensial.
+
+Log `[catalog-cache]`/`[overview-cache]` melengkapi `[d1-read]` tanpa data pribadi
+atau write telemetry. Uji D1/workerd fixture: katalog 40.220→2.040 reads,
+inventory 250.050→100, attention 24.997→10; tick pasangan bersih nol baris.
+Target terbaru ≤3 juta reads/hari perlu diukur satu siklus reset produksi;
+belum ada klaim bebas limit malam hari. Detail: ARCHITECTURE §17.1 dan
+`issue/d1-read-budget-phase2-2026-10-17.md`.
 
 
 ### Maintenance otomatis saat kuota D1 habis — 2026-10-17

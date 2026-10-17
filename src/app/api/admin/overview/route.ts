@@ -16,6 +16,8 @@ import {
   type ReportSelection,
 } from "@/lib/revenue";
 import { emptySelectedReport, readOverviewFinancialReport, readSelectedFinancialReport, selectedReportFromFinancial } from "@/lib/dashboard-report";
+import { OVERVIEW_ATTENTION_SQL, OVERVIEW_JOB_QUEUE_SQL } from "@/lib/admin-overview-queries";
+import { readAdminOverviewSnapshot } from "@/lib/admin-overview-cache";
 import { parseExpiry } from "@/lib/expiry";
 import { topProfitByItems } from "@/lib/dashboard-profit";
 import {
@@ -169,11 +171,19 @@ export async function GET(request: NextRequest) {
     });
   }
 
+  const range = resolveReportRange(selection, now);
+  const key = JSON.stringify([admin.email, selection, range.from, range.to, now.toISOString().slice(0, 13)]);
+  const value = await readAdminOverviewSnapshot(key, () => readD1Overview(selection, now));
+  return NextResponse.json(value);
+}
+
+async function readD1Overview(selection: ReportSelection, now: Date) {
+  let cacheable = true;
   const safeFirst = async (sql: string) => {
-    try { return await queryFirst(sql); } catch { return undefined; }
+    try { return await queryFirst(sql); } catch { cacheable = false; return undefined; }
   };
   const safeAll = async (sql: string): Promise<{ status?: unknown; count?: unknown; sales_channel?: unknown; value?: unknown; oldest_due?: unknown }[]> => {
-    try { return await queryAll(sql); } catch { return []; }
+    try { return await queryAll(sql); } catch { cacheable = false; return []; }
   };
   // Pendapatan memakai waktu pembayaran tetap (paid_at, WIB) — bukan
   // updated_at (issue #12): pengiriman, catatan admin, dan retry notifikasi
@@ -193,7 +203,6 @@ export async function GET(request: NextRequest) {
                  FROM payment_proofs WHERE status='approved' GROUP BY order_code) pp
         ON pp.order_code=o.code`;
   const paidOnly = `o.status='lunas'`;
-  const revenueOf = `COALESCE(pt.payable_amount,o.subtotal)`;
   const inToday = `${paidDateWib}='${todayWib}'`;
   const inWeek = `${paidWeekWib}='${weekWib}'`;
   const inMonth = `${paidMonthWib}='${monthWib}'`;
@@ -203,10 +212,6 @@ export async function GET(request: NextRequest) {
       COUNT(*) AS total_orders,
       SUM(CASE WHEN o.status='pending' THEN 1 ELSE 0 END) AS pending_orders,
       SUM(CASE WHEN ${paidOnly} THEN 1 ELSE 0 END) AS paid_orders,
-      SUM(CASE WHEN ${paidOnly} THEN ${revenueOf} ELSE 0 END) AS revenue_total,
-      SUM(CASE WHEN ${paidOnly} AND ${inToday} THEN ${revenueOf} ELSE 0 END) AS revenue_today,
-      SUM(CASE WHEN ${paidOnly} AND ${inWeek} THEN ${revenueOf} ELSE 0 END) AS revenue_week,
-      SUM(CASE WHEN ${paidOnly} AND ${inMonth} THEN ${revenueOf} ELSE 0 END) AS revenue_month,
       SUM(CASE WHEN ${paidOnly} AND ${inToday} THEN 1 ELSE 0 END) AS orders_today,
       SUM(CASE WHEN ${paidOnly} AND ${inWeek} THEN 1 ELSE 0 END) AS orders_week,
       SUM(CASE WHEN ${paidOnly} AND ${inMonth} THEN 1 ELSE 0 END) AS orders_month,
@@ -223,11 +228,7 @@ export async function GET(request: NextRequest) {
     // butuh tindakan (bukan jumlah job + jumlah item yang dihitung ganda).
     // Satu order dihitung SEKALI walau punya 1 job + N item bermasalah.
     // Item delivered/sending/queued tepat waktu TIDAK dihitung.
-    safeFirst(`SELECT COUNT(DISTINCT o.code) AS count FROM orders o
-      WHERE o.status='lunas' AND o.payment_status='paid' AND (
-        EXISTS(SELECT 1 FROM fulfillment_jobs fj WHERE fj.order_code=o.code AND fj.status IN ('manual_required','retry','failed'))
-        OR EXISTS(SELECT 1 FROM fulfillment_items fi WHERE fi.order_code=o.code AND fi.status IN ('manual_required','retry','failed'))
-      )`),
+    safeFirst(OVERVIEW_ATTENTION_SQL),
     safeAll(`SELECT fi.status AS status, COUNT(*) AS count FROM fulfillment_items fi
       JOIN orders o ON o.code=fi.order_code
       WHERE fi.status IN ('manual_required','retry','failed','queued','sending')
@@ -245,9 +246,7 @@ export async function GET(request: NextRequest) {
     // kirim (lunas+paid). Job/item milik order final (dibatalkan/kadaluarsa)
     // tidak dihitung — sebelumnya 7 failed order final menyeret Telegram ke
     // degraded padahal bot sehat (false alarm).
-    safeAll(`SELECT fj.status AS status, COUNT(*) AS count FROM fulfillment_jobs fj
-      JOIN orders o ON o.code=fj.order_code
-      WHERE o.status='lunas' AND o.payment_status='paid' GROUP BY fj.status`),
+    safeAll(OVERVIEW_JOB_QUEUE_SQL),
     safeAll(`SELECT status, COUNT(*) AS count FROM whatsapp_outbox GROUP BY status`),
     // Usia antrean tertua (review R11): tanpa ini, satu kirim sukses yang
     // baru menutupi antrean macet berjam-jam. Filter order sama: hanya order
@@ -289,7 +288,7 @@ export async function GET(request: NextRequest) {
     oldestWaDue: oldestWaDue?.oldest_due ? String(oldestWaDue.oldest_due) : null,
   });
 
-  return NextResponse.json({
+  return { cacheable, expiresAt: Date.parse(financial.generatedAt) + 60_000, value: {
     ...zero,
     selected_report: selected,
     total_orders: Number(orders?.total_orders || 0),
@@ -338,7 +337,7 @@ export async function GET(request: NextRequest) {
     channels,
     systems,
     system_details: systemsDetails,
-  });
+  } };
 }
 
 type SystemsInput = {
