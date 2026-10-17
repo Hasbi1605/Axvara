@@ -355,6 +355,21 @@ template varian (panel varian, placeholder `{email}` `{nama}` `{kode}`
 `{produk}`), dikirim lewat email/DM Telegram, dan tersimpan terenkripsi untuk
 halaman pesanan. Admin mendapat ping Telegram saat order web lunas perlu
 diserahkan. Semua email pembeli memakai shell bermerek yang sama.
+
+**Detail produk Telegram (2026-10-17 ✅ implementasi, publikasi melalui CI):** WR/SK,
+stok sendiri shared/unique, jalur legacy, serah terima admin berisi detail dan
+**Ambil Detail Produk** menyertakan
+S&K serta cara penggunaan/aktivasi varian sesudah kredensial, memakai resolver
+copy yang sama dengan PDP/panel website. Klaim garansi langsung tercantum: hanya
+produk bergaransi, invoice/bukti + screenshot, proses 1–3 hari dan solusi refund
+jika gangguan berlanjut setelah maksimal tiga hari. Masa/cakupan mengikuti produk;
+panduan kosong/gagal dibaca diarahkan ke deskripsi/admin `/bantuan`. Pesan panjang
+dibagi berurutan (HTML ≤4096 karakter, kredensial/Unicode tetap utuh, preview tautan
+mati); status kirim sukses menunggu seluruh bagian. Retry/fallback setelah gagal
+parsial dapat mengulang bagian yang sudah diterima. Ambil ulang pesanan lama
+memakai copy katalog terkini, tanpa broadcast. Tidak ada migrasi/env/proxy baru;
+verifikasi memakai fixture tanpa mengirim pesan Telegram/transaksi supplier nyata.
+
 Opsi A (disarankan): API key dipegang proxy Heroku — Pages cukup
 `WARUNG_REBAHAN_PROXY_URL` + `WARUNG_REBAHAN_PROXY_TOKEN`.
 

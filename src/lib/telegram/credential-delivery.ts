@@ -24,6 +24,24 @@ import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 
 type Row = Record<string, unknown>;
 
+/** All parts must succeed before callers settle delivery. Never send to a group. */
+export async function sendTelegramCredentialParts(
+  chatId: string | number,
+  messages: string[],
+): Promise<{ chatId: string; messageId: string }> {
+  const target = positiveId(chatId);
+  if (!target) throw new Error("no_private_telegram_chat");
+  if (!messages.length) throw new Error("telegram_credential_empty");
+  const { sendMessage } = await import("@/lib/telegram/api");
+  let messageId = "";
+  for (const text of messages) {
+    const sent = await sendMessage({ chat_id: target, text, parse_mode: "HTML", disable_web_page_preview: true });
+    if (!sent?.ok) throw new Error("telegram_credential_part_failed");
+    messageId = String((sent as { result?: { message_id?: unknown } }).result?.message_id ?? "");
+  }
+  return { chatId: target, messageId };
+}
+
 function positiveId(value: unknown): string {
   const text = String(value ?? "").trim();
   return /^\d+$/.test(text) && Number(text) > 0 ? text : "";
@@ -50,21 +68,18 @@ export async function telegramPrivateTargets(order: Row, database: DatabaseAcces
  */
 export async function sendTelegramCredential(
   order: Row,
-  text: string,
+  text: string | string[],
   database: DatabaseAccess,
 ): Promise<{ chatId: string; messageId: string }> {
   const targets = await telegramPrivateTargets(order, database);
   if (!targets.length) throw new Error("no_private_telegram_chat");
-  const { sendMessage } = await import("@/lib/telegram/api");
   const errors: string[] = [];
   for (const chatId of targets) {
-    const sent = await sendMessage({ chat_id: chatId, text, parse_mode: "HTML" })
-      .catch((error: unknown) => ({ ok: false, description: error instanceof Error ? error.message : "telegram_send_failed" }));
-    if (sent?.ok) {
-      const messageId = String((sent as { result?: { message_id?: unknown } }).result?.message_id ?? "");
-      return { chatId, messageId };
+    try {
+      return await sendTelegramCredentialParts(chatId, Array.isArray(text) ? text : [text]);
+    } catch {
+      errors.push(`${chatId}:telegram_send_failed`);
     }
-    errors.push(`${chatId}:${String((sent as { description?: string })?.description || "failed").slice(0, 80)}`);
   }
   throw new Error(`telegram_delivery_failed ${errors.join(" | ")}`.slice(0, 300));
 }
@@ -93,7 +108,7 @@ export async function resendTelegramCredentials(
   const rows = paid
     ? await database
         .queryAll(
-          `SELECT item_index, delivered_ciphertext, delivered_iv, delivered_message_id
+          `SELECT item_index, variant_id, delivered_ciphertext, delivered_iv, delivered_message_id
            FROM fulfillment_items
            WHERE order_code=? AND status='delivered'
              AND delivered_ciphertext IS NOT NULL AND delivered_iv IS NOT NULL
@@ -104,7 +119,9 @@ export async function resendTelegramCredentials(
     : [];
   const { decryptSecret } = await import("@/lib/fulfillment/crypto");
   const { orderLineLabel } = await import("@/lib/fulfillment/delivery/buyer-email");
-  const { supplierCredentialMessage } = await import("@/lib/telegram/messages");
+  const { credentialMessages } = await import("@/lib/telegram/messages/credential");
+  const { resolveCredentialTermsForVariants } = await import("@/lib/orders/credential-terms");
+  const copies = await resolveCredentialTermsForVariants(rows.map(row => Number(row.variant_id)), database);
   const { normalizeAccountDetailsForDisplay } = await import("@/lib/warung-rebahan/deliver");
   let sent = 0;
   for (const row of rows) {
@@ -118,12 +135,13 @@ export async function resendTelegramCredentials(
       plaintext = normalizeAccountDetailsForDisplay(plaintext);
     }
     if (!plaintext.trim()) continue;
-    const result = await sendMessage({
-      chat_id: chatId,
-      text: supplierCredentialMessage(code, orderLineLabel(order.items, Number(row.item_index ?? 0)), plaintext),
-      parse_mode: "HTML",
-    }).catch(() => ({ ok: false }));
-    if (result?.ok) sent++;
+    const result = await sendTelegramCredentialParts(chatId, credentialMessages({
+      orderCode: code,
+      productName: orderLineLabel(order.items, Number(row.item_index ?? 0)),
+      plaintext,
+      copy: copies.get(Number(row.variant_id)),
+    })).catch(() => null);
+    if (result) sent++;
   }
   if (!sent) {
     await sendMessage({

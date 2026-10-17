@@ -29,6 +29,8 @@ Katalog terkurasi berisi 38 jenis/131 mapping pada 16 platform, dengan 3 pilihan
 
 ## 1. Prinsip Desain
 
+**Pesan produk Telegram — 2026-10-17 ✅ implementasi, publikasi melalui CI:** pertahankan judul 🎁 Produk Siap!, identitas order/produk bila tersedia, dan blok kredensial monospace untuk disalin. Setelahnya tampil judul tebal 📜 Syarat & Ketentuan (kelompok Detail paket/Proses & pengiriman/Aturan pakai/Garansi), 📖 Cara Penggunaan / Aktivasi (langkah bernomor), lalu 🛡 Syarat klaim garansi dari kebijakan bersama Market; penutup berisi catatan simpan dan `/bantuan`/`/garansi`. Data kosong dijelaskan dengan arahan admin. Bagian panjang berlanjut pada pesan berjudul Detail Produk — lanjutan dengan identitas yang sama, maksimal 4096 karakter HTML per pesan, tag utuh, Unicode dan isi kredensial dipertahankan, preview tautan dinonaktifkan. Berlaku pada pengiriman otomatis, serah terima admin berisi detail dan ambil ulang. Ini format pesan bot; tidak menambah UI website.
+
 1. **Apple-level Minimalism** — banyak whitespace, tipografi besar, foto produk jadi hero, tidak ada clutter. Seperti apple.com/store: 1 produk = 1 kartu premium yang bernafas.
 2. **Glassmorphism sebagai Signature** — navbar, kartu, drawer keranjang, modal checkout semuanya kaca blur semi-transparan dengan border halus. Kesan mahal & futuristik.
 3. **Motion yang Halus (Apple Spring)** — tidak ada animasi kaku. Semua transisi pakai spring/ease-out, 60fps, parallax lembut saat scroll.

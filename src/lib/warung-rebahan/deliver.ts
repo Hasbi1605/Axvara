@@ -857,7 +857,7 @@ export async function processCredentialDelivery(
         ).catch(() => undefined);
       }
     } else if (channel === "telegram") {
-      await deliverTelegramCredential(String(link.order_code), plaintext, db);
+      await deliverTelegramCredential(String(link.order_code), plaintext, db, String(link.wr_variant_id));
     } else {
       await deliverWhatsAppCredential(String(link.order_code), plaintext, db);
     }
@@ -1005,9 +1005,9 @@ export async function processDueCredentialDeliveries(
     )
     .catch(() => [] as Record<string, unknown>[]);
   for (const row of due) {
-    // ±10 statement per baris: klaim, baca, cek handover manual, bind/settle/
+    // ±11 statement per baris: klaim, baca, cek handover manual, bind/settle/
     // agregat (bila completion terputus), kirim, tandai delivered.
-    if (!db.canSpend(10)) break;
+    if (!db.canSpend(11)) break;
     out.processed++;
     try {
       if (await processCredentialDelivery(Number(row.id), db)) out.delivered++;
@@ -1018,20 +1018,23 @@ export async function processDueCredentialDeliveries(
   return out;
 }
 
-async function deliverTelegramCredential(orderCode: string, plaintext: string, db: DatabaseAccess): Promise<void> {
+async function deliverTelegramCredential(orderCode: string, plaintext: string, db: DatabaseAccess, wrVariantId: string): Promise<void> {
   const order = await db
     .queryFirst(
-      `SELECT code, items, telegram_chat_id, telegram_user_id
-       FROM orders WHERE code=?`,
-      orderCode,
+      `SELECT o.code, o.items, o.telegram_chat_id, o.telegram_user_id, pv.id AS delivery_variant_id
+       FROM orders o LEFT JOIN product_variants pv ON pv.wr_variant_id=? WHERE o.code=?`,
+      wrVariantId, orderCode,
     )
     .catch(() => null);
   if (!order) throw new Error("order_not_found");
   // Target berurutan chat_id tersimpan → telegram_user_id (jalur stok sendiri)
   // → chat order (bila pribadi); id grup tidak pernah dipakai (2026-10-04).
   const { sendTelegramCredential } = await import("@/lib/telegram/credential-delivery");
-  const { supplierCredentialMessage } = await import("@/lib/telegram/messages");
-  await sendTelegramCredential(order, supplierCredentialMessage(orderCode, parseProductNames(order.items), plaintext), db);
+  const { credentialMessages } = await import("@/lib/telegram/messages/credential");
+  const { resolveCredentialTermsForVariants } = await import("@/lib/orders/credential-terms");
+  const variantId = Number(order.delivery_variant_id);
+  const copies = await resolveCredentialTermsForVariants([variantId], db);
+  await sendTelegramCredential(order, credentialMessages({ orderCode, productName: parseProductNames(order.items), plaintext, copy: copies.get(variantId) }), db);
 }
 
 /**

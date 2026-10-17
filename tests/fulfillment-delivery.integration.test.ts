@@ -48,6 +48,36 @@ const itemStatuses = (code: string) =>
   fixture.sql.prepare("SELECT status FROM fulfillment_items WHERE order_code=? ORDER BY item_index").all(code).map((r) => r.status);
 
 describe("R2 aggregate delivery is never premature", () => {
+  it("gagal mengirim lanjutan panduan mempertahankan retry, lalu selesai setelah semua bagian terkirim", async () => {
+    await orderWith("TG-PARTIAL-TERMS", ["shared"]);
+    fixture.sql.prepare("UPDATE product_variants SET admin_terms=? WHERE id=1").run("Jangan mengubah email tanpa izin. ".repeat(180));
+    vi.mocked(sendMessage).mockResolvedValueOnce({ ok: true, result: { message_id: 1 } } as never);
+    vi.mocked(sendMessage).mockResolvedValueOnce({ ok: false, description: "Too Many Requests" });
+    await ensureFulfillmentForPaidOrder("TG-PARTIAL-TERMS");
+    expect(itemStatuses("TG-PARTIAL-TERMS")).toEqual(["retry"]);
+    expect(orderStatus("TG-PARTIAL-TERMS")).toBe("retry");
+    await ensureFulfillmentForPaidOrder("TG-PARTIAL-TERMS");
+    expect(itemStatuses("TG-PARTIAL-TERMS")).toEqual(["delivered"]);
+    expect(orderStatus("TG-PARTIAL-TERMS")).toBe("delivered");
+  });
+
+  it("kredensial stok sendiri menyertakan copy tiap varian, bukan copy item lain", async () => {
+    await orderWith("TG-TERMS-MULTI", ["shared", "shared"]);
+    fixture.sql.exec(`UPDATE product_variants SET admin_terms='Jangan mengubah email pertama.', admin_activation='Buka aplikasi pertama.' WHERE id=1;
+      UPDATE product_variants SET admin_terms='Hanya satu device kedua.', admin_activation='Buka aplikasi kedua.' WHERE id=2`);
+    await ensureFulfillmentForPaidOrder("TG-TERMS-MULTI");
+    expect(orderStatus("TG-TERMS-MULTI")).toBe("delivered");
+    const messages = vi.mocked(sendMessage).mock.calls.map(([params]) => params.text);
+    expect(messages).toHaveLength(2);
+    expect(messages[0]).toContain("Jangan mengubah email pertama.");
+    expect(messages[0]).toContain("Buka aplikasi pertama.");
+    expect(messages[0]).not.toContain("Hanya satu device kedua.");
+    expect(messages[1]).toContain("Hanya satu device kedua.");
+    expect(messages[1]).toContain("Buka aplikasi kedua.");
+    expect(messages[1]).not.toContain("Jangan mengubah email pertama.");
+    expect(messages.every(message => message.includes("Syarat klaim garansi") && message.includes("solusi refund uang"))).toBe(true);
+  });
+
   it("all-manual aggregates to manual_required, never delivered, with zero sends", async () => {
     await orderWith("R2-MANUAL", ["manual"]);
     await ensureFulfillmentForPaidOrder("R2-MANUAL");

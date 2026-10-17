@@ -17,7 +17,6 @@ import { sendMessage } from "@/lib/telegram/api";
 import { sendTextMessage } from "@/lib/whatsapp/gateway";
 import { isEnabled } from "@/lib/feature-flags";
 import {
-  deliveryMessage,
   adminDeliveryFailedNotification,
 } from "@/lib/telegram/messages";
 import type { JobUnitResult, Row } from "./types";
@@ -37,7 +36,7 @@ import {
   scheduleRetryFenced,
   writeJobOutcome,
 } from "./claim";
-import { processItem } from "./send";
+import { processItem, sendToRecipient } from "./send";
 
 /**
  * Proses SEBANYAK maxItems item berikutnya dari satu job (RR4-01).
@@ -104,7 +103,8 @@ export async function processJobItems(
     // Worst-case item recovery + finalization are reserved before any provider call.
     // Shared/manual need at most eight statements including a failed settle,
     // retry, cursor and error reread; unique may also repair an inventory binding.
-    const itemCost = row.fulfillment_mode === "unique" ? COST_PER_DELIVERY_ITEM : 8;
+    const copyCost = String(row.recipient_channel || channel) === "telegram" && row.fulfillment_mode !== "manual" ? 1 : 0;
+    const itemCost = (row.fulfillment_mode === "unique" ? COST_PER_DELIVERY_ITEM : 8) + copyCost;
     if (!database.canSpend(itemCost + COST_PER_JOB_FRAME) || (shouldContinue && !shouldContinue())) break;
     if (row.status === "failed") { failure ??= String(row.last_error || "item failed"); continue; }
     const ok = await processItem(order, row, process.env.TELEGRAM_ADMIN_CHAT_ID, database, { jobId, lease });
@@ -168,13 +168,8 @@ async function deliverLegacyShared(
     if (!sendResult.ok) throw new Error(sendResult.error || "WhatsApp direct delivery failed");
     await markJobDelivered(jobId, sendResult.messageId || "");
   } else {
-    const sendResult = await sendMessage({
-      chat_id: chatId,
-      text: deliveryMessage(plaintext),
-      parse_mode: "HTML",
-    });
-    if (!sendResult.ok) throw new Error(sendResult.description || "Telegram send failed");
-    await markJobDelivered(jobId, String(sendResult.result?.message_id ?? ""));
+    const messageId = await sendToRecipient("telegram", chatId, orderCode, plaintext, 1);
+    await markJobDelivered(jobId, messageId);
   }
 
   await execRun(
@@ -205,14 +200,9 @@ async function deliverLegacyUnique(
     await markDelivered(Number(inventoryItem.id));
     await markJobDelivered(jobId, sendResult.messageId || "");
   } else {
-    const sendResult = await sendMessage({
-      chat_id: chatId,
-      text: deliveryMessage(plaintext),
-      parse_mode: "HTML",
-    });
-    if (!sendResult.ok) throw new Error(sendResult.description || "Telegram send failed");
+    const messageId = await sendToRecipient("telegram", chatId, orderCode, plaintext, 1);
     await markDelivered(Number(inventoryItem.id));
-    await markJobDelivered(jobId, String(sendResult.result?.message_id ?? ""));
+    await markJobDelivered(jobId, messageId);
   }
 
   await execRun(

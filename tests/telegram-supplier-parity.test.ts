@@ -67,6 +67,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   fixture.close();
+  vi.restoreAllMocks();
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 });
@@ -89,6 +90,7 @@ describe("SK completed → lisensi langsung ke chat Telegram pembeli", () => {
   it("order Telegram tanpa email menerima DM lisensi SATU kali (idempoten)", async () => {
     const code = "AXV-20261004-SKTG0001";
     insertTelegramOrder(code, 10, 1);
+    fixture.sql.exec(`UPDATE sk_products SET sk_description='Jangan mengganti password.', sk_seller_note='Buka aplikasi Prime Video.' WHERE sk_variant_id='201'`);
     expect(await completeSk(code)).toBe(true);
     const dms = tgCalls.filter((c) => c.text.includes("pv@mail.com"));
     expect(dms).toHaveLength(1);
@@ -96,12 +98,29 @@ describe("SK completed → lisensi langsung ke chat Telegram pembeli", () => {
     expect(dms[0].text).toContain("Produk Siap");
     expect(dms[0].text.toLowerCase()).not.toContain("pemasok");
     expect(dms[0].text.toLowerCase()).not.toContain("sekalipay");
+    expect(dms[0].text).toContain("Jangan mengganti password.");
+    expect(dms[0].text).toContain("Buka aplikasi Prime Video.");
+    expect(dms[0].text).toContain("Syarat klaim garansi");
+    expect(dms[0].text).toContain("solusi refund uang");
 
     // Webhook replay + reconcile tidak mengirim ulang.
     const { handleSkOrderCompleted, reconcilePendingSkCredentialEmails } = await import("@/lib/sekalipay/deliver");
     await handleSkOrderCompleted(`SPY-${code}`, { invoice: `SPY-${code}`, status: "completed", items: [{ product_license: "pv@mail.com|rahasia1" }] } as never, createDatabaseAccess(fixture.db));
     await reconcilePendingSkCredentialEmails(createDatabaseAccess(fixture.db));
     expect(tgCalls.filter((c) => c.text.includes("pv@mail.com"))).toHaveLength(1);
+  });
+
+  it("SK dengan panduan panjang gagal di lanjutan menyimpan notice failed, bukan sent", async () => {
+    const code = "AXV-20261017-SKPART01";
+    insertTelegramOrder(code, 10, 1);
+    fixture.sql.prepare("UPDATE sk_products SET sk_description=? WHERE sk_variant_id='201'")
+      .run("Jangan mengganti email atau password tanpa izin. ".repeat(180));
+    const api = await import("@/lib/telegram/api");
+    const original = api.sendMessage;
+    vi.spyOn(api, "sendMessage").mockImplementation(async params =>
+      params.text.includes("Detail Produk — lanjutan") ? { ok: false, description: "Too Many Requests" } : original(params));
+    expect(await completeSk(code)).toBe(true);
+    expect(fixture.sql.prepare("SELECT status FROM buyer_notice_log WHERE order_code=? AND idempotency_key LIKE 'telegram:sk-credential:%'").get(code)?.status).toBe("failed");
   });
 
   it("order dari grup, pembeli belum START: tidak bocor ke grup, menyusul setelah START", async () => {
@@ -175,6 +194,25 @@ describe("Pesan lunas Telegram mengikuti kelas kirim (instan / MBO / manual)", (
 });
 
 describe("WR delivery Telegram: format seragam + requeue setelah START", () => {
+  it("WR mengirim S&K dan aktivasi varian yang sesuai ke pembeli", async () => {
+    const code = "AXV-20261017-WRTERMS1";
+    insertTelegramOrder(code, 20, 2);
+    fixture.sql.exec(`UPDATE wr_variants SET wr_terms='Jangan mengubah email WR.', wr_delivery_terms='Buka aplikasi resmi WR.' WHERE wr_variant_id='w-pv'`);
+    const { encryptSecret } = await import("@/lib/fulfillment/crypto");
+    const secret = await encryptSecret("wr-buyer@mail.test|SECRET");
+    const link = fixture.sql.prepare(`INSERT INTO wr_order_links
+      (order_code,wr_variant_id,quantity,wr_cost,status,idempotency_key,delivery_status,delivery_channel,wr_account_details,wr_account_iv)
+      VALUES(?,'w-pv',1,4000,'completed',?,'queued','telegram',?,?)`)
+      .run(code, `wr:${code}`, secret.ciphertext, secret.iv);
+    const { processCredentialDelivery } = await import("@/lib/warung-rebahan/deliver");
+    expect(await processCredentialDelivery(Number(link.lastInsertRowid), createDatabaseAccess(fixture.db))).toBe(true);
+    const message = tgCalls.find(call => call.text.includes("wr-buyer@mail.test"))!;
+    expect(message.chat_id).toBe(PRIVATE_CHAT);
+    expect(message.text).toContain("Jangan mengubah email WR.");
+    expect(message.text).toContain("Buka aplikasi resmi WR.");
+    expect(message.text).toContain("Syarat klaim garansi");
+  });
+
   it("ensurePrivateRecipient mengantrekan ulang delivery Telegram yang gagal", async () => {
     const code = "AXV-20261004-WRTG0001";
     insertTelegramOrder(code, 20, 2, "-100200300");
@@ -270,6 +308,38 @@ describe("Garansi: varian tanpa data garansi tidak ditulis 'Tanpa Garansi'", () 
 });
 
 describe("Fallback pengiriman kredensial Telegram", () => {
+  it("serah terima admin mengirim detail, S&K, aktivasi dan klaim sekali lewat notice", async () => {
+    const code = "AXV-20261017-MANTERMS";
+    insertTelegramOrder(code, 30, 3);
+    fixture.sql.exec(`UPDATE product_variants SET admin_terms='Jangan mengubah data manual.', admin_activation='Buka aplikasi manual.' WHERE id=30`);
+    const { encryptSecret } = await import("@/lib/fulfillment/crypto");
+    const secret = await encryptSecret("MANUAL-CREDENTIAL");
+    fixture.sql.prepare(`INSERT INTO fulfillment_items
+      (order_code,item_index,product_id,variant_id,qty,fulfillment_mode,recipient_channel,recipient_target,status,delivered_message_id,delivered_ciphertext,delivered_iv)
+      VALUES(?,0,3,30,1,'manual','telegram',?,'delivered','manual',?,?)`)
+      .run(code, BUYER, secret.ciphertext, secret.iv);
+    const { notifyBuyerHandover } = await import("@/lib/notify-buyer");
+    expect(await notifyBuyerHandover(code, createDatabaseAccess(fixture.db))).toBe(true);
+    const message = tgCalls.find(call => call.text.includes("MANUAL-CREDENTIAL"))!;
+    expect(message.chat_id).toBe(PRIVATE_CHAT);
+    expect(message.text).toContain("Jangan mengubah data manual.");
+    expect(message.text).toContain("Buka aplikasi manual.");
+    expect(message.text).toContain("Syarat klaim garansi");
+    expect(await notifyBuyerHandover(code, createDatabaseAccess(fixture.db))).toBe(true);
+    expect(tgCalls.filter(call => call.text.includes("MANUAL-CREDENTIAL"))).toHaveLength(1);
+  });
+
+  it("copy katalog gagal dibaca tetap mengirim detail dengan arahan admin", async () => {
+    const code = "AXV-20261017-NOCOPY01";
+    insertTelegramOrder(code, 30, 3);
+    fixture.control.fail = query => query.includes("pv.admin_terms");
+    const { sendToRecipient } = await import("@/lib/fulfillment/delivery/send");
+    await sendToRecipient("telegram", PRIVATE_CHAT, code, "FALLBACK-CREDENTIAL", 1, createDatabaseAccess(fixture.db), 30);
+    expect(tgCalls[0].text).toContain("FALLBACK-CREDENTIAL");
+    expect(tgCalls[0].text).toContain("Panduan khusus belum tersedia");
+    expect(tgCalls[0].text).toContain("Syarat klaim garansi");
+  });
+
   it("chat_id tersimpan gagal → dicoba ulang ke telegram_user_id (jalur stok sendiri)", async () => {
     fixture.sql.exec(`UPDATE telegram_users SET chat_id='999999' WHERE user_id='${BUYER}'`);
     failingChats.add("999999");
@@ -294,6 +364,7 @@ describe("Fallback pengiriman kredensial Telegram", () => {
   it("tombol Ambil Detail Produk mengirim ulang detail yang sudah siap (pemilik saja)", async () => {
     const code = "AXV-20261004-CRED0001";
     insertTelegramOrder(code, 30, 3);
+    fixture.sql.exec(`UPDATE product_variants SET admin_terms='Jangan mengubah data Canva.', admin_activation='Buka tautan undangan Canva.' WHERE id=30`);
     const { encryptSecret } = await import("@/lib/fulfillment/crypto");
     const { ciphertext, iv } = await encryptSecret("canva-invite-link");
     fixture.sql.prepare(`INSERT INTO fulfillment_items
@@ -302,6 +373,9 @@ describe("Fallback pengiriman kredensial Telegram", () => {
     const { handleCallback } = await import("@/lib/telegram/handlers/callback");
     await handleCallback(`cred:${code}`, Number(PRIVATE_CHAT), 1, { id: Number(BUYER), first_name: "Budi" });
     expect(tgCalls.some((c) => c.chat_id === PRIVATE_CHAT && c.text.includes("canva-invite-link"))).toBe(true);
+    expect(tgCalls.find(c => c.text.includes("canva-invite-link"))?.text).toContain("Jangan mengubah data Canva.");
+    expect(tgCalls.find(c => c.text.includes("canva-invite-link"))?.text).toContain("Buka tautan undangan Canva.");
+    expect(tgCalls.find(c => c.text.includes("canva-invite-link"))?.text).toContain("Syarat klaim garansi");
 
     // Orang lain menekan tombol yang diteruskan → ditolak, tidak bocor.
     tgCalls = [];
@@ -316,6 +390,32 @@ describe("Fallback pengiriman kredensial Telegram", () => {
     const { resendTelegramCredentials } = await import("@/lib/telegram/credential-delivery");
     expect(await resendTelegramCredentials(code, Number(PRIVATE_CHAT), createDatabaseAccess(fixture.db))).toBe(0);
     expect(tgCalls.at(-1)?.text).toContain("belum siap");
+  });
+
+  it("semua bagian harus berhasil; kegagalan lanjutan mencoba target pribadi berikutnya", async () => {
+    const spy = vi.spyOn(await import("@/lib/telegram/api"), "sendMessage");
+    spy.mockImplementationOnce(async () => ({ ok: true, result: { message_id: 1 } } as never));
+    spy.mockImplementationOnce(async () => ({ ok: false, description: "Too Many Requests" }));
+    const { sendTelegramCredential } = await import("@/lib/telegram/credential-delivery");
+    const sent = await sendTelegramCredential(
+      { telegram_user_id: BUYER, telegram_chat_id: "-1234" }, ["kredensial", "panduan"], createDatabaseAccess(fixture.db),
+    );
+    expect(sent.chatId).toBe(BUYER);
+    expect(spy.mock.calls.map(([call]) => [String(call.chat_id), call.text])).toEqual([
+      [PRIVATE_CHAT, "kredensial"], [PRIVATE_CHAT, "panduan"], [BUYER, "kredensial"], [BUYER, "panduan"],
+    ]);
+    spy.mockRestore();
+  });
+
+  it("gagal pada bagian lanjutan ke semua target tidak dinyatakan terkirim", async () => {
+    const api = await import("@/lib/telegram/api");
+    const spy = vi.spyOn(api, "sendMessage").mockImplementation(async params =>
+      params.text === "panduan" ? { ok: false, description: "failed" } : { ok: true, result: { message_id: 1 } } as never);
+    const { sendTelegramCredential } = await import("@/lib/telegram/credential-delivery");
+    await expect(sendTelegramCredential(
+      { telegram_user_id: BUYER }, ["kredensial", "panduan"], createDatabaseAccess(fixture.db),
+    )).rejects.toThrow("telegram_delivery_failed");
+    spy.mockRestore();
   });
 
   it("pesan lunas memuat tombol Ambil Detail Produk", async () => {

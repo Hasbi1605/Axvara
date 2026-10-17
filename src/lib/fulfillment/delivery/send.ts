@@ -15,7 +15,6 @@ import { markDelivered } from "../inventory";
 import { sendMessage } from "@/lib/telegram/api";
 import { sendTextMessage } from "@/lib/whatsapp/gateway";
 import { isEnabled } from "@/lib/feature-flags";
-import { deliveryMessage } from "@/lib/telegram/messages";
 import type { Row } from "./types";
 import { MAX_ATTEMPTS, RETRY_DELAYS } from "./types";
 import { findReservedForOrderVariant, inventoryMatchesItem } from "./inventory-binding";
@@ -109,7 +108,7 @@ async function deliverShared(
   const iv = String(secret?.shared_secret_iv || "");
   if (!ct || !iv) throw new Error("Shared secret not configured for product");
   const plaintext = await decryptSecret(ct, iv);
-  await sendItem(recipientChannel, recipientTarget, orderCode, itemId, plaintext, qty, database);
+  await sendItem(recipientChannel, recipientTarget, orderCode, itemId, plaintext, qty, database, variantId);
   // Fenced write: only applies while THIS worker still holds the lease.
   // Ciphertext yang barusan dikirim ikut disalin (migrasi 0043) supaya
   // halaman pesanan tetap menampilkan isi yang SAMA walau pesan bersama
@@ -209,7 +208,7 @@ async function deliverUnique(
   const secretCt = String(inventoryItem.secret_ciphertext);
   const secretIv = String(inventoryItem.secret_iv);
   const plaintext = await decryptSecret(secretCt, secretIv);
-  await sendItem(recipientChannel, recipientTarget, orderCode, itemId, plaintext, qty, database);
+  await sendItem(recipientChannel, recipientTarget, orderCode, itemId, plaintext, qty, database, variantId);
   const d1 = database.d1;
   // Keep inventory and item settlement atomic, both under the item lease.
   // A worker resuming after its lease was taken cannot consume the unit.
@@ -334,13 +333,13 @@ export async function processItem(order: Row, itemRow: Row, adminChatId?: string
 
 /** Kanal web lewat email pembeli; kanal lain lewat sendToRecipient. */
 async function sendItem(
-  channel: string, target: string, orderCode: string, itemId: number, plaintext: string, qty: number, database: DatabaseAccess,
+  channel: string, target: string, orderCode: string, itemId: number, plaintext: string, qty: number, database: DatabaseAccess, variantId: number,
 ): Promise<void> {
   if (channel === "web") {
     await sendWebDeliveryEmail({ database, orderCode, itemId, plaintext });
     return;
   }
-  await sendToRecipient(channel, target, orderCode, plaintext, qty);
+  await sendToRecipient(channel, target, orderCode, plaintext, qty, database, variantId);
 }
 
 export async function sendToRecipient(
@@ -349,7 +348,9 @@ export async function sendToRecipient(
   orderCode: string,
   plaintext: string,
   qty: number,
-): Promise<void> {
+  database: DatabaseAccess = createDatabaseAccess(),
+  variantId = 0,
+): Promise<string> {
   const qtySuffix = qty > 1 ? ` (×${qty})` : "";
   if (channel === "whatsapp") {
     // Kill-switch DM kredensial (19 Sep 2026, default mati pasca-restriction
@@ -363,19 +364,23 @@ export async function sendToRecipient(
       message: `*PRODUK AXVARA SIAP!*\nOrder: ${orderCode}${qtySuffix}\n\nDetail akses/lisensi Anda:\n${plaintext}\n\nSimpan baik-baik.`,
     });
     if (!sendResult.ok) throw new Error(sendResult.error || "WhatsApp direct delivery failed");
-    return;
+    return sendResult.messageId || "";
   }
   if (channel === "web") {
     // Kanal web dikirim lewat email oleh sendItem; jalur ini tidak boleh
     // dipakai untuk web (tidak ada tujuan push selain email).
     throw new Error("web_channel_uses_email_delivery");
   }
-  const sendResult = await sendMessage({
-    chat_id: target,
-    text: deliveryMessage(plaintext),
-    parse_mode: "HTML",
-  });
-  if (!sendResult.ok) throw new Error(sendResult.description || "Telegram send failed");
+  const { resolveCredentialTermsForVariants, resolveCredentialTermsByItem } = await import("@/lib/orders/credential-terms");
+  const copies = variantId
+    ? await resolveCredentialTermsForVariants([variantId], database)
+    : await resolveCredentialTermsByItem(orderCode, database);
+  const { credentialMessages } = await import("@/lib/telegram/messages/credential");
+  const { sendTelegramCredentialParts } = await import("@/lib/telegram/credential-delivery");
+  const sent = await sendTelegramCredentialParts(target, credentialMessages({
+    orderCode, plaintext, copy: copies.get(variantId || 0), secretTag: "code",
+  }));
+  return sent.messageId;
 }
 
 /**

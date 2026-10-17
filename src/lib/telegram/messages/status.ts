@@ -7,6 +7,7 @@
 
 import { escapeHtml, formatRupiah, truncate } from "./format";
 import { SITE } from "@/lib/site";
+import { credentialMessages } from "./credential";
 
 /**
  * Cara produk sampai ke pembeli Telegram, per order (2026-10-04, paritas Web):
@@ -68,21 +69,7 @@ export function orderPaidMessage(
 }
 
 export function deliveryMessage(secret: string): string {
-  return [
-    "🎁 <b>Produk Siap!</b>",
-    "━━━━━━━━━━━━━━━━━━━━━",
-    "",
-    "Detail akses/lisensi kamu:",
-    "",
-    `<code>${escapeHtml(secret)}</code>`,
-    "",
-    "👆 <i>Tap untuk copy</i>",
-    "",
-    "━━━━━━━━━━━━━━━━━━━━━",
-    "🔒 Simpan baik-baik, jangan dibagikan",
-    "🛡 Garansi aktif sesuai deskripsi produk. Simpan invoice untuk klaim. Refund tidak berlaku, hanya penggantian. /garansi",
-    "❓ Ada kendala? Ketik /bantuan",
-  ].join("\n");
+  return credentialMessages({ plaintext: secret, secretTag: "code" }).join("\n\n");
 }
 
 /**
@@ -91,22 +78,7 @@ export function deliveryMessage(secret: string): string {
  * dengan produk stok sendiri (`deliveryMessage`) + nama produk + kode order.
  */
 export function supplierCredentialMessage(orderCode: string, productName: string, plaintext: string): string {
-  return [
-    "🎁 <b>Produk Siap!</b>",
-    "━━━━━━━━━━━━━━━━━━━━━",
-    "",
-    `📦 ${escapeHtml(truncate(productName, 120))}`,
-    `🔢 <code>${escapeHtml(orderCode)}</code>`,
-    "",
-    "Detail akses/lisensi kamu:",
-    "",
-    `<pre>${escapeHtml(plaintext)}</pre>`,
-    "",
-    "━━━━━━━━━━━━━━━━━━━━━",
-    "🔒 Simpan baik-baik, jangan dibagikan",
-    "🛡 Garansi mengikuti ketentuan produk. Simpan invoice untuk klaim. /garansi",
-    "❓ Ada kendala? Ketik /bantuan",
-  ].join("\n");
+  return credentialMessages({ orderCode, productName, plaintext }).join("\n\n");
 }
 
 export function whatsAppInputPromptMessage(orderCode: string): string {

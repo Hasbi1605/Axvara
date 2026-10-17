@@ -1,5 +1,5 @@
 // src/lib/orders/credential-terms.ts — S&K + cara aktivasi pasca-bayar untuk
-// panel kredensial (WR/SK), satu resolver dengan halaman produk.
+// panel kredensial dan Telegram, satu resolver dengan halaman produk.
 //
 // Sebelum 2026-10-13 S&K varian hanya tampil SEBELUM bayar (PDP). Setelah
 // bayar, panel hanya berisi kredensial — pembeli kehilangan aturan yang
@@ -61,6 +61,21 @@ export async function resolveCredentialTermsByItem(
     if(!byIndex.has(0)&&Number(order.variant_id)>0)byIndex.set(0,Number(order.variant_id));
   }
   const uniqueIds = [...new Set(byIndex.values())];
+  const copyByVariant = await resolveCredentialTermsForVariants(uniqueIds, db);
+  byIndex.forEach((vid, index) => {
+    const copy = copyByVariant.get(vid);
+    if (copy) out.set(index, copy);
+  });
+  return out;
+}
+
+/** Pengiriman sudah mengetahui varian: satu query katalog tanpa membaca ulang order. */
+export async function resolveCredentialTermsForVariants(
+  variantIds: number[],
+  db: DatabaseAccess,
+): Promise<Map<number, VariantCopy>> {
+  const out = new Map<number, VariantCopy>();
+  const uniqueIds = [...new Set(variantIds.filter(id => Number.isSafeInteger(id) && id > 0))];
   if (!uniqueIds.length) return out;
   const rows = await db
     .queryAll(
@@ -77,7 +92,6 @@ export async function resolveCredentialTermsByItem(
       ...uniqueIds,
     )
     .catch(() => [] as Record<string, unknown>[]);
-  const copyByVariant = new Map<number, VariantCopy | null>();
   for (const row of rows) {
     const vid = Number(row.variant_id);
     const terms = (row.wr_terms as string | null) ?? (row.sk_description as string | null);
@@ -88,12 +102,9 @@ export async function resolveCredentialTermsByItem(
         fingerprint: row.admin_copy_fingerprint as string | null,
       });
     const merged = mergeProductCopy(variantCopy, parseProductDescription(displayDescription(row)));
-    copyByVariant.set(vid, merged.sections.length || merged.activation.length || merged.notes.length
-      ? { source: variantCopy?.source ?? "admin", sections: merged.sections, activation: merged.activation, notes: merged.notes } : null);
+    if (merged.sections.length || merged.activation.length || merged.notes.length) {
+      out.set(vid, { source: variantCopy?.source ?? "admin", sections: merged.sections, activation: merged.activation, notes: merged.notes });
+    }
   }
-  byIndex.forEach((vid, index) => {
-    const copy = copyByVariant.get(vid);
-    if (copy) out.set(index, copy);
-  });
   return out;
 }

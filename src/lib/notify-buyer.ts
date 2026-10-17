@@ -29,6 +29,8 @@ type Notice = {
   subject: string;
   /** HTML sederhana Telegram (`<b>`, `<code>`, baris baru) + teks WA. */
   body: string;
+  /** Bagian HTML kredensial + panduan Telegram yang sudah dibatasi panjangnya. */
+  chatMessages?: string[];
   /** Ajakan khusus chat, mis. "balas pesan ini" (tidak berlaku untuk email noreply). */
   chatCta?: string;
   /**
@@ -128,6 +130,17 @@ async function sendToBuyer(
     if (!chatId || Number(chatId) <= 0) return false;
     const key = `telegram:${notice.refKey}`;
     if (!(await claimNotice(database, key, orderCode, "telegram"))) return true;
+    if (notice.chatMessages) {
+      try {
+        const { sendTelegramCredentialParts } = await import("@/lib/telegram/credential-delivery");
+        const sent = await sendTelegramCredentialParts(chatId, notice.chatMessages);
+        await settleNotice(database, key, true, sent.messageId);
+        return true;
+      } catch {
+        await settleNotice(database, key, false, undefined, "telegram_credential_part_failed");
+        return false;
+      }
+    }
     const { sendMessage } = await import("@/lib/telegram/api");
     const sent = await sendMessage({ chat_id: chatId, text: chatText, parse_mode: "HTML" })
       .catch(() => ({ ok: false, description: "telegram_send_failed" }));
@@ -178,7 +191,16 @@ export async function notifyBuyerHandover(
         refKey: `handover:${orderCode}`,
       }, database);
     }
-    const order = await database.queryFirst(`SELECT customer_name FROM orders WHERE code=?`, orderCode).catch(() => null);
+    const order = await database.queryFirst(`SELECT customer_name, sales_channel FROM orders WHERE code=?`, orderCode).catch(() => null);
+    let chatMessages: string[] | undefined;
+    if (String(order?.sales_channel) === "telegram") {
+      const { resolveCredentialTermsByItem } = await import("@/lib/orders/credential-terms");
+      const { credentialMessages } = await import("@/lib/telegram/messages/credential");
+      const copies = await resolveCredentialTermsByItem(orderCode, database);
+      chatMessages = contents.flatMap(content => credentialMessages({
+        orderCode, productName: content.label, plaintext: content.details, copy: copies.get(content.itemIndex),
+      }));
+    }
     const { buildOrderReadyTemplate } = await import("@/lib/warung-rebahan/email-forward");
     const { SITE } = await import("@/lib/site");
     const template = buildOrderReadyTemplate({
@@ -194,6 +216,7 @@ export async function notifyBuyerHandover(
     return await sendToBuyer(orderCode, {
       subject: template.subject,
       body: chatBody,
+      chatMessages,
       chatCta: "Ada kendala? Balas pesan ini.",
       email: { title: "Pesanan Siap", subtitle: "Produkmu sudah siap dipakai.", paragraphs: [] },
       emailOverride: template,

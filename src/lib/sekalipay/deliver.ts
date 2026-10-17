@@ -282,7 +282,7 @@ export async function sendSkCredentialTelegram(
   if (process.env.TELEGRAM_BOT_ENABLED !== "true") return false;
   const item = await db
     .queryFirst(
-      `SELECT id, item_index, delivered_ciphertext, delivered_iv, status
+      `SELECT id, item_index, variant_id, delivered_ciphertext, delivered_iv, status
        FROM fulfillment_items WHERE id=? AND order_code=?`,
       itemId, code,
     )
@@ -305,13 +305,15 @@ export async function sendSkCredentialTelegram(
   const { decryptSecret } = await import("@/lib/fulfillment/crypto");
   const plaintext = await decryptSecret(ciphertext, iv);
   const { orderLineLabel } = await import("@/lib/fulfillment/delivery/buyer-email");
-  const { supplierCredentialMessage } = await import("@/lib/telegram/messages");
+  const { credentialMessages } = await import("@/lib/telegram/messages/credential");
+  const { resolveCredentialTermsForVariants } = await import("@/lib/orders/credential-terms");
   const label = orderLineLabel(order.items, Number(item.item_index ?? 0));
   try {
+    const copies = await resolveCredentialTermsForVariants([Number(item.variant_id)], db);
     // Target berurutan + fallback (lihat credential-delivery.ts).
     const sent = await sendTelegramCredential(
       order,
-      supplierCredentialMessage(code, label, plaintext || "(detail kosong — hubungi admin)"),
+      credentialMessages({ orderCode: code, productName: label, plaintext: plaintext || "(detail kosong — hubungi admin)", copy: copies.get(Number(item.variant_id)) }),
       db,
     );
     await settleNotice(db, key, true, sent.messageId || undefined);
