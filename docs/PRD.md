@@ -1,5 +1,13 @@
 # PRD — AXVARA
 
+## Maintenance pembayaran — 2026-10-18
+
+✅ Diimplementasikan; mode aktif pada artefak Pages yang dibangun CI. Pembayaran otomatis sementara dihentikan atas permintaan owner. Katalog Market/Pedia tetap dapat dibuka; banner di kedua layanan dan panel checkout mengarahkan pembeli ke **Order manual via WhatsApp**, melalui hub `/wa` dengan pesan terisi. Tidak menjanjikan jam selesai atau reset otomatis.
+
+`/start`, tombol home dan percobaan bayar/perpanjang QRIS di Telegram memberi pemberitahuan serta tombol WA; katalog dan Pesanan saya tetap tersedia. Bot grup WA juga menolak pembayaran otomatis dengan tautan admin. Penolakan server sebelum membuat order, memotong stok/kredit atau menulis invoice berlaku pada checkout Market/Pedia dan reissue, termasuk akses langsung. Invoice dan order lama tidak dihapus: webhook merchant, pelacakan, pengiriman dan cleanup kedaluwarsa tetap berjalan. Pembeli yang sudah membayar diminta menyimpan bukti dan menghubungi admin dengan kode pesanan. Tidak ada siaran massal otomatis.
+
+Pengaktifan/pemulihan memakai switch build publik `NEXT_PUBLIC_PAYMENTS_MAINTENANCE` di langkah build CI; `true` = maintenance, `false`/tidak diset = alur biasa. Perubahan membutuhkan build dan push baru, terpisah dari maintenance kuota D1.
+
 ## Pembaruan Pedia 2026-10-15 — spesifikasi terkini
 
 Revisi konfigurator 2026-10-16 ✅ implementasi, publikasi melalui CI: halaman platform dimulai dari kartu kebutuhan tanpa jenis/paket/jumlah otomatis. Setelah jenis dipilih, tiga layanan awal tersedia pada semua ukuran, lalu layanan terpilih diringkas dengan aksi Ganti. Jumlah → link → persyaratan berdekatan; detail panjang terlipat setelah input, sementara informasi drop/refill tetap terlihat. Kontak & konfirmasi tetap tahap kedua, kembali mempertahankan isian. Harga alternatif memakai jumlah yang sama; batas/kelipatan tidak cocok ditandai dan harga minimum tidak menggantikan total yang belum tersedia. Header/ringkasan mengikuti identitas platform; ringkasan awal berisi petunjuk singkat. Kontrak harga, quote, kredit, pembayaran, supplier dan beranda tetap.

@@ -1,3 +1,4 @@
+import { notifyPaymentMaintenance } from "@/lib/telegram/payment-maintenance";
 // src/lib/telegram/handlers/callback.ts — Router callback + GUARD KEAMANAN.
 //
 // MENGAPA dipisah: handleCallback adalah SATU-SATUNYA pintu masuk callback
@@ -72,6 +73,7 @@ export async function handleCallback(data: string, chatId: number, messageId: nu
 
   switch (action) {
     case "home":
+    if (await notifyPaymentMaintenance(chatId)) return;
       await clearPendingAction(from);
       await safeEditOrSend({
         chat_id: chatId, message_id: messageId,

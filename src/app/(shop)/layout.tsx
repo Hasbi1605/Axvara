@@ -1,3 +1,5 @@
+import { isPaymentMaintenanceEnabled } from "@/lib/payment-maintenance";
+import { PaymentMaintenanceNotice } from "@/components/shared/PaymentMaintenanceNotice";
 import { Navbar } from "@/components/storefront/Navbar";
 import { Footer } from "@/components/storefront/Footer";
 import { CartDrawer } from "@/components/storefront/CartDrawer";
@@ -46,6 +48,7 @@ export default function ShopLayout({ children }: { children: React.ReactNode }) 
     <ToastProvider>
       <Spotlight />
       <Navbar />
+      {isPaymentMaintenanceEnabled() && <PaymentMaintenanceNotice />}
       <CartDrawer />
       <Suspense fallback={null}>
         <NavigationProgress />

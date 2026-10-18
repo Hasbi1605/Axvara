@@ -1,3 +1,4 @@
+import { assertPaymentsAvailable } from "@/lib/payment-maintenance";
 import { getD1, queryAll, queryFirst } from "@/lib/db";
 
 export const DANA_QRIS_PROVIDER = "dana";
@@ -276,6 +277,7 @@ export async function createActiveQrisInvoice(orderCode: string, requestedAmount
 }
 
 async function createQrisInvoice(provider: QrisProvider, orderCode: string, requestedAmount: number): Promise<DanaQrisInvoice> {
+  assertPaymentsAvailable();
   const configured = provider === GOPAY_QRIS_PROVIDER ? isGopayQrisConfigured() : isDanaQrisConfigured();
   if (!configured) throw new Error("dana_qris_not_configured");
   if (!Number.isSafeInteger(requestedAmount) || requestedAmount < MIN_AMOUNT || requestedAmount > MAX_AMOUNT - DANA_QRIS_MAX_UNIQUE_CODE) {
@@ -405,6 +407,7 @@ export type QrisReissueResult =  | { ok: true; invoice: DanaQrisInvoice; remaini
  * habis, webhook dan retry admin mewajibkan rekonsiliasi manual.
  */
 export async function reissueDanaQrisInvoice(orderCode: string): Promise<QrisReissueResult> {
+  assertPaymentsAvailable();
   if (!isDanaQrisConfigured()) throw new Error("dana_qris_not_configured");
   const d1 = getD1();
   if (!d1) throw new Error("dana_qris_requires_d1");

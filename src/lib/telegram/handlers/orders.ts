@@ -1,3 +1,4 @@
+import { notifyPaymentMaintenance } from "@/lib/telegram/payment-maintenance";
 // src/lib/telegram/handlers/orders.ts — Handler status & siklus hidup pesanan.
 //
 // MENGAPA dipisah: status/refresh/pembatalan/perpanjang QRIS adalah aksi atas
@@ -107,6 +108,7 @@ export async function handleOrderRefresh(chatId: number, messageId: number, orde
  * diberi tahu untuk memakai QR yang sedang tampil.
  */
 export async function handleQrisRenew(chatId: number, rawOrderCode: string) {
+    if (await notifyPaymentMaintenance(chatId)) return;
   const orderCode = String(rawOrderCode || "").toUpperCase();
   if (!orderCode) return;
 

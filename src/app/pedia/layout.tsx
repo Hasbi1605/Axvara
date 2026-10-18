@@ -1,3 +1,5 @@
+import { isPaymentMaintenanceEnabled } from "@/lib/payment-maintenance";
+import { PaymentMaintenanceNotice } from "@/components/shared/PaymentMaintenanceNotice";
 // src/app/pedia/layout.tsx — Layout Pedia (PEDIA-PRD §9.2).
 import type { Metadata } from "next";
 import { PediaNavbar } from "@/components/pedia/PediaNavbar";
@@ -23,6 +25,7 @@ export default function PediaLayout({ children }: { children: React.ReactNode })
       <div className="pedia-root min-h-screen overflow-x-clip bg-[#080C1E] text-[#F1F5FF]">
       <Spotlight />
       <PediaNavbar />
+      {isPaymentMaintenanceEnabled() && <PaymentMaintenanceNotice />}
       {/* 2026-10-12: <main> TANPA max-width/padding 1:1 Market (dulu
           max-w-1280 + px-4/sm:px-6/lg:px-8 di sini → padding GANDA 64px
           dengan tiap section di dalamnya, konten 1216px vs Market 1280px).

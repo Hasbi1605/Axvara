@@ -30,6 +30,11 @@ Jika perubahan mengubah struktur folder, route `src/app/*`, komponen `src/compon
 - Cloudflare Git integration dinonaktifkan untuk deployment otomatis; GitHub Actions adalah satu-satunya CI/CD agar satu push tidak memicu deploy ganda.
 
 
+### Maintenance pembayaran — 2026-10-18
+- Switch build publik `NEXT_PUBLIC_PAYMENTS_MAINTENANCE="true"` pada langkah build Pages di `ci.yml` menghentikan pembayaran baru web/Telegram/WA dan reissue, dengan pemberitahuan order manual via hub WA. Ini nilai build nonrahasia, bukan env/secret runtime Pages.
+- Pemulihan: ubah nilai CI ke `"false"`, verifikasi, commit/push; perubahan env Cloudflare saja tidak mengubah bundle lama. Dev memakai prefix env; test menguji kedua mode.
+- Jangan menonaktifkan webhook/status/fulfillment/cleanup atau menghapus invoice lama. Mode terpisah dari kuota D1, tanpa auto-resume/estimasi jam selesai atau siaran massal otomatis.
+
 ### Operasional D1 lanjutan — 2026-10-17
 - Migrasi 0068 menambah indeks inventory/recipient dan `supplier_pair_dirty`.
   Trigger invalidasi atomik mengganti token versi; ack hanya menyetel pending=0,

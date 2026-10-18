@@ -1,4 +1,6 @@
 "use client";
+import { isPaymentMaintenanceEnabled } from "@/lib/payment-maintenance";
+import { ManualOrderPanel } from "@/components/shared/PaymentMaintenanceNotice";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { checkoutContactKey } from "@/components/storefront/WrCredentialsPanel";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -775,6 +777,7 @@ function CheckoutInner() {
 }
 
 export default function CheckoutPage() {
+  if (isPaymentMaintenanceEnabled()) return <ManualOrderPanel />;
   return (
     <React.Suspense fallback={<CheckoutSkeleton />}>
       <CheckoutInner />

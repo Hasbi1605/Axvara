@@ -1,5 +1,11 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Maintenance pembayaran sementara (2026-10-18)
+
+Mode pembayaran otomatis dikendalikan switch **build publik** `NEXT_PUBLIC_PAYMENTS_MAINTENANCE`, saat ini `"true"` pada langkah **Build Cloudflare Pages artifact** di `.github/workflows/ci.yml`. Nilai ditanam bersama pada UI dan server Pages (bukan secret/env runtime Pages; tanpa query D1). Untuk membuka pembayaran kembali, ubah nilai build ke `"false"`, verifikasi lalu commit/push main; jangan hanya mengganti env Cloudflare pada artefak lama. Dev mode maintenance: `NEXT_PUBLIC_PAYMENTS_MAINTENANCE=true npm run dev`.
+
+Banner Market/Pedia, checkout dan bot Telegram mengarahkan **order manual via WhatsApp** ke hub kontak aktif. API checkout kedua layanan, bot TG/WA serta penerbitan/reissue QRIS menolak pembayaran baru sebelum perubahan finansial; error API 503 `reason: payment_maintenance`, `manual_order_url`, `Cache-Control: private, no-store`. Pesanan lama, webhook merchant, pemrosesan pengiriman dan cleanup tetap berjalan; tidak membatalkan transaksi atau menghapus keranjang. Tidak ada migrasi/secret/jadwal cron baru, auto-resume atau siaran massal. Maintenance ini terpisah dari fallback kuota D1 dan tidak menjanjikan selesai pukul 07.00.
+
 ## Pembaruan Pedia 2026-10-15 — spesifikasi terkini
 
 Revisi konfigurator Pedia 2026-10-16 ✅ implementasi, publikasi melalui CI: halaman dalam memakai header brand, kartu kebutuhan tanpa pilihan otomatis, tiga layanan awal satu kolom pada semua ukuran, dan aksi Ganti layanan. Jumlah, link, serta persyaratan berdekatan dalam satu panel; filter/detail terlipat. Ringkasan desktop sticky dan bar total+CTA mobile mengikuti pilihan, tanpa placeholder berulang. Perbandingan harga memakai jumlah yang sama dan menghormati min/max/kelipatan. Checkout tetap dua tahap Atur pesanan → Kontak & konfirmasi; quote, consent perubahan nominal, retry pesanan dan preview admin aman tetap memakai kontrak existing.

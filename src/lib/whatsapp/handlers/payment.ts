@@ -1,3 +1,4 @@
+import { isPaymentMaintenanceEnabled, PAYMENT_MAINTENANCE_MESSAGE, PAYMENT_MANUAL_ORDER_URL } from "@/lib/payment-maintenance";
 // Handler jalur uang WhatsApp: memilih metode, membuat/menggunakan-ulang order
 // pending, menerbitkan invoice QRIS dinamis, dan mengirim instruksi pembayaran.
 //
@@ -35,6 +36,10 @@ import {
 } from "./shared";
 
 export async function handlePay(groupId: string, memberId: string, inboxId: string, method: PaymentMethodChoice) {
+  if (isPaymentMaintenanceEnabled()) {
+    await sendTextMessage({ target: groupId, message: `${PAYMENT_MAINTENANCE_MESSAGE}\n\n${PAYMENT_MANUAL_ORDER_URL}`, inboxId });
+    return;
+  }
   const session = await getSession("baileys", groupId, memberId);
 
   if (!session || !session.selected_variant_id || !session.selected_product_id) {

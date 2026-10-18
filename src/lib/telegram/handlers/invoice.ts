@@ -1,3 +1,4 @@
+import { notifyPaymentMaintenance } from "@/lib/telegram/payment-maintenance";
 // src/lib/telegram/handlers/invoice.ts — Penerbitan invoice QRIS varian tunggal.
 //
 // MENGAPA dipisah: createAndSendVariantInvoice adalah fungsi transaksional
@@ -40,6 +41,7 @@ export async function handlePayWithQris(
   from: { id: number; first_name: string; username?: string },
   emailConfirmed = false,
 ) {
+  if (await notifyPaymentMaintenance(chatId)) return;
   await sendChatAction(chatId, "typing");
   await clearPendingAction(from);
 

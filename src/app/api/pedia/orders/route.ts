@@ -1,3 +1,4 @@
+import { isPaymentMaintenanceEnabled, paymentMaintenanceResponse } from "@/lib/payment-maintenance";
 // POST /api/pedia/orders — Buat order Pedia (PD-21/25, §9.2/9.7).
 // Publik + rate-limit pedia:orders 10/mnt/IP. Guard ganda sebelum invoice:
 // (1) quote JWT valid; (2) harga terkini: bila paket dihapus supplier→404,
@@ -53,6 +54,7 @@ async function checkoutResponse(db: DatabaseAccess, order: Record<string, unknow
 }
 
 export async function POST(req: NextRequest) {
+  if (isPaymentMaintenanceEnabled()) return paymentMaintenanceResponse();
   if (!checkRateLimit(req, "pedia:orders")) {
     return NextResponse.json({ error: "Terlalu banyak percobaan, coba lagi 1 menit." }, { status: 429, headers: { "Retry-After": "60" } });
   }

@@ -1,3 +1,4 @@
+import { notifyPaymentMaintenance } from "@/lib/telegram/payment-maintenance";
 // src/lib/telegram/handlers/command.ts — Router perintah teks (/start, dll).
 //
 // MENGAPA dipisah: handleCommand memetakan perintah slash + label reply-keyboard
@@ -37,6 +38,7 @@ export async function handleCommand(
   }
 
   if (cmd === "/start") {
+    if (await notifyPaymentMaintenance(chatId)) return;
     // Clear any pending conversational state
     await clearPendingAction(from);
     await showLoadingBar(chatId, "🚀 Menyiapkan AXVARA");

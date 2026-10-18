@@ -1858,6 +1858,14 @@ sebagai saklar mundur tanpa deploy), dan `WARUNG_REBAHAN_SALDO_ALERT_THRESHOLD=2
 (sebelumnya tidak ada di Pages sehingga memakai default kode). Total secret
 produksi menjadi 38.
 
+### 16.2a Switch build publik maintenance pembayaran (2026-10-18)
+
+✅ Diimplementasikan, publikasi melalui CI. `NEXT_PUBLIC_PAYMENTS_MAINTENANCE` merupakan **nilai build nonrahasia**, `"true"` pada langkah build artefak Pages di `ci.yml`; tidak disimpan sebagai env runtime Pages dan tidak mengubah aturan `secret_text` untuk env Pages. Next menanam nilai yang sama pada bundle UI dan API; `false`/tidak diset memulihkan perilaku biasa setelah build/deploy baru. Mengubah secret runtime saja tidak membuka artefak lama. Dev mengaktifkan melalui prefix env; test menguji kedua mode eksplisit. Tidak memakai D1 atau TTL. Pemulihan lewat perubahan nilai CI + verifikasi + push, bukan deploy manual.
+
+Sumber copy/URL/guard: `lib/payment-maintenance.ts`. `shared/PaymentMaintenanceNotice.tsx` menyediakan banner dan panel manual. Layout `(shop)`/Pedia menampilkan banner sesudah navbar; checkout Market dan formulir pilihan layanan Pedia digantikan panel manual sebelum hook checkout berjalan. Katalog/pelacakan tetap tersedia. `POST /api/orders`, `/api/pedia/orders`, `/api/payments/qris/[code]/reissue` memberi 503 JSON `reason: payment_maintenance`, `error` publik dan `manual_order_url`, private/no-store sebelum parsing/query/order/debit/reservasi. Guard inti `createQrisInvoice`/`reissueDanaQrisInvoice` menolak dengan `payment_maintenance` sebelum ledger.
+
+`telegram/payment-maintenance.ts` memberi pemberitahuan dan keyboard WA absolut, katalog, Pesanan saya; dipakai `/start`, home, single/cart checkout dan renew sebelum perubahan finansial. Handler pembayaran WA berhenti sebelum session/order dan mengirim tautan hub. Endpoint webhook/polling merchant, status order, pengiriman dan cleanup tidak digate; invoice lama tidak dihapus dan stok/kredit tetap mengikuti lifecycle existing. Bukan maintenance D1, tidak auto-resume atau menambah broadcast/cron/kontrak lintas-repo.
+
 ### 16.3 Jangan redeploy wrangler tanpa direktori
 `wrangler pages deployment create` tanpa argumen me-redeploy artefak LAMA =
 rollback prod (hari ini menimpa build CI PR#1: pagination angka + badge lama

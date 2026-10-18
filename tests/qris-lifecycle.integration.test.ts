@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { createD1Fixture, insertTestProduct, stubFulfillmentKey } from "./helpers/d1-fixture";
 import { createChannelOrderAtomic } from "@/lib/commerce";
-import { calculateCrc16, createDanaQrisInvoice, reissueDanaQrisInvoice } from "@/lib/payments/dana-qris";
+import { calculateCrc16, createDanaQrisInvoice, createGopayQrisInvoice, reissueDanaQrisInvoice } from "@/lib/payments/dana-qris";
 
 vi.mock("@/lib/auth", () => ({ requireAdmin: vi.fn(async () => ({ email: "fixture@example.test" })) }));
 let fixture: ReturnType<typeof createD1Fixture>;
@@ -22,14 +22,14 @@ beforeEach(async () => {
 });
 afterEach(() => { fixture.close(); vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
-async function checkout(code = A) {
+async function checkout(code = A, provider: "dana" | "gopay" = "dana") {
   await createChannelOrderAtomic({
     orderCode: code, lines: [{ productId: 1, variantId: 1, qty: 1, fulfillmentMode: "manual", stock: 100 }],
     items: [{ product_id: 1, variant_id: 1, qty: 1, price: 10000, name: "Fixture" }],
     variantSnapshot: "{}", subtotal: 10000, primaryVariantId: 1, customerName: "Fixture", salesChannel: "web",
     paymentMethod: "qris", paymentAccount: "DANA Business", fulfillmentStatus: "not_required",
   });
-  return createDanaQrisInvoice(code, 10000);
+  return provider === "gopay" ? createGopayQrisInvoice(code, 10000) : createDanaQrisInvoice(code, 10000);
 }
 function expireInvoice(code = A) {
   fixture.sql.prepare("UPDATE payment_transactions SET expires_at=? WHERE order_code=?")
@@ -51,10 +51,10 @@ async function cron(route: "operations" | "publish-scheduled" = "operations") {
   expect(response.status).toBe(200);
   return response.json();
 }
-async function webhook(amount: number, reference = `fixture-${amount}`) {
-  const { POST } = await import("@/app/api/webhook/dana/route");
-  return POST(new NextRequest("http://localhost/api/webhook/dana", {
-    method: "POST", headers: { "content-type": "application/json", "x-webhook-secret": "fixture-secret" },
+async function webhook(amount: number, reference = `fixture-${amount}`, provider: "dana" | "gopay" = "dana") {
+  const { POST } = provider === "gopay" ? await import("@/app/api/webhook/gopay/route") : await import("@/app/api/webhook/dana/route");
+  return POST(new NextRequest(`http://localhost/api/webhook/${provider}`, {
+    method: "POST", headers: { "content-type": "application/json", [provider === "gopay" ? "x-poller-secret" : "x-webhook-secret"]: "fixture-secret" },
     body: JSON.stringify({ payment: { amount, currency: "IDR", reference }, merchant: "DANA" }),
   }));
 }
@@ -184,5 +184,25 @@ describe("QRIS mutation fencing", () => {
     expect(await transitionPendingPaymentToPaid(A, null, null, { id: Number(event.id) })).toBe(false);
     expect(order().status).toBe("pending");
     expect(fixture.sql.prepare("SELECT status FROM dana_webhook_events WHERE id=?").get(event.id)!.status).toBe("received");
+  });
+});
+
+
+describe("existing invoices during payment maintenance", () => {
+  it.each(["dana", "gopay"] as const)("still accepts existing %s payments and releases expired stock exactly once", async (provider) => {
+    vi.stubEnv("GOPAY_QRIS_ENABLED", "true");
+    vi.stubEnv("GOPAY_STATIC_QRIS", process.env.DANA_STATIC_QRIS!);
+    vi.stubEnv("GOPAY_POLLER_SECRET", "fixture-secret");
+    const invoice = await checkout(A, provider);
+    await checkout(B, provider);
+    vi.stubEnv("NEXT_PUBLIC_PAYMENTS_MAINTENANCE", "true");
+    await expect(reissueDanaQrisInvoice(A)).rejects.toThrow("payment_maintenance");
+    expect((await webhook(invoice.payableAmount, `maintenance-${provider}`, provider)).status).toBe(200);
+    expect(order(A).status).toBe("lunas");
+    fixture.sql.prepare("UPDATE orders SET expires_at=? WHERE code=?").run(new Date(Date.now()-60000).toISOString(), B);
+    await cron(); await cron();
+    expect(order(B).status).toBe("kadaluarsa");
+    expect(fixture.sql.prepare("SELECT stock FROM product_variants WHERE id=1").get()!.stock).toBe(99);
+    expect(fixture.sql.prepare("SELECT status FROM payment_transactions WHERE order_code=?").get(A)!.status).toBe("paid");
   });
 });

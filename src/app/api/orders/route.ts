@@ -1,3 +1,4 @@
+import { isPaymentMaintenanceEnabled, paymentMaintenanceResponse } from "@/lib/payment-maintenance";
 import { NextRequest, NextResponse } from "next/server";
 import { deriveNameFromEmail } from "@/lib/utils";
 import { z } from "zod";
@@ -41,6 +42,7 @@ const schema = z.object({
 // rule, counting IP) tetap menjadi lapis pertama; ini lapis kedua per isolate.
 
 export async function POST(req: NextRequest) {
+  if (isPaymentMaintenanceEnabled()) return paymentMaintenanceResponse();
   if (!checkRateLimit(req, "checkout:orders")) return NextResponse.json({ error: "Terlalu banyak percobaan, coba lagi 1 menit." }, { status: 429, headers: { "Retry-After": "60" } });
 
   let body: unknown;

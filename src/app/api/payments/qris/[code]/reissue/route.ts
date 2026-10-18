@@ -1,3 +1,4 @@
+import { isPaymentMaintenanceEnabled, paymentMaintenanceResponse } from "@/lib/payment-maintenance";
 // src/app/api/payments/qris/[code]/reissue/route.ts
 //
 // Terbitkan QRIS baru untuk order yang masih hidup tetapi QR-nya sudah mati.
@@ -31,6 +32,7 @@ const REASON_MESSAGE: Record<string, string> = {
 };
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ code: string }> }) {
+  if (isPaymentMaintenanceEnabled()) return paymentMaintenanceResponse();
   if (!checkRateLimit(request, "qris:reissue")) {
     return NextResponse.json(
       { error: "Terlalu sering, coba lagi 1 menit." },

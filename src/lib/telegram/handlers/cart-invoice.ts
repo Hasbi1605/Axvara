@@ -1,3 +1,4 @@
+import { notifyPaymentMaintenance } from "@/lib/telegram/payment-maintenance";
 // src/lib/telegram/handlers/cart-invoice.ts — Penerbitan invoice checkout gabungan.
 //
 // MENGAPA dipisah dari cart.ts: createAndSendCartInvoice adalah SATU fungsi
@@ -37,6 +38,7 @@ export async function createAndSendCartInvoice(
   lines: CartLine[],
   from: { id: number; first_name: string; username?: string },
 ) {
+  if (await notifyPaymentMaintenance(chatId)) return;
   const subtotal = lines.reduce((sum, line) => sum + line.price * line.qty, 0);
   const orderCode = generateOrderCode();
   const items = lines.map((line) => ({

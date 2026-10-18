@@ -1,5 +1,9 @@
 # DESIGN.md — AXVARA Design System
 
+## Pemberitahuan maintenance pembayaran — 2026-10-18
+
+✅ Diimplementasikan, publikasi melalui CI. Banner statis di bawah navbar Market/Pedia memakai latar putih 4%, garis putih 10%, teks putih 80% dan CTA putih **Order manual via WhatsApp**; tanpa titik/pill kuning, animasi, overlay atau countdown. Container 1280px, padding 16px mobile/24–32px desktop, teks dan tombol bertumpuk di mobile dan sejajar mulai `sm`, tap target ≥44px dan fokus cyan. Checkout menampilkan judul **Pembayaran sedang maintenance**, CTA WA serta petunjuk bagi pembeli yang sudah membayar; formulir pembayaran disembunyikan. Pedia tetap mempertahankan daftar jenis layanan dan mengganti formulir sesudah pilihan produk. Banner dan panel menggunakan komponen bersama `shared/PaymentMaintenanceNotice.tsx`; tautan absolut menuju hub WA terpusat agar benar pada kedua host. Bot menampilkan copy yang sama beserta tombol order manual, katalog dan Pesanan saya. Tidak mencantumkan estimasi pemulihan yang belum diketahui.
+
 ## Pembaruan Pedia 2026-10-15 — spesifikasi terkini
 
 Revisi konfigurator Pedia 2026-10-16 ✅ implementasi, publikasi melalui CI: header platform bergradasi dari registri publik dengan logo 36/44px, radius 24px; kebutuhan awal berupa kartu berikon, lalu tab pill setelah dipilih. Panel formulir tunggal radius 24px, padding 20/28px, jarak antarbagian 28px; tiga layanan awal berupa baris satu kolom pada mobile/desktop, radio native dengan indikator visual dan fokus cyan, badge rekomendasi emas dari kurasi tersimpan. Pilihan aktif diringkas di semua ukuran. Filter dan detail memakai disclosure; input mobile 16px, kontrol utama minimal 44px. Rail desktop 320px sticky top-24 dengan header brand, total 30px; mobile total+CTA fixed dengan safe-area dan ruang tambahan saat consent. Tidak ada paket otomatis atau klaim kualitas baru.

@@ -1,4 +1,6 @@
 "use client";
+import { isPaymentMaintenanceEnabled } from "@/lib/payment-maintenance";
+import { ManualOrderPanel } from "@/components/shared/PaymentMaintenanceNotice";
 
 import { useState } from "react";
 import { PlatformIcon } from "@/components/pedia/PlatformGrid";
@@ -40,7 +42,7 @@ export function PlatformPageClient({ platform, name, products, initialSlug = "",
           </button>)}
         </div>
       </section>}
-      {product && <OrderClient key={product.slug} product={product} initialTarget={initialTarget} ordersEnabled={ordersEnabled} withinPlatform onLockedChange={setLocked} />}
+      {product && (isPaymentMaintenanceEnabled() ? <ManualOrderPanel /> : <OrderClient key={product.slug} product={product} initialTarget={initialTarget} ordersEnabled={ordersEnabled} withinPlatform onLockedChange={setLocked} />)}
     </> : <p className="my-8 rounded-2xl border border-white/10 p-5 text-sm text-white/60">Belum ada layanan tersedia untuk platform ini. <a href="/pedia" className="text-[#00E5FF]">Lihat platform lain</a></p>}
   </div>;
 }
