@@ -54,6 +54,14 @@ jobs:
       - name: Type-check
         run: npx tsc --noEmit
 
+      - name: Check Pages variable limit
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: node scripts/ci-pages-env-check.cjs
+        env:
+          CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+          CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
       - name: Build Cloudflare Pages artifact
         run: npm run build:pages
         env:

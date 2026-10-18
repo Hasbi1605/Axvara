@@ -2333,6 +2333,12 @@ Pembayaran terkonfirmasi yang melewati deadline atau kalah cancel/expiry disimpa
 
 Callback per invoice memakai SITE.webUrl kanonis. Pemeriksaan manual web/Pedia `wake=1` dan tombol Telegram refresh memakai API status; polling browser biasa hanya membaca DB. Tidak ada worker/cron/polling baru. Webhook/poller/kredensial DANA/GoPay tetap untuk invoice lama. Rollback invoice baru: ubah QRIS_ACTIVE_PROVIDER + rilis CI; jangan cabut KLIKQRIS_ENABLED/key/merchant/callback selama invoice lama/late reconciliation masih perlu dikonfirmasi. Dokumentasi sumber: https://klikqris.com/dokumentasi-api. Uji produksi hanya membuat invoice unpaid berlabel AXVARA-INTEGRATION (callback probe diabaikan); tidak membayar atau menyimulasikan uang produksi sebagai paid.
 
+Koreksi kapasitas env Pages 2026-10-18: penambahan tiga secret KlikQRIS membawa
+konfigurasi produksi menjadi 61 + empat variabel sistem = 65 dan publish gagal.
+Hanya `PEDIA_DISPATCH_ENABLED` yang tidak dikonsumsi runtime dihapus, sehingga
+60 + 4 = 64; keempat env pemilihan/config KlikQRIS serta secret DANA/GoPay lama
+tetap tersimpan sebagai `secret_text`. Guard CI dan bukti insiden ada di §17.2.
+
 ## 17. Penghematan rows_read D1 Free — 2026-10-16
 
 ✅ Implementasi dan verifikasi lokal; publikasi melalui CI. Laporan pekerjaan:
@@ -2478,6 +2484,35 @@ benar-benar dijalankan di workerd. Angka fixture tidak mewakili total produksi.
 Target operasional ≤3 juta reads/hari (rata-rata 125 ribu/jam) membutuhkan satu
 siklus produksi 07.00–07.00; risiko limit tetap bergantung trafik dan cache hit.
 
+
+### 17.2. Kapasitas variabel Pages Free — 2026-10-18
+
+Run CI 39128121106 (`47d118d`) lulus test/type-check/build/migrasi tetapi gagal
+publish Pages: 65 variabel melebihi batas Free 64. Metadata project membuktikan
+61 env produksi; Pages menambahkan `CF_PAGES`, `CF_PAGES_BRANCH`,
+`CF_PAGES_COMMIT_SHA`, `CF_PAGES_URL`. Ini batas variabel, bukan kuota D1.
+
+`PEDIA_DISPATCH_ENABLED` dihapus dari env produksi karena tidak ada konsumen di
+kode runtime. Catatan flag dibuka 14 Oktober pada §16.10 adalah histori, bukan
+gate dispatch aktual; `runPediaOrders` cron lite tetap memanggil
+`processPediaPaidOrders` untuk antrean existing. Tidak mengubah penerimaan order
+`PEDIA_ORDERS_ENABLED`, secret provider lama/baru, ataupun env preview. Sesudah
+penghapusan: 60 konfigurasi + 4 sistem = 64; tidak ada ruang untuk env tambahan.
+
+Guard read-only `scripts/ci-pages-env-check.cjs` berjalan di `ci.yml` push/main
+sesudah type-check, sebelum build dan migrasi. GET project API menggunakan
+Secrets CI Cloudflare existing, memvalidasi metadata produksi, menghitung
+union nama konfigurasi + empat sistem tanpa menggandakan override. Total >64
+atau API/auth/metadata gagal menghentikan rilis; tepat 64 menghasilkan warning.
+Output hanya jumlah/limit; nilai env dan respons/error mentah tidak dicetak.
+Tidak ada query D1, mutasi konfigurasi otomatis, secret runtime baru atau deploy
+manual. Perubahan env produksi dilakukan terarah melalui API PATCH, hanya key
+usang bernilai null; metadata env lain dan preview diperiksa tetap sama.
+
+Referensi: [batas Workers](https://developers.cloudflare.com/workers/platform/limits/),
+[sistem Pages](https://developers.cloudflare.com/pages/configuration/build-configuration/),
+[penghapusan env dengan null](https://developers.cloudflare.com/api/typescript/resources/pages/subresources/projects/methods/edit/).
+Publikasi ulang tetap melalui push main dan CI; push bukan bukti deploy sukses.
 
 ## 18. Halaman maintenance kuota D1 — 2026-10-17
 
