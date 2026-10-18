@@ -2321,6 +2321,19 @@ poller server memantau mutasi GoBiz milik sendiri.
 
 ### 16.11 PG KlikQRIS — 2026-10-18
 
+Sumbatan antrean expiry 2026-10-18: jalur batal mandiri/admin tidak menutup
+ledger `payment_transactions`, sehingga order terminal meninggalkan ledger
+`pending` yatim. Guard `transitionPendingPaymentOrder` mensyaratkan order
+`pending`, jadi yatim selalu no-op; kandidat `runExpiry` diurutkan deadline
+terlama dengan LIMIT kecil sehingga 6 yatim produksi (5 GoPay + 1 KlikQRIS)
+menyumbat slot teratas setiap tick dan pesanan hidup AXV-20261018-AB4D407F
+tidak pernah ter-expiry/stoknya tidak kembali walau cron sehat. `runExpiry`
+kini menyapu yatim lewat deadline menjadi `expired` + `last_error
+orphan_terminal_order` (maks 10/tick) **tanpa menyentuh stok** — stok sudah
+dilepas saat pembatalan, melepas ulang berarti dobel — lalu kandidat expiry
+utama disaring `o.status='pending'` dengan `EXPIRY_PER_RUN` 4→10. Respons
+menambah `orphan_ledgers_swept`; idempoten dan di dalam budget 40 statement.
+
 Deteksi lunas cepat 2026-10-18: callback gateway teramati tiba ±28 detik sesudah
 `paid_at`, jadi polling halaman yang sudah berjalan ikut memicu reconcile
 KlikQRIS ter-throttle. `claimKlikQrisPollReconcile` mengklaim jendela ±10 detik

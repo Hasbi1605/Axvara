@@ -44,7 +44,8 @@ export const runtime = "edge";
 
 const LITE_JOBS = ["expiry", "fulfillment", "wr_orders", "sk_orders", "pedia_orders", "promo", "notify", "notify_a", "notify_b", "cleanup"] as const;
 type LiteJob = (typeof LITE_JOBS)[number];
-const EXPIRY_PER_RUN = 4;
+const EXPIRY_PER_RUN = 10;
+const ORPHAN_LEDGER_PER_RUN = 10;
 const FULFILLMENT_PER_RUN = 4;
 
 type Items = { product_id: number; variant_id?: number; qty: number }[];
@@ -103,6 +104,25 @@ async function runExpiry(db: Db) {
   const { isExpiredIso } = await import("@/lib/expiry");
   let staleInitializing = 0;
   let expired = 0;
+  // Ledger yatim (insiden AXV-20261018-AB4D407F): order sudah dibatalkan
+  // mandiri/admin tetapi payment_transactions tertinggal 'pending' (jalur
+  // batal tidak menutup ledger dinamis). Guard transisi expiry mensyaratkan
+  // order 'pending', jadi ledger seperti ini no-op selamanya DAN — karena
+  // kandidat diurutkan deadline terlama — menyumbat LIMIT teratas setiap
+  // tick sehingga pesanan hidup tidak pernah ter-expiry. Tutup yatim lewat
+  // deadline menjadi 'expired' TANPA menyentuh stok: stok sudah dilepas
+  // saat order dibatalkan, melepasnya lagi = stok dobel.
+  const orphanSwept = await db.execRun(
+    `UPDATE payment_transactions SET status='expired', last_error='orphan_terminal_order', updated_at=datetime('now')
+     WHERE order_code IN (
+       SELECT pt.order_code FROM payment_transactions pt JOIN orders o ON o.code=pt.order_code
+       WHERE pt.status='pending' AND pt.provider IN ('dana','gopay','klikqris')
+         AND o.status!='pending'
+         AND julianday(COALESCE(o.expires_at, pt.expires_at)) <= julianday('now')
+       ORDER BY julianday(COALESCE(o.expires_at, pt.expires_at)) ASC LIMIT ?
+     )`,
+    ORPHAN_LEDGER_PER_RUN,
+  ).then(r => Number(r.changes || 0)).catch(() => 0);
   const stale = await db.queryAll(
     `SELECT pt.order_code, o.items FROM payment_transactions pt
        JOIN orders o ON o.code=pt.order_code
@@ -119,11 +139,14 @@ async function runExpiry(db: Db) {
     if (changed) staleInitializing++;
   }
   // Hanya QRIS dinamis: cabang provider lain mengirim pesan
-  // Telegram dan tetap ditangani route besar.
+  // Telegram dan tetap ditangani route besar. Filter o.status='pending'
+  // memastikan hanya pesanan hidup yang melepas stok di sini; ledger yatim
+  // sudah ditangani sapuan di atas.
   const candidates = await db.queryAll(
     `SELECT pt.order_code, COALESCE(o.expires_at, pt.expires_at) AS expires_at, o.items
        FROM payment_transactions pt JOIN orders o ON o.code=pt.order_code
       WHERE pt.status='pending' AND pt.provider IN ('dana','gopay','klikqris')
+        AND o.status='pending'
         AND julianday(COALESCE(o.expires_at, pt.expires_at)) <= julianday('now')
       ORDER BY julianday(COALESCE(o.expires_at, pt.expires_at)) ASC
       LIMIT ?`,
@@ -138,7 +161,7 @@ async function runExpiry(db: Db) {
     }, db.d1).catch(() => false);
     if (changed) expired++;
   }
-  return { stale_initializing: staleInitializing, expired_payments: expired };
+  return { stale_initializing: staleInitializing, expired_payments: expired, orphan_ledgers_swept: orphanSwept };
 }
 
 async function runFulfillment(db: Db) {

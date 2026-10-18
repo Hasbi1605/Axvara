@@ -76,6 +76,54 @@ describe("/api/cron/lite", () => {
     }
   });
 
+  it("expiry: ledger yatim order dibatalkan ditutup tanpa stok dobel dan tidak menyumbat pesanan hidup", async () => {
+    const fx = createD1Fixture();
+    try {
+      vi.stubEnv("CRON_SECRET", "s");
+      await insertTestProduct(fx.sql, "manual", 1);
+      // Enam ledger yatim meniru sumbatan produksi (deadline lebih lama dari
+      // pesanan hidup): order sudah dibatalkan, stoknya sudah kembali ke 100.
+      const orphanCodes: string[] = [];
+      for (let i = 1; i <= 6; i++) {
+        const code = `AXV-20261018-ORPHAN0${i}`;
+        orphanCodes.push(code);
+        insertTestOrder(fx.sql, code, { channel: "web", status: "dibatalkan" });
+        fx.sql.prepare("UPDATE orders SET expires_at=datetime('now','-3 hours') WHERE code=?").run(code);
+        fx.sql.prepare(`INSERT INTO payment_transactions (order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,payable_amount,status,expires_at)
+          VALUES (?,?,'dynamic',?,'m',10000,?,'pending',datetime('now','-3 hours'))`).run(code, i % 2 ? "gopay" : "klikqris", code, 10000 + i);
+      }
+      // Pesanan hidup yang terlewat deadline 15 menit (kasus AB4D407F):
+      // stok varian sedang tereservasi (98 dari 100, qty 2).
+      insertTestOrder(fx.sql, "AXV-20261018-LIVE00001", { channel: "web", qty: 2 });
+      fx.sql.prepare("UPDATE product_variants SET stock=98 WHERE id=1").run();
+      fx.sql.prepare("UPDATE orders SET expires_at=datetime('now','-1 minute') WHERE code=?").run("AXV-20261018-LIVE00001");
+      fx.sql.prepare(`INSERT INTO payment_transactions (order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,payable_amount,status,expires_at)
+        VALUES ('AXV-20261018-LIVE00001','klikqris','dynamic','AXV-20261018-LIVE00001','m',10000,10099,'pending',datetime('now','-1 minute'))`).run();
+
+      const res = await call("expiry");
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ ok: true, job: "expiry", expired_payments: 1, orphan_ledgers_swept: 6 });
+      for (const code of orphanCodes) {
+        const tx = fx.sql.prepare("SELECT status,last_error FROM payment_transactions WHERE order_code=?").get(code) as { status: string; last_error: string };
+        expect(tx).toMatchObject({ status: "expired", last_error: "orphan_terminal_order" });
+        expect((fx.sql.prepare("SELECT status FROM orders WHERE code=?").get(code) as { status: string }).status).toBe("dibatalkan");
+      }
+      const live = fx.sql.prepare("SELECT status FROM orders WHERE code=?").get("AXV-20261018-LIVE00001") as { status: string };
+      expect(live.status).toBe("kadaluarsa");
+      const liveTx = fx.sql.prepare("SELECT status FROM payment_transactions WHERE order_code=?").get("AXV-20261018-LIVE00001") as { status: string };
+      expect(liveTx.status).toBe("expired");
+      // 98 + 2 kembali = 100; yatim tidak menambah apa pun (bukan 112).
+      const stock = fx.sql.prepare("SELECT stock FROM product_variants WHERE id=1").get() as { stock: number };
+      expect(stock.stock).toBe(100);
+
+      // Idempoten: tick berikut tidak menutup atau melepas apa pun lagi.
+      expect((await call("expiry")).body).toMatchObject({ expired_payments: 0, orphan_ledgers_swept: 0 });
+      expect((fx.sql.prepare("SELECT stock FROM product_variants WHERE id=1").get() as { stock: number }).stock).toBe(100);
+    } finally {
+      fx.close();
+    }
+  });
+
   it("WR/SK dimatikan → job orders no-op aman", async () => {
     const fx = createD1Fixture();
     try {
