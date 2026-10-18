@@ -41,7 +41,9 @@ async function api(path: string, data?: Row): Promise<Row> {
   let response: Response;
   try {
     response = await fetch(`${BASE}/api/qris/${path}`, {
-      method: data ? "POST" : "GET", redirect: "error", cache: "no-store",
+      // workerd rejects redirect:"error" before sending the request. Manual
+      // mode preserves our no-redirect policy; non-2xx responses fail below.
+      method: data ? "POST" : "GET", redirect: "manual", cache: "no-store",
       headers: { "Content-Type": "application/json", Accept: "application/json",
         "x-api-key": process.env.KLIKQRIS_API_KEY!, id_merchant: process.env.KLIKQRIS_MERCHANT_ID! },
       ...(data ? { body: JSON.stringify(data) } : {}), signal: AbortSignal.timeout(10_000),
@@ -210,7 +212,7 @@ async function manualReview(tx: Row, eventId: number, notify: boolean, reason: s
 
 export async function fetchKlikQrisImage(source: unknown): Promise<Uint8Array> {
   const url = validKlikQrisImage(source);
-  const response = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(10_000), cache: "no-store" });
+  const response = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(10_000), cache: "no-store" });
   if (!response.ok || !response.body) throw new Error("klikqris_image_unavailable");
   const reader=response.body.getReader(), chunks: Uint8Array[]=[]; let size=0;
   while (true) { const {done,value}=await reader.read(); if(done)break; size+=value.length;

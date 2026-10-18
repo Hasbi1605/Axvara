@@ -2321,6 +2321,27 @@ poller server memantau mutasi GoBiz milik sendiri.
 
 ### 16.11 PG KlikQRIS — 2026-10-18
 
+Koreksi runtime/checkout 2026-10-18: `fetch` API dan PNG memakai
+`redirect: "manual"` lalu menolak non-2xx. Runtime workerd yang dipakai menolak
+`redirect: "error"` sebelum jaringan (direproduksi lokal); penolakan ini sempat
+tersamarkan sebagai `klikqris_network_ambiguous` dan meninggalkan ledger
+initializing. Tidak mengikuti Location atau meneruskan secret ke host lain.
+Test adapter aktual di workerd mencakup POST, PNG, reuse dan penolakan 302.
+
+POST `/api/orders` mengecek quote existing setelah validasi token/keranjang,
+sebelum validasi harga/reservasi baru, lalu menyertakan QR KlikQRIS yang berhasil
+dipulihkan pada respons `200 reused:true`. Guard UNIQUE tetap menangani race;
+retry initializing hanya GET order ID yang sama, bukan POST atau provider baru.
+Stok terakhir yang sudah terreservasi tidak menghalangi retry pesanan asal.
+GET `/api/orders?code=...&wake=1` dapat memulihkan ledger initializing KlikQRIS
+melalui GET provider dan memuat ulang detail QR; polling tanpa wake tidak
+memanggil provider. Field tambahan `qris_preparation_error` hanya boolean untuk
+notice UI, tanpa detail rahasia; `expires_at` KlikQRIS memakai deadline ledger
+15 menit juga saat initializing, sehingga tidak menampilkan TTL order generik
+24 jam. Tidak memulihkan pesanan terminal atau mengulang POST untuk 404 ambigu.
+Halaman pesanan tanpa QR menawarkan aksi manual ini dan tidak menjanjikan
+verifikasi bukti pembayaran. Cleanup/stok/pembayaran terlambat tetap existing.
+
 ✅ Diimplementasikan, publikasi melalui CI. Mode **in-house PG**, bukan MY PG/sandbox. `lib/payments/klikqris.ts` terisolasi untuk `POST https://klikqris.com/api/qris/create` dan `GET /api/qris/status/{order_id}`, auth header `x-api-key` + `id_merchant`; create body order_id/amount/id_merchant/keterangan/callback_url. Credential lokal `.klikqris-credentials` git-ignored/chmod600; Pages `secret_text`: `KLIKQRIS_API_KEY`, `KLIKQRIS_MERCHANT_ID`, `KLIKQRIS_ENABLED=true`, `QRIS_ACTIVE_PROVIDER=klikqris`. Tidak ada key di proxy/VPS/bot credential repo lain, browser, log atau respons publik. Build maintenance `false` membuka pembayaran; env runtime tidak mengganti nilai build. Memilih KlikQRIS tanpa config gagal tertutup, bukan fallback ke merchant bermasalah.
 
 `createActiveQrisInvoice` merutekan invoice baru; retry invoice lama mempertahankan provider ledger. Satu klaim `operation_guards` + INSERT initializing atomik sebelum POST, order ID stabil, satu pemenang. Timeout/hasil ambigu tidak di-POST ulang: recovery memakai GET ID sama. Status initializing/pending KlikQRIS tidak memicu kompensasi stok catch Telegram/web, dan cleanup stale-init/expiry existing tetap penjamin. Cron lite expiry menyertakan KlikQRIS pada tick existing agar pengembalian stok tidak menunggu route cadangan per jam; transisi bersyarat tetap mengembalikan sekali. Finalisasi ledger + deadline order dibatch dan difence agar cancel/expiry tidak dihidupkan kembali. Tidak mengklaim exactly-once jaringan provider.

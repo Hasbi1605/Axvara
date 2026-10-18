@@ -36,6 +36,26 @@ const schema = z.object({
   quote_token: z.string().trim().min(20, "Quote checkout wajib disertakan").max(8000),
 });
 
+async function existingCheckoutResponse(existing: Record<string, unknown>) {
+  // The signed quote already reserved stock, including its last available unit.
+  // Resume before revalidating stock/price; never reserve or POST again.
+  if (existing.status === "pending") {
+    const tx = await queryFirst("SELECT provider,requested_amount FROM payment_transactions WHERE order_code=?", existing.code);
+    if (tx?.provider === "klikqris") {
+      try {
+        const inv = await createActiveQrisInvoice(String(existing.code), Number(tx.requested_amount));
+        return NextResponse.json({ ...existing, reused: true, qris: {
+          payable_amount: inv.payableAmount, unique_code: inv.uniqueCode,
+          image_url: inv.qrisUrl, expires_at: inv.expiresAt,
+        } }, { status: 200 });
+      } catch {
+        return NextResponse.json({ error: "Tagihan sedang disiapkan. Tunggu sebentar lalu coba lagi dengan checkout yang sama.", code: existing.code }, { status: 503 });
+      }
+    }
+  }
+  return NextResponse.json({ code: existing.code, subtotal: existing.subtotal, status: existing.status, reused: true }, { status: 200 });
+}
+
 // Rate-limit terpusat (issue #14): satu implementasi di src/lib/rateLimit.ts
 // agar batas tidak tersebar + IP anti-spoof (cf-connecting-ip > x-real-ip,
 // x-forwarded-for TIDAK dipakai karena dapat di-spoof client). WAF Free (1
@@ -82,6 +102,9 @@ export async function POST(req: NextRequest) {
   if (!sameItems) {
     return NextResponse.json({ error: "Isi keranjang berubah setelah harga dikunci. Muat ulang checkout." }, { status: 409 });
   }
+
+  const previous = await queryFirst("SELECT code,subtotal,status FROM orders WHERE quote_id=?", quote.quote_id);
+  if (previous) return existingCheckoutResponse(previous);
 
   // Guard email lapis kedua (migrasi 0033 + revamp 2026-09-23): zod di atas
   // SUDAH mewajibkan email valid untuk semua order web, jadi blok ini kini
@@ -253,7 +276,7 @@ export async function POST(req: NextRequest) {
     if (msg.includes("UNIQUE")) {
       const existing = await queryFirst("SELECT code,subtotal,status FROM orders WHERE quote_id=?", quote.quote_id);
       if (existing) {
-        return NextResponse.json({ code: existing.code, subtotal: existing.subtotal, status: existing.status, reused: true }, { status: 200 });
+        return existingCheckoutResponse(existing);
       }
       return NextResponse.json({ error: "Kode pesanan bentrok, coba lagi." }, { status: 409 });
     }
@@ -302,7 +325,7 @@ export async function GET(req: NextRequest) {
   if (code) {
     if (!/^AXV-\d{8}-[A-Z0-9]{8}$/.test(code)) return NextResponse.json({ error: "Kode tidak valid" }, { status: 400 });
     const row = (await queryFirst(
-      `SELECT o.*, pt.payable_amount, pt.unique_code, pt.qris_url AS dynamic_qris_url,
+      `SELECT o.*, pt.requested_amount, pt.payable_amount, pt.unique_code, pt.qris_url AS dynamic_qris_url,
               pt.expires_at AS payment_expires_at, pt.status AS transaction_status,
               pt.provider AS payment_provider
        FROM orders o LEFT JOIN payment_transactions pt ON pt.order_code=o.code
@@ -318,13 +341,21 @@ export async function GET(req: NextRequest) {
       const { scheduleGopayWake } = await import("@/lib/payments/gopay-wake");
       await scheduleGopayWake("web_check").catch(() => false);
     }
-    if (searchParams.get("wake") === "1" && row.payment_provider === "klikqris" && row.transaction_status === "pending") {
+    let qrisPreparationError = false;
+    if (searchParams.get("wake") === "1" && row.payment_provider === "klikqris" && ["initializing", "pending"].includes(String(row.transaction_status))) {
       try {
-        const { reconcileKlikQrisPayment } = await import("@/lib/payments/klikqris");
-        await reconcileKlikQrisPayment(code);
-        const refreshed = await queryFirst("SELECT o.status,o.payment_status,o.fulfillment_status,pt.status AS transaction_status FROM orders o JOIN payment_transactions pt ON pt.order_code=o.code WHERE o.code=?", code);
+        const { createKlikQrisInvoice, reconcileKlikQrisPayment } = await import("@/lib/payments/klikqris");
+        if (row.transaction_status === "initializing" && row.status === "pending") {
+          // Existing ledger: createKlikQrisInvoice only GETs this order ID.
+          await createKlikQrisInvoice(code, Number(row.requested_amount));
+        } else if (row.transaction_status === "pending") {
+          await reconcileKlikQrisPayment(code);
+        }
+        const refreshed = await queryFirst(`SELECT o.status,o.payment_status,o.fulfillment_status,o.expires_at,
+          pt.status AS transaction_status,pt.payable_amount,pt.unique_code,pt.qris_url AS dynamic_qris_url,
+          pt.expires_at AS payment_expires_at FROM orders o JOIN payment_transactions pt ON pt.order_code=o.code WHERE o.code=?`, code);
         if (refreshed) Object.assign(row, refreshed);
-      } catch { /* A provider failure never implies payment; callback can retry. */ }
+      } catch { qrisPreparationError = row.transaction_status === "initializing"; }
     }
     // PII minimal on public endpoint: mask WA + email
     const waFull = String(row.customer_wa ?? "");
@@ -451,7 +482,9 @@ export async function GET(req: NextRequest) {
         payment_account: row.payment_account,
         status: row.status,
         created_at: row.created_at,
-        expires_at: row.expires_at,
+        // An incomplete KlikQRIS invoice already has its local 15-minute cap.
+        expires_at: row.payment_provider === "klikqris" && row.payment_expires_at ? row.payment_expires_at : row.expires_at,
+        qris_preparation_error: qrisPreparationError,
         credentials_ready: credentialsReady,
         queued_delivery: queuedDelivery,
         instant_delivery: instantDelivery,

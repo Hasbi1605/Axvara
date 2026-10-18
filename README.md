@@ -2,6 +2,14 @@
 
 ## QRIS KlikQRIS (2026-10-18)
 
+Koreksi checkout 2026-10-18: adapter API/PNG kompatibel dengan workerd memakai
+redirect manual dan tetap menolak 3xx. Retry quote sama memulihkan invoice
+KlikQRIS lewat GET tanpa tagihan/reservasi baru, termasuk stok terakhir. Halaman
+pesanan tanpa QR menampilkan **QRIS belum siap** + **Coba siapkan QRIS**; aksi
+manual `wake=1` mencoba GET invoice yang sama, polling biasa tetap lokal. Bila
+provider belum menemukan invoice, pesanan tetap ditahan untuk cleanup/review;
+jangan memaksa POST ulang atau membayar sebelum QR dan total muncul.
+
 Rilis ini membuka kembali pembayaran otomatis dengan PG KlikQRIS (`QRIS_ACTIVE_PROVIDER=klikqris`, server secret `KLIKQRIS_ENABLED=true`, `KLIKQRIS_API_KEY`, `KLIKQRIS_MERCHANT_ID`). Sumber lokal tunggal `.klikqris-credentials` (git-ignored, chmod 600); isi/nilai rahasia tidak boleh masuk git/log/browser. Semua env Pages bertipe `secret_text`. API resmi: https://klikqris.com/dokumentasi-api. Callback ditetapkan per transaksi ke `https://axvara.tech/api/payments/klikqris/callback`, sehingga tidak bergantung pada pengisian callback dashboard.
 
 Harga bayar memakai `total_amount` gateway; nominal/kode unik tidak dihitung ulang lokal. Keputusan owner: batas AXVARA **tetap 15 menit**, meskipun gateway masih dapat menerima QR hingga 60 menit. Pembayaran setelah batas/cancel/expiry dicatat untuk pemeriksaan manual (Rekonsiliasi + satu alert admin), tanpa melunasi/mengirim produk otomatis. Status/nominal/order/signature dikonfirmasi server sebelum paid atomik. QR diproxy same-origin untuk kode AXV/AXP (migrasi 0069 `provider_qris_url`), tanpa membocorkan API key/signature.

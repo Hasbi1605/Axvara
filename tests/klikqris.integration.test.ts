@@ -26,6 +26,7 @@ beforeEach(async()=>{
  vi.stubEnv("NEXT_PUBLIC_PAYMENTS_MAINTENANCE","false");vi.stubEnv("QRIS_ACTIVE_PROVIDER","klikqris");
  vi.stubEnv("KLIKQRIS_ENABLED","true");vi.stubEnv("KLIKQRIS_API_KEY","fixture-private-api-key");vi.stubEnv("KLIKQRIS_MERCHANT_ID","123456789");
  vi.stubEnv("TELEGRAM_ADMIN_CHAT_ID","999");vi.stubEnv("PRODUCT_VARIANTS_READ","true");
+ const {clearRateLimitBucketsForTest}=await import("@/lib/rateLimit");clearRateLimitBucketsForTest();
  fetchMock=vi.fn(async(url: string|URL|Request,init?:RequestInit)=>{
   const target=String(url);
   if(target.endsWith("/api/qris/create")){
@@ -79,6 +80,41 @@ describe("KlikQRIS invoice contract and durable creation",()=>{
   expect(tx().status).toBe("initializing");expect(row().status).toBe("pending");
   failCreateAfterSave=false;const recovered=await createActiveQrisInvoice(A,1000);
   expect(recovered.isExisting).toBe(true);expect(posts()).toBe(1);expect(tx().status).toBe("pending");
+ });
+ it("web checkout retry resumes the existing invoice and returns its QR without another reservation",async()=>{
+  fixture.sql.exec("UPDATE product_variants SET price=1000,stock=1 WHERE id=1");
+  const {createCheckoutQuoteToken}=await import("@/lib/auth");
+  const {POST}=await import("@/app/api/orders/route");
+  const {token}=await createCheckoutQuoteToken({items:[{product_id:1,variant_id:1,qty:1,price:1000,name:"Fixture"}],subtotal:1000,
+   payment_methods:[{id:"qris",account_number:"-"}]});
+  const request=()=>new NextRequest("https://axvara.tech/api/orders",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({customer_wa:"081234567890",customer_email:"fixture@example.test",items:[{product_id:1,variant_id:1,qty:1}],payment_method:"qris",quote_token:token})});
+  failCreateAfterSave=true;
+  const failed=await POST(request());const first=await failed.json();expect(first).toMatchObject({error:expect.stringContaining("Tagihan sedang")});expect(failed.status).toBe(503);
+  const reserved=fixture.sql.prepare("SELECT stock FROM product_variants WHERE id=1").get()!.stock;
+  expect(reserved).toBe(0);
+  failCreateAfterSave=false;
+  const retry=await POST(request());expect(retry.status).toBe(200);const body=await retry.json();
+  expect(body).toMatchObject({code:first.code,reused:true,qris:{payable_amount:1089,image_url:expect.stringContaining("/image")}});
+  expect(posts()).toBe(1);expect(fixture.sql.prepare("SELECT stock FROM product_variants WHERE id=1").get()!.stock).toBe(reserved);
+  expect(fixture.sql.prepare("SELECT COUNT(*) AS n FROM orders").get()!.n).toBe(1);
+ });
+ it("manual preparation recovers an initializing invoice while ordinary polling never contacts the gateway",async()=>{
+  await seed(A,"web");failCreateAfterSave=true;await expect(createActiveQrisInvoice(A,1000)).rejects.toThrow();
+  const {GET}=await import("@/app/api/orders/route");fetchMock.mockClear();
+  const lookup=(wake=false)=>GET(new NextRequest(`https://axvara.tech/api/orders?code=${A}${wake?"&wake=1":""}`));
+  const pending=await (await lookup()).json();expect(pending.order.qris).toBeNull();expect(fetchMock).not.toHaveBeenCalled();
+  expect(pending.order.expires_at).toBe(tx().expires_at);
+  const recovered=await (await lookup(true)).json();
+  expect(recovered.order.qris).toMatchObject({payable_amount:1089,status:"pending"});
+  expect(recovered.order.qris_preparation_error).toBe(false);expect(posts()).toBe(0);
+  expect(fetchMock.mock.calls.filter(([url])=>String(url).includes("/status/"))).toHaveLength(1);
+ });
+ it("manual preparation leaves a missing upstream invoice ambiguous without a repeated POST",async()=>{
+  await seed(A,"web");failCreateAfterSave=true;await expect(createActiveQrisInvoice(A,1000)).rejects.toThrow();
+  remote.clear();fetchMock.mockClear();const {GET}=await import("@/app/api/orders/route");
+  const response=await GET(new NextRequest(`https://axvara.tech/api/orders?code=${A}&wake=1`));
+  const data=await response.json();expect(data.order.qris).toBeNull();expect(data.order.qris_preparation_error).toBe(true);
+  expect(tx().status).toBe("initializing");expect(posts()).toBe(0);expect(row().status).toBe("pending");
  });
  it("allows only one create POST during concurrent initialization",async()=>{
   await seed();let release!:()=>void,started!:()=>void;

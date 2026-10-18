@@ -2,6 +2,13 @@
 
 ## QRIS gateway KlikQRIS — 2026-10-18
 
+Koreksi 2026-10-18: order QRIS pending tanpa gambar menampilkan judul **QRIS
+belum siap**, penjelasan bahwa pesanan tersimpan dan belum boleh dibayar, serta
+CTA cyan **Coba siapkan QRIS** (tinggi 44px, disabled + spinner saat memeriksa).
+Respons sukses mengganti panel dengan QR dan total bayar server; respons gagal
+mempertahankan pesanan dan menampilkan pesan coba lagi. Kalimat admin akan
+memverifikasi bukti tidak dipakai untuk keadaan ini. Tanpa pill/animasi baru.
+
 ✅ Diimplementasikan, publikasi melalui CI. Checkout/QR tetap memakai layout AXVARA existing, tanpa overlay atau script Snap pihak ketiga. Banner maintenance disembunyikan pada build rilis `false`. Gambar QR diambil lewat proxy PNG same-origin, Simpan QRIS tetap bekerja. Market/Pedia serta invoice Telegram/WA menjelaskan batas otomatis 15 menit dan pemeriksaan manual bila terlanjur membayar setelah batas. Jangan menyamakan masa QR di gateway (uji 60 menit) dengan batas otomatis AXVARA. Notice dekat QR memakai teks putih 55% berukuran 11–12px/leading relaxed; bukan pill/titik kuning. Countdown dan nominal akhir tetap bersumber ledger server.
 
 Rekonsiliasi admin menambahkan label **KlikQRIS** dan panduan signature + konfirmasi API, dengan URL callback per invoice. Event pembayaran terlambat menampilkan petunjuk penanganan manual; tombol pencocokan nominal DANA/GoPay dan pelunasan paksa tidak ditawarkan untuk event KlikQRIS. Health hanya booleans/nama env, tanpa nilai API key/signature. Riwayat provider lama tetap bisa dibaca dengan label aslinya.

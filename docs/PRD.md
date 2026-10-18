@@ -2,6 +2,16 @@
 
 ## QRIS KlikQRIS — 2026-10-18
 
+Koreksi checkout 2026-10-18 ✅ diimplementasikan, publikasi melalui CI: koneksi
+API dan PNG QR memakai mode redirect yang kompatibel dengan runtime Cloudflare,
+tetap menolak redirect. Retry checkout dengan quote sama melanjutkan invoice
+KlikQRIS yang sudah ada, termasuk ketika stok terakhir sudah direservasi; tidak
+membuat order/reservasi/tagihan kedua. Bila QR belum siap, halaman pesanan
+menampilkan **QRIS belum siap** dan tombol **Coba siapkan QRIS**, tanpa arahan
+verifikasi bukti manual. Tombol itu memulihkan invoice lewat GET ID yang sama;
+polling biasa tetap hanya membaca status lokal. Invoice yang tidak ditemukan
+di gateway tetap ditahan untuk cleanup/review, tanpa mengulang POST ambigu.
+
 ✅ Diimplementasikan, publikasi melalui CI. Invoice baru Market, Pedia, Telegram (satuan/keranjang), dan bot WA memakai **PG KlikQRIS/in-house** bila `QRIS_ACTIVE_PROVIDER=klikqris`. Bukan MY PG/sandbox. Pemesanan otomatis dibuka kembali lewat build `NEXT_PUBLIC_PAYMENTS_MAINTENANCE=false`; switch maintenance tetap tersedia untuk recovery.
 
 Nominal bayar persis `total_amount` gateway, termasuk kode unik dari provider; tidak menambah kode lokal kedua. Keputusan owner: **batas bayar AXVARA tetap 15 menit**, walaupun invoice uji gateway berlaku 60 menit. Deadline order/ledger adalah yang paling awal antara deadline AXVARA yang sudah ada, 15 menit, dan expiry gateway; retry tidak memperpanjangnya. Semua kanal menjelaskan: lewat batas, jangan membayar QR lama; jika terlanjur, hubungi admin. Pembayaran terlambat/cancel/expiry yang sudah dikonfirmasi KlikQRIS tercatat di Rekonsiliasi dan diberitahukan ke admin sekali per event, tanpa menghidupkan order, memotong stok lagi, atau mengirim produk otomatis. Admin meninjau stok/dana untuk penyelesaian manual; tidak ada refund/pelunasan paksa otomatis.

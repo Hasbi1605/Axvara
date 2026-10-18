@@ -187,7 +187,7 @@ export default function OrderSuccessPage() {
     }
     if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
     setOrder(fromApi(body.order));
-    setFetchError(null);
+    setFetchError(body.order?.qris_preparation_error ? "QRIS belum tersedia. Tunggu sebentar lalu coba lagi; pesanan yang sama tetap digunakan." : null);
     // Titik "belum dibayar" di tab Pesanan membaca salinan lokal; catat status
     // akhir begitu server tidak lagi pending.
     if (body.order?.status && body.order.status !== "pending") settleLocalOrder(code, String(body.order.status));
@@ -369,6 +369,7 @@ export default function OrderSuccessPage() {
   // berputar + tombol cek manual tampil (di bawah). Kedaluwarsa/dibatalkan
   // tetap statis agar tidak menjanjikan polling yang tidak ada.
   const isPendingQris = Boolean(order.qris) && order.status === "pending" && !isExpired && !qrisExpired;
+  const isPreparingQris = order.method === "qris" && !order.qris && order.status === "pending" && !isExpired;
   const compactPayment = Boolean(order.qris) && order.status === "pending" && !isExpired;
   // Lunas TAPI gagal kirim (audit ronde 4, W-H1). Halaman ini dibuka paling
   // sering pasca-bayar (redirect checkout), tetapi dulu tetap merayakan
@@ -535,7 +536,7 @@ export default function OrderSuccessPage() {
             <img src={statusVisual.icon} alt="" width={32} height={32} className="h-8 w-8 object-contain" style={{ filter: statusVisual.filter }} draggable={false} />
           )}
         </div>
-        <h1 className="mt-4 font-display text-2xl font-bold text-white">{isDeliveryFailed ? "Pengiriman Produk Bermasalah" : isPaid ? "Pembayaran Dikonfirmasi! 🎉" : isCancelled ? "Pesanan Dibatalkan" : isExpired ? "Pesanan Kedaluwarsa" : order.qris ? "Selesaikan Pembayaran QRIS" : "Pesanan Diterima!"}</h1>
+        <h1 className="mt-4 font-display text-2xl font-bold text-white">{isDeliveryFailed ? "Pengiriman Produk Bermasalah" : isPaid ? "Pembayaran Dikonfirmasi! 🎉" : isCancelled ? "Pesanan Dibatalkan" : isExpired ? "Pesanan Kedaluwarsa" : isPreparingQris ? "QRIS belum siap" : order.qris ? "Selesaikan Pembayaran QRIS" : "Pesanan Diterima!"}</h1>
         <p className="mt-2 font-mono text-sm font-bold tracking-[0.08em] text-[#00E5FF]">{order.code}</p>
         {isDeliveryFailed ? (
           <span className="mt-3 inline-flex rounded-full border border-red-500/25 bg-red-500/15 px-3 py-1.5 text-xs font-semibold text-red-300">Lunas — Perlu Bantuan</span>
@@ -558,6 +559,8 @@ export default function OrderSuccessPage() {
               ? <>Pesanan ini dibatalkan. Hubungi admin jika kamu sudah melakukan transfer.</>
               : isExpired
                 ? <>Batas pembayaran sudah habis. Jangan bayar QRIS lama. Silakan buat pesanan baru.</>
+                : isPreparingQris
+                  ? <>Pesanan tersimpan, tetapi tagihan QRIS belum tersedia. Coba siapkan kembali untuk pesanan ini. Jangan melakukan pembayaran sebelum QRIS dan total bayar muncul.</>
                 : order.qris && qrisExpired
                   ? <>QRIS sudah hangus. Jangan bayar QRIS lama.</>
                   : order.qris
@@ -565,6 +568,16 @@ export default function OrderSuccessPage() {
                   : <>Terima kasih, <span className="font-medium text-white">{order.name}</span>! Admin akan memverifikasi bukti pembayaran dan menghubungi kamu.</>}
         </p>
         </>}
+
+        {isPreparingQris && (
+          <div className="mt-5">
+            <button type="button" onClick={checkStatusNow} disabled={checkingNow}
+              className="inline-flex h-11 items-center gap-2 rounded-xl bg-[#00E5FF] px-5 text-sm font-bold text-[#080C1E] disabled:opacity-50">
+              {checkingNow && <InlineSpinner tone="dark" />}
+              {checkingNow ? "Memeriksa QRIS…" : "Coba siapkan QRIS"}
+            </button>
+          </div>
+        )}
 
         {order.qris && order.status === "pending" && !isExpired && (
           <section className="mt-3 rounded-xl border border-[#00E5FF]/20 bg-[#00E5FF]/[0.05] p-3 sm:p-4" aria-label="QRIS dinamis">

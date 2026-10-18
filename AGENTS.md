@@ -32,6 +32,7 @@ Jika perubahan mengubah struktur folder, route `src/app/*`, komponen `src/compon
 
 
 ### PG KlikQRIS — 2026-10-18
+- API/PNG wajib `redirect: "manual"` + tolak non-2xx; `redirect: "error"` ditolak workerd sebelum jaringan. Verifikasi adapter di runtime workerd, bukan hanya fetch mock. Retry quote existing dan aksi manual `wake=1` memulihkan initializing hanya melalui GET; jangan POST ulang untuk 404/timeout ambigu atau membuat reservasi baru.
 - Sumber kredensial `.klikqris-credentials` (git-ignored, chmod600). Pages secret_text: KLIKQRIS_API_KEY, KLIKQRIS_MERCHANT_ID, KLIKQRIS_ENABLED=true, QRIS_ACTIVE_PROVIDER=klikqris. Jangan log/commit/masukkan key atau signature ke browser. Callback per invoice `/api/payments/klikqris/callback`.
 - Keputusan owner: batas otomatis AXVARA tetap 15 menit walau gateway 60 menit. Pembayaran terlambat masuk Rekonsiliasi + alert admin, tanpa revive/refund/fulfillment otomatis. Callback signature + status API wajib cocok; konfirmasi gagal tidak boleh dianggap paid.
 - Ledger klaim sebelum POST; retry ambigu hanya GET order ID sama. Pertahankan stok in-flight. Migrasi 0069 hanya menambah provider_qris_url; DANA/GoPay lama tetap dilayani dan tidak dipindah provider. Tidak ada cron baru.
