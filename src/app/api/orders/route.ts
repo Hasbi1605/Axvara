@@ -268,6 +268,10 @@ export async function POST(req: NextRequest) {
       qrisInvoice = await createActiveQrisInvoice(code, quote.subtotal);
     } catch (error) {
       console.error("DANA QRIS invoice setup failed:", error instanceof Error ? error.message : "unknown");
+      if (error instanceof Error && error.message.startsWith("klikqris_")) {
+        const pending = await queryFirst("SELECT id FROM payment_transactions WHERE order_code=? AND provider='klikqris' AND status IN ('initializing','pending')", code);
+        if (pending) return NextResponse.json({ error: "Tagihan sedang disiapkan. Tunggu sebentar lalu coba lagi dengan checkout yang sama.", code }, { status: 503 });
+      }
       try {
         await transitionPendingOrder(code, "dibatalkan", "dana_qris_setup_failed", quote.items);
       } catch { /* A concurrent terminal transition is safe. */ }
@@ -313,6 +317,14 @@ export async function GET(req: NextRequest) {
       && String(row.payment_provider ?? "") === "gopay" && String(row.transaction_status ?? "") === "pending") {
       const { scheduleGopayWake } = await import("@/lib/payments/gopay-wake");
       await scheduleGopayWake("web_check").catch(() => false);
+    }
+    if (searchParams.get("wake") === "1" && row.payment_provider === "klikqris" && row.transaction_status === "pending") {
+      try {
+        const { reconcileKlikQrisPayment } = await import("@/lib/payments/klikqris");
+        await reconcileKlikQrisPayment(code);
+        const refreshed = await queryFirst("SELECT o.status,o.payment_status,o.fulfillment_status,pt.status AS transaction_status FROM orders o JOIN payment_transactions pt ON pt.order_code=o.code WHERE o.code=?", code);
+        if (refreshed) Object.assign(row, refreshed);
+      } catch { /* A provider failure never implies payment; callback can retry. */ }
     }
     // PII minimal on public endpoint: mask WA + email
     const waFull = String(row.customer_wa ?? "");
@@ -448,7 +460,7 @@ export async function GET(req: NextRequest) {
         // /pesanan/[code] membutuhkan ini untuk membedakan lunas-terkirim dari
         // lunas-gagal-kirim (audit ronde 4, W-H1); /api/orders/lookup sudah punya.
         fulfillment_status: row.fulfillment_status ?? null,
-        qris_reissue_allowed: row.status === "pending" && row.sales_channel !== "whatsapp" && Number(row.qris_reissue_count || 0) < MAX_QRIS_REISSUES,
+        qris_reissue_allowed: row.payment_provider !== "klikqris" && row.status === "pending" && row.sales_channel !== "whatsapp" && Number(row.qris_reissue_count || 0) < MAX_QRIS_REISSUES,
         qris: row.dynamic_qris_url ? {
           payable_amount: row.payable_amount,
           unique_code: row.unique_code,

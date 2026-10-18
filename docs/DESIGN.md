@@ -1,5 +1,11 @@
 # DESIGN.md — AXVARA Design System
 
+## QRIS gateway KlikQRIS — 2026-10-18
+
+✅ Diimplementasikan, publikasi melalui CI. Checkout/QR tetap memakai layout AXVARA existing, tanpa overlay atau script Snap pihak ketiga. Banner maintenance disembunyikan pada build rilis `false`. Gambar QR diambil lewat proxy PNG same-origin, Simpan QRIS tetap bekerja. Market/Pedia serta invoice Telegram/WA menjelaskan batas otomatis 15 menit dan pemeriksaan manual bila terlanjur membayar setelah batas. Jangan menyamakan masa QR di gateway (uji 60 menit) dengan batas otomatis AXVARA. Notice dekat QR memakai teks putih 55% berukuran 11–12px/leading relaxed; bukan pill/titik kuning. Countdown dan nominal akhir tetap bersumber ledger server.
+
+Rekonsiliasi admin menambahkan label **KlikQRIS** dan panduan signature + konfirmasi API, dengan URL callback per invoice. Event pembayaran terlambat menampilkan petunjuk penanganan manual; tombol pencocokan nominal DANA/GoPay dan pelunasan paksa tidak ditawarkan untuk event KlikQRIS. Health hanya booleans/nama env, tanpa nilai API key/signature. Riwayat provider lama tetap bisa dibaca dengan label aslinya.
+
 ## Pemberitahuan maintenance pembayaran — 2026-10-18
 
 ✅ Diimplementasikan, publikasi melalui CI. Banner statis di bawah navbar Market/Pedia memakai latar putih 4%, garis putih 10%, teks putih 80% dan CTA putih **Order manual via WhatsApp**; tanpa titik/pill kuning, animasi, overlay atau countdown. Container 1280px, padding 16px mobile/24–32px desktop, teks dan tombol bertumpuk di mobile dan sejajar mulai `sm`, tap target ≥44px dan fokus cyan. Checkout menampilkan judul **Pembayaran sedang maintenance**, CTA WA serta petunjuk bagi pembeli yang sudah membayar; formulir pembayaran disembunyikan. Pedia tetap mempertahankan daftar jenis layanan dan mengganti formulir sesudah pilihan produk. Banner dan panel menggunakan komponen bersama `shared/PaymentMaintenanceNotice.tsx`; tautan absolut menuju hub WA terpusat agar benar pada kedua host. Bot menampilkan copy yang sama beserta tombol order manual, katalog dan Pesanan saya. Tidak mencantumkan estimasi pemulihan yang belum diketahui.
@@ -875,7 +881,7 @@ dimatikan.
 
 ## 9. Asset
 
-- **QRIS:** dirender sebagai PNG per order dari payload DANA Business server-only; tidak ada aset QRIS statis publik. Framing (label + lockup) murni frontend di `/pesanan/[code]` — lihat §5.7b
+- **QRIS:** KlikQRIS diproxy sebagai PNG same-origin per order; invoice DANA/GoPay lama dirender dari payload merchant server-only; tidak ada aset QRIS statis publik. Framing (label + lockup) murni frontend di `/pesanan/[code]` — lihat §5.7b
 - **Logo QRIS resmi:** `public/brand/qris.svg` (mono putih, sumber resmi BI via Wikimedia Commons; JANGAN ketik ulang dengan font / comot JPG)
 - **Logo:** Wordmark "AXVARA" Space Grotesk Bold, X stylized sebagai vault gate (gap di tengah X dengan glow cyan). Versi light di dark bg. SVG.
 - **Ikon:** Lucide React (outline, 20px, stroke 1.75)

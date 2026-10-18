@@ -19,7 +19,7 @@
 // Cakupan sengaja inti (yang menyentuh pembeli); sisanya tetap di route besar
 // yang masih dipanggil Worker sebagai pelengkap (idempoten — klaim atomik/
 // lease/transisi bersyarat mencegah kerja ganda):
-//   expiry      — initializing basi + invoice DANA/GoPay lewat deadline order
+//   expiry      — initializing basi + invoice DANA/GoPay/KlikQRIS lewat deadline
 //   fulfillment — lepas lock basi + proses job kirim yang jatuh tempo
 //   wr_orders   — pulihkan klaim/saldo, SEMBUHKAN link yatim lunas-tanpa-link
 //                 TANPA gate due (2026-10-09), retry, teruskan order lunas,
@@ -118,12 +118,12 @@ async function runExpiry(db: Db) {
     }, db.d1).catch(() => false);
     if (changed) staleInitializing++;
   }
-  // Hanya QRIS dinamis (DANA/GoPay): cabang provider lain mengirim pesan
+  // Hanya QRIS dinamis: cabang provider lain mengirim pesan
   // Telegram dan tetap ditangani route besar.
   const candidates = await db.queryAll(
     `SELECT pt.order_code, COALESCE(o.expires_at, pt.expires_at) AS expires_at, o.items
        FROM payment_transactions pt JOIN orders o ON o.code=pt.order_code
-      WHERE pt.status='pending' AND pt.provider IN ('dana','gopay')
+      WHERE pt.status='pending' AND pt.provider IN ('dana','gopay','klikqris')
         AND julianday(COALESCE(o.expires_at, pt.expires_at)) <= julianday('now')
       ORDER BY julianday(COALESCE(o.expires_at, pt.expires_at)) ASC
       LIMIT ?`,

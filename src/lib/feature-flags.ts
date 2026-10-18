@@ -1,3 +1,4 @@
+import { isActiveQrisConfigured } from "@/lib/payments/dana-qris";
 // src/lib/feature-flags.ts — Feature flags for phased rollout
 
 export const flags = {
@@ -34,9 +35,7 @@ export async function preflightWhatsAppPayment(
 
   if (!requestedMethod || requestedMethod === "QRIS") {
     const qris = methods.find(m => String(m.id) === "qris");
-    const danaConfigured = process.env.DANA_QRIS_ENABLED === "true"
-      && Boolean(process.env.DANA_STATIC_QRIS?.trim())
-      && Boolean(process.env.DANA_WEBHOOK_SECRET?.trim());
+    const danaConfigured = isActiveQrisConfigured();
     if (!qris || !danaConfigured) missing.push("QRIS Dinamis DANA (environment belum lengkap)");
   }
 

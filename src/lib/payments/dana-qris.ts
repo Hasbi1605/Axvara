@@ -8,10 +8,10 @@ export const GOPAY_QRIS_PROVIDER = "gopay";
 export const GOPAY_QRIS_MODE = "dynamic-qris";
 export const GOPAY_MERCHANT_ID = "gopay-merchant";
 /** Rail QRIS yang didukung ledger (matcher selalu filter provider). */
-export const QRIS_PROVIDERS = [DANA_QRIS_PROVIDER, GOPAY_QRIS_PROVIDER] as const;
+export const QRIS_PROVIDERS = [DANA_QRIS_PROVIDER, GOPAY_QRIS_PROVIDER, "klikqris"] as const;
 export type QrisProvider = (typeof QRIS_PROVIDERS)[number];
 export function isQrisProvider(value: unknown): value is QrisProvider {
-  return value === DANA_QRIS_PROVIDER || value === GOPAY_QRIS_PROVIDER;
+  return value === DANA_QRIS_PROVIDER || value === GOPAY_QRIS_PROVIDER || value === "klikqris";
 }
 export const DANA_QRIS_EXPIRY_MINUTES = 15;
 /** Masa hidup order QRIS disamakan dengan QR (15 menit, keputusan owner 2026-10-11):
@@ -234,18 +234,27 @@ export function isGopayQrisConfigured(): boolean {
  */
 export function activeQrisProvider(): QrisProvider {
   const wanted = (process.env.QRIS_ACTIVE_PROVIDER || "").trim().toLowerCase();
+  if (wanted === "klikqris") return "klikqris"; // Explicit selection fails closed if its config is missing.
   if (wanted === GOPAY_QRIS_PROVIDER && isGopayQrisConfigured()) return GOPAY_QRIS_PROVIDER;
   return DANA_QRIS_PROVIDER;
 }
 
 export function qrisStaticPayload(provider: QrisProvider): string {
+  if (provider === "klikqris") return "";
   return provider === GOPAY_QRIS_PROVIDER
     ? (process.env.GOPAY_STATIC_QRIS || "").trim()
     : (process.env.DANA_STATIC_QRIS || "").trim();
 }
 
 export function qrisMerchantId(provider: QrisProvider): string {
+  if (provider === "klikqris") return process.env.KLIKQRIS_MERCHANT_ID || "";
   return provider === GOPAY_QRIS_PROVIDER ? GOPAY_MERCHANT_ID : "dana-business";
+}
+
+export function isActiveQrisConfigured(): boolean {
+  if (activeQrisProvider() === "klikqris") return process.env.KLIKQRIS_ENABLED === "true"
+    && Boolean(process.env.KLIKQRIS_API_KEY?.trim()) && /^[0-9]+$/.test(process.env.KLIKQRIS_MERCHANT_ID || "");
+  return activeQrisProvider() === "gopay" ? isGopayQrisConfigured() : isDanaQrisConfigured();
 }
 
 function invoiceFromRow(row: Record<string, unknown>, isExisting: boolean): DanaQrisInvoice {
@@ -273,6 +282,11 @@ export async function createGopayQrisInvoice(orderCode: string, requestedAmount:
 
 /** Invoice untuk order baru mengikuti rail aktif (default dana). */
 export async function createActiveQrisInvoice(orderCode: string, requestedAmount: number): Promise<DanaQrisInvoice> {
+  assertPaymentsAvailable();
+  if (activeQrisProvider() === "klikqris") {
+    const { createKlikQrisInvoice } = await import("./klikqris");
+    return createKlikQrisInvoice(orderCode, requestedAmount);
+  }
   return createQrisInvoice(activeQrisProvider(), orderCode, requestedAmount);
 }
 
@@ -408,6 +422,10 @@ export type QrisReissueResult =  | { ok: true; invoice: DanaQrisInvoice; remaini
  */
 export async function reissueDanaQrisInvoice(orderCode: string): Promise<QrisReissueResult> {
   assertPaymentsAvailable();
+  if (activeQrisProvider() === "klikqris") {
+    const existing = await queryFirst("SELECT provider FROM payment_transactions WHERE order_code=?", orderCode);
+    if (existing?.provider === "klikqris") return { ok: false, reason: "order_not_reissuable" };
+  }
   if (!isDanaQrisConfigured()) throw new Error("dana_qris_not_configured");
   const d1 = getD1();
   if (!d1) throw new Error("dana_qris_requires_d1");

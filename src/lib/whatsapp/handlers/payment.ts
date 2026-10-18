@@ -230,7 +230,7 @@ async function createAndSendDanaQrisPayment(
   inboxId: string,
 ) {
   const existingTransaction = await queryFirst(
-    `SELECT payable_amount, qris_url, expires_at, status FROM payment_transactions WHERE order_code=? AND provider IN ('dana','gopay')`,
+    `SELECT payable_amount, qris_url, expires_at, status FROM payment_transactions WHERE order_code=? AND provider IN ('dana','gopay','klikqris')`,
     orderCode,
   );
   if (existingTransaction) {

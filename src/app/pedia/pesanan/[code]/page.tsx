@@ -1,6 +1,7 @@
 // src/app/pedia/pesanan/[code]/page.tsx — Status pesanan (PD-12, DESIGN §6.4).
 // QRIS (sebelum lunas) / ring + timeline + refill + kartu kredit + needs_check.
 "use client";
+import { QRIS_PAYMENT_DEADLINE_NOTICE } from "@/lib/payment-maintenance";
 
 export const runtime = "edge";
 
@@ -27,9 +28,9 @@ export default function PediaOrderStatusPage() {
   const [error, setError] = useState<string | null>(null);
   const [refillMsg, setRefillMsg] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (manual = false) => {
     try {
-      const res = await fetch(`/api/pedia/orders/${encodeURIComponent(code ?? "")}`, { cache: "no-store" });
+      const res = await fetch(`/api/pedia/orders/${encodeURIComponent(code ?? "")}${manual ? "?wake=1" : ""}`, { cache: "no-store" });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error ?? "Gagal memuat");
       setData(d.order);
@@ -109,9 +110,9 @@ export default function PediaOrderStatusPage() {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={data.qris.image_url} alt="QRIS pembayaran" className="mx-auto mt-3 h-56 w-56 rounded-xl bg-white p-2" />
             <p className="mt-3 font-display text-xl font-bold text-white">Rp{Number(data.qris.payable_amount).toLocaleString("id-ID")}</p>
-            <p className="mt-1 text-xs text-white/55">Bayar sesuai nominal yang tertera. QRIS berlaku 15 menit.</p>
-            <div className="mt-4 grid grid-cols-2 gap-2"><a href={data.qris.image_url} download={`AXVARA-${data.code}-QRIS.png`} className="flex min-h-11 items-center justify-center rounded-xl border border-white/15 px-2 text-sm text-white/80">Simpan QRIS</a><button type="button" onClick={() => void load()} className="min-h-11 rounded-xl bg-[#00E5FF] px-2 text-sm font-semibold text-[#080C1E]">Cek pembayaran</button></div>
-            <p className="mt-3 text-xs text-white/50">Status pembayaran diperiksa otomatis.</p>
+            <p className="mt-1 text-xs text-white/55">Bayar sesuai nominal yang tertera sebelum waktu habis.</p>
+            <div className="mt-4 grid grid-cols-2 gap-2"><a href={data.qris.image_url} download={`AXVARA-${data.code}-QRIS.png`} className="flex min-h-11 items-center justify-center rounded-xl border border-white/15 px-2 text-sm text-white/80">Simpan QRIS</a><button type="button" onClick={() => void load(true)} className="min-h-11 rounded-xl bg-[#00E5FF] px-2 text-sm font-semibold text-[#080C1E]">Cek pembayaran</button></div>
+            <p className="mt-3 text-xs leading-relaxed text-white/50">{QRIS_PAYMENT_DEADLINE_NOTICE}</p>
           </>}
         </div>
       ) : (

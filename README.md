@@ -1,8 +1,16 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## QRIS KlikQRIS (2026-10-18)
+
+Rilis ini membuka kembali pembayaran otomatis dengan PG KlikQRIS (`QRIS_ACTIVE_PROVIDER=klikqris`, server secret `KLIKQRIS_ENABLED=true`, `KLIKQRIS_API_KEY`, `KLIKQRIS_MERCHANT_ID`). Sumber lokal tunggal `.klikqris-credentials` (git-ignored, chmod 600); isi/nilai rahasia tidak boleh masuk git/log/browser. Semua env Pages bertipe `secret_text`. API resmi: https://klikqris.com/dokumentasi-api. Callback ditetapkan per transaksi ke `https://axvara.tech/api/payments/klikqris/callback`, sehingga tidak bergantung pada pengisian callback dashboard.
+
+Harga bayar memakai `total_amount` gateway; nominal/kode unik tidak dihitung ulang lokal. Keputusan owner: batas AXVARA **tetap 15 menit**, meskipun gateway masih dapat menerima QR hingga 60 menit. Pembayaran setelah batas/cancel/expiry dicatat untuk pemeriksaan manual (Rekonsiliasi + satu alert admin), tanpa melunasi/mengirim produk otomatis. Status/nominal/order/signature dikonfirmasi server sebelum paid atomik. QR diproxy same-origin untuk kode AXV/AXP (migrasi 0069 `provider_qris_url`), tanpa membocorkan API key/signature.
+
+Pembuatan tagihan diklaim durable sebelum POST; retry ambigu hanya GET order ID sama, tidak POST/failover lagi. Stok in-flight tidak dilepas oleh catch kanal. Web/Pedia/TG mendukung cek manual provider; polling biasa membaca lokal, tanpa cron gateway baru. Invoice lama tetap DANA/GoPay, termasuk retry setelah perpindahan provider. Rollback hanya invoice baru: kembalikan `QRIS_ACTIVE_PROVIDER` melalui secret Pages + rilis CI; pertahankan kredensial KlikQRIS dan webhook untuk tagihan lama/pembayaran terlambat. Jangan mengaktifkan/menonaktifkan poller atau gateway repo lain untuk integrasi ini.
+
 ## Maintenance pembayaran sementara (2026-10-18)
 
-Mode pembayaran otomatis dikendalikan switch **build publik** `NEXT_PUBLIC_PAYMENTS_MAINTENANCE`, saat ini `"true"` pada langkah **Build Cloudflare Pages artifact** di `.github/workflows/ci.yml`. Nilai ditanam bersama pada UI dan server Pages (bukan secret/env runtime Pages; tanpa query D1). Untuk membuka pembayaran kembali, ubah nilai build ke `"false"`, verifikasi lalu commit/push main; jangan hanya mengganti env Cloudflare pada artefak lama. Dev mode maintenance: `NEXT_PUBLIC_PAYMENTS_MAINTENANCE=true npm run dev`.
+Mode pembayaran otomatis dikendalikan switch **build publik** `NEXT_PUBLIC_PAYMENTS_MAINTENANCE`, saat rilis KlikQRIS `"false"` pada langkah **Build Cloudflare Pages artifact** di `.github/workflows/ci.yml`. Nilai ditanam bersama pada UI dan server Pages (bukan secret/env runtime Pages; tanpa query D1). Untuk menghentikan pembayaran kembali, ubah nilai build ke `"true"`; untuk membukanya gunakan `"false"`, verifikasi lalu commit/push main; jangan hanya mengganti env Cloudflare pada artefak lama. Dev mode maintenance: `NEXT_PUBLIC_PAYMENTS_MAINTENANCE=true npm run dev`.
 
 Banner Market/Pedia, checkout dan bot Telegram mengarahkan **order manual via WhatsApp** ke hub kontak aktif. API checkout kedua layanan, bot TG/WA serta penerbitan/reissue QRIS menolak pembayaran baru sebelum perubahan finansial; error API 503 `reason: payment_maintenance`, `manual_order_url`, `Cache-Control: private, no-store`. Pesanan lama, webhook merchant, pemrosesan pengiriman dan cleanup tetap berjalan; tidak membatalkan transaksi atau menghapus keranjang. Tidak ada migrasi/secret/jadwal cron baru, auto-resume atau siaran massal. Maintenance ini terpisah dari fallback kuota D1 dan tidak menjanjikan selesai pukul 07.00.
 

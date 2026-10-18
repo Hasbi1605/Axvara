@@ -1,3 +1,4 @@
+import { isKlikQrisConfigured } from "@/lib/payments/klikqris";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { isD1Mode, queryAll, queryFirst } from "@/lib/db";
@@ -361,7 +362,7 @@ function legacySystems() {
   return {
     telegram: Boolean(process.env.TELEGRAM_BOT_TOKEN) && process.env.TELEGRAM_BOT_ENABLED === "true",
     whatsapp: Boolean(process.env.WHATSAPP_GATEWAY_URL) && process.env.WHATSAPP_ENABLED === "true",
-    qris: danaOk || gopayOk,
+    qris: danaOk || gopayOk || isKlikQrisConfigured(),
     fulfillment: process.env.AUTO_FULFILLMENT_ENABLED === "true" && Boolean(process.env.FULFILLMENT_ENCRYPTION_KEY),
   };
 }
@@ -398,8 +399,8 @@ function buildSystems(input: SystemsInput): Record<string, boolean> {
   });
   const qris = evaluateQris({
     configured: (Boolean(process.env.DANA_STATIC_QRIS) && Boolean(process.env.DANA_WEBHOOK_SECRET))
-      || (Boolean(process.env.GOPAY_STATIC_QRIS) && Boolean(process.env.GOPAY_POLLER_SECRET)),
-    enabled: process.env.DANA_QRIS_ENABLED === "true" || process.env.GOPAY_QRIS_ENABLED === "true",
+      || (Boolean(process.env.GOPAY_STATIC_QRIS) && Boolean(process.env.GOPAY_POLLER_SECRET)) || isKlikQrisConfigured(),
+    enabled: process.env.DANA_QRIS_ENABLED === "true" || process.env.GOPAY_QRIS_ENABLED === "true" || isKlikQrisConfigured(),
     unmatched7d: Number(input.qrisEvents.unmatched || 0),
     failed7d: Number(input.qrisEvents.failed || 0),
     lastMatchAt: input.qrisEvents.last_match ? String(input.qrisEvents.last_match) : null,

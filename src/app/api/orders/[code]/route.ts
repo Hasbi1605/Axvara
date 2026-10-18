@@ -18,7 +18,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ code
   if (!code || !/^AXV-\d{8}-[A-Z0-9]{8}$/.test(code)) return NextResponse.json({ error: "Kode tidak valid" }, { status: 400 });
   const row = (await queryFirst(
     `SELECT o.*, pt.payable_amount, pt.unique_code, pt.qris_url AS dynamic_qris_url,
-            pt.expires_at AS payment_expires_at, pt.status AS transaction_status
+            pt.expires_at AS payment_expires_at, pt.status AS transaction_status,pt.provider AS payment_provider
      FROM orders o LEFT JOIN payment_transactions pt ON pt.order_code=o.code
      WHERE o.code=?`,
     code,
@@ -88,7 +88,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ code
       supplier_owned: supplierOwned,
       supplier_running: supplierRunning,
       fulfillment_status: fulfillmentStatus,
-      qris_reissue_allowed: row.status === "pending" && row.sales_channel !== "whatsapp" && Number(row.qris_reissue_count || 0) < MAX_QRIS_REISSUES,
+      qris_reissue_allowed: row.payment_provider !== "klikqris" && row.status === "pending" && row.sales_channel !== "whatsapp" && Number(row.qris_reissue_count || 0) < MAX_QRIS_REISSUES,
       qris: row.dynamic_qris_url ? {
         payable_amount: row.payable_amount,
         unique_code: row.unique_code,

@@ -1,4 +1,5 @@
 "use client";
+import { QRIS_PAYMENT_DEADLINE_NOTICE } from "@/lib/payment-maintenance";
 
 export const runtime = "edge";
 
@@ -627,6 +628,7 @@ export default function OrderSuccessPage() {
                   <InlineSpinner className="h-3 w-3 shrink-0" />
                   <span>Mengecek pembayaran otomatis tiap 5 detik{lastCheckedAt && <span className="sr-only">{` • terakhir dicek ${new Date(lastCheckedAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`}</span>}</span>
                 </p>
+                <p className="mt-2 text-center text-[11px] leading-relaxed text-white/55">{QRIS_PAYMENT_DEADLINE_NOTICE}</p>
                 </div>
               </div>
             )}

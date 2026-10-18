@@ -1,8 +1,18 @@
 # PRD — AXVARA
 
+## QRIS KlikQRIS — 2026-10-18
+
+✅ Diimplementasikan, publikasi melalui CI. Invoice baru Market, Pedia, Telegram (satuan/keranjang), dan bot WA memakai **PG KlikQRIS/in-house** bila `QRIS_ACTIVE_PROVIDER=klikqris`. Bukan MY PG/sandbox. Pemesanan otomatis dibuka kembali lewat build `NEXT_PUBLIC_PAYMENTS_MAINTENANCE=false`; switch maintenance tetap tersedia untuk recovery.
+
+Nominal bayar persis `total_amount` gateway, termasuk kode unik dari provider; tidak menambah kode lokal kedua. Keputusan owner: **batas bayar AXVARA tetap 15 menit**, walaupun invoice uji gateway berlaku 60 menit. Deadline order/ledger adalah yang paling awal antara deadline AXVARA yang sudah ada, 15 menit, dan expiry gateway; retry tidak memperpanjangnya. Semua kanal menjelaskan: lewat batas, jangan membayar QR lama; jika terlanjur, hubungi admin. Pembayaran terlambat/cancel/expiry yang sudah dikonfirmasi KlikQRIS tercatat di Rekonsiliasi dan diberitahukan ke admin sekali per event, tanpa menghidupkan order, memotong stok lagi, atau mengirim produk otomatis. Admin meninjau stok/dana untuk penyelesaian manual; tidak ada refund/pelunasan paksa otomatis.
+
+Callback per invoice memvalidasi signature tersimpan, order/merchant/nominal dan konfirmasi status API server. Gagal konfirmasi tidak dianggap lunas. Transisi paid, event dan outbox Market atomik; Pedia memakai antreannya sendiri, tidak mengirim produk Market dengan ID sama. Callback duplikat tidak mengulang fulfillment. POST create hanya oleh pemenang klaim ledger durable; timeout/panggilan ambigu dipulihkan melalui GET status dengan order ID sama, tanpa membuat tagihan atau memindahkan provider otomatis. Stok order in-flight tetap direservasi, cleanup lama menjadi penjamin.
+
+Invoice DANA/GoPay lama tetap di rail asalnya; webhook/secret/poller lama dipertahankan. QR gateway ditampilkan lewat proxy PNG same-origin yang dibatasi host/ukuran/redirect, tanpa Snap JS atau signature di browser. Callback adalah authority utama; tombol Cek pembayaran/Periksa pembayaran dapat mengonfirmasi lewat API provider. Polling biasa hanya membaca status lokal; tidak ada cron/polling gateway baru.
+
 ## Maintenance pembayaran — 2026-10-18
 
-✅ Diimplementasikan; mode aktif pada artefak Pages yang dibangun CI. Pembayaran otomatis sementara dihentikan atas permintaan owner. Katalog Market/Pedia tetap dapat dibuka; banner di kedua layanan dan panel checkout mengarahkan pembeli ke **Order manual via WhatsApp**, melalui hub `/wa` dengan pesan terisi. Tidak menjanjikan jam selesai atau reset otomatis.
+✅ Switch diimplementasikan untuk penghentian pembayaran sementara. Pada rilis KlikQRIS 2026-10-18 nilainya `false`; perilaku berikut berlaku ketika switch diaktifkan kembali. Katalog Market/Pedia tetap dapat dibuka; banner di kedua layanan dan panel checkout mengarahkan pembeli ke **Order manual via WhatsApp**, melalui hub `/wa` dengan pesan terisi. Tidak menjanjikan jam selesai atau reset otomatis.
 
 `/start`, tombol home dan percobaan bayar/perpanjang QRIS di Telegram memberi pemberitahuan serta tombol WA; katalog dan Pesanan saya tetap tersedia. Bot grup WA juga menolak pembayaran otomatis dengan tautan admin. Penolakan server sebelum membuat order, memotong stok/kredit atau menulis invoice berlaku pada checkout Market/Pedia dan reissue, termasuk akses langsung. Invoice dan order lama tidak dihapus: webhook merchant, pelacakan, pengiriman dan cleanup kedaluwarsa tetap berjalan. Pembeli yang sudah membayar diminta menyimpan bukti dan menghubungi admin dengan kode pesanan. Tidak ada siaran massal otomatis.
 
@@ -47,7 +57,7 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 
 **Bedanya dengan Marketku.id:**
 - Desain: Apple Store minimalis + glassmorphism, bukan template marketplace kaku
-- Pembayaran: Tanpa payment gateway pihak ketiga. **QRIS dinamis merchant** dengan provider efektif GoPay/DANA; transfer manual tetap mode maintenance
+- Pembayaran: **QRIS dinamis melalui gateway KlikQRIS** untuk invoice baru; GoPay/DANA tetap didukung untuk invoice lama; transfer manual tetap mode maintenance
 - Hosting: **Gratis selamanya** di Cloudflare Pages — unlimited bandwidth, CDN Indonesia super cepat, tanpa ngurus VPS
 - Fokus niche: Digital goods (lisensi/key/akun), bukan fisik
 
@@ -55,7 +65,7 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 - Menjadi toko digital premium yang terlihat **mahal & terpercaya** sehingga konversi lebih tinggi untuk produk digital 50rb–1jt
 - Checkout **paling simpel** untuk pembeli awam: pilih produk → pilih Transfer/QRIS → scan QR dinamis atau upload bukti transfer manual → selesai
 - Admin bisa kelola pesanan **dari HP**; pembayaran QRIS dilunasi otomatis oleh event merchant sesuai invoice, sedangkan transfer manual tetap ditinjau admin
-- Biaya operasional **Rp 0/bulan** (diluar domain ~Rp 230rb/tahun)
+- Biaya infrastruktur diupayakan Rp 0/bulan di luar domain; biaya gateway mengikuti ketentuan KlikQRIS
 
 ### 1.3 Target User
 

@@ -1,3 +1,4 @@
+import { QRIS_PAYMENT_DEADLINE_NOTICE } from "@/lib/payment-maintenance";
 // src/lib/telegram/messages/purchase.ts — Copy alur pembelian & invoice.
 //
 // MENGAPA dipisah: ini JALUR UANG (konfirmasi varian → jumlah → keranjang →
@@ -248,6 +249,7 @@ export function invoiceMessage(params: {
     isQris ? "👆 Scan QRIS di atas untuk membayar" : "👆 Transfer sesuai nominal di atas",
     "",
     `⏰ Batas: ${expiryText}`,
+    ...(isQris ? [QRIS_PAYMENT_DEADLINE_NOTICE] : []),
     "",
     "━━━━━━━━━━━━━━━━━━━━━",
     "Sudah bayar? Tekan 🔄 Periksa Pembayaran di bawah — bot juga otomatis mengabari setelah pembayaran terkonfirmasi.",

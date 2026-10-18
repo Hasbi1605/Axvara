@@ -1,3 +1,4 @@
+import { fetchKlikQrisImage } from "@/lib/payments/klikqris";
 import { NextRequest, NextResponse } from "next/server";
 import { queryFirst } from "@/lib/db";
 import { renderQrisPng } from "@/lib/payments/qris-png";
@@ -12,20 +13,22 @@ export async function GET(
 ) {
   const { code } = await params;
   const orderCode = String(code || "").toUpperCase();
-  if (!isValidOrderCode(orderCode)) return new NextResponse("Not found", { status: 404 });
+  if (!isValidOrderCode(orderCode) && !/^AXP-\d{8}-[A-Z0-9]{8}$/.test(orderCode)) return new NextResponse("Not found", { status: 404 });
 
   const transaction = await queryFirst(
-    `SELECT qris_payload, status, expires_at
+    `SELECT qris_payload, provider, provider_qris_url, status, expires_at
      FROM payment_transactions
-     WHERE order_code=? AND provider IN ('dana','gopay')`,
+     WHERE order_code=? AND provider IN ('dana','gopay','klikqris')`,
     orderCode,
   );
-  if (!transaction?.qris_payload) return new NextResponse("Not found", { status: 404 });
+  if (!transaction || (!transaction.qris_payload && transaction.provider !== "klikqris")) return new NextResponse("Not found", { status: 404 });
   if (String(transaction.status) !== "paid" && Date.parse(String(transaction.expires_at)) <= Date.now()) {
     return new NextResponse("QRIS expired", { status: 410 });
   }
 
-  const png = renderQrisPng(String(transaction.qris_payload));
+  let png: Uint8Array;
+  try { png = transaction.provider === "klikqris" ? await fetchKlikQrisImage(transaction.provider_qris_url) : renderQrisPng(String(transaction.qris_payload)); }
+  catch { return new NextResponse("QRIS image unavailable", { status: 502, headers: { "Cache-Control": "no-store" } }); }
   const body = new Uint8Array(png).buffer as ArrayBuffer;
   return new NextResponse(body, {
     headers: {

@@ -88,8 +88,8 @@ describe("QRIS Hook parser and authentication", () => {
   });
 });
 
-describe("legacy QRIS rails removed", () => {
-  it("uses DANA QRIS in all three channel handlers", async () => {
+describe("QRIS provider routing", () => {
+  it("uses the shared QRIS entry point in all three channel handlers", async () => {
     const fs = await import("node:fs");
     const path = await import("node:path");
     const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), "utf8");
@@ -107,8 +107,8 @@ describe("legacy QRIS rails removed", () => {
       expect(read(file)).toMatch(/create(Dana|Active)QrisInvoice/);
       expect(read(file)).not.toMatch(/getPaymentProvider|KLIKQRIS/);
     }
-    expect(fs.existsSync(path.join(process.cwd(), "src/lib/payments/klikqris.ts"))).toBe(false);
-    expect(fs.existsSync(path.join(process.cwd(), "src/app/api/payments/klikqris/callback/route.ts"))).toBe(false);
+    expect(fs.existsSync(path.join(process.cwd(), "src/lib/payments/klikqris.ts"))).toBe(true);
+    expect(fs.existsSync(path.join(process.cwd(), "src/app/api/payments/klikqris/callback/route.ts"))).toBe(true);
   });
 
   it("keeps Android setup relevant only to DANA and exposes GoPay server guidance", async () => {

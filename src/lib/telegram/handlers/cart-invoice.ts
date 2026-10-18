@@ -192,6 +192,13 @@ export async function createAndSendCartInvoice(
     await markInvoiceSent(orderCode);
   } catch (error) {
     console.error("Cart order creation failed:", error instanceof Error ? error.message : "unknown");
+    if (error instanceof Error && error.message.startsWith("klikqris_")) {
+      const initializing = await queryFirst("SELECT id FROM payment_transactions WHERE order_code=? AND provider='klikqris' AND status IN ('initializing','pending')", orderCode).catch(() => ({ id: 1 }));
+      if (initializing) {
+        await sendMessage({ chat_id: chatId, text: `Tagihan sedang disiapkan. Jangan buat pesanan berulang. Kode pesanan: ${orderCode}. Tunggu sebentar atau hubungi admin.`, parse_mode: "HTML" }).catch(() => {});
+        return;
+      }
+    }
     // RR3-05: kegagalan FOTO invoice (order + ledger + stok sudah benar,
     // hanya foto tak sampai) = error TRANSIENT yang wajib retry nyata.
     // Stok/reservasi dipertahankan (lihat fence di bawah), lalu RETHROW

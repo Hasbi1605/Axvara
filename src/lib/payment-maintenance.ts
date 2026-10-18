@@ -20,3 +20,5 @@ export function paymentMaintenanceResponse(): Response {
 export function assertPaymentsAvailable(): void {
   if (isPaymentMaintenanceEnabled()) throw new Error("payment_maintenance");
 }
+
+export const QRIS_PAYMENT_DEADLINE_NOTICE = "Batas bayar otomatis 15 menit. Setelahnya jangan bayar QRIS lama; jika terlanjur, hubungi admin untuk pemeriksaan manual.";

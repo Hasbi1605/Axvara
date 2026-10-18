@@ -76,6 +76,15 @@ export async function handleOrderRefresh(chatId: number, messageId: number, orde
     await scheduleGopayWake("telegram_check").catch(() => false);
   }
 
+  if (order.payment_provider === "klikqris" && order.transaction_status === "pending") {
+    try {
+      const { reconcileKlikQrisPayment } = await import("@/lib/payments/klikqris");
+      await reconcileKlikQrisPayment(orderCode);
+      const refreshed = await queryFirst("SELECT payment_status,fulfillment_status FROM orders WHERE code=?", orderCode);
+      if (refreshed) Object.assign(order, refreshed);
+    } catch { /* Keep pending if the provider cannot confirm payment. */ }
+  }
+
   let productName = "Produk";
   try {
     const items = JSON.parse(String(order.items));

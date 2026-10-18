@@ -57,7 +57,7 @@ jobs:
       - name: Build Cloudflare Pages artifact
         run: npm run build:pages
         env:
-          NEXT_PUBLIC_PAYMENTS_MAINTENANCE: "true"
+          NEXT_PUBLIC_PAYMENTS_MAINTENANCE: "false"
 
       - name: Apply pending D1 migrations
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

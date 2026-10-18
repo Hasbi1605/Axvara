@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
     queryAll("SELECT COALESCE(provider,'dana') AS provider,MAX(created_at) AS created_at FROM dana_webhook_events GROUP BY COALESCE(provider,'dana')"),
   ]);
   for (const row of lastRows) {
-    if (row.provider === "dana" || row.provider === "gopay") health.providers[row.provider].last_event_at = String(row.created_at);
+    if (row.provider === "dana" || row.provider === "gopay" || row.provider === "klikqris") health.providers[row.provider].last_event_at = String(row.created_at);
   }
   health.last_event_at = health.providers[health.provider].last_event_at;
   const total = Number(totalRow?.count || 0);
@@ -63,6 +63,7 @@ export async function POST(request: NextRequest) {
   const event = await queryFirst("SELECT id,amount,status,order_code,created_at,provider FROM dana_webhook_events WHERE id=?", eventId);
   if (!event) return NextResponse.json({ error: "event_not_found" }, { status: 404 });
   if (String(event.status) === "matched") return NextResponse.json({ ok: true, status: "already_matched", order_code: event.order_code });
+  if (event.provider === "klikqris") return NextResponse.json({ error: "klikqris_requires_manual_review", message: "Periksa pembayaran KlikQRIS dan stok secara manual. Pelunasan otomatis setelah 15 menit tidak diizinkan." }, { status: 409 });
   // Retry mengikuti provider event (dana vs gopay) agar nominal silang
   // provider tidak saling klaim. Event lama tanpa provider = dana.
   const eventProvider = String(event.provider || "dana") === "gopay" ? "gopay" : "dana";
@@ -166,6 +167,13 @@ function paymentHealth() {
   const siteUrl = (process.env.SITE_URL || "https://axvara.tech").replace(/\/$/, "");
   const provider = activeQrisProvider();
   const providers = {
+    klikqris: {
+      enabled: process.env.KLIKQRIS_ENABLED === "true",
+      payload_configured: Boolean(process.env.KLIKQRIS_API_KEY?.trim()),
+      webhook_configured: Boolean(process.env.KLIKQRIS_MERCHANT_ID?.trim()),
+      webhook_url: `${siteUrl}/api/payments/klikqris/callback`,
+      secret_header: "signature (JSON body)", last_event_at: null as string | null,
+    },
     dana: {
       enabled: process.env.DANA_QRIS_ENABLED === "true",
       payload_configured: Boolean(process.env.DANA_STATIC_QRIS?.trim()),

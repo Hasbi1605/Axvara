@@ -17,6 +17,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const db = createDatabaseAccess();
   const order = await db.queryFirst(`SELECT * FROM orders WHERE code=?`, clean).catch(() => null);
   if (!order) return NextResponse.json({ error: "Pesanan tidak ditemukan" }, { status: 404 });
+  if (new URL(request.url).searchParams.get("wake") === "1" && order.status === "pending") {
+    const payment = await db.queryFirst("SELECT provider,status FROM payment_transactions WHERE order_code=?",clean);
+    if (payment?.provider === "klikqris" && payment.status === "pending") {
+      try {
+        const {reconcileKlikQrisPayment} = await import("@/lib/payments/klikqris");
+        await reconcileKlikQrisPayment(clean);
+        const refreshed=await db.queryFirst("SELECT status,payment_status,paid_at FROM orders WHERE code=?",clean);
+        if (refreshed) Object.assign(order,refreshed);
+      } catch { /* Failed confirmation keeps payment pending. */ }
+    }
+  }
   const item = await db.queryFirst(
     `SELECT i.*, p.name AS product_name, p.slug AS product_slug,
             p.platform AS product_platform,

@@ -48,7 +48,7 @@ describe("/api/cron/lite", () => {
     expect((await call(null)).status).toBe(400);
   });
 
-  it("expiry: invoice DANA lewat deadline order → kadaluarsa, stok dikembalikan, penanda tertulis", async () => {
+  it.each(["dana", "klikqris"])("expiry: invoice %s lewat deadline order → kadaluarsa, stok dikembalikan, penanda tertulis", async provider => {
     const fx = createD1Fixture();
     try {
       vi.stubEnv("CRON_SECRET", "s");
@@ -57,7 +57,7 @@ describe("/api/cron/lite", () => {
       fx.sql.prepare("UPDATE product_variants SET stock=98 WHERE id=1").run();
       fx.sql.prepare("UPDATE orders SET expires_at=datetime('now','-1 minute') WHERE code=?").run("AXV-20261005-LITE0001");
       fx.sql.prepare(`INSERT INTO payment_transactions (order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,payable_amount,status,expires_at)
-        VALUES (?,'dana','dynamic','po-lite','m',10000,10000,'pending',datetime('now','-1 minute'))`).run("AXV-20261005-LITE0001");
+        VALUES (?,?,'dynamic','po-lite','m',10000,10000,'pending',datetime('now','-1 minute'))`).run("AXV-20261005-LITE0001", provider);
 
       const res = await call("expiry");
       expect(res.status).toBe(200);

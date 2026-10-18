@@ -1,3 +1,4 @@
+import { isActiveQrisConfigured, activeQrisProvider } from "@/lib/payments/dana-qris";
 // GET /api/admin/bot/health — Bot health check (no secrets)
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
@@ -17,7 +18,8 @@ export async function GET(request: NextRequest) {
     dana_qris_configured: process.env.DANA_QRIS_ENABLED === "true"
       && Boolean(process.env.DANA_STATIC_QRIS)
       && Boolean(process.env.DANA_WEBHOOK_SECRET),
-    payment_enabled: process.env.DANA_QRIS_ENABLED === "true",
+    payment_enabled: isActiveQrisConfigured(),
+    payment_provider: activeQrisProvider(),
     fulfillment_enabled: process.env.AUTO_FULFILLMENT_ENABLED === "true",
     encryption_key_set: !!process.env.FULFILLMENT_ENCRYPTION_KEY,
     whatsapp_configured: !!process.env.WHATSAPP_GATEWAY_URL,

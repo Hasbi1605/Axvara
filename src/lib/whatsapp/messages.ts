@@ -1,3 +1,4 @@
+import { QRIS_PAYMENT_DEADLINE_NOTICE } from "@/lib/payment-maintenance";
 // src/lib/whatsapp/messages.ts — WhatsApp message templates (plain text + *bold*)
 // Uses WhatsApp formatting: *bold*, _italic_, ~strikethrough~, ```monospace```
 
@@ -190,7 +191,7 @@ export function paymentMessage(params: {
   lines.push("");
 
   if (params.method === "QRIS") {
-    lines.push("⏰ QRIS berlaku 15 menit sejak diterbitkan. Setelah itu QRIS hangus dan pesanan kedaluwarsa.");
+    lines.push(`⏰ ${QRIS_PAYMENT_DEADLINE_NOTICE}`);
     lines.push("Tidak ada perpanjangan QRIS. Jangan bayar QRIS yang hangus; buat pesanan ulang untuk mendapatkan QRIS baru.");
     lines.push("Scan gambar QRIS yang dikirim setelah pesan ini.");
     lines.push("Bayar tepat sesuai total; status lunas terdeteksi otomatis.");

@@ -20,7 +20,7 @@ import {
 import { getActiveVariant, formatDuration, buyerWarrantyLabel, type VariantSummary } from "@/lib/catalog";
 import { isCriticalSendResult } from "@/lib/telegram/webhook-errors";
 import { generateOrderCode } from "@/lib/security";
-import { createActiveQrisInvoice, isDanaQrisConfigured, isGopayQrisConfigured } from "@/lib/payments/dana-qris";
+import { createActiveQrisInvoice, isActiveQrisConfigured } from "@/lib/payments/dana-qris";
 import { releaseInventoryForOrder } from "@/lib/fulfillment/inventory";
 import { createFulfillmentJob } from "@/lib/fulfillment/deliver";
 // Tanpa notif "Order Baru" ke admin (keputusan owner 2026-10-10, paritas Web
@@ -46,7 +46,7 @@ export async function handlePayWithQris(
   await clearPendingAction(from);
 
   // Gate rail aktif: DANA atau GoPay, mana pun yang terkonfigurasi.
-  if (!isDanaQrisConfigured() && !isGopayQrisConfigured()) {
+  if (!isActiveQrisConfigured()) {
     await sendMessage({
       chat_id: chatId,
       text: "⚠️ QRIS dinamis sedang tidak tersedia. Coba lagi sebentar atau hubungi admin.",
@@ -308,6 +308,13 @@ export async function createAndSendVariantInvoice(
     await markInvoiceSent(orderCode);
   } catch (error) {
     console.error("Variant order creation failed:", error instanceof Error ? error.message : "unknown");
+    if (error instanceof Error && error.message.startsWith("klikqris_")) {
+      const initializing = await queryFirst("SELECT id FROM payment_transactions WHERE order_code=? AND provider='klikqris' AND status IN ('initializing','pending')", orderCode).catch(() => ({ id: 1 }));
+      if (initializing) {
+        await sendMessage({ chat_id: chatId, text: `Tagihan sedang disiapkan. Jangan buat pesanan berulang. Kode pesanan: ${orderCode}. Tunggu sebentar atau hubungi admin.`, parse_mode: "HTML" }).catch(() => {});
+        return;
+      }
+    }
     // RR3-05: sama seperti jalur cart — kegagalan foto invoice = transient,
     // stok/reservasi dipertahankan, RETHROW agar retry nyata via redelivery
     // Telegram (guard double-tap memakai ulang order yang sama) + cron.
@@ -338,7 +345,7 @@ export async function createAndSendVariantInvoice(
           const invoiceFailed = error instanceof Error
             && error.message.startsWith("telegram_invoice_send_failed");
           const activeLedger = invoiceFailed ? { id: 1 } : await queryFirst(
-            `SELECT id FROM payment_transactions WHERE order_code=? AND status='pending'`,
+            `SELECT id FROM payment_transactions WHERE order_code=? AND (status='pending' OR (provider='klikqris' AND status='initializing'))`,
             orderCode,
           ).catch(() => ({ id: 1 }));
           if (!activeLedger) {
