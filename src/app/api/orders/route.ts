@@ -327,7 +327,7 @@ export async function GET(req: NextRequest) {
     const row = (await queryFirst(
       `SELECT o.*, pt.requested_amount, pt.payable_amount, pt.unique_code, pt.qris_url AS dynamic_qris_url,
               pt.expires_at AS payment_expires_at, pt.status AS transaction_status,
-              pt.provider AS payment_provider
+              pt.provider AS payment_provider, pt.last_checked_at AS payment_last_checked_at
        FROM orders o LEFT JOIN payment_transactions pt ON pt.order_code=o.code
        WHERE o.code=?`,
       code,
@@ -356,6 +356,23 @@ export async function GET(req: NextRequest) {
           pt.expires_at AS payment_expires_at FROM orders o JOIN payment_transactions pt ON pt.order_code=o.code WHERE o.code=?`, code);
         if (refreshed) Object.assign(row, refreshed);
       } catch { qrisPreparationError = row.transaction_status === "initializing"; }
+    } else if (row.payment_provider === "klikqris" && row.transaction_status === "pending" && row.status === "pending") {
+      // Deteksi lunas tidak boleh hanya menunggu callback gateway (teramati
+      // tiba ±28 dtk sesudah pembayaran). Polling halaman yang sudah berjalan
+      // menumpang reconcile ter-throttle ±10 dtk/order: klaim atomik pada
+      // last_checked_at memastikan satu pemanggil yang bertanya ke gateway,
+      // polling lain membaca status lokal seperti biasa. Best-effort — gagal
+      // konfirmasi tidak pernah mengubah status.
+      try {
+        const { claimKlikQrisPollReconcile, reconcileKlikQrisPayment } = await import("@/lib/payments/klikqris");
+        if (await claimKlikQrisPollReconcile(code)) {
+          await reconcileKlikQrisPayment(code);
+          const refreshed = await queryFirst(`SELECT o.status,o.payment_status,o.fulfillment_status,o.expires_at,
+            pt.status AS transaction_status,pt.payable_amount,pt.unique_code,pt.qris_url AS dynamic_qris_url,
+            pt.expires_at AS payment_expires_at FROM orders o JOIN payment_transactions pt ON pt.order_code=o.code WHERE o.code=?`, code);
+          if (refreshed) Object.assign(row, refreshed);
+        }
+      } catch { /* Callback/manual check tetap menjadi penjamin. */ }
     }
     // PII minimal on public endpoint: mask WA + email
     const waFull = String(row.customer_wa ?? "");

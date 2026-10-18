@@ -2,6 +2,16 @@
 
 ## QRIS KlikQRIS — 2026-10-18
 
+Deteksi lunas cepat 2026-10-18 ✅ diimplementasikan, publikasi melalui CI:
+halaman pesanan yang sedang menunggu kini mengonfirmasi pembayaran KlikQRIS
+tanpa menunggu callback gateway (teramati ±28 detik sesudah bayar). Polling
+Market/Pedia memicu pemeriksaan status gateway maksimal sekali per ±10 detik
+per pesanan lewat klaim atomik; polling selebihnya tetap membaca status lokal,
+dan tombol cek manual tetap memeriksa seketika. Target deteksi ≤15 detik
+sesudah pembayaran terkonfirmasi gateway. Teks "Batas bayar otomatis 15 menit…"
+di bawah QR halaman pembayaran Market/Pedia dihapus atas keputusan owner;
+batas 15 menit, countdown, dan penanganan pembayaran terlambat tidak berubah.
+
 Koreksi checkout 2026-10-18 ✅ diimplementasikan, publikasi melalui CI: koneksi
 API dan PNG QR memakai mode redirect yang kompatibel dengan runtime Cloudflare,
 tetap menolak redirect. Retry checkout dengan quote sama melanjutkan invoice
@@ -18,7 +28,7 @@ Nominal bayar persis `total_amount` gateway, termasuk kode unik dari provider; t
 
 Callback per invoice memvalidasi signature tersimpan, order/merchant/nominal dan konfirmasi status API server. Gagal konfirmasi tidak dianggap lunas. Transisi paid, event dan outbox Market atomik; Pedia memakai antreannya sendiri, tidak mengirim produk Market dengan ID sama. Callback duplikat tidak mengulang fulfillment. POST create hanya oleh pemenang klaim ledger durable; timeout/panggilan ambigu dipulihkan melalui GET status dengan order ID sama, tanpa membuat tagihan atau memindahkan provider otomatis. Stok order in-flight tetap direservasi, cleanup lama menjadi penjamin.
 
-Invoice DANA/GoPay lama tetap di rail asalnya; webhook/secret/poller lama dipertahankan. QR gateway ditampilkan lewat proxy PNG same-origin yang dibatasi host/ukuran/redirect, tanpa Snap JS atau signature di browser. Callback adalah authority utama; tombol Cek pembayaran/Periksa pembayaran dapat mengonfirmasi lewat API provider. Polling biasa hanya membaca status lokal; tidak ada cron/polling gateway baru.
+Invoice DANA/GoPay lama tetap di rail asalnya; webhook/secret/poller lama dipertahankan. QR gateway ditampilkan lewat proxy PNG same-origin yang dibatasi host/ukuran/redirect, tanpa Snap JS atau signature di browser. Callback adalah authority utama; tombol Cek pembayaran/Periksa pembayaran dapat mengonfirmasi lewat API provider. Polling halaman menumpang reconcile ter-throttle ±10 detik/order (2026-10-18); tidak ada cron/polling gateway baru.
 
 ## Maintenance pembayaran — 2026-10-18
 

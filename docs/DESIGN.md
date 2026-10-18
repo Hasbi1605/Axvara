@@ -2,6 +2,13 @@
 
 ## QRIS gateway KlikQRIS — 2026-10-18
 
+Deteksi lunas cepat 2026-10-18: teks "Batas bayar otomatis 15 menit…" di bawah
+panel QR halaman pembayaran Market dan Pedia dihapus atas keputusan owner.
+Panel tetap menampilkan countdown berlaku, total bayar, tombol Simpan
+QRIS/Cek Pembayaran, dan indikator "Mengecek pembayaran otomatis tiap 5 detik"
+(Market). Perilaku batas 15 menit dan status kedaluwarsa tidak berubah; tanpa
+elemen visual baru.
+
 Koreksi 2026-10-18: order QRIS pending tanpa gambar menampilkan judul **QRIS
 belum siap**, penjelasan bahwa pesanan tersimpan dan belum boleh dibayar, serta
 CTA cyan **Coba siapkan QRIS** (tinggi 44px, disabled + spinner saat memeriksa).

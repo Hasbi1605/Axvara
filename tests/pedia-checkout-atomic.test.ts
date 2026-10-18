@@ -4,6 +4,7 @@ import { createD1Fixture } from "./helpers/d1-fixture";
 import { createPediaQuoteToken } from "@/lib/pedia/quote";
 import { POST } from "@/app/api/pedia/orders/route";
 import * as qris from "@/lib/payments/dana-qris";
+import * as klikqris from "@/lib/payments/klikqris";
 
 const fixtures: ReturnType<typeof createD1Fixture>[] = [];
 afterEach(() => { for (const f of fixtures.splice(0)) f.close(); vi.restoreAllMocks(); vi.unstubAllEnvs(); });
@@ -68,8 +69,20 @@ describe("Pedia checkout money transaction",()=>{
   expect(calls[0]).toEqual(['add',{service:1,link:'buyer',quantity:150},provider]);
   const publicStatus=(await (await get()).json()).order;expect(publicStatus.status).toBe('completed');expect(publicStatus.refill_eligible).toBe(true);expect(publicStatus.service_copy.service_name).toBe('Nama tersimpan');expect(publicStatus.service_copy.terms).toContain('sejak pesanan selesai');
   const proxy=await import("@/lib/pedia/proxy");const refillSpy=vi.spyOn(proxy,'callPediaProxy').mockResolvedValue({ok:true,data:{refill:'REFILL-1'},status:200} as never);
-  const {POST:refill}=await import("@/app/api/pedia/orders/[code]/refill/route");const refillResponse=await refill(new Request("http://x",{method:'POST',body:JSON.stringify({contact:'a@b.com'})}) as never,{params:Promise.resolve({code})});
-  expect(refillResponse.status).toBe(200);expect(refillSpy.mock.calls[0][0]).toBe(provider);expect(f.sql.prepare("SELECT refill_status FROM pedia_order_items").get()?.refill_status).toBe('submitted');
+   const {POST:refill}=await import("@/app/api/pedia/orders/[code]/refill/route");const refillResponse=await refill(new Request("http://x",{method:'POST',body:JSON.stringify({contact:'a@b.com'})}) as never,{params:Promise.resolve({code})});
+   expect(refillResponse.status).toBe(200);expect(refillSpy.mock.calls[0][0]).toBe(provider);expect(f.sql.prepare("SELECT refill_status FROM pedia_order_items").get()?.refill_status).toBe('submitted');
+  });
+
+ it("automatic Pedia status polling reconciles KlikQRIS once per throttle window; manual wake stays immediate",async()=>{
+   const f=seed();const r=await order(await token());expect(r.status).toBe(201);const {code}=await r.json();
+   f.sql.prepare("INSERT INTO payment_transactions(order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,payable_amount,status,expires_at) VALUES(?,'klikqris','inhouse',?,'123456789',2500,2501,'pending','2099-01-01')").run(code,code);
+   const reconcile=vi.spyOn(klikqris,"reconcileKlikQrisPayment").mockResolvedValue("pending");
+   const claim=vi.spyOn(klikqris,"claimKlikQrisPollReconcile");
+   const {GET:status}=await import("@/app/api/pedia/orders/[code]/route");
+   const get=(wake=false)=>status(new Request(`http://x${wake?"?wake=1":""}`) as never,{params:Promise.resolve({code})});
+   expect((await (await get()).json()).order.status).toBe("awaiting_payment");expect(reconcile).toHaveBeenCalledTimes(1);
+   await get();expect(reconcile).toHaveBeenCalledTimes(1);
+   await get(true);expect(reconcile).toHaveBeenCalledTimes(2);expect(claim).toHaveBeenCalledTimes(2);
  });
 
 });

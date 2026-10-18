@@ -17,14 +17,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const db = createDatabaseAccess();
   const order = await db.queryFirst(`SELECT * FROM orders WHERE code=?`, clean).catch(() => null);
   if (!order) return NextResponse.json({ error: "Pesanan tidak ditemukan" }, { status: 404 });
-  if (new URL(request.url).searchParams.get("wake") === "1" && order.status === "pending") {
+  if (order.status === "pending") {
     const payment = await db.queryFirst("SELECT provider,status FROM payment_transactions WHERE order_code=?",clean);
     if (payment?.provider === "klikqris" && payment.status === "pending") {
       try {
-        const {reconcileKlikQrisPayment} = await import("@/lib/payments/klikqris");
-        await reconcileKlikQrisPayment(clean);
-        const refreshed=await db.queryFirst("SELECT status,payment_status,paid_at FROM orders WHERE code=?",clean);
-        if (refreshed) Object.assign(order,refreshed);
+        // Tombol manual (wake=1) selalu memeriksa sekarang; polling otomatis
+        // halaman (tiap 10 dtk) menumpang klaim throttle ±10 dtk/order agar
+        // deteksi lunas tidak menunggu callback gateway. Klaim atomik pada
+        // last_checked_at: hanya satu pemanggil yang bertanya ke gateway.
+        const wake = new URL(request.url).searchParams.get("wake") === "1";
+        const {claimKlikQrisPollReconcile, reconcileKlikQrisPayment} = await import("@/lib/payments/klikqris");
+        if (wake || await claimKlikQrisPollReconcile(clean)) {
+          await reconcileKlikQrisPayment(clean);
+          const refreshed=await db.queryFirst("SELECT status,payment_status,paid_at FROM orders WHERE code=?",clean);
+          if (refreshed) Object.assign(order,refreshed);
+        }
       } catch { /* Failed confirmation keeps payment pending. */ }
     }
   }

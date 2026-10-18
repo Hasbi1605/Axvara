@@ -146,6 +146,23 @@ export async function createKlikQrisInvoice(orderCode: string, requestedAmount: 
   }
 }
 
+// Polling halaman pesanan menumpang di sini agar status lunas terdeteksi tanpa
+// menunggu callback gateway (teramati ±28 dtk sesudah paid_at). Klaim atomik
+// pada last_checked_at memastikan hanya satu pemanggil per jendela yang benar-
+// benar bertanya ke gateway; pemanggil lain cukup membaca status lokal.
+// last_checked_at ditulis juga oleh transisi lunas dan reconcile itu sendiri
+// tidak menjadwalkan ulang, jadi tidak ada loop panggilan.
+export const KLIKQRIS_POLL_RECONCILE_MS = 10_000;
+export async function claimKlikQrisPollReconcile(orderCode: string): Promise<boolean> {
+  const result = await execRun(
+    `UPDATE payment_transactions SET last_checked_at=datetime('now'),updated_at=datetime('now')
+     WHERE order_code=? AND provider='klikqris' AND status='pending'
+       AND (last_checked_at IS NULL OR julianday(last_checked_at)<=julianday('now',?))`,
+    orderCode, `-${KLIKQRIS_POLL_RECONCILE_MS / 1000} seconds`,
+  ).catch(() => ({ changes: 0 }));
+  return Number(result.changes || 0) > 0;
+}
+
 export async function reconcileKlikQrisPayment(orderCode: string): Promise<string> {
   const tx = await queryFirst(`SELECT pt.*,o.status AS order_status,o.payment_status,o.expires_at AS order_expires_at,
     o.variant_id,o.sales_channel,o.order_kind,(SELECT id FROM fulfillment_inventory fi WHERE fi.order_code=o.code AND fi.status='reserved' LIMIT 1) AS inventory_id

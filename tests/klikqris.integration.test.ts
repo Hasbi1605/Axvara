@@ -251,10 +251,38 @@ describe("KlikQRIS settlement boundaries",()=>{
   expect(new Uint8Array(await response.arrayBuffer()).slice(0,8)).toEqual(new Uint8Array([137,80,78,71,13,10,26,10]));
  });
  it("does not poll KlikQRIS on routine status reads but confirms a manual check",async()=>{
-  await checkout();paid();const {GET}=await import("@/app/api/orders/route");
-  const calls=fetchMock.mock.calls.length;
-  await GET(new NextRequest(`https://axvara.tech/api/orders?code=${A}`));expect(fetchMock.mock.calls.length).toBe(calls);
-  const response=await GET(new NextRequest(`https://axvara.tech/api/orders?code=${A}&wake=1`));
-  expect(response.status).toBe(200);expect(row().status).toBe("lunas");
+   await checkout();paid();const {GET}=await import("@/app/api/orders/route");
+   // Manual check stays immediate even inside the automatic-poll window.
+   fixture.sql.prepare("UPDATE payment_transactions SET last_checked_at=datetime('now') WHERE order_code=?").run(A);
+   const response=await GET(new NextRequest(`https://axvara.tech/api/orders?code=${A}&wake=1`));
+   expect(response.status).toBe(200);expect(row().status).toBe("lunas");
+  });
+ it("automatic polling confirms a paid invoice within the throttle window and asks the gateway once",async()=>{
+   await checkout();paid();const {GET}=await import("@/app/api/orders/route");
+   const lookups=()=>fetchMock.mock.calls.filter(([url])=>String(url).includes("/api/qris/status/")).length;
+   const first=await (await GET(new NextRequest(`https://axvara.tech/api/orders?code=${A}`))).json();
+   expect(first.order.status).toBe("lunas");expect(row().status).toBe("lunas");expect(lookups()).toBe(1);
+ });
+ it("automatic polling throttles repeated gateway checks and never POSTs",async()=>{
+   await checkout();const {GET}=await import("@/app/api/orders/route");fetchMock.mockClear();
+   const lookups=()=>fetchMock.mock.calls.filter(([url])=>String(url).includes("/api/qris/status/")).length;
+   for(let i=0;i<3;i++){const body=await (await GET(new NextRequest(`https://axvara.tech/api/orders?code=${A}`))).json();expect(body.order.status).toBe("pending");}
+   expect(lookups()).toBe(1);expect(posts()).toBe(0);expect(row().status).toBe("pending");
+   // Once the window passes, the next automatic poll may ask again.
+   fixture.sql.prepare("UPDATE payment_transactions SET last_checked_at=datetime('now','-11 seconds') WHERE order_code=?").run(A);
+   await GET(new NextRequest(`https://axvara.tech/api/orders?code=${A}`));expect(lookups()).toBe(2);
+ });
+ it("concurrent automatic polls share one gateway check through the atomic claim",async()=>{
+   await checkout();const {claimKlikQrisPollReconcile}=await import("@/lib/payments/klikqris");
+   const claims=await Promise.all([claimKlikQrisPollReconcile(A),claimKlikQrisPollReconcile(A)]);
+   expect(claims.filter(Boolean)).toHaveLength(1);
+   expect(await claimKlikQrisPollReconcile(A)).toBe(false);
+ });
+ it("keeps automatic polling local for legacy DANA invoices",async()=>{
+   await seed();const qr="00020101021153033605802ID6304";
+   vi.stubEnv("DANA_QRIS_ENABLED","true");vi.stubEnv("DANA_STATIC_QRIS",qr+calculateCrc16(qr));vi.stubEnv("DANA_WEBHOOK_SECRET","fixture");
+   await createDanaQrisInvoice(A,1000);fetchMock.mockClear();const {GET}=await import("@/app/api/orders/route");
+   const body=await (await GET(new NextRequest(`https://axvara.tech/api/orders?code=${A}`))).json();
+   expect(body.order.status).toBe("pending");expect(fetchMock).not.toHaveBeenCalled();
  });
 });

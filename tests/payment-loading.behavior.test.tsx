@@ -178,6 +178,7 @@ describe("/pesanan/[code] saat memuat", () => {
     // Ikon jam berputar: pembeli tahu halaman hidup, bukan laman kosong.
     expect(screen.getByRole("status", { name: /Menunggu pembayaran/ })).toBeTruthy();
     expect(screen.getByText(/Mengecek pembayaran otomatis tiap 5 detik/)).toBeTruthy();
+    expect(screen.queryByText(/Batas bayar otomatis 15 menit/)).toBeNull();
     const check = screen.getByRole("button", { name: "Cek Pembayaran" });
     expect(check).toBeTruthy();
     // Cek manual memicu GET ulang (tanpa menunggu interval 5 dtk).

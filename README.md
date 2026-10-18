@@ -2,6 +2,13 @@
 
 ## QRIS KlikQRIS (2026-10-18)
 
+Deteksi lunas cepat 2026-10-18: polling halaman pesanan Market (5 detik) dan
+Pedia (10 detik) kini menumpang reconcile KlikQRIS ter-throttle ±10 detik per
+pesanan (klaim atomik `last_checked_at`, satu pemanggil bertanya ke gateway),
+sehingga lunas terdeteksi ≤15 detik tanpa menunggu callback dan tanpa cron
+baru. Tombol cek manual tetap seketika. Teks batas bayar 15 menit di bawah QR
+halaman pembayaran web dihapus; batas dan countdown-nya sendiri tidak berubah.
+
 Koreksi checkout 2026-10-18: adapter API/PNG kompatibel dengan workerd memakai
 redirect manual dan tetap menolak 3xx. Retry quote sama memulihkan invoice
 KlikQRIS lewat GET tanpa tagihan/reservasi baru, termasuk stok terakhir. Halaman
@@ -14,7 +21,7 @@ Rilis ini membuka kembali pembayaran otomatis dengan PG KlikQRIS (`QRIS_ACTIVE_P
 
 Harga bayar memakai `total_amount` gateway; nominal/kode unik tidak dihitung ulang lokal. Keputusan owner: batas AXVARA **tetap 15 menit**, meskipun gateway masih dapat menerima QR hingga 60 menit. Pembayaran setelah batas/cancel/expiry dicatat untuk pemeriksaan manual (Rekonsiliasi + satu alert admin), tanpa melunasi/mengirim produk otomatis. Status/nominal/order/signature dikonfirmasi server sebelum paid atomik. QR diproxy same-origin untuk kode AXV/AXP (migrasi 0069 `provider_qris_url`), tanpa membocorkan API key/signature.
 
-Pembuatan tagihan diklaim durable sebelum POST; retry ambigu hanya GET order ID sama, tidak POST/failover lagi. Stok in-flight tidak dilepas oleh catch kanal. Web/Pedia/TG mendukung cek manual provider; polling biasa membaca lokal, tanpa cron gateway baru. Invoice lama tetap DANA/GoPay, termasuk retry setelah perpindahan provider. Rollback hanya invoice baru: kembalikan `QRIS_ACTIVE_PROVIDER` melalui secret Pages + rilis CI; pertahankan kredensial KlikQRIS dan webhook untuk tagihan lama/pembayaran terlambat. Jangan mengaktifkan/menonaktifkan poller atau gateway repo lain untuk integrasi ini.
+Pembuatan tagihan diklaim durable sebelum POST; retry ambigu hanya GET order ID sama, tidak POST/failover lagi. Stok in-flight tidak dilepas oleh catch kanal. Web/Pedia/TG mendukung cek manual provider; polling halaman menumpang reconcile KlikQRIS ter-throttle ±10 detik/order, tanpa cron gateway baru. Invoice lama tetap DANA/GoPay, termasuk retry setelah perpindahan provider. Rollback hanya invoice baru: kembalikan `QRIS_ACTIVE_PROVIDER` melalui secret Pages + rilis CI; pertahankan kredensial KlikQRIS dan webhook untuk tagihan lama/pembayaran terlambat. Jangan mengaktifkan/menonaktifkan poller atau gateway repo lain untuk integrasi ini.
 
 ## Maintenance pembayaran sementara (2026-10-18)
 

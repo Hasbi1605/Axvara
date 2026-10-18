@@ -2321,6 +2321,20 @@ poller server memantau mutasi GoBiz milik sendiri.
 
 ### 16.11 PG KlikQRIS — 2026-10-18
 
+Deteksi lunas cepat 2026-10-18: callback gateway teramati tiba ±28 detik sesudah
+`paid_at`, jadi polling halaman yang sudah berjalan ikut memicu reconcile
+KlikQRIS ter-throttle. `claimKlikQrisPollReconcile` mengklaim jendela ±10 detik
+secara atomik lewat `last_checked_at` transaksi `pending`; hanya pemenang klaim
+yang memanggil GET status gateway, polling lain tetap membaca D1 lokal seperti
+sebelumnya. Berlaku pada GET `/api/orders` (Market, poll 5 detik) dan GET
+`/api/pedia/orders/[code]` (poll 10 detik). Tombol manual `wake=1` tidak
+terikat klaim dan tetap memeriksa seketika. Klaim menulis 1 baris per jendela
+per order dan tidak menambah baris baca, cron, atau jadwal baru; transisi lunas
+juga menyegarkan `last_checked_at` sehingga tidak ada loop. Teks pemberitahuan
+batas bayar di bawah QR halaman pembayaran Market/Pedia dihapus atas keputusan
+owner; batas 15 menit, countdown, dan penanganan pembayaran terlambat tidak
+berubah, dan notice yang sama di invoice Telegram/WA dipertahankan.
+
 Koreksi runtime/checkout 2026-10-18: `fetch` API dan PNG memakai
 `redirect: "manual"` lalu menolak non-2xx. Runtime workerd yang dipakai menolak
 `redirect: "error"` sebelum jaringan (direproduksi lokal); penolakan ini sempat
@@ -2352,7 +2366,7 @@ Callback `POST /api/payments/klikqris/callback` menerima JSON <=16KB dan signatu
 
 Pembayaran terkonfirmasi yang melewati deadline atau kalah cancel/expiry disimpan failed dengan last_error `klikqris_late_payment_manual_review`/`klikqris_payment_race_manual_review`, plus satu notifikasi admin pada insert pertama. Notifikasi gagal tidak dipaksa ulang pada setiap callback; entry Rekonsiliasi tetap durable. Admin API/UI melarang retry pencocokan nominal dan confirm_match KlikQRIS agar tidak diarahkan ke rail DANA/GoPay. Tindak lanjut: periksa pembayaran, status order dan stok untuk penyelesaian manual. Jangan menghidupkan order expired otomatis.
 
-Callback per invoice memakai SITE.webUrl kanonis. Pemeriksaan manual web/Pedia `wake=1` dan tombol Telegram refresh memakai API status; polling browser biasa hanya membaca DB. Tidak ada worker/cron/polling baru. Webhook/poller/kredensial DANA/GoPay tetap untuk invoice lama. Rollback invoice baru: ubah QRIS_ACTIVE_PROVIDER + rilis CI; jangan cabut KLIKQRIS_ENABLED/key/merchant/callback selama invoice lama/late reconciliation masih perlu dikonfirmasi. Dokumentasi sumber: https://klikqris.com/dokumentasi-api. Uji produksi hanya membuat invoice unpaid berlabel AXVARA-INTEGRATION (callback probe diabaikan); tidak membayar atau menyimulasikan uang produksi sebagai paid.
+Callback per invoice memakai SITE.webUrl kanonis. Pemeriksaan manual web/Pedia `wake=1` dan tombol Telegram refresh memakai API status; polling browser biasa membaca DB dan — sejak deteksi lunas cepat 2026-10-18 — menumpang reconcile KlikQRIS ter-throttle ±10 detik/order lewat klaim `last_checked_at`. Tidak ada worker/cron/polling baru. Webhook/poller/kredensial DANA/GoPay tetap untuk invoice lama. Rollback invoice baru: ubah QRIS_ACTIVE_PROVIDER + rilis CI; jangan cabut KLIKQRIS_ENABLED/key/merchant/callback selama invoice lama/late reconciliation masih perlu dikonfirmasi. Dokumentasi sumber: https://klikqris.com/dokumentasi-api. Uji produksi hanya membuat invoice unpaid berlabel AXVARA-INTEGRATION (callback probe diabaikan); tidak membayar atau menyimulasikan uang produksi sebagai paid.
 
 Koreksi kapasitas env Pages 2026-10-18: penambahan tiga secret KlikQRIS membawa
 konfigurasi produksi menjadi 61 + empat variabel sistem = 65 dan publish gagal.
