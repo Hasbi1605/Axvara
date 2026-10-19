@@ -1695,6 +1695,15 @@ dipilih manual: Netflix WR vs Netflix SK = dua baris katalog berbeda (nama
 publik bersih tanpa suffix sejak 2026-09-30, preseden Antigravity 0045;
 pembedaan hanya badge admin + slug `-wr`/`-sk`).
 
+### Ketahanan antrean SK (2026-10-19, implementasi; publikasi CI)
+
+Insiden `AXV-20261019-98C8CC33`: probe 12 order lunas terbaru berjalan dua kali sebelum dispatch, memakai 35 dari 38 statement kerja; admission pembelian membutuhkan enam statement sehingga tidak pernah mulai. Retry admin memakai akses DB tanpa budget lokal dan baru mengirim pembelian pertama. Perbaikan:
+
+- `reconcileMissingSkLinks` menyaring order lunas/paid tujuh hari dengan `json_each` + registry auto + `NOT EXISTS sk_order_links` dalam satu statement, memakai indeks existing. JSON rusak/non-object dilewati. LIMIT diterapkan sesudah filter yatim, sehingga order lama tidak tertutup 12 riwayat terbaru; seluruh status link existing mencegah pembuatan ulang.
+- `processSkPendingOrders(..., {skipOrphanProbe:true})` membolehkan pemanggil mengelola satu probe sendiri. Cron lite memproses link due terlebih dahulu, lalu menyembuhkan maksimal empat order yatim tanpa bergantung pada COUNT due. Bila belum ada pembelian pada tick itu, link pulih diproses segera; bila sudah ada, tetap due untuk tick berikutnya. Maksimal empat upaya pembelian per tick. Cron besar juga melewati probe internal sesudah probe eksplisitnya.
+- `QueryBudgetExceeded` pada probe/SELECT antrean/admission diteruskan agar lite mengembalikan `budget_exhausted:true`; tidak diterjemahkan menjadi antrean kosong. Cadangan ekor dan plafon 40 statement tidak dinaikkan. Tidak ada cron, env, migrasi atau kontrak proxy baru; retry due diperiksa langsung memakai `next_attempt_at` tanpa UPDATE normalisasi timestamp setiap tick.
+- Klaim, ref_id, recovery ambigu, backoff dan pengiriman kredensial tidak di-reset. Order completed/failed existing tetap dipertahankan. Pengujian menggunakan supplier/email stub, bukan order berbayar atau kirim ulang transaksi produksi yang sudah ditangani owner.
+
 ### Kontrak upstream (beda dari WR — jangan disamakan)
 - **Auth:** header `X-APIKEY` (WR: body `api_key`). Key SK disuntik
   server-side oleh proxy Heroku (`SK_API_KEY` dyno); Pages tidak menyimpan key.

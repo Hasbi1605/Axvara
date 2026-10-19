@@ -252,21 +252,22 @@ async function runSkOrders(db: Db) {
   await order.recoverStaleSkClaims(db).catch(() => 0);
   await order.reconcileBlockedSkBalance(db).catch(() => 0);
   if (process.env.SEKALIPAY_AUTO_ORDER_ENABLED === "true") {
-    // Cermin WR di atas (2026-10-09): probe yatim SK tanpa gate due — order
-    // SK lunas yang link-nya gagal dibuat webhook tidak boleh yatim selamanya
-    // hanya karena COUNT due = 0.
-    const orphanHealed = await order.reconcileMissingSkLinks(db).catch(() => ({ orders: 0, links: 0 }));
+    // Existing due purchases get first use of the budget. Probe orphans once,
+    // independently of queue size. If no buys ran, dispatch healed links now;
+    // otherwise leave them due for the next tick (at most four buys per run).
+    // 2026-10-19: the old double probe used 35/38 statements before buying SK.
+    const processed = await order.processSkPendingOrders(db, { skipOrphanProbe: true });
+    out.processed = processed.processed;
+    out.succeeded = processed.succeeded;
+    const orphanHealed = await order.reconcileMissingSkLinks(db).catch((error) => {
+      if (error instanceof QueryBudgetExceeded) throw error;
+      return { orders: 0, links: 0 };
+    });
     if (orphanHealed.links > 0) out.orphan_links_healed = orphanHealed.links;
-    const due = await db.queryFirst(
-      `SELECT COUNT(*) AS n FROM sk_order_links
-        WHERE status IN ('pending','retry') AND attempt_count < max_attempts
-          AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime('now'))`,
-    ).catch(() => null);
-    if (Number(due?.n ?? 0) > 0 || orphanHealed.links > 0) {
-      out.retried = await order.retryFailedSkOrders(db);
-      const processed = await order.processSkPendingOrders(db);
-      out.processed = processed.processed;
-      out.succeeded = processed.succeeded;
+    if (orphanHealed.links > 0 && processed.processed === 0) {
+      const healed = await order.processSkPendingOrders(db, { skipOrphanProbe: true });
+      out.processed = processed.processed + healed.processed;
+      out.succeeded = processed.succeeded + healed.succeeded;
     }
     // Penjamin status segar bersama (cermin WR di atas): SK yang webhook-nya
     // terlambat ikut tertarik di sini, bukan hanya di route besar.

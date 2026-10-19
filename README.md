@@ -457,6 +457,8 @@ lihat AGENTS.md); CI/CD memakai GitHub Actions Secrets.
 
 ### Sekalipay Reseller API (supplier kedua paralel WR, 2026-09-30, default mati)
 
+**Ketahanan antrean 2026-10-19 (implementasi; publikasi CI):** cron SK memprioritaskan link siap beli, lalu mencari order lunas yang benar-benar kehilangan link melalui satu query, tanpa memeriksa ulang seluruh riwayat per item atau probe ganda. Order yatim tetap ditemukan walau tertutup banyak transaksi selesai. Maksimal empat upaya pembelian per tick; link yang dipulihkan dapat diproses langsung bila belum ada pembelian pada tick tersebut, atau tetap due untuk tick berikutnya. Budget habis dilaporkan sebagai `budget_exhausted`, bukan antrean kosong. Tidak perlu Retry admin untuk antrean normal; backoff/hasil ambigu/saldo dan idempotensi tetap berlaku, order selesai tidak dibeli ulang. Jadwal, env dan proxy tetap existing; rincian di ARCHITECTURE §15b.
+
 Axvara menjadi reseller layer di atas Sekalipay (`https://sekalipay.com/api`)
 SEBAGAI SUPPLIER KEDUA yang paralel dengan WR — bukan failover otomatis.
 Produk yang tampil dipilih manual: Netflix WR vs Netflix SK = dua baris

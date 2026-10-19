@@ -1,5 +1,9 @@
 # PRD — AXVARA
 
+## Keandalan antrean Sekalipay — 2026-10-19
+
+✅ Diimplementasikan; publikasi melalui CI. Order SK auto yang sudah lunas diproses oleh cron existing tanpa membutuhkan Retry admin. Antrean siap beli didahulukan sebelum pemulihan order tanpa link; pemulihan mencari order layak yang benar-benar kehilangan link, termasuk yang tertutup banyak riwayat selesai. Maksimal empat upaya pembelian per tick; link yang dipulihkan langsung diproses bila belum ada upaya pembelian pada tick tersebut, selebihnya tetap due untuk tick berikutnya. Kehabisan budget dilaporkan sebagai pekerjaan tertunda, bukan antrean kosong. Retry/backoff, klaim/idempotensi, penanganan saldo/hasil ambigu dan pengiriman lewat webhook/status supplier tetap berlaku; order yang sudah selesai tidak dibeli ulang.
+
 ## Pedia dan loading — 19 Oktober 2026
 
 ✅ Implementasi; publikasi melalui CI. Loading mempertahankan logo dengan ring cyan yang berputar mengitarinya serta pulse halus mengikuti referensi ISTA AI; reduced motion dihormati. Kebutuhan memakai ikon semantik. Order dimulai dari jumlah sebelum membandingkan/pilih layanan, dengan total pada jumlah sama, filter yang mudah dijangkau, copy pembeda sebelum pilihan, dan link/persyaratan berdekatan. Kontak tetap tahap kedua; quote, consent dan retry tetap.

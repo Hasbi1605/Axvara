@@ -1343,7 +1343,7 @@ export async function POST(request: NextRequest) {
         if (!syncOnly && autoOrder && (pendingSkDue > 0 || Number(results.sk_orphan_links_healed ?? 0) > 0) && budget.fits(COST_PER_SK_WORK) && hasTime(TIME_SK_NETWORK)) {
           try {
             await retryFailedSkOrders(database);
-            const processed = await processSkPendingOrders(database);
+            const processed = await processSkPendingOrders(database, { skipOrphanProbe: true });
             results.sk_orders_processed = processed.processed;
             results.sk_orders_succeeded = processed.succeeded;
             if (processed.processed > processed.succeeded && !deferredOut.includes("sekalipay")) deferredOut.push("sekalipay");

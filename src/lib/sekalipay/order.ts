@@ -17,7 +17,7 @@
 // Fase 1: HANYA varian auto (order_process=auto). Varian manual/h2h/smm
 // tidak dibuatkan link — sync tidak memberi pasangan katalog untuknya.
 
-import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
+import { createDatabaseAccess, QueryBudgetExceeded, type DatabaseAccess } from "@/lib/db-access";
 import {
   createSkTransaction,
   fetchSkTransaction,
@@ -237,13 +237,28 @@ export async function reconcileMissingSkLinks(
   if (!isSkEnabled()) return out;
   const candidates = await db
     .queryAll(
-      `SELECT code, items FROM orders
-       WHERE status='lunas' AND payment_status='paid'
-         AND datetime(COALESCE(paid_at, created_at)) > datetime('now','-7 days')
-       ORDER BY id DESC LIMIT ?`,
-      Math.max(1, Math.min(limit * 3, 24)),
+      // Filter actual missing links in SQL, rather than spending one query per
+      // item across the latest paid orders. Linked history must not starve buys.
+      `SELECT o.code, o.items FROM orders o
+       WHERE o.status='lunas' AND o.payment_status='paid'
+         AND datetime(COALESCE(o.paid_at, o.created_at)) > datetime('now','-7 days')
+         AND EXISTS (
+           SELECT 1 FROM json_each(CASE WHEN json_valid(o.items) THEN o.items ELSE '[]' END) je
+           JOIN product_variants pv
+             ON pv.id = CAST(json_extract(CASE WHEN je.type='object' THEN je.value ELSE '{}' END, '$.variant_id') AS INTEGER)
+           LEFT JOIN sk_products sp ON sp.sk_variant_id = pv.sk_variant_id
+           WHERE pv.sk_variant_id IS NOT NULL
+             AND COALESCE(sp.sk_order_process, 'auto') = 'auto'
+             AND NOT EXISTS (
+               SELECT 1 FROM sk_order_links l
+               WHERE l.order_code = o.code AND l.sk_variant_id = pv.sk_variant_id))
+       ORDER BY o.id DESC LIMIT ?`,
+      Math.max(1, Math.min(limit, 8)),
     )
-    .catch(() => [] as Row[]);
+    .catch((error) => {
+      if (error instanceof QueryBudgetExceeded) throw error;
+      return [] as Row[];
+    });
   for (const candidate of candidates) {
     if (out.orders >= limit) break;
     if (!db.canSpend(4)) break;
@@ -256,20 +271,6 @@ export async function reconcileMissingSkLinks(
     } catch {
       continue;
     }
-    const skVariantIds = new Set<string>();
-    for (const item of items) {
-      const variantId = Number(item.variant_id || 0);
-      if (!variantId) continue;
-      const resolved = await resolveSkVariantId(variantId, db).catch(() => null);
-      if (resolved && resolved.orderProcess === "auto") skVariantIds.add(String(resolved.skVariantId));
-    }
-    if (!skVariantIds.size) continue;
-    const existing = await db
-      .queryAll(`SELECT sk_variant_id FROM sk_order_links WHERE order_code=?`, code)
-      .catch(() => [] as Row[]);
-    const have = new Set(existing.map((r) => String(r.sk_variant_id || "")));
-    const missing = [...skVariantIds].filter((v) => !have.has(v));
-    if (!missing.length) continue;
     out.orders++;
     const made = await createSkOrderLink(code, items, db).catch(() => 0);
     out.links += made;
@@ -279,15 +280,19 @@ export async function reconcileMissingSkLinks(
 
 export async function processSkPendingOrders(
   database?: DatabaseAccess,
+  options: { skipOrphanProbe?: boolean } = {},
 ): Promise<SkProcessResult> {
   const db = database ?? createDatabaseAccess();
   const result: SkProcessResult = { processed: 0, succeeded: 0, retried: 0, failed: 0, blocked: 0, reconciled: 0 };
   if (!isSkEnabled() || !isSkAutoOrderEnabled()) return result;
-  try {
-    const missing = await reconcileMissingSkLinks(db);
-    result.reconciled = missing.links;
-  } catch {
-    /* reconciler best-effort */
+  if (!options.skipOrphanProbe) {
+    try {
+      const missing = await reconcileMissingSkLinks(db);
+      result.reconciled = missing.links;
+    } catch (error) {
+      if (error instanceof QueryBudgetExceeded) throw error;
+      /* reconciler best-effort */
+    }
   }
   const due = await db
     .queryAll(
@@ -297,9 +302,12 @@ export async function processSkPendingOrders(
          AND (l.next_attempt_at IS NULL OR datetime(l.next_attempt_at) <= datetime('now'))
        ORDER BY l.next_attempt_at ASC, l.id ASC LIMIT 4`,
     )
-    .catch(() => [] as Row[]);
+    .catch((error) => {
+      if (error instanceof QueryBudgetExceeded) throw error;
+      return [] as Row[];
+    });
   for (const link of due) {
-    if (!db.canSpend(6)) break;
+    if (!db.canSpend(6)) throw new QueryBudgetExceeded();
     result.processed++;
     const outcome = await processOneSkLink(link, db);
     if (outcome === "succeeded") result.succeeded++;
