@@ -959,6 +959,16 @@ Identitas Midnight/Cyan/Gold dipertahankan. Enam metrik di atas; baris berikutny
 - Logo overlay CrossAppTransition memakai brightness-0 invert agar SVG eksternal terlihat putih; filter X menyembunyikan label visual yang mengulang ikon, tetap aria-label X dan target 44px.
 
 
+## Pengambilan data admin/pesanan — revisi 2026-10-19
+
+✅ Implementasi; publikasi melalui CI. Katalog admin dimuat ketika masuk Produk;
+menu lain tidak memunculkan loading/error katalog. Kembali ke Produk memakai
+loading/retry existing dan data baru, termasuk navigasi back/forward. Tidak
+mengubah layout/token/editor. Polling Market berhenti saat tab tersembunyi dan
+mengecek segera saat kembali, selama jatah polling masih ada; countdown dihitung
+ulang dari waktu aktual. Indikator interval dan tombol Cek Pembayaran tetap,
+tanpa overlay/notifikasi tambahan. Webhook/pengiriman tidak bergantung tab.
+
 ## Pengambilan data Ringkasan — 2026-10-16
 
 ✅ Implementasi, publikasi melalui CI: section admin selain Ringkasan tidak memuat

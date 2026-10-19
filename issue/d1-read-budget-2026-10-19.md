@@ -55,3 +55,37 @@ Tidak ada transaksi supplier, perubahan flag/secret atau deploy manual.
 
 Implementasi dan verifikasi lokal selesai. Publikasi memakai push main/CI;
 hasil deployment dan total harian pascarilis belum diverifikasi.
+
+
+## Permintaan client sesuai kebutuhan — revisi berikutnya 19 Oktober
+
+Owner menyetujui rekomendasi lanjutan. Cakupan dipilih: pemuatan katalog admin
+sesuai menu dan polling Market sesuai visibility. Optimasi probe COUNT cron dan
+antrean recovery durable tetap terpisah karena memerlukan pengukuran/validasi
+penjadwalan dan pemulihan lebih lanjut.
+
+- Admin hanya mengambil `/api/products` + `/api/categories?all=1` ketika masuk
+  Produk; kembali ke menu itu memuat data baru. Error katalog dibatasi Produk.
+- Pending Market membersihkan interval ketika hidden, GET biasa segera saat
+  visible, interval visible 5/30 detik tetap. Pengiriman menjaga jatah/delay
+  existing, hidden tidak memakai atau mereset jatah. Listener/timer dibersihkan.
+- Auto/manual payment check berbagi pengunci request; `wake=1` hanya manual.
+  Request yang sudah berjalan boleh selesai. Webhook/cron/expiry/email tetap.
+- 2.777 test / 234 file pass, tsc bersih, lint exit 0 warning existing,
+  build:pages exit 0. Tes mencakup direct entry menu selain Produk, kembali ke
+  Produk/render biasa/login, interval visible, hidden sejak awal, pending→terminal,
+  fast fulfillment→kredensial siap, budget handover, request auto/manual in-flight,
+  duplicate event visible dan cleanup unmount. Tidak ada transaksi supplier nyata.
+
+- Dev beranda/CSS/admin/pesanan 200, tanpa error kompilasi. Obscura home aktual
+  nonblank dengan title/heading sesuai; komponen admin/pesanan aktual memakai API
+  fixture lokal inert pada 1280/390px. Membuka Pesanan: nol fetch produk/kategori;
+  dua kali masuk Produk: tepat dua fetch masing-masing. Payment dan fulfillment:
+  nol request saat simulasi hidden (6,5/4,5 detik), tepat satu GET pada resume.
+  Tidak ada overflow/exception JS pada fixture, screenshot diperiksa. Visibility
+  disimulasikan lewat accessor/event CDP, bukan perpindahan tab native; gambar
+  QR fixture memakai logo placeholder, tanpa pembayaran/POST supplier nyata.
+- Dokumen PRD/DESIGN/ARCHITECTURE/README/changelog disinkronkan. Target harian
+  tidak diklaim tercapai dari fixture; publikasi hanya push main/CI dan hasil
+  deployment belum diverifikasi. Warning hydration namespace SVG/paint homepage
+  dan keterbatasan input tanggal/SVG Obscura existing tetap dicatat.

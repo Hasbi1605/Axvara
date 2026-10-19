@@ -710,6 +710,22 @@ Tidak ada cron/flag/proxy baru. Angka penghematan fixture dan batas buktinya:
 [laporan 19 Oktober](issue/d1-read-budget-2026-10-19.md). Target ≤3 juta reads/hari
 harus dibuktikan satu siklus produksi; push bukan bukti hasil deployment.
 
+### Muat data sesuai kebutuhan — 2026-10-19
+
+✅ Implementasi; publikasi melalui CI. Katalog admin/editor hanya dimuat ketika
+masuk Produk; Ringkasan/Pesanan/menu lain tidak mengambil katalog. Kembali ke
+Produk, URL langsung dan back/forward memuat data baru; render biasa/filter lokal
+tidak mengulang fetch. Loading/retry katalog hanya tampil di Produk.
+
+Polling pembayaran dan pengiriman Market berhenti ketika tab tersembunyi.
+Saat kembali, GET status biasa segera berjalan selama jatah polling masih ada;
+interval terlihat 5 detik QR dinamis/30 detik lainnya, urutan cepat/lambat serta
+batas polling pengiriman tetap. Hidden tidak memakai/mereset jatah; request
+in-flight tetap boleh selesai; cek manual dan otomatis berbagi pengunci request.
+Cek manual `wake=1`, webhook, cron, expiry dan
+pengiriman/email tetap bekerja. Tanpa env/migrasi/kontrak API baru. Besar dampak
+harian perlu pengukuran produksi; tidak disamakan dengan jumlah request fixture.
+
 ### Penghematan lanjutan D1 — 2026-10-17
 
 ✅ Implementasi/verifikasi lokal, publikasi melalui CI. Seluruh Ringkasan admin

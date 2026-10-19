@@ -195,7 +195,7 @@ export default function OrderSuccessPage() {
   // Poll berikutnya dilewati selama yang sebelumnya belum selesai: di jaringan
   // lambat interval 5 dtk dulu menumpuk permintaan dan memperparah antrean.
   const pollOrder = useCallback(async () => {
-    if (polling.current) return;
+    if (document.hidden || polling.current) return;
     polling.current = true;
     try {
       await fetchOrder();
@@ -206,6 +206,7 @@ export default function OrderSuccessPage() {
   /** Cek status pembayaran SEKARANG (tombol manual di QRIS pending). */
   const checkStatusNow = useCallback(async () => {
     if (checkingNow || polling.current) return;
+    polling.current = true;
     setCheckingNow(true);
     setFetchError(null);
     try {
@@ -215,6 +216,7 @@ export default function OrderSuccessPage() {
     } catch (error) {
       setFetchError(error instanceof Error ? error.message : "Status terbaru gagal dimuat");
     } finally {
+      polling.current = false;
       setCheckingNow(false);
     }
   }, [checkingNow, fetchOrder]);
@@ -288,11 +290,21 @@ export default function OrderSuccessPage() {
   const isDynamicQris = Boolean(order?.qris);
   useEffect(() => {
     if (orderStatus !== "pending") return;
-    const interval = setInterval(() => {
+    let interval: ReturnType<typeof setInterval> | undefined;
+    const stop = () => { clearInterval(interval); interval = undefined; };
+    const poll = () => {
       setNow(Date.now());
       void pollOrder().catch((error) => setFetchError(error instanceof Error ? error.message : "Status terbaru gagal dimuat"));
-    }, isDynamicQris ? 5_000 : 30_000);
-    return () => clearInterval(interval);
+    };
+    const start = (resume: boolean) => {
+      if (document.hidden || interval !== undefined) return;
+      if (resume) poll(); // Catch up immediately, without waking/reissuing the QR.
+      interval = setInterval(poll, isDynamicQris ? 5_000 : 30_000);
+    };
+    const onVisibility = () => { if (document.hidden) stop(); else start(true); };
+    start(false); // The initial page load already fetches the order.
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => { stop(); document.removeEventListener("visibilitychange", onVisibility); };
   }, [orderStatus, isDynamicQris, pollOrder]);
 
   // Order lunas tetapi detail akun belum ada: periksa berkala supaya panel
@@ -326,21 +338,34 @@ export default function OrderSuccessPage() {
     const maxAttempts = fast.length + (handedToAdmin ? 3 : 30);
     let attempts = 0;
     let cancelled = false;
+    let checking = false;
+    let wasHidden = document.hidden;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    const check = () => {
+      if (cancelled || document.hidden || checking || attempts >= maxAttempts) return;
+      if (fast.length > 0 && attempts >= fast.length) setInstantSlow(true);
+      checking = true;
+      attempts += 1;
+      // Fulfillment polling failures stay silent; the order is already paid.
+      void pollOrder().catch(() => undefined).finally(() => { checking = false; scheduleNext(); });
+    };
     const scheduleNext = () => {
-      if (cancelled || attempts >= maxAttempts) return;
+      if (cancelled || document.hidden || checking || timer !== undefined || attempts >= maxAttempts) return;
       if (fast.length > 0 && attempts === fast.length) setInstantSlow(true);
-      timer = setTimeout(() => {
-        attempts += 1;
-        // Diam-diam saja: kegagalan poll di sini bukan error yang perlu
-        // ditampilkan, status utama sudah "Lunas".
-        void pollOrder().catch(() => undefined).finally(scheduleNext);
-      }, fast[attempts] ?? SLOW_POLL_MS);
+      timer = setTimeout(() => { timer = undefined; check(); }, fast[attempts] ?? SLOW_POLL_MS);
+    };
+    const onVisibility = () => {
+      if (wasHidden === document.hidden) return;
+      wasHidden = document.hidden;
+      clearTimeout(timer); timer = undefined;
+      if (!document.hidden) check(); // Hidden time never consumes/resets the retry budget.
     };
     scheduleNext();
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       cancelled = true;
       clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [orderStatus, credentialsReady, instantSending, handedToAdmin, pollOrder]);
 

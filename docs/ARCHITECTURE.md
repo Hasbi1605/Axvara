@@ -2640,6 +2640,37 @@ riwayat inventory, antrean kosong/aktif dan migrasi baru. Hasil dan batas bukti:
 `issue/d1-read-budget-2026-10-19.md`. Target harian tetap perlu satu siklus
 07.00–07.00 produksi; hasil fixture/push tidak membuktikan target tercapai.
 
+### 17.4. Permintaan client sesuai kebutuhan — 2026-10-19
+
+✅ Implementasi; publikasi melalui CI. `src/app/(shop)/admin/page.tsx` menjalankan
+`useProductManager.load()` setelah auth hanya ketika `tab === "products"`.
+Load mengambil `/api/products` dan `/api/categories?all=1` untuk daftar/editor;
+menu Ringkasan/Pesanan/lainnya tidak memicunya. Masuk Produk dari sidebar, URL,
+back/forward dan kembali dari menu lain memuat data baru satu kali; render biasa
+atau mengubah filter lokal tidak memuat ulang. Save/reorder/retry tetap memakai
+handler existing. Error katalog dibatasi ke menu Produk agar respons gagal yang
+tiba sesudah pindah menu tidak mengganggu layar lain. CategoryManager mandiri
+mempertahankan kebutuhan API kategorinya sendiri.
+
+`src/app/(shop)/pesanan/[code]/page.tsx` memasang `visibilitychange` untuk dua
+siklus polling. Pending menjalankan interval 5 detik QR dinamis/30 detik lainnya
+hanya ketika terlihat. Hidden membersihkan interval; visible memicu GET biasa
+segera lalu melanjutkan interval, tanpa `wake=1`, POST invoice atau reissue.
+Load awal tetap membaca status sekali, termasuk jika halaman awalnya hidden.
+
+Polling lunas/belum ada kredensial membersihkan timeout saat hidden, mempertahankan
+attempts/urutan delay cepat-lambat dan maksimum existing. Visible mengecek segera
+bila jatah belum habis; event visible berulang dan request in-flight tidak
+menumpuk timer/request. Guard `pollOrder` juga menolak auto-poll saat hidden.
+Order dibatalkan/kedaluwarsa, kredensial siap atau unmount membersihkan timer/listener; waktu tersembunyi
+tidak menghabiskan atau mereset jatah. Request yang sudah dimulai tidak dibatalkan;
+responsnya tetap boleh memperbarui status. Countdown tetap berbasis waktu absolut.
+Cek manual tetap `wake=1` dan berbagi pengunci request dengan polling otomatis;
+webhook/cron/fulfillment/expiry/email tidak berubah.
+
+Tanpa route/komponen/env/migrasi/cron baru. Penghematan dibuktikan melalui jumlah
+request fixture; total rows_read/hari tetap perlu satu siklus produksi 07.00–07.00.
+
 ## 18. Halaman maintenance kuota D1 — 2026-10-17
 
 ✅ Implementasi dan verifikasi lokal; publikasi melalui CI. `src/middleware.ts`

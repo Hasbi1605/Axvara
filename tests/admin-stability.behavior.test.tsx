@@ -64,7 +64,7 @@ describe("identitas toast stabil: loader gagal tidak memicu fetch berulang", () 
 });
 
 describe("login tidak memuat data dua kali", () => {
-  it("login sukses memuat produk/kategori/overview TEPAT SEKALI", async () => {
+  it("login loads summary once and defers product data until the Products section", async () => {
     const counts: Record<string, number> = {};
     let authed = false;
     vi.stubGlobal("fetch", vi.fn(async (input: unknown, init?: RequestInit) => {
@@ -92,6 +92,10 @@ describe("login tidak memuat data dua kali", () => {
     fireEvent.click(screen.getByRole("button", { name: /masuk/i }));
     await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
 
+    expect(counts["/api/products"] ?? 0).toBe(0);
+    expect(counts["/api/categories?all=1"] ?? 0).toBe(0);
+    expect(counts["/api/admin/overview"]).toBe(1);
+    fireEvent.click(screen.getByRole("button", { name: /Produk$/ }));
     await waitFor(() => expect(counts["/api/products"] ?? 0).toBeGreaterThan(0));
     for (const url of ["/api/products", "/api/categories?all=1", "/api/admin/overview"]) {
       expect(counts[url], `${url} dimuat ${counts[url]}x setelah login`).toBe(1);

@@ -99,7 +99,8 @@ export default function AdminPage() {
     return()=>window.removeEventListener("popstate",syncFromUrl);
   },[setOnlyLowStock, setProductPage]);
 
-  useEffect(()=>{ if(auth.authed) void load(); },[auth.authed, load]);
+  // Product data is only used by ProductsSection/editor. Refresh on each entry.
+  useEffect(()=>{ if(auth.authed && tab === "products") void load(); },[auth.authed, tab, load]);
   useEffect(()=>{
     const requests = overviewRequest;
     if(auth.authed && tab === "summary") void loadOverview();
@@ -131,7 +132,7 @@ export default function AdminPage() {
         </p>}
       </div>
 
-      {pm.listError && <div className="mt-4 rounded-2xl bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-200 flex items-center justify-between gap-3"><span>{pm.listError}</span><button onClick={pm.load} className="h-8 px-3 rounded-full bg-white text-[#070a1e] text-xs font-bold shrink-0 transition hover:bg-white/90">Coba lagi</button></div>}
+      {tab === "products" && pm.listError && <div className="mt-4 rounded-2xl bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-200 flex items-center justify-between gap-3"><span>{pm.listError}</span><button onClick={pm.load} className="h-8 px-3 rounded-full bg-white text-[#070a1e] text-xs font-bold shrink-0 transition hover:bg-white/90">Coba lagi</button></div>}
 
       {tab==="summary" && <AdminOverview data={overview} loading={overviewLoading} error={overviewError} onRetry={loadOverview} selection={reportSelection} onSelectionChange={changeReportSelection} />}
       {tab==="orders" && <OrdersManager onChanged={loadOverview} />}

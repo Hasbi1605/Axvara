@@ -1,5 +1,21 @@
 # PRD — AXVARA
 
+## Permintaan data sesuai kebutuhan — 2026-10-19
+
+✅ Implementasi; publikasi melalui CI. Admin memuat katalog produk/kategori
+editor ketika masuk menu Produk, termasuk tautan langsung/back/forward; kembali
+ke Produk mengambil data baru. Menu lain tidak memuat katalog ini. Loading,
+retry, penyuntingan dan pembacaan sesi tetap berlaku; error katalog hanya tampil
+di menu Produk.
+
+Halaman pesanan Market menunda polling pembayaran dan pengiriman ketika tab
+tersembunyi. Saat kembali terlihat, cek status segera memakai GET biasa selama
+polling masih aktif, tanpa `wake=1` atau penerbitan QR baru. Interval terlihat
+5 detik untuk QR dinamis/30 detik lainnya tetap; polling pengiriman mempertahankan
+urutan cepat/lambat dan jatah percobaan existing. Waktu tersembunyi tidak memakai
+atau mengulang jatah tersebut. Request yang sudah berjalan boleh selesai;
+webhook/cron/expiry/email tetap bekerja tanpa halaman terbuka.
+
 ## Keandalan antrean Sekalipay — 2026-10-19
 
 ✅ Diimplementasikan; publikasi melalui CI. Order SK auto yang sudah lunas diproses oleh cron existing tanpa membutuhkan Retry admin. Antrean siap beli didahulukan sebelum pemulihan order tanpa link; pemulihan mencari order layak yang benar-benar kehilangan link, termasuk yang tertutup banyak riwayat selesai. Maksimal empat upaya pembelian per tick; link yang dipulihkan langsung diproses bila belum ada upaya pembelian pada tick tersebut, selebihnya tetap due untuk tick berikutnya. Kehabisan budget dilaporkan sebagai pekerjaan tertunda, bukan antrean kosong. Retry/backoff, klaim/idempotensi, penanganan saldo/hasil ambigu dan pengiriman lewat webhook/status supplier tetap berlaku; order yang sudah selesai tidak dibeli ulang.
@@ -17,8 +33,9 @@ halaman pesanan yang sedang menunggu kini mengonfirmasi pembayaran KlikQRIS
 tanpa menunggu callback gateway (teramati ±28 detik sesudah bayar). Polling
 Market/Pedia memicu pemeriksaan status gateway maksimal sekali per ±10 detik
 per pesanan lewat klaim atomik; polling selebihnya tetap membaca status lokal,
-dan tombol cek manual tetap memeriksa seketika. Target deteksi ≤15 detik
-sesudah pembayaran terkonfirmasi gateway. Teks "Batas bayar otomatis 15 menit…"
+dan tombol cek manual tetap memeriksa seketika. Target deteksi ≤15 detik saat halaman terlihat
+sesudah pembayaran terkonfirmasi gateway; tab tersembunyi menyusul saat dibuka
+kembali (revisi 2026-10-19). Teks "Batas bayar otomatis 15 menit…"
 di bawah QR halaman pembayaran Market/Pedia dihapus atas keputusan owner;
 batas 15 menit, countdown, dan penanganan pembayaran terlambat tidak berubah.
 
