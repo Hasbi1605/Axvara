@@ -1809,6 +1809,14 @@ pembedaan hanya badge admin + slug `-wr`/`-sk`).
    (`netflix-codes.sekalipay.com`, tanpa brand/nav belanja) + bot Viu
    DIPERTAHANKAN — bukan toko kompetitor. Test: `product-copy-content`
    (pengecualian docs→artikel) + `sk-saldo-branding` (9).
+   **2026-10-19 pola yang sama untuk Disney+ (permintaan owner):** link
+   `sekalipay.com/docs/tutorial-login-disney` di-rewrite ke shortlink
+   `axvara.tech/go/disney-login` → artikel AXVARA
+   `/artikel/cara-login-disney-setelah-order-di-axvara` (ditulis ulang + 6 foto
+   white-label di R2, draf id 26 status review, sumber riset = URL docs
+   supplier); kurasi `curated.ts` 2 entri sharing Premium 3U menunjuk
+   `go/disney-login`; seed `supplier_links` 44 slug (migrasi 0056 + schema +
+   dev-fallback in-memory).
  - **Anti-spam notif saldo SK 1:1 WR (2026-10-03, sesi ses_f029e):** throttle SK
    cuma 1 jam + state di `sk_saldo_log` (CHECK source rapuh) = spam 24x/hari
    (bukti screenshot: Rp41.900 × 5 dalam 4 jam). Kini `saldo.ts` pakai

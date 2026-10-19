@@ -49,6 +49,12 @@ const NETFLIX_UNINSTALL = "Wajib uninstall aplikasi Netflix dulu, lalu install u
 // Mailbox (netflix-codes.sekalipay.com) + bot Viu DIPERTAHANKAN: mailbox murni
 // alat OTP tanpa brand/nav belanja, bot Viu dibungkus artikel terpisah.
 const NETFLIX_AXVARA_GUIDE = "Panduan login lengkap: axvara.tech/go/netflix-login";
+// URL tutorial login Disney+ versi AXVARA (2026-10-19, permintaan owner —
+// pola sama dengan Netflix): teks supplier menunjuk ke
+// sekalipay.com/docs/tutorial-login-disney (nav "Belanja Sekarang" = diversi
+// order) → shortlink go/disney-login → artikel AXVARA. Mailbox OTP
+// dipertahankan (bukan toko).
+const DISNEY_AXVARA_GUIDE = "Panduan login lengkap: axvara.tech/go/disney-login";
 const NETFLIX_MAILBOX = "Buka axvara.tech/go/otp untuk kode akses dan PIN";
 const CAPCUT_UPDATE = "Wajib update aplikasi CapCut ke versi terbaru agar email tidak terbaca belum terdaftar";
 const YT_FAMILY_ATURAN = [
@@ -740,6 +746,7 @@ export const CURATED_VARIANT_COPY: readonly CuratedVariantCopy[] = [
     label: "disney-hotstar · Premium 3U",
     paket: DISNEY_SHARING,
     aturan: ["Hanya bisa di 1 perangkat", "Disarankan login di TV agar lebih stabil dan tidak sering logout"],
+    langkah: [DISNEY_AXVARA_GUIDE],
   },
   {
     key: "xatzf9m25w",
@@ -756,7 +763,7 @@ export const CURATED_VARIANT_COPY: readonly CuratedVariantCopy[] = [
       "Dilarang clear cache, clear data, apalagi memakai aplikasi cleaner",
       "Jangan melakukan hal yang mengganggu pengguna lain",
     ],
-    langkah: ["Chat admin untuk meminta kode OTP login", "Login memakai OTP tersebut; kode OTP hanya diberikan 1x dan hanya untuk 1 perangkat"],
+    langkah: ["Chat admin untuk meminta kode OTP login", "Login memakai OTP tersebut; kode OTP hanya diberikan 1x dan hanya untuk 1 perangkat", DISNEY_AXVARA_GUIDE],
   },
   {
     key: "29bev6iw5xs",

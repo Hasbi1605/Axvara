@@ -176,7 +176,7 @@ describe.each(snapshot.pairs.map((p) => [p.variants.join(" | "), p] as const))("
     const missing = supplierUrls(supplier).filter((url) => !lower.includes(url));
     const excused = missing.filter((url) =>
       /sekalipay\.com\/docs\//i.test(url)
-        ? /axvara\.tech\/artikel\/|\/artikel\/|go\/netflix-login/i.test(lower)
+        ? /axvara\.tech\/artikel\/|\/artikel\/|go\/(netflix|disney)-login/i.test(lower)
         : GO_BY_HOST.some(([host, go]) => host.test(url) && go.test(lower)),
     );
     expect(missing.filter((url) => !excused.includes(url))).toEqual([]);

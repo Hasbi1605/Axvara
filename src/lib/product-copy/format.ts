@@ -103,6 +103,8 @@ function splitDelivery(lines: CleanLine[], seen: Set<string>): { groups: Activat
  * 1. Halaman docs/tutorial Sekalipay (sekalipay.com/docs/*tutorial-login-netflix*)
  *    → go/netflix-login. Customer yang klik link docs melihat nav
  *    "Belanja Sekarang" dan bisa order langsung di supplier.
+ *    Berlaku juga untuk tutorial-login-disney → go/disney-login
+ *    (artikel AXVARA /artikel/cara-login-disney-setelah-order-di-axvara).
  * 2. Video tutorial login Alight Motion supplier (youtu.be/8emqddsjPsE +
  *    varian youtube.com/watch?v=.../embed/.../shorts/... dengan ID yang sama,
  *    berikut query `?si=...`) → go/alight-login.
@@ -127,10 +129,12 @@ function splitDelivery(lines: CleanLine[], seen: Set<string>): { groups: Activat
  */
 export const AXVARA_NETFLIX_GUIDE_PATH = "/artikel/cara-login-netflix-setelah-order-di-axvara";
 export const AXVARA_ALIGHT_GUIDE_PATH = "/artikel/cara-login-alight-motion-setelah-order-di-axvara";
+export const AXVARA_DISNEY_GUIDE_PATH = "/artikel/cara-login-disney-setelah-order-di-axvara";
 // Canonical SEO tetap path /artikel (sitemap + metadata tidak berubah); yang
 // tampil ke pembeli = shortlink /go (alias 307). Konstanta GO_* = teks tampil.
 export const GO_NETFLIX_LOGIN = "axvara.tech/go/netflix-login";
 export const GO_ALIGHT_LOGIN = "axvara.tech/go/alight-login";
+export const GO_DISNEY_LOGIN = "axvara.tech/go/disney-login";
 export const GO_OTP = "axvara.tech/go/otp";
 export const GO_OTP_BOT = "axvara.tech/go/otp-bot";
 export const GO_OTP_SENGARE = "axvara.tech/go/otp-sengare";
@@ -281,10 +285,14 @@ export function rewriteSupplierDocsLinks(raw: string | null | undefined): string
   let out = String(raw);
   // Varian Netflix → shortlink.
   out = out.replace(SUPPLIER_DOCS_RE, (match) =>
-    /tutorial-login-netflix|panduan-login-netflix/i.test(match) ? GO_NETFLIX_LOGIN : match,
+    /tutorial-login-netflix|panduan-login-netflix/i.test(match) ? GO_NETFLIX_LOGIN
+    : /tutorial-login-disney|panduan-login-disney/i.test(match) ? GO_DISNEY_LOGIN
+    : match,
   );
   out = out.replace(BARE_SUPPLIER_DOCS_RE, (match) =>
-    /tutorial-login-netflix|panduan-login-netflix/i.test(match) ? GO_NETFLIX_LOGIN : match,
+    /tutorial-login-netflix|panduan-login-netflix/i.test(match) ? GO_NETFLIX_LOGIN
+    : /tutorial-login-disney|panduan-login-disney/i.test(match) ? GO_DISNEY_LOGIN
+    : match,
   );
   // Video Alight Motion supplier → shortlink (ID spesifik, query ?si= ikut).
   out = out.replace(ALIGHT_YOUTUBE_RE, GO_ALIGHT_LOGIN);

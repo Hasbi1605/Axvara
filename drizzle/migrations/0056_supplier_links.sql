@@ -29,6 +29,7 @@ CREATE INDEX IF NOT EXISTS idx_supplier_links_active ON supplier_links(is_active
 INSERT OR IGNORE INTO supplier_links (slug, destination, title) VALUES
   ('netflix-login', '/artikel/cara-login-netflix-setelah-order-di-axvara', 'Panduan login Netflix AXVARA'),
   ('alight-login', '/artikel/cara-login-alight-motion-setelah-order-di-axvara', 'Panduan login Alight Motion AXVARA'),
+  ('disney-login', '/artikel/cara-login-disney-setelah-order-di-axvara', 'Panduan login Disney+ AXVARA'),
   ('gemini-redeem', '/artikel/cara-redeem-google-ai-pro-setelah-order-di-axvara', 'Panduan redeem Google AI Pro AXVARA'),
   ('otp', 'https://netflix-codes.sekalipay.com/mailbox', 'Mailbox OTP Netflix'),
   ('otp-bot', 'https://bototp.site/', 'Mailbox OTP BotOTP'),

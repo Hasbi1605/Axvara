@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { checkAndLogSkSaldo } from "@/lib/sekalipay/saldo";
 import { formatSkLicenses } from "@/lib/sekalipay/deliver";
-import { AXVARA_ALIGHT_GUIDE_PATH, AXVARA_NETFLIX_GUIDE_PATH, GO_ALIGHT_LOGIN, GO_BOT_ALIGHT, GO_BOT_SCRIBD, GO_BOT_VIU, GO_MAIL_OLIES, GO_NETFLIX_LOGIN, GO_OTP, GO_OTP_2FA, GO_OTP_GENERATOR, GO_OTP_GENJOS, GO_OTP_RUNCUBES, GO_OTP_SEKALICHAT, GO_OTP_SPOTIFY, GO_OTP_WAROENG, GO_TUTOR_ARCADE, GO_TUTOR_CANVA, GO_TUTOR_REMINI, GO_TUTOR_SCRIBD, GO_TUTOR_VISION_TV, GO_TUTOR_VISION_TV2, rewriteSupplierDocsLinks, supplierVariantCopy } from "@/lib/product-copy/format";
+import { AXVARA_ALIGHT_GUIDE_PATH, AXVARA_DISNEY_GUIDE_PATH, AXVARA_NETFLIX_GUIDE_PATH, GO_ALIGHT_LOGIN, GO_BOT_ALIGHT, GO_BOT_SCRIBD, GO_BOT_VIU, GO_DISNEY_LOGIN, GO_MAIL_OLIES, GO_NETFLIX_LOGIN, GO_OTP, GO_OTP_2FA, GO_OTP_GENERATOR, GO_OTP_GENJOS, GO_OTP_RUNCUBES, GO_OTP_SEKALICHAT, GO_OTP_SPOTIFY, GO_OTP_WAROENG, GO_TUTOR_ARCADE, GO_TUTOR_CANVA, GO_TUTOR_REMINI, GO_TUTOR_SCRIBD, GO_TUTOR_VISION_TV, GO_TUTOR_VISION_TV2, rewriteSupplierDocsLinks, supplierVariantCopy } from "@/lib/product-copy/format";
 import { CURATED_VARIANT_COPY } from "@/lib/product-copy/curated";
 import { createD1Fixture } from "../helpers/d1-fixture";
 
@@ -116,6 +116,52 @@ describe("rewrite link docs supplier → shortlink axvara.tech/go/*", () => {
     expect(out).toContain(GO_OTP);
     expect(out).not.toContain("sekalipay.com/docs/");
     expect(out).not.toContain("netflix-codes.sekalipay.com/mailbox");
+  });
+
+  it("link tutorial Disney (https + bare) jadi shortlink go/disney-login, bukan nav supplier", () => {
+    const raw = "CARA LOGIN = https://sekalipay.com/docs/tutorial-login-disney\nLihat sekalipay.com/docs/tutorial-login-disney";
+    const out = rewriteSupplierDocsLinks(raw)!;
+    expect(out).toContain(GO_DISNEY_LOGIN);
+    expect(out).not.toContain("sekalipay.com/docs/");
+  });
+
+  it("kurasi Disney di kode menunjuk panduan AXVARA, canonical /artikel tetap ada", () => {
+    const disney = CURATED_VARIANT_COPY.filter((e) => e.label.startsWith("disney-hotstar"));
+    expect(disney.length).toBeGreaterThan(0);
+    const sharing = disney.filter((e) => e.label.includes("Premium 3U"));
+    expect(sharing.length).toBeGreaterThan(0);
+    const joined = sharing
+      .flatMap((e) => [...(e.grupLangkah ?? []).flatMap((g) => g.langkah), ...(e.langkah ?? [])])
+      .join("\n");
+    expect(joined).toContain("go/disney-login");
+    // Canonical SEO /artikel tetap ada di konstanta (sitemap + metadata).
+    expect(AXVARA_DISNEY_GUIDE_PATH).toBe("/artikel/cara-login-disney-setelah-order-di-axvara");
+  });
+
+  it("fallback PDP (supplierVariantCopy) + email tidak pernah bocor docs Disney Sekalipay", () => {
+    const sellerNote = "CARA LOGIN = https://sekalipay.com/docs/tutorial-login-disney\n1. Buka aplikasi Disney+";
+    const copy = supplierVariantCopy(null, sellerNote)!;
+    const all = [
+      ...copy.sections.flatMap((s) => s.items),
+      ...copy.activation.flatMap((g) => g.steps),
+    ].join("\n");
+    expect(all).not.toContain("sekalipay.com/docs/");
+    expect(all).toContain("go/disney-login");
+    const text = formatSkLicenses({
+      id: 2, ref_id: "R2", invoice: "INV-2", payment_method: "saldo", status: "completed",
+      price: 15000, fees: 0, amount: 15000,
+      items: [
+        {
+          variant_id: 21, variant_name: "Premium 3U", product_name: "Disney Hotstar",
+          product_license: "user@mail.com|otp-123456",
+          seller_note: sellerNote,
+          price: 15000, qty: 1, note: null, order_process: "auto" as const,
+        },
+      ],
+      h2h_results: [], smm_results: [],
+    });
+    expect(text).not.toContain("sekalipay.com/docs/");
+    expect(text).toContain("go/disney-login");
   });
 
   it("fallback PDP (supplierVariantCopy) tidak pernah bocor docs Sekalipay", () => {

@@ -8,6 +8,7 @@
 // - API admin: CRUD + validasi + auth.
 import { describe, expect, it } from "vitest";
 import {
+  GO_DISNEY_LOGIN,
   GO_MAIL_OLIES,
   GO_NETFLIX_LOGIN,
   GO_OTP,
@@ -59,7 +60,7 @@ describe("dev fallback in-memory — 43 slug prod tersedia tanpa D1", () => {
   it("queryAll supplier_links + queryFirst by slug + klik", async () => {
     const { queryAll, queryFirst, execRun } = await import("@/lib/db/client");
     const rows = await queryAll(`SELECT * FROM supplier_links ORDER BY slug ASC`);
-    expect(rows.length).toBe(43);
+    expect(rows.length).toBe(44);
     const otp = await queryFirst(`SELECT destination FROM supplier_links WHERE slug=? AND is_active=1`, "otp");
     expect(String(otp?.destination)).toBe("https://netflix-codes.sekalipay.com/mailbox");
     const before = Number((await queryFirst(`SELECT click_count FROM supplier_links WHERE slug=?`, "otp"))?.click_count ?? 0);
@@ -80,6 +81,14 @@ describe("rewrite supplier → go/* (tahan sync, termasuk produk off/restok)", (
     expect(out).toContain(GO_NETFLIX_LOGIN);
     expect(out).toContain(GO_OTP);
     expect(out).toContain(GO_MAIL_OLIES);
+    expect(out).not.toContain("sekalipay.com/docs");
+  });
+
+  it("docs tutorial Disney (https + bare) jadi shortlink axvara.tech/go/disney-login", () => {
+    const out = rewriteSupplierDocsLinks(
+      "CARA LOGIN = https://sekalipay.com/docs/tutorial-login-disney\nLihat sekalipay.com/docs/tutorial-login-disney juga",
+    )!;
+    expect(out).toContain(GO_DISNEY_LOGIN);
     expect(out).not.toContain("sekalipay.com/docs");
   });
 
