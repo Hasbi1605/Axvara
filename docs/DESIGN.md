@@ -964,8 +964,9 @@ Identitas Midnight/Cyan/Gold dipertahankan. Enam metrik di atas; baris berikutny
 ✅ Implementasi, publikasi melalui CI: section admin selain Ringkasan tidak memuat
 laporan keuangan di latar. Masuk Ringkasan atau mengubah periode tetap memakai
 skeleton/loading/error existing dan melindungi hasil dari respons terlambat.
-Laporan standar berasal dari agregasi bersama; cache privat maksimal 60 detik
-menampilkan waktu pembuatan snapshot aktual. Nilai layar dan ekspor memakai
+Laporan standar berasal dari agregasi bersama. Revisi 2026-10-19: snapshot
+keuangan privat maksimal lima menit menampilkan waktu pembuatan aktual;
+status operasional Ringkasan memakai cache maksimal 60 detik. Nilai layar dan ekspor memakai
 laporan yang sama; layout, token, animasi dan kontrol periode tetap. Katalog
 publik memakai cache singkat sesuai PRD; harga/stok divalidasi ulang saat checkout.
 
@@ -992,8 +993,9 @@ layar kecil, tanpa animasi atau aset/font jaringan yang dibutuhkan untuk membaca
 ✅ Implementasi, publikasi CI. Katalog/filter/cari/bestseller Telegram berbagi
 snapshot publik 30 detik dengan format pesan dan tombol existing; detail serta
 checkout tetap memvalidasi data aktual. Seluruh respons Ringkasan memakai cache
-privat maksimal 60 detik setelah auth, dengan TTL dibatasi snapshot keuangan
-asal agar perpindahan periode tidak memperpanjang umur data. Waktu pembuatan
+privat maksimal 60 detik setelah auth. Revisi 2026-10-19: data keuangan berbagi
+snapshot terenkripsi maksimal lima menit lintas proses per lokasi Cloudflare;
+perpindahan periode/proses tidak memperpanjang umur snapshot. Waktu pembuatan
 laporan tetap waktu sebenarnya; skeleton/loading/error dan layout/token tetap.
 Laporan kuota berkala berada di GitHub Actions summary/artifact, tanpa kontrol
 atau polling baru pada layar pelanggan/admin.

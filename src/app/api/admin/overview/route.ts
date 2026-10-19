@@ -18,6 +18,7 @@ import {
 } from "@/lib/revenue";
 import { emptySelectedReport, readOverviewFinancialReport, readSelectedFinancialReport, selectedReportFromFinancial } from "@/lib/dashboard-report";
 import { OVERVIEW_ATTENTION_SQL, OVERVIEW_JOB_QUEUE_SQL } from "@/lib/admin-overview-queries";
+import { FINANCIAL_SNAPSHOT_TTL_MS } from "@/lib/admin-report-cache";
 import { readAdminOverviewSnapshot } from "@/lib/admin-overview-cache";
 import { parseExpiry } from "@/lib/expiry";
 import { topProfitByItems } from "@/lib/dashboard-profit";
@@ -175,7 +176,7 @@ export async function GET(request: NextRequest) {
   const range = resolveReportRange(selection, now);
   const key = JSON.stringify([admin.email, selection, range.from, range.to, now.toISOString().slice(0, 13)]);
   const value = await readAdminOverviewSnapshot(key, () => readD1Overview(selection, now));
-  return NextResponse.json(value);
+  return NextResponse.json(value, { headers: { "Cache-Control": "private, no-store" } });
 }
 
 async function readD1Overview(selection: ReportSelection, now: Date) {
@@ -230,8 +231,8 @@ async function readD1Overview(selection: ReportSelection, now: Date) {
     // Satu order dihitung SEKALI walau punya 1 job + N item bermasalah.
     // Item delivered/sending/queued tepat waktu TIDAK dihitung.
     safeFirst(OVERVIEW_ATTENTION_SQL),
-    safeAll(`SELECT fi.status AS status, COUNT(*) AS count FROM fulfillment_items fi
-      JOIN orders o ON o.code=fi.order_code
+    safeAll(`SELECT fi.status AS status, COUNT(*) AS count FROM fulfillment_items fi INDEXED BY idx_fulfillment_items_next
+      CROSS JOIN orders o ON o.code=fi.order_code
       WHERE fi.status IN ('manual_required','retry','failed','queued','sending')
         AND o.status='lunas' AND o.payment_status='paid' GROUP BY fi.status`),
     safeFirst(`SELECT COUNT(*) AS count FROM product_variants WHERE is_active=1 AND stock BETWEEN 0 AND 5`),
@@ -252,11 +253,11 @@ async function readD1Overview(selection: ReportSelection, now: Date) {
     // Usia antrean tertua (review R11): tanpa ini, satu kirim sukses yang
     // baru menutupi antrean macet berjam-jam. Filter order sama: hanya order
     // lunas+paid yang menua yang dihitung; bangkai order final diabaikan.
-    safeFirst(`SELECT MIN(fj.next_attempt_at) AS oldest_due FROM fulfillment_jobs fj
-      JOIN orders o ON o.code=fj.order_code
+    safeFirst(`SELECT MIN(fj.next_attempt_at) AS oldest_due FROM fulfillment_jobs fj INDEXED BY idx_fulfillment_jobs_status
+      CROSS JOIN orders o ON o.code=fj.order_code
       WHERE fj.status IN ('queued','retry') AND o.status='lunas' AND o.payment_status='paid'`),
-    safeFirst(`SELECT MIN(fi.next_attempt_at) AS oldest_due FROM fulfillment_items fi
-      JOIN orders o ON o.code=fi.order_code
+    safeFirst(`SELECT MIN(fi.next_attempt_at) AS oldest_due FROM fulfillment_items fi INDEXED BY idx_fulfillment_items_next
+      CROSS JOIN orders o ON o.code=fi.order_code
       WHERE fi.status IN ('queued','retry') AND o.status='lunas' AND o.payment_status='paid'`),
     safeFirst(`SELECT MIN(next_attempt_at) AS oldest_due FROM whatsapp_outbox WHERE status IN ('pending','failed')`),
     safeFirst(`SELECT MAX(CASE WHEN telegram_paid_notified_at IS NOT NULL THEN telegram_paid_notified_at ELSE NULL END) AS last_ok,
@@ -289,7 +290,7 @@ async function readD1Overview(selection: ReportSelection, now: Date) {
     oldestWaDue: oldestWaDue?.oldest_due ? String(oldestWaDue.oldest_due) : null,
   });
 
-  return { cacheable, expiresAt: Date.parse(financial.generatedAt) + 60_000, value: {
+  return { cacheable, expiresAt: Date.parse(financial.generatedAt) + FINANCIAL_SNAPSHOT_TTL_MS, value: {
     ...zero,
     selected_report: selected,
     total_orders: Number(orders?.total_orders || 0),

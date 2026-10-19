@@ -672,7 +672,8 @@ Market 30 detik/produk tunggal 10 detik, Pedia dan kategori 60 detik. Header
 Admin, quote, checkout dan status pembayaran tidak memakai cache publik.
 
 Ringkasan admin dimuat saat section dibuka, periode standar berbagi satu agregasi
-dan hasil privat maksimal 60 detik memakai waktu pembuatan snapshot aktual.
+dan snapshot keuangan privat maksimal lima menit (revisi 2026-10-19) memakai
+waktu pembuatan aktual; status operasional Ringkasan maksimal 60 detik.
 Rentang historis, ekspor, autentikasi dan field legacy respons tetap tersedia.
 Cron forced phase hanya membaca antrean relevan; expiry/fulfillment/pemulihan
 order tetap per tick. Cleanup lite/heavy berbagi marker sukses per jam. Agregat
@@ -687,11 +688,34 @@ atau jadwal Worker baru. Detail dan batas bukti: `docs/ARCHITECTURE.md` §17 dan
 `issue/d1-read-budget-2026-10-16.md`.
 
 
+### Penghematan admin dan lookup pembayaran — 2026-10-19
+
+✅ Implementasi; publikasi melalui CI. Laporan keuangan Ringkasan memakai cache
+memori dan Cache API internal **terenkripsi AES-GCM**, maksimal lima menit sejak
+`generated_at` asli. Cache lintas proses hanya berbagi di lokasi Cloudflare yang
+sama; tidak menjanjikan cache global. Sesi/revocation dan parameter tetap dicek
+sebelum akses. Kunci turunan `ADMIN_JWT_SECRET` existing (fallback `JWT_SECRET`)
+dipisahkan dari JWT signing; tidak ada secret/env baru. Snapshot gagal, rusak,
+kedaluwarsa atau cache tidak tersedia membaca D1 lagi. Respons API admin tetap
+privat; status operasional Ringkasan disimpan maksimum 60 detik, dan daftar
+pesanan/pembayaran/checkout membaca data aktual. Rentang historis dihitung baru.
+
+Pencarian link WR/SK laporan dimaterialisasi sekali per item. Facet global
+kanal/status/metode pesanan dihitung dengan satu GROUP BY; total pagination
+memakai agregat terfilter yang sama dengan kartu metrik. Migrasi baru **0072**
+menambah indeks daftar order terbaru dan inventory `(order_code,status)`, termasuk
+lookup reservasi saat polling KlikQRIS. Kesehatan antrean memakai indeks status
+existing dan urutan join eksplisit agar riwayat order tidak dipindai saat kosong.
+Tidak ada cron/flag/proxy baru. Angka penghematan fixture dan batas buktinya:
+[laporan 19 Oktober](issue/d1-read-budget-2026-10-19.md). Target ≤3 juta reads/hari
+harus dibuktikan satu siklus produksi; push bukan bukti hasil deployment.
+
 ### Penghematan lanjutan D1 — 2026-10-17
 
 ✅ Implementasi/verifikasi lokal, publikasi melalui CI. Seluruh Ringkasan admin
 memakai snapshot privat maksimal 60 detik setelah auth/revocation/validasi;
-berganti periode tidak memperpanjang TTL data keuangan asal. Daftar, kategori,
+revisi 2026-10-19 membagi umur data: keuangan maksimal lima menit, status
+operasional maksimal 60 detik. Berganti periode tidak memperpanjang TTL asal. Daftar, kategori,
 pencarian dan bestseller Telegram berbagi katalog publik 30 detik. Detail,
 checkout, pembayaran dan kredensial tetap memeriksa data aktual.
 

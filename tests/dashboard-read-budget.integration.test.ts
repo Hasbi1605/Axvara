@@ -32,7 +32,7 @@ it("production private cache coalesces, expires and preserves the actual generat
   expect(snapshots[0]).toBe(snapshots[1]);
   const later = new Date(now.getTime() + 30_000); vi.setSystemTime(later);
   expect(selectedReportFromFinancial("today", await readOverviewFinancialReport(later), later).generated_at).toBe(now.toISOString());
-  const expired = new Date(now.getTime() + 61_000); vi.setSystemTime(expired);
+  const expired = new Date(now.getTime() + 301_000); vi.setSystemTime(expired);
   expect((await readOverviewFinancialReport(expired)).generatedAt).toBe(expired.toISOString());
   expect(fixture.control.queries - queries).toBe(2);
 });

@@ -3,7 +3,7 @@
 export function logD1ReadCost(sql: string, meta?: { rows_read?: number; rows_written?: number }) {
   if (!meta || Number(meta.rows_read) < 1000 || !Number.isFinite(meta.rows_read)) return;
   const scope = sql.includes("paid AS MATERIALIZED") ? "financial_report"
-    : sql.includes("attention JOIN orders") ? "overview_attention"
+    : /attention (?:CROSS )?JOIN orders/.test(sql) ? "overview_attention"
     : sql.includes("telegram_chat_id") || sql.includes("recipient_target") ? "telegram_recipient"
     : sql.includes("total_orders") || sql.includes("fj.status AS status") ? "overview_metrics"
     : sql.includes("FROM products p") ? "market_catalog"

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { queryAll, queryFirst } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
+import { ORDER_FACETS_SQL, orderFacets } from "@/lib/admin-order-facets";
 import { csvCell } from "@/lib/csv";
 
 export const runtime = "edge";
@@ -66,9 +67,8 @@ export async function GET(req: NextRequest) {
   }
 
   const offset = (page - 1) * limit;
-  const [rows, totalRow, statsRow, channelRows, statusRows, methodRows] = await Promise.all([
+  const [rows, statsRow, facetRows] = await Promise.all([
     queryAll(`${select} LIMIT ? OFFSET ?`, ...bindings, limit, offset),
-    queryFirst(`SELECT COUNT(*) AS count FROM orders o${where}`, ...bindings),
     // Kartu metrik WAJIB memakai `where` yang sama dengan daftarnya. Dulu
     // query ini tanpa WHERE, sehingga memfilter ke "Pending" tetap
     // menampilkan "Total pesanan 26" — kartu dan daftar di layar yang sama
@@ -78,11 +78,9 @@ export async function GET(req: NextRequest) {
       SUM(CASE WHEN o.status='lunas' THEN 1 ELSE 0 END) AS paid,
       SUM(CASE WHEN o.status='lunas' THEN COALESCE(pt.payable_amount,o.subtotal) ELSE 0 END) AS revenue
       FROM orders o LEFT JOIN payment_transactions pt ON pt.order_code=o.code${where}`, ...bindings),
-    queryAll("SELECT COALESCE(sales_channel,'web') AS value,COUNT(*) AS count FROM orders GROUP BY COALESCE(sales_channel,'web')"),
-    queryAll("SELECT status AS value,COUNT(*) AS count FROM orders GROUP BY status"),
-    queryAll("SELECT LOWER(payment_method) AS value,COUNT(*) AS count FROM orders GROUP BY LOWER(payment_method) ORDER BY count DESC"),
+    queryAll(ORDER_FACETS_SQL),
   ]);
-  const total = Number(totalRow?.count ?? rows.length);
+  const total = Number(statsRow?.total ?? rows.length);
   // Status supplier per order (insiden 2026-10-10): order WR/SK yang tertahan
   // dulu hanya tampil "Perlu handover" di Pesanan — tanpa sebab (saldo habis,
   // antre, diproses) dan tanpa tombol Retry/Batal, yang hanya ada di tab
@@ -98,8 +96,7 @@ export async function GET(req: NextRequest) {
       paid: Number(statsRow?.paid || 0),
       revenue: Number(statsRow?.revenue || 0),
     },
-    counts: { channels: rowCounts(channelRows), statuses: rowCounts(statusRows) },
-    methods: methodRows.map((row) => String(row.value || "")).filter(Boolean),
+    ...orderFacets(facetRows),
   });
 }
 
@@ -152,10 +149,6 @@ function normalizeOrder(row: Record<string, unknown>) {
     fulfillment_status: row.fulfillment_status, admin_note: row.admin_note,
     created_at: row.created_at, updated_at: row.updated_at,
   };
-}
-
-function rowCounts(rows: Record<string, unknown>[]) {
-  return Object.fromEntries(rows.map((row) => [String(row.value || ""), Number(row.count || 0)]));
 }
 
 function validDate(value: string | null) {

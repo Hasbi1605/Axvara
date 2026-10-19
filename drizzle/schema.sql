@@ -1480,3 +1480,8 @@ CREATE TRIGGER IF NOT EXISTS pair_dirty_pair_update AFTER UPDATE OF wr_product_i
 END;
 
 INSERT INTO supplier_pair_dirty(pair_id,version) SELECT id,lower(hex(randomblob(16))) FROM supplier_pairs WHERE 1 ON CONFLICT(pair_id) DO NOTHING;
+-- Latest-order pagination must stop after LIMIT, rather than sorting history.
+CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at DESC);
+-- Used on every KlikQRIS status read and during fulfillment; product-first
+-- inventory indexes cannot serve an order_code lookup efficiently.
+CREATE INDEX IF NOT EXISTS idx_inventory_order_status ON fulfillment_inventory(order_code,status);

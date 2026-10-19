@@ -2452,8 +2452,8 @@ Perbaikan log 0057 tetap terpasang; snapshot audit terakhir 4.582.928 rows_read.
 - **Admin:** section selain Ringkasan tidak memanggil overview. Periode standar
   memakai `selectedReportFromFinancial` dari fact set yang sama, bukan CTE kedua.
   Rentang historis tetap memakai perhitungan terpilih dan kontrak legacy respons
-  tetap lengkap. `readOverviewFinancialReport` menahan hasil privat maksimal 60
-  detik per binding D1 di proses produksi (bukan Cache API publik), dengan key
+  tetap lengkap. Revisi 2026-10-19: `readOverviewFinancialReport` menahan hasil
+  privat maksimal lima menit di memori dan Cache API internal terenkripsi, dengan key
   hari WIB/jam dan generated_at snapshot aktual. Auth/revocation diperiksa setiap
   request; cache gagal dihapus agar retry dapat pulih. Pemanggil laporan lain
   tetap memiliki kontrak pembacaan baru.
@@ -2501,8 +2501,9 @@ harian pascarilis. Laporan: `issue/d1-read-budget-phase2-2026-10-17.md`.
   periode/rentang kanonik, hari dan jam. Auth, revocation dan validasi parameter
   selalu berjalan sebelum lookup. Miss paralel digabung, maksimal 16 key; error
   atau hasil query parsial tidak disimpan. TTL juga dibatasi expiry snapshot
-  keuangan asal agar pergantian periode tidak memperpanjang umur data menjadi
-  120 detik. Periode tetap berbagi agregat keuangan; ekspor tetap kontrak existing.
+  keuangan asal agar pergantian periode tidak memperpanjang batas umur data. Revisi 2026-10-19: keuangan maksimal lima menit, sementara respons
+  operasional tetap maksimum 60 detik. Periode berbagi agregat; ekspor mengikuti
+  laporan terpilih existing.
 - **SQL Ringkasan:** `admin-overview-queries.ts` memulai attention dari status
   bermasalah di jobs/items, lalu lookup order paid dan COUNT DISTINCT kode order.
   Ringkasan status jobs hanya membaca status aktif; delivered tetap diabaikan
@@ -2592,6 +2593,52 @@ Referensi: [batas Workers](https://developers.cloudflare.com/workers/platform/li
 [sistem Pages](https://developers.cloudflare.com/pages/configuration/build-configuration/),
 [penghapusan env dengan null](https://developers.cloudflare.com/api/typescript/resources/pages/subresources/projects/methods/edit/).
 Publikasi ulang tetap melalui push main dan CI; push bukan bukti deploy sukses.
+
+### 17.3. Biaya admin dan polling pembayaran — 2026-10-19
+
+✅ Implementasi; publikasi melalui CI. Audit GraphQL 22.36 WIB mencatat 3.918.472
+reads (78,37%); Insights sampled menunjukkan laporan keuangan termahal sekitar
+21–22 ribu reads/eksekusi. Sampling bukan persentase atribusi tepat.
+
+- `dashboard-report.ts` mematerialisasi `bindings` agar resolusi link WR/SK tidak
+  diulang per ekspresi. Fact set, alokasi nominal/kode unik, modal snapshot,
+  Pedia/kredit, WIB dan kontrak output tetap. Rentang historis dihitung baru.
+- Agregat keuangan overview disimpan maksimal **300 detik**, di memori per binding
+  dan melalui `admin-report-cache.ts` pada named Cache API
+  `axvara-private-financial-v1`. Hanya agregat laporan, bukan baris pesanan/kontak/
+  kredensial. Payload dienkripsi **AES-256-GCM**, IV acak 12 byte dan AAD URL cache;
+  key turunan SHA-256 domain-separated dari `ADMIN_JWT_SECRET` existing (fallback
+  `JWT_SECRET`). URL internal berisi digest scope+key, tanpa parameter/admin/secret
+  literal. Scope mencakup versi laporan, hari WIB dan jam UTC; key rotation juga
+  mengubah URL. Tidak ada secret/env Pages baru. Bukan respons HTTP publik, dan
+  lookup hanya setelah auth/revocation/validasi route.
+- `generatedAt` di ciphertext menentukan expiry absolut; hit di proses lain atau
+  perpindahan periode tidak memperpanjang TTL. Entri tua/masa depan/rusak atau
+  kegagalan Cache API membaca D1 langsung; kegagalan kalkulasi tidak disimpan.
+  Memory cache memakai expiry sumber sesudah edge hit, bukan waktu lookup baru.
+  Cache API per lokasi Cloudflare, tanpa jaminan shared global atau single-flight
+  lintas isolate. Hasil runtime fallback tetap tersedia saat Cache API gagal.
+- Seluruh respons Ringkasan tetap cache memori **≤60 detik**, dibatasi pula expiry
+  keuangan sumber. Respons HTTP `Cache-Control: private, no-store`. Status/antrean
+  operasional tidak disimpan lima menit. Checkout/status pembayaran/daftar order
+  tidak memakai cache laporan; ekspor memakai laporan terpilih di layar.
+- `/api/admin/orders` menggabungkan tiga facet global dalam satu GROUP BY
+  `(COALESCE(sales_channel,'web'),status,LOWER(payment_method))`; reducer menghitung
+  counts kanal/status dan urutan metode. Pagination total berasal dari agregat
+  metrik berfilter existing, menghapus COUNT terpisah. Daftar, filter, ekspor CSV,
+  lookup supplier dan status recovery tetap segar.
+- Migrasi aditif **0072_d1_admin_read_budget.sql** + schema menambah
+  `orders(created_at DESC)` dan `fulfillment_inventory(order_code,status)`.
+  Ini melayani daftar terbaru dan subquery reservasi setiap polling KlikQRIS.
+  Tidak menyunting migrasi lama, order/ledger/stok, cron, flag atau kontrak VPS.
+- Kesehatan jobs/items dan attention memakai `INDEXED BY` indeks status existing
+  serta `CROSS JOIN` ke orders supaya planner tidak mulai dari seluruh order
+  lunas atau full-scan riwayat antrean pada distribusi status timpang.
+
+Verifikasi biaya/kesetaraan memakai D1/workerd, termasuk Cache API/enkripsi asli,
+riwayat inventory, antrean kosong/aktif dan migrasi baru. Hasil dan batas bukti:
+`issue/d1-read-budget-2026-10-19.md`. Target harian tetap perlu satu siklus
+07.00–07.00 produksi; hasil fixture/push tidak membuktikan target tercapai.
 
 ## 18. Halaman maintenance kuota D1 — 2026-10-17
 

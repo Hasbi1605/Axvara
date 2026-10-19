@@ -35,7 +35,8 @@ async function fetchOrders(query: string) {
   return await response.json() as {
     orders: unknown[];
     stats: { total: number; pending: number; paid: number; revenue: number };
-    counts: { channels: Record<string, number> };
+    counts: { channels: Record<string, number>; statuses: Record<string, number> };
+    methods: string[]; pagination: { total: number; pages: number };
   };
 }
 
@@ -69,4 +70,23 @@ describe("stats kartu Pesanan", () => {
     const channelTotal = Object.values(data.counts.channels).reduce((a, b) => a + b, 0);
     expect(channelTotal).toBe(3);
   });
+});
+
+
+it("combined facets preserve global counts while filtered pagination and stats agree", async () => {
+  fixture.sql.exec("UPDATE orders SET sales_channel='telegram',payment_method='DANA' WHERE code='AXV-P1'; UPDATE orders SET sales_channel='whatsapp',payment_method='dana' WHERE code='AXV-L1'; UPDATE orders SET sales_channel='web' WHERE code='AXV-P2'");
+  const data = await fetchOrders("status=pending&limit=1&page=3");
+  expect(data.orders).toEqual([]);
+  expect(data.pagination).toMatchObject({ total: 2, pages: 2 });
+  expect(data.stats).toMatchObject({ total: 2, pending: 2, paid: 0 });
+  expect(data.counts).toEqual({ channels: { web: 1, telegram: 1, whatsapp: 1 }, statuses: { pending: 2, lunas: 1 } });
+  expect(data.methods).toEqual(["dana", "qris"]);
+});
+
+it("empty filtered results retain global facets and zero pagination metrics", async () => {
+  const data = await fetchOrders("q=no-matching-code&limit=1");
+  expect(data.orders).toEqual([]);
+  expect(data.stats).toEqual({ total: 0, pending: 0, paid: 0, revenue: 0 });
+  expect(data.pagination).toMatchObject({ total: 0, pages: 1 });
+  expect(data.counts.statuses).toEqual({ pending: 2, lunas: 1 });
 });

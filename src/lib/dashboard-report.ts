@@ -1,4 +1,5 @@
 import { getD1, queryAll, type D1 } from "@/lib/db";
+import { FINANCIAL_SNAPSHOT_TTL_MS, readPrivateFinancialSnapshot } from "@/lib/admin-report-cache";
 import { resolveReportRange, revenuePaidAtWibSql, todayWibDateString, weekWibStartDateString, type ReportSelection } from "@/lib/revenue";
 import { fillDailySeries } from "@/lib/dashboard-profit";
 
@@ -71,7 +72,7 @@ export function financialReportSql(now = new Date(), selection?: ReportSelection
     LEFT JOIN order_item_costs s ON s.order_code=o.code AND s.item_index=CAST(j.key AS INTEGER)
     LEFT JOIN fulfillment_items fi ON fi.order_code=o.code AND fi.item_index=CAST(j.key AS INTEGER)
     LEFT JOIN product_variants pv ON pv.id=COALESCE(json_extract(j.value,'$.variant_id'),fi.variant_id,o.variant_id)
-  ), bindings AS (
+  ), bindings AS MATERIALIZED (
     SELECT l.*,
       (SELECT w.id FROM wr_order_links w WHERE w.order_code=l.code AND
         (w.id=l.wr_link_id OR w.fulfillment_item_id=l.fi_id OR
@@ -191,17 +192,21 @@ export async function readFinancialReport(now = new Date()) {
 type FinancialSnapshot = Awaited<ReturnType<typeof readFinancialReport>> & { generatedAt: string };
 const overviewSnapshots = new WeakMap<D1, { key: string; expiresAt: number; value: Promise<FinancialSnapshot> }>();
 
-/** Private process cache, read only after requireAdmin. Never stored in the
- * public Cache API. Other report callers retain their fresh-read contract. */
+/** Authenticated financial aggregates: five-minute memory + encrypted edge
+ * snapshot across isolates. Other report callers retain fresh-read behavior. */
 export async function readOverviewFinancialReport(now = new Date()): Promise<FinancialSnapshot> {
   const db = getD1();
   const key = `${todayWibDateString(now)}:${now.getUTCHours()}`;
   const cached = db && process.env.NODE_ENV === "production" ? overviewSnapshots.get(db) : undefined;
   if (cached && cached.key === key && cached.expiresAt > Date.now()) return cached.value;
-  const value = readFinancialReport(now).then(report => ({ ...report, generatedAt: now.toISOString() }));
+  const load = () => readFinancialReport(now).then(report => ({ ...report, generatedAt: now.toISOString() }));
+  const value = db ? readPrivateFinancialSnapshot(`overview-v2:${key}`, load) : load();
   if (db && process.env.NODE_ENV === "production") {
-    overviewSnapshots.set(db, { key, expiresAt: Date.now() + 60_000, value });
-    void value.catch(() => { if (overviewSnapshots.get(db)?.value === value) overviewSnapshots.delete(db); });
+    overviewSnapshots.set(db, { key, expiresAt: Date.now() + FINANCIAL_SNAPSHOT_TTL_MS, value });
+    void value.then(snapshot => {
+      const entry = overviewSnapshots.get(db);
+      if (entry?.value === value) entry.expiresAt = Date.parse(snapshot.generatedAt) + FINANCIAL_SNAPSHOT_TTL_MS;
+    }).catch(() => { if (overviewSnapshots.get(db)?.value === value) overviewSnapshots.delete(db); });
   }
   return value;
 }

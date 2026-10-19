@@ -59,8 +59,12 @@ it("overview route checks auth/revocation and validation before serving a comple
   fx.sql.exec(`INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status)
     VALUES('NEW2','X','6280','[]',1000,'qris','pending')`);
   vi.advanceTimersByTime(21_000);
-  // Loading another period must not extend the older financial cache to 100s.
-  expect((await (await read("?period=today")).json()).total_orders).toBe(first.total_orders+2);
+  // Operational data keeps its own 60s TTL, separate from five-minute finances.
+  expect((await (await read("?period=today")).json()).total_orders).toBe(first.total_orders+1);
+  vi.advanceTimersByTime(40_000);
+  const refreshed = await (await read("?period=today")).json();
+  expect(refreshed.total_orders).toBe(first.total_orders+2);
+  expect(refreshed.selected_report.generated_at).toBe(first.selected_report.generated_at);
   fx.sql.prepare(`INSERT INTO admin_session_revocations(sid,version,revoked_at,expires_at)
     VALUES(?,1,datetime('now'),datetime('now','+9 hours'))`).run(sid);
   expect((await read()).status).toBe(401);

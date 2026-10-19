@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
 import { Miniflare } from "miniflare";
+import { reportRuntimeSchema } from "./helpers/report-workerd-schema";
 import { financialReportSql } from "@/lib/dashboard-report";
 
 // node:sqlite accepts larger UNIONs than D1. Execute the actual report in
@@ -13,20 +14,7 @@ it("D1 executes all six report kinds in one query for empty and mixed carts", as
   });
   try {
     const db = await runtime.getD1Database("DB");
-    const schema = [
-      "CREATE TABLE orders(code TEXT PRIMARY KEY,subtotal INTEGER,order_kind TEXT,items TEXT,variant_id INTEGER,sales_channel TEXT,paid_at TEXT,updated_at TEXT,status TEXT)",
-      "CREATE TABLE payment_transactions(order_code TEXT,payable_amount INTEGER,paid_at TEXT)",
-      "CREATE TABLE payment_proofs(order_code TEXT,reviewed_at TEXT,status TEXT)",
-      "CREATE TABLE fulfillment_items(id INTEGER,order_code TEXT,item_index INTEGER,product_id INTEGER,variant_id INTEGER,qty INTEGER,wr_link_id INTEGER,sk_link_id INTEGER)",
-      "CREATE TABLE order_item_costs(order_code TEXT,item_index INTEGER,source TEXT,unit_cost INTEGER,supplier_variant_id TEXT)",
-      "CREATE TABLE product_variants(id INTEGER,manual_cost INTEGER,wr_variant_id TEXT,sk_variant_id TEXT)",
-      "CREATE TABLE wr_variants(wr_variant_id TEXT,axvara_variant_id INTEGER,wr_price INTEGER)",
-      "CREATE TABLE sk_products(sk_variant_id TEXT,axvara_variant_id INTEGER,sk_price INTEGER)",
-      "CREATE TABLE wr_order_links(id INTEGER,order_code TEXT,fulfillment_item_id INTEGER,wr_variant_id TEXT,wr_cost INTEGER,status TEXT)",
-      "CREATE TABLE sk_order_links(id INTEGER,order_code TEXT,fulfillment_item_id INTEGER,sk_variant_id TEXT,sk_cost INTEGER,status TEXT)",
-      "CREATE TABLE pedia_order_items(order_code TEXT,credit_used INTEGER,supplier_charge REAL,supplier_rate_snapshot REAL,quantity INTEGER)",
-    ];
-    await db.batch(schema.map(sql => db.prepare(sql)));
+    await db.batch(reportRuntimeSchema.map(sql => db.prepare(sql)));
     const sql = financialReportSql(new Date("2026-10-15T10:00:00Z"));
     expect((await db.prepare(sql).all()).results).toEqual([]);
     const items = [
