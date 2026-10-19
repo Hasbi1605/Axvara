@@ -1826,7 +1826,11 @@ pembedaan hanya badge admin + slug `-wr`/`-sk`).
    white-label di R2, draf id 26 status review, sumber riset = URL docs
    supplier); kurasi `curated.ts` 2 entri sharing Premium 3U menunjuk
    `go/disney-login`; seed `supplier_links` 44 slug (migrasi 0056 + schema +
-   dev-fallback in-memory).
+   dev-fallback in-memory). **Pelajaran 404 (hari yang sama):** seed
+   `disney-login` yang dititipkan ke migrasi 0056 TIDAK masuk D1 produksi
+   karena 0056 sudah tercatat diterapkan sebelum baris itu ada (CI tidak
+   menjalankan ulang file lama) — diperbaiki migrasi BARU 0071. Aturan:
+   JANGAN titip seed ke migrasi yang sudah live, selalu file migrasi baru.
  - **Anti-spam notif saldo SK 1:1 WR (2026-10-03, sesi ses_f029e):** throttle SK
    cuma 1 jam + state di `sk_saldo_log` (CHECK source rapuh) = spam 24x/hari
    (bukti screenshot: Rp41.900 × 5 dalam 4 jam). Kini `saldo.ts` pakai

@@ -3,6 +3,7 @@
 // Route: 307 ke destination + hitung klik; 404 bila slug tak ada / nonaktif /
 // format salah. API: auth admin + validasi slug/reserved/destination + toggle.
 import { afterEach, describe, expect, it, vi } from "vitest";
+import fs from "node:fs";
 import { NextRequest } from "next/server";
 import { createD1Fixture } from "./helpers/d1-fixture";
 
@@ -71,6 +72,43 @@ describe("GET /go/[slug] — redirect 307 + klik", () => {
         code2 = String((error as Error & { digest?: string }).digest ?? error);
       }
       expect(code2).toContain("404");
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("migrasi 0071: prod yang 0056-nya sudah terlanjur diterapkan tetap dapat disney-login (anti-tinggal, kasus 2026-10-19)", async () => {
+    // Simulasi D1 produksi: migrasi 0056 versi LAMA (tanpa disney-login)
+    // sudah tercatat diterapkan — edit file lama tidak dijalankan ulang CI.
+    const fx = createD1Fixture();
+    try {
+      fx.sql.prepare(`DELETE FROM supplier_links WHERE slug='disney-login'`).run();
+      expect(
+        fx.sql.prepare(`SELECT slug FROM supplier_links WHERE slug='disney-login'`).get(),
+      ).toBeUndefined();
+      // Migrasi BARU wajib seed + idempoten.
+      const migration = fs.readFileSync("drizzle/migrations/0071_disney_login_shortlink.sql", "utf8");
+      fx.sql.exec(migration);
+      const row = fx.sql.prepare(
+        `SELECT destination, title, is_active FROM supplier_links WHERE slug='disney-login'`,
+      ).get() as { destination: string; title: string; is_active: number };
+      expect(row.destination).toBe("/artikel/cara-login-disney-setelah-order-di-axvara");
+      expect(row.title).toBe("Panduan login Disney+ AXVARA");
+      expect(row.is_active).toBe(1);
+      fx.sql.exec(migration);
+      expect(
+        fx.sql.prepare(`SELECT COUNT(*) AS n FROM supplier_links WHERE slug='disney-login'`).get(),
+      ).toMatchObject({ n: 1 });
+      // Dan route /go/disney-login langsung redirect 307 ke artikel.
+      const { default: GoRedirect } = await import("@/app/(shop)/go/[slug]/page");
+      let digest = "";
+      try {
+        await GoRedirect({ params: Promise.resolve({ slug: "disney-login" }) });
+      } catch (error) {
+        digest = String((error as Error & { digest?: string }).digest ?? error);
+      }
+      expect(digest).toContain("/artikel/cara-login-disney-setelah-order-di-axvara");
+      expect(digest).toContain("307");
     } finally {
       fx.close();
     }
