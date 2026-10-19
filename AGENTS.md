@@ -192,6 +192,13 @@ Aturan lintas-repo: (1) Env Pages bertipe `secret_text` SELALU (plain_text tidak
 - Hasil final aktual MAIN setelah preview: `npx vitest run --run` 2288 test pada 184 file pass, `tsc` pass, `build:pages` selesai exit 0 (log temp `pedia-final-build.log`); lint sebelumnya pass dengan warning existing. Obscura route nyata home/Pedia/admin dan CSS 200; screenshot fixture hydrated desktop/mobile diperiksa, termasuk preview tersimpan dengan komponen aktual. Batas renderer radio/SVG/fixed tetap dicatat; ini bukan bukti produksi penuh atau seluruh gate live lulus. Perubahan tetap lokal, BELUM deployed, secret/flag tidak diubah atau diverifikasi, tanpa order supplier nyata. Bukti supplier live currency/rate-unit dan kurasi awal produksi/approval owner tetap pending.
 - Rollout terpisah: receiver Pages kompatibel sebelum diff proxy IndoSMM; backup state + handoff secret/unit-verification dahulu. Jangan deploy, commit/push atau membuka gate saat tugas hanya sinkronisasi docs; instruksi eksplisit scope tugas mengalahkan workflow publikasi default. Checklist planning tidak mencentang bukti supplier/live/QA tanpa hasil aktual.
 
+### Pedia 19 Oktober 2026
+- Spec terkini `docs/pedia/catalog-ux-2026-10-19.md` menggantikan konfigurator 16 Oktober: jumlah sebelum perbandingan/pilihan; ikon semantik; ring loader mengikuti ISTA AI dengan logo tetap dan reduced motion.
+- Tambahan manifest `curation-20261019.json` + migrasi 0070: 17 kebutuhan/23 mapping, kapasitas gabungan 55/154 pada 16 platform; aktivasi mengikuti mirror/batas/paket/refill API. Jangan ubah migrasi 0066, order/snapshot lama, atau draf owner yang konflik slug.
+- Supplier SMM tetap ProviderSMM/IndoSMM, tanpa Sekalipay. Target `short` YouTube mempertahankan /shorts/, `artist`/`playlist` Spotify didukung. Nama refill tanpa API bukan janji refill AXVARA.
+- Tab Kurasi admin: shortlist authenticated baca-saja, maksimal 200 kandidat awal/20 hasil; estimasi modal jumlah sama bukan bukti mutu. Simpan draf nonaktif/refill0/recommended0; owner memeriksa deskripsi/target/batas/kelipatan sebelum aktivasi. Tidak ada auto-publish/order supplier.
+- `docs/pedia/quality-sampling-2026-10-19.md`: tarif akun IDR/saldo0 dibaca tanpa order. Usulan topup awal Rp50.000 ProviderSMM + Rp100.000 IndoSMM untuk satu putaran 30 sampel estimasi Rp107.864 belum fee; **belum dijalankan**, perlu target owner dan keputusan eksekusi, jangan mengklaim kualitas/drop sudah teruji.
+
 ## Done when
 - Tujuan tugas tercapai
 - Perubahan diimplementasi

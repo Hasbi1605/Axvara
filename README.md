@@ -1,5 +1,11 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Pedia dan loading — 19 Oktober 2026
+
+✅ Implementasi; rilis melalui CI push main. Loading logo memakai ring cyan dan pulse mengikuti ISTA AI, dengan reduced motion. Pedia menyediakan ikon semantik, jumlah sebelum perbandingan layanan, filter ringkas dan formulir link/syarat yang dekat. Kontak tetap tahap kedua; pembayaran/quote/retry tetap. Tab admin **Kurasi** memilih kebutuhan dan jumlah, membandingkan kandidat kedua supplier, meninjau copy lalu menyimpan draf nonaktif tanpa refill untuk diperiksa di editor.
+
+Migrasi data 0070 menambah 17 kebutuhan/23 mapping (kapasitas total 55/154 pada 16 platform), hanya aktif bila mirror/batas/paket/API refill layak; konflik slug owner dilewati, order lama dipertahankan. Manifest server-only dan generator terpisah tidak mengubah 0066. Supplier tetap ProviderSMM/IndoSMM, tanpa SMM Sekalipay/env/cron/proxy baru. Target baru: Shorts YouTube, artis/playlist Spotify. Spesifikasi terbaru: [katalog/UX 19 Oktober](docs/pedia/catalog-ux-2026-10-19.md), menggantikan konfigurator 16 Oktober di bawah. Hasil kiriman belum diuji berbayar; [rencana sampling](docs/pedia/quality-sampling-2026-10-19.md) mengusulkan saldo awal ProviderSMM Rp50.000 + IndoSMM Rp100.000, bukan transaksi yang sudah dilakukan.
+
 ## QRIS KlikQRIS (2026-10-18)
 
 Deteksi lunas cepat 2026-10-18: polling halaman pesanan Market (5 detik) dan

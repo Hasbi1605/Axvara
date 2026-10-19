@@ -188,11 +188,17 @@ export async function POST(request: NextRequest) {
       `INSERT INTO pedia_tiers
          (product_id, tier, label_note, supplier, supplier_service_id, backup_service_id,
           price_group, markup_pct, min_profit_rp, refill_days, eta_start, eta_finish,
-          package_prices_json, is_active)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?)`,
+          package_prices_json, is_active, public_name, description_md, terms_md, instructions_md,
+          recommendation_note, min_qty_override, max_qty_override, quantity_step, target_format,
+          refill_anchor, region, quality, speed_note, drop_risk, is_recommended, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       t.product_id, t.tier, t.label_note, t.supplier, t.supplier_service_id, t.backup_service_id ?? null,
       t.price_group, t.markup_pct, t.min_profit_rp, t.refill_days,
-      t.eta_start, t.eta_finish, t.is_active,
+      t.eta_start, t.eta_finish, t.is_active, t.public_name ?? null, t.description_md ?? null,
+      t.terms_md ?? null, t.instructions_md ?? null, t.recommendation_note ?? null,
+      t.min_qty_override ?? null, t.max_qty_override ?? null, t.quantity_step ?? 1,
+      t.target_format ?? "url", t.refill_anchor ?? "created", t.region ?? "global", t.quality ?? "standar",
+      t.speed_note ?? null, t.drop_risk ?? "sedang", t.is_recommended ?? 0, t.sort_order ?? 0,
     ).catch(() => null);
     if (!r) return NextResponse.json({ error: "save_failed" }, { status: 500 });
     try { await reprice(db, Number(r.lastInsertRowid), true); }

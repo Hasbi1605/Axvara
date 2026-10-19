@@ -8,6 +8,7 @@ import { requireAdmin } from "@/lib/auth";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { callPediaProxy, isPediaProvider, PEDIA_PROVIDERS } from "@/lib/pedia/proxy";
 import { applyPediaDiff } from "@/lib/pedia/sync";
+import { CURATION_PLATFORM_TERMS, CURATION_METRIC_TERMS, shortlistPediaServices, type CurationProduct, type CurationService } from "@/lib/pedia/curation-shortlist";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -24,6 +25,24 @@ export async function GET(request: NextRequest) {
   const admin = await requireAdmin(request);
   if (!admin) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const q = request.nextUrl.searchParams;
+  if (q.get("view") === "shortlist") {
+    const productId = Number(q.get("product_id")), quantity = Number(q.get("quantity"));
+    if (!Number.isSafeInteger(productId) || productId <= 0 || !Number.isSafeInteger(quantity) || quantity <= 0 || quantity > 100_000_000) return NextResponse.json({ error: "invalid_shortlist" }, { status: 400 });
+    const db = createDatabaseAccess();
+    try {
+      const product = await db.queryFirst("SELECT id,name,platform,metric,target_kind FROM pedia_products WHERE id=?", productId) as CurationProduct | null;
+      if (!product) return NextResponse.json({ error: "not_found" }, { status: 404 });
+      const platforms = CURATION_PLATFORM_TERMS[product.platform] ?? [], metrics = CURATION_METRIC_TERMS[product.metric] ?? [];
+      if (!platforms.length || !metrics.length) return NextResponse.json({ ok: true, rows: [], considered: 0, limited: false });
+      const platformWhere = platforms.map(() => "(LOWER(s.name) LIKE ? OR LOWER(s.category) LIKE ?)").join(" OR ");
+      const metricWhere = metrics.map(() => "LOWER(s.name) LIKE ?").join(" OR ");
+      const rows = await db.queryAll(`SELECT s.*,(SELECT GROUP_CONCAT(p.slug, ', ') FROM pedia_tiers t JOIN pedia_products p ON p.id=t.product_id WHERE t.supplier=s.supplier AND t.supplier_service_id=s.service_id) AS used_in
+        FROM pedia_supplier_services s WHERE s.present=1 AND s.type='Default' AND s.rate_idr_per_1k>0 AND s.min_qty>0 AND s.max_qty>=s.min_qty
+        AND s.min_qty<=? AND s.max_qty>=? AND (${platformWhere}) AND (${metricWhere})
+        ORDER BY s.rate_idr_per_1k,s.supplier,s.service_id LIMIT 201`,quantity,quantity,...platforms.flatMap(v=>['%'+v+'%','%'+v+'%']),...metrics.map(v=>'%'+v+'%')) as unknown as CurationService[];
+      return NextResponse.json({ ok:true, product, quantity, rows:shortlistPediaServices(rows.slice(0,200),product,quantity), considered:Math.min(rows.length,200), limited:rows.length>200 });
+    } catch { return NextResponse.json({ error:"load_failed" }, { status:500 }); }
+  }
   const supplier = q.get("supplier") || "";
   if (supplier && !isPediaProvider(supplier)) return NextResponse.json({ error: "invalid_provider" }, { status: 400 });
   const search = q.get("q")?.slice(0, 80) ?? "";

@@ -1,5 +1,9 @@
 # PEDIA-PRD.md — AXVARA PEDIA (Toko SMM Kurasi)
 
+## Pembaruan 19 Oktober 2026
+
+✅ Implementasi; publikasi melalui CI. Jumlah diletakkan sebelum perbandingan/pilihan layanan; harga pembanding wajib jumlah sama. Ikon kebutuhan semantik, filter mudah dijangkau, rincian pembeda sebelum pilihan, link/syarat berdekatan dan kontak tahap kedua. Tab Kurasi admin membuat shortlist lintas supplier serta draf copy nonaktif/refill0 untuk ditinjau owner. Tambahan 17 kebutuhan/23 mapping membawa kapasitas menjadi 55/154; aktivasi hanya dengan mirror dan batas/refill API layak. Tetap ProviderSMM/IndoSMM, tanpa migrasi Sekalipay. Target Shorts/artis/playlist Spotify didukung client/server. [Spec 19 Oktober](pedia/catalog-ux-2026-10-19.md) menggantikan konfigurator 16 Oktober; [uji hasil](pedia/quality-sampling-2026-10-19.md) belum dijalankan dan tidak diwakili oleh lulusnya test UI.
+
 ## Pembaruan Pedia 2026-10-15 — spesifikasi terkini
 
 Revisi konfigurator 2026-10-16 ✅ implementasi, publikasi melalui CI: pilih kebutuhan melalui kartu awal; tidak ada jenis, layanan, atau jumlah otomatis. Tiga layanan awal pada mobile/desktop; semua alternatif dan filter tetap tersedia. Pilihan aktif diringkas dengan Ganti layanan, lalu jumlah, link dan checklist disajikan berdekatan. Keterangan/S&K/panduan berada dalam satu disclosure sesudah input; drop/refill dan persyaratan penting tetap terlihat. Harga alternatif dibandingkan pada jumlah yang sama, layanan di luar min/max/step ditandai tanpa menampilkan harga minimum seolah total. Tahap kedua tetap kontak/konfirmasi, kembali mempertahankan isian. Quote, kredit, consent, lock/retry dan supplier tidak berubah kontrak.

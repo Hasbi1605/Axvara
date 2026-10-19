@@ -29,7 +29,7 @@ export const PEDIA_GROUPS = [
 export const PEDIA_METRIC_LABEL: Record<string, string> = {
   followers: "Followers", likes: "Likes", views: "Tayangan", subscribers: "Subscriber",
   members: "Members", plays: "Plays", shares: "Share", saves: "Saves", reactions: "Reactions",
-  forks: "Fork", traffic: "Traffic website", reposts: "Repost",
+  forks: "Fork", traffic: "Traffic website", reposts: "Repost", quotes: "Quote",
 };
 
 export function pediaPlatform(id: string) { return PEDIA_PLATFORM_CONFIG.find((p) => p.id === id); }
@@ -51,7 +51,7 @@ export function pediaTargetExample(platform: string, kind: string) {
   const examples: Record<string, Record<string, string>> = {
     instagram: { profile: "https://www.instagram.com/username/", post: "https://www.instagram.com/p/ABCDE/", reel: "https://www.instagram.com/reel/ABCDE/" },
     tiktok: { profile: "https://www.tiktok.com/@username", video: "https://www.tiktok.com/@username/video/123456789" },
-    youtube: { channel: "https://www.youtube.com/@channel", video: "https://www.youtube.com/watch?v=abcdefghijk" },
+    youtube: { channel: "https://www.youtube.com/@channel", video: "https://www.youtube.com/watch?v=abcdefghijk", short: "https://www.youtube.com/shorts/abcdefghijk" },
     facebook: { post: "https://www.facebook.com/username/posts/123456789/", profile: "https://www.facebook.com/username/", video: "https://www.facebook.com/reel/123456789" },
     threads: { profile: "https://www.threads.net/@username", post: "https://www.threads.net/@username/post/ABCDE" },
     x: { profile: "https://x.com/username", post: "https://x.com/username/status/123456789" },
@@ -60,7 +60,7 @@ export function pediaTargetExample(platform: string, kind: string) {
     pinterest: { profile: "https://www.pinterest.com/username/", board: "https://www.pinterest.com/username/nama-board/", post: "https://www.pinterest.com/pin/123456789/" },
     discord: { invite: "https://discord.gg/kodeundangan" },
     shopee: { shop: "https://shopee.co.id/namatoko" },
-    spotify: { track: "https://open.spotify.com/track/IDlagu" },
+    spotify: { track: "https://open.spotify.com/track/IDlagu", artist: "https://open.spotify.com/artist/3ue1J3iN9SL3UetNZk6HHd", playlist: "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M" },
     soundcloud: { profile: "https://soundcloud.com/username", track: "https://soundcloud.com/username/judul-lagu" },
     twitch: { profile: "https://www.twitch.tv/username" },
     github: { profile: "https://github.com/username", repository: "https://github.com/username/repository" },

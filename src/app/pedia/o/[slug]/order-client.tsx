@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import { detectPediaLink, PEDIA_PLATFORM_LABEL, PEDIA_TARGET_KIND_LABEL, pediaTargetMatches, type PediaPlatform, type PediaTargetKind } from "@/lib/pedia/link";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
@@ -67,10 +67,12 @@ export function OrderClient({ product, initialTarget, ordersEnabled, embedded = 
   const validate = (firstStageOnly = false) => {
     const next: Record<string, string> = {};
     if (!tier) next.tier = "Pilih layanan terlebih dahulu.";
-    if (!qty || !tier || qty < (tier.min_qty ?? 1) || qty > (tier.max_qty ?? qty) || qty % (tier.quantity_step ?? product.step) !== 0) {
-      next.quantity = tier
-        ? `Jumlah untuk layanan ini: minimal ${(tier.min_qty ?? 1).toLocaleString("id-ID")}, maksimal ${(tier.max_qty ?? 0).toLocaleString("id-ID")}.`
-        : "Isi jumlah yang ingin dipesan.";
+    if (qty == null || !Number.isSafeInteger(qty)) {
+      next.quantity = "Isi jumlah yang ingin dipesan.";
+    } else if (!tier) {
+      next.quantity = "Isi jumlah, lalu pilih layanan yang cocok untuk jumlah itu.";
+    } else if (qty < (tier.min_qty ?? 1) || qty > (tier.max_qty ?? Infinity) || qty % (tier.quantity_step ?? product.step) !== 0) {
+      next.quantity = `Jumlah ${qty.toLocaleString("id-ID")} tidak tersedia untuk layanan ini: minimal ${(tier.min_qty ?? 1).toLocaleString("id-ID")}, maksimal ${(tier.max_qty ?? 0).toLocaleString("id-ID")}${(tier.quantity_step ?? product.step) > 1 ? `, kelipatan ${tier.quantity_step ?? product.step}` : ""}. Jumlah tetap ${qty.toLocaleString("id-ID")} — ubah jumlah atau pilih Ganti layanan.`;
     }
     if (!targetOk) next.target = `Masukkan link ${kind.toLowerCase()} ${platform} yang sesuai layanan ini.`;
     if (!checklist.every((c) => checks[c.id])) next.requirements = "Konfirmasi semua persyaratan tujuan sebelum melanjutkan.";
@@ -159,18 +161,20 @@ export function OrderClient({ product, initialTarget, ordersEnabled, embedded = 
       <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04]"><PlatformIcon id={product.platform} size={25} /></span>
       <div className="min-w-0"><h2 className="text-[10px] uppercase tracking-[0.14em] text-white/45">Ringkasan pesanan</h2><p className="mt-1 text-sm font-semibold text-white">{product.name}</p></div>
     </div>
-    <div className="p-5">
+    <div className="min-h-[180px] p-5">
       {tier ? <>
         <p className="text-sm font-medium leading-6 text-white/90">{tier.public_name ?? tier.label_note ?? "Layanan terpilih"}</p>
         <dl className="mt-4 space-y-3 text-xs text-white/55">
           {qty != null && <div className="flex justify-between gap-4"><dt>Jumlah</dt><dd className="text-right tabular-nums text-white">{qty.toLocaleString("id-ID")}</dd></div>}
+          <div className="flex justify-between gap-4"><dt>Wilayah</dt><dd className="text-right text-white/70">{{ indonesia: "Indonesia", global: "Global", mixed: "Campuran" }[tier.region ?? "global"]}</dd></div>
           <div className="flex justify-between gap-4"><dt>Refill</dt><dd className={`text-right ${tier.refill_days > 0 ? "text-[#00E5FF]" : "text-white/70"}`}>{tier.refill_days > 0 ? `${tier.refill_days} hari, sesuai ketentuan` : "Tanpa refill"}</dd></div>
+          {tier.eta_start && <div className="flex justify-between gap-4"><dt>Mulai</dt><dd className="text-right text-white/70">{tier.eta_start}</dd></div>}
           {targetOk && <div><dt>Tujuan</dt><dd className="mt-1 break-all leading-5 text-white/80">{target.trim()}</dd></div>}
           {currentQuote && currentQuote.total > currentQuote.payable && <div className="flex justify-between gap-3"><dt>Kredit digunakan</dt><dd className="text-white">{rupiah(currentQuote.total - currentQuote.payable)}</dd></div>}
         </dl>
         <div className="mt-5 border-t border-white/10 pt-5"><p className="text-xs text-white/50">{currentQuote ? "Total terkonfirmasi" : "Total pesanan"}</p><p className={`mt-2 font-display font-semibold tracking-tight text-white ${packageTotal > 0 || currentQuote ? "text-3xl" : "text-lg"}`}>{priceText}</p></div>
         <p className="mt-3 text-xs leading-5 text-white/45">{currentQuote ? "Nominal QRIS ditampilkan di halaman pembayaran." : qty ? "Harga diperiksa kembali sebelum pembayaran. Kredit belum diperhitungkan." : "Isi jumlah untuk melihat total pesananmu."}</p>
-      </> : <div className="py-2"><p className="text-sm font-medium leading-6 text-white/80">Pesananmu dimulai di sini.</p><p className="mt-2 text-sm leading-6 text-white/50">Pilih layanan, lalu isi jumlah dan link tujuan. Rincian harga akan muncul di sini.</p></div>}
+      </> : <div className="py-2"><p className="text-sm font-medium leading-6 text-white/80">Pesananmu dimulai di sini.</p><p className="mt-2 text-sm leading-6 text-white/50">Isi jumlah, pilih layanan, lalu masukkan link tujuan. Rincian harga akan muncul di sini.</p></div>}
       <p className="mt-5 border-t border-white/10 pt-4 text-[11px] leading-5 text-white/40">Pembayaran QRIS · Tanpa login<br />Refill mengikuti layanan yang dipilih.</p>
     </div>
   </>;
@@ -181,11 +185,14 @@ export function OrderClient({ product, initialTarget, ordersEnabled, embedded = 
   };
   const pickTier = (id: number) => {
     setTierId(id);
-    const next = product.tiers.find((t) => t.id === id);
-    if (qty && next && (qty < (next.min_qty ?? 1) || qty > (next.max_qty ?? Infinity) || qty % (next.quantity_step ?? product.step) !== 0)) {
-      setQty(null); setQuantityNotice("Batas jumlah layanan ini berbeda. Pilih jumlah yang sesuai.");
-    } else setQuantityNotice("");
+    setQuantityNotice("");
   };
+  // Contoh jumlah jujur se-produk: hanya angka yang valid di ≥1 layanan.
+  // Tidak mengisi otomatis — hanya chip contoh sebelum layanan dipilih.
+  const productExamples = useMemo(() => [...new Set(product.tiers.flatMap((t) => t.quick_quantities ?? []))]
+    .filter((n) => product.tiers.some((t) => n >= (t.min_qty ?? 1) && n <= (t.max_qty ?? n) && n % (t.quantity_step ?? product.step) === 0))
+    .sort((a, b) => a - b).slice(0, 5), [product]);
+  const productMin = useMemo(() => product.tiers.length ? Math.min(...product.tiers.map((t) => t.min_qty ?? 1)) : 1, [product]);
   const cta = <>
     {!ordersEnabled && <p className="mb-2 text-xs text-white/60">Pemesanan belum tersedia. Kamu tetap bisa membandingkan layanan.</p>}
     {stage === 2 && currentQuote && !attempted && <p role="status" className="mb-3 text-sm leading-5 text-white/80">{currentQuote.total !== packageTotal ? `Harga berubah dari ${rupiah(packageTotal)} menjadi ${rupiah(currentQuote.total)}. ` : ""}Total pembayaran {rupiah(currentQuote.payable)}. Tekan Setujui untuk menyetujui nominal ini.</p>}
@@ -198,17 +205,18 @@ export function OrderClient({ product, initialTarget, ordersEnabled, embedded = 
     <div className="mt-5 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-8">
       <div className="ax-glass-card min-w-0 rounded-[24px] p-5 sm:p-7">
         {stage === 1 && <>
-          <section aria-labelledby="pedia-package-heading"><h2 id="pedia-package-heading" className="sr-only">Pilih layanan dan jumlah</h2>
-            <ServicePicker product={product} tierId={tierId} onSelect={pickTier} qty={qty} prices={comparisonPrices} pricesSettled={embedded || !!comparison} locked={attempted} />{inlineError("tier")}
-            <fieldset id="pedia-quantity" tabIndex={-1} disabled={attempted} className="mt-7 min-w-0">
+          <section aria-labelledby="pedia-package-heading"><h2 id="pedia-package-heading" className="sr-only">Jumlah, layanan, dan tujuan</h2>
+            <fieldset id="pedia-quantity" tabIndex={-1} disabled={attempted} className="min-w-0">
               <legend className="text-base font-semibold text-white">Jumlah yang ingin ditambah</legend>
-              <div className="mt-3 flex flex-wrap items-center gap-2"><input id="pedia-qty-input" aria-label="Jumlah yang dipesan" aria-invalid={!!errors.quantity} type="number" inputMode="numeric" min={tier?.min_qty ?? 1} max={tier?.max_qty ?? undefined} step={tier?.quantity_step ?? product.step} disabled={!tier} value={qty ?? ""} placeholder={tier ? `Min. ${tier.min_qty ?? 1}` : "Pilih layanan dulu"} onChange={(e) => { const v = e.target.value.replace(/[^0-9]/g, ""); setQty(v ? Number(v) : null); setQuantityNotice(""); }} className="min-h-12 w-full rounded-xl border border-white/15 bg-white/[0.035] px-4 text-base text-white placeholder:text-white/35 focus:border-[#00E5FF] focus:outline-none disabled:opacity-40 sm:w-48" />
-                {(tier?.quick_quantities?.length ? tier.quick_quantities : product.packages).filter((n) => !tier || (n >= (tier.min_qty ?? 1) && n <= (tier.max_qty ?? n) && n % (tier.quantity_step ?? product.step) === 0)).slice(0,5).map((n) => <button key={n} type="button" disabled={!tier} onClick={() => { setQty(n); setQuantityNotice(""); }} className={`min-h-11 rounded-xl border px-3 text-sm transition disabled:opacity-35 ${qty === n ? "border-[#00E5FF]/45 bg-[#00E5FF]/10 text-[#00E5FF]" : "border-white/10 text-white/60 hover:border-white/25"}`}>{n.toLocaleString("id-ID")}</button>)}
+              <p className="mt-1 text-xs leading-5 text-white/50">Isi jumlah dulu — layanan dibandingkan pada jumlah yang sama. Contoh hanya angka yang berlaku di minimal satu layanan.</p>
+              <div className="mt-3 flex flex-wrap items-center gap-2"><input id="pedia-qty-input" aria-label="Jumlah yang dipesan" aria-invalid={!!errors.quantity} type="number" inputMode="numeric" min={tier?.min_qty ?? productMin} max={tier?.max_qty ?? undefined} step={tier?.quantity_step ?? product.step} value={qty ?? ""} placeholder={`Contoh: ${productMin.toLocaleString("id-ID")}`} onChange={(e) => { const v = e.target.value; setQty(v === "" ? null : Number(v)); setQuantityNotice(""); }} className="min-h-12 w-full rounded-xl border border-white/15 bg-white/[0.035] px-4 text-base text-white placeholder:text-white/35 focus:border-[#00E5FF] focus:outline-none disabled:opacity-40 sm:w-48" />
+                {(tier?.quick_quantities?.length ? tier.quick_quantities.filter((n) => n >= (tier.min_qty ?? 1) && n <= (tier.max_qty ?? n) && n % (tier.quantity_step ?? product.step) === 0) : productExamples).slice(0, 5).map((n) => <button key={n} type="button" onClick={() => { setQty(n); setQuantityNotice(""); }} aria-pressed={qty === n} className={`min-h-11 rounded-xl border px-3 text-sm transition ${qty === n ? "border-[#00E5FF]/45 bg-[#00E5FF]/10 text-[#00E5FF]" : "border-white/10 text-white/60 hover:border-white/25"}`}>{n.toLocaleString("id-ID")}</button>)}
               </div>
-              <p className="mt-3 text-xs leading-5 text-white/50">{tier ? `Minimal ${(tier.min_qty ?? 1).toLocaleString("id-ID")}, maksimal ${(tier.max_qty ?? 0).toLocaleString("id-ID")}${(tier.quantity_step ?? product.step) > 1 ? `, kelipatan ${tier.quantity_step ?? product.step}` : ""}.` : "Pilih layanan untuk melihat batas jumlahnya."}</p>
+              <p className="mt-3 text-xs leading-5 text-white/50">{tier ? `Layanan ini: minimal ${(tier.min_qty ?? 1).toLocaleString("id-ID")}, maksimal ${(tier.max_qty ?? 0).toLocaleString("id-ID")}${(tier.quantity_step ?? product.step) > 1 ? `, kelipatan ${tier.quantity_step ?? product.step}` : ""}.` : `Batas tiap layanan berbeda — pilih jumlah, layanan yang tidak cocok ditandai alasannya.`}</p>
               {quantityNotice && <p role="status" className="mt-2 text-xs text-amber-200">{quantityNotice}</p>}{inlineError("quantity")}
-              {tier && qty && comparison?.failed && <p className="mt-2 text-xs leading-5 text-white/55">Harga terbaru belum dapat dimuat. Harga akan diperiksa kembali sebelum pembayaran.</p>}
+              {qty != null && comparison?.failed && <p className="mt-2 text-xs leading-5 text-white/55">Harga terbaru belum dapat dimuat. Harga akan diperiksa kembali sebelum pembayaran.</p>}
             </fieldset>
+            <div className="mt-7"><ServicePicker product={product} tierId={tierId} onSelect={pickTier} qty={qty} prices={comparisonPrices} pricesSettled={embedded || !!comparison} locked={attempted} />{inlineError("tier")}</div>
           </section>
           <section aria-labelledby="pedia-target-heading" className="mt-7 border-t border-white/10 pt-7">
             <h2 id="pedia-target-heading" className="text-base font-semibold text-white">Masukkan link tujuan</h2>

@@ -1,5 +1,9 @@
 # DESIGN.md — AXVARA Design System
 
+## Loading dan konfigurator Pedia — 19 Oktober 2026
+
+✅ Implementasi; publikasi melalui CI. `BrandLoader` memakai disk logo tetap, ring cyan di luar yang berputar linear dan pulse lembut seperti referensi ISTA AI. Ring/pulse berhenti pada reduced motion. Ikon kebutuhan mengikuti makna, termasuk repost/quote/bookmark. Alur jumlah → perbandingan → layanan → link/syarat mengurangi total minimum yang sulit dibandingkan; filter ringkas dan rincian pembeda tersedia sebelum pilihan. Tiga pilihan awal, ringkasan desktop/mobile, serta kontak tahap kedua mengikuti [spesifikasi 19 Oktober](pedia/catalog-ux-2026-10-19.md), yang menggantikan konfigurator 16 Oktober. Tab Kurasi memakai pembanding jumlah sama dan draf aman, bukan label mutu yang belum diuji.
+
 ## QRIS gateway KlikQRIS — 2026-10-18
 
 Deteksi lunas cepat 2026-10-18: teks "Batas bayar otomatis 15 menit…" di bawah
@@ -856,6 +860,7 @@ respons dalam ≤120 ms dan tahu apa yang sedang ditunggu.
 
 | Situasi | Umpan balik |
 |---|---|
+| Pindah Market ↔ Pedia | Logo aplikasi tujuan tetap, ring cyan di luar disk berputar linear 1 dtk dan pulse logo 2 dtk; overlay segera mengikuti klik, tidak menahan navigasi; Back/pageshow membersihkan overlay. Reduced motion menghentikan ring/pulse. |
 | Klik link/kartu/nav internal | Setelah 120 ms (navigasi instan tidak berkedip): bar cyan + skeleton halaman tujuan menutupi halaman lama di bawah navbar. 8 dtk → pil "Koneksi lambat — halaman masih dimuat…" (border gold), 20 dtk → "Halaman belum terbuka. Coba lagi · Batal" |
 | Checkout kartu / Beli Langsung / Beli Sekarang / modal varian | Tombol nonaktif + spinner "Membuka checkout…" sampai checkout tampil; modal varian TIDAK menutup sendiri |
 | Tombol Bayar | Label bertahap: "Membuat pesanan…" → 4 dtk "Menyiapkan QRIS…" → 12 dtk "Koneksi lambat, tetap di halaman ini…"; sukses → layar "Pesanan dibuat" + kode + "Membuka halaman pembayaran QRIS…" (8 dtk → tautan manual). Putus jaringan → "Koneksi terputus… Tekan Bayar lagi — pesanan yang sama dilanjutkan, tidak dibuat dobel" |

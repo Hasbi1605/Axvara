@@ -1,5 +1,11 @@
 # PRD — AXVARA
 
+## Pedia dan loading — 19 Oktober 2026
+
+✅ Implementasi; publikasi melalui CI. Loading mempertahankan logo dengan ring cyan yang berputar mengitarinya serta pulse halus mengikuti referensi ISTA AI; reduced motion dihormati. Kebutuhan memakai ikon semantik. Order dimulai dari jumlah sebelum membandingkan/pilih layanan, dengan total pada jumlah sama, filter yang mudah dijangkau, copy pembeda sebelum pilihan, dan link/persyaratan berdekatan. Kontak tetap tahap kedua; quote, consent dan retry tetap.
+
+Perluasan terkurasi menambah 17 kebutuhan/23 mapping (kapasitas 55/154 di 16 platform); aktivasi mengikuti mirror/batas/refill API. Supplier tetap ProviderSMM/IndoSMM, tanpa SMM Sekalipay. Tab Kurasi admin menyaring kandidat pada jumlah sama dan membuat draf nonaktif tanpa janji refill untuk ditinjau owner. Rincian dan batas bukti: [spesifikasi 19 Oktober](pedia/catalog-ux-2026-10-19.md). UI/spec konfigurator 16 Oktober di bawah adalah riwayat yang digantikan. Kualitas hasil belum diuji berbayar; usulan saldo awal Rp50.000 + Rp100.000 terdapat di [rencana sampling](pedia/quality-sampling-2026-10-19.md).
+
 ## QRIS KlikQRIS — 2026-10-18
 
 Deteksi lunas cepat 2026-10-18 ✅ diimplementasikan, publikasi melalui CI:

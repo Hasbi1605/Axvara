@@ -324,3 +324,25 @@ it("partial settings saves return saved keys instead of full success", async () 
   const result = await settings(req({ pedia_markup_g1: 100, pedia_markup_g2: 50 }));
   expect(result.status).toBe(500); expect(await result.json()).toMatchObject({ error: "save_partial", saved_fields: ["pedia_markup_g1"] });
 });
+
+it("authenticated shortlist compares both providers at one quantity without writes or supplier calls",async()=>{
+ await indoService();
+ await createDatabaseAccess().execRun("UPDATE pedia_supplier_services SET name='Instagram Followers Global'");
+ const {GET:services}=await import("@/app/api/admin/pedia/services/route");
+ const response=await services(new NextRequest(`http://localhost/?view=shortlist&product_id=${productId}&quantity=100`,{headers:{cookie}}));
+ expect(response.status).toBe(200);
+ const data=await response.json();
+ expect(data.rows.length).toBeGreaterThan(0);
+ expect(data.rows.every((r:Record<string,unknown>)=>Number(r.estimated_cost)>0)).toBe(true);
+ expect(callPediaProxy).not.toHaveBeenCalled();
+ expect((await services(new NextRequest(`http://localhost/?view=shortlist&product_id=${productId}&quantity=NaN`,{headers:{cookie}}))).status).toBe(400);
+ expect((await services(new NextRequest(`http://localhost/?view=shortlist&product_id=${productId}&quantity=100`))).status).toBe(401);
+});
+
+it("new draft tiers persist reviewed public copy and bounds while staying inactive",async()=>{
+ await createDatabaseAccess().execRun("INSERT INTO pedia_supplier_services(supplier,service_id,name,category,type,rate_idr_per_1k,min_qty,max_qty,present) VALUES('providersmm',99,'Instagram Followers','Followers','Default',1000,10,1000,1)");
+ const response=await POST(req({kind:"tier",product_id:productId,tier:"standar",supplier:"providersmm",supplier_service_id:99,price_group:"G3",markup_pct:20,min_profit_rp:1000,refill_days:0,is_active:0,public_name:"Reviewed draft",description_md:"Reviewed description",terms_md:"Without refill",instructions_md:"Use profile URL",min_qty_override:100,max_qty_override:500,quantity_step:10,target_format:"url",refill_anchor:"created",is_recommended:0}));
+ expect(response.status).toBe(200);
+ const {id}=await response.json();
+ expect(await createDatabaseAccess().queryFirst("SELECT public_name,description_md,terms_md,instructions_md,min_qty_override,max_qty_override,quantity_step,is_active FROM pedia_tiers WHERE id=?",id)).toEqual({public_name:"Reviewed draft",description_md:"Reviewed description",terms_md:"Without refill",instructions_md:"Use profile URL",min_qty_override:100,max_qty_override:500,quantity_step:10,is_active:0});
+});

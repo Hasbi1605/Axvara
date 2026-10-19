@@ -11,7 +11,22 @@ export function Bone({ className = "" }: { className?: string }) {
 
 export function InlineSpinner({ className = "w-4 h-4", tone = "light" }: { className?: string; tone?: "light" | "dark" }) {
   const colors = tone === "dark" ? "border-[#080C1E]/20 border-t-[#080C1E]" : "border-white/20 border-t-[#00E5FF]";
-  return <span aria-hidden className={`inline-block shrink-0 rounded-full border-2 animate-spin ${colors} ${className}`} />;
+  return <span aria-hidden data-testid="inline-spinner" className={`inline-block shrink-0 rounded-full border-2 animate-spin ${colors} ${className}`} />;
+}
+
+/** Loader kecil dalam baris: logo diam + cincin ring konsisten (tanpa dot
+ *  spinner). Dipakai skeleton Pedia/status agar bahasa loading satu sumber. */
+export function BrandMini({ label, mark = "/brand/axvara-mark.svg" }: { label: string; mark?: string }) {
+  return (
+    <span role="status" aria-label={label} data-testid="brand-mini" className="inline-flex items-center gap-2.5">
+      <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/[0.03]">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={mark} alt="" width={20} height={20} draggable={false} className="ax-brand-logo h-5 w-5 object-contain brightness-0 invert" />
+        <span aria-hidden className="ax-brand-ring absolute -inset-[5px] rounded-full !border-2" />
+      </span>
+      <span className="text-sm text-white/55">{label}</span>
+    </span>
+  );
 }
 
 /** Muncul setelah 8 dtk menunggu agar layar tidak terlihat macet tanpa kabar. */
@@ -185,11 +200,10 @@ export function PediaOrderSkeleton({ label = "Memuat pesanan…" }: { label?: st
     <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 pt-6" aria-busy="true">
       <div className="mx-auto max-w-xl">
         <div className="ax-glass-card rounded-[28px] p-6 sm:p-8 flex flex-col items-center">
-          <Bone className="h-16 w-16 rounded-full" />
+          <BrandMini label={label} mark="/brand/pedia-mark.svg" />
           <Bone className="mt-4 h-7 w-64 max-w-full rounded-xl" />
           <Bone className="mt-3 h-4 w-44 rounded-full" />
           <Bone className="mt-6 aspect-square w-full max-w-[300px] rounded-2xl" />
-          <p role="status" className="mt-5 flex items-center gap-2 text-sm text-white/55"><InlineSpinner />{label}</p>
         </div>
         <div className="ax-glass-card mt-4 rounded-[24px] p-5 space-y-3">
           <Bone className="h-4 w-32 rounded-full" />

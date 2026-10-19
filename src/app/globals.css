@@ -136,10 +136,26 @@ body {
 .ax-nav-bar { transform: scaleX(0.08); animation: axNavTrickle 14s cubic-bezier(0.08, 0.7, 0.2, 1) forwards; }
 .ax-nav-bar-done { animation: none; transform: scaleX(1); opacity: 0; transition: transform 180ms ease-out, opacity 220ms ease 140ms; }
 @keyframes axFadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* BrandLoader — cincin cyan berputar di SEKELILING logo diam (ISTA AI,
+   2026-10-19): ring di luar disk (-12px), border 3px transparan dengan
+   top/right cyan, putar 360° linear 1 dtk infinite; logo pulse halus 2 dtk
+   (scale 1→1.05, opacity 1→0.8). */
+@keyframes axBrandRing { to { transform: rotate(360deg); } }
+.ax-brand-ring {
+  border: 3px solid transparent;
+  border-top-color: #00E5FF;
+  border-right-color: #00E5FF;
+  animation: axBrandRing 1s linear infinite;
+}
+@keyframes axBrandPulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.05); opacity: 0.8; } }
+.ax-brand-logo { animation: axBrandPulse 2s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) {
   .ax-nav-bar { animation: none; transform: scaleX(0.6); }
   .ax-skeleton::after { animation: none; }
   .ax-meteors { display: none; }
+  .ax-brand-ring { animation: none; }
+  .ax-brand-logo { animation: none; }
 }
 
 /* Focus */

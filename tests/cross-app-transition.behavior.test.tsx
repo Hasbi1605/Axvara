@@ -8,6 +8,9 @@ it.each([[SITE.pediaUrl, "Pedia"], [SITE.webUrl, "Market"]])("keeps a white dest
   render(<><CrossAppTransition /><a href={url} onClick={e => e.preventDefault()}>Pindah</a></>);
   fireEvent.click(screen.getByRole("link", { name: "Pindah" }));
   const overlay = screen.getByRole("status", { name: `Memuat AXVARA ${label}` });
+  expect(overlay.querySelector(".ax-brand-ring")).toBeTruthy();
+  expect(overlay.querySelector("img")!.className).toContain("ax-brand-logo");
+  expect(overlay.querySelector("img")!.className).not.toContain("animate-spin");
   expect(overlay.querySelector("img")!.className).toContain("brightness-0 invert");
   fireEvent(window, new Event("pageshow"));
   expect(screen.queryByRole("status")).toBeNull();

@@ -1,0 +1,1220 @@
+{
+  "version": "2026-10-19",
+  "reviewed_at": "2026-10-19T09:38:42.464Z",
+  "status": "catalog_contract_reviewed_paid_quality_not_tested",
+  "products": [
+    {
+      "slug": "repost-instagram",
+      "platform": "instagram",
+      "metric": "reposts",
+      "target_kind": "post",
+      "name": "Repost Instagram",
+      "description": "Repost untuk postingan Instagram publik. Berbeda dari share melalui pesan pribadi.",
+      "checklist": [
+        {
+          "id": "public",
+          "label": "Target saya dapat diakses publik."
+        },
+        {
+          "id": "stable",
+          "label": "Saya tidak mengubah atau menghapus target selama proses."
+        }
+      ],
+      "packages": [
+        10,
+        20,
+        50,
+        100,
+        250,
+        500,
+        1000,
+        2500,
+        5000,
+        10000,
+        25000,
+        50000,
+        100000
+      ],
+      "services": [
+        {
+          "supplier": "providersmm",
+          "service_id": 1012,
+          "public_name": "Repost Global · Tanpa refill",
+          "description": "Repost untuk postingan Instagram publik. Berbeda dari share melalui pesan pribadi.",
+          "region": "global",
+          "quality": "standar",
+          "refill_days": 0,
+          "eta_start": "",
+          "speed_note": "",
+          "drop_risk": "sedang",
+          "min_qty_override": 10,
+          "max_qty_override": 100000,
+          "quantity_step": 1,
+          "recommendation_note": "Pilihan awal dengan ketentuan dan batas jumlah yang ditinjau.",
+          "sort_order": 0,
+          "is_recommended": 1,
+          "target_format": "url",
+          "refill_anchor": "created",
+          "evidence": {
+            "checked_at": "2026-10-19T09:38:42.464Z",
+            "api_refill": false,
+            "description_url": "https://providersmm.id/services",
+            "rate_idr_per_1k_at_review": 5931.63,
+            "paid_test": "not_run"
+          },
+          "terms": "Jumlah per pesanan 10–100.000.\nJumlah dapat diisi sendiri dalam batas layanan.\nTanpa refill dari AXVARA; penurunan setelah pengiriman tidak mendapat refill atau pengembalian dana karena drop.\nJangan mengubah target atau membuatnya privat selama proses. Tunggu pesanan untuk target yang sama selesai sebelum memesan lagi.\nEstimasi mulai bukan estimasi selesai dan dapat berubah mengikuti antrean.",
+          "instructions": "1. Salin link target yang sesuai: https://www.instagram.com/p/ABCDE/\n2. Masukkan jumlah, bandingkan layanan, lalu tempel link target.\n3. Baca ketentuan dan konfirmasikan persyaratan tujuan.\n4. Isi kontak, periksa total, lalu lanjutkan ke QRIS.\n5. Pantau proses melalui halaman pesanan."
+        },
+        {
+          "supplier": "indosmm",
+          "service_id": 8039,
+          "public_name": "Repost Global · Mulai 0–2 jam",
+          "description": "Repost untuk postingan Instagram publik. Berbeda dari share melalui pesan pribadi.",
+          "region": "global",
+          "quality": "standar",
+          "refill_days": 0,
+          "eta_start": "0–2 jam",
+          "speed_note": "Mulai 0–2 jam",
+          "drop_risk": "sedang",
+          "min_qty_override": 10,
+          "max_qty_override": 50000,
+          "quantity_step": 1,
+          "recommendation_note": "",
+          "sort_order": 1,
+          "is_recommended": 0,
+          "target_format": "url",
+          "refill_anchor": "created",
+          "evidence": {
+            "checked_at": "2026-10-19T09:38:42.464Z",
+            "api_refill": false,
+            "description_url": "https://indosmm.id/services/get-service-description/8039",
+            "rate_idr_per_1k_at_review": 6618,
+            "paid_test": "not_run"
+          },
+          "terms": "Jumlah per pesanan 10–50.000.\nJumlah dapat diisi sendiri dalam batas layanan.\nTanpa refill dari AXVARA; penurunan setelah pengiriman tidak mendapat refill atau pengembalian dana karena drop.\nJangan mengubah target atau membuatnya privat selama proses. Tunggu pesanan untuk target yang sama selesai sebelum memesan lagi.\nEstimasi mulai bukan estimasi selesai dan dapat berubah mengikuti antrean.",
+          "instructions": "1. Salin link target yang sesuai: https://www.instagram.com/p/ABCDE/\n2. Masukkan jumlah, bandingkan layanan, lalu tempel link target.\n3. Baca ketentuan dan konfirmasikan persyaratan tujuan.\n4. Isi kontak, periksa total, lalu lanjutkan ke QRIS.\n5. Pantau proses melalui halaman pesanan."
+        }
+      ]
+    },
+    {
+      "slug": "views-story-instagram",
+      "platform": "instagram",
+      "metric": "views",
+      "target_kind": "profile",
+      "name": "Tayangan Story Instagram",
+      "description": "Tayangan untuk sekitar 5–10 story pertama dari profil Instagram publik yang masih aktif.",
+      "checklist": [
+        {
+          "id": "public",
+          "label": "Akun saya publik dan memiliki story aktif."
+        },
+        {
+          "id": "stable",
+          "label": "Saya tidak mengganti username atau menghapus story selama proses."
+        }
+      ],
+      "packages": [
+        10,
+        20,
+        50,
+        100,
+        250,
+        500,
+        1000,
+        2500,
+        5000,
+        10000
+      ],
+      "services": [
+        {
+          "supplier": "providersmm",
+          "service_id": 974,
+          "public_name": "Story · 5–10 story awal · Tanpa refill",
+          "description": "Tayangan untuk sekitar 5–10 story pertama dari profil Instagram publik yang masih aktif.",
+          "region": "global",
+          "quality": "standar",
+          "refill_days": 0,
+          "eta_start": "",
+          "speed_note": "",
+          "drop_risk": "sedang",
+          "min_qty_override": 10,
+          "max_qty_override": 20000,
+          "quantity_step": 1,
+          "recommendation_note": "Pilihan awal dengan ketentuan dan batas jumlah yang ditinjau.",
+          "sort_order": 0,
+          "is_recommended": 1,
+          "target_format": "username",
+          "refill_anchor": "created",
+          "evidence": {
+            "checked_at": "2026-10-19T09:38:42.464Z",
+            "api_refill": false,
+            "description_url": "https://providersmm.id/services",
+            "rate_idr_per_1k_at_review": 14084.61,
+            "paid_test": "not_run"
+          },
+          "terms": "Jumlah per pesanan 10–20.000.\nJumlah dapat diisi sendiri dalam batas layanan.\nTanpa refill dari AXVARA; penurunan setelah pengiriman tidak mendapat refill atau pengembalian dana karena drop.\nJangan mengubah target atau membuatnya privat selama proses. Tunggu pesanan untuk target yang sama selesai sebelum memesan lagi.\nEstimasi mulai bukan estimasi selesai dan dapat berubah mengikuti antrean.\nGunakan link profil; username akan dikirim ke supplier. Story setelah 5–10 story awal tidak tercakup.",
+          "instructions": "1. Salin link target yang sesuai: https://www.instagram.com/username/\n2. Masukkan jumlah, bandingkan layanan, lalu tempel link target.\n3. Baca ketentuan dan konfirmasikan persyaratan tujuan.\n4. Isi kontak, periksa total, lalu lanjutkan ke QRIS.\n5. Pantau proses melalui halaman pesanan."
+        }
+      ]
+    },
+    {
+      "slug": "repost-tiktok",
+      "platform": "tiktok",
+      "metric": "reposts",
+      "target_kind": "video",
+      "name": "Repost TikTok",
+      "description": "Repost untuk video TikTok publik; bukan share link atau jumlah tayangan.",
+      "checklist": [
+        {
+          "id": "public",
+          "label": "Target saya dapat diakses publik."
+        },
+        {
+          "id": "stable",
+          "label": "Saya tidak mengubah atau menghapus target selama proses."
+        }
+      ],
+      "packages": [
+        10,
+        20,
+        50,
+        100,
+        250,
+        500,
+        1000,
+        2500,
+        5000,
+        10000
+      ],
+      "services": [
+        {
+          "supplier": "indosmm",
+          "service_id": 9295,
+          "public_name": "Repost Global · Tanpa refill",
+          "description": "Repost untuk video TikTok publik; bukan share link atau jumlah tayangan.",
+          "region": "global",
+          "quality": "standar",
+          "refill_days": 0,
+          "eta_start": "0–4 jam",
+          "speed_note": "Mulai 0–4 jam",
+          "drop_risk": "sedang",
+          "min_qty_override": 10,
+          "max_qty_override": 10000,
+          "quantity_step": 1,
+          "recommendation_note": "Pilihan awal dengan ketentuan dan batas jumlah yang ditinjau.",
+          "sort_order": 0,
+          "is_recommended": 1,
+          "target_format": "url",
+          "refill_anchor": "created",
+          "evidence": {
+            "checked_at": "2026-10-19T09:38:42.464Z",
+            "api_refill": false,
+            "description_url": "https://indosmm.id/services/get-service-description/9295",
+            "rate_idr_per_1k_at_review": 17108,
+            "paid_test": "not_run"
+          },
+          "terms": "Jumlah per pesanan 10–10.000.\nJumlah dapat diisi sendiri dalam batas layanan.\nTanpa refill dari AXVARA; penurunan setelah pengiriman tidak mendapat refill atau pengembalian dana karena drop.\nJangan mengubah target atau membuatnya privat selama proses. Tunggu pesanan untuk target yang sama selesai sebelum memesan lagi.\nEstimasi mulai bukan estimasi selesai dan dapat berubah mengikuti antrean.",
+          "instructions": "1. Salin link target yang sesuai: https://www.tiktok.com/@username/video/123456789\n2. Masukkan jumlah, bandingkan layanan, lalu tempel link target.\n3. Baca ketentuan dan konfirmasikan persyaratan tujuan.\n4. Isi kontak, periksa total, lalu lanjutkan ke QRIS.\n5. Pantau proses melalui halaman pesanan."
+        },
+        {
+          "supplier": "indosmm",
+          "service_id": 9296,
+          "public_name": "Repost Indonesia · Tanpa refill",
+          "description": "Repost untuk video TikTok publik; bukan share link atau jumlah tayangan.",
+          "region": "indonesia",
+          "quality": "standar",
+          "refill_days": 0,
+          "eta_start": "0–4 jam",
+          "speed_note": "Mulai 0–4 jam",
+          "drop_risk": "sedang",
+          "min_qty_override": 10,
+          "max_qty_override": 1000,
+          "quantity_step": 1,
+          "recommendation_note": "",
+          "sort_order": 1,
+          "is_recommended": 0,
+          "target_format": "url",
+          "refill_anchor": "created",
+          "evidence": {
+            "checked_at": "2026-10-19T09:38:42.464Z",
+            "api_refill": false,
+            "description_url": "https://indosmm.id/services/get-service-description/9296",
+            "rate_idr_per_1k_at_review": 85680,
+            "paid_test": "not_run"
+          },
+          "terms": "Jumlah per pesanan 10–1.000.\nJumlah dapat diisi sendiri dalam batas layanan.\nTanpa refill dari AXVARA; penurunan setelah pengiriman tidak mendapat refill atau pengembalian dana karena drop.\nJangan mengubah target atau membuatnya privat selama proses. Tunggu pesanan untuk target yang sama selesai sebelum memesan lagi.\nEstimasi mulai bukan estimasi selesai dan dapat berubah mengikuti antrean.",
+          "instructions": "1. Salin link target yang sesuai: https://www.tiktok.com/@username/video/123456789\n2. Masukkan jumlah, bandingkan layanan, lalu tempel link target.\n3. Baca ketentuan dan konfirmasikan persyaratan tujuan.\n4. Isi kontak, periksa total, lalu lanjutkan ke QRIS.\n5. Pantau proses melalui halaman pesanan."
+        }
+      ]
+    },
+    {
+      "slug": "views-shorts-youtube",
+      "platform": "youtube",
+      "metric": "views",
+      "target_kind": "short",
+      "name": "Tayangan Shorts YouTube",
+      "description": "Tayangan untuk video YouTube Shorts. Gunakan link /shorts/, bukan video panjang.",
+      "checklist": [
+        {
+          "id": "public",
+          "label": "Target saya dapat diakses publik."
+        },
+        {
+          "id": "stable",
+          "label": "Saya tidak mengubah atau menghapus target selama proses."
+        }
+      ],
+      "packages": [
+        500,
+        1000,
+        2500,
+        5000,
+        10000,
+        25000,
+        50000,
+        100000
+      ],
+      "services": [
+        {
+          "supplier": "indosmm",
+          "service_id": 8767,
+          "public_name": "Shorts · Mulai 500 · Tanpa refill AXVARA",
+          "description": "Tayangan untuk video YouTube Shorts. Gunakan link /shorts/, bukan video panjang.",
+          "region": "global",
+          "quality": "standar",
+          "refill_days": 0,
+          "eta_start": "0–4 jam",
+          "speed_note": "Mulai 0–4 jam",
+          "drop_risk": "sedang",
+          "min_qty_override": 500,
+          "max_qty_override": 300000,
+          "quantity_step": 1,
+          "recommendation_note": "Pilihan awal dengan ketentuan dan batas jumlah yang ditinjau.",
+          "sort_order": 0,
+          "is_recommended": 1,
+          "target_format": "url",
+          "refill_anchor": "created",
+          "evidence": {
+            "checked_at": "2026-10-19T09:38:42.464Z",
+            "api_refill": false,
+            "description_url": "https://indosmm.id/services/get-service-description/8767",
+            "rate_idr_per_1k_at_review": 15165,
+            "paid_test": "not_run"
+          },
+          "terms": "Jumlah per pesanan 500–300.000.\nJumlah dapat diisi sendiri dalam batas layanan.\nTanpa refill dari AXVARA; penurunan setelah pengiriman tidak mendapat refill atau pengembalian dana karena drop.\nJangan mengubah target atau membuatnya privat selama proses. Tunggu pesanan untuk target yang sama selesai sebelum memesan lagi.\nEstimasi mulai bukan estimasi selesai dan dapat berubah mengikuti antrean.\nSupplier menyebut lifetime, tetapi API refill belum tersedia. AXVARA menjual layanan ini tanpa janji refill.",
+          "instructions": "1. Salin link target yang sesuai: https://www.youtube.com/shorts/abcdefghijk\n2. Masukkan jumlah, bandingkan layanan, lalu tempel link target.\n3. Baca ketentuan dan konfirmasikan persyaratan tujuan.\n4. Isi kontak, periksa total, lalu lanjutkan ke QRIS.\n5. Pantau proses melalui halaman pesanan."
+        }
+      ]
+    },
+    {
+      "slug": "likes-shorts-youtube",
+      "platform": "youtube",
+      "metric": "likes",
+      "target_kind": "short",
+      "name": "Likes Shorts YouTube",
+      "description": "Likes untuk video YouTube Shorts publik.",
+      "checklist": [
+        {
+          "id": "public",
+          "label": "Target saya dapat diakses publik."
+        },
+        {
+          "id": "stable",
+          "label": "Saya tidak mengubah atau menghapus target selama proses."
+        }
+      ],
+      "packages": [
+        10,
+        20,
+        50,
+        100,
+        250,
+        500,
+        1000,
+        2500,
+        5000,
+        10000,
+        25000,
+        50000,
+        100000
+      ],
+      "services": [
+        {
+          "supplier": "indosmm",
+          "service_id": 1676,
+          "public_name": "Likes Shorts · Tanpa refill",
+          "description": "Likes untuk video YouTube Shorts publik.",
+          "region": "global",
+          "quality": "standar",
+          "refill_days": 0,
+          "eta_start": "0–1 jam",
+          "speed_note": "Mulai 0–1 jam",
+          "drop_risk": "sedang",
+          "min_qty_override": 10,
+          "max_qty_override": 200000,
+          "quantity_step": 1,
+          "recommendation_note": "Pilihan awal dengan ketentuan dan batas jumlah yang ditinjau.",
+          "sort_order": 0,
+          "is_recommended": 1,
+          "target_format": "url",
+          "refill_anchor": "created",
+          "evidence": {
+            "checked_at": "2026-10-19T09:38:42.464Z",
+            "api_refill": false,
+            "description_url": "https://indosmm.id/services/get-service-description/1676",
+            "rate_idr_per_1k_at_review": 21664,
+            "paid_test": "not_run"
+          },
+          "terms": "Jumlah per pesanan 10–200.000.\nJumlah dapat diisi sendiri dalam batas layanan.\nTanpa refill dari AXVARA; penurunan setelah pengiriman tidak mendapat refill atau pengembalian dana karena drop.\nJangan mengubah target atau membuatnya privat selama proses. Tunggu pesanan untuk target yang sama selesai sebelum memesan lagi.\nEstimasi mulai bukan estimasi selesai dan dapat berubah mengikuti antrean.",
+          "instructions": "1. Salin link target yang sesuai: https://www.youtube.com/shorts/abcdefghijk\n2. Masukkan jumlah, bandingkan layanan, lalu tempel link target.\n3. Baca ketentuan dan konfirmasikan persyaratan tujuan.\n4. Isi kontak, periksa total, lalu lanjutkan ke QRIS.\n5. Pantau proses melalui halaman pesanan."
+        }
+      ]
+    },
+    {
+      "slug": "share-post-facebook",
+      "platform": "facebook",
+      "metric": "shares",
+      "target_kind": "post",
+      "name": "Share Postingan Facebook",
+      "description": "Share untuk postingan dan foto Facebook publik.",
+      "checklist": [
+        {
+          "id": "public",
+          "label": "Target saya dapat diakses publik."
+        },
+        {
+          "id": "stable",
+          "label": "Saya tidak mengubah atau menghapus target selama proses."
+        }
+      ],
+      "packages": [
+        100,
+        250,
+        500,
+        1000,
+        2500,
+        5000,
+        10000,
+        25000,
+        50000,
+        100000
+      ],
+      "services": [
+        {
+          "supplier": "providersmm",
+          "service_id": 1007,
+          "public_name": "Share Postingan · Refill 30 hari",
+          "description": "Share untuk postingan dan foto Facebook publik.",
+          "region": "global",
+          "quality": "standar",
+          "refill_days": 30,
+          "eta_start": "0–10 menit",
+          "speed_note": "Mulai 0–10 menit",
+          "drop_risk": "sedang",
+          "min_qty_override": 100,
+          "max_qty_override": 100000,
+          "quantity_step": 1,
+          "recommendation_note": "Pilihan awal dengan ketentuan dan batas jumlah yang ditinjau.",
+          "sort_order": 0,
+          "is_recommended": 1,
+          "target_format": "url",
+          "refill_anchor": "created",
+          "evidence": {
+            "checked_at": "2026-10-19T09:38:42.464Z",
+            "api_refill": true,
+            "description_url": "https://providersmm.id/services",
+            "rate_idr_per_1k_at_review": 3945.72,
+            "paid_test": "not_run"
+          },
+          "terms": "Jumlah per pesanan 100–100.000.\nJumlah dapat diisi sendiri dalam batas layanan.\nRefill 30 hari sejak pesanan dibuat, sesuai ketentuan layanan. Drop dapat terjadi; refill bukan jaminan tidak turun.\nJangan mengubah target atau membuatnya privat selama proses. Tunggu pesanan untuk target yang sama selesai sebelum memesan lagi.\nEstimasi mulai bukan estimasi selesai dan dapat berubah mengikuti antrean.\nGunakan tautan postingan atau foto. Siaran langsung tidak termasuk.",
+          "instructions": "1. Salin link target yang sesuai: https://www.facebook.com/username/posts/123456789/\n2. Masukkan jumlah, bandingkan layanan, lalu tempel link target.\n3. Baca ketentuan dan konfirmasikan persyaratan tujuan.\n4. Isi kontak, periksa total, lalu lanjutkan ke QRIS.\n5. Pantau proses melalui halaman pesanan."
+        }
+      ]
+    },
+    {
+      "slug": "share-video-facebook",
+      "platform": "facebook",
+      "metric": "shares",
+      "target_kind": "video",
+      "name": "Share Video Facebook",
+      "description": "Share untuk video Facebook publik; dipisahkan dari postingan/foto.",
+      "checklist": [
+        {
+          "id": "public",
+          "label": "Target saya dapat diakses publik."
+        },
+        {
+          "id": "stable",
+          "label": "Saya tidak mengubah atau menghapus target selama proses."
+        }
+      ],
+      "packages": [
+        100,
+        250,
+        500,
+        1000,
+        2500,
+        5000,
+        10000,
+        25000,
+        50000,
+        100000
+      ],
+      "services": [
+        {
+          "supplier": "providersmm",
+          "service_id": 1007,
+          "public_name": "Share Video · Refill 30 hari",
+          "description": "Share untuk video Facebook publik; dipisahkan dari postingan/foto.",
+          "region": "global",
+          "quality": "standar",
+          "refill_days": 30,
+          "eta_start": "0–10 menit",
+          "speed_note": "Mulai 0–10 menit",
+          "drop_risk": "sedang",
+          "min_qty_override": 100,
+          "max_qty_override": 100000,
+          "quantity_step": 1,
+          "recommendation_note": "Pilihan awal dengan ketentuan dan batas jumlah yang ditinjau.",
+          "sort_order": 0,
+          "is_recommended": 1,
+          "target_format": "url",
+          "refill_anchor": "created",
+          "evidence": {
+            "checked_at": "2026-10-19T09:38:42.464Z",
+            "api_refill": true,
+            "description_url": "https://providersmm.id/services",
+            "rate_idr_per_1k_at_review": 3945.72,
+            "paid_test": "not_run"
+          },
+          "terms": "Jumlah per pesanan 100–100.000.\nJumlah dapat diisi sendiri dalam batas layanan.\nRefill 30 hari sejak pesanan dibuat, sesuai ketentuan layanan. Drop dapat terjadi; refill bukan jaminan tidak turun.\nJangan mengubah target atau membuatnya privat selama proses. Tunggu pesanan untuk target yang sama selesai sebelum memesan lagi.\nEstimasi mulai bukan estimasi selesai dan dapat berubah mengikuti antrean.\nGunakan tautan video. Siaran langsung tidak termasuk.",
+          "instructions": "1. Salin link target yang sesuai: https://www.facebook.com/username/videos/123456789/\n2. Masukkan jumlah, bandingkan layanan, lalu tempel link target.\n3. Baca ketentuan dan konfirmasikan persyaratan tujuan.\n4. Isi kontak, periksa total, lalu lanjutkan ke QRIS.\n5. Pantau proses melalui halaman pesanan."
+        }
+      ]
+    },
+    {
+      "slug": "repost-threads",
+      "platform": "threads",
+      "metric": "reposts",
+      "target_kind": "post",
+      "name": "Repost Threads",
+      "description": "Repost untuk postingan Threads publik.",
+      "checklist": [
+        {
+          "id": "public",
+          "label": "Target saya dapat diakses publik."
+        },
+        {
+          "id": "stable",
+          "label": "Saya tidak mengubah atau menghapus target selama proses."
+        }
+      ],
+      "packages": [
+        10,
+        20,
+        50,
+        100,
+        250,
+        500,
+        1000,
+        2500,
+        5000,
+        10000,
+        25000,
+        50000,
+        100000
+      ],
+      "services": [
+        {
+          "supplier": "providersmm",
+          "service_id": 748,
+          "public_name": "Repost Global · Tanpa refill",
+          "description": "Repost untuk postingan Threads publik.",
+          "region": "global",
+          "quality": "standar",
+          "refill_days": 0,
+          "eta_start": "",
+          "speed_note": "",
+          "drop_risk": "sedang",
+          "min_qty_override": 10,
+          "max_qty_override": 100000,
+          "quantity_step": 1,
+          "recommendation_note": "Pilihan awal dengan ketentuan dan batas jumlah yang ditinjau.",
+          "sort_order": 0,
+          "is_recommended": 1,
+          "target_format": "url",
+          "refill_anchor": "created",
+          "evidence": {
+            "checked_at": "2026-10-19T09:38:42.464Z",
+            "api_refill": false,
+            "description_url": "https://providersmm.id/services",
+            "rate_idr_per_1k_at_review": 51502.01,
+            "paid_test": "not_run"
+          },
+          "terms": "Jumlah per pesanan 10–100.000.\nJumlah dapat diisi sendiri dalam batas layanan.\nTanpa refill dari AXVARA; penurunan setelah pengiriman tidak mendapat refill atau pengembalian dana karena drop.\nJangan mengubah target atau membuatnya privat selama proses. Tunggu pesanan untuk target yang sama selesai sebelum memesan lagi.\nEstimasi mulai bukan estimasi selesai dan dapat berubah mengikuti antrean.",
+          "instructions": "1. Salin link target yang sesuai: https://www.threads.net/@username/post/ABCDE\n2. Masukkan jumlah, bandingkan layanan, lalu tempel link target.\n3. Baca ketentuan dan konfirmasikan persyaratan tujuan.\n4. Isi kontak, periksa total, lalu lanjutkan ke QRIS.\n5. Pantau proses melalui halaman pesanan."
+        },
+        {
+          "supplier": "providersmm",
+          "service_id": 749,
+          "public_name": "Repost Global · Refill 30 hari",
+          "description": "Repost untuk postingan Threads publik.",
+          "region": "global",
+          "quality": "standar",
+          "refill_days": 30,
+          "eta_start": "",
+          "speed_note": "",
+          "drop_risk": "sedang",
+          "min_qty_override": 10,
+          "max_qty_override": 100000,
+          "quantity_step": 1,
+          "recommendation_note": "",
+          "sort_order": 1,
+          "is_recommended": 0,
+          "target_format": "url",
+          "refill_anchor": "completed",
+          "evidence": {
+            "checked_at": "2026-10-19T09:38:42.464Z",
+            "api_refill": true,
+            "description_url": "https://providersmm.id/services",
+            "rate_idr_per_1k_at_review": 101884.41,
+            "paid_test": "not_run"
+          },
+          "terms": "Jumlah per pesanan 10–100.000.\nJumlah dapat diisi sendiri dalam batas layanan.\nRefill 30 hari sejak pesanan selesai, sesuai ketentuan layanan. Drop dapat terjadi; refill bukan jaminan tidak turun.\nJangan mengubah target atau membuatnya privat selama proses. Tunggu pesanan untuk target yang sama selesai sebelum memesan lagi.\nEstimasi mulai bukan estimasi selesai dan dapat berubah mengikuti antrean.\nRefill dapat diminta maksimal sekali setiap 24 jam; tanpa refund karena drop.",
+          "instructions": "1. Salin link target yang sesuai: https://www.threads.net/@username/post/ABCDE\n2. Masukkan jumlah, bandingkan layanan, lalu tempel link target.\n3. Baca ketentuan dan konfirmasikan persyaratan tujuan.\n4. Isi kontak, periksa total, lalu lanjutkan ke QRIS.\n5. Pantau proses melalui halaman pesanan."
+        }
+      ]
+    },
+    {
+      "slug": "quote-threads",
+      "platform": "threads",
+      "metric": "quotes",
+      "target_kind": "post",
+      "name": "Quote Threads",
+      "description": "Quote untuk postingan Threads publik. Teks quote khusus tidak dapat diisi pada layanan ini.",
+      "checklist": [
+        {
+          "id": "public",
+          "label": "Target saya dapat diakses publik."
+        },
+        {
+          "id": "stable",
+          "label": "Saya tidak mengubah atau menghapus target selama proses."
+        }
+      ],
+      "packages": [
+        10,
+        20,
+        50,
+        100,
+        250,
+        500,
+        1000,
+        2500,
+        5000,
+        10000,
+        25000,
+        50000,
+        100000
+      ],
+      "services": [
+        {
+          "supplier": "providersmm",
+          "service_id": 750,
+          "public_name": "Quote Global · Tanpa refill",
+          "description": "Quote untuk postingan Threads publik. Teks quote khusus tidak dapat diisi pada layanan ini.",
+          "region": "global",
+          "quality": "standar",
+          "refill_days": 0,
+          "eta_start": "",
+          "speed_note": "",
+          "drop_risk": "sedang",
+          "min_qty_override": 10,
+          "max_qty_override": 100000,
+          "quantity_step": 1,
+          "recommendation_note": "Pilihan awal dengan ketentuan dan batas jumlah yang ditinjau.",
+          "sort_order": 0,
+          "is_recommended": 1,
+          "target_format": "url",
+          "refill_anchor": "created",
+          "evidence": {
+            "checked_at": "2026-10-19T09:38:42.464Z",
+            "api_refill": false,
+            "description_url": "https://providersmm.id/services",
+            "rate_idr_per_1k_at_review": 51502.01,
+            "paid_test": "not_run"
+          },
+          "terms": "Jumlah per pesanan 10–100.000.\nJumlah dapat diisi sendiri dalam batas layanan.\nTanpa refill dari AXVARA; penurunan setelah pengiriman tidak mendapat refill atau pengembalian dana karena drop.\nJangan mengubah target atau membuatnya privat selama proses. Tunggu pesanan untuk target yang sama selesai sebelum memesan lagi.\nEstimasi mulai bukan estimasi selesai dan dapat berubah mengikuti antrean.",
+          "instructions": "1. Salin link target yang sesuai: https://www.threads.net/@username/post/ABCDE\n2. Masukkan jumlah, bandingkan layanan, lalu tempel link target.\n3. Baca ketentuan dan konfirmasikan persyaratan tujuan.\n4. Isi kontak, periksa total, lalu lanjutkan ke QRIS.\n5. Pantau proses melalui halaman pesanan."
+        },
+        {
+          "supplier": "providersmm",
+          "service_id": 751,
+          "public_name": "Quote Global · Refill 30 hari",
+          "description": "Quote untuk postingan Threads publik. Teks quote khusus tidak dapat diisi pada layanan ini.",
+          "region": "global",
+          "quality": "standar",
+          "refill_days": 30,
+          "eta_start": "",
+          "speed_note": "",
+          "drop_risk": "sedang",
+          "min_qty_override": 10,
+          "max_qty_override": 100000,
+          "quantity_step": 1,
+          "recommendation_note": "",
+          "sort_order": 1,
+          "is_recommended": 0,
+          "target_format": "url",
+          "refill_anchor": "completed",
+          "evidence": {
+            "checked_at": "2026-10-19T09:38:42.464Z",
+            "api_refill": true,
+            "description_url": "https://providersmm.id/services",
+            "rate_idr_per_1k_at_review": 101884.41,
+            "paid_test": "not_run"
+          },
+          "terms": "Jumlah per pesanan 10–100.000.\nJumlah dapat diisi sendiri dalam batas layanan.\nRefill 30 hari sejak pesanan selesai, sesuai ketentuan layanan. Drop dapat terjadi; refill bukan jaminan tidak turun.\nJangan mengubah target atau membuatnya privat selama proses. Tunggu pesanan untuk target yang sama selesai sebelum memesan lagi.\nEstimasi mulai bukan estimasi selesai dan dapat berubah mengikuti antrean.\nRefill dapat diminta maksimal sekali setiap 24 jam; tanpa refund karena drop.",
+          "instructions": "1. Salin link target yang sesuai: https://www.threads.net/@username/post/ABCDE\n2. Masukkan jumlah, bandingkan layanan, lalu tempel link target.\n3. Baca ketentuan dan konfirmasikan persyaratan tujuan.\n4. Isi kontak, periksa total, lalu lanjutkan ke QRIS.\n5. Pantau proses melalui halaman pesanan."
+        }
+      ]
+    },
+    {
+      "slug": "share-threads",
+      "platform": "threads",
+      "metric": "shares",
+      "target_kind": "post",
+      "name": "Share Threads",
+      "description": "Share untuk postingan Threads publik.",
+      "checklist": [
+        {
+          "id": "public",
+          "label": "Target saya dapat diakses publik."
+        },
+        {
+          "id": "stable",
+          "label": "Saya tidak mengubah atau menghapus target selama proses."
+        }
+      ],
+      "packages": [
+        10,
+        20,
+        50,
+        100,
+        250,
+        500,
+        1000,
+        2500,
+        5000,
+        10000,
+        25000,
+        50000,
+        100000
+      ],
+      "services": [
+        {
+          "supplier": "providersmm",
+          "service_id": 752,
+          "public_name": "Share Global · Tanpa refill",
+          "description": "Share untuk postingan Threads publik.",
+          "region": "global",
+          "quality": "standar",
+          "refill_days": 0,
+          "eta_start": "",
+          "speed_note": "",
+          "drop_risk": "sedang",
+          "min_qty_override": 10,
+          "max_qty_override": 100000,
+          "quantity_step": 1,
+          "recommendation_note": "Pilihan awal dengan ketentuan dan batas jumlah yang ditinjau.",
+          "sort_order": 0,
+          "is_recommended": 1,
+          "target_format": "url",
+          "refill_anchor": "created",
+          "evidence": {
+            "checked_at": "2026-10-19T09:38:42.464Z",
+            "api_refill": false,
+            "description_url": "https://providersmm.id/services",
+            "rate_idr_per_1k_at_review": 128755.03,
+            "paid_test": "not_run"
+          },
+          "terms": "Jumlah per pesanan 10–100.000.\nJumlah dapat diisi sendiri dalam batas layanan.\nTanpa refill dari AXVARA; penurunan setelah pengiriman tidak mendapat refill atau pengembalian dana karena drop.\nJangan mengubah target atau membuatnya privat selama proses. Tunggu pesanan untuk target yang sama selesai sebelum memesan lagi.\nEstimasi mulai bukan estimasi selesai dan dapat berubah mengikuti antrean.",
+          "instructions": "1. Salin link target yang sesuai: https://www.threads.net/@username/post/ABCDE\n2. Masukkan jumlah, bandingkan layanan, lalu tempel link target.\n3. Baca ketentuan dan konfirmasikan persyaratan tujuan.\n4. Isi kontak, periksa total, lalu lanjutkan ke QRIS.\n5. Pantau proses melalui halaman pesanan."
+        },
+        {
+          "supplier": "providersmm",
+          "service_id": 753,
+          "public_name": "Share Global · Refill 30 hari",
+          "description": "Share untuk postingan Threads publik.",
+          "region": "global",
+          "quality": "standar",
+          "refill_days": 30,
+          "eta_start": "",
+          "speed_note": "",
+          "drop_risk": "sedang",
+          "min_qty_override": 10,
+          "max_qty_override": 100000,
+          "quantity_step": 1,
+          "recommendation_note": "",
+          "sort_order": 1,
+          "is_recommended": 0,
+          "target_format": "url",
+          "refill_anchor": "completed",
+          "evidence": {
+            "checked_at": "2026-10-19T09:38:42.464Z",
+            "api_refill": true,
+            "description_url": "https://providersmm.id/services",
+            "rate_idr_per_1k_at_review": 256223.01,
+            "paid_test": "not_run"
+          },
+          "terms": "Jumlah per pesanan 10–100.000.\nJumlah dapat diisi sendiri dalam batas layanan.\nRefill 30 hari sejak pesanan selesai, sesuai ketentuan layanan. Drop dapat terjadi; refill bukan jaminan tidak turun.\nJangan mengubah target atau membuatnya privat selama proses. Tunggu pesanan untuk target yang sama selesai sebelum memesan lagi.\nEstimasi mulai bukan estimasi selesai dan dapat berubah mengikuti antrean.\nRefill dapat diminta maksimal sekali setiap 24 jam; tanpa refund karena drop.",
+          "instructions": "1. Salin link target yang sesuai: https://www.threads.net/@username/post/ABCDE\n2. Masukkan jumlah, bandingkan layanan, lalu tempel link target.\n3. Baca ketentuan dan konfirmasikan persyaratan tujuan.\n4. Isi kontak, periksa total, lalu lanjutkan ke QRIS.\n5. Pantau proses melalui halaman pesanan."
+        }
+      ]
+    },
+    {
+      "slug": "repost-x",
+      "platform": "x",
+      "metric": "reposts",
+      "target_kind": "post",
+      "name": "Repost X",
+      "description": "Repost untuk postingan X/Twitter publik. Quote dengan komentar khusus tidak termasuk.",
+      "checklist": [
+        {
+          "id": "public",
+          "label": "Target saya dapat diakses publik."
+        },
+        {
+          "id": "stable",
+          "label": "Saya tidak mengubah atau menghapus target selama proses."
+        }
+      ],
+      "packages": [
+        20,
+        50,
+        100,
+        250,
+        500,
+        1000,
+        2500,
+        5000
+      ],
+      "services": [
+        {
+          "supplier": "indosmm",
+          "service_id": 9399,
+          "public_name": "Repost Global · Refill 30 hari",
+          "description": "Repost untuk postingan X/Twitter publik. Quote dengan komentar khusus tidak termasuk.",
+          "region": "global",
+          "quality": "standar",
+          "refill_days": 30,
+          "eta_start": "0–1 jam",
+          "speed_note": "Mulai 0–1 jam",
+          "drop_risk": "sedang",
+          "min_qty_override": 100,
+          "max_qty_override": 5000,
+          "quantity_step": 1,
+          "recommendation_note": "Pilihan awal dengan ketentuan dan batas jumlah yang ditinjau.",
+          "sort_order": 0,
+          "is_recommended": 1,
+          "target_format": "url",
+          "refill_anchor": "created",
+          "evidence": {
+            "checked_at": "2026-10-19T09:38:42.464Z",
+            "api_refill": true,
+            "description_url": "https://indosmm.id/services/get-service-description/9399",
+            "rate_idr_per_1k_at_review": 14865,
+            "paid_test": "not_run"
+          },
+          "terms": "Jumlah per pesanan 100–5.000.\nJumlah dapat diisi sendiri dalam batas layanan.\nRefill 30 hari sejak pesanan dibuat, sesuai ketentuan layanan. Drop dapat terjadi; refill bukan jaminan tidak turun.\nJangan mengubah target atau membuatnya privat selama proses. Tunggu pesanan untuk target yang sama selesai sebelum memesan lagi.\nEstimasi mulai bukan estimasi selesai dan dapat berubah mengikuti antrean.",
+          "instructions": "1. Salin link target yang sesuai: https://x.com/username/status/123456789\n2. Masukkan jumlah, bandingkan layanan, lalu tempel link target.\n3. Baca ketentuan dan konfirmasikan persyaratan tujuan.\n4. Isi kontak, periksa total, lalu lanjutkan ke QRIS.\n5. Pantau proses melalui halaman pesanan."
+        },
+        {
+          "supplier": "indosmm",
+          "service_id": 2173,
+          "public_name": "Repost Global · Tanpa refill",
+          "description": "Repost untuk postingan X/Twitter publik. Quote dengan komentar khusus tidak termasuk.",
+          "region": "global",
+          "quality": "standar",
+          "refill_days": 0,
+          "eta_start": "0–1 jam",
+          "speed_note": "Mulai 0–1 jam",
+          "drop_risk": "sedang",
+          "min_qty_override": 20,
+          "max_qty_override": 5000,
+          "quantity_step": 1,
+          "recommendation_note": "",
+          "sort_order": 1,
+          "is_recommended": 0,
+          "target_format": "url",
+          "refill_anchor": "created",
+          "evidence": {
+            "checked_at": "2026-10-19T09:38:42.464Z",
+            "api_refill": false,
+            "description_url": "https://indosmm.id/services/get-service-description/2173",
+            "rate_idr_per_1k_at_review": 20642,
+            "paid_test": "not_run"
+          },
+          "terms": "Jumlah per pesanan 20–5.000.\nJumlah dapat diisi sendiri dalam batas layanan.\nTanpa refill dari AXVARA; penurunan setelah pengiriman tidak mendapat refill atau pengembalian dana karena drop.\nJangan mengubah target atau membuatnya privat selama proses. Tunggu pesanan untuk target yang sama selesai sebelum memesan lagi.\nEstimasi mulai bukan estimasi selesai dan dapat berubah mengikuti antrean.",
+          "instructions": "1. Salin link target yang sesuai: https://x.com/username/status/123456789\n2. Masukkan jumlah, bandingkan layanan, lalu tempel link target.\n3. Baca ketentuan dan konfirmasikan persyaratan tujuan.\n4. Isi kontak, periksa total, lalu lanjutkan ke QRIS.\n5. Pantau proses melalui halaman pesanan."
+        }
+      ]
+    },
+    {
+      "slug": "bookmarks-x",
+      "platform": "x",
+      "metric": "saves",
+      "target_kind": "post",
+      "name": "Bookmarks X",
+      "description": "Bookmark untuk postingan X/Twitter publik.",
+      "checklist": [
+        {
+          "id": "public",
+          "label": "Target saya dapat diakses publik."
+        },
+        {
+          "id": "stable",
+          "label": "Saya tidak mengubah atau menghapus target selama proses."
+        }
+      ],
+      "packages": [
+        100,
+        250,
+        500,
+        1000,
+        2500,
+        5000,
+        10000
+      ],
+      "services": [
+        {
+          "supplier": "indosmm",
+          "service_id": 9005,
+          "public_name": "Bookmarks Global · Tanpa refill",
+          "description": "Bookmark untuk postingan X/Twitter publik.",
+          "region": "global",
+          "quality": "standar",
+          "refill_days": 0,
+          "eta_start": "",
+          "speed_note": "",
+          "drop_risk": "sedang",
+          "min_qty_override": 100,
+          "max_qty_override": 10000,
+          "quantity_step": 1,
+          "recommendation_note": "Pilihan awal dengan ketentuan dan batas jumlah yang ditinjau.",
+          "sort_order": 0,
+          "is_recommended": 1,
+          "target_format": "url",
+          "refill_anchor": "created",
+          "evidence": {
+            "checked_at": "2026-10-19T09:38:42.464Z",
+            "api_refill": false,
+            "description_url": "https://indosmm.id/services/get-service-description/9005",
+            "rate_idr_per_1k_at_review": 21111,
+            "paid_test": "not_run"
+          },
+          "terms": "Jumlah per pesanan 100–10.000.\nJumlah dapat diisi sendiri dalam batas layanan.\nTanpa refill dari AXVARA; penurunan setelah pengiriman tidak mendapat refill atau pengembalian dana karena drop.\nJangan mengubah target atau membuatnya privat selama proses. Tunggu pesanan untuk target yang sama selesai sebelum memesan lagi.\nEstimasi mulai bukan estimasi selesai dan dapat berubah mengikuti antrean.",
+          "instructions": "1. Salin link target yang sesuai: https://x.com/username/status/123456789\n2. Masukkan jumlah, bandingkan layanan, lalu tempel link target.\n3. Baca ketentuan dan konfirmasikan persyaratan tujuan.\n4. Isi kontak, periksa total, lalu lanjutkan ke QRIS.\n5. Pantau proses melalui halaman pesanan."
+        }
+      ]
+    },
+    {
+      "slug": "followers-artist-spotify",
+      "platform": "spotify",
+      "metric": "followers",
+      "target_kind": "artist",
+      "name": "Followers Artis Spotify",
+      "description": "Followers untuk halaman artis Spotify. Tidak menambah monthly listeners atau stream lagu.",
+      "checklist": [
+        {
+          "id": "public",
+          "label": "Target saya dapat diakses publik."
+        },
+        {
+          "id": "stable",
+          "label": "Saya tidak mengubah atau menghapus target selama proses."
+        }
+      ],
+      "packages": [
+        500,
+        1000,
+        2500,
+        5000,
+        10000,
+        25000,
+        50000,
+        100000
+      ],
+      "services": [
+        {
+          "supplier": "indosmm",
+          "service_id": 9123,
+          "public_name": "Followers Artis Global · Tanpa refill",
+          "description": "Followers untuk halaman artis Spotify. Tidak menambah monthly listeners atau stream lagu.",
+          "region": "global",
+          "quality": "standar",
+          "refill_days": 0,
+          "eta_start": "1–12 jam",
+          "speed_note": "Mulai 1–12 jam",
+          "drop_risk": "sedang",
+          "min_qty_override": 500,
+          "max_qty_override": 1000000,
+          "quantity_step": 1,
+          "recommendation_note": "Pilihan awal dengan ketentuan dan batas jumlah yang ditinjau.",
+          "sort_order": 0,
+          "is_recommended": 1,
+          "target_format": "url",
+          "refill_anchor": "created",
+          "evidence": {
+            "checked_at": "2026-10-19T09:38:42.464Z",
+            "api_refill": false,
+            "description_url": "https://indosmm.id/services/get-service-description/9123",
+            "rate_idr_per_1k_at_review": 2792,
+            "paid_test": "not_run"
+          },
+          "terms": "Jumlah per pesanan 500–1.000.000.\nJumlah dapat diisi sendiri dalam batas layanan.\nTanpa refill dari AXVARA; penurunan setelah pengiriman tidak mendapat refill atau pengembalian dana karena drop.\nJangan mengubah target atau membuatnya privat selama proses. Tunggu pesanan untuk target yang sama selesai sebelum memesan lagi.\nEstimasi mulai bukan estimasi selesai dan dapat berubah mengikuti antrean.\nFollowers tidak menjamin pendengar aktif, royalti, posisi chart, atau hasil promosi.",
+          "instructions": "1. Salin link target yang sesuai: https://open.spotify.com/artist/3ue1J3iN9SL3UetNZk6HHd\n2. Masukkan jumlah, bandingkan layanan, lalu tempel link target.\n3. Baca ketentuan dan konfirmasikan persyaratan tujuan.\n4. Isi kontak, periksa total, lalu lanjutkan ke QRIS.\n5. Pantau proses melalui halaman pesanan."
+        }
+      ]
+    },
+    {
+      "slug": "followers-playlist-spotify",
+      "platform": "spotify",
+      "metric": "followers",
+      "target_kind": "playlist",
+      "name": "Followers Playlist Spotify",
+      "description": "Followers untuk playlist Spotify publik, terpisah dari followers artis.",
+      "checklist": [
+        {
+          "id": "public",
+          "label": "Target saya dapat diakses publik."
+        },
+        {
+          "id": "stable",
+          "label": "Saya tidak mengubah atau menghapus target selama proses."
+        }
+      ],
+      "packages": [
+        100,
+        250,
+        500,
+        1000,
+        2500,
+        5000,
+        10000,
+        25000,
+        50000,
+        100000
+      ],
+      "services": [
+        {
+          "supplier": "providersmm",
+          "service_id": 265,
+          "public_name": "Followers Playlist Global · Tanpa refill AXVARA",
+          "description": "Followers untuk playlist Spotify publik, terpisah dari followers artis.",
+          "region": "global",
+          "quality": "standar",
+          "refill_days": 0,
+          "eta_start": "1–12 jam",
+          "speed_note": "Mulai 1–12 jam",
+          "drop_risk": "sedang",
+          "min_qty_override": 100,
+          "max_qty_override": 1000000,
+          "quantity_step": 1,
+          "recommendation_note": "Pilihan awal dengan ketentuan dan batas jumlah yang ditinjau.",
+          "sort_order": 0,
+          "is_recommended": 1,
+          "target_format": "url",
+          "refill_anchor": "created",
+          "evidence": {
+            "checked_at": "2026-10-19T09:38:42.464Z",
+            "api_refill": false,
+            "description_url": "https://providersmm.id/services",
+            "rate_idr_per_1k_at_review": 4079.24,
+            "paid_test": "not_run"
+          },
+          "terms": "Jumlah per pesanan 100–1.000.000.\nJumlah dapat diisi sendiri dalam batas layanan.\nTanpa refill dari AXVARA; penurunan setelah pengiriman tidak mendapat refill atau pengembalian dana karena drop.\nJangan mengubah target atau membuatnya privat selama proses. Tunggu pesanan untuk target yang sama selesai sebelum memesan lagi.\nEstimasi mulai bukan estimasi selesai dan dapat berubah mengikuti antrean.\nJangan membuat beberapa pesanan untuk playlist yang sama sekaligus. Tidak menjamin stream, royalti, atau posisi chart.\nSupplier menyebut refill 365 hari, tetapi API refill belum tersedia. AXVARA tidak menjanjikan refill.",
+          "instructions": "1. Salin link target yang sesuai: https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M\n2. Masukkan jumlah, bandingkan layanan, lalu tempel link target.\n3. Baca ketentuan dan konfirmasikan persyaratan tujuan.\n4. Isi kontak, periksa total, lalu lanjutkan ke QRIS.\n5. Pantau proses melalui halaman pesanan."
+        }
+      ]
+    },
+    {
+      "slug": "saves-spotify",
+      "platform": "spotify",
+      "metric": "saves",
+      "target_kind": "track",
+      "name": "Saves Lagu Spotify",
+      "description": "Saves untuk satu lagu Spotify; bukan pemutaran lagu.",
+      "checklist": [
+        {
+          "id": "public",
+          "label": "Target saya dapat diakses publik."
+        },
+        {
+          "id": "stable",
+          "label": "Saya tidak mengubah atau menghapus target selama proses."
+        }
+      ],
+      "packages": [
+        100,
+        250,
+        500,
+        1000,
+        2500,
+        5000,
+        10000,
+        25000,
+        50000,
+        100000
+      ],
+      "services": [
+        {
+          "supplier": "providersmm",
+          "service_id": 278,
+          "public_name": "Saves Lagu Global · Tanpa refill AXVARA",
+          "description": "Saves untuk satu lagu Spotify; bukan pemutaran lagu.",
+          "region": "global",
+          "quality": "standar",
+          "refill_days": 0,
+          "eta_start": "1–12 jam",
+          "speed_note": "Mulai 1–12 jam",
+          "drop_risk": "sedang",
+          "min_qty_override": 100,
+          "max_qty_override": 1000000,
+          "quantity_step": 1,
+          "recommendation_note": "Pilihan awal dengan ketentuan dan batas jumlah yang ditinjau.",
+          "sort_order": 0,
+          "is_recommended": 1,
+          "target_format": "url",
+          "refill_anchor": "created",
+          "evidence": {
+            "checked_at": "2026-10-19T09:38:42.464Z",
+            "api_refill": false,
+            "description_url": "https://providersmm.id/services",
+            "rate_idr_per_1k_at_review": 4723.33,
+            "paid_test": "not_run"
+          },
+          "terms": "Jumlah per pesanan 100–1.000.000.\nJumlah dapat diisi sendiri dalam batas layanan.\nTanpa refill dari AXVARA; penurunan setelah pengiriman tidak mendapat refill atau pengembalian dana karena drop.\nJangan mengubah target atau membuatnya privat selama proses. Tunggu pesanan untuk target yang sama selesai sebelum memesan lagi.\nEstimasi mulai bukan estimasi selesai dan dapat berubah mengikuti antrean.\nTidak menjamin stream, royalti, atau posisi chart. Gunakan link lagu, bukan album.\nSupplier menyebut refill 30 hari, tetapi API refill belum tersedia. AXVARA tidak menjanjikan refill.",
+          "instructions": "1. Salin link target yang sesuai: https://open.spotify.com/track/1HHZbk55T7qtPWPbw6Quv6x\n2. Masukkan jumlah, bandingkan layanan, lalu tempel link target.\n3. Baca ketentuan dan konfirmasikan persyaratan tujuan.\n4. Isi kontak, periksa total, lalu lanjutkan ke QRIS.\n5. Pantau proses melalui halaman pesanan."
+        }
+      ]
+    },
+    {
+      "slug": "followers-soundcloud",
+      "platform": "soundcloud",
+      "metric": "followers",
+      "target_kind": "profile",
+      "name": "Followers SoundCloud",
+      "description": "Followers untuk profil SoundCloud publik, bukan link lagu.",
+      "checklist": [
+        {
+          "id": "public",
+          "label": "Target saya dapat diakses publik."
+        },
+        {
+          "id": "stable",
+          "label": "Saya tidak mengubah atau menghapus target selama proses."
+        }
+      ],
+      "packages": [
+        100,
+        500,
+        1000
+      ],
+      "services": [
+        {
+          "supplier": "indosmm",
+          "service_id": 3334,
+          "public_name": "Followers Global · Kelipatan 100 · Tanpa refill AXVARA",
+          "description": "Followers untuk profil SoundCloud publik, bukan link lagu.",
+          "region": "global",
+          "quality": "standar",
+          "refill_days": 0,
+          "eta_start": "0–12 jam",
+          "speed_note": "Mulai 0–12 jam",
+          "drop_risk": "sedang",
+          "min_qty_override": 100,
+          "max_qty_override": 1000,
+          "quantity_step": 100,
+          "recommendation_note": "Pilihan awal dengan ketentuan dan batas jumlah yang ditinjau.",
+          "sort_order": 0,
+          "is_recommended": 1,
+          "target_format": "url",
+          "refill_anchor": "created",
+          "evidence": {
+            "checked_at": "2026-10-19T09:38:42.464Z",
+            "api_refill": false,
+            "description_url": "https://indosmm.id/services/get-service-description/3334",
+            "rate_idr_per_1k_at_review": 140705,
+            "paid_test": "not_run"
+          },
+          "terms": "Jumlah per pesanan 100–1.000.\nJumlah wajib kelipatan 100.\nTanpa refill dari AXVARA; penurunan setelah pengiriman tidak mendapat refill atau pengembalian dana karena drop.\nJangan mengubah target atau membuatnya privat selama proses. Tunggu pesanan untuk target yang sama selesai sebelum memesan lagi.\nEstimasi mulai bukan estimasi selesai dan dapat berubah mengikuti antrean.\nSupplier menyebut refill 60 hari, tetapi API refill belum tersedia. AXVARA tidak menjanjikan refill.",
+          "instructions": "1. Salin link target yang sesuai: https://soundcloud.com/username\n2. Masukkan jumlah, bandingkan layanan, lalu tempel link target.\n3. Baca ketentuan dan konfirmasikan persyaratan tujuan.\n4. Isi kontak, periksa total, lalu lanjutkan ke QRIS.\n5. Pantau proses melalui halaman pesanan."
+        }
+      ]
+    },
+    {
+      "slug": "share-telegram",
+      "platform": "telegram",
+      "metric": "shares",
+      "target_kind": "post",
+      "name": "Share Postingan Telegram",
+      "description": "Share untuk satu postingan channel Telegram publik.",
+      "checklist": [
+        {
+          "id": "public",
+          "label": "Target saya dapat diakses publik."
+        },
+        {
+          "id": "stable",
+          "label": "Saya tidak mengubah atau menghapus target selama proses."
+        }
+      ],
+      "packages": [
+        10,
+        20,
+        50,
+        100,
+        250,
+        500,
+        1000,
+        2500,
+        5000,
+        10000,
+        25000,
+        50000,
+        100000
+      ],
+      "services": [
+        {
+          "supplier": "indosmm",
+          "service_id": 8938,
+          "public_name": "Share Postingan · Tanpa refill",
+          "description": "Share untuk satu postingan channel Telegram publik.",
+          "region": "global",
+          "quality": "standar",
+          "refill_days": 0,
+          "eta_start": "0–4 jam",
+          "speed_note": "Mulai 0–4 jam",
+          "drop_risk": "sedang",
+          "min_qty_override": 10,
+          "max_qty_override": 1000000,
+          "quantity_step": 1,
+          "recommendation_note": "Pilihan awal dengan ketentuan dan batas jumlah yang ditinjau.",
+          "sort_order": 0,
+          "is_recommended": 1,
+          "target_format": "url",
+          "refill_anchor": "created",
+          "evidence": {
+            "checked_at": "2026-10-19T09:38:42.464Z",
+            "api_refill": false,
+            "description_url": "https://indosmm.id/services/get-service-description/8938",
+            "rate_idr_per_1k_at_review": 867,
+            "paid_test": "not_run"
+          },
+          "terms": "Jumlah per pesanan 10–1.000.000.\nJumlah dapat diisi sendiri dalam batas layanan.\nTanpa refill dari AXVARA; penurunan setelah pengiriman tidak mendapat refill atau pengembalian dana karena drop.\nJangan mengubah target atau membuatnya privat selama proses. Tunggu pesanan untuk target yang sama selesai sebelum memesan lagi.\nEstimasi mulai bukan estimasi selesai dan dapat berubah mengikuti antrean.",
+          "instructions": "1. Salin link target yang sesuai: https://t.me/channel_name/123\n2. Masukkan jumlah, bandingkan layanan, lalu tempel link target.\n3. Baca ketentuan dan konfirmasikan persyaratan tujuan.\n4. Isi kontak, periksa total, lalu lanjutkan ke QRIS.\n5. Pantau proses melalui halaman pesanan."
+        }
+      ]
+    }
+  ]
+}

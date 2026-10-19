@@ -4,6 +4,7 @@ import { ManualOrderPanel } from "@/components/shared/PaymentMaintenanceNotice";
 
 import { useState } from "react";
 import { PlatformIcon } from "@/components/pedia/PlatformGrid";
+import { MetricIcon } from "@/components/pedia/MetricIcon";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { OrderClient } from "@/app/pedia/o/[slug]/order-client";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
@@ -36,7 +37,7 @@ export function PlatformPageClient({ platform, name, products, initialSlug = "",
         <p className="mt-2 text-sm leading-6 text-white/55">Mulai dari jenis layanan yang kamu butuhkan, lalu pilih layanan yang sesuai.</p>
         <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-label={`Jenis layanan ${name}`}>
           {products.map((p) => <button key={p.slug} type="button" aria-pressed={false} onClick={() => setSlug(p.slug)} className="group ax-glass-card flex min-h-28 min-w-0 items-center gap-4 rounded-[20px] p-5 text-left transition hover:border-[#00E5FF]/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF]">
-            <span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/10" style={{ background: `${color}18` }}><IosIcon name={p.metric === "traffic" ? "globe" : p.metric === "views" || p.metric === "plays" ? "lightning-bolt" : p.metric === "followers" || p.metric === "members" || p.metric === "subscribers" ? "chat" : "star"} size={20} tint="white" /></span>
+            <span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/10" style={{ background: `${color}18` }}><MetricIcon metric={p.metric} size={20} /></span>
             <span className="min-w-0 flex-1"><span className="block text-base font-semibold leading-6 text-white">{label(p)}</span><span className="mt-1 block text-xs text-white/50">{p.tiers.length} pilihan layanan</span></span>
             <span className="text-white/35 transition group-hover:text-[#00E5FF]" aria-hidden="true">↗</span>
           </button>)}

@@ -50,7 +50,7 @@ describe("detectPediaLink §9.6", () => {
       normalized: "https://www.youtube.com/watch?v=ABC123xyz",
     });
     expect(detectPediaLink("https://www.youtube.com/shorts/ABC123xyz")).toMatchObject({
-      platform: "youtube", targetKind: "video",
+      platform: "youtube", targetKind: "short", normalized: "https://www.youtube.com/shorts/ABC123xyz",
     });
   });
 

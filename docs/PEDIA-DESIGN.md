@@ -1,5 +1,9 @@
 # PEDIA-DESIGN.md — Panduan Desain & Style AXVARA PEDIA
 
+## Pembaruan 19 Oktober 2026
+
+✅ Implementasi; publikasi melalui CI. Loading logo dengan ring cyan dan pulse mengikuti ISTA AI; reduced motion menghentikan animasi. Kebutuhan memakai ikon semantik. Konfigurator dimulai jumlah → perbandingan → pilihan → link/syarat, dengan harga jumlah sama, filter ringkas dan informasi pembeda sebelum pilihan. Kontak tetap tahap kedua. Tab Kurasi admin membandingkan kandidat kedua supplier dan menyiapkan draf nonaktif untuk review. [Spec 19 Oktober](pedia/catalog-ux-2026-10-19.md) menggantikan konfigurator 16 Oktober, tanpa klaim mutu/drop berdasarkan nama supplier atau pengujian UI.
+
 ## Pembaruan Pedia 2026-10-15 — spesifikasi terkini
 
 Revisi konfigurator 2026-10-16 ✅ implementasi, publikasi melalui CI: halaman platform memakai header bergradasi brand dengan logo 36/44px dan kartu kebutuhan berikon, tanpa pilihan otomatis. Setelah memilih, jenis menjadi pill dan tiga layanan awal menjadi daftar satu kolom di semua ukuran; pilihan aktif diringkas dengan Ganti layanan. Filter berada pada disclosure; satu panel glass radius 24px/padding 20–28px menampung layanan, jumlah, link, checklist, lalu disclosure detail. Radio native memiliki indikator visual/fokus cyan, rekomendasi emas hanya dari data tersimpan. Drop/refill tetap terlihat; copy literal escaped dan newline dipertahankan. Ringkasan awal berisi petunjuk, rail desktop sticky 320px dengan total 30px, mobile total+CTA fixed/safe-area dan padding consent. Input mobile 16px, aksi utama minimal 44px; beranda tetap.

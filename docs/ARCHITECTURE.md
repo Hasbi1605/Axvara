@@ -1,5 +1,15 @@
 # ARCHITECTURE.md — AXVARA
 
+## Pedia dan loading — 19 Oktober 2026
+
+✅ Implementasi; publikasi melalui CI. `BrandLoader` dan CSS ring/pulse dipakai pada loading bersama dengan logo AXVARA; reduced motion, navigasi cepat dan pemulihan navigasi dipertahankan. Konfigurator memakai jumlah sebelum tier, total jumlah sama, ikon semantik dan filter ringkas; kontrak quote/payment/dispatch tidak berubah. Parser menambah target `short` YouTube serta `artist`/`playlist` Spotify. Short mempertahankan URL `/shorts/`, video legacy tetap menerima Shorts.
+
+Migrasi data **0070_pedia_catalog_breadth.sql** menambah 17 produk kebutuhan/23 mapping dari manifest server-only `curation-20261019.json` (kapasitas gabungan 55/154). Generator terpisah tidak menulis ulang migrasi 0066. Mirror current/present/Default/rate/batas/paket/refill API menjadi gate aktivasi. Konflik slug owner dilewati; ID/mapping/snapshot order lama tidak diubah. Schema tabel, env, cron, proxy dan supplier tetap.
+
+Tab admin Kurasi: GET existing `/api/admin/pedia/services?view=shortlist&product_id=&quantity=` setelah auth membaca maksimal 200 kandidat awal (+1 penanda limit), menghasilkan maksimal 20 kandidat beragam wilayah/API refill dengan estimasi modal jumlah sama; tanpa jaringan supplier atau write. `curation-shortlist.ts` menyaring ketidakcocokan jelas dan memberi peringatan; bukan bukti kualitas atau pengganti review deskripsi. `PediaCurationPanel` menyiapkan copy editable, simpan melalui POST tier existing sebagai nonaktif/refill0/recommended0, lalu editor existing. POST tier kini menyimpan field copy dan batas yang tervalidasi, bukan mengabaikannya. Preview tetap tanpa API; dispatch/payment tetap asal.
+
+Rincian, bukti kurasi dan budget sampling: [spesifikasi 19 Oktober](pedia/catalog-ux-2026-10-19.md). Konfigurator 16 Oktober di bawah adalah riwayat. Tidak ada migrasi SMM Sekalipay, env produksi atau kontrak lintas-repo baru.
+
 ## Pembaruan Pedia 2026-10-15 — spesifikasi terkini
 
 Revisi konfigurator Pedia 2026-10-16 ✅ implementasi, publikasi melalui CI: `PlatformPageClient` memakai `pediaPlatform` untuk header/kartu kebutuhan tanpa pilihan otomatis; route platform dan deep link order tetap berbagi `OrderClient`. `ServicePicker` menampilkan tiga layanan awal, filter terlipat, perbandingan penuh, serta pilihan aktif ringkas pada semua viewport. `OrderClient` mendekatkan jumlah/target/checklist dalam satu panel, menaruh copy literal escaped di disclosure setelah input, dan menyediakan ringkasan brand dengan rail desktop sticky. `usePediaPrices` existing memasok total jumlah yang sama; harga paket tersimpan hanya fallback untuk jumlah persis yang valid, min/max/step tidak cocok diberi status, harga lain menunggu respons. State quote/consent/lock/retry dan preview embedded tanpa API tetap dipertahankan; tanpa route, schema, env produksi, atau kontrak antar-repo baru.

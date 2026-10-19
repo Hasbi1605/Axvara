@@ -11,7 +11,7 @@ export type PediaPlatform =
 
 export type PediaTargetKind =
   | "profile" | "post" | "video" | "reel" | "live" | "channel" | "playlist"
-  | "shop" | "track" | "repository" | "website" | "company" | "board" | "invite";
+  | "shop" | "track" | "repository" | "website" | "company" | "board" | "invite" | "artist" | "short";
 
 export type PediaLinkDetect = {
   platform: PediaPlatform;
@@ -148,7 +148,8 @@ export function detectPediaLink(raw: string, expectedPlatform?: string): PediaLi
       return null;
     }
     if (seg[0] === "shorts" && seg[1]) {
-      return { platform: "youtube", targetKind: "video", normalized: `https://www.youtube.com/watch?v=${seg[1]}`, displayUser: null };
+      if (seg.length !== 2 || !/^[\w-]{6,}$/.test(seg[1])) return null;
+      return { platform: "youtube", targetKind: "short", normalized: `https://www.youtube.com/shorts/${seg[1]}`, displayUser: null };
     }
     if ((seg[0] === "channel" || seg[0] === "c" || seg[0] === "user") && seg[1]) {
       return { platform: "youtube", targetKind: "channel", normalized: `https://www.youtube.com/${seg[0]}/${seg[1]}`, displayUser: maskUser(seg[1]) };
@@ -214,9 +215,10 @@ export function detectPediaLink(raw: string, expectedPlatform?: string): PediaLi
 
   // ── Spotify ──
   if (host === "open.spotify.com") {
-    const kind = seg[0];
-    if (kind === "track" && seg[1] && seg.length === 2) {
-      return { platform: "spotify", targetKind: "track", normalized: `https://open.spotify.com/${kind}/${seg[1].split("?")[0]}`, displayUser: null };
+    const path = /^intl-[a-z]{2}(?:-[a-z]{2})?$/i.test(seg[0] ?? "") ? seg.slice(1) : seg;
+    const kind = path[0];
+    if (["track", "artist", "playlist"].includes(kind) && path[1] && /^[a-z\d]+$/i.test(path[1]) && path.length === 2) {
+      return { platform: "spotify", targetKind: kind as "track" | "artist" | "playlist", normalized: `https://open.spotify.com/${kind}/${path[1]}`, displayUser: null };
     }
     return null;
   }
@@ -247,10 +249,11 @@ export const PEDIA_TARGET_KIND_LABEL: Record<PediaTargetKind, string> = {
   profile: "Profil", post: "Postingan", video: "Video", reel: "Reel",
   live: "Live", channel: "Channel", playlist: "Playlist", shop: "Toko", track: "Lagu",
   repository: "Repository", website: "Website", company: "Perusahaan", board: "Board", invite: "Undangan server",
+  artist: "Artis", short: "Shorts",
 };
 
 export function pediaTargetMatches(need: string, detected: PediaTargetKind) {
   return need === detected || (need === "profile" && detected === "channel")
     || (need === "post" && ["video", "reel"].includes(detected))
-    || (need === "video" && ["post", "reel"].includes(detected));
+    || (need === "video" && ["post", "reel", "short"].includes(detected));
 }

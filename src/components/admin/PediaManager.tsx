@@ -12,8 +12,9 @@ import { ProductCard, catalogCard } from "@/components/pedia/PlatformGrid";
 import { OrderClient } from "@/app/pedia/o/[slug]/order-client";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { AdminStatusSwitch } from "./AdminStatusSwitch";
+import { PediaCurationPanel } from "./PediaCurationPanel";
 
-type SubTab = "products" | "services" | "orders" | "credits" | "settings";
+type SubTab = "products" | "curation" | "services" | "orders" | "credits" | "settings";
 type Product = {
   id: number; slug: string; platform: string; metric: string; target_kind: string;
   name: string; tagline: string | null; description_md?: string | null;
@@ -35,7 +36,7 @@ type Tier = {
 };
 type Row = Record<string, unknown>;
 type Catalog = { products: Product[]; tiers: Tier[] };
-const TABS: [SubTab, string][] = [["products", "Produk"], ["services", "Layanan Supplier"], ["orders", "Pesanan"], ["credits", "Kredit"], ["settings", "Pengaturan"]];
+const TABS: [SubTab, string][] = [["products", "Produk"], ["curation", "Kurasi"], ["services", "Layanan Supplier"], ["orders", "Pesanan"], ["credits", "Kredit"], ["settings", "Pengaturan"]];
 const TIER_ORDER = ["hemat", "standar", "premium"];
 const PLATFORMS = PEDIA_PLATFORM_CONFIG.map((p) => p.id);
 const STATUS: Record<string, string> = {
@@ -245,6 +246,7 @@ export function PediaManager({ initialTab }: { initialTab?: string }) {
         </DataTable>
       </>)}
     </Panel>}
+    {tab === "curation" && <PediaCurationPanel products={catalog.data.products} onCreated={async(id)=>{await catalog.load();setEditing(id);navigate("products");}} />}
     {tab === "services" && <PediaServicesPanel catalog={catalog.data} selected={selectedService} onSelect={setSelectedService} onAssigned={async (id) => { await catalog.load(); setEditing(id); navigate("products"); }} />}
     {tab === "orders" && <PediaOrdersPanel />}
     {tab === "credits" && <PediaCreditsPanel />}
