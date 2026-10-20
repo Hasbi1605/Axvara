@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { PediaManager } from "@/components/admin/PediaManager";
 
 const product = { id: 1, name: "Followers Instagram", slug: "followers-instagram", platform: "instagram", metric: "followers", target_kind: "profile", tagline: "Ramai", description_md: "Deskripsi", checklist_json: '[{"id":"public","label":"Publik","help":"Bantuan"}]', packages_json: "[100,250]", step: 10, sort_order: 0, is_active: 1, is_featured: 0 };
-const tier = { id: 1, product_id: 1, supplier: "providersmm", tier: "standar", label_note: "Indonesia", supplier_service_id: 86, backup_service_id: null, price_group: "G3", markup_pct: 20, min_profit_rp: 1000, refill_days: 30, eta_start: "5 menit", eta_finish: "1 jam", package_prices_json: '{"100":5000,"250":12000}', is_active: 1, auto_disabled_reason: null, live_rate: 30000, live_min: 100, live_max: 1000, live_present: 1, live_type: "Default" };
+const tier = { id: 1, product_id: 1, supplier: "indosmm", tier: "standar", label_note: "Indonesia", supplier_service_id: 86, backup_service_id: null, price_group: "G3", markup_pct: 20, min_profit_rp: 1000, refill_days: 30, eta_start: "5 menit", eta_finish: "1 jam", package_prices_json: '{"100":5000,"250":12000}', is_active: 1, auto_disabled_reason: null, live_rate: 30000, live_min: 100, live_max: 1000, live_present: 1, live_type: "Default" };
 let catalog: { products: typeof product[]; tiers: typeof tier[] };
 let writes: { url: string; body: Record<string, unknown> }[];
 let failWrite = false;
@@ -31,7 +31,7 @@ beforeEach(() => {
     }
     if (failRead && url.includes(failRead)) return Response.json({ error: "load_failed" }, { status: 500 });
     if (url.includes("products")) return Response.json({ ok: true, ...catalog });
-    if (url.includes("services")) return Response.json({ ok: true, total: 51, diff: {}, rows: [{ supplier: new URL(url, "http://localhost").searchParams.get("supplier") || "providersmm", service_id: 99, name: "Instagram Indonesia", rate_idr_per_1k: 50000, min_qty: 100, max_qty: 1000, present: 1, type: "Default" }] });
+    if (url.includes("services")) return Response.json({ ok: true, total: 51, diff: {}, rows: [{ supplier: new URL(url, "http://localhost").searchParams.get("supplier") || "indosmm", service_id: 99, name: "Instagram Indonesia", rate_idr_per_1k: 50000, min_qty: 100, max_qty: 1000, present: 1, type: "Default" }] });
     if (url.includes("overview")) return Response.json({ ok: true, providers: [] });
     if (url.includes("orders")) return Response.json({ ok: true, rows: orderRows });
     if (url.includes("credits")) return Response.json({ ok: true, rows: [] });
@@ -87,7 +87,7 @@ it("focused editor saves all existing product fields and rejects invalid package
 it("tier order is Hemat, Standar, Premium and tier edits use PUT fields", async () => {
   catalog.tiers = [{ ...tier, id: 3, tier: "premium" }, tier, { ...tier, id: 2, tier: "hemat" }];
   render(<PediaManager />); fireEvent.click(await screen.findByRole("button", { name: "Edit Followers Instagram" }));
-   const summaries = Array.from(document.querySelectorAll("summary")).map((el) => el.textContent).filter((text) => /ProviderSMM/.test(text ?? ""));
+   const summaries = Array.from(document.querySelectorAll("summary")).map((el) => el.textContent).filter((text) => /IndoSMM/.test(text ?? ""));
   expect(summaries[0]).toMatch(/hemat/); expect(summaries[1]).toMatch(/standar/); expect(summaries[2]).toMatch(/premium/);
   const form = screen.getByRole("form", { name: "Edit tingkat standar" });
   fireEvent.change(within(form).getByLabelText("Markup (%)"), { target: { value: "50" } });
@@ -131,12 +131,12 @@ it("tab navigation preserves other query parameters and responds to back and new
 
 it("supplier explorer pages, filters and assigns a selected service to an existing tier", async () => {
   render(<PediaManager initialTab="services" />);
-  fireEvent.click(await screen.findByRole("button", { name: "Pakai layanan providersmm 99" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Pakai layanan indosmm 99" }));
   fireEvent.change(screen.getByLabelText("Produk tujuan"), { target: { value: "1" } });
   fireEvent.change(screen.getByLabelText("Tingkat tujuan"), { target: { value: "1" } });
   fireEvent.submit(screen.getByRole("form", { name: "Hubungkan layanan" }));
   await screen.findByRole("form", { name: "Edit produk" });
-  expect(writes[0].body).toEqual({ kind: "tier", id: 1, supplier: "providersmm", supplier_service_id: 99, backup_service_id: null });
+  expect(writes[0].body).toEqual({ kind: "tier", id: 1, supplier: "indosmm", supplier_service_id: 99, backup_service_id: null });
   fireEvent.click(screen.getByRole("button", { name: "Layanan Supplier" }));
   fireEvent.click(await screen.findByRole("button", { name: "Berikutnya" }));
   await waitFor(() => expect(fetch).toHaveBeenCalledWith(expect.stringContaining("page=2"), expect.anything()));
@@ -196,7 +196,7 @@ it("supplier editor clears stale IDs on provider change and saves the pair atomi
 
 it("supplier explorer assigns IndoSMM with its own identity and filters", async () => {
   render(<PediaManager initialTab="services" />);
-  await screen.findByRole("button", { name: "Pakai layanan providersmm 99" });
+  await screen.findByRole("button", { name: "Pakai layanan indosmm 99" });
   fireEvent.change(screen.getByLabelText("Supplier"), { target: { value: "indosmm" } });
   fireEvent.click(await screen.findByRole("button", { name: "Pakai layanan indosmm 99" }));
   fireEvent.change(screen.getByLabelText("Produk tujuan"), { target: { value: "1" } });
@@ -214,7 +214,7 @@ it("publication, featured and process readiness are separate", async () => {
   expect(preview.textContent).toContain("Draf / Katalog penuh / Siap dijual");
   expect(screen.getByLabelText("Terbit")).toBeTruthy();
   expect(preview.textContent).toContain("Refill 30 hari");
-  expect(preview.textContent).not.toContain("ProviderSMM");
+  expect(preview.textContent).not.toContain("IndoSMM");
 });
 
 it("previews saved drafts with actual storefront components without navigation or requests", async () => {
@@ -339,4 +339,16 @@ it.each([
   const table = await screen.findByRole("table", { name: title });
   expect(within(table).getByRole("columnheader", { name: column })).toBeTruthy();
   expect(screen.getByRole("region", { name: title }).getAttribute("tabindex")).toBe("0");
+});
+
+it("keeps legacy suppliers visible for investigation while refusing new assignment",async()=>{
+ catalog.tiers=[{...tier,supplier:'providersmm'}];render(<PediaManager/>);
+ await screen.findByRole('button',{name:'Edit Followers Instagram'});
+ expect(within(screen.getByRole('table',{name:'Produk Pedia'})).queryByText('Siap dijual')).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'Layanan Supplier'}));
+ const supplier=await screen.findByLabelText('Supplier');
+ expect((supplier as HTMLSelectElement).value).toBe('indosmm');
+ fireEvent.change(supplier,{target:{value:'providersmm'}});
+ const legacy=await screen.findByRole('button',{name:'Pakai layanan providersmm 99'});
+ expect((legacy as HTMLButtonElement).disabled).toBe(true);
 });

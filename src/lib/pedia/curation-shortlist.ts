@@ -1,15 +1,21 @@
 /** Explainable admin shortlisting, never evidence of delivery quality or permission to publish. */
+import { PEDIA_ADDITIONAL_PLATFORMS } from "./additional-platforms";
+import { isPediaPremiumToolCandidate, PEDIA_SALE_PROVIDER } from "./sales-policy";
 export type CurationProduct = { id:number; name:string; platform:string; metric:string; target_kind:string };
 export type CurationService = { supplier:string; service_id:number; name:string; category:string; type:string; rate_idr_per_1k:number; min_qty:number; max_qty:number; api_refill:number; present:number; used_in?:string|null };
 export type CurationCandidate = CurationService & { estimated_cost:number; region:string; warnings:string[]; suggested_name:string; suggested_description:string; suggested_terms:string; suggested_instructions:string; group:string };
-export const CURATION_PLATFORM_TERMS:Record<string,string[]>={instagram:['instagram'],tiktok:['tiktok'],youtube:['youtube'],facebook:['facebook'],threads:['threads'],x:['twitter','x /','x/'],telegram:['telegram'],spotify:['spotify'],soundcloud:['soundcloud'],linkedin:['linkedin'],pinterest:['pinterest'],discord:['discord'],shopee:['shopee'],twitch:['twitch'],github:['github'],website:['traffic']};
-export const CURATION_METRIC_TERMS:Record<string,string[]>={followers:['followers','follow'],subscribers:['subscriber'],members:['member'],likes:['likes','like'],views:['views','view'],plays:['plays','play'],shares:['share'],saves:['save','bookmark'],reposts:['repost','retweet'],quotes:['quote'],reactions:['reaction'],forks:['fork'],traffic:['traffic']};
+export const CURATION_PLATFORM_TERMS:Record<string,string[]>={instagram:['instagram'],tiktok:['tiktok'],youtube:['youtube'],facebook:['facebook'],threads:['threads'],x:['twitter','x /','x/'],telegram:['telegram'],spotify:['spotify'],soundcloud:['soundcloud'],linkedin:['linkedin'],pinterest:['pinterest'],discord:['discord'],shopee:['shopee'],twitch:['twitch'],github:['github'],website:['traffic'],...Object.fromEntries(PEDIA_ADDITIONAL_PLATFORMS.map(p=>[p.id,[p.id,p.label.toLowerCase()]]))};
+export const CURATION_METRIC_TERMS:Record<string,string[]>={followers:['followers','follow'],subscribers:['subscriber'],members:['member'],likes:['likes','like'],views:['views','view'],plays:['plays','play'],shares:['share'],saves:['save','bookmark'],reposts:['repost','retweet'],quotes:['quote'],reactions:['reaction'],forks:['fork'],traffic:['traffic'],connections:['connection'],visits:['visit'],listeners:['listener'],comments:['comment'],claps:['clap'],downloads:['download']};
 export function shortlistPediaServices(rows:CurationService[],product:CurationProduct,quantity:number):CurationCandidate[]{
  if(!Number.isSafeInteger(quantity)||quantity<=0)return [];
  const platformTerms=CURATION_PLATFORM_TERMS[product.platform]??[],metricTerms=CURATION_METRIC_TERMS[product.metric]??[];
  const candidates:CurationCandidate[]=[];
  for(const r of rows){
   const name=r.name.toLowerCase(),text=`${name} ${r.category.toLowerCase()}`;
+  // INDO-POLICY-20: shortlist draws from the sale supplier only, and Pedia
+  // SMM never offers premium tools (Canva/Gemini/CapCut live on Market).
+  if(r.supplier!==PEDIA_SALE_PROVIDER)continue;
+  if(isPediaPremiumToolCandidate(r.name,r.category))continue;
   if(!['providersmm','indosmm'].includes(r.supplier)||r.present!==1||r.type!=='Default'||!Number.isSafeInteger(r.service_id)||r.service_id<=0||!Number.isFinite(r.rate_idr_per_1k)||r.rate_idr_per_1k<=0||!Number.isSafeInteger(r.min_qty)||!Number.isSafeInteger(r.max_qty)||r.min_qty<=0||r.max_qty<r.min_qty||quantity<r.min_qty||quantity>r.max_qty)continue;
   if(!platformTerms.some(w=>text.includes(w))||!metricTerms.some(w=>name.includes(w)))continue;
   if(/custom|subscription|live.?stream|live views|poll|vote|comment|komentar|100%\s*drop|drop.{0,12}100%/.test(name))continue;

@@ -1,5 +1,10 @@
 # ARCHITECTURE.md — AXVARA
 
+## Pedia IndoSMM untuk penjualan baru — 20 Oktober 2026
+
+✅ Implementasi; publikasi melalui CI. IndoSMM menjadi supplier tunggal untuk katalog/harga/quote/order baru dan kurasi admin. ProviderSMM dipertahankan untuk retry checkout tersimpan, dispatch/status/refill/recovery historis; quote lama tanpa order perlu memilih ulang sebelum debit/reservasi/invoice. Migrasi 0073 menonaktifkan penjualan ProviderSMM, menambah 53 kebutuhan/61 mapping IndoSMM (termasuk tujuh pengganti) dan 18 platform; owner drafts serta snapshot order lama dipertahankan. Produk premium supplier Canva/Gemini/CapCut dikecualikan. API/description review belum membuktikan kualitas; tanpa order berbayar. Spesifikasi terkini: [IndoSMM 20 Oktober](pedia/indosmm-only-2026-10-20.md).
+
+
 ## Pedia dan loading — 19 Oktober 2026
 
 ✅ Implementasi; publikasi melalui CI. `BrandLoader` dan CSS ring/pulse dipakai pada loading bersama dengan logo AXVARA; reduced motion, navigasi cepat dan pemulihan navigasi dipertahankan. Konfigurator memakai jumlah sebelum tier, total jumlah sama, ikon semantik dan filter ringkas; kontrak quote/payment/dispatch tidak berubah. Parser menambah target `short` YouTube serta `artist`/`playlist` Spotify. Short mempertahankan URL `/shorts/`, video legacy tetap menerima Shorts.

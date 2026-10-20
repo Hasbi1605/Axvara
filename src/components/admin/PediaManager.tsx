@@ -6,6 +6,7 @@ import { pediaBounds } from "@/lib/pedia/bounds";
 import { PEDIA_PLATFORM_CONFIG } from "@/lib/pedia/platforms";
 import { pediaMargin } from "@/lib/pedia/pricing";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { isPediaSaleProvider, isPediaPremiumToolCandidate, PEDIA_SALE_PROVIDER } from "@/lib/pedia/sales-policy";
 import { PEDIA_PROVIDERS, type PediaProvider } from "@/lib/pedia/proxy";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
 import { ProductCard, catalogCard } from "@/components/pedia/PlatformGrid";
@@ -48,7 +49,7 @@ const INPUT = "mt-1 min-h-10 w-full rounded-xl border border-white/10 bg-white/[
 const BUTTON = "inline-flex min-h-9 items-center justify-center whitespace-nowrap rounded-full border border-white/10 bg-white/[0.04] px-3.5 text-xs font-semibold text-white/70 transition hover:bg-white/10 disabled:opacity-50";
 const PRIMARY = "inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-[#00E5FF] px-4 text-sm font-bold text-[#07101f] transition hover:bg-[#00E5FF]/90 disabled:opacity-50";
 const EDIT = "inline-flex h-8 items-center gap-1.5 rounded-full bg-white px-3.5 text-xs font-bold text-[#080C1E] shadow-sm transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-40";
-const PROVIDER_NAMES = { providersmm: "ProviderSMM", indosmm: "IndoSMM" };
+const PROVIDER_NAMES = { providersmm: "ProviderSMM (riwayat)", indosmm: "IndoSMM" };
 type ServiceSelection = { supplier: PediaProvider; service_id: number };
 type ProviderHealth = { supplier: PediaProvider; balance: { value: number | null; stale: boolean }; error: string | null; pricing_verified: boolean; last_sync_at: string | null };
 
@@ -62,7 +63,7 @@ function packagesOf(p: Product): number[] {
 function usablePackages(p: Product, t: Tier): number[] {
   const prices = parse<Record<string, number>>(t.package_prices_json, {});
   const bounds = pediaBounds({ min_qty:t.live_min, max_qty:t.live_max }, t, p.step);
-  return packagesOf(p).filter((qty) => bounds && qty >= bounds.min && qty <= bounds.max && PEDIA_PROVIDERS.includes(t.supplier) && qty % bounds.step === 0 && t.live_present === 1 && t.live_type === "Default" &&
+  return packagesOf(p).filter((qty) => bounds && qty >= bounds.min && qty <= bounds.max && isPediaSaleProvider(t.supplier) && qty % bounds.step === 0 && t.live_present === 1 && t.live_type === "Default" &&
     t.live_rate != null && Number.isFinite(Number(t.live_rate)) && Number(t.live_rate) > 0 &&
     t.live_min != null && t.live_max != null && qty >= t.live_min && qty <= t.live_max &&
     Number.isFinite(Number(prices[qty])) && Number(prices[qty]) > 0 && pediaMargin({ supplierRatePer1k: Number(t.live_rate), quantity: qty, sellPrice: Number(prices[qty]) }) >= t.min_profit_rp);
@@ -87,6 +88,8 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
       pricing_unverified: "Satuan tarif per 1.000 IndoSMM belum terverifikasi di VPS.",
       provider_unavailable: "Provider tidak dapat dihubungi. Mapping belum disimpan.",
       service_unavailable: "Layanan tidak tersedia atau tidak kompatibel dengan link dan jumlah.",
+      provider_retired: "Penjualan baru hanya memakai IndoSMM. ProviderSMM tersedia untuk riwayat pesanan.",
+      premium_tool_excluded: "Tools premium tidak dimasukkan ke Pedia SMM.",
       supplier_service_pair_required: "Pilih supplier dan ID layanan bersama.",
       reconcile_required: "Hasil pengiriman ambigu. Rekonsiliasi ID order di provider asal; jangan kirim ulang atau batalkan kredit secara buta.",
       supplier_order_conflict: "ID order sudah terhubung ke pesanan lain pada provider ini.",
@@ -321,7 +324,7 @@ function ProductEditor({ product: p, tiers, busy, onSave, onCreateTier, onError,
       void onCreateTier({ kind: "tier", product_id: p.id, tier: String(f.get("tier")), supplier: String(f.get("supplier")), supplier_service_id: Number(f.get("supplier_service_id")), price_group: String(f.get("price_group")), markup_pct: Number(f.get("markup_pct")), min_profit_rp: Number(f.get("min_profit_rp")), refill_days: Number(f.get("refill_days")), is_active: 0 });
     }}><fieldset disabled={busy} className="grid gap-3 sm:grid-cols-2">
       <Field label="Tingkat baru"><select name="tier" className={INPUT}>{TIER_ORDER.filter((name) => !tiers.some((t) => t.tier === name)).map((name) => <option key={name}>{name}</option>)}</select></Field>
-      <Field label="Supplier tingkat baru"><select name="supplier" className={INPUT}>{PEDIA_PROVIDERS.map((provider) => <option key={provider} value={provider}>{PROVIDER_NAMES[provider]}</option>)}</select></Field>
+      <Field label="Supplier tingkat baru"><select name="supplier" className={INPUT}>{[PEDIA_SALE_PROVIDER].map((provider) => <option key={provider} value={provider}>{PROVIDER_NAMES[provider]}</option>)}</select></Field>
       <Field label="ID layanan tingkat baru"><input name="supplier_service_id" type="number" required min={1} className={INPUT} /></Field>
       <Field label="Kelompok harga baru"><select name="price_group" className={INPUT}>{["G1", "G2", "G3"].map((group) => <option key={group}>{group}</option>)}</select></Field>
       <Field label="Markup baru (%)"><input name="markup_pct" type="number" required min={0} max={1000} step="any" defaultValue={20} className={INPUT} /></Field>
@@ -330,7 +333,7 @@ function ProductEditor({ product: p, tiers, busy, onSave, onCreateTier, onError,
     </fieldset><p className="text-xs text-white/65">Tingkat dibuat nonaktif. ID layanan diverifikasi pada supplier terpilih; periksa modal, harga, ETA, dan ketentuan sebelum aktivasi.</p><button className={PRIMARY} disabled={busy}>Buat tingkat nonaktif</button></form></details>}
     {tiers.map((t) => <details key={t.id} className="border-b border-white/10 pb-3">
       <summary className="min-h-11 cursor-pointer py-3 text-sm font-semibold text-white"><span className="capitalize">{t.tier}</span> <span className="font-normal text-white/65">/ {PROVIDER_NAMES[t.supplier]} #{t.supplier_service_id} / {t.is_active ? usablePackages(p, t).length ? "Siap" : "Belum siap" : "Nonaktif"}</span></summary>
-      {t.auto_disabled_reason && <p role="status" className="mb-3 text-sm text-amber-300">Nonaktif otomatis: {t.auto_disabled_reason === "margin" ? "margin tidak mencukupi" : "layanan supplier hilang"}. Aktivasi manual membuka kunci ini; periksa harga dan layanan terlebih dahulu.</p>}
+      {t.auto_disabled_reason && <p role="status" className="mb-3 text-sm text-amber-300">Nonaktif otomatis: {t.auto_disabled_reason === "legacy_supplier_indosmm_only" ? "ProviderSMM hanya untuk riwayat" : t.auto_disabled_reason === "margin" ? "margin tidak mencukupi" : "layanan supplier hilang"}. Aktivasi penjualan hanya untuk IndoSMM; periksa harga dan layanan terlebih dahulu.</p>}
       <p className="mb-3 break-words text-xs text-white/65">{t.live_name ?? "Layanan belum tersinkron"} / Batas {t.live_min ?? "-"} sampai {t.live_max ?? "-"}</p>
       <p className="mb-3 text-xs text-white/65">API refill: {t.live_api_refill === 1 ? "Didukung" : t.live_api_refill === 0 ? "Tidak didukung" : "Belum diketahui"}. Masa refill dikurasi terpisah, bukan garansi penuh. Mapping baru hanya untuk order baru; order lama memakai snapshot supplier asal.</p>
       <form key={JSON.stringify(t)} aria-label={`Edit tingkat ${t.tier}`} onSubmit={(e) => {
@@ -356,7 +359,7 @@ function ProductEditor({ product: p, tiers, busy, onSave, onCreateTier, onError,
           <Field label="Supplier utama"><select name="supplier" defaultValue={t.supplier} className={INPUT} onChange={(e) => {
             const form = e.currentTarget.form;
             if (form) { (form.elements.namedItem("supplier_service_id") as HTMLInputElement).value = ""; (form.elements.namedItem("backup_service_id") as HTMLInputElement).value = ""; }
-          }}>{PEDIA_PROVIDERS.map((provider) => <option key={provider} value={provider}>{PROVIDER_NAMES[provider]}</option>)}</select></Field>
+          }}>{(isPediaSaleProvider(t.supplier) ? [PEDIA_SALE_PROVIDER] : PEDIA_PROVIDERS).map((provider) => <option key={provider} value={provider}>{PROVIDER_NAMES[provider]}</option>)}</select></Field>
           <Field label="ID layanan utama"><input name="supplier_service_id" type="number" min={1} required defaultValue={t.supplier_service_id} className={INPUT} /></Field>
           <Field label="ID layanan cadangan"><input name="backup_service_id" type="number" min={1} defaultValue={t.backup_service_id ?? ""} className={INPUT} /></Field>
           <Field label="Kelompok harga"><select name="price_group" defaultValue={t.price_group} className={INPUT}>{["G1", "G2", "G3"].map((g) => <option key={g}>{g}</option>)}</select></Field>
@@ -370,7 +373,7 @@ function ProductEditor({ product: p, tiers, busy, onSave, onCreateTier, onError,
           <Field label="Kelipatan layanan"><input name="quantity_step" type="number" min={1} max={100000} defaultValue={t.quantity_step ?? 1} className={INPUT} /></Field>
           <Field label="Estimasi mulai"><input name="eta_start" maxLength={40} defaultValue={t.eta_start ?? ""} className={INPUT} /></Field>
           <Field label="Estimasi selesai"><input name="eta_finish" maxLength={40} defaultValue={t.eta_finish ?? ""} className={INPUT} /></Field>
-          <label className="flex min-h-11 items-center gap-2 text-sm text-white/80"><input name="is_active" type="checkbox" defaultChecked={!!t.is_active} />Tingkat aktif</label>
+          <label className="flex min-h-11 items-center gap-2 text-sm text-white/80"><input name="is_active" type="checkbox" defaultChecked={isPediaSaleProvider(t.supplier) && !!t.is_active} />Tingkat aktif</label>
         </fieldset>
         <p className="text-xs text-white/40">Modal, harga dan margin tersimpan. Pratinjau diperbarui setelah simpan.</p><DataTable title={`Harga tingkat ${t.tier}`} columns={["Jumlah", "Modal", "Harga", "Margin", "Status paket"]} minWidth="min-w-[540px]">{packagesOf(p).map((qty) => {
           const price = Number(parse<Record<string, number>>(t.package_prices_json, {})[qty]);
@@ -387,7 +390,7 @@ function PediaServicesPanel({ catalog, selected, onSelect, onAssigned }: { catal
   const [q, setQ] = useState(""), [search, setSearch] = useState(""), [platform, setPlatform] = useState(""), [page, setPage] = useState(1);
   const [indonesia, setIndonesia] = useState(false), [garansi, setGaransi] = useState(false), [type, setType] = useState("");
   const [productId, setProductId] = useState("");
-  const [supplier, setSupplier] = useState("providersmm"), [compatible, setCompatible] = useState(true), [mapping, setMapping] = useState("");
+  const [supplier, setSupplier] = useState<string>(PEDIA_SALE_PROVIDER), [compatible, setCompatible] = useState(true), [mapping, setMapping] = useState("");
   useEffect(() => { const timer = setTimeout(() => { setSearch(q); setPage(1); }, 300); return () => clearTimeout(timer); }, [q]);
   const params = new URLSearchParams({ q: search, platform, supplier, compatible: compatible ? "1" : "0", mapping, page: String(page), indonesia: indonesia ? "1" : "0", garansi: garansi ? "1" : "0", type });
   const panel = usePanel<{ rows: Row[]; total: number; diff: Record<string, string> }>(`/api/admin/pedia/services?${params}`, { rows: [], total: 0, diff: {} });
@@ -414,7 +417,7 @@ function PediaServicesPanel({ catalog, selected, onSelect, onAssigned }: { catal
         <td className="whitespace-nowrap font-semibold text-white">{formatRupiah(Number(r.rate_idr_per_1k))}</td>
         <td className="whitespace-nowrap text-xs tabular-nums">{String(r.min_qty)} / {String(r.max_qty)}</td>
         <td className="min-w-[160px] text-xs">{String(r.used_in || "Belum dipakai")}</td>
-        <td><button className={EDIT} disabled={panel.busy || panel.loading || !PEDIA_PROVIDERS.includes(r.supplier as PediaProvider) || Number(r.present) !== 1 || r.type !== "Default" || Number(r.rate_idr_per_1k) <= 0} onClick={() => onSelect({ supplier: r.supplier as PediaProvider, service_id: Number(r.service_id) })} aria-label={`Pakai layanan ${r.supplier} ${r.service_id}`}>Pakai</button></td>
+        <td><button className={EDIT} disabled={panel.busy || panel.loading || !isPediaSaleProvider(r.supplier) || isPediaPremiumToolCandidate(r.name,r.category) || Number(r.present) !== 1 || r.type !== "Default" || Number(r.rate_idr_per_1k) <= 0} onClick={() => onSelect({ supplier: r.supplier as PediaProvider, service_id: Number(r.service_id) })} aria-label={`Pakai layanan ${r.supplier} ${r.service_id}`}>Pakai</button></td>
       </tr>)}
     </DataTable>
     {!panel.loading && !panel.error && !panel.data.rows.length && <p className="py-4 text-sm text-white/65">Tidak ada layanan yang cocok.</p>}

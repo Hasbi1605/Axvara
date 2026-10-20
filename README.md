@@ -1,5 +1,10 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Pedia IndoSMM untuk penjualan baru — 20 Oktober 2026
+
+✅ Implementasi; publikasi melalui CI. IndoSMM menjadi supplier tunggal untuk katalog/harga/quote/order baru dan kurasi admin. ProviderSMM dipertahankan untuk retry checkout tersimpan, dispatch/status/refill/recovery historis; quote lama tanpa order perlu memilih ulang sebelum debit/reservasi/invoice. Migrasi 0073 menonaktifkan penjualan ProviderSMM, menambah 53 kebutuhan/61 mapping IndoSMM (termasuk tujuh pengganti) dan 18 platform; owner drafts serta snapshot order lama dipertahankan. Produk premium supplier Canva/Gemini/CapCut dikecualikan. API/description review belum membuktikan kualitas; tanpa order berbayar. Spesifikasi terkini: [IndoSMM 20 Oktober](docs/pedia/indosmm-only-2026-10-20.md).
+
+
 ## Pedia dan loading — 19 Oktober 2026
 
 ✅ Implementasi; rilis melalui CI push main. Loading logo memakai ring cyan dan pulse mengikuti ISTA AI, dengan reduced motion. Pedia menyediakan ikon semantik, jumlah sebelum perbandingan layanan, filter ringkas dan formulir link/syarat yang dekat. Kontak tetap tahap kedua; pembayaran/quote/retry tetap. Tab admin **Kurasi** memilih kebutuhan dan jumlah, membandingkan kandidat kedua supplier, meninjau copy lalu menyimpan draf nonaktif tanpa refill untuk diperiksa di editor.

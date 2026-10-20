@@ -5,6 +5,7 @@
 import { NextResponse } from "next/server";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { isPediaProvider } from "@/lib/pedia/proxy";
+import { PEDIA_SALE_PROVIDER } from "@/lib/pedia/sales-policy";
 import { pediaBounds } from "@/lib/pedia/bounds";
 import { PEDIA_CATALOG_BOUNDS_SQL } from "@/lib/pedia/catalog-queries";
 
@@ -130,6 +131,9 @@ async function readCatalog() {
   const tiersByProduct = new Map<number, PediaCatalogTier[]>();
   for (const t of tiers) {
     if (!isPediaProvider(t.supplier)) continue;
+    // INDO-POLICY-20: new catalog offers IndoSMM only; historical ProviderSMM
+    // tiers stay in DB for existing orders but are never offered publicly.
+    if (t.supplier !== PEDIA_SALE_PROVIDER) continue;
     const bound = boundByService.get(`${t.supplier}:${t.supplier_service_id}`);
     if (!bound || !Number.isSafeInteger(bound.min) || !Number.isSafeInteger(bound.max) || bound.min <= 0 || bound.max < bound.min) continue;
     const limits = pediaBounds({ min_qty: bound.min, max_qty: bound.max }, t);

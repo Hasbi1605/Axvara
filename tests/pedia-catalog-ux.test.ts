@@ -15,8 +15,8 @@ async function seed() {
     ["standar", 2, 100, 250, '{"100":3000,"105":3500,"250":6000,"500":9000}'],
     ["hemat", 1, 100, 500, '{"100":2000,"250":0,"500":-1,"750":10000}'],
   ] as const) {
-    await db.execRun(`INSERT INTO pedia_supplier_services (supplier,service_id,name,type,category,rate_idr_per_1k,min_qty,max_qty,present) VALUES ('providersmm',?,'private-name','Default','IG',500,?,?,1)`, service, min, max);
-    await db.execRun(`INSERT INTO pedia_tiers (product_id,tier,supplier,supplier_service_id,price_group,markup_pct,min_profit_rp,package_prices_json,is_active) VALUES (?,?,'providersmm',?,'G3',20,1000,?,1)`, Number(product?.id), tier, service, prices);
+    await db.execRun(`INSERT INTO pedia_supplier_services (supplier,service_id,name,type,category,rate_idr_per_1k,min_qty,max_qty,present) VALUES ('indosmm',?,'private-name','Default','IG',500,?,?,1)`, service, min, max);
+    await db.execRun(`INSERT INTO pedia_tiers (product_id,tier,supplier,supplier_service_id,price_group,markup_pct,min_profit_rp,package_prices_json,is_active) VALUES (?,?,'indosmm',?,'G3',20,1000,?,1)`, Number(product?.id), tier, service, prices);
   }
   return db;
 }

@@ -5,7 +5,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createD1Fixture } from "./helpers/d1-fixture";
 import { createDatabaseAccess } from "@/lib/db-access";
-import { applyProvidersmmDiff } from "@/lib/pedia/sync";
+import { applyPediaDiff } from "@/lib/pedia/sync";
 import { verifyPediaQuoteToken } from "@/lib/pedia/quote";
 
 afterEach(() => {
@@ -30,14 +30,14 @@ async function seedCatalog() {
   await db.execRun(
     `INSERT INTO pedia_tiers (product_id, tier, supplier, supplier_service_id, price_group,
        markup_pct, min_profit_rp, refill_days, package_prices_json, is_active)
-     VALUES (?, 'standar', 'providersmm', 86, 'G3', 20, 1000, 30, '{}', 1)`,
+     VALUES (?, 'standar', 'indosmm', 86, 'G3', 20, 1000, 30, '{}', 1)`,
     Number(p?.id),
   );
-  await applyProvidersmmDiff(db, [{
+  await applyPediaDiff(db, "indosmm", [{
     service_id: 86, name: "IG Followers", type: "Default", category: "IG",
     rate: 38750, min_qty: 100, max_qty: 1000,
     api_refill: 0, api_cancel: 0, api_dripfeed: 1,
-  }], []);
+  }], [], "IDR");
   const pid = Number(p?.id);
   const tier = await db.queryFirst(`SELECT id FROM pedia_tiers WHERE product_id=?`, pid);
   return { pid, tierId: Number(tier?.id) };
@@ -127,11 +127,11 @@ describe("orders Pedia PD-21 + guard", () => {
     // PENTING: fixture D1 sama (globalThis.DB) — jangan buat fixture baru.
     const { createDatabaseAccess: cda } = await import("@/lib/db-access");
     const db2 = cda();
-    await applyProvidersmmDiff(db2, [{
+    await applyPediaDiff(db2, "indosmm", [{
       service_id: 86, name: "IG Followers", type: "Default", category: "IG",
       rate: 42625, min_qty: 100, max_qty: 1000,
       api_refill: 0, api_cancel: 0, api_dripfeed: 1,
-    }], []);
+    }], [], "IDR");
     const { POST: orderPost } = await import("@/app/api/pedia/orders/route");
     const res = await orderPost(new Request("http://x/", {
       method: "POST", headers: { "content-type": "application/json" },

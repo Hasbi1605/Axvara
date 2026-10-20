@@ -91,7 +91,7 @@ describe("admin Pedia M2", () => {
     expect(r1.status).toBe(200);
     const d1 = await r1.json();
     expect(d1.seeded_products).toBe(14);
-    expect(d1.seeded_tiers).toBe(24);
+    expect(d1.seeded_tiers).toBe(0);
     const r2 = await POST(await mk());
     const d2 = await r2.json();
     expect(d2.seeded_products).toBe(0);
@@ -113,7 +113,11 @@ describe("admin Pedia M2", () => {
     }));
     const { createDatabaseAccess } = await import("@/lib/db-access");
     const db = createDatabaseAccess();
+    await db.execRun(`INSERT INTO pedia_tiers(product_id,tier,supplier,supplier_service_id,price_group,markup_pct,min_profit_rp,is_active) SELECT id,'standar','indosmm',86,'G3',20,1000,0 FROM pedia_products LIMIT 1`);
     const tier = await db.queryFirst(`SELECT id FROM pedia_tiers LIMIT 1`);
+    vi.stubEnv("WARUNG_REBAHAN_PROXY_URL", "https://proxy.example");
+    vi.stubEnv("WARUNG_REBAHAN_PROXY_TOKEN", "test");
+    vi.stubGlobal("fetch", async (url: unknown) => new Response(JSON.stringify(String(url).includes("services") ? [{service:86}] : {balance:"100000",currency:"IDR"})));
     await db.execRun(`INSERT INTO pedia_supplier_services (supplier,service_id,name,category,type,rate_idr_per_1k,min_qty,max_qty,present)
       SELECT supplier,supplier_service_id,'Fixture','Instagram','Default',1000,1,100000,1 FROM pedia_tiers WHERE id=?`, Number(tier?.id));
     await db.execRun(`UPDATE pedia_tiers SET auto_disabled_reason='margin' WHERE id=?`, Number(tier?.id));

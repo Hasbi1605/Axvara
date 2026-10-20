@@ -67,7 +67,7 @@ describe("Pedia order UX", () => {
     expect(html).not.toContain(product.tagline);
     expect(html).toContain('&lt;script&gt;alert(&quot;test&quot;)&lt;/script&gt;');
     expect(html).not.toContain("<script>");
-    expect(document.getElementById("pedia-target-help")?.textContent).toBe("Masukkan link profil Instagram. Pastikan akun tidak privat.");
+    expect(document.getElementById("pedia-target-help")?.textContent).toBe("Gunakan format link seperti contoh pada kolom. Masukkan link profil Instagram. Pastikan akun tidak privat.");
     expect(screen.getByText("Format link sesuai. Akun atau konten belum diverifikasi.")).toBeTruthy();
   });
 

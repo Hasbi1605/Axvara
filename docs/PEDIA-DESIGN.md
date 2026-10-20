@@ -1,5 +1,10 @@
 # PEDIA-DESIGN.md — Panduan Desain & Style AXVARA PEDIA
 
+## Pedia IndoSMM untuk penjualan baru — 20 Oktober 2026
+
+✅ Implementasi; publikasi melalui CI. IndoSMM menjadi supplier tunggal untuk katalog/harga/quote/order baru dan kurasi admin. ProviderSMM dipertahankan untuk retry checkout tersimpan, dispatch/status/refill/recovery historis; quote lama tanpa order perlu memilih ulang sebelum debit/reservasi/invoice. Migrasi 0073 menonaktifkan penjualan ProviderSMM, menambah 53 kebutuhan/61 mapping IndoSMM (termasuk tujuh pengganti) dan 18 platform; owner drafts serta snapshot order lama dipertahankan. Produk premium supplier Canva/Gemini/CapCut dikecualikan. API/description review belum membuktikan kualitas; tanpa order berbayar. Spesifikasi terkini: [IndoSMM 20 Oktober](pedia/indosmm-only-2026-10-20.md).
+
+
 ## Pembaruan 19 Oktober 2026
 
 ✅ Implementasi; publikasi melalui CI. Loading logo dengan ring cyan dan pulse mengikuti ISTA AI; reduced motion menghentikan animasi. Kebutuhan memakai ikon semantik. Konfigurator dimulai jumlah → perbandingan → pilihan → link/syarat, dengan harga jumlah sama, filter ringkas dan informasi pembeda sebelum pilihan. Kontak tetap tahap kedua. Tab Kurasi admin membandingkan kandidat kedua supplier dan menyiapkan draf nonaktif untuk review. [Spec 19 Oktober](pedia/catalog-ux-2026-10-19.md) menggantikan konfigurator 16 Oktober, tanpa klaim mutu/drop berdasarkan nama supplier atau pengujian UI.

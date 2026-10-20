@@ -25,14 +25,14 @@ async function seed() {
   const pid = Number(product?.id);
   const svc = async (id: number, rate: number, min: number, max: number) => {
     await db.execRun(`INSERT INTO pedia_supplier_services (supplier,service_id,name,type,category,rate_idr_per_1k,min_qty,max_qty,present)
-      VALUES ('providersmm',?,'NAMA MENTAH SUPPLIER','Default','IG',?,?,?,1)`, id, rate, min, max);
+      VALUES ('indosmm',?,'NAMA MENTAH SUPPLIER','Default','IG',?,?,?,1)`, id, rate, min, max);
   };
   await svc(11, 20000, 100, 10000);
   await svc(12, 8000, 10, 5000);
   await svc(13, 50000, 50, 2000);
   const tier = async (serviceId: number, name: string, rec: number, region: string, prices: string) => {
     await db.execRun(`INSERT INTO pedia_tiers (product_id,tier,supplier,supplier_service_id,price_group,markup_pct,min_profit_rp,refill_days,package_prices_json,is_active,public_name,description_md,region,quality,is_recommended,sort_order)
-      VALUES (?,?, 'providersmm', ?, 'G2', 60, 1000, 30, ?, 1, ?, 'Deskripsi bahasa manusia.', ?, 'standar', ?, 10)`,
+      VALUES (?,?, 'indosmm', ?, 'G2', 60, 1000, 30, ?, 1, ?, 'Deskripsi bahasa manusia.', ?, 'standar', ?, 10)`,
     pid, serviceId === 11 ? "hemat" : serviceId === 12 ? "standar" : "premium", serviceId, prices, name, region, rec);
   };
   await tier(11, "Followers Indonesia Refill 30 Hari", 1, "indonesia", '{"100":3400,"250":6000}');

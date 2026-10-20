@@ -1,3 +1,6 @@
+import { PEDIA_ADDITIONAL_PLATFORMS } from "./additional-platforms";
+import { detectAdditionalPediaLink } from "./additional-links";
+
 // src/lib/pedia/link.ts — Parser link Pedia (PEDIA-PRD §9.6).
 //
 // SHARED client & server: deteksi platform + jenis target + normalisasi.
@@ -7,11 +10,12 @@
 export type PediaPlatform =
   | "instagram" | "tiktok" | "youtube" | "facebook"
   | "threads" | "shopee" | "spotify" | "x" | "telegram"
-  | "github" | "website" | "linkedin" | "pinterest" | "discord" | "twitch" | "soundcloud";
+  | "github" | "website" | "linkedin" | "pinterest" | "discord" | "twitch" | "soundcloud"
+  | "roblox" | "whatsapp" | "lazada" | "snackvideo" | "kick" | "vimeo" | "tumblr" | "reddit" | "dribbble" | "mixcloud" | "audiomack" | "medium" | "rumble" | "coinmarketcap" | "rutube" | "tidal" | "coub" | "reverbnation";
 
 export type PediaTargetKind =
   | "profile" | "post" | "video" | "reel" | "live" | "channel" | "playlist"
-  | "shop" | "track" | "repository" | "website" | "company" | "board" | "invite" | "artist" | "short";
+  | "shop" | "track" | "repository" | "website" | "company" | "board" | "invite" | "artist" | "short" | "album" | "story" | "group";
 
 export type PediaLinkDetect = {
   platform: PediaPlatform;
@@ -62,6 +66,8 @@ export function detectPediaLink(raw: string, expectedPlatform?: string): PediaLi
   if (!p) return null;
   const { host, path } = p;
   const seg = path.split("/").filter(Boolean);
+  const additional = detectAdditionalPediaLink(host, path);
+  if (additional) return additional;
 
   // Website traffic dipilih secara eksplisit. Query URL adalah bagian target
   // (mis. campaign); tidak disapu seperti query tracking link media sosial.
@@ -105,6 +111,7 @@ export function detectPediaLink(raw: string, expectedPlatform?: string): PediaLi
 
   // ── Instagram ──
   if (host === "instagram.com" || host === "instagr.am") {
+    if (seg.length === 3 && seg[0] === "stories" && /^[a-z\d_.]+$/i.test(seg[1]) && /^\d+$/.test(seg[2])) return result("instagram", "story", `https://www.instagram.com/stories/${seg[1]}/${seg[2]}/`);
     if (seg[0] === "p" && seg[1]) {
       return { platform: "instagram", targetKind: "post", normalized: `https://www.instagram.com/p/${seg[1]}/`, displayUser: null };
     }
@@ -167,6 +174,7 @@ export function detectPediaLink(raw: string, expectedPlatform?: string): PediaLi
 
   // ── Facebook ──
   if (host === "facebook.com" || host === "fb.com" || host === "fb.watch") {
+    if (seg.length === 2 && seg[0] === "groups" && /^[a-z\d_.-]+$/i.test(seg[1])) return result("facebook", "group", `https://www.facebook.com/groups/${seg[1]}/`);
     if (host === "fb.watch" && seg[0]) {
       return { platform: "facebook", targetKind: "video", normalized: stripTrailingSlash(p.raw.split("?")[0]!), displayUser: null };
     }
@@ -186,7 +194,8 @@ export function detectPediaLink(raw: string, expectedPlatform?: string): PediaLi
       if (id) return { platform: "facebook", targetKind: "profile", normalized: `https://www.facebook.com/profile.php?id=${id}`, displayUser: null };
       return null;
     }
-    if (seg[0]) {
+    if (seg.length === 3 && seg[0] === "people" && seg[1] && /^\d+$/.test(seg[2])) return result("facebook", "profile", `https://www.facebook.com/people/${seg[1]}/${seg[2]}/`);
+    if (seg.length === 1 && !["people", "groups", "watch", "reel", "videos", "login", "settings", "events", "share"].includes(seg[0])) {
       return { platform: "facebook", targetKind: "profile", normalized: `https://www.facebook.com/${seg[0]}/`, displayUser: maskUser(seg[0]) };
     }
     return null;
@@ -194,6 +203,7 @@ export function detectPediaLink(raw: string, expectedPlatform?: string): PediaLi
 
   // ── Threads ──
   if (host === "threads.net" || host === "threads.com") {
+    if (seg.length === 2 && seg[0] === "share" && /^[a-z\d_-]+$/i.test(seg[1])) return result("threads", "post", `https://www.threads.com/share/${seg[1]}/`);
     if (seg[0]?.startsWith("@")) {
       const user = seg[0].toLowerCase();
       if (seg[1] === "post" && seg[2]) {
@@ -206,7 +216,9 @@ export function detectPediaLink(raw: string, expectedPlatform?: string): PediaLi
 
   // ── Shopee ──
   if (host === "shopee.co.id" || host === "shopee.com") {
-    if (seg[0]) {
+    if (seg.length === 1 && /-i\.\d+\.\d+$/.test(seg[0])) return result("shopee", "post", `https://shopee.co.id/${seg[0]}`);
+    if (seg.length === 3 && seg[0] === "product" && /^\d+$/.test(seg[1]) && /^\d+$/.test(seg[2])) return result("shopee", "post", `https://shopee.co.id/${seg.join("/")}`);
+    if (seg.length === 1 && /^[a-z\d_.-]+$/i.test(seg[0]) && !["search","cart","product","mall"].includes(seg[0])) {
       const shop = seg[0].toLowerCase();
       return { platform: "shopee", targetKind: "shop", normalized: `https://shopee.co.id/${shop}`, displayUser: maskUser(shop) };
     }
@@ -239,6 +251,7 @@ export function detectPediaLink(raw: string, expectedPlatform?: string): PediaLi
 
 /** Label platform bahasa pembeli. */
 export const PEDIA_PLATFORM_LABEL: Record<PediaPlatform, string> = {
+  ...Object.fromEntries(PEDIA_ADDITIONAL_PLATFORMS.map(p => [p.id,p.label])) as Record<typeof PEDIA_ADDITIONAL_PLATFORMS[number]["id"],string>,
   instagram: "Instagram", tiktok: "TikTok", youtube: "YouTube", facebook: "Facebook",
   threads: "Threads", shopee: "Shopee", spotify: "Spotify", x: "X", telegram: "Telegram",
   github: "GitHub", website: "Website", linkedin: "LinkedIn", pinterest: "Pinterest", discord: "Discord", twitch: "Twitch", soundcloud: "SoundCloud",
@@ -249,10 +262,13 @@ export const PEDIA_TARGET_KIND_LABEL: Record<PediaTargetKind, string> = {
   profile: "Profil", post: "Postingan", video: "Video", reel: "Reel",
   live: "Live", channel: "Channel", playlist: "Playlist", shop: "Toko", track: "Lagu",
   repository: "Repository", website: "Website", company: "Perusahaan", board: "Board", invite: "Undangan server",
-  artist: "Artis", short: "Shorts",
+  artist: "Artis", short: "Shorts", album: "Album", story: "Story", group: "Grup",
 };
 
-export function pediaTargetMatches(need: string, detected: PediaTargetKind) {
+export function pediaTargetMatches(need: string, detected: PediaTargetKind, context?: { platform: string; metric: string }) {
+  // IndoSMM Facebook Share accepts feed posts only; a Reel/video is not
+  // interchangeable even though other post services can accept video URLs.
+  if (context?.platform === "facebook" && context.metric === "shares" && need === "post") return detected === "post";
   return need === detected || (need === "profile" && detected === "channel")
     || (need === "post" && ["video", "reel"].includes(detected))
     || (need === "video" && ["post", "reel", "short"].includes(detected));

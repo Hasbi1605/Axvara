@@ -1,5 +1,7 @@
 # Pedia — katalog, kurasi, dan order 19 Oktober 2026
 
+Kebijakan supplier dan katalog diperbarui oleh [rilis IndoSMM 20 Oktober](indosmm-only-2026-10-20.md); dokumen ini tetap menjelaskan konfigurator 19 Oktober.
+
 Status: ✅ implementasi; publikasi melalui CI. Dokumen ini menggantikan konfigurator 16 Oktober pada spesifikasi 15 Oktober. Supplier tetap ProviderSMM/IndoSMM; tidak ada integrasi atau migrasi SMM Sekalipay. Tidak ada order supplier berbayar untuk verifikasi rilis ini.
 
 ## Loading dan order

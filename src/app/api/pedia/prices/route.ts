@@ -5,6 +5,7 @@ import { createDatabaseAccess } from "@/lib/db-access";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { computePediaPrice } from "@/lib/pedia/pricing";
 import { pediaBounds } from "@/lib/pedia/bounds";
+import { PEDIA_SALE_PROVIDER } from "@/lib/pedia/sales-policy";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -19,12 +20,14 @@ export async function GET(request: NextRequest) {
   const product = await db.queryFirst("SELECT id, step FROM pedia_products WHERE slug=? AND is_active=1", slug);
   if (!product) return NextResponse.json({ error: "Produk tidak tersedia." }, { status: 404 });
   if (quantity % (Number(product.step) || 1) !== 0) return NextResponse.json({ error: `Jumlah harus kelipatan ${Number(product.step) || 1}.` }, { status: 422 });
+  // INDO-POLICY-20: comparison prices offer the sale supplier only, even when
+  // stale historical tiers from the retired provider remain active in DB.
   const rows = await db.queryAll(
     `SELECT t.id, t.markup_pct, t.min_profit_rp, t.min_qty_override, t.max_qty_override, t.quantity_step, s.rate_idr_per_1k, s.min_qty, s.max_qty
        FROM pedia_tiers t JOIN pedia_supplier_services s ON s.supplier=t.supplier AND s.service_id=t.supplier_service_id
-      WHERE t.product_id=? AND t.is_active=1 AND t.supplier IN ('providersmm','indosmm')
+      WHERE t.product_id=? AND t.is_active=1 AND t.supplier=?
         AND s.present=1 AND s.type='Default' AND s.rate_idr_per_1k>0
-      ORDER BY t.id LIMIT 100`, product.id,
+      ORDER BY t.id LIMIT 100`, product.id, PEDIA_SALE_PROVIDER,
   );
   const prices = rows.filter((r) => { const b = pediaBounds(r, r, Number(product.step)); return b && quantity >= b.min && quantity <= b.max && quantity % b.step === 0; })
     .map((r) => ({ tier_id: Number(r.id), total: computePediaPrice({ supplierRatePer1k: Number(r.rate_idr_per_1k), quantity, markupPct: Number(r.markup_pct), minProfitRp: Number(r.min_profit_rp), minOrderRp: Number(process.env.PEDIA_MIN_ORDER_RP || 1000) || 1000 }) }));

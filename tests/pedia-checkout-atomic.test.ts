@@ -54,7 +54,7 @@ describe("Pedia checkout money transaction",()=>{
   expect((await order(await token())).status).toBe(201);
  });
 
- it.each(["indosmm", "providersmm"] as const)("%s: quote → QR → paid → dispatch → completed → refill preserves the public and private snapshots",async(provider)=>{
+ it.each(["indosmm"] as const)("%s: quote → QR → paid → dispatch → completed → refill preserves the public and private snapshots",async(provider)=>{
   const f=seed();f.sql.exec("INSERT INTO products(id,slug,name,price,sold_count,is_active) VALUES(1,'market-product','Market product',1000,0,1)");f.sql.prepare("UPDATE pedia_supplier_services SET supplier=?").run(provider);f.sql.prepare("UPDATE pedia_tiers SET supplier=?,target_format='username',refill_days=30,refill_anchor='completed',public_name='Nama tersimpan',terms_md='Refill 30 hari sejak pesanan selesai' ").run(provider);
   const {POST:quote}=await import("@/app/api/pedia/quote/route");const response=await quote(new Request("http://x",{method:"POST",body:JSON.stringify({product_id:1,tier_id:1,quantity:150,target:"https://instagram.com/buyer"})}) as never);expect(response.status).toBe(200);
   const r=await order((await response.json()).quote_token);expect(r.status).toBe(201);const {code}=await r.json();
@@ -85,4 +85,17 @@ describe("Pedia checkout money transaction",()=>{
    await get(true);expect(reconcile).toHaveBeenCalledTimes(2);expect(claim).toHaveBeenCalledTimes(2);
  });
 
+});
+
+it("rejects an unreserved historical quote before tier reads, debit, ledger, or QRIS", async()=>{
+ const f=seed();const t=(await createPediaQuoteToken({product_id:1,tier_id:1,quantity:150,target_raw:"x",target_normalized:"x",unit_price:2500/150,total:2500,credit_code_hash:"credit-hash",credit_used:500,supplier:"providersmm",supplier_service_id:1,supplier_rate_snapshot:10000})).token;
+ f.control.fail=q=>q.includes("FROM pedia_tiers")||q.includes("FROM pedia_products");
+ const response=await order(t);expect(response.status).toBe(409);expect(await response.json()).toMatchObject({error:"provider_retired"});
+ expect(left(f)).toBe(10000);expect(f.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(0);expect(f.sql.prepare("SELECT COUNT(*) n FROM pedia_credit_ledger").get()?.n).toBe(0);expect(qris.createActiveQrisInvoice).not.toHaveBeenCalled();
+});
+it("reuses a persisted historical checkout after tier retirement without another debit",async()=>{
+ const f=seed();const {token:t,quoteId:jti}=await createPediaQuoteToken({product_id:1,tier_id:1,quantity:150,target_raw:"x",target_normalized:"x",unit_price:2500/150,total:2500,credit_code_hash:"credit-hash",credit_used:500,supplier:"providersmm",supplier_service_id:1,supplier_rate_snapshot:10000});
+ f.sql.prepare("INSERT INTO orders(code,quote_id,customer_name,customer_wa,customer_email,items,subtotal,payment_method,status,order_kind) VALUES('OLD',?,'','6281234567890','a@b.com','[]',2500,'qris','pending','pedia')").run(`pedia:${jti}`);
+ f.sql.exec("INSERT INTO pedia_order_items(order_code,product_id,tier_id,snapshot_json,target_raw,target_normalized,quantity,unit_price,total,credit_used,supplier,supplier_service_id,supplier_rate_snapshot,status) VALUES('OLD',1,1,'{}','x','x',150,1,2500,500,'providersmm',1,10000,'awaiting_payment');UPDATE pedia_tiers SET is_active=0");
+ const response=await order(t);expect(response.status).toBe(200);expect(await response.json()).toMatchObject({code:'OLD',reused:true});expect(left(f)).toBe(10000);expect(f.sql.prepare("SELECT COUNT(*) n FROM pedia_credit_ledger").get()?.n).toBe(0);
 });

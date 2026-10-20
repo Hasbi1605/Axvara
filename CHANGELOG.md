@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-10-20 — Alihkan penjualan baru Pedia ke IndoSMM, pertahankan recovery/dispatch/refill historis ProviderSMM; tambah 53 kebutuhan/61 mapping termasuk tujuh pengganti melalui migrasi 0073, 18 platform/target/ikon tambahan, kecualikan Canva/Gemini/CapCut. Kurasi admin IndoSMM dan draft/slug owner dipertahankan; tanpa order berbayar. — API Pedia/admin, lib/pedia, platform UI/icons, migration/generator, tests, PRD/DESIGN/ARCHITECTURE/README/AGENTS — (verifikasi: 2900 test/236 file pass, tsc pass, lint pass dengan warning existing, build:pages exit0; dev home/CSS200, Obscura katalog/order mobile/admin pass; simulasi katalog produksi 106 penawaran/34 platform, tanpa order supplier berbayar)
+
 - 2026-10-20 — Revisi foto Project + Visio ke logo asli (koreksi owner: versi pertama huruf generik): compose ulang EXACT COPY bentuk resmi — Project tumpukan tile hijau + P, Visio lapisan biru (kotak V + diamond + lingkaran) + V — D1 image_url+images, R2 --jurisdiction default — (verifikasi: R2 2/2 200; catalog 2/2 terisi; Obscura /produk/microsoft-visio tampil sempurna; test 2777/2777)
 
 - 2026-10-20 — Foto 2 produk WR baru: compose Microsoft Project (P putih di badge hijau) + Microsoft Visio (V putih di badge biru) dari logo resmi Wikimedia 2019-present 1600x900 WebP — D1 image_url+images, R2 --jurisdiction default — (verifikasi: 0 produk kosong; R2 2/2 200; catalog 2/2 terisi; Obscura /produk/microsoft-project tampil sempurna; test 2777/2777)

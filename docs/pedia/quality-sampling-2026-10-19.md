@@ -1,5 +1,7 @@
 # Pedia — rencana uji hasil 19 Oktober 2026
 
+**Pembaruan 20 Oktober:** daftar dan pembagian saldo di bawah adalah historis dua supplier. Penjualan baru kini IndoSMM saja; jangan top-up ProviderSMM berdasarkan rencana lama. Sampel pengganti dan platform tambahan mengikuti [rilis terbaru](indosmm-only-2026-10-20.md). Belum ada uji berbayar yang dijalankan.
+
 Status: rencana operasional berdasarkan tarif akun yang dibaca 19 Oktober, **belum ada order berbayar**. Ini bukan syarat untuk merilis perbaikan UI atau bukti kualitas supplier. Supplier tetap ProviderSMM/IndoSMM.
 
 Usulan saldo awal: **ProviderSMM Rp50.000 + IndoSMM Rp100.000 = Rp150.000**. Saldo saat pembacaan keduanya Rp0. Satu putaran 30 sampel prioritas diperkirakan **Rp107.864**: ProviderSMM 9 sampel Rp18.273; IndoSMM 21 sampel Rp89.591. Angka dibulatkan ke atas per sampel untuk anggaran, belum termasuk fee top-up dan perubahan tarif. Subscriber YouTube 100 sendiri sekitar Rp61.986; biaya terbesar ini perlu diperhatikan sebelum memutuskan sampel. Bukan perintah membayar atau membuat order.

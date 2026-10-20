@@ -31,6 +31,8 @@ beforeEach(async () => {
   const db = createDatabaseAccess();
   const p = await db.queryFirst("SELECT id FROM pedia_products WHERE slug='followers-instagram'");
   productId = Number(p?.id);
+  await db.execRun(`INSERT INTO pedia_tiers(product_id,tier,supplier,supplier_service_id,price_group,markup_pct,min_profit_rp,is_active,package_prices_json) VALUES(?,'standar','indosmm',86,'G3',20,1000,0,'{}')`,productId);
+  await db.execRun(`INSERT INTO pedia_supplier_services(supplier,service_id,name,category,type,rate_idr_per_1k,min_qty,max_qty,present) VALUES('indosmm',86,'Instagram','Followers','Default',30000,100,1000,1)`);
   const t = await db.queryFirst("SELECT id FROM pedia_tiers WHERE product_id=? AND tier='standar'", productId);
   tierId = Number(t?.id);
   await db.execRun(`INSERT INTO pedia_supplier_services (supplier, service_id, name, category, type, rate_idr_per_1k, min_qty, max_qty, present)
@@ -129,7 +131,8 @@ it("order action database failures return a visible error", async () => {
 
 async function indoService(type = "Default") {
   await createDatabaseAccess().execRun(`INSERT INTO pedia_supplier_services (supplier,service_id,name,category,type,rate_idr_per_1k,min_qty,max_qty,present)
-    VALUES ('indosmm',86,'Indo Instagram','Followers',?,9000,250,1000,1)`, type);
+    VALUES ('indosmm',86,'Indo Instagram','Followers',?,9000,250,1000,1) ON CONFLICT(supplier,service_id) DO UPDATE SET type=excluded.type,rate_idr_per_1k=9000,min_qty=250`, type);
+  await createDatabaseAccess().execRun(`UPDATE pedia_tiers SET supplier='providersmm' WHERE id=?`,tierId);
 }
 async function order(code: string, supplier = "providersmm", attempts = 0, sid: string | null = null) {
   await createDatabaseAccess().execRun(`INSERT INTO orders (code,customer_name,customer_wa,customer_email,items,subtotal,payment_method,status,order_kind) VALUES (?,'Fixture','628123456789','buyer@example.com','[]',5000,'qris','lunas','pedia')`, code);
@@ -189,8 +192,8 @@ it("creation reprice failure identifies the already saved tier so retries cannot
   await createDatabaseAccess().execRun(`DELETE FROM pedia_tiers WHERE product_id=? AND tier='hemat'`, productId);
   fixture.control.fail = (sql) => sql.includes("SET package_prices_json=?");
   await createDatabaseAccess().execRun(`INSERT INTO pedia_supplier_services (supplier, service_id, name, category, type, rate_idr_per_1k, min_qty, max_qty, present)
-    VALUES ('providersmm',777001,'Baru','Followers','Default',30000,100,1000,1)`);
-  const body = { kind: "tier", product_id: productId, tier: "hemat", supplier: "providersmm", supplier_service_id: 777001, price_group: "G3", markup_pct: 20, min_profit_rp: 1000 };
+    VALUES ('indosmm',777001,'Baru','Followers','Default',30000,100,1000,1)`);
+  const body = { kind: "tier", product_id: productId, tier: "hemat", supplier: "indosmm", supplier_service_id: 777001, price_group: "G3", markup_pct: 20, min_profit_rp: 1000 };
   const result = await POST(req(body));
   expect(result.status).toBe(500);
   expect(await result.json()).toMatchObject({ error: "reprice_failed", saved: true, id: expect.any(Number) });
@@ -325,24 +328,40 @@ it("partial settings saves return saved keys instead of full success", async () 
   expect(result.status).toBe(500); expect(await result.json()).toMatchObject({ error: "save_partial", saved_fields: ["pedia_markup_g1"] });
 });
 
-it("authenticated shortlist compares both providers at one quantity without writes or supplier calls",async()=>{
+it("authenticated shortlist includes only IndoSMM at one quantity without writes or supplier calls",async()=>{
  await indoService();
  await createDatabaseAccess().execRun("UPDATE pedia_supplier_services SET name='Instagram Followers Global'");
  const {GET:services}=await import("@/app/api/admin/pedia/services/route");
- const response=await services(new NextRequest(`http://localhost/?view=shortlist&product_id=${productId}&quantity=100`,{headers:{cookie}}));
+ const response=await services(new NextRequest(`http://localhost/?view=shortlist&product_id=${productId}&quantity=500`,{headers:{cookie}}));
  expect(response.status).toBe(200);
  const data=await response.json();
  expect(data.rows.length).toBeGreaterThan(0);
- expect(data.rows.every((r:Record<string,unknown>)=>Number(r.estimated_cost)>0)).toBe(true);
+ expect(data.rows.every((r:Record<string,unknown>)=>r.supplier==="indosmm" && Number(r.estimated_cost)>0)).toBe(true);
  expect(callPediaProxy).not.toHaveBeenCalled();
  expect((await services(new NextRequest(`http://localhost/?view=shortlist&product_id=${productId}&quantity=NaN`,{headers:{cookie}}))).status).toBe(400);
- expect((await services(new NextRequest(`http://localhost/?view=shortlist&product_id=${productId}&quantity=100`))).status).toBe(401);
+ expect((await services(new NextRequest(`http://localhost/?view=shortlist&product_id=${productId}&quantity=500`))).status).toBe(401);
 });
 
 it("new draft tiers persist reviewed public copy and bounds while staying inactive",async()=>{
- await createDatabaseAccess().execRun("INSERT INTO pedia_supplier_services(supplier,service_id,name,category,type,rate_idr_per_1k,min_qty,max_qty,present) VALUES('providersmm',99,'Instagram Followers','Followers','Default',1000,10,1000,1)");
- const response=await POST(req({kind:"tier",product_id:productId,tier:"standar",supplier:"providersmm",supplier_service_id:99,price_group:"G3",markup_pct:20,min_profit_rp:1000,refill_days:0,is_active:0,public_name:"Reviewed draft",description_md:"Reviewed description",terms_md:"Without refill",instructions_md:"Use profile URL",min_qty_override:100,max_qty_override:500,quantity_step:10,target_format:"url",refill_anchor:"created",is_recommended:0}));
+ await createDatabaseAccess().execRun("INSERT INTO pedia_supplier_services(supplier,service_id,name,category,type,rate_idr_per_1k,min_qty,max_qty,present) VALUES('indosmm',99,'Instagram Followers','Followers','Default',1000,10,1000,1)");
+ const response=await POST(req({kind:"tier",product_id:productId,tier:"standar",supplier:"indosmm",supplier_service_id:99,price_group:"G3",markup_pct:20,min_profit_rp:1000,refill_days:0,is_active:0,public_name:"Reviewed draft",description_md:"Reviewed description",terms_md:"Without refill",instructions_md:"Use profile URL",min_qty_override:100,max_qty_override:500,quantity_step:10,target_format:"url",refill_anchor:"created",is_recommended:0}));
  expect(response.status).toBe(200);
  const {id}=await response.json();
  expect(await createDatabaseAccess().queryFirst("SELECT public_name,description_md,terms_md,instructions_md,min_qty_override,max_qty_override,quantity_step,is_active FROM pedia_tiers WHERE id=?",id)).toEqual({public_name:"Reviewed draft",description_md:"Reviewed description",terms_md:"Without refill",instructions_md:"Use profile URL",min_qty_override:100,max_qty_override:500,quantity_step:10,is_active:0});
+});
+
+it("rejects forced ProviderSMM creation, reactivation and remapping before writes, while allowing legacy copy/deactivation",async()=>{
+ const db=createDatabaseAccess();
+ const body={kind:"tier",product_id:productId,tier:"hemat",supplier:"providersmm",supplier_service_id:86,price_group:"G3",markup_pct:20,min_profit_rp:1000,is_active:0};
+ expect((await POST(req(body))).status).toBe(409);
+ expect((await PUT(req({kind:"tier",id:tierId,supplier:"providersmm",supplier_service_id:86}))).status).toBe(409);
+ await db.execRun("UPDATE pedia_tiers SET supplier='providersmm',is_active=0 WHERE id=?",tierId);
+ expect((await PUT(req({kind:"tier",id:tierId,is_active:1}))).status).toBe(409);
+ expect((await PUT(req({kind:"tier",id:tierId,public_name:"Riwayat",is_active:0}))).status).toBe(200);
+ expect(await db.queryFirst("SELECT supplier,public_name,is_active FROM pedia_tiers WHERE id=?",tierId)).toEqual({supplier:"providersmm",public_name:"Riwayat",is_active:0});
+});
+it.each(['Canva Pro','Google Gemini','CapCut'])('rejects premium category %s on tier creation and activation',async(category)=>{
+ const db=createDatabaseAccess();await db.execRun("UPDATE pedia_supplier_services SET category=? WHERE supplier='indosmm'",category);
+ expect((await POST(req({kind:"tier",product_id:productId,tier:"hemat",supplier:"indosmm",supplier_service_id:86,price_group:"G3",markup_pct:20,min_profit_rp:1000}))).status).toBe(400);
+ expect((await PUT(req({kind:"tier",id:tierId,is_active:1}))).status).toBe(400);
 });

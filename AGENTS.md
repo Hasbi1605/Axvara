@@ -199,6 +199,13 @@ Aturan lintas-repo: (1) Env Pages bertipe `secret_text` SELALU (plain_text tidak
 - Tab Kurasi admin: shortlist authenticated baca-saja, maksimal 200 kandidat awal/20 hasil; estimasi modal jumlah sama bukan bukti mutu. Simpan draf nonaktif/refill0/recommended0; owner memeriksa deskripsi/target/batas/kelipatan sebelum aktivasi. Tidak ada auto-publish/order supplier.
 - `docs/pedia/quality-sampling-2026-10-19.md`: tarif akun IDR/saldo0 dibaca tanpa order. Usulan topup awal Rp50.000 ProviderSMM + Rp100.000 IndoSMM untuk satu putaran 30 sampel estimasi Rp107.864 belum fee; **belum dijalankan**, perlu target owner dan keputusan eksekusi, jangan mengklaim kualitas/drop sudah teruji.
 
+### Pedia IndoSMM 20 Oktober 2026
+- Spec terkini `docs/pedia/indosmm-only-2026-10-20.md` menggantikan dua supplier aktif: hanya IndoSMM untuk penjualan baru, ProviderSMM tetap untuk riwayat/retry checkout tersimpan/dispatch/refill/recovery lama. Jangan ubah provider/snapshot order lama.
+- Quote ProviderSMM tanpa order tersimpan ditolak 409 sebelum reservasi/debit/invoice; retry order tersimpan diperiksa dahulu. Kebijakan server berlaku meski tier lama aktif di DB.
+- Migrasi 0073 menonaktifkan penjualan PSMM dan menambah tier IndoSMM baru, tidak remap tier lama. Konflik slug/draf owner dan tier IndoSMM existing dijaga. Produk premium Canva/Gemini/CapCut dikecualikan.
+- Manifest 20 Oktober: 53 kebutuhan baru, tujuh pengganti, 61 mapping, 18 platform tambahan. Quote Threads dan Share Video Facebook tidak dipaksakan tanpa padanan terverifikasi. Registry/target/ikon diperluas; semua penawaran baru tanpa refill AXVARA. Nama API/deskripsi bukan bukti kualitas.
+- API akun IDR 4.395 layanan/saldo0 dibaca saja. Tidak ada order berbayar, top-up, env/cron/proxy baru. Rencana sampling dua supplier 19 Oktober historis; saldo uji selanjutnya IndoSMM.
+
 ## Done when
 - Tujuan tugas tercapai
 - Perubahan diimplementasi

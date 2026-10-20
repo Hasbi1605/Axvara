@@ -17,6 +17,7 @@ import { pediaBounds } from "@/lib/pedia/bounds";
 import { computePediaPrice, pediaMargin } from "@/lib/pedia/pricing";
 import { generateOrderCode } from "@/lib/security";
 import { isPediaProvider } from "@/lib/pedia/proxy";
+import { isPediaSaleProvider, PEDIA_SALE_RETIRED } from "@/lib/pedia/sales-policy";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -71,8 +72,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Quote checkout tidak valid atau sudah kedaluwarsa. Muat ulang checkout." }, { status: 409 });
   }
   const db = createDatabaseAccess();
+  // INDO-POLICY-20: the existing-checkout lookup runs FIRST. An already
+  // persisted order retry (same quote_id) returns the existing order as
+  // before — including historical ProviderSMM orders. Only unreserved
+  // retired-provider quotes are rejected below, before any DB tier checks,
+  // debit/reservation, or invoice.
   const reused = await db.queryFirst(`SELECT code, subtotal, status FROM orders WHERE quote_id=?`, `pedia:${quote.jti}`);
   if (reused) return checkoutResponse(db, reused, true);
+  if (!isPediaSaleProvider(quote.supplier)) {
+    return NextResponse.json(PEDIA_SALE_RETIRED, { status: 409 });
+  }
   const minOrderRp = Number(process.env.PEDIA_MIN_ORDER_RP || 1000) || 1000;
 
   // Hitung ulang dari DB (JANGAN percaya angka client/quote — pola orders):

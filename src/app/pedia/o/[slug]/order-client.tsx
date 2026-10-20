@@ -36,7 +36,7 @@ export function OrderClient({ product, initialTarget, ordersEnabled, embedded = 
   const platform = PEDIA_PLATFORM_LABEL[product.platform as PediaPlatform] ?? product.platform;
   const kind = PEDIA_TARGET_KIND_LABEL[product.target_kind as PediaTargetKind] ?? product.target_kind;
   const detected = detectPediaLink(target, product.platform);
-  const kindOk = detected && pediaTargetMatches(product.target_kind, detected.targetKind);
+  const kindOk = detected && pediaTargetMatches(product.target_kind, detected.targetKind, product);
   const targetOk = !!detected && detected.platform === product.platform && !!kindOk && target.trim().length <= 600;
   const waOk = /^(\+62|62|0)8\d{8,13}$/.test(wa.trim().replace(/\s|-/g, ""));
   const emailOk = z.string().email().max(160).safeParse(email.trim()).success;
@@ -54,7 +54,7 @@ export function OrderClient({ product, initialTarget, ordersEnabled, embedded = 
   const quantityValid = !!tier && qty != null && Number.isSafeInteger(qty) && qty >= (tier.min_qty ?? 1) && qty <= (tier.max_qty ?? Infinity) && qty % (tier.quantity_step ?? product.step) === 0;
   const packageTotal = tier && qty && quantityValid ? (comparisonPrices[tier.id] ?? tier.prices[String(qty)] ?? 0) : 0;
   useEffect(() => { onLockedChange?.(attempted); }, [attempted, onLockedChange]);
-  const targetHelp = `Masukkan link ${kind.toLowerCase()} ${platform}${["views", "plays"].includes(product.metric) ? " yang ingin ditambah tayangan" : ""}. ${product.target_kind === "profile" ? "Pastikan akun tidak privat." : "Pastikan konten dapat diakses publik."}`;
+  const targetHelp = `Gunakan format link seperti contoh pada kolom. Masukkan link ${kind.toLowerCase()} ${platform}${["views", "plays"].includes(product.metric) ? " yang ingin ditambah tayangan" : ""}. ${product.target_kind === "profile" ? "Pastikan akun tidak privat." : "Pastikan konten dapat diakses publik."}`;
 
   useEffect(() => {
     quoteController.current?.abort();

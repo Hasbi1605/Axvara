@@ -33,7 +33,7 @@ export function PediaCurationPanel({products,onCreated}:{products:CurationProduc
   }catch(e){setError(e instanceof Error?e.message:"Draf gagal disimpan.");}finally{saving.current=false;setBusy(false);}
  }
  return <section className="mt-4 min-w-0 space-y-5" aria-label="Kurasi terarah">
-  <div><h3 className="text-lg font-semibold text-white">Kurasi berdasarkan kebutuhan</h3><p className="mt-2 max-w-3xl text-sm leading-6 text-white/55">Pilih kebutuhan dan jumlah pembanding. Kandidat kedua supplier disaring dari mirror tersimpan; nama dan flag API belum membuktikan kualitas. Draf selalu nonaktif dan tanpa janji refill sampai ditinjau.</p></div>
+  <div><h3 className="text-lg font-semibold text-white">Kurasi berdasarkan kebutuhan</h3><p className="mt-2 max-w-3xl text-sm leading-6 text-white/55">Pilih kebutuhan dan jumlah pembanding. Kandidat IndoSMM disaring dari mirror tersimpan; nama dan flag API belum membuktikan kualitas. Draf selalu nonaktif dan tanpa janji refill sampai ditinjau.</p></div>
   <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_220px]">
    <label className="text-sm text-white/70">Kebutuhan produk<select aria-label="Kebutuhan produk" className={input} value={productId} disabled={busy} onChange={e=>setProductId(e.target.value)}><option value="">Pilih kebutuhan</option>{products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
    <label className="text-sm text-white/70">Jumlah pembanding<input aria-label="Jumlah pembanding" className={input} type="number" min={1} max={100000000} step={1} value={quantity} disabled={busy} onChange={e=>setQuantity(e.target.value)} /></label>

@@ -104,7 +104,8 @@ const METRIC_WORD: Record<string, string> = {
 };
 
 export function ProductCard({ p, index = 0 }: { p: ProductCardData; index?: number }) {
-  const visual = PLATFORM_VISUAL[p.platform] ?? { color: "#00E5FF", label: p.platform };
+  const config = PEDIA_PLATFORM_CONFIG.find((platform) => platform.id === p.platform);
+  const visual = PLATFORM_VISUAL[p.platform] ?? { color: config?.color ?? "#00E5FF", label: config?.label ?? p.platform };
   const metricWord = METRIC_WORD[p.metric] ?? p.metric;
   // 4 kartu pertama eager + fetchPriority high ala Market (LCP di atas lipatan).
   const eager = index < 4;

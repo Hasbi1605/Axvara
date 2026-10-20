@@ -9,6 +9,9 @@
 // forks = GitFork.
 import {
   Bookmark,
+  MessageCircle,
+  Hand,
+  Download,
   ChartNoAxesCombined,
   Eye,
   GitFork,
@@ -25,8 +28,10 @@ import {
 
 export function pediaMetricIcon(metric: string): LucideIcon {
   switch (metric) {
+    case "connections":
     case "followers":
       return UserPlus;
+    case "listeners":
     case "subscribers":
     case "members":
       return Users;
@@ -35,6 +40,7 @@ export function pediaMetricIcon(metric: string): LucideIcon {
       return Heart;
     case "saves":
       return Bookmark;
+    case "visits":
     case "views":
       return Eye;
     case "plays":
@@ -47,6 +53,12 @@ export function pediaMetricIcon(metric: string): LucideIcon {
       return Repeat2;
     case "quotes":
       return MessageSquareQuote;
+    case "comments":
+      return MessageCircle;
+    case "claps":
+      return Hand;
+    case "downloads":
+      return Download;
     case "forks":
       return GitFork;
     default:

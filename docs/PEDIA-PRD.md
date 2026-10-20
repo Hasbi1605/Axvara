@@ -1,5 +1,10 @@
 # PEDIA-PRD.md — AXVARA PEDIA (Toko SMM Kurasi)
 
+## Pedia IndoSMM untuk penjualan baru — 20 Oktober 2026
+
+✅ Implementasi; publikasi melalui CI. IndoSMM menjadi supplier tunggal untuk katalog/harga/quote/order baru dan kurasi admin. ProviderSMM dipertahankan untuk retry checkout tersimpan, dispatch/status/refill/recovery historis; quote lama tanpa order perlu memilih ulang sebelum debit/reservasi/invoice. Migrasi 0073 menonaktifkan penjualan ProviderSMM, menambah 53 kebutuhan/61 mapping IndoSMM (termasuk tujuh pengganti) dan 18 platform; owner drafts serta snapshot order lama dipertahankan. Produk premium supplier Canva/Gemini/CapCut dikecualikan. API/description review belum membuktikan kualitas; tanpa order berbayar. Spesifikasi terkini: [IndoSMM 20 Oktober](pedia/indosmm-only-2026-10-20.md).
+
+
 ## Pembaruan 19 Oktober 2026
 
 ✅ Implementasi; publikasi melalui CI. Jumlah diletakkan sebelum perbandingan/pilihan layanan; harga pembanding wajib jumlah sama. Ikon kebutuhan semantik, filter mudah dijangkau, rincian pembeda sebelum pilihan, link/syarat berdekatan dan kontak tahap kedua. Tab Kurasi admin membuat shortlist lintas supplier serta draf copy nonaktif/refill0 untuk ditinjau owner. Tambahan 17 kebutuhan/23 mapping membawa kapasitas menjadi 55/154; aktivasi hanya dengan mirror dan batas/refill API layak. Tetap ProviderSMM/IndoSMM, tanpa migrasi Sekalipay. Target Shorts/artis/playlist Spotify didukung client/server. [Spec 19 Oktober](pedia/catalog-ux-2026-10-19.md) menggantikan konfigurator 16 Oktober; [uji hasil](pedia/quality-sampling-2026-10-19.md) belum dijalankan dan tidak diwakili oleh lulusnya test UI.

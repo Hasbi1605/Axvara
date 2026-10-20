@@ -7,6 +7,7 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { callPediaProxy, isPediaProvider, PEDIA_PROVIDERS } from "@/lib/pedia/proxy";
+import { PEDIA_SALE_PROVIDER } from "@/lib/pedia/sales-policy";
 import { applyPediaDiff } from "@/lib/pedia/sync";
 import { CURATION_PLATFORM_TERMS, CURATION_METRIC_TERMS, shortlistPediaServices, type CurationProduct, type CurationService } from "@/lib/pedia/curation-shortlist";
 
@@ -37,9 +38,9 @@ export async function GET(request: NextRequest) {
       const platformWhere = platforms.map(() => "(LOWER(s.name) LIKE ? OR LOWER(s.category) LIKE ?)").join(" OR ");
       const metricWhere = metrics.map(() => "LOWER(s.name) LIKE ?").join(" OR ");
       const rows = await db.queryAll(`SELECT s.*,(SELECT GROUP_CONCAT(p.slug, ', ') FROM pedia_tiers t JOIN pedia_products p ON p.id=t.product_id WHERE t.supplier=s.supplier AND t.supplier_service_id=s.service_id) AS used_in
-        FROM pedia_supplier_services s WHERE s.present=1 AND s.type='Default' AND s.rate_idr_per_1k>0 AND s.min_qty>0 AND s.max_qty>=s.min_qty
+        FROM pedia_supplier_services s WHERE s.supplier=? AND s.present=1 AND s.type='Default' AND s.rate_idr_per_1k>0 AND s.min_qty>0 AND s.max_qty>=s.min_qty
         AND s.min_qty<=? AND s.max_qty>=? AND (${platformWhere}) AND (${metricWhere})
-        ORDER BY s.rate_idr_per_1k,s.supplier,s.service_id LIMIT 201`,quantity,quantity,...platforms.flatMap(v=>['%'+v+'%','%'+v+'%']),...metrics.map(v=>'%'+v+'%')) as unknown as CurationService[];
+        ORDER BY s.rate_idr_per_1k,s.supplier,s.service_id LIMIT 201`,PEDIA_SALE_PROVIDER,quantity,quantity,...platforms.flatMap(v=>['%'+v+'%','%'+v+'%']),...metrics.map(v=>'%'+v+'%')) as unknown as CurationService[];
       return NextResponse.json({ ok:true, product, quantity, rows:shortlistPediaServices(rows.slice(0,200),product,quantity), considered:Math.min(rows.length,200), limited:rows.length>200 });
     } catch { return NextResponse.json({ error:"load_failed" }, { status:500 }); }
   }

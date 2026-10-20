@@ -9,6 +9,7 @@ import { detectPediaLink, pediaTargetMatches } from "@/lib/pedia/link";
 import { computePediaPrice } from "@/lib/pedia/pricing";
 import { createPediaQuoteToken } from "@/lib/pedia/quote";
 import { isPediaProvider } from "@/lib/pedia/proxy";
+import { isPediaSaleProvider, PEDIA_SALE_PROVIDER } from "@/lib/pedia/sales-policy";
 import { capturePediaServiceCopy } from "@/lib/pedia/service-copy";
 import { pediaBounds } from "@/lib/pedia/bounds";
 
@@ -53,6 +54,10 @@ export async function POST(req: NextRequest) {
   ).catch(() => null);
   if (!tier) return NextResponse.json({ error: "Tingkat kualitas tidak tersedia." }, { status: 404 });
   if (!isPediaProvider(tier.supplier)) return NextResponse.json({ error: "Layanan sedang tidak tersedia." }, { status: 409 });
+  // INDO-POLICY-20: quotes are issued for the sale supplier only. Tier rows
+  // still read both providers from DB (historical recovery), but a new quote
+  // from the retired provider must requote on IndoSMM instead.
+  if (!isPediaSaleProvider(tier.supplier)) return NextResponse.json({ error: "provider_retired", message: `Layanan ${String(tier.supplier)} sudah tidak dijual. Pilih layanan ${PEDIA_SALE_PROVIDER} yang tersedia.` }, { status: 409 });
   const live = await db.queryFirst(
     `SELECT * FROM pedia_supplier_services WHERE supplier=? AND service_id=? AND present=1 AND type='Default' AND rate_idr_per_1k>0`,
     tier.supplier, Number(tier.supplier_service_id),
@@ -65,7 +70,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "unrecognized_link", message: "Kami belum mengenali link ini. Pilih platformnya di bawah." }, { status: 422 });
   }
   const needKind = String(product.target_kind);
-  const kindOk = pediaTargetMatches(needKind, detected.targetKind);
+  const kindOk = pediaTargetMatches(needKind, detected.targetKind, { platform: String(product.platform), metric: String(product.metric) });
   if (detected.platform !== String(product.platform) || !kindOk) {
     return NextResponse.json({
       error: "target_mismatch",

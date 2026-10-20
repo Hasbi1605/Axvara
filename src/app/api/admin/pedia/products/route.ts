@@ -7,9 +7,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
 import { createDatabaseAccess } from "@/lib/db-access";
-import { computePediaPrice, PRICE_GROUP_DEFAULTS, type PriceGroup } from "@/lib/pedia/pricing";
+import { computePediaPrice } from "@/lib/pedia/pricing";
 import { PEDIA_SEED_PRODUCTS } from "@/lib/pedia/seed";
 import { isPediaProvider, PEDIA_PROVIDERS } from "@/lib/pedia/proxy";
+import { isPediaSaleProvider, PEDIA_SALE_PROVIDER, PEDIA_SALE_RETIRED, isPediaPremiumToolCandidate } from "@/lib/pedia/sales-policy";
 import { pediaBounds } from "@/lib/pedia/bounds";
 import { providerPricingGate } from "../_shared";
 import type { DatabaseAccess } from "@/lib/db-access";
@@ -63,7 +64,7 @@ const tierSchema = z.object({
   speed_note: z.string().max(120).optional(),
   is_recommended: z.coerce.number().int().min(0).max(1).optional(),
   sort_order: z.coerce.number().int().min(0).max(100000).optional(),
-  supplier: z.enum(PEDIA_PROVIDERS).default("providersmm"),
+  supplier: z.enum(PEDIA_PROVIDERS).default(PEDIA_SALE_PROVIDER),
   supplier_service_id: z.coerce.number().int().min(1),
   backup_service_id: z.coerce.number().int().min(1).optional().nullable(),
   price_group: z.enum(["G1", "G2", "G3"]),
@@ -106,6 +107,7 @@ async function validateMapping(db: DatabaseAccess, tier: Record<string, unknown>
   if (gate) return gate;
   for (const id of [tier.supplier_service_id, tier.backup_service_id].filter((id) => id != null)) {
     const service = await db.queryFirst(`SELECT * FROM pedia_supplier_services WHERE supplier=? AND service_id=?`, tier.supplier, id);
+    if (service && isPediaPremiumToolCandidate(service.name, service.category)) return "premium_tool_excluded";
     if (!service || Number(service.present) !== 1 || service.type !== "Default" || !Number.isFinite(Number(service.rate_idr_per_1k)) || Number(service.rate_idr_per_1k) <= 0) return "service_unavailable";
   }
   return null;
@@ -141,7 +143,7 @@ export async function POST(request: NextRequest) {
   if (body.action === "seed") {
     try {
     let products = 0;
-    let tiers = 0;
+    const tiers = 0;
     for (const [index, p] of PEDIA_SEED_PRODUCTS.entries()) {
       const r = await db.execRun(
         `INSERT OR IGNORE INTO pedia_products
@@ -152,23 +154,9 @@ export async function POST(request: NextRequest) {
         JSON.stringify(p.checklist), JSON.stringify(p.packages), p.step, index,
       );
       if (Number(r?.changes || 0) > 0) products++;
-      const row = await db.queryFirst(`SELECT id FROM pedia_products WHERE slug=?`, p.slug);
-      const pid = Number(row?.id);
-      if (!pid) continue;
-      for (const t of p.tiers) {
-        const def = PRICE_GROUP_DEFAULTS[t.group as PriceGroup];
-        const tr = await db.execRun(
-          `INSERT OR IGNORE INTO pedia_tiers
-             (product_id, tier, label_note, supplier, supplier_service_id,
-              price_group, markup_pct, min_profit_rp, refill_days,
-              eta_start, eta_finish, package_prices_json, is_active)
-           VALUES (?, ?, ?, 'providersmm', ?, ?, ?, ?, ?, ?, ?, '{}', 0)`,
-          pid, t.tier, t.labelNote ?? "", t.serviceId, t.group,
-          def.markup_pct, def.min_profit_rp, t.refillDays,
-          t.etaStart ?? "", t.etaFinish ?? "",
-        );
-        if (Number(tr?.changes || 0) > 0) tiers++;
-      }
+      // Historical seed service IDs belong to ProviderSMM. Keep product
+      // skeletons only; IndoSMM drafts require a deliberately selected mapping.
+
     }
     return NextResponse.json({ ok: true, seeded_products: products, seeded_tiers: tiers });
     } catch { return NextResponse.json({ error: "save_failed" }, { status: 500 }); }
@@ -180,6 +168,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "invalid_tier" }, { status: 400 });
     }
     const t = parsed.data;
+    if (!isPediaSaleProvider(t.supplier)) return NextResponse.json(PEDIA_SALE_RETIRED, { status: 409 });
     try {
     if (!await db.queryFirst(`SELECT id FROM pedia_products WHERE id=?`, t.product_id)) return NextResponse.json({ error: "not_found" }, { status: 404 });
     const mappingError = await validateMapping(db, t);
@@ -246,12 +235,18 @@ export async function PUT(request: NextRequest) {
     if (isTier) {
       if ((values.supplier !== undefined) !== (values.supplier_service_id !== undefined)) return NextResponse.json({ error: "supplier_service_pair_required" }, { status: 400 });
       const merged = { ...current, ...values };
+      const mappingChanged = (values.supplier !== undefined && values.supplier !== current.supplier) ||
+        (values.supplier_service_id !== undefined && Number(values.supplier_service_id) !== Number(current.supplier_service_id)) ||
+        (values.backup_service_id != null && Number(values.backup_service_id) !== Number(current.backup_service_id));
+      if (!isPediaSaleProvider(merged.supplier) && (mappingChanged || values.is_active === 1)) return NextResponse.json(PEDIA_SALE_RETIRED, { status: 409 });
       if (values.supplier !== undefined && values.supplier !== current.supplier && values.backup_service_id === undefined) values.backup_service_id = null;
-      if (values.supplier !== undefined || values.backup_service_id !== undefined) {
+      if (isPediaSaleProvider(merged.supplier) && (values.supplier !== undefined || values.backup_service_id !== undefined)) {
         const mappingError = await validateMapping(db, { ...merged, ...values });
         if (mappingError) return NextResponse.json({ error: mappingError }, { status: 400 });
       }
       else if (values.is_active === 1 && isPediaProvider(current.supplier)) {
+        const service = await db.queryFirst(`SELECT name,category FROM pedia_supplier_services WHERE supplier=? AND service_id=?`,current.supplier,current.supplier_service_id);
+        if (service && isPediaPremiumToolCandidate(service.name,service.category)) return NextResponse.json({error:"premium_tool_excluded"},{status:400});
         const gate = await providerPricingGate(current.supplier);
         if (gate) return NextResponse.json({ error: gate }, { status: 400 });
       }

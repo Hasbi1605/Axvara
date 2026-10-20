@@ -77,8 +77,8 @@ describe("provider boundary and normalized diff", () => {
     // dengan rate/batas berbeda, penghapusan satu tidak menyentuh yang lain.
     const { GET } = await import("@/app/api/pedia/catalog/route");
     const catalog = await (await GET()).json();
-    expect(catalog.products[0].tiers.map((t: { min_qty: number }) => t.min_qty)).toEqual([100, 250]);
-    expect(catalog.products[0].tiers[1].prices).toEqual({ "250": 2300 });
+    expect(catalog.products[0].tiers.map((t: { min_qty: number }) => t.min_qty)).toEqual([250]);
+    expect(catalog.products[0].tiers[0].prices).toEqual({ "250": 2300 });
     expect(JSON.stringify(catalog)).not.toMatch(/supplier|providersmm|indosmm|rate|Private/);
     await applyPediaDiff(db, "indosmm", [], [87], "IDR");
     const rows = await db.queryAll(`SELECT supplier,present FROM pedia_supplier_services ORDER BY supplier`);
@@ -296,9 +296,9 @@ describe("durable provider-specific dispatch", () => {
     expect(caller).not.toHaveBeenCalled();
     expect((await db.queryFirst(`SELECT status FROM pedia_order_items`))?.status).toBe("needs_check");
   });
-  it("refill follows the old order provider and stored eligibility, not its remapped tier", async () => {
+  it.each(["providersmm", "indosmm"] as const)("refill follows the old %s order provider and stored eligibility, not its remapped tier", async (provider) => {
     const { db } = await seed();
-    await paid(db, "indosmm", "completed");
+    await paid(db, provider, "completed");
     await db.execRun(`UPDATE pedia_order_items SET snapshot_json='{"refill_days":30}'`);
     await db.execRun(`UPDATE pedia_tiers SET supplier='providersmm',supplier_service_id=999,refill_days=0 WHERE id=1`);
     vi.stubEnv("WARUNG_REBAHAN_PROXY_URL", "https://proxy.example");
@@ -308,7 +308,27 @@ describe("durable provider-specific dispatch", () => {
     const { POST } = await import("@/app/api/pedia/orders/[code]/refill/route");
     const res = await POST(request({ contact: "test@example.com" }), { params: Promise.resolve({ code: "AXP-P" }) });
     expect(res.status).toBe(200);
-    expect(fetch.mock.calls[0]?.[0]).toBe("https://proxy.example/indosmm/refill");
+    expect(fetch.mock.calls[0]?.[0]).toBe(`https://proxy.example/${provider === "indosmm" ? "indosmm" : "psmm"}/refill`);
     expect((await db.queryFirst(`SELECT refill_supplier_id FROM pedia_order_items`))?.refill_supplier_id).toBe("42");
   });
+});
+
+describe("IndoSMM-only public sales with stale active legacy tiers",()=>{
+ it("omits legacy comparison prices and refuses forced legacy quotes",async()=>{
+  await seed();const {NextRequest}=await import('next/server');const {GET:prices}=await import('@/app/api/pedia/prices/route');
+  const response=await prices(new NextRequest('http://x/api/pedia/prices?product_slug=ig&quantity=250'));
+  expect(response.status).toBe(200);expect((await response.json()).prices).toEqual([{tier_id:2,total:2300}]);
+  const {POST:quote}=await import('@/app/api/pedia/quote/route');const r=await quote(request({product_id:1,tier_id:1,quantity:250,target:'https://instagram.com/buyer'}));
+  expect(r.status).toBe(409);expect(await r.json()).toMatchObject({error:'provider_retired'});
+ });
+ it("hides a legacy-only product before its database tier is retired",async()=>{
+  const {db}=await seed();await db.execRun("UPDATE pedia_tiers SET is_active=0 WHERE supplier='indosmm'");
+  const {GET}=await import('@/app/api/pedia/catalog/route');expect((await (await GET()).json()).products).toEqual([]);
+ });
+});
+it("rejects a video target for a feed-only Facebook share quote",async()=>{
+ const {db}=await seed();await db.execRun("UPDATE pedia_products SET platform='facebook',metric='shares',target_kind='post' WHERE id=1");
+ const {POST}=await import('@/app/api/pedia/quote/route');
+ expect((await POST(request({product_id:1,tier_id:2,quantity:250,target:'https://facebook.com/reel/123456'}))).status).toBe(422);
+ expect((await POST(request({product_id:1,tier_id:2,quantity:250,target:'https://facebook.com/page/posts/123456/'}))).status).toBe(200);
 });
