@@ -1,5 +1,12 @@
 # ARCHITECTURE.md — AXVARA
 
+## Redesain alur pembelian Pedia — 20 Oktober 2026
+
+✅ Implementasi; publikasi melalui CI. Keputusan owner: **beranda tetap seperti sebelumnya, tanpa jalan pintas**. Sesudah klik layanan/platform, konfigurator mengikuti referensi “Redesign SMM Panel Purchase Flow”: **Layanan → Target → Kontak → Bayar**. Kebutuhan pertama langsung terbuka (deep link mengikuti slug); jumlah/layanan tetap dipilih eksplisit. Tab kebutuhan berikon, perbandingan layanan tetap terbuka, validasi per tahap, ringkasan desktop340px, CTA di dasar panel desktop/fixed mobile dengan safe-area. Link dan checklist produk berada di tahap Target; WA/email, kredit dan consent di tahap Kontak. Kembali mempertahankan isian produk yang sama, tanpa melewati tahap mendatang; setelah POST ambigu semua navigasi langkah terkunci. Preview admin embedded tetap tanpa request harga/order atau kontak.
+
+Halaman pesanan memakai timeline vertikal + progres server dan panel QRIS di kanan desktop/atas mobile (container1000px, rail380px, QR240px), countdown deadline, Simpan QRIS/Cek pembayaran, serta Pesan lagi pada status terminal. Partial/kredit/refill/needs_check dan snapshot lama tetap dilayani. QR/nominal/status berasal dari server, tanpa simulasi atau reset expiry. Kontrak API, quote/consent/retry, supplier IndoSMM untuk order baru, env/cron/ledger tidak berubah. Spesifikasi [redesain pembelian](pedia/purchase-flow-redesign-2026-10-20.md) menggantikan bagian UI checkout/status versi15–19 Oktober di bawah; desain beranda existing dipertahankan.
+
+
 ## Pedia IndoSMM untuk penjualan baru — 20 Oktober 2026
 
 ✅ Implementasi; publikasi melalui CI. IndoSMM menjadi supplier tunggal untuk katalog/harga/quote/order baru dan kurasi admin. ProviderSMM dipertahankan untuk retry checkout tersimpan, dispatch/status/refill/recovery historis; quote lama tanpa order perlu memilih ulang sebelum debit/reservasi/invoice. Migrasi 0073 menonaktifkan penjualan ProviderSMM, menambah 53 kebutuhan/61 mapping IndoSMM (termasuk tujuh pengganti) dan 18 platform; owner drafts serta snapshot order lama dipertahankan. Produk premium supplier Canva/Gemini/CapCut dikecualikan. API/description review belum membuktikan kualitas; tanpa order berbayar. Spesifikasi terkini: [IndoSMM 20 Oktober](pedia/indosmm-only-2026-10-20.md).
@@ -142,10 +149,10 @@ axvara/
 │   │   └── r2/[...key]/route.ts # R2 publik catch-all
 │   ├── pedia/                   # Axvara Pedia pedia.axvara.tech (2026-10-08, PEDIA-PRD; spesifikasi: docs/PEDIA-PRD.md, docs/PEDIA-DESIGN.md)
 │   │   ├── layout.tsx           # .pedia-root + Spotlight bersama + PediaNavbar + PediaBottomNav + Footer bersama; bukan Navbar/keranjang Market; <main> polos 1:1 Market (2026-10-12, tanpa max-width/padding — tiap halaman mengatur container sendiri: katalog 1280px, lacak 720px)
-│   │   ├── page.tsx + home-client.tsx  # Working-tree lokal 2026-10-12, belum deployed: featured/fallback, semua/cari/platform, Typewriter + CTA Lihat Layanan/Hubungi Admin + trust strip + promo Market (kartu Cari lewat link dihapus dari beranda), + FAQ, tanpa ticker
-│   │   ├── p/[platform]/        # Layanan per platform (8): filter jenis + grid ProductCard
-│   │   ├── o/[slug]/            # Deep link konfigurator bersama platform; layanan/qty null, dua tahap, quote+consent, retry token sama
-│   │   ├── pesanan/[code]/      # Status: QRIS lunas / ring+timeline/refill/kartu kredit/needs_check + auto-refresh
+│   │   ├── page.tsx + home-client.tsx  # Beranda existing tetap: hero/Typewriter/orbit/tali + promo Market/Telegram + katalog platform; tanpa jalan pintas redesain
+│   │   ├── p/[platform]/        # Header platform + OrderClient bersama; tab kebutuhan langsung dalam tahap Layanan
+│   │   ├── o/[slug]/            # Deep link konfigurator bersama platform; layanan/qty null, Layanan → Target → Kontak → Bayar, quote+consent/retry sama
+│   │   ├── pesanan/[code]/      # Status: panel QRIS/countdown + timeline vertikal/progres server/refill/kredit/needs_check; auto-refresh existing
 │   │   ├── lacak/               # Form glass kode AXP + kontak (lookupPediaOrder) → status; axp-track-recent (5), axp-orders (20) terlipat, FAQ
 │   │   └── bantuan/ + ketentuan/ + layanan/  # Bantuan (3 grup), S&K 7 poin, semua layanan
 │   ├── llms.txt/route.ts        # GEO: profil toko + produk yang bisa dibeli (markdown, cache 10 mnt)

@@ -24,6 +24,7 @@ beforeEach(() => {
   fetchMock = vi.fn(async () => reply({ quote_token: "signed-token", total: 7300, payable: 7300 }));
   vi.stubGlobal("fetch", fetchMock);
   localStorage.clear();
+  vi.spyOn(window, "scrollTo").mockImplementation(() => {});
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 function mount(enabled = true, target = "https://instagram.com/customer") {
@@ -33,10 +34,14 @@ function select() {
   fireEvent.click(screen.getByRole("radio", { name: /Followers Indonesia Stabil/i }));
   fireEvent.change(screen.getByLabelText("Jumlah yang dipesan"), { target: { value: "250" } });
 }
-function next() { fireEvent.click(screen.getAllByRole("button", { name: "Lanjut isi kontak" })[0]); }
+function toTarget() { fireEvent.click(screen.getAllByRole("button", { name: "Lanjut: isi target" })[0]); }
+function next() {
+  if (screen.queryAllByRole("button", { name: "Lanjut: isi target" }).length) toTarget();
+  if (screen.queryAllByRole("button", { name: "Lanjut: kontak" }).length) fireEvent.click(screen.getAllByRole("button", { name: "Lanjut: kontak" })[0]);
+}
 function back() { fireEvent.click(screen.getByRole("button", { name: "Ubah pesanan" })); }
 function complete() {
-  select();
+  select(); toTarget();
   fireEvent.click(screen.getByRole("checkbox", { name: /Akun publik/ }));
   next();
   if (!screen.queryByLabelText("Nomor WhatsApp")) return;
@@ -44,7 +49,7 @@ function complete() {
   fireEvent.change(screen.getByLabelText("Email"), { target: { value: "buyer@example.com" } });
   fireEvent.click(screen.getByRole("checkbox", { name: /Saya setuju/ }));
 }
-function proceed() { fireEvent.click(screen.getAllByRole("button", { name: /^(Lanjut ke pembayaran|Lanjut isi kontak)$/ })[0]); }
+function proceed() { fireEvent.click(screen.getAllByRole("button", { name: /^(Lanjut ke pembayaran|Coba lanjutkan pembayaran|Lanjut: isi target|Lanjut: kontak)$/ })[0]); }
 function consent() { fireEvent.click(screen.getAllByRole("button", { name: "Setujui & lanjut ke pembayaran" })[0]); }
 async function getQuote() {
   proceed();
@@ -55,7 +60,7 @@ describe("Pedia order UX", () => {
   it("renders saved product copy as escaped text with preserved lines, including SSR", () => {
     const description = 'Followers untuk profil Instagram publik.\nRefill sesuai paket.\n<script>alert("test")</script>';
     const described = { ...product, description_md: description };
-    const { container } = render(<OrderClient product={described} initialTarget="https://instagram.com/customer" ordersEnabled={false} />);
+    const { container } = render(<OrderClient product={described} initialTarget="https://instagram.com/customer" ordersEnabled />);
     // 2026-10-12 (owner): tagline tidak dirender di detail — judul langsung
     // ke deskripsi kurasi admin.
     expect(screen.queryByText(product.tagline!)).toBeNull();
@@ -67,18 +72,19 @@ describe("Pedia order UX", () => {
     expect(html).not.toContain(product.tagline);
     expect(html).toContain('&lt;script&gt;alert(&quot;test&quot;)&lt;/script&gt;');
     expect(html).not.toContain("<script>");
+    select(); toTarget();
     expect(document.getElementById("pedia-target-help")?.textContent).toBe("Gunakan format link seperti contoh pada kolom. Masukkan link profil Instagram. Pastikan akun tidak privat.");
     expect(screen.getByText("Format link sesuai. Akun atau konten belum diverifikasi.")).toBeTruthy();
   });
 
   it("omits empty product copy and supports older fixtures without a description", () => {
     const { container } = render(<OrderClient product={{ ...product, tagline: "  ", description_md: "\n  " }} initialTarget="" ordersEnabled={false} />);
-    expect(container.querySelector("h1")?.nextElementSibling?.tagName).toBe("DIV");
+    expect(container.querySelector("h1")?.nextElementSibling?.tagName).toBe("OL");
     expect(document.body.textContent).not.toContain("Pilih paket dan jumlah, masukkan link tujuan");
   });
   it("starts without selected tier, quantity or total, with honest per-1k benchmarks", () => {
     mount();
-    expect(screen.getAllByRole("region").map((r) => r.getAttribute("aria-labelledby"))).toEqual(["pedia-package-heading", "pedia-target-heading"]);
+    expect(screen.getAllByRole("region").map((r) => r.getAttribute("aria-labelledby"))).toEqual(["pedia-stage-heading"]);
     expect(screen.getAllByRole("radio").every((r) => r.tagName === "INPUT" && !(r as HTMLInputElement).checked)).toBe(true);
     // Acuan per 1.000 yang jujur (bukan total minimum yang disamarkan setara).
     expect(document.body.textContent).toContain("Rp28.000 /1.000");
@@ -131,7 +137,7 @@ describe("Pedia order UX", () => {
     expect(screen.queryByLabelText("Kode kredit")).toBeNull();
     select();
     expect((screen.getByLabelText("Jumlah yang dipesan") as HTMLInputElement).value).toBe("250");
-    const buttons = screen.getAllByRole("button", { name: "Lanjut isi kontak" });
+    const buttons = screen.getAllByRole("button", { name: "Lanjut: isi target" });
     expect(buttons.every((b) => (b as HTMLButtonElement).disabled)).toBe(true);
     proceed();
     expect(fetchMock).not.toHaveBeenCalled();
@@ -139,7 +145,7 @@ describe("Pedia order UX", () => {
 
   it("jumlah bebas divalidasi terhadap min–max layanan terpilih tanpa menghapus jumlah (bukan paket mati)", () => {
     mount(); select();
-    fireEvent.click(screen.getByRole("button", { name: "Ganti layanan" }));
+
     const incompatible = screen.getByRole("radio", { name: /Followers Global Ekonomis/i }) as HTMLInputElement;
     expect(incompatible.disabled).toBe(true);
     fireEvent.click(incompatible);
@@ -147,7 +153,7 @@ describe("Pedia order UX", () => {
     expect((screen.getByRole("radio", { name: /Followers Indonesia Stabil/i }) as HTMLInputElement).checked).toBe(true);
     expect(fetchMock).not.toHaveBeenCalled();
     // A chosen service can become incompatible when the buyer edits quantity.
-    fireEvent.click(screen.getByRole("button", { name: "Kembali ke pilihan" }));
+
     fireEvent.change(screen.getByLabelText("Jumlah yang dipesan"), { target: { value: "1100" } });
     proceed();
     expect(screen.getAllByRole("alert").some((a) => a.textContent?.includes("Jumlah tetap 1.100"))).toBe(true);
@@ -186,7 +192,7 @@ describe("Pedia order UX", () => {
   });
 
   it("requires valid contact and all requirements before quote", () => {
-    mount(); select();
+    mount(); select(); toTarget();
     fireEvent.click(screen.getByRole("checkbox", { name: /Akun publik/ })); next();
     fireEvent.change(screen.getByLabelText("Nomor WhatsApp"), { target: { value: "invalid" } });
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "bad-email" } });
@@ -245,7 +251,7 @@ describe("Pedia order UX", () => {
 
   it.each(["Link profil Instagram", "Email", "Nomor WhatsApp", "Kode kredit"])("invalidates consent when %s changes", async (label) => {
     mount(); complete(); await getQuote();
-    if (label === "Link profil Instagram") back();
+    if (label === "Link profil Instagram") fireEvent.click(screen.getByRole("button", { name: "Langkah 2: Target" }));
     fireEvent.change(screen.getByLabelText(label), { target: { value: label === "Email" ? "other@example.com" : "changed" } });
     expect(screen.queryByText(/Total pembayaran/)).toBeNull();
     expect(screen.queryByRole("button", { name: "Setujui & lanjut ke pembayaran" })).toBeNull();
@@ -263,11 +269,11 @@ describe("Pedia order UX", () => {
 
   it("invalidates consent on tier, requirements or agreement changes", async () => {
     mount(); complete(); await getQuote(); back();
-    fireEvent.click(screen.getByRole("button", { name: "Ganti layanan" }));
+
     fireEvent.change(screen.getByLabelText("Jumlah yang dipesan"), { target: { value: "100" } });
     fireEvent.click(screen.getByRole("radio", { name: /Followers Global Ekonomis/i }));
     expect(screen.queryByText(/Total pembayaran/)).toBeNull();
-    next(); await getQuote(); back();
+    next(); await getQuote(); back(); toTarget();
     fireEvent.click(screen.getByRole("checkbox", { name: /Akun publik/ }));
     expect(screen.queryByText(/Total pembayaran/)).toBeNull();
     proceed();
@@ -303,6 +309,7 @@ describe("Pedia order UX", () => {
     fireEvent.click(buttons[0]); fireEvent.click(buttons[1]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect((screen.getByLabelText("Email").closest("fieldset") as HTMLFieldSetElement).disabled).toBe(true);
+    expect(screen.getAllByRole("button", { name: /^Langkah/ }).every((b) => (b as HTMLButtonElement).disabled)).toBe(true);
     await act(async () => { reject(new Error("network lost")); });
     expect((await screen.findByRole("alert")).textContent).toContain("data yang sama");
     vi.spyOn(Date, "now").mockReturnValue(Date.now() + 30 * 60_000);
@@ -336,29 +343,28 @@ describe("Pedia order UX", () => {
 });
 
 describe("Pedia configurator", () => {
-  it("collapses the selection on desktop and mobile, keeping quantity before services and target ahead of details", () => {
+  it("keeps service comparisons expanded and validates each step before proceeding", () => {
     mount(); select();
-    // Jumlah berada SEBELUM daftar layanan (qty-first), lalu target, lalu detail.
     const qty = document.getElementById("pedia-quantity")!;
     const tier = document.getElementById("pedia-tier")!;
-    const target = document.getElementById("pedia-target-heading")!;
-    const details = screen.getByText("Detail & ketentuan layanan").closest("details")!;
-    expect(details.open).toBe(false);
     expect(qty.compareDocumentPosition(tier) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(tier.compareDocumentPosition(target) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(target.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.getByText(/Drop dapat terjadi setelah pesanan selesai/).closest("details")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Ganti layanan" }));
     expect(screen.getAllByRole("radio")).toHaveLength(2);
-    fireEvent.click(screen.getByRole("button", { name: "Kembali ke pilihan" }));
-    expect(screen.getAllByRole("radio")).toHaveLength(1);
-    expect((screen.getByLabelText("Jumlah yang dipesan") as HTMLInputElement).value).toBe("250");
+    expect(screen.queryByLabelText("Link profil Instagram")).toBeNull();
+    expect((screen.getByRole("button", { name: "Langkah 3: Kontak" }) as HTMLButtonElement).disabled).toBe(true);
+    toTarget();
+    expect(screen.queryByLabelText("Jumlah yang dipesan")).toBeNull();
+    expect(screen.getByLabelText("Link profil Instagram")).toBeTruthy();
+    next();
+    expect(screen.queryByLabelText("Nomor WhatsApp")).toBeNull();
+    expect(screen.getByRole("alert").textContent).toContain("persyaratan");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("preserves the chosen service, destination, requirements and contact when reviewing the order", () => {
     mount(); complete(); back();
-    expect((screen.getByRole("radio") as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole("radio", { name: /Indonesia Stabil/ }) as HTMLInputElement).checked).toBe(true);
     expect((screen.getByLabelText("Jumlah yang dipesan") as HTMLInputElement).value).toBe("250");
+    toTarget();
     expect((screen.getByLabelText("Link profil Instagram") as HTMLInputElement).value).toBe("https://instagram.com/customer");
     expect((screen.getByRole("checkbox", { name: /Akun publik/ }) as HTMLInputElement).checked).toBe(true);
     next();

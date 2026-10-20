@@ -227,7 +227,7 @@ it("previews saved drafts with actual storefront components without navigation o
   fireEvent.click(within(preview).getByText("Pratinjau detail & pesanan tersimpan"));
   expect(within(preview).getByRole("heading", { name: product.name })).toBeTruthy();
   expect(within(preview).getByText("Deskripsi")).toBeTruthy();
-  expect(within(preview).getByLabelText("PublikBantuan")).toBeTruthy();
+  expect(within(preview).queryByLabelText("PublikBantuan")).toBeNull();
   fireEvent.change(screen.getByLabelText("Nama produk"), { target: { value: "Unsaved name" } });
   fireEvent.change(screen.getByLabelText("Tagline produk publik"), { target: { value: "Unsaved tagline" } });
   fireEvent.change(screen.getByLabelText("Deskripsi produk publik"), { target: { value: "Unsaved description" } });
@@ -241,8 +241,8 @@ it("previews saved drafts with actual storefront components without navigation o
   expect(window.location.pathname).toBe("/admin");
   fireEvent.click(within(preview).getByRole("radio", { name: /Indonesia/ }));
   fireEvent.change(within(preview).getByLabelText("Jumlah yang dipesan"), { target: { value: "100" } });
-  fireEvent.change(within(preview).getByLabelText("Link profil Instagram"), { target: { value: "https://instagram.com/test" } });
-  for (const button of within(preview).getAllByRole("button", { name: "Lanjut isi kontak" })) {
+  expect(within(preview).queryByLabelText("Link profil Instagram")).toBeNull();
+  for (const button of within(preview).getAllByRole("button", { name: "Lanjut: isi target" })) {
     expect((button as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(button);
   }

@@ -113,7 +113,7 @@ describe("payment maintenance before financial side effects", () => {
     };
     const html = renderToStaticMarkup(<PlatformPageClient platform="youtube" name="YouTube" products={[product]} initialSlug={product.slug} ordersEnabled />);
     expect(html).toContain("Pembayaran sedang maintenance");
-    expect(html).toContain("Jenis layanan YouTube");
+    expect(html).toContain("YouTube");
     expect(html).not.toContain("<input");
     expect(html).not.toContain("<form");
   });

@@ -217,8 +217,8 @@ body {
   position: relative;
   border: 1.5px solid transparent;
   background:
-    linear-gradient(rgba(139,92,246,0.16), rgba(139,92,246,0.16)) padding-box,
-    var(--px-gradient) border-box;
+    linear-gradient(#211c3f, #211c3f) padding-box,
+    var(--px-gradient, linear-gradient(135deg, #00E5FF, #8B5CF6)) border-box;
 }
 @media (prefers-reduced-motion: reduce) {
   .pedia-root * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }

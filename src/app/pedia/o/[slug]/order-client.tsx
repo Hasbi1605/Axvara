@@ -6,15 +6,16 @@ import { detectPediaLink, PEDIA_PLATFORM_LABEL, PEDIA_TARGET_KIND_LABEL, pediaTa
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
 import { ServicePicker } from "@/components/pedia/ServicePicker";
 import { usePediaPrices } from "@/components/pedia/usePediaPrices";
+import { ArrowLeft, ArrowRight, Check, ShieldCheck } from "lucide-react";
+import { MetricIcon } from "@/components/pedia/MetricIcon";
 import { PlatformIcon } from "@/components/pedia/PlatformGrid";
-import { IosIcon } from "@/components/ui/IosIcon";
 import { pediaPlatform, pediaTargetExample } from "@/lib/pedia/platforms";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
 
 const rupiah = (value: number) => `Rp${value.toLocaleString("id-ID")}`;
-const fieldClass = "mt-2 min-h-[48px] w-full rounded-xl border border-white/20 bg-white/5 px-3 text-base text-white placeholder:text-white/40 focus:border-[#00E5FF] focus:outline-none";
+const fieldClass = "mt-2 min-h-[48px] w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 text-base text-white placeholder:text-white/40 focus:border-[#00E5FF] focus:outline-none";
 
-export function OrderClient({ product, initialTarget, ordersEnabled, embedded = false, withinPlatform = false, onLockedChange }: { product: PediaCatalogProduct; initialTarget: string; ordersEnabled: boolean; embedded?: boolean; withinPlatform?: boolean; onLockedChange?: (locked: boolean) => void }) {
+export function OrderClient({ product, initialTarget, ordersEnabled, embedded = false, withinPlatform = false, onLockedChange, products = [], onProductChange }: { product: PediaCatalogProduct; initialTarget: string; ordersEnabled: boolean; embedded?: boolean; withinPlatform?: boolean; onLockedChange?: (locked: boolean) => void; products?: PediaCatalogProduct[]; onProductChange?: (slug: string) => void }) {
   const [stage, setStage] = useState(1);
   const [quantityNotice, setQuantityNotice] = useState("");
   const [tierId, setTierId] = useState<number | null>(null);
@@ -64,7 +65,7 @@ export function OrderClient({ product, initialTarget, ordersEnabled, embedded = 
     return () => { quoteController.current?.abort(); };
   }, [key]);
 
-  const validate = (firstStageOnly = false) => {
+  const validate = (throughStage = 3) => {
     const next: Record<string, string> = {};
     if (!tier) next.tier = "Pilih layanan terlebih dahulu.";
     if (qty == null || !Number.isSafeInteger(qty)) {
@@ -72,14 +73,14 @@ export function OrderClient({ product, initialTarget, ordersEnabled, embedded = 
     } else if (!tier) {
       next.quantity = "Isi jumlah, lalu pilih layanan yang cocok untuk jumlah itu.";
     } else if (qty < (tier.min_qty ?? 1) || qty > (tier.max_qty ?? Infinity) || qty % (tier.quantity_step ?? product.step) !== 0) {
-      next.quantity = `Jumlah ${qty.toLocaleString("id-ID")} tidak tersedia untuk layanan ini: minimal ${(tier.min_qty ?? 1).toLocaleString("id-ID")}, maksimal ${(tier.max_qty ?? 0).toLocaleString("id-ID")}${(tier.quantity_step ?? product.step) > 1 ? `, kelipatan ${tier.quantity_step ?? product.step}` : ""}. Jumlah tetap ${qty.toLocaleString("id-ID")} — ubah jumlah atau pilih Ganti layanan.`;
+      next.quantity = `Jumlah ${qty.toLocaleString("id-ID")} tidak tersedia untuk layanan ini: minimal ${(tier.min_qty ?? 1).toLocaleString("id-ID")}, maksimal ${(tier.max_qty ?? 0).toLocaleString("id-ID")}${(tier.quantity_step ?? product.step) > 1 ? `, kelipatan ${tier.quantity_step ?? product.step}` : ""}. Jumlah tetap ${qty.toLocaleString("id-ID")} — ubah jumlah atau pilih layanan lain.`;
     }
-    if (!targetOk) next.target = `Masukkan link ${kind.toLowerCase()} ${platform} yang sesuai layanan ini.`;
-    if (!checklist.every((c) => checks[c.id])) next.requirements = "Konfirmasi semua persyaratan tujuan sebelum melanjutkan.";
-    if (!firstStageOnly && !waOk) next.wa = "Masukkan nomor WhatsApp 08... atau +62... yang benar.";
-    if (!firstStageOnly && !emailOk) next.email = "Masukkan alamat email yang benar (maksimal 160 karakter).";
-    if (!firstStageOnly && credit.trim().length > 20) next.credit = "Kode kredit maksimal 20 karakter.";
-    if (!firstStageOnly && !agree) next.agree = "Setujui Ketentuan Pedia sebelum melanjutkan.";
+    if (throughStage >= 2 && !targetOk) next.target = `Masukkan link ${kind.toLowerCase()} ${platform} yang sesuai layanan ini.`;
+    if (throughStage >= 2 && !checklist.every((c) => checks[c.id])) next.requirements = "Konfirmasi semua persyaratan tujuan sebelum melanjutkan.";
+    if (throughStage >= 3 && !waOk) next.wa = "Masukkan nomor WhatsApp 08... atau +62... yang benar.";
+    if (throughStage >= 3 && !emailOk) next.email = "Masukkan alamat email yang benar (maksimal 160 karakter).";
+    if (throughStage >= 3 && credit.trim().length > 20) next.credit = "Kode kredit maksimal 20 karakter.";
+    if (throughStage >= 3 && !agree) next.agree = "Setujui Ketentuan Pedia sebelum melanjutkan.";
     setErrors(next);
     const first = Object.keys(next)[0];
     if (first) {
@@ -178,10 +179,20 @@ export function OrderClient({ product, initialTarget, ordersEnabled, embedded = 
       <p className="mt-5 border-t border-white/10 pt-4 text-[11px] leading-5 text-white/40">Pembayaran QRIS · Tanpa login<br />Refill mengikuti layanan yang dipilih.</p>
     </div>
   </>;
+  const goToStage = (next: number) => {
+    if (attempted) return;
+    quoteController.current?.abort();
+    setQuote(null);
+    setStage(next);
+    requestAnimationFrame(() => {
+      const heading = document.getElementById("pedia-stage-heading");
+      heading?.focus({ preventScroll: true });
+      if (heading) window.scrollTo?.({ top: Math.max(0, window.scrollY + heading.getBoundingClientRect().top - 96), behavior: "instant" });
+    });
+  };
   const advance = () => {
-    if (!validate(true)) return;
-    setStage(2);
-    requestAnimationFrame(() => { const h = document.getElementById("pedia-contact-heading"); if (h) window.scrollTo?.({ top: Math.max(0, window.scrollY + h.getBoundingClientRect().top - 88), behavior: "instant" }); document.getElementById("pedia-wa")?.focus({ preventScroll: true }); });
+    if (!validate(stage)) return;
+    goToStage(stage + 1);
   };
   const pickTier = (id: number) => {
     setTierId(id);
@@ -195,38 +206,51 @@ export function OrderClient({ product, initialTarget, ordersEnabled, embedded = 
   const productMin = useMemo(() => product.tiers.length ? Math.min(...product.tiers.map((t) => t.min_qty ?? 1)) : 1, [product]);
   const cta = <>
     {!ordersEnabled && <p className="mb-2 text-xs text-white/60">Pemesanan belum tersedia. Kamu tetap bisa membandingkan layanan.</p>}
-    {stage === 2 && currentQuote && !attempted && <p role="status" className="mb-3 text-sm leading-5 text-white/80">{currentQuote.total !== packageTotal ? `Harga berubah dari ${rupiah(packageTotal)} menjadi ${rupiah(currentQuote.total)}. ` : ""}Total pembayaran {rupiah(currentQuote.payable)}. Tekan Setujui untuk menyetujui nominal ini.</p>}
-    <div className="flex items-center gap-3"><div className="min-w-0 shrink-0 lg:hidden"><p className="text-[10px] text-white/50">Total pesanan</p><p className="mt-1 text-xs font-semibold tabular-nums text-white sm:text-sm">{priceText}</p></div><button type="button" onClick={stage === 1 ? advance : pay} disabled={!ordersEnabled || !!busy} className="min-h-12 min-w-0 flex-1 rounded-xl bg-[#00E5FF] px-4 py-3 text-sm font-semibold text-[#070a1e] transition hover:bg-[#70f2ff] disabled:bg-white/10 disabled:text-white/50">{busy || (stage === 1 ? "Lanjut isi kontak" : currentQuote && !attempted ? "Setujui & lanjut ke pembayaran" : "Lanjut ke pembayaran")}</button></div>
+    {stage === 3 && currentQuote && !attempted && <p role="status" className="mb-3 text-sm leading-5 text-white/80">{currentQuote.total !== packageTotal ? `Harga berubah dari ${rupiah(packageTotal)} menjadi ${rupiah(currentQuote.total)}. ` : ""}Total pembayaran {rupiah(currentQuote.payable)}. Tekan Setujui untuk menyetujui nominal ini.</p>}
+    <div className="flex items-center gap-3"><div className="min-w-0 shrink-0 lg:hidden"><p className="max-w-28 truncate text-[10px] text-white/50">{tier?.public_name ?? "Total pesanan"}</p><p className="mt-1 font-display text-lg font-semibold tabular-nums text-white sm:text-xl">{priceText}</p></div><button type="button" onClick={stage < 3 ? advance : pay} disabled={!ordersEnabled || !!busy} className="min-h-12 min-w-0 flex-1 rounded-xl bg-[#00E5FF] px-4 py-3 text-sm font-semibold text-[#070a1e] transition hover:bg-[#70f2ff] disabled:bg-white/10 disabled:text-white/50">{busy || (stage === 1 ? "Lanjut: isi target" : stage === 2 ? "Lanjut: kontak" : currentQuote && !attempted ? "Setujui & lanjut ke pembayaran" : attempted ? "Coba lanjutkan pembayaran" : "Lanjut ke pembayaran")}<ArrowRight aria-hidden="true" size={16} className="ml-2 inline shrink-0" /></button></div>
   </>;
-  return <div className={embedded ? "py-5" : withinPlatform ? `${stage === 2 && currentQuote && !attempted ? "pb-56" : "pb-36"} lg:pb-8` : `mx-auto max-w-[1280px] px-4 ${stage === 2 && currentQuote && !attempted ? "pb-56" : "pb-36"} pt-6 sm:px-6 lg:px-8 lg:pb-12`}>
-    {!embedded && !withinPlatform && <a href={`/pedia/p/${product.platform}`} className="inline-flex min-h-11 items-center gap-2 text-sm text-white/60"><span aria-hidden="true"><IosIcon name="chevron-left" size={14} tint="white" /></span>{platform}</a>}
+  return <div className={embedded ? "py-5" : withinPlatform ? `${stage === 3 && currentQuote && !attempted ? "pb-56" : "pb-36"} lg:pb-8` : `mx-auto max-w-[1280px] px-4 ${stage === 3 && currentQuote && !attempted ? "pb-56" : "pb-36"} pt-6 sm:px-6 lg:px-8 lg:pb-12`}>
+    {stage > 1 && <button type="button" disabled={attempted} onClick={() => goToStage(stage - 1)} className="inline-flex min-h-11 items-center gap-2 text-[13px] text-white/60 hover:text-white disabled:opacity-40"><ArrowLeft size={16} aria-hidden="true" />{stage === 2 ? "Layanan" : "Target"}</button>}
+    {!embedded && !withinPlatform && stage === 1 && <a href={`/pedia/p/${product.platform}`} className="inline-flex min-h-11 items-center gap-2 text-sm text-white/60"><ArrowLeft size={16} aria-hidden="true" />{platform}</a>}
     {!withinPlatform && <h1 className="mt-2 font-display text-2xl font-semibold tracking-tight text-white">{product.name}</h1>}
-    <div className="mt-5 flex items-center gap-3 text-xs" aria-label="Tahap pemesanan"><span aria-current={stage === 1 ? "step" : undefined} className={`flex items-center gap-2 ${stage === 1 ? "text-white" : "text-white/50"}`}><span className={`flex h-6 w-6 items-center justify-center rounded-full ${stage === 1 ? "bg-[#00E5FF]/15 text-[#00E5FF]" : "bg-white/5"}`}>1</span>Atur pesanan</span><span aria-hidden className="h-px w-5 bg-white/15" /><span aria-current={stage === 2 ? "step" : undefined} className={`flex items-center gap-2 ${stage === 2 ? "text-white" : "text-white/40"}`}><span className={`flex h-6 w-6 items-center justify-center rounded-full ${stage === 2 ? "bg-[#00E5FF]/15 text-[#00E5FF]" : "bg-white/5"}`}>2</span>Kontak & konfirmasi</span></div>
-    <div className="mt-5 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-8">
-      <div className="ax-glass-card min-w-0 rounded-[24px] p-5 sm:p-7">
+    <ol className="mt-7 flex items-center gap-1 sm:gap-3" aria-label="Langkah pesanan">
+      {["Layanan", "Target", "Kontak", "Bayar"].map((label, i) => <li key={label} className="flex min-w-0 flex-1 items-center gap-1 sm:gap-3">
+        <button type="button" disabled={i + 1 > stage || attempted} onClick={() => { if (i + 1 < stage) goToStage(i + 1); }} aria-current={i + 1 === stage ? "step" : undefined} aria-label={`Langkah ${i + 1}: ${label}`} className="flex items-center gap-1 text-[10px] font-semibold disabled:cursor-default disabled:opacity-60 sm:text-[13px]">
+          <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border font-mono text-[11px] ${i + 1 < stage ? "border-[#00E5FF] bg-[#00E5FF] text-[#080C1E]" : i + 1 === stage ? "border-[#00E5FF] text-[#00E5FF]" : "border-white/15 text-white/45"}`}>{i + 1 < stage ? <Check size={12} aria-hidden="true" /> : i + 1}</span>
+          <span className={i + 1 === stage ? "text-white" : "text-white/55"}>{label}</span>
+        </button>{i < 3 && <span aria-hidden="true" className={`h-px min-w-1 flex-1 ${i + 1 < stage ? "bg-[#00E5FF]" : "bg-white/10"}`} />}
+      </li>)}
+    </ol>
+    <div className="mt-5 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="ax-glass-card min-w-0 rounded-[24px] p-5 sm:p-8">
         {stage === 1 && <>
-          <section aria-labelledby="pedia-package-heading"><h2 id="pedia-package-heading" className="sr-only">Jumlah, layanan, dan tujuan</h2>
+          <section aria-labelledby="pedia-stage-heading"><h2 id="pedia-stage-heading" tabIndex={-1} className="scroll-mt-24 font-display text-2xl font-bold text-white">Apa yang ingin ditingkatkan?</h2>
+            {products.length > 0 && <nav aria-label={`Jenis layanan ${platform}`} className="-mx-1 mt-4 flex gap-2 overflow-x-auto px-1 pb-1">{products.map((p) => <button type="button" key={p.slug} aria-pressed={p.slug === product.slug} disabled={attempted} onClick={() => onProductChange?.(p.slug)} className={`flex min-h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-4 text-sm font-medium transition ${p.slug === product.slug ? "border-[#00E5FF]/70 bg-[#00E5FF]/10 text-[#00E5FF]" : "ax-glass-card text-white/70 hover:text-white"}`}><MetricIcon metric={p.metric} size={14} />{p.name.replace(new RegExp(`\\s*${platform}\\s*`, "ig"), " ").trim() || p.name}</button>)}</nav>}
+            <div className="mt-8">
             <fieldset id="pedia-quantity" tabIndex={-1} disabled={attempted} className="min-w-0">
-              <legend className="text-base font-semibold text-white">Jumlah yang ingin ditambah</legend>
+              <legend className="text-[15px] font-bold text-white">Berapa jumlahnya?</legend>
               <p className="mt-1 text-xs leading-5 text-white/50">Isi jumlah dulu — layanan dibandingkan pada jumlah yang sama. Contoh hanya angka yang berlaku di minimal satu layanan.</p>
-              <div className="mt-3 flex flex-wrap items-center gap-2"><input id="pedia-qty-input" aria-label="Jumlah yang dipesan" aria-invalid={!!errors.quantity} type="number" inputMode="numeric" min={tier?.min_qty ?? productMin} max={tier?.max_qty ?? undefined} step={tier?.quantity_step ?? product.step} value={qty ?? ""} placeholder={`Contoh: ${productMin.toLocaleString("id-ID")}`} onChange={(e) => { const v = e.target.value; setQty(v === "" ? null : Number(v)); setQuantityNotice(""); }} className="min-h-12 w-full rounded-xl border border-white/15 bg-white/[0.035] px-4 text-base text-white placeholder:text-white/35 focus:border-[#00E5FF] focus:outline-none disabled:opacity-40 sm:w-48" />
+              <div className="mt-3 flex flex-wrap items-center gap-2"><input id="pedia-qty-input" aria-label="Jumlah yang dipesan" aria-invalid={!!errors.quantity} type="number" inputMode="numeric" min={tier?.min_qty ?? productMin} max={tier?.max_qty ?? undefined} step={tier?.quantity_step ?? product.step} value={qty ?? ""} placeholder={`Contoh: ${productMin.toLocaleString("id-ID")}`} onChange={(e) => { const v = e.target.value; setQty(v === "" ? null : Number(v)); setQuantityNotice(""); }} className="min-h-12 w-40 rounded-xl border border-white/15 bg-white/[0.035] px-4 text-base text-white placeholder:text-white/35 focus:border-[#00E5FF] focus:outline-none disabled:opacity-40" />
                 {(tier?.quick_quantities?.length ? tier.quick_quantities.filter((n) => n >= (tier.min_qty ?? 1) && n <= (tier.max_qty ?? n) && n % (tier.quantity_step ?? product.step) === 0) : productExamples).slice(0, 5).map((n) => <button key={n} type="button" onClick={() => { setQty(n); setQuantityNotice(""); }} aria-pressed={qty === n} className={`min-h-11 rounded-xl border px-3 text-sm transition ${qty === n ? "border-[#00E5FF]/45 bg-[#00E5FF]/10 text-[#00E5FF]" : "border-white/10 text-white/60 hover:border-white/25"}`}>{n.toLocaleString("id-ID")}</button>)}
               </div>
               <p className="mt-3 text-xs leading-5 text-white/50">{tier ? `Layanan ini: minimal ${(tier.min_qty ?? 1).toLocaleString("id-ID")}, maksimal ${(tier.max_qty ?? 0).toLocaleString("id-ID")}${(tier.quantity_step ?? product.step) > 1 ? `, kelipatan ${tier.quantity_step ?? product.step}` : ""}.` : `Batas tiap layanan berbeda — pilih jumlah, layanan yang tidak cocok ditandai alasannya.`}</p>
               {quantityNotice && <p role="status" className="mt-2 text-xs text-amber-200">{quantityNotice}</p>}{inlineError("quantity")}
               {qty != null && comparison?.failed && <p className="mt-2 text-xs leading-5 text-white/55">Harga terbaru belum dapat dimuat. Harga akan diperiksa kembali sebelum pembayaran.</p>}
-            </fieldset>
-            <div className="mt-7"><ServicePicker product={product} tierId={tierId} onSelect={pickTier} qty={qty} prices={comparisonPrices} pricesSettled={embedded || !!comparison} locked={attempted} />{inlineError("tier")}</div>
+            </fieldset></div>
+            <div className="mt-8"><ServicePicker product={product} tierId={tierId} onSelect={pickTier} qty={qty} prices={comparisonPrices} pricesSettled={embedded || !!comparison} locked={attempted} expanded />{inlineError("tier")}</div>
           </section>
-          <section aria-labelledby="pedia-target-heading" className="mt-7 border-t border-white/10 pt-7">
-            <h2 id="pedia-target-heading" className="text-base font-semibold text-white">Masukkan link tujuan</h2>
-            <fieldset disabled={attempted} className="mt-4"><label htmlFor="pedia-target" className="text-sm text-white/70">Link {kind.toLowerCase()} {platform}</label><input id="pedia-target" value={target} placeholder={pediaTargetExample(product.platform, product.target_kind)} onChange={(e) => setTarget(e.target.value)} inputMode="url" autoCapitalize="none" spellCheck={false} maxLength={600} className={fieldClass} aria-invalid={!!errors.target || (!!target.trim() && !targetOk)} aria-describedby="pedia-target-help" />
+        </>}
+        {stage === 2 && <section aria-labelledby="pedia-stage-heading">
+            <h2 id="pedia-stage-heading" tabIndex={-1} className="scroll-mt-24 font-display text-2xl font-bold text-white">Link {kind.toLowerCase()} tujuan</h2>
+            <p className="mt-1.5 text-sm text-white/60">Salin dari aplikasi {platform}, lalu tempel di sini. Kami cek formatnya langsung.</p>
+            <fieldset disabled={attempted} className="mt-4"><label htmlFor="pedia-target" className="text-sm text-white/70">Link {kind.toLowerCase()} {platform}</label><input id="pedia-target" value={target} placeholder={pediaTargetExample(product.platform, product.target_kind)} onChange={(e) => setTarget(e.target.value)} inputMode="url" autoCapitalize="none" spellCheck={false} maxLength={600} className={`${fieldClass} ${targetOk ? "border-emerald-400/60" : ""}`} aria-invalid={!!errors.target || (!!target.trim() && !targetOk)} aria-describedby="pedia-target-help" />
               <p id="pedia-target-help" className="mt-2 text-xs leading-5 text-white/50">{targetHelp}</p>
               {targetOk && <p className="mt-2 flex items-start gap-1.5 text-xs leading-5 text-[#00E5FF]"><span aria-hidden="true">✓</span>Format link sesuai. Akun atau konten belum diverifikasi.</p>}
               {errors.target ? inlineError("target") : target.trim() && !targetOk && <p className="mt-2 text-xs text-red-300">Gunakan link {kind.toLowerCase()} {platform} yang sesuai layanan ini.</p>}
-              {checklist.length > 0 && <div id="pedia-requirements" tabIndex={-1} className="mt-5 space-y-2">{checklist.map((c) => <label key={c.id} className="flex min-h-11 cursor-pointer gap-3 rounded-xl bg-white/[0.025] p-3 text-sm leading-5 text-white/75"><input type="checkbox" checked={!!checks[c.id]} onChange={(e) => setChecks({ ...checks, [c.id]: e.target.checked })} className="mt-0.5 h-4 w-4 shrink-0 accent-[#00E5FF]" /><span>{c.label}{c.help && <span className="mt-1 block text-xs leading-5 text-white/45">{c.help}</span>}</span></label>)}</div>}{inlineError("requirements")}
+              {checklist.length > 0 && <div id="pedia-requirements" tabIndex={-1} className="mt-7 space-y-2 rounded-2xl border border-white/10 bg-white/[0.03] p-4 sm:p-5"><p className="mb-3 flex items-center gap-2 text-sm font-bold text-white"><ShieldCheck size={16} aria-hidden="true" className="text-[#00E5FF]" />Sebelum lanjut, pastikan hal berikut</p>{checklist.map((c) => <label key={c.id} className="flex min-h-11 cursor-pointer gap-3 rounded-xl bg-white/[0.025] p-3 text-sm leading-5 text-white/75"><input type="checkbox" checked={!!checks[c.id]} onChange={(e) => { const checked = e.target.checked; setChecks((current) => ({ ...current, [c.id]: checked })); }} className="mt-0.5 h-4 w-4 shrink-0 accent-[#00E5FF]" /><span>{c.label}{c.help && <span className="mt-1 block text-xs leading-5 text-white/45">{c.help}</span>}</span></label>)}</div>}{inlineError("requirements")}
             </fieldset>
-          </section>
+        </section>}
+        {stage < 3 && <>
           {tier && <p className="mt-5 text-xs leading-5 text-white/55">Drop dapat terjadi setelah pesanan selesai. {tier.refill_days > 0 ? `Refill ${tier.refill_days} hari mengikuti ketentuan layanan.` : "Layanan ini tanpa refill."}</p>}
           <details className="mt-5 border-t border-white/10 pt-1">
             <summary className="min-h-12 cursor-pointer py-4 text-sm font-medium text-white/65">Detail & ketentuan layanan</summary>
@@ -241,14 +265,15 @@ export function OrderClient({ product, initialTarget, ordersEnabled, embedded = 
             </div>
           </details>
         </>}
-        {stage === 2 && <section aria-labelledby="pedia-contact-heading">
-          <div className="flex items-center justify-between gap-3"><h2 id="pedia-contact-heading" tabIndex={-1} className="scroll-mt-24 text-lg font-semibold text-white">Kontak & konfirmasi</h2><button type="button" disabled={attempted} onClick={() => setStage(1)} className="min-h-11 shrink-0 whitespace-nowrap text-xs text-[#00E5FF] disabled:opacity-40 sm:text-sm">Ubah pesanan</button></div>
+        {stage === 3 && <section aria-labelledby="pedia-stage-heading">
+          <div className="flex items-center justify-between gap-3"><h2 id="pedia-stage-heading" tabIndex={-1} className="scroll-mt-24 font-display text-2xl font-bold text-white">Ke mana kami kirim bukti pesanan?</h2><button type="button" disabled={attempted} onClick={() => goToStage(1)} className="min-h-11 shrink-0 whitespace-nowrap text-xs text-[#00E5FF] disabled:opacity-40 sm:text-sm">Ubah pesanan</button></div>
           <div className="mt-3 border-b border-white/10 pb-5 text-sm text-white/70"><p className="font-medium text-white">{tier?.public_name ?? tier?.label_note ?? product.name}</p><p className="mt-1 text-xs leading-5 text-white/50">{qty?.toLocaleString("id-ID")} · {tier?.refill_days ? `Refill ${tier.refill_days} hari` : "Tanpa refill"}</p><p className="mt-2 break-all text-xs leading-5 text-white/55">{target}</p></div>
-          <fieldset disabled={attempted} className="mt-5 space-y-5">
+          <p className="mt-3 text-sm text-white/60">Tanpa membuat akun. Kontak digunakan untuk bukti dan status pesanan.</p>
+          <fieldset disabled={attempted} className="mt-6 grid gap-5 sm:grid-cols-2 [&>details]:sm:col-span-2 [&>label]:sm:col-span-2">
             <div><label htmlFor="pedia-wa" className="text-sm text-white/80">Nomor WhatsApp</label><input id="pedia-wa" type="tel" autoComplete="tel" value={wa} onChange={(e) => setWa(e.target.value)} placeholder="08… atau +62…" className={fieldClass} aria-invalid={!!errors.wa} />{inlineError("wa")}</div>
             <div><label htmlFor="pedia-email" className="text-sm text-white/80">Email</label><input id="pedia-email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={160} placeholder="nama@email.com" className={fieldClass} aria-invalid={!!errors.email} /><p className="mt-2 text-xs leading-5 text-white/50">Bukti pesanan dan pembaruan status dikirim ke email ini.</p>{inlineError("email")}</div>
             <details className="rounded-xl border border-white/10 px-4 py-1"><summary className="min-h-11 cursor-pointer py-3 text-sm text-white/65">Punya Kode Kredit Pedia?</summary><label htmlFor="pedia-credit" className="mt-3 block text-sm text-white/75">Kode kredit</label><input id="pedia-credit" value={credit} onChange={(e) => setCredit(e.target.value.toUpperCase())} maxLength={20} placeholder="PDK-XXXX-XXXX" className={fieldClass} /><p className="my-3 text-xs leading-5 text-white/50">Kredit dari sisa pesanan Pedia sebelumnya. Bukan kode promo.</p>{inlineError("credit")}</details>
-            <div className="text-xs leading-5 text-white/55">Drop dapat terjadi. {tier?.refill_days ? `Refill ${tier.refill_days} hari mengikuti ketentuan layanan.` : "Layanan ini tanpa refill."} Pesanan selesai sebagian atau dibatalkan supplier mendapat Kode Kredit Pedia untuk bagian yang tidak terpenuhi.</div>
+            <div className="rounded-xl bg-[#FFB800]/10 px-4 py-3 text-[13px] leading-6 text-[#FFCF55] sm:col-span-2">Drop dapat terjadi. {tier?.refill_days ? `Refill ${tier.refill_days} hari mengikuti ketentuan layanan.` : "Layanan ini tanpa refill."} Pesanan selesai sebagian atau dibatalkan supplier mendapat Kode Kredit Pedia untuk bagian yang tidak terpenuhi.</div>
             {tier?.terms && <details className="border-t border-white/10 pt-1"><summary className="min-h-11 cursor-pointer py-3 text-sm text-white/65">Ketentuan layanan yang dipilih</summary><p className="mt-1 whitespace-pre-line text-xs leading-5 text-white/60">{tier.terms}</p></details>}
             <label className="flex min-h-11 cursor-pointer items-start gap-3 text-sm leading-6 text-white/80"><input id="pedia-agree" type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-[#00E5FF]" /><span>Saya setuju <a href="/pedia/ketentuan" target="_blank" rel="noopener noreferrer" className="text-[#00E5FF] underline underline-offset-4">Ketentuan Pedia</a>.</span></label>{inlineError("agree")}
           </fieldset>
@@ -256,9 +281,10 @@ export function OrderClient({ product, initialTarget, ordersEnabled, embedded = 
         </section>}
         {recoveryCode && <p className="mt-4 text-sm text-white/75">Kode pesanan tersimpan: <strong className="font-mono">{recoveryCode}</strong>. Tekan lanjut lagi untuk memuat QRIS yang sama.</p>}
         {error && <p role="alert" className="mt-4 rounded-xl border border-red-300/25 p-3 text-sm leading-6 text-red-200">{error}</p>}
+        <div className="mt-8 hidden border-t border-white/10 pt-6 lg:block">{cta}</div>
         {tier && <details className="mt-5 overflow-hidden rounded-2xl border border-white/10 lg:hidden"><summary className="min-h-11 cursor-pointer p-4 text-sm text-white/65">Lihat ringkasan pesanan</summary>{summary}</details>}
       </div>
-      <aside className="hidden overflow-hidden rounded-[24px] border border-white/10 bg-white/[0.025] lg:sticky lg:top-24 lg:block">{summary}<div className="px-5 pb-5">{cta}</div></aside>
+      <aside className="hidden overflow-hidden rounded-[24px] border border-white/10 bg-white/[0.025] lg:sticky lg:top-24 lg:block">{summary}</aside>
     </div>
     <div className={embedded ? "mt-5 lg:hidden" : "fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#080C1E]/95 p-4 backdrop-blur-md lg:hidden"} style={embedded ? undefined : { paddingBottom: "max(16px, env(safe-area-inset-bottom))" }}>{cta}</div>
   </div>;

@@ -181,7 +181,8 @@ describe("Pedia platform-first storefront", () => {
 
   it("selects a service kind directly on the platform page and supports switching", () => {
     render(<PlatformPageClient platform="instagram" name="Instagram" products={[product, { ...product, slug: "likes", name: "Likes Instagram", metric: "likes" }]} />);
-    expect(screen.queryByRole("radio")).toBeNull();
+    expect(screen.getAllByRole("radio")).toHaveLength(2);
+    expect(screen.getByLabelText("Jumlah yang dipesan")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Apa yang ingin ditingkatkan?" })).toBeTruthy();
     expect(screen.queryByText(/Pilih jenis layanan di atas/)).toBeNull();
     expect(screen.getByRole("button", { name: /^Likes/ }).getAttribute("aria-pressed")).toBe("false");

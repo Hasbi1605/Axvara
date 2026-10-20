@@ -26,9 +26,9 @@ function incompatReason(product: PediaCatalogProduct, t: PediaCatalogTier, qty: 
   return "";
 }
 
-export function ServicePicker({ product, tierId, onSelect, qty, prices = {}, pricesSettled = false, locked = false }: {
+export function ServicePicker({ product, tierId, onSelect, qty, prices = {}, pricesSettled = false, locked = false, expanded = false }: {
   product: PediaCatalogProduct; tierId: number | null; onSelect: (id: number) => void; qty: number | null;
-  prices?: Record<number, number>; pricesSettled?: boolean; locked?: boolean;
+  prices?: Record<number, number>; pricesSettled?: boolean; locked?: boolean; expanded?: boolean;
 }) {
   const [compare, setCompare] = useState(false);
   const [showAll, setShowAll] = useState(false);
@@ -52,8 +52,8 @@ export function ServicePicker({ product, tierId, onSelect, qty, prices = {}, pri
     });
   }, [tiers, region, quality, refill, sort, prices, qty, validQuantity]);
   const picked = tiers.find((t) => t.id === tierId);
-  const compact = !!picked && !compare;
-  const visible = picked && !compare ? [picked] : showAll ? relevant : relevant.slice(0, 3);
+  const compact = !expanded && !!picked && !compare;
+  const visible = compact && picked ? [picked] : expanded || showAll ? relevant : relevant.slice(0, 3);
   if (!compact && picked && relevant.includes(picked) && !visible.includes(picked)) visible.push(picked);
   const resetFilters = () => { setRegion(""); setQuality(""); setRefill(""); setSort("recommended"); setShowAll(false); };
 
@@ -61,18 +61,18 @@ export function ServicePicker({ product, tierId, onSelect, qty, prices = {}, pri
     <legend className="sr-only">{compact ? "Layanan pilihanmu" : "Pilih layanan"}</legend>
     <div className="flex items-center justify-between gap-3">
       <span aria-hidden="true" className="text-base font-semibold text-white">{compact ? "Layanan pilihanmu" : "Pilih layanan"}</span>
-      {picked && <button type="button" onClick={() => setCompare(!compare)} aria-expanded={compare} className="min-h-11 shrink-0 whitespace-nowrap px-2 text-xs font-medium text-[#00E5FF] disabled:opacity-40 sm:text-sm">{compact ? "Ganti layanan" : "Kembali ke pilihan"}</button>}
+      {!expanded && picked && <button type="button" onClick={() => setCompare(!compare)} aria-expanded={compare} className="min-h-11 shrink-0 whitespace-nowrap px-2 text-xs font-medium text-[#00E5FF] disabled:opacity-40 sm:text-sm">{compact ? "Ganti layanan" : "Kembali ke pilihan"}</button>}
     </div>
     <p className="mt-1 text-xs leading-5 text-white/50">{compact ? "Jumlah, target, dan filter tetap tersimpan saat ganti layanan." : `${tiers.length} pilihan · Harga dibandingkan pada jumlah yang sama.`}</p>
     {!compact && <>
       {(regions.length > 1 || tiers.some((t) => t.refill_days > 0) && tiers.some((t) => t.refill_days === 0)) && <div className="mt-3 flex flex-wrap gap-2" aria-label="Filter cepat layanan">
         {regions.length > 1 && <>
-          <button type="button" aria-pressed={region === ""} onClick={() => { setRegion(""); setShowAll(false); }} className={`min-h-11 rounded-full border px-4 text-xs font-medium transition sm:text-sm ${region === "" ? "border-white bg-white text-[#080C1E]" : "border-white/10 text-white/60 hover:border-white/25 hover:text-white"}`}>Semua wilayah</button>
-          {regions.map((r) => <button key={r} type="button" aria-pressed={region === r} onClick={() => { setRegion(region === r ? "" : r); setShowAll(false); }} className={`min-h-11 rounded-full border px-4 text-xs font-medium transition sm:text-sm ${region === r ? "border-white bg-white text-[#080C1E]" : "border-white/10 text-white/60 hover:border-white/25 hover:text-white"}`}>{REGION_LABEL[r] ?? r}</button>)}
+          <button type="button" aria-pressed={region === ""} onClick={() => { setRegion(""); setShowAll(false); }} className={`min-h-11 whitespace-nowrap rounded-full border px-4 text-xs font-medium transition sm:text-sm ${region === "" ? "border-white bg-white text-[#080C1E]" : "border-white/10 text-white/60 hover:border-white/25 hover:text-white"}`}>Semua wilayah</button>
+          {regions.map((r) => <button key={r} type="button" aria-pressed={region === r} onClick={() => { setRegion(region === r ? "" : r); setShowAll(false); }} className={`min-h-11 whitespace-nowrap rounded-full border px-4 text-xs font-medium transition sm:text-sm ${region === r ? "border-white bg-white text-[#080C1E]" : "border-white/10 text-white/60 hover:border-white/25 hover:text-white"}`}>{REGION_LABEL[r] ?? r}</button>)}
         </>}
         {tiers.some((t) => t.refill_days > 0) && tiers.some((t) => t.refill_days === 0) && <>
-          <button type="button" aria-pressed={refill === "yes"} onClick={() => { setRefill(refill === "yes" ? "" : "yes"); setShowAll(false); }} className={`min-h-11 rounded-full border px-4 text-xs font-medium transition sm:text-sm ${refill === "yes" ? "border-white bg-white text-[#080C1E]" : "border-white/10 text-white/60 hover:border-white/25 hover:text-white"}`}>Dengan refill</button>
-          <button type="button" aria-pressed={refill === "no"} onClick={() => { setRefill(refill === "no" ? "" : "no"); setShowAll(false); }} className={`min-h-11 rounded-full border px-4 text-xs font-medium transition sm:text-sm ${refill === "no" ? "border-white bg-white text-[#080C1E]" : "border-white/10 text-white/60 hover:border-white/25 hover:text-white"}`}>Tanpa refill</button>
+          <button type="button" aria-pressed={refill === "yes"} onClick={() => { setRefill(refill === "yes" ? "" : "yes"); setShowAll(false); }} className={`min-h-11 whitespace-nowrap rounded-full border px-4 text-xs font-medium transition sm:text-sm ${refill === "yes" ? "border-white bg-white text-[#080C1E]" : "border-white/10 text-white/60 hover:border-white/25 hover:text-white"}`}>Dengan refill</button>
+          <button type="button" aria-pressed={refill === "no"} onClick={() => { setRefill(refill === "no" ? "" : "no"); setShowAll(false); }} className={`min-h-11 whitespace-nowrap rounded-full border px-4 text-xs font-medium transition sm:text-sm ${refill === "no" ? "border-white bg-white text-[#080C1E]" : "border-white/10 text-white/60 hover:border-white/25 hover:text-white"}`}>Tanpa refill</button>
         </>}
       </div>}
       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-white/50">
@@ -97,7 +97,7 @@ export function ServicePicker({ product, tierId, onSelect, qty, prices = {}, pri
         const exact = qty != null && valid ? prices[t.id] ?? t.prices[String(qty)] : undefined;
         const name = serviceDisplayName(product.name, t);
         const reason = qty != null && !valid ? incompatReason(product, t, qty) : "";
-        return <label key={t.id} className={`relative flex min-w-0 gap-3 rounded-2xl border p-4 transition focus-within:ring-2 focus-within:ring-[#00E5FF]/60 ${disabled ? "cursor-not-allowed border-white/5 bg-white/[0.008] opacity-70" : "cursor-pointer"} ${t.id === tierId ? "border-[#00E5FF]/45 bg-[#00E5FF]/[0.045]" : "border-white/10 bg-white/[0.015] hover:border-white/25"}`}>
+        return <label key={t.id} className={`relative flex min-w-0 gap-3 rounded-[20px] border p-4 transition sm:p-5 focus-within:ring-2 focus-within:ring-[#00E5FF]/60 ${disabled ? "cursor-not-allowed border-white/5 bg-white/[0.008] opacity-70" : "cursor-pointer"} ${t.id === tierId ? "pedia-tier-selected" : "ax-glass-card hover:border-[#00E5FF]/40"}`}>
           <input type="radio" name="pedia-tier" value={t.id} checked={t.id === tierId} disabled={disabled} onChange={() => { if (disabled || locked) return; onSelect(t.id); setCompare(false); setShowAll(false); }} className="sr-only" aria-describedby={reason ? `pedia-tier-${t.id}-reason` : undefined} />
           <span aria-hidden="true" className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${t.id === tierId ? "border-[#00E5FF]" : "border-white/25"}`}>{t.id === tierId && <span className="h-2.5 w-2.5 rounded-full bg-[#00E5FF]" />}</span>
           <span className="min-w-0 flex-1 sm:flex sm:items-start sm:justify-between sm:gap-5">
@@ -121,6 +121,6 @@ export function ServicePicker({ product, tierId, onSelect, qty, prices = {}, pri
       })}
     </div>
     {!visible.length && <p className="mt-3 rounded-xl border border-white/10 p-4 text-sm text-white/65">Tidak ada pilihan yang cocok untuk filter ini ({relevant.length} dari {tiers.length} layanan). <button type="button" className="min-h-11 px-1 text-[#00E5FF]" onClick={resetFilters}>Reset filter</button></p>}
-    {!compact && !showAll && relevant.length > 3 && <button type="button" className="mt-3 min-h-11 w-full rounded-xl border border-white/10 px-3 text-sm text-[#00E5FF] transition hover:bg-white/[0.03]" onClick={() => setShowAll(true)}>Lihat semua {relevant.length} layanan</button>}
+    {!expanded && !compact && !showAll && relevant.length > 3 && <button type="button" className="mt-3 min-h-11 w-full rounded-xl border border-white/10 px-3 text-sm text-[#00E5FF] transition hover:bg-white/[0.03]" onClick={() => setShowAll(true)}>Lihat semua {relevant.length} layanan</button>}
   </fieldset>;
 }
