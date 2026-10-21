@@ -1586,9 +1586,11 @@ Penerapan data 2026-10-21 ✅ live: Muse manual (`muse-ai-1-miliar-token`,
 produk112/varian248) menggunakan `products.description` serta
 `product_variants.admin_terms` / `admin_activation` / fingerprint kosong,
 melalui kontrak stok sendiri existing. Patch sekali jalan dengan guard
-ID/slug/source/isi awal: `issue/muse-ai-copy-2026-10-21.sql`; bukan migrasi
-schema. Resolver `/api/catalog?slug=` menampilkan bagian paket, proses,
-aturan, garansi dan dua kelompok aktivasi. Harga/stok/foto/pengiriman serta
+ID/slug/source/isi awal: `issue/muse-ai-copy-2026-10-21.sql`; revisi ringkas
+owner melalui `issue/muse-ai-copy-compact-2026-10-21.sql` dengan guard
+timestamp versi awal, bukan migrasi schema. Resolver `/api/catalog?slug=`
+menampilkan lima poin paket/aturan/garansi serta empat langkah aktivasi.
+Harga/stok/foto/pengiriman serta
 garansi tidak berubah. Dasar penulisan dan batas bukti ada di
 `issue/muse-ai-copy-2026-10-21.md`.
 

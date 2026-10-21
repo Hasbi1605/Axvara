@@ -1,8 +1,14 @@
 # Muse AI — salinan produk 21 Oktober 2026
 
 Arahan owner: deskripsi, S&K, dan cara penggunaan mengikuti format produk
-AXVARA lain. Teks lengkap yang diterapkan tersimpan di
-[`muse-ai-copy-2026-10-21.sql`](muse-ai-copy-2026-10-21.sql).
+AXVARA lain. Revisi owner pada tanggal yang sama: persingkat menjadi
+pengantar + lima keunggulan, lima poin S&K, dan empat langkah aktivasi.
+Teks terkini ada di
+[`muse-ai-copy-compact-2026-10-21.sql`](muse-ai-copy-compact-2026-10-21.sql).
+[`muse-ai-copy-2026-10-21.sql`](muse-ai-copy-2026-10-21.sql) adalah arsip
+versi panjang awal. Patch ringkas hanya mengganti timestamp revisi awal;
+suntingan admin berikutnya tetap terlindungi. Rincian bukti di bawah adalah
+catatan internal, bukan teks panjang yang ditampilkan kepada pembeli.
 
 Produk manual `muse-ai-1-miliar-token` (112), varian Default (248), harga
 Rp16.000. Deskripsi masuk `products.description`; S&K dan panduan bersama

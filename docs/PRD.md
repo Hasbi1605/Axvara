@@ -13,6 +13,8 @@ owner yang dapat berbeda, bukan kapasitas terjamin untuk semua akun.
 Pembeli menerima email dan web OTP, lalu mengganti serta memverifikasi email
 pribadi sebelum keluar. Garansi mengikuti varian existing tanpa garansi.
 Dasar bukti dan teks penerapan: [salinan Muse](../issue/muse-ai-copy-2026-10-21.md).
+Revisi owner pada hari yang sama: copy publik diringkas menjadi pengantar
+dan lima keunggulan, lima poin S&K, serta empat langkah login OTP/ganti email.
 
 ## Redesain alur pembelian Pedia — 20 Oktober 2026
 
