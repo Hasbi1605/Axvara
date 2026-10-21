@@ -6,11 +6,14 @@ import { createActiveQrisInvoice, createDanaQrisInvoice, calculateCrc16 } from "
 import { klikQrisMoney, klikQrisTime, validKlikQrisImage, reconcileKlikQrisPayment } from "@/lib/payments/klikqris";
 import { POST as callback } from "@/app/api/payments/klikqris/callback/route";
 
-const mocks=vi.hoisted(()=>({ ensure:vi.fn(async()=>true),send:vi.fn(async()=>({ok:true})),pedia:vi.fn(async()=>({})) }));
+const mocks=vi.hoisted(()=>({ ensure:vi.fn(async()=>true),send:vi.fn(async()=>({ok:true})),pedia:vi.fn(async()=>({})),
+ wrCreate:vi.fn(async()=>0),wrProcess:vi.fn(async()=>({processed:0})),skCreate:vi.fn(async()=>0),skProcess:vi.fn(async()=>({processed:0})) }));
 vi.mock("@/lib/fulfillment/deliver",()=>({ensureFulfillmentForPaidOrder:mocks.ensure}));
 vi.mock("@/lib/telegram/api",()=>({sendMessage:mocks.send,sendPhoto:vi.fn(async()=>({ok:true})),sendChatAction:vi.fn(),showLoadingBar:vi.fn(),safeEditOrSend:vi.fn()}));
-vi.mock("@/lib/warung-rebahan/order",()=>({createWrOrderLinksForOrder:vi.fn(async()=>0)}));
-vi.mock("@/lib/sekalipay/order",()=>({createSkOrderLinksForOrder:vi.fn(async()=>0)}));
+vi.mock("@/lib/warung-rebahan/order",()=>({createWrOrderLinksForOrder:mocks.wrCreate,processWrPendingOrders:mocks.wrProcess}));
+vi.mock("@/lib/warung-rebahan/client",()=>({isWrAutoOrderEnabled:()=>true}));
+vi.mock("@/lib/sekalipay/order",()=>({createSkOrderLinksForOrder:mocks.skCreate,processSkPendingOrders:mocks.skProcess}));
+vi.mock("@/lib/sekalipay/client",()=>({isSkAutoOrderEnabled:()=>true}));
 vi.mock("@/lib/pedia/dispatch",()=>({processPediaPaidOrders:mocks.pedia}));
 vi.mock("@/lib/auth",async original=>({...await original<object>(),requireAdmin:vi.fn(async()=>({email:"fixture@example.test"}))}));
 const A="AXV-20261018-AAAAAAA1",B="AXV-20261018-BBBBBBB2",signature="fixture-private-signature-12345678901234567890";
@@ -23,6 +26,8 @@ const details=(code:string)=>({order_id:code,amount:"1000.00",total_amount:"1089
 beforeEach(async()=>{
  fixture=createD1Fixture();stubFulfillmentKey();await insertTestProduct(fixture.sql,"manual",1);
  remote=new Map();failStatus=false;failCreateAfterSave=false;mocks.ensure.mockClear();mocks.send.mockClear();mocks.pedia.mockClear();
+ mocks.wrCreate.mockClear();mocks.wrProcess.mockClear();mocks.skCreate.mockClear();mocks.skProcess.mockClear();
+ mocks.wrCreate.mockResolvedValue(0);mocks.skCreate.mockResolvedValue(0);
  vi.stubEnv("NEXT_PUBLIC_PAYMENTS_MAINTENANCE","false");vi.stubEnv("QRIS_ACTIVE_PROVIDER","klikqris");
  vi.stubEnv("KLIKQRIS_ENABLED","true");vi.stubEnv("KLIKQRIS_API_KEY","fixture-private-api-key");vi.stubEnv("KLIKQRIS_MERCHANT_ID","123456789");
  vi.stubEnv("TELEGRAM_ADMIN_CHAT_ID","999");vi.stubEnv("PRODUCT_VARIANTS_READ","true");
@@ -184,6 +189,19 @@ describe("KlikQRIS settlement boundaries",()=>{
   expect(fixture.sql.prepare("SELECT COUNT(*) AS n FROM fulfillment_jobs WHERE order_code=?").get(A)!.n).toBe(1);
   const event=fixture.sql.prepare("SELECT * FROM dana_webhook_events WHERE provider='klikqris'").get()!;
   expect(event.status).toBe("matched");expect(event.raw_text).not.toContain(signature);
+ });
+ it("dispatches newly created WR/SK supplier links immediately after KlikQRIS settlement — the manual Retry parity path",async()=>{
+  mocks.skCreate.mockResolvedValue(1);mocks.wrCreate.mockResolvedValue(1);
+  await checkout();paid();expect((await hook()).status).toBe(200);
+  expect(mocks.skCreate).toHaveBeenCalledWith(A);expect(mocks.skProcess).toHaveBeenCalledWith(undefined,{skipOrphanProbe:true});
+  expect(mocks.wrCreate).toHaveBeenCalledWith(A);expect(mocks.wrProcess).toHaveBeenCalledWith(undefined,{skipOrphanProbe:true});
+  // Repeated callbacks must not dispatch twice (already_paid short-circuit).
+  expect((await hook()).status).toBe(200);expect(mocks.skProcess).toHaveBeenCalledTimes(1);
+ });
+ it("does not dispatch upstream when settlement created no supplier link",async()=>{
+  await checkout();paid();expect((await hook()).status).toBe(200);
+  expect(mocks.skCreate).toHaveBeenCalledWith(A);expect(mocks.skProcess).not.toHaveBeenCalled();
+  expect(mocks.wrProcess).not.toHaveBeenCalled();
  });
  it.each(["web","telegram","whatsapp"] as const)("retains %s fulfillment routing",async channel=>{
   await seed(A,channel);await createActiveQrisInvoice(A,1000);paid();await hook();

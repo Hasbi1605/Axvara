@@ -59,6 +59,10 @@ webhook/cron/expiry/email tetap bekerja tanpa halaman terbuka.
 
 ✅ Diimplementasikan; publikasi melalui CI. Order SK auto yang sudah lunas diproses oleh cron existing tanpa membutuhkan Retry admin. Antrean siap beli didahulukan sebelum pemulihan order tanpa link; pemulihan mencari order layak yang benar-benar kehilangan link, termasuk yang tertutup banyak riwayat selesai. Maksimal empat upaya pembelian per tick; link yang dipulihkan langsung diproses bila belum ada upaya pembelian pada tick tersebut, selebihnya tetap due untuk tick berikutnya. Kehabisan budget dilaporkan sebagai pekerjaan tertunda, bukan antrean kosong. Retry/backoff, klaim/idempotensi, penanganan saldo/hasil ambigu dan pengiriman lewat webhook/status supplier tetap berlaku; order yang sudah selesai tidak dibeli ulang.
 
+## Dispatch Sekalipay seketika pasca-lunas KlikQRIS — 2026-10-22
+
+✅ Diimplementasikan; publikasi melalui CI. Bukti produksi: order SK yang dibayar lewat KlikQRIS tidak pernah gagal dibeli (`attempt_count=1`, nol `last_error`) tetapi duduk `pending` 25–228 detik menunggu tick cron 5 menit, sehingga tampak "harus Retry manual dulu baru jalan" (Retry admin memang memanggil prosesor seketika). Akar: sejak migrasi rail ke KlikQRIS (18 Okt), jalur lunas hanya membuat link WR/SK tanpa memanggil prosesornya — tidak seperti webhook DANA/GoPay. Kini pelunasan KlikQRIS langsung memproses link WR/SK yang baru dibuat bila auto-order aktif, persis jalur Retry/DANA/GoPay; cron lite tetap penjamin dan callback duplikat tidak membeli ulang.
+
 ## Pedia dan loading — 19 Oktober 2026
 
 ✅ Implementasi; publikasi melalui CI. Loading mempertahankan logo dengan ring cyan yang berputar mengitarinya serta pulse halus mengikuti referensi ISTA AI; reduced motion dihormati. Kebutuhan memakai ikon semantik. Order dimulai dari jumlah sebelum membandingkan/pilih layanan, dengan total pada jumlah sama, filter yang mudah dijangkau, copy pembeda sebelum pilihan, dan link/persyaratan berdekatan. Kontak tetap tahap kedua; quote, consent dan retry tetap.

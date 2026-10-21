@@ -41,6 +41,12 @@ Harga bayar memakai `total_amount` gateway; nominal/kode unik tidak dihitung ula
 
 Pembuatan tagihan diklaim durable sebelum POST; retry ambigu hanya GET order ID sama, tidak POST/failover lagi. Stok in-flight tidak dilepas oleh catch kanal. Web/Pedia/TG mendukung cek manual provider; polling halaman menumpang reconcile KlikQRIS ter-throttle ±10 detik/order, tanpa cron gateway baru. Invoice lama tetap DANA/GoPay, termasuk retry setelah perpindahan provider. Rollback hanya invoice baru: kembalikan `QRIS_ACTIVE_PROVIDER` melalui secret Pages + rilis CI; pertahankan kredensial KlikQRIS dan webhook untuk tagihan lama/pembayaran terlambat. Jangan mengaktifkan/menonaktifkan poller atau gateway repo lain untuk integrasi ini.
 
+Dispatch supplier seketika (2026-10-22): sesudah lunas terkonfirmasi, jalur
+KlikQRIS kini langsung memproses link WR/SK yang baru dibuat — sama seperti
+webhook DANA/GoPay dan tombol Retry admin — bukan lagi hanya membuat link lalu
+menunggu tick cron 5 menit. Cron lite tetap menjadi penjamin bila dispatch
+seketika gagal; pembelian upstream tetap idempoten (klaim + ref_id stabil).
+
 ## Maintenance pembayaran sementara (2026-10-18)
 
 Mode pembayaran otomatis dikendalikan switch **build publik** `NEXT_PUBLIC_PAYMENTS_MAINTENANCE`, saat rilis KlikQRIS `"false"` pada langkah **Build Cloudflare Pages artifact** di `.github/workflows/ci.yml`. Nilai ditanam bersama pada UI dan server Pages (bukan secret/env runtime Pages; tanpa query D1). Untuk menghentikan pembayaran kembali, ubah nilai build ke `"true"`; untuk membukanya gunakan `"false"`, verifikasi lalu commit/push main; jangan hanya mengganti env Cloudflare pada artefak lama. Dev mode maintenance: `NEXT_PUBLIC_PAYMENTS_MAINTENANCE=true npm run dev`.
