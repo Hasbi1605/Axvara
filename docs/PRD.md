@@ -1,5 +1,16 @@
 # PRD — AXVARA
 
+## Galeri foto produk — 21 Oktober 2026
+
+✅ Implementasi; publikasi melalui CI. Foto pertama tetap menjadi thumbnail/cover
+produk. Upload foto kedua dan seterusnya mempertahankan rasio asli tanpa crop
+(WebP, sisi terpanjang maksimal 1920 px); galeri detail menampilkan gambar
+utuh dengan tinggi mengikuti rasio asli, termasuk screenshot portrait dan
+landscape. Preview foto tambahan di admin dan strip thumbnail juga tampil utuh.
+Aturan berlaku untuk semua produk. Foto yang sudah dipotong oleh upload lama
+perlu diunggah ulang dari gambar asli; mengubah tampilan tidak memulihkan
+bagian gambar yang sudah hilang.
+
 ## Salinan produk Muse AI — 21 Oktober 2026
 
 ✅ Live: produk manual `muse-ai-1-miliar-token` Rp16.000 memakai deskripsi,

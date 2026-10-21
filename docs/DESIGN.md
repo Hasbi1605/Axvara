@@ -408,6 +408,7 @@ Katalog terkurasi berisi 38 jenis/131 mapping pada 16 platform, dengan 3 pilihan
 
 ### 5.5 Halaman Detail Produk
 - Layout 2 kolom: galeri kiri (1 besar + 3 thumb), info kanan glass card
+- **2026-10-21 — foto tambahan utuh (implementasi, publikasi CI):** cover pertama tetap memakai bingkai 4:3 dan `object-cover`; foto kedua dan seterusnya memakai `w-full h-auto object-contain`, mengikuti rasio asli tanpa crop. Strip thumbnail serta preview admin memakai `object-contain` untuk foto tambahan, sementara cover tetap. Upload cover tetap WebP 1600×900; foto tambahan mempertahankan rasio asli dengan sisi terpanjang maksimal 1920 px. File hasil crop lama harus diunggah ulang dari sumber asli.
 - Harga besar + badge diskon gold, stok indicator dot hijau/kuning
 - Deskripsi + benefit list (icon check cyan)
 - CTA: "Beli Langsung" (cyan solid) + "Tambah ke Keranjang" (glass)

@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { toWebp16x9 } from "@/components/admin/ImageDropzone";
+import { toWebp16x9, toWebpOriginalRatio } from "@/components/admin/ImageDropzone";
 import type { Prod, Cat, FormVariant, ProductForm } from "@/components/admin/product-types";
 import { adjacentReorderProduct, sortProductsForDisplay } from "@/lib/product-order";
 
@@ -320,8 +320,12 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
     const tooBig = Array.from(files).find(f=> f.size > 5*1024*1024);
     if (tooBig) { toast.error(`${tooBig.name} melebihi 5MB.`); e.target.value=""; return; }
     setUploading(true);
-    const fd=new FormData(); (await Promise.all(Array.from(files).map(toWebp16x9))).forEach(f=>fd.append("files",f)); fd.append("area","products");
     try{
+      // Only the first photo is a cover; gallery screenshots keep every edge.
+      const converted = await Promise.all(Array.from(files).map((file, index) =>
+        formImages.length + index === 0 ? toWebp16x9(file) : toWebpOriginalRatio(file),
+      ));
+      const fd=new FormData(); converted.forEach(f=>fd.append("files",f)); fd.append("area","products");
       const r=await fetch("/api/upload",{method:"POST",body:fd});
       const j=await r.json().catch(()=>({}));
       if(!r.ok) throw new Error(j.error || `Upload gagal (${r.status})`);

@@ -361,7 +361,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
               <img
                 src={displayImage}
                 alt={product.name}
-                className="w-full aspect-[4/3] object-cover rounded-2xl"
+                className={activeImg > 0 ? "w-full h-auto object-contain rounded-2xl" : "w-full aspect-[4/3] object-cover rounded-2xl"}
               />
 
               {/* Arrows — always rendered when >1 image */}
@@ -405,7 +405,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                     <img
                       src={img}
                       alt={`${product.name} foto ${i + 1}`}
-                      className="w-full h-full object-cover"
+                      className={`w-full h-full ${i === 0 ? "object-cover" : "object-contain"}`}
                       loading="lazy"
                     />
                   </button>

@@ -442,7 +442,8 @@ CREATE TABLE store_settings (
 
 **Kontrak UI media/admin:**
 
-- Produk dan cover artikel dinormalisasi browser ke WebP 1600×900; banner mempertahankan rasio asli dengan sisi terpanjang maksimal 1920 px.
+- Cover produk pertama dan cover artikel dinormalisasi browser ke WebP 1600×900. Sejak implementasi 2026-10-21 (publikasi CI), `useProductManager.handleUpload` memakai `toWebpOriginalRatio` untuk foto produk kedua dan seterusnya, berdasarkan jumlah foto existing + indeks batch; rasio asli dipertahankan dengan sisi terpanjang maksimal 1920 px, sama seperti banner. Konversi berada dalam penanganan error upload agar kegagalan melepas status uploading tanpa mengubah galeri tersimpan.
+- PDP `product-detail-client.tsx` mempertahankan cover 4:3 `object-cover`; foto tambahan memakai tinggi otomatis dan `object-contain`. Thumbnail galeri dan preview `ProductEditorModal` juga menampilkan foto tambahan utuh. Kontrak URL/urutan `image` + `images`, batas delapan foto, API/R2/schema tetap; file lama yang sudah tercrop perlu upload ulang dari sumber asli, tidak direkonstruksi otomatis.
 - Popup banner menghitung lebar dari dimensi natural gambar, membatasi ukuran ke viewport, dan memakai `object-contain` agar materi portrait/persegi/landscape tidak terpotong.
 - `PopupBanner` hanya fetch/render pada pathname homepage (`/`), sehingga promosi tidak menghalangi checkout, status pesanan, detail produk, atau workflow admin. Checkbox kecil "Jangan tampilkan lagi" di bawah banner menyimpan penanda `axvara-banner-<id>-hide-until` di localStorage selama 24 jam (per banner id; uncheck menghapus penanda).
 - Bukti pembayaran tetap privat melalui `/api/admin/bukti/:key`; UI membedakan belum diunggah, URL tidak valid, file R2 hilang, dan preview tersedia.

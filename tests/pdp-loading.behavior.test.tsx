@@ -7,7 +7,7 @@
 //   membawa ke checkout TANPA varian → buntu);
 // - varian gagal dimuat: ada Coba lagi, dan Beli membuka modal, bukan checkout.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { Product } from "@/lib/products";
 
 const nav = vi.hoisted(() => ({ push: vi.fn() }));
@@ -33,6 +33,26 @@ beforeEach(() => { nav.push.mockClear(); localStorage.clear(); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe("PDP loading", () => {
+  it("foto kedua dan seterusnya tampil utuh lewat panah maupun thumbnail; cover tetap", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ products: [] }) })));
+    const photos = [product.image, "/portrait.webp", "/landscape.webp"];
+    render(<ProductDetailClient slug="netflix-premium" initialProducts={[{ ...product, images: photos }]} initialCatalog={catalog as never} />);
+    const main = () => screen.getByRole("img", { name: product.name });
+    expect(main().className).toContain("object-cover");
+    fireEvent.click(screen.getByRole("button", { name: "Foto berikutnya" }));
+    expect(main().getAttribute("src")).toBe(photos[1]);
+    expect(main().className).toContain("h-auto object-contain");
+    expect(main().className).not.toContain("aspect-");
+    fireEvent.click(screen.getByRole("img", { name: `${product.name} foto 3` }));
+    expect(main().getAttribute("src")).toBe(photos[2]);
+    expect(main().className).toContain("object-contain");
+    expect(screen.getByRole("img", { name: `${product.name} foto 2` }).className).toContain("object-contain");
+    fireEvent.click(screen.getByRole("button", { name: "Foto berikutnya" }));
+    expect(main().getAttribute("src")).toBe(photos[0]);
+    expect(main().className).toContain("aspect-[4/3] object-cover");
+    await act(async () => {});
+  });
+
   it("data server dipakai langsung: tanpa fetch produk/varian di klien", async () => {
     // Kategori sama mengembalikan 4 ready → fallback katalog penuh TIDAK
     // ke-trigger (hemat D1; kontrak 2026-10-01). Tepat 1 request Serupa.

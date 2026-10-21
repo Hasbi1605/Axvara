@@ -294,7 +294,7 @@ export function ProductEditorModal({
                 {formImages.map((url,i)=>(
                   <div key={url} className="relative group aspect-square rounded-xl overflow-hidden bg-white/5 border border-white/10">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={url} alt="" className="w-full h-full object-cover" />
+                    <img src={url} alt="" className={`w-full h-full ${i === 0 ? "object-cover" : "object-contain"}`} />
                     {i===0 && <span className="absolute top-1 left-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[#00E5FF] text-[#080C1E]">Utama</span>}
                     <button onClick={()=>onSetFormImages(prev=>prev.filter((_,idx)=>idx!==i))} className="absolute top-1 right-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition group-hover:opacity-100"><IosIcon name="close" size={10} tint="white" /></button>
                     {i>0 && <button onClick={()=>onSetFormImages(prev=>{ const a=[...prev]; const t=a[i]; a[i]=a[0]; a[0]=t; return a; })} className="absolute bottom-1 left-1 right-1 text-[10px] font-bold bg-white/90 text-[#080C1E] rounded-full py-1 opacity-0 group-hover:opacity-100 transition">Jadikan utama</button>}
@@ -307,7 +307,7 @@ export function ProductEditorModal({
                   </label>
                 )}
               </div>
-              <p className="text-[11px] text-white/30 mt-2">Foto disesuaikan ke WebP 1600×900 — ringan dan konsisten. Foto pertama = cover card.</p>
+              <p className="text-[11px] text-white/30 mt-2">Foto pertama = cover WebP 1600×900. Foto kedua dan seterusnya tampil utuh dengan rasio asli, maksimal 1920 px. Foto lama yang terpotong perlu diunggah ulang dari gambar asli.</p>
             </div>
 
             </div>
