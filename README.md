@@ -449,6 +449,13 @@ Aktivasi:` untuk bagian yang pindah ke kartu S&K. Detail: `docs/ARCHITECTURE.md`
 
 **S&K dan panduan bersama per varian (2026-10-15).** Untuk stok sendiri, buka tab Varian: S&K bersama serta Cara penggunaan / aktivasi bersama berlaku untuk setiap pembeli varian itu dan tersimpan lewat **Simpan Produk**, termasuk saat membuat varian baru. Stok unik cukup berisi link/akun/key/detail khusus pembeli; impor/hapus stok tetap aksi terpisah yang langsung tersimpan. Modal varian memakai accordion dan stok unique mengikuti inventory. Produk supplier tetap memakai tab Deskripsi & S&K dan tombol tinjauan khusus, agar save produk tidak menyetujui otomatis teks WR yang berubah. Setelah bayar, panel kredensial menggabungkan panduan varian dan S&K/aktivasi deskripsi produk seperti PDP, lalu menampilkan accordion terpisah di bawah detail akses.
 
+**Muse AI (2026-10-21, ✅ live).** Produk manual 1 miliar token Rp16.000
+menggunakan kolom deskripsi serta S&K/panduan bersama varian existing.
+Login melalui email + web OTP, lalu ganti dan verifikasi email pribadi.
+Copy membedakan token tambahan dari langganan berbayar, menempatkan kapasitas
+VM sebagai referensi, serta mengikuti kuota/izin/ketersediaan dan garansi
+varian tanpa garansi. Teks dan dasar bukti: [salinan Muse](issue/muse-ai-copy-2026-10-21.md).
+
 **Link supplier tampil pendek via shortlink internal `axvara.tech/go/*` (2026-10-03, migrasi 0056).** 44 link supplier (mailbox OTP, bot Telegram, tutorial YouTube, domain resmi app, panduan artikel — termasuk `go/disney-login` 2026-10-19) dibungkus jadi `go/otp`, `go/netflix-login`, dst. — tampil pendek di PDP/email/panel, redirect 307 + hitung klik, noindex. Kelola di tab admin **Link Supplier** (tambah/ubah/tujuan/aktif-nonaktif); supplier ganti URL → update 1 baris, tanpa edit kurasi. Detail: `docs/ARCHITECTURE.md` (tabel `supplier_links` + route `/go/:slug`) dan `docs/PRD.md` FR-S17c.
 
 **Handoff operasional Heroku + Cloudflare.** Sejak 2026-09-14 proxy WR terpisah:

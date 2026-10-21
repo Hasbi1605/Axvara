@@ -1,5 +1,19 @@
 # PRD — AXVARA
 
+## Salinan produk Muse AI — 21 Oktober 2026
+
+✅ Live: produk manual `muse-ai-1-miliar-token` Rp16.000 memakai deskripsi,
+S&K, dan cara penggunaan bersama per varian sesuai format Market. Penawaran
+1 miliar token tambahan pada akun yang dapat tetap berlabel Free plan, bukan
+janji paket berbayar/unlimited/lifetime. Komputer virtual, browser, WhatsApp
+native, konektor, coding/riset/analisis/konten dan penjadwalan dijelaskan
+dengan batas kuota, otorisasi, serta ketersediaan layanan. Spesifikasi
+2 vCPU/RAM sekitar 7,7 GB/storage 100 GB adalah referensi informasi akun
+owner yang dapat berbeda, bukan kapasitas terjamin untuk semua akun.
+Pembeli menerima email dan web OTP, lalu mengganti serta memverifikasi email
+pribadi sebelum keluar. Garansi mengikuti varian existing tanpa garansi.
+Dasar bukti dan teks penerapan: [salinan Muse](../issue/muse-ai-copy-2026-10-21.md).
+
 ## Redesain alur pembelian Pedia — 20 Oktober 2026
 
 ✅ Implementasi; publikasi melalui CI. Keputusan owner: **beranda tetap seperti sebelumnya, tanpa jalan pintas**. Sesudah klik layanan/platform, konfigurator mengikuti referensi “Redesign SMM Panel Purchase Flow”: **Layanan → Target → Kontak → Bayar**. Kebutuhan pertama langsung terbuka (deep link mengikuti slug); jumlah/layanan tetap dipilih eksplisit. Tab kebutuhan berikon, perbandingan layanan tetap terbuka, validasi per tahap, ringkasan desktop340px, CTA di dasar panel desktop/fixed mobile dengan safe-area. Link dan checklist produk berada di tahap Target; WA/email, kredit dan consent di tahap Kontak. Kembali mempertahankan isian produk yang sama, tanpa melewati tahap mendatang; setelah POST ambigu semua navigasi langkah terkunci. Preview admin embedded tetap tanpa request harga/order atau kontak.

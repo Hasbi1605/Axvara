@@ -1582,6 +1582,16 @@ kiri bawah deskripsi, mobile sebagai panel terlipat. Varian manual (tanpa
 
 ### Salinan produk versi Axvara (2026-09-24, live)
 
+Penerapan data 2026-10-21 ✅ live: Muse manual (`muse-ai-1-miliar-token`,
+produk112/varian248) menggunakan `products.description` serta
+`product_variants.admin_terms` / `admin_activation` / fingerprint kosong,
+melalui kontrak stok sendiri existing. Patch sekali jalan dengan guard
+ID/slug/source/isi awal: `issue/muse-ai-copy-2026-10-21.sql`; bukan migrasi
+schema. Resolver `/api/catalog?slug=` menampilkan bagian paket, proses,
+aturan, garansi dan dua kelompok aktivasi. Harga/stok/foto/pengiriman serta
+garansi tidak berubah. Dasar penulisan dan batas bukti ada di
+`issue/muse-ai-copy-2026-10-21.md`.
+
 Permintaan owner: deskripsi, S&K, dan cara aktivasi seragam untuk produk WR
 maupun non-WR, tanpa kalimat berulang, dalam suara Axvara, **tanpa
 menghilangkan maksud/ketegasan pemasok**. Kode di `src/lib/product-copy/`:
