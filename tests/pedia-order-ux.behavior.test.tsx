@@ -108,11 +108,12 @@ describe("Pedia order UX", () => {
     expect(document.activeElement).toBe(screen.getAllByRole("radio")[0]);
   });
 
-  it("uses a compact needs heading and honest selected-service bounds", () => {
+  it("restores the original needs heading without decoration and keeps honest selected-service bounds", () => {
     mount();
     const heading = screen.getByRole("heading", { name: "Apa yang ingin ditingkatkan?" });
-    expect(heading.className).toContain("text-base");
-    expect(heading.className).not.toContain("text-2xl");
+    expect(heading.className).toContain("text-2xl");
+    expect(heading.className).toContain("font-bold");
+    expect(heading.querySelector("[aria-hidden]")).toBeNull();
     expect(document.body.textContent).not.toContain("Isi jumlah dulu");
     expect(document.body.textContent).not.toContain("Batas tiap layanan berbeda");
     select();
