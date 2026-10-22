@@ -16,6 +16,7 @@ import {
   handleSkOrderCompleted,
   handleSkOrderFailed,
   handleSkOrderPaid,
+  bindSkInvoiceByRef,
 } from "@/lib/sekalipay/order";
 import { checkRateLimit } from "@/lib/rateLimit";
 
@@ -65,6 +66,13 @@ export async function POST(request: NextRequest) {
         "",
     ).slice(0, 120) || undefined;
   try {
+    // Only after signature verification: bind the stable purchase reference
+    // even when the dispatch Worker has not persisted its POST response yet.
+    if (["order.paid", "order.completed", "order.canceled", "order.item.sent"].includes(payload.event)) {
+      if (!(await bindSkInvoiceByRef(String(payload.data.ref_id || ""), invoice))) {
+        throw new Error("sk_link_not_found");
+      }
+    }
     switch (payload.event) {
       case "order.paid":
         await handleSkOrderPaid(invoice, undefined, eventId);

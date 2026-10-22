@@ -488,6 +488,10 @@ di `.heroku-credentials` (git-ignored, pola sama); AWS (VPS proxy) lewat
 `.aws-credentials` (git-ignored, pola sama; read-only + reboot VPS,
 lihat AGENTS.md); CI/CD memakai GitHub Actions Secrets.
 
+### Pemulihan invoice supplier SK (2026-10-23)
+
+Status “Sedang dikirim ke supplier” dapat tersangkut ketika pembelian sudah diterima SK tetapi invocation berhenti sebelum invoice tersimpan. Webhook valid kini mengikat invoice lewat ref_id canonical meskipun respons POST belum tersimpan. Cron existing memulihkan klaim terkirim dengan lease basi serta submitted/ordering yang due lewat GET referensi asli, lalu melanjutkan pengiriman. Maksimal tiga kandidat/tick, cooldown lookup satu menit dan budget D1 tetap; 404/timeout tidak memicu pembelian ulang. Respons pemesanan terlambat tidak menurunkan status webhook. Polling halaman pesanan/lacak juga memulihkan invoice lewat GET ref_id (throttle existing 20 detik/order), sehingga pembeli yang sedang menunggu tidak bergantung pada tick cron berikutnya. Item bertanda penyerahan manual tidak ditimpa atau dikirim ulang oleh recovery. Lihat ARCHITECTURE §15b; tidak ada env, migrasi atau perubahan proxy.
+
 ### Sekalipay Reseller API (supplier kedua paralel WR, 2026-09-30, default mati)
 
 **Ketahanan antrean 2026-10-19 (implementasi; publikasi CI):** cron SK memprioritaskan link siap beli, lalu mencari order lunas yang benar-benar kehilangan link melalui satu query, tanpa memeriksa ulang seluruh riwayat per item atau probe ganda. Order yatim tetap ditemukan walau tertutup banyak transaksi selesai. Maksimal empat upaya pembelian per tick; link yang dipulihkan dapat diproses langsung bila belum ada pembelian pada tick tersebut, atau tetap due untuk tick berikutnya. Budget habis dilaporkan sebagai `budget_exhausted`, bukan antrean kosong. Tidak perlu Retry admin untuk antrean normal; backoff/hasil ambigu/saldo dan idempotensi tetap berlaku, order selesai tidak dibeli ulang. Jadwal, env dan proxy tetap existing; rincian di ARCHITECTURE §15b.

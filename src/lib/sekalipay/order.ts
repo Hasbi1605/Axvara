@@ -90,6 +90,30 @@ export function skRefId(orderCode: string, skVariantId: string, qty: number): st
   return skIdempotencyKey(orderCode, skVariantId, qty).slice(0, 191);
 }
 
+/** A signed webhook can arrive before POST /trx returns its invoice. */
+export async function bindSkInvoiceByRef(
+  refId: string,
+  invoice: string,
+  database?: DatabaseAccess,
+): Promise<boolean> {
+  if (!refId || !invoice) return false;
+  const db = database ?? createDatabaseAccess();
+  const link = await db.queryFirst(
+    `SELECT id, order_code, sk_variant_id, quantity FROM sk_order_links
+     WHERE idempotency_key=? OR
+       (idempotency_key IS NULL AND 'sk:' || order_code || ':' || sk_variant_id || ':' || quantity=?)
+     LIMIT 1`,
+    refId, refId,
+  );
+  if (!link || skRefId(String(link.order_code), String(link.sk_variant_id), Number(link.quantity)) !== refId) return false;
+  const bound = await db.execRun(
+    `UPDATE sk_order_links SET sk_invoice=?, updated_at=datetime('now')
+     WHERE id=? AND (COALESCE(sk_invoice,'')='' OR sk_invoice=?)`,
+    invoice, Number(link.id), invoice,
+  );
+  return Number(bound.changes ?? 0) > 0;
+}
+
 /** Ambil sk_variant_id untuk varian Axvara (null bila bukan produk SK auto). */
 export async function resolveSkVariantId(
   axvaraVariantId: number,
@@ -391,9 +415,11 @@ async function processOneSkLink(link: Row, db: DatabaseAccess): Promise<"succeed
     await execRun(
       `UPDATE sk_order_links SET status='processing', sk_invoice=?,
          last_error=NULL, lease_owner=NULL, lease_expires_at=NULL,
-         updated_at=datetime('now') WHERE id=?`,
+         updated_at=datetime('now') WHERE id=? AND status='claimed'
+         AND (COALESCE(sk_invoice,'')='' OR sk_invoice=?)`,
       String(created.invoice),
       id,
+      String(created.invoice),
     );
     return "succeeded";
   } catch (error) {
@@ -414,21 +440,26 @@ async function reconcileAmbiguousSkLink(id: number, db: DatabaseAccess): Promise
     return false;
   }
   const status = String(detail.status || "").toLowerCase();
+  // Persist the recovered invoice BEFORE completion looks the link up by it.
+  // Never POST again: the original purchase may already have consumed stock.
+  const invoice = String(detail.invoice || link.sk_invoice || "");
+  if (!invoice || (detail.ref_id && detail.ref_id !== refId)) return false;
+  if (!(await bindSkInvoiceByRef(refId, invoice, db))) return false;
   const { handleSkOrderCompleted, handleSkOrderFailed } = await import("./deliver");
   if (status.includes("complet") || status.includes("success") || status.includes("done")) {
-    await handleSkOrderCompleted(String(detail.invoice || refId), detail, db);
-    return true;
+    return handleSkOrderCompleted(invoice, detail, db);
   }
   if (status.includes("fail") || status.includes("cancel") || status.includes("refund")) {
-    await handleSkOrderFailed(String(detail.invoice || refId), status, db);
-    return true;
+    return handleSkOrderFailed(invoice, status, db);
   }
   // paid/pending: catat invoice, tetap processing untuk reconcile berikutnya.
   if (String(detail.invoice || "")) {
     await db
       .execRun(
         `UPDATE sk_order_links SET sk_invoice=?, status='processing',
-           last_error=NULL, updated_at=datetime('now') WHERE id=?`,
+           last_error=NULL, lease_owner=NULL, lease_expires_at=NULL,
+           updated_at=datetime('now') WHERE id=?
+           AND status IN ('claimed','submitted','ordering','processing')`,
         String(detail.invoice),
         id,
       )
@@ -453,7 +484,7 @@ async function handleSkOrderError(
       `UPDATE sk_order_links SET status='submitted',
          last_error=?, lease_owner=NULL, lease_expires_at=NULL,
          next_attempt_at=datetime('now','+${SK_SUBMITTED_STALE_MINUTES} minutes'),
-         updated_at=datetime('now') WHERE id=?`,
+         updated_at=datetime('now') WHERE id=? AND status='claimed'`,
       `ambiguous_timeout: ${message}`,
       id,
     );
@@ -484,7 +515,7 @@ async function handleSkOrderError(
     await execRun(
       `UPDATE sk_order_links SET status='retry', last_error=?, request_sent_at=NULL,
          lease_owner=NULL, lease_expires_at=NULL,
-         next_attempt_at=?, updated_at=datetime('now') WHERE id=?`,
+         next_attempt_at=?, updated_at=datetime('now') WHERE id=? AND status='claimed'`,
       message,
       nextAttemptIso(attempt),
       id,
@@ -492,12 +523,13 @@ async function handleSkOrderError(
     return "retried";
   }
   if (attempt >= Number(link.max_attempts || SK_MAX_ATTEMPTS)) {
-    await execRun(
+    const failed = await execRun(
       `UPDATE sk_order_links SET status='failed', last_error=?, request_sent_at=NULL,
-         lease_owner=NULL, lease_expires_at=NULL, updated_at=datetime('now') WHERE id=?`,
+         lease_owner=NULL, lease_expires_at=NULL, updated_at=datetime('now') WHERE id=? AND status='claimed'`,
       message,
       id,
     );
+    if (Number(failed.changes ?? 0) === 0) return "retried";
     await notifyAdmin(
       `⚠️ <b>Order Sekalipay gagal</b> <code>${String(link.order_code)}</code>\n${escapeHtml(message)}`,
     );
@@ -532,7 +564,7 @@ async function handleSkOrderErrorTail(
   await execRun(
     `UPDATE sk_order_links SET status='retry', last_error=?, request_sent_at=NULL,
        lease_owner=NULL, lease_expires_at=NULL,
-       next_attempt_at=?, updated_at=datetime('now') WHERE id=?`,
+       next_attempt_at=?, updated_at=datetime('now') WHERE id=? AND status='claimed'`,
     message,
     nextAttemptIso(attempt),
     id,
@@ -545,17 +577,18 @@ async function handleSkInsufficientBalance(
   link: Row,
   message: string,
   db: DatabaseAccess,
-): Promise<"blocked"> {
+): Promise<"blocked" | "retried"> {
   const { execRun } = db;
-  await execRun(
+  const blocked = await execRun(
     `UPDATE sk_order_links SET status='blocked_balance',
        last_error=?, request_sent_at=NULL, lease_owner=NULL, lease_expires_at=NULL,
        attempt_count=attempt_count-1,
        next_attempt_at=datetime('now','+60 minutes'), updated_at=datetime('now')
-     WHERE id=?`,
+     WHERE id=? AND status='claimed'`,
     `saldo_sk_habis: ${message}`,
     id,
   );
+  if (Number(blocked.changes ?? 0) === 0) return "retried";
   await notifyAdmin(
     `💰 <b>Saldo Sekalipay habis</b>\nOrder <code>${String(link.order_code)}</code> diblokir sementara (tidak makan retry). Top up untuk memulihkan otomatis.`,
   );
@@ -669,16 +702,20 @@ export async function reconcileSkInvoiceNow(
   } catch {
     return false;
   }
+  // Polling can also start from ref_id when dispatch lost its invoice.
+  const resolvedInvoice = String(detail.invoice || invoice);
+  if (resolvedInvoice !== invoice) {
+    if (detail.ref_id !== invoice || !(await bindSkInvoiceByRef(invoice, resolvedInvoice, db))) return false;
+  }
   const status = String(detail.status || "").toLowerCase();
   const { handleSkOrderCompleted, handleSkOrderFailed } = await import("./deliver");
   if (status.includes("complet") || status.includes("success") || status.includes("done")) {
-    await handleSkOrderCompleted(invoice, detail, db);
-    return true;
+    return handleSkOrderCompleted(resolvedInvoice, detail, db);
   }
   if (status.includes("fail") || status.includes("cancel") || status.includes("refund")) {
-    await handleSkOrderFailed(invoice, status, db);
-    return true;
+    return handleSkOrderFailed(resolvedInvoice, status, db);
   }
+  if (resolvedInvoice !== invoice) await handleSkOrderPaid(resolvedInvoice, db);
   return false;
 }
 
@@ -774,7 +811,31 @@ export async function recoverStaleSkClaims(database?: DatabaseAccess): Promise<n
          AND datetime(lease_expires_at) <= datetime('now')`,
     )
     .catch(() => ({ changes: 0 as number | undefined }));
-  return Number(res.changes ?? 0);
+  // A Worker can die AFTER request_sent_at but BEFORE storing the invoice.
+  // Those claims must be read back by stable ref_id, never requeued to buy.
+  const ambiguous = await db.queryAll(
+    `SELECT id FROM sk_order_links
+     WHERE ((status='claimed' AND request_sent_at IS NOT NULL
+       AND (lease_expires_at IS NULL OR datetime(lease_expires_at) <= datetime('now')))
+       OR status IN ('submitted','ordering'))
+       AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime('now'))
+     ORDER BY COALESCE(next_attempt_at, request_sent_at, created_at) ASC, id ASC LIMIT 3`,
+  );
+  let recovered = Number(res.changes ?? 0);
+  for (const row of ambiguous) {
+    if (!db.canSpend(17)) throw new QueryBudgetExceeded();
+    // Fence concurrent cron runs and rotate failed lookups behind other due
+    // links; an upstream 404/timeout must not occupy the first three forever.
+    const claimed = await db.execRun(
+      `UPDATE sk_order_links SET next_attempt_at=datetime('now','+1 minute')
+       WHERE id=? AND status IN ('claimed','submitted','ordering')
+         AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime('now'))`,
+      Number(row.id),
+    );
+    if (Number(claimed.changes ?? 0) === 0) continue;
+    if (await reconcileAmbiguousSkLink(Number(row.id), db)) recovered++;
+  }
+  return recovered;
 }
 
 export type { SkOrderLinkRow } from "./deliver";

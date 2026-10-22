@@ -255,8 +255,16 @@ export async function deliverSkCredentialToBuyer(
 ): Promise<boolean> {
   const db = database ?? createDatabaseAccess();
   const order = await db
-    .queryFirst(`SELECT sales_channel FROM orders WHERE code=?`, orderCode)
+    .queryFirst(
+      `SELECT o.sales_channel, fi.last_error FROM orders o
+       LEFT JOIN fulfillment_items fi ON fi.order_code=o.code AND fi.id=?
+       WHERE o.code=?`,
+      fulfillmentItemId, orderCode,
+    )
     .catch(() => null);
+  // Recovery may find a supplier transaction after an admin already handed
+  // over this item. Keep that delivery and its notification authoritative.
+  if (String(order?.last_error || "").startsWith("manual_handover:")) return true;
   if (String(order?.sales_channel || "") === "telegram") {
     return sendSkCredentialTelegram(orderCode, fulfillmentItemId, db);
   }

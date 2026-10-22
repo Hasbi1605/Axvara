@@ -40,7 +40,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ code
         (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=?)
          OR EXISTS(SELECT 1 FROM sk_order_links WHERE order_code=?)) AS supplier_owned,
         (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND status IN ('processing','submitted','ordering') AND COALESCE(wr_order_id,'')!='')
-         OR EXISTS(SELECT 1 FROM sk_order_links WHERE order_code=? AND status IN ('processing','submitted','ordering') AND COALESCE(sk_invoice,'')!='')) AS supplier_running`,
+         OR EXISTS(SELECT 1 FROM sk_order_links WHERE order_code=? AND (status IN ('processing','submitted','ordering') OR (status='claimed' AND request_sent_at IS NOT NULL)))) AS supplier_running`,
       code, code, code, code, code, code,
     ).catch(() => null)) as Record<string, unknown> | null;
     credentialsReady = Number(flags?.creds ?? 0) === 1;
@@ -58,7 +58,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ code
                     (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND status='completed' AND wr_account_details IS NOT NULL)
                      OR EXISTS(SELECT 1 FROM fulfillment_items WHERE order_code=? AND status='delivered' AND delivered_ciphertext IS NOT NULL)) AS creds,
                     (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND status IN ('processing','submitted','ordering') AND COALESCE(wr_order_id,'')!='')
-                     OR EXISTS(SELECT 1 FROM sk_order_links WHERE order_code=? AND status IN ('processing','submitted','ordering') AND COALESCE(sk_invoice,'')!='')) AS running
+                     OR EXISTS(SELECT 1 FROM sk_order_links WHERE order_code=? AND (status IN ('processing','submitted','ordering') OR (status='claimed' AND request_sent_at IS NOT NULL)))) AS running
              FROM orders o WHERE o.code=?`,
             code, code, code, code, code,
           ).catch(() => null)) as Record<string, unknown> | null;

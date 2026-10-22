@@ -116,13 +116,15 @@ export async function listRunningSupplierLinks(
   }
   const sk = await db
     .queryAll(
-      `SELECT id, sk_invoice FROM sk_order_links
-       WHERE order_code=? AND status IN ('processing','submitted','ordering') AND COALESCE(sk_invoice,'')!=''`,
+      `SELECT id, sk_invoice, sk_variant_id, quantity FROM sk_order_links
+       WHERE order_code=? AND (status IN ('processing','submitted','ordering')
+         OR (status='claimed' AND request_sent_at IS NOT NULL))`,
       code,
     )
     .catch(() => [] as Record<string, unknown>[]);
   for (const row of sk) {
-    out.push({ supplier: "sk", id: Number(row.id), supplierOrderId: String(row.sk_invoice || ""), orderCode: code });
+    const { skRefId } = await import("@/lib/sekalipay/order");
+    out.push({ supplier: "sk", id: Number(row.id), supplierOrderId: String(row.sk_invoice || skRefId(code, String(row.sk_variant_id), Number(row.quantity))), orderCode: code });
   }
   return out;
 }
@@ -224,7 +226,8 @@ export async function refreshDueSupplierOrders(
   const skRows = await db
     .queryAll(
       `SELECT DISTINCT order_code, MIN(COALESCE(request_sent_at, created_at)) AS since FROM sk_order_links
-       WHERE status IN ('processing','submitted','ordering') AND COALESCE(sk_invoice,'')!=''
+       WHERE (status IN ('processing','submitted','ordering')
+         OR (status='claimed' AND request_sent_at IS NOT NULL))
          AND datetime(COALESCE(request_sent_at, updated_at)) > datetime('now','-${SUPPLIER_REFRESH_MAX_AGE_MINUTES} minutes')
        GROUP BY order_code ORDER BY since ASC LIMIT ?`,
       limit,

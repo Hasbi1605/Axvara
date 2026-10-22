@@ -62,6 +62,10 @@ urutan cepat/lambat dan jatah percobaan existing. Waktu tersembunyi tidak memaka
 atau mengulang jatah tersebut. Request yang sudah berjalan boleh selesai;
 webhook/cron/expiry/email tetap bekerja tanpa halaman terbuka.
 
+## Pemulihan pengiriman SK yang kehilangan invoice — 2026-10-23
+
+✅ Diimplementasikan; publikasi melalui CI. Transaksi supplier yang sudah menerima pembelian tidak boleh tertahan selamanya di “Sedang dikirim ke supplier” ketika invocation terputus sebelum menyimpan invoice. Webhook bertanda tangan mengikat invoice melalui referensi pembelian yang tetap sebelum menerapkan status; respons pemesanan terlambat tidak menurunkan status yang sudah maju. Cron existing memulihkan klaim terkirim yang lease-nya habis dan transaksi ambigu yang due dengan GET referensi yang sama, menyimpan invoice sebelum menyelesaikan pengiriman, tanpa pembelian ulang. Pembacaan gagal tetap ambigu dan diberi jeda satu menit; maksimal tiga kandidat per tick dengan budget existing. Halaman pesanan dan lacak juga menarik status melalui referensi asli walaupun invoice hilang, dengan gerbang existing 20 detik/order; GET ini tidak perlu menunggu lease atau tick cron. Item bertanda penyerahan manual tetap dipertahankan dan tidak dikirim ulang oleh pemulihan supplier.
+
 ## Keandalan antrean Sekalipay — 2026-10-19
 
 ✅ Diimplementasikan; publikasi melalui CI. Order SK auto yang sudah lunas diproses oleh cron existing tanpa membutuhkan Retry admin. Antrean siap beli didahulukan sebelum pemulihan order tanpa link; pemulihan mencari order layak yang benar-benar kehilangan link, termasuk yang tertutup banyak riwayat selesai. Maksimal empat upaya pembelian per tick; link yang dipulihkan langsung diproses bila belum ada upaya pembelian pada tick tersebut, selebihnya tetap due untuk tick berikutnya. Kehabisan budget dilaporkan sebagai pekerjaan tertunda, bukan antrean kosong. Retry/backoff, klaim/idempotensi, penanganan saldo/hasil ambigu dan pengiriman lewat webhook/status supplier tetap berlaku; order yang sudah selesai tidak dibeli ulang.
