@@ -150,7 +150,7 @@ export function ProductCard({ p, index = 0 }: { p: ProductCardData; index?: numb
       <span className="flex min-w-0 flex-1 flex-col px-3 pb-3 pt-1 sm:px-4 sm:pb-4">
         <span className="block break-words text-sm font-semibold leading-snug text-white sm:text-base">{p.name}</span>
         {/* 2026-10-12 (owner): tagline AI slop DIHAPUS dari kartu — judul langsung ke harga. */}
-        <span className="mt-2 block text-base font-bold tabular-nums tracking-[-0.01em] text-white sm:text-lg">
+        <span className="mt-2 block font-bold text-[14px] sm:text-[17px] text-white tracking-[-0.02em] leading-none">
           {p.pricePer1k != null ? `Mulai Rp${p.pricePer1k.toLocaleString("id-ID")} /1.000` : p.minPrice != null ? `Mulai Rp${p.minPrice.toLocaleString("id-ID")}` : "Lihat harga"}
         </span>
         <span className="mt-1 block text-xs text-white/60">

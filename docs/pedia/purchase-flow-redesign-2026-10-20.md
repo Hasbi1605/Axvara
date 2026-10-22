@@ -4,6 +4,8 @@
 
 ✅ Implementasi; publikasi melalui CI. Koreksi owner22 Oktober: judul “Apa yang ingin ditingkatkan?” kembali ke ukuran24px/bold semula tanpa garis cyan. Yang diperkecil adalah pill kebutuhan Followers/Likes/dll: tinggi32px, teks12px, ikon13px dan padding12px; permukaan gradasi halus dengan highlight inset, pilihan aktif cyan/violet dan glow tipis. Gulir horizontal serta fokus keyboard tetap, scrollbar visual disembunyikan. Label tombol jumlah memakai `k` kecil untuk ribuan (`1k`, `2k`, `2.5k`); angka di bawah 1.000 tetap utuh, nilai input/perhitungan serta teks batas dan harga memakai angka aslinya. Pengantar panjang jumlah dihapus; batas tampil sesuai min/max layanan terpilih (“Layanan terpilih menerima 100–50.000 per pesanan.”), termasuk kelipatan bila perlu; sebelum memilih layanan ada petunjuk singkat tanpa angka asumsi. “Pilih layanan · harga untuk …” berada di kiri dan filter ringkas di kanan saat muat, bertumpuk pada mobile. Kategori **Semua/Global/Indonesia/Refill** memakai satu state eksklusif: tepat satu pill aktif, klik pill aktif mempertahankannya; Refill berarti semua wilayah dengan refill>0. Pemilihan kategori tidak mengganti layanan atau jumlah. Hitungan hasil, Reset filter dan pengaturan jenis akun/urutan berada sesudah daftar. Beranda, data katalog, validasi batas, quote/consent/retry dan pembayaran tetap.
 
+Tipografi harga 22 Oktober mengikuti AXVARA pusat: harga kartu/daftar layanan Inter bold 700, 14px mobile/17px mulai sm, tracking −0.02em dan line-height 1 tanpa tabular-nums; total ringkasan Space Grotesk bold 700/18px, total ringkas mobile 14px; nominal QRIS/pembayaran diterima Space Grotesk bold 700/24px dengan kelas `leading-8`; line-height aktual mengikuti `.font-display` global seperti pusat. Acuan aktual: ProductCard storefront, total checkout pusat dan nominal QRIS pusat. Ini menggantikan ukuran harga pada redesain 20 Oktober; susunan beranda/checkout, nominal dan format jumlah tetap.
+
 
 ✅ Diimplementasikan; publikasi melalui CI push main. Acuan: folder owner
 **Redesign SMM Panel Purchase Flow** (`Order.tsx`, `Pay.tsx`, `index.css`).
@@ -59,7 +61,7 @@ terbaca. Font, aset platform dan token AXVARA existing digunakan kembali.
 
 Halaman status maksimal1000px: detail/timeline kiri, panel pembayaran380px kanan
 sticky di desktop; pembayaran di atas detail pada mobile. QR maksimal240px,
-nominal30px, countdown monospace dari expiry server, Simpan QRIS dan Cek pembayaran.
+nominal Space Grotesk bold24px/kelas leading-8 sesuai pusat (revisi22 Oktober), countdown monospace dari expiry server, Simpan QRIS dan Cek pembayaran.
 Timeline vertikal: dibuat → pembayaran diterima → diproses → selesai, dengan
 progres horizontal dari data server. Partial/canceled/needs_check, kredit,
 ketentuan snapshot dan verifikasi refill tetap ditampilkan sesuai status aktual.
