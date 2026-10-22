@@ -32,17 +32,15 @@ export function ServicePicker({ product, tierId, onSelect, qty, prices = {}, pri
 }) {
   const [compare, setCompare] = useState(false);
   const [showAll, setShowAll] = useState(false);
-  const [region, setRegion] = useState("");
+  const [category, setCategory] = useState("");
   const [quality, setQuality] = useState("");
-  const [refill, setRefill] = useState("");
   const [sort, setSort] = useState("recommended");
   const tiers = product.tiers;
   const qualities = [...new Set(tiers.map((t) => t.quality ?? "standar"))];
-  const regions = [...new Set(tiers.map((t) => t.region ?? "global"))];
-  const filtersActive = !!(region || quality || refill || sort !== "recommended");
+  const filtersActive = !!(category || quality || sort !== "recommended");
   const validQuantity = useCallback((t: PediaCatalogTier) => qty != null && Number.isSafeInteger(qty) && qty >= (t.min_qty ?? 1) && qty <= (t.max_qty ?? Infinity) && qty % (t.quantity_step ?? product.step) === 0, [qty, product.step]);
   const relevant = useMemo(() => {
-    const list = tiers.filter((t) => (!region || (t.region ?? "global") === region) && (!quality || (t.quality ?? "standar") === quality) && (!refill || (refill === "yes" ? t.refill_days > 0 : t.refill_days === 0)));
+    const list = tiers.filter((t) => (!category || (category === "refill" ? t.refill_days > 0 : (t.region ?? "global") === category)) && (!quality || (t.quality ?? "standar") === quality));
     return [...list].sort((a, b) => {
       const eligible = Number(validQuantity(b)) - Number(validQuantity(a));
       if (eligible) return eligible;
@@ -50,43 +48,25 @@ export function ServicePicker({ product, tierId, onSelect, qty, prices = {}, pri
         ? (prices[a.id] ?? a.prices[qty] ?? Infinity) - (prices[b.id] ?? b.prices[qty] ?? Infinity)
         : Number(!!b.recommended) - Number(!!a.recommended);
     });
-  }, [tiers, region, quality, refill, sort, prices, qty, validQuantity]);
+  }, [tiers, category, quality, sort, prices, qty, validQuantity]);
   const picked = tiers.find((t) => t.id === tierId);
   const compact = !expanded && !!picked && !compare;
   const visible = compact && picked ? [picked] : expanded || showAll ? relevant : relevant.slice(0, 3);
   if (!compact && picked && relevant.includes(picked) && !visible.includes(picked)) visible.push(picked);
-  const resetFilters = () => { setRegion(""); setQuality(""); setRefill(""); setSort("recommended"); setShowAll(false); };
+  const resetFilters = () => { setCategory(""); setQuality(""); setSort("recommended"); setShowAll(false); };
 
   return <fieldset id="pedia-tier" className="min-w-0" disabled={locked}>
     <legend className="sr-only">{compact ? "Layanan pilihanmu" : "Pilih layanan"}</legend>
-    <div className="flex items-center justify-between gap-3">
-      <span aria-hidden="true" className="text-base font-semibold text-white">{compact ? "Layanan pilihanmu" : "Pilih layanan"}</span>
-      {!expanded && picked && <button type="button" onClick={() => setCompare(!compare)} aria-expanded={compare} className="min-h-11 shrink-0 whitespace-nowrap px-2 text-xs font-medium text-[#00E5FF] disabled:opacity-40 sm:text-sm">{compact ? "Ganti layanan" : "Kembali ke pilihan"}</button>}
-    </div>
-    <p className="mt-1 text-xs leading-5 text-white/50">{compact ? "Jumlah, target, dan filter tetap tersimpan saat ganti layanan." : `${tiers.length} pilihan · Harga dibandingkan pada jumlah yang sama.`}</p>
-    {!compact && <>
-      {(regions.length > 1 || tiers.some((t) => t.refill_days > 0) && tiers.some((t) => t.refill_days === 0)) && <div className="mt-3 flex flex-wrap gap-2" aria-label="Filter cepat layanan">
-        {regions.length > 1 && <>
-          <button type="button" aria-pressed={region === ""} onClick={() => { setRegion(""); setShowAll(false); }} className={`min-h-11 whitespace-nowrap rounded-full border px-4 text-xs font-medium transition sm:text-sm ${region === "" ? "border-white bg-white text-[#080C1E]" : "border-white/10 text-white/60 hover:border-white/25 hover:text-white"}`}>Semua wilayah</button>
-          {regions.map((r) => <button key={r} type="button" aria-pressed={region === r} onClick={() => { setRegion(region === r ? "" : r); setShowAll(false); }} className={`min-h-11 whitespace-nowrap rounded-full border px-4 text-xs font-medium transition sm:text-sm ${region === r ? "border-white bg-white text-[#080C1E]" : "border-white/10 text-white/60 hover:border-white/25 hover:text-white"}`}>{REGION_LABEL[r] ?? r}</button>)}
-        </>}
-        {tiers.some((t) => t.refill_days > 0) && tiers.some((t) => t.refill_days === 0) && <>
-          <button type="button" aria-pressed={refill === "yes"} onClick={() => { setRefill(refill === "yes" ? "" : "yes"); setShowAll(false); }} className={`min-h-11 whitespace-nowrap rounded-full border px-4 text-xs font-medium transition sm:text-sm ${refill === "yes" ? "border-white bg-white text-[#080C1E]" : "border-white/10 text-white/60 hover:border-white/25 hover:text-white"}`}>Dengan refill</button>
-          <button type="button" aria-pressed={refill === "no"} onClick={() => { setRefill(refill === "no" ? "" : "no"); setShowAll(false); }} className={`min-h-11 whitespace-nowrap rounded-full border px-4 text-xs font-medium transition sm:text-sm ${refill === "no" ? "border-white bg-white text-[#080C1E]" : "border-white/10 text-white/60 hover:border-white/25 hover:text-white"}`}>Tanpa refill</button>
-        </>}
-      </div>}
-      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-white/50">
-        <span role="status" data-testid="pedia-filter-count">{relevant.length} dari {tiers.length} layanan</span>
-        {filtersActive && <button type="button" onClick={resetFilters} className="min-h-11 px-1 font-medium text-[#00E5FF]">Reset filter</button>}
-        <details className="ml-auto">
-          <summary className="min-h-11 cursor-pointer px-1 py-3 text-xs font-medium text-white/65">Lanjutan: jenis akun & urutan{filtersActive ? " · aktif" : ""}</summary>
-          <div className="grid gap-2 pb-1 sm:grid-cols-2" aria-label="Filter lanjutan layanan">
-            {qualities.length > 1 && <select aria-label="Filter jenis akun" value={quality} onChange={(e) => { setQuality(e.target.value); setShowAll(false); }} className="min-h-11 min-w-0 flex-1 rounded-lg border border-white/15 bg-[#0F1430] px-3 text-sm text-white/80"><option value="">Semua jenis akun</option>{qualities.map((q) => <option key={q} value={q}>{QUALITY_LABEL[q] ?? q}</option>)}</select>}
-            <select aria-label="Urutkan layanan" value={sort} onChange={(e) => setSort(e.target.value)} className="min-h-11 min-w-0 flex-1 rounded-lg border border-white/15 bg-[#0F1430] px-3 text-sm text-white/80"><option value="recommended">Pilihan AXVARA</option><option value="cheapest" disabled={!qty}>Harga jumlah pilihan</option></select>
-          </div>
-        </details>
+    <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-3">
+      <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-[15px] leading-6">
+        <span aria-hidden="true" className="font-semibold text-white">{compact ? "Layanan pilihanmu" : "Pilih layanan"}</span>
+        {!compact && <span className="text-white/55">· harga untuk {qty != null ? qty.toLocaleString("id-ID") : "…"}</span>}
       </div>
-    </>}
+      {compact && picked ? <button type="button" onClick={() => setCompare(true)} aria-expanded={false} className="min-h-11 shrink-0 whitespace-nowrap text-xs font-medium text-[#00E5FF] disabled:opacity-40">Ganti layanan</button> : <div role="group" aria-label="Kategori layanan" className="flex min-w-0 items-center gap-1">
+        {([{ id: "", label: "Semua" }, { id: "global", label: "Global" }, { id: "indonesia", label: "Indonesia" }, { id: "refill", label: "Refill" }] as const).map((option) => <button key={option.id} type="button" aria-pressed={category === option.id} onClick={() => { setCategory(option.id); setShowAll(false); }} className={`min-h-11 whitespace-nowrap rounded-full px-2 py-1 text-xs font-semibold transition sm:min-h-9 sm:px-3 ${category === option.id ? "bg-[#F1F5FF] text-[#080C1E]" : "text-white/55 hover:bg-white/5 hover:text-white"}`}>{option.label}</button>)}
+      </div>}
+    </div>
+    {compact && <p className="mt-1 text-xs leading-5 text-white/50">Jumlah, target, dan filter tetap tersimpan saat ganti layanan.</p>}
     <div className="mt-3 space-y-2.5">
       {visible.map((t) => {
         const entries = Object.entries(t.prices).filter(([, price]) => price > 0).map(([q, price]) => ({ qty: Number(q), price })).sort((a, b) => a.qty - b.qty);
@@ -120,7 +100,19 @@ export function ServicePicker({ product, tierId, onSelect, qty, prices = {}, pri
         </label>;
       })}
     </div>
-    {!visible.length && <p className="mt-3 rounded-xl border border-white/10 p-4 text-sm text-white/65">Tidak ada pilihan yang cocok untuk filter ini ({relevant.length} dari {tiers.length} layanan). <button type="button" className="min-h-11 px-1 text-[#00E5FF]" onClick={resetFilters}>Reset filter</button></p>}
+    {!visible.length && <p className="mt-3 rounded-xl border border-white/10 p-4 text-sm text-white/65">Tidak ada pilihan yang cocok untuk filter ini ({relevant.length} dari {tiers.length} layanan).</p>}
     {!expanded && !compact && !showAll && relevant.length > 3 && <button type="button" className="mt-3 min-h-11 w-full rounded-xl border border-white/10 px-3 text-sm text-[#00E5FF] transition hover:bg-white/[0.03]" onClick={() => setShowAll(true)}>Lihat semua {relevant.length} layanan</button>}
+    {!compact && <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-white/50">
+      <span role="status" data-testid="pedia-filter-count">{relevant.length} dari {tiers.length} layanan</span>
+      {filtersActive && <button type="button" onClick={resetFilters} className="min-h-11 px-1 font-medium text-[#00E5FF]">Reset filter</button>}
+      {!expanded && picked && <button type="button" onClick={() => setCompare(false)} className="min-h-11 text-[#00E5FF]">Kembali ke pilihan</button>}
+        <details className="ml-auto">
+          <summary className="min-h-11 cursor-pointer px-1 py-3 text-xs font-medium text-white/65">Lanjutan: jenis akun & urutan{filtersActive ? " · aktif" : ""}</summary>
+          <div className="grid gap-2 pb-1 sm:grid-cols-2" aria-label="Filter lanjutan layanan">
+            {qualities.length > 1 && <select aria-label="Filter jenis akun" value={quality} onChange={(e) => { setQuality(e.target.value); setShowAll(false); }} className="min-h-11 min-w-0 flex-1 rounded-lg border border-white/15 bg-[#0F1430] px-3 text-sm text-white/80"><option value="">Semua jenis akun</option>{qualities.map((q) => <option key={q} value={q}>{QUALITY_LABEL[q] ?? q}</option>)}</select>}
+            <select aria-label="Urutkan layanan" value={sort} onChange={(e) => setSort(e.target.value)} className="min-h-11 min-w-0 flex-1 rounded-lg border border-white/15 bg-[#0F1430] px-3 text-sm text-white/80"><option value="recommended">Pilihan AXVARA</option><option value="cheapest" disabled={!qty}>Harga jumlah pilihan</option></select>
+          </div>
+        </details>
+    </div>}
   </fieldset>;
 }

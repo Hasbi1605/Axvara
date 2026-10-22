@@ -1,5 +1,10 @@
 # PRD — AXVARA
 
+## Penyederhanaan pilihan layanan Pedia — 22 Oktober 2026
+
+✅ Implementasi; publikasi melalui CI. Tahap Layanan memakai judul kebutuhan16px mobile/18px desktop dengan aksen cyan tipis. Pengantar panjang jumlah dihapus; batas tampil sesuai min/max layanan terpilih (“Layanan terpilih menerima 100–50.000 per pesanan.”), termasuk kelipatan bila perlu; sebelum memilih layanan ada petunjuk singkat tanpa angka asumsi. “Pilih layanan · harga untuk …” berada di kiri dan filter ringkas di kanan saat muat, bertumpuk pada mobile. Kategori **Semua/Global/Indonesia/Refill** memakai satu state eksklusif: tepat satu pill aktif, klik pill aktif mempertahankannya; Refill berarti semua wilayah dengan refill>0. Pemilihan kategori tidak mengganti layanan atau jumlah. Hitungan hasil, Reset filter dan pengaturan jenis akun/urutan berada sesudah daftar. Beranda, data katalog, validasi batas, quote/consent/retry dan pembayaran tetap.
+
+
 ## Galeri foto produk — 21 Oktober 2026
 
 ✅ Implementasi; publikasi melalui CI. Foto pertama tetap menjadi thumbnail/cover

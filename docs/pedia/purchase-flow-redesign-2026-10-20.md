@@ -1,5 +1,10 @@
 # Redesain pembelian Pedia — 20 Oktober 2026
 
+## Penyederhanaan pilihan layanan Pedia — 22 Oktober 2026
+
+✅ Implementasi; publikasi melalui CI. Tahap Layanan memakai judul kebutuhan16px mobile/18px desktop dengan aksen cyan tipis. Pengantar panjang jumlah dihapus; batas tampil sesuai min/max layanan terpilih (“Layanan terpilih menerima 100–50.000 per pesanan.”), termasuk kelipatan bila perlu; sebelum memilih layanan ada petunjuk singkat tanpa angka asumsi. “Pilih layanan · harga untuk …” berada di kiri dan filter ringkas di kanan saat muat, bertumpuk pada mobile. Kategori **Semua/Global/Indonesia/Refill** memakai satu state eksklusif: tepat satu pill aktif, klik pill aktif mempertahankannya; Refill berarti semua wilayah dengan refill>0. Pemilihan kategori tidak mengganti layanan atau jumlah. Hitungan hasil, Reset filter dan pengaturan jenis akun/urutan berada sesudah daftar. Beranda, data katalog, validasi batas, quote/consent/retry dan pembayaran tetap.
+
+
 ✅ Diimplementasikan; publikasi melalui CI push main. Acuan: folder owner
 **Redesign SMM Panel Purchase Flow** (`Order.tsx`, `Pay.tsx`, `index.css`).
 Dokumen ini menggantikan bagian UI konfigurator/checkout/status pada spesifikasi
@@ -20,7 +25,7 @@ pembeli mengklik layanan/platform, melalui `/pedia/p/[platform]` atau deep link
    sama. Seluruh alternatif yang lolos filter tetap terlihat setelah dipilih,
    dengan radio, total tepat, wilayah, refill, estimasi dan copy kurasi. Batas
    min/max/kelipatan tetap berlaku; jumlah tidak diam-diam diubah untuk layanan
-   lain. Filter cepat dan lanjutan existing dipertahankan. Layanan dan jumlah
+   lain. Filter kategori tunggal mengikuti revisi22 Oktober; jenis akun/urutan tetap tersedia di bawah daftar. Layanan dan jumlah
    tidak otomatis dipilih, mengikuti perilaku produksi untuk pilihan eksplisit.
 2. **Target:** link dipisahkan dari pilihan layanan. Format dicek memakai parser
    client/server existing, tanpa klaim bahwa akun/konten telah diverifikasi.

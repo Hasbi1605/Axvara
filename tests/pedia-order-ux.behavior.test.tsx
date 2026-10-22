@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { OrderClient } from "@/app/pedia/o/[slug]/order-client";
 import { ServicePicker } from "@/components/pedia/ServicePicker";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -98,13 +98,25 @@ describe("Pedia order UX", () => {
     const qtyInput = screen.getByLabelText("Jumlah yang dipesan") as HTMLInputElement;
     expect(qtyInput.disabled).toBe(false);
     expect(qtyInput.getAttribute("placeholder")).toContain("Contoh:");
-    expect(document.body.textContent).toContain("Isi jumlah dulu");
+    expect(document.body.textContent).not.toContain("Isi jumlah dulu");
+    expect(document.body.textContent).toContain("Pilih layanan untuk melihat batas jumlah per pesanan.");
     expect(screen.getByText("Refill 30 hari").className).toContain("text-[#00E5FF]");
     expect(screen.getByText("Tanpa refill", { selector: "span" }).className).toContain("text-white/60");
     expect(screen.queryByRole("button", { name: "Periksa harga" })).toBeNull();
     proceed();
     expect(fetchMock).not.toHaveBeenCalled();
     expect(document.activeElement).toBe(screen.getAllByRole("radio")[0]);
+  });
+
+  it("uses a compact needs heading and honest selected-service bounds", () => {
+    mount();
+    const heading = screen.getByRole("heading", { name: "Apa yang ingin ditingkatkan?" });
+    expect(heading.className).toContain("text-base");
+    expect(heading.className).not.toContain("text-2xl");
+    expect(document.body.textContent).not.toContain("Isi jumlah dulu");
+    expect(document.body.textContent).not.toContain("Batas tiap layanan berbeda");
+    select();
+    expect(screen.getByText("Layanan terpilih menerima 100–1.000 per pesanan. Kelipatan 10.")).toBeTruthy();
   });
 
   it("accepts quantity before any tier is chosen and keeps it when a tier is picked", () => {
@@ -379,7 +391,7 @@ describe("Pedia configurator", () => {
     expect(screen.getAllByRole("radio")).toHaveLength(3);
     expect(screen.getAllByRole("radio")[0].getAttribute("value")).toBe("5");
     expect(screen.getByRole("status").textContent).toContain("7 dari 7 layanan");
-    expect(screen.getByRole("button", { name: "Semua wilayah" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Semua" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Lihat semua 7 layanan" }));
     expect(screen.getAllByRole("radio")).toHaveLength(7);
     fireEvent.click(screen.getByRole("button", { name: "Indonesia" }));
@@ -387,6 +399,42 @@ describe("Pedia configurator", () => {
     expect(document.getElementById("pedia-tier")?.textContent).not.toMatch(/Layanan 1|Layanan 3|Layanan 5|Layanan 7/);
     fireEvent.click(screen.getByRole("button", { name: "Reset filter" }));
     expect(screen.getByRole("status").textContent).toContain("7 dari 7 layanan");
+  });
+
+  it("has one active category and switches between region and refill instead of intersecting them", () => {
+    const onSelect = vi.fn();
+    const tiers: PediaCatalogProduct["tiers"] = [product.tiers[0], product.tiers[1],
+      { ...product.tiers[1], id: 3, public_name: "Global refill", region: "global" },
+      { ...product.tiers[0], id: 4, public_name: "Indonesia tanpa refill", region: "indonesia" },
+      { ...product.tiers[0], id: 5, public_name: "Campuran", region: "mixed" }];
+    render(<ServicePicker product={{ ...product, tiers }} tierId={2} onSelect={onSelect} qty={100} expanded />);
+    const categories = screen.getByRole("group", { name: "Kategori layanan" });
+    const offers = () => screen.getAllByRole("radio").map((r) => r.getAttribute("value")).sort();
+    for (const [label, ids] of [["Semua", ["1", "2", "3", "4", "5"]], ["Global", ["1", "3"]], ["Refill", ["2", "3"]], ["Indonesia", ["2", "4"]], ["Indonesia", ["2", "4"]], ["Semua", ["1", "2", "3", "4", "5"]]] as const) {
+      fireEvent.click(within(categories).getByRole("button", { name: label }));
+      expect(within(categories).getAllByRole("button", { pressed: true }).map((b) => b.textContent)).toEqual([label]);
+      expect(offers()).toEqual(ids);
+    }
+    expect(onSelect).not.toHaveBeenCalled();
+    expect((screen.getByRole("radio", { name: /Indonesia Stabil/ }) as HTMLInputElement).checked).toBe(true);
+    const count = screen.getByTestId("pedia-filter-count");
+    expect(screen.getAllByRole("radio").at(-1)!.compareDocumentPosition(count) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText("· harga untuk 100")).toBeTruthy();
+    expect(within(categories).queryByRole("button", { name: "Tanpa refill" })).toBeNull();
+  });
+
+  it("resets the active category and advanced filters without changing the selected offer", () => {
+    const onSelect = vi.fn();
+    render(<ServicePicker product={product} tierId={2} onSelect={onSelect} qty={100} expanded />);
+    fireEvent.click(screen.getByRole("button", { name: "Global" }));
+    fireEvent.click(screen.getByText(/Lanjutan: jenis akun/));
+    fireEvent.change(screen.getByRole("combobox", { name: "Filter jenis akun" }), { target: { value: "ekonomis" } });
+    fireEvent.click(screen.getByRole("button", { name: "Reset filter" }));
+    const categories = screen.getByRole("group", { name: "Kategori layanan" });
+    expect(within(categories).getAllByRole("button", { pressed: true })[0].textContent).toBe("Semua");
+    expect(screen.getAllByRole("radio")).toHaveLength(2);
+    expect((screen.getByRole("combobox", { name: "Filter jenis akun" }) as HTMLSelectElement).value).toBe("");
+    expect(onSelect).not.toHaveBeenCalled();
   });
 
   it("puts compatible alternatives before recommended incompatible offers in the initial three", () => {
