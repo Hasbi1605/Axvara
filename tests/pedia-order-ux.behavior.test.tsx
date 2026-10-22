@@ -120,6 +120,21 @@ describe("Pedia order UX", () => {
     expect(screen.getByText("Layanan terpilih menerima 100–1.000 per pesanan. Kelipatan 10.")).toBeTruthy();
   });
 
+  it("compacts thousands in quantity presets while preserving exact numeric quantities", () => {
+    const quantities = [100, 1000, 2000, 2500, 3000];
+    const presetProduct = { ...product, tiers: [{ ...product.tiers[1], quick_quantities: quantities, max_qty: 5000 }] };
+    render(<OrderClient product={presetProduct} initialTarget="" ordersEnabled />);
+    const presets = within(document.getElementById("pedia-quantity")!);
+    expect(presets.getAllByRole("button").map((button) => button.textContent)).toEqual(["100", "1k", "2k", "2.5k", "3k"]);
+    for (const [index, label] of ["100", "1k", "2k", "2.5k", "3k"].entries()) {
+      const button = presets.getByRole("button", { name: label });
+      fireEvent.click(button);
+      expect((screen.getByLabelText("Jumlah yang dipesan") as HTMLInputElement).value).toBe(String(quantities[index]));
+      expect(button.getAttribute("aria-pressed")).toBe("true");
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("accepts quantity before any tier is chosen and keeps it when a tier is picked", () => {
     mount();
     fireEvent.change(screen.getByLabelText("Jumlah yang dipesan"), { target: { value: "250" } });
