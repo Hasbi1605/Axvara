@@ -2,14 +2,18 @@
 
 ## Carousel info dan panel terang — 24 Oktober 2026
 
-✅ Diimplementasikan; publikasi melalui CI. Popup informasi mempertahankan backdrop
-midnight blur, kartu maksimal480px/lebar viewport dan tinggi92dvh. Panel bawah putih
-kebiruan#F5F7FC, judul midnight#10172D, deskripsi/kontrol slate600 dan CTA cyan#00E5FF
-membuat teks terpisah jelas dari latar gelap. Gambar object-contain pada panggung tetap
-min(52dvh,520px), utuh tanpa crop; konten panjang dapat digulir, kontrol tetap terjangkau.
-Slide masuk horizontal300ms dengan ease-apple dan opacity ringan, tanpa efek3D/zoom
-berulang. Reduced motion meniadakan perpindahan animasi dan autoplay. Nomor N/M,
-panah serta Jeda/Putar dan checkbox24jam tersedia; target kontrol sentuh44px.
+✅ Diimplementasikan; publikasi melalui CI. Revisi screenshot owner24Oktober:
+kartu maksimal448px/lebar viewport, radius14px, tinggi maksimal92dvh dan scroll
+internal untuk materi panjang. Gambar block/w-full/h-auto mengikuti rasio aslinya,
+memenuhi sisi kiri/kanan tanpa crop/letterbox, bukan panggung dengan tinggi tetap.
+Panah lingkaran gelap transparan menumpang pada gambar di75% tinggi, kiri/kanan8px;
+sebelumnya hanya sesudah slide pertama, berikutnya hanya sebelum slide terakhir.
+Counter1/2 persis di bawah gambar (padding atas12px), lalu judul/deskripsi rata tengah.
+Panel bawah putih#FFFFFF, teks midnight/gray500, tanpa garis pemisah. Checkbox kotak
+abu dan label dipusatkan di atas CTA biru#315DEA selebar panel, tinggi minimal44px,
+radius6px, teks putih16px; bila CTA kosong tombol Saya Paham menutup popup.
+Kontrol putar/jeda ringkas tetap berada di sudut gambar untuk aksesibilitas.
+Slide masuk horizontal300ms ease-apple; reduced motion meniadakan animasi/autoplay.
 
 Admin memakai drag handle/tombol naik-turun, placeholder baris saat drag, overlay dan
 transisi sortable existing. Panel pengaturan bersama memakai satuan detik dan input

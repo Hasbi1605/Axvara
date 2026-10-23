@@ -147,7 +147,7 @@ export function PopupBanner() {
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-5" role="dialog" aria-modal="true" aria-label="Info AXVARA">
       <div aria-hidden="true" className="absolute inset-0 bg-[#070a1e]/75 backdrop-blur-sm" onClick={close} />
-      <div ref={panelRef} tabIndex={-1} className="relative flex max-h-[92dvh] w-[480px] max-w-full flex-col overflow-hidden rounded-[24px] border border-white/40 bg-[#F5F7FC] shadow-[0_24px_64px_rgba(0,0,0,0.5)] motion-safe:animate-[fadeInUp_0.24s_var(--ease-apple)]">
+      <div ref={panelRef} tabIndex={-1} className="relative flex max-h-[92dvh] w-[448px] max-w-full flex-col overflow-hidden rounded-[14px] bg-white shadow-[0_24px_64px_rgba(0,0,0,0.5)] motion-safe:animate-[fadeInUp_0.24s_var(--ease-apple)]">
         <button ref={closeRef} onClick={close} className="absolute right-2 top-2 z-20 flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-black/65 text-white hover:bg-black/85" aria-label="Tutup banner">✕</button>
         <div className="flex min-h-0 flex-col" role="region" aria-roledescription="carousel" aria-label="Informasi dan promo"
           onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
@@ -155,7 +155,7 @@ export function PopupBanner() {
           onKeyDown={event => {
             if (event.key === "ArrowLeft" || event.key === "ArrowRight") { event.preventDefault(); if (banners.length > 1) move(event.key === "ArrowRight" ? 1 : -1); }
           }}>
-          <div className="min-h-0 max-h-[calc(92dvh-132px)] overflow-y-auto overscroll-contain" style={{ touchAction: "pan-y" }}
+          <div className="min-h-0 max-h-[92dvh] overflow-y-auto overscroll-contain" style={{ touchAction: "pan-y" }}
             onClickCapture={event => { if (suppressClick.current) { event.preventDefault(); event.stopPropagation(); suppressClick.current = false; } }}
             onPointerDown={event => {
               if (!event.isPrimary || event.button !== 0) return;
@@ -173,32 +173,36 @@ export function PopupBanner() {
             }}>
             <div key={banner.id} role="group" aria-roledescription="slide" aria-label={`${index + 1} dari ${banners.length}: ${banner.title}`}
               className="banner-slide" style={{ "--banner-enter-from": direction > 0 ? "35%" : "-35%" } as CSSProperties}>
-              {banner.image_url && !imageFailed.includes(banner.id) ? <div className="flex h-[min(52dvh,520px)] w-full items-center justify-center bg-[#E8EDF7]">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={banner.image_url} alt={banner.title} draggable={false} className="h-full w-full object-contain" onError={() => setImageFailed(current => [...current,banner.id])} />
-              </div> : banner.image_url ? <p className="flex h-40 items-center justify-center bg-[#E8EDF7] text-sm text-slate-600">Gambar tidak dapat dimuat.</p> : banners.some(item => item.image_url) ? <div className="flex h-[min(52dvh,520px)] items-center justify-center bg-gradient-to-br from-cyan-100 to-indigo-100 text-2xl font-semibold text-[#10172D]">Info AXVARA</div> : null}
-              <div className="min-h-28 px-5 pb-3 pt-5 sm:px-6">
-                <h3 className="font-display text-lg font-bold leading-tight text-[#10172D]">{banner.title}</h3>
-                {banner.body && <p className="mt-2 whitespace-pre-line break-words text-sm leading-6 text-slate-600">{banner.body}</p>}
+              <div className="relative" data-banner-media>
+                {banner.image_url && !imageFailed.includes(banner.id) ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={banner.image_url} alt={banner.title} draggable={false} className="block h-auto w-full" onError={() => setImageFailed(current => [...current,banner.id])} />
+                ) : banner.image_url ? <p className="flex h-40 items-center justify-center bg-slate-100 text-sm text-slate-600">Gambar tidak dapat dimuat.</p> : <div className="h-24 bg-gradient-to-br from-cyan-100 to-indigo-100" />}
+                {banners.length > 1 && <>
+                  {index > 0 && <button onClick={() => move(-1)} aria-label="Banner sebelumnya" className="absolute left-2 top-3/4 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-3xl leading-none text-white hover:bg-black/75">‹</button>}
+                  {index < banners.length - 1 && <button onClick={() => move(1)} aria-label="Banner berikutnya" className="absolute right-2 top-3/4 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-3xl leading-none text-white hover:bg-black/75">›</button>}
+                </>}
+              </div>
+              <div className="px-4 pb-4 pt-3 text-center sm:px-5" data-banner-caption>
+                <div className="mb-3 text-sm tabular-nums text-gray-500" aria-live={rotating ? "off" : "polite"} aria-atomic="true">{index + 1}/{banners.length}</div>
+                <h3 className="min-h-[48px] font-display sm:min-h-[72px] text-lg font-bold leading-7 text-[#151B2B]">{banner.title}</h3>
+                {banner.body && <p className="mt-3 whitespace-pre-line break-words text-sm leading-5 text-gray-500">{banner.body}</p>}
               </div>
             </div>
-          </div>
-          <div className="shrink-0 border-t border-slate-200 bg-[#F5F7FC] px-5 pb-4 pt-2 sm:px-6">
-            {banners.length > 1 && <div className="flex items-center justify-between gap-1" aria-label="Kontrol slide">
-              <button onClick={() => move(-1)} aria-label="Banner sebelumnya" className="h-11 w-11 rounded-full bg-slate-200/70 text-xl text-[#10172D] hover:bg-slate-300/70">‹</button>
-              <span className="text-xs tabular-nums text-slate-600" aria-live={rotating ? "off" : "polite"} aria-atomic="true">{index + 1} / {banners.length}</span>
-              <button ref={playRef} onClick={() => { if (!reduced) setPaused(current => !current); }} disabled={reduced || !settings.autoplay}
-                title={reduced ? "Gerakan dikurangi sesuai pengaturan perangkat" : !settings.autoplay ? "Putaran otomatis dinonaktifkan" : undefined}
-                aria-label={paused || reduced || !settings.autoplay ? "Putar otomatis" : "Jeda putaran otomatis"} className="h-11 rounded-full px-3 text-xs text-slate-700 hover:bg-slate-200 disabled:opacity-40">{paused || reduced || !settings.autoplay ? "Putar" : "Jeda"}</button>
-              <button onClick={() => move(1)} aria-label="Banner berikutnya" className="h-11 w-11 rounded-full bg-slate-200/70 text-xl text-[#10172D] hover:bg-slate-300/70">›</button>
-            </div>}
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-              {banner.cta_href && banner.cta_label && <a href={banner.cta_href} onClick={close} className="inline-flex min-h-10 items-center justify-center rounded-full bg-[#00E5FF] px-5 text-sm font-bold text-[#070a1e] hover:bg-[#00D0E8]">{banner.cta_label}</a>}
-              <label className="flex min-h-11 cursor-pointer items-center gap-2 text-xs text-slate-600 hover:text-slate-900">
-                <input type="checkbox" checked={false} onChange={hideCurrent} className="h-4 w-4 rounded accent-[#00E5FF]" /> Jangan tampilkan lagi
+            <div className="px-4 pb-4 text-center sm:px-5" data-banner-actions>
+              <label className="mx-auto flex min-h-11 w-fit cursor-pointer items-center justify-center gap-2 text-sm text-gray-500 hover:text-gray-700">
+                <input type="checkbox" checked={false} onChange={hideCurrent} className="peer sr-only" />
+                <span aria-hidden="true" className="h-4 w-4 shrink-0 rounded border border-gray-300 bg-gray-100 peer-focus-visible:ring-2 peer-focus-visible:ring-[#315DEA] peer-focus-visible:ring-offset-2" />
+                Jangan tampilkan lagi
               </label>
+              {banner.cta_href && banner.cta_label ? <a href={banner.cta_href} onClick={close} className="mt-1 flex min-h-11 w-full items-center justify-center rounded-md bg-[#315DEA] px-4 py-2 text-center text-base font-semibold text-white hover:bg-[#254FD0]">{banner.cta_label}</a>
+                : <button onClick={close} className="mt-1 min-h-11 w-full rounded-md bg-[#315DEA] px-4 py-2 text-base font-semibold text-white hover:bg-[#254FD0]">Saya Paham</button>}
             </div>
           </div>
+          {banners.length > 1 && <button ref={playRef} onClick={() => { if (!reduced) setPaused(current => !current); }} disabled={reduced || !settings.autoplay}
+            title={reduced ? "Gerakan dikurangi sesuai pengaturan perangkat" : !settings.autoplay ? "Putaran otomatis dinonaktifkan" : paused ? "Putar otomatis" : "Jeda putaran otomatis"}
+            aria-label={paused || reduced || !settings.autoplay ? "Putar otomatis" : "Jeda putaran otomatis"}
+            className="absolute left-2 top-2 z-20 flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-sm text-white hover:bg-black/75 disabled:opacity-40">{paused || reduced || !settings.autoplay ? "▶" : "Ⅱ"}</button>}
         </div>
       </div>
     </div>

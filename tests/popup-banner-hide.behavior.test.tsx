@@ -87,9 +87,9 @@ describe("PopupBanner carousel", () => {
     hideBannerFor24h(7);
     stubFetch([BANNER, {...BANNER,id:8,title:"First"}, {...BANNER,id:9,title:"Second"}, {...BANNER,id:10,is_active:0}]);
     render(<PopupBanner />);
-    await screen.findByRole("dialog", {name:"Info AXVARA"});expect(screen.getByText("First")).toBeTruthy();expect(screen.getByText("1 / 2")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", {name:"Banner berikutnya"}));expect(screen.getByText("Second")).toBeTruthy();expect(screen.getByText("2 / 2")).toBeTruthy();
-    expect(sessionStorage.getItem(BANNER_SESSION_KEY)).toBe("1");fireEvent.click(screen.getByRole("button", {name:"Banner berikutnya"}));expect(screen.getByText("First")).toBeTruthy();expect(sessionStorage.getItem(BANNER_SESSION_KEY)).toBe("1");
+    await screen.findByRole("dialog", {name:"Info AXVARA"});expect(screen.getByText("First")).toBeTruthy();expect(screen.getByText("1/2")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", {name:"Banner berikutnya"}));expect(screen.getByText("Second")).toBeTruthy();expect(screen.getByText("2/2")).toBeTruthy();
+    expect(sessionStorage.getItem(BANNER_SESSION_KEY)).toBe("1");fireEvent.keyDown(screen.getByRole("region"),{key:"ArrowRight"});expect(screen.getByText("First")).toBeTruthy();expect(sessionStorage.getItem(BANNER_SESSION_KEY)).toBe("1");
   });
   it("does not reopen after returning home or remounting in the same session", async () => {
     stubFetch();const view=render(<PopupBanner/>);await screen.findByRole("dialog");fireEvent.click(screen.getByRole("button",{name:"Tutup banner"}));navigation.pathname="/produk/demo";view.rerender(<PopupBanner/>);navigation.pathname="/";view.rerender(<PopupBanner/>);

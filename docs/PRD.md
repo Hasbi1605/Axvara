@@ -11,6 +11,12 @@ berikutnya ketika modal ditutup. Batas sesi dihitung sekali per pembukaan, bukan
 slide. Jangan tampilkan lagi menyembunyikan info aktif24jam dan meneruskan ke tetangga;
 ketika semua disembunyikan modal ditutup. Key hide lama dipertahankan.
 
+Revisi layout screenshot owner24Oktober: gambar penuh dari tepi ke tepi, rasio asli
+tanpa crop atau padding samping; panah overlay pada gambar, counter1/2 di bawahnya.
+Judul/deskripsi rata tengah pada panel putih tanpa garis pemisah. Checkbox Jangan
+tampilkan lagi di atas tombol biru lebar di tengah; fallback Saya Paham jika CTA
+belum diisi. Pada batas manual hanya panah ke slide tetangga yang tersedia.
+
 Admin mengatur jeda buka0–10detik(default1,5), interval4–20detik(default6), otomatis
 on/off dan maksimal1–10pembukaan per sesi(default1) pada satu panel bersama. Isi/CTA/
 gambar/aktif per banner terpisah. Pegangan drag, keyboard dan naik/turun menyimpan
