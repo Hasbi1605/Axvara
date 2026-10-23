@@ -28,7 +28,9 @@ Popup memakai key sessionStorage.axvara-banner-carousel-shows dan key hide per-I
 existing24jam. Batas sesi lama per-banner dipensiunkan. Satu pembukaan per mount/
 kunjungan SPA, tidak memunculkan modal berikutnya sesudah tutup. Kontak/transaksi
 lain tidak berubah. Autoplay satu timer terlihat; pause fokus/hover/manual/hidden,
-reduced-motion manual; preload hanya gambar tetangga berikut. Hook useModalA11y
+reduced-motion manual; preload hanya gambar tetangga berikut. Revisi owner: tombol
+putar/jeda dihapus; setelah fokus/interaksi manual putaran tidak dilanjutkan otomatis
+atau melalui UI, sampai popup ditutup. Konfigurasi autoplay admin tetap. Hook useModalA11y
 menjaga Escape/trap/restore. Pointer horizontal45px dan dominan terhadap vertikal,
 touch-action:pan-y; CTA tidak menjadi pegangan geser. Admin memakai dnd-kit existing,
 rollback/resync jika reorder gagal dan mengabaikan respons load lama.

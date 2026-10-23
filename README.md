@@ -3,11 +3,12 @@
 ## Banner informasi carousel — 24 Oktober 2026
 
 ✅ Implementasi; publikasi via CI. Semua banner aktif diurutkan dalam satu popup
-beranda: panah/swipe/keyboard, nomor slide, autoplay6detik dengan jeda dan reduced
+beranda: panah/swipe/keyboard, nomor slide, autoplay6detik dengan jeda saat interaksi dan reduced
 motion. Revisi screenshot owner: gambar penuh selebar kartu448px mengikuti rasio
 asli tanpa jarak samping/crop; panah overlay gambar dan counter langsung di bawahnya.
 Caption putih rata tengah tanpa separator; checkbox di atas tombol biru full-width
-atau Saya Paham bila CTA kosong. Konten panjang dapat digulir dalam max92dvh.
+atau Saya Paham bila CTA kosong. Konten panjang dapat digulir dalam max92dvh. Sesuai owner, tidak ada tombol
+Putar/Jeda pada gambar; hanya panah dan tutup.
 Jangan tampilkan lagi berlaku per info24jam; checkout/admin tetap tanpa popup.
 
 Admin → Banner: ubah isi/gambar/CTA/aktif, drag pegangan atau gunakan naik/turun

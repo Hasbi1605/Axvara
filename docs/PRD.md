@@ -4,7 +4,7 @@
 
 ✅ Diimplementasikan; publikasi melalui CI. Semua banner aktif yang tidak disembunyikan
 menjadi satu popup di beranda, mengikuti urutan admin. Pengunjung dapat memakai panah,
-keyboard atau geser horizontal; putar otomatis default6detik, dapat dijeda, berhenti
+keyboard atau geser horizontal; putar otomatis default6detik, berhenti
 saat interaksi/fokus, hover dan tab tersembunyi. Preferensi kurangi gerakan memakai
 pergantian langsung/manual. Tidak menghalangi checkout/admin atau membuka popup
 berikutnya ketika modal ditutup. Batas sesi dihitung sekali per pembukaan, bukan per
@@ -16,6 +16,8 @@ tanpa crop atau padding samping; panah overlay pada gambar, counter1/2 di bawahn
 Judul/deskripsi rata tengah pada panel putih tanpa garis pemisah. Checkbox Jangan
 tampilkan lagi di atas tombol biru lebar di tengah; fallback Saya Paham jika CTA
 belum diisi. Pada batas manual hanya panah ke slide tetangga yang tersedia.
+Tidak ada tombol Putar/Jeda sesuai screenshot/keputusan owner; interaksi manual
+atau fokus menghentikan putaran sampai popup ditutup, tanpa kontrol lanjutkan.
 
 Admin mengatur jeda buka0–10detik(default1,5), interval4–20detik(default6), otomatis
 on/off dan maksimal1–10pembukaan per sesi(default1) pada satu panel bersama. Isi/CTA/

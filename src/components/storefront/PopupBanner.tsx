@@ -61,7 +61,6 @@ export function PopupBanner() {
   const [imageFailed, setImageFailed] = useState<number[]>([]);
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
-  const playRef = useRef<HTMLButtonElement>(null);
   const shownThisVisitRef = useRef(false);
   const pointer = useRef<{ id: number; x: number; y: number } | null>(null);
   const suppressClick = useRef(false);
@@ -151,7 +150,7 @@ export function PopupBanner() {
         <button ref={closeRef} onClick={close} className="absolute right-2 top-2 z-20 flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-black/65 text-white hover:bg-black/85" aria-label="Tutup banner">✕</button>
         <div className="flex min-h-0 flex-col" role="region" aria-roledescription="carousel" aria-label="Informasi dan promo"
           onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
-          onFocusCapture={event => { if ((event.target as HTMLElement) !== playRef.current) setPaused(true); }}
+          onFocusCapture={() => setPaused(true)}
           onKeyDown={event => {
             if (event.key === "ArrowLeft" || event.key === "ArrowRight") { event.preventDefault(); if (banners.length > 1) move(event.key === "ArrowRight" ? 1 : -1); }
           }}>
@@ -199,10 +198,7 @@ export function PopupBanner() {
                 : <button onClick={close} className="mt-1 min-h-11 w-full rounded-md bg-[#315DEA] px-4 py-2 text-base font-semibold text-white hover:bg-[#254FD0]">Saya Paham</button>}
             </div>
           </div>
-          {banners.length > 1 && <button ref={playRef} onClick={() => { if (!reduced) setPaused(current => !current); }} disabled={reduced || !settings.autoplay}
-            title={reduced ? "Gerakan dikurangi sesuai pengaturan perangkat" : !settings.autoplay ? "Putaran otomatis dinonaktifkan" : paused ? "Putar otomatis" : "Jeda putaran otomatis"}
-            aria-label={paused || reduced || !settings.autoplay ? "Putar otomatis" : "Jeda putaran otomatis"}
-            className="absolute left-2 top-2 z-20 flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-sm text-white hover:bg-black/75 disabled:opacity-40">{paused || reduced || !settings.autoplay ? "▶" : "Ⅱ"}</button>}
+
         </div>
       </div>
     </div>

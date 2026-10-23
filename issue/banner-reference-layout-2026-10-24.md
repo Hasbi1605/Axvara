@@ -5,8 +5,9 @@ atau data banner/admin. Gambar w-full/h-auto memakai rasio natural dan mengisi k
 448px (mobile mengikuti viewport). Panel putih, radius14px, counter langsung sesudah
 gambar, panah overlay75%tinggi, batas manual tanpa panah keluar rentang. Teks rata
 tengah; checkbox abu terpusat di atas CTA biru315DEA/full-width/radius6px/44px. CTA
-kosong memakai Saya Paham. Tidak ada garis pemisah. Putar/jeda ringkas tetap tersedia
-pada gambar, autoplay/swipe/hide/session/a11y existing dipertahankan.
+kosong memakai Saya Paham. Tidak ada garis pemisah. Sesuai koreksi owner, tombol Putar/Jeda dihapus; gambar hanya memiliki panah dan
+tutup. Autoplay/swipe/hide/session dan focus trap tetap, interaksi/fokus menjeda
+putaran tanpa tombol lanjutkan sampai popup ditutup.
 
 Bukti Obscura pada route aktual + fixture inert memakai poster publik existing:
 - Desktop image/media448×560px; mobile366×458px; rasio sesuai natural1122×1402,

@@ -12,7 +12,8 @@ Counter1/2 persis di bawah gambar (padding atas12px), lalu judul/deskripsi rata 
 Panel bawah putih#FFFFFF, teks midnight/gray500, tanpa garis pemisah. Checkbox kotak
 abu dan label dipusatkan di atas CTA biru#315DEA selebar panel, tinggi minimal44px,
 radius6px, teks putih16px; bila CTA kosong tombol Saya Paham menutup popup.
-Kontrol putar/jeda ringkas tetap berada di sudut gambar untuk aksesibilitas.
+Sesuai owner, tidak ada tombol putar/jeda. Gambar hanya memiliki panah dan tutup;
+autoplay mengikuti pengaturan admin dan berhenti ketika pembaca berinteraksi.
 Slide masuk horizontal300ms ease-apple; reduced motion meniadakan animasi/autoplay.
 
 Admin memakai drag handle/tombol naik-turun, placeholder baris saat drag, overlay dan
