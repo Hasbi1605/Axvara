@@ -62,6 +62,10 @@ urutan cepat/lambat dan jatah percobaan existing. Waktu tersembunyi tidak memaka
 atau mengulang jatah tersebut. Request yang sudah berjalan boleh selesai;
 webhook/cron/expiry/email tetap bekerja tanpa halaman terbuka.
 
+## Prioritas stok kredensial pribadi — 2026-10-23
+
+✅ Diimplementasikan; publikasi melalui CI. Editor produk → Varian → stok kredensial unik menyediakan pegangan drag & drop serta tombol naik/turun. Kredensial terakhir pada daftar dapat ditarik langsung ke posisi pertama; nomor posisi menunjukkan urutan pengiriman, perubahan langsung tersimpan tanpa menunggu Simpan Produk. Urutan berlaku untuk reservasi pesanan baru di web/Telegram/WhatsApp. Unit yang sudah dipesan/terkirim tidak dipindahkan; perubahan stok bersamaan meminta muat ulang. FIFO lama tetap default dan impor baru masuk di belakang antrean. Daftar mengikuti batas existing 100 kredensial tersedia per varian.
+
 ## Pemulihan pengiriman SK yang kehilangan invoice — 2026-10-23
 
 ✅ Diimplementasikan; publikasi melalui CI. Transaksi supplier yang sudah menerima pembelian tidak boleh tertahan selamanya di “Sedang dikirim ke supplier” ketika invocation terputus sebelum menyimpan invoice. Webhook bertanda tangan mengikat invoice melalui referensi pembelian yang tetap sebelum menerapkan status; respons pemesanan terlambat tidak menurunkan status yang sudah maju. Cron existing memulihkan klaim terkirim yang lease-nya habis dan transaksi ambigu yang due dengan GET referensi yang sama, menyimpan invoice sebelum menyelesaikan pengiriman, tanpa pembelian ulang. Pembacaan gagal tetap ambigu dan diberi jeda satu menit; maksimal tiga kandidat per tick dengan budget existing. Halaman pesanan dan lacak juga menarik status melalui referensi asli walaupun invoice hilang, dengan gerbang existing 20 detik/order; GET ini tidak perlu menunggu lease atau tick cron. Item bertanda penyerahan manual tetap dipertahankan dan tidak dikirim ulang oleh pemulihan supplier.

@@ -439,6 +439,7 @@ CREATE TABLE IF NOT EXISTS fulfillment_inventory (
   secret_ciphertext TEXT NOT NULL,
   secret_iv TEXT NOT NULL,
   secret_fingerprint TEXT NOT NULL,
+  sort_order INTEGER,
   status TEXT NOT NULL DEFAULT 'available'
     CHECK (status IN ('available','reserved','delivered','revoked')),
   order_code TEXT,
@@ -449,6 +450,8 @@ CREATE TABLE IF NOT EXISTS fulfillment_inventory (
 );
 CREATE INDEX IF NOT EXISTS idx_fulfillment_inventory_product_status
   ON fulfillment_inventory(product_id, status);
+CREATE INDEX IF NOT EXISTS idx_inventory_priority
+  ON fulfillment_inventory(product_id, variant_id, status, COALESCE(sort_order,id), id);
 CREATE TABLE IF NOT EXISTS fulfillment_jobs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   order_code TEXT NOT NULL UNIQUE REFERENCES orders(code),

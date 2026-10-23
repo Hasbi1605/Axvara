@@ -1718,6 +1718,12 @@ bot meneruskannya sebagai email branding Axvara (nol jejak "Warung Rebahan"):
   `RESEND_API_KEY`, `FORWARD_FROM_EMAIL`.
 - **Batas LIKE D1** (50 byte) berlaku untuk param `?q=` pencarian admin WR.
 
+## Prioritas inventory pribadi (2026-10-23)
+
+Migrasi `0074_inventory_priority.sql` menambah `fulfillment_inventory.sort_order` nullable serta indeks `(product_id,variant_id,status,COALESCE(sort_order,id),id)`. NULL memakai ID lama sehingga FIFO tersimpan tanpa rewrite kredensial; impor baru otomatis berada di belakang slot existing. GET admin fulfillment mengembalikan stok tersedia sesuai prioritas. POST `action:reorder` menerima `product_id`, `variant_id`, `inventory_ids` (permutasi lengkap daftar hingga 100 entri). Auth admin dan validasi cakupan/ID unik wajib; posisi baru memakai slot lama, bukan mengubah ID/isi/status/jumlah stok.
+
+`reorderInventory` membaca daftar available varian lalu menjalankan satu UPDATE dengan CTE current/expected/requested materialized. Seluruh snapshot ID/posisi harus tetap cocok; checkout yang mereservasi unit atau reorder admin lain membuat UPDATE no-op dan respons409, bukan perubahan parsial. Reservasi web (`db/orders-create`) dan kanal (`commerce`, `reserveInventory`) serta pemilihan unit terikat memakai `COALESCE(sort_order,id),id`, dengan prioritas unit khusus varian atas pool legacy tetap. Kredensial reserved/delivered tidak berubah. UI NonWrFulfillmentPanel mengirim urutan via panah maupun native HTML drag/drop, rollback dan refresh saat gagal; ID yang dikirim tidak memuat plaintext.
+
 ## 15b. Sekalipay Reseller API — Supplier Kedua Paralel WR (2026-09-30, Fase 1)
 
 Axvara menjadi reseller layer di atas Sekalipay (`https://sekalipay.com/api`,

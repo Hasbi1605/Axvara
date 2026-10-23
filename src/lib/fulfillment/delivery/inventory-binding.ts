@@ -111,14 +111,14 @@ export async function claimInventoryForItem(
     ? await queryAll(
         `SELECT * FROM fulfillment_inventory
          WHERE order_code=? AND product_id=? AND status='reserved'
-         ORDER BY id ASC`,
+         ORDER BY COALESCE(sort_order,id), id ASC`,
         orderCode, productId,
       ).catch(() => [] as Row[])
     : await queryAll(
         `SELECT * FROM fulfillment_inventory
          WHERE order_code=? AND product_id=? AND status='reserved'
            AND (variant_id=? OR variant_id IS NULL)
-         ORDER BY CASE WHEN variant_id=? THEN 0 ELSE 1 END, id ASC`,
+         ORDER BY CASE WHEN variant_id=? THEN 0 ELSE 1 END, COALESCE(sort_order,id), id ASC`,
         orderCode, productId, variantId, variantId,
       ).catch(() => [] as Row[]);
   for (const row of candidates) {
@@ -157,7 +157,7 @@ export async function findReservedForOrderVariant(
       `SELECT * FROM fulfillment_inventory
        WHERE order_code=? AND product_id=? AND status='reserved'
          AND (? IS NULL OR variant_id=? OR variant_id IS NULL)
-       ORDER BY CASE WHEN variant_id=? THEN 0 ELSE 1 END, id ASC LIMIT 1`,
+       ORDER BY CASE WHEN variant_id=? THEN 0 ELSE 1 END, COALESCE(sort_order,id), id ASC LIMIT 1`,
       orderCode, productId, variantId, variantId, variantId,
     );
   }

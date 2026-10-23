@@ -1,5 +1,11 @@
 # DESIGN.md — AXVARA Design System
 
+
+## Prioritas kredensial unik — 2026-10-23
+
+Panel Detail akses produk memakai pegangan GripVertical, nomor posisi cyan dan panah naik/turun pada tiap baris stok tersedia. Drag & drop langsung menyimpan urutan; baris yang ditarik meredup dengan latar cyan, kontrol nonaktif selama penyimpanan, panah batas awal/akhir nonaktif. Label aksesibel menyebut aksi dan posisi; panah mendukung keyboard. Teks bantuan menjelaskan bahwa urutan teratas dikirim lebih dulu dan tersimpan langsung. Gagal simpan mengembalikan daftar server serta toast error. Tetap memakai token warna/spacing panel existing; tidak menampilkan kredensial di luar admin.
+
+
 ## Penyederhanaan pilihan layanan Pedia — 22 Oktober 2026
 
 ✅ Implementasi; publikasi melalui CI. Koreksi owner22 Oktober: judul “Apa yang ingin ditingkatkan?” kembali ke ukuran24px/bold semula tanpa garis cyan. Yang diperkecil adalah pill kebutuhan Followers/Likes/dll: tinggi32px, teks12px, ikon13px dan padding12px; permukaan gradasi halus dengan highlight inset, pilihan aktif cyan/violet dan glow tipis. Gulir horizontal serta fokus keyboard tetap, scrollbar visual disembunyikan. Label tombol jumlah memakai `k` kecil untuk ribuan (`1k`, `2k`, `2.5k`); angka di bawah 1.000 tetap utuh, nilai input/perhitungan serta teks batas dan harga memakai angka aslinya. Pengantar panjang jumlah dihapus; batas tampil sesuai min/max layanan terpilih (“Layanan terpilih menerima 100–50.000 per pesanan.”), termasuk kelipatan bila perlu; sebelum memilih layanan ada petunjuk singkat tanpa angka asumsi. “Pilih layanan · harga untuk …” berada di kiri dan filter ringkas di kanan saat muat, bertumpuk pada mobile. Kategori **Semua/Global/Indonesia/Refill** memakai satu state eksklusif: tepat satu pill aktif, klik pill aktif mempertahankannya; Refill berarti semua wilayah dengan refill>0. Pemilihan kategori tidak mengganti layanan atau jumlah. Hitungan hasil, Reset filter dan pengaturan jenis akun/urutan berada sesudah daftar. Beranda, data katalog, validasi batas, quote/consent/retry dan pembayaran tetap.

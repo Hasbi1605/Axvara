@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { queryAll, queryFirst } from "@/lib/db";
-import { importInventory, countInventory, revokeInventory } from "@/lib/fulfillment/inventory";
+import { importInventory, countInventory, revokeInventory, reorderInventory } from "@/lib/fulfillment/inventory";
 import { decryptSecret, encryptSecret } from "@/lib/fulfillment/crypto";
 import { execRun } from "@/lib/db";
 
@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
       }
       const rows = await queryAll(
         `SELECT id, secret_ciphertext, secret_iv, status FROM fulfillment_inventory
-         WHERE product_id=? AND variant_id=? AND status='available' ORDER BY id ASC LIMIT 100`,
+         WHERE product_id=? AND variant_id=? AND status='available' ORDER BY COALESCE(sort_order,id), id ASC LIMIT 100`,
         productId, variantId,
       );
       for (const r of rows) {
@@ -111,6 +111,7 @@ export async function POST(request: NextRequest) {
     fulfillment_mode?: string;
     variant_id?: number;
     handover_template?: string;
+    inventory_ids?: number[];
   };
 
   const productId = Number(body.product_id);
@@ -126,6 +127,17 @@ export async function POST(request: NextRequest) {
       variantId, productId,
     );
     if (!variant) return NextResponse.json({ error: "variant_not_found" }, { status: 404 });
+  }
+
+  if (body.action === "reorder") {
+    if (!variantId || !Array.isArray(body.inventory_ids) || !body.inventory_ids.length || body.inventory_ids.length > 100
+      || body.inventory_ids.some(id => !Number.isSafeInteger(id) || id <= 0)
+      || new Set(body.inventory_ids).size !== body.inventory_ids.length) {
+      return NextResponse.json({ error: "invalid_inventory_order" }, { status: 400 });
+    }
+    const saved = await reorderInventory(productId, variantId, body.inventory_ids);
+    if (!saved) return NextResponse.json({ error: "Stok berubah. Muat ulang lalu atur urutan kembali." }, { status: 409 });
+    return NextResponse.json({ ok: true });
   }
 
   // Set fulfillment mode

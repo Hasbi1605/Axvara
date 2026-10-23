@@ -20,6 +20,50 @@ export interface ImportResult {
   invalid: number;
 }
 
+/** Reorder available credentials only; reservations retain their original unit. */
+export async function reorderInventory(
+  productId: number, variantId: number, ids: number[],
+  database: DatabaseAccess = createDatabaseAccess(),
+): Promise<boolean> {
+  if (!ids.length || ids.length > 100 || new Set(ids).size !== ids.length || ids.some(id => !Number.isSafeInteger(id) || id <= 0)) return false;
+  const current = database.isD1Mode()
+    ? await database.queryAll(
+        `SELECT id, COALESCE(sort_order,id) AS position FROM fulfillment_inventory
+         WHERE product_id=? AND variant_id=? AND status='available'
+         ORDER BY COALESCE(sort_order,id), id LIMIT 100`, productId, variantId,
+      )
+    : getInventoryMem().filter(row => Number(row.product_id) === productId && Number(row.variant_id) === variantId && row.status === "available")
+        .sort((a, b) => Number(a.sort_order ?? a.id) - Number(b.sort_order ?? b.id) || Number(a.id) - Number(b.id))
+        .slice(0, 100).map(row => ({ id: Number(row.id), position: Number(row.sort_order ?? row.id) }));
+  const available = new Set(current.map(row => Number(row.id)));
+  if (current.length !== ids.length || ids.some(id => !available.has(id))) return false;
+  const ordered = ids.map((id, index) => ({ id, position: Number(current[index].position) }));
+  if (!database.isD1Mode()) {
+    for (const row of ordered) getInventoryMem().find(item => Number(item.id) === row.id)!.sort_order = row.position;
+    return true;
+  }
+  // Materialize the current queue before writing. If checkout claimed a unit
+  // or another admin reordered it since the read, the entire UPDATE is a no-op.
+  const result = await database.execRun(
+    `WITH current AS MATERIALIZED (
+       SELECT id, COALESCE(sort_order,id) AS position FROM fulfillment_inventory
+       WHERE product_id=? AND variant_id=? AND status='available'
+       ORDER BY COALESCE(sort_order,id), id LIMIT 100
+     ), expected AS MATERIALIZED (
+       SELECT json_extract(value,'$.id') AS id, json_extract(value,'$.position') AS position FROM json_each(?)
+     ), requested AS MATERIALIZED (
+       SELECT json_extract(value,'$.id') AS id, json_extract(value,'$.position') AS position FROM json_each(?)
+     )
+     UPDATE fulfillment_inventory
+       SET sort_order=(SELECT position FROM requested WHERE requested.id=fulfillment_inventory.id)
+     WHERE id IN (SELECT id FROM requested)
+       AND (SELECT COUNT(*) FROM current)=?
+       AND (SELECT COUNT(*) FROM current c JOIN expected e ON c.id=e.id AND c.position=e.position)=?`,
+    productId, variantId, JSON.stringify(current), JSON.stringify(ordered), ids.length, ids.length,
+  );
+  return Number(result.changes ?? 0) === ids.length;
+}
+
 /**
  * Import secrets into inventory for a product. Max 100 per call.
  * Each secret is encrypted and fingerprinted. Duplicates are skipped.
@@ -165,13 +209,13 @@ export async function reserveInventory(
     const item = variantId === null
       ? await queryFirst(
           `SELECT id FROM fulfillment_inventory
-           WHERE product_id=? AND status='available' ORDER BY id ASC LIMIT 1`,
+           WHERE product_id=? AND status='available' ORDER BY COALESCE(sort_order,id), id ASC LIMIT 1`,
           productId,
         )
       : await queryFirst(
           `SELECT id FROM fulfillment_inventory
            WHERE product_id=? AND status='available' AND (variant_id=? OR variant_id IS NULL)
-           ORDER BY CASE WHEN variant_id=? THEN 0 ELSE 1 END, id ASC LIMIT 1`,
+           ORDER BY CASE WHEN variant_id=? THEN 0 ELSE 1 END, COALESCE(sort_order,id), id ASC LIMIT 1`,
           productId, variantId, variantId,
         );
     if (!item) return null;
@@ -185,7 +229,10 @@ export async function reserveInventory(
   }
 
   const mem = getInventoryMem();
-  const item = mem.find(
+  const item = [...mem].sort((a, b) => {
+    const dedicated = variantId === null ? 0 : Number(Number(b.variant_id) === variantId) - Number(Number(a.variant_id) === variantId);
+    return dedicated || Number(a.sort_order ?? a.id) - Number(b.sort_order ?? b.id) || Number(a.id) - Number(b.id);
+  }).find(
     (r) => Number(r.product_id) === productId
       && r.status === "available"
       && (variantId === null || Number(r.variant_id || 0) === variantId || !r.variant_id),

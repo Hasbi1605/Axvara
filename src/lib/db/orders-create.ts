@@ -121,7 +121,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
                    WHERE taken.status='reserved' AND taken.order_code=?
                      AND taken.id=fi.id
                  )
-               ORDER BY CASE WHEN fi.variant_id=pv.id THEN 0 ELSE 1 END, fi.id ASC
+               ORDER BY CASE WHEN fi.variant_id=pv.id THEN 0 ELSE 1 END, COALESCE(fi.sort_order,fi.id), fi.id ASC
                LIMIT 1
              ) AND status='available'`,
           ).bind(input.code, item.variant_id, input.code),

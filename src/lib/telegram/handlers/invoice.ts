@@ -272,7 +272,7 @@ export async function createAndSendVariantInvoice(
       // per varian di deliver.ts).
       const reservedUnit = await queryFirst(
         `SELECT id FROM fulfillment_inventory
-         WHERE order_code=? AND status='reserved' ORDER BY id ASC`,
+         WHERE order_code=? AND status='reserved' ORDER BY COALESCE(sort_order,id), id ASC`,
         orderCode,
       ).catch(() => null);
       inventoryId = reservedUnit ? Number(reservedUnit.id) : null;

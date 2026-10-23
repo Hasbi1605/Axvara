@@ -505,7 +505,7 @@ describe("Variant stock expiry lifecycle", () => {
   it("keeps legacy Telegram inventory compatible after variant backfill", () => {
     const inventory = read("src/lib/fulfillment/inventory.ts");
     expect(inventory).toContain("variantId === null");
-    expect(inventory).toContain("WHERE product_id=? AND status='available' ORDER BY id ASC LIMIT 1");
+    expect(inventory).toContain("WHERE product_id=? AND status='available' ORDER BY COALESCE(sort_order,id), id ASC LIMIT 1");
   });
 
   it("pins Telegram variant fulfillment to an order snapshot and compensates partial invoice setup", () => {

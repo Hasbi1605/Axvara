@@ -219,7 +219,7 @@ export async function createChannelOrderAtomic(
          WHERE id=(
            SELECT id FROM fulfillment_inventory
            WHERE product_id=? AND status='available' AND (variant_id=? OR variant_id IS NULL)
-           ORDER BY CASE WHEN variant_id=? THEN 0 ELSE 1 END, id ASC
+           ORDER BY CASE WHEN variant_id=? THEN 0 ELSE 1 END, COALESCE(sort_order,id), id ASC
            LIMIT 1
          ) AND status='available'`,
       ).bind(input.orderCode, line.variantId, line.productId, line.variantId, line.variantId),
@@ -472,7 +472,7 @@ export async function createPendingChannelOrder(input: ChannelOrderInput): Promi
            WHERE id=(
              SELECT id FROM fulfillment_inventory
              WHERE product_id=? AND status='available' AND (variant_id=? OR variant_id IS NULL)
-             ORDER BY CASE WHEN variant_id=? THEN 0 ELSE 1 END, id ASC
+             ORDER BY CASE WHEN variant_id=? THEN 0 ELSE 1 END, COALESCE(sort_order,id), id ASC
              LIMIT 1
            ) AND status='available'`,
         ).bind(orderCode, input.productId, input.variantId, input.variantId),

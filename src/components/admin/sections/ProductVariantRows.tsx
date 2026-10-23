@@ -8,6 +8,7 @@ import { Spinner } from "@/components/ui/Loading";
 import type { FormVariant, ProductForm } from "../product-types";
 import { WarrantyFields } from "./VariantWarrantyFields";
 import { SharedVariantCopyFields } from "./SharedVariantCopyFields";
+import { ArrowDown, ArrowUp, GripVertical } from "lucide-react";
 
 // Blok daftar varian dipisah dari ProductEditorModal karena inilah sub-form paling padat
 // (harga, harga coret, stok, dan matriks garansi per baris). Memisahkannya menjaga file
@@ -52,6 +53,8 @@ export function NonWrFulfillmentPanel({ productId, variantId, mode, onStockChang
   const [sharedText, setSharedText] = useState("");
   const [inventoryText, setInventoryText] = useState("");
   const [loading, setLoading] = useState(false);
+  const [draggedId, setDraggedId] = useState<number | null>(null);
+  const dragSource = useRef<number | null>(null);
   const pid = Number(productId);
   const loadGeneration = useRef(0);
   const invalidateLoad = useCallback(() => { loadGeneration.current++; }, []);
@@ -133,6 +136,27 @@ export function NonWrFulfillmentPanel({ productId, variantId, mode, onStockChang
     finally { setLoading(false); }
   };
 
+  const moveInventory = async (id: number, targetIndex: number) => {
+    const sourceIndex = inventory.findIndex(row => row.id === id);
+    if (loading || sourceIndex < 0 || sourceIndex === targetIndex || targetIndex < 0 || targetIndex >= inventory.length) return;
+    const previous = inventory;
+    const next = [...inventory];
+    const [moved] = next.splice(sourceIndex, 1);
+    next.splice(targetIndex, 0, moved);
+    invalidateLoad();
+    setLoading(true);
+    setInventory(next);
+    try {
+      await post({ action: "reorder", inventory_ids: next.map(row => row.id) });
+      toast.success("Urutan pengiriman disimpan.");
+      await load();
+    } catch (error) {
+      setInventory(previous);
+      toast.error(error instanceof Error ? error.message : "Gagal mengatur urutan");
+      await load();
+    } finally { setLoading(false); }
+  };
+
   if (!variantId) return <p className="mt-3 rounded-xl border border-white/10 bg-white/[0.025] px-3 py-3 text-xs text-white/40">Simpan produk terlebih dahulu (agar varian punya ID), lalu buka Edit untuk mengisi konten fulfillment.</p>;
   if (mode === "__wr__") {
     return (
@@ -210,11 +234,32 @@ export function NonWrFulfillmentPanel({ productId, variantId, mode, onStockChang
         </div>
       ) : (
         <div className="mt-3">
+          <p className="mb-2 text-[11px] text-white/50">Kredensial paling atas dikirim lebih dulu. Geser pegangan atau gunakan panah. Urutan langsung tersimpan.</p>
           {inventory.length > 0 ? (
-            <ul className="max-h-48 space-y-1.5 overflow-y-auto rounded-xl border border-white/10 bg-[#080C1E]/65 p-2.5">
-              {inventory.map((row) => (
-                <li key={row.id} className="flex items-center justify-between gap-2 rounded-lg bg-white/[0.04] px-2.5 py-1.5">
+            <ul aria-label="Urutan pengiriman kredensial" className="max-h-48 space-y-1.5 overflow-y-auto rounded-xl border border-white/10 bg-[#080C1E]/65 p-2.5">
+              {inventory.map((row, index) => (
+                <li key={row.id} data-inventory-id={row.id}
+                  onDragOver={event => { if (!loading && dragSource.current !== null) event.preventDefault(); }}
+                  onDrop={event => {
+                    event.preventDefault();
+                    const source = dragSource.current;
+                    dragSource.current = null; setDraggedId(null);
+                    if (source !== null) void moveInventory(source, index);
+                  }}
+                  className={`flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 ${draggedId === row.id ? "bg-[#00E5FF]/15 opacity-50" : "bg-white/[0.04]"}`}>
+                  <button type="button" draggable={!loading} disabled={loading}
+                    aria-label={`Geser kredensial ${index + 1}`} title="Tarik untuk mengatur urutan"
+                    onDragStart={event => {
+                      dragSource.current = row.id; setDraggedId(row.id);
+                      event.dataTransfer.effectAllowed = "move";
+                      event.dataTransfer.setData("text/plain", String(row.id));
+                    }}
+                    onDragEnd={() => { dragSource.current = null; setDraggedId(null); }}
+                    className="shrink-0 cursor-grab rounded p-1 text-white/45 hover:text-[#00E5FF] active:cursor-grabbing disabled:opacity-30"><GripVertical size={15} /></button>
+                  <span className="w-5 shrink-0 text-center text-[11px] text-[#5cefff]">{index + 1}</span>
                   <span className="min-w-0 flex-1 truncate font-mono text-xs text-white">{row.secret}</span>
+                  <button type="button" aria-label={`Naikkan kredensial ${index + 1}`} title="Naikkan" onClick={() => void moveInventory(row.id, index - 1)} disabled={loading || index === 0} className="shrink-0 rounded p-1 text-white/60 hover:bg-white/10 hover:text-[#00E5FF] disabled:opacity-20"><ArrowUp size={14} /></button>
+                  <button type="button" aria-label={`Turunkan kredensial ${index + 1}`} title="Turunkan" onClick={() => void moveInventory(row.id, index + 1)} disabled={loading || index === inventory.length - 1} className="shrink-0 rounded p-1 text-white/60 hover:bg-white/10 hover:text-[#00E5FF] disabled:opacity-20"><ArrowDown size={14} /></button>
                   <button type="button" onClick={() => void removeOne(row.id)} disabled={loading} className="shrink-0 text-[11px] font-semibold text-red-300 hover:text-red-200 hover:underline disabled:opacity-40">Hapus</button>
                 </li>
               ))}
