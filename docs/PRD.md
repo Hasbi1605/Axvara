@@ -13,8 +13,9 @@ ketika semua disembunyikan modal ditutup. Key hide lama dipertahankan.
 
 Revisi layout screenshot owner24Oktober: gambar penuh dari tepi ke tepi, rasio asli
 tanpa crop atau padding samping; panah overlay pada gambar, counter1/2 di bawahnya.
-Judul/deskripsi rata tengah pada panel putih tanpa garis pemisah. Checkbox Jangan
-tampilkan lagi di atas tombol biru lebar di tengah; fallback Saya Paham jika CTA
+Judul/deskripsi rata tengah pada panel putih tanpa garis pemisah. Judul tidak
+menyisakan tinggi minimum; deskripsi mengikuti8px setelah teks judul. Checkbox
+Jangan tampilkan lagi di atas tombol biru lebar di tengah; fallback Saya Paham jika CTA
 belum diisi. Pada batas manual hanya panah ke slide tetangga yang tersedia.
 Tidak ada tombol Putar/Jeda sesuai screenshot/keputusan owner; interaksi manual
 atau fokus menghentikan putaran sampai popup ditutup, tanpa kontrol lanjutkan.

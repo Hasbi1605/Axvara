@@ -9,6 +9,7 @@ asli tanpa jarak samping/crop; panah overlay gambar dan counter langsung di bawa
 Caption putih rata tengah tanpa separator; checkbox di atas tombol biru full-width
 atau Saya Paham bila CTA kosong. Konten panjang dapat digulir dalam max92dvh. Sesuai owner, tidak ada tombol
 Putar/Jeda pada gambar; hanya panah dan tutup.
+Judul mengikuti tinggi teks; deskripsi langsung di bawahnya dengan jarak8px.
 Jangan tampilkan lagi berlaku per info24jam; checkout/admin tetap tanpa popup.
 
 Admin → Banner: ubah isi/gambar/CTA/aktif, drag pegangan atau gunakan naik/turun

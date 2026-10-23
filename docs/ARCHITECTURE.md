@@ -23,6 +23,7 @@ Layout mengikuti revisi screenshot owner: gambar lebar penuh/h-auto dengan rasio
 natural pada kartu448px, scroll max92dvh; counter tepat di bawah gambar, panah di
 atas gambar dengan batas awal/akhir, caption rata tengah tanpa separator, checkbox
 sebelum CTA biru full-width atau tombol tutup Saya Paham bila CTA kosong.
+Judul mengikuti tinggi teks alami; deskripsi memiliki margin atas8px tanpa slot kosong.
 
 Popup memakai key sessionStorage.axvara-banner-carousel-shows dan key hide per-ID
 existing24jam. Batas sesi lama per-banner dipensiunkan. Satu pembukaan per mount/

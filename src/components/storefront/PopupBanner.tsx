@@ -184,8 +184,8 @@ export function PopupBanner() {
               </div>
               <div className="px-4 pb-4 pt-3 text-center sm:px-5" data-banner-caption>
                 <div className="mb-3 text-sm tabular-nums text-gray-500" aria-live={rotating ? "off" : "polite"} aria-atomic="true">{index + 1}/{banners.length}</div>
-                <h3 className="min-h-[48px] font-display sm:min-h-[72px] text-lg font-bold leading-7 text-[#151B2B]">{banner.title}</h3>
-                {banner.body && <p className="mt-3 whitespace-pre-line break-words text-sm leading-5 text-gray-500">{banner.body}</p>}
+                <h3 className="font-display text-lg font-bold leading-7 text-[#151B2B]">{banner.title}</h3>
+                {banner.body && <p className="mt-2 whitespace-pre-line break-words text-sm leading-5 text-gray-500">{banner.body}</p>}
               </div>
             </div>
             <div className="px-4 pb-4 text-center sm:px-5" data-banner-actions>

@@ -9,6 +9,8 @@ memenuhi sisi kiri/kanan tanpa crop/letterbox, bukan panggung dengan tinggi teta
 Panah lingkaran gelap transparan menumpang pada gambar di75% tinggi, kiri/kanan8px;
 sebelumnya hanya sesudah slide pertama, berikutnya hanya sebelum slide terakhir.
 Counter1/2 persis di bawah gambar (padding atas12px), lalu judul/deskripsi rata tengah.
+Judul memakai tinggi alami tanpa ruang minimum; deskripsi berjarak8px sesudah judul,
+termasuk bila judul membungkus menjadi beberapa baris.
 Panel bawah putih#FFFFFF, teks midnight/gray500, tanpa garis pemisah. Checkbox kotak
 abu dan label dipusatkan di atas CTA biru#315DEA selebar panel, tinggi minimal44px,
 radius6px, teks putih16px; bila CTA kosong tombol Saya Paham menutup popup.
