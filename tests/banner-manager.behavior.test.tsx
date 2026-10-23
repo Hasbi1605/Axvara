@@ -36,7 +36,7 @@ it("uses a partial switch request, locks pending writes and synchronizes the uns
   fireEvent.click(screen.getByRole("button", { name: /Simpan perubahan$/ }));
   await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
   expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body))).toMatchObject({ body: "Unsaved content", is_active: true });
-  expect(screen.getByText(/urutan 5/)).toBeTruthy();
+  expect(screen.getByText(/urutan 1/)).toBeTruthy();
   expect(toast.success).toHaveBeenCalledWith("Perubahan banner disimpan. Urutan 5.");
 });
 
@@ -50,4 +50,22 @@ it("keeps failed switches unchanged and exposes an inline accessible error", asy
   expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Status unavailable");
   expect(toggle.getAttribute("aria-checked")).toBe("false");
   expect((toggle as HTMLButtonElement).disabled).toBe(false);
+});
+
+it('moves a row with the full expected list and keeps content edits from sending position',async()=>{
+ const list=[{...banner,id:1,title:'First',sort_order:0},{...banner,id:2,title:'Second',sort_order:1}];let current=list;
+ const fetcher=vi.fn(async(url:string,options?:RequestInit)=>{
+  if(url==='/api/banners/reorder'){current=[{...list[1],sort_order:0},{...list[0],sort_order:1}];return Response.json({banners:current})}
+  return Response.json({banners:current});
+ });vi.stubGlobal('fetch',fetcher);render(<BannerManager/>);fireEvent.click(await screen.findByRole('button',{name:'Naikkan Second'}));await waitFor(()=>expect(toast.success).toHaveBeenCalledWith('Urutan banner disimpan.'));
+ expect(JSON.parse(String(fetcher.mock.calls[1][1]?.body))).toEqual({ids:[2,1],expected_ids:[1,2]});const names=screen.getAllByRole('button',{name:/Geser urutan/}).map(b=>b.getAttribute('aria-label'));expect(names).toEqual(['Geser urutan Second','Geser urutan First']);
+});
+it('reloads authoritative order on conflict and exposes the error',async()=>{
+ const list=[{...banner,id:1,title:'First',sort_order:0},{...banner,id:2,title:'Second',sort_order:1}];
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>url==='/api/banners/reorder'?Response.json({error:'Daftar berubah'},{status:409}):Response.json({banners:list})));
+ render(<BannerManager/>);fireEvent.click(await screen.findByRole('button',{name:'Naikkan Second'}));expect(await screen.findByRole('alert')).toHaveProperty('textContent','Daftar berubah ');expect(screen.getAllByRole('button',{name:/Geser urutan/}).map(b=>b.getAttribute('aria-label'))).toEqual(['Geser urutan First','Geser urutan Second']);
+});
+it('shared settings cannot be saved before loading and are independent from content fields',async()=>{
+ const config={delay_ms:1500,interval_ms:6000,autoplay:true,max_show_per_session:1};const fetcher=vi.fn(async(url:string,options?:RequestInit)=>url==='/api/banners/settings'?Response.json({settings:JSON.parse(String(options?.body))}):Response.json({banners:[banner],settings:config}));vi.stubGlobal('fetch',fetcher);
+ render(<BannerManager/>);expect(screen.getByRole('button',{name:'Simpan pengaturan'})).toHaveProperty('disabled',true);await screen.findByRole('switch');fireEvent.change(screen.getByRole('spinbutton',{name:'Ganti slide setiap (detik)'}),{target:{value:'8'}});fireEvent.click(screen.getByRole('button',{name:'Simpan pengaturan'}));await waitFor(()=>expect(toast.success).toHaveBeenCalledWith('Pengaturan popup disimpan.'));expect(JSON.parse(String(fetcher.mock.calls[1][1]?.body))).toEqual({...config,interval_ms:8000});
 });

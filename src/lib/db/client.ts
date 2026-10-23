@@ -154,7 +154,7 @@ function getArticleMem(): Row[] {
   if (!g.__AXVARA_ARTICLES) g.__AXVARA_ARTICLES = articleSeedRows.map((row) => ({ ...row }));
   return g.__AXVARA_ARTICLES;
 }
-function getBannerMem(): Row[] {
+export function getBannerMem(): Row[] {
   const g = process as unknown as { __AXVARA_BANNERS?: Row[] };
   if (!g.__AXVARA_BANNERS) g.__AXVARA_BANNERS = [];
   return g.__AXVARA_BANNERS;

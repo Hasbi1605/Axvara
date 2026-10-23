@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { queryFirst, execRun } from "@/lib/db";
+import { queryFirst } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
-import { BannerOrderConflict, writeBannerOrder } from "@/lib/banner-order";
+import { BannerOrderConflict, saveBanner, deleteBanner } from "@/lib/banner-order";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -32,23 +32,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const data = parsed.data as Record<string, unknown>;
   if (data.image_url && typeof data.image_url === "string" && !data.image_url.startsWith("/r2/banners/")) return NextResponse.json({ error: "Gambar harus berasal dari uploader banner AXVARA" }, { status: 400 });
   if (data.cta_href && typeof data.cta_href === "string" && !/^(\/[^/]|https:\/\/)/.test(data.cta_href)) return NextResponse.json({ error: "CTA href harus /... atau https://" }, { status: 400 });
-  const fields: string[] = [];
-  const vals: unknown[] = [];
-  const map: Record<string, string> = { title: "title", body: "body", image_url: "image_url", cta_label: "cta_label", cta_href: "cta_href", delay_ms: "delay_ms", max_show_per_session: "max_show_per_session", sort_order: "sort_order" };
-  for (const [k, col] of Object.entries(map)) if (data[k] !== undefined) { fields.push(`${col}=?`); vals.push(data[k]); }
-  if (data.is_active !== undefined) { fields.push("is_active=?"); vals.push(data.is_active ? 1 : 0); }
-  if (!fields.length) return NextResponse.json({ ok: true, banner: await queryFirst("SELECT * FROM banners WHERE id=?", id) });
-  fields.push("updated_at=datetime('now')");
-  vals.push(id);
   try {
-    const write = (order?: number) => {
-      const values = [...vals];
-      if (order !== undefined) values[fields.indexOf("sort_order=?")] = order;
-      return execRun(`UPDATE banners SET ${fields.join(",")} WHERE id=?`, ...values);
-    };
-    const result = data.sort_order !== undefined
-      ? (await writeBannerOrder(Number(data.sort_order), id, write)).result
-      : await write();
+    const result = await saveBanner({ ...data, ...(data.is_active !== undefined ? { is_active: data.is_active ? 1 : 0 } : {}) }, Number(id));
     if (!result.changes) return NextResponse.json({ error: "not found" }, { status: 404 });
     const banner = await queryFirst("SELECT * FROM banners WHERE id=?", id);
     return NextResponse.json({ ok: true, sort_order: banner?.sort_order, banner });
@@ -62,6 +47,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const admin = await requireAdmin(req);
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
-  await execRun("DELETE FROM banners WHERE id=?", id);
+  try { await deleteBanner(Number(id)); }
+  catch (error) {
+    if (error instanceof BannerOrderConflict) return NextResponse.json({ error: error.message }, { status: 409 });
+    throw error;
+  }
   return NextResponse.json({ ok: true });
 }

@@ -242,3 +242,13 @@ body {
 }
 @keyframes ax-sheen { 0%, 70% { transform: translateX(-120%); } 85%, 100% { transform: translateX(120%); } }
 @media (prefers-reduced-motion: reduce) { .ax-launch::before, .ax-launch::after { animation: none; } }
+
+/* Banner movement stays local to the card; reduced motion uses instant changes. */
+@keyframes bannerSlideIn {
+  from { opacity: 0.35; transform: translateX(var(--banner-enter-from, 35%)); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.banner-slide { animation: bannerSlideIn 300ms var(--ease-apple); }
+@media (prefers-reduced-motion: reduce) {
+  .banner-slide { animation: none; }
+}

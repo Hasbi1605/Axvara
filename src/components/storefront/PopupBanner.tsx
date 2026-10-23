@@ -1,5 +1,6 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { bannerSettingsSchema, DEFAULT_BANNER_SETTINGS } from "@/lib/banner-config";
 import { usePathname } from "next/navigation";
 import { useModalA11y } from "@/hooks/useModalA11y";
 
@@ -42,157 +43,162 @@ export function unhideBanner(id: number): void {
   } catch {}
 }
 
+export const BANNER_SESSION_KEY = "axvara-banner-carousel-shows";
+
 export function PopupBanner() {
   const pathname = usePathname();
   const isAdmin = pathname?.startsWith("/admin");
   const isHome = pathname === "/";
-  const [banner, setBanner] = useState<Banner | null>(null);
+  const [banners, setBanners] = useState<Banner[]>([]);
+  const [index, setIndex] = useState(0);
+  const [settings, setSettings] = useState(DEFAULT_BANNER_SETTINGS);
   const [open, setOpen] = useState(false);
-  const [dontShow, setDontShow] = useState(false);
-  const [imageRatio, setImageRatio] = useState<number | null>(null);
+  const [paused, setPaused] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [hidden, setHidden] = useState(false);
+  const [reduced, setReduced] = useState(false);
+  const [direction, setDirection] = useState(1);
+  const [imageFailed, setImageFailed] = useState<number[]>([]);
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
-  const bannerRef = useRef<Banner | null>(null);
-  const dontShowRef = useRef(false);
+  const playRef = useRef<HTMLButtonElement>(null);
   const shownThisVisitRef = useRef(false);
-  bannerRef.current = banner;
-  const setDontShowBoth = useCallback((value: boolean) => {
-    dontShowRef.current = value;
-    setDontShow(value);
-    const current = bannerRef.current;
-    if (!current) return;
-    if (value) hideBannerFor24h(current.id);
-    else unhideBanner(current.id);
-  }, []);
-  const close = useCallback(() => {
-    const current = bannerRef.current;
-    if (current && dontShowRef.current) hideBannerFor24h(current.id);
-    dontShowRef.current = false;
-    setDontShow(false);
-    setOpen(false);
+  const pointer = useRef<{ id: number; x: number; y: number } | null>(null);
+  const suppressClick = useRef(false);
+  const banner = banners[index];
+  const close = useCallback(() => setOpen(false), []);
+  const move = useCallback((step: number, manual = true) => {
+    if (manual) setPaused(true);
+    setDirection(step >= 0 ? 1 : -1);
+    setIndex(current => (current + step + banners.length) % banners.length);
+  }, [banners.length]);
+
+  useEffect(() => {
+    const media = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
+    const update = () => { setReduced(Boolean(media?.matches)); setHidden(document.visibilityState === "hidden"); };
+    update();
+    media?.addEventListener?.("change", update);
+    document.addEventListener("visibilitychange", update);
+    return () => { media?.removeEventListener?.("change", update); document.removeEventListener("visibilitychange", update); };
   }, []);
 
   useEffect(() => {
     setOpen(false);
-    setBanner(null);
-    dontShowRef.current = false;
-    setDontShow(false);
-    setImageRatio(null);
     if (isAdmin || !isHome) return;
     if (shownThisVisitRef.current) return;
-
     const controller = new AbortController();
     let disposed = false;
-    let openTimer: ReturnType<typeof setTimeout> | null = null;
-    let idleId: number | null = null;
-    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
-
-    // Defer banner fetch to avoid blocking initial page load
-    const doFetch = () => {
-      fetch("/api/banners?active=1", { signal: controller.signal })
-        .then((r) => (r.ok ? r.json() : Promise.reject()))
-        .then((j) => {
+    let openTimer: ReturnType<typeof setTimeout> | undefined;
+    // Defer the single request until after the home page's first paint.
+    const fetchTimer = setTimeout(() => {
+      fetch("/api/banners?active=1", { signal: controller.signal, cache: "no-store" })
+        .then(response => response.ok ? response.json() : Promise.reject())
+        .then(data => {
           if (disposed) return;
-          const b = (j.banners as Banner[])?.find((candidate) => {
-            if (!candidate.is_active || isBannerHidden(candidate.id)) return false;
-            let shown = 0;
-            try { shown = Number(sessionStorage.getItem(`axvara-banner-${candidate.id}-shows`) ?? 0); } catch {}
-            const maximum = Math.min(10, Math.max(1, candidate.max_show_per_session ?? 1));
-            return !Number.isFinite(shown) || shown < maximum;
-          });
-          if (!b) return;
-          const storageKey = `axvara-banner-${b.id}-shows`;
-          setBanner(b);
-          const delay = Math.min(10000, Math.max(0, b.delay_ms ?? 1500));
+          const config = bannerSettingsSchema.safeParse(data.settings);
+          const nextSettings = config.success ? config.data : DEFAULT_BANNER_SETTINGS;
+          let shown = 0;
+          try { shown = Number(sessionStorage.getItem(BANNER_SESSION_KEY) ?? 0) || 0; } catch {}
+          if (shown >= nextSettings.max_show_per_session) return;
+          const eligible = ((data.banners ?? []) as Banner[]).filter(item => item.is_active && !isBannerHidden(item.id));
+          if (!eligible.length) return;
+          setBanners(eligible);
+          setSettings(nextSettings);
+          setIndex(0);
+          setPaused(false);
           openTimer = setTimeout(() => {
-            if (!disposed && !shownThisVisitRef.current && !isBannerHidden(b.id)) {
-              shownThisVisitRef.current = true;
-              setOpen(true);
-              try {
-                const shown = Number(sessionStorage.getItem(storageKey) ?? 0);
-                sessionStorage.setItem(storageKey, String((Number.isFinite(shown) ? shown : 0) + 1));
-              } catch {}
-            }
-          }, delay);
-        })
-        .catch(() => {});
-    };
-
-    // Use requestIdleCallback to fetch banner only when browser is idle
-    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
-      idleId = (window as unknown as { requestIdleCallback: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback(doFetch, { timeout: 3000 });
-    } else {
-      fallbackTimer = setTimeout(doFetch, 2000);
-    }
-
-    return () => {
-      disposed = true;
-      controller.abort();
-      if (idleId !== null && "cancelIdleCallback" in window) {
-        (window as unknown as { cancelIdleCallback: (id: number) => void }).cancelIdleCallback(idleId);
-      }
-      if (fallbackTimer !== null) clearTimeout(fallbackTimer);
-      if (openTimer !== null) clearTimeout(openTimer);
-    };
+            if (disposed || shownThisVisitRef.current) return;
+            const current = eligible.filter(item => !isBannerHidden(item.id));
+            if (!current.length) return;
+            shownThisVisitRef.current = true;
+            setBanners(current);
+            setOpen(true);
+            // Count the popup once, never once per slide/loop.
+            try { sessionStorage.setItem(BANNER_SESSION_KEY, String(shown + 1)); } catch {}
+          }, nextSettings.delay_ms);
+        }).catch(() => {});
+    }, 0);
+    return () => { disposed = true; controller.abort(); clearTimeout(fetchTimer); clearTimeout(openTimer); };
   }, [isAdmin, isHome]);
 
-  // Sebelumnya modal ini hanya punya Escape + scroll lock: Tab bisa lolos ke
-  // konten di belakang dan fokus tidak dikembalikan ke pemicu. Hook kanonis
-  // menambahkan focus trap + restore focus tanpa mengubah perilaku lain.
-  useModalA11y({
-    active: Boolean(open && banner) && !isAdmin && isHome,
-    containerRef: panelRef,
-    onClose: close,
-    initialFocusRef: closeRef,
-  });
+  useEffect(() => {
+    if (!open || banners.length < 2) return;
+    const url = banners[(index + 1) % banners.length]?.image_url;
+    if (url) { const image = new Image(); image.src = url; }
+  }, [open, banners, index]);
 
+  const rotating = open && banners.length > 1 && settings.autoplay && !paused && !hovered && !hidden && !reduced;
+  useEffect(() => {
+    if (!rotating) return;
+    const timer = setTimeout(() => move(1, false), settings.interval_ms);
+    return () => clearTimeout(timer);
+  }, [rotating, index, move, settings.interval_ms]);
+
+  useModalA11y({ active: open && Boolean(banner) && !isAdmin && isHome, containerRef: panelRef, onClose: close, initialFocusRef: closeRef });
   if (isAdmin || !isHome || !banner || !open) return null;
 
-  const adaptiveWidth = imageRatio
-    ? Math.min(960, Math.max(320, Math.round(imageRatio * 520)))
-    : 520;
-
+  const hideCurrent = () => {
+    hideBannerFor24h(banner.id);
+    setPaused(true);
+    const rest = banners.filter(item => item.id !== banner.id);
+    if (!rest.length) close();
+    else { setBanners(rest); setIndex(Math.min(index, rest.length - 1)); }
+  };
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-5" role="dialog" aria-modal="true" aria-label={banner.title}>
-      <div aria-hidden="true" className="absolute inset-0 bg-[#070a1e]/70 backdrop-blur-sm" onClick={close} />
-      <div
-        ref={panelRef}
-        tabIndex={-1}
-        className="relative max-h-[92dvh] max-w-[94vw] overflow-y-auto rounded-[24px] border border-white/10 bg-[#0f1430] shadow-[0_24px_64px_rgba(0,0,0,0.5)] animate-[fadeInUp_0.32s_var(--ease-apple)]"
-        style={{ width: `min(94vw, ${adaptiveWidth}px)` }}
-      >
-        <button ref={closeRef} onClick={close} className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-black/55 text-white/80 backdrop-blur-md hover:bg-black/75 hover:text-white" aria-label="Tutup banner">✕</button>
-        {banner.image_url && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <div className="flex w-full justify-center overflow-hidden bg-black/15">
-            <img
-              src={banner.image_url}
-              alt={banner.title}
-              className="block h-auto max-h-[62dvh] max-w-full object-contain"
-              onLoad={(event) => {
-                const image = event.currentTarget;
-                if (image.naturalWidth && image.naturalHeight) setImageRatio(image.naturalWidth / image.naturalHeight);
-              }}
-            />
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-5" role="dialog" aria-modal="true" aria-label="Info AXVARA">
+      <div aria-hidden="true" className="absolute inset-0 bg-[#070a1e]/75 backdrop-blur-sm" onClick={close} />
+      <div ref={panelRef} tabIndex={-1} className="relative flex max-h-[92dvh] w-[480px] max-w-full flex-col overflow-hidden rounded-[24px] border border-white/40 bg-[#F5F7FC] shadow-[0_24px_64px_rgba(0,0,0,0.5)] motion-safe:animate-[fadeInUp_0.24s_var(--ease-apple)]">
+        <button ref={closeRef} onClick={close} className="absolute right-2 top-2 z-20 flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-black/65 text-white hover:bg-black/85" aria-label="Tutup banner">✕</button>
+        <div className="flex min-h-0 flex-col" role="region" aria-roledescription="carousel" aria-label="Informasi dan promo"
+          onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
+          onFocusCapture={event => { if ((event.target as HTMLElement) !== playRef.current) setPaused(true); }}
+          onKeyDown={event => {
+            if (event.key === "ArrowLeft" || event.key === "ArrowRight") { event.preventDefault(); if (banners.length > 1) move(event.key === "ArrowRight" ? 1 : -1); }
+          }}>
+          <div className="min-h-0 max-h-[calc(92dvh-132px)] overflow-y-auto overscroll-contain" style={{ touchAction: "pan-y" }}
+            onClickCapture={event => { if (suppressClick.current) { event.preventDefault(); event.stopPropagation(); suppressClick.current = false; } }}
+            onPointerDown={event => {
+              if (!event.isPrimary || event.button !== 0) return;
+              if ((event.target as HTMLElement).closest("button,a,input,label")) return;
+              setPaused(true);
+              pointer.current = { id: event.pointerId, x: event.clientX, y: event.clientY }; suppressClick.current = false;
+              event.currentTarget.setPointerCapture?.(event.pointerId);
+            }}
+            onPointerCancel={() => { pointer.current = null; }}
+            onPointerUp={event => {
+              const start = pointer.current; pointer.current = null;
+              if (!start || start.id !== event.pointerId) return;
+              const dx = event.clientX - start.x, dy = event.clientY - start.y;
+              if (Math.abs(dx) >= 45 && Math.abs(dx) > Math.abs(dy) * 1.3 && banners.length > 1) { suppressClick.current = true; move(dx < 0 ? 1 : -1); }
+            }}>
+            <div key={banner.id} role="group" aria-roledescription="slide" aria-label={`${index + 1} dari ${banners.length}: ${banner.title}`}
+              className="banner-slide" style={{ "--banner-enter-from": direction > 0 ? "35%" : "-35%" } as CSSProperties}>
+              {banner.image_url && !imageFailed.includes(banner.id) ? <div className="flex h-[min(52dvh,520px)] w-full items-center justify-center bg-[#E8EDF7]">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={banner.image_url} alt={banner.title} draggable={false} className="h-full w-full object-contain" onError={() => setImageFailed(current => [...current,banner.id])} />
+              </div> : banner.image_url ? <p className="flex h-40 items-center justify-center bg-[#E8EDF7] text-sm text-slate-600">Gambar tidak dapat dimuat.</p> : banners.some(item => item.image_url) ? <div className="flex h-[min(52dvh,520px)] items-center justify-center bg-gradient-to-br from-cyan-100 to-indigo-100 text-2xl font-semibold text-[#10172D]">Info AXVARA</div> : null}
+              <div className="min-h-28 px-5 pb-3 pt-5 sm:px-6">
+                <h3 className="font-display text-lg font-bold leading-tight text-[#10172D]">{banner.title}</h3>
+                {banner.body && <p className="mt-2 whitespace-pre-line break-words text-sm leading-6 text-slate-600">{banner.body}</p>}
+              </div>
+            </div>
           </div>
-        )}
-        <div className="p-5 sm:p-6">
-          <h3 className="font-display font-bold text-white text-lg leading-tight">{banner.title}</h3>
-          {banner.body && <p className="mt-2 text-sm leading-6 text-white/60">{banner.body}</p>}
-          {banner.cta_href && banner.cta_label && (
-            <a href={banner.cta_href} onClick={close} className="mt-4 inline-flex h-10 px-5 rounded-full bg-[#00E5FF] text-[#070a1e] text-sm font-bold hover:bg-[#00D0E8] items-center justify-center">
-              {banner.cta_label}
-            </a>
-          )}
-          <label className="mt-4 flex cursor-pointer items-center gap-2 text-xs text-white/45 hover:text-white/70">
-            <input
-              type="checkbox"
-              checked={dontShow}
-              onChange={(event) => setDontShowBoth(event.target.checked)}
-              className="h-3.5 w-3.5 rounded accent-[#00E5FF]"
-            />
-            Jangan tampilkan lagi
-          </label>
+          <div className="shrink-0 border-t border-slate-200 bg-[#F5F7FC] px-5 pb-4 pt-2 sm:px-6">
+            {banners.length > 1 && <div className="flex items-center justify-between gap-1" aria-label="Kontrol slide">
+              <button onClick={() => move(-1)} aria-label="Banner sebelumnya" className="h-11 w-11 rounded-full bg-slate-200/70 text-xl text-[#10172D] hover:bg-slate-300/70">‹</button>
+              <span className="text-xs tabular-nums text-slate-600" aria-live={rotating ? "off" : "polite"} aria-atomic="true">{index + 1} / {banners.length}</span>
+              <button ref={playRef} onClick={() => { if (!reduced) setPaused(current => !current); }} disabled={reduced || !settings.autoplay}
+                title={reduced ? "Gerakan dikurangi sesuai pengaturan perangkat" : !settings.autoplay ? "Putaran otomatis dinonaktifkan" : undefined}
+                aria-label={paused || reduced || !settings.autoplay ? "Putar otomatis" : "Jeda putaran otomatis"} className="h-11 rounded-full px-3 text-xs text-slate-700 hover:bg-slate-200 disabled:opacity-40">{paused || reduced || !settings.autoplay ? "Putar" : "Jeda"}</button>
+              <button onClick={() => move(1)} aria-label="Banner berikutnya" className="h-11 w-11 rounded-full bg-slate-200/70 text-xl text-[#10172D] hover:bg-slate-300/70">›</button>
+            </div>}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+              {banner.cta_href && banner.cta_label && <a href={banner.cta_href} onClick={close} className="inline-flex min-h-10 items-center justify-center rounded-full bg-[#00E5FF] px-5 text-sm font-bold text-[#070a1e] hover:bg-[#00D0E8]">{banner.cta_label}</a>}
+              <label className="flex min-h-11 cursor-pointer items-center gap-2 text-xs text-slate-600 hover:text-slate-900">
+                <input type="checkbox" checked={false} onChange={hideCurrent} className="h-4 w-4 rounded accent-[#00E5FF]" /> Jangan tampilkan lagi
+              </label>
+            </div>
+          </div>
         </div>
       </div>
     </div>

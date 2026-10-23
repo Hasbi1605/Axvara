@@ -101,7 +101,7 @@ describe("Article contracts", () => {
     const popup = read("src/components/storefront/PopupBanner.tsx");
     expect(uploader).toContain('area === "banners"');
     expect(uploader).toContain("toWebpOriginalRatio");
-    expect(popup).toContain("naturalWidth");
+    expect(popup).toContain("h-[min(52dvh,520px)]");
     expect(popup).toContain("object-contain");
     expect(popup).not.toContain('aspect-[16/9] object-cover');
   });

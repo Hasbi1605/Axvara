@@ -1,5 +1,24 @@
 # PRD — AXVARA
 
+## Carousel info storefront — 24 Oktober 2026
+
+✅ Diimplementasikan; publikasi melalui CI. Semua banner aktif yang tidak disembunyikan
+menjadi satu popup di beranda, mengikuti urutan admin. Pengunjung dapat memakai panah,
+keyboard atau geser horizontal; putar otomatis default6detik, dapat dijeda, berhenti
+saat interaksi/fokus, hover dan tab tersembunyi. Preferensi kurangi gerakan memakai
+pergantian langsung/manual. Tidak menghalangi checkout/admin atau membuka popup
+berikutnya ketika modal ditutup. Batas sesi dihitung sekali per pembukaan, bukan per
+slide. Jangan tampilkan lagi menyembunyikan info aktif24jam dan meneruskan ke tetangga;
+ketika semua disembunyikan modal ditutup. Key hide lama dipertahankan.
+
+Admin mengatur jeda buka0–10detik(default1,5), interval4–20detik(default6), otomatis
+on/off dan maksimal1–10pembukaan per sesi(default1) pada satu panel bersama. Isi/CTA/
+gambar/aktif per banner terpisah. Pegangan drag, keyboard dan naik/turun menyimpan
+urutan langsung; banner baru selalu di akhir, hapus merapatkan posisi. Edit isi dari
+tab lama tidak menggeser urutan. Konflik daftar ditolak dan dimuat ulang. Ini mengganti
+aturan satu banner pertama, angka urutan/delay/maks sesi per banner pada bagian lama.
+
+
 ## Perbaikan audit dan kebijakan Pedia — 24 Oktober 2026
 
 ✅ Diimplementasikan; publikasi melalui CI. Pedia memakai QRIS per order tanpa
@@ -577,7 +596,7 @@ MVP seed: 8–12 produk dummy dengan foto placeholder premium + harga realistis 
 
 ### Pembaruan panel admin 2026-10-15 (implementasi, publikasi via CI)
 
-- Banner: sakelar Aktif/Nonaktif bergaya Produk di samping Edit langsung di daftar; posisi global unik 0–999 untuk banner aktif maupun nonaktif. Benturan mendapat posisi kosong berikutnya; posisi server ditampilkan. Popup homepage memilih banner pertama yang belum disembunyikan/belum mencapai batas sesi, satu popup per kunjungan dokumen, tanpa antrean popup setelah ditutup.
+- Banner: sakelar Aktif/Nonaktif bergaya Produk di samping Edit langsung di daftar; posisi global unik 0–999 untuk banner aktif maupun nonaktif. Sejak24Oktober urutan disimpan melalui drag/naik-turun atomik, create append dan delete merapatkan posisi. Popup homepage menampilkan seluruh banner aktif yang belum disembunyikan dalam satu carousel dengan konfigurasi bersama dan frekuensi per popup; tanpa antrean modal setelah ditutup.
 - Pedia admin: Produk/Layanan Supplier/Pesanan/Kredit, harga tingkat dan riwayat saldo memakai tabel kaca, header/sel/aksi seragam dengan Produk Market. Filter kompak, Edit putih dan sakelar publikasi sejajar; kesiapan tetap terpisah dari publikasi.
 - Rekonsiliasi QRIS menampilkan provider efektif invoice baru dan provider milik setiap event (riwayat DANA dipertahankan). Konfigurasi lengkap dibedakan dari kesehatan poller/sesi; ACC mengharuskan pemeriksaan merchant sesuai invoice.
 - Transisi Market/Pedia menampilkan logo putih. Filter X hanya ikon dengan nama aksesibel X; nama layanan seperti Followers X tetap utuh.

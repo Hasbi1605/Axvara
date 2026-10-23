@@ -1,5 +1,22 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Banner informasi carousel — 24 Oktober 2026
+
+✅ Implementasi; publikasi via CI. Semua banner aktif diurutkan dalam satu popup
+beranda: panah/swipe/keyboard, nomor slide, autoplay6detik dengan jeda dan reduced
+motion. Panel bawah putih kebiruan dengan teks midnight; gambar tidak dipotong.
+Jangan tampilkan lagi berlaku per info24jam; checkout/admin tetap tanpa popup.
+
+Admin → Banner: ubah isi/gambar/CTA/aktif, drag pegangan atau gunakan naik/turun
+untuk urutan. Banner baru di akhir. Pengaturan popup terpisah: jeda buka0–10detik,
+interval4–20detik, otomatis dan frekuensi1–10per sesi. Perubahan terlihat pada
+kunjungan baru, bukan mengganti popup yang sedang dibaca. Satu rangkaian dihitung
+sekali; setelan per-banner lama digantikan konfigurasi bersama. Konflik tab basi
+memuat ulang daftar. API settings/reorder membutuhkan sesi admin; konfigurasi satu
+JSON pada store_settings existing, urutan batchD1 atomik dengan guard/permutasi;
+tidak ada migrasi/env/proxy baru. Lihat ARCHITECTURE bagian kontrak carousel.
+
+
 ## Perbaikan audit — 24 Oktober 2026
 
 Implementasi; publikasi melalui CI. Pedia kini QRIS per order, tanpa saldo pembeli,
@@ -260,7 +277,7 @@ Spesifikasi overhaul 2026-10-11 (semua produk di awal, Periksa harga terpisah, f
 - Jaringan lambat tidak lagi "bisu" (2026-09-24): klik link/CTA langsung memunculkan bar cyan + skeleton halaman tujuan (`src/components/ui/NavigationProgress.tsx`, `src/components/storefront/Skeletons.tsx`), 8 dtk → pil "Koneksi lambat", 20 dtk → "Coba lagi". Tombol Checkout/Beli Sekarang/modal varian berputar sampai checkout tampil (`usePendingNavigation`); Bayar menampilkan label bertahap lalu layar "Pesanan dibuat · Membuka halaman pembayaran"; `/pesanan/[code]` langsung menampilkan QR dari respons create dengan placeholder + "Muat ulang QRIS". PDP dirender server lengkap (`initialProducts`/`initialCatalog`). Fetch storefront dibatasi waktu (`src/lib/fetch-timeout.ts`). Tanpa `loading.tsx` agar status 404 dan HTML SSR tidak berubah.
 - Logo orbit disajikan sebagai SVG lokal; tidak ada request runtime ke Iconify.
 - Gambar kartu Unsplash memakai WebP `srcset` responsif.
-- Endpoint publik eksplisit (`products?active=1`, `categories`, `banners?active=1`) mengirim cache CDN singkat; varian produk admin/private selalu `no-store`. **Pengecualian PDP by-slug (2026-10-02):** `catalog?slug=` + `products?active=1&slug=` memakai cache 10 detik (daftar katalog tetap 30 detik) agar angka stok segar tepat setelah ada yang beli.
+- Endpoint publik eksplisit (`products?active=1`, `categories`) mengirim cache CDN singkat; banner aktif no-store sejak24Oktober agar pengaturan baru tidak tertahan cache, varian produk admin/private selalu `no-store`. **Pengecualian PDP by-slug (2026-10-02):** `catalog?slug=` + `products?active=1&slug=` memakai cache 10 detik (daftar katalog tetap 30 detik) agar angka stok segar tepat setelah ada yang beli.
 - PDP memakai `products?active=1&slug=` (1 baris) + `catalog?slug=` untuk varian + related `products?active=1&cat=` (kategori sama, hanya yang bisa dibeli — stok habis TIDAK PERNAH tampil di Produk Serupa, kontrak 2026-10-01; filler katalog lain hanya bila kategori sama < 4, hemat rows-read D1) — tidak fetch seluruh katalog per halaman. Checkout `?buy=` memakai filter slug exact yang sama.
 - Proteksi trafik: WAF 1 rule global TERPASANG (`/api/*` 100 req/10 dtk/IP → Block 429, ruleset "AXVARA API rate limit") + rate-limit in-memory per scope di `src/lib/rateLimit.ts` (lapis kedua per isolate, 429 + `Retry-After: 60`); cron operations memakai binding D1 berbudget 40 statement per invocation, termasuk helper dan anggota batch; pemulihan serta pengiriman dibagi menjadi unit yang dapat dilanjutkan. Sejak 18 Sep 2026 cron juga punya deadline wall-clock 45 detik dan memajukan penanda fase di awal run, supaya run yang dipotong platform (~125 detik) tidak mengunci rotasi fase dan mematikan sync otomatis WR. Guard anti-starvation fase WR tidak lagi mensyaratkan antrean order kosong (order due bukan alasan membiarkan katalog basi), fase WR didahulukan saat sync basi >45 menit, dan skip sweep karena budget/deadline dilaporkan jujur di `cron_deferred` + `wr_sync_skipped`. Sejak 19 Sep 2026 SEMUA alasan skip sync dilaporkan (`disabled`/`phase_inactive`/`interval`/`sync_disabled`/`deadline`/`query_budget`) + `wr_last_sync_at` di respons, dan tiap hit menulis heartbeat `store_settings.cron_last_hit_at` (heartbeat segar + sync basi = run kepotong deploy; keduanya basi = pemicu mati).
 - CSP development mengizinkan `unsafe-eval` hanya untuk React Refresh/webpack lokal. CSP production tetap tidak mengizinkannya.
@@ -762,7 +779,7 @@ QRIS & Rekonsiliasi**.
 - Menu **Pengaturan Toko** mengelola nama, tagline, nomor WhatsApp dukungan, jam layanan, teks legal footer, dan URL logo. Nilai disimpan di `store_settings` lalu dipakai oleh identitas dan tautan dukungan storefront dengan fallback aman dari `src/lib/site.ts`.
 - Editor visual Tiptap menyimpan **Markdown** sebagai format kanonis agar ringan dan interoperabel dengan agent; artikel JSON Tiptap lama tetap dapat dibaca dan akan dikonversi saat diedit. Slug/excerpt dibuat otomatis server-side.
 - Cover artikel/produk menerima PNG/JPG/WebP, dikonversi browser menjadi WebP 1600×900. **Galeri produk 2026-10-21 (implementasi, publikasi CI):** foto kedua dan seterusnya mempertahankan rasio asli tanpa crop, sisi terpanjang maksimal 1920 px; berlaku juga saat beberapa foto diupload sekaligus. PDP menampilkan foto tambahan utuh dengan tinggi otomatis, preview admin/strip thumbnail memakai `object-contain`; cover pertama tetap seperti sebelumnya. Foto lama yang sudah terpotong harus diunggah ulang dari gambar asli. Batas delapan foto dan penyimpanan URL tetap.
-- Banner dikonversi ke WebP dengan rasio asli dan sisi terpanjang maksimal 1920 px; popup mengikuti rasio portrait/persegi/landscape, memakai `object-contain`, dan hanya muncul di homepage agar tidak menghalangi checkout/admin/status pesanan. Checkbox kecil "Jangan tampilkan lagi" di bawah banner menyembunyikannya 24 jam (localStorage per banner id).
+- Banner dikonversi ke WebP dengan rasio asli dan sisi terpanjang maksimal 1920 px; popup menjaga gambar portrait/persegi/landscape pada panggung tetap, memakai `object-contain`, dan hanya muncul di homepage agar tidak menghalangi checkout/admin/status pesanan. Checkbox kecil "Jangan tampilkan lagi" di bawah banner menyembunyikannya 24 jam (localStorage per banner id).
 - Daftar pesanan menampilkan bukti sebagai preview card yang dapat dibuka penuh. Bukti kosong, URL tidak valid, dan file R2 yang hilang mempunyai status visual serta keterangan berbeda agar admin tidak salah mengira label tersebut sebagai tombol.
 - Buat token Bearer di **Integrasi Agent**. Token mentah hanya muncul sekali dan token tanpa `articles:publish` tidak dapat publish.
 - Content API: `/api/agent/context`, `/api/agent/articles`, `/api/agent/media`, `/api/agent/media/import`, dan activity audit. Agent tidak pernah menulis D1/R2 secara langsung.
@@ -785,7 +802,7 @@ Private — AXVARA © 2026
 
 Ringkasan mendukung bulan historis dan rentang inklusif WIB maksimal 366 hari. Toolbar periode/pemilih bulan/tanggal tanpa card dan tombol Terapkan; bulan atau pasangan tanggal lengkap/valid otomatis memuat laporan. Metadata tanggal/WIB/waktu pembuatan sejajar sesi admin, tersembunyi saat loading/gagal. Teks total/pending/pill stok menipis serta card estimasi dihilangkan; perhitungan dan penanda estimasi ekspor tetap tersedia. Tombol Unduh PDF dan Unduh Excel (.xlsx) berada di samping selector bulan/tanggal pada toolbar yang sama (membungkus di mobile), memakai respons laporan yang sama dengan layar; angka Excel tetap numerik, PDF berpaginasi. Pembayaran merchant dan kredit Pedia ditampilkan terpisah, untung produk belum dikurangi MDR/biaya operasional. Ekspor tidak tersedia selama laporan dimuat/gagal.
 
-Banner dapat diaktifkan/dimatikan dari sakelar di sebelah Edit, sama seperti Produk (track hijau dan knob putih, `AdminStatusSwitch`). Urutan 0–999 unik, benturan memakai posisi kosong berikutnya; migrasi 0064 menormalkan urutan lama tanpa mengubah ID/konten, lalu menambahkan unique index. Popup tetap satu per kunjungan dokumen, memilih banner berikutnya yang layak bila banner sebelumnya sudah disembunyikan atau mencapai cap sesi.
+Banner dapat diaktifkan/dimatikan dari sakelar di sebelah Edit, sama seperti Produk (track hijau dan knob putih, `AdminStatusSwitch`). Urutan0–999 unik; sejak24Oktober hanya reorder atomik yang memindahkan posisi, sedangkan create append dan delete merapatkan daftar. Migrasi0064/index unik tetap. Seluruh banner aktif yang layak masuk satu carousel dengan konfigurasi bersama, satu popup per kunjungan dokumen dan batas sesi global; bukan hanya banner pertama.
 
 Metode & Rekonsiliasi membaca provider efektif dari server; GoPay memakai panduan poller GoBiz, DANA legacy tetap tertera pada event lama. Status terkonfigurasi tidak menyatakan poller/sesi sehat. Logo overlay Market/Pedia dipaksa putih; filter X hanya ikon dan tetap aksesibel.
 

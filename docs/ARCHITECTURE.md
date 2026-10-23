@@ -1,5 +1,34 @@
 # ARCHITECTURE.md — AXVARA
 
+## Kontrak banner carousel — 24 Oktober 2026
+
+✅ Diimplementasikan; publikasi melalui CI. `GET /api/banners?active=1` hanya memberi
+banner aktif beserta settings publik, no-store agar konfigurasi/order baru terlihat
+pada kunjungan berikutnya. Semua variasi query lain wajib admin; active=0 tidak lagi
+membuka draf. Satu fetch ditunda sesudah render beranda, tanpa polling server baru.
+`PUT /api/banners/settings` authenticated menyimpan satu JSON tervalidasi pada key
+store_settings.banner_carousel, default1500ms/6000ms/autoplaytrue/max_show_per_session1.
+Tanpa migrasi/env/dependensi baru. Kolom delay/max/urutan lama dipertahankan; input
+legacy tervalidasi namun diabaikan pada tulis isi, bukan otoritas konfigurasi.
+
+`POST /api/banners/reorder` authenticated menerima {ids,expected_ids}: permutasi penuh
+unik maksimal1000ID. Invalid400; snapshot basi409. Guard snapshot urutan sebagai
+statement pertama D1batch, staging posisi negatif unik, normalisasi0..N−1 dan hapus
+guard atomik; error membatalkan semuanya. Create/delete ikut guard/batch yang sama,
+create append, edit mempertahankan posisi. Retri internal maksimal5 untuk konflik
+snapshot penulis konten; drag basi tidak diputar ulang. Dev memory meniru commit
+sinkron dan pemeriksaan snapshot; produksi tanpa D1 gagal. Index unik0064 tetap.
+
+Popup memakai key sessionStorage.axvara-banner-carousel-shows dan key hide per-ID
+existing24jam. Batas sesi lama per-banner dipensiunkan. Satu pembukaan per mount/
+kunjungan SPA, tidak memunculkan modal berikutnya sesudah tutup. Kontak/transaksi
+lain tidak berubah. Autoplay satu timer terlihat; pause fokus/hover/manual/hidden,
+reduced-motion manual; preload hanya gambar tetangga berikut. Hook useModalA11y
+menjaga Escape/trap/restore. Pointer horizontal45px dan dominan terhadap vertikal,
+touch-action:pan-y; CTA tidak menjadi pegangan geser. Admin memakai dnd-kit existing,
+rollback/resync jika reorder gagal dan mengabaikan respons load lama.
+
+
 ## Integritas audit dan Pedia tanpa wallet — 24 Oktober 2026
 
 ✅ Diimplementasikan; publikasi melalui CI. [Kontrak Pedia terkini](pedia/manual-resolution-2026-10-24.md)
@@ -253,7 +282,7 @@ axvara/
 │   │   ├── store-settings/       # GET publik + PUT admin
 │   │   ├── subscribers/          # POST publik + GET admin
 │   │   ├── articles/            # CRUD editorial admin/public
-│   │   ├── banners/             # CRUD popup banner
+│   │   ├── banners/             # CRUD carousel + settings/reorder admin
 │   │   ├── upload/              # Media admin ke R2
 │   │   ├── agent/               # Content API scoped Bearer token
 │   │   ├── cron/                # Publish artikel + expire order terjadwal
@@ -361,7 +390,7 @@ tetap menjadi otoritas transaksi.
 - **Umpan balik jaringan lambat (2026-09-24, PR loading storefront).** Route dinamis (`/`, `/produk/[slug]`, `/artikel*`, `/pesanan/[code]`) tidak di-prefetch dan App Router menunggu respons server SEBELUM URL berubah, jadi dulu halaman lama diam total setelah klik (`RouteLoading` lama baru menyala setelah halaman baru tampil). Kini `NavigationProgress` (layout root) menangkap klik `<a>`/`<Link>` internal di fase capture + `startNavigation()` untuk `router.push`, lalu setelah 120 ms menampilkan bar cyan yang merayap + skeleton rute tujuan (`Skeletons.tsx`, `fixed` di bawah navbar, z-35 agar tombol CTA pending di halaman lama tetap terlihat); 8 dtk → pil "Koneksi lambat", 20 dtk → "Coba lagi" (navigasi keras ke URL tujuan) / "Batal". Selesai saat pathname/search berubah. **Sengaja tanpa `loading.tsx`:** boundary Suspense membuat respons awal streaming, sehingga `notFound()` produk/artikel nonaktif menjadi 200 + noindex (Next 15.5 tanpa PPR juga streaming untuk bot) dan katalog SSR berpindah ke `<div hidden>` di akhir HTML. `/produk/tidak-ada` tetap 404.
 - PDP (`produk/[slug]/page.tsx`) memanggil handler `/api/products?slug=` + `/api/catalog?slug=` di server (pola beranda) dan mengoper `initialProducts`/`initialCatalog` ke client: PDP tampil lengkap dari satu respons navigasi, tanpa skeleton kedua + dua round-trip klien. Gagal = undefined → client fetch seperti dulu (h1 sr-only hanya dirender pada jalur cadangan ini agar tidak ada h1 ganda).
 - Fetch storefront memakai `fetchWithTimeout` (quote 25 dtk, `POST /api/orders` 60 dtk, lookup/pesanan/varian 20–25 dtk) sehingga permintaan menggantung berakhir dengan pesan + "Coba lagi", bukan spinner selamanya. Polling `/pesanan/[code]` melewati tick bila permintaan sebelumnya belum selesai.
-- Cache publik ditetapkan langsung oleh Edge handler: produk aktif 30 detik, kategori/banner aktif 60 detik. Respons admin atau varian produk non-eksplisit tetap `private, no-store`. **Pengecualian PDP by-slug (2026-10-02, insiden Head 18 Bulan):** `GET /api/catalog?slug=` = `s-maxage=10, SWR 30` dan `GET /api/products?active=1&slug=` = `max-age=10, s-maxage=10, SWR 30` — daftar katalog tetap 30 detik, hanya halaman produk yang 10 detik agar angka stok segar tepat setelah ada yang beli.
+- Cache publik ditetapkan langsung oleh Edge handler: produk aktif 30 detik, kategori aktif60detik; banner aktif no-store sejak24Oktober. Respons admin atau varian produk non-eksplisit tetap `private, no-store`. **Pengecualian PDP by-slug (2026-10-02, insiden Head 18 Bulan):** `GET /api/catalog?slug=` = `s-maxage=10, SWR 30` dan `GET /api/products?active=1&slug=` = `max-age=10, s-maxage=10, SWR 30` — daftar katalog tetap 30 detik, hanya halaman produk yang 10 detik agar angka stok segar tepat setelah ada yang beli.
 - Middleware hanya menambahkan `unsafe-eval` pada CSP saat `NODE_ENV=development`, karena React Refresh membutuhkannya. Header production tetap ketat.
 - **Optimasi LCP/Speed Index mobile beranda (2026-10-06, PageSpeed mobile 85 vs desktop 99 — LCP 3,9 dtk, SI 4,5 dtk).** 4 kartu pertama `loading=eager + fetchPriority=high` (Next otomatis menerbitkan 4 preload `imageSrcSet` responsif — LCP tidak antre lazy queue), kartu 5+ tetap lazy; kartu ke-9+ `content-visibility:auto + containIntrinsicSize: auto 420px` (browser melewatkan layout/paint kartu jauh); animasi OrbitHero mobile (lite/coarse/≤640px) ditunda via `requestIdleCallback` (timeout 2,5 dtk, fallback 1,2 dtk) agar thread utama fokus ke paint pertama — desktop + reduced-motion tidak berubah; font JetBrains Mono `preload:false` (hanya kode pesanan/timer QRIS, bukan critical path) — Inter + Space Grotesk tetap preload. Dikunci `tests/storefront-catalog-ux.behavior.test.tsx` (+2), `tests/orbit-mobile-perf.regression.test.ts` (+1), `tests/home-ssr-catalog.behavior.test.tsx`.
 
@@ -488,7 +517,9 @@ CREATE TABLE store_settings (
 | POST | /api/subscribers | Simpan email unik dari form footer | - |
 | GET | /api/subscribers | List pelanggan email | admin |
 | GET/POST/PUT/DELETE | /api/articles[?id=] | Publikasi dan CRUD editorial | public/admin |
-| GET/POST/PUT/DELETE | /api/banners[?id=] | Popup banner | public/admin |
+| GET/POST/PUT/DELETE | /api/banners[?id=] | Carousel banner + settings publik aktif | public/admin |
+| PUT | /api/banners/settings | Konfigurasi popup bersama | admin |
+| POST | /api/banners/reorder | Urutan atomik + expected_ids | admin |
 | POST | /api/checkout/quote | Validasi produk/stok/harga, metode aktif, dan terbitkan signed quote 60 menit | - |
 | GET/POST/PUT | /api/payment-methods[?id=] | Baca metode aktif / tambah bank / kelola rekening dan QRIS | public/admin |
 | GET/PUT | /api/store-settings | Baca identitas storefront / perbarui nama, kontak, footer, logo | public/admin |
@@ -531,8 +562,8 @@ CREATE TABLE store_settings (
 
 - Cover produk pertama dan cover artikel dinormalisasi browser ke WebP 1600×900. Sejak implementasi 2026-10-21 (publikasi CI), `useProductManager.handleUpload` memakai `toWebpOriginalRatio` untuk foto produk kedua dan seterusnya, berdasarkan jumlah foto existing + indeks batch; rasio asli dipertahankan dengan sisi terpanjang maksimal 1920 px, sama seperti banner. Konversi berada dalam penanganan error upload agar kegagalan melepas status uploading tanpa mengubah galeri tersimpan.
 - PDP `product-detail-client.tsx` mempertahankan cover 4:3 `object-cover`; foto tambahan memakai tinggi otomatis dan `object-contain`. Thumbnail galeri dan preview `ProductEditorModal` juga menampilkan foto tambahan utuh. Kontrak URL/urutan `image` + `images`, batas delapan foto, API/R2/schema tetap; file lama yang sudah tercrop perlu upload ulang dari sumber asli, tidak direkonstruksi otomatis.
-- Popup banner menghitung lebar dari dimensi natural gambar, membatasi ukuran ke viewport, dan memakai `object-contain` agar materi portrait/persegi/landscape tidak terpotong.
-- `PopupBanner` hanya fetch/render pada pathname homepage (`/`), sehingga promosi tidak menghalangi checkout, status pesanan, detail produk, atau workflow admin. Checkbox kecil "Jangan tampilkan lagi" di bawah banner menyimpan penanda `axvara-banner-<id>-hide-until` di localStorage selama 24 jam (per banner id; uncheck menghapus penanda).
+- Popup carousel memakai lebar maksimal480px dan panggung gambar tetap min(52dvh,520px), dibatasi viewport serta object-contain agar portrait/persegi/landscape tidak terpotong.
+- `PopupBanner` hanya fetch/render pada pathname homepage (`/`), sehingga promosi tidak menghalangi checkout, status pesanan, detail produk, atau workflow admin. Checkbox kecil "Jangan tampilkan lagi" di bawah banner menyimpan penanda `axvara-banner-<id>-hide-until` di localStorage selama 24 jam (per banner id; langsung pindah ke info tetangga, atau tutup bila semua disembunyikan).
 - Bukti pembayaran tetap privat melalui `/api/admin/bukti/:key`; UI membedakan belum diunggah, URL tidak valid, file R2 hilang, dan preview tersedia.
 - Kategori D1 menjadi sumber tunggal kapsul katalog dan menu Jelajah footer. Nama, ikon, serta `sort_order` dapat diedit; slug tetap stabil ketika nama berubah, dan penghapusan ditolak selama kategori masih dipakai produk. Taksonomi 2026-09-28 (migrasi 0046): AI & Chatbot, Streaming & Hiburan, Produktivitas & Office, Desain & Video, Developer & Tools, Bundle Hemat — slug lama (`ai-gateway`, `akun-premium`, `tools-pro`) dialias di kode (`LEGACY_CATEGORY_SLUG_ALIASES`) agar filter lama tidak 404. Daftar produk admin punya kolom Urutan + tombol ↑↓ per baris + field angka Urutan tampil 0–999999 di modal edit. Reorder 2026-09-29 (fix laporan owner "semua 0, ↑↓ diam + refresh"): geser delta ±1 dari baseline tetangga global via SATU PUT `/api/products/[id]` (tetangga tak disentuh; tetap gerak walau baseline kembar 0 — swap 0↔0 tidak mengubah `ORDER BY sort_order,id`), sukses tanpa fetch ulang (realtime, halaman/scroll/focus utuh, rollback saat gagal), migrasi 0047 backfill 0→unik mengikuti id (idempoten, nilai admin utuh). Urutan tampil admin (`filtered`: aktif → ready → sortOrder → id) dicerminkan storefront (`home-client`, minus cabang aktif karena katalog publik hanya aktif). Display 2026-09-29: kolom Urutan memajang nomor posisi 1..N (pos+1, selalu rapi), bukan raw sort_order — raw adalah kunci teknis yang boleh kembar/lompat (delta geser, backfill parsial, edit manual) dan hanya tampil di tooltip + hint modal edit. Exact-step 2026-09-29 (laporan owner: ↑↓ skip 2–3 posisi + modal ≠ tabel): satu-satunya jalur reorder = POST /api/products/reorder — server baca urutan kanonis (`src/lib/product-order.ts`, dipakai juga home-client + hook + tombol), tukar tepat satu tetangga se-bucket status (aktif-ready / aktif-habis / nonaktif tidak saling melewati; batas = 409 + tombol mati + tooltip jujur), lalu normalisasi seluruh key 10,20,30… dalam satu batch D1 atomik (tiap klik = tepat 1 posisi); response kembalikan key final → hook realtime tanpa fetch ulang; modal read-only displayPosition (Simpan tidak kirim kunci posisi); produk baru (`POST /api/products` tanpa sortOrder) dan sync WR dialokasikan MAX+10 (masuk akhir, tanpa tabrakan); migrasi 0048 normalisasi key kembar produksi → unik 10,20,30… (urutan tampil dipertahankan, idempoten). Anti-429 + lompat 2026-09-29 (laporan owner: 429 saat ↑↓ + 30→1 harus 29× klik): BUKAN kuota cron — bucket `products:write` 20/mnt berbagi dengan simpan produk + tiap klik tulis ulang 51 baris. Kini scope `products:reorder` 120/mnt + hanya baris berubah yang ditulis; badge posisi = input ketik (Enter = `targetPosition` 1 request, dijepit ke bucket + `clamped`);   request client antre berurutan (tanpa race, 429 jujur tanpa reset posisi). Selip restok 2026-10-02 (laporan owner: Netflix/Capcut posisi 6/8 habis → restok terdampar 20+): saat sync mendeteksi transisi agregat parent 0→ready, `sort_order` diselipkan kembali via `reinsertionKey()` (fungsi murni `product-order.ts`: belakang jangkar ≤ key lama, maju sampai slot longgar, hormati key tetangga habis/pecundang) + helper `restock-reinsert.ts` (`maybeReinsertRestockedProduct`: 2 query + 1 write HANYA saat transisi; tanpa write bila slot kosong) — hook di loop WR + SK setelah batch per produk (budget-guarded, best-effort, tanpa migrasi).
 - Email form footer dinormalisasi lowercase, dideduplikasi oleh unique index, dibatasi per IP, dan hanya dapat dibaca melalui panel/API admin terautentikasi.
@@ -2480,10 +2511,10 @@ poller server memantau mutasi GoBiz milik sendiri.
 ### Banner dan rekonsiliasi admin (2026-10-15, publikasi CI)
 
 - Migrasi aditif 0064 mempertahankan ID/konten dan urutan tayang lama (`sort_order ASC,id DESC`), menormalkan posisi ke 0..N-1 lalu memasang unique index `banners_sort_order_unique`. Katalog >1000 banner ditolak agar posisi 0..999 tetap valid. Tidak ada rebuild/FK rename.
-- `writeBannerOrder` dipakai seluruh POST/PUT banner: cari posisi kosong di/atas permintaan, kecualikan ID sendiri, termasuk banner nonaktif, retry maksimal lima hanya untuk benturan unique. API membalas posisi tersimpan; toggle `PUT /api/banners/:id` hanya menulis is_active. Fallback dev menegakkan unique sebelum mutasi.
+- Sejak24Oktober helper banner-order memakai guard snapshot+batch staging/normalisasi atomik untuk seluruh mutasi. Reorder menerima permutasi penuh+expected_ids, create append, edit mempertahankan posisi dan delete merapatkan daftar. Kolom dan index0064 dipertahankan; input urutan/timing legacy tidak lagi mengatur isi.
 - `AdminStatusSwitch` menyediakan track/knob yang sama dengan Produk, role switch, checked/busy/disabled dan relasi error; digunakan Banner di sebelah Edit dan publikasi produk Pedia. Mutasi banner tetap parsial is_active, konten editor yang belum disimpan tetap dipertahankan.
 - Pedia admin memakai helper lokal `DataTable` untuk Produk/Layanan/Pesanan/Kredit/harga tingkat/riwayat saldo: glass wrapper, header/cell/divider seragam dan overflow-x terlokalisasi. Filter/aksi dirapikan; endpoint, lifecycle request, preview tersimpan dan guard recovery tetap sama.
-- Popup mengambil banner layak pertama, melewati hide 24 jam dan cap sesi; ref membatasi satu popup per dokumen, penutupan tidak memicu modal berikutnya.
+- Sejak24Oktober popup memuat seluruh banner aktif yang tidak disembunyikan ke satu carousel; cap sesi global dihitung sekali per pembukaan. Ref tetap membatasi satu popup per dokumen, penutupan tidak memicu modal berikutnya.
 - Events QRIS mengekspos `provider` (null legacy menjadi dana), health berisi provider efektif dari `activeQrisProvider()`, boolean konfigurasi dan waktu event per provider. Tidak ada secret/payload mentah di respons, konfigurasi bukan bukti kesehatan poller GoBiz. Panduan dan ACC mengikuti merchant invoice; engine pembayaran dan guard retry tidak diubah.
 
 

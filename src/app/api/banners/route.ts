@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { queryAll, queryFirst, execRun } from "@/lib/db";
+import { queryAll, queryFirst } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
-import { BannerOrderConflict, writeBannerOrder } from "@/lib/banner-order";
+import { BannerOrderConflict, saveBanner, deleteBanner } from "@/lib/banner-order";
+
+import { readBannerSettings } from "@/lib/banner-settings";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -10,7 +12,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const active = searchParams.get("active");
-  const wantAll = !active;
+  const wantAll = active !== "1";
   if (wantAll) {
     const a = await requireAdmin(req).catch(() => null);
     if (!a) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -19,13 +21,13 @@ export async function GET(req: NextRequest) {
   const params: unknown[] = [];
   if (active === "1") sql += " AND is_active=1";
   sql += " ORDER BY sort_order ASC, id DESC";
-  const rows = await queryAll(sql, ...params);
+  const [rows, settings] = await Promise.all([queryAll(sql, ...params), readBannerSettings()]);
   return NextResponse.json(
-    { banners: rows },
+    { banners: rows, settings },
     {
       headers: {
         "Cache-Control": active === "1"
-          ? "public, max-age=60, s-maxage=60, stale-while-revalidate=120"
+          ? "no-store"
           : "private, no-store, max-age=0",
       },
     }
@@ -54,10 +56,9 @@ export async function POST(req: NextRequest) {
   const d = parsed.data;
   if (d.image_url && !d.image_url.startsWith("/r2/banners/")) return NextResponse.json({ error: "Gambar harus berasal dari uploader banner AXVARA" }, { status: 400 });
   if (d.cta_href && !/^(\/[^/]|https:\/\/)/.test(d.cta_href)) return NextResponse.json({ error: "CTA href harus /... atau https:// (// tidak diizinkan)" }, { status: 400 });
-  const now = new Date().toISOString();
   try {
-    const saved = await writeBannerOrder(d.sort_order, null, (order) => execRun("INSERT INTO banners (title,body,image_url,cta_label,cta_href,is_active,delay_ms,max_show_per_session,sort_order,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)", d.title, d.body ?? null, d.image_url ?? null, d.cta_label ?? null, d.cta_href ?? null, d.is_active ? 1 : 0, d.delay_ms, d.max_show_per_session, order, now, now));
-    return NextResponse.json({ id: saved.result.lastInsertRowid, sort_order: saved.sort_order }, { status: 201 });
+    const saved = await saveBanner({ ...d, is_active: d.is_active ? 1 : 0 }, null);
+    return NextResponse.json({ id: saved.id, sort_order: saved.sort_order }, { status: 201 });
   } catch (error) {
     if (error instanceof BannerOrderConflict) return NextResponse.json({ error: error.message }, { status: 409 });
     throw error;
@@ -75,12 +76,23 @@ export async function PUT(req: NextRequest) {
   if (d.image_url && !d.image_url.startsWith("/r2/banners/")) return NextResponse.json({ error: "Gambar harus berasal dari uploader banner AXVARA" }, { status: 400 });
   if (d.cta_href && !/^(\/[^/]|https:\/\/)/.test(d.cta_href)) return NextResponse.json({ error: "CTA href harus /... atau https://" }, { status: 400 });
   try {
-    const saved = await writeBannerOrder(d.sort_order, id, (order) => execRun("UPDATE banners SET title=?,body=?,image_url=?,cta_label=?,cta_href=?,is_active=?,delay_ms=?,max_show_per_session=?,sort_order=?,updated_at=datetime('now') WHERE id=?", d.title, d.body ?? null, d.image_url ?? null, d.cta_label ?? null, d.cta_href ?? null, d.is_active ? 1 : 0, d.delay_ms, d.max_show_per_session, order, id));
-    if (!saved.result.changes) return NextResponse.json({ error: "not found" }, { status: 404 });
+    const saved = await saveBanner({ ...d, is_active: d.is_active ? 1 : 0 }, Number(id));
+    if (!saved.changes) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json({ ok: true, sort_order: saved.sort_order });
   } catch (error) {
     if (error instanceof BannerOrderConflict) return NextResponse.json({ error: error.message }, { status: 409 });
     throw error;
   }
 }
-export async function DELETE(req:NextRequest){if(!await requireAdmin(req))return NextResponse.json({error:"Unauthorized"},{status:401});const id=new URL(req.url).searchParams.get("id");if(!id)return NextResponse.json({error:"id diperlukan"},{status:400});const result=await execRun("DELETE FROM banners WHERE id=?",id);return result.changes?NextResponse.json({ok:true}):NextResponse.json({error:"not found"},{status:404});}
+export async function DELETE(req: NextRequest) {
+  if (!await requireAdmin(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const id = Number(new URL(req.url).searchParams.get("id"));
+  if (!Number.isSafeInteger(id) || id < 1) return NextResponse.json({ error: "id tidak valid" }, { status: 400 });
+  try {
+    const result = await deleteBanner(id);
+    return NextResponse.json({ ok: Boolean(result.changes) }, { status: result.changes ? 200 : 404 });
+  } catch (error) {
+    if (error instanceof BannerOrderConflict) return NextResponse.json({ error: error.message }, { status: 409 });
+    throw error;
+  }
+}

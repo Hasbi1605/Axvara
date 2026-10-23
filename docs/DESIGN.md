@@ -1,5 +1,24 @@
 # DESIGN.md — AXVARA Design System
 
+## Carousel info dan panel terang — 24 Oktober 2026
+
+✅ Diimplementasikan; publikasi melalui CI. Popup informasi mempertahankan backdrop
+midnight blur, kartu maksimal480px/lebar viewport dan tinggi92dvh. Panel bawah putih
+kebiruan#F5F7FC, judul midnight#10172D, deskripsi/kontrol slate600 dan CTA cyan#00E5FF
+membuat teks terpisah jelas dari latar gelap. Gambar object-contain pada panggung tetap
+min(52dvh,520px), utuh tanpa crop; konten panjang dapat digulir, kontrol tetap terjangkau.
+Slide masuk horizontal300ms dengan ease-apple dan opacity ringan, tanpa efek3D/zoom
+berulang. Reduced motion meniadakan perpindahan animasi dan autoplay. Nomor N/M,
+panah serta Jeda/Putar dan checkbox24jam tersedia; target kontrol sentuh44px.
+
+Admin memakai drag handle/tombol naik-turun, placeholder baris saat drag, overlay dan
+transisi sortable existing. Panel pengaturan bersama memakai satuan detik dan input
+berlabel. Acuan carousel Sekalipay dari screenshot owner; prinsip kontrol gerak/fokus
+mengikuti [W3C carousel](https://www.w3.org/WAI/ARIA/apg/patterns/carousel/) dan
+[tutorial animasi](https://www.w3.org/WAI/tutorials/carousels/animations/). Durasi300ms/
+interval6detik adalah keputusan desain AXVARA, bukan spesifikasi internal Sekalipay.
+
+
 ## Tindak lanjut Pedia dan pemulihan checkout — 24 Oktober 2026
 
 ✅ Diimplementasikan; publikasi melalui CI. Tahap Kontak tanpa input kredit;
