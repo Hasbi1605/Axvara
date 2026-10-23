@@ -76,7 +76,8 @@ describe("M7 QA triple-check", () => {
     expect(r2.status).toBe(409);
     const d2 = await r2.json();
     expect(d2.error).toBe("duplicate_active_order");
-    expect(d2.order_code).toBe(d1.code);
+    expect(d2.order_code).toBeUndefined();
+    expect(JSON.stringify(d2)).not.toContain(d1.code);
     spy.mockRestore();
   });
 

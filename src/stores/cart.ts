@@ -4,13 +4,15 @@ import { persist } from "zustand/middleware";
 import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 import type { Product } from "@/lib/products";
 
-export type CartItem = Product & { qty: number; variantId?: number; variantLabel?: string; minQty?: number; fulfillmentMode?: string };
+export type CartItem = Product & { qty: number; variantId?: number; variantLabel?: string; minQty?: number; fulfillmentMode?: string; inventoryAvailable?: number | null };
+
+type CartInput = Product & { variantId?: number; variantLabel?: string; minQty?: number; fulfillmentMode?: string; inventoryAvailable?: number | null };
 
 type CartStore = {
   items: CartItem[];
   drawerOpen: boolean;
   setDrawer: (open: boolean) => void;
-  add: (product: Product & { variantId?: number; variantLabel?: string; minQty?: number; fulfillmentMode?: string }, qty?: number) => void;
+  add: (product: CartInput, qty?: number) => void;
   remove: (id: string, variantId?: number) => void;
   setQty: (id: string, qty: number, variantId?: number) => void;
   clear: () => void;
@@ -37,9 +39,23 @@ type CartStore = {
  */
 const WEB_MAX_QTY = 100;
 const minOf = (p: { minQty?: number; fulfillmentMode?: string }): number => Math.max(1, Math.floor(Number(p.minQty ?? 1) || 1));
-const isBelowMinimumStock = (p: { stock?: number | null; minQty?: number; fulfillmentMode?: string }): boolean => {
-  const stock = p.stock;
-  if (stock == null || stock === -1) return false;
+/**
+ * Stok EFEKTIF untuk clamp keranjang: varian unique memakai min(kolom stock,
+ * inventory_available) — paritas helper server `effectiveVariantStock`.
+ * Baris lama tanpa metadata inventory (persist pra-fix) memakai kolom apa
+ * adanya, sama seperti perilaku helper saat inventory null.
+ */
+const effectiveStockOf = (p: { stock?: number | null; fulfillmentMode?: string; inventoryAvailable?: number | null }): number => {
+  const stock = p.stock ?? -1;
+  if (String(p.fulfillmentMode ?? "manual").trim().toLowerCase() !== "unique") return stock;
+  const inv = p.inventoryAvailable == null ? null : Number(p.inventoryAvailable);
+  if (inv == null || !Number.isFinite(inv)) return stock;
+  if (stock === -1) return Math.max(0, inv);
+  return Math.min(Math.max(0, stock), Math.max(0, inv));
+};
+const isBelowMinimumStock = (p: { stock?: number | null; minQty?: number; fulfillmentMode?: string; inventoryAvailable?: number | null }): boolean => {
+  const stock = effectiveStockOf(p);
+  if (stock === -1) return false;
   return stock < minOf(p);
 };
 
@@ -58,11 +74,12 @@ export const useCart = create<CartStore>()(
           // Baris baru dibuka LANGSUNG di minimum (bukan 1) agar pembeli
           // GSuite (min 50) tidak mulai dari 1 lalu ditolak saat checkout.
           const min = minOf(product);
-          const maxFor = (p: Product & {fulfillmentMode?:string}) => {
+          const maxFor = (p: CartInput) => {
             const cap=p.fulfillmentMode === "unique" ? MAX_UNIQUE_UNITS_PER_ORDER : WEB_MAX_QTY;
             const others=s.items.filter(i=>!(i.id===product.id && i.variantId===product.variantId)).reduce((n,i)=>n+(i.fulfillmentMode === "unique" ? i.qty : 0),0);
             const remaining=p.fulfillmentMode === "unique" ? Math.max(0,cap-others) : cap;
-            return p.stock === -1 || p.stock == null ? remaining : Math.min(remaining,p.stock);
+            const eff = effectiveStockOf(p);
+            return eff === -1 ? remaining : Math.min(remaining,eff);
           };
           // Don't add if stock is 0 — cek SEBELUM max dipaksa >= min agar
           // stok habis tidak lolos lewat Math.max(min, 0).
@@ -73,12 +90,15 @@ export const useCart = create<CartStore>()(
           const itemKey = (i: CartItem) => i.variantId ? `${i.id}:${i.variantId}` : i.id;
           const existing = s.items.find((i) => itemKey(i) === matchKey);
           if (existing) {
-            const lo = Math.max(min, minOf(existing));
-            const updated = { ...existing, fulfillmentMode: product.fulfillmentMode ?? existing.fulfillmentMode };
-            if (maxFor(updated) < lo) return s;
+            const lo = product.minQty == null ? minOf(existing) : min;
+            // Refresh metadata basi dari katalog terbaru (stok efektif,
+            // inventory, min, mode): baris lama yang di-add ulang tidak
+            // mempertahankan angka basi — qty lalu di-clamp ke [lo, hi].
+            const updated = { ...existing, stock: product.stock ?? existing.stock, inventoryAvailable: product.inventoryAvailable ?? existing.inventoryAvailable, fulfillmentMode: product.fulfillmentMode ?? existing.fulfillmentMode };
+            if (maxFor(updated) < lo) return { items: s.items.filter((i) => itemKey(i) !== matchKey) };
             const hi = maxFor(updated);
             const nextQty = clampQty(existing.qty + qty, lo, hi);
-            return { items: s.items.map((i) => (itemKey(i) === matchKey ? { ...i, qty: nextQty, minQty: Math.max(minOf(i), min), fulfillmentMode: updated.fulfillmentMode } : i)) };
+            return { items: s.items.map((i) => (itemKey(i) === matchKey ? { ...updated, qty: nextQty, minQty: lo } : i)) };
           }
           return { items: [...s.items, { ...product, qty: clampQty(Math.max(qty, min), min, max) }] };
         }),
@@ -103,7 +123,8 @@ export const useCart = create<CartStore>()(
           const cap=it?.fulfillmentMode === "unique" ? MAX_UNIQUE_UNITS_PER_ORDER : WEB_MAX_QTY;
           const others=s.items.filter(i=>itemKey(i)!==matchKey).reduce((n,i)=>n+(i.fulfillmentMode === "unique" ? i.qty : 0),0);
           const remaining=it?.fulfillmentMode === "unique" ? Math.max(0,cap-others) : cap;
-          const max=it && it.stock !== -1 && it.stock != null ? Math.min(remaining,it.stock) : remaining;
+          const eff=it ? effectiveStockOf(it) : -1;
+          const max=it && eff !== -1 ? Math.min(remaining,eff) : remaining;
           if (max < min) return { items: s.items.filter((i) => itemKey(i) !== matchKey) };
           const clamped = Math.min(Math.max(min, Math.floor(qty)), Math.max(min, max));
           return { items: s.items.map((i) => (itemKey(i) === matchKey ? { ...i, qty: clamped } : i)) };

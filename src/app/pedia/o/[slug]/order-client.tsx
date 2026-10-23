@@ -1,5 +1,6 @@
 "use client";
 
+import { rememberPediaContact } from "@/lib/pedia/buyer-session";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import { detectPediaLink, PEDIA_PLATFORM_LABEL, PEDIA_TARGET_KIND_LABEL, pediaTargetMatches, type PediaPlatform, type PediaTargetKind } from "@/lib/pedia/link";
@@ -24,7 +25,6 @@ export function OrderClient({ product, initialTarget, ordersEnabled, embedded = 
   const [checks, setChecks] = useState<Record<string, boolean>>({});
   const [wa, setWa] = useState("");
   const [email, setEmail] = useState("");
-  const [credit, setCredit] = useState("");
   const [agree, setAgree] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [recoveryCode, setRecoveryCode] = useState("");
@@ -41,7 +41,7 @@ export function OrderClient({ product, initialTarget, ordersEnabled, embedded = 
   const targetOk = !!detected && detected.platform === product.platform && !!kindOk && target.trim().length <= 600;
   const waOk = /^(\+62|62|0)8\d{8,13}$/.test(wa.trim().replace(/\s|-/g, ""));
   const emailOk = z.string().email().max(160).safeParse(email.trim()).success;
-  const key = JSON.stringify([product.slug, tierId, qty, target.trim(), credit.trim(), wa.trim(), email.trim(), checks, agree, ordersEnabled]);
+  const key = JSON.stringify([product.slug, tierId, qty, target.trim(), wa.trim(), email.trim(), checks, agree, ordersEnabled]);
   const latestKey = useRef(key);
   latestKey.current = key;
   const inFlight = useRef(false);
@@ -79,7 +79,6 @@ export function OrderClient({ product, initialTarget, ordersEnabled, embedded = 
     if (throughStage >= 2 && !checklist.every((c) => checks[c.id])) next.requirements = "Konfirmasi semua persyaratan tujuan sebelum melanjutkan.";
     if (throughStage >= 3 && !waOk) next.wa = "Masukkan nomor WhatsApp 08... atau +62... yang benar.";
     if (throughStage >= 3 && !emailOk) next.email = "Masukkan alamat email yang benar (maksimal 160 karakter).";
-    if (throughStage >= 3 && credit.trim().length > 20) next.credit = "Kode kredit maksimal 20 karakter.";
     if (throughStage >= 3 && !agree) next.agree = "Setujui Ketentuan Pedia sebelum melanjutkan.";
     setErrors(next);
     const first = Object.keys(next)[0];
@@ -108,7 +107,7 @@ export function OrderClient({ product, initialTarget, ordersEnabled, embedded = 
         setBusy("Memeriksa harga...");
         const response = await fetchWithTimeout("/api/pedia/quote", {
           method: "POST", headers: { "content-type": "application/json" }, signal: controller.signal,
-          body: JSON.stringify({ product_slug: product.slug, tier_id: tierId, quantity: qty, target: target.trim(), credit_code: credit.trim() || undefined }),
+          body: JSON.stringify({ product_slug: product.slug, tier_id: tierId, quantity: qty, target: target.trim() }),
         }, 25_000);
         const data = await response.json();
         if (controller.signal.aborted || latestKey.current !== requestKey) return;
@@ -116,7 +115,7 @@ export function OrderClient({ product, initialTarget, ordersEnabled, embedded = 
         if (typeof data.quote_token !== "string" || !data.quote_token || !Number.isFinite(data.total) || data.total <= 0 || !Number.isFinite(data.payable) || data.payable < 0 || data.payable > data.total) throw new Error("Respons harga tidak valid. Coba lagi.");
         readyQuote = { key: requestKey, quote_token: data.quote_token, total: data.total, payable: data.payable, expires: Date.now() + 29 * 60_000 };
         setQuote(readyQuote);
-        if (data.total !== packageTotal || credit.trim()) return;
+        if (data.total !== packageTotal) return;
       }
       if (latestKey.current !== requestKey || controller.signal.aborted) return;
       // An uncertain response must retry this token and these locked contact details.
@@ -142,6 +141,7 @@ export function OrderClient({ product, initialTarget, ordersEnabled, embedded = 
         const list = Array.isArray(stored) ? stored : [];
         localStorage.setItem("axp-orders", JSON.stringify([{ code: data.code, name: product.name }, ...list.filter((o) => o.code !== data.code)].slice(0, 20)));
       } catch { /* Device history is optional. */ }
+      rememberPediaContact(data.code, email.trim());
       location.assign(`/pedia/pesanan/${data.code}`);
       navigating = true;
       // Keep the lock until navigation, including a second click from the mobile CTA.
@@ -171,10 +171,9 @@ export function OrderClient({ product, initialTarget, ordersEnabled, embedded = 
           <div className="flex justify-between gap-4"><dt>Refill</dt><dd className={`text-right ${tier.refill_days > 0 ? "text-[#00E5FF]" : "text-white/70"}`}>{tier.refill_days > 0 ? `${tier.refill_days} hari, sesuai ketentuan` : "Tanpa refill"}</dd></div>
           {tier.eta_start && <div className="flex justify-between gap-4"><dt>Mulai</dt><dd className="text-right text-white/70">{tier.eta_start}</dd></div>}
           {targetOk && <div><dt>Tujuan</dt><dd className="mt-1 break-all leading-5 text-white/80">{target.trim()}</dd></div>}
-          {currentQuote && currentQuote.total > currentQuote.payable && <div className="flex justify-between gap-3"><dt>Kredit digunakan</dt><dd className="text-white">{rupiah(currentQuote.total - currentQuote.payable)}</dd></div>}
         </dl>
         <div className="mt-5 border-t border-white/10 pt-5"><p className="text-xs text-white/50">{currentQuote ? "Total terkonfirmasi" : "Total pesanan"}</p><p className="mt-2 font-display font-bold text-white text-lg">{priceText}</p></div>
-        <p className="mt-3 text-xs leading-5 text-white/45">{currentQuote ? "Nominal QRIS ditampilkan di halaman pembayaran." : qty ? "Harga diperiksa kembali sebelum pembayaran. Kredit belum diperhitungkan." : "Isi jumlah untuk melihat total pesananmu."}</p>
+        <p className="mt-3 text-xs leading-5 text-white/45">{currentQuote ? "Nominal QRIS ditampilkan di halaman pembayaran." : qty ? "Harga diperiksa kembali sebelum pembayaran." : "Isi jumlah untuk melihat total pesananmu."}</p>
       </> : <div className="py-2"><p className="text-sm font-medium leading-6 text-white/80">Pesananmu dimulai di sini.</p><p className="mt-2 text-sm leading-6 text-white/50">Isi jumlah, pilih layanan, lalu masukkan link tujuan. Rincian harga akan muncul di sini.</p></div>}
       <p className="mt-5 border-t border-white/10 pt-4 text-[11px] leading-5 text-white/40">Pembayaran QRIS · Tanpa login<br />Refill mengikuti layanan yang dipilih.</p>
     </div>
@@ -271,8 +270,7 @@ export function OrderClient({ product, initialTarget, ordersEnabled, embedded = 
           <fieldset disabled={attempted} className="mt-6 grid gap-5 sm:grid-cols-2 [&>details]:sm:col-span-2 [&>label]:sm:col-span-2">
             <div><label htmlFor="pedia-wa" className="text-sm text-white/80">Nomor WhatsApp</label><input id="pedia-wa" type="tel" autoComplete="tel" value={wa} onChange={(e) => setWa(e.target.value)} placeholder="08… atau +62…" className={fieldClass} aria-invalid={!!errors.wa} />{inlineError("wa")}</div>
             <div><label htmlFor="pedia-email" className="text-sm text-white/80">Email</label><input id="pedia-email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={160} placeholder="nama@email.com" className={fieldClass} aria-invalid={!!errors.email} /><p className="mt-2 text-xs leading-5 text-white/50">Bukti pesanan dan pembaruan status dikirim ke email ini.</p>{inlineError("email")}</div>
-            <details className="rounded-xl border border-white/10 px-4 py-1"><summary className="min-h-11 cursor-pointer py-3 text-sm text-white/65">Punya Kode Kredit Pedia?</summary><label htmlFor="pedia-credit" className="mt-3 block text-sm text-white/75">Kode kredit</label><input id="pedia-credit" value={credit} onChange={(e) => setCredit(e.target.value.toUpperCase())} maxLength={20} placeholder="PDK-XXXX-XXXX" className={fieldClass} /><p className="my-3 text-xs leading-5 text-white/50">Kredit dari sisa pesanan Pedia sebelumnya. Bukan kode promo.</p>{inlineError("credit")}</details>
-            <div className="rounded-xl bg-[#FFB800]/10 px-4 py-3 text-[13px] leading-6 text-[#FFCF55] sm:col-span-2">Drop dapat terjadi. {tier?.refill_days ? `Refill ${tier.refill_days} hari mengikuti ketentuan layanan.` : "Layanan ini tanpa refill."} Pesanan selesai sebagian atau dibatalkan supplier mendapat Kode Kredit Pedia untuk bagian yang tidak terpenuhi.</div>
+            <div className="rounded-xl bg-[#FFB800]/10 px-4 py-3 text-[13px] leading-6 text-[#FFCF55] sm:col-span-2">Drop dapat terjadi. {tier?.refill_days ? `Refill ${tier.refill_days} hari mengikuti ketentuan layanan.` : "Layanan ini tanpa refill."} Jika pesanan selesai sebagian atau dibatalkan supplier, hubungi admin dengan kode pesanan untuk penyelesaian manual.</div>
             {tier?.terms && <details className="border-t border-white/10 pt-1"><summary className="min-h-11 cursor-pointer py-3 text-sm text-white/65">Ketentuan layanan yang dipilih</summary><p className="mt-1 whitespace-pre-line text-xs leading-5 text-white/60">{tier.terms}</p></details>}
             <label className="flex min-h-11 cursor-pointer items-start gap-3 text-sm leading-6 text-white/80"><input id="pedia-agree" type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-[#00E5FF]" /><span>Saya setuju <a href="/pedia/ketentuan" target="_blank" rel="noopener noreferrer" className="text-[#00E5FF] underline underline-offset-4">Ketentuan Pedia</a>.</span></label>{inlineError("agree")}
           </fieldset>

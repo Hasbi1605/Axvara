@@ -61,7 +61,7 @@ describe("Issue #15 — advisory PostCSS dibedakan dari eksploitasi terbukti", (
     // package-lock diselaraskan agar audit membaca versi aman.
     const lock = JSON.parse(lockfile());
     const nestedLock = lock.packages["node_modules/next/node_modules/postcss"];
-    expect(nestedLock && nestedLock.version).toMatch(/^8\.5\./);
+    expect((nestedLock ?? lock.packages["node_modules/postcss"]).version).toMatch(/^8\.5\./);
   });
 
   it("sisa advisory dev-only (esbuild/undici/ws/cookie via next-on-pages) tidak menyentuh runtime produksi", () => {

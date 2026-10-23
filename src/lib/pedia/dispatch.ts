@@ -5,7 +5,7 @@
 // proxy /psmm/order/add (atau /refill, backup) dengan Idempotency-Key =
 // order_code (VPS 24 jam) → submitted; poll via /psmm/order/status →
 // in_progress / completed (capture start_count+remains) / partial+canceled→
-// kredit; api_error → needs_check (MANUAL, bukan auto-refund).
+// tindak lanjut manual; api_error → needs_check (MANUAL, bukan auto-refund).
 // Durable submitting + lease: interrupted submissions require reconciliation;
 // neither a retry nor another provider is selected automatically.
 
@@ -116,6 +116,10 @@ export async function processPediaPaidOrders(caller?: ProxyCaller, sharedDb?: Db
         await db.execRun(`UPDATE pedia_order_items SET refill_status=? WHERE order_code=? AND refill_status='submitted'`, status, refill.order_code);
       }
     }
+  }
+  if (db.canSpend(2)) {
+    const { notifyPendingPediaFollowups } = await import("./followup");
+    await notifyPendingPediaFollowups(db);
   }
   return out;
 }
@@ -246,8 +250,9 @@ async function pollOne(
   const d = (res.data || {}) as Record<string, unknown>;
   const status = String(d.status ?? "").toLowerCase().replace(/\s+/g, "_").replace(/^cancelled$/, "canceled");
   const startCount = d.start_count != null ? Number(d.start_count) : null;
-  const remains = d.remains != null ? Number(d.remains) : null;
-  // Snapshot start_count sekali (untuk refund exact PD-24).
+  const rawRemains = d.remains != null && String(d.remains).trim() !== "" ? Number(d.remains) : NaN;
+  const remains = Number.isSafeInteger(rawRemains) && rawRemains >= 0 && rawRemains <= item.quantity ? rawRemains : null;
+  // Simpan hitungan awal untuk riwayat progres supplier.
   if (Number.isFinite(startCount)) {
     await db.execRun(
       `UPDATE pedia_order_items SET start_count=COALESCE(start_count, ?)
@@ -275,7 +280,7 @@ async function pollOne(
     return "polled";
   }
   if (status === "partial" || status === "canceled") {
-    await handleShortfall(db, item, startCount, remains);
+    await handleShortfall(db, item, status);
     return "polled";
   }
   if (status === "in_progress" || status === "processing" || status === "pending") {
@@ -295,48 +300,10 @@ async function pollOne(
   return "skipped";
 }
 
-/** Partial/canceled: refund exact (PD-24) → kredit pembeli, tanpa admin. */
-async function handleShortfall(db: Db, item: Item, startCount: number | null, remains: number | null): Promise<void> {
-  // delivered = max(0, quantity - remains) bila remains ada; fallback
-  // start_count tidak cukup (ia hitungan awal, bukan terkirim).
-  let delivered = 0;
-  if (remains !== null && Number.isFinite(remains)) {
-    delivered = Math.max(0, Math.min(item.quantity, item.quantity - Number(remains)));
-  } else if (startCount !== null && Number.isFinite(startCount)) {
-    delivered = 0; // tanpa remains, anggap 0 terkirim → refund penuh (aman pembeli).
-  }
-  const refund = Math.max(0, (item.quantity - delivered) * item.unit_price);
-  const newStatus = delivered > 0 ? "partial" : "canceled";
-  await db.execRun(
-    `UPDATE pedia_order_items SET status=?, completed_at=COALESCE(completed_at,datetime('now')), lease_until=NULL, updated_at=datetime('now')
-      WHERE order_code=?`,
-    newStatus, item.order_code,
-  ).catch(() => null);
-  if (refund <= 0) return;
-  const order = await db.queryFirst(`SELECT customer_email FROM orders WHERE code=?`, item.order_code).catch(() => null);
-  const email = String(order?.customer_email ?? "");
-  if (!email) return;
-  const { issuePediaCredit } = await import("@/lib/pedia/credits");
-  try {
-    const credit = await issuePediaCredit(db, {
-      email, amount: Math.round(refund),
-      sourceOrderCode: item.order_code,
-      sourceKind: newStatus === "partial" ? "partial" : "canceled",
-    });
-    await db.execRun(
-      `UPDATE pedia_order_items SET refund_credit_code=? WHERE order_code=?`,
-      credit.code, item.order_code,
-    ).catch(() => null);
-    try {
-      const { notifyPediaCredit } = await import("@/lib/pedia/notify");
-      await notifyPediaCredit(db, item.order_code, credit.code, Math.round(refund), newStatus).catch(() => null);
-    } catch { /* notif best-effort */ }
-  } catch (e) {
-    // credit_already_issued = poll diulang → tepat sekali, abaikan.
-    if (!(e instanceof Error) || e.message !== "credit_already_issued") {
-      await toNeedsCheck(db, item.order_code, "refund gagal diterbitkan").catch(() => null);
-    }
-  }
+/** Supplier terminal status stays truthful even when delivered count is unknown. */
+async function handleShortfall(db: Db, item: Item, status: "partial" | "canceled"): Promise<void> {
+  const { finishWithFollowup } = await import("./followup");
+  await finishWithFollowup(db, item.order_code, status, `supplier_${status}`);
 }
 
 async function toNeedsCheck(db: Db, orderCode: string, reason: string): Promise<void> {

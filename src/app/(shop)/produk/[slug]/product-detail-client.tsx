@@ -276,7 +276,12 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
   // Stok EFEKTIF unique (2026-10-02, insiden Head 18 Bulan): min(kolom stock,
   // inventory available). Tanpa ini PDP bilang "Sisa 2" padahal kredensial
   // tersisa 1 — semua cek di bawah (min, purchasable, max qty) memakai ini.
+  // inventory_available hanya dibawa /api/catalog (daftar varian) — jalur
+  // add-to-cart di bawah menerima varian DARI daftar yang sama sehingga
+  // angka efektifnya konsisten, bukan kolom mentah.
   const effectiveStockOf = (v: VariantItem): number => effectiveVariantStock(v);
+  const effectiveStockSnapshotOf = (v: { stock?: number | null; fulfillment_mode?: string; inventory_available?: number | null }): number =>
+    effectiveVariantStock({ stock: v.stock ?? -1, fulfillment_mode: v.fulfillment_mode ?? "manual", inventory_available: v.inventory_available ?? null });
   const variantMinQtyOf = (v: VariantItem): number => Math.max(1, Number(v.min_qty ?? 1) || 1);
   const isBelowMinimum = (v: VariantItem): boolean => {
     const eff = effectiveStockOf(v);
@@ -309,6 +314,24 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
     ? `/checkout?buy=${product.slug}&variant=${selectedVariantId}&qty=${safePdpQty}`
     : `/checkout?buy=${product.slug}`;
 
+  // Payload keranjang membawa stok EFEKTIF + inventory + min + mode
+  // (temuan audit: add() memakai kolom mentah `stock` — varian unique
+  // stock=2/available=1 lolos clamp lalu gagal di quote; metadata basi juga
+  // membuat baris lama tidak ikut refresh). Kedua jalur add (desktop CTA +
+  // sticky mobile) memakai helper yang sama.
+  const cartPayloadOf = (variant: VariantItem | null | undefined) => {
+    if (!variant) return product;
+    return {
+      ...product,
+      price: variant.price,
+      stock: effectiveStockSnapshotOf(variant),
+      variantId: variant.id,
+      variantLabel: variant.label,
+      minQty: variantMinQtyOf(variant),
+      fulfillmentMode: variant.fulfillment_mode,
+      inventoryAvailable: variant.inventory_available ?? null,
+    };
+  };
   // Determine the display image — from gallery state or product.image fallback
   const displayImage =
     galleryImages.length > 0
@@ -813,10 +836,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
               </button>
               <button
                 onClick={() => {
-                  const cartProduct = selectedVariant
-                    ? { ...product, price: selectedVariant.price, stock: selectedVariant.stock === -1 ? undefined : selectedVariant.stock, variantId: selectedVariant.id, variantLabel: selectedVariant.label, minQty: selectedMinQty, fulfillmentMode: selectedVariant.fulfillment_mode }
-                    : product;
-                  add(cartProduct, safePdpQty);
+                  add(cartPayloadOf(selectedVariant), safePdpQty);
                 }}
                 disabled={needsVariantSelection || variantCatalogUnavailable}
                 className={`w-full h-[48px] rounded-xl ax-glass-card font-semibold text-sm flex items-center justify-center gap-2 transition ${
@@ -843,10 +863,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
             type="button"
             onClick={() => {
               if (mustPickInModal) { setVariantModal("cart"); return; }
-              const cartProduct = selectedVariant
-                ? { ...product, price: selectedVariant.price, stock: selectedVariant.stock === -1 ? undefined : selectedVariant.stock, variantId: selectedVariant.id, variantLabel: selectedVariant.label, minQty: selectedMinQty, fulfillmentMode: selectedVariant.fulfillment_mode }
-                : product;
-              add(cartProduct, safePdpQty);
+              add(cartPayloadOf(selectedVariant), safePdpQty);
             }}
             disabled={variantLoading || checkoutPending}
             className="flex-1 h-11 rounded-xl ax-glass-card font-semibold text-xs flex items-center justify-center gap-1.5 transition text-white hover:bg-white/10 active:scale-95 disabled:opacity-40 disabled:cursor-wait"

@@ -30,3 +30,12 @@ export function emailMatches(providedLower: string, storedEmail: unknown): boole
   const stored = String(storedEmail ?? "").trim().toLowerCase();
   return Boolean(stored) && constantTimeEqual(providedLower, stored);
 }
+
+/** Full checkout contact only; short phone suffixes are never proof. */
+export function buyerContactMatches(raw: unknown, order: { customer_wa?: unknown; customer_email?: unknown }): boolean {
+  const contact = parseBuyerContact(raw);
+  if (!contact) return false;
+  return contact.kind === "email"
+    ? emailMatches(contact.value, order.customer_email)
+    : Boolean(normalizeWa(order.customer_wa)) && constantTimeEqual(contact.value, normalizeWa(order.customer_wa));
+}

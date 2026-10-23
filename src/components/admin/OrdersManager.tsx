@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatRupiah, formatWibDateTime } from "@/lib/utils";
 import { ChannelBadge, IosIcon, MethodBadge, StatusBadge } from "@/components/ui/IosIcon";
 import { Spinner } from "@/components/ui/Loading";
@@ -37,11 +37,18 @@ const inputClass = "h-10 w-full rounded-xl border border-white/10 bg-white/[0.05
 
 export function OrdersManager({ onChanged }: { onChanged?: () => void }) {
   const toast = useToast();
-  const initial = typeof window === "undefined" ? new URLSearchParams() : new URLSearchParams(window.location.search);
+  // URL adalah sumber kebenaran untuk filter awal (deep link kartu Ringkasan,
+  // back/forward). Baca sekali saat mount agar navigasi browser tidak
+  // menimpa pilihan filter yang sudah diubah pengguna di layar.
+  const [initialParams] = useState(() => typeof window === "undefined" ? new URLSearchParams() : new URLSearchParams(window.location.search));
+  const initial = initialParams;
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(() => {
+    const value = Number(initial.get("page"));
+    return Number.isInteger(value) && value >= 1 ? value : 1;
+  });
   const [pages, setPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [channel, setChannel] = useState(initial.get("channel") || "all");
@@ -77,11 +84,18 @@ export function OrdersManager({ onChanged }: { onChanged?: () => void }) {
     return params;
   }, [channel, kind, status, method, proof, query, dateFrom, dateTo, page]);
 
-  const load = useCallback(async () => {
+  // Generation/abort guard: setiap load punya nomor urut; respons basi
+  // (filter diganti cepat, tab ditutup, unmount) tidak boleh menimpa state,
+  // loading, atau error milik request terbaru.
+  const loadRequest = useRef(0);
+
+  const load = useCallback(async (signal?: AbortSignal) => {
+    const request = ++loadRequest.current;
     setLoading(true); setError("");
     try {
-      const response = await fetch(`/api/admin/orders?${requestParams}`, { cache: "no-store" });
+      const response = await fetch(`/api/admin/orders?${requestParams}`, { cache: "no-store", signal });
       const data = await response.json().catch(() => ({})) as ApiData;
+      if (signal?.aborted || request !== loadRequest.current) return;
       if (!response.ok) throw new Error(data.error || "Gagal memuat pesanan");
       setOrders((data.orders || []).map(normalizeOrder));
       setPage(Number(data.pagination?.page || 1));
@@ -90,11 +104,22 @@ export function OrdersManager({ onChanged }: { onChanged?: () => void }) {
       setStats(data.stats || { total: 0, pending: 0, paid: 0, revenue: 0 });
       setCounts(data.counts?.channels || {});
       setMethods(data.methods || []);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Gagal memuat pesanan"); }
-    finally { setLoading(false); }
+    } catch (cause) {
+      if (signal?.aborted || request !== loadRequest.current) return;
+      if (cause instanceof DOMException && cause.name === "AbortError") return;
+      setError(cause instanceof Error ? cause.message : "Gagal memuat pesanan");
+    }
+    finally { if (request === loadRequest.current) setLoading(false); }
   }, [requestParams]);
 
-  useEffect(() => { void load(); }, [load]);
+  // Setiap requestParams baru membatalkan fetch sebelumnya: tanpa abort,
+  // respons filter lama yang tiba belakangan menimpa daftar filter baru
+  // (temuan audit: fetch urutan terbalik).
+  useEffect(() => {
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
+  }, [load]);
   useEffect(() => {
     const url = new URL(window.location.href);
     for (const key of ["channel", "kind", "status", "method", "proof", "q", "date_from", "date_to", "page"]) url.searchParams.delete(key);

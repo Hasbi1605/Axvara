@@ -184,7 +184,8 @@ describe("durable provider-specific dispatch", () => {
     expect(fetch).not.toHaveBeenCalled();
     expect(await db.queryFirst(`SELECT refill_status,refill_supplier_id,refill_last_at FROM pedia_order_items`)).toEqual(before);
     const { GET } = await import("@/app/api/pedia/orders/[code]/route");
-    const res = await GET(request({}), { params: Promise.resolve({ code }) });
+    const statusRequest = request({}); (statusRequest as Request).headers.set("x-order-contact","test@example.com");
+    const res = await GET(statusRequest, { params: Promise.resolve({ code }) });
     expect((await res.json()).order.refill_eligible).toBe(false);
   });
   it.each(["completed", "supplier_rejected"])("allows a new refill after conclusively %s and 24 hours", async (status) => {

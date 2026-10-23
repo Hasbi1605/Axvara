@@ -37,6 +37,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
   }
   const { tier_id, quantity, target, credit_code } = parsed.data;
+  if (credit_code) return NextResponse.json({ error: "credits_retired", message: "Kode kredit tidak lagi digunakan. Hubungi admin untuk penanganan kode lama." }, { status: 410 });
+  if (!process.env.ADMIN_JWT_SECRET && process.env.NODE_ENV === "production") return NextResponse.json({ error: "Checkout sementara tidak tersedia." }, { status: 503 });
   const db = createDatabaseAccess();
 
   const product = parsed.data.product_slug
@@ -108,28 +110,12 @@ export async function POST(req: NextRequest) {
   const unitPrice = total / quantity;
   if (!Number.isFinite(total) || total <= 0) return NextResponse.json({ error: "Layanan sedang tidak tersedia." }, { status: 409 });
 
-  // Kredit (terlipat "Punya kode kredit?" — PD-11). Sisa kredit yang tidak
-  // habis tetap tersimpan (hanya dipakai sebesar total).
-  let creditUsed = 0;
-  let creditHash: string | null = null;
-  let creditRemaining: number | null = null;
-  if (credit_code) {
-    const { checkPediaCredit, sha256Hex } = await import("@/lib/pedia/credits");
-    const check = await checkPediaCredit(db, credit_code);
-    if (!check || check.remaining <= 0) {
-      return NextResponse.json({ error: "Kode kredit tidak valid atau sudah habis." }, { status: 422 });
-    }
-    creditUsed = Math.min(check.remaining, total);
-    creditHash = await sha256Hex(credit_code.trim().toUpperCase());
-    creditRemaining = check.remaining - creditUsed;
-  }
-
   const { token, quoteId } = await createPediaQuoteToken({
     product_id, tier_id, quantity,
     target_raw: target.slice(0, 600),
     target_normalized: detected.normalized,
     unit_price: unitPrice, total,
-    credit_code_hash: creditHash, credit_used: creditUsed,
+    credit_code_hash: null, credit_used: 0,
     supplier: tier.supplier,
     supplier_service_id: Number(tier.supplier_service_id),
     supplier_rate_snapshot: Number(live.rate_idr_per_1k),
@@ -141,7 +127,6 @@ export async function POST(req: NextRequest) {
   });
   return NextResponse.json({
     ok: true, quote_token: token, quote_id: quoteId,
-    total, payable: total - creditUsed, credit_used: creditUsed,
-    credit_remaining: creditRemaining,
+    total, payable: total, credit_used: 0,
   });
 }

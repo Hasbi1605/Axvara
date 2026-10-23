@@ -47,7 +47,7 @@ describe("POST /api/orders/[code]/credentials", () => {
       // Token capability sudah diterbitkan otomatis saat completed (idempoten
       // → POST tidak memberi raw baru). Revoke dulu agar alur penuh teruji.
       fx.sql.prepare("UPDATE wr_credential_tokens SET revoked=1 WHERE order_code='AXV-20260913-CC000001'").run();
-      const ok = await POST(mkReq({ wa: "080000000000" }) as never, params);
+      const ok = await POST(mkReq({ wa: "08000000000" }) as never, params);
       expect(ok.status).toBe(200);
       const body = (await ok.json()) as { credentials: { details: string }[]; capability_token: string | null };
       expect(body.credentials.length).toBe(1);
@@ -256,7 +256,7 @@ describe("retrieval payload JSON-string envelope (bukti prod 95FC8669)", () => {
       const params = { params: Promise.resolve({ code }) };
       fx.sql.prepare("UPDATE wr_credential_tokens SET revoked=1 WHERE order_code=?").run(code);
       const ok = await POST(
-        new Request("http://localhost/x", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ wa: "080000000000" }) }) as never,
+        new Request("http://localhost/x", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ wa: "08000000000" }) }) as never,
         params,
       );
       expect(ok.status).toBe(200);

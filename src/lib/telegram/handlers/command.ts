@@ -31,6 +31,14 @@ export async function handleCommand(
 ) {
   const cmd = text.toLowerCase().split(/\s+/)[0].split("@")[0];
 
+  // Cancel conversational input explicitly, before leaf slash-command filters.
+  // This does not cancel or mutate an order.
+  if (cmd === "/batal") {
+    await clearPendingAction(from);
+    await sendMessage({ chat_id: chatId, text: "Input dibatalkan. Pilih menu untuk melanjutkan.", reply_markup: homeKeyboard() });
+    return;
+  }
+
   // Check for pending WA input before processing commands
   if (from && (!cmd.startsWith("/") || cmd === "/batal")) {
     const handled = await handlePendingWaInput(text, chatId, from);

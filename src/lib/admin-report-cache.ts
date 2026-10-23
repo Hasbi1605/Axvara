@@ -3,7 +3,7 @@
 export const FINANCIAL_SNAPSHOT_TTL_MS = 5 * 60_000;
 type EdgeCache = { match(key: Request): Promise<Response | undefined>; put(key: Request, value: Response): Promise<void> };
 
-export async function readPrivateFinancialSnapshot<T extends { generatedAt: string }>(scope: string, load: () => Promise<T>): Promise<T> {
+export async function readPrivateFinancialSnapshot<T extends { generatedAt: string }>(scope: string, load: () => Promise<T>, ttlMs = FINANCIAL_SNAPSHOT_TTL_MS): Promise<T> {
   const secret = process.env.ADMIN_JWT_SECRET || process.env.JWT_SECRET;
   const cacheStorage = (globalThis as unknown as { caches?: { open(name: string): Promise<EdgeCache> } }).caches;
   if (process.env.NODE_ENV !== "production" || !secret || !cacheStorage?.open) return load();
@@ -23,7 +23,7 @@ export async function readPrivateFinancialSnapshot<T extends { generatedAt: stri
       const clear = await crypto.subtle.decrypt({ name: "AES-GCM", iv: bytes.slice(0, 12), additionalData: encoder.encode(request.url) }, key, bytes.slice(12));
       const value = JSON.parse(new TextDecoder().decode(clear)) as T;
       const age = Date.now() - Date.parse(value.generatedAt);
-      if (Number.isFinite(age) && age >= 0 && age < FINANCIAL_SNAPSHOT_TTL_MS) return value;
+      if (Number.isFinite(age) && age >= 0 && age < ttlMs) return value;
     }
   } catch {
     // Cache/decryption failure is never an empty or stale financial report.
@@ -31,8 +31,8 @@ export async function readPrivateFinancialSnapshot<T extends { generatedAt: stri
   }
   const value = await load(); // Errors propagate; failed calculations are not stored.
   try {
-    const remaining = Date.parse(value.generatedAt) + FINANCIAL_SNAPSHOT_TTL_MS - Date.now();
-    if (remaining > 0 && remaining <= FINANCIAL_SNAPSHOT_TTL_MS) {
+    const remaining = Date.parse(value.generatedAt) + ttlMs - Date.now();
+    if (remaining > 0 && remaining <= ttlMs) {
       const iv = crypto.getRandomValues(new Uint8Array(12));
       const sealed = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: encoder.encode(request.url) }, key, encoder.encode(JSON.stringify(value))));
       const body = new Uint8Array(iv.length + sealed.length);

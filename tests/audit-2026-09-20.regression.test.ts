@@ -127,10 +127,10 @@ describe("PROOF-LEAK — endpoint order publik tidak membocorkan kunci R2 privat
     // lain tidak boleh jadi jalan pintas.
     const bySegment = read("src/app/api/orders/[code]/route.ts");
     const byQuery = read("src/app/api/orders/route.ts");
-    for (const source of [bySegment, byQuery]) {
-      expect(source).toContain("waMasked");
-      expect(source).toContain("emailMasked");
-    }
+    expect(bySegment).toContain('GET as getOrder');
+    expect(bySegment).toContain('getOrder(new NextRequest');
+    expect(byQuery).toContain("waMasked");
+    expect(byQuery).toContain("emailMasked");
     expect(bySegment).not.toMatch(/proof_url:\s*row\./);
     expect(byQuery).not.toMatch(/proof_url:\s*row\./);
   });

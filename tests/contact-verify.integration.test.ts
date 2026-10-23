@@ -101,9 +101,12 @@ describe("POST /api/orders/[code]/credentials — detail akun dengan WA atau ema
     expect(body.credentials[0].details).not.toContain("Dilarang");
   });
 
-  it("order tanpa email tidak bisa dibuka dengan email; WA (6 digit terakhir) tetap jalan", async () => {
+  it("order tanpa email tidak bisa dibuka dengan email; WA penuh tetap jalan; suffix dan nomor lain ditolak", async () => {
     const { POST } = await import("@/app/api/orders/[code]/credentials/route");
     expect((await POST(post(`/api/orders/${NO_EMAIL}/credentials`, { contact: "budi@gmail.com" }), ctx(NO_EMAIL))).status).toBe(403);
+    for (const contact of ["765432", "081211765432", "+6281298765433"]) {
+      expect((await POST(post(`/api/orders/${NO_EMAIL}/credentials`, { contact }), ctx(NO_EMAIL))).status).toBe(403);
+    }
     expect((await POST(post(`/api/orders/${NO_EMAIL}/credentials`, { contact: "0812 9876 5432" }), ctx(NO_EMAIL))).status).toBe(200);
     expect((await POST(post(`/api/orders/${NO_EMAIL}/credentials`, { wa: "081298765432" }), ctx(NO_EMAIL))).status).toBe(200);
   });
@@ -135,4 +138,18 @@ describe("parseBuyerContact", () => {
     expect(parseBuyerContact("+62 812 3456 7890")).toEqual({ kind: "wa", value: "6281234567890" });
     for (const bad of ["", "rani@", "@gmail.com", "12345", "0712345678"]) expect(parseBuyerContact(bad)).toBeNull();
   });
+});
+
+it("durable credential failures survive isolate buckets but do not lock out another client", async () => {
+  const { POST } = await import("@/app/api/orders/[code]/credentials/route");
+  const ctx = { params: Promise.resolve({ code: PAID }) };
+  for (let attempt=0;attempt<20;attempt++) {
+    clearRateLimitBucketsForTest();
+    const r=await POST(post(`/api/orders/${PAID}/credentials`,{contact:"wrong@example.test"}),ctx);
+    expect(r.status).toBe(attempt===19?429:403);
+  }
+  clearRateLimitBucketsForTest();
+  expect((await POST(post(`/api/orders/${PAID}/credentials`,{contact:"rani.putri@gmail.com"}),ctx)).status).toBe(429);
+  const other=post(`/api/orders/${PAID}/credentials`,{contact:"rani.putri@gmail.com"});other.headers.set("cf-connecting-ip","203.0.113.10");
+  expect((await POST(other,ctx)).status).toBe(200);
 });

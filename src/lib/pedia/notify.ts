@@ -1,9 +1,10 @@
 // src/lib/pedia/notify.ts — Notifikasi Telegram Pedia (PEDIA-PRD II/§9.5).
 //
-// Modest: hanya 3 ke pembeli (dibayar→kirim rupiah; selesai; partial+kredit)
+// Pembeli: pembayaran, selesai, atau penyelesaian manual melalui outbox.
 // + 2 ke admin (needs_check konfirmasi ganda resubmit/cancel; saldo < ambang).
 // TIDAK ADA spam per-paket kecil. Email pembeli dikirim bersamaan (M5).
 
+import { escapeHtml } from "@/lib/telegram/messages/format";
 import type { createDatabaseAccess } from "@/lib/db-access";
 import { isPediaProvider, type PediaProvider } from "@/lib/pedia/proxy";
 
@@ -37,28 +38,19 @@ export async function notifyPediaCompleted(db: Db, orderCode: string): Promise<v
   await sendPediaBuyerMessage(db, orderCode, `${summary} — selesai. Makasih sudah order di Pedia.`);
 }
 
-/** Pembeli: partial/canceled + kode kredit. */
-export async function notifyPediaCredit(
-  db: Db, orderCode: string, creditCode: string, amount: number, kind: string,
-): Promise<void> {
-  const { sendPediaBuyerMessage } = await import("@/lib/pedia/notify-channel");
-  const summary = await pediaOrderSummary(db, orderCode);
-  const label = kind === "partial" ? "sebagian terkirim" : "gagal diproses";
-  await sendPediaBuyerMessage(db, orderCode,
-    `${summary} ${label}. Sisa Rp ${amount.toLocaleString("id-ID")} jadi kode kredit: ${creditCode} (berlaku 180 hari).`);
-}
-
 /** Admin: antrean needs_check (MANUAL — bukan auto-refund). */
-export async function notifyPediaNeedsCheck(db: Db, orderCode: string, reason: string): Promise<void> {
+export async function notifyPediaNeedsCheck(db: Db, orderCode: string, reason: string): Promise<"sent" | "rejected" | "unknown"> {
   void db;
   const chatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
-  if (!chatId) return;
+  if (!chatId) return "unknown";
   const { sendMessage } = await import("@/lib/telegram/api");
-  await sendMessage({
+  const result = await sendMessage({
     chat_id: chatId,
-    text: `🟡 <b>Pedia butuh tindakan manual</b>\n${orderCode}\nSebab: ${reason}\n\nBuka Admin → Pedia → Pesanan.`,
+    text: `🟡 <b>Pedia butuh tindakan manual</b>\n${escapeHtml(orderCode)}\nSebab: ${escapeHtml(reason.slice(0,500))}\n\nBuka Admin → Pedia → Pesanan.`,
     parse_mode: "HTML",
   }).catch(() => null);
+  if (result?.ok) return "sent";
+  return result && [400,403,429].includes(Number(result.error_code)) ? "rejected" : "unknown";
 }
 
 /** Admin: saldo supplier < ambang (throttle 1:1 WR/SK — 2026-10-09).

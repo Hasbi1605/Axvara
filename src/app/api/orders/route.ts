@@ -529,7 +529,7 @@ export async function GET(req: NextRequest) {
           status: row.transaction_status,
         } : null,
       },
-    });
+    }, { headers: { "Cache-Control": "private, no-store" } });
   }
   // Without code, don't leak all orders — require admin endpoint
   return NextResponse.json({ error: "Gunakan ?code=AXV-... atau akses via admin." }, { status: 400 });

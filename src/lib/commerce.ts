@@ -176,6 +176,15 @@ export async function createChannelOrderAtomic(
   const guardIds: string[] = [];
   const statements: D1Statement[] = [];
 
+  if (input.salesChannel === "telegram" && input.telegramChatId) {
+    const guardId = `${input.orderCode}:telegram-pending`;
+    guardIds.push(guardId);
+    statements.push(d1.prepare(`INSERT INTO operation_guards(operation_id,valid)
+      SELECT ?, CASE WHEN NOT EXISTS(SELECT 1 FROM orders WHERE sales_channel='telegram'
+        AND telegram_chat_id=? AND status='pending' AND payment_status IN ('unpaid','pending') AND (expires_at IS NULL OR julianday(expires_at)>julianday('now'))) THEN 1 ELSE 0 END`)
+      .bind(guardId, input.telegramChatId));
+  }
+
   input.lines.forEach((line, index) => {
     const guardId = `${input.orderCode}:stock:${line.variantId}:${index}`;
     guardIds.push(guardId);
@@ -299,6 +308,11 @@ export async function createChannelOrderAtomic(
     return { code: input.orderCode, orderId, subtotal: input.subtotal, isExisting: false };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    if (input.salesChannel === "telegram" && input.telegramChatId && /operation_guards|CHECK constraint/i.test(message)) {
+      const winner = await queryFirst(`SELECT id,code,subtotal FROM orders WHERE sales_channel='telegram'
+        AND telegram_chat_id=? AND status='pending' AND payment_status IN ('unpaid','pending') AND (expires_at IS NULL OR julianday(expires_at)>julianday('now')) ORDER BY id DESC LIMIT 1`, input.telegramChatId);
+      if (winner) return { code: String(winner.code), orderId: Number(winner.id), subtotal: Number(winner.subtotal), isExisting: true };
+    }
     if (input.idempotencyKey && /UNIQUE|operation_guards|CHECK constraint/i.test(message)) {
       const raceWinner = await queryFirst(
         `SELECT id, code, subtotal FROM orders WHERE quote_id=?`,

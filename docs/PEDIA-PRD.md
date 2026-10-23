@@ -1,4 +1,8 @@
 # PEDIA-PRD.md — AXVARA PEDIA (Toko SMM Kurasi)
+## Kebijakan Pedia terkini — 24 Oktober 2026
+
+✅ Diimplementasikan; publikasi melalui CI. [Pedia tanpa saldo pembeli, 24 Oktober 2026](pedia/manual-resolution-2026-10-24.md) menggantikan seluruh ketentuan kredit/refund otomatis/deposit pada versi terdahulu di bawah. Pembayaran QRIS per order; kendala ditangani owner di luar website. Arsip historis tetap ada, tidak dapat dibelanjakan.
+
 
 ## Penyederhanaan pilihan layanan Pedia — 22 Oktober 2026
 
@@ -9,9 +13,9 @@ Tipografi harga 22 Oktober mengikuti AXVARA pusat: harga kartu/daftar layanan In
 
 ## Redesain alur pembelian Pedia — 20 Oktober 2026
 
-✅ Implementasi; publikasi melalui CI. Keputusan owner: **beranda tetap seperti sebelumnya, tanpa jalan pintas**. Sesudah klik layanan/platform, konfigurator mengikuti referensi “Redesign SMM Panel Purchase Flow”: **Layanan → Target → Kontak → Bayar**. Kebutuhan pertama langsung terbuka (deep link mengikuti slug); jumlah/layanan tetap dipilih eksplisit. Tab kebutuhan berikon, perbandingan layanan tetap terbuka, validasi per tahap, ringkasan desktop340px, CTA di dasar panel desktop/fixed mobile dengan safe-area. Link dan checklist produk berada di tahap Target; WA/email, kredit dan consent di tahap Kontak. Kembali mempertahankan isian produk yang sama, tanpa melewati tahap mendatang; setelah POST ambigu semua navigasi langkah terkunci. Preview admin embedded tetap tanpa request harga/order atau kontak.
+✅ Implementasi; publikasi melalui CI. Keputusan owner: **beranda tetap seperti sebelumnya, tanpa jalan pintas**. Sesudah klik layanan/platform, konfigurator mengikuti referensi “Redesign SMM Panel Purchase Flow”: **Layanan → Target → Kontak → Bayar**. Kebutuhan pertama langsung terbuka (deep link mengikuti slug); jumlah/layanan tetap dipilih eksplisit. Tab kebutuhan berikon, perbandingan layanan tetap terbuka, validasi per tahap, ringkasan desktop340px, CTA di dasar panel desktop/fixed mobile dengan safe-area. Link dan checklist produk berada di tahap Target; WA/email dan consent di tahap Kontak. Kembali mempertahankan isian produk yang sama, tanpa melewati tahap mendatang; setelah POST ambigu semua navigasi langkah terkunci. Preview admin embedded tetap tanpa request harga/order atau kontak.
 
-Halaman pesanan memakai timeline vertikal + progres server dan panel QRIS di kanan desktop/atas mobile (container1000px, rail380px, QR240px), countdown deadline, Simpan QRIS/Cek pembayaran, serta Pesan lagi pada status terminal. Partial/kredit/refill/needs_check dan snapshot lama tetap dilayani. QR/nominal/status berasal dari server, tanpa simulasi atau reset expiry. Kontrak API, quote/consent/retry, supplier IndoSMM untuk order baru, env/cron/ledger tidak berubah. Spesifikasi [redesain pembelian](pedia/purchase-flow-redesign-2026-10-20.md) menggantikan bagian UI checkout/status versi15–19 Oktober di bawah; desain beranda existing dipertahankan.
+Halaman pesanan memakai timeline vertikal + progres server dan panel QRIS di kanan desktop/atas mobile (container1000px, rail380px, QR240px), countdown deadline, Simpan QRIS/Cek pembayaran, serta Pesan lagi pada status terminal. Partial/tindak lanjut manual/refill/needs_check dan snapshot lama tetap dilayani. QR/nominal/status berasal dari server, tanpa simulasi atau reset expiry. Kontrak API, quote/consent/retry, supplier IndoSMM untuk order baru, env/cron/ledger tidak berubah. Spesifikasi [redesain pembelian](pedia/purchase-flow-redesign-2026-10-20.md) menggantikan bagian UI checkout/status versi15–19 Oktober di bawah; desain beranda existing dipertahankan.
 
 
 ## Pedia IndoSMM untuk penjualan baru — 20 Oktober 2026
@@ -41,7 +45,7 @@ Revisi copy hero 2026-10-16 ✅ implementasi, publikasi melalui CI: headline ber
 
 Revisi navbar dan lacak 2026-10-16 ✅ implementasi, publikasi melalui CI: hierarki navbar Pedia mengikuti Market: logo → pencarian → Layanan AXVARA → Katalog → Lacak Pesanan → Artikel. Navigasi teks tampil mulai `xl`, dengan pill hover/focus membulat; Artikel menuju URL absolut Market dari `SITE.webUrl`, menggantikan Bantuan di navbar atas. Bantuan tetap tersedia di bottom nav dan footer. `/pedia/lacak` memakai header, kartu form glass, label/hint, tombol loading dan FAQ dengan gaya Market; verifikasi kode AXP + WA/email tetap melalui `POST /api/orders/lookup`, lalu membuka halaman status Pedia setelah berhasil. Riwayat sukses maksimal lima tersimpan lokal di `axp-track-recent` dengan kontak tersamarkan pada UI dan tombol hapus; daftar `axp-orders` maksimal 20 terlipat awal, menyaring entri rusak dan dapat disembunyikan per pesanan. Penyimpanan browser opsional; validasi, timeout jaringan dan penjagaan klik ganda tidak mengubah kontrak server atau supplier. Revisi lanjutan 2026-10-16: pill “WA Admin” dan “Panduan pemesanan” di bawah FAQ lacak dihapus; halaman berakhir pada FAQ sebelum footer bersama.
 
-Katalog terkurasi berisi 38 jenis/131 mapping pada 16 platform, dengan 3 pilihan awal pada mobile/desktop, drop/refill tetap. Pilihan yang sudah dipilih dirangkum dan dapat diganti pada semua ukuran. Target GitHub/website/platform baru didukung parser client/server. Harga jumlah bebas dihitung server; order/job/kredit/ledger atomik D1, retry QR sama, kredit pending kedaluwarsa dikembalikan. Copy ketentuan disimpan ke quote/order. Tidak ada order supplier berbayar atau klaim hasil kualitas/drop teruji dalam verifikasi ini.
+Katalog terkurasi berisi 38 jenis/131 mapping pada 16 platform, dengan 3 pilihan awal pada mobile/desktop, drop/refill tetap. Pilihan yang sudah dipilih dirangkum dan dapat diganti pada semua ukuran. Target GitHub/website/platform baru didukung parser client/server. Harga jumlah bebas dihitung server; order/job atomik D1 dan retry QR sama; reservasi kredit historis yang kedaluwarsa dibalik sekali pada arsip beku dan ditindaklanjuti manual. Copy ketentuan disimpan ke quote/order. Tidak ada order supplier berbayar atau klaim hasil kualitas/drop teruji dalam verifikasi ini.
 
 > **Status working-tree 2026-10-12:** implementasi lokal dua provider + ekosistem/UX, **BELUM deployed** di Pages/proxy; tidak ada flag yang diubah. Audit docs membaca diff/source, bukan bukti seluruh QA terkini sudah lulus. Kredensial/readiness supplier, currency/rate-unit dan kurasi awal data produksi masih pending.
 > **Riwayat rollout:** katalog awal dibuka 2026-10-08 di `pedia.axvara.tech`, dengan `PEDIA_ENABLED=true`, order/dispatch ditutup. **2026-10-14 (keputusan owner): `PEDIA_ORDERS_ENABLED=true` + `PEDIA_DISPATCH_ENABLED=true` DIBUKA di produksi** (PATCH env Pages + redeploy manual agar flag terbaca; quote live terverifikasi mengembalikan token). Saldo ProviderSMM saat pembukaan = Rp0 atas pilihan owner (belum diisi) — dispatch order nyata pertama menunggu top-up; tanpa saldo item jatuh `needs_check` untuk ditangani admin, bukan hilang. Proxy dua-provider TERDEPLOY ke VPS (`/health` memuat `indosmm:true`); API key IndoSMM pertama ditolak upstream, **key baru owner 14 Okt VALID**: balance `currency:"IDR"` + rate terverifikasi per-1.000 → `INDOSMM_RATE_PER_1000_VERIFIED=true` menyala, services ter-sync (4.074 baris D1), 12 peringkat IndoSMM terkurasi live. Saldo kedua provider Rp0 sampai owner top-up. Kurasi gelombang 1: platform X live (Followers/Likes/Views dari ProviderSMM). AC lama §13 adalah bukti historis, bukan verifikasi deployment baru.
@@ -78,7 +82,7 @@ Posisi harga: **setara panel, kemudahan setara ritel.**
 | D1 | Domain | `pedia.axvara.tech` (project Pages yang SAMA, dipetakan middleware ke route `/pedia/*`) |
 | D2 | Aksen sub-brand | Midnight/cyan/gold mengikuti Market; violet/gradien awal tetap referensi aset/status, bukan warna pilihan tingkat saat ini |
 | D3 | Login | **Fase 2** (dikunci owner 2026-10-07). Fase 1 = order tanpa login (tamu). Setelah Fase 2, tamu TETAP bisa order; member mendapat benefit §4 Fase 2 |
-| D4 | Refund partial/cancel fase 1 | **Kode Kredit Pedia** otomatis (dikirim email + tampil di halaman pesanan), bisa dipakai di checkout Pedia berikutnya |
+| D4 | Kendala partial/cancel | Penyelesaian manual oleh owner di luar website; tanpa kredit/refund otomatis atau wallet |
 | D5 | Margin | Per kelompok produk (§7), bukan rata |
 | D6 | Supplier | ProviderSMM + IndoSMM lokal; tanpa failover otomatis. Keputusan supplier tunggal 2026-10-07 superseded; gate IDR/unit/credentials tetap pending |
 | D7 | API key supplier | HANYA di VPS proxy (`wr-proxy.axvara.tech`), tidak pernah di Pages |
@@ -124,9 +128,9 @@ Implikasi desain: mobile-first, tanpa jargon, maksimal 3 keputusan sebelum bayar
 - Checkout tamu: No. WA + email (wajib) + centang S&K → QRIS DANA.
 - Dispatch setelah lunas dengan CAS submitting + dedupe durable proxy (§9.4), bukan jaminan exactly-once end-to-end.
 - Status & progres live, tombol Refill bila garansi berlaku.
-- Partial/cancel → Kode Kredit Pedia otomatis + email.
+- Partial/cancel → status supplier yang jujur, kontak admin dan antrean tindak lanjut manual durable.
 - Sinkron harga & status layanan supplier (diff VPS), nonaktif otomatis bila margin habis.
-- Admin tab **Pedia**: kurasi, harga, antrean, kredit, saldo supplier.
+- Admin tab **Pedia**: kurasi, harga, antrean, Arsip lama baca-saja dan saldo supplier.
 - Notif Telegram admin: `Lunas — Pedia`, saldo supplier menipis, order perlu dicek.
 - Integrasi lokal: CommunityBar Market = CrossServicePromo Pedia + Bot Telegram Market, kartu ganda Pedia = CrossServicePromo Market + Bot Telegram Market (`PediaServiceCards`), ServicesMenu di kedua navbar, satu Footer bersama, layout Pedia 1280 + hero 1:1 Market. AppSwitcher dihapus; LaunchCards.saved tetap arsip dan kartu Pedia `/link` tetap tersembunyi. Ini bukan pembukaan flag/deployment.
 
@@ -134,15 +138,14 @@ Implikasi desain: mobile-first, tanpa jargon, maksimal 3 keputusan sebelum bayar
 - Komentar custom (tipe `Custom Comments`, textarea 1 komentar per baris).
 - Pengingat refill otomatis (email H+7 bila jumlah turun).
 
-### Fase 2
+### Fase 2 — tanpa wallet/deposit (revisi owner 24 Oktober 2026)
 - Login Google (OIDC) + OTP email + Cloudflare Turnstile.
-- Saldo akun + deposit QRIS, refund otomatis ke saldo, kode kredit lama bisa diklaim ke saldo.
+- Rencana saldo/deposit/refund otomatis dicabut owner 24 Oktober 2026; tidak termasuk fase berikutnya.
 - Riwayat & link favorit, order ulang 1 klik, refill 1 klik dari riwayat.
-- Benefit harga member (dikunci owner 2026-10-07, keduanya): **bonus deposit** (default +5% untuk deposit ≥ Rp100.000, diatur admin) **dan diskon member khusus kelompok G1/G2** (default 5%, TIDAK berlaku G3 karena margin tipis). Guard margin §7.2 dihitung SETELAH diskon member.
-- Ajakan daftar halus di halaman sukses & email kredit ("Daftar supaya sisa dana langsung masuk saldo"); tamu tidak pernah dipaksa login.
+- Tidak ada ajakan daftar untuk menampung dana; tamu tetap dapat membeli per order.
 
 ### Fase 3
-- Top-up game (Digiflazz, fallback Sekalipay) di dalam Pedia dengan saldo yang sama.
+- Ekspansi produk di luar scope; tidak memakai saldo pembeli bersama.
 
 ---
 
@@ -162,13 +165,13 @@ axvara.tech  ──klik kartu "Axvara Pedia"──▶  pedia.axvara.tech
    ▼
 [Halaman order]
    1 Paket & jumlah (radio native) → 2 Tujuan & persyaratan (link + checklist)
-   3 Kontak & konfirmasi (WA + email + kredit opsional + S&K)
+   3 Kontak & konfirmasi (WA + email + S&K)
    Tier & jumlah awal kosong → [Lanjut ke pembayaran] → quote server otomatis
-   Nominal berubah / kode kredit → [Setujui & lanjut ke pembayaran] → order
+   Nominal berubah → [Setujui & lanjut ke pembayaran] → order
    │
    ▼
 [/pesanan/AXP-…]  QRIS 15 menit  ──lunas (QRIS Hook)──▶  "Diproses" ──▶ progres live ──▶ "Selesai"
-                                                              └─ partial/cancel ─▶ Kode Kredit + email
+                                                              └─ partial/cancel ─▶ tindak lanjut manual
 ```
 
 ### 5.2 Aturan alur
@@ -181,8 +184,8 @@ axvara.tech  ──klik kartu "Axvara Pedia"──▶  pedia.axvara.tech
 - Perubahan tingkat/jumlah/target/kredit/kontak/checklist/S&K membatalkan quote; request quote dibatalkan dan respons usang diabaikan. Client meminta quote baru setelah 29 menit sebelum percobaan order pertama (token server 30 menit).
 - Klik order pertama mengunci data dan mencegah klik ganda dari CTA desktop/mobile. Timeout/network/5xx/408/429 atau respons sukses tidak lengkap mempertahankan token + kontak untuk retry pesanan yang sama; 4xx lain membuang quote dan membuka kunci. Ini pagar client, bukan atomisitas penuh backend order/kredit/invoice.
 - `PEDIA_ORDERS_ENABLED=false`: pesan singkat dekat CTA disabled; paket/harga bisa dilihat, kontak/email/kredit/S&K tidak dirender. Tidak ada banner order tutup pada beranda atau sebelum judul order.
-- Kode Kredit dapat dimasukkan di halaman order (field terlipat "Punya kode kredit?").
-- Payable = 0 setelah kredit → order lunas tanpa invoice QRIS; kolom payment_method pada INSERT saat ini tetap qris, bukan pedia_credit.
+- Input kredit dihapus. Client lama yang mengirim kredit ditolak 410.
+- Order baru membayar total penuh. Order terpersisten lama mempertahankan payable historis saat retry.
 
 ### 5.3 Status pesanan (bahasa pembeli)
 
@@ -193,8 +196,8 @@ axvara.tech  ──klik kartu "Axvara Pedia"──▶  pedia.axvara.tech
 | `submitted` / `pending` (supplier) | Diproses | "Sedang dimulai." |
 | `in_progress` | Berjalan | Cincin progres + jumlah masuk |
 | `completed` | Selesai | Ringkasan + tombol Refill bila berlaku |
-| `partial` | Selesai sebagian | Jumlah masuk + Kode Kredit sisa dana |
-| `canceled` | Dibatalkan supplier | Kode Kredit penuh + alasan umum |
+| `partial` | Selesai sebagian | Jumlah masuk jika diketahui + Hub WA untuk penyelesaian manual |
+| `canceled` | Dibatalkan supplier | Hub WA + antrean tindak lanjut manual |
 | `needs_check` | Sedang kami cek | "Ada kendala teknis, admin sedang memeriksa. Tidak perlu order ulang." |
 | `expired` | Kedaluwarsa | "QRIS habis waktu. Silakan order ulang." |
 
@@ -215,8 +218,8 @@ Kode `PD-xx`. Semua wajib fase 1 kecuali ditandai.
 - **PD-08** Checklist pra-bayar per produk + teks bantuan di kelompok Tujuan & persyaratan. Field gambar lama dipertahankan admin, tetapi tutorial bergambar belum dirender di order-client saat ini.
 - **PD-09** Guard link ganda: tolak order baru untuk (`target_normalized`, `product_id`) yang masih aktif (`queued…in_progress`) → pesan "Link ini masih diproses pesanan AXP-…, tunggu selesai dulu ya."
 - **PD-10** Kontak: No. WA (format ID) + email wajib, centang S&K Pedia.
-- **PD-11** Field Kode Kredit (terlipat), validasi server, sisa kredit tetap tersimpan bila tidak habis.
-- **PD-12** Halaman status `/pesanan/[code]` versi Pedia: QRIS (komponen existing), timeline, cincin progres, tombol Refill, blok Kode Kredit.
+- **PD-11** Kredit baru dipensiunkan; arsip lama hanya dibaca admin untuk penyelesaian di luar website.
+- **PD-12** Halaman status `/pesanan/[code]` versi Pedia: QRIS (komponen existing), timeline, progres, tombol Refill, arahan penyelesaian manual.
 - **PD-13** Lacak `/lacak`: kode AXP + No. WA/email melalui `POST /api/orders/lookup`, kemudian buka status pesanan Pedia. Revisi 2026-10-16: form glass bergaya Market dengan label/hint/validasi/loading/error, riwayat lacak lokal maksimal lima, pesanan perangkat terlipat dan FAQ pembayaran/refill Pedia.
 - **PD-14** Bantuan & Ketentuan Pedia (`/bantuan`, `/ketentuan`): S&K khusus SMM (§11).
 - **PD-15 (tidak dirender)** Endpoint/komponen ticker lama tetap ada, tetapi beranda tidak meminta atau menampilkannya pada overhaul 2026-10-11. Klaim laris tidak digunakan.
@@ -228,7 +231,7 @@ Kode `PD-xx`. Semua wajib fase 1 kecuali ditandai.
 - **PD-21** Order idempoten memakai `orders.quote_id = pedia:<jti>` (bukan hash kontak), `order_kind='pedia'` + pedia_order_items. Tolak provider/service remapped sejak quote; persist snapshot asal. Konsumsi kredit/order/invoice tidak atomik penuh.
 - **PD-22** Setelah lunas: item → `queued`; dispatch ke supplier oleh cron lite job `pedia_orders` (§9.4).
 - **PD-23** Poll individual hingga 20 item due/cycle pada provider asal, lease 5 menit; hingga 5 refill_status berbatas budget. Simpan start_count/remains/status; charge saat add adalah estimasi rate terkini × quantity, bukan selalu charge riil dari poll.
-- **PD-24** Partial/Canceled → delivered dari quantity−remains (clamp), kredit `round((quantity−delivered) × unit_price)`; tanpa remains fallback delivered=0. Hasil partial jika delivered>0, selainnya canceled; kredit idempoten per asal/kind, bukan transaksi terminal+kredit penuh atomik.
+- **PD-24** Status partial/canceled supplier dipertahankan; remains hanya integer 0..quantity, selainnya unknown. Terminal+follow-up atomik, tanpa kredit atau nominal refund otomatis.
 - **PD-25** Refill: memakai `refill_days` snapshot order (fallback tier untuk legacy), status `completed|partial`, masa refill sejak order dibuat, dan refill terakhir ≥ 24 jam lalu. `requested|submitted|needs_check` diblokir berapa pun usianya; hanya belum pernah refill atau hasil terminal konklusif dapat diklaim. Server memanggil `refill` provider asal; ID/key ambigu dipertahankan, status refill dilacak.
 - **PD-26** Timeout/ambigu saat `add` → `needs_check`, TIDAK diulang otomatis (§9.4).
 
@@ -242,13 +245,13 @@ Kode `PD-xx`. Semua wajib fase 1 kecuali ditandai.
 ### Admin
 - **PD-40** Tab admin **Pedia** dengan sub-tab: Produk · Layanan Supplier · Pesanan · Kredit · Pengaturan (detail §10).
 - **PD-41** Penjelajah kedua provider, jumlah dinamis (576 snapshot lama), cari/platform/Indonesia/garansi-di-nama/tipe/kompatibilitas/mapped; pilih provider+service bersama dan hubungkan tier existing. Create produk/tier nonaktif di tab Produk.
-- **PD-42** Antrean `needs_check` dengan aksi: *Cek saldo supplier*, *Tandai sudah dibuat (isi ID supplier)*, *Kirim ulang (konfirmasi ganda)*, *Batalkan + terbitkan kredit*.
+- **PD-42** Antrean `needs_check` dengan aksi: *Cek saldo supplier*, *Tandai sudah dibuat (isi ID supplier)*, *Kirim ulang (konfirmasi ganda)*, *Batalkan & tindak lanjuti* hanya sebelum submit; *Selesai ditangani* memakai catatan/aktor/waktu.
 - **PD-43** Saldo/error/pricing/sync per provider di Pengaturan, live atau fallback cache ditandai, riwayat 7 hari dan Cek saldo recovery. Alert per provider < ambang env default Rp100.000, check/alert throttle terpisah; bukan saldo live global header.
 - **PD-44** Pesanan Pedia muncul di panel **Pesanan** global dengan filter "Jenis: Pedia".
 - **PD-45** Dashboard untung (existing) menghitung Pedia: modal = `supplier_charge` riil (fallback snapshot rate × qty).
 
 ### Notifikasi
-- **PD-50** Email pembeli (shell bermerek existing): tanda terima lunas, selesai, selesai sebagian/dibatalkan + Kode Kredit, refill diproses.
+- **PD-50** Email pembeli (shell bermerek existing): tanda terima lunas, selesai, kendala pesanan + arahan admin manual, refill diproses.
 - **PD-51** Telegram admin (`TELEGRAM_ADMIN_CHAT_ID`): `Lunas — Pedia` (sekali per order), `Pedia perlu dicek`, `Saldo providersmm menipis`, `Produk Pedia dinonaktifkan otomatis`.
 
 ### Integrasi axvara.tech
@@ -332,6 +335,8 @@ Plafon adalah panduan kurasi manual (admin mengecek), bukan logika kode.
 ---
 
 ## 8. Data model (D1)
+
+Migrasi 0075 menambah `pedia_followups` dan `order_contact_attempts`. DDL kredit di bawah adalah arsip historis yang dipertahankan; tidak mendefinisikan wallet aktif. Lihat spec 24 Oktober untuk kontrak terkini.
 
 Migrasi baru `drizzle/migrations/0059_pedia.sql` + salin ke `drizzle/schema.sql` (idempoten). Nomor dicek ulang saat eksekusi (ambil nomor terakhir + 1).
 
@@ -442,7 +447,7 @@ CREATE TABLE IF NOT EXISTS pedia_order_items (
 CREATE INDEX IF NOT EXISTS idx_pedia_items_status ON pedia_order_items(status, last_polled_at);
 CREATE INDEX IF NOT EXISTS idx_pedia_items_target ON pedia_order_items(target_normalized, product_id, status);
 
--- Kode Kredit Pedia (refund tanpa login).
+-- Arsip Kode Kredit Pedia lama; penerbitan/penebusan sudah dihentikan.
 CREATE TABLE IF NOT EXISTS pedia_credits (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   code_hash TEXT UNIQUE NOT NULL,            -- SHA-256 kode; kode mentah hanya dikirim ke pembeli
@@ -552,11 +557,11 @@ Proxy memakai reservation durable `SMM_IDEMPOTENCY_DIR` (default `state/smm-idem
 | Method | Path | Auth | Fungsi |
 |---|---|---|---|
 | GET | `/api/pedia/catalog` | publik, cache CDN 60 dtk | produk/tier aktif + paket valid terhadap supplier present/min-max/step/harga positif; tanpa ID/rate/nama supplier |
-| POST | `/api/pedia/quote` | publik + rate-limit scope `pedia_quote` 30/mnt/IP | validasi target, qty, kredit → quote terenkripsi |
-| POST | `/api/pedia/orders` | publik + rate-limit 10/mnt/IP | buat order idempoten + invoice QRIS (atau lunas via kredit) |
-| GET | `/api/pedia/orders/[code]` | capability token (pola existing) | status, progres, refill eligibility (tanpa data supplier mentah) |
+| POST | `/api/pedia/quote` | publik + rate-limit scope `pedia_quote` 30/mnt/IP | validasi target/jumlah → quote terenkripsi, kredit nol |
+| POST | `/api/pedia/orders` | publik + rate-limit 10/mnt/IP | buat order/job idempoten + invoice QRIS penuh |
+| GET | `/api/pedia/orders/[code]` | WA penuh/email checkout via header x-order-contact | status, progres, refill eligibility (tanpa data supplier mentah) |
 | POST | `/api/pedia/orders/[code]/refill` | capability token + rate-limit | ajukan refill |
-| POST | `/api/pedia/credits/check` | publik + rate-limit 10/mnt/IP | cek kode → sisa (tanpa membocorkan email) |
+| POST | `/api/pedia/credits/check` | retired | 410, tanpa membaca kode lama |
 | GET | `/api/pedia/ticker` | publik, cache 60 dtk | 10 order lunas terbaru tersamarkan |
 | * | `/api/admin/pedia/*` | sesi admin | CRUD produk/tingkat, layanan supplier, antrean, kredit, saldo, tarik ulang |
 | POST | `/api/supplier-sync` (cabang SMM) | `SUPPLIER_SYNC_TOKEN` existing | diff providersmm/indosmm, currency IDR, identity gabungan, partial non-2xx |
@@ -626,7 +631,7 @@ Grup sidebar **Katalog**, menu **Pedia**, deep-link `?section=pedia&tab=…`. Ga
 1. Layanan meningkatkan angka interaksi; AXVARA tidak menjamin jangkauan, penjualan, atau FYP.
 2. Akun/postingan wajib publik dan tidak boleh diganti username/dihapus selama proses. Pelanggaran → pesanan dianggap selesai tanpa kredit.
 3. Penurunan jumlah (drop) dapat terjadi. Produk bergaransi berhak refill dalam masa garansi; produk tanpa garansi tidak.
-4. Pesanan selesai sebagian/dibatalkan supplier → sisa dana menjadi Kode Kredit Pedia (berlaku 180 hari, hanya untuk belanja di Pedia, tidak dapat diuangkan).
+4. Pesanan selesai sebagian/dibatalkan supplier diselesaikan owner secara manual di luar website. Tidak ada saldo pembeli atau refund otomatis.
 5. Salah memasukkan link yang tetap valid (akun orang lain) bukan tanggung jawab AXVARA.
 6. Penggunaan layanan dapat bertentangan dengan ketentuan platform media sosial; risiko akun sepenuhnya pada pembeli.
 7. Dilarang untuk konten melanggar hukum, judi, penipuan, politik praktis/kampanye, atau pelecehan. Pesanan semacam itu dibatalkan tanpa kredit.

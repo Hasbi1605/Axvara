@@ -240,13 +240,13 @@ describe("Pedia order UX", () => {
     expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ customer_wa: "081234567890", customer_email: "buyer@example.com", quote_token: "same" });
   });
 
-  it("requires explicit changed-price consent and displays server credit before creating an order", async () => {
+  it("requires explicit changed-price consent before creating an order", async () => {
     mount(); complete();
-    fetchMock.mockResolvedValueOnce(reply({ quote_token: "signed", total: 7300, payable: 6300 }));
+    fetchMock.mockResolvedValueOnce(reply({ quote_token: "signed", total: 7300, payable: 7300 }));
     await getQuote();
     expect(screen.getAllByRole("status").some((s) => s.textContent?.includes("Harga berubah dari Rp7.000 menjadi Rp7.300"))).toBe(true);
-    expect(document.body.textContent).toContain("Rp6.300");
-    expect(document.body.textContent).toContain("Kredit digunakan");
+    expect(document.body.textContent).toContain("Rp7.300");
+    expect(document.body.textContent).not.toContain("Kredit digunakan");
     expect(fetchMock).toHaveBeenCalledTimes(1);
     fetchMock.mockRejectedValueOnce(new Error("fixture"));
     consent();
@@ -254,13 +254,12 @@ describe("Pedia order UX", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("asks to confirm optional credit even if gross price has not changed", async () => {
+  it("checkout has no credit input and quotes the full amount", async () => {
     mount(); complete();
-    fireEvent.change(screen.getByLabelText("Kode kredit"), { target: { value: "PDK-TEST" } });
-    fetchMock.mockResolvedValueOnce(reply({ quote_token: "credit", total: 7000, payable: 0 }));
+    expect(screen.queryByLabelText("Kode kredit")).toBeNull();
     await getQuote();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(screen.getAllByRole("status")[0].textContent).toContain("Total pembayaran Rp0");
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(body.credit_code).toBeUndefined();
   });
 
   it("ignores an obsolete delayed quote and prevents duplicate quote requests", async () => {
@@ -277,7 +276,7 @@ describe("Pedia order UX", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it.each(["Link profil Instagram", "Email", "Nomor WhatsApp", "Kode kredit"])("invalidates consent when %s changes", async (label) => {
+  it.each(["Link profil Instagram", "Email", "Nomor WhatsApp"])("invalidates consent when %s changes", async (label) => {
     mount(); complete(); await getQuote();
     if (label === "Link profil Instagram") fireEvent.click(screen.getByRole("button", { name: "Langkah 2: Target" }));
     fireEvent.change(screen.getByLabelText(label), { target: { value: label === "Email" ? "other@example.com" : "changed" } });

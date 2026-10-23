@@ -2,6 +2,7 @@
 
 export const runtime = "edge";
 
+import { rememberPediaContact } from "@/lib/pedia/buyer-session";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -10,7 +11,7 @@ import { SLOW_MS, useLoadingStage } from "@/hooks/useLoadingStage";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
 
 type SavedOrder = { code: string; name: string };
-type RecentEntry = { code: string; contact: string };
+type RecentEntry = { code: string; contact: string; savedAt?: number };
 const DEVICE_KEY = "axp-orders";
 const RECENT_KEY = "axp-track-recent";
 const CODE_RE = /^AXP-\d{8}-[A-Z0-9]{8}$/;
@@ -74,11 +75,15 @@ export default function PediaTrackPage() {
       const cleanCode = normalizeCode(entry.code);
       return CODE_RE.test(cleanCode) ? [{ code: cleanCode, name: entry.name }] : [];
     })).slice(0, 20));
-    setRecent(uniqueCodes(readEntries(RECENT_KEY).flatMap((entry) => {
+    const recentEntries = uniqueCodes(readEntries(RECENT_KEY).flatMap((entry) => {
       if (typeof entry.code !== "string" || typeof entry.contact !== "string") return [];
       const cleanCode = normalizeCode(entry.code);
-      return CODE_RE.test(cleanCode) && validContact(entry.contact) ? [{ code: cleanCode, contact: entry.contact.trim() }] : [];
-    })).slice(0, 5));
+      const savedAt = Number(entry.savedAt) || Date.now();
+      return CODE_RE.test(cleanCode) && validContact(entry.contact) && Date.now() - savedAt < 7 * 86_400_000 ? [{ code: cleanCode, contact: entry.contact.trim(), savedAt }] : [];
+    })).slice(0, 5);
+    setRecent(recentEntries);
+    if (recentEntries.length) persist(RECENT_KEY, recentEntries);
+    else { try { localStorage.removeItem(RECENT_KEY); } catch { /* Storage optional. */ } }
     const queryCode = new URLSearchParams(window.location.search).get("code");
     if (queryCode) setCode(normalizeCode(queryCode));
     return () => request.current?.abort();
@@ -105,9 +110,10 @@ export default function PediaTrackPage() {
       if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Pesanan tidak ditemukan. Periksa kode dan kontak checkout.");
       if (data.order?.code !== cleanCode) throw new Error("Data pesanan belum dapat dimuat. Silakan coba lagi.");
       if (controller.signal.aborted) return;
-      const next = [{ code: cleanCode, contact: cleanContact }, ...recent.filter((entry) => entry.code !== cleanCode)].slice(0, 5);
+      const next = [{ code: cleanCode, contact: cleanContact, savedAt:Date.now() }, ...recent.filter((entry) => entry.code !== cleanCode)].slice(0, 5);
       setRecent(next);
       persist(RECENT_KEY, next);
+      rememberPediaContact(cleanCode, cleanContact);
       router.push("/pedia/pesanan/" + encodeURIComponent(cleanCode));
     } catch (cause) {
       if (!controller.signal.aborted) setError(cause instanceof Error && !(cause instanceof TypeError) ? cause.message : "Koneksi bermasalah. Periksa internet lalu coba lagi.");

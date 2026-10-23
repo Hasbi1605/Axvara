@@ -49,7 +49,7 @@ it.each(['in_progress','partial','needs_check','completed'])('shows server state
  expect(screen.queryByAltText('QRIS pembayaran')).toBeNull();
  expect(screen.queryByText(/Simulasikan pembayaran/)).toBeNull();
  if(status==='in_progress')expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('45');
- if(status==='partial')expect(screen.getByText('PDK-TEST-TEST')).toBeTruthy();
+ if(status==='partial'){expect(screen.queryByText('PDK-TEST-TEST')).toBeNull();expect(screen.getByRole('link',{name:'Hubungi admin'}).getAttribute('href')).toContain(order.code);}
  if(status==='needs_check')expect(screen.getByText(/Tidak perlu order ulang/)).toBeTruthy();
  if(status==='completed')expect(screen.getByRole('link',{name:'Pesan lagi'}).getAttribute('href')).toBe('/pedia/o/followers-instagram');
 });

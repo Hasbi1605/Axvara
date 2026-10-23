@@ -138,7 +138,7 @@ describe("poll + kredit AC-13/14", () => {
     const row=await db.queryFirst("SELECT status,(julianday(lease_until)-julianday('now'))*86400 AS wait FROM pedia_order_items WHERE order_code='AXP-T1'");
     expect(row?.status).toBe("submitted");expect(Number(row?.wait)).toBeGreaterThan(298);
   });
-  it("AC-13: partial remains 40/100 total 10rb → kredit 4rb tepat sekali", async () => {
+  it("partial preserves supplier count and creates one manual follow-up without credit", async () => {
     const db = await seedPaidItem({ status: "submitted", supplier_order_id: "SUP-9" });
     const { processPediaPaidOrders } = await import("@/lib/pedia/dispatch");
     const caller = async () => ({
@@ -148,26 +148,17 @@ describe("poll + kredit AC-13/14", () => {
     await processPediaPaidOrders(caller); // poll diulang — kredit tetap sekali
     const item = await db.queryFirst(`SELECT status, refund_credit_code FROM pedia_order_items WHERE order_code='AXP-T1'`);
     expect(item?.status).toBe("partial");
-    expect(String(item?.refund_credit_code)).toMatch(/^PDK-/);
+    expect(item?.refund_credit_code).toBeNull();
     const credits = await db.queryAll(`SELECT * FROM pedia_credits WHERE source_order_code='AXP-T1'`);
-    expect(credits.length).toBe(1);
-    expect(Number(credits[0]?.remaining)).toBe(4000);
+    expect(credits).toHaveLength(0);
+    expect(await db.queryAll("SELECT state FROM pedia_followups WHERE order_code='AXP-T1'")).toEqual([{state:"open"}]);
   });
 
-  it("AC-14: konsumsi kredit atomik — dua request bersamaan, satu menang", async () => {
-    const { db: d1 } = createD1Fixture();
-    const db = createDatabaseAccess(d1);
+  it("credit issuance and redemption are retired without writes", async () => {
+    const db = await seedPaidItem();
     const { issuePediaCredit, consumePediaCredit } = await import("@/lib/pedia/credits");
-    const { code } = await issuePediaCredit(db, {
-      email: "t@t.com", amount: 10000,
-      sourceOrderCode: "SRC-1", sourceKind: "canceled",
-    });
-    const [a, b] = await Promise.all([
-      consumePediaCredit(db, code, "ORD-A", 10000),
-      consumePediaCredit(db, code, "ORD-B", 10000),
-    ]);
-    // Tepat satu pemenang memakai penuh; pecundang dapat 0 (bukan dobel).
-    expect(a.used + b.used).toBe(10000);
-    expect([a.used, b.used].sort()).toEqual([0, 10000]);
+    await expect(issuePediaCredit(db,{email:"t@t.com",amount:10000,sourceKind:"admin"})).rejects.toThrow("credits_retired");
+    await expect(consumePediaCredit(db,"PDK-TEST-TEST","AXP-T1",10000)).rejects.toThrow("credits_retired");
+    expect(await db.queryAll("SELECT * FROM pedia_credits")).toEqual([]);
   });
 });

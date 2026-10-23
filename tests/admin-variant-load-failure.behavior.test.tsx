@@ -5,7 +5,7 @@
 // mengira variannya terhapus — dan menyimpan dari keadaan itu mengirim
 // `variants: []` yang membuat server menonaktifkan seluruh varian produk.
 import { afterEach, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import AdminPage from "@/app/(shop)/admin/page";
 import { ToastProvider } from "@/components/ui/Toast";
 
@@ -40,11 +40,12 @@ it("gagal memuat varian memberi peringatan, bukan form kosong yang diam", async 
   fireEvent.click(screen.getAllByRole("button").find((n) => /^(box)?Produk$/.test(n.textContent?.trim() ?? ""))!);
   await act(async () => {});
 
+  await waitFor(() => expect(screen.getAllByRole("button").some((n) => (n.textContent ?? "").includes("Edit Produk & Varian"))).toBe(true));
   fireEvent.click(screen.getAllByRole("button").find((n) => (n.textContent ?? "").includes("Edit Produk & Varian"))!);
   await act(async () => {});
 
   // Editor terbuka, tetapi admin DIBERI TAHU bahwa varian belum termuat.
-  expect(document.getElementById("product-editor-title")?.textContent).toMatch(/Edit Produk/);
+  await waitFor(() => expect(document.getElementById("product-editor-title")?.textContent).toMatch(/Edit Produk/));
   const warning = screen.getByText(/jangan simpan sebelum varian tampil/i);
   expect(warning).toBeTruthy();
   expect(warning.textContent).toMatch(/Varian gagal dimuat/i);
@@ -78,11 +79,12 @@ it("varian nonaktif ikut termuat di editor sehingga bisa diaktifkan ulang", asyn
   fireEvent.click(screen.getAllByRole("button").find((n) => /^(box)?Produk$/.test(n.textContent?.trim() ?? ""))!);
   await act(async () => {});
 
+  await waitFor(() => expect(screen.getAllByRole("button").some((n) => (n.textContent ?? "").includes("Edit Produk & Varian"))).toBe(true));
   fireEvent.click(screen.getAllByRole("button").find((n) => (n.textContent ?? "").includes("Edit Produk & Varian"))!);
   await act(async () => {});
 
   // Kedua varian tampil di editor — termasuk yang nonaktif (toggle "Mati").
-  expect(document.getElementById("product-editor-title")?.textContent).toMatch(/Edit Produk/);
+  await waitFor(() => expect(document.getElementById("product-editor-title")?.textContent).toMatch(/Edit Produk/));
   expect(screen.queryByText(/jangan simpan sebelum varian tampil/i)).toBeNull();
   expect(screen.getByDisplayValue("Mati")).toBeTruthy();
 });

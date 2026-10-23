@@ -11,9 +11,9 @@ export default function PediaHelpPage() {
       ["Kapan mulai?", "Mulai dalam ±5–30 menit. Progres live di halaman pesanan."],
       ["QRIS kedaluwarsa?", "QRIS 15 menit. Order ulang bila habis waktu."],
     ]},
-    { title: "Garansi & kredit", items: [
+    { title: "Garansi & kendala pesanan", items: [
       ["Bagaimana garansi?", "Produk bergaransi bisa refill gratis dalam masa garansi via tombol di halaman pesanan."],
-      ["Apa itu Kode Kredit?", "Sisa dana partial/cancel jadi kode PDK-XXXX-XXXX, berlaku 180 hari untuk belanja Pedia. Bukan uang tunai."],
+      ["Pesanan selesai sebagian atau dibatalkan?", "Hubungi admin dengan kode pesanan untuk penyelesaian manual. Pedia tidak menyimpan saldo pembeli atau menerbitkan kredit. Kode kredit lama juga ditangani admin."],
     ]},
   ];
   return (
@@ -33,7 +33,7 @@ export default function PediaHelpPage() {
           </div>
         </section>
       ))}
-      <a href="https://wa.me/6282135277434?utm_source=pedia&utm_medium=help" className="mt-6 flex h-12 items-center justify-center rounded-[14px] bg-[#00E5FF] text-sm font-bold text-[#070a1e]">
+      <a href="/wa?pesan=Halo%20admin%2C%20saya%20perlu%20bantuan%20pesanan%20Pedia." className="mt-6 flex h-12 items-center justify-center rounded-[14px] bg-[#00E5FF] text-sm font-bold text-[#070a1e]">
         WA Admin
       </a>
     </div>

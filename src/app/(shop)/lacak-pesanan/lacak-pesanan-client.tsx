@@ -12,6 +12,7 @@ import { WrCredentialsPanel } from "@/components/storefront/WrCredentialsPanel";
 import { WarrantyClaimAccordion } from "@/components/storefront/WarrantyClaim";
 import { DeviceOrders } from "@/components/storefront/DeviceOrders";
 import { IosIcon } from "@/components/ui/IosIcon";
+import { parseExpiry } from "@/lib/expiry";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
 import { SLOW_MS, useLoadingStage } from "@/hooks/useLoadingStage";
 
@@ -37,6 +38,7 @@ type TrackedOrder = {
   qrisReissueAllowed: boolean;
   /** true bila detail akun WR sudah siap (dari /api/orders/lookup). */
   credentialsReady: boolean;
+  deliveryProgress?: { ready: number; total: number };
   /** true bila order milik pipeline supplier (WR/SK). */
   supplierOwned: boolean;
   /** true bila link supplier masih berjalan (belum terminal). */
@@ -45,7 +47,7 @@ type TrackedOrder = {
   fulfillmentStatus?: string;
 };
 
-type RecentEntry = { code: string; wa: string };
+type RecentEntry = { code: string; wa: string; savedAt?: number };
 
 const RECENT_KEY = "axvara-track-recent";
 const CODE_RE = /^AXV-\d{8}-[A-Z0-9]{8}$/;
@@ -66,7 +68,7 @@ function maskWaShort(wa: string): string {
 }
 
 function countdown(expiresAt: string, now: number): string {
-  const seconds = Math.max(0, Math.floor((Date.parse(expiresAt) - now) / 1000));
+  const seconds = Math.max(0, Math.floor(((parseExpiry(expiresAt) ?? 0) - now) / 1000));
   const minutes = Math.floor(seconds / 60);
   return `${String(minutes).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 }
@@ -82,7 +84,7 @@ function formatDateTime(raw?: string): string {
 function fromApi(value: Record<string, unknown>): TrackedOrder {
   let items: TrackedOrder["items"] = [];
   try {
-    const parsed = JSON.parse(String((value as { items?: unknown }).items ?? "[]"));
+    const parsed = Array.isArray(value.items) ? value.items : JSON.parse(String(value.items ?? "[]"));
     if (Array.isArray(parsed)) {
       items = parsed.map((entry) => {
         const row = entry as Record<string, unknown>;
@@ -104,6 +106,7 @@ function fromApi(value: Record<string, unknown>): TrackedOrder {
     expiresAt: value.expires_at ? String(value.expires_at) : undefined,
     qrisReissueAllowed: value.qris_reissue_allowed === true,
     credentialsReady: value.credentials_ready === true,
+    deliveryProgress: value.unique_units_progress as { ready: number; total: number } | undefined,
     supplierOwned: value.supplier_owned === true,
     supplierRunning: value.supplier_running === true,
     fulfillmentStatus: value.fulfillment_status ? String(value.fulfillment_status) : undefined,
@@ -139,19 +142,23 @@ export default function LacakPesananClient() {
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   const autoSubmitted = useRef(false);
   const lastQuery = useRef<{ code: string; wa: string } | null>(null);
+  const pollRequest = useRef(false);
+  const lookupController = useRef<AbortController | null>(null);
+  const lookupGeneration = useRef(0);
+  const nextPollAt = useRef(0);
   const resultRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     try {
       const raw = JSON.parse(localStorage.getItem(RECENT_KEY) || "[]");
       if (Array.isArray(raw)) {
-        setRecent(
-          raw
+        const entries = raw
             .filter((entry) => entry && typeof entry.code === "string" && typeof entry.wa === "string")
-            .map((entry) => ({ code: normalizeCode(entry.code), wa: String(entry.wa).trim() }))
-            .filter((entry) => CODE_RE.test(entry.code))
-            .slice(0, 5),
-        );
+            .map((entry) => ({ code: normalizeCode(entry.code), wa: String(entry.wa).trim(), savedAt: Number(entry.savedAt) || Date.now() }))
+            .filter((entry) => CODE_RE.test(entry.code) && Date.now() - entry.savedAt < 7 * 86_400_000)
+            .slice(0, 5);
+        setRecent(entries);
+        localStorage.setItem(RECENT_KEY, JSON.stringify(entries));
       }
     } catch {
       /* riwayat lokal opsional — abaikan bila korup */
@@ -160,7 +167,7 @@ export default function LacakPesananClient() {
 
   const saveRecent = useCallback((entry: RecentEntry) => {
     setRecent((prev) => {
-      const next = [entry, ...prev.filter((item) => item.code !== entry.code)].slice(0, 5);
+      const next = [{...entry,savedAt:Date.now()}, ...prev.filter((item) => item.code !== entry.code)].slice(0, 5);
       try {
         localStorage.setItem(RECENT_KEY, JSON.stringify(next));
       } catch {
@@ -183,6 +190,13 @@ export default function LacakPesananClient() {
   }, []);
 
   const lookup = useCallback(async (rawCode: string, rawWa: string, silent = false) => {
+    if (pollRequest.current && silent) return;
+    if (!silent) lookupController.current?.abort();
+    if (silent && (document.hidden || Date.now() < nextPollAt.current)) return;
+    pollRequest.current = true;
+    const generation = ++lookupGeneration.current;
+    const controller = new AbortController();
+    lookupController.current = controller;
     const cleanCode = normalizeCode(rawCode);
     const cleanWa = rawWa.trim();
     if (!silent) {
@@ -195,10 +209,13 @@ export default function LacakPesananClient() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: cleanCode, contact: cleanWa }),
-        cache: "no-store",
+        cache: "no-store", signal: controller.signal,
       }, 20_000);
       const body = await response.json().catch(() => ({}));
+      if (generation !== lookupGeneration.current || controller.signal.aborted) return;
+      if (response.status === 429) nextPollAt.current = Date.now() + Math.max(60, Number(response.headers.get("Retry-After")) || 60) * 1000;
       if (!response.ok) throw new Error(body.error || `Gagal melacak (${response.status})`);
+      nextPollAt.current = Date.now() + 5_000;
       const found = fromApi(body.order);
       setOrder(found);
       setUpdatedAt(new Date());
@@ -217,6 +234,7 @@ export default function LacakPesananClient() {
         });
       }
     } catch (lookupError) {
+      if (generation !== lookupGeneration.current || controller.signal.aborted) return;
       const message = lookupError instanceof Error ? lookupError.message : "Gagal melacak pesanan.";
       if (silent) {
         setPollError(message);
@@ -226,9 +244,14 @@ export default function LacakPesananClient() {
         lastQuery.current = null;
       }
     } finally {
-      if (!silent) setLoading(false);
+      if (generation === lookupGeneration.current) {
+        pollRequest.current = false;
+        if (!silent) setLoading(false);
+      }
     }
   }, [saveRecent]);
+
+  useEffect(() => () => { lookupController.current?.abort(); }, []);
 
   // Deep-link dari pesan WA/Telegram: ?code=AXV-...&wa=08... (atau &email=) langsung cek sekali.
   useEffect(() => {
@@ -248,18 +271,19 @@ export default function LacakPesananClient() {
   }, [searchParams, lookup]);
 
   const isPending = order?.status === "pending";
-  // Lunas tetapi kredensial supplier belum tampil: poll rapat (2 dtk) agar
-  // panel muncul detik yang sama seperti SK — server menarik status vendor
-  // di balik poll ini (gerbang 20 dtk). Berhenti sendiri begitu siap.
-  const awaitingSupplier = Boolean(order && order.status === "lunas" && !order.credentialsReady && order.supplierRunning);
+  const awaitingSupplier = Boolean(order && order.status === "lunas" && (
+    (!order.credentialsReady && order.supplierRunning) ||
+    (order.deliveryProgress && order.deliveryProgress.ready < order.deliveryProgress.total)
+  ));
   useEffect(() => {
-    if (!lastQuery.current) return;
-    if (!isPending && !awaitingSupplier) return;
-    const interval = setInterval(() => {
+    if (!lastQuery.current || (!isPending && !awaitingSupplier)) return;
+    const tick = () => {
       const query = lastQuery.current;
-      if (query) void lookup(query.code, query.wa, true);
-    }, awaitingSupplier ? 2_000 : 10_000);
-    return () => clearInterval(interval);
+      if (query && !document.hidden) void lookup(query.code, query.wa, true);
+    };
+    const interval = setInterval(tick, 5_000);
+    document.addEventListener("visibilitychange", tick);
+    return () => { clearInterval(interval); document.removeEventListener("visibilitychange", tick); };
   }, [isPending, awaitingSupplier, lookup]);
 
   useEffect(() => {
@@ -318,7 +342,7 @@ export default function LacakPesananClient() {
     }
   };
 
-  const isExpired = Boolean(order && (order.status === "kadaluarsa" || (order.status === "pending" && order.expiresAt && Date.parse(order.expiresAt) <= now)));
+  const isExpired = Boolean(order && (order.status === "kadaluarsa" || (order.status === "pending" && order.expiresAt && (parseExpiry(order.expiresAt) ?? 0) <= now)));
   const isPaid = order?.status === "lunas";
   const isCancelled = order?.status === "dibatalkan";
   // Lunas TAPI pengiriman gagal (2026-09-23). `/api/orders/lookup` sudah
@@ -528,7 +552,7 @@ export default function LacakPesananClient() {
             </div>
           )}
           {isPaid && order.credentialsReady && (
-            <WrCredentialsPanel key={order.code} code={order.code} prefillContact={wa} />
+            <WrCredentialsPanel deliveryProgress={order.deliveryProgress} key={order.code} code={order.code} prefillContact={wa} />
           )}
           {isPaid && !order.credentialsReady && order.supplierRunning && (
             <p className="mt-5 flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-left text-xs leading-6 text-white/60" role="status">

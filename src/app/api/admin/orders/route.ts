@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { queryAll, queryFirst } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
 import { ORDER_FACETS_SQL, orderFacets } from "@/lib/admin-order-facets";
+import { readPrivateFinancialSnapshot } from "@/lib/admin-report-cache";
 import { csvCell } from "@/lib/csv";
 
 export const runtime = "edge";
@@ -41,8 +42,10 @@ export async function GET(req: NextRequest) {
     conditions.push("LOWER(o.code || ' ' || COALESCE(o.customer_name,'') || ' ' || COALESCE(o.customer_wa,'') || ' ' || COALESCE(o.items,'')) LIKE ?");
     bindings.push(`%${query.toLowerCase()}%`);
   }
-  if (dateFrom) { conditions.push("date(o.created_at)>=date(?)"); bindings.push(dateFrom); }
-  if (dateTo) { conditions.push("date(o.created_at)<=date(?)"); bindings.push(dateTo); }
+  // Prefix tanggal UTC mencakup format ISO dan SQLite. Batas mentah
+  // mempertahankan peluang pemakaian indeks tanpa fungsi date() pada kolom.
+  if (dateFrom) { conditions.push("o.created_at>=?"); bindings.push(dateFrom); }
+  if (dateTo) { conditions.push("o.created_at<?"); bindings.push(addOneDay(dateTo)); }
   const where = conditions.length ? ` WHERE ${conditions.join(" AND ")}` : "";
 
   const select = `SELECT o.*, COALESCE(pt.payable_amount,o.subtotal) AS payment_amount,
@@ -67,6 +70,17 @@ export async function GET(req: NextRequest) {
   }
 
   const offset = (page - 1) * limit;
+  // Facet global (counts kanal/status, daftar metode) tidak ikut filter —
+  // tab kanal adalah pemilih — tetapi jangan memindai seluruh tabel orders
+  // tiap request daftar (temuan audit D1 reads). Cache privat terenkripsi
+  // ~60 detik mengikuti pola overview (auth/revocation tetap berjalan di
+  // requireAdmin sebelum ke sini; facet basi maksimal 60 dtk sama seperti
+  // status operasional overview).
+  const facetRowsPromise = readPrivateFinancialSnapshot(
+    "admin-order-facets-v1",
+    async () => ({ generatedAt: new Date().toISOString(), rows: await queryAll(ORDER_FACETS_SQL) }),
+    60_000,
+  ).then((snapshot) => snapshot.rows);
   const [rows, statsRow, facetRows] = await Promise.all([
     queryAll(`${select} LIMIT ? OFFSET ?`, ...bindings, limit, offset),
     // Kartu metrik WAJIB memakai `where` yang sama dengan daftarnya. Dulu
@@ -78,7 +92,7 @@ export async function GET(req: NextRequest) {
       SUM(CASE WHEN o.status='lunas' THEN 1 ELSE 0 END) AS paid,
       SUM(CASE WHEN o.status='lunas' THEN COALESCE(pt.payable_amount,o.subtotal) ELSE 0 END) AS revenue
       FROM orders o LEFT JOIN payment_transactions pt ON pt.order_code=o.code${where}`, ...bindings),
-    queryAll(ORDER_FACETS_SQL),
+    facetRowsPromise,
   ]);
   const total = Number(statsRow?.total ?? rows.length);
   // Status supplier per order (insiden 2026-10-10): order WR/SK yang tertahan
@@ -153,6 +167,13 @@ function normalizeOrder(row: Record<string, unknown>) {
 
 function validDate(value: string | null) {
   return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : "";
+}
+
+/** Batas atas eksklusif rentang tanggal: YYYY-MM-DD + 1 hari (kalender murni). */
+function addOneDay(date: string) {
+  const [y, m, d] = date.split("-").map(Number);
+  const next = new Date(Date.UTC(y, m - 1, d) + 86_400_000);
+  return next.toISOString().slice(0, 10);
 }
 
 function clampNumber(value: string | null, min: number, max: number, fallback: number) {

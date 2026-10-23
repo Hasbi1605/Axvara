@@ -1,5 +1,8 @@
 # Pedia: katalog dan checkout — 15 Oktober 2026
 
+> Revisi 24 Oktober 2026: bagian kredit/refund otomatis/deposit pada snapshot ini sudah digantikan oleh [Pedia tanpa saldo pembeli](manual-resolution-2026-10-24.md). Order baru QRIS penuh, kendala manual, arsip/retry order lama dipertahankan.
+
+
 Pembaruan 19 Oktober: konfigurator, perluasan tambahan dan kurasi admin mengikuti [spec terbaru](catalog-ux-2026-10-19.md). Bagian UI 16 Oktober di dokumen ini adalah snapshot historis; manifest awal 38/131 tetap dasar rilis 0066.
 
 Status: implementasi di working tree, diverifikasi lokal sebelum publikasi lewat push/CI. Dokumen ini menggantikan spesifikasi katalog/checkout 12 Oktober yang dijelaskan sebagai snapshot historis di dokumen induk. Tidak ada order supplier berbayar untuk pengujian.

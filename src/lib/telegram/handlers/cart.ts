@@ -172,7 +172,7 @@ export async function handleCartCheckout(
   // RR3-05: bila foto invoice order ini belum terkirim, kirim ulang foto
   // yang SAMA (redelivery/cron-proof, tanpa order kedua).
   const existingOrder = await queryFirst(
-    `SELECT code FROM orders WHERE telegram_chat_id=? AND status='pending' AND payment_status IN ('unpaid','pending')`,
+    `SELECT code FROM orders WHERE telegram_chat_id=? AND status='pending' AND payment_status IN ('unpaid','pending') AND (expires_at IS NULL OR julianday(expires_at)>julianday('now'))`,
     String(chatId),
   );
   if (existingOrder) {

@@ -1,5 +1,35 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Perbaikan audit — 24 Oktober 2026
+
+Implementasi; publikasi melalui CI. Pedia kini QRIS per order, tanpa saldo pembeli,
+penerbitan/penebusan kredit atau refund otomatis. Kendala partial/canceled ditangani
+owner di luar website; admin menyimpan catatan tindak lanjut, aktor dan waktu.
+Arsip lama tetap baca-saja dan retry order tersimpan mempertahankan nominal.
+[Kontrak transisi](docs/pedia/manual-resolution-2026-10-24.md) menggantikan seluruh
+ketentuan kredit/deposit Pedia pada snapshot terdahulu di README/dokumen lain.
+
+Kredensial memerlukan WA penuh/email/capability; detail Pedia memerlukan kontak
+checkout. Telegram mengklaim satu pending order aktif per chat secara atomik;
+webhook gagal-tertutup saat D1 gagal dan /batal mengakhiri input. Lacak mengikuti
+semua unit akun dengan polling berbudget/visibility/backoff. Checkout dan keranjang
+menjaga identitas varian serta stok efektif; filter admin dipagari respons terbaru.
+Migrasi0075, test regresi, patch dependensi dan verifikasi Pages/workerd ikut rilis.
+Tidak ada env/cron/proxy baru atau order supplier berbayar dalam verifikasi.
+
+
+
+Admin memuat section/editor berat saat dibuka dengan fallback Suspense; Ringkasan
+serta Pesanan tetap tersedia pada bundle awal. First Load JS /admin pada build
+lokal420kB→145kB; bukan bukti latensi produksi. Filter/paginasi OrdersManager dan
+rekonsiliasi mengabaikan respons generasi lama. Facet global memakai cache privat
+terenkripsi 60 detik (otorisasi selalu diperiksa), metrik daftar tetap mengikuti
+filter. Tanggal UTC memakai batas mentah setengah terbuka yang menerima format
+ISO/SQLite. PDP/cart memakai stok efektif unique dan memperbarui metadata saat
+repeat-add. Issue quote membawa variant_id/min_qty; perubahan harga serta baris
+ringkasan memakai identitas produk+varian. Pemulihan minimum direct-buy mengganti
+qty URL lalu meminta quote baru, tanpa membuat order atau invoice.
+
 ## Tautan komunitas — 23 Oktober 2026
 
 ✅ Diimplementasikan; publikasi melalui CI. Footer dan halaman link memakai
@@ -133,7 +163,7 @@ Katalog terkurasi berisi 38 jenis/131 mapping pada 16 platform, dengan 3 pilihan
 
 AXVARA adalah toko digital untuk akun, aplikasi, dan tools premium dengan kategori yang dikelola dari panel admin — checkout memakai **QRIS dinamis merchant GoPay/DANA sesuai provider aktif** tanpa payment gateway pihak ketiga, dan hosting Cloudflare Pages. Jalur manual (E-Wallet/Bank + upload bukti) ⏸️ **maintenance sejak 2026-09-17**: field tampil disabled + badge Maintenance di WEB, dihilangkan di WA/TELE, upload disembunyikan, backend menolak non-QRIS 503.
 
-**Live dev:** `http://localhost:3000` — Next 15.5.24
+**Live dev:** `http://localhost:3000` — Next 15.5.28
 
 **Produksi:** `https://axvara.tech` — zone dan HTTPS aktif. `www.axvara.tech` serta hostname bawaan `axvara.pages.dev` mengarah permanen ke apex.
 

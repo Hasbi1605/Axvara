@@ -135,7 +135,7 @@ async function indoService(type = "Default") {
   await createDatabaseAccess().execRun(`UPDATE pedia_tiers SET supplier='providersmm' WHERE id=?`,tierId);
 }
 async function order(code: string, supplier = "providersmm", attempts = 0, sid: string | null = null) {
-  await createDatabaseAccess().execRun(`INSERT INTO orders (code,customer_name,customer_wa,customer_email,items,subtotal,payment_method,status,order_kind) VALUES (?,'Fixture','628123456789','buyer@example.com','[]',5000,'qris','lunas','pedia')`, code);
+  await createDatabaseAccess().execRun(`INSERT INTO orders (code,customer_name,customer_wa,customer_email,items,subtotal,payment_method,status,payment_status,order_kind) VALUES (?,'Fixture','628123456789','buyer@example.com','[]',5000,'qris','lunas','paid','pedia')`, code);
   await createDatabaseAccess().execRun(`INSERT INTO pedia_order_items
     (order_code,product_id,tier_id,snapshot_json,target_raw,target_normalized,quantity,unit_price,total,supplier,supplier_service_id,supplier_rate_snapshot,status,submit_attempts,supplier_order_id)
     VALUES (?,?,?,'{"refill_days":30}','x','x',100,50,5000,?,86,30000,'needs_check',?,?)`, code, productId, tierId, supplier, attempts, sid);
@@ -292,7 +292,7 @@ it("mark_submitted preserves large decimal IDs as strings and rejects their exac
 it("ambiguous recovery cannot retry or issue credit despite confirmation", async () => {
   await order("AXP-AMB", "indosmm", 1);
   const { POST: act } = await import("@/app/api/admin/pedia/orders/[code]/route");
-  for (const action of ["resubmit", "cancel_credit"]) {
+  for (const action of ["resubmit", "cancel_manual"]) {
     const result = await act(req({ action, confirm: true, checked_supplier: true, accept_charge: true }), { params: Promise.resolve({ code: "AXP-AMB" }) });
     expect(result.status).toBe(409); expect(await result.json()).toMatchObject({ error: "reconcile_required" });
   }
@@ -309,16 +309,17 @@ it("safe pre-submit recovery requires both checks and paid status", async () => 
   expect(await createDatabaseAccess().queryFirst(`SELECT status,supplier FROM pedia_order_items WHERE order_code='AXP-SAFE'`)).toMatchObject({ status: "queued", supplier: "providersmm" });
 });
 
-it("credit cancellation rolls back credit and ledger if order update fails", async () => {
+it("manual cancellation atomically records follow-up without credits", async () => {
   await order("AXP-CREDIT");
   const { POST: act } = await import("@/app/api/admin/pedia/orders/[code]/route");
-  fixture.control.fail = (sql) => sql.includes("SET status='canceled'");
-  expect((await act(req({ action: "cancel_credit", confirm: true }), { params: Promise.resolve({ code: "AXP-CREDIT" }) })).status).toBe(500);
+  fixture.control.fail = (sql) => sql.includes("UPDATE pedia_order_items SET status=?");
+  expect((await act(req({ action: "cancel_manual", confirm: true }), { params: Promise.resolve({ code: "AXP-CREDIT" }) })).status).toBe(500);
   expect(await createDatabaseAccess().queryAll(`SELECT * FROM pedia_credits`)).toEqual([]);
   fixture.control.fail = null;
-  expect((await act(req({ action: "cancel_credit", confirm: true }), { params: Promise.resolve({ code: "AXP-CREDIT" }) })).status).toBe(200);
+  expect((await act(req({ action: "cancel_manual", confirm: true }), { params: Promise.resolve({ code: "AXP-CREDIT" }) })).status).toBe(200);
   expect(await createDatabaseAccess().queryFirst(`SELECT status FROM pedia_order_items WHERE order_code='AXP-CREDIT'`)).toMatchObject({ status: "canceled" });
-  expect((await createDatabaseAccess().queryAll(`SELECT * FROM pedia_credit_ledger`)).length).toBe(1);
+  expect((await createDatabaseAccess().queryAll(`SELECT * FROM pedia_credit_ledger`)).length).toBe(0);
+  expect(await createDatabaseAccess().queryFirst("SELECT state FROM pedia_followups WHERE order_code='AXP-CREDIT'")).toMatchObject({state:"open"});
 });
 
 it("partial settings saves return saved keys instead of full success", async () => {
@@ -364,4 +365,24 @@ it.each(['Canva Pro','Google Gemini','CapCut'])('rejects premium category %s on 
  const db=createDatabaseAccess();await db.execRun("UPDATE pedia_supplier_services SET category=? WHERE supplier='indosmm'",category);
  expect((await POST(req({kind:"tier",product_id:productId,tier:"hemat",supplier:"indosmm",supplier_service_id:86,price_group:"G3",markup_pct:20,min_profit_rp:1000}))).status).toBe(400);
  expect((await PUT(req({kind:"tier",id:tierId,is_active:1}))).status).toBe(400);
+});
+
+it("manual follow-up resolution requires a note, records the session actor once, and preserves paid facts",async()=>{
+  await order("AXP-HANDLED");
+  const db=createDatabaseAccess();await db.execRun("UPDATE pedia_order_items SET status='partial' WHERE order_code='AXP-HANDLED'");
+  await db.execRun("INSERT INTO pedia_followups(order_code,reason) VALUES('AXP-HANDLED','supplier_partial')");
+  const {POST:action}=await import("@/app/api/admin/pedia/orders/[code]/route");const ctx={params:Promise.resolve({code:"AXP-HANDLED"})};
+  expect((await action(req({action:"mark_handled",confirm:true}),ctx)).status).toBe(400);
+  expect((await action(req({action:"mark_handled",confirm:true,note:"Ditangani manual di luar website."}),ctx)).status).toBe(200);
+  expect(await db.queryFirst("SELECT state,note,handled_by FROM pedia_followups WHERE order_code='AXP-HANDLED'")).toEqual({state:"handled",note:"Ditangani manual di luar website.",handled_by:"admin@axvara.tech"});
+  expect((await action(req({action:"mark_handled",confirm:true,note:"Percobaan menimpa catatan sebelumnya."}),ctx)).status).toBe(409);
+  expect(await db.queryFirst("SELECT status,payment_status FROM orders WHERE code='AXP-HANDLED'")).toEqual({status:"lunas",payment_status:"paid"});
+  expect(await db.queryAll("SELECT * FROM pedia_credits")).toHaveLength(0);
+});
+
+it("retired credit actions reject before changing an order or issuing value",async()=>{
+  await order("AXP-RETIRED");const {POST:action}=await import("@/app/api/admin/pedia/orders/[code]/route");
+  const response=await action(req({action:"cancel_credit",confirm:true}),{params:Promise.resolve({code:"AXP-RETIRED"})});
+  expect(response.status).toBe(410);expect((await response.json()).error).toBe("credits_retired");
+  expect(await createDatabaseAccess().queryFirst("SELECT status FROM pedia_order_items WHERE order_code='AXP-RETIRED'")).toEqual({status:"needs_check"});
 });

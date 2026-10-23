@@ -100,7 +100,7 @@ export async function createAndSendCartInvoice(
     ).catch(() => null) as { buyer_email?: unknown } | null;
     const cartBuyerEmail = String(cartBuyerEmailRow?.buyer_email || "").trim() || null;
     try {
-      await createChannelOrderAtomic({
+      const created = await createChannelOrderAtomic({
         orderCode,
         lines: lines.map((line) => ({
           productId: line.productId,
@@ -124,6 +124,12 @@ export async function createAndSendCartInvoice(
           ? "reserved"
           : "not_required",
       });
+      if (created.isExisting) {
+        // The concurrent winner owns invoice creation and all compensation.
+        // A loser only links to that order, never uses its newly generated code.
+        await sendMessage({ chat_id: chatId, text: `Masih ada pesanan menunggu pembayaran: ${created.code}. Gunakan tagihan yang sama.`, parse_mode: "HTML", reply_markup: qrisInvoiceKeyboard(created.code) });
+        return;
+      }
     } catch (reservationError) {
       if (reservationError instanceof StockReservationError) {
         await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });

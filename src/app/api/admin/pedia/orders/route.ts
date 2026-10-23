@@ -25,12 +25,14 @@ export async function GET(request: NextRequest) {
   if (supplier) params.push(supplier);
   const rows = await db.queryAll(
     `SELECT i.*, p.name AS product_name, p.slug AS product_slug,
-            o.customer_wa, o.customer_email, o.payment_status, o.paid_at
+            o.customer_wa, o.customer_email, o.payment_status, o.paid_at,
+            f.state AS followup_state,f.reason AS followup_reason,f.note AS followup_note,f.handled_by,f.handled_at
        FROM pedia_order_items i
        JOIN pedia_products p ON p.id=i.product_id
        LEFT JOIN orders o ON o.code=i.order_code
+       LEFT JOIN pedia_followups f ON f.order_code=i.order_code
       ${where}
-      ORDER BY CASE i.status WHEN 'needs_check' THEN 0 WHEN 'queued' THEN 1
+      ORDER BY CASE WHEN f.state='open' THEN 0 ELSE 1 END, CASE i.status WHEN 'needs_check' THEN 0 WHEN 'queued' THEN 1
                WHEN 'submitting' THEN 2 ELSE 3 END, i.created_at DESC
       LIMIT 100`,
     ...params,

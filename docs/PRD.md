@@ -1,5 +1,24 @@
 # PRD — AXVARA
 
+## Perbaikan audit dan kebijakan Pedia — 24 Oktober 2026
+
+✅ Diimplementasikan; publikasi melalui CI. Pedia memakai QRIS per order tanpa
+saldo pembeli, kode kredit atau refund otomatis. Supplier partial/canceled
+membuka tindak lanjut manual admin; jumlah tak terkonfirmasi tidak dianggap nol.
+Riwayat lama dan nominal retry tetap dihormati. [Kebijakan lengkap](pedia/manual-resolution-2026-10-24.md)
+menggantikan aturan kredit/deposit pada versi Pedia terdahulu di dokumen ini.
+
+Pengambilan akun mewajibkan WA penuh/email checkout atau capability, dengan
+pembatasan kegagalan durable per order+client. Status Pedia memverifikasi kontak.
+Konfirmasi Telegram bersamaan menghasilkan satu pending order/invoice aktif per
+chat; kegagalan klaim update menghentikan handler, /batal hanya membatalkan input.
+Lacak mengikuti progres seluruh akun, satu request aktif, jeda lima detik,
+pause hidden dan backoff 429. Riwayat kontak lookup tersimpan maksimal tujuh hari.
+Checkout mempertahankan identitas produk+varian pada koreksi minimum; stok cart
+mengikuti stok efektif. Filter admin hanya menampilkan respons terbaru dan halaman
+URL dipertahankan; statistik/filter global boleh tertinggal singkat sesuai TTL cache.
+
+
 ## Tautan komunitas — 23 Oktober 2026
 
 ✅ Diimplementasikan; publikasi melalui CI. Footer dan halaman link memakai

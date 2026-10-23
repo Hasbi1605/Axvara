@@ -1,5 +1,8 @@
 # Pedia — IndoSMM untuk penjualan baru, 20 Oktober 2026
 
+> Revisi 24 Oktober 2026: bagian kredit/refund otomatis/deposit pada snapshot ini sudah digantikan oleh [Pedia tanpa saldo pembeli](manual-resolution-2026-10-24.md). Order baru QRIS penuh, kendala manual, arsip/retry order lama dipertahankan.
+
+
 Status: ✅ implementasi; publikasi melalui CI. Keputusan owner: IndoSMM menjadi satu-satunya supplier SMM untuk pembelian baru. Produk premium-tools supplier, termasuk seluruh kategori Canva, Gemini dan CapCut, dikecualikan dari rilis Pedia. Spesifikasi ini menggantikan kebijakan dua supplier aktif pada dokumen 19 Oktober; UI konfigurator jumlah-sebelum-layanan tetap.
 
 ## Kebijakan penjualan dan riwayat

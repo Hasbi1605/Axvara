@@ -120,7 +120,7 @@ it("failed toggle is visible and does not pretend status changed", async () => {
 
 it("tab navigation preserves other query parameters and responds to back and new props", async () => {
   const view = render(<PediaManager />);
-  fireEvent.click(screen.getByRole("button", { name: "Kredit" }));
+  fireEvent.click(screen.getByRole("button", { name: "Arsip lama" }));
   await screen.findByText("Belum ada kode kredit.");
   expect(window.location.search).toContain("tab=credits"); expect(window.location.search).toContain("keep=1");
   window.history.replaceState(null, "", "/admin?section=pedia&tab=orders"); fireEvent.popState(window);
@@ -158,15 +158,11 @@ it("settings failure remains visible and confirmation does not silently succeed"
   expect(screen.getByRole("dialog")).toBeTruthy();
 });
 
-it("manual credit has explicit confirmation and shows the returned code", async () => {
+it("historical credits are read-only and cannot be issued from admin", async () => {
   render(<PediaManager initialTab="credits" />); await screen.findByText("Belum ada kode kredit.");
-  fireEvent.change(screen.getByLabelText("Email penerima"), { target: { value: "buyer@example.com" } });
-  fireEvent.change(screen.getByLabelText("Jumlah kredit (Rp)"), { target: { value: "5000" } });
-  fireEvent.change(screen.getByLabelText("Alasan kredit"), { target: { value: "Kompensasi order" } });
-  fireEvent.submit(screen.getByRole("form", { name: "Kredit manual" })); expect(writes).toHaveLength(0);
-  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Terbitkan" }));
-  await screen.findByText("PDK-TEST-1234");
-  expect(writes[0].body).toEqual({ email: "buyer@example.com", amount: 5000, reason: "Kompensasi order" });
+  expect(screen.queryByRole("form", { name: "Kredit manual" })).toBeNull();
+  expect(screen.queryByRole("button", { name: /Terbitkan/ })).toBeNull();
+  expect(writes).toHaveLength(0);
 });
 
 it("resubmission requires both supplier checks and uses no native prompt or confirm", async () => {
@@ -314,9 +310,9 @@ it("ambiguous orders expose original snapshot and disable blind retry/credit", a
   render(<PediaManager initialTab="orders" />);
   const retry = await screen.findByRole("button", { name: "Kirim ulang" });
   expect((retry as HTMLButtonElement).disabled).toBe(true);
-  expect((screen.getByRole("button", { name: "Batalkan + kredit" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole("button", { name: "Batalkan & tindak lanjuti" }) as HTMLButtonElement).disabled).toBe(true);
   expect(screen.getByText(/Snapshot asal: IndoSMM/)).toBeTruthy();
-  expect(screen.getByText(/retry\/kredit diblokir/)).toBeTruthy();
+  expect(screen.getByText(/retry\/pembatalan diblokir/)).toBeTruthy();
   fireEvent.click(retry); expect(writes).toHaveLength(0);
 });
 

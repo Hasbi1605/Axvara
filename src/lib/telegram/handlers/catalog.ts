@@ -227,7 +227,7 @@ export async function handleVariantConfirm(chatId: number, messageId: number, va
   // + dua QRIS aktif. Varian yang sama tetap diprioritaskan agar kirim-ulang
   // invoice tidak berubah perilaku.
   const existingOrder = await queryFirst(
-    `SELECT code FROM orders WHERE telegram_chat_id=? AND status='pending' AND payment_status IN ('unpaid','pending')
+    `SELECT code FROM orders WHERE telegram_chat_id=? AND status='pending' AND payment_status IN ('unpaid','pending') AND (expires_at IS NULL OR julianday(expires_at)>julianday('now'))
      ORDER BY CASE WHEN variant_id=? THEN 0 ELSE 1 END, id DESC LIMIT 1`,
     String(chatId), variantId,
   );

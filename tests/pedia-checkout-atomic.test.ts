@@ -19,35 +19,35 @@ function seed() {
   vi.spyOn(qris,"createActiveQrisInvoice").mockImplementation(async(code,amount)=>({orderCode:code,requestedAmount:amount,payableAmount:amount+1,uniqueCode:1,qrisPayload:"test",qrisUrl:"/qr.png",expiresAt:"2099-01-01",isExisting:false}));
   return f;
 }
-async function token(creditUsed=500,target="https://www.instagram.com/buyer/") {
+async function token(creditUsed=0,target="https://www.instagram.com/buyer/") {
   return (await createPediaQuoteToken({product_id:1,tier_id:1,quantity:150,target_raw:target,target_normalized:target,unit_price:2500/150,total:2500,credit_code_hash:creditUsed ? "credit-hash" : null,credit_used:creditUsed,supplier:"indosmm",supplier_service_id:1,supplier_rate_snapshot:10000,refill_days:0,min_profit_rp:1000})).token;
 }
 const order=(t:string)=>POST(new Request("http://x/api/pedia/orders",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({quote_token:t,customer_wa:"081234567890",customer_email:"a@b.com"})}) as never);
 const left=(f:ReturnType<typeof seed>)=>Number(f.sql.prepare("SELECT remaining FROM pedia_credits WHERE id=1").get()?.remaining);
 
 describe("Pedia checkout money transaction",()=>{
- it("parallel retries of a free quantity create one job, one debit, one ledger",async()=>{
+ it("parallel retries of a free quantity create one job without any credit debit",async()=>{
   const f=seed(),t=await token();const results=await Promise.all([order(t),order(t)]);expect(results.map(r=>r.status).sort()).toEqual([200,201]);
-  expect(left(f)).toBe(9500);expect(f.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(1);expect(f.sql.prepare("SELECT COUNT(*) n FROM pedia_order_items").get()?.n).toBe(1);
-  expect(f.sql.prepare("SELECT delta FROM pedia_credit_ledger").get()?.delta).toBe(-500);
+  expect(left(f)).toBe(10000);expect(f.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(1);expect(f.sql.prepare("SELECT COUNT(*) n FROM pedia_order_items").get()?.n).toBe(1);
+  expect(f.sql.prepare("SELECT COUNT(*) n FROM pedia_credit_ledger").get()?.n).toBe(0);
  });
  it("rejected duplicate target never consumes another credit",async()=>{
-  const f=seed();expect((await order(await token())).status).toBe(201);const response=await order(await token());expect(response.status).toBe(409);expect((await response.json()).error).toBe("duplicate_active_order");expect(left(f)).toBe(9500);
+  const f=seed();expect((await order(await token())).status).toBe(201);const response=await order(await token());expect(response.status).toBe(409);expect((await response.json()).error).toBe("duplicate_active_order");expect(left(f)).toBe(10000);
  });
  it("job insertion failure rolls back order, debit and ledger",async()=>{
   const f=seed();f.control.fail=(q)=>q.includes("INSERT INTO pedia_order_items");expect((await order(await token())).status).toBe(503);expect(left(f)).toBe(10000);expect(f.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(0);expect(f.sql.prepare("SELECT COUNT(*) n FROM pedia_credit_ledger").get()?.n).toBe(0);
  });
  it("a spent credit requires review and cannot silently increase payable",async()=>{
-  const f=seed(),t=await token();f.sql.exec("UPDATE pedia_credits SET remaining=100");const r=await order(t);expect(r.status).toBe(409);expect((await r.json()).error).toBe("credit_changed");expect(left(f)).toBe(100);expect(f.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(0);
+  const f=seed(),t=await token(500);f.sql.exec("UPDATE pedia_credits SET remaining=100");const r=await order(t);expect(r.status).toBe(409);expect((await r.json()).error).toBe("credits_retired");expect(left(f)).toBe(100);expect(f.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(0);
  });
  it("failed QR creation is recoverable by the same quote with one debit",async()=>{
-  const f=seed(),t=await token();vi.mocked(qris.createActiveQrisInvoice).mockRejectedValueOnce(new Error("offline"));const fail=await order(t);expect(fail.status).toBe(503);const a=await fail.json();const retry=await order(t);expect(retry.status).toBe(200);expect((await retry.json()).code).toBe(a.code);expect(left(f)).toBe(9500);
+  const f=seed(),t=await token();vi.mocked(qris.createActiveQrisInvoice).mockRejectedValueOnce(new Error("offline"));const fail=await order(t);expect(fail.status).toBe(503);const a=await fail.json();const retry=await order(t);expect(retry.status).toBe(200);expect((await retry.json()).code).toBe(a.code);expect(left(f)).toBe(10000);
  });
- it("full credit settles payment and records the same atomic ledger",async()=>{
-  const f=seed();const r=await order(await token(2500));expect(r.status).toBe(201);expect((await r.json()).status).toBe("lunas");expect(left(f)).toBe(7500);expect(f.sql.prepare("SELECT payment_status FROM orders").get()?.payment_status).toBe("paid");expect(qris.createActiveQrisInvoice).not.toHaveBeenCalled();
+ it("old fully credited quote is rejected without new order, debit or invoice",async()=>{
+  const f=seed();const r=await order(await token(2500));expect(r.status).toBe(409);expect(left(f)).toBe(10000);expect(f.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(0);expect(qris.createActiveQrisInvoice).not.toHaveBeenCalled();
  });
  it("expiration returns reserved credit once and frees the target",async()=>{
-  const f=seed();const first=await order(await token());expect(first.status).toBe(201);f.sql.exec("UPDATE orders SET status='kadaluarsa',expires_at='2000-01-01'");
+  const f=seed();const first=await order(await token());expect(first.status).toBe(201);f.sql.exec("UPDATE orders SET status='kadaluarsa',expires_at='2000-01-01';UPDATE pedia_order_items SET credit_used=500;UPDATE pedia_credits SET remaining=9500;INSERT INTO pedia_credit_ledger(credit_id,order_code,delta) SELECT 1,code,-500 FROM orders");
   const {expirePediaCheckouts}=await import("@/lib/pedia/expire");const {createDatabaseAccess}=await import("@/lib/db-access");
   await expirePediaCheckouts(createDatabaseAccess(f.db));await expirePediaCheckouts(createDatabaseAccess(f.db));expect(left(f)).toBe(10000);
   expect(f.sql.prepare("SELECT COUNT(*) n FROM pedia_credit_ledger WHERE delta>0").get()?.n).toBe(1);expect(f.sql.prepare("SELECT status FROM pedia_order_items").get()?.status).toBe("expired");
@@ -58,7 +58,7 @@ describe("Pedia checkout money transaction",()=>{
   const f=seed();f.sql.exec("INSERT INTO products(id,slug,name,price,sold_count,is_active) VALUES(1,'market-product','Market product',1000,0,1)");f.sql.prepare("UPDATE pedia_supplier_services SET supplier=?").run(provider);f.sql.prepare("UPDATE pedia_tiers SET supplier=?,target_format='username',refill_days=30,refill_anchor='completed',public_name='Nama tersimpan',terms_md='Refill 30 hari sejak pesanan selesai' ").run(provider);
   const {POST:quote}=await import("@/app/api/pedia/quote/route");const response=await quote(new Request("http://x",{method:"POST",body:JSON.stringify({product_id:1,tier_id:1,quantity:150,target:"https://instagram.com/buyer"})}) as never);expect(response.status).toBe(200);
   const r=await order((await response.json()).quote_token);expect(r.status).toBe(201);const {code}=await r.json();
-  const {GET:status}=await import("@/app/api/pedia/orders/[code]/route");const get=()=>status(new Request("http://x") as never,{params:Promise.resolve({code})});
+  const {GET:status}=await import("@/app/api/pedia/orders/[code]/route");const get=()=>status(new Request("http://x",{headers:{"x-order-contact":"a@b.com"}}) as never,{params:Promise.resolve({code})});
   expect((await (await get()).json()).order.status).toBe("awaiting_payment");
   f.sql.prepare("INSERT INTO payment_transactions(order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,payable_amount,status,expires_at) VALUES(?,'dana','static',?,'fixture',2500,2501,'pending','2099-01-01')").run(code,code);
   const {transitionPendingPaymentToPaid}=await import("@/lib/db");expect(await transitionPendingPaymentToPaid(code)).toBe(true);expect(f.sql.prepare("SELECT sold_count FROM products WHERE id=1").get()?.sold_count).toBe(0);
@@ -73,16 +73,16 @@ describe("Pedia checkout money transaction",()=>{
    expect(refillResponse.status).toBe(200);expect(refillSpy.mock.calls[0][0]).toBe(provider);expect(f.sql.prepare("SELECT refill_status FROM pedia_order_items").get()?.refill_status).toBe('submitted');
   });
 
- it("automatic Pedia status polling reconciles KlikQRIS once per throttle window; manual wake stays immediate",async()=>{
+ it("automatic Pedia status polling reconciles KlikQRIS once per throttle window; manual wake shares the durable throttle",async()=>{
    const f=seed();const r=await order(await token());expect(r.status).toBe(201);const {code}=await r.json();
    f.sql.prepare("INSERT INTO payment_transactions(order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,payable_amount,status,expires_at) VALUES(?,'klikqris','inhouse',?,'123456789',2500,2501,'pending','2099-01-01')").run(code,code);
    const reconcile=vi.spyOn(klikqris,"reconcileKlikQrisPayment").mockResolvedValue("pending");
    const claim=vi.spyOn(klikqris,"claimKlikQrisPollReconcile");
    const {GET:status}=await import("@/app/api/pedia/orders/[code]/route");
-   const get=(wake=false)=>status(new Request(`http://x${wake?"?wake=1":""}`) as never,{params:Promise.resolve({code})});
+   const get=(wake=false)=>status(new Request(`http://x${wake?"?wake=1":""}`,{headers:{"x-order-contact":"a@b.com"}}) as never,{params:Promise.resolve({code})});
    expect((await (await get()).json()).order.status).toBe("awaiting_payment");expect(reconcile).toHaveBeenCalledTimes(1);
    await get();expect(reconcile).toHaveBeenCalledTimes(1);
-   await get(true);expect(reconcile).toHaveBeenCalledTimes(2);expect(claim).toHaveBeenCalledTimes(2);
+   await get(true);expect(reconcile).toHaveBeenCalledTimes(1);expect(claim).toHaveBeenCalledTimes(3);
  });
 
 });
@@ -90,7 +90,7 @@ describe("Pedia checkout money transaction",()=>{
 it("rejects an unreserved historical quote before tier reads, debit, ledger, or QRIS", async()=>{
  const f=seed();const t=(await createPediaQuoteToken({product_id:1,tier_id:1,quantity:150,target_raw:"x",target_normalized:"x",unit_price:2500/150,total:2500,credit_code_hash:"credit-hash",credit_used:500,supplier:"providersmm",supplier_service_id:1,supplier_rate_snapshot:10000})).token;
  f.control.fail=q=>q.includes("FROM pedia_tiers")||q.includes("FROM pedia_products");
- const response=await order(t);expect(response.status).toBe(409);expect(await response.json()).toMatchObject({error:"provider_retired"});
+ const response=await order(t);expect(response.status).toBe(409);expect(await response.json()).toMatchObject({error:"credits_retired"});
  expect(left(f)).toBe(10000);expect(f.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(0);expect(f.sql.prepare("SELECT COUNT(*) n FROM pedia_credit_ledger").get()?.n).toBe(0);expect(qris.createActiveQrisInvoice).not.toHaveBeenCalled();
 });
 it("reuses a persisted historical checkout after tier retirement without another debit",async()=>{
@@ -98,4 +98,15 @@ it("reuses a persisted historical checkout after tier retirement without another
  f.sql.prepare("INSERT INTO orders(code,quote_id,customer_name,customer_wa,customer_email,items,subtotal,payment_method,status,order_kind) VALUES('OLD',?,'','6281234567890','a@b.com','[]',2500,'qris','pending','pedia')").run(`pedia:${jti}`);
  f.sql.exec("INSERT INTO pedia_order_items(order_code,product_id,tier_id,snapshot_json,target_raw,target_normalized,quantity,unit_price,total,credit_used,supplier,supplier_service_id,supplier_rate_snapshot,status) VALUES('OLD',1,1,'{}','x','x',150,1,2500,500,'providersmm',1,10000,'awaiting_payment');UPDATE pedia_tiers SET is_active=0");
  const response=await order(t);expect(response.status).toBe(200);expect(await response.json()).toMatchObject({code:'OLD',reused:true});expect(left(f)).toBe(10000);expect(f.sql.prepare("SELECT COUNT(*) n FROM pedia_credit_ledger").get()?.n).toBe(0);
+});
+
+it("authenticated manual recovery of initializing Pedia shares a cooldown and reuses the existing invoice",async()=>{
+ const f=seed();const r=await order(await token());const {code}=await r.json();
+ f.sql.prepare("INSERT INTO payment_transactions(order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,status,expires_at) VALUES(?,'klikqris','inhouse',?,'fixture',2500,'initializing','2099-01-01')").run(code,code);
+ const recover=vi.spyOn(klikqris,'createKlikQrisInvoice').mockRejectedValue(new Error('still ambiguous'));
+ const {GET}=await import('@/app/api/pedia/orders/[code]/route');
+ const get=(contact?:string,wake=false)=>GET(new Request('http://fixture'+(wake?'?wake=1':''),{headers:contact?{'x-order-contact':contact}:{}}) as never,{params:Promise.resolve({code})});
+ expect((await get(undefined,true)).status).toBe(401);await get('a@b.com');expect(recover).not.toHaveBeenCalled();
+ await get('a@b.com',true);await get('a@b.com',true);expect(recover).toHaveBeenCalledTimes(1);expect(recover).toHaveBeenCalledWith(code,2500);
+ expect(f.sql.prepare('SELECT COUNT(*) n FROM orders').get()?.n).toBe(1);
 });

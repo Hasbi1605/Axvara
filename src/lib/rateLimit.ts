@@ -50,6 +50,8 @@ export const RATE_LIMITS = {
   "auth:login": 5,
   "newsletter:subscribe": 5,
   // PEDIA (2026-10-07, PEDIA-PRD §9.7): scope publik Pedia.
+  "pedia:status": 30,
+  "pedia:wake": 6,
   "pedia:quote": 30,
   "pedia:prices": 60,
   "pedia:orders": 10,

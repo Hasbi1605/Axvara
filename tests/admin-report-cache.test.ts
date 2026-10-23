@@ -81,3 +81,11 @@ it("production financial reports survive module/binding replacement without exte
     expect(fx.control.queries).toBe(queries + 1);
   } finally { fx.close(); }
 });
+
+it("allows a short private facet TTL without changing financial report defaults",async()=>{
+  const load=vi.fn(async()=>fresh());
+  await readPrivateFinancialSnapshot("order-facets:v1",load,60_000);
+  expect([...entries.values()][0].headers.get("cache-control")).toBe("max-age=60");
+  vi.advanceTimersByTime(59_000);await readPrivateFinancialSnapshot("order-facets:v1",load,60_000);expect(load).toHaveBeenCalledTimes(1);
+  vi.advanceTimersByTime(1000);await readPrivateFinancialSnapshot("order-facets:v1",load,60_000);expect(load).toHaveBeenCalledTimes(2);
+});

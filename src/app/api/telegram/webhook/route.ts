@@ -135,6 +135,7 @@ export async function POST(request: NextRequest) {
     if (msg.includes("UNIQUE")) {
       return NextResponse.json({ ok: true, status: "already_processing" });
     }
+    return NextResponse.json({ ok: false, error: "update_claim_unavailable" }, { status: 503, headers: { "Retry-After": "5" } });
   }
 
   // 6. Upsert telegram user + bind verified private chat (issue #5).

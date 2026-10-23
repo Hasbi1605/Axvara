@@ -37,7 +37,7 @@ type Tier = {
 };
 type Row = Record<string, unknown>;
 type Catalog = { products: Product[]; tiers: Tier[] };
-const TABS: [SubTab, string][] = [["products", "Produk"], ["curation", "Kurasi"], ["services", "Layanan Supplier"], ["orders", "Pesanan"], ["credits", "Kredit"], ["settings", "Pengaturan"]];
+const TABS: [SubTab, string][] = [["products", "Produk"], ["curation", "Kurasi"], ["services", "Layanan Supplier"], ["orders", "Pesanan"], ["credits", "Arsip lama"], ["settings", "Pengaturan"]];
 const TIER_ORDER = ["hemat", "standar", "premium"];
 const PLATFORMS = PEDIA_PLATFORM_CONFIG.map((p) => p.id);
 const STATUS: Record<string, string> = {
@@ -91,7 +91,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
       provider_retired: "Penjualan baru hanya memakai IndoSMM. ProviderSMM tersedia untuk riwayat pesanan.",
       premium_tool_excluded: "Tools premium tidak dimasukkan ke Pedia SMM.",
       supplier_service_pair_required: "Pilih supplier dan ID layanan bersama.",
-      reconcile_required: "Hasil pengiriman ambigu. Rekonsiliasi ID order di provider asal; jangan kirim ulang atau batalkan kredit secara buta.",
+      reconcile_required: "Hasil pengiriman ambigu. Rekonsiliasi ID order di provider asal; jangan kirim ulang atau membatalkan sebelum rekonsiliasi.",
       supplier_order_conflict: "ID order sudah terhubung ke pesanan lain pada provider ini.",
       sync_failed: "Sinkronisasi gagal dan mungkin tersimpan sebagian. Muat ulang data.",
     };
@@ -202,7 +202,7 @@ export function PediaManager({ initialTab }: { initialTab?: string }) {
     (!supplier || tiersFor(p.id).some((t) => t.supplier === supplier)) && (!platform || platform === p.platform) && (!status || (status === "Nonaktif" ? !p.is_active : status === availability(p, tiersFor(p.id)))) &&
     `${p.name} ${p.slug} ${p.platform} ${p.metric} ${tiersFor(p.id).map((t) => `${t.supplier}:${t.supplier_service_id}`).join(" ")}`.toLowerCase().includes(query.trim().toLowerCase()));
   return <div className="mt-5 min-w-0 space-y-4">
-    <header><h2 className="font-display text-xl font-semibold text-white">Pedia</h2><p className="mt-1 text-xs text-white/40">Kelola produk kurasi, layanan supplier, pesanan, dan kredit.</p></header>
+    <header><h2 className="font-display text-xl font-semibold text-white">Pedia</h2><p className="mt-1 text-xs text-white/40">Kelola produk kurasi, layanan supplier, pesanan, dan tindak lanjut manual.</p></header>
     <nav aria-label="Bagian Pedia" className="flex w-fit max-w-full flex-wrap gap-1 rounded-xl border border-white/10 bg-white/[0.04] p-1">
       {TABS.map(([id, label]) => <button key={id} aria-current={tab === id ? "page" : undefined} onClick={() => navigate(id)} className={`min-h-9 whitespace-nowrap rounded-lg px-4 text-xs font-semibold transition ${tab === id ? "bg-[#00E5FF] text-[#07101f]" : "text-white/55 hover:text-white"}`}>{label}</button>)}
     </nav>
@@ -444,12 +444,21 @@ function PediaOrdersPanel() {
           <td className={`whitespace-nowrap text-xs ${r.status === "needs_check" ? "text-amber-300" : r.status === "completed" ? "text-emerald-300" : "text-white/60"}`}>{STATUS[String(r.status)] ?? "Status tidak dikenal"}</td>
         </tr>
         <tr><td colSpan={5}><div className="space-y-2 text-xs">
+          {Boolean(r.followup_state) && <div className="rounded-xl border border-amber-400/25 p-3">
+            <p className="font-semibold text-amber-200">{r.followup_state === "open" ? "Perlu tindak lanjut" : "Selesai ditangani"}</p>
+            {r.followup_state === "handled" ? <p className="mt-2 whitespace-pre-wrap">{String(r.followup_note)} · {String(r.handled_by)} · {formatWibDateTime(String(r.handled_at))}</p> : <form className="mt-3 space-y-2" onSubmit={e => { e.preventDefault(); const f = new FormData(e.currentTarget); void panel.write(`/api/admin/pedia/orders/${encodeURIComponent(String(r.order_code))}`, { action: "mark_handled", note: String(f.get("note")), confirm: true }, "Tindak lanjut dicatat.", "POST"); }}>
+              <label className="block">Catatan penyelesaian di luar website<textarea name="note" required minLength={10} maxLength={1000} className={INPUT} /></label>
+              <button disabled={panel.busy} className={BUTTON}>Selesai ditangani</button>
+            </form>}
+            <p className="mt-2 text-white/50">{String(r.followup_reason).startsWith("historical_") ? "Riwayat lama — periksa bukti penyelesaian sebelumnya. " : ""}Catatan operasional; tidak mengubah status bayar atau memindahkan dana.</p>
+          </div>}
+
           <p className="break-words text-white/40">Snapshot asal: {PROVIDER_NAMES[r.supplier as PediaProvider] ?? "Supplier tidak valid"} / Layanan #{String(r.supplier_service_id)} / ID order {String(r.supplier_order_id ?? "Belum diketahui")}</p>
           <details><summary className="min-h-11 cursor-pointer py-3">Detail pesanan</summary><p>Mulai: {String(r.start_count ?? "-")} / Tersisa: {String(r.remains ?? "-")} / Biaya supplier: {r.supplier_charge == null ? "Belum tersedia" : formatRupiah(Number(r.supplier_charge))}</p><p>{formatWibDateTime(String(r.created_at ?? "")) ?? "-"}</p>{r.last_error ? <p className="mt-2 break-words text-red-300">Kendala: {String(r.last_error)}</p> : null}</details>
       {r.status === "needs_check" && <div className="space-y-3">
         <form aria-label={`Tandai sudah dibuat ${r.order_code}`} className="flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); setAction({ code: String(r.order_code), action: "mark_submitted", sid: String(new FormData(e.currentTarget).get("sid")) }); }}><Field label="ID order supplier"><input name="sid" required maxLength={60} className={INPUT} /></Field><button className={BUTTON} disabled={panel.busy}>Tandai sudah dibuat</button></form>
-        {r.can_resubmit !== true && <p className="text-xs text-amber-300">Pengiriman sudah dicoba atau hasil belum pasti. Rekonsiliasi pada provider asal dan tandai ID order; retry/kredit diblokir agar tidak terjadi tagihan ganda.</p>}
-        <div className="flex flex-wrap gap-2"><button disabled={panel.busy} className={BUTTON} onClick={async () => { const result = await panel.write(`/api/admin/pedia/orders/${encodeURIComponent(String(r.order_code))}`, { action: "check_balance" }, "Saldo diperiksa.", "POST"); if (result) panel.setSuccess(`Saldo ${PROVIDER_NAMES[r.supplier as PediaProvider]}: ${formatRupiah(Number((result.balance as Row)?.balance))}`); }}>Cek saldo supplier</button><button disabled={panel.busy || r.can_resubmit !== true} className={BUTTON} onClick={() => setAction({ code: String(r.order_code), action: "resubmit" })}>Kirim ulang</button><button disabled={panel.busy || r.can_resubmit !== true} className={`${BUTTON} text-red-300`} onClick={() => setAction({ code: String(r.order_code), action: "cancel_credit" })}>Batalkan + kredit</button></div>
+        {r.can_resubmit !== true && <p className="text-xs text-amber-300">Pengiriman sudah dicoba atau hasil belum pasti. Rekonsiliasi pada provider asal dan tandai ID order; retry/pembatalan diblokir agar tidak terjadi tagihan ganda.</p>}
+        <div className="flex flex-wrap gap-2"><button disabled={panel.busy} className={BUTTON} onClick={async () => { const result = await panel.write(`/api/admin/pedia/orders/${encodeURIComponent(String(r.order_code))}`, { action: "check_balance" }, "Saldo diperiksa.", "POST"); if (result) panel.setSuccess(`Saldo ${PROVIDER_NAMES[r.supplier as PediaProvider]}: ${formatRupiah(Number((result.balance as Row)?.balance))}`); }}>Cek saldo supplier</button><button disabled={panel.busy || r.can_resubmit !== true} className={BUTTON} onClick={() => setAction({ code: String(r.order_code), action: "resubmit" })}>Kirim ulang</button><button disabled={panel.busy || r.can_resubmit !== true} className={`${BUTTON} text-red-300`} onClick={() => setAction({ code: String(r.order_code), action: "cancel_manual" })}>Batalkan & tindak lanjuti</button></div>
       </div>}
         </div></td></tr>
       </Fragment>)}
@@ -458,16 +467,13 @@ function PediaOrdersPanel() {
       e.preventDefault(); const f = new FormData(e.currentTarget);
       if (action.action === "resubmit" && (!f.has("checked_supplier") || !f.has("accept_charge"))) return;
       void panel.write(`/api/admin/pedia/orders/${encodeURIComponent(action.code)}`, { action: action.action, supplier_order_id: action.sid, confirm: true, ...(action.action === "resubmit" ? { checked_supplier: true, accept_charge: true } : {}) }, "Tindakan pesanan tersimpan.", "POST").then((result) => { if (result) setAction(null); });
-    }}><p className="font-semibold text-white">Konfirmasi {action.code}</p><p className="text-sm text-white/65">{action.action === "resubmit" ? "Periksa dashboard supplier. Jangan kirim ulang pesanan yang sudah dibuat." : action.action === "cancel_credit" ? "Pesanan dibatalkan dan kredit penuh diterbitkan untuk pembeli." : `Tandai pesanan telah dibuat dengan ID ${action.sid}.`}</p>{action.action === "resubmit" && <><label className="flex min-h-11 items-center gap-2 text-sm text-white/80"><input name="checked_supplier" type="checkbox" required />Saya telah memastikan pesanan belum ada di supplier</label><label className="flex min-h-11 items-center gap-2 text-sm text-white/80"><input name="accept_charge" type="checkbox" required />Saya memahami risiko tagihan ganda</label></>}<div className="flex gap-2"><button disabled={panel.busy} className={PRIMARY}>Konfirmasi tindakan</button><button type="button" disabled={panel.busy} className={BUTTON} onClick={() => setAction(null)}>Batal</button></div></form>}
+    }}><p className="font-semibold text-white">Konfirmasi {action.code}</p><p className="text-sm text-white/65">{action.action === "resubmit" ? "Periksa dashboard supplier. Jangan kirim ulang pesanan yang sudah dibuat." : action.action === "cancel_manual" ? "Pesanan dibatalkan. Penyelesaian dengan pembeli dilakukan manual di luar website." : `Tandai pesanan telah dibuat dengan ID ${action.sid}.`}</p>{action.action === "resubmit" && <><label className="flex min-h-11 items-center gap-2 text-sm text-white/80"><input name="checked_supplier" type="checkbox" required />Saya telah memastikan pesanan belum ada di supplier</label><label className="flex min-h-11 items-center gap-2 text-sm text-white/80"><input name="accept_charge" type="checkbox" required />Saya memahami risiko tagihan ganda</label></>}<div className="flex gap-2"><button disabled={panel.busy} className={PRIMARY}>Konfirmasi tindakan</button><button type="button" disabled={panel.busy} className={BUTTON} onClick={() => setAction(null)}>Batal</button></div></form>}
   </Panel>;
 }
 
 function PediaCreditsPanel() {
   const panel = usePanel<{ rows: Row[] }>("/api/admin/pedia/credits", { rows: [] });
-  const [draft, setDraft] = useState<Row | null>(null), [code, setCode] = useState("");
-  return <Panel title="Kredit Pedia" description="Pantau sisa kredit atau terbitkan kredit manual dengan alasan yang jelas."><Feedback panel={panel} />
-    <details className="my-4 border-y border-white/10 py-3"><summary className="min-h-11 cursor-pointer py-3 text-sm text-white">Terbitkan kredit manual</summary><form aria-label="Kredit manual" className="space-y-3" onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); setDraft({ email: String(f.get("email")), amount: Number(f.get("amount")), reason: String(f.get("reason")) }); }}><fieldset disabled={panel.busy} className="grid gap-3 sm:grid-cols-2"><Field label="Email penerima"><input name="email" type="email" required maxLength={160} className={INPUT} /></Field><Field label="Jumlah kredit (Rp)"><input name="amount" type="number" required min={100} max={100000000} className={INPUT} /></Field><Field label="Alasan kredit"><textarea name="reason" required minLength={5} maxLength={300} className={INPUT} /></Field></fieldset><button className={PRIMARY} disabled={panel.busy}>Terbitkan kredit</button></form></details>
-    {code && <p role="status" className="mb-4 break-all text-sm text-amber-300">Kode kredit baru: <strong className="font-mono">{code}</strong>. Sampaikan kode ini kepada penerima.</p>}
+  return <Panel title="Arsip kredit lama" description="Penerbitan dan pemakaian kode sudah dihentikan. Riwayat dipertahankan untuk penyelesaian manual oleh owner, tanpa saldo pembeli di website."><Feedback panel={panel} />
     {!panel.loading && !panel.error && !panel.data.rows.length && <p className="text-sm text-white/65">Belum ada kode kredit.</p>}
     <DataTable title="Daftar kredit Pedia" columns={["Kode", "Penerima", "Sisa kredit", "Jumlah awal", "Sumber", "Berlaku sampai"]}>
       {panel.data.rows.map(r => <tr key={Number(r.id)}>
@@ -479,7 +485,6 @@ function PediaCreditsPanel() {
         <td className="whitespace-nowrap text-xs">{formatWibDateTime(String(r.expires_at)) ?? "-"}</td>
       </tr>)}
     </DataTable>
-    <ConfirmDialog open={!!draft} title="Terbitkan kredit manual?" description={draft ? `${formatRupiah(Number(draft.amount))} untuk ${draft.email}. Kredit manual tidak dapat dibatalkan dari panel ini.` : ""} confirmLabel="Terbitkan" variant="default" loading={panel.busy} onClose={() => { if (!panel.busy) setDraft(null); }} onConfirm={async () => { if (!draft) return; const result = await panel.write("/api/admin/pedia/credits", draft, "Kredit manual diterbitkan.", "POST"); if (result) { setCode(String(result.credit_code)); setDraft(null); } }} />
   </Panel>;
 }
 

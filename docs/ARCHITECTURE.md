@@ -1,5 +1,43 @@
 # ARCHITECTURE.md — AXVARA
 
+## Integritas audit dan Pedia tanpa wallet — 24 Oktober 2026
+
+✅ Diimplementasikan; publikasi melalui CI. [Kontrak Pedia terkini](pedia/manual-resolution-2026-10-24.md)
+menggantikan ketentuan kredit/deposit/refund otomatis pada bagian historis §16.10.
+Migrasi 0075 menambah `pedia_followups` (unik order, terminal+queue atomik, catatan
+admin/aktor/waktu, klaim notifikasi) dan `order_contact_attempts` (order+hash client,
+jendela 15 menit, 20 kegagalan). Tabel kredit/ledger lama dipertahankan sebagai
+arsip beku. Quote berkredit baru ditolak; retry terpersisten mempertahankan payable.
+GET status Pedia memerlukan `x-order-contact` dan private/no-store. Client menyimpan
+kontak tab 24 jam; riwayat lookup tujuh hari. Endpoint kredit lama POST 410.
+
+Telegram menambah guard pending chat sebagai anggota pertama batch commerce;
+loser menerima kode order pemenang tanpa invoice/job/kompensasi kedua. Predikat
+pending reusable mengecualikan deadline lewat. Klaim update non-UNIQUE error
+menghasilkan 503 sebelum routing. /batal membersihkan conversational state saja.
+
+GET /api/orders/[code] mendelegasikan kontrak kanonis /api/orders?code= agar flags,
+deadline dan progres unit sama. Lookup membawa unique_units_progress ke panel;
+polling lima detik, visibility pause, single-flight/generation dan Retry-After.
+Verifikasi kredensial WA penuh sama dengan lookup/cancel; capability tetap sah.
+Dependensi memakai patch kompatibel Next15.5.28/sharp0.35.5, Vitest4.1.12/Vite8.3.5,
+serta override transitif terarah (lihat package.json/lock), tanpa migrasi Tailwind
+atau adapter mayor. PostCSS aman juga terwakili pada lockfile, bukan hanya dedupe disk.
+
+
+
+Admin memuat section/editor berat saat dibuka dengan fallback Suspense; Ringkasan
+serta Pesanan tetap tersedia pada bundle awal. Build lokal menunjukkan First Load JS
+/admin turun dari420kB menjadi145kB (route258kB→31,8kB); ini ukuran
+build, bukan pengukuran latensi/biaya produksi. Filter/paginasi OrdersManager dan
+rekonsiliasi mengabaikan respons generasi lama. Facet global memakai cache privat
+terenkripsi 60 detik (otorisasi selalu diperiksa), metrik daftar tetap mengikuti
+filter. Tanggal UTC memakai batas mentah setengah terbuka yang menerima format
+ISO/SQLite. PDP/cart memakai stok efektif unique dan memperbarui metadata saat
+repeat-add. Issue quote membawa variant_id/min_qty; perubahan harga serta baris
+ringkasan memakai identitas produk+varian. Pemulihan minimum direct-buy mengganti
+qty URL lalu meminta quote baru, tanpa membuat order atau invoice.
+
 ## Pembelian beberapa kredensial unik — 23 Oktober 2026
 
 ✅ Diimplementasikan; publikasi melalui CI. Web dan Telegram mendukung total
@@ -2864,3 +2902,5 @@ bukan jaminan exactly-once atau mekanisme retry notifikasi pembeli.
 Tidak ada tabel, env Pages, kontrak proxy, jadwal cron, dispatch atau jalur uang
 baru. Tes menginjeksi error read/write/budget, dua cron paralel, dua provider,
 12 tick lima-menit saat DB terblokir lalu pulih, serta Telegram menolak.
+
+Indeks `idx_orders_telegram_pending_chat` pada migrasi0075 mempersempit guard/precheck ke chat terkait. EXPLAIN fixture berubah dari pencarian seluruh status pending menjadi pencarian chat+status+payment_status; ini bukti plan lokal, bukan angka penghematan produksi.

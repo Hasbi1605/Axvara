@@ -18,8 +18,10 @@ type Method = "qris" | "ewallet" | "bank";
 
 type QuotedItem = { product_id: number; variant_id?: number; name: string; price: number; qty: number; stock: number; image: string; queued_delivery?: boolean };
 type QuotePaymentMethod = { id: string; label: string; account_number: string; account_name: string; qris_url: string | null };
-type QuoteIssue = { product_id: number; type: string; message: string };
-type PriceChange = { product_id: number; name: string; previous_price: number; current_price: number; message: string };
+type QuoteIssue = { product_id?: number; slug?: string; variant_id?: number; min_qty?: number; type: string; message: string };
+type PriceChange = { product_id: number; variant_id?: number; name: string; previous_price: number; current_price: number; message: string };
+
+import { rowMatchesIssue } from "@/lib/checkout-line-identity";
 
 type DirectProduct = Product & {
   variantId?: number;
@@ -79,8 +81,23 @@ function CheckoutInner() {
           }
           const catRes = await catalogRequest;
           if (!catRes.ok) throw new Error("Pilihan varian gagal dimuat.");
-          const catData = await catRes.json() as { product?: { variants?: CatalogVariant[] } };
+          const catData = await catRes.json() as { product?: { id?: number; slug?: string; variants?: (CatalogVariant & { product_id?: number })[] } };
+          // Identitas varian diikat ke produk katalog (temuan audit: URL lama
+          // ?buy=slug-lama&variant=<id-produk-lain> memakai varian produk lain
+          // karena find() hanya mencocokkan id tanpa memastikan product_id).
+          const catSlug = String(catData.product?.slug ?? "");
+          const catProductId = Number(catData.product?.id ?? 0);
           const variant = (catData.product?.variants || []).find((v) => String(v.id) === buyVariantId);
+          const variantProductId = Number(variant?.product_id ?? 0);
+          if (catSlug && catSlug !== buySlug) {
+            throw new Error("Varian tidak cocok dengan produk. Pilih ulang dari halaman produk.");
+          }
+          if (variant && found.id && catProductId && String(found.id) !== String(catProductId)) {
+            throw new Error("Varian tidak cocok dengan produk. Pilih ulang dari halaman produk.");
+          }
+          if (variant && variantProductId && found.id && String(variantProductId) !== String(found.id)) {
+            throw new Error("Varian tidak cocok dengan produk. Pilih ulang dari halaman produk.");
+          }
           // Varian stok di bawah minimum (stock < min, stock !== -1) tidak
           // bisa dibeli dalam jumlah berapa pun — tolak di sini, bukan di
           // quote (paritas product-detail + QuickVariantModal + cart).
@@ -119,12 +136,6 @@ function CheckoutInner() {
     [isDirect, buyProduct, buyQty, cartItems],
   );
   const subtotal = items.reduce((a, b) => a + b.price * b.qty, 0);
-  // Beli Langsung kini membawa qty stepper PDP (?qty=), jadi quote
-  // below_minimum hanya untuk keranjang lama di bawah min — tawarkan
-  // penyesuaian inline ke min (ala Shopee: server authoritative, frontend
-  // menjelaskan penyesuaian), bukan dead-end "kembali belanja".
-  const directMinQty = isDirect && buyProduct ? Math.max(1, Number((buyProduct as { minQty?: number }).minQty ?? 1) || 1) : 1;
-
   // Maintenance sementara (2026-09-17): jalur manual E-Wallet/Bank
   // dinonaktifkan, QRIS saja. Field tetap tampil tapi disabled + badge
   // Maintenance di WEB; upload bukti disembunyikan. Backend (/api/orders)
@@ -225,18 +236,29 @@ function CheckoutInner() {
     [items],
   );
   const quoteKey = JSON.stringify(quoteRequestItems);
-  // Cart store (untuk penyesuaian inline min): Beli Langsung tidak pakai
-  // store, jadi penyesuaian di bawah hanya untuk mode keranjang.
+  // Keranjang diperbarui melalui store; beli langsung melalui qty URL.
   const setQty = useCart((s) => s.setQty);
-  // below_minimum hanya dari keranjang lama di bawah min: tawarkan naikkan
-  // ke min inline (qty + refetch quote), bukan dead-end.
+  // Pencocokan baris memakai helper modul rowMatchesIssue: variant_id bila
+  // ada (kunci utama), plus product_id-atau-slug bila tersedia — TANPA pernah
+  // mewajibkan slug yang hilang (issue product_id-only tanpa slug tetap pulih).
   const belowMinIssues = quoteIssues.filter((i) => i.type === "below_minimum");
   const adjustToMinimum = () => {
     for (const issue of belowMinIssues) {
-      const target = items.find((it) => Number(it.id) === Number(issue.product_id));
-      if (!target) continue;
-      const m = Math.floor(Number(issue.message.match(/minimal pembelian (\d+)/)?.[1] ?? 0));
-      if (m > target.qty) setQty(target.id, m, target.variantId);
+      const matches = items.filter((it) => rowMatchesIssue(it, issue));
+      if (matches.length !== 1) continue;
+      const target = matches[0];
+      const m = Math.max(1, Math.floor(Number(issue.min_qty ?? target.minQty ?? 1)));
+      if (m > target.qty) {
+        if (isDirect) {
+          // Beli Langsung tidak memakai store: ganti URL lalu navigasi ulang
+          // agar searchParams berubah dan quote refetch dari qty baru.
+          const url = new URL(window.location.href);
+          url.searchParams.set("qty", String(m));
+          router.replace(`${url.pathname}?${url.searchParams}`);
+        } else {
+          setQty(target.id, m, target.variantId);
+        }
+      }
     }
     setShowIssueDialog(false);
   };
@@ -272,8 +294,11 @@ function CheckoutInner() {
   const pmEwallet = quotedPaymentMethods.find((pm) => pm.id === "ewallet");
   const pmBanks = quotedPaymentMethods.filter((pm) => pm.id !== "qris" && pm.id !== "ewallet");
 
-  // Display items: prefer quoted (authoritative), fallback to cart snapshot
-  const displayItems = quotedItems.length > 0 ? quotedItems.map((qi) => ({ id: qi.product_id, name: qi.name, price: qi.price, qty: qi.qty, image: qi.image })) : items;
+  // Display items: prefer quoted (authoritative), fallback to cart snapshot.
+  // Key komposit produk+varian (temuan audit: dua varian produk sama memakai
+  // product_id yang sama sehingga React me-reuse baris dan qty tertukar).
+  const displayItems = quotedItems.length > 0 ? quotedItems.map((qi) => ({ id: qi.product_id, slug: "", variantId: qi.variant_id, name: qi.name, price: qi.price, qty: qi.qty, image: qi.image })) : items;
+  const rowKeyOf = (it: { id: unknown; slug?: unknown; variantId?: unknown }) => `${String(it.slug ?? "")}|${String(it.id)}|${String(it.variantId ?? "")}`;
   // Nama produk Made By Order (dari quote server, bukan
   // tebakan client) — dipakai untuk peringatan waktu sebelum bayar.
   const queuedNames = quotedItems.filter((qi) => qi.queued_delivery === true).map((qi) => qi.name);
@@ -594,7 +619,7 @@ function CheckoutInner() {
             ) : (
               <div className="space-y-3">
                 {displayItems.map((it) => (
-                  <div key={it.id} className="flex gap-3">
+                  <div key={rowKeyOf(it)} className="flex gap-3">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={it.image} alt={it.name} className="w-12 h-12 rounded-xl object-cover" />
                     <div className="flex-1 min-w-0">
@@ -710,7 +735,7 @@ function CheckoutInner() {
             <>
             <div className="mt-4 space-y-3">
               {displayItems.map((it) => (
-                <div key={it.id} className="flex gap-3">
+                <div key={rowKeyOf(it)} className="flex gap-3">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={it.image} alt={it.name} className="w-14 h-14 rounded-xl object-cover" />
                   <div className="flex-1 min-w-0">
@@ -752,22 +777,22 @@ function CheckoutInner() {
             <h3 id="quote-change-title" className="text-white font-semibold text-base">{belowMinIssues.length > 0 ? "Sesuaikan Jumlah Pembelian" : "Perubahan Harga / Stok"}</h3>
             <p className="text-sm text-white/60">{belowMinIssues.length > 0 ? "Produk ini punya minimal pembelian — naikkan jumlah ke batasnya untuk lanjut:" : "Beberapa item berubah sejak kamu menambahkannya:"}</p>
             <ul className="space-y-2">
-              {quoteIssues.map((issue, i) => (
-                <li key={i} className="text-sm text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2">{issue.message}</li>
+              {quoteIssues.map((issue) => (
+                <li key={`issue-${issue.type}-${issue.slug ?? issue.product_id ?? "?"}-${issue.variant_id ?? 0}`} className="text-sm text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2">{issue.message}</li>
               ))}
               {priceChanges.map((change) => (
-                <li key={change.product_id} className="text-sm text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2">
+                <li key={`price-${change.product_id}-${change.variant_id ?? 0}`} className="text-sm text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2">
                   {change.name}: {formatRupiah(change.previous_price)} → {formatRupiah(change.current_price)}
                 </li>
               ))}
             </ul>
             <div className="flex gap-3">
-              {belowMinIssues.length > 0 && !isDirect ? (
+              {belowMinIssues.length > 0 ? (
                 <button onClick={adjustToMinimum} className="flex-1 h-10 rounded-xl bg-[#00E5FF] text-[#080C1E] font-semibold text-sm">Sesuaikan ke minimum</button>
               ) : quoteIssues.length === 0 && priceChanges.length > 0 ? (
                 <button onClick={() => { setShowIssueDialog(false); setQuoteAccepted(true); }} className="flex-1 h-10 rounded-xl bg-[#00E5FF] text-[#080C1E] font-semibold text-sm">Setujui harga baru</button>
               ) : null}
-              <button onClick={() => { setShowIssueDialog(false); if (belowMinIssues.length === 0) router.push("/#katalog"); }} className="flex-1 h-10 rounded-xl border border-white/20 text-white/70 text-sm">{belowMinIssues.length > 0 && !isDirect ? "Ubah manual" : "Kembali belanja"}</button>
+              <button onClick={() => { setShowIssueDialog(false); if (isDirect || belowMinIssues.length === 0) router.push("/#katalog"); }} className="flex-1 h-10 rounded-xl border border-white/20 text-white/70 text-sm">{!isDirect && belowMinIssues.length > 0 ? "Ubah manual" : "Kembali belanja"}</button>
             </div>
           </div>
         </div>

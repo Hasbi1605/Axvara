@@ -326,7 +326,7 @@ export async function handleBuyConfirm(chatId: number, messageId: number, produc
   // `,` menutupnya karena `product_id` selalu diikuti field lain pada item
   // order; varian `}` disertakan agar item berfield-tunggal tetap terdeteksi.
   const existingOrder = await queryFirst(
-    `SELECT code FROM orders WHERE telegram_chat_id=? AND status='pending' AND payment_status IN ('unpaid','pending')
+    `SELECT code FROM orders WHERE telegram_chat_id=? AND status='pending' AND payment_status IN ('unpaid','pending') AND (expires_at IS NULL OR julianday(expires_at)>julianday('now'))
      AND (items LIKE ? OR items LIKE ?)`,
     String(chatId), `%"product_id":${productId},%`, `%"product_id":${productId}}%`,
   );

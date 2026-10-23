@@ -58,7 +58,7 @@ describe("Pedia tracking", () => {
     expect(localStorage.getItem("axp-track-recent")).toBeNull();
     await act(async () => { resolve(response({ order: { code: CODE } })); });
     expect(navigation.push).toHaveBeenCalledWith("/pedia/pesanan/" + CODE);
-    expect(JSON.parse(localStorage.getItem("axp-track-recent")!)).toEqual([{ code: CODE, contact: CONTACT }]);
+    expect(JSON.parse(localStorage.getItem("axp-track-recent")!)).toMatchObject([{ code: CODE, contact: CONTACT, savedAt: expect.any(Number) }]);
   });
 
   it("shows a lookup error, does not save it, and permits a retry", async () => {
@@ -108,7 +108,8 @@ describe("Pedia tracking", () => {
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual(entries[1]);
     const stored = JSON.parse(localStorage.getItem("axp-track-recent")!);
     expect(stored).toHaveLength(5);
-    expect(stored[0]).toEqual(entries[1]);
+    expect(stored[0]).toMatchObject(entries[1]);
+    expect(stored[0].savedAt).toEqual(expect.any(Number));
   });
 
   it("keeps device orders collapsed, sanitizes links, and can hide an entry", () => {

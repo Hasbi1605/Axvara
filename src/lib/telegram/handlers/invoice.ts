@@ -141,7 +141,7 @@ export async function handlePayWithQris(
   // `variant_id=?` didahulukan agar perilaku kirim-ulang invoice untuk varian
   // yang SAMA tidak bergeser.
   const existingOrder = await queryFirst(
-    `SELECT code FROM orders WHERE telegram_chat_id=? AND status='pending' AND payment_status IN ('unpaid','pending')
+    `SELECT code FROM orders WHERE telegram_chat_id=? AND status='pending' AND payment_status IN ('unpaid','pending') AND (expires_at IS NULL OR julianday(expires_at)>julianday('now'))
      ORDER BY CASE WHEN variant_id=? THEN 0 ELSE 1 END, id DESC LIMIT 1`,
     String(chatId), variantId,
   );
@@ -234,7 +234,7 @@ export async function createAndSendVariantInvoice(
         String(from.id),
       ).catch(() => null) as { buyer_email?: unknown } | null;
       const buyerEmail = String(buyerEmailRow?.buyer_email || "").trim() || null;
-      await createChannelOrderAtomic({
+      const created = await createChannelOrderAtomic({
         orderCode,
         lines: [{
           productId,
@@ -256,6 +256,12 @@ export async function createAndSendVariantInvoice(
         paymentAccount: "DANA Business",
         fulfillmentStatus: uniqueFulfillment ? "reserved" : "not_required",
       });
+      if (created.isExisting) {
+        // The concurrent winner owns invoice creation and all compensation.
+        // A loser only links to that order, never uses its newly generated code.
+        await sendMessage({ chat_id: chatId, text: `Masih ada pesanan menunggu pembayaran: ${created.code}. Gunakan tagihan yang sama.`, parse_mode: "HTML", reply_markup: qrisInvoiceKeyboard(created.code) });
+        return;
+      }
     } catch (reservationError) {
       // Guard gagal = stok/inventory habis saat commit. Batch dibatalkan
       // seluruhnya, jadi tidak ada yang perlu di-rollback manual.

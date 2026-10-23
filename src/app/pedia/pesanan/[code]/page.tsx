@@ -1,8 +1,9 @@
 // src/app/pedia/pesanan/[code]/page.tsx — Status pesanan (PD-12, DESIGN §6.4).
-// Panel QRIS + timeline vertikal, progress server, refill dan kredit historis.
+// Panel QRIS, timeline/progres server, refill dan penyelesaian manual.
 "use client";
 export const runtime = "edge";
 
+import { readPediaContact, rememberPediaContact } from "@/lib/pedia/buyer-session";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { StatusPill } from "@/components/pedia/StatusWidgets";
@@ -17,14 +18,16 @@ import type { PediaServiceCopy } from "@/lib/pedia/service-copy";
 type Status = {
   service_copy?: PediaServiceCopy | null;
   product_slug?: string; code: string; product_name: string; tier_name: string; tier_note: string | null;
-  quantity: number; target: string; status: string; done: number; percent: number;
+  quantity: number; target: string; status: string; done: number | null; percent: number | null;
   eta_start: string | null; eta_finish: string | null; refill_days: number;
-  refill_eligible: boolean; refund_credit_code: string | null;
+  refill_eligible: boolean;
   qris: { payable_amount: number; image_url: string; expires_at: string; status: string } | null;
 };
 
 export default function PediaOrderStatusPage() {
   const { code } = useParams<{ code: string }>();
+  const [contact, setContact] = useState("");
+  const [needsContact, setNeedsContact] = useState(false);
   const [data, setData] = useState<Status | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refillMsg, setRefillMsg] = useState<string | null>(null);
@@ -39,10 +42,12 @@ export default function PediaOrderStatusPage() {
     request.current = { code, id, active: true };
     setLoading(true);
     try {
-      const res = await fetch(`/api/pedia/orders/${encodeURIComponent(code ?? "")}${manual ? "?wake=1" : ""}`, { cache: "no-store" });
+      const res = await fetch(`/api/pedia/orders/${encodeURIComponent(code ?? "")}${manual ? "?wake=1" : ""}`, { cache: "no-store", headers: { "x-order-contact": readPediaContact(code) } });
       const d = await res.json();
       if (request.current.id !== id) return;
+      if (res.status === 401 || res.status === 404) { setNeedsContact(true); throw new Error(d.error === "contact_required" ? "Masukkan kontak checkout untuk melihat pesanan." : d.error); }
       if (!res.ok) throw new Error(d.error ?? "Gagal memuat");
+      setNeedsContact(false);
       setData(d.order);
       setError(null);
     } catch (e) {
@@ -101,6 +106,13 @@ export default function PediaOrderStatusPage() {
     }
   };
 
+  if (needsContact && !data) return <form className="mx-auto max-w-md space-y-4 px-4 py-10" onSubmit={(e) => { e.preventDefault(); rememberPediaContact(code, contact.trim()); void load(); }}>
+    <h1 className="font-display text-2xl font-semibold text-white">Lihat pesanan</h1>
+    <label className="block text-sm text-white/75" htmlFor="pedia-order-contact">No. WA atau email checkout</label>
+    <input id="pedia-order-contact" value={contact} onChange={e => setContact(e.target.value)} required maxLength={254} autoComplete="off" className="w-full rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-white" />
+    {error && <p role="alert" className="text-sm text-white/60">{error}</p>}
+    <button disabled={loading} className="rounded-full bg-[#00E5FF] px-5 py-3 font-semibold text-[#070a1e]">{loading ? "Memeriksa…" : "Lihat pesanan"}</button>
+  </form>;
   if (error && !data) return <p className="pt-10 text-center text-sm text-red-300">{error}</p>;
   if (!data) return <PediaOrderSkeleton />;
 
@@ -123,7 +135,7 @@ export default function PediaOrderStatusPage() {
     { label: "Pesanan dibuat", done: true, active: pending },
     { label: "Pembayaran diterima", done: paid, active: paid && !processing && !terminal },
     { label: "Sedang diproses", done: processing, active: processing && !terminal },
-    { label: data.status === "partial" ? "Selesai sebagian" : data.status === "canceled" ? "Dibatalkan supplier" : "Selesai", done: terminal && !expired, active: false },
+    { label: data.status === "partial" ? "Selesai sebagian" : data.status === "canceled" ? "Dibatalkan" : "Selesai", done: terminal && !expired, active: false },
   ];
   return (
     <div className="mx-auto grid w-full max-w-[1000px] items-start gap-6 px-4 pb-24 pt-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_380px]">
@@ -144,23 +156,15 @@ export default function PediaOrderStatusPage() {
             <div className="min-w-0 flex-1"><p className={`text-sm font-semibold ${step.done ? "text-white" : "text-white/45"}`}>{step.label}</p>
               {i === 0 && <p className="mt-1 text-xs leading-5 text-white/50">Simpan kode ini untuk melacak pesananmu.</p>}
               {i === 1 && pending && <p className="mt-1 text-xs leading-5 text-white/50">Terdeteksi otomatis setelah QRIS dibayar.</p>}
-              {i === 2 && processing && <div className="mt-3"><div role="progressbar" aria-label="Progres pesanan" aria-valuenow={Math.round(percent)} aria-valuemin={0} aria-valuemax={100} className="h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-[#00E5FF] transition-[width] motion-reduce:transition-none" style={{ width: `${percent}%` }} /></div><p className="mt-2 font-mono text-xs text-white/55">{(complete ? data.quantity : data.done).toLocaleString("id-ID")} / {data.quantity.toLocaleString("id-ID")} masuk</p></div>}
+              {i === 2 && processing && <div className="mt-3"><div role="progressbar" aria-label="Progres pesanan" aria-valuenow={Math.round(percent)} aria-valuemin={0} aria-valuemax={100} className="h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-[#00E5FF] transition-[width] motion-reduce:transition-none" style={{ width: `${percent}%` }} /></div><p className="mt-2 font-mono text-xs text-white/55">{data.done === null && !complete ? "Jumlah terkirim belum dikonfirmasi supplier" : `${(complete ? data.quantity : data.done ?? 0).toLocaleString("id-ID")} / ${data.quantity.toLocaleString("id-ID")} masuk`}</p></div>}
               {i === 3 && complete && <p className="mt-1 text-xs leading-5 text-emerald-300">Pesanan selesai. Terima kasih sudah memesan!</p>}
             </div>
           </li>)}
         </ol>
-          {(data.status === "partial" || data.status === "canceled") && data.refund_credit_code && (
-            <div className="mt-6 rounded-[20px] border border-[#FFB800]/40 bg-[#FFB800]/5 p-4">
-              <p className="text-sm text-white/80">
-                {data.status === "partial"
-                  ? "Sebagian pesanan tidak terpenuhi. Sisa kami kembalikan sebagai Kode Kredit — bisa langsung dipakai belanja lagi."
-                  : "Pesanan dibatalkan supplier. Dana penuh kami kembalikan sebagai Kode Kredit."}
-              </p>
-              <p className="mt-2 flex items-center gap-2 font-mono text-base font-bold text-white">
-                {data.refund_credit_code}
-                <button onClick={() => copy(data.refund_credit_code!)} className="h-8 rounded-full bg-white/10 px-3 font-sans text-xs font-bold text-white">Salin</button>
-              </p>
-              <p className="mt-1 text-xs text-white/55">Berlaku 180 hari, hanya untuk belanja di Pedia.</p>
+          {(data.status === "partial" || data.status === "canceled") && (
+            <div className="mt-6 rounded-[20px] border border-[#FFB800]/40 bg-[#FFB800]/5 p-4 text-sm text-white/80">
+              <p>{data.status === "partial" ? "Pesanan selesai sebagian." : "Pesanan dibatalkan."} Hubungi admin dengan kode pesanan untuk penyelesaian manual.</p>
+              <a className="mt-3 inline-flex min-h-11 items-center rounded-full bg-white/10 px-4 font-semibold" href={`${SITE.webUrl}/wa?pesan=${encodeURIComponent(`Halo admin, mohon bantu pesanan Pedia ${data.code}.`)}`}>Hubungi admin</a>
             </div>
           )}
           {data.status === "needs_check" && (
@@ -203,7 +207,7 @@ export default function PediaOrderStatusPage() {
       </section>
       <aside className="order-1 min-w-0 lg:order-2 lg:sticky lg:top-24">
         <div className="ax-glass-card rounded-[24px] p-6 text-center">
-          {expired ? <><h2 className="font-display text-xl font-semibold text-white">Pesanan kedaluwarsa</h2><p className="mt-3 text-sm leading-6 text-white/60">Pembayaran tidak diterima sebelum batas waktu. Kredit yang terpakai dikembalikan ke kode asal setelah pemeriksaan otomatis.</p></> : pending ? <>
+          {expired ? <><h2 className="font-display text-xl font-semibold text-white">Pesanan kedaluwarsa</h2><p className="mt-3 text-sm leading-6 text-white/60">Pembayaran tidak diterima sebelum batas waktu. Jika pesanan lama memakai kode kredit, hubungi admin untuk penyelesaian manual.</p></> : pending ? <>
             <h2 className="font-mono text-[11px] uppercase tracking-[0.2em] text-white/60">Pembayaran QRIS</h2>
             {!data.qris ? <p className="mt-5 text-sm leading-6 text-white/70">Menunggu pembayaran. QRIS belum tersedia. Lanjutkan kembali dari halaman checkout dengan data yang sama, atau hubungi admin dengan kode pesanan ini.</p> : qrExpired ? <><h3 className="mt-5 text-lg font-semibold text-white">QRIS kedaluwarsa</h3><p className="mt-3 text-sm leading-6 text-white/60">Batas pembayaran telah lewat. Jangan membayar QRIS ini. Status pesanan akan diperbarui otomatis.</p></> : <>
               {/* eslint-disable-next-line @next/next/no-img-element */}

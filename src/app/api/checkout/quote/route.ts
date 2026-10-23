@@ -23,12 +23,16 @@ const schema = z.object({ items: z.array(itemSchema).min(1).max(20) });
 
 type QuoteIssue = {
   product_id?: number;
+  slug?: string;
+  variant_id?: number;
+  min_qty?: number;
   type: "missing" | "inactive" | "out_of_stock" | "insufficient_stock" | "invalid_quantity" | "below_minimum" | "variant_required";
   message: string;
 };
 
 type PriceChange = {
   product_id: number;
+  variant_id?: number;
   name: string;
   previous_price: number;
   current_price: number;
@@ -144,24 +148,25 @@ export async function POST(req: NextRequest) {
   // Sebelumnya 20 — varian min_qty > 20 mustahil lolos web.
   for (const item of aggregate.values()) {
     if (item.qty > 100) {
-      issues.push({ product_id: item.product_id, type: "invalid_quantity", message: "Maksimal 100 unit per produk." });
+      issues.push({ product_id: item.product_id, slug: item.slug, variant_id: item.variant_id, type: "invalid_quantity", message: "Maksimal 100 unit per produk." });
       continue;
     }
     const row = item.slug ? productBySlug.get(item.slug) : item.product_id ? productById.get(item.product_id) : undefined;
 
     if (!row) {
-      issues.push({ product_id: item.product_id, type: "missing", message: "Produk tidak ditemukan." });
+      issues.push({ product_id: item.product_id, slug: item.slug, variant_id: item.variant_id, type: "missing", message: "Produk tidak ditemukan." });
       continue;
     }
     const productId = Number(row.id);
     if (Number(row.is_active) === 0) {
-      issues.push({ product_id: productId, type: "inactive", message: `${row.name} sedang nonaktif.` });
+      issues.push({ product_id: productId, slug: item.slug, variant_id: item.variant_id, type: "inactive", message: `${row.name} sedang nonaktif.` });
       continue;
     }
 
     if (variantsRequired && !item.variant_id) {
       issues.push({
         product_id: productId,
+        slug: item.slug,
         type: "variant_required",
         message: `Pilih varian ${row.name} dari halaman detail produk.`,
       });
@@ -176,11 +181,11 @@ export async function POST(req: NextRequest) {
     if (item.variant_id) {
       const variantRow = variantById.get(item.variant_id);
       if (!variantRow || Number(variantRow.product_id) !== productId) {
-        issues.push({ product_id: productId, type: "missing", message: `Varian tidak ditemukan untuk ${row.name}.` });
+        issues.push({ product_id: productId, slug: item.slug, variant_id: item.variant_id, type: "missing", message: `Varian tidak ditemukan untuk ${row.name}.` });
         continue;
       }
       if (Number(variantRow.is_active) === 0) {
-        issues.push({ product_id: productId, type: "inactive", message: `${row.name} — ${variantRow.label} sedang nonaktif.` });
+        issues.push({ product_id: productId, slug: item.slug, variant_id: item.variant_id, type: "inactive", message: `${row.name} — ${variantRow.label} sedang nonaktif.` });
         continue;
       }
       effectivePrice = Number(variantRow.price);
@@ -214,18 +219,18 @@ export async function POST(req: NextRequest) {
       if (String(variantRow.fulfillment_mode) === "unique") {
         uniqueUnits += item.qty;
         if (uniqueUnits > MAX_UNIQUE_UNITS_PER_ORDER) {
-          issues.push({ product_id: productId, type: "invalid_quantity", message: `Maksimal ${MAX_UNIQUE_UNITS_PER_ORDER} akun stok unik per pesanan, termasuk varian lainnya.` });
+          issues.push({ product_id: productId, slug: item.slug, variant_id: item.variant_id, type: "invalid_quantity", message: `Maksimal ${MAX_UNIQUE_UNITS_PER_ORDER} akun stok unik per pesanan, termasuk varian lainnya.` });
           continue;
         }
       }
     }
 
     if (effectiveStock !== -1 && effectiveStock <= 0) {
-      issues.push({ product_id: productId, type: "out_of_stock", message: `${displayName} stok habis.` });
+      issues.push({ product_id: productId, slug: item.slug, variant_id: item.variant_id, type: "out_of_stock", message: `${displayName} stok habis.` });
       continue;
     }
     if (effectiveStock !== -1 && item.qty > effectiveStock) {
-      issues.push({ product_id: productId, type: "insufficient_stock", message: `${displayName} stok tersisa ${effectiveStock} (diminta ${item.qty}).` });
+      issues.push({ product_id: productId, slug: item.slug, variant_id: item.variant_id, type: "insufficient_stock", message: `${displayName} stok tersisa ${effectiveStock} (diminta ${item.qty}).` });
       continue;
     }
     // Minimum pembelian per varian (migrasi 0034, generik — GSuite min 50).
@@ -234,7 +239,7 @@ export async function POST(req: NextRequest) {
     if (item.variant_id) {
       const minQty = minQtyOf(item.variant_id);
       if (minQty > 1 && item.qty < minQty) {
-        issues.push({ product_id: productId, type: "below_minimum", message: `${displayName} minimal pembelian ${minQty} (kamu pilih ${item.qty}).` });
+        issues.push({ product_id: productId, slug: item.slug, variant_id: item.variant_id, min_qty: minQty, type: "below_minimum", message: `${displayName} minimal pembelian ${minQty} (kamu pilih ${item.qty}).` });
         continue;
       }
     }
@@ -242,6 +247,7 @@ export async function POST(req: NextRequest) {
     if (item.expected_price != null && item.expected_price !== effectivePrice) {
       changes.push({
         product_id: productId,
+        variant_id: item.variant_id,
         name: displayName,
         previous_price: item.expected_price,
         current_price: effectivePrice,

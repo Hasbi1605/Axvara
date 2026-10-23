@@ -53,7 +53,7 @@ const LABELS: Record<string, string> = {
   in_progress: "Berjalan",
   completed: "Selesai",
   partial: "Selesai sebagian",
-  canceled: "Dibatalkan supplier",
+  canceled: "Dibatalkan",
   needs_check: "Sedang kami cek",
   expired: "Kedaluwarsa",
 };

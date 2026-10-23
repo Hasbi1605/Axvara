@@ -39,7 +39,8 @@ describe("Issue #14 — proteksi trafik aktual, bukan klaim", () => {
     expect(read("src/app/api/proof/upload/route.ts")).toContain("checkRateLimit");
     expect(read("src/app/api/upload/route.ts")).toContain("checkRateLimit");
     expect(read("src/app/api/auth/login/route.ts")).toContain("checkRateLimit");
-    expect(read("src/app/api/orders/[code]/route.ts")).toContain("checkRateLimit");
+    expect(read("src/app/api/orders/[code]/route.ts")).toContain("GET as getOrder");
+    expect(read("src/app/api/orders/route.ts")).toContain("checkRateLimit");
     // Tidak ada lagi salinan Map lokal per-route untuk 4 endpoint yang dimigrasi.
     for (const f of [
       "src/app/api/orders/route.ts",

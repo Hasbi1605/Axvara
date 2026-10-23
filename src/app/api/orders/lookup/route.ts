@@ -1,3 +1,4 @@
+import { readUniqueUnitProgress } from "@/lib/orders/unit-progress";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { queryFirst } from "@/lib/db";
@@ -51,7 +52,7 @@ export async function POST(req: NextRequest) {
 
   const row = (await queryFirst(
     `SELECT o.*, pt.payable_amount, pt.unique_code, pt.qris_url AS dynamic_qris_url,
-            pt.expires_at AS payment_expires_at, pt.status AS transaction_status
+            pt.expires_at AS payment_expires_at, pt.status AS transaction_status, pt.provider AS payment_provider
      FROM orders o LEFT JOIN payment_transactions pt ON pt.order_code=o.code
      WHERE o.code=?`,
     code,
@@ -147,11 +148,12 @@ export async function POST(req: NextRequest) {
       payment_status: row.payment_status ?? null,
       fulfillment_status: fulfillmentStatus,
       created_at: row.created_at,
-      expires_at: row.expires_at,
+      expires_at: row.payment_provider === "klikqris" && row.payment_expires_at ? row.payment_expires_at : row.expires_at,
+      unique_units_progress: await readUniqueUnitProgress(row),
       credentials_ready: credentialsReady,
       supplier_owned: supplierOwned,
       supplier_running: supplierRunning,
-      qris_reissue_allowed: row.status === "pending" && row.sales_channel !== "whatsapp" && Number(row.qris_reissue_count || 0) < MAX_QRIS_REISSUES,
+      qris_reissue_allowed: row.payment_provider !== "klikqris" && row.status === "pending" && row.sales_channel !== "whatsapp" && Number(row.qris_reissue_count || 0) < MAX_QRIS_REISSUES,
       qris: row.dynamic_qris_url
         ? {
             payable_amount: row.payable_amount,
@@ -162,5 +164,5 @@ export async function POST(req: NextRequest) {
           }
         : null,
     },
-  });
+  }, { headers: { "Cache-Control": "private, no-store" } });
 }

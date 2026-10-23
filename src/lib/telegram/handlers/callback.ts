@@ -302,7 +302,7 @@ export async function handleCallback(data: string, chatId: number, messageId: nu
         /* guard best-effort — gagal cek = lanjut seperti biasa */
       }
       const dupOrder = await queryFirst(
-        `SELECT code FROM orders WHERE telegram_chat_id=? AND status='pending' AND payment_status IN ('unpaid','pending')`,
+        `SELECT code FROM orders WHERE telegram_chat_id=? AND status='pending' AND payment_status IN ('unpaid','pending') AND (expires_at IS NULL OR julianday(expires_at)>julianday('now'))`,
         String(chatId),
       );
       if (dupOrder) {

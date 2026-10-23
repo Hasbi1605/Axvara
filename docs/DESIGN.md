@@ -1,5 +1,23 @@
 # DESIGN.md — AXVARA Design System
 
+## Tindak lanjut Pedia dan pemulihan checkout — 24 Oktober 2026
+
+✅ Diimplementasikan; publikasi melalui CI. Tahap Kontak tanpa input kredit;
+status partial/canceled menampilkan pesan penyelesaian manual dan Hub WA berisi
+kode order. Jumlah terkirim unknown ditulis belum dikonfirmasi, bukan 0 terkirim.
+Tautan status Pedia yang belum terverifikasi menampilkan form WA/email checkout.
+Admin mengganti penerbitan kredit dengan Arsip lama baca-saja, serta catatan
+Perlu tindak lanjut/Selesai ditangani. Tetap memakai token Liquid Glass existing,
+label/fokus keyboard dan reduced motion. Ketentuan kredit pada snapshot desain
+Pedia sebelumnya digantikan [spec 24 Oktober](pedia/manual-resolution-2026-10-24.md).
+Lacak memperbarui progres seluruh akun tanpa menggulir ulang pengguna; pemulihan
+minimum checkout menyasar varian tepat dan menyediakan jalan kembali yang berfungsi.
+
+
+Admin menampilkan indikator Memuat untuk section yang diambil saat dibuka.
+Dialog minimum menyediakan Sesuaikan ke minimum untuk keranjang dan beli langsung;
+Ubah manual tetap di keranjang, Kembali belanja pada beli langsung menuju katalog.
+
 ## Status multi-akun dan kesegaran Pedia — 23 Oktober 2026
 
 ✅ Diimplementasikan; publikasi melalui CI. Panel kredensial mempertahankan

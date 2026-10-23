@@ -1,37 +1,56 @@
 "use client";
-import { useEffect, useState, useCallback, useRef } from "react";
+import { Suspense, lazy, useEffect, useState, useCallback, useRef } from "react";
 import type { ReportSelection } from "@/lib/revenue";
 import { formatWibDateTime } from "@/lib/utils";
 import { AdminShell, type AdminSection } from "@/components/admin/AdminShell";
-import { AgentIntegration } from "@/components/admin/AgentIntegration";
+import { Spinner } from "@/components/ui/Loading";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { ArticlesManager } from "@/components/admin/ArticlesManager";
-import { CategoryManager } from "@/components/admin/CategoryManager";
-import { BannerManager } from "@/components/admin/BannerManager";
-import { PaymentMethodsManager } from "@/components/admin/PaymentMethodsManager";
-import { NewsletterSubscribers } from "@/components/admin/NewsletterSubscribers";
-import BotAutomationManager from "@/components/admin/BotAutomationManager";
 import { AdminOverview, EMPTY_ADMIN_OVERVIEW, type AdminOverviewData } from "@/components/admin/AdminOverview";
 import { OrdersManager } from "@/components/admin/OrdersManager";
-import { StoreSettingsManager } from "@/components/admin/StoreSettingsManager";
 import { AdminAuthChecking, AdminLoginGate } from "@/components/admin/AdminLoginGate";
-import { ProductsSection } from "@/components/admin/sections/ProductsSection";
-import { WarungRebahanManager } from "@/components/admin/WarungRebahanManager";
-import { SekalipayManager } from "@/components/admin/SekalipayManager";
-import { SupplierPairsManager } from "@/components/admin/SupplierPairsManager";
-import { SupplierLinksManager } from "@/components/admin/SupplierLinksManager";
-import { PediaManager } from "@/components/admin/PediaManager";
-import { ProductEditorModal } from "@/components/admin/ProductEditorModal";
 import { useProductManager } from "@/components/admin/useProductManager";
 import { useAdminAuth } from "@/components/admin/useAdminAuth";
 import { SystemTabs, SYSTEM_TABS } from "@/components/admin/SystemTabs";
+
+// Section berat di-lazy agar bundle awal admin ringan (temuan audit: 15
+// section diimpor statis sekaligus). Ringkasan + Pesanan tetap statis karena
+// jalur utama; sisanya dimuat saat section dibuka dengan fallback spinner.
+function sectionFallback(label: string) {
+  return (
+    <div className="mt-4 flex min-h-48 items-center justify-center gap-3 text-sm text-white/45" role="status">
+      <Spinner size={20} /> Memuat {label}…
+    </div>
+  );
+}
+const CategoryManagerLazy = lazy(() => import("@/components/admin/CategoryManager").then((m) => ({ default: m.CategoryManager })));
+const PaymentMethodsManagerLazy = lazy(() => import("@/components/admin/PaymentMethodsManager").then((m) => ({ default: m.PaymentMethodsManager })));
+const WarungRebahanManagerLazy = lazy(() => import("@/components/admin/WarungRebahanManager").then((m) => ({ default: m.WarungRebahanManager })));
+const SekalipayManagerLazy = lazy(() => import("@/components/admin/SekalipayManager").then((m) => ({ default: m.SekalipayManager })));
+const SupplierPairsManagerLazy = lazy(() => import("@/components/admin/SupplierPairsManager").then((m) => ({ default: m.SupplierPairsManager })));
+const SupplierLinksManagerLazy = lazy(() => import("@/components/admin/SupplierLinksManager").then((m) => ({ default: m.SupplierLinksManager })));
+const PediaManagerLazy = lazy(() => import("@/components/admin/PediaManager").then((m) => ({ default: m.PediaManager })));
+const BotAutomationManagerLazy = lazy(() => import("@/components/admin/BotAutomationManager"));
+const ArticlesManagerLazy = lazy(() => import("@/components/admin/ArticlesManager").then((m) => ({ default: m.ArticlesManager })));
+const BannerManagerLazy = lazy(() => import("@/components/admin/BannerManager").then((m) => ({ default: m.BannerManager })));
+const NewsletterSubscribersLazy = lazy(() => import("@/components/admin/NewsletterSubscribers").then((m) => ({ default: m.NewsletterSubscribers })));
+const AgentIntegrationLazy = lazy(() => import("@/components/admin/AgentIntegration").then((m) => ({ default: m.AgentIntegration })));
+const StoreSettingsManagerLazy = lazy(() => import("@/components/admin/StoreSettingsManager").then((m) => ({ default: m.StoreSettingsManager })));
+const ProductsSectionLazy = lazy(() => import("@/components/admin/sections/ProductsSection").then((m) => ({ default: m.ProductsSection })));
+const ProductEditorModalLazy = lazy(() => import("@/components/admin/ProductEditorModal").then((m) => ({ default: m.ProductEditorModal })));
 
 const ADMIN_SECTIONS: AdminSection[] = ["summary","products","orders","categories","payments","warung","sekalipay","pairs","links","pedia","articles","banners","subscribers","bot","agent","settings"];
 
 export default function AdminPage() {
   const toast = useToast();
-  const [tab, setTab] = useState<AdminSection>("summary");
+  // Section awal dari URL (temuan audit: deep link ?section=orders selalu
+  // dibuka sebagai summary lalu menimpa URL — inisialisasi dari URL agar
+  // kartu Ringkasan/deep link langsung ke tujuan).
+  const [tab, setTab] = useState<AdminSection>(() => {
+    if (typeof window === "undefined") return "summary";
+    const section = new URLSearchParams(window.location.search).get("section") as AdminSection | null;
+    return section && ADMIN_SECTIONS.includes(section) ? section : "summary";
+  });
   const [overview, setOverview] = useState<AdminOverviewData>(EMPTY_ADMIN_OVERVIEW);
   const [overviewLoading, setOverviewLoading] = useState(true);
   const [overviewError, setOverviewError] = useState<string | null>(null);
@@ -136,24 +155,25 @@ export default function AdminPage() {
 
       {tab==="summary" && <AdminOverview data={overview} loading={overviewLoading} error={overviewError} onRetry={loadOverview} selection={reportSelection} onSelectionChange={changeReportSelection} />}
       {tab==="orders" && <OrdersManager onChanged={loadOverview} />}
-      {tab==="categories" && <CategoryManager />}
-      {tab==="payments" && <PaymentMethodsManager />}
-      {tab==="warung" && <WarungRebahanManager />}
-      {tab==="sekalipay" && <SekalipayManager />}
-      {tab==="pairs" && <SupplierPairsManager />}
-      {tab==="links" && <SupplierLinksManager />}
-      {tab==="pedia" && <PediaManager initialTab={new URLSearchParams(typeof window !== "undefined" ? window.location.search : "").get("tab") ?? undefined} />}
-      {tab==="bot" && <BotAutomationManager />}
+      {tab==="categories" && <Suspense fallback={sectionFallback("kategori")}>{<CategoryManagerLazy />}</Suspense>}
+      {tab==="payments" && <Suspense fallback={sectionFallback("pembayaran")}>{<PaymentMethodsManagerLazy />}</Suspense>}
+      {tab==="warung" && <Suspense fallback={sectionFallback("Warung Rebahan")}>{<WarungRebahanManagerLazy />}</Suspense>}
+      {tab==="sekalipay" && <Suspense fallback={sectionFallback("Sekalipay")}>{<SekalipayManagerLazy />}</Suspense>}
+      {tab==="pairs" && <Suspense fallback={sectionFallback("pasangan supplier")}>{<SupplierPairsManagerLazy />}</Suspense>}
+      {tab==="links" && <Suspense fallback={sectionFallback("tautan supplier")}>{<SupplierLinksManagerLazy />}</Suspense>}
+      {tab==="pedia" && <Suspense fallback={sectionFallback("Pedia")}>{<PediaManagerLazy initialTab={new URLSearchParams(typeof window !== "undefined" ? window.location.search : "").get("tab") ?? undefined} />}</Suspense>}
+      {tab==="bot" && <Suspense fallback={sectionFallback("otomasi bot")}>{<BotAutomationManagerLazy />}</Suspense>}
       {SYSTEM_TABS.some(([id])=>id===tab) && (
         <SystemTabs section={tab} onSection={navigateAdmin}>
-          {tab==="settings" && <StoreSettingsManager />}
-          {tab==="agent" && <AgentIntegration />}
-          {tab==="subscribers" && <NewsletterSubscribers />}
+          {tab==="settings" && <Suspense fallback={sectionFallback("pengaturan")}>{<StoreSettingsManagerLazy />}</Suspense>}
+          {tab==="agent" && <Suspense fallback={sectionFallback("integrasi agent")}>{<AgentIntegrationLazy />}</Suspense>}
+          {tab==="subscribers" && <Suspense fallback={sectionFallback("pelanggan email")}>{<NewsletterSubscribersLazy />}</Suspense>}
         </SystemTabs>
       )}
 
       {tab==="products" && (
-        <ProductsSection
+        <Suspense fallback={sectionFallback("produk")}>
+        <ProductsSectionLazy
           prods={pm.prods}
           paged={pm.paged}
           filtered={pm.filtered}
@@ -193,15 +213,17 @@ export default function AdminPage() {
           onJump={pm.jumpProduct}
           onSoldCount={pm.saveSoldCount}
         />
+        </Suspense>
       )}
 
-      {tab==="articles" && <ArticlesManager />}
+      {tab==="articles" && <Suspense fallback={sectionFallback("artikel")}>{<ArticlesManagerLazy />}</Suspense>}
 
-      {tab==="banners" && <BannerManager />}
+      {tab==="banners" && <Suspense fallback={sectionFallback("banner")}>{<BannerManagerLazy />}</Suspense>}
 
 
       {(pm.editing || pm.showNew) && (
-        <ProductEditorModal
+        <Suspense fallback={null}>
+        <ProductEditorModalLazy
           editing={Boolean(pm.editing)}
           editingId={pm.editing?.id}
           saving={pm.saving}
@@ -221,6 +243,7 @@ export default function AdminPage() {
           onUpload={pm.handleUpload}
           onSave={pm.save}
         />
+        </Suspense>
       )}
 
       <ConfirmDialog

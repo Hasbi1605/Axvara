@@ -1,14 +1,19 @@
 // GET /api/pedia/orders/[code] — Status publik (PD-12, §9.7).
-// Capability token (pola existing): ?token= capability saat order dibuat.
+// Full checkout contact in x-order-contact is required before any details or wake.
 // Tanpa data supplier mentah. Refill eligibility dihitung server.
 import { NextRequest, NextResponse } from "next/server";
 import { createDatabaseAccess } from "@/lib/db-access";
+import { buyerContactMatches } from "@/lib/order-contact";
+import { checkRateLimit } from "@/lib/rateLimit";
 import { readPediaServiceCopy } from "@/lib/pedia/service-copy";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ code: string }> }) {
+  if (!checkRateLimit(request, "pedia:status")) return NextResponse.json({ error: "Terlalu sering, coba lagi sebentar." }, { status: 429, headers: { "Retry-After": "60", "Cache-Control": "private, no-store" } });
+  const contact = request.headers.get("x-order-contact") || "";
+  if (!contact) return NextResponse.json({ error: "contact_required" }, { status: 401, headers: { "Cache-Control": "private, no-store" } });
   const { code } = await params;
   const clean = String(code || "").trim().toUpperCase();
   if (!/^AXP-\d{8}-[A-Z0-9]{8}$/.test(clean)) {
@@ -16,19 +21,28 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
   const db = createDatabaseAccess();
   const order = await db.queryFirst(`SELECT * FROM orders WHERE code=?`, clean).catch(() => null);
-  if (!order) return NextResponse.json({ error: "Pesanan tidak ditemukan" }, { status: 404 });
+  if (!order || !buyerContactMatches(contact, order)) return NextResponse.json({ error: "Pesanan tidak ditemukan atau kontak tidak cocok." }, { status: 404, headers: { "Cache-Control": "private, no-store" } });
   if (order.status === "pending") {
-    const payment = await db.queryFirst("SELECT provider,status FROM payment_transactions WHERE order_code=?",clean);
-    if (payment?.provider === "klikqris" && payment.status === "pending") {
+    const payment = await db.queryFirst("SELECT provider,status,requested_amount FROM payment_transactions WHERE order_code=?",clean);
+    if (payment?.provider === "klikqris" && ["pending", "initializing"].includes(String(payment.status))) {
       try {
-        // Tombol manual (wake=1) selalu memeriksa sekarang; polling otomatis
-        // halaman (tiap 10 dtk) menumpang klaim throttle ±10 dtk/order agar
-        // deteksi lunas tidak menunggu callback gateway. Klaim atomik pada
-        // last_checked_at: hanya satu pemanggil yang bertanya ke gateway.
+        // Every network check shares a durable 10-second claim. A manual
+        // initializing recovery reads the existing gateway order ID only.
         const wake = new URL(request.url).searchParams.get("wake") === "1";
-        const {claimKlikQrisPollReconcile, reconcileKlikQrisPayment} = await import("@/lib/payments/klikqris");
-        if (wake || await claimKlikQrisPollReconcile(clean)) {
-          await reconcileKlikQrisPayment(clean);
+        const {claimKlikQrisPollReconcile, reconcileKlikQrisPayment, createKlikQrisInvoice} = await import("@/lib/payments/klikqris");
+        let claimed = false;
+        if (!wake || checkRateLimit(request, "pedia:wake")) {
+          if (payment.status === "pending") claimed = await claimKlikQrisPollReconcile(clean);
+          else if (wake) {
+            const result = await db.execRun(`UPDATE payment_transactions SET last_checked_at=datetime('now')
+              WHERE order_code=? AND provider='klikqris' AND status='initializing'
+              AND (last_checked_at IS NULL OR julianday(last_checked_at)<=julianday('now','-10 seconds'))`,clean);
+            claimed = result.changes === 1;
+          }
+        }
+        if (claimed) {
+          if (payment.status === "initializing") await createKlikQrisInvoice(clean,Number(payment.requested_amount));
+          else await reconcileKlikQrisPayment(clean);
           const refreshed=await db.queryFirst("SELECT status,payment_status,paid_at FROM orders WHERE code=?",clean);
           if (refreshed) Object.assign(order,refreshed);
         }
@@ -58,9 +72,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   let snap: Record<string, unknown> = {};
   try { snap = JSON.parse(String(item.snapshot_json ?? "{}")) ?? {}; } catch { /* legacy */ }
   const qty = Number(item.quantity) || 0;
-  const remains = item.remains != null ? Number(item.remains) : null;
-  const done = remains != null ? Math.max(0, qty - remains) : 0;
-  const percent = qty > 0 && remains != null ? (done / qty) * 100 : 0;
+  const rawRemains = item.remains != null ? Number(item.remains) : NaN;
+  const remains = Number.isSafeInteger(rawRemains) && rawRemains >= 0 && rawRemains <= qty ? rawRemains : null;
+  const done = item.status === "completed" ? qty : remains != null ? qty - remains : null;
+  const percent = qty > 0 && done !== null ? (done / qty) * 100 : null;
 
   // Refill eligibility (PD-25): refill_days>0, completed|partial, dalam masa
   // garansi (dari updated_at terminal — pendekatan; admin melihat detail),
@@ -94,7 +109,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       service_copy: readPediaServiceCopy(snap.service_copy),
       refill_days: refillDays,
       refill_eligible: refillEligible,
-      refund_credit_code: item.refund_credit_code != null ? String(item.refund_credit_code) : null,
       paid_at: order.paid_at != null ? String(order.paid_at) : null,
       notified_final: item.notified_final_at != null,
       qris: tx ? {
@@ -102,5 +116,5 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         image_url: tx.qris_url, expires_at: tx.expires_at, status: tx.status,
       } : null,
     },
-  });
+  }, { headers: { "Cache-Control": "private, no-store", "Vary": "x-order-contact" } });
 }

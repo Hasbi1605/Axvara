@@ -31,6 +31,7 @@ export type PediaQuotePayload = {
 };
 
 function secretKey() {
+  if (!process.env.ADMIN_JWT_SECRET && process.env.NODE_ENV === "production") throw new Error("pedia_quote_secret_missing");
   const secret = process.env.ADMIN_JWT_SECRET || "dev-only-pedia-quote-secret";
   return new TextEncoder().encode(secret);
 }

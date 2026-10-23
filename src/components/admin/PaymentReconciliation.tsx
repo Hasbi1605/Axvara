@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { formatRupiah, formatWibDateTime } from "@/lib/utils";
 import { Spinner } from "@/components/ui/Loading";
 import { IosIcon } from "@/components/ui/IosIcon";
@@ -20,19 +20,35 @@ export function PaymentReconciliation() {
   const [loading, setLoading] = useState(true);
   const [retrying, setRetrying] = useState<number | null>(null);
 
-  const load = useCallback(async () => {
+  // Generation/abort guard (paritas OrdersManager): ganti filter/page cepat
+  // tidak boleh membiarkan respons basi menimpa data/loading milik request
+  // terbaru; unmount membatalkan fetch yang masih berjalan.
+  const loadRequest = useRef(0);
+
+  const load = useCallback(async (signal?: AbortSignal) => {
+    const request = ++loadRequest.current;
     setLoading(true);
     try {
-      const response = await fetch(`/api/admin/payments/events?status=${encodeURIComponent(status)}&page=${page}&limit=12`, { cache: "no-store" });
+      const response = await fetch(`/api/admin/payments/events?status=${encodeURIComponent(status)}&page=${page}&limit=12`, { cache: "no-store", signal });
       const body = await response.json().catch(() => ({})) as EventsData;
+      if (signal?.aborted || request !== loadRequest.current) return;
       if (!response.ok) throw new Error(body.error || "Gagal memuat event QRIS");
       setData(body);
-    } catch (cause) { toast.error(cause instanceof Error ? cause.message : "Gagal memuat event QRIS"); }
-    finally { setLoading(false); }
+    } catch (cause) {
+      if (signal?.aborted || request !== loadRequest.current) return;
+      if (cause instanceof DOMException && cause.name === "AbortError") return;
+      toast.error(cause instanceof Error ? cause.message : "Gagal memuat event QRIS");
+    }
+    finally { if (request === loadRequest.current) setLoading(false); }
   }, [page, status, toast]);
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
+  }, [load]);
 
   const retry = async (eventId: number, verification?: { order_code: string; review_note: string; verified: boolean }) => {
+    if (retrying !== null) return;
     setRetrying(eventId);
     try {
       const response = await fetch("/api/admin/payments/events", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: verification ? "confirm_match" : "retry_match", event_id: eventId, ...verification }) });

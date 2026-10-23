@@ -2,7 +2,7 @@
 // P0-6: kredensial TIDAK dibuka hanya dengan kode order. Pembeli membuktikan
 // kepemilikan via No. WA ATAU email yang dipakai saat checkout (knowledge
 // factor) atau capability token yang diterbitkan sebelumnya.
-// - POST {contact} (atau {wa} lama): WA = 6 digit terakhir customer_wa, email =
+// - POST {contact} (atau {wa} lama): WA = nomor penuh yang dinormalisasi, email =
 //   cocok penuh tanpa beda huruf besar/kecil → tampilkan details sekali + beri
 //   capability token untuk akses ulang.
 // - GET ?token=: akses ulang dengan capability token.
@@ -12,7 +12,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
-import { checkRateLimit } from "@/lib/rateLimit";
+import { checkRateLimit, clientIp } from "@/lib/rateLimit";
 import {
   decryptAccountDetails,
   getDecryptedAccountDetails,
@@ -21,15 +21,16 @@ import {
   verifyCredentialToken,
 } from "@/lib/warung-rebahan/deliver";
 import { readDeliveredSnapshots } from "@/lib/fulfillment/delivery/buyer-email";
-import { emailMatches } from "@/lib/order-contact";
+import { buyerContactMatches } from "@/lib/order-contact";
 import { resolveCredentialTermsByItem } from "@/lib/orders/credential-terms";
 import type { VariantCopy } from "@/lib/product-copy/format";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
-
-function digitsOnly(raw: unknown): string {
-  return String(raw || "").replace(/\D/g, "");
+function privateJson(body: unknown, init?: Parameters<typeof NextResponse.json>[1]) {
+  const response = NextResponse.json(body, init);
+  response.headers.set("Cache-Control", "private, no-store");
+  return response;
 }
 
 async function orderReady(code: string) {
@@ -115,52 +116,50 @@ async function readVerifiedDetails(code: string, db: DatabaseAccess) {
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   if (!checkRateLimit(request, "orders:lookup")) {
-    return NextResponse.json({ error: "rate_limited" }, { status: 429, headers: { "Retry-After": "60" } });
+    return privateJson({ error: "rate_limited" }, { status: 429, headers: { "Retry-After": "60" } });
   }
   const { code } = await params;
   if (!code || !/^AXV-\d{8}-[A-Z0-9]{8}$/.test(code)) {
-    return NextResponse.json({ error: "invalid_code" }, { status: 400 });
+    return privateJson({ error: "invalid_code" }, { status: 400 });
   }
   const ready = await orderReady(code);
-  if ("error" in ready) return NextResponse.json({ error: ready.error }, { status: ready.status });
+  if ("error" in ready) return privateJson({ error: ready.error }, { status: ready.status });
   const { order, db } = ready;
+  const { contactAttemptLimited, recordContactFailure } = await import("@/lib/orders/contact-attempts");
+  if (await contactAttemptLimited(db, code, clientIp(request))) return privateJson({ error: "rate_limited" }, { status: 429, headers: { "Retry-After": "900", "Cache-Control": "private, no-store" } });
   const body = await request.json().catch(() => null);
   const raw = String(body?.contact ?? body?.wa ?? "").trim();
-  let verified: boolean;
-  if (raw.includes("@")) {
-    verified = emailMatches(raw.toLowerCase(), order.customer_email);
-  } else {
-    const provided = digitsOnly(raw);
-    const expected = digitsOnly(order.customer_wa);
-    // Cocokkan 6 digit terakhir (cukup spesifik, toleran format +62/0).
-    verified = provided.length >= 6 && expected.length >= 6 && provided.slice(-6) === expected.slice(-6);
+  if (!buyerContactMatches(raw, order)) {
+    const limited = await recordContactFailure(db, code, clientIp(request));
+    return privateJson({ error: limited ? "rate_limited" : "verification_failed" }, {
+      status: limited ? 429 : 403, headers: { "Cache-Control": "private, no-store", ...(limited ? { "Retry-After": "900" } : {}) },
+    });
   }
-  if (!verified) return NextResponse.json({ error: "verification_failed" }, { status: 403 });
   // Terbitkan capability token untuk akses ulang (idempoten).
   const freshToken = await issueCredentialToken(code, db);
   const credentials = await readVerifiedDetails(code, db);
-  return NextResponse.json({ ok: true, credentials, capability_token: freshToken });
+  return privateJson({ ok: true, credentials, capability_token: freshToken }, { headers: { "Cache-Control": "private, no-store" } });
 }
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   if (!checkRateLimit(request, "orders:lookup")) {
-    return NextResponse.json({ error: "rate_limited" }, { status: 429, headers: { "Retry-After": "60" } });
+    return privateJson({ error: "rate_limited" }, { status: 429, headers: { "Retry-After": "60" } });
   }
   const { code } = await params;
   if (!code || !/^AXV-\d{8}-[A-Z0-9]{8}$/.test(code)) {
-    return NextResponse.json({ error: "invalid_code" }, { status: 400 });
+    return privateJson({ error: "invalid_code" }, { status: 400 });
   }
   const token = request.nextUrl.searchParams.get("token") || "";
-  if (!token) return NextResponse.json({ error: "token_required" }, { status: 401 });
+  if (!token) return privateJson({ error: "token_required" }, { status: 401 });
   const ready = await orderReady(code);
-  if ("error" in ready) return NextResponse.json({ error: ready.error }, { status: ready.status });
-  if (!(await verifyCredentialToken(code, token, ready.db))) return NextResponse.json({ error: "invalid_token" }, { status: 403 });
+  if ("error" in ready) return privateJson({ error: ready.error }, { status: ready.status });
+  if (!(await verifyCredentialToken(code, token, ready.db))) return privateJson({ error: "invalid_token" }, { status: 403 });
   const wr = await getDecryptedAccountDetails(code, ready.db, { token });
   const generic = await readDeliveredSnapshots(code, ready.db);
   const credentials: (CredentialOut & { itemIndex?: number })[] = [
     ...wr.map((d) => ({ details: d.details, completed_at: d.completed_at })),
     ...generic.map((d) => ({ label: d.label, details: d.details, completed_at: d.completed_at, itemIndex: d.itemIndex })),
   ];
-  if (!credentials.length) return NextResponse.json({ error: "invalid_token" }, { status: 403 });
-  return NextResponse.json({ ok: true, credentials: await attachTerms(code, ready.db, credentials) });
+  if (!credentials.length) return privateJson({ error: "invalid_token" }, { status: 403 });
+  return privateJson({ ok: true, credentials: await attachTerms(code, ready.db, credentials) }, { headers: { "Cache-Control": "private, no-store" } });
 }
