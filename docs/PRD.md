@@ -62,6 +62,10 @@ urutan cepat/lambat dan jatah percobaan existing. Waktu tersembunyi tidak memaka
 atau mengulang jatah tersebut. Request yang sudah berjalan boleh selesai;
 webhook/cron/expiry/email tetap bekerja tanpa halaman terbuka.
 
+## Drag kredensial dengan pratinjau gerak — 2026-10-23
+
+✅ Diimplementasikan; publikasi melalui CI. Saat kredensial ditarik, kartu penuh mengambang mengikuti tarikan dan baris lain beranimasi memberi ruang. Slot tujuan bergaris cyan dan menampilkan “Lepas di urutan …” sebelum dilepas. Menahan tarikan di tepi atas/bawah menggulir daftar kredensial otomatis tanpa menggeser halaman/modal. Pointer/touch memakai pegangan, keyboard memakai Spasi + panah; Escape membatalkan. Gerakan menghormati prefers-reduced-motion. Tidak ada penulisan urutan selama hover; simpan sekali setelah drop melalui kontrak reorder existing.
+
 ## Prioritas stok kredensial pribadi — 2026-10-23
 
 ✅ Diimplementasikan; publikasi melalui CI. Editor produk → Varian → stok kredensial unik menyediakan pegangan drag & drop serta tombol naik/turun. Kredensial terakhir pada daftar dapat ditarik langsung ke posisi pertama; nomor posisi menunjukkan urutan pengiriman, perubahan langsung tersimpan tanpa menunggu Simpan Produk. Urutan berlaku untuk reservasi pesanan baru di web/Telegram/WhatsApp. Unit yang sudah dipesan/terkirim tidak dipindahkan; perubahan stok bersamaan meminta muat ulang. FIFO lama tetap default dan impor baru masuk di belakang antrean. Daftar mengikuti batas existing 100 kredensial tersedia per varian.

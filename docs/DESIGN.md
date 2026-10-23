@@ -1,6 +1,10 @@
 # DESIGN.md — AXVARA Design System
 
 
+## Animasi drag kredensial — 2026-10-23
+
+Revisi mengganti preview native yang hanya menampilkan pegangan. Gunakan kartu penuh mengambang dengan border cyan/shadow; portal body menjaga preview bebas clipping/transform modal. Baris sekitar bergerak via transform 220ms cubic-bezier(0.2,0.8,0.2,1); slot tujuan berupa ghost dashed cyan, garis sisipan dan nomor urutan. Drop bergerak ke slot selama220ms. Auto-scroll hanya list, zona tepi25% vertikal, kecepatan mengikuti kedekatan tepi. Pegangan min27px/touch-action:none; isi tetap dapat digulir normal. Reduced motion mematikan transisi dan animasi drop. Referensi: [dnd-kit Sortable/DragOverlay](https://dndkit.com/legacy/presets/sortable/overview/), [Atlassian design guidelines](https://atlassian.design/components/pragmatic-drag-and-drop/design-guidelines). Detail implementasi/verifikasi: [credential drag motion](admin/credential-drag-motion.md).
+
 ## Prioritas kredensial unik — 2026-10-23
 
 Panel Detail akses produk memakai pegangan GripVertical, nomor posisi cyan dan panah naik/turun pada tiap baris stok tersedia. Drag & drop langsung menyimpan urutan; baris yang ditarik meredup dengan latar cyan, kontrol nonaktif selama penyimpanan, panah batas awal/akhir nonaktif. Label aksesibel menyebut aksi dan posisi; panah mendukung keyboard. Teks bantuan menjelaskan bahwa urutan teratas dikirim lebih dulu dan tersimpan langsung. Gagal simpan mengembalikan daftar server serta toast error. Tetap memakai token warna/spacing panel existing; tidak menampilkan kredensial di luar admin.

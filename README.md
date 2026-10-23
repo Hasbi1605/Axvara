@@ -488,6 +488,10 @@ di `.heroku-credentials` (git-ignored, pola sama); AWS (VPS proxy) lewat
 `.aws-credentials` (git-ignored, pola sama; read-only + reboot VPS,
 lihat AGENTS.md); CI/CD memakai GitHub Actions Secrets.
 
+### Drag kredensial yang halus (2026-10-23)
+
+Saat menarik pegangan, kartu penuh mengikuti tarikan dan baris sekitar bergeser untuk menunjukkan ruang tujuan. Garis cyan serta “Lepas di urutan …” menandai posisi sebelum dilepas. Tahan tarikan dekat tepi atas/bawah daftar untuk auto-scroll; cukup tarik satu kali untuk memindahkan stok terakhir ke paling atas. Drop menyimpan sekali, Escape membatalkan; panah serta drag keyboard tetap tersedia. Pengaturan reduced motion dihormati. [Referensi dan detail motion](docs/admin/credential-drag-motion.md).
+
 ### Mengatur urutan kredensial produk pribadi (2026-10-23)
 
 Di Edit Produk → Varian → Kirim otomatis — stok kredensial unik, tarik pegangan kredensial ke posisi yang diinginkan (termasuk terakhir ke paling atas), atau gunakan panah naik/turun. Perubahan langsung tersimpan. Posisi paling atas diambil lebih dulu untuk pesanan baru di web, Telegram dan WhatsApp; kredensial yang sudah dipesan tetap pada pesanan semula. FIFO tetap default, impor baru di belakang antrean, dan konflik stok meminta muat ulang. Migrasi0074 menambah prioritas nullable/index; API admin memakai action `reorder` dengan daftar ID tersedia per varian (maks100, mengikuti daftar existing). Isi/ID/jumlah stok tidak ditukar atau ditulis ulang.
