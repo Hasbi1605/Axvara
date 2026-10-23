@@ -63,6 +63,54 @@ async function hook(overrides:Record<string,unknown>={},code=A){
 }
 const posts=()=>fetchMock.mock.calls.filter(([url])=>String(url).endsWith("/create")).length;
 
+describe("Paid background payment recovery",()=>{
+ const run=async()=>{
+  vi.stubEnv("CRON_SECRET","fixture-cron");
+  const {POST}=await import("@/app/api/cron/lite/route");
+  return POST(new NextRequest("https://axvara.tech/api/cron/lite?job=payments",{method:"POST",headers:{authorization:"Bearer fixture-cron"}}));
+ };
+ it("confirms a closed-page payment, dispatches immediately and never reissues or delivers twice",async()=>{
+  await checkout();paid();mocks.skCreate.mockResolvedValue(1);fetchMock.mockClear();
+  expect(await (await run()).json()).toMatchObject({ok:true,payments_checked:1,payments_confirmed:1,payments_failed:0});
+  expect(row().status).toBe("lunas");expect(mocks.ensure).toHaveBeenCalledTimes(1);expect(mocks.skProcess).toHaveBeenCalledTimes(1);
+  expect(posts()).toBe(0);
+  expect(await (await run()).json()).toMatchObject({payments_checked:0});
+  expect(mocks.ensure).toHaveBeenCalledTimes(1);
+ });
+ it("backs off failed confirmation, reports failure and preserves unpaid stock/reservations",async()=>{
+  await checkout();paid();failStatus=true;fetchMock.mockClear();
+  const stock=fixture.sql.prepare("SELECT stock FROM product_variants WHERE id=1").get()!.stock;
+  const response=await run();expect(response.status).toBe(503);
+  expect(await response.json()).toMatchObject({ok:false,payments_checked:1,payments_failed:1});
+  expect(row().status).toBe("pending");expect(mocks.ensure).not.toHaveBeenCalled();expect(posts()).toBe(0);
+  expect(await (await run()).json()).toMatchObject({payments_checked:0});
+  expect(fixture.sql.prepare("SELECT stock FROM product_variants WHERE id=1").get()!.stock).toBe(stock);
+ });
+ it("shares the atomic status gate across simultaneous ticks and skips recent visible-page checks",async()=>{
+  await checkout();fetchMock.mockClear();
+  await Promise.all([run(),run()]);
+  expect(fetchMock.mock.calls.filter(([u])=>String(u).includes("/status/"))).toHaveLength(1);
+  expect(await (await run()).json()).toMatchObject({payments_checked:0});
+ });
+ it("excludes expired, canceled and initializing invoices without making any upstream request",async()=>{
+  await checkout(A);await checkout(B);
+  fixture.sql.prepare("UPDATE orders SET expires_at=datetime('now','-1 minute') WHERE code=?").run(A);
+  fixture.sql.prepare("UPDATE payment_transactions SET status='initializing' WHERE order_code=?").run(B);
+  fetchMock.mockClear();expect(await (await run()).json()).toMatchObject({payments_checked:0});
+  expect(fetchMock).not.toHaveBeenCalled();expect(row(A).status).toBe("pending");
+  fixture.sql.prepare("UPDATE payment_transactions SET status='pending' WHERE order_code=?").run(B);
+  fixture.sql.prepare("UPDATE orders SET status='dibatalkan' WHERE code=?").run(B);
+  expect(await (await run()).json()).toMatchObject({payments_checked:0});expect(fetchMock).not.toHaveBeenCalled();
+ });
+ it("caps background checks at four pending invoices per invocation",async()=>{
+  for(let n=1;n<=6;n++)await checkout(`AXV-20261023-CAP0000${n}`);
+  fetchMock.mockClear();expect(await (await run()).json()).toMatchObject({payments_checked:4});
+  expect(fetchMock).toHaveBeenCalledTimes(4);
+  expect(await (await run()).json()).toMatchObject({payments_checked:2});
+  expect(posts()).toBe(0);
+ });
+});
+
 describe("KlikQRIS invoice contract and durable creation",()=>{
  it("uses provider total, authenticated headers, callback URL, local QR proxy and the 15-minute cap",async()=>{
   const result=await checkout();expect(result.payableAmount).toBe(1089);expect(result.uniqueCode).toBe(89);

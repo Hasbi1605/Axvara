@@ -1,15 +1,16 @@
 "use client";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 import type { Product } from "@/lib/products";
 
-export type CartItem = Product & { qty: number; variantId?: number; variantLabel?: string; minQty?: number };
+export type CartItem = Product & { qty: number; variantId?: number; variantLabel?: string; minQty?: number; fulfillmentMode?: string };
 
 type CartStore = {
   items: CartItem[];
   drawerOpen: boolean;
   setDrawer: (open: boolean) => void;
-  add: (product: Product & { variantId?: number; variantLabel?: string; minQty?: number }, qty?: number) => void;
+  add: (product: Product & { variantId?: number; variantLabel?: string; minQty?: number; fulfillmentMode?: string }, qty?: number) => void;
   remove: (id: string, variantId?: number) => void;
   setQty: (id: string, qty: number, variantId?: number) => void;
   clear: () => void;
@@ -35,8 +36,8 @@ type CartStore = {
  * keranjang agar tidak jadi dead-end di checkout.
  */
 const WEB_MAX_QTY = 100;
-const minOf = (p: { minQty?: number }): number => Math.max(1, Math.floor(Number(p.minQty ?? 1) || 1));
-const isBelowMinimumStock = (p: { stock?: number | null; minQty?: number }): boolean => {
+const minOf = (p: { minQty?: number; fulfillmentMode?: string }): number => Math.max(1, Math.floor(Number(p.minQty ?? 1) || 1));
+const isBelowMinimumStock = (p: { stock?: number | null; minQty?: number; fulfillmentMode?: string }): boolean => {
   const stock = p.stock;
   if (stock == null || stock === -1) return false;
   return stock < minOf(p);
@@ -57,10 +58,15 @@ export const useCart = create<CartStore>()(
           // Baris baru dibuka LANGSUNG di minimum (bukan 1) agar pembeli
           // GSuite (min 50) tidak mulai dari 1 lalu ditolak saat checkout.
           const min = minOf(product);
-          const maxFor = (p: Product) => (p.stock === -1 || p.stock == null ? WEB_MAX_QTY : Math.min(WEB_MAX_QTY, p.stock));
+          const maxFor = (p: Product & {fulfillmentMode?:string}) => {
+            const cap=p.fulfillmentMode === "unique" ? MAX_UNIQUE_UNITS_PER_ORDER : WEB_MAX_QTY;
+            const others=s.items.filter(i=>!(i.id===product.id && i.variantId===product.variantId)).reduce((n,i)=>n+(i.fulfillmentMode === "unique" ? i.qty : 0),0);
+            const remaining=p.fulfillmentMode === "unique" ? Math.max(0,cap-others) : cap;
+            return p.stock === -1 || p.stock == null ? remaining : Math.min(remaining,p.stock);
+          };
           // Don't add if stock is 0 — cek SEBELUM max dipaksa >= min agar
           // stok habis tidak lolos lewat Math.max(min, 0).
-          if (maxFor(product) <= 0) return s;
+          if (maxFor(product) < min) return s;
           const max = Math.max(min, maxFor(product));
           const clampQty = (n: number, lo: number, hi: number) => Math.min(Math.max(lo, Math.floor(n)), hi);
           const matchKey = product.variantId ? `${product.id}:${product.variantId}` : product.id;
@@ -68,9 +74,11 @@ export const useCart = create<CartStore>()(
           const existing = s.items.find((i) => itemKey(i) === matchKey);
           if (existing) {
             const lo = Math.max(min, minOf(existing));
-            const hi = Math.max(lo, maxFor(existing));
+            const updated = { ...existing, fulfillmentMode: product.fulfillmentMode ?? existing.fulfillmentMode };
+            if (maxFor(updated) < lo) return s;
+            const hi = maxFor(updated);
             const nextQty = clampQty(existing.qty + qty, lo, hi);
-            return { items: s.items.map((i) => (itemKey(i) === matchKey ? { ...i, qty: nextQty, minQty: Math.max(minOf(i), min) } : i)) };
+            return { items: s.items.map((i) => (itemKey(i) === matchKey ? { ...i, qty: nextQty, minQty: Math.max(minOf(i), min), fulfillmentMode: updated.fulfillmentMode } : i)) };
           }
           return { items: [...s.items, { ...product, qty: clampQty(Math.max(qty, min), min, max) }] };
         }),
@@ -92,8 +100,11 @@ export const useCart = create<CartStore>()(
           // Tombol kurang tidak boleh turun di bawah minimum (quote server
           // tetap menjadi sumber kebenaran; ini hanya cermin UX).
           if (qty < min) qty = min;
-          const max = it ? (it.stock === -1 || it.stock == null ? WEB_MAX_QTY : Math.min(WEB_MAX_QTY, it.stock)) : WEB_MAX_QTY;
-          if (max <= 0) return { items: s.items.filter((i) => itemKey(i) !== matchKey) };
+          const cap=it?.fulfillmentMode === "unique" ? MAX_UNIQUE_UNITS_PER_ORDER : WEB_MAX_QTY;
+          const others=s.items.filter(i=>itemKey(i)!==matchKey).reduce((n,i)=>n+(i.fulfillmentMode === "unique" ? i.qty : 0),0);
+          const remaining=it?.fulfillmentMode === "unique" ? Math.max(0,cap-others) : cap;
+          const max=it && it.stock !== -1 && it.stock != null ? Math.min(remaining,it.stock) : remaining;
+          if (max < min) return { items: s.items.filter((i) => itemKey(i) !== matchKey) };
           const clamped = Math.min(Math.max(min, Math.floor(qty)), Math.max(min, max));
           return { items: s.items.map((i) => (itemKey(i) === matchKey ? { ...i, qty: clamped } : i)) };
         }),

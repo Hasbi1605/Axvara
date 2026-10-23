@@ -76,7 +76,7 @@ export async function handleCartAdd(
       chat_id: chatId,
       text: result.reason === "out_of_stock" ? outOfStockMessage()
         : result.reason === "cart_full" ? "🛒 <b>Keranjang Penuh</b>\n\nMaksimal 20 varian. Checkout dulu sebelum tambah lagi 👇"
-        : result.reason === "unique_conflict" ? "⚠️ <b>Produk Unik Satu per Order</b>\n\nProduk stok unik (1 secret = 1 order) tidak bisa digabung dengan produk unik lain. Checkout dulu, baru order produk unik berikutnya 👇"
+        : result.reason === "unique_limit" ? "⚠️ Maksimal 10 akun stok unik per pesanan, termasuk semua varian. Kurangi jumlah atau checkout terpisah."
         : belowMinText ?? errorMessage(),
       parse_mode: "HTML",
     });
@@ -155,7 +155,7 @@ export async function handleCartCheckout(
   // sebelum aturan) atau qty yang diturunkan tombol ➖ bisa berada di bawah
   // min. Tolak SEBELUM invoice dengan pesan jelas + arahkan naikkan qty.
   const shortLine = summary.lines.find(
-    (line) => line.fulfillmentMode !== "unique" && line.minQty > 1 && line.qty < line.minQty,
+    (line) => line.minQty > 1 && line.qty < line.minQty,
   );
   if (shortLine) {
     await sendMessage({

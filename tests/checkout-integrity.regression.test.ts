@@ -305,7 +305,7 @@ describe("Authoritative UI and admin state", () => {
     expect(statusPage).toContain("skeleton: true");
     // Polling terbatas agar panel muncul sendiri tanpa reload manual, dan
     // lebih pendek untuk antrean (polling tak mungkin menutup 12 jam).
-    expect(statusPage).toContain('orderStatus !== "lunas" || credentialsReady');
+    expect(statusPage).toContain('orderStatus !== "lunas" || (credentialsReady && !uniqueUnitsPending)');
     expect(statusPage).toContain("handedToAdmin ? 3 : 30");
     expect(statusPage).toContain("attempts >= maxAttempts");
     // Flag berasal dari server, tidak diakali di client.

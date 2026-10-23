@@ -21,12 +21,13 @@ type Credential = { label?: string; details: string; completed_at: string | null
 /** Diisi checkout; bertahan selama tab itu terbuka (sessionStorage), jadi muat ulang tetap membuka otomatis. */
 export const checkoutContactKey = (code: string) => `axvara-checkout-contact:${code}`;
 
-export function WrCredentialsPanel({ code, prefillContact = "", contactHint = "" }: { code: string; prefillContact?: string; contactHint?: string }) {
+export function WrCredentialsPanel({ code, prefillContact = "", contactHint = "", deliveryProgress }: { code: string; prefillContact?: string; contactHint?: string; deliveryProgress?: {ready:number;total:number} }) {
   const [wa, setWa] = useState(prefillContact);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [creds, setCreds] = useState<Credential[] | null>(null);
   const [token, setToken] = useState<string | null>(null);
+  const [copied, setCopied] = useState<number | null>(null);
   const accountRef = useRef<HTMLElement | null>(null);
   const scrolledForCode = useRef<string | null>(null);
   const hasCredentials = Boolean(creds?.length);
@@ -54,7 +55,9 @@ export function WrCredentialsPanel({ code, prefillContact = "", contactHint = ""
   // saat dipakai: dulu muat ulang di tengah verifikasi pertama membuat panel
   // kembali ke form kosong (laporan owner 2026-09-25).
   const triedPrefill = useRef(false);
+  const loadedForReady = useRef(-1);
   useEffect(() => {
+    let cancelled = false;
     const tokenKey = `wr-cred-token:${code}`;
     const verifyFromContact = () => {
       const initial = prefillContact.trim() || (sessionStorage.getItem(checkoutContactKey(code)) || "").trim();
@@ -64,18 +67,23 @@ export function WrCredentialsPanel({ code, prefillContact = "", contactHint = ""
         void verifyWith(initial);
       }
     };
+    const requestedReady = deliveryProgress?.ready ?? 0;
     const saved = sessionStorage.getItem(tokenKey);
     if (!saved) {
       verifyFromContact();
       return;
     }
+    if (loadedForReady.current >= requestedReady) return;
     setLoading(true);
     void (async () => {
       try {
         const r = await fetch(`/api/orders/${encodeURIComponent(code)}/credentials?token=${encodeURIComponent(saved)}`);
+        if (cancelled) return;
         if (r.ok) {
           const body = (await r.json()) as { credentials?: Credential[] };
+          if (cancelled) return;
           if (body.credentials?.length) {
+            loadedForReady.current = requestedReady;
             setCreds(body.credentials);
             setToken(saved);
             return;
@@ -87,14 +95,16 @@ export function WrCredentialsPanel({ code, prefillContact = "", contactHint = ""
       } catch {
         /* jaringan: lanjut ke kontak checkout */
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
-      verifyFromContact();
+      if (!cancelled) verifyFromContact();
     })();
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [code]);
+  }, [code, deliveryProgress?.ready, token]);
 
   async function verifyWith(waValue: string) {
+    const requestedReady = deliveryProgress?.ready ?? 0;
     setLoading(true);
     setError(null);
     try {
@@ -112,6 +122,7 @@ export function WrCredentialsPanel({ code, prefillContact = "", contactHint = ""
         setError(body.error === "verification_failed" ? "No. WA atau email tidak cocok dengan data pesanan." : body.error === "not_ready" ? "Detail akun belum tersedia — tunggu beberapa menit lalu muat ulang." : "Gagal memverifikasi. Coba lagi.");
         return;
       }
+      loadedForReady.current = requestedReady;
       setCreds(body.credentials ?? []);
       if (body.capability_token) {
         sessionStorage.setItem(`wr-cred-token:${code}`, body.capability_token);
@@ -132,15 +143,20 @@ export function WrCredentialsPanel({ code, prefillContact = "", contactHint = ""
     return (
       <section ref={accountRef} className="ax-glass-card mt-6 rounded-2xl p-4 text-left" aria-label="Detail akun digital">
         <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">Detail Akun Digital</p>
+        {deliveryProgress && <p className="mt-2 text-xs text-white/60" role="status">{deliveryProgress.ready} dari {deliveryProgress.total} akun siap</p>}
+        {error && <p className="mt-2 text-xs text-red-300" role="alert">{error}</p>}
         <div className="mt-3 space-y-3">
           {creds.map((c, i) => (
             <div key={i} className="space-y-3">
               <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.07] p-3">
                 {c.label && <p className="mb-1.5 text-[11px] font-semibold text-emerald-200/80">{c.label}</p>}
                 <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5 text-emerald-100"><CredentialText text={c.details} /></pre>
+                <button type="button" className="mt-2 min-h-9 whitespace-nowrap rounded-lg border border-emerald-400/20 px-3 text-xs text-emerald-200" onClick={() => {
+                  void Promise.resolve().then(()=>navigator.clipboard.writeText(c.details)).then(()=>{setCopied(i);setError(null)}).catch(()=>setError("Gagal menyalin. Pilih teks akun untuk menyalinnya."));
+                }}>{copied===i ? "Tersalin" : `Salin akun ${i+1}`}</button>
                 {c.completed_at && <p className="mt-2 text-[11px] text-white/40">Diterima {formatWibDateTime(c.completed_at) ?? "—"}</p>}
               </div>
-              {c.terms && (c.terms.sections.length > 0 || c.terms.activation.length > 0 || c.terms.notes.length > 0) && (
+              {c.terms && !creds.slice(i+1).some(next=>JSON.stringify(next.terms)===JSON.stringify(c.terms)) && (c.terms.sections.length > 0 || c.terms.activation.length > 0 || c.terms.notes.length > 0) && (
                 <>
                   {c.terms.sections.length > 0 && (
                     <MobileCollapsible title="Syarat & Ketentuan">

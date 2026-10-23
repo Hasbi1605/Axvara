@@ -5,6 +5,7 @@
 
 import { execRun, queryAll, queryFirst, isD1Mode } from "@/lib/db";
 import { getActiveVariant } from "@/lib/catalog";
+import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 import { TELEGRAM_MAX_QTY } from "./keyboards";
 
 export type CartLine = {
@@ -33,7 +34,7 @@ function clampLineQty(raw: number): number {
   return Math.max(1, Math.min(TELEGRAM_MAX_QTY, Math.floor(raw)));
 }
 
-/** Tambah ke keranjang (upsert per varian). Unique fulfillment selalu qty 1. */
+/** Tambah ke keranjang (upsert per varian). Unique fulfillment dibatasi total 10 unit per pesanan. */
 export async function addToCart(
   userId: string,
   productId: number,
@@ -43,14 +44,14 @@ export async function addToCart(
   // min_qty varian agar keranjang menolak qty di bawah minimum SEBELUM
   // invoice; default 1 = perilaku lama.
   minQtyRaw = 1,
-): Promise<{ ok: boolean; reason?: "invalid_variant" | "out_of_stock" | "cart_full" | "unique_conflict" | "below_minimum" }> {
+): Promise<{ ok: boolean; reason?: "invalid_variant" | "out_of_stock" | "cart_full" | "unique_limit" | "below_minimum" }> {
   if (!isD1Mode()) return { ok: false, reason: "invalid_variant" };
   const variant = await getActiveVariant(variantId);
   if (!variant || variant.product_id !== productId) return { ok: false, reason: "invalid_variant" };
   if (variant.stock === 0) return { ok: false, reason: "out_of_stock" };
 
   const minQty = Math.max(1, Math.floor(Number(minQtyRaw) || variant.min_qty || 1));
-  const cappedQty = variant.fulfillment_mode === "unique" ? 1 : clampLineQty(rawQty);
+  const cappedQty = clampLineQty(rawQty);
   const existing = await queryFirst(
     `SELECT qty FROM telegram_carts WHERE user_id=? AND variant_id=?`,
     userId, variantId,
@@ -61,28 +62,19 @@ export async function addToCart(
       userId,
     );
     if (Number(count?.n || 0) >= MAX_LINES) return { ok: false, reason: "cart_full" };
-    // Satu order_code = satu inventory unique (findReservedForOrder memakai
-    // order_code), jadi keranjang hanya boleh memuat 1 baris unique.
-    if (variant.fulfillment_mode === "unique") {
-      const uniqueCount = await queryFirst(
-        `SELECT c.variant_id, pv.fulfillment_mode
-         FROM telegram_carts c
-         JOIN product_variants pv ON pv.id=c.variant_id
-         WHERE c.user_id=? AND pv.fulfillment_mode='unique'`,
-        userId,
-      );
-      if (uniqueCount) return { ok: false, reason: "unique_conflict" };
-    }
     // Minimum pembelian: baris baru di bawah min langsung ditolak dengan
     // pesan jelas (bukan diam-diam dibulatkan naik — pembeli harus sadar
     // aturan "min. N", mis. GSuite 50).
-    if (variant.fulfillment_mode !== "unique" && minQty > 1 && cappedQty < minQty) {
+    if (minQty > 1 && cappedQty < minQty) {
       return { ok: false, reason: "below_minimum" };
     }
   }
-  const nextQty = variant.fulfillment_mode === "unique"
-    ? 1
-    : clampLineQty(Number(existing?.qty || 0) + cappedQty);
+  const nextQty = clampLineQty(Number(existing?.qty || 0) + cappedQty);
+  if (variant.stock !== -1 && nextQty > variant.stock) return { ok: false, reason: "out_of_stock" };
+  if (variant.fulfillment_mode === "unique") {
+    const other = await queryFirst(`SELECT COALESCE(SUM(c.qty),0) AS n FROM telegram_carts c JOIN product_variants pv ON pv.id=c.variant_id WHERE c.user_id=? AND c.variant_id!=? AND pv.fulfillment_mode='unique'`, userId, variantId);
+    if (Number(other?.n || 0) + nextQty > MAX_UNIQUE_UNITS_PER_ORDER) return { ok: false, reason: "unique_limit" };
+  }
   await execRun(
     `INSERT INTO telegram_carts (user_id, product_id, variant_id, qty, updated_at)
      VALUES (?, ?, ?, ?, datetime('now'))
@@ -104,7 +96,11 @@ export async function setCartLineQty(userId: string, variantId: number, rawQty: 
     await execRun(`DELETE FROM telegram_carts WHERE user_id=? AND variant_id=?`, userId, variantId);
     return false;
   }
-  const qty = variant.fulfillment_mode === "unique" ? 1 : clampLineQty(rawQty);
+  const qty = clampLineQty(rawQty);
+  if (variant.fulfillment_mode === "unique") {
+    const other = await queryFirst(`SELECT COALESCE(SUM(c.qty),0) AS n FROM telegram_carts c JOIN product_variants pv ON pv.id=c.variant_id WHERE c.user_id=? AND c.variant_id!=? AND pv.fulfillment_mode='unique'`, userId, variantId);
+    if (Number(other?.n || 0) + qty > MAX_UNIQUE_UNITS_PER_ORDER || (variant.stock !== -1 && qty > variant.stock)) return false;
+  }
   const result = await execRun(
     `UPDATE telegram_carts SET qty=?, updated_at=datetime('now') WHERE user_id=? AND variant_id=?`,
     qty, userId, variantId,
@@ -159,7 +155,7 @@ export async function getCartSummary(userId: string): Promise<CartSummary> {
     const fulfillmentMode = String(row.v_mode || "manual");
     const minQty = Math.max(1, Number(row.v_min_qty ?? 1) || 1);
     let qty = clampLineQty(Number(row.qty || 1));
-    if (fulfillmentMode === "unique") qty = 1;
+    if (fulfillmentMode === "unique") qty = Math.min(qty, MAX_UNIQUE_UNITS_PER_ORDER);
     else if (variantStock !== -1) qty = Math.min(qty, Math.max(1, variantStock));
     lines.push({
       productId: Number(row.product_id),

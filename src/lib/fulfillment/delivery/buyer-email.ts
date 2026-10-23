@@ -9,6 +9,7 @@
 import type { DatabaseAccess } from "@/lib/db-access";
 import { decryptSecret } from "../crypto";
 import type { Row } from "./types";
+import { expandDeliveryLines } from "../units";
 
 const DELIVERY_EMAIL_TIMEOUT_MS = 8_000;
 
@@ -30,8 +31,9 @@ function orderLines(raw: unknown): OrderLine[] {
 
 /** "Canva Pro / Premium — Invite 1 Bulan ×2" untuk baris ke-i pesanan. */
 export function orderLineLabel(items: unknown, itemIndex: number): string {
-  const line = orderLines(items)[itemIndex];
+  const line = expandDeliveryLines(items)[itemIndex];
   const name = String(line?.name ?? "").trim() || "Produk";
+  if (Number(line?.unit_total) > 1) return `${name} — Akun ${line.unit_number} dari ${line.unit_total}`;
   const qty = Math.max(1, Number(line?.qty ?? 1) || 1);
   return qty > 1 ? `${name} ×${qty}` : name;
 }
@@ -96,7 +98,7 @@ export async function sendWebDeliveryEmail(params: {
     receipt: {
       total: Number(order.payable_amount ?? order.subtotal ?? 0),
       method: paymentMethodLabel(order.payment_method),
-      lines: orderLines(order.items).map((_, index) => orderLineLabel(order.items, index)),
+      lines: orderLines(order.items).map(line => `${String(line.name || "Produk")}${Number(line.qty)>1 ? ` ×${line.qty}` : ""}`),
     },
   });
   const sent = await sendForwardEmail({

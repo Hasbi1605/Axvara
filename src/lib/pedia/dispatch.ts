@@ -16,6 +16,16 @@ export type { ProxyCaller } from "@/lib/pedia/proxy";
 type Db = ReturnType<typeof createDatabaseAccess>;
 
 const LEASE_SECONDS = 5 * 60;
+const POLL_SECONDS = 60;
+
+// Check recent work every minute. Long-running orders progressively back off;
+// a faster scheduler must not poll hours-long campaigns every minute forever.
+function pollSeconds(item: Item): number {
+  const { created_at } = item as unknown as Record<string, unknown>;
+  const text = String(created_at ?? "");
+  const age = Date.now() - Date.parse(text.includes("T") ? text : text.replace(" ", "T") + "Z");
+  return age >= 60 * 60_000 ? 300 : age >= 15 * 60_000 ? 120 : POLL_SECONDS;
+}
 const MAX_ATTEMPTS = 6;
 
 type Item = {
@@ -85,7 +95,7 @@ export async function processPediaPaidOrders(caller?: ProxyCaller, sharedDb?: Db
     `SELECT * FROM pedia_order_items
       WHERE status IN ('submitted','in_progress')
         AND (lease_until IS NULL OR datetime(lease_until) <= datetime('now'))
-      LIMIT 20`,
+      ORDER BY COALESCE(lease_until,created_at) ASC,order_code ASC LIMIT 20`,
   ).catch(() => []) as unknown as Item[];
   for (const item of due) {
     try {
@@ -131,7 +141,7 @@ async function tierInfo(db: Db, tierId: number): Promise<TierInfo | null> {
   };
 }
 
-/** Dispatch satu item: guard margin → submit → lease poll 5 menit. */
+/** Dispatch satu item: guard margin → submit → poll awal60 detik. */
 async function dispatchOne(
   db: Db, item: Item, call: ProxyCaller,
 ): Promise<"dispatched" | "polled" | "needs_check" | "skipped"> {
@@ -194,7 +204,7 @@ async function dispatchOne(
   await db.execRun(
     `UPDATE pedia_order_items
         SET status='submitted', supplier_order_id=?, supplier_charge=?,
-            lease_until=datetime('now', '+${LEASE_SECONDS} seconds'),
+            lease_until=datetime('now', '+${POLL_SECONDS} seconds'),
             last_error=NULL, updated_at=datetime('now')
       WHERE order_code=?`,
     supplierOrderId, charge, item.order_code,
@@ -212,6 +222,15 @@ async function pollOne(
     return "skipped";
   }
   const row = item as unknown as Record<string, unknown>;
+  // Claim before network I/O: simultaneous cron/callback invocations must not
+  // duplicate status requests or race terminal completion/credit handling.
+  const claimed = await db.execRun(
+    `UPDATE pedia_order_items SET lease_until=datetime('now', '+${POLL_SECONDS} seconds')
+      WHERE order_code=? AND status IN ('submitted','in_progress') AND supplier_order_id=?
+        AND (lease_until IS NULL OR datetime(lease_until)<=datetime('now'))`,
+    item.order_code, row.supplier_order_id,
+  );
+  if (Number(claimed.changes) !== 1) return "skipped";
   const res = await call("status", {
     order: String(row.supplier_order_id),
   }, 20_000, undefined, item.supplier);
@@ -261,7 +280,7 @@ async function pollOne(
   }
   if (status === "in_progress" || status === "processing" || status === "pending") {
     await db.execRun(
-      `UPDATE pedia_order_items SET status='in_progress', lease_until=datetime('now', '+${LEASE_SECONDS} seconds'),
+      `UPDATE pedia_order_items SET status='in_progress', lease_until=datetime('now', '+${pollSeconds(item)} seconds'),
          updated_at=datetime('now') WHERE order_code=?`,
       item.order_code,
     ).catch(() => null);

@@ -7,6 +7,7 @@ import { generateOrderCode as generateCode, aggregateQty } from "@/lib/security"
 import { verifyCheckoutQuoteToken } from "@/lib/auth";
 import { createDanaQrisInvoice, createActiveQrisInvoice, MAX_QRIS_REISSUES } from "@/lib/payments/dana-qris";
 import { checkRateLimit } from "@/lib/rateLimit";
+import { expandDeliveryLines } from "@/lib/fulfillment/units";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -486,6 +487,14 @@ export async function GET(req: NextRequest) {
         }
       } catch { /* penyegaran best-effort; status lama tetap sah */ }
     }
+    let uniqueUnitsProgress: {ready:number;total:number} | undefined;
+    if (String(row.status) === "lunas") {
+      const units = expandDeliveryLines(row.items).filter(line=>line.unique_units === true);
+      if (units.length > 1) {
+        const progress = await queryFirst("SELECT COUNT(*) AS n FROM fulfillment_items WHERE order_code=? AND fulfillment_mode='unique' AND status='delivered' AND delivered_ciphertext IS NOT NULL", code).catch(()=>null);
+        uniqueUnitsProgress={ready:Math.min(units.length,Number(progress?.n||0)),total:units.length};
+      }
+    }
     return NextResponse.json({
       order: {
         code: row.code,
@@ -510,6 +519,7 @@ export async function GET(req: NextRequest) {
         // /pesanan/[code] membutuhkan ini untuk membedakan lunas-terkirim dari
         // lunas-gagal-kirim (audit ronde 4, W-H1); /api/orders/lookup sudah punya.
         fulfillment_status: row.fulfillment_status ?? null,
+        unique_units_progress: uniqueUnitsProgress,
         qris_reissue_allowed: row.payment_provider !== "klikqris" && row.status === "pending" && row.sales_channel !== "whatsapp" && Number(row.qris_reissue_count || 0) < MAX_QRIS_REISSUES,
         qris: row.dynamic_qris_url ? {
           payable_amount: row.payable_amount,

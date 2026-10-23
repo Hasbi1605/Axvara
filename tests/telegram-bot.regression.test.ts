@@ -855,10 +855,11 @@ describe("Telegram Fase 2: cart + reminder (tanpa review/promo)", () => {
     expect(route).not.toContain("for (const line of lines) {\n      const hasInventory");
   });
 
-  it("cart lib guards unique-conflict, caps, and stale rows", () => {
+  it("cart lib guards the combined unique-unit cap and stale rows", () => {
     const lib = read("src/lib/telegram/cart.ts");
     const migration = read("drizzle/migrations/0014_telegram_cart_reminders.sql");
-    expect(lib).toContain("unique_conflict");
+    expect(lib).toContain("unique_limit");
+    expect(lib).toContain("MAX_UNIQUE_UNITS_PER_ORDER");
     expect(migration).toContain("UNIQUE(user_id, variant_id)");
     expect(lib).toContain("MAX_LINES = 20");
     expect(lib).toContain("DELETE FROM telegram_carts WHERE user_id=? AND variant_id=?");

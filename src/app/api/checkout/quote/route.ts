@@ -6,6 +6,7 @@ import { createCheckoutQuoteToken } from "@/lib/auth";
 import { isActiveQrisConfigured } from "@/lib/payments/dana-qris";
 import { isQueuedFulfillment } from "@/lib/warung-rebahan/delivery-class";
 import { checkRateLimit } from "@/lib/rateLimit";
+import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -61,6 +62,7 @@ export async function POST(req: NextRequest) {
 
   let subtotal = 0;
   const quotedItems: { product_id: number; variant_id?: number; name: string; price: number; qty: number; stock: number; image: string; queued_delivery: boolean }[] = [];
+  let uniqueUnits = 0;
   const issues: QuoteIssue[] = [];
   const changes: PriceChange[] = [];
   const variantsRequired = isD1Mode() && isVariantsReadEnabled();
@@ -209,13 +211,12 @@ export async function POST(req: NextRequest) {
       } catch {
         displayName = `${row.name} — ${variantRow.label}`;
       }
-      // Unique-fulfillment = one secret per unit (review R3, parity with
-      // Telegram cart which caps unique lines at qty 1): a web line asking
-      // for qty>1 of a unique variant can never be reserved coherently
-      // (one claim per line), so reject it at quote time with a clear rule.
-      if (String(variantRow.fulfillment_mode) === "unique" && item.qty > 1) {
-        issues.push({ product_id: productId, type: "invalid_quantity", message: `${displayName} hanya dapat dibeli 1 unit per pesanan (stok unik).` });
-        continue;
+      if (String(variantRow.fulfillment_mode) === "unique") {
+        uniqueUnits += item.qty;
+        if (uniqueUnits > MAX_UNIQUE_UNITS_PER_ORDER) {
+          issues.push({ product_id: productId, type: "invalid_quantity", message: `Maksimal ${MAX_UNIQUE_UNITS_PER_ORDER} akun stok unik per pesanan, termasuk varian lainnya.` });
+          continue;
+        }
       }
     }
 

@@ -67,3 +67,23 @@ it('loads a new invoice during a pending request and ignores the old response',a
  expect(screen.getByText('AXP-20261020-NEXT1234')).toBeTruthy();
  expect(screen.queryByAltText('QRIS pembayaran')).toBeNull();
 });
+
+it('refreshes pending payments in 5s, catches up after hidden time, then processing in 10s and stops at terminal',async()=>{
+ vi.useFakeTimers();let hidden=false;
+ vi.spyOn(document,'hidden','get').mockImplementation(()=>hidden);
+ let current={...order};
+ const fetcher=vi.fn(async(_url?:string)=>Response.json({order:current}));vi.stubGlobal('fetch',fetcher);
+ try{
+  render(<Page/>);await act(async()=>{});expect(fetcher).toHaveBeenCalledTimes(1);
+  await act(async()=>{await vi.advanceTimersByTimeAsync(5000)});expect(fetcher).toHaveBeenCalledTimes(2);
+  hidden=true;await act(async()=>{fireEvent(document,new Event('visibilitychange'));await vi.advanceTimersByTimeAsync(60000)});
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  current={...order,status:'in_progress'};hidden=false;
+  await act(async()=>{fireEvent(document,new Event('visibilitychange'))});expect(fetcher).toHaveBeenCalledTimes(3);
+  await act(async()=>{await vi.advanceTimersByTimeAsync(10000)});expect(fetcher).toHaveBeenCalledTimes(4);
+  current={...order,status:'completed'};
+  await act(async()=>{await vi.advanceTimersByTimeAsync(10000)});expect(fetcher).toHaveBeenCalledTimes(5);
+  await act(async()=>{await vi.advanceTimersByTimeAsync(60000)});expect(fetcher).toHaveBeenCalledTimes(5);
+  expect(fetcher.mock.calls.every(call=>!String(call[0]).includes('wake=1'))).toBe(true);
+ }finally{cleanup();vi.useRealTimers();vi.restoreAllMocks()}
+});

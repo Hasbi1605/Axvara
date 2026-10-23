@@ -25,7 +25,7 @@ export const SITE = {
   },
 } as const;
 
-export const WA_GROUP_HREF = "https://chat.whatsapp.com/CzONe7Mx9Q7Eyt3k94C9ze?mode=gi_t";
+export const WA_GROUP_HREF = "https://chat.whatsapp.com/DHgtU7q39TlCV6ToZ4JU39?mode=gi_t";
 export const TG_BOT_HREF = `https://t.me/${SITE.adminTelegram}?start=beli`;
 
 export const AXVARA_SERVICES = [

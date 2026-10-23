@@ -23,13 +23,21 @@ Jika perubahan mengubah struktur folder, route `src/app/*`, komponen `src/compon
 
 ## CI/CD dan push GitHub (WAJIB)
 - Jalur deploy normal hanya melalui `.github/workflows/ci.yml`: push ke `main` menjalankan test, type-check, build Pages, migrasi D1 yang belum diterapkan, deploy Pages, lalu deploy MCP Worker.
-- Sebelum build/migrasi, `scripts/ci-pages-env-check.cjs` membaca metadata env produksi Pages dan menghitung secret/text + empat variabel sistem Pages terhadap batas Free 64. Melebihi batas/API gagal menghentikan rilis; tepat 64 memberi warning. Jangan log nilai secret. `PEDIA_DISPATCH_ENABLED` sudah dihapus 2026-10-18 karena tidak dipakai kode; bukan gate dispatch. Secret KlikQRIS/DANA/GoPay tetap dipertahankan.
+- Sebelum build/migrasi, `scripts/ci-pages-env-check.cjs` membaca metadata env produksi Pages dan menghitung secret/text + empat variabel sistem Pages terhadap batas paket aktual (Paid 128, Free 64) lewat metadata langganan. Melebihi batas/API gagal menghentikan rilis; tepat batas paket memberi warning. Jangan log nilai secret. `PEDIA_DISPATCH_ENABLED` sudah dihapus 2026-10-18 karena tidak dipakai kode; bukan gate dispatch. Secret KlikQRIS/DANA/GoPay tetap dipertahankan.
 - Pemeriksaan migrasi memakai `scripts/ci-d1-migrations.cjs`: tanpa query D1 hanya bila berkas migrasi + schema + wrangler identik dengan ancestor rilis `ci.yml` push main yang tahap migrasi dan deploy Pages-nya terbukti sukses. Bukti tidak lengkap/API gagal/berkas DB berubah → Wrangler remote wajib tetap lulus; jangan mengabaikan error migrasi atau menganggap push sebagai bukti deploy. Setelah restore/recreate D1, periksa migrasi remote sebelum memakai bukti rilis lama.
 - Setelah implementasi, verifikasi dev, dan changelog selesai, commit lalu `git push origin main`.
 - Begitu `git push` berhasil diterima GitHub, **berhenti**. Jangan memantau/polling GitHub Actions atau Cloudflare dan jangan menunggu hasil deployment.
 - Jangan menjalankan `npm run deploy`, `npm run deploy:mcp`, atau deploy Wrangler manual setelah push. Deploy manual hanya untuk recovery jika diminta eksplisit oleh user.
 - Cloudflare Git integration dinonaktifkan untuk deployment otomatis; GitHub Actions adalah satu-satunya CI/CD agar satu push tidak memicu deploy ganda.
 
+
+### Workers Paid dan unit unik — 2026-10-23
+- Paket Workers Paid aktif pada akun existing; CI membaca metadata langganan melalui `scripts/cloudflare-plan.cjs`, tanpa env/secret baru. Preflight variabel mengikuti Paid128/Free64; API/metadata gagal menghentikan rilis.
+- Cron MCP existing setiap menit: payments/expiry/fulfillment/WR/SK/Pedia/notify/promo; cleanup dan publish artikel tetap lima menit, heavy hanya menit00. Tidak menambah trigger atau loop polling server tanpa batas. Cadangan KlikQRIS maksimal empat GET invoice aktif per tick, bukan create/reissue; validasi otoritatif dan late-payment manual tetap.
+- Fulfillment lite mempunyai budget96 statement dan maksimal empat unit/job; job lain tetap40. Jalur immediate multi-unit yield sesudah40 detik sebelum unit berikutnya untuk menjaga lease. Jangan meniadakan budget, lease, snapshot, atau dedupe supplier.
+- Unit unik baru ditandai server `unique_units:true` dan mode unique dalam `orders.items` yang tetap teragregasi. Manifest menambah unit ekstra SESUDAH index baris asli agar link supplier tetap benar. Total maksimal10 di web/Telegram, reservasi qty utuh atomik, bukan memotong stok dahulu lalu memilih satu akun. Jangan memecah/menulis ulang order lama, membuka DM WA, atau membeli ulang unit gagal.
+- Monitor D1 memakai periode Paid dari metadata dan jatah25miliar baca/50juta tulis per bulan; Free tetap harian. Proyeksi bukan invoice, dapat mencakup pemakaian Free sebelum upgrade. Alert budget eksternal tetap email, tanpa pemutusan layanan.
+- Rincian kontrak/rollback: `docs/PAID-OPERATIONS.md`, `docs/UNIQUE-UNITS.md`. Pengujian memakai fixture tanpa transaksi supplier berbayar.
 
 ### PG KlikQRIS — 2026-10-18
 - API/PNG wajib `redirect: "manual"` + tolak non-2xx; `redirect: "error"` ditolak workerd sebelum jaringan. Verifikasi adapter di runtime workerd, bukan hanya fetch mock. Retry quote existing dan aksi manual `wake=1` memulihkan initializing hanya melalui GET; jangan POST ulang untuk 404/timeout ambigu atau membuat reservasi baru.

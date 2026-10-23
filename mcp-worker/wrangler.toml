@@ -9,7 +9,11 @@ workers_dev = true
 # custom_domain = true
 
 [triggers]
-crons = ["*/5 * * * *"]
+crons = ["* * * * *"]
+
+# Paid plan: bound CPU while network waits remain unbilled.
+[limits]
+cpu_ms = 1000
 
 # State alarm cron (mulai/pengingat 6 jam/pulih) — 2026-10-04, KV gratis.
 [[kv_namespaces]]

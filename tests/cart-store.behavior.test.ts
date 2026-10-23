@@ -29,6 +29,26 @@ beforeEach(() => {
   useCart.setState({ items: [], drawerOpen: false });
 });
 
+it("allows multiple unique units and caps their combined quantity at ten",()=>{
+ const p={...makeProduct({stock:30}),fulfillmentMode:"unique",variantId:1};
+ useCart.getState().add(p,3);expect(useCart.getState().items[0].qty).toBe(3);
+ useCart.getState().add({...p,variantId:2},9);expect(useCart.getState().items.map(i=>i.qty)).toEqual([3,7]);
+ useCart.getState().setQty(p.id,10,1);expect(useCart.getState().count()).toBe(10);
+ useCart.getState().setQty(p.id,1,2);useCart.getState().setQty(p.id,10,1);
+ expect(useCart.getState().items.map(i=>i.qty)).toEqual([9,1]);
+});
+
+it("keeps the unique cap when a minimum exceeds the remaining capacity or an old cart line lacks mode metadata",()=>{
+ const p={...makeProduct({stock:30}),fulfillmentMode:'unique',variantId:1};
+ useCart.getState().add(p,8);
+ useCart.getState().add({...p,variantId:2,minQty:3},3);
+ expect(useCart.getState().items).toHaveLength(1);
+ useCart.getState().clear();
+ useCart.getState().add({...makeProduct({stock:30}),variantId:1},9);
+ useCart.getState().add(p,9);
+ expect(useCart.getState().items[0]).toMatchObject({qty:10,fulfillmentMode:'unique'});
+});
+
 describe("cart store — identitas baris per varian", () => {
   it("dua varian dari produk yang sama menjadi dua baris terpisah", () => {
     const { add } = useCart.getState();

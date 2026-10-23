@@ -57,17 +57,18 @@ export default function PediaOrderStatusPage() {
 
   useEffect(() => { setData(null); setError(null); void load(); }, [load]);
   useEffect(() => {
-    // Auto-refresh: 10 dtk menunggu bayar, 60 dtk berjalan, berhenti saat
-    // terminal atau tab tersembunyi.
+    // Match Market payment feedback; processing updates stay cheap/local.
     const tick = () => {
       if (document.hidden) return;
       const s = data?.status;
-      if (!s || ["completed", "partial", "canceled", "expired"].includes(s)) return;
+      if (!s || ["completed", "partial", "canceled", "expired", "needs_check"].includes(s)) return;
       void load();
     };
-    const interval = data?.status === "awaiting_payment" ? 10_000 : 60_000;
+    const interval = data?.status === "awaiting_payment" ? 5_000 : 10_000;
     const t = setInterval(tick, interval);
-    return () => clearInterval(t);
+    const onVisibility = () => { if (!document.hidden) tick(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", onVisibility); };
   }, [load, data?.status]);
 
   const qrDeadline = data?.qris?.expires_at;

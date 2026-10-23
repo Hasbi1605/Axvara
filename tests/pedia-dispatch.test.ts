@@ -109,6 +109,35 @@ describe("dispatch exactly-once AC-10/11/12", () => {
 });
 
 describe("poll + kredit AC-13/14", () => {
+  it("parallel ticks claim one supplier GET and an active order waits one minute before polling again", async () => {
+    const db=await seedPaidItem({status:"submitted",supplier_order_id:"SUP-POLL"});
+    const {processPediaPaidOrders}=await import("@/lib/pedia/dispatch");
+    const caller=vi.fn(async()=>{await new Promise(r=>setTimeout(r,5));return {ok:true,data:{status:"Processing"},status:200} as never;});
+    await Promise.all([processPediaPaidOrders(caller),processPediaPaidOrders(caller)]);
+    expect(caller).toHaveBeenCalledTimes(1);
+    const item=await db.queryFirst("SELECT status, (julianday(lease_until)-julianday('now'))*86400 AS wait FROM pedia_order_items WHERE order_code='AXP-T1'");
+    expect(item?.status).toBe("in_progress");expect(Number(item?.wait)).toBeGreaterThan(58);expect(Number(item?.wait)).toBeLessThanOrEqual(60);
+    await processPediaPaidOrders(caller);expect(caller).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([[20,120],[90,300]])("long-running orders aged %i minutes back off to %i seconds",async(age,seconds)=>{
+    const db=await seedPaidItem({status:"in_progress",supplier_order_id:"SUP-OLD"});
+    await db.execRun("UPDATE pedia_order_items SET created_at=datetime('now',?) WHERE order_code='AXP-T1'",`-${age} minutes`);
+    const {processPediaPaidOrders}=await import("@/lib/pedia/dispatch");
+    await processPediaPaidOrders(async()=>({ok:true,data:{status:"Processing"},status:200}) as never);
+    const row=await db.queryFirst("SELECT (julianday(lease_until)-julianday('now'))*86400 AS wait FROM pedia_order_items WHERE order_code='AXP-T1'");
+    expect(Number(row?.wait)).toBeGreaterThan(seconds-2);expect(Number(row?.wait)).toBeLessThanOrEqual(seconds);
+  });
+
+  it("a failed supplier status request backs off five minutes without resubmitting",async()=>{
+    const db=await seedPaidItem({status:"submitted",supplier_order_id:"SUP-DOWN"});
+    const {processPediaPaidOrders}=await import("@/lib/pedia/dispatch");
+    const call=vi.fn(async(_action:string)=>({ok:false,kind:"timeout"}) as never);
+    await processPediaPaidOrders(call);await processPediaPaidOrders(call);
+    expect(call).toHaveBeenCalledTimes(1);expect(call.mock.calls[0][0]).toBe("status");
+    const row=await db.queryFirst("SELECT status,(julianday(lease_until)-julianday('now'))*86400 AS wait FROM pedia_order_items WHERE order_code='AXP-T1'");
+    expect(row?.status).toBe("submitted");expect(Number(row?.wait)).toBeGreaterThan(298);
+  });
   it("AC-13: partial remains 40/100 total 10rb → kredit 4rb tepat sekali", async () => {
     const db = await seedPaidItem({ status: "submitted", supplier_order_id: "SUP-9" });
     const { processPediaPaidOrders } = await import("@/lib/pedia/dispatch");

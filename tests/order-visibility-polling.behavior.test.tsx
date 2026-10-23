@@ -73,6 +73,14 @@ it("hidden time does not consume the fast fulfillment attempts, and ready creden
   expect(reads()).toBe(5);
 });
 
+it("continues polling after the first unique credentials arrive until all purchased units are ready",async()=>{
+ current={...current,status:'lunas',qris:null,credentials_ready:true,instant_delivery:true,fulfillment_status:'queued',unique_units_progress:{ready:2,total:3}};
+ render(<OrderSuccessPage/>);await act(async()=>{});expect(reads()).toBe(1);
+ await advance(2000);expect(reads()).toBe(2);
+ current={...current,fulfillment_status:'delivered',unique_units_progress:{ready:3,total:3}};
+ await advance(2000);expect(reads()).toBe(3);await advance(60000);expect(reads()).toBe(3);
+});
+
 it("visibility changes do not reset the bounded handover retry budget", async () => {
   current = { ...current, status: "lunas", qris: null, queued_delivery: true, credentials_ready: false };
   render(<OrderSuccessPage />); await act(async () => {});

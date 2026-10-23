@@ -1,3 +1,4 @@
+import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 // src/lib/telegram/handlers/catalog.ts — Handler penjelajahan katalog & varian.
 //
 // MENGAPA dipisah: handler tampilan (katalog datar, kategori, daftar produk,
@@ -273,12 +274,12 @@ export async function handleShowQty(
     requireEmail: Number(productEmail?.require_email ?? variant.require_email ?? 0),
   });
   const stockMax = variant.stock === -1 ? TELEGRAM_MAX_QTY : Math.max(1, Math.min(variant.stock, TELEGRAM_MAX_QTY));
-  const uniqueMax = variant.fulfillment_mode === "unique" ? 1 : stockMax;
+  const uniqueMax = variant.fulfillment_mode === "unique" ? Math.min(MAX_UNIQUE_UNITS_PER_ORDER, stockMax) : stockMax;
   // Minimum pembelian (migrasi 0034): stepper dibuka LANGSUNG di min agar
   // pembeli GSuite (min 50) tidak mulai dari 1 lalu ditolak saat bayar.
   // Bila min > stok tersedia: biarkan qty tampil min (invoice tetap menolak
   // via guard stok) — jangan clamp diam-diam ke stok lalu lolos min.
-  const minQty = variant.fulfillment_mode === "unique" ? 1 : Math.max(1, Number(variant.min_qty ?? 1) || 1);
+  const minQty = Math.max(1, Number(variant.min_qty ?? 1) || 1);
   const maxQty = Math.max(minQty, uniqueMax);
   const qty = Math.min(Math.max(clampQty(requestedQty), minQty), maxQty);
 
@@ -312,8 +313,8 @@ export async function handleShowQty(
 export async function handleQtyInputPrompt(chatId: number, productId: number, variantId: number, from: { id: number }) {
   const variant = await getActiveVariant(variantId);
   if (!variant || variant.product_id !== productId) return;
-  const minQty = variant.fulfillment_mode === "unique" ? 1 : Math.max(1, Number(variant.min_qty ?? 1) || 1);
-  const maxQty = variant.fulfillment_mode === "unique" ? 1 : variant.stock === -1 ? TELEGRAM_MAX_QTY : Math.min(variant.stock, TELEGRAM_MAX_QTY);
+  const minQty = Math.max(1, Number(variant.min_qty ?? 1) || 1);
+  const maxQty = variant.fulfillment_mode === "unique" ? Math.min(MAX_UNIQUE_UNITS_PER_ORDER, variant.stock === -1 ? MAX_UNIQUE_UNITS_PER_ORDER : variant.stock) : variant.stock === -1 ? TELEGRAM_MAX_QTY : Math.min(variant.stock, TELEGRAM_MAX_QTY);
   if (isD1Mode()) {
     await execRun(`UPDATE telegram_users SET pending_action=?, updated_at=datetime('now') WHERE user_id=?`, `qty_for:${productId}:${variantId}`, String(from.id)).catch(() => {});
   }

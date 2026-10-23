@@ -1,3 +1,4 @@
+import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 import { notifyPaymentMaintenance } from "@/lib/telegram/payment-maintenance";
 // src/lib/telegram/handlers/invoice.ts — Penerbitan invoice QRIS varian tunggal.
 //
@@ -61,14 +62,14 @@ export async function handlePayWithQris(
     return;
   }
   const qty = clampQty(rawQty);
-  if (variant.fulfillment_mode === "unique" && qty > 1) {
-    await handleShowQty(chatId, messageId, productId, variantId, 1);
+  if (variant.fulfillment_mode === "unique" && qty > MAX_UNIQUE_UNITS_PER_ORDER) {
+    await handleShowQty(chatId, messageId, productId, variantId, MAX_UNIQUE_UNITS_PER_ORDER);
     return;
   }
   // Minimum pembelian per varian (migrasi 0034, generik — GSuite min 50):
   // tolak SEBELUM invoice dengan pesan jelas, bukan diam-diam menaikkan.
   const minQty = Math.max(1, Number(variant.min_qty ?? 1) || 1);
-  if (variant.fulfillment_mode !== "unique" && minQty > 1 && qty < minQty) {
+  if (minQty > 1 && qty < minQty) {
     await sendMessage({
       chat_id: chatId,
       text: `📦 <b>Minimal Pembelian ${minQty}</b>\n\nVarian ini minimal order ${minQty} (mis. akun corporate yang dijual grosir). Naikkan jumlah ke minimal ${minQty} lalu bayar 👇`,
@@ -174,7 +175,7 @@ export async function createAndSendVariantInvoice(
   const price = Number(variant.price);
   const subtotal = price * qty;
   const fulfillmentMode = String(variant.fulfillment_mode || "manual");
-  const uniqueFulfillment = fulfillmentMode === "unique" && qty === 1;
+  const uniqueFulfillment = fulfillmentMode === "unique";
   const orderCode = generateOrderCode();
   const items = [{
     product_id: productId,

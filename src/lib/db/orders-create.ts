@@ -8,6 +8,7 @@
 import { getD1, getSharedMem, getOrderMem } from "./client";
 import { StockReservationError } from "./errors";
 import type { D1Statement, AtomicOrderItem } from "./types";
+import { markUniqueUnitLines } from "@/lib/fulfillment/units";
 
 type AtomicOrderInput = {
   code: string;
@@ -25,6 +26,12 @@ type AtomicOrderInput = {
 export async function createOrderWithStock(input: AtomicOrderInput): Promise<void> {
   const d1 = getD1();
   if (d1) {
+    const ids = [...new Set(input.items.map(item => item.variant_id).filter((id): id is number => id != null))];
+    const modes = (ids.length ? (await d1.prepare(`SELECT id,fulfillment_mode FROM product_variants WHERE id IN (${ids.map(()=>"?").join(",")})`).bind(...ids).all()).results : []) as Record<string,unknown>[];
+    const byId = new Map(modes.map(row => [Number(row.id), String(row.fulfillment_mode)]));
+    const uniqueIds = new Set(modes.filter(row => row.fulfillment_mode === "unique").map(row => Number(row.id)));
+    let orderItems: AtomicOrderItem[];
+    try { orderItems = markUniqueUnitLines(input.items, uniqueIds); } catch { throw new StockReservationError(); }
     const guardIds = input.items.map((item) => `${input.quoteId}:stock:${item.variant_id ?? item.product_id}`);
     const statements: D1Statement[] = [];
     input.items.forEach((item, index) => {
@@ -35,8 +42,8 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
         // COALESCE(min_qty,1): baris fixture lama tanpa kolom tetap valid.
         statements.push(
           d1.prepare(
-            "INSERT INTO operation_guards (operation_id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM product_variants WHERE id=? AND is_active=1 AND (stock=-1 OR stock>=?) AND ? >= COALESCE(min_qty,1)) THEN 1 ELSE 0 END",
-          ).bind(guardIds[index], item.variant_id, item.qty, item.qty),
+            "INSERT INTO operation_guards (operation_id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM product_variants WHERE id=? AND is_active=1 AND fulfillment_mode=? AND (stock=-1 OR stock>=?) AND ? >= COALESCE(min_qty,1)) THEN 1 ELSE 0 END",
+          ).bind(guardIds[index], item.variant_id, byId.get(item.variant_id) ?? "manual", item.qty, item.qty),
         );
       } else {
         statements.push(
@@ -63,7 +70,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
     });
     const primaryVariantId = input.items.find((it) => it.variant_id)?.variant_id ?? null;
     // Web orders may contain unique-fulfillment lines. Reserve one
-    // inventory row per such line inside the same atomic batch (issue #4,
+    // inventory row per requested unit inside the same atomic batch (issue #4,
     // review R3): without this, a unique line has variant stock cut but no
     // secret bound to the order, so delivery fails with "No reserved
     // inventory". Rules (explicit, incl. legacy rows without variant_id):
@@ -72,7 +79,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
     // - Variant-scoped rows (fi.variant_id = pv.id) belong to that variant
     //   only and are never shared across variants.
     // - Legacy rows (fi.variant_id IS NULL) are a shared pool of last
-    //   resort: within ONE order, the first line claims one legacy row and
+    //   resort: within ONE order, each line claims its quantity of rows and
     //   later lines in the same batch must see it as gone. The batch aborts
     //   (guard + post-claim verification) unless every unique line holds a
     //   reservation afterwards — no order, no stock cut, no partial claim.
@@ -85,8 +92,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
     // inventory nor inflates the required reservation count (review R3).
     const uniqueLines = uniqueItems;
     // Unique-mode variant ids among this order's lines (resolved inside the
-    // batch by the guards below — no separate read that a concurrent
-    // checkout could invalidate).
+    // batch by the mode guards below; the earlier mode read is fenced).
     if (uniqueLines.length > 0) {
       const uniqueGuardId = `${input.quoteId}:unique-inventory`;
       statements.push(
@@ -110,7 +116,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
           d1.prepare(
             `UPDATE fulfillment_inventory
              SET status='reserved', order_code=?, reserved_at=datetime('now')
-             WHERE id=(
+             WHERE id IN (
                SELECT fi.id FROM fulfillment_inventory fi
                JOIN product_variants pv ON pv.id=?
                WHERE fi.product_id=pv.product_id AND fi.status='available'
@@ -122,13 +128,13 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
                      AND taken.id=fi.id
                  )
                ORDER BY CASE WHEN fi.variant_id=pv.id THEN 0 ELSE 1 END, COALESCE(fi.sort_order,fi.id), fi.id ASC
-               LIMIT 1
+               LIMIT ?
              ) AND status='available'`,
-          ).bind(input.code, item.variant_id, input.code),
+          ).bind(input.code, item.variant_id, input.code, item.qty),
         );
       }
       // Post-claim verification: every UNIQUE-mode line must hold exactly
-      // one reservation. A no-op UPDATE (same legacy row picked twice, lost
+      // qty reservations. A no-op UPDATE (same legacy row picked twice, lost
       // race, mode flipped mid-batch) would otherwise slip through the
       // pre-check and leave the order short of secrets. Non-unique lines
       // are excluded from the required count via the mode join, so a
@@ -151,14 +157,10 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
                  )
                  OR fi.variant_id IS NULL
                )
-           ) >= (
-             SELECT COUNT(*) FROM product_variants pv
-             WHERE pv.fulfillment_mode='unique'
-               AND pv.id IN (${uniqueLines.map(() => "?").join(",")})
-           ) THEN 1 ELSE 0 END`,
+           ) >= ? THEN 1 ELSE 0 END`,
         ).bind(
           verifyGuardId, input.code, ...uniqueLines.map((it) => it.variant_id),
-          ...uniqueLines.map((it) => it.variant_id),
+          uniqueLines.reduce((n, item) => n + (uniqueIds.has(Number(item.variant_id)) ? item.qty : 0), 0),
         ),
       );
       guardIds.push(verifyGuardId);
@@ -171,7 +173,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
         input.customerName,
         input.customerWa,
         input.customerEmail,
-        JSON.stringify(input.items),
+        JSON.stringify(orderItems),
         input.subtotal,
         input.paymentMethod,
         input.paymentAccount,

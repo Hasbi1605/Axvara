@@ -14,6 +14,7 @@ import {
 import { getActiveVariant, type VariantSummary, formatDuration, buyerWarrantyLabel } from "@/lib/catalog";
 import { generateOrderCode } from "@/lib/security";
 import { QRIS_ORDER_WINDOW_MINUTES } from "@/lib/payments/dana-qris";
+import { markUniqueUnitLines, MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 
 export type ChannelOrderInput = {
   salesChannel: "web" | "telegram" | "whatsapp";
@@ -101,6 +102,12 @@ export async function createChannelOrderAtomic(
   input: AtomicChannelOrderInput,
 ): Promise<PendingOrder> {
   if (!input.lines.length) throw new Error("empty_order_lines");
+  const uniqueLines = input.lines.filter(line => line.fulfillmentMode === "unique");
+  if (uniqueLines.reduce((n,line)=>n+line.qty,0) > MAX_UNIQUE_UNITS_PER_ORDER) throw new StockReservationError();
+  let orderItems: unknown[];
+  try { orderItems = markUniqueUnitLines(input.items as {variant_id?:unknown;qty?:unknown}[], new Set(uniqueLines.map(line=>line.variantId))); }
+  catch { throw new StockReservationError(); }
+  if (input.lines.some(line => !Number.isSafeInteger(line.qty) || line.qty < 1)) throw new StockReservationError();
 
   const d1 = getD1();
   if (!d1 || !isD1Mode()) {
@@ -111,10 +118,12 @@ export async function createChannelOrderAtomic(
     // Paritas dev: alur unique tetap mereservasi unit di store in-memory,
     // seperti sebelum reservasi dipindah ke dalam batch D1.
     for (const line of input.lines) {
-      if (line.fulfillmentMode !== "unique" || line.qty !== 1) continue;
+      if (line.fulfillmentMode !== "unique") continue;
       const { reserveInventory } = await import("@/lib/fulfillment/inventory");
-      const reserved = await reserveInventory(line.productId, input.orderCode, line.variantId);
-      if (reserved === null) throw new StockReservationError();
+      for (let unit=0; unit<line.qty; unit++) {
+        const reserved = await reserveInventory(line.productId, input.orderCode, line.variantId);
+        if (reserved === null) throw new StockReservationError();
+      }
     }
     await execRun(
       `INSERT INTO orders (
@@ -128,7 +137,7 @@ export async function createChannelOrderAtomic(
       input.customerName,
       input.customerWa || "",
       input.customerEmail ?? null,
-      JSON.stringify(input.items),
+      JSON.stringify(orderItems),
       input.subtotal,
       input.paymentMethod,
       input.paymentAccount,
@@ -164,12 +173,6 @@ export async function createChannelOrderAtomic(
     }
   }
 
-  // Unique = satu secret per baris, jadi hanya berlaku saat qty tepat 1.
-  // qty>1 pada varian unique diarahkan ke alur manual oleh pemanggil; aturan
-  // yang sama ditegakkan di sini agar tidak ada kanal yang menyimpang.
-  const uniqueLines = input.lines.filter(
-    (line) => line.fulfillmentMode === "unique" && line.qty === 1,
-  );
   const guardIds: string[] = [];
   const statements: D1Statement[] = [];
 
@@ -185,14 +188,14 @@ export async function createChannelOrderAtomic(
         `INSERT INTO operation_guards (operation_id, valid)
          SELECT ?, CASE WHEN EXISTS(
            SELECT 1 FROM product_variants
-           WHERE id=? AND is_active=1 AND (stock=-1 OR stock>=?)
+           WHERE id=? AND product_id=? AND fulfillment_mode=? AND is_active=1 AND (stock=-1 OR stock>=?)
              AND ? >= COALESCE(min_qty,1)
              AND (
                fulfillment_mode!='shared'
                OR (shared_secret_ciphertext IS NOT NULL AND shared_secret_iv IS NOT NULL)
              )
          ) THEN 1 ELSE 0 END`,
-      ).bind(guardId, line.variantId, line.qty, line.qty),
+      ).bind(guardId, line.variantId, line.productId, line.fulfillmentMode, line.qty, line.qty),
     );
     // Klausa `(stock=-1 OR stock>=?)` di UPDATE bersifat defense-in-depth:
     // guard di atas sudah menjamin, tetapi tanpa klausa ini korektnes
@@ -216,13 +219,13 @@ export async function createChannelOrderAtomic(
       d1.prepare(
         `UPDATE fulfillment_inventory
          SET status='reserved', order_code=?, variant_id=COALESCE(variant_id, ?), reserved_at=datetime('now')
-         WHERE id=(
+         WHERE id IN (
            SELECT id FROM fulfillment_inventory
            WHERE product_id=? AND status='available' AND (variant_id=? OR variant_id IS NULL)
            ORDER BY CASE WHEN variant_id=? THEN 0 ELSE 1 END, COALESCE(sort_order,id), id ASC
-           LIMIT 1
+           LIMIT ?
          ) AND status='available'`,
-      ).bind(input.orderCode, line.variantId, line.productId, line.variantId, line.variantId),
+      ).bind(input.orderCode, line.variantId, line.productId, line.variantId, line.variantId, line.qty),
     );
   }
 
@@ -239,7 +242,7 @@ export async function createChannelOrderAtomic(
            SELECT COUNT(*) FROM fulfillment_inventory
            WHERE order_code=? AND status='reserved'
          ) >= ? THEN 1 ELSE 0 END`,
-      ).bind(verifyGuardId, input.orderCode, uniqueLines.length),
+      ).bind(verifyGuardId, input.orderCode, uniqueLines.reduce((n,line)=>n+line.qty,0)),
     );
   }
 
@@ -266,7 +269,7 @@ export async function createChannelOrderAtomic(
       input.customerName,
       input.customerWa || "",
       input.customerEmail ?? null,
-      JSON.stringify(input.items),
+      JSON.stringify(orderItems),
       input.subtotal,
       input.paymentMethod,
       input.paymentAccount,

@@ -1,3 +1,4 @@
+import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 // src/lib/telegram/keyboards.ts — Premium UX inline keyboards
 // Patterns: ≤3 buttons per row, verbs on buttons, consistent back/home placement,
 // 2-column grid for categories, single-column for products (longer labels).
@@ -387,8 +388,10 @@ export function cartKeyboard(params: {
   lines: { variantId: number; qty: number; stock: number; fulfillmentMode: string }[];
 }): InlineKeyboardMarkup {
   const rows: InlineKeyboardButton[][] = params.lines.slice(0, 20).map((line) => {
-    const canInc = line.fulfillmentMode !== "unique"
-      && (line.stock === -1 || line.qty < Math.min(line.stock, TELEGRAM_MAX_QTY));
+    const uniqueTotal = params.lines.reduce((n, item) => n + (item.fulfillmentMode === "unique" ? item.qty : 0), 0);
+    const cap = line.fulfillmentMode === "unique" ? MAX_UNIQUE_UNITS_PER_ORDER : TELEGRAM_MAX_QTY;
+    const canInc = (line.fulfillmentMode !== "unique" || uniqueTotal < MAX_UNIQUE_UNITS_PER_ORDER)
+      && line.qty < cap && (line.stock === -1 || line.qty < line.stock);
     const row: InlineKeyboardButton[] = [
       { text: "➖", callback_data: line.qty > 1 ? cb.cartDec(line.variantId) : cb.cartRemove(line.variantId) },
       { text: `❌`, callback_data: cb.cartRemove(line.variantId) },

@@ -5,10 +5,11 @@
 // mode dari snapshot, dan menilai kelengkapan/settlement manifest. Lapis ini
 // tidak mengirim, tidak mengklaim job, dan tidak menulis ledger; ia dipakai
 // bersama oleh claim/send/process/reconcile/handover. Memisahkannya membuat
-// kontrak manifest (satu baris fulfillment = satu baris order) mudah ditinjau
-// tanpa terdistraksi mesin pengiriman. NOL perubahan perilaku.
+// kontrak manifest (satu baris fulfillment per unit unik baru) mudah ditinjau
+// tanpa terdistraksi mesin pengiriman. Legacy tetap satu baris per item.
 
 import { execRun } from "@/lib/db";
+import { expandDeliveryLines } from "../units";
 import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 import type {
   FulfillmentOrderItem,
@@ -118,8 +119,7 @@ export async function ensurePrivateRecipient(
 /** Parse order.items into a normalized per-item list. */
 export function parseOrderItems(raw: unknown): FulfillmentOrderItem[] {
   try {
-    const parsed = JSON.parse(String(raw ?? "[]"));
-    if (!Array.isArray(parsed)) return [];
+    const parsed = expandDeliveryLines(raw);
     return parsed
       .map((entry) => {
         const row = entry as Record<string, unknown>;

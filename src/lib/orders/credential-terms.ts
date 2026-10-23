@@ -20,13 +20,13 @@ import type { VariantCopy } from "@/lib/product-copy/format";
 import { resolveVariantCopy } from "@/lib/product-copy/resolve";
 import { mergeProductCopy, parseProductDescription } from "@/lib/product-copy/format";
 import { displayDescription } from "@/lib/catalog";
+import { expandDeliveryLines } from "@/lib/fulfillment/units";
 
 type OrderLine = { variant_id?: unknown };
 
 function orderVariantIds(itemsRaw: unknown): (number | null)[] {
   try {
-    const parsed = JSON.parse(String(itemsRaw ?? "[]"));
-    if (!Array.isArray(parsed)) return [];
+    const parsed = expandDeliveryLines(itemsRaw);
     return parsed.map((line) => {
       const vid = Number((line as OrderLine)?.variant_id ?? 0);
       return Number.isFinite(vid) && vid > 0 ? vid : null;

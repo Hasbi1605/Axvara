@@ -1,5 +1,19 @@
 # DESIGN.md — AXVARA Design System
 
+## Status multi-akun dan kesegaran Pedia — 23 Oktober 2026
+
+✅ Diimplementasikan; publikasi melalui CI. Panel kredensial mempertahankan
+Liquid Glass dan menampilkan “N dari M akun siap” untuk pesanan beberapa stok
+unik. Setiap akun memiliki label “Akun N dari M” serta tombol Salin akun N;
+isi akun tetap literal/escaped. S&K dan aktivasi identik ditampilkan sekali.
+Saat unit baru siap, akses token memuat ulang isi tanpa menggulir pengguna
+kembali atau membuka informasi tanpa verifikasi. Ringkasan belanja tetap
+satu baris per produk/varian dengan qty aslinya. Stepper web/mobile dan
+Telegram membatasi total sepuluh akun unik. Pedia memperbarui QR/status
+lima/sepuluh detik saat terlihat dan menyusul saat tab dibuka; tampilan, QR,
+countdown server dan aturan reduced motion dipertahankan.
+
+
 
 ## Animasi drag kredensial — 2026-10-23
 

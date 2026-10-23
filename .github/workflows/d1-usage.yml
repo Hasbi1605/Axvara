@@ -1,4 +1,4 @@
-name: D1 Free usage monitor
+name: D1 usage monitor
 
 on:
   schedule:
@@ -22,7 +22,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Check daily usage and remaining budget
+      - name: Check active-plan usage and remaining included budget
         run: node scripts/d1-usage-check.cjs --report /tmp/d1-usage.json --check
         env:
           CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}

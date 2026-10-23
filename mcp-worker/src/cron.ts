@@ -1,4 +1,4 @@
-// Penjadwal cron AXVARA (2026-10-04, Workers Free plan).
+// Penjadwal cron AXVARA (Workers Paid, revisi 2026-10-23).
 //
 // Insiden 3 Okt 2026 20:25–23:50 WIB: 41 run beruntun `/api/cron/operations`
 // dibunuh runtime Pages (`exceededResources` → HTTP 503) karena SATU request
@@ -6,10 +6,9 @@
 // 02:00–05:20 WIB: setelah pemecahan per fase, request fase WR/SK gabungan
 // (order + sync) masih dibunuh — order lunas ikut tertahan.
 //
-// Kini (2026-10-09):
+// Riwayat pemecahan fase (2026-10-09), tetap dipertahankan pada Paid:
 // - setiap langkah = request terpisah (`?phase=`), dipanggil BERURUTAN dengan
-//   jeda STEP_DELAY_MS agar tidak 8+ request menghantam Pages dalam detik yang
-//   sama saat cold (pemicu 4× 503 bareng 9 Okt 09:50 WIB);
+//   sejak Paid 23 Oktober tanpa jeda tambahan; origin timeout 45 detik;
 // - `notify` dipecah `notify_a` (retry Telegram + invoice) dan `notify_b`
 //   (QRIS + reminder + WA outbox): satu-satunya lite job yang mengipas 5
 //   sub-kerjaan dalam 1 request;
@@ -36,12 +35,12 @@ export type CronEnv = {
 /**
  * Tingkat alarm per langkah (2026-10-05):
  * - `hard`: dialarmkan setelah 2 tick gagal beruntun (menyentuh pembeli);
- * - `soft`: baru dialarmkan setelah 6 tick (30 mnt) beruntun;
+ * - `soft`: baru dialarmkan setelah 6 tick (6 mnt pada cadence Paid) beruntun;
  * - `none`: tidak pernah dialarmkan (pelengkap/cadangan — inti sudah
  *   dikerjakan langkah lite, kesegaran katalog dijaga diff VPS).
  */
 export type AlarmTier = "hard" | "soft" | "none";
-export type CronStep = { phase: string; part?: "orders" | "sync"; chunked?: boolean; lite?: string; alarm: AlarmTier; heavy?: boolean };
+export type CronStep = { phase: string; part?: "orders" | "sync"; chunked?: boolean; lite?: string; alarm: AlarmTier; heavy?: boolean; everyMinutes?: number };
 /**
  * Route besar `/api/cron/operations` hanya dipanggil di tick menit :00 UTC
  * (sekali per jam) sejak 5 Okt malam: email Cloudflare "Workers CPU limit
@@ -51,17 +50,18 @@ export type CronStep = { phase: string; part?: "orders" | "sync"; chunked?: bool
 export const HEAVY_EVERY_MINUTES = 60;
 export function isHeavyTick(scheduledTime: number): boolean {
   const d = new Date(scheduledTime);
-  return (d.getUTCHours() * 60 + d.getUTCMinutes()) % HEAVY_EVERY_MINUTES < 5;
+  return d.getUTCMinutes() === 0;
 }
 
 /**
  * Urutan satu tick. Langkah INTI lewat `/api/cron/lite` (route ramping,
- * jarang kena limit CPU Free plan) didahulukan; route besar
+ * dengan batas pekerjaan per request) didahulukan; route besar
  * `/api/cron/operations` tetap dipanggil sebagai pelengkap (stranded ledger,
  * manual-WA, reconcile tambahan, saldo, notify, sync cadangan, cleanup) —
  * aman ganda karena klaim/transisi idempoten.
  */
 export const CRON_STEPS: CronStep[] = [
+  { phase: "lite", lite: "payments", alarm: "hard" },
   { phase: "lite", lite: "expiry", alarm: "hard" },
   { phase: "lite", lite: "fulfillment", alarm: "hard" },
   { phase: "lite", lite: "wr_orders", alarm: "hard" },
@@ -72,7 +72,7 @@ export const CRON_STEPS: CronStep[] = [
   { phase: "lite", lite: "notify_a", alarm: "soft" },
   { phase: "lite", lite: "notify_b", alarm: "soft" },
   { phase: "lite", lite: "promo", alarm: "soft" },
-  { phase: "lite", lite: "cleanup", alarm: "none" },
+  { phase: "lite", lite: "cleanup", alarm: "none", everyMinutes: 5 },
   // Pelengkap per jam (stranded ledger, manual-WA, reconcile tambahan, saldo,
   // watchdog, sync cadangan). Tidak dialarmkan: inti sudah di lite.
   { phase: "expiry", alarm: "none", heavy: true },
@@ -86,12 +86,11 @@ export const CRON_STEPS: CronStep[] = [
 ];
 /** Plafon potongan per langkah sync per tick (WR 49/10 = 5; SK ~100/25 = 4). */
 export const MAX_CHUNKS_PER_PHASE = 10;
-/** Jeda antar langkah lite per tick (2026-10-09): 8+ request berurutan tanpa
- * jeda menghantam Pages dalam detik yang sama — saat cold start, semuanya
- * berebut CPU isolate yang sama dan mati bareng (4× 503, 9 Okt 09:50 WIB).
- * 2 dtk × ~9 langkah ≈ 18 dtk, jauh di bawah plafon tick 5 mnt. Hanya dipakai
- * di tick runtime sungguhan; fungsi murni/test tidak tidur. */
-export const STEP_DELAY_MS = 2000;
+/** Paid: langkah tetap berurutan tanpa jeda buatan agar pembayaran/pengiriman
+ * segera dijalankan. Batas batch, lease dan timeout tetap membatasi pekerjaan. */
+export const STEP_DELAY_MS = 0;
+/** A stalled origin must not prevent subsequent order/notification jobs. */
+export const STEP_TIMEOUT_MS = 45_000;
 /** Fallback tanpa KV: alarm hanya di tick menit kelipatan 30. */
 export const ALERT_EVERY_MINUTES = 30;
 export const ALARM_START_AFTER_FAILED_TICKS = 2;
@@ -100,7 +99,7 @@ export const ALARM_REMINDER_MS = 6 * 60 * 60 * 1000;
 export const ALARM_KV_KEY = "cron_alarm_v1";
 /**
  * Langkah `:sync` = pengaman berkala sejak diff VPS (2026-10-04) menjaga
- * kesegaran. Kegagalannya baru dialarmkan bila beruntun ≥ 6 tick (30 mnt);
+ * kesegaran. Kegagalannya baru dialarmkan bila beruntun ≥ 6 tick (6 mnt pada cadence Paid);
  * kegagalan langkah lain (order, notify, …) tetap 2 tick.
  */
 export const SOFT_ALARM_AFTER_TICKS = 6;
@@ -138,7 +137,7 @@ async function callStep(env: CronEnv, step: CronStep, fetchFn: FetchFn): Promise
     calls++;
     let response: Response;
     try {
-      response = await fetchFn(`${env.AXVARA_API_ORIGIN}${path}?${query}`, { method: "POST", headers });
+      response = await fetchFn(`${env.AXVARA_API_ORIGIN}${path}?${query}`, { method: "POST", headers, signal: AbortSignal.timeout(STEP_TIMEOUT_MS) });
     } catch (error) {
       return { step: label, calls, ok: false, status: 0, error: error instanceof Error ? error.message.slice(0, 120) : "fetch_failed" };
     }
@@ -169,7 +168,7 @@ export function formatAlert(failures: PhaseOutcome[], scheduledTime: number, kin
     title,
     ...failures.map((f) => `• ${describe(f)}`),
     "",
-    "HTTP 503 = biasanya runtime Pages membunuh request (exceededResources, batas CPU Free plan).",
+    "Periksa error origin, koneksi provider, dan batas CPU pada Functions metrics; HTTP 503 saja belum menentukan penyebabnya.",
     kind === "stateless" ? "" : "Pesan berikutnya: pengingat tiap 6 jam, atau ✅ saat pulih.",
     "Cek: Cloudflare → Pages axvara → Functions metrics, lalu admin → Warung Rebahan/Sekalipay → Sync terakhir.",
   ].filter((line, i, all) => line !== "" || all[i - 1] !== "").join("\n");
@@ -292,9 +291,10 @@ export async function runOperationsTick(
   let stepped = false;
   for (const step of CRON_STEPS) {
     if (step.heavy && !heavyTick) continue;
+    if (step.everyMinutes && new Date(scheduledTime).getUTCMinutes() % step.everyMinutes !== 0) continue;
     // Jeda antar langkah lite (bukan sebelum langkah pertama, bukan untuk
     // langkah heavy pelengkap per jam yang memang jarang + sudah ringan).
-    if (stepped && step.lite) await sleepFn(STEP_DELAY_MS).catch(() => undefined);
+    if (stepped && step.lite && STEP_DELAY_MS > 0) await sleepFn(STEP_DELAY_MS).catch(() => undefined);
     stepped = true;
     outcomes.push({ ...(await callStep(env, step, fetchFn)), alarm: step.alarm });
   }

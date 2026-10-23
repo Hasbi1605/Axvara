@@ -1,5 +1,47 @@
 # ARCHITECTURE.md — AXVARA
 
+## Pembelian beberapa kredensial unik — 23 Oktober 2026
+
+✅ Diimplementasikan; publikasi melalui CI. Web dan Telegram mendukung total
+maksimal sepuluh unit stok unik per pesanan, termasuk beberapa varian,
+mengikuti stok efektif dan minimum pembelian. Pembeli tetap melihat satu
+baris produk ×jumlah, satu order dan satu invoice. Reservasi seluruh unit
+mengikuti urutan stok admin dalam batch atomik; kekurangan satu unit
+membatalkan seluruh batch sebelum invoice. Retry checkout memakai order lama.
+
+Setiap akun memiliki item pengiriman, ikatan inventory, snapshot terenkripsi,
+lease dan retry sendiri. Unit yang sudah terkirim tidak dikirim ulang; unit
+yang gagal mempertahankan inventory yang sama. Pembatalan/expiry pending
+melepaskan seluruh reservasi dan mengembalikan qty stok sekali. Akun diberi
+nomor, tombol salin per akun, progres “2 dari 3 akun siap”, dan panduan identik
+cukup sekali di panel. Pengiriman web memakai email per unit agar kegagalan
+satu email tidak mengulang unit lain; tanda terima menampilkan baris belanja
+aslinya. Pesanan lama mempertahankan interpretasi sebelumnya. Alur WA existing
+masih satu unit dan kill-switch DM tidak diubah. [Kontrak unit](UNIQUE-UNITS.md).
+
+## Workers Paid: pembayaran dan pengiriman cepat — 23 Oktober 2026
+
+✅ Diimplementasikan; publikasi melalui CI. Webhook tetap jalur utama untuk
+konfirmasi pembayaran dan pengiriman seketika. Cron existing berjalan setiap
+menit untuk cadangan KlikQRIS tanpa halaman pembeli terbuka, expiry,
+fulfillment, WR/SK, Pedia dan notifikasi. Pemeriksaan KlikQRIS hanya GET invoice
+pending yang masih berlaku, maksimal empat per tick, berbagi klaim atomik
+dengan polling halaman; gagal konfirmasi tetap pending. Batas bayar 15 menit,
+penanganan late payment manual dan larangan pembelian ulang ambigu tetap.
+
+Pedia memeriksa supplier setiap menit selama 15 menit pertama, lalu dua menit
+hingga umur satu jam dan lima menit sesudahnya; kegagalan status diberi jeda
+lima menit. Status halaman terlihat diperbarui lima detik saat menunggu bayar,
+sepuluh detik ketika diproses, dan segera setelah tab kembali terlihat.
+Terminal/needs_check berhenti polling. Katalog tetap mengikuti diff VPS dan
+sweep hourly; cleanup/publikasi artikel tetap lima menitan. Ini target latensi
+pemicu, bukan janji waktu selesai supplier atau email.
+
+Monitor membaca paket dan periode tagihan aktual: Paid memakai jatah D1
+bulanan, Free memakai batas harian. Rincian biaya, batas kerja dan rollback:
+[operasional Paid](PAID-OPERATIONS.md).
+
+
 ## Penyederhanaan pilihan layanan Pedia — 22 Oktober 2026
 
 ✅ Implementasi; publikasi melalui CI. Koreksi owner22 Oktober: judul “Apa yang ingin ditingkatkan?” kembali ke ukuran24px/bold semula tanpa garis cyan. Yang diperkecil adalah pill kebutuhan Followers/Likes/dll: tinggi32px, teks12px, ikon13px dan padding12px; permukaan gradasi halus dengan highlight inset, pilihan aktif cyan/violet dan glow tipis. Gulir horizontal serta fokus keyboard tetap, scrollbar visual disembunyikan. Label tombol jumlah memakai `k` kecil untuk ribuan (`1k`, `2k`, `2.5k`); angka di bawah 1.000 tetap utuh, nilai input/perhitungan serta teks batas dan harga memakai angka aslinya. Pengantar panjang jumlah dihapus; batas tampil sesuai min/max layanan terpilih (“Layanan terpilih menerima 100–50.000 per pesanan.”), termasuk kelipatan bila perlu; sebelum memilih layanan ada petunjuk singkat tanpa angka asumsi. “Pilih layanan · harga untuk …” berada di kiri dan filter ringkas di kanan saat muat, bertumpuk pada mobile. Kategori **Semua/Global/Indonesia/Refill** memakai satu state eksklusif: tepat satu pill aktif, klik pill aktif mempertahankannya; Refill berarti semua wilayah dengan refill>0. Pemilihan kategori tidak mengganti layanan atau jumlah. Hitungan hasil, Reset filter dan pengaturan jenis akun/urutan berada sesudah daftar. Beranda, data katalog, validasi batas, quote/consent/retry dan pembayaran tetap.

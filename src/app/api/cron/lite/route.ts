@@ -1,4 +1,4 @@
-// POST /api/cron/lite?job=expiry|fulfillment|wr_orders|sk_orders|pedia_orders|promo|notify_a|notify_b|notify|cleanup — langkah
+// POST /api/cron/lite?job=payments|expiry|fulfillment|wr_orders|sk_orders|pedia_orders|promo|notify_a|notify_b|notify|cleanup — langkah
 // cron INTI yang dipisah dari route raksasa `/api/cron/operations` (2026-10-05).
 //
 // Latar: Workers Free ~10 ms CPU per request. Malam 4→5 Okt 10–20% request
@@ -19,6 +19,7 @@
 // Cakupan sengaja inti (yang menyentuh pembeli); sisanya tetap di route besar
 // yang masih dipanggil Worker sebagai pelengkap (idempoten — klaim atomik/
 // lease/transisi bersyarat mencegah kerja ganda):
+//   payments    — maksimal4 invoice KlikQRIS aktif due, GET status saja
 //   expiry      — initializing basi + invoice DANA/GoPay/KlikQRIS lewat deadline
 //   fulfillment — lepas lock basi + proses job kirim yang jatuh tempo
 //   wr_orders   — pulihkan klaim/saldo, SEMBUHKAN link yatim lunas-tanpa-link
@@ -42,7 +43,7 @@ import { createBudgetedDatabase, QueryBudgetExceeded, type DatabaseAccess } from
 
 export const runtime = "edge";
 
-const LITE_JOBS = ["expiry", "fulfillment", "wr_orders", "sk_orders", "pedia_orders", "promo", "notify", "notify_a", "notify_b", "cleanup"] as const;
+const LITE_JOBS = ["payments", "expiry", "fulfillment", "wr_orders", "sk_orders", "pedia_orders", "promo", "notify", "notify_a", "notify_b", "cleanup"] as const;
 type LiteJob = (typeof LITE_JOBS)[number];
 const EXPIRY_PER_RUN = 10;
 const ORPHAN_LEDGER_PER_RUN = 10;
@@ -66,11 +67,16 @@ export async function POST(request: NextRequest) {
   const job = request.nextUrl.searchParams.get("job") as LiteJob | null;
   if (!job || !LITE_JOBS.includes(job)) return NextResponse.json({ error: "invalid_job" }, { status: 400 });
 
-  // Budget statement D1 per invocation sama dengan route besar (40).
-  const db = createBudgetedDatabase(40).access;
+  // Paid: fulfillment mendapat96 statement untuk beberapa unit; job lain40.
+  const db = createBudgetedDatabase(job === "fulfillment" ? 96 : 40).access;
   const result: Record<string, unknown> = { ok: true, job };
   try {
-    if (job === "expiry") Object.assign(result, await runExpiry(db));
+    if (job === "payments") {
+      const { reconcileDueKlikQrisPayments } = await import("@/lib/payments/klikqris-reconcile");
+      Object.assign(result, await reconcileDueKlikQrisPayments(db));
+      if (Number(result.payments_failed) > 0) return NextResponse.json({ ...result, ok: false }, { status: 503 });
+    }
+    else if (job === "expiry") Object.assign(result, await runExpiry(db));
     else if (job === "fulfillment") Object.assign(result, await runFulfillment(db));
     else if (job === "wr_orders") Object.assign(result, await runWrOrders(db));
     else if (job === "sk_orders") Object.assign(result, await runSkOrders(db));
@@ -174,7 +180,7 @@ async function runFulfillment(db: Db) {
     const order = await db.queryFirst(`SELECT * FROM orders WHERE code=?`, String(job.order_code));
     if (!order) continue;
     try {
-      const unit = await processJobItems(Number(job.id), order, {}, 2, undefined, db);
+      const unit = await processJobItems(Number(job.id), order, {}, 4, undefined, db);
       if (unit.done || unit.attempted > 0) processed++;
     } catch (error) {
       if (error instanceof QueryBudgetExceeded) throw error;

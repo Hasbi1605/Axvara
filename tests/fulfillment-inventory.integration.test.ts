@@ -83,13 +83,15 @@ describe("R3 inventory maps one unit to exactly one line", () => {
     expect(inv()).toMatchObject({ reserved: 0, available: 1 });
   });
 
-  it("quote rejects qty>1 on unique variants before any reservation", () => {
-    const src = fixture.sql; // fixture unused; assert on shipped source instead
-    void src;
-    const fs = require("node:fs") as typeof import("node:fs");
-    const text = fs.readFileSync("src/app/api/checkout/quote/route.ts", "utf8");
-    expect(text).toContain('fulfillment_mode) === "unique" && item.qty > 1');
-    expect(text).toContain("hanya dapat dibeli 1 unit per pesanan");
+  it("a web line of three unique units materializes three separate delivery rows", async () => {
+    await seedUnique(["unique"], [1,1,1]);
+    await webOrder("R3-MULTI", [item(1,3)]);
+    const {ensureFulfillmentItems}=await import("@/lib/fulfillment/deliver");
+    const order=fixture.sql.prepare("SELECT * FROM orders WHERE code='R3-MULTI'").get()!;
+    const rows=await ensureFulfillmentItems(order);
+    expect(rows).toHaveLength(3);
+    expect(rows.map(row=>row.qty)).toEqual([1,1,1]);
+    expect(new Set(rows.map(row=>row.inventory_id)).size).toBe(3);
   });
 
   it("non-unique lines never consume inventory", async () => {

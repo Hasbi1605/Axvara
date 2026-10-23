@@ -74,6 +74,19 @@ describe("formatter WR bentuk {label, value} (screenshot Bstation 2026-10-13)", 
 });
 
 describe("supplier refresh bersama", () => {
+  it("two background ticks share the atomic refresh gate and make only one vendor request",async()=>{
+    const fx=await setupWrFixture();
+    try{
+      seedWrCatalog(fx);seedWrOrder(fx,"AXV-20261023-RACE0001");seedWrFulfillmentItem(fx,"AXV-20261023-RACE0001");
+      fx.sql.prepare("INSERT INTO wr_order_links(order_code,wr_order_id,wr_variant_id,quantity,wr_cost,status,request_sent_at) VALUES('AXV-20261023-RACE0001','ORD-REFRESH-1','var-1',1,5000,'processing',datetime('now'))").run();
+      stubWrTransactions([]);
+      const fetcher=vi.mocked(fetch);const original=fetcher.getMockImplementation()!;
+      fetcher.mockImplementation(async(...args)=>{if(String(args[0]).includes('/transactions'))await new Promise(r=>setTimeout(r,10));return original(...args)});
+      const {refreshDueSupplierOrders}=await import("@/lib/orders/supplier-refresh");const db=createDatabaseAccess(fx.db);
+      await Promise.all([refreshDueSupplierOrders(db),refreshDueSupplierOrders(db)]);
+      expect(fetcher.mock.calls.filter(([url])=>String(url).includes('/transactions'))).toHaveLength(1);
+    }finally{fx.close()}
+  });
   it("gerbang: klaim pertama menang, klaim berikutnya tertahan cooldown", async () => {
     const fx = await setupWrFixture();
     try {

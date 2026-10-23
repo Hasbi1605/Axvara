@@ -1,3 +1,4 @@
+import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 // src/lib/telegram/handlers/discovery.ts — Handler cari, riwayat, & input teks.
 //
 // MENGAPA dipisah: penelusuran (my-orders, search prompt/results), konfirmasi
@@ -272,8 +273,8 @@ export async function handlePendingQtyInput(
   try {
     const { getActiveVariant } = await import("@/lib/catalog");
     const typedVariant = await getActiveVariant(variantId);
-    const need = typedVariant?.fulfillment_mode === "unique" ? 1 : Math.max(1, Number(typedVariant?.min_qty ?? 1) || 1);
-    const max = typedVariant?.fulfillment_mode === "unique" ? 1 : typedVariant?.stock === -1 ? TELEGRAM_MAX_QTY : Math.min(Number(typedVariant?.stock ?? 0), TELEGRAM_MAX_QTY);
+    const need = Math.max(1, Number(typedVariant?.min_qty ?? 1) || 1);
+    const max = typedVariant?.fulfillment_mode === "unique" ? Math.min(MAX_UNIQUE_UNITS_PER_ORDER, typedVariant.stock === -1 ? MAX_UNIQUE_UNITS_PER_ORDER : typedVariant.stock) : typedVariant?.stock === -1 ? TELEGRAM_MAX_QTY : Math.min(Number(typedVariant?.stock ?? 0), TELEGRAM_MAX_QTY);
     if (typedVariant && (typedQty < need || typedQty > max)) {
       await sendMessage({
         chat_id: chatId,

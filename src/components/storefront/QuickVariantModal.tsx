@@ -1,5 +1,6 @@
 "use client";
 
+import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { formatRupiah } from "@/lib/utils";
@@ -154,7 +155,7 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
   // Minimum pembelian varian terpilih (migrasi 0034): stepper dibuka di min.
   const selectedMinQty = selected ? Math.max(1, Number(selected.min_qty ?? 1) || 1) : 1;
   const selectedMaxQty = selected
-    ? (() => { const eff = effOf(selected); return Math.max(selectedMinQty, eff === -1 ? 100 : Math.max(selectedMinQty, Math.min(100, eff))); })()
+    ? (() => { const eff = effOf(selected); const cap = selected.fulfillment_mode === "unique" ? MAX_UNIQUE_UNITS_PER_ORDER : 100; return Math.max(selectedMinQty, eff === -1 ? cap : Math.min(cap, eff)); })()
     : 100;
   const [modalQty, setModalQty] = useState(selectedMinQty);
   // Draft ketikan manual (pola marketplace): string terpisah agar mengetik
@@ -188,6 +189,7 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
         variantId: selected.id,
         variantLabel: selected.label,
         minQty: selectedMinQty,
+        fulfillmentMode: selected.fulfillment_mode,
       }, safeModalQty);
       onClose();
     } else {

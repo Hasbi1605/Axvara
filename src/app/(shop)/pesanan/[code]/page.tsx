@@ -48,6 +48,7 @@ type Order = {
   supplierRunning: boolean;
   /** `failed` = lunas tetapi produk gagal dikirim otomatis. */
   fulfillmentStatus?: string | null;
+  uniqueUnitsProgress?: {ready:number;total:number};
 };
 
 function fromApi(value: Record<string, unknown>): Order {
@@ -68,6 +69,7 @@ function fromApi(value: Record<string, unknown>): Order {
     supplierOwned: value.supplier_owned === true,
     supplierRunning: value.supplier_running === true,
     fulfillmentStatus: value.fulfillment_status ? String(value.fulfillment_status) : null,
+    uniqueUnitsProgress: value.unique_units_progress as Order["uniqueUnitsProgress"],
     qris: value.qris as QrisInvoice | null | undefined,
   };
 }
@@ -332,8 +334,9 @@ export default function OrderSuccessPage() {
   const handedToAdmin = !supplierSending && (queuedDelivery || (instantDelivery && fulfillmentStatus === "manual_required"));
   const instantSending = supplierSending
     || (instantDelivery && !supplierOwned && !["delivered", "manual_required", "failed"].includes(String(fulfillmentStatus)));
+  const uniqueUnitsPending = Boolean(order?.uniqueUnitsProgress && order.uniqueUnitsProgress.ready < order.uniqueUnitsProgress.total);
   useEffect(() => {
-    if (orderStatus !== "lunas" || credentialsReady) return;
+    if (orderStatus !== "lunas" || (credentialsReady && !uniqueUnitsPending)) return;
     const fast = instantSending ? INSTANT_POLL_DELAYS_MS : [];
     const maxAttempts = fast.length + (handedToAdmin ? 3 : 30);
     let attempts = 0;
@@ -367,7 +370,7 @@ export default function OrderSuccessPage() {
       clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [orderStatus, credentialsReady, instantSending, handedToAdmin, pollOrder]);
+  }, [orderStatus, credentialsReady, uniqueUnitsPending, instantSending, handedToAdmin, pollOrder]);
 
   useEffect(() => {
     if (!order?.qris || order.status !== "pending") return;
@@ -690,7 +693,7 @@ export default function OrderSuccessPage() {
         )}
 
         {isPaid && (order.credentialsReady ? (
-          <WrCredentialsPanel key={order.code} code={order.code} contactHint={[order.wa, order.email].filter(Boolean).join(" · ")} />
+          <WrCredentialsPanel key={order.code} code={order.code} deliveryProgress={order.uniqueUnitsProgress} contactHint={[order.wa, order.email].filter(Boolean).join(" · ")} />
         ) : !isDeliveryFailed && (
           // Detail akun belum/tidak pernah ada: jangan tampilkan form verifikasi
           // yang pasti gagal. Beri kepastian ke mana produk dikirim, dan JANGAN

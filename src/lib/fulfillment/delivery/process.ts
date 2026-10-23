@@ -37,6 +37,7 @@ import {
   writeJobOutcome,
 } from "./claim";
 import { processItem, sendToRecipient } from "./send";
+import { expandDeliveryLines } from "../units";
 
 /**
  * Proses SEBANYAK maxItems item berikutnya dari satu job (RR4-01).
@@ -145,7 +146,9 @@ export async function processJob(
     const claimed = await claimJob(jobId, database);
     return claimed ? processLegacyJob(jobId, order, product, claimed) : false;
   }
-  const result = await processJobItems(jobId, order, product, Infinity, undefined, database);
+  const deadline = Date.now() + 40_000;
+  const multiUnique = expandDeliveryLines(order.items).some(line => Number(line.unit_total) > 1);
+  const result = await processJobItems(jobId, order, product, Infinity, multiUnique ? () => Date.now() < deadline : undefined, database);
   return result.done;
 }
 

@@ -40,6 +40,37 @@ function accountScrolls() {
 }
 
 describe("account details auto-scroll", () => {
+  it("refreshes additional unique units without scrolling again, numbers each account and shows shared instructions once",async()=>{
+    const first=credentials('first@example.test').credentials[0];
+    const second={...first,label:'Muse — Akun 2 dari 3',details:'Email: second@example.test'};
+    const third={...first,label:'Muse — Akun 3 dari 3',details:'Email: third@example.test'};
+    const copy=vi.fn(async(_text:string)=>undefined);Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:copy}});
+    const fetcher=vi.fn().mockResolvedValueOnce(response({credentials:[{...first,label:'Muse — Akun 1 dari 3'},second],capability_token:'fixture-capability'}))
+      .mockResolvedValueOnce(response({credentials:[{...first,label:'Muse — Akun 1 dari 3'},second,third]}));
+    vi.stubGlobal('fetch',fetcher);
+    const view=render(<WrCredentialsPanel code={CODE} prefillContact='buyer@example.test' deliveryProgress={{ready:2,total:3}}/>);
+    await screen.findByText('2 dari 3 akun siap');await screen.findByRole('button',{name:'Salin akun 2'});
+    expect(screen.getAllByRole('button',{name:'Syarat & Ketentuan'})).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button',{name:'Salin akun 2'}));
+    await waitFor(()=>expect(copy).toHaveBeenCalledWith('Email: second@example.test'));
+    await waitFor(()=>expect(scroll).toHaveBeenCalledTimes(1));
+    view.rerender(<WrCredentialsPanel code={CODE} prefillContact='buyer@example.test' deliveryProgress={{ready:3,total:3}}/>);
+    await screen.findByRole('button',{name:'Salin akun 3'});expect(fetcher.mock.calls[1][0]).toContain('token=fixture-capability');
+    expect(scroll).toHaveBeenCalledTimes(1);expect(screen.getByText('3 dari 3 akun siap')).toBeTruthy();
+  });
+  it("loads the newest unit when progress advances during the first contact verification",async()=>{
+    let complete!:(value:Response)=>void;
+    const unit=credentials().credentials[0];
+    const fetcher=vi.fn().mockImplementationOnce(()=>new Promise<Response>(resolve=>{complete=resolve}))
+      .mockResolvedValueOnce(response({credentials:[unit,unit,unit]}));
+    vi.stubGlobal('fetch',fetcher);
+    const view=render(<WrCredentialsPanel code={CODE} prefillContact='buyer@example.test' deliveryProgress={{ready:2,total:3}}/>);
+    await screen.findByRole('button',{name:'Memeriksa…'});
+    view.rerender(<WrCredentialsPanel code={CODE} prefillContact='buyer@example.test' deliveryProgress={{ready:3,total:3}}/>);
+    await act(async()=>{complete(response({credentials:[unit,unit],capability_token:'fixture-capability'}))});
+    await screen.findByRole('button',{name:'Salin akun 3'});
+    expect(fetcher).toHaveBeenCalledTimes(2);expect(fetcher.mock.calls[1][0]).toContain('token=fixture-capability');
+  });
   it("waits for verified content, scrolls once in StrictMode, and leaves subsequent interactions alone", async () => {
     let complete!: (value: Response) => void;
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(resolve => { complete = resolve; })));

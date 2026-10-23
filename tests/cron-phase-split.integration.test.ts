@@ -20,6 +20,7 @@ import {
   CRON_STEPS,
   MAX_CHUNKS_PER_PHASE,
   STEP_DELAY_MS,
+  isHeavyTick,
   formatAlert,
   nextAlarmState,
   runOperationsTick,
@@ -315,7 +316,7 @@ describe("Worker runOperationsTick", () => {
     const report = await runOperationsTick(env, at(5), fn as never, async () => undefined);
     expect(report.failures).toEqual([]);
     expect(calls.map(label)).toEqual([
-      "lite:expiry", "lite:fulfillment", "lite:wr_orders", "lite:sk_orders", "lite:pedia_orders", "lite:notify_a", "lite:notify_b", "lite:promo", "lite:cleanup",
+      "lite:payments", "lite:expiry", "lite:fulfillment", "lite:wr_orders", "lite:sk_orders", "lite:pedia_orders", "lite:notify_a", "lite:notify_b", "lite:promo", "lite:cleanup",
     ]);
     expect(calls.some((u) => u.includes("/api/cron/operations"))).toBe(false);
   });
@@ -325,23 +326,27 @@ describe("Worker runOperationsTick", () => {
     const report = await runOperationsTick(env, Date.UTC(2026, 9, 3, 14, 0), fn as never, async () => undefined);
     expect(report.failures).toEqual([]);
     expect(calls.map(label)).toEqual([
-      "lite:expiry", "lite:fulfillment", "lite:wr_orders", "lite:sk_orders", "lite:pedia_orders", "lite:notify_a", "lite:notify_b", "lite:promo", "lite:cleanup",
+      "lite:payments", "lite:expiry", "lite:fulfillment", "lite:wr_orders", "lite:sk_orders", "lite:pedia_orders", "lite:notify_a", "lite:notify_b", "lite:promo", "lite:cleanup",
       "expiry", "fulfillment", "warung_rebahan:orders", "sekalipay:orders",
       "notify", "warung_rebahan:sync", "sekalipay:sync", "cleanup",
     ]);
     expect(CRON_STEPS.map(stepLabel)).toEqual(calls.map(label));
     expect(fn.mock.calls[0][1]).toMatchObject({ method: "POST", headers: { authorization: "Bearer s" } });
-    expect(calls[0]).toBe("https://axvara.test/api/cron/lite?job=expiry");
+    expect(calls[0]).toBe("https://axvara.test/api/cron/lite?job=payments");
   });
 
-  it("jeda antar langkah lite: sleep dipanggil sekali per jeda, tanpa jeda sebelum langkah pertama", async () => {
+  it("Paid jobs have no Free-plan sleeps; minute ticks skip housekeeping and hourly sweeps", async () => {
     const { fn } = mockFetch(() => ({ status: 200 }));
     const sleeps: number[] = [];
-    await runOperationsTick(env, at(5), fn as never, async (ms: number) => { sleeps.push(ms); });
-    // 9 langkah lite → 8 jeda (tanpa jeda sebelum langkah pertama).
-    expect(sleeps).toHaveLength(8);
-    expect(new Set(sleeps).size).toBe(1);
-    expect(sleeps[0]).toBe(STEP_DELAY_MS);
+    await runOperationsTick(env, at(1), fn as never, async (ms: number) => { sleeps.push(ms); });
+    expect(sleeps).toEqual([]);
+    expect(STEP_DELAY_MS).toBe(0);
+    expect(fn.mock.calls.some(([url]) => url.includes("job=payments"))).toBe(true);
+    expect(fn.mock.calls.some(([url]) => url.includes("job=fulfillment"))).toBe(true);
+    expect(fn.mock.calls.some(([url]) => url.includes("job=cleanup") || url.includes("phase="))).toBe(false);
+    expect(fn.mock.calls.every(([, init]) => init?.signal instanceof AbortSignal)).toBe(true);
+    expect(isHeavyTick(at(0))).toBe(true);
+    for (const minute of [1,2,3,4,5,59]) expect(isHeavyTick(at(minute))).toBe(false);
   });
 
   it("mengulang potongan sync selama more:true lalu berhenti", async () => {

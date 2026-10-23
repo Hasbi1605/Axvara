@@ -1,4 +1,5 @@
 "use client";
+import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
@@ -290,7 +291,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
   // Qty terpilih ala marketplace (Shopee/Tokopedia): stepper dibuka di min,
   // tidak turun di bawah min, plafon 100. Direset ke min tiap ganti varian.
   const selectedMaxQty = selectedVariant
-    ? (() => { const eff = effectiveStockOf(selectedVariant); return Math.max(selectedMinQty, eff === -1 ? 100 : Math.max(selectedMinQty, Math.min(100, eff))); })()
+    ? (() => { const eff = effectiveStockOf(selectedVariant); const cap = selectedVariant.fulfillment_mode === "unique" ? MAX_UNIQUE_UNITS_PER_ORDER : 100; return Math.max(selectedMinQty, eff === -1 ? cap : Math.min(cap, eff)); })()
     : 100;
   // Clamp render-time (bukan effect): qty selalu dalam [min, max] varian
   // aktif tanpa useEffect di bawah early-return (Rules of Hooks). Naik bila
@@ -813,7 +814,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
               <button
                 onClick={() => {
                   const cartProduct = selectedVariant
-                    ? { ...product, price: selectedVariant.price, stock: selectedVariant.stock === -1 ? undefined : selectedVariant.stock, variantId: selectedVariant.id, variantLabel: selectedVariant.label, minQty: selectedMinQty }
+                    ? { ...product, price: selectedVariant.price, stock: selectedVariant.stock === -1 ? undefined : selectedVariant.stock, variantId: selectedVariant.id, variantLabel: selectedVariant.label, minQty: selectedMinQty, fulfillmentMode: selectedVariant.fulfillment_mode }
                     : product;
                   add(cartProduct, safePdpQty);
                 }}
@@ -843,7 +844,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
             onClick={() => {
               if (mustPickInModal) { setVariantModal("cart"); return; }
               const cartProduct = selectedVariant
-                ? { ...product, price: selectedVariant.price, stock: selectedVariant.stock === -1 ? undefined : selectedVariant.stock, variantId: selectedVariant.id, variantLabel: selectedVariant.label, minQty: selectedMinQty }
+                ? { ...product, price: selectedVariant.price, stock: selectedVariant.stock === -1 ? undefined : selectedVariant.stock, variantId: selectedVariant.id, variantLabel: selectedVariant.label, minQty: selectedMinQty, fulfillmentMode: selectedVariant.fulfillment_mode }
                 : product;
               add(cartProduct, safePdpQty);
             }}

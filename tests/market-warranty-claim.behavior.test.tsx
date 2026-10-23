@@ -53,15 +53,14 @@ function expectAccountWarranty() {
   const account = screen.getByRole("region", { name: "Detail akun digital" });
   const buttons = within(account).getAllByRole("button");
   expect(buttons.map(button => button.textContent)).toEqual([
-    "Syarat & Ketentuan", "Cara Penggunaan / Aktivasi",
-    "Syarat & Ketentuan", "Cara Penggunaan / Aktivasi",
+    "Salin akun 1", "Salin akun 2", "Syarat & Ketentuan", "Cara Penggunaan / Aktivasi",
     "Syarat klaim garansi",
   ]);
   // Garansi tetap satu per pesanan, setelah panduan terakhir dan sebelum catatan simpan.
   const warranty = within(account).getByRole("button", { name: "Syarat klaim garansi" });
   expect(screen.getAllByRole("button", { name: "Syarat klaim garansi" })).toHaveLength(1);
-  expect(warranty.className).toBe(buttons[0].className);
-  expect(warranty.parentElement!.className).toBe(buttons[0].parentElement!.className);
+  expect(warranty.className).toBe(within(account).getByRole("button", { name: "Syarat & Ketentuan" }).className);
+  expect(warranty.parentElement!.className).toBe(within(account).getByRole("button", { name: "Syarat & Ketentuan" }).parentElement!.className);
   expect(warranty.compareDocumentPosition(within(account).getByText(/Simpan detail ini/)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   return warranty;
 }

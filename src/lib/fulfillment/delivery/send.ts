@@ -18,7 +18,7 @@ import { isEnabled } from "@/lib/feature-flags";
 import type { Row } from "./types";
 import { MAX_ATTEMPTS, RETRY_DELAYS } from "./types";
 import { findReservedForOrderVariant, inventoryMatchesItem } from "./inventory-binding";
-import { isValidBuyerEmail, sendWebDeliveryEmail } from "./buyer-email";
+import { isValidBuyerEmail, sendWebDeliveryEmail, orderLineLabel } from "./buyer-email";
 
 /**
  * Klaim lease baris item (FASE 1). Immediate pass (no due-gate): retry rows
@@ -201,14 +201,14 @@ async function resolveUniqueInventory(
  */
 async function deliverUnique(
   item: Row, itemId: number, leaseFence: string, recipientChannel: string, recipientTarget: string,
-  orderCode: string, productId: number, variantId: number, qty: number, database: DatabaseAccess,
+  orderCode: string, productId: number, variantId: number, qty: number, database: DatabaseAccess, unitLabel?: string,
 ): Promise<boolean> {
   const { execRun } = database;
   const inventoryItem = await resolveUniqueInventory(item, itemId, leaseFence, orderCode, productId, variantId, database);
   const secretCt = String(inventoryItem.secret_ciphertext);
   const secretIv = String(inventoryItem.secret_iv);
   const plaintext = await decryptSecret(secretCt, secretIv);
-  await sendItem(recipientChannel, recipientTarget, orderCode, itemId, plaintext, qty, database, variantId);
+  await sendItem(recipientChannel, recipientTarget, orderCode, itemId, plaintext, qty, database, variantId, unitLabel);
   const d1 = database.d1;
   // Keep inventory and item settlement atomic, both under the item lease.
   // A worker resuming after its lease was taken cannot consume the unit.
@@ -284,7 +284,7 @@ export async function processItem(order: Row, itemRow: Row, adminChatId?: string
       return await deliverShared(itemId, leaseFence, recipientChannel, recipientTarget, orderCode, productId, variantId, qty, database);
     }
     if (mode === "unique") {
-      return await deliverUnique(item, itemId, leaseFence, recipientChannel, recipientTarget, orderCode, productId, variantId, qty, database);
+      return await deliverUnique(item, itemId, leaseFence, recipientChannel, recipientTarget, orderCode, productId, variantId, qty, database, orderLineLabel(order.items, Number(item.item_index)));
     }
     throw new Error(`Unknown fulfillment mode: ${mode}`);
   } catch (error) {
@@ -333,13 +333,13 @@ export async function processItem(order: Row, itemRow: Row, adminChatId?: string
 
 /** Kanal web lewat email pembeli; kanal lain lewat sendToRecipient. */
 async function sendItem(
-  channel: string, target: string, orderCode: string, itemId: number, plaintext: string, qty: number, database: DatabaseAccess, variantId: number,
+  channel: string, target: string, orderCode: string, itemId: number, plaintext: string, qty: number, database: DatabaseAccess, variantId: number, label?: string,
 ): Promise<void> {
   if (channel === "web") {
     await sendWebDeliveryEmail({ database, orderCode, itemId, plaintext });
     return;
   }
-  await sendToRecipient(channel, target, orderCode, plaintext, qty, database, variantId);
+  await sendToRecipient(channel, target, orderCode, plaintext, qty, database, variantId, label);
 }
 
 export async function sendToRecipient(
@@ -350,6 +350,7 @@ export async function sendToRecipient(
   qty: number,
   database: DatabaseAccess = createDatabaseAccess(),
   variantId = 0,
+  productName?: string,
 ): Promise<string> {
   const qtySuffix = qty > 1 ? ` (×${qty})` : "";
   if (channel === "whatsapp") {
@@ -378,7 +379,7 @@ export async function sendToRecipient(
   const { credentialMessages } = await import("@/lib/telegram/messages/credential");
   const { sendTelegramCredentialParts } = await import("@/lib/telegram/credential-delivery");
   const sent = await sendTelegramCredentialParts(target, credentialMessages({
-    orderCode, plaintext, copy: copies.get(variantId || 0), secretTag: "code",
+    orderCode, plaintext, productName, copy: copies.get(variantId || 0), secretTag: "code",
   }));
   return sent.messageId;
 }

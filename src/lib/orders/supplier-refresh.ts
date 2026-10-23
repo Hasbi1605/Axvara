@@ -78,17 +78,6 @@ export async function claimSupplierRefreshGate(
   return { acquired: false, retryAfterSeconds };
 }
 
-async function writeRefreshMark(orderCode: string, atIso: string, db: DatabaseAccess): Promise<void> {
-  await db
-    .execRun(
-      `INSERT INTO store_settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
-       ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`,
-      keyFor(orderCode),
-      atIso,
-    )
-    .catch(() => undefined);
-}
-
 export type SupplierLinkCandidate = {
   supplier: "wr" | "sk";
   id: number;
@@ -256,11 +245,8 @@ export async function refreshDueSupplierOrders(
     // Klaim gerbang SEKARANG (bukan setelah vendor): bila invocation ini
     // dibunuh di tengah panggilan vendor, gerbang tetap menahan tick
     // berikutnya daripada mengulang vendor tanpa jeda.
-    await writeRefreshMark(
-      candidate.orderCode,
-      new Date(now + Math.max(1, throttleSeconds) * 1000).toISOString(),
-      db,
-    );
+    const gate = await claimSupplierRefreshGate(candidate.orderCode, db, throttleSeconds);
+    if (!gate.acquired) { out.cooledDown++; continue; }
     if (await refreshSupplierOrderNow(candidate.orderCode, db).catch(() => false)) out.refreshed++;
   }
   return out;
