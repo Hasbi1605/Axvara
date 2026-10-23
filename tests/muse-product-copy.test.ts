@@ -74,3 +74,62 @@ describe("salinan Muse AI", () => {
     } finally { fixture.close(); }
   });
 });
+
+
+const metaPatch = fs.readFileSync("issue/muse-ai-meta-copy-2026-10-23.sql", "utf8");
+const ownerDescription = `Muse AI adalah agent autonomus yang dapat berjalan 24 jam dan memiliki mesin virtual sendiri, dapat digunakan untuk membantu coding, riset, analisis, pembuatan konten, dan scheduling. Muse juga multimodal model yang dapat membaca teks, gambar, video, hingga audio. Dapat juga digunakan untuk generate gambar dan generate video.
+
+Kelebihannya:
+- VPS bawaan: 2 vCPU, RAM ±7,7 GB, storage 100 GB
+- Tugas latar belakang 24 jam tanpa menyewa VPS tambahan
+- Browser bawaan dan kendali / chat langsung melalui WhatsApp
+- Konektor ke Google Workspace, GitHub, Canva, instagram, threads, dan layanan lainnya
+- Akun siap pakai tanpa kartu kredit, tanpa VPN`;
+
+function seedOwnerCopy() {
+  const fixture = seed();
+  fixture.sql.prepare("UPDATE products SET description=?, updated_at='2026-10-23 04:38:56' WHERE id=112").run(ownerDescription);
+  return fixture;
+}
+
+describe("revisi Muse dari Meta", () => {
+  it("menambah konteks ekosistem dan manfaat konten tanpa mengubah informasi atau varian owner", () => {
+    const fixture = seedOwnerCopy();
+    try {
+      const beforeProduct = fixture.sql.prepare("SELECT * FROM products WHERE id=112").get()!;
+      const beforeVariant = fixture.sql.prepare("SELECT * FROM product_variants WHERE id=248").get();
+      fixture.sql.exec(metaPatch);
+      const product = fixture.sql.prepare("SELECT * FROM products WHERE id=112").get()!;
+      const description = String(product.description);
+      expect(description).toContain("AI agent otonom dari Meta");
+      expect(description).toContain("WhatsApp, Instagram, Threads, dan Facebook");
+      expect(description).toContain("caption dan materi promosi");
+      expect(description).toContain("kalender konten");
+      expect(description).toContain(ownerDescription.slice(ownerDescription.indexOf("24 jam")));
+      expect(parseProductDescription(description).sections).toEqual(parseProductDescription(ownerDescription).sections);
+      expect(parseProductDescription(description).sections[0].items).toHaveLength(5);
+      const { description: _oldCopy, updated_at: _oldTimestamp, ...beforeFields } = beforeProduct;
+      const { description: _newCopy, updated_at: _newTimestamp, ...afterFields } = product;
+      expect(afterFields).toEqual(beforeFields);
+      expect(fixture.sql.prepare("SELECT * FROM product_variants WHERE id=248").get()).toEqual(beforeVariant);
+      fixture.sql.exec(metaPatch);
+      expect(fixture.sql.prepare("SELECT * FROM products WHERE id=112").get()).toEqual(product);
+    } finally { fixture.close(); }
+  });
+
+  it.each([
+    "description='Suntingan owner terbaru'",
+    "updated_at='2026-10-23 05:00:00'",
+    "admin_description_override='Override owner'",
+    "source='warung_rebahan'",
+    "slug='produk-lain'",
+  ])("melewati data yang berubah: %s", (change) => {
+    const fixture = seedOwnerCopy();
+    try {
+      fixture.sql.exec(`UPDATE products SET ${change} WHERE id=112`);
+      const before = fixture.sql.prepare("SELECT * FROM products WHERE id=112").get();
+      fixture.sql.exec(metaPatch);
+      expect(fixture.sql.prepare("SELECT * FROM products WHERE id=112").get()).toEqual(before);
+    } finally { fixture.close(); }
+  });
+});

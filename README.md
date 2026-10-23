@@ -469,6 +469,11 @@ Copy membedakan token tambahan dari langganan berbayar, menempatkan kapasitas
 VM sebagai referensi, serta mengikuti kuota/izin/ketersediaan dan garansi
 varian tanpa garansi. Teks dan dasar bukti: [salinan Muse](issue/muse-ai-copy-2026-10-21.md).
 Revisi ringkas owner: lima keunggulan, lima poin S&K, dan empat langkah aktivasi.
+Revisi 23 Oktober ✅ live menambahkan asal Meta, ekosistem WhatsApp/Instagram/Threads/
+Facebook dan contoh promosi/konten pada pengantar. Patch data sekali jalan
+`issue/muse-ai-meta-copy-2026-10-23.sql` hanya menyunting description/updated_at,
+dengan guard timestamp dan isi lengkap owner agar tidak menimpa perubahan baru;
+S&K/panduan varian tetap. Bukan migrasi schema atau perubahan kontrak aplikasi.
 
 **Link supplier tampil pendek via shortlink internal `axvara.tech/go/*` (2026-10-03, migrasi 0056).** 44 link supplier (mailbox OTP, bot Telegram, tutorial YouTube, domain resmi app, panduan artikel — termasuk `go/disney-login` 2026-10-19) dibungkus jadi `go/otp`, `go/netflix-login`, dst. — tampil pendek di PDP/email/panel, redirect 307 + hitung klik, noindex. Kelola di tab admin **Link Supplier** (tambah/ubah/tujuan/aktif-nonaktif); supplier ganti URL → update 1 baris, tanpa edit kurasi. Detail: `docs/ARCHITECTURE.md` (tabel `supplier_links` + route `/go/:slug`) dan `docs/PRD.md` FR-S17c.
 

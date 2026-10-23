@@ -20,6 +20,13 @@ bagian gambar yang sudah hilang.
 
 ## Salinan produk Muse AI — 21 Oktober 2026
 
+Revisi 23 Oktober 2026 ✅ live: pengantar deskripsi menjelaskan Muse sebagai AI agent
+otonom dari Meta, satu ekosistem dengan WhatsApp, Instagram, Threads, dan
+Facebook. Manfaat promosi/konten dicontohkan lewat riset ide, caption, materi
+promosi, dan kalender konten; tidak menjanjikan hasil promosi atau akses
+semua platform otomatis. Patch katalog khusus deskripsi:
+[salinan Meta](../issue/muse-ai-meta-copy-2026-10-23.md).
+
 ✅ Live: produk manual `muse-ai-1-miliar-token` Rp16.000 memakai deskripsi,
 S&K, dan cara penggunaan bersama per varian sesuai format Market. Penawaran
 1 miliar token tambahan pada akun yang dapat tetap berlabel Free plan, bukan

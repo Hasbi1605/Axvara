@@ -3,7 +3,9 @@
 Arahan owner: deskripsi, S&K, dan cara penggunaan mengikuti format produk
 AXVARA lain. Revisi owner pada tanggal yang sama: persingkat menjadi
 pengantar + lima keunggulan, lima poin S&K, dan empat langkah aktivasi.
-Teks terkini ada di
+Revisi deskripsi 23 Oktober menambahkan konteks Meta dan manfaat promosi:
+[`muse-ai-meta-copy-2026-10-23.md`](muse-ai-meta-copy-2026-10-23.md).
+Teks ringkas 21 Oktober ada di
 [`muse-ai-copy-compact-2026-10-21.sql`](muse-ai-copy-compact-2026-10-21.sql).
 [`muse-ai-copy-2026-10-21.sql`](muse-ai-copy-2026-10-21.sql) adalah arsip
 versi panjang awal. Patch ringkas hanya mengganti timestamp revisi awal;

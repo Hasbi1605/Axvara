@@ -1601,6 +1601,11 @@ menampilkan lima poin paket/aturan/garansi serta empat langkah aktivasi.
 Harga/stok/foto/pengiriman serta
 garansi tidak berubah. Dasar penulisan dan batas bukti ada di
 `issue/muse-ai-copy-2026-10-21.md`.
+Revisi 23 Oktober ✅ live menambahkan asal Meta, ekosistem WhatsApp/Instagram/Threads/
+Facebook dan contoh promosi/konten pada pengantar. Patch data sekali jalan
+`issue/muse-ai-meta-copy-2026-10-23.sql` hanya menyunting description/updated_at,
+dengan guard timestamp dan isi lengkap owner agar tidak menimpa perubahan baru;
+S&K/panduan varian tetap. Bukan migrasi schema atau perubahan kontrak aplikasi.
 
 Permintaan owner: deskripsi, S&K, dan cara aktivasi seragam untuk produk WR
 maupun non-WR, tanpa kalimat berulang, dalam suara Axvara, **tanpa
