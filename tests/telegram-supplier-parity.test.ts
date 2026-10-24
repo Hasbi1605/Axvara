@@ -425,7 +425,7 @@ describe("Fallback pengiriman kredensial Telegram", () => {
   });
 });
 
-describe("Notif admin Lunas — Telegram", () => {
+describe("Notif admin Pembayaran diterima — Telegram", () => {
   it("SK auto tidak menulis 'WA belum diisi', manual tetap", async () => {
     const { adminTelegramOrderPaidMessage } = await import("@/lib/telegram/messages");
     const base = { orderCode: "AXV-1", productNames: "Capcut", amount: 4612, customerName: "Icksan", telegramUser: "icksann", customerWa: "", customerEmail: "icksan@email.com" };

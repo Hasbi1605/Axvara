@@ -321,7 +321,7 @@ describe("BUG-12: community destinations remain live and centralized", () => {
     const src = fs.readFileSync(path.join(process.cwd(), "src/components/storefront/Footer.tsx"), "utf-8");
     const site = fs.readFileSync(path.join(process.cwd(), "src/lib/site.ts"), "utf-8");
     expect(site).toContain("chat.whatsapp.com/DHgtU7q39TlCV6ToZ4JU39");
-    expect(src).toContain("href={WA_GROUP_HREF}");
+    expect(src).toContain("href={storeSettings.whatsappGroupUrl}");
     expect(src).not.toContain('href="#"');
   });
 

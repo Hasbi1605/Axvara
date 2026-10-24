@@ -1,5 +1,27 @@
 # DESIGN.md — AXVARA Design System
 
+## Pengaturan grup dan akses pesanan admin — 24 Oktober 2026
+
+✅ Diimplementasikan; publikasi melalui CI. Pengaturan Toko menambah input berlabel
+**Link grup WhatsApp** dengan petunjuk satu tautan untuk Footer/Link Bio, memakai
+gaya field/glass existing dan satu tombol Simpan Pengaturan existing. Card
+notifikasi grup di bawahnya memuat nomor/grup, status koneksi/aktif, pesan error,
+kode pairing sementara dan tiga aksi Hubungkan/Cek koneksi/Aktifkan atau Nonaktifkan.
+Kode pairing tampil hanya bagi admin, bukan log. Layout flex-wrap responsif,
+sentuhan minimal44px, status jeda berwarna amber; tidak mengganti token brand.
+
+Lacak pesanan `admin=1` menampilkan petunjuk sesi admin, tautan masuk panel dan
+muat ulang; formulir kontak serta riwayat buyer tidak ditampilkan. Detail/timeline
+memakai komponen existing. Ketika sesi ditolak, detail dikosongkan dan pesan login
+ditampilkan. Tombol Telegram **Lihat pesanan pembeli** berada bersama aksi admin
+existing. Notifikasi publik WA memakai teks ringkas/emoji, status selesai serta
+jam WIB, tanpa tombol akses/invoice rahasia.
+
+Obscura1440/390 menguji komponen aktual dengan fixture inert, perubahan dua href
+dari satu input, admin lookup+credentials tanpa kontak, sesi401 dan tanpa overflow
+atau JS exception. Nilai input/href diperiksa lewat DOM karena renderer tidak
+menggambar semua nilai form dalam PNG. QA bukan bukti koneksi bot produksi.
+
 ## Carousel info dan panel terang — 24 Oktober 2026
 
 ✅ Diimplementasikan; publikasi melalui CI. Revisi screenshot owner24Oktober:

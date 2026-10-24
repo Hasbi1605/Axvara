@@ -6,8 +6,23 @@
 // mempermudah menjaga keseragaman itu. Pemindahan murni — teks identik.
 
 import { escapeHtml, formatRupiah, truncate } from "./format";
+import { formatWibDateTime } from "@/lib/utils";
+
+type PaidStatus = { paidAt?: unknown; orderStatus?: string; deliveryLines?: string[] };
+function createdStatus(createdAt: unknown): string[] {
+  const time = formatWibDateTime(createdAt, { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return ["⏳ Status pembayaran: MENUNGGU PEMBAYARAN", "📦 Status pesanan: MENUNGGU PEMBAYARAN",
+    `🕒 Dibuat: ${time ? escapeHtml(time) + " WIB" : "Belum tercatat"}`];
+}
+function paidStatus(params: PaidStatus): string[] {
+  const time = formatWibDateTime(params.paidAt, { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return ["✅ Status pembayaran: LUNAS", `📦 Status pesanan: ${escapeHtml(params.orderStatus || "DIPROSES")}`,
+    ...(params.deliveryLines ?? []).map(escapeHtml),
+    `🕒 Dibayar: ${time ? escapeHtml(time) + " WIB" : "Belum tercatat"}`];
+}
 
 export function adminTelegramOrderCreatedMessage(params: {
+  createdAt?: unknown;
   orderCode: string;
   productNames: string;
   amount: number;
@@ -37,7 +52,7 @@ export function adminTelegramOrderCreatedMessage(params: {
     `📧 ${escapeHtml(truncate(email, 80))}`,
     `💳 ${escapeHtml(paymentMethod.toUpperCase())} dinamis`,
     "",
-    "⏳ Menunggu pembayaran otomatis",
+    ...createdStatus(params.createdAt),
   ].join("\n");
 }
 
@@ -53,7 +68,7 @@ export function adminTelegramOrderPaidMessage(params: {
   delivery?: "instant" | "queued" | "manual";
   /** Email pembeli (2026-10-10, permintaan owner): wajib tampil agar admin bisa verifikasi order require-email. Kosong = "— tanpa email". */
   customerEmail?: string;
-}): string {
+} & PaidStatus): string {
   const { orderCode, productNames, amount, customerName, telegramUser, customerWa } = params;
   const delivery = params.delivery ?? "manual";
   const normalizedUser = telegramUser.replace(/^@/, "");
@@ -65,7 +80,7 @@ export function adminTelegramOrderPaidMessage(params: {
   const wa = customerWa.trim() || "— belum diisi (buyer balas nomor di chat bot)";
   const email = (params.customerEmail ?? "").trim() || "— tanpa email";
   return [
-    "✅ <b>Lunas — Telegram</b>",
+    "💳 <b>Pembayaran diterima — Telegram</b>",
     "━━━━━━━━━━━━━━━━━━━━━",
     "",
     `📦 ${escapeHtml(truncate(productNames, 120))}`,
@@ -81,7 +96,7 @@ export function adminTelegramOrderPaidMessage(params: {
         : `📱 ${escapeHtml(truncate(wa, 30))}`,
     `💳 QRIS dinamis`,
     "",
-    "✅ Pembayaran otomatis terverifikasi",
+    ...paidStatus(params),
   ].join("\n");
 }
 
@@ -100,10 +115,10 @@ export function adminWebOrderPaidMessage(params: {
   paymentMethod: string;
   needsAdmin: boolean;
   deliveryLines: string[];
-}): string {
+} & PaidStatus): string {
   const { orderCode, productNames, amount, customerName, customerEmail, customerWa, paymentMethod, needsAdmin, deliveryLines } = params;
   return [
-    needsAdmin ? "🛠 <b>Lunas — Web · perlu dikirim admin</b>" : "✅ <b>Lunas — Web</b>",
+    needsAdmin ? "🛠 <b>Pembayaran diterima — Web · perlu dikirim admin</b>" : "💳 <b>Pembayaran diterima — Web</b>",
     "━━━━━━━━━━━━━━━━━━━━━",
     "",
     `📦 ${escapeHtml(truncate(productNames, 120))}`,
@@ -114,7 +129,7 @@ export function adminWebOrderPaidMessage(params: {
     `📱 ${escapeHtml(truncate(customerWa || "—", 30))}`,
     `💳 ${escapeHtml((paymentMethod || "qris").toUpperCase())}`,
     "",
-    ...deliveryLines.map((line) => escapeHtml(line)),
+    ...paidStatus({ ...params, deliveryLines }),
   ].join("\n");
 }
 
@@ -131,6 +146,7 @@ export function adminDeliveryFailedNotification(orderCode: string, error: string
 }
 
 export function adminWhatsAppOrderCreatedMessage(params: {
+  createdAt?: unknown;
   orderCode: string;
   productNames: string;
   amount: number;
@@ -154,7 +170,7 @@ export function adminWhatsAppOrderCreatedMessage(params: {
     `💬 ${escapeHtml(truncate(member, 30))}`,
     `💳 ${escapeHtml(methodLabel)}`,
     "",
-    "⏳ Menunggu pembayaran",
+    ...createdStatus(params.createdAt),
   ].join("\n");
 }
 
@@ -165,12 +181,12 @@ export function adminWhatsAppOrderPaidMessage(params: {
   customerName: string;
   channelMember: string;
   paymentMethod: string;
-}): string {
+} & PaidStatus): string {
   const { orderCode, productNames, amount, customerName, channelMember, paymentMethod } = params;
   const member = channelMember.trim().replace(/^\+/, "") || "—";
   const methodLabel = paymentMethod.trim().toUpperCase() || "QRIS";
   return [
-    "✅ <b>Lunas — WhatsApp</b>",
+    "💳 <b>Pembayaran diterima — WhatsApp</b>",
     "━━━━━━━━━━━━━━━━━━━━━",
     "",
     `📦 ${escapeHtml(truncate(productNames, 120))}`,
@@ -180,6 +196,6 @@ export function adminWhatsAppOrderPaidMessage(params: {
     `💬 ${escapeHtml(truncate(member, 30))}`,
     `💳 ${escapeHtml(methodLabel)}`,
     "",
-    "✅ Pembayaran terverifikasi",
+    ...paidStatus(params),
   ].join("\n");
 }

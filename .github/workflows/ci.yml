@@ -54,6 +54,12 @@ jobs:
       - name: Type-check
         run: npx tsc --noEmit
 
+      - name: Verify WhatsApp gateway
+        run: |
+          npm ci --prefix gateway --no-audit --no-fund
+          npm run build --prefix gateway
+          npm test --prefix gateway
+
       - name: Check Pages variable limit
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: node scripts/ci-pages-env-check.cjs
@@ -75,6 +81,12 @@ jobs:
           CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
           CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Deploy WhatsApp gateway through Heroku API
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: node scripts/ci-whatsapp-gateway.cjs
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY_AKUN1 }}
 
       - name: Deploy Cloudflare Pages
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

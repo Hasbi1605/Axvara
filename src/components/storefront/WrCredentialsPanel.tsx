@@ -21,7 +21,7 @@ type Credential = { label?: string; details: string; completed_at: string | null
 /** Diisi checkout; bertahan selama tab itu terbuka (sessionStorage), jadi muat ulang tetap membuka otomatis. */
 export const checkoutContactKey = (code: string) => `axvara-checkout-contact:${code}`;
 
-export function WrCredentialsPanel({ code, prefillContact = "", contactHint = "", deliveryProgress }: { code: string; prefillContact?: string; contactHint?: string; deliveryProgress?: {ready:number;total:number} }) {
+export function WrCredentialsPanel({ code, prefillContact = "", contactHint = "", deliveryProgress, adminView = false }: { code: string; prefillContact?: string; contactHint?: string; deliveryProgress?: {ready:number;total:number}; adminView?: boolean }) {
   const [wa, setWa] = useState(prefillContact);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +58,21 @@ export function WrCredentialsPanel({ code, prefillContact = "", contactHint = ""
   const loadedForReady = useRef(-1);
   useEffect(() => {
     let cancelled = false;
+    if (adminView) {
+      const controller = new AbortController();
+      setLoading(true);
+      void fetch(`/api/orders/${encodeURIComponent(code)}/credentials`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ adminView: true }), signal: controller.signal, cache: "no-store",
+      }).then(async r => {
+        const body = await r.json();
+        if (cancelled) return;
+        if (!r.ok) { setCreds(null); setError(r.status === 401 ? "Sesi admin berakhir. Masuk kembali ke panel admin." : "Gagal memuat detail akun."); return; }
+        setError(null); setCreds(body.credentials ?? []);
+      }).catch(() => { if (!cancelled) setError("Jaringan bermasalah. Coba muat ulang."); })
+        .finally(() => { if (!cancelled) setLoading(false); });
+      return () => { cancelled = true; controller.abort(); };
+    }
     const tokenKey = `wr-cred-token:${code}`;
     const verifyFromContact = () => {
       const initial = prefillContact.trim() || (sessionStorage.getItem(checkoutContactKey(code)) || "").trim();
@@ -101,7 +116,7 @@ export function WrCredentialsPanel({ code, prefillContact = "", contactHint = ""
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [code, deliveryProgress?.ready, token]);
+  }, [code, deliveryProgress?.ready, token, adminView]);
 
   async function verifyWith(waValue: string) {
     const requestedReady = deliveryProgress?.ready ?? 0;
@@ -178,6 +193,11 @@ export function WrCredentialsPanel({ code, prefillContact = "", contactHint = ""
       </section>
     );
   }
+
+  if (adminView) return <section className="ax-glass-card mt-6 rounded-2xl p-4 text-left" aria-label="Detail akun admin">
+    <p role="status" className="text-sm text-white/65">{loading ? "Memuat detail akun…" : "Detail akun belum tersedia."}</p>
+    {error && <p role="alert" className="mt-2 text-sm text-red-300">{error}</p>}
+  </section>;
 
   return (
     <section className="ax-glass-card mt-6 rounded-2xl p-4 text-left" aria-label="Ambil detail akun">

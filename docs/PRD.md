@@ -1,5 +1,37 @@
 # PRD — AXVARA
 
+## Notifikasi transaksi dan link komunitas terpusat — 24 Oktober 2026
+
+✅ Diimplementasikan; publikasi CI, pengiriman WA menunggu pairing/aktivasi owner.
+Admin Pengaturan Toko menyediakan satu input link undangan WhatsApp untuk seluruh
+tombol grup Footer Market/Pedia dan Link Bio. Simpan admin memperbarui konsumen
+melalui settings bersama, tab lain saat storage/fokus/visibility, tanpa polling.
+Hanya URL HTTPS chat.whatsapp.com yang valid; link publik tidak mengubah grup bot.
+
+Grup AXVARA'S dari bot6283181632507 menerima hanya transaksi lunas/paid yang seluruh
+unit apps delivered atau seluruh item Pedia completed. Pesan berjudul **PESANAN
+BERHASIL DIPROSES - WEB/TELEGRAM/WHATSAPP**, memuat produk/varian/qty/harga/total
+bayar/metode, referensi publik acak, nama inisial+***, status SELESAI dan waktu
+selesai WIB. Tidak mengumumkan invoice asli, nomor/email/ID akun pembeli, target,
+supplier, kredensial atau URL akses. Partial/canceled/proses/gagal tetap tidak
+diumumkan sebagai sukses. Jam pembayaran dan jam selesai dibedakan.
+
+Admin Telegram menerima status pembayaran/pesanan dan paid_at WIB; order-created
+Telegram/WhatsApp memakai created_at WIB; supplier otomatis
+yang belum punya link tetap proses otomatis, gagal otomatis meminta pemeriksaan,
+produk manual tetap handover admin. Tombol **Lihat pesanan pembeli** membuka lacak
+pesanan tanpa input invoice/kontak melalui sesi admin tervalidasi server, bukan
+tautan publik bypass verifikasi. Sesi tidak valid harus masuk admin; akses pembeli
+normal tetap memerlukan kontak/capability.
+
+Kontrol admin WA: Hubungkan nomor bot, Cek koneksi, Aktifkan/Nonaktifkan. Aktivasi
+hanya nomor dan grup terverifikasi; cutoff paid_at mencegah backfill sebelum
+aktivasi. Antrean existing tetap durable saat nonaktif/offline, dilanjutkan dengan
+batas operasional satu percobaan baru/60detik. Hasil kirim ambigu membutuhkan
+pemeriksaan; jangan mengirim ulang buta. Baileys bukan layanan resmi dan tidak
+menjamin bebas pembatasan. Tidak membuka DM/promosi massal atau membeli supplier
+saat QA. Detail: `issue/whatsapp-sales-notifications-2026-10-24.md`.
+
 ## Carousel info storefront — 24 Oktober 2026
 
 ✅ Diimplementasikan; publikasi melalui CI. Semua banner aktif yang tidak disembunyikan
@@ -55,7 +87,8 @@ URL dipertahankan; statistik/filter global boleh tertinggal singkat sesuai TTL c
 
 ✅ Diimplementasikan; publikasi melalui CI. Footer dan halaman link memakai
 [grup WhatsApp baru](https://chat.whatsapp.com/DHgtU7q39TlCV6ToZ4JU39?mode=gi_t),
-bersumber dari `WA_GROUP_HREF` di `src/lib/site.ts`.
+Sejak24Oktober URL aktif berasal dari Pengaturan Toko `whatsapp_group_url`;
+`WA_GROUP_HREF` di `src/lib/site.ts` hanya fallback.
 
 
 ## Pembelian beberapa kredensial unik — 23 Oktober 2026

@@ -8,7 +8,7 @@
 - Partial/canceled disimpan atomik dengan antrean tindak lanjut manual; pembayaran paid tetap paid. Unknown remains jangan diasumsikan nol.
 - Arsip kredit/ledger lama dipertahankan, tidak dapat dibelanjakan. Retry order yang sudah tersimpan mempertahankan nominal; quote lama berkredit tanpa order ditolak sebelum mutasi.
 - Expiry reservasi pra-pensiun dibalik sekali hanya ke arsip beku + follow-up owner. Penyelesaian dengan pembeli di luar AXVARA, bukan saldo baru.
-- Status Pedia wajib kontak checkout penuh; kredensial Market wajib kontak penuh atau capability. Tidak menampilkan kode kredit lama ke browser.
+- Status Pedia wajib kontak checkout penuh; kredensial Market buyer wajib kontak penuh atau capability. Pengecualian admin24Oktober: adminView hanya sesudah requireAdmin server-side, URL tanpa kontak/token buyer dan tidak menerbitkan capability buyer. Tidak menampilkan kode kredit lama ke browser.
 
 ## Tujuan
 AXVARA — Gerbang Semua Tools Premium. Toko digital premium Apple Store + glassmorphism, checkout Transfer/QRIS statis, hosting Cloudflare Pages + D1 + R2. Workflow: plan → implementasi kecil → verifikasi dev → catat changelog → selesai.
@@ -29,7 +29,7 @@ Jika perubahan mengubah struktur folder, route `src/app/*`, komponen `src/compon
 - Jika ragu, tulis asumsi eksplisit di `CHANGELOG.md` atau komentar PR.
 
 ## CI/CD dan push GitHub (WAJIB)
-- Jalur deploy normal hanya melalui `.github/workflows/ci.yml`: push ke `main` menjalankan test, type-check, build Pages, migrasi D1 yang belum diterapkan, deploy Pages, lalu deploy MCP Worker.
+- Jalur deploy normal hanya melalui `.github/workflows/ci.yml`: push ke `main` menjalankan test/type-check root + test/build gateway, build Pages, migrasi D1 yang belum diterapkan, rilis gateway lewat Heroku source/build API bila source/release berubah, deploy Pages, lalu deploy MCP Worker. Secret CI `HEROKU_API_KEY_AKUN1` berasal dari `.heroku-credentials` ignored; jangan push Heroku manual.
 - Sebelum build/migrasi, `scripts/ci-pages-env-check.cjs` membaca metadata env produksi Pages dan menghitung secret/text + empat variabel sistem Pages terhadap batas paket aktual (Paid 128, Free 64) lewat metadata langganan. Melebihi batas/API gagal menghentikan rilis; tepat batas paket memberi warning. Jangan log nilai secret. `PEDIA_DISPATCH_ENABLED` sudah dihapus 2026-10-18 karena tidak dipakai kode; bukan gate dispatch. Secret KlikQRIS/DANA/GoPay tetap dipertahankan.
 - Pemeriksaan migrasi memakai `scripts/ci-d1-migrations.cjs`: tanpa query D1 hanya bila berkas migrasi + schema + wrangler identik dengan ancestor rilis `ci.yml` push main yang tahap migrasi dan deploy Pages-nya terbukti sukses. Bukti tidak lengkap/API gagal/berkas DB berubah → Wrangler remote wajib tetap lulus; jangan mengabaikan error migrasi atau menganggap push sebagai bukti deploy. Setelah restore/recreate D1, periksa migrasi remote sebelum memakai bukti rilis lama.
 - Setelah implementasi, verifikasi dev, dan changelog selesai, commit lalu `git push origin main`.
@@ -183,7 +183,7 @@ Repo ini tidak berdiri sendiri. Tiga folder lokal lain saling berkaitan:
 
 | Folder lokal | Peran | Keterkaitan dengan repo ini |
 |---|---|---|
-| `/Users/macbookair/axvara-wa-gateway` | Gateway WhatsApp Baileys (akun Heroku #1, `terry.delvon0805@gmail.com`). Route `/wr/*` di sana SUDAH DIMATIKAN (410) pasca-migrasi 2026-09-14 | `WHATSAPP_GATEWAY_URL` + `WHATSAPP_WEBHOOK_TOKEN` (Pages) berpasangan dengan `AXVARA_WEBHOOK_TOKEN` (gateway). Jangan push dari folder ini ke remote heroku (remote sudah dicabut) |
+| `/Users/macbookair/axvara-wa-gateway` | Arsip gateway/session lokal. Source kanonis sejak24Oktober ada di `axvara/gateway/`, app Heroku akun#1 tetap existing. `/wr/*` tetap410 | `WHATSAPP_GATEWAY_URL` + `WHATSAPP_WEBHOOK_TOKEN` Pages ↔ `AXVARA_WEBHOOK_TOKEN` gateway. Deploy hanya CI main AXVARA; jangan push Heroku/upload session arsip. Baca `gateway/AGENTS.md` dan ARCHITECTURE §16.12 |
 | `/Users/macbookair/axvara-qris-gateway` | Riset QRIS DANA + nilai rujukan (`DOKUMENTASI_PRODUKSI.md`, `.env` = payload statis Brotherstore06 + secret). BUKAN deploy target | `DANA_STATIC_QRIS` + `DANA_WEBHOOK_SECRET` Pages berasal dari sini. Engine prod ada di `src/lib/payments/dana-qris.ts` |
 | `/Users/macbookair/axvara-wr-proxy` | Source proxy WR/SK (live di VPS AWS `https://wr-proxy.axvara.tech` sejak 2026-10-02; app Heroku akun #2 + QuotaGuard DIHAPUS TOTAL hari yang sama — akun #2 kini kosong) | `WARUNG_REBAHAN_PROXY_URL/TOKEN` + `SEKALIPAY_PROXY_URL` Pages menunjuk ke VPS. Kontrak: `POST /wr/:endpoint` + `/sk/*` + `x-proxy-token`, key server-side; potongan katalog cron `POST /wr/products-slice` + `GET /sk/catalog-slice` (2026-10-04, urutan WAJIB sama dengan `src/lib/{warung-rebahan,sekalipay}/sync.ts`). Diff katalog: VPS → `POST /api/supplier-sync` tiap 3 mnt (secret `SUPPLIER_SYNC_TOKEN` di Pages + `.env` VPS, nilai sama). Deploy VPS: lihat `axvara-wr-proxy/AGENTS.md` |
 | `/Users/macbookair/axvara-tg-bot` | Kredensial + rujukan Bot Telegram (kode bot tetap di repo ini: `src/lib/telegram/`) | `TELEGRAM_BOT_TOKEN` + `TELEGRAM_WEBHOOK_SECRET` + `TELEGRAM_ADMIN_CHAT_ID` Pages dicatat di sana. Isi manual, lalu set sebagai `secret_text` |

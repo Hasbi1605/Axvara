@@ -1,5 +1,15 @@
 # ARCHITECTURE.md — AXVARA
 
+## Notifikasi penjualan dan pengaturan grup — 24 Oktober 2026
+
+✅ Diimplementasikan; publikasi CI. Kontrak kanonis terbaru ada di §16.12 dan
+`issue/whatsapp-sales-notifications-2026-10-24.md`. `gateway/` kini source gateway
+kanonis dalam repo AXVARA; folder saudara lama hanya arsip session lokal. Pengiriman
+grup baru default mati sampai owner pairing nomor6283181632507 dan aktivasi admin.
+Catatan DM/rollout gateway lama di bawah adalah histori, bukan instruksi membuka
+DM atau bukti koneksi nomor baru. Verifikasi buyer normal tetap kontak/capability;
+akses admin baru memvalidasi sesi admin pada server.
+
 ## Kontrak banner carousel — 24 Oktober 2026
 
 ✅ Diimplementasikan; publikasi melalui CI. `GET /api/banners?active=1` hanya memberi
@@ -374,7 +384,7 @@ axvara/
 **Pedia working-tree 2026-10-12: implementasi lokal, BELUM deployed; tidak ada flag diubah.** Menggantikan spec overhaul 2026-10-11; riwayat QA/deploy lama bukan bukti diff ini live. Schema 0059 sudah memiliki identitas supplier gabungan/status submitting/featured, tidak ada migrasi baru untuk perubahan ini. Detail UI: `docs/PEDIA-DESIGN.md`; kontrak/gate: `docs/PEDIA-PRD.md` dan §16.10.
 
 - `GET /api/pedia/catalog` cache 60 detik, tanpa identitas/rate/nama/order supplier publik. Tier aktif wajib `providersmm|indosmm`, layanan `present=1`, tipe `Default`, rate positif dan min/max valid; harga finite positif, jumlah dalam batas/paket/step. Tier tanpa paket valid dan produk tanpa paket tersedia dihilangkan. Key bounds `(supplier,service_id)`; min/max boleh publik. Endpoint katalog memakai data D1 tersimpan, bukan live probe gate IndoSMM per request.
-- Server meneruskan seluruh katalog; client awal maks 8 featured atau fallback 6 Jelajahi layanan tanpa klaim laris. Cari/filter/Tampilkan semua menjangkau semua produk terbit. `catalogCard()` memasangkan harga/jumlah/tier/refill dari satu paket; tagline TIDAK dirender di kartu/detail sejak 2026-10-12 (hapus AI slop; field tetap di DB/admin). `description_md` adalah field katalog publik opsional (`string|null`), ditampilkan pada detail/order sebagai teks literal escaped dengan newline dipertahankan, bukan render Markdown/HTML; tidak ditambahi link-helper teknis. `ServicesMenu`/`CrossServicePromo` memakai `AXVARA_SERVICES` di site.ts; URL absolut, UTM promo, komunitas satu sumber. Kedua layout memakai satu `Footer` dengan newsletter dan bantuan kedua host; AppSwitcher dihapus, bukan disimpan. Revisi footer 2026-10-15 (implementasi; publikasi CI): navigasi Layanan AXVARA berasal dari `AXVARA_SERVICES`, tanpa kategori/tautan Semua produk/artikel dan tanpa fetch `/api/categories`. Ikon WhatsApp sesudah Facebook memakai SVG `currentColor` satu tone dengan sosial lainnya dan URL absolut `${SITE.webUrl}${waHubLink()}` (pesan default Halo AXVARA); teks chat/jam layanan dihapus. Pill Grup WA/Bot Order Telegram di bawah ikon memakai `WA_GROUP_HREF`/`TG_BOT_HREF` dan aset brand lokal; bot tetap kanal Market. Navigasi layanan/bantuan dua kolom di mobile, empat kolom utama di desktop; form subscriber tetap same-origin.
+- Server meneruskan seluruh katalog; client awal maks 8 featured atau fallback 6 Jelajahi layanan tanpa klaim laris. Cari/filter/Tampilkan semua menjangkau semua produk terbit. `catalogCard()` memasangkan harga/jumlah/tier/refill dari satu paket; tagline TIDAK dirender di kartu/detail sejak 2026-10-12 (hapus AI slop; field tetap di DB/admin). `description_md` adalah field katalog publik opsional (`string|null`), ditampilkan pada detail/order sebagai teks literal escaped dengan newline dipertahankan, bukan render Markdown/HTML; tidak ditambahi link-helper teknis. `ServicesMenu`/`CrossServicePromo` memakai `AXVARA_SERVICES` di site.ts; URL absolut, UTM promo, komunitas satu sumber. Kedua layout memakai satu `Footer` dengan newsletter dan bantuan kedua host; AppSwitcher dihapus, bukan disimpan. Revisi footer 2026-10-15 (implementasi; publikasi CI): navigasi Layanan AXVARA berasal dari `AXVARA_SERVICES`, tanpa kategori/tautan Semua produk/artikel dan tanpa fetch `/api/categories`. Ikon WhatsApp sesudah Facebook memakai SVG `currentColor` satu tone dengan sosial lainnya dan URL absolut `${SITE.webUrl}${waHubLink()}` (pesan default Halo AXVARA); teks chat/jam layanan dihapus. Pill Grup WA/Bot Order Telegram di bawah ikon memakai settings `whatsappGroupUrl` (fallback `WA_GROUP_HREF`)/`TG_BOT_HREF` dan aset brand lokal; bot tetap kanal Market. Navigasi layanan/bantuan dua kolom di mobile, empat kolom utama di desktop; form subscriber tetap same-origin.
 - `OrderClient` tier/jumlah awal null, radio native, paket-only; pergantian tier yang tak mendukung jumlah mereset quantity null. Satu CTA per viewport meminta quote (25 detik), lalu order (60 detik) jika total sama dan tanpa kredit. Total berubah atau input kredit menghentikan langkah sebelum order dan meminta Setujui & lanjut ke pembayaran. Perubahan input membatalkan quote/respons lama; quote server 30 menit, client refresh 29 menit sebelum percobaan pertama.
 - Ref in-flight mencegah klik ganda; percobaan order mengunci data. Ambigu/network/5xx serta 408/429 mempertahankan token/kontak untuk retry, 4xx lain membuka kunci/membuang quote. Ini pagar client, **bukan atomisitas penuh order/kredit/invoice**. Order tutup hanya pesan dekat CTA disabled, kontak/kredit/S&K tidak dirender, tanpa banner berulang di hero/judul.
 - Admin GET produk menyertakan `live_type/rate/min/max/present` untuk readiness. ID admin wajib desimal positif kanonik, tanpa nol awal/notasi eksponen/pecahan. PUT parsial memvalidasi hanya field yang dikirim tanpa mereset field lain; paket wajib bilangan positif sesuai `step`, checklist berupa array objek `id/label` dengan ID unik setelah trim dan field bantuan opsional bertipe string. Edit tier atau paket/step produk langsung menghitung ulang harga tersimpan pada tier terdampak; harga derived tidak dapat diedit lewat PUT. Supplier hilang tidak dihidupkan ulang: harga dikosongkan dan tier `present=0` dinonaktifkan. **Simpan dan reprice berurutan, tidak atomik:** `500 reprice_failed` berarti edit sudah tersimpan tetapi harga mungkin belum seluruhnya diperbarui. Guard margin menyimpan penonaktifan sebelum harga baru agar replay setelah kegagalan tidak melewati pemeriksaan harga lama.
@@ -1194,7 +1204,7 @@ Sistem varian produk terpusat dan bot WhatsApp telah diimplementasikan sesuai `d
 - **Daily Promo Digest (2026-09-27, revamp 2026-09-29, revamp 2026-10-01):** fase notify cron membuat dua materi siap
   salin pada 09.00/17.00 WIB. Sejak 2026-10-01 (permintaan owner, contoh ceklis WR/SEKUDIL): SEMUA produk ready masuk pesan (bukan 12+12 paruh; `selectPromoProducts` = seluruh kandidat; histori/seed dipertahankan tapi tidak memotong); format Axvara dipertahankan (judul + hook 2026-09-29 + kelompok per kategori + harga tegas varian purchasable termurah tanpa "Mulai"/disclaimer + CTA bot + web) — hanya baris produk + ✅. Kandidat = produk ready non-pecundang (`telegram_enabled=1`, pecundang supplier-pair dikecualikan). Dua bubble memakai ledger migrasi 0044;
   retry parsial tidak mengirim ulang bubble yang sudah memiliki `message_id`.
-- **Flow order Telegram (WA parity, payment khusus QRIS):** `/katalog` menampilkan daftar datar nama produk + harga (tanpa kategori wajib; kategori hanya filter opsional). **Sejak 2026-09-24 katalog, filter kategori, pencarian, dan bestseller `/start` hanya memuat produk yang BISA DIBELI** (`listTelegramProducts` + `purchasableStockSql` di `src/lib/catalog-availability.ts`: varian aktif dengan stok -1 atau ≥ `min_qty`),   memakai snapshot katalog publik 30 detik sejak 2026-10-17 (Cache API per lokasi; tanpa Cache API baca D1 langsung), dengan harga = varian tersedia termurah. Detail/checkout tetap membaca dan memvalidasi stok/harga aktual. Definisi "tersedia" ini web + Telegram SAMA (2026-10-01, revisi keputusan owner yang mengubah revisi 2026-09-30): daftar web (`GET /api/products?active=1`) MENAMPILKAN produk habis di akhir dengan `soldOut: true` (badge habis, tanpa tombol beli; urutan ready → habis → nonaktif via `sortProductsForDisplay`) untuk trust + mengurangi komplain "kok kemarin ada, sekarang hilang"; Telegram + `llms.txt` tetap hanya produk yang bisa dibeli (chatbot tidak bisa menjelaskan barang yang tidak bisa dibeli; tanpa `soldOut`). PDP langsung (`/produk/[slug]`) + search (`?q=`) tetap bisa akses produk habis. Kartu habis otomatis tampil lagi sebagai ready saat restok (tanpa cron/state). Dikunci oleh `tests/seo-geo.regression.test.ts` + `tests/catalog-available-price.regression.test.ts`. Halaman dari tombol lama dibatasi ke halaman terakhir yang ada. Detail produk tanpa deskripsi, menampilkan foto produk web + list garansi per varian dari `product_variants` yang sama dengan web/WA. Alur beli: `Produk → Varian → Qty stepper (➖ / jumlah / ➕, angka manual 1–100) → QRIS DANA dinamis`; tidak ada SeaBank/e-wallet di Telegram. CTA jumlah langsung menerbitkan satu pesan QRIS tanpa layar pemilihan metode dan tanpa kewajiban menekan cek status. QRIS Hook melunasi order atomik, menambah `sold_count`, lalu mengirim pesan sukses otomatis. Untuk fulfillment manual, pending input WA baru dipasang setelah `paid`; buyer juga mendapat tombol WhatsApp admin dan `@axvara_support` — input WA reply-only tanpa tombol loop. Order-created ke grup admin dan paid ke buyer memakai marker D1 idempoten serta retry cron; paid juga dikirim sebagai pesan `Lunas — Telegram` tersendiri ke grup admin via `telegram_paid_admin_notified_at` (migrasi 0013) agar status grup tidak tertinggal menunggu bayar. Guard anti-double-tap memakai ulang order pending chat+varian yang sama; varian stok unik dibatasi qty 1. Sapaan WIB dinamis (Pagi/Siang/Sore/Malam + tanggal/jam) hanya di welcome/bantuan — katalog tampil bersih tanpa pengulangan sapaan/tanggal/jam.
+- **Flow order Telegram (WA parity, payment khusus QRIS):** `/katalog` menampilkan daftar datar nama produk + harga (tanpa kategori wajib; kategori hanya filter opsional). **Sejak 2026-09-24 katalog, filter kategori, pencarian, dan bestseller `/start` hanya memuat produk yang BISA DIBELI** (`listTelegramProducts` + `purchasableStockSql` di `src/lib/catalog-availability.ts`: varian aktif dengan stok -1 atau ≥ `min_qty`),   memakai snapshot katalog publik 30 detik sejak 2026-10-17 (Cache API per lokasi; tanpa Cache API baca D1 langsung), dengan harga = varian tersedia termurah. Detail/checkout tetap membaca dan memvalidasi stok/harga aktual. Definisi "tersedia" ini web + Telegram SAMA (2026-10-01, revisi keputusan owner yang mengubah revisi 2026-09-30): daftar web (`GET /api/products?active=1`) MENAMPILKAN produk habis di akhir dengan `soldOut: true` (badge habis, tanpa tombol beli; urutan ready → habis → nonaktif via `sortProductsForDisplay`) untuk trust + mengurangi komplain "kok kemarin ada, sekarang hilang"; Telegram + `llms.txt` tetap hanya produk yang bisa dibeli (chatbot tidak bisa menjelaskan barang yang tidak bisa dibeli; tanpa `soldOut`). PDP langsung (`/produk/[slug]`) + search (`?q=`) tetap bisa akses produk habis. Kartu habis otomatis tampil lagi sebagai ready saat restok (tanpa cron/state). Dikunci oleh `tests/seo-geo.regression.test.ts` + `tests/catalog-available-price.regression.test.ts`. Halaman dari tombol lama dibatasi ke halaman terakhir yang ada. Detail produk tanpa deskripsi, menampilkan foto produk web + list garansi per varian dari `product_variants` yang sama dengan web/WA. Alur beli: `Produk → Varian → Qty stepper (➖ / jumlah / ➕, angka manual 1–100) → QRIS DANA dinamis`; tidak ada SeaBank/e-wallet di Telegram. CTA jumlah langsung menerbitkan satu pesan QRIS tanpa layar pemilihan metode dan tanpa kewajiban menekan cek status. QRIS Hook melunasi order atomik, menambah `sold_count`, lalu mengirim pesan sukses otomatis. Untuk fulfillment manual, pending input WA baru dipasang setelah `paid`; buyer juga mendapat tombol WhatsApp admin dan `@axvara_support` — input WA reply-only tanpa tombol loop. Order-created ke grup admin dan paid ke buyer memakai marker D1 idempoten serta retry cron; paid juga dikirim sebagai pesan `Pembayaran diterima — Telegram` tersendiri ke grup admin via `telegram_paid_admin_notified_at` (migrasi 0013) agar status grup tidak tertinggal menunggu bayar. Guard anti-double-tap memakai ulang order pending chat+varian yang sama; varian stok unik dibatasi qty 1. Sapaan WIB dinamis (Pagi/Siang/Sore/Malam + tanggal/jam) hanya di welcome/bantuan — katalog tampil bersih tanpa pengulangan sapaan/tanggal/jam.
 - **WhatsApp Bot:** Webhook di `POST /api/whatsapp/webhook` via Baileys gateway Heroku. Mendukung:
   - `list` (header `LIST MENU AXVARA`, nama alias/fallback produk aktif tanpa kategori/harga, lalu footer promosi Telegram dan website resmi)
   - Pencarian nama produk/alias → detail bergaya garis dengan header alias dan varian bernomor
@@ -1202,7 +1212,7 @@ Sistem varian produk terpusat dan bot WhatsApp telah diimplementasikan sesuai `d
   - Pilihan `QRIS` / `SEABANK` / `EWALLET` → pending order idempotent + satu instruksi pembayaran terpilih di grup
   - `garansi` / `/garansi` → kebijakan garansi kanonis
    - Reply otomatis mengutip pesan pembeli; intake screenshot cukup memakai caption nama metode (kode order ditentukan dari sesi/order aktif), dedup, R2 private, notifikasi admin
-   - Order WA mengumumkan `Order Baru — WhatsApp` ke grup Telegram admin segera setelah order dibuat (best-effort + retry cron via marker `telegram_order_notified_at`, migrasi 0023); saat lunas via QRIS Hook / retry admin / approve bukti, grup menerima `Lunas — WhatsApp` (`telegram_paid_admin_notified_at`, cron yang sama dengan Telegram)
+   - Order WA mengumumkan `Order Baru — WhatsApp` ke grup Telegram admin segera setelah order dibuat (best-effort + retry cron via marker `telegram_order_notified_at`, migrasi 0023); saat lunas via QRIS Hook / retry admin / approve bukti, grup menerima `Pembayaran diterima — WhatsApp` (`telegram_paid_admin_notified_at`, cron yang sama dengan Telegram)
    - Admin pada `WHATSAPP_ADMIN_NUMBERS` dapat reply `.d` ke pesan pembayaran atau mengetik `.d AXV-...` untuk menandai fulfillment order lunas sebagai `delivered`; command non-admin berhenti sebelum pencarian produk
 - **Feature Flags:** 10 feature flags independen di `src/lib/feature-flags.ts` untuk rollout aman bertahap (semua default `false`).
 - **Minimum pembelian per varian (migrasi 0034, 2026-09-17):** `product_variants.min_qty` (default 1, CHECK ≥ 1, milik admin — sync WR tidak pernah menulisnya) adalah mode generik untuk aturan grosir: GSuite dikunci 50 via UPDATE migrasi, produk lain tinggal set angka dari admin (plafon 100 = plafon channel). Penegakan berlapis server-side: quote 409 `below_minimum` (qty agregat per baris) → orders 409 (hitung ulang DB) → guard atomik `COALESCE(min_qty,1)` di `createOrderWithStock` + `createChannelOrderAtomic` (batch gagal total bila di bawah min). Plafon web naik 20 → 100/baris (paritas Telegram) agar min-besar bisa dibeli dari web; verifier quote ikut 100. Telegram: stepper dibuka di min, tolak ketik/invoice/keranjang di bawah min; WhatsApp (qty selalu 1): varian min>1 ditolak jelas sejak pilih varian + saat bayar, diarahkan ke web/Telegram bulk.
@@ -2098,7 +2108,7 @@ notif "Lunas — Web" serta setup webhook Telegram (`/api/admin/telegram/setup`)
 membuat URL absolut di server wajib memakainya.
 
 ### 16.5 Ekosistem 5 folder (detail di masing-masing AGENTS.md)
-`axvara` (toko) · `axvara-wa-gateway` (WA, akun #1) · `axvara-qris-gateway`
+`axvara` (toko + source WA `gateway/`, akun#1) · `axvara-wa-gateway` (arsip sesi/source lama sejak24Oktober) · `axvara-qris-gateway`
 (riset QRIS, `.env` = sumber nilai Pages) · `axvara-wr-proxy` (source proxy
 WR/SK — live di VPS AWS sejak 2026-10-02, lihat §16.8) · `axvara-tg-bot`
 (kredensial Telegram). Kredensial Heroku dua akun di
@@ -2952,3 +2962,78 @@ baru. Tes menginjeksi error read/write/budget, dua cron paralel, dua provider,
 12 tick lima-menit saat DB terblokir lalu pulih, serta Telegram menolak.
 
 Indeks `idx_orders_telegram_pending_chat` pada migrasi0075 mempersempit guard/precheck ke chat terkait. EXPLAIN fixture berubah dari pencarian seluruh status pending menjadi pencarian chat+status+payment_status; ini bukti plan lokal, bukan angka penghematan produksi.
+
+
+### 16.12 Notifikasi grup WA dan admin Telegram — 24 Oktober 2026
+
+✅ Diimplementasikan, publikasi lewat CI; pairing/aktivasi owner belum dilakukan.
+Source gateway kanonis `gateway/{src,scripts,package*.json,Procfile,tsconfig.json}`.
+Baileys7.0.0-rc14/Node22, Heroku app existing `axvara-wa-gateway` akun#1 dan
+Postgres existing. `.github/workflows/ci.yml` menguji/build gateway; sesudah migrasi
+D1, `scripts/ci-whatsapp-gateway.cjs` mengunggah tar allowlist lewat Heroku API lalu
+Pages/MCP. Tidak memakai remote Heroku atau session lokal. Build/release proof +
+Git ancestor/diff memungkinkan skip bila source sama; rollback slug/API gagal
+bukan bukti skip. Agent tetap berhenti setelah git push, tidak memantau rilis.
+GitHub secret `HEROKU_API_KEY_AKUN1` dari `.heroku-credentials` ignored. Pages tiga
+secret_text existing WHATSAPP_GATEWAY_URL (Heroku existing), WHATSAPP_WEBHOOK_TOKEN
+(sama AXVARA_WEBHOOK_TOKEN Heroku), WHATSAPP_BOT_NUMBER=6283181632507; tidak menambah
+env Pages. DATABASE_URL/URL/token/TARGET_GROUP_ID Heroku existing dipertahankan.
+Nomor sesi kini dipatok BOT_NUMBER kode, bukan env WA_BOT_NUMBER lama.
+
+- Auth/key Postgres berprefix6283181632507:, tidak menghapus key nomor lama.
+  `axvara_wa_control` menyimpan grup pin/pacing/pause/last send/ACK;
+  `axvara_wa_delivery` menyimpan key/fingerprint/target/payload/status/messageid.
+  Advisory lock per nomor melarang socket ganda. Flush credentials serial,
+  reconnect timer tunggal/backoff, metadata grup cache5menit + invalidasi event,
+  getMessage dari payload durable. 401/403/440/500 berhenti, 515 restart normal;
+  code401 sendiri bukan bukti ban. Tidak ada pairing code/QR dalam log.
+- Admin-only GET/POST `/api/admin/whatsapp-notifications`: status, pair, enable,
+  disable. Proxy gateway token-only `/notification-status`, `/notification-pair`,
+  `/send-notification`. Pair eksplisit owner; grup pertama nama tepat unik
+  AXVARA'S lalu pinID PG. Aktif hanya connected + nomor cocok + grup tepat +
+  tidak blocked. Grup announcement memvalidasi bot admin melalui PN/LID; owner harus memenuhi izin grup.
+- Internal store_settings.whatsapp_sales_notifications menyimpan
+  enabled/enabledAt/groupId; tidak dibocorkan settings publik. Cutoff paid_at
+  saat enable pertama/re-enable; klik aktif berulang tidak mereset. Antrean yang
+  sudah ada tetap dipertahankan saat nonaktif/offline, order lama belum queued
+  tidak backfill. Tidak menyalakan flag commerce/DM legacy.
+- `enqueueCompletedSales` pada `notify_b` cron lite existing maksimal4/tick,
+  memakai budget existing, migrasi0076 expression index julianday(paid_at).
+  Orders lunas/paid; semua manifest apps delivered (termasuk unit unik lengkap)
+  atau seluruh Pedia item completed. Bukan paid saja/partial/canceled. Payload
+  whitelist katalog/nominal/metode/waktu selesai WIB, judul menurut sales_channel,
+  nama inisial+***, ref acak; tanpa invoice asli/kontak/target/supplier/kredensial/
+  URL akses buyer. D1 INSERT OR IGNORE key wa:sale-completed:<code>, payload
+  immutable. Waktu apps max updated_at unit delivered, Pedia max completed_at.
+- D1 CAS/lease + durable claim PG sebelum send; key/target/payload harus cocok.
+  Sent replay mengembalikan messageid, unknown/sending tidak send ulang. Satu
+  percobaan baru/60detik adalah batas beban, bukan angka aman resmi. Offline/
+  paced/cooldown menunda tanpa menghabiskan attempt. Timeout HTTP retry key sama
+  untuk membaca hasil; interrupted sending PG menjadi unknown. Explicit unknown
+  D1 menjadi dead/manual_check_required. Hasil ambigu menjeda15menit; sinyal
+  pembatasan24jam + tutup socket. ACK bukan bukti semua penerima membaca.
+  Legacy send/image hanya grup existing/pin; DM ditolak gateway. /wr/* tetap410.
+- Notifikasi pembayaran admin Telegram Web/TG/WA memuat pembayaran LUNAS,
+  status pesanan, paid_at WIB; order-created memakai created_at WIB (kosong tidak dipalsukan). Klasifikasi mendahulukan
+  immutable order_item_costs.source lalu mapping/link/status. Placeholder supplier
+  manual_required tetap otomatis; gagal supplier perlu pemeriksaan, bukan kirim
+  manual. Semua unit delivered selesai; missing unit tidak dianggap selesai.
+- Tombol Lihat pesanan pembeli URL /lacak-pesanan?code=<code>&admin=1 tidak memuat
+  kontak/token. POST lookup dan POST credentials adminView=true memakai
+  requireAdmin sebelum DB read, private/no-store, tanpa capability buyer.
+  UI admin tidak membaca/menulis riwayat kontak/capability dan membersihkan detail
+  saat auth ditolak; buyer biasa tetap harus verifikasi kontak/token existing.
+- Satu field admin whatsappGroupUrl → store_settings.whatsapp_group_url melalui
+  PUT /api/store-settings authenticated. Regex HTTPS chat.whatsapp.com kode20–32
+  alnum, optional ?mode=gi_t; unknown scheme/host/userinfo ditolak. GET hanya
+  whitelist settings/no-store. Footer Market/Pedia dan LinkBio useStoreSettings:
+  cache30detik + in-flight dedupe/revision guard, publish saat save, tab lain
+  storage/focus/visibility, tanpa polling server. WA_GROUP_HREF hanya fallback;
+  mengubah undangan publik tidak mengganti grup ID notifikasi.
+
+Aktivasi: Admin/Pengaturan Toko → Hubungkan nomor bot → tautkan dari WA nomor
+6283181632507 → bot anggota/admin pengirim grup AXVARA'S → Cek koneksi → Aktifkan.
+Belum ada pesan produksi saat QA, gateway lama disconnected401. Recovery unknown
+wajib periksa pesan grup + PG/D1 dahulu, jangan reset row/ID untuk resend. Rollback
+melalui CI, pertahankan state/key PG dan D1; jangan kembali membuka DM. Rujukan
+library/WhatsApp dan bukti QA: issue/whatsapp-sales-notifications-2026-10-24.md.

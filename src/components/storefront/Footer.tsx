@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { AXVARA_SERVICES, SITE, TG_BOT_HREF, WA_GROUP_HREF, waHubLink } from "@/lib/site";
+import { AXVARA_SERVICES, SITE, TG_BOT_HREF, waHubLink } from "@/lib/site";
 import { useStoreSettings } from "@/hooks/useStoreSettings";
 
 // Ikon brand satu tone (fill=currentColor) dari Simple Icons versi terbaru
@@ -114,7 +114,7 @@ export function Footer() {
               </a>
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <a href={WA_GROUP_HREF} target="_blank" rel="noreferrer" className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-[#25D366]/25 bg-[#25D366]/10 px-2.5 text-[11px] font-medium text-green-200 transition hover:bg-[#25D366]/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#25D366]">
+              <a href={storeSettings.whatsappGroupUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-[#25D366]/25 bg-[#25D366]/10 px-2.5 text-[11px] font-medium text-green-200 transition hover:bg-[#25D366]/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#25D366]">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/brand/whatsapp.svg" alt="" width={18} height={18} className="h-[18px] w-[18px] shrink-0" />
                 Grup WA

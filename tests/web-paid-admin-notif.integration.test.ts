@@ -1,4 +1,4 @@
-// tests/web-paid-admin-notif.integration.test.ts — Notif admin "Lunas — Web"
+// tests/web-paid-admin-notif.integration.test.ts — Notif admin "Pembayaran diterima — Web"
 // ke grup Telegram (laporan owner 2026-09-25: order web tidak pernah muncul di
 // Axvara_Notif, order Telegram muncul).
 //
@@ -74,17 +74,17 @@ async function cron(): Promise<Record<string, unknown>> {
   throw new Error("fase notify tidak pernah jalan");
 }
 
-describe("notif Lunas — Web ke grup admin", () => {
+describe("notif Pembayaran diterima — Web ke grup admin", () => {
   it("SITE_URL kosong → tombol tetap ber-URL absolut; dikirim sekali per order", async () => {
     await paidWebOrder();
     await ensureFulfillmentForPaidOrder(CODE);
     const msgs = await adminMessages();
     expect(msgs).toHaveLength(1);
-    expect(msgs[0].text).toContain("Lunas — Web · perlu dikirim admin");
+    expect(msgs[0].text).toContain("Pembayaran diterima — Web · perlu dikirim admin");
     expect(msgs[0].text).toContain(CODE);
     expect(msgs[0].text).toContain("rani@contoh.test");
     const urls = msgs[0].reply_markup!.inline_keyboard.flat().map((b) => b.url);
-    expect(urls).toEqual(["https://wa.me/628123456789", `https://axvara.tech/admin?section=orders&q=${CODE}`]);
+    expect(urls).toEqual(["https://wa.me/628123456789", `https://axvara.tech/lacak-pesanan?code=${CODE}&admin=1`, `https://axvara.tech/admin?section=orders&q=${CODE}`]);
     expect(ledger()).toMatchObject({ status: "sent", error: null });
 
     await ensureFulfillmentForPaidOrder(CODE);
@@ -147,12 +147,11 @@ describe("ringkasan status kirim + origin situs", () => {
     expect(res.needsAdmin).toBe(true);
     expect(res.lines).toEqual([
       "🛠 1 item perlu dikirim: Panel → Pesanan → Kirim ke pembeli",
-      "📧 1 item terkirim otomatis ke email pembeli",
-      "⏳ 1 item sedang dikirim otomatis",
-      "🤖 1 item diproses otomatis lewat Warung Rebahan",
+      "🤖 1 item terkirim otomatis",
+      "🤖 2 item sedang diproses otomatis",
     ]);
     expect(summarizeWebDelivery([{ status: "delivered", delivered_message_id: "manual", wr_link_id: null }]))
-      .toEqual({ needsAdmin: false, lines: ["✅ 1 item sudah diserahkan admin"] });
+      .toEqual({ needsAdmin: false, lines: ["✅ 1 item sudah diserahkan admin"], orderStatus: "SELESAI" });
   });
 
   it("item SK pending disebut Sekalipay eksplisit di notif admin", () => {
@@ -161,15 +160,15 @@ describe("ringkasan status kirim + origin situs", () => {
       { status: "delivered", delivered_message_id: "sk:7", sk_link_id: 7 },
     ]);
     expect(res.needsAdmin).toBe(false);
-    expect(res.lines).toContain("📧 1 item terkirim otomatis ke email pembeli");
-    expect(res.lines).toContain("⏳ 1 item sedang dikirim otomatis");
-    expect(res.lines).toContain("🤖 1 item diproses otomatis lewat Sekalipay");
+    expect(res.lines).toContain("🤖 1 item terkirim otomatis");
+    expect(res.lines).toContain("🤖 1 item sedang diproses otomatis");
+    expect(res.orderStatus).toBe("DIPROSES OTOMATIS");
   });
 
   it("tombol WA hanya untuk nomor valid (satu URL buruk menggagalkan seluruh pesan)", () => {
     for (const customerWa of ["", "0812", "12345678901"]) {
       const kb = webPaidAdminKeyboard({ customerWa, orderCode: CODE, siteUrl: "https://axvara.tech" });
-      expect(kb.inline_keyboard.flat().map((b) => b.text)).toEqual(["🔧 Buka Pesanan"]);
+      expect(kb.inline_keyboard.flat().map((b) => b.text)).toEqual(["👁 Lihat pesanan pembeli", "🔧 Buka Pesanan"]);
     }
   });
 

@@ -51,6 +51,7 @@ export type StoreSettings = {
   supportHours: string;
   footerText: string;
   logoUrl: string;
+  whatsappGroupUrl: string;
 };
 
 export const DEFAULT_STORE_SETTINGS: StoreSettings = {
@@ -60,6 +61,7 @@ export const DEFAULT_STORE_SETTINGS: StoreSettings = {
   supportHours: SITE.supportHours,
   footerText: "AXVARA adalah third-party independen, tidak terafiliasi dengan brand manapun.",
   logoUrl: "",
+  whatsappGroupUrl: WA_GROUP_HREF,
 };
 
 const STORE_SETTING_KEYS: Record<string, keyof StoreSettings> = {
@@ -69,6 +71,7 @@ const STORE_SETTING_KEYS: Record<string, keyof StoreSettings> = {
   support_hours: "supportHours",
   footer_text: "footerText",
   logo_url: "logoUrl",
+  whatsapp_group_url: "whatsappGroupUrl",
 };
 
 export function storeSettingsFromRows(rows: Record<string, unknown>[]): StoreSettings {

@@ -14,10 +14,10 @@ import { sendTextMessage } from "./gateway";
 
 export const WA_OUTBOX_RETRY_DELAYS_MINUTES = [1, 5, 15, 60];
 export const WA_OUTBOX_MAX_ATTEMPTS = WA_OUTBOX_RETRY_DELAYS_MINUTES.length + 1;
-// Pacing manusiawi antar kirim dalam satu run (19 Sep 2026, pasca-restriction
-// nomor BOT): kirim beruntun tanpa jeda = signature bot. Default 6 dtk +
-// jitter ≤3 dtk; override via env untuk test. Kadaluarsa juga untuk cooldown
+// Batas operasional antar kirim dalam satu run: default 6 dtk +
+// jitter ≤3 dtk; override via env untuk test. Berlaku juga untuk cooldown
 // per destinasi (satu nomor tidak dihujani pesan berurutan).
+// Pacing tidak menjamin akun bebas pembatasan WhatsApp.
 export const WA_OUTBOX_PACE_BASE_MS = Number(process.env.WHATSAPP_OUTBOX_PACE_MS || 6000);
 export const WA_OUTBOX_PACE_JITTER_MS = 3000;
 export const WA_OUTBOX_DEST_COOLDOWN_MS = 60_000;
@@ -200,9 +200,19 @@ export async function processWhatsAppOutboxRow(row: Record<string, unknown>, dat
   const workerId = claim.workerId;
 
   const fresh = (await queryFirst(`SELECT * FROM whatsapp_outbox WHERE id=?`, id)) ?? row;
+  if (fresh.message_type === "sale_completed") {
+    const { readSalesConfig } = await import("./sales-notifications");
+    const config = await readSalesConfig(database);
+    if (!config?.enabled || config.groupId !== fresh.destination) {
+      await execRun("UPDATE whatsapp_outbox SET status='failed',worker_id=NULL,locked_until=NULL,attempt_count=attempt_count-1,next_attempt_at=datetime('now','+5 minutes'),last_error='notifications_disabled' WHERE id=? AND worker_id=?", id, workerId);
+      return false;
+    }
+  }
   const result = await sendTextMessage({
     target: String(fresh.destination || ""),
     message: String(fresh.payload || ""),
+    idempotencyKey: String(fresh.idempotency_key || ""),
+    salesNotification: fresh.message_type === "sale_completed",
   });
   if (result.ok) {
     await execRun(
@@ -216,6 +226,18 @@ export async function processWhatsAppOutboxRow(row: Record<string, unknown>, dat
     return true;
   }
   const nextAttempts = attempts + 1;
+  if (fresh.message_type === "sale_completed" && result.outcomeUnknown) {
+    // A network timeout can still finish at the gateway. Retry the same durable key;
+    // an explicit unknown response is quarantined for manual inspection.
+    if (String(result.error).includes("delivery_outcome_unknown")) {
+      await execRun("UPDATE whatsapp_outbox SET status='dead',worker_id=NULL,locked_until=NULL,last_error='delivery_outcome_unknown:manual_check_required',updated_at=datetime('now') WHERE id=? AND worker_id=?", id, workerId);
+      return true;
+    }
+  }
+  if (fresh.message_type === "sale_completed" && ["whatsapp_not_connected", "notification_paced", "gateway_cooldown_active", "notification_gateway_unavailable"].includes(String(result.error))) {
+    await execRun("UPDATE whatsapp_outbox SET status='failed',worker_id=NULL,locked_until=NULL,attempt_count=attempt_count-1,next_attempt_at=datetime('now','+1 minute'),last_error=?,updated_at=datetime('now') WHERE id=? AND worker_id=?", result.error, id, workerId);
+    return false;
+  }
   if (nextAttempts >= WA_OUTBOX_MAX_ATTEMPTS) {
     await execRun(
       `UPDATE whatsapp_outbox

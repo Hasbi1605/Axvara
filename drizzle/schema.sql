@@ -110,6 +110,8 @@ CREATE TABLE IF NOT EXISTS orders (
   updated_at TEXT DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_orders_kind_created ON orders(order_kind, created_at);
+CREATE INDEX IF NOT EXISTS idx_orders_completed_notice_candidates
+  ON orders(julianday(paid_at), code) WHERE status='lunas' AND payment_status='paid';
 CREATE UNIQUE INDEX IF NOT EXISTS orders_quote_id_unique
   ON orders(quote_id) WHERE quote_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_orders_paid_at

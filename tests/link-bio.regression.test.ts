@@ -19,7 +19,7 @@ describe("Halaman /link — tombol link-in-bio", () => {
     expect(src).not.toContain("/#katalog");
     expect(src).toContain("TG_BOT_HREF");
     expect(src).toContain("`https://t.me/${SITE.adminTelegram}?start=beli`");
-    expect(src).toContain("WA_GROUP_HREF");
+    expect(src).toContain("settings.whatsappGroupUrl");
     expect(src).not.toContain("chat.whatsapp.com/");
     expect(read("src/lib/site.ts")).toContain("chat.whatsapp.com/DHgtU7q39TlCV6ToZ4JU39");
     expect(src).toContain('href: "/lacak-pesanan"');

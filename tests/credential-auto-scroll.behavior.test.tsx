@@ -40,6 +40,24 @@ function accountScrolls() {
 }
 
 describe("account details auto-scroll", () => {
+  it("admin notification link opens tracking and credentials without contacts or stored buyer capabilities", async () => {
+    nav.params = new URLSearchParams({ code: CODE, admin: "1" });
+    sessionStorage.setItem(`wr-cred-token:${CODE}`, "buyer-token-must-not-be-used");
+    const fetcher = vi.fn(async (url: string) => url === "/api/orders/lookup" ? response({ order: {
+      code: CODE, customer_name: "Buyer", customer_wa: "62***", status: "lunas", payment_method: "qris", subtotal: 10000,
+      items: [{ name: "Gemini", price: 10000, qty: 1 }], credentials_ready: true, supplier_running: false,
+    } }) : response(credentials("admin-visible@example.test")));
+    vi.stubGlobal("fetch", fetcher);
+    render(<LacakPesananClient />);
+    await screen.findByRole("region", { name: "Detail akun digital" });
+    expect(screen.queryByRole("textbox", { name: /No. WA/ })).toBeNull();
+    for (const [, init] of vi.mocked(fetch).mock.calls) {
+      if (init?.method === "POST") expect(JSON.parse(String(init.body))).toMatchObject({ adminView: true });
+      expect(String(init?.body)).not.toContain("buyer-token-must-not-be-used");
+    }
+    expect(localStorage.getItem("axvara-track-recent")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Batalkan Pesanan Ini" })).toBeNull();
+  });
   it("refreshes additional unique units without scrolling again, numbers each account and shows shared instructions once",async()=>{
     const first=credentials('first@example.test').credentials[0];
     const second={...first,label:'Muse — Akun 2 dari 3',details:'Email: second@example.test'};

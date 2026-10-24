@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { DEFAULT_STORE_SETTINGS, type StoreSettings } from "@/lib/site";
+import { WhatsAppNotifications } from "./WhatsAppNotifications";
 import { Spinner } from "@/components/ui/Loading";
 import { useToast } from "@/components/ui/Toast";
 import { publishStoreSettings } from "@/hooks/useStoreSettings";
@@ -93,6 +94,10 @@ export function StoreSettingsManager() {
             <label className="block text-xs font-semibold text-white/55 sm:col-span-2">Tagline
               <input value={form.tagline} maxLength={160} onChange={(event) => set("tagline", event.target.value)} className={inputClass} />
             </label>
+            <label className="block text-xs font-semibold text-white/55 sm:col-span-2">Link grup WhatsApp
+              <input type="url" value={form.whatsappGroupUrl} maxLength={300} onChange={(event) => set("whatsappGroupUrl", event.target.value)} placeholder="https://chat.whatsapp.com/…" className={inputClass} />
+              <span className="mt-1.5 block text-[11px] font-normal leading-5 text-white/40">Satu tautan untuk semua tombol grup di storefront, termasuk footer dan halaman link.</span>
+            </label>
             <label className="block text-xs font-semibold text-white/55">Jam layanan
               <input value={form.supportHours} maxLength={60} onChange={(event) => set("supportHours", event.target.value)} placeholder="09.00–23.00 WIB" className={inputClass} />
             </label>
@@ -130,6 +135,7 @@ export function StoreSettingsManager() {
           <p className="mt-5 rounded-xl border border-[#FFB800]/15 bg-[#FFB800]/[0.06] px-3 py-2.5 text-[11px] leading-5 text-[#FFDA72]/80">Konfigurasi Telegram, WhatsApp Baileys, dan QRIS Hook tetap dikelola di menu operasionalnya—bukan di sini.</p>
         </aside>
       </div>
+      <WhatsAppNotifications />
     </section>
   );
 }

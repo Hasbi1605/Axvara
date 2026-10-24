@@ -122,6 +122,7 @@ const STEPS = [
 
 export default function LacakPesananClient() {
   const searchParams = useSearchParams();
+  const adminView = searchParams.get("admin") === "1";
   const [code, setCode] = useState("");
   const [wa, setWa] = useState("");
   const [codeTouched, setCodeTouched] = useState(false);
@@ -149,6 +150,7 @@ export default function LacakPesananClient() {
   const resultRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
+    if (adminView) return;
     try {
       const raw = JSON.parse(localStorage.getItem(RECENT_KEY) || "[]");
       if (Array.isArray(raw)) {
@@ -163,7 +165,7 @@ export default function LacakPesananClient() {
     } catch {
       /* riwayat lokal opsional — abaikan bila korup */
     }
-  }, []);
+  }, [adminView]);
 
   const saveRecent = useCallback((entry: RecentEntry) => {
     setRecent((prev) => {
@@ -208,12 +210,13 @@ export default function LacakPesananClient() {
       const response = await fetchWithTimeout("/api/orders/lookup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: cleanCode, contact: cleanWa }),
+        body: JSON.stringify(adminView ? { code: cleanCode, adminView: true } : { code: cleanCode, contact: cleanWa }),
         cache: "no-store", signal: controller.signal,
       }, 20_000);
       const body = await response.json().catch(() => ({}));
       if (generation !== lookupGeneration.current || controller.signal.aborted) return;
       if (response.status === 429) nextPollAt.current = Date.now() + Math.max(60, Number(response.headers.get("Retry-After")) || 60) * 1000;
+      if (adminView && response.status === 401) { setOrder(null); lastQuery.current = null; }
       if (!response.ok) throw new Error(body.error || `Gagal melacak (${response.status})`);
       nextPollAt.current = Date.now() + 5_000;
       const found = fromApi(body.order);
@@ -223,7 +226,7 @@ export default function LacakPesananClient() {
       if (!silent) {
         setError(null);
         lastQuery.current = { code: cleanCode, wa: cleanWa };
-        saveRecent({ code: cleanCode, wa: cleanWa });
+        if (!adminView) saveRecent({ code: cleanCode, wa: cleanWa });
         requestAnimationFrame(() => {
           const result = resultRef.current;
           // Isi akun yang sudah tampil punya auto-scroll sendiri: jangan
@@ -249,7 +252,7 @@ export default function LacakPesananClient() {
         if (!silent) setLoading(false);
       }
     }
-  }, [saveRecent]);
+  }, [saveRecent, adminView]);
 
   useEffect(() => () => { lookupController.current?.abort(); }, []);
 
@@ -262,13 +265,13 @@ export default function LacakPesananClient() {
     autoSubmitted.current = true;
     if (paramCode) setCode(paramCode);
     if (paramWa) setWa(paramWa);
-    if (CODE_RE.test(paramCode) && isValidContact(paramWa)) {
+    if (CODE_RE.test(paramCode) && (adminView || isValidContact(paramWa))) {
       void lookup(paramCode, paramWa);
     } else if (paramCode || paramWa) {
       setCodeTouched(true);
       setWaTouched(true);
     }
-  }, [searchParams, lookup]);
+  }, [searchParams, lookup, adminView]);
 
   const isPending = order?.status === "pending";
   const awaitingSupplier = Boolean(order && order.status === "lunas" && (
@@ -321,7 +324,7 @@ export default function LacakPesananClient() {
   /** Batalkan pesanan sendiri: kontak = yang dipakai lookup barusan. */
   const cancelOrder = async () => {
     const query = lastQuery.current;
-    if (!order || !query || cancelling) return;
+    if (adminView || !order || !query || cancelling) return;
     setCancelling(true);
     setCancelError(null);
     try {
@@ -374,14 +377,22 @@ export default function LacakPesananClient() {
     <div className="mx-auto max-w-[720px] px-4 py-10 sm:px-6">
       <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#00E5FF]/75">Lacak Pesanan</p>
       <h1 className="mt-2 font-display text-3xl font-bold tracking-[-0.02em] text-white sm:text-4xl">Cek status pesananmu</h1>
-      <p className="mt-3 max-w-[58ch] text-sm leading-6 text-white/55">
+      {adminView ? (
+        <div className="ax-glass-card mt-5 rounded-2xl p-4" aria-label="Akses admin">
+          <p className="text-sm text-white/70">Melihat pesanan pembeli melalui sesi admin.</p>
+          {loading && <p role="status" className="mt-2 text-sm text-white/60">Memuat pesanan…</p>}
+          {(error || pollError) && <p role="alert" className="mt-2 text-sm text-red-300">{error || pollError}</p>}
+          <Link href="/admin" prefetch={false} target="_blank" className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-[#00E5FF]">Buka / masuk panel admin</Link>
+          <button type="button" disabled={loading} onClick={() => void lookup(code, "")} className="ml-4 min-h-11 text-sm text-white/70">Muat ulang pesanan</button>
+        </div>
+      ) : <p className="mt-3 max-w-[58ch] text-sm leading-6 text-white/55">
         Masukkan <span className="font-semibold text-white">kode pesanan</span> dan{" "}
         <span className="font-semibold text-white">No. WA atau email yang dipakai saat checkout</span>. Status diperbarui otomatis
         dari Pending ke Lunas, Dibatalkan, atau Kedaluwarsa.
-      </p>
+      </p>}
 
       {/* Form utama dulu; daftar perangkat diringkas di bawah agar hemat ruang. */}
-      <form onSubmit={submit} className="ax-glass-card mt-6 rounded-[24px] p-5 sm:p-6" aria-label="Formulir lacak pesanan">
+      {!adminView && <form onSubmit={submit} className="ax-glass-card mt-6 rounded-[24px] p-5 sm:p-6" aria-label="Formulir lacak pesanan">
         <div className="flex items-center gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#00E5FF]/10">
             <IosIcon name="search" size={20} tint="#00E5FF" />
@@ -435,9 +446,9 @@ export default function LacakPesananClient() {
           {loading && <span className="h-5 w-5 animate-spin rounded-full border-2 border-[#080C1E]/20 border-t-[#080C1E]" />}
           {loading ? (lookupStage >= 1 ? "Koneksi lambat, masih melacak…" : "Melacak…") : "Lacak Pesanan"}
         </button>
-      </form>
+      </form>}
 
-      {recent.length > 0 && !order && (
+      {!adminView && recent.length > 0 && !order && (
         <section className="ax-glass-card mt-4 rounded-[20px] p-4 sm:p-5" aria-label="Terakhir dilacak">
           <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">Terakhir dilacak di perangkat ini</p>
           <ul className="mt-3 space-y-2">
@@ -466,7 +477,7 @@ export default function LacakPesananClient() {
       )}
 
       {/* Di bawah "Terakhir dilacak": ringkas collapsed agar tidak memakan ruang. */}
-      {!order && <DeviceOrders />}
+      {!adminView && !order && <DeviceOrders />}
 
       {order && (
         <div ref={resultRef} className="ax-glass-card mt-6 scroll-mt-24 rounded-[28px] p-6 text-center sm:p-8" aria-live="polite">
@@ -552,7 +563,7 @@ export default function LacakPesananClient() {
             </div>
           )}
           {isPaid && order.credentialsReady && (
-            <WrCredentialsPanel deliveryProgress={order.deliveryProgress} key={order.code} code={order.code} prefillContact={wa} />
+            <WrCredentialsPanel deliveryProgress={order.deliveryProgress} key={order.code} code={order.code} prefillContact={wa} adminView={adminView} />
           )}
           {isPaid && !order.credentialsReady && order.supplierRunning && (
             <p className="mt-5 flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-left text-xs leading-6 text-white/60" role="status">
@@ -593,7 +604,7 @@ export default function LacakPesananClient() {
           </div>
 
           <div className="mt-6 grid grid-cols-2 gap-2.5">
-            {isPending && !isExpired ? (
+            {!adminView && isPending && !isExpired ? (
               <Link prefetch={false} href={`/pesanan/${order.code}`} className="col-span-2 flex h-11 items-center justify-center whitespace-nowrap rounded-xl bg-[#00E5FF] px-3 text-sm font-bold text-[#080C1E] transition hover:bg-[#00D0E8]">Buka Halaman Pembayaran</Link>
             ) : isExpired || isCancelled ? (
               <Link prefetch={false} href="/#katalog" className="col-span-2 flex h-11 items-center justify-center whitespace-nowrap rounded-xl bg-[#00E5FF] px-3 text-sm font-bold text-[#080C1E] transition hover:bg-[#00D0E8]">Buat Pesanan Baru</Link>
@@ -603,7 +614,7 @@ export default function LacakPesananClient() {
           </div>
           {/* Batal mandiri: lookup sudah memverifikasi kontak, jadi tidak minta
               ulang — konfirmasi langsung. Stok kembali detik itu juga. */}
-          {isPending && !isExpired && (
+          {!adminView && isPending && !isExpired && (
             <div className="mt-3">
               {!confirmingCancel ? (
                 <button
@@ -647,7 +658,7 @@ export default function LacakPesananClient() {
               <a href={supportTelegramLink()} target="_blank" rel="noreferrer" className="flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-white/10 px-3 text-[13px] font-medium text-white/80 transition hover:border-[#2AABEE]/40 hover:bg-white/[0.06]"><img src="/brand/telegram.svg" alt="" width={20} height={20} className="h-5 w-5 shrink-0 rounded-full object-cover" draggable={false} /><span>Telegram</span></a>
             </div>
           </div>
-          <button type="button" onClick={() => { setOrder(null); setUpdatedAt(null); lastQuery.current = null; }} className="mt-4 text-xs font-semibold text-white/45 underline decoration-white/20 underline-offset-4 hover:text-white">Lacak pesanan lain</button>
+          {!adminView && <button type="button" onClick={() => { setOrder(null); setUpdatedAt(null); lastQuery.current = null; }} className="mt-4 text-xs font-semibold text-white/45 underline decoration-white/20 underline-offset-4 hover:text-white">Lacak pesanan lain</button>}
           <p className="mt-3 text-center text-[11px] leading-5 text-white/35">Produk third-party AXVARA — simpan kode pesanan untuk klaim. Garansi berupa penggantian sesuai <Link prefetch={false} href="/garansi-replace" className="text-white/50 underline decoration-white/20 underline-offset-2 hover:text-white">ketentuan garansi</Link>.</p>
         </div>
       )}

@@ -21,6 +21,7 @@ import {
   webPaidAdminKeyboard,
 } from "@/lib/telegram/keyboards";
 import { siteOrigin } from "@/lib/site-url";
+import { expandDeliveryLines } from "@/lib/fulfillment/units";
 
 type OrderItem = {
   name?: string;
@@ -115,7 +116,7 @@ export async function notifyTelegramOrderCreated(orderCode: string, database: Da
   if (!adminChatId || !telegramNotificationsConfigured()) return false;
 
   const order = await queryFirst(
-    `SELECT o.code, o.items, o.customer_name, o.customer_email, o.telegram_user_id, o.payment_method,
+    `SELECT o.code, o.items, o.customer_name, o.customer_email, o.telegram_user_id, o.payment_method, o.created_at,
             o.telegram_order_notified_at, pt.payable_amount, o.subtotal, tu.username
      FROM orders o
      LEFT JOIN payment_transactions pt ON pt.order_code=o.code
@@ -131,6 +132,7 @@ export async function notifyTelegramOrderCreated(orderCode: string, database: Da
   const sent = await sendMessage({
     chat_id: adminChatId,
     text: adminTelegramOrderCreatedMessage({
+      createdAt: order.created_at,
       orderCode: String(order.code),
       productNames: productNames(order.items),
       amount: Number(order.payable_amount ?? order.subtotal ?? 0),
@@ -242,7 +244,7 @@ export async function notifyWhatsAppOrderCreated(orderCode: string, database: Da
 
   const order = await queryFirst(
     `SELECT o.code, o.items, o.customer_name, o.channel_member_id, o.customer_wa,
-            o.payment_method, o.telegram_order_notified_at,
+            o.payment_method, o.created_at, o.telegram_order_notified_at,
             pt.payable_amount, o.subtotal
      FROM orders o
      LEFT JOIN payment_transactions pt ON pt.order_code=o.code
@@ -258,6 +260,7 @@ export async function notifyWhatsAppOrderCreated(orderCode: string, database: Da
   const sent = await sendMessage({
     chat_id: adminChatId,
     text: adminWhatsAppOrderCreatedMessage({
+      createdAt: order.created_at,
       orderCode: String(order.code),
       productNames: productNames(order.items),
       amount: Number(order.payable_amount ?? order.subtotal ?? 0),
@@ -291,7 +294,7 @@ export async function notifyWhatsAppPaidAdmin(orderCode: string, database: Datab
 
   const order = await queryFirst(
     `SELECT o.code, o.items, o.customer_name, o.channel_member_id, o.customer_wa,
-            o.payment_method, o.telegram_paid_admin_notified_at,
+            o.payment_method, o.paid_at, o.variant_snapshot, o.telegram_paid_admin_notified_at,
             pt.payable_amount, o.subtotal
      FROM orders o
      LEFT JOIN payment_transactions pt ON pt.order_code=o.code
@@ -304,9 +307,11 @@ export async function notifyWhatsAppPaidAdmin(orderCode: string, database: Datab
   const siteUrl = (process.env.SITE_URL || "https://axvara.tech").replace(/\/$/, "");
   const member = String(order.channel_member_id || order.customer_wa || "");
   const paymentMethod = String(order.payment_method || "qris");
+  const summary = await adminDeliverySummary(order, database);
   const sent = await sendMessage({
     chat_id: adminChatId,
     text: adminWhatsAppOrderPaidMessage({
+      paidAt: order.paid_at, orderStatus: summary.orderStatus, deliveryLines: summary.lines,
       orderCode: String(order.code),
       productNames: productNames(order.items),
       amount: Number(order.payable_amount ?? order.subtotal ?? 0),
@@ -339,7 +344,7 @@ export async function notifyTelegramPaidAdmin(orderCode: string, database: Datab
 
   const order = await queryFirst(
     `SELECT o.code, o.items, o.customer_name, o.customer_email, o.customer_wa, o.telegram_user_id,
-            o.variant_snapshot, o.telegram_paid_admin_notified_at, pt.payable_amount, o.subtotal, tu.username
+            o.paid_at, o.variant_snapshot, o.telegram_paid_admin_notified_at, pt.payable_amount, o.subtotal, tu.username
      FROM orders o
      LEFT JOIN payment_transactions pt ON pt.order_code=o.code
      LEFT JOIN telegram_users tu ON tu.user_id=o.telegram_user_id
@@ -351,9 +356,11 @@ export async function notifyTelegramPaidAdmin(orderCode: string, database: Datab
 
   const username = String(order.username || "").replace(/^@/, "");
   const siteUrl = (process.env.SITE_URL || "https://axvara.tech").replace(/\/$/, "");
+  const summary = await adminDeliverySummary(order, database);
   const sent = await sendMessage({
     chat_id: adminChatId,
     text: adminTelegramOrderPaidMessage({
+      paidAt: order.paid_at, orderStatus: summary.orderStatus, deliveryLines: summary.lines,
       orderCode: String(order.code),
       productNames: productNames(order.items),
       amount: Number(order.payable_amount ?? order.subtotal ?? 0),
@@ -381,32 +388,54 @@ export async function notifyTelegramPaidAdmin(orderCode: string, database: Datab
 }
 
 /** Ringkasan status kirim order web untuk notif admin (dibaca setelah upaya kirim pertama). */
-export function summarizeWebDelivery(items: Row[]): { needsAdmin: boolean; lines: string[] } {
-  let auto = 0, manualDone = 0, needsAdmin = 0, inProgress = 0, wr = 0, skPending = 0;
+export function summarizeWebDelivery(items: Row[]): { needsAdmin: boolean; lines: string[]; orderStatus: string } {
+  let auto = 0, manualDone = 0, manual = 0, progress = 0, attention = 0;
   for (const item of items) {
     const status = String(item.status ?? "");
-    if (item.wr_link_id != null) wr++;
-    else if (item.sk_link_id != null) {
-      if (status === "delivered") auto++;
-      else if (status === "manual_required" || status === "failed") needsAdmin++;
-      else { inProgress++; skPending++; }
-    }
-    else if (status === "delivered") {
-      if (String(item.delivered_message_id ?? "").startsWith("item:")) auto++;
+    const supplier = item.wr_link_id != null || item.sk_link_id != null || ["wr", "sk"].includes(String(item.supplier_source));
+    if (status === "delivered") {
+      if (supplier || String(item.delivered_message_id ?? "").startsWith("item:")) auto++;
       else manualDone++;
-    }
-    else if (status === "manual_required" || status === "failed") needsAdmin++;
-    else inProgress++;
+    } else if (supplier) {
+      if (status === "failed" || ["failed", "needs_check", "canceled"].includes(String(item.supplier_status))) attention++;
+      else progress++;
+    } else if (status === "manual_required" || (status === "failed" && item.fulfillment_mode === "manual")) manual++;
+    else if (status === "failed") attention++;
+    else progress++;
   }
   const lines: string[] = [];
-  if (needsAdmin) lines.push(`🛠 ${needsAdmin} item perlu dikirim: Panel → Pesanan → Kirim ke pembeli`);
-  if (auto) lines.push(`📧 ${auto} item terkirim otomatis ke email pembeli`);
+  if (manual) lines.push(`🛠 ${manual} item perlu dikirim: Panel → Pesanan → Kirim ke pembeli`);
+  if (attention) lines.push(`⚠️ ${attention} item otomatis perlu pemeriksaan admin`);
+  if (auto) lines.push(`🤖 ${auto} item terkirim otomatis`);
   if (manualDone) lines.push(`✅ ${manualDone} item sudah diserahkan admin`);
-  if (inProgress) lines.push(`⏳ ${inProgress} item sedang dikirim otomatis`);
-  if (wr) lines.push(`🤖 ${wr} item diproses otomatis lewat Warung Rebahan`);
-  if (skPending) lines.push(`🤖 ${skPending} item diproses otomatis lewat Sekalipay`);
+  if (progress) lines.push(`🤖 ${progress} item sedang diproses otomatis`);
   if (!lines.length) lines.push("⏳ Menunggu proses pengiriman");
-  return { needsAdmin: needsAdmin > 0, lines };
+  const orderStatus = attention ? "PERLU PEMERIKSAAN ADMIN" : manual ? "MENUNGGU PENGIRIMAN ADMIN"
+    : progress ? "DIPROSES OTOMATIS" : auto + manualDone > 0 ? "SELESAI" : "DIPROSES";
+  return { needsAdmin: manual > 0, lines, orderStatus };
+}
+
+async function adminDeliverySummary(order: Row, database: DatabaseAccess) {
+  const items = await database.queryAll(
+    `SELECT f.*, COALESCE(c.source, CASE WHEN pv.wr_variant_id IS NOT NULL THEN 'wr'
+             WHEN pv.sk_variant_id IS NOT NULL THEN 'sk' ELSE 'manual' END) AS supplier_source,
+            COALESCE(w.status,s.status) AS supplier_status
+     FROM fulfillment_items f
+     LEFT JOIN order_item_costs c ON c.order_code=f.order_code AND c.item_index=f.item_index
+     LEFT JOIN product_variants pv ON pv.id=f.variant_id
+     LEFT JOIN wr_order_links w ON w.id=f.wr_link_id
+     LEFT JOIN sk_order_links s ON s.id=f.sk_link_id
+     WHERE f.order_code=?`, String(order.code));
+  if (items.length) {
+    for (const [index] of expandDeliveryLines(order.items).entries()) {
+      if (!items.some(item => Number(item.item_index) === index)) items.push({ status: "queued" });
+    }
+    return summarizeWebDelivery(items);
+  }
+  const profile = await telegramPaidDeliveryProfile(order, database);
+  return { needsAdmin: profile.hasLocalManual,
+    orderStatus: profile.hasLocalManual ? "MENUNGGU PENGIRIMAN ADMIN" : "DIPROSES OTOMATIS",
+    lines: [profile.hasLocalManual ? "🛠 Pengiriman manual oleh admin" : "🤖 Pengiriman otomatis"] };
 }
 
 /**
@@ -420,11 +449,11 @@ export function summarizeWebDelivery(items: Row[]): { needsAdmin: boolean; lines
  * tombol. Cron mengulang yang gagal (retryPendingTelegramNotifications).
  */
 export async function notifyWebPaidAdmin(orderCode: string, database: DatabaseAccess = createDatabaseAccess()): Promise<boolean> {
-  const { queryFirst, queryAll } = database;
+  const { queryFirst } = database;
   const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
   if (!adminChatId || !telegramNotificationsConfigured()) return false;
   const order = await queryFirst(
-    `SELECT o.code, o.items, o.customer_name, o.customer_email, o.customer_wa, o.subtotal, o.payment_method,
+    `SELECT o.code, o.items, o.customer_name, o.customer_email, o.customer_wa, o.subtotal, o.payment_method, o.paid_at, o.variant_snapshot,
             (SELECT pt.payable_amount FROM payment_transactions pt WHERE pt.order_code=o.code
               ORDER BY pt.id DESC LIMIT 1) AS payable_amount
      FROM orders o
@@ -432,14 +461,10 @@ export async function notifyWebPaidAdmin(orderCode: string, database: DatabaseAc
     orderCode,
   ).catch(() => null);
   if (!order) return true;
-  const items = await queryAll(
-    `SELECT status, delivered_message_id, wr_link_id, sk_link_id FROM fulfillment_items WHERE order_code=?`,
-    orderCode,
-  ).catch(() => [] as Row[]);
   const { claimNotice, settleNotice } = await import("@/lib/notify-buyer");
   const key = `admin-paid:${orderCode}`;
   if (!(await claimNotice(database, key, orderCode, "telegram"))) return true;
-  const delivery = summarizeWebDelivery(items);
+  const delivery = await adminDeliverySummary(order, database);
   const text = adminWebOrderPaidMessage({
     orderCode: String(order.code),
     productNames: productNames(order.items),
@@ -448,6 +473,7 @@ export async function notifyWebPaidAdmin(orderCode: string, database: DatabaseAc
     customerEmail: String(order.customer_email || ""),
     customerWa: String(order.customer_wa || ""),
     paymentMethod: String(order.payment_method || "qris"),
+    paidAt: order.paid_at, orderStatus: delivery.orderStatus,
     needsAdmin: delivery.needsAdmin,
     deliveryLines: delivery.lines,
   });

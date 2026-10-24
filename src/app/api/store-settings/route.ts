@@ -11,6 +11,7 @@ const settingsSchema = z.object({
   name: z.string().trim().min(2, "Nama toko minimal 2 karakter").max(40),
   tagline: z.string().trim().min(10, "Tagline minimal 10 karakter").max(160),
   whatsappNumber: z.string().trim().regex(/^\+?[0-9\s()-]{9,22}$/, "Nomor WhatsApp tidak valid"),
+  whatsappGroupUrl: z.string().trim().max(300).regex(/^https:\/\/chat\.whatsapp\.com\/[A-Za-z0-9]{20,32}(?:\?mode=gi_t)?$/, "Gunakan tautan undangan https://chat.whatsapp.com/… yang valid").optional(),
   supportHours: z.string().trim().min(5, "Jam layanan wajib diisi").max(60),
   footerText: z.string().trim().min(10, "Keterangan footer minimal 10 karakter").max(300),
   logoUrl: z.string().trim().max(600).refine(
@@ -26,6 +27,7 @@ const keyMap = {
   support_hours: "supportHours",
   footer_text: "footerText",
   logo_url: "logoUrl",
+  whatsapp_group_url: "whatsappGroupUrl",
 } as const;
 
 export async function GET() {
@@ -33,7 +35,7 @@ export async function GET() {
     const rows = await queryAll("SELECT key,value FROM store_settings ORDER BY key ASC");
     return NextResponse.json(
       { settings: storeSettingsFromRows(rows) },
-      { headers: { "Cache-Control": "public, max-age=30, s-maxage=60, stale-while-revalidate=300" } },
+      { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
     console.error("GET /api/store-settings failed:", error);
@@ -52,6 +54,7 @@ export async function PUT(request: NextRequest) {
 
   try {
     for (const [key, property] of Object.entries(keyMap)) {
+      if (parsed.data[property] === undefined) continue;
       await execRun(
         `INSERT INTO store_settings (key,value,updated_at) VALUES (?,?,datetime('now'))
          ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')`,

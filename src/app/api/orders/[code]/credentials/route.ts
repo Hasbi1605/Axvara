@@ -23,6 +23,7 @@ import {
 import { readDeliveredSnapshots } from "@/lib/fulfillment/delivery/buyer-email";
 import { buyerContactMatches } from "@/lib/order-contact";
 import { resolveCredentialTermsByItem } from "@/lib/orders/credential-terms";
+import { requireAdmin } from "@/lib/auth";
 import type { VariantCopy } from "@/lib/product-copy/format";
 
 export const runtime = "edge";
@@ -122,12 +123,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!code || !/^AXV-\d{8}-[A-Z0-9]{8}$/.test(code)) {
     return privateJson({ error: "invalid_code" }, { status: 400 });
   }
+  const body = await request.json().catch(() => null);
+  if (body?.adminView === true) {
+    if (!(await requireAdmin(request))) return privateJson({ error: "admin_session_required" }, { status: 401 });
+    const ready = await orderReady(code);
+    if ("error" in ready) return privateJson({ error: ready.error }, { status: ready.status });
+    return privateJson({ ok: true, credentials: await readVerifiedDetails(code, ready.db) });
+  }
   const ready = await orderReady(code);
   if ("error" in ready) return privateJson({ error: ready.error }, { status: ready.status });
   const { order, db } = ready;
   const { contactAttemptLimited, recordContactFailure } = await import("@/lib/orders/contact-attempts");
   if (await contactAttemptLimited(db, code, clientIp(request))) return privateJson({ error: "rate_limited" }, { status: 429, headers: { "Retry-After": "900", "Cache-Control": "private, no-store" } });
-  const body = await request.json().catch(() => null);
   const raw = String(body?.contact ?? body?.wa ?? "").trim();
   if (!buyerContactMatches(raw, order)) {
     const limited = await recordContactFailure(db, code, clientIp(request));

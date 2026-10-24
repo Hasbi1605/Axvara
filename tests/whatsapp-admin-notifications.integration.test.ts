@@ -60,16 +60,18 @@ describe("WhatsApp orders notify the Telegram admin group", () => {
   it("formats created + paid admin messages for WhatsApp", async () => {
     const { adminWhatsAppOrderCreatedMessage, adminWhatsAppOrderPaidMessage } = await import("@/lib/telegram/messages");
     const created = adminWhatsAppOrderCreatedMessage({
+      createdAt: "2026-10-24 00:37:00",
       orderCode: "AXV-1", productNames: "Fixture ×1", amount: 10000,
       customerName: "628111", channelMember: "628111", paymentMethod: "qris",
     });
     expect(created).toContain("Order Baru — WhatsApp");
+    expect(created).toContain("07.37 WIB");
     expect(created).toContain("AXV-1");
     const paid = adminWhatsAppOrderPaidMessage({
       orderCode: "AXV-1", productNames: "Fixture ×1", amount: 10000,
       customerName: "628111", channelMember: "628111", paymentMethod: "qris",
     });
-    expect(paid).toContain("Lunas — WhatsApp");
+    expect(paid).toContain("Pembayaran diterima — WhatsApp");
     expect(paid).toContain("AXV-1");
   });
 
@@ -120,7 +122,7 @@ describe("WhatsApp orders notify the Telegram admin group", () => {
     }
     expect(marked).toBe(true);
     const texts = vi.mocked(sendMessage).mock.calls.map((c) => String(((c[0] as unknown) as Record<string, unknown>)?.text || ""));
-    expect(texts.some((t) => t.includes("Lunas — WhatsApp") && t.includes("WA-PAID"))).toBe(true);
+    expect(texts.some((t) => t.includes("Pembayaran diterima — WhatsApp") && t.includes("WA-PAID"))).toBe(true);
     vi.mocked(sendMessage).mockClear();
     await cronRun();
     expect(vi.mocked(sendMessage)).not.toHaveBeenCalled();

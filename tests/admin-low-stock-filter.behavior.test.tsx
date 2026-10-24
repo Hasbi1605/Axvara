@@ -39,7 +39,7 @@ it("legacy low-stock links still apply a visible removable filter after the summ
   fireEvent.popState(window);
   await act(async () => {});
   expect(screen.queryByText("Produk Aman")).toBeNull();
-  expect(screen.getAllByText("Produk Tipis").length).toBeGreaterThan(0);
+  expect((await screen.findAllByText("Produk Tipis")).length).toBeGreaterThan(0);
   const chip = screen.getByRole("button", { name: /Stok menipis · varian ≤ 5/ });
   fireEvent.click(chip);
   await act(async () => {});

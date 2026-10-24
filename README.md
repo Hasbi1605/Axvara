@@ -1,5 +1,43 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Notifikasi penjualan WA, admin Telegram, dan link grup — 24 Oktober 2026
+
+✅ Diimplementasikan; publikasi melalui CI. Admin → **Pengaturan Toko → Link grup
+WhatsApp** menyimpan satu undangan untuk seluruh tombol grup di Footer Market/Pedia
+dan Link Bio. Perubahan terlihat langsung pada tab penyimpanan dan diperbarui pada
+tab lain/fokus berikutnya; tidak perlu edit kode. Fallback URL lama tetap sampai
+link baru disimpan. Link undangan publik ini terpisah dari ID grup tujuan bot.
+
+Notifikasi Telegram admin memuat pembayaran/status pesanan/waktu WIB dan tombol
+**Lihat pesanan pembeli**. Tombol membuka lacak pesanan melalui sesi admin valid,
+tanpa memasukkan invoice/kontak dan tanpa membagikan token akses pembeli. Supplier
+otomatis tidak lagi ditandai perlu dikirim admin; kegagalan supplier diberi status
+perlu pemeriksaan, sedangkan produk manual tetap meminta pengiriman manual.
+
+Bot **6283181632507** memakai Baileys + auth/idempotensi Postgres di app Heroku
+existing. Grup **AXVARA'S** hanya menerima pesanan lunas dengan semua unit selesai,
+judul menurut kanal WEB/TELEGRAM/WHATSAPP, status/jam WIB dan identitas disamarkan.
+Invoice asli, nomor/email, target, akun dan link akses pembeli tidak diumumkan.
+Scanner maksimal4 pada cron notify existing, tanpa cron baru; gateway maksimal
+satu percobaan baru/60detik, timeout ambigu tidak otomatis dikirim ulang.
+
+**Pengiriman belum aktif sebelum pairing owner:** sesudah rilis buka Pengaturan
+Toko → Hubungkan nomor bot → tautkan dari WhatsApp nomor tersebut → masukkan bot
+ke grup AXVARA'S (admin grup jika grup membatasi pengiriman) → Cek koneksi →
+Aktifkan notifikasi. Hanya transaksi dibayar sejak aktivasi yang baru diantrekan;
+antrean yang sudah tersimpan tetap dipertahankan saat offline/nonaktif. Tidak ada
+jaminan bebas pembatasan WhatsApp. Pemeriksaan awal gateway lama disconnected401,
+bukan bukti nomor baru diblokir. QA tidak mengirim pesan produksi.
+
+Source gateway kanonis sekarang `gateway/`, diuji/dideploy di CI main memakai
+Heroku source/build API dan GitHub secret `HEROKU_API_KEY_AKUN1` dari
+`.heroku-credentials`. Folder saudara lama adalah arsip; jangan push Heroku atau
+mengunggah session lokal. Pages memakai tiga secret_text existing
+WHATSAPP_GATEWAY_URL/WHATSAPP_WEBHOOK_TOKEN/WHATSAPP_BOT_NUMBER, tanpa env baru.
+Migrasi0076 hanya indeks scanner. Detail kontrak/recovery/reference ada di
+[catatan implementasi](issue/whatsapp-sales-notifications-2026-10-24.md) dan
+[aturan gateway](gateway/AGENTS.md).
+
 ## Banner informasi carousel — 24 Oktober 2026
 
 ✅ Implementasi; publikasi via CI. Semua banner aktif diurutkan dalam satu popup
@@ -59,7 +97,8 @@ qty URL lalu meminta quote baru, tanpa membuat order atau invoice.
 
 ✅ Diimplementasikan; publikasi melalui CI. Footer dan halaman link memakai
 [grup WhatsApp baru](https://chat.whatsapp.com/DHgtU7q39TlCV6ToZ4JU39?mode=gi_t),
-bersumber dari `WA_GROUP_HREF` di `src/lib/site.ts`.
+Sejak24Oktober URL aktif berasal dari `whatsapp_group_url` di Pengaturan Toko;
+`WA_GROUP_HREF` di `src/lib/site.ts` hanya fallback.
 
 
 ## Pembelian beberapa kredensial unik — 23 Oktober 2026
@@ -709,7 +748,7 @@ npx wrangler r2 bucket create axvara-assets
 git push origin main
 ```
 
-`.github/workflows/ci.yml` adalah satu-satunya jalur deploy otomatis. Setiap push `main` menjalankan test, type-check, build adapter Pages, memeriksa/menerapkan migrasi D1 (bukti rilis identik atau Wrangler remote), deploy Pages, lalu deploy MCP Worker. Cloudflare Pages Git build dinonaktifkan agar tidak terjadi deploy ganda. Setelah push berhasil, agent berhenti dan tidak memantau workflow.
+`.github/workflows/ci.yml` adalah satu-satunya jalur deploy otomatis. Setiap push `main` menjalankan test/type-check root + test/build gateway, build adapter Pages, memeriksa/menerapkan migrasi D1 (bukti rilis identik atau Wrangler remote), merilis gateway lewat Heroku API bila source/release berubah, deploy Pages, lalu deploy MCP Worker. Cloudflare Pages Git build dinonaktifkan agar tidak terjadi deploy ganda. Setelah push berhasil, agent berhenti dan tidak memantau workflow.
 
 Perbaikan CI 2026-10-18: `scripts/ci-pages-env-check.cjs` memeriksa metadata konfigurasi produksi sebelum build/migrasi. Batas Workers Free adalah 64 variabel secret/text, termasuk empat variabel sistem Pages (`CF_PAGES`, `CF_PAGES_BRANCH`, `CF_PAGES_COMMIT_SHA`, `CF_PAGES_URL`); nama yang sama dihitung sekali. API gagal atau total >64 menghentikan rilis, tepat 64 memberi warning. Tidak membaca D1, mengubah env, atau mencetak nilai secret. Konfigurasi usang `PEDIA_DISPATCH_ENABLED` dihapus dari Pages produksi karena tidak dikonsumsi kode; dispatch antrean Pedia tetap berjalan lewat cron existing. Kini 60 konfigurasi + 4 sistem = 64: penambahan env berikutnya membutuhkan pengurangan konfigurasi yang benar-benar tidak dipakai. Secret KlikQRIS dan rail DANA/GoPay lama tetap ada. Sumber: [batas Workers](https://developers.cloudflare.com/workers/platform/limits/), [variabel sistem Pages](https://developers.cloudflare.com/pages/configuration/build-configuration/).
 

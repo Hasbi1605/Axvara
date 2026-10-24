@@ -512,6 +512,7 @@ export function telegramOrderAdminKeyboard(params: {
   if (params.username) {
     rows.push([{ text: `✈️ @${params.username}`, url: `https://t.me/${params.username}` }]);
   }
+  rows.push([{ text: "👁 Lihat pesanan pembeli", url: `${params.siteUrl}/lacak-pesanan?code=${encodeURIComponent(params.orderCode)}&admin=1` }]);
   rows.push([{ text: "🔧 Buka Pesanan", url: `${params.siteUrl}/admin?section=orders&q=${encodeURIComponent(params.orderCode)}` }]);
   return { inline_keyboard: rows };
 }
@@ -537,6 +538,7 @@ export function webOrderAdminKeyboard(params: {
     inline_keyboard: [
       [
         { text: "💬 WA Buyer", url: `https://wa.me/${customerWa}?text=${waMsg}` },
+        { text: "👁 Lihat pesanan pembeli", url: `${siteUrl}/lacak-pesanan?code=${encodeURIComponent(orderCode)}&admin=1` },
         { text: "🔧 Panel Admin", url: `${siteUrl}/admin?section=orders` },
       ],
     ],
@@ -551,6 +553,7 @@ export function webPaidAdminKeyboard(params: { customerWa: string; orderCode: st
   const rows: InlineKeyboardButton[][] = [];
   const digits = params.customerWa.replace(/\D/g, "");
   if (/^62\d{8,13}$/.test(digits)) rows.push([{ text: "💬 WA Pembeli", url: `https://wa.me/${digits}` }]);
+  rows.push([{ text: "👁 Lihat pesanan pembeli", url: `${params.siteUrl}/lacak-pesanan?code=${encodeURIComponent(params.orderCode)}&admin=1` }]);
   rows.push([{ text: "🔧 Buka Pesanan", url: `${params.siteUrl}/admin?section=orders&q=${encodeURIComponent(params.orderCode)}` }]);
   return { inline_keyboard: rows };
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { SITE, WA_GROUP_HREF, adminWaLink, supportTelegramLink } from "@/lib/site";
+import { SITE, adminWaLink, supportTelegramLink } from "@/lib/site";
 import { useStoreSettings } from "@/hooks/useStoreSettings";
 import { useToast } from "@/components/ui/Toast";
 
@@ -70,7 +70,7 @@ export function LinkBioClient() {
     // kembalikan 1 baris ini saat owner memutuskan memunculkan:
     // { href: "/pedia?utm_source=axvara&utm_medium=link_bio", label: "Axvara Pedia — naikkan sosmedmu", hint: "Followers, likes & views · QRIS", icon: "pedia" },
     { href: TG_BOT_HREF, external: true, label: "Bot Telegram", hint: "Auto order 24 jam", icon: "telegram" },
-    { href: WA_GROUP_HREF, external: true, label: "Grup WhatsApp", hint: "Info promo & restock", icon: "whatsapp" },
+    { href: settings.whatsappGroupUrl, external: true, label: "Grup WhatsApp", hint: "Info promo & restock", icon: "whatsapp" },
     { href: "/lacak-pesanan", label: "Lacak Pesanan", hint: "Cek status dengan kode + WA/email", icon: "track" },
     // 2026-10-10: Support WA lewat hub /wa (pilih nomor aktif) — internal, tanpa external.
     { href: adminWaLink("Halo AXVARA, saya butuh bantuan."), label: "Support WhatsApp", hint: "Pilih nomor aktif", icon: "support-wa" },

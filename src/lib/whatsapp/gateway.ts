@@ -29,12 +29,15 @@ export type WhatsAppSendResult = {
   ok: boolean;
   messageId?: string;
   error?: string;
+  outcomeUnknown?: boolean;
 };
 
 export type SendMessageParams = {
   target: string; // group JID, nomor HP (628…/08…), atau JID lengkap
   message: string;
   inboxId?: string; // reply to incoming inboxid
+  idempotencyKey?: string;
+  salesNotification?: boolean;
 };
 
 /**
@@ -234,14 +237,28 @@ async function callGateway(path: string, payload: Record<string, unknown>, timeo
       ok,
       messageId: data.id ? String(data.id) : undefined,
       error: ok ? undefined : String(data.reason || "baileys_gateway_send_failed"),
+      outcomeUnknown: data.outcomeUnknown === true,
     };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "baileys_gateway_network_error" };
+    return { ok: false, outcomeUnknown: true, error: error instanceof Error ? error.message : "baileys_gateway_network_error" };
   }
 }
 
 export function sendTextMessage(params: SendMessageParams): Promise<WhatsAppSendResult> {
-  return callGateway("/send", { target: normalizeWhatsAppTarget(params.target), message: params.message, inboxId: params.inboxId }, 15_000);
+  return callGateway(params.salesNotification ? "/send-notification" : "/send", { target: normalizeWhatsAppTarget(params.target), message: params.message, inboxId: params.inboxId, idempotencyKey: params.idempotencyKey }, 15_000);
+}
+
+/** Admin control plane. Never return gateway tokens to a browser. */
+export async function salesGatewayControl(action: "status" | "pair") {
+  const config = gatewayConfig();
+  if (!config) throw new Error("Gateway WhatsApp belum dikonfigurasi.");
+  const response = await fetch(`${config.url}/notification-${action}`, {
+    method: action === "status" ? "GET" : "POST",
+    headers: { "x-gateway-token": config.token }, signal: AbortSignal.timeout(15_000), cache: "no-store",
+  });
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.reason || "Gateway WhatsApp belum siap.");
+  return body as { connected: boolean; botNumber: string; groupId?: string; groupName?: string; pairingCode?: string; error?: string; blocked?: boolean };
 }
 
 export function sendImageMessage(params: SendImageParams): Promise<WhatsAppSendResult> {

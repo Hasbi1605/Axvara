@@ -500,6 +500,7 @@ describe("Telegram messages premium UX", () => {
 
   it("admin group notification identifies Telegram order creation", () => {
     const msg = adminTelegramOrderCreatedMessage({
+      createdAt: "2026-10-24 00:37:00",
       orderCode: "AXV-20260906-TEST1234",
       productNames: "Canva Pro ×2",
       amount: 10200,
@@ -511,6 +512,8 @@ describe("Telegram messages premium UX", () => {
     expect(msg).toContain("Order Baru — Telegram");
     expect(msg).toContain("Canva Pro ×2");
     expect(msg).toContain("QRIS");
+    expect(msg).toContain("Status pembayaran: MENUNGGU PEMBAYARAN");
+    expect(msg).toContain("07.37 WIB");
     // 2026-10-10 (permintaan owner): email buyer wajib tampil di notif admin.
     expect(msg).toContain("nadia@email.com");
   });

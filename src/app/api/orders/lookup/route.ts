@@ -6,6 +6,7 @@ import { MAX_QRIS_REISSUES } from "@/lib/payments/dana-qris";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { constantTimeEqual } from "@/lib/security";
 import { emailMatches, normalizeWa, parseBuyerContact } from "@/lib/order-contact";
+import { requireAdmin } from "@/lib/auth";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -15,6 +16,7 @@ const schema = z.object({
   code: z.string().trim().min(1).max(32),
   contact: z.string().trim().max(254).optional(),
   wa: z.string().trim().max(254).optional(),
+  adminView: z.boolean().optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -28,8 +30,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Body tidak valid." }, { status: 400 });
   }
   const parsed = schema.safeParse(body);
+  const adminView = parsed.success && parsed.data.adminView === true;
+  if (adminView && !(await requireAdmin(req))) {
+    return NextResponse.json({ error: "Sesi admin berakhir. Masuk ke panel admin lalu buka kembali tautan ini." }, { status: 401, headers: { "Cache-Control": "private, no-store" } });
+  }
   const contactRaw = parsed.success ? (parsed.data.contact ?? parsed.data.wa ?? "").trim() : "";
-  if (!parsed.success || !contactRaw) {
+  if (!parsed.success || (!adminView && !contactRaw)) {
     return NextResponse.json({ error: "Kode pesanan dan No. WA atau email wajib diisi." }, { status: 400 });
   }
   const code = parsed.data.code.trim().toUpperCase();
@@ -42,7 +48,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Format kode tidak valid. Contoh: AXV-20260917-AB12CD34." }, { status: 400 });
   }
   const contact = parseBuyerContact(contactRaw);
-  if (!contact) {
+  if (!adminView && !contact) {
     return NextResponse.json({
       error: contactRaw.includes("@")
         ? "Format email tidak valid. Contoh: nama@gmail.com."
@@ -64,11 +70,13 @@ export async function POST(req: NextRequest) {
     NextResponse.json({ error: "Pesanan tidak ditemukan atau No. WA/email tidak cocok. Periksa kembali kode serta No. WA atau email yang dipakai saat checkout." }, { status: 404 });
 
   if (!row) return notFound();
-  if (contact.kind === "email") {
+  if (adminView) {
+    // Existing, revocable admin session is the authority; URL carries only the order code.
+  } else if (contact?.kind === "email") {
     if (!emailMatches(contact.value, row.customer_email)) return notFound();
   } else {
     const storedWa = normalizeWa(row.customer_wa);
-    if (!storedWa || !constantTimeEqual(contact.value, storedWa)) return notFound();
+    if (!storedWa || !contact || !constantTimeEqual(contact.value, storedWa)) return notFound();
   }
 
   const waFull = String(row.customer_wa ?? "");
