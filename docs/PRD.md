@@ -19,6 +19,10 @@ Jangan tampilkan lagi di atas tombol biru lebar di tengah; fallback Saya Paham j
 belum diisi. Pada batas manual hanya panah ke slide tetangga yang tersedia.
 Tidak ada tombol Putar/Jeda sesuai screenshot/keputusan owner; interaksi manual
 atau fokus menghentikan putaran sampai popup ditutup, tanpa kontrol lanjutkan.
+Pergantian info melebur dengan blur tipis2px selama420ms dan geseran pendek12px.
+Info lama tetap terlihat sampai gambar berikutnya siap; perubahan tinggi kartu halus.
+Klik cepat menuju pilihan terakhir tanpa memotong transisi berjalan. Mode kurangi
+gerakan tetap berpindah langsung tanpa blur/animasi atau putaran otomatis.
 
 Admin mengatur jeda buka0–10detik(default1,5), interval4–20detik(default6), otomatis
 on/off dan maksimal1–10pembukaan per sesi(default1) pada satu panel bersama. Isi/CTA/

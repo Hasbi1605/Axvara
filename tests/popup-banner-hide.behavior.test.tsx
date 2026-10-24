@@ -44,6 +44,7 @@ function stubFetch(banners: unknown[] = [BANNER]) {
 }
 
 beforeEach(() => {
+  vi.spyOn(HTMLImageElement.prototype,"complete","get").mockReturnValue(true);vi.spyOn(HTMLImageElement.prototype,'naturalWidth','get').mockReturnValue(1122);
   navigation.pathname = "/";
   localStorage.clear();
   sessionStorage.clear();
@@ -51,6 +52,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -88,8 +90,8 @@ describe("PopupBanner carousel", () => {
     stubFetch([BANNER, {...BANNER,id:8,title:"First"}, {...BANNER,id:9,title:"Second"}, {...BANNER,id:10,is_active:0}]);
     render(<PopupBanner />);
     await screen.findByRole("dialog", {name:"Info AXVARA"});expect(screen.getByText("First")).toBeTruthy();expect(screen.getByText("1/2")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", {name:"Banner berikutnya"}));expect(screen.getByText("Second")).toBeTruthy();expect(screen.getByText("2/2")).toBeTruthy();
-    expect(sessionStorage.getItem(BANNER_SESSION_KEY)).toBe("1");fireEvent.keyDown(screen.getByRole("region"),{key:"ArrowRight"});expect(screen.getByText("First")).toBeTruthy();expect(sessionStorage.getItem(BANNER_SESSION_KEY)).toBe("1");
+    fireEvent.click(screen.getByRole("button", {name:"Banner berikutnya"}));expect(screen.getByRole("group").textContent).toContain("Second");expect(screen.getByRole("group").textContent).toContain("2/2");
+    expect(sessionStorage.getItem(BANNER_SESSION_KEY)).toBe("1");fireEvent.keyDown(screen.getByRole("region"),{key:"ArrowRight"});await waitFor(()=>expect(screen.getByRole("group").textContent).toContain("First"));expect(sessionStorage.getItem(BANNER_SESSION_KEY)).toBe("1");
   });
   it("does not reopen after returning home or remounting in the same session", async () => {
     stubFetch();const view=render(<PopupBanner/>);await screen.findByRole("dialog");fireEvent.click(screen.getByRole("button",{name:"Tutup banner"}));navigation.pathname="/produk/demo";view.rerender(<PopupBanner/>);navigation.pathname="/";view.rerender(<PopupBanner/>);

@@ -16,13 +16,17 @@ abu dan label dipusatkan di atas CTA biru#315DEA selebar panel, tinggi minimal44
 radius6px, teks putih16px; bila CTA kosong tombol Saya Paham menutup popup.
 Sesuai owner, tidak ada tombol putar/jeda. Gambar hanya memiliki panah dan tutup;
 autoplay mengikuti pengaturan admin dan berhenti ketika pembaca berinteraksi.
-Slide masuk horizontal300ms ease-apple; reduced motion meniadakan animasi/autoplay.
+Pergantian slide memakai dissolve420ms ease-apple dengan blur tipis2px dan geseran
+12px sesuai arah. Elemen slide lama tetap sebagai lapisan dasar sampai gambar tujuan siap
+dan transisi selesai; tinggi konten ikut bertransisi agar kartu tidak meloncat.
+Tidak mengaburkan backdrop atau tombol tutup lebih jauh. Reduced motion meniadakan
+animasi/blur transisi serta autoplay.
 
 Admin memakai drag handle/tombol naik-turun, placeholder baris saat drag, overlay dan
 transisi sortable existing. Panel pengaturan bersama memakai satuan detik dan input
 berlabel. Acuan carousel Sekalipay dari screenshot owner; prinsip kontrol gerak/fokus
 mengikuti [W3C carousel](https://www.w3.org/WAI/ARIA/apg/patterns/carousel/) dan
-[tutorial animasi](https://www.w3.org/WAI/tutorials/carousels/animations/). Durasi300ms/
+[tutorial animasi](https://www.w3.org/WAI/tutorials/carousels/animations/). Durasi420ms/
 interval6detik adalah keputusan desain AXVARA, bukan spesifikasi internal Sekalipay.
 
 

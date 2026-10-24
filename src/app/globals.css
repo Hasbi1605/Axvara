@@ -243,12 +243,26 @@ body {
 @keyframes ax-sheen { 0%, 70% { transform: translateX(-120%); } 85%, 100% { transform: translateX(120%); } }
 @media (prefers-reduced-motion: reduce) { .ax-launch::before, .ax-launch::after { animation: none; } }
 
-/* Banner movement stays local to the card; reduced motion uses instant changes. */
+/* Keep the previous slide as an opaque backing until the decoded image dissolves in. */
 @keyframes bannerSlideIn {
-  from { opacity: 0.35; transform: translateX(var(--banner-enter-from, 35%)); }
-  to { opacity: 1; transform: translateX(0); }
+  from { opacity: 0; transform: translateX(var(--banner-enter-from, 12px)); filter: blur(2px); }
+  to { opacity: 1; transform: translateX(0); filter: blur(0px); }
 }
-.banner-slide { animation: bannerSlideIn 300ms var(--ease-apple); }
+@keyframes bannerSlideOut {
+  from { transform: translateX(0); filter: blur(0px); }
+  to { transform: translateX(var(--banner-exit-to, -12px)); filter: blur(2px); }
+}
+.banner-stage {
+  position: relative; isolation: isolate; overflow: hidden;
+  transition-property: height;
+  transition-duration: var(--banner-transition-duration, 420ms);
+  transition-timing-function: var(--ease-apple);
+}
+.banner-slide { position: relative; background: #fff; }
+.banner-slide-pending { opacity: 0; }
+.banner-slide-in { z-index: 1; filter: blur(2px); animation: bannerSlideIn var(--banner-transition-duration, 420ms) var(--ease-apple) both; will-change: opacity, transform, filter; }
+.banner-slide-out { position: absolute; inset: 0 0 auto; pointer-events: none; background: #fff; filter: blur(2px); animation: bannerSlideOut var(--banner-transition-duration, 420ms) var(--ease-apple) both; will-change: transform, filter; }
 @media (prefers-reduced-motion: reduce) {
-  .banner-slide { animation: none; }
+  .banner-slide-in, .banner-slide-out { animation: none; filter: none; }
+  .banner-stage { transition: none; }
 }

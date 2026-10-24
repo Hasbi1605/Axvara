@@ -29,7 +29,16 @@ Popup memakai key sessionStorage.axvara-banner-carousel-shows dan key hide per-I
 existing24jam. Batas sesi lama per-banner dipensiunkan. Satu pembukaan per mount/
 kunjungan SPA, tidak memunculkan modal berikutnya sesudah tutup. Kontak/transaksi
 lain tidak berubah. Autoplay satu timer terlihat; pause fokus/hover/manual/hidden,
-reduced-motion manual; preload hanya gambar tetangga berikut. Revisi owner: tombol
+reduced-motion manual; preload/decode hanya gambar tetangga berikut. Navigasi menunggu
+decode gambar tujuan sebelum commit; versi permintaan menolak hasil lama. Node DOM
+slide lama tetap dipertahankan sebagai lapisan dekoratif aria-hidden/noninteraktif,
+bukan salinan gambar baru. Slide tujuan tetap transparan sampai elemen gambar aktual
+selesai load; CTA/hide ditahan selama tahap ini. Baru kemudian dissolve420ms berjalan,
+blur2px dan geseran12px. Tinggi stage berubah ke tinggi alami slide baru secara halus;
+setelah selesai, lapisan/timer/tinggi eksplisit dibersihkan. Input cepat digabung ke
+tujuan terbaru setelah transisi berjalan selesai. Tutup/hide/pindah route/unmount
+membatalkan permintaan tertunda; decode gagal tetap memakai fallback gambar existing.
+Browser tanpa decode memakai preload biasa. Revisi owner: tombol
 putar/jeda dihapus; setelah fokus/interaksi manual putaran tidak dilanjutkan otomatis
 atau melalui UI, sampai popup ditutup. Konfigurasi autoplay admin tetap. Hook useModalA11y
 menjaga Escape/trap/restore. Pointer horizontal45px dan dominan terhadap vertikal,

@@ -10,6 +10,9 @@ Caption putih rata tengah tanpa separator; checkbox di atas tombol biru full-wid
 atau Saya Paham bila CTA kosong. Konten panjang dapat digulir dalam max92dvh. Sesuai owner, tidak ada tombol
 Putar/Jeda pada gambar; hanya panah dan tutup.
 Judul mengikuti tinggi teks; deskripsi langsung di bawahnya dengan jarak8px.
+Transisi dissolve420ms/blur2px/geser12px menunggu gambar tujuan siap, mempertahankan
+slide lama sebagai backing dan menghaluskan perubahan tinggi kartu. Input cepat
+digabung ke tujuan terbaru; reduced motion tetap tanpa animasi/autoplay.
 Jangan tampilkan lagi berlaku per info24jam; checkout/admin tetap tanpa popup.
 
 Admin → Banner: ubah isi/gambar/CTA/aktif, drag pegangan atau gunakan naik/turun
