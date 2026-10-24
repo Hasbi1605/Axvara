@@ -1,5 +1,23 @@
 # PRD — AXVARA
 
+## Notifikasi pembayaran WA pembeli KlikQRIS — 24 Oktober 2026
+
+✅ Diimplementasikan; publikasi melalui CI. Invoice KlikQRIS baru mengirim
+`whatsapp_buyer` dari nomor WA pembeli yang sudah tersimpan pada checkout Market
+atau Pedia. Nomor08/+62/62 dinormalisasi menjadi62 tanpa plus, maksimal15digit.
+Telegram/WhatsApp juga memakai nomor tersimpan jika tersedia; Telegram tanpa
+nomor WA tetap dapat membayar dan tidak mendapat notifikasi WA dari fitur ini.
+Kontak kosong/tidak valid/email/ID chat atau grup tidak dijadikan tujuan, tanpa
+fallback nomor admin atau pengirim. Menambah nomor setelah invoice dibuat tidak
+mengubah invoice tersebut; retry tetap memakai invoice lama.
+
+KlikQRIS mengirim pesan sukses/kedaluwarsa sesuai template dashboard selama
+langganan aktif dan WA pengirim tersambung. Owner mengonfirmasi koneksi pengirim
+dan setting expired15menit melalui dashboard24Oktober; ini bukan bukti penerimaan
+WA buyer end-to-end. Pesan pembayaran bukan janji produk selesai: paid dan
+fulfillment tetap mengikuti validasi callback/API AXVARA. Tidak menambah pesan
+pembayaran dari gateway AXVARA, cron, env atau mengubah notifikasi grup selesai.
+
 ## Siaran admin dan sambutan grup — 24 Oktober 2026
 
 ✅ Diimplementasikan; publikasi melalui CI. Menu **Konten → Siaran** menyediakan
@@ -305,7 +323,7 @@ di gateway tetap ditahan untuk cleanup/review, tanpa mengulang POST ambigu.
 
 ✅ Diimplementasikan, publikasi melalui CI. Invoice baru Market, Pedia, Telegram (satuan/keranjang), dan bot WA memakai **PG KlikQRIS/in-house** bila `QRIS_ACTIVE_PROVIDER=klikqris`. Bukan MY PG/sandbox. Pemesanan otomatis dibuka kembali lewat build `NEXT_PUBLIC_PAYMENTS_MAINTENANCE=false`; switch maintenance tetap tersedia untuk recovery.
 
-Nominal bayar persis `total_amount` gateway, termasuk kode unik dari provider; tidak menambah kode lokal kedua. Keputusan owner: **batas bayar AXVARA tetap 15 menit**, walaupun invoice uji gateway berlaku 60 menit. Deadline order/ledger adalah yang paling awal antara deadline AXVARA yang sudah ada, 15 menit, dan expiry gateway; retry tidak memperpanjangnya. Semua kanal menjelaskan: lewat batas, jangan membayar QR lama; jika terlanjur, hubungi admin. Pembayaran terlambat/cancel/expiry yang sudah dikonfirmasi KlikQRIS tercatat di Rekonsiliasi dan diberitahukan ke admin sekali per event, tanpa menghidupkan order, memotong stok lagi, atau mengirim produk otomatis. Admin meninjau stok/dana untuk penyelesaian manual; tidak ada refund/pelunasan paksa otomatis.
+Nominal bayar persis `total_amount` gateway, termasuk kode unik dari provider; tidak menambah kode lokal kedua. Keputusan owner: **batas bayar AXVARA tetap 15 menit**. Invoice uji18Oktober berlaku60menit; owner mengonfirmasi setting dashboard gateway juga15menit pada24Oktober. Deadline order/ledger adalah yang paling awal antara deadline AXVARA yang sudah ada, 15 menit, dan expiry gateway; retry tidak memperpanjangnya. Semua kanal menjelaskan: lewat batas, jangan membayar QR lama; jika terlanjur, hubungi admin. Pembayaran terlambat/cancel/expiry yang sudah dikonfirmasi KlikQRIS tercatat di Rekonsiliasi dan diberitahukan ke admin sekali per event, tanpa menghidupkan order, memotong stok lagi, atau mengirim produk otomatis. Admin meninjau stok/dana untuk penyelesaian manual; tidak ada refund/pelunasan paksa otomatis.
 
 Callback per invoice memvalidasi signature tersimpan, order/merchant/nominal dan konfirmasi status API server. Gagal konfirmasi tidak dianggap lunas. Transisi paid, event dan outbox Market atomik; Pedia memakai antreannya sendiri, tidak mengirim produk Market dengan ID sama. Callback duplikat tidak mengulang fulfillment. POST create hanya oleh pemenang klaim ledger durable; timeout/panggilan ambigu dipulihkan melalui GET status dengan order ID sama, tanpa membuat tagihan atau memindahkan provider otomatis. Stok order in-flight tetap direservasi, cleanup lama menjadi penjamin.
 

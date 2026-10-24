@@ -38,7 +38,8 @@ it("the actual KlikQRIS adapter sends requests in workerd and rejects redirects 
       requests.push({ url: request.url, method: request.method, apiKey: request.headers.get("x-api-key") });
       if (request.url === "https://klikqris.com/api/qris/create") {
         if (redirectCreate) return new Response(null, { status: 302, headers: { location: "https://untrusted.example/steal" } });
-        const body = await request.json() as { order_id: string };
+        const body = await request.json() as { order_id: string; whatsapp_buyer?: string };
+        expect(body.whatsapp_buyer).toBe("6281234567890");
         expect(request.headers.get("id_merchant")).toBe("123456789");
         return Response.json({ status: true, data: { order_id: body.order_id, amount: "1000.00", total_amount: "1089.00",
           status: "PENDING", signature: "fixture-private-signature-1234567890", qris_url: "https://klikqris.com/storage/fixture.png",
@@ -55,11 +56,12 @@ it("the actual KlikQRIS adapter sends requests in workerd and rejects redirects 
     const db = await runtime.getD1Database("DB");
     const paymentDDL = readFileSync("drizzle/schema.sql", "utf8").match(/CREATE TABLE IF NOT EXISTS payment_transactions \([\s\S]+?\n\);/)![0];
     await db.batch([
-      db.prepare("CREATE TABLE orders(code TEXT PRIMARY KEY,status TEXT,payment_status TEXT,expires_at TEXT,payment_method TEXT,payment_account TEXT,updated_at TEXT)"),
+      db.prepare("CREATE TABLE orders(code TEXT PRIMARY KEY,status TEXT,payment_status TEXT,expires_at TEXT,payment_method TEXT,payment_account TEXT,updated_at TEXT,customer_wa TEXT)"),
       db.prepare("CREATE TABLE operation_guards(operation_id TEXT PRIMARY KEY,valid INTEGER CHECK(valid=1))"),
       db.prepare(paymentDDL),
       db.prepare("INSERT INTO orders(code,status,payment_status,expires_at) VALUES('AXV-20261018-WORKER01','pending','unpaid',?),('AXV-20261018-WORKER02','pending','unpaid',?)")
         .bind(new Date(Date.now()+900_000).toISOString(),new Date(Date.now()+900_000).toISOString()),
+      db.prepare("UPDATE orders SET customer_wa='0812-3456-7890'"),
     ]);
     const response = await runtime.dispatchFetch("https://axvara.tech/invoice?code=AXV-20261018-WORKER01");
     expect(response.status).toBe(200);

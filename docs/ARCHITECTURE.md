@@ -2606,7 +2606,24 @@ notice UI, tanpa detail rahasia; `expires_at` KlikQRIS memakai deadline ledger
 Halaman pesanan tanpa QR menawarkan aksi manual ini dan tidak menjanjikan
 verifikasi bukti pembayaran. Cleanup/stok/pembayaran terlambat tetap existing.
 
-✅ Diimplementasikan, publikasi melalui CI. Mode **in-house PG**, bukan MY PG/sandbox. `lib/payments/klikqris.ts` terisolasi untuk `POST https://klikqris.com/api/qris/create` dan `GET /api/qris/status/{order_id}`, auth header `x-api-key` + `id_merchant`; create body order_id/amount/id_merchant/keterangan/callback_url. Credential lokal `.klikqris-credentials` git-ignored/chmod600; Pages `secret_text`: `KLIKQRIS_API_KEY`, `KLIKQRIS_MERCHANT_ID`, `KLIKQRIS_ENABLED=true`, `QRIS_ACTIVE_PROVIDER=klikqris`. Tidak ada key di proxy/VPS/bot credential repo lain, browser, log atau respons publik. Build maintenance `false` membuka pembayaran; env runtime tidak mengganti nilai build. Memilih KlikQRIS tanpa config gagal tertutup, bukan fallback ke merchant bermasalah.
+✅ Diimplementasikan, publikasi melalui CI. Mode **in-house PG**, bukan MY PG/sandbox. `lib/payments/klikqris.ts` terisolasi untuk `POST https://klikqris.com/api/qris/create` dan `GET /api/qris/status/{order_id}`, auth header `x-api-key` + `id_merchant`; create body order_id/amount/id_merchant/keterangan/callback_url dan whatsapp_buyer opsional sejak24Oktober. Credential lokal `.klikqris-credentials` git-ignored/chmod600; Pages `secret_text`: `KLIKQRIS_API_KEY`, `KLIKQRIS_MERCHANT_ID`, `KLIKQRIS_ENABLED=true`, `QRIS_ACTIVE_PROVIDER=klikqris`. Tidak ada key di proxy/VPS/bot credential repo lain, browser, log atau respons publik. Build maintenance `false` membuka pembayaran; env runtime tidak mengganti nilai build. Memilih KlikQRIS tanpa config gagal tertutup, bukan fallback ke merchant bermasalah.
+
+Notifikasi buyer24Oktober: adapter membaca `customer_wa` bersama status/deadline
+order sebelum klaim, memakai `parseBuyerContact` untuk menerima hanya WA Indonesia
+valid dan maksimal15digit, dinormalisasi62 tanpa plus. Hanya pemenang klaim POST
+create menyertakan `whatsapp_buyer`; field diabaikan jika kontak kosong/invalid,
+email/JID/ID chat. Tidak membaca email/nama/target supplier untuk request ini,
+tidak menambah query terpisah atau kolom baru. Berlaku pada Market/Pedia serta
+kanal bot yang sudah menyimpan WA; Telegram tanpa WA tidak dipaksa mengisi nomor.
+Reuse pending/paid dan recovery initializing tetap tanpa POST; nomor baru setelah
+invoice terbit tidak dibackfill. Respons publik invoice tidak menambah nomor.
+Pengiriman success/expired berada di KlikQRIS sesuai template/langganan/sesi
+pengirim dashboard, bukan outbox/pacing gateway grup AXVARA. Tidak menambah DM
+melalui gateway AXVARA, flag/env/cron/dependensi atau mengubah verifikasi paid.
+Sumber parameter: panel WhatsApp KlikQRIS pada screenshot owner24Oktober;
+halaman dokumentasi API publik saat pemeriksaan belum mencantumkan field ini.
+Owner mengonfirmasi setting expiry gateway15menit pada24Oktober; TTL API tetap
+dibaca per invoice dan di-cap oleh deadline lokal, bukan diasumsikan dari dashboard.
 
 `createActiveQrisInvoice` merutekan invoice baru; retry invoice lama mempertahankan provider ledger. Satu klaim `operation_guards` + INSERT initializing atomik sebelum POST, order ID stabil, satu pemenang. Timeout/hasil ambigu tidak di-POST ulang: recovery memakai GET ID sama. Status initializing/pending KlikQRIS tidak memicu kompensasi stok catch Telegram/web, dan cleanup stale-init/expiry existing tetap penjamin. Cron lite expiry menyertakan KlikQRIS pada tick existing agar pengembalian stok tidak menunggu route cadangan per jam; transisi bersyarat tetap mengembalikan sekali. Finalisasi ledger + deadline order dibatch dan difence agar cancel/expiry tidak dihidupkan kembali. Tidak mengklaim exactly-once jaringan provider.
 

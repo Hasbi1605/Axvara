@@ -4,6 +4,7 @@ import { getD1, queryFirst, execRun, transitionPendingPaymentToPaid } from "@/li
 import { constantTimeEqual } from "@/lib/security";
 import { assertPaymentsAvailable } from "@/lib/payment-maintenance";
 import { SITE } from "@/lib/site";
+import { parseBuyerContact } from "@/lib/order-contact";
 import type { DanaQrisInvoice } from "./dana-qris";
 
 type Row = Record<string, unknown>;
@@ -85,10 +86,15 @@ export async function createKlikQrisInvoice(orderCode: string, requestedAmount: 
   }
   if (tx && tx.status !== "initializing") throw new Error("klikqris_invoice_terminal");
   let claimed = false;
+  let whatsappBuyer: string | undefined;
   if (!tx) {
-    const order = await queryFirst("SELECT status,payment_status,expires_at FROM orders WHERE code=?", orderCode);
+    const order = await queryFirst("SELECT status,payment_status,expires_at,customer_wa FROM orders WHERE code=?", orderCode);
     const deadline = Math.min(Date.now() + LOCAL_TTL_MS, order?.expires_at ? dbTime(order.expires_at) : Infinity);
     if (!order || order.status !== "pending" || !["pending", "unpaid"].includes(String(order.payment_status)) || !(deadline > Date.now())) throw new Error("klikqris_order_terminal");
+    // Only the saved buyer phone may be sent to KlikQRIS. Telegram orders may
+    // have no phone yet; omit it rather than blocking payment or using a chat ID.
+    const contact = parseBuyerContact(order.customer_wa);
+    if (contact?.kind === "wa" && contact.value.length <= 15) whatsappBuyer = contact.value;
     const guard = `${orderCode}:klikqris:claim`;
     try {
       await d1.batch([
@@ -113,6 +119,7 @@ export async function createKlikQrisInvoice(orderCode: string, requestedAmount: 
   // never by repeating create or switching gateways.
   try {
     const data = claimed ? await api("create", { order_id: orderCode, id_merchant: merchant, amount: requestedAmount,
+      ...(whatsappBuyer ? { whatsapp_buyer: whatsappBuyer } : {}),
       keterangan: `Pembayaran AXVARA ${orderCode}`, callback_url: SITE.webUrl + KLIKQRIS_CALLBACK_PATH })
       : await api(`status/${encodeURIComponent(orderCode)}`);
     validateDetails(data, orderCode, requestedAmount, merchant);

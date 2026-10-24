@@ -35,7 +35,7 @@ beforeEach(async()=>{
  fetchMock=vi.fn(async(url: string|URL|Request,init?:RequestInit)=>{
   const target=String(url);
   if(target.endsWith("/api/qris/create")){
-   const body=JSON.parse(String(init?.body));const row=details(body.order_id);remote.set(body.order_id,row);
+   const body=JSON.parse(String(init?.body));const row={...details(body.order_id),amount:String(body.amount),total_amount:String(body.amount+89)};remote.set(body.order_id,row);
    if(failCreateAfterSave)throw new Error("Network timeout after provider accepted create");
    return Response.json({status:true,data:row},{status:201});
   }
@@ -112,6 +112,41 @@ describe("Paid background payment recovery",()=>{
 });
 
 describe("KlikQRIS invoice contract and durable creation",()=>{
+ it.each(["081234567890","6281234567890","+6281234567890"," 0812-3456 7890 "])("sends the saved buyer phone %s in country-code format only on create",async phone=>{
+  await seed(A,"web");
+  fixture.sql.prepare("UPDATE orders SET customer_wa=? WHERE code=?").run(phone,A);
+  const first=await createActiveQrisInvoice(A,1000);
+  const [,init]=fetchMock.mock.calls[0];
+  expect(JSON.parse(String(init?.body)).whatsapp_buyer).toBe("6281234567890");
+  expect(JSON.stringify(first)).not.toContain("6281234567890");
+  fixture.sql.prepare("UPDATE orders SET customer_wa='6289999999999' WHERE code=?").run(A);
+  await createActiveQrisInvoice(A,1000);
+  expect(posts()).toBe(1);
+ });
+ it.each(["","—","123456789","buyer@example.test","6281234567890@s.whatsapp.net","120363000000000000@g.us","call 081234567890","6281234567890123"])("omits absent or invalid buyer contact %s without blocking payment",async phone=>{
+  await seed();fixture.sql.prepare("UPDATE orders SET customer_wa=? WHERE code=?").run(phone,A);
+  expect((await createActiveQrisInvoice(A,1000)).payableAmount).toBe(1089);
+  const [,init]=fetchMock.mock.calls[0];expect(JSON.parse(String(init?.body))).not.toHaveProperty("whatsapp_buyer");
+ });
+ it.each(["telegram","whatsapp"] as const)("uses the saved phone for %s orders",async channel=>{
+  await seed(A,channel);fixture.sql.prepare("UPDATE orders SET customer_wa='6281234567890' WHERE code=?").run(A);
+  await createActiveQrisInvoice(A,1000);
+  expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body)).whatsapp_buyer).toBe("6281234567890");
+ });
+ it("passes the Pedia checkout phone to KlikQRIS and reuses its invoice on retry",async()=>{
+  vi.stubEnv("PEDIA_ENABLED","true");vi.stubEnv("PEDIA_ORDERS_ENABLED","true");
+  fixture.sql.exec(`INSERT INTO pedia_products(id,slug,platform,metric,target_kind,name,packages_json,step,is_active) VALUES(1,'followers-instagram','instagram','followers','profile','Followers','[100]',1,1);
+   INSERT INTO pedia_tiers(id,product_id,tier,supplier,supplier_service_id,price_group,markup_pct,min_profit_rp,is_active) VALUES(1,1,'standar','indosmm',1,'G3',0,1000,1);
+   INSERT INTO pedia_supplier_services(supplier,service_id,name,category,type,rate_idr_per_1k,min_qty,max_qty,present) VALUES('indosmm',1,'Fixture','Fixture','Default',10000,1,1000,1);`);
+  const {createPediaQuoteToken}=await import("@/lib/pedia/quote");
+  const {token}=await createPediaQuoteToken({product_id:1,tier_id:1,quantity:150,target_raw:"https://instagram.com/buyer/",target_normalized:"https://instagram.com/buyer/",unit_price:2500/150,total:2500,credit_code_hash:null,credit_used:0,supplier:"indosmm",supplier_service_id:1,supplier_rate_snapshot:10000,refill_days:0,min_profit_rp:1000});
+  const {POST}=await import("@/app/api/pedia/orders/route");
+  const request=()=>new NextRequest("https://axvara.tech/api/pedia/orders",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({quote_token:token,customer_wa:"0812-3456-7890",customer_email:"buyer@example.test"})});
+  const response=await POST(request());expect(response.status).toBe(201);
+  const result=await response.json();expect(result.qris.payable_amount).toBe(2589);
+  expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toMatchObject({order_id:result.code,whatsapp_buyer:"6281234567890"});
+  expect((await POST(request())).status).toBe(200);expect(posts()).toBe(1);
+ });
  it("uses provider total, authenticated headers, callback URL, local QR proxy and the 15-minute cap",async()=>{
   const result=await checkout();expect(result.payableAmount).toBe(1089);expect(result.uniqueCode).toBe(89);
   expect(result.qrisUrl).toBe(`https://axvara.tech/api/payments/qris/${A}/image`);
@@ -129,10 +164,13 @@ describe("KlikQRIS invoice contract and durable creation",()=>{
  });
  it("recovers an ambiguous accepted create by GET without repeating POST",async()=>{
   await seed();failCreateAfterSave=true;
+  fixture.sql.prepare("UPDATE orders SET customer_wa='081234567890' WHERE code=?").run(A);
   await expect(createActiveQrisInvoice(A,1000)).rejects.toThrow("klikqris_network_ambiguous");
   expect(tx().status).toBe("initializing");expect(row().status).toBe("pending");
   failCreateAfterSave=false;const recovered=await createActiveQrisInvoice(A,1000);
   expect(recovered.isExisting).toBe(true);expect(posts()).toBe(1);expect(tx().status).toBe("pending");
+  expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body)).whatsapp_buyer).toBe("6281234567890");
+  expect(fetchMock.mock.calls.at(-1)?.[1]?.body).toBeUndefined();
  });
  it("web checkout retry resumes the existing invoice and returns its QR without another reservation",async()=>{
   fixture.sql.exec("UPDATE product_variants SET price=1000,stock=1 WHERE id=1");
@@ -143,6 +181,7 @@ describe("KlikQRIS invoice contract and durable creation",()=>{
   const request=()=>new NextRequest("https://axvara.tech/api/orders",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({customer_wa:"081234567890",customer_email:"fixture@example.test",items:[{product_id:1,variant_id:1,qty:1}],payment_method:"qris",quote_token:token})});
   failCreateAfterSave=true;
   const failed=await POST(request());const first=await failed.json();expect(first).toMatchObject({error:expect.stringContaining("Tagihan sedang")});expect(failed.status).toBe(503);
+  expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body)).whatsapp_buyer).toBe("6281234567890");
   const reserved=fixture.sql.prepare("SELECT stock FROM product_variants WHERE id=1").get()!.stock;
   expect(reserved).toBe(0);
   failCreateAfterSave=false;

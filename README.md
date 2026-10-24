@@ -227,6 +227,24 @@ Migrasi data 0070 menambah 17 kebutuhan/23 mapping (kapasitas total 55/154 pada 
 
 ## QRIS KlikQRIS (2026-10-18)
 
+Notifikasi WA buyer24Oktober ✅ diimplementasikan, publikasi melalui CI:
+invoice baru menyertakan `whatsapp_buyer` dari `orders.customer_wa` valid,
+dinormalisasi62 tanpa plus/maks15digit. Market/Pedia otomatis memakai kontak
+checkout; kanal Telegram/WA hanya jika nomor sudah tersimpan saat create.
+Tanpa WA/nomor invalid/email/JID/ID Telegram: field diabaikan, pembayaran tetap
+berjalan tanpa fallback nomor admin/bot. Retry/recovery tidak membuat ulang
+invoice atau menambahkan nomor setelah invoice terbit.
+
+Setup owner: paket KlikQRIS aktif → menu WhatsApp → isi nomor pengirim →
+tautkan perangkat → pastikan Terhubung → atur Pesan Sukses/Pesan Expired dan
+Simpan Format. Pengirim serta template dikelola di KlikQRIS, bukan env Pages.
+Owner sudah mengonfirmasi koneksi dan expired15menit melalui screenshot24Oktober;
+tidak ada perubahan sesi/template dashboard oleh rilis ini. Notifikasi pembayaran
+KlikQRIS tidak menjanjikan produk selesai; verifikasi paid/late-payment AXVARA
+tetap berlaku. Notifikasi grup selesai AXVARA tetap terpisah. Tanpa cron/env atau
+pesan pembayaran tambahan dari gateway AXVARA; penerimaan WA buyer produksi
+belum diuji end-to-end.
+
 Deteksi lunas cepat 2026-10-18: polling halaman pesanan Market (5 detik) dan
 Pedia (10 detik) kini menumpang reconcile KlikQRIS ter-throttle ±10 detik per
 pesanan (klaim atomik `last_checked_at`, satu pemanggil bertanya ke gateway),
@@ -244,7 +262,7 @@ jangan memaksa POST ulang atau membayar sebelum QR dan total muncul.
 
 Rilis ini membuka kembali pembayaran otomatis dengan PG KlikQRIS (`QRIS_ACTIVE_PROVIDER=klikqris`, server secret `KLIKQRIS_ENABLED=true`, `KLIKQRIS_API_KEY`, `KLIKQRIS_MERCHANT_ID`). Sumber lokal tunggal `.klikqris-credentials` (git-ignored, chmod 600); isi/nilai rahasia tidak boleh masuk git/log/browser. Semua env Pages bertipe `secret_text`. API resmi: https://klikqris.com/dokumentasi-api. Callback ditetapkan per transaksi ke `https://axvara.tech/api/payments/klikqris/callback`, sehingga tidak bergantung pada pengisian callback dashboard.
 
-Harga bayar memakai `total_amount` gateway; nominal/kode unik tidak dihitung ulang lokal. Keputusan owner: batas AXVARA **tetap 15 menit**, meskipun gateway masih dapat menerima QR hingga 60 menit. Pembayaran setelah batas/cancel/expiry dicatat untuk pemeriksaan manual (Rekonsiliasi + satu alert admin), tanpa melunasi/mengirim produk otomatis. Status/nominal/order/signature dikonfirmasi server sebelum paid atomik. QR diproxy same-origin untuk kode AXV/AXP (migrasi 0069 `provider_qris_url`), tanpa membocorkan API key/signature.
+Harga bayar memakai `total_amount` gateway; nominal/kode unik tidak dihitung ulang lokal. Keputusan owner: batas AXVARA **tetap 15 menit**; owner mengonfirmasi setting expired KlikQRIS juga15menit pada24Oktober (uji awal18Oktober60menit). Deadline tetap yang paling awal order/lokal/provider, retry tidak memperpanjang. Pembayaran setelah batas/cancel/expiry dicatat untuk pemeriksaan manual (Rekonsiliasi + satu alert admin), tanpa melunasi/mengirim produk otomatis. Status/nominal/order/signature dikonfirmasi server sebelum paid atomik. QR diproxy same-origin untuk kode AXV/AXP (migrasi 0069 `provider_qris_url`), tanpa membocorkan API key/signature.
 
 Pembuatan tagihan diklaim durable sebelum POST; retry ambigu hanya GET order ID sama, tidak POST/failover lagi. Stok in-flight tidak dilepas oleh catch kanal. Web/Pedia/TG mendukung cek manual provider; polling halaman menumpang reconcile KlikQRIS ter-throttle ±10 detik/order, tanpa cron gateway baru. Invoice lama tetap DANA/GoPay, termasuk retry setelah perpindahan provider. Rollback hanya invoice baru: kembalikan `QRIS_ACTIVE_PROVIDER` melalui secret Pages + rilis CI; pertahankan kredensial KlikQRIS dan webhook untuk tagihan lama/pembayaran terlambat. Jangan mengaktifkan/menonaktifkan poller atau gateway repo lain untuk integrasi ini.
 
