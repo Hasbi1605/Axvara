@@ -1,4 +1,5 @@
 import Fastify from "fastify";
+import { Mutex } from "async-mutex";
 import makeWASocket, {
   Browsers,
   downloadMediaMessage,
@@ -11,7 +12,7 @@ import { Boom } from "@hapi/boom";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import pino from "pino";
 import { usePostgresAuthState } from "./pg-auth.js";
-import { BOT_NUMBER, pool, initializeDurable, deliveryClaim, settleDelivery, pauseOutbound, requiresManualReconnect, isRestriction, groupAllowsBotSend } from "./durable.js";
+import { BOT_NUMBER, botIdentity, matchesBotIdentity, validBotNumber, persistBotNumber, reloadBotIdentity, pool, initializeDurable, deliveryClaim, settleDelivery, pauseOutbound, requiresManualReconnect, isRestriction, groupAllowsBotSend } from "./durable.js";
 import { isNotificationGroupName, selectNotificationGroup, notificationGroupStatus } from "./group-target.js";
 // (registerWrProxy tidak lagi diimpor — proxy WR pindah ke axvara-wr-proxy)
 
@@ -20,7 +21,6 @@ const PORT = Number(process.env.PORT || 3001);
 const AXVARA_WEBHOOK_URL = process.env.AXVARA_WEBHOOK_URL || "https://axvara.tech/api/whatsapp/webhook";
 const AXVARA_WEBHOOK_TOKEN = process.env.AXVARA_WEBHOOK_TOKEN || "";
 const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || "").replace(/\/+$/, "");
-const WA_BOT_NUMBER = BOT_NUMBER;
 const TARGET_GROUP_ID = process.env.TARGET_GROUP_ID || "120363412672344593@g.us";
 const MAX_MEDIA_BYTES = 5 * 1024 * 1024;
 const MESSAGE_TTL_MS = 20 * 60 * 1000;
@@ -46,6 +46,9 @@ let notificationGroup: { id: string; subject: string } | null = null;
 let lastAckAt: string | null = null;
 let lastSendAtIso: string | null = null;
 let blocked = false;
+let switching = false;
+let configurationFailed = false;
+const sessionMutex = new Mutex();
 
 function scheduleReconnect(delay: number) {
   if (shuttingDown || blocked || reconnectTimer) return;
@@ -54,19 +57,19 @@ function scheduleReconnect(delay: number) {
 async function resolveNotificationGroup() {
   if (!sock || !isConnected || sock.user?.id?.split(":")[0]?.split("@")[0] !== BOT_NUMBER) return null;
   if (notificationGroup && (groupMetadataCache.get(notificationGroup.id)?.expiresAt ?? 0) > Date.now()) return notificationGroup;
-  const control = (await pool.query("SELECT group_id FROM axvara_wa_control WHERE phone=$1", [BOT_NUMBER])).rows[0];
+  const control = (await pool.query("SELECT group_id FROM axvara_wa_runtime WHERE id=1")).rows[0];
   if (control?.group_id) {
     const meta = await sock.groupMetadata(control.group_id);
     if (!isNotificationGroupName(meta.subject)) throw new Error("Nama grup tujuan berubah; periksa grup sebelum melanjutkan.");
-    if (!groupAllowsBotSend(meta, sock.user?.lid)) throw new Error("Jadikan bot admin di grup AXVARA'S yang hanya mengizinkan admin mengirim pesan.");
+    if (!groupAllowsBotSend(meta, sock.user?.lid)) throw new Error("Pastikan nomor bot menjadi anggota dan memiliki izin mengirim pesan ke grup AXVARA'S.");
     notificationGroup = { id: meta.id, subject: meta.subject };
     groupMetadataCache.set(meta.id, { data: meta, expiresAt: Date.now()+GROUP_METADATA_TTL_MS });
     return notificationGroup;
   }
   const group = selectNotificationGroup(Object.values(await sock.groupFetchAllParticipating()));
-  if (!groupAllowsBotSend(group, sock.user?.lid)) throw new Error("Jadikan bot admin di grup AXVARA'S yang hanya mengizinkan admin mengirim pesan.");
+  if (!groupAllowsBotSend(group, sock.user?.lid)) throw new Error("Pastikan nomor bot menjadi anggota dan memiliki izin mengirim pesan ke grup AXVARA'S.");
   notificationGroup = { id: group.id, subject: group.subject };
-  await pool.query("UPDATE axvara_wa_control SET group_id=$2 WHERE phone=$1 AND group_id IS NULL", [BOT_NUMBER, notificationGroup.id]);
+  await pool.query("UPDATE axvara_wa_runtime SET group_id=$1 WHERE id=1 AND group_id IS NULL", [notificationGroup.id]);
   groupMetadataCache.set(group.id, { data: group, expiresAt: Date.now()+GROUP_METADATA_TTL_MS });
   return notificationGroup;
 }
@@ -121,28 +124,29 @@ function validGatewayToken(raw: unknown): boolean {
   return provided.length === expected.length && timingSafeEqual(provided, expected);
 }
 
+async function stopSocket() {
+  const old = sock;
+  sock = null; isConnected = false;
+  if (old) {
+    for (const event of ["connection.update", "creds.update", "messages.upsert", "groups.update", "group-participants.update", "messages.update"] as const) old.ev.removeAllListeners(event);
+    try { await old.end(undefined); } catch { /* already closed */ }
+  }
+  await credsSaved;
+}
+
 function startWhatsApp(): Promise<void> {
-  if (blocked || shuttingDown) return Promise.resolve();
+  if (blocked || switching || shuttingDown) return Promise.resolve();
   if (starting) return starting;
   starting = startSocket().finally(() => { starting = null; });
   return starting;
 }
 async function startSocket(): Promise<void> {
   await credsSaved;
-  const { state, saveCreds } = await usePostgresAuthState();
-  // Teardown socket lama DULU sebelum bikin baru (anti zombie socket).
-  if (sock) {
-    try {
-      const old = sock;
-      sock = null;
-      for (const event of ["connection.update", "creds.update", "messages.upsert", "groups.update", "group-participants.update", "messages.update"] as const) old.ev.removeAllListeners(event);
-      await old.end(undefined);
-    } catch {
-      /* socket lama sudah mati — lanjut */
-    }
-  }
-
-  sock = makeWASocket({
+  const { state, saveCreds } = await usePostgresAuthState(BOT_NUMBER);
+  const phone = BOT_NUMBER;
+  await stopSocket();
+  if (switching || shuttingDown) return;
+  const socket = makeWASocket({
     auth: state,
     getMessage: async key => {
       const cached = inboundMessages.get(cacheKey(key.remoteJid || "", key.id || ""));
@@ -161,34 +165,40 @@ async function startSocket(): Promise<void> {
       const hit = groupMetadataCache.get(jid);
       if (hit && hit.expiresAt > Date.now()) return hit.data as any;
       try {
-        const meta = await sock?.groupMetadata(jid);
-        if (meta) groupMetadataCache.set(jid, { data: meta, expiresAt: Date.now() + GROUP_METADATA_TTL_MS });
+        if (sock !== socket || BOT_NUMBER !== phone) return undefined;
+        const meta = await socket.groupMetadata(jid);
+        if (meta && sock === socket && BOT_NUMBER === phone) groupMetadataCache.set(jid, { data: meta, expiresAt: Date.now() + GROUP_METADATA_TTL_MS });
         return meta;
       } catch {
         return undefined;
       }
     },
   });
-  sock.ev.on("creds.update", () => {
-    credsSaved = credsSaved.then(saveCreds).catch(() => { blocked = true; void sock?.end(undefined); logger.error("Unable to persist session; stopped"); });
+  sock = socket;
+  const current = () => sock === socket && BOT_NUMBER === phone && !switching && !shuttingDown;
+  socket.ev.on("creds.update", () => {
+    if (!current()) return;
+    credsSaved = credsSaved.then(saveCreds).catch(() => { if (current()) { blocked = true; void socket.end(undefined); } logger.error("Unable to persist session; stopped"); });
   });
-  sock.ev.on("groups.update", updates => { for (const group of updates) if (group.id) { groupMetadataCache.delete(group.id); if (notificationGroup?.id === group.id) notificationGroup = null; } });
-  sock.ev.on("group-participants.update", update => { groupMetadataCache.delete(update.id); if (notificationGroup?.id === update.id) notificationGroup = null; });
-  sock.ev.on("messages.update", updates => {
+  socket.ev.on("groups.update", updates => { if (!current()) return; for (const group of updates) if (group.id) { groupMetadataCache.delete(group.id); if (notificationGroup?.id === group.id) notificationGroup = null; } });
+  socket.ev.on("group-participants.update", update => { if (!current()) return; groupMetadataCache.delete(update.id); if (notificationGroup?.id === update.id) notificationGroup = null; });
+  socket.ev.on("messages.update", updates => {
+    if (!current()) return;
     if (updates.some(entry => Number(entry.update.status) >= 3)) {
       lastAckAt = new Date().toISOString();
-      void pool.query("UPDATE axvara_wa_control SET last_ack_at=now() WHERE phone=$1", [BOT_NUMBER]).catch(() => {});
+      void pool.query("UPDATE axvara_wa_control SET last_ack_at=now() WHERE phone=$1", [phone]).catch(() => {});
     }
   });
 
-  sock.ev.on("connection.update", ({ connection, lastDisconnect, qr }) => {
+  socket.ev.on("connection.update", ({ connection, lastDisconnect, qr }) => {
+    if (!current()) return;
     if (qr) {
       latestQr = true;
     }
     if (connection === "open") {
       isConnected = true;
       latestQr = false; pairingCode = "";
-      if (sock?.user?.id?.split(":")[0]?.split("@")[0] !== BOT_NUMBER) { blocked = true; isConnected = false; void sock?.end(undefined); return; }
+      if (socket.user?.id?.split(":")[0]?.split("@")[0] !== phone) { blocked = true; isConnected = false; void socket.end(undefined); return; }
       pairingCodeRequested = false;
       reconnectCount = 0;
       logger.info("WhatsApp connected successfully");
@@ -222,8 +232,8 @@ async function startSocket(): Promise<void> {
     }
   });
 
-  sock.ev.on("messages.upsert", async ({ messages, type }) => {
-    if (type !== "notify") return;
+  socket.ev.on("messages.upsert", async ({ messages, type }) => {
+    if (!current() || type !== "notify") return;
     for (const message of messages) {
       if (!message.message || message.key.fromMe) continue;
       const conversationId = message.key.remoteJid || "";
@@ -232,6 +242,7 @@ async function startSocket(): Promise<void> {
       // Jeda antrean inbound legacy 1–2,5 dtk; bukan mekanisme anti-ban.
       await new Promise((r) => setTimeout(r, 1000 + Math.random() * 1500));
 
+      if (!current()) return;
       const content = normalizeMessageContent(message.message);
       const imageMessage = content?.imageMessage;
       const extendedMessage = content?.extendedTextMessage;
@@ -253,7 +264,7 @@ async function startSocket(): Promise<void> {
             message,
             "buffer",
             {},
-            { logger: logger as any, reuploadRequest: sock.updateMediaMessage },
+            { logger: logger as any, reuploadRequest: socket.updateMediaMessage },
           );
           const buffer = Buffer.isBuffer(downloaded) ? downloaded : Buffer.from(downloaded);
           const contentType = imageMessage.mimetype || "image/jpeg";
@@ -286,6 +297,7 @@ async function startSocket(): Promise<void> {
           isGroup,
           ...mediaPayload,
         };
+        if (!current()) return;
         const response = await fetch(AXVARA_WEBHOOK_URL, {
           method: "POST",
           headers: {
@@ -369,23 +381,62 @@ function paceSend<T>(fn: () => Promise<T>): Promise<T> {
   return run;
 }
 
-app.get("/notification-status", async (request, reply) => {
+app.get("/notification-status", async (request, reply) => sessionMutex.runExclusive(async () => {
   if (!validGatewayToken(request.headers["x-gateway-token"])) return reply.status(401).send({ reason: "unauthorized" });
+  if (configurationFailed) await reloadBotIdentity();
   let error: string | undefined;
   let group: { id: string; subject: string } | null = null;
   try { group = await resolveNotificationGroup(); } catch (e) { error = e instanceof Error ? e.message : "Grup belum tersedia"; }
   const control = (await pool.query("SELECT paused_until,last_sent_at,last_ack_at FROM axvara_wa_control WHERE phone=$1", [BOT_NUMBER])).rows[0];
   // groupName is the verified configured target; groupSubject preserves the
   // actual WhatsApp title. Pages validates the canonical name before enabling.
-  return { connected: isConnected, botNumber: BOT_NUMBER, ...notificationGroupStatus(group), error,
+  return { connected: isConnected, ...botIdentity(), ...notificationGroupStatus(group), error,
     blocked: blocked || Boolean(control?.paused_until && new Date(control.paused_until).getTime() > Date.now()),
     lastSendAt: control?.last_sent_at, lastAckAt: control?.last_ack_at };
-});
+}));
 
-app.post("/notification-pair", async (request, reply) => {
+app.post("/notification-number", async (request, reply) => sessionMutex.runExclusive(async () => {
   if (!validGatewayToken(request.headers["x-gateway-token"])) return reply.status(401).send({ reason: "unauthorized" });
-  if (isConnected) return { connected: true, botNumber: BOT_NUMBER };
-  if (pairingCode && pairingExpiresAt > Date.now()) return { connected: false, botNumber: BOT_NUMBER, pairingCode };
+  const body = request.body as { newBotNumber?: string; botNumber?: string; botRevision?: string };
+  if (!body || !validBotNumber(body.newBotNumber) || !validBotNumber(body.botNumber) || typeof body.botRevision !== "string") return reply.status(400).send({ reason: "invalid_bot_number" });
+  if (!matchesBotIdentity(body)) return reply.status(409).send({ reason: "bot_configuration_changed" });
+  if (body.newBotNumber === BOT_NUMBER && !configurationFailed) return { connected: isConnected, ...botIdentity() };
+  switching = true;
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = undefined; }
+  try {
+    await starting;
+    await stopSocket();
+    // Drop permissions/pairing from the old phone before the commit too: its
+    // outcome may be ambiguous, and recovery can load a different identity.
+    notificationGroup = null; groupMetadataCache.clear(); inboundMessages.clear(); mediaFiles.clear();
+    latestQr = false; pairingCode = ""; pairingExpiresAt = 0; pairingCodeRequested = false;
+    await persistBotNumber(body.newBotNumber, body);
+    reconnectCount = 0; lastDisconnectCode = null; lastDisconnectAt = null;
+    lastAckAt = null; lastSendAtIso = null; blocked = false; configurationFailed = false;
+    switching = false;
+    // Start the selected session. Pairing still requires a separate owner action.
+    await startWhatsApp();
+    return { connected: isConnected, ...botIdentity() };
+  } catch {
+    blocked = true; configurationFailed = true;
+    await stopSocket();
+    notificationGroup = null; groupMetadataCache.clear(); latestQr = false; pairingCode = "";
+    await reloadBotIdentity().catch(() => {});
+    return reply.status(503).send({ reason: "Tidak dapat mengganti nomor bot. Cek koneksi sebelum mencoba lagi." });
+  } finally { switching = false; }
+}));
+
+app.post("/notification-pair", async (request, reply) => sessionMutex.runExclusive(async () => {
+  if (!validGatewayToken(request.headers["x-gateway-token"])) return reply.status(401).send({ reason: "unauthorized" });
+  if (!matchesBotIdentity((request.body || {}) as { botNumber?: string; botRevision?: string })) return reply.status(409).send({ reason: "bot_configuration_changed" });
+  if (configurationFailed) {
+    await reloadBotIdentity();
+    if (!matchesBotIdentity((request.body || {}) as { botNumber?: string; botRevision?: string })) return reply.status(409).send({ reason: "bot_configuration_changed" });
+    blocked = false; configurationFailed = false; latestQr = false; lastDisconnectCode = null;
+    await startWhatsApp();
+  }
+  if (isConnected) return { connected: true, ...botIdentity() };
+  if (pairingCode && pairingExpiresAt > Date.now()) return { connected: false, ...botIdentity(), pairingCode };
   if (pairingCodeRequested) return reply.status(409).send({ reason: "Permintaan pairing sedang berjalan. Cek koneksi kembali." });
   if (blocked && lastDisconnectCode !== 401) return reply.status(409).send({ reason: "Sesi dihentikan karena pembatasan/konflik. Periksa WhatsApp sebelum menautkan kembali." });
   pairingCodeRequested = true;
@@ -393,7 +444,7 @@ app.post("/notification-pair", async (request, reply) => {
     if (lastDisconnectCode === 401) {
       // An explicit admin action may replace only this bot's revoked credentials.
       await credsSaved;
-      await (await usePostgresAuthState()).clearAuth();
+      await (await usePostgresAuthState(BOT_NUMBER)).clearAuth();
       blocked = false; latestQr = false;
       await startWhatsApp();
     }
@@ -403,17 +454,18 @@ app.post("/notification-pair", async (request, reply) => {
     await credsSaved;
     if (blocked) throw new Error("Pairing session could not be persisted");
     pairingExpiresAt = Date.now()+60_000;
-    return { connected: false, botNumber: BOT_NUMBER, pairingCode };
+    return { connected: false, ...botIdentity(), pairingCode };
   } catch { return reply.status(503).send({ reason: "Tidak dapat membuat kode pairing. Periksa WhatsApp nomor bot." }); }
   finally { pairingCodeRequested = false; }
-});
+}));
 
-app.post("/send-notification", async (request, reply) => {
+app.post("/send-notification", async (request, reply) => sessionMutex.runExclusive(async () => {
   if (!validGatewayToken(request.headers["x-gateway-token"])) return reply.status(401).send({ status: false, reason: "unauthorized" });
-  const body = request.body as { target?: string; message?: string; idempotencyKey?: string };
+  const body = request.body as { target?: string; message?: string; idempotencyKey?: string; botNumber?: string; botRevision?: string };
   if (!body || typeof body.message !== "string" || body.message.length > 12_000 || !/^wa:sale-completed:AX[VP]-\d{8}-[A-Z0-9]{8}$/.test(body.idempotencyKey || "")) {
     return reply.status(400).send({ status: false, reason: "invalid_notification" });
   }
+  if (!matchesBotIdentity(body)) return reply.status(409).send({ status: false, reason: "bot_configuration_changed" });
   if (!sock || !isConnected || blocked) return reply.status(503).send({ status: false, reason: "whatsapp_not_connected" });
   try {
     const group = await resolveNotificationGroup();
@@ -422,27 +474,28 @@ app.post("/send-notification", async (request, reply) => {
     if ("sent" in claim) return { status: true, id: claim.id };
     if ("reason" in claim) return reply.status(claim.outcomeUnknown || claim.reason === "idempotency_conflict" ? 409 : 429).send({ status: false, ...claim });
     const current = sock;
+    const phone = BOT_NUMBER;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const send = current.sendMessage(group.id, { text: body.message });
     // Keep observing completion even if the HTTP caller times out. Never send an ambiguous key again.
-    void send.then(result => settleDelivery(body.idempotencyKey!, result?.key?.id || undefined)).catch(() => {});
+    void send.then(result => settleDelivery(body.idempotencyKey!, result?.key?.id || undefined, phone)).catch(() => {});
     try {
       const result = await Promise.race([send, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("send_timeout")), 25_000); })]);
-      await settleDelivery(body.idempotencyKey!, result?.key?.id || undefined);
+      await settleDelivery(body.idempotencyKey!, result?.key?.id || undefined, phone);
       lastSendAtIso = new Date().toISOString();
       if (!result?.key?.id) return reply.status(409).send({ status: false, outcomeUnknown: true, reason: "delivery_outcome_unknown" });
       return { status: true, id: result.key.id };
     } catch (error) {
-      await settleDelivery(body.idempotencyKey!);
-      await pauseOutbound(isRestriction(error) ? 24*60 : 15);
+      await settleDelivery(body.idempotencyKey!, undefined, phone);
+      await pauseOutbound(isRestriction(error) ? 24*60 : 15, phone);
       if (isRestriction(error)) { blocked = true; void current.end(undefined); }
       if (error instanceof Error && error.message === "send_timeout") { blocked = true; void current.end(undefined); }
       return reply.status(409).send({ status: false, outcomeUnknown: true, reason: "delivery_outcome_unknown" });
     } finally { if (timer) clearTimeout(timer); }
   } catch { return reply.status(503).send({ status: false, reason: "notification_gateway_unavailable" }); }
-});
+}));
 
-app.post("/send", async (request, reply) => {
+app.post("/send", async (request, reply) => sessionMutex.runExclusive(async () => {
   if (!validGatewayToken(request.headers["x-gateway-token"])) return reply.status(401).send({ status: false, reason: "unauthorized" });
   const body = request.body as { target?: string; message?: string; inboxId?: string };
   if (!sock || !isConnected) return reply.status(503).send({ status: false, reason: "whatsapp_not_connected" });
@@ -460,9 +513,9 @@ app.post("/send", async (request, reply) => {
     }
     return reply.status(500).send({ status: false, reason: error?.message || "send_failed" });
   }
-});
+}));
 
-app.post("/send-image", async (request, reply) => {
+app.post("/send-image", async (request, reply) => sessionMutex.runExclusive(async () => {
   if (!validGatewayToken(request.headers["x-gateway-token"])) return reply.status(401).send({ status: false, reason: "unauthorized" });
   const body = request.body as { target?: string; imageUrl?: string; caption?: string; inboxId?: string };
   if (!sock || !isConnected) return reply.status(503).send({ status: false, reason: "whatsapp_not_connected" });
@@ -480,7 +533,7 @@ app.post("/send-image", async (request, reply) => {
     }
     return reply.status(500).send({ status: false, reason: error?.message || "image_send_failed" });
   }
-});
+}));
 
 // Proxy Warung Rebahan (Opsi A): DINONAKTIFKAN 2026-09-14 — traffic WR pindah
 // ke app akun kedua `axvara-wr-proxy` (static egress via QuotaGuard).

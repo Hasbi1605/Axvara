@@ -5,7 +5,6 @@ import pg from "pg";
 const { Pool } = pg;
 
 let pool: pg.Pool | null = null;
-const prefix = "6283181632507:";
 
 function getPool(): pg.Pool {
   if (!pool) {
@@ -33,17 +32,19 @@ export async function initPostgresAuthTable(): Promise<void> {
   `);
 }
 
-export async function usePostgresAuthState(): Promise<{
+export async function usePostgresAuthState(phone: string): Promise<{
   state: AuthenticationState;
   saveCreds: () => Promise<void>;
   clearAuth: () => Promise<void>;
 }> {
+  if (!/^[1-9]\d{9,14}$/.test(phone)) throw new Error("Invalid auth phone");
+  const prefix = phone + ":";
   await initPostgresAuthTable();
   const p = getPool();
 
   let creds: AuthenticationCreds;
 
-  const { rows } = await p.query("SELECT value FROM baileys_auth_keys WHERE key_id = '6283181632507:creds.json' LIMIT 1");
+  const { rows } = await p.query("SELECT value FROM baileys_auth_keys WHERE key_id=$1 LIMIT 1", [prefix + "creds.json"]);
   if (rows.length > 0 && rows[0].value) {
     creds = JSON.parse(rows[0].value, BufferJSON.reviver);
   } else {
@@ -54,15 +55,15 @@ export async function usePostgresAuthState(): Promise<{
     const value = JSON.stringify(creds, BufferJSON.replacer);
     await p.query(
       `INSERT INTO baileys_auth_keys (key_id, value, updated_at)
-       VALUES ('6283181632507:creds.json', $1, CURRENT_TIMESTAMP)
+       VALUES ($1, $2, CURRENT_TIMESTAMP)
        ON CONFLICT (key_id) DO UPDATE
        SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP`,
-      [value]
+      [prefix + "creds.json", value]
     );
   };
 
   const clearAuth = async () => {
-    await p.query("DELETE FROM baileys_auth_keys WHERE key_id LIKE '6283181632507:%';");
+    await p.query("DELETE FROM baileys_auth_keys WHERE key_id LIKE $1", [prefix + "%"]);
   };
 
   return {

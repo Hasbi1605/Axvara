@@ -1,9 +1,10 @@
 # Notifikasi penjualan WhatsApp dan pengaturan grup — 24 Oktober 2026
 
-Implementasi selesai di source; publikasi lewat push main/CI. **Pengiriman belum
-diaktifkan**: pemeriksaan gateway lama menemukan connected=false/code401. Pairing
-nomor baru dan aktivasi merupakan langkah owner setelah rilis, bukan bukti bot
-telah tersambung. Tidak ada pesan WhatsApp atau order supplier nyata saat QA.
+Implementasi selesai di source; publikasi lewat push main/CI. Pemeriksaan awal
+gateway lama disconnected/code401 adalah histori. Sesudah perbaikan apostrof,
+screenshot owner menunjukkan bot tersambung ke AXVARA'S dan notifikasi aktif.
+QA fitur ganti nomor berikutnya memakai fixture: tidak mengganti nomor/aktivasi
+produksi, mengirim pesan WhatsApp, atau membeli supplier.
 
 ## Keputusan dan isi pesan
 
@@ -55,7 +56,7 @@ disamarkan. Payload immutable disimpan sekali agar retry tetap identik.
 - Migrasi0076 menambah expression index paid_at untuk scanner. `notify_b` existing
   mengantrekan maksimal4/tick, budget D1 tetap; tanpa cron/polling baru. Apps memeriksa
   manifest semua unit unik; Pedia tidak menganggap partial/canceled selesai.
-- `store_settings.whatsapp_sales_notifications` internal: enabled/enabledAt/groupId,
+- `store_settings.whatsapp_sales_notifications` internal: enabled/enabledAt/groupId/botNumber/botRevision,
   tidak dibuka oleh settings publik. Aktivasi hanya gateway connected, nomor cocok,
   grup tepat dan tidak blocked. Cutoff berdasarkan paid_at: tidak backfill order
   yang dibayar sebelum aktivasi. Klik aktif berulang mempertahankan cutoff;
@@ -88,6 +89,41 @@ disamarkan. Payload immutable disimpan sekali agar retry tetap identik.
   menjeda15menit, sinyal pembatasan menjeda24jam dan menutup socket; tidak ada trik
   bypass atau jaminan anti-ban. Owner memeriksa WA dan state sebelum recovery.
 
+## Ganti nomor bot dari admin — 24 Oktober 2026
+
+✅ Diimplementasikan; publikasi melalui CI. Owner membuka Ganti nomor bot,
+memasukkan nomor (08 Indonesia dinormalisasi62, internasional10–15digit), lalu
+Simpan nomor bot. Nomor admin toko tidak ikut berubah. Tidak perlu edit kode,
+secret/env atau deploy lagi untuk pergantian selanjutnya; tidak ada rotasi otomatis.
+
+- Pages POST action:number membawa newBotNumber serta nomor/revisi yang ditinjau.
+  Admin auth wajib; invalid400/tab basi409. CAS config JSON menjeda D1 dahulu,
+  baru memanggil gateway token-only `/notification-number`. Timeout/gagal tetap
+  dijeda; GET mengambil nomor aktual gateway. UI membersihkan kode pairing lama,
+  mengikat status aktif pada identitas aktivasi, dan menolak input tidak valid/sama.
+- PG singleton `axvara_wa_runtime` id1 menyimpan phone/revision/group_id, default
+  nomor lama/initial dan pin control lama sekali. Startup idempotent mempertahankan
+  pilihan; lock runtime tunggal + lock bootstrap mencegah socket ganda lintas nomor.
+  Transaksi FOR UPDATE memeriksa identitas, mewariskan max cooldown/pacing lama+baru,
+  lalu mengganti nomor/revisi UUID. Tidak menghapus auth/control/delivery/outbox.
+  Pin grup tetap, bukan memilih ulang grup lain berdasarkan nama saat ganti nomor.
+- Mutex mengurutkan ganti/pair/status/send; sesi lama ditutup setelah send selesai,
+  reconnect dibatalkan, credential flush selesai, cache/kode dibersihkan. Prefix
+  auth ditangkap per nomor, callback socket lama diabaikan, settle send terlambat
+  mencatat nomor asal. Commit ambigu menghentikan sesi dan membaca ulang runtime;
+  owner Cek koneksi/Hubungkan sebelum melanjutkan. Tidak menganggap timeout gagal
+  pasti atau menghapus row untuk mencoba lagi.
+- Owner menghubungkan nomor baru, memastikan anggota/izin kirim grup yang dipin,
+  lalu Cek koneksi→Aktifkan. Aktivasi CAS menyimpan botNumber/botRevision pada
+  config D1; pair dan sale send membawa identitas itu. Mismatch ditunda tanpa
+  menghabiskan attempt. Legacy hanya default/initial; A→B→A tidak menghidupkan
+  aktivasi lama. Cutoff baru, pending yang belum kirim tetap; sent/unknown tidak
+  replay. Cooldown tidak dipotong dengan mengganti nomor.
+- Tidak ada env Pages/Heroku, resource, cron, atau migrasi D1 baru. Bootstrap PG
+  dilakukan gateway pada rilis CI. Setelah pernah mengganti nomor, rollback hanya
+  ke rilis kompatibel runtime/revisi; kode nomor tetap lama dapat kembali ke nomor
+  awal dengan aktivasi lama. Jangan menghapus runtime/session/idempotensi.
+
 ## Admin Telegram dan storefront
 
 Notifikasi pembayaran Web/Telegram/WhatsApp menampilkan status pembayaran,
@@ -115,7 +151,7 @@ dipakai sampai admin menyimpan link baru.
 ## Aktivasi dan rollback
 
 1. Sesudah rilis, Admin → Pengaturan Toko → Hubungkan nomor bot. Pada WhatsApp
-   **6283181632507**, Perangkat tertaut → Tautkan perangkat → Tautkan dengan nomor
+   **nomor yang tampil di panel** (awal6283181632507), Perangkat tertaut → Tautkan perangkat → Tautkan dengan nomor
    telepon. Masukkan kode dari panel, jangan dibagikan.
 2. Masukkan bot ke satu grup **AXVARA'S**; jika hanya admin boleh mengirim,
    promosikan bot menjadi admin. Cek koneksi sampai nomor/grup benar.

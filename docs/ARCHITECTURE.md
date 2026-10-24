@@ -5,7 +5,8 @@
 ✅ Diimplementasikan; publikasi CI. Kontrak kanonis terbaru ada di §16.12 dan
 `issue/whatsapp-sales-notifications-2026-10-24.md`. `gateway/` kini source gateway
 kanonis dalam repo AXVARA; folder saudara lama hanya arsip session lokal. Pengiriman
-grup baru default mati sampai owner pairing nomor6283181632507 dan aktivasi admin.
+grup baru default mati sampai owner pairing nomor pilihan admin (awal6283181632507)
+dan aktivasi admin. Nomor dapat diganti lewat panel tanpa edit kode/env.
 Catatan DM/rollout gateway lama di bawah adalah histori, bukan instruksi membuka
 DM atau bukti koneksi nomor baru. Verifikasi buyer normal tetap kontak/capability;
 akses admin baru memvalidasi sesi admin pada server.
@@ -2978,12 +2979,15 @@ GitHub secret `HEROKU_API_KEY_AKUN1` dari `.heroku-credentials` ignored. Pages t
 secret_text existing WHATSAPP_GATEWAY_URL (Heroku existing), WHATSAPP_WEBHOOK_TOKEN
 (sama AXVARA_WEBHOOK_TOKEN Heroku), WHATSAPP_BOT_NUMBER=6283181632507; tidak menambah
 env Pages. DATABASE_URL/URL/token/TARGET_GROUP_ID Heroku existing dipertahankan.
-Nomor sesi kini dipatok BOT_NUMBER kode, bukan env WA_BOT_NUMBER lama.
+Nomor awal6283181632507 dipakai hanya untuk bootstrap kompatibel. Nomor sesi aktif
+dibaca dari `axvara_wa_runtime`, bukan env WA_BOT_NUMBER/WHATSAPP_BOT_NUMBER lama.
 
-- Auth/key Postgres berprefix6283181632507:, tidak menghapus key nomor lama.
+- Auth/key Postgres berprefix nomor terpilih, ditangkap immutable per auth state;
+  default6283181632507: tetap memakai kredensial existing, tidak menghapus key lama.
   `axvara_wa_control` menyimpan grup pin/pacing/pause/last send/ACK;
   `axvara_wa_delivery` menyimpan key/fingerprint/target/payload/status/messageid.
-  Advisory lock per nomor melarang socket ganda. Flush credentials serial,
+  Advisory lock runtime tunggal melarang socket ganda lintas nomor; lock default
+  lama juga dipertahankan untuk rolling upgrade. Flush credentials serial,
   reconnect timer tunggal/backoff, metadata grup cache5menit + invalidasi event,
   getMessage dari payload durable. 401/403/440/500 berhenti, 515 restart normal;
   code401 sendiri bukan bukti ban. Tidak ada pairing code/QR dalam log.
@@ -2996,12 +3000,40 @@ Nomor sesi kini dipatok BOT_NUMBER kode, bukan env WA_BOT_NUMBER lama.
   `/notification-status` memberi groupName kanonis AXVARA'S dan groupSubject asli
   hanya setelah identitas/izin grup lolos; Pages tetap memvalidasi groupName kanonis.
   Aktif hanya connected + nomor cocok + grup tepat +
-  tidak blocked. Grup announcement memvalidasi bot admin melalui PN/LID; owner harus memenuhi izin grup.
+  tidak blocked. Semua grup memvalidasi keanggotaan nomor aktif melalui PN/LID;
+  grup announcement juga mewajibkan bot admin. Owner harus memenuhi izin grup.
 - Internal store_settings.whatsapp_sales_notifications menyimpan
-  enabled/enabledAt/groupId; tidak dibocorkan settings publik. Cutoff paid_at
+  enabled/enabledAt/groupId/botNumber/botRevision; tidak dibocorkan settings publik.
+  Legacy tanpa identitas dibaca sebagai nomor awal/revisi initial. Disabled boleh
+  groupId null sebelum grup terverifikasi. Cutoff paid_at
   saat enable pertama/re-enable; klik aktif berulang tidak mereset. Antrean yang
   sudah ada tetap dipertahankan saat nonaktif/offline, order lama belum queued
   tidak backfill. Tidak menyalakan flag commerce/DM legacy.
+- **Ganti nomor bot24Oktober:** admin POST action:number menerima newBotNumber dan
+  identitas nomor/revisi yang sedang ditinjau. Normalisasi08→62, +/spasi/()- dibuang,
+  10–15digit internasional; invalid400, tab basi409. D1 config dinonaktifkan memakai
+  CAS value sebelum token-only gateway POST `/notification-number`; timeout/gagal
+  tetap dijeda. Gateway menjadi otoritas pilihan nomor. GET memuat nomor aktual;
+  tidak perlu env Pages/Heroku baru atau migrasi D1.
+  `axvara_wa_runtime` PG singleton id1 menyimpan phone/revision/group_id/updated_at;
+  dibuat idempotent saat startup, group pin diambil dari control nomor awal sekali.
+  Pin grup global bertahan lintas nomor. Pergantian PG `FOR UPDATE` memeriksa
+  expected phone/revision, menyalin max pacing/cooldown lama dan baru, mengganti
+  phone/revisi UUID atomik; auth/outbox/delivery tidak dihapus. Nomor sama no-op.
+  Satu mutex mencakup status/pair/ganti nomor/send termasuk outbound legacy;
+  pergantian menunggu send, membatalkan reconnect, menutup listener/socket lama,
+  menunggu flush credential lalu memuat prefix terpilih. Event/cache/inbound lama
+  dijaga identitas socket; hasil send terlambat tetap mencatat nomor asal.
+  Gagal/commit ambigu menghentikan socket dan membaca ulang identitas PG; Cek
+  koneksi lalu Hubungkan memulihkan sesi tersimpan tanpa menghapus riwayat.
+  Pair dan sale send mengikat botNumber/botRevision. Default request lama hanya
+  diterima selama nomor/revisi bootstrap belum berubah. A→B→A tidak menghidupkan
+  permintaan lama. Aktivasi admin CAS menyimpan identitas gateway; outbox membawa
+  identitas aktivasi itu, mismatch ditunda tanpa menghabiskan attempt. Pending
+  pasti belum kirim boleh dilanjutkan pada aktivasi baru, sent/unknown tidak replay.
+  UI dinamis, form inline, membersihkan kode pairing saat identitas berubah;
+  status aktif hanya bila config sesuai gateway. Rollback sesudah pergantian wajib
+  ke rilis kompatibel runtime/revisi, bukan kode nomor tetap sebelum fitur ini.
 - `enqueueCompletedSales` pada `notify_b` cron lite existing maksimal4/tick,
   memakai budget existing, migrasi0076 expression index julianday(paid_at).
   Orders lunas/paid; semua manifest apps delivered (termasuk unit unik lengkap)

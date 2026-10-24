@@ -14,7 +14,7 @@ tanpa memasukkan invoice/kontak dan tanpa membagikan token akses pembeli. Suppli
 otomatis tidak lagi ditandai perlu dikirim admin; kegagalan supplier diberi status
 perlu pemeriksaan, sedangkan produk manual tetap meminta pengiriman manual.
 
-Bot **6283181632507** memakai Baileys + auth/idempotensi Postgres di app Heroku
+Bot pilihan admin (awal **6283181632507**) memakai Baileys + auth/idempotensi Postgres di app Heroku
 existing. Grup **AXVARA'S** hanya menerima pesanan lunas dengan semua unit selesai,
 judul menurut kanal WEB/TELEGRAM/WHATSAPP, status/jam WIB dan identitas disamarkan.
 Invoice asli, nomor/email, target, akun dan link akses pembeli tidak diumumkan.
@@ -36,6 +36,20 @@ tidak berpindah karena perubahan nama/link storefront. Bot yang sudah tersambung
 cukup **Cek koneksi → Aktifkan notifikasi**, tanpa menautkan ulang.
 Status gateway memberi `groupName` kanonis AXVARA'S untuk validasi Pages dan
 `groupSubject` judul WhatsApp asli; keduanya hanya muncul setelah verifikasi grup.
+
+**Mengganti nomor bot tanpa kode:** Pengaturan Toko → Ganti nomor bot → masukkan
+nomor baru (628…/+62…/08… Indonesia, atau format internasional) → Simpan nomor bot.
+Pengiriman dijeda dan sesi lama diputus. Selanjutnya Hubungkan nomor bot dari
+WhatsApp nomor baru → pastikan bot anggota/admin pengirim grup yang sama → Cek
+koneksi → Aktifkan notifikasi. Nomor WhatsApp admin toko dan link undangan tetap
+terpisah. Tidak perlu mengubah secret/env atau deploy untuk pergantian berikutnya.
+Pilihan nomor/revisi/ID grup tersimpan dalam `axvara_wa_runtime` Postgres; prefix
+auth per nomor terisolasi. Restart mempertahankan pilihan. Riwayat sent/unknown,
+pending dan cooldown dipertahankan; tidak ada rotasi otomatis. Bila simpan timeout,
+Cek koneksi dahulu untuk melihat nomor aktual; tab lama harus dimuat ulang.
+Rollback ke kode sebelum fitur ini hanya aman sebelum pernah mengganti nomor;
+setelah itu gunakan rilis CI kompatibel runtime/revisi agar tidak kembali ke
+nomor awal dengan aktivasi lama. Jangan menghapus tabel/session untuk recovery.
 
 Source gateway kanonis sekarang `gateway/`, diuji/dideploy di CI main memakai
 Heroku source/build API dan GitHub secret `HEROKU_API_KEY_AKUN1` dari

@@ -146,3 +146,66 @@ describe("central group link and notification controls",()=>{
     expect((await (await enable(c)).json()).config.enabledAt).toBe(cutoff);
   });
 });
+
+
+describe("manual bot-number replacement",()=>{
+  const NEXT="628123456789",REV="11111111-2222-4333-8444-555555555555";
+  const post=async(action:string,extra:Record<string,unknown>={},c="")=>{
+    const {POST}=await import("@/app/api/admin/whatsapp-notifications/route");
+    return POST(new NextRequest("http://localhost/api/admin/whatsapp-notifications",{method:"POST",headers:{cookie:c},body:JSON.stringify({action,...extra})}));
+  };
+  it("requires admin, validates numbers and rejects stale tabs before pausing",async()=>{
+    const {salesGatewayControl}=await import("@/lib/whatsapp/gateway");
+    expect((await post("number",{newBotNumber:NEXT})).status).toBe(401);
+    const c=await cookie();
+    for(const value of ["invalid","123",null,"9".repeat(16)])expect((await post("number",{newBotNumber:value},c)).status).toBe(400);
+    expect(salesGatewayControl).not.toHaveBeenCalled();
+    vi.mocked(salesGatewayControl).mockResolvedValue({connected:true,botNumber:NEXT,botRevision:REV});
+    expect((await post("number",{newBotNumber:NEXT},c)).status).toBe(409);
+    expect(JSON.parse(String(fixture.sql.prepare("SELECT value FROM store_settings WHERE key=?").get(SALES_CONFIG_KEY)?.value)).enabled).toBe(true);
+  });
+  it("pauses before replacing the session, normalizes 08 and preserves existing deliveries",async()=>{
+    const {salesGatewayControl}=await import("@/lib/whatsapp/gateway");
+    order();item();await enqueueCompletedSales();fixture.sql.exec("UPDATE whatsapp_outbox SET status='sent',provider_message_id='KEEP'");
+    vi.mocked(salesGatewayControl).mockImplementation(async(action,identity)=>{
+      if(action==='number'){
+        const paused=JSON.parse(String(fixture.sql.prepare("SELECT value FROM store_settings WHERE key=?").get(SALES_CONFIG_KEY)?.value));
+        expect(paused.enabled).toBe(false);expect(identity).toEqual({botNumber:"6283181632507",botRevision:"initial",newBotNumber:NEXT});
+        return {connected:false,botNumber:NEXT,botRevision:REV};
+      }
+      return {connected:true,botNumber:"6283181632507",botRevision:"initial",groupId:GROUP,groupName:"AXVARA'S"};
+    });
+    const result=await post("number",{newBotNumber:"08123456789"},await cookie());
+    expect(result.status).toBe(200);expect((await result.json()).gateway.botNumber).toBe(NEXT);
+    expect(fixture.sql.prepare("SELECT status,provider_message_id FROM whatsapp_outbox").get()).toEqual({status:'sent',provider_message_id:'KEEP'});
+    expect(await enqueueCompletedSales()).toBe(0);
+  });
+  it("keeps notifications disabled when gateway replacement fails",async()=>{
+    const {salesGatewayControl}=await import("@/lib/whatsapp/gateway");
+    vi.mocked(salesGatewayControl).mockResolvedValueOnce({connected:true,botNumber:"6283181632507",botRevision:"initial"}).mockRejectedValueOnce(new Error('timeout'));
+    expect((await post('number',{newBotNumber:NEXT},await cookie())).status).toBe(503);
+    expect(JSON.parse(String(fixture.sql.prepare("SELECT value FROM store_settings WHERE key=?").get(SALES_CONFIG_KEY)?.value)).enabled).toBe(false);
+  });
+  it("activates a configured replacement and binds outbox sends to its new revision",async()=>{
+    const {salesGatewayControl,sendTextMessage}=await import("@/lib/whatsapp/gateway");
+    vi.mocked(salesGatewayControl).mockResolvedValue({connected:true,botNumber:NEXT,botRevision:REV,groupId:GROUP,groupName:"AXVARA'S"});
+    const c=await cookie();expect((await post('enable',{},c)).status).toBe(409);
+    const response=await post('enable',{botNumber:NEXT,botRevision:REV},c);expect(response.status).toBe(200);
+    const {config}=await response.json();expect(config).toMatchObject({botNumber:NEXT,botRevision:REV,enabled:true});expect(config.enabledAt).not.toBe('2026-10-24T00:00:00Z');
+    order();item();fixture.sql.prepare("UPDATE orders SET paid_at=?").run(config.enabledAt);
+    expect(await enqueueCompletedSales()).toBe(1);
+    vi.mocked(sendTextMessage).mockResolvedValue({ok:false,error:'bot_configuration_changed'});
+    await processWhatsAppOutboxRow(fixture.sql.prepare("SELECT * FROM whatsapp_outbox").get()!);
+    expect(sendTextMessage).toHaveBeenCalledWith(expect.objectContaining({botNumber:NEXT,botRevision:REV}));
+    expect(fixture.sql.prepare("SELECT attempt_count,status FROM whatsapp_outbox").get()).toEqual({attempt_count:0,status:'failed'});
+  });
+  it("does not overwrite a pause that races an activation",async()=>{
+    const {salesGatewayControl}=await import("@/lib/whatsapp/gateway");
+    vi.mocked(salesGatewayControl).mockImplementation(async()=>{
+      fixture.sql.prepare("UPDATE store_settings SET value=? WHERE key=?").run(JSON.stringify({enabled:false,enabledAt:"2026-10-24T00:00:00Z",groupId:GROUP}),SALES_CONFIG_KEY);
+      return {connected:true,botNumber:"6283181632507",botRevision:"initial",groupId:GROUP,groupName:"AXVARA'S"};
+    });
+    expect((await post('enable',{},await cookie())).status).toBe(409);
+    expect(JSON.parse(String(fixture.sql.prepare("SELECT value FROM store_settings WHERE key=?").get(SALES_CONFIG_KEY)?.value)).enabled).toBe(false);
+  });
+});

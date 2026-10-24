@@ -200,6 +200,7 @@ export async function processWhatsAppOutboxRow(row: Record<string, unknown>, dat
   const workerId = claim.workerId;
 
   const fresh = (await queryFirst(`SELECT * FROM whatsapp_outbox WHERE id=?`, id)) ?? row;
+  let botIdentity: { botNumber: string; botRevision: string } | undefined;
   if (fresh.message_type === "sale_completed") {
     const { readSalesConfig } = await import("./sales-notifications");
     const config = await readSalesConfig(database);
@@ -207,12 +208,14 @@ export async function processWhatsAppOutboxRow(row: Record<string, unknown>, dat
       await execRun("UPDATE whatsapp_outbox SET status='failed',worker_id=NULL,locked_until=NULL,attempt_count=attempt_count-1,next_attempt_at=datetime('now','+5 minutes'),last_error='notifications_disabled' WHERE id=? AND worker_id=?", id, workerId);
       return false;
     }
+    botIdentity = { botNumber: config.botNumber, botRevision: config.botRevision };
   }
   const result = await sendTextMessage({
     target: String(fresh.destination || ""),
     message: String(fresh.payload || ""),
     idempotencyKey: String(fresh.idempotency_key || ""),
     salesNotification: fresh.message_type === "sale_completed",
+    ...botIdentity,
   });
   if (result.ok) {
     await execRun(
@@ -234,7 +237,7 @@ export async function processWhatsAppOutboxRow(row: Record<string, unknown>, dat
       return true;
     }
   }
-  if (fresh.message_type === "sale_completed" && ["whatsapp_not_connected", "notification_paced", "gateway_cooldown_active", "notification_gateway_unavailable"].includes(String(result.error))) {
+  if (fresh.message_type === "sale_completed" && ["whatsapp_not_connected", "notification_paced", "gateway_cooldown_active", "notification_gateway_unavailable", "bot_configuration_changed"].includes(String(result.error))) {
     await execRun("UPDATE whatsapp_outbox SET status='failed',worker_id=NULL,locked_until=NULL,attempt_count=attempt_count-1,next_attempt_at=datetime('now','+1 minute'),last_error=?,updated_at=datetime('now') WHERE id=? AND worker_id=?", result.error, id, workerId);
     return false;
   }

@@ -2,13 +2,13 @@
 
 ## Notifikasi transaksi dan link komunitas terpusat — 24 Oktober 2026
 
-✅ Diimplementasikan; publikasi CI, pengiriman WA menunggu pairing/aktivasi owner.
+✅ Diimplementasikan; publikasi CI, pengiriman WA mengikuti pairing/aktivasi owner.
 Admin Pengaturan Toko menyediakan satu input link undangan WhatsApp untuk seluruh
 tombol grup Footer Market/Pedia dan Link Bio. Simpan admin memperbarui konsumen
 melalui settings bersama, tab lain saat storage/fokus/visibility, tanpa polling.
 Hanya URL HTTPS chat.whatsapp.com yang valid; link publik tidak mengubah grup bot.
 
-Grup AXVARA'S dari bot6283181632507 menerima hanya transaksi lunas/paid yang seluruh
+Grup AXVARA'S dari nomor bot pilihan admin (awal6283181632507) menerima hanya transaksi lunas/paid yang seluruh
 unit apps delivered atau seluruh item Pedia completed. Pesan berjudul **PESANAN
 BERHASIL DIPROSES - WEB/TELEGRAM/WHATSAPP**, memuat produk/varian/qty/harga/total
 bayar/metode, referensi publik acak, nama inisial+***, status SELESAI dan waktu
@@ -35,6 +35,18 @@ batas operasional satu percobaan baru/60detik. Hasil kirim ambigu membutuhkan
 pemeriksaan; jangan mengirim ulang buta. Baileys bukan layanan resmi dan tidak
 menjamin bebas pembatasan. Tidak membuka DM/promosi massal atau membeli supplier
 saat QA. Detail: `issue/whatsapp-sales-notifications-2026-10-24.md`.
+
+✅ Ganti nomor bot — 24 Oktober 2026, publikasi melalui CI. Pengaturan Toko →
+Ganti nomor bot menerima nomor internasional atau08 Indonesia, tanpa edit kode/env
+atau deploy berikutnya. Nomor admin toko terpisah. Menyimpan nomor berbeda menjeda
+notifikasi sebelum memutus sesi lama; pilihannya tersimpan di gateway dan bertahan
+saat restart. Owner menghubungkan nomor baru, memastikan keanggotaan/izin pada grup
+tujuan yang sama, lalu mengaktifkan kembali. Tidak ada rotasi nomor otomatis.
+Riwayat sent/unknown, ID grup dan cooldown tidak dihapus; pending yang pasti belum
+terkirim dilanjutkan setelah aktivasi. Permintaan tab lama ditolak meski nomor
+dikembalikan ke nomor semula. Timeout pergantian harus dicek statusnya dahulu;
+panel membaca nomor aktual dan menghapus kode pairing lama. Nomor produksi tidak
+diganti ketika QA.
 
 ## Carousel info storefront — 24 Oktober 2026
 

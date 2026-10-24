@@ -2,7 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fingerprint, requiresManualReconnect, isRestriction, BOT_NUMBER, groupAllowsBotSend } from '../src/durable.js';
 test('announcement groups require this bot to be an admin, including LID identities', () => {
-  assert.equal(groupAllowsBotSend({participants:[]}), true);
+  assert.equal(groupAllowsBotSend({participants:[]}), false);
+  assert.equal(groupAllowsBotSend({participants:[{id:BOT_NUMBER+'@s.whatsapp.net',admin:null}]}), true);
+  assert.equal(groupAllowsBotSend({participants:[{id:'someone@lid',admin:'admin'}]}, 'bot@lid'), false);
   assert.equal(groupAllowsBotSend({announce:true,participants:[{id:BOT_NUMBER+'@s.whatsapp.net',admin:null}]}), false);
   assert.equal(groupAllowsBotSend({announce:true,participants:[{id:'someone@lid',admin:'admin'}]}, 'bot@lid'), false);
   assert.equal(groupAllowsBotSend({announce:true,participants:[{id:'bot@lid',admin:'admin'}]}, 'bot:5@lid'), true);

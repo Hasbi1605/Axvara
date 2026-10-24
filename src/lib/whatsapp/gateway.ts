@@ -38,6 +38,8 @@ export type SendMessageParams = {
   inboxId?: string; // reply to incoming inboxid
   idempotencyKey?: string;
   salesNotification?: boolean;
+  botNumber?: string;
+  botRevision?: string;
 };
 
 /**
@@ -245,20 +247,22 @@ async function callGateway(path: string, payload: Record<string, unknown>, timeo
 }
 
 export function sendTextMessage(params: SendMessageParams): Promise<WhatsAppSendResult> {
-  return callGateway(params.salesNotification ? "/send-notification" : "/send", { target: normalizeWhatsAppTarget(params.target), message: params.message, inboxId: params.inboxId, idempotencyKey: params.idempotencyKey }, 15_000);
+  return callGateway(params.salesNotification ? "/send-notification" : "/send", { target: normalizeWhatsAppTarget(params.target), message: params.message, inboxId: params.inboxId, idempotencyKey: params.idempotencyKey, ...(params.salesNotification ? { botNumber: params.botNumber, botRevision: params.botRevision } : {}) }, 15_000);
 }
 
 /** Admin control plane. Never return gateway tokens to a browser. */
-export async function salesGatewayControl(action: "status" | "pair") {
+export async function salesGatewayControl(action: "status" | "pair" | "number", identity?: { botNumber: string; botRevision: string; newBotNumber?: string }) {
   const config = gatewayConfig();
   if (!config) throw new Error("Gateway WhatsApp belum dikonfigurasi.");
   const response = await fetch(`${config.url}/notification-${action}`, {
     method: action === "status" ? "GET" : "POST",
-    headers: { "x-gateway-token": config.token }, signal: AbortSignal.timeout(15_000), cache: "no-store",
+    headers: { "x-gateway-token": config.token, ...(action !== "status" ? { "content-type": "application/json" } : {}) },
+    ...(action !== "status" ? { body: JSON.stringify(identity || {}) } : {}),
+    signal: AbortSignal.timeout(15_000), cache: "no-store",
   });
   const body = await response.json();
   if (!response.ok) throw new Error(body.reason || "Gateway WhatsApp belum siap.");
-  return body as { connected: boolean; botNumber: string; groupId?: string; groupName?: string; groupSubject?: string; pairingCode?: string; error?: string; blocked?: boolean };
+  return body as { connected: boolean; botNumber: string; botRevision?: string; groupId?: string; groupName?: string; groupSubject?: string; pairingCode?: string; error?: string; blocked?: boolean };
 }
 
 export function sendImageMessage(params: SendImageParams): Promise<WhatsAppSendResult> {

@@ -10,6 +10,18 @@ kode pairing sementara dan tiga aksi Hubungkan/Cek koneksi/Aktifkan atau Nonakti
 Kode pairing tampil hanya bagi admin, bukan log. Layout flex-wrap responsif,
 sentuhan minimal44px, status jeda berwarna amber; tidak mengganti token brand.
 
+Revisi24Oktober: nomor/status/petunjuk pairing mengikuti nomor gateway, bukan teks
+tetap. Tombol **Ganti nomor bot** membuka form inline berlabel **Nomor WhatsApp bot
+baru**, input tel, contoh628…/08…, penjelasan pemutusan sesi dan aktivasi ulang,
+tombol **Simpan nomor bot** serta **Batal ganti nomor**. Form tetap memakai glass,
+field midnight dan CTA cyan, lebar maksimalxl, aksi wrap dan tinggi sentuh44px.
+Tombol simpan mati untuk input tidak valid/nomor sama/permintaan berjalan; kontrol
+bergantung gateway siap. Kode pairing lama dibersihkan saat sesi berubah atau
+hasil pergantian belum pasti. Status aktif hanya untuk nomor dan revisi sesi yang
+telah diaktifkan; nomor admin toko tidak ikut berubah.
+Saat gateway tidak tersedia, nomor ditampilkan belum tersedia dan kode pairing
+disembunyikan; nomor aktivasi lama bukan bukti nomor gateway yang sedang dipilih.
+
 Lacak pesanan `admin=1` menampilkan petunjuk sesi admin, tautan masuk panel dan
 muat ulang; formulir kontak serta riwayat buyer tidak ditampilkan. Detail/timeline
 memakai komponen existing. Ketika sesi ditolak, detail dikosongkan dan pesan login

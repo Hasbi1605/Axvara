@@ -196,6 +196,14 @@ tidak berpindah otomatis. Gateway status memberi `groupName` kanonis untuk
 validasi aktivasi Pages dan `groupSubject` asli hanya setelah grup/izin lolos.
 Bot tersambung tidak perlu pairing ulang untuk perbaikan nama.
 
+Ganti nomor bot24Oktober: nomor awal6283181632507 hanya bootstrap. Pilihan aktif,
+revisi dan pin grup disimpan singleton PG axvara_wa_runtime. Admin menjeda D1 lalu
+gateway mengganti sesi manual lewat mutex/CAS; prefix auth tiap nomor terisolasi,
+sent/unknown/cooldown tetap, tanpa rotasi otomatis. Aktivasi/pair/send diikat
+nomor+revisi; tab basi termasuk A→B→A ditolak. Tidak perlu env baru. Rollback setelah
+pergantian harus ke rilis kompatibel runtime/revisi; jangan rollback ke kode nomor
+tetap. Rincian di gateway/AGENTS.md dan ARCHITECTURE §16.12.
+
 ### Pedia katalog/checkout 2026-10-15
 - Spesifikasi terkini: `docs/pedia/catalog-checkout-2026-10-15.md`; menggantikan snapshot UI/katalog 12 Oktober di bawah. 38 jenis/131 mapping awal/16 platform; migrasi 0065/0066, hanya mirror layak diaktifkan. UI 3 pilihan awal mobile/desktop; drop/refill tetap. Revisi konfigurator 2026-10-16: kartu kebutuhan tanpa pilihan otomatis, daftar layanan satu kolom/pilihan aktif ringkas di semua ukuran, jumlah/link/checklist berdekatan, detail terlipat sesudah input; checkout dua tahap dan kontrak quote/retry tetap.
 - Harga jumlah bebas dari `/api/pedia/prices`; order/job/debit/ledger atomik D1. QR gagal diulang memakai quote sama. Cron Pedia membalik reservasi kredit pra-pensiun sekali ke arsip beku dan mengantrekannya untuk penyelesaian manual. Tidak ada flag dispatch baru; proses lewat cron existing.
