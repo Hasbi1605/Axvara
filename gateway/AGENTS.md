@@ -40,8 +40,15 @@ berpindah dari folder saudara `axvara-wa-gateway` pada 24 Oktober 2026.
 - `/send-notification` menerima key order stabil + grup terverifikasi, max satu
   percobaan baru/60detik. Key sent didedupe, sending/unknown tidak dikirim ulang.
   Timeout/hasil ambigu perlu pemeriksaan manual, jangan hapus row untuk retry.
-  Batas operasional ini bukan jaminan anti-ban. Jangan membuka DM/broadcast,
+  Batas operasional ini bukan jaminan anti-ban. Jangan membuka DM massal,
   merotasi akun, atau mengubah fingerprint untuk melewati pembatasan.
+- Siaran/welcome 24 Oktober: `/send-broadcast` key `wa:broadcast:<UUIDv4>` dan
+  `/send-welcome` key `wa:welcome:<sha256>` memakai handler grup yang sama
+  (token, mutex sesi, nomor/revisi aktif, pin grup terverifikasi, ledger PG,
+  pacing bersama); key lintas namespace ditolak. `group-participants.update`
+  action `add` meneruskan maks 100 anggota (bot PN/LID disingkirkan) ke Pages
+  `/api/whatsapp/group-events` tanpa menahan mutex selama HTTP. Detail:
+  `../issue/broadcasts-welcome-2026-10-24.md`, ARCHITECTURE §16.13.
 - Test `npm --prefix gateway test`, build `npm --prefix gateway run build`, lalu
   seluruh Vitest root. Sinkron PRD/ARCHITECTURE §16.12/README/CHANGELOG dan root
   AGENTS bila kontrak/env/rollout berubah.

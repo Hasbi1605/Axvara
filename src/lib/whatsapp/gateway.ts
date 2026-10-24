@@ -38,6 +38,8 @@ export type SendMessageParams = {
   inboxId?: string; // reply to incoming inboxid
   idempotencyKey?: string;
   salesNotification?: boolean;
+  broadcastNotification?: boolean;
+  welcomeNotification?: boolean;
   botNumber?: string;
   botRevision?: string;
 };
@@ -247,7 +249,7 @@ async function callGateway(path: string, payload: Record<string, unknown>, timeo
 }
 
 export function sendTextMessage(params: SendMessageParams): Promise<WhatsAppSendResult> {
-  return callGateway(params.salesNotification ? "/send-notification" : "/send", { target: normalizeWhatsAppTarget(params.target), message: params.message, inboxId: params.inboxId, idempotencyKey: params.idempotencyKey, ...(params.salesNotification ? { botNumber: params.botNumber, botRevision: params.botRevision } : {}) }, 15_000);
+  return callGateway(params.welcomeNotification ? "/send-welcome" : params.broadcastNotification ? "/send-broadcast" : params.salesNotification ? "/send-notification" : "/send", { target: normalizeWhatsAppTarget(params.target), message: params.message, inboxId: params.inboxId, idempotencyKey: params.idempotencyKey, ...((params.salesNotification || params.broadcastNotification || params.welcomeNotification) ? { botNumber: params.botNumber, botRevision: params.botRevision } : {}) }, 15_000);
 }
 
 /** Admin control plane. Never return gateway tokens to a browser. */

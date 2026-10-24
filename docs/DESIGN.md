@@ -1,5 +1,22 @@
 # DESIGN.md — AXVARA Design System
 
+## Panel Siaran dan sambutan WA — 24 Oktober 2026
+
+✅ Menu Konten → Siaran mengikuti Midnight/Cyan/Liquid Glass existing: pustaka
+kiri280px dan editor kanan pada desktop, bertumpuk pada mobile. Tombol minimal44px,
+input berlabel, pratinjau teks literal, penghitung3000 karakter dan CTA opsional.
+Pemilihan tujuan eksplisit memakai checkbox; editor kotor harus disimpan atau
+dibatalkan sebelum Tinjau. Panel konfirmasi merinci jumlah penerima dan bot WA.
+Tidak ada kanal terpilih otomatis. Template tersimpan bisa disalin/diarsip/restore;
+riwayat berupa kartu dengan progres per kanal, status ambigu “Perlu diperiksa”,
+refresh manual dan dialog Hentikan. Status subscriber berhenti memakai badge netral.
+
+Sambutan mempertahankan bingkai `━━━━━━━━━━━━━━━━━━━━`, judul perayaan, sapaan
+waktu WIB dan nama yang tersedia (tanpa nomor sebagai pengganti nama). Deskripsi
+layanan dan blok Order via website / Order via Telegram / Bantuan Admin dipisah
+baris kosong serta garis; WhatsApp bold dipakai pada judul/label/nama. Tidak ada
+instruksi order WA, ketik list/garansi atau respons otomatis pada chat biasa.
+
 ## Pengaturan grup dan akses pesanan admin — 24 Oktober 2026
 
 ✅ Diimplementasikan; publikasi melalui CI. Pengaturan Toko menambah input berlabel

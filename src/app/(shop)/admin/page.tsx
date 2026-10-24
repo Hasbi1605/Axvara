@@ -32,6 +32,7 @@ const SupplierLinksManagerLazy = lazy(() => import("@/components/admin/SupplierL
 const PediaManagerLazy = lazy(() => import("@/components/admin/PediaManager").then((m) => ({ default: m.PediaManager })));
 const BotAutomationManagerLazy = lazy(() => import("@/components/admin/BotAutomationManager"));
 const ArticlesManagerLazy = lazy(() => import("@/components/admin/ArticlesManager").then((m) => ({ default: m.ArticlesManager })));
+const BroadcastManagerLazy = lazy(() => import("@/components/admin/BroadcastManager").then((m) => ({ default: m.BroadcastManager })));
 const BannerManagerLazy = lazy(() => import("@/components/admin/BannerManager").then((m) => ({ default: m.BannerManager })));
 const NewsletterSubscribersLazy = lazy(() => import("@/components/admin/NewsletterSubscribers").then((m) => ({ default: m.NewsletterSubscribers })));
 const AgentIntegrationLazy = lazy(() => import("@/components/admin/AgentIntegration").then((m) => ({ default: m.AgentIntegration })));
@@ -39,7 +40,7 @@ const StoreSettingsManagerLazy = lazy(() => import("@/components/admin/StoreSett
 const ProductsSectionLazy = lazy(() => import("@/components/admin/sections/ProductsSection").then((m) => ({ default: m.ProductsSection })));
 const ProductEditorModalLazy = lazy(() => import("@/components/admin/ProductEditorModal").then((m) => ({ default: m.ProductEditorModal })));
 
-const ADMIN_SECTIONS: AdminSection[] = ["summary","products","orders","categories","payments","warung","sekalipay","pairs","links","pedia","articles","banners","subscribers","bot","agent","settings"];
+const ADMIN_SECTIONS: AdminSection[] = ["summary","products","orders","categories","payments","warung","sekalipay","pairs","links","pedia","articles","banners","broadcasts","subscribers","bot","agent","settings"];
 
 export default function AdminPage() {
   const toast = useToast();
@@ -162,6 +163,7 @@ export default function AdminPage() {
       {tab==="pairs" && <Suspense fallback={sectionFallback("pasangan supplier")}>{<SupplierPairsManagerLazy />}</Suspense>}
       {tab==="links" && <Suspense fallback={sectionFallback("tautan supplier")}>{<SupplierLinksManagerLazy />}</Suspense>}
       {tab==="pedia" && <Suspense fallback={sectionFallback("Pedia")}>{<PediaManagerLazy initialTab={new URLSearchParams(typeof window !== "undefined" ? window.location.search : "").get("tab") ?? undefined} />}</Suspense>}
+      {tab==="broadcasts" && <Suspense fallback={sectionFallback("siaran")}><BroadcastManagerLazy /></Suspense>}
       {tab==="bot" && <Suspense fallback={sectionFallback("otomasi bot")}>{<BotAutomationManagerLazy />}</Suspense>}
       {SYSTEM_TABS.some(([id])=>id===tab) && (
         <SystemTabs section={tab} onSection={navigateAdmin}>

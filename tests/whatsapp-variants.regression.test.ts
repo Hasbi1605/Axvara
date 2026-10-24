@@ -376,8 +376,12 @@ describe("WhatsApp Message Formatting", () => {
     const msg = waMsg.welcomeNewMemberMessage("Budi");
     expect(msg).toContain("🎉 *SELAMAT DATANG DI AXVARA!* 🎉");
     expect(msg).toContain("*Budi*");
-    expect(msg).toContain("Ketik *list*");
-    expect(msg).toContain("Ketik *garansi*");
+    expect(msg).toContain("Order via website");
+    expect(msg).toContain("Order via Telegram");
+    expect(msg).toContain("Bantuan Admin");
+    expect(msg).not.toContain("Ketik *list*");
+    expect(msg).not.toContain("Ketik *garansi*");
+    expect(msg).toContain("Tools & Apps premium, Optimasi Media Sosial, Topup Games! 🚀");
     expect(msg).toContain("axvara.tech");
     expect(msg).toContain("t.me/Axvara_bot");
   });

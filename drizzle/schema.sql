@@ -159,6 +159,7 @@ CREATE TABLE IF NOT EXISTS newsletter_subscribers (
   email TEXT UNIQUE NOT NULL,
   status TEXT NOT NULL DEFAULT 'active',
   source TEXT NOT NULL DEFAULT 'footer',
+  unsubscribe_token TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -288,6 +289,7 @@ CREATE TABLE IF NOT EXISTS telegram_users (
   first_name TEXT,
   last_name TEXT,
   is_blocked INTEGER NOT NULL DEFAULT 0,
+  broadcast_opt_out INTEGER NOT NULL DEFAULT 0,
   pending_action TEXT DEFAULT NULL,
   -- Migrasi 0033: email pembeli tersimpan (alur email_for:) untuk produk
   -- Invite/Link WR + require_email. Ditanya sekali, dipakai ulang.
@@ -1515,3 +1517,37 @@ CREATE INDEX IF NOT EXISTS idx_pedia_followups_state ON pedia_followups(state, c
 
 -- Guard/prechecks seek by chat, without scanning every pending order.
 CREATE INDEX IF NOT EXISTS idx_orders_telegram_pending_chat ON orders(telegram_chat_id,status,payment_status,expires_at) WHERE telegram_chat_id IS NOT NULL;
+
+-- Reusable templates; each launch freezes its own content and recipient list.
+CREATE TABLE IF NOT EXISTS broadcast_templates (
+  id TEXT PRIMARY KEY, name TEXT NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL,
+  cta_label TEXT NOT NULL DEFAULT '', cta_url TEXT NOT NULL DEFAULT '',
+  revision INTEGER NOT NULL DEFAULT 1, archived INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS broadcast_campaigns (
+  id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, template_id TEXT NOT NULL REFERENCES broadcast_templates(id),
+  template_revision INTEGER NOT NULL, snapshot_json TEXT NOT NULL, channels_json TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('preparing','queued','completed','canceled')),
+  created_by TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_broadcast_campaigns_status ON broadcast_campaigns(status,created_at);
+CREATE TABLE IF NOT EXISTS broadcast_deliveries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, campaign_id TEXT NOT NULL REFERENCES broadcast_campaigns(id),
+  channel TEXT NOT NULL CHECK(channel IN ('whatsapp','email','telegram')),
+  recipient_id TEXT NOT NULL, destination TEXT NOT NULL, unsubscribe_token TEXT,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','sending','sent','failed','unknown','skipped','canceled')),
+  attempts INTEGER NOT NULL DEFAULT 0, first_attempt_at TEXT, next_attempt_at TEXT NOT NULL DEFAULT (datetime('now')),
+  lease_until TEXT, provider_id TEXT, last_error TEXT, updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(campaign_id,channel,recipient_id)
+);
+CREATE INDEX IF NOT EXISTS idx_broadcast_delivery_due ON broadcast_deliveries(status,julianday(next_attempt_at),id);
+CREATE INDEX IF NOT EXISTS idx_broadcast_delivery_campaign ON broadcast_deliveries(campaign_id,channel,status);
+CREATE TABLE IF NOT EXISTS broadcast_dispatch_control (
+  id INTEGER PRIMARY KEY CHECK(id=1), worker_token TEXT, lease_until TEXT,
+  email_after TEXT, telegram_after TEXT
+);
+INSERT OR IGNORE INTO broadcast_dispatch_control(id) VALUES(1);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_subscriber_unsubscribe ON newsletter_subscribers(unsubscribe_token);
+CREATE INDEX IF NOT EXISTS idx_subscriber_broadcast ON newsletter_subscribers(status,id);

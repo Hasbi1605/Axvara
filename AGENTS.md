@@ -204,6 +204,15 @@ nomor+revisi; tab basi termasuk A→B→A ditolak. Tidak perlu env baru. Rollbac
 pergantian harus ke rilis kompatibel runtime/revisi; jangan rollback ke kode nomor
 tetap. Rincian di gateway/AGENTS.md dan ARCHITECTURE §16.12.
 
+Siaran+welcome24Oktober: menu Konten → Siaran memakai template reusable (maks200,
+migrasi0077) + snapshot kampanye atomik; tujuan grup WA terverifikasi/subscriber
+email active/user Telegram pribadi non-blokir/non-opt-out. Worker cron lite existing
+maks8/tick, hasil ambigu unknown tanpa kirim ulang; opt-out email token acak dan
+Telegram /stop. Sambutan hanya dari event group add via /api/whatsapp/group-events
+→ outbox group_welcome dedupe SHA256 harian; chat biasa tidak lagi menyapa/mencari
+produk. Gateway /send-broadcast//send-welcome namespace key terpisah. Rincian di
+gateway/AGENTS.md, ARCHITECTURE §16.13, issue/broadcasts-welcome-2026-10-24.md.
+
 ### Pedia katalog/checkout 2026-10-15
 - Spesifikasi terkini: `docs/pedia/catalog-checkout-2026-10-15.md`; menggantikan snapshot UI/katalog 12 Oktober di bawah. 38 jenis/131 mapping awal/16 platform; migrasi 0065/0066, hanya mirror layak diaktifkan. UI 3 pilihan awal mobile/desktop; drop/refill tetap. Revisi konfigurator 2026-10-16: kartu kebutuhan tanpa pilihan otomatis, daftar layanan satu kolom/pilihan aktif ringkas di semua ukuran, jumlah/link/checklist berdekatan, detail terlipat sesudah input; checkout dua tahap dan kontrak quote/retry tetap.
 - Harga jumlah bebas dari `/api/pedia/prices`; order/job/debit/ledger atomik D1. QR gagal diulang memakai quote sama. Cron Pedia membalik reservasi kredit pra-pensiun sekali ke arsip beku dan mengantrekannya untuk penyelesaian manual. Tidak ada flag dispatch baru; proses lewat cron existing.

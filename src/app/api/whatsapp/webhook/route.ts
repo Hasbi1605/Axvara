@@ -11,7 +11,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { queryFirst, execRun, isD1Mode } from "@/lib/db";
 import { isEnabled } from "@/lib/feature-flags";
-import { getSession, upsertSession } from "@/lib/whatsapp/session";
 import {
   authenticateWebhook,
   parseWhatsAppPayload,
@@ -178,20 +177,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-    // Welcome: detect first-time member (no existing session)
-    if (isEnabled("WHATSAPP_GROUP_DISCOVERY") && isD1Mode()) {
-      const existingSession = await queryFirst(
-        `SELECT id FROM whatsapp_sessions WHERE provider='baileys' AND conversation_id=? AND member_id=?`,
-        conversationId,
-        memberId,
-      ).catch(() => null);
-      if (!existingSession) {
-        await sendTextMessage({ target: conversationId, message: msg.welcomeNewMemberMessage(incoming.name), inboxId });
-        // Create a session so welcome is not sent again
-        await upsertSession("baileys", conversationId, memberId, {});
-      }
-    }
-
     // Command: list [page]
     if (cmd === "list" || cmd.startsWith("list ")) {
       if (!isEnabled("WHATSAPP_GROUP_DISCOVERY")) {
@@ -235,8 +220,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Product search (only if discovery enabled)
-    if (cmd.length >= 2 && isEnabled("WHATSAPP_GROUP_DISCOVERY")) {
-      await handleProductSearch(conversationId, memberId, message, inboxId);
+    if (cmd.startsWith("cari ") && cmd.length > 5 && isEnabled("WHATSAPP_GROUP_DISCOVERY")) {
+      await handleProductSearch(conversationId, memberId, message.slice(5).trim(), inboxId);
       return NextResponse.json({ ok: true });
     }
 

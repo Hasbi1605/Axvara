@@ -1,5 +1,41 @@
 # PRD — AXVARA
 
+## Siaran admin dan sambutan grup — 24 Oktober 2026
+
+✅ Diimplementasikan; publikasi melalui CI. Menu **Konten → Siaran** menyediakan
+pustaka maksimal200 template teks: nama internal, judul/subjek email, isi hingga
+3000 karakter dan tombol tautan HTTPS opsional. Admin bisa membuat, mengedit,
+menyalin, mengarsipkan/memulihkan dan memakai ulang template. Simpan tidak
+mengirim. Pilih satu/beberapa tujuan → Tinjau jumlah → Kirim siaran sekarang.
+Tujuan: satu grup WA AXVARA'S terverifikasi pada nomor bot aktif, subscriber email
+berstatus active, dan pengguna pribadi Telegram terdaftar yang tidak diblokir
+atau opt-out. Telegram hanya bisa menjangkau pengguna yang pernah membuka bot;
+jumlah terdaftar bukan jaminan pesan diterima. Tidak mengirim DM WA.
+
+Setiap kirim menyimpan salinan pesan dan daftar penerima; perubahan template dan
+subscriber baru tidak mengubah siaran yang sudah mulai. Retry permintaan yang
+belum terkonfirmasi memakai ID yang sama, termasuk sesudah refresh tab. Riwayat
+menampilkan jumlah per kanal/status, refresh manual dan Hentikan untuk penerima
+belum diproses; pesan sedang dikirim mungkin tetap diterima. Terkirim berarti
+layanan pengirim menerima pesan, bukan bukti dibaca. Pengiriman bertahap melalui
+cron existing, tanpa kirim otomatis ketika template disimpan atau jadwal baru.
+
+Email dikirim per alamat, menyertakan tautan berhenti berlangganan. GET tautan
+hanya menampilkan konfirmasi; POST menghentikan langganan. Daftar footer bisa
+berlangganan lagi dengan token baru. Telegram `/stop` menghentikan siaran saja,
+`/siaran_on` mengaktifkannya kembali; notifikasi pesanan tidak ikut dihentikan.
+Status pelanggan diperiksa lagi sebelum pengiriman. Nomor/revisi/grup WA dibekukan
+saat Tinjau; jika berubah, hentikan antrean lama dan tinjau siaran baru.
+
+Sambutan WA kini hanya dari event **anggota ditambahkan/bergabung**, bukan sesi
+pertama, chat, emoji, reaksi, stiker, promote atau remove. Bingkai garis dan judul
+“🎉 SELAMAT DATANG DI AXVARA! 🎉” dipertahankan, sapaan Pagi/Siang/Sore/Malam WIB,
+nama jika tersedia (fallback Kak), deskripsi “Tools & Apps premium, Optimasi Media
+Sosial, Topup Games! 🚀”, lalu Order via website, Order via Telegram, Bantuan Admin.
+Instruksi ketik list/garansi dihapus dari sambutan. Percakapan biasa tidak lagi
+auto-search; perintah pencarian legacy harus `cari <produk>`, tetap mengikuti flag.
+Commerce WA tetap mengikuti flag existing dan tidak diaktifkan oleh fitur ini.
+
 ## Notifikasi transaksi dan link komunitas terpusat — 24 Oktober 2026
 
 ✅ Diimplementasikan; publikasi CI, pengiriman WA mengikuti pairing/aktivasi owner.

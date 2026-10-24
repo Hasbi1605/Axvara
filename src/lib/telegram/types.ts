@@ -108,6 +108,7 @@ export interface TelegramApiResponse<T = unknown> {
   result?: T;
   description?: string;
   error_code?: number;
+  parameters?: { retry_after?: number };
 }
 
 export interface WebhookInfo {

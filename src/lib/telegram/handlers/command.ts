@@ -31,6 +31,13 @@ export async function handleCommand(
 ) {
   const cmd = text.toLowerCase().split(/\s+/)[0].split("@")[0];
 
+  if ((cmd === '/stop' || cmd === '/siaran_on') && from && chatType === 'private' && chatId === from.id) {
+    const { execRun } = await import('@/lib/db');
+    await execRun("UPDATE telegram_users SET broadcast_opt_out=? WHERE user_id=? AND chat_id=?",cmd==='/stop'?1:0,String(from.id),String(chatId));
+    await sendMessage({chat_id:chatId,text:cmd==='/stop'?'Siaran Telegram dihentikan. Notifikasi pesanan tetap berjalan. Kirim /siaran_on untuk berlangganan kembali.':'Siaran Telegram diaktifkan kembali. Kirim /stop untuk berhenti.'});
+    return;
+  }
+
   // Cancel conversational input explicitly, before leaf slash-command filters.
   // This does not cancel or mutate an order.
   if (cmd === "/batal") {

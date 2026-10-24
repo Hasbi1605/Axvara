@@ -1,5 +1,40 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Siaran tersimpan dan sambutan anggota WA — 24 Oktober 2026
+
+✅ Admin **Konten → Siaran** (`/admin?section=broadcasts`): buat/simpan template teks
++ judul/subjek + CTA HTTPS opsional, salin, edit, arsip/pulihkan, pakai ulang.
+Pilih Grup WhatsApp / Subscriber email / Pengguna Telegram, Tinjau, lalu Kirim.
+Menyimpan saja tidak mengirim. Riwayat30 siaran terakhir berisi jumlah per status,
+refresh manual dan Hentikan antrean belum diproses. Hasil belum terkonfirmasi
+mempertahankan satu ID permintaan untuk retry aman. Tidak ada gambar/lampiran atau
+penjadwalan baru dalam fitur ini. Maksimal200 template, pesan3000 karakter.
+
+Migrasi `0077_admin_broadcasts.sql` menambah empat tabel broadcast, token berhenti
+langganan email dan opt-out Telegram. Pengiriman memakai cron lite `promo` existing
+(maks8 penerima/20detik dengan budget40 statement), lease global, jeda kanal dan
+Retry-After; tidak ada env/secret/cron/resource baru. Email individual via Resend
+existing dengan key idempoten tetap dan jendela retry23jam. Telegram positif
+pribadi terdaftar, `/stop` / `/siaran_on`; pengguna yang belum pernah membuka bot
+tidak bisa dipaksa menerima pesan. Unsubscribe email GET konfirmasi, POST perubahan;
+subscriber yang mendaftar lagi memperoleh token baru. Daftar penerima dan pesan
+tersalin atomik per peluncuran, opt-out diperiksa lagi sebelum kirim. Timeout
+Telegram/hasil WA ambigu perlu diperiksa, tanpa replay buta.
+
+Gateway menambah `/send-broadcast` dan `/send-welcome`, memakai grup pin AXVARA'S,
+nomor/revisi aktif, ledger PG dan pacing60detik yang sama dengan invoice. Tidak
+membuka DM atau rotasi akun otomatis. Pergantian nomor memerlukan Tinjau siaran
+baru. Sambutan dipicu `group-participants.update` action add saja, diteruskan ke
+`POST /api/whatsapp/group-events` bertoken existing, diverifikasi ulang dan diantre
+idempoten di outbox existing/cron notify_b. Batch anggota yang sama dalam hariUTC
+dan identitas bot sama disambut sekali; event saat gateway offline tidak dibackfill.
+Nama dari data kontak event bila tersedia, fallback Kak; sapaan WIB dan bingkai
+lama dipertahankan, tautan order web/TG dan bantuan `/wa`. Chat/emoji/reaksi tidak
+menyambut; pencarian legacy eksplisit `cari <produk>`. Tidak menyalakan commerce WA.
+
+Kontrak, batas pengiriman dan QA: [spec siaran](issue/broadcasts-welcome-2026-10-24.md),
+[ARCHITECTURE §16.13](docs/ARCHITECTURE.md#1613-siaran-admin-dan-welcome-anggota--24-oktober-2026).
+
 ## Notifikasi penjualan WA, admin Telegram, dan link grup — 24 Oktober 2026
 
 ✅ Diimplementasikan; publikasi melalui CI. Admin → **Pengaturan Toko → Link grup

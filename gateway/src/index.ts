@@ -1,4 +1,4 @@
-import Fastify from "fastify";
+import Fastify, { type FastifyRequest, type FastifyReply } from "fastify";
 import { Mutex } from "async-mutex";
 import makeWASocket, {
   Browsers,
@@ -13,7 +13,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import pino from "pino";
 import { usePostgresAuthState } from "./pg-auth.js";
 import { BOT_NUMBER, botIdentity, matchesBotIdentity, validBotNumber, persistBotNumber, reloadBotIdentity, pool, initializeDurable, deliveryClaim, settleDelivery, pauseOutbound, requiresManualReconnect, isRestriction, groupAllowsBotSend } from "./durable.js";
-import { isNotificationGroupName, selectNotificationGroup, notificationGroupStatus } from "./group-target.js";
+import { isNotificationGroupName, selectNotificationGroup, notificationGroupStatus, validNotificationKey } from "./group-target.js";
 // (registerWrProxy tidak lagi diimpor — proxy WR pindah ke axvara-wr-proxy)
 
 const logger = pino({ name: "axvara-wa-gateway" });
@@ -181,7 +181,26 @@ async function startSocket(): Promise<void> {
     credsSaved = credsSaved.then(saveCreds).catch(() => { if (current()) { blocked = true; void socket.end(undefined); } logger.error("Unable to persist session; stopped"); });
   });
   socket.ev.on("groups.update", updates => { if (!current()) return; for (const group of updates) if (group.id) { groupMetadataCache.delete(group.id); if (notificationGroup?.id === group.id) notificationGroup = null; } });
-  socket.ev.on("group-participants.update", update => { if (!current()) return; groupMetadataCache.delete(update.id); if (notificationGroup?.id === update.id) notificationGroup = null; });
+  socket.ev.on("group-participants.update", async update => {
+    if (!current()) return;
+    groupMetadataCache.delete(update.id);
+    if (notificationGroup?.id === update.id) notificationGroup = null;
+    if (update.action !== "add") return;
+    const identity = botIdentity();
+    try {
+      // No session mutex across the webhook: Pages may call status concurrently.
+      const group = await resolveNotificationGroup();
+      if (!current() || !matchesBotIdentity(identity) || group?.id !== update.id) return;
+      const own = new Set([socket.user?.id?.replace(/:\d+@/, "@"), socket.user?.lid, `${phone}@s.whatsapp.net`].filter(Boolean));
+      const members = update.participants.filter(p => !own.has(p.id) && !own.has(p.phoneNumber) && !own.has(p.lid))
+        .slice(0, 100).map(p => ({ id: p.id, name: p.notify || p.name || p.verifiedName || "" }));
+      if (!members.length) return;
+      const endpoint = new URL(AXVARA_WEBHOOK_URL); endpoint.pathname = "/api/whatsapp/group-events"; endpoint.search = "";
+      const response = await fetch(endpoint, { method: "POST", headers: { "content-type": "application/json", "x-webhook-token": AXVARA_WEBHOOK_TOKEN },
+        body: JSON.stringify({ event: "member_join", groupId: group.id, members, ...identity }), redirect: "manual", signal: AbortSignal.timeout(10_000) });
+      if (!response.ok) logger.warn({ status: response.status }, "Group welcome could not be queued");
+    } catch { logger.warn("Group welcome could not be queued"); }
+  });
   socket.ev.on("messages.update", updates => {
     if (!current()) return;
     if (updates.some(entry => Number(entry.update.status) >= 3)) {
@@ -459,10 +478,10 @@ app.post("/notification-pair", async (request, reply) => sessionMutex.runExclusi
   finally { pairingCodeRequested = false; }
 }));
 
-app.post("/send-notification", async (request, reply) => sessionMutex.runExclusive(async () => {
+async function sendGroupNotification(request: FastifyRequest, reply: FastifyReply, kind: boolean | "welcome") { return sessionMutex.runExclusive(async () => {
   if (!validGatewayToken(request.headers["x-gateway-token"])) return reply.status(401).send({ status: false, reason: "unauthorized" });
   const body = request.body as { target?: string; message?: string; idempotencyKey?: string; botNumber?: string; botRevision?: string };
-  if (!body || typeof body.message !== "string" || body.message.length > 12_000 || !/^wa:sale-completed:AX[VP]-\d{8}-[A-Z0-9]{8}$/.test(body.idempotencyKey || "")) {
+  if (!body || typeof body.message !== "string" || body.message.length > 12_000 || !validNotificationKey(body.idempotencyKey, kind)) {
     return reply.status(400).send({ status: false, reason: "invalid_notification" });
   }
   if (!matchesBotIdentity(body)) return reply.status(409).send({ status: false, reason: "bot_configuration_changed" });
@@ -493,7 +512,10 @@ app.post("/send-notification", async (request, reply) => sessionMutex.runExclusi
       return reply.status(409).send({ status: false, outcomeUnknown: true, reason: "delivery_outcome_unknown" });
     } finally { if (timer) clearTimeout(timer); }
   } catch { return reply.status(503).send({ status: false, reason: "notification_gateway_unavailable" }); }
-}));
+}); }
+app.post("/send-notification", (request, reply) => sendGroupNotification(request, reply, false));
+app.post("/send-broadcast", (request, reply) => sendGroupNotification(request, reply, true));
+app.post("/send-welcome", (request, reply) => sendGroupNotification(request, reply, "welcome"));
 
 app.post("/send", async (request, reply) => sessionMutex.runExclusive(async () => {
   if (!validGatewayToken(request.headers["x-gateway-token"])) return reply.status(401).send({ status: false, reason: "unauthorized" });

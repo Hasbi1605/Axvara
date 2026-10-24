@@ -1,5 +1,15 @@
 # ARCHITECTURE.md — AXVARA
 
+## Siaran admin dan event anggota — 24 Oktober 2026
+
+✅ Admin menambah lazy component `BroadcastManager` pada `?section=broadcasts` dan
+menu Konten. API private no-store `/api/admin/broadcasts` wajib requireAdmin untuk
+GET/POST save/archive/review/send/cancel. Migrasi0077 dan schema menambah pustaka,
+campaign/snapshot dan recipient delivery, dispatch lock/pacing, unsubscribe token
+newsletter serta opt-out Telegram. Worker bounded bergabung cron lite promo existing;
+welcome memakai outbox/notify_b existing. Tidak menambah env, cron, DM WA atau resource.
+Kontrak rinci di §16.13 dan `issue/broadcasts-welcome-2026-10-24.md`.
+
 ## Notifikasi penjualan dan pengaturan grup — 24 Oktober 2026
 
 ✅ Diimplementasikan; publikasi CI. Kontrak kanonis terbaru ada di §16.12 dan
@@ -2967,7 +2977,7 @@ Indeks `idx_orders_telegram_pending_chat` pada migrasi0075 mempersempit guard/pr
 
 ### 16.12 Notifikasi grup WA dan admin Telegram — 24 Oktober 2026
 
-✅ Diimplementasikan, publikasi lewat CI; pairing/aktivasi owner belum dilakukan.
+✅ Diimplementasikan, publikasi lewat CI; koneksi/aktivasi mengikuti panel owner.
 Source gateway kanonis `gateway/{src,scripts,package*.json,Procfile,tsconfig.json}`.
 Baileys7.0.0-rc14/Node22, Heroku app existing `axvara-wa-gateway` akun#1 dan
 Postgres existing. `.github/workflows/ci.yml` menguji/build gateway; sesudah migrasi
@@ -3074,3 +3084,60 @@ Belum ada pesan produksi saat QA, gateway lama disconnected401. Recovery unknown
 wajib periksa pesan grup + PG/D1 dahulu, jangan reset row/ID untuk resend. Rollback
 melalui CI, pertahankan state/key PG dan D1; jangan kembali membuka DM. Rujukan
 library/WhatsApp dan bukti QA: issue/whatsapp-sales-notifications-2026-10-24.md.
+
+
+### 16.13 Siaran admin dan welcome anggota — 24 Oktober 2026
+
+- `src/lib/broadcasts/{model,validation,store,sender,worker}.ts` memisahkan validasi,
+  snapshot atomik dan pengiriman. API requireAdmin; D1 wajib, error ambigu503 tetap
+  menyisakan ID client. UUID kampanye + fingerprint mengikat template/revisi/kanal
+  dan identitas WA yang ditinjau. D1 batch insert campaign preparing, INSERT SELECT
+  penerima aktif, lalu queued bersifat atomik; replay ID yang sama tidak menambah
+  penerima atau mengirim ulang. Template revision CAS, arsip mempertahankan riwayat.
+- Tabel0077: broadcast_templates, broadcast_campaigns, broadcast_deliveries,
+  broadcast_dispatch_control. Delivery unik campaign/channel/recipient; snapshot
+  pesan dan token email tidak berubah karena edit template. Kampanye queued bisa
+  dihentikan, hanya pending dibatalkan. Riwayat30 terakhir + agregat sekali, library200.
+- Existing lite promo menjalankan worker maks8 penerima,20detik, budget40statement
+  dan sisa envelope40detik job. Lease singleton60detik; CAS delivery lease90detik.
+  Per-request timeout6detik email,10detik TG,15detik gateway. Email pacing650ms,
+  TG150ms dan Retry-After durable; throttle satu kanal tidak menutup kanal lain.
+  Jeda ini batas operasional, bukan jaminan kuota/inbox/no-ban. Tidak ada paid TG
+  broadcast atau loop poll baru. Sesudah claim, unsubscribe/opt-out diperiksa di SQL.
+- Email individual memakai RESEND_API_KEY/FORWARD_FROM_EMAIL existing; HTML escaped,
+  text dan List-Unsubscribe/One-Click. Key `broadcast/<campaign>/<subscriber-id>`
+  stabil, retry jaringan/5xx maksimal23jam dari attempt pertama (margin atas cache
+  idempotensi24jam). Lewat jendela atau crash ambigu lama → unknown/manual.
+  Penggantian sender di env saat retry bisa ditolak provider; jangan ganti payload
+  demi melewati konflik key. 429 mengikuti Retry-After tanpa menghabiskan attempt.
+- Newsletter random token32byte/64hex, backfill0077, tidak dibuka admin GET/list.
+  `/api/subscribers/unsubscribe?token=...`: GET form konfirmasi inert, POST update
+  statusunsubscribed, private no-store/no-referrer/CSP. Resubscribe merotasi token;
+  antrean token lama dilewati. Telegram user_id positif/kanonik dan chat_id=user_id,
+  is_blocked0/broadcast_opt_out0;403 skip+blocked,429 defer, ambiguity unknown.
+  Private incoming dapat clear blocked; `/stop`/`/siaran_on` tidak menghapus pending
+  action atau menonaktifkan kabar pesanan. Group ID tidak dijadikan tujuan pribadi.
+- Gateway `/send-broadcast` key `wa:broadcast:<UUIDv4>`, `/send-welcome` key
+  `wa:welcome:<sha256>`, `/send-notification` key invoice tetap. Semua route token-only,
+  session mutex, nomor/revisi aktif, grup pin/izin terverifikasi, deliveryClaim PG,
+  shared pacing60detik/cooldown/unknown. Key lintas namespace ditolak. Siaran lama
+  sesudah ganti bot dipertahankan untuk owner Hentikan+Tinjau baru; tidak pindah
+  otomatis. Sambutan basi identitas menjadi dead; sent/unknown tidak diulang.
+- `group-participants.update` add menginvalidasi cache dan memverifikasi grup,
+  menyingkirkan bot sendiri PN/LID, meneruskan maksimal100 kontak batch ke Pages
+  `/api/whatsapp/group-events` (header token existing). Tidak menahan session mutex
+  selama HTTP, karena Pages memanggil status. Pages memverifikasi ulang group/phone/
+  revision, menulis outbox group_welcome dengan SHA256(group,phone,revision,hariUTC,
+  sorted unique memberIDs). Pesan+identitas dibekukan JSON, ID anggota tidak disimpan
+  dalam payload. Event duplikat batch/hari sama dedupe; join ulang hari sama/batch
+  sama tidak disambut lagi. Belum ada backfill event saat socket offline atau
+  ingress gagal sebelum D1 menyimpan; pengiriman sesudah enqueue memakai retry
+  outbox existing dan ledger PG. Satu sambutan per batch, nama max3 dan sanitasi
+  formatting/control; fallback Kak, tidak menjadikan nomor sebagai nama.
+- Webhook chat lama menghapus welcome berdasar sesi, pencarian hanya `cari <produk>`;
+  chat, emote, reaction/stiker biasa tidak menimbulkan balasan. Perintah/admin/proof
+  lama tetap mengikuti gate existing; flags commerce tidak diaktifkan. Sambutan
+  baru independen flag commerce dan mengikuti koneksi/keanggotaan grup.
+- Rollout hanya CI main: migrasi0077 lalu gateway dan Pages; tidak mengirim siaran
+  uji produksi atau mengubah sesi/koneksi saat QA. Rollback wajib kompatibel runtime
+  nomor/revisi serta ledger; pertahankan tabel/snapshot/token/outbox.

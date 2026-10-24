@@ -210,11 +210,26 @@ export async function processWhatsAppOutboxRow(row: Record<string, unknown>, dat
     }
     botIdentity = { botNumber: config.botNumber, botRevision: config.botRevision };
   }
+  let message = String(fresh.payload || "");
+  const durableNotification = fresh.message_type === "sale_completed" || fresh.message_type === "group_welcome";
+  if (fresh.message_type === "group_welcome") {
+    try {
+      const payload = JSON.parse(message);
+      const { normalizeBotNumber, validBotRevision } = await import("./bot-number");
+      if (typeof payload.message !== "string" || !payload.message || normalizeBotNumber(payload.botNumber) !== payload.botNumber || !validBotRevision(payload.botRevision)) throw new Error("invalid_welcome");
+      message = payload.message;
+      botIdentity = { botNumber: payload.botNumber, botRevision: payload.botRevision };
+    } catch {
+      await execRun("UPDATE whatsapp_outbox SET status='dead',worker_id=NULL,locked_until=NULL,last_error='invalid_welcome_payload' WHERE id=? AND worker_id=?", id, workerId);
+      return true;
+    }
+  }
   const result = await sendTextMessage({
     target: String(fresh.destination || ""),
-    message: String(fresh.payload || ""),
+    message,
     idempotencyKey: String(fresh.idempotency_key || ""),
     salesNotification: fresh.message_type === "sale_completed",
+    welcomeNotification: fresh.message_type === "group_welcome",
     ...botIdentity,
   });
   if (result.ok) {
@@ -228,8 +243,12 @@ export async function processWhatsAppOutboxRow(row: Record<string, unknown>, dat
     );
     return true;
   }
+  if (fresh.message_type === "group_welcome" && result.error === "bot_configuration_changed") {
+    await execRun("UPDATE whatsapp_outbox SET status='dead',worker_id=NULL,locked_until=NULL,last_error='bot_configuration_changed' WHERE id=? AND worker_id=?", id, workerId);
+    return true;
+  }
   const nextAttempts = attempts + 1;
-  if (fresh.message_type === "sale_completed" && result.outcomeUnknown) {
+  if (durableNotification && result.outcomeUnknown) {
     // A network timeout can still finish at the gateway. Retry the same durable key;
     // an explicit unknown response is quarantined for manual inspection.
     if (String(result.error).includes("delivery_outcome_unknown")) {
@@ -237,7 +256,7 @@ export async function processWhatsAppOutboxRow(row: Record<string, unknown>, dat
       return true;
     }
   }
-  if (fresh.message_type === "sale_completed" && ["whatsapp_not_connected", "notification_paced", "gateway_cooldown_active", "notification_gateway_unavailable", "bot_configuration_changed"].includes(String(result.error))) {
+  if (durableNotification && ["whatsapp_not_connected", "notification_paced", "gateway_cooldown_active", "notification_gateway_unavailable", "bot_configuration_changed"].includes(String(result.error))) {
     await execRun("UPDATE whatsapp_outbox SET status='failed',worker_id=NULL,locked_until=NULL,attempt_count=attempt_count-1,next_attempt_at=datetime('now','+1 minute'),last_error=?,updated_at=datetime('now') WHERE id=? AND worker_id=?", result.error, id, workerId);
     return false;
   }

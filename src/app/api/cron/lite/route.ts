@@ -380,9 +380,12 @@ async function runPediaOrders(db: Db) {
 }
 
 async function runPromo(db: Db) {
+  const started = Date.now();
   const { sendDueAdminPromoDigest } = await import("@/lib/telegram/promo-digest");
   const promo = await sendDueAdminPromoDigest(db);
-  return { promo_due: promo.due, promo_full_sent: promo.fullSent, promo_short_sent: promo.shortSent, promo_skipped: promo.skipped ?? null };
+  const { processBroadcasts } = await import("@/lib/broadcasts/worker");
+  const broadcasts = db.canSpend(8) ? await processBroadcasts(db, 8, Math.min(20000, Math.max(0, 40000 - (Date.now() - started)))) : null;
+  return { broadcasts, promo_due: promo.due, promo_full_sent: promo.fullSent, promo_short_sent: promo.shortSent, promo_skipped: promo.skipped ?? null };
 }
 
 // notify (2026-10-05 malam, dipecah 2026-10-09): retry kabar order Telegram,

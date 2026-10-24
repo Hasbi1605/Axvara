@@ -356,7 +356,7 @@ export function adminDoneNoOrderMessage(): string {
 
 export function welcomeNewMemberMessage(name?: string): string {
   const { greeting } = formatWIBTime();
-  const displayName = name?.trim() || "Kak";
+  const displayName = name?.replace(/[\r\n*`_~\u0000-\u001f\u007f]/g, " ").trim().slice(0, 80) || "Kak";
   const lines = [
     "━━━━━━━━━━━━━━━━━━━━",
     "🎉 *SELAMAT DATANG DI AXVARA!* 🎉",
@@ -365,18 +365,18 @@ export function welcomeNewMemberMessage(name?: string): string {
     `${greeting}, *${displayName}*! 👋`,
     "",
     "Selamat bergabung di grup official *AXVARA* 💎",
-    "Gerbang semua tools premium favoritmu! 🚀",
-    "",
-    "🛒 *Cara Order:*",
-    "Ketik *list* untuk lihat semua produk.",
-    "",
-    "🛡 *Garansi:*",
-    "Ketik *garansi* untuk baca ketentuan.",
+    "Tools & Apps premium, Optimasi Media Sosial, Topup Games! 🚀",
     "",
     "━━━━━━━━━━━━━━━━━━━━",
-    "*Belanja & update produk AXVARA:*",
-    `🌐 ${SITE.webUrl}`,
-    `✈️ ${adminTelegramLink()}`,
+    "🌐 *Order via website*",
+    SITE.webUrl,
+    "",
+    "🤖 *Order via Telegram*",
+    `${adminTelegramLink()}?start=beli`,
+    "",
+    "💬 *Bantuan Admin*",
+    `${SITE.webUrl}/wa`,
+    "━━━━━━━━━━━━━━━━━━━━",
   ];
   return lines.join("\n");
 }

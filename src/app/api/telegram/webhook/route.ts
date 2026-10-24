@@ -158,7 +158,7 @@ export async function POST(request: NextRequest) {
           await execRun(
             `INSERT INTO telegram_users (user_id, chat_id, username, first_name, last_name)
              VALUES (?, ?, ?, ?, ?)
-             ON CONFLICT(user_id) DO UPDATE SET chat_id=?, username=?, first_name=?, last_name=?, updated_at=datetime('now')`,
+             ON CONFLICT(user_id) DO UPDATE SET chat_id=?, username=?, first_name=?, last_name=?, is_blocked=0, updated_at=datetime('now')`,
             String(from.id), String(chatId), from.username ?? null, from.first_name, from.last_name ?? null,
             String(chatId), from.username ?? null, from.first_name, from.last_name ?? null,
           );
