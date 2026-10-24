@@ -11,7 +11,8 @@ import { Boom } from "@hapi/boom";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import pino from "pino";
 import { usePostgresAuthState } from "./pg-auth.js";
-import { BOT_NUMBER, GROUP_NAME, pool, initializeDurable, deliveryClaim, settleDelivery, pauseOutbound, requiresManualReconnect, isRestriction, groupAllowsBotSend } from "./durable.js";
+import { BOT_NUMBER, pool, initializeDurable, deliveryClaim, settleDelivery, pauseOutbound, requiresManualReconnect, isRestriction, groupAllowsBotSend } from "./durable.js";
+import { isNotificationGroupName, selectNotificationGroup, notificationGroupStatus } from "./group-target.js";
 // (registerWrProxy tidak lagi diimpor — proxy WR pindah ke axvara-wr-proxy)
 
 const logger = pino({ name: "axvara-wa-gateway" });
@@ -56,18 +57,17 @@ async function resolveNotificationGroup() {
   const control = (await pool.query("SELECT group_id FROM axvara_wa_control WHERE phone=$1", [BOT_NUMBER])).rows[0];
   if (control?.group_id) {
     const meta = await sock.groupMetadata(control.group_id);
-    if (meta.subject !== GROUP_NAME) throw new Error("Nama grup tujuan berubah; periksa grup sebelum melanjutkan.");
+    if (!isNotificationGroupName(meta.subject)) throw new Error("Nama grup tujuan berubah; periksa grup sebelum melanjutkan.");
     if (!groupAllowsBotSend(meta, sock.user?.lid)) throw new Error("Jadikan bot admin di grup AXVARA'S yang hanya mengizinkan admin mengirim pesan.");
     notificationGroup = { id: meta.id, subject: meta.subject };
     groupMetadataCache.set(meta.id, { data: meta, expiresAt: Date.now()+GROUP_METADATA_TTL_MS });
     return notificationGroup;
   }
-  const groups = Object.values(await sock.groupFetchAllParticipating()).filter(group => group.subject === GROUP_NAME);
-  if (groups.length !== 1) throw new Error(groups.length ? "Ada beberapa grup bernama AXVARA'S; tujuan harus diperiksa." : "Masukkan nomor bot ke grup AXVARA'S terlebih dahulu.");
-  if (!groupAllowsBotSend(groups[0], sock.user?.lid)) throw new Error("Jadikan bot admin di grup AXVARA'S yang hanya mengizinkan admin mengirim pesan.");
-  notificationGroup = { id: groups[0].id, subject: groups[0].subject };
+  const group = selectNotificationGroup(Object.values(await sock.groupFetchAllParticipating()));
+  if (!groupAllowsBotSend(group, sock.user?.lid)) throw new Error("Jadikan bot admin di grup AXVARA'S yang hanya mengizinkan admin mengirim pesan.");
+  notificationGroup = { id: group.id, subject: group.subject };
   await pool.query("UPDATE axvara_wa_control SET group_id=$2 WHERE phone=$1 AND group_id IS NULL", [BOT_NUMBER, notificationGroup.id]);
-  groupMetadataCache.set(groups[0].id, { data: groups[0], expiresAt: Date.now()+GROUP_METADATA_TTL_MS });
+  groupMetadataCache.set(group.id, { data: group, expiresAt: Date.now()+GROUP_METADATA_TTL_MS });
   return notificationGroup;
 }
 // Operasional sesi tunggal dengan reconnect terbatas:
@@ -375,7 +375,9 @@ app.get("/notification-status", async (request, reply) => {
   let group: { id: string; subject: string } | null = null;
   try { group = await resolveNotificationGroup(); } catch (e) { error = e instanceof Error ? e.message : "Grup belum tersedia"; }
   const control = (await pool.query("SELECT paused_until,last_sent_at,last_ack_at FROM axvara_wa_control WHERE phone=$1", [BOT_NUMBER])).rows[0];
-  return { connected: isConnected, botNumber: BOT_NUMBER, groupId: group?.id, groupName: group?.subject, error,
+  // groupName is the verified configured target; groupSubject preserves the
+  // actual WhatsApp title. Pages validates the canonical name before enabling.
+  return { connected: isConnected, botNumber: BOT_NUMBER, ...notificationGroupStatus(group), error,
     blocked: blocked || Boolean(control?.paused_until && new Date(control.paused_until).getTime() > Date.now()),
     lastSendAt: control?.last_sent_at, lastAckAt: control?.last_ack_at };
 });

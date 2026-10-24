@@ -29,6 +29,14 @@ antrean yang sudah tersimpan tetap dipertahankan saat offline/nonaktif. Tidak ad
 jaminan bebas pembatasan WhatsApp. Pemeriksaan awal gateway lama disconnected401,
 bukan bukti nomor baru diblokir. QA tidak mengirim pesan produksi.
 
+Perbaikan pencarian grup24Oktober: nama aktual **AXVARA’S** memakai apostrof
+melengkung. Gateway menyetarakan ’/‘/ʼ dengan ', NFKC, trim dan kapitalisasi;
+dua grup dengan nama setara tetap ditolak. ID tujuan kemudian dipin di Postgres,
+tidak berpindah karena perubahan nama/link storefront. Bot yang sudah tersambung
+cukup **Cek koneksi → Aktifkan notifikasi**, tanpa menautkan ulang.
+Status gateway memberi `groupName` kanonis AXVARA'S untuk validasi Pages dan
+`groupSubject` judul WhatsApp asli; keduanya hanya muncul setelah verifikasi grup.
+
 Source gateway kanonis sekarang `gateway/`, diuji/dideploy di CI main memakai
 Heroku source/build API dan GitHub secret `HEROKU_API_KEY_AKUN1` dari
 `.heroku-credentials`. Folder saudara lama adalah arsip; jangan push Heroku atau

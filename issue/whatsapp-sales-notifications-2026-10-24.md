@@ -72,8 +72,14 @@ disamarkan. Payload immutable disimpan sekali agar retry tetap identik.
   dead/manual_check_required. ACK dicatat terpisah; sent bukan bukti semua anggota
   grup sudah menerima/membaca. Retry Baileys getMessage memuat payload tersimpan.
 - `/notification-status` GET, `/notification-pair` POST, `/send-notification` POST
-  hanya token gateway timing-safe. Tujuan grup dipin setelah nama tepat unik,
-  metadata5menit + invalidasi event. Nama sama ganda/berubah ditolak. Mengubah link
+  hanya token gateway timing-safe. Tujuan grup dipin setelah nama unik melalui
+  NFKC/trim/kapitalisasi dan penyetaraan apostrof ’/‘/ʼ dengan '. Nama aktual
+  AXVARA’S terkonfirmasi pada metadata undangan publik, sementara status produksi
+  connectedtrue tetapi pencarian lama exact-string gagal. Tidak ada substring/fuzzy
+  matching; tabrakan nama setara tetap ditolak. Metadata pin memakai aturan sama,
+  perubahan nama substantif ditolak tanpa rebind; cache5menit + invalidasi event.
+  Status mengirim groupName kanonis dan groupSubject asli setelah verifikasi
+  identitas/izin; validasi aktivasi Pages tetap ketat. Mengubah link
   undangan storefront **tidak memindahkan grup tujuan bot**. Legacy `/send` dan
   `/send-image` hanya grup existing/pin, DM tidak dibuka. Flag commerce lama tidak
   diubah dan bukan gate notifikasi penjualan baru.

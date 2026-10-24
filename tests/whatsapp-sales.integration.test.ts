@@ -134,13 +134,14 @@ describe("central group link and notification controls",()=>{
     expect(JSON.stringify(body)).not.toContain(GROUP);expect(response.headers.get("cache-control")).toBe("no-store");
     expect(fixture.sql.prepare("SELECT value FROM store_settings WHERE key='whatsapp_group_url'").get()?.value).toBe(invitation);
   });
-  it("activates only the verified bot and exact group and preserves its first activation cutoff",async()=>{
+  it("activates only the verified bot and canonical group with a typographic subject and preserves its first activation cutoff",async()=>{
     fixture.sql.prepare("DELETE FROM store_settings WHERE key=?").run(SALES_CONFIG_KEY);
     const {POST}=await import("@/app/api/admin/whatsapp-notifications/route");const {salesGatewayControl}=await import("@/lib/whatsapp/gateway");
     const enable=(c="")=>POST(new NextRequest("http://localhost/api/admin/whatsapp-notifications",{method:"POST",headers:{cookie:c},body:JSON.stringify({action:"enable"})}));
     expect((await enable()).status).toBe(401);const c=await cookie();
     vi.mocked(salesGatewayControl).mockResolvedValue({connected:true,botNumber:"628111111111",groupName:"AXVARA'S",groupId:GROUP});expect((await enable(c)).status).toBe(409);
-    vi.mocked(salesGatewayControl).mockResolvedValue({connected:true,botNumber:"6283181632507",groupName:"AXVARA'S",groupId:GROUP});
+    vi.mocked(salesGatewayControl).mockResolvedValue({connected:true,botNumber:"6283181632507",groupName:"OTHER",groupId:GROUP});expect((await enable(c)).status).toBe(409);
+    vi.mocked(salesGatewayControl).mockResolvedValue({connected:true,botNumber:"6283181632507",groupName:"AXVARA'S",groupSubject:"AXVARA’S",groupId:GROUP});
     const first=await enable(c);expect(first.status).toBe(200);const cutoff=(await first.json()).config.enabledAt;
     expect((await (await enable(c)).json()).config.enabledAt).toBe(cutoff);
   });

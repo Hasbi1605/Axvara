@@ -2,7 +2,7 @@ import pg from "pg";
 import { createHash } from "node:crypto";
 
 export const BOT_NUMBER = "6283181632507";
-export const GROUP_NAME = "AXVARA'S";
+export { GROUP_NAME } from "./group-target.js";
 export function groupAllowsBotSend(group: { announce?: boolean; participants: { id: string; phoneNumber?: string; admin?: string | null }[] }, ownLid?: string) {
   if (!group.announce) return true;
   const normalize = (id: string) => id.replace(/:\d+@/, "@");

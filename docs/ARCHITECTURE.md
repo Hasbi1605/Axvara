@@ -2989,8 +2989,13 @@ Nomor sesi kini dipatok BOT_NUMBER kode, bukan env WA_BOT_NUMBER lama.
   code401 sendiri bukan bukti ban. Tidak ada pairing code/QR dalam log.
 - Admin-only GET/POST `/api/admin/whatsapp-notifications`: status, pair, enable,
   disable. Proxy gateway token-only `/notification-status`, `/notification-pair`,
-  `/send-notification`. Pair eksplisit owner; grup pertama nama tepat unik
-  AXVARA'S lalu pinID PG. Aktif hanya connected + nomor cocok + grup tepat +
+  `/send-notification`. Pair eksplisit owner; grup pertama nama unik AXVARA'S
+  setelah NFKC/trim/kapitalisasi/penyetaraan apostrof ’/‘/ʼ → ', lalu pinID PG.
+  `gateway/src/group-target.ts` menolak nama ganda setelah normalisasi, substring
+  dan nama lain; metadata pin memakai pencocokan sama, tidak rebind ID otomatis.
+  `/notification-status` memberi groupName kanonis AXVARA'S dan groupSubject asli
+  hanya setelah identitas/izin grup lolos; Pages tetap memvalidasi groupName kanonis.
+  Aktif hanya connected + nomor cocok + grup tepat +
   tidak blocked. Grup announcement memvalidasi bot admin melalui PN/LID; owner harus memenuhi izin grup.
 - Internal store_settings.whatsapp_sales_notifications menyimpan
   enabled/enabledAt/groupId; tidak dibocorkan settings publik. Cutoff paid_at

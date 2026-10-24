@@ -16,8 +16,11 @@ berpindah dari folder saudara `axvara-wa-gateway` pada 24 Oktober 2026.
   tidak lagi menentukan sesi. Auth Postgres memakai prefix nomor itu; jangan
   menghapus key sesi lama tanpa prefix atau tabel idempotensi/control.
 - Hanya satu proses memiliki advisory lock Postgres. Cache grup invalidasi pada
-  perubahan metadata/anggota; tujuan pertama harus satu grup persis `AXVARA'S`,
-  kemudian pin ID durable. Nama ganda/berubah gagal tertutup.
+  perubahan metadata/anggota; tujuan pertama harus satu grup `AXVARA'S` setelah
+  NFKC, trim, kapitalisasi dan penyetaraan apostrof ’/‘/ʼ. Tidak ada substring/fuzzy
+  matching. Nama ganda setelah normalisasi ditolak; kemudian pin ID durable.
+  Pin tidak berpindah jika nama berubah. `/notification-status` memberi groupName
+  kanonis dan groupSubject asli hanya setelah grup/izin kirim terverifikasi.
 - Pairing hanya aksi admin dari Pengaturan Toko; kode jangan masuk log/git.
   401 tidak otomatis berarti ban. 401/403/440/500 berhenti untuk pemeriksaan;
   515 restart normal, error sementara memakai backoff.

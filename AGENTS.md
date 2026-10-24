@@ -190,6 +190,12 @@ Repo ini tidak berdiri sendiri. Tiga folder lokal lain saling berkaitan:
 
 Aturan lintas-repo: (1) Env Pages bertipe `secret_text` SELALU (plain_text tidak terbawa deploy); (2) Jangan `wrangler pages deployment create` tanpa direktori (me-redeploy artefak lama = rollback prod); (3) Deploy hanya via CI (`git push origin main`); (4) Perintah Heroku akun #2 wajib prefix `HEROKU_API_KEY=<kunci-akun-2>`.
 
+Notifikasi grup24Oktober: pencarian AXVARA'S menyetarakan NFKC/trim/kapitalisasi
+dan apostrof ’/‘/ʼ → ', tanpa substring. Nama setara ganda ditolak; ID pin PG
+tidak berpindah otomatis. Gateway status memberi `groupName` kanonis untuk
+validasi aktivasi Pages dan `groupSubject` asli hanya setelah grup/izin lolos.
+Bot tersambung tidak perlu pairing ulang untuk perbaikan nama.
+
 ### Pedia katalog/checkout 2026-10-15
 - Spesifikasi terkini: `docs/pedia/catalog-checkout-2026-10-15.md`; menggantikan snapshot UI/katalog 12 Oktober di bawah. 38 jenis/131 mapping awal/16 platform; migrasi 0065/0066, hanya mirror layak diaktifkan. UI 3 pilihan awal mobile/desktop; drop/refill tetap. Revisi konfigurator 2026-10-16: kartu kebutuhan tanpa pilihan otomatis, daftar layanan satu kolom/pilihan aktif ringkas di semua ukuran, jumlah/link/checklist berdekatan, detail terlipat sesudah input; checkout dua tahap dan kontrak quote/retry tetap.
 - Harga jumlah bebas dari `/api/pedia/prices`; order/job/debit/ledger atomik D1. QR gagal diulang memakai quote sama. Cron Pedia membalik reservasi kredit pra-pensiun sekali ke arsip beku dan mengantrekannya untuk penyelesaian manual. Tidak ada flag dispatch baru; proses lewat cron existing.

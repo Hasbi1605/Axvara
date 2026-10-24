@@ -258,7 +258,7 @@ export async function salesGatewayControl(action: "status" | "pair") {
   });
   const body = await response.json();
   if (!response.ok) throw new Error(body.reason || "Gateway WhatsApp belum siap.");
-  return body as { connected: boolean; botNumber: string; groupId?: string; groupName?: string; pairingCode?: string; error?: string; blocked?: boolean };
+  return body as { connected: boolean; botNumber: string; groupId?: string; groupName?: string; groupSubject?: string; pairingCode?: string; error?: string; blocked?: boolean };
 }
 
 export function sendImageMessage(params: SendImageParams): Promise<WhatsAppSendResult> {

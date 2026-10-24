@@ -25,7 +25,11 @@ tautan publik bypass verifikasi. Sesi tidak valid harus masuk admin; akses pembe
 normal tetap memerlukan kontak/capability.
 
 Kontrol admin WA: Hubungkan nomor bot, Cek koneksi, Aktifkan/Nonaktifkan. Aktivasi
-hanya nomor dan grup terverifikasi; cutoff paid_at mencegah backfill sebelum
+hanya nomor dan grup terverifikasi. Pencarian mengenali AXVARA’S (apostrof
+melengkung) dan AXVARA'S sebagai nama yang sama, dengan trim/NFKC/tanpa membedakan
+kapitalisasi; nama ganda ditolak dan ID grup tersimpan tidak berpindah otomatis.
+Bot yang sudah tersambung cukup Cek koneksi, tanpa pairing ulang.
+Cutoff paid_at mencegah backfill sebelum
 aktivasi. Antrean existing tetap durable saat nonaktif/offline, dilanjutkan dengan
 batas operasional satu percobaan baru/60detik. Hasil kirim ambigu membutuhkan
 pemeriksaan; jangan mengirim ulang buta. Baileys bukan layanan resmi dan tidak
