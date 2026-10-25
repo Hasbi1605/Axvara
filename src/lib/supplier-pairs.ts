@@ -3,6 +3,7 @@
 // OTOMATIS mana yang tampil (stok dulu, modal kemudian), bukan manual.
 //
 // Aturan prioritas (decideWinner):
+//   0. AKTIF MANUAL: produk OFF tidak boleh menahan sisi yang masih ON.
 //   1. STOK DULU: yang stok 0 otomatis kalah. Pemenang = yang berstok.
 //      Dua-duanya habis → winner NULL, sisi SK disembunyikan dan WR tampil
 //      sebagai wakil 1 kartu (Opsi B, keputusan owner 2026-10-02: 1 barang
@@ -40,6 +41,8 @@ type Row = Record<string, unknown>;
 export type PairStats = {
   wrExists: boolean;
   skExists: boolean;
+  wrActive: boolean;
+  skActive: boolean;
   wrStock: number;
   skStock: number;
   wrModal: number | null;
@@ -70,6 +73,8 @@ const modalSql = (col: string) => `COALESCE(
 const PAIR_STATS_SQL = `SELECT sp.*,
     EXISTS(SELECT 1 FROM products p WHERE p.id=sp.wr_product_id) AS st_wr_exists,
     EXISTS(SELECT 1 FROM products p WHERE p.id=sp.sk_product_id) AS st_sk_exists,
+    EXISTS(SELECT 1 FROM products p WHERE p.id=sp.wr_product_id AND p.is_active=1) AS st_wr_active,
+    EXISTS(SELECT 1 FROM products p WHERE p.id=sp.sk_product_id AND p.is_active=1) AS st_sk_active,
     ${stockSql("wr_product_id")} AS st_wr_stock,
     ${stockSql("sk_product_id")} AS st_sk_stock,
     ${modalSql("wr_product_id")} AS st_wr_modal,
@@ -82,6 +87,8 @@ function statsFromRow(row: Row): PairStats {
   return {
     wrExists: Number(row.st_wr_exists ?? 0) === 1,
     skExists: Number(row.st_sk_exists ?? 0) === 1,
+    wrActive: Number(row.st_wr_active ?? 0) === 1,
+    skActive: Number(row.st_sk_active ?? 0) === 1,
     wrStock: stock(row.st_wr_stock),
     skStock: stock(row.st_sk_stock),
     wrModal: modal(row.st_wr_modal),
@@ -94,6 +101,9 @@ export function decideFromStats(pair: Pick<PairRow, "prefer" | "prefer_margin">,
   // Guard pasangan yatim (cermin WR 2026-09-11): produk dihapus manual →
   // pasangan tidak diputuskan (winner NULL), dibersihkan admin belakangan.
   if (!stats.wrExists || !stats.skExists) return { winner: null, reason: "pasangan_yatim" };
+  if (!stats.wrActive && !stats.skActive) return { winner: null, reason: "dua-duanya nonaktif manual" };
+  if (!stats.wrActive) return { winner: "SK", reason: "WR nonaktif manual" };
+  if (!stats.skActive) return { winner: "WR", reason: "SK nonaktif manual" };
   const { wrStock, skStock, wrModal, skModal } = stats;
   const wrHas = wrStock > 0;
   const skHas = skStock > 0;
@@ -172,13 +182,14 @@ export async function decideAllWinners(database?: DatabaseAccess): Promise<{ dec
  * propagated so a retry cannot report a successful but unapplied decision.
  * The existing full cron/admin sweep remains the recovery path.
  */
-export async function decideDirtyWinners(database?: DatabaseAccess): Promise<{ decided: number; changed: number }> {
+export async function decideDirtyWinners(database?: DatabaseAccess, productId?: number): Promise<{ decided: number; changed: number }> {
   const db = database ?? createDatabaseAccess();
   const sql = PAIR_STATS_SQL.replace("SELECT sp.*,", "SELECT sp.*, dirty.version AS dirty_version,")
     .replace("FROM supplier_pairs sp", `FROM supplier_pair_dirty dirty
       CROSS JOIN supplier_pairs sp ON sp.id=dirty.pair_id WHERE dirty.pending=1
+      ${productId === undefined ? "" : "AND (sp.wr_product_id=? OR sp.sk_product_id=?)"}
       ORDER BY dirty.pair_id LIMIT 10`);
-  const rows = await db.queryAll(sql);
+  const rows = await db.queryAll(sql, ...(productId === undefined ? [] : [productId, productId]));
   let decided = 0, changed = 0;
   for (const row of rows) {
     if (!db.canSpend(2)) break;

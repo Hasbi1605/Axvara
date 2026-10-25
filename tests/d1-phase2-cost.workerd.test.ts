@@ -12,7 +12,7 @@ it("D1 measures fewer reads for catalog, unique inventory and active-first atten
   try {
     const db=await runtime.getD1Database("DB");
     await db.batch([
-      "CREATE TABLE products(id INTEGER PRIMARY KEY)",
+      "CREATE TABLE products(id INTEGER PRIMARY KEY,is_active INTEGER DEFAULT 1)",
       "CREATE TABLE product_variants(id INTEGER PRIMARY KEY,product_id INTEGER,stock INTEGER,price INTEGER,is_active INTEGER,fulfillment_mode TEXT,min_qty INTEGER,wr_variant_id TEXT,sk_variant_id TEXT)",
       "CREATE TABLE fulfillment_inventory(id INTEGER PRIMARY KEY,product_id INTEGER,variant_id INTEGER,status TEXT)",
       "CREATE INDEX old_inventory_index ON fulfillment_inventory(product_id,status)",
@@ -30,7 +30,7 @@ it("D1 measures fewer reads for catalog, unique inventory and active-first atten
     ].map(sql=>db.prepare(sql)));
     const numbers=(max:number)=>`WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<${max})`;
     await db.batch([
-      db.prepare(`${numbers(1000)} INSERT INTO products SELECT x FROM n`),
+      db.prepare(`${numbers(1000)} INSERT INTO products(id) SELECT x FROM n`),
       db.prepare(`${numbers(40)} INSERT INTO supplier_pairs(id,wr_product_id,sk_product_id,winner) SELECT x,x*2-1,x*2,'WR' FROM n`),
       db.prepare(`${numbers(50)} INSERT INTO product_variants(id,product_id,stock,price,is_active,fulfillment_mode,min_qty) SELECT x,1,1,1000,1,'unique',1 FROM n`),
       db.prepare(`${numbers(5000)} INSERT INTO fulfillment_inventory SELECT x,1,(x%50)+1,'available' FROM n`),
@@ -72,5 +72,14 @@ it("D1 measures fewer reads for catalog, unique inventory and active-first atten
     expect((await decideDirtyWinners(base)).decided).toBe(1);
     expect((await db.prepare("SELECT * FROM supplier_pair_dirty WHERE pending=1").all()).results).toEqual([]);
     console.info("[d1-phase2-cost]",JSON.stringify({catalog:[oldCatalog.meta.rows_read,catalog.meta.rows_read],inventory:[oldInventory.meta.rows_read,inventory.meta.rows_read],attention:[oldAttention.meta.rows_read,attention.meta.rows_read],cleanPairTick:dirtyReads}));
+    const activeMigration=readFileSync("drizzle/migrations/0078_supplier_pair_manual_active.sql","utf8");
+    const activeTriggers=activeMigration.match(/CREATE TRIGGER[\s\S]*?\nEND;/g)??[];
+    const activeStatements=activeMigration.replace(/CREATE TRIGGER[\s\S]*?\nEND;/g,"").replace(/^--.*$/gm,"").split(";").map(s=>s.trim()).filter(Boolean);
+    for(const sql of [...activeTriggers,...activeStatements]) await db.prepare(sql).run();
+    expect((await db.prepare("SELECT COUNT(*) AS n FROM supplier_pair_dirty WHERE pending=1").first())?.n).toBe(40);
+    await db.prepare("UPDATE supplier_pair_dirty SET pending=0").run();
+    await db.prepare("UPDATE products SET is_active=0 WHERE id=1").run();
+    expect(await decideDirtyWinners(base,1)).toEqual({decided:1,changed:1});
+    expect(await db.prepare("SELECT winner,reason FROM supplier_pairs WHERE id=1").first()).toEqual({winner:"SK",reason:"WR nonaktif manual"});
   } finally {await runtime.dispose();}
 },30000);

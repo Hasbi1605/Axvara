@@ -1,5 +1,19 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Produk pasangan WR/SK yang dinonaktifkan — 25 Oktober 2026
+
+Produk OFF manual tidak lagi ikut memenangkan pasangan. Jika ChatGPT WR OFF dan
+SK ON, SK menjadi wakil katalog; jika kedua sisi ON, stok/modal/preferensi kembali
+menentukan. Sisi yang OFF tetap OFF, dan wakil dengan stok habis tetap mengikuti
+kartu habis. Toggle/simpan admin memperbarui pasangan terkait sebelum daftar dimuat
+ulang; kegagalan rekalkulasi dilanjutkan cron existing. Daftar publik dapat
+tertinggal hingga cache Market30detik.
+
+Migrasi0078 menambahkan invalidasi perubahan aktivasi dan mengantrekan ulang
+keputusan lama (maks10pasangan/tick cleanup existing). Token versi/CAS, stok,
+kontrak order lama, env dan jadwal cron dipertahankan. Perubahan diterbitkan via
+CI main; jangan menjalankan migrasi/deploy manual untuk perbaikan ini.
+
 ## Siaran tersimpan dan sambutan anggota WA — 24 Oktober 2026
 
 ✅ Admin **Konten → Siaran** (`/admin?section=broadcasts`): buat/simpan template teks
@@ -729,10 +743,10 @@ Status “Sedang dikirim ke supplier” dapat tersangkut ketika pembelian sudah 
 
 Axvara menjadi reseller layer di atas Sekalipay (`https://sekalipay.com/api`)
 SEBAGAI SUPPLIER KEDUA yang paralel dengan WR — bukan failover otomatis.
-Produk yang tampil dipilih manual: Netflix WR vs Netflix SK = dua baris
-katalog berbeda (nama publik BERSIH tanpa suffix supplier sejak 2026-09-30,
-dibedakan di admin via badge asal + slug `-wr`/`-sk`), admin mengaktifkan salah satu
-atau keduanya untuk perbandingan harga/stok. Fase 1 hanya varian
+Netflix WR vs Netflix SK tetap dua baris di admin (nama publik bersih tanpa
+suffix supplier, dibedakan via badge asal + slug `-wr`/`-sk`). Untuk pasangan
+terdaftar, katalog memilih satu wakil otomatis dari sisi yang aktif manual,
+kemudian stok/modal/preferensi; owner tetap mengendalikan toggle tiap produk. Fase 1 hanya varian
 `order_process=auto` kategori Aplikasi Premium (lisensi langsung di
 `order.completed`, tanpa field `note/zone_id`); varian manual/h2h/smm dicatat
 di registry tanpa pasangan katalog. Modul `src/lib/sekalipay/` (client header

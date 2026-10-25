@@ -6,6 +6,7 @@ import { queryFirst, queryAll, execRun, getD1, isD1Mode } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { resolveCategorySlug } from "@/lib/products";
+import { decideDirtyWinners } from "@/lib/supplier-pairs";
 import {
   WR_OWNED_PRODUCT_FIELDS,
   WR_OWNED_VARIANT_FIELDS,
@@ -433,6 +434,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: "Terjadi kesalahan pada server. Coba lagi." }, { status: 500 });
     }
   }
+  if (data.isActive !== undefined || hasExplicitVariants || changesLegacyCommerceFields) {
+    // The write is already durable. On failure the versioned queue remains
+    // pending for the existing cron; do not tell admin that saving failed.
+    await decideDirtyWinners(undefined, Number(id)).catch(() => {
+      console.error("Supplier pair refresh deferred after product update");
+    });
+  }
   return NextResponse.json({ ok: true });
 }
 
@@ -451,6 +459,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       d1.prepare("UPDATE products SET is_active=0, updated_at=datetime('now') WHERE id=?").bind(id),
       d1.prepare("UPDATE product_variants SET is_active=0, updated_at=datetime('now') WHERE product_id=?").bind(id),
     ]);
+    await decideDirtyWinners(undefined, Number(id)).catch(() => {
+      console.error("Supplier pair refresh deferred after product archive");
+    });
     return NextResponse.json({ ok: true, action: "archived" });
   }
   await execRun("DELETE FROM products WHERE id=?", id);

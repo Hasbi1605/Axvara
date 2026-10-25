@@ -1,5 +1,22 @@
 # ARCHITECTURE.md — AXVARA
 
+## Aktivasi manual pemilihan WR/SK — 25 Oktober 2026
+
+✅ Implementasi; publikasi CI. Statistik `supplier-pairs.ts` membaca `products.is_active`
+per sisi dalam SELECT agregat existing. Prioritas sebelum stok/modal/preferensi:
+OFF/OFF→NULL, WR OFF→SK, SK OFF→WR. OFF tidak pernah diaktifkan oleh selector.
+`PUT /api/products/[id]` setelah perubahan aktivasi/varian/harga-stok dan DELETE
+arsip D1 menjalankan `decideDirtyWinners` terbatas pada product ID terkait
+(maks10pasangan); kegagalan hanya menunda rekalkulasi karena simpan sudah durable.
+Daftar admin dimuat ulang oleh hook existing; cache publik Market30detik tetap.
+
+Migrasi0078 + schema menambahkan trigger `pair_dirty_product_active_update` hanya
+pada perubahan `is_active`, mengganti token versi dan `pending=1` secara atomik.
+Migrasi juga mengantrekan ulang seluruh keputusan lama; cron lite cleanup existing
+menguras maks10/tick, sweep hourly tetap cadangan. Ack tidak menghapus token;
+CAS pembaruan pemenang/ack tetap menolak hasil basi. Tidak menambah cron/env,
+menulis stok, mengubah flag supplier atau snapshot/pengiriman order lama.
+
 ## Siaran admin dan event anggota — 24 Oktober 2026
 
 ✅ Admin menambah lazy component `BroadcastManager` pada `?section=broadcasts` dan
@@ -1886,10 +1903,11 @@ Migrasi `0074_inventory_priority.sql` menambah `fulfillment_inventory.sort_order
 
 Axvara menjadi reseller layer di atas Sekalipay (`https://sekalipay.com/api`,
 docs `https://sekalipay.com/api-docs`) SEBAGAI SUPPLIER KEDUA yang paralel
-dengan WR — bukan failover otomatis (keputusan owner). Produk yang tampil
-dipilih manual: Netflix WR vs Netflix SK = dua baris katalog berbeda (nama
-publik bersih tanpa suffix sejak 2026-09-30, preseden Antigravity 0045;
-pembedaan hanya badge admin + slug `-wr`/`-sk`).
+dengan WR — bukan failover order otomatis (keputusan owner). Netflix WR vs
+Netflix SK tetap dua baris di admin (nama publik bersih tanpa suffix, badge admin
++ slug `-wr`/`-sk`). Pasangan terdaftar memilih satu wakil katalog otomatis dari
+sisi yang aktif manual, kemudian stok/modal/preferensi; snapshot order tetap
+mengikat supplier semula.
 
 ### Recovery invoice SK setelah dispatch terputus (2026-10-23, implementasi; publikasi CI)
 
