@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { createHmac } from "node:crypto";
 import { createD1Fixture, insertTestProduct, stubFulfillmentKey } from "./helpers/d1-fixture";
 import { createChannelOrderAtomic } from "@/lib/commerce";
 import { calculateCrc16, createDanaQrisInvoice, createGopayQrisInvoice, reissueDanaQrisInvoice } from "@/lib/payments/dana-qris";
@@ -53,9 +54,14 @@ async function cron(route: "operations" | "publish-scheduled" = "operations") {
 }
 async function webhook(amount: number, reference = `fixture-${amount}`, provider: "dana" | "gopay" = "dana") {
   const { POST } = provider === "gopay" ? await import("@/app/api/webhook/gopay/route") : await import("@/app/api/webhook/dana/route");
+  const body = JSON.stringify({ payment: { amount, currency: "IDR", reference }, merchant: "DANA",
+    ...(provider === "gopay" ? { order_code: A, event_id: reference, merchant_id: "G111111111", currency: "IDR",
+      transaction_status: "settlement", paid_at: new Date().toISOString() } : {}),
+  });
   return POST(new NextRequest(`http://localhost/api/webhook/${provider}`, {
-    method: "POST", headers: { "content-type": "application/json", [provider === "gopay" ? "x-poller-secret" : "x-webhook-secret"]: "fixture-secret" },
-    body: JSON.stringify({ payment: { amount, currency: "IDR", reference }, merchant: "DANA" }),
+    method: "POST", headers: { "content-type": "application/json", [provider === "gopay" ? "x-poller-secret" : "x-webhook-secret"]: "fixture-secret",
+      ...(provider === "gopay" ? { "x-poller-signature": createHmac("sha256", "fixture-secret").update(body).digest("hex") } : {}),
+    }, body,
   }));
 }
 async function retry(eventId: number) {
@@ -191,7 +197,8 @@ describe("QRIS mutation fencing", () => {
 describe("existing invoices during payment maintenance", () => {
   it.each(["dana", "gopay"] as const)("still accepts existing %s payments and releases expired stock exactly once", async (provider) => {
     vi.stubEnv("GOPAY_QRIS_ENABLED", "true");
-    vi.stubEnv("GOPAY_STATIC_QRIS", process.env.DANA_STATIC_QRIS!);
+    const source = "00020101021126610014COM.GO-JEK.WWW01189360091431111111110210G1111111110303UMI53033605802ID6304";
+    vi.stubEnv("GOPAY_STATIC_QRIS", source + calculateCrc16(source));
     vi.stubEnv("GOPAY_POLLER_SECRET", "fixture-secret");
     const invoice = await checkout(A, provider);
     await checkout(B, provider);

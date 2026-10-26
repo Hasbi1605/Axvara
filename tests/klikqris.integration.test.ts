@@ -130,6 +130,20 @@ describe("Paid background payment recovery",()=>{
 });
 
 describe("KlikQRIS invoice contract and durable creation",()=>{
+ it("retains a saved KlikQRIS invoice after new checkouts switch to GoPay",async()=>{
+  const first=await checkout();
+  vi.stubEnv("QRIS_ACTIVE_PROVIDER","gopay");vi.stubEnv("GOPAY_QRIS_ENABLED","true");
+  vi.stubEnv("GOPAY_STATIC_QRIS","unused-gopay-config");vi.stubEnv("GOPAY_POLLER_SECRET","fixture-secret");
+  expect((await createActiveQrisInvoice(A,1000)).payableAmount).toBe(first.payableAmount);
+  expect(posts()).toBe(1);expect(tx().provider).toBe("klikqris");
+ });
+ it("recovers initializing KlikQRIS only by GET after the active rail changes to GoPay",async()=>{
+  await seed();failCreateAfterSave=true;
+  await expect(createActiveQrisInvoice(A,1000)).rejects.toThrow("klikqris_network_ambiguous");
+  vi.stubEnv("QRIS_ACTIVE_PROVIDER","gopay");failCreateAfterSave=false;
+  expect((await createActiveQrisInvoice(A,1000)).payableAmount).toBe(1089);
+  expect(posts()).toBe(1);expect(tx().provider).toBe("klikqris");expect(tx().status).toBe("pending");
+ });
  it.each(["081234567890","6281234567890","+6281234567890"," 0812-3456 7890 "])("sends the saved buyer phone %s in country-code format only on create",async phone=>{
   await seed(A,"web");
   fixture.sql.prepare("UPDATE orders SET customer_wa=? WHERE code=?").run(phone,A);

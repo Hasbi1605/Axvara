@@ -1,5 +1,37 @@
 # PRD — AXVARA
 
+## Kembali ke GoPay Merchant pribadi — 27 Oktober 2026
+
+✅ Implementasi dan verifikasi fixture; rilis Pages melalui CI. Atas instruksi
+owner, invoice baru kembali memakai GoPay Merchant **Axvara Digital**
+(`G564039370`, NMID `ID1024342457479`, nomor `082135277434`). Identitas QR,
+nomor merchant, outlet aktif, sesi dan akses baca mutasi telah diverifikasi;
+tidak ada pembayaran/order supplier berbayar pada QA. Penyebab suspend terdahulu
+belum diketahui dan perubahan ini tidak menjamin akun bebas pembatasan.
+
+Pola reuse, expiry15menit, status otomatis dan callback terverifikasi mengikuti
+referensi AutoGoPay, diimplementasikan pada server AXVARA sendiri. Tidak memakai
+API/langganan AutoGoPay. QR dibuat lokal dari payload owner, satu invoice per
+order; klik ulang memakai QR/nominal yang sama. Maksimal satu QR pengganti hanya
+setelah QR lama kedaluwarsa dan order masih hidup, tanpa memperpanjang deadline.
+GoPay yang tidak lengkap gagal tertutup; tidak mengalihkan uang ke merchant DANA.
+Invoice KlikQRIS/DANA/GoPay lama tetap di provider dan merchant tersimpannya;
+initializing KlikQRIS tidak diubah menjadi invoice GoPay baru.
+
+Pemeriksaan mutasi dilakukan satu loop per server, minimal15detik dan melambat
+menjadi30/60detik saat invoice terbaru berumur2/5menit; tidak ada query GoBiz
+saat tidak ada invoice aktif. Tombol cek tidak mempercepat batas ini. Error
+menjalankan backoff; sesi mati/penolakan akun/persistensi token gagal menjeda
+akun untuk pemeriksaan manual. Callback wajib signature atas body mentah,
+merchant/nominal/order/status settlement atau capture/waktu bayar yang cocok.
+Data tidak lengkap, salah merchant/order atau terlambat tidak melunasi otomatis.
+Paid tersimpan dahulu, pengiriman dilanjutkan background server/cron existing.
+
+Referensi: [AutoGoPay webhook](https://autogopay.site/docs/webhook),
+[generate QRIS](https://autogopay.site/docs/gopay/qris-generate), serta peringatan
+dashboard owner27Oktober mengenai maksimal1–2generate per transaksi. Cadence
+3/5/10detik AutoGoPay tidak disalin ke query langsung GoBiz AXVARA.
+
 ✅ Perbaikan GoPay VPS 25 Oktober: pembayaran gagal dilaporkan tidak lagi
 dianggap selesai selama dua jam; poller menunggu ACK durable Pages dan mencoba
 kembali lewat interval existing. Pemicu manual memakai antrean loop yang sama,
@@ -416,7 +448,7 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 
 **Bedanya dengan Marketku.id:**
 - Desain: Apple Store minimalis + glassmorphism, bukan template marketplace kaku
-- Pembayaran: **QRIS dinamis melalui gateway KlikQRIS** untuk invoice baru; GoPay/DANA tetap didukung untuk invoice lama; transfer manual tetap mode maintenance
+- Pembayaran: **QRIS dinamis GoPay Merchant Axvara Digital** untuk invoice baru sejak27Oktober2026; KlikQRIS/DANA/GoPay lama tetap pada rail asal; transfer manual tetap mode maintenance
 - Hosting: **Gratis selamanya** di Cloudflare Pages — unlimited bandwidth, CDN Indonesia super cepat, tanpa ngurus VPS
 - Fokus niche: Digital goods (lisensi/key/akun), bukan fisik
 

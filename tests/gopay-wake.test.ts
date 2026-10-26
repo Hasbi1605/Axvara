@@ -24,6 +24,7 @@ describe("scheduleGopayWake", () => {
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe(DEFAULT_GOPAY_POLLER_WAKE_URL);
     expect(init.method).toBe("POST");
+    expect(init.redirect).toBe("manual");
     expect((init.headers as Record<string, string>)["x-poller-secret"]).toBe("poller-secret");
   });
 

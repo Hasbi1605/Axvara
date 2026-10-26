@@ -1,0 +1,1764 @@
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,5 @@
++node_modules/
++dist/
++.env*
++.session*
++.DS_Store
+diff --git a/AGENTS.md b/AGENTS.md
+new file mode 100644
+--- /dev/null
++++ b/AGENTS.md
+@@ -0,0 +1,72 @@
++# AGENTS.md — axvara-gopay-poller (Poller mutasi GoPay Merchant)
++
++> Scope: HANYA folder `axvara-gopay-poller/`. Service pribadi 1 akun, bukan multi-tenant.
++
++## Pengaman terkini — 27 Oktober 2026 (menggantikan cadence/refresh lama di bawah)
++- Owner kembali ke Axvara Digital G564039370, nomor082135277434/NMID ID1024342457479. QR cocok dan sesi/profil/outlet aktif diverifikasi baca-saja; bukan jaminan bebas suspend atau bukti pembayaran end-to-end. Pola AutoGoPay diterapkan sendiri, tanpa memakai layanannya.
++- Satu loop; gate merchant15/30/60detik menurut umur invoice terbaru <2/<5/≥5menit, minimum15detik dan jitter loop0–3detik. Wake/tick memakai gate yang sama, timer digabung; tanpa invoice valid/aktif tidak query GoBiz. Batas/backoff/hold durable di SESSION_PATH.poll-state, chmod600/fsync+rename. Jangan hapus state atau mengganti sesi untuk menghindari pembatasan akun.
++- SDK merchantid0.1.1 melakukan refresh+retry401 satu kali. Poller tidak memanggil refresh kedua; 401 tersisa backoff10menit, error biasa30detik→5menit. Refresh token mati, persist gagal atau403/423 menjeda merchant sampai sesi pengganti manual; restart saja tidak membuka hold. Simpan token baru dengan fsync sebelum callback SDK berhasil, kegagalan wajib throw. Login manual memakai deviceId lama, cooldown120detik/challenge5menit.
++- Transport SDK hanya GET /merchant-analytics/v2/merchants/transactions ke api.gojekapi.com dan POST /goid/token ke api.gobiz.co.id, redirect manual. Tidak ada generate QR, transfer, tarik dana atau login otomatis.
++- Pencocokan wajib merchant/currency IDR/paymentType qris|gopay/status settlement|capture/nominal/waktu valid. Timestamp GoBiz tanpa zona berbentuk SQLite dibaca WIB; timestamp invoice SQLite dibaca UTC. Invalid/future/late/ambigu tidak di-forward.
++- Forward menambah merchant_id/currency/transaction_status/paid_at ISO dan x-poller-signature HMAC-SHA256 hex lowercase atas body mentah dengan GOPAY_POLLER_SECRET existing. Event ID tetap gopay-poller:<txId>; dedupe hanya ACK2xx ok:true status paid|already_paid|duplicate|unmatched. Receiver memeriksa order/merchant/waktu dan tidak fallback order berbeda.
++- Rollout poller ini dahulu di VPS, baru push receiver Pages yang mewajibkan signature. Salin SELURUH dist termasuk durable-store/poll-safety/gobiz-transport; backup dulu dan pertahankan .env/dua sesi/state. Jangan rollback poller tanpa signature setelah receiver baru. Snapshot source lengkap di axvara/issue/patches/gopay-hardening-2026-10-27.patch (apply ke direktori kosong), karena folder ini bukan repo Git.
++
++## Posisi dalam ekosistem
++| Folder | Peran |
++|---|---|
++| `/Users/macbookair/axvara` | Toko utama. Webhook `POST /api/webhook/gopay` (header `x-poller-secret`) + invoice `provider='gopay'` |
++| `/Users/macbookair/axvara-wr-proxy` | Inspirasinya (Fastify + systemd), tapi service TERPISAH di VPS yang sama |
++| Folder ini | Poll mutasi GoBiz 15–18 detik → POST match ke Pages |
++
++## Aturan keras (anti-ban, konsensus komunitas 2026-10-02)
++1. **Read-only ke GoPay.** Tidak pernah transfer/tarik/ubah apa pun. Bila butuh tulis, tolak + matikan service.
++2. **Session di file `chmod 600`, JANGAN di git.** Path: `/opt/axvara/gopay/.session` (prod), `./.session` (dev, git-ignored).
++3. **Interval 15 detik + jitter 0–3 detik, zero poll saat idle.** Jangan tiru 3 detik AutoGoPay / 9 detik fixed (sidik jari bot). Tanpa pending = tidak hit GoBiz sama sekali.
++4. **401 → refresh 1x → backoff 10 mnt + notif; error lain → backoff exponential 30s→5 mnt. JANGAN loop login / retry cepat.** Login OTP manual 1x.
++5. **Kirim `order_code` bila tahu** (dari `/api/webhook/gopay/pending` ber-token; Pages verifikasi ulang + guard atomik).
++6. Perubahan kontrak webhook → sinkron `axvara/docs/ARCHITECTURE.md` + `CHANGELOG.md` di commit yang sama.
++
++## Idle + wake (2026-10-10)
++- Tanpa invoice pending: tidur `IDLE_POLL_INTERVAL_MS` (default 60 dtk). Ada pending/error: 15 dtk + jitter.
++- `POST /wake` (header `x-poller-secret`) memotong tidur; publik via Caddy `https://wr-proxy.axvara.tech/gopay/wake`. Dipanggil Pages (`axvara/src/lib/payments/gopay-wake.ts`) saat QR GoPay terbit/reissue + tombol cek status web/Telegram.
++- Loop tetap satu-satunya pemanggil GoBiz; jarak minimum antar poll `WAKE_MIN_GAP_MS` (10 dtk). Jangan buat wake memanggil `pollOnce` langsung.
++
++## Sesi GoBiz (insiden 2026-10-10)
++- Refresh token berrotasi tiap auto-refresh → `onTokenRefreshed` WAJIB menulis `.session` (atomik). Jangan hapus.
++- Login ulang: `node dist/login.js request <nomor tanpa 0>` lalu `node dist/login.js verify <otp>` (env dari `.env`), lalu restart service.
++
++## Dua merchant (2026-10-16, ganti QRIS ke axvara.tech)
++- Poller melayani dua akun GoBiz bersamaan selama masa transisi: utama
++  `GOPAY_MERCHANT_ID` + `SESSION_PATH` (`/opt/axvara/gopay/.session`, merchant
++  lama `G564039370`) dan kedua `GOPAY_SECONDARY_MERCHANT_ID` +
++  `GOPAY_SECONDARY_SESSION_PATH` (`/opt/axvara/gopay/.session-axvara-tech`,
++  merchant `G284624569` axvara.tech). Merchant dan path kedua WAJIB berbeda
++  dari utama; token refresh hanya menulis file akunnya sendiri.
++- Routing per invoice dari field `merchant_id` pada respons Pages
++  `/api/webhook/gopay/pending` (dibaca Pages dari payload QR tersimpan).
++  Respons lama tanpa field → merchant utama. `merchant_id` null/tidak dikenal
++  TIDAK PERNAH dialihkan ke akun lain: invoice dilewati (`unroutable`),
++  tidak ada query GoBiz dan tidak ada forward untuknya.
++- Backoff/401/streak error bersifat per merchant — satu akun rate-limit tidak
++  memblokir akun lain. Health menampilkan `merchantSessions[]`.
++- Login akun kedua memakai env override, contoh:
++  `GOPAY_MERCHANT_ID=G284624569 SESSION_PATH=/opt/axvara/gopay/.session-axvara-tech node dist/login.js request|verify ...`
++  lalu restart service. Jangan menimpa `.session` utama.
++- Test: `npm test` (build + routing unit + integrasi poller berjalan dengan
++  stub `merchantid`).
++
++## ACK dan pemicu manual — 25 Oktober 2026
++- Mutasi hanya masuk dedupe dua jam setelah Pages memberi HTTP2xx dengan JSON `ok:true` dan status `paid|already_paid|duplicate|unmatched`. Status unmatched adalah keputusan manual yang sudah durable; jangan menganggapnya paid.
++- 4xx/5xx/redirect/JSON rusak atau status tak dikenal tidak di-ACK. Event ID tetap; retry mengikuti loop existing, tanpa poll tambahan ke GoBiz. POST memakai redirect manual agar secret tidak diteruskan ke URL lain.
++- `/tick` legacy kini alias `/wake`: respons `{status:true,queued:true,eta_ms}` mengantrekan loop tunggal, bukan hasil polling seketika. Keduanya menghormati jarak minimum/backoff per merchant; jangan memanggil `pollOnce` dari handler.
++- Test memakai stub merchantid dan Pages lokal; tidak login, mengubah sesi produksi atau memanggil GoBiz nyata.
++
++## Deploy (VPS `wr-proxy.axvara.tech`, service terpisah)
++```bash
++npm ci && npm test
++# Backup dist produksi, lalu salin SELURUH dist/ ke /opt/axvara/gopay/app/dist/.
++# pages-forward.js wajib ikut index.js/merchant-routing.js/login.js.
++# Jangan timpa .env / .session / .session-axvara-tech atau dependensi existing.
++sudo systemctl restart gopay-poller
++curl http://127.0.0.1:3002/health
++```
+diff --git a/package.json b/package.json
+new file mode 100644
+--- /dev/null
++++ b/package.json
+@@ -0,0 +1,22 @@
++{
++  "name": "axvara-gopay-poller",
++  "version": "0.1.0",
++  "private": true,
++  "type": "module",
++  "engines": {
++    "node": ">=20 <25"
++  },
++  "scripts": {
++    "build": "tsc",
++    "test": "npm run build && node --test test/*.test.mjs",
++    "start": "node dist/index.js"
++  },
++  "dependencies": {
++    "fastify": "^5.3.3",
++    "merchantid": "^0.1.1"
++  },
++  "devDependencies": {
++    "@types/node": "^22.15.3",
++    "typescript": "^5.8.3"
++  }
++}
+diff --git a/package-lock.json b/package-lock.json
+new file mode 100644
+--- /dev/null
++++ b/package-lock.json
+@@ -0,0 +1,698 @@
++{
++  "name": "axvara-gopay-poller",
++  "version": "0.1.0",
++  "lockfileVersion": 3,
++  "requires": true,
++  "packages": {
++    "": {
++      "name": "axvara-gopay-poller",
++      "version": "0.1.0",
++      "dependencies": {
++        "fastify": "^5.3.3",
++        "merchantid": "^0.1.1"
++      },
++      "devDependencies": {
++        "@types/node": "^22.15.3",
++        "typescript": "^5.8.3"
++      },
++      "engines": {
++        "node": ">=20 <25"
++      }
++    },
++    "node_modules/@fastify/ajv-compiler": {
++      "version": "4.0.6",
++      "resolved": "https://registry.npmjs.org/@fastify/ajv-compiler/-/ajv-compiler-4.0.6.tgz",
++      "integrity": "sha512-NtuzM0SfaMJbGlnjr9LWQUN5LzgSrbB8tf/wRZNas+4E1O/Nmzl53e7ruT61HDZyRCJGC6FxIogmNZO1c5ETBA==",
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/fastify"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/fastify"
++        }
++      ],
++      "license": "MIT",
++      "dependencies": {
++        "ajv": "^8.12.0",
++        "ajv-formats": "^3.0.1",
++        "fast-uri": "^4.0.0"
++      }
++    },
++    "node_modules/@fastify/error": {
++      "version": "4.2.0",
++      "resolved": "https://registry.npmjs.org/@fastify/error/-/error-4.2.0.tgz",
++      "integrity": "sha512-RSo3sVDXfHskiBZKBPRgnQTtIqpi/7zhJOEmAxCiBcM7d0uwdGdxLlsCaLzGs8v8NnxIRlfG0N51p5yFaOentQ==",
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/fastify"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/fastify"
++        }
++      ],
++      "license": "MIT"
++    },
++    "node_modules/@fastify/fast-json-stringify-compiler": {
++      "version": "5.1.0",
++      "resolved": "https://registry.npmjs.org/@fastify/fast-json-stringify-compiler/-/fast-json-stringify-compiler-5.1.0.tgz",
++      "integrity": "sha512-PxcYtKLbQ8Z+yApiqjK8FwxIwvEj38k2OiLc17u8dkJSlmfi2wHHPaSnaoqBPQqtvF8YVsDgDpP2snDCfFrpfw==",
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/fastify"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/fastify"
++        }
++      ],
++      "license": "MIT",
++      "dependencies": {
++        "fast-json-stringify": "^7.0.0"
++      }
++    },
++    "node_modules/@fastify/forwarded": {
++      "version": "3.0.2",
++      "resolved": "https://registry.npmjs.org/@fastify/forwarded/-/forwarded-3.0.2.tgz",
++      "integrity": "sha512-NE8HgKLgYejV9lDpqkEFaDKMLYelJBVfHekhB0UKvX0ghagXRJqg68feg8er1NPXxG4N9i6vPxzt8E+3wHfcmA==",
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/fastify"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/fastify"
++        }
++      ],
++      "license": "MIT"
++    },
++    "node_modules/@fastify/merge-json-schemas": {
++      "version": "0.2.1",
++      "resolved": "https://registry.npmjs.org/@fastify/merge-json-schemas/-/merge-json-schemas-0.2.1.tgz",
++      "integrity": "sha512-OA3KGBCy6KtIvLf8DINC5880o5iBlDX4SxzLQS8HorJAbqluzLRn80UXU0bxZn7UOFhFgpRJDasfwn9nG4FG4A==",
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/fastify"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/fastify"
++        }
++      ],
++      "license": "MIT",
++      "dependencies": {
++        "dequal": "^2.0.3"
++      }
++    },
++    "node_modules/@fastify/proxy-addr": {
++      "version": "5.1.1",
++      "resolved": "https://registry.npmjs.org/@fastify/proxy-addr/-/proxy-addr-5.1.1.tgz",
++      "integrity": "sha512-zv07Y9GEuDsJPegZoDFd4SDWaZOW8N2pa0GSrYmKpId/tjt1Hgo3BjZBVjdVpfVrHaA+Qv5jawtS2O50J5xM9g==",
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/fastify"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/fastify"
++        }
++      ],
++      "license": "MIT",
++      "dependencies": {
++        "@fastify/forwarded": "^3.0.0",
++        "ipaddr.js": "^2.1.0"
++      }
++    },
++    "node_modules/@pinojs/redact": {
++      "version": "0.4.0",
++      "resolved": "https://registry.npmjs.org/@pinojs/redact/-/redact-0.4.0.tgz",
++      "integrity": "sha512-k2ENnmBugE/rzQfEcdWHcCY+/FM3VLzH9cYEsbdsoqrvzAKRhUZeRNhAZvB8OitQJ1TBed3yqWtdjzS6wJKBwg==",
++      "license": "MIT"
++    },
++    "node_modules/@types/node": {
++      "version": "22.20.5",
++      "resolved": "https://registry.npmjs.org/@types/node/-/node-22.20.5.tgz",
++      "integrity": "sha512-U2+DNr+wSjpsTS/wZGYHq7GcwfuSmKiKvoPvK22zwTlRhU91yOniN4qRR5KhIjvif7ysw/dz/hKmfDH0Ris4aA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "undici-types": "~6.21.0"
++      }
++    },
++    "node_modules/abstract-logging": {
++      "version": "2.0.1",
++      "resolved": "https://registry.npmjs.org/abstract-logging/-/abstract-logging-2.0.1.tgz",
++      "integrity": "sha512-2BjRTZxTPvheOvGbBslFSYOUkr+SjPtOnrLP33f+VIWLzezQpZcqVg7ja3L4dBXmzzgwT+a029jRx5PCi3JuiA==",
++      "license": "MIT"
++    },
++    "node_modules/ajv": {
++      "version": "8.20.0",
++      "resolved": "https://registry.npmjs.org/ajv/-/ajv-8.20.0.tgz",
++      "integrity": "sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA==",
++      "license": "MIT",
++      "dependencies": {
++        "fast-deep-equal": "^3.1.3",
++        "fast-uri": "^3.0.1",
++        "json-schema-traverse": "^1.0.0",
++        "require-from-string": "^2.0.2"
++      },
++      "funding": {
++        "type": "github",
++        "url": "https://github.com/sponsors/epoberezkin"
++      }
++    },
++    "node_modules/ajv-formats": {
++      "version": "3.0.1",
++      "resolved": "https://registry.npmjs.org/ajv-formats/-/ajv-formats-3.0.1.tgz",
++      "integrity": "sha512-8iUql50EUR+uUcdRQ3HDqa6EVyo3docL8g5WJ3FNcWmu62IbkGUue/pEyLBW8VGKKucTPgqeks4fIU1DA4yowQ==",
++      "license": "MIT",
++      "dependencies": {
++        "ajv": "^8.0.0"
++      },
++      "peerDependencies": {
++        "ajv": "^8.0.0"
++      },
++      "peerDependenciesMeta": {
++        "ajv": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/ajv/node_modules/fast-uri": {
++      "version": "3.1.8",
++      "resolved": "https://registry.npmjs.org/fast-uri/-/fast-uri-3.1.8.tgz",
++      "integrity": "sha512-GZMtZUTNRpOVIECoXwLNZS5xUGE+mVNbTB8h/7Rwh2TFWcBQiPzTgyZi05BF9UMZKkLJv8XBRJTlU7zg8+ZfMg==",
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/fastify"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/fastify"
++        }
++      ],
++      "license": "BSD-3-Clause"
++    },
++    "node_modules/atomic-sleep": {
++      "version": "1.0.0",
++      "resolved": "https://registry.npmjs.org/atomic-sleep/-/atomic-sleep-1.0.0.tgz",
++      "integrity": "sha512-kNOjDqAh7px0XWNI+4QbzoiR/nTkHAWNud2uvnJquD1/x5a7EQZMJT0AczqK0Qn67oY/TTQ1LbUKajZpp3I9tQ==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=8.0.0"
++      }
++    },
++    "node_modules/avvio": {
++      "version": "9.3.0",
++      "resolved": "https://registry.npmjs.org/avvio/-/avvio-9.3.0.tgz",
++      "integrity": "sha512-g2tQ7LE7oOSqDfwEm3M+ZCMTJc7KiZCdJ4UwyZJb5ckTKyYu50OYmvv0mCFXPuYXoM4zkSt8zM9XQ9KCvxA74A==",
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/fastify"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/fastify"
++        }
++      ],
++      "license": "MIT",
++      "dependencies": {
++        "@fastify/error": "^4.0.0",
++        "fastq": "^1.17.1"
++      }
++    },
++    "node_modules/cookie": {
++      "version": "1.1.1",
++      "resolved": "https://registry.npmjs.org/cookie/-/cookie-1.1.1.tgz",
++      "integrity": "sha512-ei8Aos7ja0weRpFzJnEA9UHJ/7XQmqglbRwnf2ATjcB9Wq874VKH9kfjjirM6UhU2/E5fFYadylyhFldcqSidQ==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=18"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/express"
++      }
++    },
++    "node_modules/dequal": {
++      "version": "2.0.3",
++      "resolved": "https://registry.npmjs.org/dequal/-/dequal-2.0.3.tgz",
++      "integrity": "sha512-0je+qPKHEMohvfRTCEo3CrPG6cAzAYgmzKyxRiYSSDkS6eGJdyVJm7WaYA5ECaAD9wLB2T4EEeymA5aFVcYXCA==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=6"
++      }
++    },
++    "node_modules/fast-decode-uri-component": {
++      "version": "1.0.1",
++      "resolved": "https://registry.npmjs.org/fast-decode-uri-component/-/fast-decode-uri-component-1.0.1.tgz",
++      "integrity": "sha512-WKgKWg5eUxvRZGwW8FvfbaH7AXSh2cL+3j5fMGzUMCxWBJ3dV3a7Wz8y2f/uQ0e3B6WmodD3oS54jTQ9HVTIIg==",
++      "license": "MIT"
++    },
++    "node_modules/fast-deep-equal": {
++      "version": "3.1.3",
++      "resolved": "https://registry.npmjs.org/fast-deep-equal/-/fast-deep-equal-3.1.3.tgz",
++      "integrity": "sha512-f3qQ9oQy9j2AhBe/H9VC91wLmKBCCU/gDOnKNAYG5hswO7BLKj09Hc5HYNz9cGI++xlpDCIgDaitVs03ATR84Q==",
++      "license": "MIT"
++    },
++    "node_modules/fast-json-stringify": {
++      "version": "7.0.1",
++      "resolved": "https://registry.npmjs.org/fast-json-stringify/-/fast-json-stringify-7.0.1.tgz",
++      "integrity": "sha512-eRSayARSbbwlBjpP4vnTTIRD5QPcIrmihPxDeN1DtKnHPg66UuJLx+8hlK1kaFdjvzyQ/dzALoi4vwAQ+T+iZA==",
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/fastify"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/fastify"
++        }
++      ],
++      "license": "MIT",
++      "dependencies": {
++        "@fastify/merge-json-schemas": "^0.2.0",
++        "ajv": "^8.12.0",
++        "ajv-formats": "^3.0.1",
++        "fast-uri": "^4.0.0",
++        "json-schema-ref-resolver": "^3.0.0",
++        "rfdc": "^1.2.0"
++      }
++    },
++    "node_modules/fast-querystring": {
++      "version": "1.1.2",
++      "resolved": "https://registry.npmjs.org/fast-querystring/-/fast-querystring-1.1.2.tgz",
++      "integrity": "sha512-g6KuKWmFXc0fID8WWH0jit4g0AGBoJhCkJMb1RmbsSEUNvQ+ZC8D6CUZ+GtF8nMzSPXnhiePyyqqipzNNEnHjg==",
++      "license": "MIT",
++      "dependencies": {
++        "fast-decode-uri-component": "^1.0.1"
++      }
++    },
++    "node_modules/fast-uri": {
++      "version": "4.2.1",
++      "resolved": "https://registry.npmjs.org/fast-uri/-/fast-uri-4.2.1.tgz",
++      "integrity": "sha512-TmHQgewjHtMq1E5QKA0tOE0yeYGQs25KZC/ziJpubRtWI15W92e6vPFydWOeZBVROSHBYw/QhD9d5OefdD6LDg==",
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/fastify"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/fastify"
++        }
++      ],
++      "license": "BSD-3-Clause"
++    },
++    "node_modules/fastify": {
++      "version": "5.12.5",
++      "resolved": "https://registry.npmjs.org/fastify/-/fastify-5.12.5.tgz",
++      "integrity": "sha512-OB2k1dlxs5/NAABqeKV2FUHkSD2BbENsCak8yULVcymn3fHIPDVa9TI3SDnJSWYSllZmSYuZXy2gTnsT+Sut1A==",
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/fastify"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/fastify"
++        }
++      ],
++      "license": "MIT",
++      "dependencies": {
++        "@fastify/ajv-compiler": "^4.0.5",
++        "@fastify/error": "^4.0.0",
++        "@fastify/fast-json-stringify-compiler": "^5.0.0",
++        "@fastify/proxy-addr": "^5.0.0",
++        "abstract-logging": "^2.0.1",
++        "avvio": "^9.0.0",
++        "fast-json-stringify": "^7.0.0",
++        "find-my-way": "^9.6.0",
++        "light-my-request": "^6.0.0",
++        "pino": "^9.14.0 || ^10.1.0",
++        "process-warning": "^5.1.0",
++        "rfdc": "^1.3.1",
++        "secure-json-parse": "^4.0.0",
++        "semver": "^7.6.0",
++        "toad-cache": "^3.7.0"
++      }
++    },
++    "node_modules/fastq": {
++      "version": "1.20.3",
++      "resolved": "https://registry.npmjs.org/fastq/-/fastq-1.20.3.tgz",
++      "integrity": "sha512-XKv5nnLs6nLF71NgiKJLIZFLkPyIEuOselLG7ujZnGrRfQK8HpvY+WqKhAJUAdLomwVHErVS4LfxFlPq0/FTAw==",
++      "license": "ISC",
++      "dependencies": {
++        "reusify": "^1.0.4"
++      }
++    },
++    "node_modules/find-my-way": {
++      "version": "9.9.0",
++      "resolved": "https://registry.npmjs.org/find-my-way/-/find-my-way-9.9.0.tgz",
++      "integrity": "sha512-sJsgZ1sQH2UDuowPuMKg8az7Qc8F0jnj+SKkFWU/+T0xcFlgV5skgXOGUqmQzOdmW6ALA7AhJINWx3qFBkbLHA==",
++      "license": "MIT",
++      "dependencies": {
++        "fast-deep-equal": "^3.1.3",
++        "fast-querystring": "^1.0.0",
++        "safe-regex2": "^5.0.0"
++      },
++      "engines": {
++        "node": ">=20"
++      }
++    },
++    "node_modules/ipaddr.js": {
++      "version": "2.5.0",
++      "resolved": "https://registry.npmjs.org/ipaddr.js/-/ipaddr.js-2.5.0.tgz",
++      "integrity": "sha512-aq+t5NAc+cS6rZQQVWC2x98CPqGtKKTMDd4Gaodv0wShnItdKg/51djkGJ1hqH+Oy0ivDftCbSLCQob8zso01w==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 10"
++      }
++    },
++    "node_modules/json-schema-ref-resolver": {
++      "version": "3.0.0",
++      "resolved": "https://registry.npmjs.org/json-schema-ref-resolver/-/json-schema-ref-resolver-3.0.0.tgz",
++      "integrity": "sha512-hOrZIVL5jyYFjzk7+y7n5JDzGlU8rfWDuYyHwGa2WA8/pcmMHezp2xsVwxrebD/Q9t8Nc5DboieySDpCp4WG4A==",
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/fastify"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/fastify"
++        }
++      ],
++      "license": "MIT",
++      "dependencies": {
++        "dequal": "^2.0.3"
++      }
++    },
++    "node_modules/json-schema-traverse": {
++      "version": "1.0.0",
++      "resolved": "https://registry.npmjs.org/json-schema-traverse/-/json-schema-traverse-1.0.0.tgz",
++      "integrity": "sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug==",
++      "license": "MIT"
++    },
++    "node_modules/light-my-request": {
++      "version": "6.6.0",
++      "resolved": "https://registry.npmjs.org/light-my-request/-/light-my-request-6.6.0.tgz",
++      "integrity": "sha512-CHYbu8RtboSIoVsHZ6Ye4cj4Aw/yg2oAFimlF7mNvfDV192LR7nDiKtSIfCuLT7KokPSTn/9kfVLm5OGN0A28A==",
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/fastify"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/fastify"
++        }
++      ],
++      "license": "BSD-3-Clause",
++      "dependencies": {
++        "cookie": "^1.0.1",
++        "process-warning": "^4.0.0",
++        "set-cookie-parser": "^2.6.0"
++      }
++    },
++    "node_modules/light-my-request/node_modules/process-warning": {
++      "version": "4.0.1",
++      "resolved": "https://registry.npmjs.org/process-warning/-/process-warning-4.0.1.tgz",
++      "integrity": "sha512-3c2LzQ3rY9d0hc1emcsHhfT9Jwz0cChib/QN89oME2R451w5fy3f0afAhERFZAwrbDU43wk12d0ORBpDVME50Q==",
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/fastify"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/fastify"
++        }
++      ],
++      "license": "MIT"
++    },
++    "node_modules/merchantid": {
++      "version": "0.1.1",
++      "resolved": "https://registry.npmjs.org/merchantid/-/merchantid-0.1.1.tgz",
++      "integrity": "sha512-XIA4tWYOqBE548e2VlOAlkP16z0VhQbGH3wnGJxJjZX6X7L8K4DdDhfpFAAq+LpEEsNsfC9SG8FmvTF9q2Pbzg==",
++      "license": "MIT",
++      "bin": {
++        "merchantid": "dist/cli.cjs"
++      },
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/on-exit-leak-free": {
++      "version": "2.1.2",
++      "resolved": "https://registry.npmjs.org/on-exit-leak-free/-/on-exit-leak-free-2.1.2.tgz",
++      "integrity": "sha512-0eJJY6hXLGf1udHwfNftBqH+g73EU4B504nZeKpz1sYRKafAghwxEJunB2O7rDZkL4PGfsMVnTXZ2EjibbqcsA==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=14.0.0"
++      }
++    },
++    "node_modules/pino": {
++      "version": "10.3.1",
++      "resolved": "https://registry.npmjs.org/pino/-/pino-10.3.1.tgz",
++      "integrity": "sha512-r34yH/GlQpKZbU1BvFFqOjhISRo1MNx1tWYsYvmj6KIRHSPMT2+yHOEb1SG6NMvRoHRF0a07kCOox/9yakl1vg==",
++      "license": "MIT",
++      "dependencies": {
++        "@pinojs/redact": "^0.4.0",
++        "atomic-sleep": "^1.0.0",
++        "on-exit-leak-free": "^2.1.0",
++        "pino-abstract-transport": "^3.0.0",
++        "pino-std-serializers": "^7.0.0",
++        "process-warning": "^5.0.0",
++        "quick-format-unescaped": "^4.0.3",
++        "real-require": "^0.2.0",
++        "safe-stable-stringify": "^2.3.1",
++        "sonic-boom": "^4.0.1",
++        "thread-stream": "^4.0.0"
++      },
++      "bin": {
++        "pino": "bin.js"
++      }
++    },
++    "node_modules/pino-abstract-transport": {
++      "version": "3.0.0",
++      "resolved": "https://registry.npmjs.org/pino-abstract-transport/-/pino-abstract-transport-3.0.0.tgz",
++      "integrity": "sha512-wlfUczU+n7Hy/Ha5j9a/gZNy7We5+cXp8YL+X+PG8S0KXxw7n/JXA3c46Y0zQznIJ83URJiwy7Lh56WLokNuxg==",
++      "license": "MIT",
++      "dependencies": {
++        "split2": "^4.0.0"
++      }
++    },
++    "node_modules/pino-std-serializers": {
++      "version": "7.1.0",
++      "resolved": "https://registry.npmjs.org/pino-std-serializers/-/pino-std-serializers-7.1.0.tgz",
++      "integrity": "sha512-BndPH67/JxGExRgiX1dX0w1FvZck5Wa4aal9198SrRhZjH3GxKQUKIBnYJTdj2HDN3UQAS06HlfcSbQj2OHmaw==",
++      "license": "MIT"
++    },
++    "node_modules/process-warning": {
++      "version": "5.1.0",
++      "resolved": "https://registry.npmjs.org/process-warning/-/process-warning-5.1.0.tgz",
++      "integrity": "sha512-jQSaVHsPgtyw60e1rQ/A+/ArPEj/S8pS/vFnyGa/gYFXrKk/6RuDkoqVDQ5NI5MmS01698ltlAk0NoDBNLujRw==",
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/fastify"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/fastify"
++        }
++      ],
++      "license": "MIT"
++    },
++    "node_modules/quick-format-unescaped": {
++      "version": "4.0.4",
++      "resolved": "https://registry.npmjs.org/quick-format-unescaped/-/quick-format-unescaped-4.0.4.tgz",
++      "integrity": "sha512-tYC1Q1hgyRuHgloV/YXs2w15unPVh8qfu/qCTfhTYamaw7fyhumKa2yGpdSo87vY32rIclj+4fWYQXUMs9EHvg==",
++      "license": "MIT"
++    },
++    "node_modules/real-require": {
++      "version": "0.2.0",
++      "resolved": "https://registry.npmjs.org/real-require/-/real-require-0.2.0.tgz",
++      "integrity": "sha512-57frrGM/OCTLqLOAh0mhVA9VBMHd+9U7Zb2THMGdBUoZVOtGbJzjxsYGDJ3A9AYYCP4hn6y1TVbaOfzWtm5GFg==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 12.13.0"
++      }
++    },
++    "node_modules/require-from-string": {
++      "version": "2.0.2",
++      "resolved": "https://registry.npmjs.org/require-from-string/-/require-from-string-2.0.2.tgz",
++      "integrity": "sha512-Xf0nWe6RseziFMu+Ap9biiUbmplq6S9/p+7w7YXP/JBHhrUDDUhwa+vANyubuqfZWTveU//DYVGsDG7RKL/vEw==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=0.10.0"
++      }
++    },
++    "node_modules/ret": {
++      "version": "0.5.0",
++      "resolved": "https://registry.npmjs.org/ret/-/ret-0.5.0.tgz",
++      "integrity": "sha512-I1XxrZSQ+oErkRR4jYbAyEEu2I0avBvvMM5JN+6EBprOGRCs63ENqZ3vjavq8fBw2+62G5LF5XelKwuJpcvcxw==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=10"
++      }
++    },
++    "node_modules/reusify": {
++      "version": "1.1.0",
++      "resolved": "https://registry.npmjs.org/reusify/-/reusify-1.1.0.tgz",
++      "integrity": "sha512-g6QUff04oZpHs0eG5p83rFLhHeV00ug/Yf9nZM6fLeUrPguBTkTQOdpAWWspMh55TZfVQDPaN3NQJfbVRAxdIw==",
++      "license": "MIT",
++      "engines": {
++        "iojs": ">=1.0.0",
++        "node": ">=0.10.0"
++      }
++    },
++    "node_modules/rfdc": {
++      "version": "1.4.1",
++      "resolved": "https://registry.npmjs.org/rfdc/-/rfdc-1.4.1.tgz",
++      "integrity": "sha512-q1b3N5QkRUWUl7iyylaaj3kOpIT0N2i9MqIEQXP73GVsN9cw3fdx8X63cEmWhJGi2PPCF23Ijp7ktmd39rawIA==",
++      "license": "MIT"
++    },
++    "node_modules/safe-regex2": {
++      "version": "5.1.1",
++      "resolved": "https://registry.npmjs.org/safe-regex2/-/safe-regex2-5.1.1.tgz",
++      "integrity": "sha512-mOSBvHGDZMuIEZMdOz/aCEYDCv0E7nfcNsIhUF+/P+xC7Hyf3FkvymqgPbg9D1EdSGu+uKbJgy09K/RKKc7kJA==",
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/fastify"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/fastify"
++        }
++      ],
++      "license": "MIT",
++      "dependencies": {
++        "ret": "~0.5.0"
++      },
++      "bin": {
++        "safe-regex2": "bin/safe-regex2.js"
++      }
++    },
++    "node_modules/safe-stable-stringify": {
++      "version": "2.5.0",
++      "resolved": "https://registry.npmjs.org/safe-stable-stringify/-/safe-stable-stringify-2.5.0.tgz",
++      "integrity": "sha512-b3rppTKm9T+PsVCBEOUR46GWI7fdOs00VKZ1+9c1EWDaDMvjQc6tUwuFyIprgGgTcWoVHSKrU8H31ZHA2e0RHA==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=10"
++      }
++    },
++    "node_modules/secure-json-parse": {
++      "version": "4.1.0",
++      "resolved": "https://registry.npmjs.org/secure-json-parse/-/secure-json-parse-4.1.0.tgz",
++      "integrity": "sha512-l4KnYfEyqYJxDwlNVyRfO2E4NTHfMKAWdUuA8J0yve2Dz/E/PdBepY03RvyJpssIpRFwJoCD55wA+mEDs6ByWA==",
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/fastify"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/fastify"
++        }
++      ],
++      "license": "BSD-3-Clause"
++    },
++    "node_modules/semver": {
++      "version": "7.8.5",
++      "resolved": "https://registry.npmjs.org/semver/-/semver-7.8.5.tgz",
++      "integrity": "sha512-Y7/KDsb8LjooZpwaqGyulO6DQlksgCncchHGk+sZIY4SBvUocMBEFH5Ur1fI4dV+Jvl0w6cjvucaIi40puRioA==",
++      "license": "ISC",
++      "bin": {
++        "semver": "bin/semver.js"
++      },
++      "engines": {
++        "node": ">=10"
++      }
++    },
++    "node_modules/set-cookie-parser": {
++      "version": "2.7.2",
++      "resolved": "https://registry.npmjs.org/set-cookie-parser/-/set-cookie-parser-2.7.2.tgz",
++      "integrity": "sha512-oeM1lpU/UvhTxw+g3cIfxXHyJRc/uidd3yK1P242gzHds0udQBYzs3y8j4gCCW+ZJ7ad0yctld8RYO+bdurlvw==",
++      "license": "MIT"
++    },
++    "node_modules/sonic-boom": {
++      "version": "4.2.1",
++      "resolved": "https://registry.npmjs.org/sonic-boom/-/sonic-boom-4.2.1.tgz",
++      "integrity": "sha512-w6AxtubXa2wTXAUsZMMWERrsIRAdrK0Sc+FUytWvYAhBJLyuI4llrMIC1DtlNSdI99EI86KZum2MMq3EAZlF9Q==",
++      "license": "MIT",
++      "dependencies": {
++        "atomic-sleep": "^1.0.0"
++      }
++    },
++    "node_modules/split2": {
++      "version": "4.2.0",
++      "resolved": "https://registry.npmjs.org/split2/-/split2-4.2.0.tgz",
++      "integrity": "sha512-UcjcJOWknrNkF6PLX83qcHM6KHgVKNkV62Y8a5uYDVv9ydGQVwAHMKqHdJje1VTWpljG0WYpCDhrCdAOYH4TWg==",
++      "license": "ISC",
++      "engines": {
++        "node": ">= 10.x"
++      }
++    },
++    "node_modules/thread-stream": {
++      "version": "4.2.0",
++      "resolved": "https://registry.npmjs.org/thread-stream/-/thread-stream-4.2.0.tgz",
++      "integrity": "sha512-e2zZ96wSChazBsbENf/Pcm/4swHt2cEKQ92rhUjkL9GCKiTDJIaTBenjE/m9DXi0QBmTMDkFDdOomUy20A1tDQ==",
++      "license": "MIT",
++      "dependencies": {
++        "real-require": "^1.0.0"
++      },
++      "engines": {
++        "node": ">=20"
++      }
++    },
++    "node_modules/thread-stream/node_modules/real-require": {
++      "version": "1.0.0",
++      "resolved": "https://registry.npmjs.org/real-require/-/real-require-1.0.0.tgz",
++      "integrity": "sha512-P4nbQYQfePJxRSmY+v/KINxVucm4NF3p3s7pJveMTtom52FR4YGltUQLB8idDXwDDWW+eYrWDFbuzUnjoWHF7g==",
++      "license": "MIT"
++    },
++    "node_modules/toad-cache": {
++      "version": "3.7.4",
++      "resolved": "https://registry.npmjs.org/toad-cache/-/toad-cache-3.7.4.tgz",
++      "integrity": "sha512-m1TdR/rvT7kgGJZhspNtXdsdYk0fddFpJJFlG5s+UkPFo6lkLoZ3YLOaovPYjq1R75NP5JfeTlSHaOsE09peCg==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=20"
++      }
++    },
++    "node_modules/typescript": {
++      "version": "5.9.3",
++      "resolved": "https://registry.npmjs.org/typescript/-/typescript-5.9.3.tgz",
++      "integrity": "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "bin": {
++        "tsc": "bin/tsc",
++        "tsserver": "bin/tsserver"
++      },
++      "engines": {
++        "node": ">=14.17"
++      }
++    },
++    "node_modules/undici-types": {
++      "version": "6.21.0",
++      "resolved": "https://registry.npmjs.org/undici-types/-/undici-types-6.21.0.tgz",
++      "integrity": "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==",
++      "dev": true,
++      "license": "MIT"
++    }
++  }
++}
+diff --git a/tsconfig.json b/tsconfig.json
+new file mode 100644
+--- /dev/null
++++ b/tsconfig.json
+@@ -0,0 +1,12 @@
++{
++  "compilerOptions": {
++    "target": "ES2022",
++    "module": "NodeNext",
++    "moduleResolution": "NodeNext",
++    "strict": true,
++    "outDir": "dist",
++    "rootDir": "src",
++    "skipLibCheck": true
++  },
++  "include": ["src"]
++}
+diff --git a/src/durable-store.ts b/src/durable-store.ts
+new file mode 100644
+--- /dev/null
++++ b/src/durable-store.ts
+@@ -0,0 +1,43 @@
++import { closeSync, existsSync, fsyncSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
++import { dirname } from "node:path";
++import { createHash, randomUUID } from "node:crypto";
++
++export function writePrivateJson(path: string, value: unknown): void {
++  const temporary = `${path}.${randomUUID()}.tmp`;
++  let file: number | undefined;
++  try {
++    file = openSync(temporary, "wx", 0o600);
++    writeFileSync(file, JSON.stringify(value));
++    fsyncSync(file);
++    closeSync(file); file = undefined;
++    renameSync(temporary, path);
++    const directory = openSync(dirname(path), "r");
++    try { fsyncSync(directory); } finally { closeSync(directory); }
++  } finally {
++    if (file !== undefined) closeSync(file);
++    if (existsSync(temporary)) unlinkSync(temporary);
++  }
++}
++
++export function sessionDigest(path: string): string {
++  return createHash("sha256").update(readFileSync(path)).digest("hex");
++}
++
++export type FeedState = {
++  sessionDigest: string; nextPollAt: number; backoffUntil: number;
++  feedErrorStreak: number; last401NotifyAt: number; blockedReason: string | null;
++};
++
++export function loadFeedState(sessionPath: string): FeedState {
++  const digest = sessionDigest(sessionPath);
++  const empty: FeedState = { sessionDigest: digest, nextPollAt: 0, backoffUntil: 0, feedErrorStreak: 0, last401NotifyAt: 0, blockedReason: null };
++  const path = `${sessionPath}.poll-state`;
++  if (!existsSync(path)) return empty;
++  const saved = JSON.parse(readFileSync(path, "utf8")) as FeedState;
++  if (!saved || typeof saved.sessionDigest !== "string"
++    || ![saved.nextPollAt, saved.backoffUntil, saved.feedErrorStreak, saved.last401NotifyAt].every(n => Number.isFinite(n) && n >= 0)
++    || !(saved.blockedReason === null || typeof saved.blockedReason === "string")) throw new Error("invalid_feed_state");
++  // A manual login replaces the session. A service restart alone cannot clear
++  // a restriction, authentication failure, or the next permitted feed request.
++  return saved.sessionDigest === digest ? saved : { ...empty, nextPollAt: saved.nextPollAt };
++}
+diff --git a/src/gobiz-transport.ts b/src/gobiz-transport.ts
+new file mode 100644
+--- /dev/null
++++ b/src/gobiz-transport.ts
+@@ -0,0 +1,10 @@
++export function readonlyGoBizFetch(request: typeof fetch = fetch): typeof fetch {
++  return async (input, init) => {
++    const url = new URL(typeof input === "string" || input instanceof URL ? input : input.url);
++    const method = (init?.method || (input instanceof Request ? input.method : "GET")).toUpperCase();
++    const feed = url.origin === "https://api.gojekapi.com" && url.pathname === "/merchant-analytics/v2/merchants/transactions" && method === "GET";
++    const refresh = url.origin === "https://api.gobiz.co.id" && url.pathname === "/goid/token" && method === "POST";
++    if (!feed && !refresh) throw new Error("gobiz_request_not_allowed");
++    return request(input, { ...init, redirect: "manual" });
++  };
++}
+diff --git a/src/index.ts b/src/index.ts
+new file mode 100644
+--- /dev/null
++++ b/src/index.ts
+@@ -0,0 +1,345 @@
++// axvara-gopay-poller — Fase 1: poll mutasi GoBiz → forward match ke Pages.
++//
++// Loop:
++//   1. GET /api/webhook/gopay/pending (auth x-poller-secret) → nominal aktif
++//   2. Bila kosong: tidur, JANGAN hit GoBiz (hemat rate-limit)
++//   3. Bila ada: GET mutasi GoBiz langsung via p.transactions.list()
++//      (window = invoice tertua s/d sekarang, maks 2 jam ke belakang)
++//   4. Cocok: nominal persis + status settlement/capture + waktu dalam window
++//      invoice [issued_at - 60s, expires_at + 60s]
++//   5. POST /api/webhook/gopay {amount, order_code, event_id} (Pages verifikasi
++//      ulang + guard atomik — poller TIDAK memutuskan lunas, hanya melapor)
++//   6. 401 dari GoBiz → refresh token 1x → masih 401 → backoff 10 mnt + notif
++//
++// Aturan anti-ban (konsensus komunitas gobiz-payment, 2026-10-02):
++// read-only ke GoPay, interval 15 detik + jitter 0-3 detik, zero poll saat
++// idle (tidak hit GoBiz tanpa pending), session chmod 600, 1 IP + 1 device.
++
++import Fastify, { type RouteHandlerMethod } from "fastify";
++import { readFileSync, existsSync } from "node:fs";
++import { timingSafeEqual } from "node:crypto";
++import { GopayProvider } from "merchantid";
++import { merchantSessionPaths, routePendingInvoices, type PendingInvoice } from "./merchant-routing.js";
++import { forwardPayment } from "./pages-forward.js";
++import { loadFeedState, sessionDigest, writePrivateJson, type FeedState } from "./durable-store.js";
++import { readonlyGoBizFetch } from "./gobiz-transport.js";
++import { CLOCK_SKEW_MS, SETTLED, errorKind, feedInterval, invoiceTime, liveInvoices, matchSettlements, transactionTime, type GoBizTx } from "./poll-safety.js";
++
++const PAGES_BASE = (process.env.AXVARA_PAGES_BASE || "https://axvara.tech").replace(/\/+$/, "");
++const POLLER_SECRET = process.env.GOPAY_POLLER_SECRET || "";
++// Celah 1 (patch 2026-10-02): 9 detik fixed → 15 detik + jitter 0–3 detik.
++// Pola request fixed rapat = sidik jari bot paling mudah dibaca WAF/fraud
++// detection. Delay maks 18 detik tidak kerasa (QR berlaku 15 menit).
++function configuredInterval(name: string, fallback: number, minimum: number): number {
++  const value = Number(process.env[name] || fallback);
++  if (!Number.isFinite(value) || value < 0 || value > 3_600_000) throw new Error(`invalid_${name}`);
++  return Math.max(minimum, value);
++}
++const POLL_INTERVAL_MS = configuredInterval("POLL_INTERVAL_MS", 15_000, 15_000);
++const POLL_JITTER_MS = 3_000;
++// 2026-10-10 (insiden 1102 Workers Free): saat TIDAK ada invoice pending,
++// poller dulu tetap memanggil Pages `/pending` tiap ~16 dtk = ±5.100
++// request/hari (37% beban worker dari mesin). Idle kini 60 dtk; Pages
++// memanggil `POST /gopay/wake` saat QR GoPay terbit + saat pembeli klik
++// "Cek Status Sekarang"/"Periksa Pembayaran", sehingga deteksi tetap cepat.
++const IDLE_POLL_INTERVAL_MS = configuredInterval("IDLE_POLL_INTERVAL_MS", 60_000, POLL_INTERVAL_MS);
++// Jarak minimum antar poll walau dibangunkan berulang (spam klik / banyak QR)
++// — menjaga ritme anti-ban GoBiz; wake di dalam jarak ini dijadwalkan ke
++// batas jarak, bukan diabaikan.
++const WAKE_MIN_GAP_MS = configuredInterval("WAKE_MIN_GAP_MS", POLL_INTERVAL_MS, POLL_INTERVAL_MS);
++const SESSION_PATH = process.env.SESSION_PATH || "/opt/axvara/gopay/.session";
++const MERCHANT_ID = process.env.GOPAY_MERCHANT_ID || "G564039370";
++const MERCHANT_SESSIONS = merchantSessionPaths(MERCHANT_ID, SESSION_PATH,
++  process.env.GOPAY_SECONDARY_MERCHANT_ID, process.env.GOPAY_SECONDARY_SESSION_PATH);
++const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
++const TELEGRAM_ADMIN_CHAT_ID = process.env.TELEGRAM_ADMIN_CHAT_ID || "";
++type Pending = PendingInvoice;
++
++const app = Fastify({ logger: true });
++const providers = new Map<string, GopayProvider>();
++let lastPollAt = 0;
++let lastLoopAt = 0; // awal iterasi loop terakhir (dasar jarak minimum wake)
++let lastResult: Record<string, unknown> = { status: "boot" };
++const feedStates = new Map<string, FeedState>();
++let lastSessionSavedAt = 0;
++// Celah 2 (patch 2026-10-02): backoff exponential untuk SEMUA error GoBiz
++// (bukan cuma 401). Retry cepat saat timeout/rate-limit = sinyal bot.
++const FEED_BACKOFF_BASE_MS = 30_000;
++const FEED_BACKOFF_MAX_MS = 5 * 60_000;
++const seenTx = new Map<string, number>(); // txId -> lapor pertama (dedup 2 jam)
++
++function loadProvider(merchantId: string): GopayProvider {
++  const existing = providers.get(merchantId);
++  if (existing) return existing;
++  const path = MERCHANT_SESSIONS.get(merchantId);
++  if (!path) throw new Error("merchant_session_not_configured");
++  const session = JSON.parse(readFileSync(path, "utf8"));
++  const provider = new GopayProvider({
++    merchantId, session,
++    fetch: readonlyGoBizFetch(), requestTimeoutMs: 15_000,
++    onTokenRefreshed: (next) => persistSession(merchantId, next),
++  });
++  providers.set(merchantId, provider);
++  return provider;
++}
++
++/** Refresh token berotasi; setiap akun menulis file sesinya sendiri secara atomik. */
++function persistSession(merchantId: string, session: unknown): void {
++  const path = MERCHANT_SESSIONS.get(merchantId);
++  if (!path) throw new Error("merchant_session_not_configured");
++  try {
++    writePrivateJson(path, session);
++    lastSessionSavedAt = Date.now();
++  } catch (e) {
++    const state = feedStates.get(merchantId);
++    if (state) state.blockedReason = "session_persist_failed";
++    app.log.error({ merchantId }, "session persist failed; stop this merchant");
++    throw Object.assign(new Error("session_persist_failed"), { code: "SESSION_PERSIST_FAILED" });
++  }
++}
++
++async function notifyAdmin(text: string): Promise<void> {
++  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_ADMIN_CHAT_ID) return;
++  await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
++    method: "POST",
++    headers: { "content-type": "application/json" },
++    body: JSON.stringify({ chat_id: TELEGRAM_ADMIN_CHAT_ID, text, parse_mode: "HTML" }),
++    signal: AbortSignal.timeout(10_000),
++  }).catch(() => undefined);
++}
++
++async function getPending(): Promise<Pending[]> {
++  const res = await fetch(`${PAGES_BASE}/api/webhook/gopay/pending`, {
++    redirect: "manual",
++    headers: { "x-poller-secret": POLLER_SECRET },
++    signal: AbortSignal.timeout(15_000),
++  });
++  if (!res.ok) throw new Error(`pending_http_${res.status}`);
++  const json = (await res.json()) as { pending?: Pending[] };
++  if (!Array.isArray(json.pending)) throw new Error("pending_invalid_response");
++  return liveInvoices(json.pending);
++}
++
++async function getMutations(merchantId: string, since: Date, until: Date): Promise<GoBizTx[]> {
++  const p = loadProvider(merchantId);
++  const raw = (await (p.transactions as unknown as {
++    list(id: string, q: unknown): Promise<unknown[]>;
++  }).list(merchantId, {
++    from: 0, size: 100, startTime: since, endTime: until,
++    statuses: ["settlement", "capture"], paymentTypes: ["qris", "gopay"],
++  })) as unknown as {
++    id: string; merchantId: string; currency: string; grossAmount: number; realGrossAmount?: number; status: string;
++    transactionTime: string; paymentType: string;
++  }[];
++  return (raw ?? []).map((t) => ({
++    id: String(t.id ?? ""),
++    merchantId: String(t.merchantId ?? ""), currency: String(t.currency ?? ""),
++    grossAmount: Number(t.grossAmount ?? 0),
++    realGrossAmount: t.realGrossAmount != null ? Number(t.realGrossAmount) : undefined,
++    status: String(t.status ?? ""),
++    transactionTime: String(t.transactionTime ?? ""),
++    paymentType: String(t.paymentType ?? ""),
++  })).filter((t) => t.id && t.grossAmount > 0);
++}
++
++async function forwardToPages(m: { amount: number; orderCode: string; txId: string; merchantId: string; paidAt: string; status: string }): Promise<boolean> {
++  const acknowledged = await forwardPayment(PAGES_BASE, POLLER_SECRET, m);
++  if (!acknowledged) app.log.warn("Pages payment ACK unavailable; retry on normal poll cadence");
++  return acknowledged;
++}
++
++async function pollMerchant(merchantId: string, pending: Pending[]): Promise<Record<string, unknown>> {
++  const path = MERCHANT_SESSIONS.get(merchantId)!;
++  const prior = feedStates.get(merchantId);
++  const state = loadFeedState(path);
++  if (prior?.blockedReason && prior.sessionDigest === state.sessionDigest) state.blockedReason = prior.blockedReason;
++  if (prior && prior.sessionDigest !== state.sessionDigest) providers.delete(merchantId);
++  feedStates.set(merchantId, state);
++  const save = () => { state.sessionDigest = sessionDigest(path); writePrivateJson(`${path}.poll-state`, state); };
++  if (state.blockedReason) return { status: state.blockedReason, pending: pending.length };
++  if (Date.now() < state.backoffUntil) return { status: "backoff", pending: pending.length };
++  if (Date.now() < state.nextPollAt) return { status: "paced", pending: pending.length };
++  state.nextPollAt = Date.now() + feedInterval(pending, POLL_INTERVAL_MS);
++  save();
++
++  const oldestIssued = pending.reduce((a, b) => (a.issued_at < b.issued_at ? a : b)).issued_at;
++  const sinceMs = invoiceTime(oldestIssued);
++  const since = new Date(Number.isFinite(sinceMs) ? Math.max(sinceMs - CLOCK_SKEW_MS, Date.now() - 2 * 3_600_000) : Date.now() - 2 * 3_600_000);
++
++  let mutations: GoBizTx[];
++  try {
++    mutations = await getMutations(merchantId, since, new Date());
++    state.feedErrorStreak = 0; // sukses → reset tangga backoff
++    state.backoffUntil = 0;
++    save();
++  } catch (e) {
++    const kind = state.blockedReason === "session_persist_failed" ? "persistence" : errorKind(e);
++    // Refresh token mati = WAJIB login OTP ulang (tidak bisa pulih sendiri):
++    // notif admin segera + backoff 10 mnt, bukan backoff feed biasa yang
++    // dulu diam saja tanpa kabar.
++    if (["session", "persistence", "restricted"].includes(kind)) {
++      state.blockedReason = kind === "session" ? "session_dead_login_required" : kind === "persistence" ? "session_persist_failed" : "account_restricted_manual_review";
++      if (Date.now() - state.last401NotifyAt > 3_600_000) {
++        state.last401NotifyAt = Date.now();
++        save();
++        await notifyAdmin(`🔴 <b>GoPay poller dijeda</b>\nMerchant ${merchantId}: ${state.blockedReason}. Periksa akun/sesi secara manual sebelum melanjutkan.`);
++      }
++      save();
++      return { status: state.blockedReason, pending: pending.length };
++    }
++    if (kind === "auth") {
++      // merchantid already refreshes and retries a 401 once. Another refresh
++      // here would repeat authentication requests after that attempt failed.
++        state.backoffUntil = Date.now() + 10 * 60_000;
++        if (Date.now() - state.last401NotifyAt > 3_600_000) {
++          state.last401NotifyAt = Date.now();
++          save();
++          await notifyAdmin(`🔴 <b>GoPay poller: session mati</b>\n401 berulang, backoff 10 menit. Login ulang OTP bila berlanjut.`);
++        }
++        save();
++        return { status: "auth_failed_backoff", pending: pending.length };
++    }
++    // Error non-auth (timeout, rate-limit 429, jaringan): backoff exponential
++    // 30s → 60s → 120s → … maks 5 menit, lalu coba lagi. JANGAN retry cepat.
++    state.feedErrorStreak++;
++    const waitMs = Math.min(FEED_BACKOFF_BASE_MS * 2 ** Math.min(state.feedErrorStreak - 1, 5), FEED_BACKOFF_MAX_MS);
++    state.backoffUntil = Date.now() + waitMs;
++    save();
++    app.log.warn({ error: kind, streak: state.feedErrorStreak, waitMs }, "feed error → backoff");
++    return { status: "feed_error_backoff", error: kind, pending: pending.length, waitMs };
++  }
++
++  const matches = matchSettlements(merchantId, pending, mutations).filter(({tx}) => {
++    const seen = seenTx.get(`${merchantId}:${tx.id}`);
++    return !seen || Date.now() - seen >= 2 * 3_600_000;
++  });
++  let forwarded = 0;
++  for (const { pen, tx } of matches) {
++    const ok = await forwardToPages({ amount: pen.payable_amount, orderCode: pen.order_code, txId: tx.id,
++      merchantId, paidAt: new Date(transactionTime(tx.transactionTime)).toISOString(), status: tx.status.trim().toLowerCase() });
++    if (ok) {
++      forwarded++;
++      seenTx.set(`${merchantId}:${tx.id}`, Date.now());
++    }
++  }
++  // Bersihkan dedup basi
++  for (const [id, at] of seenTx) if (Date.now() - at > 2 * 3_600_000) seenTx.delete(id);
++  return { status: "polled", pending: pending.length, mutations: mutations.length, matched: matches.length, forwarded };
++}
++
++async function pollOnce(): Promise<Record<string, unknown>> {
++  if (!POLLER_SECRET) return { status: "not_configured" };
++  const pending = await getPending();
++  lastPollAt = Date.now();
++  if (pending.length === 0) return { status: "idle", pending: 0 };
++  const { byMerchant, unroutable } = routePendingInvoices(pending, MERCHANT_ID, MERCHANT_SESSIONS);
++  const results: Record<string, unknown>[] = [];
++  for (const [merchantId, invoices] of byMerchant) {
++    try { results.push({ merchantId, ...await pollMerchant(merchantId, invoices) }); }
++    catch { results.push({ merchantId, status: "merchant_poll_error", pending: invoices.length }); }
++  }
++  return {
++    status: !unroutable && results.every(r => r.status === "polled") ? "polled" : "partial",
++    pending: pending.length, unroutable, merchants: results,
++    matched: results.reduce((n, r) => n + Number(r.matched || 0), 0),
++    forwarded: results.reduce((n, r) => n + Number(r.forwarded || 0), 0),
++  };
++}
++
++function validToken(raw: unknown): boolean {
++  if (!POLLER_SECRET || typeof raw !== "string") return false;
++  const a = Buffer.from(raw);
++  const b = Buffer.from(POLLER_SECRET);
++  return a.length === b.length && timingSafeEqual(a, b);
++}
++
++app.get("/health", async () => ({
++  status: "ok",
++  provider: "axvara-gopay-poller",
++  phase: "fase-1",
++  configured: Boolean(POLLER_SECRET),
++  sessionExists: existsSync(SESSION_PATH),
++  merchantSessions: [...MERCHANT_SESSIONS].map(([merchantId, path]) => ({ merchantId, sessionExists: existsSync(path) })),
++  feedStates: [...feedStates].map(([merchantId, state]) => ({ merchantId, nextPollAt: state.nextPollAt, backoffUntil: state.backoffUntil, blockedReason: state.blockedReason })),
++  pollIntervalMs: POLL_INTERVAL_MS,
++  idlePollIntervalMs: IDLE_POLL_INTERVAL_MS,
++  wakeMinGapMs: WAKE_MIN_GAP_MS,
++  wakes: wakeCount,
++  lastSessionSavedAt,
++  lastPollAt, lastResult,
++}));
++
++// Tidur yang bisa dipotong `/wake`. Loop TETAP satu-satunya pemanggil
++// pollOnce → tidak pernah ada dua poll paralel ke GoBiz.
++let wakeSleeper: (() => void) | null = null;
++let wakePending = false;
++let wakeCount = 0;
++let wakeTimer: ReturnType<typeof setTimeout> | undefined;
++
++function interruptibleSleep(ms: number): Promise<void> {
++  return new Promise((resolve) => {
++    const timer = setTimeout(done, ms);
++    function done() {
++      clearTimeout(timer);
++      if (wakeSleeper === done) wakeSleeper = null;
++      resolve();
++    }
++    wakeSleeper = done;
++  });
++}
++
++/** Path publik via Caddy: `POST https://wr-proxy.axvara.tech/gopay/wake`. */
++const requestWake: RouteHandlerMethod = async (req, reply) => {
++  if (!validToken(req.headers["x-poller-secret"])) return reply.status(401).send({ status: false });
++  wakeCount++;
++  wakePending = true;
++  // Hormati jarak minimum: bangunkan sekarang bila poll terakhir sudah cukup
++  // lama, selain itu loop akan bangun tepat di batas jarak (lihat loop()).
++  const nextFeed = lastResult.status === "idle" || !feedStates.size ? 0 : Math.min(...[...feedStates.values()].map(state => state.nextPollAt));
++  const eta = Math.max(0, lastLoopAt + WAKE_MIN_GAP_MS - Date.now(), nextFeed - Date.now());
++  if (!eta) wakeSleeper?.();
++  else if (!wakeTimer) wakeTimer = setTimeout(() => { wakeTimer = undefined; wakeSleeper?.(); }, eta).unref();
++  return { status: true, queued: true, eta_ms: eta };
++};
++app.post("/wake", requestWake);
++// Legacy manual trigger shares the paced loop; it must not race session refresh.
++app.post("/tick", requestWake);
++
++app.get("/session/status", async (req, reply) => {
++  if (!validToken(req.headers["x-poller-secret"])) return reply.status(401).send({ status: false });
++  return { status: true, sessionExists: existsSync(SESSION_PATH) };
++});
++
++async function loop(): Promise<void> {
++  for (;;) {
++    lastLoopAt = Date.now();
++    wakePending = false;
++    try {
++      lastResult = await pollOnce();
++    } catch (e) {
++      lastResult = { status: "loop_error", error: String((e as Error)?.message ?? e).slice(0, 200) };
++      app.log.error(lastResult, "poll loop error");
++    }
++    // Jitter 0–3 detik: jeda tidak pernah fixed → tidak seperti cron bot.
++    // Idle (tanpa invoice pending) = 60 dtk; ada pending / error = 15 dtk.
++    const base = lastResult.status === "idle" ? IDLE_POLL_INTERVAL_MS : POLL_INTERVAL_MS;
++    let waitMs = base + Math.floor(Math.random() * (POLL_JITTER_MS + 1));
++    // Wake yang datang SELAMA poll berjalan → poll lagi di batas jarak minimum.
++    if (wakePending) waitMs = Math.max(0, WAKE_MIN_GAP_MS - (Date.now() - lastLoopAt));
++    await interruptibleSleep(waitMs);
++  }
++}
++
++const PORT = Number(process.env.PORT || 3002);
++app.listen({ port: PORT, host: "127.0.0.1" })
++  .then(() => {
++    app.log.info({ port: PORT }, "axvara-gopay-poller Fase 1 listening");
++    if (POLLER_SECRET && [...MERCHANT_SESSIONS.values()].some(path => existsSync(path))) void loop();
++    else app.log.warn("poller idle: secret/session belum lengkap (loop tidak jalan)");
++  })
++  .catch((err) => {
++    app.log.fatal({ err }, "fatal");
++    process.exit(1);
++  });
++
++export { SETTLED };
+diff --git a/src/login.ts b/src/login.ts
+new file mode 100644
+--- /dev/null
++++ b/src/login.ts
+@@ -0,0 +1,54 @@
++// Login OTP GoBiz dua langkah (non-interaktif, aman lewat SSH) — 2026-10-10.
++//   node dist/login.js request <nomor tanpa 0/62, mis. 81234567890>
++//   node dist/login.js verify <kode OTP>
++// deviceId diambil dari sesi lama agar GoBiz tidak melihat perangkat baru
++// (anti-ban: 1 IP + 1 device). Hasil ditulis atomik ke SESSION_PATH chmod 600,
++// lalu `sudo systemctl restart gopay-poller`.
++import { readFileSync, writeFileSync, existsSync, renameSync, unlinkSync } from "node:fs";
++import { GopayProvider } from "merchantid";
++import { writePrivateJson } from "./durable-store.js";
++
++const SESSION_PATH = process.env.SESSION_PATH || "/opt/axvara/gopay/.session";
++const PENDING_PATH = `${SESSION_PATH}.otp`;
++const MERCHANT_ID = process.env.GOPAY_MERCHANT_ID || "G564039370";
++
++function oldDeviceId(): string | undefined {
++  try { return JSON.parse(readFileSync(SESSION_PATH, "utf8")).deviceId; } catch { return undefined; }
++}
++
++function writeAtomic(path: string, data: unknown): void {
++  writePrivateJson(path, data);
++}
++
++async function main(): Promise<void> {
++  const [step, arg] = process.argv.slice(2);
++  if (step === "request" && arg) {
++    if (existsSync(PENDING_PATH)) {
++      const prior = JSON.parse(readFileSync(PENDING_PATH, "utf8"));
++      if (Date.now() - Number(prior.at) < 120_000) throw new Error("otp_request_cooldown_120s");
++    }
++    const phone = arg.replace(/\D/g, "").replace(/^(62|0)/, "");
++    const deviceId = oldDeviceId();
++    const gp = new GopayProvider({ merchantId: MERCHANT_ID, deviceId });
++    const res = await gp.requestOtp(phone, "62");
++    if (!res.otpToken) throw new Error("GoPay tidak mengembalikan otpToken");
++    writeAtomic(PENDING_PATH, { phone, otpToken: res.otpToken, deviceId: deviceId ?? gp.exportSession().deviceId, at: Date.now() });
++    console.log("OTP terkirim. Lanjut: node dist/login.js verify <kode>");
++    return;
++  }
++  if (step === "verify" && arg) {
++    if (!existsSync(PENDING_PATH)) throw new Error("Belum ada request OTP");
++    const p = JSON.parse(readFileSync(PENDING_PATH, "utf8"));
++    if (!Number.isFinite(p.at) || Date.now() - p.at > 5 * 60_000) throw new Error("otp_challenge_expired");
++    const gp = new GopayProvider({ merchantId: MERCHANT_ID, deviceId: p.deviceId });
++    await gp.verifyOtp({ otp: arg.trim(), otpToken: p.otpToken, phoneNumber: p.phone, countryCode: "62" });
++    writeAtomic(SESSION_PATH, gp.exportSession());
++    unlinkSync(PENDING_PATH);
++    console.log("Login sukses, sesi tersimpan. Jalankan: sudo systemctl restart gopay-poller");
++    return;
++  }
++  console.log("Pakai: login.js request <nomor> | login.js verify <otp>");
++  process.exit(2);
++}
++
++main().catch((e) => { console.error("GAGAL:", (e as Error).message); process.exit(1); });
+diff --git a/src/merchant-routing.ts b/src/merchant-routing.ts
+new file mode 100644
+--- /dev/null
++++ b/src/merchant-routing.ts
+@@ -0,0 +1,32 @@
++export type PendingInvoice = {
++  order_code: string;
++  payable_amount: number;
++  expires_at: string;
++  issued_at: string;
++  merchant_id?: string | null;
++};
++
++/** Sesi terpisah: token yang berotasi tidak boleh menimpa akun merchant lain. */
++export function merchantSessionPaths(primaryId: string, primaryPath: string, secondaryId?: string, secondaryPath?: string): Map<string, string> {
++  if (!/^G\d{9}$/.test(primaryId) || !primaryPath) throw new Error("invalid_primary_merchant_session");
++  const sessions = new Map([[primaryId, primaryPath]]);
++  if (!secondaryId && !secondaryPath) return sessions;
++  if (!secondaryId || !secondaryPath || !/^G\d{9}$/.test(secondaryId)
++    || secondaryId === primaryId || secondaryPath === primaryPath) throw new Error("invalid_secondary_merchant_session");
++  sessions.set(secondaryId, secondaryPath);
++  return sessions;
++}
++
++/** Hanya respons Pages lama tanpa field yang memakai merchant legacy. */
++export function routePendingInvoices(pending: PendingInvoice[], legacyMerchantId: string, sessions: ReadonlyMap<string, string>) {
++  const byMerchant = new Map<string, PendingInvoice[]>();
++  let unroutable = 0;
++  for (const invoice of pending) {
++    const merchantId = invoice.merchant_id === undefined ? legacyMerchantId : invoice.merchant_id;
++    if (typeof merchantId !== "string" || !sessions.has(merchantId)) { unroutable++; continue; }
++    const group = byMerchant.get(merchantId) ?? [];
++    group.push(invoice);
++    byMerchant.set(merchantId, group);
++  }
++  return { byMerchant, unroutable };
++}
+diff --git a/src/pages-forward.ts b/src/pages-forward.ts
+new file mode 100644
+--- /dev/null
++++ b/src/pages-forward.ts
+@@ -0,0 +1,32 @@
++const ACK_STATUSES = new Set(["paid", "already_paid", "duplicate", "unmatched"]);
++
++/** Only a durable Pages decision may suppress this mutation on later ticks. */
++export async function forwardPayment(
++  pagesBase: string,
++  secret: string,
++  match: { amount: number; orderCode: string; txId: string; merchantId: string; paidAt: string; status: string },
++  request: typeof fetch = fetch,
++): Promise<boolean> {
++  try {
++    const body = JSON.stringify({
++      amount: match.amount, order_code: match.orderCode,
++      event_id: `gopay-poller:${match.txId}`, payment: { id: match.txId },
++      merchant_id: match.merchantId, paid_at: match.paidAt, currency: "IDR", transaction_status: match.status,
++    });
++    const res = await request(`${pagesBase}/api/webhook/gopay`, {
++      method: "POST",
++      redirect: "manual",
++      headers: { "content-type": "application/json", "x-poller-secret": secret,
++        "x-poller-signature": createHmac("sha256", secret).update(body).digest("hex") },
++      body,
++      signal: AbortSignal.timeout(15_000),
++    });
++    if (!res.ok) return false;
++    const ack = await res.json() as { ok?: unknown; status?: unknown } | null;
++    return ack?.ok === true && typeof ack.status === "string" && ACK_STATUSES.has(ack.status);
++  } catch {
++    return false;
++  }
++}
++import { createHmac } from "node:crypto";
++
+diff --git a/src/poll-safety.ts b/src/poll-safety.ts
+new file mode 100644
+--- /dev/null
++++ b/src/poll-safety.ts
+@@ -0,0 +1,62 @@
++import type { PendingInvoice } from "./merchant-routing.js";
++
++export const SETTLED = new Set(["settlement", "capture"]);
++export const CLOCK_SKEW_MS = 60_000;
++export type GoBizTx = {
++  id: string; merchantId: string; grossAmount: number; realGrossAmount?: number;
++  status: string; currency: string; transactionTime: string; paymentType: string;
++};
++
++export function invoiceTime(value: string): number {
++  return Date.parse(/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/.test(value) ? value.replace(" ", "T") + "Z" : value);
++}
++
++export function transactionTime(value: string): number {
++  if (/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/.test(value)) return Date.parse(value.replace(" ", "T") + "+07:00");
++  return /(?:Z|[+-]\d{2}:\d{2})$/.test(value) ? Date.parse(value) : NaN;
++}
++
++export function liveInvoices(pending: PendingInvoice[], now = Date.now()): PendingInvoice[] {
++  return pending.filter(p => typeof p.order_code === "string" && p.order_code.length > 0
++    && Number.isSafeInteger(p.payable_amount) && p.payable_amount > 0
++    && Number.isFinite(invoiceTime(p.issued_at)) && invoiceTime(p.issued_at) <= now + CLOCK_SKEW_MS
++    && Number.isFinite(invoiceTime(p.expires_at)) && invoiceTime(p.expires_at) > now
++    && invoiceTime(p.expires_at) > invoiceTime(p.issued_at));
++}
++
++export function feedInterval(pending: PendingInvoice[], minimum: number, now = Date.now()): number {
++  const newest = Math.max(...pending.map(p => invoiceTime(p.issued_at)));
++  const age = now - newest;
++  return Math.max(minimum, age < 120_000 ? 15_000 : age < 300_000 ? 30_000 : 60_000);
++}
++
++export function matchSettlements(merchantId: string, pending: PendingInvoice[], mutations: GoBizTx[], now = Date.now()) {
++  const used = new Set<string>();
++  const matches: { pen: PendingInvoice; tx: GoBizTx }[] = [];
++  for (const pen of liveInvoices(pending, now)) {
++    const issued = invoiceTime(pen.issued_at), expires = invoiceTime(pen.expires_at);
++    const candidates = mutations.filter(tx => {
++      const paid = transactionTime(tx.transactionTime);
++      return tx.id && !used.has(tx.id) && tx.merchantId === merchantId && tx.currency === "IDR"
++        && SETTLED.has(tx.status.trim().toLowerCase()) && ["qris", "gopay"].includes(tx.paymentType.toLowerCase())
++        && (tx.grossAmount === pen.payable_amount || tx.realGrossAmount === pen.payable_amount)
++        && Number.isFinite(paid) && paid >= issued - CLOCK_SKEW_MS && paid <= expires && paid <= now + CLOCK_SKEW_MS;
++    });
++    // Multiple matching payments need manual review; choosing one silently can
++    // consume an unrelated transfer with the same amount.
++    if (candidates.length !== 1) continue;
++    const tx = candidates[0]; used.add(tx.id); matches.push({ pen, tx });
++  }
++  return matches;
++}
++
++export function errorKind(error: unknown): "session" | "persistence" | "auth" | "restricted" | "rate_limit" | "feed" {
++  const value = error as { message?: string; status?: number; code?: string };
++  const message = String(value?.message ?? "");
++  if (value?.code === "SESSION_PERSIST_FAILED") return "persistence";
++  if (/refresh token|login again|invalid_grant/i.test(message)) return "session";
++  if (value?.status === 401 || /401|unauthorized/i.test(message)) return "auth";
++  if ([403, 423].includes(Number(value?.status)) || /403|suspend|blocked|banned|account.?locked/i.test(message)) return "restricted";
++  if (value?.status === 429 || /429|rate.?limit/i.test(message)) return "rate_limit";
++  return "feed";
++}
+diff --git a/test/gobiz-transport.test.mjs b/test/gobiz-transport.test.mjs
+new file mode 100644
+--- /dev/null
++++ b/test/gobiz-transport.test.mjs
+@@ -0,0 +1,26 @@
++import {test} from 'node:test';
++import assert from 'node:assert/strict';
++import {GopayProvider} from 'merchantid';
++import {readonlyGoBizFetch} from '../dist/gobiz-transport.js';
++
++test('feed transport permits only transaction reads and token refresh, without following redirects',async()=>{
++ const calls=[];const request=readonlyGoBizFetch(async(input,init)=>{calls.push([String(input),init]);return new Response(null,{status:302,headers:{location:'https://untrusted.example'}});});
++ await request('https://api.gojekapi.com/merchant-analytics/v2/merchants/transactions?size=100');
++ await request('https://api.gobiz.co.id/goid/token',{method:'POST',body:'{}'});
++ assert.equal(calls.length,2);assert.ok(calls.every(([,init])=>init.redirect==='manual'));
++ for(const [url,method] of [['https://api.gojekapi.com/transfer','POST'],['https://api.gobiz.co.id/goid/login/request','POST'],
++  ['https://api.gojekapi.com/merchant-analytics/v2/merchants/transactions','POST'],['https://untrusted.example/goid/token','POST']]){
++  await assert.rejects(request(url,{method}),/gobiz_request_not_allowed/);
++ }
++ assert.equal(calls.length,2);
++});
++test('the installed SDK performs one refresh on 401 and cannot repeat it in the same feed request',async()=>{
++ let feeds=0,refreshes=0,saved;
++ const provider=new GopayProvider({merchantId:'G111111111',session:{deviceId:'stable-device',tokens:{accessToken:'old-access',refreshToken:'old-refresh',tokenType:'bearer',expiresAt:Date.now()+3600000}},
++  onTokenRefreshed:session=>{saved=session;},fetch:readonlyGoBizFetch(async(input)=>{
++   if(new URL(String(input)).pathname==='/goid/token'){refreshes++;return Response.json({access_token:'new-access',refresh_token:'rotated-refresh',token_type:'bearer',expires_in:3600});}
++   feeds++;return Response.json({message:'Unauthorized'},{status:401});
++  })});
++ await assert.rejects(provider.transactions.list('G111111111',{startTime:new Date(Date.now()-60000),endTime:new Date()}));
++ assert.equal(refreshes,1);assert.equal(feeds,2);assert.equal(saved.tokens.refreshToken,'rotated-refresh');assert.equal(saved.deviceId,'stable-device');
++});
+diff --git a/test/merchant-routing.test.mjs b/test/merchant-routing.test.mjs
+new file mode 100644
+--- /dev/null
++++ b/test/merchant-routing.test.mjs
+@@ -0,0 +1,34 @@
++import {test} from 'node:test';
++import assert from 'node:assert/strict';
++import {merchantSessionPaths,routePendingInvoices} from '../dist/merchant-routing.js';
++const oldId='G111111111',newId='G222222222';
++const sessions=merchantSessionPaths(oldId,'/sessions/old',newId,'/sessions/new');
++const pending=(code,merchant_id)=>({order_code:code,payable_amount:10137,expires_at:'2099-01-01',issued_at:'2026-10-16',...(merchant_id===undefined?{}:{merchant_id})});
++
++test('old Pages responses stay on the original account during deployment',()=>{
++ const old=pending('old'),next=pending('next',newId);
++ const result=routePendingInvoices([old,next],oldId,sessions);
++ assert.deepEqual(result.byMerchant.get(oldId),[old]);
++ assert.deepEqual(result.byMerchant.get(newId),[next]);
++ assert.equal(result.unroutable,0);
++});
++test('identical amounts from different merchants never share a matching group',()=>{
++ const old=pending('old',oldId),next=pending('next',newId);
++ const result=routePendingInvoices([old,next],oldId,sessions);
++ assert.equal(result.byMerchant.size,2);
++ assert.deepEqual(result.byMerchant.get(oldId).map(p=>p.order_code),['old']);
++ assert.deepEqual(result.byMerchant.get(newId).map(p=>p.order_code),['next']);
++});
++test('unknown and damaged invoice merchant identities never fall back to another account',()=>{
++ const result=routePendingInvoices([pending('null',null),pending('unknown','G333333333'),pending('empty',''),pending('number',42)],oldId,sessions);
++ assert.equal(result.byMerchant.size,0);
++ assert.equal(result.unroutable,4);
++});
++test('secondary credentials require a distinct merchant and session file',()=>{
++ assert.deepEqual([...merchantSessionPaths(oldId,'/sessions/old')],[[oldId,'/sessions/old']]);
++ assert.equal(sessions.get(newId),'/sessions/new');
++ assert.throws(()=>merchantSessionPaths(oldId,'/sessions/old',newId));
++ assert.throws(()=>merchantSessionPaths(oldId,'/sessions/old',undefined,'/sessions/new'));
++ assert.throws(()=>merchantSessionPaths(oldId,'/sessions/old',oldId,'/sessions/new'));
++ assert.throws(()=>merchantSessionPaths(oldId,'/sessions/old',newId,'/sessions/old'));
++});
+diff --git a/test/merchantid-loader.mjs b/test/merchantid-loader.mjs
+new file mode 100644
+--- /dev/null
++++ b/test/merchantid-loader.mjs
+@@ -0,0 +1,4 @@
++export async function resolve(specifier, context, nextResolve) {
++  if (specifier === 'merchantid') return { url: new URL('./merchantid-stub.mjs', import.meta.url).href, shortCircuit: true };
++  return nextResolve(specifier, context);
++}
+diff --git a/test/merchantid-stub.mjs b/test/merchantid-stub.mjs
+new file mode 100644
+--- /dev/null
++++ b/test/merchantid-stub.mjs
+@@ -0,0 +1,19 @@
++import {appendFileSync} from 'node:fs';
++const fixture=JSON.parse(process.env.POLLER_TEST_FEEDS);
++export class GopayProvider {
++ constructor(config) {
++  this.config=config;
++  if(config.session.account!==config.merchantId) throw new Error('wrong_account_session');
++  this.transactions={list:async merchantId=>{
++   if(merchantId!==config.merchantId) throw new Error('wrong_merchant_feed');
++   appendFileSync(process.env.POLLER_TEST_CALLS,JSON.stringify({merchantId,at:Date.now()})+'\n');
++   const feed=fixture[merchantId];
++   if(feed.error) throw new Error(feed.error);
++   if(feed.failPersist){
++    try{config.onTokenRefreshed({tokens:1n});}catch{throw Object.assign(new Error('401 unauthorized'),{status:401});}
++   }
++   config.onTokenRefreshed({account:merchantId,refreshed:true});
++   return feed.transactions.map(t=>({merchantId,currency:'IDR',...t}));
++  }};
++ }
++}
+diff --git a/test/pages-forward.test.mjs b/test/pages-forward.test.mjs
+new file mode 100644
+--- /dev/null
++++ b/test/pages-forward.test.mjs
+@@ -0,0 +1,30 @@
++import {test} from 'node:test';
++import assert from 'node:assert/strict';
++import {forwardPayment} from '../dist/pages-forward.js';
++import {createHmac} from 'node:crypto';
++const match={amount:10137,orderCode:'fixture',txId:'stable-id',merchantId:'G111111111',paidAt:'2026-10-27T00:00:00Z',status:'settlement'};
++
++test('only durable JSON ACKs acknowledge a payment, preserving the stable event ID',async()=>{
++ for(const status of ['paid','already_paid','duplicate','unmatched']){
++  const ok=await forwardPayment('http://fixture','test-secret',match,async(url,options)=>{
++   assert.equal(options.redirect,'manual');assert.ok(options.signal);
++   assert.equal(JSON.parse(options.body).event_id,'gopay-poller:stable-id');
++   assert.equal(options.headers['x-poller-signature'],createHmac('sha256','test-secret').update(options.body).digest('hex'));
++   assert.equal(JSON.parse(options.body).merchant_id,match.merchantId);
++   assert.equal(JSON.parse(options.body).paid_at,match.paidAt);
++   assert.equal(JSON.parse(options.body).transaction_status,'settlement');
++   return Response.json({ok:true,status});
++  });
++  assert.equal(ok,true,status);
++ }
++});
++test('4xx, redirects, 5xx and malformed or unknown success receipts never suppress retry',async()=>{
++ for(const code of [301,302,400,401,403,408,409,413,415,429,500,503]){
++  assert.equal(await forwardPayment('http://fixture','secret',match,async()=>Response.json({ok:true,status:'paid'},{status:code})),false,String(code));
++ }
++ for(const body of ['{}','null','<html>oops</html>','{"ok":true,"status":"processing"}','{"ok":false,"status":"paid"}']){
++  assert.equal(await forwardPayment('http://fixture','secret',match,async()=>new Response(body)),false,body);
++ }
++ assert.equal(await forwardPayment('http://fixture','secret',match,async()=>{throw new Error('network');}),false);
++ assert.equal(await forwardPayment('http://fixture','secret',match,async()=>({ok:true,json:async()=>{throw new Error('body reset');}})),false);
++});
+diff --git a/test/poll-safety.test.mjs b/test/poll-safety.test.mjs
+new file mode 100644
+--- /dev/null
++++ b/test/poll-safety.test.mjs
+@@ -0,0 +1,55 @@
++import {test} from 'node:test';
++import assert from 'node:assert/strict';
++import {mkdtempSync,writeFileSync,readFileSync,statSync,rmSync} from 'node:fs';
++import {tmpdir} from 'node:os';
++import {join} from 'node:path';
++import {feedInterval,liveInvoices,matchSettlements,transactionTime,errorKind} from '../dist/poll-safety.js';
++import {loadFeedState,sessionDigest,writePrivateJson} from '../dist/durable-store.js';
++const now=Date.parse('2026-10-27T00:10:00Z'),merchant='G111111111';
++const invoice={order_code:'fixture',payable_amount:10137,issued_at:'2026-10-27 00:09:00',expires_at:'2026-10-27T00:24:00Z'};
++const tx={id:'tx',merchantId:merchant,currency:'IDR',grossAmount:10137,status:'settlement',transactionTime:'2026-10-27T00:09:20Z',paymentType:'qris'};
++
++test('matches only settled IDR payments for the stored merchant inside the invoice lifetime',()=>{
++ assert.equal(matchSettlements(merchant,[invoice],[tx],now).length,1);
++ for(const invalid of [{status:''},{status:'pending'},{currency:'USD'},{merchantId:'G222222222'},
++  {transactionTime:'invalid'},{transactionTime:'2026-10-27T00:09:20'},
++  {transactionTime:'2026-10-27T00:01:00Z'},{transactionTime:'2026-10-27T00:25:00Z'},
++  {paymentType:'withdrawal'},{grossAmount:10136}]){
++  assert.equal(matchSettlements(merchant,[invoice],[{...tx,...invalid}],now).length,0,JSON.stringify(invalid));
++ }
++ assert.equal(matchSettlements(merchant,[invoice],[tx,{...tx,id:'second'}],now).length,0);
++ assert.equal(transactionTime('2026-10-27 07:09:20'),Date.parse(tx.transactionTime));
++});
++test('stale or malformed invoices cannot trigger a merchant query',()=>{
++ assert.deepEqual(liveInvoices([{...invoice,expires_at:'2026-10-27T00:00:00Z'},{...invoice,issued_at:''},
++  {...invoice,payable_amount:-1},{...invoice,issued_at:'2099-01-01T00:00:00Z'}],now),[]);
++});
++test('feed cadence slows by invoice age and a new pending invoice restores the minimum cadence',()=>{
++ assert.equal(feedInterval([invoice],15000,now),15000);
++ const older={...invoice,issued_at:'2026-10-27T00:07:00Z'};
++ assert.equal(feedInterval([older],15000,now),30000);
++ assert.equal(feedInterval([{...older,issued_at:'2026-10-27T00:04:00Z'}],15000,now),60000);
++ assert.equal(feedInterval([older,invoice],15000,now),15000);
++ assert.equal(feedInterval([invoice],45000,now),45000);
++});
++test('restart preserves rate limits and restrictions; only a changed session clears the manual hold',()=>{
++ const dir=mkdtempSync(join(tmpdir(),'axvara-gopay-state-'));
++ try{
++  const path=join(dir,'session');writePrivateJson(path,{tokens:'fixture-session'});
++  const state={sessionDigest:sessionDigest(path),nextPollAt:now+15000,backoffUntil:now+600000,feedErrorStreak:2,last401NotifyAt:now,blockedReason:'account_restricted_manual_review'};
++  writePrivateJson(path+'.poll-state',state);
++  assert.deepEqual(loadFeedState(path),state);
++  assert.equal(statSync(path).mode&0o777,0o600);assert.equal(statSync(path+'.poll-state').mode&0o777,0o600);
++  assert.equal(readFileSync(path+'.poll-state','utf8').includes('fixture-session'),false);
++  writePrivateJson(path,{tokens:'manual-new-session'});
++  assert.equal(loadFeedState(path).blockedReason,null);assert.equal(loadFeedState(path).backoffUntil,0);
++  assert.equal(loadFeedState(path).nextPollAt,state.nextPollAt);
++  writeFileSync(path+'.poll-state','{corrupt');assert.throws(()=>loadFeedState(path));
++ }finally{rmSync(dir,{recursive:true,force:true});}
++});
++test('failed session persistence throws instead of acknowledging a rotated token',()=>{
++ assert.throws(()=>writePrivateJson('/directory-that-does-not-exist/session',{tokens:'private'}));
++ assert.equal(errorKind({code:'SESSION_PERSIST_FAILED'}),'persistence');
++ assert.equal(errorKind({message:'Refresh token expired. Please login again.'}),'session');
++ assert.equal(errorKind({status:401}),'auth');assert.equal(errorKind({status:403}),'restricted');assert.equal(errorKind({status:429}),'rate_limit');
++});
+diff --git a/test/poller-routing.test.mjs b/test/poller-routing.test.mjs
+new file mode 100644
+--- /dev/null
++++ b/test/poller-routing.test.mjs
+@@ -0,0 +1,114 @@
++import {test} from 'node:test';
++import assert from 'node:assert/strict';
++import {createServer} from 'node:http';
++import {spawn} from 'node:child_process';
++import {mkdtemp,writeFile,readFile,rm} from 'node:fs/promises';
++import {tmpdir} from 'node:os';
++import {join} from 'node:path';
++import {fileURLToPath} from 'node:url';
++const oldId='G111111111',newId='G222222222';
++const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
++const invoice=(code,id)=>({order_code:code,payable_amount:10137,issued_at:new Date(Date.now()-60000).toISOString(),expires_at:new Date(Date.now()+60000).toISOString(),...(id===undefined?{}:{merchant_id:id})});
++const transaction=id=>({id,grossAmount:10137,status:'settlement',transactionTime:new Date().toISOString(),paymentType:'qris'});
++
++async function run(pending,feeds,verify,responses=[]) {
++ const dir=await mkdtemp(join(tmpdir(),'axvara-poller-routing-'));const received=[],accepted=[];
++ const calls=join(dir,'calls');await writeFile(calls,'');
++ const old=join(dir,'old-session'),next=join(dir,'new-session');
++ await writeFile(old,JSON.stringify({account:oldId}),{mode:0o600});await writeFile(next,JSON.stringify({account:newId}),{mode:0o600});
++ const pages=createServer(async(req,res)=>{
++  res.setHeader('content-type','application/json');
++  if(req.headers['x-poller-secret']!=='test-secret'){res.writeHead(401);res.end('{}');return;}
++  if(req.url==='/api/webhook/gopay/pending'){res.end(JSON.stringify({pending:pending.filter(p=>!accepted.includes(p.order_code))}));return;}
++  if(req.url==='/api/webhook/gopay'){
++   let raw='';for await(const part of req)raw+=part;const body=JSON.parse(raw);received.push(body);
++   const response=responses[received.length-1]??{status:200,body:{ok:true,status:'paid'}};
++   res.statusCode=response.status;if(response.body?.ok===true)accepted.push(body.order_code);
++   res.end(JSON.stringify(response.body));return;
++  }
++  res.writeHead(404);res.end('{}');
++ });
++ await new Promise(resolve=>pages.listen(0,'127.0.0.1',resolve));
++ const probe=createServer();await new Promise(resolve=>probe.listen(0,'127.0.0.1',resolve));const port=probe.address().port;await new Promise(resolve=>probe.close(resolve));
++ const child=spawn(process.execPath,['--no-warnings','--experimental-loader',fileURLToPath(new URL('./merchantid-loader.mjs',import.meta.url)),fileURLToPath(new URL('../dist/index.js',import.meta.url))],{
++  env:{...process.env,PORT:String(port),AXVARA_PAGES_BASE:`http://127.0.0.1:${pages.address().port}`,GOPAY_POLLER_SECRET:'test-secret',GOPAY_MERCHANT_ID:oldId,SESSION_PATH:old,GOPAY_SECONDARY_MERCHANT_ID:newId,GOPAY_SECONDARY_SESSION_PATH:next,TELEGRAM_BOT_TOKEN:'',TELEGRAM_ADMIN_CHAT_ID:'',POLLER_TEST_FEEDS:JSON.stringify(feeds),POLLER_TEST_CALLS:calls},stdio:['ignore','pipe','pipe'],
++ });
++ let output='';child.stdout.on('data',part=>output+=part);child.stderr.on('data',part=>output+=part);
++ try {
++  let health;
++  for(let i=0;i<120;i++){
++   try{health=await(await fetch(`http://127.0.0.1:${port}/health`)).json();if(health.lastResult.status!=='boot')break;}catch{}
++   if(child.exitCode!==null)throw new Error('poller exited: '+output);
++   await pause(25);
++  }
++  assert.ok(health?.lastResult.status!=='boot','poller did not complete its first iteration: '+output);
++  await verify({health,received,old,next,calls,port});
++ } finally {child.kill('SIGTERM');await new Promise(resolve=>child.once('exit',resolve));await new Promise(resolve=>pages.close(resolve));await rm(dir,{recursive:true,force:true});}
++}
++test('running poller matches each invoice only against its own account and persists rotated sessions separately',async()=>{
++ await run([invoice('old'),invoice('new',newId)],{[oldId]:{transactions:[transaction('old-tx')]},[newId]:{transactions:[transaction('new-tx')]}},async({health,received,old,next})=>{
++  assert.equal(health.lastResult.forwarded,2);
++  assert.deepEqual(received.map(p=>[p.order_code,p.event_id]),[['old','gopay-poller:old-tx'],['new','gopay-poller:new-tx']]);
++  assert.deepEqual(JSON.parse(await readFile(old,'utf8')),{account:oldId,refreshed:true});
++  assert.deepEqual(JSON.parse(await readFile(next,'utf8')),{account:newId,refreshed:true});
++ });
++});
++test('a rate-limited old account cannot block the new account and does not retry before its backoff',async()=>{
++ await run([invoice('old',oldId),invoice('new',newId)],{[oldId]:{error:'429 rate limited'},[newId]:{transactions:[transaction('new-tx')]}},async({health,received,calls,port})=>{
++  assert.equal(health.lastResult.status,'partial');assert.equal(health.lastResult.forwarded,1);assert.equal(received[0].order_code,'new');
++  const response=await fetch(`http://127.0.0.1:${port}/tick`,{method:'POST',headers:{'x-poller-secret':'test-secret'}});
++  const tick=await response.json();assert.equal(tick.queued,true);assert.ok(tick.eta_ms>0);
++  assert.equal(health.lastResult.merchants[0].status,'feed_error_backoff');
++  const invocations=(await readFile(calls,'utf8')).trim().split('\n').map(JSON.parse);
++  assert.equal(invocations.filter(call=>call.merchantId===oldId).length,1);
++ });
++});
++test('failed Pages ACK retries on the single paced loop; tick spam cannot poll concurrently',async()=>{
++ await run([invoice('retry',oldId)],{[oldId]:{transactions:[transaction('retry-tx')]}},async({health,received,calls,port})=>{
++  assert.equal(health.lastResult.forwarded,0);assert.equal(received.length,1);
++  const trigger=()=>fetch(`http://127.0.0.1:${port}/tick`,{method:'POST',headers:{'x-poller-secret':'test-secret'}});
++  const queued=await Promise.all(Array.from({length:8},async()=>(await trigger()).json()));
++  assert.ok(queued.every(r=>r.queued===true&&r.eta_ms>0));
++  assert.equal((await readFile(calls,'utf8')).trim().split('\n').length,1);
++  let after;
++  for(let i=0;i<230;i++){
++   await pause(100);after=await(await fetch(`http://127.0.0.1:${port}/health`)).json();
++   if(after.lastResult.forwarded===1)break;
++  }
++  assert.equal(after.lastResult.forwarded,1);assert.equal(received.length,2);
++  assert.equal(received[0].event_id,received[1].event_id);
++  assert.equal((await readFile(calls,'utf8')).trim().split('\n').length,2);
++  const times=(await readFile(calls,'utf8')).trim().split('\n').map(JSON.parse);
++  assert.ok(times[1].at-times[0].at>=15000,'wake bypassed the minimum feed interval');
++ },[{status:409,body:{error:'payment_transition_failed'}}]);
++});
++test('an explicit null or unknown merchant never queries either account or forwards payment',async()=>{
++ await run([invoice('damaged',null),invoice('unknown','G333333333')],{},async({health,received,calls})=>{
++  assert.equal(health.lastResult.unroutable,2);assert.equal(health.lastResult.forwarded,0);assert.deepEqual(received,[]);assert.equal(await readFile(calls,'utf8'),'');
++ });
++});
++test('401 after the library retry backs off without a second poller refresh',async()=>{
++ await run([invoice('old',oldId)],{[oldId]:{error:'401 unauthorized'}},async({health,received,calls,old})=>{
++  assert.equal(health.lastResult.merchants[0].status,'auth_failed_backoff');
++  const state=JSON.parse(await readFile(old+'.poll-state','utf8'));
++  assert.ok(state.backoffUntil>Date.now()+590000);
++  assert.equal((await readFile(calls,'utf8')).trim().split('\n').length,1);
++  assert.equal(received.length,0);
++ });
++});
++test('an account restriction persists a manual hold and never forwards payment',async()=>{
++ await run([invoice('old',oldId)],{[oldId]:{error:'403 account suspended'}},async({health,received,old})=>{
++  assert.equal(health.lastResult.merchants[0].status,'account_restricted_manual_review');
++  const state=JSON.parse(await readFile(old+'.poll-state','utf8'));
++  assert.equal(state.blockedReason,'account_restricted_manual_review');
++  assert.equal(received.length,0);
++ });
++});
++test('a token persistence failure remains a manual hold even if the SDK wraps it as 401',async()=>{
++ await run([invoice('old',oldId)],{[oldId]:{failPersist:true,transactions:[]}},async({health,received,old})=>{
++  assert.equal(health.lastResult.merchants[0].status,'session_persist_failed');
++  const state=JSON.parse(await readFile(old+'.poll-state','utf8'));
++  assert.equal(state.blockedReason,'session_persist_failed');
++  assert.equal(received.length,0);
++ });
++});

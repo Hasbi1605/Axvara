@@ -3,12 +3,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { execRun, queryAll, queryFirst, transitionPendingPaymentToPaid } from "@/lib/db";
 import {
   constantTimeEqual,
+  getGopayInvoiceMerchantId,
   isCausallyPlausiblePayment,
   isGopayQrisConfigured,
+  parseDbTimeUtc,
   parseQrisWebhook,
   sha256Hex,
 } from "@/lib/payments/dana-qris";
-import { ensureFulfillmentForPaidOrder } from "@/lib/fulfillment/deliver";
+import { schedulePaidFulfillment } from "@/lib/payments/paid-fulfillment";
+import { verifyGopaySignature } from "@/lib/payments/gopay-signature";
 import { isFutureIso } from "@/lib/expiry";
 
 export const runtime = "edge";
@@ -44,6 +47,9 @@ export async function POST(request: NextRequest) {
   if (new TextEncoder().encode(rawBody).byteLength > MAX_BODY_SIZE) {
     return NextResponse.json({ error: "payload_too_large" }, { status: 413 });
   }
+  if (!await verifyGopaySignature(rawBody, request.headers.get("x-poller-signature") || "", expectedSecret)) {
+    return NextResponse.json({ error: "invalid_signature" }, { status: 401 });
+  }
   let body: unknown;
   try {
     body = JSON.parse(rawBody);
@@ -52,6 +58,14 @@ export async function POST(request: NextRequest) {
   }
   const payment = parseQrisWebhook(body);
   if (!payment) return NextResponse.json({ error: "payment_not_recognized" }, { status: 400 });
+  const evidence = body as Record<string, unknown>;
+  const paidAt = typeof evidence.paid_at === "string" && /(?:Z|[+-]\d{2}:\d{2})$/.test(evidence.paid_at)
+    ? Date.parse(evidence.paid_at) : NaN;
+  if (!payment.orderCode || !payment.sourceEventId || !/^G\d{9}$/.test(String(evidence.merchant_id))
+    || evidence.currency !== "IDR" || !["settlement", "capture"].includes(String(evidence.transaction_status))
+    || !Number.isFinite(paidAt) || paidAt > Date.now() + 60_000) {
+    return NextResponse.json({ error: "invalid_payment_evidence" }, { status: 400 });
+  }
 
   const payloadHash = await sha256Hex(`gopay:${rawBody}`);
   const eventKey = payment.sourceEventId ? `gopay:${payment.sourceEventId}` : `gopay-sha256:${payloadHash}`;
@@ -72,10 +86,10 @@ export async function POST(request: NextRequest) {
   }
 
   const candidates = await queryAll(
-    `SELECT pt.order_code, pt.status, pt.expires_at, COALESCE(pt.invoice_issued_at,pt.created_at) AS invoice_created_at,o.expires_at AS order_expires_at,
+    `SELECT pt.order_code, pt.status, pt.expires_at, pt.qris_payload, COALESCE(pt.invoice_issued_at,pt.created_at) AS invoice_created_at,o.expires_at AS order_expires_at,
             o.status AS order_status,
             ${DANA_AMOUNT_REUSED_SQL} AS amount_history,
-            o.sales_channel, o.channel_conversation_id
+            o.sales_channel, o.channel_conversation_id, o.order_kind
      FROM payment_transactions pt
      JOIN orders o ON o.code=pt.order_code
      WHERE pt.provider='gopay' AND pt.payable_amount=?
@@ -84,15 +98,20 @@ export async function POST(request: NextRequest) {
     payment.amount,
   );
   const live = candidates.filter((row) => isFutureIso(row.expires_at) && isFutureIso(row.order_expires_at));
-  const plausible = live.filter((row) =>
-    isCausallyPlausiblePayment(event.created_at, row.invoice_created_at),
-  );
+  const plausible = live.filter((row) => {
+    const issued = parseDbTimeUtc(row.invoice_created_at);
+    const deadline = Math.min(parseDbTimeUtc(row.expires_at), parseDbTimeUtc(row.order_expires_at));
+    return isCausallyPlausiblePayment(event.created_at, row.invoice_created_at)
+      && getGopayInvoiceMerchantId(row.qris_payload) === evidence.merchant_id
+      && Number.isFinite(issued) && Number.isFinite(deadline)
+      && paidAt >= issued - 60_000 && paidAt <= deadline;
+  });
   // Poller tahu order mana yang ia pantau: bila order_code cocok dengan salah
   // satu kandidat plausibel, pilih itu langsung (tanpa ambiguitas nominal).
   const directed = payment.orderCode
     ? plausible.find((row) => String(row.order_code) === payment.orderCode)
     : undefined;
-  const transaction = directed ?? (plausible.length === 1 ? plausible[0] : undefined);
+  const transaction = directed;
   if (!transaction || Number(transaction.amount_history) > 0) {
     const staleEventForLiveInvoice = live.length >= 1 && plausible.length === 0;
     await execRun(
@@ -131,7 +150,7 @@ export async function POST(request: NextRequest) {
     orderCode,
   );
   const transitioned = await transitionPendingPaymentToPaid(orderCode,
-    new Date().toISOString(),
+    new Date(paidAt).toISOString(),
     fulfillmentRouting
       ? {
           variantId: fulfillmentRouting.variant_id != null ? Number(fulfillmentRouting.variant_id) : null,
@@ -154,33 +173,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "payment_transition_failed" }, { status: 409 });
   }
 
-  try {
-    await ensureFulfillmentForPaidOrder(orderCode);
-  } catch { /* Payment is durable; fulfillment cron remains idempotent. */ }
-
-  try {
-    const { createWrOrderLinksForOrder, processWrPendingOrders } = await import("@/lib/warung-rebahan/order");
-    const { isWrAutoOrderEnabled } = await import("@/lib/warung-rebahan/client");
-    if (isWrAutoOrderEnabled() && (await createWrOrderLinksForOrder(orderCode)) > 0) {
-      await processWrPendingOrders().catch(() => undefined);
-    }
-  } catch { /* Link WR menyusul via cron. */ }
-
-  try {
-    const { createSkOrderLinksForOrder, processSkPendingOrders } = await import("@/lib/sekalipay/order");
-    const { isSkAutoOrderEnabled } = await import("@/lib/sekalipay/client");
-    if (isSkAutoOrderEnabled() && (await createSkOrderLinksForOrder(orderCode)) > 0) {
-      await processSkPendingOrders().catch(() => undefined);
-    }
-  } catch { /* Link SK menyusul via cron. */ }
-
-  // Order Pedia (order_kind='pedia'): antrikan dispatch supplier + drain
-  // segera satu siklus (pola WR/SK di atas). Best-effort; cron fase pedia
-  // tetap menjadi penjamin.
-  try {
-    const { processPediaPaidOrders } = await import("@/lib/pedia/dispatch");
-    await processPediaPaidOrders().catch(() => undefined);
-  } catch { /* Job Pedia menyusul via cron. */ }
+  await schedulePaidFulfillment(orderCode, transaction.order_kind);
 
   if (String(transaction.sales_channel) === "whatsapp" && transaction.channel_conversation_id) {
     try {

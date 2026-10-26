@@ -64,10 +64,11 @@ describe("QRIS multi-provider core (Fase 0, DANA tidak berubah)", () => {
     expect(isQrisProvider("")).toBe(false);
   });
 
-  it("activeQrisProvider default dana; gopay hanya bila terkonfigurasi", () => {
+  it("defaults to DANA and retains explicit GoPay selection when configuration is incomplete", () => {
     expect(activeQrisProvider()).toBe("dana");
     vi.stubEnv("QRIS_ACTIVE_PROVIDER", "gopay");
-    expect(activeQrisProvider()).toBe("dana"); // belum configured
+    expect(activeQrisProvider()).toBe("gopay");
+    expect(isGopayQrisConfigured()).toBe(false);
     vi.stubEnv("GOPAY_QRIS_ENABLED", "true");
     vi.stubEnv("GOPAY_STATIC_QRIS", gopayFixture());
     vi.stubEnv("GOPAY_POLLER_SECRET", "s3cret-poller-xyz");

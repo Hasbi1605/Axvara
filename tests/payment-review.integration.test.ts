@@ -78,14 +78,14 @@ describe("provider-aware reconciliation health", () => {
     expect(JSON.stringify(body)).not.toMatch(/private-|fixture-secret/);
   });
 
-  it("uses the helper's DANA fallback when requested GoPay is incomplete", async () => {
+  it("reports incomplete GoPay without silently falling back to a different merchant", async () => {
     vi.stubEnv("QRIS_ACTIVE_PROVIDER", "gopay");
     vi.stubEnv("GOPAY_QRIS_ENABLED", "true");
     vi.stubEnv("GOPAY_STATIC_QRIS", "payload");
     vi.stubEnv("GOPAY_POLLER_SECRET", " ");
     fixture.sql.exec("INSERT INTO dana_webhook_events(event_key,payload_hash,amount) VALUES('legacy','hash',10000)");
     const body = await (await listEvents()).json();
-    expect(body.health).toMatchObject({ provider: "dana", enabled: true, payload_configured: true, webhook_configured: true, secret_header: "X-Webhook-Secret" });
+    expect(body.health).toMatchObject({ provider: "gopay", enabled: true, payload_configured: true, webhook_configured: false, secret_header: "X-Poller-Secret" });
     expect(body.health.providers.gopay.webhook_configured).toBe(false);
     expect(body.events[0].provider).toBe("dana");
   });

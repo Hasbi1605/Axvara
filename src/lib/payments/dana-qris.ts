@@ -229,13 +229,13 @@ export function isGopayQrisConfigured(): boolean {
 /**
  * Rail QRIS aktif untuk order BARU. Default 'dana' = perilaku hari ini.
  * Set `QRIS_ACTIVE_PROVIDER=gopay` ( + `GOPAY_QRIS_ENABLED=true` + secret)
- * untuk memindahkan order baru ke GoPay; DANA tetap jadi fallback bila
- * GoPay tidak terkonfigurasi. Rollback = 1 env kembali ke 'dana'.
+ * untuk memindahkan order baru ke GoPay. Konfigurasi rail yang dipilih
+ * wajib lengkap; kegagalan tidak mengalihkan uang ke merchant lain.
  */
 export function activeQrisProvider(): QrisProvider {
   const wanted = (process.env.QRIS_ACTIVE_PROVIDER || "").trim().toLowerCase();
   if (wanted === "klikqris") return "klikqris"; // Explicit selection fails closed if its config is missing.
-  if (wanted === GOPAY_QRIS_PROVIDER && isGopayQrisConfigured()) return GOPAY_QRIS_PROVIDER;
+  if (wanted === GOPAY_QRIS_PROVIDER) return GOPAY_QRIS_PROVIDER;
   return DANA_QRIS_PROVIDER;
 }
 
@@ -248,7 +248,8 @@ export function qrisStaticPayload(provider: QrisProvider): string {
 
 export function qrisMerchantId(provider: QrisProvider): string {
   if (provider === "klikqris") return process.env.KLIKQRIS_MERCHANT_ID || "";
-  return provider === GOPAY_QRIS_PROVIDER ? GOPAY_MERCHANT_ID : "dana-business";
+  return provider === GOPAY_QRIS_PROVIDER
+    ? getGopayInvoiceMerchantId(qrisStaticPayload(provider)) || GOPAY_MERCHANT_ID : "dana-business";
 }
 
 export function isActiveQrisConfigured(): boolean {
@@ -283,11 +284,14 @@ export async function createGopayQrisInvoice(orderCode: string, requestedAmount:
 /** Invoice untuk order baru mengikuti rail aktif (default dana). */
 export async function createActiveQrisInvoice(orderCode: string, requestedAmount: number): Promise<DanaQrisInvoice> {
   assertPaymentsAvailable();
-  if (activeQrisProvider() === "klikqris") {
+  const saved = await queryFirst("SELECT provider FROM payment_transactions WHERE order_code=?", orderCode);
+  if (saved && !isQrisProvider(saved.provider)) throw new Error("qris_provider_conflict");
+  const provider = saved ? saved.provider as QrisProvider : activeQrisProvider();
+  if (provider === "klikqris") {
     const { createKlikQrisInvoice } = await import("./klikqris");
     return createKlikQrisInvoice(orderCode, requestedAmount);
   }
-  return createQrisInvoice(activeQrisProvider(), orderCode, requestedAmount);
+  return createQrisInvoice(provider, orderCode, requestedAmount);
 }
 
 async function createQrisInvoice(provider: QrisProvider, orderCode: string, requestedAmount: number): Promise<DanaQrisInvoice> {
@@ -306,12 +310,14 @@ async function createQrisInvoice(provider: QrisProvider, orderCode: string, requ
     orderCode, provider,
   );
   if (existing) {
+    if (Number(existing.requested_amount) !== requestedAmount) throw new Error("qris_invoice_amount_mismatch");
     if (!["pending", "paid"].includes(String(existing.status))) throw new Error("dana_qris_invoice_terminal");
     return invoiceFromRow(existing, true);
   }
 
   const staticPayload = qrisStaticPayload(provider);
   if (!staticPayload) throw new Error("dana_qris_not_configured");
+  if (provider === GOPAY_QRIS_PROVIDER && !getGopayInvoiceMerchantId(staticPayload)) throw new Error("gopay_invalid_merchant_qris");
   const expiresAt = new Date(Date.now() + DANA_QRIS_EXPIRY_MINUTES * 60_000).toISOString();
   // Order ikut mati bersama QR (15 menit, keputusan owner 2026-10-11): tidak
   // ada lagi jendela 60 menit tempat stok dikunci order yang tidak dibayar.
@@ -356,10 +362,10 @@ async function createQrisInvoice(provider: QrisProvider, orderCode: string, requ
         ),
         d1.prepare(
           `UPDATE orders
-           SET payment_method='qris', payment_account='DANA Business', payment_status='pending',
+           SET payment_method='qris', payment_account=?, payment_status='pending',
                expires_at=CASE WHEN sales_channel='whatsapp' THEN ? ELSE ? END, updated_at=datetime('now')
            WHERE code=? AND status='pending'`,
-        ).bind(expiresAt, orderExpiresAt, orderCode),
+        ).bind(provider === GOPAY_QRIS_PROVIDER ? "GoPay Merchant" : "DANA Business", expiresAt, orderExpiresAt, orderCode),
         d1.prepare(`DELETE FROM operation_guards WHERE operation_id=?`).bind(guardId),
       ]);
       // 2026-10-10: QR GoPay baru → bangunkan poller VPS (idle 60 dtk) agar
@@ -370,11 +376,14 @@ async function createQrisInvoice(provider: QrisProvider, orderCode: string, requ
       const message = error instanceof Error ? error.message : String(error);
       const winner = await queryFirst(
         `SELECT order_code, requested_amount, payable_amount, unique_code, qris_payload, qris_url, expires_at, status
-         FROM payment_transactions WHERE order_code=? AND provider='dana'`,
-        orderCode,
+         FROM payment_transactions WHERE order_code=? AND provider=?`,
+        orderCode, provider,
       );
-      if (winner && ["pending", "paid"].includes(String(winner.status))) return invoiceFromRow(winner, true);
-      if (/UNIQUE|payment_transactions_active_dana_amount/i.test(message)) continue;
+      if (winner && ["pending", "paid"].includes(String(winner.status))) {
+        if (Number(winner.requested_amount) !== requestedAmount) throw new Error("qris_invoice_amount_mismatch");
+        return invoiceFromRow(winner, true);
+      }
+      if (/UNIQUE|payment_transactions_active_(dana|gopay)_amount/i.test(message)) continue;
       throw error;
     }
   }
@@ -426,7 +435,6 @@ export async function reissueDanaQrisInvoice(orderCode: string): Promise<QrisRei
     const existing = await queryFirst("SELECT provider FROM payment_transactions WHERE order_code=?", orderCode);
     if (existing?.provider === "klikqris") return { ok: false, reason: "order_not_reissuable" };
   }
-  if (!isDanaQrisConfigured()) throw new Error("dana_qris_not_configured");
   const d1 = getD1();
   if (!d1) throw new Error("dana_qris_requires_d1");
 
@@ -442,6 +450,7 @@ export async function reissueDanaQrisInvoice(orderCode: string): Promise<QrisRei
   );
   if (!row || row.sales_channel === "whatsapp") return { ok: false, reason: "order_not_reissuable" };
   const detectedProvider: QrisProvider = row.tx_provider === GOPAY_QRIS_PROVIDER ? GOPAY_QRIS_PROVIDER : DANA_QRIS_PROVIDER;
+  if (!(detectedProvider === GOPAY_QRIS_PROVIDER ? isGopayQrisConfigured() : isDanaQrisConfigured())) throw new Error("dana_qris_not_configured");
 
   const orderAlive = String(row.status) === "pending"
     && ["unpaid", "pending"].includes(String(row.payment_status))

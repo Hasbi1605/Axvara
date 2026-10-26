@@ -1,5 +1,66 @@
 # ARCHITECTURE.md — AXVARA
 
+## GoPay pribadi dan callback bertanda tangan — 27 Oktober 2026
+
+✅ Implementasi terverifikasi; receiver Pages dirilis melalui CI. Provider baru
+dipilih kembali `gopay`, merchant **Axvara Digital/G564039370**, NMID
+`ID1024342457479`, nomor082135277434. Sumber privat `.gopay-credentials`
+(ignored/chmod600) berasal dari QR owner yang CRC/merchant/NMID-nya dibaca dan
+dicocokkan dengan profil/sesi/outlet GoBiz. Pages mengubah tiga secret_text
+existing `GOPAY_STATIC_QRIS`, `GOPAY_QRIS_ENABLED=true`,
+`QRIS_ACTIVE_PROVIDER=gopay`; `GOPAY_POLLER_SECRET` dan semua secret KlikQRIS
+tetap. Tidak memakai API/key/langganan AutoGoPay; docs-nya menjadi referensi pola.
+
+`createActiveQrisInvoice` membaca provider ledger sebelum selector invoice baru,
+sehingga retry setelah switch tetap pada rail tersimpan, termasuk GET-only untuk
+initializing KlikQRIS. Pilihan GoPay eksplisit gagal tertutup bila konfigurasi
+kurang. Create/reuse menolak perubahan requested_amount; allocator race membaca
+pemenang sesuai provider, menyimpan merchant GoPay dari payload dan payment_account
+GoPay Merchant. QR dihitung lokal, tanpa POST generate ke GoBiz. Maksimal satu
+reissue setelah expiry invoice, selama order hidup; tidak memperpanjang deadline.
+Reissue GoPay tidak membutuhkan konfigurasi DANA.
+
+`POST /api/webhook/gopay` wajib dua header: `x-poller-secret` dan
+`x-poller-signature`, HMAC-SHA256 hex lowercase atas byte UTF-8 body mentah dengan
+secret existing yang sama. Diperiksa sebelum JSON/event ditulis. Payload baru
+mempertahankan amount/order_code/event_id/payment.id dan menambah merchant_id,
+currency=IDR, transaction_status=settlement|capture, paid_at ISO berzona.
+Server memeriksa identitas dari qris_payload tersimpan, nominal persis, waktu
+bayar ≥issued−60detik dan ≤deadline invoice/order, serta waktu masa depan maksimal
+60detik. Order_code berbeda tidak fallback ke kandidat nominal lain. Event ID
+tetap untuk retry; ACK hanya setelah paid/event/outbox atomik atau keputusan
+manual unmatched tersimpan. Paid memakai waktu mutasi. Fulfillment memakai
+schedulePaidFulfillment/waitUntil existing, materialisasi/bind supplier dahulu,
+satu link per supplier/order; replay tidak menjadwalkan pembelian baru.
+
+Poller `/Users/macbookair/axvara-gopay-poller` menambah durable-store,
+poll-safety dan gobiz-transport. Gate per merchant15/30/60detik menurut invoice
+terbaru <2/<5/≥5menit, minimum konfigurasi15detik dan jitter loop0–3detik. Wake
+dibatasi gate dan timer digabung; idle60detik hanya membaca Pages, tanpa GoBiz.
+Invoice/status/waktu/currency/merchant feed tak valid ditolak; beberapa mutasi
+cocok tidak dipilih sembarang. `.session*.poll-state` chmod600/fsync+rename
+menyimpan nextPollAt/backoff/streak/hold dan digest sesi; restart tidak mereset
+batas. Sesi pengganti manual melepas hold, bukan restart biasa atau hapus state.
+SDK merchantid0.1.1 sudah melakukan satu refresh+retry401; poller membuang
+refresh kedua, backoff auth10menit, error biasa30detik→5menit. Refresh token mati,
+persist gagal atau restriction403/423 menjeda akun sampai sesi diganti manual.
+Token di-fsync sebelum callback SDK berhasil. Transport hanya GET feed ke
+api.gojekapi.com dan POST token refresh ke api.gobiz.co.id, redirect manual;
+tidak mengirim transfer/pembuatan QR upstream. Login OTP tetap manual, cooldown
+request120detik dan challenge5menit; deviceId dipertahankan.
+
+Urutan rollout wajib: backup dan rilis seluruh dist poller bertanda tangan di
+VPS dahulu, ubah tiga secret Pages, lalu push main untuk receiver/Pages melalui
+CI. Poller baru kompatibel receiver lama; receiver baru menolak poller tanpa
+signature. Pertahankan dua file sesi, env dan state; jangan rollback poller lama
+sesudah receiver baru. Snapshot source lengkap dapat diekstrak ke direktori
+kosong dari `issue/patches/gopay-hardening-2026-10-27.patch`; folder poller bukan
+repo Git. Rincian dan batas verifikasi: `issue/gopay-return-2026-10-27.md`.
+
+Referensi pola: https://autogopay.site/docs/webhook dan
+https://autogopay.site/docs/gopay/qris-generate. Batas server di atas adalah
+kebijakan AXVARA, bukan pengakuan batas resmi GoPay atau jaminan anti-suspend.
+
 Proxy WR/SK — 26 Oktober 2026: dispatcher egress dipakai bersama dan ditutup
 saat shutdown; URL proxy terkonfigurasi yang invalid menghentikan startup.
 VPS tanpa URL proxy memakai IP tetapnya secara langsung. Diff removal WR/SK
@@ -2524,6 +2585,16 @@ Aturan turunan:
 
 ### 16.9 Rail QRIS GoPay (2026-10-02 Fase 0 — ledger multi-provider, default mati)
 
+**Kontrak terkini27Oktober2026:** invoice baru memilih GoPay pribadi Axvara
+Digital/G564039370 (nomor082135277434), payload dari `.gopay-credentials` ke
+GOPAY_STATIC_QRIS secret_text, GOPAY_QRIS_ENABLED=true dan QRIS_ACTIVE_PROVIDER=gopay.
+Pilihan GoPay tidak lengkap gagal tertutup, tanpa fallback DANA. Callback wajib
+HMAC x-poller-signature selain x-poller-secret, serta bukti merchant/order/waktu
+settlement. Poller bertanda tangan dirilis dahulu; gate/backoff/hold durable dan
+cadence minimal15detik/adaptif menggantikan wake10detik/refresh manual lama.
+Seluruh kontrak, rollout dan rollback ada di bagian GoPay27Oktober di awal dokumen;
+rincian bertanggal2–16Oktober di bawah adalah riwayat, bukan pilihan aktif baru.
+
 **Perbaikan live25 Oktober 2026:** ACK poller wajib HTTP2xx + JSON ok:true/status
 paid|already_paid|duplicate|unmatched; kegagalan tidak masuk seenTx dua jam.
 Retry memakai event ID sama pada cadence existing. POST redirect manual;
@@ -2640,6 +2711,11 @@ poller server memantau mutasi GoBiz milik sendiri.
 
 
 ### 16.11 PG KlikQRIS — 2026-10-18
+
+**Sejak27Oktober2026:** order baru kembali ke GoPay pribadi atas instruksi owner.
+Bagian ini tetap berlaku untuk invoice KlikQRIS tersimpan dan rekonsiliasi lama;
+key/merchant/enabled/callback tetap, initializing hanya recovery GET ID yang sama.
+Jangan mengubah invoice lama menjadi GoPay atau mengulang POST create.
 
 Sumbatan antrean expiry 2026-10-18: jalur batal mandiri/admin tidak menutup
 ledger `payment_transactions`, sehingga order terminal meninggalkan ledger

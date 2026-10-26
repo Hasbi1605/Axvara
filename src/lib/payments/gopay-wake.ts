@@ -7,7 +7,7 @@
 // dengan webhook) ketika:
 //   - QR GoPay baru terbit / diterbitkan ulang, dan
 //   - pembeli menekan "Cek Status Sekarang" (web) / "Periksa Pembayaran" (TG).
-// Poller sendiri menjaga jarak minimum 10 dtk antar poll (anti-ban GoBiz),
+// Poller sendiri menjaga jarak minimum 15 dtk dan cadence per merchant,
 // jadi spam klik tidak menambah hit ke GoPay.
 //
 // Best-effort: gagal/timeout TIDAK pernah menggagalkan request pembeli —
@@ -32,6 +32,7 @@ async function sendWake(reason: string): Promise<boolean> {
   try {
     const res = await fetch(url, {
       method: "POST",
+      redirect: "manual",
       headers: { "x-poller-secret": secret, "content-type": "application/json" },
       body: JSON.stringify({ reason }),
       signal: AbortSignal.timeout(WAKE_TIMEOUT_MS),

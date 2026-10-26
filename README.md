@@ -1,5 +1,40 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## GoPay Merchant pribadi — 27 Oktober 2026
+
+✅ Implementasi terverifikasi, Pages dirilis melalui CI. Invoice baru kembali
+memakai **Axvara Digital / G564039370**, NMID ID1024342457479, nomor082135277434.
+QR owner cocok dengan merchant/nomor/outlet aktif dan sesi GoBiz yang diperiksa
+baca-saja. Payload privat di `.gopay-credentials` ignored/chmod600; hanya tiga
+secret_text Pages existing diubah: GOPAY_STATIC_QRIS, GOPAY_QRIS_ENABLED=true,
+QRIS_ACTIVE_PROVIDER=gopay. Secret poller dan kredensial/callback KlikQRIS tetap.
+Invoice lama tidak dipindahkan provider/merchant, termasuk initializing KlikQRIS
+yang tetap recovery GET-only. Tidak memakai layanan/API AutoGoPay.
+
+Pola [AutoGoPay](https://autogopay.site/docs) diterapkan di server sendiri:
+reuse invoice/QR saat klik ulang, expiry15menit, maksimal satu pengganti setelah
+expiry dan order masih hidup, callback HMAC-SHA256 atas body mentah. QR dihitung
+lokal, tanpa generate upstream. Pemilihan GoPay yang tidak lengkap gagal tertutup,
+tanpa fallback DANA. Callback wajib merchant/nominal/order/waktu bayar/status
+settlement|capture yang cocok dan signature x-poller-signature selain secret;
+paid/event/outbox disimpan atomik sebelum background fulfillment existing.
+
+Poller memakai satu loop, gate15/30/60detik menurut umur invoice terbaru, minimal
+15detik meski wake/tick ditekan berulang, dan nol GoBiz saat idle. State gate,
+backoff dan hold per merchant durable; SDK refresh401 satu kali, tanpa refresh
+tambahan dari poller. Sesi mati/restriction/persist gagal menjeda akun sampai
+sesi diganti manual. Transport dibatasi GET mutasi + POST token refresh tanpa
+redirect. Ini mengurangi request berulang, bukan jaminan bebas suspend; penyebab
+suspend lama belum diketahui. QA memakai fixture tanpa pembayaran/supplier nyata.
+
+Rilis VPS poller bertanda tangan harus mendahului push receiver Pages. Backup
+seluruh dist, sesi dan env, lalu salin seluruh dist; jangan reset state. Rollback
+receiver baru tetap membutuhkan poller bertanda tangan. Source di folder lokal
+axvara-gopay-poller, snapshot lengkap di issue/patches/gopay-hardening-2026-10-27.patch
+(ekstrak pada direktori kosong). Detail kontrak/rollout ada di
+[ARCHITECTURE](docs/ARCHITECTURE.md) dan
+[catatan verifikasi](issue/gopay-return-2026-10-27.md).
+
 Proxy WR/SK — 26 Oktober 2026: dispatcher egress dipakai bersama dan ditutup
 saat shutdown; URL proxy terkonfigurasi yang invalid menghentikan startup.
 VPS tanpa URL proxy memakai IP tetapnya secara langsung. Diff removal WR/SK
@@ -465,7 +500,7 @@ Spesifikasi overhaul 2026-10-11 (semua produk di awal, Periksa harga terpisah, f
 |--------|------------|-----|
 | E-Wallet | `082135277434` | DANA/Gopay/Shopeepay |
 | SeaBank | `901812349386` | Brotherstore06 |
-| QRIS | DANA Business (default) / GoPay Merchant (Fase 1, flag) | Dinamis per order, nominal unik, QR 15 menit; WA tanpa pembaruan, Telegram/Web maksimal 1 pembaruan |
+| QRIS | GoPay Merchant Axvara Digital (invoice baru sejak27Oktober); rail lama dipertahankan | Dinamis per order, nominal unik, QR 15 menit; WA tanpa pembaruan, Telegram/Web maksimal 1 pembaruan |
 | Bank lain | dinamis via admin | tambah/aktifkan tanpa deploy |
 
 Flow: server memvalidasi harga/stok dan menerbitkan quote bertanda tangan 60 menit → order dibuat idempotent dan stok direservasi atomik. Untuk QRIS, server membuat payload EMVCo dan nominal unik per order, menampilkan QR selama 15 menit, lalu QRIS Hook Android mengirim pembayaran ke `/api/webhook/dana`; nominal yang cocok tepat mengubah ledger+order menjadi lunas secara atomik. Transfer SeaBank/e-wallet tetap memakai bukti JPG/PNG/WebP dan review admin. Order yang kedaluwarsa mengembalikan stok atomik.
@@ -910,9 +945,10 @@ PNG per kode order melalui `/api/payments/qris/[code]/image`. Aplikasi QRIS Hook
 mengirim `X-Webhook-Secret` ke `https://axvara.tech/api/webhook/dana`. Setiap event disimpan
 idempotent dan hanya nominal persis dari invoice aktif yang dapat melunasi order.
 
-Rail GoPay: payload merchant disimpan sebagai secret `GOPAY_STATIC_QRIS`. Sejak
-2026-10-16 merchant aktif adalah **axvara.tech** (`G284624569`, NMID
-`ID1026616934059`). Poller GoBiz memeriksa invoice berdasarkan merchant yang
+Rail GoPay: payload merchant disimpan sebagai secret `GOPAY_STATIC_QRIS`. Riwayat
+2026-10-16 memakai **axvara.tech** (`G284624569`, NMID `ID1026616934059`);
+sejak27Oktober2026 invoice baru kembali ke **Axvara Digital/G564039370**.
+Poller GoBiz memeriksa invoice berdasarkan merchant yang
 tersimpan di payload tiap invoice, sehingga invoice dari merchant lama tetap
 terverifikasi ke akun asalnya sementara invoice baru memakai axvara.tech;
 kedua sesi GoBiz disimpan terpisah di VPS (lihat `docs/ARCHITECTURE.md` §16.9).

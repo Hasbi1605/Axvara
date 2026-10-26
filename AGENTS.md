@@ -1,5 +1,13 @@
 # AGENTS.md — AXVARA (Project-Specific)
 
+## GoPay Merchant pribadi — 27 Oktober 2026
+- Owner memilih pola pengaman AutoGoPay di server AXVARA, bukan memakai layanan/API AutoGoPay. Merchant yang dipilih kembali: Axvara Digital, G564039370, NMID ID1024342457479, nomor082135277434. Sesi/nomor/outlet aktif diperiksa baca-saja; ini bukan bukti pembayaran end-to-end atau jaminan bebas suspend.
+- Payload QR owner berada di `.gopay-credentials` ignored/chmod600. Pages hanya mengubah tiga secret_text existing: GOPAY_STATIC_QRIS, GOPAY_QRIS_ENABLED=true, QRIS_ACTIVE_PROVIDER=gopay. GOPAY_POLLER_SECRET existing tetap; semua kredensial/callback KlikQRIS dipertahankan. Invoice tersimpan tetap pada provider/merchant asal, termasuk initializing KlikQRIS yang hanya boleh dipulihkan lewat GET.
+- QR GoPay dihitung lokal, satu original + maksimal satu reissue setelah expiry; QR aktif/retry tidak dibuat ulang. Pilihan GoPay tidak lengkap gagal tertutup, tanpa fallback DANA. Nominal retry harus sama; pemenang race GoPay dibaca dari provider yang benar.
+- Callback wajib x-poller-secret DAN x-poller-signature HMAC-SHA256 atas body mentah memakai secret existing. Bukti wajib order_code/event_id/merchant_id/currency IDR/status settlement|capture/paid_at berzona; merchant dari payload invoice, waktu dan nominal diperiksa. Kode berbeda tidak fallback ke order lain. Paid/outbox atomik mendahului background fulfillment dengan waitUntil.
+- Rilis poller bertanda tangan di VPS SEBELUM push receiver Pages. Source `/Users/macbookair/axvara-gopay-poller`, snapshot lengkap di issue/patches/gopay-hardening-2026-10-27.patch. Salin SELURUH dist, backup dahulu, pertahankan .env/dua sesi/berkas .poll-state. Rollback receiver baru memerlukan poller yang tetap bertanda tangan.
+- Poll GoBiz minimal15detik, cadence15/30/60detik menurut umur invoice terbaru (<2/<5/≥5menit), satu loop, nol query GoBiz saat idle. Wake/tick tidak melewati gate; interval/backoff/hold durable per sesi. SDK refresh401 sekali; poller tidak menambah refresh. Sesi mati/persist gagal/403 restriction menjeda akun sampai sesi diganti manual; jangan reset .poll-state untuk menghindari pembatasan. Transport hanya GET mutasi + POST token refresh, tanpa redirect, transfer atau generate QR upstream. Penyebab suspend lama tidak diketahui.
+
 Proxy WR/SK — 26 Oktober 2026: dispatcher egress dipakai bersama dan ditutup
 saat shutdown; URL proxy terkonfigurasi yang invalid menghentikan startup.
 VPS tanpa URL proxy memakai IP tetapnya secara langsung. Diff removal WR/SK
