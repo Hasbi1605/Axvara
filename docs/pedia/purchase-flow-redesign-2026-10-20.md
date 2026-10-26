@@ -2,8 +2,6 @@
 
 > Revisi 24 Oktober 2026: bagian kredit/refund otomatis/deposit pada snapshot ini sudah digantikan oleh [Pedia tanpa saldo pembeli](manual-resolution-2026-10-24.md). Order baru QRIS penuh, kendala manual, arsip/retry order lama dipertahankan.
 
-> Revisi 26 Oktober 2026: susunan tahap Layanan memakai daftar pembanding ringkas (nama pendek + harga + wilayah/refill/estimasi + badge Dipilih), toolbar kategori/jenis akun/urutan sebelum daftar tanpa accordion Lanjutan, detail pilihan terbuka, pilihan di luar filter tetap terlihat, panel desktop mulai xl menyatukan deskripsi pilihan/total/CTA, pill kebutuhan 44px dengan draf jumlah per kebutuhan. Kontrak harga/quote/retry dan alur Layanan → Target → Kontak → Bayar tetap.
-
 
 ## Penyederhanaan pilihan layanan Pedia — 22 Oktober 2026
 

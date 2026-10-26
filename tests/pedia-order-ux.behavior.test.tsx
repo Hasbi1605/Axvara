@@ -14,8 +14,8 @@ const product: PediaCatalogProduct = {
   image: "/r2/products/pedia-platform-instagram.webp",
   checklist: [{ id: "public", label: "Akun publik", help: "Jangan ubah username selama proses." }],
   tiers: [
-    { id: 1, tier: "hemat", label_note: "Campuran", public_name: "Global Ekonomis", region: "global", quality: "ekonomis", drop_risk: "sedang", refill_days: 0, eta_start: "5 menit", eta_finish: "1 hari", prices: { "100": 2000 }, price_per_1k: 20000, quick_quantities: [100], min_qty: 100, max_qty: 100 },
-    { id: 2, tier: "standar", label_note: "Global", public_name: "Indonesia Stabil", region: "indonesia", quality: "standar", drop_risk: "rendah", recommended: true, refill_days: 30, eta_start: "10 menit", eta_finish: "2 hari", prices: { "100": 3000, "250": 7000, "500": 12000 }, price_per_1k: 28000, quick_quantities: [100, 250, 500], min_qty: 100, max_qty: 1000 },
+    { id: 1, tier: "hemat", label_note: "Campuran", public_name: "Followers Global Ekonomis", region: "global", quality: "ekonomis", drop_risk: "sedang", refill_days: 0, eta_start: "5 menit", eta_finish: "1 hari", prices: { "100": 2000 }, price_per_1k: 20000, quick_quantities: [100], min_qty: 100, max_qty: 100 },
+    { id: 2, tier: "standar", label_note: "Global", public_name: "Followers Indonesia Stabil", region: "indonesia", quality: "standar", drop_risk: "rendah", recommended: true, refill_days: 30, eta_start: "10 menit", eta_finish: "2 hari", prices: { "100": 3000, "250": 7000, "500": 12000 }, price_per_1k: 28000, quick_quantities: [100, 250, 500], min_qty: 100, max_qty: 1000 },
   ],
 };
 const reply = (data: unknown, status = 200) => ({ ok: status < 400, status, json: async () => data });
@@ -24,7 +24,6 @@ beforeEach(() => {
   fetchMock = vi.fn(async () => reply({ quote_token: "signed-token", total: 7300, payable: 7300 }));
   vi.stubGlobal("fetch", fetchMock);
   localStorage.clear();
-  sessionStorage.clear();
   vi.spyOn(window, "scrollTo").mockImplementation(() => {});
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
@@ -32,7 +31,7 @@ function mount(enabled = true, target = "https://instagram.com/customer") {
   return render(<OrderClient product={product} initialTarget={target} ordersEnabled={enabled} />);
 }
 function select() {
-  fireEvent.click(screen.getByRole("radio", { name: /Indonesia Stabil/i }));
+  fireEvent.click(screen.getByRole("radio", { name: /Followers Indonesia Stabil/i }));
   fireEvent.change(screen.getByLabelText("Jumlah yang dipesan"), { target: { value: "250" } });
 }
 function toTarget() { fireEvent.click(screen.getAllByRole("button", { name: "Lanjut: isi target" })[0]); }
@@ -51,7 +50,7 @@ function complete() {
   fireEvent.click(screen.getByRole("checkbox", { name: /Saya setuju/ }));
 }
 function proceed() { fireEvent.click(screen.getAllByRole("button", { name: /^(Lanjut ke pembayaran|Coba lanjutkan pembayaran|Lanjut: isi target|Lanjut: kontak)$/ })[0]); }
-function consent() { fireEvent.click(screen.getAllByRole("button", { name: "Setujui nominal dan bayar" })[0]); }
+function consent() { fireEvent.click(screen.getAllByRole("button", { name: "Setujui & lanjut ke pembayaran" })[0]); }
 async function getQuote() {
   proceed();
   await screen.findAllByText(/Total pembayaran/);
@@ -85,8 +84,6 @@ describe("Pedia order UX", () => {
   });
   it("starts without selected tier, quantity or total, with honest per-1k benchmarks", () => {
     mount();
-    expect(sessionStorage.getItem("pedia-qty-followers-instagram")).toBeNull();
-    expect((screen.getByLabelText("Jumlah yang dipesan") as HTMLInputElement).value).toBe("");
     expect(screen.getAllByRole("region").map((r) => r.getAttribute("aria-labelledby"))).toEqual(["pedia-stage-heading"]);
     expect(screen.getAllByRole("radio").every((r) => r.tagName === "INPUT" && !(r as HTMLInputElement).checked)).toBe(true);
     // Acuan per 1.000 yang jujur (bukan total minimum yang disamarkan setara).
@@ -104,8 +101,7 @@ describe("Pedia order UX", () => {
     expect(document.body.textContent).not.toContain("Isi jumlah dulu");
     expect(document.body.textContent).toContain("Pilih layanan untuk melihat batas jumlah per pesanan.");
     expect(screen.getByText("Refill 30 hari").className).toContain("text-[#00E5FF]");
-    // Kontras teks sekunder dinaikkan mengikuti audit 26 Oktober (AA 4.5:1).
-    expect(screen.getByText("Tanpa refill", { selector: "span" }).className).toContain("text-white/70");
+    expect(screen.getByText("Tanpa refill", { selector: "span" }).className).toContain("text-white/60");
     expect(screen.queryByRole("button", { name: "Periksa harga" })).toBeNull();
     proceed();
     expect(fetchMock).not.toHaveBeenCalled();
@@ -144,9 +140,9 @@ describe("Pedia order UX", () => {
     fireEvent.change(screen.getByLabelText("Jumlah yang dipesan"), { target: { value: "250" } });
     expect((screen.getByLabelText("Jumlah yang dipesan") as HTMLInputElement).value).toBe("250");
     // Harga dibandingkan pada jumlah yang sama; layanan tak cocok ditandai.
-    expect(screen.getByRole("radio", { name: /Indonesia Stabil/i }).closest("label")!.textContent).toContain("untuk 250");
-    expect(screen.getByRole("radio", { name: /Global Ekonomis/i }).closest("label")!.textContent).toContain("Jumlah tidak tersedia");
-    fireEvent.click(screen.getByRole("radio", { name: /Indonesia Stabil/i }));
+    expect(screen.getByRole("radio", { name: /Followers Indonesia Stabil/i }).closest("label")!.textContent).toContain("untuk 250");
+    expect(screen.getByRole("radio", { name: /Followers Global Ekonomis/i }).closest("label")!.textContent).toContain("Jumlah tidak tersedia");
+    fireEvent.click(screen.getByRole("radio", { name: /Followers Indonesia Stabil/i }));
     expect((screen.getByLabelText("Jumlah yang dipesan") as HTMLInputElement).value).toBe("250");
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -159,23 +155,6 @@ describe("Pedia order UX", () => {
     expect(screen.queryByLabelText("Nomor WhatsApp")).toBeNull();
     expect(screen.getAllByRole("alert").some(a => a.textContent?.includes("Isi jumlah"))).toBe(true);
     expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it("opens the chosen service detail without an accordion and keeps summary CTA together", () => {
-    mount(); select();
-    // Mobile: ringkasan memakai nama layanan yang membedakan, bukan hanya kebutuhan.
-    expect(screen.getAllByText("Indonesia Stabil").length).toBeGreaterThan(0);
-    expect(screen.queryByText("Detail & ketentuan layanan")).toBeNull();
-    expect(screen.getByRole("heading", { name: "Tentang Indonesia Stabil" })).toBeTruthy();
-    expect(screen.getByText(/Jumlah yang didukung: 100 sampai 1.000/)).toBeTruthy();
-    toTarget();
-    expect(screen.getByText(/Refill 30 hari mengikuti ketentuan layanan/)).toBeTruthy();
-  });
-
-  it("recalls the last quantity for the same need within the session", () => {
-    mount();
-    fireEvent.change(screen.getByLabelText("Jumlah yang dipesan"), { target: { value: "250" } });
-    expect(sessionStorage.getItem("pedia-qty-followers-instagram")).toBe("250");
   });
 
   it("keeps closed status near disabled CTA, package preview and no contact collection", () => {
@@ -195,11 +174,11 @@ describe("Pedia order UX", () => {
   it("jumlah bebas divalidasi terhadap min–max layanan terpilih tanpa menghapus jumlah (bukan paket mati)", () => {
     mount(); select();
 
-    const incompatible = screen.getByRole("radio", { name: /Global Ekonomis/i }) as HTMLInputElement;
+    const incompatible = screen.getByRole("radio", { name: /Followers Global Ekonomis/i }) as HTMLInputElement;
     expect(incompatible.disabled).toBe(true);
     fireEvent.click(incompatible);
     expect((screen.getByLabelText("Jumlah yang dipesan") as HTMLInputElement).value).toBe("250");
-    expect((screen.getByRole("radio", { name: /Indonesia Stabil/i }) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole("radio", { name: /Followers Indonesia Stabil/i }) as HTMLInputElement).checked).toBe(true);
     expect(fetchMock).not.toHaveBeenCalled();
     // A chosen service can become incompatible when the buyer edits quantity.
 
@@ -302,7 +281,7 @@ describe("Pedia order UX", () => {
     if (label === "Link profil Instagram") fireEvent.click(screen.getByRole("button", { name: "Langkah 2: Target" }));
     fireEvent.change(screen.getByLabelText(label), { target: { value: label === "Email" ? "other@example.com" : "changed" } });
     expect(screen.queryByText(/Total pembayaran/)).toBeNull();
-    expect(screen.queryByRole("button", { name: "Setujui nominal dan bayar" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Setujui & lanjut ke pembayaran" })).toBeNull();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -319,7 +298,7 @@ describe("Pedia order UX", () => {
     mount(); complete(); await getQuote(); back();
 
     fireEvent.change(screen.getByLabelText("Jumlah yang dipesan"), { target: { value: "100" } });
-    fireEvent.click(screen.getByRole("radio", { name: /Global Ekonomis/i }));
+    fireEvent.click(screen.getByRole("radio", { name: /Followers Global Ekonomis/i }));
     expect(screen.queryByText(/Total pembayaran/)).toBeNull();
     next(); await getQuote(); back(); toTarget();
     fireEvent.click(screen.getByRole("checkbox", { name: /Akun publik/ }));
@@ -353,7 +332,7 @@ describe("Pedia order UX", () => {
     mount(); complete(); await getQuote();
     let reject!: (reason: Error) => void;
     fetchMock.mockImplementationOnce(() => new Promise((_, r) => { reject = r; }));
-    const buttons = screen.getAllByRole("button", { name: "Setujui nominal dan bayar" });
+    const buttons = screen.getAllByRole("button", { name: "Setujui & lanjut ke pembayaran" });
     fireEvent.click(buttons[0]); fireEvent.click(buttons[1]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect((screen.getByLabelText("Email").closest("fieldset") as HTMLFieldSetElement).disabled).toBe(true);
@@ -386,8 +365,7 @@ describe("Pedia order UX", () => {
     consent();
     await screen.findAllByText(/Rp7.400/);
     expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(["/api/pedia/quote", "/api/pedia/quote"]);
-    // CTA desktop (panel) + mobile (fixed bar) memakai label sama.
-    expect(screen.getAllByRole("button", { name: "Setujui nominal dan bayar" }).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByRole("button", { name: "Setujui & lanjut ke pembayaran" })).toHaveLength(2);
   });
 });
 
@@ -460,10 +438,11 @@ describe("Pedia configurator", () => {
     expect(within(categories).queryByRole("button", { name: "Tanpa refill" })).toBeNull();
   });
 
-  it("resets the active category and visible sort controls without changing the selected offer", () => {
+  it("resets the active category and advanced filters without changing the selected offer", () => {
     const onSelect = vi.fn();
     render(<ServicePicker product={product} tierId={2} onSelect={onSelect} qty={100} expanded />);
     fireEvent.click(screen.getByRole("button", { name: "Global" }));
+    fireEvent.click(screen.getByText(/Lanjutan: jenis akun/));
     fireEvent.change(screen.getByRole("combobox", { name: "Filter jenis akun" }), { target: { value: "ekonomis" } });
     fireEvent.click(screen.getByRole("button", { name: "Reset filter" }));
     const categories = screen.getByRole("group", { name: "Kategori layanan" });
@@ -484,8 +463,8 @@ describe("Pedia configurator", () => {
 
   it("compares exact prices at the same quantity and never substitutes an incompatible minimum price", () => {
     render(<ServicePicker product={product} tierId={null} onSelect={vi.fn()} qty={250} prices={{ 2: 7050 }} />);
-    const limited = screen.getByRole("radio", { name: /Global Ekonomis/ }).closest("label")!;
-    const eligible = screen.getByRole("radio", { name: /Indonesia Stabil/ }).closest("label")!;
+    const limited = screen.getByRole("radio", { name: /Followers Global Ekonomis/ }).closest("label")!;
+    const eligible = screen.getByRole("radio", { name: /Followers Indonesia Stabil/ }).closest("label")!;
     expect(limited.textContent).toContain("Jumlah tidak tersedia");
     expect(limited.textContent).not.toContain("Rp2.000");
     expect(eligible.textContent).toContain("Rp7.050");
@@ -503,36 +482,6 @@ describe("Pedia configurator", () => {
     expect(container.textContent).toContain("Jumlah tidak tersedia");
     expect(container.textContent).toContain("kelipatan 10");
     expect(container.textContent).not.toContain("Rp5.000");
-  });
-
-  it("keeps comparison rows compact with sort controls before the list and no advanced accordion", () => {
-    render(<ServicePicker product={many} tierId={null} onSelect={vi.fn()} qty={null} />);
-    expect(screen.queryByText(/Lanjutan/)).toBeNull();
-    const toolbar = screen.getByRole("combobox", { name: "Urutkan layanan" });
-    const list = screen.getAllByRole("radio")[0];
-    expect(toolbar.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    // Deskripsi, peringatan drop, dan panduan tidak lagi diulang pada tiap baris.
-    expect(document.body.textContent).not.toContain("Drop dapat terjadi");
-    expect(document.body.textContent).not.toContain("Cara membeli");
-  });
-
-  it("keeps an out-of-filter selection visible without replacing it", () => {
-    const onSelect = vi.fn();
-    render(<ServicePicker product={product} tierId={2} onSelect={onSelect} qty={100} expanded />);
-    fireEvent.click(screen.getByRole("button", { name: "Global" }));
-    expect(screen.getByText(/Pilihanmu berada di luar filter/)).toBeTruthy();
-    // Radio pilihan tidak lagi dirender dalam daftar filter, tetapi tombol
-    // Tampilkan pilihanmu mengembalikan konteks tanpa mengganti pilihan.
-    expect(onSelect).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Tampilkan pilihanmu" }));
-    expect(screen.getByRole("button", { name: "Semua" }).getAttribute("aria-pressed")).toBe("true");
-    expect((screen.getByRole("radio", { name: /Indonesia Stabil/ }) as HTMLInputElement).checked).toBe(true);
-  });
-
-  it("marks the chosen comparison row with a visible Dipilih badge", () => {
-    render(<ServicePicker product={product} tierId={2} onSelect={vi.fn()} qty={100} expanded />);
-    const row = screen.getByRole("radio", { name: /Indonesia Stabil/ }).closest("label")!;
-    expect(row.textContent).toContain("Dipilih");
   });
 
   it("retains the current selection when comparison filters exclude it", () => {

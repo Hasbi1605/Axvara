@@ -1,9 +1,5 @@
 # DESIGN.md — AXVARA Design System
 
-## Daftar pembanding ringkas Pedia — 26 Oktober 2026
-
-✅ Diimplementasikan; publikasi melalui CI. Revisi audit antislop26Oktober: baris layanan ringkas (nama pendek + harga + wilayah/refill/estimasi + badge Dipilih), toolbar kategori/jenis akun/urutan sebelum daftar tanpa accordion Lanjutan. Detail pilihan terbuka sesudah daftar; rail desktop menyatukan deskripsi pilihan, total, dan CTA mulai breakpoint xl. Pilihan aktif mempertahankan navy terang + border cyan tipis (menggantikan latar violet + bingkai gradien), tanpa auto-scroll. Pill kebutuhan memakai hit area44px dengan siluet visual, petunjuk geser bila panjang, draf jumlah per kebutuhan selama sesi. Teks sekunder memakai white/60 ke atas agar lulus kontras AA. Tipografi harga22Oktober dan token Midnight/Cyan/Liquid Glass tetap.
-
 ## Panel Siaran dan sambutan WA — 24 Oktober 2026
 
 ✅ Menu Konten → Siaran mengikuti Midnight/Cyan/Liquid Glass existing: pustaka

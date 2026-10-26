@@ -215,9 +215,10 @@ body {
 }
 .pedia-tier-selected {
   position: relative;
-  border: 1.5px solid rgba(0, 229, 255, 0.55);
-  background: linear-gradient(180deg, rgba(0, 229, 255, 0.10), rgba(16, 23, 54, 0.55));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10), 0 0 0 1px rgba(0, 229, 255, 0.12);
+  border: 1.5px solid transparent;
+  background:
+    linear-gradient(#211c3f, #211c3f) padding-box,
+    var(--px-gradient, linear-gradient(135deg, #00E5FF, #8B5CF6)) border-box;
 }
 @media (prefers-reduced-motion: reduce) {
   .pedia-root * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
