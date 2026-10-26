@@ -1,0 +1,219 @@
+--- a/axvara-gopay-poller/AGENTS.md
++++ b/axvara-gopay-poller/AGENTS.md
+@@ -7,7 +7,7 @@
+ |---|---|
+ | `/Users/macbookair/axvara` | Toko utama. Webhook `POST /api/webhook/gopay` (header `x-poller-secret`) + invoice `provider='gopay'` |
+ | `/Users/macbookair/axvara-wr-proxy` | Inspirasinya (Fastify + systemd), tapi service TERPISAH di VPS yang sama |
+-| Folder ini | Poll mutasi GoBiz 8–10 detik → POST match ke Pages |
++| Folder ini | Poll mutasi GoBiz 15–18 detik → POST match ke Pages |
+
+ ## Aturan keras (anti-ban, konsensus komunitas 2026-10-02)
+ 1. **Read-only ke GoPay.** Tidak pernah transfer/tarik/ubah apa pun. Bila butuh tulis, tolak + matikan service.
+@@ -46,10 +46,18 @@
+ - Test: `npm test` (build + routing unit + integrasi poller berjalan dengan
+   stub `merchantid`).
+
++## ACK dan pemicu manual — 25 Oktober 2026
++- Mutasi hanya masuk dedupe dua jam setelah Pages memberi HTTP2xx dengan JSON `ok:true` dan status `paid|already_paid|duplicate|unmatched`. Status unmatched adalah keputusan manual yang sudah durable; jangan menganggapnya paid.
++- 4xx/5xx/redirect/JSON rusak atau status tak dikenal tidak di-ACK. Event ID tetap; retry mengikuti loop existing, tanpa poll tambahan ke GoBiz. POST memakai redirect manual agar secret tidak diteruskan ke URL lain.
++- `/tick` legacy kini alias `/wake`: respons `{status:true,queued:true,eta_ms}` mengantrekan loop tunggal, bukan hasil polling seketika. Keduanya menghormati jarak minimum/backoff per merchant; jangan memanggil `pollOnce` dari handler.
++- Test memakai stub merchantid dan Pages lokal; tidak login, mengubah sesi produksi atau memanggil GoBiz nyata.
++
+ ## Deploy (VPS `wr-proxy.axvara.tech`, service terpisah)
+ ```bash
+-npm ci --omit=dev && npm run build
+-# rsync dist + package.json ke /opt/axvara/gopay/, env chmod 600
+-sudo systemctl enable --now gopay-poller
++npm ci && npm test
++# Backup dist produksi, lalu salin SELURUH dist/ ke /opt/axvara/gopay/app/dist/.
++# pages-forward.js wajib ikut index.js/merchant-routing.js/login.js.
++# Jangan timpa .env / .session / .session-axvara-tech atau dependensi existing.
++sudo systemctl restart gopay-poller
+ curl http://127.0.0.1:3002/health
+ ```
+--- a/axvara-gopay-poller/src/index.ts
++++ b/axvara-gopay-poller/src/index.ts
+@@ -15,11 +15,12 @@
+ // read-only ke GoPay, interval 15 detik + jitter 0-3 detik, zero poll saat
+ // idle (tidak hit GoBiz tanpa pending), session chmod 600, 1 IP + 1 device.
+
+-import Fastify from "fastify";
++import Fastify, { type RouteHandlerMethod } from "fastify";
+ import { readFileSync, writeFileSync, chmodSync, existsSync, renameSync } from "node:fs";
+ import { timingSafeEqual } from "node:crypto";
+ import { GopayProvider } from "merchantid";
+ import { merchantSessionPaths, routePendingInvoices, type PendingInvoice } from "./merchant-routing.js";
++import { forwardPayment } from "./pages-forward.js";
+
+ const PAGES_BASE = (process.env.AXVARA_PAGES_BASE || "https://axvara.tech").replace(/\/+$/, "");
+ const POLLER_SECRET = process.env.GOPAY_POLLER_SECRET || "";
+@@ -165,18 +166,9 @@
+ }
+
+ async function forwardToPages(m: { amount: number; orderCode: string; txId: string }): Promise<boolean> {
+-  const res = await fetch(`${PAGES_BASE}/api/webhook/gopay`, {
+-    method: "POST",
+-    headers: { "content-type": "application/json", "x-poller-secret": POLLER_SECRET },
+-    body: JSON.stringify({
+-      amount: m.amount,
+-      order_code: m.orderCode,
+-      event_id: `gopay-poller:${m.txId}`,
+-      payment: { id: m.txId },
+-    }),
+-    signal: AbortSignal.timeout(15_000),
+-  }).catch(() => null);
+-  return res !== null && res.status < 500;
++  const acknowledged = await forwardPayment(PAGES_BASE, POLLER_SECRET, m);
++  if (!acknowledged) app.log.warn("Pages payment ACK unavailable; retry on normal poll cadence");
++  return acknowledged;
+ }
+
+ async function pollMerchant(merchantId: string, pending: Pending[]): Promise<Record<string, unknown>> {
+@@ -304,7 +296,7 @@
+ }
+
+ /** Path publik via Caddy: `POST https://wr-proxy.axvara.tech/gopay/wake`. */
+-app.post("/wake", async (req, reply) => {
++const requestWake: RouteHandlerMethod = async (req, reply) => {
+   if (!validToken(req.headers["x-poller-secret"])) return reply.status(401).send({ status: false });
+   wakeCount++;
+   wakePending = true;
+@@ -313,18 +305,11 @@
+   const sinceLast = Date.now() - lastLoopAt;
+   if (sinceLast >= WAKE_MIN_GAP_MS) wakeSleeper?.();
+   else setTimeout(() => wakeSleeper?.(), WAKE_MIN_GAP_MS - sinceLast).unref();
+-  return { status: true, eta_ms: Math.max(0, WAKE_MIN_GAP_MS - sinceLast) };
+-});
+-
+-app.post("/tick", async (req, reply) => {
+-  if (!validToken(req.headers["x-poller-secret"])) return reply.status(401).send({ status: false });
+-  try {
+-    lastResult = await pollOnce();
+-    return { status: true, ...lastResult };
+-  } catch (e) {
+-    return { status: false, error: String((e as Error)?.message ?? e).slice(0, 200) };
+-  }
+-});
++  return { status: true, queued: true, eta_ms: Math.max(0, WAKE_MIN_GAP_MS - sinceLast) };
++};
++app.post("/wake", requestWake);
++// Legacy manual trigger shares the paced loop; it must not race session refresh.
++app.post("/tick", requestWake);
+
+ app.get("/session/status", async (req, reply) => {
+   if (!validToken(req.headers["x-poller-secret"])) return reply.status(401).send({ status: false });
+--- /dev/null
++++ b/axvara-gopay-poller/src/pages-forward.ts
+@@ -0,0 +1,27 @@
++const ACK_STATUSES = new Set(["paid", "already_paid", "duplicate", "unmatched"]);
++
++/** Only a durable Pages decision may suppress this mutation on later ticks. */
++export async function forwardPayment(
++  pagesBase: string,
++  secret: string,
++  match: { amount: number; orderCode: string; txId: string },
++  request: typeof fetch = fetch,
++): Promise<boolean> {
++  try {
++    const res = await request(`${pagesBase}/api/webhook/gopay`, {
++      method: "POST",
++      redirect: "manual",
++      headers: { "content-type": "application/json", "x-poller-secret": secret },
++      body: JSON.stringify({
++        amount: match.amount, order_code: match.orderCode,
++        event_id: `gopay-poller:${match.txId}`, payment: { id: match.txId },
++      }),
++      signal: AbortSignal.timeout(15_000),
++    });
++    if (!res.ok) return false;
++    const ack = await res.json() as { ok?: unknown; status?: unknown } | null;
++    return ack?.ok === true && typeof ack.status === "string" && ACK_STATUSES.has(ack.status);
++  } catch {
++    return false;
++  }
++}
+--- a/axvara-gopay-poller/test/poller-routing.test.mjs
++++ b/axvara-gopay-poller/test/poller-routing.test.mjs
+@@ -11,17 +11,20 @@
+ const invoice=(code,id)=>({order_code:code,payable_amount:10137,issued_at:new Date(Date.now()-60000).toISOString(),expires_at:new Date(Date.now()+60000).toISOString(),...(id===undefined?{}:{merchant_id:id})});
+ const transaction=id=>({id,grossAmount:10137,status:'settlement',transactionTime:new Date().toISOString(),paymentType:'qris'});
+
+-async function run(pending,feeds,verify) {
+- const dir=await mkdtemp(join(tmpdir(),'axvara-poller-routing-'));const received=[];
++async function run(pending,feeds,verify,responses=[]) {
++ const dir=await mkdtemp(join(tmpdir(),'axvara-poller-routing-'));const received=[],accepted=[];
+  const calls=join(dir,'calls');await writeFile(calls,'');
+  const old=join(dir,'old-session'),next=join(dir,'new-session');
+  await writeFile(old,JSON.stringify({account:oldId}),{mode:0o600});await writeFile(next,JSON.stringify({account:newId}),{mode:0o600});
+  const pages=createServer(async(req,res)=>{
+   res.setHeader('content-type','application/json');
+   if(req.headers['x-poller-secret']!=='test-secret'){res.writeHead(401);res.end('{}');return;}
+-  if(req.url==='/api/webhook/gopay/pending'){res.end(JSON.stringify({pending:pending.filter(p=>!received.some(r=>r.order_code===p.order_code))}));return;}
++  if(req.url==='/api/webhook/gopay/pending'){res.end(JSON.stringify({pending:pending.filter(p=>!accepted.includes(p.order_code))}));return;}
+   if(req.url==='/api/webhook/gopay'){
+-   let raw='';for await(const part of req)raw+=part;received.push(JSON.parse(raw));res.end('{}');return;
++   let raw='';for await(const part of req)raw+=part;const body=JSON.parse(raw);received.push(body);
++   const response=responses[received.length-1]??{status:200,body:{ok:true,status:'paid'}};
++   res.statusCode=response.status;if(response.body?.ok===true)accepted.push(body.order_code);
++   res.end(JSON.stringify(response.body));return;
+   }
+   res.writeHead(404);res.end('{}');
+  });
+@@ -54,10 +57,28 @@
+  await run([invoice('old',oldId),invoice('new',newId)],{[oldId]:{error:'429 rate limited'},[newId]:{transactions:[transaction('new-tx')]}},async({health,received,calls,port})=>{
+   assert.equal(health.lastResult.status,'partial');assert.equal(health.lastResult.forwarded,1);assert.equal(received[0].order_code,'new');
+   const response=await fetch(`http://127.0.0.1:${port}/tick`,{method:'POST',headers:{'x-poller-secret':'test-secret'}});
+-  const tick=await response.json();assert.equal(tick.merchants[0].status,'backoff');
++  const tick=await response.json();assert.equal(tick.queued,true);assert.ok(tick.eta_ms>0);
++  assert.equal(health.lastResult.merchants[0].status,'feed_error_backoff');
+   const invocations=(await readFile(calls,'utf8')).trim().split('\n').map(JSON.parse);
+   assert.equal(invocations.filter(call=>call.merchantId===oldId).length,1);
+  });
++});
++test('failed Pages ACK retries on the single paced loop; tick spam cannot poll concurrently',async()=>{
++ await run([invoice('retry',oldId)],{[oldId]:{transactions:[transaction('retry-tx')]}},async({health,received,calls,port})=>{
++  assert.equal(health.lastResult.forwarded,0);assert.equal(received.length,1);
++  const trigger=()=>fetch(`http://127.0.0.1:${port}/tick`,{method:'POST',headers:{'x-poller-secret':'test-secret'}});
++  const queued=await Promise.all(Array.from({length:8},async()=>(await trigger()).json()));
++  assert.ok(queued.every(r=>r.queued===true&&r.eta_ms>0));
++  assert.equal((await readFile(calls,'utf8')).trim().split('\n').length,1);
++  let after;
++  for(let i=0;i<130;i++){
++   await pause(100);after=await(await fetch(`http://127.0.0.1:${port}/health`)).json();
++   if(after.lastResult.forwarded===1)break;
++  }
++  assert.equal(after.lastResult.forwarded,1);assert.equal(received.length,2);
++  assert.equal(received[0].event_id,received[1].event_id);
++  assert.equal((await readFile(calls,'utf8')).trim().split('\n').length,2);
++ },[{status:409,body:{error:'payment_transition_failed'}}]);
+ });
+ test('an explicit null or unknown merchant never queries either account or forwards payment',async()=>{
+  await run([invoice('damaged',null),invoice('unknown','G333333333')],{},async({health,received,calls})=>{
+--- /dev/null
++++ b/axvara-gopay-poller/test/pages-forward.test.mjs
+@@ -0,0 +1,25 @@
++import {test} from 'node:test';
++import assert from 'node:assert/strict';
++import {forwardPayment} from '../dist/pages-forward.js';
++const match={amount:10137,orderCode:'fixture',txId:'stable-id'};
++
++test('only durable JSON ACKs acknowledge a payment, preserving the stable event ID',async()=>{
++ for(const status of ['paid','already_paid','duplicate','unmatched']){
++  const ok=await forwardPayment('http://fixture','test-secret',match,async(url,options)=>{
++   assert.equal(options.redirect,'manual');assert.ok(options.signal);
++   assert.equal(JSON.parse(options.body).event_id,'gopay-poller:stable-id');
++   return Response.json({ok:true,status});
++  });
++  assert.equal(ok,true,status);
++ }
++});
++test('4xx, redirects, 5xx and malformed or unknown success receipts never suppress retry',async()=>{
++ for(const code of [301,302,400,401,403,408,409,413,415,429,500,503]){
++  assert.equal(await forwardPayment('http://fixture','secret',match,async()=>Response.json({ok:true,status:'paid'},{status:code})),false,String(code));
++ }
++ for(const body of ['{}','null','<html>oops</html>','{"ok":true,"status":"processing"}','{"ok":false,"status":"paid"}']){
++  assert.equal(await forwardPayment('http://fixture','secret',match,async()=>new Response(body)),false,body);
++ }
++ assert.equal(await forwardPayment('http://fixture','secret',match,async()=>{throw new Error('network');}),false);
++ assert.equal(await forwardPayment('http://fixture','secret',match,async()=>({ok:true,json:async()=>{throw new Error('body reset');}})),false);
++});

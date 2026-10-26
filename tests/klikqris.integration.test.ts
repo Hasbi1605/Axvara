@@ -7,7 +7,12 @@ import { klikQrisMoney, klikQrisTime, validKlikQrisImage, reconcileKlikQrisPayme
 import { POST as callback } from "@/app/api/payments/klikqris/callback/route";
 
 const mocks=vi.hoisted(()=>({ ensure:vi.fn(async()=>true),send:vi.fn(async()=>({ok:true})),pedia:vi.fn(async()=>({})),
- wrCreate:vi.fn(async()=>0),wrProcess:vi.fn(async()=>({processed:0})),skCreate:vi.fn(async()=>0),skProcess:vi.fn(async()=>({processed:0})) }));
+ wrCreate:vi.fn(async()=>0),wrProcess:vi.fn(async()=>({processed:0})),skCreate:vi.fn(async()=>0),skProcess:vi.fn(async()=>({processed:0})),
+ pages:false,tasks:[] as Promise<unknown>[] }));
+vi.mock("@cloudflare/next-on-pages",()=>({getRequestContext:()=>{
+ if(!mocks.pages)throw new Error("No Pages context in this fixture");
+ return {ctx:{waitUntil:(task:Promise<unknown>)=>{mocks.tasks.push(task);}}};
+}}));
 vi.mock("@/lib/fulfillment/deliver",()=>({ensureFulfillmentForPaidOrder:mocks.ensure}));
 vi.mock("@/lib/telegram/api",()=>({sendMessage:mocks.send,sendPhoto:vi.fn(async()=>({ok:true})),sendChatAction:vi.fn(),showLoadingBar:vi.fn(),safeEditOrSend:vi.fn()}));
 vi.mock("@/lib/warung-rebahan/order",()=>({createWrOrderLinksForOrder:mocks.wrCreate,processWrPendingOrders:mocks.wrProcess}));
@@ -28,6 +33,7 @@ beforeEach(async()=>{
  remote=new Map();failStatus=false;failCreateAfterSave=false;mocks.ensure.mockClear();mocks.send.mockClear();mocks.pedia.mockClear();
  mocks.wrCreate.mockClear();mocks.wrProcess.mockClear();mocks.skCreate.mockClear();mocks.skProcess.mockClear();
  mocks.wrCreate.mockResolvedValue(0);mocks.skCreate.mockResolvedValue(0);
+ mocks.pages=false;mocks.tasks=[];
  vi.stubEnv("NEXT_PUBLIC_PAYMENTS_MAINTENANCE","false");vi.stubEnv("QRIS_ACTIVE_PROVIDER","klikqris");
  vi.stubEnv("KLIKQRIS_ENABLED","true");vi.stubEnv("KLIKQRIS_API_KEY","fixture-private-api-key");vi.stubEnv("KLIKQRIS_MERCHANT_ID","123456789");
  vi.stubEnv("TELEGRAM_ADMIN_CHAT_ID","999");vi.stubEnv("PRODUCT_VARIANTS_READ","true");
@@ -64,6 +70,18 @@ async function hook(overrides:Record<string,unknown>={},code=A){
 const posts=()=>fetchMock.mock.calls.filter(([url])=>String(url).endsWith("/create")).length;
 
 describe("Paid background payment recovery",()=>{
+ it("returns paid before a slow SK purchase completes, retains it with waitUntil and replay never schedules a second purchase",async()=>{
+  await checkout();paid();mocks.pages=true;mocks.skCreate.mockResolvedValue(1);
+  let finish!:()=>void;
+  mocks.skProcess.mockImplementationOnce(()=>new Promise(resolve=>{finish=()=>resolve({processed:1});}));
+  try {
+   expect(await reconcileKlikQrisPayment(A)).toBe("paid");
+   expect(row().payment_status).toBe("paid");expect(mocks.tasks).toHaveLength(1);
+   await vi.waitFor(()=>expect(mocks.skProcess).toHaveBeenCalledTimes(1));
+   expect(await reconcileKlikQrisPayment(A)).toBe("already_paid");expect(mocks.tasks).toHaveLength(1);
+   expect(mocks.skProcess).toHaveBeenCalledWith(undefined,{skipOrphanProbe:true,orderCode:A,limit:1});
+  } finally {finish?.();await Promise.allSettled(mocks.tasks);}
+ });
  const run=async()=>{
   vi.stubEnv("CRON_SECRET","fixture-cron");
   const {POST}=await import("@/app/api/cron/lite/route");
@@ -280,8 +298,8 @@ describe("KlikQRIS settlement boundaries",()=>{
  it("dispatches newly created WR/SK supplier links immediately after KlikQRIS settlement — the manual Retry parity path",async()=>{
   mocks.skCreate.mockResolvedValue(1);mocks.wrCreate.mockResolvedValue(1);
   await checkout();paid();expect((await hook()).status).toBe(200);
-  expect(mocks.skCreate).toHaveBeenCalledWith(A);expect(mocks.skProcess).toHaveBeenCalledWith(undefined,{skipOrphanProbe:true});
-  expect(mocks.wrCreate).toHaveBeenCalledWith(A);expect(mocks.wrProcess).toHaveBeenCalledWith(undefined,{skipOrphanProbe:true});
+  expect(mocks.skCreate).toHaveBeenCalledWith(A);expect(mocks.skProcess).toHaveBeenCalledWith(undefined,{skipOrphanProbe:true,orderCode:A,limit:1});
+  expect(mocks.wrCreate).toHaveBeenCalledWith(A);expect(mocks.wrProcess).toHaveBeenCalledWith(undefined,{skipOrphanProbe:true,orderCode:A,limit:1});
   // Repeated callbacks must not dispatch twice (already_paid short-circuit).
   expect((await hook()).status).toBe(200);expect(mocks.skProcess).toHaveBeenCalledTimes(1);
  });

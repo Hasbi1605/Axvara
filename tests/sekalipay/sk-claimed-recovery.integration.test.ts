@@ -59,6 +59,72 @@ function expectDelivered(fx: ReturnType<typeof createD1Fixture>) {
 }
 
 describe("SK sent claim recovery — incident 23 October", () => {
+  it.each([
+    [500,{message:"INTERNAL_SERVER_ERROR"}],
+    [503,{message:"SERVICE_UNAVAILABLE"}],
+    [502,{message:"sk_proxy_unreadable_response"}],
+    [200,{data:{status:"paid"}}],
+    [200,{data:{invoice:"INV",ref_id:"different-order",status:"paid"}}],
+  ])("keeps a sent claim ambiguous on HTTP%s or a missing/mismatched purchase receipt",async(status,body)=>{
+    const {fx,db}=setup("pending");
+    try {
+      const fetch=vi.fn(async()=>Response.json(body,{status}));vi.stubGlobal("fetch",fetch);
+      await processSkPendingOrders(db,{skipOrphanProbe:true});
+      expect(fx.sql.prepare("SELECT status,request_sent_at,sk_invoice FROM sk_order_links").get()).toMatchObject({status:"submitted",request_sent_at:expect.any(String),sk_invoice:null});
+      await processSkPendingOrders(db,{skipOrphanProbe:true});expect(fetch).toHaveBeenCalledTimes(1);
+    } finally {fx.close();}
+  });
+  it("only explicit PRODUCT_TEMPORARILY_UNAVAILABLE permits a normal retry",async()=>{
+    const {fx,db}=setup("pending");
+    try {
+      vi.stubGlobal("fetch",vi.fn(async()=>Response.json({message:"PRODUCT_TEMPORARILY_UNAVAILABLE"},{status:503})));
+      await processSkPendingOrders(db,{skipOrphanProbe:true});
+      expect(fx.sql.prepare("SELECT status,request_sent_at FROM sk_order_links").get()).toEqual({status:"retry",request_sent_at:null});
+    } finally {fx.close();}
+  });
+  it("paid background work binds SK ownership before generic manual fulfillment can settle the item",async()=>{
+    const {fx,code}=setup();
+    try {
+      fx.sql.exec("DELETE FROM sk_order_links");
+      vi.stubEnv("WARUNG_REBAHAN_ENABLED","false");vi.stubEnv("AUTO_FULFILLMENT_ENABLED","true");
+      const fetch=vi.fn(async(_url:RequestInfo|URL,init?:RequestInit)=>{
+        expect(init?.method).toBe("POST");
+        return Response.json({data:{invoice:"SK-BOUND",ref_id:skRefId(code,"1095",1),status:"paid"}});
+      });vi.stubGlobal("fetch",fetch);
+      const {schedulePaidFulfillment}=await import("@/lib/payments/paid-fulfillment");
+      await schedulePaidFulfillment(code,"market");
+      expect(fx.sql.prepare("SELECT status,sk_invoice FROM sk_order_links").get()).toMatchObject({status:"processing",sk_invoice:"SK-BOUND"});
+      const item=fx.sql.prepare("SELECT status,sk_link_id FROM fulfillment_items").get();
+      expect(item?.sk_link_id).toBeTruthy();expect(item?.status).not.toBe("manual_required");
+      expect(fetch).toHaveBeenCalledTimes(1);
+    } finally {fx.close();}
+  });
+  it("records lookup failures for admin while preserving the sent claim, original request time and ref_id",async()=>{
+    const {fx,db,code}=setup();
+    try {
+      const before=fx.sql.prepare("SELECT request_sent_at,idempotency_key FROM sk_order_links").get();
+      const fetch=vi.fn(async(_url:RequestInfo|URL,init?:RequestInit)=>{
+        expect(init?.method).not.toBe("POST");return Response.json({message:"TRX_NOT_FOUND"},{status:404});
+      });vi.stubGlobal("fetch",fetch);
+      expect(await recoverStaleSkClaims(db)).toBe(0);
+      expect(fx.sql.prepare("SELECT status,last_error,request_sent_at,idempotency_key FROM sk_order_links").get()).toEqual({status:"claimed",last_error:"ambiguous_lookup_http_404",...before});
+      expect(fetch).toHaveBeenCalledTimes(1);expect(String(fetch.mock.calls[0][0])).toContain(encodeURIComponent(skRefId(code,"1095",1)));
+    } finally {fx.close();}
+  });
+  it("immediate dispatch processes only the paid order instead of buying another order earlier in the queue",async()=>{
+    const {fx,db,code}=setup("pending");
+    try {
+      fx.sql.exec(`INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status) VALUES('OTHER','Other','628','[]',5000,'qris','lunas','paid');
+        INSERT INTO sk_order_links(order_code,sk_variant_id,quantity,sk_cost,status,next_attempt_at) VALUES('OTHER','1095',1,5000,'pending',datetime('now','-1 hour'))`);
+      const fetch=vi.fn(async(_url:RequestInfo|URL,init?:RequestInit)=>{
+        expect(init?.method).toBe("POST");expect(JSON.parse(String(init?.body)).ref_id).toBe(skRefId(code,"1095",1));
+        return Response.json({data:{invoice:"SK-PAID",ref_id:skRefId(code,"1095",1),status:"paid"}});
+      });vi.stubGlobal("fetch",fetch);
+      expect(await processSkPendingOrders(db,{skipOrphanProbe:true,orderCode:code,limit:1})).toMatchObject({processed:1,succeeded:1});
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(fx.sql.prepare("SELECT status,attempt_count FROM sk_order_links WHERE order_code='OTHER'").get()).toEqual({status:"pending",attempt_count:0});
+    } finally {fx.close();}
+  });
   it.each(["claimed", "submitted", "ordering"])("recovers %s without an invoice using GET ref_id and delivers without a second purchase", async status => {
     const { fx, code } = setup(status);
     try {

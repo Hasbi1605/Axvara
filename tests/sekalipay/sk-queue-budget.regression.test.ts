@@ -28,7 +28,7 @@ function seedOrder(fx: Fx, code: string, status?: string) {
 function supplier() {
   const fetch = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
     if (init?.method === "POST") {
-      return Response.json({ data: { invoice: "SK-NEW", ref_id: "fixture", status: "processing", price: 10000, fees: 0 } });
+      return Response.json({ data: { invoice: "SK-NEW", ref_id: JSON.parse(String(init.body)).ref_id, status: "processing", price: 10000, fees: 0 } });
     }
     return Response.json({ data: { status: "processing", invoice: "SK-NEW" } });
   });

@@ -26,6 +26,7 @@ import {
   SkInsufficientBalanceError,
   SkOutOfStockError,
   SkTemporarilyUnavailableError,
+  SkApiError,
   type SkTrxDetail,
 } from "./client";
 
@@ -304,7 +305,7 @@ export async function reconcileMissingSkLinks(
 
 export async function processSkPendingOrders(
   database?: DatabaseAccess,
-  options: { skipOrphanProbe?: boolean } = {},
+  options: { skipOrphanProbe?: boolean; orderCode?: string; limit?: number } = {},
 ): Promise<SkProcessResult> {
   const db = database ?? createDatabaseAccess();
   const result: SkProcessResult = { processed: 0, succeeded: 0, retried: 0, failed: 0, blocked: 0, reconciled: 0 };
@@ -324,7 +325,10 @@ export async function processSkPendingOrders(
        WHERE l.status IN ('pending','retry')
          AND l.attempt_count < l.max_attempts
          AND (l.next_attempt_at IS NULL OR datetime(l.next_attempt_at) <= datetime('now'))
-       ORDER BY l.next_attempt_at ASC, l.id ASC LIMIT 4`,
+         ${options.orderCode ? "AND l.order_code=?" : ""}
+       ORDER BY l.next_attempt_at ASC, l.id ASC LIMIT ?`,
+      ...(options.orderCode ? [options.orderCode] : []),
+      Math.max(1, Math.min(4, Math.floor(options.limit ?? 4))),
     )
     .catch((error) => {
       if (error instanceof QueryBudgetExceeded) throw error;
@@ -436,7 +440,12 @@ async function reconcileAmbiguousSkLink(id: number, db: DatabaseAccess): Promise
   let detail: SkTrxDetail;
   try {
     detail = await fetchSkTransaction(refId);
-  } catch {
+  } catch (error) {
+    // Preserve the sent claim and stable ref_id. A 404/timeout is not proof
+    // that the purchase can be replayed, but admin must see why it is stuck.
+    const reason = error instanceof SkApiError ? `ambiguous_lookup_http_${error.status}` : "ambiguous_lookup_unavailable";
+    await db.execRun(`UPDATE sk_order_links SET last_error=?
+      WHERE id=? AND status IN ('claimed','submitted','ordering')`, reason, id);
     return false;
   }
   const status = String(detail.status || "").toLowerCase();
@@ -478,7 +487,8 @@ async function handleSkOrderError(
 ): Promise<"retried" | "failed" | "blocked"> {
   const { execRun } = db;
   const message = (error instanceof Error ? error.message : String(error)).slice(0, 500);
-  const isTimeout = /timeout|abort|network|fetch failed|504/i.test(message);
+  const isTimeout = /timeout|abort|network|fetch failed|504|sk_proxy_unreadable_response/i.test(message)
+    || (error instanceof SkApiError && error.status >= 500 && !(error instanceof SkTemporarilyUnavailableError));
   if (isTimeout) {
     await execRun(
       `UPDATE sk_order_links SET status='submitted',

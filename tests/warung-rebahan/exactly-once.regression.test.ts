@@ -28,6 +28,23 @@ function stubEnv() {
 }
 
 describe("regresi #1: timeout setelah vendor menerima tidak menghasilkan POST kedua", () => {
+  it.each([
+    [500,{success:false,message:"Internal server error"}],
+    [503,{success:false,message:"Service unavailable"}],
+    [502,{success:false,message:"wr_proxy_unreadable_response"}],
+    [200,{success:true,data:{status:"processing"}}],
+  ])("HTTP%s or a success payload without order_id cannot trigger another purchase",async(status,body)=>{
+    const fx=await setupWrFixture();
+    try {
+      seedWrCatalog(fx);seedWrOrder(fx,"AXV-20261025-AMBIG001");stubEnv();
+      const fetch=vi.fn(async()=>Response.json(body,{status}));vi.stubGlobal("fetch",fetch);
+      const db=createDatabaseAccess(fx.db);
+      await createWrOrderLink("AXV-20261025-AMBIG001",[{product_id:1,variant_id:1,qty:1}],db);
+      await processWrPendingOrders(db,{skipOrphanProbe:true});
+      expect(fx.sql.prepare("SELECT status,request_sent_at,wr_order_id FROM wr_order_links").get()).toMatchObject({status:"submitted",request_sent_at:expect.any(String),wr_order_id:null});
+      await processWrPendingOrders(db,{skipOrphanProbe:true});expect(fetch).toHaveBeenCalledTimes(1);
+    } finally {fx.close();}
+  });
   it("link submitted tidak dibeli ulang; hanya reconcile", async () => {
     const fx = await setupWrFixture();
     try {

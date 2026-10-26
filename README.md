@@ -1,5 +1,44 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+Proxy WR/SK — 26 Oktober 2026: dispatcher egress dipakai bersama dan ditutup
+saat shutdown; URL proxy terkonfigurasi yang invalid menghentikan startup.
+VPS tanpa URL proxy memakai IP tetapnya secara langsung. Diff removal WR/SK
+dipotong terpisah maksimal 200 ID per request, hanya ACK sukses memajukan
+snapshot; sisa ID dan payload induk berubah tetap pulih setelah restart.
+Validasi body menghitung byte UTF-8, path SK menolak traversal. Rilis wajib
+menyalin seluruh `dist/` (index/diff-sync/psmm/psmm-diff dan modul tambahan),
+backup dahulu, pertahankan `.env`, snapshot dan direktori idempotensi durable.
+Tes transport memakai MockAgent tanpa jaringan; tidak menambah retry pembelian.
+
+Perbaikan VPS GoPay 25 Oktober: dedupe mutasi hanya setelah respons Pages
+HTTP 2xx + JSON `ok:true` dengan status `paid|already_paid|duplicate|unmatched`.
+HTTP 4xx/5xx, redirect, atau respons rusak tetap retry pada cadence existing dengan event ID
+sama. `/tick` legacy menjadi alias wake berantrean (`status:true,queued:true,eta_ms`)
+agar tidak menjalankan poll/refresh sesi paralel atau melewati jarak minimum.
+Source `axvara-gopay-poller/src/pages-forward.ts`; rilis VPS terpasang
+25 Oktober, 21.21 WIB. Deploy seluruh dist ke
+`/opt/axvara/gopay/app/dist`, tanpa mengubah sesi/env atau membuat invoice baru.
+
+## Pemulihan order supplier dan pekerjaan pembayaran — 25 Oktober 2026
+
+KlikQRIS mempertahankan pekerjaan sesudah paid melalui Cloudflare `waitUntil`;
+pengecekan status pembeli tidak menunggu pembelian supplier/notifikasi. Outbox dan
+cron existing tetap jalur pemulihan bila pekerjaan server terputus. Item WR/SK
+diikat sebelum fulfillment umum, lalu upaya segera dibatasi satu link per
+supplier untuk order tersebut; link lain dilanjutkan cron. Dev/test tanpa request
+context menunggu task yang sama.
+
+Link SK yang ambigu tidak dibeli ulang otomatis. Error lookup dicatat aman pada
+panel admin;404 saja tidak membuktikan saldo belum terpotong. Pemulihan manual
+harus mencocokkan ref_id, riwayat dan debit supplier, mempertahankan referensi
+order yang sama. Kasus25Oktober berhasil dipulihkan sampai email pembeli terkirim;
+lihat `issue/sk-vps-reliability-2026-10-25.md`. Tidak ada cron/env/migrasi baru.
+
+
+Respons5xx generik, receipt sukses tanpa ID pesanan/invoice, atau ref_id SK yang
+tidak cocok diperlakukan ambigu dan tidak dibeli ulang otomatis. Penolakan
+`PRODUCT_TEMPORARILY_UNAVAILABLE` SK yang eksplisit tetap boleh retry biasa.
+
 ## Produk pasangan WR/SK yang dinonaktifkan — 25 Oktober 2026
 
 Produk OFF manual tidak lagi ikut memenangkan pasangan. Jika ChatGPT WR OFF dan

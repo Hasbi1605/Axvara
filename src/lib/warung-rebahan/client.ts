@@ -209,6 +209,7 @@ export function classifyWrError(
   endpoint: string,
   body?: unknown,
 ): WrApiError {
+  if (status >= 500) return new WrApiError(message, status, endpoint, body);
   const lowered = String(message || "").toLowerCase();
   if (
     lowered.includes("saldo") ||
@@ -336,6 +337,9 @@ export async function createOrder(params: {
     // Sandbox WR: saldo tidak terpotong, respons tetap valid.
     ...(isWrSandbox() || params.is_test ? { is_test: true } : {}),
   });
+  if (!res.data || typeof res.data.order_id !== "string" || !res.data.order_id.trim()) {
+    throw new WrNetworkError("wr_network_response_unreadable", "/order");
+  }
   return res.data;
 }
 

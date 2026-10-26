@@ -285,13 +285,16 @@ export function classifySkError(
   body?: unknown,
 ): SkApiError {
   const lowered = String(message || "");
+  // A generic gateway/server error does not prove that a write was rejected
+  // before charging. Only the supplier's explicit temporary rejection is safe.
+  if (status >= 500 && lowered !== "PRODUCT_TEMPORARILY_UNAVAILABLE") return new SkApiError(message, status, endpoint, body);
   if (lowered === "BALANCE_IS_INSUFFICIENT" || /saldo|balance|insufficient/i.test(lowered)) {
     return new SkInsufficientBalanceError(message, endpoint, body);
   }
   if (lowered === "OUT_OF_STOCK" || /(^|[^a-z])(stok|stock)([^a-z]|$)/i.test(lowered)) {
     return new SkOutOfStockError(message, endpoint, body);
   }
-  if (lowered === "PRODUCT_TEMPORARILY_UNAVAILABLE" || status === 503) {
+  if (lowered === "PRODUCT_TEMPORARILY_UNAVAILABLE") {
     return new SkTemporarilyUnavailableError(message, endpoint, body);
   }
   return new SkApiError(message, status, endpoint, body);
@@ -503,6 +506,10 @@ export async function createSkTransaction(params: {
     method: "POST",
     body: { ref_id: params.refId, carts: params.carts },
   });
+  if (!res.data || typeof res.data.invoice !== "string" || !res.data.invoice.trim()
+    || (res.data.ref_id && res.data.ref_id !== params.refId)) {
+    throw new SkNetworkError("sk_network_response_unreadable", "POST v1/trx");
+  }
   return res.data;
 }
 

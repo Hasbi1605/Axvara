@@ -1,5 +1,57 @@
 # ARCHITECTURE.md — AXVARA
 
+Proxy WR/SK — 26 Oktober 2026: dispatcher egress dipakai bersama dan ditutup
+saat shutdown; URL proxy terkonfigurasi yang invalid menghentikan startup.
+VPS tanpa URL proxy memakai IP tetapnya secara langsung. Diff removal WR/SK
+dipotong terpisah maksimal 200 ID per request, hanya ACK sukses memajukan
+snapshot; sisa ID dan payload induk berubah tetap pulih setelah restart.
+Validasi body menghitung byte UTF-8, path SK menolak traversal. Rilis wajib
+menyalin seluruh `dist/` (index/diff-sync/psmm/psmm-diff dan modul tambahan),
+backup dahulu, pertahankan `.env`, snapshot dan direktori idempotensi durable.
+Tes transport memakai MockAgent tanpa jaringan; tidak menambah retry pembelian.
+
+Perbaikan VPS GoPay 25 Oktober: dedupe mutasi hanya setelah respons Pages
+HTTP 2xx + JSON `ok:true` dengan status `paid|already_paid|duplicate|unmatched`.
+HTTP 4xx/5xx, redirect, atau respons rusak tetap retry pada cadence existing dengan event ID
+sama. `/tick` legacy menjadi alias wake berantrean (`status:true,queued:true,eta_ms`)
+agar tidak menjalankan poll/refresh sesi paralel atau melewati jarak minimum.
+Source `axvara-gopay-poller/src/pages-forward.ts`; rilis VPS terpasang
+25 Oktober, 21.21 WIB. Deploy seluruh dist ke
+`/opt/axvara/gopay/app/dist`, tanpa mengubah sesi/env atau membuat invoice baru.
+
+## Dispatch KlikQRIS bertahan setelah request berakhir — 25 Oktober 2026
+
+✅ Implementasi; publikasi CI. `payments/paid-fulfillment.ts` mengambil request
+context sebelum memulai task, lalu mendaftarkan promise yang sama melalui
+`ctx.waitUntil`; dev/test tanpa context menunggu task tersebut. Transisi paid
+atomik tetap mendahului penjadwalan. Callback/status/cron dapat merespons tanpa
+menahan jaringan supplier dan notifikasi; replay paid tidak menjadwalkan ulang.
+Cron existing tetap memulihkan outbox/link yang belum selesai.
+
+Market mematerialisasi `fulfillment_items`, membuat/mengikat link WR/SK sebelum
+memulai fulfillment umum. Pembelian dan fulfillment berjalan sebagai task yang
+hasilnya ditangani; `processWrPendingOrders`/`processSkPendingOrders` menerima
+filter internal `orderCode` + batas1–4 (default4), jalur immediate memakai order
+saat ini dan limit1 per supplier agar tidak menguras antrean lain atau melampaui
+jendela background. Cron tetap default4/budget existing. Tidak ada scheduler,
+flag/env, migrasi, perubahan nominal atau reset kunci idempotensi baru.
+
+Recovery ambigu SK mencatat `ambiguous_lookup_http_<status>` atau
+`ambiguous_lookup_unavailable` pada link tanpa mengubah status/request_sent_at/
+ref_id. Hasil404 bukan izin POST ulang. Kasus25Oktober: POST proxy terputus sebelum
+forward; owner mengizinkan pemulihan, GET TRX_NOT_FOUND + riwayat/mutasi tanpa debit
+diverifikasi, satu pembelian dengan ref_id semula diselesaikan webhook dan email.
+Detail bukti/ruang lingkup: `issue/sk-vps-reliability-2026-10-25.md`.
+
+
+Kontrak transport: HTTP5xx generik mempertahankan fence ambiguitas. Classifier
+SK tidak lagi menganggap semua503 penolakan pra-charge; hanya kode eksplisit
+PRODUCT_TEMPORARILY_UNAVAILABLE. `createOrder`/`createSkTransaction` menolak
+receipt tanpa ID atau ref_id SK yang berbeda sebagai NetworkError. Proxy
+unreadable2xx write memakai502 + marker `wr_proxy_unreadable_response: network_error`
+atau SK setara; kata network menjaga Pages lama selama rollout. Error bisnis
+terkonfirmasi tetap mengikuti penanganan saldo/stok existing.
+
 ## Aktivasi manual pemilihan WR/SK — 25 Oktober 2026
 
 ✅ Implementasi; publikasi CI. Statistik `supplier-pairs.ts` membaca `products.is_active`
@@ -2313,6 +2365,13 @@ Root hanya via `aws login` (sesi berumur pendek); key admin permanen
 
 ### 16.8 Migrasi proxy WR/SK ke AWS (2026-10-02, live)
 
+**Rilis keandalan 26 Oktober 2026:** satu dispatcher egress, shutdown terkontrol,
+marker502 `*_proxy_unreadable_response: network_error` untuk WR order/SK v1/trx
+2xx tak terbaca, byte UTF-8/path normalization dan removal independen≤200 per ACK.
+Sisa ID varian dan hash payload induk dipertahankan setelah kegagalan/restart.
+Deploy seluruh dist + backup terpisah; state SMM durable tidak direset. Rincian
+bukti/rollback di `issue/sk-vps-reliability-2026-10-25.md`.
+
 Motivasi: add-on QuotaGuard Spike (~$5/mo) adalah third-party sehingga
 TIDAK tercover student credit Heroku dan selalu lari ke kartu kredit.
 Penggantinya: VPS `t4g.nano` Singapore (`i-022790eb6bb0b1be3`, 0.5GB +
@@ -2464,6 +2523,12 @@ Aturan turunan:
    (`lowStockVariants` dari `/api/products`).
 
 ### 16.9 Rail QRIS GoPay (2026-10-02 Fase 0 — ledger multi-provider, default mati)
+
+**Perbaikan live25 Oktober 2026:** ACK poller wajib HTTP2xx + JSON ok:true/status
+paid|already_paid|duplicate|unmatched; kegagalan tidak masuk seenTx dua jam.
+Retry memakai event ID sama pada cadence existing. POST redirect manual;
+`/tick` legacy mengantrekan wake loop tunggal (queued/eta_ms), bukan polling
+paralel. Seluruh dist termasuk pages-forward.js dirilis ke /opt/axvara/gopay/app.
 
 Motivasi: lepas dari HP Android (QRIS Hook DANA) untuk order pribadi —
 poller server memantau mutasi GoBiz milik sendiri.

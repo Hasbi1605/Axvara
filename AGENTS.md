@@ -1,5 +1,30 @@
 # AGENTS.md — AXVARA (Project-Specific)
 
+Proxy WR/SK — 26 Oktober 2026: dispatcher egress dipakai bersama dan ditutup
+saat shutdown; URL proxy terkonfigurasi yang invalid menghentikan startup.
+VPS tanpa URL proxy memakai IP tetapnya secara langsung. Diff removal WR/SK
+dipotong terpisah maksimal 200 ID per request, hanya ACK sukses memajukan
+snapshot; sisa ID dan payload induk berubah tetap pulih setelah restart.
+Validasi body menghitung byte UTF-8, path SK menolak traversal. Rilis wajib
+menyalin seluruh `dist/` (index/diff-sync/psmm/psmm-diff dan modul tambahan),
+backup dahulu, pertahankan `.env`, snapshot dan direktori idempotensi durable.
+Tes transport memakai MockAgent tanpa jaringan; tidak menambah retry pembelian.
+
+Perbaikan VPS GoPay 25 Oktober: dedupe mutasi hanya setelah respons Pages
+HTTP 2xx + JSON `ok:true` dengan status `paid|already_paid|duplicate|unmatched`.
+HTTP 4xx/5xx, redirect, atau respons rusak tetap retry pada cadence existing dengan event ID
+sama. `/tick` legacy menjadi alias wake berantrean (`status:true,queued:true,eta_ms`)
+agar tidak menjalankan poll/refresh sesi paralel atau melewati jarak minimum.
+Source `axvara-gopay-poller/src/pages-forward.ts`; rilis VPS terpasang
+25 Oktober, 21.21 WIB. Deploy seluruh dist ke
+`/opt/axvara/gopay/app/dist`, tanpa mengubah sesi/env atau membuat invoice baru.
+
+## Keandalan dispatch supplier — 25 Oktober 2026
+- Setelah KlikQRIS paid, pekerjaan segera memakai `payments/paid-fulfillment.ts` + Cloudflare `ctx.waitUntil`; jangan mengikat POST supplier pada umur request browser. Materialisasi dan bind WR/SK mendahului fulfillment umum; immediate hanya order yang baru lunas, satu link/supplier, sisanya cron existing.
+- HTTP5xx generik dan receipt tanpa order_id/invoice atau ref SK yang berbeda adalah ambigu: request_sent_at/ref_id dipertahankan, hanya rekonsiliasi. Hanya penolakan eksplisit SK PRODUCT_TEMPORARILY_UNAVAILABLE yang boleh retry biasa. Jangan mengubah404/timeout menjadi izin membeli ulang otomatis.
+- Proxy WR/SK mengembalikan marker `wr_proxy_unreadable_response: network_error` / `sk_proxy_unreadable_response: network_error` untuk respons tulis2xx tak terbaca; kata network mempertahankan kompatibilitas Pages lama saat rollout. Sinkronkan kontrak di AGENTS proxy, README dan ARCHITECTURE.
+- Pengujian supplier memakai fixture. Pemulihan order produksi hanya atas instruksi owner, verifikasi referensi/riwayat/debit dahulu, referensi tetap sama; jangan mencampur pemulihan dengan pengujian berbayar tambahan.
+
 > ⚠️ Scope: aturan ini **HANYA untuk folder `axvara/`**.
 > Jangan ubah `/Users/macbookair/AGENTS.md` global. File ini adalah source of truth untuk agent yang kerja di project AXVARA.
 

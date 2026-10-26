@@ -15,14 +15,15 @@ it("the actual KlikQRIS adapter sends requests in workerd and rejects redirects 
     bundle: true, write: false, format: "esm", platform: "neutral", target: "es2022",
     define: { "process.env": JSON.stringify({ NEXT_PUBLIC_PAYMENTS_MAINTENANCE: "false", KLIKQRIS_ENABLED: "true", KLIKQRIS_API_KEY: "fixture-key", KLIKQRIS_MERCHANT_ID: "123456789" }) },
     plugins: [{ name: "database-boundary", setup(builder) {
-      builder.onResolve({ filter: /^@\/|^\.\/dana-qris$/ }, args => {
+      builder.onResolve({ filter: /^@\/|^\.\/(dana-qris|paid-fulfillment)$/ }, args => {
+        if (args.path === "./paid-fulfillment") return { path: "paid-unused", namespace: "fixture" };
         if (args.path === "@/lib/db") return { path: "db", namespace: "fixture" };
         if (["./dana-qris", "@/lib/fulfillment/deliver", "@/lib/warung-rebahan/order", "@/lib/sekalipay/order", "@/lib/pedia/dispatch", "@/lib/telegram/api"].includes(args.path)) {
           return { path: "unused", namespace: "fixture" };
         }
         return { path: resolve("src", args.path.slice(2) + ".ts") };
       });
-      builder.onLoad({ filter: /.*/, namespace: "fixture" }, args => ({ contents: args.path === "db" ? `
+      builder.onLoad({ filter: /.*/, namespace: "fixture" }, args => ({ contents: args.path === "paid-unused" ? `export const schedulePaidFulfillment=()=>{throw new Error('settlement not used by this runtime fixture')};` : args.path === "db" ? `
         export const getD1=()=>globalThis.fixtureDb;
         export const queryFirst=(sql,...p)=>getD1().prepare(sql).bind(...p).first();
         export const execRun=async(sql,...p)=>({changes:(await getD1().prepare(sql).bind(...p).run()).meta.changes});

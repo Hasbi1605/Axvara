@@ -37,6 +37,7 @@ import {
   isWrEnabled,
   WrInsufficientBalanceError,
   WrOutOfStockError,
+  WrApiError,
   type WrTransaction,
 } from "./client";
 import { WR_QUEUED_ALERT_HOURS, WR_QUEUED_MAX_HOURS } from "./delivery-class";
@@ -336,7 +337,7 @@ export async function reconcileMissingWrLinks(
 
 export async function processWrPendingOrders(
   database?: DatabaseAccess,
-  options: { skipOrphanProbe?: boolean } = {},
+  options: { skipOrphanProbe?: boolean; orderCode?: string; limit?: number } = {},
 ): Promise<ProcessResult> {
   const db = database ?? createDatabaseAccess();
   const result: ProcessResult = { processed: 0, succeeded: 0, retried: 0, failed: 0, blocked: 0, reconciled: 0 };
@@ -360,6 +361,7 @@ export async function processWrPendingOrders(
        WHERE l.status IN ('pending','retry')
          AND l.attempt_count < l.max_attempts
          AND (l.next_attempt_at IS NULL OR datetime(l.next_attempt_at) <= datetime('now'))
+         ${options.orderCode ? "AND l.order_code=?" : ""}
          -- 2026-09-18: gate kelas DIBUKA (keputusan owner). Sebelumnya hanya
          -- 'restock' yang auto-order sehingga link made_by_order/NULL diam di
          -- 'pending' selamanya: tidak ada request keluar, pembeli menunggu
@@ -369,7 +371,9 @@ export async function processWrPendingOrders(
          -- Saklar mundur: WARUNG_REBAHAN_AUTO_ORDER_MBO='false' mengembalikan
          -- perilaku lama tanpa deploy (kelas antrean kembali ditahan).
          ${isWrAutoOrderQueuedEnabled() ? "" : "AND COALESCE(wv.wr_delivery_class, 'made_by_order') = 'restock'"}
-       ORDER BY l.next_attempt_at ASC, l.id ASC LIMIT 4`,
+       ORDER BY l.next_attempt_at ASC, l.id ASC LIMIT ?`,
+      ...(options.orderCode ? [options.orderCode] : []),
+      Math.max(1, Math.min(4, Math.floor(options.limit ?? 4))),
     )
     // Budget habis WAJIB naik ke pemanggil (insiden 2026-10-10): dulu
     // `.catch(() => [])` membuatnya terbaca "antrean kosong" — link due diam
@@ -588,7 +592,8 @@ async function handleOrderError(
 ): Promise<"retried" | "failed" | "blocked"> {
   const { execRun } = db;
   const message = (error instanceof Error ? error.message : String(error)).slice(0, 500);
-  const isTimeout = /timeout|abort|network|fetch failed|504/i.test(message);
+  const isTimeout = /timeout|abort|network|fetch failed|504|wr_proxy_unreadable_response/i.test(message)
+    || (error instanceof WrApiError && error.status >= 500);
   if (isTimeout) {
     // Timeout = vendor MUNGKIN sudah menerima. Tandai submitted (ambigu),
     // HAPUS lease agar reconciler bisa verifikasi — tetapi JANGAN beli ulang.

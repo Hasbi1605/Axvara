@@ -1,5 +1,32 @@
 # PRD — AXVARA
 
+✅ Perbaikan GoPay VPS 25 Oktober: pembayaran gagal dilaporkan tidak lagi
+dianggap selesai selama dua jam; poller menunggu ACK durable Pages dan mencoba
+kembali lewat interval existing. Pemicu manual memakai antrean loop yang sama,
+sehingga tidak menabrak sesi/ritme GoBiz. Invoice lama dan keputusan manual
+unmatched tetap mengikuti kontrak existing.
+
+## Pemulihan dan dispatch supplier setelah pembayaran — 25 Oktober 2026
+
+✅ Implementasi; publikasi melalui CI. Setelah KlikQRIS terkonfirmasi paid,
+pekerjaan pengiriman dipertahankan dalam konteks server Cloudflare sehingga
+request status pembeli dapat selesai tanpa menunggu pembelian supplier/notifikasi.
+Penutupan halaman atau timeout browser20detik tidak lagi memutus pekerjaan yang
+sudah dijadwalkan. Paid, reservasi dan outbox tetap durable; cron existing menjadi
+pemulihan bila tugas server terputus.
+
+Item pengiriman dimaterialisasi dan diikat ke supplier sebelum fulfillment umum,
+agar varian supplier bermode manual tidak diberi status serah-terima admin palsu.
+Upaya segera terbatas satu link per supplier untuk order yang baru dibayar;
+sisanya mengikuti antrean cron existing. Hasil pembelian ambigu tetap hanya
+lookup referensi semula, tanpa pembelian ulang otomatis. Kegagalan lookup SK
+kini dicatat pada error link admin tanpa membocorkan respons/kredensial supplier.
+
+
+Respons5xx generik, receipt sukses tanpa ID pesanan/invoice, atau ref_id SK yang
+tidak cocok diperlakukan ambigu dan tidak dibeli ulang otomatis. Penolakan
+`PRODUCT_TEMPORARILY_UNAVAILABLE` SK yang eksplisit tetap boleh retry biasa.
+
 ## Aktivasi manual pasangan WR/SK — 25 Oktober 2026
 
 ✅ Diimplementasikan; publikasi melalui CI. Produk yang dinonaktifkan manual

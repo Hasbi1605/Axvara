@@ -211,26 +211,8 @@ export async function reconcileKlikQrisPayment(orderCode: string): Promise<strin
     await manualReview(tx, Number(event.id), Number(inserted.changes || 0) > 0, "klikqris_payment_race_manual_review");
     return "manual_review";
   }
-  if (tx.order_kind !== "pedia") {
-  try { const { ensureFulfillmentForPaidOrder } = await import("@/lib/fulfillment/deliver"); await ensureFulfillmentForPaidOrder(orderCode); } catch { /* Durable outbox is retried by cron. */ }
-  try {
-    const { createWrOrderLinksForOrder, processWrPendingOrders } = await import("@/lib/warung-rebahan/order");
-    const { isWrAutoOrderEnabled } = await import("@/lib/warung-rebahan/client");
-    if (isWrAutoOrderEnabled() && (await createWrOrderLinksForOrder(orderCode)) > 0) {
-      await processWrPendingOrders(undefined, { skipOrphanProbe: true });
-    }
-  } catch { /* Existing cron repairs and dispatches missing links. */ }
-  try {
-    const { createSkOrderLinksForOrder, processSkPendingOrders } = await import("@/lib/sekalipay/order");
-    const { isSkAutoOrderEnabled } = await import("@/lib/sekalipay/client");
-    if (isSkAutoOrderEnabled() && (await createSkOrderLinksForOrder(orderCode)) > 0) {
-      await processSkPendingOrders(undefined, { skipOrphanProbe: true });
-    }
-  } catch { /* Existing cron repairs and dispatches missing links. */ }
-  }
-  if (tx.order_kind === "pedia") {
-    try { const { processPediaPaidOrders } = await import("@/lib/pedia/dispatch"); await processPediaPaidOrders(); } catch { /* Existing cron dispatches the durable job. */ }
-  }
+  const { schedulePaidFulfillment } = await import("./paid-fulfillment");
+  await schedulePaidFulfillment(orderCode, tx.order_kind);
   return "paid";
 }
 async function manualReview(tx: Row, eventId: number, notify: boolean, reason: string) {

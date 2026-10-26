@@ -1,0 +1,963 @@
+--- a/axvara-wr-proxy/AGENTS.md
++++ b/axvara-wr-proxy/AGENTS.md
+@@ -19,7 +19,7 @@
+ - Setelah ubah kode: `npx tsc --noEmit`, test lokal (`/wr/health`, `/wr/proxy-ip` harus cocok dashboard), push `heroku2 main`, verifikasi `/wr/proxy-ip` + `heroku restart` proof.
+
+ ## Status deploy terkini (2026-10-04)
+-Live di VPS AWS `t4g.nano` Singapore (`https://wr-proxy.axvara.tech`, IP `13.228.147.90`, Caddy). Heroku akun #2 + QuotaGuard sudah DIHAPUS (2026-10-02) — baris Heroku di atas historis. Deploy: `npm run build` → `scp dist/index.js` ke `ec2-user@13.228.147.90:/opt/axvara/wr-proxy/dist/` (key `~/.ssh/axvara-sg-proxy.pem`) → backup `dist/index.js.bak-*` → `sudo systemctl restart wr-proxy` → cek `GET /health`; rollback = salin backup + restart. Restart memutus request berjalan beberapa detik: pilih saat tidak ada order WR/SK aktif.
++Live di VPS AWS `t4g.nano` Singapore (`https://wr-proxy.axvara.tech`, IP `13.228.147.90`, Caddy). Heroku akun #2 + QuotaGuard sudah DIHAPUS (2026-10-02) — baris Heroku di atas historis. Deploy: `npm run build` → `scp dist/*` (SELURUH direktori `dist/`, bukan hanya `dist/index.js` — `psmm.js`, `psmm-diff.js`, `diff-sync.js` diimpor saat runtime) ke `ec2-user@13.228.147.90:/opt/axvara/wr-proxy/dist/` (key `~/.ssh/axvara-sg-proxy.pem`) → backup `dist/*.bak-*` → `sudo systemctl restart wr-proxy` → cek `GET /health`; rollback = salin backup + restart. Restart memutus request berjalan beberapa detik: pilih saat tidak ada order WR/SK aktif. Entrypoint menangani `SIGTERM`/`SIGINT` via `app.close()` agar shared ProxyAgent benar-benar close (systemd default membunuh Node tanpa `onClose` hook); in-flight upstream tidak diabort.
+
+ Endpoint potongan katalog tanpa state (2026-10-04, untuk cron Axvara di Workers Free ~10 ms CPU):
+ - `POST /wr/products-slice` body `{offset,limit≤100}` → `{success,data,meta:{total,first_id,offset,limit,all_variant_ids?}}`. Urutan = `id` string `localeCompare` (SAMA dengan `axvara/src/lib/warung-rebahan/sync.ts`). `all_variant_ids` hanya di potongan terakhir (dipakai zero-missing).
+@@ -28,13 +28,19 @@
+
+ Diff sync katalog (2026-10-04, `src/diff-sync.ts`, satu-satunya state di VPS):
+ - Aktif bila `.env` berisi `DIFF_SYNC_ENABLED=true` + `SUPPLIER_SYNC_TOKEN` (SAMA dengan secret Pages) + `AXVARA_ORIGIN=https://axvara.tech`. Tiap 3 mnt: ambil WR `/products` + SK `v1/item?category=Aplikasi Premium`, hash per produk WR / varian SK, kirim yang berubah ke `POST {AXVARA_ORIGIN}/api/supplier-sync` (header `x-supplier-sync-token`). Snapshot `state/diff-state.json` (git-ignored) maju HANYA setelah 2xx.
++- `removed_variant_ids` dipotong independen ≤200 ID per request (limit Pages). Hanya slice batch 2xx yang diakui. Induk WR yang berubah tetapi varian hilangnya belum ter-ack MENAHAN record lama (hash baru + sisa ID belum-ack, payload dikirim ulang idempoten) sehingga restart hanya mengulang sisa yang belum terkonfirmasi — termasuk varian hilang di dalam induk berubah dan induk yang hilang total. ID ter-ack diprune dari SEMUA record yang ditahan tiap slice sukses (tanpa resend abadi). Test: `test/diff-removal.test.mjs` (>200 removals <50% missing, partial failure + restart, SK removals). TIDAK ada dedupe tulis by bodyhash: body WR identik bisa jadi order terpisah yang sah!
+ - Reset aman: hapus `state/diff-state.json` + restart → siklus pertama mengirim ulang semua dalam potongan (8 WR / 20 SK).
+ - Test: `npm test` (build + `test/diff-sync.test.mjs` + `test/psmm.test.mjs`). Log: `journalctl -u wr-proxy | grep diff`.
++
++## Ambiguitas tulis WR/SK (2026-10-25, disepakati dengan Pages)
++- Respons 2xx upstream yang tak-terbaca/bukan-JSON pada endpoint tulis (WR `order`, SK `v1/order` DAN pembelian berbayar aktual `v1/trx`) = status order TAK-DIKETAHUI (mungkin sudah terbeli). JANGAN forward HTTP 200 `success:false` palsu; tanpa retry otomatis; jangan batalkan write yang sudah diteruskan saat client disconnect.
++- Kembalikan HTTP 502 + marker persis yang MENGANDUNG `network_error` (agar Pages LAMA yang hanya mengenali timeout|abort|network|fetch failed|504 ikut menahan retry selama rollout; Pages baru match marker persis): WR `wr_proxy_unreadable_response: network_error` (field `success:false`), SK `sk_proxy_unreadable_response: network_error` (field `message` standar). Tanpa env baru. PUT dipertahankan (kontrak lama). Test: `test/wrsk.test.mjs` (auth, allowlist, byte limit UTF-8, traversal setelah normalisasi, upstream error, timeout, unreadable 2xx write, PUT).
++- Egress: SATU Undici ProxyAgent dipakai ulang semua request (bukan new per request), close saat `app.close()`; proxy terkonfigurasi tetapi invalid = fail closed (startup throw, tidak pernah fallback direct diam-diam); tanpa proxy URL = direct mode (VPS live memakai IP tetap sendiri). Route testable tanpa listen (`app`/`buildApp()` diimpor, guard main via `import.meta.url` vs `process.argv[1]`).
+
+ ## ProviderSMM untuk AXVARA PEDIA (2026-10-07, PEDIA-PRD §9.3)
+ - `src/psmm.ts` — `POST /psmm/:action` (allowlist: `services|add|status|refill|refill_status|cancel|balance`, butuh `x-proxy-token`). Body JSON diteruskan sebagai form-encoded + `key=PROVIDERSMM_API_KEY` disuntik server-side dari `.env` VPS (chmod 600, TIDAK PERNAH di Pages/git/log). Respons upstream diteruskan apa adanya (status + JSON): 200 + `{error}` = sinyal bisnis (baca Pages → `canceled`/retry), timeout/5xx/tak-terbaca = `needs_check` di Pages. `GET /health` kini melaporkan `psmm:true/false`.
+ - `src/psmm-diff.ts` — diff katalog tiap 10 mnt ke `POST {AXVARA_ORIGIN}/api/supplier-sync` dengan `source: "providersmm"` + body `{services:[{service_id,name,type,category,rate,min_qty,max_qty,api_refill,api_cancel,api_dripfeed}], removed_service_ids:[...]}`. State `state/psmm-diff-state.json` (TERPISAH dari WR/SK), heartbeat kosong ≤ 9 mnt, katalog kosong dilewati, hilang >50% ditahan. Aktif bila `DIFF_SYNC_ENABLED=true` + `SUPPLIER_SYNC_TOKEN` + `AXVARA_ORIGIN` + `PROVIDERSMM_API_KEY` diset (pakai ORIGIN/TOKEN yang sama dengan WR/SK).
+-- Deploy: pola VPS sama (`scp dist/{index,psmm,psmm-diff}.js` → backup `dist/index.js.bak-psmm-*` → restart → cek `/health`). Rollback = salin backup + restart.
++- Deploy: pola VPS sama (SELURUH `dist/` termasuk `diff-sync.js` + modul baru, backup `dist/*.bak-*` → restart → cek `/health`). Rollback = salin backup + restart.
+ - API key providersmm pernah tertempel di chat (2026-10-07) → ROTASI di dashboard providersmm setelah stabil, lalu perbarui `.env` VPS + file lokal `axvara/.providersmm-credentials`.
+
+ ## Akses akun kedua
+--- a/axvara-wr-proxy/README.md
++++ b/axvara-wr-proxy/README.md
+@@ -3,6 +3,59 @@
+ Node 20-24, Fastify, TypeScript. WR/SK contracts remain unchanged. Pedia uses
+ the concrete two-provider config in `src/psmm.ts`, reused by `src/psmm-diff.ts`.
+ 2026-10-11 changes are locally mock-tested, not deployed or account-verified.
++
++## WR/SK Write Ambiguity (2026-10-25, agreed with Pages)
++
++A 2xx upstream response that is unreadable / non-JSON on a write endpoint
++(WR `order`, SK `v1/order` AND the actual paid purchase `v1/trx`) means the
++order state is UNKNOWN — it may already have been purchased. The proxy NEVER
++forwards these as HTTP 200 (no fabricated `success:false`), performs NO
++automatic retry, and does NOT cancel an already-forwarded write on client
++disconnect. It returns HTTP 502 with an exact marker that INCLUDES the
++substring `network_error`, so OLD production Pages (which only treats
++`timeout|abort|network|fetch failed|504` as ambiguous) also holds its retry
++fence during rollout, while new Pages matches the marker exactly:
++
++- WR: `502 { success:false, message:"wr_proxy_unreadable_response: network_error" }`
++- SK: `502 { message:"sk_proxy_unreadable_response: network_error" }`
++
++Field shape is kept (WR `success:false`, SK `message`). No new env required.
++Upstream 4xx/5xx still pass through unchanged (business signals read by
++Pages). `PUT` is retained (legacy contract). SK paths are validated after
++normalization (`..` → `400 invalid_sk_path`); body limit uses UTF-8 bytes.
++
++## Egress Proxy (shared agent)
++
++One Undici `ProxyAgent` is created at startup from `QUOTAGUARDSTATIC_URL`
++(`FIXIE_URL` fallback) and REUSED for every request, closed on `app.close()`.
++An invalid configured proxy URL fails closed (startup throw, never silent
++direct fallback). No proxy URL = direct mode (dev only). `SIGTERM`/`SIGINT`
++in the entrypoint await `app.close()` before exit so the shared dispatcher
++actually closes on controlled restart (systemd default would kill Node
++without the `onClose` hook). No per-request agent (socket leak fixed).
++
++## WR/SK Diff Removal Slicing (2026-10-25)
++
++`removed_variant_ids` are sliced independently at ≤200 IDs per request
++(Pages limit; mirrors the SMM 100-slice fix). Only acknowledged slices
++advance the snapshot. A changed WR parent whose lost variant IDs are not yet
++acked RETAINS those IDs in its record (new hash + unacked old IDs, payload
++resent idempotently), so a restart replays only the unacked remainder —
++including lost variants inside a changed parent and fully-vanished parents.
++Newly acked IDs are pruned from ALL retained records on each successful
++slice, so removal-only follow-up batches never resend confirmed IDs forever.
++Covers >200 removals under the <50% missing hold, partial failure, restart,
++and SK removals. No write dedupe by body hash: identical WR bodies can be
++legitimate separate orders.
++
++## Deploy Runbook (VPS)
++
++Ship the WHOLE `dist/` directory (`index.js` + `psmm.js` + `psmm-diff.js` +
++`diff-sync.js` + any new module) — diff/SMM modules are imported at runtime,
++`dist/index.js` alone is NOT enough. Pattern: `npm run build` → backup remote
++`dist/*.bak-*` → `scp dist/*` → `sudo systemctl restart wr-proxy` → check
++`GET /health`; rollback = restore backups + restart. `npm test` uses
++fixtures only (Undici MockAgent, network disabled) + `npx tsc --noEmit`.
+
+ ## Pedia Contract
+
+--- a/axvara-wr-proxy/package.json
++++ b/axvara-wr-proxy/package.json
+@@ -9,7 +9,7 @@
+   "scripts": {
+     "build": "tsc",
+     "start": "node dist/index.js",
+-    "test": "tsc && node test/diff-sync.test.mjs && node test/psmm.test.mjs && node test/indosmm.test.mjs"
++    "test": "tsc && node test/diff-sync.test.mjs && node test/psmm.test.mjs && node test/indosmm.test.mjs && node test/wrsk.test.mjs && node test/diff-removal.test.mjs"
+   },
+   "dependencies": {
+     "fastify": "^5.3.3",
+--- a/axvara-wr-proxy/src/index.ts
++++ b/axvara-wr-proxy/src/index.ts
+@@ -28,7 +28,8 @@
+ // QUOTAGUARDSTATIC_URL (atau FIXIE_URL sebagai fallback).
+ // Tanpa agent -> traffic keluar lewat IP dyno (verifikasi /wr/egress-ip gagal).
+
+-import Fastify from "fastify";
++import Fastify, { type FastifyInstance } from "fastify";
++import { fileURLToPath } from "node:url";
+ import { timingSafeEqual } from "node:crypto";
+ import { ProxyAgent, request as undiciRequest, type Dispatcher } from "undici";
+ import { createDiffSync } from "./diff-sync.js";
+@@ -53,17 +54,74 @@
+ const SK_ALLOWED_HOST = "sekalipay.com";
+
+ // Proxy URL statis: QuotaGuard utama, Fixie fallback. Keduanya format proxy URL
+-// standar (http://user:pass@host:port). Jika keduanya kosong -> direct (dev saja).
++// standar (http://user:pass@host:port). Jika keduanya kosong -> direct (VPS memakai IP egress tetapnya sendiri).
+ const STATIC_PROXY_URL = process.env.QUOTAGUARDSTATIC_URL || process.env.FIXIE_URL || "";
+
++// Satu ProxyAgent dipakai ulang semua request (bukan new per request —
++// socket bocor). Proxy yang terkonfigurasi tetapi tidak valid membuat seluruh
++// proses gagal closed (throw saat startup), tidak pernah fallback direct diam-diam.
++function createStaticProxyAgent(): Dispatcher | undefined {
++  if (!STATIC_PROXY_URL) return undefined;
++  return new ProxyAgent(STATIC_PROXY_URL);
++}
++
++const sharedProxyAgent = createStaticProxyAgent();
++
++/** Agent bersama (singleton); undefined = direct mode (tanpa proxy URL). */
++export function getStaticProxyAgent(): Dispatcher | undefined {
++  return sharedProxyAgent;
++}
++
+ function staticProxyAgent(): Dispatcher | undefined {
+-  if (!STATIC_PROXY_URL) return undefined;
+-  try {
+-    return new ProxyAgent(STATIC_PROXY_URL);
+-  } catch {
+-    return undefined;
+-  }
+-}
++  return sharedProxyAgent;
++}
++
++// Ambiguitas tulis (disepakati dengan Pages, 2026-10-25): respons 2xx upstream
++// yang tidak terbaca / bukan JSON pada endpoint tulis (WR order/transactions,
++// SK order) TIDAK BOLEH diforward sebagai HTTP 200 — status order tidak
++// diketahui (mungkin sudah terbeli). Kembalikan HTTP 502 dengan marker
++// `wr_proxy_unreadable_response` / `sk_proxy_unreadable_response` yang
++// mengandung kata `network_error` agar Pages LAMA (hanya mengenali
++// timeout|abort|network|fetch failed|504) juga memperlakukannya ambigu dan
++// TIDAK me-retry order yang mungkin sudah terbeli selama rollout. Pages baru
++// mengenali marker persisnya. Tidak ada retry otomatis; jangan batalkan
++// request yang sudah diteruskan saat client disconnect.
++function unreadableWriteError(supplier: "wr" | "sk"): { statusCode: number; body: Record<string, unknown> } {
++  if (supplier === "wr") {
++    return {
++      statusCode: 502,
++      body: { success: false, message: "wr_proxy_unreadable_response: network_error" },
++    };
++  }
++  return {
++    statusCode: 502,
++    body: { message: "sk_proxy_unreadable_response: network_error" },
++  };
++}
++
++/** True bila method+path ini adalah operasi tulis (order/transactions/trx). */
++export function isWriteRequest(supplier: "wr" | "sk", method: string, rest: string): boolean {
++  const m = method.toUpperCase();
++  if (m !== "POST" && m !== "PUT") return false;
++  if (supplier === "wr") return rest === "order" || rest === "transactions";
++  // Pembelian berbayar SK adalah POST v1/trx (bukan hanya v1/order): 2xx
++  // tak-terbaca di sini wajib marker ambigu yang disepakati.
++  return /^v1\/(order|trx)(\/|$)/.test(rest);
++}
++
++/** Bangun URL upstream SK dari path mentah; tolak traversal setelah normalisasi. */
++export function buildSkUpstreamUrl(rest: string, qs: string): string {
++  const normalized = rest.replace(/^\/+/, "").split("?")[0];
++  if (!/^v1\//.test(normalized)) throw new Error("unknown_sk_path");
++  const probe = new URL(normalized, `${SK_BASE_URL}/`);
++  const basePath = new URL(SK_BASE_URL).pathname.replace(/\/+$/, "");
++  const fullPath = `${basePath}/${normalized}`;
++  if (probe.pathname !== fullPath) throw new Error("sk_path_traversal");
++  return `${SK_BASE_URL}/${normalized}${qs}`;
++}
++
++/** Ekspor helper ambiguitas untuk test (tanpa network). */
++export { unreadableWriteError };
+
+ function validProxyToken(raw: unknown): boolean {
+   if (!WR_PROXY_TOKEN || typeof raw !== "string") return false;
+@@ -101,11 +159,20 @@
+ }
+
+ const app = Fastify({ logger: true, bodyLimit: 128 * 1024 });
++// Diekspor untuk test tanpa listen (inject-only, tanpa network nyata).
++export { app };
+
+ if (!WR_API_KEY) app.log.warn("WR_API_KEY is not set; /wr/* will return 503 until configured");
+ if (!WR_PROXY_TOKEN) app.log.warn("WR_PROXY_TOKEN is not set; /wr/* will return 503 until configured");
+ if (!SK_API_KEY) app.log.warn("SK_API_KEY is not set; /sk/* will return 503 until configured");
+ app.log.info({ staticProxy: Boolean(STATIC_PROXY_URL), sekalipay: Boolean(SK_API_KEY) }, "static egress proxy configured");
++
++// Tutup agent bersama saat app ditutup (hindari socket gantung saat restart).
++// SIGTERM/SIGINT entrypoint memanggil app.close() sehingga hook ini jalan;
++// in-flight upstream tidak diabort (biarkan selesai sebelum close resolve).
++app.addHook("onClose", async () => {
++  await closeSharedProxyAgent();
++});
+
+ // ────────────────────────────────────────────────────────────
+ // ProviderSMM untuk AXVARA PEDIA (2026-10-07, PEDIA-PRD §9.3).
+@@ -287,7 +354,7 @@
+     return reply.status(404).send({ status: false, reason: "unknown_wr_endpoint" });
+   }
+   const body = (request.body ?? {}) as Record<string, unknown>;
+-  if (JSON.stringify(body).length > WR_MAX_BODY_BYTES) {
++  if (Buffer.byteLength(JSON.stringify(body), "utf8") > WR_MAX_BODY_BYTES) {
+     return reply.status(413).send({ status: false, reason: "payload_too_large" });
+   }
+   const upstreamUrl = `${WR_BASE_URL}/${endpoint}`;
+@@ -318,6 +385,14 @@
+       json = null;
+     }
+     if (statusCode < 200 || statusCode >= 300 || !json || typeof json !== "object") {
++      if (isWriteRequest("wr", "POST", endpoint) && statusCode >= 200 && statusCode < 300) {
++        // WR order/transactions 2xx tak-terbaca = ambigu (mungkin sudah
++        // terbeli): JANGAN forward HTTP 200 success:false palsu. 502 + marker
++        // agar Pages lama maupun baru sama-sama menahan retry (sent fence).
++        app.log.error({ endpoint, status: statusCode, viaStaticProxy }, "WR unreadable write response");
++        const err = unreadableWriteError("wr");
++        return reply.status(err.statusCode).send(err.body);
++      }
+       app.log.error({ endpoint, status: statusCode, body: redact(json ?? text), viaStaticProxy }, "WR upstream error");
+       return reply.status(statusCode || 502).send(
+         (json as Record<string, unknown>) ?? { success: false, message: `wr_upstream_http_${statusCode}` },
+@@ -478,7 +553,14 @@
+     return reply.status(404).send({ status: false, reason: "unknown_sk_path" });
+   }
+   const qs = (request.raw.url || "").includes("?") ? `?${(request.raw.url || "").split("?").slice(1).join("?")}` : "";
+-  const upstreamUrl = `${SK_BASE_URL}/${rest}${qs}`;
++  let upstreamUrl: string;
++  try {
++    upstreamUrl = buildSkUpstreamUrl(rest, qs);
++  } catch (error) {
++    const reason = error instanceof Error ? error.message : "unknown_sk_path";
++    if (reason === "unknown_sk_path") return reply.status(404).send({ status: false, reason: "unknown_sk_path" });
++    return reply.status(400).send({ status: false, reason: "invalid_sk_path" });
++  }
+   try {
+     assertHttpsSkUrl(upstreamUrl);
+   } catch {
+@@ -486,7 +568,10 @@
+   }
+   const method = String(request.method || "GET").toUpperCase();
+   // DELETE hanya untuk release stock-lock (path eksak /v1/item/lock/{token}).
+-  const isLockRelease = method === "DELETE" && /^v1\/item\/lock\/[^/]+$/.test(rest);
++  // PUT dipertahankan (kontrak lama): beberapa integrasi SK memakai PUT untuk
++  // update item/order; penghapusan tidak didukung kecuali lock-release.
++  const normalizedRest = rest.replace(/^\/+/, "").split("?")[0];
++  const isLockRelease = method === "DELETE" && /^v1\/item\/lock\/[^/]+$/.test(normalizedRest);
+   if (!["GET", "POST", "PUT"].includes(method) && !isLockRelease) {
+     return reply.status(405).send({ status: false, reason: "method_not_allowed" });
+   }
+@@ -495,7 +580,7 @@
+     upstreamBody = undefined;
+   } else {
+     const body = (request.body ?? {}) as Record<string, unknown>;
+-    if (JSON.stringify(body).length > WR_MAX_BODY_BYTES) {
++    if (Buffer.byteLength(JSON.stringify(body), "utf8") > WR_MAX_BODY_BYTES) {
+       return reply.status(413).send({ status: false, reason: "payload_too_large" });
+     }
+     upstreamBody = JSON.stringify(body);
+@@ -524,6 +609,15 @@
+       json = null;
+     }
+     const ctype = String((headers as Record<string, unknown>)["content-type"] || "");
++    const write = isWriteRequest("sk", method, normalizedRest);
++    const readable = json !== null && (typeof json === "object" || ctype.includes("json"));
++    if (!readable && write && statusCode >= 200 && statusCode < 300) {
++      // Tulis 2xx tak-terbaca = ambigu (mungkin sudah terbeli): 502 + marker,
++      // bukan forward 200. Tanpa retry otomatis; Pages memagar via sent fence.
++      app.log.error({ path: rest, method, status: statusCode, viaStaticProxy }, "SK unreadable write response");
++      const err = unreadableWriteError("sk");
++      return reply.status(err.statusCode).send(err.body);
++    }
+     // Teruskan status upstream apa adanya (401 INVALID_IP, 422, 503, dll
+     // adalah sinyal bisnis yang dibaca client Axvara — bukan error proxy).
+     app.log.info({ path: rest, method, status: statusCode, viaStaticProxy }, "SK proxied");
+@@ -540,85 +634,126 @@
+   }
+ });
+
++// PUT dipertahankan (kontrak lama): Pages/SK memakai PUT untuk update.
++// NOTE deploy (2026-10-25): ship SELURUH direktori `dist/` (index.js +
++// psmm.js + psmm-diff.js + diff-sync.js + modul baru bila ada), bukan hanya
++// dist/index.js — modul diff/SMM diimpor saat runtime. Pola backup + restart
++// + cek /health tetap sama; rollback = salin kembali backup + restart.
++export function closeSharedProxyAgent(): Promise<void> {
++  return sharedProxyAgent?.close().catch(() => undefined) ?? Promise.resolve();
++}
++
++/** Test-only: kembalikan instance app tanpa listen/network (inject saja). */
++export function buildApp(): FastifyInstance {
++  return app;
++}
++
+ // ────────────────────────────────────────────────────────────
+ // Diff sync katalog → Axvara (2026-10-04). Aktif hanya bila
+ // DIFF_SYNC_ENABLED=true + SUPPLIER_SYNC_TOKEN + AXVARA_ORIGIN diset.
+ // ────────────────────────────────────────────────────────────
+ const DIFF_CATEGORY = process.env.SK_SYNC_CATEGORY || "Aplikasi Premium";
+
+-async function fetchWrCatalogForDiff(): Promise<Array<{ id?: unknown; variants?: Array<{ id?: unknown }> }>> {
+-  const { statusCode, json } = await callWrUpstream("products", {});
+-  const res = json as { success?: unknown; data?: unknown } | null;
+-  if (statusCode < 200 || statusCode >= 300 || !res || res.success !== true || !Array.isArray(res.data)) {
+-    throw new Error(`wr_catalog_http_${statusCode}`);
+-  }
+-  return res.data as Array<{ id?: unknown; variants?: Array<{ id?: unknown }> }>;
+-}
+-
+-async function fetchSkCatalogForDiff(): Promise<SkFlatRow[]> {
+-  const params = new URLSearchParams({ per_page: "all", category: DIFF_CATEGORY });
+-  const upstreamUrl = `${SK_BASE_URL}/v1/item?${params.toString()}`;
+-  assertHttpsSkUrl(upstreamUrl);
+-  const agent = staticProxyAgent();
+-  const controller = new AbortController();
+-  const timer = setTimeout(() => controller.abort(), SK_TIMEOUT_MS);
+-  try {
+-    const { statusCode, body } = await undiciRequest(upstreamUrl, {
+-      method: "GET",
+-      headers: { "X-APIKEY": SK_API_KEY, Accept: "application/json" },
+-      signal: controller.signal,
+-      ...(agent ? { dispatcher: agent } : {}),
+-    });
+-    const text = await body.text().catch(() => "");
+-    const res = (text ? JSON.parse(text) : null) as { data?: unknown } | null;
+-    if (statusCode < 200 || statusCode >= 300 || !res || !Array.isArray(res.data)) throw new Error(`sk_catalog_http_${statusCode}`);
+-    return flattenSk(res.data).filter((r) => r.categoryName === DIFF_CATEGORY);
+-  } finally {
+-    clearTimeout(timer);
+-  }
+-}
+-
+-if (process.env.DIFF_SYNC_ENABLED === "true" && process.env.SUPPLIER_SYNC_TOKEN && process.env.AXVARA_ORIGIN
+-    && WR_API_KEY && SK_API_KEY) {
+-  const diff = createDiffSync({
+-    origin: process.env.AXVARA_ORIGIN.replace(/\/+$/, ""),
+-    token: process.env.SUPPLIER_SYNC_TOKEN,
+-    stateFile: process.env.DIFF_STATE_FILE || "state/diff-state.json",
+-    fetchWr: fetchWrCatalogForDiff,
+-    fetchSk: fetchSkCatalogForDiff,
+-    logger: app.log,
+-  });
+-  diff.start();
+-  app.log.info({ origin: process.env.AXVARA_ORIGIN }, "diff sync started (3 min)");
+-}
+-
+-// Independent Pedia suppliers share diff code, never snapshot files.
+-for (const provider of ["psmm", "indosmm"] as SmmProvider[]) {
+-  if (
+-    process.env.DIFF_SYNC_ENABLED === "true" &&
+-    process.env.SUPPLIER_SYNC_TOKEN &&
+-    process.env.AXVARA_ORIGIN &&
+-    isPsmmConfigured(provider)
+-  ) {
+-    const diff = createPsmmDiffSync({
++export function startDiffSync(app: FastifyInstance): void {
++  async function fetchWrCatalogForDiff(): Promise<Array<{ id?: unknown; variants?: Array<{ id?: unknown }> }>> {
++    const { statusCode, json } = await callWrUpstream("products", {});
++    const res = json as { success?: unknown; data?: unknown } | null;
++    if (statusCode < 200 || statusCode >= 300 || !res || res.success !== true || !Array.isArray(res.data)) {
++      throw new Error(`wr_catalog_http_${statusCode}`);
++    }
++    return res.data as Array<{ id?: unknown; variants?: Array<{ id?: unknown }> }>;
++  }
++
++  async function fetchSkCatalogForDiff(): Promise<SkFlatRow[]> {
++    const params = new URLSearchParams({ per_page: "all", category: DIFF_CATEGORY });
++    const upstreamUrl = `${SK_BASE_URL}/v1/item?${params.toString()}`;
++    assertHttpsSkUrl(upstreamUrl);
++    const agent = staticProxyAgent();
++    const controller = new AbortController();
++    const timer = setTimeout(() => controller.abort(), SK_TIMEOUT_MS);
++    try {
++      const { statusCode, body } = await undiciRequest(upstreamUrl, {
++        method: "GET",
++        headers: { "X-APIKEY": SK_API_KEY, Accept: "application/json" },
++        signal: controller.signal,
++        ...(agent ? { dispatcher: agent } : {}),
++      });
++      const text = await body.text().catch(() => "");
++      const res = (text ? JSON.parse(text) : null) as { data?: unknown } | null;
++      if (statusCode < 200 || statusCode >= 300 || !res || !Array.isArray(res.data)) throw new Error(`sk_catalog_http_${statusCode}`);
++      return flattenSk(res.data).filter((r) => r.categoryName === DIFF_CATEGORY);
++    } finally {
++      clearTimeout(timer);
++    }
++  }
++
++  if (process.env.DIFF_SYNC_ENABLED === "true" && process.env.SUPPLIER_SYNC_TOKEN && process.env.AXVARA_ORIGIN
++      && WR_API_KEY && SK_API_KEY) {
++    const diff = createDiffSync({
+       origin: process.env.AXVARA_ORIGIN.replace(/\/+$/, ""),
+       token: process.env.SUPPLIER_SYNC_TOKEN,
+-      provider,
+-      stateFile: provider === "psmm"
+-        ? process.env.PSMM_DIFF_STATE_FILE || "state/psmm-diff-state.json"
+-        : process.env.INDOSMM_DIFF_STATE_FILE || "state/indosmm-diff-state.json",
++      stateFile: process.env.DIFF_STATE_FILE || "state/diff-state.json",
++      fetchWr: fetchWrCatalogForDiff,
++      fetchSk: fetchSkCatalogForDiff,
+       logger: app.log,
+     });
+     diff.start();
+-    app.log.info({ supplier: provider, origin: process.env.AXVARA_ORIGIN }, "smm diff sync started (10 min)");
+-  }
+-}
+-
+-const PORT = Number(process.env.PORT || 3001);
+-app
+-  .listen({ port: PORT, host: "0.0.0.0" })
+-  .then(() => app.log.info({ port: PORT }, "axvara-wr-proxy listening"))
+-  .catch((error) => {
+-    app.log.fatal({ error }, "Fatal startup error");
+-    process.exit(1);
+-  });
++    app.log.info({ origin: process.env.AXVARA_ORIGIN }, "diff sync started (3 min)");
++  }
++
++  // Independent Pedia suppliers share diff code, never snapshot files.
++  for (const provider of ["psmm", "indosmm"] as SmmProvider[]) {
++    if (
++      process.env.DIFF_SYNC_ENABLED === "true" &&
++      process.env.SUPPLIER_SYNC_TOKEN &&
++      process.env.AXVARA_ORIGIN &&
++      isPsmmConfigured(provider)
++    ) {
++      const diff = createPsmmDiffSync({
++        origin: process.env.AXVARA_ORIGIN.replace(/\/+$/, ""),
++        token: process.env.SUPPLIER_SYNC_TOKEN,
++        provider,
++        stateFile: provider === "psmm"
++          ? process.env.PSMM_DIFF_STATE_FILE || "state/psmm-diff-state.json"
++          : process.env.INDOSMM_DIFF_STATE_FILE || "state/indosmm-diff-state.json",
++        logger: app.log,
++      });
++      diff.start();
++      app.log.info({ supplier: provider, origin: process.env.AXVARA_ORIGIN }, "smm diff sync started (10 min)");
++    }
++  }
++}
++
++// Guard main: import modul ini untuk buildApp() di test TIDAK boleh listen,
++// start diff, atau baca network. Hanya entrypoint node langsung yang jalan.
++const isMain = process.argv[1] != null &&
++  fileURLToPath(import.meta.url) === process.argv[1];
++if (isMain) {
++  startDiffSync(app);
++  // systemd SIGTERM/SIGINT default membunuh Node tanpa onClose hook; tutup
++  // app secara terkontrol agar shared ProxyAgent benar-benar close. In-flight
++  // upstream TIDAK diabort — biarkan selesai sebelum app.close() resolve.
++  let shuttingDown = false;
++  const shutdown = (signal: string) => {
++    if (shuttingDown) return;
++    shuttingDown = true;
++    app.log.info({ signal }, "shutdown: closing app");
++    app.close().then(
++      () => process.exit(0),
++      (error) => {
++        app.log.fatal({ error }, "shutdown close failed");
++        process.exit(1);
++      },
++    );
++  };
++  process.on("SIGTERM", () => shutdown("SIGTERM"));
++  process.on("SIGINT", () => shutdown("SIGINT"));
++  const PORT = Number(process.env.PORT || 3001);
++  app
++    .listen({ port: PORT, host: "0.0.0.0" })
++    .then(() => app.log.info({ port: PORT }, "axvara-wr-proxy listening"))
++    .catch((error) => {
++      app.log.fatal({ error }, "Fatal startup error");
++      process.exit(1);
++    });
++}
+--- a/axvara-wr-proxy/src/diff-sync.ts
++++ b/axvara-wr-proxy/src/diff-sync.ts
+@@ -8,6 +8,10 @@
+ // - Snapshot maju HANYA untuk entitas yang dibalas 2xx (tersimpan di D1).
+ //   Kiriman gagal → entitas tetap "berubah" → dikirim ulang (idempoten).
+ // - Kiriman gagal → ukuran potongan dibagi dua (min 1); sukses → naik lagi.
++// - removed_variant_ids dipotong independen ≤ 200 ID per request (batas Pages).
++//   Hanya slice batch yang dibalas 2xx yang diakui; induk WR yang berubah
++//   tetapi varian hilangnya belum ter-ack MENAHAN record lama (payload dikirim
++//   ulang idempoten) sehingga restart tetap menurunkan sisa ID yang hilang.
+ // - Katalog kosong → siklus dilewati (jangan menghapus semuanya).
+ // - Penghapusan > 50% varian sekaligus → penghapusan ditahan (dicatat);
+ //   sweep pengaman berpotongan di cron Axvara yang memutuskan.
+@@ -46,6 +50,7 @@
+   heartbeatMs?: number;
+   wrChunkMax?: number;
+   skChunkMax?: number;
++  removalChunkMax?: number;
+   fetchFn?: typeof fetch;
+   now?: () => number;
+ };
+@@ -105,6 +110,8 @@
+   const heartbeatMs = options.heartbeatMs ?? 6 * 60 * 1000;
+   const chunkMax = { wr: options.wrChunkMax ?? 8, sk: options.skChunkMax ?? 20 };
+   const chunk = { ...chunkMax };
++  // Pages menolak removed_variant_ids > 200; potong independen seperti SMM (100).
++  const removalMax = Math.min(200, Math.max(1, Math.floor(Number.isFinite(options.removalChunkMax) ? options.removalChunkMax! : 200)));
+   const state = loadState(options.stateFile);
+   let running = false;
+   let timer: ReturnType<typeof setInterval> | null = null;
+@@ -148,22 +155,64 @@
+     if (!queue.length && !pendingRemoved.length && !needHeartbeat) return { sent: 0, removed: 0, ok: true };
+     do {
+       const batch = queue.slice(0, chunk[supplier]);
+-      const ok = await post({ supplier, [field]: batch.map((b) => b.payload), removed_variant_ids: pendingRemoved });
++      const removedBatch = pendingRemoved.slice(0, removalMax);
++      const ok = await post({ supplier, [field]: batch.map((b) => b.payload), removed_variant_ids: removedBatch });
+       if (!ok) {
+         chunk[supplier] = Math.max(1, Math.floor(chunk[supplier] / 2));
+         saveState(options.stateFile, state);
+         return { sent, removed: plan.removedVariantIds.length - pendingRemoved.length, ok: false };
+       }
+       chunk[supplier] = Math.min(chunkMax[supplier], chunk[supplier] * 2);
+-      for (const b of batch) s.records[b.key] = b.record;
+-      for (const k of pendingRemovedKeys) delete s.records[k];
+-      pendingRemoved = [];
+-      pendingRemovedKeys = [];
++      const pendingAfter = pendingRemoved.slice(removedBatch.length);
++      const pendingAfterSet = new Set(pendingAfter);
++      const acked = new Set(removedBatch);
++      for (const b of batch) {
++        // Induk WR yang varian hilangnya belum ter-ack menahan ID lama di
++        // record (hash baru + sisa ID belum-ack): payload batch ini sudah
++        // terkirim idempoten, restart hanya mengulang sisa ID yang hilang.
++        // Tanpa ini, record baru langsung menelan sisa ID → hilang diam-diam.
++        if (supplier === "wr") {
++          const oldIds = s.records[b.key]?.variantIds ?? [];
++          const curSet = new Set(b.record.variantIds);
++          const stillUnacked = oldIds.filter((id) => !curSet.has(id) && pendingAfterSet.has(id));
++          if (stillUnacked.length > 0) {
++            s.records[b.key] = { hash: b.record.hash, variantIds: [...b.record.variantIds, ...stillUnacked] };
++            continue;
++          }
++        }
++        s.records[b.key] = b.record;
++      }
++      // ID yang baru ter-ack HARUS dipangkas dari SEMUA record yang ditahan
++      // (bukan hanya batch/pendingRemovedKeys siklus ini): batch removal-only
++      // berikutnya tidak memuat induknya, jadi tanpa prune, ID yang sudah
++      // dikonfirmasi Pages akan dikirim ulang selamanya.
++      if (acked.size > 0) {
++        for (const [k, rec] of Object.entries(s.records)) {
++          if (pendingRemovedKeys.includes(k)) continue; // ditangani di bawah
++          const pruned = rec.variantIds.filter((id) => !acked.has(id));
++          if (pruned.length !== rec.variantIds.length) s.records[k] = { hash: rec.hash, variantIds: pruned };
++        }
++      }
++      // Induk yang hilang total juga ditahan sampai seluruh variannya ter-ack;
++      // hanya kunci yang ID-nya sudah habis terkonfirmasi yang dihapus. ID yang
++      // sudah ter-ack dipangkas dari record yang ditahan agar siklus berikut
++      // hanya mengirim ulang sisa yang belum terkonfirmasi (idempoten).
++      pendingRemovedKeys = pendingRemovedKeys.filter((k) => {
++        const ids = s.records[k]?.variantIds ?? [];
++        const stillPending = ids.filter((id) => pendingAfterSet.has(id));
++        if (stillPending.length === 0) {
++          delete s.records[k];
++          return false;
++        }
++        s.records[k] = { hash: s.records[k].hash, variantIds: stillPending };
++        return true;
++      });
++      pendingRemoved = pendingAfter;
+       s.lastSentAt = now();
+       sent += batch.length;
+       queue = queue.slice(batch.length);
+       saveState(options.stateFile, state);
+-    } while (queue.length);
++    } while (queue.length || pendingRemoved.length);
+     return { sent, removed: plan.removedVariantIds.length, ok: true };
+   }
+
+--- /dev/null
++++ b/axvara-wr-proxy/test/wrsk.test.mjs
+@@ -0,0 +1,193 @@
++// test/wrsk.test.mjs — WR/SK passthrough (2026-10-25, VPS-IMPL).
++// buildApp() dari dist (import saja, tanpa listen/network nyata). Semua
++// upstream dimock via Undici MockAgent + disableNetConnect; WR_PROXY_TOKEN,
++// WR_API_KEY, SK_API_KEY memakai nilai fixture acak (tidak baca .env).
++//
++// Mencakup: auth, allowlist method/path, byte limit (Buffer.byteLength),
++// traversal setelah normalisasi, upstream error pass-through, timeout,
++// unreadable 2xx pada write (WR order + SK v1/trx AKTUAL) → HTTP 502 marker
++// `wr_proxy_unreadable_response: network_error` /
++// `sk_proxy_unreadable_response: network_error`, PUT tetap lolos.
++import assert from "node:assert/strict";
++import { randomUUID } from "node:crypto";
++import { spawnSync } from "node:child_process";
++import { MockAgent, setGlobalDispatcher, getGlobalDispatcher } from "undici";
++
++const savedEnv = { ...process.env };
++process.env.WR_PROXY_TOKEN = randomUUID();
++process.env.WR_API_KEY = randomUUID();
++process.env.SK_API_KEY = randomUUID();
++delete process.env.QUOTAGUARDSTATIC_URL;
++delete process.env.FIXIE_URL;
++delete process.env.DIFF_SYNC_ENABLED;
++
++const mock = new MockAgent();
++mock.disableNetConnect();
++const prevDispatcher = getGlobalDispatcher();
++setGlobalDispatcher(mock);
++
++const { buildApp, buildSkUpstreamUrl, isWriteRequest, unreadableWriteError, getStaticProxyAgent } =
++  await import("../dist/index.js");
++
++const app = buildApp();
++await app.ready();
++const headers = { "x-proxy-token": process.env.WR_PROXY_TOKEN };
++const WR_ORIGIN = "https://warungrebahan.com";
++const SK_ORIGIN = "https://sekalipay.com";
++
++function wrMock(status, body, raw = false) {
++  mock.get(WR_ORIGIN).intercept({ path: "/api/v1/order", method: "POST" })
++    .reply(status, raw ? body : JSON.stringify(body), raw ? {} : { headers: { "content-type": "application/json" } });
++}
++function skMock(path, method, status, body, raw = false, delay = 0) {
++  const scope = mock.get(SK_ORIGIN).intercept({ path, method });
++  const r = scope.reply(status, raw ? body : JSON.stringify(body), raw ? {} : { headers: { "content-type": "application/json" } });
++  if (delay) r.delay(delay);
++}
++
++try {
++  // 0. Pure helper: direct mode tanpa proxy URL; marker persis + suffix network.
++  assert.equal(getStaticProxyAgent(), undefined);
++  // Constructing a configured agent never opens a socket. A bad URL must
++  // fail startup; a valid URL must reuse one dispatcher and close cleanly.
++  const moduleUrl = new URL("../dist/index.js", import.meta.url).href;
++  for (const [proxy, succeeds] of [["not-a-url", false], ["http://127.0.0.1:9", true]]) {
++    const child = spawnSync(process.execPath, ["--input-type=module", "-e",
++      `const m=await import(${JSON.stringify(moduleUrl)}); if(!m.getStaticProxyAgent()||m.getStaticProxyAgent()!==m.getStaticProxyAgent())throw Error('not shared');await m.app.close();`],
++      { env: { QUOTAGUARDSTATIC_URL: proxy }, encoding: "utf8", timeout: 5000 });
++    assert.equal(child.status === 0, succeeds, child.stderr);
++  }
++  assert.deepEqual(unreadableWriteError("wr"),
++    { statusCode: 502, body: { success: false, message: "wr_proxy_unreadable_response: network_error" } });
++  assert.deepEqual(unreadableWriteError("sk"),
++    { statusCode: 502, body: { message: "sk_proxy_unreadable_response: network_error" } });
++  assert.ok(unreadableWriteError("wr").body.message.includes("network_error"));
++  assert.ok(unreadableWriteError("sk").body.message.includes("network_error"));
++  // isWriteRequest: SK paid purchase = POST v1/trx (bukan hanya v1/order).
++  assert.equal(isWriteRequest("sk", "POST", "v1/trx"), true);
++  assert.equal(isWriteRequest("sk", "PUT", "v1/trx"), true);
++  assert.equal(isWriteRequest("sk", "POST", "v1/order"), true);
++  assert.equal(isWriteRequest("sk", "POST", "v1/item"), false);
++  assert.equal(isWriteRequest("sk", "GET", "v1/trx"), false);
++  assert.equal(isWriteRequest("wr", "POST", "order"), true);
++  assert.equal(isWriteRequest("wr", "POST", "balance"), false);
++  // buildSkUpstreamUrl: traversal ditolak setelah normalisasi.
++  assert.equal(buildSkUpstreamUrl("v1/trx", "?a=1"), "https://sekalipay.com/api/v1/trx?a=1");
++  assert.throws(() => buildSkUpstreamUrl("v1/order/../../x", ""), /sk_path_traversal/);
++  assert.throws(() => buildSkUpstreamUrl("v1/a/../b", ""), /sk_path_traversal/);
++  assert.throws(() => buildSkUpstreamUrl("v2/item", ""), /unknown_sk_path/);
++
++  // 1. Auth + allowlist WR.
++  assert.equal((await app.inject({ method: "POST", url: "/wr/order", payload: {} })).statusCode, 401);
++  assert.equal((await app.inject({ method: "POST", url: "/wr/hack", payload: {}, headers })).statusCode, 404);
++  assert.equal((await app.inject({ method: "GET", url: "/wr/order", headers })).statusCode, 404);
++
++  // 2. Byte limit memakai UTF-8 bytes: 32000 char ASCII lolos? (tidak —
++  //    envelope JSON menambah byte) vs 32001 emoji (>32k bytes) ditolak 413.
++  const bigAscii = "x".repeat(31_900);
++  wrMock(200, { success: true });
++  assert.equal((await app.inject({ method: "POST", url: "/wr/order", payload: { p: bigAscii }, headers })).statusCode, 200);
++  const bigEmoji = "\u{1F600}".repeat(8_001); // 32.004 bytes UTF-8
++  assert.equal((await app.inject({ method: "POST", url: "/wr/order", payload: { p: bigEmoji }, headers })).statusCode, 413);
++
++  // 3. WR order 200 JSON valid diteruskan apa adanya.
++  wrMock(200, { success: true, data: { order_id: "W1" } });
++  {
++    const r = await app.inject({ method: "POST", url: "/wr/order", payload: { a: 1 }, headers });
++    assert.equal(r.statusCode, 200);
++    assert.equal(r.json().data.order_id, "W1");
++  }
++
++  // 4. WR upstream 4xx/5xx diteruskan (sinyal bisnis, bukan error proxy).
++  wrMock(422, { success: false, message: "saldo kurang" });
++  {
++    const r = await app.inject({ method: "POST", url: "/wr/order", payload: {}, headers });
++    assert.equal(r.statusCode, 422);
++    assert.equal(r.json().message, "saldo kurang");
++  }
++
++  // 5. WR order 200 TAK-TERBACA (HTML mentah) → 502 marker, BUKAN 200 palsu.
++  wrMock(200, "<html>bukan json</html>", true);
++  {
++    const r = await app.inject({ method: "POST", url: "/wr/order", payload: {}, headers });
++    assert.equal(r.statusCode, 502);
++    assert.equal(r.json().success, false);
++    assert.equal(r.json().message, "wr_proxy_unreadable_response: network_error");
++  }
++  // 5b. WR order 200 body kosong → 502 marker juga.
++  wrMock(200, "", true);
++  {
++    const r = await app.inject({ method: "POST", url: "/wr/order", payload: {}, headers });
++    assert.equal(r.statusCode, 502);
++    assert.ok(r.json().message.includes("wr_proxy_unreadable_response"));
++  }
++  // 5c. WR balance (read) 200 tak-terbaca → perilaku lama (bukan marker write).
++  mock.get(WR_ORIGIN).intercept({ path: "/api/v1/balance", method: "POST" }).reply(200, "ok-bukan-json");
++  {
++    const r = await app.inject({ method: "POST", url: "/wr/balance", payload: {}, headers });
++    assert.equal(r.statusCode, 200);
++    assert.ok(!String(r.body).includes("wr_proxy_unreadable_response"));
++  }
++
++  // 6. SK auth + allowlist + traversal.
++  assert.equal((await app.inject({ method: "GET", url: "/sk/v1/balance" })).statusCode, 401);
++  assert.equal((await app.inject({ method: "GET", url: "/sk/v2/item", headers })).statusCode, 404);
++  assert.equal((await app.inject({ method: "DELETE", url: "/sk/v1/item", headers })).statusCode, 405);
++  {
++    // PUT dipertahankan (kontrak lama).
++    skMock("/api/v1/item", "PUT", 200, { message: "updated" });
++    const r = await app.inject({ method: "PUT", url: "/sk/v1/item", payload: { a: 1 }, headers });
++    assert.equal(r.statusCode, 200);
++    assert.equal(r.json().message, "updated");
++  }
++  {
++    // DELETE lock-release eksak diizinkan.
++    skMock("/api/v1/item/lock/abc123", "DELETE", 200, { message: "released" });
++    const r = await app.inject({ method: "DELETE", url: "/sk/v1/item/lock/abc123", headers });
++    assert.equal(r.statusCode, 200);
++  }
++  {
++    // Traversal setelah normalisasi → 400 invalid_sk_path (bukan forward).
++    const r = await app.inject({ method: "POST", url: "/sk/v1/a%2f..%2fb", payload: {}, headers });
++    assert.equal(r.statusCode, 400);
++    assert.equal(r.json().reason, "invalid_sk_path");
++  }
++
++  // 7. SK paid purchase AKTUAL: POST v1/trx 200 tak-terbaca → 502 marker SK.
++  skMock("/api/v1/trx", "POST", 200, "<html>ok</html>", true);
++  {
++    const r = await app.inject({ method: "POST", url: "/sk/v1/trx", payload: { variant: 1 }, headers });
++    assert.equal(r.statusCode, 502);
++    assert.equal(r.json().message, "sk_proxy_unreadable_response: network_error");
++  }
++  // 7b. SK v1/trx 200 JSON valid diteruskan.
++  skMock("/api/v1/trx", "POST", 200, { message: "ok", ref: "SK1" });
++  {
++    const r = await app.inject({ method: "POST", url: "/sk/v1/trx", payload: { variant: 1 }, headers });
++    assert.equal(r.statusCode, 200);
++    assert.equal(r.json().ref, "SK1");
++  }
++  // 7c. SK read (GET item) 200 tak-terbaca → forward lama, bukan marker write.
++  skMock("/api/v1/item?per_page=all", "GET", 200, "bukan-json", true);
++  {
++    const r = await app.inject({ method: "GET", url: "/sk/v1/item?per_page=all", headers });
++    assert.equal(r.statusCode, 200);
++    assert.ok(!String(r.body).includes("sk_proxy_unreadable_response"));
++  }
++
++  // 8. Timeout upstream → 504 (tanpa retry).
++  skMock("/api/v1/balance", "GET", 200, { message: "late" }, false, 60_000);
++  {
++    const r = await app.inject({ method: "GET", url: "/sk/v1/balance", headers });
++    assert.equal(r.statusCode, 504);
++  }
++
++  mock.assertNoPendingInterceptors();
++  console.log("WRSK_OK");
++} finally {
++  await app.close();
++  await mock.close();
++  setGlobalDispatcher(prevDispatcher);
++  for (const key of Object.keys(process.env)) if (!(key in savedEnv)) delete process.env[key];
++  Object.assign(process.env, savedEnv);
++}
+--- /dev/null
++++ b/axvara-wr-proxy/test/diff-removal.test.mjs
+@@ -0,0 +1,167 @@
++// test/diff-removal.test.mjs — regresi removed_variant_ids ≤200 + retain induk.
++// >200 removals di bawah 50% missing: slice independen, ack-only-accepted,
++// partial failure + restart (termasuk varian hilang di dalam induk BERUBAH),
++// dan prune ID ter-ack dari SEMUA record yang ditahan (tanpa resend abadi).
++import assert from "node:assert/strict";
++import { mkdtempSync, rmSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { createDiffSync } from "../dist/diff-sync.js";
++
++const dir = mkdtempSync(join(tmpdir(), "axvara-wrsk-removal-"));
++const logger = { info() {}, warn() {}, error() {} };
++try {
++  // Skenario PM: induk WR berubah + 300 varian hilang (<50% dari ~700),
++  // ack 200 pertama, gagal di 100 berikut, restart → hanya sisa 100,
++  // siklus berikut TANPA duplikat removal.
++  const file = join(dir, "wr.json");
++  // ~700 varian awal: 40 induk x ~17 varian + induk target P0 (301 varian).
++  const mkCatalog = (mutate) => {
++    const products = [];
++    for (let p = 1; p <= 40; p++) {
++      products.push({ id: `p${p}`, variants: Array.from({ length: 10 }, (_, i) => ({ id: `v${p}_${i}` })) });
++    }
++    products.push({ id: "P0", variants: Array.from({ length: 301 }, (_, i) => ({ id: `w${i}` })) });
++    if (mutate) {
++      // P0 berubah (stok) + kehilangan w0..w299 (300 hilang, sisa w300).
++      const p0 = products.find((p) => p.id === "P0");
++      p0.variants = [{ id: "w300", stock: 0 }];
++      // Satu induk hilang total (10 varian) agar pendingRemovedKeys ikut diuji.
++      return products.filter((p) => p.id !== "p40");
++    }
++    return products;
++  };
++  let rows = [];
++  for (let i = 0; i < 400; i++) rows.push({ variant: { id: 10_000 + i } });
++  let failAt = -1;
++  const sent = [];
++  let t = 5e9;
++  let catalog = mkCatalog(false);
++  const mk = () => createDiffSync({
++    origin: "https://receiver.test", token: "fixture", stateFile: file,
++    fetchWr: async () => catalog,
++    fetchSk: async () => rows,
++    logger, fetchFn: async (url, init) => {
++      const b = JSON.parse(init.body);
++      if (b.supplier === "wr") {
++        assert.ok((b.removed_variant_ids || []).length <= 200, "removal slice >200");
++        sent.push(b);
++        if (b.removed_variant_ids.length && sent.filter((x) => x.supplier === "wr").length === failAt) {
++          return new Response("{}", { status: 503 });
++        }
++      }
++      return new Response("{}", { status: 200 });
++    },
++    now: () => t, wrChunkMax: 8, skChunkMax: 50,
++  });
++
++  // Siklus 1: baseline penuh (ack semua).
++  let d = mk();
++  await d.cycle();
++  sent.length = 0;
++
++  // Siklus 2: P0 berubah + 310 hilang (300 parsial + 10 induk hilang) <50%.
++  catalog = mkCatalog(true);
++  failAt = 2; // batch ke-2 (sisa 110: 100 P0 + 10 p40... lihat di bawah)
++  await d.cycle();
++  const wrBatches = sent.filter((b) => b.supplier === "wr");
++  assert.ok(wrBatches.length >= 2, `expected >=2 wr batches, got ${wrBatches.length}`);
++  assert.ok(wrBatches.every((b) => (b.removed_variant_ids || []).length <= 200));
++  // Batch pertama membawa 200 ID hilang; batch kedua GAGAL (503).
++  assert.equal(wrBatches[0].removed_variant_ids.length, 200);
++  // Payload P0 yang berubah HARUS sudah terkirim di salah satu batch (no-loss
++  // walau batch payload lebih lambat dari batch removal).
++  const p0Sent = wrBatches.some((b) => (b.products || []).some((p) => p.id === "P0"));
++  assert.ok(p0Sent, "changed parent P0 payload must be sent (no-loss)");
++
++  // Restart setelah partial apply: hanya sisa yang belum ter-ack.
++  d = mk();
++  sent.length = 0; failAt = -1;
++  await d.cycle();
++  const replay = sent.filter((b) => b.supplier === "wr");
++  const replayRemoved = replay.flatMap((b) => b.removed_variant_ids || []);
++  assert.equal(replayRemoved.length, 110, `expected 110 remaining, got ${replayRemoved.length}`);
++  assert.ok(replay.every((b) => (b.removed_variant_ids || []).length <= 200));
++  // Tidak ada ID yang sudah ter-ack ikut terkirim ulang.
++  const first200 = new Set(wrBatches[0].removed_variant_ids);
++  assert.ok(replayRemoved.every((id) => !first200.has(id)), "acked IDs must not replay");
++
++  // Siklus berikut TANPA perubahan: tidak ada duplikat removal.
++  sent.length = 0; t += 60e3;
++  await d.cycle();
++  assert.equal(sent.filter((b) => b.supplier === "wr").length, 0, "no duplicate removal resend");
++
++  // Removal ACK can precede its parent's changed payload by many batches.
++  // A restart must preserve that payload's old hash so it still gets sent.
++  const lateFile = join(dir, "late-parent.json");
++  let lateCatalog = [
++    ...Array.from({ length: 20 }, (_, p) => ({ id: `keep${p}`, variants: Array.from({ length: 30 }, (_, i) => ({ id: `keep${p}_${i}` })) })),
++    { id: "late", variants: Array.from({ length: 301 }, (_, i) => ({ id: `lost${i}` })) },
++  ];
++  let lateFail = false;
++  const lateSent = [];
++  const mkLate = () => createDiffSync({
++    origin: "https://receiver.test", token: "fixture", stateFile: lateFile,
++    fetchWr: async () => lateCatalog, fetchSk: async () => [{ variant: { id: 1 } }],
++    wrChunkMax: 1, now: () => t, logger,
++    fetchFn: async (_url, init) => {
++      const b = JSON.parse(init.body);
++      if (b.supplier === "wr") {
++        lateSent.push(b);
++        if (lateFail && lateSent.length === 2) return new Response("{}", { status: 503 });
++      }
++      return new Response("{}", { status: 200 });
++    },
++  });
++  let late = mkLate(); await late.cycle(); lateSent.length = 0;
++  lateCatalog = lateCatalog.map(p => ({ ...p, title: "changed", ...(p.id === "late" ? { variants: [{ id: "lost300" }] } : {}) }));
++  lateFail = true; await late.cycle();
++  const acceptedIds = new Set(lateSent[0].removed_variant_ids);
++  assert.equal(acceptedIds.size, 200);
++  assert.ok(!lateSent.some(b => b.products.some(p => p.id === "late")));
++  late = mkLate(); lateFail = false; lateSent.length = 0; await late.cycle();
++  assert.equal(lateSent.flatMap(b => b.removed_variant_ids).length, 100);
++  assert.ok(lateSent.flatMap(b => b.removed_variant_ids).every(id => !acceptedIds.has(id)));
++  assert.ok(lateSent.some(b => b.products.some(p => p.id === "late" && p.title === "changed")));
++  lateSent.length = 0; t += 60e3; await mkLate().cycle();
++  assert.equal(lateSent.length, 0);
++
++  // SK removals juga dipotong ≤200 dan ack-only.
++  const skFile = join(dir, "sk.json");
++  let skRows = Array.from({ length: 500 }, (_, i) => ({ variant: { id: 1 + i } }));
++  const skSent = [];
++  let skFail = false;
++  const mkSk = () => createDiffSync({
++    origin: "https://receiver.test", token: "fixture", stateFile: skFile,
++    fetchWr: async () => [{ id: "keep", variants: [{ id: "k1" }] }],
++    fetchSk: async () => skRows,
++    logger, fetchFn: async (url, init) => {
++      const b = JSON.parse(init.body);
++      if (b.supplier === "sk" && !b.action) {
++        assert.ok((b.removed_variant_ids || []).length <= 200);
++        skSent.push(b);
++        if (skFail && skSent.length === 1) return new Response("{}", { status: 503 });
++      }
++      return new Response("{}", { status: 200 });
++    },
++    now: () => t, wrChunkMax: 8, skChunkMax: 20,
++  });
++  let skd = mkSk();
++  await skd.cycle();
++  skSent.length = 0;
++  skRows = skRows.slice(210); // 210 hilang (<50% dari 500) → 1 slice 200 + 1 slice 10
++  skFail = true;
++  await skd.cycle();
++  assert.deepEqual(skSent.filter((b) => !b.action).map((b) => (b.removed_variant_ids || []).length), [200]);
++  skd = mkSk(); skSent.length = 0; skFail = false;
++  await skd.cycle();
++  // Slice pertama GAGAL → tidak ada yang di-ack → replay penuh 200 + 10.
++  assert.deepEqual(skSent.filter((b) => !b.action).map((b) => (b.removed_variant_ids || []).length), [200, 10]);
++  skSent.length = 0; t += 60e3;
++  await mkSk().cycle();
++  assert.equal(skSent.length, 0, "no SK duplicate removal resend");
++
++  console.log("DIFF_REMOVAL_OK");
++} finally {
++  rmSync(dir, { recursive: true, force: true });
++}
