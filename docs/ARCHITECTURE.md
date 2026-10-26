@@ -216,6 +216,11 @@ bulanan, Free memakai batas harian. Rincian biaya, batas kerja dan rollback:
 [operasional Paid](PAID-OPERATIONS.md).
 
 
+## Daftar pembanding ringkas Pedia — 26 Oktober 2026
+
+✅ Implementasi; publikasi melalui CI. `ServicePicker` menampilkan baris pembanding ringkas (nama pendek + harga + wilayah/refill/estimasi + badge Dipilih), toolbar kategori/jenis akun/urutan sebelum daftar, tanpa accordion Lanjutan. Pilihan di luar filter tetap terlihat dengan tombol reset filter, tanpa mengganti pilihan. `OrderClient` menampilkan detail pilihan terbuka, rail desktop mulai xl dengan CTA di panel, bar total/CTA mobile memakai nama layanan yang membedakan, pill kebutuhan 44px, serta draf jumlah per kebutuhan via sessionStorage. State quote/consent/lock/retry, harga `usePediaPrices`, preview embedded, dan kontrak API tetap dipertahankan; tanpa route, schema, env, atau migrasi baru.
+
+
 ## Penyederhanaan pilihan layanan Pedia — 22 Oktober 2026
 
 ✅ Implementasi; publikasi melalui CI. Koreksi owner22 Oktober: judul “Apa yang ingin ditingkatkan?” kembali ke ukuran24px/bold semula tanpa garis cyan. Yang diperkecil adalah pill kebutuhan Followers/Likes/dll: tinggi32px, teks12px, ikon13px dan padding12px; permukaan gradasi halus dengan highlight inset, pilihan aktif cyan/violet dan glow tipis. Gulir horizontal serta fokus keyboard tetap, scrollbar visual disembunyikan. Label tombol jumlah memakai `k` kecil untuk ribuan (`1k`, `2k`, `2.5k`); angka di bawah 1.000 tetap utuh, nilai input/perhitungan serta teks batas dan harga memakai angka aslinya. Pengantar panjang jumlah dihapus; batas tampil sesuai min/max layanan terpilih (“Layanan terpilih menerima 100–50.000 per pesanan.”), termasuk kelipatan bila perlu; sebelum memilih layanan ada petunjuk singkat tanpa angka asumsi. “Pilih layanan · harga untuk …” berada di kiri dan filter ringkas di kanan saat muat, bertumpuk pada mobile. Kategori **Semua/Global/Indonesia/Refill** memakai satu state eksklusif: tepat satu pill aktif, klik pill aktif mempertahankannya; Refill berarti semua wilayah dengan refill>0. Pemilihan kategori tidak mengganti layanan atau jumlah. Hitungan hasil, Reset filter dan pengaturan jenis akun/urutan berada sesudah daftar. Beranda, data katalog, validasi batas, quote/consent/retry dan pembayaran tetap.
