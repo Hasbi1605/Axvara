@@ -8,6 +8,9 @@ import { NextRequest } from "next/server";
 import { GET as overview } from "@/app/api/admin/overview/route";
 import { createAdminToken, createIdleToken } from "@/lib/auth";
 
+// These cache fixtures isolate the Access boundary; signed-token negatives live in cloudflare-admin-access.integration.
+vi.mock("@/lib/cloudflare-access", () => ({ checkCloudflareAccess: vi.fn(async () => ({ ok: true })) }));
+
 let fx: ReturnType<typeof createD1Fixture>;
 beforeEach(() => {
   fx = createD1Fixture();

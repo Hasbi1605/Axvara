@@ -1,5 +1,27 @@
 # PRD — AXVARA
 
+## Lapisan admin Cloudflare Access — 27 Oktober 2026
+
+✅ Konfigurasi Access aktif; guard aplikasi diverifikasi lokal dan publikasi CI.
+Login admin memakai email owner pada `ADMIN_EMAIL` dengan password existing.
+Cloudflare lebih dahulu memeriksa PIN email dan MFA independent (Google
+Authenticator/TOTP, security key atau biometrik). Hanya satu email owner yang
+diizinkan. Pergantian email mencabut sesi aplikasi beremail lama.
+
+UI `/admin` dan namespace API auth/admin dilindungi di apex/www/Pedia. API
+campuran seperti produk/artikel membutuhkan sesi aplikasi **dan** JWT Access
+untuk operasi admin; katalog, checkout pembeli, webhook dan bot tetap memakai
+otorisasi masing-masing. Token Access saja tidak menggantikan password aplikasi.
+Sesi Access/MFA8jam melapisi sesi aplikasi8jam dengan idle2jam. Saat Access perlu
+diperbarui, alur auth mengarahkan navigasi penuh ke admin; gangguan verifikasi503
+tidak menerbitkan/menyegarkan sesi. Manager lain tetap menolak operasi terlindungi
+dan pembaruan Access tersedia dengan memuat ulang halaman admin.
+
+Owner mendaftarkan Authenticator langsung di portal Cloudflare; QR dan kode
+tidak diberikan kepada agent. Enrollment fisik dan login admin aktual harus
+dikonfirmasi owner. Panduan pemulihan dan batas verifikasi:
+[admin Access](../issue/admin-access-2026-10-27.md).
+
 ## Pemulihan timeout WR — 27 Oktober 2026
 
 ✅ Implementasi dan fixture lokal; publikasi melalui CI. Pembelian WR yang

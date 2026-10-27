@@ -1,4 +1,5 @@
 import * as jose from "jose";
+import { checkCloudflareAccess } from "@/lib/cloudflare-access";
 
 export type CheckoutQuoteItem = {
   product_id: number;
@@ -410,7 +411,7 @@ export async function verifyAdminToken(token: string): Promise<AdminTokenPayload
  */
 export type AdminAuthCheck =
   | { ok: true; payload: AdminTokenPayload }
-  | { ok: false; reason: "unauthorized" | "idle_timeout" | "session_mismatch" | "revoked" };
+  | { ok: false; reason: "unauthorized" | "idle_timeout" | "session_mismatch" | "revoked" | "access_required" | "access_unavailable" };
 
 export type RequireAdminOptions = {
   /** Override auth version — dipakai test revokasi deterministik. */
@@ -451,6 +452,8 @@ async function checkAdminSession(req: Request, overrides: RequireAdminOptions = 
   if (!payload.authVersion || payload.authVersion !== expectedVersion || idle.authVersion !== expectedVersion) {
     return { ok: false, reason: "revoked" };
   }
+  const access = await checkCloudflareAccess(req);
+  if (!access.ok) return access;
   return { ok: true, payload };
 }
 

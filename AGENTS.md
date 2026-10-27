@@ -1,5 +1,11 @@
 # AGENTS.md — AXVARA (Project-Specific)
 
+## Admin Cloudflare Access — 27 Oktober 2026
+- Organisasi `axvara-admin-9d00b9.cloudflareaccess.com`, aplikasi AXVARA Admin dan App Launcher dibuat dengan Global API Key existing dari `.cf-credentials`; tanpa perubahan langganan. Allow policy hanya email owner, IdP PIN email, MFA independent wajib pada aplikasi admin (TOTP/biometrik/security key, sesi8jam). Launcher khusus enrollment juga hanya owner, sengaja tanpa MFA bootstrap; audience launcher tidak memberikan otorisasi aplikasi.
+- Destinasi `/admin`, `/api/auth`, `/api/admin` pada apex/www/Pedia. Jangan blanket `/api`: katalog/pembeli/agent/cron/webhook berbagi domain. Path campuran dilindungi JWT Access di `checkAdminSession`, selain JWT aplikasi/idle/revokasi/password existing. UI admin host alternatif dialihkan ke apex; API alias Pages tetap memerlukan JWT Access valid.
+- Pages produksi: `ADMIN_EMAIL` diganti sesuai instruksi owner; password/hash/JWT secret tidak diubah. Dua env baru `CF_ACCESS_TEAM_DOMAIN` + `CF_ACCESS_AUD` bertipe **secret_text**, tidak memuat seed TOTP. Konfigurasi hilang/parsial di produksi gagal tertutup. Jangan menghapus env atau melemahkan guard untuk mengatasi error login.
+- Enrollment owner lewat `https://axvara-admin-9d00b9.cloudflareaccess.com/AddMfaDevice`; QR/kode hanya di UI Cloudflare, tidak di chat/log/git. Pendaftaran perangkat dan satu login aplikasi admin harus dikonfirmasi owner; kesiapan konfigurasi bukan bukti enrollment. Pemulihan faktor hilang: verifikasi owner di dashboard Cloudflare, hapus authenticator pengguna yang hilang atas instruksi eksplisit lalu enroll ulang; tidak mereset password atau mengizinkan Everyone. Rincian `issue/admin-access-2026-10-27.md`.
+
 ## WR timeout receipt — 27 Oktober 2026
 - Missing-ID setelah timeout tidak boleh diikat otomatis lewat produk/waktu: WR
   tidak memberi korelasi request, akun supplier juga dapat digunakan manual.

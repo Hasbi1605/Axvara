@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AdminToast } from "@/components/admin/useProductManager";
+import { fetchAdminAuth } from "@/lib/admin-auth-fetch";
 
 // Hook otentikasi admin dipisah dari page.tsx karena siklus sesi (cek awal, login PBKDF2,
 // heartbeat idle 90 detik, cek saat window focus) adalah satu domain yang berdiri sendiri
@@ -52,7 +53,7 @@ export function useAdminAuth(toast: AdminToast) {
     if (sessionEndedRef.current) { setAuthed(false); setCheckingAuth(false); return; }
     setCheckingAuth(true);
     try {
-      const r = await fetch("/api/auth/me", { cache: "no-store" });
+      const r = await fetchAdminAuth("/api/auth/me", { cache: "no-store" });
       const j = await r.json().catch(()=>({}));
       if (r.ok && j.authed) { sessionEndedRef.current = false; setAuthed(true); setAuthEmail(j.email || ""); }
       else if (r.ok) setAuthed(false);
@@ -85,7 +86,7 @@ export function useAdminAuth(toast: AdminToast) {
     const tick = async()=>{
       if (document.visibilityState !== "visible") return;
       try {
-        const r = await fetch("/api/auth/refresh", { method:"POST", cache:"no-store" });
+        const r = await fetchAdminAuth("/api/auth/refresh", { method:"POST", cache:"no-store" });
         if (r.status === 401) { setAuthed(false); toast.error("Sesi habis. Silakan login ulang."); }
       } catch {}
     };
@@ -102,7 +103,7 @@ export function useAdminAuth(toast: AdminToast) {
     if(!authed) return;
     const onFocus = async()=>{
       try {
-        const r = await fetch("/api/auth/me", { cache:"no-store" });
+        const r = await fetchAdminAuth("/api/auth/me", { cache:"no-store" });
         if (r.status === 401) { setAuthed(false); }
       } catch {}
     };
@@ -115,13 +116,13 @@ export function useAdminAuth(toast: AdminToast) {
     if (!email.trim() || !pass) { setLoginError("Email dan password wajib diisi."); return; }
     setLoginLoading(true);
     try {
-      const challengeResponse = await fetch("/api/auth/login", { cache: "no-store" });
+      const challengeResponse = await fetchAdminAuth("/api/auth/login", { cache: "no-store" });
       const challenge = await challengeResponse.json().catch(()=>({})) as LoginChallenge & { error?: string };
       if (!challengeResponse.ok) throw new Error(challenge.error || "Layanan login sedang tidak siap.");
       const body = challenge.mode === "pbkdf2-proof"
         ? { email: email.trim(), password_proof: await makePasswordProof(pass, challenge), challenge: challenge.challenge }
         : { email: email.trim(), password: pass };
-      const r = await fetch("/api/auth/login", {
+      const r = await fetchAdminAuth("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type":"application/json" },
         body: JSON.stringify(body)

@@ -51,7 +51,7 @@ it("a valid login clears only its own client, while challenge/malformed requests
   const attacker = await loginClientHash("203.0.113.12"), owner = await loginClientHash("203.0.113.13");
   for (let n = 0; n < 10; n++) await admitLogin(db, attacker);
   await admitLogin(db, owner);
-  expect((await GET()).status).toBe(200);
+  expect((await GET(new NextRequest("https://axvara.test/api/auth/login"))).status).toBe(200);
   expect((await POST(request("203.0.113.13", "fixture-correct-password"))).status).toBe(200);
   expect(fx.sql.prepare("SELECT client_hash FROM security_auth_attempts WHERE client_hash=?").get(owner)).toBeUndefined();
   expect((await admitLogin(db, attacker)).allowed).toBe(false);

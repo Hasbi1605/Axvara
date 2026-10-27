@@ -11,6 +11,11 @@ export async function middleware(req: NextRequest) {
 async function routeRequest(req: NextRequest) {
   const host = (req.headers.get("host") || "").toLowerCase().split(":")[0] || "";
   const path = req.nextUrl.pathname;
+  if (process.env.NODE_ENV === "production" && (path === "/admin" || path.startsWith("/admin/")) && host !== "axvara.tech") {
+    const url = new URL("https://axvara.tech/admin");
+    url.search = req.nextUrl.search;
+    return NextResponse.redirect(url, 307);
+  }
   const isAsset = path.startsWith("/api/") || path.startsWith("/_next/")
     || path.startsWith("/brand/") || path.startsWith("/icons/")
     || path.startsWith("/og/") || path === "/favicon.svg" || path === "/favicon.ico"

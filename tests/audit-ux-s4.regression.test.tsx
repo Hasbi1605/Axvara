@@ -6,6 +6,9 @@
 //     composite key stabil, direct-buy URL lama lintas produk;
 // (4) rentang tanggal half-open mentah + facet global privat ~60 dtk.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Keep this production-cache fixture independent of the separately tested Access JWT boundary.
+vi.mock("@/lib/cloudflare-access", () => ({ checkCloudflareAccess: vi.fn(async () => ({ ok: true })) }));
 import { NextRequest } from "next/server";
 import { createD1Fixture, insertTestOrder, insertTestProduct } from "./helpers/d1-fixture";
 import { createAdminToken, createIdleToken } from "@/lib/auth";

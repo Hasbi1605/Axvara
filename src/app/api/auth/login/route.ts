@@ -6,6 +6,7 @@ import { readJsonBody } from "@/lib/http-body";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { admitLogin, loginClientHash, resetLogin } from "@/lib/login-guard";
 import { recordSecurityEvent } from "@/lib/security-events";
+import { checkCloudflareAccess, accessFailureResponse } from "@/lib/cloudflare-access";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -21,7 +22,9 @@ const schema = z.object({
 
 // Cheap per-isolate burst limit, followed by atomic D1 admission per client.
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const access = await checkCloudflareAccess(req);
+  if (!access.ok) return accessFailureResponse(access);
   try {
     const cred = getAdminCredentials();
     const config = getAdminPasswordProofConfig(cred.sha256);
@@ -40,6 +43,8 @@ export async function POST(req: NextRequest) {
       { status: 429, headers: { "Retry-After": "60" } }
     );
   }
+  const access = await checkCloudflareAccess(req);
+  if (!access.ok) return accessFailureResponse(access);
 
   const body = await readJsonBody(req, 8_000);
   if (!body.ok) return body.response;

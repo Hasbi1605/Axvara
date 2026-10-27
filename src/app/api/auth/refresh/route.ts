@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminDetailed, cookieForIdle, createIdleToken, isSecureForRequest } from "@/lib/auth";
+import { accessFailureResponse } from "@/lib/cloudflare-access";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -10,6 +11,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest) {
   const check = await requireAdminDetailed(req);
   if (!check.ok) {
+    if (check.reason === "access_required" || check.reason === "access_unavailable") return accessFailureResponse({ ok: false, reason: check.reason });
     if (check.reason === "idle_timeout") {
       return NextResponse.json({ error: "Sesi idle habis (2 jam tanpa aktivitas). Silakan login ulang." }, { status: 401 });
     }

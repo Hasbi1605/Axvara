@@ -1,5 +1,44 @@
 # ARCHITECTURE.md — AXVARA
 
+## Admin Cloudflare Access — 27 Oktober 2026
+
+✅ Konfigurasi edge aktif; implementasi origin/fixture lokal, publikasi CI.
+`src/lib/cloudflare-access.ts` memverifikasi assertion header atau tepat satu
+cookie `CF_Authorization` melalui jose RS256, issuer team tetap, audience app
+tepat dan email sama dengan `ADMIN_EMAIL`. Claim exp/iat/sub/email wajib.
+JWKS hanya `https://<team>.cloudflareaccess.com/cdn-cgi/access/certs`, timeout5s,
+cache10menit/cooldown30s; redirect ditolak dan cookie/header request pengguna
+tidak diteruskan. Fetch/key-refresh gagal menolak admin, tanpa cache abadi.
+
+Pemeriksaan berada di `checkAdminSession` setelah JWT/idle/revokasi aplikasi,
+sehingga API campuran, requireAdminDetailed, `/me` dan `/refresh` sama-sama
+terlindungi. GET/POST login juga memerlukan Access sebelum body/password/D1;
+burst5/menit tetap mendahului verifikasi. Konfigurasi produksi hilang/parsial
+menolak503; hanya non-produksi tanpa kedua env boleh memakai login fixture lama.
+Token palsu/kedaluwarsa menolak401 `access_required`; gangguan503
+`access_unavailable`. `admin-auth-fetch` mengenali penolakan Access dan redirect
+edge lewat navigasi penuh `/admin`, tanpa memutar cookie saat gagal. Logout
+tetap boleh mencabut sesi aplikasi tanpa Access.
+
+### Konfigurasi Pages dan Cloudflare (§16)
+
+- `ADMIN_EMAIL` existing diganti ke email owner, password/hash/JWT secret tetap.
+- Dua Pages **secret_text** baru: `CF_ACCESS_TEAM_DOMAIN` (hostname team tanpa
+  skema/path) dan `CF_ACCESS_AUD` (audience64hex aplikasi admin, bukan launcher).
+  Produksi62 variabel +4 sistem =66/128 Workers Paid; preview tetap.
+- Team `axvara-admin-9d00b9.cloudflareaccess.com`; app AXVARA Admin melindungi
+  `/admin`, `/api/auth`, `/api/admin` pada apex/www/Pedia. Policy hanya email owner,
+  PIN email IdP + independent MFA wajib (TOTP/biometrik/security key), sesi8jam.
+  Cookie HttpOnly/binding aktif, Path tidak dibatasi agar API campuran mendapat
+  cookie; origin tetap memeriksa tanda tangan. UI admin host alternatif diarahkan
+  ke apex sebelum rewrite Pedia, API alias Pages tetap ditolak tanpa token valid.
+- App Launcher terpisah dengan policy satu owner dan MFA disabled hanya untuk
+  enrollment. Audience berbeda tidak diterima origin. Jangan blanket `/api`,
+  karena pembeli/cron/webhook/supplier-sync/agent memiliki kontrak tersendiri.
+- Detail enrollment, pemulihan manual, revokasi, bukti dan residual:
+  [runbook](../issue/admin-access-2026-10-27.md). Tidak ada migrasi, env seed,
+  dependency, cron atau perubahan langganan. Deploy hanya push main via CI.
+
 ## WR receipt timeout dan pemulihan invoice — 27 Oktober 2026
 
 ✅ Implementasi/fixture lokal; rilis melalui CI. `warung-rebahan/order` menulis

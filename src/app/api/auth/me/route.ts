@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminDetailed, cookieForIdle, createIdleToken, isSecureForRequest } from "@/lib/auth";
+import { accessFailureResponse } from "@/lib/cloudflare-access";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -7,6 +8,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const check = await requireAdminDetailed(req);
   if (!check.ok) {
+    if (check.reason === "access_required" || check.reason === "access_unavailable") return accessFailureResponse({ ok: false, reason: check.reason });
     const status = 401;
     if (check.reason === "idle_timeout") {
       return NextResponse.json({ authed: false, reason: "idle_timeout" }, { status });

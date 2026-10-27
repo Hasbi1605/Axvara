@@ -1,5 +1,29 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Proteksi admin Access — 27 Oktober 2026
+
+✅ Cloudflare Access aktif untuk admin; guard origin diverifikasi lokal dan
+dipublikasikan melalui CI. Login memakai email owner terkonfigurasi dan password
+existing, didahului PIN email + MFA Cloudflare (Google Authenticator didukung).
+Access melindungi `/admin`, `/api/auth`, `/api/admin` di apex/www/Pedia. API admin
+yang berbagi path publik juga mewajibkan JWT Access bertanda tangan di origin,
+di samping cookie aplikasi; pembeli, bot dan webhook tidak mendapat tantangan ini.
+
+Pages produksi memakai dua **secret_text** baru `CF_ACCESS_TEAM_DOMAIN` dan
+`CF_ACCESS_AUD`; `ADMIN_EMAIL` existing diganti tanpa mengubah password/hash/JWT
+secret. Produksi62+4 sistem=66/128 Paid. Guard produksi gagal tertutup bila
+konfigurasi/token/verifikasi tidak valid; dev tanpa kedua env tetap memakai
+fixture lama. Sesi Access8jam melapisi JWT8jam + idle2jam aplikasi.
+
+Enrollment pribadi: [portal AXVARA](https://axvara-admin-9d00b9.cloudflareaccess.com/AddMfaDevice),
+masuk dengan email owner/PIN inbox, pilih Authenticator application, pindai QR
+dan verifikasi6digit langsung di Cloudflare. Jangan mengirim seed/kode ke chat.
+Portal enrollment punya policy satu owner tersendiri, tanpa kewajiban faktor
+sebelum faktor pertama didaftarkan; token portal tidak membuka API aplikasi.
+Enrollment TOTP/biometrik dan login Access owner sudah terkonfirmasi; login
+aplikasi sesudah rilis CI tetap perlu dicoba owner. Lihat
+[runbook keamanan/pemulihan](issue/admin-access-2026-10-27.md).
+
 ## Timeout pembelian WR — 27 Oktober 2026
 
 ✅ Implementasi lokal dan fixture; publikasi CI. Request timeout/5xx ambigu tidak
@@ -1051,9 +1075,10 @@ QRIS & Rekonsiliasi**.
 
 ---
 
-## 🔐 Admin Demo
+## 🔐 Admin
 
 - URL: `/admin`
+- Produksi dilapisi Cloudflare Access dan MFA; lihat bagian proteksi admin di atas.
 - Credentials: set via Cloudflare Pages environment variables (`ADMIN_EMAIL`, `ADMIN_PASSWORD_SHA256` dalam format PBKDF2); satu pasang quote pembungkus dari paste shell/JSON didukung dan dinormalisasi server-side. Untuk PBKDF2, browser membuat proof atas challenge 5 menit sehingga Pages tidak melakukan derivasi berat.
 - Sesi: JWT httpOnly cookie-only 8 jam + cookie idle JWT 2 jam terikat sesi yang sama; batas idle ditegakkan di server, refresh memutar idle baru yang tervalidasi, dan rotasi password mencabut seluruh sesi lama (login ulang).
 - Dev mode: email `admin@axvara.tech` / password `axvara-dev-only`
