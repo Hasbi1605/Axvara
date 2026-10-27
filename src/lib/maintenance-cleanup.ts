@@ -14,10 +14,15 @@ export async function runMaintenanceCleanup(db: DatabaseAccess) {
   const inbox = await db.execRun("DELETE FROM whatsapp_inbox_events WHERE created_at<datetime('now','-7 days')");
   const events = await db.execRun("DELETE FROM dana_webhook_events WHERE created_at<datetime('now','-30 days')");
   const revoked = await db.execRun("DELETE FROM admin_session_revocations WHERE datetime(expires_at)<datetime('now')");
+  // Quote validity is at most one hour. Keep admission keys for a day and
+  // bound housekeeping so abuse cannot create an unbounded cleanup request.
+  const cutoff = Date.now() - 24 * 60 * 60_000;
+  const claims = await db.execRun("DELETE FROM checkout_claims WHERE quote_id IN (SELECT quote_id FROM checkout_claims WHERE created_at_ms<? ORDER BY created_at_ms LIMIT 200)", cutoff);
+  const attempts = await db.execRun("DELETE FROM checkout_attempts WHERE rowid IN (SELECT rowid FROM checkout_attempts WHERE window_id<? ORDER BY window_id LIMIT 200)", Math.floor(cutoff / 900_000));
   // Failed deletes leave the marker unchanged so the next tick can recover.
   await db.execRun(`INSERT INTO store_settings(key,value,updated_at)
     VALUES('maintenance_cleanup_at',datetime('now'),datetime('now'))
     ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`);
   const whatsapp = Number(sessions.changes || 0) + Number(inbox.changes || 0);
-  return { rows_cleaned: whatsapp + Number(events.changes || 0) + Number(revoked.changes || 0), whatsapp_rows_cleaned: whatsapp };
+  return { rows_cleaned: whatsapp + Number(events.changes || 0) + Number(revoked.changes || 0) + Number(claims.changes || 0) + Number(attempts.changes || 0), whatsapp_rows_cleaned: whatsapp };
 }

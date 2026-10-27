@@ -1,5 +1,10 @@
 # AGENTS.md — AXVARA (Project-Specific)
 
+## Checkout anti-abuse — 27 Oktober 2026
+- Market/Pedia memakai admission D1 bersama:5/IP,3/WA,3/email per jendela15menit; claim quote stabil dan increment counter satu batch. Retry paralel quote sama hanya satu slot; order existing tetap reuse. Jangan mengubah error D1 menjadi fail-open:503 sebelum order/reservasi/invoice,429 hanya saat limit. Dev tanpa D1 boleh bypass.
+- Subjek disimpan HMAC-SHA256 memakai ADMIN_JWT_SECRET existing, bukan hash tanpa kunci. Normalisasi IPv6/email; jangan mempercayai x-forwarded-for. Cleanup existing bounded200 klaim+200 counter berumur>24jam, tanpa cron baru.
+- Pembersihan order palsu produksi hanya atas instruksi owner, backup privat dahulu, cocokkan kode/pola kontak, lindungi paid/riwayat supplier/fulfillment dan lepaskan stok lewat expiry/transition existing. Pertahankan payment_invoice_history untuk deteksi pembayaran terlambat. Jangan menganggap pola kontak sebagai bukti satu source IP atau menjanjikan semua bot multi-IP terhenti.
+
 ## GoPay Merchant pribadi — 27 Oktober 2026
 - Owner memilih pola pengaman AutoGoPay di server AXVARA, bukan memakai layanan/API AutoGoPay. Merchant yang dipilih kembali: Axvara Digital, G564039370, NMID ID1024342457479, nomor082135277434. Sesi/nomor/outlet aktif diperiksa baca-saja; ini bukan bukti pembayaran end-to-end atau jaminan bebas suspend.
 - Payload QR owner berada di `.gopay-credentials` ignored/chmod600. Pages hanya mengubah tiga secret_text existing: GOPAY_STATIC_QRIS, GOPAY_QRIS_ENABLED=true, QRIS_ACTIVE_PROVIDER=gopay. GOPAY_POLLER_SECRET existing tetap; semua kredensial/callback KlikQRIS dipertahankan. Invoice tersimpan tetap pada provider/merchant asal, termasuk initializing KlikQRIS yang hanya boleh dipulihkan lewat GET.

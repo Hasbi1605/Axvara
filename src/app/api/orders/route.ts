@@ -6,8 +6,10 @@ import { createOrderWithStock, queryAll, queryFirst, StockReservationError, tran
 import { generateOrderCode as generateCode, aggregateQty } from "@/lib/security";
 import { verifyCheckoutQuoteToken } from "@/lib/auth";
 import { createDanaQrisInvoice, createActiveQrisInvoice, MAX_QRIS_REISSUES } from "@/lib/payments/dana-qris";
-import { checkRateLimit } from "@/lib/rateLimit";
+import { checkRateLimit, clientIp } from "@/lib/rateLimit";
 import { expandDeliveryLines } from "@/lib/fulfillment/units";
+import { createDatabaseAccess } from "@/lib/db-access";
+import { checkoutSubjects, consumeCheckoutSlot } from "@/lib/checkout-guard";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -246,6 +248,24 @@ export async function POST(req: NextRequest) {
   const payment = quote.payment_methods.find((method) => method.id === paymentId);
   if (!payment) {
     return NextResponse.json({ error: "Metode pembayaran berubah atau sudah tidak aktif. Muat ulang checkout." }, { status: 409 });
+  }
+
+  // Resolve saved orders first; durable quote admission also dedupes retries
+  // that reach this point before the winning request has saved its order.
+  const guard = await consumeCheckoutSlot(
+    createDatabaseAccess(),
+    await checkoutSubjects({ ip: clientIp(req), wa, email: customer_email }),
+    quote.quote_id,
+  );
+  if (!guard.allowed) {
+    if (guard.reason === "unavailable") return NextResponse.json(
+      { error: "Checkout sementara tidak tersedia. Coba lagi dengan data yang sama." },
+      { status: 503, headers: { "Retry-After": String(guard.retryAfterSeconds) } },
+    );
+    return NextResponse.json(
+      { error: "Terlalu banyak pesanan baru dari koneksi/nomor ini. Tunggu hingga 15 menit, lalu coba lagi. Pesanan yang sudah dibuat tetap bisa dilacak." },
+      { status: 429, headers: { "Retry-After": String(guard.retryAfterSeconds) } },
+    );
   }
 
   // Revamp 2026-09-23: customer_name opsional dari web (form tanpa nama).

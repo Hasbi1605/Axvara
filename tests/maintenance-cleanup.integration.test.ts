@@ -37,3 +37,17 @@ it("an invalid or future marker cannot suppress housekeeping indefinitely", asyn
   fixture.sql.exec("UPDATE store_settings SET value=datetime('now','+1 day') WHERE key='maintenance_cleanup_at'");
   expect(await runMaintenanceCleanup(db)).not.toHaveProperty("cleanup_skipped");
 });
+
+it("prunes at most 200 expired admission keys and counters while preserving current retries", async () => {
+  const now = Date.now(), old = now - 2 * 24 * 60 * 60_000;
+  for (let n = 0; n < 205; n++) {
+    fixture.sql.prepare("INSERT INTO checkout_claims VALUES(?,?,?)").run(`old-${n}`, "fixture", old);
+    fixture.sql.prepare("INSERT INTO checkout_attempts VALUES('ip',?,?,1)").run(`old-${n}`, Math.floor(old / 900_000));
+  }
+  fixture.sql.prepare("INSERT INTO checkout_claims VALUES('current','fixture',?)").run(now);
+  fixture.sql.prepare("INSERT INTO checkout_attempts VALUES('ip','current',?,1)").run(Math.floor(now / 900_000));
+  await runMaintenanceCleanup(createDatabaseAccess(fixture.db));
+  expect(fixture.sql.prepare("SELECT COUNT(*) n FROM checkout_claims").get()?.n).toBe(6);
+  expect(fixture.sql.prepare("SELECT COUNT(*) n FROM checkout_attempts").get()?.n).toBe(6);
+  expect(fixture.sql.prepare("SELECT quote_id FROM checkout_claims WHERE quote_id='current'").get()).toBeDefined();
+});

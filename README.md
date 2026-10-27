@@ -1,5 +1,21 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Pembatas checkout — 27 Oktober 2026
+
+✅ Implementasi terverifikasi; publikasi melalui CI. Market/Pedia berbagi
+limiter D1: maksimal5 checkout baru/IP,3/WA,3/email per jendela tetap15menit.
+Kuota diklaim sekali per quote, termasuk retry paralel; order existing dipakai
+kembali. Batas tercapai→429+Retry-After; error limiter→503 sebelum membuat
+order/invoice atau mereservasi stok. Tidak ada fail-open produksi.
+
+Migrasi0079 menambah checkout_attempts dan checkout_claims; hash subjek memakai
+HMAC-SHA256 dengan ADMIN_JWT_SECRET existing. IPv6/email dinormalisasi. Cleanup
+existing menghapus maksimal200 klaim dan200 counter berumur>24jam per housekeeping;
+tidak menambah env/cron. WAF/in-memory serta guard Telegram/WhatsApp tetap berlaku.
+Shared-IP/NAT berbagi batas; bot dengan IP/kontak baru tetap merupakan keterbatasan
+proteksi ini. Bukti regresi dan pembersihan order palsu atas instruksi owner:
+[laporan insiden](issue/checkout-abuse-2026-10-27.md).
+
 ## UX pembelian Pedia — 27 Oktober 2026
 
 ✅ Implementasi; publikasi melalui CI. Daftar layanan kini ringkas dengan harga

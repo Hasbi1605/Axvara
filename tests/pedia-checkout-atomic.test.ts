@@ -27,9 +27,15 @@ const left=(f:ReturnType<typeof seed>)=>Number(f.sql.prepare("SELECT remaining F
 
 describe("Pedia checkout money transaction",()=>{
  it("parallel retries of a free quantity create one job without any credit debit",async()=>{
-  const f=seed(),t=await token();const results=await Promise.all([order(t),order(t)]);expect(results.map(r=>r.status).sort()).toEqual([200,201]);
+  const f=seed(),t=await token();const results=await Promise.all(Array.from({length:6},()=>order(t)));expect(results.map(r=>r.status).sort()).toEqual([200,200,200,200,200,201]);
   expect(left(f)).toBe(10000);expect(f.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(1);expect(f.sql.prepare("SELECT COUNT(*) n FROM pedia_order_items").get()?.n).toBe(1);
   expect(f.sql.prepare("SELECT COUNT(*) n FROM pedia_credit_ledger").get()?.n).toBe(0);
+  expect(f.sql.prepare("SELECT orders_created FROM checkout_attempts").all()).toEqual([{orders_created:1},{orders_created:1}]);
+  expect(f.sql.prepare("SELECT COUNT(*) n FROM checkout_claims").get()?.n).toBe(1);
+ });
+ it("durable admission write failure returns 503 before order, job or invoice",async()=>{
+  const f=seed();f.control.fail=q=>q.includes("INSERT INTO checkout_attempts");const r=await order(await token());expect(r.status).toBe(503);expect(r.headers.get("Retry-After")).toBe("60");
+  expect(f.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(0);expect(f.sql.prepare("SELECT COUNT(*) n FROM pedia_order_items").get()?.n).toBe(0);expect(qris.createActiveQrisInvoice).not.toHaveBeenCalled();
  });
  it("rejected duplicate target never consumes another credit",async()=>{
   const f=seed();expect((await order(await token())).status).toBe(201);const response=await order(await token());expect(response.status).toBe(409);expect((await response.json()).error).toBe("duplicate_active_order");expect(left(f)).toBe(10000);

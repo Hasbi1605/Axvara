@@ -1,5 +1,39 @@
 # ARCHITECTURE.md — AXVARA
 
+## Pembatas checkout durable — 27 Oktober 2026
+
+✅ Implementasi terverifikasi; publikasi melalui CI. Migrasi0079 menambah
+checkout_attempts(scope,subject_hash,window_id,orders_created), PK(scope,subject_hash),
+dan checkout_claims(quote_id,claim_token,created_at_ms), PK(quote_id), beserta indeks
+window_id/created_at_ms untuk cleanup bounded. Hash subjek memakai HMAC-SHA256
+dengan ADMIN_JWT_SECRET existing; nilai kontak/IP mentah tidak ditulis ke tabel.
+IPv6 dikanonisasi dan email di-trim/lowercase. Sentinel tanpa IP hanya diabaikan
+di dev; produksi tetap memakai bucket bersama bila header tepercaya hilang.
+
+POST /api/orders dan /api/pedia/orders menjalankan guard sesudah lookup order
+existing dan validasi baca, sebelum reservasi/klaim order. Market memakai
+quote.quote_id; Pedia memakai pedia:<jti>. Satu d1.batch mengklaim quote dengan
+nonce request, menaikkan counter hanya untuk pemilik nonce dan memakai CHECK
+operation_guards untuk rollback seluruh batch bila batas ip5/wa3/email3 per
+jendela tetap15menit terlampaui. Retry paralel quote yang sama hanya menghitung
+satu slot; reuse tidak terhalang kuota penuh. Counter tidak boleh mundur ke
+jendela lama ketika request tertunda. Admission dan pembuatan order berada di
+batch berbeda: kegagalan stok sesudah admission tetap menghabiskan satu slot;
+retry memakai klaim yang sama. Unique quote_id order tetap penjaga satu order.
+
+Batas terlampaui memberi429+Retry-After; error limiter yang belum dapat membuktikan
+admission memberi503+Retry-After60, tanpa order/invoice/reservasi baru. Dev tanpa
+D1 boleh bypass, produksi tanpa D1 ditolak. Tidak ada fail-open error D1.
+Jalur !claimed Pedia juga membaca ulang pemenang quote agar race tetap200 reused.
+
+runMaintenanceCleanup existing membersihkan maksimal200 klaim dan200 counter
+berumur>24jam per housekeeping hourly; umur ini melebihi validitas quote maksimal
+1jam. Budget heavy cleanup naik6→8 statement; throttle/cron existing tetap.
+Verifikasi meliputi flood rotasi kontak, klaim baru paralel, retry quote paralel
+Market/Pedia, write/missing-table failure, batas jendela dan cleanup bounded.
+Batas per IP tidak membuktikan sumber serangan ataupun memblokir semua bot
+multi-IP. Rincian bukti dan pembersihan produksi: [laporan insiden](../issue/checkout-abuse-2026-10-27.md).
+
 ## Konfigurator Pedia — 27 Oktober 2026
 
 ✅ Implementasi; publikasi melalui CI. [Kontrak UX](pedia/purchase-ux-2026-10-27.md)
@@ -923,6 +957,12 @@ render RSC per kunjungan beranda); `decideAllWinners` (aksi `pairs` di
     fallback hanya `x-real-ip`; `x-forwarded-for` TIDAK dipakai (spoofable).
     Tidak ada ketergantungan eksklusif pada counter per-isolate — WAF adalah
     lapis pertama yang global.
+  - Lapis ketiga khusus pembuatan order (27 Okt 2026, insiden flood order
+    fiktif): limiter durable D1 `checkout_attempts` (migrasi 0079) bersama
+    Market+Pedia — 5 order baru/IP, 3/WA, 3/email per 15 menit, hash saja.
+    Inilah lapis yang menahan script lintas-isolate dengan kontak berputar;
+    retry checkout yang sama dikecualikan. Kontrak penuh di bagian
+    "Pembatas order fiktif durable" di atas.
   - Batch cron operations (RR5-02/03, 9 Sep 2026): `createBudgetedDatabase`
     di `src/lib/db-access.ts` menangkap satu binding D1 untuk seluruh call tree
     invocation. Batas 40 statement, termasuk setiap anggota batch dan query

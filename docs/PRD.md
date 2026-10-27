@@ -1,5 +1,31 @@
 # PRD — AXVARA
 
+## Pembatas checkout dan insiden order fiktif — 27 Oktober 2026
+
+✅ Implementasi terverifikasi; publikasi melalui CI. Order baru Market dan
+Pedia memakai kuota D1 bersama dalam jendela tetap15menit: maksimal5 per IP,
+3 per WA dan3 per email. Respons saat batas tercapai adalah429 dengan
+Retry-After sampai akhir jendela. Batas ini menahan pembuatan berulang dari
+identitas yang sama; IP/proxy/kontak yang seluruhnya berganti tetap memerlukan
+lapisan anti-bot tambahan. Pola nama/kontak berurutan merupakan indikasi otomasi,
+bukan bukti semua request berasal dari satu IP.
+
+Kuota diklaim sekali per quote secara atomik, termasuk retry paralel dan retry
+setelah pergantian jendela. Order tersimpan selalu dipakai kembali. Error baca/
+tulis limiter atau tabel belum tersedia menghentikan checkout baru dengan503
+retryable sebelum reservasi stok/invoice; hanya dev tanpa D1 boleh bypass.
+Klaim yang diikuti kegagalan stok/validasi atomik tetap memakan satu slot, namun
+retry quote yang sama tidak memakan slot tambahan. Counter menyimpan HMAC-SHA256
+berkunci secret server existing, tanpa IP/WA/email mentah. IP IPv6 dan email
+dinormalisasi; batas IP bersama dapat memengaruhi pembeli dari kantor/NAT.
+
+Limiter WAF/in-memory dan guard Telegram/WhatsApp existing tetap berlaku.
+Cleanup existing menghapus maksimal200 klaim dan200 counter yang lebih tua
+24jam per eksekusi housekeeping, tanpa cron/env baru. Riwayat order palsu
+insiden ini dibersihkan hanya atas instruksi owner setelah backup dan pemeriksaan
+belum dibayar, expiry serta tidak adanya proses supplier/fulfillment. Detail
+operasional dan hasil ada di [laporan insiden](../issue/checkout-abuse-2026-10-27.md).
+
 ## Perbandingan layanan Pedia — 27 Oktober 2026
 
 ✅ Implementasi; publikasi melalui CI. [Spesifikasi UX 27 Oktober](pedia/purchase-ux-2026-10-27.md)

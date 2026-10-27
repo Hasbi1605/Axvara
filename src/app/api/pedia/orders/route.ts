@@ -10,7 +10,8 @@ import { isPaymentMaintenanceEnabled, paymentMaintenanceResponse } from "@/lib/p
 // transaksi checkout; dispatch menunggu order lunas.
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { checkRateLimit } from "@/lib/rateLimit";
+import { checkRateLimit, clientIp } from "@/lib/rateLimit";
+import { checkoutSubjects, consumeCheckoutSlot } from "@/lib/checkout-guard";
 import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 import { verifyPediaQuoteToken } from "@/lib/pedia/quote";
 import { pediaBounds } from "@/lib/pedia/bounds";
@@ -140,8 +141,27 @@ export async function POST(req: NextRequest) {
     }, { status: 409 });
   }
 
+  // Share admission with Market; a stable quote key dedupes parallel retries.
+  const guard = await consumeCheckoutSlot(
+    db,
+    await checkoutSubjects({ ip: clientIp(req), wa: normalizeWa(customer_wa), email: customer_email }),
+    `pedia:${quote.jti}`,
+  );
+  if (!guard.allowed) {
+    if (guard.reason === "unavailable") return NextResponse.json(
+      { error: "checkout_unavailable", message: "Checkout sementara tidak tersedia. Coba lagi dengan data yang sama." },
+      { status: 503, headers: { "Retry-After": String(guard.retryAfterSeconds) } },
+    );
+    return NextResponse.json(
+      { error: "checkout_rate_limited", message: "Terlalu banyak pesanan baru dari koneksi/nomor ini. Tunggu hingga 15 menit, lalu coba lagi. Pesanan yang sudah dibuat tetap bisa dilacak." },
+      { status: 429, headers: { "Retry-After": String(guard.retryAfterSeconds) } },
+    );
+  }
+
   // Claim the order and job in one transaction; duplicate targets create neither.
   if (!db.d1) return NextResponse.json({ error: "Checkout sementara tidak tersedia." }, { status: 503 });
+  // The durable guard deliberately consumes before this atomic claim;
+  // a different quote rejected for a duplicate target still uses its slot.
   const creditUsed = 0;
   const payable = freshTotal;
   const code = generateOrderCode().replace(/^AXV-/, "AXP-");
@@ -173,6 +193,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Pesanan belum tersimpan. Coba lagi dengan data yang sama." }, { status: 503 });
   }
   if (!claimed) {
+    // A parallel retry of this same quote may have committed between the
+    // reuse lookup above and this claim (the durable guard adds awaits in
+    // between). That winner is a reuse, never a duplicate-target rejection.
+    const raceWinner = await db.queryFirst(`SELECT code,subtotal,status FROM orders WHERE quote_id=?`, quoteIdRow).catch(() => null);
+    if (raceWinner) return checkoutResponse(db, raceWinner, true);
     const dup = await db.queryFirst(`SELECT order_code FROM pedia_order_items WHERE target_normalized=? AND product_id=? AND status IN ('awaiting_payment','queued','submitting','submitted','in_progress','needs_check') ORDER BY id DESC LIMIT 1`,quote.target_normalized,quote.product_id);
     if (dup) return NextResponse.json({ error: "duplicate_active_order", message: "Link ini masih memiliki pesanan yang diproses. Tunggu selesai atau hubungi admin." }, { status: 409 });
     return NextResponse.json({ error: "checkout_changed", message: "Pesanan berubah. Periksa ulang sebelum melanjutkan." }, { status: 409 });

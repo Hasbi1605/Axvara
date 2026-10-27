@@ -1568,3 +1568,19 @@ END;
 INSERT INTO supplier_pair_dirty(pair_id,version)
   SELECT id,lower(hex(randomblob(16))) FROM supplier_pairs WHERE 1
   ON CONFLICT(pair_id) DO UPDATE SET version=excluded.version,pending=1;
+
+-- Durable checkout limiter (0079): hashes only, shared Market + Pedia window.
+CREATE TABLE IF NOT EXISTS checkout_attempts (
+  scope TEXT NOT NULL CHECK(scope IN ('ip','wa','email')),
+  subject_hash TEXT NOT NULL,
+  window_id INTEGER NOT NULL,
+  orders_created INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY(scope,subject_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_checkout_attempts_window ON checkout_attempts(window_id);
+CREATE TABLE IF NOT EXISTS checkout_claims (
+  quote_id TEXT PRIMARY KEY,
+  claim_token TEXT NOT NULL,
+  created_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_checkout_claims_created ON checkout_claims(created_at_ms);
