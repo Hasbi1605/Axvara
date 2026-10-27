@@ -382,10 +382,12 @@ export async function processWrPendingOrders(
       if (error instanceof QueryBudgetExceeded) throw error;
       return [] as Row[];
     });
+  let transactions: Promise<WrTransaction[]> | undefined;
+  const getTransactions = () => transactions ??= fetchTransactions();
   for (const link of due) {
     if (!db.canSpend(6)) break;
     result.processed++;
-    const outcome = await processOneLink(link, db);
+    const outcome = await processOneLink(link, db, getTransactions);
     if (outcome === "succeeded") result.succeeded++;
     else if (outcome === "retried") result.retried++;
     else if (outcome === "blocked") result.blocked++;
@@ -416,7 +418,7 @@ async function claimLink(
       `UPDATE wr_order_links SET status='claimed', attempt_count=?,
          lease_owner=?, lease_expires_at=?, last_claim_at=datetime('now'),
          updated_at=datetime('now')
-       WHERE id=? AND status IN ('pending','retry')`,
+         WHERE id=? AND status IN ('pending','retry') AND request_sent_at IS NULL AND COALESCE(wr_order_id,'')=''`,
       attempt,
       leaseOwner,
       leaseUntil,
@@ -430,7 +432,7 @@ async function claimLink(
       `UPDATE wr_order_links SET status='claimed', attempt_count=?,
          lease_owner=?, lease_expires_at=?, last_claim_at=datetime('now'),
          updated_at=datetime('now')
-       WHERE id=? AND status='claimed' AND request_sent_at IS NULL
+       WHERE id=? AND status='claimed' AND request_sent_at IS NULL AND COALESCE(wr_order_id,'')=''
          AND (lease_expires_at IS NULL OR datetime(lease_expires_at) <= datetime('now'))`,
       attempt,
       leaseOwner,
@@ -450,7 +452,7 @@ async function claimLink(
   return { outcome: "lost" };
 }
 
-async function processOneLink(link: Row, db: DatabaseAccess): Promise<"succeeded" | "retried" | "failed" | "blocked"> {
+async function processOneLink(link: Row, db: DatabaseAccess, getTransactions: () => Promise<WrTransaction[]>): Promise<"succeeded" | "retried" | "failed" | "blocked"> {
   const { execRun } = db;
   const id = Number(link.id);
   const attempt = Number(link.attempt_count || 0) + 1;
@@ -458,18 +460,17 @@ async function processOneLink(link: Row, db: DatabaseAccess): Promise<"succeeded
   if (claim.outcome === "lost") return "retried";
   if (claim.outcome === "ambiguous") {
     // TIDAK beli ulang buta: serahkan ke reconciler via /transactions.
-    await reconcileAmbiguousLink(id, db).catch(() => undefined);
+    await reconcileWrLinksByTransactions([{ id, wr_order_id: "", order_code: "" }], db, getTransactions).catch(() => undefined);
     return "retried";
   }
-  // Tandai request_sent_at SEBELUM POST (P0-1): crash setelah titik ini =
-  // ambigu, bukan "belum kirim". Bila POST kemudian gagal pre-kirim
-  // (network/timeout tanpa respons), flag ini DIHAPUS kembali agar retry
-  // berikutnya boleh kirim (aman: vendor belum menerima apa pun).
-  await execRun(
+  // Persist before POST; a timeout must retain this evidence, never repurchase.
+  const sent = await execRun(
     `UPDATE wr_order_links SET request_sent_at=datetime('now'), updated_at=datetime('now')
      WHERE id=? AND status='claimed'`,
     id,
-  ).catch(() => undefined);
+  );
+  if (!Number(sent.changes ?? 0)) return "retried";
+  let receivedOrder = false;
   try {
     // 2026-09-16 (uji live #1): upstream WR 422 "email_invite is required
     // for invite-based products" (Apple Music tipe Invite). Link hanya bawa
@@ -512,13 +513,20 @@ async function processOneLink(link: Row, db: DatabaseAccess): Promise<"succeeded
       quantity: Math.max(1, Number(link.quantity || 1)),
       ...(emailInvite ? { email_invite: emailInvite } : {}),
     });
-    await execRun(
+    receivedOrder = true;
+    const assigned = await execRun(
       `UPDATE wr_order_links SET status='processing', wr_order_id=?,
         last_error=NULL, lease_owner=NULL, lease_expires_at=NULL,
-        updated_at=datetime('now') WHERE id=?`,
+         updated_at=datetime('now') WHERE id=? AND status='claimed'
+         AND (wr_order_id IS NULL OR wr_order_id=?)
+         AND NOT EXISTS (SELECT 1 FROM wr_order_links used WHERE used.wr_order_id=? AND used.id!=?)`,
+      String(order.order_id),
+      id,
+      String(order.order_id),
       String(order.order_id),
       id,
     );
+    if (!Number(assigned.changes ?? 0)) return "retried";
     await db
       .execRun(
         `INSERT INTO wr_saldo_log (balance, source, note) VALUES (?,'order_deduct',?)`,
@@ -528,59 +536,8 @@ async function processOneLink(link: Row, db: DatabaseAccess): Promise<"succeeded
       .catch(() => undefined);
     return "succeeded";
   } catch (error) {
-    return handleOrderError(id, link, error, attempt, db);
+    return handleOrderError(id, link, receivedOrder ? new Error("network_receipt_persist_failed") : error, attempt, db);
   }
-}
-
-/**
- * Reconcile satu link ambigu via /transactions (P0-1): cocokkan berdasarkan
- * (wr_variant_id, quantity, created_at ± jendela) karena upstream tidak
- * memberi reference key. Bila cocok → processing/completed/failed sesuai
- * status provider. Bila tidak cocok setelah jendela → biarkan submitted
- * untuk reconcile berikutnya (JANGAN beli ulang).
- */
-async function reconcileAmbiguousLink(id: number, db: DatabaseAccess): Promise<boolean> {
-  const link = await db
-    .queryFirst(`SELECT * FROM wr_order_links WHERE id=?`, id)
-    .catch(() => null);
-  if (!link) return false;
-  const claimedAt = String(link.request_sent_at || link.last_claim_at || link.updated_at || "");
-  let transactions: WrTransaction[];
-  try {
-    transactions = await fetchTransactions();
-  } catch {
-    return false;
-  }
-  const windowStart = Date.parse(claimedAt) || 0;
-  const { handleWrOrderCompleted, handleWrOrderFailed } = await import("./deliver");
-  for (const tx of transactions) {
-    const txTime = Date.parse(String(tx.created_at || ""));
-    if (!txTime || Math.abs(txTime - windowStart) > 30 * 60_000) continue;
-    const products = Array.isArray(tx.products) ? tx.products : [];
-    const match = products.some((p) => {
-      const o = p as Record<string, unknown>;
-      const vid = String(o.variant_id ?? o.id ?? "");
-      return vid === String(link.wr_variant_id);
-    });
-    if (!match && products.length) continue;
-    // Kandidat cocok: catat wr_order_id lalu ikut status provider.
-    await db
-      .execRun(
-        `UPDATE wr_order_links SET wr_order_id=?, status='processing',
-           last_error=NULL, updated_at=datetime('now') WHERE id=?`,
-        String(tx.order_id),
-        id,
-      )
-      .catch(() => undefined);
-    const status = String(tx.status || "").toLowerCase();
-    if (status.includes("complet") || status.includes("success") || status.includes("done")) {
-      await handleWrOrderCompleted(String(tx.order_id), tx.account_details ?? tx, db);
-    } else if (status.includes("fail") || status.includes("cancel") || status.includes("refund")) {
-      await handleWrOrderFailed(String(tx.order_id), status, db);
-    }
-    return true;
-  }
-  return false;
 }
 
 async function handleOrderError(
@@ -601,7 +558,7 @@ async function handleOrderError(
       `UPDATE wr_order_links SET status='submitted',
          last_error=?, lease_owner=NULL, lease_expires_at=NULL,
          next_attempt_at=datetime('now','+${WR_SUBMITTED_STALE_MINUTES} minutes'),
-         updated_at=datetime('now') WHERE id=?`,
+          updated_at=datetime('now') WHERE id=? AND status='claimed' AND wr_order_id IS NULL`,
       `ambiguous_timeout: ${message}`,
       id,
     );
@@ -625,12 +582,13 @@ async function handleOrderError(
     ).catch(() => undefined);
   }
   if (attempt >= Number(link.max_attempts || WR_MAX_ATTEMPTS)) {
-    await execRun(
+    const failed = await execRun(
       `UPDATE wr_order_links SET status='failed', last_error=?, request_sent_at=NULL,
-         lease_owner=NULL, lease_expires_at=NULL, updated_at=datetime('now') WHERE id=?`,
+          lease_owner=NULL, lease_expires_at=NULL, updated_at=datetime('now') WHERE id=? AND status='claimed' AND wr_order_id IS NULL`,
       message,
       id,
     );
+    if (!Number(failed.changes ?? 0)) return "retried";
     await notifyAdmin(
       `⚠️ <b>Order WR gagal</b> <code>${String(link.order_code)}</code>\n${escapeHtml(message)}`,
     );
@@ -651,7 +609,7 @@ async function handleOrderError(
   await execRun(
     `UPDATE wr_order_links SET status='retry', last_error=?, request_sent_at=NULL,
        lease_owner=NULL, lease_expires_at=NULL,
-       next_attempt_at=?, updated_at=datetime('now') WHERE id=?`,
+        next_attempt_at=?, updated_at=datetime('now') WHERE id=? AND status='claimed' AND wr_order_id IS NULL`,
     message,
     nextAttemptIso(attempt),
     id,
@@ -672,15 +630,16 @@ async function handleInsufficientBalance(
   db: DatabaseAccess,
 ): Promise<"blocked"> {
   const { execRun } = db;
-  await execRun(
+  const blocked = await execRun(
     `UPDATE wr_order_links SET status='blocked_balance',
        last_error=?, request_sent_at=NULL, lease_owner=NULL, lease_expires_at=NULL,
        attempt_count=attempt_count-1,
        next_attempt_at=datetime('now','+60 minutes'), updated_at=datetime('now')
-     WHERE id=?`,
+      WHERE id=? AND status='claimed' AND wr_order_id IS NULL`,
     `saldo_wr_habis: ${message}`,
     id,
   );
+  if (!Number(blocked.changes ?? 0)) return "blocked";
   await notifyAdmin(
     `💰 <b>Saldo Warung Rebahan habis</b>\nOrder <code>${String(link.order_code)}</code> diblokir sementara (tidak makan retry). Top up untuk memulihkan otomatis.`,
   );
@@ -811,7 +770,8 @@ export async function reconcileStuckWrOrders(
   const stuck = await db
     .queryAll(
       `SELECT wr_order_id, order_code, id FROM wr_order_links
-       WHERE status IN ('processing','submitted','ordering')
+        WHERE (status IN ('processing','submitted','ordering')
+          OR (status='claimed' AND request_sent_at IS NOT NULL))
          AND datetime(COALESCE(request_sent_at, updated_at)) <= datetime('now','-${minAge} minutes')
        ORDER BY RANDOM() LIMIT 12`,
     )
@@ -844,10 +804,11 @@ export async function reconcileStuckWrOrders(
 export async function reconcileFreshWrLinks(
   links: { id: number; wr_order_id: string; order_code: string }[],
   database?: DatabaseAccess,
+  getTransactions?: () => Promise<WrTransaction[]>,
 ): Promise<number> {
   const db = database ?? createDatabaseAccess();
   if (!isWrEnabled() || !links.length) return 0;
-  return reconcileWrLinksByTransactions(links, db);
+  return reconcileWrLinksByTransactions(links, db, getTransactions);
 }
 
 /**
@@ -891,6 +852,7 @@ export async function repairUnboundCompletedWrLinks(database?: DatabaseAccess, l
   // Transaksi yang tidak ada lagi di /transactions upstream ditandai agar
   // tidak dipungut tiap run (slot LIMIT tidak tersumbat selamanya).
   for (const row of rows) {
+    if (!db.canSpend(1)) break;
     await db.execRun(
       `UPDATE wr_order_links SET last_error='repair_tx_missing', updated_at=datetime('now')
        WHERE id=? AND fulfillment_item_id IS NULL AND status='completed'`,
@@ -903,31 +865,52 @@ export async function repairUnboundCompletedWrLinks(database?: DatabaseAccess, l
 async function reconcileWrLinksByTransactions(
   links: { id: number; wr_order_id: string; order_code: string }[],
   db: DatabaseAccess,
+  getTransactions: () => Promise<WrTransaction[]> = fetchTransactions,
 ): Promise<number> {
-  if (!links.length) return 0;
-  let transactions: WrTransaction[];
-  try {
-    transactions = await fetchTransactions();
-  } catch {
-    return 0;
-  }
-  const byId = new Map(transactions.map((t) => [String(t.order_id), t]));
+  if (!links.length || !db.canSpend(1)) return 0;
+  let loaded = false;
+  const byId = new Map<string, WrTransaction[]>();
   let reconciled = 0;
   // Diimpor lazy dari deliver.ts (hindari siklus: deliver tidak impor order).
   const { handleWrOrderCompleted, handleWrOrderFailed } = await import("./deliver");
   for (const row of links) {
-    const tx = byId.get(String(row.wr_order_id || ""));
-    if (!tx) continue;
-    const status = String(tx.status || "").toLowerCase();
-    if (status.includes("complet") || status.includes("success") || status.includes("done")) {
-      await handleWrOrderCompleted(String(row.wr_order_id), tx.account_details ?? tx, db);
-      reconciled++;
-    } else if (status.includes("fail") || status.includes("cancel") || status.includes("refund")) {
-      await handleWrOrderFailed(String(row.wr_order_id), status, db);
-      reconciled++;
+    if (!db.canSpend(1)) break;
+    // Reload authoritative evidence, including links omitted by the caller's LIMIT.
+    const link = await db.queryFirst(`SELECT * FROM wr_order_links WHERE id=?`, row.id);
+    if (!link) continue;
+    const orderId = String(link.wr_order_id || "");
+    if (!orderId) continue; // Correlation requires an admin-selected invoice, never time/name guesses.
+    if (!loaded) {
+      let transactions: WrTransaction[];
+      try { transactions = await getTransactions(); } catch { return reconciled; }
+      for (const tx of transactions) {
+        if (!tx || typeof tx.order_id !== "string" || !tx.order_id.trim()) continue;
+        const group = byId.get(tx.order_id) ?? [];
+        group.push(tx);
+        byId.set(tx.order_id, group);
+      }
+      loaded = true;
+    }
+    const matches = byId.get(orderId) ?? [];
+    if (matches.length !== 1) continue;
+    const tx = matches[0];
+    const status = wrTransactionStatus(tx.status);
+    if (!db.canSpend(status === "completed" ? 24 : status === "failed" ? 12 : 0)) break;
+    if (status === "completed") {
+      if (await handleWrOrderCompleted(orderId, tx.account_details ?? tx, db, { deferDelivery: true })) reconciled++;
+    } else if (status === "failed") {
+      if (await handleWrOrderFailed(orderId, String(tx.status), db)) reconciled++;
     }
   }
   return reconciled;
+}
+
+function wrTransactionStatus(value: unknown): "completed" | "failed" | "processing" | null {
+  if (typeof value !== "string") return null;
+  const status = value.toLowerCase();
+  if (["completed", "success", "done"].includes(status)) return "completed";
+  if (["failed", "cancelled", "canceled", "refunded"].includes(status)) return "failed";
+  return status === "processing" ? "processing" : null;
 }
 
 /**

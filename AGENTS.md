@@ -1,5 +1,16 @@
 # AGENTS.md — AXVARA (Project-Specific)
 
+## WR timeout receipt — 27 Oktober 2026
+- Missing-ID setelah timeout tidak boleh diikat otomatis lewat produk/waktu: WR
+  tidak memberi korelasi request, akun supplier juga dapat digunakan manual.
+  Admin memilih invoice lewat sync-now/SupplierLinkActions; exact-ID, identitas
+  varian atau metadata mirror unik, qty/modal/paid serta CAS pemilik diperiksa.
+- request_sent_at wajib durable sebelum POST; late result/error tidak menurunkan
+  terminal. Rekonsiliasi known-ID tetap budget40 dengan delivery durable existing.
+  Webhook terminal unmatched503, bukan ACK sukses tanpa persist. Feed WR50 terbaru
+  tanpa zona/variant_id tetap didukung lewat pemilihan invoice eksplisit, bukan
+  tebakan zona. Tidak membeli ulang saat invoice hilang atau di luar feed.
+
 ## Hardening OWASP — 27 Oktober 2026
 - Audit/fixture dan batas bukti: `issue/owasp-audit-2026-10-27.md`; jangan menyatakan sertifikasi OWASP atau menganggap push bukti deploy.
 - Detail editor produk wajib admin. API artikel publik/SSR memakai whitelist tanpa email reviewer/penulis, jadwal atau idempotency; detail admin privat tetap lengkap.

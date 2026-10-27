@@ -431,7 +431,7 @@ export async function GET(req: NextRequest) {
                     AND delivered_ciphertext IS NOT NULL)) AS creds,
            (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=?)
             OR EXISTS(SELECT 1 FROM sk_order_links WHERE order_code=?)) AS supplier_owned,
-           (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND status IN ('processing','submitted','ordering') AND COALESCE(wr_order_id,'')!='')
+           (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND (status IN ('processing','submitted','ordering') OR (status='claimed' AND request_sent_at IS NOT NULL)))
             OR EXISTS(SELECT 1 FROM sk_order_links WHERE order_code=? AND (status IN ('processing','submitted','ordering') OR (status='claimed' AND request_sent_at IS NOT NULL)))) AS supplier_running,
           EXISTS(SELECT 1 FROM lines l
                  JOIN product_variants pv ON pv.id = l.variant_id
@@ -484,7 +484,7 @@ export async function GET(req: NextRequest) {
               `SELECT fulfillment_status,
                       (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND status='completed' AND wr_account_details IS NOT NULL)
                        OR EXISTS(SELECT 1 FROM fulfillment_items WHERE order_code=? AND status='delivered' AND delivered_ciphertext IS NOT NULL)) AS creds,
-                      (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND status IN ('processing','submitted','ordering') AND COALESCE(wr_order_id,'')!='')
+                      (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND (status IN ('processing','submitted','ordering') OR (status='claimed' AND request_sent_at IS NOT NULL)))
                        OR EXISTS(SELECT 1 FROM sk_order_links WHERE order_code=? AND (status IN ('processing','submitted','ordering') OR (status='claimed' AND request_sent_at IS NOT NULL)))) AS running
                FROM orders WHERE code=?`,
               code, code, code, code, code,

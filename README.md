@@ -1,5 +1,22 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Timeout pembelian WR — 27 Oktober 2026
+
+✅ Implementasi lokal dan fixture; publikasi CI. Request timeout/5xx ambigu tidak
+diulang membeli. Jika ID invoice hilang, verifikasi invoice di WR lalu gunakan
+**Pesanan → Hubungkan invoice WR**. Endpoint sync-now admin memverifikasi
+exact-ID/identitas varian/qty/modal/paid dan mengikat invoice atomik sebelum
+completion existing meneruskan akun. Konflik, metadata tidak cocok, atau invoice
+di luar50 transaksi terbaru ditahan, bukan ditebak. Nama dan waktu saja bukan
+bukti karena akun WR bisa digunakan membeli manual.
+
+Cron/status pembeli tetap menyegarkan invoice existing dalam budget40; webhook
+terminal unmatched mendapat503 supaya WR mengulang. Respons/error terlambat
+tidak menurunkan completed/failed. Tidak ada env/migrasi/proxy/cron baru.
+Kasus `AXV-20261027-2664E813` sudah delivered di produksi melalui invoice
+`RBHN-20261027-3C99F5` pada27Oktober14.36WIB, tanpa pembelian ulang; backup privat
+di luar repo. [Bukti dan batas verifikasi](issue/wr-timeout-recovery-2026-10-27.md).
+
 ## Audit keamanan OWASP — 27 Oktober 2026
 
 ✅ Implementasi dan fixture lokal; publikasi melalui CI. Audit memakai kategori

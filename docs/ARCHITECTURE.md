@@ -1,5 +1,40 @@
 # ARCHITECTURE.md — AXVARA
 
+## WR receipt timeout dan pemulihan invoice — 27 Oktober 2026
+
+✅ Implementasi/fixture lokal; rilis melalui CI. `warung-rebahan/order` menulis
+request_sent_at sebelum POST dan menghentikan jaringan jika persist gagal.
+Timeout/5xx ambigu mempertahankan bukti kirim tanpa pembelian ulang; respons atau
+error terlambat dibatasi status claimed dan invoice kosong agar terminal tidak
+diturunkan. Common reconciler hanya memakai ID invoice yang sudah terikat,
+menolak ID duplikat di feed, membaca transaksi sekali per batch, dan memeriksa
+budget sesuai jalur completion/failure. Cron tetap40 statement, tanpa trigger baru.
+Completion rekonsiliasi mengantrekan delivery durable dan menyerahkan pengiriman
+pada worker existing; kegagalan tidak memperbarui ciphertext milik completed.
+
+`POST /api/admin/warung/orders/:id/sync-now` tetap menerima body kosong untuk
+invoice existing; body opsional `{wr_order_id:string}` (maks1000 byte aktual,
+ID1..120 alnum/underscore/hyphen) hanya untuk pemilihan invoice oleh admin.
+Missing-ID memerlukan status submitted/ordering/claimed dengan bukti kirim,
+order lokal lunas/paid, satu transaksi exact-ID, paid, status dikenal, satu
+produk dengan qty/unit-price/total integer cocok snapshot. Verifikasi memakai
+variant_id eksplisit atau nama produk/varian/type/duration/warranty lengkap dan
+unik pada mirror WR; harga mirror wajib cocok. Assignment satu UPDATE CAS
+memeriksa ulang snapshot/status/paid dan NOT EXISTS pemilik invoice lain.
+Konflik409, upstream gagal502, body invalid400/413; tidak mengubah order lama
+yang sudah berinvoice lain. Setelah binding, common completion existing berlaku.
+Input ada di `SupplierLinkActions`; status buyer/refresh mengakui missing-ID serta
+claimed terkirim sebagai masih berjalan, tetapi tidak memilih invoice otomatis.
+
+`POST /api/webhook/warung` membalas503 untuk event terminal yang belum diterapkan
+ke link, termasuk failed/refunded. HMAC/body mentah dan retry upstream tetap.
+API WR resmi hanya50 transaksi terbaru, products tanpa variant_id dan created_at
+tanpa zona dapat terjadi: tidak ada auto-match berdasarkan nama/waktu, kalibrasi
+zona atau asumsi exclusive-writer. Tanpa korelasi upstream, pemilihan admin tetap
+diperlukan; ini mencegah salah kirim akun pembelian manual supplier.
+Tidak ada env, secret, migrasi, deployment proxy atau order supplier QA baru.
+Bukti recovery/QA: [laporan](../issue/wr-timeout-recovery-2026-10-27.md).
+
 ## Hardening keamanan OWASP — 27 Oktober 2026
 
 ✅ Implementasi/fixture lokal, publikasi CI. [Laporan audit](../issue/owasp-audit-2026-10-27.md)

@@ -413,7 +413,7 @@ export async function handleWrOrderCompleted(
   wrOrderId: string,
   accountPayload: unknown,
   database?: DatabaseAccess,
-  options: { accountUpdated?: boolean } = {},
+  options: { accountUpdated?: boolean; deferDelivery?: boolean } = {},
 ): Promise<boolean> {
   const db = database ?? createDatabaseAccess();
   const { queryFirst, execRun } = db;
@@ -429,20 +429,23 @@ export async function handleWrOrderCompleted(
   const now = new Date().toISOString();
   // Simpan kredensial dulu (durable) — sebelum status, agar crash di tengah
   // tidak menghasilkan completed tanpa akun.
-  await execRun(
-    `UPDATE wr_order_links SET wr_account_details=?, wr_account_iv=?,
-       completed_at=?, last_error=NULL, updated_at=datetime('now')
-     WHERE wr_order_id=?`,
+  const completed = await execRun(
+    `UPDATE wr_order_links SET wr_account_details=?, wr_account_iv=?, status='completed',
+       completed_at=?, last_event_at=?, last_error=NULL, updated_at=datetime('now')
+     WHERE wr_order_id=? AND status IN ('pending','claimed','retry','blocked_balance','submitted','ordering','processing','completed')`,
     ciphertext,
     iv,
     now,
+    now,
     wrOrderId,
   );
-  const advanced = await advanceWrLinkMonotonic(wrOrderId, "completed", {
-    completed_at: now,
-    last_error: null,
-  }, db);
-  void advanced;
+  // A failed terminal won the race: acknowledge without storing/delivering accounts.
+  if (!Number(completed.changes ?? 0)) {
+    const current = await queryFirst(`SELECT status FROM wr_order_links WHERE wr_order_id=?`, wrOrderId);
+    await logWebhookEvent(db, wrOrderId, "completed", undefined, false, `terminal_regression_blocked:${current?.status ?? "missing"}`);
+    return !options.deferDelivery && current?.status === "failed";
+  }
+  await logWebhookEvent(db, wrOrderId, "completed", undefined, true, `completed:${String(link.status)}`);
   // INSIDEN 2026-10-10 (AXV-20261010-90402478): kredensial tersimpan + link
   // completed, tetapi request webhook berhenti sebelum queueCredentialDelivery
   // → delivery_status `not_required` selamanya, pembeli tidak menerima apa pun.
@@ -476,7 +479,7 @@ export async function handleWrOrderCompleted(
   await refreshOrderAggregate(String(link.order_code), db);
   // Coba kirim segera; bila gagal, delivery_status tetap queued/failed dan
   // cron delivery + webhook duplikat akan retry (P0-6).
-  await processCredentialDelivery(Number(link.id), db).catch(() => undefined);
+  if (!options.deferDelivery) await processCredentialDelivery(Number(link.id), db).catch(() => undefined);
   return true;
 }
 
@@ -506,15 +509,16 @@ export async function handleWrOrderFailed(
   );
   if (!applied) return true; // regresi diblokir (mis. sudah completed) — tetap 200.
   // Item WR terkait → failed; agregat ulang dari seluruh item.
-  const itemId = Number(link.fulfillment_item_id || 0);
-  if (itemId > 0) {
-    await execRun(
-      `UPDATE fulfillment_items SET status='failed', last_error=?,
-         locked_until=NULL, updated_at=datetime('now') WHERE id=?`,
-      String(errorMessage || "wr_order_failed").slice(0, 500),
-      itemId,
-    ).catch(() => undefined);
-  }
+  await execRun(
+    `UPDATE fulfillment_items SET status='failed', last_error=?,
+       locked_until=NULL, updated_at=datetime('now')
+     WHERE order_code=? AND id=COALESCE(NULLIF(?,0), (
+       SELECT fi.id FROM fulfillment_items fi JOIN product_variants pv ON pv.id=fi.variant_id
+       WHERE fi.order_code=? AND pv.wr_variant_id=? ORDER BY fi.item_index ASC LIMIT 1))
+       AND status!='delivered' AND COALESCE(last_error,'') NOT LIKE 'manual_handover:%'`,
+    String(errorMessage || "wr_order_failed").slice(0, 500),
+    String(link.order_code), Number(link.fulfillment_item_id || 0), String(link.order_code), String(link.wr_variant_id),
+  );
   await refreshOrderAggregate(String(link.order_code), db);
   const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
   if (adminChatId && process.env.TELEGRAM_BOT_ENABLED === "true") {

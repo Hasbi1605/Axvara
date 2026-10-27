@@ -9,7 +9,7 @@
 // tidak bisa diulang dan akhirnya menyerahkan semuanya manual.
 // Komponen ini memakai endpoint admin yang SAMA (CAS berpagar, tanpa jalur baru).
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { Spinner } from "@/components/ui/Loading";
 import { useToast } from "@/components/ui/Toast";
@@ -67,13 +67,18 @@ function canCheck(link: SupplierLink): boolean {
 export function SupplierLinkActions({ links, onChanged, compact = false }: { links: SupplierLink[]; onChanged: () => void; compact?: boolean }) {
   const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
+  const [invoices, setInvoices] = useState<Record<string, string>>({});
+  const formId = useId();
   if (!links.length) return null;
   const base = (link: SupplierLink) => `/api/admin/${link.supplier === "wr" ? "warung" : "sekalipay"}/orders/${link.id}`;
-  const run = async (link: SupplierLink, action: "retry" | "void" | "sync-now") => {
+  const run = async (link: SupplierLink, action: "retry" | "void" | "sync-now", invoice?: string) => {
     if (action === "void" && !window.confirm(`Batalkan order ke ${SUPPLIER_NAME[link.supplier]}? Order tidak akan dikirim ke supplier lagi — serahkan manual ke pembeli bila perlu.`)) return;
     setBusy(`${link.supplier}:${link.id}:${action}`);
     try {
-      const res = await fetch(`${base(link)}/${action}`, { method: "POST" });
+      const res = await fetch(`${base(link)}/${action}`, {
+        method: "POST",
+        ...(invoice ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wr_order_id: invoice }) } : {}),
+      });
       const body = await res.json().catch(() => ({})) as { error?: string; link?: { status?: string; last_error?: string | null } };
       if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
       const next = String(body.link?.status ?? "");
@@ -105,6 +110,21 @@ export function SupplierLinkActions({ links, onChanged, compact = false }: { lin
           {canCheck(link) && <button onClick={() => void run(link, "sync-now")} disabled={busy !== null} className="inline-flex h-7 items-center gap-1 rounded-full border border-white/15 px-2.5 text-[11px] font-semibold text-white/75 disabled:opacity-40">{busy === `${key}:sync-now` ? <Spinner size={11} /> : <IosIcon name="refresh" size={11} tint="white" />} Cek status</button>}
           {canVoid(link) && <button onClick={() => void run(link, "void")} disabled={busy !== null} className="inline-flex h-7 items-center gap-1 rounded-full border border-red-400/30 bg-red-500/10 px-2.5 text-[11px] font-semibold text-red-200 disabled:opacity-40">{busy === `${key}:void` ? <Spinner size={11} /> : <IosIcon name="close" size={11} tint="#FCA5A5" />} Batal</button>}
         </span>
+        {link.supplier === "wr" && !link.supplier_order_id && ["submitted", "ordering", "claimed"].includes(link.status) &&
+          <form className="flex w-full flex-wrap items-end gap-2" onSubmit={(event) => {
+            event.preventDefault();
+            void run(link, "sync-now", invoices[key]?.trim());
+          }}>
+            <div className="min-w-0 flex-1">
+              <label htmlFor={`${formId}-${key}`} className="mb-1 block text-white/80">Invoice WR yang telah diverifikasi</label>
+              <input id={`${formId}-${key}`} value={invoices[key] ?? ""} onChange={(event) => setInvoices({ ...invoices, [key]: event.target.value })}
+                required maxLength={120} pattern="[A-Za-z0-9][A-Za-z0-9_-]*" autoComplete="off" disabled={busy !== null}
+                className="h-11 w-full rounded-lg border border-white/20 bg-black/20 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#00E5FF]" />
+            </div>
+            <button type="submit" disabled={busy !== null || !invoices[key]?.trim()}
+              className="min-h-11 rounded-lg border border-white/25 px-3 text-xs font-semibold text-white focus:outline-none focus:ring-2 focus:ring-[#00E5FF] disabled:opacity-40">Hubungkan invoice WR</button>
+            <p className="w-full text-white/70">Pilih invoice milik pesanan ini di riwayat WR. Nama produk dan waktu saja tidak membuktikan kecocokan.</p>
+          </form>}
       </div>;
     })}
   </div>;

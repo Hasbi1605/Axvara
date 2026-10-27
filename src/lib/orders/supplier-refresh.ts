@@ -24,6 +24,7 @@
 
 import type { DatabaseAccess } from "@/lib/db-access";
 import { parseExpiry } from "@/lib/expiry";
+import { fetchTransactions, type WrTransaction } from "@/lib/warung-rebahan/client";
 
 export const SUPPLIER_REFRESH_THROTTLE_SECONDS = 20;
 /** Jendela layak-segar: link lebih tua dari ini diserahkan ke reconcile macet. */
@@ -96,7 +97,8 @@ export async function listRunningSupplierLinks(
   const wr = await db
     .queryAll(
       `SELECT id, wr_order_id FROM wr_order_links
-       WHERE order_code=? AND status IN ('processing','submitted','ordering') AND COALESCE(wr_order_id,'')!=''`,
+        WHERE order_code=? AND (status IN ('processing','submitted','ordering')
+          OR (status='claimed' AND request_sent_at IS NOT NULL))`,
       code,
     )
     .catch(() => [] as Record<string, unknown>[]);
@@ -129,26 +131,27 @@ export async function listRunningSupplierLinks(
 export async function refreshSupplierOrderNow(
   orderCode: string,
   db: DatabaseAccess,
+  getWrTransactions?: () => Promise<WrTransaction[]>,
 ): Promise<boolean> {
   const code = String(orderCode || "").trim();
   if (!code) return false;
   const links = await listRunningSupplierLinks(code, db);
   if (!links.length) return false;
   let advanced = false;
-  for (const link of links) {
+  const wrLinks = links.filter((link) => link.supplier === "wr");
+  if (wrLinks.length) {
     try {
-      if (link.supplier === "wr") {
-        const { reconcileFreshWrLinks } = await import("@/lib/warung-rebahan/order");
-        const n = await reconcileFreshWrLinks(
-          [{ id: link.id, wr_order_id: link.supplierOrderId, order_code: code }],
-          db,
-        );
-        if (n > 0) advanced = true;
-      } else {
-        const { reconcileSkInvoiceNow } = await import("@/lib/sekalipay/order");
-        const done = await reconcileSkInvoiceNow(link.supplierOrderId, db);
-        if (done) advanced = true;
-      }
+      const { reconcileFreshWrLinks } = await import("@/lib/warung-rebahan/order");
+      advanced = (await reconcileFreshWrLinks(wrLinks.map((link) => ({
+        id: link.id, wr_order_id: link.supplierOrderId, order_code: code,
+      })), db, getWrTransactions)) > 0;
+    } catch { /* cooldown bounds retries */ }
+  }
+  for (const link of links.filter((link) => link.supplier === "sk")) {
+    try {
+      const { reconcileSkInvoiceNow } = await import("@/lib/sekalipay/order");
+      const done = await reconcileSkInvoiceNow(link.supplierOrderId, db);
+      if (done) advanced = true;
     } catch {
       /* vendor tak terjangkau: gerbang/cooldown pemanggil yang menahan */
     }
@@ -202,7 +205,8 @@ export async function refreshDueSupplierOrders(
   const wrRows = await db
     .queryAll(
       `SELECT DISTINCT order_code, MIN(COALESCE(request_sent_at, created_at)) AS since FROM wr_order_links
-       WHERE status IN ('processing','submitted','ordering') AND COALESCE(wr_order_id,'')!=''
+        WHERE (status IN ('processing','submitted','ordering')
+          OR (status='claimed' AND request_sent_at IS NOT NULL))
          AND datetime(COALESCE(request_sent_at, updated_at)) > datetime('now','-${SUPPLIER_REFRESH_MAX_AGE_MINUTES} minutes')
        GROUP BY order_code ORDER BY since ASC LIMIT ?`,
       limit,
@@ -238,6 +242,8 @@ export async function refreshDueSupplierOrders(
   const markByCode = new Map<string, number | null>();
   for (const row of marks) markByCode.set(String(row.key).slice("supplier_refresh_at:".length), parseExpiry(row.value));
   const now = Date.now();
+  let wrTransactions: Promise<WrTransaction[]> | undefined;
+  const getWrTransactions = () => wrTransactions ??= fetchTransactions();
   for (const candidate of candidates.slice(0, limit)) {
     out.examined++;
     const until = markByCode.get(candidate.orderCode);
@@ -247,7 +253,7 @@ export async function refreshDueSupplierOrders(
     // berikutnya daripada mengulang vendor tanpa jeda.
     const gate = await claimSupplierRefreshGate(candidate.orderCode, db, throttleSeconds);
     if (!gate.acquired) { out.cooledDown++; continue; }
-    if (await refreshSupplierOrderNow(candidate.orderCode, db).catch(() => false)) out.refreshed++;
+    if (await refreshSupplierOrderNow(candidate.orderCode, db, getWrTransactions).catch(() => false)) out.refreshed++;
   }
   return out;
 }

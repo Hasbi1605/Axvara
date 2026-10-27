@@ -1,5 +1,23 @@
 # PRD — AXVARA
 
+## Pemulihan timeout WR — 27 Oktober 2026
+
+✅ Implementasi dan fixture lokal; publikasi melalui CI. Pembelian WR yang
+timeout tidak dibeli ulang. Jika invoice belum tersimpan, admin memverifikasi
+invoice di riwayat WR dan mengisi **Hubungkan invoice WR** pada Pesanan. Server
+memeriksa transaksi, varian atau identitas katalog lengkap yang unik, jumlah,
+modal snapshot, pembayaran serta kepemilikan invoice sebelum mengikat atomik.
+Sesudah terikat, akun diteruskan lewat completion/outbox existing. Nama/waktu
+saja tidak dipakai menebak invoice karena akun supplier juga bisa dipakai manual.
+Riwayat WR hanya50 transaksi terakhir; invoice tidak tersedia/metadata berubah
+tetap memerlukan pemeriksaan owner, bukan pembelian ulang.
+
+Webhook terminal yang belum menemukan link mendapat respons retryable; order
+yang sudah terminal tidak diturunkan oleh respons pembelian/error terlambat.
+Kasus `AXV-20261027-2664E813` dipulihkan dengan invoice owner
+`RBHN-20261027-3C99F5`; D1 membuktikan item/order delivered dan kredensial
+tersimpan27Oktober14.36WIB, tanpa pembelian tambahan.
+
 ## Keamanan OWASP — 27 Oktober 2026
 
 ✅ Implementasi dengan verifikasi fixture, publikasi melalui CI. Editor detail

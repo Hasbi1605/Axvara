@@ -74,16 +74,17 @@ export async function POST(request: NextRequest) {
         "",
     ).slice(0, 120) || undefined;
   try {
+    let handled = true;
     switch (payload.event) {
       case "order.processing":
         await handleWrOrderProcessing(orderId, undefined, eventId);
         break;
       case "order.completed":
-        await handleWrOrderCompleted(orderId, payload.data);
+        handled = await handleWrOrderCompleted(orderId, payload.data);
         break;
       // Akun diganti WR (garansi/replace): simpan akun terbaru + kirim ulang.
       case "order.account_updated":
-        await handleWrOrderCompleted(orderId, payload.data, undefined, { accountUpdated: true });
+        handled = await handleWrOrderCompleted(orderId, payload.data, undefined, { accountUpdated: true });
         break;
       // `order.refunded` = event resmi api-docs WR; `order.failed` = nama lama.
       case "order.refunded":
@@ -92,12 +93,13 @@ export async function POST(request: NextRequest) {
         const reason = payload.event === "order.refunded"
           ? `refunded${note ? `: ${note}` : ""}`
           : String(payload.data?.status || "failed");
-        await handleWrOrderFailed(orderId, reason, undefined, eventId);
+        handled = await handleWrOrderFailed(orderId, reason, undefined, eventId);
         break;
       }
       default:
         console.warn(`Unknown WR webhook event: ${String((payload as { event?: unknown }).event)}`);
     }
+    if (!handled) return NextResponse.json({ error: "retryable" }, { status: 503, headers: { "Retry-After": "60" } });
   } catch (error) {
     // Semua handler idempoten + monotonik → aman diulang WR (1m/5m/30m/2j).
     // Dulu error selain link_not_found dibalas 200 sehingga WR berhenti

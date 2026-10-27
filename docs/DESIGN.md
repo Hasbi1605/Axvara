@@ -1,5 +1,15 @@
 # DESIGN.md — AXVARA Design System
 
+## Invoice WR hilang setelah timeout — 27 Oktober 2026
+
+✅ Implementasi lokal, publikasi CI. Baris supplier WR tanpa invoice pada status
+submitted/ordering/claimed memuat form inline berlabel **Invoice WR yang telah
+diverifikasi**, tombol **Hubungkan invoice WR**, dan petunjuk memilih invoice
+milik pesanan, bukan menebak dari nama/waktu. Midnight/cyan existing, field/tombol
+minimal44px, flex-wrap pada mobile, label terikat input, required/pattern/max120,
+focus ring cyan dan disabled selama request. Tidak memakai dialog prompt atau
+menambah tombol pembelian. Link berinvoice memakai Cek status existing.
+
 ## Perbandingan layanan Pedia — 27 Oktober 2026
 
 ✅ Implementasi; publikasi melalui CI. [Spesifikasi desain/UX](pedia/purchase-ux-2026-10-27.md)
