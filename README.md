@@ -1,5 +1,19 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## UX pembelian Pedia — 27 Oktober 2026
+
+✅ Implementasi; publikasi melalui CI. Daftar layanan kini ringkas dengan harga
+di samping nama, filter/urutan di atas, pilihan aktif tetap terlihat saat difilter,
+detail terbuka dan CTA di dekat total. Logo platform tetap; pill kebutuhan memakai
+target44px dan aksi “Semua kebutuhan” pada mobile. Draf per kebutuhan tersimpan
+selama halaman terbuka, tanpa membawa target atau quote ke kebutuhan berbeda.
+Grid desktop mulai1280px; rail sticky hanya jika muat, mobile memakai satu kolom.
+
+Komponen: `NeedPicker`, `ServicePicker`, `PlatformPageClient`, `OrderClient`.
+Kontrak harga/quote/retry/QRIS dan supplier tidak berubah. Rincian:
+[spesifikasi UX](docs/pedia/purchase-ux-2026-10-27.md) dan
+[laporan verifikasi](issue/pedia-purchase-ux-2026-10-27.md).
+
 ## GoPay Merchant pribadi — 27 Oktober 2026
 
 ✅ Implementasi terverifikasi, Pages dirilis melalui CI. Invoice baru kembali

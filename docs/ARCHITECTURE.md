@@ -1,5 +1,25 @@
 # ARCHITECTURE.md — AXVARA
 
+## Konfigurator Pedia — 27 Oktober 2026
+
+✅ Implementasi; publikasi melalui CI. [Kontrak UX](pedia/purchase-ux-2026-10-27.md)
+menggantikan layout konfigurator20–22 Oktober. `components/pedia/NeedPicker.tsx`
+menangani kebutuhan, ekspansi mobile dan posisi gulir pilihan. `PlatformPageClient`
+menyimpan `Map<slug, PediaOrderDraft>` dalam ref; pergantian kebutuhan menyimpan
+draf sebelum remount `OrderClient` dan memulihkan fokus tombol aktif. Tidak ada
+localStorage/sessionStorage, mount paralel atau request harga untuk draf tersembunyi.
+Draf memuat slug/targetKind/tierId/qty/target/checks/wa/email, bukan quote/agree/
+attempted. Slug dan target kind harus cocok; validasi tier/batas tetap saat lanjut.
+
+`ServicePicker` menampilkan filter dan sort sebelum baris, menambahkan pilihan di
+luar filter ke atas tanpa memasukkannya ke hitungan hasil filter, serta menyembunyikan
+filter redundan. `OrderClient` memakai grid≥1280px; satu ringkasan dalam DOM dengan
+CTA desktop dan CTA mobile terpisah secara media query. ResizeObserver menonaktifkan
+sticky rail jika tidak muat; fallback tanpa API tetap statis. Detail/terms terbuka,
+instructions hanya tahapTarget, rendering copy tetap escaped/pre-line. Endpoint
+prices/quote/orders, pembayaran, supplier, snapshot, cron, env dan schema tidak
+berubah; preview embedded tetap tidak memanggil API harga/order.
+
 ## GoPay pribadi dan callback bertanda tangan — 27 Oktober 2026
 
 ✅ Implementasi terverifikasi; receiver Pages dirilis melalui CI. Provider baru

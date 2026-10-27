@@ -1,4 +1,12 @@
 # PEDIA-DESIGN.md — Panduan Desain & Style AXVARA PEDIA
+
+## Konfigurator terkini — 27 Oktober 2026
+
+✅ Implementasi; publikasi melalui CI. [UX pembelian27Oktober](pedia/purchase-ux-2026-10-27.md)
+menggantikan layout/pill/harga/filter/detail konfigurator20–22Oktober di bawah:
+baris ringkas, detail terbuka, pill44px, filter di atas, draf per kebutuhan dan
+total+CTA berdekatan. Logo platform dan kebijakan tanpa saldo pembeli tetap.
+
 ## Kebijakan Pedia terkini — 24 Oktober 2026
 
 ✅ Diimplementasikan; publikasi melalui CI. [Pedia tanpa saldo pembeli, 24 Oktober 2026](pedia/manual-resolution-2026-10-24.md) menggantikan seluruh ketentuan kredit/refund otomatis/deposit pada versi terdahulu di bawah. Pembayaran QRIS per order; kendala ditangani owner di luar website. Arsip historis tetap ada, tidak dapat dibelanjakan.

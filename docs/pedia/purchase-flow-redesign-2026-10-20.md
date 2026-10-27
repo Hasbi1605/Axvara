@@ -1,5 +1,9 @@
 # Redesain pembelian Pedia — 20 Oktober 2026
 
+> Revisi27Oktober2026: susunan kebutuhan/perbandingan/filter/detail/ringkasan
+> konfigurator pada snapshot ini digantikan oleh [UX pembelian27Oktober](purchase-ux-2026-10-27.md).
+> Alur Layanan → Target → Kontak → Bayar dan kontrak quote/retry tetap berlaku.
+
 > Revisi 24 Oktober 2026: bagian kredit/refund otomatis/deposit pada snapshot ini sudah digantikan oleh [Pedia tanpa saldo pembeli](manual-resolution-2026-10-24.md). Order baru QRIS penuh, kendala manual, arsip/retry order lama dipertahankan.
 
 

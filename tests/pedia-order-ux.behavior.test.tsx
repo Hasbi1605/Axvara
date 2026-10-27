@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { OrderClient } from "@/app/pedia/o/[slug]/order-client";
+import { PlatformPageClient } from "@/app/pedia/p/[platform]/platform-client";
 import { ServicePicker } from "@/components/pedia/ServicePicker";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
@@ -87,13 +89,16 @@ describe("Pedia order UX", () => {
     expect(screen.getAllByRole("region").map((r) => r.getAttribute("aria-labelledby"))).toEqual(["pedia-stage-heading"]);
     expect(screen.getAllByRole("radio").every((r) => r.tagName === "INPUT" && !(r as HTMLInputElement).checked)).toBe(true);
     // Acuan per 1.000 yang jujur (bukan total minimum yang disamarkan setara).
-    expect(document.body.textContent).toContain("Rp28.000 /1.000");
-    expect(document.body.textContent).not.toContain("Rp20.000 /1.000");
-    expect(document.body.textContent).toContain("harga min. 100 · bukan pembanding antar layanan");
-    expect(document.body.textContent).toContain("Acuan per 1.000 · total mengikuti jumlah");
+    const benchmark = screen.getByRole("radio", { name: /Indonesia Stabil/ }).closest("label")!;
+    expect(benchmark.textContent).toContain("Rp28.000");
+    expect(benchmark.textContent).toContain("per 1.000");
+    const minimum = screen.getByRole("radio", { name: /Global Ekonomis/ }).closest("label")!;
+    expect(minimum.textContent).not.toContain("Rp20.000");
+    expect(minimum.textContent).toContain("minimum 100");
+    expect(document.body.textContent).toContain("Isi jumlah untuk membandingkan totalnya.");
     expect(document.body.textContent).not.toMatch(/HYPE|Paling dipilih|Rp0|Paket tidak tersedia/i);
     expect(document.body.textContent).not.toContain("Belum dipilih");
-    expect(screen.getByText("Pesananmu dimulai di sini.")).toBeTruthy();
+    expect(screen.getByText("Isi jumlah dan pilih layanan untuk melihat rincian pesananmu.")).toBeTruthy();
     // Jumlah bisa diisi SEBELUM layanan dipilih; contoh hanya angka valid produk.
     const qtyInput = screen.getByLabelText("Jumlah yang dipesan") as HTMLInputElement;
     expect(qtyInput.disabled).toBe(false);
@@ -425,7 +430,7 @@ describe("Pedia configurator", () => {
     render(<ServicePicker product={{ ...product, tiers }} tierId={2} onSelect={onSelect} qty={100} expanded />);
     const categories = screen.getByRole("group", { name: "Kategori layanan" });
     const offers = () => screen.getAllByRole("radio").map((r) => r.getAttribute("value")).sort();
-    for (const [label, ids] of [["Semua", ["1", "2", "3", "4", "5"]], ["Global", ["1", "3"]], ["Refill", ["2", "3"]], ["Indonesia", ["2", "4"]], ["Indonesia", ["2", "4"]], ["Semua", ["1", "2", "3", "4", "5"]]] as const) {
+    for (const [label, ids] of [["Semua", ["1", "2", "3", "4", "5"]], ["Global", ["1", "2", "3"]], ["Refill", ["2", "3"]], ["Indonesia", ["2", "4"]], ["Indonesia", ["2", "4"]], ["Semua", ["1", "2", "3", "4", "5"]]] as const) {
       fireEvent.click(within(categories).getByRole("button", { name: label }));
       expect(within(categories).getAllByRole("button", { pressed: true }).map((b) => b.textContent)).toEqual([label]);
       expect(offers()).toEqual(ids);
@@ -440,14 +445,13 @@ describe("Pedia configurator", () => {
 
   it("resets the active category and advanced filters without changing the selected offer", () => {
     const onSelect = vi.fn();
-    render(<ServicePicker product={product} tierId={2} onSelect={onSelect} qty={100} expanded />);
+    render(<ServicePicker product={many} tierId={2} onSelect={onSelect} qty={100} expanded />);
     fireEvent.click(screen.getByRole("button", { name: "Global" }));
-    fireEvent.click(screen.getByText(/Lanjutan: jenis akun/));
     fireEvent.change(screen.getByRole("combobox", { name: "Filter jenis akun" }), { target: { value: "ekonomis" } });
     fireEvent.click(screen.getByRole("button", { name: "Reset filter" }));
     const categories = screen.getByRole("group", { name: "Kategori layanan" });
     expect(within(categories).getAllByRole("button", { pressed: true })[0].textContent).toBe("Semua");
-    expect(screen.getAllByRole("radio")).toHaveLength(2);
+    expect(screen.getAllByRole("radio")).toHaveLength(7);
     expect((screen.getByRole("combobox", { name: "Filter jenis akun" }) as HTMLSelectElement).value).toBe("");
     expect(onSelect).not.toHaveBeenCalled();
   });
@@ -494,5 +498,78 @@ describe("Pedia configurator", () => {
     fireEvent.click(screen.getByRole("button", { name: "Ganti layanan" }));
     expect(screen.getByRole("status").textContent).toContain("4 dari 7 layanan");
     expect(screen.getByRole("button", { name: "Global" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getAllByRole("radio")[0].getAttribute("value")).toBe("2");
+    expect(screen.getByText(/Pilihanmu tetap disimpan di atas/)).toBeTruthy();
+  });
+
+  it("exposes details without an accordion and places ordering controls before offers", () => {
+    const described = { ...product, tiers: [{ ...product.tiers[1], description: "Keterangan terpilih", terms: "Syarat refill khusus", instructions: "Salin link profil lengkap." }] };
+    const { container } = render(<OrderClient product={described} initialTarget="" ordersEnabled />);
+    fireEvent.click(screen.getByRole("radio"));
+    expect(screen.getByText("Keterangan terpilih").closest("details")).toBeNull();
+    expect(screen.getByText("Syarat refill khusus").closest("details")).toBeNull();
+    expect(screen.queryByText("Salin link profil lengkap.")).toBeNull();
+    expect(container.querySelector("details")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Jumlah yang dipesan"), { target: { value: "250" } });
+    toTarget();
+    expect(screen.getByText("Salin link profil lengkap.")).toBeTruthy();
+  });
+
+  it("omits redundant filters for a small uniform catalog and keeps sorting above the list", () => {
+    const uniform = { ...product, tiers: [{ ...product.tiers[1] }, { ...product.tiers[1], id: 3 }] };
+    render(<ServicePicker product={uniform} tierId={null} onSelect={vi.fn()} qty={100} expanded />);
+    expect(screen.queryByRole("group", { name: "Kategori layanan" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Filter jenis akun" })).toBeNull();
+    const sort = screen.getByRole("combobox", { name: "Urutkan layanan" });
+    expect(sort.closest("details")).toBeNull();
+    expect(sort.compareDocumentPosition(screen.getAllByRole("radio")[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("keeps independent drafts when switching needs, without leaking a profile target into posts", () => {
+    const likes = { ...product, slug: "likes-instagram", name: "Likes Instagram", metric: "likes", target_kind: "post", tiers: [{ ...product.tiers[1], id: 3, public_name: "Likes Global" }] };
+    render(<PlatformPageClient platform="instagram" name="Instagram" products={[product, likes]} initialTarget="https://instagram.com/customer" ordersEnabled />);
+    select(); toTarget();
+    fireEvent.click(screen.getByRole("checkbox", { name: /Akun publik/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Langkah 1: Layanan" }));
+    const needs = () => screen.getByRole("navigation", { name: "Jenis layanan Instagram" });
+    fireEvent.click(within(needs()).getByRole("button", { name: "Likes" }));
+    expect(document.activeElement).toBe(within(needs()).getByRole("button", { name: "Likes" }));
+    expect((screen.getByLabelText("Jumlah yang dipesan") as HTMLInputElement).value).toBe("");
+    expect(screen.getAllByRole("radio").some((r) => (r as HTMLInputElement).checked)).toBe(false);
+    fireEvent.click(screen.getByRole("radio"));
+    fireEvent.change(screen.getByLabelText("Jumlah yang dipesan"), { target: { value: "100" } });
+    toTarget();
+    const post = screen.getByLabelText("Link postingan Instagram") as HTMLInputElement;
+    expect(post.value).toBe("");
+    fireEvent.change(post, { target: { value: "https://instagram.com/p/ABC/" } });
+    fireEvent.click(screen.getByRole("button", { name: "Langkah 1: Layanan" }));
+    fireEvent.click(within(needs()).getByRole("button", { name: "Followers" }));
+    expect((screen.getByLabelText("Jumlah yang dipesan") as HTMLInputElement).value).toBe("250");
+    expect((screen.getByRole("radio", { name: /Indonesia Stabil/ }) as HTMLInputElement).checked).toBe(true);
+    toTarget();
+    expect((screen.getByLabelText("Link profil Instagram") as HTMLInputElement).value).toBe("https://instagram.com/customer");
+    expect((screen.getByRole("checkbox", { name: /Akun publik/ }) as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Langkah 1: Layanan" }));
+    fireEvent.click(within(needs()).getByRole("button", { name: "Likes" }));
+    toTarget();
+    expect((screen.getByLabelText("Link postingan Instagram") as HTMLInputElement).value).toBe("https://instagram.com/p/ABC/");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("supports keyboard selection and moves focus through the comparison without hiding alternatives", async () => {
+    // jsdom omits CSS.escape; user-event only needs this already-safe radio name.
+    vi.stubGlobal("CSS", { escape: (name: string) => { expect(name).toBe("pedia-tier"); return name; } });
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    const { rerender } = render(<ServicePicker product={product} tierId={null} onSelect={onSelect} qty={100} expanded />);
+    const radios = screen.getAllByRole("radio");
+    radios[0].focus();
+    await user.keyboard(" ");
+    expect(onSelect).toHaveBeenLastCalledWith(2);
+    rerender(<ServicePicker product={product} tierId={2} onSelect={onSelect} qty={100} expanded />);
+    await user.keyboard("{ArrowDown}");
+    expect(document.activeElement).toBe(screen.getAllByRole("radio")[1]);
+    expect(onSelect).toHaveBeenLastCalledWith(1);
+    expect(screen.getAllByRole("radio")).toHaveLength(2);
   });
 });

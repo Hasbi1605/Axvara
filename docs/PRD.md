@@ -1,5 +1,22 @@
 # PRD — AXVARA
 
+## Perbandingan layanan Pedia — 27 Oktober 2026
+
+✅ Implementasi; publikasi melalui CI. [Spesifikasi UX 27 Oktober](pedia/purchase-ux-2026-10-27.md)
+menggantikan susunan pemilihan layanan/detail versi20–22 Oktober. Daftar tetap
+terbuka setelah memilih; nama, harga jumlah yang sama, wilayah, refill dan mulai
+ditampilkan ringkas. Filter/urutan berada sebelum daftar; pilihan di luar filter
+tetap terlihat dan tidak diganti otomatis. Deskripsi pilihan, ketentuan dan
+ringkasan terbuka; panduan link berada pada tahap Target. Total dan tombol lanjut
+berdekatan di desktop, sedangkan mobile memakai CTA dengan safe-area.
+
+Draf jumlah/layanan/target/checklist/kontak disimpan terpisah per kebutuhan selama
+halaman platform terbuka. Link awal hanya berlaku pada kebutuhan awal; mengganti
+kebutuhan tidak membawa link profil ke postingan. Persetujuan dan quote tidak
+disimpan dalam draf. Jumlah/layanan tetap dipilih eksplisit dan validasi,
+persetujuan perubahan harga, penguncian retry ambigu, QRIS per order serta
+penanganan manual tetap mengikuti kontrak existing.
+
 ## Kembali ke GoPay Merchant pribadi — 27 Oktober 2026
 
 ✅ Implementasi dan verifikasi fixture; rilis Pages melalui CI. Atas instruksi

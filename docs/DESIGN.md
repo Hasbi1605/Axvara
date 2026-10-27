@@ -1,5 +1,22 @@
 # DESIGN.md — AXVARA Design System
 
+## Perbandingan layanan Pedia — 27 Oktober 2026
+
+✅ Implementasi; publikasi melalui CI. [Spesifikasi desain/UX](pedia/purchase-ux-2026-10-27.md)
+menggantikan konfigurator20–22 Oktober. ENERGY2/RHYTHM2/MOTION1: Midnight dan cyan
+tetap, logo/siluet platform di header serta ringkasan dipertahankan. Area kebutuhan
+selebar konten; pill44px, teks13px, ikon15px, aktif cyan tanpa glow ungu. Desktop
+membungkus kebutuhan; mobile dapat digulir dan dibuka dengan “Semua kebutuhan”.
+
+Daftar menggunakan baris radius12px, harga sejajar judul, metadata13px; pilihan
+aktif latar#101E30/border cyan1px/radio/label Dipilih. Deskripsi panjang berada di
+ringkasan, syarat terbuka setelah perbandingan; tidak ada accordion konfigurator.
+Grid dua kolom baru mulai1280px agar daftar tidak terjepit pada tablet/laptop
+1024px. Rail340px memuat total+CTA dan sticky hanya jika muat tinggi viewport.
+Mobile satu kolom, CTA fixed dengan safe-area; viewport≤480px tinggi memakai CTA
+dalam alur. Fokus keyboard cyan2px, teks bantu utama65% putih, radio/batas input
+diperjelas. Tidak membuat aset atau klaim kualitas layanan baru.
+
 ## Panel Siaran dan sambutan WA — 24 Oktober 2026
 
 ✅ Menu Konten → Siaran mengikuti Midnight/Cyan/Liquid Glass existing: pustaka
