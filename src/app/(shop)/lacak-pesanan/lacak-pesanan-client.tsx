@@ -14,6 +14,8 @@ import { DeviceOrders } from "@/components/storefront/DeviceOrders";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { parseExpiry } from "@/lib/expiry";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
+import { normalizeOrderAccessCode } from "@/lib/order-access-format";
+import { readOrderAccessCode, rememberOrderAccessCode } from "@/lib/order-access-client";
 import { SLOW_MS, useLoadingStage } from "@/hooks/useLoadingStage";
 
 type QrisInvoice = {
@@ -54,7 +56,7 @@ const CODE_RE = /^AXV-\d{8}-[A-Z0-9]{8}$/;
 const WA_RE = /^(\+62|62|0)8\d{8,13}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 /** No. WA ATAU email checkout (2026-09-25). */
-const isValidContact = (raw: string) => raw.includes("@") ? EMAIL_RE.test(raw.trim()) : WA_RE.test(raw.trim().replace(/[\s-]/g, ""));
+const isValidContact = (raw: string) => Boolean(normalizeOrderAccessCode(raw)) || (raw.includes("@") ? EMAIL_RE.test(raw.trim()) : WA_RE.test(raw.trim().replace(/[\s-]/g, "")));
 
 function normalizeCode(raw: string): string {
   return raw.trim().toUpperCase().replace(/\s+/g, "");
@@ -156,7 +158,7 @@ export default function LacakPesananClient() {
       if (Array.isArray(raw)) {
         const entries = raw
             .filter((entry) => entry && typeof entry.code === "string" && typeof entry.wa === "string")
-            .map((entry) => ({ code: normalizeCode(entry.code), wa: String(entry.wa).trim(), savedAt: Number(entry.savedAt) || Date.now() }))
+            .map((entry) => ({ code: normalizeCode(entry.code), wa: normalizeOrderAccessCode(entry.wa) ? "" : String(entry.wa).trim(), savedAt: Number(entry.savedAt) || Date.now() }))
             .filter((entry) => CODE_RE.test(entry.code) && Date.now() - entry.savedAt < 7 * 86_400_000)
             .slice(0, 5);
         setRecent(entries);
@@ -169,7 +171,8 @@ export default function LacakPesananClient() {
 
   const saveRecent = useCallback((entry: RecentEntry) => {
     setRecent((prev) => {
-      const next = [{...entry,savedAt:Date.now()}, ...prev.filter((item) => item.code !== entry.code)].slice(0, 5);
+      const safeEntry = normalizeOrderAccessCode(entry.wa) ? { ...entry, wa: "" } : entry;
+      const next = [{...safeEntry,savedAt:Date.now()}, ...prev.filter((item) => item.code !== entry.code)].slice(0, 5);
       try {
         localStorage.setItem(RECENT_KEY, JSON.stringify(next));
       } catch {
@@ -226,6 +229,7 @@ export default function LacakPesananClient() {
       if (!silent) {
         setError(null);
         lastQuery.current = { code: cleanCode, wa: cleanWa };
+        rememberOrderAccessCode(cleanCode, cleanWa);
         if (!adminView) saveRecent({ code: cleanCode, wa: cleanWa });
         requestAnimationFrame(() => {
           const result = resultRef.current;
@@ -299,7 +303,7 @@ export default function LacakPesananClient() {
     ? "Format kode belum tepat. Contoh: AXV-20260917-AB12CD34."
     : null;
   const waError = waTouched && wa.trim() && !isValidContact(wa)
-    ? "Isi No. WA (0812… / +62812…) atau email yang dipakai saat checkout."
+    ? "Masukkan kode akses, atau No. WA/email checkout untuk pesanan lama."
     : null;
   const canSubmit = CODE_RE.test(normalizeCode(code)) && isValidContact(wa) && !loading;
 
@@ -387,7 +391,7 @@ export default function LacakPesananClient() {
         </div>
       ) : <p className="mt-3 max-w-[58ch] text-sm leading-6 text-white/55">
         Masukkan <span className="font-semibold text-white">kode pesanan</span> dan{" "}
-        <span className="font-semibold text-white">No. WA atau email yang dipakai saat checkout</span>. Status diperbarui otomatis
+        <span className="font-semibold text-white">kode akses pesanan</span>. Status diperbarui otomatis
         dari Pending ke Lunas, Dibatalkan, atau Kedaluwarsa.
       </p>}
 
@@ -398,7 +402,7 @@ export default function LacakPesananClient() {
             <IosIcon name="search" size={20} tint="#00E5FF" />
           </span>
           <div>
-            <p className="text-sm font-semibold text-white">Kode + No. WA atau email</p>
+            <p className="text-sm font-semibold text-white">Kode pesanan + kode akses</p>
             <p className="text-xs text-white/45">Tanpa login, tanpa daftar akun.</p>
           </div>
         </div>
@@ -414,27 +418,27 @@ export default function LacakPesananClient() {
               autoComplete="off"
               spellCheck={false}
               aria-invalid={Boolean(codeError)}
-              className={`h-12 w-full rounded-xl border bg-white/[0.06] px-4 font-mono text-sm font-bold tracking-[0.06em] text-white placeholder:font-sans placeholder:font-normal placeholder:tracking-normal placeholder:text-white/30 focus:outline-none ${codeError ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`}
+              className={`h-12 w-full rounded-xl border bg-white/[0.06] px-4 font-mono text-sm font-bold tracking-[0.06em] text-white placeholder:font-sans placeholder:font-normal placeholder:tracking-normal placeholder:text-white/55 focus:outline-none ${codeError ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`}
             />
-            {codeError ? <p className="mt-1.5 text-xs text-red-300">{codeError}</p> : <p className="mt-1.5 text-[11px] text-white/30">Lihat di halaman sukses, chat Telegram, atau grup WA setelah checkout.</p>}
+            {codeError ? <p className="mt-1.5 text-xs text-red-300">{codeError}</p> : <p className="mt-1.5 text-[11px] text-white/65">Lihat di halaman sukses, chat Telegram, atau grup WA setelah checkout.</p>}
           </div>
           <div>
-            <label htmlFor="track-wa" className="mb-1 block text-xs font-medium text-white/60">No. WA atau email checkout *</label>
+            <label htmlFor="track-wa" className="mb-1 block text-xs font-medium text-white/60">Kode akses pesanan *</label>
             <input
               id="track-wa"
               value={wa}
               onChange={(event) => { setWa(event.target.value); setWaTouched(true); }}
               onBlur={() => setWaTouched(true)}
-              placeholder="0812… atau nama@email.com"
-              inputMode="email"
+              placeholder="Kode akses yang diberikan saat pembelian"
+              inputMode="text"
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
               autoComplete="tel"
               aria-invalid={Boolean(waError)}
-              className={`h-12 w-full rounded-xl border bg-white/[0.06] px-4 text-sm text-white placeholder:text-white/30 focus:outline-none ${waError ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`}
+              className={`h-12 w-full rounded-xl border bg-white/[0.06] px-4 text-sm text-white placeholder:text-white/55 focus:outline-none ${waError ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`}
             />
-            {waError ? <p className="mt-1.5 text-xs text-red-300">{waError}</p> : <p className="mt-1.5 text-[11px] text-white/30">Harus sama dengan No. WA atau email yang diisi saat checkout.</p>}
+            {waError ? <p className="mt-1.5 text-xs text-red-300">{waError}</p> : <p className="mt-1.5 text-[11px] text-white/65">Pesanan baru: gunakan kode akses. Pesanan lama: No. WA atau email checkout.</p>}
           </div>
         </div>
         {error && <p role="alert" className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-2.5 text-sm text-red-300">{error}</p>}
@@ -456,11 +460,11 @@ export default function LacakPesananClient() {
               <li key={entry.code} className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
                 <button
                   type="button"
-                  onClick={() => { setCode(entry.code); setWa(entry.wa); setCodeTouched(true); setWaTouched(true); void lookup(entry.code, entry.wa); }}
+                  onClick={() => { const proof = readOrderAccessCode(entry.code) || entry.wa; setCode(entry.code); setWa(proof); setCodeTouched(true); setWaTouched(true); if (proof) void lookup(entry.code, proof); }}
                   className="min-w-0 flex-1 text-left"
                 >
                   <span className="block truncate font-mono text-xs font-bold text-[#00E5FF]">{entry.code}</span>
-                  <span className="block text-[11px] text-white/40">{entry.wa.includes("@") ? "Email" : "WA"} {maskWaShort(entry.wa)}</span>
+                  <span className="block text-[11px] text-white/40">{entry.wa ? `${entry.wa.includes("@") ? "Email" : "WA"} ${maskWaShort(entry.wa)}` : "Gunakan kode akses pesanan"}</span>
                 </button>
                 <button
                   type="button"
@@ -666,7 +670,7 @@ export default function LacakPesananClient() {
       <section className="mt-4 space-y-2" aria-label="Pertanyaan umum">
         {[
           ["Di mana saya menemukan kode pesanan?", "Setelah checkout kamu diarahkan ke halaman /pesanan/AXV-... Simpan kodenya. Order Telegram bisa dilihat lagi lewat /orders, order WA tercatat di grup."],
-          ["No. WA atau email saya salah ketik?", "Pencarian memakai No. WA atau email persis seperti saat checkout, jadi coba yang satunya bila salah satu keliru. Bila keduanya salah ketik, hubungi admin via tombol di atas dengan menyebutkan kode pesanan."],
+          ["Kode akses saya hilang?", "Periksa halaman checkout, email pembelian atau chat pribadi bot. Jika tidak ditemukan, hubungi admin untuk verifikasi kepemilikan. Pesanan lama tetap memakai No. WA atau email checkout."],
           ["Status Pending padahal sudah bayar QRIS?", "Tunggu 1–2 menit lalu halaman ini memeriksa ulang otomatis tiap 10 detik. Pastikan nominal tepat. Jika lebih dari 10 menit, hubungi admin dengan kode pesanan."],
           ["Status Pending untuk transfer manual?", "Admin memverifikasi bukti pada jam dukungan 09.00–23.00 WIB, biasanya 5–15 menit. Pastikan bukti sudah terupload saat checkout."],
         ].map(([question, answer]) => (

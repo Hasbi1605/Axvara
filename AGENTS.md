@@ -1,5 +1,14 @@
 # AGENTS.md — AXVARA (Project-Specific)
 
+## Kode akses pembeli — 27 Oktober 2026
+- Keputusan owner: kode wajib hanya pesanan BARU; legacy tetap kontak checkout. Migrasi0081 default0, semua factory baru eksplisit1; tidak backfill atau exchange kontak menjadi kode pada order baru.
+- Kode HMAC128bit Crockford26 atas order+version memakai BUYER_ORDER_ACCESS_SECRET khusus, bukan ADMIN_JWT_SECRET. Sumber `.buyer-access-credentials` ignored/chmod600, Pages secret_text; produksi67/128 termasuk4 sistem. Jangan log/commit key/kode, jangan rotasi saat password/JWT berubah. Key hilang gagal tertutup sebelum reservasi; rotasi key buyer membatalkan seluruh kode baru.
+- Proof body access_code/header x-order-access-code pada status/wake/lookup/cancel/credentials/reissue/Pedia/refill; guard state pembayaran/supplier tetap. Capability lama tetap expiry/revokasi, client memakai header x-credential-token. Legacy query token hanya kompatibilitas.
+- Owner menyatakan bot WhatsApp nonaktif dan tidak perlu diurus pada tugas ini. Jangan mengaktifkan bot/DM atau mengubah alurnya. Jika kelak diminta reaktivasi, selesaikan delivery kode privat dahulu; jangan kirim kode ke grup.
+- sessionStorage saja, riwayat localStorage tanpa kode; fragment handoff hanya fallback storage diblokir dan segera distrip. Jangan menaruh kode pada query URL, log, outbox WA atau grup. Email privat/DM Telegram derive ephemeral dari versi tersimpan; Telegram command/callback wajib pemilik/chat pribadi.
+- Reveal admin POST terpisah, private/no-store/audit; rotate versi+revoke capability atomik. Jangan tambah kode ke GET detail/list/cache admin. Support wajib verifikasi buyer di luar aplikasi; tidak ada pemulihan mandiri dari kontak baru. Lihat issue/buyer-access-2026-10-27.md.
+
+
 ## Admin Cloudflare Access — 27 Oktober 2026
 - Organisasi `axvara-admin-9d00b9.cloudflareaccess.com`, aplikasi AXVARA Admin dan App Launcher dibuat dengan Global API Key existing dari `.cf-credentials`; tanpa perubahan langganan. Allow policy hanya email owner, IdP PIN email, MFA independent wajib pada aplikasi admin (TOTP/biometrik/security key, sesi8jam). Launcher khusus enrollment juga hanya owner, sengaja tanpa MFA bootstrap; audience launcher tidak memberikan otorisasi aplikasi.
 - Destinasi `/admin`, `/api/auth`, `/api/admin` pada apex/www/Pedia. Jangan blanket `/api`: katalog/pembeli/agent/cron/webhook berbagi domain. Path campuran dilindungi JWT Access di `checkAdminSession`, selain JWT aplikasi/idle/revokasi/password existing. UI admin host alternatif dialihkan ke apex; API alias Pages tetap memerlukan JWT Access valid.
@@ -26,7 +35,7 @@
 - Audit login/otorisasi mutasi+baca sensitif admin memakai HMAC subjek dan label route tetap, satu event/request, tanpa IP/kontak/token/body/query mentah. Otorisasi bukan bukti mutasi berhasil. Polling read biasa tidak ditulis. Limit login/fallback audit hanya console; retensi/alert produksi belum dibuktikan.
 - Cleanup hourly existing maksimal200 counter login>24jam +500 event>30hari; budget heavy cleanup10 statement. Tidak ada env/cron/secret baru. Jangan hapus window aktif.
 - Batas stream aktual sebelum parse: JSON buyer32.000byte; login/lookup/kredensial/cancel/refill/subscriber8.000; webhook16.000–128.000 sesuai route; supplier-sync2MiB; MCP8MiB. Content-Length saja tidak cukup; raw text signature dipertahankan. Header browser harus ikut semua return middleware termasuk rewrite Pedia/403.
-- CI dependency gate sebelum build wajib menolak high/critical runtime serta audit registry/error/schema tidak valid. Audit unit tests tanpa jaringan; pemeriksaan registry nyata terpisah. Tiga high toolchain dev Miniflare/Pages masih exception kompatibilitas terdokumentasi, bukan klaim zero seluruh audit; dev/emulator tetap loopback. Jangan npm audit fix --force/migrasi adapter major tanpa verifikasi platform.
+- CI dependency gate sebelum build wajib menolak high/critical runtime serta audit registry/error/schema tidak valid. Audit unit tests tanpa jaringan; pemeriksaan registry nyata terpisah. Tiga high dev Miniflare/Pages ditutup lewat Miniflare4.20260730.0 + Undici7.30.1/Sharp0.35.5; next-on-pages1.13.16 tetap. Verifikasi ulang audit/build/workerd sebelum mengubah override; dev/emulator tetap loopback. Jangan npm audit fix --force/migrasi adapter major tanpa verifikasi platform.
 
 ## Checkout anti-abuse — 27 Oktober 2026
 - Market/Pedia memakai admission D1 bersama:5/IP,3/WA,3/email per jendela15menit; claim quote stabil dan increment counter satu batch. Retry paralel quote sama hanya satu slot; order existing tetap reuse. Jangan mengubah error D1 menjadi fail-open:503 sebelum order/reservasi/invoice,429 hanya saat limit. Dev tanpa D1 boleh bypass.

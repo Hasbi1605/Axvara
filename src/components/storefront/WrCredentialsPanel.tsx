@@ -11,6 +11,7 @@ import { formatWibDateTime } from "@/lib/utils";
 import { CredentialText, ActivationBody, MobileCollapsible, TermsBody } from "@/components/storefront/ProductCopy";
 import { WarrantyClaimAccordion } from "@/components/storefront/WarrantyClaim";
 import type { VariantCopy } from "@/lib/product-copy/format";
+import { readOrderAccessCode, rememberOrderAccessCode } from "@/lib/order-access-client";
 
 // `label` hanya ada untuk isi produk non-WR (nama baris pesanan).
 // `terms` = S&K + cara aktivasi ter-resolusi (resolver PDP yang sama),
@@ -75,7 +76,9 @@ export function WrCredentialsPanel({ code, prefillContact = "", contactHint = ""
     }
     const tokenKey = `wr-cred-token:${code}`;
     const verifyFromContact = () => {
-      const initial = prefillContact.trim() || (sessionStorage.getItem(checkoutContactKey(code)) || "").trim();
+      let savedContact = "";
+      try { savedContact = sessionStorage.getItem(checkoutContactKey(code)) || ""; } catch { /* Optional tab storage. */ }
+      const initial = prefillContact.trim() || readOrderAccessCode(code) || savedContact.trim();
       if (initial.length >= 6 && !triedPrefill.current) {
         triedPrefill.current = true;
         setWa(initial);
@@ -83,7 +86,8 @@ export function WrCredentialsPanel({ code, prefillContact = "", contactHint = ""
       }
     };
     const requestedReady = deliveryProgress?.ready ?? 0;
-    const saved = sessionStorage.getItem(tokenKey);
+    let saved: string | null = null;
+    try { saved = sessionStorage.getItem(tokenKey); } catch { /* Optional tab storage. */ }
     if (!saved) {
       verifyFromContact();
       return;
@@ -92,7 +96,7 @@ export function WrCredentialsPanel({ code, prefillContact = "", contactHint = ""
     setLoading(true);
     void (async () => {
       try {
-        const r = await fetch(`/api/orders/${encodeURIComponent(code)}/credentials?token=${encodeURIComponent(saved)}`);
+        const r = await fetch(`/api/orders/${encodeURIComponent(code)}/credentials`, { cache: "no-store", headers: { "x-credential-token": saved } });
         if (cancelled) return;
         if (r.ok) {
           const body = (await r.json()) as { credentials?: Credential[] };
@@ -123,6 +127,7 @@ export function WrCredentialsPanel({ code, prefillContact = "", contactHint = ""
     setLoading(true);
     setError(null);
     try {
+      rememberOrderAccessCode(code, waValue);
       const r = await fetch(`/api/orders/${encodeURIComponent(code)}/credentials`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -134,13 +139,13 @@ export function WrCredentialsPanel({ code, prefillContact = "", contactHint = ""
         error?: string;
       };
       if (!r.ok) {
-        setError(body.error === "verification_failed" ? "No. WA atau email tidak cocok dengan data pesanan." : body.error === "not_ready" ? "Detail akun belum tersedia — tunggu beberapa menit lalu muat ulang." : "Gagal memverifikasi. Coba lagi.");
+        setError(body.error === "verification_failed" ? "Kode akses atau kontak pesanan lama tidak cocok." : body.error === "not_ready" ? "Detail akun belum tersedia — tunggu beberapa menit lalu muat ulang." : "Gagal memverifikasi. Coba lagi.");
         return;
       }
       loadedForReady.current = requestedReady;
       setCreds(body.credentials ?? []);
       if (body.capability_token) {
-        sessionStorage.setItem(`wr-cred-token:${code}`, body.capability_token);
+        try { sessionStorage.setItem(`wr-cred-token:${code}`, body.capability_token); } catch { /* Credentials remain available in this response. */ }
         setToken(body.capability_token);
       }
     } catch {
@@ -202,20 +207,20 @@ export function WrCredentialsPanel({ code, prefillContact = "", contactHint = ""
   return (
     <section className="ax-glass-card mt-6 rounded-2xl p-4 text-left" aria-label="Ambil detail akun">
       <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">Detail Akun Digital</p>
-      <p className="mt-2 text-xs leading-5 text-white/55">Produk digital pesanan ini sudah siap. Masukkan No. WA atau email yang dipakai saat checkout untuk menampilkannya.</p>
+      <p className="mt-2 text-xs leading-5 text-white/55">Produk digital pesanan ini sudah siap. Masukkan kode akses pesanan untuk menampilkannya. Pesanan lama masih dapat memakai No. WA atau email checkout.</p>
       {contactHint && <p className="mt-1 text-[11px] text-white/40">Terdaftar: {contactHint}</p>}
       <div className="mt-3 flex gap-2">
         <input
           value={wa}
           onChange={(e) => setWa(e.target.value)}
-          inputMode="email"
-          autoComplete="email"
+          inputMode="text"
+          autoComplete="off"
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck={false}
-          placeholder="08… atau nama@email.com"
-          aria-label="No. WA atau email checkout"
-          className="h-11 min-w-0 flex-1 rounded-xl border border-white/15 bg-white/5 px-3 text-sm text-white placeholder:text-white/30 focus:border-[#00E5FF]/60 focus:outline-none"
+          placeholder="Kode akses pesanan"
+          aria-label="Kode akses atau kontak pesanan lama"
+          className="h-11 min-w-0 flex-1 rounded-xl border border-white/15 bg-white/5 px-3 text-sm text-white placeholder:text-white/55 focus:border-[#00E5FF]/60 focus:outline-none"
         />
         <button
           type="button"

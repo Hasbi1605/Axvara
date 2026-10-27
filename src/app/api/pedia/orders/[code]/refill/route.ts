@@ -6,16 +6,16 @@ import { readJsonBody } from "@/lib/http-body";
 import { z } from "zod";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { createDatabaseAccess } from "@/lib/db-access";
-import { parseBuyerContact } from "@/lib/order-contact";
-import { constantTimeEqual } from "@/lib/security";
 import { isPediaProvider, callPediaProxy } from "@/lib/pedia/proxy";
 import { parseExpiry } from "@/lib/expiry";
+import { buyerOrderAccessMatches, newOrderAccessFailure } from "@/lib/order-access";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
 const schema = z.object({
-  contact: z.string().trim().min(1).max(254),
+  contact: z.string().trim().max(254).optional(),
+  access_code: z.string().trim().max(100).optional(),
 });
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ code: string }> }) {
@@ -28,15 +28,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!body.ok) return body.response;
   const parsed = schema.safeParse(body.data);
   if (!parsed.success) return NextResponse.json({ error: "Kontak wajib diisi." }, { status: 400 });
-  const contact = parseBuyerContact(parsed.data.contact);
-  if (!contact) return NextResponse.json({ error: "Kontak tidak valid." }, { status: 400 });
+  const contact = parsed.data.access_code ?? parsed.data.contact ?? "";
+  if (!contact) return NextResponse.json({ error: "Kode akses wajib diisi." }, { status: 400 });
   const db = createDatabaseAccess();
   const order = await db.queryFirst(`SELECT * FROM orders WHERE code=?`, clean).catch(() => null);
   if (!order) return NextResponse.json({ error: "Pesanan tidak ditemukan." }, { status: 404 });
+  const failure = await newOrderAccessFailure(request, order, contact);
+  if (failure) return failure;
   // Verifikasi kontak (pola lookup — generik agar tak bisa di-oracle).
-  const waOk = contact.kind === "wa" && constantTimeEqual(String(order.customer_wa ?? ""), contact.value);
-  const emailOk = contact.kind === "email" && constantTimeEqual(String(order.customer_email ?? "").toLowerCase(), contact.value.toLowerCase());
-  if (!waOk && !emailOk) {
+  if (!(await buyerOrderAccessMatches(contact, order))) {
     return NextResponse.json({ error: "Pesanan tidak ditemukan atau kontak tidak cocok." }, { status: 404 });
   }
   const item = await db.queryFirst(

@@ -14,6 +14,7 @@ import { OrderClient } from "@/app/pedia/o/[slug]/order-client";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { AdminStatusSwitch } from "./AdminStatusSwitch";
 import { PediaCurationPanel } from "./PediaCurationPanel";
+import { OrderAccessAdmin } from "./OrderAccessAdmin";
 
 type SubTab = "products" | "curation" | "services" | "orders" | "credits" | "settings";
 type Product = {
@@ -454,7 +455,7 @@ function PediaOrdersPanel() {
           </div>}
 
           <p className="break-words text-white/40">Snapshot asal: {PROVIDER_NAMES[r.supplier as PediaProvider] ?? "Supplier tidak valid"} / Layanan #{String(r.supplier_service_id)} / ID order {String(r.supplier_order_id ?? "Belum diketahui")}</p>
-          <details><summary className="min-h-11 cursor-pointer py-3">Detail pesanan</summary><p>Mulai: {String(r.start_count ?? "-")} / Tersisa: {String(r.remains ?? "-")} / Biaya supplier: {r.supplier_charge == null ? "Belum tersedia" : formatRupiah(Number(r.supplier_charge))}</p><p>{formatWibDateTime(String(r.created_at ?? "")) ?? "-"}</p>{r.last_error ? <p className="mt-2 break-words text-red-300">Kendala: {String(r.last_error)}</p> : null}</details>
+          <details><summary className="min-h-11 cursor-pointer py-3">Detail pesanan</summary><p>Mulai: {String(r.start_count ?? "-")} / Tersisa: {String(r.remains ?? "-")} / Biaya supplier: {r.supplier_charge == null ? "Belum tersedia" : formatRupiah(Number(r.supplier_charge))}</p><p>{formatWibDateTime(String(r.created_at ?? "")) ?? "-"}</p>{r.last_error ? <p className="mt-2 break-words text-red-300">Kendala: {String(r.last_error)}</p> : null}<OrderAccessAdmin code={String(r.order_code)} /></details>
       {r.status === "needs_check" && <div className="space-y-3">
         <form aria-label={`Tandai sudah dibuat ${r.order_code}`} className="flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); setAction({ code: String(r.order_code), action: "mark_submitted", sid: String(new FormData(e.currentTarget).get("sid")) }); }}><Field label="ID order supplier"><input name="sid" required maxLength={60} className={INPUT} /></Field><button className={BUTTON} disabled={panel.busy}>Tandai sudah dibuat</button></form>
         {r.can_resubmit !== true && <p className="text-xs text-amber-300">Pengiriman sudah dicoba atau hasil belum pasti. Rekonsiliasi pada provider asal dan tandai ID order; retry/pembatalan diblokir agar tidak terjadi tagihan ganda.</p>}

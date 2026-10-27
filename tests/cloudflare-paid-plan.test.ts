@@ -31,7 +31,7 @@ it("uses monthly D1 included usage instead of declaring a daily Free outage",asy
  expect(body.variables.start).toBe("2026-09-30T00:00:00.000Z");
 });
 it("accepts 65 Pages variables only with verified Paid entitlement, without logging values",async()=>{
- const project={deployment_configs:{production:{env_vars:Object.fromEntries(Array.from({length:61},(_,i)=>[`V${i}`,{type:"secret_text",value:"private-value"}]))}}};
+ const project={deployment_configs:{production:{env_vars:Object.fromEntries(Array.from({length:61},(_,i)=>[i===0?"BUYER_ORDER_ACCESS_SECRET":`V${i}`,{type:"secret_text",value:"private-value"}]))}}};
  const fetcher=async(url:string)=>Response.json(url.endsWith("/subscriptions")?{success:true,result:[{...subscription,current_period_start:"2020-01-01T00:00:00Z",current_period_end:"2099-01-01T00:00:00Z"}]}:{success:true,result:project});
  const report=await checkPagesEnvironment(env,fetcher);
  expect(report).toMatchObject({plan:"paid",total:65,limit:128,remaining:63});expect(JSON.stringify(report)).not.toContain("private-value");

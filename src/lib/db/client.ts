@@ -400,7 +400,7 @@ export async function execRun(sql: string, ...params: unknown[]): Promise<{ last
     const [code, customer_name, customer_wa, customer_email, items, subtotal, payment_method, payment_account, proof_url, status] = params as unknown[];
     // UNIQUE code check
     if (mem.some((r) => String(r.code) === String(code))) throw new Error("UNIQUE constraint failed: orders.code");
-    mem.push({ id: newId, code, customer_name, customer_wa, customer_email, items, subtotal, payment_method, payment_account, proof_url, status: status ?? "pending", created_at: new Date().toISOString(), updated_at: new Date().toISOString() } as unknown as Row);
+    mem.push({ id: newId, code, customer_name, customer_wa, customer_email, buyer_access_version: lower.includes("buyer_access_version") ? 1 : 0, items, subtotal, payment_method, payment_account, proof_url, status: status ?? "pending", created_at: new Date().toISOString(), updated_at: new Date().toISOString() } as unknown as Row);
     return { lastInsertRowid: newId, changes: 1 };
   }
   if (lower.startsWith("update orders set")) {

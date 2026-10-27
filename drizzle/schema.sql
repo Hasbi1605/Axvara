@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS orders (
   customer_name TEXT NOT NULL,
   customer_wa TEXT NOT NULL,
   customer_email TEXT,
+  buyer_access_version INTEGER NOT NULL DEFAULT 0 CHECK (buyer_access_version >= 0),
   items TEXT NOT NULL,
   subtotal INTEGER NOT NULL,
   payment_method TEXT NOT NULL,
@@ -1587,7 +1588,7 @@ CREATE TABLE IF NOT EXISTS security_auth_attempts (
 CREATE INDEX IF NOT EXISTS idx_security_auth_window ON security_auth_attempts(window_id);
 CREATE TABLE IF NOT EXISTS security_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  event TEXT NOT NULL CHECK(event IN ('login_failed','login_succeeded','login_limited','admin_authorized')),
+  event TEXT NOT NULL CHECK(event IN ('login_failed','login_succeeded','login_limited','admin_authorized','buyer_access_revealed','buyer_access_rotated')),
   subject_hash TEXT NOT NULL,
   route TEXT NOT NULL,
   method TEXT NOT NULL,

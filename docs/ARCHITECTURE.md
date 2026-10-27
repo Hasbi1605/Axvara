@@ -1,5 +1,67 @@
 # ARCHITECTURE.md — AXVARA
 
+## Otorisasi pembeli dengan kode akses — 27 Oktober 2026
+
+✅ Implementasi lokal; publikasi CI. Bagian ini menggantikan ketentuan kontak
+untuk **pesanan baru saja**; order legacy tetap mengikuti kontak checkout.
+Migrasi0081 menambah `orders.buyer_access_version INTEGER NOT NULL DEFAULT 0`.
+Semua factory Market/TG/WA/Pedia menulis1, tanpa backfill. Migrasi juga memperluas
+CHECK security_events sambil mempertahankan seluruh event lama dan indeks.
+
+`order-access.ts` menurunkan HMAC-SHA256 terpisah domain
+`axvara:buyer-order-access-code:v1:<order_code>:<version>` memakai key buyer
+tersendiri, 128bit pertama dikodekan Crockford26 karakter (5-5-5-5-6).
+Server membandingkan string kanonis constant-time; huruf kecil, spasi/hyphen dan
+alias O/0/I/L/1 diterima, kode order/versi lain ditolak. Tidak menyimpan kode
+mentah di D1. Derivasi stabil menjaga retry quote yang sama setelah respons
+hilang; redisclosure checkout hanya setelah verifikasi quote dan pencocokan
+quote_id order tersimpan. Produksi tanpa key menolak sebelum reservasi/invoice.
+
+Respons checkout privat `buyer_access_code`; proof lewat body `access_code`
+(atau field contact kompatibel) / header `x-order-access-code`, bukan query URL.
+GET status/wake Market, lookup, cancel, credentials POST, reissue dan status/
+refill Pedia memeriksa proof sebelum detail/efek samping; percobaan salah memakai
+counter D1 order+IP20/15menit existing selain burst. Capability credentials
+existing tetap valid sampai expiry/revokasi; client mengirim `x-credential-token`
+(legacy query token masih diterima untuk tautan lama). Admin tetap memerlukan
+Access+sesi aplikasi. Kode tidak menaikkan otoritas paid/fulfillment.
+
+`order-access-client.ts` menyimpan kode hanya sessionStorage. Bila storage
+terblokir, checkout memakai fragment handoff yang segera dihapus setelah dibaca;
+fragment tidak dikirim HTTP/Referer. Riwayat localStorage tidak menyimpan kode.
+`OrderAccessNotice` menampilkan/salin kode. Email privat dan invoice/status DM
+Telegram merender kode sesaat dari versi tersimpan; tidak ada kode di outbox
+plaintext, payload grup WA, metadata audit atau URL notifikasi. Perintah dan
+callback Telegram memeriksa pemilik; status handler mengikat chat pribadi di SQL.
+Bot WA nonaktif dan di luar lingkup atas instruksi owner. Factory bersama
+menyimpan versi akses, tetapi tidak mengaktifkan bot atau pengiriman kode WA.
+Sebelum reaktivasi, wajib menyediakan pengiriman kode privat, bukan ke grup.
+Gambar QRIS existing tetap dapat dibaca lewat URL gambar agar invoice bot/img
+bekerja; tidak membuka kontak/akun dan bukan bukti paid.
+
+POST `/api/admin/orders/:code/access-code` adalah reveal privat terpisah dari
+GET detail/list/cache; optional `{rotate:true}` memakai guard versi + increment
++ revoke capability + cleanup guard dalam satu batch. Audit buyer_access_revealed/
+rotated tanpa kode/kontak/ID/query. Admin memverifikasi buyer di luar aplikasi;
+tidak ada pemulihan mandiri memakai kontak untuk order baru.
+
+### Key pembeli, Pages dan pemulihan (§16)
+
+Satu Pages **secret_text** baru `BUYER_ORDER_ACCESS_SECRET` (32byte acak), sumber
+lokal `.buyer-access-credentials` ignored/chmod600; tidak ada fallback JWT di
+produksi. Produksi63+4 sistem=67/128 Paid, preview dan secret lain tidak berubah.
+Rotasi password/JWT tidak mengubah kode; rotasi key buyer membatalkan SEMUA kode
+baru dan memerlukan distribusi ulang terverifikasi oleh admin. Simpan backup
+key privat dan pulihkan nilai yang sama saat recovery; jangan regenerasi diam-diam.
+Preflight CI memerlukan metadata binding buyer key bertipe secret_text sebelum
+build/migrasi. Tanpa env/cron baru lain atau transaksi QA produksi. [Runbook](../issue/buyer-access-2026-10-27.md).
+
+Toolchain dev memakai Miniflare4.20260730.0/Undici7.30.1/Sharp0.35.5, dengan
+transitif next-on-pages dioverride ke versi yang sama. Adapter Pages tetap1.13.16,
+Next15.5.28/Node22 dan kontrak build/CI tetap. Fixture KlikQRIS memakai tanggal
+workerd yang didukung2026-08-06; konfigurasi produksi tidak diturunkan.
+
+
 ## Admin Cloudflare Access — 27 Oktober 2026
 
 ✅ Konfigurasi edge aktif; implementasi origin/fixture lokal, publikasi CI.
@@ -25,7 +87,8 @@ tetap boleh mencabut sesi aplikasi tanpa Access.
 - `ADMIN_EMAIL` existing diganti ke email owner, password/hash/JWT secret tetap.
 - Dua Pages **secret_text** baru: `CF_ACCESS_TEAM_DOMAIN` (hostname team tanpa
   skema/path) dan `CF_ACCESS_AUD` (audience64hex aplikasi admin, bukan launcher).
-  Produksi62 variabel +4 sistem =66/128 Workers Paid; preview tetap.
+  Sesudah tambahan key buyer: produksi63 variabel +4 sistem =67/128 Workers
+  Paid; preview tetap.
 - Team `axvara-admin-9d00b9.cloudflareaccess.com`; app AXVARA Admin melindungi
   `/admin`, `/api/auth`, `/api/admin` pada apex/www/Pedia. Policy hanya email owner,
   PIN email IdP + independent MFA wajib (TOTP/biometrik/security key), sesi8jam.
@@ -128,9 +191,9 @@ memetakan seluruh kategori Top10:2025 beserta batas bukti operasional.
   mutasi lockfile, sebelum build/deploy. High/critical runtime atau error registry,
   JSON/schema/count tidak konsisten maupun exit tak dikenal menghentikan rilis.
   Regresi deterministik memakai mocked runner; audit registry nyata diverifikasi
-  terpisah. Full scan3 high toolchain dev Miniflare/Pages tetap warning dengan
-  [disposition kompatibilitas](security/dependency-audit-2026-10-27.md), bukan zero
-  vulnerability. Next15/Baileys/Node22 dipertahankan; tanpa upgrade major paksa.
+  terpisah. Tiga high dev sebelumnya ditutup oleh Miniflare4 dan patch transitif;
+  [bukti kompatibilitas](security/dependency-audit-2026-10-27.md) mencatat Pages
+  tetap memakai adapter existing. Next15/Baileys/Node22 dipertahankan.
 
 ## Pembatas checkout durable — 27 Oktober 2026
 

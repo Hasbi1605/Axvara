@@ -43,12 +43,13 @@ type InvoiceOrderRow = {
   subtotal: number;
   telegram_invoice_sent_at: string | null;
   telegram_invoice_attempts: number;
+  buyer_access_version: unknown;
 };
 
 async function readInvoiceOrder(orderCode: string, database: DatabaseAccess = createDatabaseAccess()): Promise<InvoiceOrderRow | null> {
   const { queryFirst } = database;
   const row = await queryFirst(
-    `SELECT code, items, telegram_chat_id, subtotal,
+    `SELECT code, items, telegram_chat_id, subtotal, buyer_access_version,
             telegram_invoice_sent_at, telegram_invoice_attempts
      FROM orders WHERE code=? AND sales_channel='telegram' AND status='pending'`,
     orderCode,
@@ -61,6 +62,7 @@ async function readInvoiceOrder(orderCode: string, database: DatabaseAccess = cr
     subtotal: Number(row.subtotal ?? 0),
     telegram_invoice_sent_at: row.telegram_invoice_sent_at != null ? String(row.telegram_invoice_sent_at) : null,
     telegram_invoice_attempts: Number(row.telegram_invoice_attempts ?? 0),
+    buyer_access_version: row.buyer_access_version,
   };
 }
 
@@ -118,6 +120,12 @@ export async function retryTelegramInvoiceDelivery(orderCode: string, database: 
     `UPDATE orders SET telegram_invoice_attempts=telegram_invoice_attempts+1, updated_at=datetime('now') WHERE code=?`,
     orderCode,
   ).catch(() => {});
+  // Kode akses di-derive ephemeral dari versi tersimpan aktual (NEVER tebak
+  // v1 untuk order lama/reused). DM pribadi 1-to-1 ke chat pembeli — aman.
+  const { deriveOrderAccessCode } = await import("@/lib/order-access");
+  const retryAccessCode = await deriveOrderAccessCode({
+    code: order.code, buyer_access_version: order.buyer_access_version,
+  }).catch(() => "");
   const result = await sendPhoto({
     chat_id: Number(order.telegram_chat_id),
     photo: String(ledger.qris_url ?? ""),
@@ -127,6 +135,7 @@ export async function retryTelegramInvoiceDelivery(orderCode: string, database: 
       payableAmount,
       expiresAt: String(ledger.expires_at ?? ""),
       paymentMethod: "qris",
+      buyerAccessCode: retryAccessCode || undefined,
     }),
     parse_mode: "HTML",
     reply_markup: qrisInvoiceKeyboard(order.code),

@@ -19,12 +19,13 @@ import { releaseInventoryForOrder } from "@/lib/fulfillment/inventory";
 import { markInvoicePending, markInvoiceSent } from "@/lib/telegram/invoice-retry";
 
 export async function handleOrderStatus(chatId: number, orderCode: string) {
+  if (!Number.isSafeInteger(chatId) || chatId <= 0) return;
   const order = await queryFirst(
-    `SELECT o.code, o.items, o.subtotal, o.payment_status, o.fulfillment_status,
+    `SELECT o.code, o.items, o.subtotal, o.payment_status, o.fulfillment_status, o.buyer_access_version,
             pt.payable_amount
      FROM orders o LEFT JOIN payment_transactions pt ON pt.order_code=o.code
-     WHERE o.code=?`,
-    orderCode.toUpperCase(),
+     WHERE o.code=? AND o.sales_channel='telegram' AND o.telegram_chat_id=?`,
+    orderCode.toUpperCase(), String(chatId),
   );
   if (!order) {
     await sendMessage({
@@ -41,6 +42,10 @@ export async function handleOrderStatus(chatId: number, orderCode: string) {
     productName = items[0]?.name ?? "Produk";
   } catch { /* ok */ }
 
+  const { deriveOrderAccessCode } = await import("@/lib/order-access");
+  const statusAccessCode = await deriveOrderAccessCode({
+    code: String(order.code), buyer_access_version: (order as { buyer_access_version?: unknown }).buyer_access_version,
+  }).catch(() => "");
   await sendMessage({
     chat_id: chatId,
     text: orderStatusMessage({
@@ -49,6 +54,7 @@ export async function handleOrderStatus(chatId: number, orderCode: string) {
       paymentStatus: String(order.payment_status || "unpaid"),
       fulfillmentStatus: String(order.fulfillment_status || "not_required"),
       payableAmount: Number(order.payable_amount ?? order.subtotal),
+      buyerAccessCode: statusAccessCode || undefined,
     }),
     parse_mode: "HTML",
     reply_markup: String(order.payment_status) === "pending"
@@ -60,13 +66,14 @@ export async function handleOrderStatus(chatId: number, orderCode: string) {
 }
 
 export async function handleOrderRefresh(chatId: number, messageId: number, orderCode: string) {
+  if (!Number.isSafeInteger(chatId) || chatId <= 0) return;
   // Same as status but edit existing message
   const order = await queryFirst(
-    `SELECT o.code, o.items, o.subtotal, o.payment_status, o.fulfillment_status,
+    `SELECT o.code, o.items, o.subtotal, o.payment_status, o.fulfillment_status, o.buyer_access_version,
             pt.payable_amount, pt.provider AS payment_provider, pt.status AS transaction_status
      FROM orders o LEFT JOIN payment_transactions pt ON pt.order_code=o.code
-     WHERE o.code=?`,
-    orderCode,
+     WHERE o.code=? AND o.sales_channel='telegram' AND o.telegram_chat_id=?`,
+    orderCode, String(chatId),
   );
   if (!order) return;
   // 2026-10-10: "Periksa Pembayaran" membangunkan poller GoPay di VPS (idle
@@ -91,6 +98,10 @@ export async function handleOrderRefresh(chatId: number, messageId: number, orde
     productName = items[0]?.name ?? "Produk";
   } catch { /* ok */ }
 
+  const { deriveOrderAccessCode: deriveRefreshAccessCode } = await import("@/lib/order-access");
+  const refreshAccessCode = await deriveRefreshAccessCode({
+    code: String(order.code), buyer_access_version: (order as { buyer_access_version?: unknown }).buyer_access_version,
+  }).catch(() => "");
   await safeEditOrSend({
     chat_id: chatId, message_id: messageId,
     text: orderStatusMessage({
@@ -99,6 +110,7 @@ export async function handleOrderRefresh(chatId: number, messageId: number, orde
       paymentStatus: String(order.payment_status || "unpaid"),
       fulfillmentStatus: String(order.fulfillment_status || "not_required"),
       payableAmount: Number(order.payable_amount ?? order.subtotal),
+      buyerAccessCode: refreshAccessCode || undefined,
     }),
     parse_mode: "HTML",
     reply_markup: String(order.payment_status) === "pending"
@@ -122,7 +134,7 @@ export async function handleQrisRenew(chatId: number, rawOrderCode: string) {
   if (!orderCode) return;
 
   const order = await queryFirst(
-    `SELECT items FROM orders WHERE code=? AND sales_channel='telegram'`,
+    `SELECT items, buyer_access_version FROM orders WHERE code=? AND sales_channel='telegram'`,
     orderCode,
   ).catch(() => null);
   if (!order) {
@@ -171,6 +183,9 @@ export async function handleQrisRenew(chatId: number, rawOrderCode: string) {
       payableAmount: result.invoice.payableAmount,
       expiresAt: result.invoice.expiresAt,
       paymentMethod: "qris",
+      buyerAccessCode: (await (await import("@/lib/order-access")).deriveOrderAccessCode({
+        code: orderCode, buyer_access_version: (order as { buyer_access_version?: unknown } | null)?.buyer_access_version,
+      }).catch(() => "")) || undefined,
     }),
     parse_mode: "HTML",
     reply_markup: qrisInvoiceKeyboard(orderCode),

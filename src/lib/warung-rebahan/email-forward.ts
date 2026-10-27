@@ -234,7 +234,25 @@ export type CredentialEmailContext = {
   details: string;
   invoiceUrl: string;
   supportWa: string;
+  /**
+   * Kode akses pesanan turunan HMAC (di-derive pemanggil dari versi
+   * tersimpan). Hanya dirender bila non-empty; legacy (versi 0/kosong) =
+   * output identik seperti sebelumnya.
+   */
+  buyerAccessCode?: string;
 };
+
+/**
+ * Kotak kode akses pembeli — format blok sama seperti callout info existing
+ * (cyan), kode tebal agar mudah dibaca/disalin. Tidak pernah memuat link
+ * dengan kode di query/body.
+ */
+function accessCodeHtml(code: string): string {
+  return `<div style="background:#f0fdff;border:1px solid rgba(0,229,255,.35);border-radius:12px;padding:12px 16px;margin-top:12px;font-size:13px;color:#0e7490">`
+    + `<p style="margin:0 0 4px;color:#94a3b8;font-size:11px;letter-spacing:1px">KODE AKSES PESANAN</p>`
+    + `<p style="margin:0;color:#0f1430;font-size:15px;letter-spacing:1px"><b>${esc(code)}</b></p>`
+    + `<p style="margin:6px 0 0;font-size:12px">Simpan kode ini baik-baik — jangan bagikan ke siapa pun.</p></div>`;
+}
 
 /** Template "Detail Akun Siap" — MEMUAT ISI KREDENSIAL (keputusan owner).
  *  Nol jejak supplier; ada peringatan jangan bagikan + tombol invoice
@@ -249,6 +267,7 @@ export function buildCredentialReadyTemplate(ctx: CredentialEmailContext): Axvar
   const text =
     `Halo ${firstName}, detail akun ${product} kamu sudah siap.\n\n` +
     `${ctx.details}\n\n` +
+    (ctx.buyerAccessCode ? `\nKode Akses Pesanan: ${ctx.buyerAccessCode}\nSimpan kode ini baik-baik — jangan bagikan ke siapa pun.\n\n` : "") +
     `Simpan baik-baik dan JANGAN bagikan ke siapa pun.\n` +
     `Invoice Axvara: ${ctx.invoiceUrl}\nButuh bantuan? WA ${ctx.supportWa}`;
   // Detail di-render sebagai blok monospace per baris agar mudah disalin;
@@ -264,6 +283,7 @@ export function buildCredentialReadyTemplate(ctx: CredentialEmailContext): Axvar
     invoiceBadge(ctx.axvaraOrderCode)
     + `<p style="color:#334155;font-size:14px;line-height:1.7;margin:0 0 12px">Halo ${esc(firstName)}, detail akun <b>${esc(product)}</b> kamu sudah siap:</p>`
     + `<div style="background:#f8fafc;border-left:3px solid #00E5FF;border-radius:0 12px 12px 0;padding:12px 16px;font-size:13px;color:#475569">${detailBlock}</div>`
+    + (ctx.buyerAccessCode ? accessCodeHtml(ctx.buyerAccessCode) : "")
     + `<div style="background:#fef9e7;border:1px solid rgba(255,184,0,.4);border-radius:12px;padding:12px 16px;margin-top:12px;font-size:13px;color:#92690e">Jangan bagikan detail ini ke siapa pun, termasuk yang mengaku admin. Admin Axvara tidak pernah meminta detail akunmu.</div>`
     + cta(ctx.invoiceUrl, "Lihat Invoice →")
     + `<p style="text-align:center;font-size:13px;color:#0f1430;font-weight:700;margin:20px 0 8px">Butuh bantuan? Tim kami siap membantu:</p>`
@@ -320,6 +340,12 @@ export type OrderReadyEmailContext = {
    * bukan dua email terpisah (keputusan owner 2026-09-25).
    */
   receipt?: { total: number; method: string; lines: string[] } | null;
+  /**
+   * Kode akses pesanan turunan HMAC (di-derive pemanggil dari versi
+   * tersimpan). Hanya dirender bila non-empty; legacy (versi 0/kosong) =
+   * output identik seperti sebelumnya.
+   */
+  buyerAccessCode?: string;
 };
 
 /** Template "Pesanan Siap": isi produk non-WR (otomatis atau dari admin). */
@@ -350,6 +376,7 @@ export function buildOrderReadyTemplate(ctx: OrderReadyEmailContext): AxvaraForw
     + `<p style="color:#334155;font-size:14px;line-height:1.7;margin:0 0 12px">${esc(intro)}</p>`
     + receiptHtml
     + itemsHtml
+    + (ctx.buyerAccessCode ? accessCodeHtml(ctx.buyerAccessCode) : "")
     + `<div style="background:#fef9e7;border:1px solid rgba(255,184,0,.4);border-radius:12px;padding:12px 16px;margin-top:12px;font-size:13px;color:#92690e">Jangan bagikan detail ini ke siapa pun, termasuk yang mengaku admin. Detail yang sama juga tersimpan di halaman pesanan.</div>`
     + cta(ctx.invoiceUrl, "Lihat Pesanan →")
     + supportBlockHtml(siteUrl, ctx.supportWa),
@@ -359,6 +386,7 @@ export function buildOrderReadyTemplate(ctx: OrderReadyEmailContext): AxvaraForw
     intro,
     ctx.receipt ? `\nPembayaran diterima:\n${ctx.receipt.lines.join("\n")}\nTotal ${rupiah(ctx.receipt.total)}${ctx.receipt.method ? ` · ${ctx.receipt.method}` : ""}` : "",
     ...ctx.items.map((item) => `\n${item.label}:\n${item.details}`),
+    ctx.buyerAccessCode ? `\nKode Akses Pesanan: ${ctx.buyerAccessCode}\nSimpan kode ini baik-baik — jangan bagikan ke siapa pun.` : "",
     "\nJangan bagikan detail ini ke siapa pun.",
     `Halaman pesanan: ${ctx.invoiceUrl}`,
     `Butuh bantuan? WA ${ctx.supportWa}`,

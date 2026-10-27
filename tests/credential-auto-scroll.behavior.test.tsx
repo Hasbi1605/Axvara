@@ -73,7 +73,8 @@ describe("account details auto-scroll", () => {
     await waitFor(()=>expect(copy).toHaveBeenCalledWith('Email: second@example.test'));
     await waitFor(()=>expect(scroll).toHaveBeenCalledTimes(1));
     view.rerender(<WrCredentialsPanel code={CODE} prefillContact='buyer@example.test' deliveryProgress={{ready:3,total:3}}/>);
-    await screen.findByRole('button',{name:'Salin akun 3'});expect(fetcher.mock.calls[1][0]).toContain('token=fixture-capability');
+    await screen.findByRole('button',{name:'Salin akun 3'});expect(fetcher.mock.calls[1][0]).toBe(`/api/orders/${CODE}/credentials`);
+    expect(fetcher.mock.calls[1][1]?.headers).toMatchObject({ 'x-credential-token': 'fixture-capability' });
     expect(scroll).toHaveBeenCalledTimes(1);expect(screen.getByText('3 dari 3 akun siap')).toBeTruthy();
   });
   it("loads the newest unit when progress advances during the first contact verification",async()=>{
@@ -87,7 +88,8 @@ describe("account details auto-scroll", () => {
     view.rerender(<WrCredentialsPanel code={CODE} prefillContact='buyer@example.test' deliveryProgress={{ready:3,total:3}}/>);
     await act(async()=>{complete(response({credentials:[unit,unit],capability_token:'fixture-capability'}))});
     await screen.findByRole('button',{name:'Salin akun 3'});
-    expect(fetcher).toHaveBeenCalledTimes(2);expect(fetcher.mock.calls[1][0]).toContain('token=fixture-capability');
+    expect(fetcher).toHaveBeenCalledTimes(2);expect(fetcher.mock.calls[1][0]).toBe(`/api/orders/${CODE}/credentials`);
+    expect(fetcher.mock.calls[1][1]?.headers).toMatchObject({ 'x-credential-token': 'fixture-capability' });
   });
   it("waits for verified content, scrolls once in StrictMode, and leaves subsequent interactions alone", async () => {
     let complete!: (value: Response) => void;
@@ -119,7 +121,7 @@ describe("account details auto-scroll", () => {
   it.each([response({ error: "verification_failed" }, 403), response({ credentials: [] })])("does not scroll for failed or empty verification, but scrolls after a successful manual retry", async (initial) => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(initial).mockResolvedValueOnce(response(credentials())));
     render(<WrCredentialsPanel code={CODE} />);
-    fireEvent.change(screen.getByLabelText("No. WA atau email checkout"), { target: { value: "buyer@example.test" } });
+    fireEvent.change(screen.getByLabelText("Kode akses atau kontak pesanan lama"), { target: { value: "buyer@example.test" } });
     fireEvent.click(screen.getByRole("button", { name: "Tampilkan" }));
     await waitFor(() => expect((screen.getByRole("button", { name: "Tampilkan" }) as HTMLButtonElement).disabled).toBe(false));
     expect(scroll).not.toHaveBeenCalled();

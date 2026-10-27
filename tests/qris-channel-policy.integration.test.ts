@@ -7,6 +7,7 @@ import { calculateCrc16, createDanaQrisInvoice, reissueDanaQrisInvoice } from "@
 import { sendQrisExpiryNotifications } from "@/lib/payments/qris-expiry-notifications";
 import { qrisInvoiceKeyboard } from "@/lib/telegram/keyboards";
 import { sendMessage, safeEditOrSend } from "@/lib/telegram/api";
+import { deriveOrderAccessCode } from "@/lib/order-access";
 vi.mock("@/lib/telegram/api", async (original) => ({
   ...await original<typeof import("@/lib/telegram/api")>(),
   sendMessage: vi.fn(async () => ({ ok: true })),
@@ -55,7 +56,7 @@ it("WA has exactly the invoice deadline and cannot renew even through the shared
   expire();
   expect(await reissueDanaQrisInvoice(code)).toEqual({ ok: false, reason: "order_not_reissuable" });
   const { GET } = await import("@/app/api/orders/[code]/route");
-  const response = await GET(new NextRequest(`http://localhost/api/orders/${code}`), { params: Promise.resolve({ code }) });
+  const response = await GET(new NextRequest(`http://localhost/api/orders/${code}`, { headers: { "x-order-access-code": await deriveOrderAccessCode(row()) } }), { params: Promise.resolve({ code }) });
   expect((await response.json()).order.qris_reissue_allowed).toBe(false);
 });
 it("offers renewal only in the first expired QR message, retries failed delivery, then stops repeating", async () => {
@@ -147,7 +148,7 @@ it("migration caps the legacy renewed Telegram order at its final QR deadline", 
 it("the page lookup API exposes the deadline and permission before and after the sole renewal", async () => {
   await checkout();
   const { GET } = await import("@/app/api/orders/route");
-  const lookup = async () => (await (await GET(new NextRequest(`http://localhost/api/orders?code=${code}`))).json()).order;
+  const lookup = async () => (await (await GET(new NextRequest(`http://localhost/api/orders?code=${code}`, { headers: { "x-order-access-code": await deriveOrderAccessCode(row()) } }))).json()).order;
   expect(await lookup()).toMatchObject({ expires_at: row().expires_at, qris_reissue_allowed: true });
   expire(); await reissueDanaQrisInvoice(code);
   expect(await lookup()).toMatchObject({ expires_at: row().expires_at, qris_reissue_allowed: false });

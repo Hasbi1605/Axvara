@@ -77,7 +77,7 @@ export function clearRateLimitBucketsForTest(): void {
   buckets.clear();
 }
 
-export function clientIp(req: NextRequest): string {
+export function clientIp(req: Pick<Request, "headers">): string {
   // F-05 fix: prefer cf-connecting-ip (cannot be spoofed behind CF), ignore x-forwarded-for if CF header present
   const cfIp = req.headers.get("cf-connecting-ip")?.trim();
   if (cfIp) return cfIp.split(",")[0]?.trim() || cfIp;

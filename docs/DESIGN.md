@@ -1,5 +1,22 @@
 # DESIGN.md — AXVARA Design System
 
+## Kode akses pembeli — 27 Oktober 2026
+
+✅ Implementasi lokal; publikasi CI. antislop During mengikuti pilihan owner;
+ENERGY2/RHYTHM2/MOTION1 mengikuti desain AXVARA. Konfirmasi pesanan mempertahankan
+Midnight/Cyan; satu blok solid #0B1529/border cyan membedakan kode pribadi dari
+ringkasan pembayaran. Monospace dipakai hanya untuk membaca/menyalin 26 karakter,
+bukan judul dekoratif. Kode membungkus pada mobile; tombol salin minimal44px,
+fokus cyan, placeholder55% putih agar terbaca, feedback Tersalin serta error clipboard yang dapat ditindaklanjuti.
+Tidak ada aset, klaim keamanan, animasi atau glow baru.
+
+Form lacak berlabel Kode akses pesanan, dengan petunjuk kontak khusus pesanan
+lama. Halaman pesanan tanpa proof menampilkan form kode sebelum detail. Panel
+admin memakai aksi Lihat kode akses dan konfirmasi dua langkah Ganti kode akses;
+peringatan menjelaskan pencabutan akses lama. Loading/error tetap terlihat;
+tombol tidak memasukkan kode ke link atau membuka data tanpa pemeriksaan server.
+
+
 ## Invoice WR hilang setelah timeout — 27 Oktober 2026
 
 ✅ Implementasi lokal, publikasi CI. Baris supplier WR tanpa invoice pada status

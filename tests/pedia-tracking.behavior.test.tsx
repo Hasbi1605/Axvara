@@ -7,11 +7,12 @@ const navigation = vi.hoisted(() => ({ push: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: navigation.push }) }));
 const CODE = "AXP-20261016-AB12CD34";
 const CONTACT = "customer@example.com";
+const ACCESS_LABEL = "Kode akses pesanan *";
 const fetchMock = vi.fn();
 function response(body: unknown, status = 200) { return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } }); }
 function fill(code = CODE, contact = CONTACT) {
   fireEvent.change(screen.getByLabelText("Kode pesanan *"), { target: { value: code } });
-  fireEvent.change(screen.getByLabelText("No. WA atau email checkout *"), { target: { value: contact } });
+  fireEvent.change(screen.getByLabelText(ACCESS_LABEL), { target: { value: contact } });
 }
 function submit() { fireEvent.submit(screen.getByRole("form", { name: "Formulir lacak pesanan" })); }
 beforeEach(() => {
@@ -27,7 +28,7 @@ describe("Pedia tracking", () => {
     window.history.replaceState({}, "", "/pedia/lacak?code=axp-20261016-ab12cd34&contact=customer@example.com");
     render(<PediaTrackPage />);
     expect((screen.getByLabelText("Kode pesanan *") as HTMLInputElement).value).toBe(CODE);
-    expect((screen.getByLabelText("No. WA atau email checkout *") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText(ACCESS_LABEL) as HTMLInputElement).value).toBe("");
     expect((screen.getByRole("button", { name: "Lacak Pesanan" }) as HTMLButtonElement).disabled).toBe(true);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Cek status pesananmu");
@@ -40,7 +41,7 @@ describe("Pedia tracking", () => {
     render(<PediaTrackPage />);
     fill("AXV-20261016-AB12CD34", "invalid"); submit();
     expect(screen.getByLabelText("Kode pesanan *").getAttribute("aria-invalid")).toBe("true");
-    expect(screen.getByLabelText("No. WA atau email checkout *").getAttribute("aria-invalid")).toBe("true");
+    expect(screen.getByLabelText(ACCESS_LABEL).getAttribute("aria-invalid")).toBe("true");
     expect(fetchMock).not.toHaveBeenCalled();
     fill(CODE, "0812 3456-7890");
     expect((screen.getByRole("button", { name: "Lacak Pesanan" }) as HTMLButtonElement).disabled).toBe(false);

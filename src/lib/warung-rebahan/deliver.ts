@@ -1181,7 +1181,7 @@ export async function deliverWebCredentialViaEmail(
   const { queryFirst, execRun } = db;
   const order = await db
     .queryFirst(
-      `SELECT customer_name, customer_email, customer_wa, items FROM orders WHERE code=?`,
+      `SELECT code, customer_name, customer_email, customer_wa, items, buyer_access_version FROM orders WHERE code=?`,
       orderCode,
     )
     .catch(() => null);
@@ -1204,6 +1204,13 @@ export async function deliverWebCredentialViaEmail(
   const { SITE } = await import("@/lib/site");
   if (!isForwardEmailConfigured()) throw new Error("forward_email_not_configured");
   const siteUrl = (process.env.SITE_URL || SITE.webUrl).replace(/\/$/, "");
+  // Kode akses di-derive ephemeral dari versi tersimpan aktual (NEVER tebak
+  // v1 untuk order lama/reused); legacy (versi 0) = "" dan template identik.
+  // Link invoice hanya memuat kode order — tidak pernah access code.
+  const { deriveOrderAccessCode } = await import("@/lib/order-access");
+  const buyerAccessCode = await deriveOrderAccessCode({
+    code: String(order.code ?? orderCode), buyer_access_version: order.buyer_access_version,
+  }).catch(() => "");
   const template = buildCredentialReadyTemplate({
     axvaraOrderCode: orderCode,
     buyerName: String(order.customer_name || ""),
@@ -1211,6 +1218,7 @@ export async function deliverWebCredentialViaEmail(
     details: plaintext,
     invoiceUrl: `${siteUrl}/pesanan/${encodeURIComponent(orderCode)}`,
     supportWa: SITE.adminWaLocal,
+    buyerAccessCode: buyerAccessCode || undefined,
   });
   const sent = await sendForwardEmail({ to: buyerEmail, subject: template.subject, html: template.html, text: template.text });
   await execRun(

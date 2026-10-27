@@ -136,7 +136,7 @@ describe("Kirim ke pembeli (serah terima dengan isi)", () => {
 });
 
 describe("halaman pesanan: isi non-WR terbuka setelah verifikasi", () => {
-  it("flag credentials_ready menyala; isi hanya keluar dengan WA benar atau token", async () => {
+  it("flag credentials_ready menyala; isi order baru hanya keluar dengan kode akses atau token", async () => {
     await paidManualOrder();
     await handover(CODE, { item_index: 0, buyer_message: "Link undangan: https://canva.com/join/ABC" });
 
@@ -153,7 +153,8 @@ describe("halaman pesanan: isi non-WR terbuka setelah verifikasi", () => {
     expect(denied.status).toBe(403);
     expect(JSON.stringify(await denied.json())).not.toContain("canva.com/join");
 
-    const ok = await POST(req(`/api/orders/${CODE}/credentials`, "POST", { wa: "+62 812-3456-7890" }), ctx);
+    const access = await (await import("@/lib/order-access")).deriveOrderAccessCode(fixture.sql.prepare("SELECT * FROM orders WHERE code=?").get(CODE)!);
+    const ok = await POST(req(`/api/orders/${CODE}/credentials`, "POST", { access_code: access }), ctx);
     expect(ok.status).toBe(200);
     const body = await ok.json() as { credentials: { label?: string; details: string }[]; capability_token: string | null };
     expect(body.credentials).toEqual([expect.objectContaining({ label: "Canva Pro — Invite Lifetime", details: "Link undangan: https://canva.com/join/ABC" })]);

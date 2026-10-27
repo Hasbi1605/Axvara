@@ -13,6 +13,7 @@ import {
 } from "@/lib/db";
 import { getActiveVariant, type VariantSummary, formatDuration, buyerWarrantyLabel } from "@/lib/catalog";
 import { generateOrderCode } from "@/lib/security";
+import { assertOrderAccessConfigured } from "@/lib/order-access";
 import { QRIS_ORDER_WINDOW_MINUTES } from "@/lib/payments/dana-qris";
 import { markUniqueUnitLines, MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 
@@ -101,6 +102,7 @@ export type AtomicChannelOrderInput = {
 export async function createChannelOrderAtomic(
   input: AtomicChannelOrderInput,
 ): Promise<PendingOrder> {
+  assertOrderAccessConfigured();
   if (!input.lines.length) throw new Error("empty_order_lines");
   const uniqueLines = input.lines.filter(line => line.fulfillmentMode === "unique");
   if (uniqueLines.reduce((n,line)=>n+line.qty,0) > MAX_UNIQUE_UNITS_PER_ORDER) throw new StockReservationError();
@@ -131,8 +133,8 @@ export async function createChannelOrderAtomic(
          payment_method, payment_account, proof_url, status, sales_channel,
          channel_conversation_id, channel_member_id, telegram_chat_id, telegram_user_id,
          payment_status, fulfillment_status, variant_id, variant_snapshot,
-         quote_id, expires_at
-       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         quote_id, expires_at, buyer_access_version
+       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)`,
       input.orderCode,
       input.customerName,
       input.customerWa || "",
@@ -275,8 +277,8 @@ export async function createChannelOrderAtomic(
          payment_method, payment_account, proof_url, status, sales_channel,
          channel_conversation_id, channel_member_id, telegram_chat_id, telegram_user_id,
          payment_status, fulfillment_status, variant_id, variant_snapshot,
-         quote_id, expires_at
-       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         quote_id, expires_at, buyer_access_version
+       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)`,
     ).bind(
       input.orderCode,
       input.customerName,
@@ -398,6 +400,7 @@ export function isReusablePendingOrder(order: PendingOrderState, now = Date.now(
  * it returns the existing order idempotently without re-decrementing stock.
  */
 export async function createPendingChannelOrder(input: ChannelOrderInput): Promise<PendingOrder> {
+  assertOrderAccessConfigured();
   // 1. Idempotency check: look for existing pending or active order with this key
   if (isD1Mode()) {
     const existing = await queryFirst(
@@ -510,8 +513,8 @@ export async function createPendingChannelOrder(input: ChannelOrderInput): Promi
            payment_method, payment_account, proof_url, status, sales_channel,
            channel_conversation_id, channel_member_id, telegram_chat_id, telegram_user_id,
            payment_status, fulfillment_status, variant_id, variant_snapshot,
-           quote_id, expires_at
-         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now','+24 hours'))`,
+           quote_id, expires_at, buyer_access_version
+         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now','+24 hours'),1)`,
       ).bind(
         orderCode,
         input.customerName,

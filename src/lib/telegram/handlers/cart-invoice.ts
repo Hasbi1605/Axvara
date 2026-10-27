@@ -177,6 +177,13 @@ export async function createAndSendCartInvoice(
     // invoice, reservasi, dan stok yang sama dipertahankan (tanpa order
     // kedua, tanpa potong stok ulang).
     await markInvoicePending(orderCode);
+    // Kode akses di-derive ephemeral dari versi tersimpan aktual (NEVER tebak
+    // v1). DM pribadi 1-to-1 ke chat pembeli — aman.
+    const { deriveOrderAccessCode } = await import("@/lib/order-access");
+    const cartRow = await queryFirst(`SELECT buyer_access_version FROM orders WHERE code=?`, orderCode).catch(() => null) as { buyer_access_version?: unknown } | null;
+    const cartAccessCode = await deriveOrderAccessCode({
+      code: orderCode, buyer_access_version: cartRow?.buyer_access_version,
+    }).catch(() => "");
     const cartPhoto = await sendPhoto({
       chat_id: chatId,
       photo: invoiceResult.qrisUrl,
@@ -188,6 +195,7 @@ export async function createAndSendCartInvoice(
         payableAmount: invoiceResult.payableAmount,
         expiresAt: invoiceResult.expiresAt,
         paymentMethod: "qris",
+        buyerAccessCode: cartAccessCode || undefined,
       }),
       parse_mode: "HTML",
       reply_markup: qrisInvoiceKeyboard(orderCode),

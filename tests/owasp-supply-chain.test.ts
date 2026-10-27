@@ -70,10 +70,33 @@ describe("owasp supply-chain: lockfile pins", () => {
     expect(semverGte(v!, "4.6.6")).toBe(true);
   });
 
-  it("root undici override is patched to >= 6.29.1", () => {
+  it("root undici override is patched to >= 7.30.1 (miniflare 4 toolchain)", () => {
     const v = readLockVersion(rootLock, "node_modules/undici");
     expect(v).toBeTruthy();
-    expect(semverGte(v!, "6.29.1")).toBe(true);
+    expect(semverGte(v!, "7.30.1")).toBe(true);
+  });
+
+  it("root miniflare is major-bumped to 4.x (nested zod/sharp advisories resolved)", () => {
+    const mf = readLockVersion(rootLock, "node_modules/miniflare");
+    expect(mf).toBeTruthy();
+    expect(semverGte(mf!, "4.20260730.0")).toBe(true);
+    const nestedZod = readLockVersion(rootLock, "node_modules/miniflare/node_modules/zod");
+    expect(nestedZod).toBeNull();
+    const rootPkg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"));
+    expect(rootPkg.devDependencies.miniflare).toBe("4.20260730.0");
+  });
+
+  it("root sharp stays patched to >= 0.35.5 (no MF4 regression)", () => {
+    const copies = ["node_modules/sharp", "node_modules/miniflare/node_modules/sharp", "node_modules/next/node_modules/sharp"];
+    let seen = 0;
+    for (const pkgPath of copies) {
+      const v = readLockVersion(rootLock, pkgPath);
+      if (v) {
+        seen++;
+        expect(semverGte(v, "0.35.5")).toBe(true);
+      }
+    }
+    expect(seen).toBeGreaterThan(0);
   });
 
   it("gateway fastify is patched to >= 5.12.6", () => {
@@ -102,10 +125,11 @@ describe("owasp supply-chain: lockfile pins", () => {
     expect(semverGte(v!, "0.35.5")).toBe(true);
   });
 
-  it("contracts preserved: Next 15.5.28, Baileys rc14, Node 22.x", () => {
+  it("contracts preserved: Next 15.5.28, nop 1.13.x, Baileys rc14, Node 22.x", () => {
     const rootPkg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"));
     const gwPkg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "gateway", "package.json"), "utf8"));
     expect(rootPkg.dependencies.next).toBe("15.5.28");
+    expect(rootPkg.devDependencies["@cloudflare/next-on-pages"]).toBe("1.13");
     expect(gwPkg.dependencies["@whiskeysockets/baileys"]).toBe("7.0.0-rc14");
     expect(gwPkg.engines.node).toBe("22.x");
   });

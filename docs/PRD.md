@@ -1,5 +1,29 @@
 # PRD — AXVARA
 
+## Kode akses pesanan baru — 27 Oktober 2026
+
+✅ Implementasi lokal; publikasi CI. Setiap pesanan baru mendapat kode akses
+pribadi selain nomor pesanan. Pembeli menyimpan kode dari konfirmasi checkout;
+email privat dan chat pribadi Telegram dapat menyampaikannya kembali. Lacak,
+status/wake, kredensial, pembatalan, perpanjangan QRIS dan refill web memeriksa
+kode sebelum membaca detail atau bertindak. Kode tidak membuktikan pembayaran;
+seluruh guard lunas/paid, stok, supplier, expiry dan dedupe tetap berlaku.
+
+Keputusan owner: pesanan sebelum migrasi tetap menggunakan kontak checkout.
+Tidak ada OTP, pemutusan akses legacy, exchange kontak menjadi kode pada order
+baru, atau notifikasi massal. Capability kuat yang sudah diterbitkan tetap
+berlaku sampai expiry/revokasi. Identitas pemilik di chat bot tetap diperiksa.
+Bot WhatsApp sedang nonaktif dan tidak termasuk lingkup perubahan atas instruksi
+owner; tidak menambah/mengaktifkan DM atau mengubah alur bot WA.
+
+Halaman pesanan menampilkan kode dengan tombol salin dan peringatan menyimpan;
+lacak menerima kode akses, atau kontak untuk pesanan lama. Browser hanya
+menyimpan kode pada sesi tab, bukan riwayat permanen. Pembeli kehilangan kode
+menghubungi admin; setelah verifikasi kepemilikan, admin dapat melihat kode
+atau menggantinya (kode/capability lama dicabut). Kode tidak dikirim ke grup WA.
+[Spesifikasi dan batas](../issue/buyer-access-2026-10-27.md).
+
+
 ## Lapisan admin Cloudflare Access — 27 Oktober 2026
 
 ✅ Konfigurasi Access aktif; guard aplikasi diverifikasi lokal dan publikasi CI.

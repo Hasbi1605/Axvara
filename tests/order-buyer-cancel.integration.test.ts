@@ -36,6 +36,8 @@ async function checkout() {
     paymentMethod: "qris", paymentAccount: "DANA Business", fulfillmentStatus: "not_required",
   });
   await createDanaQrisInvoice(CODE, 10000);
+  // These regressions exercise the owner-approved contact policy for legacy orders.
+  fixture.sql.prepare("UPDATE orders SET buyer_access_version=0 WHERE code=?").run(CODE);
 }
 
 async function cancel(contact: unknown) {

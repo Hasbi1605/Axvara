@@ -147,7 +147,8 @@ it("lookup and both public status URLs report the same multi-unit progress",asyn
  fx.sql.prepare("UPDATE fulfillment_items SET status='delivered',delivered_ciphertext='fixture' WHERE order_code=? AND item_index=0").run(code);
  const {clearRateLimitBucketsForTest}=await import('@/lib/rateLimit');clearRateLimitBucketsForTest();
  const {GET}=await import('@/app/api/orders/route');const {GET:segment}=await import('@/app/api/orders/[code]/route');const {POST:lookup}=await import('@/app/api/orders/lookup/route');
- const a=await GET(new NextRequest('http://fixture/api/orders?code='+code));const b=await segment(new NextRequest('http://fixture/api/orders/'+code),{params:Promise.resolve({code})});
- const c=await lookup(new NextRequest('http://fixture/api/orders/lookup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code,contact:'buyer@example.test'})}));
+ const access = await (await import('@/lib/order-access')).deriveOrderAccessCode(order());
+ const a=await GET(new NextRequest('http://fixture/api/orders?code='+code,{headers:{'x-order-access-code':access}}));const b=await segment(new NextRequest('http://fixture/api/orders/'+code,{headers:{'x-order-access-code':access}}),{params:Promise.resolve({code})});
+ const c=await lookup(new NextRequest('http://fixture/api/orders/lookup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code,access_code:access})}));
  for(const response of [a,b,c]){expect(response.status).toBe(200);expect((await response.json()).order.unique_units_progress).toEqual({ready:1,total:3});expect(response.headers.get('cache-control')).toContain('no-store')}
 });

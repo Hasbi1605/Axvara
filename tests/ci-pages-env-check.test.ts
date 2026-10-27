@@ -13,7 +13,7 @@ const freePlan = Response.json({success:true,result:[]});
 const metadataFetch = (response: Response) => vi.fn<typeof fetch>().mockImplementation(async url => String(url).endsWith("/subscriptions") ? freePlan.clone() : response.clone());
 const env = { NODE_ENV: "test" as const, CLOUDFLARE_ACCOUNT_ID: "a".repeat(32), CLOUDFLARE_API_KEY: "private-key", CLOUDFLARE_EMAIL: "owner@example.test" };
 const project = (count: number) => ({ deployment_configs: { production: { env_vars: Object.fromEntries(
-  Array.from({ length: count }, (_, i) => [`VAR_${i}`, { type: i % 2 ? "secret_text" : "plain_text", value: "never-log-this" }]),
+  Array.from({ length: count }, (_, i) => [i === 0 ? "BUYER_ORDER_ACCESS_SECRET" : `VAR_${i}`, { type: i === 0 || i % 2 ? "secret_text" : "plain_text", value: "never-log-this" }]),
 ) } } });
 
 describe("Pages variable preflight", () => {
@@ -55,6 +55,13 @@ describe("Pages variable preflight", () => {
     await expect(checkPagesEnvironment({}, fetchFn)).rejects.toThrow();
     await expect(checkPagesEnvironment({ CLOUDFLARE_ACCOUNT_ID: env.CLOUDFLARE_ACCOUNT_ID }, fetchFn)).rejects.toThrow();
     expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it.each(["missing", "plain_text"])("stops a release with a %s buyer key binding without exposing values", async (kind) => {
+    const p = project(20);
+    if (kind === "missing") delete p.deployment_configs.production.env_vars.BUYER_ORDER_ACCESS_SECRET;
+    else p.deployment_configs.production.env_vars.BUYER_ORDER_ACCESS_SECRET.type = "plain_text";
+    await expect(checkPagesEnvironment(env, metadataFetch(Response.json({ success: true, result: p })))).rejects.toThrow("buyer access secret metadata unavailable");
   });
 
   it.each([

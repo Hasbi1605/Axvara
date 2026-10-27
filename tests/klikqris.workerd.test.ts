@@ -33,9 +33,9 @@ it("the actual KlikQRIS adapter sends requests in workerd and rejects redirects 
   });
   const requests: { url: string; method: string; apiKey: string | null }[] = [];
   let redirectCreate = false, redirectImage = false;
-  const runtime = new Miniflare({ modules: true, compatibilityDate: "2026-08-31", compatibilityFlags: ["nodejs_compat"],
+  const runtime = new Miniflare({ modules: true, compatibilityDate: "2026-08-06", compatibilityFlags: ["nodejs_compat"],
     script: compiled.outputFiles[0].text, d1Databases: ["DB"],
-    outboundService: async request => {
+    outboundService: async (request: Request) => {
       requests.push({ url: request.url, method: request.method, apiKey: request.headers.get("x-api-key") });
       if (request.url === "https://klikqris.com/api/qris/create") {
         if (redirectCreate) return new Response(null, { status: 302, headers: { location: "https://untrusted.example/steal" } });

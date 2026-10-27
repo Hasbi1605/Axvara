@@ -296,6 +296,13 @@ export async function createAndSendVariantInvoice(
     // {ok:false}, tandai pending/sent, lempar agar retry nyata + cron retry.
     await markInvoicePending(orderCode);
     const displayName = qty > 1 ? `${productName} — ${variant.label} ×${qty}` : `${productName} — ${variant.label}`;
+    // Kode akses di-derive ephemeral dari versi tersimpan aktual (NEVER tebak
+    // v1). DM pribadi 1-to-1 ke chat pembeli — aman.
+    const { deriveOrderAccessCode } = await import("@/lib/order-access");
+    const createdRow = await queryFirst(`SELECT buyer_access_version FROM orders WHERE code=?`, orderCode).catch(() => null) as { buyer_access_version?: unknown } | null;
+    const variantAccessCode = await deriveOrderAccessCode({
+      code: orderCode, buyer_access_version: createdRow?.buyer_access_version,
+    }).catch(() => "");
     const variantPhoto = await sendPhoto({
       chat_id: chatId,
       photo: invoiceResult.qrisUrl,
@@ -305,6 +312,7 @@ export async function createAndSendVariantInvoice(
         payableAmount: invoiceResult.payableAmount,
         expiresAt: invoiceResult.expiresAt,
         paymentMethod: "qris",
+        buyerAccessCode: variantAccessCode || undefined,
       }),
       parse_mode: "HTML",
       reply_markup: qrisInvoiceKeyboard(orderCode),

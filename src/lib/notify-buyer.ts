@@ -191,7 +191,7 @@ export async function notifyBuyerHandover(
         refKey: `handover:${orderCode}`,
       }, database);
     }
-    const order = await database.queryFirst(`SELECT customer_name, sales_channel FROM orders WHERE code=?`, orderCode).catch(() => null);
+    const order = await database.queryFirst(`SELECT code, customer_name, sales_channel, buyer_access_version FROM orders WHERE code=?`, orderCode).catch(() => null);
     let chatMessages: string[] | undefined;
     if (String(order?.sales_channel) === "telegram") {
       const { resolveCredentialTermsByItem } = await import("@/lib/orders/credential-terms");
@@ -203,12 +203,20 @@ export async function notifyBuyerHandover(
     }
     const { buildOrderReadyTemplate } = await import("@/lib/warung-rebahan/email-forward");
     const { SITE } = await import("@/lib/site");
+    // Serah terima manual ke email privat memakai template yang sama — kode
+    // akses ephemeral dari versi tersimpan aktual; legacy = "" tanpa blok.
+    const { deriveOrderAccessCode } = await import("@/lib/order-access");
+    const handoverAccessCode = await deriveOrderAccessCode({
+      code: String(order?.code ?? orderCode),
+      buyer_access_version: (order as { buyer_access_version?: unknown } | null)?.buyer_access_version,
+    }).catch(() => "");
     const template = buildOrderReadyTemplate({
       axvaraOrderCode: orderCode,
       buyerName: String(order?.customer_name ?? ""),
       invoiceUrl: `${siteUrl()}/pesanan/${encodeURIComponent(orderCode)}`,
       supportWa: SITE.adminWaLocal,
       items: contents.map((c) => ({ label: c.label, details: c.details })),
+      buyerAccessCode: handoverAccessCode || undefined,
     });
     const chatBody = `✅ <b>Pesanan siap</b>\nOrder: <code>${orderCode}</code>\n`
       + contents.map((c) => `\n<b>${escapeHtml(c.label)}</b>\n<code>${escapeHtml(c.details)}</code>`).join("\n")
@@ -433,10 +441,21 @@ export async function notifyBuyerPaymentReceived(
   database: DatabaseAccess = createDatabaseAccess(),
 ): Promise<boolean> {
   const order = await database.queryFirst(
-    `SELECT customer_name FROM orders WHERE code=?`,
+    `SELECT code, customer_name, buyer_access_version FROM orders WHERE code=?`,
     orderCode,
   ).catch(() => null);
   const firstName = String(order?.customer_name ?? "").trim().split(/\s+/)[0] || "Kak";
+  // Kode akses di-derive ephemeral dari versi tersimpan aktual (NEVER tebak
+  // v1 untuk order lama/reused); legacy (versi 0) = "" dan paragraf identik.
+  // Hanya paragraf email privat — body chat (chatText/Telegram/DM) TIDAK
+  // membawa kode (outbox WA menyimpan teks polos).
+  const { deriveOrderAccessCode } = await import("@/lib/order-access");
+  const buyerAccessCode = await deriveOrderAccessCode({
+    code: String(order?.code ?? orderCode), buyer_access_version: order?.buyer_access_version,
+  }).catch(() => "");
+  const accessParagraph = buyerAccessCode
+    ? `Kode Akses Pesanan: ${buyerAccessCode} — simpan baik-baik dan jangan bagikan ke siapa pun. Halaman pesanan memintanya untuk melihat detail: ${siteUrl()}/pesanan/${encodeURIComponent(orderCode)}`
+    : null;
   return await sendToBuyer(orderCode, {
     subject: `Pembayaran pesanan ${orderCode} diterima`,
     body: `✅ <b>Pembayaran diterima</b>\nOrder: <code>${orderCode}</code>\n\n`
@@ -449,6 +468,7 @@ export async function notifyBuyerPaymentReceived(
       paragraphs: [
         `Terima kasih ${firstName} telah berbelanja di Axvara.`,
         `Pembayaran untuk pesanan ${orderCode} sudah tercatat dan pesanan sedang diproses.`,
+        ...(accessParagraph ? [accessParagraph] : []),
         "Detail produk dikirim ke email ini dan juga tampil di halaman pesanan.",
       ],
     },

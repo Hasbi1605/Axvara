@@ -25,7 +25,9 @@ import { z } from "zod";
 import { queryFirst, transitionPendingOrder, OrderTransitionError } from "@/lib/db";
 import { isValidOrderCode } from "@/lib/security";
 import { checkRateLimit } from "@/lib/rateLimit";
-import { emailMatches, normalizeWa, parseBuyerContact } from "@/lib/order-contact";
+import { parseBuyerContact } from "@/lib/order-contact";
+import { buyerOrderAccessMatches, newOrderAccessFailure } from "@/lib/order-access";
+import { normalizeOrderAccessCode } from "@/lib/order-access-format";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -33,6 +35,7 @@ export const dynamic = "force-dynamic";
 const schema = z.object({
   contact: z.string().trim().max(254).optional(),
   wa: z.string().trim().max(254).optional(),
+  access_code: z.string().trim().max(100).optional(),
 });
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
@@ -47,17 +50,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const body = await readJsonBody(req, 8_000);
   if (!body.ok) return body.response;
   const parsed = schema.safeParse(body.data);
-  const contactRaw = parsed.success ? (parsed.data.contact ?? parsed.data.wa ?? "").trim() : "";
+  const contactRaw = parsed.success ? (parsed.data.access_code ?? parsed.data.contact ?? parsed.data.wa ?? "").trim() : "";
   if (!parsed.success || !contactRaw) {
     return NextResponse.json({ error: "No. WA atau email checkout wajib diisi." }, { status: 400 });
   }
   const contact = parseBuyerContact(contactRaw);
-  if (!contact) {
+  if (!contact && !normalizeOrderAccessCode(contactRaw)) {
     return NextResponse.json({ error: "Format kontak tidak valid." }, { status: 400 });
   }
 
   const row = (await queryFirst(
-    `SELECT code, status, payment_status, customer_wa, customer_email, items FROM orders WHERE code=?`,
+    `SELECT code, status, payment_status, customer_wa, customer_email, items, buyer_access_version FROM orders WHERE code=?`,
     orderCode,
   )) as Record<string, unknown> | undefined;
 
@@ -65,14 +68,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const notFound = () =>
     NextResponse.json({ error: "Pesanan tidak ditemukan atau kontak tidak cocok." }, { status: 404 });
   if (!row) return notFound();
-  if (contact.kind === "email") {
-    if (!emailMatches(contact.value, row.customer_email)) return notFound();
-  } else {
-    const storedWa = normalizeWa(row.customer_wa);
-    if (!storedWa) return notFound();
-    const { constantTimeEqual } = await import("@/lib/security");
-    if (!constantTimeEqual(contact.value, storedWa)) return notFound();
-  }
+  const failure = await newOrderAccessFailure(req, row, contactRaw);
+  if (failure) return failure;
+  if (!(await buyerOrderAccessMatches(contactRaw, row))) return notFound();
 
   if (String(row.status) !== "pending") {
     return NextResponse.json(

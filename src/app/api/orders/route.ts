@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { deriveNameFromEmail } from "@/lib/utils";
 import { z } from "zod";
 import { createOrderWithStock, queryAll, queryFirst, StockReservationError, transitionPendingOrder } from "@/lib/db";
+import { assertOrderAccessConfigured, deriveOrderAccessCode, newOrderAccessFailure, orderAccessDenied } from "@/lib/order-access";
 import { generateOrderCode as generateCode, aggregateQty } from "@/lib/security";
 import { verifyCheckoutQuoteToken } from "@/lib/auth";
 import { createDanaQrisInvoice, createActiveQrisInvoice, MAX_QRIS_REISSUES } from "@/lib/payments/dana-qris";
@@ -41,6 +42,7 @@ const schema = z.object({
 });
 
 async function existingCheckoutResponse(existing: Record<string, unknown>) {
+  const buyer_access_code = await deriveOrderAccessCode(existing);
   // The signed quote already reserved stock, including its last available unit.
   // Resume before revalidating stock/price; never reserve or POST again.
   if (existing.status === "pending") {
@@ -48,16 +50,16 @@ async function existingCheckoutResponse(existing: Record<string, unknown>) {
     if (tx?.provider === "klikqris") {
       try {
         const inv = await createActiveQrisInvoice(String(existing.code), Number(tx.requested_amount));
-        return NextResponse.json({ ...existing, reused: true, qris: {
+        return NextResponse.json({ code: existing.code, subtotal: existing.subtotal, status: existing.status, buyer_access_code, reused: true, qris: {
           payable_amount: inv.payableAmount, unique_code: inv.uniqueCode,
           image_url: inv.qrisUrl, expires_at: inv.expiresAt,
-        } }, { status: 200 });
+        } }, { status: 200, headers: { "Cache-Control": "private, no-store" } });
       } catch {
         return NextResponse.json({ error: "Tagihan sedang disiapkan. Tunggu sebentar lalu coba lagi dengan checkout yang sama.", code: existing.code }, { status: 503 });
       }
     }
   }
-  return NextResponse.json({ code: existing.code, subtotal: existing.subtotal, status: existing.status, reused: true }, { status: 200 });
+  return NextResponse.json({ code: existing.code, subtotal: existing.subtotal, status: existing.status, buyer_access_code, reused: true }, { status: 200, headers: { "Cache-Control": "private, no-store" } });
 }
 
 // Rate-limit terpusat (issue #14): satu implementasi di src/lib/rateLimit.ts
@@ -75,6 +77,9 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
 
   const { customer_name, customer_wa, customer_email, items, payment_method, proof_url, quote_token } = parsed.data;
+  try { assertOrderAccessConfigured(); } catch {
+    return NextResponse.json({ error: "Checkout sementara tidak tersedia." }, { status: 503 });
+  }
 
   // Proofs are private R2 objects. External URLs would bypass the protected
   // admin viewer and could be used as a tracking pixel.
@@ -103,7 +108,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Isi keranjang berubah setelah harga dikunci. Muat ulang checkout." }, { status: 409 });
   }
 
-  const previous = await queryFirst("SELECT code,subtotal,status FROM orders WHERE quote_id=?", quote.quote_id);
+  const previous = await queryFirst("SELECT code,subtotal,status,buyer_access_version FROM orders WHERE quote_id=?", quote.quote_id);
   if (previous) return existingCheckoutResponse(previous);
 
   // Guard email lapis kedua (migrasi 0033 + revamp 2026-09-23): zod di atas
@@ -282,13 +287,13 @@ export async function POST(req: NextRequest) {
     });
   } catch (e: unknown) {
     if (e instanceof StockReservationError) {
-      const winner = await queryFirst("SELECT code,subtotal,status FROM orders WHERE quote_id=?", quote.quote_id).catch(() => null);
+      const winner = await queryFirst("SELECT code,subtotal,status,buyer_access_version FROM orders WHERE quote_id=?", quote.quote_id).catch(() => null);
       if (winner) return existingCheckoutResponse(winner);
       return NextResponse.json({ error: e.message }, { status: 409 });
     }
     const msg = e instanceof Error ? e.message : String(e);
     if (msg.includes("UNIQUE")) {
-      const existing = await queryFirst("SELECT code,subtotal,status FROM orders WHERE quote_id=?", quote.quote_id);
+      const existing = await queryFirst("SELECT code,subtotal,status,buyer_access_version FROM orders WHERE quote_id=?", quote.quote_id);
       if (existing) {
         return existingCheckoutResponse(existing);
       }
@@ -321,6 +326,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     code,
+    buyer_access_code: await deriveOrderAccessCode({ code, buyer_access_version: 1 }),
     subtotal: quote.subtotal,
     status: "pending",
     qris: qrisInvoice ? {
@@ -329,7 +335,7 @@ export async function POST(req: NextRequest) {
       image_url: qrisInvoice.qrisUrl,
       expires_at: qrisInvoice.expiresAt,
     } : null,
-  }, { status: 201 });
+  }, { status: 201, headers: { "Cache-Control": "private, no-store" } });
 }
 
 export async function GET(req: NextRequest) {
@@ -346,7 +352,9 @@ export async function GET(req: NextRequest) {
        WHERE o.code=?`,
       code,
     )) as Record<string, unknown> | undefined;
-    if (!row) return NextResponse.json({ error: "Pesanan tidak ditemukan" }, { status: 404 });
+    if (!row) return orderAccessDenied();
+    const accessFailure = await newOrderAccessFailure(req, row);
+    if (accessFailure) return accessFailure;
     // 2026-10-10: tombol "Cek Status Sekarang" mengirim `wake=1` (polling
     // otomatis TIDAK) → bangunkan poller GoPay di VPS agar mutasi langsung
     // dicek. Hanya untuk invoice GoPay yang masih pending; best-effort.

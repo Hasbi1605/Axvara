@@ -224,6 +224,13 @@ export function invoiceMessage(params: {
   payableAmount: number;
   expiresAt: string;
   paymentMethod?: string;
+  /**
+   * Kode akses pesanan turunan HMAC (di-derive pemanggil dari versi
+   * tersimpan). Hanya dirender bila non-empty; legacy (versi 0/kosong) =
+   * output identik seperti sebelumnya. Hanya untuk DM pribadi 1-to-1 —
+   * JANGAN sertakan di pesan grup/outbox.
+   */
+  buyerAccessCode?: string;
 }): string {
   const { orderCode, productName, payableAmount, expiresAt, paymentMethod } = params;
   const name = escapeHtml(truncate(productName, 100));
@@ -243,6 +250,7 @@ export function invoiceMessage(params: {
     "",
     `📦 ${name}`,
     `🔢 <code>${escapeHtml(orderCode)}</code>`,
+    ...(params.buyerAccessCode ? ["", `🔑 <b>Kode Akses:</b> <code>${escapeHtml(params.buyerAccessCode)}</code>`] : []),
     "",
     `💳 <b>Total Bayar: ${formatRupiah(payableAmount)}</b>`,
     "",

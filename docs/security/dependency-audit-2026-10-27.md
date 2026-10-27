@@ -31,12 +31,42 @@ Gateway (full + `--omit=dev` identical — all runtime):
 Caveat (per brief): scanner version-match is not proof of runtime
 reachability; exposure conditions are noted per advisory below.
 
-## 2. Fixes applied (minimally compatible, no --force, no majors)
+## 2. Initial runtime fixes (before the toolchain follow-up)
 
 Root `package.json`:
 - `zod`: `^4.5.4` → `^4.6.6` (resolves to **4.6.7**).
-- `overrides.miniflare.undici`: `6.28.1` → **`6.29.1`**.
-- No miniflare/next-on-pages bump (major-only fix path — see §4).
+- `overrides.miniflare.undici`: `6.28.1` → **`6.29.1`** (2026-10-27 Task A2).
+- This initial patch deferred the Miniflare major; §2b records the subsequent verified fix.
+
+## 2b. Toolchain major (2026-10-27 Spark follow-up, per PM design approval)
+
+Root `package.json` (user + PM explicitly authorized necessary major + verification):
+- `devDependencies.miniflare`: `3.20250718.3` → **`4.20260730.0`**.
+- `overrides["@cloudflare/next-on-pages"].miniflare`: **`4.20260730.0`**
+  (nop 1.13.16 stays — its dist never imports miniflare at runtime; only a
+  `Json` type import in `next-dev`. Pages deploy/runtime artifact unchanged).
+- Top-level `overrides.undici`: **`7.30.1`** (MF4 declares undici 7.28.0,
+  flagged by 18 advisories `>=7.0.0 <7.30.1`; 7.30.1 engines `node>=20.18.1`,
+  CI 22.x stays supported) and `overrides.sharp`: **`0.35.5`**
+  (MF4 declares sharp 0.35.2, flagged GHSA-wq5f-xc86-pv6w `<0.35.5` +
+  GHSA-rgj7-g3m4-5g8c `<0.35.4`; top-level form required — parent-scoped
+  `overrides.miniflare` children silently did NOT apply, verified via
+  `npm explain`; redundant parent-scoped key removed).
+- Resolved flat tree: miniflare 4.20260730.0, undici 7.30.1, sharp 0.35.5
+  (single copies, no nesting), workerd 1.20260730.1, ws 8.21.0,
+  youch 4.1.0-beta.10, zod 4.6.7 (only copy — nested zod GONE),
+  nop 1.13.16, next 15.5.28.
+
+Results after major (verified live 2026-10-27):
+- `npm audit --json` full root: **0 vulns** (exit 0). `npm audit --omit=dev`: **0 vulns**.
+- `node scripts/security-dependencies.cjs --root-only`: PASS (exit 0).
+- `npx vitest run tests/owasp-supply-chain.test.ts`: 19/19 pass.
+- PM integration: `npx tsc --noEmit` passes after explicitly typing the workerd fixture request.
+- All workerd/D1 fixtures pass in the integrated full suite. The KlikQRIS local
+  fixture now pins supported compatibility date `2026-08-06`; production
+  `wrangler` compatibility and adapter are unchanged.
+- `npm run build:pages`: PASS (13.97s, 10 prerendered routes, 536 static
+  assets, `patch-pages-routes` excludes applied).
 
 Gateway `gateway/package.json`:
 - `fastify`: `^5.3.3` → `^5.12.6` (resolves to **5.12.7**).
@@ -51,22 +81,33 @@ Preserved contracts: `next 15.5.28`, Pages adapter `1.13.x`, Baileys
 
 | Scope | `audit --omit=dev` | `audit` full |
 |---|---|---|
-| Root | **0 vulns** ✅ | 3 high, dev-only (miniflare toolchain) |
+| Root | **0 vulns** ✅ | **0 vulns** ✅ (after §2b toolchain major) |
 | Gateway | **0 vulns** ✅ | **0 vulns** ✅ |
+
+Before §2b: root full was 3 high dev-only (miniflare toolchain). After: zero.
 
 Gate runner: `node scripts/security-dependencies.cjs` → PASS (exit 0),
 lockfile hashes unchanged (read-only verified).
 
-## 4. Unresolved / compatibility exceptions (no false-zero claim)
+## 4. Resolved + residual notes
 
-1. **Root dev-only `miniflare@3.20250718.3` + `@cloudflare/next-on-pages@1.13.16`
-   + nested `zod@3.22.3`** — still flagged HIGH in full scans. Fix path is
-   SemVer-major (`miniflare@4.20260730.0`, pulled via next-on-pages major),
-   which risks breaking the Pages build adapter pinned at `1.13.x`. NOT
-   applied. Exposure: dev/test toolchain (`next-on-pages` build adapter +
-   miniflare local emulation); no public application route to the emulator was
-   found. Runtime (`--omit=dev`) scan is clean. Keep dev/emulation bound to loopback;
-   moving to a compatible supported adapter/toolchain is separate platform work.
+0. **RESOLVED 2026-10-27 (§2b): Root dev-only `miniflare@3.20250718.3` +
+    `@cloudflare/next-on-pages@1.13.16` + nested `zod@3.22.3`** — major-bumped
+    to miniflare 4.20260730.0 with nop held at 1.13.16 (no runtime import of
+    miniflare in nop dist — verified). Full root audit is now 0 (no
+    "cleared"-by-suppression claim: scanner genuinely reports zero).
+    Reachability truth for the old flag: GHSA-mrhx fix commit a0ebf97 is
+    v4-only (`$ZodArray`/`handleArrayResult` symbols absent from zod 3.22.3 and
+    the miniflare bundle); miniflare's `z.array(...)` option schemas were
+    unconstrained at sampled call sites, so the CWE family applied in
+    principle to dev-loopback emulation input — but no public app route ever
+    reached it, and the code is now gone from the tree. Latest stable zod 3.x
+    (3.25.76) would still satisfy `<4.6.6`, so no 3.x pin could have cleared it.
+1. **Fixture compatibility resolved by PM:** the local KlikQRIS fixture uses
+    `2026-08-06`, supported by the pinned workerd. The actual adapter's network,
+    redirect rejection and private-signature assertions still run; no skipped
+    fixture or changed production compatibility flag.
+
 2. **GHSA-mrhx reachability (root zod)**: prior `4.5.4` was a direct prod dep
    used by API validation routes — reachable in principle on crafted oversized
    payloads; now patched to `4.6.7`. PM flash update 2026-10-27: core main has
@@ -89,7 +130,7 @@ lockfile hashes unchanged (read-only verified).
 - `package.json`, `package-lock.json` (root: zod range + undici override)
 - `gateway/package.json`, `gateway/package-lock.json` (fastify range + transitives)
 - `scripts/security-dependencies.cjs` (NEW — read-only audit gate runner)
-- `tests/owasp-supply-chain.test.ts` (NEW — 10 regression tests on real data)
+- `tests/owasp-supply-chain.test.ts` (19 regression tests, including gate failures)
 - `.github/workflows/ci.yml` (NEW step `Dependency audit gate` before build)
 - `docs/security/dependency-audit-2026-10-27.md` (this file)
 - `CHANGELOG.md` (top entry)
@@ -97,8 +138,8 @@ lockfile hashes unchanged (read-only verified).
 ## 6. Verification
 
 - `node scripts/security-dependencies.cjs` → PASS (exit 0), recorded
-  2026-10-27: runtime 0 high/critical root+gateway; dev-only root 3 high
-  (next-on-pages/miniflare/nested-zod, warn non-blocking); gateway full 0.
+  2026-10-27: runtime high/critical 0 root+gateway; full audit counts 0 in
+  both root and gateway after the verified toolchain upgrade.
 - Gate hardened 2026-10-27 per PM review: `parseAuditOutput` rejects
   `{error:E503}`-style registry JSON, malformed JSON, missing
   `metadata.vulnerabilities`, and wrong report versions — nonzero npm exit is

@@ -20,6 +20,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { reissueDanaQrisInvoice, isDanaQrisEnabled, isDanaQrisConfigured } from "@/lib/payments/dana-qris";
 import { isValidOrderCode } from "@/lib/security";
 import { checkRateLimit } from "@/lib/rateLimit";
+import { queryFirst } from "@/lib/db";
+import { newOrderAccessFailure } from "@/lib/order-access";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -44,6 +46,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const orderCode = String(code || "").toUpperCase();
   if (!isValidOrderCode(orderCode)) {
     return NextResponse.json({ error: "Kode pesanan tidak valid" }, { status: 400 });
+  }
+
+  const order = await queryFirst("SELECT code,buyer_access_version FROM orders WHERE code=?", orderCode);
+  if (order) {
+    const accessFailure = await newOrderAccessFailure(request, order);
+    if (accessFailure) return accessFailure;
   }
 
   if (!isDanaQrisEnabled() || !isDanaQrisConfigured()) {

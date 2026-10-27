@@ -15,6 +15,8 @@ import { WarrantyClaimAccordion } from "@/components/storefront/WarrantyClaim";
 import { MobileCollapsible } from "@/components/storefront/ProductCopy";
 import { InlineSpinner, OrderStatusSkeleton } from "@/components/storefront/Skeletons";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
+import { orderAccessHeaders, readOrderAccessCode, rememberOrderAccessCode } from "@/lib/order-access-client";
+import { OrderAccessNotice } from "@/components/storefront/OrderAccessNotice";
 
 type QrisInvoice = {
   payable_amount: number;
@@ -175,18 +177,26 @@ export default function OrderSuccessPage() {
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [cancelContact, setCancelContact] = useState("");
   const polling = useRef(false);
+  const buyerProof = useRef("");
+  const [buyerAccess, setBuyerAccess] = useState("");
+  const [accessInput, setAccessInput] = useState("");
+  const [needsAccess, setNeedsAccess] = useState(false);
 
   const fetchOrder = useCallback(async (wake = false) => {
     if (!code || typeof code !== "string") return;
     // `wake=1` HANYA dari tombol manual: server membangunkan poller GoPay.
-    const response = await fetchWithTimeout(`/api/orders?code=${encodeURIComponent(code)}${wake ? "&wake=1" : ""}`, { cache: "no-store" }, 20_000);
+    const access = buyerProof.current || readOrderAccessCode(code);
+    if (access) { buyerProof.current = access; setBuyerAccess(access); setCancelContact(access); }
+    const response = await fetchWithTimeout(`/api/orders?code=${encodeURIComponent(code)}${wake ? "&wake=1" : ""}`, { cache: "no-store", headers: orderAccessHeaders(code, access) }, 20_000);
     const body = await response.json().catch(() => ({}));
     if (response.status === 404) {
       setOrder(null);
-      setFetchError(null);
+      setNeedsAccess(body.reason === "access_required");
+      setFetchError(body.reason === "access_required" ? "Masukkan kode akses yang diberikan saat checkout." : null);
       return;
     }
     if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
+    setNeedsAccess(false);
     setOrder(fromApi(body.order));
     setFetchError(body.order?.qris_preparation_error ? "QRIS belum tersedia. Tunggu sebentar lalu coba lagi; pesanan yang sama tetap digunakan." : null);
     // Titik "belum dibayar" di tab Pesanan membaca salinan lokal; catat status
@@ -232,6 +242,7 @@ export default function OrderSuccessPage() {
       const response = await fetch(`/api/payments/qris/${encodeURIComponent(code)}/reissue`, {
         method: "POST",
         cache: "no-store",
+        headers: orderAccessHeaders(code, buyerProof.current),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || "Gagal menerbitkan QRIS baru.");
@@ -250,7 +261,7 @@ export default function OrderSuccessPage() {
   const cancelOrder = useCallback(async () => {
     if (!code || typeof code !== "string" || cancelling) return;
     if (!cancelContact.trim()) {
-      setCancelError("Isi No. WA atau email yang dipakai saat checkout.");
+      setCancelError("Isi kode akses pesanan, atau kontak checkout untuk pesanan lama.");
       return;
     }
     setCancelling(true);
@@ -381,6 +392,18 @@ export default function OrderSuccessPage() {
   if (loading && !order) {
     return <OrderStatusSkeleton />;
   }
+  if (needsAccess && !order) return <form className="mx-auto max-w-md space-y-4 px-4 py-12" onSubmit={(event) => {
+    event.preventDefault(); buyerProof.current = accessInput.trim(); rememberOrderAccessCode(code, accessInput);
+    setLoading(true); void fetchOrder().catch((error) => setFetchError(error instanceof Error ? error.message : "Pesanan belum dapat dimuat. Coba lagi.")).finally(() => setLoading(false));
+  }}>
+    <h1 className="text-xl font-bold text-white">Buka pesananmu</h1>
+    <p className="text-sm leading-6 text-white/65">Masukkan kode akses yang kamu simpan saat checkout atau terima melalui email/chat pembelian.</p>
+    <label htmlFor="order-access-code" className="block text-sm text-white/80">Kode akses pesanan</label>
+    <input id="order-access-code" value={accessInput} onChange={event => setAccessInput(event.target.value)} autoComplete="off" autoCapitalize="characters" spellCheck={false} required maxLength={100} className="h-12 w-full rounded-xl border border-white/20 bg-white/5 px-4 font-mono text-white outline-none focus:border-[#00E5FF]" />
+    <button type="submit" className="min-h-12 w-full rounded-xl bg-[#00E5FF] px-5 font-semibold text-[#080C1E]">Buka pesanan</button>
+    {fetchError && <p role="alert" className="text-xs text-amber-200">{fetchError}</p>}
+    <Link href="/lacak-pesanan" className="block text-sm text-[#00E5FF]">Lacak pesanan lain</Link>
+  </form>;
   if (fetchError && !order) {
     return <div className="mx-auto max-w-[640px] px-4 py-16 text-center"><p className="text-sm text-red-300">{fetchError}</p><button onClick={() => location.reload()} className="mt-3 text-sm text-[#00E5FF]">Coba lagi</button></div>;
   }
@@ -536,6 +559,7 @@ export default function OrderSuccessPage() {
 
   return (
     <div className={`mx-auto px-4 sm:px-6 ${compactPayment ? "max-w-[760px] py-4 sm:py-6" : "max-w-[640px] py-10"}`}>
+      <OrderAccessNotice accessCode={buyerAccess} />
       <div className={`ax-glass-card text-center ${compactPayment ? "rounded-2xl p-4 sm:p-5" : "rounded-[28px] p-6 sm:p-8"}`}>
         {compactPayment ? (
           <div className="grid grid-cols-[32px_minmax(0,1fr)_32px] items-center gap-2 text-center sm:grid-cols-[40px_auto_40px] sm:justify-center sm:gap-3">
@@ -693,7 +717,7 @@ export default function OrderSuccessPage() {
         )}
 
         {isPaid && (order.credentialsReady ? (
-          <WrCredentialsPanel key={order.code} code={order.code} deliveryProgress={order.uniqueUnitsProgress} contactHint={[order.wa, order.email].filter(Boolean).join(" · ")} />
+          <WrCredentialsPanel key={order.code} code={order.code} prefillContact={buyerAccess} deliveryProgress={order.uniqueUnitsProgress} contactHint={[order.wa, order.email].filter(Boolean).join(" · ")} />
         ) : !isDeliveryFailed && (
           // Detail akun belum/tidak pernah ada: jangan tampilkan form verifikasi
           // yang pasti gagal. Beri kepastian ke mana produk dikirim, dan JANGAN
@@ -747,17 +771,16 @@ export default function OrderSuccessPage() {
               <div className="rounded-2xl border border-red-400/20 bg-red-500/[0.06] p-4 text-left" role="dialog" aria-label="Konfirmasi pembatalan pesanan">
                 <p className="text-sm font-semibold text-red-200">Batalkan pesanan {order.code}?</p>
                 <p className="mt-1 text-xs leading-5 text-white/55">Stok langsung kembali dan bisa dipesan orang lain. Pastikan kamu belum membayar — bila dana sudah masuk, hubungi admin dengan kode pesanan.</p>
-                <label htmlFor="cancel-contact" className="mt-3 block text-xs font-medium text-white/60">No. WA atau email checkout *</label>
+                <label htmlFor="cancel-contact" className="mt-3 block text-xs font-medium text-white/60">{buyerAccess ? "Kode akses pesanan *" : "No. WA atau email checkout *"}</label>
                 <input
                   id="cancel-contact"
                   value={cancelContact}
                   onChange={(event) => setCancelContact(event.target.value)}
-                  placeholder="0812… atau nama@email.com"
-                  inputMode="email"
+                  placeholder={buyerAccess ? "Kode akses dari checkout" : "0812… atau nama@email.com"}
                   autoCapitalize="none"
                   autoCorrect="off"
                   spellCheck={false}
-                  className="mt-1 h-11 w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 text-sm text-white placeholder:text-white/30 focus:border-red-400/40 focus:outline-none"
+                  className="mt-1 h-11 w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 text-sm text-white placeholder:text-white/55 focus:border-red-400/40 focus:outline-none"
                 />
                 {cancelError && <p role="alert" className="mt-2 text-xs text-red-300">{cancelError}</p>}
                 <div className="mt-3 grid grid-cols-2 gap-2.5">

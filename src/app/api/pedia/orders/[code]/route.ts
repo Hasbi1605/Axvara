@@ -3,7 +3,7 @@
 // Tanpa data supplier mentah. Refill eligibility dihitung server.
 import { NextRequest, NextResponse } from "next/server";
 import { createDatabaseAccess } from "@/lib/db-access";
-import { buyerContactMatches } from "@/lib/order-contact";
+import { buyerOrderAccessMatches, newOrderAccessFailure } from "@/lib/order-access";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { readPediaServiceCopy } from "@/lib/pedia/service-copy";
 
@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   if (!checkRateLimit(request, "pedia:status")) return NextResponse.json({ error: "Terlalu sering, coba lagi sebentar." }, { status: 429, headers: { "Retry-After": "60", "Cache-Control": "private, no-store" } });
-  const contact = request.headers.get("x-order-contact") || "";
+  const contact = request.headers.get("x-order-access-code") || request.headers.get("x-order-contact") || "";
   if (!contact) return NextResponse.json({ error: "contact_required" }, { status: 401, headers: { "Cache-Control": "private, no-store" } });
   const { code } = await params;
   const clean = String(code || "").trim().toUpperCase();
@@ -21,7 +21,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
   const db = createDatabaseAccess();
   const order = await db.queryFirst(`SELECT * FROM orders WHERE code=?`, clean).catch(() => null);
-  if (!order || !buyerContactMatches(contact, order)) return NextResponse.json({ error: "Pesanan tidak ditemukan atau kontak tidak cocok." }, { status: 404, headers: { "Cache-Control": "private, no-store" } });
+  if (order) {
+    const failure = await newOrderAccessFailure(request, order, contact);
+    if (failure) return failure;
+  }
+  if (!order || !(await buyerOrderAccessMatches(contact, order))) return NextResponse.json({ error: "Pesanan tidak ditemukan atau kode akses tidak cocok." }, { status: 404, headers: { "Cache-Control": "private, no-store" } });
   if (order.status === "pending") {
     const payment = await db.queryFirst("SELECT provider,status,requested_amount FROM payment_transactions WHERE order_code=?",clean);
     if (payment?.provider === "klikqris" && ["pending", "initializing"].includes(String(payment.status))) {
@@ -116,5 +120,5 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         image_url: tx.qris_url, expires_at: tx.expires_at, status: tx.status,
       } : null,
     },
-  }, { headers: { "Cache-Control": "private, no-store", "Vary": "x-order-contact" } });
+  }, { headers: { "Cache-Control": "private, no-store", "Vary": "x-order-contact, x-order-access-code" } });
 }

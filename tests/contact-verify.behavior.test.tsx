@@ -69,13 +69,15 @@ describe("panel Detail Akun Digital", () => {
     expect(sessionStorage.getItem(checkoutContactKey(CODE))).toBe("081234567890");
   });
 
-  it("token ditolak server (403) → token dibuang lalu kontak checkout dipakai", async () => {
+  it("token ditolak server (403) → token dibuang lalu kode akses/kontak dipakai ulang", async () => {
     sessionStorage.setItem(`wr-cred-token:${CODE}`, "b".repeat(64));
     sessionStorage.setItem(checkoutContactKey(CODE), "081234567890");
     const calls = stubTokenThenContact(403);
     render(<WrCredentialsPanel code={CODE} />);
     await waitFor(() => expect(screen.getByRole("link", { name: "https://canva.com/join/ABC" })).toBeTruthy());
-    expect(calls).toEqual([`GET /api/orders/${CODE}/credentials?token=${"b".repeat(64)}`, `POST /api/orders/${CODE}/credentials`]);
+    // Transport kapabilitas kini header x-credential-token (tanpa token di
+    // query); verifikasi ulang tetap POST kontak yang sama.
+    expect(calls).toEqual([`GET /api/orders/${CODE}/credentials`, `POST /api/orders/${CODE}/credentials`]);
     expect(sessionStorage.getItem(`wr-cred-token:${CODE}`)).toBeNull();
   });
 
@@ -95,40 +97,55 @@ describe("panel Detail Akun Digital", () => {
     expect(checkout).not.toMatch(/localStorage\.setItem\([^)]*checkoutContactKey/);
   });
 
-  it("menerima email, menampilkan kontak terdaftar tersamar, dan pesan gagal yang menyebut keduanya", async () => {
+  it("menerima email, menampilkan kontak terdaftar tersamar, dan pesan gagal yang menyebut kode akses atau keduanya", async () => {
     const calls = stubCredentials(false);
     render(<WrCredentialsPanel code={CODE} contactHint="62812****7890 · r***@gmail.com" />);
     expect(screen.getByText("Terdaftar: 62812****7890 · r***@gmail.com")).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("No. WA atau email checkout"), { target: { value: " Rani@Gmail.com " } });
+    fireEvent.change(screen.getByLabelText("Kode akses atau kontak pesanan lama"), { target: { value: " Rani@Gmail.com " } });
     fireEvent.click(screen.getByRole("button", { name: "Tampilkan" }));
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("No. WA atau email tidak cocok dengan data pesanan."));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("Kode akses atau kontak pesanan lama tidak cocok."));
     expect(calls[0].body).toEqual({ contact: "Rani@Gmail.com" });
   });
 });
 
 describe("form Lacak Pesanan", () => {
-  it("email checkout diterima dan dikirim sebagai `contact`", async () => {
+  it("kode akses pesanan diterima dan dikirim sebagai `contact`", async () => {
     const calls: Record<string, unknown>[] = [];
     vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => {
       calls.push(JSON.parse(String(init?.body ?? "{}")));
-      return { ok: false, status: 404, json: async () => ({ error: "Pesanan tidak ditemukan atau No. WA/email tidak cocok." }) };
+      return { ok: false, status: 404, json: async () => ({ error: "Pesanan tidak ditemukan atau kode akses tidak cocok." }) };
     }));
     render(<LacakPesananClient />);
     fireEvent.change(screen.getByLabelText(/Kode pesanan/), { target: { value: CODE } });
-    const contact = screen.getByLabelText(/No\. WA atau email checkout/) as HTMLInputElement;
+    const contact = screen.getByLabelText(/Kode akses pesanan/) as HTMLInputElement;
+    fireEvent.change(contact, { target: { value: "abcde-12345-fghij-67890-klmnop" } });
+    expect(contact.value).toBe("abcde-12345-fghij-67890-klmnop");
+    fireEvent.submit(contact.closest("form")!);
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0]).toEqual({ code: CODE, contact: "abcde-12345-fghij-67890-klmnop" });
+  });
+
+  it("kontak checkout lama tetap diterima sebagai `contact` (fallback pesanan lama)", async () => {
+    const calls: Record<string, unknown>[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => {
+      calls.push(JSON.parse(String(init?.body ?? "{}")));
+      return { ok: false, status: 404, json: async () => ({ error: "x" }) };
+    }));
+    render(<LacakPesananClient />);
+    fireEvent.change(screen.getByLabelText(/Kode pesanan/), { target: { value: CODE } });
+    const contact = screen.getByLabelText(/Kode akses pesanan/) as HTMLInputElement;
     fireEvent.change(contact, { target: { value: "rani.putri@gmail.com" } });
-    expect(contact.value).toBe("rani.putri@gmail.com");
     fireEvent.submit(contact.closest("form")!);
     await waitFor(() => expect(calls).toHaveLength(1));
     expect(calls[0]).toEqual({ code: CODE, contact: "rani.putri@gmail.com" });
   });
 
-  it("isian yang bukan WA maupun email ditolak di form", () => {
+  it("isian yang bukan kode akses, WA, maupun email ditolak di form", () => {
     render(<LacakPesananClient />);
-    const contact = screen.getByLabelText(/No\. WA atau email checkout/);
-    fireEvent.change(contact, { target: { value: "rani@gmail" } });
+    const contact = screen.getByLabelText(/Kode akses pesanan/);
+    fireEvent.change(contact, { target: { value: "!!!" } });
     fireEvent.blur(contact);
-    expect(screen.getByText("Isi No. WA (0812… / +62812…) atau email yang dipakai saat checkout.")).toBeTruthy();
+    expect(screen.getByText("Masukkan kode akses, atau No. WA/email checkout untuk pesanan lama.")).toBeTruthy();
   });
 
   it("tautan ?email= langsung melacak sekali", async () => {

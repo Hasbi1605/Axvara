@@ -27,7 +27,11 @@ async function checkPagesEnvironment(env = process.env, fetchFn = fetch) {
   if (body?.success !== true || !body.result || (body.errors && (!Array.isArray(body.errors) || body.errors.length))) {
     throw new Error("Pages configuration API failed");
   }
-  return { ...variableBudget(body.result, plan.variableLimit), plan: plan.name };
+  const budget = variableBudget(body.result, plan.variableLimit);
+  if (body.result.deployment_configs.production.env_vars.BUYER_ORDER_ACCESS_SECRET?.type !== "secret_text") {
+    throw new Error("Pages buyer access secret metadata unavailable");
+  }
+  return { ...budget, plan: plan.name };
 }
 
 async function main() {

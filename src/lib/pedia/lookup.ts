@@ -4,15 +4,11 @@
 import { NextResponse } from "next/server";
 import { queryFirst } from "@/lib/db";
 import { MAX_QRIS_REISSUES } from "@/lib/payments/dana-qris";
-import { constantTimeEqual } from "@/lib/security";
-import { emailMatches, normalizeWa, parseBuyerContact } from "@/lib/order-contact";
 import { pediaStatusLabel } from "@/components/pedia/StatusWidgets";
+import { buyerOrderAccessMatches, newOrderAccessFailure, orderAccessDenied } from "@/lib/order-access";
 
-export async function lookupPediaOrder(code: string, contactRaw: string) {
-  const notFound = () =>
-    NextResponse.json({ error: "Pesanan tidak ditemukan atau No. WA/email tidak cocok. Periksa kembali kode serta No. WA atau email yang dipakai saat checkout." }, { status: 404 });
-  const contact = parseBuyerContact(contactRaw);
-  if (!contact) return notFound();
+export async function lookupPediaOrder(code: string, contactRaw: string, adminView = false, request?: Request) {
+  const notFound = orderAccessDenied;
   const row = (await queryFirst(
     `SELECT o.*, pt.payable_amount, pt.unique_code, pt.qris_url AS dynamic_qris_url,
             pt.expires_at AS payment_expires_at, pt.status AS transaction_status
@@ -21,12 +17,11 @@ export async function lookupPediaOrder(code: string, contactRaw: string) {
     code,
   )) as Record<string, unknown> | undefined;
   if (!row) return notFound();
-  if (contact.kind === "email") {
-    if (!emailMatches(contact.value, row.customer_email)) return notFound();
-  } else {
-    const storedWa = normalizeWa(row.customer_wa);
-    if (!storedWa || !constantTimeEqual(contact.value, storedWa)) return notFound();
+  if (!adminView && request) {
+    const failure = await newOrderAccessFailure(request, row, contactRaw);
+    if (failure) return failure;
   }
+  if (!adminView && !(await buyerOrderAccessMatches(contactRaw, row))) return notFound();
   const item = (await queryFirst(
     `SELECT i.*, p.name AS product_name, t.tier AS tier_name
        FROM pedia_order_items i

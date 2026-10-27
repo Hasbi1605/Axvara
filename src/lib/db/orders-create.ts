@@ -9,6 +9,7 @@ import { getD1, getSharedMem, getOrderMem } from "./client";
 import { StockReservationError } from "./errors";
 import type { D1Statement, AtomicOrderItem } from "./types";
 import { markUniqueUnitLines } from "@/lib/fulfillment/units";
+import { assertOrderAccessConfigured } from "@/lib/order-access";
 
 type AtomicOrderInput = {
   code: string;
@@ -24,6 +25,7 @@ type AtomicOrderInput = {
 };
 
 export async function createOrderWithStock(input: AtomicOrderInput): Promise<void> {
+  assertOrderAccessConfigured();
   const d1 = getD1();
   if (d1) {
     const ids = [...new Set(input.items.map(item => item.variant_id).filter((id): id is number => id != null))];
@@ -171,7 +173,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
     }
     statements.push(
       d1.prepare(
-        "INSERT INTO orders (code,customer_name,customer_wa,customer_email,items,subtotal,payment_method,payment_account,proof_url,status,sales_channel,variant_id,quote_id,expires_at) VALUES (?,?,?,?,?,?,?,?,?,?,'web',?,?,datetime('now','+24 hours'))",
+        "INSERT INTO orders (code,customer_name,customer_wa,customer_email,items,subtotal,payment_method,payment_account,proof_url,status,sales_channel,variant_id,quote_id,expires_at,buyer_access_version) VALUES (?,?,?,?,?,?,?,?,?,?,'web',?,?,datetime('now','+24 hours'),1)",
       ).bind(
         input.code,
         input.customerName,
@@ -223,6 +225,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
     customer_name: input.customerName,
     customer_wa: input.customerWa,
     customer_email: input.customerEmail,
+    buyer_access_version: 1,
     items: JSON.stringify(input.items),
     subtotal: input.subtotal,
     payment_method: input.paymentMethod,

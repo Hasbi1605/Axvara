@@ -1,5 +1,35 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Kode akses pembeli dan toolchain — 27 Oktober 2026
+
+✅ Implementasi lokal; publikasi melalui CI. Pesanan **baru** Market, Pedia,
+dan Telegram memakai kode akses pribadi 26 karakter. Bot WhatsApp nonaktif
+dan di luar lingkup perubahan ini sesuai keputusan owner; tidak diaktifkan. Checkout web
+menampilkannya di halaman pesanan; email privat dan invoice/status chat pribadi
+Telegram juga menyertakannya. Kode dipakai bersama nomor pesanan untuk lacak,
+status/wake, kredensial, batal dan reissue/refill yang memenuhi syarat. Tidak ada
+OTP pembeli. **Pesanan lama tetap memakai kontak checkout**, sesuai keputusan
+owner; tidak ada backfill atau pengiriman massal.
+
+Kode hanya disimpan di sessionStorage tab pembeli. Riwayat perangkat tidak
+menyimpan kode; simpan salinan untuk perangkat lain. Kode tidak dimasukkan ke
+query URL atau outbox WA/grup. Untuk kode hilang, admin memeriksa kepemilikan lalu
+memakai **Lihat kode akses pembeli** di detail pesanan Market/Pedia. **Ganti kode
+akses** mencabut kode dan capability lama; tidak mengubah status pembayaran.
+Bot di chat pribadi tetap memeriksa identitas platform.
+
+Pages menambah satu **secret_text** `BUYER_ORDER_ACCESS_SECRET`; sumber lokal
+`.buyer-access-credentials` ignored/chmod600. Jangan mengganti key ini saat
+mengganti password/JWT: key buyer punya lifecycle terpisah. Produksi63+4 sistem
+=67/128 Paid; preview/password/secret lain tetap. Migrasi0081 mempertahankan
+order legacy dan audit lama. [Kontrak dan pemulihan](issue/buyer-access-2026-10-27.md).
+
+Toolchain sekarang Miniflare4.20260730.0, Undici7.30.1 dan Sharp0.35.5; nested
+Zod lama dihapus dari dependency tree. Adapter tetap next-on-pages1.13.16 dan
+hosting tetap Pages. Audit registry lengkap/root serta runtime root/gateway
+diperiksa kembali sebelum publikasi; lihat [bukti dependency](docs/security/dependency-audit-2026-10-27.md).
+
+
 ## Proteksi admin Access — 27 Oktober 2026
 
 ✅ Cloudflare Access aktif untuk admin; guard origin diverifikasi lokal dan
@@ -11,7 +41,8 @@ di samping cookie aplikasi; pembeli, bot dan webhook tidak mendapat tantangan in
 
 Pages produksi memakai dua **secret_text** baru `CF_ACCESS_TEAM_DOMAIN` dan
 `CF_ACCESS_AUD`; `ADMIN_EMAIL` existing diganti tanpa mengubah password/hash/JWT
-secret. Produksi62+4 sistem=66/128 Paid. Guard produksi gagal tertutup bila
+secret. Sesudah tambahan key buyer: produksi63+4 sistem=67/128 Paid. Guard
+produksi gagal tertutup bila
 konfigurasi/token/verifikasi tidak valid; dev tanpa kedua env tetap memakai
 fixture lama. Sesi Access8jam melapisi JWT8jam + idle2jam aplikasi.
 
@@ -78,8 +109,8 @@ header browser lain ikut respons rewrite Pedia, redirect dan error middleware.
 Dependency runtime dipatch (Zod4.6.7, gateway Fastify5.12.7/Sharp0.35.5 dan
 transitif terkait). CI menjalankan audit read-only root+gateway sebelum build;
 high/critical runtime atau hasil registry tidak valid menghentikan rilis.
-Full scan masih melaporkan3 high pada toolchain dev Miniflare/Pages; perubahan
-major adapter tidak dipaksakan. Jangan membuka emulator/dev ke jaringan publik.
+Tiga high toolchain dev sebelumnya ditutup dengan Miniflare4 beserta patch
+Undici/Sharp, tanpa mengganti adapter Pages; audit lengkap kembali nol pada27Oktober. Jangan membuka emulator/dev ke jaringan publik.
 [Bukti dan exception dependency](docs/security/dependency-audit-2026-10-27.md).
 
 ## Pembatas checkout — 27 Oktober 2026

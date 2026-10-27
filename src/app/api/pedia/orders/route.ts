@@ -9,6 +9,7 @@ import { isPaymentMaintenanceEnabled, paymentMaintenanceResponse } from "@/lib/p
 // DANA/GoPay + fulfillment existing langsung bekerja. Job Pedia dibuat di
 // transaksi checkout; dispatch menunggu order lunas.
 import { NextRequest, NextResponse } from "next/server";
+import { assertOrderAccessConfigured, deriveOrderAccessCode } from "@/lib/order-access";
 import { z } from "zod";
 import { checkRateLimit, clientIp } from "@/lib/rateLimit";
 import { checkoutSubjects, consumeCheckoutSlot } from "@/lib/checkout-guard";
@@ -53,7 +54,7 @@ async function checkoutResponse(db: DatabaseAccess, order: Record<string, unknow
       return NextResponse.json({ error: "Pesanan tersimpan. QRIS belum tersedia; coba lanjutkan lagi dengan data yang sama.", code: order.code }, { status: 503 });
     }
   }
-  return NextResponse.json({ code: order.code, subtotal: order.subtotal, credit_used: creditUsed, payable, status: order.status, qris, reused }, { status: reused ? 200 : 201 });
+  return NextResponse.json({ code: order.code, buyer_access_code: await deriveOrderAccessCode(order), subtotal: order.subtotal, credit_used: creditUsed, payable, status: order.status, qris, reused }, { status: reused ? 200 : 201, headers: { "Cache-Control": "private, no-store" } });
 }
 
 export async function POST(req: NextRequest) {
@@ -71,6 +72,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
   }
   const { customer_wa, customer_email, quote_token } = parsed.data;
+  try { assertOrderAccessConfigured(); } catch {
+    return NextResponse.json({ error: "Checkout sementara tidak tersedia." }, { status: 503 });
+  }
   if (!process.env.ADMIN_JWT_SECRET && process.env.NODE_ENV === "production") return NextResponse.json({ error: "Checkout sementara tidak tersedia." }, { status: 503 });
   const quote = await verifyPediaQuoteToken(quote_token);
   if (!quote) {
@@ -82,7 +86,7 @@ export async function POST(req: NextRequest) {
   // before — including historical ProviderSMM orders. Only unreserved
   // retired-provider quotes are rejected below, before any DB tier checks,
   // debit/reservation, or invoice.
-  const reused = await db.queryFirst(`SELECT code, subtotal, status FROM orders WHERE quote_id=?`, `pedia:${quote.jti}`);
+  const reused = await db.queryFirst(`SELECT code, subtotal, status, buyer_access_version FROM orders WHERE quote_id=?`, `pedia:${quote.jti}`);
   if (reused) return checkoutResponse(db, reused, true);
   // Persisted retries above retain their original payable, including legacy
   // credits. An unreserved old quote cannot debit or redeem a credit now.
@@ -180,8 +184,8 @@ export async function POST(req: NextRequest) {
   let claimed = false;
   try {
     const result = await db.d1.batch([
-      statement(`INSERT INTO orders(code,quote_id,customer_name,customer_wa,customer_email,items,subtotal,payment_method,payment_account,status,sales_channel,order_kind,payment_status,paid_at,expires_at)
-        SELECT ?,?,'',?,?,?,?, 'qris','qris',?,'web','pedia',?,CASE WHEN ?=0 THEN datetime('now') ELSE NULL END,datetime('now','+15 minutes')
+      statement(`INSERT INTO orders(code,quote_id,customer_name,customer_wa,customer_email,items,subtotal,payment_method,payment_account,status,sales_channel,order_kind,payment_status,paid_at,expires_at,buyer_access_version)
+        SELECT ?,?,'',?,?,?,?, 'qris','qris',?,'web','pedia',?,CASE WHEN ?=0 THEN datetime('now') ELSE NULL END,datetime('now','+15 minutes'),1
         WHERE NOT EXISTS(SELECT 1 FROM pedia_order_items WHERE target_normalized=? AND product_id=? AND status IN ('awaiting_payment','queued','submitting','submitted','in_progress','needs_check'))`,
         code,quoteIdRow,normalizeWa(customer_wa),customer_email,items,freshTotal,payable ? "pending" : "lunas",payable ? "pending" : "paid",payable,
         quote.target_normalized,quote.product_id),
@@ -191,7 +195,7 @@ export async function POST(req: NextRequest) {
     ]);
     claimed = Number(result[0]?.meta?.changes) === 1;
   } catch {
-    const existing = await db.queryFirst(`SELECT code,subtotal,status FROM orders WHERE quote_id=?`,quoteIdRow).catch(() => null);
+    const existing = await db.queryFirst(`SELECT code,subtotal,status,buyer_access_version FROM orders WHERE quote_id=?`,quoteIdRow).catch(() => null);
     if (existing) return checkoutResponse(db,existing,true);
     return NextResponse.json({ error: "Pesanan belum tersimpan. Coba lagi dengan data yang sama." }, { status: 503 });
   }
@@ -199,11 +203,11 @@ export async function POST(req: NextRequest) {
     // A parallel retry of this same quote may have committed between the
     // reuse lookup above and this claim (the durable guard adds awaits in
     // between). That winner is a reuse, never a duplicate-target rejection.
-    const raceWinner = await db.queryFirst(`SELECT code,subtotal,status FROM orders WHERE quote_id=?`, quoteIdRow).catch(() => null);
+    const raceWinner = await db.queryFirst(`SELECT code,subtotal,status,buyer_access_version FROM orders WHERE quote_id=?`, quoteIdRow).catch(() => null);
     if (raceWinner) return checkoutResponse(db, raceWinner, true);
     const dup = await db.queryFirst(`SELECT order_code FROM pedia_order_items WHERE target_normalized=? AND product_id=? AND status IN ('awaiting_payment','queued','submitting','submitted','in_progress','needs_check') ORDER BY id DESC LIMIT 1`,quote.target_normalized,quote.product_id);
     if (dup) return NextResponse.json({ error: "duplicate_active_order", message: "Link ini masih memiliki pesanan yang diproses. Tunggu selesai atau hubungi admin." }, { status: 409 });
     return NextResponse.json({ error: "checkout_changed", message: "Pesanan berubah. Periksa ulang sebelum melanjutkan." }, { status: 409 });
   }
-  return checkoutResponse(db,{ code,subtotal:freshTotal,status:payable ? "pending" : "lunas" },false);
+  return checkoutResponse(db,{ code,subtotal:freshTotal,status:payable ? "pending" : "lunas", buyer_access_version: 1 },false);
 }

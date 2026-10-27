@@ -5,9 +5,10 @@ import { z } from "zod";
 import { queryFirst } from "@/lib/db";
 import { MAX_QRIS_REISSUES } from "@/lib/payments/dana-qris";
 import { checkRateLimit } from "@/lib/rateLimit";
-import { constantTimeEqual } from "@/lib/security";
-import { emailMatches, normalizeWa, parseBuyerContact } from "@/lib/order-contact";
+import { parseBuyerContact } from "@/lib/order-contact";
 import { requireAdmin } from "@/lib/auth";
+import { buyerOrderAccessMatches, newOrderAccessFailure, orderAccessDenied } from "@/lib/order-access";
+import { normalizeOrderAccessCode } from "@/lib/order-access-format";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -17,10 +18,17 @@ const schema = z.object({
   code: z.string().trim().min(1).max(32),
   contact: z.string().trim().max(254).optional(),
   wa: z.string().trim().max(254).optional(),
+  access_code: z.string().trim().max(100).optional(),
   adminView: z.boolean().optional(),
 });
 
 export async function POST(req: NextRequest) {
+  const response = await lookup(req);
+  response.headers.set("Cache-Control", "private, no-store");
+  return response;
+}
+
+async function lookup(req: NextRequest) {
   if (!checkRateLimit(req, "orders:lookup")) {
     return NextResponse.json({ error: "Terlalu sering, coba lagi 1 menit." }, { status: 429, headers: { "Retry-After": "60" } });
   }
@@ -31,7 +39,7 @@ export async function POST(req: NextRequest) {
   if (adminView && !(await requireAdmin(req))) {
     return NextResponse.json({ error: "Sesi admin berakhir. Masuk ke panel admin lalu buka kembali tautan ini." }, { status: 401, headers: { "Cache-Control": "private, no-store" } });
   }
-  const contactRaw = parsed.success ? (parsed.data.contact ?? parsed.data.wa ?? "").trim() : "";
+  const contactRaw = parsed.success ? (parsed.data.access_code ?? parsed.data.contact ?? parsed.data.wa ?? "").trim() : "";
   if (!parsed.success || (!adminView && !contactRaw)) {
     return NextResponse.json({ error: "Kode pesanan dan No. WA atau email wajib diisi." }, { status: 400 });
   }
@@ -39,13 +47,13 @@ export async function POST(req: NextRequest) {
   // Kode Pedia (AXP-…) — pola sama, tabel item berbeda (PD-13).
   if (/^AXP-\d{8}-[A-Z0-9]{8}$/.test(code)) {
     const { lookupPediaOrder } = await import("@/lib/pedia/lookup");
-    return lookupPediaOrder(code, contactRaw);
+    return lookupPediaOrder(code, contactRaw, adminView, req);
   }
   if (!/^AXV-\d{8}-[A-Z0-9]{8}$/.test(code)) {
     return NextResponse.json({ error: "Format kode tidak valid. Contoh: AXV-20260917-AB12CD34." }, { status: 400 });
   }
   const contact = parseBuyerContact(contactRaw);
-  if (!adminView && !contact) {
+  if (!adminView && !contact && !normalizeOrderAccessCode(contactRaw)) {
     return NextResponse.json({
       error: contactRaw.includes("@")
         ? "Format email tidak valid. Contoh: nama@gmail.com."
@@ -63,18 +71,14 @@ export async function POST(req: NextRequest) {
 
   // Respons generik untuk tidak-ditemukan maupun WA-tidak-cocok agar kode
   // order tidak bisa di-oracle satu per satu (enumerasi).
-  const notFound = () =>
-    NextResponse.json({ error: "Pesanan tidak ditemukan atau No. WA/email tidak cocok. Periksa kembali kode serta No. WA atau email yang dipakai saat checkout." }, { status: 404 });
+  const notFound = orderAccessDenied;
 
   if (!row) return notFound();
-  if (adminView) {
-    // Existing, revocable admin session is the authority; URL carries only the order code.
-  } else if (contact?.kind === "email") {
-    if (!emailMatches(contact.value, row.customer_email)) return notFound();
-  } else {
-    const storedWa = normalizeWa(row.customer_wa);
-    if (!storedWa || !contact || !constantTimeEqual(contact.value, storedWa)) return notFound();
+  if (!adminView) {
+    const failure = await newOrderAccessFailure(req, row, contactRaw);
+    if (failure) return failure;
   }
+  if (!adminView && !(await buyerOrderAccessMatches(contactRaw, row))) return notFound();
 
   const waFull = String(row.customer_wa ?? "");
   const waMasked = waFull.length >= 7 ? `${waFull.slice(0, 5)}****${waFull.slice(-4)}` : waFull ? `${waFull.slice(0, 3)}****` : "";

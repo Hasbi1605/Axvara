@@ -22,7 +22,7 @@ import {
   verifyCredentialToken,
 } from "@/lib/warung-rebahan/deliver";
 import { readDeliveredSnapshots } from "@/lib/fulfillment/delivery/buyer-email";
-import { buyerContactMatches } from "@/lib/order-contact";
+import { buyerOrderAccessMatches, newOrderAccessFailure, requiresOrderAccessCode } from "@/lib/order-access";
 import { resolveCredentialTermsByItem } from "@/lib/orders/credential-terms";
 import { requireAdmin } from "@/lib/auth";
 import type { VariantCopy } from "@/lib/product-copy/format";
@@ -38,7 +38,7 @@ function privateJson(body: unknown, init?: Parameters<typeof NextResponse.json>[
 async function orderReady(code: string) {
   const db = createDatabaseAccess();
   const order = await db
-    .queryFirst(`SELECT code, customer_wa, customer_email, status, payment_status FROM orders WHERE code=?`, code)
+    .queryFirst(`SELECT code, customer_wa, customer_email, status, payment_status, buyer_access_version FROM orders WHERE code=?`, code)
     .catch(() => null);
   if (!order) return { error: "not_found" as const, status: 404 };
   if (String(order.status) !== "lunas" || String(order.payment_status) !== "paid") {
@@ -126,20 +126,24 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
   const bounded = await readJsonBody(request, 8_000);
   if (!bounded.ok) return bounded.response;
-  const body = bounded.data as { adminView?: unknown; contact?: unknown; wa?: unknown } | null;
+  const body = bounded.data as { adminView?: unknown; contact?: unknown; wa?: unknown; access_code?: unknown } | null;
   if (body?.adminView === true) {
     if (!(await requireAdmin(request))) return privateJson({ error: "admin_session_required" }, { status: 401 });
     const ready = await orderReady(code);
     if ("error" in ready) return privateJson({ error: ready.error }, { status: ready.status });
     return privateJson({ ok: true, credentials: await readVerifiedDetails(code, ready.db) });
   }
+  const raw = String(body?.access_code ?? body?.contact ?? body?.wa ?? "").trim();
+  const authorityOrder = await createDatabaseAccess().queryFirst("SELECT code,buyer_access_version FROM orders WHERE code=?", code);
+  if (!authorityOrder) return privateJson({ error: "not_found" }, { status: 404 });
+  const accessFailure = await newOrderAccessFailure(request, authorityOrder, raw);
+  if (accessFailure) return accessFailure;
   const ready = await orderReady(code);
   if ("error" in ready) return privateJson({ error: ready.error }, { status: ready.status });
   const { order, db } = ready;
   const { contactAttemptLimited, recordContactFailure } = await import("@/lib/orders/contact-attempts");
-  if (await contactAttemptLimited(db, code, clientIp(request))) return privateJson({ error: "rate_limited" }, { status: 429, headers: { "Retry-After": "900", "Cache-Control": "private, no-store" } });
-  const raw = String(body?.contact ?? body?.wa ?? "").trim();
-  if (!buyerContactMatches(raw, order)) {
+  if (!requiresOrderAccessCode(order) && await contactAttemptLimited(db, code, clientIp(request))) return privateJson({ error: "rate_limited" }, { status: 429, headers: { "Retry-After": "900", "Cache-Control": "private, no-store" } });
+  if (!(await buyerOrderAccessMatches(raw, order))) {
     const limited = await recordContactFailure(db, code, clientIp(request));
     return privateJson({ error: limited ? "rate_limited" : "verification_failed" }, {
       status: limited ? 429 : 403, headers: { "Cache-Control": "private, no-store", ...(limited ? { "Retry-After": "900" } : {}) },
@@ -159,11 +163,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (!code || !/^AXV-\d{8}-[A-Z0-9]{8}$/.test(code)) {
     return privateJson({ error: "invalid_code" }, { status: 400 });
   }
-  const token = request.nextUrl.searchParams.get("token") || "";
+  const token = request.headers.get("x-credential-token") || request.nextUrl.searchParams.get("token") || "";
   if (!token) return privateJson({ error: "token_required" }, { status: 401 });
+  if (!(await verifyCredentialToken(code, token, createDatabaseAccess()))) return privateJson({ error: "invalid_token" }, { status: 403 });
   const ready = await orderReady(code);
   if ("error" in ready) return privateJson({ error: ready.error }, { status: ready.status });
-  if (!(await verifyCredentialToken(code, token, ready.db))) return privateJson({ error: "invalid_token" }, { status: 403 });
   const wr = await getDecryptedAccountDetails(code, ready.db, { token });
   const generic = await readDeliveredSnapshots(code, ready.db);
   const credentials: (CredentialOut & { itemIndex?: number })[] = [

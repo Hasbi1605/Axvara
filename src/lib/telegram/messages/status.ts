@@ -128,6 +128,13 @@ export function orderStatusMessage(params: {
   paymentStatus: string;
   fulfillmentStatus: string;
   payableAmount?: number;
+  /**
+   * Kode akses pesanan turunan HMAC (di-derive pemanggil dari versi
+   * tersimpan). Hanya dirender bila non-empty; legacy (versi 0/kosong) =
+   * output identik seperti sebelumnya. Hanya untuk DM pribadi 1-to-1 —
+   * JANGAN sertakan di pesan grup/outbox.
+   */
+  buyerAccessCode?: string;
 }): string {
   const { orderCode, productName, paymentStatus, fulfillmentStatus, payableAmount } = params;
   const name = escapeHtml(truncate(productName, 100));
@@ -157,6 +164,7 @@ export function orderStatusMessage(params: {
     "",
     `📦 ${name}`,
     `🔢 <code>${escapeHtml(orderCode)}</code>`,
+    ...(params.buyerAccessCode ? ["", `🔑 <b>Kode Akses:</b> <code>${escapeHtml(params.buyerAccessCode)}</code>`] : []),
   ];
 
   if (payableAmount) lines.push(`💰 ${formatRupiah(payableAmount)}`);

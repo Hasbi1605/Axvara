@@ -73,7 +73,7 @@ export async function sendWebDeliveryEmail(params: {
   if (String(ledger?.status ?? "") === "sent") return;
 
   const order = await database.queryFirst(
-    `SELECT o.customer_name, o.customer_email, o.items, o.subtotal, o.payment_method,
+    `SELECT o.customer_name, o.customer_email, o.items, o.subtotal, o.payment_method, o.buyer_access_version,
             (SELECT pt.payable_amount FROM payment_transactions pt WHERE pt.order_code=o.code
               ORDER BY pt.id DESC LIMIT 1) AS payable_amount,
             (SELECT fi.item_index FROM fulfillment_items fi WHERE fi.id=?) AS item_index
@@ -89,12 +89,19 @@ export async function sendWebDeliveryEmail(params: {
   const { buildOrderReadyTemplate } = await import("@/lib/warung-rebahan/email-forward");
   const { SITE } = await import("@/lib/site");
   const label = orderLineLabel(order.items, Number(order.item_index ?? 0));
+  // Kode akses di-derive ephemeral dari versi tersimpan aktual (NEVER tebak
+  // v1 untuk order lama/reused); legacy (versi 0) = "" dan template identik.
+  const { deriveOrderAccessCode } = await import("@/lib/order-access");
+  const buyerAccessCode = await deriveOrderAccessCode({
+    code: orderCode, buyer_access_version: order.buyer_access_version,
+  }).catch(() => "");
   const template = buildOrderReadyTemplate({
     axvaraOrderCode: orderCode,
     buyerName: String(order.customer_name ?? ""),
     invoiceUrl: `${siteUrl(SITE.webUrl)}/pesanan/${encodeURIComponent(orderCode)}`,
     supportWa: SITE.adminWaLocal,
     items: [{ label, details: plaintext }],
+    buyerAccessCode: buyerAccessCode || undefined,
     receipt: {
       total: Number(order.payable_amount ?? order.subtotal ?? 0),
       method: paymentMethodLabel(order.payment_method),

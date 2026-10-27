@@ -1,6 +1,6 @@
 import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 
-export type SecurityEvent = "login_failed" | "login_succeeded" | "login_limited" | "admin_authorized";
+export type SecurityEvent = "login_failed" | "login_succeeded" | "login_limited" | "admin_authorized" | "buyer_access_revealed" | "buyer_access_rotated";
 const auditedRequests = new WeakSet<Request>();
 
 export async function securitySubject(domain: string, subject: string): Promise<string> {

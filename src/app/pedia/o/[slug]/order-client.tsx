@@ -1,6 +1,7 @@
 "use client";
 
 import { rememberPediaContact } from "@/lib/pedia/buyer-session";
+import { orderCheckoutPath } from "@/lib/order-access-client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import { detectPediaLink, PEDIA_PLATFORM_LABEL, PEDIA_TARGET_KIND_LABEL, pediaTargetMatches, type PediaPlatform, type PediaTargetKind } from "@/lib/pedia/link";
@@ -156,7 +157,7 @@ export function OrderClient({ product, initialTarget, initialDraft, ordersEnable
         localStorage.setItem("axp-orders", JSON.stringify([{ code: data.code, name: product.name }, ...list.filter((o) => o.code !== data.code)].slice(0, 20)));
       } catch { /* Device history is optional. */ }
       rememberPediaContact(data.code, email.trim());
-      location.assign(`/pedia/pesanan/${data.code}`);
+      location.assign(orderCheckoutPath(`/pedia/pesanan/${data.code}`, data.code, data.buyer_access_code));
       navigating = true;
       // Keep the lock until navigation, including a second click from the mobile CTA.
       return;
