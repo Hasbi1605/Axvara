@@ -9,6 +9,7 @@
 // perintah bot, atau kode status HTTP.
 
 import { NextRequest, NextResponse } from "next/server";
+import { readTextBody } from "@/lib/http-body";
 import { queryFirst, execRun, isD1Mode } from "@/lib/db";
 import { isEnabled } from "@/lib/feature-flags";
 import {
@@ -42,14 +43,9 @@ export async function POST(request: NextRequest) {
   }
 
   // 2. Body size limit. Parse the bounded payload before provider-compatible auth.
-  const declaredLength = Number(request.headers.get("content-length") || 0);
-  if (Number.isFinite(declaredLength) && declaredLength > MAX_BODY_SIZE) {
-    return NextResponse.json({ error: "payload_too_large" }, { status: 413 });
-  }
-  const rawText = await request.text().catch(() => "");
-  if (new TextEncoder().encode(rawText).byteLength > MAX_BODY_SIZE) {
-    return NextResponse.json({ error: "payload_too_large" }, { status: 413 });
-  }
+  const bounded = await readTextBody(request, MAX_BODY_SIZE);
+  if (!bounded.ok) return bounded.response;
+  const rawText = bounded.data;
 
   let body: unknown;
   try {

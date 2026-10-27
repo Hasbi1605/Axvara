@@ -1,5 +1,29 @@
 # PRD — AXVARA
 
+## Keamanan OWASP — 27 Oktober 2026
+
+✅ Implementasi dengan verifikasi fixture, publikasi melalui CI. Editor detail
+produk wajib sesi admin, termasuk pembacaan modal/draf. Checkout menolak harga
+quote yang berubah, produk induk nonaktif atau varian berpindah produk pada batch
+reservasi atomik; retry order tersimpan tetap dapat dipakai ketika stok habis.
+Guard harga/produk induk aktif juga berlaku di Telegram/WhatsApp. Artikel publik
+tidak membagikan email admin atau metadata review/idempotensi; konten terbit dan
+sumber tetap tampil, penulis publik memakai AXVARA, editor admin tetap lengkap.
+Permintaan terlalu besar ditolak413 sebelum parse, termasuk header ukuran palsu.
+Header keamanan tetap dipasang pada halaman Pedia dan penolakan lintas origin.
+
+Login admin: burst5/menit existing + D1 maksimal10 percobaan gagal/in-flight per
+IP per jendela tetap15menit; limit429 menjelaskan waktu tunggu, error store503.
+Sukses hanya mereset IP sendiri, bukan IP penyerang lain. Pembeli tidak memakai
+limiter login. Shared NAT dapat berbagi batas; bot terdistribusi tetap residual.
+Challenge password-proof publik baru tidak menyertakan email admin dalam JWT;
+challenge lama bertanda tangan tetap berlaku sampai expiry5menit.
+Event login dan otorisasi admin disimpan tanpa kredensial/kontak/token/IP mentah;
+retensi30hari dengan cleanup bounded existing. Otorisasi tidak sama dengan bukti
+mutasi berhasil; retensi console/alert operasional masih perlu verifikasi.
+Laporan cakupan10 kategori dan batas bukti: [audit](../issue/owasp-audit-2026-10-27.md).
+Pernyataan ini bukan sertifikasi OWASP atau jaminan tidak ada kerentanan.
+
 ## Pembatas checkout dan insiden order fiktif — 27 Oktober 2026
 
 ✅ Implementasi terverifikasi; publikasi melalui CI. Order baru Market dan

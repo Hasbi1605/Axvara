@@ -1,5 +1,46 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Audit keamanan OWASP — 27 Oktober 2026
+
+✅ Implementasi dan fixture lokal; publikasi melalui CI. Audit memakai kategori
+[OWASP Top 10:2025](https://top10.owasp.org/2025/), dengan bukti dan batas verifikasi
+di [laporan audit](issue/owasp-audit-2026-10-27.md); ini bukan sertifikasi OWASP.
+Detail editor `/api/products/:id` kini hanya untuk admin, dengan cache privat.
+Artikel publik memakai whitelist field; email penulis/reviewer dan metadata alur
+editorial hanya di respons admin privat. Halaman artikel memakai nama AXVARA.
+Reservasi checkout memeriksa harga quote, produk induk aktif dan relasi varian
+di batch atomik yang sama; retry pemenang quote tetap memakai order tersimpan.
+Guard yang sama diterapkan pada batch order Telegram/WhatsApp.
+
+Login tetap dibatasi5/menit per proses dan kini maksimal10 percobaan valid-format
+gagal/in-flight per IP dalam jendela tetap15menit di D1. Login valid hanya mereset
+bucket IP itu. Error admission→503; limit→429+Retry-After. IP kantor/NAT berbagi
+batas, dan rotasi IP tetap keterbatasan. Challenge GET/body malformed tidak mereset
+bucket; malformed tidak menjalankan pemeriksaan password/proof.
+Challenge PBKDF2 baru mengikat akun lewat HMAC, tanpa email admin dalam JWT
+publik; challenge bertanda tangan lama tetap diterima sampai expiry5menit.
+Migrasi0080 menambah `security_auth_attempts` dan `security_events`; HMAC memakai secret admin
+existing, tanpa env baru. Event login dan otorisasi mutasi/baca sensitif admin
+tidak menyimpan IP mentah, kontak, token, body atau query URL. Event otorisasi
+tidak menyatakan mutasi berhasil. Polling admin biasa tidak membuat event D1.
+Limit login dicatat di console; audit D1 gagal memakai fallback console.
+Cleanup hourly existing membuang maksimal200 counter>24jam dan500 event>30hari.
+Retensi/penerimaan alert console produksi belum dibuktikan dalam audit ini.
+
+Endpoint pembeli JSON dibatasi sebelum parse: quote/order32.000byte, login/
+lookup/kredensial/cancel/refill/subscriber8.000byte. Webhook mempertahankan batas
+existing16.000–128.000byte, kini menghitung stream aktual sebelum buffer/parse;
+body mentah signature tetap. Supplier-sync maksimal2MiB dan MCP8MiB, sebelum
+parse; payload/ID JSON-RPC invalid ditolak. Header CSP/Permissions-Policy dan
+header browser lain ikut respons rewrite Pedia, redirect dan error middleware.
+
+Dependency runtime dipatch (Zod4.6.7, gateway Fastify5.12.7/Sharp0.35.5 dan
+transitif terkait). CI menjalankan audit read-only root+gateway sebelum build;
+high/critical runtime atau hasil registry tidak valid menghentikan rilis.
+Full scan masih melaporkan3 high pada toolchain dev Miniflare/Pages; perubahan
+major adapter tidak dipaksakan. Jangan membuka emulator/dev ke jaringan publik.
+[Bukti dan exception dependency](docs/security/dependency-audit-2026-10-27.md).
+
 ## Pembatas checkout — 27 Oktober 2026
 
 ✅ Implementasi terverifikasi; publikasi melalui CI. Market/Pedia berbagi

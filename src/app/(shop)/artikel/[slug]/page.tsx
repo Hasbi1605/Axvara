@@ -4,7 +4,7 @@ import { marked } from "marked";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { linkifySegments } from "@/lib/product-copy/text";
-import { normalizeArticle } from "@/lib/articles";
+import { normalizeArticle, publicArticle } from "@/lib/articles";
 import { queryFirst } from "@/lib/db";
 import { absoluteUrl } from "@/lib/site-seo";
 import { parseExpiry } from "@/lib/expiry";
@@ -50,7 +50,7 @@ async function getArticle(slug: string): Promise<Article | null> {
   if (!row) return null;
   const article = normalizeArticle(row);
   if (article.status !== "published") return null;
-  return article as unknown as Article;
+  return publicArticle(article, true) as unknown as Article;
 }
 
 /**

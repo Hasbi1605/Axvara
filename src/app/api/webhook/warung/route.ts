@@ -4,6 +4,7 @@
 // Status HTTP jujur: 5xx hanya bila recovery durable tidak tersedia.
 
 import { NextRequest, NextResponse } from "next/server";
+import { readTextBody } from "@/lib/http-body";
 import {
   isWrEnabled,
   verifyWebhookSignature,
@@ -37,10 +38,9 @@ export async function POST(request: NextRequest) {
   if (!wrWebhookSecretConfigured()) {
     return NextResponse.json({ error: "webhook_not_configured" }, { status: 503 });
   }
-  const rawBody = await request.text().catch(() => "");
-  if (new TextEncoder().encode(rawBody).byteLength > MAX_BODY_SIZE) {
-    return NextResponse.json({ error: "payload_too_large" }, { status: 413 });
-  }
+  const bounded = await readTextBody(request, MAX_BODY_SIZE);
+  if (!bounded.ok) return bounded.response;
+  const rawBody = bounded.data;
   // api-docs WR (2026-10): header baru `X-Digitals-Signature`; header lama
   // (X-Rebahan/X-Premify) masih dikirim dengan nilai sama.
   const signature =

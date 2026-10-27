@@ -15,6 +15,7 @@ import { checkoutSubjects, consumeCheckoutSlot } from "@/lib/checkout-guard";
 import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 import { verifyPediaQuoteToken } from "@/lib/pedia/quote";
 import { pediaBounds } from "@/lib/pedia/bounds";
+import { readJsonBody } from "@/lib/http-body";
 import { computePediaPrice, pediaMargin } from "@/lib/pedia/pricing";
 import { generateOrderCode } from "@/lib/security";
 import { isPediaProvider } from "@/lib/pedia/proxy";
@@ -63,7 +64,9 @@ export async function POST(req: NextRequest) {
   if (process.env.PEDIA_ENABLED !== "true" || process.env.PEDIA_ORDERS_ENABLED !== "true") {
     return NextResponse.json({ error: "Pedia belum dibuka untuk order." }, { status: 503 });
   }
-  const parsed = schema.safeParse(await req.json().catch(() => null));
+  const body = await readJsonBody(req);
+  if (!body.ok) return body.response;
+  const parsed = schema.safeParse(body.data);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
   }

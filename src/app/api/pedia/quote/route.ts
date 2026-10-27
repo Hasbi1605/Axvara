@@ -12,6 +12,7 @@ import { isPediaProvider } from "@/lib/pedia/proxy";
 import { isPediaSaleProvider, PEDIA_SALE_PROVIDER } from "@/lib/pedia/sales-policy";
 import { capturePediaServiceCopy } from "@/lib/pedia/service-copy";
 import { pediaBounds } from "@/lib/pedia/bounds";
+import { readJsonBody } from "@/lib/http-body";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -32,7 +33,9 @@ export async function POST(req: NextRequest) {
   if (process.env.PEDIA_ENABLED !== "true" || process.env.PEDIA_ORDERS_ENABLED !== "true") {
     return NextResponse.json({ error: "Pedia belum dibuka untuk order." }, { status: 503 });
   }
-  const parsed = schema.safeParse(await req.json().catch(() => null));
+  const body = await readJsonBody(req);
+  if (!body.ok) return body.response;
+  const parsed = schema.safeParse(body.data);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
   }

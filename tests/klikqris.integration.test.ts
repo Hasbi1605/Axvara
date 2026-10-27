@@ -30,6 +30,7 @@ const details=(code:string)=>({order_id:code,amount:"1000.00",total_amount:"1089
   qris_url:"https://klikqris.com/storage/qris_api/fixture.png",expired_at:new Date(Date.now()+3600000).toISOString(),paid_at:null as string|null});
 beforeEach(async()=>{
  fixture=createD1Fixture();stubFulfillmentKey();await insertTestProduct(fixture.sql,"manual",1);
+ fixture.sql.exec("UPDATE product_variants SET price=1000");
  remote=new Map();failStatus=false;failCreateAfterSave=false;mocks.ensure.mockClear();mocks.send.mockClear();mocks.pedia.mockClear();
  mocks.wrCreate.mockClear();mocks.wrProcess.mockClear();mocks.skCreate.mockClear();mocks.skProcess.mockClear();
  mocks.wrCreate.mockResolvedValue(0);mocks.skCreate.mockResolvedValue(0);

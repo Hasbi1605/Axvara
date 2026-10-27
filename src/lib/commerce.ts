@@ -186,6 +186,9 @@ export async function createChannelOrderAtomic(
   }
 
   input.lines.forEach((line, index) => {
+    const item = input.items[index] as { price?: unknown; product_id?: unknown; variant_id?: unknown } | undefined;
+    if (!item || !Number.isSafeInteger(item.price) || Number(item.price) < 0
+      || Number(item.product_id) !== line.productId || Number(item.variant_id) !== line.variantId) throw new StockReservationError();
     const guardId = `${input.orderCode}:stock:${line.variantId}:${index}`;
     guardIds.push(guardId);
     // Prasyarat per baris: varian aktif, stok cukup (atau unlimited),
@@ -196,15 +199,16 @@ export async function createChannelOrderAtomic(
       d1.prepare(
         `INSERT INTO operation_guards (operation_id, valid)
          SELECT ?, CASE WHEN EXISTS(
-           SELECT 1 FROM product_variants
-           WHERE id=? AND product_id=? AND fulfillment_mode=? AND is_active=1 AND (stock=-1 OR stock>=?)
-             AND ? >= COALESCE(min_qty,1)
+           SELECT 1 FROM product_variants pv JOIN products p ON p.id=pv.product_id
+           WHERE pv.id=? AND pv.product_id=? AND pv.price=? AND p.is_active=1
+             AND pv.fulfillment_mode=? AND pv.is_active=1 AND (pv.stock=-1 OR pv.stock>=?)
+             AND ? >= COALESCE(pv.min_qty,1)
              AND (
-               fulfillment_mode!='shared'
-               OR (shared_secret_ciphertext IS NOT NULL AND shared_secret_iv IS NOT NULL)
+               pv.fulfillment_mode!='shared'
+               OR (pv.shared_secret_ciphertext IS NOT NULL AND pv.shared_secret_iv IS NOT NULL)
              )
          ) THEN 1 ELSE 0 END`,
-      ).bind(guardId, line.variantId, line.productId, line.fulfillmentMode, line.qty, line.qty),
+      ).bind(guardId, line.variantId, line.productId, item.price, line.fulfillmentMode, line.qty, line.qty),
     );
     // Klausa `(stock=-1 OR stock>=?)` di UPDATE bersifat defense-in-depth:
     // guard di atas sudah menjamin, tetapi tanpa klausa ini korektnes
@@ -456,12 +460,13 @@ export async function createPendingChannelOrder(input: ChannelOrderInput): Promi
       d1.prepare(
         `INSERT INTO operation_guards (operation_id, valid)
          SELECT ?, CASE WHEN EXISTS(
-           SELECT 1 FROM product_variants
-           WHERE id=? AND is_active=1 AND (stock=-1 OR stock>=1)
-             AND 1 >= COALESCE(min_qty,1)
+           SELECT 1 FROM product_variants pv JOIN products p ON p.id=pv.product_id
+           WHERE pv.id=? AND pv.product_id=? AND pv.price=? AND p.is_active=1
+             AND pv.fulfillment_mode=? AND pv.is_active=1 AND (pv.stock=-1 OR pv.stock>=1)
+             AND 1 >= COALESCE(pv.min_qty,1)
              AND (
-               fulfillment_mode!='shared'
-               OR (shared_secret_ciphertext IS NOT NULL AND shared_secret_iv IS NOT NULL)
+               pv.fulfillment_mode!='shared'
+               OR (pv.shared_secret_ciphertext IS NOT NULL AND pv.shared_secret_iv IS NOT NULL)
              )
          ) AND (
            ? != 'unique' OR EXISTS(
@@ -469,7 +474,7 @@ export async function createPendingChannelOrder(input: ChannelOrderInput): Promi
              WHERE product_id=? AND status='available' AND (variant_id=? OR variant_id IS NULL)
            )
          ) THEN 1 ELSE 0 END`,
-      ).bind(guardId, input.variantId, variant.fulfillment_mode, input.productId, input.variantId),
+      ).bind(guardId, input.variantId, input.productId, variant.price, variant.fulfillment_mode, variant.fulfillment_mode, input.productId, input.variantId),
 
       // 2. Decrement variant stock
       d1.prepare(

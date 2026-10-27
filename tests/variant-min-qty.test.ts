@@ -84,7 +84,7 @@ describe("variant min_qty — guard server", () => {
     const web = read("src/lib/db/orders-create.ts");
     expect(web).toContain("COALESCE(min_qty,1)");
     const commerce = read("src/lib/commerce.ts");
-    expect(commerce.match(/COALESCE\(min_qty,1\)/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(commerce.match(/COALESCE\((?:pv\.)?min_qty,1\)/g)?.length).toBeGreaterThanOrEqual(2);
   });
 
   it("verifier quote menerima qty sampai 100", () => {

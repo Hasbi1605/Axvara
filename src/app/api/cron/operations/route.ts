@@ -63,7 +63,7 @@ const COST_PER_NOTIFICATION = 4;
 const COST_PER_WA_ROW = 5;
 const COST_PER_WA_RECOVERY = 2;
 const COST_PER_STALE_RELEASE = 2;
-const COST_PER_CLEANUP = 8;
+const COST_PER_CLEANUP = 10;
 const COST_PER_WR_WORK = 8;
 // Sekalipay: biaya admission yang sama dengan WR per unit kerja fase.
 const COST_PER_SK_WORK = 8;

@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createAdminPasswordProofChallenge, createAdminToken, cookieForIdle, cookieForToken, createIdleToken, getAdminCredentials, getAdminPasswordProofConfig, isSecureForRequest, verifyAdminPasswordProof, verifyPassword } from "@/lib/auth";
-import { checkRateLimit } from "@/lib/rateLimit";
+import { checkRateLimit, clientIp } from "@/lib/rateLimit";
+import { readJsonBody } from "@/lib/http-body";
+import { createDatabaseAccess } from "@/lib/db-access";
+import { admitLogin, loginClientHash, resetLogin } from "@/lib/login-guard";
+import { recordSecurityEvent } from "@/lib/security-events";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -15,8 +19,7 @@ const schema = z.object({
   message: "Email atau password tidak valid.",
 });
 
-// Rate-limit terpusat (issue #14): 5/mnt/IP via lib anti-spoof (sebelumnya
-// salinan lokal memakai x-real-ip saja). WAF Free menambah 1 rule global.
+// Cheap per-isolate burst limit, followed by atomic D1 admission per client.
 
 export async function GET() {
   try {
@@ -38,30 +41,30 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Body tidak valid." }, { status: 400 });
-  }
-
-  const parsed = schema.safeParse(body);
+  const body = await readJsonBody(req, 8_000);
+  if (!body.ok) return body.response;
+  const parsed = schema.safeParse(body.data);
   if (!parsed.success) {
     return NextResponse.json({ error: "Email atau password tidak valid." }, { status: 400 });
   }
 
   const { email, password, password_proof, challenge } = parsed.data;
+  const db = createDatabaseAccess();
+  let clientHash: string;
+  try { clientHash = await loginClientHash(clientIp(req)); }
+  catch { return NextResponse.json({ error: "Layanan login sedang tidak siap. Coba lagi sebentar." }, { status: 503 }); }
+  const admission = await admitLogin(db, clientHash);
+  if (!admission.allowed) {
+    if (!admission.unavailable) console.info("[security]", JSON.stringify({ event: "login_limited", subject_hash: clientHash, route: "/api/auth/login", method: "POST" }));
+    return NextResponse.json({ error: admission.unavailable ? "Layanan login sedang tidak siap. Coba lagi sebentar." : "Terlalu banyak percobaan login. Tunggu hingga 15 menit." },
+      { status: admission.unavailable ? 503 : 429, headers: { "Retry-After": String(admission.retryAfter) } });
+  }
+  const audit = (event: "login_failed" | "login_succeeded") => recordSecurityEvent(event, clientHash, "/api/auth/login", "POST", db);
   let cred: ReturnType<typeof getAdminCredentials>;
   try {
     cred = getAdminCredentials();
-  } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : "Konfigurasi auth belum siap" }, { status: 500 });
-  }
-
-  if (email.toLowerCase() !== cred.email.toLowerCase()) {
-    // constant-time-ish delay
-    await new Promise((r) => setTimeout(r, 280));
-    return NextResponse.json({ error: "Email atau password salah." }, { status: 401 });
+  } catch {
+    return NextResponse.json({ error: "Layanan login sedang tidak siap. Coba lagi sebentar." }, { status: 503 });
   }
 
   let ok = false;
@@ -74,21 +77,26 @@ export async function POST(req: NextRequest) {
     // platform-level 500 response. Keep the configuration detail private.
     return NextResponse.json({ error: "Layanan login sedang tidak siap. Coba lagi sebentar." }, { status: 503 });
   }
-  if (!ok) {
+  if (!ok || email.toLowerCase() !== cred.email.toLowerCase()) {
+    await audit("login_failed");
     return NextResponse.json({ error: "Email atau password salah." }, { status: 401 });
   }
 
   let session: Awaited<ReturnType<typeof createAdminToken>>;
   try {
     session = await createAdminToken(cred.email);
-  } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : "Gagal buat sesi" }, { status: 500 });
+  } catch {
+    return NextResponse.json({ error: "Layanan login sedang tidak siap. Coba lagi sebentar." }, { status: 503 });
   }
   const isHttps = isSecureForRequest(req);
   const res = NextResponse.json({ ok: true, email: cred.email });
   // Absolute 8h token + sliding 2h idle JWT terikat sid yang sama.
   // Idle lama format acak tidak lagi diterbitkan — hanya JWT HS256.
   const idleToken = await createIdleToken(session.sid);
+  try { await resetLogin(db, clientHash, admission.window); }
+  catch { return NextResponse.json({ error: "Layanan login sedang tidak siap. Coba lagi sebentar." }, { status: 503 }); }
+  await audit("login_succeeded");
+  res.headers.set("Cache-Control", "private, no-store");
   res.headers.set("Set-Cookie", cookieForToken(session.token, isHttps));
   res.headers.append("Set-Cookie", cookieForIdle(idleToken, isHttps));
   return res;

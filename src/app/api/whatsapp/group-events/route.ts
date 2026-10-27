@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { readTextBody } from "@/lib/http-body";
 import { z } from "zod";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { authenticateWebhook, salesGatewayControl } from "@/lib/whatsapp/gateway";
@@ -18,9 +19,9 @@ export async function POST(request: NextRequest) {
   const json = (data: object, status = 200) => NextResponse.json(data, { status, headers: { "Cache-Control": "private, no-store" } });
   if (!authenticateWebhook(request).ok) return json({ error: "unauthorized" }, 401);
   if (!request.headers.get("content-type")?.includes("application/json")) return json({ error: "invalid_content_type" }, 415);
-  if (Number(request.headers.get("content-length") || 0) > 64000) return json({ error: "payload_too_large" }, 413);
-  const raw = await request.text();
-  if (new TextEncoder().encode(raw).length > 64000) return json({ error: "payload_too_large" }, 413);
+  const bounded = await readTextBody(request, 64000);
+  if (!bounded.ok) return bounded.response;
+  const raw = bounded.data;
   let input: unknown; try { input = JSON.parse(raw); } catch { return json({ error: "invalid_json" }, 400); }
   const parsed = schema.safeParse(input); if (!parsed.success) return json({ error: "invalid_join" }, 400);
   const db = createDatabaseAccess(); if (!db.getD1()) return json({ error: "database_unavailable" }, 503);

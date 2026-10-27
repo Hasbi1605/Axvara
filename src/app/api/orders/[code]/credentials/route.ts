@@ -11,6 +11,7 @@
 // (fulfillment_items.delivered_ciphertext, migrasi 0043).
 
 import { NextRequest, NextResponse } from "next/server";
+import { readJsonBody } from "@/lib/http-body";
 import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 import { checkRateLimit, clientIp } from "@/lib/rateLimit";
 import {
@@ -123,7 +124,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!code || !/^AXV-\d{8}-[A-Z0-9]{8}$/.test(code)) {
     return privateJson({ error: "invalid_code" }, { status: 400 });
   }
-  const body = await request.json().catch(() => null);
+  const bounded = await readJsonBody(request, 8_000);
+  if (!bounded.ok) return bounded.response;
+  const body = bounded.data as { adminView?: unknown; contact?: unknown; wa?: unknown } | null;
   if (body?.adminView === true) {
     if (!(await requireAdmin(request))) return privateJson({ error: "admin_session_required" }, { status: 401 });
     const ready = await orderReady(code);

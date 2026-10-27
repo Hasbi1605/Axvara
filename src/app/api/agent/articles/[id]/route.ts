@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { readJsonBody } from "@/lib/http-body";
 import { z } from "zod";
 import { audit, requireAgent } from "@/lib/agent-auth";
 import { excerptFromMarkdown, isSafeMarkdown, normalizeArticle } from "@/lib/articles";
@@ -40,7 +41,9 @@ export async function PUT(
     return NextResponse.json({ error: "Agent hanya boleh mengubah Draft" }, { status: 409 });
   }
 
-  const parsed = patchSchema.safeParse(await request.json().catch(() => null));
+  const body = await readJsonBody(request, 256_000);
+  if (!body.ok) return body.response;
+  const parsed = patchSchema.safeParse(body.data);
   if (!parsed.success) {
     return NextResponse.json(
       { error: parsed.error.issues[0]?.message ?? "Validasi gagal" },

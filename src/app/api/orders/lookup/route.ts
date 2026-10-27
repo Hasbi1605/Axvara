@@ -1,5 +1,6 @@
 import { readUniqueUnitProgress } from "@/lib/orders/unit-progress";
 import { NextRequest, NextResponse } from "next/server";
+import { readJsonBody } from "@/lib/http-body";
 import { z } from "zod";
 import { queryFirst } from "@/lib/db";
 import { MAX_QRIS_REISSUES } from "@/lib/payments/dana-qris";
@@ -23,13 +24,9 @@ export async function POST(req: NextRequest) {
   if (!checkRateLimit(req, "orders:lookup")) {
     return NextResponse.json({ error: "Terlalu sering, coba lagi 1 menit." }, { status: 429, headers: { "Retry-After": "60" } });
   }
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Body tidak valid." }, { status: 400 });
-  }
-  const parsed = schema.safeParse(body);
+  const body = await readJsonBody(req, 8_000);
+  if (!body.ok) return body.response;
+  const parsed = schema.safeParse(body.data);
   const adminView = parsed.success && parsed.data.adminView === true;
   if (adminView && !(await requireAdmin(req))) {
     return NextResponse.json({ error: "Sesi admin berakhir. Masuk ke panel admin lalu buka kembali tautan ini." }, { status: 401, headers: { "Cache-Control": "private, no-store" } });

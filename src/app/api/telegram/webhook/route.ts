@@ -9,6 +9,7 @@
 // dan kontrol keamanan (guard ownerBound di handlers/callback.ts) identik.
 
 import { NextRequest, NextResponse } from "next/server";
+import { readTextBody } from "@/lib/http-body";
 import { z } from "zod";
 import { queryFirst, execRun, isD1Mode } from "@/lib/db";
 import { sendMessage, answerCallbackQuery } from "@/lib/telegram/api";
@@ -67,8 +68,9 @@ export async function POST(request: NextRequest) {
   // 4. Parse + validate body
   let body: unknown;
   try {
-    const raw = await request.text();
-    if (raw.length > MAX_BODY_SIZE) return NextResponse.json({ error: "payload_too_large" }, { status: 413 });
+    const bounded = await readTextBody(request, MAX_BODY_SIZE);
+    if (!bounded.ok) return bounded.response;
+    const raw = bounded.data;
     body = JSON.parse(raw);
   } catch {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });

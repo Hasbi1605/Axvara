@@ -5,6 +5,10 @@ import { maintenanceResponse } from "@/lib/maintenance-page";
 const PEDIA_HOST = (process.env.PEDIA_HOST || "pedia.axvara.tech").toLowerCase();
 
 export async function middleware(req: NextRequest) {
+  return securityHeaders(await routeRequest(req), req);
+}
+
+async function routeRequest(req: NextRequest) {
   const host = (req.headers.get("host") || "").toLowerCase().split(":")[0] || "";
   const path = req.nextUrl.pathname;
   const isAsset = path.startsWith("/api/") || path.startsWith("/_next/")
@@ -49,8 +53,22 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(url, 308);
   }
 
-  const res = NextResponse.next();
+  // API requests are excluded from the page rewrite above.
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(req.method) && path.startsWith("/api/")) {
+    const origin = req.headers.get("origin");
+    const host = req.headers.get("host");
+    if (origin && host) {
+      try {
+        if (new URL(origin).host !== host) return NextResponse.json({ error: "Cross-origin request blocked" }, { status: 403 });
+      } catch {
+        return NextResponse.json({ error: "Invalid origin" }, { status: 403 });
+      }
+    }
+  }
+  return NextResponse.next();
+}
 
+function securityHeaders(res: Response, req: NextRequest) {
   // Production stays strict. Next.js dev needs eval for webpack/React Refresh;
   // without this exception the client never hydrates on localhost.
   const devScriptEval = process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : "";
@@ -64,30 +82,13 @@ export async function middleware(req: NextRequest) {
     ? `default-src 'self'; script-src 'self' 'unsafe-inline'${devScriptEval}; style-src 'self' 'unsafe-inline'; img-src 'self' https://images.unsplash.com data:; font-src 'self' data:; connect-src 'self'; ${YOUTUBE_FRAME} frame-ancestors 'none'; base-uri 'self'; form-action 'self'`
     : `default-src 'self'; script-src 'self' 'unsafe-inline'${devScriptEval}; style-src 'self' 'unsafe-inline'; img-src 'self' https://images.unsplash.com https://picsum.photos data: blob:; font-src 'self' data:; connect-src 'self'; ${YOUTUBE_FRAME} frame-ancestors 'none'; base-uri 'self'; form-action 'self'`;
 
-  res.headers.set("Content-Security-Policy", csp);
+  if (!res.headers.has("Content-Security-Policy")) res.headers.set("Content-Security-Policy", csp);
   res.headers.set("X-Frame-Options", "DENY");
   res.headers.set("X-Content-Type-Options", "nosniff");
   res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   res.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
   res.headers.set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
   res.headers.set("X-DNS-Prefetch-Control", "off");
-
-  // F-04: CSRF — block cross-origin mutating requests on API endpoints
-  const method = req.method;
-  if (["POST", "PUT", "PATCH", "DELETE"].includes(method) && req.nextUrl.pathname.startsWith("/api/")) {
-    const origin = req.headers.get("origin");
-    const host = req.headers.get("host");
-    if (origin && host) {
-      try {
-        const originHost = new URL(origin).host;
-        if (originHost !== host) {
-          return NextResponse.json({ error: "Cross-origin request blocked" }, { status: 403 });
-        }
-      } catch {
-        return NextResponse.json({ error: "Invalid origin" }, { status: 403 });
-      }
-    }
-  }
 
   return res;
 }

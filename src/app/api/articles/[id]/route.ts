@@ -7,6 +7,7 @@ import {
   excerptFromMarkdown,
   isSafeMarkdown,
   normalizeArticle,
+  publicArticle,
 } from "@/lib/articles";
 
 export const runtime = "edge";
@@ -30,12 +31,13 @@ export async function GET(
   if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
 
   const article = normalizeArticle(row);
-  if (article.status !== "published" && !(await requireAdmin(request))) {
+  const admin = await requireAdmin(request);
+  if (article.status !== "published" && !admin) {
     return NextResponse.json({ error: "Artikel belum publish" }, { status: 404 });
   }
   return NextResponse.json(
-    { article },
-    { headers: { "Cache-Control": article.status === "published" ? "public, max-age=60" : "private, no-store" } },
+    { article: admin ? article : publicArticle(article, true) },
+    { headers: { "Cache-Control": admin ? "private, no-store" : "public, max-age=60" } },
   );
 }
 

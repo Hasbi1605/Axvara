@@ -2,6 +2,7 @@
 // Capability: kode + kontak (WA/email) cocok (pola lookup). Rate-limit refill.
 // Syarat: eligibility sama dengan GET + refill terakhir ≥ 24 jam (atomik).
 import { NextRequest, NextResponse } from "next/server";
+import { readJsonBody } from "@/lib/http-body";
 import { z } from "zod";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { createDatabaseAccess } from "@/lib/db-access";
@@ -23,7 +24,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
   const { code } = await params;
   const clean = String(code || "").trim().toUpperCase();
-  const parsed = schema.safeParse(await request.json().catch(() => null));
+  const body = await readJsonBody(request, 8_000);
+  if (!body.ok) return body.response;
+  const parsed = schema.safeParse(body.data);
   if (!parsed.success) return NextResponse.json({ error: "Kontak wajib diisi." }, { status: 400 });
   const contact = parseBuyerContact(parsed.data.contact);
   if (!contact) return NextResponse.json({ error: "Kontak tidak valid." }, { status: 400 });

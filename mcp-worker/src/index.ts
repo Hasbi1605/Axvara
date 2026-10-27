@@ -1,4 +1,5 @@
 import { runOperationsTick } from "./cron";
+import { readBoundedText, RequestBodyError } from "../../src/lib/bounded-body";
 
 export interface Env {
   AXVARA_API_ORIGIN: string;
@@ -279,8 +280,17 @@ export default {
     if (!bearer?.startsWith("Bearer ")) {
       return new Response("Bearer token required", { status: 401, headers: responseHeaders });
     }
-    const rpc = await request.json().catch(() => null) as JsonRpcRequest | null;
-    if (!rpc?.method) return rpcFailure(null, "Invalid JSON-RPC request", -32600);
+    let rpc: JsonRpcRequest | null;
+    try { rpc = JSON.parse(await readBoundedText(request, 8 * 1024 * 1024)); }
+    catch (error) {
+      if (error instanceof RequestBodyError && error.status === 413) return new Response("Payload too large", { status: 413, headers: responseHeaders });
+      return rpcFailure(null, "Invalid JSON-RPC request", -32600);
+    }
+    if (!rpc || typeof rpc !== "object" || Array.isArray(rpc) || typeof rpc.method !== "string"
+      || (rpc.id !== undefined && rpc.id !== null && typeof rpc.id !== "string" && typeof rpc.id !== "number")
+      || (rpc.params !== undefined && (!rpc.params || typeof rpc.params !== "object" || Array.isArray(rpc.params)))) {
+      return rpcFailure(null, "Invalid JSON-RPC request", -32600);
+    }
 
     if (rpc.method === "initialize") {
       const requested = rpc.params?.protocolVersion;

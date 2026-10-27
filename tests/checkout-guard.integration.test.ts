@@ -170,12 +170,13 @@ describe("route web memakai guard durable", () => {
     vi.restoreAllMocks();
   });
 
-  it.each(["parallel-retry", "limiter-write-error"])("Market %s preserves retry quota and rejects unavailable admission", async (scenario) => {
+  it.each(["parallel-retry", "parallel-last-unit", "limiter-write-error"])("Market %s preserves retry quota and rejects unavailable admission", async (scenario) => {
     const fx = createD1Fixture();
     try {
       const { insertTestProduct } = await import("./helpers/d1-fixture");
       await insertTestProduct(fx.sql, "manual", 1);
       fx.sql.exec("UPDATE product_variants SET price=1000; UPDATE products SET is_active=1");
+      if (scenario === "parallel-last-unit") fx.sql.exec("UPDATE product_variants SET stock=1");
       vi.stubEnv("NEXT_PUBLIC_PAYMENTS_MAINTENANCE", "false");
       vi.stubEnv("ADMIN_JWT_SECRET", "checkout-route-review-secret");
       const qris = await import("@/lib/payments/dana-qris");
@@ -209,7 +210,7 @@ describe("route web memakai guard durable", () => {
         const responses = await Promise.all(Array.from({ length: 6 }, () => POST(request())));
         expect(responses.map((r) => r.status).sort()).toEqual([200,200,200,200,200,201]);
         expect(fx.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(1);
-        expect(fx.sql.prepare("SELECT stock FROM product_variants WHERE id=1").get()?.stock).toBe(99);
+        expect(fx.sql.prepare("SELECT stock FROM product_variants WHERE id=1").get()?.stock).toBe(scenario === "parallel-last-unit" ? 0 : 99);
         expect(fx.sql.prepare("SELECT orders_created FROM checkout_attempts").all()).toEqual(Array(3).fill({ orders_created: 1 }));
       }
     } finally { fx.close(); }

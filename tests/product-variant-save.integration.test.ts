@@ -87,13 +87,14 @@ describe("PUT /api/products/:id mode multi-varian (regresi Canva 409)", () => {
     expect(fixture.sql.prepare("SELECT admin_terms,admin_activation FROM product_variants WHERE sku='NEW-1'").get()).toMatchObject({admin_terms:'- Satu link per pembeli',admin_activation:'1. Buka link'});
   });
 
-  it("public product detail does not expose the admin editor fields", async () => {
+  it("product editor detail rejects anonymous requests without exposing drafts or cost", async () => {
     fixture.sql.exec("UPDATE product_variants SET admin_terms='- Private draft' WHERE id=1");
     const { requireAdmin } = await import('@/lib/auth');
     vi.mocked(requireAdmin).mockResolvedValueOnce(null);
     const { GET } = await import("@/app/api/products/[id]/route");
-    const data = await (await GET(new NextRequest('http://localhost/api/products/1'),{params:Promise.resolve({id:'1'})})).json();
-    expect(data.product.variants[0]).not.toHaveProperty('admin_terms');
+    const response = await GET(new NextRequest('http://localhost/api/products/1'),{params:Promise.resolve({id:'1'})});
+    expect(response.status).toBe(401);
+    expect((await response.json()).product).toBeUndefined();
   });
   it("shared terms and activation save with the product batch; omitted fields preserve them", async () => {
     const { PUT, GET } = await import("@/app/api/products/[id]/route");

@@ -1,5 +1,16 @@
 # AGENTS.md — AXVARA (Project-Specific)
 
+## Hardening OWASP — 27 Oktober 2026
+- Audit/fixture dan batas bukti: `issue/owasp-audit-2026-10-27.md`; jangan menyatakan sertifikasi OWASP atau menganggap push bukti deploy.
+- Detail editor produk wajib admin. API artikel publik/SSR memakai whitelist tanpa email reviewer/penulis, jadwal atau idempotency; detail admin privat tetap lengkap.
+- Guard order Market/TG/WA wajib memeriksa harga snapshot, produk induk aktif, relasi produk-varian dan mode/stok di batch atomik; retry quote/order existing tetap dipertahankan.
+- Migrasi0080 menambah login D1 maksimal10 gagal/in-flight per IP/jendela tetap15menit, sebelum verifikasi password/proof, selain burst5/menit. Error admission503; reset sukses hanya hash+jendela klien sama. Jangan menambah lock akun global yang memungkinkan penyerang mengunci owner dari IP lain.
+- Challenge PBKDF2 publik memakai admin_subject HMAC domain admin-challenge:v1, tanpa email di JWT baru; dukungan challenge email legacy hanya sampai expiry5menit yang ditandatangani. Email salah menjalankan verifikasi sama lalu401, tanpa cabang delay pembeda akun.
+- Audit login/otorisasi mutasi+baca sensitif admin memakai HMAC subjek dan label route tetap, satu event/request, tanpa IP/kontak/token/body/query mentah. Otorisasi bukan bukti mutasi berhasil. Polling read biasa tidak ditulis. Limit login/fallback audit hanya console; retensi/alert produksi belum dibuktikan.
+- Cleanup hourly existing maksimal200 counter login>24jam +500 event>30hari; budget heavy cleanup10 statement. Tidak ada env/cron/secret baru. Jangan hapus window aktif.
+- Batas stream aktual sebelum parse: JSON buyer32.000byte; login/lookup/kredensial/cancel/refill/subscriber8.000; webhook16.000–128.000 sesuai route; supplier-sync2MiB; MCP8MiB. Content-Length saja tidak cukup; raw text signature dipertahankan. Header browser harus ikut semua return middleware termasuk rewrite Pedia/403.
+- CI dependency gate sebelum build wajib menolak high/critical runtime serta audit registry/error/schema tidak valid. Audit unit tests tanpa jaringan; pemeriksaan registry nyata terpisah. Tiga high toolchain dev Miniflare/Pages masih exception kompatibilitas terdokumentasi, bukan klaim zero seluruh audit; dev/emulator tetap loopback. Jangan npm audit fix --force/migrasi adapter major tanpa verifikasi platform.
+
 ## Checkout anti-abuse — 27 Oktober 2026
 - Market/Pedia memakai admission D1 bersama:5/IP,3/WA,3/email per jendela15menit; claim quote stabil dan increment counter satu batch. Retry paralel quote sama hanya satu slot; order existing tetap reuse. Jangan mengubah error D1 menjadi fail-open:503 sebelum order/reservasi/invoice,429 hanya saat limit. Dev tanpa D1 boleh bypass.
 - Subjek disimpan HMAC-SHA256 memakai ADMIN_JWT_SECRET existing, bukan hash tanpa kunci. Normalisasi IPv6/email; jangan mempercayai x-forwarded-for. Cleanup existing bounded200 klaim+200 counter berumur>24jam, tanpa cron baru.

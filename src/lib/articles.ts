@@ -54,3 +54,12 @@ export function normalizeArticle(row: Record<string, unknown>): Record<string, u
   return { ...row, status, is_published: status === "published" ? 1 : 0,
     source_urls: sourceUrls };
 }
+
+export function publicArticle(row: Record<string, unknown>, detail = false) {
+  const article = normalizeArticle(row);
+  return {
+    id: article.id, slug: article.slug, title: article.title, excerpt: article.excerpt,
+    cover_url: article.cover_url, published_at: article.published_at, updated_at: article.updated_at,
+    ...(detail ? { content: article.content, source_urls: article.source_urls, author_name: "AXVARA" } : {}),
+  };
+}

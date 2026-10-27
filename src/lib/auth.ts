@@ -184,7 +184,8 @@ export function getAdminPasswordProofConfig(stored: string): AdminPasswordProofC
 export async function createAdminPasswordProofChallenge(email: string): Promise<string> {
   const nonce = new Uint8Array(16);
   crypto.getRandomValues(nonce);
-  return new jose.SignJWT({ purpose: "admin_password_proof", email })
+  const adminSubject = await hmacHex(secretKey(), `admin-challenge:v1:${email.toLowerCase()}`);
+  return new jose.SignJWT({ purpose: "admin_password_proof", admin_subject: adminSubject })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("5m")
@@ -197,7 +198,10 @@ export async function verifyAdminPasswordProof(email: string, stored: string, ch
     const parsed = parseStoredHash(stored);
     if (parsed.kind !== "pbkdf2" || !/^[a-f0-9]{64}$/i.test(proof)) return false;
     const { payload } = await jose.jwtVerify(challenge, secretKey());
-    if (payload.purpose !== "admin_password_proof" || String(payload.email).toLowerCase() !== email.toLowerCase()) return false;
+    const subject = await hmacHex(secretKey(), `admin-challenge:v1:${email.toLowerCase()}`);
+    // Previously-issued challenges expire after five minutes.
+    const sameAdmin = payload.admin_subject === subject || (payload.admin_subject === undefined && String(payload.email).toLowerCase() === email.toLowerCase());
+    if (payload.purpose !== "admin_password_proof" || !sameAdmin) return false;
     return timingSafeEqual(await hmacHex(bytesFromHex(parsed.hash), challenge), proof.toLowerCase());
   } catch {
     return false;
@@ -553,6 +557,14 @@ export async function requireAdminDetailed(req: Request, overrides: RequireAdmin
 
 export async function requireAdmin(req: Request, overrides: RequireAdminOptions = {}): Promise<AdminTokenPayload | null> {
   const check = await checkAdminSession(req, overrides);
+  if (check.ok) {
+    const { adminAuditRoute, securitySubject, recordSecurityEvent } = await import("@/lib/security-events");
+    const route = adminAuditRoute(req);
+    if (route) {
+      try { await recordSecurityEvent("admin_authorized", await securitySubject("admin-session", check.payload.sid), route, req.method); }
+      catch { console.info("[security] admin_authorized audit unavailable"); }
+    }
+  }
   return check.ok ? check.payload : null;
 }
 

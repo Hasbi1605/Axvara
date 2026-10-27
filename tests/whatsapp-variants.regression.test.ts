@@ -785,7 +785,7 @@ describe("Outbound Baileys Reply with inboxId (P0.1)", () => {
     );
     expect(route).toContain("WHATSAPP_MEMBER_EVENTS_PER_MINUTE");
     expect(route).toContain('status=\'ignored\'');
-    expect(route).toContain("TextEncoder");
+    expect(route).toContain("readTextBody(request, MAX_BODY_SIZE)");
   });
 
   it("handles .d before product search and only completes paid orders", () => {

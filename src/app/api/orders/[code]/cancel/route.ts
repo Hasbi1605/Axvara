@@ -20,6 +20,7 @@
 // - Rate-limit `orders:lookup` (20/mnt/IP) — sama dengan lookup/credentials.
 
 import { NextRequest, NextResponse } from "next/server";
+import { readJsonBody } from "@/lib/http-body";
 import { z } from "zod";
 import { queryFirst, transitionPendingOrder, OrderTransitionError } from "@/lib/db";
 import { isValidOrderCode } from "@/lib/security";
@@ -43,13 +44,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   if (!isValidOrderCode(orderCode)) {
     return NextResponse.json({ error: "Kode pesanan tidak valid" }, { status: 400 });
   }
-  let body: unknown;
-  try {
-    body = await req.json().catch(() => null);
-  } catch {
-    return NextResponse.json({ error: "Body tidak valid." }, { status: 400 });
-  }
-  const parsed = schema.safeParse(body);
+  const body = await readJsonBody(req, 8_000);
+  if (!body.ok) return body.response;
+  const parsed = schema.safeParse(body.data);
   const contactRaw = parsed.success ? (parsed.data.contact ?? parsed.data.wa ?? "").trim() : "";
   if (!parsed.success || !contactRaw) {
     return NextResponse.json({ error: "No. WA atau email checkout wajib diisi." }, { status: 400 });

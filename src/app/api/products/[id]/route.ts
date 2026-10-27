@@ -18,7 +18,10 @@ import {
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
-export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  if (!(await requireAdmin(request))) return NextResponse.json({ error: "Unauthorized" }, {
+    status: 401, headers: { "Cache-Control": "private, no-store" },
+  });
   const { id } = await params;
   const row = await queryFirst("SELECT p.*, c.slug as cat_slug FROM products p LEFT JOIN categories c ON c.id=p.category_id WHERE p.id=?", id) as Record<string, unknown> | undefined;
   if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
@@ -35,7 +38,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
   const variants = await queryAll(
     `SELECT id, product_id, sku, label, duration_value, duration_unit, duration_label,
             warranty_type, warranty_value, warranty_unit, warranty_label,
-            price, compare_price, stock, min_qty, manual_cost, fulfillment_mode, is_active, sort_order, wr_auto_managed${await requireAdmin(_) ? ", admin_terms, admin_activation" : ""}
+            price, compare_price, stock, min_qty, manual_cost, fulfillment_mode, is_active, sort_order, wr_auto_managed, admin_terms, admin_activation
      FROM product_variants
      WHERE product_id=?
      ORDER BY sort_order ASC, price ASC, id ASC`,
@@ -67,7 +70,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
       requireEmail: (row.require_email as number) === 1,
       variants,
     },
-  });
+  }, { headers: { "Cache-Control": "private, no-store" } });
 }
 
 const variantInputSchema = z.object({

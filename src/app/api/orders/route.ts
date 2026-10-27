@@ -10,6 +10,7 @@ import { checkRateLimit, clientIp } from "@/lib/rateLimit";
 import { expandDeliveryLines } from "@/lib/fulfillment/units";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { checkoutSubjects, consumeCheckoutSlot } from "@/lib/checkout-guard";
+import { readJsonBody } from "@/lib/http-body";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -68,13 +69,9 @@ export async function POST(req: NextRequest) {
   if (isPaymentMaintenanceEnabled()) return paymentMaintenanceResponse();
   if (!checkRateLimit(req, "checkout:orders")) return NextResponse.json({ error: "Terlalu banyak percobaan, coba lagi 1 menit." }, { status: 429, headers: { "Retry-After": "60" } });
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Body tidak valid." }, { status: 400 });
-  }
-  const parsed = schema.safeParse(body);
+  const body = await readJsonBody(req);
+  if (!body.ok) return body.response;
+  const parsed = schema.safeParse(body.data);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
 
   const { customer_name, customer_wa, customer_email, items, payment_method, proof_url, quote_token } = parsed.data;
@@ -192,15 +189,9 @@ export async function POST(req: NextRequest) {
     // createOrderWithStock yang memutuskan agar checkout tidak mati total.
   }
 
-  // Harga BASI (2026-09-23): token quote berlaku 1 jam, sementara sync WR
-  // menulis ulang harga varian tiap ~5 menit. `sameItems` di atas hanya
-  // menyamakan identitas + qty, dan `createOrderWithStock` tidak punya satu
-  // pun guard harga — jadi order dibuat dari `quote.subtotal` yang bisa sudah
-  // usang, lalu invoice QRIS diterbitkan dari nominal usang itu. Bila harga
-  // naik, toko rugi; bila turun, pembeli yang dirugikan.
-  //
-  // Sengaja MEMBANDINGKAN, bukan diam-diam memakai harga baru: nominal yang
-  // dibayar harus sama dengan yang dilihat pembeli saat menekan bayar.
+  // This read gives the buyer a specific price-change response. The stock
+  // transaction also binds each quoted price and the active parent product,
+  // covering read failures and changes between this lookup and reservation.
   try {
     const variantIds = [...new Set(quote.items.map((i) => Number(i.variant_id || 0)).filter((v) => v > 0))];
     if (variantIds.length > 0) {
@@ -227,7 +218,7 @@ export async function POST(req: NextRequest) {
       }
     }
   } catch {
-    // Sama dengan guard lain: kegagalan query tidak boleh mematikan checkout.
+    // The atomic reservation must still verify the signed quote price.
   }
 
   // Normalize WA to 62
@@ -291,6 +282,8 @@ export async function POST(req: NextRequest) {
     });
   } catch (e: unknown) {
     if (e instanceof StockReservationError) {
+      const winner = await queryFirst("SELECT code,subtotal,status FROM orders WHERE quote_id=?", quote.quote_id).catch(() => null);
+      if (winner) return existingCheckoutResponse(winner);
       return NextResponse.json({ error: e.message }, { status: 409 });
     }
     const msg = e instanceof Error ? e.message : String(e);

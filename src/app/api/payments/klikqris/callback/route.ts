@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { readTextBody } from "@/lib/http-body";
 import { queryFirst } from "@/lib/db";
 import { constantTimeEqual, isValidOrderCode } from "@/lib/security";
 import { klikQrisMoney, reconcileKlikQrisPayment } from "@/lib/payments/klikqris";
@@ -6,8 +7,9 @@ export const runtime = "edge";
 export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   if (!request.headers.get("content-type")?.includes("application/json")) return NextResponse.json({ error: "invalid_content_type" }, { status: 415 });
-  const raw = await request.text();
-  if (new TextEncoder().encode(raw).length > 16000) return NextResponse.json({ error: "payload_too_large" }, { status: 413 });
+  const bounded = await readTextBody(request, 16000);
+  if (!bounded.ok) return bounded.response;
+  const raw = bounded.data;
   let body: Record<string, unknown>;
   try { body=JSON.parse(raw); } catch { return NextResponse.json({ error: "invalid_json" }, { status: 400 }); }
   if (!body || typeof body!=="object" || Array.isArray(body)) return NextResponse.json({ error: "invalid_callback" }, { status: 400 });

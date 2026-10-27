@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { readJsonBody } from "@/lib/http-body";
 import { z } from "zod";
 import { audit, requireAgent } from "@/lib/agent-auth";
 import {
@@ -43,7 +44,9 @@ export async function POST(request: NextRequest) {
   const auth = await requireAgent(request, "articles:write");
   if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-  const parsed = createSchema.safeParse(await request.json().catch(() => null));
+  const body = await readJsonBody(request, 256_000);
+  if (!body.ok) return body.response;
+  const parsed = createSchema.safeParse(body.data);
   if (!parsed.success) {
     return NextResponse.json(
       { error: parsed.error.issues[0]?.message ?? "Validasi gagal" },

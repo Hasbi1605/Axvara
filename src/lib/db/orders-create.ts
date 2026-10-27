@@ -42,14 +42,18 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
         // COALESCE(min_qty,1): baris fixture lama tanpa kolom tetap valid.
         statements.push(
           d1.prepare(
-            "INSERT INTO operation_guards (operation_id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM product_variants WHERE id=? AND is_active=1 AND fulfillment_mode=? AND (stock=-1 OR stock>=?) AND ? >= COALESCE(min_qty,1)) THEN 1 ELSE 0 END",
-          ).bind(guardIds[index], item.variant_id, byId.get(item.variant_id) ?? "manual", item.qty, item.qty),
+            `INSERT INTO operation_guards (operation_id,valid) SELECT ?,CASE WHEN EXISTS(
+              SELECT 1 FROM product_variants pv JOIN products p ON p.id=pv.product_id
+              WHERE pv.id=? AND pv.product_id=? AND p.is_active=1 AND pv.is_active=1
+                AND pv.price=? AND pv.fulfillment_mode=? AND (pv.stock=-1 OR pv.stock>=?)
+                AND ? >= COALESCE(pv.min_qty,1)) THEN 1 ELSE 0 END`,
+          ).bind(guardIds[index], item.variant_id, item.product_id, item.price, byId.get(item.variant_id) ?? "manual", item.qty, item.qty),
         );
       } else {
         statements.push(
           d1.prepare(
-            "INSERT INTO operation_guards (operation_id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM products WHERE id=? AND is_active=1 AND (stock=-1 OR stock>=?)) THEN 1 ELSE 0 END",
-          ).bind(guardIds[index], item.product_id, item.qty),
+            "INSERT INTO operation_guards (operation_id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM products WHERE id=? AND is_active=1 AND price=? AND (stock=-1 OR stock>=?)) THEN 1 ELSE 0 END",
+          ).bind(guardIds[index], item.product_id, item.price, item.qty),
         );
       }
     });

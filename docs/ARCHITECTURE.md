@@ -1,5 +1,63 @@
 # ARCHITECTURE.md — AXVARA
 
+## Hardening keamanan OWASP — 27 Oktober 2026
+
+✅ Implementasi/fixture lokal, publikasi CI. [Laporan audit](../issue/owasp-audit-2026-10-27.md)
+memetakan seluruh kategori Top10:2025 beserta batas bukti operasional.
+
+- `GET /api/products/:id` adalah endpoint editor admin: requireAdmin mendahului
+  query, respons privat/no-store; modal dan varian nonaktif tidak dibuka ke anonim.
+- Artikel publik API memakai `publicArticle` whitelist; list tidak memuat body,
+  detail tetap memuat konten/sumber terbit tetapi tanpa reviewer/email/idempotency/
+  jadwal internal. Penulis publik AXVARA juga dipakai SSR/JSON-LD. Admin list
+  `?all=1` dan detail bersesi sah mempertahankan data editor dengan private/no-store.
+- `db/orders-create` mengikat harga item quote, produk induk aktif, varian aktif,
+  relasi product_id, mode/stok/minimum dalam operation_guards pada batch reservasi.
+  Pembacaan harga awal hanya untuk pesan UX; error/race tidak melewati guard atomik.
+  Gagal reservasi membaca ulang pemenang quote sebelum409, termasuk stok terakhir.
+  `commerce.createChannelOrderAtomic` mengikat harga dari snapshot items per baris
+  dengan produk/varian; `createPendingChannelOrder` juga memeriksa harga, parent
+  aktif, relasi dan mode dalam guard atomik. TG/WA mempertahankan reuse order lama.
+- `bounded-body` menghitung byte stream dan membatalkan pembacaan saat melebihi
+  batas; Content-Length hanya petunjuk penolakan awal. `http-body` memberi400/413.
+  JSON quote/order Market/Pedia32.000byte; login/lookup/kredensial/cancel/refill/
+  subscriber8.000byte. Webhook KlikQRIS16.000, pembayaran/WR/SK32.000, TG/WA64.000,
+  emailWR128.000byte mempertahankan raw text untuk signature. Supplier-sync2MiB
+  untuk chunk katalog; MCP8MiB untuk media base64. RPC ID harus scalar/null.
+- Wrapper middleware memasang header keamanan pada semua jalur return, termasuk
+  rewrite Pedia dan penolakan CSRF; CSP maintenance yang lebih ketat dipertahankan.
+  `unsafe-inline` Next masih residual hardening, bukan bukti XSS pada audit ini.
+- Migrasi0080: security_auth_attempts(client_hash PK,window_id,attempts1..10) dan
+  security_events(id,event,subject_hash,route,method,created_at), indeks window/time.
+  `login-guard` memakai HMAC terpisah domain login:v1 atas IP kanonis dan satu
+  UPSERT kondisional sebelum verifikasi. Maks10 gagal/in-flight per jendela tetap
+  15menit lintas isolate; burst5/menit existing tetap. Produksi tanpa D1/error
+  admission503, limit429+Retry-After. Sukses hanya DELETE hash+jendela sendiri;
+  request jendela lama tidak menghapus counter jendela baru. GET challenge dan
+  malformed tidak mereset, malformed tidak mencapai verifikasi mahal. Tidak ada
+  lock akun global; NAT berbagi batas dan IP terdistribusi tetap residual.
+  Challenge password-proof baru menyimpan admin_subject HMAC domain
+  admin-challenge:v1, bukan email plaintext; JWT lama tetap diterima hanya sampai
+  expiry5menit aslinya. Email salah menjalankan jalur verifikasi yang sama sebelum
+  respons401, tanpa delay khusus yang membedakan akun.
+- security-events menyimpan login gagal/sukses dan `admin_authorized` untuk mutasi
+  serta baca sensitif setelah sesi sah, satu event/request. Route berupa label
+  tetap tanpa ID/query; subjek sesi HMAC, tanpa IP/kontak/kredensial/body mentah.
+  Polling/read admin biasa dikecualikan. Event berarti otorisasi lolos, bukan hasil
+  mutasi. Kegagalan simpan fallback console tidak mengubah keputusan otorisasi.
+  Login yang sudah dibatasi hanya console agar flood tidak menulis D1 tanpa batas.
+- Cleanup hourly existing menambah maksimal200 counter login>24jam dan500 event
+  keamanan>30hari; window aktif tetap. Total budget heavy cleanup8→10 statement.
+  Tanpa env/cron/secret baru; penerimaan alert dan retensi console produksi belum
+  diverifikasi. Tidak ada pembayaran/supplier nyata untuk pengujian.
+- CI `security-dependencies.cjs` membaca audit runtime/full root+gateway tanpa
+  mutasi lockfile, sebelum build/deploy. High/critical runtime atau error registry,
+  JSON/schema/count tidak konsisten maupun exit tak dikenal menghentikan rilis.
+  Regresi deterministik memakai mocked runner; audit registry nyata diverifikasi
+  terpisah. Full scan3 high toolchain dev Miniflare/Pages tetap warning dengan
+  [disposition kompatibilitas](security/dependency-audit-2026-10-27.md), bukan zero
+  vulnerability. Next15/Baileys/Node22 dipertahankan; tanpa upgrade major paksa.
+
 ## Pembatas checkout durable — 27 Oktober 2026
 
 ✅ Implementasi terverifikasi; publikasi melalui CI. Migrasi0079 menambah

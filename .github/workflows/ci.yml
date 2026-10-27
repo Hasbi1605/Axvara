@@ -68,6 +68,10 @@ jobs:
           CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
+      - name: Dependency audit gate (OWASP A03)
+        # Stop the release on runtime high/critical findings or unreadable registry results.
+        run: node scripts/security-dependencies.cjs
+
       - name: Build Cloudflare Pages artifact
         run: npm run build:pages
         env:

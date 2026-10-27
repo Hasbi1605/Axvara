@@ -3,6 +3,13 @@
 Scope: `axvara/gateway/`. Aturan root AXVARA berlaku. Source produksi kanonis
 berpindah dari folder saudara `axvara-wa-gateway` pada 24 Oktober 2026.
 
+Audit dependency27Oktober: Fastify5.12.7, Sharp0.35.5, fast-uri4.2.3/3.1.9,
+music-metadata11.16.1 dipatch kompatibel; Baileys/Node22/session/runtime tidak
+diganti. Sharp dipanggil transitif Baileys thumbnail, sehingga tidak boleh
+dianggap unreachable hanya karena source gateway tidak mengimportnya. CI root
+menjalankan gate runtime high/critical dan registry error sebelum build/deploy;
+laporan `../docs/security/dependency-audit-2026-10-27.md`. Deploy tetap hanya CI.
+
 - Baileys 7.0.0-rc14 dikunci lockfile; Node22, Heroku akun#1/app `axvara-wa-gateway`.
   Tidak membuat app/database/paket baru. WR/SK tetap di VPS, `/wr/*` tetap410.
 - Deploy HANYA melalui push main AXVARA → `.github/workflows/ci.yml` →

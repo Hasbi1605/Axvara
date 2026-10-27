@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { queryAll, queryFirst, execRun } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
-import { ARTICLE_STATUSES, articleInputSchema, excerptFromMarkdown, isSafeMarkdown, normalizeArticle, slugify } from "@/lib/articles";
+import { ARTICLE_STATUSES, articleInputSchema, excerptFromMarkdown, isSafeMarkdown, normalizeArticle, publicArticle, slugify } from "@/lib/articles";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   const url=new URL(req.url), all=url.searchParams.get("all")==="1", admin=all?await requireAdmin(req).catch(()=>null):null;
   if(all&&!admin)return NextResponse.json({error:"Unauthorized untuk melihat draft"},{status:401}); const q=url.searchParams.get("q")?.trim().toLowerCase(), status=url.searchParams.get("status");
   let articles=(await queryAll("SELECT * FROM articles ORDER BY updated_at DESC, id DESC")).map(normalizeArticle); if(!admin)articles=articles.filter(a=>a.status==="published"); if(status)articles=articles.filter(a=>a.status===status); if(q)articles=articles.filter(a=>`${a.title} ${a.slug} ${a.excerpt}`.toLowerCase().includes(q));
-  return NextResponse.json({articles},{headers:{"Cache-Control":admin?"private, no-store":"public, max-age=60, s-maxage=60"}});
+  return NextResponse.json({articles:admin?articles:articles.map(a=>publicArticle(a))},{headers:{"Cache-Control":admin?"private, no-store":"public, max-age=60, s-maxage=60"}});
 }
 export async function POST(req: NextRequest) {
   const admin=await requireAdmin(req);if(!admin)return NextResponse.json({error:"Unauthorized"},{status:401}); const parsed=articleInputSchema.safeParse(await req.json().catch(()=>null));if(!parsed.success)return NextResponse.json({error:parsed.error.issues[0]?.message??"Validasi gagal"},{status:400});const d=parsed.data;

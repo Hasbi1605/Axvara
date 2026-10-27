@@ -11,6 +11,7 @@
 // Script tidak mengirim ganda ke buyer.
 
 import { NextRequest, NextResponse } from "next/server";
+import { readTextBody } from "@/lib/http-body";
 import { queryFirst, execRun } from "@/lib/db";
 import { constantTimeEqual } from "@/lib/security";
 import { checkRateLimit } from "@/lib/rateLimit";
@@ -53,10 +54,9 @@ export async function POST(request: NextRequest) {
   if (!contentType.includes("application/json")) {
     return NextResponse.json({ error: "invalid_content_type" }, { status: 415 });
   }
-  const rawBody = await request.text().catch(() => "");
-  if (new TextEncoder().encode(rawBody).byteLength > MAX_BODY_SIZE) {
-    return NextResponse.json({ error: "payload_too_large" }, { status: 413 });
-  }
+  const bounded = await readTextBody(request, MAX_BODY_SIZE);
+  if (!bounded.ok) return bounded.response;
+  const rawBody = bounded.data;
   let body: { gmail_message_id?: unknown; subject?: unknown; body_html?: unknown; body_text?: unknown };
   try {
     body = JSON.parse(rawBody) as typeof body;

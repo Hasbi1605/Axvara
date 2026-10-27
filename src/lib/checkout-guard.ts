@@ -40,7 +40,7 @@ export async function checkoutSubjects(input: { ip: string; wa: string; email: s
   const subjects: CheckoutSubject[] = [];
   let ip = input.ip.trim().split(",")[0]?.trim().toLowerCase() || "";
   if (ip.includes(":")) {
-    try { ip = new URL(`http://[${ip}]/`).hostname.slice(1, -1); } catch { /* Cloudflare supplies a valid IP. */ }
+    try { ip = new URL(`http://[${ip}]/`).hostname.replace(/^\[|\]$/g, ""); } catch { /* Cloudflare supplies a valid IP. */ }
   }
   // The no-IP sentinel (plain local dev without proxy headers) must not
   // collapse every local checkout into one shared bucket.

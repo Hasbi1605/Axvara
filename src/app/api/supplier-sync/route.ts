@@ -19,6 +19,7 @@
 // 100 layanan ProviderSMM.
 
 import { NextRequest, NextResponse } from "next/server";
+import { readJsonBody } from "@/lib/http-body";
 import { constantTimeEqual } from "@/lib/security";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { isPediaProvider } from "@/lib/pedia/proxy";
@@ -35,7 +36,9 @@ export async function POST(request: NextRequest) {
   if (!constantTimeEqual(request.headers.get("x-supplier-sync-token") ?? "", expected)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+  const bounded = await readJsonBody(request, 2 * 1024 * 1024);
+  if (!bounded.ok) return bounded.response;
+  const body = bounded.data as Record<string, unknown> | null;
   // Cabang ProviderSMM (PEDIA, 2026-10-07): diff VPS memakai `source` agar
   // tidak bentrok dengan `supplier` WR/SK yang existing.
   if (body && isPediaProvider(body.source)) {

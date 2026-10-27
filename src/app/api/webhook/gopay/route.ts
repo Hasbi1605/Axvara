@@ -1,5 +1,6 @@
 import { DANA_AMOUNT_REUSED_SQL } from "@/lib/payments/dana-history";
 import { NextRequest, NextResponse } from "next/server";
+import { readTextBody } from "@/lib/http-body";
 import { execRun, queryAll, queryFirst, transitionPendingPaymentToPaid } from "@/lib/db";
 import {
   constantTimeEqual,
@@ -43,10 +44,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const rawBody = await request.text().catch(() => "");
-  if (new TextEncoder().encode(rawBody).byteLength > MAX_BODY_SIZE) {
-    return NextResponse.json({ error: "payload_too_large" }, { status: 413 });
-  }
+  const bounded = await readTextBody(request, MAX_BODY_SIZE);
+  if (!bounded.ok) return bounded.response;
+  const rawBody = bounded.data;
   if (!await verifyGopaySignature(rawBody, request.headers.get("x-poller-signature") || "", expectedSecret)) {
     return NextResponse.json({ error: "invalid_signature" }, { status: 401 });
   }

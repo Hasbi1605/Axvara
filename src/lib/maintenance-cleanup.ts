@@ -19,10 +19,12 @@ export async function runMaintenanceCleanup(db: DatabaseAccess) {
   const cutoff = Date.now() - 24 * 60 * 60_000;
   const claims = await db.execRun("DELETE FROM checkout_claims WHERE quote_id IN (SELECT quote_id FROM checkout_claims WHERE created_at_ms<? ORDER BY created_at_ms LIMIT 200)", cutoff);
   const attempts = await db.execRun("DELETE FROM checkout_attempts WHERE rowid IN (SELECT rowid FROM checkout_attempts WHERE window_id<? ORDER BY window_id LIMIT 200)", Math.floor(cutoff / 900_000));
+  const login = await db.execRun("DELETE FROM security_auth_attempts WHERE client_hash IN (SELECT client_hash FROM security_auth_attempts WHERE window_id<? ORDER BY window_id LIMIT 200)", Math.floor(cutoff / 900_000));
+  const security = await db.execRun("DELETE FROM security_events WHERE id IN (SELECT id FROM security_events WHERE created_at<datetime('now','-30 days') ORDER BY created_at LIMIT 500)");
   // Failed deletes leave the marker unchanged so the next tick can recover.
   await db.execRun(`INSERT INTO store_settings(key,value,updated_at)
     VALUES('maintenance_cleanup_at',datetime('now'),datetime('now'))
     ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`);
   const whatsapp = Number(sessions.changes || 0) + Number(inbox.changes || 0);
-  return { rows_cleaned: whatsapp + Number(events.changes || 0) + Number(revoked.changes || 0) + Number(claims.changes || 0) + Number(attempts.changes || 0), whatsapp_rows_cleaned: whatsapp };
+  return { rows_cleaned: whatsapp + Number(events.changes || 0) + Number(revoked.changes || 0) + Number(claims.changes || 0) + Number(attempts.changes || 0) + Number(login.changes || 0) + Number(security.changes || 0), whatsapp_rows_cleaned: whatsapp };
 }

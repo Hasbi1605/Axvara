@@ -7,6 +7,7 @@ import { isActiveQrisConfigured } from "@/lib/payments/dana-qris";
 import { isQueuedFulfillment } from "@/lib/warung-rebahan/delivery-class";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
+import { readJsonBody } from "@/lib/http-body";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -45,12 +46,9 @@ export async function POST(req: NextRequest) {
   if (!checkRateLimit(req, "checkout:quote")) {
     return NextResponse.json({ error: "Terlalu banyak permintaan, coba lagi 1 menit." }, { status: 429, headers: { "Retry-After": "60" } });
   }
-  // Batasi body agar quote 20 item tidak dipakai untuk membanjiri D1.
-  const rawLength = Number(req.headers.get("content-length") || 0);
-  if (Number.isFinite(rawLength) && rawLength > 32_000) {
-    return NextResponse.json({ error: "Payload terlalu besar" }, { status: 413 });
-  }
-  const parsed = schema.safeParse(await req.json().catch(() => null));
+  const body = await readJsonBody(req);
+  if (!body.ok) return body.response;
+  const parsed = schema.safeParse(body.data);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
   }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { readJsonBody } from "@/lib/http-body";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
 import { execRun, queryAll, queryFirst } from "@/lib/db";
@@ -19,7 +20,9 @@ export async function POST(request: NextRequest) {
   if (!rateLimit(rateLimitKey(request, "newsletter:subscribe"), 5, 60_000)) {
     return NextResponse.json({ error: "Terlalu banyak percobaan. Coba lagi satu menit." }, { status: 429, headers: { "Retry-After": "60" } });
   }
-  const parsed = subscriberSchema.safeParse(await request.json().catch(() => null));
+  const body = await readJsonBody(request, 8_000);
+  if (!body.ok) return body.response;
+  const parsed = subscriberSchema.safeParse(body.data);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Email tidak valid" }, { status: 400 });
   const existing = await queryFirst("SELECT id,status FROM newsletter_subscribers WHERE email=?", parsed.data.email);
   if (existing) {
