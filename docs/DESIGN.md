@@ -1,21 +1,23 @@
 # DESIGN.md — AXVARA Design System
 
-## Kode akses pembeli — 27 Oktober 2026
+## PIN pembeli dan kompatibilitas kode lama — 27 Oktober 2026
 
-✅ Implementasi lokal; publikasi CI. antislop During mengikuti pilihan owner;
-ENERGY2/RHYTHM2/MOTION1 mengikuti desain AXVARA. Konfirmasi pesanan mempertahankan
-Midnight/Cyan; satu blok solid #0B1529/border cyan membedakan kode pribadi dari
-ringkasan pembayaran. Monospace dipakai hanya untuk membaca/menyalin 26 karakter,
-bukan judul dekoratif. Kode membungkus pada mobile; tombol salin minimal44px,
-fokus cyan, placeholder55% putih agar terbaca, feedback Tersalin serta error clipboard yang dapat ditindaklanjuti.
-Tidak ada aset, klaim keamanan, animasi atau glow baru.
+✅ Implementasi lokal, publikasi CI. Mode During; ENERGY2/RHYTHM2/MOTION1 mengikuti
+Midnight/Cyan/Liquid Glass AXVARA. Halaman pesanan menempatkan PIN enam karakter
+sebagai data untuk disalin, dengan label **PIN akses pesanan**, tombol **Salin PIN**
+dan petunjuk email. Huruf berjarak membantu membedakan karakter; nol di depan tetap
+terlihat. Kode 26 karakter yang terlanjur terbit tetap punya format dan label lama.
 
-Form lacak berlabel Kode akses pesanan, dengan petunjuk kontak khusus pesanan
-lama. Halaman pesanan tanpa proof menampilkan form kode sebelum detail. Panel
-admin memakai aksi Lihat kode akses dan konfirmasi dua langkah Ganti kode akses;
-peringatan menjelaskan pencabutan akses lama. Loading/error tetap terlihat;
-tombol tidak memasukkan kode ke link atau membuka data tanpa pemeriksaan server.
+Form lacak/pesanan memakai label terikat input dan petunjuk PIN dari email; kode
+lama atau kontak checkout legacy tetap diterima. Loading, error PIN salah/limit
+serta tombol kembali tetap tersedia; target interaksi minimal44px, placeholder
+55% putih/hint65%, focus ring cyan. Tidak menambah tahap OTP atau menyisipkan PIN
+ke tautan. Panel admin tetap memakai reveal POST dan konfirmasi rotasi existing.
 
+Email PIN memakai shell email AXVARA existing: header Midnight, badan terang,
+blok cyan tipis dengan PIN besar26px/spacing4px, tombol Lihat Pesanan tanpa PIN
+di URL. Data PIN adalah titik perhatian, bukan badge promosi; tidak meniru logo
+supplier, membuat aset atau menambah animasi. Email penyelesaian memakai blok sama.
 
 ## Invoice WR hilang setelah timeout — 27 Oktober 2026
 

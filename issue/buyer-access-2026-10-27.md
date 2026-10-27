@@ -1,5 +1,7 @@
 # Kode akses pembeli — 27 Oktober 2026
 
+
+Koreksi owner pada27Oktober: pembelian berikutnya memakai PIN6; format26 yang sudah terbit tetap berlaku. Ketentuan format/admission/email pada [runbook PIN](buyer-pin-2026-10-27.md) menggantikan bagian terkait di dokumen historis ini.
 Implementasi dan fixture lokal; publikasi melalui CI push main. Push bukan bukti
 deployment. Owner memilih kode tanpa OTP untuk pesanan baru, sementara pesanan
 lama tetap menggunakan kontak checkout. Bot WA nonaktif dan tidak perlu diurus

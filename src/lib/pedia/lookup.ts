@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import { queryFirst } from "@/lib/db";
 import { MAX_QRIS_REISSUES } from "@/lib/payments/dana-qris";
 import { pediaStatusLabel } from "@/components/pedia/StatusWidgets";
-import { buyerOrderAccessMatches, newOrderAccessFailure, orderAccessDenied } from "@/lib/order-access";
+import { buyerOrderAccessMatches, createBuyerAccessSession, requiresOrderAccessCode, newOrderAccessFailure, orderAccessDenied } from "@/lib/order-access";
 
 export async function lookupPediaOrder(code: string, contactRaw: string, adminView = false, request?: Request) {
   const notFound = orderAccessDenied;
@@ -17,11 +17,12 @@ export async function lookupPediaOrder(code: string, contactRaw: string, adminVi
     code,
   )) as Record<string, unknown> | undefined;
   if (!row) return notFound();
+  if (!adminView && requiresOrderAccessCode(row) && !request) return NextResponse.json({ error: "Verifikasi PIN belum tersedia." }, { status: 503 });
   if (!adminView && request) {
-    const failure = await newOrderAccessFailure(request, row, contactRaw);
+    const failure = await newOrderAccessFailure(request, row, contactRaw, { allowAdmin: false });
     if (failure) return failure;
   }
-  if (!adminView && !(await buyerOrderAccessMatches(contactRaw, row))) return notFound();
+  if (!adminView && !requiresOrderAccessCode(row) && !(await buyerOrderAccessMatches(contactRaw, row))) return notFound();
   const item = (await queryFirst(
     `SELECT i.*, p.name AS product_name, t.tier AS tier_name
        FROM pedia_order_items i
@@ -32,6 +33,7 @@ export async function lookupPediaOrder(code: string, contactRaw: string, adminVi
   ).catch(() => null)) as Record<string, unknown> | null;
   const waFull = String(row.customer_wa ?? "");
   return NextResponse.json({
+    buyer_access_session: adminView ? undefined : await createBuyerAccessSession(row),
     order: {
       code: row.code,
       customer_name: row.customer_name,

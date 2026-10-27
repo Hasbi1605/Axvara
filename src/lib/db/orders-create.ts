@@ -10,6 +10,7 @@ import { StockReservationError } from "./errors";
 import type { D1Statement, AtomicOrderItem } from "./types";
 import { markUniqueUnitLines } from "@/lib/fulfillment/units";
 import { assertOrderAccessConfigured } from "@/lib/order-access";
+import { checkoutPinEmailStatement } from "@/lib/orders/access-email-queue";
 
 type AtomicOrderInput = {
   code: string;
@@ -173,7 +174,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
     }
     statements.push(
       d1.prepare(
-        "INSERT INTO orders (code,customer_name,customer_wa,customer_email,items,subtotal,payment_method,payment_account,proof_url,status,sales_channel,variant_id,quote_id,expires_at,buyer_access_version) VALUES (?,?,?,?,?,?,?,?,?,?,'web',?,?,datetime('now','+24 hours'),1)",
+        "INSERT INTO orders (code,customer_name,customer_wa,customer_email,items,subtotal,payment_method,payment_account,proof_url,status,sales_channel,variant_id,quote_id,expires_at,buyer_access_version,buyer_access_format) VALUES (?,?,?,?,?,?,?,?,?,?,'web',?,?,datetime('now','+24 hours'),1,'pin6')",
       ).bind(
         input.code,
         input.customerName,
@@ -189,6 +190,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
         input.quoteId,
       ),
     );
+    statements.push(checkoutPinEmailStatement(d1, input.code));
     guardIds.forEach((guardId) => {
       statements.push(d1.prepare("DELETE FROM operation_guards WHERE operation_id=?").bind(guardId));
     });
@@ -225,7 +227,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
     customer_name: input.customerName,
     customer_wa: input.customerWa,
     customer_email: input.customerEmail,
-    buyer_access_version: 1,
+    buyer_access_version: 1, buyer_access_format: "pin6",
     items: JSON.stringify(input.items),
     subtotal: input.subtotal,
     payment_method: input.paymentMethod,

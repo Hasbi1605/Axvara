@@ -14,6 +14,7 @@ import {
 import { getActiveVariant, type VariantSummary, formatDuration, buyerWarrantyLabel } from "@/lib/catalog";
 import { generateOrderCode } from "@/lib/security";
 import { assertOrderAccessConfigured } from "@/lib/order-access";
+import { checkoutPinEmailStatement } from "@/lib/orders/access-email-queue";
 import { QRIS_ORDER_WINDOW_MINUTES } from "@/lib/payments/dana-qris";
 import { markUniqueUnitLines, MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 
@@ -133,8 +134,8 @@ export async function createChannelOrderAtomic(
          payment_method, payment_account, proof_url, status, sales_channel,
          channel_conversation_id, channel_member_id, telegram_chat_id, telegram_user_id,
          payment_status, fulfillment_status, variant_id, variant_snapshot,
-         quote_id, expires_at, buyer_access_version
-       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)`,
+         quote_id, expires_at, buyer_access_version, buyer_access_format
+       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,'pin6')`,
       input.orderCode,
       input.customerName,
       input.customerWa || "",
@@ -277,8 +278,8 @@ export async function createChannelOrderAtomic(
          payment_method, payment_account, proof_url, status, sales_channel,
          channel_conversation_id, channel_member_id, telegram_chat_id, telegram_user_id,
          payment_status, fulfillment_status, variant_id, variant_snapshot,
-         quote_id, expires_at, buyer_access_version
-       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)`,
+         quote_id, expires_at, buyer_access_version, buyer_access_format
+       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,'pin6')`,
     ).bind(
       input.orderCode,
       input.customerName,
@@ -304,6 +305,7 @@ export async function createChannelOrderAtomic(
     ),
   );
 
+  statements.push(checkoutPinEmailStatement(d1, input.orderCode));
   for (const guardId of guardIds) {
     statements.push(d1.prepare(`DELETE FROM operation_guards WHERE operation_id=?`).bind(guardId));
   }
@@ -513,8 +515,8 @@ export async function createPendingChannelOrder(input: ChannelOrderInput): Promi
            payment_method, payment_account, proof_url, status, sales_channel,
            channel_conversation_id, channel_member_id, telegram_chat_id, telegram_user_id,
            payment_status, fulfillment_status, variant_id, variant_snapshot,
-           quote_id, expires_at, buyer_access_version
-         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now','+24 hours'),1)`,
+           quote_id, expires_at, buyer_access_version, buyer_access_format
+         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now','+24 hours'),1,'pin6')`,
       ).bind(
         orderCode,
         input.customerName,
@@ -537,6 +539,7 @@ export async function createPendingChannelOrder(input: ChannelOrderInput): Promi
         variantSnapshot,
         input.idempotencyKey,
       ),
+      checkoutPinEmailStatement(d1, orderCode),
       // 4. Cleanup guard
       d1.prepare(`DELETE FROM operation_guards WHERE operation_id=?`).bind(guardId),
     );

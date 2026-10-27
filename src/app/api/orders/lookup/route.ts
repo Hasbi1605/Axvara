@@ -7,7 +7,7 @@ import { MAX_QRIS_REISSUES } from "@/lib/payments/dana-qris";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { parseBuyerContact } from "@/lib/order-contact";
 import { requireAdmin } from "@/lib/auth";
-import { buyerOrderAccessMatches, newOrderAccessFailure, orderAccessDenied } from "@/lib/order-access";
+import { buyerOrderAccessMatches, createBuyerAccessSession, requiresOrderAccessCode, newOrderAccessFailure, orderAccessDenied } from "@/lib/order-access";
 import { normalizeOrderAccessCode } from "@/lib/order-access-format";
 
 export const runtime = "edge";
@@ -75,10 +75,10 @@ async function lookup(req: NextRequest) {
 
   if (!row) return notFound();
   if (!adminView) {
-    const failure = await newOrderAccessFailure(req, row, contactRaw);
+    const failure = await newOrderAccessFailure(req, row, contactRaw, { allowAdmin: false });
     if (failure) return failure;
   }
-  if (!adminView && !(await buyerOrderAccessMatches(contactRaw, row))) return notFound();
+  if (!adminView && !requiresOrderAccessCode(row) && !(await buyerOrderAccessMatches(contactRaw, row))) return notFound();
 
   const waFull = String(row.customer_wa ?? "");
   const waMasked = waFull.length >= 7 ? `${waFull.slice(0, 5)}****${waFull.slice(-4)}` : waFull ? `${waFull.slice(0, 3)}****` : "";
@@ -143,6 +143,7 @@ async function lookup(req: NextRequest) {
     }
   }
   return NextResponse.json({
+    buyer_access_session: adminView ? undefined : await createBuyerAccessSession(row),
     order: {
       code: row.code,
       customer_name: row.customer_name,

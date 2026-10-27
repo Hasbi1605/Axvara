@@ -11,7 +11,7 @@ import { formatWibDateTime } from "@/lib/utils";
 import { CredentialText, ActivationBody, MobileCollapsible, TermsBody } from "@/components/storefront/ProductCopy";
 import { WarrantyClaimAccordion } from "@/components/storefront/WarrantyClaim";
 import type { VariantCopy } from "@/lib/product-copy/format";
-import { readOrderAccessCode, rememberOrderAccessCode } from "@/lib/order-access-client";
+import { orderAccessHeaders, readOrderAccessCode, rememberOrderAccessCode } from "@/lib/order-access-client";
 
 // `label` hanya ada untuk isi produk non-WR (nama baris pesanan).
 // `terms` = S&K + cara aktivasi ter-resolusi (resolver PDP yang sama),
@@ -130,7 +130,7 @@ export function WrCredentialsPanel({ code, prefillContact = "", contactHint = ""
       rememberOrderAccessCode(code, waValue);
       const r = await fetch(`/api/orders/${encodeURIComponent(code)}/credentials`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", ...orderAccessHeaders(code, waValue.trim()) },
         body: JSON.stringify({ contact: waValue.trim() }),
       });
       const body = (await r.json().catch(() => ({}))) as {
@@ -139,7 +139,7 @@ export function WrCredentialsPanel({ code, prefillContact = "", contactHint = ""
         error?: string;
       };
       if (!r.ok) {
-        setError(body.error === "verification_failed" ? "Kode akses atau kontak pesanan lama tidak cocok." : body.error === "not_ready" ? "Detail akun belum tersedia — tunggu beberapa menit lalu muat ulang." : "Gagal memverifikasi. Coba lagi.");
+        setError(body.error === "verification_failed" ? "PIN atau akses pesanan lama tidak cocok." : body.error === "not_ready" ? "Detail akun belum tersedia — tunggu beberapa menit lalu muat ulang." : "Gagal memverifikasi. Coba lagi.");
         return;
       }
       loadedForReady.current = requestedReady;
@@ -207,7 +207,7 @@ export function WrCredentialsPanel({ code, prefillContact = "", contactHint = ""
   return (
     <section className="ax-glass-card mt-6 rounded-2xl p-4 text-left" aria-label="Ambil detail akun">
       <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">Detail Akun Digital</p>
-      <p className="mt-2 text-xs leading-5 text-white/55">Produk digital pesanan ini sudah siap. Masukkan kode akses pesanan untuk menampilkannya. Pesanan lama masih dapat memakai No. WA atau email checkout.</p>
+      <p className="mt-2 text-xs leading-5 text-white/55">Produk digital pesanan ini sudah siap. Masukkan PIN akses dari email pembelian. Pesanan lama masih dapat memakai kode lama atau kontak checkout.</p>
       {contactHint && <p className="mt-1 text-[11px] text-white/40">Terdaftar: {contactHint}</p>}
       <div className="mt-3 flex gap-2">
         <input
@@ -219,7 +219,7 @@ export function WrCredentialsPanel({ code, prefillContact = "", contactHint = ""
           autoCorrect="off"
           spellCheck={false}
           placeholder="Kode akses pesanan"
-          aria-label="Kode akses atau kontak pesanan lama"
+          aria-label="PIN atau akses pesanan lama"
           className="h-11 min-w-0 flex-1 rounded-xl border border-white/15 bg-white/5 px-3 text-sm text-white placeholder:text-white/55 focus:border-[#00E5FF]/60 focus:outline-none"
         />
         <button

@@ -71,7 +71,7 @@ describe("/pesanan/[code] — blok pasca-pembayaran", () => {
     // Form mati tidak boleh ada lagi.
     expect(screen.queryByText("Detail Akun Digital")).toBeNull();
     expect(screen.queryByRole("button", { name: "Tampilkan" })).toBeNull();
-    expect(screen.queryByLabelText("Kode akses atau kontak pesanan lama")).toBeNull();
+    expect(screen.queryByLabelText("PIN atau akses pesanan lama")).toBeNull();
   });
 
   it("status akhir dari server dicatat ke salinan lokal (titik tab Pesanan ikut hilang)", async () => {
@@ -86,7 +86,7 @@ describe("/pesanan/[code] — blok pasca-pembayaran", () => {
     render(<OrderStatusPage />);
     await waitFor(() => expect(screen.getByText("Detail Akun Digital")).toBeTruthy());
     // Kode akses untuk pesanan baru; kontak checkout tetap untuk pesanan lama.
-    expect(screen.getByLabelText("Kode akses atau kontak pesanan lama")).toBeTruthy();
+    expect(screen.getByLabelText("PIN atau akses pesanan lama")).toBeTruthy();
     expect(screen.getByText(/Terdaftar: 08213\*\*\*\*7434/)).toBeTruthy();
     expect(screen.queryByText("Pengiriman Produk")).toBeNull();
   });

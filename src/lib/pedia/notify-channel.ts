@@ -11,7 +11,7 @@ type Db = ReturnType<typeof createDatabaseAccess>;
 /** Kirim pesan pembeli via email (selalu) + WA bila tersedia. */
 export async function sendPediaBuyerMessage(db: Db, orderCode: string, text: string): Promise<void> {
   const order = await db.queryFirst(
-    `SELECT code, customer_email, buyer_access_version FROM orders WHERE code=?`, orderCode,
+    `SELECT code, customer_email, buyer_access_version,buyer_access_format FROM orders WHERE code=?`, orderCode,
   ).catch(() => null);
   const email = String(order?.customer_email ?? "").trim();
   if (email) {
@@ -22,10 +22,10 @@ export async function sendPediaBuyerMessage(db: Db, orderCode: string, text: str
       // Link status hanya memuat kode order — tidak pernah access code.
       const { deriveOrderAccessCode } = await import("@/lib/order-access");
       const buyerAccessCode = await deriveOrderAccessCode({
-        code: String(order?.code ?? orderCode), buyer_access_version: order?.buyer_access_version,
+        code: String(order?.code ?? orderCode), buyer_access_version: order?.buyer_access_version, buyer_access_format: order?.buyer_access_format,
       }).catch(() => "");
       const body = buyerAccessCode
-        ? `${text}\nKode Akses: ${buyerAccessCode} — simpan baik-baik dan jangan bagikan ke siapa pun.`
+        ? `${text}\n${buyerAccessCode.length === 6 ? "PIN" : "Kode"} Akses: ${buyerAccessCode} — simpan baik-baik dan jangan bagikan ke siapa pun.`
         : text;
       await sendPediaEmail({ to: email, subject: `Pedia — ${orderCode}`, text: body });
     } catch { /* email best-effort; WA di bawah tetap jalan */ }

@@ -15,6 +15,11 @@ export function operationQueueProbeSql(phase: string | null, qrisWhere: string, 
     ["notify", "(SELECT COUNT(*) FROM orders WHERE sales_channel='telegram' AND status='lunas' AND payment_status='paid' AND telegram_paid_notified_at IS NULL) AS paid"],
     ["notify", "(SELECT COUNT(*) FROM orders WHERE sales_channel IN ('telegram','whatsapp') AND status='lunas' AND payment_status='paid' AND telegram_paid_admin_notified_at IS NULL) AS paid_admin"],
     ["notify", `(SELECT COUNT(*) FROM orders o WHERE ${webPaidWhere}) AS paid_admin_web`],
+    ["notify", `(SELECT EXISTS(SELECT 1 FROM buyer_notice_log
+      WHERE idempotency_key >= 'email:access_pin:' AND idempotency_key < 'email:access_pin;'
+        AND access_attempts < 5
+        AND ((status='failed' AND (access_retry_at IS NULL OR datetime(access_retry_at)<=datetime('now')))
+          OR (status='sending' AND julianday(updated_at)<julianday('now','-10 minutes'))))) AS pin_due`],
     ["fulfillment", "(SELECT COUNT(*) FROM fulfillment_jobs WHERE status='sending') AS stale"],
   ];
   const selected = probes.filter(([owner]) => phase == null || owner === phase);

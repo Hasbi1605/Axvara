@@ -26,7 +26,7 @@ import { queryFirst, transitionPendingOrder, OrderTransitionError } from "@/lib/
 import { isValidOrderCode } from "@/lib/security";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { parseBuyerContact } from "@/lib/order-contact";
-import { buyerOrderAccessMatches, newOrderAccessFailure } from "@/lib/order-access";
+import { buyerOrderAccessMatches, requiresOrderAccessCode, newOrderAccessFailure } from "@/lib/order-access";
 import { normalizeOrderAccessCode } from "@/lib/order-access-format";
 
 export const runtime = "edge";
@@ -60,7 +60,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   }
 
   const row = (await queryFirst(
-    `SELECT code, status, payment_status, customer_wa, customer_email, items, buyer_access_version FROM orders WHERE code=?`,
+    `SELECT code, status, payment_status, customer_wa, customer_email, items, buyer_access_version,buyer_access_format FROM orders WHERE code=?`,
     orderCode,
   )) as Record<string, unknown> | undefined;
 
@@ -70,7 +70,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   if (!row) return notFound();
   const failure = await newOrderAccessFailure(req, row, contactRaw);
   if (failure) return failure;
-  if (!(await buyerOrderAccessMatches(contactRaw, row))) return notFound();
+  if (!requiresOrderAccessCode(row) && !(await buyerOrderAccessMatches(contactRaw, row))) return notFound();
 
   if (String(row.status) !== "pending") {
     return NextResponse.json(

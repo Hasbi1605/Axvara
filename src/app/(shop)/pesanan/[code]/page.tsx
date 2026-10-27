@@ -15,8 +15,9 @@ import { WarrantyClaimAccordion } from "@/components/storefront/WarrantyClaim";
 import { MobileCollapsible } from "@/components/storefront/ProductCopy";
 import { InlineSpinner, OrderStatusSkeleton } from "@/components/storefront/Skeletons";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
-import { orderAccessHeaders, readOrderAccessCode, rememberOrderAccessCode } from "@/lib/order-access-client";
+import { ensureBuyerAccessSession, forgetBuyerAccessSession, orderAccessHeaders, readOrderAccessCode, rememberOrderAccessCode } from "@/lib/order-access-client";
 import { OrderAccessNotice } from "@/components/storefront/OrderAccessNotice";
+import { normalizeOrderAccessCode } from "@/lib/order-access-format";
 
 type QrisInvoice = {
   payable_amount: number;
@@ -187,9 +188,16 @@ export default function OrderSuccessPage() {
     // `wake=1` HANYA dari tombol manual: server membangunkan poller GoPay.
     const access = buyerProof.current || readOrderAccessCode(code);
     if (access) { buyerProof.current = access; setBuyerAccess(access); setCancelContact(access); }
+    try { if (normalizeOrderAccessCode(access).length === 6) await ensureBuyerAccessSession(code, access); }
+    catch (error) {
+      setOrder(null); setNeedsAccess(true);
+      setFetchError(error instanceof Error ? error.message : "PIN belum dapat diverifikasi.");
+      return;
+    }
     const response = await fetchWithTimeout(`/api/orders?code=${encodeURIComponent(code)}${wake ? "&wake=1" : ""}`, { cache: "no-store", headers: orderAccessHeaders(code, access) }, 20_000);
     const body = await response.json().catch(() => ({}));
     if (response.status === 404) {
+      forgetBuyerAccessSession(code);
       setOrder(null);
       setNeedsAccess(body.reason === "access_required");
       setFetchError(body.reason === "access_required" ? "Masukkan kode akses yang diberikan saat checkout." : null);
@@ -269,7 +277,7 @@ export default function OrderSuccessPage() {
     try {
       const response = await fetch(`/api/orders/${encodeURIComponent(code)}/cancel`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...orderAccessHeaders(code) },
         body: JSON.stringify({ contact: cancelContact.trim() }),
         cache: "no-store",
       });
@@ -397,8 +405,8 @@ export default function OrderSuccessPage() {
     setLoading(true); void fetchOrder().catch((error) => setFetchError(error instanceof Error ? error.message : "Pesanan belum dapat dimuat. Coba lagi.")).finally(() => setLoading(false));
   }}>
     <h1 className="text-xl font-bold text-white">Buka pesananmu</h1>
-    <p className="text-sm leading-6 text-white/65">Masukkan kode akses yang kamu simpan saat checkout atau terima melalui email/chat pembelian.</p>
-    <label htmlFor="order-access-code" className="block text-sm text-white/80">Kode akses pesanan</label>
+    <p className="text-sm leading-6 text-white/65">Gunakan PIN 6 karakter dari email atau konfirmasi checkout. Kode akses lama tetap berlaku.</p>
+    <label htmlFor="order-access-code" className="block text-sm text-white/80">PIN akses pesanan</label>
     <input id="order-access-code" value={accessInput} onChange={event => setAccessInput(event.target.value)} autoComplete="off" autoCapitalize="characters" spellCheck={false} required maxLength={100} className="h-12 w-full rounded-xl border border-white/20 bg-white/5 px-4 font-mono text-white outline-none focus:border-[#00E5FF]" />
     <button type="submit" className="min-h-12 w-full rounded-xl bg-[#00E5FF] px-5 font-semibold text-[#080C1E]">Buka pesanan</button>
     {fetchError && <p role="alert" className="text-xs text-amber-200">{fetchError}</p>}
@@ -771,7 +779,7 @@ export default function OrderSuccessPage() {
               <div className="rounded-2xl border border-red-400/20 bg-red-500/[0.06] p-4 text-left" role="dialog" aria-label="Konfirmasi pembatalan pesanan">
                 <p className="text-sm font-semibold text-red-200">Batalkan pesanan {order.code}?</p>
                 <p className="mt-1 text-xs leading-5 text-white/55">Stok langsung kembali dan bisa dipesan orang lain. Pastikan kamu belum membayar — bila dana sudah masuk, hubungi admin dengan kode pesanan.</p>
-                <label htmlFor="cancel-contact" className="mt-3 block text-xs font-medium text-white/60">{buyerAccess ? "Kode akses pesanan *" : "No. WA atau email checkout *"}</label>
+                <label htmlFor="cancel-contact" className="mt-3 block text-xs font-medium text-white/60">{buyerAccess ? "PIN akses pesanan *" : "No. WA atau email checkout *"}</label>
                 <input
                   id="cancel-contact"
                   value={cancelContact}

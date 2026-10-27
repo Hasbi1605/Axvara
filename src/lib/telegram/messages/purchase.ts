@@ -250,7 +250,7 @@ export function invoiceMessage(params: {
     "",
     `📦 ${name}`,
     `🔢 <code>${escapeHtml(orderCode)}</code>`,
-    ...(params.buyerAccessCode ? ["", `🔑 <b>Kode Akses:</b> <code>${escapeHtml(params.buyerAccessCode)}</code>`] : []),
+    ...(params.buyerAccessCode ? ["", `🔑 <b>${params.buyerAccessCode.length === 6 ? "PIN Akses" : "Kode Akses"}:</b> <code>${escapeHtml(params.buyerAccessCode)}</code>`] : []),
     "",
     `💳 <b>Total Bayar: ${formatRupiah(payableAmount)}</b>`,
     "",

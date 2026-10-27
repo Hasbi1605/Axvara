@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS orders (
   customer_wa TEXT NOT NULL,
   customer_email TEXT,
   buyer_access_version INTEGER NOT NULL DEFAULT 0 CHECK (buyer_access_version >= 0),
+  buyer_access_format TEXT NOT NULL DEFAULT 'code26' CHECK (buyer_access_format IN ('code26','pin6')),
   items TEXT NOT NULL,
   subtotal INTEGER NOT NULL,
   payment_method TEXT NOT NULL,
@@ -955,6 +956,9 @@ CREATE TABLE IF NOT EXISTS buyer_notice_log (
   status TEXT NOT NULL DEFAULT 'sending' CHECK (status IN ('sending', 'sent', 'failed')),
   provider_id TEXT,
   error TEXT,
+  access_attempts INTEGER NOT NULL DEFAULT 0 CHECK (access_attempts >= 0),
+  access_retry_at TEXT,
+  access_lease TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

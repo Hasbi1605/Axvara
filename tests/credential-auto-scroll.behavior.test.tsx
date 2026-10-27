@@ -121,7 +121,7 @@ describe("account details auto-scroll", () => {
   it.each([response({ error: "verification_failed" }, 403), response({ credentials: [] })])("does not scroll for failed or empty verification, but scrolls after a successful manual retry", async (initial) => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(initial).mockResolvedValueOnce(response(credentials())));
     render(<WrCredentialsPanel code={CODE} />);
-    fireEvent.change(screen.getByLabelText("Kode akses atau kontak pesanan lama"), { target: { value: "buyer@example.test" } });
+    fireEvent.change(screen.getByLabelText("PIN atau akses pesanan lama"), { target: { value: "buyer@example.test" } });
     fireEvent.click(screen.getByRole("button", { name: "Tampilkan" }));
     await waitFor(() => expect((screen.getByRole("button", { name: "Tampilkan" }) as HTMLButtonElement).disabled).toBe(false));
     expect(scroll).not.toHaveBeenCalled();

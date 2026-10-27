@@ -3,7 +3,7 @@
 // Tanpa data supplier mentah. Refill eligibility dihitung server.
 import { NextRequest, NextResponse } from "next/server";
 import { createDatabaseAccess } from "@/lib/db-access";
-import { buyerOrderAccessMatches, newOrderAccessFailure } from "@/lib/order-access";
+import { buyerOrderAccessMatches, requiresOrderAccessCode, newOrderAccessFailure } from "@/lib/order-access";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { readPediaServiceCopy } from "@/lib/pedia/service-copy";
 
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const failure = await newOrderAccessFailure(request, order, contact);
     if (failure) return failure;
   }
-  if (!order || !(await buyerOrderAccessMatches(contact, order))) return NextResponse.json({ error: "Pesanan tidak ditemukan atau kode akses tidak cocok." }, { status: 404, headers: { "Cache-Control": "private, no-store" } });
+  if (!order || (!requiresOrderAccessCode(order) && !(await buyerOrderAccessMatches(contact, order)))) return NextResponse.json({ error: "Pesanan tidak ditemukan atau kode akses tidak cocok." }, { status: 404, headers: { "Cache-Control": "private, no-store" } });
   if (order.status === "pending") {
     const payment = await db.queryFirst("SELECT provider,status,requested_amount FROM payment_transactions WHERE order_code=?",clean);
     if (payment?.provider === "klikqris" && ["pending", "initializing"].includes(String(payment.status))) {

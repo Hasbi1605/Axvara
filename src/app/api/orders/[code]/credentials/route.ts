@@ -38,7 +38,7 @@ function privateJson(body: unknown, init?: Parameters<typeof NextResponse.json>[
 async function orderReady(code: string) {
   const db = createDatabaseAccess();
   const order = await db
-    .queryFirst(`SELECT code, customer_wa, customer_email, status, payment_status, buyer_access_version FROM orders WHERE code=?`, code)
+    .queryFirst(`SELECT code, customer_wa, customer_email, status, payment_status, buyer_access_version,buyer_access_format FROM orders WHERE code=?`, code)
     .catch(() => null);
   if (!order) return { error: "not_found" as const, status: 404 };
   if (String(order.status) !== "lunas" || String(order.payment_status) !== "paid") {
@@ -134,16 +134,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return privateJson({ ok: true, credentials: await readVerifiedDetails(code, ready.db) });
   }
   const raw = String(body?.access_code ?? body?.contact ?? body?.wa ?? "").trim();
-  const authorityOrder = await createDatabaseAccess().queryFirst("SELECT code,buyer_access_version FROM orders WHERE code=?", code);
+  const authorityOrder = await createDatabaseAccess().queryFirst("SELECT code,buyer_access_version,buyer_access_format FROM orders WHERE code=?", code);
   if (!authorityOrder) return privateJson({ error: "not_found" }, { status: 404 });
-  const accessFailure = await newOrderAccessFailure(request, authorityOrder, raw);
+  const accessFailure = await newOrderAccessFailure(request, authorityOrder, raw, { allowAdmin: false });
   if (accessFailure) return accessFailure;
   const ready = await orderReady(code);
   if ("error" in ready) return privateJson({ error: ready.error }, { status: ready.status });
   const { order, db } = ready;
+  if (order.buyer_access_version !== authorityOrder.buyer_access_version || order.buyer_access_format !== authorityOrder.buyer_access_format) return privateJson({ error: "verification_failed" }, { status: 409 });
   const { contactAttemptLimited, recordContactFailure } = await import("@/lib/orders/contact-attempts");
   if (!requiresOrderAccessCode(order) && await contactAttemptLimited(db, code, clientIp(request))) return privateJson({ error: "rate_limited" }, { status: 429, headers: { "Retry-After": "900", "Cache-Control": "private, no-store" } });
-  if (!(await buyerOrderAccessMatches(raw, order))) {
+  if (!requiresOrderAccessCode(order) && !(await buyerOrderAccessMatches(raw, order))) {
     const limited = await recordContactFailure(db, code, clientIp(request));
     return privateJson({ error: limited ? "rate_limited" : "verification_failed" }, {
       status: limited ? 429 : 403, headers: { "Cache-Control": "private, no-store", ...(limited ? { "Retry-After": "900" } : {}) },

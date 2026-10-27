@@ -3,7 +3,7 @@ const ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 export function normalizeOrderAccessCode(value: unknown): string {
   if (typeof value !== "string" || value.length > 100) return "";
   const normalized = value.toUpperCase().replace(/[\s-]/g, "").replace(/O/g, "0").replace(/[IL]/g, "1");
-  return normalized.length === 26 && [...normalized].every(char => ALPHABET.includes(char)) ? normalized : "";
+  return [6, 26].includes(normalized.length) && [...normalized].every(char => ALPHABET.includes(char)) ? normalized : "";
 }
 
 export function formatOrderAccessCode(value: string): string {
@@ -18,4 +18,10 @@ export function encodeOrderAccessCode(bytes: Uint8Array): string {
   }
   if (bits) out += ALPHABET[(buffer << (5 - bits)) & 31];
   return formatOrderAccessCode(out);
+}
+
+export function encodeOrderAccessPin(bytes: Uint8Array): string {
+  // Six Crockford characters encode 30 pseudorandom bits, including leading zeros.
+  const bits = ((bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3]) >>> 0;
+  return [27, 22, 17, 12, 7, 2].map(shift => ALPHABET[(bits >>> shift) & 31]).join("");
 }

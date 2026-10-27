@@ -21,7 +21,7 @@ import { markInvoicePending, markInvoiceSent } from "@/lib/telegram/invoice-retr
 export async function handleOrderStatus(chatId: number, orderCode: string) {
   if (!Number.isSafeInteger(chatId) || chatId <= 0) return;
   const order = await queryFirst(
-    `SELECT o.code, o.items, o.subtotal, o.payment_status, o.fulfillment_status, o.buyer_access_version,
+    `SELECT o.code, o.items, o.subtotal, o.payment_status, o.fulfillment_status, o.buyer_access_version, o.buyer_access_format,
             pt.payable_amount
      FROM orders o LEFT JOIN payment_transactions pt ON pt.order_code=o.code
      WHERE o.code=? AND o.sales_channel='telegram' AND o.telegram_chat_id=?`,
@@ -44,7 +44,7 @@ export async function handleOrderStatus(chatId: number, orderCode: string) {
 
   const { deriveOrderAccessCode } = await import("@/lib/order-access");
   const statusAccessCode = await deriveOrderAccessCode({
-    code: String(order.code), buyer_access_version: (order as { buyer_access_version?: unknown }).buyer_access_version,
+    code: String(order.code), buyer_access_version: (order as { buyer_access_version?: unknown; buyer_access_format?: unknown }).buyer_access_version, buyer_access_format: order.buyer_access_format,
   }).catch(() => "");
   await sendMessage({
     chat_id: chatId,
@@ -69,7 +69,7 @@ export async function handleOrderRefresh(chatId: number, messageId: number, orde
   if (!Number.isSafeInteger(chatId) || chatId <= 0) return;
   // Same as status but edit existing message
   const order = await queryFirst(
-    `SELECT o.code, o.items, o.subtotal, o.payment_status, o.fulfillment_status, o.buyer_access_version,
+    `SELECT o.code, o.items, o.subtotal, o.payment_status, o.fulfillment_status, o.buyer_access_version, o.buyer_access_format,
             pt.payable_amount, pt.provider AS payment_provider, pt.status AS transaction_status
      FROM orders o LEFT JOIN payment_transactions pt ON pt.order_code=o.code
      WHERE o.code=? AND o.sales_channel='telegram' AND o.telegram_chat_id=?`,
@@ -100,7 +100,7 @@ export async function handleOrderRefresh(chatId: number, messageId: number, orde
 
   const { deriveOrderAccessCode: deriveRefreshAccessCode } = await import("@/lib/order-access");
   const refreshAccessCode = await deriveRefreshAccessCode({
-    code: String(order.code), buyer_access_version: (order as { buyer_access_version?: unknown }).buyer_access_version,
+    code: String(order.code), buyer_access_version: (order as { buyer_access_version?: unknown; buyer_access_format?: unknown }).buyer_access_version, buyer_access_format: order.buyer_access_format,
   }).catch(() => "");
   await safeEditOrSend({
     chat_id: chatId, message_id: messageId,
@@ -134,7 +134,7 @@ export async function handleQrisRenew(chatId: number, rawOrderCode: string) {
   if (!orderCode) return;
 
   const order = await queryFirst(
-    `SELECT items, buyer_access_version FROM orders WHERE code=? AND sales_channel='telegram'`,
+    `SELECT items, buyer_access_version,buyer_access_format FROM orders WHERE code=? AND sales_channel='telegram'`,
     orderCode,
   ).catch(() => null);
   if (!order) {
@@ -184,7 +184,7 @@ export async function handleQrisRenew(chatId: number, rawOrderCode: string) {
       expiresAt: result.invoice.expiresAt,
       paymentMethod: "qris",
       buyerAccessCode: (await (await import("@/lib/order-access")).deriveOrderAccessCode({
-        code: orderCode, buyer_access_version: (order as { buyer_access_version?: unknown } | null)?.buyer_access_version,
+        code: orderCode, buyer_access_version: (order as { buyer_access_version?: unknown; buyer_access_format?: unknown } | null)?.buyer_access_version, buyer_access_format: order?.buyer_access_format,
       }).catch(() => "")) || undefined,
     }),
     parse_mode: "HTML",

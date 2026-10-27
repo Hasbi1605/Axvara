@@ -60,6 +60,7 @@ const parseItems = (raw: unknown): Items => {
 };
 
 export async function POST(request: NextRequest) {
+  const deadline = Date.now() + 45_000;
   const secret = process.env.CRON_SECRET;
   if (!secret || !constantTimeEqual(request.headers.get("authorization") ?? "", `Bearer ${secret}`)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -82,8 +83,8 @@ export async function POST(request: NextRequest) {
     else if (job === "sk_orders") Object.assign(result, await runSkOrders(db));
     else if (job === "pedia_orders") Object.assign(result, await runPediaOrders(db));
     else if (job === "notify_a") Object.assign(result, await runNotifyA(db));
-    else if (job === "notify_b") Object.assign(result, await runNotifyB(db));
-    else if (job === "notify") Object.assign(result, await runNotify(db));
+    else if (job === "notify_b") Object.assign(result, await runNotifyB(db, deadline));
+    else if (job === "notify") Object.assign(result, await runNotify(db, deadline));
     else if (job === "cleanup") Object.assign(result, await runCleanup(db));
     else Object.assign(result, await runPromo(db));
   } catch (error) {
@@ -417,7 +418,7 @@ async function runNotifyA(db: Db) {
   return out;
 }
 
-async function runNotifyB(db: Db) {
+async function runNotifyB(db: Db, deadline: number) {
   const out: Record<string, unknown> = {};
   const guard = async (key: string, fn: () => Promise<unknown>) => {
     try { out[key] = await fn(); } catch (error) {
@@ -441,10 +442,17 @@ async function runNotifyB(db: Db) {
     const { processDueWhatsAppOutbox } = await import("@/lib/whatsapp/outbox");
     return processDueWhatsAppOutbox(4, db);
   });
+  // Sapu bounded antrean PIN checkout (maks 2/tick) bila budget/waktu
+  // tersisa; tanpa job/cron/env/budget baru.
+  await guard("checkout_pin_emails", async () => {
+    if (!db.canSpend(4)) return { skipped: "query_budget" };
+    const { processCheckoutPinEmails } = await import("@/lib/orders/access-email");
+    return processCheckoutPinEmails(db, 2, undefined, { hasTime: (needMs) => Date.now() + needMs <= deadline });
+  });
   return out;
 }
 
-async function runNotify(db: Db) {
+async function runNotify(db: Db, deadline: number) {
   const out: Record<string, unknown> = {};
   try {
     Object.assign(out, await runNotifyA(db));
@@ -453,7 +461,7 @@ async function runNotify(db: Db) {
     if (error instanceof QueryBudgetExceeded) throw error;
   }
   try {
-    Object.assign(out, await runNotifyB(db));
+    Object.assign(out, await runNotifyB(db, deadline));
   } catch (error) {
     if (error instanceof QueryBudgetExceeded) throw error;
   }

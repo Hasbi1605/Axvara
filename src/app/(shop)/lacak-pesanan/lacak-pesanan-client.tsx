@@ -15,7 +15,7 @@ import { IosIcon } from "@/components/ui/IosIcon";
 import { parseExpiry } from "@/lib/expiry";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
 import { normalizeOrderAccessCode } from "@/lib/order-access-format";
-import { readOrderAccessCode, rememberOrderAccessCode } from "@/lib/order-access-client";
+import { orderAccessHeaders, rememberBuyerAccessSession, readOrderAccessCode, rememberOrderAccessCode } from "@/lib/order-access-client";
 import { SLOW_MS, useLoadingStage } from "@/hooks/useLoadingStage";
 
 type QrisInvoice = {
@@ -212,7 +212,7 @@ export default function LacakPesananClient() {
     try {
       const response = await fetchWithTimeout("/api/orders/lookup", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...orderAccessHeaders(cleanCode, cleanWa) },
         body: JSON.stringify(adminView ? { code: cleanCode, adminView: true } : { code: cleanCode, contact: cleanWa }),
         cache: "no-store", signal: controller.signal,
       }, 20_000);
@@ -230,6 +230,7 @@ export default function LacakPesananClient() {
         setError(null);
         lastQuery.current = { code: cleanCode, wa: cleanWa };
         rememberOrderAccessCode(cleanCode, cleanWa);
+        rememberBuyerAccessSession(cleanCode, body.buyer_access_session);
         if (!adminView) saveRecent({ code: cleanCode, wa: cleanWa });
         requestAnimationFrame(() => {
           const result = resultRef.current;
@@ -334,7 +335,7 @@ export default function LacakPesananClient() {
     try {
       const response = await fetchWithTimeout(`/api/orders/${encodeURIComponent(order.code)}/cancel`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...orderAccessHeaders(order.code) },
         body: JSON.stringify({ contact: query.wa }),
         cache: "no-store",
       }, 20_000);
@@ -391,7 +392,7 @@ export default function LacakPesananClient() {
         </div>
       ) : <p className="mt-3 max-w-[58ch] text-sm leading-6 text-white/55">
         Masukkan <span className="font-semibold text-white">kode pesanan</span> dan{" "}
-        <span className="font-semibold text-white">kode akses pesanan</span>. Status diperbarui otomatis
+        <span className="font-semibold text-white">PIN akses pesanan</span>. Status diperbarui otomatis
         dari Pending ke Lunas, Dibatalkan, atau Kedaluwarsa.
       </p>}
 
@@ -402,7 +403,7 @@ export default function LacakPesananClient() {
             <IosIcon name="search" size={20} tint="#00E5FF" />
           </span>
           <div>
-            <p className="text-sm font-semibold text-white">Kode pesanan + kode akses</p>
+            <p className="text-sm font-semibold text-white">Kode pesanan + PIN akses</p>
             <p className="text-xs text-white/45">Tanpa login, tanpa daftar akun.</p>
           </div>
         </div>
@@ -423,13 +424,13 @@ export default function LacakPesananClient() {
             {codeError ? <p className="mt-1.5 text-xs text-red-300">{codeError}</p> : <p className="mt-1.5 text-[11px] text-white/65">Lihat di halaman sukses, chat Telegram, atau grup WA setelah checkout.</p>}
           </div>
           <div>
-            <label htmlFor="track-wa" className="mb-1 block text-xs font-medium text-white/60">Kode akses pesanan *</label>
+            <label htmlFor="track-wa" className="mb-1 block text-xs font-medium text-white/60">PIN akses pesanan *</label>
             <input
               id="track-wa"
               value={wa}
               onChange={(event) => { setWa(event.target.value); setWaTouched(true); }}
               onBlur={() => setWaTouched(true)}
-              placeholder="Kode akses yang diberikan saat pembelian"
+              placeholder="PIN 6 karakter dari email pembelian"
               inputMode="text"
               autoCapitalize="none"
               autoCorrect="off"
@@ -438,7 +439,7 @@ export default function LacakPesananClient() {
               aria-invalid={Boolean(waError)}
               className={`h-12 w-full rounded-xl border bg-white/[0.06] px-4 text-sm text-white placeholder:text-white/55 focus:outline-none ${waError ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`}
             />
-            {waError ? <p className="mt-1.5 text-xs text-red-300">{waError}</p> : <p className="mt-1.5 text-[11px] text-white/65">Pesanan baru: gunakan kode akses. Pesanan lama: No. WA atau email checkout.</p>}
+            {waError ? <p className="mt-1.5 text-xs text-red-300">{waError}</p> : <p className="mt-1.5 text-[11px] text-white/65">Isi PIN dari email pembelian. Untuk pesanan lama, gunakan kode akses lama atau kontak checkout.</p>}
           </div>
         </div>
         {error && <p role="alert" className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-2.5 text-sm text-red-300">{error}</p>}
@@ -670,7 +671,7 @@ export default function LacakPesananClient() {
       <section className="mt-4 space-y-2" aria-label="Pertanyaan umum">
         {[
           ["Di mana saya menemukan kode pesanan?", "Setelah checkout kamu diarahkan ke halaman /pesanan/AXV-... Simpan kodenya. Order Telegram bisa dilihat lagi lewat /orders, order WA tercatat di grup."],
-          ["Kode akses saya hilang?", "Periksa halaman checkout, email pembelian atau chat pribadi bot. Jika tidak ditemukan, hubungi admin untuk verifikasi kepemilikan. Pesanan lama tetap memakai No. WA atau email checkout."],
+          ["PIN akses saya hilang?", "Periksa halaman checkout, email pembelian atau chat pribadi bot. Jika tidak ditemukan, hubungi admin untuk verifikasi kepemilikan. Pesanan lama tetap memakai No. WA atau email checkout."],
           ["Status Pending padahal sudah bayar QRIS?", "Tunggu 1–2 menit lalu halaman ini memeriksa ulang otomatis tiap 10 detik. Pastikan nominal tepat. Jika lebih dari 10 menit, hubungi admin dengan kode pesanan."],
           ["Status Pending untuk transfer manual?", "Admin memverifikasi bukti pada jam dukungan 09.00–23.00 WIB, biasanya 5–15 menit. Pastikan bukti sudah terupload saat checkout."],
         ].map(([question, answer]) => (

@@ -27,6 +27,10 @@ export async function sendForwardEmail(params: {
   text: string;
   /** Pemanggil di jalur cron/webhook memakai batas lebih pendek (deadline run 45 dtk). */
   timeoutMs?: number;
+  /** Kunci idempotensi provider opsional (mis. PIN checkout: order+versi,
+   *  BUKAN PIN). Header Resend Idempotency-Key; pemanggil lama tanpa ini
+   *  berperilaku identik. */
+  idempotencyKey?: string;
 }): Promise<ForwardSendResult> {
   const apiKey = process.env.RESEND_API_KEY?.trim() || "";
   const from = process.env.FORWARD_FROM_EMAIL?.trim() || "";
@@ -39,6 +43,7 @@ export async function sendForwardEmail(params: {
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
+        ...(params.idempotencyKey ? { "Idempotency-Key": params.idempotencyKey } : {}),
       },
       body: JSON.stringify({
         from: `Axvara <${from}>`,

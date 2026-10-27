@@ -150,7 +150,7 @@ describe("halaman pesanan: isi non-WR terbuka setelah verifikasi", () => {
     const { POST, GET } = await import("@/app/api/orders/[code]/credentials/route");
     const ctx = { params: Promise.resolve({ code: CODE }) };
     const denied = await POST(req(`/api/orders/${CODE}/credentials`, "POST", { wa: "081299999999" }), ctx);
-    expect(denied.status).toBe(403);
+    expect(denied.status).toBe(404);
     expect(JSON.stringify(await denied.json())).not.toContain("canva.com/join");
 
     const access = await (await import("@/lib/order-access")).deriveOrderAccessCode(fixture.sql.prepare("SELECT * FROM orders WHERE code=?").get(CODE)!);

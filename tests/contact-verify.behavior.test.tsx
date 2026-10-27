@@ -101,9 +101,9 @@ describe("panel Detail Akun Digital", () => {
     const calls = stubCredentials(false);
     render(<WrCredentialsPanel code={CODE} contactHint="62812****7890 · r***@gmail.com" />);
     expect(screen.getByText("Terdaftar: 62812****7890 · r***@gmail.com")).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("Kode akses atau kontak pesanan lama"), { target: { value: " Rani@Gmail.com " } });
+    fireEvent.change(screen.getByLabelText("PIN atau akses pesanan lama"), { target: { value: " Rani@Gmail.com " } });
     fireEvent.click(screen.getByRole("button", { name: "Tampilkan" }));
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("Kode akses atau kontak pesanan lama tidak cocok."));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("PIN atau akses pesanan lama tidak cocok."));
     expect(calls[0].body).toEqual({ contact: "Rani@Gmail.com" });
   });
 });
@@ -117,7 +117,7 @@ describe("form Lacak Pesanan", () => {
     }));
     render(<LacakPesananClient />);
     fireEvent.change(screen.getByLabelText(/Kode pesanan/), { target: { value: CODE } });
-    const contact = screen.getByLabelText(/Kode akses pesanan/) as HTMLInputElement;
+    const contact = screen.getByLabelText(/PIN akses pesanan/) as HTMLInputElement;
     fireEvent.change(contact, { target: { value: "abcde-12345-fghij-67890-klmnop" } });
     expect(contact.value).toBe("abcde-12345-fghij-67890-klmnop");
     fireEvent.submit(contact.closest("form")!);
@@ -133,7 +133,7 @@ describe("form Lacak Pesanan", () => {
     }));
     render(<LacakPesananClient />);
     fireEvent.change(screen.getByLabelText(/Kode pesanan/), { target: { value: CODE } });
-    const contact = screen.getByLabelText(/Kode akses pesanan/) as HTMLInputElement;
+    const contact = screen.getByLabelText(/PIN akses pesanan/) as HTMLInputElement;
     fireEvent.change(contact, { target: { value: "rani.putri@gmail.com" } });
     fireEvent.submit(contact.closest("form")!);
     await waitFor(() => expect(calls).toHaveLength(1));
@@ -142,7 +142,7 @@ describe("form Lacak Pesanan", () => {
 
   it("isian yang bukan kode akses, WA, maupun email ditolak di form", () => {
     render(<LacakPesananClient />);
-    const contact = screen.getByLabelText(/Kode akses pesanan/);
+    const contact = screen.getByLabelText(/PIN akses pesanan/);
     fireEvent.change(contact, { target: { value: "!!!" } });
     fireEvent.blur(contact);
     expect(screen.getByText("Masukkan kode akses, atau No. WA/email checkout untuk pesanan lama.")).toBeTruthy();

@@ -249,9 +249,9 @@ export type CredentialEmailContext = {
  */
 function accessCodeHtml(code: string): string {
   return `<div style="background:#f0fdff;border:1px solid rgba(0,229,255,.35);border-radius:12px;padding:12px 16px;margin-top:12px;font-size:13px;color:#0e7490">`
-    + `<p style="margin:0 0 4px;color:#94a3b8;font-size:11px;letter-spacing:1px">KODE AKSES PESANAN</p>`
-    + `<p style="margin:0;color:#0f1430;font-size:15px;letter-spacing:1px"><b>${esc(code)}</b></p>`
-    + `<p style="margin:6px 0 0;font-size:12px">Simpan kode ini baik-baik — jangan bagikan ke siapa pun.</p></div>`;
+    + `<p style="margin:0 0 4px;color:#64748b;font-size:11px;letter-spacing:1px">${code.length === 6 ? "PIN AKSES PESANAN" : "KODE AKSES PESANAN"}</p>`
+    + `<p style="margin:0;color:#0f1430;font-size:${code.length === 6 ? "26" : "15"}px;letter-spacing:${code.length === 6 ? "4" : "1"}px"><b>${esc(code)}</b></p>`
+    + `<p style="margin:6px 0 0;font-size:12px">Simpan ${code.length === 6 ? "PIN" : "kode"} ini baik-baik. Jangan bagikan ke siapa pun.</p></div>`;
 }
 
 /** Template "Detail Akun Siap" — MEMUAT ISI KREDENSIAL (keputusan owner).
@@ -267,7 +267,7 @@ export function buildCredentialReadyTemplate(ctx: CredentialEmailContext): Axvar
   const text =
     `Halo ${firstName}, detail akun ${product} kamu sudah siap.\n\n` +
     `${ctx.details}\n\n` +
-    (ctx.buyerAccessCode ? `\nKode Akses Pesanan: ${ctx.buyerAccessCode}\nSimpan kode ini baik-baik — jangan bagikan ke siapa pun.\n\n` : "") +
+    (ctx.buyerAccessCode ? `\n${ctx.buyerAccessCode.length === 6 ? "PIN" : "Kode"} Akses Pesanan: ${ctx.buyerAccessCode}\nSimpan kode ini baik-baik — jangan bagikan ke siapa pun.\n\n` : "") +
     `Simpan baik-baik dan JANGAN bagikan ke siapa pun.\n` +
     `Invoice Axvara: ${ctx.invoiceUrl}\nButuh bantuan? WA ${ctx.supportWa}`;
   // Detail di-render sebagai blok monospace per baris agar mudah disalin;
@@ -386,7 +386,7 @@ export function buildOrderReadyTemplate(ctx: OrderReadyEmailContext): AxvaraForw
     intro,
     ctx.receipt ? `\nPembayaran diterima:\n${ctx.receipt.lines.join("\n")}\nTotal ${rupiah(ctx.receipt.total)}${ctx.receipt.method ? ` · ${ctx.receipt.method}` : ""}` : "",
     ...ctx.items.map((item) => `\n${item.label}:\n${item.details}`),
-    ctx.buyerAccessCode ? `\nKode Akses Pesanan: ${ctx.buyerAccessCode}\nSimpan kode ini baik-baik — jangan bagikan ke siapa pun.` : "",
+    ctx.buyerAccessCode ? `\n${ctx.buyerAccessCode.length === 6 ? "PIN" : "Kode"} Akses Pesanan: ${ctx.buyerAccessCode}\nSimpan kode ini baik-baik — jangan bagikan ke siapa pun.` : "",
     "\nJangan bagikan detail ini ke siapa pun.",
     `Halaman pesanan: ${ctx.invoiceUrl}`,
     `Butuh bantuan? WA ${ctx.supportWa}`,
@@ -396,6 +396,7 @@ export function buildOrderReadyTemplate(ctx: OrderReadyEmailContext): AxvaraForw
 
 export type BrandedNoticeContext = {
   orderCode: string;
+  buyerAccessCode?: string;
   /** Judul di header gelap, mis. "Pembayaran Diterima". */
   title: string;
   subtitle: string;
@@ -420,6 +421,7 @@ export function renderBrandedNotice(ctx: BrandedNoticeContext): { html: string; 
     ctx.subtitle,
     invoiceBadge(ctx.orderCode)
     + ctx.paragraphs.map((p) => `<p style="color:#334155;font-size:14px;line-height:1.7;margin:0 0 12px">${esc(p)}</p>`).join("")
+    + (ctx.buyerAccessCode ? accessCodeHtml(ctx.buyerAccessCode) : "")
     + calloutHtml
     + cta(ctx.orderUrl, "Lihat Pesanan →")
     + supportBlockHtml(siteUrl, ctx.supportWa),
@@ -429,6 +431,7 @@ export function renderBrandedNotice(ctx: BrandedNoticeContext): { html: string; 
     `${ctx.title} — ${ctx.orderCode}`,
     "",
     ...ctx.paragraphs,
+    ...(ctx.buyerAccessCode ? [`${ctx.buyerAccessCode.length === 6 ? "PIN" : "Kode"} Akses Pesanan: ${ctx.buyerAccessCode}`] : []),
     ctx.callout ? `\n${ctx.callout.text}` : "",
     "",
     `Halaman pesanan: ${ctx.orderUrl}`,

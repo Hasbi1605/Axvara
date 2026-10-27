@@ -1181,7 +1181,7 @@ export async function deliverWebCredentialViaEmail(
   const { queryFirst, execRun } = db;
   const order = await db
     .queryFirst(
-      `SELECT code, customer_name, customer_email, customer_wa, items, buyer_access_version FROM orders WHERE code=?`,
+      `SELECT code, customer_name, customer_email, customer_wa, items, buyer_access_version,buyer_access_format FROM orders WHERE code=?`,
       orderCode,
     )
     .catch(() => null);
@@ -1209,7 +1209,7 @@ export async function deliverWebCredentialViaEmail(
   // Link invoice hanya memuat kode order — tidak pernah access code.
   const { deriveOrderAccessCode } = await import("@/lib/order-access");
   const buyerAccessCode = await deriveOrderAccessCode({
-    code: String(order.code ?? orderCode), buyer_access_version: order.buyer_access_version,
+    code: String(order.code ?? orderCode), buyer_access_version: order.buyer_access_version, buyer_access_format: order.buyer_access_format,
   }).catch(() => "");
   const template = buildCredentialReadyTemplate({
     axvaraOrderCode: orderCode,

@@ -14,7 +14,7 @@ import { detectPediaLink } from "@/lib/pedia/link";
 import { parseExpiry } from "@/lib/expiry";
 import { SITE } from "@/lib/site";
 import type { PediaServiceCopy } from "@/lib/pedia/service-copy";
-import { orderAccessHeaders, readOrderAccessCode, rememberOrderAccessCode } from "@/lib/order-access-client";
+import { ensureBuyerAccessSession, forgetBuyerAccessSession, orderAccessHeaders, readOrderAccessCode, rememberOrderAccessCode } from "@/lib/order-access-client";
 import { normalizeOrderAccessCode } from "@/lib/order-access-format";
 import { OrderAccessNotice } from "@/components/storefront/OrderAccessNotice";
 
@@ -49,10 +49,12 @@ export default function PediaOrderStatusPage() {
     try {
       const proof = buyerProof.current || readOrderAccessCode(code) || readPediaContact(code);
       if (normalizeOrderAccessCode(proof)) { buyerProof.current = proof; setBuyerAccess(proof); setRefillContact(proof); }
+      try { if (normalizeOrderAccessCode(proof).length === 6) await ensureBuyerAccessSession(code, proof); }
+      catch (cause) { setNeedsContact(true); throw cause; }
       const res = await fetch(`/api/pedia/orders/${encodeURIComponent(code ?? "")}${manual ? "?wake=1" : ""}`, { cache: "no-store", headers: { "x-order-contact": proof, ...orderAccessHeaders(code, proof) } });
       const d = await res.json();
       if (request.current.id !== id) return;
-      if (res.status === 401 || res.status === 404) { setNeedsContact(true); throw new Error(d.error === "contact_required" ? "Masukkan kode akses, atau kontak checkout untuk pesanan lama." : d.error); }
+      if (res.status === 401 || res.status === 404) { forgetBuyerAccessSession(code); setNeedsContact(true); throw new Error(d.error === "contact_required" ? "Masukkan kode akses, atau kontak checkout untuk pesanan lama." : d.error); }
       if (!res.ok) throw new Error(d.error ?? "Gagal memuat");
       setNeedsContact(false);
       setData(d.order);
@@ -100,7 +102,7 @@ export default function PediaOrderStatusPage() {
     setRefillBusy(true);
     try {
       const res = await fetch(`/api/pedia/orders/${encodeURIComponent(code ?? "")}/refill`, {
-        method: "POST", headers: { "content-type": "application/json" },
+        method: "POST", headers: { "content-type": "application/json", ...orderAccessHeaders(code) },
         body: JSON.stringify({ contact }),
       });
       const d = await res.json();
@@ -115,7 +117,7 @@ export default function PediaOrderStatusPage() {
 
   if (needsContact && !data) return <form className="mx-auto max-w-md space-y-4 px-4 py-10" onSubmit={(e) => { e.preventDefault(); buyerProof.current = contact.trim(); rememberPediaContact(code, contact.trim()); rememberOrderAccessCode(code, contact); void load(); }}>
     <h1 className="font-display text-2xl font-semibold text-white">Lihat pesanan</h1>
-    <label className="block text-sm text-white/75" htmlFor="pedia-order-contact">Kode akses pesanan</label>
+    <label className="block text-sm text-white/75" htmlFor="pedia-order-contact">PIN akses pesanan</label>
     <p className="text-xs leading-5 text-white/60">Pesanan lama masih dapat menggunakan No. WA atau email checkout.</p>
     <input id="pedia-order-contact" value={contact} onChange={e => setContact(e.target.value)} required maxLength={254} autoComplete="off" className="w-full rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-white" />
     {error && <p role="alert" className="text-sm text-white/60">{error}</p>}

@@ -7,7 +7,7 @@ const navigation = vi.hoisted(() => ({ push: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: navigation.push }) }));
 const CODE = "AXP-20261016-AB12CD34";
 const CONTACT = "customer@example.com";
-const ACCESS_LABEL = "Kode akses pesanan *";
+const ACCESS_LABEL = "PIN akses pesanan *";
 const fetchMock = vi.fn();
 function response(body: unknown, status = 200) { return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } }); }
 function fill(code = CODE, contact = CONTACT) {

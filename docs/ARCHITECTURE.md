@@ -1,66 +1,83 @@
 # ARCHITECTURE.md — AXVARA
 
-## Otorisasi pembeli dengan kode akses — 27 Oktober 2026
+## Otorisasi pembeli dengan PIN — 27 Oktober 2026
 
-✅ Implementasi lokal; publikasi CI. Bagian ini menggantikan ketentuan kontak
-untuk **pesanan baru saja**; order legacy tetap mengikuti kontak checkout.
-Migrasi0081 menambah `orders.buyer_access_version INTEGER NOT NULL DEFAULT 0`.
-Semua factory Market/TG/WA/Pedia menulis1, tanpa backfill. Migrasi juga memperluas
-CHECK security_events sambil mempertahankan seluruh event lama dan indeks.
+✅ Implementasi lokal, publikasi CI. Migrasi0081 tetap menandai legacy dengan
+`orders.buyer_access_version=0`. Migrasi0082 menambah `buyer_access_format`
+CHECK(`code26`,`pin6`) default`code26`, sehingga kode lama tidak berubah. Factory
+baru eksplisit version1/format`pin6`; tidak ada backfill atau exchange kontak.
+Legacyv0 tetap kontak checkout. Proyeksi versi/format hilang gagal tertutup.
 
-`order-access.ts` menurunkan HMAC-SHA256 terpisah domain
-`axvara:buyer-order-access-code:v1:<order_code>:<version>` memakai key buyer
-tersendiri, 128bit pertama dikodekan Crockford26 karakter (5-5-5-5-6).
-Server membandingkan string kanonis constant-time; huruf kecil, spasi/hyphen dan
-alias O/0/I/L/1 diterima, kode order/versi lain ditolak. Tidak menyimpan kode
-mentah di D1. Derivasi stabil menjaga retry quote yang sama setelah respons
-hilang; redisclosure checkout hanya setelah verifikasi quote dan pencocokan
-quote_id order tersimpan. Produksi tanpa key menolak sebelum reservasi/invoice.
+`order-access.ts` memakai BUYER_ORDER_ACCESS_SECRET khusus dan HMAC-SHA256:
+format`code26` mempertahankan domain lama/128bit Crockford26; format`pin6`
+memakai `axvara:buyer-order-pin:v1:<order>:<version>:<counter>` dan30bit pertama,
+rejection counter sampai mengandung angka dan huruf. PIN enam karakter Crockford
+punya ruang sekitar30bit, bukan kekuatan128bit kode lama. Canonical uppercase,
+spasi/hyphen dan alias O/0/I/L/1 didukung; verifikasi hanya format tersimpan.
+Produksi tanpa key menolak sebelum reservasi/invoice; tidak ada PIN mentah di D1.
 
-Respons checkout privat `buyer_access_code`; proof lewat body `access_code`
-(atau field contact kompatibel) / header `x-order-access-code`, bukan query URL.
-GET status/wake Market, lookup, cancel, credentials POST, reissue dan status/
-refill Pedia memeriksa proof sebelum detail/efek samping; percobaan salah memakai
-counter D1 order+IP20/15menit existing selain burst. Capability credentials
-existing tetap valid sampai expiry/revokasi; client mengirim `x-credential-token`
-(legacy query token masih diterima untuk tautan lama). Admin tetap memerlukan
-Access+sesi aplikasi. Kode tidak menaikkan otoritas paid/fulfillment.
+Guard bersama mencakup status/wake, lookup, cancel, credentials POST, reissue dan
+status/refill Pedia. PIN diterima pada body`access_code` atau header
+`x-order-access-code`, tidak pada query. Untuk formatPIN, `orders/pin-attempts.ts`
+mengklaim satu slot D1 **sebelum membandingkan**, UPSERT atomik maksimal10 gagal/
+in-flight per order+versi/jendela tetap15menit, seluruh IP. Sukses hanya mengurangi
+slot request itu sendiri; kegagalan lain tidak dihapus. D1 admission gagal503,
+limit429+Retry-After. Format26/v0 mempertahankan limiter/semantik kompatibel.
 
-`order-access-client.ts` menyimpan kode hanya sessionStorage. Bila storage
-terblokir, checkout memakai fragment handoff yang segera dihapus setelah dibaca;
-fragment tidak dikirim HTTP/Referer. Riwayat localStorage tidak menyimpan kode.
-`OrderAccessNotice` menampilkan/salin kode. Email privat dan invoice/status DM
-Telegram merender kode sesaat dari versi tersimpan; tidak ada kode di outbox
-plaintext, payload grup WA, metadata audit atau URL notifikasi. Perintah dan
-callback Telegram memeriksa pemilik; status handler mengikat chat pribadi di SQL.
-Bot WA nonaktif dan di luar lingkup atas instruksi owner. Factory bersama
-menyimpan versi akses, tetapi tidak mengaktifkan bot atau pengiriman kode WA.
-Sebelum reaktivasi, wajib menyediakan pengiriman kode privat, bukan ke grup.
-Gambar QRIS existing tetap dapat dibaca lewat URL gambar agar invoice bot/img
-bekerja; tidak membuka kontak/akun dan bukan bukti paid.
+Checkout quote valid hanya memberi `buyer_access_code` dan `buyer_access_session`
+setelah order durable; retry terikat quote_id membaca pemenang yang sama. Buyer
+lookup mengeluarkan sesi setelah proof; adminView tidak mengeluarkannya. Sesi
+`b1.<expiry>.<HMAC256>` memakai domain`axvara:buyer-pin-session:v1`, terikat nomor,
+versi dan expiry24jam. Header`x-buyer-access-session` diverifikasi sebelum admission
+PIN, sehingga polling tidak menguras jatah. Rotasi versi mencabut sesi; sesi bukan
+otoritas paid. Client menukar PIN sekali melalui lookup, menyimpan grant hanya
+sessionStorage/memori tab. PIN sessionStorage; fragment hanya fallback storage
+terblokir dan langsung dihapus. Tidak ada grant/PIN di localStorage, URL notifikasi,
+log atau outbox WA. Capability credentials existing tetap expiry/revokasi; client
+memakai`x-credential-token`, querytoken hanya kompatibilitas tautan lama.
 
-POST `/api/admin/orders/:code/access-code` adalah reveal privat terpisah dari
-GET detail/list/cache; optional `{rotate:true}` memakai guard versi + increment
-+ revoke capability + cleanup guard dalam satu batch. Audit buyer_access_revealed/
-rotated tanpa kode/kontak/ID/query. Admin memverifikasi buyer di luar aplikasi;
-tidak ada pemulihan mandiri memakai kontak untuk order baru.
+### Email PIN segera dan antrean durable
+
+`orders/access-email-queue.ts` berisi statement antrean tanpa import server-only;
+factory DB yang dipakai bersama katalog tidak menarik pengirim ke bundle client.
+`orders/access-email.ts` mengirim hanya dari API/handler Telegram/cron setelah
+commit. Statement antrean dimasukkan ke batch order yang sama
+(Market/channel/Pedia), serta batch rotasi admin. Kegagalan antrean membatalkan
+batch order/reservasi. Kunci `email:access_pin:<order>:v<version>` idempoten dan
+hanya memilih email tersimpan valid pada orderPIN non-WA. Migrasi0082 menambah
+kolom buyer_notice_log opsional `access_attempts`, `access_retry_at`, `access_lease`;
+claim/settle notice lama tidak memakai kolom ini. Status awalfailed/attempt0 adalah
+antrean menunggu, bukan bukti email gagal terkirim. Tidak ada HTML/teks/PIN tersimpan.
+
+Sesudah commit, pengiriman dijadwalkan ctx.waitUntil; tanpa context dev menunggu
+task sama. Fase notify existing cron lite/operations menyapu maksimal2 email,
+mematuhi budget/deadline; tanpa cron/env baru. CAS lease tunggal, reclaim basi10menit,
+timeout8detik, maksimal5 attempts dengan backoff1/5/15/60menit. Payload dirender
+ulang ephemeral dari order/versi pada setiap send; Resend Idempotency-Key berbasis
+order/versi (tanpa PIN) menjaga retry ambigu. Versi lama sesudah rotasi dihentikan,
+bukan mengirim PIN baru memakai key lama. Error disimpan sebagai tag terbatas,
+bukan respons provider mentah. Konfigurasi email belum tersedia ditunda tanpa
+menghabiskan attempt. Telegram merender PIN di DM pemilik yang terikat chat.
+Bot WA nonaktif dan tidak diubah; sebelum reaktivasi perlu delivery privat.
+Raster QR tetap publik untuk gambar bot: residual keberadaan/nominal invoice,
+tidak memberi kepemilikan, kredensial, cancel atau otoritas paid.
+
+POST `/api/admin/orders/:code/access-code` reveal privat/no-store terpisah dari
+GET/cache. Rotate CAS menaikkan versi, revoke capability dan mengantrekan email
+baru atomik; audit tanpa PIN/kontak. Admin memverifikasi buyer di luar aplikasi.
 
 ### Key pembeli, Pages dan pemulihan (§16)
 
-Satu Pages **secret_text** baru `BUYER_ORDER_ACCESS_SECRET` (32byte acak), sumber
-lokal `.buyer-access-credentials` ignored/chmod600; tidak ada fallback JWT di
-produksi. Produksi63+4 sistem=67/128 Paid, preview dan secret lain tidak berubah.
-Rotasi password/JWT tidak mengubah kode; rotasi key buyer membatalkan SEMUA kode
-baru dan memerlukan distribusi ulang terverifikasi oleh admin. Simpan backup
-key privat dan pulihkan nilai yang sama saat recovery; jangan regenerasi diam-diam.
-Preflight CI memerlukan metadata binding buyer key bertipe secret_text sebelum
-build/migrasi. Tanpa env/cron baru lain atau transaksi QA produksi. [Runbook](../issue/buyer-access-2026-10-27.md).
+BUYER_ORDER_ACCESS_SECRET existing tetap32byte dari `.buyer-access-credentials`
+ignored/chmod600, Pages secret_text. Tidak ada key/env baru untuk PIN; produksi
+63+4 sistem=67/128 Paid. Password/JWT rotation tidak mengubah PIN; rotasi key buyer
+membatalkan seluruh kode/PIN/sesi turunan dan memerlukan redistribusi terverifikasi.
+Pulihkan key sama dari backup privat, jangan regenerasi diam-diam. Preflight CI
+memeriksa metadata binding. [Runbook PIN](../issue/buyer-pin-2026-10-27.md).
 
-Toolchain dev memakai Miniflare4.20260730.0/Undici7.30.1/Sharp0.35.5, dengan
-transitif next-on-pages dioverride ke versi yang sama. Adapter Pages tetap1.13.16,
-Next15.5.28/Node22 dan kontrak build/CI tetap. Fixture KlikQRIS memakai tanggal
-workerd yang didukung2026-08-06; konfigurasi produksi tidak diturunkan.
-
+Toolchain tetap Miniflare4.20260730.0/Undici7.30.1/Sharp0.35.5, adapter
+next-on-pages1.13.16/Next15.5.28/Node22. Tiga advisory dev sebelumnya telah ditutup,
+tanpa perubahan dependency/platform pada koreksi PIN ini.
 
 ## Admin Cloudflare Access — 27 Oktober 2026
 

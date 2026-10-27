@@ -8,7 +8,7 @@ import { checkRateLimit } from "@/lib/rateLimit";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { isPediaProvider, callPediaProxy } from "@/lib/pedia/proxy";
 import { parseExpiry } from "@/lib/expiry";
-import { buyerOrderAccessMatches, newOrderAccessFailure } from "@/lib/order-access";
+import { buyerOrderAccessMatches, requiresOrderAccessCode, newOrderAccessFailure } from "@/lib/order-access";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -36,7 +36,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const failure = await newOrderAccessFailure(request, order, contact);
   if (failure) return failure;
   // Verifikasi kontak (pola lookup — generik agar tak bisa di-oracle).
-  if (!(await buyerOrderAccessMatches(contact, order))) {
+  if (!requiresOrderAccessCode(order) && !(await buyerOrderAccessMatches(contact, order))) {
     return NextResponse.json({ error: "Pesanan tidak ditemukan atau kontak tidak cocok." }, { status: 404 });
   }
   const item = await db.queryFirst(

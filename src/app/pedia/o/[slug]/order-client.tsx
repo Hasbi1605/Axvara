@@ -157,7 +157,7 @@ export function OrderClient({ product, initialTarget, initialDraft, ordersEnable
         localStorage.setItem("axp-orders", JSON.stringify([{ code: data.code, name: product.name }, ...list.filter((o) => o.code !== data.code)].slice(0, 20)));
       } catch { /* Device history is optional. */ }
       rememberPediaContact(data.code, email.trim());
-      location.assign(orderCheckoutPath(`/pedia/pesanan/${data.code}`, data.code, data.buyer_access_code));
+      location.assign(orderCheckoutPath(`/pedia/pesanan/${data.code}`, data.code, data.buyer_access_code, data.buyer_access_session));
       navigating = true;
       // Keep the lock until navigation, including a second click from the mobile CTA.
       return;

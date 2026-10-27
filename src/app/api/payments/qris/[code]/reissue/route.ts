@@ -48,7 +48,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: "Kode pesanan tidak valid" }, { status: 400 });
   }
 
-  const order = await queryFirst("SELECT code,buyer_access_version FROM orders WHERE code=?", orderCode);
+  const order = await queryFirst("SELECT code,buyer_access_version,buyer_access_format FROM orders WHERE code=?", orderCode);
   if (order) {
     const accessFailure = await newOrderAccessFailure(request, order);
     if (accessFailure) return accessFailure;

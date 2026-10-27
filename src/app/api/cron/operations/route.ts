@@ -430,6 +430,7 @@ export async function POST(request: NextRequest) {
     const pendingPaid = Number(queueRow?.paid ?? 0);
     const pendingPaidAdmin = Number(queueRow?.paid_admin ?? 0);
     const pendingPaidAdminWeb = Number(queueRow?.paid_admin_web ?? 0);
+    const pendingPinEmail = Number(queueRow?.pin_due ?? 0);
     const pendingStale = Number(queueRow?.stale ?? 0);
     const promoDue = process.env.TELEGRAM_PROMO_DIGEST_ENABLED === "true" && (() => {
       const hour = Number(new Intl.DateTimeFormat("en-GB", {
@@ -886,6 +887,17 @@ export async function POST(request: NextRequest) {
         }
       } else if (waWorkPending > 0 && !deferredOut.includes("notify")) {
         deferredOut.push("notify");
+      }
+
+      // Sapu bounded antrean PIN checkout (maks 2) bila fase notify
+      // aktif dan budget/waktu tersisa; tanpa job/trigger/budget baru.
+      if (pendingPinEmail > 0 && activePhases.has("notify") && budget.fits(6) && hasTime(9_000)) {
+        try {
+          const { processCheckoutPinEmails } = await import("@/lib/orders/access-email");
+          const pin = await processCheckoutPinEmails(database, 2, undefined, { hasTime });
+          results.checkout_pin_emails_sent = pin.sent;
+          results.checkout_pin_emails_failed = pin.failed;
+        } catch { if (!deferredOut.includes("notify")) deferredOut.push("notify"); }
       }
 
     };

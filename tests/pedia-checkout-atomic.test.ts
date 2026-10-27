@@ -28,7 +28,7 @@ const left=(f:ReturnType<typeof seed>)=>Number(f.sql.prepare("SELECT remaining F
 describe("Pedia checkout money transaction",()=>{
  it("parallel retries of a free quantity create one job without any credit debit",async()=>{
   const f=seed(),t=await token();const results=await Promise.all(Array.from({length:6},()=>order(t)));expect(results.map(r=>r.status).sort()).toEqual([200,200,200,200,200,201]);
-  const payloads=await Promise.all(results.map(r=>r.json()));expect(new Set(payloads.map(p=>p.buyer_access_code)).size).toBe(1);expect(payloads[0].buyer_access_code).toMatch(/^[A-Z0-9-]{30}$/);
+  const payloads=await Promise.all(results.map(r=>r.json()));expect(new Set(payloads.map(p=>p.buyer_access_code)).size).toBe(1);expect(payloads[0].buyer_access_code).toMatch(/^[A-Z0-9]{6}$/);
   expect(left(f)).toBe(10000);expect(f.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(1);expect(f.sql.prepare("SELECT COUNT(*) n FROM pedia_order_items").get()?.n).toBe(1);
   expect(f.sql.prepare("SELECT COUNT(*) n FROM pedia_credit_ledger").get()?.n).toBe(0);
   expect(f.sql.prepare("SELECT orders_created FROM checkout_attempts").all()).toEqual([{orders_created:1},{orders_created:1}]);

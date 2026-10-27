@@ -73,7 +73,7 @@ export async function sendWebDeliveryEmail(params: {
   if (String(ledger?.status ?? "") === "sent") return;
 
   const order = await database.queryFirst(
-    `SELECT o.customer_name, o.customer_email, o.items, o.subtotal, o.payment_method, o.buyer_access_version,
+    `SELECT o.customer_name, o.customer_email, o.items, o.subtotal, o.payment_method, o.buyer_access_version, o.buyer_access_format,
             (SELECT pt.payable_amount FROM payment_transactions pt WHERE pt.order_code=o.code
               ORDER BY pt.id DESC LIMIT 1) AS payable_amount,
             (SELECT fi.item_index FROM fulfillment_items fi WHERE fi.id=?) AS item_index
@@ -93,7 +93,7 @@ export async function sendWebDeliveryEmail(params: {
   // v1 untuk order lama/reused); legacy (versi 0) = "" dan template identik.
   const { deriveOrderAccessCode } = await import("@/lib/order-access");
   const buyerAccessCode = await deriveOrderAccessCode({
-    code: orderCode, buyer_access_version: order.buyer_access_version,
+    code: orderCode, buyer_access_version: order.buyer_access_version, buyer_access_format: order.buyer_access_format,
   }).catch(() => "");
   const template = buildOrderReadyTemplate({
     axvaraOrderCode: orderCode,

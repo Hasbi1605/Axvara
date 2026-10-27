@@ -25,6 +25,17 @@ const SECRET = "a10-test-only-buyer-access-secret";
 const NEW_CODE = "AXV-20261027-ABCD1234";
 const PEDIA_CODE = "AXP-20261027-EF567890";
 
+it("completion emails and private invoice messages show a six-character PIN for the new format", async () => {
+  const pin = await deriveOrderAccessCode({ code: NEW_CODE, buyer_access_version: 1, buyer_access_format: "pin6" });
+  const email = buildCredentialReadyTemplate({ axvaraOrderCode: NEW_CODE, buyerName: "Fixture", productNames: "Fixture", details: "PRIVATE-FIXTURE", invoiceUrl: `https://axvara.test/pesanan/${NEW_CODE}`, supportWa: "0800000000", buyerAccessCode: pin });
+  expect(pin).toMatch(/^[A-Z0-9]{6}$/);
+  expect(email.text).toContain(`PIN Akses Pesanan: ${pin}`);
+  expect(email.html).toContain("PIN AKSES PESANAN");
+  expect(email.text).toContain("PRIVATE-FIXTURE");
+  expect(email.html).toContain("PRIVATE-FIXTURE");
+  expect(email.text).not.toContain(`access=${pin}`);
+});
+
 type MailArgs = { to: string; subject: string; html: string; text: string; timeoutMs?: number };
 type MailResult = { ok: boolean; providerId?: string; error?: string };
 const { sendForwardEmail } = vi.hoisted(() => ({
@@ -77,7 +88,7 @@ describe("factory pesan: kode hanya bila non-empty, legacy identik", () => {
   });
 
   it("invoiceMessage/status dengan kode = blok copyable, order code tetap <code>", async () => {
-    const code = await deriveOrderAccessCode({ code: NEW_CODE, buyer_access_version: 1 });
+    const code = await deriveOrderAccessCode({ code: NEW_CODE, buyer_access_version: 1, buyer_access_format: "code26" });
     expect(code).toMatch(/^[0-9A-Z]{5}-[0-9A-Z]{5}-[0-9A-Z]{5}-[0-9A-Z]{5}-[0-9A-Z]{6}$/);
     const inv = invoiceMessage({ orderCode: NEW_CODE, productName: "P", payableAmount: 7500, expiresAt: new Date().toISOString(), buyerAccessCode: code });
     expect(inv).toContain("Kode Akses");
@@ -94,7 +105,7 @@ describe("factory pesan: kode hanya bila non-empty, legacy identik", () => {
     const legacy = buildCredentialReadyTemplate(base);
     expect(legacy.html).not.toContain("KODE AKSES");
     expect(legacy.text).not.toContain("Kode Akses Pesanan");
-    const code = await deriveOrderAccessCode({ code: NEW_CODE, buyer_access_version: 1 });
+    const code = await deriveOrderAccessCode({ code: NEW_CODE, buyer_access_version: 1, buyer_access_format: "code26" });
     const withCode = buildCredentialReadyTemplate({ ...base, buyerAccessCode: code });
     expect(withCode.html).toContain("KODE AKSES PESANAN");
     expect(withCode.html).toContain(`<b>${code}</b>`);
@@ -120,8 +131,8 @@ describe("factory pesan: kode hanya bila non-empty, legacy identik", () => {
 
 describe("derivasi: versi tersimpan aktual, bukan tebakan", () => {
   it("versi 1 menurunkan kode stabil; versi 0/absen = empty", async () => {
-    const a = await deriveOrderAccessCode({ code: NEW_CODE, buyer_access_version: 1 });
-    const b = await deriveOrderAccessCode({ code: NEW_CODE, buyer_access_version: 1 });
+    const a = await deriveOrderAccessCode({ code: NEW_CODE, buyer_access_version: 1, buyer_access_format: "code26" });
+    const b = await deriveOrderAccessCode({ code: NEW_CODE, buyer_access_version: 1, buyer_access_format: "code26" });
     expect(a).toBe(b);
     expect(await deriveOrderAccessCode({ code: NEW_CODE, buyer_access_version: 0 })).toBe("");
   });
@@ -129,8 +140,8 @@ describe("derivasi: versi tersimpan aktual, bukan tebakan", () => {
   it("retry membaca versi tersimpan aktual (v1) — bukan default/tebakan", async () => {
     seedOrder(NEW_CODE, "telegram", 1);
     const db = createDatabaseAccess(fx.db);
-    const row = await db.queryFirst(`SELECT code, buyer_access_version FROM orders WHERE code=?`, NEW_CODE);
-    const code = await deriveOrderAccessCode({ code: String(row?.code), buyer_access_version: row?.buyer_access_version });
+    const row = await db.queryFirst(`SELECT code, buyer_access_version, buyer_access_format FROM orders WHERE code=?`, NEW_CODE);
+    const code = await deriveOrderAccessCode({ code: String(row?.code), buyer_access_version: row?.buyer_access_version, buyer_access_format: row?.buyer_access_format });
     expect(code).not.toBe("");
     // Order legacy (versi 0) yang dipakai ulang tetap empty — tidak ditebak v1.
     seedOrder(PEDIA_CODE, "telegram", 0);
@@ -147,7 +158,7 @@ describe("kanal privat: kode sampai ke buyer, tidak ke payload tersimpan", () =>
     expect(await notifyBuyerPaymentReceived(NEW_CODE, db)).toBe(true);
     expect(sendForwardEmail).toHaveBeenCalledTimes(1);
     const mail = sendForwardEmail.mock.calls[0][0] as MailArgs;
-    const code = await deriveOrderAccessCode({ code: NEW_CODE, buyer_access_version: 1 });
+    const code = await deriveOrderAccessCode({ code: NEW_CODE, buyer_access_version: 1, buyer_access_format: "code26" });
     expect(mail.text).toContain(`Kode Akses Pesanan: ${code}`);
     expect(mail.html).toContain(code);
     expect(mail.text).toContain(`/pesanan/${NEW_CODE}`);
@@ -180,7 +191,7 @@ describe("kanal privat: kode sampai ke buyer, tidak ke payload tersimpan", () =>
     await deliverWebCredentialViaEmail(NEW_CODE, "Email: a@b.c", db);
     expect(sendForwardEmail).toHaveBeenCalledTimes(1);
     const mail = sendForwardEmail.mock.calls[0][0] as MailArgs;
-    const code = await deriveOrderAccessCode({ code: NEW_CODE, buyer_access_version: 1 });
+    const code = await deriveOrderAccessCode({ code: NEW_CODE, buyer_access_version: 1, buyer_access_format: "code26" });
     expect(mail.html).toContain(`<b>${code}</b>`);
     expect(mail.text).toContain(`Kode Akses Pesanan: ${code}`);
     const logs = fx.sql.prepare("SELECT * FROM wr_email_forward_log").all() as Record<string, unknown>[];
@@ -197,7 +208,7 @@ describe("kanal privat: kode sampai ke buyer, tidak ke payload tersimpan", () =>
     const body = fx.sql.prepare("SELECT payload FROM whatsapp_outbox LIMIT 1").get() as { payload: string };
     expect(body.payload).toContain("Email: a@b.c");
     expect(body.payload).not.toContain("Kode Akses");
-    const code = await deriveOrderAccessCode({ code: NEW_CODE, buyer_access_version: 1 });
+    const code = await deriveOrderAccessCode({ code: NEW_CODE, buyer_access_version: 1, buyer_access_format: "code26" });
     expect(body.payload).not.toContain(code);
   });
 
@@ -209,7 +220,7 @@ describe("kanal privat: kode sampai ke buyer, tidak ke payload tersimpan", () =>
     await notifyPediaPaid(db, PEDIA_CODE, "https://axvara.tech");
     expect(sendForwardEmail).toHaveBeenCalledTimes(before + 1);
     const mail = sendForwardEmail.mock.calls[before][0] as MailArgs;
-    const code = await deriveOrderAccessCode({ code: PEDIA_CODE, buyer_access_version: 1 });
+    const code = await deriveOrderAccessCode({ code: PEDIA_CODE, buyer_access_version: 1, buyer_access_format: "code26" });
     expect(mail.text).toContain(`Kode Akses: ${code}`);
     expect(mail.text).toContain(PEDIA_CODE);
     // Link status hanya kode order — tanpa access code query/body.

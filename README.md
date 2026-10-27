@@ -1,34 +1,38 @@
 # AXVARA — Gerbang Semua Tools Premium
 
-## Kode akses pembeli dan toolchain — 27 Oktober 2026
+## PIN akses pembeli — 27 Oktober 2026
 
-✅ Implementasi lokal; publikasi melalui CI. Pesanan **baru** Market, Pedia,
-dan Telegram memakai kode akses pribadi 26 karakter. Bot WhatsApp nonaktif
-dan di luar lingkup perubahan ini sesuai keputusan owner; tidak diaktifkan. Checkout web
-menampilkannya di halaman pesanan; email privat dan invoice/status chat pribadi
-Telegram juga menyertakannya. Kode dipakai bersama nomor pesanan untuk lacak,
-status/wake, kredensial, batal dan reissue/refill yang memenuhi syarat. Tidak ada
-OTP pembeli. **Pesanan lama tetap memakai kontak checkout**, sesuai keputusan
-owner; tidak ada backfill atau pengiriman massal.
+✅ Implementasi lokal, publikasi melalui CI. Pembelian baru Market/Pedia/Telegram
+memakai **PIN enam karakter campuran huruf dan angka**, dikirim ke email checkout
+segera setelah order tersimpan dan ditampilkan di konfirmasi. Email produk siap
+serta DM pribadi Telegram juga menyertakannya. PIN tetap sama untuk retry quote
+pesanan yang sama. Tidak ada OTP pembeli atau pengiriman massal. Kode26 karakter
+yang sudah diterbitkan tetap berlaku; legacy tanpa kode tetap kontak checkout.
+Bot WhatsApp nonaktif, tidak diubah atau diaktifkan.
 
-Kode hanya disimpan di sessionStorage tab pembeli. Riwayat perangkat tidak
-menyimpan kode; simpan salinan untuk perangkat lain. Kode tidak dimasukkan ke
-query URL atau outbox WA/grup. Untuk kode hilang, admin memeriksa kepemilikan lalu
-memakai **Lihat kode akses pembeli** di detail pesanan Market/Pedia. **Ganti kode
-akses** mencabut kode dan capability lama; tidak mengubah status pembayaran.
-Bot di chat pribadi tetap memeriksa identitas platform.
+Email produk siap tetap menampilkan kredensial lengkap langsung, beserta PIN,
+sesuai konfirmasi owner28Oktober. Email PIN awal tidak menunggu produk selesai;
+pengiriman kredensial tetap mengikuti pembayaran dan fulfillment existing.
 
-Pages menambah satu **secret_text** `BUYER_ORDER_ACCESS_SECRET`; sumber lokal
-`.buyer-access-credentials` ignored/chmod600. Jangan mengganti key ini saat
-mengganti password/JWT: key buyer punya lifecycle terpisah. Produksi63+4 sistem
-=67/128 Paid; preview/password/secret lain tetap. Migrasi0081 mempertahankan
-order legacy dan audit lama. [Kontrak dan pemulihan](issue/buyer-access-2026-10-27.md).
+Nomor pesanan+PIN dipakai untuk lacak, status/wake, kredensial, batal serta reissue/
+refill yang memenuhi syarat. Maksimal10 percobaan gagal/in-flight per order+versi
+selama15menit lintasIP, diklaim sebelum perbandingan. Sesi pembeli kuat24jam sesudah
+checkout/verifikasi melewati anggaran PIN untuk polling; hanya disimpan sementara
+di tab. Risiko tersisa: penyerang yang tahu nomor order dapat menunda verifikasi
+PIN perangkat baru hingga15menit; sesi pembeli yang masih valid tetap bekerja.
 
-Toolchain sekarang Miniflare4.20260730.0, Undici7.30.1 dan Sharp0.35.5; nested
-Zod lama dihapus dari dependency tree. Adapter tetap next-on-pages1.13.16 dan
-hosting tetap Pages. Audit registry lengkap/root serta runtime root/gateway
-diperiksa kembali sebelum publikasi; lihat [bukti dependency](docs/security/dependency-audit-2026-10-27.md).
+PIN/grant tidak masuk riwayat localStorage, queryURL, log atau outboxWA/grup. Jika
+hilang, admin memverifikasi kepemilikan lalu memakai reveal/rotate POST terpisah.
+Rotasi mencabut PIN/sesi/capability lama dan mengantrekan email pengganti. Antrean
+email metadata-only ikut transaksi order; retry bounded lewat notify cron existing,
+lease CAS dan Idempotency-Key Resend, tanpa menambah cron/env. Detail kontrak dan
+pemulihan: [runbook PIN](issue/buyer-pin-2026-10-27.md).
 
+BUYER_ORDER_ACCESS_SECRET existing tetap secret_text dari berkas ignored/chmod600;
+password/JWT tidak diubah. Produksi67/128Paid, tidak ada env baru. Migrasi0082 default
+formatcode26 mempertahankan data lama, hanya factory baru yang menulis pin6.
+Toolchain tetap MF4.20260730.0/Undici7.30.1/Sharp0.35.5: tiga advisory sebelumnya
+sudah ditutup, [bukti dependency](docs/security/dependency-audit-2026-10-27.md).
 
 ## Proteksi admin Access — 27 Oktober 2026
 
