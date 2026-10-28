@@ -13,6 +13,11 @@ mengikuti komponen existing, label terikat input, aksi submit jelas dan dukungan
 Enter. Loading, error generik dan status belum siap tetap terlihat. Target44px,
 focus cyan, hint/placeholder kontras AA, reflow satu kolom pada ponsel.
 
+Tab checkout asli otomatis menampilkan akun sesudah paid/ready, tanpa tindakan
+PIN. Komponen yang sama memakai loading existing lalu isi akun; tidak menambah
+kartu, badge atau langkah konfirmasi. Form kontak+PIN tetap untuk akses tanpa
+bukti checkout asli, termasuk lewat lacak/perangkat lain.
+
 Email produk siap tetap menampilkan kredensial langsung. PIN ditempatkan ringkas
 sebagai informasi akses tambahan dalam struktur email AXVARA existing, tidak
 memakai kartu promosi, glow atau panel PIN tersendiri. Logo/token warna existing,

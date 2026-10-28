@@ -16,8 +16,15 @@ status dari checkout tidak membuka kredensial dan tidak mengizinkan cancel/reiss
 Aksi tersebut tetap memakai kontak penuh dan pagar status pembayaran existing.
 Pedia tidak mengirim akun/kredensial, sehingga status/refill tetap kontak penuh.
 
-Pembeli mengisi PIN dari email, bukan mengambilnya dari web. Sesudah kontak+PIN
-lolos, capability kuat hanya di sessionStorage dapat dipakai untuk akses ulang.
+Koreksi lanjutan owner28Oktober: **di tab checkout Market asli, kredensial muncul
+otomatis setelah pembayaran terverifikasi dan akun siap, tanpa memasukkan PIN**.
+Bukti checkout terpisah dari sesi status, hanya terbit setelah quote asli yang
+bertanda tangan cocok dengan order tersimpan. Berlaku tetap24jam di tab tersebut;
+lookup kontak tidak dapat membuat bukti ini. Perangkat lain/lacak tanpa bukti
+checkout tetap meminta invoice+kontak+PIN. Rotasi admin mencabut bukti lama.
+
+Pembeli yang melacak mengisi PIN dari email, bukan mengambilnya dari web. Sesudah
+kontak+PIN atau bukti checkout asli lolos, capability kuat hanya di sessionStorage dapat dipakai untuk akses ulang.
 PIN tidak disimpan browser. Migrasi0083 mengikat capability PIN6 ke versi akses
 setelah proof lengkap; token yang terbit di kebijakan lama tidak melewati aturan
 baru. Legacy version0 tetap kontak; kode26 lama tetap kompatibel tanpa dipotong.

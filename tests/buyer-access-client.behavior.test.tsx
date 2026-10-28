@@ -6,13 +6,13 @@ import { fireEvent } from "@testing-library/react";
 import { OrderAccessNotice } from "@/components/storefront/OrderAccessNotice";
 import { WrCredentialsPanel } from "@/components/storefront/WrCredentialsPanel";
 import { formatOrderAccessCode, normalizeOrderAccessCode } from "@/lib/order-access-format";
-import { ensureBuyerAccessSession, forgetBuyerAccessSession, forgetOrderContact, isValidOrderContact, orderAccessHeaders, orderCheckoutPath, readBuyerAccessSession, readOrderAccessCode, readOrderContact, rememberBuyerAccessSession, rememberOrderAccessCode, rememberOrderContact } from "@/lib/order-access-client";
+import { ensureBuyerAccessSession, forgetBuyerAccessSession, forgetCheckoutCredentialGrant, forgetOrderContact, isValidOrderContact, orderAccessHeaders, orderCheckoutPath, readBuyerAccessSession, readCheckoutCredentialGrant, readOrderAccessCode, readOrderContact, rememberBuyerAccessSession, rememberCheckoutCredentialGrant, rememberOrderAccessCode, rememberOrderContact } from "@/lib/order-access-client";
 const nav=vi.hoisted(()=>({params:new URLSearchParams()}));
 vi.mock("next/navigation",()=>({useSearchParams:()=>nav.params,usePathname:()=>"/lacak-pesanan",useRouter:()=>({push:vi.fn()})}));
 import Lacak from "@/app/(shop)/lacak-pesanan/lacak-pesanan-client";
 const CODE="AXV-20261027-ABCD1234",PIN="0A1B2C",CONTACT="buyer@example.test",RAW="71111-22222-33333-44444-555556";
 const session=()=>`p1.${Math.floor(Date.now()/1000)+86400}.${"a".repeat(43)}`;
-beforeEach(()=>{forgetBuyerAccessSession(CODE);forgetOrderContact(CODE);sessionStorage.clear();localStorage.clear();nav.params=new URLSearchParams();window.history.replaceState({},"","/lacak-pesanan");vi.stubGlobal("requestAnimationFrame",()=>0)});
+beforeEach(()=>{forgetBuyerAccessSession(CODE);forgetCheckoutCredentialGrant(CODE);forgetOrderContact(CODE);sessionStorage.clear();localStorage.clear();nav.params=new URLSearchParams();window.history.replaceState({},"","/lacak-pesanan");vi.stubGlobal("requestAnimationFrame",()=>0)});
 afterEach(()=>{cleanup();vi.restoreAllMocks();vi.unstubAllGlobals()});
 it("keeps six-character PIN leading zeros and code26 normalization",()=>{expect(formatOrderAccessCode("0a1b2c")).toBe(PIN);expect(formatOrderAccessCode(RAW.toLowerCase())).toBe(RAW);expect(normalizeOrderAccessCode("ABC")).toBe("");expect(normalizeOrderAccessCode("U".repeat(26))).toBe("")});
 it("preserves Crockford aliases without accepting invalid contacts",()=>{expect(normalizeOrderAccessCode("7O111-22222-33333-44444-55555I")).toBe("70111222223333344444555551");expect(isValidOrderContact(PIN)).toBe(false);expect(isValidOrderContact(RAW)).toBe(false);expect(isValidOrderContact(CONTACT)).toBe(true);expect(isValidOrderContact("081234567890")).toBe(true)});
@@ -38,4 +38,28 @@ it("new credential unlock requires separate contact and PIN inputs without stori
  await screen.findByText("PRIVATE-ACCOUNT-FIXTURE");
  expect(JSON.parse(fetcher.mock.calls[0][1]?.body as string)).toEqual({contact:CONTACT,access_code:PIN});
  expect(JSON.stringify(sessionStorage)).not.toContain(PIN);expect(JSON.stringify(localStorage)).not.toContain(PIN);
+});
+
+it("the original checkout tab opens new credentials automatically without entering or storing a PIN", async () => {
+ const grant=session().replace(/^p1/,"c1");
+ expect(rememberCheckoutCredentialGrant(CODE,grant)).toBe(true);
+ const fetcher=vi.fn(async(_url:RequestInfo|URL,_init?:RequestInit)=>Response.json({credentials:[{details:"ORIGINAL-CHECKOUT-ACCOUNT",completed_at:null}],capability_token:"k".repeat(64)}));
+ vi.stubGlobal("fetch",fetcher); render(<WrCredentialsPanel code={CODE} buyerPinRequired/>);
+ await screen.findByText("ORIGINAL-CHECKOUT-ACCOUNT");
+ expect(fetcher).toHaveBeenCalledTimes(1);
+ expect(new Headers(fetcher.mock.calls[0][1]?.headers).get("x-checkout-credential-grant")).toBe(grant);
+ expect(JSON.parse(fetcher.mock.calls[0][1]?.body as string)).not.toHaveProperty("access_code");
+ expect(screen.queryByLabelText("PIN akses")).toBeNull();
+ expect(localStorage.length).toBe(0); expect(location.href).not.toContain(grant);
+});
+
+it("checkout proof stays per order in tab memory when sessionStorage is blocked and never enters status headers", () => {
+ const grant=session().replace(/^p1/,"c1");
+ vi.spyOn(Storage.prototype,"setItem").mockImplementation(()=>{throw new Error("blocked")});
+ expect(rememberCheckoutCredentialGrant(CODE,session())).toBe(false);
+ expect(rememberCheckoutCredentialGrant(CODE,grant)).toBe(true);
+ expect(readCheckoutCredentialGrant(CODE)).toBe(grant);
+ expect(readCheckoutCredentialGrant("AXV-20261027-OTHER001")).toBe("");
+ expect(orderAccessHeaders(CODE)).not.toHaveProperty("x-checkout-credential-grant");
+ expect(localStorage.length).toBe(0); expect(location.hash).toBe("");
 });

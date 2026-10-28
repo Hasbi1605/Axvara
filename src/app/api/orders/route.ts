@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { deriveNameFromEmail } from "@/lib/utils";
 import { z } from "zod";
 import { createOrderWithStock, queryAll, queryFirst, StockReservationError, transitionPendingOrder } from "@/lib/db";
-import { assertOrderAccessConfigured, createBuyerAccessSession, requiresOrderAccessCode, newOrderAccessFailure, orderAccessDenied } from "@/lib/order-access";
+import { assertOrderAccessConfigured, createBuyerAccessSession, createCheckoutCredentialGrant, requiresOrderAccessCode, newOrderAccessFailure, orderAccessDenied } from "@/lib/order-access";
 import { generateOrderCode as generateCode, aggregateQty } from "@/lib/security";
 import { verifyCheckoutQuoteToken } from "@/lib/auth";
 import { createDanaQrisInvoice, createActiveQrisInvoice, MAX_QRIS_REISSUES } from "@/lib/payments/dana-qris";
@@ -43,6 +43,7 @@ const schema = z.object({
 
 async function existingCheckoutResponse(existing: Record<string, unknown>) {
   const buyer_access_session = await createBuyerAccessSession(existing);
+  const checkout_credential_grant = await createCheckoutCredentialGrant(existing);
   // The signed quote already reserved stock, including its last available unit.
   // Resume before revalidating stock/price; never reserve or POST again.
   if (existing.status === "pending") {
@@ -50,7 +51,7 @@ async function existingCheckoutResponse(existing: Record<string, unknown>) {
     if (tx?.provider === "klikqris") {
       try {
         const inv = await createActiveQrisInvoice(String(existing.code), Number(tx.requested_amount));
-        return NextResponse.json({ code: existing.code, subtotal: existing.subtotal, status: existing.status, buyer_access_session, reused: true, qris: {
+        return NextResponse.json({ code: existing.code, subtotal: existing.subtotal, status: existing.status, buyer_access_session, checkout_credential_grant, reused: true, qris: {
           payable_amount: inv.payableAmount, unique_code: inv.uniqueCode,
           image_url: inv.qrisUrl, expires_at: inv.expiresAt,
         } }, { status: 200, headers: { "Cache-Control": "private, no-store" } });
@@ -59,7 +60,7 @@ async function existingCheckoutResponse(existing: Record<string, unknown>) {
       }
     }
   }
-  return NextResponse.json({ code: existing.code, subtotal: existing.subtotal, status: existing.status, buyer_access_session, reused: true }, { status: 200, headers: { "Cache-Control": "private, no-store" } });
+  return NextResponse.json({ code: existing.code, subtotal: existing.subtotal, status: existing.status, buyer_access_session, checkout_credential_grant, reused: true }, { status: 200, headers: { "Cache-Control": "private, no-store" } });
 }
 
 // Rate-limit terpusat (issue #14): satu implementasi di src/lib/rateLimit.ts
@@ -108,7 +109,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Isi keranjang berubah setelah harga dikunci. Muat ulang checkout." }, { status: 409 });
   }
 
-  const previous = await queryFirst("SELECT code,subtotal,status,buyer_access_version,buyer_access_format FROM orders WHERE quote_id=?", quote.quote_id);
+  const previous = await queryFirst("SELECT code,quote_id,subtotal,status,buyer_access_version,buyer_access_format FROM orders WHERE quote_id=?", quote.quote_id);
   if (previous) return existingCheckoutResponse(previous);
 
   // Guard email lapis kedua (migrasi 0033 + revamp 2026-09-23): zod di atas
@@ -287,13 +288,13 @@ export async function POST(req: NextRequest) {
     });
   } catch (e: unknown) {
     if (e instanceof StockReservationError) {
-      const winner = await queryFirst("SELECT code,subtotal,status,buyer_access_version,buyer_access_format FROM orders WHERE quote_id=?", quote.quote_id).catch(() => null);
+      const winner = await queryFirst("SELECT code,quote_id,subtotal,status,buyer_access_version,buyer_access_format FROM orders WHERE quote_id=?", quote.quote_id).catch(() => null);
       if (winner) return existingCheckoutResponse(winner);
       return NextResponse.json({ error: e.message }, { status: 409 });
     }
     const msg = e instanceof Error ? e.message : String(e);
     if (msg.includes("UNIQUE")) {
-      const existing = await queryFirst("SELECT code,subtotal,status,buyer_access_version,buyer_access_format FROM orders WHERE quote_id=?", quote.quote_id);
+      const existing = await queryFirst("SELECT code,quote_id,subtotal,status,buyer_access_version,buyer_access_format FROM orders WHERE quote_id=?", quote.quote_id);
       if (existing) {
         return existingCheckoutResponse(existing);
       }
@@ -327,6 +328,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     code,
     buyer_access_session: await createBuyerAccessSession({ code, buyer_access_version: 1, buyer_access_format: "pin6" }),
+    checkout_credential_grant: await createCheckoutCredentialGrant({ code, quote_id: quote.quote_id, buyer_access_version: 1, buyer_access_format: "pin6" }),
     subtotal: quote.subtotal,
     status: "pending",
     qris: qrisInvoice ? {

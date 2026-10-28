@@ -14,23 +14,35 @@ quote valid dapat menerbitkan sesi status setelah order durable, tetapi tidak
 lagi mengembalikan buyer_access_code. Lookup status memakai kontak penuh. Mutasi
 cancel/reissue/refill tidak menerima sesi status sebagai proof.
 
+Tab checkout Market asli mendapatkan proof c1 terpisah, hanya dari respons POST
+create durable atau retry quote yang sama melalui SELECT quote_id dari jti token
+bertanda tangan. Domain buyer-checkout-credentials, HMAC256 atas order+versi,
+HMAC domain buyer-quote-binding atas quote_id tersimpan dan expiry tetap24jam.
+Tidak diterbitkan oleh lookup/status/admin/Pedia/Telegram, tidak ada endpoint
+refresh. Token p1/b1 tidak dapat dipromosikan. Client menyimpan c1 sessionStorage/
+memori tab dan mengirim x-checkout-credential-grant hanya ke credentials POST.
+PIN tidak ikut dikembalikan atau disimpan. Order/quote/versi lain, missing quote,
+expiry atau signature salah ditolak; key hilang503. Rotasi versi mencabut c1.
+
 CredentialsPOST memakai field contact dan access_code terpisah untuk pin6;
 required invoice dari path. Guard lunas/kredensial siap mendahului kebutuhan PIN,
 tanpa membaca plaintext sebelum proof. Admission D1 order+versi10/15menit diambil
 sebelum compare PIN+kontak, lintasIP dan fail-closed503. Sukses decrement slot
 sendiri, kegagalan generik404. Session p1/b1 tidak diterima pada jalur kredensial.
+c1 checkout asli yang valid dapat menggantikan kontak+PIN setelah paid/ready;
+tidak mengonsumsi atau mereset counter PIN, tidak diterima pada mutasi/status.
 Legacy v0 tetap kontak, code26 tetap strong-code kompatibel. Pedia tidak memiliki
 kredensial akun sehingga lookup/status/refill memakai kontak, tanpa PIN buntu.
 
 Migrasi0083 menambah wr_credential_tokens.buyer_access_version default0.
-PIN6 token baru hanya diterbitkan setelah proof lengkap: INSERT SELECT CAS
+PIN6 token baru hanya diterbitkan setelah proof kontak+PIN atau c1 valid: INSERT SELECT CAS
 memastikan versi akses order masih sama/paid. Verifier join orders mewajibkan
 versi token sama dengan versi order untuk pin6; writer lama/default0 tidak bisa
 melewati cutover di sela migrasi dan deployment. Token legacy/code26 tetap valid
 sampai expiry/revokasi. Client memakai x-credential-token di GET, query token hanya
 kompatibilitas. AdminView tetap Access+sesi aplikasi tanpa capability pembeli.
 
-Browser menyimpan hanya kontak/sesi status atau capability di sessionStorage/
+Browser menyimpan hanya kontak/sesi status, c1 checkout atau capability di sessionStorage/
 memori tab. PIN yang diketik pembeli hanya React state, tidak sessionStorage,
 localStorage atau fragment. Kartu PIN pada pesanan dihapus; formulir lacak punya
 invoice/kontak/PIN, dan panel kredensial memverifikasi dua field terakhir.

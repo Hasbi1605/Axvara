@@ -3,7 +3,7 @@ import { buyerContactMatches } from "@/lib/order-contact";
 import { encodeOrderAccessCode, encodeOrderAccessPin, normalizeOrderAccessCode } from "@/lib/order-access-format";
 
 export type BuyerAccessOrder = {
-  code?: unknown; buyer_access_version?: unknown; buyer_access_format?: unknown; customer_wa?: unknown; customer_email?: unknown;
+  code?: unknown; quote_id?: unknown; buyer_access_version?: unknown; buyer_access_format?: unknown; customer_wa?: unknown; customer_email?: unknown;
 };
 
 export function requiresOrderAccessCode(order: BuyerAccessOrder): boolean {
@@ -66,6 +66,30 @@ export async function verifyBuyerAccessSession(raw: string, order: BuyerAccessOr
   const expires = Number(match[1]), seconds = Math.floor(now / 1000);
   if (expires <= seconds || expires > seconds + 86460) return false;
   const expected = await createBuyerAccessSession(order, (expires - 86400) * 1000);
+  return Boolean(expected) && constantTimeEqual(raw, expected!);
+}
+
+// Only the signed-quote checkout response mints this proof. Contact lookups
+// issue p1 status sessions and must never promote them to credential access.
+export async function createCheckoutCredentialGrant(order: BuyerAccessOrder, now = Date.now()): Promise<string | undefined> {
+  if (!isBuyerPinOrder(order)) return undefined;
+  const identity = accessIdentity(order);
+  if (!identity || typeof order.quote_id !== "string" || !order.quote_id.trim()) throw new Error("checkout_access_metadata_unavailable");
+  const quoteMac = await buyerAccessMac(`axvara:buyer-quote-binding:v1:${order.quote_id}`);
+  const quoteDigest = Array.from(quoteMac, byte => byte.toString(16).padStart(2, "0")).join("");
+  const expires = Math.floor(now / 1000) + 86400;
+  const mac = await buyerAccessMac(`axvara:buyer-checkout-credentials:v1:${identity.code}:${identity.version}:${quoteDigest}:${expires}`);
+  const signature = btoa(String.fromCharCode(...mac)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return `c1.${expires}.${signature}`;
+}
+
+export async function verifyCheckoutCredentialGrant(raw: string, order: BuyerAccessOrder, now = Date.now()): Promise<boolean> {
+  if (!isBuyerPinOrder(order) || typeof order.quote_id !== "string" || !order.quote_id.trim()) return false;
+  const match = /^c1\.(\d{10})\.([A-Za-z0-9_-]{43})$/.exec(raw);
+  if (!match) return false;
+  const expires = Number(match[1]), seconds = Math.floor(now / 1000);
+  if (expires <= seconds || expires > seconds + 86460) return false;
+  const expected = await createCheckoutCredentialGrant(order, (expires - 86400) * 1000);
   return Boolean(expected) && constantTimeEqual(raw, expected!);
 }
 

@@ -5,7 +5,8 @@ Koreksi owner28Oktober menggantikan ketentuan pengiriman/display PIN pada rilis
 
 | Jalur | Data yang diperiksa | Data yang diberikan |
 | --- | --- | --- |
-| Checkout quote valid | Quote bertanda tangan, order durable, guard harga/stok | Invoice/QR dan sesi status, tanpa PIN |
+| Checkout quote valid | Quote bertanda tangan, order durable, guard harga/stok | Invoice/QR, sesi status dan c1 checkout asli, tanpa PIN |
+| Kredensial tab checkout asli | c1 valid terikat quote/order/versi, paid/ready | Akun otomatis tanpa input PIN, capability untuk akses ulang |
 | Lacak status | Invoice + email/WA checkout penuh | Status dan kontak tersamar, tanpa kredensial/PIN |
 | Status tab checkout | Sesi p1 valid dan versi order | Status/pembayaran, tanpa kredensial/PIN |
 | Kredensial order PIN6 baru | Invoice + kontak penuh + PIN | Kredensial dan capability untuk akses ulang |
@@ -27,9 +28,19 @@ secara eksplisit mengizinkannya. Prefix b1 lama ditolak. Cancel/reissue/refill
 tetap memerlukan kontak dan guard state existing. Belum siap/paid tidak menuntut
 PIN yang belum pernah dikirim. Plaintext akun tidak dibaca sebelum proof lengkap.
 
+Koreksi lanjutan owner: tab checkout asli otomatis membuka akun tanpa PIN.
+Proof c1 HMAC256 memakai domain terpisah dan mengikat order, versi, HMAC quote_id
+tersimpan serta expiry tetap24jam. Hanya respons checkout yang sudah memverifikasi
+quote bertanda tangan dan order durable dapat menerbitkannya, termasuk retry jti
+asli. Quote baru untuk keranjang yang sama tidak cocok dengan order korban.
+Lookup kontak/p1/status tidak menerbitkan atau memperbarui c1. Header khusus c1
+hanya diterima credentials POST; guard paid/ready dan CAS capability generasi
+tetap. Counter PIN tidak dikonsumsi atau dihapus oleh c1. Rotasi mencabutnya.
+Client menyimpan bukti kuat ini hanya di tab, tidak menyimpan/menampilkan PIN.
+
 Migrasi0083 menambah wr_credential_tokens.buyer_access_version default0. Writer
 lama, termasuk yang masih berjalan di sela migrasi/deployment, hanya menulis0.
-API setelah kontak+PIN lolos menulis versi akses yang diverifikasi lewat INSERT
+API setelah kontak+PIN atau c1 checkout asli lolos menulis versi akses yang diverifikasi lewat INSERT
 SELECT kondisional, hanya bila order paid dan versinya masih sama. Untuk PIN6,
 verifier token mewajibkan versi token sama dengan versi order dan positif.
 Capability lama PIN6 tidak dapat melewati kebijakan baru; legacy/code26 tetap
@@ -58,10 +69,13 @@ probe, tanpa env/trigger baru. Retry ambigu memakai key dan isi sama; perubahan 
 ## Tampilan dan penyimpanan
 
 Kartu PIN/salin di halaman checkout/pesanan dihapus. Form lacak memisahkan invoice,
-kontak dan PIN; PIN boleh kosong untuk cek status, wajib untuk membuka akun baru.
-Panel kredensial juga meminta kontak+PIN dengan password input dan submit native.
+kontak dan PIN; PIN boleh kosong untuk cek status, wajib untuk membuka akun baru
+tanpa proof checkout asli/capability valid.
+Panel kredensial meminta kontak+PIN dengan password input dan submit native bila
+tidak memiliki c1 checkout asli atau capability valid. Tab checkout asli otomatis
+memuat akun sesudah paid/ready.
 PIN hanya berada dalam React state dari input pembeli, tidak disimpan dalam
-sessionStorage/localStorage/fragment. Browser hanya menyimpan kontak/status token
+sessionStorage/localStorage/fragment. Browser hanya menyimpan kontak/status token, c1 checkout
 atau capability sementara. Tidak ada PIN dalam respons buyer, query, log atau
 riwayat. Admin reveal yang teraudit tetap jalur privat owner, bukan API buyer.
 
@@ -78,13 +92,21 @@ metadata, antrean lama inert, tidak ada email sebelum akun siap, resend lengkap,
 versi superseded, biaya cron, dan kode/format lama. UI diperiksa di Obscura pada
 ponsel/desktop dengan data buatan tanpa order/pembayaran/pesan produksi.
 
-Hasil akhir: seluruh3403test/278file lulus, type-check lulus, build Pages selesai,
+Hasil akhir termasuk checkout otomatis: seluruh3417test/279file lulus, type-check lulus, build Pages selesai,
 dev home/CSS200. Obscura390/1440 memeriksa route lacak aktual dan komponen order
 aktual dalam fixture inert: kontak/PIN salah tertahan, proof lengkap membuka akun,
 salin akun berjalan, tanpa PIN dalam URL/storage atau kartu checkout, tanpa
 overflow/pageerror. Preview email memperlihatkan kredensial langsung dan PIN
 ringkas dalam pesan sama. Review backend independen tidak menemukan blocker
 material. Rincian [pemeriksaan UI](buyer-contact-pin-ui-check-2026-10-28.md).
+
+Tambahan c1: Obscura390/1440 membuktikan akun terbuka otomatis pada tab checkout
+asli tanpa input PIN, sementara tab tanpa proof tetap meminta PIN. Fixture backend
+mencakup quote baru untuk keranjang identik, retry quote asli sesudah paid, grant
+order/quote/versi/expiry/signature salah, p1 salah purpose, missing metadata/key,
+guard paid/ready, serta counter PIN penuh yang tidak memblokir proof checkout.
+Proof c1 adalah bearer24jam yang tetap bergantung pada keamanan tab pembeli;
+tidak ada renewal dari endpoint status/lookup/credentials. PIN hanya di email.
 
 Tidak ada pengiriman email, order atau pembayaran produksi untuk QA. Batas renderer
 keyboard dicatat pada laporan UI. Tidak menjanjikan email masuk inbox atau

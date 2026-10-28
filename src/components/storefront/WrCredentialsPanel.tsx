@@ -2,8 +2,8 @@
 
 // Panel pengambilan detail akun digital (Warung Rebahan) di halaman pesanan.
 // Kredensial TIDAK dibuka hanya dengan kode order: pembeli memverifikasi
-// kepemilikan lewat kontak checkout penuh (email/WA) + PIN 6 karakter dari
-// email pembelian (koreksi owner 27 Okt 2026). PIN hanya React state, tidak
+// kepemilikan lewat proof checkout asli atau kontak penuh + PIN dari
+// email pembelian. PIN hanya React state, tidak
 // pernah disimpan di storage/URL, tidak pernah ditampilkan plaintext.
 // Setelah verifikasi hanya capability token yang disimpan (GET polling).
 
@@ -12,7 +12,7 @@ import { formatWibDateTime } from "@/lib/utils";
 import { CredentialText, ActivationBody, MobileCollapsible, TermsBody } from "@/components/storefront/ProductCopy";
 import { WarrantyClaimAccordion } from "@/components/storefront/WarrantyClaim";
 import type { VariantCopy } from "@/lib/product-copy/format";
-import { orderAccessHeaders, readOrderContact } from "@/lib/order-access-client";
+import { forgetCheckoutCredentialGrant, orderAccessHeaders, readCheckoutCredentialGrant, readOrderContact } from "@/lib/order-access-client";
 import { normalizeOrderAccessCode } from "@/lib/order-access-format";
 
 // `label` hanya ada untuk isi produk non-WR (nama baris pesanan).
@@ -78,8 +78,8 @@ export function WrCredentialsPanel({ code, prefillContact = "", prefillPin = "",
   }, [code, hasCredentials]);
 
   // Akses ulang otomatis bila capability token tersimpan di perangkat ini.
-  // Auto-verifikasi kontak+PIN hanya bila keduanya sudah ada (prefill dari
-  // lookup sukses / checkout tab sama untuk legacy tanpa PIN). Verifikasi
+  // Checkout asli memakai proof privat tab; lookup memakai kontak+PIN bila
+  // keduanya sudah ada. Legacy tetap menerima kontak saja. Verifikasi
   // TETAP di server via endpoint credentials; PIN tidak pernah disimpan.
   const triedPrefill = useRef(false);
   const loadedForReady = useRef(-1);
@@ -107,15 +107,16 @@ export function WrCredentialsPanel({ code, prefillContact = "", prefillPin = "",
     const savedStatusContact = readOrderContact(code);
     const autoContact = prefillContact.trim() || savedCheckoutContact.trim() || savedStatusContact.trim();
     const autoPin = normalizePin(prefillPin);
+    const checkoutGrant = readCheckoutCredentialGrant(code);
     const verifyFromContact = () => {
       if (triedPrefill.current) return;
-      if (!isContactValue(autoContact)) return;
-      // Order PIN6 butuh PIN; legacy tanpa PIN boleh kontak saja.
-      if (buyerPinRequired && !autoPin) return;
+      if (!checkoutGrant && !isContactValue(autoContact)) return;
+      // PIN6 outside the original checkout needs the PIN from its email.
+      if (buyerPinRequired && !autoPin && !checkoutGrant) return;
       triedPrefill.current = true;
       if (!contactEdited.current) setContact(autoContact);
       if (autoPin && !pinEdited.current) setPin(autoPin);
-      void verifyWith(autoContact, buyerPinRequired ? autoPin : "");
+      void verifyWith(autoContact, buyerPinRequired ? autoPin : "", checkoutGrant);
     };
     const requestedReady = deliveryProgress?.ready ?? 0;
     let saved: string | null = null;
@@ -154,15 +155,15 @@ export function WrCredentialsPanel({ code, prefillContact = "", prefillPin = "",
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code, deliveryProgress?.ready, token, adminView, buyerPinRequired]);
 
-  async function verifyWith(contactValue: string, pinValue: string) {
+  async function verifyWith(contactValue: string, pinValue: string, checkoutGrant = "") {
     const requestedReady = deliveryProgress?.ready ?? 0;
     const cleanContact = contactValue.trim();
     const cleanPin = normalizePin(pinValue);
-    if (!isContactValue(cleanContact)) {
+    if (!checkoutGrant && !isContactValue(cleanContact)) {
       setError("Isi email atau No. WA checkout yang dipakai saat memesan.");
       return;
     }
-    if (buyerPinRequired && !cleanPin) {
+    if (buyerPinRequired && !cleanPin && !checkoutGrant) {
       setError("Isi PIN 6 karakter dari email pembelian.");
       return;
     }
@@ -174,7 +175,7 @@ export function WrCredentialsPanel({ code, prefillContact = "", prefillPin = "",
       if (cleanPin) body.access_code = cleanPin;
       const r = await fetch(`/api/orders/${encodeURIComponent(code)}/credentials`, {
         method: "POST",
-        headers: { "content-type": "application/json", ...orderAccessHeaders(code, cleanContact) },
+        headers: { "content-type": "application/json", ...orderAccessHeaders(code, cleanContact), ...(checkoutGrant ? { "x-checkout-credential-grant": checkoutGrant } : {}) },
         body: JSON.stringify(body),
       });
       const responseBody = (await r.json().catch(() => ({}))) as {
@@ -183,6 +184,7 @@ export function WrCredentialsPanel({ code, prefillContact = "", prefillPin = "",
         error?: string;
       };
       if (!r.ok) {
+        if (checkoutGrant && responseBody.error === "verification_failed") forgetCheckoutCredentialGrant(code);
         setError(responseBody.error === "verification_failed" ? "Kontak atau PIN tidak cocok. Periksa email pembelian." : responseBody.error === "not_ready" ? "Detail akun belum tersedia — tunggu beberapa menit lalu muat ulang." : "Gagal memverifikasi. Coba lagi.");
         return;
       }

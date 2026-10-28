@@ -1,11 +1,6 @@
 // GET/POST /api/orders/[code]/credentials — Retrieval kredensial WR untuk pembeli web.
-// P0-6: kredensial TIDAK dibuka hanya dengan kode order. Pembeli membuktikan
-// kepemilikan via No. WA ATAU email yang dipakai saat checkout (knowledge
-// factor) atau capability token yang diterbitkan sebelumnya.
-// - POST {contact} (atau {wa} lama): WA = nomor penuh yang dinormalisasi, email =
-//   cocok penuh tanpa beda huruf besar/kecil → tampilkan details sekali + beri
-//   capability token untuk akses ulang.
-// - GET ?token=: akses ulang dengan capability token.
+// POST: original-checkout c1 proof, or contact+PIN for new orders; legacy
+// contact/code26 compatibility remains. GET reuses the resulting capability.
 // Rate-limit ketat (orders:lookup). Tidak pernah mengembalikan data selain
 // detail akun milik order itu: detail WR + isi produk non-WR yang terkirim
 // (fulfillment_items.delivered_ciphertext, migrasi 0043).
@@ -22,7 +17,7 @@ import {
   verifyCredentialToken,
 } from "@/lib/warung-rebahan/deliver";
 import { readDeliveredSnapshots } from "@/lib/fulfillment/delivery/buyer-email";
-import { buyerOrderAccessMatches, isBuyerPinOrder, newOrderAccessFailure, requiresOrderAccessCode } from "@/lib/order-access";
+import { buyerOrderAccessMatches, isBuyerPinOrder, newOrderAccessFailure, requiresOrderAccessCode, verifyCheckoutCredentialGrant } from "@/lib/order-access";
 import { resolveCredentialTermsByItem } from "@/lib/orders/credential-terms";
 import { requireAdmin } from "@/lib/auth";
 import type { VariantCopy } from "@/lib/product-copy/format";
@@ -38,7 +33,7 @@ function privateJson(body: unknown, init?: Parameters<typeof NextResponse.json>[
 async function orderReady(code: string) {
   const db = createDatabaseAccess();
   const order = await db
-    .queryFirst(`SELECT code, customer_wa, customer_email, status, payment_status, buyer_access_version,buyer_access_format FROM orders WHERE code=?`, code)
+    .queryFirst(`SELECT code, quote_id, customer_wa, customer_email, status, payment_status, buyer_access_version,buyer_access_format FROM orders WHERE code=?`, code)
     .catch(() => null);
   if (!order) return { error: "not_found" as const, status: 404 };
   if (String(order.status) !== "lunas" || String(order.payment_status) !== "paid") {
@@ -141,7 +136,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if ("error" in ready) return privateJson({ error: ready.error }, { status: ready.status });
   const { order, db } = ready;
   if (order.buyer_access_version !== authorityOrder.buyer_access_version || order.buyer_access_format !== authorityOrder.buyer_access_format) return privateJson({ error: "verification_failed" }, { status: 409 });
-  const accessFailure = await newOrderAccessFailure(request, order, raw, { allowAdmin: false, purpose: "credentials", contact });
+  let checkoutAuthorized = false;
+  const checkoutGrant = request.headers.get("x-checkout-credential-grant") || "";
+  if (checkoutGrant) {
+    try { checkoutAuthorized = await verifyCheckoutCredentialGrant(checkoutGrant, order); }
+    catch { return privateJson({ error: "verification_unavailable" }, { status: 503 }); }
+    if (!checkoutAuthorized) return privateJson({ error: "verification_failed" }, { status: 404 });
+  }
+  const accessFailure = checkoutAuthorized ? null : await newOrderAccessFailure(request, order, raw, { allowAdmin: false, purpose: "credentials", contact });
   if (accessFailure) return accessFailure;
   const { contactAttemptLimited, recordContactFailure } = await import("@/lib/orders/contact-attempts");
   if (!requiresOrderAccessCode(order) && await contactAttemptLimited(db, code, clientIp(request))) return privateJson({ error: "rate_limited" }, { status: 429, headers: { "Retry-After": "900", "Cache-Control": "private, no-store" } });

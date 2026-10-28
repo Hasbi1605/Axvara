@@ -14,7 +14,15 @@ produk aktual dan kredensial buatan, tanpa mengirim email. PNG web/email diperik
 Bukti lokal: `/tmp/axvara-contact-browser-release.log`,
 `/tmp/axvara-contact-{track,pedia,checkout,unlock,credentials}-{390,1440}.png`,
 `/tmp/axvara-contact-email-{390,1440}.png`. Semua data akun diberi tanda fixture.
-Home/CSS dev200, seluruh3403test/278file lulus, type-check lulus, build Pages selesai.
+Home/CSS dev200, seluruh3417test/279file lulus, type-check lulus, build Pages selesai.
+
+Pembaruan checkout otomatis: `/tmp/axvara-checkout-grant-obscura.log` mencatat
+akun langsung tampil tanpa isian PIN/input pengguna pada390/1440, satu POST dengan
+proof checkout khusus, tanpa overflow/pageerror. Navigasi tanpa proof tetap
+memperlihatkan form PIN terkunci. Screenshot aktual
+`/tmp/axvara-checkout-instant-{390,1440}.png` diperiksa. Tidak mengubah tata letak,
+warna, copy atau kontrol; memakai loading dan panel akun existing. Gate di bawah
+tetap PASS dengan bukti tambahan ini.
 
 ## Delivery gate antislop
 
@@ -27,13 +35,13 @@ Home/CSS dev200, seluruh3403test/278file lulus, type-check lulus, build Pages se
 | R23 aset | PASS | Logo/shell existing, tanpa aset baru. |
 | R24 navigasi | PASS | Tujuan invoice/support existing; PIN tidak muncul di href/query/fragment. |
 | R25 kontras | PASS | Hint/placeholder existing55/65% pada Midnight memenuhi AA; label/instruksi email #475569 pada putih dan PIN #0f1430 pada putih. |
-| R26 aksi | PASS | Submit tracking, PIN salah/benar dan salin akun dijalankan lewat komponen aktual. |
+| R26 aksi | PASS | Submit tracking, PIN salah/benar dan salin akun dijalankan lewat komponen aktual; checkout asli auto-memuat akun tanpa input PIN. |
 | R27 status | PASS | Loading, belum siap, kredensial terkunci, error generik dan akun terbuka mempunyai perilaku teruji. |
 | R28 FAQ | PASS | FAQ Market menyebut email produk siap sebagai sumber PIN dan support bila hilang. |
 | R32 keyboard | PASS | Input berlabel, form/submit native, fokus cyan dan Enter didukung. Obscura tidak menyediakan perpindahan Tab default; keyboard fisik tidak diklaim diuji. |
 | R33 source | PASS | UI ditulis dalam source komponen; script eksternal hanya untuk fixture/pemeriksaan. |
 | R34 tema | PASS | Midnight web dan shell email terang mengikuti desain owner; tidak menambah toggle. |
-| R35 runtime | PASS |3403 tes, type-check, build Pages, dev200 dan click-through Obscura lulus. |
+| R35 runtime | PASS |3417 tes, type-check, build Pages, dev200 dan click-through Obscura lulus. |
 | R36 klaim | PASS | Tidak menyebut sertifikasi, keberhasilan deployment atau jaminan email masuk inbox. |
 | R37 arah | PASS | During dan dials tercatat pada DESIGN dan laporan ini. |
 | R38 fakta | PASS | Fixture lokal ditandai, tidak membuat transaksi/pelanggan produksi. |

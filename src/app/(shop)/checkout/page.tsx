@@ -3,7 +3,7 @@ import { isPaymentMaintenanceEnabled } from "@/lib/payment-maintenance";
 import { ManualOrderPanel } from "@/components/shared/PaymentMaintenanceNotice";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { checkoutContactKey } from "@/components/storefront/WrCredentialsPanel";
-import { orderCheckoutPath } from "@/lib/order-access-client";
+import { orderCheckoutPath, rememberCheckoutCredentialGrant } from "@/lib/order-access-client";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useCart } from "@/stores/cart";
@@ -451,6 +451,7 @@ function CheckoutInner() {
       redirected = true;
       if (!isDirect) clear();
       const target = orderCheckoutPath(`/pesanan/${code}`, code, j.buyer_access_session);
+      rememberCheckoutCredentialGrant(code, j.checkout_credential_grant);
       startNavigation(target, { overlay: false });
       router.push(target);
     } catch (e) {

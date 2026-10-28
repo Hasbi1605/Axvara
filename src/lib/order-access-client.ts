@@ -1,4 +1,4 @@
-// Only contacts and read-only status sessions persist in the current tab.
+// Contacts, status sessions and original-checkout proofs persist in this tab.
 // PINs stay in component state; purge traces left by older clients.
 
 import { normalizeOrderAccessCode } from "@/lib/order-access-format";
@@ -28,6 +28,8 @@ function normalizeContact(raw: unknown): string {
 const sessionKey = (code: string) => `axvara-buyer-session:${code}`;
 const tabSessions = new Map<string, string>();
 const tabContacts = new Map<string, string>();
+const tabCheckoutGrants = new Map<string, string>();
+const checkoutGrantKey = (code: string) => `axvara-checkout-credential:${code}`;
 const contactKey = (code: string) => `axvara-order-contact:${code}`;
 const LEGACY_PIN_PREFIX = "axvara-order-access:";
 
@@ -61,6 +63,32 @@ function validSessionShape(value: unknown): value is string {
   if (typeof value !== "string") return false;
   const match = /^p1\.(\d{10})\.[A-Za-z0-9_-]{43}$/.exec(value);
   return Boolean(match && Number(match[1]) > Math.floor(Date.now() / 1000));
+}
+
+function validCheckoutGrantShape(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const match = /^c1\.(\d{10})\.[A-Za-z0-9_-]{43}$/.exec(value);
+  return Boolean(match && Number(match[1]) > Math.floor(Date.now() / 1000));
+}
+
+export function rememberCheckoutCredentialGrant(code: string, raw: unknown): boolean {
+  if (typeof window === "undefined" || !validCheckoutGrantShape(raw)) return false;
+  tabCheckoutGrants.set(code, raw);
+  try { sessionStorage.setItem(checkoutGrantKey(code), raw); } catch { /* Keep proof in this tab when storage is blocked. */ }
+  return true;
+}
+
+export function forgetCheckoutCredentialGrant(code: string): void {
+  tabCheckoutGrants.delete(code);
+  try { sessionStorage.removeItem(checkoutGrantKey(code)); } catch { /* Storage optional. */ }
+}
+
+export function readCheckoutCredentialGrant(code: string): string {
+  let raw = tabCheckoutGrants.get(code) || "";
+  try { raw ||= sessionStorage.getItem(checkoutGrantKey(code)) || ""; } catch { /* Use this tab's memory. */ }
+  if (validCheckoutGrantShape(raw)) return raw;
+  if (raw) forgetCheckoutCredentialGrant(code);
+  return "";
 }
 
 export function rememberBuyerAccessSession(code: string, raw: unknown): boolean {

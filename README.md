@@ -6,10 +6,15 @@
 lengkap + PIN enam karakter** pada pesan yang sama. Tidak ada email PIN lebih awal,
 PIN dalam respons checkout, kartu PIN di web atau PIN dalam pesan Telegram.
 
-Untuk akses kredensial web pembeli mengisi invoice + email/WA checkout + PIN.
+Pada tab checkout Market asli, kredensial otomatis muncul sesudah pembayaran
+terverifikasi dan akun siap, tanpa memasukkan PIN. Bukti checkout khusus c1 hanya
+terbit dari quote bertanda tangan yang cocok order durable; disimpan privat di
+tab24jam dan tercabut oleh rotasi versi. Lookup biasa tidak menerbitkan c1.
+
+Untuk akses kredensial lewat lacak tanpa bukti checkout asli, pembeli mengisi invoice + email/WA checkout + PIN.
 Lacak status sebelum email siap memakai invoice+kontak, atau sesi status tab dari
 checkout. Sesi ini tidak membuka kredensial atau mengizinkan mutasi. Sesudah proof
-kontak+PIN, capability kuat dapat disimpan sessionStorage untuk kunjungan ulang;
+kontak+PIN atau bukti checkout asli, capability kuat dapat disimpan sessionStorage untuk kunjungan ulang;
 PIN tidak disimpan di browser atau URL. Legacy v0 tetap kontak, kode26 lama tetap
 berlaku. Pedia tanpa kredensial memakai kontak untuk status/refill.
 
