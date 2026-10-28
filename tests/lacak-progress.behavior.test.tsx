@@ -12,7 +12,7 @@ it('polls 1/3 through 3/3, pauses hidden, backs off 429 and never overlaps reque
  vi.stubGlobal('requestAnimationFrame',()=>1);
  let ready=1;const response=()=>Response.json({order:{code:'AXV-20261024-PROGRESS',status:'lunas',items:[{name:'Fixture',price:1000,qty:3}],subtotal:3000,credentials_ready:true,supplier_running:false,unique_units_progress:{ready,total:3}}});
  const fetcher=vi.fn(async()=>response());vi.stubGlobal('fetch',fetcher);
-  render(<Page/>);fireEvent.change(screen.getByLabelText(/Kode pesanan/),{target:{value:'AXV-20261024-PROGRESS'}});const contact=screen.getByLabelText(/PIN akses pesanan/);fireEvent.change(contact,{target:{value:'buyer@example.test'}});
+  render(<Page/>);fireEvent.change(screen.getByLabelText(/Kode pesanan/),{target:{value:'AXV-20261024-PROGRESS'}});const contact=screen.getByLabelText(/No. WA atau email checkout/);fireEvent.change(contact,{target:{value:'buyer@example.test'}});
  await act(async()=>{fireEvent.submit(contact.closest('form')!)});expect(screen.getByTestId('progress').textContent).toBe('1/3');
  await act(async()=>{await vi.advanceTimersByTimeAsync(5000)});expect(fetcher.mock.calls).toHaveLength(2);
  hidden=true;await act(async()=>{await vi.advanceTimersByTimeAsync(60000)});expect(fetcher).toHaveBeenCalledTimes(2);

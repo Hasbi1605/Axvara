@@ -14,7 +14,6 @@ import {
 import { getActiveVariant, type VariantSummary, formatDuration, buyerWarrantyLabel } from "@/lib/catalog";
 import { generateOrderCode } from "@/lib/security";
 import { assertOrderAccessConfigured } from "@/lib/order-access";
-import { checkoutPinEmailStatement } from "@/lib/orders/access-email-queue";
 import { QRIS_ORDER_WINDOW_MINUTES } from "@/lib/payments/dana-qris";
 import { markUniqueUnitLines, MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 
@@ -305,7 +304,6 @@ export async function createChannelOrderAtomic(
     ),
   );
 
-  statements.push(checkoutPinEmailStatement(d1, input.orderCode));
   for (const guardId of guardIds) {
     statements.push(d1.prepare(`DELETE FROM operation_guards WHERE operation_id=?`).bind(guardId));
   }
@@ -539,7 +537,6 @@ export async function createPendingChannelOrder(input: ChannelOrderInput): Promi
         variantSnapshot,
         input.idempotencyKey,
       ),
-      checkoutPinEmailStatement(d1, orderCode),
       // 4. Cleanup guard
       d1.prepare(`DELETE FROM operation_guards WHERE operation_id=?`).bind(guardId),
     );

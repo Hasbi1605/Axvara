@@ -54,14 +54,14 @@ export async function createBuyerAccessSession(order: BuyerAccessOrder, now = Da
   const identity = accessIdentity(order);
   if (!identity) return undefined;
   const expires = Math.floor(now / 1000) + 86400;
-  const mac = await buyerAccessMac(`axvara:buyer-pin-session:v1:${identity.code}:${identity.version}:${expires}`);
+  const mac = await buyerAccessMac(`axvara:buyer-status-session:v1:${identity.code}:${identity.version}:${expires}`);
   const signature = btoa(String.fromCharCode(...mac)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-  return `b1.${expires}.${signature}`;
+  return `p1.${expires}.${signature}`;
 }
 
 export async function verifyBuyerAccessSession(raw: string, order: BuyerAccessOrder, now = Date.now()): Promise<boolean> {
   if (!isBuyerPinOrder(order)) return false;
-  const match = /^b1\.(\d{10})\.([A-Za-z0-9_-]{43})$/.exec(raw);
+  const match = /^p1\.(\d{10})\.([A-Za-z0-9_-]{43})$/.exec(raw);
   if (!match) return false;
   const expires = Number(match[1]), seconds = Math.floor(now / 1000);
   if (expires <= seconds || expires > seconds + 86460) return false;
@@ -78,7 +78,7 @@ export async function buyerOrderAccessMatches(raw: unknown, order: BuyerAccessOr
 }
 
 export function requestOrderAccessCode(request: Request): string {
-  return request.headers.get("x-order-access-code") || "";
+  return request.headers.get("x-order-contact") || request.headers.get("x-order-access-code") || "";
 }
 
 export function orderAccessDenied(): Response {
@@ -88,16 +88,19 @@ export function orderAccessDenied(): Response {
 }
 
 export async function newOrderAccessFailure(request: Request, order: BuyerAccessOrder,
-  provided: unknown = requestOrderAccessCode(request), options: { allowAdmin?: boolean } = {}): Promise<Response | null> {
+  provided: unknown = requestOrderAccessCode(request), options: {
+    allowAdmin?: boolean; allowStatusSession?: boolean; purpose?: "status" | "credentials"; contact?: unknown;
+  } = {}): Promise<Response | null> {
   if (!requiresOrderAccessCode(order)) return null;
   try {
     if (!accessIdentity(order)) throw new Error("buyer_access_metadata_unavailable");
     const { requireAdmin } = await import("@/lib/auth");
     if (options.allowAdmin !== false && await requireAdmin(request)) return null;
-    if (await verifyBuyerAccessSession(request.headers.get("x-buyer-access-session") || "", order)) return null;
+    if (options.purpose !== "credentials" && options.allowStatusSession
+      && await verifyBuyerAccessSession(request.headers.get("x-buyer-access-session") || "", order)) return null;
     const { createDatabaseAccess } = await import("@/lib/db-access");
     const db = createDatabaseAccess();
-    if (isBuyerPinOrder(order)) {
+    if (isBuyerPinOrder(order) && options.purpose === "credentials") {
       if (normalizeOrderAccessCode(provided).length !== 6) return orderAccessDenied();
       const { admitBuyerPin, releaseSuccessfulBuyerPin } = await import("@/lib/orders/pin-attempts");
       const admission = await admitBuyerPin(db, String(order.code), Number(order.buyer_access_version));
@@ -107,11 +110,14 @@ export async function newOrderAccessFailure(request: Request, order: BuyerAccess
         status: admission.unavailable ? 503 : 429,
         headers: { "Cache-Control": "private, no-store", "Retry-After": String(admission.retryAfter) },
       });
-      if (!(await buyerOrderAccessMatches(provided, order))) return orderAccessDenied();
+      const pinMatches = await buyerOrderAccessMatches(provided, order);
+      const contactMatches = buyerContactMatches(options.contact, order);
+      if (!pinMatches || !contactMatches) return orderAccessDenied();
       await releaseSuccessfulBuyerPin(db, String(order.code), Number(order.buyer_access_version), admission.window);
       return null;
     }
-    if (await buyerOrderAccessMatches(provided, order)) return null;
+    if (options.purpose !== "credentials" && buyerContactMatches(provided, order)) return null;
+    if (!isBuyerPinOrder(order) && await buyerOrderAccessMatches(provided, order)) return null;
     const { contactAttemptLimited, recordContactFailure } = await import("@/lib/orders/contact-attempts");
     const { clientIp } = await import("@/lib/rateLimit");
     if (db.d1 && (await contactAttemptLimited(db, String(order.code), clientIp(request))

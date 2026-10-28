@@ -42,10 +42,6 @@ export async function handleOrderStatus(chatId: number, orderCode: string) {
     productName = items[0]?.name ?? "Produk";
   } catch { /* ok */ }
 
-  const { deriveOrderAccessCode } = await import("@/lib/order-access");
-  const statusAccessCode = await deriveOrderAccessCode({
-    code: String(order.code), buyer_access_version: (order as { buyer_access_version?: unknown; buyer_access_format?: unknown }).buyer_access_version, buyer_access_format: order.buyer_access_format,
-  }).catch(() => "");
   await sendMessage({
     chat_id: chatId,
     text: orderStatusMessage({
@@ -54,7 +50,6 @@ export async function handleOrderStatus(chatId: number, orderCode: string) {
       paymentStatus: String(order.payment_status || "unpaid"),
       fulfillmentStatus: String(order.fulfillment_status || "not_required"),
       payableAmount: Number(order.payable_amount ?? order.subtotal),
-      buyerAccessCode: statusAccessCode || undefined,
     }),
     parse_mode: "HTML",
     reply_markup: String(order.payment_status) === "pending"
@@ -98,10 +93,6 @@ export async function handleOrderRefresh(chatId: number, messageId: number, orde
     productName = items[0]?.name ?? "Produk";
   } catch { /* ok */ }
 
-  const { deriveOrderAccessCode: deriveRefreshAccessCode } = await import("@/lib/order-access");
-  const refreshAccessCode = await deriveRefreshAccessCode({
-    code: String(order.code), buyer_access_version: (order as { buyer_access_version?: unknown; buyer_access_format?: unknown }).buyer_access_version, buyer_access_format: order.buyer_access_format,
-  }).catch(() => "");
   await safeEditOrSend({
     chat_id: chatId, message_id: messageId,
     text: orderStatusMessage({
@@ -110,7 +101,6 @@ export async function handleOrderRefresh(chatId: number, messageId: number, orde
       paymentStatus: String(order.payment_status || "unpaid"),
       fulfillmentStatus: String(order.fulfillment_status || "not_required"),
       payableAmount: Number(order.payable_amount ?? order.subtotal),
-      buyerAccessCode: refreshAccessCode || undefined,
     }),
     parse_mode: "HTML",
     reply_markup: String(order.payment_status) === "pending"
@@ -183,9 +173,6 @@ export async function handleQrisRenew(chatId: number, rawOrderCode: string) {
       payableAmount: result.invoice.payableAmount,
       expiresAt: result.invoice.expiresAt,
       paymentMethod: "qris",
-      buyerAccessCode: (await (await import("@/lib/order-access")).deriveOrderAccessCode({
-        code: orderCode, buyer_access_version: (order as { buyer_access_version?: unknown; buyer_access_format?: unknown } | null)?.buyer_access_version, buyer_access_format: order?.buyer_access_format,
-      }).catch(() => "")) || undefined,
     }),
     parse_mode: "HTML",
     reply_markup: qrisInvoiceKeyboard(orderCode),

@@ -9,8 +9,7 @@ import { isPaymentMaintenanceEnabled, paymentMaintenanceResponse } from "@/lib/p
 // DANA/GoPay + fulfillment existing langsung bekerja. Job Pedia dibuat di
 // transaksi checkout; dispatch menunggu order lunas.
 import { NextRequest, NextResponse } from "next/server";
-import { assertOrderAccessConfigured, createBuyerAccessSession, deriveOrderAccessCode } from "@/lib/order-access";
-import { checkoutPinEmailStatement, scheduleCheckoutPinEmail } from "@/lib/orders/access-email";
+import { assertOrderAccessConfigured, createBuyerAccessSession } from "@/lib/order-access";
 import { z } from "zod";
 import { checkRateLimit, clientIp } from "@/lib/rateLimit";
 import { checkoutSubjects, consumeCheckoutSlot } from "@/lib/checkout-guard";
@@ -44,7 +43,6 @@ function normalizeWa(raw: string): string {
 async function checkoutResponse(db: DatabaseAccess, order: Record<string, unknown>, reused: boolean) {
   const job = await db.queryFirst(`SELECT credit_used FROM pedia_order_items WHERE order_code=?`, order.code);
   if (!job) return NextResponse.json({ error: "Pesanan perlu diperiksa admin.", code: order.code }, { status: 503 });
-  await scheduleCheckoutPinEmail(String(order.code));
   const creditUsed = Number(job.credit_used), payable = Number(order.subtotal) - creditUsed;
   let qris = null;
   if (payable > 0 && order.status === "pending") {
@@ -56,7 +54,7 @@ async function checkoutResponse(db: DatabaseAccess, order: Record<string, unknow
       return NextResponse.json({ error: "Pesanan tersimpan. QRIS belum tersedia; coba lanjutkan lagi dengan data yang sama.", code: order.code }, { status: 503 });
     }
   }
-  return NextResponse.json({ code: order.code, buyer_access_code: await deriveOrderAccessCode(order), buyer_access_session: await createBuyerAccessSession(order), subtotal: order.subtotal, credit_used: creditUsed, payable, status: order.status, qris, reused }, { status: reused ? 200 : 201, headers: { "Cache-Control": "private, no-store" } });
+  return NextResponse.json({ code: order.code, buyer_access_session: await createBuyerAccessSession(order), subtotal: order.subtotal, credit_used: creditUsed, payable, status: order.status, qris, reused }, { status: reused ? 200 : 201, headers: { "Cache-Control": "private, no-store" } });
 }
 
 export async function POST(req: NextRequest) {
@@ -194,7 +192,6 @@ export async function POST(req: NextRequest) {
       statement(`INSERT INTO pedia_order_items(order_code,product_id,tier_id,snapshot_json,target_raw,target_normalized,quantity,unit_price,total,credit_used,supplier,supplier_service_id,supplier_rate_snapshot,status,submit_attempts)
         SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,'queued',0 WHERE ${owned}`,
         code,quote.product_id,quote.tier_id,snapshot,quote.target_raw,quote.target_normalized,qty,quote.unit_price,freshTotal,creditUsed,quote.supplier,quote.supplier_service_id,quote.supplier_rate_snapshot,code,quoteIdRow),
-      checkoutPinEmailStatement(db.d1, code),
     ]);
     claimed = Number(result[0]?.meta?.changes) === 1;
   } catch {

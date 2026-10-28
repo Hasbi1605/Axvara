@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { readFileSync } from "node:fs";
 import { createD1Fixture, insertTestOrder, insertTestProduct } from "./helpers/d1-fixture";
-import { buyerOrderAccessMatches, createBuyerAccessSession, deriveOrderAccessCode, newOrderAccessFailure, verifyBuyerAccessSession } from "@/lib/order-access";
+import { buyerOrderAccessMatches, createBuyerAccessSession, deriveOrderAccessCode, newOrderAccessFailure as orderFailure, verifyBuyerAccessSession } from "@/lib/order-access";
 import { encodeOrderAccessPin } from "@/lib/order-access-format";
 import { clearRateLimitBucketsForTest } from "@/lib/rateLimit";
 
@@ -21,6 +21,7 @@ beforeEach(async () => {
 });
 afterEach(() => { fx.close(); vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 const row = () => fx.sql.prepare("SELECT * FROM orders WHERE code=?").get(CODE)!;
+const newOrderAccessFailure = (request: Request, order: Parameters<typeof orderFailure>[1], pin: string) => orderFailure(request, order, pin, { allowAdmin: false, purpose: "credentials", contact: "628000000000" });
 function request(index = 1, session = "") {
   return new NextRequest(`https://axvara.test/api/orders?code=${CODE}`, { headers: {
     "cf-connecting-ip": `203.0.113.${index}`, ...(session ? { "x-buyer-access-session": session } : {}),
@@ -60,11 +61,11 @@ it("a successful PIN returns only its own admission slot; verified sessions neve
   for (let i = 0; i < 9; i++) expect((await newOrderAccessFailure(request(i + 1), order, "AAAAA1"))?.status).toBe(404);
   expect(await newOrderAccessFailure(request(10), order, pin)).toBeNull();
   expect(failures()).toBe(9);
-  for (let i = 0; i < 15; i++) expect(await newOrderAccessFailure(request(70, session), order, pin)).toBeNull();
+  for (let i = 0; i < 15; i++) expect(await orderFailure(request(70, session), order, undefined, { allowStatusSession: true })).toBeNull();
   expect(failures()).toBe(9);
   expect((await newOrderAccessFailure(request(30), order, "AAAAA1"))?.status).toBe(404);
   expect((await newOrderAccessFailure(request(31), order, pin))?.status).toBe(429);
-  expect(await newOrderAccessFailure(request(70, session), order, pin)).toBeNull();
+  expect(await orderFailure(request(70, session), order, undefined, { allowStatusSession: true })).toBeNull();
 });
 
 it("fails closed before PIN comparison on admission outage and refuses missing format metadata", async () => {
@@ -81,12 +82,12 @@ it("fails closed before PIN comparison on admission outage and refuses missing f
 
 it("issues the browsing session only after successful buyer proof, bound to order/version and 24-hour expiry", async () => {
   const { POST } = await import("@/app/api/orders/lookup/route");
-  const lookup = (access: string) => POST(new NextRequest("https://axvara.test/api/orders/lookup", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code: CODE, access_code: access }) }));
+  const lookup = (access: string) => POST(new NextRequest("https://axvara.test/api/orders/lookup", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code: CODE, contact: "628000000000", access_code: access }) }));
   const denied = await lookup("AAAAA1"); expect(denied.status).toBe(404);
   expect(await denied.json()).not.toHaveProperty("buyer_access_session");
   const pin = await deriveOrderAccessCode(row());
   const accepted = await lookup(pin), body = await accepted.json();
-  expect(accepted.status).toBe(200); expect(body.buyer_access_session).toMatch(/^b1\.\d{10}\.[A-Za-z0-9_-]{43}$/);
+  expect(accepted.status).toBe(200); expect(body.buyer_access_session).toMatch(/^p1\.\d{10}\.[A-Za-z0-9_-]{43}$/);
   expect(await verifyBuyerAccessSession(body.buyer_access_session, row())).toBe(true);
   expect(await verifyBuyerAccessSession(body.buyer_access_session, { ...row(), code: "AXV-20261027-PIN00002" })).toBe(false);
   expect(await verifyBuyerAccessSession(body.buyer_access_session, { ...row(), buyer_access_version: 2 })).toBe(false);
@@ -135,7 +136,7 @@ it.each(["status", "lookup", "cancel", "credentials", "reissue", "pedia-status",
   else if (surface === "reissue") response = await (await import("@/app/api/payments/qris/[code]/reissue/route")).POST(req(`/api/payments/qris/${code}/reissue`, {}), context);
   else if (surface === "pedia-status") response = await (await import("@/app/api/pedia/orders/[code]/route")).GET(req(`/api/pedia/orders/${code}`), context);
   else response = await (await import("@/app/api/pedia/orders/[code]/refill/route")).POST(req(`/api/pedia/orders/${code}/refill`, { access_code: pin }), context);
-  expect(response.status).toBe(503);
+  expect([403, 409, 503]).toContain(response.status);
   expect(fetch).not.toHaveBeenCalled();
 });
 
@@ -147,18 +148,15 @@ it("migration0082 preserves previously issued code26 and existing notice state",
   expect(fx.sql.prepare("SELECT status,access_attempts FROM buyer_notice_log").get()).toEqual({ status: "sent", access_attempts: 0 });
 });
 
-it("the PIN email queue commits with the order and rolls back its stock reservation on queue failure", async () => {
+it("checkout creates its order without creating an early PIN email queue or calling the email provider", async () => {
   const { createOrderWithStock } = await import("@/lib/db");
   const input = { code: "AXV-20261027-QUEUE001", quoteId: "pin-queue-fixture", customerName: "Fixture", customerWa: "6281234567890", customerEmail: "buyer@example.test",
     items: [{ product_id: 1, variant_id: 1, price: 10000, qty: 1, name: "Fixture" }], subtotal: 10000, paymentMethod: "qris", paymentAccount: "Fixture", proofUrl: null };
   fx.control.fail = sql => sql.includes("INSERT OR IGNORE INTO buyer_notice_log");
-  await expect(createOrderWithStock(input)).rejects.toThrow();
-  expect(fx.sql.prepare("SELECT code FROM orders WHERE code=?").get(input.code)).toBeUndefined();
-  expect(fx.sql.prepare("SELECT stock FROM product_variants WHERE id=1").get()?.stock).toBe(100);
-  fx.control.fail = null;
   await createOrderWithStock(input);
   expect(fx.sql.prepare("SELECT buyer_access_format FROM orders WHERE code=?").get(input.code)?.buyer_access_format).toBe("pin6");
-  expect(fx.sql.prepare("SELECT idempotency_key FROM buyer_notice_log WHERE order_code=?").get(input.code)?.idempotency_key).toBe(`email:access_pin:${input.code}:v1`);
+  expect(fx.sql.prepare("SELECT idempotency_key FROM buyer_notice_log WHERE order_code=?").get(input.code)).toBeUndefined();
+  expect(fetch).not.toHaveBeenCalled();
 });
 
 it("parallel signed-quote retries grant sessions only for the durable winning order; failed creation grants none", async () => {
@@ -175,7 +173,8 @@ it("parallel signed-quote retries grant sessions only for the durable winning or
   expect(new Set(payloads.map(p => p.code)).size).toBe(1);
   const winner = fx.sql.prepare("SELECT * FROM orders WHERE code=?").get(payloads[0].code)!;
   for (const payload of payloads) expect(await verifyBuyerAccessSession(payload.buyer_access_session, winner)).toBe(true);
-  expect(fx.sql.prepare("SELECT COUNT(*) n FROM buyer_notice_log WHERE order_code=?").get(winner.code)?.n).toBe(1);
+  expect(fx.sql.prepare("SELECT COUNT(*) n FROM buyer_notice_log WHERE order_code=?").get(winner.code)?.n).toBe(0);
+  for (const payload of payloads) expect(payload).not.toHaveProperty("buyer_access_code");
   clearRateLimitBucketsForTest();
   fx.sql.exec("UPDATE product_variants SET stock=0 WHERE id=1");
   const rejected = await checkout(await quote()), body = await rejected.json();

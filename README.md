@@ -1,38 +1,25 @@
 # AXVARA — Gerbang Semua Tools Premium
 
-## PIN akses pembeli — 27 Oktober 2026
+## Invoice, kontak dan PIN untuk kredensial, 28 Oktober 2026
 
-✅ Implementasi lokal, publikasi melalui CI. Pembelian baru Market/Pedia/Telegram
-memakai **PIN enam karakter campuran huruf dan angka**, dikirim ke email checkout
-segera setelah order tersimpan dan ditampilkan di konfirmasi. Email produk siap
-serta DM pribadi Telegram juga menyertakannya. PIN tetap sama untuk retry quote
-pesanan yang sama. Tidak ada OTP pembeli atau pengiriman massal. Kode26 karakter
-yang sudah diterbitkan tetap berlaku; legacy tanpa kode tetap kontak checkout.
-Bot WhatsApp nonaktif, tidak diubah atau diaktifkan.
+✅ Implementasi lokal untuk publikasi CI. Email produk siap berisi **kredensial
+lengkap + PIN enam karakter** pada pesan yang sama. Tidak ada email PIN lebih awal,
+PIN dalam respons checkout, kartu PIN di web atau PIN dalam pesan Telegram.
 
-Email produk siap tetap menampilkan kredensial lengkap langsung, beserta PIN,
-sesuai konfirmasi owner28Oktober. Email PIN awal tidak menunggu produk selesai;
-pengiriman kredensial tetap mengikuti pembayaran dan fulfillment existing.
+Untuk akses kredensial web pembeli mengisi invoice + email/WA checkout + PIN.
+Lacak status sebelum email siap memakai invoice+kontak, atau sesi status tab dari
+checkout. Sesi ini tidak membuka kredensial atau mengizinkan mutasi. Sesudah proof
+kontak+PIN, capability kuat dapat disimpan sessionStorage untuk kunjungan ulang;
+PIN tidak disimpan di browser atau URL. Legacy v0 tetap kontak, kode26 lama tetap
+berlaku. Pedia tanpa kredensial memakai kontak untuk status/refill.
 
-Nomor pesanan+PIN dipakai untuk lacak, status/wake, kredensial, batal serta reissue/
-refill yang memenuhi syarat. Maksimal10 percobaan gagal/in-flight per order+versi
-selama15menit lintasIP, diklaim sebelum perbandingan. Sesi pembeli kuat24jam sesudah
-checkout/verifikasi melewati anggaran PIN untuk polling; hanya disimpan sementara
-di tab. Risiko tersisa: penyerang yang tahu nomor order dapat menunda verifikasi
-PIN perangkat baru hingga15menit; sesi pembeli yang masih valid tetap bekerja.
-
-PIN/grant tidak masuk riwayat localStorage, queryURL, log atau outboxWA/grup. Jika
-hilang, admin memverifikasi kepemilikan lalu memakai reveal/rotate POST terpisah.
-Rotasi mencabut PIN/sesi/capability lama dan mengantrekan email pengganti. Antrean
-email metadata-only ikut transaksi order; retry bounded lewat notify cron existing,
-lease CAS dan Idempotency-Key Resend, tanpa menambah cron/env. Detail kontrak dan
-pemulihan: [runbook PIN](issue/buyer-pin-2026-10-27.md).
-
-BUYER_ORDER_ACCESS_SECRET existing tetap secret_text dari berkas ignored/chmod600;
-password/JWT tidak diubah. Produksi67/128Paid, tidak ada env baru. Migrasi0082 default
-formatcode26 mempertahankan data lama, hanya factory baru yang menulis pin6.
-Toolchain tetap MF4.20260730.0/Undici7.30.1/Sharp0.35.5: tiga advisory sebelumnya
-sudah ditutup, [bukti dependency](docs/security/dependency-audit-2026-10-27.md).
+Migrasi0083 menambahkan versi proof pada capability; token PIN6 yang diterbitkan
+kebijakan lama tidak bisa melewati pemeriksaan baru. Admission PIN tetap10/15menit
+per order+versi lintas IP. Rotasi admin mengantrekan email kredensial+PIN baru hanya
+untuk order paid yang kredensialnya tersedia. Antrean email PIN awal yang lama
+berhenti diproses tanpa penghapusan metadata. Tidak ada key/env/dependency/cron
+baru; BUYER_ORDER_ACCESS_SECRET existing dan provider pembayaran tetap.
+Bot WhatsApp nonaktif, tidak diubah atau diaktifkan. [Runbook](issue/buyer-contact-pin-2026-10-28.md).
 
 ## Proteksi admin Access — 27 Oktober 2026
 

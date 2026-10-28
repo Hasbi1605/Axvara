@@ -30,7 +30,7 @@ it("completion emails and private invoice messages show a six-character PIN for 
   const email = buildCredentialReadyTemplate({ axvaraOrderCode: NEW_CODE, buyerName: "Fixture", productNames: "Fixture", details: "PRIVATE-FIXTURE", invoiceUrl: `https://axvara.test/pesanan/${NEW_CODE}`, supportWa: "0800000000", buyerAccessCode: pin });
   expect(pin).toMatch(/^[A-Z0-9]{6}$/);
   expect(email.text).toContain(`PIN Akses Pesanan: ${pin}`);
-  expect(email.html).toContain("PIN AKSES PESANAN");
+  expect(email.html).toContain("PIN akses pesanan");
   expect(email.text).toContain("PRIVATE-FIXTURE");
   expect(email.html).toContain("PRIVATE-FIXTURE");
   expect(email.text).not.toContain(`access=${pin}`);
@@ -91,10 +91,10 @@ describe("factory pesan: kode hanya bila non-empty, legacy identik", () => {
     const code = await deriveOrderAccessCode({ code: NEW_CODE, buyer_access_version: 1, buyer_access_format: "code26" });
     expect(code).toMatch(/^[0-9A-Z]{5}-[0-9A-Z]{5}-[0-9A-Z]{5}-[0-9A-Z]{5}-[0-9A-Z]{6}$/);
     const inv = invoiceMessage({ orderCode: NEW_CODE, productName: "P", payableAmount: 7500, expiresAt: new Date().toISOString(), buyerAccessCode: code });
-    expect(inv).toContain("Kode Akses");
-    expect(inv).toContain(`<code>${code}</code>`);
+    expect(inv).not.toContain("Kode Akses");
+    expect(inv).not.toContain(code);
     const st = orderStatusMessage({ orderCode: NEW_CODE, productName: "P", paymentStatus: "paid", fulfillmentStatus: "delivered", buyerAccessCode: code });
-    expect(st).toContain(`<code>${code}</code>`);
+    expect(st).not.toContain(code);
   });
 
   it("template email: tanpa kode identik lama; dengan kode ada blok + text line", async () => {
@@ -107,7 +107,7 @@ describe("factory pesan: kode hanya bila non-empty, legacy identik", () => {
     expect(legacy.text).not.toContain("Kode Akses Pesanan");
     const code = await deriveOrderAccessCode({ code: NEW_CODE, buyer_access_version: 1, buyer_access_format: "code26" });
     const withCode = buildCredentialReadyTemplate({ ...base, buyerAccessCode: code });
-    expect(withCode.html).toContain("KODE AKSES PESANAN");
+    expect(withCode.html).toContain("Kode akses pesanan");
     expect(withCode.html).toContain(`<b>${code}</b>`);
     expect(withCode.text).toContain(`Kode Akses Pesanan: ${code}`);
     // Link invoice hanya kode order — tanpa access code di URL/query.
@@ -159,8 +159,8 @@ describe("kanal privat: kode sampai ke buyer, tidak ke payload tersimpan", () =>
     expect(sendForwardEmail).toHaveBeenCalledTimes(1);
     const mail = sendForwardEmail.mock.calls[0][0] as MailArgs;
     const code = await deriveOrderAccessCode({ code: NEW_CODE, buyer_access_version: 1, buyer_access_format: "code26" });
-    expect(mail.text).toContain(`Kode Akses Pesanan: ${code}`);
-    expect(mail.html).toContain(code);
+    expect(mail.text).not.toContain(`Kode Akses Pesanan: ${code}`);
+    expect(mail.html).not.toContain(code);
     expect(mail.text).toContain(`/pesanan/${NEW_CODE}`);
     // Link hanya kode order — tanpa access code di query/body.
     expect(mail.text).not.toContain("access_code");
@@ -221,7 +221,7 @@ describe("kanal privat: kode sampai ke buyer, tidak ke payload tersimpan", () =>
     expect(sendForwardEmail).toHaveBeenCalledTimes(before + 1);
     const mail = sendForwardEmail.mock.calls[before][0] as MailArgs;
     const code = await deriveOrderAccessCode({ code: PEDIA_CODE, buyer_access_version: 1, buyer_access_format: "code26" });
-    expect(mail.text).toContain(`Kode Akses: ${code}`);
+    expect(mail.text).not.toContain(`Kode Akses: ${code}`);
     expect(mail.text).toContain(PEDIA_CODE);
     // Link status hanya kode order — tanpa access code query/body.
     expect(mail.text).not.toContain("access_code");

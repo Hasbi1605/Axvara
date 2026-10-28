@@ -22,7 +22,7 @@ import {
   verifyCredentialToken,
 } from "@/lib/warung-rebahan/deliver";
 import { readDeliveredSnapshots } from "@/lib/fulfillment/delivery/buyer-email";
-import { buyerOrderAccessMatches, newOrderAccessFailure, requiresOrderAccessCode } from "@/lib/order-access";
+import { buyerOrderAccessMatches, isBuyerPinOrder, newOrderAccessFailure, requiresOrderAccessCode } from "@/lib/order-access";
 import { resolveCredentialTermsByItem } from "@/lib/orders/credential-terms";
 import { requireAdmin } from "@/lib/auth";
 import type { VariantCopy } from "@/lib/product-copy/format";
@@ -133,15 +133,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if ("error" in ready) return privateJson({ error: ready.error }, { status: ready.status });
     return privateJson({ ok: true, credentials: await readVerifiedDetails(code, ready.db) });
   }
-  const raw = String(body?.access_code ?? body?.contact ?? body?.wa ?? "").trim();
+  const contact = String(body?.contact ?? body?.wa ?? "").trim();
+  const raw = String(body?.access_code ?? contact).trim();
   const authorityOrder = await createDatabaseAccess().queryFirst("SELECT code,buyer_access_version,buyer_access_format FROM orders WHERE code=?", code);
   if (!authorityOrder) return privateJson({ error: "not_found" }, { status: 404 });
-  const accessFailure = await newOrderAccessFailure(request, authorityOrder, raw, { allowAdmin: false });
-  if (accessFailure) return accessFailure;
   const ready = await orderReady(code);
   if ("error" in ready) return privateJson({ error: ready.error }, { status: ready.status });
   const { order, db } = ready;
   if (order.buyer_access_version !== authorityOrder.buyer_access_version || order.buyer_access_format !== authorityOrder.buyer_access_format) return privateJson({ error: "verification_failed" }, { status: 409 });
+  const accessFailure = await newOrderAccessFailure(request, order, raw, { allowAdmin: false, purpose: "credentials", contact });
+  if (accessFailure) return accessFailure;
   const { contactAttemptLimited, recordContactFailure } = await import("@/lib/orders/contact-attempts");
   if (!requiresOrderAccessCode(order) && await contactAttemptLimited(db, code, clientIp(request))) return privateJson({ error: "rate_limited" }, { status: 429, headers: { "Retry-After": "900", "Cache-Control": "private, no-store" } });
   if (!requiresOrderAccessCode(order) && !(await buyerOrderAccessMatches(raw, order))) {
@@ -151,7 +152,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     });
   }
   // Terbitkan capability token untuk akses ulang (idempoten).
-  const freshToken = await issueCredentialToken(code, db);
+  const freshToken = await issueCredentialToken(code, db, isBuyerPinOrder(order) ? { buyerAccessVersion: Number(order.buyer_access_version) } : undefined);
+  const current = await db.queryFirst("SELECT buyer_access_version,buyer_access_format FROM orders WHERE code=?", code);
+  if (!current || current.buyer_access_version !== order.buyer_access_version || current.buyer_access_format !== order.buyer_access_format) return privateJson({ error: "verification_failed" }, { status: 409 });
   const credentials = await readVerifiedDetails(code, db);
   return privateJson({ ok: true, credentials, capability_token: freshToken }, { headers: { "Cache-Control": "private, no-store" } });
 }

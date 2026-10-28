@@ -30,7 +30,6 @@ import { createFulfillmentJob } from "@/lib/fulfillment/deliver";
 // tidak membunyikan grup.
 import { markInvoicePending, markInvoiceSent } from "@/lib/telegram/invoice-retry";
 import { createChannelOrderAtomic } from "@/lib/commerce";
-import { scheduleCheckoutPinEmail } from "@/lib/orders/access-email";
 import { clampQty, clearPendingAction } from "./shared";
 import { handleShowQty } from "./catalog";
 
@@ -257,7 +256,6 @@ export async function createAndSendVariantInvoice(
         paymentAccount: "DANA Business",
         fulfillmentStatus: uniqueFulfillment ? "reserved" : "not_required",
       });
-      await scheduleCheckoutPinEmail(created.code);
       if (created.isExisting) {
         // The concurrent winner owns invoice creation and all compensation.
         // A loser only links to that order, never uses its newly generated code.
@@ -298,13 +296,6 @@ export async function createAndSendVariantInvoice(
     // {ok:false}, tandai pending/sent, lempar agar retry nyata + cron retry.
     await markInvoicePending(orderCode);
     const displayName = qty > 1 ? `${productName} — ${variant.label} ×${qty}` : `${productName} — ${variant.label}`;
-    // Kode akses di-derive ephemeral dari versi tersimpan aktual (NEVER tebak
-    // v1). DM pribadi 1-to-1 ke chat pembeli — aman.
-    const { deriveOrderAccessCode } = await import("@/lib/order-access");
-    const createdRow = await queryFirst(`SELECT buyer_access_version,buyer_access_format FROM orders WHERE code=?`, orderCode).catch(() => null) as { buyer_access_version?: unknown; buyer_access_format?: unknown } | null;
-    const variantAccessCode = await deriveOrderAccessCode({
-      code: orderCode, buyer_access_version: createdRow?.buyer_access_version, buyer_access_format: createdRow?.buyer_access_format,
-    }).catch(() => "");
     const variantPhoto = await sendPhoto({
       chat_id: chatId,
       photo: invoiceResult.qrisUrl,
@@ -314,7 +305,6 @@ export async function createAndSendVariantInvoice(
         payableAmount: invoiceResult.payableAmount,
         expiresAt: invoiceResult.expiresAt,
         paymentMethod: "qris",
-        buyerAccessCode: variantAccessCode || undefined,
       }),
       parse_mode: "HTML",
       reply_markup: qrisInvoiceKeyboard(orderCode),

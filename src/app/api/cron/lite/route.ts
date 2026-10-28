@@ -445,9 +445,9 @@ async function runNotifyB(db: Db, deadline: number) {
   // Sapu bounded antrean PIN checkout (maks 2/tick) bila budget/waktu
   // tersisa; tanpa job/cron/env/budget baru.
   await guard("checkout_pin_emails", async () => {
-    if (!db.canSpend(4)) return { skipped: "query_budget" };
-    const { processCheckoutPinEmails } = await import("@/lib/orders/access-email");
-    return processCheckoutPinEmails(db, 2, undefined, { hasTime: (needMs) => Date.now() + needMs <= deadline });
+    if (!db.canSpend(10)) return { skipped: "query_budget" };
+    const { processCredentialAccessEmails } = await import("@/lib/orders/access-email");
+    return processCredentialAccessEmails(db, 2, undefined, { hasTime: (needMs) => Date.now() + needMs <= deadline });
   });
   return out;
 }

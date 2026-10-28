@@ -2,16 +2,18 @@
 
 // Panel pengambilan detail akun digital (Warung Rebahan) di halaman pesanan.
 // Kredensial TIDAK dibuka hanya dengan kode order: pembeli memverifikasi
-// kepemilikan lewat No. WA atau email checkout (sekali), lalu menerima
-// capability token untuk akses ulang (disimpan di sessionStorage perangkat ini
-// saja).
+// kepemilikan lewat kontak checkout penuh (email/WA) + PIN 6 karakter dari
+// email pembelian (koreksi owner 27 Okt 2026). PIN hanya React state, tidak
+// pernah disimpan di storage/URL, tidak pernah ditampilkan plaintext.
+// Setelah verifikasi hanya capability token yang disimpan (GET polling).
 
 import { useEffect, useRef, useState } from "react";
 import { formatWibDateTime } from "@/lib/utils";
 import { CredentialText, ActivationBody, MobileCollapsible, TermsBody } from "@/components/storefront/ProductCopy";
 import { WarrantyClaimAccordion } from "@/components/storefront/WarrantyClaim";
 import type { VariantCopy } from "@/lib/product-copy/format";
-import { orderAccessHeaders, readOrderAccessCode, rememberOrderAccessCode } from "@/lib/order-access-client";
+import { orderAccessHeaders, readOrderContact } from "@/lib/order-access-client";
+import { normalizeOrderAccessCode } from "@/lib/order-access-format";
 
 // `label` hanya ada untuk isi produk non-WR (nama baris pesanan).
 // `terms` = S&K + cara aktivasi ter-resolusi (resolver PDP yang sama),
@@ -22,8 +24,23 @@ type Credential = { label?: string; details: string; completed_at: string | null
 /** Diisi checkout; bertahan selama tab itu terbuka (sessionStorage), jadi muat ulang tetap membuka otomatis. */
 export const checkoutContactKey = (code: string) => `axvara-checkout-contact:${code}`;
 
-export function WrCredentialsPanel({ code, prefillContact = "", contactHint = "", deliveryProgress, adminView = false }: { code: string; prefillContact?: string; contactHint?: string; deliveryProgress?: {ready:number;total:number}; adminView?: boolean }) {
-  const [wa, setWa] = useState(prefillContact);
+const WA_RE = /^(\+62|62|0)8\d{8,13}$/;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function isContactValue(raw: string): boolean {
+  const value = raw.trim();
+  if (!value || value.length > 254) return false;
+  return value.includes("@") ? EMAIL_RE.test(value) : WA_RE.test(value.replace(/[\s-]/g, ""));
+}
+
+function normalizePin(raw: string): string {
+  const normalized = normalizeOrderAccessCode(raw.trim());
+  return [6, 26].includes(normalized.length) ? normalized : "";
+}
+
+export function WrCredentialsPanel({ code, prefillContact = "", prefillPin = "", buyerPinRequired = true, contactHint = "", deliveryProgress, adminView = false }: { code: string; prefillContact?: string; prefillPin?: string; buyerPinRequired?: boolean; contactHint?: string; deliveryProgress?: {ready:number;total:number}; adminView?: boolean }) {
+  const [contact, setContact] = useState(prefillContact);
+  const [pin, setPin] = useState(prefillPin);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [creds, setCreds] = useState<Credential[] | null>(null);
@@ -32,6 +49,17 @@ export function WrCredentialsPanel({ code, prefillContact = "", contactHint = ""
   const accountRef = useRef<HTMLElement | null>(null);
   const scrolledForCode = useRef<string | null>(null);
   const hasCredentials = Boolean(creds?.length);
+  const contactEdited = useRef(false);
+  const pinEdited = useRef(false);
+
+  // Prefill dari form utama (hasil lookup sukses) — React state saja, tidak
+  // pernah dari server/storage/URL. Jangan menimpa ketikan pengguna.
+  useEffect(() => {
+    if (prefillContact && !contactEdited.current) setContact(prefillContact);
+  }, [prefillContact]);
+  useEffect(() => {
+    if (prefillPin && !pinEdited.current) setPin(prefillPin);
+  }, [prefillPin]);
 
   useEffect(() => {
     if (!hasCredentials || scrolledForCode.current === code) return;
@@ -50,11 +78,9 @@ export function WrCredentialsPanel({ code, prefillContact = "", contactHint = ""
   }, [code, hasCredentials]);
 
   // Akses ulang otomatis bila capability token tersimpan di perangkat ini.
-  // prefillContact (hasil lacak yang kontaknya sudah diverifikasi server) atau
-  // kontak dari checkout di tab yang sama ikut dicoba otomatis — verifikasi
-  // TETAP di server via endpoint credentials. Kontak checkout TIDAK dihapus
-  // saat dipakai: dulu muat ulang di tengah verifikasi pertama membuat panel
-  // kembali ke form kosong (laporan owner 2026-09-25).
+  // Auto-verifikasi kontak+PIN hanya bila keduanya sudah ada (prefill dari
+  // lookup sukses / checkout tab sama untuk legacy tanpa PIN). Verifikasi
+  // TETAP di server via endpoint credentials; PIN tidak pernah disimpan.
   const triedPrefill = useRef(false);
   const loadedForReady = useRef(-1);
   useEffect(() => {
@@ -75,15 +101,21 @@ export function WrCredentialsPanel({ code, prefillContact = "", contactHint = ""
       return () => { cancelled = true; controller.abort(); };
     }
     const tokenKey = `wr-cred-token:${code}`;
+    const savedCheckoutContact = (() => {
+      try { return sessionStorage.getItem(checkoutContactKey(code)) || ""; } catch { return ""; }
+    })();
+    const savedStatusContact = readOrderContact(code);
+    const autoContact = prefillContact.trim() || savedCheckoutContact.trim() || savedStatusContact.trim();
+    const autoPin = normalizePin(prefillPin);
     const verifyFromContact = () => {
-      let savedContact = "";
-      try { savedContact = sessionStorage.getItem(checkoutContactKey(code)) || ""; } catch { /* Optional tab storage. */ }
-      const initial = prefillContact.trim() || readOrderAccessCode(code) || savedContact.trim();
-      if (initial.length >= 6 && !triedPrefill.current) {
-        triedPrefill.current = true;
-        setWa(initial);
-        void verifyWith(initial);
-      }
+      if (triedPrefill.current) return;
+      if (!isContactValue(autoContact)) return;
+      // Order PIN6 butuh PIN; legacy tanpa PIN boleh kontak saja.
+      if (buyerPinRequired && !autoPin) return;
+      triedPrefill.current = true;
+      if (!contactEdited.current) setContact(autoContact);
+      if (autoPin && !pinEdited.current) setPin(autoPin);
+      void verifyWith(autoContact, buyerPinRequired ? autoPin : "");
     };
     const requestedReady = deliveryProgress?.ready ?? 0;
     let saved: string | null = null;
@@ -109,7 +141,7 @@ export function WrCredentialsPanel({ code, prefillContact = "", contactHint = ""
           }
         } else if (r.status === 401 || r.status === 403) {
           // Hanya token yang ditolak server yang dibuang; 429/5xx sementara tidak.
-          sessionStorage.removeItem(tokenKey);
+          try { sessionStorage.removeItem(tokenKey); } catch { /* Storage opsional. */ }
         }
       } catch {
         /* jaringan: lanjut ke kontak checkout */
@@ -120,43 +152,51 @@ export function WrCredentialsPanel({ code, prefillContact = "", contactHint = ""
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [code, deliveryProgress?.ready, token, adminView]);
+  }, [code, deliveryProgress?.ready, token, adminView, buyerPinRequired]);
 
-  async function verifyWith(waValue: string) {
+  async function verifyWith(contactValue: string, pinValue: string) {
     const requestedReady = deliveryProgress?.ready ?? 0;
+    const cleanContact = contactValue.trim();
+    const cleanPin = normalizePin(pinValue);
+    if (!isContactValue(cleanContact)) {
+      setError("Isi email atau No. WA checkout yang dipakai saat memesan.");
+      return;
+    }
+    if (buyerPinRequired && !cleanPin) {
+      setError("Isi PIN 6 karakter dari email pembelian.");
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      rememberOrderAccessCode(code, waValue);
+      // PIN hanya di body, tidak pernah jadi header/kontak/URL/storage.
+      const body: Record<string, string> = { contact: cleanContact };
+      if (cleanPin) body.access_code = cleanPin;
       const r = await fetch(`/api/orders/${encodeURIComponent(code)}/credentials`, {
         method: "POST",
-        headers: { "content-type": "application/json", ...orderAccessHeaders(code, waValue.trim()) },
-        body: JSON.stringify({ contact: waValue.trim() }),
+        headers: { "content-type": "application/json", ...orderAccessHeaders(code, cleanContact) },
+        body: JSON.stringify(body),
       });
-      const body = (await r.json().catch(() => ({}))) as {
+      const responseBody = (await r.json().catch(() => ({}))) as {
         credentials?: Credential[];
         capability_token?: string | null;
         error?: string;
       };
       if (!r.ok) {
-        setError(body.error === "verification_failed" ? "PIN atau akses pesanan lama tidak cocok." : body.error === "not_ready" ? "Detail akun belum tersedia — tunggu beberapa menit lalu muat ulang." : "Gagal memverifikasi. Coba lagi.");
+        setError(responseBody.error === "verification_failed" ? "Kontak atau PIN tidak cocok. Periksa email pembelian." : responseBody.error === "not_ready" ? "Detail akun belum tersedia — tunggu beberapa menit lalu muat ulang." : "Gagal memverifikasi. Coba lagi.");
         return;
       }
       loadedForReady.current = requestedReady;
-      setCreds(body.credentials ?? []);
-      if (body.capability_token) {
-        try { sessionStorage.setItem(`wr-cred-token:${code}`, body.capability_token); } catch { /* Credentials remain available in this response. */ }
-        setToken(body.capability_token);
+      setCreds(responseBody.credentials ?? []);
+      if (responseBody.capability_token) {
+        try { sessionStorage.setItem(`wr-cred-token:${code}`, responseBody.capability_token); } catch { /* Credentials remain available in this response. */ }
+        setToken(responseBody.capability_token);
       }
     } catch {
       setError("Jaringan bermasalah. Coba lagi.");
     } finally {
       setLoading(false);
     }
-  }
-
-  async function verify() {
-    await verifyWith(wa);
   }
 
   if (creds?.length) {
@@ -194,7 +234,7 @@ export function WrCredentialsPanel({ code, prefillContact = "", contactHint = ""
           ))}
         </div>
         <WarrantyClaimAccordion className="mt-3" />
-        <p className="mt-3 text-[11px] leading-5 text-white/40">Simpan detail ini. {token ? "Perangkat ini mengingat kode akses untuk kunjungan ulang." : "Jangan bagikan ke siapa pun."}</p>
+        <p className="mt-3 text-[11px] leading-5 text-white/40">Simpan detail ini. {token ? "Perangkat ini mengingat akses untuk kunjungan ulang." : "Jangan bagikan ke siapa pun."}</p>
       </section>
     );
   }
@@ -204,33 +244,59 @@ export function WrCredentialsPanel({ code, prefillContact = "", contactHint = ""
     {error && <p role="alert" className="mt-2 text-sm text-red-300">{error}</p>}
   </section>;
 
+  const pinRequired = buyerPinRequired;
   return (
     <section className="ax-glass-card mt-6 rounded-2xl p-4 text-left" aria-label="Ambil detail akun">
       <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">Detail Akun Digital</p>
-      <p className="mt-2 text-xs leading-5 text-white/55">Produk digital pesanan ini sudah siap. Masukkan PIN akses dari email pembelian. Pesanan lama masih dapat memakai kode lama atau kontak checkout.</p>
+      <p className="mt-2 text-xs leading-5 text-white/65">{buyerPinRequired ? "Masukkan kontak checkout dan PIN dari email produk siap untuk membuka akun." : "Masukkan email atau No. WA yang dipakai saat checkout untuk membuka akun pesanan lama."}</p>
       {contactHint && <p className="mt-1 text-[11px] text-white/40">Terdaftar: {contactHint}</p>}
-      <div className="mt-3 flex gap-2">
-        <input
-          value={wa}
-          onChange={(e) => setWa(e.target.value)}
-          inputMode="text"
-          autoComplete="off"
-          autoCapitalize="none"
-          autoCorrect="off"
-          spellCheck={false}
-          placeholder="Kode akses pesanan"
-          aria-label="PIN atau akses pesanan lama"
-          className="h-11 min-w-0 flex-1 rounded-xl border border-white/15 bg-white/5 px-3 text-sm text-white placeholder:text-white/55 focus:border-[#00E5FF]/60 focus:outline-none"
-        />
+      <form
+        className="mt-3 grid gap-2"
+        onSubmit={(event) => { event.preventDefault(); void verifyWith(contact, pin); }}
+      >
+        <div>
+          <label htmlFor={`wr-cred-contact-${code}`} className="mb-1 block text-xs font-medium text-white/60">Email atau No. WA checkout *</label>
+          <input
+            id={`wr-cred-contact-${code}`}
+            value={contact}
+            onChange={(e) => { contactEdited.current = true; setContact(e.target.value); }}
+            inputMode="text"
+            autoComplete="off"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            placeholder="nama@email.com atau 08…"
+            aria-label="Email atau No. WA checkout"
+            className="h-11 min-w-0 w-full rounded-xl border border-white/15 bg-white/5 px-3 text-sm text-white placeholder:text-white/55 focus:border-[#00E5FF]/60 focus:outline-none"
+          />
+        </div>
+        {pinRequired && <div>
+          <label htmlFor={`wr-cred-pin-${code}`} className="mb-1 block text-xs font-medium text-white/60">PIN akses {pinRequired ? "*" : "(pesanan baru)"}</label>
+          <input
+            id={`wr-cred-pin-${code}`}
+            value={pin}
+            onChange={(e) => { pinEdited.current = true; setPin(e.target.value); }}
+            type="password"
+            inputMode="text"
+            autoComplete="off"
+            autoCapitalize="characters"
+            autoCorrect="off"
+            spellCheck={false}
+            maxLength={32}
+            placeholder="6 karakter dari email"
+            aria-label="PIN akses"
+            required={pinRequired}
+            className="h-11 min-w-0 w-full rounded-xl border border-white/15 bg-white/5 px-3 text-sm text-white placeholder:text-white/55 focus:border-[#00E5FF]/60 focus:outline-none"
+          />
+        </div>}
         <button
-          type="button"
-          onClick={verify}
-          disabled={loading || wa.trim().length < 6}
-          className="h-11 shrink-0 rounded-xl bg-[#00E5FF] px-4 text-sm font-bold text-[#080C1E] transition hover:bg-[#00D0E8] disabled:opacity-50"
+          type="submit"
+          disabled={loading || !isContactValue(contact) || (pinRequired && !normalizePin(pin))}
+          className="h-11 w-full shrink-0 rounded-xl bg-[#00E5FF] px-4 text-sm font-bold text-[#080C1E] transition hover:bg-[#00D0E8] disabled:opacity-50"
         >
           {loading ? "Memeriksa…" : "Tampilkan"}
         </button>
-      </div>
+      </form>
       {error && <p role="alert" className="mt-2 text-xs text-amber-200">{error}</p>}
       <WarrantyClaimAccordion className="mt-3" />
     </section>

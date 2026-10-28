@@ -1,36 +1,33 @@
 # PRD — AXVARA
 
-## PIN akses pesanan baru — 27 Oktober 2026
+## PIN bersama kredensial, koreksi owner 28 Oktober 2026
 
-✅ Implementasi lokal, publikasi melalui CI. Sesuai koreksi owner, pembelian baru
-Market/Pedia/Telegram mendapat **PIN enam karakter campuran huruf dan angka**,
-bukan OTP. PIN stabil per pesanan, ditampilkan di konfirmasi dan dikirim langsung
-ke email checkout segera setelah pesanan tersimpan. Pembeli tidak perlu menunggu
-lunas untuk menerima PIN. Email penyelesaian dan chat pribadi Telegram tetap
-menyertakannya; tautan hanya memuat nomor pesanan, tanpa PIN.
+✅ Implementasi lokal untuk publikasi CI. PIN enam karakter campuran huruf dan
+angka diterima pembeli **hanya dalam email yang juga berisi kredensial produk**.
+Kredensial tetap langsung terbaca dalam email. Tidak ada email PIN saat checkout
+atau saat pembayaran diterima, PIN di respons web, kartu PIN, fragment tautan,
+penyimpanan PIN browser, maupun pengiriman PIN dalam pesan Telegram.
 
-Konfirmasi owner28Oktober: email produk siap **tetap berisi kredensial lengkap
-langsung di badan email**, beserta PIN. Pembeli tidak wajib membuka web untuk
-membaca kredensial dari email; PIN melindungi akses detail melalui web. Email
-awal checkout tidak memuat produk yang belum dibayar/diselesaikan.
+Lacak kredensial pesanan baru memerlukan nomor invoice, email/WA checkout penuh,
+dan PIN sebagai tiga isian terpisah. Kontak benar dengan PIN salah atau sebaliknya
+sama-sama ditolak. Lacak status sebelum produk siap tetap dapat memakai invoice
++ kontak; PIN opsional pada form status, wajib ketika membuka kredensial. Sesi
+status dari checkout tidak membuka kredensial dan tidak mengizinkan cancel/reissue.
+Aksi tersebut tetap memakai kontak penuh dan pagar status pembayaran existing.
+Pedia tidak mengirim akun/kredensial, sehingga status/refill tetap kontak penuh.
 
-Nomor pesanan + PIN membuka lacak/status, kredensial, pembatalan, reissue QRIS
-atau refill yang memenuhi syarat. PIN tidak membuktikan pembayaran. Guard lunas,
-stok, supplier, expiry dan dedupe tetap berlaku. Pesanan yang sudah mendapat kode
-26 karakter tetap memakai kode tersebut; pesanan legacy tanpa kode tetap memakai
-kontak checkout atas keputusan owner. Tidak ada backfill atau pengiriman massal.
+Pembeli mengisi PIN dari email, bukan mengambilnya dari web. Sesudah kontak+PIN
+lolos, capability kuat hanya di sessionStorage dapat dipakai untuk akses ulang.
+PIN tidak disimpan browser. Migrasi0083 mengikat capability PIN6 ke versi akses
+setelah proof lengkap; token yang terbit di kebijakan lama tidak melewati aturan
+baru. Legacy version0 tetap kontak; kode26 lama tetap kompatibel tanpa dipotong.
 
-Batas PIN baru: maksimal sepuluh percobaan gagal/in-flight per pesanan dan versi
-dalam jendela tetap 15 menit, lintas IP. Setelah checkout atau verifikasi PIN,
-browser memegang sesi akses kuat maksimal 24 jam di tab; polling tidak memakai
-jatah tebakan. Jika pihak lain menghabiskan jatah, perangkat baru perlu menunggu
-hingga 15 menit, sementara sesi pembeli yang masih valid tetap bisa dipakai.
-
-PIN/sesi hanya disimpan sementara di tab, bukan riwayat perangkat. PIN hilang
-memerlukan bantuan admin setelah verifikasi kepemilikan di luar aplikasi. Rotasi
-mencabut PIN/sesi/capability lama dan mengantrekan email PIN pengganti. Bot WhatsApp
-nonaktif dan di luar lingkup: tidak diaktifkan, diubah atau dikirimi DM/grup.
-[Kontrak, retry email dan batas keamanan](../issue/buyer-pin-2026-10-27.md).
+Batas PIN tetap10 gagal/in-flight per pesanan+versi/jendela15menit lintas IP,
+diklaim sebelum membandingkan PIN dan kontak. Sukses hanya melepas slot sendiri.
+Rotasi admin mencabut akses lama dan mengirim ulang **email kredensial lengkap
+bersama PIN baru** bila order lunas dan kredensial tersedia. Antrean PIN awal lama
+inert, metadata tidak dihapus. Bot WhatsApp nonaktif dan tidak diubah.
+[Kontrak dan bukti](../issue/buyer-contact-pin-2026-10-28.md).
 
 ## Lapisan admin Cloudflare Access — 27 Oktober 2026
 

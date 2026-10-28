@@ -28,7 +28,7 @@ const left=(f:ReturnType<typeof seed>)=>Number(f.sql.prepare("SELECT remaining F
 describe("Pedia checkout money transaction",()=>{
  it("parallel retries of a free quantity create one job without any credit debit",async()=>{
   const f=seed(),t=await token();const results=await Promise.all(Array.from({length:6},()=>order(t)));expect(results.map(r=>r.status).sort()).toEqual([200,200,200,200,200,201]);
-  const payloads=await Promise.all(results.map(r=>r.json()));expect(new Set(payloads.map(p=>p.buyer_access_code)).size).toBe(1);expect(payloads[0].buyer_access_code).toMatch(/^[A-Z0-9]{6}$/);
+  const payloads=await Promise.all(results.map(r=>r.json()));expect(new Set(payloads.map(p=>p.buyer_access_code)).size).toBe(1);for(const payload of payloads)expect(payload).not.toHaveProperty("buyer_access_code");
   expect(left(f)).toBe(10000);expect(f.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(1);expect(f.sql.prepare("SELECT COUNT(*) n FROM pedia_order_items").get()?.n).toBe(1);
   expect(f.sql.prepare("SELECT COUNT(*) n FROM pedia_credit_ledger").get()?.n).toBe(0);
   expect(f.sql.prepare("SELECT orders_created FROM checkout_attempts").all()).toEqual([{orders_created:1},{orders_created:1}]);
@@ -65,7 +65,7 @@ describe("Pedia checkout money transaction",()=>{
   const f=seed();f.sql.exec("INSERT INTO products(id,slug,name,price,sold_count,is_active) VALUES(1,'market-product','Market product',1000,0,1)");f.sql.prepare("UPDATE pedia_supplier_services SET supplier=?").run(provider);f.sql.prepare("UPDATE pedia_tiers SET supplier=?,target_format='username',refill_days=30,refill_anchor='completed',public_name='Nama tersimpan',terms_md='Refill 30 hari sejak pesanan selesai' ").run(provider);
   const {POST:quote}=await import("@/app/api/pedia/quote/route");const response=await quote(new Request("http://x",{method:"POST",body:JSON.stringify({product_id:1,tier_id:1,quantity:150,target:"https://instagram.com/buyer"})}) as never);expect(response.status).toBe(200);
   const r=await order((await response.json()).quote_token);expect(r.status).toBe(201);const {code,buyer_access_code}=await r.json();
-  const {GET:status}=await import("@/app/api/pedia/orders/[code]/route");const get=()=>status(new Request("http://x",{headers:{"x-order-access-code":buyer_access_code}}) as never,{params:Promise.resolve({code})});
+  const {GET:status}=await import("@/app/api/pedia/orders/[code]/route");const get=()=>status(new Request("http://x",{headers:{"x-order-contact":"a@b.com"}}) as never,{params:Promise.resolve({code})});
   expect((await (await get()).json()).order.status).toBe("awaiting_payment");
   f.sql.prepare("INSERT INTO payment_transactions(order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,payable_amount,status,expires_at) VALUES(?,'dana','static',?,'fixture',2500,2501,'pending','2099-01-01')").run(code,code);
   const {transitionPendingPaymentToPaid}=await import("@/lib/db");expect(await transitionPendingPaymentToPaid(code)).toBe(true);expect(f.sql.prepare("SELECT sold_count FROM products WHERE id=1").get()?.sold_count).toBe(0);
@@ -76,7 +76,7 @@ describe("Pedia checkout money transaction",()=>{
   expect(calls[0]).toEqual(['add',{service:1,link:'buyer',quantity:150},provider]);
   const publicStatus=(await (await get()).json()).order;expect(publicStatus.status).toBe('completed');expect(publicStatus.refill_eligible).toBe(true);expect(publicStatus.service_copy.service_name).toBe('Nama tersimpan');expect(publicStatus.service_copy.terms).toContain('sejak pesanan selesai');
   const proxy=await import("@/lib/pedia/proxy");const refillSpy=vi.spyOn(proxy,'callPediaProxy').mockResolvedValue({ok:true,data:{refill:'REFILL-1'},status:200} as never);
-   const {POST:refill}=await import("@/app/api/pedia/orders/[code]/refill/route");const refillResponse=await refill(new Request("http://x",{method:'POST',body:JSON.stringify({access_code:buyer_access_code})}) as never,{params:Promise.resolve({code})});
+   const {POST:refill}=await import("@/app/api/pedia/orders/[code]/refill/route");const refillResponse=await refill(new Request("http://x",{method:'POST',body:JSON.stringify({contact:"a@b.com"})}) as never,{params:Promise.resolve({code})});
    expect(refillResponse.status).toBe(200);expect(refillSpy.mock.calls[0][0]).toBe(provider);expect(f.sql.prepare("SELECT refill_status FROM pedia_order_items").get()?.refill_status).toBe('submitted');
   });
 
@@ -86,7 +86,7 @@ describe("Pedia checkout money transaction",()=>{
    const reconcile=vi.spyOn(klikqris,"reconcileKlikQrisPayment").mockResolvedValue("pending");
    const claim=vi.spyOn(klikqris,"claimKlikQrisPollReconcile");
    const {GET:status}=await import("@/app/api/pedia/orders/[code]/route");
-   const get=(wake=false)=>status(new Request(`http://x${wake?"?wake=1":""}`,{headers:{"x-order-access-code":buyer_access_code}}) as never,{params:Promise.resolve({code})});
+   const get=(wake=false)=>status(new Request(`http://x${wake?"?wake=1":""}`,{headers:{"x-order-contact":"a@b.com"}}) as never,{params:Promise.resolve({code})});
    expect((await (await get()).json()).order.status).toBe("awaiting_payment");expect(reconcile).toHaveBeenCalledTimes(1);
    await get();expect(reconcile).toHaveBeenCalledTimes(1);
    await get(true);expect(reconcile).toHaveBeenCalledTimes(1);expect(claim).toHaveBeenCalledTimes(3);
@@ -114,7 +114,7 @@ it("authenticated manual recovery of initializing Pedia shares a cooldown and re
  const {GET}=await import('@/app/api/pedia/orders/[code]/route');
  const get=(contact?:string,wake=false)=>GET(new Request('http://fixture'+(wake?'?wake=1':''),{headers:contact?{'x-order-contact':contact}:{}}) as never,{params:Promise.resolve({code})});
  expect((await get(undefined,true)).status).toBe(401);await get('a@b.com');expect(recover).not.toHaveBeenCalled();
- expect((await get('a@b.com',true)).status).toBe(404);expect(recover).not.toHaveBeenCalled();
- await get(buyer_access_code,true);await get(buyer_access_code,true);expect(recover).toHaveBeenCalledTimes(1);expect(recover).toHaveBeenCalledWith(code,2500);
+ expect((await get('wrong@b.com',true)).status).toBe(404);expect(recover).not.toHaveBeenCalled();
+ await get("a@b.com",true);await get("a@b.com",true);expect(recover).toHaveBeenCalledTimes(1);expect(recover).toHaveBeenCalledWith(code,2500);
  expect(f.sql.prepare('SELECT COUNT(*) n FROM orders').get()?.n).toBe(1);
 });

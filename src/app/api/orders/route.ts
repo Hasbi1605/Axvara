@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { deriveNameFromEmail } from "@/lib/utils";
 import { z } from "zod";
 import { createOrderWithStock, queryAll, queryFirst, StockReservationError, transitionPendingOrder } from "@/lib/db";
-import { assertOrderAccessConfigured, createBuyerAccessSession, deriveOrderAccessCode, newOrderAccessFailure, orderAccessDenied } from "@/lib/order-access";
+import { assertOrderAccessConfigured, createBuyerAccessSession, requiresOrderAccessCode, newOrderAccessFailure, orderAccessDenied } from "@/lib/order-access";
 import { generateOrderCode as generateCode, aggregateQty } from "@/lib/security";
 import { verifyCheckoutQuoteToken } from "@/lib/auth";
 import { createDanaQrisInvoice, createActiveQrisInvoice, MAX_QRIS_REISSUES } from "@/lib/payments/dana-qris";
@@ -12,7 +12,6 @@ import { expandDeliveryLines } from "@/lib/fulfillment/units";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { checkoutSubjects, consumeCheckoutSlot } from "@/lib/checkout-guard";
 import { readJsonBody } from "@/lib/http-body";
-import { scheduleCheckoutPinEmail } from "@/lib/orders/access-email";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -43,8 +42,6 @@ const schema = z.object({
 });
 
 async function existingCheckoutResponse(existing: Record<string, unknown>) {
-  await scheduleCheckoutPinEmail(String(existing.code));
-  const buyer_access_code = await deriveOrderAccessCode(existing);
   const buyer_access_session = await createBuyerAccessSession(existing);
   // The signed quote already reserved stock, including its last available unit.
   // Resume before revalidating stock/price; never reserve or POST again.
@@ -53,7 +50,7 @@ async function existingCheckoutResponse(existing: Record<string, unknown>) {
     if (tx?.provider === "klikqris") {
       try {
         const inv = await createActiveQrisInvoice(String(existing.code), Number(tx.requested_amount));
-        return NextResponse.json({ code: existing.code, subtotal: existing.subtotal, status: existing.status, buyer_access_code, buyer_access_session, reused: true, qris: {
+        return NextResponse.json({ code: existing.code, subtotal: existing.subtotal, status: existing.status, buyer_access_session, reused: true, qris: {
           payable_amount: inv.payableAmount, unique_code: inv.uniqueCode,
           image_url: inv.qrisUrl, expires_at: inv.expiresAt,
         } }, { status: 200, headers: { "Cache-Control": "private, no-store" } });
@@ -62,7 +59,7 @@ async function existingCheckoutResponse(existing: Record<string, unknown>) {
       }
     }
   }
-  return NextResponse.json({ code: existing.code, subtotal: existing.subtotal, status: existing.status, buyer_access_code, buyer_access_session, reused: true }, { status: 200, headers: { "Cache-Control": "private, no-store" } });
+  return NextResponse.json({ code: existing.code, subtotal: existing.subtotal, status: existing.status, buyer_access_session, reused: true }, { status: 200, headers: { "Cache-Control": "private, no-store" } });
 }
 
 // Rate-limit terpusat (issue #14): satu implementasi di src/lib/rateLimit.ts
@@ -306,7 +303,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Terjadi kesalahan pada server. Coba lagi." }, { status: 500 });
   }
 
-  await scheduleCheckoutPinEmail(code);
   let qrisInvoice: Awaited<ReturnType<typeof createDanaQrisInvoice>> | null = null;
   if (pm === "qris") {
     try {
@@ -330,7 +326,6 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     code,
-    buyer_access_code: await deriveOrderAccessCode({ code, buyer_access_version: 1, buyer_access_format: "pin6" }),
     buyer_access_session: await createBuyerAccessSession({ code, buyer_access_version: 1, buyer_access_format: "pin6" }),
     subtotal: quote.subtotal,
     status: "pending",
@@ -358,7 +353,7 @@ export async function GET(req: NextRequest) {
       code,
     )) as Record<string, unknown> | undefined;
     if (!row) return orderAccessDenied();
-    const accessFailure = await newOrderAccessFailure(req, row);
+    const accessFailure = await newOrderAccessFailure(req, row, undefined, { allowStatusSession: true });
     if (accessFailure) return accessFailure;
     // 2026-10-10: tombol "Cek Status Sekarang" mengirim `wake=1` (polling
     // otomatis TIDAK) → bangunkan poller GoPay di VPS agar mutasi langsung
@@ -538,6 +533,7 @@ export async function GET(req: NextRequest) {
         expires_at: row.payment_provider === "klikqris" && row.payment_expires_at ? row.payment_expires_at : row.expires_at,
         qris_preparation_error: qrisPreparationError,
         credentials_ready: credentialsReady,
+        buyer_pin_required: requiresOrderAccessCode(row),
         queued_delivery: queuedDelivery,
         instant_delivery: instantDelivery,
         supplier_owned: supplierOwned,

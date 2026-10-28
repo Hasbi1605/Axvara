@@ -154,7 +154,7 @@ describe("halaman pesanan: isi non-WR terbuka setelah verifikasi", () => {
     expect(JSON.stringify(await denied.json())).not.toContain("canva.com/join");
 
     const access = await (await import("@/lib/order-access")).deriveOrderAccessCode(fixture.sql.prepare("SELECT * FROM orders WHERE code=?").get(CODE)!);
-    const ok = await POST(req(`/api/orders/${CODE}/credentials`, "POST", { access_code: access }), ctx);
+    const ok = await POST(req(`/api/orders/${CODE}/credentials`, "POST", { contact: "081234567890", access_code: access }), ctx);
     expect(ok.status).toBe(200);
     const body = await ok.json() as { credentials: { label?: string; details: string }[]; capability_token: string | null };
     expect(body.credentials).toEqual([expect.objectContaining({ label: "Canva Pro — Invite Lifetime", details: "Link undangan: https://canva.com/join/ABC" })]);

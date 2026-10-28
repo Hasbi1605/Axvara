@@ -42,7 +42,7 @@ it("derives a stable, canonical per-order code without storing plaintext and rej
 
 it("new orders reject contact-only lookup and accept their access code", async () => {
   const { POST } = await import("@/app/api/orders/lookup/route");
-  expect((await POST(req("/api/orders/lookup", { code: current, contact: "628000000000" }))).status).toBe(404);
+  expect((await POST(req("/api/orders/lookup", { code: current, contact: "628000000000" }))).status).toBe(200);
   const code = await deriveOrderAccessCode(row());
   const response = await POST(req("/api/orders/lookup", { code: current, access_code: code }));
   expect(response.status).toBe(200); expect(response.headers.get("cache-control")).toContain("no-store");
@@ -64,7 +64,7 @@ it("same signed checkout quote retries return one order and the same access code
   expect(new Set(payloads.map(p => p.buyer_access_code)).size).toBe(1);
   const created = row(payloads[0].code);
   expect(created.buyer_access_version).toBe(1);
-  expect(payloads[0].buyer_access_code).toBe(await deriveOrderAccessCode(created));
+  for (const payload of payloads) expect(payload).not.toHaveProperty("buyer_access_code");
   expect(fx.sql.prepare("SELECT stock FROM product_variants WHERE id=1").get()?.stock).toBe(99);
 });
 
@@ -74,7 +74,7 @@ it("new order status, wake, and cancellation require access proof before side ef
     expect((await GET(req(`/api/orders?code=${current}${suffix}`))).status).toBe(404);
   }
   const { POST } = await import("@/app/api/orders/[code]/cancel/route");
-  expect((await POST(req(`/api/orders/${current}/cancel`, { contact: "628000000000" }), { params: Promise.resolve({ code: current }) })).status).toBe(404);
+  expect((await POST(req(`/api/orders/${current}/cancel`, { contact: "628199999999" }), { params: Promise.resolve({ code: current }) })).status).toBe(404);
   expect(row().status).toBe("pending");
   const code = await deriveOrderAccessCode(row());
   expect((await GET(req(`/api/orders?code=${current}`, undefined, code))).status).toBe(200);
@@ -195,5 +195,6 @@ it("never reveals a Telegram access code to a different buyer or group", async (
   await handleOrderStatus(22222, current); await handleOrderStatus(-12345, current);
   expect(JSON.stringify(sent.mock.calls)).not.toContain(access);
   sent.mockClear(); await handleOrderStatus(12345, current);
-  expect(JSON.stringify(sent.mock.calls)).toContain(access);
+  expect(JSON.stringify(sent.mock.calls)).not.toContain(access);
+  expect(JSON.stringify(sent.mock.calls)).toContain(current);
 });

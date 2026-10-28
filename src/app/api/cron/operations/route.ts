@@ -891,10 +891,10 @@ export async function POST(request: NextRequest) {
 
       // Sapu bounded antrean PIN checkout (maks 2) bila fase notify
       // aktif dan budget/waktu tersisa; tanpa job/trigger/budget baru.
-      if (pendingPinEmail > 0 && activePhases.has("notify") && budget.fits(6) && hasTime(9_000)) {
+      if (pendingPinEmail > 0 && activePhases.has("notify") && budget.fits(10) && hasTime(9_000)) {
         try {
-          const { processCheckoutPinEmails } = await import("@/lib/orders/access-email");
-          const pin = await processCheckoutPinEmails(database, 2, undefined, { hasTime });
+          const { processCredentialAccessEmails } = await import("@/lib/orders/access-email");
+          const pin = await processCredentialAccessEmails(database, 2, undefined, { hasTime });
           results.checkout_pin_emails_sent = pin.sent;
           results.checkout_pin_emails_failed = pin.failed;
         } catch { if (!deferredOut.includes("notify")) deferredOut.push("notify"); }

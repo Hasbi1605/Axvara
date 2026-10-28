@@ -31,7 +31,7 @@ function orderPayload(overrides: Record<string, unknown> = {}) {
       status: "lunas",
       created_at: "2026-09-18T04:00:00.000Z",
       expires_at: null,
-      credentials_ready: false,
+      buyer_pin_required: false, credentials_ready: false,
       qris_reissue_allowed: false,
       qris: null,
       ...overrides,
@@ -71,7 +71,7 @@ describe("/pesanan/[code] — blok pasca-pembayaran", () => {
     // Form mati tidak boleh ada lagi.
     expect(screen.queryByText("Detail Akun Digital")).toBeNull();
     expect(screen.queryByRole("button", { name: "Tampilkan" })).toBeNull();
-    expect(screen.queryByLabelText("PIN atau akses pesanan lama")).toBeNull();
+    expect(screen.queryByLabelText("Email atau No. WA checkout")).toBeNull();
   });
 
   it("status akhir dari server dicatat ke salinan lokal (titik tab Pesanan ikut hilang)", async () => {
@@ -82,11 +82,11 @@ describe("/pesanan/[code] — blok pasca-pembayaran", () => {
   });
 
   it("credentials_ready=true → panel retrieval kredensial tampil", async () => {
-    mockFetch(orderPayload({ credentials_ready: true }));
+    mockFetch(orderPayload({ buyer_pin_required: false, credentials_ready: true }));
     render(<OrderStatusPage />);
     await waitFor(() => expect(screen.getByText("Detail Akun Digital")).toBeTruthy());
     // Kode akses untuk pesanan baru; kontak checkout tetap untuk pesanan lama.
-    expect(screen.getByLabelText("PIN atau akses pesanan lama")).toBeTruthy();
+    expect(screen.getByLabelText("Email atau No. WA checkout")).toBeTruthy();
     expect(screen.getByText(/Terdaftar: 08213\*\*\*\*7434/)).toBeTruthy();
     expect(screen.queryByText("Pengiriman Produk")).toBeNull();
   });
@@ -165,7 +165,7 @@ describe("/pesanan/[code] — blok pasca-pembayaran", () => {
       expect(screen.getByText("Menyiapkan detail produkmu…")).toBeTruthy();
       expect(screen.queryByText(/Pesanan sedang diproses/)).toBeNull();
       // Vendor selesai → poll 2 dtk berikutnya langsung menampilkan panel.
-      state.order = { ...state.order, credentials_ready: true, supplier_running: false, fulfillment_status: "delivered" };
+      state.order = { ...state.order, buyer_pin_required: false, credentials_ready: true, supplier_running: false, fulfillment_status: "delivered" };
       await act(async () => { await vi.advanceTimersByTimeAsync(2_200); });
       expect(screen.getByText(/Email: a@b.c/)).toBeTruthy();
       expect(gets.length).toBeGreaterThanOrEqual(2);
@@ -234,7 +234,7 @@ describe("/pesanan/[code] — kirim otomatis dari stok sendiri", () => {
     expect(screen.queryByText(/maksimal 12 jam/)).toBeNull();
     expect(screen.queryByText(/5–15 menit/)).toBeNull();
     // Produk selesai terkirim sesaat setelah halaman melihat "lunas".
-    state.order = { ...state.order, credentials_ready: true, fulfillment_status: "delivered" };
+    state.order = { ...state.order, buyer_pin_required: false, credentials_ready: true, fulfillment_status: "delivered" };
     await advance(1_000);
     expect(screen.queryByRole("link", { name: "https://canva.com/join/ABC" })).toBeNull();
     await advance(1_200);

@@ -1210,7 +1210,7 @@ export async function deliverWebCredentialViaEmail(
   const { deriveOrderAccessCode } = await import("@/lib/order-access");
   const buyerAccessCode = await deriveOrderAccessCode({
     code: String(order.code ?? orderCode), buyer_access_version: order.buyer_access_version, buyer_access_format: order.buyer_access_format,
-  }).catch(() => "");
+  });
   const template = buildCredentialReadyTemplate({
     axvaraOrderCode: orderCode,
     buyerName: String(order.customer_name || ""),
@@ -1240,6 +1240,7 @@ export async function deliverWebCredentialViaEmail(
 export async function issueCredentialToken(
   orderCode: string,
   database?: DatabaseAccess,
+  proof?: { buyerAccessVersion: number },
 ): Promise<string | null> {
   const db = database ?? createDatabaseAccess();
   const { queryFirst, execRun } = db;
@@ -1255,19 +1256,24 @@ export async function issueCredentialToken(
   const existing = await queryFirst(
     `SELECT id FROM wr_credential_tokens WHERE order_code=? AND revoked=0
        AND (expires_at IS NULL OR datetime(expires_at) > datetime('now'))
+       ${proof ? "AND buyer_access_version=?" : ""}
      ORDER BY id DESC LIMIT 1`,
-    orderCode,
+    orderCode, ...(proof ? [proof.buyerAccessVersion] : []),
   ).catch(() => null);
   if (existing) return null; // token valid sudah ada — settled, jangan duplikat.
   const raw = await randomTokenHex(32);
   const hash = await sha256Hex(`wr-cred:${orderCode}:${raw}`);
   try {
-    await execRun(
-      `INSERT INTO wr_credential_tokens (order_code, token_hash, expires_at)
-       VALUES (?,?,datetime('now','+30 days'))`,
-      orderCode,
-      hash,
+    const inserted = proof ? await execRun(
+      `INSERT INTO wr_credential_tokens (order_code, token_hash, expires_at, buyer_access_version)
+       SELECT code,?,datetime('now','+30 days'),buyer_access_version FROM orders
+       WHERE code=? AND buyer_access_version=? AND buyer_access_format='pin6'
+         AND status='lunas' AND payment_status='paid'`,
+      hash, orderCode, proof.buyerAccessVersion,
+    ) : await execRun(
+      `INSERT INTO wr_credential_tokens (order_code, token_hash, expires_at) VALUES (?,?,datetime('now','+30 days'))`, orderCode, hash,
     );
+    if (Number(inserted.changes) !== 1) return null;
   } catch {
     return null;
   }
@@ -1324,8 +1330,11 @@ export async function verifyCredentialToken(
   const hash = await sha256Hex(`wr-cred:${orderCode}:${rawToken.trim()}`);
   const row = await db
     .queryFirst(
-      `SELECT id FROM wr_credential_tokens WHERE order_code=? AND token_hash=?
-         AND revoked=0 AND (expires_at IS NULL OR datetime(expires_at) > datetime('now'))`,
+      `SELECT t.id FROM wr_credential_tokens t JOIN orders o ON o.code=t.order_code
+       WHERE t.order_code=? AND t.token_hash=? AND t.revoked=0
+         AND (t.expires_at IS NULL OR datetime(t.expires_at)>datetime('now'))
+         AND (o.buyer_access_version=0 OR (o.buyer_access_version>0 AND o.buyer_access_format='code26')
+           OR (o.buyer_access_format='pin6' AND t.buyer_access_version=o.buyer_access_version AND t.buyer_access_version>0))`,
       orderCode,
       hash,
     )

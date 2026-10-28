@@ -1,5 +1,7 @@
 # Pemeriksaan UI PIN pembeli
 
+Dokumen historis. Koreksi owner28Oktober pada [kontrak kontak+PIN](buyer-contact-pin-2026-10-28.md) menggantikan alur email PIN awal, kartu PIN dan sesi pembeli pada versi ini.
+
 Scope: perubahan PIN di checkout/lacak/pesanan Market dan Pedia, panel kredensial,
 reveal admin, serta blok PIN email. During, ENERGY2/RHYTHM2/MOTION1, mengikuti
 Midnight/Cyan AXVARA. Review ini tidak menyatakan seluruh UI lama didesain ulang.

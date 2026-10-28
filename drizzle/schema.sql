@@ -908,7 +908,8 @@ CREATE TABLE IF NOT EXISTS wr_credential_tokens (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   expires_at TEXT,
   revoked INTEGER NOT NULL DEFAULT 0,
-  last_used_at TEXT
+  last_used_at TEXT,
+  buyer_access_version INTEGER NOT NULL DEFAULT 0 CHECK(buyer_access_version >= 0)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_wr_cred_token_hash ON wr_credential_tokens(token_hash);
 CREATE INDEX IF NOT EXISTS idx_wr_cred_order ON wr_credential_tokens(order_code) WHERE revoked = 0;

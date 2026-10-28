@@ -248,10 +248,10 @@ export type CredentialEmailContext = {
  * dengan kode di query/body.
  */
 function accessCodeHtml(code: string): string {
-  return `<div style="background:#f0fdff;border:1px solid rgba(0,229,255,.35);border-radius:12px;padding:12px 16px;margin-top:12px;font-size:13px;color:#0e7490">`
-    + `<p style="margin:0 0 4px;color:#64748b;font-size:11px;letter-spacing:1px">${code.length === 6 ? "PIN AKSES PESANAN" : "KODE AKSES PESANAN"}</p>`
-    + `<p style="margin:0;color:#0f1430;font-size:${code.length === 6 ? "26" : "15"}px;letter-spacing:${code.length === 6 ? "4" : "1"}px"><b>${esc(code)}</b></p>`
-    + `<p style="margin:6px 0 0;font-size:12px">Simpan ${code.length === 6 ? "PIN" : "kode"} ini baik-baik. Jangan bagikan ke siapa pun.</p></div>`;
+  return `<div style="margin-top:20px;padding-top:16px;border-top:1px solid #e2e8f0">`
+    + `<p style="margin:0;color:#475569;font-size:12px">${code.length === 6 ? "PIN akses pesanan" : "Kode akses pesanan"}</p>`
+    + `<p style="margin:6px 0;color:#0f1430;font-size:${code.length === 6 ? "20" : "15"}px;letter-spacing:${code.length === 6 ? "2" : "1"}px"><b>${esc(code)}</b></p>`
+    + `<p style="margin:0;color:#475569;font-size:12px;line-height:1.6">Untuk membuka akun di web, isi nomor invoice, email atau No. WA checkout, dan ${code.length === 6 ? "PIN" : "kode"} ini.</p></div>`;
 }
 
 /** Template "Detail Akun Siap" — MEMUAT ISI KREDENSIAL (keputusan owner).

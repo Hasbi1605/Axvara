@@ -209,7 +209,7 @@ export async function notifyBuyerHandover(
     const handoverAccessCode = await deriveOrderAccessCode({
       code: String(order?.code ?? orderCode),
       buyer_access_version: (order as { buyer_access_version?: unknown; buyer_access_format?: unknown } | null)?.buyer_access_version, buyer_access_format: order?.buyer_access_format,
-    }).catch(() => "");
+    });
     const template = buildOrderReadyTemplate({
       axvaraOrderCode: orderCode,
       buyerName: String(order?.customer_name ?? ""),
@@ -447,15 +447,6 @@ export async function notifyBuyerPaymentReceived(
   const firstName = String(order?.customer_name ?? "").trim().split(/\s+/)[0] || "Kak";
   // Kode akses di-derive ephemeral dari versi tersimpan aktual (NEVER tebak
   // v1 untuk order lama/reused); legacy (versi 0) = "" dan paragraf identik.
-  // Hanya paragraf email privat — body chat (chatText/Telegram/DM) TIDAK
-  // membawa kode (outbox WA menyimpan teks polos).
-  const { deriveOrderAccessCode } = await import("@/lib/order-access");
-  const buyerAccessCode = await deriveOrderAccessCode({
-    code: String(order?.code ?? orderCode), buyer_access_version: order?.buyer_access_version, buyer_access_format: order?.buyer_access_format,
-  }).catch(() => "");
-  const accessParagraph = buyerAccessCode
-    ? `${buyerAccessCode.length === 6 ? "PIN" : "Kode"} Akses Pesanan: ${buyerAccessCode} — simpan baik-baik dan jangan bagikan ke siapa pun. Halaman pesanan memintanya untuk melihat detail: ${siteUrl()}/pesanan/${encodeURIComponent(orderCode)}`
-    : null;
   return await sendToBuyer(orderCode, {
     subject: `Pembayaran pesanan ${orderCode} diterima`,
     body: `✅ <b>Pembayaran diterima</b>\nOrder: <code>${orderCode}</code>\n\n`
@@ -468,7 +459,6 @@ export async function notifyBuyerPaymentReceived(
       paragraphs: [
         `Terima kasih ${firstName} telah berbelanja di Axvara.`,
         `Pembayaran untuk pesanan ${orderCode} sudah tercatat dan pesanan sedang diproses.`,
-        ...(accessParagraph ? [accessParagraph] : []),
         "Detail produk dikirim ke email ini dan juga tampil di halaman pesanan.",
       ],
     },

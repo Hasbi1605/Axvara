@@ -14,9 +14,7 @@ import { detectPediaLink } from "@/lib/pedia/link";
 import { parseExpiry } from "@/lib/expiry";
 import { SITE } from "@/lib/site";
 import type { PediaServiceCopy } from "@/lib/pedia/service-copy";
-import { ensureBuyerAccessSession, forgetBuyerAccessSession, orderAccessHeaders, readOrderAccessCode, rememberOrderAccessCode } from "@/lib/order-access-client";
-import { normalizeOrderAccessCode } from "@/lib/order-access-format";
-import { OrderAccessNotice } from "@/components/storefront/OrderAccessNotice";
+import { isValidOrderContact, orderAccessHeaders, readOrderContact, rememberOrderContact } from "@/lib/order-access-client";
 
 type Status = {
   service_copy?: PediaServiceCopy | null;
@@ -30,8 +28,7 @@ type Status = {
 export default function PediaOrderStatusPage() {
   const { code } = useParams<{ code: string }>();
   const [contact, setContact] = useState("");
-  const buyerProof = useRef("");
-  const [buyerAccess, setBuyerAccess] = useState("");
+  const buyerContact = useRef("");
   const [needsContact, setNeedsContact] = useState(false);
   const [data, setData] = useState<Status | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -41,22 +38,26 @@ export default function PediaOrderStatusPage() {
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const request = useRef({ code: "", id: 0, active: false });
-  const load = useCallback(async (manual = false) => {
+  const load = useCallback(async (manual = false, contactOverride = "") => {
     if (request.current.active && request.current.code === code) return;
     const id = request.current.id + 1;
     request.current = { code, id, active: true };
     setLoading(true);
     try {
-      const proof = buyerProof.current || readOrderAccessCode(code) || readPediaContact(code);
-      if (normalizeOrderAccessCode(proof)) { buyerProof.current = proof; setBuyerAccess(proof); setRefillContact(proof); }
-      try { if (normalizeOrderAccessCode(proof).length === 6) await ensureBuyerAccessSession(code, proof); }
-      catch (cause) { setNeedsContact(true); throw cause; }
+      // Pedia: status/refill kontak saja, tanpa PIN. Kontak dari argumen,
+      // memori tab, atau sesi pedia; tidak pernah baca PIN.
+      const proof = (contactOverride || buyerContact.current || readOrderContact(code) || readPediaContact(code)).trim();
+      if (proof && isValidOrderContact(proof)) {
+        buyerContact.current = proof;
+        setRefillContact(proof);
+      }
       const res = await fetch(`/api/pedia/orders/${encodeURIComponent(code ?? "")}${manual ? "?wake=1" : ""}`, { cache: "no-store", headers: { "x-order-contact": proof, ...orderAccessHeaders(code, proof) } });
       const d = await res.json();
       if (request.current.id !== id) return;
-      if (res.status === 401 || res.status === 404) { forgetBuyerAccessSession(code); setNeedsContact(true); throw new Error(d.error === "contact_required" ? "Masukkan kode akses, atau kontak checkout untuk pesanan lama." : d.error); }
+      if (res.status === 401 || res.status === 404) { setNeedsContact(true); throw new Error(d.error === "contact_required" ? "Isi No. WA atau email checkout untuk melihat pesanan ini." : d.error); }
       if (!res.ok) throw new Error(d.error ?? "Gagal memuat");
       setNeedsContact(false);
+      if (rememberOrderContact(code, proof)) buyerContact.current = proof;
       setData(d.order);
       setError(null);
     } catch (e) {
@@ -115,11 +116,11 @@ export default function PediaOrderStatusPage() {
     }
   };
 
-  if (needsContact && !data) return <form className="mx-auto max-w-md space-y-4 px-4 py-10" onSubmit={(e) => { e.preventDefault(); buyerProof.current = contact.trim(); rememberPediaContact(code, contact.trim()); rememberOrderAccessCode(code, contact); void load(); }}>
+  if (needsContact && !data) return <form className="mx-auto max-w-md space-y-4 px-4 py-10" onSubmit={(e) => { e.preventDefault(); if (!isValidOrderContact(contact)) return; rememberPediaContact(code, contact.trim()); rememberOrderContact(code, contact.trim()); void load(false, contact.trim()); }}>
     <h1 className="font-display text-2xl font-semibold text-white">Lihat pesanan</h1>
-    <label className="block text-sm text-white/75" htmlFor="pedia-order-contact">PIN akses pesanan</label>
-    <p className="text-xs leading-5 text-white/60">Pesanan lama masih dapat menggunakan No. WA atau email checkout.</p>
-    <input id="pedia-order-contact" value={contact} onChange={e => setContact(e.target.value)} required maxLength={254} autoComplete="off" className="w-full rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-white" />
+    <label className="block text-sm text-white/75" htmlFor="pedia-order-contact">No. WA atau email checkout *</label>
+    <p className="text-xs leading-5 text-white/60">Kontak yang dipakai saat checkout. Pedia tidak memakai PIN.</p>
+    <input id="pedia-order-contact" value={contact} onChange={e => setContact(e.target.value)} required maxLength={254} autoComplete="off" placeholder="0812… atau nama@email.com" className="w-full rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-white" />
     {error && <p role="alert" className="text-sm text-white/60">{error}</p>}
     <button disabled={loading} className="rounded-full bg-[#00E5FF] px-5 py-3 font-semibold text-[#070a1e]">{loading ? "Memeriksa…" : "Lihat pesanan"}</button>
   </form>;
@@ -149,7 +150,6 @@ export default function PediaOrderStatusPage() {
   ];
   return (
     <div className="mx-auto grid w-full max-w-[1000px] items-start gap-6 px-4 pb-24 pt-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_380px]">
-      {buyerAccess && <div className="lg:col-span-2"><OrderAccessNotice accessCode={buyerAccess} /></div>}
       <section className="ax-glass-card order-2 min-w-0 rounded-[24px] p-5 sm:p-8 lg:order-1" aria-label="Status pesanan">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <button type="button" onClick={() => void copy(data.code)} aria-label="Salin kode pesanan" className="flex min-h-9 min-w-0 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.06] px-3 py-1.5 text-left font-mono text-xs text-white/60 hover:text-white"><span className="break-all">{data.code}</span>{copied ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}</button>
@@ -198,12 +198,12 @@ export default function PediaOrderStatusPage() {
           )}
           {data.refill_eligible && refillOpen && (
             <div className="mt-4 rounded-[14px] border border-white/12 bg-white/[0.04] p-4" role="dialog" aria-label="Verifikasi refill">
-              <label htmlFor="refill-contact" className="text-xs font-medium text-white/60">Kode akses (pesanan lama: kontak checkout)</label>
+              <label htmlFor="refill-contact" className="text-xs font-medium text-white/60">No. WA atau email checkout *</label>
               <input
                 id="refill-contact"
                 value={refillContact}
                 onChange={(e) => setRefillContact(e.target.value)}
-                placeholder="Kode akses pesanan"
+                placeholder="0812… atau nama@email.com"
                 autoCapitalize="none" autoCorrect="off" spellCheck={false}
                 className="mt-2 h-11 w-full rounded-xl border border-white/12 bg-white/[0.06] px-3.5 text-sm text-white placeholder:text-white/55 focus:border-[#00E5FF]/50 focus:outline-none"
               />

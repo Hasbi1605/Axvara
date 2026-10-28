@@ -25,7 +25,7 @@ const items = [{ name: "Produk Market A", price: 10000, qty: 1 }, { name: "Produ
 function stubOrder(overrides: Record<string, unknown> = {}) {
   const order = {
     code: CODE, customer_name: "Pembeli", customer_wa: "081234567890", customer_email: "buyer@example.test",
-    items, subtotal: 25000, payment_method: "qris", status: "lunas", credentials_ready: true,
+    items, subtotal: 25000, payment_method: "qris", status: "lunas", buyer_pin_required: false, credentials_ready: true,
     fulfillment_status: "delivered", ...overrides,
   };
   vi.stubGlobal("fetch", vi.fn(async (url: string) => ({
@@ -70,9 +70,9 @@ describe("Market warranty claim guidance", () => {
     ["stok sendiri", {}],
     ["WR", { supplier_owned: true }],
     ["SK", { supplier_owned: true, instant_delivery: true }],
-    ["manual", { credentials_ready: false, queued_delivery: true }],
-    ["supplier masih berjalan", { credentials_ready: false, supplier_owned: true, supplier_running: true }],
-    ["pengiriman gagal", { credentials_ready: false, fulfillment_status: "failed" }],
+    ["manual", { buyer_pin_required: false, credentials_ready: false, queued_delivery: true }],
+    ["supplier masih berjalan", { buyer_pin_required: false, credentials_ready: false, supplier_owned: true, supplier_running: true }],
+    ["pengiriman gagal", { buyer_pin_required: false, credentials_ready: false, fulfillment_status: "failed" }],
   ])("shows one collapsed claim accordion inside the account card or below delivery for paid %s orders", async (_kind, overrides) => {
     stubOrder(overrides as Record<string, unknown>);
     sessionStorage.setItem(`axvara-checkout-contact:${CODE}`, "buyer@example.test");
@@ -92,7 +92,7 @@ describe("Market warranty claim guidance", () => {
   });
 
   it.each(["pending", "cancelled", "expired"])("does not show the post-payment accordion for %s orders", async (status) => {
-    stubOrder({ status, credentials_ready: false, expires_at: new Date(Date.now() + 600000).toISOString() });
+    stubOrder({ status, buyer_pin_required: false, credentials_ready: false, expires_at: new Date(Date.now() + 600000).toISOString() });
     render(<OrderStatusPage />);
     await screen.findByText("Ringkasan");
     expect(screen.queryByRole("button", { name: "Syarat klaim garansi" })).toBeNull();

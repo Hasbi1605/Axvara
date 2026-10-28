@@ -21,7 +21,7 @@ it('actual tracking and credentials panel update the first account through the f
  window.history.replaceState(null,'','/lacak-pesanan?code=AXV-20261024-STREAM01&contact=buyer@example.test');
  const fetcher=vi.fn(async(url:unknown)=>{
   if(String(url).includes('/credentials'))return Response.json({credentials:Array.from({length:ready},(_,i)=>({details:'FIXTURE-ACCOUNT-'+(i+1),completed_at:null})),capability_token:'fixture-token'});
-  if(String(url).includes('/api/orders/lookup'))return Response.json({order:{code:'AXV-20261024-STREAM01',status:'lunas',items:[{name:'Fixture',qty:3,price:1000}],subtotal:3000,credentials_ready:true,supplier_running:false,unique_units_progress:{ready,total:3}}});
+  if(String(url).includes('/api/orders/lookup'))return Response.json({order:{code:'AXV-20261024-STREAM01',status:'lunas',items:[{name:'Fixture',qty:3,price:1000}],subtotal:3000,buyer_pin_required:false,credentials_ready:true,supplier_running:false,unique_units_progress:{ready,total:3}}});
   return Response.json({});
  });vi.stubGlobal('fetch',fetcher);
  await act(async()=>{render(<Lacak/>)});expect(screen.getByText('FIXTURE-ACCOUNT-1')).toBeTruthy();expect(screen.queryByText('FIXTURE-ACCOUNT-3')).toBeNull();

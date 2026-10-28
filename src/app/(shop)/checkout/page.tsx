@@ -450,7 +450,7 @@ function CheckoutInner() {
       setRedirectCode(code);
       redirected = true;
       if (!isDirect) clear();
-      const target = orderCheckoutPath(`/pesanan/${code}`, code, j.buyer_access_code, j.buyer_access_session);
+      const target = orderCheckoutPath(`/pesanan/${code}`, code, j.buyer_access_session);
       startNavigation(target, { overlay: false });
       router.push(target);
     } catch (e) {

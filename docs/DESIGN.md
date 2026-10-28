@@ -1,23 +1,22 @@
 # DESIGN.md — AXVARA Design System
 
-## PIN pembeli dan kompatibilitas kode lama — 27 Oktober 2026
+## Form akses kredensial, 28 Oktober 2026
 
-✅ Implementasi lokal, publikasi CI. Mode During; ENERGY2/RHYTHM2/MOTION1 mengikuti
-Midnight/Cyan/Liquid Glass AXVARA. Halaman pesanan menempatkan PIN enam karakter
-sebagai data untuk disalin, dengan label **PIN akses pesanan**, tombol **Salin PIN**
-dan petunjuk email. Huruf berjarak membantu membedakan karakter; nol di depan tetap
-terlihat. Kode 26 karakter yang terlanjur terbit tetap punya format dan label lama.
+✅ Implementasi lokal untuk publikasi CI. During, ENERGY2/RHYTHM2/MOTION1 mengikuti
+Midnight/Cyan AXVARA. Kartu tampilan/salin PIN di atas pembayaran dihapus. Halaman
+checkout hanya memuat pembayaran dan status pesanan, tanpa PIN atau salinan PIN.
 
-Form lacak/pesanan memakai label terikat input dan petunjuk PIN dari email; kode
-lama atau kontak checkout legacy tetap diterima. Loading, error PIN salah/limit
-serta tombol kembali tetap tersedia; target interaksi minimal44px, placeholder
-55% putih/hint65%, focus ring cyan. Tidak menambah tahap OTP atau menyisipkan PIN
-ke tautan. Panel admin tetap memakai reveal POST dan konfirmasi rotasi existing.
+Form lacak memisahkan invoice, email/WA dan PIN. Kontak wajib untuk status;
+PIN dari email dipakai untuk membuka kredensial, tipe password dan tanpa tombol
+salin/reveal. Panel kredensial memakai isian kontak dan PIN dalam satu form yang
+mengikuti komponen existing, label terikat input, aksi submit jelas dan dukungan
+Enter. Loading, error generik dan status belum siap tetap terlihat. Target44px,
+focus cyan, hint/placeholder kontras AA, reflow satu kolom pada ponsel.
 
-Email PIN memakai shell email AXVARA existing: header Midnight, badan terang,
-blok cyan tipis dengan PIN besar26px/spacing4px, tombol Lihat Pesanan tanpa PIN
-di URL. Data PIN adalah titik perhatian, bukan badge promosi; tidak meniru logo
-supplier, membuat aset atau menambah animasi. Email penyelesaian memakai blok sama.
+Email produk siap tetap menampilkan kredensial langsung. PIN ditempatkan ringkas
+sebagai informasi akses tambahan dalam struktur email AXVARA existing, tidak
+memakai kartu promosi, glow atau panel PIN tersendiri. Logo/token warna existing,
+tanpa aset baru. PIN hanya diketik di web oleh pembeli setelah menerima email.
 
 ## Invoice WR hilang setelah timeout — 27 Oktober 2026
 

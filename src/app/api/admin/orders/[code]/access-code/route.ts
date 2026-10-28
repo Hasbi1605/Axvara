@@ -3,7 +3,7 @@ import { requireAdmin } from "@/lib/auth";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { readJsonBody } from "@/lib/http-body";
 import { deriveOrderAccessCode } from "@/lib/order-access";
-import { checkoutPinEmailStatement, scheduleCheckoutPinEmail } from "@/lib/orders/access-email";
+import { credentialAccessEmailStatement, scheduleCredentialAccessEmail } from "@/lib/orders/access-email";
 import { recordSecurityEvent, securitySubject } from "@/lib/security-events";
 
 export const runtime = "edge";
@@ -38,14 +38,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           .bind(guard, code, Number(order.buyer_access_version)),
         db.d1.prepare("UPDATE orders SET buyer_access_version=buyer_access_version+1 WHERE code=? AND buyer_access_version=?").bind(code, Number(order.buyer_access_version)),
         db.d1.prepare("UPDATE wr_credential_tokens SET revoked=1 WHERE order_code=? AND revoked=0").bind(code),
-        checkoutPinEmailStatement(db.d1, code),
+        credentialAccessEmailStatement(db.d1, code),
         db.d1.prepare("DELETE FROM operation_guards WHERE operation_id=?").bind(guard),
       ]);
     } catch {
       return NextResponse.json({ error: "Pesanan berubah atau penyimpanan belum tersedia. Muat ulang sebelum mencoba lagi." }, { status: 409, headers });
     }
-    await scheduleCheckoutPinEmail(code);
   }
   await recordSecurityEvent(rotate ? "buyer_access_rotated" : "buyer_access_revealed", await securitySubject("buyer-access-admin", admin.sid), "/api/admin/orders/:code/access-code", "POST", db);
+  if (rotate) await scheduleCredentialAccessEmail(code);
   return NextResponse.json({ code, buyer_access_code: accessCode, rotated: Boolean(rotate) }, { headers });
 }

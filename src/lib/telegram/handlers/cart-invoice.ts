@@ -23,7 +23,6 @@ import { createFulfillmentJob } from "@/lib/fulfillment/deliver";
 // 2026-09-25): hanya "Lunas — Telegram" yang masuk grup.
 import { markInvoicePending, markInvoiceSent } from "@/lib/telegram/invoice-retry";
 import { createChannelOrderAtomic } from "@/lib/commerce";
-import { scheduleCheckoutPinEmail } from "@/lib/orders/access-email";
 import { clearCart, type CartLine } from "@/lib/telegram/cart";
 import { cartLineLabel } from "./shared";
 
@@ -125,7 +124,6 @@ export async function createAndSendCartInvoice(
           ? "reserved"
           : "not_required",
       });
-      await scheduleCheckoutPinEmail(created.code);
       if (created.isExisting) {
         // The concurrent winner owns invoice creation and all compensation.
         // A loser only links to that order, never uses its newly generated code.
@@ -179,13 +177,6 @@ export async function createAndSendCartInvoice(
     // invoice, reservasi, dan stok yang sama dipertahankan (tanpa order
     // kedua, tanpa potong stok ulang).
     await markInvoicePending(orderCode);
-    // Kode akses di-derive ephemeral dari versi tersimpan aktual (NEVER tebak
-    // v1). DM pribadi 1-to-1 ke chat pembeli — aman.
-    const { deriveOrderAccessCode } = await import("@/lib/order-access");
-    const cartRow = await queryFirst(`SELECT buyer_access_version,buyer_access_format FROM orders WHERE code=?`, orderCode).catch(() => null) as { buyer_access_version?: unknown; buyer_access_format?: unknown } | null;
-    const cartAccessCode = await deriveOrderAccessCode({
-      code: orderCode, buyer_access_version: cartRow?.buyer_access_version, buyer_access_format: cartRow?.buyer_access_format,
-    }).catch(() => "");
     const cartPhoto = await sendPhoto({
       chat_id: chatId,
       photo: invoiceResult.qrisUrl,
@@ -197,7 +188,6 @@ export async function createAndSendCartInvoice(
         payableAmount: invoiceResult.payableAmount,
         expiresAt: invoiceResult.expiresAt,
         paymentMethod: "qris",
-        buyerAccessCode: cartAccessCode || undefined,
       }),
       parse_mode: "HTML",
       reply_markup: qrisInvoiceKeyboard(orderCode),

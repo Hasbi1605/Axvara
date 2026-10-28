@@ -39,7 +39,7 @@ async function lookup(req: NextRequest) {
   if (adminView && !(await requireAdmin(req))) {
     return NextResponse.json({ error: "Sesi admin berakhir. Masuk ke panel admin lalu buka kembali tautan ini." }, { status: 401, headers: { "Cache-Control": "private, no-store" } });
   }
-  const contactRaw = parsed.success ? (parsed.data.access_code ?? parsed.data.contact ?? parsed.data.wa ?? "").trim() : "";
+  const contactRaw = parsed.success ? (parsed.data.contact ?? parsed.data.wa ?? parsed.data.access_code ?? "").trim() : "";
   if (!parsed.success || (!adminView && !contactRaw)) {
     return NextResponse.json({ error: "Kode pesanan dan No. WA atau email wajib diisi." }, { status: 400 });
   }
@@ -75,7 +75,10 @@ async function lookup(req: NextRequest) {
 
   if (!row) return notFound();
   if (!adminView) {
-    const failure = await newOrderAccessFailure(req, row, contactRaw, { allowAdmin: false });
+    const pin = parsed.data.access_code;
+    const failure = await newOrderAccessFailure(req, row, pin ?? contactRaw, {
+      allowAdmin: false, ...(pin ? { purpose: "credentials" as const, contact: contactRaw } : {}),
+    });
     if (failure) return failure;
   }
   if (!adminView && !requiresOrderAccessCode(row) && !(await buyerOrderAccessMatches(contactRaw, row))) return notFound();
@@ -161,6 +164,7 @@ async function lookup(req: NextRequest) {
       expires_at: row.payment_provider === "klikqris" && row.payment_expires_at ? row.payment_expires_at : row.expires_at,
       unique_units_progress: await readUniqueUnitProgress(row),
       credentials_ready: credentialsReady,
+      buyer_pin_required: requiresOrderAccessCode(row),
       supplier_owned: supplierOwned,
       supplier_running: supplierRunning,
       qris_reissue_allowed: row.payment_provider !== "klikqris" && row.status === "pending" && row.sales_channel !== "whatsapp" && Number(row.qris_reissue_count || 0) < MAX_QRIS_REISSUES,

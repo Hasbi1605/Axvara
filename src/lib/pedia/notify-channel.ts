@@ -17,17 +17,7 @@ export async function sendPediaBuyerMessage(db: Db, orderCode: string, text: str
   if (email) {
     try {
       const { sendPediaEmail } = await import("@/lib/pedia/email");
-      // Kode akses di-derive ephemeral dari versi tersimpan aktual (NEVER
-      // tebak v1 untuk order lama/reused); legacy (versi 0) = teks identik.
-      // Link status hanya memuat kode order — tidak pernah access code.
-      const { deriveOrderAccessCode } = await import("@/lib/order-access");
-      const buyerAccessCode = await deriveOrderAccessCode({
-        code: String(order?.code ?? orderCode), buyer_access_version: order?.buyer_access_version, buyer_access_format: order?.buyer_access_format,
-      }).catch(() => "");
-      const body = buyerAccessCode
-        ? `${text}\n${buyerAccessCode.length === 6 ? "PIN" : "Kode"} Akses: ${buyerAccessCode} — simpan baik-baik dan jangan bagikan ke siapa pun.`
-        : text;
-      await sendPediaEmail({ to: email, subject: `Pedia — ${orderCode}`, text: body });
+      await sendPediaEmail({ to: email, subject: `Pedia — ${orderCode}`, text });
     } catch { /* email best-effort; WA di bawah tetap jalan */ }
   }
 }

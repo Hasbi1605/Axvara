@@ -1,7 +1,7 @@
-// src/lib/orders/access-email.ts — Antrean + pengirim email PIN akses checkout.
+// Resend credentials and the current PIN after explicit admin rotation.
 //
 // Invariants:
-// - Queue key `email:access_pin:<order_code>:v<version>`; status antre 'failed'
+// - Queue key `email:credential_access:<order_code>:v<version>`; status antre 'failed'
 //   dengan attempts 0 / error NULL (konsisten klaim ulang claimNotice).
 // - Metadata-only: PIN di-derive hanya saat kirim/render; HTML/text/PIN tidak
 //   pernah disimpan. Baris hanya berisi order ref + versi di key, attempts,
@@ -17,7 +17,7 @@
 //   non-pin6, tanpa email, legacy v0 di-exhaust tanpa kirim.
 import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 import { ACCESS_PIN_EMAIL_PREFIX } from "./access-email-queue";
-export { ACCESS_PIN_EMAIL_PREFIX, checkoutPinEmailStatement } from "./access-email-queue";
+export { ACCESS_PIN_EMAIL_PREFIX, credentialAccessEmailStatement } from "./access-email-queue";
 
 export const ACCESS_PIN_SEND_TIMEOUT_MS = 8_000;
 export const ACCESS_PIN_MAX_ATTEMPTS = 5;
@@ -50,6 +50,16 @@ function siteUrl(): string {
   return (process.env.SITE_URL || "https://axvara.tech").replace(/\/$/, "");
 }
 
+async function credentialEmailKey(code: string, version: number, to: string, content: string): Promise<string> {
+  // Partial fulfillment can add credentials between retries. Same content must
+  // dedupe; changed content needs a new key without exposing PINs to offline guesses.
+  const secret = process.env.BUYER_ORDER_ACCESS_SECRET?.trim() || "axvara-dev-only-buyer-access-secret";
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`axvara:credential-email:v1:${code}:${version}:${to}:${content}`)));
+  const hash = Array.from(mac.slice(0, 16), byte => byte.toString(16).padStart(2, "0")).join("");
+  return `axvara-credential-access:${code}:v${version}:${hash}`;
+}
+
 /** Hanya tag finite yang boleh disimpan; pesan provider mentah (bisa
  *  menggema PIN/PII) tidak pernah dipersist/di-log. */
 export function sanitizeAccessPinError(raw: unknown): string {
@@ -68,17 +78,17 @@ function retryAtSql(attempts: number): string | null {
 }
 
 /**
- * Jadwalkan kirim PIN checkout. Menangkap Cloudflare ctx.waitUntil SEBELUM
+ * Resend the full credentials email. Capture ctx.waitUntil before starting
  * task dimulai (pola paid-fulfillment); dev/test tanpa context menunggu task
  * yang sama. Hanya mengirim versi antre untuk order ini.
  */
-export async function scheduleCheckoutPinEmail(orderCode: string): Promise<void> {
+export async function scheduleCredentialAccessEmail(orderCode: string): Promise<void> {
   let waitUntil: ((task: Promise<unknown>) => void) | undefined;
   try {
     const { getRequestContext } = await import("@cloudflare/next-on-pages");
     waitUntil = getRequestContext().ctx.waitUntil.bind(getRequestContext().ctx);
   } catch { /* Dev/test tanpa Pages context. */ }
-  const task = processCheckoutPinEmails(createDatabaseAccess(), 2, String(orderCode))
+  const task = processCredentialAccessEmails(createDatabaseAccess(), 2, String(orderCode))
     .then(() => undefined).catch(() => undefined);
   if (waitUntil) {
     try { waitUntil(task); return; } catch { /* Await task yang sama. */ }
@@ -89,6 +99,7 @@ export async function scheduleCheckoutPinEmail(orderCode: string): Promise<void>
 type OrderRow = {
   code?: unknown; customer_email?: unknown; sales_channel?: unknown;
   buyer_access_version?: unknown; buyer_access_format?: unknown;
+  customer_name?: unknown; status?: unknown; payment_status?: unknown;
 };
 
 async function settleExhausted(
@@ -114,13 +125,13 @@ async function settleDeferred(db: DatabaseAccess, key: string, lease: string): P
 }
 
 /**
- * Sapu bounded antrean PIN checkout: hanya prefix access_pin, maks 2/tick,
+ * Sapu bounded antrean resend kredensial: hanya prefix credential_access, maks 2/tick,
  * hormati db.canSpend, deadline jaringan 8 dtk/email, tanpa override
  * budget/tail. CAS lease sebelum fetch; reclaim basi 10 menit tepat satu;
  * attempts dibatasi 5 dengan retry 1/5/15/60 mnt; settle akhir hanya bila
  * lease sama (fenced).
  */
-export async function processCheckoutPinEmails(
+export async function processCredentialAccessEmails(
   db: DatabaseAccess, limit = 2, orderCode?: string,
   options: { hasTime?: (needMs: number) => boolean } = {},
 ): Promise<{ sent: number; failed: number }> {
@@ -183,7 +194,7 @@ export async function processCheckoutPinEmails(
 
   let sent = 0, failed = 0;
   for (const row of due.slice(0, max)) {
-    if (!db.canSpend(4) || (options.hasTime && !options.hasTime(ACCESS_PIN_SEND_TIMEOUT_MS + 1_000))) break;
+    if (!db.canSpend(8) || (options.hasTime && !options.hasTime(ACCESS_PIN_SEND_TIMEOUT_MS + 1_000))) break;
     const key = String(row.idempotency_key ?? "");
     const code = String(row.order_code ?? "");
     const keyVersion = parseKeyVersion(key);
@@ -209,7 +220,7 @@ export async function processCheckoutPinEmails(
     let order: OrderRow | null;
     try {
       order = await db.queryFirst(
-        `SELECT code, customer_email, sales_channel, buyer_access_version, buyer_access_format
+        `SELECT code, customer_email, customer_name, status, payment_status, sales_channel, buyer_access_version, buyer_access_format
            FROM orders WHERE code=?`,
         code,
       );
@@ -250,6 +261,15 @@ export async function processCheckoutPinEmails(
       continue;
     }
 
+    if (order.status !== "lunas" || order.payment_status !== "paid") {
+      await settleExhausted(db, key, lease, "ineligible_format"); failed++; continue;
+    }
+    const { getDecryptedAccountDetails } = await import("@/lib/warung-rebahan/deliver");
+    const { readDeliveredSnapshots } = await import("@/lib/fulfillment/delivery/buyer-email");
+    const wr = await getDecryptedAccountDetails(code, db, { admin: true });
+    const snapshots = await readDeliveredSnapshots(code, db);
+    const items = [...wr.map(item => ({ label: "Detail akun", details: item.details })), ...snapshots.map(item => ({ label: item.label, details: item.details }))];
+    if (!items.length) { await settleDeferred(db, key, lease); continue; }
     const { isForwardEmailConfigured, sendForwardEmail } = await import("@/lib/warung-rebahan/forward-sender");
     if (!isForwardEmailConfigured()) {
       // Tunda tanpa makan budget retry.
@@ -272,23 +292,18 @@ export async function processCheckoutPinEmails(
     }
 
     const orderUrl = `${siteUrl()}/pesanan/${encodeURIComponent(code)}`;
-    const { renderBrandedNotice } = await import("@/lib/warung-rebahan/email-forward");
+    const { buildOrderReadyTemplate } = await import("@/lib/warung-rebahan/email-forward");
     const { SITE } = await import("@/lib/site");
-    // Status-netral: email ini juga boleh dikirim saat rotate/retry sesudah paid.
-    const rendered = renderBrandedNotice({
-      orderCode: code,
-      orderUrl,
+    const rendered = buildOrderReadyTemplate({
+      axvaraOrderCode: code,
+      buyerName: String(order.customer_name || ""),
+      invoiceUrl: orderUrl,
       supportWa: SITE.adminWaLocal,
-      title: "PIN Akses Pesanan",
-      subtitle: "Gunakan PIN untuk membuka halaman pesananmu.",
-      paragraphs: [
-        `Simpan PIN ini baik-baik dan jangan bagikan ke siapa pun.`,
-        `Buka halaman pesanan untuk memeriksa pembayaran dan produkmu.`,
-      ],
+      items,
       buyerAccessCode: pin,
     });
-    const subject = `PIN akses pesanan ${code} | AXVARA`;
-    const idempotencyKey = `axvara-access-pin:${code}:v${version}`;
+    const subject = rendered.subject;
+    const idempotencyKey = await credentialEmailKey(code, version, to, rendered.subject + "\n" + rendered.html + "\n" + rendered.text);
     if (options.hasTime && !options.hasTime(ACCESS_PIN_SEND_TIMEOUT_MS + 1_000)) {
       await settleDeferred(db, key, lease);
       break;

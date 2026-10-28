@@ -15,9 +15,8 @@ import { WarrantyClaimAccordion } from "@/components/storefront/WarrantyClaim";
 import { MobileCollapsible } from "@/components/storefront/ProductCopy";
 import { InlineSpinner, OrderStatusSkeleton } from "@/components/storefront/Skeletons";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
-import { ensureBuyerAccessSession, forgetBuyerAccessSession, orderAccessHeaders, readOrderAccessCode, rememberOrderAccessCode } from "@/lib/order-access-client";
-import { OrderAccessNotice } from "@/components/storefront/OrderAccessNotice";
-import { normalizeOrderAccessCode } from "@/lib/order-access-format";
+import { checkoutContactKey } from "@/components/storefront/WrCredentialsPanel";
+import { ensureBuyerAccessSession, forgetBuyerAccessSession, isValidOrderContact, orderAccessHeaders, readOrderContact, rememberOrderContact } from "@/lib/order-access-client";
 
 type QrisInvoice = {
   payable_amount: number;
@@ -51,6 +50,8 @@ type Order = {
   supplierRunning: boolean;
   /** `failed` = lunas tetapi produk gagal dikirim otomatis. */
   fulfillmentStatus?: string | null;
+  /** true bila order PIN6 baru butuh PIN untuk unlock kredensial; false = legacy kontak saja. */
+  buyerPinRequired: boolean;
   uniqueUnitsProgress?: {ready:number;total:number};
 };
 
@@ -72,6 +73,7 @@ function fromApi(value: Record<string, unknown>): Order {
     supplierOwned: value.supplier_owned === true,
     supplierRunning: value.supplier_running === true,
     fulfillmentStatus: value.fulfillment_status ? String(value.fulfillment_status) : null,
+    buyerPinRequired: value.buyer_pin_required !== false,
     uniqueUnitsProgress: value.unique_units_progress as Order["uniqueUnitsProgress"],
     qris: value.qris as QrisInvoice | null | undefined,
   };
@@ -121,6 +123,7 @@ function fromFreshLocal(value: Record<string, unknown> | undefined, now: number)
     },
     qrisReissueAllowed: false,
     credentialsReady: false,
+    buyerPinRequired: true,
     queuedDelivery: false,
     instantDelivery: false,
     supplierOwned: false,
@@ -178,33 +181,34 @@ export default function OrderSuccessPage() {
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [cancelContact, setCancelContact] = useState("");
   const polling = useRef(false);
-  const buyerProof = useRef("");
-  const [buyerAccess, setBuyerAccess] = useState("");
-  const [accessInput, setAccessInput] = useState("");
+  const buyerContact = useRef("");
+  const [verifiedContact, setVerifiedContact] = useState("");
+  const [contactInput, setContactInput] = useState("");
   const [needsAccess, setNeedsAccess] = useState(false);
 
-  const fetchOrder = useCallback(async (wake = false) => {
+  const fetchOrder = useCallback(async (wake = false, contactOverride = "") => {
     if (!code || typeof code !== "string") return;
     // `wake=1` HANYA dari tombol manual: server membangunkan poller GoPay.
-    const access = buyerProof.current || readOrderAccessCode(code);
-    if (access) { buyerProof.current = access; setBuyerAccess(access); setCancelContact(access); }
-    try { if (normalizeOrderAccessCode(access).length === 6) await ensureBuyerAccessSession(code, access); }
-    catch (error) {
-      setOrder(null); setNeedsAccess(true);
-      setFetchError(error instanceof Error ? error.message : "PIN belum dapat diverifikasi.");
-      return;
+    // Status: invoice + kontak checkout, atau sesi status p1 dari lookup.
+    const contact = contactOverride || buyerContact.current || readOrderContact(code);
+    if (contact && isValidOrderContact(contact)) {
+      buyerContact.current = contact.trim();
+      setVerifiedContact(contact.trim());
+      setCancelContact(contact.trim());
+      try { await ensureBuyerAccessSession(code, contact.trim()); } catch { /* Kontak langsung tetap dicoba; sesi hanya optimasi polling. */ }
     }
-    const response = await fetchWithTimeout(`/api/orders?code=${encodeURIComponent(code)}${wake ? "&wake=1" : ""}`, { cache: "no-store", headers: orderAccessHeaders(code, access) }, 20_000);
+    const response = await fetchWithTimeout(`/api/orders?code=${encodeURIComponent(code)}${wake ? "&wake=1" : ""}`, { cache: "no-store", headers: orderAccessHeaders(code, contact) }, 20_000);
     const body = await response.json().catch(() => ({}));
     if (response.status === 404) {
       forgetBuyerAccessSession(code);
       setOrder(null);
       setNeedsAccess(body.reason === "access_required");
-      setFetchError(body.reason === "access_required" ? "Masukkan kode akses yang diberikan saat checkout." : null);
+      setFetchError(body.reason === "access_required" ? "Isi No. WA atau email checkout untuk melihat pesanan ini." : null);
       return;
     }
     if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
     setNeedsAccess(false);
+    if (rememberOrderContact(code, contact)) buyerContact.current = contact.trim() || buyerContact.current;
     setOrder(fromApi(body.order));
     setFetchError(body.order?.qris_preparation_error ? "QRIS belum tersedia. Tunggu sebentar lalu coba lagi; pesanan yang sama tetap digunakan." : null);
     // Titik "belum dibayar" di tab Pesanan membaca salinan lokal; catat status
@@ -250,7 +254,8 @@ export default function OrderSuccessPage() {
       const response = await fetch(`/api/payments/qris/${encodeURIComponent(code)}/reissue`, {
         method: "POST",
         cache: "no-store",
-        headers: orderAccessHeaders(code, buyerProof.current),
+        headers: { "Content-Type": "application/json", ...orderAccessHeaders(code, buyerContact.current) },
+        body: JSON.stringify({ contact: buyerContact.current || undefined }),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || "Gagal menerbitkan QRIS baru.");
@@ -268,8 +273,8 @@ export default function OrderSuccessPage() {
   /** Batalkan pesanan sendiri: lepas stok detik itu juga, tanpa menunggu expiry. */
   const cancelOrder = useCallback(async () => {
     if (!code || typeof code !== "string" || cancelling) return;
-    if (!cancelContact.trim()) {
-      setCancelError("Isi kode akses pesanan, atau kontak checkout untuk pesanan lama.");
+    if (!cancelContact.trim() || !isValidOrderContact(cancelContact)) {
+      setCancelError("Isi No. WA atau email checkout yang dipakai saat memesan.");
       return;
     }
     setCancelling(true);
@@ -401,13 +406,17 @@ export default function OrderSuccessPage() {
     return <OrderStatusSkeleton />;
   }
   if (needsAccess && !order) return <form className="mx-auto max-w-md space-y-4 px-4 py-12" onSubmit={(event) => {
-    event.preventDefault(); buyerProof.current = accessInput.trim(); rememberOrderAccessCode(code, accessInput);
-    setLoading(true); void fetchOrder().catch((error) => setFetchError(error instanceof Error ? error.message : "Pesanan belum dapat dimuat. Coba lagi.")).finally(() => setLoading(false));
+    event.preventDefault();
+    if (!isValidOrderContact(contactInput)) {
+      setFetchError("Isi No. WA atau email checkout yang dipakai saat memesan.");
+      return;
+    }
+    setLoading(true); void fetchOrder(false, contactInput.trim()).catch((error) => setFetchError(error instanceof Error ? error.message : "Pesanan belum dapat dimuat. Coba lagi.")).finally(() => setLoading(false));
   }}>
     <h1 className="text-xl font-bold text-white">Buka pesananmu</h1>
-    <p className="text-sm leading-6 text-white/65">Gunakan PIN 6 karakter dari email atau konfirmasi checkout. Kode akses lama tetap berlaku.</p>
-    <label htmlFor="order-access-code" className="block text-sm text-white/80">PIN akses pesanan</label>
-    <input id="order-access-code" value={accessInput} onChange={event => setAccessInput(event.target.value)} autoComplete="off" autoCapitalize="characters" spellCheck={false} required maxLength={100} className="h-12 w-full rounded-xl border border-white/20 bg-white/5 px-4 font-mono text-white outline-none focus:border-[#00E5FF]" />
+    <p className="text-sm leading-6 text-white/65">Isi kode invoice dan No. WA atau email checkout. PIN 6 karakter dari email hanya dibutuhkan untuk membuka detail akun, bukan untuk melihat status.</p>
+    <label htmlFor="order-contact" className="block text-sm text-white/80">No. WA atau email checkout *</label>
+    <input id="order-contact" value={contactInput} onChange={event => setContactInput(event.target.value)} autoComplete="off" autoCapitalize="none" spellCheck={false} required maxLength={254} placeholder="0812… atau nama@email.com" className="h-12 w-full rounded-xl border border-white/20 bg-white/5 px-4 text-white outline-none focus:border-[#00E5FF]" />
     <button type="submit" className="min-h-12 w-full rounded-xl bg-[#00E5FF] px-5 font-semibold text-[#080C1E]">Buka pesanan</button>
     {fetchError && <p role="alert" className="text-xs text-amber-200">{fetchError}</p>}
     <Link href="/lacak-pesanan" className="block text-sm text-[#00E5FF]">Lacak pesanan lain</Link>
@@ -567,7 +576,6 @@ export default function OrderSuccessPage() {
 
   return (
     <div className={`mx-auto px-4 sm:px-6 ${compactPayment ? "max-w-[760px] py-4 sm:py-6" : "max-w-[640px] py-10"}`}>
-      <OrderAccessNotice accessCode={buyerAccess} />
       <div className={`ax-glass-card text-center ${compactPayment ? "rounded-2xl p-4 sm:p-5" : "rounded-[28px] p-6 sm:p-8"}`}>
         {compactPayment ? (
           <div className="grid grid-cols-[32px_minmax(0,1fr)_32px] items-center gap-2 text-center sm:grid-cols-[40px_auto_40px] sm:justify-center sm:gap-3">
@@ -725,7 +733,7 @@ export default function OrderSuccessPage() {
         )}
 
         {isPaid && (order.credentialsReady ? (
-          <WrCredentialsPanel key={order.code} code={order.code} prefillContact={buyerAccess} deliveryProgress={order.uniqueUnitsProgress} contactHint={[order.wa, order.email].filter(Boolean).join(" · ")} />
+          <WrCredentialsPanel key={order.code} code={order.code} prefillContact={verifiedContact} buyerPinRequired={order.buyerPinRequired} deliveryProgress={order.uniqueUnitsProgress} contactHint={[order.wa, order.email].filter(Boolean).join(" · ")} />
         ) : !isDeliveryFailed && (
           // Detail akun belum/tidak pernah ada: jangan tampilkan form verifikasi
           // yang pasti gagal. Beri kepastian ke mana produk dikirim, dan JANGAN
@@ -779,12 +787,12 @@ export default function OrderSuccessPage() {
               <div className="rounded-2xl border border-red-400/20 bg-red-500/[0.06] p-4 text-left" role="dialog" aria-label="Konfirmasi pembatalan pesanan">
                 <p className="text-sm font-semibold text-red-200">Batalkan pesanan {order.code}?</p>
                 <p className="mt-1 text-xs leading-5 text-white/55">Stok langsung kembali dan bisa dipesan orang lain. Pastikan kamu belum membayar — bila dana sudah masuk, hubungi admin dengan kode pesanan.</p>
-                <label htmlFor="cancel-contact" className="mt-3 block text-xs font-medium text-white/60">{buyerAccess ? "PIN akses pesanan *" : "No. WA atau email checkout *"}</label>
+                <label htmlFor="cancel-contact" className="mt-3 block text-xs font-medium text-white/60">No. WA atau email checkout *</label>
                 <input
                   id="cancel-contact"
                   value={cancelContact}
                   onChange={(event) => setCancelContact(event.target.value)}
-                  placeholder={buyerAccess ? "Kode akses dari checkout" : "0812… atau nama@email.com"}
+                  placeholder="0812… atau nama@email.com"
                   autoCapitalize="none"
                   autoCorrect="off"
                   spellCheck={false}

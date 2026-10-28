@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   if (!checkRateLimit(request, "pedia:status")) return NextResponse.json({ error: "Terlalu sering, coba lagi sebentar." }, { status: 429, headers: { "Retry-After": "60", "Cache-Control": "private, no-store" } });
   const contact = request.headers.get("x-order-access-code") || request.headers.get("x-order-contact") || "";
-  if (!contact) return NextResponse.json({ error: "contact_required" }, { status: 401, headers: { "Cache-Control": "private, no-store" } });
+  if (!contact && !request.headers.get("x-buyer-access-session")) return NextResponse.json({ error: "contact_required" }, { status: 401, headers: { "Cache-Control": "private, no-store" } });
   const { code } = await params;
   const clean = String(code || "").trim().toUpperCase();
   if (!/^AXP-\d{8}-[A-Z0-9]{8}$/.test(clean)) {
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const db = createDatabaseAccess();
   const order = await db.queryFirst(`SELECT * FROM orders WHERE code=?`, clean).catch(() => null);
   if (order) {
-    const failure = await newOrderAccessFailure(request, order, contact);
+    const failure = await newOrderAccessFailure(request, order, contact, { allowStatusSession: true });
     if (failure) return failure;
   }
   if (!order || (!requiresOrderAccessCode(order) && !(await buyerOrderAccessMatches(contact, order)))) return NextResponse.json({ error: "Pesanan tidak ditemukan atau kode akses tidak cocok." }, { status: 404, headers: { "Cache-Control": "private, no-store" } });

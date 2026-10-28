@@ -94,7 +94,7 @@ export async function sendWebDeliveryEmail(params: {
   const { deriveOrderAccessCode } = await import("@/lib/order-access");
   const buyerAccessCode = await deriveOrderAccessCode({
     code: orderCode, buyer_access_version: order.buyer_access_version, buyer_access_format: order.buyer_access_format,
-  }).catch(() => "");
+  });
   const template = buildOrderReadyTemplate({
     axvaraOrderCode: orderCode,
     buyerName: String(order.customer_name ?? ""),

@@ -45,7 +45,7 @@ describe("account details auto-scroll", () => {
     sessionStorage.setItem(`wr-cred-token:${CODE}`, "buyer-token-must-not-be-used");
     const fetcher = vi.fn(async (url: string) => url === "/api/orders/lookup" ? response({ order: {
       code: CODE, customer_name: "Buyer", customer_wa: "62***", status: "lunas", payment_method: "qris", subtotal: 10000,
-      items: [{ name: "Gemini", price: 10000, qty: 1 }], credentials_ready: true, supplier_running: false,
+      items: [{ name: "Gemini", price: 10000, qty: 1 }], buyer_pin_required: false, credentials_ready: true, supplier_running: false,
     } }) : response(credentials("admin-visible@example.test")));
     vi.stubGlobal("fetch", fetcher);
     render(<LacakPesananClient />);
@@ -66,13 +66,13 @@ describe("account details auto-scroll", () => {
     const fetcher=vi.fn().mockResolvedValueOnce(response({credentials:[{...first,label:'Muse — Akun 1 dari 3'},second],capability_token:'fixture-capability'}))
       .mockResolvedValueOnce(response({credentials:[{...first,label:'Muse — Akun 1 dari 3'},second,third]}));
     vi.stubGlobal('fetch',fetcher);
-    const view=render(<WrCredentialsPanel code={CODE} prefillContact='buyer@example.test' deliveryProgress={{ready:2,total:3}}/>);
+    const view=render(<WrCredentialsPanel buyerPinRequired={false} code={CODE} prefillContact='buyer@example.test' deliveryProgress={{ready:2,total:3}}/>);
     await screen.findByText('2 dari 3 akun siap');await screen.findByRole('button',{name:'Salin akun 2'});
     expect(screen.getAllByRole('button',{name:'Syarat & Ketentuan'})).toHaveLength(1);
     fireEvent.click(screen.getByRole('button',{name:'Salin akun 2'}));
     await waitFor(()=>expect(copy).toHaveBeenCalledWith('Email: second@example.test'));
     await waitFor(()=>expect(scroll).toHaveBeenCalledTimes(1));
-    view.rerender(<WrCredentialsPanel code={CODE} prefillContact='buyer@example.test' deliveryProgress={{ready:3,total:3}}/>);
+    view.rerender(<WrCredentialsPanel buyerPinRequired={false} code={CODE} prefillContact='buyer@example.test' deliveryProgress={{ready:3,total:3}}/>);
     await screen.findByRole('button',{name:'Salin akun 3'});expect(fetcher.mock.calls[1][0]).toBe(`/api/orders/${CODE}/credentials`);
     expect(fetcher.mock.calls[1][1]?.headers).toMatchObject({ 'x-credential-token': 'fixture-capability' });
     expect(scroll).toHaveBeenCalledTimes(1);expect(screen.getByText('3 dari 3 akun siap')).toBeTruthy();
@@ -83,9 +83,9 @@ describe("account details auto-scroll", () => {
     const fetcher=vi.fn().mockImplementationOnce(()=>new Promise<Response>(resolve=>{complete=resolve}))
       .mockResolvedValueOnce(response({credentials:[unit,unit,unit]}));
     vi.stubGlobal('fetch',fetcher);
-    const view=render(<WrCredentialsPanel code={CODE} prefillContact='buyer@example.test' deliveryProgress={{ready:2,total:3}}/>);
+    const view=render(<WrCredentialsPanel buyerPinRequired={false} code={CODE} prefillContact='buyer@example.test' deliveryProgress={{ready:2,total:3}}/>);
     await screen.findByRole('button',{name:'Memeriksa…'});
-    view.rerender(<WrCredentialsPanel code={CODE} prefillContact='buyer@example.test' deliveryProgress={{ready:3,total:3}}/>);
+    view.rerender(<WrCredentialsPanel buyerPinRequired={false} code={CODE} prefillContact='buyer@example.test' deliveryProgress={{ready:3,total:3}}/>);
     await act(async()=>{complete(response({credentials:[unit,unit],capability_token:'fixture-capability'}))});
     await screen.findByRole('button',{name:'Salin akun 3'});
     expect(fetcher).toHaveBeenCalledTimes(2);expect(fetcher.mock.calls[1][0]).toBe(`/api/orders/${CODE}/credentials`);
@@ -94,7 +94,7 @@ describe("account details auto-scroll", () => {
   it("waits for verified content, scrolls once in StrictMode, and leaves subsequent interactions alone", async () => {
     let complete!: (value: Response) => void;
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(resolve => { complete = resolve; })));
-    const view = render(<StrictMode><WrCredentialsPanel code={CODE} prefillContact="buyer@example.test" /></StrictMode>);
+    const view = render(<StrictMode><WrCredentialsPanel buyerPinRequired={false} code={CODE} prefillContact="buyer@example.test" /></StrictMode>);
     await screen.findByRole("button", { name: "Memeriksa…" });
     expect(scroll).not.toHaveBeenCalled();
     await act(async () => { complete(response(credentials())); });
@@ -104,7 +104,7 @@ describe("account details auto-scroll", () => {
     // Panel top 640 + current scroll 100 - navbar clearance 96.
     expect(scroll).toHaveBeenCalledWith({ top: 644, behavior: "smooth" });
     fireEvent.click(screen.getByRole("button", { name: "Syarat & Ketentuan" }));
-    view.rerender(<StrictMode><WrCredentialsPanel code={CODE} prefillContact="buyer@example.test" contactHint="baru" /></StrictMode>);
+    view.rerender(<StrictMode><WrCredentialsPanel buyerPinRequired={false} code={CODE} prefillContact="buyer@example.test" contactHint="baru" /></StrictMode>);
     await act(async () => { await new Promise(requestAnimationFrame); });
     expect(scroll).toHaveBeenCalledTimes(1);
   });
@@ -113,15 +113,15 @@ describe("account details auto-scroll", () => {
     vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true })));
     sessionStorage.setItem(`wr-cred-token:${CODE}`, "saved-token");
     vi.stubGlobal("fetch", vi.fn(async () => response(credentials())));
-    render(<WrCredentialsPanel code={CODE} />);
+    render(<WrCredentialsPanel buyerPinRequired={false} code={CODE} />);
     await waitFor(() => expect(scroll).toHaveBeenCalledWith({ top: 644, behavior: "instant" }));
     expect(accountScrolls()).toHaveLength(1);
   });
 
   it.each([response({ error: "verification_failed" }, 403), response({ credentials: [] })])("does not scroll for failed or empty verification, but scrolls after a successful manual retry", async (initial) => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(initial).mockResolvedValueOnce(response(credentials())));
-    render(<WrCredentialsPanel code={CODE} />);
-    fireEvent.change(screen.getByLabelText("PIN atau akses pesanan lama"), { target: { value: "buyer@example.test" } });
+    render(<WrCredentialsPanel buyerPinRequired={false} code={CODE} />);
+    fireEvent.change(screen.getByLabelText("Email atau No. WA checkout"), { target: { value: "buyer@example.test" } });
     fireEvent.click(screen.getByRole("button", { name: "Tampilkan" }));
     await waitFor(() => expect((screen.getByRole("button", { name: "Tampilkan" }) as HTMLButtonElement).disabled).toBe(false));
     expect(scroll).not.toHaveBeenCalled();
@@ -133,7 +133,7 @@ describe("account details auto-scroll", () => {
     vi.stubGlobal("requestAnimationFrame", vi.fn(() => 123));
     const cancel = vi.fn(); vi.stubGlobal("cancelAnimationFrame", cancel);
     vi.stubGlobal("fetch", vi.fn(async () => response(credentials())));
-    const view = render(<WrCredentialsPanel code={CODE} prefillContact="buyer@example.test" />);
+    const view = render(<WrCredentialsPanel buyerPinRequired={false} code={CODE} prefillContact="buyer@example.test" />);
     await screen.findByRole("region", { name: "Detail akun digital" });
     view.unmount();
     expect(cancel).toHaveBeenCalledWith(123);
@@ -143,7 +143,7 @@ describe("account details auto-scroll", () => {
   it("waits through payment and fulfillment polling before scrolling to the delivered account", async () => {
     vi.useFakeTimers();
     sessionStorage.setItem(checkoutContactKey(CODE), "buyer@example.test");
-    const order = { code: CODE, status: "pending", credentials_ready: false, supplier_owned: true, supplier_running: true, fulfillment_status: "queued", customer_name: "Buyer", customer_wa: "081234567890", payment_method: "qris", subtotal: 10000, items: [{ name: "Akun", qty: 1, price: 10000 }] };
+    const order = { code: CODE, status: "pending", buyer_pin_required: false, credentials_ready: false, supplier_owned: true, supplier_running: true, fulfillment_status: "queued", customer_name: "Buyer", customer_wa: "081234567890", payment_method: "qris", subtotal: 10000, items: [{ name: "Akun", qty: 1, price: 10000 }] };
     vi.stubGlobal("fetch", vi.fn(async (url: string) => response(String(url).includes("/credentials") ? credentials() : { order })));
     render(<OrderSuccessPage />);
     const advance = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
@@ -167,7 +167,7 @@ describe("account details auto-scroll", () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
       if (String(url).includes("/credentials")) return response(credentials(String(url).includes(SECOND_CODE) ? "second@example.test" : "first@example.test"));
       const code = JSON.parse(String(init?.body)).code;
-      return response({ order: { code, status: "lunas", credentials_ready: true, customer_name: "Buyer", customer_wa: "081234567890", payment_method: "qris", subtotal: 10000, items: JSON.stringify([{ name: "Akun", price: 10000, qty: 1 }]) } });
+      return response({ order: { code, status: "lunas", buyer_pin_required: false, credentials_ready: true, customer_name: "Buyer", customer_wa: "081234567890", payment_method: "qris", subtotal: 10000, items: JSON.stringify([{ name: "Akun", price: 10000, qty: 1 }]) } });
     }));
     render(<LacakPesananClient />);
     await waitFor(() => expect(accountScrolls()).toHaveLength(1));

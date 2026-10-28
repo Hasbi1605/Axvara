@@ -1,221 +1,41 @@
 // @vitest-environment jsdom
-//
-// tests/buyer-access-client.behavior.test.tsx — A11: helper akses pembeli sisi
-// klien (src/lib/order-access-client.ts, read-only milik PM).
-// - Normalisasi kode (spasi/dash/case, O→0, I/L→1) + format tampilan.
-// - Penyimpanan HANYA sessionStorage per kode (tab-session); KONTEN akses
-//   TIDAK PERNAH di localStorage/riwayat (history scrub: entri akses → wa
-//   kosong; kontak legacy tetap tersimpan).
-// - Fragment #access= dikonsumsi sekali lalu di-strip dari URL (tidak bocor
-//   ke query/log/Referer); fallback sessionStorage bila tanpa fragment.
-// - Header verifikasi memakai x-order-access-code (bukan query/body).
-// - Transport kapabilitas GET /credentials memakai header
-//   x-credential-token, TANPA token di query.
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+// PIN storage/disclosure cases are inverted after the owner removed that flow.
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent } from "@testing-library/react";
 import { OrderAccessNotice } from "@/components/storefront/OrderAccessNotice";
-const nav = vi.hoisted(() => ({ params: new URLSearchParams() }));
-vi.mock("next/navigation", () => ({ useSearchParams: () => nav.params, usePathname: () => "/lacak-pesanan", useRouter: () => ({ push: vi.fn() }) }));
-import LacakPesananClient from "@/app/(shop)/lacak-pesanan/lacak-pesanan-client";
-import {
-  orderAccessHeaders,
-  orderCheckoutPath,
-  readOrderAccessCode,
-  rememberOrderAccessCode,
-  ensureBuyerAccessSession,
-  forgetBuyerAccessSession,
-  readBuyerAccessSession,
-  rememberBuyerAccessSession,
-} from "@/lib/order-access-client";
+import { WrCredentialsPanel } from "@/components/storefront/WrCredentialsPanel";
 import { formatOrderAccessCode, normalizeOrderAccessCode } from "@/lib/order-access-format";
+import { ensureBuyerAccessSession, forgetBuyerAccessSession, forgetOrderContact, isValidOrderContact, orderAccessHeaders, orderCheckoutPath, readBuyerAccessSession, readOrderAccessCode, readOrderContact, rememberBuyerAccessSession, rememberOrderAccessCode, rememberOrderContact } from "@/lib/order-access-client";
+const nav=vi.hoisted(()=>({params:new URLSearchParams()}));
+vi.mock("next/navigation",()=>({useSearchParams:()=>nav.params,usePathname:()=>"/lacak-pesanan",useRouter:()=>({push:vi.fn()})}));
+import Lacak from "@/app/(shop)/lacak-pesanan/lacak-pesanan-client";
+const CODE="AXV-20261027-ABCD1234",PIN="0A1B2C",CONTACT="buyer@example.test",RAW="71111-22222-33333-44444-555556";
+const session=()=>`p1.${Math.floor(Date.now()/1000)+86400}.${"a".repeat(43)}`;
+beforeEach(()=>{forgetBuyerAccessSession(CODE);forgetOrderContact(CODE);sessionStorage.clear();localStorage.clear();nav.params=new URLSearchParams();window.history.replaceState({},"","/lacak-pesanan");vi.stubGlobal("requestAnimationFrame",()=>0)});
+afterEach(()=>{cleanup();vi.restoreAllMocks();vi.unstubAllGlobals()});
+it("keeps six-character PIN leading zeros and code26 normalization",()=>{expect(formatOrderAccessCode("0a1b2c")).toBe(PIN);expect(formatOrderAccessCode(RAW.toLowerCase())).toBe(RAW);expect(normalizeOrderAccessCode("ABC")).toBe("");expect(normalizeOrderAccessCode("U".repeat(26))).toBe("")});
+it("preserves Crockford aliases without accepting invalid contacts",()=>{expect(normalizeOrderAccessCode("7O111-22222-33333-44444-55555I")).toBe("70111222223333344444555551");expect(isValidOrderContact(PIN)).toBe(false);expect(isValidOrderContact(RAW)).toBe(false);expect(isValidOrderContact(CONTACT)).toBe(true);expect(isValidOrderContact("081234567890")).toBe(true)});
+it("never stores PINs through the deprecated access-code helpers",()=>{expect(rememberOrderAccessCode(CODE,PIN)).toBe(false);expect(readOrderAccessCode(CODE)).toBe("");expect(sessionStorage.length).toBe(0);expect(localStorage.length).toBe(0)});
+it("purges old PIN storage and fragments on the real status contact path",()=>{sessionStorage.setItem(`axvara-order-access:${CODE}`,PIN);window.history.replaceState({},"",`/lacak-pesanan#access=${PIN}`);expect(readOrderContact(CODE)).toBe("");expect(sessionStorage.length).toBe(0);expect(location.hash).toBe("")});
+it("stores only full contact and p1 status session, never a PIN header",()=>{rememberOrderContact(CODE,CONTACT);const grant=session();rememberBuyerAccessSession(CODE,grant);expect(orderAccessHeaders(CODE,PIN)).toEqual({"x-order-contact":CONTACT,"x-buyer-access-session":grant});expect(JSON.stringify(sessionStorage)).not.toContain(PIN);expect(localStorage.length).toBe(0)});
+it("checkout handoff ignores old PIN arguments and has no URL fragment",()=>{const grant=session();expect(orderCheckoutPath(`/pesanan/${CODE}`,CODE,PIN,grant)).toBe(`/pesanan/${CODE}`);expect(readBuyerAccessSession(CODE)).toBe(grant);expect(JSON.stringify(sessionStorage)).not.toContain(PIN);expect(location.href).not.toContain(PIN)});
+it("tab-memory fallback keeps status usable when sessionStorage writes are blocked",()=>{vi.spyOn(Storage.prototype,"setItem").mockImplementation(()=>{throw new Error("blocked")});const grant=session();rememberOrderContact(CODE,CONTACT);rememberBuyerAccessSession(CODE,grant);expect(readOrderContact(CODE)).toBe(CONTACT);expect(readBuyerAccessSession(CODE)).toBe(grant);expect(orderCheckoutPath(`/pesanan/${CODE}`,CODE,PIN,grant)).not.toContain("#")});
+it("rejects old b1 and expired status sessions",()=>{expect(rememberBuyerAccessSession(CODE,session().replace(/^p1/,"b1"))).toBe(false);expect(rememberBuyerAccessSession(CODE,`p1.${Math.floor(Date.now()/1000)-1}.${"a".repeat(43)}`)).toBe(false);expect(readBuyerAccessSession(CODE)).toBe("")});
+it("exchanges checkout contact for a read-only status session once",async()=>{const grant=session(),fetcher=vi.fn(async(_url: RequestInfo | URL,_init?: RequestInit)=>Response.json({buyer_access_session:grant}));vi.stubGlobal("fetch",fetcher);await ensureBuyerAccessSession(CODE,CONTACT);await ensureBuyerAccessSession(CODE,CONTACT);expect(fetcher).toHaveBeenCalledTimes(1);expect(JSON.parse(fetcher.mock.calls[0][1]?.body as string)).toEqual({code:CODE,contact:CONTACT});expect(localStorage.length).toBe(0)});
+it("a PIN cannot be exchanged for a status session without contact",async()=>{const fetcher=vi.fn();vi.stubGlobal("fetch",fetcher);await expect(ensureBuyerAccessSession(CODE,PIN)).rejects.toThrow();expect(fetcher).not.toHaveBeenCalled()});
+it("failed lookup does not retain a status session",async()=>{vi.stubGlobal("fetch",vi.fn(async()=>Response.json({error:"not_found"},{status:404})));await expect(ensureBuyerAccessSession(CODE,CONTACT)).rejects.toThrow("not_found");expect(readBuyerAccessSession(CODE)).toBe("")});
+it("the private admin reveal component still copies an explicitly revealed code",async()=>{const writeText=vi.fn(async()=>{});Object.defineProperty(navigator,"clipboard",{configurable:true,value:{writeText}});render(<OrderAccessNotice accessCode={RAW}/>);fireEvent.click(screen.getByRole("button",{name:"Salin kode akses"}));await screen.findByRole("button",{name:"Tersalin"});expect(writeText).toHaveBeenCalledWith(RAW)});
+it("PIN-shaped history is scrubbed from recent history",async()=>{localStorage.setItem("axvara-track-recent",JSON.stringify([{code:CODE,wa:PIN,savedAt:Date.now()}]));vi.stubGlobal("fetch",vi.fn(async()=>Response.json({error:"not_found"},{status:404})));render(<Lacak/>);await waitFor(()=>expect(JSON.stringify(localStorage)).not.toContain(PIN));expect(JSON.stringify(localStorage)).not.toContain(PIN)});
 
-const CODE = "AXV-20261027-ABCD1234";
-// 26 char Crockford-valid: digits + A-Z tanpa I/L/O.
-const RAW = "71111-22222-33333-44444-555556";
-const FORMATTED = "71111-22222-33333-44444-555556";
-
-beforeEach(() => {
-  forgetBuyerAccessSession(CODE);
-  vi.stubGlobal("requestAnimationFrame", () => 0);
-  sessionStorage.clear();
-  localStorage.clear();
-  window.history.replaceState({}, "", "/lacak-pesanan");
-});
-afterEach(() => {
-  cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals();
-  sessionStorage.clear();
-  localStorage.clear();
-});
-
-describe("normalisasi + format kode akses", () => {
-  it("accepts a mixed six-character PIN and preserves a leading zero", () => {
-    expect(formatOrderAccessCode("0a1b2c")).toBe("0A1B2C");
-    expect(normalizeOrderAccessCode("0A1B2")).toBe("");
-  });
-  it("menerima lowercase/spasi/dash dan menolak nilai pendek", () => {
-    expect(normalizeOrderAccessCode(" 71111 22222-33333 44444 555556 ")).toHaveLength(26);
-    expect(formatOrderAccessCode(RAW.toLowerCase())).toBe(FORMATTED);
-    expect(normalizeOrderAccessCode("ABC")).toBe("");
-    expect(normalizeOrderAccessCode("")).toBe("");
-  });
-
-  it("huruf ambigu O/I/L dinormalisasi (O→0, I/L→1)", () => {
-    const withAmbiguous = `7O111-22222-33333-44444-55555${"I"}`;
-    const normalized = normalizeOrderAccessCode(withAmbiguous);
-    expect(normalized).not.toContain("O");
-    expect(normalized).toHaveLength(26);
-    expect(formatOrderAccessCode(withAmbiguous)).toBe("70111-22222-33333-44444-555551");
-  });
-
-  it("menolak input non-kode walau panjang mirip (karakter di luar alfabet)", () => {
-    expect(normalizeOrderAccessCode("U".repeat(26))).toBe("");
-    expect(formatOrderAccessCode("!".repeat(26))).toBe("");
-  });
-});
-
-describe("verified PIN browsing session", () => {
-  const session = () => `b1.${Math.floor(Date.now() / 1000) + 86400}.${"a".repeat(43)}`;
-  it("exchanges a PIN once and uses a private session for subsequent polling without persisting either in localStorage", async () => {
-    const grant = session(), fetcher = vi.fn(async () => Response.json({ buyer_access_session: grant }));
-    vi.stubGlobal("fetch", fetcher);
-    await ensureBuyerAccessSession(CODE, "0A1B2C");
-    await ensureBuyerAccessSession(CODE, "0A1B2C");
-    expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(orderAccessHeaders(CODE, "0A1B2C")).toEqual({ "x-order-access-code": "0A1B2C", "x-buyer-access-session": grant });
-    expect(localStorage.length).toBe(0);
-    expect(window.location.href).not.toContain(grant);
-  });
-  it("checkout hands off a verified session privately without another PIN exchange", async () => {
-    const grant = session(), fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher);
-    expect(orderCheckoutPath(`/pesanan/${CODE}`, CODE, "0A1B2C", grant)).toBe(`/pesanan/${CODE}`);
-    await ensureBuyerAccessSession(CODE, "0A1B2C");
-    expect(fetcher).not.toHaveBeenCalled(); expect(readBuyerAccessSession(CODE)).toBe(grant);
-  });
-  it("does not retain a failed PIN exchange or an expired session", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ error: "PIN salah" }, { status: 404 })));
-    await expect(ensureBuyerAccessSession(CODE, "0A1B2C")).rejects.toThrow("PIN salah");
-    expect(readBuyerAccessSession(CODE)).toBe("");
-    expect(rememberBuyerAccessSession(CODE, `b1.${Math.floor(Date.now() / 1000) - 1}.${"a".repeat(43)}`)).toBe(false);
-  });
-  it("shows and copies the six-character PIN as text, including its leading zero", async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
-    render(<OrderAccessNotice accessCode="0A1B2C" />);
-    expect(screen.getByLabelText("PIN akses pesanan").textContent).toContain("0A1B2C");
-    fireEvent.click(screen.getByRole("button", { name: "Salin PIN" }));
-    await screen.findByRole("button", { name: "Tersalin" });
-    expect(writeText).toHaveBeenCalledWith("0A1B2C");
-  });
-});
-
-describe("penyimpanan session-only per kode", () => {
-  it("remember menyimpan dengan format tampilan; read mengembalikan format yang sama", () => {
-    expect(rememberOrderAccessCode(CODE, RAW.toLowerCase().replace(/-/g, " "))).toBe(true);
-    expect(sessionStorage.getItem(`axvara-order-access:${CODE}`)).toBe(FORMATTED);
-    expect(readOrderAccessCode(CODE)).toBe(FORMATTED);
-  });
-
-  it("menolak nilai invalid tanpa menulis storage", () => {
-    expect(rememberOrderAccessCode(CODE, "bukan-kode")).toBe(false);
-    expect(sessionStorage.getItem(`axvara-order-access:${CODE}`)).toBeNull();
-    expect(readOrderAccessCode(CODE)).toBe("");
-  });
-
-  it("kunci per kode: kode lain tidak ikut terbaca", () => {
-    expect(rememberOrderAccessCode(CODE, RAW)).toBe(true);
-    expect(readOrderAccessCode("AXV-20261027-XXXX0000")).toBe("");
-  });
-
-  it("kontak legacy (WA/email) TIDAK disimpan sebagai kode akses", () => {
-    expect(rememberOrderAccessCode(CODE, "081234567890")).toBe(false);
-    expect(rememberOrderAccessCode(CODE, "rani.putri@gmail.com")).toBe(false);
-    expect(sessionStorage.getItem(`axvara-order-access:${CODE}`)).toBeNull();
-  });
-});
-
-describe("fragment #access=: konsumsi sekali + strip URL", () => {
-  it("fragment valid dipakai, diingat ke session, lalu dihapus dari URL", () => {
-    window.history.replaceState({}, "", `/pesanan/${CODE}#access=${encodeURIComponent(RAW)}`);
-    expect(readOrderAccessCode(CODE)).toBe(FORMATTED);
-    expect(sessionStorage.getItem(`axvara-order-access:${CODE}`)).toBe(FORMATTED);
-    expect(window.location.hash).toBe("");
-    expect(window.location.pathname).toBe(`/pesanan/${CODE}`);
-  });
-
-  it("fragment invalid diabaikan tanpa mengubah session", () => {
-    window.history.replaceState({}, "", `/pesanan/${CODE}#access=bukan-kode`);
-    expect(readOrderAccessCode(CODE)).toBe("");
-    expect(sessionStorage.getItem(`axvara-order-access:${CODE}`)).toBeNull();
-  });
-
-  it("tanpa fragment memakai session yang sudah tersimpan", () => {
-    expect(rememberOrderAccessCode(CODE, RAW)).toBe(true);
-    window.history.replaceState({}, "", `/pesanan/${CODE}`);
-    expect(readOrderAccessCode(CODE)).toBe(FORMATTED);
-  });
-});
-
-describe("header verifikasi + path checkout tanpa bocor query", () => {
-  it("orderAccessHeaders memakai x-order-access-code dari session", () => {
-    expect(rememberOrderAccessCode(CODE, RAW)).toBe(true);
-    expect(orderAccessHeaders(CODE)).toEqual({ "x-order-access-code": FORMATTED });
-  });
-
-  it("orderAccessHeaders memakai nilai eksplisit bila diberikan", () => {
-    expect(orderAccessHeaders(CODE, RAW)).toEqual({ "x-order-access-code": FORMATTED });
-  });
-
-  it("tanpa kode tersimpan: header kosong (bukan query/body)", () => {
-    expect(orderAccessHeaders(CODE)).toEqual({});
-  });
-
-  it("orderCheckoutPath tidak menambah query bila session sudah ada", () => {
-    expect(rememberOrderAccessCode(CODE, RAW)).toBe(true);
-    const path = `/pedia/pesanan/${CODE}`;
-    expect(orderCheckoutPath(path, CODE, RAW)).toBe(path);
-    expect(orderCheckoutPath(path, CODE, RAW)).not.toContain("access=");
-    expect(orderCheckoutPath(path, CODE, RAW)).not.toContain("?");
-  });
-
-  it("orderCheckoutPath memakai fragment fallback hanya bila session tak bisa ditulis", () => {
-    const path = `/pedia/pesanan/${CODE}`;
-    vi.stubGlobal("sessionStorage", { setItem: () => { throw new Error("storage blocked"); }, getItem: () => null, removeItem: () => {}, clear: () => {} });
-    const out = orderCheckoutPath(path, CODE, RAW);
-    expect(out).toBe(`${path}#access=${encodeURIComponent(FORMATTED)}`);
-    window.history.replaceState({}, "", out);
-    expect(readOrderAccessCode(CODE)).toBe(FORMATTED);
-    expect(window.location.hash).toBe("");
-  });
-});
-
-describe("salin terlihat + tidak bocor ke riwayat", () => {
-  it("copies the visible code and explains how to copy manually when clipboard permission fails", async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
-    render(<OrderAccessNotice accessCode={FORMATTED} />);
-    fireEvent.click(screen.getByRole("button", { name: "Salin kode akses" }));
-    await screen.findByRole("button", { name: "Tersalin" });
-    expect(writeText).toHaveBeenCalledWith(FORMATTED);
-    writeText.mockRejectedValueOnce(new Error("permission denied"));
-    fireEvent.click(screen.getByRole("button", { name: "Tersalin" }));
-    expect((await screen.findByRole("alert")).textContent).toContain("salin manual");
-  });
-
-  it("tracking hydration scrubs access codes from persisted history and leaves legacy contacts usable", async () => {
-    localStorage.setItem("axvara-track-recent", JSON.stringify([{ code: CODE, wa: RAW, savedAt: Date.now() }, { code: "AXV-20261027-ABCD1235", wa: "buyer@example.test", savedAt: Date.now() }]));
-    render(<LacakPesananClient />);
-    await waitFor(() => expect(localStorage.getItem("axvara-track-recent")).not.toContain(RAW));
-    expect(localStorage.getItem("axvara-track-recent")).toContain("buyer@example.test");
-  });
-
-  it("successful tracking stores the code in session only and omits it from recent device history", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ order: { code: CODE, items: [], status: "dibatalkan", subtotal: 0 } })));
-    render(<LacakPesananClient />);
-    fireEvent.change(screen.getByLabelText("Kode pesanan *"), { target: { value: CODE } });
-    fireEvent.change(screen.getByLabelText("PIN akses pesanan *"), { target: { value: RAW } });
-    fireEvent.submit(screen.getByRole("form", { name: "Formulir lacak pesanan" }));
-    await waitFor(() => expect(sessionStorage.getItem(`axvara-order-access:${CODE}`)).toBe(FORMATTED));
-    expect(localStorage.getItem("axvara-track-recent")).not.toContain(RAW);
-    expect(window.location.href).not.toContain(RAW);
-  });
+it("new credential unlock requires separate contact and PIN inputs without storing the typed PIN",async()=>{
+ const fetcher=vi.fn(async(_url:RequestInfo|URL,_init?:RequestInit)=>Response.json({credentials:[{details:"PRIVATE-ACCOUNT-FIXTURE",completed_at:null}],capability_token:"z".repeat(64)}));vi.stubGlobal("fetch",fetcher);
+ render(<WrCredentialsPanel code={CODE} buyerPinRequired/>);
+ const button=screen.getByRole("button",{name:"Tampilkan"});
+ fireEvent.change(screen.getByLabelText("PIN akses"),{target:{value:PIN}});expect((button as HTMLButtonElement).disabled).toBe(true);expect(fetcher).not.toHaveBeenCalled();
+ fireEvent.change(screen.getByLabelText("Email atau No. WA checkout"),{target:{value:CONTACT}});
+ expect(screen.getByLabelText("PIN akses").getAttribute("type")).toBe("password");fireEvent.click(button);
+ await screen.findByText("PRIVATE-ACCOUNT-FIXTURE");
+ expect(JSON.parse(fetcher.mock.calls[0][1]?.body as string)).toEqual({contact:CONTACT,access_code:PIN});
+ expect(JSON.stringify(sessionStorage)).not.toContain(PIN);expect(JSON.stringify(localStorage)).not.toContain(PIN);
 });

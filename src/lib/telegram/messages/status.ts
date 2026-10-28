@@ -164,7 +164,6 @@ export function orderStatusMessage(params: {
     "",
     `📦 ${name}`,
     `🔢 <code>${escapeHtml(orderCode)}</code>`,
-    ...(params.buyerAccessCode ? ["", `🔑 <b>${params.buyerAccessCode.length === 6 ? "PIN Akses" : "Kode Akses"}:</b> <code>${escapeHtml(params.buyerAccessCode)}</code>`] : []),
   ];
 
   if (payableAmount) lines.push(`💰 ${formatRupiah(payableAmount)}`);

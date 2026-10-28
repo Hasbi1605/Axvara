@@ -122,12 +122,6 @@ export async function retryTelegramInvoiceDelivery(orderCode: string, database: 
     `UPDATE orders SET telegram_invoice_attempts=telegram_invoice_attempts+1, updated_at=datetime('now') WHERE code=?`,
     orderCode,
   ).catch(() => {});
-  // Kode akses di-derive ephemeral dari versi tersimpan aktual (NEVER tebak
-  // v1 untuk order lama/reused). DM pribadi 1-to-1 ke chat pembeli — aman.
-  const { deriveOrderAccessCode } = await import("@/lib/order-access");
-  const retryAccessCode = await deriveOrderAccessCode({
-    code: order.code, buyer_access_version: order.buyer_access_version, buyer_access_format: order.buyer_access_format,
-  }).catch(() => "");
   const result = await sendPhoto({
     chat_id: Number(order.telegram_chat_id),
     photo: String(ledger.qris_url ?? ""),
@@ -137,7 +131,6 @@ export async function retryTelegramInvoiceDelivery(orderCode: string, database: 
       payableAmount,
       expiresAt: String(ledger.expires_at ?? ""),
       paymentMethod: "qris",
-      buyerAccessCode: retryAccessCode || undefined,
     }),
     parse_mode: "HTML",
     reply_markup: qrisInvoiceKeyboard(order.code),
