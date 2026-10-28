@@ -12,6 +12,8 @@ terbit dari quote bertanda tangan yang cocok order durable; disimpan privat di
 tab24jam dan tercabut oleh rotasi versi. Lookup biasa tidak menerbitkan c1.
 
 Untuk akses kredensial lewat lacak tanpa bukti checkout asli, pembeli mengisi invoice + email/WA checkout + PIN.
+Form lacak tanpa helper di bawah field; label PIN menyebut email checkout, dengan
+pesan validasi tetap tampil untuk input salah.
 Lacak status sebelum email siap memakai invoice+kontak, atau sesi status tab dari
 checkout. Sesi ini tidak membuka kredensial atau mengizinkan mutasi. Sesudah proof
 kontak+PIN atau bukti checkout asli, capability kuat dapat disimpan sessionStorage untuk kunjungan ulang;

@@ -28,6 +28,18 @@ it("failed lookup does not retain a status session",async()=>{vi.stubGlobal("fet
 it("the private admin reveal component still copies an explicitly revealed code",async()=>{const writeText=vi.fn(async()=>{});Object.defineProperty(navigator,"clipboard",{configurable:true,value:{writeText}});render(<OrderAccessNotice accessCode={RAW}/>);fireEvent.click(screen.getByRole("button",{name:"Salin kode akses"}));await screen.findByRole("button",{name:"Tersalin"});expect(writeText).toHaveBeenCalledWith(RAW)});
 it("PIN-shaped history is scrubbed from recent history",async()=>{localStorage.setItem("axvara-track-recent",JSON.stringify([{code:CODE,wa:PIN,savedAt:Date.now()}]));vi.stubGlobal("fetch",vi.fn(async()=>Response.json({error:"not_found"},{status:404})));render(<Lacak/>);await waitFor(()=>expect(JSON.stringify(localStorage)).not.toContain(PIN));expect(JSON.stringify(localStorage)).not.toContain(PIN)});
 
+it("tracking fields omit helper text but retain validation and the email PIN label", () => {
+ render(<Lacak/>);
+ const code=screen.getByLabelText("Kode pesanan *"),contact=screen.getByLabelText("No. WA atau email checkout *"),pin=screen.getByLabelText("PIN akses (didapat di email yang diisi saat checkout)");
+ for(const input of [code,contact,pin]) expect(input.parentElement?.querySelector("p")).toBeNull();
+ expect(contact.hasAttribute("aria-describedby")).toBe(false);expect(pin.hasAttribute("aria-describedby")).toBe(false);
+ fireEvent.change(code,{target:{value:CODE}});fireEvent.change(contact,{target:{value:CONTACT}});
+ expect((screen.getByRole("button",{name:"Lacak Pesanan"}) as HTMLButtonElement).disabled).toBe(false);
+ fireEvent.change(code,{target:{value:"invalid"}});fireEvent.change(contact,{target:{value:"invalid"}});fireEvent.change(pin,{target:{value:"abc"}});
+ for(const input of [code,contact,pin]) {expect(input.getAttribute("aria-invalid")).toBe("true");expect(input.parentElement?.querySelector("p")).not.toBeNull()}
+ for(const input of [contact,pin]) expect(document.getElementById(input.getAttribute("aria-describedby")!)).toBe(input.parentElement?.querySelector("p"));
+});
+
 it("new credential unlock requires separate contact and PIN inputs without storing the typed PIN",async()=>{
  const fetcher=vi.fn(async(_url:RequestInfo|URL,_init?:RequestInit)=>Response.json({credentials:[{details:"PRIVATE-ACCOUNT-FIXTURE",completed_at:null}],capability_token:"z".repeat(64)}));vi.stubGlobal("fetch",fetcher);
  render(<WrCredentialsPanel code={CODE} buyerPinRequired/>);

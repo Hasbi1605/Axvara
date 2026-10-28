@@ -7,6 +7,8 @@ Midnight/Cyan AXVARA. Kartu tampilan/salin PIN di atas pembayaran dihapus. Halam
 checkout hanya memuat pembayaran dan status pesanan, tanpa PIN atau salinan PIN.
 
 Form lacak memisahkan invoice, email/WA dan PIN. Kontak wajib untuk status;
+teks helper di bawah ketiga field dihapus, pesan validasi tetap tampil saat salah.
+Label PIN: "PIN akses (didapat di email yang diisi saat checkout)".
 PIN dari email dipakai untuk membuka kredensial, tipe password dan tanpa tombol
 salin/reveal. Panel kredensial memakai isian kontak dan PIN dalam satu form yang
 mengikuti komponen existing, label terikat input, aksi submit jelas dan dukungan

@@ -434,7 +434,7 @@ export default function LacakPesananClient() {
               aria-invalid={Boolean(codeError)}
               className={`h-12 w-full rounded-xl border bg-white/[0.06] px-4 font-mono text-sm font-bold tracking-[0.06em] text-white placeholder:font-sans placeholder:font-normal placeholder:tracking-normal placeholder:text-white/55 focus:outline-none ${codeError ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`}
             />
-            {codeError ? <p className="mt-1.5 text-xs text-red-300">{codeError}</p> : <p className="mt-1.5 text-[11px] text-white/65">Lihat di halaman sukses, chat Telegram, atau grup WA setelah checkout.</p>}
+            {codeError && <p className="mt-1.5 text-xs text-red-300">{codeError}</p>}
           </div>
           <div>
             <label htmlFor="track-wa" className="mb-1 block text-xs font-medium text-white/60">No. WA atau email checkout *</label>
@@ -450,13 +450,13 @@ export default function LacakPesananClient() {
               spellCheck={false}
               autoComplete="off"
               aria-invalid={Boolean(waError)}
-              aria-describedby="track-wa-hint"
+              aria-describedby={waError ? "track-wa-error" : undefined}
               className={`h-12 w-full rounded-xl border bg-white/[0.06] px-4 text-sm text-white placeholder:text-white/55 focus:outline-none ${waError ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`}
             />
-            {waError ? <p className="mt-1.5 text-xs text-red-300">{waError}</p> : <p id="track-wa-hint" className="mt-1.5 text-[11px] text-white/65">Kontak yang dipakai saat checkout. Status tampil tanpa PIN.</p>}
+            {waError && <p id="track-wa-error" className="mt-1.5 text-xs text-red-300">{waError}</p>}
           </div>
           <div>
-            <label htmlFor="track-pin" className="mb-1 block text-xs font-medium text-white/60">PIN akses (opsional untuk status)</label>
+            <label htmlFor="track-pin" className="mb-1 block text-xs font-medium text-white/60">PIN akses (didapat di email yang diisi saat checkout)</label>
             <input
               id="track-pin"
               value={pin}
@@ -470,10 +470,10 @@ export default function LacakPesananClient() {
               autoComplete="off"
               maxLength={32}
               aria-invalid={Boolean(pinError)}
-              aria-describedby="track-pin-hint"
+              aria-describedby={pinError ? "track-pin-error" : undefined}
               className={`h-12 w-full rounded-xl border bg-white/[0.06] px-4 text-sm text-white placeholder:text-white/55 focus:outline-none ${pinError ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`}
             />
-            {pinError ? <p className="mt-1.5 text-xs text-red-300">{pinError}</p> : <p id="track-pin-hint" className="mt-1.5 text-[11px] text-white/65">Isi PIN dari email produk siap untuk membuka detail akun.</p>}
+            {pinError && <p id="track-pin-error" className="mt-1.5 text-xs text-red-300">{pinError}</p>}
           </div>
         </div>
         {error && <p role="alert" className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-2.5 text-sm text-red-300">{error}</p>}

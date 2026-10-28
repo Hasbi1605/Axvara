@@ -46,6 +46,8 @@ Browser menyimpan hanya kontak/sesi status, c1 checkout atau capability di sessi
 memori tab. PIN yang diketik pembeli hanya React state, tidak sessionStorage,
 localStorage atau fragment. Kartu PIN pada pesanan dihapus; formulir lacak punya
 invoice/kontak/PIN, dan panel kredensial memverifikasi dua field terakhir.
+Form lacak tanpa helper di bawah field; label PIN menjelaskan sumber email checkout,
+pesan validasi dan aturan PIN opsional untuk status tetap dipertahankan.
 Tidak ada PIN dalam respons buyer, tautan, log, history atau pesan Telegram.
 
 ### Email PIN hanya bersama kredensial
