@@ -1,5 +1,10 @@
 # AGENTS.md — AXVARA (Project-Specific)
 
+## Cara membaca panduan
+- Keputusan terbaru untuk topik yang sama menggantikan snapshot lama hanya pada bagian yang terkait. Batas tugas dari owner tetap berlaku; jangan memperluas scope hanya karena ada runbook di sini.
+- Bagian berlabel histori/snapshot adalah bukti pada tanggalnya, bukan status produksi saat ini atau izin rollout. Jangan menghidupkan kembali fitur yang sudah dipensiunkan; kontrak kompatibilitas dan pengaman order lama tetap dijaga.
+- Angka test, saldo, jumlah env dan status deployment adalah hasil pengamatan bertanggal. Gunakan bukti aktual untuk klaim baru; jangan membaca secret atau mengakses produksi hanya untuk merapikan dokumentasi.
+
 ## Kredensial pembeli: invoice + kontak + PIN — 28 Oktober 2026
 - Koreksi owner menggantikan aturan PIN checkout27Oktober: PIN6 huruf+angka hanya dikirim bersama kredensial lengkap dalam email produk siap. Jangan mengirim email khusus PIN saat order dibuat/paid, mengembalikan PIN dalam respons buyer, menampilkan kartu/reveal PIN buyer, menaruh PIN dalam URL/fragment/storage atau pesan Telegram. Kredensial tetap langsung tampil dalam email.
 - Kredensial web pin6 lewat lacak tanpa proof checkout asli wajib invoice + email/WA checkout penuh + PIN sebagai field terpisah. Admission D1 atomik sebelum compare, max10 gagal/in-flight per order+versi/15menit lintasIP, sukses decrement slot sendiri, error503 fail-closed. Kontak salah/PIN salah sama-sama generik404. Belum lunas/kredensial belum tersedia tidak menuntut PIN yang belum dikirim.
@@ -87,31 +92,34 @@ Source `axvara-gopay-poller/src/pages-forward.ts`; rilis VPS terpasang
 - Partial/canceled disimpan atomik dengan antrean tindak lanjut manual; pembayaran paid tetap paid. Unknown remains jangan diasumsikan nol.
 - Arsip kredit/ledger lama dipertahankan, tidak dapat dibelanjakan. Retry order yang sudah tersimpan mempertahankan nominal; quote lama berkredit tanpa order ditolak sebelum mutasi.
 - Expiry reservasi pra-pensiun dibalik sekali hanya ke arsip beku + follow-up owner. Penyelesaian dengan pembeli di luar AXVARA, bukan saldo baru.
-- Status Pedia wajib kontak checkout penuh; kredensial Market buyer wajib kontak penuh atau capability. Pengecualian admin24Oktober: adminView hanya sesudah requireAdmin server-side, URL tanpa kontak/token buyer dan tidak menerbitkan capability buyer. Tidak menampilkan kode kredit lama ke browser.
+- Status Pedia wajib kontak checkout penuh; kredensial Market mengikuti aturan PIN/proof checkout 28 Oktober di atas beserta kompatibilitas legacy, bukan kontak saja untuk order PIN6. Pengecualian admin24Oktober: adminView hanya sesudah requireAdmin server-side, URL tanpa kontak/token buyer dan tidak menerbitkan capability buyer. Tidak menampilkan kode kredit lama ke browser.
 
 ## Tujuan
-AXVARA — Gerbang Semua Tools Premium. Toko digital premium Apple Store + glassmorphism, checkout Transfer/QRIS statis, hosting Cloudflare Pages + D1 + R2. Workflow: plan → implementasi kecil → verifikasi dev → catat changelog → selesai.
+AXVARA — Gerbang Semua Tools Premium. Toko digital premium Apple Store + glassmorphism, QRIS per order dengan provider tersimpan, hosting Cloudflare Pages + D1 + R2. Workflow: pahami scope → implementasi kecil → verifikasi sesuai dampak → catat changelog → commit/push otomatis → selesai.
 
 ## WAJIB dibaca dulu (context)
-Sebelum ubah kode di `axvara/`, baca:
-1. `docs/PRD.md` — requirement, flow, payment spec (E-Wallet 082135277434, SeaBank 901812349386, QRIS Brotherstore06)
+Sebelum ubah kode di `axvara/`, baca bagian yang relevan dari rujukan berikut;
+tidak perlu membaca ulang seluruh riwayat untuk setiap tugas. Untuk dokumentasi
+saja, telusuri sumber yang diperlukan untuk membuktikan isi perubahan.
+1. `docs/PRD.md` — requirement, flow dan kontrak pembayaran terkini; jangan mengambil provider aktif dari contoh pembayaran lama
 2. `docs/DESIGN.md` — token Midnight #080C1E/#070a1e + Cyan #00E5FF + Gold #FFB800, SF Pro, Liquid Glass
 3. `docs/ARCHITECTURE.md` — stack Next 15 + Pages + D1 + R2, schema, API contract, wrangler
 4. `README.md` — struktur, brand, cara jalan & deploy
 5. `CHANGELOG.md` (root `axvara/`) — riwayat perubahan, baca dulu biar tidak duplikasi
 
-Jika perubahan mengubah struktur folder, route `src/app/*`, komponen `src/components/storefront/*`, `drizzle/schema.sql`, `wrangler.toml`, atau flow checkout/admin, **perbarui `docs/ARCHITECTURE.md` dan `README.md` di PR yang sama**.
+Jika perubahan mengubah struktur folder, route `src/app/*`, komponen `src/components/storefront/*`, `drizzle/schema.sql`, `wrangler.json`, `mcp-worker/wrangler.toml`, atau flow checkout/admin, **perbarui `docs/ARCHITECTURE.md` dan `README.md` di PR yang sama**.
 
 ## Cara bekerja
 - Perubahan sekecil mungkin yang tetap selesaikan masalah.
 - Jangan refactor besar tanpa diminta.
 - Jika ragu, tulis asumsi eksplisit di `CHANGELOG.md` atau komentar PR.
+- Worktree boleh berisi perubahan tugas lain. Jangan menimpa, stage atau commit perubahan tersebut; periksa diff dan stage hanya file/hunk milik tugas ini. Jika file yang sama berubah dari luar saat dikerjakan, berhenti dan koordinasikan dahulu.
 
 ## CI/CD dan push GitHub (WAJIB)
 - Jalur deploy normal hanya melalui `.github/workflows/ci.yml`: push ke `main` menjalankan test/type-check root + test/build gateway, build Pages, migrasi D1 yang belum diterapkan, rilis gateway lewat Heroku source/build API bila source/release berubah, deploy Pages, lalu deploy MCP Worker. Secret CI `HEROKU_API_KEY_AKUN1` berasal dari `.heroku-credentials` ignored; jangan push Heroku manual.
 - Sebelum build/migrasi, `scripts/ci-pages-env-check.cjs` membaca metadata env produksi Pages dan menghitung secret/text + empat variabel sistem Pages terhadap batas paket aktual (Paid 128, Free 64) lewat metadata langganan. Melebihi batas/API gagal menghentikan rilis; tepat batas paket memberi warning. Jangan log nilai secret. `PEDIA_DISPATCH_ENABLED` sudah dihapus 2026-10-18 karena tidak dipakai kode; bukan gate dispatch. Secret KlikQRIS/DANA/GoPay tetap dipertahankan.
 - Pemeriksaan migrasi memakai `scripts/ci-d1-migrations.cjs`: tanpa query D1 hanya bila berkas migrasi + schema + wrangler identik dengan ancestor rilis `ci.yml` push main yang tahap migrasi dan deploy Pages-nya terbukti sukses. Bukti tidak lengkap/API gagal/berkas DB berubah → Wrangler remote wajib tetap lulus; jangan mengabaikan error migrasi atau menganggap push sebagai bukti deploy. Setelah restore/recreate D1, periksa migrasi remote sebelum memakai bukti rilis lama.
-- Setelah implementasi, verifikasi dev, dan changelog selesai, commit lalu `git push origin main`.
+- Setelah perubahan kode/dokumentasi, verifikasi sesuai dampak, dan changelog selesai, otomatis commit lalu `git push origin main`; tidak perlu meminta izin publikasi lagi. Audit baca-saja tidak menghasilkan commit; instruksi eksplisit owner untuk tidak commit/push tetap mengalahkan default ini.
 - Begitu `git push` berhasil diterima GitHub, **berhenti**. Jangan memantau/polling GitHub Actions atau Cloudflare dan jangan menunggu hasil deployment.
 - Jangan menjalankan `npm run deploy`, `npm run deploy:mcp`, atau deploy Wrangler manual setelah push. Deploy manual hanya untuk recovery jika diminta eksplisit oleh user.
 - Cloudflare Git integration dinonaktifkan untuk deployment otomatis; GitHub Actions adalah satu-satunya CI/CD agar satu push tidak memicu deploy ganda.
@@ -154,14 +162,17 @@ Jika perubahan mengubah struktur folder, route `src/app/*`, komponen `src/compon
   jangan menyamakan hasil benchmark fixture atau push dengan bukti tercapai.
 
 ## Aturan Test (WAJIB)
-Setiap kali mengubah kode di `axvara/`, **WAJIB update test yang terpengaruh** sebelum commit/push:
+Setiap perubahan kode wajib memiliki cakupan test yang sesuai. Tambah atau
+perbarui test bila perilaku/kontrak berubah atau cakupan belum cukup; jangan
+mengubah assertion hanya supaya kode yang salah terlihat lulus.
 
-- Jalankan `npx vitest run --run` setelah setiap perubahan kode.
+- Selama iterasi, jalankan test terkait setelah satu perubahan logis, misalnya `npx vitest run tests/nama.test.ts`; ini contoh path, ganti dengan test yang benar-benar ada.
+- Sebelum commit/push perubahan kode, jalankan seluruh suite `npx vitest run --run` pada tree akhir. Tidak perlu mengulang seluruh suite setiap edit kecil; ulangi bila ada perubahan kode setelah verifikasi akhir.
 - Jika ada test yang gagal akibat perubahan yang kamu buat, **perbaiki test tersebut di commit yang sama** — jangan push dengan test gagal.
 - Jika mengubah output/format fungsi (misal menghapus field, mengubah teks, rename identifier), cari semua test yang assert output lama: `grep -rn "string_lama" tests/`.
 - Jika mengubah nilai di `src/lib/site.ts` atau konstanta global lain, cari semua test yang hardcode nilai lama.
 - Jangan menghapus test tanpa alasan — update assertion agar sesuai perilaku baru.
-- Test harus **hijau seluruhnya** sebelum push. Jangan hardcode angka di aturan ini — jumlah terbaru selalu ada di entri teratas `CHANGELOG.md`, dan angka yang ditulis di sini akan usang dalam beberapa commit.
+- Test harus **hijau seluruhnya** sebelum push perubahan kode. Ambil jumlah/hasil dari output run aktual, bukan angka tetap atau asumsi bahwa entri teratas `CHANGELOG.md` selalu memuat hasil test. Dokumentasi/instruksi saja mengikuti pemeriksaan dokumentasi pada tabel verifikasi.
 
 ## Aturan Dokumentasi (WAJIB — bukan cuma changelog)
 Setiap perubahan perilaku/kontrak/env/arsitektur WAJIB dicatat di SEMUA dokumen
@@ -169,17 +180,21 @@ yang relevan dalam PR/commit yang sama — bukan cuma `CHANGELOG.md`:
 
 | Jenis perubahan | Dokumen yang WAJIB ikut di-update |
 |---|---|
-| Perilaku produk / requirement / flow / payment spec | `docs/PRD.md` (tandai ✅ live / ubah status) + `CHANGELOG.md` |
+| Perilaku produk / requirement / flow / payment spec | `docs/PRD.md` (status implementasi/publikasi/deployment sesuai bukti) + `CHANGELOG.md` |
 | Token warna, font, layout, komponen, animasi, aset visual | `docs/DESIGN.md` + `CHANGELOG.md` |
 | Struktur folder, route `src/app/*`, komponen storefront, `drizzle/schema.sql` atau migrasi baru, `wrangler.json`, flow checkout/admin, kontrak bot/webhook, env baru, cron, flag | `docs/ARCHITECTURE.md` + `README.md` (bagian terkait) + `CHANGELOG.md` |
 | Env Pages baru/diubah, kredensial, handoff Heroku/Cloudflare | `docs/ARCHITECTURE.md` §16 + `README.md` + AGENTS.md folder terkait |
 | Kontrak antar-repo (proxy/gateway/bot/QRIS) | AGENTS.md di SEMUA folder yang terpengaruh |
 
-Aturan: (1) Dokumen adalah spec hidup — kode yang menyimpang dari docs = bug docs
-yang harus dibetulkan di commit yang sama; (2) Dilarang menulis docs basi
-("Pre-Build", "rencana", "segera") untuk perilaku yang sudah live — tandai
-tanggal + status live; (3) Checklist sebelum selesai memeriksa butir dokumentasi,
-bukan cuma test.
+Aturan: (1) Bila kode dan docs berbeda, telusuri keputusan owner, requirement
+terkini dan test; bisa jadi bug kode, docs basi, atau perubahan yang belum
+disetujui. Perbaiki sisi yang salah, jangan otomatis mengubah docs untuk
+membenarkan perilaku kode. Jika kontrak belum jelas, tanyakan sebelum mengubahnya;
+(2) Bedakan implementasi lokal, publikasi melalui CI dan deployment terverifikasi.
+Jangan menandai live tanpa bukti deployment atau mempertahankan label rencana
+sebagai status terkini bila sudah terbukti live; catatan lama harus berlabel
+histori/snapshot; (3) Checklist sebelum selesai memeriksa dokumentasi yang
+relevan, bukan cuma test.
 
 ## Aturan Changelog (WAJIB — khusus axvara)
 Setiap kali ubah kode/docs di `axvara/`, **WAJIB catat di `axvara/CHANGELOG.md`** (bukan di AGENTS.md global):
@@ -190,43 +205,45 @@ Setiap kali ubah kode/docs di `axvara/`, **WAJIB catat di `axvara/CHANGELOG.md`*
 - Contoh: `- 2026-08-31 — Pasang logo Prism wireframe di Navbar/Footer — public/brand/axvara-mark.svg, src/components/storefront/Navbar.tsx — (verifikasi: dev GET / 200, CSS 200, build pass)`
 - Changelog melengkapi `issue/` — ia adalah indeks ringkas semua perubahan axvara.
 
-## Verifikasi WAJIB (dev-only, tanpa build tiap kali)
-**Jangan wajib `npm run build` setiap perubahan.** Cukup `npm run dev` — build hanya sebelum deploy/major change.
-**Wajib selalu pakai Obscura** untuk verifikasi visual/fungsional. Baca dan ikuti skill `obscura`, lalu gunakan Obscura CLI atau CDP server milik Obscura; Chrome DevTools MCP dan Playwright MCP bukan jalur verifikasi AXVARA.
+## Verifikasi WAJIB (berdasarkan dampak perubahan)
+Pilih pemeriksaan sesuai area yang berubah, bukan alat tertentu. Perubahan kode
+tetap mengikuti Aturan Test di atas. Catat perintah, hasil aktual dan batas bukti;
+pemeriksaan yang tidak relevan boleh `N/A` dengan alasan.
 
-1. Jalankan dev **dari folder yang benar** (wajib):
-   ```bash
-   cd /Users/macbookair/axvara
-   node ./node_modules/next/dist/bin/next dev --port 3000 --hostname 127.0.0.1 > /tmp/axvara-dev.log 2>&1 &
-   ```
-   Jangan dari `/Users/macbookair` (akan `Missing script: dev` → 500).
+| Jenis perubahan | Verifikasi yang diperlukan |
+|---|---|
+| Dokumentasi/instruksi agent saja | Periksa diff, konsistensi aturan, path/perintah yang dirujuk dan `git diff --check`; tidak wajib dev server, browser, Vitest atau build. |
+| UI/CSS/komponen web | Test terkait, route dev beserta aset CSS/JS, inspeksi desktop/mobile dan interaksi yang berubah di browser nyata. Periksa keyboard/fokus, overflow serta loading/error/empty state yang relevan. |
+| Flow checkout/admin atau autentikasi | Test handler/integrasi untuk proof, state, error dan retry yang terpengaruh; uji interaksi browser bila flow web berubah. Gunakan fixture, bukan transaksi produksi. |
+| API/DB/cron/bot/supplier tanpa perubahan web | Test logika/kontrak/integrasi yang terpengaruh; cek runtime workerd bila memakai fitur D1/Workers. Tidak wajib screenshot homepage atau browser. |
+| Konfigurasi aplikasi/toolchain/routing besar atau persiapan rilis | Validasi konfigurasi/type-check dan build yang sesuai target (`npm run build` atau `npm run build:pages`); dev server bukan pengganti bukti kompatibilitas Pages/workerd. |
 
-2. Jika port 3000 macet/CSS 404 (`GET /_next/static/css/app/layout.css 404` / `ENOENT vendor-chunks`):
-   ```bash
-   lsof -ti:3000 | xargs kill -9 2>/dev/null; rm -rf .next; node ./node_modules/next/dist/bin/next dev --port 3000 --hostname 127.0.0.1 > /tmp/axvara-dev.log 2>&1 &
-   ```
+### Browser dan batas bukti
+- Tidak ada kewajiban memakai Obscura. Browser nyata seperti Chromium melalui
+  Playwright MCP, Chrome DevTools MCP atau browser Paseo boleh dipakai. Untuk
+  perubahan visual/interaksi web, utamakan browser nyata yang mewakili pembeli.
+- Obscura opsional untuk smoke test/diagnosis. Jika dipakai, baca skill `obscura`;
+  perbedaan renderer/Web API tidak boleh dianggap otomatis sebagai bug aplikasi
+  atau diatasi dengan mengubah UI khusus Obscura. Konfirmasi perilaku yang
+  terpengaruh di browser nyata sebelum menyatakan verifikasi web lengkap.
+- HTTP 200, judul/H1 dan PNG nonblank hanya smoke test. Jalankan aksi yang berubah,
+  periksa hasil/state serta console/network; screenshot tanpa interaksi bukan
+  bukti flow checkout/admin berhasil. Fixture bukan bukti transaksi produksi.
+- Jika browser/runtime yang dibutuhkan tidak tersedia, laporkan bagian yang belum
+  diverifikasi; jangan mengganti pemeriksaan itu dengan klaim lulus dari alat lain.
+  Jangan membuat order berbayar, mengirim pesan/email atau memutasi produksi untuk QA.
 
-3. Verifikasi ringan via HTTP (wajib sebelum anggap selesai):
-   ```bash
-   curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3000/  # harus 200
-   curl -s http://127.0.0.1:3000/ | grep -o 'href="[^"]*\.css[^"]*"' | head -1
-   curl -s "http://127.0.0.1:3000/_next/static/css/app/layout.css?v=xxxx" -o /dev/null -w "%{http_code}\n" # harus 200
-   tail -20 /tmp/axvara-dev.log  # Ready in ... / Compiled / GET / 200
-   ```
-
-4. Verifikasi visual/fungsional via Obscura (wajib sebelum anggap selesai):
-   ```bash
-   obscura --allow-private-network fetch http://127.0.0.1:3000/ \
-     --eval 'JSON.stringify({title:document.title,heading:document.querySelector("h1")?.textContent?.trim()})' \
-     --screenshot /tmp/axvara-obscura-home.png --timeout 20
-   file /tmp/axvara-obscura-home.png  # harus PNG nonblank
-   ```
-   Ganti URL dengan route yang diubah dan inspeksi hasil screenshot/evaluasi. Untuk interaksi kompleks, jalankan `obscura serve --allow-private-network --port 9222` lalu gunakan CDP Obscura; refresh snapshot setelah navigasi, klik, scroll, atau rerender.
-
-5. Hanya jalankan `npm run build` jika:
-   - Mau deploy ke Pages
-   - Ubah `next.config.mjs`, `tailwind.config.ts`, `tsconfig`, atau routing besar
-   - Verifikasi akhir sebelum merge
+### Dev server hanya bila diperlukan
+Gunakan server existing yang sesuai workspace. Jika perlu server baru, jalankan
+dari `/Users/macbookair/axvara` dan pastikan port tidak dipakai tugas lain:
+```bash
+node ./node_modules/next/dist/bin/next dev --port 3000 --hostname 127.0.0.1
+```
+Periksa route yang berubah, aset CSS/JS dari URL yang benar-benar dikembalikan
+halaman, serta log sesi dev tersebut. `GET / 200` dan CSS `200` diperlukan bila
+perubahan memengaruhi homepage/layout global, bukan untuk semua tugas.
+Jika port macet/CSS 404, identifikasi proses dan penyebab dahulu; jangan otomatis
+`kill -9` seluruh proses port 3000 atau menghapus `.next` milik sesi bersama.
 
 ## Kredensial Cloudflare (WAJIB)
 - File sumber tunggal: `axvara/.cf-credentials` — berisi `CLOUDFLARE_API_KEY` / `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_EMAIL` (account `Sailinnadia1@gmail.com`).
@@ -247,19 +264,19 @@ Setiap kali ubah kode/docs di `axvara/`, **WAJIB catat di `axvara/CHANGELOG.md`*
 - Cabut akses: IAM → Users → `kiro-monitor` → hapus access key (lalu hapus file ini). Key admin permanen `nasikuning` DINONAKTIFKAN 2026-10-04 — jangan dipakai/diaktifkan lagi tanpa izin owner.
 
 ## Sebelum menyelesaikan percakapan (checklist)
-Agent **wajib** pastikan sebelum jawab "selesai":
-- [ ] Test pass: `npx vitest run --run` — seluruh test hijau (jumlah terbaru ada di entri teratas `CHANGELOG.md`), tidak ada test gagal
-- [ ] `CHANGELOG.md` sudah di-update (entri paling atas)
-- [ ] Halaman jalan: `GET / 200` dan CSS `200` dari `http://127.0.0.1:3000` (atau `http://localhost:3000`)
-- [ ] Obscura berhasil memuat route yang diubah dan screenshot/evaluasi visual-fungsional sudah diperiksa
-- [ ] Tidak ada error `Compiled` di `/tmp/axvara-dev.log`
+Agent **wajib** memeriksa butir yang berlaku sebelum jawab "selesai"; butir yang
+tidak relevan ditandai `N/A` dengan alasan, bukan dijalankan sebagai formalitas:
+- [ ] Verifikasi sesuai tabel dampak di atas lulus; perubahan kode memenuhi Aturan Test, dokumentasi saja cukup pemeriksaan dokumentasi
+- [ ] `CHANGELOG.md` sudah di-update bila ada perubahan file; audit baca-saja tidak memerlukan entri
+- [ ] Jika web terdampak: route dan aset relevan termuat, log dev/console tidak memuat error baru terkait perubahan
+- [ ] Jika UI/flow web berubah: desktop/mobile serta interaksi relevan diperiksa di browser nyata dan alat/hasil/batas verifikasi dicatat; Obscura opsional
 - [ ] Dokumentasi: tabel Aturan Dokumentasi di atas sudah dipenuhi (PRD/DESIGN/ARCHITECTURE/README/AGENTS folder terkait ikut di-update sesuai jenis perubahan)
 - [ ] Jika ubah struktur/flow, `docs/ARCHITECTURE.md`/`README.md` ikut di-update
-- [ ] Kredensial CF tidak ter-commit (cek `git check-ignore -v .cf-credentials`)
+- [ ] Kredensial tidak masuk file tracked/staged; periksa daftar file `git ls-files` dan `git diff --cached --name-only` tanpa mencetak nilainya. `git check-ignore -v .cf-credentials` hanya memeriksa aturan ignore, bukan bukti bahwa secret tidak pernah ter-commit.
 - [ ] Jangan pernah ubah `/Users/macbookair/AGENTS.md` global
 
 ## Ekosistem terkait (WAJIB TAHU sebelum ubah integrasi)
-Repo ini tidak berdiri sendiri. Tiga folder lokal lain saling berkaitan:
+Repo ini tidak berdiri sendiri. Rujukan folder lokal terkait:
 
 | Folder lokal | Peran | Keterkaitan dengan repo ini |
 |---|---|---|
@@ -293,14 +310,18 @@ Telegram /stop. Sambutan hanya dari event group add via /api/whatsapp/group-even
 produk. Gateway /send-broadcast//send-welcome namespace key terpisah. Rincian di
 gateway/AGENTS.md, ARCHITECTURE §16.13, issue/broadcasts-welcome-2026-10-24.md.
 
-### Pedia katalog/checkout 2026-10-15
-- Spesifikasi terkini: `docs/pedia/catalog-checkout-2026-10-15.md`; menggantikan snapshot UI/katalog 12 Oktober di bawah. 38 jenis/131 mapping awal/16 platform; migrasi 0065/0066, hanya mirror layak diaktifkan. UI 3 pilihan awal mobile/desktop; drop/refill tetap. Revisi konfigurator 2026-10-16: kartu kebutuhan tanpa pilihan otomatis, daftar layanan satu kolom/pilihan aktif ringkas di semua ukuran, jumlah/link/checklist berdekatan, detail terlipat sesudah input; checkout dua tahap dan kontrak quote/retry tetap.
+### Histori Pedia katalog/checkout 2026-10-15
+- Snapshot `docs/pedia/catalog-checkout-2026-10-15.md` menggantikan UI/katalog 12 Oktober pada saat itu; bukan spesifikasi UI terkini. Untuk perubahan baru, ikuti `docs/pedia/purchase-ux-2026-10-27.md`, kebijakan IndoSMM20Oktober dan resolusi manual24Oktober. Snapshot awal: 38 jenis/131 mapping pada16platform, migrasi0065/0066, hanya mirror layak diaktifkan; konfigurator16Oktober kemudian digantikan.
 - Harga jumlah bebas dari `/api/pedia/prices`; order/job/debit/ledger atomik D1. QR gagal diulang memakai quote sama. Cron Pedia membalik reservasi kredit pra-pensiun sekali ke arsip beku dan mengantrekannya untuk penyelesaian manual. Tidak ada flag dispatch baru; proses lewat cron existing.
 - Quote/snapshot memuat copy publik, supplier_target dan refill_anchor; perubahan mapping hanya untuk order baru. completed_at mencatat terminal pertama. Preview admin memakai copy dan batas tersimpan, tanpa API pesanan. Secret supplier tetap hanya di VPS; tidak ada perubahan kontrak proxy atau deployment VPS untuk rilis ini.
 - Status publikasi/verifikasi akhir ada di CHANGELOG dan `issue/pedia-ready-2026-10-15.md`; pengujian tanpa order supplier berbayar. Deskripsi supplier bukan bukti empiris kualitas/drop.
 
-### Integrasi Pedia Dua Provider (Working-Tree 2026-10-12)
-- Status implementasi **lokal, BELUM deployed** di Pages maupun proxy untuk perubahan ini. Tidak ada flag yang diubah; kredensial/readiness supplier, bukti currency/rate-unit dan kurasi awal data produksi masih pending. Riwayat katalog 2026-10-08 tidak membuktikan diff baru live. Baca `docs/PEDIA-PRD.md`, `docs/PEDIA-DESIGN.md`, `docs/ARCHITECTURE.md` §16.10 dan `issue/planning.md`.
+### Histori integrasi Pedia dua provider (snapshot 2026-10-12)
+Bagian ini mencatat keadaan dan bukti pada snapshot tersebut, bukan status
+operasional/deployment hari ini. Penjualan baru mengikuti IndoSMM20Oktober dan
+resolusi manual24Oktober; pengaman secret, idempotensi, retry ambigu dan snapshot
+order lama di bawah tetap berlaku untuk jalur yang kompatibel.
+- Pada snapshot ini, implementasi masih **lokal, BELUM deployed** di Pages maupun proxy. Tidak ada flag yang diubah; kredensial/readiness supplier, bukti currency/rate-unit dan kurasi awal produksi saat itu masih pending. Riwayat katalog8Oktober bukan bukti diff tersebut live. Rujukan historis: `docs/PEDIA-PRD.md`, `docs/PEDIA-DESIGN.md`, `docs/ARCHITECTURE.md` §16.10 dan `issue/planning.md`.
 - Kontrak proxy: `POST /psmm/:action` (`providersmm`) + `POST /indosmm/:action` (`indosmm`), auth `x-proxy-token` dari Pages `WARUNG_REBAHAN_PROXY_TOKEN` ↔ VPS `WR_PROXY_TOKEN`; allowlist services/add/status/refill/refill_status/cancel/balance. `PROVIDERSMM_API_KEY` dan `INDOSMM_API_KEY` HANYA server-side VPS, tidak ada key supplier di Pages/git/log. Jangan membuka file secret untuk audit docs.
 - IndoSMM services/add dan diff memerlukan `INDOSMM_RATE_PER_1000_VERIFIED=true` di VPS serta balance terbaru `currency === "IDR"`. Flag berarti bukti unit per 1.000 sudah disetujui, bukan jalan pintas menyalakan fitur; tanpa konversi kurs. `/health` hanya konfigurasi key, bukan bukti pricing. Status/balance/refill/cancel recovery tidak memakai gate services/add.
 - Diff SMM tiap 10 menit membawa `source`, `currency`, `services`, `removed_service_ids`; receiver memakai key `(source,service_id)`, max 100 layanan/100 removed, validasi IDR/input sebelum tulis dan non-2xx bila apply parsial. VPS membatasi layanan `chunkMax` 1..100 (default 50) dan removals 100 secara independen; snapshot/antrean maju hanya potongan ber-ack 2xx, >100 removals dilanjutkan pada batch berikutnya (bukan batas pending). Guard katalog kosong/>50% missing tetap berlaku. Legacy ProviderSMM tanpa currency tetap IDR. Snapshot terpisah `state/psmm-diff-state.json`/`state/indosmm-diff-state.json`; prefix marker `pedia_diff`/`pedia_indosmm_diff`, saldo/alert/check per provider terpisah.
@@ -308,12 +329,12 @@ gateway/AGENTS.md, ARCHITECTURE §16.13, issue/broadcasts-welcome-2026-10-24.md.
 - Quote baru terenkripsi JWE dir/A256GCM (30 menit, SHA-256 ADMIN_JWT_SECRET) mengikat `refill_days/min_profit_rp`; HS256 legacy belum kedaluwarsa tetap terbaca. Provider/service/rate dan ketentuan quote tersimpan pada order; legacy tanpa field fallback tier. Remapping hanya order baru, bukan polling/refill order lama. Refill requested/submitted/needs_check diblokir berapa pun usianya, ID/key ambigu dipertahankan. Guard margin menyimpan disable sebelum harga baru agar replay tetap terlindungi. ID admin desimal positif kanonik; checklist ID unik setelah trim dan bantuan opsional bertipe string. Recovery mark_submitted memeriksa provider asal/status/conflict; retry dan cancel_manual hanya sebelum pernah submit/ada ID; penerbitan kredit sudah dihentikan. Jangan klaim exactly-once end-to-end atau order/credit atomik penuh dari dedupe proxy saja.
 - Menu/promosi URL terpusat `src/lib/site.ts`, komponen `shared/{ServicesMenu,CrossServicePromo}`, satu Footer di kedua layout. Pedia compact/featured/null selection/satu CTA dan nominal-change consent adalah implementasi lokal, bukan bukti kurasi live atau flags aktif. Tagline tampil kartu/detail; `description_md` publik opsional tampil detail/order sebagai teks literal escaped dengan newline dipertahankan, bukan Markdown/HTML, tanpa link-helper teknis tambahan. Preview storefront tersimpan terpenuhi: `ProductCard` aktual + `OrderClient` embedded dalam mode preview aman, termasuk draf privat dan tingkat nonaktif dengan paket layak. Navigasi/pemesanan dinonaktifkan, interaksi preview tidak memanggil API; CTA mobile inline, bukan fixed. Input belum disimpan tidak ikut preview; unsaved live preview di luar scope. Save/reprice tidak atomik.
 - Hasil final aktual MAIN setelah preview: `npx vitest run --run` 2288 test pada 184 file pass, `tsc` pass, `build:pages` selesai exit 0 (log temp `pedia-final-build.log`); lint sebelumnya pass dengan warning existing. Obscura route nyata home/Pedia/admin dan CSS 200; screenshot fixture hydrated desktop/mobile diperiksa, termasuk preview tersimpan dengan komponen aktual. Batas renderer radio/SVG/fixed tetap dicatat; ini bukan bukti produksi penuh atau seluruh gate live lulus. Perubahan tetap lokal, BELUM deployed, secret/flag tidak diubah atau diverifikasi, tanpa order supplier nyata. Bukti supplier live currency/rate-unit dan kurasi awal produksi/approval owner tetap pending.
-- Rollout terpisah: receiver Pages kompatibel sebelum diff proxy IndoSMM; backup state + handoff secret/unit-verification dahulu. Jangan deploy, commit/push atau membuka gate saat tugas hanya sinkronisasi docs; instruksi eksplisit scope tugas mengalahkan workflow publikasi default. Checklist planning tidak mencentang bukti supplier/live/QA tanpa hasil aktual.
+- Urutan rollout pada snapshot ini: receiver Pages kompatibel sebelum diff proxy IndoSMM; backup state + handoff secret/unit-verification dahulu. Larangan commit/push pada tugas sinkronisasi snapshot tersebut bukan larangan publikasi dokumentasi secara umum; ikuti aturan CI/CD dan scope tugas saat ini. Jangan membuka gate atau mencentang bukti supplier/live/QA tanpa hasil aktual.
 
-### Pedia 19 Oktober 2026
-- Spec terkini `docs/pedia/catalog-ux-2026-10-19.md` menggantikan konfigurator 16 Oktober: jumlah sebelum perbandingan/pilihan; ikon semantik; ring loader mengikuti ISTA AI dengan logo tetap dan reduced motion.
+### Histori Pedia 19 Oktober 2026
+- Snapshot `docs/pedia/catalog-ux-2026-10-19.md` menggantikan konfigurator16Oktober pada saat itu; UI terkini merujuk `docs/pedia/purchase-ux-2026-10-27.md`. Jumlah sebelum perbandingan/pilihan, ikon semantik dan ring loader adalah catatan desain snapshot19Oktober.
 - Tambahan manifest `curation-20261019.json` + migrasi 0070: 17 kebutuhan/23 mapping, kapasitas gabungan 55/154 pada 16 platform; aktivasi mengikuti mirror/batas/paket/refill API. Jangan ubah migrasi 0066, order/snapshot lama, atau draf owner yang konflik slug.
-- Supplier SMM tetap ProviderSMM/IndoSMM, tanpa Sekalipay. Target `short` YouTube mempertahankan /shorts/, `artist`/`playlist` Spotify didukung. Nama refill tanpa API bukan janji refill AXVARA.
+- Pada snapshot19Oktober supplier SMM mencakup ProviderSMM/IndoSMM, tanpa Sekalipay; penjualan baru sejak20Oktober hanya IndoSMM. Target `short` YouTube mempertahankan /shorts/, `artist`/`playlist` Spotify didukung. Nama refill tanpa API bukan janji refill AXVARA.
 - Tab Kurasi admin: shortlist authenticated baca-saja, maksimal 200 kandidat awal/20 hasil; estimasi modal jumlah sama bukan bukti mutu. Simpan draf nonaktif/refill0/recommended0; owner memeriksa deskripsi/target/batas/kelipatan sebelum aktivasi. Tidak ada auto-publish/order supplier.
 - `docs/pedia/quality-sampling-2026-10-19.md`: tarif akun IDR/saldo0 dibaca tanpa order. Usulan topup awal Rp50.000 ProviderSMM + Rp100.000 IndoSMM untuk satu putaran 30 sampel estimasi Rp107.864 belum fee; **belum dijalankan**, perlu target owner dan keputusan eksekusi, jangan mengklaim kualitas/drop sudah teruji.
 
@@ -329,6 +350,6 @@ gateway/AGENTS.md, ARCHITECTURE §16.13, issue/broadcasts-welcome-2026-10-24.md.
 - Perubahan diimplementasi
 - `CHANGELOG.md` terisi
 - Dokumentasi terkait terisi (PRD/DESIGN/ARCHITECTURE/README sesuai tabel Aturan Dokumentasi)
-- Verifikasi dev (GET / 200 + CSS 200) jelas
-- Untuk tugas perubahan kode: commit dan `git push origin main` berhasil; setelah itu berhenti tanpa memantau CI/CD
+- Verifikasi sesuai dampak perubahan jelas; pemeriksaan yang tidak relevan ditandai `N/A` dan batas bukti disebutkan
+- Untuk tugas perubahan kode/dokumentasi: commit dan `git push origin main` otomatis sesuai aturan CI/CD; setelah push berhasil berhenti tanpa memantau deployment
 - Risiko/tindak lanjut diringkas

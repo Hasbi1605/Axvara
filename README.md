@@ -1029,10 +1029,12 @@ node ./node_modules/next/dist/bin/next dev --port 3000 --hostname 127.0.0.1 > /t
 # buka http://localhost:3000 — cek: curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3000/
 ```
 
-Hanya `npm run build` sebelum deploy/major config (`next.config.mjs`, `tailwind.config.ts`). Lihat `AGENTS.md` → Verifikasi WAJIB. Jika CSS 404: `lsof -ti:3000 | xargs kill -9; rm -rf .next;` lalu start dev lagi.
+Verifikasi mengikuti dampak perubahan di [AGENTS.md](AGENTS.md#verifikasi-wajib-berdasarkan-dampak-perubahan): dokumentasi saja cukup pemeriksaan diff/konsistensi, backend tanpa perubahan web memakai test terkait tanpa screenshot homepage, UI/flow web wajib inspeksi desktop/mobile dan interaksi relevan di browser nyata. Playwright/Chrome DevTools/Paseo boleh dipakai; Obscura opsional untuk smoke test/diagnosis, bukan bukti tunggal kelulusan web. Tidak wajib dev server atau build untuk setiap tugas; build sesuai target diperlukan untuk persiapan rilis atau perubahan konfigurasi/toolchain/routing besar. Jika port macet/CSS 404, identifikasi proses dan penyebab dahulu; jangan otomatis mematikan proses port 3000 atau menghapus `.next` yang dipakai sesi lain.
 
 ## 📝 Changelog & Aturan Project
 
+- Panduan agent: keputusan terbaru per topik menggantikan snapshot lama pada bagian terkait. Label histori, saldo/jumlah test lama dan status lokal pada snapshot bukan bukti kondisi produksi sekarang. Saat kode/docs berbeda, telusuri requirement dan keputusan owner sebelum menentukan sisi yang salah.
+- Iterasi kode memakai test terkait; seluruh `npx vitest run --run` tetap wajib lulus pada tree akhir sebelum commit/push perubahan kode. Dokumentasi saja cukup pemeriksaan dokumentasi sesuai tabel verifikasi. Publikasi kode/dokumentasi tetap otomatis commit + `git push origin main`, kecuali scope eksplisit owner melarang; stage hanya perubahan tugas sendiri dan berhenti setelah push diterima, tanpa memantau CI/CD.
 - **Changelog:** `axvara/CHANGELOG.md` — setiap perubahan wajib catat entri paling atas (format: `YYYY-MM-DD — ringkas — file/area — (verifikasi: ...)`).
 - **Remediasi review R1–R12:** `docs/REVIEW-REMEDIATION-2026-09-08.md` — CATATAN HISTORIS per 8 Sep 2026 pagi (menyebut 418 test/logout stateless/semua selesai — SUDAH TIDAK BERLAKU; lihat koreksi di bawah).
 - **Eksekusi review round 3:** `docs/REVIEW-ROUND3-EXECUTION-2026-09-08.md` — CATATAN HISTORIS (klaim "semua selesai"/"per-item"/"qty" dikoreksi round 4; konteks dipertahankan).
