@@ -4,7 +4,7 @@
 // berubah, fulfillment dibuat per item (satu job per varian via variant_id).
 
 import { execRun, queryAll, queryFirst, isD1Mode } from "@/lib/db";
-import { getActiveVariant } from "@/lib/catalog";
+import { effectiveVariantStock, formatVariantLabel, getActiveVariant, type VariantSummary } from "@/lib/catalog";
 import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 import { TELEGRAM_MAX_QTY } from "./keyboards";
 
@@ -19,20 +19,23 @@ export type CartLine = {
   fulfillmentMode: string;
   /** Minimum pembelian per baris (migrasi 0034, default 1). */
   minQty: number;
+  cartId?: number;
+  cartUpdatedAt?: string;
 };
 
 export type CartSummary = {
   lines: CartLine[];
   subtotal: number;
   totalQty: number;
+  issues: string[];
 };
 
 const MAX_LINES = 20;
 
-function clampLineQty(raw: number): number {
-  if (!Number.isFinite(raw)) return 1;
-  return Math.max(1, Math.min(TELEGRAM_MAX_QTY, Math.floor(raw)));
-}
+// Advance even for same-millisecond edits, so qty A -> B -> A cannot pass cleanup CAS.
+const CART_UPDATED_AT = `strftime('%Y-%m-%d %H:%M:%f',
+  CASE WHEN julianday(updated_at)>=julianday('now')
+    THEN julianday(updated_at)+0.001/86400 ELSE julianday('now') END)`;
 
 /** Tambah ke keranjang (upsert per varian). Unique fulfillment dibatasi total 10 unit per pesanan. */
 export async function addToCart(
@@ -44,14 +47,15 @@ export async function addToCart(
   // min_qty varian agar keranjang menolak qty di bawah minimum SEBELUM
   // invoice; default 1 = perilaku lama.
   minQtyRaw = 1,
-): Promise<{ ok: boolean; reason?: "invalid_variant" | "out_of_stock" | "cart_full" | "unique_limit" | "below_minimum" }> {
+): Promise<{ ok: boolean; reason?: "invalid_variant" | "invalid_quantity" | "out_of_stock" | "cart_full" | "unique_limit" | "below_minimum" | "cart_changed" }> {
   if (!isD1Mode()) return { ok: false, reason: "invalid_variant" };
+  if (!Number.isSafeInteger(rawQty) || rawQty < 1 || rawQty > TELEGRAM_MAX_QTY) return { ok: false, reason: "invalid_quantity" };
   const variant = await getActiveVariant(variantId);
   if (!variant || variant.product_id !== productId) return { ok: false, reason: "invalid_variant" };
-  if (variant.stock === 0) return { ok: false, reason: "out_of_stock" };
+  const stock = effectiveVariantStock(variant);
+  if (stock === 0) return { ok: false, reason: "out_of_stock" };
 
-  const minQty = Math.max(1, Math.floor(Number(minQtyRaw) || variant.min_qty || 1));
-  const cappedQty = clampLineQty(rawQty);
+  const minQty = Math.max(1, Math.floor(Number(minQtyRaw) || 1), Number(variant.min_qty) || 1);
   const existing = await queryFirst(
     `SELECT qty FROM telegram_carts WHERE user_id=? AND variant_id=?`,
     userId, variantId,
@@ -65,45 +69,74 @@ export async function addToCart(
     // Minimum pembelian: baris baru di bawah min langsung ditolak dengan
     // pesan jelas (bukan diam-diam dibulatkan naik — pembeli harus sadar
     // aturan "min. N", mis. GSuite 50).
-    if (minQty > 1 && cappedQty < minQty) {
+    if (minQty > 1 && rawQty < minQty) {
       return { ok: false, reason: "below_minimum" };
     }
   }
-  const nextQty = clampLineQty(Number(existing?.qty || 0) + cappedQty);
-  if (variant.stock !== -1 && nextQty > variant.stock) return { ok: false, reason: "out_of_stock" };
+  const nextQty = Number(existing?.qty || 0) + rawQty;
+  if (!Number.isSafeInteger(nextQty) || nextQty > TELEGRAM_MAX_QTY) return { ok: false, reason: "invalid_quantity" };
+  if (stock !== -1 && nextQty > stock) return { ok: false, reason: "out_of_stock" };
   if (variant.fulfillment_mode === "unique") {
     const other = await queryFirst(`SELECT COALESCE(SUM(c.qty),0) AS n FROM telegram_carts c JOIN product_variants pv ON pv.id=c.variant_id WHERE c.user_id=? AND c.variant_id!=? AND pv.fulfillment_mode='unique'`, userId, variantId);
     if (Number(other?.n || 0) + nextQty > MAX_UNIQUE_UNITS_PER_ORDER) return { ok: false, reason: "unique_limit" };
   }
-  await execRun(
-    `INSERT INTO telegram_carts (user_id, product_id, variant_id, qty, updated_at)
-     VALUES (?, ?, ?, ?, datetime('now'))
-     ON CONFLICT(user_id, variant_id) DO UPDATE SET qty=?, updated_at=datetime('now')`,
-    userId, productId, variantId, nextQty, nextQty,
+  const result = await execRun(
+    `WITH candidate AS (
+       SELECT pv.id, pv.product_id, pv.stock, pv.fulfillment_mode, pv.min_qty,
+               COALESCE(c.qty,0)+? AS next_qty, c.id AS cart_id,
+               (SELECT COUNT(*) FROM fulfillment_inventory fi
+                WHERE fi.product_id=pv.product_id AND fi.variant_id=pv.id AND fi.status='available') AS inventory_available
+        FROM product_variants pv JOIN products p ON p.id=pv.product_id AND p.is_active=1 AND p.telegram_enabled=1
+       LEFT JOIN telegram_carts c ON c.user_id=? AND c.variant_id=pv.id
+       WHERE pv.id=? AND pv.product_id=? AND pv.is_active=1
+     )
+     INSERT INTO telegram_carts (user_id, product_id, variant_id, qty, updated_at)
+      SELECT ?, product_id, id, next_qty, strftime('%Y-%m-%d %H:%M:%f','now') FROM candidate
+      WHERE next_qty=CAST(next_qty AS INTEGER) AND next_qty>=MAX(1,min_qty,?) AND next_qty<=? AND (stock=-1 OR next_qty<=stock)
+        AND (fulfillment_mode!='unique' OR next_qty<=inventory_available)
+       AND (cart_id IS NOT NULL OR (SELECT COUNT(*) FROM telegram_carts WHERE user_id=?)<?)
+       AND (fulfillment_mode!='unique' OR next_qty+(
+         SELECT COALESCE(SUM(c.qty),0) FROM telegram_carts c
+         JOIN product_variants pv ON pv.id=c.variant_id
+         WHERE c.user_id=? AND c.variant_id!=candidate.id AND pv.fulfillment_mode='unique'
+       )<=?)
+      ON CONFLICT(user_id, variant_id) DO UPDATE SET product_id=excluded.product_id, qty=excluded.qty, updated_at=${CART_UPDATED_AT}`,
+     rawQty, userId, variantId, productId,
+     userId, minQty, TELEGRAM_MAX_QTY, userId, MAX_LINES, userId, MAX_UNIQUE_UNITS_PER_ORDER,
   );
-  return { ok: true };
+  return Number(result.changes || 0) > 0 ? { ok: true } : { ok: false, reason: "cart_changed" };
 }
 
-/** Ubah qty satu baris (qty<=0 = hapus baris). */
-export async function setCartLineQty(userId: string, variantId: number, rawQty: number): Promise<boolean> {
+/** Absolute qty<=0 removes a line; relative changes use the durable qty in SQL. */
+export async function setCartLineQty(userId: string, variantId: number, rawQty: number, relative = false): Promise<boolean> {
   if (!isD1Mode()) return false;
-  if (rawQty <= 0) {
+  if (!Number.isSafeInteger(rawQty) || (relative && rawQty !== -1 && rawQty !== 1)) return false;
+  if (!relative && rawQty <= 0) {
     await execRun(`DELETE FROM telegram_carts WHERE user_id=? AND variant_id=?`, userId, variantId);
     return true;
   }
-  const variant = await getActiveVariant(variantId);
-  if (!variant) {
-    await execRun(`DELETE FROM telegram_carts WHERE user_id=? AND variant_id=?`, userId, variantId);
-    return false;
-  }
-  const qty = clampLineQty(rawQty);
-  if (variant.fulfillment_mode === "unique") {
-    const other = await queryFirst(`SELECT COALESCE(SUM(c.qty),0) AS n FROM telegram_carts c JOIN product_variants pv ON pv.id=c.variant_id WHERE c.user_id=? AND c.variant_id!=? AND pv.fulfillment_mode='unique'`, userId, variantId);
-    if (Number(other?.n || 0) + qty > MAX_UNIQUE_UNITS_PER_ORDER || (variant.stock !== -1 && qty > variant.stock)) return false;
-  }
   const result = await execRun(
-    `UPDATE telegram_carts SET qty=?, updated_at=datetime('now') WHERE user_id=? AND variant_id=?`,
-    qty, userId, variantId,
+    `WITH candidate AS (
+       SELECT id, product_id, ${relative ? "qty+?" : "?"} AS next_qty
+       FROM telegram_carts WHERE user_id=? AND variant_id=?
+     )
+     UPDATE telegram_carts SET qty=(SELECT next_qty FROM candidate), updated_at=${CART_UPDATED_AT}
+     WHERE id IN (
+       SELECT c.id FROM candidate c JOIN product_variants pv ON pv.id=? AND pv.product_id=c.product_id AND pv.is_active=1
+       JOIN products p ON p.id=c.product_id AND p.is_active=1 AND p.telegram_enabled=1
+       WHERE c.next_qty=CAST(c.next_qty AS INTEGER) AND c.next_qty>=MAX(1,pv.min_qty) AND c.next_qty<=? AND (pv.stock=-1 OR c.next_qty<=pv.stock)
+         AND (pv.fulfillment_mode!='unique' OR c.next_qty<=(
+           SELECT COUNT(*) FROM fulfillment_inventory fi
+           WHERE fi.product_id=pv.product_id AND fi.variant_id=pv.id AND fi.status='available'
+         ))
+         AND (pv.fulfillment_mode!='unique' OR c.next_qty+(
+           SELECT COALESCE(SUM(other.qty),0) FROM telegram_carts other
+           JOIN product_variants ov ON ov.id=other.variant_id
+           WHERE other.user_id=? AND other.variant_id!=pv.id AND ov.fulfillment_mode='unique'
+         )<=?)
+     )`,
+     rawQty, userId, variantId,
+     variantId, TELEGRAM_MAX_QTY, userId, MAX_UNIQUE_UNITS_PER_ORDER,
   );
   return Number(result.changes || 0) > 0;
 }
@@ -113,8 +146,18 @@ export async function removeFromCart(userId: string, variantId: number): Promise
   await execRun(`DELETE FROM telegram_carts WHERE user_id=? AND variant_id=?`, userId, variantId).catch(() => {});
 }
 
-export async function clearCart(userId: string): Promise<void> {
+export async function clearCart(userId: string, purchased?: CartLine[]): Promise<void> {
   if (!isD1Mode()) return;
+  if (purchased) {
+    const snapshot = purchased.filter(line => line.cartId != null && line.cartUpdatedAt != null);
+    if (!snapshot.length) return;
+    await execRun(
+      `DELETE FROM telegram_carts WHERE user_id=? AND (${snapshot.map(() =>
+        "(id=? AND qty=? AND updated_at=?)").join(" OR ")})`,
+      userId, ...snapshot.flatMap(line => [line.cartId!, line.qty, line.cartUpdatedAt!]),
+    );
+    return;
+  }
   await execRun(`DELETE FROM telegram_carts WHERE user_id=?`, userId).catch(() => {});
 }
 
@@ -129,54 +172,89 @@ export async function clearCart(userId: string): Promise<void> {
  */
 export async function getCartSummary(userId: string): Promise<CartSummary> {
   const lines: CartLine[] = [];
-  if (!isD1Mode()) return { lines, subtotal: 0, totalQty: 0 };
+  const issues: string[] = [];
+  if (!isD1Mode()) return { lines, subtotal: 0, totalQty: 0, issues };
   const rows = await queryAll(
-    `SELECT c.product_id, c.variant_id, c.qty, p.name as product_name,
+    `SELECT c.id, c.updated_at, c.product_id, c.variant_id, c.qty, p.name as product_name,
+            p.is_active AS product_active, p.telegram_enabled,
             pv.product_id AS v_product_id, pv.label AS v_label, pv.price AS v_price,
             pv.stock AS v_stock, pv.fulfillment_mode AS v_mode, pv.is_active AS v_active,
-            pv.min_qty AS v_min_qty
+            pv.min_qty AS v_min_qty, pv.wr_variant_id, pv.duration_label, pv.duration_value, pv.duration_unit,
+            (SELECT COUNT(*) FROM fulfillment_inventory fi
+             WHERE fi.product_id=pv.product_id AND fi.variant_id=pv.id AND fi.status='available') AS inventory_available
      FROM telegram_carts c
-     JOIN products p ON p.id=c.product_id AND p.is_active=1
+     LEFT JOIN products p ON p.id=c.product_id
      LEFT JOIN product_variants pv ON pv.id=c.variant_id AND pv.is_active=1
      WHERE c.user_id=?
-     ORDER BY c.updated_at ASC
+     ORDER BY c.updated_at ASC, c.id ASC
      LIMIT ?`,
-    userId, MAX_LINES,
+    userId, MAX_LINES + 1,
   );
-  const staleVariantIds: number[] = [];
+  if (rows.length > MAX_LINES) issues.push(`Keranjang berisi lebih dari ${MAX_LINES} varian. Hapus varian sebelum melanjutkan.`);
+  const staleRows: typeof rows = [];
   for (const row of rows) {
     const variantId = Number(row.variant_id);
     const variantActive = Number(row.v_active ?? 0) === 1;
-    const variantStock = row.v_stock == null ? null : Number(row.v_stock);
-    if (!variantActive || variantStock == null || Number(row.v_product_id) !== Number(row.product_id) || variantStock === 0) {
-      staleVariantIds.push(variantId);
+    const fulfillmentMode = String(row.v_mode || "manual");
+    const variantStock = row.v_stock == null ? null : effectiveVariantStock({
+      stock: Number(row.v_stock), fulfillment_mode: fulfillmentMode,
+      inventory_available: Number(row.inventory_available),
+    });
+    const productName = String(row.product_name || "Produk");
+    const variantLabel = formatVariantLabel({
+      label: String(row.v_label || ""), wr_variant_id: row.wr_variant_id,
+      duration_label: row.duration_label == null ? null : String(row.duration_label),
+      duration_value: row.duration_value == null ? null : Number(row.duration_value),
+      duration_unit: row.duration_unit as VariantSummary["duration_unit"],
+    });
+    const label = `${productName} / ${variantLabel}`;
+    if (!variantActive || Number(row.product_active) !== 1 || Number(row.telegram_enabled) !== 1
+      || variantStock == null || Number(row.v_product_id) !== Number(row.product_id) || variantStock === 0) {
+      staleRows.push(row);
+      issues.push(`${label} tidak tersedia. Periksa keranjang sebelum melanjutkan.`);
       continue;
     }
-    const fulfillmentMode = String(row.v_mode || "manual");
     const minQty = Math.max(1, Number(row.v_min_qty ?? 1) || 1);
-    let qty = clampLineQty(Number(row.qty || 1));
-    if (fulfillmentMode === "unique") qty = Math.min(qty, MAX_UNIQUE_UNITS_PER_ORDER);
-    else if (variantStock !== -1) qty = Math.min(qty, Math.max(1, variantStock));
+    const qty = Number(row.qty);
+    if (!Number.isSafeInteger(qty) || qty < 1 || qty > TELEGRAM_MAX_QTY) {
+      issues.push(`${label}: jumlah tidak valid. Pilih jumlah bulat 1 sampai ${TELEGRAM_MAX_QTY}.`);
+    }
+    if (qty < minQty) issues.push(`${label} minimal ${minQty}, jumlah saat ini ${qty}. Ubah jumlah di keranjang.`);
+    if (variantStock !== -1 && qty > variantStock) issues.push(`${label}: stok tersedia ${variantStock}, jumlah saat ini ${qty}. Kurangi jumlah di keranjang.`);
     lines.push({
       productId: Number(row.product_id),
       variantId,
       qty,
-      productName: String(row.product_name || "Produk"),
-      variantLabel: String(row.v_label || ""),
+      productName,
+      variantLabel,
       price: Number(row.v_price),
       stock: variantStock,
       fulfillmentMode,
       minQty,
+      cartId: Number(row.id),
+      cartUpdatedAt: String(row.updated_at),
     });
   }
   // Hapus baris basi dalam 1 query (bukan N DELETE per baris).
-  if (staleVariantIds.length > 0) {
+  if (staleRows.length > 0) {
     await execRun(
-      `DELETE FROM telegram_carts WHERE user_id=? AND variant_id IN (${staleVariantIds.map(() => "?").join(",")})`,
-      userId, ...staleVariantIds,
+      `DELETE FROM telegram_carts WHERE user_id=? AND (${staleRows.map(() => "(id=? AND qty=? AND updated_at=?)").join(" OR ")})
+       AND NOT EXISTS (
+        SELECT 1 FROM product_variants pv JOIN products p ON p.id=pv.product_id AND p.is_active=1 AND p.telegram_enabled=1
+         WHERE pv.id=telegram_carts.variant_id AND pv.product_id=telegram_carts.product_id
+          AND pv.is_active=1 AND pv.stock!=0
+          AND (pv.fulfillment_mode!='unique' OR EXISTS (
+            SELECT 1 FROM fulfillment_inventory fi
+            WHERE fi.product_id=pv.product_id AND fi.variant_id=pv.id AND fi.status='available'
+          ))
+       )`,
+      userId, ...staleRows.flatMap(row => [row.id, row.qty, row.updated_at]),
     ).catch(() => {});
+  }
+  if (lines.filter(line => line.fulfillmentMode === "unique").reduce((sum, line) => sum + line.qty, 0) > MAX_UNIQUE_UNITS_PER_ORDER) {
+    issues.push(`Maksimal ${MAX_UNIQUE_UNITS_PER_ORDER} akun stok unik per pesanan. Kurangi jumlah di keranjang.`);
   }
   const subtotal = lines.reduce((sum, line) => sum + line.price * line.qty, 0);
   const totalQty = lines.reduce((sum, line) => sum + line.qty, 0);
-  return { lines, subtotal, totalQty };
+  return { lines, subtotal, totalQty, issues };
 }

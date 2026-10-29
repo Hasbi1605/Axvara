@@ -550,28 +550,28 @@ Katalog terkurasi berisi 38 jenis/131 mapping pada 16 platform, dengan 3 pilihan
 - `/start` TIDAK mengirim pesan teks tambahan apa pun setelah foto
   (reply keyboard persistent sudah terinstal sejak /start pertama).
 
-### 5.3e Katalog Produk Telegram (2026-09-27, live)
-- Alur presentasi: daftar produk ringkas → detail satu produk → **Pilih Varian**
-  → jumlah → QRIS/keranjang. Detail produk hanya menampilkan nama, badge,
-  harga/diskon, penjualan, dan stok; daftar varian panjang tidak diulang di
-  caption foto.
-- Inline keyboard varian adalah tempat keputusan: satu tombol memuat nama,
-  durasi, garansi, dan harga. Varian tersedia selalu di atas; varian habis
-  diletakkan terakhir, berlabel `❌ … (Habis)`, dan memakai callback `noop`.
-- Copy stok netral `Tersedia N`; urgensi `⚡ Tersisa N` hanya untuk stok 1–3.
-  Jangan menambahkan `segera order` generik. Emoji dibatasi pada status utama,
-  tanpa garis/ASCII terminal atau code block yang memunculkan tombol Copy.
-- Detail produk multi-varian menutup dengan jumlah pilihan dan arahan memilih
-  varian. Garansi lengkap tidak digandakan di caption karena sudah terlihat
-  pada tombol varian dan tetap mempunyai halaman `/garansi` di flow transaksi.
-- Layar Jumlah memakai `Jumlah: N`, stepper −/+, dan tombol **Masukkan Jumlah**
-  yang mengirim ForceReply dengan rentang live (`min_qty`–min(stok,100)); input
-  di luar rentang ditolak eksplisit, tidak di-clamp diam-diam. Produk unik
-  maksimal satu tidak menampilkan tombol input manual.
-- Varian wajib email menampilkan CTA **Lanjut Isi Email**, bukan Bayar QRIS yang
-  mengejutkan dengan form tambahan. Email dikumpulkan melalui ForceReply, lalu
-  ditampilkan masked pada Konfirmasi Email dengan aksi Bayar QRIS, Ubah Email,
-  dan Ubah Jumlah. Invoice belum dibuat sebelum pembeli menekan Bayar QRIS.
+### 5.3e Katalog dan pesan Telegram (revisi 29 Oktober 2026)
+Implementasi lokal untuk publikasi CI, menggantikan susunan 27 September.
+- Katalog → produk sekaligus pilihan varian → jumlah/email → QRIS → status.
+  Tombol varian memakai label kanonis dan harga, tanpa menempel durasi/garansi
+  metadata berulang. Pilihan habis tetap terlihat, nonaktif dan di akhir.
+- Ringkasan jumlah memuat harga satuan/subtotal, email masked, kelas pengiriman
+  serta ketentuan relevan; ketentuan lengkap memiliki pagination per klik.
+  Stepper dan ForceReply mengikuti minimum, stok efektif, maksimum100/baris
+  serta batas10 unit unik. Tidak ada progres loading palsu; gunakan typing native.
+- Email wajib melalui input atau konfirmasi email tersimpan; Ubah Email/Jumlah
+  tersedia sebelum invoice. Ringkasan berubah meminta persetujuan baru, bukan
+  menerbitkan invoice dengan nilai berbeda secara diam-diam.
+- Copy menyebut barang, keadaan, dan tindakan. Tidak memakai slogan/breadcrumb
+  Langkah X/4 atau emoji dekoratif berulang. Bayar QRIS, Cek Pembayaran,
+  Detail Pesanan, Ketentuan dan Bantuan menggunakan nama tindakan singkat.
+- Pembatalan meminta konfirmasi. Status seluruh item dan tombol ambil ulang
+  membedakan belum siap, gagal, serta pengiriman parsial. Kredensial tetap
+  monospace, HTML/Unicode utuh, maksimal4096karakter per pesan, diikuti S&K,
+  aktivasi dan kebijakan klaim; revisi ini menggantikan judul beremoji pada
+  snapshot pesan produk17Oktober, bukan menghapus isi ketentuannya.
+- Tidak ada perubahan UI web atau aset. Pemeriksaan memakai pesan/callback
+  aktual melalui fixture, bukan screenshot homepage atau pesan produksi.
 
 ### 5.3f Daily Promo Telegram (2026-09-27 live, revamp 2026-09-29, format final 2026-10-03)
 - Grup admin menerima dua slot bahan promosi: 09.00 WIB = 12 produk teratas katalog, 17.00 WIB = 12 berikutnya, tanpa tumpang tindih (hierarki `sort_order` admin = hierarki toko; histori 2 hari hanya fallback bila katalog ready < 24). Setiap slot berupa dua bubble: pesan utama (bold HTML Telegram) + versi WA siap copy-paste (ISI SAMA PERSIS, bold pakai `*` literal, teks polos tanpa parse_mode — 2026-10-03, permintaan owner: bubble ringkas lama "jelek", ganti versi WA agar tinggal copy dari Telegram lalu paste ke WA tanpa edit).

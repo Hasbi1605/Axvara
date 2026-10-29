@@ -9,7 +9,7 @@ import { notifyPaymentMaintenance } from "@/lib/telegram/payment-maintenance";
 // Pemindahan murni — SQL, urutan statement, teks, dan fence IDENTIK.
 
 import {
-  queryFirst, execRun, isD1Mode, transitionPendingOrder, StockReservationError,
+  queryFirst, getD1, isD1Mode, transitionPendingOrder, StockReservationError,
 } from "@/lib/db";
 import { sendMessage, sendPhoto } from "@/lib/telegram/api";
 import { qrisInvoiceKeyboard } from "@/lib/telegram/keyboards";
@@ -17,7 +17,6 @@ import { outOfStockMessage, errorMessage, invoiceMessage } from "@/lib/telegram/
 import { isCriticalSendResult } from "@/lib/telegram/webhook-errors";
 import { generateOrderCode } from "@/lib/security";
 import { createActiveQrisInvoice } from "@/lib/payments/dana-qris";
-import { releaseInventoryForOrder } from "@/lib/fulfillment/inventory";
 import { createFulfillmentJob } from "@/lib/fulfillment/deliver";
 // Tanpa notif "Order Baru" ke admin (keputusan owner 2026-10-10, paritas Web
 // 2026-09-25): hanya "Lunas — Telegram" yang masuk grup.
@@ -25,6 +24,7 @@ import { markInvoicePending, markInvoiceSent } from "@/lib/telegram/invoice-retr
 import { createChannelOrderAtomic } from "@/lib/commerce";
 import { clearCart, type CartLine } from "@/lib/telegram/cart";
 import { cartLineLabel } from "./shared";
+import { readCheckoutEmail } from "@/lib/telegram/checkout-email";
 
 /**
  * Checkout gabungan: SATU order + SATU invoice QRIS untuk N baris keranjang.
@@ -37,6 +37,7 @@ export async function createAndSendCartInvoice(
   chatId: number,
   lines: CartLine[],
   from: { id: number; first_name: string; username?: string },
+  emailSnapshot?: string | null,
 ) {
   if (await notifyPaymentMaintenance(chatId)) return;
   const subtotal = lines.reduce((sum, line) => sum + line.price * line.qty, 0);
@@ -63,9 +64,8 @@ export async function createAndSendCartInvoice(
       fulfillment_mode: line.fulfillmentMode,
     })),
   });
-  const decremented: { variantId: number; qty: number }[] = [];
-  const reservedInventory: string[] = [];
   let orderInserted = false;
+  let invoiceCreated = false;
 
   try {
     // Validasi shared secret per baris (fail-closed seperti single-item).
@@ -90,15 +90,11 @@ export async function createAndSendCartInvoice(
     // manual per baris (loop `decremented` mengembalikan stok satu per satu):
     // benar untuk error yang dilempar, tetapi bila isolate dihentikan di
     // tengah loop, sebagian stok terpotong permanen tanpa order.
-    const uniqueLineCount = lines.filter((line) => line.fulfillmentMode === "unique").length;
-    // Email tersimpan (alur email_for:) — keranjang berisi Invite/Link WR
-    // dicek di handleCartCheckout SEBELUM sampai sini; email diteruskan agar
-    // order lunas bisa auto-order WR tanpa macet 422.
-    const cartBuyerEmailRow = await queryFirst(
-      `SELECT buyer_email FROM telegram_users WHERE user_id=?`,
-      String(from.id),
-    ).catch(() => null) as { buyer_email?: unknown } | null;
-    const cartBuyerEmail = String(cartBuyerEmailRow?.buyer_email || "").trim() || null;
+    const { required, email: cartBuyerEmail } = await readCheckoutEmail(String(from.id), lines, emailSnapshot);
+    if (required && !cartBuyerEmail) {
+      await sendMessage({ chat_id: chatId, text: "Email aktif dibutuhkan sebelum membuat tagihan.", parse_mode: "HTML" });
+      return;
+    }
     try {
       const created = await createChannelOrderAtomic({
         orderCode,
@@ -138,16 +134,12 @@ export async function createAndSendCartInvoice(
       throw reservationError;
     }
     orderInserted = true;
-    if (uniqueLineCount > 0) reservedInventory.push(orderCode);
-    for (const line of lines) {
-      if (Number(line.stock) === -1) continue;
-      decremented.push({ variantId: line.variantId, qty: line.qty });
-    }
 
     const invoiceResult = await createActiveQrisInvoice(orderCode, subtotal);
+    invoiceCreated = true;
 
     // Satu fulfillment job per order (UNIQUE order_code): mode = unique jika
-    // ada baris unique (cuma 1 baris, dijaga addToCart), shared jika semua
+    // ada baris unique, shared jika semua
     // shared, manual/mixed selebihnya. deliver.ts membaca snapshot + variant_id
     // utama lalu memproses sesuai mode — tidak berubah.
     const hasUnique = lines.some((line) => line.fulfillmentMode === "unique");
@@ -167,7 +159,7 @@ export async function createAndSendCartInvoice(
       "telegram",
     ).catch(() => null);
     // (Tanpa notifyTelegramOrderCreated — hanya notif Lunas, lihat impor.)
-    await clearCart(String(from.id));
+    await clearCart(String(from.id), lines);
 
     // RR3-05: foto invoice adalah pengiriman transaksional — hasilnya WAJIB
     // diperiksa sesuai kontrak provider {ok:false}. Tandai pending SEBELUM
@@ -198,13 +190,6 @@ export async function createAndSendCartInvoice(
     await markInvoiceSent(orderCode);
   } catch (error) {
     console.error("Cart order creation failed:", error instanceof Error ? error.message : "unknown");
-    if (error instanceof Error && error.message.startsWith("klikqris_")) {
-      const initializing = await queryFirst("SELECT id FROM payment_transactions WHERE order_code=? AND provider='klikqris' AND status IN ('initializing','pending')", orderCode).catch(() => ({ id: 1 }));
-      if (initializing) {
-        await sendMessage({ chat_id: chatId, text: `Tagihan sedang disiapkan. Jangan buat pesanan berulang. Kode pesanan: ${orderCode}. Tunggu sebentar atau hubungi admin.`, parse_mode: "HTML" }).catch(() => {});
-        return;
-      }
-    }
     // RR3-05: kegagalan FOTO invoice (order + ledger + stok sudah benar,
     // hanya foto tak sampai) = error TRANSIENT yang wajib retry nyata.
     // Stok/reservasi dipertahankan (lihat fence di bawah), lalu RETHROW
@@ -214,58 +199,43 @@ export async function createAndSendCartInvoice(
     // pesan error + done (tidak layak retry Telegram).
     const cartInvoiceFailed = error instanceof Error
       && error.message.startsWith("telegram_invoice_send_failed");
+    let preserveReservation = invoiceCreated || (error instanceof Error && /ambiguous|network|timeout/i.test(error.message));
     try {
       if (orderInserted) {
-        // Fence: jangan batalkan order yang mungkin sudah dibayar/diproses
-        // worker lain — hanya batalkan bila masih pending & unpaid.
-        const fence = await queryFirst(
-          `SELECT status, payment_status FROM orders WHERE code=?`,
-          orderCode,
-        ).catch(() => null) as { status?: unknown; payment_status?: unknown } | null;
-        const stillPending = fence
-          && String(fence.status) === "pending" && String(fence.payment_status) !== "paid";
-        const transaction = stillPending ? await queryFirst(
+        const transaction = await queryFirst(
           `SELECT id FROM payment_transactions WHERE order_code=?`,
           orderCode,
-        ) : { id: 1 };
-        if (!transaction) {
-          await transitionPendingOrder(orderCode, "dibatalkan", "invoice_setup_failed", items);
-        } else if (stillPending) {
-          // Order tercatat tapi invoice gagal dan belum dibayar: lepas
-          // reservasi agar tidak terkunci; cron/admin rekonsiliasi bila
-          // pembayaran datang belakangan (order tetap pending + payable).
-          // RR3-05: pengecualian — kegagalan FOTO invoice
-          // (telegram_invoice_send_failed) dengan ledger aktif = order
-          // masih hidup, cron kirim ulang foto yang sama → stok/reservasi
-          // DIPERTAHANKAN (satu order, potong sekali).
-          const invoiceFailed = error instanceof Error
-            && error.message.startsWith("telegram_invoice_send_failed");
-          if (!invoiceFailed) {
-            for (const done of decremented) {
-              await execRun(
-                `UPDATE product_variants SET stock=stock+?, updated_at=datetime('now')
-                 WHERE id=? AND stock!=-1`,
-                done.qty, done.variantId,
-              );
-            }
-            for (const code of reservedInventory) await releaseInventoryForOrder(code);
-          }
+        ).catch(() => ({ id: 1 }));
+        preserveReservation ||= Boolean(transaction);
+        if (!preserveReservation) {
+          const d1 = getD1();
+          if (!d1) throw new Error("cart_rollback_requires_d1");
+          const guardId = `${orderCode}:cart-rollback:${crypto.randomUUID()}`;
+          // Invoice absence and pending/unpaid must hold in the stock-release batch.
+          await transitionPendingOrder(orderCode, "dibatalkan", "invoice_setup_failed", items, {
+            prepare: query => d1.prepare(query),
+            batch: statements => d1.batch([
+              d1.prepare(`INSERT INTO operation_guards(operation_id,valid)
+                SELECT ?,CASE WHEN NOT EXISTS(SELECT 1 FROM payment_transactions WHERE order_code=?) THEN 1 ELSE 0 END`)
+                .bind(guardId, orderCode),
+              ...statements,
+              d1.prepare("DELETE FROM operation_guards WHERE operation_id=?").bind(guardId),
+            ]),
+          });
         }
-      } else {
-        for (const done of decremented) {
-          await execRun(
-            `UPDATE product_variants SET stock=stock+?, updated_at=datetime('now')
-             WHERE id=? AND stock!=-1`,
-            done.qty, done.variantId,
-          );
-        }
-        for (const code of reservedInventory) await releaseInventoryForOrder(code);
       }
-    } catch { /* Cron/admin reconciliation can handle any remaining reservation. */ }
-    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" }).catch(() => {});
+    } catch { preserveReservation = true; }
+    await sendMessage({
+      chat_id: chatId,
+      text: orderInserted && preserveReservation
+        ? `Tagihan belum bisa dikonfirmasi. Kode pesanan: ${orderCode}. Gunakan Cek status untuk memeriksa tagihan yang sama, jangan buat pesanan baru.`
+        : errorMessage(),
+      parse_mode: "HTML",
+      ...(orderInserted && preserveReservation ? { reply_markup: qrisInvoiceKeyboard(orderCode) } : {}),
+    }).catch(() => {});
     // RR3-05: lempar ulang kegagalan foto invoice agar lapis POST menjawab
     // 500 + failed (retry Telegram nyata + sapuan cron). BUKAN dari awal:
     // guard double-tap memakai ulang order/invoice yang sama.
-    if (cartInvoiceFailed) throw error;
+    if (cartInvoiceFailed || invoiceCreated) throw error;
   }
 }

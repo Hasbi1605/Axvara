@@ -808,12 +808,35 @@ perubahan bila struktur internal digeser lagi. Handler webhook tidak boleh dipan
 
 Pada admin, `onUnauthorized` bergantung pada setter `setAuthed` yang stabil, bukan objek hasil `useAdminAuth`. Dengan demikian `load` tetap stabil dan effect pemuatan tidak berulang setiap render; test komponen memeriksa jumlah request sesudah autentikasi dan perpindahan menu.
 
-Katalog Telegram memakai presenter dua tingkat tanpa state baru: `catalog.ts`
-merender ringkasan produk, sedangkan `keyboards.ts::variantsKeyboard` membawa
-nama/durasi/garansi/harga ke callback `var:{variantId}` yang sudah ada. Varian
-habis tetap terlihat sebagai informasi, tetapi dipindahkan ke akhir dan memakai
-`noop`; validasi stok/minimum/ownership server pada handler quantity dan invoice
-tetap menjadi otoritas transaksi.
+Revisi Telegram29Oktober2026 (lokal, publikasi CI): `catalog.ts` menampilkan
+produk+varian sekaligus, memakai `formatVariantLabel`/stok efektif dan resolver
+ketentuan web. `variantsKeyboard` membawa label kanonis/harga tanpa menempel
+durasi non-WR/garansi berulang; varian habis di akhir memakai `noop`.
+`checkout-approval.ts` membuat tag SHA25612karakter dari produk/varian/jumlah/harga
+(bukan otorisasi). `checkout-email.ts` memvalidasi relasi/kebutuhan email
+fail-closed dan fingerprint email; callback email membawa nonce acak, sedangkan
+`telegram_users.pending_action` mengikat nonce+fingerprint. Claim CAS email/state
+sebelum factory mempertahankan snapshot email yang ditampilkan. Callback basi
+kembali ke ringkasan; retry order aktif didahulukan. Callback tetap ≤64byte,
+ownership/chat pribadi wajib, tidak membawa kontak/PIN/c1.
+
+Mutasi cart memakai SQL atomik dengan guard stok/minimum/kanal; pembersihan
+checkout memakai snapshot baris agar tidak menghapus edit concurrent. Guard
+commerce memeriksa `telegram_enabled` dalam batch order. Cancel ledger/order/
+stok/inventory memakai satu batch guarded. Setup invoice gagal tanpa ledger
+memakai `transitionPendingOrder` ditambah guard ketiadaan invoice dalam batch
+yang sama; ledger apa pun atau hasil ambigu mempertahankan reservasi dan kode.
+Initializing KlikQRIS dipulihkan hanya GET, bukan POST ulang.
+
+Notifikasi paid memakai `buyer_notice_log` existing dengan key
+`telegram:paid:<order>`, `access_lease`/`access_attempts`/`access_retry_at`:
+claim CAS, lease basi10menit, maksimal5percobaan/backoff1/5/15/60menit,
+settlement fenced, maksimal4 kandidat dalam budget40statement existing.
+Penerima kredensial/paid hanya ID pribadi kanonis `telegram_user_id`; stored
+chat_id tidak menjadi fallback akun lain. Input WA cadangan hanya saat idle.
+Status/resend menyajikan semua item dan error parsial secara eksplisit.
+Semantik transport bounded at-least-once, bukan exactly-once. Tidak ada schema,
+env, trigger cron, integrasi gateway atau UI web baru.
 
 ### 3.1 Runtime performa storefront
 

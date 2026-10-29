@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createD1Fixture, insertTestProduct, stubFulfillmentKey } from "./helpers/d1-fixture";
 import { NextRequest } from "next/server";
+import { checkoutApprovalTag } from "@/lib/telegram/checkout-approval";
 
 let fixture: ReturnType<typeof createD1Fixture>;
+const approvalTag = () => checkoutApprovalTag([{ productId: 1, variantId: 1, qty: 1, price: 10000 }]);
 
 const SEND = vi.fn(async () => ({ ok: true, result: { message_id: 1 } }));
 const PHOTO = vi.fn(async (..._args: unknown[]) => ({ ok: true, result: { message_id: 1 } }));
@@ -63,7 +65,7 @@ describe("RR3-05 failed invoice photo is durably retried without a second order"
     PHOTO.mockResolvedValueOnce({ ok: false, description: "Request timeout" } as never);
     const first = await POST(webhook({
       update_id: 77701,
-      callback_query: { id: "cb777", from: { id: 777, first_name: "Dummy" }, message: { message_id: 77, chat: { id: 777, type: "private" } }, data: "cconfirm" },
+      callback_query: { id: "cb777", from: { id: 777, first_name: "Dummy" }, message: { message_id: 77, chat: { id: 777, type: "private" } }, data: `cconfirm:${await approvalTag()}` },
     }));
     // Pekerjaan invoice tersimpan durable: respons boleh 500 (retry Telegram)
     // tetapi order/invoice/reservasi yang sama harus dipertahankan.
@@ -88,7 +90,7 @@ describe("RR3-05 failed invoice photo is durably retried without a second order"
     // Duplicate update tidak membuat transaksi kedua.
     const dup = await POST(webhook({
       update_id: 77701,
-      callback_query: { id: "cb777", from: { id: 777, first_name: "Dummy" }, message: { message_id: 77, chat: { id: 777, type: "private" } }, data: "cconfirm" },
+      callback_query: { id: "cb777", from: { id: 777, first_name: "Dummy" }, message: { message_id: 77, chat: { id: 777, type: "private" } }, data: `cconfirm:${await approvalTag()}` },
     }));
     expect(await dup.json()).toMatchObject({ ok: true });
     expect(fixture.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(1);
@@ -100,7 +102,7 @@ describe("RR3-05 failed invoice photo is durably retried without a second order"
     PHOTO.mockResolvedValueOnce({ ok: false, description: "Request timeout" } as never);
     const first = await POST(webhook({
       update_id: 77801,
-      callback_query: { id: "pay-1", from: { id: 778, first_name: "Dummy" }, message: { message_id: 78, chat: { id: 778, type: "private" } }, data: "pay:1:1:1" },
+      callback_query: { id: "pay-1", from: { id: 778, first_name: "Dummy" }, message: { message_id: 78, chat: { id: 778, type: "private" } }, data: `pay:1:1:1:${await approvalTag()}` },
     }));
     expect([200, 500]).toContain(first.status);
     const orders = fixture.sql.prepare("SELECT code FROM orders").all();
@@ -118,7 +120,7 @@ describe("RR3-05 failed invoice photo is durably retried without a second order"
     PHOTO.mockResolvedValueOnce({ ok: false, description: "Request timeout" } as never);
     const first = await POST(webhook({
       update_id: 77901,
-      callback_query: { id: "cb779", from: { id: 779, first_name: "Dummy" }, message: { message_id: 79, chat: { id: 779, type: "private" } }, data: "cconfirm" },
+      callback_query: { id: "cb779", from: { id: 779, first_name: "Dummy" }, message: { message_id: 79, chat: { id: 779, type: "private" } }, data: `cconfirm:${await approvalTag()}` },
     }));
     // Siapkan cart dulu: callback cconfirm butuh cart berisi.
     void first;
@@ -130,7 +132,7 @@ describe("RR3-05 failed invoice photo is durably retried without a second order"
       PHOTO.mockResolvedValueOnce({ ok: false, description: "Request timeout" } as never);
       await POST(webhook({
         update_id: 77902,
-        callback_query: { id: "cb779b", from: { id: 779, first_name: "Dummy" }, message: { message_id: 79, chat: { id: 779, type: "private" } }, data: "cconfirm" },
+        callback_query: { id: "cb779b", from: { id: 779, first_name: "Dummy" }, message: { message_id: 79, chat: { id: 779, type: "private" } }, data: `cconfirm:${await approvalTag()}` },
       }));
     }
     const orderCodes = fixture.sql.prepare("SELECT code FROM orders").all();

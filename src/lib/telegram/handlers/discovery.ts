@@ -20,7 +20,11 @@ import {
   type TelegramOrderRow,
   emailConfirmationMessage,
 } from "@/lib/telegram/messages";
-import { getProductDetail } from "@/lib/catalog";
+import { getProductDetail, formatVariantLabel, effectiveVariantStock } from "@/lib/catalog";
+import { checkoutApprovalTag } from "@/lib/telegram/checkout-approval";
+import { getCartSummary } from "@/lib/telegram/cart";
+import { readCheckoutEmail, checkoutEmailFingerprint } from "@/lib/telegram/checkout-email";
+import { cartCheckoutSummaryMessage, escapeHtml } from "@/lib/telegram/messages";
 import { countInventory } from "@/lib/fulfillment/inventory";
 import { clampQty } from "./shared";
 import { handleShowCatalog, handleShowQty, handleShowVariants } from "./catalog";
@@ -55,7 +59,7 @@ export async function handlePendingEmailInput(
       return true;
     }
     const cartEmail = text.trim();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cartEmail)) {
+    if (cartEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cartEmail)) {
       await sendMessage({
         chat_id: chatId,
         text: "❌ Format email tidak valid. Contoh: <code>nama@email.com</code>\nKetik /batal untuk membatalkan.",
@@ -63,12 +67,13 @@ export async function handlePendingEmailInput(
       });
       return true;
     }
-    await execRun(
-      `UPDATE telegram_users SET buyer_email=?, pending_action=NULL, updated_at=datetime('now') WHERE user_id=?`,
+    const stored = await execRun(
+      `UPDATE telegram_users SET buyer_email=?, updated_at=datetime('now') WHERE user_id=? AND pending_action=?`,
       cartEmail,
       String(from.id),
-    ).catch(() => {});
-    await sendMessage({ chat_id: chatId, text: `✅ Email <code>${cartEmail}</code> tersimpan. Tekan <b>Lanjut — Bayar QRIS</b> untuk melanjutkan.`, parse_mode: "HTML" });
+      action,
+    );
+    if (stored.changes) await showCartEmailConfirmation(chatId, from, cartEmail, action);
     return true;
   }
   const [, productIdRaw, variantIdRaw, qtyRaw] = action.split(":");
@@ -80,12 +85,12 @@ export async function handlePendingEmailInput(
     await execRun(
       `UPDATE telegram_users SET pending_action=NULL, updated_at=datetime('now') WHERE user_id=?`,
       String(from.id),
-    ).catch(() => {});
+   );
     await sendMessage({ chat_id: chatId, text: "Dibatalkan. Ketik /start untuk mulai lagi.", parse_mode: "HTML" });
     return true;
   }
   const email = text.trim();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     await sendMessage({
       chat_id: chatId,
       text: "❌ Format email tidak valid. Contoh: <code>nama@email.com</code>\nKetik /batal untuk membatalkan.",
@@ -93,34 +98,63 @@ export async function handlePendingEmailInput(
     });
     return true;
   }
-  await execRun(
-    `UPDATE telegram_users SET buyer_email=?, pending_action=?, updated_at=datetime('now') WHERE user_id=?`,
+  const stored = await execRun(
+    `UPDATE telegram_users SET buyer_email=?, updated_at=datetime('now') WHERE user_id=? AND pending_action=?`,
     email,
-    `email_confirm:${productId}:${variantId}:${qty}`,
     String(from.id),
-  ).catch(() => {});
-  await showEmailConfirmation(chatId, productId, variantId, qty, email);
+    action,
+  );
+  if (stored.changes) await showEmailConfirmation(chatId, productId, variantId, qty, email, action);
   return true;
 }
 
-function maskEmail(email: string): string {
+export function maskEmail(email: string): string {
   const [local, domain] = email.split("@");
   if (!domain) return "***";
   return `${local.length <= 2 ? local[0] ?? "*" : `${local[0]}***${local.at(-1)}`}@${domain}`;
 }
 
-export async function showEmailConfirmation(chatId: number, productId: number, variantId: number, qty: number, email?: string) {
+export async function showEmailConfirmation(chatId: number, productId: number, variantId: number, qty: number, email?: string, expectedAction: string | null = null) {
   const { getActiveVariant } = await import("@/lib/catalog");
   const variant = await getActiveVariant(variantId);
   if (!variant || variant.product_id !== productId) return;
   const product = await queryFirst(`SELECT name FROM products WHERE id=?`, productId);
-  const saved = email ?? String((await queryFirst(`SELECT buyer_email FROM telegram_users WHERE user_id=(SELECT user_id FROM telegram_users WHERE chat_id=? LIMIT 1)`, String(chatId)))?.buyer_email ?? "");
+  const saved = email ?? String((await queryFirst(`SELECT buyer_email FROM telegram_users WHERE user_id=?`, String(chatId)))?.buyer_email ?? "");
+  const nonce = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+  const tag = await checkoutApprovalTag([{ productId, variantId, qty, price: variant.price }]);
+  const stored = await execRun("UPDATE telegram_users SET pending_action=?, updated_at=datetime('now') WHERE user_id=? AND buyer_email=? AND pending_action IS ?", `email_confirm:${productId}:${variantId}:${qty}:${nonce}:${await checkoutEmailFingerprint(saved)}`, String(chatId), saved, expectedAction);
+  if (!stored.changes) return;
   await sendMessage({
     chat_id: chatId,
-    text: emailConfirmationMessage({ productName: String(product?.name ?? "Produk"), variantLabel: variant.label, qty, total: variant.price * qty, maskedEmail: maskEmail(saved) }),
+    text: emailConfirmationMessage({ productName: String(product?.name ?? "Produk"), variantLabel: formatVariantLabel(variant), qty, total: variant.price * qty, maskedEmail: maskEmail(saved) }),
     parse_mode: "HTML",
-    reply_markup: emailConfirmationKeyboard(productId, variantId, qty, variant.price * qty),
+    reply_markup: emailConfirmationKeyboard(productId, variantId, qty, variant.price * qty, tag, nonce),
   });
+}
+
+export async function showCartEmailConfirmation(chatId: number, from: { id: number }, email?: string, expectedAction: string | null = null) {
+  const summary = await getCartSummary(String(from.id));
+  if (!summary.lines.length) return;
+  if (summary.issues.length) {
+    await sendMessage({ chat_id: chatId, text: "Keranjang berubah. Buka keranjang dan periksa jumlah serta stok sebelum membayar." });
+    return;
+  }
+  const checked = await readCheckoutEmail(String(from.id), summary.lines, email);
+  if (!checked.email) {
+    const stored = await execRun("UPDATE telegram_users SET pending_action='emailcart:', updated_at=datetime('now') WHERE user_id=? AND pending_action IS ?", String(from.id), expectedAction);
+    if (!stored.changes) return;
+    await sendMessage({ chat_id: chatId, text: "Kirim email aktif untuk menerima produk. Ketik /batal untuk kembali.", reply_markup: { force_reply: true, input_field_placeholder: "nama@email.com" } });
+    return;
+  }
+  const tag = await checkoutApprovalTag(summary.lines);
+  const nonce = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+  const stored = await execRun("UPDATE telegram_users SET pending_action=?, updated_at=datetime('now') WHERE user_id=? AND buyer_email=? AND pending_action IS ?", `cart_confirm:${tag}:${nonce}:${await checkoutEmailFingerprint(checked.email)}`, String(from.id), checked.email, expectedAction);
+  if (!stored.changes) return;
+  await sendMessage({ chat_id: chatId, text: cartCheckoutSummaryMessage(summary.lines, summary.subtotal) + `\n\nEmail: <code>${escapeHtml(maskEmail(checked.email))}</code>\nPeriksa email sebelum membayar.`, parse_mode: "HTML", reply_markup: { inline_keyboard: [
+    [{ text: "Bayar QRIS", callback_data: `cconfirm:${tag}:${nonce}` }],
+    [{ text: "Ubah Email", callback_data: "ceedit" }, { text: "Ubah Keranjang", callback_data: "cart" }],
+    ...summary.lines.map(line => [{ text: `Ketentuan ${line.variantLabel.slice(0, 24)}`, callback_data: `terms:${line.productId}:${line.variantId}` }]),
+  ] } });
 }
 
 // --- /orders: real order history with reorder shortcuts ---
@@ -149,8 +183,8 @@ export async function handleMyOrders(
     let productName = "Produk";
     let productId: number | null = null;
     try {
-      const items = JSON.parse(String(row.items ?? "[]")) as { product_id?: number; name?: string }[];
-      productName = items[0]?.name ?? "Produk";
+      const items = JSON.parse(String(row.items ?? "[]")) as { product_id?: number; name?: string; qty?: number }[];
+      productName = items.map(item => `${String(item.name ?? "Produk").slice(0, 70)} ×${Number(item.qty ?? 1)}`).join("\n");
       productId = Number(items[0]?.product_id) || null;
     } catch { /* keep defaults */ }
     return {
@@ -232,13 +266,14 @@ export async function handleSearchResults(chatId: number, keyword: string) {
   const { readTelegramCatalog, telegramSearchMatch } = await import("@/lib/telegram/catalog-snapshot");
   const matching = (await readTelegramCatalog()).filter(row =>
     [row.name,row.whatsapp_alias,row.aliases ?? "[]"].some(value => telegramSearchMatch(value, keyword)));
-  const products = matching.filter(row => row.price !== null)
-    .sort((a,b) => b.sold_count-a.sold_count || a.sort_order-b.sort_order).slice(0,10)
+  const available = matching.filter(row => row.price !== null)
+    .sort((a,b) => b.sold_count-a.sold_count || a.sort_order-b.sort_order);
+  const products = available.slice(0,10)
     .map(row => ({ id: row.id, name: row.name, price: row.price! }));
   const soldOut = products.length ? 0 : matching.length;
   await sendMessage({
     chat_id: chatId,
-    text: searchResultsMessage(keyword, products.length, soldOut),
+    text: searchResultsMessage(keyword, available.length, soldOut, products.length),
     parse_mode: "HTML",
     reply_markup: products.length > 0 ? searchResultsKeyboard(products) : homeKeyboard(),
   });
@@ -273,6 +308,7 @@ export async function handlePendingQtyInput(
   try {
     const { getActiveVariant } = await import("@/lib/catalog");
     const typedVariant = await getActiveVariant(variantId);
+    if (typedVariant) typedVariant.stock = effectiveVariantStock(typedVariant);
     const need = Math.max(1, Number(typedVariant?.min_qty ?? 1) || 1);
     const max = typedVariant?.fulfillment_mode === "unique" ? Math.min(MAX_UNIQUE_UNITS_PER_ORDER, typedVariant.stock === -1 ? MAX_UNIQUE_UNITS_PER_ORDER : typedVariant.stock) : typedVariant?.stock === -1 ? TELEGRAM_MAX_QTY : Math.min(Number(typedVariant?.stock ?? 0), TELEGRAM_MAX_QTY);
     if (typedVariant && (typedQty < need || typedQty > max)) {

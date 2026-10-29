@@ -203,6 +203,7 @@ export async function createChannelOrderAtomic(
          SELECT ?, CASE WHEN EXISTS(
            SELECT 1 FROM product_variants pv JOIN products p ON p.id=pv.product_id
            WHERE pv.id=? AND pv.product_id=? AND pv.price=? AND p.is_active=1
+             AND (? != 'telegram' OR p.telegram_enabled=1)
              AND pv.fulfillment_mode=? AND pv.is_active=1 AND (pv.stock=-1 OR pv.stock>=?)
              AND ? >= COALESCE(pv.min_qty,1)
              AND (
@@ -210,7 +211,7 @@ export async function createChannelOrderAtomic(
                OR (pv.shared_secret_ciphertext IS NOT NULL AND pv.shared_secret_iv IS NOT NULL)
              )
          ) THEN 1 ELSE 0 END`,
-      ).bind(guardId, line.variantId, line.productId, item.price, line.fulfillmentMode, line.qty, line.qty),
+      ).bind(guardId, line.variantId, line.productId, item.price, input.salesChannel, line.fulfillmentMode, line.qty, line.qty),
     );
     // Klausa `(stock=-1 OR stock>=?)` di UPDATE bersifat defense-in-depth:
     // guard di atas sudah menjamin, tetapi tanpa klausa ini korektnes

@@ -35,11 +35,12 @@ describe("R4 order-creation fencing and compensation", () => {
       .map((f) => fs.readFileSync(path.join(dir, f), "utf8"))
       .join("\n");
     const src = routeSrc + "\n" + handlers;
-    const fences = src.match(/stillPending/g) ?? [];
-    // Dua jalur (cart + variant) masing-masing punya fence sendiri.
-    expect(fences.length).toBeGreaterThanOrEqual(4);
-    expect(src).toContain(`String(fence.payment_status) !== "paid"`);
-    expect(src).toContain("invoice_setup_failed");
+    for (const file of ["invoice.ts", "cart-invoice.ts"]) {
+      const handler = fs.readFileSync(path.join(dir, file), "utf8");
+      expect(handler).toContain('transitionPendingOrder(orderCode, "dibatalkan", "invoice_setup_failed", items,');
+      expect(handler).toContain("NOT EXISTS(SELECT 1 FROM payment_transactions WHERE order_code=?)");
+    }
+    expect(src).not.toContain("String(fence.payment_status)");
   });
 
   it("reconciler fence: settled delivered order without job row is NOT resurrected", async () => {

@@ -158,75 +158,101 @@ export async function notifyTelegramOrderCreated(orderCode: string, database: Da
   return true;
 }
 
-/**
- * Push payment success without requiring the buyer to press "Cek Status".
- * For manual fulfillment, this is also the first point where WA is requested.
- */
+// Reuse the existing ledger lease/retry fields, isolated from email by this key.
+const PAID_NOTICE_PREFIX = "telegram:paid:";
+const PAID_NOTICE_DUE = `b.access_attempts < 5
+  AND (b.access_retry_at IS NULL OR datetime(b.access_retry_at) <= datetime('now'))
+  AND (b.status='failed' OR (b.status='sending'
+    AND julianday(b.updated_at) <= julianday('now','-10 minutes')))`;
+
+/** Push payment success with fenced ownership and at most five transport attempts. */
 export async function notifyTelegramBuyerPaid(orderCode: string, database: DatabaseAccess = createDatabaseAccess()): Promise<boolean> {
   const { queryFirst, execRun } = database;
-  if (!telegramNotificationsConfigured()) return false;
+  if (!telegramNotificationsConfigured() || !database.canSpend(6)) return false;
 
   const order = await queryFirst(
-    `SELECT code, items, customer_wa, telegram_chat_id, telegram_user_id,
-            variant_snapshot, telegram_paid_notified_at
-     FROM orders
-     WHERE code=? AND sales_channel='telegram' AND status='lunas'
-       AND payment_status='paid' AND telegram_paid_notified_at IS NULL`,
+    `SELECT o.code, o.items, o.customer_wa, o.telegram_user_id, o.variant_snapshot,
+            tu.pending_action, b.status AS notice_status
+     FROM orders o
+     LEFT JOIN telegram_users tu ON tu.user_id=o.telegram_user_id
+     LEFT JOIN buyer_notice_log b ON b.idempotency_key='${PAID_NOTICE_PREFIX}' || o.code
+     WHERE o.code=? AND o.sales_channel='telegram' AND o.status='lunas'
+       AND o.payment_status='paid' AND o.telegram_paid_notified_at IS NULL`,
     orderCode,
   );
   if (!order) return true;
 
-  // Private-only (issue #5): notifikasi lunas hanya ke chat pribadi buyer
-  // terverifikasi dari telegram_users (tidak pernah id grup). Bila buyer
-  // checkout dari grup dan belum START privat, kirim pemberitahuan aman
-  // TANPA kredensial ke grup + kembalikan false agar retry cron mengirim
-  // ulang ke private chat setelah buyer verifikasi (ensurePrivateRecipient).
-  const buyerId = String(order.telegram_user_id || "");
-  const privateChat = buyerId
-    ? String((await queryFirst(`SELECT chat_id FROM telegram_users WHERE user_id=?`, buyerId))?.chat_id || "")
-    : "";
-  const chatId = privateChat && Number(privateChat) > 0 ? privateChat : "";
-  if (!chatId) {
-    const groupId = String(order.telegram_chat_id || "");
-    if (groupId && Number(groupId) < 0) {
-      const { groupDeliveryNoticeMessage } = await import("@/lib/telegram/messages");
-      await sendMessage({ chat_id: groupId, text: groupDeliveryNoticeMessage(), parse_mode: "HTML" }).catch(() => {});
-    }
-    return false;
+  const key = `${PAID_NOTICE_PREFIX}${orderCode}`;
+  if (order.notice_status === "sent") {
+    await execRun(`UPDATE orders SET telegram_paid_notified_at=datetime('now'), updated_at=datetime('now')
+      WHERE code=? AND telegram_paid_notified_at IS NULL`, orderCode);
+    return true;
+  }
+  // Telegram private chat IDs equal user IDs. Never trust a stale saved chat
+  // (even a positive one belonging to somebody else), or fall back to a group.
+  const chatId = String(order.telegram_user_id || "").trim();
+  if (!/^[1-9]\d*$/.test(chatId) || !Number.isSafeInteger(Number(chatId))) return false;
+
+  const lease = crypto.randomUUID();
+  try {
+    const claimed = await execRun(
+      `INSERT INTO buyer_notice_log AS b
+         (idempotency_key, order_code, channel, status, access_attempts, access_lease, access_retry_at)
+       SELECT ?, code, 'telegram', 'sending', 1, ?, datetime('now','+1 minute')
+       FROM orders WHERE code=? AND sales_channel='telegram' AND status='lunas'
+         AND payment_status='paid' AND telegram_paid_notified_at IS NULL
+       ON CONFLICT(idempotency_key) DO UPDATE SET
+         status='sending', access_attempts=b.access_attempts+1, access_lease=excluded.access_lease,
+         access_retry_at=datetime('now', CASE b.access_attempts
+           WHEN 0 THEN '+1 minute' WHEN 1 THEN '+5 minutes'
+           WHEN 2 THEN '+15 minutes' ELSE '+60 minutes' END),
+         error=NULL, updated_at=datetime('now')
+       WHERE ${PAID_NOTICE_DUE}`,
+      key, lease, orderCode,
+    );
+    if (!claimed.changes) return false;
+  } catch {
+    return false; // No durable ownership, no transport.
   }
   const profile = await telegramPaidDeliveryProfile(order, database);
-  // Nomor WA cadangan HANYA untuk baris yang diserahkan admin (manual lokal).
-  // Produk WR/SK dikirim otomatis ke chat ini — meminta WA di sana membuat
-  // pembeli mengira produknya dikirim manual (laporan owner 2026-10-04).
   const needsWhatsApp = profile.hasLocalManual
-    && !String(order.customer_wa || "").trim();
+    && !String(order.customer_wa || "").trim()
+    && !String(order.pending_action || "").trim();
   const sent = await sendMessage({
     chat_id: chatId,
     text: orderPaidMessage(String(order.code), productNames(order.items), needsWhatsApp, profile.delivery),
     parse_mode: "HTML",
     reply_markup: orderPaidKeyboard(String(order.code)),
-  });
-  if (!sent.ok) return false;
+  }).catch(() => ({ ok: false }));
+  // A timeout may already have delivered. Retry only after backoff; Telegram
+  // has no idempotency key, so this is bounded at-least-once, not exactly-once.
+  const settled = await execRun(
+    `UPDATE buyer_notice_log SET status=?, error=?, access_lease=NULL, updated_at=datetime('now')
+     WHERE idempotency_key=? AND status='sending' AND access_lease=?`,
+    sent.ok ? "sent" : "failed", sent.ok ? null : "telegram_send_failed", key, lease,
+  );
+  if (!sent.ok || !settled.changes) return false;
 
-  if (needsWhatsApp && order.telegram_user_id) {
-    await execRun(
-      `UPDATE telegram_users SET pending_action=?, updated_at=datetime('now') WHERE user_id=?`,
-      `wa_after_paid:${orderCode}`,
-      String(order.telegram_user_id),
-    );
-  }
+  // If this marker write fails, the sent ledger repairs it on the next run.
   await execRun(
     `UPDATE orders SET telegram_paid_notified_at=datetime('now'), updated_at=datetime('now')
      WHERE code=? AND telegram_paid_notified_at IS NULL`,
     orderCode,
-  );
+  ).catch(() => undefined);
+  if (needsWhatsApp) {
+    await execRun(
+      `UPDATE telegram_users SET pending_action=?, updated_at=datetime('now')
+       WHERE user_id=? AND (pending_action IS NULL OR trim(pending_action)='')`,
+      `wa_after_paid:${orderCode}`, chatId,
+    ).catch(() => undefined);
+  }
 
   // The order-created message in Axvara_Notif keeps saying "Menunggu
   // pembayaran otomatis" even after the DANA hook marks the order paid, so
   // always follow up with a paid update to the admin group (best-effort here,
   // retried by the operations cron via its own durable marker).
   try {
-    await notifyTelegramPaidAdmin(orderCode, database);
+    if (database.canSpend(5)) await notifyTelegramPaidAdmin(orderCode, database);
   } catch { /* Cron retries via telegram_paid_admin_notified_at. */ }
   return true;
 }
@@ -520,6 +546,8 @@ export async function retryPendingTelegramNotifications(limit = 8, only?: {
   paidAdminWeb: number;
 }> {
   const { queryAll } = database;
+  const max = Math.min(4, Math.max(0, Math.floor(Number(limit) || 0)));
+  if (!max) return { created: 0, paid: 0, paidAdmin: 0, paidAdminWeb: 0 };
   const want = {
     created: only?.created ?? true,
     paid: only?.paid ?? true,
@@ -542,14 +570,22 @@ export async function retryPendingTelegramNotifications(limit = 8, only?: {
 
   if (want.paid && database.canSpend(1)) {
     const pendingPaid = await queryAll(
-      `SELECT code FROM orders
-       WHERE sales_channel='telegram' AND status='lunas' AND payment_status='paid'
-         AND telegram_paid_notified_at IS NULL
-       ORDER BY updated_at ASC LIMIT ?`,
-      limit,
+      `SELECT o.code FROM orders o
+       LEFT JOIN buyer_notice_log b ON b.idempotency_key='${PAID_NOTICE_PREFIX}' || o.code
+       WHERE o.sales_channel='telegram' AND o.status='lunas' AND o.payment_status='paid'
+         AND o.telegram_paid_notified_at IS NULL
+         AND (b.status='sent' OR (
+           o.telegram_user_id GLOB '[1-9]*' AND o.telegram_user_id NOT GLOB '*[^0-9]*'
+           AND CAST(o.telegram_user_id AS INTEGER) BETWEEN 1 AND 9007199254740991
+           AND (COALESCE(o.fulfillment_status,'') <> 'delivered'
+             OR julianday(COALESCE(o.paid_at,o.created_at)) >= julianday('now','-6 hours'))
+           AND (b.idempotency_key IS NULL OR (${PAID_NOTICE_DUE}))))
+       ORDER BY COALESCE(b.access_attempts,0) ASC, COALESCE(o.paid_at,o.created_at) DESC, o.code
+       LIMIT ?`,
+      max,
     ).catch(() => [] as Row[]);
     for (const order of pendingPaid) {
-      if (!database.canSpend(7)) break;
+      if (!database.canSpend(6)) break;
       try {
         if (await notifyTelegramBuyerPaid(String(order.code), database)) paid++;
       } catch { /* Retry the same durable marker on the next cron run. */ }
@@ -562,7 +598,7 @@ export async function retryPendingTelegramNotifications(limit = 8, only?: {
        WHERE sales_channel IN ('telegram','whatsapp') AND status='lunas' AND payment_status='paid'
          AND telegram_paid_admin_notified_at IS NULL
        ORDER BY updated_at ASC LIMIT ?`,
-      limit,
+      max,
     ).catch(() => [] as Row[]);
     for (const order of pendingPaidAdmin) {
       if (!database.canSpend(7)) break;
@@ -579,7 +615,7 @@ export async function retryPendingTelegramNotifications(limit = 8, only?: {
     const pendingWeb = await queryAll(
       `SELECT o.code FROM orders o WHERE ${WEB_PAID_ADMIN_PENDING_WHERE}
        ORDER BY COALESCE(o.paid_at, o.updated_at) ASC LIMIT ?`,
-      limit,
+      max,
     ).catch(() => [] as Row[]);
     for (const order of pendingWeb) {
       if (!database.canSpend(7)) break;

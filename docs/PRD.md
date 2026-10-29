@@ -1,5 +1,33 @@
 # PRD — AXVARA
 
+## Order Telegram, 29 Oktober 2026
+
+Implementasi lokal, disiapkan untuk publikasi CI; bukan bukti deployment.
+Keputusan ini menggantikan presentasi/fallback penerima Telegram pada snapshot
+lama yang bertentangan di bawah.
+
+- Produk dan varian tampil dalam satu pesan, memakai label pembeli kanonis web.
+  Durasi metadata non-WR tidak ditempel ulang; harga berasal dari varian yang
+  dapat dibeli, stok unik memakai inventory efektif dan batas minimum aktual.
+- Jumlah, harga, email masked dan ketentuan dapat diperiksa sebelum QRIS.
+  Ringkasan basi kembali ke pilihan terbaru. Email wajib gagal tertutup;
+  konfirmasi email sekali pakai terikat email yang ditampilkan dan tidak dapat
+  membeli lagi lewat replay sesudah lunas. Navigasi membatalkan input lama.
+- Keranjang berubah atomik, dan checkout membersihkan hanya snapshot yang dibeli.
+  Produk harus masih aktif/diizinkan pada kanal Telegram di batch order.
+  Invoice/order aktif dipakai ulang sebelum memeriksa keranjang atau email baru.
+- Pembatalan meminta konfirmasi lalu mengubah order/ledger/stok secara atomik.
+  Gagal setup tanpa invoice dibatalkan atomik; invoice tercatat atau hasil ambigu
+  mempertahankan reservasi. Tidak mengembalikan stok terpisah dari status order.
+- Status mencantumkan semua item. Pembayaran diterima, produk belum siap,
+  pengiriman gagal dan hasil parsial dibedakan. Kredensial/notifikasi buyer
+  hanya ke ID pribadi pemilik, bukan fallback akun lain dari chat tersimpan.
+  Notifikasi lunas memakai lease/backoff bounded pada antrean existing; input
+  WA cadangan tidak menimpa percakapan yang sedang aktif.
+
+Tidak mengubah PIN/c1, Pedia, WA, supplier, merchant, env, schema atau cron.
+Verifikasi menggunakan fixture/mocked transport, tanpa order/pesan produksi.
+
 ## PIN bersama kredensial, koreksi owner 28 Oktober 2026
 
 ✅ Implementasi lokal untuk publikasi CI. PIN enam karakter campuran huruf dan

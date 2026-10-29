@@ -7,7 +7,7 @@ import { notifyPaymentMaintenance } from "@/lib/telegram/payment-maintenance";
 // mempertahankan URUTAN pengecekan asli (pending WA → /start → label menu →
 // qty → search → /chatid → /garansi → /pesanan → fallback). Pemindahan murni.
 
-import { sendMessage, sendPhoto, showLoadingBar } from "@/lib/telegram/api";
+import { sendMessage, sendPhoto, sendChatAction } from "@/lib/telegram/api";
 import {
   homeKeyboard, warrantyKeyboard,
   MENU_LABEL_CATALOG, MENU_LABEL_SEARCH, MENU_LABEL_ORDERS, MENU_LABEL_HELP,
@@ -56,7 +56,7 @@ export async function handleCommand(
     if (await notifyPaymentMaintenance(chatId)) return;
     // Clear any pending conversational state
     await clearPendingAction(from);
-    await showLoadingBar(chatId, "🚀 Menyiapkan AXVARA");
+    await sendChatAction(chatId, "typing");
     // SITE_URL kosong di sebagian worker (secret write-only yang belum
     // terbaca) → URL relatif membuat Telegram menolak ("URL host is empty").
     // Paksa absolut https axvara.tech bila env kosong.
@@ -126,6 +126,7 @@ export async function handleCommand(
   }
 
   if (text === MENU_LABEL_HELP || cmd === "/bantuan" || cmd === "/help") {
+    await clearPendingAction(from);
     await sendMessage({ chat_id: chatId, text: helpMessage(), parse_mode: "HTML" });
     return;
   }
@@ -169,6 +170,7 @@ export async function handleCommand(
   }
 
   if (cmd === "/garansi") {
+    await clearPendingAction(from);
     await sendMessage({
       chat_id: chatId,
       text: warrantyFullMessage(),
@@ -181,7 +183,7 @@ export async function handleCommand(
   if (cmd === "/pesanan") {
     const parts = text.split(/\s+/);
     if (parts.length >= 2) {
-      await handleOrderStatus(chatId, parts[1]);
+      await handleOrderStatus(chatId, parts[1], from?.id);
     } else {
       await handleMyOrders(chatId, from);
     }

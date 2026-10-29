@@ -1,12 +1,5 @@
 import { notifyPaymentMaintenance } from "@/lib/telegram/payment-maintenance";
-// src/lib/telegram/handlers/orders.ts — Handler status & siklus hidup pesanan.
-//
-// MENGAPA dipisah: status/refresh/pembatalan/perpanjang QRIS adalah aksi atas
-// order yang SUDAH ada. handleOrderCancel berisi cek kepemilikan sendiri (lapis
-// kedua setelah guard ownerBound di router) — nilai keamanan yang harus jelas.
-// Pemindahan murni dari route.ts — SQL, urutan statement, dan teks identik.
-
-import { queryFirst, execRun } from "@/lib/db";
+import { queryFirst, getD1, transitionPendingOrder, OrderTransitionError } from "@/lib/db";
 import { sendMessage, safeEditOrSend, sendPhoto } from "@/lib/telegram/api";
 import { orderStatusKeyboard, paidOrderStatusKeyboard, qrisInvoiceKeyboard } from "@/lib/telegram/keyboards";
 import {
@@ -15,18 +8,39 @@ import {
 } from "@/lib/telegram/messages";
 import { isCriticalSendResult } from "@/lib/telegram/webhook-errors";
 import { reissueDanaQrisInvoice } from "@/lib/payments/dana-qris";
-import { releaseInventoryForOrder } from "@/lib/fulfillment/inventory";
 import { markInvoicePending, markInvoiceSent } from "@/lib/telegram/invoice-retry";
 
-export async function handleOrderStatus(chatId: number, orderCode: string) {
-  if (!Number.isSafeInteger(chatId) || chatId <= 0) return;
-  const order = await queryFirst(
-    `SELECT o.code, o.items, o.subtotal, o.payment_status, o.fulfillment_status, o.buyer_access_version, o.buyer_access_format,
-            pt.payable_amount
+function orderItemsSummary(raw: unknown): string {
+  try {
+    const items = JSON.parse(String(raw ?? "[]"));
+    if (Array.isArray(items) && items.length) {
+      return items.map(item => `${String(item?.name || "Produk")} x${Math.max(1, Number(item?.qty) || 1)}`).join("\n");
+    }
+  } catch { /* Historical snapshots may be incomplete. */ }
+  return "Produk";
+}
+
+async function ownedOrder(chatId: number, orderCode: string, fromUserId: number) {
+  if (!Number.isSafeInteger(chatId) || chatId <= 0 || chatId !== fromUserId) return null;
+  return queryFirst(
+    `SELECT o.code, o.items, o.subtotal, o.payment_status, o.fulfillment_status, o.telegram_invoice_sent_at,
+            pt.requested_amount, pt.payable_amount, pt.qris_url, pt.expires_at AS invoice_expires_at,
+            pt.provider AS payment_provider, pt.status AS transaction_status
      FROM orders o LEFT JOIN payment_transactions pt ON pt.order_code=o.code
-     WHERE o.code=? AND o.sales_channel='telegram' AND o.telegram_chat_id=?`,
-    orderCode.toUpperCase(), String(chatId),
+     WHERE o.code=? AND o.sales_channel='telegram' AND o.telegram_user_id=?`,
+    String(orderCode || "").toUpperCase(), String(fromUserId),
   );
+}
+
+export async function handleOrderStatus(chatId: number, orderCode: string, fromUserId = chatId) {
+  if (!Number.isSafeInteger(chatId) || chatId <= 0 || chatId !== fromUserId) return;
+  let order;
+  try {
+    order = await ownedOrder(chatId, orderCode, fromUserId);
+  } catch {
+    await sendMessage({ chat_id: chatId, text: "Status pesanan gagal dibaca. Coba lagi.", parse_mode: "HTML" });
+    return;
+  }
   if (!order) {
     await sendMessage({
       chat_id: chatId,
@@ -36,23 +50,17 @@ export async function handleOrderStatus(chatId: number, orderCode: string) {
     return;
   }
 
-  let productName = "Produk";
-  try {
-    const items = JSON.parse(String(order.items));
-    productName = items[0]?.name ?? "Produk";
-  } catch { /* ok */ }
-
   await sendMessage({
     chat_id: chatId,
     text: orderStatusMessage({
       orderCode: String(order.code),
-      productName,
+      productName: orderItemsSummary(order.items),
       paymentStatus: String(order.payment_status || "unpaid"),
       fulfillmentStatus: String(order.fulfillment_status || "not_required"),
       payableAmount: Number(order.payable_amount ?? order.subtotal),
     }),
     parse_mode: "HTML",
-    reply_markup: String(order.payment_status) === "pending"
+    reply_markup: ["unpaid", "pending"].includes(String(order.payment_status))
       ? orderStatusKeyboard(String(order.code))
       : String(order.payment_status) === "paid"
         ? paidOrderStatusKeyboard(String(order.code))
@@ -60,52 +68,93 @@ export async function handleOrderStatus(chatId: number, orderCode: string) {
   });
 }
 
-export async function handleOrderRefresh(chatId: number, messageId: number, orderCode: string) {
-  if (!Number.isSafeInteger(chatId) || chatId <= 0) return;
-  // Same as status but edit existing message
-  const order = await queryFirst(
-    `SELECT o.code, o.items, o.subtotal, o.payment_status, o.fulfillment_status, o.buyer_access_version, o.buyer_access_format,
-            pt.payable_amount, pt.provider AS payment_provider, pt.status AS transaction_status
-     FROM orders o LEFT JOIN payment_transactions pt ON pt.order_code=o.code
-     WHERE o.code=? AND o.sales_channel='telegram' AND o.telegram_chat_id=?`,
-    orderCode, String(chatId),
-  );
-  if (!order) return;
+export async function handleOrderRefresh(chatId: number, messageId: number, rawOrderCode: string, fromUserId = chatId) {
+  if (!Number.isSafeInteger(chatId) || chatId <= 0 || chatId !== fromUserId) return;
+  const orderCode = String(rawOrderCode || "").toUpperCase();
+  let order;
+  try {
+    order = await ownedOrder(chatId, orderCode, fromUserId);
+  } catch {
+    await sendMessage({ chat_id: chatId, text: "Status pesanan gagal dibaca. Coba lagi.", parse_mode: "HTML" });
+    return;
+  }
+  if (!order) {
+    await sendMessage({ chat_id: chatId, text: "Pesanan tidak ditemukan. Pastikan kode pesanan benar.", parse_mode: "HTML" });
+    return;
+  }
+  let checkFailed = false;
+  let paymentNotice = "";
   // 2026-10-10: "Periksa Pembayaran" membangunkan poller GoPay di VPS (idle
   // 60 dtk) — pembayaran terbaca beberapa detik kemudian & bot mengabari.
   if (String(order.payment_provider ?? "") === "gopay" && String(order.transaction_status ?? "") === "pending") {
     const { scheduleGopayWake } = await import("@/lib/payments/gopay-wake");
-    await scheduleGopayWake("telegram_check").catch(() => false);
+    await scheduleGopayWake("telegram_check").catch(() => { checkFailed = true; });
   }
 
-  if (order.payment_provider === "klikqris" && order.transaction_status === "pending") {
+  if (order.payment_provider === "klikqris" && ["initializing", "pending"].includes(String(order.transaction_status))) {
     try {
-      const { reconcileKlikQrisPayment } = await import("@/lib/payments/klikqris");
-      await reconcileKlikQrisPayment(orderCode);
-      const refreshed = await queryFirst("SELECT payment_status,fulfillment_status FROM orders WHERE code=?", orderCode);
-      if (refreshed) Object.assign(order, refreshed);
-    } catch { /* Keep pending if the provider cannot confirm payment. */ }
+      const { createKlikQrisInvoice, reconcileKlikQrisPayment } = await import("@/lib/payments/klikqris");
+      if (order.transaction_status === "initializing") {
+        // An existing initializing ledger recovers through GET, never a second create.
+        await createKlikQrisInvoice(orderCode, Number(order.requested_amount));
+      } else {
+        const result = await reconcileKlikQrisPayment(orderCode);
+        if (result === "manual_review") paymentNotice = "Pembayaran perlu diperiksa admin. Hubungi admin dengan kode pesanan ini.";
+        if (result === "expired") paymentNotice = "QR pembayaran sudah kedaluwarsa. Cek status lagi atau hubungi admin.";
+      }
+    } catch { checkFailed = true; }
   }
 
-  let productName = "Produk";
   try {
-    const items = JSON.parse(String(order.items));
-    productName = items[0]?.name ?? "Produk";
-  } catch { /* ok */ }
+    const refreshed = await ownedOrder(chatId, orderCode, fromUserId);
+    if (!refreshed) throw new Error("order_missing");
+    order = refreshed;
+  } catch {
+    await sendMessage({ chat_id: chatId, text: "Status terbaru gagal dibaca. Coba lagi.", parse_mode: "HTML" });
+    return;
+  }
+
+  let invoiceFailed = false;
+  if (order.payment_status === "pending" && order.transaction_status === "pending"
+    && order.qris_url && !order.telegram_invoice_sent_at
+    && Date.parse(String(order.invoice_expires_at)) > Date.now()) {
+    try {
+      const photo = await sendPhoto({
+        chat_id: chatId,
+        photo: String(order.qris_url),
+        caption: invoiceMessage({
+          orderCode,
+          productName: orderItemsSummary(order.items),
+          payableAmount: Number(order.payable_amount ?? order.subtotal),
+          expiresAt: String(order.invoice_expires_at),
+          paymentMethod: "qris",
+        }),
+        parse_mode: "HTML",
+        reply_markup: qrisInvoiceKeyboard(orderCode),
+      });
+      if (!photo.ok) throw new Error("telegram_invoice_send_failed");
+      await markInvoiceSent(orderCode);
+    } catch { invoiceFailed = true; }
+  }
 
   await safeEditOrSend({
     chat_id: chatId, message_id: messageId,
     text: orderStatusMessage({
       orderCode: String(order.code),
-      productName,
+      productName: orderItemsSummary(order.items),
       paymentStatus: String(order.payment_status || "unpaid"),
       fulfillmentStatus: String(order.fulfillment_status || "not_required"),
       payableAmount: Number(order.payable_amount ?? order.subtotal),
-    }),
+    }) + (paymentNotice && order.payment_status !== "paid" ? `\n\n${paymentNotice}` : "")
+      + (checkFailed && order.payment_status !== "paid"
+      ? "\n\nPemeriksaan pembayaran belum berhasil. Coba lagi atau hubungi admin."
+      : "") + (invoiceFailed ? "\n\nQR pembayaran gagal dikirim. Cek status lagi atau hubungi admin." : ""),
     parse_mode: "HTML",
-    reply_markup: String(order.payment_status) === "pending"
+    reply_markup: ["unpaid", "pending"].includes(String(order.payment_status))
       ? orderStatusKeyboard(orderCode)
-      : undefined,
+      : String(order.payment_status) === "paid"
+        ? paidOrderStatusKeyboard(orderCode)
+        : undefined,
   });
 }
 
@@ -187,10 +236,19 @@ export async function handleQrisRenew(chatId: number, rawOrderCode: string) {
 }
 
 export async function handleOrderCancel(chatId: number, messageId: number, orderCode: string, from: { id: number }) {
-  const order = await queryFirst(
-    `SELECT code, status, payment_status, telegram_user_id, items FROM orders WHERE code=? AND status='pending' AND payment_status IN ('unpaid','pending')`,
-    orderCode,
-  );
+  if (!Number.isSafeInteger(chatId) || chatId <= 0 || chatId !== from.id) return;
+  orderCode = String(orderCode || "").toUpperCase();
+  let order;
+  try {
+    order = await queryFirst(
+      `SELECT code, telegram_user_id, items FROM orders WHERE code=? AND sales_channel='telegram'
+       AND status='pending' AND payment_status IN ('unpaid','pending')`,
+      orderCode,
+    );
+  } catch {
+    await sendMessage({ chat_id: chatId, text: "Pesanan gagal dibaca. Coba lagi.", parse_mode: "HTML" });
+    return;
+  }
   if (!order) {
     await sendMessage({ chat_id: chatId, text: "❌ Pesanan tidak dapat dibatalkan.", parse_mode: "HTML" });
     return;
@@ -202,64 +260,44 @@ export async function handleOrderCancel(chatId: number, messageId: number, order
     return;
   }
 
-  // KLAIM PEMBATALAN DULU, baru pulihkan stok (2026-09-23).
-  //
-  // Urutan lama berbahaya: stok dipulihkan lebih dulu, lalu `UPDATE orders`
-  // bergerbang `status='pending'`, lalu `UPDATE payment_transactions` TANPA
-  // gerbang sama sekali. Bila webhook DANA melunasi order tepat di sela itu,
-  // hasilnya rusak permanen: stok terlanjur digelembungkan, order sah tetap
-  // `lunas`, tetapi ledger-nya ditimpa `cancelled` — order lunas tanpa
-  // transaksi `paid`, dan fulfillment jadi yatim.
-  //
-  // Dengan mengklaim lebih dulu (CAS: hanya menang bila masih pending DAN
-  // belum dibayar), seluruh efek samping di bawah hanya berjalan untuk
-  // pembatalan yang benar-benar memenangkan balapan.
-  const claim = await execRun(
-    `UPDATE orders SET status='dibatalkan', payment_status='failed', fulfillment_status='not_required',
-     updated_at=datetime('now')
-     WHERE code=? AND status='pending' AND payment_status IN ('unpaid','pending')`,
-    orderCode,
-  );
-  if (Number(claim.changes ?? 0) === 0) {
-    // Kalah balapan: order sudah lunas/kedaluwarsa di antara SELECT dan UPDATE.
-    // JANGAN pulihkan stok dan JANGAN sentuh ledger.
+  try {
+    const items = JSON.parse(String(order.items));
+    if (!Array.isArray(items) || !items.length || items.some(item =>
+      !item || !Number.isSafeInteger(item.product_id) || item.product_id <= 0
+      || !Number.isSafeInteger(item.qty) || item.qty <= 0
+      || (item.variant_id != null && (!Number.isSafeInteger(item.variant_id) || item.variant_id <= 0)))) {
+      throw new Error("invalid_order_items");
+    }
+    const d1 = getD1();
+    if (!d1) throw new Error("cancellation_requires_d1");
+    const guardId = `${orderCode}:telegram-cancel:${crypto.randomUUID()}`;
+    // Extend the existing stock/inventory transition batch, not a second commit.
+    await transitionPendingOrder(orderCode, "dibatalkan", "buyer_cancel", items, {
+      prepare: query => d1.prepare(query),
+      batch: statements => d1.batch([
+        d1.prepare(`INSERT INTO operation_guards(operation_id,valid) SELECT ?,CASE WHEN EXISTS(
+          SELECT 1 FROM orders WHERE code=? AND sales_channel='telegram' AND telegram_user_id=?
+          AND status='pending' AND payment_status IN ('unpaid','pending'))
+          AND NOT EXISTS(SELECT 1 FROM payment_transactions WHERE order_code=?
+            AND status NOT IN ('initializing','pending','unpaid','expired','failed','cancelled')) THEN 1 ELSE 0 END`)
+          .bind(guardId, orderCode, String(from.id), orderCode),
+        ...statements,
+        d1.prepare(`UPDATE payment_transactions SET status='cancelled', updated_at=datetime('now')
+          WHERE order_code=? AND status IN ('initializing','pending','unpaid','expired')`).bind(orderCode),
+        d1.prepare("DELETE FROM operation_guards WHERE operation_id=?").bind(guardId),
+      ]),
+    });
+  } catch (error) {
     await sendMessage({
       chat_id: chatId,
-      text: "❌ Pesanan tidak dapat dibatalkan — statusnya sudah berubah. Tekan 🔄 Cek Status untuk melihat kondisi terbaru.",
+      text: error instanceof OrderTransitionError
+        ? "Pesanan tidak dapat dibatalkan karena statusnya sudah berubah. Cek status terbaru."
+        : "Pembatalan gagal dikonfirmasi. Cek status lalu coba lagi.",
       parse_mode: "HTML",
+      reply_markup: orderStatusKeyboard(orderCode),
     });
     return;
   }
-
-  // Restore stock — use product_variants (synced with web/WA)
-  try {
-    const items = JSON.parse(String(order.items)) as { product_id: number; variant_id?: number; qty: number }[];
-    for (const item of items) {
-      if (item.variant_id) {
-        await execRun(
-          `UPDATE product_variants SET stock = CASE WHEN stock=-1 THEN -1 ELSE stock+? END, updated_at=datetime('now') WHERE id=? AND stock!=-1`,
-          item.qty, item.variant_id,
-        );
-      } else {
-        // Fallback for legacy orders without variant_id — restore to both tables
-        await execRun(
-          `UPDATE products SET stock = CASE WHEN stock=-1 THEN -1 ELSE stock+? END WHERE id=? AND stock!=-1`,
-          item.qty, item.product_id,
-        );
-      }
-    }
-  } catch { /* ok */ }
-
-  // Release inventory
-  await releaseInventoryForOrder(orderCode);
-
-  // Ledger: HANYA transaksi yang masih menggantung. Tanpa gerbang status,
-  // baris `paid` milik pembayaran sah ikut ditimpa `cancelled`.
-  await execRun(
-    `UPDATE payment_transactions SET status='cancelled', updated_at=datetime('now')
-     WHERE order_code=? AND status IN ('pending','unpaid','expired')`,
-    orderCode,
-  );
 
   await safeEditOrSend({
     chat_id: chatId, message_id: messageId,

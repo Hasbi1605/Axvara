@@ -92,6 +92,7 @@ describe("webhook grup: redirect + ownership guard", () => {
     // Penyerang 888TMP tidak bisa memakai order milik 777TMP: guard memakai
     // from.id (identitas penekan tombol) vs telegram_user_id order.
     expect(src).toContain("String(order.telegram_user_id) !== String(from.id)");
+    expect(src).toContain("!Number.isSafeInteger(chatId) || chatId <= 0 || chatId !== from.id");
     void ATTACKER_ID;
   });
 
@@ -102,12 +103,18 @@ describe("webhook grup: redirect + ownership guard", () => {
     expect(deliver).toContain("CAST(telegram_chat_id AS INTEGER) < 0");
   });
 
-  it("notifikasi lunas hanya ke private chat; grup hanya dapat notice tanpa kredensial", () => {
+  it("notifikasi lunas hanya ke identitas buyer kanonis, bukan chat tersimpan atau grup", () => {
     const notif = read("src/lib/telegram/order-notifications.ts");
-    expect(notif).toContain("SELECT chat_id FROM telegram_users WHERE user_id=?");
-    expect(notif).toContain("groupDeliveryNoticeMessage");
-    // chat_id privat diambil dari tabel user, bukan dari order grup.
-    expect(notif).toContain("Number(privateChat) > 0");
+    const start = notif.indexOf("export async function notifyTelegramBuyerPaid");
+    expect(start).toBeGreaterThan(-1);
+    const paid = notif.slice(start, notif.indexOf("export async function", start + 1));
+    expect(paid).toContain('const chatId = String(order.telegram_user_id || "").trim()');
+    const validateAt = paid.indexOf('if (!/^[1-9]\\d*$/.test(chatId) || !Number.isSafeInteger(Number(chatId))) return false');
+    expect(validateAt).toBeGreaterThan(-1);
+    expect(paid.indexOf("const lease =")).toBeGreaterThan(validateAt);
+    expect(paid.indexOf("await sendMessage({")).toBeGreaterThan(validateAt);
+    expect(paid).toContain("chat_id: chatId");
+    expect(paid).not.toMatch(/SELECT chat_id|tu\.chat_id|telegram_chat_id|groupDeliveryNoticeMessage/);
   });
 
   it("private chat buyer dummy lolos guard grup", () => {

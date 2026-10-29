@@ -7,22 +7,24 @@ import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 // membuat perubahan tampilan aman ditinjau. Pemindahan murni dari route.ts.
 
 import { queryFirst, queryAll, execRun, isD1Mode } from "@/lib/db";
-import { sendMessage, sendPhoto, safeEditOrSend, showLoadingBar } from "@/lib/telegram/api";
+import { sendMessage, sendPhoto, safeEditOrSend, sendChatAction } from "@/lib/telegram/api";
 import {
   catalogFlatKeyboard, categoriesKeyboard, productsKeyboard,
-  productDetailKeyboard, variantsKeyboard,
+  variantsKeyboard, cb,
   qtyKeyboard, TELEGRAM_MAX_QTY,
 } from "@/lib/telegram/keyboards";
 import {
   catalogFlatMessage, categoriesMessage, categoryProductsMessage,
   productDetailMessage, outOfStockMessage, errorMessage,
-  chooseVariantMessage, chooseQtyMessage,
+  chooseQtyMessage, escapeHtml,
 } from "@/lib/telegram/messages";
-import { getProductDetail, getActiveVariant, formatDuration, buyerWarrantyLabel, buyerDeliveryKind } from "@/lib/catalog";
+import { getProductDetail, getActiveVariant, formatVariantLabel, buyerWarrantyLabel, buyerDeliveryKind, effectiveVariantStock } from "@/lib/catalog";
+import { checkoutApprovalTag } from "@/lib/telegram/checkout-approval";
+import { resolveVariantCopy, adminCopyOf } from "@/lib/product-copy/resolve";
+import { mergeProductCopy, parseProductDescription, COPY_SECTION_TITLES } from "@/lib/product-copy/format";
 import { needsEmailForVariant } from "@/lib/warung-rebahan/delivery-class";
 import { winnerForLoserProduct } from "@/lib/supplier-pairs";
 import { clampQty } from "./shared";
-import { handleBuyConfirm } from "./discovery";
 
 type CatalogProduct = { id: number; name: string; price: number };
 
@@ -88,7 +90,7 @@ export async function handleShowProducts(chatId: number, messageId: number, cate
 }
 
 export async function handleShowProduct(chatId: number, messageId: number, requestedProductId: number) {
-  await showLoadingBar(chatId, "📦 Memuat produk");
+  await sendChatAction(chatId, "typing");
 
   // Pecundang pasangan WR/SK (tombol lama, hasil cari lama) → tampilkan
   // pemenangnya, cermin redirect 308 PDP web: 1 barang = 1 kartu.
@@ -109,11 +111,12 @@ export async function handleShowProduct(chatId: number, messageId: number, reque
   }
 
   // Aggregate stock from variants for display
-  const activeVariants = detail.variants.filter(v => v.is_active);
+  const activeVariants = detail.variants.filter(v => v.is_active).map(v => ({ ...v, stock: effectiveVariantStock(v) }));
+  const purchasable = activeVariants.filter(v => v.stock === -1 || v.stock >= v.min_qty);
   const hasUnlimited = activeVariants.some(v => v.stock === -1);
-  const totalStock = hasUnlimited ? -1 : activeVariants.reduce((sum, v) => sum + v.stock, 0);
-  const minPrice = activeVariants.length > 0 ? Math.min(...activeVariants.map(v => v.price)) : 0;
-  const maxPrice = activeVariants.length > 0 ? Math.max(...activeVariants.map(v => v.price)) : 0;
+  const totalStock = hasUnlimited ? -1 : purchasable.reduce((sum, v) => sum + v.stock, 0);
+  const minPrice = purchasable.length > 0 ? Math.min(...purchasable.map(v => v.price)) : 0;
+  const maxPrice = purchasable.length > 0 ? Math.max(...purchasable.map(v => v.price)) : 0;
 
   // Find compare_price from DB for discount display
   const priceRow = await queryFirst(`SELECT compare_price, badge, sold_count FROM products WHERE id=?`, productId);
@@ -124,10 +127,9 @@ export async function handleShowProduct(chatId: number, messageId: number, reque
   const variantLines = activeVariants.map((v) => {
     const kind = buyerDeliveryKind(v);
     return {
-      label: v.label,
+      label: formatVariantLabel(v),
       price: v.price,
       warranty: buyerWarrantyLabel(v) || null,
-      duration: formatDuration(v) || null,
       stock: v.stock,
       wr_delivery_class: v.wr_delivery_class ?? null,
       // Badge pengiriman siap tampil (satu sumber dengan PDP web via
@@ -137,10 +139,9 @@ export async function handleShowProduct(chatId: number, messageId: number, reque
     };
   });
 
-  // No description rendered on Telegram (WA parity). Warranty per variant above
-  // uses the same product_variants source as web/WA.
   const text = productDetailMessage({
     name: detail.name,
+    description: detail.description,
     price: minPrice,
     compare_price: comparePrice && comparePrice > maxPrice ? comparePrice : null,
     stock: totalStock,
@@ -148,23 +149,25 @@ export async function handleShowProduct(chatId: number, messageId: number, reque
     sold_count: soldCount,
     variants: variantLines,
   });
+  const keyboard = variantsKeyboard(productId, activeVariants.map(v => ({ ...v, label: formatVariantLabel(v) })));
 
   // Product photo = same image as web (free: sendPhoto with product image_url)
-  const imageUrl = detail.image ?? "";
-  if (imageUrl && imageUrl.startsWith("http")) {
-    await sendPhoto({
+  const imageUrl = detail.image?.startsWith("/") ? `https://axvara.tech${detail.image}` : detail.image ?? "";
+  if (imageUrl.startsWith("https://") && text.length <= 1024) {
+    const sent = await sendPhoto({
       chat_id: chatId,
       photo: imageUrl,
       caption: text,
       parse_mode: "HTML",
-      reply_markup: productDetailKeyboard(productId),
+      reply_markup: keyboard,
     });
+    if (!sent.ok) await safeEditOrSend({ chat_id: chatId, message_id: messageId, text, parse_mode: "HTML", reply_markup: keyboard });
   } else {
     await safeEditOrSend({
       chat_id: chatId, message_id: messageId,
       text,
       parse_mode: "HTML",
-      reply_markup: productDetailKeyboard(productId),
+      reply_markup: keyboard,
     });
   }
 }
@@ -172,36 +175,7 @@ export async function handleShowProduct(chatId: number, messageId: number, reque
 // --- Variant flow handlers (TELEGRAM_VARIANT_FLOW) ---
 
 export async function handleShowVariants(chatId: number, messageId: number, productId: number) {
-  const detail = await getProductDetail(productId);
-  if (!detail || detail.variants.length === 0) {
-    // Fallback to legacy flow if no variants
-    await handleBuyConfirm(chatId, messageId, productId);
-    return;
-  }
-
-  // If only 1 variant, skip to confirmation
-  const activeVariants = detail.variants.filter((v) => v.is_active);
-  if (activeVariants.length === 1) {
-    await handleVariantConfirm(chatId, messageId, activeVariants[0].id);
-    return;
-  }
-
-  const variantItems = activeVariants.map((v) => ({
-    id: v.id,
-    label: v.label,
-    price: v.price,
-    stock: v.stock,
-    duration_label: formatDuration(v) || null,
-    warranty_label: buyerWarrantyLabel(v) || null,
-  }));
-
-  await safeEditOrSend({
-    chat_id: chatId,
-    message_id: messageId,
-    text: chooseVariantMessage(detail.name),
-    parse_mode: "HTML",
-    reply_markup: variantsKeyboard(productId, variantItems),
-  });
+  await handleShowProduct(chatId, messageId, productId);
 }
 
 export async function handleVariantConfirm(chatId: number, messageId: number, variantId: number) {
@@ -211,7 +185,7 @@ export async function handleVariantConfirm(chatId: number, messageId: number, va
     return;
   }
 
-  if (variant.stock === 0) {
+  if (effectiveVariantStock(variant) !== -1 && effectiveVariantStock(variant) < variant.min_qty) {
     await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
     return;
   }
@@ -262,13 +236,14 @@ export async function handleShowQty(
     await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
     return;
   }
-  if (variant.stock === 0) {
+  variant.stock = effectiveVariantStock(variant);
+  if (variant.stock !== -1 && variant.stock < variant.min_qty) {
     await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
     return;
   }
   const product = await queryFirst(`SELECT id, name FROM products WHERE id=?`, productId);
   const productName = product ? String(product.name) : "Produk";
-  const productEmail = await queryFirst(`SELECT require_email FROM products WHERE id=?`, productId).catch(() => null);
+  const productEmail = await queryFirst(`SELECT require_email FROM products WHERE id=?`, productId);
   const requiresEmail = needsEmailForVariant({
     wrType: variant.wr_type ?? null,
     requireEmail: Number(productEmail?.require_email ?? variant.require_email ?? 0),
@@ -277,16 +252,18 @@ export async function handleShowQty(
   const uniqueMax = variant.fulfillment_mode === "unique" ? Math.min(MAX_UNIQUE_UNITS_PER_ORDER, stockMax) : stockMax;
   // Minimum pembelian (migrasi 0034): stepper dibuka LANGSUNG di min agar
   // pembeli GSuite (min 50) tidak mulai dari 1 lalu ditolak saat bayar.
-  // Bila min > stok tersedia: biarkan qty tampil min (invoice tetap menolak
-  // via guard stok) — jangan clamp diam-diam ke stok lalu lolos min.
   const minQty = Math.max(1, Number(variant.min_qty ?? 1) || 1);
-  const maxQty = Math.max(minQty, uniqueMax);
+  const maxQty = uniqueMax;
+  if (minQty > maxQty) {
+    await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
+    return;
+  }
   const qty = Math.min(Math.max(clampQty(requestedQty), minQty), maxQty);
 
   // Remember qty context so a typed number (1-100) works without buttons.
   if (isD1Mode()) {
     await execRun(
-      `UPDATE telegram_users SET pending_action=?, updated_at=datetime('now') WHERE user_id=(SELECT user_id FROM telegram_users WHERE chat_id=? LIMIT 1)`,
+      `UPDATE telegram_users SET pending_action=?, updated_at=datetime('now') WHERE user_id=?`,
       `qty_for:${productId}:${variantId}`,
       String(chatId),
     ).catch(() => {});
@@ -297,31 +274,72 @@ export async function handleShowQty(
     message_id: messageId,
     text: chooseQtyMessage({
       productName,
-      variantLabel: variant.label,
+      variantLabel: formatVariantLabel(variant),
       price: variant.price,
       stock: variant.stock,
       qty,
       maxQty,
       minQty,
       requiresEmail,
-    }),
+    }) + `\n\nPengiriman: ${buyerDeliveryKind(variant) === "instant" ? "otomatis setelah pembayaran" : "diproses setelah pembayaran"}.` + (buyerWarrantyLabel(variant) ? `\nGaransi: ${escapeHtml(buyerWarrantyLabel(variant))}.` : "") + "\nBaca ketentuan produk sebelum membayar.",
     parse_mode: "HTML",
-    reply_markup: qtyKeyboard({ productId, variantId, stock: variant.stock, qty, price: variant.price, maxQty, minQty, requiresEmail }),
+    reply_markup: qtyKeyboard({ productId, variantId, stock: variant.stock, qty, price: variant.price, maxQty, minQty, requiresEmail, approvalTag: await checkoutApprovalTag([{ productId, variantId, qty, price: variant.price }]) }),
   });
 }
 
 export async function handleQtyInputPrompt(chatId: number, productId: number, variantId: number, from: { id: number }) {
   const variant = await getActiveVariant(variantId);
   if (!variant || variant.product_id !== productId) return;
+  variant.stock = effectiveVariantStock(variant);
   const minQty = Math.max(1, Number(variant.min_qty ?? 1) || 1);
   const maxQty = variant.fulfillment_mode === "unique" ? Math.min(MAX_UNIQUE_UNITS_PER_ORDER, variant.stock === -1 ? MAX_UNIQUE_UNITS_PER_ORDER : variant.stock) : variant.stock === -1 ? TELEGRAM_MAX_QTY : Math.min(variant.stock, TELEGRAM_MAX_QTY);
+  if (minQty > maxQty) {
+    await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
+    return;
+  }
   if (isD1Mode()) {
     await execRun(`UPDATE telegram_users SET pending_action=?, updated_at=datetime('now') WHERE user_id=?`, `qty_for:${productId}:${variantId}`, String(from.id)).catch(() => {});
   }
   await sendMessage({
     chat_id: chatId,
-    text: `✍️ <b>Masukkan Jumlah</b>\n\nBalas pesan ini dengan angka ${minQty}–${maxQty}.\nContoh: <code>${Math.min(Math.max(minQty, 20), maxQty)}</code>\n\nAngka hanya mengubah jumlah. Pesanan belum dibuat sampai kamu menekan tombol bayar atau keranjang.`,
+    text: `<b>Masukkan jumlah</b>\n\nKirim angka ${minQty}–${maxQty}. Ketik /batal untuk kembali.`,
     parse_mode: "HTML",
     reply_markup: { force_reply: true, selective: true, input_field_placeholder: `Ketik ${minQty}–${maxQty}` },
   });
+}
+
+export async function handleProductTerms(chatId: number, productId: number, variantId = 0, requestedPage = 0) {
+  const detail = await getProductDetail(productId);
+  const enabled = await queryFirst("SELECT telegram_enabled FROM products WHERE id=? AND is_active=1", productId);
+  if (!detail || Number(enabled?.telegram_enabled) !== 1) return;
+  if (!variantId) {
+    await sendMessage({ chat_id: chatId, text: "Pilih varian untuk membaca ketentuannya.", reply_markup: { inline_keyboard: detail.variants.filter(v => v.is_active).map(v => [{ text: formatVariantLabel(v).slice(0, 60), callback_data: cb.terms(productId, v.id) }]) } });
+    return;
+  }
+  const variants = detail.variants.filter(v => v.id === variantId && v.is_active);
+  for (const variant of variants) {
+    const copy = mergeProductCopy(resolveVariantCopy(variant.terms, variant.delivery_terms, adminCopyOf(variant)), parseProductDescription(detail.description));
+    const lines = [
+      ...copy.sections.flatMap(section => [COPY_SECTION_TITLES[section.kind], ...section.items.map(item => `• ${item}`), ""]),
+      ...copy.activation.flatMap(group => [group.title ?? "Cara aktivasi", ...group.steps.map((step, i) => `${i + 1}. ${step}`), ""]),
+      ...copy.notes,
+    ];
+    if (!lines.length) lines.push("Ketentuan khusus belum tersedia. Hubungi admin melalui /bantuan sebelum membeli.");
+    const header = `<b>${escapeHtml(formatVariantLabel(variant).slice(0, 120))}</b>\n\n`;
+    let body = "";
+    const parts: string[] = [];
+    for (const char of lines.join("\n")) {
+      const escaped = escapeHtml(char);
+      if (header.length + body.length + escaped.length > 3900) { parts.push(header + body); body = ""; }
+      body += escaped;
+    }
+    if (body) parts.push(header + body);
+    const page = Math.max(0, Math.min(parts.length - 1, Math.floor(requestedPage) || 0));
+    const navigation = [];
+    if (page > 0) navigation.push({ text: "Sebelumnya", callback_data: `${cb.terms(productId, variant.id)}:${page - 1}` });
+    if (page < parts.length - 1) navigation.push({ text: "Ketentuan Berikutnya", callback_data: `${cb.terms(productId, variant.id)}:${page + 1}` });
+    const sent = await sendMessage({ chat_id: chatId, text: parts[page], parse_mode: "HTML", disable_web_page_preview: true,
+      reply_markup: { inline_keyboard: [...(navigation.length ? [navigation] : []), [{ text: "Pilih Varian", callback_data: cb.variants(productId) }], [{ text: "Lanjut ke Jumlah", callback_data: cb.variant(variant.id) }]] } });
+    if (!sent.ok) throw new Error("telegram_terms_send_failed");
+  }
 }

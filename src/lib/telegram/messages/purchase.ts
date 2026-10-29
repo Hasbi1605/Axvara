@@ -1,12 +1,5 @@
 import { QRIS_PAYMENT_DEADLINE_NOTICE } from "@/lib/payment-maintenance";
-// src/lib/telegram/messages/purchase.ts — Copy alur pembelian & invoice.
-//
-// MENGAPA dipisah: ini JALUR UANG (konfirmasi varian → jumlah → keranjang →
-// invoice QRIS + pengingat). Perubahan di sini punya dampak transaksional,
-// jadi mengisolasinya dari copy katalog/status membuat perubahan mudah ditinjau
-// dan diuji terpisah. Pemindahan murni — teks, breadcrumb, dan angka identik.
-
-import { escapeHtml, formatRupiah, truncate, breadcrumbLine } from "./format";
+import { escapeHtml, escapeItemSummary, formatRupiah, truncate } from "./format";
 
 export function confirmVariantBuyMessage(params: {
   productName: string;
@@ -19,16 +12,14 @@ export function confirmVariantBuyMessage(params: {
   const { productName, variantLabel, duration, warranty, price } = params;
   const name = escapeHtml(truncate(productName, 100));
   const lines = [
-    "🛒 <b>Konfirmasi Pembelian</b>",
-    params.step ?? breadcrumbLine(2),
-    "━━━━━━━━━━━━━━━━━━━━━",
+    "<b>Konfirmasi pembelian</b>",
     "",
-    `📦 <b>${name}</b>`,
-    `🏷 Varian: ${escapeHtml(variantLabel)}`,
+    `<b>${name}</b>`,
+    `Varian: ${escapeHtml(truncate(variantLabel, 100))}`,
   ];
-  if (duration) lines.push(`⏱ Durasi: ${escapeHtml(duration)}`);
-  if (warranty) lines.push(`🛡 Garansi: ${escapeHtml(warranty)}`);
-  lines.push(`💰 Harga satuan: ${formatRupiah(price)}`);
+  if (duration) lines.push(`Durasi: ${escapeHtml(duration)}`);
+  if (warranty) lines.push(`Garansi: ${escapeHtml(warranty)}`);
+  lines.push(`Harga satuan: ${formatRupiah(price)}`);
   lines.push("");
   lines.push("Setelah ini kamu dapat mengatur jumlah pesanan.");
   return lines.join("\n");
@@ -37,11 +28,9 @@ export function confirmVariantBuyMessage(params: {
 export function chooseVariantMessage(productName: string): string {
   const name = escapeHtml(truncate(productName, 100));
   return [
-    `📦 <b>Pilih Varian — ${name}</b>`,
-    breadcrumbLine(2),
-    "━━━━━━━━━━━━━━━━━━━━━",
+    `<b>${name}</b>`,
     "",
-    "Harga, durasi, dan garansi tercantum pada pilihan di bawah.",
+    "Pilih varian.",
   ].join("\n");
 }
 
@@ -49,19 +38,16 @@ export function confirmBuyMessage(productName: string, price: number, qty = 1): 
   const name = escapeHtml(truncate(productName, 100));
   const quantity = Math.max(1, Math.min(100, Math.floor(qty)));
   return [
-    "🛒 <b>Konfirmasi Pembelian</b>",
-    "━━━━━━━━━━━━━━━━━━━━━",
+    "<b>Konfirmasi pembelian</b>",
     "",
-    `📦 ${name}`,
-    `💰 Harga satuan: ${formatRupiah(price)}`,
-    `📊 Qty: ${quantity}`,
-    `🧾 <b>Total: ${formatRupiah(price * quantity)}</b>`,
+    name,
+    `Harga satuan: ${formatRupiah(price)}`,
+    `Jumlah: ${quantity}`,
+    `<b>Subtotal: ${formatRupiah(price * quantity)}</b>`,
     "",
-    "⚠️ <i>Total final bisa sedikit berbeda karena kode unik pembayaran.</i>",
+    "Total bayar final tercantum pada invoice, termasuk kode unik pembayaran.",
     "",
-    "🛡 <b>Third-party, bukan official.</b> Garansi ikut varian yang dipilih. Lanjut bayar = setuju ketentuan. /garansi untuk detail.",
-    "",
-    "Lanjutkan? 👇",
+    "Third-party, bukan official. Garansi mengikuti varian yang dipilih. Dengan melanjutkan pembayaran, kamu setuju ketentuan /garansi.",
   ].join("\n");
 }
 
@@ -78,35 +64,22 @@ export function chooseQtyMessage(params: {
   const { productName, variantLabel, price, stock } = params;
   // Telegram bulk cap is 100/order.
   const minQty = Math.max(1, Math.floor(Number(params.minQty ?? 1) || 1));
-  const qty = Math.min(Math.max(minQty, Math.floor(params.qty || minQty)), 100);
-  const maxQty = params.maxQty ?? (stock === -1 ? 100 : Math.max(1, Math.min(stock, 100)));
-  const stockLine = maxQty === 1
-    ? "📦 Produk unik — maksimal 1 per pesanan"
-    : minQty > 1
-    ? `📦 Minimal pembelian ${minQty}${stock === -1 ? " — stok tersedia" : stock > 0 ? ` — stok ${stock}` : " — stok habis"}`
-    : stock === -1
-    ? "📦 Stok tersedia"
-    : stock > 0
-      ? `📦 Stok: ${stock} — maksimal ${Math.min(stock, 100)} per order`
-      : "📦 ❌ Stok habis";
+  const maxQty = Math.max(1, Math.min(100, stock === -1 ? 100 : Math.max(1, stock), Math.floor(params.maxQty ?? 100)));
+  const qty = Math.min(Math.max(minQty, Math.floor(params.qty || minQty)), maxQty);
+  const stockLine = stock === -1 ? "Stok tersedia" : stock > 0 ? `Stok: ${stock}` : "Stok habis";
   return [
-    "📊 <b>Tentukan Jumlah Pesanan</b>",
-    breadcrumbLine(3),
-    "━━━━━━━━━━━━━━━━━━━━━",
+    "<b>Jumlah pesanan</b>",
     "",
-    `📦 <b>${escapeHtml(truncate(productName, 80))}</b>`,
-    `🏷 ${escapeHtml(truncate(variantLabel, 80))}`,
-    `💰 Harga satuan: ${formatRupiah(price)}`,
+    `<b>${escapeHtml(truncate(productName, 80))}</b>`,
+    `Varian: ${escapeHtml(truncate(variantLabel, 80))}`,
+    `Harga satuan: ${formatRupiah(price)}`,
     stockLine,
+    ...(minQty > 1 ? [`Minimal pembelian: ${minQty}`] : []),
+    `Maksimal ${maxQty} per pesanan.`,
     "",
-    `🔢 <b>Jumlah dipilih: ${qty}</b>`,
-    `🧾 <b>Total: ${formatRupiah(price * qty)}</b>`,
-    ...(params.requiresEmail ? ["📧 Email aktif diperlukan sebelum bayar"] : []),
-    "",
-    "Ubah jumlah dengan tombol ➖ / ➕.",
-    maxQty > 1
-      ? `Untuk lebih cepat, tekan <b>Masukkan Jumlah</b> lalu kirim angka ${minQty}–${maxQty}.`
-      : "Varian ini tidak mendukung bulk order.",
+    `<b>Jumlah: ${qty}</b>`,
+    `<b>Subtotal: ${formatRupiah(price * qty)}</b>`,
+    ...(params.requiresEmail ? ["Email aktif diperlukan sebelum membayar."] : []),
   ].join("\n");
 }
 
@@ -118,16 +91,15 @@ export function emailConfirmationMessage(params: {
   maskedEmail: string;
 }): string {
   return [
-    "📧 <b>Konfirmasi Email</b>",
-    "━━━━━━━━━━━━━━━━━━━━━",
+    "<b>Konfirmasi email</b>",
     "",
-    `📦 <b>${escapeHtml(truncate(params.productName, 80))}</b>`,
-    `🏷 ${escapeHtml(truncate(params.variantLabel, 80))}`,
-    `🔢 Jumlah: ${params.qty}`,
-    `📧 Email: <code>${escapeHtml(params.maskedEmail)}</code>`,
-    `🧾 <b>Total: ${formatRupiah(params.total)}</b>`,
+    `<b>${escapeHtml(truncate(params.productName, 80))}</b>`,
+    `Varian: ${escapeHtml(truncate(params.variantLabel, 80))}`,
+    `Jumlah: ${params.qty}`,
+    `Email: <code>${escapeHtml(params.maskedEmail)}</code>`,
+    `<b>Subtotal: ${formatRupiah(params.total)}</b>`,
     "",
-    "Pastikan email benar. Undangan produk akan dikirim ke alamat tersebut.",
+    "Periksa email sebelum membayar.",
   ].join("\n");
 }
 
@@ -141,59 +113,48 @@ export type TelegramCartLine = {
 export function cartMessage(lines: TelegramCartLine[]): string {
   if (lines.length === 0) {
     return [
-      "🛒 <b>Keranjang Kosong</b>",
-      "━━━━━━━━━━━━━━━━━━━━━",
+      "<b>Keranjang kosong</b>",
       "",
-      "Belum ada item. Yuk pilih dari /katalog 👇",
-      "",
-      "Checkout gabungan = cukup bayar SEKALI untuk semua item. ⚡",
+      "Pilih produk di /katalog.",
     ].join("\n");
   }
   const subtotal = lines.reduce((sum, line) => sum + line.price * line.qty, 0);
   const out = [
-    "🛒 <b>Keranjang Kamu</b>",
-    "━━━━━━━━━━━━━━━━━━━━━",
+    "<b>Keranjang</b>",
     "",
   ];
-  lines.slice(0, 20).forEach((line, i) => {
-    out.push(`${i + 1}. <b>${escapeHtml(truncate(line.productName, 50))}</b>`);
-    out.push(`   🏷 ${escapeHtml(truncate(line.variantLabel, 50))} ×${line.qty} — ${formatRupiah(line.price * line.qty)}`);
-  });
+  lines.slice(0, 20).forEach((line, i) => out.push(
+    `${i + 1}. ${escapeItemSummary(line.productName, 65)} / ${escapeItemSummary(line.variantLabel, 65)} x${line.qty}: ${formatRupiah(line.price * line.qty)}`
+  ));
   out.push("");
-  out.push(`🧾 <b>Total: ${formatRupiah(subtotal)}</b>`);
+  out.push(`<b>Subtotal: ${formatRupiah(subtotal)}</b>`);
   out.push("");
-  out.push("Checkout = SATU QRIS untuk semua item. ⚡");
+  out.push("Satu pembayaran QRIS untuk semua item.");
   return out.join("\n");
 }
 
 export function cartAddedMessage(productName: string, variantLabel: string, qty: number, cartCount: number): string {
   return [
-    "✅ <b>Masuk Keranjang!</b>",
-    "━━━━━━━━━━━━━━━━━━━━━",
+    "<b>Ditambahkan ke keranjang</b>",
     "",
-    `📦 <b>${escapeHtml(truncate(productName, 60))}</b>`,
-    `🏷 ${escapeHtml(truncate(variantLabel, 60))} ×${qty}`,
+    `<b>${escapeHtml(truncate(productName, 60))}</b>`,
+    `${escapeHtml(truncate(variantLabel, 60))} x${qty}`,
     "",
-    `🛒 Keranjang: ${cartCount} item`,
-    "",
-    "Lanjut belanja atau checkout SEKALI bayar 👇",
+    `Keranjang: ${cartCount} item`,
   ].join("\n");
 }
 
 export function cartCheckoutSummaryMessage(lines: TelegramCartLine[], subtotal: number): string {
-  const names = lines.slice(0, 5).map((line) =>
-    `• ${escapeHtml(truncate(line.productName, 40))} ×${line.qty}`).join("\n");
-  const more = lines.length > 5 ? `\n<i>+${lines.length - 5} item lain…</i>` : "";
+  const names = lines.slice(0, 20).map(line =>
+    `• ${escapeItemSummary(line.productName, 75)} / ${escapeItemSummary(line.variantLabel, 75)} x${line.qty}`).join("\n");
   return [
-    "🧾 <b>Checkout Keranjang</b>",
-    breadcrumbLine(4),
-    "━━━━━━━━━━━━━━━━━━━━━",
+    "<b>Konfirmasi keranjang</b>",
     "",
-    names + more,
+    names,
     "",
-    `💳 <b>Total Bayar: ${formatRupiah(subtotal)}</b>`,
+    `<b>Subtotal: ${formatRupiah(subtotal)}</b>`,
     "",
-    "Satu QRIS untuk semua item di atas. Lanjut? 👇",
+    "Satu pembayaran QRIS untuk semua item. Total bayar final tercantum pada invoice.",
   ].join("\n");
 }
 
@@ -205,16 +166,15 @@ export function orderReminderMessage(params: {
 }): string {
   const { orderCode, productName, payableAmount, attempt } = params;
   return [
-    attempt > 1 ? "⏰ <b>Pengingat Terakhir!</b>" : "⏰ <b>Pesanan Menunggu Pembayaran</b>",
-    "━━━━━━━━━━━━━━━━━━━━━",
+    attempt > 1 ? "<b>Pengingat pembayaran terakhir</b>" : "<b>Menunggu pembayaran</b>",
     "",
-    `📦 ${escapeHtml(truncate(productName, 80))}`,
-    `🔢 <code>${escapeHtml(orderCode)}</code>`,
-    `💳 <b>${formatRupiah(payableAmount)}</b>`,
+    escapeItemSummary(productName, 2800),
+    `<code>${escapeHtml(truncate(orderCode, 120))}</code>`,
+    `<b>Total bayar: ${formatRupiah(payableAmount)}</b>`,
     "",
-    "QRIS kamu masih aktif — scan & bayar sesuai nominal agar order tidak hangus.",
+    "Bayar QRIS yang masih aktif sesuai nominal sebelum batas waktunya.",
     "",
-    "Abaikan pesan ini jika sudah bayar — bot otomatis mengabari saat lunas. 🙏",
+    "Abaikan pesan ini jika sudah bayar. Bot mengabari setelah pembayaran terkonfirmasi.",
   ].join("\n");
 }
 
@@ -224,41 +184,33 @@ export function invoiceMessage(params: {
   payableAmount: number;
   expiresAt: string;
   paymentMethod?: string;
-  /**
-   * Kode akses pesanan turunan HMAC (di-derive pemanggil dari versi
-   * tersimpan). Hanya dirender bila non-empty; legacy (versi 0/kosong) =
-   * output identik seperti sebelumnya. Hanya untuk DM pribadi 1-to-1 —
-   * JANGAN sertakan di pesan grup/outbox.
-   */
+  /** Legacy field, never rendered: buyer PINs are email-only. */
   buyerAccessCode?: string;
 }): string {
   const { orderCode, productName, payableAmount, expiresAt, paymentMethod } = params;
-  const name = escapeHtml(truncate(productName, 100));
   const isQris = !paymentMethod || paymentMethod === "qris";
   let expiryText: string;
   try {
     const d = new Date(expiresAt);
+    if (Number.isNaN(d.getTime())) throw new Error("invalid_expiry");
     expiryText = d.toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }) + " WIB";
   } catch {
     expiryText = expiresAt;
   }
 
-  return [
-    "✅ <b>Invoice Berhasil Dibuat</b>",
-    breadcrumbLine(4),
-    "━━━━━━━━━━━━━━━━━━━━━",
+  const header = [
+    "<b>Menunggu pembayaran</b>",
+    `<code>${escapeItemSummary(orderCode, 120)}</code>`,
+  ].join("\n");
+  const footer = [
+    `<b>Total bayar: ${formatRupiah(payableAmount)}</b>`,
+    isQris ? "Bayar QRIS sesuai nominal ini." : "Transfer sesuai nominal ini.",
     "",
-    `📦 ${name}`,
-    `🔢 <code>${escapeHtml(orderCode)}</code>`,
-    "",
-    `💳 <b>Total Bayar: ${formatRupiah(payableAmount)}</b>`,
-    "",
-    isQris ? "👆 Scan QRIS di atas untuk membayar" : "👆 Transfer sesuai nominal di atas",
-    "",
-    `⏰ Batas: ${expiryText}`,
+    `Batas bayar: ${escapeItemSummary(expiryText, 80)}`,
     ...(isQris ? [QRIS_PAYMENT_DEADLINE_NOTICE] : []),
     "",
-    "━━━━━━━━━━━━━━━━━━━━━",
-    "Sudah bayar? Tekan 🔄 Periksa Pembayaran di bawah — bot juga otomatis mengabari setelah pembayaran terkonfirmasi.",
+    "Periksa Pembayaran untuk cek status. Bot otomatis mengabari setelah pembayaran terkonfirmasi.",
   ].join("\n");
+  // Invoices are also photo captions, whose HTML budget is 1024 characters.
+  return [header, escapeItemSummary(productName, 1023 - header.length - footer.length - 4), footer].join("\n\n");
 }

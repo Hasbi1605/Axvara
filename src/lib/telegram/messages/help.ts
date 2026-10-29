@@ -6,37 +6,28 @@
 
 import { formatWarrantyTermsTelegram, formatWarrantyClaimsTelegram } from "@/lib/warranty-policy";
 import { SITE } from "@/lib/site";
-import { formatWIBTime } from "./format";
 
 export function helpMessage(): string {
-  const { greeting } = formatWIBTime();
   return [
-    "❓ <b>Bantuan AXVARA</b>",
-    "━━━━━━━━━━━━━━━━━━━━━",
+    "<b>Bantuan AXVARA</b>",
     "",
-    `${greeting}! 👋 Ada yang bisa dibantu?`,
+    "/start: Menu utama",
+    "/katalog: Lihat produk",
+    "/cari: Cari produk",
+    "/cart: Keranjang",
+    "/orders: Pesanan saya",
+    "/pesanan &lt;kode&gt;: Cek status pesanan",
+    "/garansi: Ketentuan dan klaim garansi",
+    "/bantuan: Bantuan dan kontak admin",
     "",
-    "📌 <b>Perintah:</b>",
-    "  /start — Menu utama",
-    "  /katalog — Lihat produk",
-    "  /pesanan &lt;kode&gt; — Cek status",
-    "  /garansi — Ketentuan &amp; klaim garansi",
-    "  /bantuan — Halaman ini",
+    "Pilih produk, varian, dan jumlah. Isi email jika diminta, lalu bayar QRIS sesuai total pada invoice. Bot mengabari setelah pembayaran terkonfirmasi dan produk siap.",
     "",
-    "🛒 <b>Cara beli (1 menit):</b>",
-    "  1️⃣ Pilih produk langsung dari /katalog",
-    "  2️⃣ Pilih varian + jumlah",
-    "  3️⃣ Konfirmasi jumlah — QRIS dinamis langsung terbit",
-    "  4️⃣ Bayar sesuai total — lunas otomatis",
-    "  5️⃣ Produk terkirim + notif di sini",
+    "AXVARA third-party, bukan official. Masa dan cakupan garansi mengikuti varian produk. Ketentuan: /garansi.",
     "",
-    "🛡 <b>AXVARA third-party, bukan official.</b> Garansi 1×24 jam–30 hari ikut varian tiap produk. Ketik /garansi.",
-    "",
-    "━━━━━━━━━━━━━━━━━━━━━",
     // 2026-10-10: WA via hub /wa (pilih nomor aktif) — bukan wa.me langsung.
-    `📞 <b>Admin:</b> ${SITE.webUrl}/wa`,
-    `✈️ <b>Telegram Support:</b> @${SITE.supportTelegram}`,
-    "🌐 <b>Web:</b> axvara.tech",
+    `WhatsApp admin: ${SITE.webUrl}/wa`,
+    `Telegram: @${SITE.supportTelegram}`,
+    `Website: ${SITE.webUrl}`,
   ].join("\n");
 }
 

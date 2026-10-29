@@ -10,10 +10,10 @@ import { notifyPaymentMaintenance } from "@/lib/telegram/payment-maintenance";
 // case) menjaga jaminan bahwa TIDAK ADA handler yang bisa dicapai tanpa melewati
 // guard. Pemindahan murni dari route.ts — set ownerBound, SQL, teks identik.
 
-import { queryFirst } from "@/lib/db";
+import { queryFirst, execRun } from "@/lib/db";
 import { sendMessage, safeEditOrSend } from "@/lib/telegram/api";
 import {
-  homeKeyboard, warrantyKeyboard, orderStatusKeyboard, parseCallback,
+  homeKeyboard, warrantyKeyboard, orderStatusKeyboard, parseCallback, cancelConfirmationKeyboard,
 } from "@/lib/telegram/keyboards";
 import {
   welcomeMessage, helpMessage, warrantyFullMessage, alreadyPendingMessage,
@@ -24,15 +24,18 @@ import {
   handleShowCatalogEdit, handleShowCategoriesEdit, handleShowProducts,
   handleShowProduct, handleShowVariants, handleVariantConfirm, handleShowQty,
   handleQtyInputPrompt,
+  handleProductTerms,
 } from "./catalog";
 import {
   handleMyOrders, handleSearchPrompt, handleBuyConfirm, handleConfirmPurchase,
-  handleWaInput,
+  handleWaInput, showCartEmailConfirmation,
 } from "./discovery";
 import {
   handleOrderStatus, handleOrderRefresh, handleOrderCancel, handleQrisRenew,
 } from "./orders";
 import { handlePayWithQris } from "./invoice";
+import { checkoutApprovalTag } from "@/lib/telegram/checkout-approval";
+import { readCheckoutEmail, checkoutEmailFingerprint } from "@/lib/telegram/checkout-email";
 import {
   handleShowCart, handleCartAdd, handleCartAdjust, handleCartCheckout,
   createAndSendCartInvoice,
@@ -45,9 +48,9 @@ export async function handleCallback(data: string, chatId: number, messageId: nu
   // batal, refresh, status, wainput) hanya boleh dieksekusi pemilik order.
   // from.id adalah identitas penekan tombol terverifikasi Telegram — chat_id
   // grup tidak boleh dipakai untuk mengambil alih order orang lain.
-  const ownerBound = new Set(["pay", "pm", "qinput", "epay", "eedit", "cadd", "cinc", "cdec", "crm", "ccheckout", "cancel", "refresh", "order", "cred", "wainput", "qrenew"]);
+  const ownerBound = new Set(["pay", "pm", "qinput", "epay", "eedit", "ceedit", "cadd", "cinc", "cdec", "crm", "ccheckout", "cconfirm", "cclear", "cancel", "cancelok", "refresh", "order", "cred", "wainput", "qrenew"]);
   if (ownerBound.has(action)) {
-    const targetCode = action === "cancel" || action === "refresh" || action === "order" || action === "cred" || action === "wainput" || action === "qrenew"
+    const targetCode = action === "cancel" || action === "cancelok" || action === "refresh" || action === "order" || action === "cred" || action === "wainput" || action === "qrenew"
       ? String(params[0] || "").toUpperCase()
       : null;
     if (targetCode) {
@@ -63,13 +66,14 @@ export async function handleCallback(data: string, chatId: number, messageId: nu
     // verifyPrivateChat: callback dari grup untuk aksi sensitif ditolak
     // (grup sudah di-redirect di POST; ini lapis kedua bila pesan lama
     // diteruskan). Chat pribadi selalu lolos (chatId positif = from.id).
-    if (Number(chatId) < 0) {
+    if (!Number.isSafeInteger(chatId) || chatId <= 0 || chatId !== from.id) {
       const { SITE } = await import("@/lib/site");
       const { groupCheckoutRedirectMessage } = await import("@/lib/telegram/messages");
       await sendMessage({ chat_id: chatId, text: groupCheckoutRedirectMessage(SITE.adminTelegram), parse_mode: "HTML" });
       return;
     }
   }
+  if (["cats", "cat", "prd", "vars", "buy", "myorders", "cart", "help", "warranty"].includes(action)) await clearPendingAction(from);
 
   switch (action) {
     case "home":
@@ -113,6 +117,10 @@ export async function handleCallback(data: string, chatId: number, messageId: nu
       await handleVariantConfirm(chatId, messageId, Number(params[0]));
       break;
 
+    case "terms":
+      await handleProductTerms(chatId, Number(params[0]), Number(params[1] || 0), Number(params[2] || 0));
+      break;
+
     case "qty":
       await handleShowQty(chatId, messageId, Number(params[0]), Number(params[1]));
       break;
@@ -126,7 +134,7 @@ export async function handleCallback(data: string, chatId: number, messageId: nu
       break;
 
     case "pay":
-      await handlePayWithQris(chatId, messageId, Number(params[0]), Number(params[1]), Number(params[2]), from);
+      await handlePayWithQris(chatId, messageId, Number(params[0]), Number(params[1]), Number(params[2]), from, false, params[3]);
       break;
 
     case "pm":
@@ -134,24 +142,38 @@ export async function handleCallback(data: string, chatId: number, messageId: nu
       await handlePayWithQris(chatId, messageId, Number(params[0]), Number(params[1]), Number(params[2]), from);
       break;
 
-    case "epay":
-      await handlePayWithQris(chatId, messageId, Number(params[0]), Number(params[1]), Number(params[2]), from, true);
+    case "epay": {
+      const buyer = await queryFirst("SELECT buyer_email,pending_action FROM telegram_users WHERE user_id=?", String(from.id));
+      const email = String(buyer?.buyer_email ?? "");
+      const state = `email_confirm:${params[0]}:${params[1]}:${params[2]}:${params[4]}:${await checkoutEmailFingerprint(email)}`;
+      if (!params[4] || buyer?.pending_action !== state) {
+        await handlePayWithQris(chatId, messageId, Number(params[0]), Number(params[1]), Number(params[2]), from);
+        break;
+      }
+      const claim = await execRun("UPDATE telegram_users SET pending_action=NULL WHERE user_id=? AND pending_action=? AND buyer_email=?", String(from.id), state, email);
+      if (claim.changes) await handlePayWithQris(chatId, messageId, Number(params[0]), Number(params[1]), Number(params[2]), from, true, params[3], email);
       break;
+    }
 
     case "eedit": {
       const productId = Number(params[0]);
       const variantId = Number(params[1]);
       const qty = Number(params[2]);
       const { execRun, isD1Mode } = await import("@/lib/db");
-      if (isD1Mode()) await execRun(`UPDATE telegram_users SET pending_action=?, updated_at=datetime('now') WHERE user_id=?`, `email_for:${productId}:${variantId}:${qty}`, String(from.id)).catch(() => {});
+      if (isD1Mode()) await execRun(`UPDATE telegram_users SET pending_action=?, updated_at=datetime('now') WHERE user_id=?`, `email_for:${productId}:${variantId}:${qty}`, String(from.id));
       await sendMessage({
         chat_id: chatId,
-        text: "📧 <b>Ubah Email</b>\n\nBalas pesan ini dengan email aktif yang benar.\nContoh: <code>nama@email.com</code>",
+        text: "Kirim email aktif untuk menerima produk. Ketik /batal untuk kembali.",
         parse_mode: "HTML",
         reply_markup: { force_reply: true, selective: true, input_field_placeholder: "nama@email.com" },
       });
       break;
     }
+
+    case "ceedit":
+      await execRun("UPDATE telegram_users SET pending_action='emailcart:', updated_at=datetime('now') WHERE user_id=?", String(from.id));
+      await sendMessage({ chat_id: chatId, text: "Kirim email aktif untuk menerima produk. Ketik /batal untuk kembali.", reply_markup: { force_reply: true, input_field_placeholder: "nama@email.com" } });
+      break;
 
     case "wainput":
       await handleWaInput(chatId, String(params[0] || ""), from);
@@ -167,7 +189,7 @@ export async function handleCallback(data: string, chatId: number, messageId: nu
       break;
 
     case "order":
-      await handleOrderStatus(chatId, params[0]);
+      await handleOrderStatus(chatId, params[0], from.id);
       break;
 
     case "cred": {
@@ -178,10 +200,14 @@ export async function handleCallback(data: string, chatId: number, messageId: nu
     }
 
     case "refresh":
-      await handleOrderRefresh(chatId, messageId, params[0]);
+      await handleOrderRefresh(chatId, messageId, params[0], from.id);
       break;
 
     case "cancel":
+      await sendMessage({ chat_id: chatId, text: `Batalkan pesanan ${String(params[0]).toUpperCase()}? Jika sudah membayar, cek pembayaran atau hubungi admin.`, reply_markup: cancelConfirmationKeyboard(params[0]) });
+      break;
+
+    case "cancelok":
       await handleOrderCancel(chatId, messageId, params[0], from);
       break;
 
@@ -235,75 +261,9 @@ export async function handleCallback(data: string, chatId: number, messageId: nu
       break;
 
     case "cconfirm": {
-      const cartSummary = await getCartSummary(String(from.id));
-      if (cartSummary.lines.length === 0) {
-        await handleShowCart(chatId, messageId, from);
-        break;
-      }
-      // Email wajib keranjang (migrasi 0033): bila ada baris Invite/Link WR
-      // atau produk require_email dan email tersimpan belum ada → minta
-      // dulu via alur email_for:, JANGAN terbitkan invoice.
-      try {
-        const { needsEmailForVariant } = await import("@/lib/warung-rebahan/delivery-class");
-        const { queryAll } = await import("@/lib/db");
-        const vIds = [...new Set(cartSummary.lines.map((l) => Number(l.variantId || 0)).filter((v) => v > 0))];
-        let cartNeedsEmail = false;
-        if (vIds.length > 0) {
-          const rows = await queryAll(
-            `SELECT pv.id, wv.wr_type AS wr_type, p.require_email AS require_email
-             FROM product_variants pv
-             LEFT JOIN wr_variants wv ON wv.wr_variant_id = pv.wr_variant_id
-             LEFT JOIN products p ON p.id = pv.product_id
-             WHERE pv.id IN (${vIds.map(() => "?").join(",")})`,
-            ...vIds,
-          ).catch(() => [] as Record<string, unknown>[]);
-          for (const r of rows) {
-            if (needsEmailForVariant({
-              wrType: r.wr_type != null ? String(r.wr_type) : null,
-              requireEmail: Number(r.require_email ?? 0),
-            })) { cartNeedsEmail = true; break; }
-          }
-        }
-        if (cartNeedsEmail) {
-          const { queryFirst } = await import("@/lib/db");
-          const emailRow = await queryFirst(
-            `SELECT buyer_email FROM telegram_users WHERE user_id=?`,
-            String(from.id),
-          ).catch(() => null) as { buyer_email?: unknown } | null;
-          const savedCartEmail = String(emailRow?.buyer_email || "").trim();
-          if (!savedCartEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(savedCartEmail)) {
-            const first = cartSummary.lines[0];
-            const { execRun } = await import("@/lib/db");
-            const { isD1Mode } = await import("@/lib/db");
-            if (isD1Mode()) {
-              await execRun(
-                `UPDATE telegram_users SET pending_action=?, updated_at=datetime('now') WHERE user_id=?`,
-                `emailcart:${cartSummary.lines.length}`,
-                String(from.id),
-              ).catch(() => {});
-            }
-            const { EMAIL_REQUIRED_MESSAGE } = await import("@/lib/warung-rebahan/delivery-class");
-            await sendMessage({
-              chat_id: chatId,
-              text: [
-                "📧 <b>Email dibutuhkan</b>",
-                "",
-                EMAIL_REQUIRED_MESSAGE,
-                "",
-                "Balas dengan email aktif kamu (contoh: <code>nama@email.com</code>).",
-                "Ketik /batal untuk membatalkan.",
-              ].join("\n"),
-              parse_mode: "HTML",
-            });
-            break;
-          }
-        }
-      } catch {
-        /* guard best-effort — gagal cek = lanjut seperti biasa */
-      }
       const dupOrder = await queryFirst(
-        `SELECT code FROM orders WHERE telegram_chat_id=? AND status='pending' AND payment_status IN ('unpaid','pending') AND (expires_at IS NULL OR julianday(expires_at)>julianday('now'))`,
-        String(chatId),
+        `SELECT code FROM orders WHERE telegram_user_id=? AND sales_channel='telegram' AND status='pending' AND payment_status IN ('unpaid','pending') AND (expires_at IS NULL OR julianday(expires_at)>julianday('now'))`,
+        String(from.id),
       );
       if (dupOrder) {
         // RR3-05: redelivery setelah foto invoice gagal (update failed +
@@ -323,7 +283,35 @@ export async function handleCallback(data: string, chatId: number, messageId: nu
         });
         break;
       }
-      await createAndSendCartInvoice(chatId, cartSummary.lines, from);
+      const cartSummary = await getCartSummary(String(from.id));
+      if (!cartSummary.lines.length) {
+        await handleShowCart(chatId, messageId, from);
+        break;
+      }
+      const tag = await checkoutApprovalTag(cartSummary.lines);
+      if (params[0] !== tag || cartSummary.issues.length) {
+        await handleCartCheckout(chatId, messageId, from);
+        break;
+      }
+      let checked;
+      try {
+        checked = await readCheckoutEmail(String(from.id), cartSummary.lines);
+      } catch {
+        await sendMessage({ chat_id: chatId, text: "Email belum bisa diperiksa. Coba lagi sebelum membayar." });
+        break;
+      }
+      if (checked.required || params[1]) {
+        const buyer = await queryFirst("SELECT pending_action FROM telegram_users WHERE user_id=?", String(from.id));
+        const state = `cart_confirm:${tag}:${params[1]}:${await checkoutEmailFingerprint(checked.email ?? "")}`;
+        const claim = params[1] && checked.email
+          ? await execRun("UPDATE telegram_users SET pending_action=NULL WHERE user_id=? AND pending_action=? AND buyer_email=?", String(from.id), state, checked.email)
+          : null;
+        if (!claim?.changes) {
+          await showCartEmailConfirmation(chatId, from, undefined, buyer?.pending_action == null ? null : String(buyer.pending_action));
+          break;
+        }
+      }
+      await createAndSendCartInvoice(chatId, cartSummary.lines, from, checked.email);
       break;
     }
 

@@ -14,8 +14,8 @@ type TgCall = { chat_id: string; text: string; reply_markup?: { inline_keyboard?
 let tgCalls: TgCall[];
 let failingChats: Set<string>;
 
-const PRIVATE_CHAT = "555001";
 const BUYER = "777001";
+const PRIVATE_CHAT = BUYER;
 
 function seedCatalog() {
   fixture.sql.exec(`INSERT INTO products(id,name,slug,price,stock,source,telegram_enabled,sold_count) VALUES
@@ -95,7 +95,7 @@ describe("SK completed → lisensi langsung ke chat Telegram pembeli", () => {
     const dms = tgCalls.filter((c) => c.text.includes("pv@mail.com"));
     expect(dms).toHaveLength(1);
     expect(dms[0].chat_id).toBe(PRIVATE_CHAT);
-    expect(dms[0].text).toContain("Produk Siap");
+    expect(dms[0].text).toContain("<b>Produk siap</b>");
     expect(dms[0].text.toLowerCase()).not.toContain("pemasok");
     expect(dms[0].text.toLowerCase()).not.toContain("sekalipay");
     expect(dms[0].text).toContain("Jangan mengganti password.");
@@ -117,9 +117,10 @@ describe("SK completed → lisensi langsung ke chat Telegram pembeli", () => {
       .run("Jangan mengganti email atau password tanpa izin. ".repeat(180));
     const api = await import("@/lib/telegram/api");
     const original = api.sendMessage;
-    vi.spyOn(api, "sendMessage").mockImplementation(async params =>
-      params.text.includes("Detail Produk — lanjutan") ? { ok: false, description: "Too Many Requests" } : original(params));
+    const send = vi.spyOn(api, "sendMessage").mockImplementation(async params =>
+      params.text.includes("<b>Detail produk (lanjutan)</b>") ? { ok: false, description: "Too Many Requests" } : original(params));
     expect(await completeSk(code)).toBe(true);
+    expect(send.mock.calls.some(([params]) => params.text.includes("<b>Detail produk (lanjutan)</b>"))).toBe(true);
     expect(fixture.sql.prepare("SELECT status FROM buyer_notice_log WHERE order_code=? AND idempotency_key LIKE 'telegram:sk-credential:%'").get(code)?.status).toBe("failed");
   });
 
@@ -168,7 +169,7 @@ describe("Pesan lunas Telegram mengikuti kelas kirim (instan / MBO / manual)", (
     insertTelegramOrder(code, variantId, productId);
     const { notifyTelegramBuyerPaid } = await import("@/lib/telegram/order-notifications");
     await notifyTelegramBuyerPaid(code, createDatabaseAccess(fixture.db));
-    const call = tgCalls.find((c) => c.chat_id === PRIVATE_CHAT && c.text.includes("Pembayaran Berhasil"));
+    const call = tgCalls.find((c) => c.chat_id === BUYER && c.text.includes("<b>Pembayaran lunas</b>"));
     expect(call).toBeTruthy();
     return call!.text;
   }
@@ -307,7 +308,7 @@ describe("Garansi: varian tanpa data garansi tidak ditulis 'Tanpa Garansi'", () 
   });
 });
 
-describe("Fallback pengiriman kredensial Telegram", () => {
+describe("Pengiriman kredensial Telegram hanya ke pemilik kanonis", () => {
   it("serah terima admin mengirim detail, S&K, aktivasi dan klaim sekali lewat notice", async () => {
     const code = "AXV-20261017-MANTERMS";
     insertTelegramOrder(code, 30, 3);
@@ -340,25 +341,44 @@ describe("Fallback pengiriman kredensial Telegram", () => {
     expect(tgCalls[0].text).toContain("Syarat klaim garansi");
   });
 
-  it("chat_id tersimpan gagal → dicoba ulang ke telegram_user_id (jalur stok sendiri)", async () => {
+  it("mengabaikan chat_id positif tersimpan dan order yang bukan pemilik", async () => {
     fixture.sql.exec(`UPDATE telegram_users SET chat_id='999999' WHERE user_id='${BUYER}'`);
-    failingChats.add("999999");
     const { sendTelegramCredential } = await import("@/lib/telegram/credential-delivery");
     const res = await sendTelegramCredential(
-      { telegram_user_id: BUYER, telegram_chat_id: "-100200300" }, "isi", createDatabaseAccess(fixture.db),
+      { telegram_user_id: BUYER, telegram_chat_id: "555001" }, "isi", createDatabaseAccess(fixture.db),
     );
     expect(res.chatId).toBe(BUYER);
-    expect(tgCalls.map((c) => c.chat_id)).toEqual(["999999", BUYER]);
+    expect(tgCalls.map((c) => c.chat_id)).toEqual([BUYER]);
   });
 
-  it("tidak pernah mencoba id grup; semua gagal → throw agar retry", async () => {
-    fixture.sql.exec(`DELETE FROM telegram_users`);
+  it.each(["-100200300", "555001"])("pemilik gagal: tidak mencoba chat tersimpan atau order %s, tetap throw agar retry", async chatId => {
+    fixture.sql.exec(`UPDATE telegram_users SET chat_id='999999' WHERE user_id='${BUYER}'`);
     failingChats.add(BUYER);
     const { sendTelegramCredential } = await import("@/lib/telegram/credential-delivery");
     await expect(sendTelegramCredential(
-      { telegram_user_id: BUYER, telegram_chat_id: "-100200300" }, "isi", createDatabaseAccess(fixture.db),
+      { telegram_user_id: BUYER, telegram_chat_id: chatId }, "isi", createDatabaseAccess(fixture.db),
     )).rejects.toThrow(/telegram_delivery_failed/);
-    expect(tgCalls.some((c) => c.chat_id.startsWith("-"))).toBe(false);
+    expect(tgCalls.map((c) => c.chat_id)).toEqual([BUYER]);
+  });
+
+  it.each([undefined, null, "", " ", 0, -1, "0777001", "+777001", "777001.0", "7e5", 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1])(
+    "menolak pemilik kosong atau invalid %s tanpa fallback ke chat positif", async userId => {
+      const { sendTelegramCredential, telegramPrivateTargets } = await import("@/lib/telegram/credential-delivery");
+      const order = { telegram_user_id: userId, telegram_chat_id: PRIVATE_CHAT };
+      const database = createDatabaseAccess(fixture.db);
+      expect(await telegramPrivateTargets(order, database)).toEqual([]);
+      await expect(sendTelegramCredential(order, "isi", database)).rejects.toThrow("no_private_telegram_chat");
+      expect(tgCalls).toEqual([]);
+    },
+  );
+
+  it("menerima ID numerik safe sebagai target string kanonis tunggal", async () => {
+    const { sendTelegramCredential } = await import("@/lib/telegram/credential-delivery");
+    const sent = await sendTelegramCredential(
+      { telegram_user_id: Number(BUYER), telegram_chat_id: "999999" }, "isi", createDatabaseAccess(fixture.db),
+    );
+    expect(sent.chatId).toBe(BUYER);
+    expect(tgCalls.map((c) => c.chat_id)).toEqual([BUYER]);
   });
 
   it("tombol Ambil Detail Produk mengirim ulang detail yang sudah siap (pemilik saja)", async () => {
@@ -377,6 +397,10 @@ describe("Fallback pengiriman kredensial Telegram", () => {
     expect(tgCalls.find(c => c.text.includes("canva-invite-link"))?.text).toContain("Buka tautan undangan Canva.");
     expect(tgCalls.find(c => c.text.includes("canva-invite-link"))?.text).toContain("Syarat klaim garansi");
 
+    tgCalls = [];
+    await handleCallback(`cred:${code}`, 555001, 1, { id: Number(BUYER), first_name: "Budi" });
+    expect(tgCalls.some((c) => c.text.includes("canva-invite-link"))).toBe(false);
+
     // Orang lain menekan tombol yang diteruskan → ditolak, tidak bocor.
     tgCalls = [];
     await handleCallback(`cred:${code}`, 444, 1, { id: 444, first_name: "Asing" });
@@ -392,22 +416,23 @@ describe("Fallback pengiriman kredensial Telegram", () => {
     expect(tgCalls.at(-1)?.text).toContain("belum siap");
   });
 
-  it("semua bagian harus berhasil; kegagalan lanjutan mencoba target pribadi berikutnya", async () => {
+  it("kegagalan lanjutan tidak dinyatakan sukses atau dikirim ulang ke akun lain", async () => {
+    const staleChat = "555001";
+    fixture.sql.prepare("UPDATE telegram_users SET chat_id=? WHERE user_id=?").run(staleChat, BUYER);
     const spy = vi.spyOn(await import("@/lib/telegram/api"), "sendMessage");
     spy.mockImplementationOnce(async () => ({ ok: true, result: { message_id: 1 } } as never));
     spy.mockImplementationOnce(async () => ({ ok: false, description: "Too Many Requests" }));
     const { sendTelegramCredential } = await import("@/lib/telegram/credential-delivery");
-    const sent = await sendTelegramCredential(
-      { telegram_user_id: BUYER, telegram_chat_id: "-1234" }, ["kredensial", "panduan"], createDatabaseAccess(fixture.db),
-    );
-    expect(sent.chatId).toBe(BUYER);
+    await expect(sendTelegramCredential(
+      { telegram_user_id: BUYER, telegram_chat_id: "999999" }, ["kredensial", "panduan"], createDatabaseAccess(fixture.db),
+    )).rejects.toThrow("telegram_delivery_failed");
     expect(spy.mock.calls.map(([call]) => [String(call.chat_id), call.text])).toEqual([
-      [PRIVATE_CHAT, "kredensial"], [PRIVATE_CHAT, "panduan"], [BUYER, "kredensial"], [BUYER, "panduan"],
+      [BUYER, "kredensial"], [BUYER, "panduan"],
     ]);
     spy.mockRestore();
   });
 
-  it("gagal pada bagian lanjutan ke semua target tidak dinyatakan terkirim", async () => {
+  it("retry setelah kegagalan lanjutan mengirim ulang semua bagian hanya ke pemilik", async () => {
     const api = await import("@/lib/telegram/api");
     const spy = vi.spyOn(api, "sendMessage").mockImplementation(async params =>
       params.text === "panduan" ? { ok: false, description: "failed" } : { ok: true, result: { message_id: 1 } } as never);
@@ -415,6 +440,13 @@ describe("Fallback pengiriman kredensial Telegram", () => {
     await expect(sendTelegramCredential(
       { telegram_user_id: BUYER }, ["kredensial", "panduan"], createDatabaseAccess(fixture.db),
     )).rejects.toThrow("telegram_delivery_failed");
+    spy.mockResolvedValue({ ok: true, result: { message_id: 2, date: 0, chat: { id: Number(BUYER), type: "private" } } });
+    expect(await sendTelegramCredential(
+      { telegram_user_id: BUYER, telegram_chat_id: "999999" }, ["kredensial", "panduan"], createDatabaseAccess(fixture.db),
+    )).toMatchObject({ chatId: BUYER, messageId: "2" });
+    expect(spy.mock.calls.map(([call]) => [String(call.chat_id), call.text])).toEqual([
+      [BUYER, "kredensial"], [BUYER, "panduan"], [BUYER, "kredensial"], [BUYER, "panduan"],
+    ]);
     spy.mockRestore();
   });
 

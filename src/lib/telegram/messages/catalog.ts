@@ -1,11 +1,4 @@
-// src/lib/telegram/messages/catalog.ts — Copy penjelajahan produk.
-//
-// MENGAPA dipisah: welcome, katalog, kategori, detail produk, pencarian, dan
-// daftar pesanan adalah alur "discovery" yang berdiri sendiri dari alur uang
-// (pembayaran) dan status. Mengelompokkannya memudahkan mengubah tampilan
-// katalog tanpa risiko menyentuh teks invoice. Pemindahan murni — teks identik.
-
-import { escapeHtml, formatRupiah, truncate, formatWIBTime, formatSoldCountLabel } from "./format";
+import { escapeHtml, escapeItemSummary, formatRupiah, truncate, formatSoldCountLabel, paymentLabels, fulfillmentLabels } from "./format";
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // WELCOME & NAVIGATION
@@ -20,52 +13,36 @@ export type TelegramBestseller = {
 
 export function welcomeMessage(firstName: string, bestsellers: TelegramBestseller[] = []): string {
   const name = escapeHtml(truncate(firstName, 50));
-  const { greeting, tanggal, jam } = formatWIBTime();
   const lines = [
-    `🎯 <b>Halo, ${name}!</b>`,
-    `${greeting} 👋`,
-    "",
-    "Selamat datang di <b>AXVARA</b> 💎",
-    "Gerbang semua tools premium favoritmu! 🚀",
-    "━━━━━━━━━━━━━━━━━━━━━",
-    "",
-    `📅 ${tanggal} • 🕐 ${jam}`,
-    "",
-    "🛍 Tools AI &amp; aplikasi premium",
-    "💰 Harga jauh lebih hemat dari official",
-    "✅ Bergaransi &amp; support admin",
-    "⚡ Order 1 menit, bayar QRIS otomatis",
+    `<b>Halo, ${name}.</b>`,
+    "Selamat datang di AXVARA.",
     "",
   ];
   const top = bestsellers.filter((b) => b.productId > 0).slice(0, 3);
   if (top.length > 0) {
-    lines.push("🔥 <b>Paling Laris:</b>");
+    lines.push("<b>Paling laris</b>");
     top.forEach((item, i) => {
-      lines.push(`${i + 1}. <b>${escapeHtml(truncate(item.name, 50))}</b> — ${formatRupiah(item.price)} • ${formatSoldCountLabel(item.soldCount)}`);
+      lines.push(`${i + 1}. ${escapeHtml(truncate(item.name, 50))}: ${formatRupiah(item.price)}, ${formatSoldCountLabel(item.soldCount)}`);
     });
     lines.push("");
-    lines.push("Tap 🛍 Katalog atau 🔎 Cari untuk mulai 👇");
-  } else {
-    lines.push("Pilih menu di bawah 👇");
   }
+  lines.push("Lihat produk di /katalog atau cari lewat /cari.");
   return lines.join("\n");
 }
 
 export function catalogFlatMessage(total: number): string {
   return [
-    "🛍 <b>Katalog AXVARA</b>",
-    "━━━━━━━━━━━━━━━━━━━━━",
+    "<b>Katalog AXVARA</b>",
     "",
     total > 0
-      ? `${total} produk tersedia — langsung tap nama produk 👇`
-      : "Katalog sedang kosong. Coba lagi nanti 🙏",
+      ? `${total} produk tersedia.`
+      : "Belum ada produk tersedia.",
   ].join("\n");
 }
 
 export function categoriesMessage(): string {
   return [
-    "📦 <b>Katalog AXVARA</b>",
-    "━━━━━━━━━━━━━━━━━━━━━",
+    "<b>Kategori produk</b>",
     "",
     "Pilih kategori untuk melihat produk:",
   ].join("\n");
@@ -74,11 +51,9 @@ export function categoriesMessage(): string {
 export function categoryProductsMessage(categoryName: string, total: number): string {
   const name = escapeHtml(truncate(categoryName, 50));
   return [
-    `📂 <b>${name}</b>`,
-    "━━━━━━━━━━━━━━━━━━━━━",
+    `<b>${name}</b>`,
     "",
-    `${total} produk tersedia`,
-    "Tap produk untuk lihat detail 👇",
+    total > 0 ? `${total} produk tersedia.` : "Belum ada produk tersedia di kategori ini.",
   ].join("\n");
 }
 
@@ -100,7 +75,7 @@ export type TelegramVariantLine = {
 
 export function productDetailMessage(product: {
   name: string;
-  /** @deprecated — kept for backward compat, never rendered (Telegram shows no description, like WA) */
+  /** Only the first paragraph is shown; selected-variant terms come from the handler. */
   description?: string | null;
   price: number;
   compare_price?: number | null;
@@ -114,63 +89,46 @@ export function productDetailMessage(product: {
 
   const lines: string[] = [];
 
-  // Header
   lines.push(`<b>${name}</b>`);
-  if (product.badge) {
-    const badgeEmoji: Record<string, string> = {
-      "Terlaris": "🔥", "Baru": "✨", "Hemat 92%": "💎", "Hemat": "💎",
-      "Bundle": "📦", "Ultimate": "👑", "Enterprise": "🏢",
-    };
-    lines.push(`${badgeEmoji[product.badge] ?? "🏷"} ${escapeHtml(product.badge)}`);
+  const description = product.description?.trim().split(/\r?\n\s*\r?\n/)[0];
+  if (description) {
+    lines.push("", escapeItemSummary(truncate(description, 300), 900));
   }
-  lines.push("━━━━━━━━━━━━━━━━━━━━━");
-
-  // NOTE: description intentionally never rendered (WA parity, avoids truncation).
-
-  // Price block
   lines.push("");
   if (product.compare_price && product.compare_price > product.price) {
     const discount = Math.round((1 - product.price / product.compare_price) * 100);
-    lines.push(`💰 <b>${price}</b>  <s>${formatRupiah(product.compare_price)}</s>`);
-    lines.push(`🎉 Hemat ${discount}%`);
+    lines.push(`Harga: <b>${price}</b> (sebelumnya <s>${formatRupiah(product.compare_price)}</s>, hemat ${discount}%)`);
   } else if (product.variants && product.variants.length > 1) {
-    lines.push(`💰 Mulai <b>${price}</b>`);
+    lines.push(`Harga mulai <b>${price}</b>`);
   } else {
-    lines.push(`💰 <b>${price}</b>`);
+    lines.push(`Harga: <b>${price}</b>`);
   }
 
-  // Social proof — sold_count is free marketing from data we already track.
   const sold = Math.max(0, Math.floor(product.sold_count ?? 0));
-  if (sold > 0) lines.push(`🔥 ${formatSoldCountLabel(sold)}`);
+  if (sold > 0) lines.push(formatSoldCountLabel(sold));
 
-  // Stock
-  const stock = product.stock ?? -1;
+  const stock = product.stock;
   if (stock === -1) {
-    lines.push("📦 Stok tersedia");
-  } else if (stock > 3) {
-    lines.push(`📦 Tersedia ${stock}`);
-  } else if (stock > 0) {
-    lines.push(`⚡ Tersisa ${stock}`);
-  } else {
-    lines.push("📦 ❌ Stok habis");
+    lines.push("Stok tersedia");
+  } else if (stock != null && stock > 0) {
+    lines.push(`Stok: ${stock}`);
+  } else if (stock === 0) {
+    lines.push("Stok habis");
   }
 
   lines.push("");
-  // Kelas pengiriman per varian (2026-10-10, permintaan owner): pembeli wajib
-  // tahu SEBELUM bayar apakah variannya instan atau Made By Order — info yang
-  // sama dengan badge PDP web. Hanya varian yang membawa delivery_badge yang
-  // dirender; tanpa badge = tanpa baris (bukan tebakan).
+  // Delivery labels come from catalog metadata, never the product name.
   const deliveryLines = (product.variants ?? []).filter((v) => (v.delivery_badge ?? "").trim() !== "");
   if (deliveryLines.length > 0) {
-    lines.push("🚚 <b>Pengiriman:</b>");
-    for (const v of deliveryLines.slice(0, 10)) {
-      lines.push(`• ${escapeHtml(truncate(v.label, 40))}: ${escapeHtml(String(v.delivery_badge))}`);
-    }
+    lines.push("<b>Pengiriman</b>");
+    const deliverySummary = deliveryLines.slice(0, 10).map(v => {
+      const delivery = String(v.delivery_badge).replace(/^[⚡⏳]\s*/, "");
+      return `• ${truncate(v.label, 40)}: ${truncate(delivery, 80)}`;
+    }).join("\n");
+    lines.push(escapeItemSummary(deliverySummary, 1800));
     lines.push("");
   }
-  lines.push(product.variants && product.variants.length > 1
-    ? `${product.variants.length} pilihan tersedia. Pilih varian untuk melihat harga dan garansi.`
-    : "Pilih lanjut untuk melihat detail varian dan jumlah.");
+  if (product.variants && product.variants.length > 1) lines.push(`${product.variants.length} varian.`);
 
   return lines.join("\n");
 }
@@ -181,13 +139,10 @@ export function productDetailMessage(product: {
 
 export function myOrdersPrompt(): string {
   return [
-    "📋 <b>Cek Pesanan</b>",
-    "━━━━━━━━━━━━━━━━━━━━━",
+    "<b>Cek pesanan</b>",
     "",
-    "Ketik perintah berikut:",
+    "Ketik /pesanan diikuti kode pesanan:",
     "<code>/pesanan AXV-XXXXXXXX-XXXXXXXX</code>",
-    "",
-    "👆 <i>Ganti dengan kode pesanan kamu</i>",
   ].join("\n");
 }
 
@@ -204,60 +159,54 @@ export type TelegramOrderRow = {
 export function myOrdersMessage(orders: TelegramOrderRow[]): string {
   if (orders.length === 0) {
     return [
-      "📦 <b>Pesanan Saya</b>",
-      "━━━━━━━━━━━━━━━━━━━━━",
+      "<b>Pesanan saya</b>",
       "",
       "Belum ada pesanan dari akun Telegram ini.",
       "",
-      "Yuk mulai dari /katalog — order 1 menit, bayar QRIS otomatis. 🚀",
+      "Lihat produk di /katalog.",
     ].join("\n");
   }
-  const paymentEmoji: Record<string, string> = {
-    paid: "✅",
-    pending: "⏳",
-    unpaid: "⏳",
-    expired: "⏰",
-    failed: "❌",
-  };
   const lines = [
-    "📦 <b>Pesanan Saya</b>",
-    "━━━━━━━━━━━━━━━━━━━━━",
-    "",
-    `${orders.length} pesanan terakhir — tap tombol di bawah untuk detail / beli lagi 👇`,
+    "<b>Pesanan saya</b>",
     "",
   ];
-  orders.slice(0, 10).forEach((order, i) => {
-    const emoji = paymentEmoji[order.paymentStatus] ?? "❓";
-    const amount = order.payableAmount ? ` • ${formatRupiah(order.payableAmount)}` : "";
-    lines.push(`${i + 1}. ${emoji} <b>${escapeHtml(truncate(order.productName, 60))}</b>`);
-    lines.push(`   🔢 <code>${escapeHtml(order.code)}</code>${amount}`);
+  const recent = orders.slice(0, 10);
+  const details = recent.map(order => [
+    `<code>${escapeItemSummary(order.code, 120)}</code>`,
+    ...(order.payableAmount != null ? [`Total: ${formatRupiah(order.payableAmount)}`] : []),
+    `Pembayaran: ${paymentLabels[order.paymentStatus] ?? "Belum diketahui"}`,
+    ...(order.paymentStatus === "paid" ? [`Pengiriman: ${fulfillmentLabels[order.fulfillmentStatus] ?? "Belum diketahui"}`] : []),
+    "",
+  ].join("\n"));
+  const summaryLimit = Math.floor((4096 - lines.join("\n").length - details.join("\n").length - recent.length * 10) / recent.length);
+  recent.forEach((order, i) => {
+    lines.push(`${i + 1}. ${escapeItemSummary(order.productName, summaryLimit)}`);
+    lines.push(details[i]);
   });
   return lines.join("\n");
 }
 
 export function searchPromptMessage(): string {
   return [
-    "🔎 <b>Cari Produk</b>",
-    "━━━━━━━━━━━━━━━━━━━━━",
+    "<b>Cari produk</b>",
     "",
     "Ketik nama produk yang kamu cari.",
     "",
     "Contoh: <code>canva</code>, <code>chatgpt</code>, <code>netflix</code>",
     "",
-    "❌ Ketik /batal untuk kembali.",
+    "/batal untuk kembali.",
   ].join("\n");
 }
 
-export function searchResultsMessage(keyword: string, total: number, soldOut = 0): string {
+export function searchResultsMessage(keyword: string, total: number, soldOut = 0, showing?: number): string {
   const kw = escapeHtml(truncate(keyword, 60));
   return [
-    `🔎 <b>Hasil: “${kw}”</b>`,
-    "━━━━━━━━━━━━━━━━━━━━━",
+    `<b>Hasil pencarian: ${kw}</b>`,
     "",
     total > 0
-      ? `${total} produk cocok — tap untuk lihat detail 👇`
+      ? `${total} produk cocok.${showing != null ? ` Menampilkan ${Math.max(0, Math.min(total, Math.floor(showing)))} produk.` : ""}`
       : soldOut > 0
-        ? "Produk yang cocok sedang habis. Cek lagi nanti atau lihat /katalog untuk produk yang ready 🙏"
-        : "Tidak ada produk yang cocok. Coba kata lain atau lihat /katalog 🙏",
+        ? "Produk yang cocok sedang habis. Lihat produk lain di /katalog."
+        : "Tidak ada produk yang cocok. Coba kata lain atau lihat /katalog.",
   ].join("\n");
 }

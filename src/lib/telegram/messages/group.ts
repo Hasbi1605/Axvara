@@ -17,12 +17,11 @@ export function privateChatDeepLink(botUsername: string, payload = "beli"): stri
 
 export function groupCheckoutRedirectMessage(botUsername: string): string {
   return [
-    "🔒 <b>Lanjut di Chat Pribadi</b>",
-    "━━━━━━━━━━━━━━━━━━━━━",
+    "<b>Lanjut di chat pribadi</b>",
     "",
     "Demi keamanan, pembelian dan pembayaran hanya dilayani di chat pribadi dengan bot.",
     "",
-    `👉 <a href="${privateChatDeepLink(botUsername)}">Tap di sini untuk buka chat pribadi</a> lalu tekan <b>START</b>, kemudian ulangi pilihan produk dari /katalog.`,
+    `<a href="${privateChatDeepLink(botUsername)}">Buka chat pribadi bot</a>, tekan <b>START</b>, lalu pilih produk di /katalog.`,
     "",
     "Kredensial produk tidak pernah dikirim ke grup.",
   ].join("\n");
@@ -30,8 +29,7 @@ export function groupCheckoutRedirectMessage(botUsername: string): string {
 
 export function groupDeliveryNoticeMessage(): string {
   return [
-    "🔒 <b>Pesanan Lunas — Cek Chat Pribadi</b>",
-    "━━━━━━━━━━━━━━━━━━━━━",
+    "<b>Cek chat pribadi</b>",
     "",
     "Produk sudah dikirim ke <b>chat pribadi</b> kamu dengan bot.",
     "Buka chat pribadi bot dan tekan START bila belum.",

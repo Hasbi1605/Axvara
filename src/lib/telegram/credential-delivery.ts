@@ -7,13 +7,8 @@
 // id chat pribadi dengan bot). Bila satu target gagal (chat_id basi, salah
 // simpan), kredensial supplier jatuh ke retry tanpa jalan lain.
 //
-// Kini SEMUA kanal kredensial Telegram (WR, SK, dan tombol ambil ulang) memakai
-// daftar target yang sama, dicoba berurutan sampai satu berhasil:
-//   1. telegram_users.chat_id  — chat pribadi terakhir yang terverifikasi
-//   2. orders.telegram_user_id — jalur yang dipakai produk stok sendiri
-//   3. orders.telegram_chat_id — chat tempat order dibuat (bila pribadi)
-// Id negatif (grup/kanal) TIDAK PERNAH dipakai: kredensial tidak boleh bocor ke
-// anggota grup (issue #5).
+// Semua kredensial hanya menuju telegram_user_id pemilik (ID chat pribadi
+// kanonis). ID chat tersimpan yang berbeda bukan bukti kepemilikan.
 //
 // Fallback terakhir: tombol "📦 Ambil Detail Produk" pada pesan lunas — pembeli
 // menekannya di chat bot dan bot mengirim ulang semua detail yang sudah siap
@@ -21,6 +16,7 @@
 // dan serah terima admin semuanya menulis kolom ini).
 
 import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
+import { expandDeliveryLines } from "@/lib/fulfillment/units";
 
 type Row = Record<string, unknown>;
 
@@ -44,20 +40,14 @@ export async function sendTelegramCredentialParts(
 
 function positiveId(value: unknown): string {
   const text = String(value ?? "").trim();
-  return /^\d+$/.test(text) && Number(text) > 0 ? text : "";
+  return /^[1-9]\d*$/.test(text) && Number.isSafeInteger(Number(text)) ? text : "";
 }
 
-/** Target chat pribadi pembeli, urut prioritas, tanpa duplikat, tanpa id grup. */
-export async function telegramPrivateTargets(order: Row, database: DatabaseAccess): Promise<string[]> {
+/** No fallback to a different private account, even when stored as chat_id. */
+export async function telegramPrivateTargets(order: Row, _database: DatabaseAccess): Promise<string[]> {
+  void _database;
   const buyerId = positiveId(order.telegram_user_id);
-  const saved = buyerId
-    ? positiveId((await database.queryFirst(`SELECT chat_id FROM telegram_users WHERE user_id=?`, buyerId).catch(() => null))?.chat_id)
-    : "";
-  const out: string[] = [];
-  for (const id of [saved, buyerId, positiveId(order.telegram_chat_id)]) {
-    if (id && !out.includes(id)) out.push(id);
-  }
-  return out;
+  return buyerId ? [buyerId] : [];
 }
 
 /**
@@ -88,69 +78,89 @@ export async function sendTelegramCredential(
  * Tombol "📦 Ambil Detail Produk": kirim ulang SEMUA detail yang sudah siap
  * untuk order milik pembeli ini ke chat pribadi tempat tombol ditekan.
  * Pemanggil (router callback) sudah memastikan from.id = pemilik order dan
- * chat bukan grup. Mengembalikan jumlah item yang dikirim (0 = belum siap).
+ * chat bukan grup. Mengembalikan jumlah unit yang berhasil dikirim lengkap;
+ * hasil kosong, gagal, dan parsial diberi pesan yang berbeda.
  */
 export async function resendTelegramCredentials(
   orderCode: string,
   chatId: number,
   database: DatabaseAccess = createDatabaseAccess(),
 ): Promise<number> {
+  if (!Number.isSafeInteger(chatId) || chatId <= 0) return 0;
   const code = String(orderCode || "").toUpperCase();
   const { sendMessage } = await import("@/lib/telegram/api");
-  const order = await database
-    .queryFirst(
-      `SELECT code, items, status, payment_status FROM orders WHERE code=? AND sales_channel='telegram'`,
-      code,
-    )
-    .catch(() => null);
-  if (!order || Number(chatId) <= 0) return 0;
+  let order;
+  let rows: Row[];
+  try {
+    order = await database.queryFirst(
+      `SELECT code, items, status, payment_status, fulfillment_status FROM orders WHERE code=? AND telegram_user_id=? AND sales_channel='telegram'`,
+      code, String(chatId),
+    );
+    rows = order?.status === "lunas" && order.payment_status === "paid"
+      ? await database.queryAll(
+        `SELECT item_index, variant_id, status, delivered_ciphertext, delivered_iv, delivered_message_id
+         FROM fulfillment_items WHERE order_code=? ORDER BY item_index ASC`,
+        code,
+      ) : [];
+  } catch {
+    await sendMessage({ chat_id: chatId, text: "Detail produk gagal dibaca. Coba lagi atau hubungi admin.", parse_mode: "HTML" });
+    return 0;
+  }
+  if (!order) {
+    await sendMessage({ chat_id: chatId, text: "Pesanan tidak ditemukan.", parse_mode: "HTML" });
+    return 0;
+  }
   const paid = String(order.status) === "lunas" && String(order.payment_status) === "paid";
-  const rows = paid
-    ? await database
-        .queryAll(
-          `SELECT item_index, variant_id, delivered_ciphertext, delivered_iv, delivered_message_id
-           FROM fulfillment_items
-           WHERE order_code=? AND status='delivered'
-             AND delivered_ciphertext IS NOT NULL AND delivered_iv IS NOT NULL
-           ORDER BY item_index ASC`,
-          code,
-        )
-        .catch(() => [] as Row[])
-    : [];
+  if (!paid) {
+    await sendMessage({ chat_id: chatId, text: "Pesanan belum lunas. Detail produk tersedia setelah pembayaran diterima.", parse_mode: "HTML" });
+    return 0;
+  }
+  const ready = rows.filter(row => row.status === "delivered");
   const { decryptSecret } = await import("@/lib/fulfillment/crypto");
   const { orderLineLabel } = await import("@/lib/fulfillment/delivery/buyer-email");
   const { credentialMessages } = await import("@/lib/telegram/messages/credential");
   const { resolveCredentialTermsForVariants } = await import("@/lib/orders/credential-terms");
-  const copies = await resolveCredentialTermsForVariants(rows.map(row => Number(row.variant_id)), database);
+  let copies;
+  try {
+    copies = await resolveCredentialTermsForVariants(ready.map(row => Number(row.variant_id)), database);
+  } catch {
+    await sendMessage({ chat_id: chatId, text: "Detail produk gagal dibaca. Coba lagi atau hubungi admin.", parse_mode: "HTML" });
+    return 0;
+  }
   const { normalizeAccountDetailsForDisplay } = await import("@/lib/warung-rebahan/deliver");
   let sent = 0;
-  for (const row of rows) {
-    let plaintext = "";
+  let failed = 0;
+  for (const row of ready) {
     try {
-      plaintext = await decryptSecret(String(row.delivered_ciphertext), String(row.delivered_iv));
+      if (!row.delivered_ciphertext || !row.delivered_iv) throw new Error("credential_missing");
+      let plaintext = await decryptSecret(String(row.delivered_ciphertext), String(row.delivered_iv));
+      if (String(row.delivered_message_id ?? "").startsWith("wr:")) {
+        plaintext = normalizeAccountDetailsForDisplay(plaintext);
+      }
+      if (!plaintext.trim()) throw new Error("credential_empty");
+      await sendTelegramCredentialParts(chatId, credentialMessages({
+        orderCode: code,
+        productName: orderLineLabel(order.items, Number(row.item_index ?? 0)),
+        plaintext,
+        copy: copies.get(Number(row.variant_id)),
+      }));
+      sent++;
     } catch {
-      continue; // kunci rotasi / data korup: lewati, jangan bocorkan
+      failed++;
     }
-    if (String(row.delivered_message_id ?? "").startsWith("wr:")) {
-      plaintext = normalizeAccountDetailsForDisplay(plaintext);
-    }
-    if (!plaintext.trim()) continue;
-    const result = await sendTelegramCredentialParts(chatId, credentialMessages({
-      orderCode: code,
-      productName: orderLineLabel(order.items, Number(row.item_index ?? 0)),
-      plaintext,
-      copy: copies.get(Number(row.variant_id)),
-    })).catch(() => null);
-    if (result) sent++;
   }
-  if (!sent) {
-    await sendMessage({
-      chat_id: chatId,
-      text: paid
-        ? `⏳ <b>Detail produk belum siap</b>\nOrder: <code>${code}</code>\n\nPesananmu masih disiapkan. Detailnya dikirim <b>otomatis ke chat ini</b> begitu siap — tekan tombol ini lagi nanti bila belum masuk.`
-        : `ℹ️ Pesanan <code>${code}</code> belum lunas, jadi belum ada detail produk.`,
-      parse_mode: "HTML",
-    }).catch(() => undefined);
-  }
+  const expected = Math.max(rows.length, expandDeliveryLines(order.items).length);
+  const needsHelp = rows.some(row => ["failed", "manual_required"].includes(String(row.status)))
+    || order.fulfillment_status === "delivered" && (!ready.length || ready.length < expected)
+    || ["failed", "manual_required"].includes(String(order.fulfillment_status));
+  const waiting = expected - ready.length;
+  const text = failed || needsHelp
+    ? `${sent ? `${sent} detail produk berhasil dikirim. ` : ""}Detail produk gagal dibaca atau dikirim. Coba ambil detail lagi atau hubungi admin.`
+    : !sent
+      ? "Detail produk belum siap. Pesanan masih disiapkan. Cek status lagi nanti."
+      : waiting
+        ? `${sent} detail produk berhasil dikirim. Detail lainnya belum siap. Cek status lagi nanti.`
+        : "";
+  if (text) await sendMessage({ chat_id: chatId, text, parse_mode: "HTML" });
   return sent;
 }

@@ -23,6 +23,50 @@ export function truncate(text: string, max: number): string {
   return text.slice(0, max - 3) + "...";
 }
 
+// ponytail: callers supply at most 20 item rows; paginate before raising that cap.
+export function escapeItemSummary(text: string, maxLength: number): string {
+  const rawLines = text.split("\n");
+  const lines = rawLines.map(escapeHtml);
+  if (lines.join("\n").length <= maxLength) return lines.join("\n");
+  let remaining = maxLength - lines.length + 1;
+  return lines.map((line, index) => {
+    const limit = Math.floor(remaining / (lines.length - index));
+    let result = line;
+    if (line.length > limit) {
+      const quantity = rawLines[index].match(/\s+[x×]\d+$/)?.[0] ?? "";
+      result = "";
+      for (const char of rawLines[index]) {
+        const escaped = escapeHtml(char);
+        if (result.length + escaped.length > limit - 3 - quantity.length) break;
+        result += escaped;
+      }
+      result += `...${quantity}`;
+    }
+    remaining -= result.length;
+    return result;
+  }).join("\n");
+}
+
+export const paymentLabels: Record<string, string> = {
+  unpaid: "Menunggu pembayaran",
+  pending: "Menunggu pembayaran",
+  paid: "Lunas",
+  expired: "Kedaluwarsa",
+  failed: "Gagal",
+  cancelled: "Dibatalkan",
+};
+
+export const fulfillmentLabels: Record<string, string> = {
+  not_required: "Belum diproses",
+  reserved: "Disiapkan",
+  queued: "Dalam antrean",
+  sending: "Sedang dikirim",
+  delivered: "Terkirim",
+  manual_required: "Diproses admin",
+  retry: "Menunggu pengiriman ulang",
+  failed: "Gagal dikirim",
+};
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // WIB TIME (ported from WhatsApp for interactive copy)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━

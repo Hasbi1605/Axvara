@@ -4,37 +4,45 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { createD1Fixture, insertTestOrder, insertTestProduct } from "./helpers/d1-fixture";
-import { createDatabaseAccess } from "@/lib/db-access";
 
 const read = (path: string) => readFileSync(path, "utf8");
 
-afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
 describe("T-H1: pembatalan Telegram tidak boleh merusak order yang sudah lunas", () => {
-  it("klaim pembatalan mendahului pemulihan stok, dan ledger paid tidak bisa ditimpa", () => {
+  it("guard pembatalan dan ledger berada dalam batch transisi stok yang sama", () => {
     const src = read("src/lib/telegram/handlers/orders.ts");
     const cancel = src.slice(src.indexOf("export async function handleOrderCancel"));
+    const transition = read("src/lib/db/orders-transition.ts");
+    const terminal = transition.slice(transition.indexOf('if (status === "dibatalkan"'), transition.indexOf("// Manual admin confirmation"));
 
-    // Urutan wajib: UPDATE orders (klaim) SEBELUM pemulihan stok. Kalau stok
-    // dipulihkan lebih dulu lalu klaim kalah balapan, stok menggelembung
-    // untuk order yang tetap sah lunas.
-    const claimAt = cancel.indexOf("UPDATE orders SET status='dibatalkan'");
-    const restoreAt = cancel.indexOf("UPDATE product_variants SET stock");
+    expect(cancel).toContain('await transitionPendingOrder(orderCode, "dibatalkan", "buyer_cancel", items, {');
+    expect(cancel).toContain("batch: statements => d1.batch([");
+    const ownerGuardAt = cancel.indexOf("INSERT INTO operation_guards");
+    const statementsAt = cancel.indexOf("...statements");
+    expect(ownerGuardAt).toBeGreaterThan(-1);
+    expect(statementsAt).toBeGreaterThan(ownerGuardAt);
+    const ownerGuard = cancel.slice(ownerGuardAt, statementsAt);
+    expect(ownerGuard).toContain("sales_channel='telegram' AND telegram_user_id=?");
+    expect(ownerGuard).toContain("status='pending' AND payment_status IN ('unpaid','pending')");
+    expect(ownerGuard).toContain("AND NOT EXISTS(SELECT 1 FROM payment_transactions");
+    expect(ownerGuard).toContain("status NOT IN ('initializing','pending','unpaid','expired','failed','cancelled')");
+    expect(ownerGuard).toContain("String(from.id)");
+
+    // The shared CHECK guard precedes stock release; one D1 batch rolls back both.
+    const claimAt = terminal.indexOf("INSERT INTO operation_guards");
+    const restoreAt = terminal.indexOf("UPDATE product_variants SET stock");
     expect(claimAt).toBeGreaterThan(-1);
     expect(restoreAt).toBeGreaterThan(-1);
     expect(claimAt).toBeLessThan(restoreAt);
+    expect(terminal.slice(claimAt, restoreAt)).toContain("status='pending' AND payment_status IN ('unpaid','pending','expired','failed')");
+    expect(terminal).toContain("await d1.batch(statements)");
+    expect(terminal).not.toContain("await execRun");
 
-    // Klaim harus CAS penuh: status DAN payment_status.
-    const claimStmt = cancel.slice(claimAt, claimAt + 400);
-    expect(claimStmt).toContain("status='pending'");
-    expect(claimStmt).toContain("payment_status IN ('unpaid','pending')");
-
-    // Ledger: JANGAN pernah UPDATE tanpa gerbang status — baris `paid` milik
-    // pembayaran sah akan ikut ditimpa `cancelled`.
     const ledgerAt = cancel.indexOf("UPDATE payment_transactions SET status='cancelled'");
-    expect(ledgerAt).toBeGreaterThan(-1);
+    expect(ledgerAt).toBeGreaterThan(statementsAt);
     const ledgerStmt = cancel.slice(ledgerAt, ledgerAt + 300);
-    expect(ledgerStmt).toMatch(/status IN \('pending','unpaid','expired'\)/);
+    expect(ledgerStmt).toMatch(/status IN \('initializing','pending','unpaid','expired'\)/);
     expect(ledgerStmt).not.toMatch(/WHERE order_code=\?\s*`/);
   });
 
@@ -49,15 +57,13 @@ describe("T-H1: pembatalan Telegram tidak boleh merusak order yang sudah lunas",
         VALUES (?,'dana','dynamic','po-race','m',10000,10000,'paid')`).run("AXV-20260923-RACE0001");
       const stockBefore = (fx.sql.prepare("SELECT stock FROM product_variants WHERE id=1").get() as { stock: number }).stock;
 
-      // Jalankan klaim + ledger PERSIS seperti handler pasca-perbaikan.
-      const db = createDatabaseAccess(fx.db);
-      const claim = await db.execRun(
-        `UPDATE orders SET status='dibatalkan', payment_status='failed', fulfillment_status='not_required',
-         updated_at=datetime('now')
-         WHERE code=? AND status='pending' AND payment_status IN ('unpaid','pending')`,
-        "AXV-20260923-RACE0001",
-      );
-      expect(Number(claim.changes ?? 0)).toBe(0); // klaim kalah → berhenti
+      const api = await import("@/lib/telegram/api");
+      vi.spyOn(api, "sendMessage").mockResolvedValue({ ok: true });
+      vi.spyOn(api, "safeEditOrSend").mockResolvedValue({ ok: true });
+      const { handleOrderCancel } = await import("@/lib/telegram/handlers/orders");
+      await handleOrderCancel(777, 1, "AXV-20260923-RACE0001", { id: 777 });
+      expect(api.safeEditOrSend).not.toHaveBeenCalled();
+      expect(api.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ text: expect.stringContaining("tidak dapat dibatalkan") }));
 
       const order = fx.sql.prepare("SELECT status, payment_status FROM orders WHERE code=?").get("AXV-20260923-RACE0001") as { status: string; payment_status: string };
       const ledger = fx.sql.prepare("SELECT status FROM payment_transactions WHERE order_code=?").get("AXV-20260923-RACE0001") as { status: string };

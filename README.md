@@ -685,6 +685,24 @@ Bottom nav mobile (2026-10-03; sebelumnya 2026-09-25): **Beranda · Kategori · 
 Detail: `docs/VPS-RESEARCH.md` & `docs/ARCHITECTURE.md`
 
 Bot Telegram auto-order, pembayaran QRIS dinamis, dan fulfillment tersedia di codebase.
+**Revisi29Oktober2026, implementasi lokal untuk CI:** katalog → produk+varian
+→ jumlah/email → QRIS → status; label kanonis web tanpa durasi metadata non-WR
+berulang, harga purchasable dan inventory unik efektif. Ringkasan bertag
+produk/varian/jumlah/harga; konfirmasi email masked memakai nonce+fingerprint
+dan claim CAS, fail-closed bila DB/email gagal. Callback basi tidak membeli
+lagi, invoice aktif didahulukan untuk retry. Cart diubah atomik dan hanya
+snapshot yang dibeli dibersihkan. Cancel terkonfirmasi dan kompensasi setup
+invoice tanpa ledger memakai transisi stok/order atomik; invoice tercatat atau
+ambigu mempertahankan reservasi. Status semua item, error resend parsial dan
+notifikasi paid ber-lease/backoff existing; kredensial hanya ke ID pribadi
+pemilik (menggantikan fallback chat tersimpan lama). Copy singkat tanpa progres
+palsu; ketentuan/aktivasi/garansi tetap utuh. Modul tambahan
+`telegram/checkout-{approval,email}.ts`, tanpa env/schema/cron/transport baru.
+Pengujian fixture tanpa pesan/order produksi; bukan bukti deployment.
+
+Paragraf Fase1/Fase2 berikut adalah histori; presentasi, fallback penerima dan
+notifikasi order-created yang bertentangan mengikuti revisi terkini di atas
+serta keputusan10Oktober (hanya notifikasi lunas).
 Navigasi Fase 1: label menu bawah (🛍 Katalog · 🔎 Cari · 🛒 Keranjang · 📦 Pesanan · ❓ Bantuan,
 tetap di-route untuk keyboard lama) tanpa bubble "Menu cepat" setelah `/start`,
 welcome landing dengan 3 produk paling laris + `Terjual X` di kartu produk, riwayat

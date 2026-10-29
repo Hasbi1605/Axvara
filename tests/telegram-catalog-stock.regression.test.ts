@@ -136,7 +136,7 @@ describe("tombol dari pesan katalog lama", () => {
       ...vi.mocked(safeEditOrSend).mock.calls.map((c) => String((c[0] as { text?: unknown; caption?: unknown }).text ?? (c[0] as { text?: unknown; caption?: unknown }).caption ?? "")),
     ];
     const text = texts.at(-1) ?? "";
-    expect(text).toContain("🚚");
+    expect(text).toContain("<b>Pengiriman</b>");
     expect(text).toContain("Made By Order");
   });
 });

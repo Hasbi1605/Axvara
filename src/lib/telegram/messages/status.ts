@@ -1,19 +1,11 @@
-// src/lib/telegram/messages/status.ts — Copy status order, pengiriman, & error.
-//
-// MENGAPA dipisah: pesan pasca-order (lunas, kirim kredensial, kedaluwarsa,
-// dibatalkan, status, input WA, serta pesan error/stok pendek) membentuk satu
-// kelompok "state setelah invoice". Memisahkannya dari copy pembelian membuat
-// jelas mana teks yang tampil SEBELUM vs SESUDAH uang masuk. Pemindahan murni.
-
-import { escapeHtml, formatRupiah, truncate } from "./format";
+import { escapeHtml, escapeItemSummary, formatRupiah, truncate, paymentLabels, fulfillmentLabels } from "./format";
 import { SITE } from "@/lib/site";
 import { credentialMessages } from "./credential";
 
 /**
  * Cara produk sampai ke pembeli Telegram, per order (2026-10-04, paritas Web):
  * - `instant`: semua baris kirim otomatis (stok sendiri shared/unique, WR
- *   restock, SK auto) → detail dikirim otomatis ke chat ini dalam hitungan
- *   detik–menit.
+ *   restock, SK auto) → detail dikirim otomatis ke chat ini.
  * - `queued`: ada baris Made By Order otomatis (WR MBO / SK non-auto) →
  *   pembeli diminta menunggu; detail tetap dikirim OTOMATIS ke chat ini
  *   begitu selesai.
@@ -28,42 +20,40 @@ export function orderPaidMessage(
   needsWhatsApp = false,
   delivery: TelegramPaidDelivery = "manual",
 ): string {
-  const name = escapeHtml(truncate(productName, 100));
+  const name = escapeItemSummary(productName, 2800);
   const deliveryLines = delivery === "instant"
     ? [
-        "⚡ Produk dikirim otomatis ke chat ini dalam beberapa saat — tidak perlu balas apa pun.",
-        "📦 Belum masuk? Tekan <b>Ambil Detail Produk</b> di bawah.",
+        "Produk dikirim otomatis ke chat ini setelah siap.",
+        "Detail juga tersedia lewat <b>Ambil Detail Produk</b>.",
       ]
     : delivery === "queued"
       ? [
-          "⏳ <b>Made By Order</b> — pesananmu sedang dikerjakan sesuai antrean, umumnya lebih cepat, maksimal 12 jam pada jam layanan.",
-          "📩 Detail produk dikirim <b>otomatis ke chat ini</b> begitu siap. Tidak perlu membuka chat terus — kamu akan dapat notifikasi.",
-          "📦 Bisa juga cek kapan saja lewat tombol <b>Ambil Detail Produk</b>.",
+          "Made By Order. Pesanan sedang dikerjakan sesuai antrean, maksimal 12 jam pada jam layanan.",
+          "Detail produk dikirim otomatis ke chat ini setelah siap.",
+          "Detail juga tersedia lewat <b>Ambil Detail Produk</b>.",
         ]
-      : ["📩 Produk akan dikirim admin melalui DM Telegram pribadi ini."];
+      : ["Produk akan dikirim admin ke chat pribadi ini."];
   const lines = [
-    "🎉 <b>Pembayaran Berhasil!</b>",
-    "━━━━━━━━━━━━━━━━━━━━━",
+    "<b>Pembayaran lunas</b>",
     "",
-    `📦 ${name}`,
-    `🔢 <code>${escapeHtml(orderCode)}</code>`,
+    name,
+    `<code>${escapeHtml(truncate(orderCode, 120))}</code>`,
     "",
-    "✅ Dana sudah diterima dan terverifikasi otomatis.",
+    "Pembayaran sudah terverifikasi.",
     ...deliveryLines,
   ];
   if (needsWhatsApp) {
     lines.push(
       "",
-      "📱 <i>Untuk jaga-jaga:</i> balas chat ini dengan nomor WhatsApp aktif sebagai jalur pengiriman cadangan.",
+      "Nomor WhatsApp aktif dapat dikirim di sini sebagai jalur pengiriman cadangan.",
       "Contoh: <code>08123456789</code>",
     );
   }
   lines.push(
     "",
-    "Butuh bantuan?",
     // 2026-10-10: WA via hub /wa (pilih nomor aktif) — bukan wa.me langsung.
-    `📞 WhatsApp Admin: ${SITE.webUrl}/wa`,
-    `✈️ Telegram Support: @${SITE.supportTelegram}`,
+    `WhatsApp admin: ${SITE.webUrl}/wa`,
+    `Telegram: @${SITE.supportTelegram}`,
   );
   return lines.join("\n");
 }
@@ -83,27 +73,25 @@ export function supplierCredentialMessage(orderCode: string, productName: string
 
 export function whatsAppInputPromptMessage(orderCode: string): string {
   return [
-    "📱 <b>Nomor WhatsApp Pengiriman</b>",
-    "━━━━━━━━━━━━━━━━━━━━━",
+    "<b>Nomor WhatsApp pengiriman</b>",
     "",
-    `🔢 <code>${escapeHtml(orderCode)}</code>`,
+    `<code>${escapeHtml(orderCode)}</code>`,
     "",
     "Pembayaran sudah lunas. Balas chat ini dengan nomor WhatsApp aktif agar admin dapat mengirim produk.",
     "",
     "Contoh: <code>08123456789</code>",
     "",
     // 2026-10-10: WA via hub /wa (pilih nomor aktif) — bukan wa.me langsung.
-    `📞 WhatsApp Admin: ${SITE.webUrl}/wa`,
-    `✈️ Telegram Support: @${SITE.supportTelegram}`,
+    `WhatsApp admin: ${SITE.webUrl}/wa`,
+    `Telegram: @${SITE.supportTelegram}`,
   ].join("\n");
 }
 
 export function orderExpiredMessage(orderCode: string): string {
   return [
-    "⏰ <b>Invoice Kedaluwarsa</b>",
-    "━━━━━━━━━━━━━━━━━━━━━",
+    "<b>Invoice kedaluwarsa</b>",
     "",
-    `🔢 <code>${escapeHtml(orderCode)}</code>`,
+    `<code>${escapeHtml(orderCode)}</code>`,
     "",
     "Batas waktu pembayaran sudah habis.",
     "Buat pesanan baru dari /katalog",
@@ -112,12 +100,10 @@ export function orderExpiredMessage(orderCode: string): string {
 
 export function orderCancelledMessage(orderCode: string): string {
   return [
-    "❌ <b>Pesanan Dibatalkan</b>",
-    "━━━━━━━━━━━━━━━━━━━━━",
+    "<b>Pesanan dibatalkan</b>",
     "",
-    `🔢 <code>${escapeHtml(orderCode)}</code>`,
+    `<code>${escapeHtml(orderCode)}</code>`,
     "",
-    "Pesanan berhasil dibatalkan.",
     "Buat pesanan baru dari /katalog",
   ].join("\n");
 }
@@ -128,51 +114,21 @@ export function orderStatusMessage(params: {
   paymentStatus: string;
   fulfillmentStatus: string;
   payableAmount?: number;
-  /**
-   * Kode akses pesanan turunan HMAC (di-derive pemanggil dari versi
-   * tersimpan). Hanya dirender bila non-empty; legacy (versi 0/kosong) =
-   * output identik seperti sebelumnya. Hanya untuk DM pribadi 1-to-1 —
-   * JANGAN sertakan di pesan grup/outbox.
-   */
+  /** Legacy field, never rendered: buyer PINs are email-only. */
   buyerAccessCode?: string;
 }): string {
   const { orderCode, productName, paymentStatus, fulfillmentStatus, payableAmount } = params;
-  const name = escapeHtml(truncate(productName, 100));
-
-  const paymentLabel: Record<string, string> = {
-    unpaid: "⏳ Menunggu bayar",
-    pending: "⏳ Menunggu bayar",
-    paid: "✅ Lunas",
-    expired: "⏰ Kedaluwarsa",
-    failed: "❌ Gagal",
-  };
-
-  const fulfillLabel: Record<string, string> = {
-    not_required: "",
-    reserved: "🔒 Disiapkan",
-    queued: "📤 Dalam antrian",
-    sending: "📤 Mengirim...",
-    delivered: "✅ Terkirim",
-    manual_required: "👤 Proses admin",
-    retry: "🔄 Mengulangi",
-    failed: "❌ Gagal kirim",
-  };
-
-  const lines = [
-    "📋 <b>Status Pesanan</b>",
-    "━━━━━━━━━━━━━━━━━━━━━",
+  const header = [
+    "<b>Status pesanan</b>",
+    `<code>${escapeItemSummary(orderCode, 120)}</code>`,
+  ].join("\n");
+  const footer = [
+    ...(payableAmount != null ? [`Total bayar: ${formatRupiah(payableAmount)}`] : []),
     "",
-    `📦 ${name}`,
-    `🔢 <code>${escapeHtml(orderCode)}</code>`,
-  ];
-
-  if (payableAmount) lines.push(`💰 ${formatRupiah(payableAmount)}`);
-  lines.push("");
-  lines.push(paymentLabel[paymentStatus] ?? `❓ ${paymentStatus}`);
-  const fl = fulfillLabel[fulfillmentStatus];
-  if (fl) lines.push(fl);
-
-  return lines.join("\n");
+    `Pembayaran: ${paymentLabels[paymentStatus] ?? "Belum diketahui"}`,
+    `Pengiriman: ${fulfillmentLabels[fulfillmentStatus] ?? "Belum diketahui"}`,
+  ].join("\n");
+  return [header, escapeItemSummary(productName, 4096 - header.length - footer.length - 4), footer].join("\n\n");
 }
 
 /**
@@ -184,14 +140,14 @@ export function qrisRenewRejectedMessage(
 ): string {
   if (reason === "invoice_still_active") {
     return [
-      "ℹ️ <b>QRIS Kamu Masih Berlaku</b>",
+      "<b>QRIS masih berlaku</b>",
       "",
-      "Pakai QR yang sudah dikirim di atas ya — nominalnya masih aktif.",
+      "Gunakan QRIS yang sudah dikirim sesuai nominal dan batas waktunya.",
     ].join("\n");
   }
   if (reason === "reissue_limit_reached") {
     return [
-      "⌛ <b>Batas Perpanjangan Habis</b>",
+      "<b>Batas perpanjangan habis</b>",
       "",
       "QRIS pesanan ini sudah diperpanjang maksimal 1 kali.",
       "Silakan buat pesanan baru lewat /katalog.",
@@ -199,21 +155,22 @@ export function qrisRenewRejectedMessage(
   }
   if (reason === "amount_unavailable") {
     return [
-      "⏳ <b>Sedang Ramai</b>",
+      "<b>Nominal pembayaran belum tersedia</b>",
       "",
       "Nominal unik untuk harga ini sedang penuh. Coba lagi beberapa saat.",
     ].join("\n");
   }
   return [
-    "❌ <b>Pesanan Tidak Bisa Diperpanjang</b>",
+    "<b>Pesanan tidak bisa diperpanjang</b>",
     "",
     "Pesanan ini sudah lunas, dibatalkan, atau kedaluwarsa.",
-    "Buat pesanan baru lewat /katalog ya.",
+    "Buat pesanan baru lewat /katalog.",
   ].join("\n");
 }
 
-export function outOfStockMessage(): string {  return [
-    "❌ <b>Stok Habis</b>",
+export function outOfStockMessage(): string {
+  return [
+    "<b>Stok habis</b>",
     "",
     "Maaf, produk ini sedang tidak tersedia.",
     "Cek produk lain di /katalog",
@@ -222,11 +179,10 @@ export function outOfStockMessage(): string {  return [
 
 export function alreadyPendingMessage(orderCode: string): string {
   return [
-    "⚠️ <b>Pesanan Aktif</b>",
-    "━━━━━━━━━━━━━━━━━━━━━",
+    "<b>Pesanan aktif</b>",
     "",
     "Kamu masih punya pesanan untuk produk ini.",
-    `🔢 <code>${escapeHtml(orderCode)}</code>`,
+    `<code>${escapeHtml(orderCode)}</code>`,
     "",
     "Bayar atau batalkan dulu sebelum order baru.",
   ].join("\n");
@@ -234,7 +190,7 @@ export function alreadyPendingMessage(orderCode: string): string {
 
 export function errorMessage(): string {
   return [
-    "⚠️ <b>Terjadi Kesalahan</b>",
+    "<b>Terjadi kesalahan</b>",
     "",
     "Silakan coba lagi.",
     "Kalau terus gagal, hubungi /bantuan",
@@ -243,18 +199,17 @@ export function errorMessage(): string {
 
 export function waSavedAfterPaymentMessage(orderCode: string): string {
   return [
-    "✅ <b>Nomor WA Tersimpan</b>",
-    "━━━━━━━━━━━━━━━━━━━━━",
+    "<b>Nomor WhatsApp tersimpan</b>",
     "",
-    `🔢 <code>${escapeHtml(orderCode)}</code>`,
+    `<code>${escapeHtml(orderCode)}</code>`,
     "",
-    "Pembayaran sudah lunas dan admin akan menghubungimu untuk pengiriman. 🙏",
+    "Pembayaran sudah lunas. Admin akan menghubungimu untuk pengiriman.",
   ].join("\n");
 }
 
 export function invalidWhatsAppMessage(): string {
   return [
-    "❌ <b>Nomor WA Tidak Valid</b>",
+    "<b>Nomor WhatsApp tidak valid</b>",
     "",
     "Format: 08xxx / +628xxx (10-15 digit)",
     "Contoh: <code>08123456789</code>",
@@ -264,7 +219,7 @@ export function invalidWhatsAppMessage(): string {
 }
 
 export function qrisExpiredMessage(orderCode: string): string {
-  return ["⏰ <b>QRIS Kedaluwarsa</b>", "", `<code>${escapeHtml(orderCode)}</code>`, "",
+  return ["<b>QRIS kedaluwarsa</b>", "", `<code>${escapeHtml(orderCode)}</code>`, "",
     "QRIS pertama sudah hangus setelah 15 menit. Jangan bayar QRIS lama.",
     "Kamu dapat meminta QRIS baru 1 kali lewat tombol di bawah selama pesanan masih aktif.",
     "Jika QRIS pengganti juga tidak dibayar sampai batas waktunya, pesanan kedaluwarsa dan harus order ulang.",
