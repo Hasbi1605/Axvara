@@ -24,10 +24,15 @@ lama yang bertentangan di bawah.
   hanya ke ID pribadi pemilik, bukan fallback akun lain dari chat tersimpan.
   Notifikasi lunas memakai lease/backoff bounded pada antrean existing; input
   WA cadangan tidak menimpa percakapan yang sedang aktif.
-- Koreksi presentasi owner29Oktober: pulihkan animasi loading existing pada
-  /start dan membuka produk; ikon semantik secukupnya pada judul/status/tombol
-  penting, bukan setiap baris. Animasi tidak menjadi bukti progres transaksi dan
-  kegagalannya tidak menghentikan konten. Semua guard finansial tetap sama.
+- Koreksi presentasi lanjutan owner29Oktober: loading /start dan produk berjalan
+  bersama pekerjaan nyata, tanpa persentase/jeda palsu. Satu bubble hanya bila
+  pekerjaan melewati300ms, maksimal3edit lalu teks masih memuat, dihapus setelah
+  pekerjaan selesai/gagal. Gangguan animasi tidak menggagalkan hasil.
+- Pagination/stepper dan ringkasan konfirmasi dari tombol memperbarui pesan
+  existing; input email teks tetap mendapat balasan baru, invoice/kredensial
+  terpisah. Ringkasan memisahkan identitas, jumlah/harga/subtotal dan email masked
+  dengan ruang kosong/judul tebal, bukan kolom monospace. Ikon tindakan tetap
+  disertai teks; checkout/pilih jumlah bukan centang sukses. Guard finansial sama.
 
 Tidak mengubah PIN/c1, Pedia, WA, supplier, merchant, env, schema atau cron.
 Verifikasi menggunakan fixture/mocked transport, tanpa order/pesan produksi.

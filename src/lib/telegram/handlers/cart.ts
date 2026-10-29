@@ -174,16 +174,16 @@ export async function handleCartCheckout(
   }
   const approvalTag = await checkoutApprovalTag(summary.lines);
 
-  await sendMessage({
-    chat_id: chatId,
+  await safeEditOrSend({
+    chat_id: chatId, message_id: messageId,
     text: cartCheckoutSummaryMessage(summary.lines.map((line) => ({
       productName: line.productName, variantLabel: line.variantLabel, price: line.price, qty: line.qty,
     })), summary.subtotal),
     parse_mode: "HTML",
     reply_markup: {
       inline_keyboard: [
-        [{ text: "Lanjut ke pembayaran QRIS", callback_data: `cconfirm:${approvalTag}` }],
-        ...summary.lines.map(line => [{ text: `Ketentuan ${line.variantLabel.slice(0, 24)}`, callback_data: `terms:${line.productId}:${line.variantId}` }]),
+        [{ text: "💳 Lanjut ke pembayaran QRIS", callback_data: `cconfirm:${approvalTag}` }],
+        ...summary.lines.map(line => [{ text: `📋 Ketentuan ${line.variantLabel.slice(0, 24)}`, callback_data: `terms:${line.productId}:${line.variantId}` }]),
         [
           { text: "Ubah keranjang", callback_data: "cart" },
           { text: "Menu", callback_data: "home" },

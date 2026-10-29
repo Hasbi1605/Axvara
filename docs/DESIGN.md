@@ -558,10 +558,17 @@ Implementasi lokal untuk publikasi CI, menggantikan susunan 27 September.
 - Ringkasan jumlah memuat harga satuan/subtotal, email masked, kelas pengiriman
   serta ketentuan relevan; ketentuan lengkap memiliki pagination per klik.
   Stepper dan ForceReply mengikuti minimum, stok efektif, maksimum100/baris
-  serta batas10 unit unik. Koreksi owner29Oktober: animasi bar existing
-  dipulihkan saat /start dan membuka produk (0/40/70/100%, lalu pesan dihapus).
-  Ini animasi transisi, bukan persentase stok/pembayaran/fulfillment; typing
-  native tetap untuk langkah transaksi lain. Gangguan animasi tidak memblokir konten.
+  serta batas10 unit unik. Koreksi lanjutan owner29Oktober: satu bubble loading
+  bertitik berjalan bersama pekerjaan /start/produk, baru muncul sesudah300ms;
+  maksimal3edit berjarak1200ms, terakhir “Masih memuat…”, tanpa persentase.
+  Dihapus ketika pekerjaan selesai/gagal, tanpa menunggu putaran animasi;
+  transport dekorasi dibatasi1detik dan edit aktif dibatalkan saat selesai.
+  Typing native tetap pada transaksi lain, kegagalan dekorasi tidak menggagalkan hasil.
+- Pagination/stepper dan ringkasan konfirmasi dari tombol memakai bubble existing;
+  respons email teks, invoice dan kredensial tetap terpisah. Identitas produk,
+  kelompok harga/jumlah/subtotal dan email dipisahkan ruang kosong/judul tebal;
+  email masked berupa teks biasa, monospace untuk kode/kredensial, bukan tabel.
+  Checkout memakai 💳 dan pilih jumlah 🛒, bukan centang yang menyiratkan sukses.
 - Email wajib melalui input atau konfirmasi email tersimpan; Ubah Email/Jumlah
   tersedia sebelum invoice. Ringkasan berubah meminta persetujuan baru, bukan
   menerbitkan invoice dengan nilai berbeda secara diam-diam.

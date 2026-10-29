@@ -7,7 +7,7 @@ import { notifyPaymentMaintenance } from "@/lib/telegram/payment-maintenance";
 // mempertahankan URUTAN pengecekan asli (pending WA → /start → label menu →
 // qty → search → /chatid → /garansi → /pesanan → fallback). Pemindahan murni.
 
-import { sendMessage, sendPhoto, showLoadingBar } from "@/lib/telegram/api";
+import { sendMessage, sendPhoto, withLoadingIndicator } from "@/lib/telegram/api";
 import {
   homeKeyboard, warrantyKeyboard,
   MENU_LABEL_CATALOG, MENU_LABEL_SEARCH, MENU_LABEL_ORDERS, MENU_LABEL_HELP,
@@ -56,7 +56,7 @@ export async function handleCommand(
     if (await notifyPaymentMaintenance(chatId)) return;
     // Clear any pending conversational state
     await clearPendingAction(from);
-    await showLoadingBar(chatId, "🚀 Menyiapkan AXVARA").catch(() => {});
+    return withLoadingIndicator(chatId, "🚀 Menyiapkan AXVARA", async () => {
     // SITE_URL kosong di sebagian worker (secret write-only yang belum
     // terbaca) → URL relatif membuat Telegram menolak ("URL host is empty").
     // Paksa absolut https axvara.tech bila env kosong.
@@ -97,7 +97,7 @@ export async function handleCommand(
     // SELESAI. Reply keyboard (is_persistent) sudah diinstal user sejak
     // /start pertama — tidak perlu dikirim ulang. Satu pesan tambahan di
     // sini justru jadi bubble sampah ("—", "Menu Cepat", dsb).
-    return;
+    });
   }
 
   // Persistent reply-menu taps arrive as plain text — route them like commands.

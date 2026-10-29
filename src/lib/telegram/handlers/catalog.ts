@@ -7,7 +7,7 @@ import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 // membuat perubahan tampilan aman ditinjau. Pemindahan murni dari route.ts.
 
 import { queryFirst, queryAll, execRun, isD1Mode } from "@/lib/db";
-import { sendMessage, sendPhoto, safeEditOrSend, showLoadingBar } from "@/lib/telegram/api";
+import { sendMessage, sendPhoto, safeEditOrSend, withLoadingIndicator } from "@/lib/telegram/api";
 import {
   catalogFlatKeyboard, categoriesKeyboard, productsKeyboard,
   variantsKeyboard, cb,
@@ -90,7 +90,7 @@ export async function handleShowProducts(chatId: number, messageId: number, cate
 }
 
 export async function handleShowProduct(chatId: number, messageId: number, requestedProductId: number) {
-  await showLoadingBar(chatId, "📦 Memuat produk").catch(() => {});
+  return withLoadingIndicator(chatId, "📦 Memuat produk", async () => {
 
   // Pecundang pasangan WR/SK (tombol lama, hasil cari lama) → tampilkan
   // pemenangnya, cermin redirect 308 PDP web: 1 barang = 1 kartu.
@@ -170,6 +170,7 @@ export async function handleShowProduct(chatId: number, messageId: number, reque
       reply_markup: keyboard,
     });
   }
+  });
 }
 
 // --- Variant flow handlers (TELEGRAM_VARIANT_FLOW) ---

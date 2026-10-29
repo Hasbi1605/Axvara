@@ -9,7 +9,7 @@ import { createAndSendCartInvoice } from "@/lib/telegram/handlers/cart-invoice";
 import { handleCartAdjust, handleCartCheckout } from "@/lib/telegram/handlers/cart";
 import { handleShowQty } from "@/lib/telegram/handlers/catalog";
 import { showEmailConfirmation } from "@/lib/telegram/handlers/discovery";
-import { sendMessage } from "@/lib/telegram/api";
+import { sendMessage, safeEditOrSend } from "@/lib/telegram/api";
 import { createChannelOrderAtomic } from "@/lib/commerce";
 
 vi.mock("@/lib/telegram/api", () => ({
@@ -111,7 +111,7 @@ describe("checkout consent and required-email snapshot", () => {
   it.each([0, 1])("confirmed=true without a snapshot refreshes confirmation even with require_email=%i", async required => {
     fixture.sql.prepare("UPDATE products SET require_email=? WHERE id=1").run(required);
     await handlePayWithQris(42, 7, 1, 1, 1, buyer, true, await checkoutApprovalTag([line]));
-    expect(showEmailConfirmation).toHaveBeenCalledWith(42, 1, 1, 1, "buyer@example.com");
+    expect(showEmailConfirmation).toHaveBeenCalledWith(42, 1, 1, 1, "buyer@example.com", null, 7);
     expect(createChannelOrderAtomic).not.toHaveBeenCalled();
   });
 
@@ -125,7 +125,7 @@ describe("checkout consent and required-email snapshot", () => {
   it("a supplied snapshot without email confirmation cannot authorize a required-email order", async () => {
     fixture.sql.exec("UPDATE products SET require_email=1 WHERE id=1");
     await handlePayWithQris(42, 7, 1, 1, 1, buyer, false, await checkoutApprovalTag([line]), "unconfirmed@example.com");
-    expect(showEmailConfirmation).toHaveBeenCalledWith(42, 1, 1, 1, "buyer@example.com");
+    expect(showEmailConfirmation).toHaveBeenCalledWith(42, 1, 1, 1, "buyer@example.com", null, 7);
     expect(createChannelOrderAtomic).not.toHaveBeenCalled();
   });
 
@@ -189,7 +189,8 @@ describe("checkout consent and required-email snapshot", () => {
   it("cart confirmation carries the exact displayed snapshot tag", async () => {
     await addToCart("42", 1, 1, 2);
     await handleCartCheckout(42, 7, buyer);
-    const sent = vi.mocked(sendMessage).mock.calls.at(-1)![0];
+    const sent = vi.mocked(safeEditOrSend).mock.calls.at(-1)![0];
+    expect(sent.message_id).toBe(7);
     expect(sent.reply_markup).toEqual(expect.objectContaining({
       inline_keyboard: expect.arrayContaining([[expect.objectContaining({ callback_data: `cconfirm:${await checkoutApprovalTag([{ ...line, qty: 2 }])}` })]]),
     }));

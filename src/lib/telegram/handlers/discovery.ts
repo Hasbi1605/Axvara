@@ -8,7 +8,7 @@ import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 // siklus-hidup order agar router tetap ramping. Pemindahan murni dari route.ts.
 
 import { queryFirst, queryAll, execRun, isD1Mode } from "@/lib/db";
-import { sendMessage, sendChatAction } from "@/lib/telegram/api";
+import { sendMessage, sendChatAction, safeEditOrSend } from "@/lib/telegram/api";
 import {
   homeKeyboard, orderStatusKeyboard, myOrdersKeyboard, searchResultsKeyboard,
   orderPaidKeyboard, TELEGRAM_MAX_QTY, emailConfirmationKeyboard,
@@ -114,7 +114,7 @@ export function maskEmail(email: string): string {
   return `${local.length <= 2 ? local[0] ?? "*" : `${local[0]}***${local.at(-1)}`}@${domain}`;
 }
 
-export async function showEmailConfirmation(chatId: number, productId: number, variantId: number, qty: number, email?: string, expectedAction: string | null = null) {
+export async function showEmailConfirmation(chatId: number, productId: number, variantId: number, qty: number, email?: string, expectedAction: string | null = null, messageId = 0) {
   const { getActiveVariant } = await import("@/lib/catalog");
   const variant = await getActiveVariant(variantId);
   if (!variant || variant.product_id !== productId) return;
@@ -124,15 +124,15 @@ export async function showEmailConfirmation(chatId: number, productId: number, v
   const tag = await checkoutApprovalTag([{ productId, variantId, qty, price: variant.price }]);
   const stored = await execRun("UPDATE telegram_users SET pending_action=?, updated_at=datetime('now') WHERE user_id=? AND buyer_email=? AND pending_action IS ?", `email_confirm:${productId}:${variantId}:${qty}:${nonce}:${await checkoutEmailFingerprint(saved)}`, String(chatId), saved, expectedAction);
   if (!stored.changes) return;
-  await sendMessage({
-    chat_id: chatId,
+  await safeEditOrSend({
+    chat_id: chatId, message_id: messageId,
     text: emailConfirmationMessage({ productName: String(product?.name ?? "Produk"), variantLabel: formatVariantLabel(variant), qty, total: variant.price * qty, maskedEmail: maskEmail(saved) }),
     parse_mode: "HTML",
     reply_markup: emailConfirmationKeyboard(productId, variantId, qty, variant.price * qty, tag, nonce),
   });
 }
 
-export async function showCartEmailConfirmation(chatId: number, from: { id: number }, email?: string, expectedAction: string | null = null) {
+export async function showCartEmailConfirmation(chatId: number, from: { id: number }, email?: string, expectedAction: string | null = null, messageId = 0) {
   const summary = await getCartSummary(String(from.id));
   if (!summary.lines.length) return;
   if (summary.issues.length) {
@@ -150,10 +150,10 @@ export async function showCartEmailConfirmation(chatId: number, from: { id: numb
   const nonce = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
   const stored = await execRun("UPDATE telegram_users SET pending_action=?, updated_at=datetime('now') WHERE user_id=? AND buyer_email=? AND pending_action IS ?", `cart_confirm:${tag}:${nonce}:${await checkoutEmailFingerprint(checked.email)}`, String(from.id), checked.email, expectedAction);
   if (!stored.changes) return;
-  await sendMessage({ chat_id: chatId, text: cartCheckoutSummaryMessage(summary.lines, summary.subtotal) + `\n\nEmail: <code>${escapeHtml(maskEmail(checked.email))}</code>\nPeriksa email sebelum membayar.`, parse_mode: "HTML", reply_markup: { inline_keyboard: [
-    [{ text: "Bayar QRIS", callback_data: `cconfirm:${tag}:${nonce}` }],
+  await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: cartCheckoutSummaryMessage(summary.lines, summary.subtotal) + `\n\n<b>Email</b>\n${escapeHtml(maskEmail(checked.email))}\nPeriksa email sebelum membayar.`, parse_mode: "HTML", reply_markup: { inline_keyboard: [
+    [{ text: "💳 Bayar QRIS", callback_data: `cconfirm:${tag}:${nonce}` }],
     [{ text: "Ubah Email", callback_data: "ceedit" }, { text: "Ubah Keranjang", callback_data: "cart" }],
-    ...summary.lines.map(line => [{ text: `Ketentuan ${line.variantLabel.slice(0, 24)}`, callback_data: `terms:${line.productId}:${line.variantId}` }]),
+    ...summary.lines.map(line => [{ text: `📋 Ketentuan ${line.variantLabel.slice(0, 24)}`, callback_data: `terms:${line.productId}:${line.variantId}` }]),
   ] } });
 }
 

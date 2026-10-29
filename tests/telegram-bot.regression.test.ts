@@ -832,7 +832,7 @@ describe("Telegram Fase 2: cart + reminder (tanpa review/promo)", () => {
       { productName: "ChatGPT Plus", variantLabel: "1 Bulan", price: 89000, qty: 1 },
     ];
     const msg = cartMessage(lines);
-    expect(msg).toContain("<b>Keranjang</b>");
+    expect(msg).toContain("<b>🛒 Keranjang</b>");
     expect(msg).toContain("Canva Pro");
     expect(msg).toContain("Subtotal: Rp99.000");
     expect(msg).toContain("Satu pembayaran QRIS");

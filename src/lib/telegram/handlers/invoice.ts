@@ -131,7 +131,7 @@ export async function handlePayWithQris(
       }
       if (!emailConfirmed || !confirmedEmail) {
         const { showEmailConfirmation } = await import("./discovery");
-        await showEmailConfirmation(chatId, productId, variantId, qty, buyerEmail);
+        await showEmailConfirmation(chatId, productId, variantId, qty, buyerEmail, null, messageId);
         return;
       }
     }

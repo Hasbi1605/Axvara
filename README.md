@@ -700,11 +700,15 @@ palsu; ketentuan/aktivasi/garansi tetap utuh. Modul tambahan
 `telegram/checkout-{approval,email}.ts`, tanpa env/schema/cron/transport baru.
 Pengujian fixture tanpa pesan/order produksi; bukan bukti deployment.
 
-Koreksi presentasi owner29Oktober: animasi bar loading lama kembali pada
-`/start` dan pembukaan produk, lalu terhapus; error animasi tidak memblokir
-konten. Ikon semantik pada menu/aksi penting dan judul status menghidupkan
-pesan tanpa menghias setiap baris. Callback, checkout dan guard stok tetap;
-tidak ada perubahan UI website atau pesan QA produksi.
+Koreksi presentasi lanjutan owner29Oktober: `/start` dan produk mengambil data
+bersamaan indikator satu bubble tanpa persentase; pekerjaan cepat (<300ms)
+tidak memunculkan bubble. Maksimal3edit, lalu “Masih memuat…”; selesai/gagal
+menghentikan animasi dan menghapus bubble, request dekorasi maksimal1detik.
+Pagination/stepper dan ringkasan konfirmasi dari tombol mengedit pesan existing;
+balasan input teks, invoice/kredensial tetap pesan terpisah. Ringkasan memakai
+kelompok identitas, nominal dan email masked, bukan tabel monospace. Ikon semantik
+tetap dengan teks, checkout 💳 dan jumlah 🛒 bukan centang sukses. Callback,
+CAS/email/snapshot dan guard stok tetap; tidak ada UI web atau pesan QA produksi.
 
 Paragraf Fase1/Fase2 berikut adalah histori; presentasi, fallback penerima dan
 notifikasi order-created yang bertentangan mengikuti revisi terkini di atas

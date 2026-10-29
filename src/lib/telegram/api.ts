@@ -23,6 +23,7 @@ async function callApi<T>(
   method: string,
   body?: Record<string, unknown>,
   timeoutMs = DEFAULT_TIMEOUT_MS,
+  signal?: AbortSignal,
 ): Promise<TelegramApiResponse<T>> {
   const token = getToken();
   const url = `${TELEGRAM_API_BASE}/bot${token}/${method}`;
@@ -35,7 +36,7 @@ async function callApi<T>(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: body ? JSON.stringify(body) : undefined,
-      signal: controller.signal,
+      signal: signal ? AbortSignal.any([signal, controller.signal]) : controller.signal,
     });
     const json = (await res.json()) as TelegramApiResponse<T>;
     return json;
@@ -72,6 +73,7 @@ export async function editMessageText(params: EditMessageTextParams): Promise<Te
  * edit pertama mungkin sudah mendarat.
  */
 export async function safeEditOrSend(params: EditMessageTextParams): Promise<TelegramApiResponse> {
+  if (!params.message_id) return sendMessage(params);
   const editResult = await editMessageText(params);
   if (editResult.ok) return editResult;
   const description = String(editResult.description || "");
@@ -133,37 +135,43 @@ export async function sendChatAction(
   return callApi("sendChatAction", { chat_id: chatId, action });
 }
 
-/**
- * Animated progress bar: sends a message, edits it with smooth ▓░ progress, then deletes.
- * Steps: ░░░░░░░░░░ 0% → ▓▓▓▓░░░░░░ 40% → ▓▓▓▓▓▓▓░░░ 70% → ▓▓▓▓▓▓▓▓▓▓ 100%
- * Total duration: ~1.8s with pauses between steps.
- */
-export async function showLoadingBar(
+// One temporary bubble, at most three edits; fast work never shows a spinner.
+export async function withLoadingIndicator<T>(
   chatId: number | string,
-  label = "Memuat",
-): Promise<void> {
-  const bar = (filled: number, total = 10) => {
-    const f = "▓".repeat(filled);
-    const e = "░".repeat(total - filled);
-    const pct = Math.round((filled / total) * 100);
-    return `${f}${e} ${pct}%`;
-  };
-
-  const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
-
-  const msg = await sendMessage({ chat_id: chatId, text: `${label}\n${bar(0)}` });
-  if (!msg.ok || !msg.result) return;
-  const msgId = msg.result.message_id;
-
-  await wait(400);
-  await editMessageText({ chat_id: chatId, message_id: msgId, text: `${label}\n${bar(4)}` });
-  await wait(500);
-  await editMessageText({ chat_id: chatId, message_id: msgId, text: `${label}\n${bar(7)}` });
-  await wait(400);
-  await editMessageText({ chat_id: chatId, message_id: msgId, text: `${label}\n${bar(10)}` });
-  await wait(300);
-
-  await callApi("deleteMessage", { chat_id: chatId, message_id: msgId });
+  label: string,
+  work: () => Promise<T>,
+): Promise<T> {
+  const controller = new AbortController();
+  const { signal } = controller;
+  const wait = (ms: number) => new Promise<void>((resolve) => {
+    const done = () => { clearTimeout(timer); signal.removeEventListener("abort", done); resolve(); };
+    const timer = setTimeout(done, ms);
+    signal.addEventListener("abort", done, { once: true });
+    if (signal.aborted) done();
+  });
+  let messageId: number | undefined;
+  const animation = (async () => {
+    await wait(300);
+    if (signal.aborted) return;
+    const sent = await callApi<TelegramMessage>("sendMessage", { chat_id: chatId, text: `${label}\n● ○ ○` }, 1000, signal);
+    if (!sent.ok || !sent.result) return;
+    messageId = sent.result.message_id;
+    for (const frame of ["○ ● ○", "○ ○ ●", "Masih memuat…"]) {
+      await wait(1200);
+      if (signal.aborted) return;
+      const edited = await callApi("editMessageText", { chat_id: chatId, message_id: messageId, text: `${label}\n${frame}` }, 1000, signal);
+      if (!edited.ok) return;
+    }
+  })().catch(() => {});
+  try {
+    return await work();
+  } finally {
+    controller.abort();
+    await animation;
+    if (messageId !== undefined) {
+      await callApi("deleteMessage", { chat_id: chatId, message_id: messageId }, 1000).catch(() => {});
+    }
+  }
 }
 
 /**

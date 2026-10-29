@@ -1,6 +1,12 @@
 # Telegram: konsistensi order dan bahasa pembeli
 
 ## Latar belakang
+Revisi presentasi lanjutan29Oktober: indikator paralel bounded tanpa persentase,
+edit bubble ringkasan callback, hierarki nominal/email tanpa tabel monospace,
+serta ikon tindakan. Menggantikan loading bar yang dipulihkan sebelumnya saja;
+guard transaksi di bawah tetap. Pengujian fetch/timer dan router D1 tanpa pesan
+produksi; hasil final dicatat pada changelog.
+
 Label Google AI Pro Head 18 Bulan ditempeli metadata durasi 1 month oleh
 Telegram, sedangkan web memakai label pembeli kanonis. Audit juga menemukan
 harga varian habis, stok unik mentah, pembatalan non-atomik, pemeriksaan email

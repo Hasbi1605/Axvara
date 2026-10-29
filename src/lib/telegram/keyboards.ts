@@ -319,7 +319,7 @@ export function confirmVariantPurchaseKeyboard(productId: number, variantId: num
   return {
     inline_keyboard: [
       [
-        { text: "✅ Saya Paham, Pilih Jumlah", callback_data: cb.qty(productId, variantId) },
+        { text: "🛒 Pilih Jumlah", callback_data: cb.qty(productId, variantId) },
       ],
       [
         { text: "📜 Syarat Garansi", callback_data: "warranty" },
@@ -365,7 +365,7 @@ export function qtyKeyboard(params: {
       ],
       ...(max > 1 ? [[{ text: "✍️ Masukkan Jumlah", callback_data: cb.qtyInput(productId, variantId) }]] : []),
       [{ text: params.requiresEmail ? `📧 Lanjut ke Email · Rp${total}` : `💳 Bayar QRIS · Rp${total}`, callback_data: cb.pay(productId, variantId, qty, params.approvalTag) }],
-      [{ text: "Ketentuan", callback_data: cb.terms(productId, variantId) }, { text: "Tambah ke Keranjang", callback_data: cb.cartAdd(productId, variantId, qty) }],
+      [{ text: "📋 Ketentuan", callback_data: cb.terms(productId, variantId) }, { text: "🛒 Tambah ke Keranjang", callback_data: cb.cartAdd(productId, variantId, qty) }],
       [
         { text: "Ganti Varian", callback_data: cb.variants(productId) },
         { text: "Menu", callback_data: cb.home() },
@@ -377,7 +377,7 @@ export function qtyKeyboard(params: {
 export function emailConfirmationKeyboard(productId: number, variantId: number, qty: number, total: number, tag?: string, nonce?: string): InlineKeyboardMarkup {
   return { inline_keyboard: [
     [{ text: `💳 Bayar QRIS · ${buttonPrice(total)}`, callback_data: cb.emailPay(productId, variantId, qty, tag, nonce) }],
-    [{ text: "Ubah Email", callback_data: cb.emailEdit(productId, variantId, qty) }, { text: "Ketentuan", callback_data: cb.terms(productId, variantId) }],
+    [{ text: "📧 Ubah Email", callback_data: cb.emailEdit(productId, variantId, qty) }, { text: "📋 Ketentuan", callback_data: cb.terms(productId, variantId) }],
     [
       { text: "◀️ Ubah Jumlah", callback_data: cb.qty(productId, variantId) },
       { text: "🏠 Menu", callback_data: cb.home() },
@@ -404,7 +404,7 @@ export function cartKeyboard(params: {
   });
   params.lines.slice(0, 20).forEach(line => rows.push([{ text: `Hapus ${truncateLabel(line.label ?? String(line.variantId), 24)}`, callback_data: cb.cartRemove(line.variantId) }]));
   if (params.lines.length > 0) {
-    rows.push([{ text: "✅ Checkout 1 QRIS", callback_data: cb.cartCheckout() }]);
+    rows.push([{ text: "💳 Checkout 1 QRIS", callback_data: cb.cartCheckout() }]);
     rows.push([{ text: "🧹 Kosongkan", callback_data: cb.cartClear() }]);
   }
   rows.push([
@@ -433,7 +433,7 @@ export function confirmPurchaseKeyboard(productId: number): InlineKeyboardMarkup
   return {
     inline_keyboard: [
       [
-        { text: "✅ Saya Paham, Pilih Jumlah", callback_data: cb.qty(productId, 0) },
+        { text: "🛒 Pilih Jumlah", callback_data: cb.qty(productId, 0) },
       ],
       [
         { text: "📜 Syarat Garansi", callback_data: "warranty" },

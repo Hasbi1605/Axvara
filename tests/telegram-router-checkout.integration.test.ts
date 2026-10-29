@@ -8,11 +8,11 @@ import { getCartSummary } from "@/lib/telegram/cart";
 import { createChannelOrderAtomic } from "@/lib/commerce";
 import { transitionPendingOrder } from "@/lib/db";
 import { createActiveQrisInvoice } from "@/lib/payments/dana-qris";
-import { sendMessage, sendPhoto, sendChatAction, safeEditOrSend, showLoadingBar } from "@/lib/telegram/api";
+import { sendMessage, sendPhoto, sendChatAction, safeEditOrSend, withLoadingIndicator } from "@/lib/telegram/api";
 import type { SendMessageParams } from "@/lib/telegram/types";
 
 vi.mock("@/lib/telegram/api", () => ({
-  sendMessage: vi.fn(), sendPhoto: vi.fn(), sendChatAction: vi.fn(), safeEditOrSend: vi.fn(), showLoadingBar: vi.fn(async () => {}),
+  sendMessage: vi.fn(), sendPhoto: vi.fn(), sendChatAction: vi.fn(), safeEditOrSend: vi.fn(), withLoadingIndicator: vi.fn(async (_chat, _label, work) => work()),
 }));
 vi.mock("@/lib/payments/dana-qris", async importOriginal => ({
   ...await importOriginal<typeof import("@/lib/payments/dana-qris")>(),
@@ -36,7 +36,8 @@ let fx: ReturnType<typeof createD1Fixture>;
 const click = (data: string, chatId = buyer.id, from = buyer) => handleCallback(data, chatId, 7, from);
 const user = () => fx.sql.prepare("SELECT buyer_email,pending_action FROM telegram_users WHERE user_id=?").get(String(buyer.id))!;
 const orders = () => fx.sql.prepare("SELECT * FROM orders ORDER BY id").all();
-const sent = () => send.mock.calls.at(-1)![0];
+const sent = () => (send.mock.invocationCallOrder.at(-1) ?? 0) > (edit.mock.invocationCallOrder.at(-1) ?? 0)
+  ? send.mock.calls.at(-1)![0] : edit.mock.calls.at(-1)![0];
 const edited = () => edit.mock.calls.at(-1)![0];
 function callbacks(message: Pick<SendMessageParams, "reply_markup">): string[] {
   const markup = message.reply_markup;
@@ -57,11 +58,15 @@ async function quantity(qty = 2) {
 }
 async function singleConfirmation() {
   await click(await quantity());
+  expect(edited().message_id).toBe(7);
+  expect(send).not.toHaveBeenCalled();
   return button(sent(), "epay:");
 }
 async function cartSummary() {
   await click("cadd:1:1:2");
   await click("ccheckout");
+  expect(edited().message_id).toBe(7);
+  expect(send).not.toHaveBeenCalled();
   const summary = await getCartSummary(String(buyer.id));
   expect(summary.issues).toEqual([]);
   const confirm = button(sent(), "cconfirm:");
@@ -70,6 +75,8 @@ async function cartSummary() {
 }
 async function cartConfirmation() {
   await click(await cartSummary());
+  expect(edited().message_id).toBe(7);
+  expect(send).not.toHaveBeenCalled();
   return button(sent(), "cconfirm:");
 }
 function changeEmailAfterClaim() {
@@ -92,7 +99,7 @@ beforeEach(async () => {
   fx.sql.prepare("INSERT INTO telegram_users(user_id,chat_id,first_name,buyer_email) VALUES(?,?,?,?)")
     .run(String(buyer.id), String(buyer.id), buyer.first_name, savedEmail);
   send.mockResolvedValue({ ok: true, result: { message_id: 1, date: 0, chat: { id: buyer.id, type: "private" } } });
-  edit.mockResolvedValue({ ok: true });
+  edit.mockImplementation(async params => params.message_id ? { ok: true } : send(params));
   vi.mocked(sendPhoto).mockResolvedValue({ ok: true });
   vi.mocked(sendChatAction).mockResolvedValue({ ok: true });
   provider.mockImplementation(async (code, amount) => {
@@ -482,7 +489,7 @@ describe("Telegram callback ownership and cancellation", () => {
 describe("Telegram actual catalog labels, inventory and callback budgets", () => {
   it("uses the canonical Google Head 18Bulan label in product, quantity and cart without appending 1 month", async () => {
     await click("prd:1");
-    expect(showLoadingBar).toHaveBeenCalledWith(buyer.id, "📦 Memuat produk");
+    expect(withLoadingIndicator).toHaveBeenCalledWith(buyer.id, "📦 Memuat produk", expect.any(Function));
     const product = edited();
     expect(product.text).toContain("Google Head 18Bulan");
     expect(product.text).not.toMatch(/1\s*(month|bulan)\b/i);

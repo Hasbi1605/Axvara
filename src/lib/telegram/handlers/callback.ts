@@ -307,7 +307,7 @@ export async function handleCallback(data: string, chatId: number, messageId: nu
           ? await execRun("UPDATE telegram_users SET pending_action=NULL WHERE user_id=? AND pending_action=? AND buyer_email=?", String(from.id), state, checked.email)
           : null;
         if (!claim?.changes) {
-          await showCartEmailConfirmation(chatId, from, undefined, buyer?.pending_action == null ? null : String(buyer.pending_action));
+          await showCartEmailConfirmation(chatId, from, undefined, buyer?.pending_action == null ? null : String(buyer.pending_action), messageId);
           break;
         }
       }

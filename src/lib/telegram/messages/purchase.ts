@@ -72,13 +72,15 @@ export function chooseQtyMessage(params: {
     "",
     `<b>${escapeHtml(truncate(productName, 80))}</b>`,
     `Varian: ${escapeHtml(truncate(variantLabel, 80))}`,
+    "",
     `Harga satuan: ${formatRupiah(price)}`,
+    `<b>Jumlah: ${qty}</b>`,
+    `<b>Subtotal: ${formatRupiah(price * qty)}</b>`,
+    "",
     stockLine,
     ...(minQty > 1 ? [`Minimal pembelian: ${minQty}`] : []),
     `Maksimal ${maxQty} per pesanan.`,
     "",
-    `<b>Jumlah: ${qty}</b>`,
-    `<b>Subtotal: ${formatRupiah(price * qty)}</b>`,
     ...(params.requiresEmail ? ["Email aktif diperlukan sebelum membayar."] : []),
   ].join("\n");
 }
@@ -95,10 +97,12 @@ export function emailConfirmationMessage(params: {
     "",
     `<b>${escapeHtml(truncate(params.productName, 80))}</b>`,
     `Varian: ${escapeHtml(truncate(params.variantLabel, 80))}`,
+    "",
     `Jumlah: ${params.qty}`,
-    `Email: <code>${escapeHtml(params.maskedEmail)}</code>`,
     `<b>Subtotal: ${formatRupiah(params.total)}</b>`,
     "",
+    "<b>Email</b>",
+    escapeHtml(params.maskedEmail),
     "Periksa email sebelum membayar.",
   ].join("\n");
 }
@@ -120,7 +124,7 @@ export function cartMessage(lines: TelegramCartLine[]): string {
   }
   const subtotal = lines.reduce((sum, line) => sum + line.price * line.qty, 0);
   const out = [
-    "<b>Keranjang</b>",
+    "<b>🛒 Keranjang</b>",
     "",
   ];
   lines.slice(0, 20).forEach((line, i) => out.push(
@@ -148,7 +152,7 @@ export function cartCheckoutSummaryMessage(lines: TelegramCartLine[], subtotal: 
   const names = lines.slice(0, 20).map(line =>
     `• ${escapeItemSummary(line.productName, 75)} / ${escapeItemSummary(line.variantLabel, 75)} x${line.qty}`).join("\n");
   return [
-    "<b>Konfirmasi keranjang</b>",
+    "<b>🛒 Konfirmasi keranjang</b>",
     "",
     names,
     "",

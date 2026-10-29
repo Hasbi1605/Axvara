@@ -838,12 +838,18 @@ Status/resend menyajikan semua item dan error parsial secara eksplisit.
 Semantik transport bounded at-least-once, bukan exactly-once. Tidak ada schema,
 env, trigger cron, integrasi gateway atau UI web baru.
 
-Koreksi presentasi29Oktober: `command.ts` (/start) dan `catalog.ts`
-(handleShowProduct) kembali memanggil `api.ts::showLoadingBar` existing secara
-best-effort, frame0/40/70/100% kemudian delete, satu pesan sementara. Tidak
-dipanggil pada pembayaran/cancel/fulfillment dan tidak mengubah state transaksi;
-typing native langkah lain tetap. Ikon hanya mengubah teks pesan/keyboard,
-callback_data/tag/nonce/ownership dan batas HTML1024/4096 tetap diuji.
+Koreksi presentasi lanjutan29Oktober: `command.ts` (/start) dan `catalog.ts`
+(handleShowProduct) memakai `api.ts::withLoadingIndicator` dengan callback kerja
+langsung berjalan. Bubble baru sesudah300ms, maksimal3edit berjarak1200ms lalu
+“Masih memuat…”. Selesai/gagal membatalkan timer/edit aktif dan menghapus bubble;
+request dekorasi maksimal1detik, error dekorasi ditelan tanpa menelan error kerja.
+Tanpa progres persentase, timer transaksi baru, atau background task tak ditunggu.
+`safeEditOrSend` mengirim langsung bila message_id=0; pagination/stepper dan
+ringkasan checkout/email dari callback memakai ID pesan existing. Respons input
+teks tanpa ID tetap pesan baru; invoice/kredensial tetap terpisah. Argumen ID hanya
+untuk presentasi, CAS/email/tag/nonce/ownership dan HTML1024/4096 tetap diuji.
+Ikon dan kelompok ringkasan hanya mengubah teks; pembayaran/cancel/fulfillment,
+pending_action dan guard finansial tidak diubah.
 
 ### 3.1 Runtime performa storefront
 
