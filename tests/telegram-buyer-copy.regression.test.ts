@@ -35,7 +35,7 @@ function parsed(html: string, limit = 4096): Document {
 }
 
 describe("plain Indonesian Telegram buyer copy", () => {
-  it("omits slogans, decoration, breadcrumbs and invented speed claims", () => {
+  it("keeps copy concise with at most one semantic heading emoji, without slogans or speed claims", () => {
     const messages = [
       welcomeMessage("Nadia"), catalogFlatMessage(12), categoriesMessage(), categoryProductsMessage("AI", 2),
       productDetailMessage({ name: "Produk A", price: 5000 }), searchPromptMessage(), searchResultsMessage("Produk", 4),
@@ -53,7 +53,8 @@ describe("plain Indonesian Telegram buyer copy", () => {
       ...credentialMessages({ plaintext: "account:password" }),
     ];
     for (const message of messages) {
-      expect(message).not.toMatch(/\p{Extended_Pictographic}|[━🧭]|Langkah \d|Gerbang semua|favoritmu|1 menit|jauh lebih hemat|SEKALI|SATU QRIS|👇|—/u);
+      expect(message).not.toMatch(/[━🧭]|Langkah \d|Gerbang semua|favoritmu|1 menit|jauh lebih hemat|SEKALI|SATU QRIS|👇|—/u);
+      expect((message.match(/\p{Extended_Pictographic}/gu) ?? []).length).toBeLessThanOrEqual(1);
       parsed(message);
     }
   });

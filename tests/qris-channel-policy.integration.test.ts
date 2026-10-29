@@ -110,7 +110,7 @@ it("Telegram variant selection goes straight to quantity controls", async () => 
   const { handleVariantConfirm } = await import("@/lib/telegram/handlers/catalog");
   await handleVariantConfirm(77, 1, 1);
   const message = vi.mocked(safeEditOrSend).mock.lastCall?.[0];
-  expect(message?.text).toContain("<b>Jumlah pesanan</b>");
+  expect(message?.text).toContain("<b>🛒 Jumlah pesanan</b>");
   expect(message?.text).not.toContain("Konfirmasi Pembelian");
   expect(JSON.stringify(message?.reply_markup)).not.toContain("Saya Paham");
   expect(fixture.sql.prepare("SELECT pending_action FROM telegram_users WHERE user_id='77'").get()!.pending_action).toBe("qty_for:1:1");

@@ -838,6 +838,13 @@ Status/resend menyajikan semua item dan error parsial secara eksplisit.
 Semantik transport bounded at-least-once, bukan exactly-once. Tidak ada schema,
 env, trigger cron, integrasi gateway atau UI web baru.
 
+Koreksi presentasi29Oktober: `command.ts` (/start) dan `catalog.ts`
+(handleShowProduct) kembali memanggil `api.ts::showLoadingBar` existing secara
+best-effort, frame0/40/70/100% kemudian delete, satu pesan sementara. Tidak
+dipanggil pada pembayaran/cancel/fulfillment dan tidak mengubah state transaksi;
+typing native langkah lain tetap. Ikon hanya mengubah teks pesan/keyboard,
+callback_data/tag/nonce/ownership dan batas HTML1024/4096 tetap diuji.
+
 ### 3.1 Runtime performa storefront
 
 - `OrbitHero` hanya satu instance untuk desktop/mobile, memutakhirkan DOM lewat refs, memakai 30 fps untuk auto-rotate dan refresh-rate penuh saat drag/inertia, menghormati reduced motion, serta menghentikan rAF ketika hero offscreen/tab tersembunyi. Drag hanya aktif untuk `(pointer: fine)`; layar sentuh memakai `touch-action: pan-y` dan tidak menangkap swipe vertikal. Hemat mobile 2026-09-29 (laporan owner HP lag): hot path compositor-only (transform + opacity) — tanpa filter/blur/backdrop-filter/display per frame; mobile (coarse/≤640px) 8 planet + tanpa trail/label dinamis/shadow dinamis/star-dust + 24fps; glow hero cyan 44px (gold mati) di mobile. Dikunci tests/orbit-mobile-perf.regression.test.ts.

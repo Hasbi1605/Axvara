@@ -8,11 +8,11 @@ import { getCartSummary } from "@/lib/telegram/cart";
 import { createChannelOrderAtomic } from "@/lib/commerce";
 import { transitionPendingOrder } from "@/lib/db";
 import { createActiveQrisInvoice } from "@/lib/payments/dana-qris";
-import { sendMessage, sendPhoto, sendChatAction, safeEditOrSend } from "@/lib/telegram/api";
+import { sendMessage, sendPhoto, sendChatAction, safeEditOrSend, showLoadingBar } from "@/lib/telegram/api";
 import type { SendMessageParams } from "@/lib/telegram/types";
 
 vi.mock("@/lib/telegram/api", () => ({
-  sendMessage: vi.fn(), sendPhoto: vi.fn(), sendChatAction: vi.fn(), safeEditOrSend: vi.fn(),
+  sendMessage: vi.fn(), sendPhoto: vi.fn(), sendChatAction: vi.fn(), safeEditOrSend: vi.fn(), showLoadingBar: vi.fn(async () => {}),
 }));
 vi.mock("@/lib/payments/dana-qris", async importOriginal => ({
   ...await importOriginal<typeof import("@/lib/payments/dana-qris")>(),
@@ -482,6 +482,7 @@ describe("Telegram callback ownership and cancellation", () => {
 describe("Telegram actual catalog labels, inventory and callback budgets", () => {
   it("uses the canonical Google Head 18Bulan label in product, quantity and cart without appending 1 month", async () => {
     await click("prd:1");
+    expect(showLoadingBar).toHaveBeenCalledWith(buyer.id, "📦 Memuat produk");
     const product = edited();
     expect(product.text).toContain("Google Head 18Bulan");
     expect(product.text).not.toMatch(/1\s*(month|bulan)\b/i);

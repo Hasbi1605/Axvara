@@ -34,7 +34,7 @@ export function orderPaidMessage(
         ]
       : ["Produk akan dikirim admin ke chat pribadi ini."];
   const lines = [
-    "<b>Pembayaran lunas</b>",
+    "<b>✅ Pembayaran lunas</b>",
     "",
     name,
     `<code>${escapeHtml(truncate(orderCode, 120))}</code>`,
@@ -89,7 +89,7 @@ export function whatsAppInputPromptMessage(orderCode: string): string {
 
 export function orderExpiredMessage(orderCode: string): string {
   return [
-    "<b>Invoice kedaluwarsa</b>",
+    "<b>⌛ Invoice kedaluwarsa</b>",
     "",
     `<code>${escapeHtml(orderCode)}</code>`,
     "",
@@ -100,7 +100,7 @@ export function orderExpiredMessage(orderCode: string): string {
 
 export function orderCancelledMessage(orderCode: string): string {
   return [
-    "<b>Pesanan dibatalkan</b>",
+    "<b>❌ Pesanan dibatalkan</b>",
     "",
     `<code>${escapeHtml(orderCode)}</code>`,
     "",
@@ -119,7 +119,7 @@ export function orderStatusMessage(params: {
 }): string {
   const { orderCode, productName, paymentStatus, fulfillmentStatus, payableAmount } = params;
   const header = [
-    "<b>Status pesanan</b>",
+    "<b>📦 Status pesanan</b>",
     `<code>${escapeItemSummary(orderCode, 120)}</code>`,
   ].join("\n");
   const footer = [
@@ -170,7 +170,7 @@ export function qrisRenewRejectedMessage(
 
 export function outOfStockMessage(): string {
   return [
-    "<b>Stok habis</b>",
+    "<b>📭 Stok habis</b>",
     "",
     "Maaf, produk ini sedang tidak tersedia.",
     "Cek produk lain di /katalog",
@@ -190,7 +190,7 @@ export function alreadyPendingMessage(orderCode: string): string {
 
 export function errorMessage(): string {
   return [
-    "<b>Terjadi kesalahan</b>",
+    "<b>⚠️ Terjadi kesalahan</b>",
     "",
     "Silakan coba lagi.",
     "Kalau terus gagal, hubungi /bantuan",

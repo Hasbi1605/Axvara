@@ -68,7 +68,7 @@ export function chooseQtyMessage(params: {
   const qty = Math.min(Math.max(minQty, Math.floor(params.qty || minQty)), maxQty);
   const stockLine = stock === -1 ? "Stok tersedia" : stock > 0 ? `Stok: ${stock}` : "Stok habis";
   return [
-    "<b>Jumlah pesanan</b>",
+    "<b>🛒 Jumlah pesanan</b>",
     "",
     `<b>${escapeHtml(truncate(productName, 80))}</b>`,
     `Varian: ${escapeHtml(truncate(variantLabel, 80))}`,
@@ -91,7 +91,7 @@ export function emailConfirmationMessage(params: {
   maskedEmail: string;
 }): string {
   return [
-    "<b>Konfirmasi email</b>",
+    "<b>📧 Konfirmasi email</b>",
     "",
     `<b>${escapeHtml(truncate(params.productName, 80))}</b>`,
     `Varian: ${escapeHtml(truncate(params.variantLabel, 80))}`,
@@ -199,7 +199,7 @@ export function invoiceMessage(params: {
   }
 
   const header = [
-    "<b>Menunggu pembayaran</b>",
+    "<b>⏳ Menunggu pembayaran</b>",
     `<code>${escapeItemSummary(orderCode, 120)}</code>`,
   ].join("\n");
   const footer = [

@@ -95,7 +95,7 @@ describe("SK completed → lisensi langsung ke chat Telegram pembeli", () => {
     const dms = tgCalls.filter((c) => c.text.includes("pv@mail.com"));
     expect(dms).toHaveLength(1);
     expect(dms[0].chat_id).toBe(PRIVATE_CHAT);
-    expect(dms[0].text).toContain("<b>Produk siap</b>");
+    expect(dms[0].text).toContain("<b>📦 Produk siap</b>");
     expect(dms[0].text.toLowerCase()).not.toContain("pemasok");
     expect(dms[0].text.toLowerCase()).not.toContain("sekalipay");
     expect(dms[0].text).toContain("Jangan mengganti password.");
@@ -169,7 +169,7 @@ describe("Pesan lunas Telegram mengikuti kelas kirim (instan / MBO / manual)", (
     insertTelegramOrder(code, variantId, productId);
     const { notifyTelegramBuyerPaid } = await import("@/lib/telegram/order-notifications");
     await notifyTelegramBuyerPaid(code, createDatabaseAccess(fixture.db));
-    const call = tgCalls.find((c) => c.chat_id === BUYER && c.text.includes("<b>Pembayaran lunas</b>"));
+    const call = tgCalls.find((c) => c.chat_id === BUYER && c.text.includes("<b>✅ Pembayaran lunas</b>"));
     expect(call).toBeTruthy();
     return call!.text;
   }

@@ -17,7 +17,7 @@ describe("pesan kredensial Telegram dengan panduan pasca-bayar", () => {
     const messages = credentialMessages({ plaintext: "buyer@mail.test|p<ass&", orderCode: "AXV-TEST", productName: "Produk <Premium>", copy });
     expect(messages).toHaveLength(1);
     const html = messages[0];
-    expect(html).toContain("<b>Produk siap</b>");
+    expect(html).toContain("<b>📦 Produk siap</b>");
     expect(html).toContain("<pre>buyer@mail.test|p&lt;ass&amp;</pre>");
     expect(html.indexOf("Syarat &amp; Ketentuan")).toBeGreaterThan(html.indexOf("</pre>"));
     expect(html.indexOf("Cara Penggunaan / Aktivasi")).toBeGreaterThan(html.indexOf("Syarat &amp; Ketentuan"));

@@ -237,7 +237,7 @@ describe("Telegram keyboards", () => {
     expect(buttons[0].callback_data).toBe("var:2");
     expect(buttons[1].text).toBe("Legal · Habis");
     expect(buttons[1].callback_data).toBe("noop");
-    expect(buttons).toContainEqual({ text: "Detail & Ketentuan", callback_data: "terms:7:0" });
+    expect(buttons).toContainEqual({ text: "📋 Detail & Ketentuan", callback_data: "terms:7:0" });
   });
 
   it("qty keyboard uses one clear stepper and a direct QRIS CTA", () => {
@@ -256,7 +256,7 @@ describe("Telegram keyboards", () => {
 
   it("email-required quantity uses an honest continue CTA", () => {
     const kb = qtyKeyboard({ productId: 1, variantId: 2, stock: 10, qty: 3, price: 5000, requiresEmail: true });
-    expect(kb.inline_keyboard.flat()).toContainEqual({ text: "Lanjut ke Email · Rp15.000", callback_data: "pay:1:2:3" });
+    expect(kb.inline_keyboard.flat()).toContainEqual({ text: "📧 Lanjut ke Email · Rp15.000", callback_data: "pay:1:2:3" });
   });
 
   it("email confirmation offers pay, edit email, and edit quantity", () => {
@@ -274,7 +274,7 @@ describe("Telegram keyboards", () => {
     // Tombol cek manual memakai callback refresh:* yang sudah ada (ownerBound
     // + handleOrderRefresh idempoten) — pembeli tidak menunggu buta bila hook telat.
     expect(datas.some(d => d === "refresh:AXV-20260906-TEST1234")).toBe(true);
-    expect(buttons).toContainEqual({ text: "Cek Pembayaran", callback_data: "refresh:AXV-20260906-TEST1234" });
+    expect(buttons).toContainEqual({ text: "🔄 Cek Pembayaran", callback_data: "refresh:AXV-20260906-TEST1234" });
     expect(datas.some(d => d.startsWith("cancel:"))).toBe(true);
   });
 

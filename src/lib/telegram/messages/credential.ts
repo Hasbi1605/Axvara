@@ -21,7 +21,7 @@ export function credentialMessages({
     productName ? escapeHtml(truncate(productName, 120)) : "",
     orderCode ? `<code>${escapeHtml(truncate(orderCode, 120))}</code>` : "",
   ].filter(Boolean).join("\n");
-  const firstHeader = ["<b>Produk siap</b>", identity].filter(Boolean).join("\n");
+  const firstHeader = ["<b>📦 Produk siap</b>", identity].filter(Boolean).join("\n");
   const nextHeader = ["<b>Detail produk (lanjutan)</b>", identity].filter(Boolean).join("\n");
   const blockLimit = 4096 - Math.max(firstHeader.length, nextHeader.length) - 2;
   const messages: string[] = [];

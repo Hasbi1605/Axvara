@@ -558,12 +558,19 @@ Implementasi lokal untuk publikasi CI, menggantikan susunan 27 September.
 - Ringkasan jumlah memuat harga satuan/subtotal, email masked, kelas pengiriman
   serta ketentuan relevan; ketentuan lengkap memiliki pagination per klik.
   Stepper dan ForceReply mengikuti minimum, stok efektif, maksimum100/baris
-  serta batas10 unit unik. Tidak ada progres loading palsu; gunakan typing native.
+  serta batas10 unit unik. Koreksi owner29Oktober: animasi bar existing
+  dipulihkan saat /start dan membuka produk (0/40/70/100%, lalu pesan dihapus).
+  Ini animasi transisi, bukan persentase stok/pembayaran/fulfillment; typing
+  native tetap untuk langkah transaksi lain. Gangguan animasi tidak memblokir konten.
 - Email wajib melalui input atau konfirmasi email tersimpan; Ubah Email/Jumlah
   tersedia sebelum invoice. Ringkasan berubah meminta persetujuan baru, bukan
   menerbitkan invoice dengan nilai berbeda secara diam-diam.
 - Copy menyebut barang, keadaan, dan tindakan. Tidak memakai slogan/breadcrumb
-  Langkah X/4 atau emoji dekoratif berulang. Bayar QRIS, Cek Pembayaran,
+  Langkah X/4 atau emoji dekoratif berulang. Koreksi owner29Oktober: satu ikon
+  semantik pada judul utama/status dan tombol navigasi/aksi penting (🛍 katalog,
+  🛒 keranjang, 📧 email, 💳 bayar, 🔄 cek, ✅ lunas, 📦 produk siap, ⚠️ error).
+  Label teks tetap lengkap, isi kredensial/ketentuan dan tiap baris produk tidak
+  dihias. Bayar QRIS, Cek Pembayaran,
   Detail Pesanan, Ketentuan dan Bantuan menggunakan nama tindakan singkat.
 - Pembatalan meminta konfirmasi. Status seluruh item dan tombol ambil ulang
   membedakan belum siap, gagal, serta pengiriman parsial. Kredensial tetap

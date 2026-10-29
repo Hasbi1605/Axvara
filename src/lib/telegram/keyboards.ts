@@ -109,16 +109,16 @@ export function homeKeyboard(): InlineKeyboardMarkup {
   return {
     inline_keyboard: [
       [
-        { text: "Katalog", callback_data: cb.catalog() },
-        { text: "Keranjang", callback_data: cb.cart() },
+        { text: "🛍 Katalog", callback_data: cb.catalog() },
+        { text: "🛒 Keranjang", callback_data: cb.cart() },
       ],
       [
-        { text: "Pesanan Saya", callback_data: "myorders" },
-        { text: "Cari Produk", callback_data: cb.search() },
+        { text: "📦 Pesanan Saya", callback_data: "myorders" },
+        { text: "🔎 Cari Produk", callback_data: cb.search() },
       ],
       [
-        { text: "Garansi & Ketentuan", callback_data: "warranty" },
-        { text: "Bantuan", callback_data: "help" },
+        { text: "🛡 Garansi & Ketentuan", callback_data: "warranty" },
+        { text: "❓ Bantuan", callback_data: "help" },
       ],
       [
         { text: "🌐 Web", url: "https://axvara.tech" },
@@ -153,10 +153,10 @@ export function catalogFlatKeyboard(
 
   // Optional category filter + home (categories no longer mandatory)
   rows.push([
-    { text: "Cari Produk", callback_data: cb.search() },
-    { text: "Keranjang", callback_data: cb.cart() },
+    { text: "🔎 Cari Produk", callback_data: cb.search() },
+    { text: "🛒 Keranjang", callback_data: cb.cart() },
   ]);
-  rows.push([{ text: "Pesanan Saya", callback_data: cb.myOrders() }, { text: "Kategori", callback_data: cb.categories() }]);
+  rows.push([{ text: "📦 Pesanan Saya", callback_data: cb.myOrders() }, { text: "📂 Kategori", callback_data: cb.categories() }]);
   return { inline_keyboard: rows };
 }
 
@@ -309,8 +309,8 @@ export function variantsKeyboard(
     }];
   });
 
-  rows.push([{ text: "Detail & Ketentuan", callback_data: cb.terms(productId) }]);
-  rows.push([{ text: "Katalog", callback_data: cb.catalog() }, { text: "Keranjang", callback_data: cb.cart() }]);
+  rows.push([{ text: "📋 Detail & Ketentuan", callback_data: cb.terms(productId) }]);
+  rows.push([{ text: "🛍 Katalog", callback_data: cb.catalog() }, { text: "🛒 Keranjang", callback_data: cb.cart() }]);
 
   return { inline_keyboard: rows };
 }
@@ -364,7 +364,7 @@ export function qtyKeyboard(params: {
         { text: qty < max ? "Tambah ➕" : "➕", callback_data: qty < max ? cb.setQty(productId, variantId, plusQty) : "noop" },
       ],
       ...(max > 1 ? [[{ text: "✍️ Masukkan Jumlah", callback_data: cb.qtyInput(productId, variantId) }]] : []),
-      [{ text: params.requiresEmail ? `Lanjut ke Email · Rp${total}` : `Bayar QRIS · Rp${total}`, callback_data: cb.pay(productId, variantId, qty, params.approvalTag) }],
+      [{ text: params.requiresEmail ? `📧 Lanjut ke Email · Rp${total}` : `💳 Bayar QRIS · Rp${total}`, callback_data: cb.pay(productId, variantId, qty, params.approvalTag) }],
       [{ text: "Ketentuan", callback_data: cb.terms(productId, variantId) }, { text: "Tambah ke Keranjang", callback_data: cb.cartAdd(productId, variantId, qty) }],
       [
         { text: "Ganti Varian", callback_data: cb.variants(productId) },
@@ -376,7 +376,7 @@ export function qtyKeyboard(params: {
 
 export function emailConfirmationKeyboard(productId: number, variantId: number, qty: number, total: number, tag?: string, nonce?: string): InlineKeyboardMarkup {
   return { inline_keyboard: [
-    [{ text: `Bayar QRIS · ${buttonPrice(total)}`, callback_data: cb.emailPay(productId, variantId, qty, tag, nonce) }],
+    [{ text: `💳 Bayar QRIS · ${buttonPrice(total)}`, callback_data: cb.emailPay(productId, variantId, qty, tag, nonce) }],
     [{ text: "Ubah Email", callback_data: cb.emailEdit(productId, variantId, qty) }, { text: "Ketentuan", callback_data: cb.terms(productId, variantId) }],
     [
       { text: "◀️ Ubah Jumlah", callback_data: cb.qty(productId, variantId) },
@@ -422,8 +422,8 @@ export function qrisInvoiceKeyboard(orderCode: string): InlineKeyboardMarkup {
       // handleOrderRefresh idempoten. Tanpa ini pembeli menunggu buta bila
       // hook telat; copy "tidak perlu cek manual" di invoiceMessage ikut
       // direvisi agar tidak berbohong.
-      [{ text: "Cek Pembayaran", callback_data: cb.refresh(orderCode) }],
-      [{ text: "Detail Pesanan", callback_data: cb.order(orderCode) }, { text: "Bantuan", url: `${SITE.webUrl}/wa?pesan=${encodeURIComponent(`Pesanan ${orderCode}`)}` }],
+      [{ text: "🔄 Cek Pembayaran", callback_data: cb.refresh(orderCode) }],
+      [{ text: "📋 Detail Pesanan", callback_data: cb.order(orderCode) }, { text: "❓ Bantuan", url: `${SITE.webUrl}/wa?pesan=${encodeURIComponent(`Pesanan ${orderCode}`)}` }],
       [{ text: "Batalkan Pesanan", callback_data: cb.cancel(orderCode) }],
     ],
   };
@@ -496,8 +496,8 @@ export function orderPaidKeyboard(orderCode: string): InlineKeyboardMarkup {
 export function paidOrderStatusKeyboard(orderCode: string): InlineKeyboardMarkup {
   return {
     inline_keyboard: [
-      [{ text: "Ambil Ulang Produk", callback_data: cb.credentials(orderCode) }],
-      [{ text: "Cek Pesanan", callback_data: cb.refresh(orderCode) }],
+      [{ text: "📦 Ambil Ulang Produk", callback_data: cb.credentials(orderCode) }],
+      [{ text: "🔄 Cek Pesanan", callback_data: cb.refresh(orderCode) }],
       orderPaidKeyboard(orderCode).inline_keyboard[0],
       [
         { text: "🛍 Katalog", callback_data: cb.catalog() },

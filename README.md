@@ -700,6 +700,12 @@ palsu; ketentuan/aktivasi/garansi tetap utuh. Modul tambahan
 `telegram/checkout-{approval,email}.ts`, tanpa env/schema/cron/transport baru.
 Pengujian fixture tanpa pesan/order produksi; bukan bukti deployment.
 
+Koreksi presentasi owner29Oktober: animasi bar loading lama kembali pada
+`/start` dan pembukaan produk, lalu terhapus; error animasi tidak memblokir
+konten. Ikon semantik pada menu/aksi penting dan judul status menghidupkan
+pesan tanpa menghias setiap baris. Callback, checkout dan guard stok tetap;
+tidak ada perubahan UI website atau pesan QA produksi.
+
 Paragraf Fase1/Fase2 berikut adalah histori; presentasi, fallback penerima dan
 notifikasi order-created yang bertentangan mengikuti revisi terkini di atas
 serta keputusan10Oktober (hanya notifikasi lunas).

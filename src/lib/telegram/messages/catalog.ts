@@ -32,7 +32,7 @@ export function welcomeMessage(firstName: string, bestsellers: TelegramBestselle
 
 export function catalogFlatMessage(total: number): string {
   return [
-    "<b>Katalog AXVARA</b>",
+    "<b>🛍 Katalog AXVARA</b>",
     "",
     total > 0
       ? `${total} produk tersedia.`

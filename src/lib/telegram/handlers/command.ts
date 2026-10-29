@@ -7,7 +7,7 @@ import { notifyPaymentMaintenance } from "@/lib/telegram/payment-maintenance";
 // mempertahankan URUTAN pengecekan asli (pending WA → /start → label menu →
 // qty → search → /chatid → /garansi → /pesanan → fallback). Pemindahan murni.
 
-import { sendMessage, sendPhoto, sendChatAction } from "@/lib/telegram/api";
+import { sendMessage, sendPhoto, showLoadingBar } from "@/lib/telegram/api";
 import {
   homeKeyboard, warrantyKeyboard,
   MENU_LABEL_CATALOG, MENU_LABEL_SEARCH, MENU_LABEL_ORDERS, MENU_LABEL_HELP,
@@ -56,7 +56,7 @@ export async function handleCommand(
     if (await notifyPaymentMaintenance(chatId)) return;
     // Clear any pending conversational state
     await clearPendingAction(from);
-    await sendChatAction(chatId, "typing");
+    await showLoadingBar(chatId, "🚀 Menyiapkan AXVARA").catch(() => {});
     // SITE_URL kosong di sebagian worker (secret write-only yang belum
     // terbaca) → URL relatif membuat Telegram menolak ("URL host is empty").
     // Paksa absolut https axvara.tech bila env kosong.
